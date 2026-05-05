@@ -209,9 +209,7 @@ async def test_me_returns_user_with_valid_token(client):
     )
     token = login.json()["access_token"]
 
-    response = await client.get(
-        "/auth/me", headers={"Authorization": f"Bearer {token}"}
-    )
+    response = await client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
 
     assert response.status_code == 200, response.text
     body = response.json()

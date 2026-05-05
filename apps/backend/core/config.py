@@ -64,14 +64,12 @@ def secret_key() -> str:
         if env == "dev":
             return _DEV_PLACEHOLDER_SECRET
         raise RuntimeError(
-            "SECRET_KEY is required in non-dev environments "
-            f"(set >={_MIN_SECRET_LEN} chars)"
+            "SECRET_KEY is required in non-dev environments " f"(set >={_MIN_SECRET_LEN} chars)"
         )
 
     if len(raw) < _MIN_SECRET_LEN:
         raise RuntimeError(
-            f"SECRET_KEY must be at least {_MIN_SECRET_LEN} characters "
-            f"(got {len(raw)})"
+            f"SECRET_KEY must be at least {_MIN_SECRET_LEN} characters " f"(got {len(raw)})"
         )
     return raw
 
@@ -115,12 +113,8 @@ def validate_cors_origins(origins: list[str], *, env: str) -> None:
     boot instead of silently exposing a permissive policy.
     """
     if "*" in origins:
-        raise RuntimeError(
-            "CORS allow_origins='*' is incompatible with allow_credentials=True"
-        )
+        raise RuntimeError("CORS allow_origins='*' is incompatible with allow_credentials=True")
     if env == "prod":
         bad = [o for o in origins if o.startswith("http://")]
         if bad:
-            raise RuntimeError(
-                f"Production CORS origins must use https:// (offenders: {bad})"
-            )
+            raise RuntimeError(f"Production CORS origins must use https:// (offenders: {bad})")

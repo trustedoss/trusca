@@ -28,13 +28,37 @@ from .auth import (  # noqa: E402,F401  (imported for metadata side effects)
     Team,
     User,
 )
+from .scan import (  # noqa: E402,F401  (imported for metadata side effects)
+    Component,
+    ComponentVersion,
+    License,
+    LicenseFinding,
+    Obligation,
+    Project,
+    Scan,
+    ScanArtifact,
+    ScanComponent,
+    Vulnerability,
+    VulnerabilityFinding,
+)
 
 __all__ = [
     "AuditLog",
     "Base",
+    "Component",
+    "ComponentVersion",
+    "License",
+    "LicenseFinding",
     "Membership",
+    "Obligation",
     "Organization",
+    "Project",
     "RefreshToken",
+    "Scan",
+    "ScanArtifact",
+    "ScanComponent",
     "Team",
     "User",
+    "Vulnerability",
+    "VulnerabilityFinding",
 ]

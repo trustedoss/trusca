@@ -65,9 +65,7 @@ def _problem_for_auth_error(request: Request, exc: AuthError) -> Response:
     )
 
 
-def _set_refresh_cookie(
-    response: Response, *, refresh_token: str
-) -> None:
+def _set_refresh_cookie(response: Response, *, refresh_token: str) -> None:
     """
     Attach the refresh cookie. HttpOnly + SameSite=Lax always; Secure only in
     prod so dev over plain HTTP still works.
@@ -153,9 +151,7 @@ async def login(
     On success: 200 + access_token in the body, refresh as HttpOnly cookie.
     On bad credentials: 401 problem+json.
     """
-    user = await authenticate(
-        session, email=str(payload.email), password=payload.password
-    )
+    user = await authenticate(session, email=str(payload.email), password=payload.password)
     if user is None:
         exc = InvalidCredentials("invalid email or password")
         return _problem_for_auth_error(request, exc)

@@ -182,12 +182,25 @@ def hash_refresh_token(token: str) -> str:
 
 @dataclass
 class CurrentUser:
-    """Light-weight authenticated principal for dependency injection."""
+    """Light-weight authenticated principal for dependency injection.
+
+    `role` is the *highest* role across the user's memberships and is used by
+    coarse, route-level gates such as `require_role(...)`. It must NOT be used
+    for per-team authorization decisions: a user who is `team_admin` in team_a
+    and `developer` in team_b would otherwise pass write checks against team_b
+    projects (cross-team role escalation — OWASP A01:2021 / CWE-863).
+
+    `team_roles` is the per-team mapping of `team_id -> role` and is what
+    service-layer write checks (`_can_write_project`, etc.) consult to make
+    sure the actor's role is evaluated against the *project's* team, never
+    against an unrelated team where the actor happens to be more privileged.
+    """
 
     id: uuid.UUID
     email: str
     role: str  # highest role across memberships (super_admin > team_admin > developer)
     team_ids: list[uuid.UUID] = field(default_factory=list)
+    team_roles: dict[uuid.UUID, str] = field(default_factory=dict)
     is_active: bool = True
     is_superuser: bool = False
 
@@ -245,11 +258,7 @@ async def _load_current_user(
     # makes the security module safe to import from anywhere).
     from models import Membership, User
 
-    stmt = (
-        select(User)
-        .where(User.id == user_id)
-        .options(selectinload(User.memberships))
-    )
+    stmt = select(User).where(User.id == user_id).options(selectinload(User.memberships))
     result = await session.execute(stmt)
     user = result.scalar_one_or_none()
     if user is None:
@@ -257,6 +266,7 @@ async def _load_current_user(
 
     memberships: list[Membership] = list(user.memberships)
     team_ids = [m.team_id for m in memberships]
+    team_roles = {m.team_id: m.role for m in memberships}
     role = _highest_role(
         [m.role for m in memberships],
         is_superuser=bool(user.is_superuser),
@@ -267,6 +277,7 @@ async def _load_current_user(
         email=user.email,
         role=role,
         team_ids=team_ids,
+        team_roles=team_roles,
         is_active=bool(user.is_active),
         is_superuser=bool(user.is_superuser),
     )

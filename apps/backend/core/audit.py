@@ -40,9 +40,7 @@ from sqlalchemy.orm import InstanceState, Session
 # Default is None (not a shared mutable dict — that would let unrelated tasks
 # accidentally observe each other's audit metadata). `get_audit_context()`
 # returns a fresh empty dict when unbound; callers always work with copies.
-audit_context: ContextVar[dict[str, Any] | None] = ContextVar(
-    "audit_context", default=None
-)
+audit_context: ContextVar[dict[str, Any] | None] = ContextVar("audit_context", default=None)
 
 
 # Columns that must never appear in the audit diff. We strip them before
@@ -155,9 +153,7 @@ def _serialize_dict(d: dict[str, Any]) -> dict[str, Any]:
     return {k: _serialize_value(v) for k, v in d.items()}
 
 
-def _build_audit_row(
-    *, op: str, instance: object, ctx: dict[str, Any]
-) -> dict[str, Any] | None:
+def _build_audit_row(*, op: str, instance: object, ctx: dict[str, Any]) -> dict[str, Any] | None:
     """Construct the kwargs for an AuditLog row, or None if the table is skipped."""
     # Local import to avoid circular dependency at module import time
     # (models depend on Base which lives next to the audit code in some layouts).

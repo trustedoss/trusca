@@ -206,9 +206,7 @@ async def _revoke_chain(
     current: str | None = leaf_jti
     while current and current not in seen:
         seen.add(current)
-        result = await session.execute(
-            select(RefreshToken).where(RefreshToken.jti == current)
-        )
+        result = await session.execute(select(RefreshToken).where(RefreshToken.jti == current))
         row = result.scalar_one_or_none()
         if row is None:
             break
@@ -271,9 +269,7 @@ async def rotate_refresh(
         raise InvalidRefreshToken("refresh token expired")
 
     # Load the user
-    user = (
-        await session.execute(select(User).where(User.id == row.user_id))
-    ).scalar_one_or_none()
+    user = (await session.execute(select(User).where(User.id == row.user_id))).scalar_one_or_none()
     if user is None or not user.is_active:
         raise InvalidRefreshToken("user inactive")
 
@@ -285,9 +281,7 @@ async def rotate_refresh(
         subject=str(user.id),
         role="super_admin" if user.is_superuser else None,
     )
-    new_refresh, new_jti, new_expires = create_refresh_token(
-        subject=str(user.id), parent_jti=jti
-    )
+    new_refresh, new_jti, new_expires = create_refresh_token(subject=str(user.id), parent_jti=jti)
     session.add(
         RefreshToken(
             user_id=user.id,

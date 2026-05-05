@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import structlog
 from fastapi import FastAPI, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -68,18 +69,19 @@ def install_exception_handlers(app: FastAPI) -> None:
     async def _validation_exception_handler(
         request: Request, exc: RequestValidationError
     ) -> JSONResponse:
+        # Pydantic v2 stores raw exception instances (e.g. ValueError raised
+        # from a field_validator) inside `errors()[i].ctx.error`; the default
+        # JSON encoder cannot serialize those. jsonable_encoder unwraps them.
         return problem_response(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             title="Validation Error",
             detail="One or more request parameters were invalid.",
             instance=request.url.path,
-            errors=exc.errors(),
+            errors=jsonable_encoder(exc.errors()),
         )
 
     @app.exception_handler(Exception)
-    async def _unhandled_exception_handler(
-        request: Request, exc: Exception
-    ) -> JSONResponse:
+    async def _unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
         # log with full traceback; the JSON response stays generic to avoid leaking
         log.error("unhandled_exception", exc_info=exc, path=request.url.path)
         return problem_response(
