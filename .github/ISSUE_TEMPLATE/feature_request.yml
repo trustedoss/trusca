@@ -1,0 +1,112 @@
+name: Feature request
+description: Suggest a new feature, enhancement, or workflow improvement
+title: "[Feature] "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for proposing a new feature.
+
+        Before submitting, please:
+        - Search [existing issues](https://github.com/trustedoss/trustedoss-portal/issues?q=is%3Aissue) and [discussions](https://github.com/trustedoss/trustedoss-portal/discussions) to avoid duplicates.
+        - Check the [v2 execution plan](https://github.com/trustedoss/trustedoss-portal/blob/main/docs/v2-execution-plan.md) — your idea may already be on the roadmap.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What user problem does this solve? Describe the situation, not the solution.
+      placeholder: e.g. As a Team Admin, when a scan finishes I have to refresh the page to see new findings, which delays triage.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How would you solve this? Be specific about UI / API / behavior.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What other approaches did you consider, and why is the proposal preferred?
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      multiple: true
+      options:
+        - Auth & RBAC
+        - Project / Components
+        - Vulnerabilities
+        - Licenses & Obligations
+        - SBOM / Reports
+        - Scan pipeline (cdxgen / ORT / Trivy)
+        - Dependency-Track integration
+        - Admin (users / teams / DT / disk / audit)
+        - CI/CD (API key / webhook / build gate)
+        - Notifications
+        - i18n (EN / KO)
+        - Documentation
+        - DevOps (Docker / Helm / install scripts)
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: persona
+    attributes:
+      label: Primary user persona
+      options:
+        - Super Admin (system operator)
+        - Team Admin
+        - Developer
+        - CI/CD pipeline (machine actor)
+        - External / unauthenticated viewer
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: How will we know this is done? Bullet list of testable conditions.
+      placeholder: |
+        - [ ] Component count badge updates within 5s without page refresh.
+        - [ ] EN and KO labels added.
+        - [ ] WebSocket reconnect within 2s on transient disconnect.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority (your assessment)
+      options:
+        - P0 — blocks GA / mission-critical
+        - P1 — significant value, needed soon
+        - P2 — nice to have
+        - P3 — speculative / future
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Mockups, links to related issues, prior-art screenshots from other tools, etc.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-flight checks
+      options:
+        - label: I searched existing issues and discussions for duplicates.
+          required: true
+        - label: I checked the v2 execution plan and confirmed this is not already roadmapped (or noted where it diverges).
+          required: true
