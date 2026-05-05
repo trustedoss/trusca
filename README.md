@@ -9,6 +9,8 @@
 
 > **Status:** Pre-alpha. Active development on the v2 rewrite. See [`docs/v2-execution-plan.md`](docs/v2-execution-plan.md) for the live roadmap.
 
+> **v1 → v2 transition (2026-05-05):** `main` now tracks the v2 rewrite. The previous v1 codebase is preserved on the [`legacy/v1`](https://github.com/trustedoss/trustedoss-portal/tree/legacy/v1) branch (read-only, not maintained). v2 is a clean re-implementation — see [`docs/v2-execution-plan.md`](docs/v2-execution-plan.md) for migration rationale.
+
 ---
 
 ## Why TrustedOSS Portal
