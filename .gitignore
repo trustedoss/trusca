@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# Node / frontend
+node_modules/
+dist/
+build/
+.vite/
+*.tsbuildinfo
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Logs / runtime
+*.log
+*.pid
+
+# Docker / volumes
+docker-data/
+postgres-data/
+redis-data/
+
+# Workspace / scan output
+workspace/
+.ort/scan-results/
