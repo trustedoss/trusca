@@ -9,6 +9,9 @@
     "english": "English",
     "korean": "한국어"
   },
+  "auth": {
+    "logout": "로그아웃"
+  },
   "home": {
     "title": "TrustedOSS Portal에 오신 것을 환영합니다",
     "subtitle": "부트스트랩이 가동되었습니다. 인증·프로젝트·스캔은 다음 Phase에서 추가됩니다.",

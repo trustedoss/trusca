@@ -1,4 +1,5 @@
 import { Trans, useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
 
 import { LanguageToggle } from "@/components/LanguageToggle";
 import { Button } from "@/components/ui/button";
@@ -9,12 +10,20 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { useAuthStore } from "@/stores/authStore";
 
 const RISK_LEVELS = ["critical", "high", "medium", "low", "info"] as const;
 
 export function Home() {
   const { t } = useTranslation();
   const apiBase = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+  const navigate = useNavigate();
+  const logout = useAuthStore((s) => s.logout);
+
+  async function handleLogout() {
+    await logout();
+    navigate("/login", { replace: true });
+  }
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -30,7 +39,19 @@ export function Home() {
             {t("app.version")}
           </span>
         </div>
-        <LanguageToggle />
+        <div className="flex items-center gap-3">
+          <LanguageToggle />
+          {/* Stub trigger so e2e (1.9 scenario) can exercise expectLoggedOut.
+              Phase 2 replaces this with the real header/sidebar. */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleLogout}
+            data-testid="logout-button"
+          >
+            {t("auth.logout", { defaultValue: "Sign out" })}
+          </Button>
+        </div>
       </header>
 
       <main

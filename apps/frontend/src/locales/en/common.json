@@ -9,6 +9,9 @@
     "english": "English",
     "korean": "한국어"
   },
+  "auth": {
+    "logout": "Sign out"
+  },
   "home": {
     "title": "Welcome to TrustedOSS Portal",
     "subtitle": "Bootstrap is online. Authentication, projects, and scans land in upcoming phases.",

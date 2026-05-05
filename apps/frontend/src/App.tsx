@@ -1,5 +1,11 @@
-import { Home } from "@/pages/Home";
+import { AuthExpiredListener } from "@/components/AuthExpiredListener";
+import { AppRoutes } from "@/router";
 
 export function App() {
-  return <Home />;
+  return (
+    <>
+      <AuthExpiredListener />
+      <AppRoutes />
+    </>
+  );
 }
