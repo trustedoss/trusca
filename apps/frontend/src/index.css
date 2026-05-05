@@ -1,0 +1,88 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---------------------------------------------------------------------------
+ * TrustedOSS Portal — design tokens (CLAUDE.md "디자인 시스템")
+ *
+ * - Layout: sidebar 224px, header 48px, table row 40px (compact density)
+ * - Risk colors: Critical / High / Medium / Low / Info
+ * - Primary: #0f172a (Black Duck-style dark navy)
+ *
+ * shadcn/ui base color = slate. Variables follow shadcn HSL convention so the
+ * generator output can be pasted in without conversion.
+ * ------------------------------------------------------------------------- */
+
+@layer base {
+  :root {
+    /* shadcn/ui slate palette */
+    --background: 0 0% 100%;
+    --foreground: 222.2 47.4% 11.2%; /* #0f172a */
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 47.4% 11.2%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 47.4% 11.2%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --primary: 222.2 47.4% 11.2%; /* #0f172a */
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --ring: 222.2 84% 4.9%;
+    --radius: 0.5rem;
+
+    /* TrustedOSS risk severity (raw hex — used by recharts/lucide too) */
+    --risk-critical: #dc2626;
+    --risk-high: #ea580c;
+    --risk-medium: #ca8a04;
+    --risk-low: #2563eb;
+    --risk-info: #71717a;
+
+    /* Layout density */
+    --layout-sidebar: 224px;
+    --layout-header: 48px;
+    --table-row: 40px;
+  }
+
+  .dark {
+    --background: 222.2 47.4% 11.2%;
+    --foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --popover: 222.2 47.4% 11.2%;
+    --popover-foreground: 210 40% 98%;
+    --card: 222.2 47.4% 11.2%;
+    --card-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --ring: 212.7 26.8% 83.9%;
+  }
+
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  code,
+  kbd,
+  pre,
+  samp {
+    @apply font-mono;
+  }
+}

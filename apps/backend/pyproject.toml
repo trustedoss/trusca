@@ -23,3 +23,27 @@ python_version = "3.12"
 strict = true
 ignore_missing_imports = true
 exclude = ["alembic/versions/"]
+
+# pytest fixtures/decorators frequently need looser typing (untyped decorators
+# from third-party libs, ad-hoc test helpers). Strict mode applies to product
+# code; tests get the recommended pytest defaults.
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_decorators = false
+check_untyped_defs = true
+
+# CLAUDE.md 품질·보안·운영 표준 §2: PR 머지 게이트는 신규/변경 코드
+# line coverage ≥ 80%. 부트스트랩 단계에서는 전역 라인 임계로 근사한다.
+[tool.coverage.run]
+source = ["."]
+omit = [
+    "alembic/versions/*",
+    "tests/*",
+]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+skip_covered = false

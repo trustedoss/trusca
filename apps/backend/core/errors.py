@@ -53,7 +53,9 @@ def install_exception_handlers(app: FastAPI) -> None:
     log = structlog.get_logger("errors")
 
     @app.exception_handler(StarletteHTTPException)
-    async def _http_exception_handler(request: Request, exc: StarletteHTTPException):
+    async def _http_exception_handler(
+        request: Request, exc: StarletteHTTPException
+    ) -> JSONResponse:
         title = exc.detail if isinstance(exc.detail, str) else "HTTP Error"
         return problem_response(
             status_code=exc.status_code,
@@ -63,7 +65,9 @@ def install_exception_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(RequestValidationError)
-    async def _validation_exception_handler(request: Request, exc: RequestValidationError):
+    async def _validation_exception_handler(
+        request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
         return problem_response(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             title="Validation Error",
@@ -73,7 +77,9 @@ def install_exception_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(Exception)
-    async def _unhandled_exception_handler(request: Request, exc: Exception):
+    async def _unhandled_exception_handler(
+        request: Request, exc: Exception
+    ) -> JSONResponse:
         # log with full traceback; the JSON response stays generic to avoid leaking
         log.error("unhandled_exception", exc_info=exc, path=request.url.path)
         return problem_response(

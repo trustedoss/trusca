@@ -18,6 +18,9 @@ dist/
 build/
 .vite/
 *.tsbuildinfo
+coverage/
+playwright-report/
+test-results/
 
 # Env / secrets
 .env

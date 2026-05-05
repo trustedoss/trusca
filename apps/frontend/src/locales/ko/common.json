@@ -1,0 +1,26 @@
+{
+  "app": {
+    "name": "TrustedOSS Portal",
+    "tagline": "엔터프라이즈를 위한 오픈소스 SCA 플랫폼",
+    "version": "v2 — Phase 0"
+  },
+  "language": {
+    "label": "언어",
+    "english": "English",
+    "korean": "한국어"
+  },
+  "home": {
+    "title": "TrustedOSS Portal에 오신 것을 환영합니다",
+    "subtitle": "부트스트랩이 가동되었습니다. 인증·프로젝트·스캔은 다음 Phase에서 추가됩니다.",
+    "stack": "React 18 · Vite · shadcn/ui · TanStack Query · react-i18next",
+    "api_label": "API 베이스",
+    "primary_cta": "컴포넌트 보기"
+  },
+  "risk": {
+    "critical": "치명",
+    "high": "높음",
+    "medium": "중간",
+    "low": "낮음",
+    "info": "정보"
+  }
+}

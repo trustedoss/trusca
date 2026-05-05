@@ -18,7 +18,8 @@ from __future__ import annotations
 
 import time
 import uuid
-from typing import Awaitable, Callable, MutableMapping
+from collections.abc import Awaitable, Callable, MutableMapping
+from typing import Any
 
 import structlog
 from structlog.contextvars import bind_contextvars, clear_contextvars
@@ -26,14 +27,17 @@ from structlog.contextvars import bind_contextvars, clear_contextvars
 REQUEST_ID_HEADER = "x-request-id"
 REQUEST_ID_HEADER_BYTES = REQUEST_ID_HEADER.encode("latin-1")
 
-Scope = MutableMapping[str, object]
-Message = MutableMapping[str, object]
+# Loose ASGI shapes: keys are protocol-defined but values mix str/int/bytes/
+# lists. We rely on runtime checks rather than encoding the union here.
+Scope = MutableMapping[str, Any]
+Message = MutableMapping[str, Any]
 Receive = Callable[[], Awaitable[Message]]
 Send = Callable[[Message], Awaitable[None]]
+ASGIApp = Callable[[Scope, Receive, Send], Awaitable[None]]
 
 
 class RequestIDMiddleware:
-    def __init__(self, app):
+    def __init__(self, app: ASGIApp) -> None:
         self.app = app
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
@@ -76,7 +80,8 @@ class RequestIDMiddleware:
 
 
 def _extract_request_id(scope: Scope) -> str | None:
-    for key, value in scope.get("headers", []) or []:
+    headers: list[tuple[bytes, bytes]] = scope.get("headers", []) or []
+    for key, value in headers:
         if key.lower() == REQUEST_ID_HEADER_BYTES:
             try:
                 return value.decode("latin-1")

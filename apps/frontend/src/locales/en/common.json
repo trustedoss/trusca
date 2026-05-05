@@ -1,0 +1,26 @@
+{
+  "app": {
+    "name": "TrustedOSS Portal",
+    "tagline": "Open-source SCA platform for enterprise",
+    "version": "v2 — Phase 0"
+  },
+  "language": {
+    "label": "Language",
+    "english": "English",
+    "korean": "한국어"
+  },
+  "home": {
+    "title": "Welcome to TrustedOSS Portal",
+    "subtitle": "Bootstrap is online. Authentication, projects, and scans land in upcoming phases.",
+    "stack": "React 18 · Vite · shadcn/ui · TanStack Query · react-i18next",
+    "api_label": "API base",
+    "primary_cta": "View component"
+  },
+  "risk": {
+    "critical": "Critical",
+    "high": "High",
+    "medium": "Medium",
+    "low": "Low",
+    "info": "Info"
+  }
+}

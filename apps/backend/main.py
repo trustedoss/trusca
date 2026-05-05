@@ -14,6 +14,7 @@ projects, scans, …) land in their respective Phases.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import structlog
@@ -32,7 +33,7 @@ from core.middleware import RequestIDMiddleware
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     configure_logging(level=log_level())
     log = structlog.get_logger("startup")
     log.info("backend_starting", app_env=app_env())
