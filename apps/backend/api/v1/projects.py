@@ -259,7 +259,7 @@ async def delete_project_endpoint(
     "/{project_id}/scans",
     response_model=ScanPublic,
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Trigger a scan for the project (PR #7 skeleton — Celery enqueue lands in PR #8)",
+    summary="Trigger a scan for the project (queues a Celery task; returns 202 Accepted)",
 )
 async def trigger_scan_endpoint(
     request: Request,
@@ -268,6 +268,15 @@ async def trigger_scan_endpoint(
     session: AsyncSession = Depends(get_db),
     actor: CurrentUser = Depends(require_role("developer")),
 ) -> Response:
+    # The service layer can raise:
+    #   - ScanForbidden            (403) — caller not in the project's team
+    #   - ProjectMissingForScan    (404) — project id does not exist
+    #   - ScanInProgressConflict   (409) — partial unique index hit
+    #   - ScanEnqueueFailed        (503) — Celery dispatch failed; scan row
+    #                                       was marked 'failed' before this
+    #                                       branch returns
+    # _problem_for_scan_error reads exc.status_code so all four map to the
+    # right RFC 7807 envelope without a per-exception switch here.
     try:
         scan = await trigger_scan(
             session,

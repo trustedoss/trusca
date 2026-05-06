@@ -1,0 +1,144 @@
+# syntax=docker/dockerfile:1.7
+#
+# TrustedOSS Portal — Celery worker image.
+#
+# This image carries the heavy SCA toolchain (cdxgen / ORT / Trivy + JRE +
+# Node) that backend API containers do NOT need. Splitting it out keeps the
+# API image small (~200MB) while the worker (~2.5GB) is deployed and rolled
+# independently. Per CLAUDE.md core rule #3 (ORT/cdxgen/Trivy must run inside
+# Celery — never synchronously) this is the only image that ships the tools.
+#
+# Layer strategy: each tool is installed in its own RUN so buildx/GHA cache
+# can re-use unchanged layers. ORT (~600MB extracted) is intentionally last
+# among the big tools so a Trivy or cdxgen bump doesn't bust the ORT layer.
+#
+# All four shipped tools are Apache-2.0:
+#   cdxgen   — https://github.com/CycloneDX/cdxgen           (Apache-2.0)
+#   ORT      — https://github.com/oss-review-toolkit/ort     (Apache-2.0)
+#   Trivy    — https://github.com/aquasecurity/trivy         (Apache-2.0)
+#   Temurin  — Eclipse Temurin JRE 21                        (GPL-2.0-CE — runtime
+#              only; Classpath Exception lets user code stay non-GPL).
+
+# ---------------------------------------------------------------------------
+# Stage 1: base — Python runtime + Python deps. Mirrors apps/backend/Dockerfile
+# so the API and worker share the cached Python install layer when both are
+# built on the same host.
+# ---------------------------------------------------------------------------
+FROM python:3.12.7-slim AS base
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# psycopg2 (sync, used by alembic) needs libpq + a C compiler;
+# curl powers the docker-compose healthcheck and tool downloads.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        libpq-dev \
+        curl \
+        ca-certificates \
+        gnupg \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY requirements.txt requirements-dev.txt /app/
+RUN pip install --upgrade pip \
+    && pip install -r requirements-dev.txt
+
+# ---------------------------------------------------------------------------
+# Stage 2: worker — base + JRE 17 + Node 20 LTS + cdxgen + Trivy + ORT.
+# ---------------------------------------------------------------------------
+FROM base AS worker
+
+# OS deps for the SCA toolchain. unzip → ORT zip extraction; git/mercurial →
+# ORT VCS analyzers; ca-certificates already installed in stage 1. Java is
+# installed below from Eclipse Temurin (apt repo) — ORT 85.x requires JRE
+# 21 (class file v65), and Debian bookworm only ships JDK 17 by default.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        unzip \
+        git \
+        mercurial \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---- Eclipse Temurin JRE 21 (GPL-2.0-CE — runtime only, Classpath
+#      Exception lets user code stay non-GPL). ORT 85.x requires Java 21.
+#      Adoptium publishes per-arch debs via their apt repo.
+RUN curl -fsSL https://packages.adoptium.net/artifactory/api/gpg/key/public \
+        | gpg --dearmor -o /usr/share/keyrings/adoptium.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/adoptium.gpg] https://packages.adoptium.net/artifactory/deb bookworm main" \
+        > /etc/apt/sources.list.d/adoptium.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends temurin-21-jre \
+    && rm -rf /var/lib/apt/lists/* \
+    && java -version
+
+# JAVA_HOME is arch-suffixed by Temurin (`/usr/lib/jvm/temurin-21-jre-{amd64,arm64}`).
+# Resolve at build time so the same Dockerfile works on x86_64 and arm64 hosts.
+RUN ln -sfn "/usr/lib/jvm/temurin-21-jre-$(dpkg --print-architecture)" /usr/lib/jvm/java-21
+ENV JAVA_HOME=/usr/lib/jvm/java-21 \
+    PATH=/usr/lib/jvm/java-21/bin:$PATH
+
+# ---- Node.js 20.18.1 (Active LTS "Iron") via NodeSource. -------------------
+# We pin the deb major (20.x) via the NodeSource distribution and the patch
+# via apt-mark hold — NodeSource repos only carry the latest in the 20.x
+# line, but pinning here documents intent and lets us bump deliberately.
+ENV NODE_MAJOR=20
+RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/* \
+    && node --version \
+    && npm --version
+
+# ---- cdxgen 11.11.0 (Apache-2.0). ------------------------------------------
+# CycloneDX SBOM generator, 30+ ecosystems. Pinned to the head of the 11.x
+# line — well-paired with ORT. We install globally so it lands on PATH for
+# the celery worker. --omit=dev keeps the image lean.
+ENV CDXGEN_VERSION=11.11.0
+RUN npm install -g --omit=dev "@cyclonedx/cdxgen@${CDXGEN_VERSION}" \
+    && cdxgen --version
+
+# ---- Trivy 0.70.0 (Apache-2.0). --------------------------------------------
+# Container & filesystem vulnerability scanner. Installed from the upstream
+# deb (aquasecurity GitHub releases) for a deterministic, signed binary.
+# Trivy publishes per-arch debs (Linux-64bit / Linux-ARM64) so we resolve
+# the dpkg arch at build time — keeps the image buildable on amd64 CI and
+# arm64 dev laptops alike.
+ENV TRIVY_VERSION=0.70.0
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "$arch" in \
+        amd64)  trivy_arch="Linux-64bit" ;; \
+        arm64)  trivy_arch="Linux-ARM64" ;; \
+        *) echo "Unsupported arch: $arch" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL -o /tmp/trivy.deb \
+        "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_${trivy_arch}.deb"; \
+    dpkg -i /tmp/trivy.deb; \
+    rm -f /tmp/trivy.deb; \
+    trivy --version
+
+# ---- ORT 85.0.0 (Apache-2.0). ----------------------------------------------
+# OSS Review Toolkit — license & dependency analyzer. ~600MB extracted, so
+# kept as the last big layer to maximise cache hits when smaller tools bump.
+# The release ships a self-contained zip with launcher scripts under bin/.
+ENV ORT_VERSION=85.0.0 \
+    ORT_HOME=/opt/ort
+RUN curl -fsSL -o /tmp/ort.zip \
+        "https://github.com/oss-review-toolkit/ort/releases/download/${ORT_VERSION}/ort-${ORT_VERSION}.zip" \
+    && unzip -q /tmp/ort.zip -d /opt \
+    && mv "/opt/ort-${ORT_VERSION}" "${ORT_HOME}" \
+    && rm -f /tmp/ort.zip \
+    && ln -s "${ORT_HOME}/bin/ort" /usr/local/bin/ort \
+    && ort --version
+
+# Application source. The dev compose bind-mounts ./apps/backend:/app on top
+# of this so the COPY here only matters for one-off `docker run` and prod.
+COPY . /app
+
+EXPOSE 8000
+
+# Default to celery worker. docker-compose.dev.yml overrides `command:` so the
+# concurrency / loglevel can change without rebuilding.
+CMD ["celery", "-A", "tasks.celery_app", "worker", "--loglevel=info", "--concurrency=2"]

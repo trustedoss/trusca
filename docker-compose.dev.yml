@@ -20,6 +20,15 @@ x-backend-build: &backend-build
     context: ./apps/backend
     dockerfile: Dockerfile
 
+# Worker image carries the SCA toolchain (cdxgen / ORT / Trivy + JRE + Node).
+# Kept separate from the API image so the API stays slim (~200MB) and the
+# worker (~2.5GB) can be rolled / upgraded independently — see CLAUDE.md
+# core rule #3 (ORT/cdxgen/Trivy run inside Celery only).
+x-worker-build: &worker-build
+  build:
+    context: ./apps/backend
+    dockerfile: Dockerfile.worker
+
 x-backend-env: &backend-env
   APP_ENV: ${APP_ENV:-dev}
   LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -85,8 +94,8 @@ services:
       start_period: 30s
 
   celery-worker:
-    <<: *backend-build
-    image: trustedoss/backend:dev
+    <<: *worker-build
+    image: trustedoss/backend-worker:dev
     restart: unless-stopped
     command: celery -A tasks.celery_app worker --loglevel=info --concurrency=2
     environment:

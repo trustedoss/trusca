@@ -100,6 +100,65 @@ def app_env() -> str:
     return os.getenv("APP_ENV", "dev").lower()
 
 
+# ---------------------------------------------------------------------------
+# Phase 2 PR #8 — scan pipeline configuration accessors.
+#
+# Every accessor below resolves the environment at call time so the worker
+# picks up changes without a rebuild (CLAUDE.md core rule #11). Defaults match
+# `.env.example` — the docker-compose dev stack runs out of the box.
+# ---------------------------------------------------------------------------
+
+
+def dt_url() -> str:
+    """Dependency-Track REST base URL (no trailing slash)."""
+    return os.getenv("DT_URL", "http://dtrack-api:8080").rstrip("/")
+
+
+def dt_api_key() -> str:
+    """DT API key. Empty string when unset (mock backend / local smoke)."""
+    return os.getenv("DT_API_KEY", "")
+
+
+def dt_request_timeout_seconds() -> float:
+    return float(os.getenv("DT_REQUEST_TIMEOUT_SECONDS", "30"))
+
+
+def dt_breaker_failure_threshold() -> int:
+    """Consecutive failures that flip the breaker CLOSED → OPEN."""
+    return int(os.getenv("DT_BREAKER_FAILURE_THRESHOLD", "5"))
+
+
+def dt_breaker_cooldown_seconds() -> int:
+    """How long the breaker stays OPEN before allowing a HALF_OPEN probe."""
+    return int(os.getenv("DT_BREAKER_COOLDOWN_SECONDS", "30"))
+
+
+def dt_health_check_endpoint() -> str:
+    """Path appended to dt_url() for the health heartbeat."""
+    return os.getenv("DT_HEALTH_ENDPOINT", "/api/version")
+
+
+def dt_auto_restart_enabled() -> bool:
+    """If true, the health monitor will attempt `docker restart dtrack-api`."""
+    raw = os.getenv("DT_AUTO_RESTART", "false").lower()
+    return raw in ("1", "true", "yes", "on")
+
+
+def scan_backend_mode() -> str:
+    """`real` (subprocess cdxgen/ort/trivy) or `mock` (fixture JSON)."""
+    return os.getenv("TRUSTEDOSS_SCAN_BACKEND", "real").lower()
+
+
+def workspace_root() -> str:
+    """Root directory under which per-scan workspaces live."""
+    return os.getenv("WORKSPACE_HOST_PATH", "/tmp/trustedoss")  # noqa: S108
+
+
+def jsonb_row_size_limit_bytes() -> int:
+    """Per-row JSON byte ceiling before truncate (I-1 guard)."""
+    return int(os.getenv("JSONB_ROW_SIZE_LIMIT_BYTES", str(256 * 1024)))
+
+
 def validate_cors_origins(origins: list[str], *, env: str) -> None:
     """
     H-3 (security-reviewer blocker): CORS bootstrap guard.
