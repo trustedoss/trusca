@@ -136,22 +136,27 @@ RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - \
 #
 # Install flags:
 #   --omit=dev      drops devDependencies (biome / poku / sinon / typescript)
-#                   so the image stays lean.
-#   --omit=optional drops optionalDependencies — specifically
-#                   `@cdxgen/cdxgen-plugins-bin` and its per-arch sibling
-#                   packages (`@cdxgen/cdxgen-plugins-bin-linux-amd64` etc.).
-#                   That bundle ships vendored Go binaries (osv-scanner,
-#                   cdx-audit, sourcekitten, …) which Trivy then scans as
-#                   gobinary surface — the previous build flagged 12 HIGH
-#                   + 1 CRITICAL there (grpc CVE-2026-33186, docker/cli,
-#                   moby/buildkit, otel, sigstore-timestamp, go-jose, …).
-#                   Our cdxgen invocation in apps/backend/integrations/
-#                   cdxgen.py only passes `-r -o <path> --spec-version 1.5
-#                   <src>` — we never call any plugin. OSV vulnerability
-#                   matching is owned by Dependency-Track; image SAST is
-#                   not in scope for the worker. Dropping the bundle is
-#                   therefore safe and removes the entire gobinary block
-#                   from the Trivy report.
+#                   so the image stays lean. Effective.
+#   --omit=optional kept for documentation-of-intent value, but does NOT
+#                   actually drop `@cdxgen/cdxgen-plugins-bin` from the
+#                   image. cdxgen 12.x ships a postinstall script that
+#                   downloads the plugin bundle independently of the
+#                   optionalDependencies key — verified empirically when
+#                   commit a1e2e14's Trivy run still found all 12 HIGH +
+#                   1 CRITICAL gobinary findings inside
+#                   .../node_modules/@cdxgen/cdxgen-plugins-bin*/plugins/
+#                   despite the flag.
+#                   Those 12 CVEs are runtime-UNREACHED — our cdxgen
+#                   invocation in apps/backend/integrations/cdxgen.py
+#                   only passes `-r -o <path> --spec-version 1.5 <src>`
+#                   and never executes any plugin (OSV matching is owned
+#                   by Dependency-Track, image SAST is out of scope).
+#                   The CVEs are therefore listed in `.trivyignore` at
+#                   the workspace root, category (3) per its policy
+#                   header, with per-CVE reach analysis. Phase 8
+#                   hardening backlog: carve the plugins-bin directory
+#                   out at image build time once we verify it doesn't
+#                   break cdxgen's startup self-test.
 #                   IMPORTANT: --omit=dev (devDependencies) and
 #                   --omit=optional (optionalDependencies) are independent
 #                   npm-config keys. If a future change needs cdxgen's

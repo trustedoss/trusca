@@ -227,32 +227,44 @@ jobs:
     name: image-scan (worker)
     runs-on: ubuntu-22.04
     # Hard-fail policy — the worker image must clear `trivy --severity
-    # HIGH,CRITICAL --ignore-unfixed` before any change merges to main.
+    # HIGH,CRITICAL --ignore-unfixed` before any change merges to main,
+    # except for CVEs explicitly listed in .trivyignore with per-CVE
+    # reach analysis (see that file's policy header for the three
+    # acceptable categories).
+    #
     # The previous chore PR (Python deps hygiene, merge 6366b62) deferred
     # this gate because Trivy flagged 33 HIGH+CRITICAL on the non-Python
     # bundle layers (Debian OS / cdxgen 11.11.0 npm transitives / ORT
     # 85.0.0 java jars). This PR (chore/worker-image-hardening) clears
     # them by:
     #   1. apt-get upgrade -y in both Dockerfile.worker stages
-    #      → libgnutls30 / Debian OS 7건.
-    #   2. cdxgen 11.11.0 → 12.3.3 with --omit=optional (drops the
-    #      @cdxgen/cdxgen-plugins-bin vendored Go binary bundle that
-    #      surfaced 12 HIGH + 1 CRITICAL gobinary findings, including
-    #      grpc CVE-2026-33186) → 12 gobinary findings.
-    #   3. npm self-upgrade to 11.13.0 inside the Node 20.x install
-    #      step (NodeSource ships npm 10.8.2 with cross-spawn 7.0.3 /
-    #      tar 6.2.1 / glob 10.4.2 / minimatch 9.0.5 — npm 11.13.0
-    #      drops cross-spawn and bumps tar/glob/minimatch above the
-    #      highest fixed version Trivy reports) → 11 node-pkg findings.
-    #   4. ORT 85.0.0 retained (latest stable). The 3 residual Java
-    #      HIGH findings (json-smart, bcprov-jdk18on inside jruby-
-    #      stdlib, msgpack-core) are upstream-fixed in newer jar
-    #      versions but no patched ORT release ships them yet. They
-    #      are listed in .trivyignore at the workspace root with per-
-    #      CVE reach analysis (all UNREACHED under our `ort evaluate
-    #      --output-formats JSON` invocation; see apps/backend/
-    #      integrations/ort.py:128-139). Re-evaluate every 180 days
-    #      or when ORT publishes a release.
+    #      → libgnutls30 / Debian OS 7건 cleared at build time.
+    #   2. cdxgen 11.11.0 → 12.3.3 + npm self-upgrade to 11.13.0
+    #      → 11 node-pkg findings under usr/lib/node_modules/npm/**
+    #      cleared (NodeSource Node 20.x ships npm 10.8.2 whose bundled
+    #      cross-spawn 7.0.3 / tar 6.2.1 / glob 10.4.2 / minimatch 9.0.5
+    #      carry the CVEs; npm 11.13.0 drops cross-spawn and bumps the
+    #      others above Trivy's reported fixed-versions).
+    #   3. .trivyignore for residual non-runtime-reached findings:
+    #      a. ORT 85.0.0 java jars — 3 HIGH (json-smart,
+    #         bcprov-jdk18on-in-jruby-stdlib, msgpack-core). Upstream
+    #         fix exists but no patched ORT release ships it yet.
+    #         Category (2). UNREACHED under our `ort evaluate
+    #         --output-formats JSON` invocation (see
+    #         apps/backend/integrations/ort.py:128-139).
+    #      b. cdxgen-plugins-bin Go binaries — 12 findings (1 CRITICAL
+    #         grpc CVE-2026-33186 + 11 HIGH: docker/cli, docker/docker,
+    #         go-jose, go-getter, moby/buildkit×2, moby/spdystream,
+    #         sigstore/timestamp-authority, otel, otel/sdk×2). The
+    #         cdxgen postinstall script downloads this bundle even with
+    #         `npm install --omit=optional`, so it stays on the image
+    #         filesystem. Category (3) — UNREACHED because our cdxgen
+    #         invocation in apps/backend/integrations/cdxgen.py never
+    #         executes any plugin binary (OSV matching → DT, image SAST
+    #         out of scope for the worker). Phase 8 hardening backlog:
+    #         carve plugins-bin out at image build once we verify it
+    #         doesn't break cdxgen's startup.
+    # Re-evaluate every 180 days OR on next upstream release.
     steps:
       - uses: actions/checkout@v4
 
