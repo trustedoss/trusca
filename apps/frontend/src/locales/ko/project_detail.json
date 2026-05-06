@@ -1,0 +1,140 @@
+{
+  "page": {
+    "breadcrumb_aria": "탐색 경로",
+    "breadcrumb_projects": "프로젝트",
+    "loading_name": "불러오는 중…",
+    "load_error": "프로젝트를 불러오지 못했습니다.",
+    "missing_id": "URL에 프로젝트 ID가 없습니다."
+  },
+  "tabs": {
+    "overview": "개요",
+    "components": "컴포넌트",
+    "vulnerabilities": "취약점",
+    "licenses": "라이선스"
+  },
+  "tabs_placeholder": {
+    "vulnerabilities": {
+      "title": "취약점 탭",
+      "subtitle": "준비 중 — PR #11에서 추가됩니다."
+    },
+    "licenses": {
+      "title": "라이선스 탭",
+      "subtitle": "준비 중 — PR #12에서 추가됩니다."
+    }
+  },
+  "severity": {
+    "critical": "치명",
+    "high": "높음",
+    "medium": "중간",
+    "low": "낮음",
+    "info": "정보",
+    "none": "없음"
+  },
+  "license_category": {
+    "forbidden": "금지",
+    "conditional": "조건부",
+    "allowed": "허용",
+    "unknown": "미상"
+  },
+  "risk": {
+    "critical": "치명 리스크",
+    "high": "높은 리스크",
+    "medium": "중간 리스크",
+    "low": "낮은 리스크",
+    "none": "리스크 없음"
+  },
+  "overview": {
+    "risk_card": {
+      "title": "리스크 점수",
+      "subtitle": "최근 스캔의 컴포넌트 {{total}}개를 기반으로 산출되었습니다."
+    },
+    "risk_gauge": {
+      "aria": "프로젝트 리스크 점수: 100점 만점에 {{score}}점"
+    },
+    "severity_card": {
+      "title": "취약점 심각도",
+      "subtitle": "각 컴포넌트의 최고 CVE 심각도 기준 분포입니다."
+    },
+    "severity_chart": {
+      "aria": "컴포넌트 {{total}}개의 심각도 분포"
+    },
+    "license_card": {
+      "title": "라이선스 분류",
+      "subtitle": "라이선스 카테고리별 컴포넌트 분포입니다."
+    },
+    "license_chart": {
+      "aria": "컴포넌트 {{total}}개의 라이선스 분포"
+    },
+    "recent_scans": {
+      "title": "최근 스캔",
+      "subtitle": "이 프로젝트의 최근 스캔 5건입니다.",
+      "empty": "아직 스캔 이력이 없습니다.",
+      "col_started": "시작 시각",
+      "col_status": "상태",
+      "col_duration": "소요 시간",
+      "col_kind": "종류",
+      "status": {
+        "queued": "대기 중",
+        "running": "실행 중",
+        "succeeded": "성공",
+        "failed": "실패",
+        "cancelled": "취소됨"
+      },
+      "kind": {
+        "source": "소스",
+        "container": "컨테이너"
+      }
+    },
+    "errors": {
+      "title": "개요를 불러오지 못했습니다.",
+      "detail": "페이지를 새로고침해 주세요."
+    }
+  },
+  "components": {
+    "summary": "전체 {{total}}개 중 {{loaded}}개 로드됨.",
+    "col": {
+      "name": "컴포넌트",
+      "version": "버전",
+      "license": "라이선스",
+      "severity": "심각도",
+      "vulns": "CVE"
+    },
+    "toolbar": {
+      "search_label": "검색",
+      "search_placeholder": "이름 또는 purl로 검색",
+      "severity_label": "심각도",
+      "license_label": "라이선스",
+      "sort_label": "정렬 기준",
+      "sort_by_name": "이름",
+      "sort_by_severity": "심각도",
+      "sort_by_license": "라이선스",
+      "order_label": "순서",
+      "order_asc": "오름차순",
+      "order_desc": "내림차순"
+    },
+    "empty": {
+      "title": "조건에 맞는 컴포넌트가 없습니다",
+      "subtitle": "필터를 조정하거나 새 스캔을 실행하세요."
+    },
+    "errors": {
+      "load_failed": "컴포넌트를 불러오지 못했습니다."
+    }
+  },
+  "drawer": {
+    "loading_title": "컴포넌트 불러오는 중…",
+    "loading_subtitle": "컴포넌트 상세 정보를 가져오고 있습니다.",
+    "subtitle": "버전 {{version}}",
+    "purl_label": "purl",
+    "error": "컴포넌트를 불러오지 못했습니다.",
+    "vulns": {
+      "title": "취약점 ({{count}})",
+      "empty": "이 컴포넌트에 알려진 취약점이 없습니다.",
+      "cvss_label": "CVSS",
+      "fixed_in": "수정 버전"
+    },
+    "raw": {
+      "show": "원본 데이터 보기",
+      "hide": "원본 데이터 숨기기"
+    }
+  }
+}

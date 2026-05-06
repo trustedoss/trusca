@@ -32,12 +32,35 @@ export interface SeedSummary {
   team_id: string;
   project_names: string[];
   project_ids: string[];
+  /** Populated when SeedOptions.withScan is true. Same length as project_ids. */
+  scan_ids?: string[];
+  /** Number of components attached to the first project's scan (0 by default). */
+  component_count?: number;
 }
 
 export interface SeedOptions {
   projectNames: string[];
   password?: string;
   email?: string;
+  /**
+   * Seed a `succeeded` scan per project and wire it as
+   * `project.latest_scan_id`. Required for the project-detail flows.
+   */
+  withScan?: boolean;
+  /**
+   * Number of components to attach to the first project's scan. Implies
+   * `withScan`. Default: 0 (no components seeded). Phase 3 PR #10
+   * scenarios pass 50 for the small flows and 10000 for the virtual-scroll
+   * scenario.
+   */
+  componentCount?: number;
+  /**
+   * Name prefix for the seeded components. Component i is named
+   * `{prefix}-{i}`. Default: `comp`. Search-flow scenarios fix this to a
+   * known string (e.g. `react`) so the spec can search by substring
+   * without learning ids.
+   */
+  componentPrefix?: string;
 }
 
 /**
@@ -63,6 +86,18 @@ export function seedE2eUser(opts: SeedOptions): SeedSummary {
   }
   if (opts.email) {
     args.push("--email", opts.email);
+  }
+  if (opts.withScan || (opts.componentCount ?? 0) > 0) {
+    // --component-count > 0 implies --with-scan in the script; we still
+    // pass the flag explicitly when the caller asked for a scan but no
+    // components, so the spec stays self-documenting at the call site.
+    args.push("--with-scan");
+  }
+  if ((opts.componentCount ?? 0) > 0) {
+    args.push("--component-count", String(opts.componentCount));
+  }
+  if (opts.componentPrefix) {
+    args.push("--component-prefix", opts.componentPrefix);
   }
 
   // Default DATABASE_URL points at the host-mapped Postgres exposed by

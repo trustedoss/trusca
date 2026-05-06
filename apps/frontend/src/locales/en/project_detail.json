@@ -1,0 +1,140 @@
+{
+  "page": {
+    "breadcrumb_aria": "Breadcrumb",
+    "breadcrumb_projects": "Projects",
+    "loading_name": "Loading…",
+    "load_error": "Could not load project.",
+    "missing_id": "No project id was provided in the URL."
+  },
+  "tabs": {
+    "overview": "Overview",
+    "components": "Components",
+    "vulnerabilities": "Vulnerabilities",
+    "licenses": "Licenses"
+  },
+  "tabs_placeholder": {
+    "vulnerabilities": {
+      "title": "Vulnerabilities tab",
+      "subtitle": "Coming soon — tracked under PR #11."
+    },
+    "licenses": {
+      "title": "Licenses tab",
+      "subtitle": "Coming soon — tracked under PR #12."
+    }
+  },
+  "severity": {
+    "critical": "Critical",
+    "high": "High",
+    "medium": "Medium",
+    "low": "Low",
+    "info": "Info",
+    "none": "None"
+  },
+  "license_category": {
+    "forbidden": "Forbidden",
+    "conditional": "Conditional",
+    "allowed": "Allowed",
+    "unknown": "Unknown"
+  },
+  "risk": {
+    "critical": "Critical risk",
+    "high": "High risk",
+    "medium": "Medium risk",
+    "low": "Low risk",
+    "none": "No risk"
+  },
+  "overview": {
+    "risk_card": {
+      "title": "Risk score",
+      "subtitle": "Computed from {{total}} component(s) in the latest scan."
+    },
+    "risk_gauge": {
+      "aria": "Project risk score: {{score}} of 100"
+    },
+    "severity_card": {
+      "title": "Vulnerability severity",
+      "subtitle": "Components grouped by their highest CVE severity."
+    },
+    "severity_chart": {
+      "aria": "Severity distribution across {{total}} components"
+    },
+    "license_card": {
+      "title": "License classification",
+      "subtitle": "Components grouped by license category."
+    },
+    "license_chart": {
+      "aria": "License distribution across {{total}} components"
+    },
+    "recent_scans": {
+      "title": "Recent scans",
+      "subtitle": "Last five scans for this project.",
+      "empty": "No scans have been recorded yet.",
+      "col_started": "Started",
+      "col_status": "Status",
+      "col_duration": "Duration",
+      "col_kind": "Kind",
+      "status": {
+        "queued": "Queued",
+        "running": "Running",
+        "succeeded": "Succeeded",
+        "failed": "Failed",
+        "cancelled": "Cancelled"
+      },
+      "kind": {
+        "source": "Source",
+        "container": "Container"
+      }
+    },
+    "errors": {
+      "title": "Could not load overview.",
+      "detail": "Try refreshing the page."
+    }
+  },
+  "components": {
+    "summary": "{{loaded}} of {{total}} components loaded.",
+    "col": {
+      "name": "Component",
+      "version": "Version",
+      "license": "License",
+      "severity": "Severity",
+      "vulns": "CVEs"
+    },
+    "toolbar": {
+      "search_label": "Search",
+      "search_placeholder": "Search by name or purl",
+      "severity_label": "Severity",
+      "license_label": "License",
+      "sort_label": "Sort by",
+      "sort_by_name": "Name",
+      "sort_by_severity": "Severity",
+      "sort_by_license": "License",
+      "order_label": "Order",
+      "order_asc": "Ascending",
+      "order_desc": "Descending"
+    },
+    "empty": {
+      "title": "No components match",
+      "subtitle": "Adjust the filters or trigger a new scan."
+    },
+    "errors": {
+      "load_failed": "Could not load components."
+    }
+  },
+  "drawer": {
+    "loading_title": "Loading component…",
+    "loading_subtitle": "Fetching component details.",
+    "subtitle": "Version {{version}}",
+    "purl_label": "purl",
+    "error": "Could not load component.",
+    "vulns": {
+      "title": "Vulnerabilities ({{count}})",
+      "empty": "No known vulnerabilities for this component.",
+      "cvss_label": "CVSS",
+      "fixed_in": "Fixed in"
+    },
+    "raw": {
+      "show": "Show raw data",
+      "hide": "Hide raw data"
+    }
+  }
+}

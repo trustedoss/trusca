@@ -38,6 +38,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.db import get_db
 from core.errors import problem_response
 from core.security import CurrentUser, require_role
+from schemas.project_detail import (
+    ComponentListResponse,
+    ComponentSummary,
+    ProjectOverviewResponse,
+    ScanSummary,
+)
 from schemas.scan import (
     ProjectCreate,
     ProjectListResponse,
@@ -45,6 +51,10 @@ from schemas.scan import (
     ProjectUpdate,
     ScanCreate,
     ScanPublic,
+)
+from services.project_detail_service import (
+    get_project_overview,
+    list_components_for_project,
 )
 from services.project_service import (
     ProjectError,
@@ -253,6 +263,100 @@ async def delete_project_endpoint(
 # ---------------------------------------------------------------------------
 # POST /v1/projects/{project_id}/scans  (trigger scan — PR #7 skeleton)
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/projects/{project_id}/overview  (Phase 3 PR #10 — task 3.1)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/{project_id}/overview",
+    response_model=ProjectOverviewResponse,
+    summary="Aggregated risk / scan picture for the project (Phase 3 Overview tab)",
+)
+async def get_project_overview_endpoint(
+    request: Request,
+    project_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_role("developer")),
+) -> Response:
+    try:
+        payload = await get_project_overview(
+            session,
+            project_id=project_id,
+            actor=actor,
+        )
+    except ProjectError as exc:
+        return _problem_for_project_error(request, exc)
+
+    body = ProjectOverviewResponse(
+        project_id=payload["project_id"],
+        project_name=payload["project_name"],
+        total_components=payload["total_components"],
+        severity_distribution=payload["severity_distribution"],
+        license_distribution=payload["license_distribution"],
+        risk_score=payload["risk_score"],
+        recent_scans=[ScanSummary.model_validate(s) for s in payload["recent_scans"]],
+        last_scan_at=payload["last_scan_at"],
+    )
+    return Response(
+        content=body.model_dump_json(),
+        status_code=status.HTTP_200_OK,
+        media_type="application/json",
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/projects/{project_id}/components  (Phase 3 PR #10 — task 3.3)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/{project_id}/components",
+    response_model=ComponentListResponse,
+    summary="Paginated component list for the project's latest scan",
+)
+async def list_project_components_endpoint(
+    request: Request,
+    project_id: uuid.UUID,
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    search: str | None = Query(default=None, max_length=255),
+    severity: list[str] | None = Query(default=None),
+    license_category: list[str] | None = Query(default=None),
+    sort: str = Query(default="name", pattern=r"^(name|severity|license)$"),
+    order: str = Query(default="asc", pattern=r"^(asc|desc)$"),
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_role("developer")),
+) -> Response:
+    try:
+        items, total = await list_components_for_project(
+            session,
+            project_id=project_id,
+            actor=actor,
+            limit=limit,
+            offset=offset,
+            search=search,
+            severity=severity,
+            license_category=license_category,
+            sort=sort,
+            order=order,
+        )
+    except ProjectError as exc:
+        return _problem_for_project_error(request, exc)
+
+    body = ComponentListResponse(
+        items=[ComponentSummary.model_validate(item) for item in items],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+    return Response(
+        content=body.model_dump_json(),
+        status_code=status.HTTP_200_OK,
+        media_type="application/json",
+    )
 
 
 @router.post(

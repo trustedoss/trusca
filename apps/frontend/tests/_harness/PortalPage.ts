@@ -11,7 +11,7 @@
  * session, so having the entry point + supported-language enum already in
  * tree avoids a same-PR refactor of every spec we touch.
  */
-import type { Locator, Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 // We deliberately re-declare the supported-language tuple here instead of
 // importing from `@/lib/i18n`. The product i18n module pulls in JSON locale
@@ -183,6 +183,236 @@ export class PortalPage {
   /** Click the close affordance on the scan-progress drawer (sheet). */
   async closeScanProgressDrawer(): Promise<void> {
     await this.page.getByTestId("scan-progress-close").click();
+  }
+
+  // ───── PR #10 — Project Detail (task 3.1 / 3.3) ────────────────────────
+  /**
+   * Click the project name link inside the row whose `data-project-name`
+   * equals `projectName` and wait until the detail page is mounted.
+   *
+   * Project rows render two `data-testid="project-row-link"` siblings only if
+   * the same project appears twice; we anchor on the first one whose `text`
+   * matches the seeded name to stay deterministic when multiple projects
+   * share a similar prefix.
+   */
+  async openProjectDetail(projectName: string): Promise<void> {
+    // The link carries `data-project-id` only — the seeded `projectName` is
+    // the visible text. Anchoring by visible text would couple the harness
+    // to translation keys, so we target the row's `data-project-name` on
+    // the sibling Scan button to find the row, then click the row's link.
+    const row = this.page.locator(
+      `[data-testid="project-row"]:has([data-testid="project-row-scan"][data-project-name="${projectName}"])`,
+    );
+    await row.locator('[data-testid="project-row-link"]').click();
+    await this.expectProjectDetailMounted();
+  }
+
+  /** Assert the project detail page is mounted (any tab). */
+  async expectProjectDetailMounted(): Promise<void> {
+    await this.page
+      .getByTestId("project-detail-page")
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  /**
+   * Switch to one of the four detail tabs. The detail page's
+   * `?tab=…` URL mirroring is asserted in scenarios that care.
+   */
+  async selectTab(
+    tabName: "overview" | "components" | "vulnerabilities" | "licenses",
+  ): Promise<void> {
+    await this.page
+      .getByTestId(`project-detail-tab-${tabName}`)
+      .click();
+  }
+
+  /**
+   * Wait until the components tab's network call resolves. The tab renders
+   * `[data-testid=components-virtual]` only after the first page lands, so
+   * the absence of that node is the synchronization signal — far more
+   * reliable than waiting for a specific row count.
+   */
+  async expectComponentsTabReady(): Promise<void> {
+    // Either the virtual list mounted (rows arrived) or the empty card
+    // mounted (zero rows for the current filter set). Both are valid
+    // "tab finished loading" states.
+    const virtual = this.page.getByTestId("components-virtual");
+    const empty = this.page.getByTestId("components-empty");
+    await expect(virtual.or(empty)).toBeVisible({ timeout: 10_000 });
+  }
+
+  /**
+   * Set the multi-select severity filter to exactly the given severities.
+   * An empty array clears the filter. Backed by a native `<select multiple>`
+   * — Playwright's `selectOption` semantics handle the multi-select cleanly.
+   */
+  async filterComponentsBySeverity(
+    severities: ("critical" | "high" | "medium" | "low" | "info" | "none")[],
+  ): Promise<void> {
+    await this.page
+      .getByTestId("components-severity-filter")
+      .selectOption(severities);
+    await this.expectComponentsTabReady();
+  }
+
+  /**
+   * Type into the components search input. The toolbar debounces by 300ms
+   * before mutating the URL + firing the next page request — callers that
+   * assert on row count should use `expectComponentsTabReady()` afterwards.
+   *
+   * Empty string clears the filter.
+   */
+  async searchComponents(query: string): Promise<void> {
+    const input = this.page.getByTestId("components-search");
+    await input.fill(query);
+    // Wait for the debounce to fire and the URL to reflect the new query.
+    // We watch for `?search=…` rather than waitForTimeout — auto-retrying
+    // and locale-agnostic.
+    if (query.length > 0) {
+      await expect
+        .poll(() => new URL(this.page.url()).searchParams.get("search"), {
+          timeout: 5_000,
+        })
+        .toBe(query);
+    } else {
+      await expect
+        .poll(() => new URL(this.page.url()).searchParams.get("search"), {
+          timeout: 5_000,
+        })
+        .toBeNull();
+    }
+    await this.expectComponentsTabReady();
+  }
+
+  /**
+   * Click the row whose visible name matches `componentName` and wait for
+   * the drawer to mount. Anchors on the row's truncated `<span>` text — the
+   * row carries no `data-component-name`, but the seeded names are unique
+   * per scan so a strict equality match is safe.
+   */
+  async openComponentDrawer(componentName: string): Promise<void> {
+    const row = this.page
+      .getByTestId("component-row")
+      .filter({ hasText: componentName })
+      .first();
+    await row.click();
+    await this.page
+      .getByTestId("component-drawer")
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  /**
+   * Assert the Overview tab's risk gauge reads `expected` ± `tolerance`.
+   * The default tolerance is 1 — the backend computes the score from a
+   * weighted sum that's deterministic given the seed, but rounds to an
+   * int for display. Callers can pass `{ tolerance: 0 }` for an exact match.
+   */
+  async assertRiskScore(
+    expected: number,
+    options: { tolerance?: number } = {},
+  ): Promise<void> {
+    const tolerance = options.tolerance ?? 1;
+    const gauge = this.page.getByTestId("risk-gauge");
+    await expect(gauge).toBeVisible({ timeout: 10_000 });
+    // The numeric is exposed via a `data-score` attribute so we can assert
+    // without hitting the rendered text (locale-agnostic).
+    await expect
+      .poll(
+        async () => {
+          const raw = await gauge.getAttribute("data-score");
+          return raw == null ? Number.NaN : Number(raw);
+        },
+        { timeout: 10_000 },
+      )
+      .toBeGreaterThanOrEqual(expected - tolerance);
+    const score = Number(await gauge.getAttribute("data-score"));
+    expect(score).toBeLessThanOrEqual(expected + tolerance);
+  }
+
+  /**
+   * Read the components-virtual `data-loaded` attribute (loaded row count).
+   * Returns 0 when the virtual list is not mounted (empty state).
+   */
+  async getLoadedComponentCount(): Promise<number> {
+    const virtual = this.page.getByTestId("components-virtual");
+    if ((await virtual.count()) === 0) return 0;
+    const raw = await virtual.first().getAttribute("data-loaded");
+    return raw == null ? 0 : Number(raw);
+  }
+
+  /**
+   * Read the components-virtual `data-total` attribute (server-reported
+   * total row count). Returns 0 when the empty card is shown.
+   */
+  async getTotalComponentCount(): Promise<number> {
+    const virtual = this.page.getByTestId("components-virtual");
+    if ((await virtual.count()) === 0) return 0;
+    const raw = await virtual.first().getAttribute("data-total");
+    return raw == null ? 0 : Number(raw);
+  }
+
+  /**
+   * Trigger Virtuoso's `endReached` until the loaded count stops growing or
+   * we hit `maxIterations`. We dispatch a wheel event over the virtual list
+   * — `mouse.wheel` requires the cursor to be over the scroll container,
+   * which Virtuoso renders inside the `[data-testid=components-virtual]`
+   * wrapper.
+   */
+  async scrollComponentsToLoadMore(maxIterations: number = 8): Promise<number> {
+    const virtual = this.page.getByTestId("components-virtual");
+    await expect(virtual).toBeVisible();
+    const box = await virtual.boundingBox();
+    if (!box) return this.getLoadedComponentCount();
+
+    let lastLoaded = await this.getLoadedComponentCount();
+    for (let i = 0; i < maxIterations; i++) {
+      await this.page.mouse.move(
+        box.x + box.width / 2,
+        box.y + box.height - 10,
+      );
+      await this.page.mouse.wheel(0, 4_000);
+      // Wait for either the loaded count to grow or the network to settle.
+      try {
+        await expect
+          .poll(() => this.getLoadedComponentCount(), { timeout: 2_500 })
+          .toBeGreaterThan(lastLoaded);
+      } catch {
+        // No new rows arrived in this tick — accept and stop scrolling.
+        break;
+      }
+      lastLoaded = await this.getLoadedComponentCount();
+    }
+    return lastLoaded;
+  }
+
+  /**
+   * Pick a sort key on the components toolbar. Values map to the
+   * `ComponentSortKey` enum in `projectDetailApi.ts` ('name' | 'severity'
+   * | 'license').
+   */
+  async sortComponentsBy(
+    key: "name" | "severity" | "license",
+  ): Promise<void> {
+    await this.page.getByTestId("components-sort").selectOption(key);
+    await this.expectComponentsTabReady();
+  }
+
+  /** Pick a sort order — 'asc' | 'desc'. */
+  async setComponentsOrder(order: "asc" | "desc"): Promise<void> {
+    await this.page.getByTestId("components-order").selectOption(order);
+    await this.expectComponentsTabReady();
+  }
+
+  /**
+   * Read the severity of the n-th row's SeverityBadge. The badge surfaces
+   * its 6-bucket value verbatim via `data-severity` ('critical' | 'high' |
+   * 'medium' | 'low' | 'info' | 'none'), so this is locale-agnostic.
+   * Throws if no row at that index is mounted.
+   */
+  async getRowSeverity(index: number): Promise<string | null> {
+    const row = this.page.getByTestId("component-row").nth(index);
+    await expect(row).toBeVisible({ timeout: 10_000 });
+    return row.locator("[data-severity]").first().getAttribute("data-severity");
   }
 }
 

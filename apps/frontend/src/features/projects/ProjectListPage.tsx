@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 import { Virtuoso } from "react-virtuoso";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -308,9 +309,15 @@ function ProjectRow({ project, onScan, isPending, rowIndex }: ProjectRowProps) {
       style={{ height: "var(--table-row)" }}
     >
       <div className="flex flex-1 items-center gap-3 truncate">
-        <span className="truncate font-medium" title={project.name}>
+        <Link
+          to={`/projects/${project.id}`}
+          className="truncate font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          title={project.name}
+          data-testid="project-row-link"
+          data-project-id={project.id}
+        >
           {project.name}
-        </span>
+        </Link>
         <span
           className="truncate font-mono text-xs text-muted-foreground"
           title={project.git_url ?? ""}
