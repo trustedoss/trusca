@@ -21,6 +21,7 @@ inbound payloads BEFORE they hit the ORM. Phase 3 will fold this helper into
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 # Sensitive key tokens. Compared as case-insensitive substrings — a key like
 # "GITHUB_API_KEY", "user.password", or "X-Auth-Token" must all redact.
@@ -105,4 +106,32 @@ def mask_pii(value: Any, *, _depth: int = 0) -> Any:
     return str(value)
 
 
-__all__ = ["mask_pii"]
+def redact_url_userinfo(url: str) -> str:
+    """Return ``url`` with any RFC 3986 userinfo segment replaced by ``***@``.
+
+    Private-repo clones legitimately carry credentials in the userinfo segment
+    (e.g. ``https://oauth2:GH_PAT_xxx@github.com/org/repo.git``). These must
+    NEVER reach the structlog JSON output (CLAUDE.md §5 PII masking). The
+    helper preserves scheme/host/port/path/query so log readers can still see
+    where the URL pointed.
+
+    Defensive on parse failure: returns ``"***invalid_url***"`` rather than
+    propagating an exception, because callers are typically structlog kwargs
+    where raising would tear down the surrounding error handler.
+    """
+    if not isinstance(url, str) or not url:
+        return url if isinstance(url, str) else _REDACTED
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return "***invalid_url***"
+    if not parts.username and not parts.password:
+        return url
+    netloc = parts.hostname or ""
+    if parts.port:
+        netloc = f"{netloc}:{parts.port}"
+    netloc = f"***@{netloc}" if netloc else "***@"
+    return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
+
+
+__all__ = ["mask_pii", "redact_url_userinfo"]

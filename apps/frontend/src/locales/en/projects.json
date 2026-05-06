@@ -1,0 +1,36 @@
+{
+  "page": {
+    "title": "Projects",
+    "subtitle": "Open-source components, vulnerabilities, and license risk."
+  },
+  "toolbar": {
+    "search_placeholder": "Search by name or git URL",
+    "filter_status_label": "Status",
+    "filter_status_all": "All",
+    "sort_label": "Sort by",
+    "sort_by_name": "Name",
+    "sort_by_latest_scan": "Latest scan",
+    "sort_by_risk": "Risk score"
+  },
+  "row": {
+    "trigger_scan": "Scan",
+    "view_details": "View details",
+    "no_scans_yet": "No scans yet"
+  },
+  "status": {
+    "queued": "Queued",
+    "running": "Running",
+    "succeeded": "Succeeded",
+    "failed": "Failed",
+    "idle": "Idle"
+  },
+  "empty": {
+    "title": "No projects yet",
+    "subtitle": "Register your first repository to start scanning.",
+    "cta": "Register project"
+  },
+  "errors": {
+    "load_failed": "Could not load projects.",
+    "trigger_failed": "Could not start the scan."
+  }
+}

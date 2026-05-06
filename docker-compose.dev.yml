@@ -38,6 +38,12 @@ x-backend-env: &backend-env
   ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
   REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-7}
   CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+  # Mock vs. real cdxgen / ORT / Trivy. Default `real` so `up` against a fully
+  # provisioned worker image runs the actual toolchain. CI sets `mock` so the
+  # e2e job keeps scan duration in seconds (worker emits fixture frames
+  # instead of forking a 5-60min Java/Node pipeline). See
+  # apps/backend/integrations/__init__.py for the dispatch contract.
+  TRUSTEDOSS_SCAN_BACKEND: ${TRUSTEDOSS_SCAN_BACKEND:-real}
 
 services:
   postgres:

@@ -42,6 +42,7 @@ from models import (
     Vulnerability,
     VulnerabilityFinding,
 )
+from tasks._progress import publish_progress
 from tasks.celery_app import celery_app
 
 log = structlog.get_logger("tasks.scan_container")
@@ -164,6 +165,8 @@ def _mark_failed(session: Session, scan: Scan, message: str) -> None:
     scan.error_message = message
     scan.completed_at = datetime.now(UTC)
     session.commit()
+    last_percent = scan.progress_percent or 0
+    publish_progress(scan.id, step="failed", percent=last_percent)
 
 
 def _record_terminal_failure(scan_uuid: uuid.UUID, message: str) -> None:
@@ -184,6 +187,7 @@ def _mark_succeeded(scan_uuid: uuid.UUID) -> None:
         scan.current_step = "finalize"
         scan.completed_at = datetime.now(UTC)
         session.commit()
+    publish_progress(scan_uuid, step="succeeded", percent=100)
 
 
 def _set_stage(scan_uuid: uuid.UUID, stage: str) -> None:
@@ -194,7 +198,9 @@ def _set_stage(scan_uuid: uuid.UUID, stage: str) -> None:
         scan.current_step = stage
         scan.progress_percent = _STAGE_PROGRESS.get(stage, scan.progress_percent)
         session.commit()
+        committed_percent = scan.progress_percent or 0
     log.info("scan_stage", stage=stage, percent=_STAGE_PROGRESS.get(stage))
+    publish_progress(scan_uuid, step=stage, percent=committed_percent)
 
 
 def _persist_artifact(scan_uuid: uuid.UUID, *, kind: str, path: Path) -> None:

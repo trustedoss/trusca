@@ -21,7 +21,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
 
-from api.v1 import auth_router, projects_router, scans_router
+from api.v1 import auth_router, projects_router, scans_router, ws_router
 from core.audit import install_audit_listeners
 from core.config import (
     app_env,
@@ -104,6 +104,10 @@ app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)  # typ
 app.include_router(auth_router)
 app.include_router(projects_router)
 app.include_router(scans_router)
+# Phase 2 PR #9: WebSocket gateway. The router declares the absolute path
+# `/ws/scans/{scan_id}` (no prefix) so future ws routes can group themselves
+# under the same router without nudging this include.
+app.include_router(ws_router)
 
 
 @app.get("/health", tags=["system"], summary="Liveness probe")

@@ -24,5 +24,14 @@ translate proper nouns (Dependency-Track, SBOM, CVE, ORT, Trivy, cdxgen).
 | Component Approval | 컴포넌트 승인 | Workflow for vetting components: Pending → Under Review → Approved / Rejected. | 컴포넌트 검토 워크플로우: 대기 → 검토 중 → 승인 / 반려. |
 | Audit Log | 감사 로그 | Append-only record of every write operation, with actor, action, and target. | 모든 쓰기 작업의 추가 전용 기록. 행위자·동작·대상을 보존합니다. |
 | Build Gate | 빌드 차단 게이트 | CI step that exits with code 1 when a Critical CVE or forbidden license is found. | Critical CVE 또는 금지 라이선스 발견 시 종료 코드 1로 빌드를 중단하는 CI 단계. |
+| Project | 프로젝트 | A unit of source-tracked software registered in the portal; carries scans, components, and risk scores. | 포털에 등록된 소스 추적 단위. 스캔·컴포넌트·리스크 점수를 보유합니다. |
+| Repository | 저장소 | The git source location (URL + branch) tied to a project. | 프로젝트와 연결된 git 소스 위치 (URL + 브랜치). |
+| Risk Score | 리스크 점수 | Aggregated numeric indicator combining vulnerability severity and license risk for a project. | 프로젝트의 취약점 심각도와 라이선스 리스크를 합산한 수치 지표. |
+| Cache (vulnerability) | 캐시 (취약점) | PostgreSQL-stored snapshot of DT findings, served when DT is unavailable. | DT findings의 PostgreSQL 보관 스냅샷. DT 장애 시 대체 데이터로 사용됩니다. |
+| Workspace | 작업 공간 | The temporary filesystem area where source is fetched and scanned. | 소스를 가져와 스캔을 실행하는 임시 파일시스템 영역. |
+| Reconnect | 재연결 | WebSocket auto-reconnect with exponential backoff during a scan stream. | 스캔 스트리밍 중 지수 백오프로 자동 재연결하는 동작. |
+| Status — Queued / Running / Succeeded / Failed / Idle | 상태 — 대기 중 / 실행 중 / 성공 / 실패 / 스캔 전 | The lifecycle states of a scan (Idle = no scan has run yet for the project). | 스캔의 수명 주기 상태 (스캔 전 = 해당 프로젝트에 스캔이 아직 실행되지 않음). |
+| Bootstrapping | 작업 공간 준비 | Scan pipeline step: preparing the workspace before fetching source. | 스캔 파이프라인 단계: 소스 수신 전 작업 공간을 준비. |
+| Resolving Vulnerabilities | 취약점 탐지 | DT pipeline step: matching SBOM components against NVD/OSV/GitHub Advisory feeds. | DT 파이프라인 단계: SBOM 컴포넌트를 NVD/OSV/GitHub Advisory와 대조하여 취약점을 도출. |
 
-Updated 2026-05-05 — Phase 1 PR #6.
+Updated 2026-05-06 — Phase 2 PR #9 (WebSocket UI).

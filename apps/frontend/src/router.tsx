@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import { RequireAuth } from "@/components/RequireAuth";
+import { ProjectListPage } from "@/features/projects/ProjectListPage";
 import { Home } from "@/pages/Home";
 import { ForgotPasswordPage } from "@/pages/auth/ForgotPasswordPage";
 import { LoginPage } from "@/pages/auth/LoginPage";
@@ -24,6 +25,14 @@ export function AppRoutes() {
         element={
           <RequireAuth>
             <Home />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/projects"
+        element={
+          <RequireAuth>
+            <ProjectListPage />
           </RequireAuth>
         }
       />

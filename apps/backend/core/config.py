@@ -159,6 +159,56 @@ def jsonb_row_size_limit_bytes() -> int:
     return int(os.getenv("JSONB_ROW_SIZE_LIMIT_BYTES", str(256 * 1024)))
 
 
+# ---------------------------------------------------------------------------
+# Phase 2 PR #9 — WebSocket gateway configuration accessors.
+#
+# The WebSocket scan-progress channel name is shared between the FastAPI
+# router (`api/v1/ws.py`) and any future publisher (Celery `_set_stage()` will
+# publish here in a follow-up). Keeping it as a function rather than a module
+# constant is intentional — CLAUDE.md core rule #11 forbids module-level
+# environment caching, and even though this particular value is not env-driven
+# today, the helper signature lets us layer in `WS_CHANNEL_PREFIX` later
+# without changing call sites.
+# ---------------------------------------------------------------------------
+
+
+def scan_progress_channel(scan_id: str) -> str:
+    """Redis pub/sub channel for one scan's progress events.
+
+    Worker side publishes `{"percent": int, "step": str, "ts": iso8601}` JSON
+    payloads here; the WebSocket gateway subscribes per-connection. Both ends
+    must use this helper so a future prefix/namespace change is centralized.
+    """
+    return f"scan:{scan_id}:progress"
+
+
+def websocket_max_connections_per_user() -> int:
+    """Per-user concurrent WebSocket connection ceiling (DoS guard).
+
+    A 4th connection from the same user evicts the oldest with close code
+    1001 (going_away, reason="newer_connection"). Default 3 covers a normal
+    user with two browser tabs + an iOS app; production can tune via the
+    env var WEBSOCKET_MAX_CONNECTIONS_PER_USER.
+
+    Note: the limit is enforced per worker process. Multi-worker deployments
+    therefore allow up to N * worker_count connections per user; migrating to
+    a Redis-backed counter is a follow-up TODO once we run more than one
+    backend replica.
+    """
+    return int(os.getenv("WEBSOCKET_MAX_CONNECTIONS_PER_USER", "3"))
+
+
+def websocket_auth_timeout_seconds() -> float:
+    """How long the gateway waits for the first `{"type":"auth"}` frame.
+
+    Connections that do not deliver an auth message within this window are
+    closed with code 1008 (policy violation) and reason="auth_timeout".
+    Default 1.0 second — generous for healthy clients, hostile to silent
+    handshake-only attempts.
+    """
+    return float(os.getenv("WEBSOCKET_AUTH_TIMEOUT_SECONDS", "1.0"))
+
+
 def validate_cors_origins(origins: list[str], *, env: str) -> None:
     """
     H-3 (security-reviewer blocker): CORS bootstrap guard.

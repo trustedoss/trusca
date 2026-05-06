@@ -225,3 +225,83 @@ def test_rejects_degenerate_scp_form(url: str) -> None:
 
     with pytest.raises(GitUrlValidationError):
         validate_git_url(url)
+
+
+# ---------------------------------------------------------------------------
+# PR #9 — I-1 closure: validate_git_url_with_ip
+# ---------------------------------------------------------------------------
+
+
+def test_validate_git_url_with_ip_returns_normalized_and_address(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The IP-pin variant returns ``(url, ip_str)`` for the worker fetch path."""
+    from core.url_guard import validate_git_url_with_ip
+
+    monkeypatch.setattr(
+        "core.url_guard.socket.getaddrinfo",
+        lambda host, port: [(socket.AF_INET, 0, 0, "", ("140.82.121.4", 0))],
+    )
+    url, ip = validate_git_url_with_ip("https://github.com/foo/bar.git")
+    assert url == "https://github.com/foo/bar.git"
+    assert ip == "140.82.121.4"
+
+
+def test_validate_git_url_with_ip_rejects_dangerous_address() -> None:
+    """RFC 1918 literal still rejects when going through the IP-pin variant."""
+    from core.url_guard import GitUrlValidationError, validate_git_url_with_ip
+
+    with pytest.raises(GitUrlValidationError):
+        validate_git_url_with_ip("http://192.168.0.1/repo")
+
+
+def test_validate_git_url_with_ip_pins_first_address(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When DNS round-robin returns multiple safe IPs, we pin the first one.
+
+    This is the documented trade-off in the module docstring: anycast / DNS
+    round-robin lose their failover behaviour, but rebinding cannot land on
+    a different address than the one we screened.
+    """
+    from core.url_guard import validate_git_url_with_ip
+
+    monkeypatch.setattr(
+        "core.url_guard.socket.getaddrinfo",
+        lambda host, port: [
+            (socket.AF_INET, 0, 0, "", ("140.82.121.4", 0)),
+            (socket.AF_INET, 0, 0, "", ("140.82.114.4", 0)),
+        ],
+    )
+    _url, ip = validate_git_url_with_ip("https://github.com/foo/bar.git")
+    assert ip == "140.82.121.4"
+
+
+def test_validate_git_url_with_ip_rejects_when_any_address_is_dangerous(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A DNS reply with one safe + one private IP rejects (defense in depth)."""
+    from core.url_guard import GitUrlValidationError, validate_git_url_with_ip
+
+    monkeypatch.setattr(
+        "core.url_guard.socket.getaddrinfo",
+        lambda host, port: [
+            (socket.AF_INET, 0, 0, "", ("140.82.121.4", 0)),
+            (socket.AF_INET, 0, 0, "", ("10.0.0.5", 0)),  # poison
+        ],
+    )
+    with pytest.raises(GitUrlValidationError):
+        validate_git_url_with_ip("https://github.com/foo/bar.git")
+
+
+def test_validate_git_url_unchanged_signature() -> None:
+    """Schema-layer callers see the original (str) -> str signature."""
+    import inspect
+
+    from core.url_guard import validate_git_url
+
+    sig = inspect.signature(validate_git_url)
+    assert list(sig.parameters) == ["url"]
+    # Return annotation is a string after `from __future__ import annotations`
+    # — verify it is the same as before (str) so schemas/scan.py still type-checks.
+    assert sig.return_annotation in (str, "str")

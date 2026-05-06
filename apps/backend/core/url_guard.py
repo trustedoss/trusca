@@ -27,11 +27,22 @@ Reject categories (security-reviewer reviewed):
 - URLs longer than 2048 chars — matches the schema column cap and avoids
   pathological inputs.
 
-DNS rebinding is mitigated by re-validation at fetch time but is not
-fully closed in this layer; the worker invokes ``git clone`` over a
-single transport so a TOCTOU window remains. A follow-up PR may pin the
-resolved IP into the clone command (``git -c http.proxy=...`` or
-``--config http.curloptResolve=...``); flagged in MEMORY.
+DNS rebinding (PR #9 closure of I-1):
+
+  :func:`validate_git_url` continues to behave exactly as it did in PR #8 —
+  it returns the normalized URL string. For the worker fetch path we now
+  expose :func:`validate_git_url_with_ip`, which returns
+  ``(normalized_url, resolved_ip)`` so the caller can pin the IP into the
+  ``git`` invocation (``git -c http.curloptResolve=host:port:ip clone ...``)
+  and close the TOCTOU window between DNS check and connect. The DNS
+  resolution happens *once*, inside the validator, and the same address is
+  the one the worker forces ``git`` to dial — there is no second resolve.
+
+  Trade-off: when DNS returns multiple A records (round-robin, anycast),
+  we pin the *first* address only. Operators who need the failover
+  behaviour can opt out of pinning at the call site, but the safe default
+  is "one DNS answer, one connection" because anything else re-opens the
+  rebinding window.
 """
 
 from __future__ import annotations
@@ -199,15 +210,16 @@ def _is_dangerous_address(ip: ipaddress._BaseAddress) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def validate_git_url(url: str) -> str:
-    """Validate a Git URL is safe to fetch from a worker.
+def _validate_and_resolve(url: str) -> tuple[str, ipaddress._BaseAddress]:
+    """Shared core of :func:`validate_git_url` / :func:`validate_git_url_with_ip`.
 
-    Returns the normalized URL on success, or raises
-    :class:`GitUrlValidationError` with a human-readable reason.
+    Returns ``(normalized_url, first_safe_ip)``. Raises
+    :class:`GitUrlValidationError` on any rejection.
 
-    The check is intentionally synchronous and blocking on DNS — a few
-    milliseconds at project-creation time is acceptable, and avoiding async
-    here keeps the helper usable from sync Celery code as well.
+    Splitting the implementation out lets the IP-pin variant return the
+    address without re-doing DNS, which is the whole point of the IP-pin
+    layer (PR #9 / I-1). A second resolve here would re-open the TOCTOU
+    window we are trying to close.
     """
     if not isinstance(url, str) or not url.strip():
         raise GitUrlValidationError("git_url must be a non-empty string")
@@ -244,14 +256,62 @@ def validate_git_url(url: str) -> str:
 
     # Resolve and screen every IP the host maps to. We screen ALL addresses
     # so a multi-record DNS response with one bad entry is rejected.
-    for ip in _resolve_host_addresses(host):
+    addresses = _resolve_host_addresses(host)
+    for ip in addresses:
         if _is_dangerous_address(ip):
             raise GitUrlValidationError(
                 f"git_url host {host!r} resolves to a non-routable or metadata"
                 f" address ({ip})"
             )
 
-    return candidate
+    # Pin the FIRST returned address. _resolve_host_addresses iterates
+    # getaddrinfo in OS order, which already prefers IPv6 if the platform
+    # is dual-stacked; we honour that. Round-robin DNS is intentionally
+    # collapsed to a single answer — see module docstring trade-off note.
+    return candidate, addresses[0]
 
 
-__all__ = ["GitUrlValidationError", "validate_git_url"]
+def validate_git_url(url: str) -> str:
+    """Validate a Git URL is safe to fetch from a worker.
+
+    Returns the normalized URL on success, or raises
+    :class:`GitUrlValidationError` with a human-readable reason.
+
+    The check is intentionally synchronous and blocking on DNS — a few
+    milliseconds at project-creation time is acceptable, and avoiding async
+    here keeps the helper usable from sync Celery code as well.
+
+    This is the schema-layer entry point. The worker-side fetch path uses
+    :func:`validate_git_url_with_ip` so it can pin the resolved address
+    into the ``git`` invocation and close the DNS-rebinding TOCTOU window.
+    """
+    normalized, _ip = _validate_and_resolve(url)
+    return normalized
+
+
+def validate_git_url_with_ip(url: str) -> tuple[str, str]:
+    """Validate a Git URL and return ``(normalized_url, resolved_ip_string)``.
+
+    Worker-side defence-in-depth (PR #9 / I-1 closure):
+
+    The schema layer already ran :func:`validate_git_url` before the row
+    was persisted, but the worker may run minutes (or, on retry, hours)
+    after that — a hostname could have rotated to a private address in
+    that window. We re-validate here AND surface the resolved IP so the
+    fetch step can pass ``git -c http.curloptResolve=host:port:ip`` and
+    guarantee the connection lands on the address we screened.
+
+    The ``resolved_ip`` is a string suitable for direct use in
+    ``http.curloptResolve`` (IPv4 dotted form or IPv6 bracketed-form
+    consumers handle separately). Callers that want to skip IP-pinning
+    can ignore the second element.
+    """
+    normalized, ip = _validate_and_resolve(url)
+    return normalized, str(ip)
+
+
+__all__ = [
+    "GitUrlValidationError",
+    "validate_git_url",
+    "validate_git_url_with_ip",
+]
