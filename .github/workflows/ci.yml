@@ -226,13 +226,10 @@ jobs:
   image-scan:
     name: image-scan (worker)
     runs-on: ubuntu-22.04
-    # Soft-fail until Phase 1 dependency hygiene PR bumps pyasn1 / python-multipart
-    # / starlette to remediate the HIGH CVEs Trivy flags on the worker image.
-    # Tracked in docs/sessions/2026-05-06-phase2-pr8-scan-celery-dt.md backlog.
-    #
-    # NOTE: job-level `continue-on-error: true` does NOT keep the workflow
-    # conclusion green on GitHub Actions — only step-level does. Moved to the
-    # Trivy step below where it actually has effect.
+    # Hard gate restored after the Phase 1 dependency hygiene chore PR bumped
+    # fastapi 0.115.6 → 0.120.4, starlette 0.41.3 → 0.49.3, python-multipart
+    # 0.0.20 → 0.0.22, pyasn1 0.4.8 → 0.6.3, python-jose 3.4.0 → 3.5.0.
+    # HIGH/CRITICAL Trivy findings now fail the job and block the merge.
     steps:
       - uses: actions/checkout@v4
 
@@ -258,11 +255,6 @@ jobs:
           cache-to: type=gha,scope=worker,mode=max
 
       - name: Trivy scan (HIGH/CRITICAL → fail)
-        # Step-level soft-fail: keep the scan running and surface the table
-        # in the run output, but don't fail the job (and therefore the
-        # workflow). Phase 1 dependency hygiene PR removes this and restores
-        # the hard gate after pyasn1 / python-multipart / starlette bump.
-        continue-on-error: true
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: trustedoss/backend-worker:dev
