@@ -227,5 +227,104 @@
         "conflict_reload": "다시 불러오기"
       }
     }
+  },
+  "licenses": {
+    "tab_label": "라이선스",
+    "summary": "전체 {{total}}개 중 {{loaded}}개 로드됨.",
+    "distribution": {
+      "title": "라이선스 분포",
+      "subtitle": "최근 스캔에서 컴포넌트가 보유한 라이선스 기준 분포입니다.",
+      "aria": "라이선스 발견 {{total}}건의 분포",
+      "empty": "표시할 라이선스 발견 항목이 없습니다."
+    },
+    "toolbar": {
+      "search_label": "검색",
+      "search_placeholder": "SPDX ID 또는 이름으로 검색",
+      "filter_category": "카테고리",
+      "filter_kind": "분류",
+      "sort_label": "정렬 기준",
+      "sort": {
+        "category": "리스크 (금지 우선)",
+        "name": "이름",
+        "spdx_id": "SPDX ID",
+        "affected_count": "영향 컴포넌트 수"
+      },
+      "order_label": "순서",
+      "order_asc": "오름차순",
+      "order_desc": "내림차순"
+    },
+    "kind": {
+      "declared": "선언됨",
+      "concluded": "확정됨",
+      "detected": "검출됨"
+    },
+    "column": {
+      "spdx_id": "SPDX ID",
+      "name": "라이선스",
+      "category": "카테고리",
+      "kind": "분류",
+      "affected_count": "영향 컴포넌트 수"
+    },
+    "row": {
+      "no_spdx_id": "—"
+    },
+    "empty": {
+      "title": "라이선스 발견 항목이 없습니다",
+      "description": "스캔을 실행하면 라이선스 데이터가 채워집니다.",
+      "filtered": {
+        "title": "일치 항목이 없습니다",
+        "description": "현재 필터에 맞는 라이선스가 없습니다."
+      }
+    },
+    "errors": {
+      "load_list": "라이선스를 불러오지 못했습니다.",
+      "load_finding": "라이선스 상세 정보를 불러오지 못했습니다.",
+      "not_found": "해당 라이선스 발견 항목을 찾을 수 없습니다."
+    },
+    "drawer": {
+      "title": "라이선스 상세",
+      "loading_title": "라이선스 불러오는 중…",
+      "loading_subtitle": "라이선스 상세 정보를 가져오고 있습니다.",
+      "subtitle": "분류: {{kind}}",
+      "section": {
+        "metadata": "라이선스",
+        "flags": "플래그",
+        "ort_match": "ORT 매치",
+        "affected": "영향 컴포넌트 ({{count}})"
+      },
+      "metadata": {
+        "spdx_id_label": "SPDX ID",
+        "name_label": "이름",
+        "category_label": "카테고리",
+        "kind_label": "분류"
+      },
+      "flag": {
+        "osi_approved": "OSI 승인",
+        "fsf_libre": "FSF 자유 소프트웨어",
+        "deprecated": "사용 중단된 SPDX ID"
+      },
+      "reference_url_label": "참조",
+      "ort_match": {
+        "empty": "ORT 매치 데이터가 없습니다.",
+        "unparseable": "ORT 매치 데이터를 표시할 수 있는 형식이 아닙니다.",
+        "show": "상세 보기",
+        "hide": "상세 숨기기",
+        "field": {
+          "rule_name": "규칙",
+          "severity": "심각도",
+          "message": "메시지",
+          "license_finding": "라이선스 발견",
+          "matched_text": "매칭된 텍스트",
+          "score": "점수",
+          "copyright": "저작권"
+        }
+      },
+      "affected": {
+        "empty": "영향 컴포넌트가 없습니다.",
+        "source_path_label": "출처",
+        "kind_label": "분류"
+      },
+      "cross_link_component": "컴포넌트 보기"
+    }
   }
 }

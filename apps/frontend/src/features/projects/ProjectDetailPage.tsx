@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/tabs";
 import { useProjectOverview } from "@/features/projects/api/useProjectOverview";
 import { ComponentsTab } from "@/features/projects/components/ComponentsTab";
+import { LicensesTab } from "@/features/projects/components/LicensesTab";
 import { OverviewTab } from "@/features/projects/components/OverviewTab";
 import { RiskGauge } from "@/features/projects/components/RiskGauge";
 import { VulnerabilitiesTab } from "@/features/projects/components/VulnerabilitiesTab";
@@ -69,24 +70,42 @@ export function ProjectDetailPage() {
       (prev) => {
         const merged = new URLSearchParams(prev);
         // When switching tabs, drop tab-scoped filter params so we don't
-        // carry a stale severity filter into Overview.
-        // ComponentsTab and VulnerabilitiesTab both use `search` / `severity`
-        // / `sort` / `order`, but they have distinct drawer keys
-        // (`drawer` vs `vuln`), category-vs-status filters, and pagination.
-        if (next !== "components" && next !== "vulnerabilities") {
+        // carry a stale severity filter into Overview. Components,
+        // Vulnerabilities, and Licenses all use `search` / `sort` / `order`,
+        // but they have distinct drawer keys (`drawer` / `vuln` / `license`),
+        // distinct multi-filter axes, and distinct pagination semantics.
+        if (
+          next !== "components" &&
+          next !== "vulnerabilities" &&
+          next !== "licenses"
+        ) {
           merged.delete("search");
-          merged.delete("severity");
           merged.delete("sort");
           merged.delete("order");
         }
+        if (next !== "components" && next !== "vulnerabilities") {
+          merged.delete("severity");
+        }
+        if (next !== "components" && next !== "licenses") {
+          // Components uses license_category as its license filter, Licenses
+          // tab reuses the same param name for the per-row category filter.
+          // The selected category bucket is meaningful in both, but stale
+          // values from one tab into the other would still mislead — drop.
+          merged.delete("license_category");
+        }
         if (next !== "components") {
           merged.delete("drawer");
-          merged.delete("license_category");
         }
         if (next !== "vulnerabilities") {
           merged.delete("vuln");
           merged.delete("status");
+        }
+        if (next !== "vulnerabilities" && next !== "licenses") {
           merged.delete("page");
+        }
+        if (next !== "licenses") {
+          merged.delete("license");
+          merged.delete("kind");
         }
         if (next === "overview") {
           merged.delete("tab");
@@ -136,7 +155,6 @@ export function ProjectDetailPage() {
           </TabsTrigger>
           <TabsTrigger
             value="licenses"
-            disabled
             data-testid="project-detail-tab-licenses"
           >
             {t("tabs.licenses")}
@@ -153,10 +171,7 @@ export function ProjectDetailPage() {
           <VulnerabilitiesTab projectId={projectId} />
         </TabsContent>
         <TabsContent value="licenses">
-          <EmptyTabPlaceholder
-            type="licenses"
-            data-testid="project-detail-empty-licenses"
-          />
+          <LicensesTab projectId={projectId} />
         </TabsContent>
       </Tabs>
     </div>
@@ -240,23 +255,3 @@ function ProjectDetailHeader({
   );
 }
 
-interface EmptyTabPlaceholderProps {
-  type: "licenses";
-  ["data-testid"]?: string;
-}
-
-function EmptyTabPlaceholder({
-  type,
-  "data-testid": testId,
-}: EmptyTabPlaceholderProps) {
-  const { t } = useTranslation("project_detail");
-  return (
-    <div
-      data-testid={testId}
-      className="flex flex-col items-center justify-center gap-2 p-12 text-center text-sm text-muted-foreground"
-    >
-      <span className="font-medium">{t(`tabs_placeholder.${type}.title`)}</span>
-      <span>{t(`tabs_placeholder.${type}.subtitle`)}</span>
-    </div>
-  );
-}

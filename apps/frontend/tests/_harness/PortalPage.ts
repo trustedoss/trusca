@@ -504,6 +504,129 @@ export class PortalPage {
       .not.toBeNull();
   }
 
+  // ───── PR #12 — Licenses tab + drawer ────────────────────────────────
+  /**
+   * Click the Licenses tab trigger and wait for the tab content to mount.
+   * Mirrors `selectVulnerabilitiesTab`: the tab renders
+   * `[data-testid="licenses-tab"]` once the React subtree mounts; we also
+   * wait until either the virtual list or the empty card is visible so
+   * subsequent verbs (filter / open drawer) have a settled DOM to target.
+   *
+   * Locale-agnostic — anchors on `data-testid` attributes, never the
+   * translated tab label.
+   */
+  async selectLicensesTab(): Promise<void> {
+    await this.page.getByTestId("project-detail-tab-licenses").click();
+    await this.page
+      .getByTestId("licenses-tab")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    await this.expectLicensesTabReady();
+  }
+
+  /**
+   * Wait until either the virtualized list or the empty card is visible
+   * (the loading skeleton has finished). Use after applying filters or
+   * sorts to wait for the next page to land. Event-driven — never
+   * `waitForTimeout`.
+   */
+  async expectLicensesTabReady(): Promise<void> {
+    const virtual = this.page.getByTestId("licenses-virtual");
+    const empty = this.page.getByTestId("licenses-empty");
+    await expect(virtual.or(empty)).toBeVisible({ timeout: 10_000 });
+  }
+
+  /**
+   * Set the multi-select category filter to exactly the given categories.
+   * An empty array clears the filter. The toolbar uses a native
+   * `<select multiple>` so Playwright's `selectOption` handles it cleanly,
+   * matching the vulnerabilities-severity verb pattern.
+   *
+   * After mutating the filter the harness waits for the URL to mirror the
+   * change (`?license_category=…`) so callers can read the URL deterministically.
+   */
+  async filterLicensesByCategory(
+    categories: ("forbidden" | "conditional" | "allowed" | "unknown")[],
+  ): Promise<void> {
+    await this.page
+      .getByTestId("licenses-category-filter")
+      .selectOption(categories);
+    // URL mirrors the filter as a CSV under `license_category`.
+    if (categories.length > 0) {
+      await expect
+        .poll(
+          () =>
+            (
+              new URL(this.page.url()).searchParams.get("license_category") ??
+              ""
+            )
+              .split(",")
+              .filter((v) => v.length > 0)
+              .sort()
+              .join(","),
+          { timeout: 5_000 },
+        )
+        .toBe([...categories].sort().join(","));
+    } else {
+      await expect
+        .poll(
+          () =>
+            new URL(this.page.url()).searchParams.get("license_category"),
+          { timeout: 5_000 },
+        )
+        .toBeNull();
+    }
+    await this.expectLicensesTabReady();
+  }
+
+  /**
+   * Set the multi-select kind filter (declared / concluded / detected).
+   * Mirrors `filterLicensesByCategory`.
+   */
+  async filterLicensesByKind(
+    kinds: ("declared" | "concluded" | "detected")[],
+  ): Promise<void> {
+    await this.page
+      .getByTestId("licenses-kind-filter")
+      .selectOption(kinds);
+    await this.expectLicensesTabReady();
+  }
+
+  /**
+   * Find the row whose `data-spdx-id` equals `spdxId` and click it. Wait
+   * for the drawer to mount (URL carries `?license=<finding_id>` and the
+   * drawer container is visible).
+   *
+   * Locale-agnostic — anchors on the `data-spdx-id` attribute the row
+   * exposes verbatim. ORT custom licenses (LicenseRef-*) without an SPDX
+   * id are out of scope for this verb; callers that need them should
+   * target the row's `data-finding-id` directly.
+   */
+  async openLicenseDrawer(spdxId: string): Promise<void> {
+    const row = this.page.locator(
+      `[data-testid="license-row"][data-spdx-id="${spdxId}"]`,
+    );
+    await row.first().click();
+    await this.page
+      .getByTestId("license-drawer")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    await expect
+      .poll(() => new URL(this.page.url()).searchParams.get("license"), {
+        timeout: 5_000,
+      })
+      .not.toBeNull();
+  }
+
+  /**
+   * Read the licenses-summary `data-total` attribute (server-reported count).
+   * Returns 0 when the empty card is shown.
+   */
+  async getLicenseRowCount(): Promise<number> {
+    const summary = this.page.getByTestId("licenses-summary");
+    if ((await summary.count()) === 0) return 0;
+    const raw = await summary.first().getAttribute("data-total");
+    return raw == null ? 0 : Number(raw);
+  }
+
   /**
    * Drive a status transition from inside the open drawer.
    *
