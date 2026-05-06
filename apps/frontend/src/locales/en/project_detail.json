@@ -227,5 +227,104 @@
         "conflict_reload": "Reload"
       }
     }
+  },
+  "licenses": {
+    "tab_label": "Licenses",
+    "summary": "{{loaded}} of {{total}} licenses loaded.",
+    "distribution": {
+      "title": "License distribution",
+      "subtitle": "Components grouped by the licenses they carry in the latest scan.",
+      "aria": "License distribution across {{total}} findings",
+      "empty": "No license findings to chart yet."
+    },
+    "toolbar": {
+      "search_label": "Search",
+      "search_placeholder": "Search by SPDX ID or name",
+      "filter_category": "Category",
+      "filter_kind": "Kind",
+      "sort_label": "Sort by",
+      "sort": {
+        "category": "Risk (forbidden first)",
+        "name": "Name",
+        "spdx_id": "SPDX ID",
+        "affected_count": "Affected components"
+      },
+      "order_label": "Order",
+      "order_asc": "Ascending",
+      "order_desc": "Descending"
+    },
+    "kind": {
+      "declared": "Declared",
+      "concluded": "Concluded",
+      "detected": "Detected"
+    },
+    "column": {
+      "spdx_id": "SPDX ID",
+      "name": "License",
+      "category": "Category",
+      "kind": "Kind",
+      "affected_count": "Affected components"
+    },
+    "row": {
+      "no_spdx_id": "—"
+    },
+    "empty": {
+      "title": "No license findings",
+      "description": "Run a scan to populate license data.",
+      "filtered": {
+        "title": "No matches",
+        "description": "No licenses match the current filters."
+      }
+    },
+    "errors": {
+      "load_list": "Could not load licenses.",
+      "load_finding": "Could not load license details.",
+      "not_found": "License finding not found."
+    },
+    "drawer": {
+      "title": "License details",
+      "loading_title": "Loading license…",
+      "loading_subtitle": "Fetching license details.",
+      "subtitle": "Kind: {{kind}}",
+      "section": {
+        "metadata": "License",
+        "flags": "Flags",
+        "ort_match": "ORT match",
+        "affected": "Affected components ({{count}})"
+      },
+      "metadata": {
+        "spdx_id_label": "SPDX ID",
+        "name_label": "Name",
+        "category_label": "Category",
+        "kind_label": "Kind"
+      },
+      "flag": {
+        "osi_approved": "OSI Approved",
+        "fsf_libre": "FSF Free/Libre",
+        "deprecated": "Deprecated SPDX ID"
+      },
+      "reference_url_label": "Reference",
+      "ort_match": {
+        "empty": "No ORT match data available.",
+        "unparseable": "ORT match data is not in a renderable format.",
+        "show": "Show details",
+        "hide": "Hide details",
+        "field": {
+          "rule_name": "Rule",
+          "severity": "Severity",
+          "message": "Message",
+          "license_finding": "License finding",
+          "matched_text": "Matched text",
+          "score": "Score",
+          "copyright": "Copyright"
+        }
+      },
+      "affected": {
+        "empty": "No affected components.",
+        "source_path_label": "Source",
+        "kind_label": "Kind"
+      },
+      "cross_link_component": "View component"
+    }
   }
 }

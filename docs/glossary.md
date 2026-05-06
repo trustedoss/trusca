@@ -40,5 +40,11 @@ translate proper nouns (Dependency-Track, SBOM, CVE, ORT, Trivy, cdxgen).
 | VEX State — False positive | VEX 상태 — 오탐 | The detection is incorrect; the project is not actually vulnerable. | 잘못된 탐지로, 실제로는 취약하지 않은 상태. |
 | VEX State — Suppressed | VEX 상태 — 억제됨 | An operator chose to silence/dismiss this finding (CycloneDX VEX `not_affected` with explicit suppression). | 운영자가 해당 취약점을 의도적으로 억제·무시한 상태 (CycloneDX VEX 용어). |
 | VEX State — Fixed | VEX 상태 — 수정됨 | The finding has been resolved (component upgraded or patch applied). | 컴포넌트 업그레이드 또는 패치 적용으로 해결된 상태. |
+| Declared license | 선언된 라이선스 | License declared in the package's own metadata (e.g. `package.json`, `pom.xml`). | 패키지 자체 메타데이터(`package.json`, `pom.xml` 등)에 선언된 라이선스. |
+| Concluded license | 확정된 라이선스 | License finally chosen by ORT after reconciling declared and detected sources. | ORT가 선언/검출 결과를 종합해 최종 확정한 라이선스. |
+| Detected license | 검출된 라이선스 | License automatically detected from source files by the scanner. | 스캐너가 소스 파일에서 자동 검출한 라이선스. |
+| OSI Approved | OSI 승인 | License approved by the Open Source Initiative as conforming to the Open Source Definition. | Open Source Initiative가 오픈소스 정의에 부합한다고 승인한 라이선스. |
+| FSF Free/Libre | FSF 자유 소프트웨어 | License classified by the Free Software Foundation as a free software license. | Free Software Foundation이 자유 소프트웨어 라이선스로 분류한 라이선스. |
+| ORT Match | ORT 매치 | The raw rule-evaluation record ORT emits per finding (rule name, severity, message). | ORT가 발견 항목마다 출력하는 원시 규칙 평가 기록(규칙명·심각도·메시지). |
 
-Updated 2026-05-06 — Phase 3 PR #11 (Vulnerabilities tab).
+Updated 2026-05-06 — Phase 3 PR #12 (Licenses tab).

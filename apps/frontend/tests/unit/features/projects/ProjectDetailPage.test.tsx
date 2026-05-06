@@ -137,7 +137,7 @@ describe("ProjectDetailPage", () => {
     expect(screen.getByTestId("project-detail-id").textContent).toBe("proj-1");
   });
 
-  it("renders the four tab triggers, with only licenses disabled (PR #11 enabled vulnerabilities)", async () => {
+  it("renders the four tab triggers, all enabled (PR #12 lit up Licenses)", async () => {
     mockedGetProject.mockResolvedValueOnce(project());
     mockedOverview.mockResolvedValueOnce(overview());
     renderPage();
@@ -146,12 +146,12 @@ describe("ProjectDetailPage", () => {
     });
     expect(screen.getByTestId("project-detail-tab-overview")).toBeEnabled();
     expect(screen.getByTestId("project-detail-tab-components")).toBeEnabled();
-    // PR #11 lit up the Vulnerabilities tab; licenses remains a placeholder
-    // until PR #12.
+    // PR #11 lit up Vulnerabilities; PR #12 lit up Licenses. The four-tab
+    // strip is now fully active until Obligations lands in PR #13.
     expect(
       screen.getByTestId("project-detail-tab-vulnerabilities"),
     ).toBeEnabled();
-    expect(screen.getByTestId("project-detail-tab-licenses")).toBeDisabled();
+    expect(screen.getByTestId("project-detail-tab-licenses")).toBeEnabled();
   });
 
   it("switches to the Components tab on click", async () => {
