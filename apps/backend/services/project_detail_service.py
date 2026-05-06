@@ -45,7 +45,7 @@ import uuid
 from typing import Any
 
 import structlog
-from sqlalchemy import case, func, literal, or_, select
+from sqlalchemy import String, case, cast, func, literal, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.security import CurrentUser
@@ -173,7 +173,13 @@ def _compute_risk_score(
 
 
 def _severity_rank_case() -> Any:
-    """SQLAlchemy CASE that maps a vuln_severity ENUM value to its rank int."""
+    """SQLAlchemy CASE that maps a vuln_severity ENUM value to its rank int.
+
+    Note: Postgres ENUM ↔ varchar comparison requires explicit cast — without
+    it asyncpg fails with `operator does not exist: vuln_severity = character
+    varying`. Casting the column to text on the LHS lets the dict-key string
+    literals compare cleanly.
+    """
     return case(
         {
             literal("critical"): 5,
@@ -183,20 +189,23 @@ def _severity_rank_case() -> Any:
             literal("info"): 1,
             literal("unknown"): 1,
         },
-        value=Vulnerability.severity,
+        value=cast(Vulnerability.severity, String),
         else_=0,
     )
 
 
 def _license_rank_case() -> Any:
-    """SQLAlchemy CASE that maps a license_category ENUM value to its rank int."""
+    """SQLAlchemy CASE that maps a license_category ENUM value to its rank int.
+
+    Same enum-cast rationale as `_severity_rank_case()` above.
+    """
     return case(
         {
             literal("forbidden"): 3,
             literal("conditional"): 2,
             literal("allowed"): 1,
         },
-        value=LicenseModel.category,
+        value=cast(LicenseModel.category, String),
         else_=0,
     )
 
