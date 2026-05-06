@@ -244,7 +244,11 @@ async def list_project_licenses(
             LicenseModel.is_osi_approved.label("is_osi_approved"),
             LicenseModel.is_fsf_libre.label("is_fsf_libre"),
             func.min(cast(LicenseFinding.kind, String)).label("kind"),
-            func.min(LicenseFinding.id).label("sample_finding_id"),
+            # Postgres has no built-in `min(uuid)` operator class. Cast to text
+            # for the aggregate (UUID strings sort lexicographically, which is
+            # deterministic enough for "first finding" semantics) and let
+            # Pydantic v2 coerce the result back to UUID at the schema layer.
+            func.min(cast(LicenseFinding.id, String)).label("sample_finding_id"),
             func.count(func.distinct(LicenseFinding.component_version_id)).label("affected_count"),
             rank.label("rank"),
         )

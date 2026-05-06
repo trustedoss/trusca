@@ -232,7 +232,7 @@ async def _attach_license_finding(
     license_id: uuid.UUID,
     kind: str = "concluded",
     source_path: str | None = None,
-    raw_data: dict | None = None,
+    raw_data: dict[str, object] | None = None,
 ):
     from models import LicenseFinding
 
