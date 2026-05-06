@@ -1,0 +1,30 @@
+{
+  "progress": {
+    "title": "Scan in progress",
+    "step_bootstrap": "Bootstrapping workspace",
+    "step_fetch": "Fetching source",
+    "step_cdxgen": "Generating SBOM",
+    "step_ort": "Analyzing licenses",
+    "step_dt_upload": "Uploading SBOM to Dependency-Track",
+    "step_dt_findings": "Resolving vulnerabilities",
+    "step_finalize": "Finalizing",
+    "step_succeeded": "Scan completed",
+    "step_failed": "Scan failed",
+    "step_unknown": "Working…",
+    "reconnecting": "Reconnecting…",
+    "reconnect_attempt": "Attempt {{n}}",
+    "background_notice": "Scan continues in the background — you can close this panel.",
+    "close": "Close",
+    "retry": "Retry",
+    "percent_label": "{{value}}%"
+  },
+  "alerts": {
+    "dt_unavailable": "Dependency-Track is temporarily unavailable. Showing cached vulnerability data."
+  },
+  "close_codes": {
+    "auth_expired": "Session expired. Please sign in again.",
+    "forbidden": "You no longer have access to this scan.",
+    "not_found": "This scan no longer exists.",
+    "internal_error": "Connection lost. Reconnecting…"
+  }
+}

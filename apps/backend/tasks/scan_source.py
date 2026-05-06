@@ -49,6 +49,8 @@ from sqlalchemy.orm import Session
 
 from core.config import workspace_root
 from core.db import sync_session_scope
+from core.pii_mask import redact_url_userinfo
+from core.url_guard import GitUrlValidationError, validate_git_url_with_ip
 from integrations import cdxgen as cdxgen_adapter
 from integrations import ort as ort_adapter
 from integrations._size_guard import enforce_jsonb_row_size_limit
@@ -65,6 +67,7 @@ from models import (
     ScanComponent,
     VulnerabilityFinding,
 )
+from tasks._progress import publish_progress
 from tasks.celery_app import celery_app
 
 log = structlog.get_logger("tasks.scan_source")
@@ -131,10 +134,22 @@ def scan_source_task(self: Any, scan_id: str) -> None:
 
             _reset_scan_for_rerun(session, scan)
             _mark_running(session, scan)
+            project_git_url = project.git_url
 
         # Run the pipeline outside the first session so each stage commits
         # its own progress update without holding a long-lived transaction.
-        _run_pipeline(scan_uuid=scan_uuid, project_id=project.id, workspace=workspace)
+        _run_pipeline(
+            scan_uuid=scan_uuid,
+            project_id=project.id,
+            workspace=workspace,
+            git_url=project_git_url,
+        )
+    except _FetchAborted as exc:
+        # SSRF guard / fetch refused the project URL — terminal, not a
+        # transient. Mark failed with the validator's human-readable reason
+        # and let the user (or admin) update the project row.
+        log.warning("scan_source_fetch_aborted", error=str(exc))
+        _record_terminal_failure(scan_uuid, f"fetch aborted: {exc}")
     except DTBreakerOpen as exc:
         log.warning("scan_source_breaker_open", error=str(exc))
         _record_terminal_failure(scan_uuid, f"DT unavailable (circuit breaker open): {exc}")
@@ -158,20 +173,25 @@ def scan_source_task(self: Any, scan_id: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _run_pipeline(*, scan_uuid: uuid.UUID, project_id: uuid.UUID, workspace: Path) -> None:
+def _run_pipeline(
+    *,
+    scan_uuid: uuid.UUID,
+    project_id: uuid.UUID,
+    workspace: Path,
+    git_url: str | None,
+) -> None:
     """Execute the scan stages, each with its own commit."""
     # Stage 1 — bootstrap workspace.
     _set_stage(scan_uuid, "bootstrap")
     workspace.mkdir(parents=True, exist_ok=True)
 
-    # Stage 2 — fetch source. PR #8 supports a "use existing tree" mode for
-    # development (no git clone). The fetch logic lands in PR #9 alongside
-    # the ssrf-guarded git_url. For now we just touch a placeholder so
-    # downstream stages have a directory to point at.
+    # Stage 2 — fetch source.
     _set_stage(scan_uuid, "fetch")
-    source_dir = workspace / "source"
-    source_dir.mkdir(parents=True, exist_ok=True)
-    (source_dir / ".trustedoss-placeholder").write_text("scan-source workspace\n")
+    source_dir = _fetch_source(
+        scan_uuid=scan_uuid,
+        workspace=workspace,
+        git_url=git_url,
+    )
 
     # Stage 3 — cdxgen.
     _set_stage(scan_uuid, "cdxgen")
@@ -238,6 +258,156 @@ def _run_pipeline(*, scan_uuid: uuid.UUID, project_id: uuid.UUID, workspace: Pat
 
 
 # ---------------------------------------------------------------------------
+# Fetch
+# ---------------------------------------------------------------------------
+
+
+class _FetchAborted(Exception):
+    """Raised when the fetch step rejects a project — caught by the task body."""
+
+
+def _fetch_source(
+    *,
+    scan_uuid: uuid.UUID,
+    workspace: Path,
+    git_url: str | None,
+    mock_only: bool = True,
+) -> Path:
+    """Stage 2 fetch — placeholder today, IP-pinned ``git clone`` tomorrow.
+
+    Behaviour today (Phase 2 PR #9):
+        - Validate ``git_url`` via :func:`validate_git_url_with_ip` so a
+          worker that runs minutes after schema validation re-checks the
+          host. This closes I-1 (DNS rebinding TOCTOU) at the worker
+          boundary even though the actual clone is still mocked.
+        - Materialise an empty ``source/`` directory + placeholder file so
+          downstream stages have something to point at.
+
+    Behaviour tomorrow (when ``mock_only=False``):
+        - Spawn ``git -c http.curloptResolve=<host>:443:<resolved_ip> clone``
+          with the validated URL. Pinning the resolved IP at the libcurl
+          layer means even if the DNS for the host has rotated to an
+          internal address since validation, the connection lands on the
+          public IP we already screened.
+
+    The dead-code clone branch is intentionally written out (rather than
+    a TODO comment) so the IP-pin wiring is reviewable today and dropping
+    a real ``subprocess.run`` call into it later is a one-line change.
+
+    Raises:
+        _FetchAborted: when the URL fails the SSRF guard. The task body
+            catches this and transitions the scan to ``failed`` with a
+            human-readable message — same termination path as DT errors.
+    """
+    source_dir = workspace / "source"
+    source_dir.mkdir(parents=True, exist_ok=True)
+
+    # Backward-compat path: PR #7/#8 allowed Projects with a NULL git_url
+    # (the schema column is still nullable). Refusing those rows would
+    # break legacy data + every integration test that seeds a Project via
+    # `make_project()` without a git_url. Instead we log + fall through to
+    # the legacy placeholder. SSRF risk is zero in this branch because no
+    # network I/O happens — cdxgen consumes the empty workspace.
+    if not git_url:
+        log.info(
+            "scan_source_fetch_no_git_url",
+            scan_id=str(scan_uuid),
+            note="legacy placeholder; no validation needed",
+        )
+        (source_dir / ".trustedoss-placeholder").write_text("scan-source workspace\n")
+        return source_dir
+
+    try:
+        normalized_url, resolved_ip = validate_git_url_with_ip(git_url)
+    except GitUrlValidationError as exc:
+        # The schema layer already validated this URL on insert — getting
+        # here means either DNS has rotated (rebinding) or the row was
+        # mutated past the schema. Either way we refuse to proceed.
+        # M-1 fix: never log raw git_url — userinfo may carry a PAT or
+        # similar bearer credential. Redact userinfo before structlog emits
+        # the JSON line; the validator's `exc` text only references the
+        # parsed host, never the credential, so it is safe to include.
+        log.warning(
+            "scan_source_fetch_url_rejected",
+            git_url=redact_url_userinfo(git_url),
+            error=str(exc),
+        )
+        # The exception message is captured into `scan.error_message` and
+        # may surface in the UI / audit log; keep it credential-free.
+        raise _FetchAborted("git_url failed worker-side validation") from exc
+
+    if mock_only:
+        # Placeholder today — keeps existing tests green while the IP-pin
+        # validation runs unconditionally.
+        (source_dir / ".trustedoss-placeholder").write_text("scan-source workspace\n")
+        # M-1 fix: validate_git_url_with_ip's normalized_url comes from
+        # urlsplit(...).hostname so userinfo is already stripped — but
+        # redact defensively in case a future refactor changes the
+        # normalization contract.
+        log.info(
+            "scan_source_fetch_mock",
+            normalized_url=redact_url_userinfo(normalized_url),
+            resolved_ip=resolved_ip,
+            scan_id=str(scan_uuid),
+        )
+        return source_dir
+
+    # Real clone path (dead today; activated when mock_only=False).
+    # IP-pin format: host:port:ip. We default to 443 for https and 22 for
+    # ssh; the curl option only matters for HTTPS, so SSH skips the -c
+    # flag entirely.
+    from urllib.parse import urlsplit
+
+    parts = urlsplit(normalized_url)
+    scheme = (parts.scheme or "").lower()
+    host = (parts.hostname or "").lower()
+    port = parts.port or (443 if scheme == "https" else 80 if scheme == "http" else 22)
+    target = source_dir / "repo"
+
+    if scheme in ("http", "https"):
+        cmd = [
+            "git",
+            "-c",
+            f"http.curloptResolve={host}:{port}:{resolved_ip}",
+            "clone",
+            "--depth",
+            "1",
+            normalized_url,
+            str(target),
+        ]
+    else:
+        cmd = ["git", "clone", "--depth", "1", normalized_url, str(target)]
+
+    # subprocess import is local so the mock-only fast-path stays free of
+    # imports we never use in tests.
+    import subprocess  # pragma: no cover — dead-code branch until activated
+
+    log.info(  # pragma: no cover — dead-code branch
+        "scan_source_fetch_real",
+        normalized_url=redact_url_userinfo(normalized_url),
+        resolved_ip=resolved_ip,
+        host=host,
+        port=port,
+    )
+    completed = subprocess.run(  # noqa: S603  # pragma: no cover — dead-code branch
+        # cmd is built from validate_git_url_with_ip output (allowlisted scheme,
+        # screened IP) — there is no shell execution and no user-controlled
+        # arguments past the URL itself. Bandit's "untrusted input" warning
+        # is a false positive for this controlled invocation.
+        cmd,
+        capture_output=True,
+        text=True,
+        timeout=600,
+        check=False,
+    )
+    if completed.returncode != 0:  # pragma: no cover — dead-code branch
+        raise _FetchAborted(
+            f"git clone exited {completed.returncode}: {completed.stderr.strip()[:500]}"
+        )
+    return source_dir
+
+
+# ---------------------------------------------------------------------------
 # Persistence helpers
 # ---------------------------------------------------------------------------
 
@@ -264,6 +434,10 @@ def _mark_failed(session: Session, scan: Scan, message: str) -> None:
     scan.error_message = message
     scan.completed_at = datetime.now(UTC)
     session.commit()
+    # Snapshot the percent under the row (defaults to 0 when None — protects
+    # against an early-failure path where progress was never initialised).
+    last_percent = scan.progress_percent or 0
+    publish_progress(scan.id, step="failed", percent=last_percent)
 
 
 def _record_terminal_failure(scan_uuid: uuid.UUID, message: str) -> None:
@@ -284,6 +458,7 @@ def _mark_succeeded(scan_uuid: uuid.UUID) -> None:
         scan.current_step = "finalize"
         scan.completed_at = datetime.now(UTC)
         session.commit()
+    publish_progress(scan_uuid, step="succeeded", percent=100)
 
 
 def _set_stage(scan_uuid: uuid.UUID, stage: str) -> None:
@@ -294,7 +469,11 @@ def _set_stage(scan_uuid: uuid.UUID, stage: str) -> None:
         scan.current_step = stage
         scan.progress_percent = _STAGE_PROGRESS.get(stage, scan.progress_percent)
         session.commit()
+        committed_percent = scan.progress_percent or 0
     log.info("scan_stage", stage=stage, percent=_STAGE_PROGRESS.get(stage))
+    # Publish AFTER the DB commit so a subscriber that reads the row on
+    # receipt sees the same state as the published payload.
+    publish_progress(scan_uuid, step=stage, percent=committed_percent)
 
 
 def _persist_artifact(scan_uuid: uuid.UUID, *, kind: str, path: Path) -> None:

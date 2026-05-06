@@ -4,8 +4,12 @@ import { initReactI18next } from "react-i18next";
 
 import enAuth from "@/locales/en/auth.json";
 import enCommon from "@/locales/en/common.json";
+import enProjects from "@/locales/en/projects.json";
+import enScans from "@/locales/en/scans.json";
 import koAuth from "@/locales/ko/auth.json";
 import koCommon from "@/locales/ko/common.json";
+import koProjects from "@/locales/ko/projects.json";
+import koScans from "@/locales/ko/scans.json";
 
 export const SUPPORTED_LANGUAGES = ["en", "ko"] as const;
 export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];
@@ -15,13 +19,23 @@ void i18n
   .use(initReactI18next)
   .init({
     resources: {
-      en: { common: enCommon, auth: enAuth },
-      ko: { common: koCommon, auth: koAuth },
+      en: {
+        common: enCommon,
+        auth: enAuth,
+        projects: enProjects,
+        scans: enScans,
+      },
+      ko: {
+        common: koCommon,
+        auth: koAuth,
+        projects: koProjects,
+        scans: koScans,
+      },
     },
     fallbackLng: "en",
     supportedLngs: SUPPORTED_LANGUAGES,
     defaultNS: "common",
-    ns: ["common", "auth"],
+    ns: ["common", "auth", "projects", "scans"],
     interpolation: { escapeValue: false },
     detection: {
       order: ["localStorage", "navigator"],

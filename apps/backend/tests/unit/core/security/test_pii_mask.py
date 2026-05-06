@@ -194,3 +194,60 @@ def test_unknown_object_type_stringified() -> None:
     dt = datetime(2026, 5, 6, tzinfo=UTC)
     out = mask_pii({"when": dt})
     assert isinstance(out["when"], str)
+
+
+# ---------------------------------------------------------------------------
+# redact_url_userinfo — M-1 fix (PR #9 security-reviewer)
+# ---------------------------------------------------------------------------
+
+
+def test_redact_url_userinfo_removes_pat_in_https_clone() -> None:
+    from core.pii_mask import redact_url_userinfo
+
+    raw = "https://oauth2:GH_PAT_xxxxxx@github.com/org/repo.git"
+    out = redact_url_userinfo(raw)
+    assert "GH_PAT_xxxxxx" not in out
+    assert "oauth2" not in out
+    assert "github.com" in out
+    assert out.startswith("https://***@")
+
+
+def test_redact_url_userinfo_preserves_path_and_query() -> None:
+    from core.pii_mask import redact_url_userinfo
+
+    raw = "https://user:pass@example.com:8443/path/seg?ref=abc#frag"
+    out = redact_url_userinfo(raw)
+    assert "/path/seg" in out
+    assert "ref=abc" in out
+    assert "8443" in out
+    assert "user" not in out
+    assert "pass" not in out
+
+
+def test_redact_url_userinfo_passthrough_when_no_userinfo() -> None:
+    from core.pii_mask import redact_url_userinfo
+
+    raw = "https://github.com/org/repo.git"
+    assert redact_url_userinfo(raw) == raw
+
+
+def test_redact_url_userinfo_handles_invalid_input() -> None:
+    from core.pii_mask import redact_url_userinfo
+
+    # Non-string passthrough — `None` returned as the redaction sentinel
+    # so structlog does not blow up on the kwarg type.
+    assert redact_url_userinfo("") == ""
+    # Defensive: wholly malformed inputs return a stable sentinel rather
+    # than raising (callers are typically log kwargs).
+    assert redact_url_userinfo("not a url") == "not a url"
+
+
+def test_redact_url_userinfo_ssh_userinfo_only() -> None:
+    from core.pii_mask import redact_url_userinfo
+
+    # SCP-style git ssh URLs go through urlsplit too; userinfo (username
+    # only, no password) should still redact.
+    raw = "ssh://gituser@example.com/org/repo.git"
+    out = redact_url_userinfo(raw)
+    assert "gituser" not in out
+    assert out.startswith("ssh://***@")

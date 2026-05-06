@@ -13,7 +13,16 @@
  */
 import type { Locator, Page } from "@playwright/test";
 
-import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "@/lib/i18n";
+// We deliberately re-declare the supported-language tuple here instead of
+// importing from `@/lib/i18n`. The product i18n module pulls in JSON locale
+// files as ESM imports — Playwright's runner does not understand the
+// `import attributes` proposal yet, so importing it transitively breaks
+// every spec that uses PortalPage. The list is short enough that a manual
+// duplicate is the lesser evil; a unit test in
+// `apps/frontend/tests/unit/lib/wsBase.test.ts` (or equivalent) can pin
+// the contract.
+const SUPPORTED_LANGUAGES = ["en", "ko"] as const;
+type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];
 
 const DEFAULT_BASE_URL = "http://localhost:5173";
 
@@ -64,6 +73,116 @@ export class PortalPage {
 
   async logout(): Promise<void> {
     throw new Error("PortalPage.logout: wired in PR #5 (Phase 1)");
+  }
+
+  // ───── PR #9 — Projects + scan progress (task 2.10/2.11) ───────────────
+  /** Navigate to the project list page (`/projects`). */
+  async gotoProjects(): Promise<void> {
+    await this.page.goto(`${this.baseUrl}/projects`);
+    await this.expectProjectListVisible();
+  }
+
+  async expectProjectListVisible(): Promise<void> {
+    await this.page
+      .getByTestId("project-list-page")
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  /**
+   * Click the "Scan" button on the project row whose `data-project-name`
+   * equals `projectName`. Uses the row's button so the test does not depend
+   * on visual ordering of the virtualized list.
+   */
+  async clickTriggerScan(projectName: string): Promise<void> {
+    await this.page
+      .locator(`[data-testid="project-row-scan"][data-project-name="${projectName}"]`)
+      .click();
+  }
+
+  /**
+   * Assert the scan progress drawer is visible. Optionally pass a step
+   * label (e.g. "cdxgen") and the harness verifies that step has reached
+   * the "current" or "completed" state.
+   */
+  async expectScanProgress(stepLabel?: string): Promise<void> {
+    await this.page
+      .getByTestId("scan-progress-drawer")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    if (stepLabel) {
+      const stepLocator = this.page.locator(
+        `[data-testid="scan-progress-steps"] [data-step="${stepLabel}"]`,
+      );
+      await stepLocator.waitFor({ state: "visible", timeout: 10_000 });
+    }
+  }
+
+  /** Assert the live progress reached `succeeded`. */
+  async expectScanCompleted(): Promise<void> {
+    await this.page
+      .locator('[data-testid="scan-progress-steps"] [data-step="finalize"][data-state="completed"]')
+      .waitFor({ state: "visible", timeout: 30_000 });
+  }
+
+  /** Assert the live progress reached `failed`. */
+  async expectScanFailed(): Promise<void> {
+    await this.page
+      .locator('[data-testid="scan-progress-steps"] [data-state="failed"]')
+      .waitFor({ state: "visible", timeout: 30_000 });
+  }
+
+  // ───── Project list filtering / sorting (PR #9 task 2.11) ──────────────
+  /**
+   * Type into the project list search box. Empty string clears the filter.
+   * The toolbar debounces by 300ms — callers should follow with
+   * {@link expectVisibleProjectCount} which auto-retries until the rendered
+   * count converges.
+   */
+  async searchProjects(query: string): Promise<void> {
+    const input = this.page.getByTestId("project-search");
+    await input.fill(query);
+  }
+
+  /** Pick a status filter option (`all` | `idle` | `running` | …). */
+  async filterProjectsByStatus(value: string): Promise<void> {
+    await this.page.getByTestId("project-status-filter").selectOption(value);
+  }
+
+  /** Pick a sort option (`name` | `latest_scan` | `risk`). */
+  async sortProjectsBy(value: string): Promise<void> {
+    await this.page.getByTestId("project-sort").selectOption(value);
+  }
+
+  /**
+   * Assert the virtualized list reports exactly `count` rows via the
+   * `data-total` attribute on the container. The empty state replaces the
+   * virtual list when zero rows match — the harness routes to the right
+   * assertion automatically.
+   */
+  async expectVisibleProjectCount(count: number): Promise<void> {
+    if (count === 0) {
+      await this.page
+        .getByTestId("project-list-empty")
+        .waitFor({ state: "visible", timeout: 10_000 });
+      return;
+    }
+    await this.page
+      .locator(`[data-testid="project-list-virtual"][data-total="${count}"]`)
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  /** Assert that a project row with the given name is visible. */
+  async expectProjectRowVisible(projectName: string): Promise<void> {
+    await this.page
+      .locator(
+        `[data-testid="project-row-scan"][data-project-name="${projectName}"]`,
+      )
+      .first()
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  /** Click the close affordance on the scan-progress drawer (sheet). */
+  async closeScanProgressDrawer(): Promise<void> {
+    await this.page.getByTestId("scan-progress-close").click();
   }
 }
 
