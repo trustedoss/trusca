@@ -13,10 +13,6 @@
     "licenses": "라이선스"
   },
   "tabs_placeholder": {
-    "vulnerabilities": {
-      "title": "취약점 탭",
-      "subtitle": "준비 중 — PR #11에서 추가됩니다."
-    },
     "licenses": {
       "title": "라이선스 탭",
       "subtitle": "준비 중 — PR #12에서 추가됩니다."
@@ -28,7 +24,8 @@
     "medium": "중간",
     "low": "낮음",
     "info": "정보",
-    "none": "없음"
+    "none": "없음",
+    "unknown": "알 수 없음"
   },
   "license_category": {
     "forbidden": "금지",
@@ -135,6 +132,100 @@
     "raw": {
       "show": "원본 데이터 보기",
       "hide": "원본 데이터 숨기기"
+    }
+  },
+  "vulnerabilities": {
+    "summary": "전체 {{total}}개 중 {{loaded}}개 로드됨.",
+    "column": {
+      "cve_id": "CVE ID",
+      "severity": "심각도",
+      "cvss": "CVSS",
+      "summary": "제목",
+      "affected": "영향 컴포넌트",
+      "status": "상태",
+      "discovered": "발견 시각"
+    },
+    "severity": {
+      "critical": "치명",
+      "high": "높음",
+      "medium": "중간",
+      "low": "낮음",
+      "info": "정보",
+      "unknown": "알 수 없음"
+    },
+    "status": {
+      "new": "신규",
+      "analyzing": "분석 중",
+      "exploitable": "악용 가능",
+      "not_affected": "해당 없음",
+      "false_positive": "오탐",
+      "suppressed": "억제됨",
+      "fixed": "수정됨"
+    },
+    "toolbar": {
+      "search_label": "검색",
+      "search_placeholder": "CVE ID 또는 제목으로 검색",
+      "severity_label": "심각도",
+      "status_label": "상태",
+      "sort_label": "정렬 기준",
+      "sort_by_severity": "심각도",
+      "sort_by_cvss": "CVSS",
+      "sort_by_status": "상태",
+      "sort_by_discovered_at": "발견 시각",
+      "order_label": "순서",
+      "order_asc": "오름차순",
+      "order_desc": "내림차순"
+    },
+    "empty": {
+      "title": "조건에 맞는 취약점이 없습니다",
+      "subtitle": "필터를 조정하거나 다음 스캔을 기다려 주세요."
+    },
+    "errors": {
+      "load_failed": "취약점을 불러오지 못했습니다."
+    },
+    "drawer": {
+      "loading_title": "취약점 불러오는 중…",
+      "loading_subtitle": "CVE 상세 정보를 가져오고 있습니다.",
+      "subtitle": "상태: {{status}}",
+      "cve_id_label": "CVE ID",
+      "cvss_label": "CVSS",
+      "cvss_vector_label": "벡터",
+      "summary_heading": "요약",
+      "summary_empty": "이 취약점에 대한 요약이 없습니다.",
+      "references_heading": "참조 ({{count}})",
+      "references_empty": "외부 참조가 제공되지 않았습니다.",
+      "reference_default_label": "REF",
+      "affected_heading": "영향 컴포넌트 ({{count}})",
+      "affected_empty": "이 취약점에 연결된 영향 컴포넌트가 없습니다.",
+      "affected_fixed_in": "수정 버전",
+      "analysis_heading": "분석",
+      "justification_label": "사유",
+      "justification_placeholder": "이 취약점을 새 상태로 변경하는 이유를 설명해 주세요.",
+      "justification_count": "{{count}} / {{max}}자",
+      "actions_label": "상태 변경",
+      "actions_empty": "현재 상태에서 가능한 전이가 없습니다.",
+      "action_saving": "저장 중…",
+      "role_gated_tooltip": "억제 처리는 팀 관리자 권한이 필요합니다.",
+      "action": {
+        "new": "신규로 다시 열기",
+        "analyzing": "분석 시작",
+        "exploitable": "악용 가능으로 표시",
+        "not_affected": "해당 없음으로 표시",
+        "false_positive": "오탐으로 표시",
+        "suppressed": "억제",
+        "fixed": "수정됨으로 표시"
+      },
+      "history_heading": "상태 이력 ({{count}})",
+      "history_empty": "아직 기록된 상태 변경이 없습니다.",
+      "history_initial": "최초 상태",
+      "history_actor": "변경자: {{id}}",
+      "history_actor_system": "시스템 변경",
+      "errors": {
+        "load_failed": "취약점을 불러오지 못했습니다.",
+        "update_failed": "상태를 변경하지 못했습니다.",
+        "conflict": "다른 사용자가 이 취약점을 먼저 변경했습니다. 다시 불러와 최신 상태를 확인해 주세요.",
+        "conflict_reload": "다시 불러오기"
+      }
     }
   }
 }

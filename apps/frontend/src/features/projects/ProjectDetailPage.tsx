@@ -14,6 +14,7 @@ import { useProjectOverview } from "@/features/projects/api/useProjectOverview";
 import { ComponentsTab } from "@/features/projects/components/ComponentsTab";
 import { OverviewTab } from "@/features/projects/components/OverviewTab";
 import { RiskGauge } from "@/features/projects/components/RiskGauge";
+import { VulnerabilitiesTab } from "@/features/projects/components/VulnerabilitiesTab";
 import { ProblemError } from "@/lib/problem";
 import { getProject } from "@/lib/projectsApi";
 import { cn } from "@/lib/utils";
@@ -67,15 +68,25 @@ export function ProjectDetailPage() {
     setSearchParams(
       (prev) => {
         const merged = new URLSearchParams(prev);
-        // When switching tabs, drop ComponentsTab-specific params so we
-        // don't carry a stale severity filter into Overview.
-        if (next !== "components") {
-          merged.delete("drawer");
+        // When switching tabs, drop tab-scoped filter params so we don't
+        // carry a stale severity filter into Overview.
+        // ComponentsTab and VulnerabilitiesTab both use `search` / `severity`
+        // / `sort` / `order`, but they have distinct drawer keys
+        // (`drawer` vs `vuln`), category-vs-status filters, and pagination.
+        if (next !== "components" && next !== "vulnerabilities") {
           merged.delete("search");
           merged.delete("severity");
-          merged.delete("license_category");
           merged.delete("sort");
           merged.delete("order");
+        }
+        if (next !== "components") {
+          merged.delete("drawer");
+          merged.delete("license_category");
+        }
+        if (next !== "vulnerabilities") {
+          merged.delete("vuln");
+          merged.delete("status");
+          merged.delete("page");
         }
         if (next === "overview") {
           merged.delete("tab");
@@ -119,7 +130,6 @@ export function ProjectDetailPage() {
           </TabsTrigger>
           <TabsTrigger
             value="vulnerabilities"
-            disabled
             data-testid="project-detail-tab-vulnerabilities"
           >
             {t("tabs.vulnerabilities")}
@@ -140,10 +150,7 @@ export function ProjectDetailPage() {
           <ComponentsTab projectId={projectId} />
         </TabsContent>
         <TabsContent value="vulnerabilities">
-          <EmptyTabPlaceholder
-            type="vulnerabilities"
-            data-testid="project-detail-empty-vulnerabilities"
-          />
+          <VulnerabilitiesTab projectId={projectId} />
         </TabsContent>
         <TabsContent value="licenses">
           <EmptyTabPlaceholder
@@ -234,7 +241,7 @@ function ProjectDetailHeader({
 }
 
 interface EmptyTabPlaceholderProps {
-  type: "vulnerabilities" | "licenses";
+  type: "licenses";
   ["data-testid"]?: string;
 }
 

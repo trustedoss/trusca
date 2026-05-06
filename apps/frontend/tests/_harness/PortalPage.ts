@@ -414,7 +414,147 @@ export class PortalPage {
     await expect(row).toBeVisible({ timeout: 10_000 });
     return row.locator("[data-severity]").first().getAttribute("data-severity");
   }
+
+  // ───── PR #11 — Vulnerabilities tab + drawer ───────────────────────────
+  /**
+   * Click the Vulnerabilities tab trigger and wait for the tab content to
+   * mount. The tab renders `[data-testid="vulnerabilities-tab"]` once
+   * mounted; the loading skeleton is a sibling, so `vulnerabilities-tab`
+   * being visible is the synchronization signal.
+   *
+   * Locale-agnostic: anchors on `data-testid` attributes rather than the
+   * translated tab label.
+   */
+  async selectVulnerabilitiesTab(): Promise<void> {
+    await this.page
+      .getByTestId("project-detail-tab-vulnerabilities")
+      .click();
+    await this.page
+      .getByTestId("vulnerabilities-tab")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    // After the tab mounts, either the empty card, the virtual list, or the
+    // loading skeleton is visible — wait until one of the data states
+    // resolves so subsequent verbs can click rows reliably.
+    await this.expectVulnerabilitiesTabReady();
+  }
+
+  /**
+   * Wait until either the virtualized list or the empty card is visible
+   * (the loading skeleton has finished). Use after applying filters /
+   * sorts to wait for the next page to land.
+   */
+  async expectVulnerabilitiesTabReady(): Promise<void> {
+    const virtual = this.page.getByTestId("vulnerabilities-virtual");
+    const empty = this.page.getByTestId("vulnerabilities-empty");
+    await expect(virtual.or(empty)).toBeVisible({ timeout: 10_000 });
+  }
+
+  /**
+   * Read the `data-total` attribute on the summary row (server-reported
+   * count). Returns 0 when the empty card is shown.
+   */
+  async getVulnerabilityRowCount(): Promise<number> {
+    const summary = this.page.getByTestId("vulnerabilities-summary");
+    if ((await summary.count()) === 0) return 0;
+    const raw = await summary.first().getAttribute("data-total");
+    return raw == null ? 0 : Number(raw);
+  }
+
+  /** Set the multi-select severity filter. Empty array clears it. */
+  async filterVulnerabilitiesBySeverity(
+    severities: ("critical" | "high" | "medium" | "low" | "info" | "unknown")[],
+  ): Promise<void> {
+    await this.page
+      .getByTestId("vulnerabilities-severity-filter")
+      .selectOption(severities);
+    await this.expectVulnerabilitiesTabReady();
+  }
+
+  /** Set the multi-select status filter. */
+  async filterVulnerabilitiesByStatus(
+    statuses: VulnFindingStatus[],
+  ): Promise<void> {
+    await this.page
+      .getByTestId("vulnerabilities-status-filter")
+      .selectOption(statuses);
+    await this.expectVulnerabilitiesTabReady();
+  }
+
+  /**
+   * Find the row whose `data-cve-id` equals `cveId` and click it. Wait
+   * for the drawer to open (URL carries `?vuln=<finding_id>` and the
+   * drawer container is visible).
+   *
+   * Locale-agnostic: anchors on the `data-cve-id` attribute the row
+   * exposes verbatim.
+   */
+  async openVulnerabilityDrawer(cveId: string): Promise<void> {
+    const row = this.page.locator(
+      `[data-testid="vulnerability-row"][data-cve-id="${cveId}"]`,
+    );
+    await row.first().click();
+    await this.page
+      .getByTestId("vulnerability-drawer")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    // URL mirrors the selection — wait until ?vuln=<...> appears.
+    await expect
+      .poll(() => new URL(this.page.url()).searchParams.get("vuln"), {
+        timeout: 5_000,
+      })
+      .not.toBeNull();
+  }
+
+  /**
+   * Drive a status transition from inside the open drawer.
+   *
+   * Optionally fills the justification textarea, then clicks the action
+   * button matching `targetStatus`. Waits until the drawer's status badge
+   * reflects the new value (event-driven via `expect.poll`; never
+   * `waitForTimeout`).
+   *
+   * Throws via Playwright's auto-retrying assertions if the button is
+   * disabled (role-gated) or the post-mutation badge never updates.
+   */
+  async setVulnerabilityStatus(
+    targetStatus: VulnFindingStatus,
+    justification?: string,
+  ): Promise<void> {
+    if (justification !== undefined) {
+      await this.page
+        .getByTestId("vulnerability-drawer-justification")
+        .fill(justification);
+    }
+    await this.page
+      .getByTestId(`vulnerability-drawer-action-${targetStatus}`)
+      .click();
+    // The status badge inside the drawer carries `data-status`; wait until
+    // it flips to the target value (or stays put on error — caller can
+    // inspect the alert separately).
+    await expect
+      .poll(
+        async () => {
+          const badge = this.page
+            .getByTestId("vulnerability-drawer-meta")
+            .locator(`[data-testid^="vulnerability-status-badge-"]`)
+            .first();
+          if ((await badge.count()) === 0) return null;
+          return badge.getAttribute("data-status");
+        },
+        { timeout: 10_000 },
+      )
+      .toBe(targetStatus);
+  }
 }
+
+/** CycloneDX VEX status union — mirrors the backend ENUM. */
+export type VulnFindingStatus =
+  | "new"
+  | "analyzing"
+  | "exploitable"
+  | "not_affected"
+  | "false_positive"
+  | "suppressed"
+  | "fixed";
 
 function assertSupported(value: string | null): SupportedLanguage {
   if (value && (SUPPORTED_LANGUAGES as readonly string[]).includes(value)) {

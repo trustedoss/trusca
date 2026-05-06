@@ -36,6 +36,8 @@ export interface SeedSummary {
   scan_ids?: string[];
   /** Number of components attached to the first project's scan (0 by default). */
   component_count?: number;
+  /** Number of vulnerability findings attached to the first project's scan. */
+  vulnerability_count?: number;
 }
 
 export interface SeedOptions {
@@ -61,6 +63,21 @@ export interface SeedOptions {
    * without learning ids.
    */
   componentPrefix?: string;
+  /**
+   * Phase 3 PR #11. Number of CVE findings to attach to the first
+   * project's scan. Each finding gets a fresh component_version + a fresh
+   * Vulnerability with deterministic severity + status mix. Implies
+   * `withScan`. Default: 0 (no findings seeded).
+   */
+  vulnerabilityCount?: number;
+  /**
+   * Optional severity mix override for `vulnerabilityCount`. Format:
+   *   "critical:N,high:N,medium:N,low:N,info:N,unknown:N"
+   * The script clamps the sum to `vulnerabilityCount`. Defaults to the
+   * built-in mix (2 critical / 5 high / 10 medium / 20 low / 5 info /
+   * 2 unknown).
+   */
+  vulnerabilitySeverityMix?: string;
 }
 
 /**
@@ -98,6 +115,15 @@ export function seedE2eUser(opts: SeedOptions): SeedSummary {
   }
   if (opts.componentPrefix) {
     args.push("--component-prefix", opts.componentPrefix);
+  }
+  if ((opts.vulnerabilityCount ?? 0) > 0) {
+    args.push("--vulnerability-count", String(opts.vulnerabilityCount));
+    // The Python script's `--vulnerability-count` flag implies `--with-scan`
+    // there too, but we set both anyway for consistency.
+    if (!args.includes("--with-scan")) args.push("--with-scan");
+  }
+  if (opts.vulnerabilitySeverityMix) {
+    args.push("--vulnerability-severity-mix", opts.vulnerabilitySeverityMix);
   }
 
   // Default DATABASE_URL points at the host-mapped Postgres exposed by

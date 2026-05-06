@@ -1,8 +1,9 @@
 """
-E2E seed helper — Phase 2 PR #9 + Phase 3 PR #10.
+E2E seed helper — Phase 2 PR #9 + Phase 3 PR #10 + Phase 3 PR #11.
 
 The frontend e2e suite (``apps/frontend/tests/e2e/scan_flow.spec.ts``,
-``apps/frontend/tests/e2e/project_detail.spec.ts``) needs a user with team
+``apps/frontend/tests/e2e/project_detail.spec.ts``,
+``apps/frontend/tests/e2e/vulnerabilities.spec.ts``) needs a user with team
 memberships and one or more projects so it can drive the project list,
 detail, and scan progress flows. The auth surface has no team-creation
 endpoint by design (Phase 3 work — onboarding wizard) and brand-new users
@@ -23,6 +24,20 @@ For PR #10 (Project Detail) the script optionally also seeds:
     so spec searches like ``searchComponents("react")`` can hit a known
     prefix without having to fetch the seeded id list.
 
+For PR #11 (Vulnerabilities tab) the script optionally also seeds:
+
+  * ``--vulnerability-count N`` distinct VulnerabilityFinding rows attached
+    to fresh component_versions on the first project's scan. Each finding
+    gets a fresh Vulnerability row with a deterministic severity + status
+    mix. The default mix is::
+
+        critical=2, high=5, medium=10, low=20, info=5, unknown=2
+
+    Override the mix with ``--vulnerability-severity-mix
+    'critical:N,high:N,...'`` (any unspecified bucket defaults to 0).
+    Statuses cycle: 80% ``new``, 15% ``analyzing``, 5% ``not_affected`` so
+    filter-by-status scenarios exercise multiple values.
+
 Why a Python script and not Node? psycopg / asyncpg + the SQLAlchemy
 factories (``tests._helpers``) are already available in this repo. Pulling
 ``pg`` into the frontend package just to seed a few rows would balloon the
@@ -30,15 +45,20 @@ dependency surface for one feature.
 
 Usage:
 
-    python3 apps/backend/scripts/seed_e2e_user.py \
-        --project-names alpha,beta,gamma \
+    python3 apps/backend/scripts/seed_e2e_user.py \\
+        --project-names alpha,beta,gamma \\
         --password 'Sup3rSecret!aabbccdd'
 
-    python3 apps/backend/scripts/seed_e2e_user.py \
-        --project-names ci-smoke \
-        --with-scan \
-        --component-count 200 \
+    python3 apps/backend/scripts/seed_e2e_user.py \\
+        --project-names ci-smoke \\
+        --with-scan \\
+        --component-count 200 \\
         --component-prefix react
+
+    python3 apps/backend/scripts/seed_e2e_user.py \\
+        --project-names ci-vulns \\
+        --with-scan \\
+        --vulnerability-count 44
 
 Output (stdout, single JSON line):
 
@@ -46,7 +66,8 @@ Output (stdout, single JSON line):
      "team_id": "...", "project_names": ["alpha","beta","gamma"],
      "project_ids": ["...", "...", "..."],
      "scan_ids": ["...", "...", "..."],
-     "component_count": 200}
+     "component_count": 200,
+     "vulnerability_count": 44}
 
 Exit code: 0 on success, non-zero on any failure.
 """
@@ -72,6 +93,28 @@ if str(BACKEND_ROOT) not in sys.path:
 # at least twice).
 _SEVERITY_CYCLE = ("critical", "high", "medium", "low", "info", "none")
 _LICENSE_CATEGORY_CYCLE = ("forbidden", "conditional", "allowed", "unknown")
+
+# PR #11 — vulnerability seed mix.
+# Sum across buckets is the default `--vulnerability-count` (44) so callers
+# that do not pass --vulnerability-count get a sane out-of-the-box mix when
+# they request --vulnerability-count by itself.
+_DEFAULT_VULN_SEVERITY_MIX: dict[str, int] = {
+    "critical": 2,
+    "high": 5,
+    "medium": 10,
+    "low": 20,
+    "info": 5,
+    "unknown": 2,
+}
+# Status mix — 80% new, 15% analyzing, 5% not_affected.
+_VULN_STATUS_CYCLE: tuple[str, ...] = (
+    *(("new",) * 16),
+    *(("analyzing",) * 3),
+    *(("not_affected",) * 1),
+)
+_VULN_SEVERITY_VALUES: frozenset[str] = frozenset(
+    {"critical", "high", "medium", "low", "info", "unknown"}
+)
 
 
 def _parse_args() -> argparse.Namespace:
@@ -119,7 +162,80 @@ def _parse_args() -> argparse.Namespace:
             "substring without having to learn ids."
         ),
     )
+    parser.add_argument(
+        "--vulnerability-count",
+        type=int,
+        default=0,
+        help=(
+            "Phase 3 PR #11. Number of CVE findings to attach to the first "
+            "project's scan. Each finding gets a fresh component_version + "
+            "Vulnerability with a deterministic severity + status mix. "
+            "Default: 0 (no findings seeded). Implies --with-scan."
+        ),
+    )
+    parser.add_argument(
+        "--vulnerability-severity-mix",
+        default=None,
+        help=(
+            "Override the default severity mix for --vulnerability-count. "
+            "Format: 'critical:N,high:N,medium:N,low:N,info:N,unknown:N'. "
+            "Buckets not listed default to 0; the sum is clamped to "
+            "--vulnerability-count. Default: 'critical:2,high:5,medium:10,"
+            "low:20,info:5,unknown:2'."
+        ),
+    )
     return parser.parse_args()
+
+
+def _parse_severity_mix(raw: str | None, *, total: int) -> dict[str, int]:
+    """Parse the ``--vulnerability-severity-mix`` flag.
+
+    Returns a dict keyed by severity bucket. Values are clamped to the
+    requested total (truncating proportionally is not worth the
+    complexity for an e2e seed; we just stop emitting once we've reached
+    the count). Invalid buckets are ignored with a stderr warning.
+    """
+    if raw is None or not raw.strip():
+        # Use the default mix scaled to `total` if the caller didn't override.
+        default = dict(_DEFAULT_VULN_SEVERITY_MIX)
+        default_sum = sum(default.values())
+        if total == default_sum:
+            return default
+        # Caller asked for a non-default total — use the default ratios.
+        out: dict[str, int] = {}
+        remaining = total
+        keys = list(default.keys())
+        for i, key in enumerate(keys):
+            if i == len(keys) - 1:
+                out[key] = max(remaining, 0)
+            else:
+                share = round(default[key] * total / default_sum) if default_sum else 0
+                share = max(0, min(share, remaining))
+                out[key] = share
+                remaining -= share
+        return out
+
+    parsed: dict[str, int] = {sev: 0 for sev in _VULN_SEVERITY_VALUES}
+    for chunk in raw.split(","):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        if ":" not in chunk:
+            print(f"ignoring malformed severity mix entry: {chunk!r}", file=sys.stderr)
+            continue
+        sev, _, n_raw = chunk.partition(":")
+        sev = sev.strip().lower()
+        if sev not in _VULN_SEVERITY_VALUES:
+            print(f"ignoring unknown severity bucket: {sev!r}", file=sys.stderr)
+            continue
+        try:
+            n = int(n_raw.strip())
+        except ValueError:
+            print(f"ignoring non-integer count in {chunk!r}", file=sys.stderr)
+            continue
+        parsed[sev] = max(parsed[sev], n)
+
+    return parsed
 
 
 async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better than 5 helpers
@@ -130,6 +246,8 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
     with_scan: bool,
     component_count: int,
     component_prefix: str,
+    vulnerability_count: int = 0,
+    vulnerability_severity_mix: str | None = None,
 ) -> dict[str, object]:
     """Create the org/team/user/membership/projects[/scans/components]."""
     from sqlalchemy.ext.asyncio import (
@@ -162,6 +280,9 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
     # --component-count implies --with-scan; we cannot attach components
     # without a scan to anchor on.
     if component_count > 0 and not with_scan:
+        with_scan = True
+    # --vulnerability-count likewise implies --with-scan.
+    if vulnerability_count > 0 and not with_scan:
         with_scan = True
 
     engine = create_async_engine(database_url(), pool_pre_ping=True, future=True)
@@ -340,6 +461,81 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                 await session.commit()
                 seeded_components = component_count
 
+            seeded_vulnerabilities = 0
+            if vulnerability_count > 0 and project_rows:
+                first_project = project_rows[0]
+                anchor_scan_id = first_project.latest_scan_id
+                assert anchor_scan_id is not None  # with_scan was forced True
+
+                mix = _parse_severity_mix(
+                    vulnerability_severity_mix, total=vulnerability_count
+                )
+                # Build the seed plan: a flat list of `severity` values, one
+                # per finding, ordered for deterministic output.
+                seed_plan: list[str] = []
+                for sev in ("critical", "high", "medium", "low", "info", "unknown"):
+                    seed_plan.extend([sev] * mix.get(sev, 0))
+                # Clamp / pad to the requested total. If the mix sum is less
+                # than the count, pad with `low` (the most benign bucket).
+                # If it's greater, truncate.
+                if len(seed_plan) > vulnerability_count:
+                    seed_plan = seed_plan[:vulnerability_count]
+                while len(seed_plan) < vulnerability_count:
+                    seed_plan.append("low")
+
+                BATCH = 50
+                for idx, sev in enumerate(seed_plan):
+                    vname = f"vuln-{idx:05d}"
+                    purl = f"pkg:npm/{vname}"
+                    component = Component(
+                        purl=f"{purl}-{suffix}",
+                        package_type="npm",
+                        name=vname,
+                    )
+                    session.add(component)
+                    await session.flush()
+
+                    cv = ComponentVersion(
+                        component_id=component.id,
+                        version="1.0.0",
+                        purl_with_version=f"{purl}-{suffix}@1.0.0",
+                    )
+                    session.add(cv)
+                    await session.flush()
+
+                    sc = ScanComponent(
+                        scan_id=anchor_scan_id,
+                        component_version_id=cv.id,
+                        direct=True,
+                        raw_data={"vuln_seed_index": idx},
+                    )
+                    session.add(sc)
+
+                    vuln = Vulnerability(
+                        external_id=f"CVE-2099-VLN-{suffix}-{idx:05d}",
+                        source="NVD",
+                        severity=sev,
+                        cvss_score=None,
+                        summary=f"e2e seed vulnerability {idx} ({sev})",
+                    )
+                    session.add(vuln)
+                    await session.flush()
+
+                    status = _VULN_STATUS_CYCLE[idx % len(_VULN_STATUS_CYCLE)]
+                    finding = VulnerabilityFinding(
+                        scan_id=anchor_scan_id,
+                        component_version_id=cv.id,
+                        vulnerability_id=vuln.id,
+                        status=status,
+                        analysis_state=status,
+                    )
+                    session.add(finding)
+
+                    if (idx + 1) % BATCH == 0:
+                        await session.commit()
+                await session.commit()
+                seeded_vulnerabilities = vulnerability_count
+
             return {
                 "email": user.email,
                 "password": chosen_password,
@@ -349,6 +545,7 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                 "project_ids": project_ids,
                 "scan_ids": scan_ids,
                 "component_count": seeded_components,
+                "vulnerability_count": seeded_vulnerabilities,
             }
     finally:
         await engine.dispose()
@@ -363,6 +560,9 @@ def main() -> int:
     if args.component_count < 0:
         print("--component-count must be non-negative", file=sys.stderr)
         return 2
+    if args.vulnerability_count < 0:
+        print("--vulnerability-count must be non-negative", file=sys.stderr)
+        return 2
 
     try:
         summary = asyncio.run(
@@ -373,6 +573,8 @@ def main() -> int:
                 with_scan=args.with_scan,
                 component_count=args.component_count,
                 component_prefix=args.component_prefix,
+                vulnerability_count=args.vulnerability_count,
+                vulnerability_severity_mix=args.vulnerability_severity_mix,
             )
         )
     except Exception as exc:  # noqa: BLE001 — top-level CLI handler

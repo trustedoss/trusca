@@ -13,10 +13,6 @@
     "licenses": "Licenses"
   },
   "tabs_placeholder": {
-    "vulnerabilities": {
-      "title": "Vulnerabilities tab",
-      "subtitle": "Coming soon — tracked under PR #11."
-    },
     "licenses": {
       "title": "Licenses tab",
       "subtitle": "Coming soon — tracked under PR #12."
@@ -28,7 +24,8 @@
     "medium": "Medium",
     "low": "Low",
     "info": "Info",
-    "none": "None"
+    "none": "None",
+    "unknown": "Unknown"
   },
   "license_category": {
     "forbidden": "Forbidden",
@@ -135,6 +132,100 @@
     "raw": {
       "show": "Show raw data",
       "hide": "Hide raw data"
+    }
+  },
+  "vulnerabilities": {
+    "summary": "{{loaded}} of {{total}} findings loaded.",
+    "column": {
+      "cve_id": "CVE ID",
+      "severity": "Severity",
+      "cvss": "CVSS",
+      "summary": "Title",
+      "affected": "Affected",
+      "status": "Status",
+      "discovered": "Discovered"
+    },
+    "severity": {
+      "critical": "Critical",
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low",
+      "info": "Info",
+      "unknown": "Unknown"
+    },
+    "status": {
+      "new": "New",
+      "analyzing": "Analyzing",
+      "exploitable": "Exploitable",
+      "not_affected": "Not affected",
+      "false_positive": "False positive",
+      "suppressed": "Suppressed",
+      "fixed": "Fixed"
+    },
+    "toolbar": {
+      "search_label": "Search",
+      "search_placeholder": "Search by CVE ID or summary",
+      "severity_label": "Severity",
+      "status_label": "Status",
+      "sort_label": "Sort by",
+      "sort_by_severity": "Severity",
+      "sort_by_cvss": "CVSS",
+      "sort_by_status": "Status",
+      "sort_by_discovered_at": "Discovered",
+      "order_label": "Order",
+      "order_asc": "Ascending",
+      "order_desc": "Descending"
+    },
+    "empty": {
+      "title": "No vulnerabilities match",
+      "subtitle": "Adjust the filters or wait for the next scan."
+    },
+    "errors": {
+      "load_failed": "Could not load vulnerabilities."
+    },
+    "drawer": {
+      "loading_title": "Loading vulnerability…",
+      "loading_subtitle": "Fetching CVE details.",
+      "subtitle": "Status: {{status}}",
+      "cve_id_label": "CVE ID",
+      "cvss_label": "CVSS",
+      "cvss_vector_label": "Vector",
+      "summary_heading": "Summary",
+      "summary_empty": "No summary available for this finding.",
+      "references_heading": "References ({{count}})",
+      "references_empty": "No external references provided.",
+      "reference_default_label": "REF",
+      "affected_heading": "Affected components ({{count}})",
+      "affected_empty": "No affected components linked to this finding.",
+      "affected_fixed_in": "Fixed in",
+      "analysis_heading": "Analysis",
+      "justification_label": "Justification",
+      "justification_placeholder": "Explain why this finding moves to its new status.",
+      "justification_count": "{{count}} / {{max}} characters",
+      "actions_label": "Transition to",
+      "actions_empty": "No transitions available from the current status.",
+      "action_saving": "Saving…",
+      "role_gated_tooltip": "Suppression requires the team admin role.",
+      "action": {
+        "new": "Reopen as new",
+        "analyzing": "Move to analyzing",
+        "exploitable": "Mark exploitable",
+        "not_affected": "Mark not affected",
+        "false_positive": "Mark false positive",
+        "suppressed": "Suppress",
+        "fixed": "Mark fixed"
+      },
+      "history_heading": "Status history ({{count}})",
+      "history_empty": "No status changes recorded yet.",
+      "history_initial": "Initial",
+      "history_actor": "By {{id}}",
+      "history_actor_system": "By system",
+      "errors": {
+        "load_failed": "Could not load vulnerability.",
+        "update_failed": "Could not update status.",
+        "conflict": "This finding was updated by someone else. Reload to see the latest state.",
+        "conflict_reload": "Reload"
+      }
     }
   }
 }

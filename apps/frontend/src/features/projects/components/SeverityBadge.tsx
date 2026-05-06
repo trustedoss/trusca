@@ -5,13 +5,20 @@ import type { ComponentSeverity } from "@/features/projects/api/projectDetailApi
 import { cn } from "@/lib/utils";
 
 /**
- * SeverityBadge — Phase 3 PR #10.
+ * SeverityBadge — Phase 3 PR #10 / extended in PR #11.
  *
  * Pairs a risk-tinted dot with the localized severity label so color is never
  * the only signal (CLAUDE.md "디자인 시스템" + accessibility rule). Maps the
- * backend's six-bucket severity (critical/high/medium/low/info/none) onto the
- * Badge `tone` variants in `components/ui/badge.tsx`.
+ * backend's seven-bucket severity (critical/high/medium/low/info/none/unknown)
+ * onto the Badge `tone` variants in `components/ui/badge.tsx`.
+ *
+ * The `unknown` bucket is exclusive to the Vulnerabilities surface — DT can
+ * report a CVE without classifying it. Components collapse this to `info`,
+ * but the triage UI cares about the difference, so we keep the input wider
+ * than `ComponentSeverity`.
  */
+export type SeverityVariant = ComponentSeverity | "unknown";
+
 type Tone = "critical" | "high" | "medium" | "low" | "info";
 
 interface Visual {
@@ -19,17 +26,18 @@ interface Visual {
   dot: string;
 }
 
-const VISUAL_BY_SEVERITY: Record<ComponentSeverity, Visual> = {
+const VISUAL_BY_SEVERITY: Record<SeverityVariant, Visual> = {
   critical: { tone: "critical", dot: "bg-risk-critical" },
   high: { tone: "high", dot: "bg-risk-high" },
   medium: { tone: "medium", dot: "bg-risk-medium" },
   low: { tone: "low", dot: "bg-risk-low" },
   info: { tone: "info", dot: "bg-risk-info" },
   none: { tone: "info", dot: "bg-risk-info" },
+  unknown: { tone: "info", dot: "bg-risk-info" },
 };
 
 export interface SeverityBadgeProps {
-  severity: ComponentSeverity;
+  severity: SeverityVariant;
   className?: string;
 }
 
