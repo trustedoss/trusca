@@ -125,6 +125,7 @@
       "Bash(gh pr checks*)",
       "Bash(gh pr diff*)",
       "Bash(gh pr status*)",
+      "Bash(gh pr create*)",
       "Bash(gh issue list*)",
       "Bash(gh issue view*)",
       "Bash(gh repo view*)",
@@ -171,7 +172,6 @@
       "Bash(git config --global*)",
       "Bash(git config --system*)",
 
-      "Bash(gh pr create*)",
       "Bash(gh pr merge*)",
       "Bash(gh pr close*)",
       "Bash(gh pr reopen*)",
