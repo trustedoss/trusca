@@ -76,9 +76,9 @@ def test_parse_dt_timestamp_returns_none_for_garbage() -> None:
 
 def test_dt_health_check_task_returns_outcome_dict(monkeypatch: pytest.MonkeyPatch) -> None:
     """The Celery wrapper must surface every field run_health_check produces."""
+    import tasks.dt_health as dt_health_mod
     from integrations.dt.breaker import BreakerSnapshot
     from integrations.dt.health import HealthCheckOutcome
-    import tasks.dt_health as dt_health_mod
 
     fake_outcome = HealthCheckOutcome(
         healthy=True,
@@ -104,6 +104,7 @@ def test_dt_health_check_task_returns_outcome_dict(monkeypatch: pytest.MonkeyPat
 def test_dt_orphan_cleaner_classify_marks_unknown_scans_as_orphans() -> None:
     """`_classify_page` is the heart of the orphan detector — pure over DT JSON."""
     import uuid as _uuid
+    from typing import Any
     from unittest.mock import MagicMock
 
     from tasks.dt_orphan_cleaner import _classify_page
@@ -111,7 +112,10 @@ def test_dt_orphan_cleaner_classify_marks_unknown_scans_as_orphans() -> None:
     known_scan = _uuid.uuid4()
     unknown_scan = _uuid.uuid4()
 
-    page = [
+    # `_classify_page` expects `list[dict[str, Any]]` but tolerates malformed
+    # entries (string scalars, missing keys) by skipping them. The annotation
+    # below documents that intent and keeps mypy happy without a `cast`.
+    page: list[Any] = [
         {"uuid": "dt-project-a", "version": str(known_scan), "name": "p-a"},
         {"uuid": "dt-project-b", "version": str(unknown_scan), "name": "p-b"},
         {"uuid": "dt-project-c", "version": "not-a-uuid", "name": "p-c"},
@@ -133,11 +137,12 @@ def test_dt_orphan_cleaner_classify_marks_unknown_scans_as_orphans() -> None:
 
 
 def test_dt_orphan_cleaner_classify_noop_when_no_uuid_versions() -> None:
+    from typing import Any
     from unittest.mock import MagicMock
 
     from tasks.dt_orphan_cleaner import _classify_page
 
-    page = [{"uuid": "dt-x", "version": "branch-name"}]
+    page: list[Any] = [{"uuid": "dt-x", "version": "branch-name"}]
     orphans: list[str] = []
     session = MagicMock()
 

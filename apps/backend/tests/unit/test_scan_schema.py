@@ -102,6 +102,7 @@ def test_project_create_accepts_well_formed_git_url(
     return must be a public-routable one — RFC 1918/loopback would now be
     rejected by the same guard."""
     import socket as _socket
+
     from schemas.scan import ProjectCreate
 
     monkeypatch.setattr(
