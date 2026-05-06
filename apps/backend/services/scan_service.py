@@ -23,9 +23,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.audit import audit_context
+from core.pii_mask import mask_pii
 from core.security import CurrentUser
 from models import Project, Scan
 from schemas.scan import ScanCreate
+from tasks import enqueue_scan
 
 log = structlog.get_logger("scan.service")
 
@@ -55,6 +57,18 @@ class ScanForbidden(ScanError):
 class ScanInProgressConflict(ScanError):
     status_code = 409
     title = "Scan Already In Progress"
+
+
+class ScanEnqueueFailed(ScanError):
+    """The Celery dispatcher rejected the scan (broker down, bad kind, etc.).
+
+    The Scan row has been written and then transitioned to ``status='failed'``
+    with ``error_message='enqueue_failed: ...'``. The router maps this to
+    503 Service Unavailable so caller automation knows it is safe to retry.
+    """
+
+    status_code = 503
+    title = "Scan Enqueue Failed"
 
 
 class ProjectMissingForScan(ScanError):
@@ -111,17 +125,20 @@ async def trigger_scan(
     second scan is triggered while one is still queued or running, Postgres
     raises IntegrityError and we translate to ScanInProgressConflict.
 
-    PR #8 hand-off: after the row is committed and we know its id, enqueue
-    the Celery task::
+    PR #8 wiring (this PR):
+      1. Persist the ``scans`` row with ``status='queued'``.
+      2. Update ``project.latest_scan_id`` so list pages reflect the most
+         recent scan even while it is still queued.
+      3. Call ``enqueue_scan(scan)`` (the Celery dispatcher in
+         ``tasks/__init__.py``) and store the returned task id back on the
+         row. If the dispatcher raises (broker down, unknown kind), we mark
+         the scan ``failed`` with ``error_message='enqueue_failed: ...'``
+         and raise :class:`ScanEnqueueFailed` (503).
 
-        from tasks.scan import run_scan_pipeline
-        result = run_scan_pipeline.delay(scan_id=str(scan.id))
-        scan.celery_task_id = result.id
-        await session.commit()
-
-    For PR #7 we leave celery_task_id=None to keep the surface free of any
-    Celery import or broker dependency. Tests can drive scans directly via
-    the service.
+    Concurrency: ``ix_scans_project_active`` (UNIQUE on project_id WHERE
+    status IN ('queued','running')) makes step 1 atomic — a second
+    concurrent caller hits :class:`ScanInProgressConflict` (409) without
+    ever reaching the Celery dispatcher.
     """
     project = await _load_project(session, project_id)
     if not _can_access_team(actor, project.team_id):
@@ -138,19 +155,27 @@ async def trigger_scan(
     project_id_value = project.id
     project_team_id = project.team_id
 
+    # Defence in depth: even though `ScanCreate._validate_metadata` already
+    # bounds size + depth, we mask any nested credential-shaped keys so the
+    # audit listener (core.audit) cannot accidentally persist a secret into
+    # the audit log diff JSONB. The mask returns a fresh deep copy.
+    safe_metadata = mask_pii(dict(payload.metadata))
+
     scan = Scan(
         project_id=project_id_value,
         kind=payload.kind,
         status="queued",
         progress_percent=0,
         current_step=None,
-        celery_task_id=None,  # PR #8 will set this after .delay(...)
+        celery_task_id=None,  # set below after enqueue_scan(...)
         requested_by_user_id=actor.id,
-        scan_metadata=dict(payload.metadata),
+        scan_metadata=safe_metadata,
     )
     session.add(scan)
+    # Flush so `scan.id` is populated; we need it to update
+    # `project.latest_scan_id` in the same transaction.
     try:
-        await session.commit()
+        await session.flush()
     except IntegrityError as exc:
         # The partial unique index on (project_id) WHERE status IN
         # ('queued','running') is the canonical signal. Postgres returns the
@@ -163,13 +188,65 @@ async def trigger_scan(
             f"a scan is already queued or running for project {project_id_value}",
         ) from exc
 
+    # I-2: keep the project.latest_scan_id pointer in sync so list pages
+    # (which load `latest_scan_id` denormalized to avoid a per-row JOIN) can
+    # show "in progress" badges immediately after queueing. The same FK is
+    # NOT touched on terminal status transitions — the latest scan is
+    # whichever was most recently triggered, regardless of outcome.
+    project.latest_scan_id = scan.id
+
+    try:
+        await session.commit()
+    except IntegrityError as exc:
+        # A second caller racing on the partial unique index might still
+        # produce IntegrityError at commit time (the flush above is the
+        # primary check, but commit-time constraint validation is also
+        # possible if the txn was held briefly). Translate identically.
+        await session.rollback()
+        raise ScanInProgressConflict(
+            f"a scan is already queued or running for project {project_id_value}",
+        ) from exc
+
     await session.refresh(scan)
+
+    # ------------------------------------------------------------------
+    # Celery dispatch. Sync call (Celery's .delay() is sync) — no `await`.
+    # ------------------------------------------------------------------
+    try:
+        celery_task_id = enqueue_scan(scan)
+    except Exception as exc:
+        # The scan row exists in 'queued' state but no worker will ever pick
+        # it up. Flip it to 'failed' with a deterministic prefix so callers
+        # can distinguish enqueue failures from pipeline failures.
+        log.error(
+            "scan_enqueue_failed",
+            scan_id=str(scan.id),
+            project_id=str(project_id_value),
+            error=str(exc),
+            exc_info=True,
+        )
+        scan.status = "failed"
+        scan.error_message = f"enqueue_failed: {exc}"
+        try:
+            await session.commit()
+        except Exception:  # noqa: BLE001
+            # Failure-to-mark-failed should not mask the original cause.
+            await session.rollback()
+        raise ScanEnqueueFailed(
+            f"failed to enqueue scan for project {project_id_value}: {exc}",
+        ) from exc
+
+    scan.celery_task_id = celery_task_id
+    await session.commit()
+    await session.refresh(scan)
+
     log.info(
         "scan_queued",
         scan_id=str(scan.id),
         project_id=str(project_id_value),
         team_id=str(project_team_id),
         kind=scan.kind,
+        celery_task_id=celery_task_id,
     )
     return scan
 
@@ -237,6 +314,7 @@ async def list_scans_for_project(
 
 __all__ = [
     "ProjectMissingForScan",
+    "ScanEnqueueFailed",
     "ScanError",
     "ScanForbidden",
     "ScanInProgressConflict",

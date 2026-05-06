@@ -17,6 +17,7 @@ the API and the DB ENUMs cannot drift.
 
 from __future__ import annotations
 
+import json
 import re
 import uuid
 from datetime import datetime
@@ -29,6 +30,8 @@ from pydantic import (
     StringConstraints,
     field_validator,
 )
+
+from core.url_guard import GitUrlValidationError, validate_git_url
 
 # ---------------------------------------------------------------------------
 # Constraints
@@ -45,10 +48,48 @@ _SLUG_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$")
 #   - git@host:path     (the SCP-like SSH form)
 #   - git+ssh://...     (occasionally produced by package metadata)
 # The objective is "filter out obvious junk while not rejecting legitimate
-# enterprise URLs". Phase 5 webhook matching will narrow this further.
+# enterprise URLs". The shape check below is paired with the SSRF guard in
+# core.url_guard.validate_git_url, which enforces scheme allow-list and
+# rejects RFC1918 / loopback / cloud-metadata hostnames.
 _GIT_URL_PATTERN = re.compile(
     r"^(?:https?://|ssh://|git\+ssh://|git://|[A-Za-z0-9_.\-]+@[A-Za-z0-9_.\-]+:).+",
 )
+
+# ---------------------------------------------------------------------------
+# Scan metadata bounds (M-2 — security-reviewer finding from PR #7)
+# ---------------------------------------------------------------------------
+#
+# `ScanCreate.metadata` is a JSONB blob. Without bounds the API would let a
+# client store an unbounded payload (or crash structlog on logging). We cap:
+#   - Serialized JSON byte size at 16 KiB (compact form).
+#   - Nested depth at 4 (matches the deepest legitimate shape we see in
+#     practice: { ort: { rules: { ignore: [...] } } }).
+#
+# Both checks run inside `ScanCreate._validate_metadata`. Failures surface
+# as 422 problem+json via the FastAPI RequestValidationError handler.
+_SCAN_METADATA_MAX_BYTES = 16 * 1024
+_SCAN_METADATA_MAX_DEPTH = 4
+
+
+def _measure_metadata_depth(value: Any, *, _level: int = 0) -> int:
+    """Return the maximum nesting depth of `value` (scalars = 0)."""
+    if _level > _SCAN_METADATA_MAX_DEPTH * 4:
+        # Defensive guard against pathological recursion before pydantic
+        # gets a chance to enforce the cap.
+        return _level
+    if isinstance(value, dict):
+        if not value:
+            return _level + 1
+        return max(
+            _measure_metadata_depth(v, _level=_level + 1) for v in value.values()
+        )
+    if isinstance(value, list):
+        if not value:
+            return _level + 1
+        return max(
+            _measure_metadata_depth(item, _level=_level + 1) for item in value
+        )
+    return _level
 
 ProjectSlug = Annotated[
     str,
@@ -111,7 +152,13 @@ class ProjectCreate(BaseModel):
                 "git_url must look like an https://, ssh://, git@host: or"
                 " git+ssh:// repository URL",
             )
-        return stripped
+        # SSRF guard (M-4): scheme allow-list + DNS-resolved IP is not in
+        # any non-routable / metadata range. Raises GitUrlValidationError
+        # (a ValueError subclass) — Pydantic surfaces it as 422.
+        try:
+            return validate_git_url(stripped)
+        except GitUrlValidationError as exc:
+            raise ValueError(str(exc)) from exc
 
     @field_validator("visibility")
     @classmethod
@@ -158,7 +205,10 @@ class ProjectUpdate(BaseModel):
                 "git_url must look like an https://, ssh://, git@host: or"
                 " git+ssh:// repository URL",
             )
-        return stripped
+        try:
+            return validate_git_url(stripped)
+        except GitUrlValidationError as exc:
+            raise ValueError(str(exc)) from exc
 
     @field_validator("visibility")
     @classmethod
@@ -221,6 +271,43 @@ class ScanCreate(BaseModel):
 
     kind: ScanKind = "source"
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("metadata")
+    @classmethod
+    def _validate_metadata(cls, value: dict[str, Any]) -> dict[str, Any]:
+        """Bound the metadata blob in two dimensions (M-2).
+
+        - Serialized JSON byte size must be <= 16 KiB. We measure with
+          ``json.dumps(..., separators=(",", ":"))`` (compact form) so the
+          number we cap on matches what gets stored on disk most closely.
+        - Nested depth must be <= 4. Walk the tree once to compute the max
+          level; cheap for any reasonable input.
+        """
+        # Depth check first — a shallow but huge dict still gets caught by
+        # the size check, but a deeply nested attacker payload should fail
+        # fast before we attempt to serialize it.
+        depth = _measure_metadata_depth(value)
+        if depth > _SCAN_METADATA_MAX_DEPTH:
+            raise ValueError(
+                f"metadata nests {depth} levels deep; the maximum allowed is"
+                f" {_SCAN_METADATA_MAX_DEPTH}",
+            )
+
+        try:
+            encoded = json.dumps(value, separators=(",", ":"), default=str)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"metadata is not JSON-serializable: {exc}",
+            ) from exc
+
+        size = len(encoded.encode("utf-8"))
+        if size > _SCAN_METADATA_MAX_BYTES:
+            raise ValueError(
+                f"metadata is {size} bytes; the maximum allowed is"
+                f" {_SCAN_METADATA_MAX_BYTES} bytes",
+            )
+
+        return value
 
 
 class ScanPublic(BaseModel):

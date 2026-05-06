@@ -214,3 +214,48 @@ jobs:
           name: frontend-coverage
           path: apps/frontend/coverage/
           if-no-files-found: ignore
+
+  # -------------------------------------------------------------------------
+  # 4) Image scan — build the Celery worker image (cdxgen / ORT / Trivy +
+  #    JRE + Node) and scan it with Trivy. Fails on HIGH or CRITICAL OS or
+  #    library vulnerabilities. Runs in parallel with lint/typecheck/test so
+  #    overall PR latency is unchanged.
+  #    CLAUDE.md core rule #9: no `:latest` tags. Tool versions pinned in
+  #    apps/backend/Dockerfile.worker.
+  # -------------------------------------------------------------------------
+  image-scan:
+    name: image-scan (worker)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Cache Trivy DB
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/trivy
+          key: trivy-db-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            trivy-db-${{ runner.os }}-
+
+      - name: Build worker image
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/backend
+          file: apps/backend/Dockerfile.worker
+          tags: trustedoss/backend-worker:dev
+          load: true
+          cache-from: type=gha,scope=worker
+          cache-to: type=gha,scope=worker,mode=max
+
+      - name: Trivy scan (HIGH/CRITICAL → fail)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: trustedoss/backend-worker:dev
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          vuln-type: os,library

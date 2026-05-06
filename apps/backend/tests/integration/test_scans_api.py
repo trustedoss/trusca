@@ -1,15 +1,17 @@
 """
-Integration tests for the Scan HTTP surface — Phase 2 PR #7.
+Integration tests for the Scan HTTP surface — Phase 2 PR #7 / PR #8.
 
 Endpoints:
-  - POST /v1/projects/{project_id}/scans   Trigger a scan (skeleton — Celery
-                                            enqueue lands in PR #8)
+  - POST /v1/projects/{project_id}/scans   Trigger a scan (PR #8: enqueues
+                                            via tasks.enqueue_scan)
   - GET  /v1/scans/{scan_id}                Read one scan (IDOR-safe)
   - GET  /v1/projects/{project_id}/scans    List scans for a project
 
-PR #7 contract: the trigger persists status='queued' + celery_task_id=None.
-We assert the wire shape (ScanPublic with the `metadata` field, not
-`scan_metadata`) and the partial-unique-index 409 contract.
+PR #7 contract: the trigger persists status='queued'.
+PR #8 contract: the trigger also enqueues a Celery task and stores the
+returned task id on `scan.celery_task_id`. We assert the wire shape
+(ScanPublic with the `metadata` field, not `scan_metadata`) and the
+partial-unique-index 409 contract.
 """
 
 from __future__ import annotations
@@ -152,7 +154,10 @@ async def test_developer_can_trigger_scan_in_own_team(client) -> None:
     assert body["project_id"] == str(project.id)
     assert body["status"] == "queued"
     assert body["progress_percent"] == 0
-    assert body["celery_task_id"] is None
+    # PR #8: trigger_scan now enqueues via tasks.enqueue_scan and stores the
+    # returned task id (UUID string from Celery).
+    assert isinstance(body["celery_task_id"], str)
+    assert len(body["celery_task_id"]) > 0
     # The schema must surface `metadata` (the API field) — not the ORM
     # attribute name `scan_metadata`. This is the smoke test for the
     # serialization_alias contract in schemas/scan.py::ScanPublic.

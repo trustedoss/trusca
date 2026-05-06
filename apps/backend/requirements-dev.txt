@@ -4,3 +4,7 @@ pytest-asyncio==0.24.0
 pytest-cov==6.0.0
 ruff==0.8.4
 mypy==1.13.0
+# Phase 2 PR #8: in-memory Redis double for CircuitBreaker unit tests.
+# fakeredis ships under BSD-3 (Apache-2.0 compatible). The [lua] extra pulls
+# in lupa so EVAL works against the breaker's _PROBE_GATE_LUA contract.
+fakeredis[lua]==2.26.1
