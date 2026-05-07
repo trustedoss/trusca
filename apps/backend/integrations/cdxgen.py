@@ -20,11 +20,24 @@ Contract:
 Phase 2 PR #8 only needs the SBOM to flow through to DT; downstream
 ScanComponent persistence reads ``components`` and ``dependencies`` arrays
 from the parsed JSON.
+
+Gradle 8 compatibility (chore PR #5 Part C):
+    cdxgen <= 11.x injects an ``init.gradle`` script that calls
+    ``allprojects { ... }`` against the root project. Gradle 8 removed
+    that path's implicit ``allprojects`` property and the build aborts
+    with ``Could not get unknown property 'allprojects' for root project``
+    — observed during the 2026-05-07 UAT (pilot-java-gradle returned 0
+    components). cdxgen honours a ``CDXGEN_GRADLE_ARGS`` environment
+    variable that lets us pass our own Gradle invocation; we set it to
+    skip the broken init script. cdxgen 11+ also accepts ``--no-recurse``
+    in some builds; we keep the env-var path because it works on every
+    cdxgen v11.x build that ships in the worker image.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess  # noqa: S404 — running a vetted local binary, not user input
 from dataclasses import dataclass
@@ -113,7 +126,13 @@ def run_cdxgen(
         "1.5",
         str(source_dir),
     ]
-    log.info("cdxgen_start", source_dir=str(source_dir), output=str(sbom_path))
+    env = _build_cdxgen_env(source_dir=source_dir, output_dir=output_dir)
+    log.info(
+        "cdxgen_start",
+        source_dir=str(source_dir),
+        output=str(sbom_path),
+        gradle_args=env.get("CDXGEN_GRADLE_ARGS"),
+    )
     try:
         completed = subprocess.run(  # noqa: S603 — args are a fixed list, no shell
             cmd,
@@ -121,6 +140,7 @@ def run_cdxgen(
             check=False,
             timeout=timeout_seconds,
             cwd=str(source_dir),
+            env=env,
         )
     except subprocess.TimeoutExpired as exc:
         raise CdxgenTimeout(
@@ -145,6 +165,85 @@ def run_cdxgen(
         sbom_size_bytes=sbom_path.stat().st_size,
     )
     return CdxgenResult(sbom_path=sbom_path, sbom=sbom)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Gradle 8 compatibility (chore PR #5 Part C)
+# ---------------------------------------------------------------------------
+
+# Gradle 8 init script that defines a no-op ``allprojects`` extension
+# *before* cdxgen's init script runs. cdxgen 11.x's bundled init.gradle
+# blindly accesses ``allprojects { ... }`` from the root project — that
+# implicit closure was removed in Gradle 8 and the build aborts. The
+# script below re-injects a benign delegate that swallows the call and
+# lets cdxgen's downstream "list resolved dependencies" logic continue
+# (cdxgen's component enumeration runs against ``configurations``,
+# which Gradle 8 still exposes as expected). A pure no-op would also
+# work but degrades cdxgen's recursion across multi-project builds; we
+# prefer to keep recursion intact.
+_GRADLE8_COMPAT_INIT = """\
+// TrustedOSS Portal — Gradle 8 / cdxgen v11.x compatibility shim.
+//
+// cdxgen's init.gradle calls ``allprojects { ... }`` at root scope.
+// Gradle 8 removed that implicit closure. We re-bind ``allprojects``
+// to ``rootProject.allprojects`` so cdxgen's component enumeration
+// keeps working without patching cdxgen itself.
+gradle.projectsLoaded {
+    if (!rootProject.ext.has("trustedossAllprojectsShim")) {
+        rootProject.ext.trustedossAllprojectsShim = true
+        rootProject.ext.allprojects = { Closure cl ->
+            rootProject.allprojects(cl)
+        }
+    }
+}
+"""
+
+
+def _is_gradle_project(source_dir: Path) -> bool:
+    """Return True if ``source_dir`` looks like a Gradle build root."""
+    for marker in ("build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts"):
+        if (source_dir / marker).exists():
+            return True
+    return False
+
+
+def _write_gradle_compat_init(output_dir: Path) -> Path:
+    """Write the Gradle 8 compat init script under ``output_dir``.
+
+    The file lives alongside other cdxgen artefacts so the workspace
+    cleanup in ``scan_source._workspace`` reaps it on scan teardown.
+    """
+    init_path = output_dir / "trustedoss-gradle8-compat.init.gradle"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    init_path.write_text(_GRADLE8_COMPAT_INIT, encoding="utf-8")
+    return init_path
+
+
+def _build_cdxgen_env(*, source_dir: Path, output_dir: Path) -> dict[str, str]:
+    """Build the env dict cdxgen runs under.
+
+    Inherits the worker process env (cdxgen needs ``PATH`` /
+    ``JAVA_HOME`` / language toolchain locations) and conditionally
+    augments ``CDXGEN_GRADLE_ARGS`` with a Gradle 8 compat init script
+    when the source dir contains a Gradle build. If the operator has
+    already set ``CDXGEN_GRADLE_ARGS`` in the worker env we honour
+    their value verbatim — they explicitly opted into a non-default
+    invocation.
+    """
+    env = dict(os.environ)
+    if not _is_gradle_project(source_dir):
+        return env
+    if env.get("CDXGEN_GRADLE_ARGS"):
+        # Operator override wins — do not stomp on it.
+        return env
+    init_script = _write_gradle_compat_init(output_dir)
+    env["CDXGEN_GRADLE_ARGS"] = f"--init-script {init_script}"
+    return env
 
 
 # ---------------------------------------------------------------------------
