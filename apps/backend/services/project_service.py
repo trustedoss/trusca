@@ -75,11 +75,10 @@ def _bind_audit_team(team_id: uuid.UUID) -> None:
     audit_context.set(ctx)
 
 
-from core.authz import can_access_team as _can_access_team  # noqa: E402
+from core.authz import assert_team_access  # noqa: E402
 
-# `_can_access_team` is re-exported under its private name so existing
-# call sites (this module + tests that reach in for it) keep working
-# without churn. New code should import `core.authz.can_access_team`.
+# All cross-team guards in this module flow through `assert_team_access`
+# (chore PR #5) so the `authz.cross_team_attempt` log shape is centralized.
 
 
 def _can_write_project(actor: CurrentUser, project: Project) -> bool:
@@ -115,10 +114,16 @@ async def create_project(
     - 403 if the actor is not a member of the target team (and not super_admin).
     - 409 if (team_id, slug) already exists — caught from the unique constraint.
     """
-    if not _can_access_team(actor, payload.team_id):
-        raise ProjectForbidden(
+    assert_team_access(
+        actor,
+        payload.team_id,
+        log=log,
+        resource="project",
+        resource_id=str(payload.team_id),
+        deny=lambda: ProjectForbidden(
             f"actor is not a member of team {payload.team_id}",
-        )
+        ),
+    )
 
     _bind_audit_team(payload.team_id)
 
@@ -259,14 +264,20 @@ async def get_project(
 ) -> Project:
     """Return the project, or raise ProjectForbidden / ProjectNotFound."""
     project = await _load_project(session, project_id)
-    if not _can_access_team(actor, project.team_id):
-        # IDOR guard: returning 404 vs 403 leaks existence — we deliberately
-        # raise 403 because team membership is itself a privileged signal in
-        # this product (collaborators know who is on which team). 404-on-
-        # forbidden would be safer if existence were secret; it is not here.
-        raise ProjectForbidden(
+    # IDOR guard: returning 404 vs 403 leaks existence — we deliberately
+    # raise 403 because team membership is itself a privileged signal in
+    # this product (collaborators know who is on which team). 404-on-
+    # forbidden would be safer if existence were secret; it is not here.
+    assert_team_access(
+        actor,
+        project.team_id,
+        log=log,
+        resource="project",
+        resource_id=str(project_id),
+        deny=lambda: ProjectForbidden(
             f"actor is not a member of team {project.team_id}",
-        )
+        ),
+    )
     return project
 
 

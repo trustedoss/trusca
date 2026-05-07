@@ -241,6 +241,90 @@ def test_run_prep_swallows_missing_tool(
 
 
 # ---------------------------------------------------------------------------
+# _scrubbed_env / _run_prep secret allowlist (security-reviewer Medium #1)
+# ---------------------------------------------------------------------------
+
+
+def test_run_prep_passes_only_allowlisted_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Worker secrets must NOT inherit into prep subprocesses.
+
+    A hostile clone could otherwise tunnel ``DT_API_KEY`` /
+    ``SECRET_KEY`` / ``DATABASE_URL`` through resolver telemetry or
+    a malicious NuGet feed. We pin that the env handed to
+    ``subprocess.run`` excludes those keys and includes only the
+    documented allowlist.
+    """
+    from tasks.scan_source import _run_prep
+
+    monkeypatch.setenv("DT_API_KEY", "super-secret-dt-key")
+    monkeypatch.setenv("SECRET_KEY", "super-secret-jwt-signing-key")
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql+asyncpg://trustedoss:hunter2@postgres:5432/trustedoss",
+    )
+    monkeypatch.setenv("SLACK_WEBHOOK_URL", "https://hooks.slack.com/services/secret")
+    monkeypatch.setenv("GOPROXY", "https://proxy.golang.org,direct")
+
+    captured: dict[str, Any] = {}
+
+    class _FakeResult:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def _capture(*args: Any, **kwargs: Any) -> Any:
+        captured["env"] = kwargs.get("env")
+        return _FakeResult()
+
+    monkeypatch.setattr("tasks.scan_source.subprocess.run", _capture)
+    _run_prep("go mod tidy", ["go", "mod", "tidy"], tmp_path, 60, uuid.uuid4())
+
+    env = captured["env"]
+    assert env is not None, "subprocess.run must receive a scrubbed env, not inherit os.environ"
+    # Secrets must not leak into the resolver subprocess.
+    assert "DT_API_KEY" not in env
+    assert "SECRET_KEY" not in env
+    assert "DATABASE_URL" not in env
+    assert "SLACK_WEBHOOK_URL" not in env
+    # Documented allowlisted vars are forwarded.
+    assert env.get("GOPROXY") == "https://proxy.golang.org,direct"
+
+
+def test_run_prep_seeds_dotnet_telemetry_optout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When the worker leaves .NET telemetry vars unset, prep seeds them.
+
+    Otherwise ``dotnet restore`` phones home on first invocation, which
+    is both noisy and a covert exfil channel for any env we ship later.
+    """
+    from tasks.scan_source import _run_prep
+
+    monkeypatch.delenv("DOTNET_CLI_TELEMETRY_OPTOUT", raising=False)
+    monkeypatch.delenv("DOTNET_NOLOGO", raising=False)
+
+    captured: dict[str, Any] = {}
+
+    class _FakeResult:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def _capture(*args: Any, **kwargs: Any) -> Any:
+        captured["env"] = kwargs.get("env")
+        return _FakeResult()
+
+    monkeypatch.setattr("tasks.scan_source.subprocess.run", _capture)
+    _run_prep("dotnet restore", ["dotnet", "restore"], tmp_path, 60, uuid.uuid4())
+
+    env = captured["env"]
+    assert env["DOTNET_CLI_TELEMETRY_OPTOUT"] == "1"
+    assert env["DOTNET_NOLOGO"] == "1"
+
+
+# ---------------------------------------------------------------------------
 # _classify_license_category + _LICENSE_CATEGORY_DEFAULTS — CLAUDE.md alignment
 # ---------------------------------------------------------------------------
 

@@ -91,7 +91,17 @@ def dt_resync_task() -> dict[str, Any]:
 
 def _upsert_vulnerability(session: Session, raw: dict[str, Any]) -> bool:
     """Insert / update one DT vulnerability row. Returns True on a write."""
-    external_id = raw.get("vulnId") or raw.get("source", {}).get("name")
+    # `vulnId` is the canonical id on DT 4.13. Some 4.12 payloads omit it
+    # and the only stable identifier is `source.name`, which on 4.13 may
+    # be a plain string instead of a dict — keep the lookup symmetric
+    # with the `source` resolution below so neither shape raises.
+    external_id = raw.get("vulnId")
+    if not (isinstance(external_id, str) and external_id):
+        src_for_id = raw.get("source")
+        if isinstance(src_for_id, dict):
+            external_id = src_for_id.get("name")
+        elif isinstance(src_for_id, str):
+            external_id = src_for_id
     if not isinstance(external_id, str) or not external_id:
         return False
 

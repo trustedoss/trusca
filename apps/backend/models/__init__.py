@@ -28,6 +28,9 @@ from .auth import (  # noqa: E402,F401  (imported for metadata side effects)
     Team,
     User,
 )
+from .license_fetch_cache import (  # noqa: E402,F401  (imported for metadata side effects)
+    LicenseFetchCache,
+)
 from .scan import (  # noqa: E402,F401  (imported for metadata side effects)
     Component,
     ComponentVersion,
@@ -48,6 +51,7 @@ __all__ = [
     "Component",
     "ComponentVersion",
     "License",
+    "LicenseFetchCache",
     "LicenseFinding",
     "Membership",
     "Obligation",

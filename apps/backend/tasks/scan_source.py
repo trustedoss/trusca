@@ -35,6 +35,7 @@ Workspace:
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import time
@@ -536,6 +537,93 @@ def _persist_artifact(scan_uuid: uuid.UUID, *, kind: str, path: Path) -> None:
 _PREP_STEP_TIMEOUT_SECONDS = 300
 
 
+# Allowlist of env vars passed to prep subprocesses. Worker secrets
+# (DT_API_KEY / SECRET_KEY / DATABASE_URL credentials / *_WEBHOOK_URL)
+# must NOT inherit into `bundle lock` / `cargo generate-lockfile` /
+# `go mod tidy` / `dotnet restore`: those resolvers can fetch from
+# attacker-controlled sources (a hostile NuGet feed via nuget.config,
+# or a Go `replace` directive) inside a cloned repo, and any inherited
+# env then becomes a covert exfil channel through telemetry / crash
+# reports / DNS lookups in their error paths. See security-reviewer
+# Medium #1 (chore PR #4).
+_PREP_ENV_ALLOWLIST = frozenset(
+    {
+        "PATH",
+        "HOME",
+        "LANG",
+        "LC_ALL",
+        "TZ",
+        # Go
+        "GOFLAGS",
+        "GOPROXY",
+        "GOSUMDB",
+        "GOMODCACHE",
+        "GOCACHE",
+        # Cargo / Rust
+        "CARGO_HOME",
+        "RUSTUP_HOME",
+        # .NET
+        "DOTNET_CLI_TELEMETRY_OPTOUT",
+        "DOTNET_NOLOGO",
+        "NUGET_PACKAGES",
+        # Java / Maven / Gradle
+        "JAVA_HOME",
+        "MAVEN_OPTS",
+        "GRADLE_USER_HOME",
+        # Ruby / bundler
+        "BUNDLE_PATH",
+        "BUNDLE_USER_HOME",
+        "GEM_HOME",
+        # On-prem evaluators behind a corporate TLS-intercepting proxy
+        # need their CA bundle hint and proxy config to reach the
+        # ecosystem registries. Dropping these silently breaks every
+        # `go mod tidy` / `dotnet restore` etc. with an x509 error and
+        # the failure is only visible in `prep_failed` log lines. The
+        # proxy variables themselves are operator-chosen — exfiltration
+        # via a hostile-clone-controlled `https_proxy=...` is impossible
+        # because the worker, not the resolver, sets the env. (Lowercase
+        # variants exist because some Go / curl-based tools only honor
+        # those.) security-reviewer L1 (chore PR #5).
+        "SSL_CERT_FILE",
+        "SSL_CERT_DIR",
+        "REQUESTS_CA_BUNDLE",
+        "NODE_EXTRA_CA_CERTS",
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "NO_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "no_proxy",
+    }
+)
+
+
+def _scrubbed_env() -> dict[str, str]:
+    """Build a minimal env dict for prep subprocesses.
+
+    Only allowlisted keys are inherited from the worker process. We
+    seed a few sensible defaults (HOME, LANG, .NET telemetry-opt-out)
+    so the resolvers don't fall back to localized behaviour or
+    unknown-host telemetry when the worker image leaves them unset.
+    """
+    base: dict[str, str] = {}
+    for key in _PREP_ENV_ALLOWLIST:
+        value = os.environ.get(key)
+        if value is not None:
+            base[key] = value
+    # `/tmp` is fine here — the resolver only needs an existing writable
+    # directory for its config caches (e.g. `~/.cargo`, `~/.dotnet`); it
+    # is NOT used to store secrets, and the workspace itself is wiped at
+    # the end of every scan. The S108 lint is meant for tempfile-creation
+    # patterns where collisions or symlink races matter, neither of which
+    # applies to a HOME hint.
+    base.setdefault("HOME", "/tmp")  # noqa: S108 — see comment above
+    base.setdefault("LANG", "C.UTF-8")
+    base.setdefault("DOTNET_CLI_TELEMETRY_OPTOUT", "1")
+    base.setdefault("DOTNET_NOLOGO", "1")
+    return base
+
+
 def _prepare_for_cdxgen(*, source_dir: Path, scan_uuid: uuid.UUID) -> None:
     """Run language-specific lockfile / dependency-resolution steps before
     handing the workspace to cdxgen.
@@ -597,6 +685,12 @@ def _run_prep(
     pipeline. There is no shell interpolation. Bandit's S603 warning
     ("subprocess call - check for execution of untrusted input") is a
     false positive for this controlled invocation.
+
+    The subprocess receives a scrubbed env (``_scrubbed_env``) — worker
+    secrets like ``DT_API_KEY`` / ``SECRET_KEY`` / ``DATABASE_URL`` /
+    ``*_WEBHOOK_URL`` are not inherited, so a hostile clone cannot use
+    a malicious NuGet feed or Go ``replace`` directive to exfiltrate
+    them through resolver telemetry.
     """
     try:
         result = subprocess.run(  # noqa: S603 — see docstring
@@ -606,6 +700,7 @@ def _run_prep(
             text=True,
             timeout=timeout,
             check=False,
+            env=_scrubbed_env(),
         )
         log.info(
             "prep_finished",
@@ -761,6 +856,7 @@ def _persist_components(
             scan_uuid=scan_uuid,
             component_version_id=component_version.id,
             cdxgen_component=raw,
+            purl=purl,
         )
 
 
@@ -884,9 +980,23 @@ def _persist_component_licenses(
     scan_uuid: uuid.UUID,
     component_version_id: uuid.UUID,
     cdxgen_component: dict[str, Any],
+    purl: str | None = None,
 ) -> None:
     """For each SPDX license on the cdxgen component, upsert a License row
-    and emit a ``declared`` LicenseFinding tying it to this scan."""
+    and emit a ``declared`` LicenseFinding tying it to this scan.
+
+    chore PR #5 Part B (`docs/sessions/_next-session-prompt-chore-pr5.md`):
+    when cdxgen produced **no** SPDX ids for the component, fall back to
+    the multi-ecosystem license fetcher. The fetcher hits the relevant
+    registry (Maven Central / PyPI / crates.io / pkg.go.dev), caches
+    the answer in ``license_fetch_cache`` (24h TTL, positive +
+    negative), and returns a single ``LicenseFetchResult``. We then
+    emit a *concluded* LicenseFinding so downstream consumers can tell
+    a registry-derived licence apart from a package-metadata-derived
+    one (cdxgen → ``declared``, fetcher → ``concluded``). When ORT's
+    real concluded analysis lands the two paths reconcile via the
+    existing ``kind`` discriminator.
+    """
     spdx_pairs = _extract_spdx_ids(cdxgen_component)
     for spdx_id, ref_url in spdx_pairs:
         license_row = _get_or_create_license(
@@ -901,6 +1011,45 @@ def _persist_component_licenses(
             raw_data={"source": "cdxgen"},
         )
         session.add(finding)
+
+    if spdx_pairs:
+        # cdxgen had something — fetcher fall-back is a cost-saver, no
+        # value added when we already have a declared license.
+        return
+    if not purl:
+        return
+
+    # Lazy import to keep `models`/scan_source import order stable —
+    # the fetcher imports back into `models` for the cache table.
+    from integrations.license_fetcher import fetch_license
+
+    try:
+        result = fetch_license(purl, session=session)
+    except Exception as exc:  # noqa: BLE001 - best-effort enrichment
+        # The fetcher already swallows network / parse errors and
+        # returns None; this catches the unlikely case where the cache
+        # write itself blows up (e.g. unique-violation race) so a bad
+        # cache row never aborts a scan.
+        log.warning(
+            "license_fetcher_unexpected_error",
+            purl=purl,
+            error=str(exc)[:300],
+        )
+        return
+    if result is None:
+        return
+    license_row = _get_or_create_license(
+        session, spdx_id=result.spdx_id, reference_url=result.reference_url
+    )
+    finding = LicenseFinding(
+        scan_id=scan_uuid,
+        component_version_id=component_version_id,
+        license_id=license_row.id,
+        kind="concluded",
+        source_path=None,
+        raw_data={"source": result.source},
+    )
+    session.add(finding)
 
 
 def _persist_findings(

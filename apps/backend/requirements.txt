@@ -15,9 +15,10 @@ celery[redis]==5.4.0
 redis==5.2.0
 structlog==24.4.0
 httpx==0.28.1
-# python-multipart 0.0.22 fixes CVE-2026-24486 (path traversal in field-name
-# parsing). 0.0.20 is the buggy version Trivy flags on the worker image.
-python-multipart==0.0.22
+# python-multipart 0.0.27 fixes CVE-2026-42561 (DoS via boundary parsing in
+# multipart/form-data). 0.0.22 still ships the regression. 0.0.20 was the
+# original CVE-2026-24486 path-traversal fix line.
+python-multipart==0.0.27
 # Auth — Phase 1 PR #5.
 # bcrypt is pinned to 4.0.1 because passlib 1.7.4 is incompatible with
 # bcrypt >= 4.1 (passlib reads bcrypt.__about__.__version__, which 4.1+ removed).

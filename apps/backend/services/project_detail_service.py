@@ -144,10 +144,10 @@ _VALID_ORDER = frozenset({"asc", "desc"})
 # ---------------------------------------------------------------------------
 
 
-from core.authz import can_access_team as _can_access_team  # noqa: E402
+from core.authz import assert_team_access  # noqa: E402
 
-# Re-exported under its private name so existing call sites keep working.
-# New code should import `core.authz.can_access_team` directly.
+# All cross-team guards in this module flow through `assert_team_access`
+# (chore PR #5) so the `authz.cross_team_attempt` log shape is centralized.
 
 
 async def _load_project(session: AsyncSession, project_id: uuid.UUID) -> Project:
@@ -230,10 +230,16 @@ async def get_project_overview(
     :class:`ProjectForbidden` (403) if the caller is not on the owning team.
     """
     project = await _load_project(session, project_id)
-    if not _can_access_team(actor, project.team_id):
-        raise ProjectForbidden(
+    assert_team_access(
+        actor,
+        project.team_id,
+        log=log,
+        resource="project_overview",
+        resource_id=str(project_id),
+        deny=lambda: ProjectForbidden(
             f"actor is not a member of team {project.team_id}",
-        )
+        ),
+    )
 
     severity_distribution = dict.fromkeys(_ALL_SEVERITY_KEYS, 0)
     license_distribution = dict.fromkeys(_ALL_LICENSE_KEYS, 0)
@@ -396,10 +402,16 @@ async def list_components_for_project(
     offset = max(int(offset), 0)
 
     project = await _load_project(session, project_id)
-    if not _can_access_team(actor, project.team_id):
-        raise ProjectForbidden(
+    assert_team_access(
+        actor,
+        project.team_id,
+        log=log,
+        resource="project_components",
+        resource_id=str(project_id),
+        deny=lambda: ProjectForbidden(
             f"actor is not a member of team {project.team_id}",
-        )
+        ),
+    )
 
     if project.latest_scan_id is None:
         return [], 0
@@ -624,10 +636,18 @@ async def get_component_detail(
     if row is None:
         raise ComponentNotFound(f"component {component_version_id} not found")
 
-    if not _can_access_team(actor, row.team_id):
-        # Hide existence: 404 rather than 403. Components are global rows;
-        # leaking that one exists across teams is undesirable.
-        raise ComponentNotFound(f"component {component_version_id} not found")
+    # Hide existence: 404 rather than 403. Components are global rows;
+    # leaking that one exists across teams is undesirable.
+    assert_team_access(
+        actor,
+        row.team_id,
+        log=log,
+        resource="component_detail",
+        resource_id=str(component_version_id),
+        deny=lambda: ComponentNotFound(
+            f"component {component_version_id} not found"
+        ),
+    )
 
     # Worst severity + worst license category for the cv inside this scan.
     sev_rank_stmt = (

@@ -209,3 +209,46 @@ CVE-2026-24051
 # Same PATH-hijacking class as CVE-2026-24051, separate fix. UNREACHED
 # under the same rationale.
 CVE-2026-39883
+
+# ---------------------------------------------------------------------------
+# Maven 3.9.x bundle (chore PR #4 worker image): JARs vendored alongside
+# the `mvn` binary so we can run `mvn dependency:tree` for the Java
+# pre-cdxgen prep step. Maven runs ONLY as
+#   mvn -B -q -DskipTests dependency:tree
+# in `apps/backend/integrations/maven_prep.py` — no plugin execution, no
+# build, no deploy. The resolver reads the local POM + downloads .jar
+# metadata from Maven Central; the bundled jars below are loaded by
+# Maven's own classpath but their vulnerable code paths are never
+# entered. Category (3) — runtime-UNREACHED.
+# ---------------------------------------------------------------------------
+
+# CVE-2026-42583 — io.netty:netty-codec 4.1.132.Final → 4.1.133.Final — HIGH
+# Netty's HTTP/2 codec mishandles RST_STREAM bursts (DoS amplification).
+# Reachable only when netty serves HTTP traffic. Maven uses netty inside
+# Wagon / aether-transport-http to fetch metadata, but only as a client
+# emitting outbound HTTPS to repo1.maven.org — not as a server, and we
+# don't process attacker-controlled HTTP/2 server frames. UNREACHED.
+CVE-2026-42583
+
+# CVE-2026-42584 — io.netty:netty-codec-http 4.1.132.Final → 4.1.133.Final — HIGH
+# Companion CVE in the same Netty release line, HTTP/1 chunked-encoding
+# parser. Same client-only invocation rationale as CVE-2026-42583. UNREACHED.
+CVE-2026-42584
+
+# CVE-2026-3505 — org.bouncycastle:bcpg-jdk18on 1.78.1 → 1.84 — HIGH
+# Bouncy Castle OpenPGP packet parser memory-amplification. Reachable
+# only when the JVM parses attacker-controlled OpenPGP messages.
+# `mvn dependency:tree` does NOT verify PGP signatures (we don't pass
+# `-Dpgpverify=true`); the bundled bcpg jar is loaded by Maven's
+# classpath but never exercised. UNREACHED.
+CVE-2026-3505
+
+# CVE-2025-67030 — org.codehaus.plexus:plexus-utils 3.5.1 → 4.0.3 / 3.6.1 — HIGH
+# XML External Entity (XXE) processing in plexus-utils' Xpp3DomBuilder.
+# Reachable only when the consumer feeds untrusted XML into Xpp3Dom*.
+# `mvn dependency:tree` parses the local pom.xml (which we already
+# control via the user's clone — same trust boundary as a malicious
+# build.gradle) and Maven's own central-index responses (TLS-served by
+# repo1.maven.org). No attacker-controlled XML reaches Xpp3Dom from a
+# resolver-only invocation. UNREACHED.
+CVE-2025-67030

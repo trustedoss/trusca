@@ -144,7 +144,11 @@
       "Bash(make *)",
       "Bash(make)",
 
-      "Skill(update-config)"
+      "Skill(update-config)", 
+
+
+      "Bash(git push *)",
+      "Bash(gh pr merge *)"
     ],
     "deny": [
       "Bash(rm *)",
@@ -153,7 +157,11 @@
       "Bash(chmod 777 *)",
       "Bash(chmod -R 777 *)",
 
-      "Bash(git push*)",
+      "Bash(git push --force*)",
+      "Bash(git push -f *)",
+      "Bash(git push --force-with-lease*)",
+      "Bash(git push --delete *)",
+      "Bash(git push *--mirror*)",
       "Bash(git reset --hard*)",
       "Bash(git reset --merge*)",
       "Bash(git clean -f*)",
@@ -172,7 +180,6 @@
       "Bash(git config --global*)",
       "Bash(git config --system*)",
 
-      "Bash(gh pr merge*)",
       "Bash(gh pr close*)",
       "Bash(gh pr reopen*)",
       "Bash(gh pr edit*)",
