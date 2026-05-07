@@ -319,4 +319,19 @@ async def get_project_notice_endpoint(
     )
 
 
+# slowapi's `@limiter.limit` wraps the endpoint with functools.wraps, which
+# preserves __annotations__ but inherits slowapi's own module as the
+# wrapper's __globals__. With `from __future__ import annotations` enabled,
+# FastAPI calls `typing.get_type_hints()` on the wrapper to resolve string
+# annotations and fails to find names like `uuid` and `AsyncSession` —
+# Pydantic raises "TypeAdapter is not fully defined" and the endpoint
+# returns 500 on every request. Mirror auth.py's fix by patching the names
+# the wrapper needs into its `__globals__` (we can't reassign __globals__
+# itself — it's read-only — but mutating the dict in place works).
+for _name in ("uuid", "AsyncSession", "Request", "Response", "Depends", "Query", "CurrentUser"):
+    if _name in globals():
+        get_project_notice_endpoint.__globals__.setdefault(_name, globals()[_name])
+del _name
+
+
 __all__ = ["router"]

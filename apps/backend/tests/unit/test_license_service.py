@@ -36,6 +36,7 @@ import structlog
 import structlog.testing
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from core.sql_safety import escape_like as _escape_like
 from services.license_service import (
     LicenseFindingNotFound,
     _normalize_category_filter,
@@ -43,7 +44,6 @@ from services.license_service import (
     get_license_finding_detail,
     list_project_licenses,
 )
-from services.vulnerability_service import _escape_like
 from tests._helpers import (
     make_membership,
     make_organization,
