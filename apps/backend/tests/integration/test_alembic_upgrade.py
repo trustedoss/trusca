@@ -61,9 +61,9 @@ def test_alembic_current_reports_head_revision():
     # `alembic current` prints the head revision. Each migration
     # advances this — chore PR #5 bumped 0003 → 0004 (license fetcher
     # cache); chore PR #7 bumped 0004 → 0005 (data wipe of
-    # phishing-prone reference URLs). Bump again when a future
-    # migration lands.
-    assert "0005" in current.stdout, current.stdout
+    # phishing-prone reference URLs); Phase 4 PR #13 bumped 0005 → 0006
+    # (password_reset_tokens). Bump again when a future migration lands.
+    assert "0006" in current.stdout, current.stdout
 
 
 @pytest.mark.integration
@@ -187,6 +187,7 @@ async def test_chore_pr7_data_migration_clears_reference_url():
 
     purl_with_url = "pkg:maven/com.test.alembic-pr7/with-url@1"
     purl_without_url = "pkg:maven/com.test.alembic-pr7/no-url@1"
+    rows = []
     try:
         # Stage two cache rows: one with a (would-be-phishing)
         # reference_url, one already cleared. Then re-run the data
@@ -214,8 +215,11 @@ async def test_chore_pr7_data_migration_clears_reference_url():
             await session.commit()
 
         # Re-apply the data migration. ``alembic stamp`` rewinds the
-        # version pointer one step so ``upgrade head`` re-runs revision
-        # 0005's UPDATE.
+        # version pointer one step so ``upgrade 0005`` re-runs revision
+        # 0005's UPDATE. We deliberately stop at 0005 (not head) because
+        # later schema migrations like 0006 (password_reset_tokens) would
+        # fail with "relation already exists" on re-run; only the 0005
+        # data migration is idempotent by design (its WHERE clause).
         stamp = subprocess.run(
             ["alembic", "stamp", "0004"],
             cwd=BACKEND_ROOT,
@@ -226,13 +230,24 @@ async def test_chore_pr7_data_migration_clears_reference_url():
         assert stamp.returncode == 0, stamp.stderr
 
         rerun = subprocess.run(
-            ["alembic", "upgrade", "head"],
+            ["alembic", "upgrade", "0005"],
             cwd=BACKEND_ROOT,
             capture_output=True,
             text=True,
             timeout=30,
         )
         assert rerun.returncode == 0, rerun.stderr
+
+        # Restore the version pointer to head so the suite leaves the DB
+        # in the expected state for downstream tests.
+        restamp = subprocess.run(
+            ["alembic", "stamp", "head"],
+            cwd=BACKEND_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        assert restamp.returncode == 0, restamp.stderr
 
         async with factory() as session:
             rows = (
@@ -250,6 +265,18 @@ async def test_chore_pr7_data_migration_clears_reference_url():
             )
             await session.commit()
     finally:
+        # Always restore the alembic version pointer to head, even if an
+        # assertion failed mid-test. Otherwise downstream test fixtures
+        # that call ``alembic upgrade head`` will trip on
+        # "relation already exists" for tables created in revisions later
+        # than 0005 (e.g. password_reset_tokens in 0006).
+        subprocess.run(
+            ["alembic", "stamp", "head"],
+            cwd=BACKEND_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
         await engine.dispose()
 
     by_purl = {row[0]: row[1] for row in rows}
