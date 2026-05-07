@@ -57,7 +57,12 @@ def test_mask_sensitive_columns_removes_password_hash():
     assert "hashed_password" not in masked or masked["hashed_password"] == "***"
     assert "password" not in masked or masked["password"] == "***"
     assert "refresh_token_hash" not in masked or masked["refresh_token_hash"] == "***"
-    assert masked["email"] == "user@example.com"
+    # PII columns (email, full_name) are sha256-hashed (security-reviewer F4 /
+    # CWE-359). The plaintext must NOT be retained; the hash dict carries the
+    # "what changed" semantics for forensics without storing PII at rest.
+    assert masked["email"] != "user@example.com"
+    assert isinstance(masked["email"], dict)
+    assert "sha256" in masked["email"]
 
 
 def test_listener_skips_audit_log_table():
