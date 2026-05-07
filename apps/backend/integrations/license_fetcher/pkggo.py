@@ -170,9 +170,14 @@ class PkgGoLicenseFetcher:
                 license_name=license_name[:120],
             )
             return None
+        # security-reviewer Medium #2 (chore PR #7) — even though the
+        # pkg.go.dev URL is constructed from worker code (not from
+        # attacker metadata), we drop ``reference_url`` here too so the
+        # contract is uniform across all four fetchers. The frontend's
+        # SPDX id → spdx.org fallback covers the rendering need.
         return LicenseFetchResult(
             spdx_id=spdx,
-            reference_url=f"{_PKG_GO_BASE}/{module_path}@{quote(version)}?tab=licenses",
+            reference_url=None,
             source=self.source,
         )
 

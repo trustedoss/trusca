@@ -119,7 +119,9 @@ def test_fetch_returns_apache_license_from_pom(no_throttle: None) -> None:
     result = fetcher.fetch("pkg:maven/com.example/foo@1.0.0")
     assert result is not None
     assert result.spdx_id == "Apache-2.0"
-    assert result.reference_url == "https://www.apache.org/licenses/LICENSE-2.0.txt"
+    # security-reviewer Medium #2 (chore PR #7) — POM ``<url>`` is
+    # attacker-controlled metadata; the fetcher drops it.
+    assert result.reference_url is None
     assert result.source == "maven_central"
     # URL shape pin: group dots → slashes, artifact + version repeated in filename.
     assert requested == [
@@ -225,3 +227,37 @@ def test_default_client_disables_redirect_following() -> None:
         assert client.follow_redirects is False
     finally:
         fetcher.close()
+
+
+# ---------------------------------------------------------------------------
+# reference_url drop — security-reviewer Medium #2 (chore PR #7)
+# ---------------------------------------------------------------------------
+
+
+POM_PHISHING_URL = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<project>
+  <licenses>
+    <license>
+      <name>The Apache Software License, Version 2.0</name>
+      <url>https://attacker.example/spoof?id=1</url>
+    </license>
+  </licenses>
+</project>
+"""
+
+
+def test_fetch_drops_phishing_reference_url_from_pom(no_throttle: None) -> None:
+    """A POM whose ``<url>`` points to a phishing host must not be
+    propagated. The fetcher emits ``reference_url=None`` regardless of
+    what the POM declared.
+    """
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=POM_PHISHING_URL)
+
+    fetcher = MavenLicenseFetcher(http=_client(handler))
+    result = fetcher.fetch("pkg:maven/com.example/foo@1.0.0")
+
+    assert result is not None
+    assert result.spdx_id == "Apache-2.0"
+    assert result.reference_url is None

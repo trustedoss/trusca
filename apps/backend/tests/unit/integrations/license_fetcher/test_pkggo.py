@@ -128,8 +128,10 @@ def test_fetch_returns_apache_from_pkggo(no_throttle: None) -> None:
     assert result is not None
     assert result.spdx_id == "Apache-2.0"
     assert result.source == "pkg_go_dev"
-    assert result.reference_url is not None
-    assert "tab=licenses" in result.reference_url
+    # security-reviewer Medium #2 (chore PR #7) — fetchers emit a
+    # uniform ``reference_url=None`` so the rendering contract is the
+    # same across Maven / PyPI / crates / pkg.go.dev.
+    assert result.reference_url is None
     assert requested[0].startswith("https://pkg.go.dev/")
 
 
