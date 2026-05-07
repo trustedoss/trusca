@@ -3,21 +3,33 @@
 # TrustedOSS Portal — Celery worker image.
 #
 # This image carries the heavy SCA toolchain (cdxgen / ORT / Trivy + JRE +
-# Node) that backend API containers do NOT need. Splitting it out keeps the
-# API image small (~200MB) while the worker (~2.5GB) is deployed and rolled
-# independently. Per CLAUDE.md core rule #3 (ORT/cdxgen/Trivy must run inside
-# Celery — never synchronously) this is the only image that ships the tools.
+# Node + per-ecosystem lockfile resolvers) that backend API containers do
+# NOT need. Splitting it out keeps the API image small (~200MB) while the
+# worker (~3.5GB after chore PR #4) is deployed and rolled independently.
+# Per CLAUDE.md core rule #3 (ORT/cdxgen/Trivy must run inside Celery —
+# never synchronously) this is the only image that ships the tools.
 #
 # Layer strategy: each tool is installed in its own RUN so buildx/GHA cache
 # can re-use unchanged layers. ORT (~600MB extracted) is intentionally last
 # among the big tools so a Trivy or cdxgen bump doesn't bust the ORT layer.
+# Multi-language lockfile resolvers (chore PR #4) sit BEFORE ORT for the
+# same reason — a bump to Gradle / Go does not bust the ORT layer.
 #
-# All four shipped tools are Apache-2.0:
-#   cdxgen   — https://github.com/CycloneDX/cdxgen           (Apache-2.0)
-#   ORT      — https://github.com/oss-review-toolkit/ort     (Apache-2.0)
-#   Trivy    — https://github.com/aquasecurity/trivy         (Apache-2.0)
-#   Temurin  — Eclipse Temurin JRE 21                        (GPL-2.0-CE — runtime
-#              only; Classpath Exception lets user code stay non-GPL).
+# All shipped tools are Apache-2.0 unless noted:
+#   cdxgen     — https://github.com/CycloneDX/cdxgen         (Apache-2.0)
+#   ORT        — https://github.com/oss-review-toolkit/ort   (Apache-2.0)
+#   Trivy      — https://github.com/aquasecurity/trivy       (Apache-2.0)
+#   Temurin    — Eclipse Temurin JRE 21                      (GPL-2.0-CE — runtime
+#                only; Classpath Exception lets user code stay non-GPL).
+#   Maven      — Apache Maven 3.9.x                          (Apache-2.0)
+#   Gradle     — Gradle 8.10.x                               (Apache-2.0)
+#   Composer   — getcomposer.org                             (MIT)
+#   Ruby/MRI   — ruby-lang.org                               (Ruby License / BSD)
+#   Bundler    — bundler.io                                  (MIT)
+#   Cargo/Rust — rust-lang.org                               (MIT/Apache-2.0)
+#   Go         — go.dev                                      (BSD-3-Clause)
+#   .NET SDK 8 — Microsoft                                   (MIT — runtime;
+#                see github.com/dotnet/runtime/blob/main/LICENSE.TXT)
 
 # ---------------------------------------------------------------------------
 # Stage 1: base — Python runtime + Python deps. Mirrors apps/backend/Dockerfile
@@ -187,6 +199,122 @@ RUN set -eux; \
     dpkg -i /tmp/trivy.deb; \
     rm -f /tmp/trivy.deb; \
     trivy --version
+
+# ---------------------------------------------------------------------------
+# Multi-language lockfile resolvers (chore PR #4 — see
+# docs/sessions/2026-05-07-uat-multi-ecosystem-matrix.md).
+#
+# cdxgen needs a populated lockfile to enumerate transitive dependencies;
+# without one it returns only direct deps (or zero, e.g. Ruby / Rust / Go).
+# These layers ship the per-ecosystem resolvers so the scan_source pipeline
+# can call `bundle lock` / `cargo generate-lockfile` / `go mod tidy` /
+# `dotnet restore` BEFORE handing the source dir to cdxgen — see
+# tasks.scan_source._prepare_for_cdxgen.
+#
+# Layer order is "smaller / debian-packaged first → manual downloads later"
+# so a bump to one of the manual installs (Gradle, Go, .NET) does not bust
+# the smaller debian layers.
+# ---------------------------------------------------------------------------
+
+# ---- Maven 3.9.x (Apache-2.0). ---------------------------------------------
+# Debian bookworm ships maven 3.8.7-1; close enough for SBOM enumeration.
+# `--no-install-recommends` avoids pulling default-jdk on top of Temurin 21.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends maven \
+    && rm -rf /var/lib/apt/lists/* \
+    && mvn --version
+
+# ---- Composer 2.x (MIT) + PHP CLI. -----------------------------------------
+# Composer needs `php` and either `php-curl` or libcurl on PATH; the
+# php-cli + composer combo on Debian bookworm gives us PHP 8.2 + composer
+# 2.5, which is plenty for `composer install` lockfile resolution.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        php-cli \
+        php-curl \
+        php-mbstring \
+        php-xml \
+        php-zip \
+        composer \
+    && rm -rf /var/lib/apt/lists/* \
+    && composer --version --no-ansi
+
+# ---- Ruby (Ruby License/BSD) + Bundler (MIT). ------------------------------
+# Debian bookworm ruby is 3.1.2 + bundler 2.4.x — enough for `bundle lock`.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ruby \
+        ruby-bundler \
+    && rm -rf /var/lib/apt/lists/* \
+    && ruby --version \
+    && bundle --version
+
+# ---- Cargo / Rust (MIT/Apache-2.0). ----------------------------------------
+# Debian bookworm cargo is 0.66 (rust 1.63) — older than upstream stable but
+# fine for `cargo generate-lockfile` (the only command we invoke). A bump to
+# rustup-managed cargo would more than double this layer; not worth it
+# unless we start running clippy / rustc inside the worker.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        cargo \
+    && rm -rf /var/lib/apt/lists/* \
+    && cargo --version
+
+# ---- Gradle 8.10.2 (Apache-2.0). -------------------------------------------
+# Debian's gradle is 4.4.x — too old for any modern Java project. Install
+# the upstream zip into /opt/gradle-${GRADLE_VERSION} and symlink the
+# launcher onto PATH. Gradle does not publish a Debian apt repo; we fetch
+# the SHA-256 published by Gradle alongside the zip and verify in-place
+# (so a CDN compromise does not silently corrupt the layer). The
+# distribution-sha256-sum file lives next to the zip on services.gradle.org.
+ENV GRADLE_VERSION=8.10.2 \
+    GRADLE_HOME=/opt/gradle
+RUN set -eux; \
+    curl -fsSL -o /tmp/gradle.zip \
+        "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip"; \
+    expected_sha="$(curl -fsSL https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip.sha256)"; \
+    echo "${expected_sha}  /tmp/gradle.zip" | sha256sum -c -; \
+    unzip -q /tmp/gradle.zip -d /opt; \
+    mv "/opt/gradle-${GRADLE_VERSION}" "${GRADLE_HOME}"; \
+    rm -f /tmp/gradle.zip; \
+    ln -s "${GRADLE_HOME}/bin/gradle" /usr/local/bin/gradle; \
+    gradle --version
+
+# ---- Go 1.22.7 (BSD-3-Clause). ---------------------------------------------
+# Debian bookworm Go is 1.19 — go.mod files since Go 1.21 declare
+# `toolchain go1.22.x` and refuse to build on older runtimes. Install the
+# upstream tarball with arch detection (linux-amd64 / linux-arm64).
+ENV GO_VERSION=1.22.7 \
+    GOROOT=/opt/go
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "$arch" in \
+        amd64) go_arch="linux-amd64" ;; \
+        arm64) go_arch="linux-arm64" ;; \
+        *) echo "Unsupported arch: $arch" >&2; exit 1 ;; \
+    esac; \
+    fname="go${GO_VERSION}.${go_arch}.tar.gz"; \
+    curl -fsSL -o /tmp/go.tgz "https://go.dev/dl/${fname}"; \
+    expected_sha="$(curl -fsSL https://go.dev/dl/${fname}.sha256)"; \
+    echo "${expected_sha}  /tmp/go.tgz" | sha256sum -c -; \
+    tar -C /opt -xzf /tmp/go.tgz; \
+    rm -f /tmp/go.tgz; \
+    ln -s "${GOROOT}/bin/go" /usr/local/bin/go; \
+    ln -s "${GOROOT}/bin/gofmt" /usr/local/bin/gofmt; \
+    go version
+
+# ---- .NET SDK 8.0 (MIT). ---------------------------------------------------
+# Microsoft publishes a Debian apt repo for the dotnet SDK. We only need the
+# CLI's `dotnet restore` command to populate `obj/project.assets.json`,
+# which cdxgen reads for transitive NuGet deps. ~700MB layer.
+RUN curl -fsSL -o /tmp/ms.deb \
+        "https://packages.microsoft.com/config/debian/12/packages-microsoft-prod.deb" \
+    && dpkg -i /tmp/ms.deb \
+    && rm -f /tmp/ms.deb \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends dotnet-sdk-8.0 \
+    && rm -rf /var/lib/apt/lists/* \
+    && dotnet --version
 
 # ---- ORT 85.0.0 (Apache-2.0). ----------------------------------------------
 # OSS Review Toolkit — license & dependency analyzer. ~600MB extracted, so
