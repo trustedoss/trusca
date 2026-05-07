@@ -419,3 +419,99 @@ async def test_search_audit_q_with_sql_keywords_is_safe(db_session: AsyncSession
         query=AuditSearchQuery(action=target_action, q="SELECT *"),
     )
     assert page.total == 1
+
+
+# ---------------------------------------------------------------------------
+# G1 — CSV formula injection (CWE-1236)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        '=cmd|"/c calc"!A1',
+        "+1+1",
+        "-2+3",
+        "@SUM(1+1)",
+        "\t=cmd",
+        "\r=cmd",
+        '=HYPERLINK("http://evil/x","click")',
+    ],
+)
+def test_csv_cell_escapes_dangerous_prefix_with_apostrophe(payload: str) -> None:
+    """Cells whose first char is ``= + - @ \\t \\r`` must be prefixed with ``'``.
+
+    Without this, an audit row whose ``action`` / ``target_id`` /
+    ``request_id`` (operator-controlled columns) starts with ``=`` is
+    executed as a formula when the export is opened in Excel / LibreOffice /
+    Sheets, giving the attacker DDE / shell-escape against the super-admin's
+    workstation. CWE-1236.
+    """
+    from services.admin_audit_service import _csv_cell
+
+    rendered = _csv_cell(payload)
+
+    assert rendered.startswith("'"), f"expected leading quote on {payload!r}"
+    # Original payload still present so the column retains forensic value.
+    assert rendered[1:] == payload
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        "normal-action",
+        "user.email@example.com",
+        "12345",
+        "",
+    ],
+)
+def test_csv_cell_leaves_safe_values_unchanged(payload: str) -> None:
+    """Values whose first char is not in the dangerous set pass through verbatim."""
+    from services.admin_audit_service import _csv_cell
+
+    assert _csv_cell(payload) == payload
+
+
+async def test_stream_audit_csv_escapes_formula_in_request_id(
+    db_session: AsyncSession,
+) -> None:
+    """End-to-end: a malicious request_id flows through the CSV stream escaped.
+
+    Exercises the full row → cell → line path so a future regression in
+    ``_format_row`` / ``_csv_line`` cannot quietly bypass the ``_csv_cell`` guard.
+    """
+    from services.admin_audit_service import stream_audit_csv
+
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+
+    target_action = f"act-{unique_suffix()}"
+    payload = '=HYPERLINK("http://evil/x","click")'
+    row = AuditLog(
+        actor_user_id=admin.id,
+        team_id=None,
+        target_table="projects",
+        target_id=None,
+        action=target_action,
+        request_id=payload,
+        diff=None,
+    )
+    db_session.add(row)
+    await db_session.commit()
+
+    chunks: list[str] = []
+    async for chunk in stream_audit_csv(
+        db_session,
+        actor=actor,
+        query=AuditSearchQuery(action=target_action),
+    ):
+        chunks.append(chunk)
+    body = "".join(chunks)
+
+    # Apostrophe-prefixed form must appear (csv.writer may quote the cell, so
+    # the leading character can be either ``'`` directly or after an opening
+    # ``"``). Either way the unprotected payload must never appear without a
+    # preceding apostrophe.
+    assert "'=HYPERLINK" in body
+    # No bare ``=HYPERLINK`` (formula start) anywhere in the rendered CSV.
+    assert "=HYPERLINK" not in body.replace("'=HYPERLINK", "")

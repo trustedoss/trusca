@@ -279,19 +279,22 @@ def _csv_line(values: tuple[Any, ...] | list[Any]) -> str:
     return buffer.getvalue()
 
 
+_DANGEROUS_CSV_PREFIX = ("=", "+", "-", "@", "\t", "\r")
+
+
 def _csv_cell(value: Any) -> str:
     """Convert a column value to a CSV-safe string.
 
     - ``None`` → empty cell.
     - ``datetime`` → ISO-8601 with timezone.
     - ``UUID`` → canonical hyphenated form.
+    - leading ``= + - @ \\t \\r`` → prepended with ``'`` per OWASP CSV-injection
+      cheat-sheet. Without this, an audit row whose ``action`` / ``target_id``
+      / ``request_id`` (any operator-controlled column) starts with ``=`` is
+      executed as a formula when the export is opened in Excel / LibreOffice /
+      Sheets, giving the attacker DDE / shell-escape against the super-admin's
+      workstation (CWE-1236).
     - everything else → ``str(value)``.
-
-    We do NOT defend against CSV-injection (``=cmd`` etc.) here because
-    the only CSV consumer is a logged-in super-admin downloading a file
-    they explicitly requested. If a future export ships to less-trusted
-    consumers we will add the leading ``'`` quote — flagged in
-    docs/sessions/_next-session-prompt-* as a follow-up.
     """
     if value is None:
         return ""
@@ -299,7 +302,10 @@ def _csv_cell(value: Any) -> str:
         return value.isoformat()
     if isinstance(value, uuid.UUID):
         return str(value)
-    return str(value)
+    rendered = str(value)
+    if rendered and rendered[0] in _DANGEROUS_CSV_PREFIX:
+        return "'" + rendered
+    return rendered
 
 
 def _format_row(row: AuditLog, actor_email: str | None) -> tuple[Any, ...]:
