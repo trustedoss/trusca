@@ -230,6 +230,89 @@ async def test_update_user_role_team_role_without_team_id_raises(
 
 
 # ---------------------------------------------------------------------------
+# F9 — team-not-found preflight + IntegrityError → 422
+# ---------------------------------------------------------------------------
+# Previously a missing ``team_id`` (UUID for a deleted / never-existed team)
+# bubbled up from the FK violation as a 500. Service now raises ``TeamNotFound``
+# (status_code=422) with extension ``team_id`` so the router emits a proper
+# RFC 7807 Problem Details. Two-layer guard: preflight ``SELECT id FROM teams``
+# + IntegrityError catch on commit (delete-during-commit race).
+
+
+async def test_update_user_role_unknown_team_id_raises_team_not_found(
+    db_session: AsyncSession,
+) -> None:
+    """
+    The preflight catches a stale UUID (the common case): admin opens the
+    drawer, the team gets deleted in another tab, the admin clicks save.
+    """
+    import uuid
+
+    from schemas.admin import AdminUserRoleUpdate
+    from services.admin_user_service import TeamNotFound, update_user_role
+
+    user = await make_user(db_session)
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+
+    bogus_team_id = uuid.uuid4()
+    with pytest.raises(TeamNotFound) as exc_info:
+        await update_user_role(
+            db_session,
+            actor=actor,
+            user_id=user.id,
+            payload=AdminUserRoleUpdate(role="team_admin", team_id=bogus_team_id),
+        )
+
+    # 422 + extension snake_case ``team_id`` (echoed verbatim into Problem
+    # Details by the router).
+    assert exc_info.value.status_code == 422
+    assert exc_info.value.title == "Team Not Found"
+    assert exc_info.value.extensions == {"team_id": str(bogus_team_id)}
+
+
+async def test_update_user_role_unknown_team_id_does_not_500_or_leak_db_message(
+    db_session: AsyncSession,
+) -> None:
+    """
+    Defence-in-depth: the user-facing detail must be the controlled
+    'team {uuid} does not exist' message — not the SQLAlchemy / Postgres
+    FK violation text (which can include schema names, constraint names,
+    etc.).
+    """
+    import uuid
+
+    from schemas.admin import AdminUserRoleUpdate
+    from services.admin_user_service import TeamNotFound, update_user_role
+
+    user = await make_user(db_session)
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+
+    bogus_team_id = uuid.uuid4()
+    with pytest.raises(TeamNotFound) as exc_info:
+        await update_user_role(
+            db_session,
+            actor=actor,
+            user_id=user.id,
+            payload=AdminUserRoleUpdate(role="developer", team_id=bogus_team_id),
+        )
+
+    msg = str(exc_info.value)
+    assert "does not exist" in msg
+    # Drivers' raw FK violation messages typically contain "violates" or
+    # "fk_". Neither should appear in our user-facing detail.
+    assert "violates" not in msg.lower()
+    assert "fk_" not in msg.lower()
+    assert "constraint" not in msg.lower()
+
+
+# Pure-unit pin tests for the F9 helpers (no DB) live in
+# ``tests/unit/services/test_admin_user_team_not_found.py`` so they can run
+# without the integration mark / migration fixture.
+
+
+# ---------------------------------------------------------------------------
 # update_user_role — safety
 # ---------------------------------------------------------------------------
 

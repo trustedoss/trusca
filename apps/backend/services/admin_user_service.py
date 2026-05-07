@@ -33,6 +33,7 @@ from datetime import UTC, datetime, timedelta
 
 import structlog
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -84,6 +85,40 @@ class InvalidRoleAssignment(AdminUserError):
     title = "Invalid Role Assignment"
 
 
+class TeamNotFound(AdminUserError):
+    """
+    422 instead of 500 when a role-update references a non-existent team.
+
+    Security-reviewer F9: previously a missing ``team_id`` (e.g. the team was
+    deleted between the admin opening the drawer and clicking save) would
+    raise an SQLAlchemy ``IntegrityError`` from the FK constraint and bubble
+    up as a 500. The 500 leaks "an unhandled error occurred" to the caller
+    AND skips the RFC 7807 envelope. We now translate the case at the
+    service boundary to a 422 + Problem Details with extension
+    ``{"team_id": "<uuid>"}`` so the UI can highlight the offending field.
+
+    Two-layer guard:
+      1. Preflight ``SELECT id FROM teams WHERE id = :team_id`` — fast path
+         that catches the common "stale UUID" case BEFORE the membership
+         insert.
+      2. ``IntegrityError`` catch around the commit — closes the race
+         where the team is deleted concurrently AFTER our preflight but
+         BEFORE our commit. Both layers surface the same Problem Details.
+    """
+
+    status_code = 422
+    title = "Team Not Found"
+
+    def __init__(self, message: str, *, team_id: uuid.UUID | None = None) -> None:
+        super().__init__(message)
+        # Per-instance extension dict so the admin router can echo
+        # ``team_id`` as a top-level snake_case Problem-Details field
+        # without leaking other admin errors' extensions across instances.
+        # The class-level ``extensions = {}`` default still applies to
+        # other AdminUserError subclasses untouched.
+        self.extensions = {"team_id": str(team_id)} if team_id is not None else {}
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -91,6 +126,31 @@ class InvalidRoleAssignment(AdminUserError):
 
 def _now() -> datetime:
     return datetime.now(tz=UTC)
+
+
+def _is_team_fk_violation(exc: IntegrityError) -> bool:
+    """
+    Identify the FK-violation flavour of ``IntegrityError`` we want to
+    translate to ``TeamNotFound``.
+
+    Postgres' SQLSTATE for foreign-key violation is ``23503``. The orig
+    DBAPI exception lives at ``exc.orig`` and the SQLSTATE is exposed
+    via ``pgcode`` on asyncpg / psycopg. We also string-match the FK name
+    fragment ``team_id`` as a defensive backup — different drivers may
+    set ``pgcode`` differently and we'd rather over-translate to a 422
+    than leak a 500. False positives here just mean we surface a
+    user-facing 422 for a slightly different schema bug; that beats the
+    500 alternative for the user.
+    """
+    orig = getattr(exc, "orig", None)
+    pgcode = getattr(orig, "pgcode", None) or getattr(orig, "sqlstate", None)
+    if pgcode == "23503":
+        # Confirm it's the team_id FK and not some other FK on the
+        # membership row (user_id is the only other one).
+        message = str(orig).lower()
+        if "team_id" in message or "teams" in message:
+            return True
+    return False
 
 
 async def _lock_and_count_active_super_admins(session: AsyncSession) -> int:
@@ -322,6 +382,20 @@ async def update_user_role(
         if target_team_id is None:
             raise InvalidRoleAssignment("team_id is required when role is team_admin or developer")
 
+        # F9 — preflight: the team must exist BEFORE we let the membership
+        # insert race a deleted-team CASCADE. The IntegrityError catch on
+        # commit is the second-line defence for the rare delete-during-
+        # commit window, but the preflight catches the common "stale UUID"
+        # case at a clean boundary with no rollback noise.
+        team_exists = (
+            await session.execute(select(Team.id).where(Team.id == target_team_id))
+        ).scalar_one_or_none()
+        if team_exists is None:
+            raise TeamNotFound(
+                f"team {target_team_id} does not exist",
+                team_id=target_team_id,
+            )
+
         # If we are demoting *from* super_admin, make sure we are not
         # removing the last lockout-prevention seat. Take a row-level lock
         # on the entire active-super-admin set BEFORE the count check so
@@ -355,7 +429,23 @@ async def update_user_role(
 
         user.updated_at = _now()
 
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError as exc:
+        # F9 — race window: the team was deleted between our preflight
+        # SELECT and the membership INSERT. The FK CASCADE on team delete
+        # would normally take both rows together, but the membership row
+        # we're inserting was not present at that point. Translate the FK
+        # violation to a 422 with the same Problem Details shape as the
+        # preflight. Other IntegrityErrors (uniqueness on the membership
+        # PK, etc.) re-raise — those are real bugs, not user errors.
+        await session.rollback()
+        if target_team_id is not None and _is_team_fk_violation(exc):
+            raise TeamNotFound(
+                f"team {target_team_id} does not exist",
+                team_id=target_team_id,
+            ) from exc
+        raise
     # Expire so the refetch in get_user_detail picks up the new membership
     # row instead of serving the User from the identity map (which may have
     # been loaded without a memberships join).
@@ -544,6 +634,7 @@ __all__ = [
     "CannotModifySelf",
     "InvalidRoleAssignment",
     "LastSuperAdminProtected",
+    "TeamNotFound",
     "activate_user",
     "deactivate_user",
     "get_user_detail",
