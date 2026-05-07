@@ -118,6 +118,11 @@ app.add_middleware(
     # H-3: pin methods + headers to the actual surface we use instead of "*".
     allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["authorization", "content-type", "x-request-id"],
+    # PR #14: surface Content-Disposition so the SPA can read the
+    # operator-friendly filename of CSV streaming downloads (admin audit
+    # export). Without this, axios cannot read the header and the browser
+    # falls back to a synthetic filename.
+    expose_headers=["content-disposition"],
 )
 
 # Added LAST so it becomes the outermost middleware — wraps CORS preflight
