@@ -35,7 +35,6 @@ Workspace:
 
 from __future__ import annotations
 
-import os
 import shutil
 import subprocess
 import time
@@ -57,6 +56,7 @@ from core.url_guard import GitUrlValidationError, validate_git_url_with_ip
 from integrations import cdxgen as cdxgen_adapter
 from integrations import ort as ort_adapter
 from integrations._size_guard import enforce_jsonb_row_size_limit
+from integrations._subprocess_env import scrubbed_env_for_prep
 from integrations.dt import DTBreakerOpen, DTError
 from integrations.dt.breaker import CircuitBreaker, get_breaker
 from integrations.dt.client import DTClient, build_client
@@ -537,91 +537,11 @@ def _persist_artifact(scan_uuid: uuid.UUID, *, kind: str, path: Path) -> None:
 _PREP_STEP_TIMEOUT_SECONDS = 300
 
 
-# Allowlist of env vars passed to prep subprocesses. Worker secrets
-# (DT_API_KEY / SECRET_KEY / DATABASE_URL credentials / *_WEBHOOK_URL)
-# must NOT inherit into `bundle lock` / `cargo generate-lockfile` /
-# `go mod tidy` / `dotnet restore`: those resolvers can fetch from
-# attacker-controlled sources (a hostile NuGet feed via nuget.config,
-# or a Go `replace` directive) inside a cloned repo, and any inherited
-# env then becomes a covert exfil channel through telemetry / crash
-# reports / DNS lookups in their error paths. See security-reviewer
-# Medium #1 (chore PR #4).
-_PREP_ENV_ALLOWLIST = frozenset(
-    {
-        "PATH",
-        "HOME",
-        "LANG",
-        "LC_ALL",
-        "TZ",
-        # Go
-        "GOFLAGS",
-        "GOPROXY",
-        "GOSUMDB",
-        "GOMODCACHE",
-        "GOCACHE",
-        # Cargo / Rust
-        "CARGO_HOME",
-        "RUSTUP_HOME",
-        # .NET
-        "DOTNET_CLI_TELEMETRY_OPTOUT",
-        "DOTNET_NOLOGO",
-        "NUGET_PACKAGES",
-        # Java / Maven / Gradle
-        "JAVA_HOME",
-        "MAVEN_OPTS",
-        "GRADLE_USER_HOME",
-        # Ruby / bundler
-        "BUNDLE_PATH",
-        "BUNDLE_USER_HOME",
-        "GEM_HOME",
-        # On-prem evaluators behind a corporate TLS-intercepting proxy
-        # need their CA bundle hint and proxy config to reach the
-        # ecosystem registries. Dropping these silently breaks every
-        # `go mod tidy` / `dotnet restore` etc. with an x509 error and
-        # the failure is only visible in `prep_failed` log lines. The
-        # proxy variables themselves are operator-chosen — exfiltration
-        # via a hostile-clone-controlled `https_proxy=...` is impossible
-        # because the worker, not the resolver, sets the env. (Lowercase
-        # variants exist because some Go / curl-based tools only honor
-        # those.) security-reviewer L1 (chore PR #5).
-        "SSL_CERT_FILE",
-        "SSL_CERT_DIR",
-        "REQUESTS_CA_BUNDLE",
-        "NODE_EXTRA_CA_CERTS",
-        "HTTP_PROXY",
-        "HTTPS_PROXY",
-        "NO_PROXY",
-        "http_proxy",
-        "https_proxy",
-        "no_proxy",
-    }
-)
-
-
-def _scrubbed_env() -> dict[str, str]:
-    """Build a minimal env dict for prep subprocesses.
-
-    Only allowlisted keys are inherited from the worker process. We
-    seed a few sensible defaults (HOME, LANG, .NET telemetry-opt-out)
-    so the resolvers don't fall back to localized behaviour or
-    unknown-host telemetry when the worker image leaves them unset.
-    """
-    base: dict[str, str] = {}
-    for key in _PREP_ENV_ALLOWLIST:
-        value = os.environ.get(key)
-        if value is not None:
-            base[key] = value
-    # `/tmp` is fine here — the resolver only needs an existing writable
-    # directory for its config caches (e.g. `~/.cargo`, `~/.dotnet`); it
-    # is NOT used to store secrets, and the workspace itself is wiped at
-    # the end of every scan. The S108 lint is meant for tempfile-creation
-    # patterns where collisions or symlink races matter, neither of which
-    # applies to a HOME hint.
-    base.setdefault("HOME", "/tmp")  # noqa: S108 — see comment above
-    base.setdefault("LANG", "C.UTF-8")
-    base.setdefault("DOTNET_CLI_TELEMETRY_OPTOUT", "1")
-    base.setdefault("DOTNET_NOLOGO", "1")
-    return base
+# subprocess env scrubbing was promoted to ``integrations._subprocess_env``
+# in chore PR #6 so the same helper covers prep / cdxgen / ORT. The
+# alias below preserves the legacy module path used by tests and the
+# ``_run_prep`` call site below.
+_scrubbed_env = scrubbed_env_for_prep
 
 
 def _prepare_for_cdxgen(*, source_dir: Path, scan_uuid: uuid.UUID) -> None:
