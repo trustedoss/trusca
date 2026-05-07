@@ -125,6 +125,31 @@ services:
       retries: 5
       start_period: 60s
 
+  # Celery Beat — picks up the periodic schedule registered in
+  # tasks.celery_app (`dt-health-heartbeat`, `dt-resync-hourly`,
+  # `dt-orphan-cleaner-six-hourly`). Without this sidecar the worker
+  # only runs ad-hoc tasks; the dt_resync hourly cadence (and the
+  # dt_health 60s heartbeat) were registered in PR #8 but had no
+  # process actually firing them.
+  #
+  # Re-uses the worker image so we only build / cache one heavy image.
+  celery-beat:
+    <<: *worker-build
+    image: trustedoss/backend-worker:dev
+    restart: unless-stopped
+    command: celery -A tasks.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule
+    environment:
+      <<: *backend-env
+    volumes:
+      - ./apps/backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      celery-worker:
+        condition: service_healthy
+
   frontend:
     build:
       context: ./apps/frontend
