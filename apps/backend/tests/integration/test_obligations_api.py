@@ -233,7 +233,10 @@ async def test_list_returns_seeded_obligations(client) -> None:
     _, team, user = await _seed_team_with_user(client)
     project_id, scan_id, _ = await _seed_scanned_project(client, team_id=team.id)
     _, ob_id = await _seed_obligation(
-        client, scan_id=scan_id, spdx_id="API-MIT", kind="attribution"
+        client,
+        scan_id=scan_id,
+        spdx_id=f"OBL-API-MIT-{uuid.uuid4().hex[:8]}",
+        kind="attribution",
     )
     headers = _bearer_for(user)
 
@@ -375,10 +378,11 @@ async def test_notice_text_inline_returns_plain_body_with_inspection_headers(
 ) -> None:
     _, team, user = await _seed_team_with_user(client)
     project_id, scan_id, _ = await _seed_scanned_project(client, team_id=team.id)
+    spdx = f"OBL-NOTICE-MIT-{uuid.uuid4().hex[:8]}"
     await _seed_obligation(
         client,
         scan_id=scan_id,
-        spdx_id="NOTICE-MIT",
+        spdx_id=spdx,
         kind="attribution",
         text="please preserve attribution",
     )
@@ -397,7 +401,7 @@ async def test_notice_text_inline_returns_plain_body_with_inspection_headers(
     assert response.headers["x-notice-obligation-count"] == "1"
     assert response.headers["x-notice-generated-at"]  # ISO8601 string
     body = response.text
-    assert "NOTICE-MIT" in body
+    assert spdx in body
     # Body length is non-trivial (header + divider + license + obligation).
     assert len(body) > 100
 
@@ -405,7 +409,8 @@ async def test_notice_text_inline_returns_plain_body_with_inspection_headers(
 async def test_notice_markdown_format_uses_text_markdown_media_type(client) -> None:
     _, team, user = await _seed_team_with_user(client)
     project_id, scan_id, _ = await _seed_scanned_project(client, team_id=team.id)
-    await _seed_obligation(client, scan_id=scan_id, spdx_id="MD-MIT", kind="attribution")
+    spdx = f"OBL-MD-MIT-{uuid.uuid4().hex[:8]}"
+    await _seed_obligation(client, scan_id=scan_id, spdx_id=spdx, kind="attribution")
     headers = _bearer_for(user)
 
     response = await client.get(
@@ -418,7 +423,7 @@ async def test_notice_markdown_format_uses_text_markdown_media_type(client) -> N
     body = response.text
     # Markdown variant — H1 header + H2 license heading.
     assert body.startswith("# Third-party Licenses for ")
-    assert "## MD-MIT" in body
+    assert f"## {spdx}" in body
 
 
 async def test_notice_download_attaches_filename_with_safe_token(client) -> None:
@@ -429,7 +434,12 @@ async def test_notice_download_attaches_filename_with_safe_token(client) -> None
     project_id, scan_id, project_name = await _seed_scanned_project(
         client, team_id=team.id, project_name="Hello / World!  alpha"
     )
-    await _seed_obligation(client, scan_id=scan_id, spdx_id="DL-MIT", kind="attribution")
+    await _seed_obligation(
+        client,
+        scan_id=scan_id,
+        spdx_id=f"OBL-DL-MIT-{uuid.uuid4().hex[:8]}",
+        kind="attribution",
+    )
     headers = _bearer_for(user)
 
     response = await client.get(
