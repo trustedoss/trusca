@@ -255,6 +255,39 @@ def _parse_args() -> argparse.Namespace:
             "low:20,info:5,unknown:2'."
         ),
     )
+    # ── Phase 4 PR #13 — admin e2e fixtures ────────────────────────────────
+    parser.add_argument(
+        "--super-admin",
+        action="store_true",
+        default=False,
+        help=(
+            "Phase 4 PR #13. Mark the seeded primary user as a super-admin "
+            "(``User.is_superuser=True``). Required for the admin-panel e2e "
+            "scenarios that exercise ``/admin/users`` and ``/admin/teams``."
+        ),
+    )
+    parser.add_argument(
+        "--extra-members",
+        type=int,
+        default=0,
+        help=(
+            "Phase 4 PR #13. Seed N additional users with ``developer`` role "
+            "in the same team as the primary user. Their emails follow "
+            "``e2e-extra-{i}-<suffix>@example.com`` and they share the "
+            "primary user's password. Output JSON gets an ``extra_members`` "
+            "list with per-user ``user_id``/``email``/``role`` triples."
+        ),
+    )
+    parser.add_argument(
+        "--extra-team-admin",
+        action="store_true",
+        default=False,
+        help=(
+            "Phase 4 PR #13. When combined with --extra-members, the *first* "
+            "extra user is given the ``team_admin`` role instead of "
+            "``developer``. Used by the role-management scenarios."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -320,6 +353,9 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
     vulnerability_count: int = 0,
     vulnerability_severity_mix: str | None = None,
     with_obligations: bool = False,
+    super_admin: bool = False,
+    extra_members: int = 0,
+    extra_team_admin: bool = False,
 ) -> dict[str, object]:
     """Create the org/team/user/membership/projects[/scans/components]."""
     from sqlalchemy.ext.asyncio import (
@@ -382,18 +418,59 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                 hashed_password=hash_password(chosen_password),
                 full_name="E2E Seed User",
                 is_active=True,
-                is_superuser=False,
+                is_superuser=super_admin,
                 is_verified=True,
             )
             session.add(user)
             await session.commit()
             await session.refresh(user)
 
+            # Primary user always gets a developer membership in the team so
+            # team-scoped flows (project list, scans) keep working. The
+            # ``is_superuser`` flag is the source of truth for the admin
+            # existence-hide guard, independent of this membership row.
             membership = Membership(
                 user_id=user.id, team_id=team.id, role="developer"
             )
             session.add(membership)
             await session.commit()
+
+            # Phase 4 PR #13 — extra members for admin e2e scenarios.
+            extra_members_summary: list[dict[str, str]] = []
+            if extra_members > 0:
+                hashed = hash_password(chosen_password)
+                for i in range(extra_members):
+                    role = (
+                        "team_admin"
+                        if extra_team_admin and i == 0
+                        else "developer"
+                    )
+                    extra_email = f"e2e-extra-{i}-{suffix}@example.com"
+                    extra_user = User(
+                        email=extra_email,
+                        hashed_password=hashed,
+                        full_name=f"E2E Extra User {i}",
+                        is_active=True,
+                        is_superuser=False,
+                        is_verified=True,
+                    )
+                    session.add(extra_user)
+                    await session.flush()  # need extra_user.id
+
+                    extra_membership = Membership(
+                        user_id=extra_user.id,
+                        team_id=team.id,
+                        role=role,
+                    )
+                    session.add(extra_membership)
+                    extra_members_summary.append(
+                        {
+                            "user_id": str(extra_user.id),
+                            "email": extra_user.email,
+                            "role": role,
+                        }
+                    )
+                await session.commit()
 
             project_ids: list[str] = []
             scan_ids: list[str] = []
@@ -632,6 +709,7 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                 "email": user.email,
                 "password": chosen_password,
                 "user_id": str(user.id),
+                "is_super_admin": bool(super_admin),
                 "team_id": str(team.id),
                 "project_names": project_names,
                 "project_ids": project_ids,
@@ -639,6 +717,7 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                 "component_count": seeded_components,
                 "vulnerability_count": seeded_vulnerabilities,
                 "obligation_count": seeded_obligations_count,
+                "extra_members": extra_members_summary,
             }
     finally:
         await engine.dispose()
@@ -656,6 +735,9 @@ def main() -> int:
     if args.vulnerability_count < 0:
         print("--vulnerability-count must be non-negative", file=sys.stderr)
         return 2
+    if args.extra_members < 0:
+        print("--extra-members must be non-negative", file=sys.stderr)
+        return 2
 
     try:
         summary = asyncio.run(
@@ -669,6 +751,9 @@ def main() -> int:
                 vulnerability_count=args.vulnerability_count,
                 vulnerability_severity_mix=args.vulnerability_severity_mix,
                 with_obligations=args.with_obligations,
+                super_admin=args.super_admin,
+                extra_members=args.extra_members,
+                extra_team_admin=args.extra_team_admin,
             )
         )
     except Exception as exc:  # noqa: BLE001 — top-level CLI handler

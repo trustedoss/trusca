@@ -29,6 +29,13 @@ export interface SeedSummary {
   email: string;
   password: string;
   user_id: string;
+  /**
+   * Phase 4 PR #13. Mirrors the ``--super-admin`` flag — when true the
+   * primary user has ``User.is_superuser=True`` and the SPA's existence-hide
+   * guard renders the admin layout. Always present in v2 seed output (older
+   * scripts emit ``undefined`` and the admin specs treat that as ``false``).
+   */
+  is_super_admin?: boolean;
   team_id: string;
   project_names: string[];
   project_ids: string[];
@@ -40,6 +47,17 @@ export interface SeedSummary {
   vulnerability_count?: number;
   /** Number of obligation rows attached to the seeded licenses (PR #13). */
   obligation_count?: number;
+  /**
+   * Phase 4 PR #13. Per-user metadata for users seeded via
+   * ``--extra-members``. The list is ordered (index 0 = first extra user).
+   * When ``--extra-team-admin`` is set, the first extra is ``team_admin``;
+   * the rest are ``developer``.
+   */
+  extra_members?: Array<{
+    user_id: string;
+    email: string;
+    role: "team_admin" | "developer";
+  }>;
 }
 
 export interface SeedOptions {
@@ -86,6 +104,24 @@ export interface SeedOptions {
    * is 0 because no seed-licenses exist.
    */
   withObligations?: boolean;
+  /**
+   * Phase 4 PR #13. Mark the seeded primary user as a super-admin
+   * (``User.is_superuser=True``). Required for the admin-panel e2e
+   * scenarios — without it the existence-hide guard renders 404.
+   */
+  superAdmin?: boolean;
+  /**
+   * Phase 4 PR #13. Seed N additional users in the same team as the
+   * primary user. Their emails follow ``e2e-extra-{i}-<suffix>@example.com``
+   * and they share the primary user's password. Output JSON gets an
+   * ``extra_members`` list with per-user ``user_id``/``email``/``role``.
+   */
+  extraMembers?: number;
+  /**
+   * Phase 4 PR #13. When set in addition to ``extraMembers``, the *first*
+   * extra user is given ``team_admin`` role instead of ``developer``.
+   */
+  extraTeamAdmin?: boolean;
 }
 
 /**
@@ -135,6 +171,15 @@ export function seedE2eUser(opts: SeedOptions): SeedSummary {
   }
   if (opts.withObligations) {
     args.push("--with-obligations");
+  }
+  if (opts.superAdmin) {
+    args.push("--super-admin");
+  }
+  if ((opts.extraMembers ?? 0) > 0) {
+    args.push("--extra-members", String(opts.extraMembers));
+  }
+  if (opts.extraTeamAdmin) {
+    args.push("--extra-team-admin");
   }
 
   // Default DATABASE_URL points at the host-mapped Postgres exposed by
