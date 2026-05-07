@@ -19,6 +19,7 @@ extension fields.
 from __future__ import annotations
 
 import uuid
+from typing import Literal
 
 import structlog
 from fastapi import APIRouter, Depends, Query, Request, Response, status
@@ -77,7 +78,12 @@ async def list_users_endpoint(
     request: Request,  # noqa: ARG001
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
-    role: str | None = Query(default=None),
+    # Strict enum validation (security-reviewer F3 — fail-closed): a free-form
+    # ``str`` query was previously accepted, with the service silently
+    # ignoring values it didn't recognize ("admin", "SUPER_ADMIN", trailing
+    # whitespace, ...). FastAPI now rejects anything outside the canonical
+    # 3-role set with a 422 BEFORE the service runs.
+    role: Literal["super_admin", "team_admin", "developer"] | None = Query(default=None),
     active: bool | None = Query(default=None),
     search: str | None = Query(default=None, max_length=255),
     session: AsyncSession = Depends(get_db),
