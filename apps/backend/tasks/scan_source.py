@@ -836,6 +836,7 @@ def _persist_components(
             scan_uuid=scan_uuid,
             component_version_id=component_version.id,
             cdxgen_component=raw,
+            purl=purl,
         )
 
 
@@ -959,9 +960,23 @@ def _persist_component_licenses(
     scan_uuid: uuid.UUID,
     component_version_id: uuid.UUID,
     cdxgen_component: dict[str, Any],
+    purl: str | None = None,
 ) -> None:
     """For each SPDX license on the cdxgen component, upsert a License row
-    and emit a ``declared`` LicenseFinding tying it to this scan."""
+    and emit a ``declared`` LicenseFinding tying it to this scan.
+
+    chore PR #5 Part B (`docs/sessions/_next-session-prompt-chore-pr5.md`):
+    when cdxgen produced **no** SPDX ids for the component, fall back to
+    the multi-ecosystem license fetcher. The fetcher hits the relevant
+    registry (Maven Central / PyPI / crates.io / pkg.go.dev), caches
+    the answer in ``license_fetch_cache`` (24h TTL, positive +
+    negative), and returns a single ``LicenseFetchResult``. We then
+    emit a *concluded* LicenseFinding so downstream consumers can tell
+    a registry-derived licence apart from a package-metadata-derived
+    one (cdxgen → ``declared``, fetcher → ``concluded``). When ORT's
+    real concluded analysis lands the two paths reconcile via the
+    existing ``kind`` discriminator.
+    """
     spdx_pairs = _extract_spdx_ids(cdxgen_component)
     for spdx_id, ref_url in spdx_pairs:
         license_row = _get_or_create_license(
@@ -976,6 +991,45 @@ def _persist_component_licenses(
             raw_data={"source": "cdxgen"},
         )
         session.add(finding)
+
+    if spdx_pairs:
+        # cdxgen had something — fetcher fall-back is a cost-saver, no
+        # value added when we already have a declared license.
+        return
+    if not purl:
+        return
+
+    # Lazy import to keep `models`/scan_source import order stable —
+    # the fetcher imports back into `models` for the cache table.
+    from integrations.license_fetcher import fetch_license
+
+    try:
+        result = fetch_license(purl, session=session)
+    except Exception as exc:  # noqa: BLE001 - best-effort enrichment
+        # The fetcher already swallows network / parse errors and
+        # returns None; this catches the unlikely case where the cache
+        # write itself blows up (e.g. unique-violation race) so a bad
+        # cache row never aborts a scan.
+        log.warning(
+            "license_fetcher_unexpected_error",
+            purl=purl,
+            error=str(exc)[:300],
+        )
+        return
+    if result is None:
+        return
+    license_row = _get_or_create_license(
+        session, spdx_id=result.spdx_id, reference_url=result.reference_url
+    )
+    finding = LicenseFinding(
+        scan_id=scan_uuid,
+        component_version_id=component_version_id,
+        license_id=license_row.id,
+        kind="concluded",
+        source_path=None,
+        raw_data={"source": result.source},
+    )
+    session.add(finding)
 
 
 def _persist_findings(

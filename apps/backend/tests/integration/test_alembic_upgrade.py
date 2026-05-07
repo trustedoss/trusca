@@ -58,9 +58,11 @@ def test_alembic_current_reports_head_revision():
         timeout=30,
     )
     assert current.returncode == 0, current.stderr
-    # `alembic current` prints the head revision; PR #7 advanced head to 0003
-    # (scan schema). Bump this assertion when a future migration lands.
-    assert "0003" in current.stdout, current.stdout
+    # `alembic current` prints the head revision. Each schema-changing
+    # migration advances this — chore PR #5 (license fetcher cache)
+    # bumped head from 0003 → 0004. Bump again when a future
+    # migration lands.
+    assert "0004" in current.stdout, current.stdout
 
 
 @pytest.mark.integration
