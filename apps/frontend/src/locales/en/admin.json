@@ -1,0 +1,153 @@
+{
+  "nav": {
+    "admin": {
+      "entry": "Admin",
+      "users": "Users",
+      "teams": "Teams"
+    }
+  },
+  "admin": {
+    "layout": {
+      "title": "Administration",
+      "signed_in_as": "Signed in as {{email}}"
+    },
+    "users": {
+      "title": "Users",
+      "subtitle": "Manage roles, activation status, and password resets across the organization.",
+      "column": {
+        "email": "Email",
+        "full_name": "Name",
+        "role": "Role",
+        "active": "Status",
+        "last_login_at": "Last sign-in",
+        "team_count": "Teams",
+        "actions": "Actions"
+      },
+      "filter": {
+        "role_all": "All roles",
+        "active_all": "All statuses",
+        "active_only": "Active only",
+        "inactive_only": "Inactive only",
+        "search_placeholder": "Search by email or name"
+      },
+      "role": {
+        "super_admin": "Super Admin",
+        "team_admin": "Team Admin",
+        "developer": "Developer"
+      },
+      "status": {
+        "active": "Active",
+        "inactive": "Inactive"
+      },
+      "action": {
+        "change_role": "Change role",
+        "deactivate": "Deactivate",
+        "activate": "Activate",
+        "reset_password": "Reset password"
+      },
+      "confirm": {
+        "deactivate": "Deactivate this user? Active sessions will be revoked.",
+        "activate": "Re-activate this user?",
+        "reset_password": "Issue a password-reset link for this user?"
+      },
+      "form": {
+        "role_label": "Role",
+        "team_label": "Team",
+        "team_id_placeholder": "Team UUID (required for team_admin / developer)",
+        "save": "Save role"
+      },
+      "drawer": {
+        "memberships": "Team memberships",
+        "no_memberships": "This user has no team memberships.",
+        "scan_count": "Scans triggered",
+        "created_at": "Created",
+        "last_login_at": "Last sign-in",
+        "never": "Never"
+      },
+      "toast": {
+        "role_updated": "Role updated.",
+        "deactivated": "User deactivated.",
+        "activated": "User reactivated.",
+        "password_reset_sent": "Password-reset link issued."
+      },
+      "pagination": {
+        "page_size_label": "Rows per page",
+        "page_label": "Page {{page}} of {{total}}",
+        "previous": "Previous",
+        "next": "Next"
+      },
+      "empty": "No users match the current filters."
+    },
+    "teams": {
+      "title": "Teams",
+      "subtitle": "Create and manage teams, members, and project visibility.",
+      "column": {
+        "name": "Name",
+        "slug": "Slug",
+        "description": "Description",
+        "member_count": "Members",
+        "project_count": "Projects"
+      },
+      "filter": {
+        "search_placeholder": "Search by team name"
+      },
+      "action": {
+        "create": "New team",
+        "edit": "Edit",
+        "delete": "Delete team",
+        "add_member": "Add member",
+        "remove_member": "Remove"
+      },
+      "confirm": {
+        "delete": "Delete this team? Projects owned by the team will be archived.",
+        "remove_member": "Remove this member from the team?"
+      },
+      "form": {
+        "name_label": "Name",
+        "slug_label": "Slug",
+        "slug_help": "Lower-case letters, digits, hyphens. Max 64 characters.",
+        "description_label": "Description",
+        "user_id_label": "User UUID",
+        "role_label": "Role",
+        "save": "Save team",
+        "create": "Create team",
+        "add": "Add member",
+        "cancel": "Cancel"
+      },
+      "drawer": {
+        "members": "Members",
+        "no_members": "This team has no members yet.",
+        "project_count": "Projects",
+        "created_at": "Created"
+      },
+      "toast": {
+        "created": "Team created.",
+        "updated": "Team updated.",
+        "deleted": "Team deleted.",
+        "member_added": "Member added.",
+        "member_removed": "Member removed."
+      },
+      "empty": "No teams match the current filters."
+    },
+    "errors": {
+      "last_super_admin_protected": "You cannot demote or deactivate the only Super Admin.",
+      "cannot_modify_self": "You cannot perform this action on your own account.",
+      "last_team_admin_protected": "You cannot remove the only Team Admin while other members remain.",
+      "team_has_active_scans": "This team has scans currently running. Wait for them to finish or cancel them first.",
+      "invalid_role_assignment": "The selected role and team combination is not valid.",
+      "slug_conflict": "A team with that slug already exists.",
+      "unknown": "Something went wrong. Please try again."
+    },
+    "not_found": {
+      "title": "Page not found",
+      "subtitle": "The page you are looking for does not exist.",
+      "back_home": "Back to home"
+    },
+    "actions": {
+      "cancel": "Cancel",
+      "confirm": "Confirm",
+      "save": "Save",
+      "close": "Close"
+    }
+  }
+}
