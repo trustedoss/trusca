@@ -122,6 +122,8 @@ export function ObligationDrawer({
             <DrawerObligationBody detail={detail.data} />
             <DrawerAffectedSection
               components={detail.data.affected_components ?? []}
+              total={detail.data.affected_components_total}
+              truncated={detail.data.affected_components_truncated}
               onClose={() => onOpenChange(false)}
             />
           </div>
@@ -199,6 +201,14 @@ function DrawerObligationBody({ detail }: MetaProps) {
       >
         {detail.text}
       </p>
+      {detail.text_truncated ? (
+        <p
+          className="text-xs text-muted-foreground"
+          data-testid="obligation-drawer-text-truncated"
+        >
+          {t("obligations.drawer.text_truncated")}
+        </p>
+      ) : null}
       {isSafeUrl(detail.link) ? (
         <div className="text-xs">
           <span className="mr-2 uppercase tracking-wide text-muted-foreground">
@@ -231,11 +241,15 @@ function DrawerObligationBody({ detail }: MetaProps) {
 
 interface AffectedSectionProps {
   components: AffectedComponentByObligation[];
+  total: number;
+  truncated: boolean;
   onClose: () => void;
 }
 
 function DrawerAffectedSection({
   components,
+  total,
+  truncated,
   onClose,
 }: AffectedSectionProps) {
   const { t } = useTranslation("project_detail");
@@ -255,6 +269,11 @@ function DrawerAffectedSection({
     onClose();
   }
 
+  // ``total`` is the un-capped row count; the rendered list is at most
+  // ``components.length``. When the cap fired, surface the disclosure
+  // message so the user can drop into the Components tab for the full set.
+  const displayTotal = Math.max(total, components.length);
+
   return (
     <section
       className="flex flex-col gap-2"
@@ -263,6 +282,17 @@ function DrawerAffectedSection({
       <h3 className="text-sm font-semibold">
         {t("obligations.drawer.section.affected", { count: components.length })}
       </h3>
+      {truncated ? (
+        <p
+          className="text-xs text-muted-foreground"
+          data-testid="obligation-drawer-affected-truncated"
+        >
+          {t("obligations.drawer.affected_truncated", {
+            shown: components.length,
+            total: displayTotal,
+          })}
+        </p>
+      ) : null}
       {components.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           {t("obligations.drawer.affected.empty")}

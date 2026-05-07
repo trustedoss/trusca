@@ -87,8 +87,14 @@ export interface ObligationDetailResponse {
   license_reference_url: string | null;
   kind: string;
   text: string;
+  /** True when the server clamped `text` at 64 KiB (chore PR #3). */
+  text_truncated: boolean;
   link: string | null;
   affected_components: AffectedComponentByObligation[];
+  /** True when `affected_components` was capped at 500 rows (chore PR #3). */
+  affected_components_truncated: boolean;
+  /** Pre-cap row count used by the UI to render "X of N" disclosure. */
+  affected_components_total: number;
   created_at: string;
   updated_at: string;
 }

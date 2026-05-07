@@ -173,6 +173,8 @@ async def get_license_finding_endpoint(
         affected_components=[
             AffectedComponentByLicense.model_validate(c) for c in payload["affected_components"]
         ],
+        affected_components_truncated=payload["affected_components_truncated"],
+        affected_components_total=payload["affected_components_total"],
         created_at=payload["created_at"],
         updated_at=payload["updated_at"],
     )

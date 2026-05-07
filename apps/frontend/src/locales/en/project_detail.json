@@ -319,6 +319,7 @@
         "source_path_label": "Source",
         "kind_label": "Kind"
       },
+      "affected_truncated": "Showing {{shown}} of {{total}} components. Open the Components tab to see the full list.",
       "cross_link_component": "View component"
     }
   },
@@ -386,7 +387,9 @@
       },
       "affected": {
         "empty": "No affected components in the latest scan."
-      }
+      },
+      "affected_truncated": "Showing {{shown}} of {{total}} components. Open the Components tab to see the full list.",
+      "text_truncated": "Obligation text was truncated by the server. See the source catalog for the complete text."
     }
   }
 }

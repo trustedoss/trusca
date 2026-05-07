@@ -75,11 +75,11 @@ def _bind_audit_team(team_id: uuid.UUID) -> None:
     audit_context.set(ctx)
 
 
-def _can_access_team(actor: CurrentUser, team_id: uuid.UUID) -> bool:
-    """super_admin bypasses; everyone else must be a member of the team."""
-    if actor.is_superuser or actor.role == "super_admin":
-        return True
-    return team_id in actor.team_ids
+from core.authz import can_access_team as _can_access_team  # noqa: E402
+
+# `_can_access_team` is re-exported under its private name so existing
+# call sites (this module + tests that reach in for it) keep working
+# without churn. New code should import `core.authz.can_access_team`.
 
 
 def _can_write_project(actor: CurrentUser, project: Project) -> bool:

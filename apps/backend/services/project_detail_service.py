@@ -144,10 +144,10 @@ _VALID_ORDER = frozenset({"asc", "desc"})
 # ---------------------------------------------------------------------------
 
 
-def _can_access_team(actor: CurrentUser, team_id: uuid.UUID) -> bool:
-    if actor.is_superuser or actor.role == "super_admin":
-        return True
-    return team_id in actor.team_ids
+from core.authz import can_access_team as _can_access_team  # noqa: E402
+
+# Re-exported under its private name so existing call sites keep working.
+# New code should import `core.authz.can_access_team` directly.
 
 
 async def _load_project(session: AsyncSession, project_id: uuid.UUID) -> Project:

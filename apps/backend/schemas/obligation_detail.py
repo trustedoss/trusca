@@ -166,7 +166,20 @@ class ObligationDetailResponse(BaseModel):
         description="licenses.reference_url for further reading.",
     )
     kind: str = Field(max_length=64)
-    text: str
+    text: str = Field(
+        description=(
+            "Human-readable obligation text. Capped at 65 536 bytes — see "
+            "``text_truncated``."
+        ),
+    )
+    text_truncated: bool = Field(
+        default=False,
+        description=(
+            "True when the server truncated ``text`` to its 65 536-byte cap. "
+            "Clients should display a notice and offer a link to the source "
+            "catalog if available."
+        ),
+    )
     link: str | None = Field(
         default=None,
         description=(
@@ -178,7 +191,25 @@ class ObligationDetailResponse(BaseModel):
         default_factory=list,
         description=(
             "All component_versions in the project's latest scan that carry "
-            "the parent license."
+            "the parent license. Capped at 500 rows — see "
+            "``affected_components_truncated``."
+        ),
+    )
+    affected_components_truncated: bool = Field(
+        default=False,
+        description=(
+            "True when the server truncated ``affected_components`` to its "
+            "500-row cap. Clients should display a notice and optionally "
+            "fall back to the components tab for the full list."
+        ),
+    )
+    affected_components_total: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Total number of distinct component_versions associated with "
+            "the parent license in the scan, before the response cap is "
+            "applied."
         ),
     )
     created_at: datetime

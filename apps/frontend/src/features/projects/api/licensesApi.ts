@@ -95,6 +95,10 @@ export interface LicenseDetailResponse {
    */
   ort_match: Record<string, unknown> | null;
   affected_components: AffectedComponentByLicense[];
+  /** True when `affected_components` was capped at 500 rows (chore PR #3). */
+  affected_components_truncated: boolean;
+  /** Pre-cap row count used by the UI to render "X of N" disclosure. */
+  affected_components_total: number;
   created_at: string;
   updated_at: string;
 }

@@ -119,6 +119,8 @@ export function LicenseDrawer({
             <DrawerOrtMatchSection ortMatch={detail.data.ort_match} />
             <DrawerAffectedSection
               components={detail.data.affected_components ?? []}
+              total={detail.data.affected_components_total}
+              truncated={detail.data.affected_components_truncated}
               onClose={() => onOpenChange(false)}
             />
           </div>
@@ -353,11 +355,15 @@ function DrawerOrtMatchSection({ ortMatch }: OrtMatchProps) {
 
 interface AffectedSectionProps {
   components: AffectedComponentByLicense[];
+  total: number;
+  truncated: boolean;
   onClose: () => void;
 }
 
 function DrawerAffectedSection({
   components,
+  total,
+  truncated,
   onClose,
 }: AffectedSectionProps) {
   const { t } = useTranslation("project_detail");
@@ -384,6 +390,8 @@ function DrawerAffectedSection({
     onClose();
   }
 
+  const displayTotal = Math.max(total, components.length);
+
   return (
     <section
       className="flex flex-col gap-2"
@@ -392,6 +400,17 @@ function DrawerAffectedSection({
       <h3 className="text-sm font-semibold">
         {t("licenses.drawer.section.affected", { count: components.length })}
       </h3>
+      {truncated ? (
+        <p
+          className="text-xs text-muted-foreground"
+          data-testid="license-drawer-affected-truncated"
+        >
+          {t("licenses.drawer.affected_truncated", {
+            shown: components.length,
+            total: displayTotal,
+          })}
+        </p>
+      ) : null}
       {components.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           {t("licenses.drawer.affected.empty")}

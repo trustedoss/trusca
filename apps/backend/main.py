@@ -42,7 +42,11 @@ from core.config import (
 from core.db import build_engine, build_session_factory
 from core.errors import install_exception_handlers
 from core.logging import configure_logging
-from core.middleware import AuditContextMiddleware, RequestIDMiddleware
+from core.middleware import (
+    AuditContextMiddleware,
+    RequestIDMiddleware,
+    SecurityHeadersMiddleware,
+)
 from core.ratelimit import limiter, rate_limit_exceeded_handler
 
 
@@ -81,8 +85,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Order matters for ASGI middlewares — added later runs first.
-# We want: RequestID → AuditContext → app handler.
+# Order matters for ASGI middlewares — Starlette's `add_middleware` adds
+# each new middleware at the OUTSIDE of the stack (last-added is outermost).
+# We want SecurityHeadersMiddleware to be the outermost layer so the
+# hardening headers wrap *every* response, including:
+#   - CORS pre-flight (OPTIONS) responses produced by CORSMiddleware itself,
+#   - 4xx/5xx error envelopes emitted by the exception handlers,
+#   - WebSocket-upgrade rejections.
+# Inner stack: RequestID → AuditContext → CORS → SecurityHeaders (outermost).
+# Outermost (read top-to-bottom for request flow): SecurityHeaders → CORS →
+# RequestID → AuditContext → app handler.
 # slowapi rate limiting is applied via the @limiter.limit decorator inside
 # routes; we deliberately avoid SlowAPIMiddleware (which is a
 # BaseHTTPMiddleware) because it interacts badly with async SQLAlchemy
@@ -106,6 +118,10 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["authorization", "content-type", "x-request-id"],
 )
+
+# Added LAST so it becomes the outermost middleware — wraps CORS preflight
+# and exception-handler-generated responses too. (security-reviewer F1.)
+app.add_middleware(SecurityHeadersMiddleware)
 
 install_exception_handlers(app)
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)  # type: ignore[arg-type]

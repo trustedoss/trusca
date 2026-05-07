@@ -54,6 +54,7 @@ function detail(
     license_reference_url: "https://opensource.org/licenses/MIT",
     kind: "attribution",
     text: "Include the original copyright notice.",
+    text_truncated: false,
     link: "https://example.org/policy/attribution",
     affected_components: [
       {
@@ -62,6 +63,8 @@ function detail(
         version: "18.3.0",
       },
     ],
+    affected_components_truncated: false,
+    affected_components_total: 1,
     created_at: "2026-05-01T00:00:00Z",
     updated_at: "2026-05-01T00:00:00Z",
     ...overrides,

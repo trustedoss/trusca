@@ -164,7 +164,24 @@ class LicenseDetailResponse(BaseModel):
         default_factory=list,
         description=(
             "All component_versions in the same scan that carry this license, "
-            "across every kind (declared / concluded / detected)."
+            "across every kind (declared / concluded / detected). "
+            "Capped at 500 rows — see ``affected_components_truncated``."
+        ),
+    )
+    affected_components_truncated: bool = Field(
+        default=False,
+        description=(
+            "True when the server truncated ``affected_components`` to its "
+            "500-row cap. Clients should display a notice and optionally "
+            "fall back to the components tab for the full list."
+        ),
+    )
+    affected_components_total: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Total number of distinct component_versions associated with "
+            "this license in the scan, before the response cap is applied."
         ),
     )
     created_at: datetime

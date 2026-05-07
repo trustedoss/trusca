@@ -38,10 +38,9 @@ status the caller observes.
 
 Search safety
 -------------
-User-supplied ``search`` is run through :func:`_escape_like` (re-used from
-``services.vulnerability_service``) and compared with an explicit ESCAPE
-clause so attackers cannot collapse the filter to "match everything" with
-bare ``%`` / ``_`` characters.
+User-supplied ``search`` is run through :func:`core.sql_safety.escape_like`
+and compared with an explicit ESCAPE clause so attackers cannot collapse
+the filter to "match everything" with bare ``%`` / ``_`` characters.
 
 Aggregation only — no denormalization
 -------------------------------------
@@ -62,6 +61,7 @@ from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.security import CurrentUser
+from core.sql_safety import escape_like
 from models import (
     Component,
     ComponentVersion,
@@ -74,7 +74,6 @@ from models import (
 )
 from services.project_detail_service import _license_rank_case
 from services.project_service import ProjectError, ProjectForbidden, ProjectNotFound
-from services.vulnerability_service import _escape_like
 
 log = structlog.get_logger("license.service")
 
@@ -113,17 +112,23 @@ _LIST_LIMIT_DEFAULT = 50
 _LIST_LIMIT_MAX = 500
 _VALID_SORT_KEYS = frozenset({"category", "name", "spdx_id", "affected_count"})
 
+# Defense-in-depth cap on the ``affected_components`` array embedded in the
+# license drawer payload. Without this, a permissive license against a large
+# monorepo could materialize a many-thousand-row JSON list — security-reviewer
+# Info #1 (PR #12) and Low #1 (PR #13). Clients fall back to the Components
+# tab for the full list when ``affected_components_truncated`` is true.
+_AFFECTED_COMPONENTS_CAP = 500
+
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
-def _can_access_team(actor: CurrentUser, team_id: uuid.UUID) -> bool:
-    """super_admin bypasses; everyone else must be a member of the team."""
-    if actor.is_superuser or actor.role == "super_admin":
-        return True
-    return team_id in actor.team_ids
+from core.authz import assert_team_access  # noqa: E402
+
+# All cross-team guards in this module flow through `assert_team_access`
+# (chore PR #3) so the `authz.cross_team_attempt` log shape is centralized.
 
 
 def _normalize_category_filter(raw: list[str] | None) -> list[str] | None:
@@ -199,17 +204,16 @@ async def list_project_licenses(
     if project is None:
         raise ProjectNotFound(f"project {project_id} not found")
 
-    if not _can_access_team(actor, project.team_id):
-        log.warning(
-            "authz.cross_team_attempt",
-            actor_id=str(actor.id),
-            target_team_id=str(project.team_id),
-            resource="project_licenses",
-            resource_id=str(project_id),
-        )
-        raise ProjectForbidden(
-            f"actor is not a member of team {project.team_id}",
-        )
+    assert_team_access(
+        actor,
+        project.team_id,
+        log=log,
+        resource="project_licenses",
+        resource_id=str(project_id),
+        deny=lambda: ProjectForbidden(
+            f"actor is not a member of team {project.team_id}"
+        ),
+    )
 
     empty_distribution: dict[str, int] = dict.fromkeys(_DISTRIBUTION_KEYS, 0)
 
@@ -281,7 +285,7 @@ async def list_project_licenses(
     if search:
         # Escape LIKE metacharacters and pass the escape character explicitly
         # so Postgres uses '\' not the default ESCAPE behaviour.
-        safe = _escape_like(search.strip())
+        safe = escape_like(search.strip())
         like = f"%{safe}%"
         base = base.where(
             or_(
@@ -412,18 +416,20 @@ async def get_license_finding_detail(
         raise LicenseFindingNotFound(f"license finding {finding_id} not found")
     finding, lic, project = row[0], row[1], row[2]
 
-    if not _can_access_team(actor, project.team_id):
-        log.warning(
-            "authz.cross_team_attempt",
-            actor_id=str(actor.id),
-            target_team_id=str(project.team_id),
-            resource="license_finding",
-            resource_id=str(finding_id),
-        )
-        # Hide existence: 404 not 403.
-        raise LicenseFindingNotFound(f"license finding {finding_id} not found")
+    # Hide existence: 404 not 403 — we don't leak that the row exists in
+    # another team.
+    assert_team_access(
+        actor,
+        project.team_id,
+        log=log,
+        resource="license_finding",
+        resource_id=str(finding_id),
+        deny=lambda: LicenseFindingNotFound(
+            f"license finding {finding_id} not found"
+        ),
+    )
 
-    affected_components = await _load_affected_components(
+    affected_components, total, truncated = await _load_affected_components(
         session,
         scan_id=finding.scan_id,
         license_id=finding.license_id,
@@ -452,6 +458,8 @@ async def get_license_finding_detail(
         "finding_kind": finding.kind,
         "ort_match": raw_match,
         "affected_components": affected_components,
+        "affected_components_truncated": truncated,
+        "affected_components_total": total,
         "created_at": lic.created_at,
         "updated_at": lic.updated_at,
     }
@@ -462,8 +470,17 @@ async def _load_affected_components(
     *,
     scan_id: uuid.UUID,
     license_id: uuid.UUID,
-) -> list[dict[str, Any]]:
-    """All component_versions in the same scan that carry the same license.
+) -> tuple[list[dict[str, Any]], int, bool]:
+    """All component_versions in the same scan that carry the same license,
+    capped at :data:`_AFFECTED_COMPONENTS_CAP` rows.
+
+    Returns ``(items, total, truncated)`` where ``items`` is the response
+    payload (≤ cap), ``total`` is the un-capped row count, and ``truncated``
+    is true iff ``total > cap``. The cap is applied with ``LIMIT cap+1`` so
+    we detect truncation in the same trip as the items query and avoid a
+    separate ``COUNT(*)`` round-trip in the common (under-cap) case — when
+    we *do* see the sentinel row, we issue a follow-up exact count for the
+    response envelope.
 
     The same (cv, license) pair can appear under multiple kinds (declared
     *and* concluded *and* detected) and across different ``source_path``
@@ -471,6 +488,7 @@ async def _load_affected_components(
     lexicographically smallest source_path; the drawer is a summary, not an
     audit log of every file ORT looked at.
     """
+    cap = _AFFECTED_COMPONENTS_CAP
     stmt = (
         select(
             ComponentVersion.id.label("component_version_id"),
@@ -491,9 +509,11 @@ async def _load_affected_components(
             cast(LicenseFinding.kind, String),
         )
         .order_by(Component.name.asc(), ComponentVersion.version.asc())
+        .limit(cap + 1)
     )
-    result = await session.execute(stmt)
-    return [
+    rows = (await session.execute(stmt)).all()
+    truncated = len(rows) > cap
+    items = [
         {
             "component_version_id": r.component_version_id,
             "component_name": r.component_name,
@@ -501,8 +521,35 @@ async def _load_affected_components(
             "kind": r.kind,
             "source_path": r.source_path,
         }
-        for r in result.all()
+        for r in rows[:cap]
     ]
+    if not truncated:
+        total = len(items)
+    else:
+        # Only pay for the count when the cap actually fired.
+        count_stmt = (
+            select(func.count())
+            .select_from(
+                select(
+                    ComponentVersion.id,
+                    cast(LicenseFinding.kind, String).label("kind"),
+                )
+                .select_from(LicenseFinding)
+                .join(
+                    ComponentVersion,
+                    ComponentVersion.id == LicenseFinding.component_version_id,
+                )
+                .where(LicenseFinding.scan_id == scan_id)
+                .where(LicenseFinding.license_id == license_id)
+                .group_by(
+                    ComponentVersion.id,
+                    cast(LicenseFinding.kind, String),
+                )
+                .subquery()
+            )
+        )
+        total = int((await session.execute(count_stmt)).scalar_one())
+    return items, total, truncated
 
 
 __all__ = [

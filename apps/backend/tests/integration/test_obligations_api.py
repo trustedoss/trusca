@@ -427,11 +427,13 @@ async def test_notice_markdown_format_uses_text_markdown_media_type(client) -> N
 
 
 async def test_notice_download_attaches_filename_with_safe_token(client) -> None:
-    """`download=true` adds `Content-Disposition: attachment; filename=NOTICE-<token>.txt`
-    where the project name is sanitised to ``[A-Za-z0-9._-]``."""
+    """`download=true` adds an RFC 6266 ``Content-Disposition: attachment``
+    header with both the ASCII ``filename="NOTICE-<token>.txt"`` fallback
+    and the UTF-8 ``filename*=UTF-8''…`` extended parameter. The ASCII
+    fallback's project name segment is sanitised to ``[A-Za-z0-9._-]``."""
     _, team, user = await _seed_team_with_user(client)
     # Use a tricky project name so the sanitiser has something to do.
-    project_id, scan_id, project_name = await _seed_scanned_project(
+    project_id, scan_id, _ = await _seed_scanned_project(
         client, team_id=team.id, project_name="Hello / World!  alpha"
     )
     await _seed_obligation(
@@ -450,10 +452,57 @@ async def test_notice_download_attaches_filename_with_safe_token(client) -> None
     assert response.status_code == 200
     disposition = response.headers["content-disposition"]
     assert disposition.startswith("attachment;")
-    # Filename must NOT carry any of `/`, `!`, or whitespace from the project name.
-    assert " " not in disposition.split('filename="', 1)[1]
-    assert "/" not in disposition
-    assert "!" not in disposition
-    # Filename starts with `NOTICE-` and ends with `.txt`.
-    assert "NOTICE-" in disposition
-    assert disposition.rstrip().endswith('.txt"')
+    # Pick out the ASCII fallback (filename="..."). It must not carry any
+    # of `/`, `!`, or whitespace from the project name.
+    ascii_part = disposition.split('filename="', 1)[1].split('"', 1)[0]
+    assert " " not in ascii_part
+    assert "/" not in ascii_part
+    assert "!" not in ascii_part
+    # ASCII fallback starts with `NOTICE-` and ends with `.txt`.
+    assert ascii_part.startswith("NOTICE-")
+    assert ascii_part.endswith(".txt")
+    # RFC 6266 extended parameter must also be present so non-ASCII names
+    # round-trip on browsers that understand it.
+    assert "filename*=UTF-8''" in disposition
+
+
+async def test_notice_download_filename_carries_utf8_round_trip_for_non_ascii_project(
+    client,
+) -> None:
+    """RFC 6266 ``filename*=UTF-8''…`` must percent-encode the original
+    project name (including non-ASCII characters) so a browser can decode it
+    back to a human-readable name. The ASCII fallback drops them safely."""
+    import urllib.parse as _up
+
+    _, team, user = await _seed_team_with_user(client)
+    project_id, scan_id, project_name = await _seed_scanned_project(
+        client, team_id=team.id, project_name="한글-프로젝트"
+    )
+    await _seed_obligation(
+        client,
+        scan_id=scan_id,
+        spdx_id=f"OBL-KR-MIT-{uuid.uuid4().hex[:8]}",
+        kind="attribution",
+    )
+    headers = _bearer_for(user)
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/notice",
+        headers=headers,
+        params={"download": True},
+    )
+    assert response.status_code == 200
+    disposition = response.headers["content-disposition"]
+    # Extract the extended-parameter value (everything after the marker).
+    marker = "filename*=UTF-8''"
+    assert marker in disposition
+    encoded = disposition.split(marker, 1)[1]
+    # Round-trip via percent-decoding must reproduce the original name.
+    decoded = _up.unquote(encoded)
+    assert decoded == f"NOTICE-{project_name}.txt"
+    # ASCII fallback must remain free of non-ASCII characters so legacy
+    # clients can still save the file.
+    ascii_part = disposition.split('filename="', 1)[1].split('"', 1)[0]
+    assert ascii_part.isascii()
+    assert ascii_part.startswith("NOTICE-")
+    assert ascii_part.endswith(".txt")

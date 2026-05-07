@@ -47,6 +47,8 @@ function detail(
     finding_kind: "concluded",
     ort_match: null,
     affected_components: [],
+    affected_components_truncated: false,
+    affected_components_total: 0,
     created_at: "2026-05-01T00:00:00Z",
     updated_at: "2026-05-01T00:00:00Z",
     ...overrides,

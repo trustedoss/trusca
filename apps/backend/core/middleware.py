@@ -16,7 +16,15 @@ AuditContextMiddleware:
   `get_current_user`/`get_optional_current_user` once the bearer token is
   resolved.
 
-Both middlewares are pure ASGI (not BaseHTTPMiddleware) so exceptions raised
+SecurityHeadersMiddleware:
+- Attaches a baseline set of hardening headers (`X-Content-Type-Options`,
+  `Referrer-Policy`, `X-Frame-Options`) to every HTTP response, including
+  4xx/5xx error responses and CORS pre-flight. CSP is *not* set here because
+  the only HTML surface served by FastAPI is the OpenAPI `/docs` page (and
+  the Vite dev server in development) which both rely on inline scripts —
+  CSP for that surface is a separate hardening PR.
+
+All middlewares are pure ASGI (not BaseHTTPMiddleware) so exceptions raised
 inside route handlers propagate cleanly to Starlette's ServerErrorMiddleware
 and our RFC 7807 handlers.
 """
@@ -126,6 +134,42 @@ def _extract_client_ip(scope: Scope) -> str | None:
         host = client[0]
         return str(host) if host else None
     return None
+
+
+_SECURITY_HEADERS: tuple[tuple[bytes, bytes], ...] = (
+    (b"x-content-type-options", b"nosniff"),
+    (b"referrer-policy", b"no-referrer"),
+    (b"x-frame-options", b"DENY"),
+)
+
+
+class SecurityHeadersMiddleware:
+    """Append baseline hardening headers to every HTTP response.
+
+    Idempotent: if the route handler already emitted any of these headers,
+    the existing value wins (we never duplicate or override). This keeps the
+    middleware safe to install alongside future per-route overrides.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def send_wrapper(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                headers = list(message.get("headers") or [])
+                existing = {k.lower() for k, _ in headers}
+                for name, value in _SECURITY_HEADERS:
+                    if name not in existing:
+                        headers.append((name, value))
+                message["headers"] = headers
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
 
 
 class AuditContextMiddleware:

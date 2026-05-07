@@ -39,10 +39,9 @@ HTTP status the caller observes.
 
 Search safety
 -------------
-User-supplied ``search`` is run through :func:`_escape_like` (re-used from
-``services.vulnerability_service``) and compared with an explicit ESCAPE
-clause so attackers cannot collapse the filter to "match everything" with
-bare ``%`` / ``_`` characters.
+User-supplied ``search`` is run through :func:`core.sql_safety.escape_like`
+and compared with an explicit ESCAPE clause so attackers cannot collapse
+the filter to "match everything" with bare ``%`` / ``_`` characters.
 
 Aggregation only — no denormalization
 -------------------------------------
@@ -65,6 +64,7 @@ from sqlalchemy import cast as sql_cast
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.security import CurrentUser
+from core.sql_safety import escape_like
 from models import (
     Component,
     ComponentVersion,
@@ -78,7 +78,6 @@ from models import (
 from schemas.obligation_detail import KNOWN_OBLIGATION_KINDS
 from services.project_detail_service import _license_rank_case
 from services.project_service import ProjectError, ProjectForbidden, ProjectNotFound
-from services.vulnerability_service import _escape_like
 
 log = structlog.get_logger("obligation.service")
 
@@ -112,17 +111,24 @@ _LIST_LIMIT_DEFAULT = 50
 _LIST_LIMIT_MAX = 500
 _VALID_SORT_KEYS = frozenset({"category", "license_name", "kind", "affected_count"})
 
+# Defense-in-depth caps on the obligation drawer payload (security-reviewer
+# Low #1 from PR #13). The ``affected_components`` array mirrors the
+# license_service cap; the ``text`` clamp prevents a maliciously authored
+# catalog row from inflating the drawer JSON beyond a sane size. Clients
+# fall back to the source catalog or the Components tab when the cap fires.
+_AFFECTED_COMPONENTS_CAP = 500
+_OBLIGATION_TEXT_CAP_BYTES = 64 * 1024  # 64 KiB
+
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
-def _can_access_team(actor: CurrentUser, team_id: uuid.UUID) -> bool:
-    """super_admin bypasses; everyone else must be a member of the team."""
-    if actor.is_superuser or actor.role == "super_admin":
-        return True
-    return team_id in actor.team_ids
+from core.authz import assert_team_access  # noqa: E402
+
+# All cross-team guards in this module flow through `assert_team_access`
+# (chore PR #3) so the `authz.cross_team_attempt` log shape is centralized.
 
 
 def _normalize_category_filter(raw: list[str] | None) -> list[str] | None:
@@ -224,17 +230,16 @@ async def list_project_obligations(
     if project is None:
         raise ProjectNotFound(f"project {project_id} not found")
 
-    if not _can_access_team(actor, project.team_id):
-        log.warning(
-            "authz.cross_team_attempt",
-            actor_id=str(actor.id),
-            target_team_id=str(project.team_id),
-            resource="project_obligations",
-            resource_id=str(project_id),
-        )
-        raise ProjectForbidden(
-            f"actor is not a member of team {project.team_id}",
-        )
+    assert_team_access(
+        actor,
+        project.team_id,
+        log=log,
+        resource="project_obligations",
+        resource_id=str(project_id),
+        deny=lambda: ProjectForbidden(
+            f"actor is not a member of team {project.team_id}"
+        ),
+    )
 
     if project.latest_scan_id is None:
         return [], {}, 0
@@ -294,7 +299,7 @@ async def list_project_obligations(
         base = base.where(Obligation.kind.in_(kind_filter))
 
     if search:
-        safe = _escape_like(search.strip())
+        safe = escape_like(search.strip())
         like = f"%{safe}%"
         base = base.where(
             or_(
@@ -424,17 +429,16 @@ async def get_obligation_detail(
             f"obligation {obligation_id} not found in project {project_id}"
         )
 
-    if not _can_access_team(actor, project.team_id):
-        log.warning(
-            "authz.cross_team_attempt",
-            actor_id=str(actor.id),
-            target_team_id=str(project.team_id),
-            resource="obligation_detail",
-            resource_id=str(obligation_id),
-        )
-        raise ObligationNotFound(
+    assert_team_access(
+        actor,
+        project.team_id,
+        log=log,
+        resource="obligation_detail",
+        resource_id=str(obligation_id),
+        deny=lambda: ObligationNotFound(
             f"obligation {obligation_id} not found in project {project_id}"
-        )
+        ),
+    )
 
     obligation_stmt = (
         select(Obligation, LicenseModel)
@@ -465,11 +469,13 @@ async def get_obligation_detail(
             f"obligation {obligation_id} not visible in project {project_id}"
         )
 
-    affected_components = await _load_affected_components(
+    affected_components, ac_total, ac_truncated = await _load_affected_components(
         session,
         scan_id=project.latest_scan_id,
         license_id=lic.id,
     )
+
+    capped_text, text_truncated = _clamp_obligation_text(obligation.text)
 
     return {
         "id": obligation.id,
@@ -479,12 +485,33 @@ async def get_obligation_detail(
         "license_category": lic.category,
         "license_reference_url": lic.reference_url,
         "kind": obligation.kind,
-        "text": obligation.text,
+        "text": capped_text,
+        "text_truncated": text_truncated,
         "link": obligation.link,
         "affected_components": affected_components,
+        "affected_components_truncated": ac_truncated,
+        "affected_components_total": ac_total,
         "created_at": obligation.created_at,
         "updated_at": obligation.updated_at,
     }
+
+
+def _clamp_obligation_text(text: str) -> tuple[str, bool]:
+    """Cap obligation text at :data:`_OBLIGATION_TEXT_CAP_BYTES`.
+
+    The DB column is unbounded ``Text``; without this guard a maliciously
+    authored or runaway catalog row would inflate the drawer JSON. We clamp
+    on the *byte* length (UTF-8) because the cap is a transport-side
+    contract, but the public surface is still a unicode ``str`` so we slice
+    at the last whole codepoint that fits the byte budget.
+    """
+    encoded = text.encode("utf-8")
+    if len(encoded) <= _OBLIGATION_TEXT_CAP_BYTES:
+        return text, False
+    # Slice at a whole codepoint boundary by decoding the truncated bytes
+    # with ``errors="ignore"`` — which drops any partial trailing surrogate.
+    capped = encoded[:_OBLIGATION_TEXT_CAP_BYTES].decode("utf-8", errors="ignore")
+    return capped, True
 
 
 async def _load_affected_components(
@@ -492,14 +519,22 @@ async def _load_affected_components(
     *,
     scan_id: uuid.UUID,
     license_id: uuid.UUID,
-) -> list[dict[str, Any]]:
-    """All component_versions in the same scan that carry the parent license.
+) -> tuple[list[dict[str, Any]], int, bool]:
+    """All component_versions in the same scan that carry the parent license,
+    capped at :data:`_AFFECTED_COMPONENTS_CAP` rows.
+
+    Returns ``(items, total, truncated)`` mirroring
+    :func:`services.license_service._load_affected_components`. The cap is
+    applied with ``LIMIT cap+1`` so we detect truncation in the same trip
+    as the items query and only pay for an exact ``COUNT(*)`` follow-up
+    when the cap actually fired.
 
     Mirrors :func:`services.license_service._load_affected_components` but
     without the per-finding ``kind`` axis — at obligation granularity the
     user wants "what does this duty cover?", not "which detection kind
     surfaced the parent license".
     """
+    cap = _AFFECTED_COMPONENTS_CAP
     stmt = (
         select(
             ComponentVersion.id.label("component_version_id"),
@@ -513,16 +548,38 @@ async def _load_affected_components(
         .where(LicenseFinding.license_id == license_id)
         .group_by(ComponentVersion.id, Component.name, ComponentVersion.version)
         .order_by(Component.name.asc(), ComponentVersion.version.asc())
+        .limit(cap + 1)
     )
-    result = await session.execute(stmt)
-    return [
+    rows = (await session.execute(stmt)).all()
+    truncated = len(rows) > cap
+    items = [
         {
             "component_version_id": r.component_version_id,
             "component_name": r.component_name,
             "version": r.version,
         }
-        for r in result.all()
+        for r in rows[:cap]
     ]
+    if not truncated:
+        total = len(items)
+    else:
+        count_stmt = (
+            select(func.count())
+            .select_from(
+                select(ComponentVersion.id)
+                .select_from(LicenseFinding)
+                .join(
+                    ComponentVersion,
+                    ComponentVersion.id == LicenseFinding.component_version_id,
+                )
+                .where(LicenseFinding.scan_id == scan_id)
+                .where(LicenseFinding.license_id == license_id)
+                .group_by(ComponentVersion.id)
+                .subquery()
+            )
+        )
+        total = int((await session.execute(count_stmt)).scalar_one())
+    return items, total, truncated
 
 
 # ---------------------------------------------------------------------------
@@ -581,15 +638,16 @@ async def generate_notice(
     if project is None:
         raise ProjectNotFound(f"project {project_id} not found")
 
-    if not _can_access_team(actor, project.team_id):
-        log.warning(
-            "authz.cross_team_attempt",
-            actor_id=str(actor.id),
-            target_team_id=str(project.team_id),
-            resource="project_notice",
-            resource_id=str(project_id),
-        )
-        raise ProjectForbidden(f"actor is not a member of team {project.team_id}")
+    assert_team_access(
+        actor,
+        project.team_id,
+        log=log,
+        resource="project_notice",
+        resource_id=str(project_id),
+        deny=lambda: ProjectForbidden(
+            f"actor is not a member of team {project.team_id}"
+        ),
+    )
 
     generated_at = datetime.now(tz=UTC)
 
