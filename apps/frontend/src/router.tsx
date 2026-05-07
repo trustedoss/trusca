@@ -1,6 +1,10 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import { RequireAuth } from "@/components/RequireAuth";
+import { AdminLayout } from "@/features/admin/AdminLayout";
+import { AdminNotFound } from "@/features/admin/AdminNotFound";
+import { AdminTeamsPage } from "@/features/admin/teams/AdminTeamsPage";
+import { AdminUsersPage } from "@/features/admin/users/AdminUsersPage";
 import { ProjectDetailPage } from "@/features/projects/ProjectDetailPage";
 import { ProjectListPage } from "@/features/projects/ProjectListPage";
 import { Home } from "@/pages/Home";
@@ -13,7 +17,10 @@ import { RegisterPage } from "@/pages/auth/RegisterPage";
  *
  * - Public auth pages live under /login, /register, /forgot-password.
  * - Authenticated pages are wrapped with <RequireAuth />.
- * - Unknown routes land back on /login.
+ * - Admin pages nest under <AdminLayout /> which itself enforces the
+ *   super-admin existence-hide guard. Non-super-admins see a 404 instead of
+ *   a 403 — matching the backend's `require_super_admin_or_404` behavior.
+ * - Unknown top-level routes land back on /login.
  */
 export function AppRoutes() {
   return (
@@ -45,6 +52,19 @@ export function AppRoutes() {
           </RequireAuth>
         }
       />
+      <Route
+        path="/admin"
+        element={
+          <RequireAuth>
+            <AdminLayout />
+          </RequireAuth>
+        }
+      >
+        <Route index element={<Navigate to="users" replace />} />
+        <Route path="users" element={<AdminUsersPage />} />
+        <Route path="teams" element={<AdminTeamsPage />} />
+        <Route path="*" element={<AdminNotFound />} />
+      </Route>
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   );

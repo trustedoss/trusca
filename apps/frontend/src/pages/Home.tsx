@@ -1,5 +1,5 @@
 import { Trans, useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import { LanguageToggle } from "@/components/LanguageToggle";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,9 @@ export function Home() {
   const apiBase = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
   const navigate = useNavigate();
   const logout = useAuthStore((s) => s.logout);
+  const isSuperAdmin = useAuthStore(
+    (s) => s.user?.isSuperuser === true || s.user?.role === "super_admin",
+  );
 
   async function handleLogout() {
     await logout();
@@ -40,6 +43,18 @@ export function Home() {
           </span>
         </div>
         <div className="flex items-center gap-3">
+          {isSuperAdmin ? (
+            <Button
+              asChild
+              variant="outline"
+              size="sm"
+              data-testid="home-admin-link"
+            >
+              <Link to="/admin">
+                {t("nav.admin.entry", { ns: "admin" })}
+              </Link>
+            </Button>
+          ) : null}
           <LanguageToggle />
           {/* Stub trigger so e2e (1.9 scenario) can exercise expectLoggedOut.
               Phase 2 replaces this with the real header/sidebar. */}
