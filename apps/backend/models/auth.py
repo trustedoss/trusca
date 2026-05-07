@@ -365,4 +365,15 @@ class AuditLog(Base):
         Index("ix_audit_logs_team_created_at", "team_id", "created_at"),
         # JSONB GIN for "find audits whose diff touched column X".
         Index("ix_audit_logs_diff_gin", "diff", postgresql_using="gin"),
+        # Phase 4 PR #14 — admin Audit Log search filters by target_table /
+        # action (whitelisted enum strings) and the compound covers the
+        # default admin query "audit rows for table X by user Y newest first".
+        Index("ix_audit_logs_target_table", "target_table"),
+        Index("ix_audit_logs_action", "action"),
+        Index(
+            "ix_audit_logs_target_actor_created",
+            "target_table",
+            "actor_user_id",
+            "created_at",
+        ),
     )
