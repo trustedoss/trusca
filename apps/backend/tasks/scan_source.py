@@ -627,13 +627,16 @@ def _run_prep(
             scan_id=str(scan_uuid),
             timeout=timeout,
         )
-    except FileNotFoundError as exc:
-        # The tool isn't on PATH — typically a worker image without the
-        # corresponding language layer (chore PR #4 ships them, but a
-        # legacy 2.5GB worker may still be deployed). Don't fail the
-        # scan; warn so operators can spot the gap.
+    except OSError as exc:
+        # FileNotFoundError (no language layer in the worker image) +
+        # PermissionError (workspace mounted noexec) + the wider OSError
+        # family — all are "host condition is degraded, prep cannot run"
+        # rather than "scan should abort". Log and let cdxgen extract
+        # whatever it can from the bare source. We deliberately do NOT
+        # catch bare ``Exception`` here so a real bug in our wrapper still
+        # bubbles up to the surrounding terminal-failure path.
         log.warning(
-            "prep_tool_missing",
+            "prep_unavailable",
             step=name,
             scan_id=str(scan_uuid),
             cmd=cmd[0],
