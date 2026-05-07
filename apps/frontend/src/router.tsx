@@ -1,8 +1,13 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import { RequireAuth } from "@/components/RequireAuth";
+import { AdminAuditPage } from "@/features/admin/audit/AdminAuditPage";
+import { AdminDiskPage } from "@/features/admin/disk/AdminDiskPage";
+import { AdminDTPage } from "@/features/admin/dt/AdminDTPage";
+import { AdminHealthPage } from "@/features/admin/health/AdminHealthPage";
 import { AdminLayout } from "@/features/admin/AdminLayout";
 import { AdminNotFound } from "@/features/admin/AdminNotFound";
+import { AdminScansPage } from "@/features/admin/scans/AdminScansPage";
 import { AdminTeamsPage } from "@/features/admin/teams/AdminTeamsPage";
 import { AdminUsersPage } from "@/features/admin/users/AdminUsersPage";
 import { ProjectDetailPage } from "@/features/projects/ProjectDetailPage";
@@ -63,6 +68,11 @@ export function AppRoutes() {
         <Route index element={<Navigate to="users" replace />} />
         <Route path="users" element={<AdminUsersPage />} />
         <Route path="teams" element={<AdminTeamsPage />} />
+        <Route path="dt" element={<AdminDTPage />} />
+        <Route path="scans" element={<AdminScansPage />} />
+        <Route path="disk" element={<AdminDiskPage />} />
+        <Route path="audit" element={<AdminAuditPage />} />
+        <Route path="health" element={<AdminHealthPage />} />
         <Route path="*" element={<AdminNotFound />} />
       </Route>
       <Route path="*" element={<Navigate to="/login" replace />} />

@@ -1,9 +1,11 @@
 /**
- * AdminLayout — Phase 4 PR #13 §4.1.
+ * AdminLayout — Phase 4 PR #13 §4.1 + PR #14.
  *
  * Owns the admin-only chrome:
- *   - 224px fixed sidebar (CLAUDE.md design system) with two entries
- *     (Users, Teams). Phase 4 PR #14 will append DT/Scans/Disk/Audit/Health.
+ *   - 224px fixed sidebar (CLAUDE.md design system) with seven entries
+ *     (Users, Teams, DT Connector, Scan Queue, Disk, Audit Log, System
+ *     Health). PR #14 added the operational five on top of PR #13's Users
+ *     + Teams identity surface.
  *   - 48px top header with app name + LanguageToggle + signed-in email +
  *     sign-out.
  *   - Body slot (`<Outlet />`) for the nested route.
@@ -15,7 +17,16 @@
  * No global app sidebar elsewhere — the rest of the portal keeps its current
  * shape. This layout is local to `/admin/*`.
  */
-import { Building2, LogOut, Users as UsersIcon } from "lucide-react";
+import {
+  Activity,
+  Building2,
+  ClipboardList,
+  HardDrive,
+  ListChecks,
+  LogOut,
+  Network,
+  Users as UsersIcon,
+} from "lucide-react";
 import type { ComponentType, SVGProps } from "react";
 import { useTranslation } from "react-i18next";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
@@ -45,6 +56,36 @@ const NAV_ITEMS: NavItem[] = [
     labelKey: "nav.admin.teams",
     icon: Building2,
     testId: "admin-nav-teams",
+  },
+  {
+    to: "/admin/dt",
+    labelKey: "nav.admin.dt",
+    icon: Network,
+    testId: "admin-nav-dt",
+  },
+  {
+    to: "/admin/scans",
+    labelKey: "nav.admin.scans",
+    icon: ListChecks,
+    testId: "admin-nav-scans",
+  },
+  {
+    to: "/admin/disk",
+    labelKey: "nav.admin.disk",
+    icon: HardDrive,
+    testId: "admin-nav-disk",
+  },
+  {
+    to: "/admin/audit",
+    labelKey: "nav.admin.audit",
+    icon: ClipboardList,
+    testId: "admin-nav-audit",
+  },
+  {
+    to: "/admin/health",
+    labelKey: "nav.admin.health",
+    icon: Activity,
+    testId: "admin-nav-health",
   },
 ];
 
