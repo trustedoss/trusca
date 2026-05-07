@@ -110,13 +110,17 @@ class PkgGoLicenseFetcher:
 
     def _client(self, timeout: float) -> httpx.Client:
         if self._http is None:
+            # follow_redirects=False — security-reviewer L4 (chore PR #6).
+            # pkg.go.dev serves the licence panel directly under
+            # pkg.go.dev; a 3xx (e.g. to a vanity-import host) would
+            # bypass the registry-controlled HTML we know how to scrape.
             self._http = httpx.Client(
                 headers={
                     "User-Agent": USER_AGENT,
                     "Accept": "text/html,application/xhtml+xml",
                 },
                 timeout=timeout,
-                follow_redirects=True,
+                follow_redirects=False,
             )
         return self._http
 

@@ -118,13 +118,17 @@ class PyPILicenseFetcher:
 
     def _client(self, timeout: float) -> httpx.Client:
         if self._http is None:
+            # follow_redirects=False — security-reviewer L4 (chore PR #6).
+            # PyPI's legacy JSON endpoint is served from a single origin
+            # under pypi.org; a 3xx response would point to an
+            # off-registry host we have not vetted.
             self._http = httpx.Client(
                 headers={
                     "User-Agent": USER_AGENT,
                     "Accept": "application/json",
                 },
                 timeout=timeout,
-                follow_redirects=True,
+                follow_redirects=False,
             )
         return self._http
 

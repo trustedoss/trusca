@@ -69,13 +69,16 @@ class CratesLicenseFetcher:
 
     def _client(self, timeout: float) -> httpx.Client:
         if self._http is None:
+            # follow_redirects=False — security-reviewer L4 (chore PR #6).
+            # crates.io's v1 endpoint terminates at api.crates.io; a 3xx
+            # would mean the API now points off-registry.
             self._http = httpx.Client(
                 headers={
                     "User-Agent": USER_AGENT,
                     "Accept": "application/json",
                 },
                 timeout=timeout,
-                follow_redirects=True,
+                follow_redirects=False,
             )
         return self._http
 

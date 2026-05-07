@@ -172,3 +172,56 @@ def test_fetch_returns_none_on_unrecognised_purl(no_throttle: None) -> None:
 
     fetcher = MavenLicenseFetcher(http=_client(handler))
     assert fetcher.fetch("pkg:npm/foo@1.0.0") is None
+
+
+# ---------------------------------------------------------------------------
+# follow_redirects=False — security-reviewer L4 (chore PR #6)
+# ---------------------------------------------------------------------------
+
+
+def _client_no_redirects(
+    handler: Callable[[httpx.Request], httpx.Response],
+) -> httpx.Client:
+    return httpx.Client(
+        transport=httpx.MockTransport(handler),
+        timeout=1.0,
+        follow_redirects=False,
+    )
+
+
+def test_fetch_does_not_follow_redirect_to_attacker_host(no_throttle: None) -> None:
+    """A 3xx with a Location header to an attacker host must be ignored.
+
+    The Maven fetcher is configured with ``follow_redirects=False`` so a
+    phishing redirect inserted by a man-in-the-middle (or a registry
+    misconfig) returns ``None`` and the attacker host is never contacted.
+    """
+    requested: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(str(request.url))
+        return httpx.Response(
+            302,
+            headers={"Location": "https://attacker.example/spoof.pom"},
+        )
+
+    fetcher = MavenLicenseFetcher(http=_client_no_redirects(handler))
+    result = fetcher.fetch("pkg:maven/com.example/foo@1.0.0")
+
+    assert result is None
+    assert len(requested) == 1
+    assert "attacker.example" not in requested[0]
+
+
+def test_default_client_disables_redirect_following() -> None:
+    """Production-default httpx.Client must not follow redirects.
+
+    Pins the L4 contract at the source: a future refactor that flips
+    follow_redirects back to True will fail this test.
+    """
+    fetcher = MavenLicenseFetcher()
+    client = fetcher._client(timeout=1.0)
+    try:
+        assert client.follow_redirects is False
+    finally:
+        fetcher.close()

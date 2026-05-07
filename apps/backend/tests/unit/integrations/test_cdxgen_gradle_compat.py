@@ -143,3 +143,61 @@ def test_build_cdxgen_env_respects_operator_override(
     assert env["CDXGEN_GRADLE_ARGS"] == "--no-build-cache"
     # The compat init script is not written when the operator opted out.
     assert not (out / "trustedoss-gradle8-compat.init.gradle").exists()
+
+
+# ---------------------------------------------------------------------------
+# subprocess env scrubbing — security-reviewer Medium #1 v2 (chore PR #6)
+# ---------------------------------------------------------------------------
+
+
+def test_build_cdxgen_env_strips_worker_secrets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Worker secrets must NOT inherit into cdxgen's env.
+
+    cdxgen is a Node binary that, on a hostile clone, may load
+    attacker-controlled ``package.json`` plugins or ``cdxgen.config.json``
+    rules. Any inherited ``DT_API_KEY`` / ``SECRET_KEY`` /
+    ``DATABASE_URL`` would then become a covert exfil channel through
+    plugin telemetry or crash reporting.
+    """
+    monkeypatch.setenv("DT_API_KEY", "super-secret-dt-key")
+    monkeypatch.setenv("SECRET_KEY", "super-secret-jwt-signing-key")
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql+asyncpg://trustedoss:hunter2@postgres:5432/trustedoss",
+    )
+    monkeypatch.setenv("SLACK_WEBHOOK_URL", "https://hooks.slack.com/services/secret")
+
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "package.json").write_text("{}", encoding="utf-8")
+    out = tmp_path / "out"
+
+    env = _build_cdxgen_env(source_dir=src, output_dir=out)
+
+    assert "DT_API_KEY" not in env
+    assert "SECRET_KEY" not in env
+    assert "DATABASE_URL" not in env
+    assert "SLACK_WEBHOOK_URL" not in env
+
+
+def test_build_cdxgen_env_forwards_node_extra_ca_certs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Corporate TLS-intercept proxy hint must reach cdxgen.
+
+    Without this Node falls back to its bundled CA bundle and silently
+    fails x509 verification on every npm registry hit.
+    """
+    monkeypatch.setenv("NODE_EXTRA_CA_CERTS", "/etc/ssl/corp-ca.pem")
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy.corp.example:8080")
+
+    src = tmp_path / "src"
+    src.mkdir()
+    out = tmp_path / "out"
+
+    env = _build_cdxgen_env(source_dir=src, output_dir=out)
+
+    assert env["NODE_EXTRA_CA_CERTS"] == "/etc/ssl/corp-ca.pem"
+    assert env["HTTPS_PROXY"] == "http://proxy.corp.example:8080"

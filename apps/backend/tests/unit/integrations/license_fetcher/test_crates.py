@@ -117,3 +117,45 @@ def test_fetch_handles_429_with_retry(no_throttle: None) -> None:
     assert result is not None
     assert result.spdx_id == "MIT"
     assert len(attempts) == 2
+
+
+# ---------------------------------------------------------------------------
+# follow_redirects=False — security-reviewer L4 (chore PR #6)
+# ---------------------------------------------------------------------------
+
+
+def _client_no_redirects(
+    handler: Callable[[httpx.Request], httpx.Response],
+) -> httpx.Client:
+    return httpx.Client(
+        transport=httpx.MockTransport(handler),
+        timeout=1.0,
+        follow_redirects=False,
+    )
+
+
+def test_fetch_does_not_follow_redirect_to_attacker_host(no_throttle: None) -> None:
+    requested: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(str(request.url))
+        return httpx.Response(
+            307,
+            headers={"Location": "https://attacker.example/api/v1/crates/foo/1"},
+        )
+
+    fetcher = CratesLicenseFetcher(http=_client_no_redirects(handler))
+    result = fetcher.fetch("pkg:cargo/foo@1.0.0")
+
+    assert result is None
+    assert len(requested) == 1
+    assert "attacker.example" not in requested[0]
+
+
+def test_default_client_disables_redirect_following() -> None:
+    fetcher = CratesLicenseFetcher()
+    client = fetcher._client(timeout=1.0)
+    try:
+        assert client.follow_redirects is False
+    finally:
+        fetcher.close()

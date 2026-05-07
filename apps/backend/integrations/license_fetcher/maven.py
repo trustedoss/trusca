@@ -115,13 +115,18 @@ class MavenLicenseFetcher:
 
     def _client(self, timeout: float) -> httpx.Client:
         if self._http is None:
+            # follow_redirects=False — security-reviewer L4 (chore PR #6).
+            # Maven Central is a single authoritative origin, so a
+            # legitimate response is never a 3xx; an unexpected redirect
+            # would indicate a phishing host or registry mirror change
+            # we have not vetted.
             self._http = httpx.Client(
                 headers={
                     "User-Agent": USER_AGENT,
                     "Accept": "application/xml, text/xml, text/plain, */*",
                 },
                 timeout=timeout,
-                follow_redirects=True,
+                follow_redirects=False,
             )
         return self._http
 

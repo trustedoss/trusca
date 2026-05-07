@@ -182,6 +182,21 @@ def request_with_retry(
                     return response
                 if status == 404 and accept_404:
                     return None
+                if 300 <= status < 400:
+                    # Registries occasionally redirect mirror traffic, but
+                    # the fetcher clients run with ``follow_redirects=False``
+                    # (security-reviewer L4, chore PR #6) so an unexpected
+                    # 3xx is reported here. Returning ``None`` registers a
+                    # negative cache entry — the attacker host in
+                    # ``Location`` is never contacted.
+                    log.warning(
+                        "license_fetch_unexpected_redirect",
+                        host=host,
+                        url=url,
+                        status=status,
+                        location=response.headers.get("Location", "")[:500],
+                    )
+                    return None
                 if status == 429 or 500 <= status < 600:
                     log.info(
                         "license_fetch_retryable",

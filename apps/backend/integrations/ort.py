@@ -43,6 +43,7 @@ from typing import Any
 import structlog
 
 from core.config import scan_backend_mode
+from integrations._subprocess_env import scrubbed_env_for_ort
 
 log = structlog.get_logger("integrations.ort")
 
@@ -143,6 +144,17 @@ def run_ort(
         rules=rules,
         sbom=str(sbom_path),
     )
+    # ORT runs as a JVM subprocess. Both inputs (``--rules-file`` and
+    # ``--ort-file``) are worker-controlled — ``rules_path`` resolves to
+    # the operator's ``ORT_RULES_PATH`` env or the bundled
+    # ``/opt/trustedoss/ort/rules.kts`` under the worker image, and
+    # ``sbom_path`` is the cdxgen output we just wrote under the
+    # workspace. ``cwd`` is the cloned source tree but ORT does not
+    # ingest manifests from it (we hand it the SBOM directly), so the
+    # clone cannot smuggle secrets through ORT's analyzer. Even so we
+    # scrub the env (security-reviewer Medium #1 v2, chore PR #6): a
+    # malicious ORT plugin or upstream JVM CVE would otherwise have
+    # access to ``DT_API_KEY`` / ``SECRET_KEY`` / ``DATABASE_URL``.
     try:
         completed = subprocess.run(  # noqa: S603 — fixed args, no shell
             cmd,
@@ -150,6 +162,7 @@ def run_ort(
             check=False,
             timeout=timeout_seconds,
             cwd=str(source_dir),
+            env=scrubbed_env_for_ort(),
         )
     except subprocess.TimeoutExpired as exc:
         raise OrtTimeout(

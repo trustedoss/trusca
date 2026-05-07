@@ -37,7 +37,6 @@ Gradle 8 compatibility (chore PR #5 Part C):
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import subprocess  # noqa: S404 — running a vetted local binary, not user input
 from dataclasses import dataclass
@@ -47,6 +46,7 @@ from typing import Any
 import structlog
 
 from core.config import scan_backend_mode
+from integrations._subprocess_env import scrubbed_env_for_cdxgen
 
 log = structlog.get_logger("integrations.cdxgen")
 
@@ -227,15 +227,17 @@ def _write_gradle_compat_init(output_dir: Path) -> Path:
 def _build_cdxgen_env(*, source_dir: Path, output_dir: Path) -> dict[str, str]:
     """Build the env dict cdxgen runs under.
 
-    Inherits the worker process env (cdxgen needs ``PATH`` /
-    ``JAVA_HOME`` / language toolchain locations) and conditionally
-    augments ``CDXGEN_GRADLE_ARGS`` with a Gradle 8 compat init script
-    when the source dir contains a Gradle build. If the operator has
-    already set ``CDXGEN_GRADLE_ARGS`` in the worker env we honour
-    their value verbatim — they explicitly opted into a non-default
-    invocation.
+    Starts from the scrubbed cdxgen env (security-reviewer Medium #1 v2,
+    chore PR #6) — only the language-toolchain / npm-config keys that
+    cdxgen actually needs are forwarded; worker secrets like
+    ``DT_API_KEY`` / ``SECRET_KEY`` / ``DATABASE_URL`` are stripped so
+    a hostile clone cannot exfiltrate them through cdxgen plugin
+    telemetry or crash reports. Then, when the source contains a Gradle
+    build, we conditionally augment ``CDXGEN_GRADLE_ARGS`` with a
+    Gradle 8 compat init script (chore PR #5 Part C). An operator-set
+    ``CDXGEN_GRADLE_ARGS`` is preserved verbatim — explicit opt-in.
     """
-    env = dict(os.environ)
+    env = scrubbed_env_for_cdxgen()
     if not _is_gradle_project(source_dir):
         return env
     if env.get("CDXGEN_GRADLE_ARGS"):
