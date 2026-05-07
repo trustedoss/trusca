@@ -342,6 +342,53 @@ def require_role(role: str) -> Callable[..., CurrentUser]:
     return _check
 
 
+def require_super_admin_or_404() -> Callable[..., CurrentUser]:
+    """
+    Dependency factory: super-admin gate with existence-hide behavior.
+
+    Phase 4 PR #13 — admin endpoints. Unlike :func:`require_role`, this
+    dependency hides the very existence of the admin surface from non-admin
+    callers. The contract is:
+
+      - Anonymous (no/invalid JWT)         -> 401 Authentication required
+      - Authenticated but not super_admin  -> 404 Not Found
+      - Authenticated super_admin          -> pass-through
+
+    Returning 404 (not 403) for non-super-admin authed users prevents probing
+    the admin URL space — `team_admin` and `developer` users get the same
+    response shape as if the path didn't exist.
+
+    The 401 branch stays distinct because surfacing "you're unauthenticated"
+    is not a privacy issue (the JWT is the credential — its absence is the
+    answer). Hiding 401 behind 404 would also break the standard
+    "401 -> redirect to login" pattern in the frontend client.
+
+    The dependency-shaped callable accepts ``current_user`` as a kwarg so
+    unit tests can call it directly without going through FastAPI.
+    """
+
+    def _check(
+        current_user: CurrentUser | None = Depends(get_optional_current_user),
+    ) -> CurrentUser:
+        if current_user is None or not current_user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required",
+            )
+        # Existence-hide: anything below super_admin sees 404, never 403.
+        # Pair `is_superuser` with `role == "super_admin"` for safety —
+        # `_load_current_user` keeps them in lockstep but this is the
+        # privilege-decision site, so we double-check.
+        if not (current_user.is_superuser or current_user.role == "super_admin"):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Not Found",
+            )
+        return current_user
+
+    return _check
+
+
 def require_team_member() -> Callable[..., CurrentUser]:
     """
     Dependency factory: ensure the caller belongs to `team_id`.
@@ -382,6 +429,7 @@ __all__ = [
     "hash_password",
     "hash_refresh_token",
     "require_role",
+    "require_super_admin_or_404",
     "require_team_member",
     "verify_password",
 ]
