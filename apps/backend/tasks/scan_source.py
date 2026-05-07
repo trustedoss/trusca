@@ -856,7 +856,7 @@ def _get_or_create_license(
     *,
     spdx_id: str,
     reference_url: str | None,
-):
+) -> Any:
     from models import License as LicenseModel
 
     existing = session.execute(
