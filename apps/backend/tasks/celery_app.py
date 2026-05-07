@@ -42,14 +42,15 @@ def _build_beat_schedule() -> dict[str, dict[str, object]]:
     """
     Return the Celery Beat schedule.
 
-    Phase 2 PR #8 registers four periodic tasks:
+    Phase 2 PR #8 registers three periodic tasks:
       - ``trustedoss.dt_health``           — every 60 seconds
       - ``trustedoss.dt_resync``           — every 1 hour
       - ``trustedoss.dt_orphan_cleaner``   — every 6 hours
 
-    The actual Beat sidecar container lands in a follow-up PR; for #8 we
-    register the schedule so a Beat process started against this app picks
-    them up automatically.
+    chore PR #4 wires a `celery-beat` sidecar in
+    ``docker-compose.dev.yml`` so these schedules actually fire — until
+    that PR landed the schedule was registered but no process was
+    invoking it.
     """
     return {
         "dt-health-heartbeat": {

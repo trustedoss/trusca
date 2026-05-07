@@ -1,0 +1,57 @@
+# Dependency-Track overlay for UAT.
+#
+# Bring up alongside the dev stack:
+#   docker-compose -f docker-compose.dev.yml -f docker-compose.dt.yml up -d
+#
+# First start downloads the full NVD CPE/CVE database (~30 min, ~5GB on
+# disk) — DT begins answering /api/version immediately but findings stay
+# empty until that mirror is ready. Subsequent starts re-use the volume.
+#
+# H2 embedded DB. For prod, swap ALPINE_DATABASE_MODE to `external` and
+# point at a Postgres instance.
+
+services:
+  # Inject DT_URL + DT_API_KEY (from .env) into backend + worker — the
+  # base dev compose deliberately omits DT vars so a stack without DT
+  # boots cleanly. The overlay flips the breaker from "OPEN (no DT)" to
+  # "CLOSED (DT reachable via the compose network)".
+  backend:
+    environment:
+      DT_URL: ${DT_URL:-http://dtrack-api:8080}
+      DT_API_KEY: ${DT_API_KEY:-}
+
+  celery-worker:
+    environment:
+      DT_URL: ${DT_URL:-http://dtrack-api:8080}
+      DT_API_KEY: ${DT_API_KEY:-}
+    volumes:
+      # Mount the local ORT ruleset into the path the integration expects.
+      # Combined with the existing bind-mount of ./apps/backend in the base
+      # compose (overridden here by appending — Compose merges volume lists).
+      - ./apps/backend:/app
+      - ./ort:/opt/trustedoss/ort:ro
+
+  dtrack-api:
+    image: dependencytrack/apiserver:4.13.2
+    restart: unless-stopped
+    environment:
+      ALPINE_DATABASE_MODE: embedded
+      # 4 GB heap is the recommended minimum for the API server. Bumping
+      # higher only helps when NVD/OSV mirrors are large.
+      EXTRA_JAVA_OPTIONS: -Xmx4G -Xms2G
+    volumes:
+      - dtrack-data:/data
+    ports:
+      # Expose on the host so we can hit the DT REST API directly to
+      # bootstrap the API key. The backend reaches it via the
+      # `dtrack-api` service name on the compose network.
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/api/version > /dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 180s
+
+volumes:
+  dtrack-data:

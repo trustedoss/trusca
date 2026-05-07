@@ -185,6 +185,14 @@ def test_scan_source_pipeline_completes_with_mock_backend(
         "tasks.scan_source.build_client",
         lambda: _FakeDTClient(),
     )
+    # chore PR #4: stage-6 polls DT for findings with exponential backoff
+    # (~60s budget). With a fake DT client that always returns [] the test
+    # would otherwise wait the full budget — short-circuit by zeroing the
+    # delays so the helper still iterates (covering its loop body) but
+    # without the wall-clock cost.
+    monkeypatch.setattr(
+        "tasks.scan_source._DT_FINDINGS_POLL_DELAYS_SECONDS", (0,)
+    )
 
     scan_id, project_id = _seed_queued_scan(sync_session)
 
@@ -242,6 +250,9 @@ def test_scan_source_succeeded_run_is_noop(
     monkeypatch.setenv("WORKSPACE_HOST_PATH", str(tmp_path))
     monkeypatch.setattr("tasks.scan_source.get_breaker", lambda: _FakeBreaker())
     monkeypatch.setattr("tasks.scan_source.build_client", lambda: _FakeDTClient())
+    monkeypatch.setattr(
+        "tasks.scan_source._DT_FINDINGS_POLL_DELAYS_SECONDS", (0,)
+    )
 
     scan_id, _ = _seed_queued_scan(sync_session)
 

@@ -36,6 +36,8 @@ Workspace:
 from __future__ import annotations
 
 import shutil
+import subprocess
+import time
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -80,6 +82,7 @@ log = structlog.get_logger("tasks.scan_source")
 _STAGE_PROGRESS: dict[str, int] = {
     "bootstrap": 0,
     "fetch": 10,
+    "prep": 18,
     "cdxgen": 25,
     "ort": 50,
     "dt_upload": 70,
@@ -191,7 +194,16 @@ def _run_pipeline(
         scan_uuid=scan_uuid,
         workspace=workspace,
         git_url=git_url,
+        mock_only=False,
     )
+
+    # Stage 2.5 — multi-language pre-cdxgen prep. cdxgen needs a populated
+    # lockfile to enumerate transitive deps for Ruby / Rust / Go / .NET; the
+    # 2026-05-07 ecosystem-matrix UAT showed bare-source scans returned 0 or
+    # only direct deps for those four ecosystems. Best-effort: a failed prep
+    # logs a warning and the scan continues with whatever cdxgen can extract.
+    _set_stage(scan_uuid, "prep")
+    _prepare_for_cdxgen(source_dir=source_dir, scan_uuid=scan_uuid)
 
     # Stage 3 — cdxgen.
     _set_stage(scan_uuid, "cdxgen")
@@ -206,13 +218,24 @@ def _run_pipeline(
     )
 
     # Stage 4 — ORT evaluate.
+    # UAT patch (2026-05-07): ORT integration is currently broken — it
+    # passes the cdxgen CycloneDX SBOM to `ort evaluate --ort-file ...`
+    # which expects an OrtResult JSON produced by `ort analyze`. The
+    # KotlinInvalidNullException at parse time aborts every scan. Until
+    # the integration is fixed (separate `ort analyze` stage feeding the
+    # evaluator), wrap the call in a try/except so the rest of the
+    # pipeline (component + license persistence, DT upload, CVE
+    # matching) still runs.
     _set_stage(scan_uuid, "ort")
-    ort_result = ort_adapter.run_ort(
-        source_dir=source_dir,
-        sbom_path=cdxgen_result.sbom_path,
-        output_dir=workspace / "ort",
-    )
-    _persist_artifact(scan_uuid, kind="ort_result", path=ort_result.result_path)
+    try:
+        ort_result = ort_adapter.run_ort(
+            source_dir=source_dir,
+            sbom_path=cdxgen_result.sbom_path,
+            output_dir=workspace / "ort",
+        )
+        _persist_artifact(scan_uuid, kind="ort_result", path=ort_result.result_path)
+    except Exception as exc:
+        log.warning("ort_stage_skipped", error=str(exc)[:300])
 
     # Persist the SBOM components (independent of DT availability — this is
     # the cached license + component data the UI shows when DT is down).
@@ -244,8 +267,20 @@ def _run_pipeline(
         )
 
         # Stage 6 — DT findings poll.
+        # DT runs vulnerability matching asynchronously after BOM upload
+        # (BOM_UPLOAD_ANALYSIS event). The first poll within ~1 second of
+        # upload typically returns 0 findings even when matches exist —
+        # this was the false-empty path observed during the 2026-05-07
+        # UAT (54 Maven CVEs that DT had matched, but the scan persisted
+        # 0 because the synchronous poll fired too early). Retry with
+        # exponential backoff (≤60s budget) so the eventual findings make
+        # it onto the scan row before the user sees it.
         _set_stage(scan_uuid, "dt_findings")
-        findings = breaker.call(lambda: dt_client.get_findings(project_uuid=dt_project_uuid))
+        findings = _poll_dt_findings_with_retry(
+            dt_client=dt_client,
+            breaker=breaker,
+            dt_project_uuid=dt_project_uuid,
+        )
         with sync_session_scope() as session:
             _persist_findings(session, scan_uuid=scan_uuid, findings=findings)
             session.commit()
@@ -378,10 +413,8 @@ def _fetch_source(
     else:
         cmd = ["git", "clone", "--depth", "1", normalized_url, str(target)]
 
-    # subprocess import is local so the mock-only fast-path stays free of
-    # imports we never use in tests.
-    import subprocess  # pragma: no cover — dead-code branch until activated
-
+    # subprocess is imported at module scope so the prep helper can use it
+    # too (chore PR #4); the dead-code branch below shares that import.
     log.info(  # pragma: no cover — dead-code branch
         "scan_source_fetch_real",
         normalized_url=redact_url_userinfo(normalized_url),
@@ -491,13 +524,199 @@ def _persist_artifact(scan_uuid: uuid.UUID, *, kind: str, path: Path) -> None:
         session.commit()
 
 
+# ---------------------------------------------------------------------------
+# Multi-language pre-cdxgen prep
+# ---------------------------------------------------------------------------
+
+
+# Per-language step timeout. 5 minutes is enough for `bundle lock` /
+# `cargo generate-lockfile` / `go mod tidy` / `dotnet restore` on the
+# pilot repos in the 2026-05-07 matrix (none exceeded ~60s) while still
+# capping a runaway resolver before it eats the scan's 60-min budget.
+_PREP_STEP_TIMEOUT_SECONDS = 300
+
+
+def _prepare_for_cdxgen(*, source_dir: Path, scan_uuid: uuid.UUID) -> None:
+    """Run language-specific lockfile / dependency-resolution steps before
+    handing the workspace to cdxgen.
+
+    cdxgen reads existing lockfiles (Gemfile.lock / Cargo.lock / go.sum /
+    `obj/project.assets.json`) to enumerate transitive dependencies. When
+    those are absent the SBOM only lists direct deps — or zero, depending
+    on the ecosystem (see docs/sessions/2026-05-07-uat-multi-ecosystem-
+    matrix.md for the per-ecosystem breakdown).
+
+    Each step runs at most once per scan and is best-effort: a failure
+    logs a warning and the scan continues. We never raise from here — the
+    surrounding `_run_pipeline` would map any exception onto the scan's
+    terminal-failure path, but a missing transitive deps list is a
+    degraded-output scenario, not a fatal one.
+    """
+    timeout = _PREP_STEP_TIMEOUT_SECONDS
+
+    if (source_dir / "Gemfile").exists() and not (source_dir / "Gemfile.lock").exists():
+        _run_prep(
+            "bundle lock", ["bundle", "lock"], source_dir, timeout, scan_uuid
+        )
+    if (source_dir / "Cargo.toml").exists() and not (source_dir / "Cargo.lock").exists():
+        _run_prep(
+            "cargo generate-lockfile",
+            ["cargo", "generate-lockfile"],
+            source_dir,
+            timeout,
+            scan_uuid,
+        )
+    if (source_dir / "go.mod").exists():
+        # `go mod tidy` is idempotent — re-running with go.sum already
+        # present just verifies the graph. Run unconditionally so a
+        # partial / out-of-date go.sum is healed before cdxgen reads it.
+        _run_prep("go mod tidy", ["go", "mod", "tidy"], source_dir, timeout, scan_uuid)
+    if any(source_dir.glob("*.csproj")) and shutil.which("dotnet"):
+        _run_prep("dotnet restore", ["dotnet", "restore"], source_dir, timeout, scan_uuid)
+
+
+def _run_prep(
+    name: str,
+    cmd: list[str],
+    cwd: Path,
+    timeout: int,
+    scan_uuid: uuid.UUID,
+) -> None:
+    """Best-effort prep — log failure but don't abort the scan.
+
+    cdxgen still produces a partial SBOM from raw source if prep fails,
+    so a Gemfile-only repo with a flaky network is degraded but not
+    broken. We capture stdout/stderr (text) so structlog can record
+    actionable failure context — limited to 500 chars to bound a runaway
+    resolver's diagnostic spew, which has been seen on cargo network
+    timeouts.
+
+    Security: ``cmd`` is a hardcoded list that originates in
+    ``_prepare_for_cdxgen`` (no user input). ``cwd`` is the scan's own
+    workspace directory, which the worker created earlier in this
+    pipeline. There is no shell interpolation. Bandit's S603 warning
+    ("subprocess call - check for execution of untrusted input") is a
+    false positive for this controlled invocation.
+    """
+    try:
+        result = subprocess.run(  # noqa: S603 — see docstring
+            cmd,
+            cwd=str(cwd),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+        log.info(
+            "prep_finished",
+            step=name,
+            scan_id=str(scan_uuid),
+            returncode=result.returncode,
+        )
+        if result.returncode != 0:
+            log.warning(
+                "prep_failed",
+                step=name,
+                scan_id=str(scan_uuid),
+                stderr=(result.stderr or "")[:500],
+            )
+    except subprocess.TimeoutExpired:
+        log.warning(
+            "prep_timeout",
+            step=name,
+            scan_id=str(scan_uuid),
+            timeout=timeout,
+        )
+    except OSError as exc:
+        # FileNotFoundError (no language layer in the worker image) +
+        # PermissionError (workspace mounted noexec) + the wider OSError
+        # family — all are "host condition is degraded, prep cannot run"
+        # rather than "scan should abort". Log and let cdxgen extract
+        # whatever it can from the bare source. We deliberately do NOT
+        # catch bare ``Exception`` here so a real bug in our wrapper still
+        # bubbles up to the surrounding terminal-failure path.
+        log.warning(
+            "prep_unavailable",
+            step=name,
+            scan_id=str(scan_uuid),
+            cmd=cmd[0],
+            error=str(exc),
+        )
+
+
+# ---------------------------------------------------------------------------
+# DT findings retry-with-backoff
+# ---------------------------------------------------------------------------
+
+
+_DT_FINDINGS_POLL_DELAYS_SECONDS: tuple[int, ...] = (2, 4, 8, 16, 30)
+
+
+def _poll_dt_findings_with_retry(
+    *,
+    dt_client: DTClient,
+    breaker: CircuitBreaker,
+    dt_project_uuid: str,
+) -> list[dict[str, Any]]:
+    """Poll DT for findings with exponential backoff.
+
+    DT runs the OSV / NVD matcher asynchronously when a BOM is uploaded
+    (BOM_UPLOAD_ANALYSIS event). The first poll within ~1s of upload
+    typically returns 0 findings even when matches will eventually
+    materialise — this was the false-empty seen across the UAT pilots.
+
+    Strategy: sleep, then poll. Total budget is the sum of
+    ``_DT_FINDINGS_POLL_DELAYS_SECONDS`` (~60s for the default
+    2/4/8/16/30 schedule). Return as soon as we see a non-empty result —
+    DT's matcher emits the full set in one go, not a streaming partial
+    view. If every attempt returns empty we return an empty list rather
+    than raising; the caller persists zero findings, which matches the
+    current "no matches" behaviour.
+
+    The breaker still wraps each poll, so a DT outage mid-retry trips
+    the breaker and short-circuits the remaining attempts.
+
+    Tests inject a no-op delay schedule via
+    ``monkeypatch.setattr("tasks.scan_source._DT_FINDINGS_POLL_DELAYS_SECONDS", (0,))``
+    or replace ``tasks.scan_source.time.sleep`` directly.
+    """
+    findings: list[dict[str, Any]] = []
+    for attempt, delay in enumerate(_DT_FINDINGS_POLL_DELAYS_SECONDS, start=1):
+        time.sleep(delay)
+        findings = breaker.call(
+            lambda: dt_client.get_findings(project_uuid=dt_project_uuid)
+        )
+        log.info(
+            "dt_findings_poll",
+            attempt=attempt,
+            delay=delay,
+            count=len(findings),
+        )
+        if findings:
+            return findings
+    return findings
+
+
 def _persist_components(
     session: Session,
     *,
     scan_uuid: uuid.UUID,
     sbom: dict[str, Any],
 ) -> None:
-    """Upsert components / component versions / scan components from cdxgen."""
+    """Upsert components / component versions / scan components / license
+    findings from a cdxgen CycloneDX SBOM.
+
+    UAT patch (2026-05-07): the original implementation only persisted the
+    component graph and left ``license_findings`` empty (the original design
+    relied on ORT's evaluator output, but the ORT integration is broken —
+    see scan_source._run_pipeline). cdxgen does emit each component's
+    declared SPDX license inside ``components[].licenses``, so we now also
+    upsert ``licenses`` + ``license_findings`` rows here. License kind is
+    fixed to ``"declared"`` because cdxgen's data is package-metadata-derived
+    (npm `license`, maven `<licenses>`, gradle resolved POM); ORT would
+    additionally emit ``concluded`` / ``detected`` after running the license
+    scanner, which we'll wire when the analyzer stage is fixed.
+    """
     components = sbom.get("components", []) or []
     for raw in components:
         if not isinstance(raw, dict):
@@ -536,6 +755,152 @@ def _persist_components(
             raw_data=guarded_raw,
         )
         session.add(scan_component)
+
+        _persist_component_licenses(
+            session,
+            scan_uuid=scan_uuid,
+            component_version_id=component_version.id,
+            cdxgen_component=raw,
+        )
+
+
+# ---------------------------------------------------------------------------
+# License extraction (cdxgen → license_findings)
+# ---------------------------------------------------------------------------
+
+
+# CycloneDX `licenses[].license.id` (SPDX) or `licenses[].expression` is what
+# we read. Permissive defaults — the entries are just the well-known SPDX
+# identifiers we expect to see most often. Anything else lands in `unknown`.
+_LICENSE_CATEGORY_DEFAULTS: dict[str, str] = {
+    # Allowed
+    "MIT": "allowed",
+    "Apache-2.0": "allowed",
+    "BSD-2-Clause": "allowed",
+    "BSD-3-Clause": "allowed",
+    "ISC": "allowed",
+    "Unlicense": "allowed",
+    "CC0-1.0": "allowed",
+    "0BSD": "allowed",
+    "Zlib": "allowed",
+    "WTFPL": "allowed",
+    "Python-2.0": "allowed",
+    # Conditional
+    "LGPL-2.0-only": "conditional",
+    "LGPL-2.0-or-later": "conditional",
+    "LGPL-2.1-only": "conditional",
+    "LGPL-2.1-or-later": "conditional",
+    "LGPL-3.0-only": "conditional",
+    "LGPL-3.0-or-later": "conditional",
+    "MPL-1.1": "conditional",
+    "MPL-2.0": "conditional",
+    "EPL-1.0": "conditional",
+    "EPL-2.0": "conditional",
+    "CDDL-1.0": "conditional",
+    "CDDL-1.1": "conditional",
+    "Apache-1.1": "conditional",
+    # Forbidden
+    "GPL-2.0-only": "forbidden",
+    "GPL-2.0-or-later": "forbidden",
+    "GPL-3.0-only": "forbidden",
+    "GPL-3.0-or-later": "forbidden",
+    "AGPL-3.0-only": "forbidden",
+    "AGPL-3.0-or-later": "forbidden",
+    "SSPL-1.0": "forbidden",
+    "BUSL-1.1": "forbidden",
+}
+
+
+def _classify_license_category(spdx_id: str | None) -> str:
+    if not spdx_id:
+        return "unknown"
+    return _LICENSE_CATEGORY_DEFAULTS.get(spdx_id, "unknown")
+
+
+def _extract_spdx_ids(cdxgen_component: dict[str, Any]) -> list[tuple[str, str | None]]:
+    """Pull (spdx_id, reference_url) tuples out of a cdxgen component entry.
+
+    CycloneDX shapes the ``licenses`` field as a list, where each entry is
+    one of:
+      - ``{"license": {"id": "<spdx>", "url": "<reference>"}}``
+      - ``{"license": {"name": "<free-text>", "url": "<reference>"}}``
+      - ``{"expression": "<spdx-expression>"}``
+
+    We accept the first form (preferred — exact SPDX), accept the third when
+    it parses as a single SPDX id (no AND/OR/WITH), and skip free-text
+    license names — those would require a license-text identifier scanner
+    (ORT or scancode) to map to SPDX, which is out of scope for the cdxgen
+    fast-path.
+    """
+    out: list[tuple[str, str | None]] = []
+    licenses = cdxgen_component.get("licenses") or []
+    if not isinstance(licenses, list):
+        return out
+    for entry in licenses:
+        if not isinstance(entry, dict):
+            continue
+        lic = entry.get("license") or {}
+        if isinstance(lic, dict):
+            spdx = lic.get("id")
+            url = lic.get("url")
+            if isinstance(spdx, str) and spdx:
+                out.append((spdx, url if isinstance(url, str) else None))
+                continue
+        expression = entry.get("expression")
+        if isinstance(expression, str) and expression and not any(
+            kw in expression for kw in (" AND ", " OR ", " WITH ")
+        ):
+            out.append((expression.strip(), None))
+    return out
+
+
+def _get_or_create_license(
+    session: Session,
+    *,
+    spdx_id: str,
+    reference_url: str | None,
+) -> Any:
+    from models import License as LicenseModel
+
+    existing = session.execute(
+        select(LicenseModel).where(LicenseModel.spdx_id == spdx_id)
+    ).scalar_one_or_none()
+    if existing is not None:
+        return existing
+    lic = LicenseModel(
+        spdx_id=spdx_id,
+        name=spdx_id,
+        category=_classify_license_category(spdx_id),
+        reference_url=reference_url,
+    )
+    session.add(lic)
+    session.flush()
+    return lic
+
+
+def _persist_component_licenses(
+    session: Session,
+    *,
+    scan_uuid: uuid.UUID,
+    component_version_id: uuid.UUID,
+    cdxgen_component: dict[str, Any],
+) -> None:
+    """For each SPDX license on the cdxgen component, upsert a License row
+    and emit a ``declared`` LicenseFinding tying it to this scan."""
+    spdx_pairs = _extract_spdx_ids(cdxgen_component)
+    for spdx_id, ref_url in spdx_pairs:
+        license_row = _get_or_create_license(
+            session, spdx_id=spdx_id, reference_url=ref_url
+        )
+        finding = LicenseFinding(
+            scan_id=scan_uuid,
+            component_version_id=component_version_id,
+            license_id=license_row.id,
+            kind="declared",
+            source_path=None,
+            raw_data={"source": "cdxgen"},
+        )
+        session.add(finding)
 
 
 def _persist_findings(

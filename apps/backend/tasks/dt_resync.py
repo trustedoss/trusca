@@ -107,7 +107,15 @@ def _upsert_vulnerability(session: Session, raw: dict[str, Any]) -> bool:
     references = raw.get("references") or []
     published = _parse_dt_timestamp(raw.get("published"))
     modified = _parse_dt_timestamp(raw.get("updated"))
-    source = (raw.get("source") or {}).get("name") or "DT"
+    # DT 4.12 emitted `source` as a dict ({"name": "..."}); DT 4.13 emits
+    # it as a plain string. Accept both shapes.
+    src_raw = raw.get("source")
+    if isinstance(src_raw, dict):
+        source = src_raw.get("name") or "DT"
+    elif isinstance(src_raw, str) and src_raw:
+        source = src_raw
+    else:
+        source = "DT"
 
     if existing is None:
         session.add(
