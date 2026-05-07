@@ -202,6 +202,14 @@ _CREDENTIAL_DENY_SUBSTRINGS: tuple[str, ...] = (
     "api_key",
     "private_key",
     "privatekey",
+    # Session-bearing identifiers. cdxgen / ORT plugins occasionally
+    # accept ``*_SESSION`` / ``*_SESSIONID`` / ``*_BEARER`` / ``*_COOKIE``
+    # variables for registry login. Drop them inside the prefix bands
+    # for the same reason ``token`` is dropped — security-reviewer L1
+    # (chore PR #6).
+    "session",
+    "bearer",
+    "cookie",
 )
 
 

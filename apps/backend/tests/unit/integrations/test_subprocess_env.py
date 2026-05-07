@@ -232,6 +232,10 @@ def test_ort_drops_ort_token_band(monkeypatch: pytest.MonkeyPatch) -> None:
         "FOO_CREDENTIALS",
         "FOO_PRIVATE_KEY",
         "FOO_PRIVATEKEY",
+        # security-reviewer L1 (chore PR #6) — session-bearing keys.
+        "ORT_SESSIONID",
+        "CDXGEN_BEARER_TOKEN",
+        "npm_config_cookie",
     ],
 )
 def test_credential_heuristic_flags_secret_keys(key: str) -> None:
