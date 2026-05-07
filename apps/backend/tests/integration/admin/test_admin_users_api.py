@@ -143,6 +143,123 @@ async def test_list_users_team_admin_returns_404_existence_hide(
 
 
 # ---------------------------------------------------------------------------
+# F3 — strict role query enum (fail-closed 422)
+# ---------------------------------------------------------------------------
+# The ``role`` query parameter was a free-form ``str`` until security-reviewer
+# F3 — values outside the canonical 3-role set were silently dropped (fail
+# open), so a typo like ``role=admin`` returned the entire user list. The fix
+# pins the parameter to ``Literal["super_admin", "team_admin", "developer"]``
+# so anything else fails with a 422 + Problem Details (fail closed) BEFORE
+# the service runs.
+#
+# Adversarial input parametrize (memory feedback_adversarial_input_parametrize):
+# untrusted-input parsing must be exercised with separator-only / scheme /
+# oversized / CRLF / null byte / RTL / SQL-keyword / repeated-key payloads.
+
+
+@pytest.mark.parametrize(
+    "role",
+    ["super_admin", "team_admin", "developer"],
+)
+async def test_list_users_role_query_accepts_valid_enum(
+    client: AsyncClient, role: str
+) -> None:
+    """All three canonical role values must remain accepted (200)."""
+    factory = await _factory(client)
+    async with factory() as session:
+        admin = await make_user(session, is_superuser=True)
+
+    response = await client.get(
+        f"/v1/admin/users?role={role}",
+        headers=_bearer_for(admin),
+    )
+    assert response.status_code == 200, response.text
+
+
+@pytest.mark.parametrize(
+    "label,raw",
+    [
+        # Out-of-set values (fail closed).
+        ("rejects_unknown_value", "invalid"),
+        ("rejects_typo_admin", "admin"),
+        ("rejects_uppercase", "SUPER_ADMIN"),
+        ("rejects_mixed_case", "Super_Admin"),
+        ("rejects_trailing_whitespace", "developer "),
+        ("rejects_leading_whitespace", " developer"),
+        # Empty string is rejected: Literal[..] does not include "".
+        ("rejects_empty_string", ""),
+        # Adversarial inputs (memory feedback_adversarial_input_parametrize).
+        ("rejects_javascript_scheme", "javascript:alert(1)"),
+        ("rejects_oversized", "a" * 1000),
+        ("rejects_crlf", "developer\r\nSet-Cookie: x=y"),
+        ("rejects_null_byte", "developer\x00"),
+        ("rejects_rtl_override", "‮developer"),
+        ("rejects_sql_keyword", "developer' OR 1=1 --"),
+        ("rejects_integer_stringified", "1"),
+    ],
+)
+async def test_list_users_role_query_rejects_adversarial(
+    client: AsyncClient, label: str, raw: str
+) -> None:
+    """Every out-of-enum / adversarial value MUST 422 + problem+json envelope."""
+    factory = await _factory(client)
+    async with factory() as session:
+        admin = await make_user(session, is_superuser=True)
+
+    # Send via query-params dict so httpx URL-encodes control bytes / CRLF
+    # safely instead of throwing at the client level.
+    response = await client.get(
+        "/v1/admin/users",
+        params={"role": raw},
+        headers=_bearer_for(admin),
+    )
+    assert response.status_code == 422, (
+        f"{label!r} payload {raw!r} produced {response.status_code}; "
+        f"body={response.text!r}"
+    )
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+    body = response.json()
+    assert body["status"] == 422
+    assert body["title"] == "Validation Error"
+    # F2 redaction pin: the per-error ``input`` field MUST be the sentinel,
+    # never the raw value. We check the error rows directly rather than the
+    # whole body — ``detail`` legitimately contains common English words
+    # ("invalid") that would collide with adversarial payloads as a
+    # substring match.
+    role_rows = [
+        e
+        for e in body["errors"]
+        if isinstance(e, dict) and "role" in tuple(e.get("loc", ()))
+    ]
+    assert role_rows, f"missing role validation row in {body['errors']!r}"
+    for row in role_rows:
+        assert row.get("input") == "<redacted>", (
+            f"raw value leaked under redaction sentinel: {row!r}"
+        )
+
+
+async def test_list_users_role_query_repeated_key_fails_closed(
+    client: AsyncClient,
+) -> None:
+    """
+    Repeated ?role=a&role=b: FastAPI binds the LAST value when the parameter
+    is scalar (vs. ``list[str]``). Our pin is scalar Literal, so the second
+    value still drives validation. If it's out-of-enum we get 422 — neither
+    silent acceptance nor a 500.
+    """
+    factory = await _factory(client)
+    async with factory() as session:
+        admin = await make_user(session, is_superuser=True)
+
+    response = await client.get(
+        "/v1/admin/users?role=developer&role=admin",
+        headers=_bearer_for(admin),
+    )
+    assert response.status_code == 422, response.text
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+# ---------------------------------------------------------------------------
 # Super admin happy paths
 # ---------------------------------------------------------------------------
 

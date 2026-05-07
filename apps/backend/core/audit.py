@@ -25,6 +25,7 @@ lines emitted during the request can be correlated with the audit entry by id.
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 from contextvars import ContextVar
 from typing import Any
@@ -63,6 +64,28 @@ _SENSITIVE_COLUMNS = frozenset(
 )
 
 
+# PII columns that we DO want the audit trail to capture (so admins can prove
+# "user X changed Y to Z at time T") but whose plaintext value must never be
+# persisted (CWE-359 Exposure of Private Personal Information; security-
+# reviewer F4). We replace the value with ``{"sha256": "<hex>"}`` so two
+# distinct values produce distinct hashes (membership testing still works for
+# audit-replay forensics) without retaining the plaintext at rest.
+#
+# Why hash instead of mask with ``***``?
+#   - Investigators need to correlate "the email this row referenced"
+#     across multiple audit rows without having to hold the plaintext.
+#   - Hashing is deterministic + irreversible (modulo dictionary attack
+#     against a known address space — out of scope for our threat model).
+#   - The audit trail keeps the user's ID + the request_id, so the
+#     correlation carries the actor without the PII.
+#
+# Why not use ``_SENSITIVE_COLUMNS`` mask=`***`?
+#   - All emails would collapse to the same value, defeating the audit
+#     trail's "what changed" semantics. ``email`` and ``full_name`` aren't
+#     credentials — they're regulated data we just don't want lying around.
+_PII_COLUMNS = frozenset({"email", "full_name"})
+
+
 # Tables we never audit. `audit_logs` itself would otherwise recurse, and
 # `alembic_version` is operational metadata.
 _NON_AUDITED_TABLES = frozenset({"audit_logs", "alembic_version"})
@@ -91,19 +114,45 @@ def is_audited_table(name: str) -> bool:
 
 def mask_sensitive_columns(payload: dict[str, Any]) -> dict[str, Any]:
     """
-    Return a copy of `payload` with sensitive keys replaced by '***'.
+    Return a copy of `payload` with sensitive / PII keys redacted.
+
+    Three cases:
+      - ``_SENSITIVE_COLUMNS`` (credentials, hashes) → replaced with ``"***"``.
+        Plaintext that we genuinely never want to retain at audit time.
+      - ``_PII_COLUMNS`` (``email``, ``full_name``) → replaced with
+        ``{"sha256": "<hex>"}``. Investigators can still match identical
+        values across audit rows but the plaintext is gone (CWE-359).
+      - Everything else → passed through unchanged.
 
     We replace rather than delete so the diff still records that the column
-    changed — useful for "this user rotated their password at T" without
-    leaking the hash itself.
+    changed — useful for "this user rotated their password at T" or "this
+    user's email was edited at T" without retaining the plaintext.
     """
     out: dict[str, Any] = {}
     for key, value in payload.items():
         if key in _SENSITIVE_COLUMNS:
             out[key] = "***"
+        elif key in _PII_COLUMNS:
+            out[key] = _hash_pii(value)
         else:
             out[key] = value
     return out
+
+
+def _hash_pii(value: Any) -> dict[str, str] | None:
+    """
+    Hash a PII value to ``{"sha256": "<hex>"}``.
+
+    Returns None when the input is None (column was unset / nulled). Non-
+    string values are coerced via ``str()`` before hashing — the audit
+    listener feeds us the raw column value, which for ``email`` / ``full_name``
+    is always either ``str`` or ``None`` in our schema, but the coercion
+    keeps us robust if a future column joins ``_PII_COLUMNS``.
+    """
+    if value is None:
+        return None
+    digest = hashlib.sha256(str(value).encode("utf-8")).hexdigest()
+    return {"sha256": digest}
 
 
 def build_audit_action(op: str) -> str:

@@ -128,6 +128,43 @@ async def _load_team(session: AsyncSession, team_id: uuid.UUID) -> Team:
     return team
 
 
+async def _lock_team_for_destructive_op(
+    session: AsyncSession, team_id: uuid.UUID
+) -> Team:
+    """
+    Load the team WITH ``FOR UPDATE`` row lock (security-reviewer F7, CWE-367).
+
+    Used as the entry point of ``delete_team``. Holds a row-level lock on the
+    team itself for the duration of the transaction so the gap between
+    ``_team_has_active_scans`` and the cascade DELETE cannot be exploited by
+    a concurrent ``update_team`` or admin call against the same team. A
+    racing ``trigger_scan`` that runs in a separate transaction either:
+      - completes and commits a new ``scans`` row BEFORE our SELECT, in
+        which case our subsequent ``_team_has_active_scans`` check sees it
+        and raises ``team_has_active_scans``; or
+      - starts AFTER our team lock is held — its insert path that touches
+        ``projects.team_id`` may be serialised behind our lock depending on
+        FK definitions; if not, it commits a new scan after we deleted the
+        team, in which case the FK CASCADE has already removed the project
+        and the scan insert fails on the FK ref. Either way the invariant
+        ("no live scans referencing a deleted team") holds.
+
+    Lock order convention (also documented in
+    ``_lock_and_count_active_super_admins`` /
+    ``_lock_and_count_team_admins``): ``teams`` is locked BEFORE
+    ``memberships`` BEFORE ``projects`` BEFORE ``scans`` in any single
+    transaction that needs multiple row locks. ``delete_team`` only takes
+    the ``teams`` lock — the FK CASCADE that follows acquires the dependent
+    row locks in the (deterministic) order Postgres traverses the FK graph,
+    after the team lock is held. The convention is forward-compatible.
+    """
+    stmt = select(Team).where(Team.id == team_id).with_for_update()
+    team = (await session.execute(stmt)).scalar_one_or_none()
+    if team is None:
+        raise AdminTeamNotFound(f"team {team_id} not found")
+    return team
+
+
 async def _pick_default_org(session: AsyncSession) -> Organization:
     """
     Pick the lone organization for new-team creation.
@@ -404,8 +441,15 @@ async def delete_team(
     then deletes the team. The CASCADE FKs handle memberships + projects
     physical removal — the archive UPDATE is purely so the audit log
     captures the project state right before deletion.
+
+    Concurrency (security-reviewer F7, CWE-367): the team row is locked
+    ``FOR UPDATE`` at the very start so the active-scan check and the
+    subsequent DELETE happen against a stable snapshot. See
+    ``_lock_team_for_destructive_op`` for the lock-order convention.
     """
-    team = await _load_team(session, team_id)
+    # Take the row lock FIRST. Any racing admin operation against the same
+    # team blocks here until our transaction commits or rolls back.
+    team = await _lock_team_for_destructive_op(session, team_id)
     _bind_audit_team(team.id)
 
     if await _team_has_active_scans(session, team_id):

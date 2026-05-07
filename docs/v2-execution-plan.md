@@ -253,6 +253,13 @@ git init -b main
 
 **Phase 6 PR**: PR #18(i18n+알림), PR #19(안정성+백업)
 
+> **보안 노트 — public password-reset flow (CWE-204)**: Phase 6 의 비인증
+> "forgot password" 엔드포인트는 이메일이 존재하든 안 하든 **uniform 204** 를
+> 반환해야 한다. 실제 이메일은 매칭되는 사용자가 있을 때만 발송된다.
+> 관리자 전용 `POST /v1/admin/users/{user_id}/password-reset` 의 **404-on-miss**
+> 패턴 (super-admin gated 라 trust boundary 안에서 enumeration 위험 없음)
+> 을 답습하면 안 된다. chore PR #8 (security-reviewer F5) 에서 분리 명시.
+
 ---
 
 ### 3.8 Phase 7 — 배포 & 문서 (Week 7, Days 38~44 / 40h)

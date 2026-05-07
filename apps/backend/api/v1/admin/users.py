@@ -19,6 +19,7 @@ extension fields.
 from __future__ import annotations
 
 import uuid
+from typing import Literal
 
 import structlog
 from fastapi import APIRouter, Depends, Query, Request, Response, status
@@ -46,13 +47,31 @@ router = APIRouter(prefix="/users", tags=["admin"])
 log = structlog.get_logger("admin.users.api")
 
 
+# NOTE (security-reviewer F12 — Phase 4 PR #13 review):
+#   ``detail = str(exc)`` is safe for the CURRENT admin-user error set because
+#   every caller raises one of the typed ``AdminUserError`` subclasses defined
+#   in ``services.admin_user_service`` with a controlled, hand-written
+#   message string (no DB row data, no user-supplied content). The detail is
+#   admin-only too — the route is ``require_super_admin_or_404`` gated.
+#
+#   Future contributors MUST NOT propagate raw DB or driver exception
+#   messages through this translator. SQLAlchemy / Postgres error strings
+#   can include schema names, constraint names, and (for unique-violation
+#   shapes on PII columns) the offending value itself — surfacing those to
+#   the client is a CWE-209 leak.
+#
+#   For Phase 6 PR #18 PUBLIC password-reset flow (and any other
+#   unauthenticated surface): use a sanitised, hand-written detail string
+#   only. Do NOT copy this translator unchanged. The trust boundary is
+#   different there.
 def _problem_for_admin_user_error(request: Request, exc: AdminUserError) -> Response:
     """Translate an AdminUserError into an RFC 7807 response with extensions."""
     # Pass extensions through as **kwargs so each surfaces as a top-level
     # snake_case field in the problem+json body (e.g. last_super_admin_protected,
-    # cannot_modify_self). The cast keeps mypy happy: ``problem_response``
-    # declares ``**extensions: object`` and pin-typed dicts confuse the
-    # spread-conflict heuristic against the named ``instance`` arg.
+    # cannot_modify_self, team_id from F9). The cast keeps mypy happy:
+    # ``problem_response`` declares ``**extensions: object`` and pin-typed
+    # dicts confuse the spread-conflict heuristic against the named
+    # ``instance`` arg.
     extensions: dict[str, object] = dict(exc.extensions)
     return problem_response(
         status_code=exc.status_code,
@@ -77,7 +96,12 @@ async def list_users_endpoint(
     request: Request,  # noqa: ARG001
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
-    role: str | None = Query(default=None),
+    # Strict enum validation (security-reviewer F3 — fail-closed): a free-form
+    # ``str`` query was previously accepted, with the service silently
+    # ignoring values it didn't recognize ("admin", "SUPER_ADMIN", trailing
+    # whitespace, ...). FastAPI now rejects anything outside the canonical
+    # 3-role set with a 422 BEFORE the service runs.
+    role: Literal["super_admin", "team_admin", "developer"] | None = Query(default=None),
     active: bool | None = Query(default=None),
     search: str | None = Query(default=None, max_length=255),
     session: AsyncSession = Depends(get_db),
@@ -234,6 +258,24 @@ async def password_reset_endpoint(
     Phase 6 PR #18 will wire the SMTP / Slack delivery channel. Until then
     the plaintext token is generated, persisted as a hash, audit-logged via
     the listener (which masks the hash to ``***``), and discarded.
+
+    -- Account-enumeration semantics (security-reviewer F5) -------------------
+
+    This endpoint returns 404 when ``user_id`` does not exist. That IS an
+    enumeration oracle in isolation, but it is acceptable HERE because the
+    route is super-admin-gated by ``require_super_admin_or_404`` — any
+    caller who can reach this code path is already authorised to read the
+    full user list (``GET /v1/admin/users``), so the 404 leaks no
+    information they did not already have. The trust boundary is ABOVE this
+    endpoint, not at it.
+
+    The Phase 6 PR #18 PUBLIC password-reset flow ("forgot password") MUST
+    NOT copy this 404-on-miss pattern. That endpoint is unauthenticated, so
+    a 404 vs. 204 split there would let an attacker enumerate registered
+    emails (CWE-204 Observable Response Discrepancy). The public flow
+    returns a uniform 204 regardless of whether the email exists, with the
+    actual reset email sent only when a match is found. See
+    ``docs/v2-execution-plan.md`` §3.7 for the Phase 6 contract.
     """
     try:
         reset_token_id = await initiate_password_reset(session, actor=actor, user_id=user_id)

@@ -86,10 +86,21 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import sys
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
+
+# Environments where this seed script is allowed to mint a super-admin via
+# ``--super-admin`` (security-reviewer F8 / CWE-489 Active Debug Code).
+# Any other value of ``APP_ENV`` (production / staging / unset) refuses the
+# operation. The unset case is a deliberate footgun-prevention default — a
+# forgotten ``APP_ENV`` MUST NOT allow a super-admin to spawn from a
+# convenience script that ended up in the prod image. Phase 7 PR #20 will
+# additionally exclude ``scripts/`` from the prod Dockerfile build context.
+_SUPER_ADMIN_ALLOWED_ENVS = frozenset({"dev", "test", "ci"})
+
 
 # Allow running the script from any cwd — adds the backend root to sys.path
 # so `from tests._helpers import ...` resolves.
@@ -723,6 +734,33 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
         await engine.dispose()
 
 
+def _refuse_super_admin_outside_safe_env() -> None:
+    """
+    Refuse to run when ``--super-admin`` is requested outside dev/test/ci.
+
+    Security-reviewer F8 (CWE-489 Active Debug Code in Production):
+    ``--super-admin`` writes ``is_superuser=True`` directly via the seed
+    helper. If this script ever ships with the prod image and the on-call
+    runs it by accident (e.g. for a "quick test"), a super-admin appears
+    out of band — bypassing the audit trail's actor record and any
+    onboarding flow.
+
+    Read ``APP_ENV`` at runtime (CLAUDE.md core rule #11 — no module-level
+    env caching). Default of "" / unset → refuse.
+    """
+    current_env = (os.getenv("APP_ENV") or "").strip().lower()
+    if current_env in _SUPER_ADMIN_ALLOWED_ENVS:
+        return
+    allowed = sorted(_SUPER_ADMIN_ALLOWED_ENVS)
+    print(
+        "Refusing to create super-admin: APP_ENV="
+        f"{current_env or '<unset>'} not in {{{', '.join(allowed)}}}. "
+        "Set APP_ENV=dev to override.",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+
+
 def main() -> int:
     args = _parse_args()
     project_names = [n.strip() for n in args.project_names.split(",") if n.strip()]
@@ -738,6 +776,12 @@ def main() -> int:
     if args.extra_members < 0:
         print("--extra-members must be non-negative", file=sys.stderr)
         return 2
+
+    # F8 — gate the super-admin convenience path on a known-safe APP_ENV.
+    # The check runs ONLY when --super-admin is requested; the rest of the
+    # seed (project / component fixtures) is harmless without the flag.
+    if args.super_admin:
+        _refuse_super_admin_outside_safe_env()
 
     try:
         summary = asyncio.run(
