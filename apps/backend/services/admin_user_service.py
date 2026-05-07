@@ -93,15 +93,48 @@ def _now() -> datetime:
     return datetime.now(tz=UTC)
 
 
-async def _count_active_super_admins(session: AsyncSession) -> int:
-    """Count users that are both active AND super_admin (the lockout-prevention set)."""
-    stmt = (
-        select(func.count())
-        .select_from(User)
-        .where(User.is_active.is_(True), User.is_superuser.is_(True))
+async def _lock_and_count_active_super_admins(session: AsyncSession) -> int:
+    """
+    Acquire a row-level lock on the active-super-admin set and return the count.
+
+    Closes the TOCTOU race between SELECT-then-mutate that a plain
+    ``SELECT count()`` would expose: two concurrent demote/deactivate
+    transactions could each read ``count == 2``, both pass the ``> 1`` guard,
+    and then both commit, dropping the active super_admin count to zero.
+
+    The locking SELECT pulls every (is_active, is_superuser) row with
+    ``FOR UPDATE``. Postgres holds those row locks until the calling
+    transaction commits or rolls back — so a second concurrent call against
+    any of the same rows blocks until the first finishes, at which point
+    the second sees the post-commit count and the guard fires correctly.
+
+    Lock order convention (also documented in admin_team_service):
+      ``users (is_superuser=true AND is_active=true)`` is always locked
+    BEFORE any ``memberships`` rows in the same transaction, to keep a
+    consistent global lock order across the two admin services and avoid
+    deadlocks on cross-service operations.
+
+    Reference: feedback_optimistic_concurrency_pattern memory; pattern
+    matches ``vulnerability_service.py:309`` (``with_for_update`` on the
+    finding row before the optimistic-concurrency compare-and-swap).
+    """
+    # Pull the rows with FOR UPDATE so Postgres takes the row locks. We
+    # then count from the materialized list — using a separate
+    # ``SELECT count()`` would emit a second statement that does NOT take
+    # the same locks. ``scalars().all()`` consumes the result and forces
+    # the lock to be acquired.
+    locked = (
+        (
+            await session.execute(
+                select(User)
+                .where(User.is_active.is_(True), User.is_superuser.is_(True))
+                .with_for_update()
+            )
+        )
+        .scalars()
+        .all()
     )
-    result = await session.execute(stmt)
-    return int(result.scalar_one())
+    return len(locked)
 
 
 async def _load_user_with_memberships(session: AsyncSession, user_id: uuid.UUID) -> User:
@@ -290,9 +323,13 @@ async def update_user_role(
             raise InvalidRoleAssignment("team_id is required when role is team_admin or developer")
 
         # If we are demoting *from* super_admin, make sure we are not
-        # removing the last lockout-prevention seat.
+        # removing the last lockout-prevention seat. Take a row-level lock
+        # on the entire active-super-admin set BEFORE the count check so
+        # two concurrent demote requests serialize through Postgres
+        # instead of both passing an optimistic ``count > 1`` check
+        # (CWE-367 TOCTOU; see _lock_and_count_active_super_admins).
         if user.is_superuser:
-            count = await _count_active_super_admins(session)
+            count = await _lock_and_count_active_super_admins(session)
             # The user being demoted is counted; demoting them takes the
             # count to (count - 1). Reject when that would hit zero.
             if user.is_active and count <= 1:
@@ -361,7 +398,10 @@ async def deactivate_user(
         return await get_user_detail(session, actor=actor, user_id=user_id)
 
     if user.is_superuser:
-        count = await _count_active_super_admins(session)
+        # Lock the active-super-admin row set inside this transaction
+        # before the count check so two concurrent deactivations cannot
+        # both pass the ``count > 1`` guard. CWE-367 TOCTOU fix.
+        count = await _lock_and_count_active_super_admins(session)
         if count <= 1:
             raise LastSuperAdminProtected("cannot deactivate the last active super_admin")
 

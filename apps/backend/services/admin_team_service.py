@@ -158,13 +158,45 @@ async def _team_has_active_scans(session: AsyncSession, team_id: uuid.UUID) -> b
     return bool((await session.execute(stmt)).scalar())
 
 
-async def _count_team_admins(session: AsyncSession, team_id: uuid.UUID) -> int:
-    stmt = (
-        select(func.count())
-        .select_from(Membership)
-        .where(Membership.team_id == team_id, Membership.role == "team_admin")
+async def _lock_and_count_team_admins(session: AsyncSession, team_id: uuid.UUID) -> int:
+    """
+    Acquire a row-level lock on the team's team_admin membership rows and return the count.
+
+    Closes the TOCTOU race that a plain ``SELECT count()`` exposes when
+    used as a SELECT-then-mutate guard: two concurrent ``remove_team_member``
+    or ``add_team_member`` (demotion) calls against the last team_admin
+    could each read ``admin_count == 1`` and ``member_count > 1`` plus
+    pass the inverted guard before either committed, leaving the team
+    with zero admins while developers remain (CWE-367 TOCTOU).
+
+    The locking SELECT pulls every (team_id, role='team_admin')
+    membership row with ``FOR UPDATE``. Postgres holds those locks until
+    commit/rollback so a second concurrent call against any of the same
+    rows blocks until the first finishes and observes the post-commit
+    count.
+
+    Lock order convention: when a single transaction needs both the
+    super-admin lock (``admin_user_service._lock_and_count_active_super_admins``)
+    AND a team-admin lock, the super-admin lock MUST be acquired first.
+    The current admin services only ever take one or the other inside a
+    given transaction, so the convention is forward-compatible rather
+    than load-bearing today.
+
+    Reference: feedback_optimistic_concurrency_pattern memory; pattern
+    matches ``vulnerability_service.py:309``.
+    """
+    locked = (
+        (
+            await session.execute(
+                select(Membership)
+                .where(Membership.team_id == team_id, Membership.role == "team_admin")
+                .with_for_update()
+            )
+        )
+        .scalars()
+        .all()
     )
-    return int((await session.execute(stmt)).scalar_one())
+    return len(locked)
 
 
 async def _count_team_members(session: AsyncSession, team_id: uuid.UUID) -> int:
@@ -441,9 +473,12 @@ async def add_team_member(
         )
     elif existing.role != payload.role:
         # Demoting a team_admin? Block if they are the last admin and other
-        # non-admin members exist.
+        # non-admin members exist. Lock the team_admin membership rows
+        # BEFORE the count check so two concurrent demotions cannot both
+        # pass the ``admin_count > 1`` guard (CWE-367 TOCTOU; see
+        # _lock_and_count_team_admins).
         if existing.role == "team_admin" and payload.role != "team_admin":
-            admin_count = await _count_team_admins(session, team_id)
+            admin_count = await _lock_and_count_team_admins(session, team_id)
             member_count = await _count_team_members(session, team_id)
             others = member_count - 1  # subtract this user
             if admin_count <= 1 and others > 0:
@@ -486,7 +521,10 @@ async def remove_team_member(
         raise AdminTeamMembershipNotFound(f"user {user_id} is not a member of team {team_id}")
 
     if membership.role == "team_admin":
-        admin_count = await _count_team_admins(session, team_id)
+        # Lock the team_admin membership row set inside this transaction
+        # before the count check so two concurrent removals cannot both
+        # pass the ``admin_count > 1`` guard (CWE-367 TOCTOU fix).
+        admin_count = await _lock_and_count_team_admins(session, team_id)
         member_count = await _count_team_members(session, team_id)
         # If this is the only admin and there are other members, refuse —
         # the team would be unmanageable. If this is the only admin and
