@@ -46,18 +46,28 @@ _PKG_GO_HOST = "pkg.go.dev"
 _PKG_GO_BASE = "https://pkg.go.dev"
 _MIN_INTERVAL_SECONDS = 0.25
 
-# Primary signal — pkg.go.dev includes the parsed SPDX expression in a
-# meta block tagged ``UnitMeta-license``. The matching div carries
-# ``data-test-id="UnitMeta-license"`` and inside it the first
-# anchor whose href ends with ``#lic-...`` carries the license name.
-# The href may be a full path (``?tab=licenses#lic-0``) or a bare
-# fragment (``#lic-0``) depending on which page rendered the snippet.
+# Primary signal (current template, observed 2026-05-07) —
+# pkg.go.dev's licence-tab response carries one or more
+# ``<section class="License" id="lic-N">`` blocks; the first nested
+# ``<div id="#lic-N">`` element holds the SPDX-ish licence name as
+# its text node. We greedily match across whitespace-only fluff
+# between the section opener and the first inner div.
+_LICENSE_SECTION_DIV_RE = re.compile(
+    r'<section[^>]*class="[^"]*\bLicense\b[^"]*"[^>]*id="lic-\d+"[^>]*>'
+    r'.*?<div[^>]*id="#lic-\d+"[^>]*>\s*([^<\s][^<]*?)\s*</div>',
+    re.DOTALL,
+)
+# Legacy template (pre-2026 builds) — kept as a fallback so we can
+# read both old and new pkg.go.dev responses without depending on the
+# operator's CDN cache state. ``data-test-id="UnitMeta-license"``
+# blocks in the older HTML carry the licence name inside the first
+# nested ``<a>`` whose href fragment is ``#lic-N``.
 _LICENSE_ANCHOR_RE = re.compile(
     r'data-test-id="UnitMeta-license".*?<a[^>]*href="[^"]*#lic-\d+"[^>]*>\s*([^<\s][^<]*?)\s*</a>',
     re.DOTALL,
 )
-# Fallback — older / future templates may bury the value differently;
-# this captures the first ``<a>`` inside any ``UnitMeta-license`` block.
+# Last-resort fallback — captures the first ``<a>`` inside any
+# ``UnitMeta-license`` class block, regardless of attribute set.
 _LICENSE_FALLBACK_RE = re.compile(
     r'class="[^"]*UnitMeta-license[^"]*".*?<a[^>]*>\s*([^<\s][^<]*?)\s*</a>',
     re.DOTALL,
@@ -87,16 +97,24 @@ def _parse_purl(purl: str) -> tuple[str, str] | None:
 
 
 def _extract_license_name(html: str) -> str | None:
-    """Pull the license name out of a pkg.go.dev license-tab response."""
-    m = _LICENSE_ANCHOR_RE.search(html)
-    if m is None:
-        m = _LICENSE_FALLBACK_RE.search(html)
-    if m is None:
-        return None
-    candidate = m.group(1).strip()
-    if not candidate:
-        return None
-    return candidate
+    """Pull the license name out of a pkg.go.dev license-tab response.
+
+    Tries three patterns in order: the current ``<section class="License"
+    id="lic-N">…<div id="#lic-N">``-shaped HTML (chore PR #7 fix),
+    then the legacy ``data-test-id="UnitMeta-license"`` anchor, then a
+    last-resort ``UnitMeta-license`` class match. Returns ``None``
+    when none of them match — pkg.go.dev may simply have no licence
+    block for the module, which is the expected outcome for repos
+    without a top-level LICENSE file.
+    """
+    for pattern in (_LICENSE_SECTION_DIV_RE, _LICENSE_ANCHOR_RE, _LICENSE_FALLBACK_RE):
+        m = pattern.search(html)
+        if m is None:
+            continue
+        candidate = m.group(1).strip()
+        if candidate:
+            return candidate
+    return None
 
 
 class PkgGoLicenseFetcher:

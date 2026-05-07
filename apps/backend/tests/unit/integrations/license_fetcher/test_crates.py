@@ -60,11 +60,31 @@ def test_fetch_returns_single_spdx_license(no_throttle: None) -> None:
     assert result.source == "crates_io"
 
 
-def test_fetch_returns_none_on_compound_expression(no_throttle: None) -> None:
-    # crates.io frequently exposes "MIT OR Apache-2.0" as a dual-licence
-    # expression. The current policy is to skip those — we leave the
-    # licence as unknown and let a future SPDX-expression parser decide.
+def test_fetch_resolves_or_compound_expression_to_first_token(
+    no_throttle: None,
+) -> None:
+    """crates.io exposes ``MIT OR Apache-2.0`` for the dominant Rust
+    dual-licensing convention. chore PR #7 (UAT v2 fix) updated
+    ``normalize_spdx_id`` to pick the first valid token — picking
+    either token is sound per SPDX OR semantics.
+    """
     payload = json.dumps({"version": {"license": "MIT OR Apache-2.0"}})
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=payload)
+
+    fetcher = CratesLicenseFetcher(http=_client(handler))
+    result = fetcher.fetch("pkg:cargo/serde@1.0.219")
+    assert result is not None
+    assert result.spdx_id == "MIT"
+    assert result.source == "crates_io"
+
+
+def test_fetch_returns_none_on_and_compound_expression(no_throttle: None) -> None:
+    """``AND`` compounds still resolve to None — picking a single SPDX
+    id when the licence requires both is unsound.
+    """
+    payload = json.dumps({"version": {"license": "BSD-3-Clause AND MIT"}})
 
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, text=payload)

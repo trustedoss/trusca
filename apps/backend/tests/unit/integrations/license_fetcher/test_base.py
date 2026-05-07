@@ -53,14 +53,45 @@ def test_normalize_spdx_known_aliases(raw: str, expected: str) -> None:
         None,
         "",
         "   ",
-        "MIT OR Apache-2.0",
-        "GPL-2.0 WITH Classpath-exception-2.0",
+        # AND is the only compound we still reject — picking a single
+        # SPDX id when the licence requires both is unsound.
         "BSD-3-Clause AND MIT",
         "totally-not-a-license-name",
     ],
 )
 def test_normalize_spdx_rejects_unmappable(raw: str | None) -> None:
     assert normalize_spdx_id(raw) is None
+
+
+# ---------------------------------------------------------------------------
+# Compound expression handling — chore PR #7 UAT v2 fix
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        # OR — pick the first valid token.
+        ("MIT OR Apache-2.0", "MIT"),
+        ("Apache-2.0 OR MIT", "Apache-2.0"),
+        # OR with free-text aliases.
+        ("Apache 2.0 OR MIT", "Apache-2.0"),
+        # OR with a leading non-SPDX token — fall through to next.
+        ("Custom-License OR MIT", "MIT"),
+        # WITH — pick the base license (left of WITH).
+        ("GPL-2.0 WITH Classpath-exception-2.0", "GPL-2.0-only"),
+        ("Apache-2.0 WITH LLVM-exception", "Apache-2.0"),
+        # Free-text containing literal "or later" stays in the alias map.
+        ("GNU Lesser General Public License v2.1 or later", "LGPL-2.1-or-later"),
+    ],
+)
+def test_normalize_spdx_compound_expressions(raw: str, expected: str) -> None:
+    """The chore PR #7 UAT v2 spot-check showed the previous
+    "reject all compounds" rule produced 90% unknown for the Rust
+    ecosystem. The new policy: OR picks the first valid token, WITH
+    picks the base license, AND still rejects.
+    """
+    assert normalize_spdx_id(raw) == expected
 
 
 # ---------------------------------------------------------------------------

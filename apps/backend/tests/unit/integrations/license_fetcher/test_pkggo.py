@@ -201,3 +201,40 @@ def test_default_client_disables_redirect_following() -> None:
         assert client.follow_redirects is False
     finally:
         fetcher.close()
+
+
+# ---------------------------------------------------------------------------
+# 2026-05-07 pkg.go.dev template — chore PR #7 UAT v2 fix
+# ---------------------------------------------------------------------------
+
+
+LICENSE_BLOCK_2026 = """\
+<section class="License" id="lic-0">
+  <h2 class="go-textTitle">
+    <div id="#lic-0">Apache-2.0</div>
+  </h2>
+  <pre class="License-contents">Apache License Version 2.0...</pre>
+</section>
+"""
+
+
+def test_extract_handles_2026_section_div_template() -> None:
+    """pkg.go.dev's licence panel migrated to a ``<section
+    class="License" id="lic-N">`` shape with a nested
+    ``<div id="#lic-N">SPDX-id</div>``. The chore PR #7 fix added
+    a third regex pattern targeting that structure.
+    """
+    from integrations.license_fetcher.pkggo import _extract_license_name
+
+    assert _extract_license_name(LICENSE_BLOCK_2026) == "Apache-2.0"
+
+
+def test_fetch_returns_apache_from_2026_template(no_throttle: None) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=LICENSE_BLOCK_2026)
+
+    fetcher = PkgGoLicenseFetcher(http=_client(handler))
+    result = fetcher.fetch("pkg:golang/github.com/spf13/cobra@v1.8.0")
+    assert result is not None
+    assert result.spdx_id == "Apache-2.0"
+    assert result.reference_url is None
