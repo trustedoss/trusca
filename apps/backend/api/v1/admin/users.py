@@ -47,13 +47,31 @@ router = APIRouter(prefix="/users", tags=["admin"])
 log = structlog.get_logger("admin.users.api")
 
 
+# NOTE (security-reviewer F12 — Phase 4 PR #13 review):
+#   ``detail = str(exc)`` is safe for the CURRENT admin-user error set because
+#   every caller raises one of the typed ``AdminUserError`` subclasses defined
+#   in ``services.admin_user_service`` with a controlled, hand-written
+#   message string (no DB row data, no user-supplied content). The detail is
+#   admin-only too — the route is ``require_super_admin_or_404`` gated.
+#
+#   Future contributors MUST NOT propagate raw DB or driver exception
+#   messages through this translator. SQLAlchemy / Postgres error strings
+#   can include schema names, constraint names, and (for unique-violation
+#   shapes on PII columns) the offending value itself — surfacing those to
+#   the client is a CWE-209 leak.
+#
+#   For Phase 6 PR #18 PUBLIC password-reset flow (and any other
+#   unauthenticated surface): use a sanitised, hand-written detail string
+#   only. Do NOT copy this translator unchanged. The trust boundary is
+#   different there.
 def _problem_for_admin_user_error(request: Request, exc: AdminUserError) -> Response:
     """Translate an AdminUserError into an RFC 7807 response with extensions."""
     # Pass extensions through as **kwargs so each surfaces as a top-level
     # snake_case field in the problem+json body (e.g. last_super_admin_protected,
-    # cannot_modify_self). The cast keeps mypy happy: ``problem_response``
-    # declares ``**extensions: object`` and pin-typed dicts confuse the
-    # spread-conflict heuristic against the named ``instance`` arg.
+    # cannot_modify_self, team_id from F9). The cast keeps mypy happy:
+    # ``problem_response`` declares ``**extensions: object`` and pin-typed
+    # dicts confuse the spread-conflict heuristic against the named
+    # ``instance`` arg.
     extensions: dict[str, object] = dict(exc.extensions)
     return problem_response(
         status_code=exc.status_code,
