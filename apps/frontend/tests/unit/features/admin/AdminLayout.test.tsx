@@ -10,8 +10,9 @@
  * has something to render.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import { AdminLayout } from "@/features/admin/AdminLayout";
@@ -93,5 +94,27 @@ describe("AdminLayout", () => {
     renderLayout();
     expect(screen.queryByTestId("admin-layout")).not.toBeInTheDocument();
     expect(screen.getByTestId("admin-not-found")).toBeInTheDocument();
+  });
+
+  it("invokes auth.logout when the sign-out button is clicked", async () => {
+    setUser({
+      id: "u-super",
+      email: "super@example.com",
+      displayName: "Super",
+      role: "super_admin",
+      isActive: true,
+      isSuperuser: true,
+      teamId: null,
+    });
+    const logoutSpy = vi.fn(async () => {});
+    // Replace the store's logout with the spy so the component invokes it.
+    useAuthStore.setState({ logout: logoutSpy });
+
+    renderLayout();
+    await userEvent.click(screen.getByTestId("admin-logout"));
+
+    await waitFor(() => {
+      expect(logoutSpy).toHaveBeenCalledTimes(1);
+    });
   });
 });

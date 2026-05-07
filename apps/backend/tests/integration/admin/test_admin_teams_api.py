@@ -386,7 +386,7 @@ async def test_remove_member_when_alone_returns_200(client: AsyncClient) -> None
     ],
 )
 async def test_create_team_rejects_invalid_payload_with_422_problem(
-    client: AsyncClient, bad_payload: dict
+    client: AsyncClient, bad_payload: dict[str, object]
 ) -> None:
     factory = await _factory(client)
     async with factory() as session:

@@ -92,7 +92,11 @@ def test_require_super_admin_or_404_passes_for_super_admin_role() -> None:
 
     dep = require_super_admin_or_404()
     user = _FakeUser(role="super_admin", is_superuser=True)
-    assert dep(current_user=user) is user
+    # `dep` returns CurrentUser; _FakeUser is a structural stand-in. mypy
+    # cannot narrow the identity check across the two nominal types, but
+    # the runtime invariant ("the dependency returns its argument verbatim
+    # on the happy path") is exactly what we want to pin here.
+    assert dep(current_user=user) is user  # type: ignore[comparison-overlap]
 
 
 def test_require_super_admin_or_404_passes_for_is_superuser_flag() -> None:
@@ -107,7 +111,7 @@ def test_require_super_admin_or_404_passes_for_is_superuser_flag() -> None:
     dep = require_super_admin_or_404()
     user = _FakeUser(role="super_admin", is_superuser=True)
     out = dep(current_user=user)
-    assert out is user
+    assert out is user  # type: ignore[comparison-overlap]
 
 
 def test_require_super_admin_or_404_passes_when_only_is_superuser_set() -> None:
@@ -124,4 +128,4 @@ def test_require_super_admin_or_404_passes_when_only_is_superuser_set() -> None:
     dep = require_super_admin_or_404()
     user = _FakeUser(role="developer", is_superuser=True)
     out = dep(current_user=user)
-    assert out is user
+    assert out is user  # type: ignore[comparison-overlap]
