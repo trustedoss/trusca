@@ -157,6 +157,11 @@
       "Bash(chmod 777 *)",
       "Bash(chmod -R 777 *)",
 
+      "Bash(git push --force*)",
+      "Bash(git push -f *)",
+      "Bash(git push --force-with-lease*)",
+      "Bash(git push --delete *)",
+      "Bash(git push *--mirror*)",
       "Bash(git reset --hard*)",
       "Bash(git reset --merge*)",
       "Bash(git clean -f*)",

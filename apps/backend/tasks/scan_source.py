@@ -574,6 +574,26 @@ _PREP_ENV_ALLOWLIST = frozenset(
         "BUNDLE_PATH",
         "BUNDLE_USER_HOME",
         "GEM_HOME",
+        # On-prem evaluators behind a corporate TLS-intercepting proxy
+        # need their CA bundle hint and proxy config to reach the
+        # ecosystem registries. Dropping these silently breaks every
+        # `go mod tidy` / `dotnet restore` etc. with an x509 error and
+        # the failure is only visible in `prep_failed` log lines. The
+        # proxy variables themselves are operator-chosen — exfiltration
+        # via a hostile-clone-controlled `https_proxy=...` is impossible
+        # because the worker, not the resolver, sets the env. (Lowercase
+        # variants exist because some Go / curl-based tools only honor
+        # those.) security-reviewer L1 (chore PR #5).
+        "SSL_CERT_FILE",
+        "SSL_CERT_DIR",
+        "REQUESTS_CA_BUNDLE",
+        "NODE_EXTRA_CA_CERTS",
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "NO_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "no_proxy",
     }
 )
 
