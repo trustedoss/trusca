@@ -171,4 +171,52 @@ describe("AdminUsersPage", () => {
       expect(screen.getByTestId("admin-user-drawer")).toBeInTheDocument();
     });
   });
+
+  it("toggles the active filter and re-issues the list with active=true|false", async () => {
+    mockedList.mockResolvedValue(listResponse([user("alice@example.com")]));
+    renderPage();
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalledTimes(1);
+    });
+    const activeSelect = screen.getByTestId("admin-users-active-filter");
+    await userEvent.selectOptions(activeSelect, "active");
+    await waitFor(() => {
+      const last = mockedList.mock.calls.at(-1)?.[0];
+      expect(last).toMatchObject({ active: true });
+    });
+    await userEvent.selectOptions(activeSelect, "inactive");
+    await waitFor(() => {
+      const last = mockedList.mock.calls.at(-1)?.[0];
+      expect(last).toMatchObject({ active: false });
+    });
+  });
+
+  it("changing the page size resets to page 1 and re-queries", async () => {
+    // Two rows (so a page-size change is observable) — the data shape itself
+    // doesn't matter, we're exercising the inline `onChange` handler.
+    mockedList.mockResolvedValue(
+      listResponse([user("alice@example.com"), user("bob@example.com")]),
+    );
+    renderPage();
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalledTimes(1);
+    });
+    const pageSize = screen.getByTestId("admin-users-page-size");
+    await userEvent.selectOptions(pageSize, "100");
+    await waitFor(() => {
+      const last = mockedList.mock.calls.at(-1)?.[0];
+      expect(last).toMatchObject({ page_size: 100, page: 1 });
+    });
+  });
+
+  it("renders pagination buttons that disable at the page bounds", async () => {
+    // Single page of results — both prev and next should be disabled.
+    mockedList.mockResolvedValue(listResponse([user("alice@example.com")]));
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByTestId("admin-users-page-prev")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("admin-users-page-prev")).toBeDisabled();
+    expect(screen.getByTestId("admin-users-page-next")).toBeDisabled();
+  });
 });
