@@ -43,7 +43,7 @@ from schemas.admin_ops import (
     HealthStatus,
     SystemHealthOut,
 )
-from services.admin_disk_service import get_disk_telemetry
+from services.admin_disk_service import _strip_credentials, get_disk_telemetry
 
 log = structlog.get_logger("admin.health.service")
 
@@ -66,7 +66,7 @@ async def _probe_postgres(session: AsyncSession) -> HealthComponent:
         return HealthComponent(
             name="postgres",
             status="down",
-            detail=f"{type(exc).__name__}: {exc}",
+            detail=_strip_credentials(f"{type(exc).__name__}: {exc}"),
             value=None,
         )
 
@@ -81,7 +81,7 @@ def _probe_redis() -> HealthComponent:
         return HealthComponent(
             name="redis",
             status="down",
-            detail=f"{type(exc).__name__}: {exc}",
+            detail=_strip_credentials(f"{type(exc).__name__}: {exc}"),
             value=None,
         )
     return HealthComponent(
@@ -112,7 +112,7 @@ def _probe_celery(*, celery_app_override: Any | None = None) -> HealthComponent:
         return HealthComponent(
             name="celery",
             status="down",
-            detail=f"{type(exc).__name__}: {exc}",
+            detail=_strip_credentials(f"{type(exc).__name__}: {exc}"),
             value=None,
         )
     count = len(replies)
@@ -139,7 +139,7 @@ def _probe_dt() -> HealthComponent:
         return HealthComponent(
             name="dt",
             status="down",
-            detail=f"{type(exc).__name__}: {exc}",
+            detail=_strip_credentials(f"{type(exc).__name__}: {exc}"),
             value=None,
         )
 
@@ -166,7 +166,7 @@ async def _probe_disk(session: AsyncSession) -> HealthComponent:
         return HealthComponent(
             name="disk",
             status="down",
-            detail=f"{type(exc).__name__}: {exc}",
+            detail=_strip_credentials(f"{type(exc).__name__}: {exc}"),
             value=None,
         )
 
@@ -196,7 +196,7 @@ async def _probe_active_scans(session: AsyncSession) -> HealthComponent:
         return HealthComponent(
             name="active_scans",
             status="down",
-            detail=f"{type(exc).__name__}: {exc}",
+            detail=_strip_credentials(f"{type(exc).__name__}: {exc}"),
             value=None,
         )
     return HealthComponent(
@@ -221,7 +221,7 @@ async def _probe_last_24h_errors(session: AsyncSession) -> HealthComponent:
         return HealthComponent(
             name="last_24h_errors",
             status="down",
-            detail=f"{type(exc).__name__}: {exc}",
+            detail=_strip_credentials(f"{type(exc).__name__}: {exc}"),
             value=None,
         )
 

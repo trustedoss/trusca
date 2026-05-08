@@ -6,8 +6,8 @@
  *
  * The backend computes used_pct + status (ok / degraded / down) against
  * configured thresholds (80% / 90%) so the UI never repeats the rule.
- * `disk_path_unavailable` Problem extension surfaces when one or more
- * mounts cannot be probed (mount missing, permission denied).
+ * Per-item probe errors are surfaced via `AdminDiskItem.error` (non-null when
+ * the mount is unreachable), not as Problem extension fields.
  */
 import { api } from "@/lib/api";
 

@@ -126,7 +126,14 @@ def _apply_filters(stmt: Any, *, query: AuditSearchQuery) -> Any:
         # matched the other filters. That is fine: actor / target_table /
         # time-range usually narrow to thousands of rows, and ILIKE on
         # JSONB-as-text is fast at that scale.
-        stmt = stmt.where(cast(AuditLog.diff, TEXT).ilike(f"%{query.q}%"))
+        #
+        # G5: escape LIKE metacharacters in q so a superadmin cannot trigger
+        # pathological queries with patterns like "%%" or "%%%%...".
+        # We use the standard SQL escape character '\'.
+        escaped_q = query.q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        stmt = stmt.where(
+            cast(AuditLog.diff, TEXT).ilike(f"%{escaped_q}%", escape="\\")
+        )
     return stmt
 
 

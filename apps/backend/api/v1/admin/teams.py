@@ -52,6 +52,12 @@ log = structlog.get_logger("admin.teams.api")
 def _problem_for_admin_team_error(request: Request, exc: AdminTeamError) -> Response:
     # See api.v1.admin.users for the rationale behind the cast — keeping
     # the extension-spread pattern consistent across the admin subpackage.
+    #
+    # M3 — PII echo caution: exc.extensions carries structural hints for the
+    # admin UI (conflicting_slug, team_id, etc.).  Do NOT add email addresses,
+    # full names, or other PII to AdminTeamError.extensions at the call sites
+    # in services/admin_team_service.py — those values would be reflected here
+    # verbatim in the response body and audit log.
     extensions: dict[str, object] = dict(exc.extensions)
     return problem_response(
         status_code=exc.status_code,

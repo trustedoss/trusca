@@ -295,7 +295,8 @@ describe("KNOWN_PROBLEM_EXTENSION_KEYS — module export pin", () => {
       expect.arrayContaining([
         "last_super_admin_protected",
         "cannot_modify_self",
-        "invalid_role_assignment",
+        // "invalid_role_assignment" removed — L1: backend never emits this as
+        // an extension boolean flag; removed from the whitelist in chore PR #9.
         "team_has_active_scans",
         "last_team_admin_protected",
         "team_id",
@@ -310,7 +311,8 @@ describe("KNOWN_PROBLEM_EXTENSION_KEYS — module export pin", () => {
         "dt_orphan_cleanup_in_progress",
         "scan_already_cancelled",
         "scan_not_found",
-        "disk_path_unavailable",
+        // "disk_path_unavailable" removed — L1: backend never emits this as
+        // an extension boolean flag; removed from the whitelist in chore PR #9.
         "audit_export_too_large",
       ]),
     );

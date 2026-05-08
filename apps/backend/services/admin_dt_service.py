@@ -55,6 +55,7 @@ from schemas.admin_ops import (
     HealthProbeOut,
     OrphanCleanupEnqueued,
 )
+from services.admin_disk_service import _strip_credentials
 
 log = structlog.get_logger("admin.dt.service")
 
@@ -96,13 +97,15 @@ class OrphanCleanupInProgress(AdminDTError):
 # ---------------------------------------------------------------------------
 
 # Keys are scoped under ``dt:admin:`` so they cannot collide with the breaker's
-# own ``dt:breaker:*`` namespace. TTLs are deliberately short:
+# own ``dt:breaker:*`` namespace. TTLs:
 #   - status cache 30s     — refresh-storm guard, NOT availability cache
-#   - cleanup lock 600s    — auto-release if a worker dies mid-task
+#   - cleanup lock 3600s   — worst-case 500 UUIDs × 5s/delete = 2500s < 3600s
+#     (G10: the old 600s TTL was shorter than worst-case runtime, risking a
+#     second concurrent cleanup starting while the first was still running)
 _STATUS_CACHE_KEY = "dt:admin:status_cache"
 _STATUS_CACHE_TTL_SECONDS = 30
 _CLEANUP_LOCK_KEY = "dt:admin:orphan_cleanup_lock"
-_CLEANUP_LOCK_TTL_SECONDS = 600
+_CLEANUP_LOCK_TTL_SECONDS = 3600
 
 
 def _redis_client() -> redis.Redis:
@@ -230,7 +233,7 @@ def get_dt_status(
                 # (4xx). Either way we report the breaker's post-call state
                 # and surface the error message — the breaker has already
                 # incremented fail_count if appropriate.
-                last_error = str(exc)
+                last_error = _strip_credentials(str(exc))
                 # Re-snapshot because record_failure may have flipped to OPEN.
                 snapshot = breaker.snapshot()
         finally:

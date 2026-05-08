@@ -30,6 +30,7 @@ module-level caching.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 from datetime import UTC, datetime
 from typing import Any
@@ -48,6 +49,21 @@ from schemas.admin_ops import (
 
 log = structlog.get_logger("admin.disk.service")
 
+# G4: strip credentials from exception messages before surfacing them in
+# API responses. asyncpg / redis-py / httpx errors can embed the full
+# connection string (postgresql://user:pass@host/db, redis://:pass@host)
+# in the exception message.
+_CREDENTIAL_PATTERN = re.compile(
+    r"(?P<scheme>[a-zA-Z][a-zA-Z0-9+\-.]*://)"
+    r"(?:[^:@/\s]*:[^@/\s]+@)",  # * for username: handles redis://:pass@host
+    re.IGNORECASE,
+)
+
+
+def _strip_credentials(text_: str) -> str:
+    """Replace user:password@ in connection-string fragments with ****@."""
+    return _CREDENTIAL_PATTERN.sub(r"\g<scheme>****@", text_)
+
 
 # ---------------------------------------------------------------------------
 # Domain exceptions
@@ -61,13 +77,6 @@ class AdminDiskError(Exception):
     title: str = "Admin Disk Error"
     type_uri: str = "about:blank"
     extensions: dict[str, object] = {}
-
-
-class DiskPathUnavailable(AdminDiskError):
-    status_code = 503
-    title = "Disk Path Unavailable"
-    type_uri = "https://docs.trustedoss.io/errors/disk-path-unavailable"
-    extensions = {"disk_path_unavailable": True}
 
 
 # ---------------------------------------------------------------------------
@@ -146,7 +155,7 @@ def _probe_filesystem(*, name: str, path: str) -> AdminDiskItem:
             threshold_warning=warn,
             threshold_critical=crit,
             status="down",
-            error=f"{type(exc).__name__}: {exc}",
+            error=_strip_credentials(f"{type(exc).__name__}: {exc}"),
         )
 
     total = int(usage.total)
@@ -193,7 +202,7 @@ async def _probe_postgres(session: AsyncSession) -> AdminDiskItem:
             threshold_warning=warn,
             threshold_critical=crit,
             status="down",
-            error=f"{type(exc).__name__}: {exc}",
+            error=_strip_credentials(f"{type(exc).__name__}: {exc}"),
         )
 
     return AdminDiskItem(
@@ -238,7 +247,7 @@ def _probe_redis() -> AdminDiskItem:
             threshold_warning=warn,
             threshold_critical=crit,
             status="down",
-            error=f"{type(exc).__name__}: {exc}",
+            error=_strip_credentials(f"{type(exc).__name__}: {exc}"),
         )
 
     used_pct: float | None
@@ -291,6 +300,6 @@ async def get_disk_telemetry(session: AsyncSession) -> AdminDiskOut:
 
 __all__ = [
     "AdminDiskError",
-    "DiskPathUnavailable",
+    "_strip_credentials",
     "get_disk_telemetry",
 ]

@@ -335,7 +335,6 @@
       "dt_orphan_cleanup_in_progress": "An orphan-cleanup task is already running. Wait for it to finish before launching another.",
       "scan_already_cancelled": "This scan is already terminated and cannot be cancelled again.",
       "scan_not_found": "Scan not found.",
-      "disk_path_unavailable": "Disk telemetry is unavailable for one or more mounts.",
       "audit_export_too_large": "The export exceeds 100,000 rows. Narrow the filter window before retrying.",
       "unknown": "Something went wrong. Please try again."
     },

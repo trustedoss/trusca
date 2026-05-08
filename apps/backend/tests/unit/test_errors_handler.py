@@ -41,8 +41,15 @@ from core.errors import (
 # ---------------------------------------------------------------------------
 
 
-def test_redact_drops_input_value_replaces_with_sentinel() -> None:
-    """The ``input`` value is replaced; the key is preserved."""
+def test_redact_drops_input_msg_ctx_replaces_with_sentinel() -> None:
+    """input, msg, and ctx are all replaced with the sentinel (M1 — CWE-209).
+
+    field_validator implementations can embed the bad value in the message
+    string (``f"invalid email: {value}"``).  Sanitizing all three fields
+    prevents PII / credential fragments from round-tripping back to clients
+    even when custom validators are used.  Structural fields (loc, type, url)
+    are kept so callers can still identify which field failed.
+    """
     errors = [
         {
             "type": "string_too_short",
@@ -55,15 +62,15 @@ def test_redact_drops_input_value_replaces_with_sentinel() -> None:
     sanitized = _redact_validation_errors(errors)
     assert len(sanitized) == 1
     assert sanitized[0]["input"] == _REDACTED
-    # Diagnostic fields preserved.
+    assert sanitized[0]["msg"] == _REDACTED
+    assert sanitized[0]["ctx"] == _REDACTED
+    # Structural fields preserved so callers know *which* field failed.
     assert sanitized[0]["loc"] == ("body", "password")
-    assert sanitized[0]["msg"] == "String should have at least 12 characters"
     assert sanitized[0]["type"] == "string_too_short"
-    assert sanitized[0]["ctx"] == {"min_length": 12}
 
 
-def test_redact_preserves_rows_without_input_key() -> None:
-    """Rows that never had an ``input`` are passed through unchanged."""
+def test_redact_sanitizes_msg_even_without_input_key() -> None:
+    """Rows without an input key still have msg/ctx sanitized."""
     errors = [
         {
             "type": "missing",
@@ -72,8 +79,11 @@ def test_redact_preserves_rows_without_input_key() -> None:
         }
     ]
     sanitized = _redact_validation_errors(errors)
-    assert sanitized == errors  # input absent → no key added
+    assert len(sanitized) == 1
+    assert sanitized[0]["msg"] == _REDACTED
     assert "input" not in sanitized[0]
+    assert sanitized[0]["loc"] == ("body", "email")
+    assert sanitized[0]["type"] == "missing"
 
 
 def test_redact_handles_non_dict_rows_defensively() -> None:
@@ -81,8 +91,7 @@ def test_redact_handles_non_dict_rows_defensively() -> None:
     sanitized = _redact_validation_errors(["unexpected"])
     assert len(sanitized) == 1
     assert sanitized[0]["input"] == _REDACTED
-    # The original repr is preserved as a hint, not the raw shape.
-    assert "unexpected" in sanitized[0]["msg"]
+    assert sanitized[0]["msg"] == _REDACTED
 
 
 def test_redact_does_not_mutate_caller_list() -> None:
@@ -194,8 +203,9 @@ def test_validation_error_redacts_input_for_adversarial_payload(
 
 def test_validation_error_diagnostic_fields_still_useful(client: TestClient) -> None:
     """
-    Diagnostic fields are intact — clients can still see WHICH field failed
-    and WHY, just not the offending value.
+    Structural fields (type, loc) are intact — clients can still see WHICH
+    field failed and the error category (type), just not the value (input),
+    message template (msg), or validator context (ctx).
     """
     response = client.post("/validate", json={"email": "ok@example.com", "password": "short"})
     assert response.status_code == 422
@@ -204,9 +214,11 @@ def test_validation_error_diagnostic_fields_still_useful(client: TestClient) -> 
     pwd_rows = [r for r in rows if "password" in tuple(r.get("loc", ()))]
     assert pwd_rows
     row = pwd_rows[0]
-    assert row.get("type")  # Pydantic v2 error tag, e.g. string_too_short
-    assert row.get("msg")
+    assert row.get("type")  # Pydantic v2 error tag, e.g. string_pattern_mismatch
     assert row.get("loc") == ["body", "password"]
+    # msg and ctx are sanitized (M1); input is absent or redacted
+    assert row.get("msg") == _REDACTED
+    assert row.get("input", _REDACTED) == _REDACTED
 
 
 def test_validation_error_keeps_problem_envelope(client: TestClient) -> None:

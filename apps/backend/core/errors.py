@@ -40,29 +40,33 @@ _REDACTED = "<redacted>"
 
 def _redact_validation_errors(errors: Sequence[Any]) -> list[dict[str, Any]]:
     """
-    Replace the ``input`` field on every Pydantic v2 validation error with a
-    fixed sentinel. The other diagnostic fields (``loc``, ``msg``, ``type``,
-    ``ctx``, ``url``) are preserved verbatim so the client can still react.
+    Sanitize Pydantic v2 validation error rows before returning them to the
+    caller (CWE-209).
 
-    The function is deliberately defensive: ``errors()`` rows are typed as
-    ``ErrorDetails`` (TypedDict) but at runtime Pydantic returns a list of
-    plain dicts and may add or omit keys across versions. We treat each row as
-    an opaque mapping, copy non-``input`` keys, and overwrite ``input``.
-    Non-mapping rows are passed through (best effort) so future Pydantic
-    surprises do not turn a 422 into a 500.
+    Three fields can echo user-supplied data:
+    - ``input``: the raw value that failed validation.
+    - ``msg``: field_validator implementations sometimes format the bad value
+      into the message string (e.g. ``f"invalid email: {value}"``).
+    - ``ctx``: carries the exception object for custom validators; its string
+      representation may also embed the value.
+
+    We replace all three with sentinels so no PII / credential fragment can
+    leak. ``loc``, ``type``, and ``url`` are structural metadata and are kept
+    verbatim so the client still gets actionable diagnostic information.
     """
+    _SANITIZED_KEYS = {"input", "msg", "ctx"}
+
     out: list[dict[str, Any]] = []
     for entry in errors:
         if not isinstance(entry, dict):
-            # Defensive: Pydantic could in principle hand back a non-dict here.
-            # Wrap in a minimal envelope so we still return JSON-shaped data.
-            out.append({"msg": str(entry), "input": _REDACTED})
+            out.append({"msg": _REDACTED, "input": _REDACTED})
             continue
-        sanitized = {k: v for k, v in entry.items() if k != "input"}
-        # Preserve the key so callers can still see "yes, an input was rejected"
-        # without exposing its content.
-        if "input" in entry:
-            sanitized["input"] = _REDACTED
+        sanitized: dict[str, Any] = {}
+        for k, v in entry.items():
+            if k in _SANITIZED_KEYS:
+                sanitized[k] = _REDACTED
+            else:
+                sanitized[k] = v
         out.append(sanitized)
     return out
 

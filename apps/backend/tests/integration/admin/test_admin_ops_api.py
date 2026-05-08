@@ -223,7 +223,9 @@ async def test_dt_orphan_cleanup_inprogress_returns_409_problem(
         response = await client.post(
             "/v1/admin/dt/orphans/cleanup",
             headers=_bearer_for(admin),
-            json={"dt_project_uuids": []},
+            # G6: empty list now returns 400; send a real UUID so the lock
+            # check (409) is reached.
+            json={"dt_project_uuids": ["11111111-1111-1111-1111-111111111111"]},
         )
     finally:
         rds.delete("dt:admin:orphan_cleanup_lock")
@@ -239,7 +241,7 @@ async def test_dt_orphan_cleanup_inprogress_returns_409_problem(
 async def test_dt_orphans_cleanup_happy_path_enqueues_and_audits(
     client: AsyncClient,
 ) -> None:
-    """Cleanup with an empty list dispatches the Celery task and emits an audit row."""
+    """Cleanup with a valid UUID list dispatches the Celery task and emits an audit row."""
     factory = await _factory(client)
     async with factory() as session:
         admin = await make_user(session, is_superuser=True)
@@ -266,7 +268,8 @@ async def test_dt_orphans_cleanup_happy_path_enqueues_and_audits(
         response = await client.post(
             "/v1/admin/dt/orphans/cleanup",
             headers=_bearer_for(admin),
-            json={"dt_project_uuids": []},
+            # G6: empty list now returns 400; use a real UUID.
+            json={"dt_project_uuids": ["22222222-2222-2222-2222-222222222222"]},
         )
 
     assert response.status_code == 202, response.text

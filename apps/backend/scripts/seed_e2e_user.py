@@ -369,6 +369,12 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
     extra_team_admin: bool = False,
 ) -> dict[str, object]:
     """Create the org/team/user/membership/projects[/scans/components]."""
+    # M2 — defense-in-depth: re-check APP_ENV inside _seed so the guard
+    # cannot be bypassed by calling _seed() directly (e.g. from a test helper
+    # that skips main()).  The check in main() is the primary gate; this one
+    # catches accidental direct invocations.
+    if super_admin:
+        _refuse_super_admin_outside_safe_env()
     from sqlalchemy.ext.asyncio import (
         AsyncSession,
         async_sessionmaker,

@@ -258,3 +258,61 @@ def test_workspace_path_with_embedded_null_handled_at_probe(
     # ValueError silently is caught.
     with pytest.raises(ValueError):
         _probe_filesystem(name="workspace", path="/path/with/\x00/null")
+
+
+# ---------------------------------------------------------------------------
+# _strip_credentials — G4 credential strip helper
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        # asyncpg connection string in error message
+        (
+            "asyncpg.exceptions.CannotConnectNowError: postgresql://admin:s3cr3t@db:5432/trustedoss",
+            "asyncpg.exceptions.CannotConnectNowError: postgresql://****@db:5432/trustedoss",
+        ),
+        # redis-py with password-only URL (empty username) — G4 regression
+        (
+            "ConnectionError: Error connecting to redis://:mypassword@redis:6379",
+            "ConnectionError: Error connecting to redis://****@redis:6379",
+        ),
+        # rediss:// (TLS) with empty username
+        (
+            "ConnectionError: rediss://:secretpass@tls-host:6380",
+            "ConnectionError: rediss://****@tls-host:6380",
+        ),
+        # URL with user:pass pair
+        (
+            "Exception: https://user:pa$$word@internal.host/api",
+            "Exception: https://****@internal.host/api",
+        ),
+        # No credentials — passes through unchanged
+        (
+            "ConnectionError: tcp error connecting to localhost:5432",
+            "ConnectionError: tcp error connecting to localhost:5432",
+        ),
+        # Empty string
+        ("", ""),
+    ],
+)
+def test_strip_credentials(raw: str, expected: str) -> None:
+    from services.admin_disk_service import _strip_credentials
+
+    assert _strip_credentials(raw) == expected
+
+
+def test_probe_filesystem_oserror_strips_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """G4: connection string credentials must not appear in the error field."""
+
+    def boom(_path: str) -> Any:
+        raise OSError("OSError: path not found via postgresql://user:pass@db/db")
+
+    monkeypatch.setattr("services.admin_disk_service.shutil.disk_usage", boom)
+    item = _probe_filesystem(name="workspace", path="/missing")
+    assert item.error is not None
+    assert "pass" not in item.error
+    assert "****@" in item.error

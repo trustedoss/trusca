@@ -335,7 +335,6 @@
       "dt_orphan_cleanup_in_progress": "이미 고아 정리 작업이 실행 중입니다. 완료된 후 다시 시도하세요.",
       "scan_already_cancelled": "이미 종료된 스캔은 다시 취소할 수 없습니다.",
       "scan_not_found": "스캔을 찾을 수 없습니다.",
-      "disk_path_unavailable": "일부 마운트의 디스크 텔레메트리를 가져올 수 없습니다.",
       "audit_export_too_large": "내보낼 행 수가 100,000 건을 초과합니다. 필터 범위를 좁힌 후 다시 시도하세요.",
       "unknown": "오류가 발생했습니다. 다시 시도해 주세요."
     },
