@@ -34,6 +34,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from core.security import CurrentUser
 from models.component_approval import ApprovalStatus
 from services.component_approval_service import (
     _TRANSITION_MAP,
@@ -67,9 +68,7 @@ BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
 # ---------------------------------------------------------------------------
 
 
-def _developer(team_id: uuid.UUID) -> CurrentUser:  # noqa: F821
-    from core.security import CurrentUser
-
+def _developer(team_id: uuid.UUID) -> CurrentUser:
     return CurrentUser(
         id=uuid.uuid4(),
         email=f"dev-{unique_suffix()}@example.com",
@@ -81,9 +80,7 @@ def _developer(team_id: uuid.UUID) -> CurrentUser:  # noqa: F821
     )
 
 
-def _team_admin(team_id: uuid.UUID) -> CurrentUser:  # noqa: F821
-    from core.security import CurrentUser
-
+def _team_admin(team_id: uuid.UUID) -> CurrentUser:
     return CurrentUser(
         id=uuid.uuid4(),
         email=f"ta-{unique_suffix()}@example.com",
@@ -95,9 +92,7 @@ def _team_admin(team_id: uuid.UUID) -> CurrentUser:  # noqa: F821
     )
 
 
-def _super_admin() -> CurrentUser:  # noqa: F821
-    from core.security import CurrentUser
-
+def _super_admin() -> CurrentUser:
     return CurrentUser(
         id=uuid.uuid4(),
         email=f"sa-{unique_suffix()}@example.com",
@@ -185,18 +180,27 @@ def db_url() -> str:
     return url
 
 
-@pytest.fixture(scope="module")
-def event_loop_policy():
-    """Use the default asyncio event loop policy (avoids deprecation warning)."""
-    import asyncio
-
-    return asyncio.DefaultEventLoopPolicy()
+_ALEMBIC_RAN = False
 
 
-@pytest.fixture(scope="module")
-async def db_session_factory(db_url: str) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
-    """Module-scoped engine + session factory. Runs alembic upgrade on first use."""
+def _alembic_once() -> None:
+    """Run alembic upgrade head only once per pytest session."""
+    global _ALEMBIC_RAN
+    if _ALEMBIC_RAN:
+        return
     _alembic_head()
+    _ALEMBIC_RAN = True
+
+
+@pytest.fixture
+async def db_session_factory(db_url: str) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+    """Per-test engine + session factory. Avoids cross-event-loop attachment.
+
+    Module-scoped async engines under pytest-asyncio's default function-scoped
+    event loop cause asyncpg "another operation is in progress" errors —
+    function scope here keeps each test isolated to its own loop.
+    """
+    _alembic_once()
     engine = create_async_engine(db_url, echo=False)
     factory = async_sessionmaker(engine, expire_on_commit=False)
 
@@ -246,10 +250,9 @@ async def component(session: AsyncSession, project_a):
     from models.scan import Component
 
     comp = Component(
-        purl=f"pkg:pypi/test-pkg-{unique_suffix()}@1.0.0",
+        purl=f"pkg:pypi/test-pkg-{unique_suffix()}",
         name=f"test-pkg-{unique_suffix()}",
-        version="1.0.0",
-        kind="library",
+        package_type="pypi",
     )
     session.add(comp)
     await session.commit()
