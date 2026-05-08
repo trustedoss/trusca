@@ -44,8 +44,8 @@ gh run list --limit 3                              # CI 최근 상태
 | Step 6 | Phase 5 PR #17 — 빌드 게이트 + PR 코멘트 + GitHub Actions | [x] DONE | #21 (merged 2f7c5d7) |
 | Step 7 | Phase 6 PR #18 — 알림 시스템 + 비밀번호 찾기 (backend) | [x] DONE | #22 (merged 3dbc103) |
 | Step 8 | Phase 6 PR #19 — 디스크 가드 + Error Boundary | [x] DONE | #23 (merged e46844b) |
-| Step 9 | Phase 7 PR #20 — 설치 스크립트 + prod compose | [~] IN_PROGRESS | — |
-| Step 10 | Phase 7 PR #21 — Docusaurus + 가이드 | [ ] TODO | — |
+| Step 9 | Phase 7 PR #20 — 설치 스크립트 + prod compose | [x] DONE | #24 (merged 8141b7e) |
+| Step 10 | Phase 7 PR #21 — Docusaurus + 가이드 | [~] IN_PROGRESS | — |
 | Step 11 | Phase 8 PR #23 — OAuth + Demo SaaS | [ ] TODO | — |
 | Step 12 | Phase 8 PR #24/#25 — 보안·성능·릴리스 | [ ] TODO | — |
 
@@ -614,7 +614,7 @@ docker-compose -f docker-compose.dev.yml exec -T postgres \
 
 ## Step 9: Phase 7 PR #20 — 설치 스크립트 + prod compose
 
-**상태**: `[~] IN_PROGRESS`  
+**상태**: `[x] DONE` — PR #24 머지 (commit 8141b7e, 2026-05-08).  
 **브랜치**: `feature/phase7-pr20-install-scripts`  
 **예상 PR**: GitHub PR #24  
 **에이전트**: `devops-engineer` (주)  
@@ -637,7 +637,7 @@ docker-compose -f docker-compose.dev.yml exec -T postgres \
 
 ## Step 10: Phase 7 PR #21 — Docusaurus + 가이드
 
-**상태**: `[ ] TODO`  
+**상태**: `[~] IN_PROGRESS`  
 **브랜치**: `feature/phase7-pr21-docs`  
 **예상 PR**: GitHub PR #25  
 **에이전트**: `doc-writer` (주)  
