@@ -32,5 +32,20 @@
   "errors": {
     "load_failed": "Could not load projects.",
     "trigger_failed": "Could not start the scan."
+  },
+  "create": {
+    "title": "New Project",
+    "name_label": "Name",
+    "name_placeholder": "my-awesome-project",
+    "description_label": "Description",
+    "description_placeholder": "Short description (optional)",
+    "git_url_label": "Git URL",
+    "git_url_placeholder": "https://github.com/org/repo",
+    "submit": "Create Project",
+    "cancel": "Cancel",
+    "error_name_required": "Project name is required",
+    "error_name_max": "Name must be 100 characters or less",
+    "error_description_max": "Description must be 500 characters or less",
+    "error_git_url_invalid": "Must be a valid URL (https:// or http://)"
   }
 }

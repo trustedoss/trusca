@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 
+import { AppShell } from "@/components/AppShell";
 import { RequireAuth } from "@/components/RequireAuth";
 import { AdminAuditPage } from "@/features/admin/audit/AdminAuditPage";
 import { AdminDiskPage } from "@/features/admin/disk/AdminDiskPage";
@@ -10,9 +11,11 @@ import { AdminNotFound } from "@/features/admin/AdminNotFound";
 import { AdminScansPage } from "@/features/admin/scans/AdminScansPage";
 import { AdminTeamsPage } from "@/features/admin/teams/AdminTeamsPage";
 import { AdminUsersPage } from "@/features/admin/users/AdminUsersPage";
+import { ApprovalsPage } from "@/features/approvals/ApprovalsPage";
+import { ProjectCreatePage } from "@/features/projects/ProjectCreatePage";
 import { ProjectDetailPage } from "@/features/projects/ProjectDetailPage";
 import { ProjectListPage } from "@/features/projects/ProjectListPage";
-import { Home } from "@/pages/Home";
+import { ScansPage } from "@/features/scans/ScansPage";
 import { ForgotPasswordPage } from "@/pages/auth/ForgotPasswordPage";
 import { LoginPage } from "@/pages/auth/LoginPage";
 import { RegisterPage } from "@/pages/auth/RegisterPage";
@@ -21,11 +24,13 @@ import { RegisterPage } from "@/pages/auth/RegisterPage";
  * Central route table — CLAUDE.md "Routing" convention.
  *
  * - Public auth pages live under /login, /register, /forgot-password.
- * - Authenticated pages are wrapped with <RequireAuth />.
- * - Admin pages nest under <AdminLayout /> which itself enforces the
- *   super-admin existence-hide guard. Non-super-admins see a 404 instead of
- *   a 403 — matching the backend's `require_super_admin_or_404` behavior.
- * - Unknown top-level routes land back on /login.
+ * - All authenticated pages nest inside <AppShell /> via <RequireAuth />.
+ *   AppShell renders the 48px header + 224px sidebar + <Outlet />.
+ * - The "/" index redirects to /projects; Home.tsx handles the same redirect
+ *   as a safety net for any legacy deep link.
+ * - Admin pages nest under <AdminLayout /> which enforces the super-admin
+ *   existence-hide guard (404 for non-super-admins, matching backend behavior).
+ * - Unknown top-level routes fall back to /login.
  */
 export function AppRoutes() {
   return (
@@ -33,30 +38,25 @@ export function AppRoutes() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+
+      {/* Authenticated app shell — sidebar + header wrap all app routes */}
       <Route
         path="/"
         element={
           <RequireAuth>
-            <Home />
+            <AppShell />
           </RequireAuth>
         }
-      />
-      <Route
-        path="/projects"
-        element={
-          <RequireAuth>
-            <ProjectListPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/projects/:id"
-        element={
-          <RequireAuth>
-            <ProjectDetailPage />
-          </RequireAuth>
-        }
-      />
+      >
+        <Route index element={<Navigate to="/projects" replace />} />
+        <Route path="projects" element={<ProjectListPage />} />
+        <Route path="projects/new" element={<ProjectCreatePage />} />
+        <Route path="projects/:id" element={<ProjectDetailPage />} />
+        <Route path="scans" element={<ScansPage />} />
+        <Route path="approvals" element={<ApprovalsPage />} />
+      </Route>
+
+      {/* Admin section retains its own layout (existence-hide guard inside) */}
       <Route
         path="/admin"
         element={
@@ -75,6 +75,7 @@ export function AppRoutes() {
         <Route path="health" element={<AdminHealthPage />} />
         <Route path="*" element={<AdminNotFound />} />
       </Route>
+
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   );

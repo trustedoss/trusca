@@ -25,5 +25,20 @@
     "medium": "Medium",
     "low": "Low",
     "info": "Info"
+  },
+  "nav": {
+    "projects": "Projects",
+    "scans": "Scans",
+    "approvals": "Approvals",
+    "admin": {
+      "section": "Administration"
+    }
+  },
+  "approvals": {
+    "coming_soon": "Coming soon in Step 3."
+  },
+  "scans": {
+    "title": "Scans",
+    "coming_soon": "Coming soon in Step 4."
   }
 }

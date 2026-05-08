@@ -32,5 +32,20 @@
   "errors": {
     "load_failed": "프로젝트 목록을 불러오지 못했습니다.",
     "trigger_failed": "스캔을 시작하지 못했습니다."
+  },
+  "create": {
+    "title": "새 프로젝트",
+    "name_label": "이름",
+    "name_placeholder": "my-awesome-project",
+    "description_label": "설명",
+    "description_placeholder": "간단한 설명 (선택사항)",
+    "git_url_label": "Git URL",
+    "git_url_placeholder": "https://github.com/org/repo",
+    "submit": "프로젝트 생성",
+    "cancel": "취소",
+    "error_name_required": "프로젝트 이름은 필수입니다",
+    "error_name_max": "이름은 100자 이하여야 합니다",
+    "error_description_max": "설명은 500자 이하여야 합니다",
+    "error_git_url_invalid": "유효한 URL이어야 합니다 (https:// 또는 http://)"
   }
 }

@@ -25,5 +25,20 @@
     "medium": "중간",
     "low": "낮음",
     "info": "정보"
+  },
+  "nav": {
+    "projects": "프로젝트",
+    "scans": "스캔",
+    "approvals": "승인",
+    "admin": {
+      "section": "관리"
+    }
+  },
+  "approvals": {
+    "coming_soon": "Step 3에서 추가됩니다."
+  },
+  "scans": {
+    "title": "스캔",
+    "coming_soon": "Step 4에서 추가됩니다."
   }
 }
