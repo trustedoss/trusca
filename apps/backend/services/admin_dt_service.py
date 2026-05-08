@@ -37,7 +37,6 @@ import structlog
 
 from core.config import redis_url
 from integrations.dt import DTError, DTUnavailable
-from services.admin_disk_service import _strip_credentials
 from integrations.dt.breaker import (
     STATE_CLOSED,
     STATE_HALF_OPEN,
@@ -56,6 +55,7 @@ from schemas.admin_ops import (
     HealthProbeOut,
     OrphanCleanupEnqueued,
 )
+from services.admin_disk_service import _strip_credentials
 
 log = structlog.get_logger("admin.dt.service")
 
