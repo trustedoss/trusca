@@ -11,7 +11,9 @@
     "components": "컴포넌트",
     "vulnerabilities": "취약점",
     "licenses": "라이선스",
-    "obligations": "의무사항"
+    "obligations": "의무사항",
+    "sbom": "SBOM",
+    "settings": "설정"
   },
   "severity": {
     "critical": "치명",
@@ -390,6 +392,63 @@
       },
       "affected_truncated": "전체 {{total}}개 중 {{shown}}개를 표시합니다. 컴포넌트 탭에서 전체 목록을 확인하세요.",
       "text_truncated": "서버에서 의무사항 본문이 잘렸습니다. 전체 본문은 카탈로그 원본을 확인하세요."
+    }
+  },
+  "sbom": {
+    "title": "SBOM (소프트웨어 명세)",
+    "subtitle": "최근 스캔의 SBOM을 CycloneDX 또는 SPDX 형식으로 다운로드합니다.",
+    "downloading": "다운로드 중…",
+    "last_scan_at": "최근 스캔: {{date}}",
+    "no_scan_yet": "아직 스캔 이력이 없습니다. 스캔을 실행하면 SBOM이 생성됩니다.",
+    "format": {
+      "cyclonedx_json": "CycloneDX JSON 다운로드",
+      "cyclonedx_xml": "CycloneDX XML 다운로드",
+      "spdx_json": "SPDX JSON 다운로드",
+      "spdx_tv": "SPDX Tag-Value 다운로드"
+    },
+    "errors": {
+      "download_failed": "SBOM을 다운로드하지 못했습니다."
+    }
+  },
+  "settings": {
+    "title": "프로젝트 설정",
+    "subtitle": "프로젝트 메타데이터를 수정하거나 보관 처리합니다.",
+    "field": {
+      "name": "이름",
+      "description": "설명",
+      "git_url": "Git URL",
+      "git_url_placeholder": "https://github.com/org/repo",
+      "default_branch": "기본 브랜치",
+      "default_branch_placeholder": "main"
+    },
+    "errors": {
+      "name_required": "프로젝트 이름은 필수입니다",
+      "name_max": "이름은 100자 이하여야 합니다",
+      "description_max": "설명은 500자 이하여야 합니다",
+      "git_url_invalid": "유효한 URL이어야 합니다 (https:// 또는 http://)",
+      "default_branch_max": "기본 브랜치는 255자 이하여야 합니다"
+    },
+    "action": {
+      "save": "변경사항 저장",
+      "saving": "저장 중…",
+      "cancel": "취소",
+      "archive": "프로젝트 보관",
+      "archiving": "보관 처리 중…",
+      "confirm_archive": "보관 확인",
+      "unarchive": "보관 해제",
+      "unarchiving": "복구 중…"
+    },
+    "archive": {
+      "active_title": "프로젝트 보관",
+      "active_subtitle": "보관된 프로젝트는 목록에서 숨겨지지만 스캔 이력은 유지됩니다.",
+      "archived_title": "보관됨",
+      "archived_subtitle": "이 프로젝트는 보관 상태입니다. 보관 해제 시 스캔을 재개할 수 있습니다.",
+      "confirm": "보관 처리 시 목록에서 숨겨집니다. 계속하시겠습니까?"
+    },
+    "toast": {
+      "saved": "설정이 저장되었습니다.",
+      "archived": "프로젝트가 보관되었습니다.",
+      "unarchived": "프로젝트가 복구되었습니다."
     }
   }
 }

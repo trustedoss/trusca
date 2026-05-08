@@ -1,7 +1,9 @@
 """
-Scan read API — Phase 2 PR #7.
+Scan read API — Phase 2 PR #7 + Step 4 (cross-project listing).
 
 Endpoints under `/v1`:
+  - GET /v1/scans                            List scans across every project
+                                              the actor can see (Step 4).
   - GET /v1/scans/{scan_id}                  Read one scan (IDOR-safe via
                                               team membership on the parent
                                               project).
@@ -28,6 +30,7 @@ from schemas.scan import ScanListResponse, ScanPublic
 from services.scan_service import (
     ScanError,
     get_scan,
+    list_scans_for_actor,
     list_scans_for_project,
 )
 
@@ -41,6 +44,52 @@ def _problem_for_scan_error(request: Request, exc: ScanError) -> Response:
         title=exc.title,
         detail=str(exc) or exc.title,
         instance=request.url.path,
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/scans  (cross-project list — Step 4)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/scans",
+    response_model=ScanListResponse,
+    summary="List scans across every project accessible to the caller",
+)
+async def list_my_scans_endpoint(
+    request: Request,
+    status_filter: str | None = Query(
+        default=None,
+        alias="status",
+        # Mirror SCAN_STATUS_VALUES from models.scan. Pydantic emits 422 for
+        # any other value with an RFC 7807 envelope (the validation handler
+        # in core.errors).
+        pattern=r"^(queued|running|succeeded|failed|cancelled)$",
+        description="Filter by scan status.",
+    ),
+    page: int = Query(default=1, ge=1),
+    size: int = Query(default=20, ge=1, le=100),
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_role("developer")),
+) -> Response:
+    rows, total = await list_scans_for_actor(
+        session,
+        actor=actor,
+        status_filter=status_filter,
+        page=page,
+        size=size,
+    )
+    body = ScanListResponse(
+        items=[ScanPublic.model_validate(s) for s in rows],
+        total=total,
+        page=page,
+        size=size,
+    )
+    return Response(
+        content=body.model_dump_json(by_alias=True),
+        status_code=status.HTTP_200_OK,
+        media_type="application/json",
     )
 
 

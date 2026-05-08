@@ -16,6 +16,8 @@ import { LicensesTab } from "@/features/projects/components/LicensesTab";
 import { ObligationsTab } from "@/features/projects/components/ObligationsTab";
 import { OverviewTab } from "@/features/projects/components/OverviewTab";
 import { RiskGauge } from "@/features/projects/components/RiskGauge";
+import { SbomTab } from "@/features/projects/components/SbomTab";
+import { SettingsTab } from "@/features/projects/components/SettingsTab";
 import { VulnerabilitiesTab } from "@/features/projects/components/VulnerabilitiesTab";
 import { ProblemError } from "@/lib/problem";
 import { getProject } from "@/lib/projectsApi";
@@ -37,6 +39,8 @@ const ALLOWED_TABS = new Set([
   "vulnerabilities",
   "licenses",
   "obligations",
+  "sbom",
+  "settings",
 ]);
 
 export function ProjectDetailPage() {
@@ -186,6 +190,15 @@ export function ProjectDetailPage() {
           >
             {t("tabs.obligations")}
           </TabsTrigger>
+          <TabsTrigger value="sbom" data-testid="project-detail-tab-sbom">
+            {t("tabs.sbom")}
+          </TabsTrigger>
+          <TabsTrigger
+            value="settings"
+            data-testid="project-detail-tab-settings"
+          >
+            {t("tabs.settings")}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
@@ -204,6 +217,18 @@ export function ProjectDetailPage() {
           <ObligationsTab
             projectId={projectId}
             projectName={projectQuery.data?.name ?? null}
+          />
+        </TabsContent>
+        <TabsContent value="sbom">
+          <SbomTab
+            projectId={projectId}
+            lastScanAt={overview.data?.last_scan_at ?? null}
+          />
+        </TabsContent>
+        <TabsContent value="settings">
+          <SettingsTab
+            projectId={projectId}
+            project={projectQuery.data ?? null}
           />
         </TabsContent>
       </Tabs>

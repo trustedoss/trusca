@@ -312,6 +312,73 @@ async def list_scans_for_project(
     return rows, total
 
 
+# ---------------------------------------------------------------------------
+# Cross-project list — Step 4 (Phase 3 wrap-up)
+# ---------------------------------------------------------------------------
+
+
+async def list_scans_for_actor(
+    session: AsyncSession,
+    *,
+    actor: CurrentUser,
+    status_filter: str | None = None,
+    page: int = 1,
+    size: int = 20,
+) -> tuple[list[Scan], int]:
+    """
+    Return (scans, total) across every project the *actor* can see.
+
+    Scope:
+      - super_admin: all scans, regardless of team.
+      - everyone else: scans whose project's team is in ``actor.team_ids``.
+        An actor with no team memberships sees an empty page (not 403); the
+        endpoint is read-only and "I am authenticated but my account has no
+        teams yet" is a legitimate visible state for the SPA.
+
+    ``status_filter`` is an optional value from ``SCAN_STATUS_VALUES``
+    (queued/running/succeeded/failed/cancelled). Validation lives in the
+    router (Pydantic regex constraint); we trust it here. Anything else is
+    silently ignored — defense in depth without 422 churn.
+    """
+    page = max(page, 1)
+    size = max(min(size, 100), 1)
+
+    is_super = actor.is_superuser or actor.role == "super_admin"
+
+    # Build the base query. We JOIN on Project so the WHERE clause can clamp
+    # by team_id. ix_scans_project_created_at + ix_projects_team_id keep the
+    # plan cheap for typical actor team-list sizes (≤ 50 teams).
+    base = select(Scan).join(Project, Project.id == Scan.project_id)
+    count_base = select(func.count()).select_from(Scan).join(
+        Project, Project.id == Scan.project_id
+    )
+
+    if not is_super:
+        team_ids = list(actor.team_ids)
+        if not team_ids:
+            return [], 0
+        base = base.where(Project.team_id.in_(team_ids))
+        count_base = count_base.where(Project.team_id.in_(team_ids))
+
+    if status_filter is not None:
+        base = base.where(Scan.status == status_filter)
+        count_base = count_base.where(Scan.status == status_filter)
+
+    total_result = await session.execute(count_base)
+    total = int(total_result.scalar_one())
+
+    # Order by created_at DESC (most recent first). Tie-break on id so
+    # pagination is stable when two scans share a microsecond.
+    rows_stmt = (
+        base.order_by(Scan.created_at.desc(), Scan.id.desc())
+        .limit(size)
+        .offset((page - 1) * size)
+    )
+    rows_result = await session.execute(rows_stmt)
+    rows = list(rows_result.scalars().all())
+    return rows, total
+
+
 __all__ = [
     "ProjectMissingForScan",
     "ScanEnqueueFailed",
@@ -320,6 +387,7 @@ __all__ = [
     "ScanInProgressConflict",
     "ScanNotFound",
     "get_scan",
+    "list_scans_for_actor",
     "list_scans_for_project",
     "trigger_scan",
 ]

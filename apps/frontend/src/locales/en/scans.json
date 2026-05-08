@@ -1,4 +1,40 @@
 {
+  "page": {
+    "title": "Scans",
+    "subtitle": "Scan queue across the projects you can access.",
+    "tab": {
+      "running": "Running",
+      "queued": "Queued",
+      "succeeded": "Succeeded",
+      "failed": "Failed",
+      "all": "All"
+    },
+    "column": {
+      "project": "Project",
+      "kind": "Kind",
+      "status": "Status",
+      "started": "Started",
+      "duration": "Duration"
+    },
+    "kind": {
+      "source": "Source",
+      "container": "Container"
+    },
+    "status": {
+      "queued": "Queued",
+      "running": "Running",
+      "succeeded": "Succeeded",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    },
+    "empty": "No scans match the current filter.",
+    "error": "Could not load scans.",
+    "pagination": {
+      "summary": "Page {{page}} of {{total}}",
+      "previous": "Previous",
+      "next": "Next"
+    }
+  },
   "progress": {
     "title": "Scan in progress",
     "step_bootstrap": "Bootstrapping workspace",

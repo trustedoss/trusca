@@ -11,7 +11,9 @@
     "components": "Components",
     "vulnerabilities": "Vulnerabilities",
     "licenses": "Licenses",
-    "obligations": "Obligations"
+    "obligations": "Obligations",
+    "sbom": "SBOM",
+    "settings": "Settings"
   },
   "severity": {
     "critical": "Critical",
@@ -390,6 +392,63 @@
       },
       "affected_truncated": "Showing {{shown}} of {{total}} components. Open the Components tab to see the full list.",
       "text_truncated": "Obligation text was truncated by the server. See the source catalog for the complete text."
+    }
+  },
+  "sbom": {
+    "title": "Software Bill of Materials",
+    "subtitle": "Download the SBOM for the latest scan in CycloneDX or SPDX.",
+    "downloading": "Downloading…",
+    "last_scan_at": "Latest scan: {{date}}",
+    "no_scan_yet": "No scan has been recorded yet. Trigger a scan to generate an SBOM.",
+    "format": {
+      "cyclonedx_json": "Download CycloneDX JSON",
+      "cyclonedx_xml": "Download CycloneDX XML",
+      "spdx_json": "Download SPDX JSON",
+      "spdx_tv": "Download SPDX Tag-Value"
+    },
+    "errors": {
+      "download_failed": "Could not download the SBOM."
+    }
+  },
+  "settings": {
+    "title": "Project settings",
+    "subtitle": "Update project metadata or archive the project.",
+    "field": {
+      "name": "Name",
+      "description": "Description",
+      "git_url": "Git URL",
+      "git_url_placeholder": "https://github.com/org/repo",
+      "default_branch": "Default branch",
+      "default_branch_placeholder": "main"
+    },
+    "errors": {
+      "name_required": "Project name is required",
+      "name_max": "Name must be 100 characters or less",
+      "description_max": "Description must be 500 characters or less",
+      "git_url_invalid": "Must be a valid URL (https:// or http://)",
+      "default_branch_max": "Default branch must be 255 characters or less"
+    },
+    "action": {
+      "save": "Save changes",
+      "saving": "Saving…",
+      "cancel": "Cancel",
+      "archive": "Archive project",
+      "archiving": "Archiving…",
+      "confirm_archive": "Confirm archive",
+      "unarchive": "Unarchive project",
+      "unarchiving": "Unarchiving…"
+    },
+    "archive": {
+      "active_title": "Archive project",
+      "active_subtitle": "Archived projects are hidden from listings but their scan history is preserved.",
+      "archived_title": "Archived",
+      "archived_subtitle": "This project is archived. Restore it to resume scanning.",
+      "confirm": "Archiving will hide this project from listings. Continue?"
+    },
+    "toast": {
+      "saved": "Settings saved.",
+      "archived": "Project archived.",
+      "unarchived": "Project restored."
     }
   }
 }

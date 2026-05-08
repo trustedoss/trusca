@@ -1,4 +1,40 @@
 {
+  "page": {
+    "title": "스캔",
+    "subtitle": "접근 가능한 프로젝트의 스캔 큐를 한눈에 확인합니다.",
+    "tab": {
+      "running": "실행 중",
+      "queued": "대기 중",
+      "succeeded": "성공",
+      "failed": "실패",
+      "all": "전체"
+    },
+    "column": {
+      "project": "프로젝트",
+      "kind": "종류",
+      "status": "상태",
+      "started": "시작",
+      "duration": "소요 시간"
+    },
+    "kind": {
+      "source": "소스",
+      "container": "컨테이너"
+    },
+    "status": {
+      "queued": "대기 중",
+      "running": "실행 중",
+      "succeeded": "성공",
+      "failed": "실패",
+      "cancelled": "취소됨"
+    },
+    "empty": "조건에 맞는 스캔이 없습니다.",
+    "error": "스캔 목록을 불러오지 못했습니다.",
+    "pagination": {
+      "summary": "{{page}} / {{total}} 페이지",
+      "previous": "이전",
+      "next": "다음"
+    }
+  },
   "progress": {
     "title": "스캔 진행 중",
     "step_bootstrap": "작업 공간 준비",

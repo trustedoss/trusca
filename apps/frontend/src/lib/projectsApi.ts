@@ -154,6 +154,21 @@ export async function archiveProject(projectId: string): Promise<void> {
 }
 
 /**
+ * Unarchive a previously archived project. Backed by `PATCH /v1/projects/{id}`
+ * with `archived: false`; if the backend rejects the field the call surfaces
+ * as a ProblemError to the caller.
+ */
+export async function unarchiveProject(
+  projectId: string,
+): Promise<ProjectPublic> {
+  const { data } = await api.patch<ProjectPublic>(
+    `/v1/projects/${projectId}`,
+    { archived: false },
+  );
+  return data;
+}
+
+/**
  * Trigger a scan for a project. The backend returns `202 Accepted` with the
  * Scan row already persisted; the WebSocket then streams progress.
  */
@@ -187,4 +202,77 @@ export async function listScans(
     },
   );
   return data;
+}
+
+export interface ListMyScansParams {
+  status?: ScanStatus;
+  page?: number;
+  size?: number;
+}
+
+/**
+ * Cross-project scan queue for the current user. Backed by
+ * `GET /v1/scans` with optional `status` filter and standard pagination.
+ * Used by the global ScansPage in the sidebar — mirrors AdminScansPage but
+ * is scoped to the user's reachable teams.
+ */
+export async function listMyScans(
+  params: ListMyScansParams = {},
+): Promise<ScanListResponse> {
+  const { data } = await api.get<ScanListResponse>("/v1/scans", {
+    params: {
+      status: params.status,
+      page: params.page,
+      size: params.size,
+    },
+  });
+  return data;
+}
+
+// ---------------------------------------------------------------------------
+// SBOM export — Phase 3 / Step 4-A.
+// ---------------------------------------------------------------------------
+
+export type SbomFormat =
+  | "cyclonedx-json"
+  | "cyclonedx-xml"
+  | "spdx-json"
+  | "spdx-tv";
+
+export interface SbomDownload {
+  blob: Blob;
+  filename: string;
+  format: SbomFormat;
+}
+
+const SBOM_FALLBACK_EXTENSIONS: Record<SbomFormat, string> = {
+  "cyclonedx-json": "cdx.json",
+  "cyclonedx-xml": "cdx.xml",
+  "spdx-json": "spdx.json",
+  "spdx-tv": "spdx",
+};
+
+/**
+ * Fetch the SBOM document as a Blob and parse the suggested filename out of
+ * the `Content-Disposition` header. The caller wires the blob into a
+ * `URL.createObjectURL` + `<a download>` click trigger; doing the request
+ * through axios (rather than `window.location =`) keeps the bearer token
+ * out of the URL / browser history / any reverse-proxy access logs.
+ */
+export async function downloadSbom(
+  projectId: string,
+  format: SbomFormat,
+): Promise<SbomDownload> {
+  const response = await api.get<Blob>(`/v1/projects/${projectId}/sbom`, {
+    params: { format },
+    responseType: "blob",
+  });
+  const headers = (response.headers ?? {}) as Record<string, string>;
+  const disposition =
+    headers["content-disposition"] ?? headers["Content-Disposition"] ?? "";
+  // RFC 6266 filename — handles `filename="x.json"` and bare `filename=x.json`.
+  const match = disposition.match(/filename\*?=(?:UTF-8''|")?([^";]+)"?/i);
+  const filename =
+    match?.[1] ?? `sbom-${projectId}.${SBOM_FALLBACK_EXTENSIONS[format]}`;
+  return { blob: response.data as Blob, filename, format };
 }

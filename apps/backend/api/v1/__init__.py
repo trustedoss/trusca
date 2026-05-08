@@ -10,6 +10,7 @@ from .components import router as components_router
 from .licenses import router as licenses_router
 from .obligations import router as obligations_router
 from .projects import router as projects_router
+from .sbom import router as sbom_router
 from .scans import router as scans_router
 from .vulnerabilities import router as vulnerabilities_router
 from .ws import router as ws_router
@@ -22,6 +23,7 @@ __all__ = [
     "licenses_router",
     "obligations_router",
     "projects_router",
+    "sbom_router",
     "scans_router",
     "vulnerabilities_router",
     "ws_router",
