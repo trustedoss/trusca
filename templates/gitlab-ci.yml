@@ -1,0 +1,254 @@
+# TrustedOSS SCA — GitLab CI template
+# =============================================================================
+# Triggers a TrustedOSS SCA scan, polls until it finishes, evaluates the build
+# gate, posts the SCA report to the MR (when running on a merge_request_event
+# pipeline), and exits non-zero on gate failure so the pipeline turns red.
+#
+# Usage:
+#
+#   include:
+#     - remote: 'https://raw.githubusercontent.com/trustedoss/trustedoss-portal/main/templates/gitlab-ci.yml'
+#
+#   trustedoss-sca:
+#     extends: .trustedoss-sca
+#
+# Required CI/CD variables (Settings → CI/CD → Variables, set Masked +
+# Protected as appropriate):
+#
+#   TRUSTEDOSS_API_URL        https://trustedoss.example.com
+#   TRUSTEDOSS_API_KEY        tos_<prefix>_<secret>   (Masked, Protected)
+#   TRUSTEDOSS_PROJECT_ID     UUID from the project's Settings tab
+#
+# Optional:
+#   TRUSTEDOSS_SCAN_KIND          source | container          (default: source)
+#   TRUSTEDOSS_FAIL_ON_GATE       true | false                (default: true)
+#   TRUSTEDOSS_POST_MR_COMMENT    true | false                (default: true)
+#   TRUSTEDOSS_POLL_TIMEOUT       seconds                     (default: 1800)
+#   TRUSTEDOSS_POLL_INTERVAL      seconds                     (default: 30)
+# =============================================================================
+
+# Hidden base job — `extends: .trustedoss-sca` to materialize it. Keeping the
+# job hidden by default lets users override `stage`, `rules`, `tags`, etc.
+# without re-declaring the full script.
+.trustedoss-sca:
+  stage: test
+  # curlimages/curl ships curl + ash. We add jq via apk because the curl image
+  # is a `scratch`-derived distroless and does not bundle it.
+  image: curlimages/curl:8.4.0
+  variables:
+    TRUSTEDOSS_SCAN_KIND: "source"
+    TRUSTEDOSS_FAIL_ON_GATE: "true"
+    TRUSTEDOSS_POST_MR_COMMENT: "true"
+    TRUSTEDOSS_POLL_TIMEOUT: "1800"
+    TRUSTEDOSS_POLL_INTERVAL: "30"
+  before_script:
+    # `set -euo pipefail` does not survive into `script:` because each line is
+    # a separate shell — we set it inside each step instead. Here we only
+    # ensure jq is present.
+    - |
+      set -eu
+      if ! command -v jq >/dev/null 2>&1; then
+        # curlimages/curl runs as non-root by default; sudo isn't available.
+        # Use `apk` directly when the image is alpine-based and we're root,
+        # otherwise fall back to the static jq binary download.
+        if [ "$(id -u)" = "0" ] && command -v apk >/dev/null 2>&1; then
+          apk add --no-cache jq
+        else
+          curl -sSL -o /tmp/jq https://github.com/jqlang/jq/releases/download/jq-1.7.1/jq-linux64
+          chmod +x /tmp/jq
+          mkdir -p "$HOME/.local/bin"
+          mv /tmp/jq "$HOME/.local/bin/jq"
+          export PATH="$HOME/.local/bin:$PATH"
+        fi
+      fi
+  script:
+    # -------------------------------------------------------------------------
+    # 1) Trigger scan — capture scan_id
+    # -------------------------------------------------------------------------
+    - |
+      set -euo pipefail
+      api="${TRUSTEDOSS_API_URL%/}"
+      body=$(jq -nc --arg kind "$TRUSTEDOSS_SCAN_KIND" \
+        '{kind: $kind, metadata: {source: "gitlab-ci"}}')
+
+      response=$(curl --fail-with-body -sS -X POST \
+        -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+        -H "Content-Type: application/json" \
+        -H "Accept: application/json" \
+        -w "\n%{http_code}" \
+        "${api}/v1/projects/${TRUSTEDOSS_PROJECT_ID}/scans" \
+        -d "$body") || {
+          echo "FATAL: scan trigger failed:"
+          echo "$response"
+          exit 1
+        }
+      http_code=$(echo "$response" | tail -n1)
+      json_body=$(echo "$response" | sed '$d')
+      if [ "$http_code" != "202" ] && [ "$http_code" != "200" ]; then
+        echo "FATAL: unexpected HTTP $http_code from scan trigger:"
+        echo "$json_body"
+        exit 1
+      fi
+      SCAN_ID=$(echo "$json_body" | jq -er '.id')
+      echo "TrustedOSS scan enqueued: $SCAN_ID"
+      # Persist scan_id between script lines via the dotenv artifact below.
+      echo "TRUSTEDOSS_SCAN_ID=$SCAN_ID" >> trustedoss.env
+
+    # -------------------------------------------------------------------------
+    # 2) Wait for terminal state
+    # -------------------------------------------------------------------------
+    - |
+      set -euo pipefail
+      api="${TRUSTEDOSS_API_URL%/}"
+      # shellcheck disable=SC1091
+      . ./trustedoss.env
+      deadline=$(( $(date +%s) + TRUSTEDOSS_POLL_TIMEOUT ))
+      while :; do
+        response=$(curl --fail-with-body -sS \
+          -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+          -H "Accept: application/json" \
+          -w "\n%{http_code}" \
+          "${api}/v1/scans/${TRUSTEDOSS_SCAN_ID}") || {
+            echo "FATAL: scan status fetch failed:"
+            echo "$response"
+            exit 1
+          }
+        http_code=$(echo "$response" | tail -n1)
+        json_body=$(echo "$response" | sed '$d')
+        if [ "$http_code" != "200" ]; then
+          echo "FATAL: unexpected HTTP $http_code from scan status:"
+          echo "$json_body"
+          exit 1
+        fi
+        scan_status=$(echo "$json_body" | jq -r '.status')
+        progress=$(echo "$json_body" | jq -r '.progress_percent // 0')
+        step=$(echo "$json_body" | jq -r '.current_step // "?"')
+        echo "[$(date -u +%H:%M:%S)] status=$scan_status progress=${progress}% step=$step"
+        case "$scan_status" in
+          succeeded) break ;;
+          failed|cancelled)
+            err=$(echo "$json_body" | jq -r '.error_message // "(no error message)"')
+            echo "FATAL: scan ended with status=$scan_status: $err"
+            exit 1
+            ;;
+          queued|running) ;;
+          *) echo "WARN: unknown status '$scan_status', continuing" ;;
+        esac
+        if [ "$(date +%s)" -ge "$deadline" ]; then
+          echo "FATAL: scan did not finish within ${TRUSTEDOSS_POLL_TIMEOUT}s"
+          exit 1
+        fi
+        sleep "$TRUSTEDOSS_POLL_INTERVAL"
+      done
+
+    # -------------------------------------------------------------------------
+    # 3) Evaluate gate
+    # -------------------------------------------------------------------------
+    - |
+      set -euo pipefail
+      api="${TRUSTEDOSS_API_URL%/}"
+      # shellcheck disable=SC1091
+      . ./trustedoss.env
+      response=$(curl --fail-with-body -sS \
+        -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+        -H "Accept: application/json" \
+        -w "\n%{http_code}" \
+        "${api}/v1/projects/${TRUSTEDOSS_PROJECT_ID}/gate-result") || {
+          echo "FATAL: gate-result fetch failed:"
+          echo "$response"
+          exit 1
+        }
+      http_code=$(echo "$response" | tail -n1)
+      json_body=$(echo "$response" | sed '$d')
+      if [ "$http_code" != "200" ]; then
+        echo "FATAL: unexpected HTTP $http_code from gate-result:"
+        echo "$json_body"
+        exit 1
+      fi
+      gate=$(echo "$json_body" | jq -r '.gate')
+      reason=$(echo "$json_body" | jq -r '.reason // ""')
+      critical=$(echo "$json_body" | jq -r '.critical_cve_count // 0')
+      forbidden=$(echo "$json_body" | jq -r '.forbidden_license_count // 0')
+      echo "TrustedOSS gate=$gate critical=$critical forbidden=$forbidden"
+      {
+        echo "TRUSTEDOSS_GATE=$gate"
+        echo "TRUSTEDOSS_GATE_CRITICAL=$critical"
+        echo "TRUSTEDOSS_GATE_FORBIDDEN=$forbidden"
+        # Newlines in `reason` are stripped — the contract is single-line.
+        echo "TRUSTEDOSS_GATE_REASON=$(printf '%s' "$reason" | tr -d '\r\n')"
+      } >> trustedoss.env
+
+    # -------------------------------------------------------------------------
+    # 4) Post MR comment (only on merge_request_event pipelines)
+    # -------------------------------------------------------------------------
+    - |
+      set -euo pipefail
+      # shellcheck disable=SC1091
+      . ./trustedoss.env
+      if [ "$TRUSTEDOSS_POST_MR_COMMENT" != "true" ]; then
+        echo "MR comment disabled (TRUSTEDOSS_POST_MR_COMMENT=$TRUSTEDOSS_POST_MR_COMMENT)"
+        exit 0
+      fi
+      if [ "${CI_PIPELINE_SOURCE:-}" != "merge_request_event" ]; then
+        echo "Not a merge_request_event pipeline (source=${CI_PIPELINE_SOURCE:-unset}); skipping MR comment"
+        exit 0
+      fi
+
+      api="${TRUSTEDOSS_API_URL%/}"
+      # CI_PROJECT_PATH is "group/project" — the same shape the portal expects
+      # for repo_full_name. CI_MERGE_REQUEST_IID is the MR number (per-project,
+      # the human-visible "!123").
+      body=$(jq -nc \
+        --arg repo "$CI_PROJECT_PATH" \
+        --argjson pr "$CI_MERGE_REQUEST_IID" \
+        '{repo_full_name: $repo, pr_number: $pr, dry_run: false}')
+
+      response=$(curl --fail-with-body -sS -X POST \
+        -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+        -H "Content-Type: application/json" \
+        -H "Accept: application/json" \
+        -w "\n%{http_code}" \
+        "${api}/v1/scans/${TRUSTEDOSS_SCAN_ID}/post-pr-comment" \
+        -d "$body") || {
+          # Advisory step — never fail the gate because GitLab.com had a blip.
+          echo "WARN: MR-comment post failed:"
+          echo "$response"
+          exit 0
+        }
+
+      http_code=$(echo "$response" | tail -n1)
+      json_body=$(echo "$response" | sed '$d')
+      if [ "$http_code" != "200" ]; then
+        echo "WARN: unexpected HTTP $http_code from post-pr-comment (continuing):"
+        echo "$json_body"
+        exit 0
+      fi
+      status_value=$(echo "$json_body" | jq -r '.status')
+      url=$(echo "$json_body" | jq -r '.comment_url // ""')
+      echo "MR comment $status_value${url:+ — $url}"
+
+    # -------------------------------------------------------------------------
+    # 5) Apply gate result — last step, single source of truth on the verdict
+    # -------------------------------------------------------------------------
+    - |
+      set -euo pipefail
+      # shellcheck disable=SC1091
+      . ./trustedoss.env
+      if [ "$TRUSTEDOSS_FAIL_ON_GATE" = "true" ] && [ "$TRUSTEDOSS_GATE" = "fail" ]; then
+        echo "TrustedOSS gate FAILED — critical=$TRUSTEDOSS_GATE_CRITICAL forbidden=$TRUSTEDOSS_GATE_FORBIDDEN"
+        echo "Reason: ${TRUSTEDOSS_GATE_REASON:-(none)}"
+        exit 1
+      fi
+      echo "TrustedOSS gate passed."
+  artifacts:
+    # Expose scan id + gate verdict to downstream jobs that may want to branch
+    # on the result (e.g. a "deploy" stage that only runs when gate=pass).
+    reports:
+      dotenv: trustedoss.env
+    when: always
+    expire_in: 7 days
+  rules:
+    # Run on MRs and on pushes to the default branch. Tweak in the consumer
+    # `.gitlab-ci.yml` if you want a different policy.
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
