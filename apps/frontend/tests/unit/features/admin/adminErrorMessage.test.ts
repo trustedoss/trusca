@@ -35,7 +35,7 @@ describe("adminErrorMessageKey", () => {
     ["cannot_modify_self", "admin.errors.cannot_modify_self"],
     ["last_team_admin_protected", "admin.errors.last_team_admin_protected"],
     ["team_has_active_scans", "admin.errors.team_has_active_scans"],
-    ["invalid_role_assignment", "admin.errors.invalid_role_assignment"],
+    // "invalid_role_assignment" removed — L1: backend never emits this flag.
     // Phase 4 PR #14 — admin operational extensions.
     ["dt_unreachable", "admin.errors.dt_unreachable"],
     [
@@ -44,7 +44,7 @@ describe("adminErrorMessageKey", () => {
     ],
     ["scan_already_cancelled", "admin.errors.scan_already_cancelled"],
     ["scan_not_found", "admin.errors.scan_not_found"],
-    ["disk_path_unavailable", "admin.errors.disk_path_unavailable"],
+    // "disk_path_unavailable" removed — L1: backend never emits this flag.
     ["audit_export_too_large", "admin.errors.audit_export_too_large"],
   ])("maps extension %s to %s", (extension, expected) => {
     const result = adminErrorMessageKey(err(422, { [extension]: true }));
@@ -80,12 +80,12 @@ describe("adminErrorExtension", () => {
     "cannot_modify_self",
     "last_team_admin_protected",
     "team_has_active_scans",
-    "invalid_role_assignment",
+    // "invalid_role_assignment" removed — L1.
     "dt_unreachable",
     "dt_orphan_cleanup_in_progress",
     "scan_already_cancelled",
     "scan_not_found",
-    "disk_path_unavailable",
+    // "disk_path_unavailable" removed — L1.
     "audit_export_too_large",
   ])("returns %s when the extension flag is true", (extension) => {
     expect(adminErrorExtension(err(422, { [extension]: true }))).toBe(
