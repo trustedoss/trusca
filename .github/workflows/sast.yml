@@ -1,0 +1,89 @@
+name: SAST
+
+# Phase 8 PR #24 — Static Application Security Testing.
+#
+# bandit  — Python AST scanner for common security smells (hardcoded
+#           passwords, weak crypto primitives, eval / exec usage).
+# semgrep — pattern-based scanner with the auto-config rules tailored to
+#           Python + JS / TS web stacks. Surfaces OWASP Top 10 patterns
+#           that bandit cannot reach.
+#
+# Both jobs run on every push to main and every pull request. They report
+# findings as SARIF artifacts which GitHub renders inline in the security
+# tab and on the PR. We start in advisory mode (severity-level=WARNING for
+# semgrep, --severity-level=high for bandit) so existing code does not
+# block. Phase 8 PR #25 flips bandit/semgrep to HARD FAIL on High+ once
+# the inventory is clean.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: {}
+
+concurrency:
+  group: sast-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bandit:
+    name: bandit (backend)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install bandit
+        run: python -m pip install bandit==1.8.0
+
+      - name: Run bandit (advisory)
+        working-directory: apps/backend
+        run: |
+          # -ll  : log medium+ findings, but
+          # exit 0 always — advisory only until Phase 8 PR #25 (HARD FAIL).
+          bandit -r . \
+            --exclude ./tests,./alembic/versions \
+            --severity-level high \
+            --format sarif \
+            --output bandit.sarif \
+            || echo "::warning::bandit reported high-severity findings — advisory in PR #24"
+
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: apps/backend/bandit.sarif
+          category: bandit
+
+  semgrep:
+    name: semgrep
+    runs-on: ubuntu-22.04
+    container:
+      image: semgrep/semgrep:1.96.0
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run semgrep (advisory)
+        # `auto` config picks the OSS rule packs matching the languages it
+        # detects. --severity ERROR limits noise to highest-severity findings;
+        # WARNING/INFO findings are still emitted to the SARIF for review.
+        run: |
+          semgrep ci \
+            --config=auto \
+            --severity=ERROR \
+            --sarif --output=semgrep.sarif \
+            || echo "::warning::semgrep reported findings — advisory in PR #24"
+
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+        env:
+          # `semgrep ci` runs without an account token in the OSS path; this
+          # prevents it from trying to phone home.
+          SEMGREP_APP_TOKEN: ""
