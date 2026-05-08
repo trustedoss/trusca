@@ -1,0 +1,56 @@
+# TrustedOSS SCA — GitHub Actions example workflow
+#
+# Copy this file into your repository as `.github/workflows/trustedoss-sca.yml`
+# (drop the `.example` suffix). Then create the secrets / variables it
+# references in repo settings:
+#
+#   Settings → Secrets and variables → Actions
+#     Secrets:
+#       TRUSTEDOSS_API_KEY        tos_<prefix>_<secret> from the portal
+#     Variables:
+#       TRUSTEDOSS_API_URL        https://trustedoss.example.com
+#       TRUSTEDOSS_PROJECT_ID     UUID from the project's Settings tab
+#
+# That's it. The job runs on every PR and every push to `main`, and turns the
+# check red when the gate fails.
+
+name: TrustedOSS SCA
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Cancel in-flight runs on the same ref so a force-push doesn't queue a stale
+# scan behind the latest one.
+concurrency:
+  group: trustedoss-sca-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sca:
+    name: TrustedOSS SCA scan
+    runs-on: ubuntu-latest
+    # 35 min: the action's default poll-timeout is 30 min, plus a small
+    # buffer for setup. Real ORT runs typically finish in 5–60 min — bump
+    # this and `poll-timeout-seconds` together if your projects are larger.
+    timeout-minutes: 35
+    permissions:
+      # Only needed if you want the action's "Apply gate verdict" failure to
+      # surface as a check-run on the PR — defaults are fine for most repos.
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: TrustedOSS SCA scan
+        uses: trustedoss/scan-action@v1
+        with:
+          api-url: ${{ vars.TRUSTEDOSS_API_URL }}
+          api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
+          project-id: ${{ vars.TRUSTEDOSS_PROJECT_ID }}
+          # Set to 'false' while you're seeding policies if you want
+          # advisory-only mode (report shows up but the build never goes red).
+          fail-on-gate: 'true'
+          # Set to 'false' if you don't want PR comments — the gate check is
+          # still posted as a workflow check independently.
+          post-pr-comment: 'true'
