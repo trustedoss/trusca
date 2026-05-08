@@ -39,8 +39,8 @@ gh run list --limit 3                              # CI 최근 상태
 | Step 1 | 공통 앱 레이아웃 + New Project 폼 | [x] DONE | #16 (merged c5ed441) |
 | Step 2 | chore PR #9 — Admin 보안 follow-up | [x] DONE | #17 (merged 9554d40) |
 | Step 3 | Phase 4 PR #15 — 컴포넌트 승인 워크플로우 | [x] DONE | #18 (merged 7699d52) |
-| Step 4 | Phase 3 미완 — SBOM·Settings·/scans | [~] IN_PROGRESS | — |
-| Step 5 | Phase 5 PR #16 — API Key + Webhook | [ ] TODO | — |
+| Step 4 | Phase 3 미완 — SBOM·Settings·/scans | [x] DONE | #19 (merged 2dc547f) |
+| Step 5 | Phase 5 PR #16 — API Key + Webhook | [~] IN_PROGRESS | — |
 | Step 6 | Phase 5 PR #17 — 빌드 게이트 + PR 코멘트 + GitHub Actions | [ ] TODO | — |
 | Step 7 | Phase 6 PR #18 — i18n + 알림 시스템 | [ ] TODO | — |
 | Step 8 | Phase 6 PR #19 — 안정성 + 백업 | [ ] TODO | — |
@@ -378,7 +378,7 @@ grep -r "approvals" apps/backend/api/v1/admin/__init__.py 2>/dev/null
 
 ## Step 4: Phase 3 미완 — SBOM·Settings·/scans 페이지
 
-**상태**: `[~] IN_PROGRESS`  
+**상태**: `[x] DONE` — PR #19 머지 (commit 2dc547f, 2026-05-08).  
 **브랜치**: `feature/step4-sbom-settings-scans`  
 **예상 PR**: GitHub PR #19  
 **에이전트**: `backend-developer` + `frontend-dev` (병렬)  
@@ -464,7 +464,7 @@ grep "path.*scans" apps/frontend/src/router.tsx | grep -v admin
 
 ## Step 5: Phase 5 PR #16 — API Key + Webhook
 
-**상태**: `[ ] TODO`  
+**상태**: `[~] IN_PROGRESS`  
 **브랜치**: `feature/phase5-pr16-apikey-webhook`  
 **예상 PR**: GitHub PR #20  
 **에이전트**: `backend-developer` (주) + `security-reviewer` (보조)  
