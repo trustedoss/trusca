@@ -1,0 +1,56 @@
+name: Deploy Docs to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs-site/**"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch: {}
+
+# Cancel any in-flight deploy when a newer commit lands.
+concurrency:
+  group: docs-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
+
+      - name: Install dependencies
+        working-directory: docs-site
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Build site
+        working-directory: docs-site
+        run: npm run build
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs-site/build
+
+  deploy:
+    needs: build
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,211 @@
+---
+id: dt-connector
+title: Dependency-Track 커넥터
+description: Dependency-Track 통합 운영 — health 모니터, 회로 차단기, 취약점 캐시, 고아 정리.
+sidebar_label: DT 커넥터
+sidebar_position: 2
+---
+
+# Dependency-Track 커넥터
+
+[Dependency-Track](https://dependencytrack.org/)(DT)은 포털이 SBOM을 대조하는 상위 취약점 데이터베이스입니다. 커넥터는 DT API에 없는 신뢰성 프리미티브를 추가합니다 — health 모니터링, 회로 차단기, PostgreSQL 취약점 캐시, 고아 정리.
+
+:::note 대상 독자
+배포를 운영하는 `super_admin`. 이하 화면은 `/admin/dt`에 있습니다.
+:::
+
+## 왜 커넥터인가
+
+DT는 운영상 세 가지 부류의 어려움을 겪어왔습니다.
+
+1. **느린 시작** — 인덱스를 재구축하는 동안 DT는 콜드 스타트에서 5–10분이 걸릴 수 있습니다. 그 사이의 호출은 타임아웃합니다.
+2. **고아 프로젝트** — 포털에서 프로젝트를 삭제했지만 커넥터가 DT에 flush하지 못한 경우 DT에 "유령" 프로젝트가 쌓입니다.
+3. **동기화 윈도** — DT는 NVD·OSV 미러를 주기 갱신하는 동안 쓰기 작업을 거부합니다.
+
+커넥터는 모든 DT 호출을 다음 레이어로 감싸 위 세 케이스에서도 포털을 사용 가능하게 유지합니다.
+
+## 운영 레이어
+
+```
+포털 API 호출 → 회로 차단기 → DT health 프로브 (60초 heartbeat)
+                       │
+              CLOSED ──┴── OPEN ──► PostgreSQL 취약점 캐시
+```
+
+### 1. Health 모니터
+
+Celery Beat 작업이 매 60초마다 `${DT_URL}/api/version`을 ping하고 결과를 PostgreSQL(`dt_health` 테이블)에 기록합니다. 연속 3회 실패 시 상태가 `healthy`에서 `degraded`로, 한 번 더 실패하면 `down`으로 전환됩니다.
+
+**/admin/dt** 대시보드 표시:
+
+- 현재 상태(`healthy` / `degraded` / `down`).
+- 마지막 성공 프로브 타임스탬프.
+- `healthy`가 아닐 때 마지막 오류 메시지.
+- 프로브 이력(최근 24시간 sparkline).
+
+상태가 `down`에 도달하면 커넥터가 한 번 `docker restart dt`를 시도하고 90초 대기합니다. DT가 회복되면 상태가 `healthy`로 돌아옵니다. 그렇지 않으면 **회로 차단기**가 OPEN됩니다.
+
+### 2. 회로 차단기
+
+차단기는 3-state 머신: `CLOSED`(정상), `HALF_OPEN`(프로브), `OPEN`(거부).
+
+- `CLOSED` — 호출 통과.
+- `OPEN` — 호출이 즉시 캐시 데이터를 반환. DT 왕복 없음.
+- `HALF_OPEN` — OPEN인 동안 30초마다 한 번 호출을 통과시킴. 성공 → `CLOSED`. 실패 → `OPEN`.
+
+현재 상태는 **/admin/dt**와 `GET /api/v1/admin/dt/state`에서 확인 가능합니다.
+
+### 3. PostgreSQL 취약점 캐시
+
+성공한 모든 DT 응답은 `vuln_cache`(프로젝트·컴포넌트·CVE 트리플과 심각도·요약·수정 가용성)에 미러됩니다. 차단기가 OPEN일 때 캐시가 진실의 원천입니다.
+
+캐시는 best-effort: DT 대비 최대 1시간(동기화 간격) 지연될 수 있습니다. 포털 측 장애 중 DT가 알게 된 새 CVE는 다음 성공 동기화까지 등장하지 않습니다.
+
+### 4. 고아 정리
+
+매 6시간마다 Celery Beat 작업이 DT 프로젝트를 나열하고 포털 `projects` 테이블과 비교합니다.
+
+- 매칭 포털 행이 없는 DT 프로젝트는 **고아** — DT에서 삭제(`DT_ORPHAN_AUTODELETE=false`이면 운영자 확인 필요, 프로덕션 기본).
+- DT 카운터파트가 없는 포털 프로젝트는 **누락** — 다음 스캔에서 자동 생성.
+
+고아 목록은 **/admin/dt → Orphan projects**에 표시되며 **Delete selected** 버튼이 있습니다.
+
+## 첫 부트스트랩 (번들 DT)
+
+번들 DT 오버레이(`docker-compose.dt.yml`)를 가동하면 API 서버가 기본 자격증명으로 시작합니다.
+
+1. **DT 오버레이로 스택 가동:**
+
+   ```bash
+   docker-compose -f docker-compose.yml -f docker-compose.dt.yml up -d
+   ```
+
+2. **`http://localhost:8080`** (또는 리버스 프록시의 DT 라우트) 열기.
+
+3. **`admin / admin`으로 로그인** 후 새 비밀번호 설정.
+
+4. **8개 OSV 생태계 활성화:**
+
+   Administration → Vulnerability Sources → 각 생태계 활성화:
+   - npm
+   - Maven
+   - PyPI
+   - RubyGems
+   - crates.io
+   - Go
+   - Packagist
+   - NuGet
+
+   미러 동기화는 백그라운드에서 실행됩니다. Maven은 콜드 동기화에서 ~1시간; 나머지는 각 5–15분.
+
+5. **API Key 생성:**
+
+   Administration → Access Management → Teams → **Automation** → API Key 복사.
+
+6. **`.env` 연결**(커밋 금지):
+
+   ```bash
+   DT_API_KEY=<방금 복사한 키>
+   ```
+
+   영향 받는 서비스 재시작:
+
+   ```bash
+   docker-compose -f docker-compose.yml -f docker-compose.dt.yml \
+     restart backend worker beat
+   ```
+
+7. **검증** — **/admin/dt** 방문. 60초 이내에 상태가 `healthy`여야 합니다. 고아 프로젝트 목록이 비어 있어야 합니다.
+
+## 외부 DT 연결
+
+조직이 DT를 중앙 운영하고 포털이 그것을 가리키도록 하려면:
+
+1. `.env`의 `DT_URL`을 외부 URL로 설정.
+2. `DT_API_KEY`를 외부 DT의 Automation 팀이 발급한 키로 설정.
+3. `docker-compose.dt.yml`을 가동하지 **마세요** — 로컬 DT 서비스를 끔.
+4. `backend`, `worker`, `beat` 재시작.
+
+커넥터 동작은 동일합니다. 고아 정리 작업이 본인 소유가 아닌 DT 프로젝트를 나열할 수 있으므로 — 다른 팀의 프로젝트를 삭제하지 않도록 수동 확인 정책(`DT_ORPHAN_AUTODELETE=false`)을 유지하세요.
+
+## 수동 프로브
+
+런북용:
+
+```bash
+# DT health
+curl -fsS https://trustedoss.example.com/api/v1/admin/dt/probe \
+  -H "Authorization: Bearer ${ACCESS_TOKEN}"
+
+# 즉시 고아 정리 패스 트리거
+curl -sS -X POST \
+  https://trustedoss.example.com/api/v1/admin/dt/orphans/cleanup \
+  -H "Authorization: Bearer ${ACCESS_TOKEN}"
+```
+
+두 엔드포인트 모두 `super_admin` 필요.
+
+## 알림 {#알림}
+
+다섯 가지 알림 트리거는 **/notifications**에서 설정합니다.
+
+| 트리거 | 기본 |
+|---|---|
+| 스캔 완료 | 끔 |
+| 빌드 게이트 실패 | 켬 |
+| 기존 프로젝트의 신규 CVE(재탐지) | 켬 |
+| 승인 요청 | 켬(team admin) |
+| 디스크 압박(≥ 90%) | 켬(super-admin) |
+
+채널: 이메일(SMTP), Slack Webhook, MS Teams Webhook. Webhook URL은 `.env`(`SMTP_*`, `SLACK_WEBHOOK_URL`, `TEAMS_WEBHOOK_URL`)에 설정.
+
+## 트러블슈팅
+
+### `/admin/dt`에 `down`인데 브라우저에서는 DT 도달 가능
+
+포털 워커는 컴포즈 네트워크로 DT에 도달합니다. 공개 URL이 아닙니다. 확인:
+
+```bash
+docker-compose -f docker-compose.yml exec worker \
+  curl -fsS http://dtrack-api:8080/api/version
+```
+
+실패하면 네트워크 설정 오류(backend와 DT가 다른 컴포즈 네트워크)입니다. 두 파일로 다시 가동:
+
+```bash
+docker-compose -f docker-compose.yml -f docker-compose.dt.yml up -d
+```
+
+### 차단기가 OPEN에 머무름
+
+차단기는 성공한 HALF_OPEN 프로브에서만 닫힙니다. DT가 깜빡이면 차단기가 진동합니다. 강제 리셋:
+
+```bash
+curl -sS -X POST \
+  https://trustedoss.example.com/api/v1/admin/dt/breaker/reset \
+  -H "Authorization: Bearer ${ACCESS_TOKEN}"
+```
+
+절제하여 사용 — DT가 unhealthy일 때 강제 리셋을 반복하면 워커가 타임아웃 폭주합니다.
+
+### DT 회복 후 취약점이 갱신되지 않음
+
+기존 스캔에 대해 상관관계를 재실행하는 경로는 시간 단위 동기화 작업입니다. 수동 트리거:
+
+```bash
+curl -sS -X POST \
+  https://trustedoss.example.com/api/v1/admin/dt/resync \
+  -H "Authorization: Bearer ${ACCESS_TOKEN}"
+```
+
+동기화는 멱등 — 두 번 실행해도 동일 결과.
+
+### "고아 목록에 모르는 프로젝트가 표시됨"
+
+공유 외부 DT를 가리키는 중입니다. 다른 팀이 거기에 프로젝트를 만들었을 수 있습니다. `DT_ORPHAN_AUTODELETE=false`(기본) 유지하고 본인 소유 고아만 삭제하세요.
+
+## 함께 보기
+
+- [시스템 health 대시보드](./disk-and-health.md)
+- [백업·복원](./backup-and-restore.md)
+- [아키텍처 — DT 통합](../reference/architecture.md#dependency-track)
