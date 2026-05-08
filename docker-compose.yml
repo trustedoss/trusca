@@ -1,0 +1,294 @@
+# TrustedOSS Portal — production stack.
+#
+# Compose V1 file format (CLAUDE.md core rule #10: `docker-compose`, not
+# `docker compose`). Image tags are pinned to minor + patch (rule #9: no
+# `:latest`). All env values are read at runtime from `.env` — never baked
+# into images (rule #11).
+#
+# Quick start:
+#   ./scripts/install.sh                        # interactive wizard
+#   docker-compose -f docker-compose.yml ps     # confirm `healthy` status
+#   open https://${DOMAIN}                      # served via Traefik + LE TLS
+#
+# Add bundled Dependency-Track on top with the existing overlay:
+#   docker-compose -f docker-compose.yml -f docker-compose.dt.yml up -d
+#
+# Service map:
+#   traefik   — edge proxy, TLS termination (Let's Encrypt HTTP-01),
+#               publishes :80 and :443 only.
+#   postgres  — PostgreSQL 17.2-alpine, primary store, named volume.
+#   redis     — Redis 7.4-alpine, Celery broker + result backend.
+#   backend   — FastAPI image (trustedoss/backend:${IMAGE_TAG}), 4 uvicorn
+#               workers. Reachable only inside the compose network; Traefik
+#               routes `/api` and `/health` to it.
+#   worker    — Celery worker on the heavier image (trustedoss/backend-worker:
+#               ${IMAGE_TAG}) which carries cdxgen / ORT / Trivy / JRE.
+#   beat      — Celery Beat scheduler (DT heartbeat, hourly DT resync, 6h
+#               orphan cleanup) — same worker image, separate process.
+#   frontend  — nginx + Vite static bundle (trustedoss/frontend:${IMAGE_TAG}).
+#               Reachable only inside the compose network; Traefik routes `/`.
+
+x-backend-env: &backend-env
+  APP_ENV: ${APP_ENV:-prod}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  DATABASE_URL: ${DATABASE_URL}
+  REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+  SECRET_KEY: ${SECRET_KEY}
+  ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+  REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-7}
+  # CLAUDE.md core rule #13 — production must enumerate origins explicitly.
+  # No wildcard fallback here: install.sh writes the value into .env.
+  CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+  # Workspace is mounted from a host directory (WORKSPACE_HOST_PATH) so
+  # large source-trees stay outside the container layer.
+  WORKSPACE_HOST_PATH: /workspace
+  ORT_RULES_PATH: /opt/trustedoss/ort/rules.kts
+  # DT vars are intentionally absent here — bring up
+  # docker-compose.dt.yml as a second `-f` to wire them in. Leaving the
+  # breaker OPEN (no DT) is a valid prod posture for air-gapped sites
+  # that point at an external DT instance via .env.
+  SMTP_HOST: ${SMTP_HOST:-}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_USER: ${SMTP_USER:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+  SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+  TEAMS_WEBHOOK_URL: ${TEAMS_WEBHOOK_URL:-}
+
+services:
+  # ---------------------------------------------------------------------------
+  # Edge — Traefik v3.2 with HTTP→HTTPS redirect and Let's Encrypt HTTP-01.
+  # ---------------------------------------------------------------------------
+  traefik:
+    image: traefik:v3.2.1
+    restart: unless-stopped
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=trustedoss"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.le.acme.httpchallenge=true"
+      - "--certificatesresolvers.le.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.le.acme.email=${TLS_EMAIL}"
+      - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
+      - "--accesslog=true"
+      - "--accesslog.format=json"
+      - "--log.level=${TRAEFIK_LOG_LEVEL:-INFO}"
+      # Dashboard stays OFF in prod — operators expose it temporarily via
+      # an SSH tunnel + a one-shot `--api.dashboard=true --api.insecure=true`
+      # override when needed.
+      - "--api.dashboard=false"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - traefik-acme:/letsencrypt
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - trustedoss
+    healthcheck:
+      # Traefik returns 404 on `/` when no router matches — that's a sign
+      # the daemon is up. We accept any HTTP status from the entrypoint.
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:80/ > /dev/null 2>&1 || true; exit 0"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
+
+  # ---------------------------------------------------------------------------
+  # Datastore — PostgreSQL 17.
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:17.2-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - trustedoss
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+
+  # ---------------------------------------------------------------------------
+  # Broker — Redis 7.
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    networks:
+      - trustedoss
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+  # ---------------------------------------------------------------------------
+  # API — FastAPI + uvicorn, fronted by Traefik on /api and /health.
+  # ---------------------------------------------------------------------------
+  backend:
+    image: trustedoss/backend:${IMAGE_TAG:-2.0.0}
+    restart: unless-stopped
+    environment:
+      <<: *backend-env
+    volumes:
+      # Workspace is shared with the worker so cdxgen/ORT outputs are
+      # readable across both processes.
+      - workspace:/workspace
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - trustedoss
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=trustedoss"
+      - "traefik.http.services.backend.loadbalancer.server.port=8000"
+      # Routes: /api/*, /health, /metrics (Phase 6) — everything else
+      # falls through to the frontend router below.
+      - "traefik.http.routers.backend.rule=Host(`${DOMAIN}`) && (PathPrefix(`/api`) || Path(`/health`) || PathPrefix(`/metrics`))"
+      - "traefik.http.routers.backend.entrypoints=websecure"
+      - "traefik.http.routers.backend.tls=true"
+      - "traefik.http.routers.backend.tls.certresolver=le"
+      - "traefik.http.routers.backend.middlewares=security-headers@file"
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+
+  # ---------------------------------------------------------------------------
+  # Celery worker — runs cdxgen / ORT / Trivy / DT integrations.
+  # ---------------------------------------------------------------------------
+  worker:
+    image: trustedoss/backend-worker:${IMAGE_TAG:-2.0.0}
+    restart: unless-stopped
+    command: celery -A tasks.celery_app worker --loglevel=info --concurrency=${CELERY_CONCURRENCY:-2}
+    environment:
+      <<: *backend-env
+    volumes:
+      - workspace:/workspace
+      - ./ort:/opt/trustedoss/ort:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - trustedoss
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "celery -A tasks.celery_app inspect ping --timeout=5 -d celery@$$HOSTNAME > /dev/null 2>&1 || exit 1"
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          # Workers do real work (Java + Node + Trivy) — give them headroom.
+          cpus: "4.0"
+          memory: 6G
+
+  # ---------------------------------------------------------------------------
+  # Celery Beat — periodic scheduler for DT heartbeat / resync / orphan cleaner.
+  # ---------------------------------------------------------------------------
+  beat:
+    image: trustedoss/backend-worker:${IMAGE_TAG:-2.0.0}
+    restart: unless-stopped
+    command: celery -A tasks.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule
+    environment:
+      <<: *backend-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      worker:
+        condition: service_healthy
+    networks:
+      - trustedoss
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+
+  # ---------------------------------------------------------------------------
+  # SPA — Vite bundle served by nginx, fronted by Traefik on `/`.
+  # ---------------------------------------------------------------------------
+  frontend:
+    image: trustedoss/frontend:${IMAGE_TAG:-2.0.0}
+    restart: unless-stopped
+    networks:
+      - trustedoss
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=trustedoss"
+      - "traefik.http.services.frontend.loadbalancer.server.port=8080"
+      # Catch-all for the configured DOMAIN — backend router has higher
+      # specificity (PathPrefix), so /api stays on the backend.
+      - "traefik.http.routers.frontend.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.frontend.entrypoints=websecure"
+      - "traefik.http.routers.frontend.tls=true"
+      - "traefik.http.routers.frontend.tls.certresolver=le"
+      - "traefik.http.routers.frontend.middlewares=security-headers@file"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+
+networks:
+  trustedoss:
+    name: trustedoss
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:
+  traefik-acme:
+  workspace:

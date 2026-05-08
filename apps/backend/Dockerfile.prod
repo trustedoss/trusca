@@ -1,0 +1,72 @@
+# TrustedOSS Portal — backend (production image).
+#
+# Goals vs. the dev Dockerfile:
+#   - Multi-stage so the runtime image doesn't carry build-essential / gcc.
+#   - Production deps only (`requirements.txt`, no `requirements-dev.txt`).
+#   - No `--reload`, multiple uvicorn workers (`--workers 4`).
+#   - `tini` as PID 1 so SIGTERM propagates cleanly when docker stops the container.
+#   - Non-root runtime user (uid 1000) — least privilege.
+#
+# CLAUDE.md core rule #9: pin tags + minor + patch, no `:latest`.
+
+# ---------- 1. build ----------
+FROM python:3.12.7-slim AS build
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Build-time deps for psycopg2 (alembic) and any C extensions.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY requirements.txt /app/
+RUN pip install --upgrade pip \
+    && pip install --prefix=/install -r requirements.txt
+
+# ---------- 2. runtime ----------
+FROM python:3.12.7-slim AS runtime
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1
+
+# Runtime libs only — libpq for psycopg, curl for the healthcheck, tini for
+# PID 1 signal handling.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libpq5 \
+        curl \
+        tini \
+    && rm -rf /var/lib/apt/lists/* \
+    && addgroup --system --gid 1000 trustedoss \
+    && adduser  --system --uid 1000 --gid 1000 --home /app trustedoss
+
+# Pull pre-built site-packages from the build stage; no compiler shipped to prod.
+COPY --from=build /install /usr/local
+
+WORKDIR /app
+
+# Copy app source (apps/backend/.dockerignore excludes tests/, .pytest_cache,
+# scripts/seed_e2e_user.py is excluded too — see security-reviewer F8 in
+# scripts/seed_e2e_user.py for the rationale).
+COPY --chown=trustedoss:trustedoss . /app
+
+# Drop privileges before runtime. The non-root user owns /app so alembic
+# can write to its tmp staging area at upgrade time.
+USER trustedoss
+
+EXPOSE 8000
+
+# Healthcheck mirrors the dev image — backend exposes /health from main.py.
+HEALTHCHECK --interval=10s --timeout=5s --retries=6 --start-period=30s \
+    CMD curl -fsS http://127.0.0.1:8000/health || exit 1
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
+# 4 workers is a reasonable default for a 2-core deployment; operators
+# bump this in the prod compose under `command:` when they have more cores.
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
