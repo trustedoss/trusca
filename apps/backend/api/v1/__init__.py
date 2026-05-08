@@ -4,6 +4,7 @@ Add new routers here and import them in `main.py`.
 """
 
 from .admin import router as admin_router
+from .api_keys import router as api_keys_router
 from .approvals import router as approvals_router
 from .auth import router as auth_router
 from .components import router as components_router
@@ -13,10 +14,13 @@ from .projects import router as projects_router
 from .sbom import router as sbom_router
 from .scans import router as scans_router
 from .vulnerabilities import router as vulnerabilities_router
+from .webhooks import github_router as webhooks_github_router
+from .webhooks import gitlab_router as webhooks_gitlab_router
 from .ws import router as ws_router
 
 __all__ = [
     "admin_router",
+    "api_keys_router",
     "approvals_router",
     "auth_router",
     "components_router",
@@ -26,5 +30,7 @@ __all__ = [
     "sbom_router",
     "scans_router",
     "vulnerabilities_router",
+    "webhooks_github_router",
+    "webhooks_gitlab_router",
     "ws_router",
 ]

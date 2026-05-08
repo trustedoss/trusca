@@ -23,6 +23,7 @@ from slowapi.errors import RateLimitExceeded
 
 from api.v1 import (
     admin_router,
+    api_keys_router,
     approvals_router,
     auth_router,
     components_router,
@@ -32,6 +33,8 @@ from api.v1 import (
     sbom_router,
     scans_router,
     vulnerabilities_router,
+    webhooks_github_router,
+    webhooks_gitlab_router,
     ws_router,
 )
 from core.audit import install_audit_listeners
@@ -144,6 +147,12 @@ app.include_router(licenses_router)
 app.include_router(obligations_router)
 app.include_router(approvals_router)
 app.include_router(sbom_router)
+# Phase 5 PR #16: API Key management + Webhook receivers (GitHub / GitLab).
+# Webhook endpoints are PUBLIC (no JWT) but each delivery is HMAC-authenticated
+# against a per-project shared secret stored in `projects.webhook_secret`.
+app.include_router(api_keys_router)
+app.include_router(webhooks_github_router)
+app.include_router(webhooks_gitlab_router)
 # Phase 2 PR #9: WebSocket gateway. The router declares the absolute path
 # `/ws/scans/{scan_id}` (no prefix) so future ws routes can group themselves
 # under the same router without nudging this include.

@@ -24,6 +24,7 @@ ignore = ["S101"]  # assert in tests is fine
 #     OAuth2 vocabulary. The values are public protocol strings.
 "api/**" = ["B008", "S105", "S106"]
 "core/security.py" = ["B008", "S105", "S106"]
+"core/api_key_auth.py" = ["B008", "S105", "S106"]
 "schemas/**" = ["S105", "S106"]
 
 [tool.mypy]

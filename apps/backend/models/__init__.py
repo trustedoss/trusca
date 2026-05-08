@@ -20,6 +20,10 @@ class Base(DeclarativeBase):
 
 # Re-export domain models so that `import models` is enough to populate metadata.
 # Keep imports below the Base definition — the auth module imports `Base` from us.
+from .api_key import (  # noqa: E402,F401  (imported for metadata side effects)
+    APIKey,
+    WebhookDelivery,
+)
 from .auth import (  # noqa: E402,F401  (imported for metadata side effects)
     AuditLog,
     Membership,
@@ -51,6 +55,7 @@ from .scan import (  # noqa: E402,F401  (imported for metadata side effects)
 )
 
 __all__ = [
+    "APIKey",
     "ApprovalStatus",
     "AuditLog",
     "Base",
@@ -73,4 +78,5 @@ __all__ = [
     "User",
     "Vulnerability",
     "VulnerabilityFinding",
+    "WebhookDelivery",
 ]

@@ -197,6 +197,15 @@ class Project(Base):
         ),
         nullable=True,
     )
+    # Phase 5 PR #16 — webhook reception. ``webhook_secret`` stores the
+    # plaintext shared secret negotiated with the SCM (GitHub: HMAC key for
+    # X-Hub-Signature-256; GitLab: token compared to X-Gitlab-Token). It is
+    # 64 chars (cryptographic random urlsafe) and is masked in audit_logs via
+    # ``core.audit._SENSITIVE_COLUMNS`` (the ``secret`` token catches it).
+    # ``webhook_provider`` is the closed set 'github' | 'gitlab' so the
+    # gateway knows which header schema to apply.
+    webhook_secret: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    webhook_provider: Mapped[str | None] = mapped_column(String(16), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=NOW
     )

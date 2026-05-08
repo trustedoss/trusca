@@ -60,6 +60,14 @@ _SENSITIVE_COLUMNS = frozenset(
         "refresh_token",
         "refresh_token_hash",
         "jti",
+        # Phase 5 PR #16 — API Key + Webhook secret columns. ``key_hash`` is
+        # the bcrypt hash of an API key plaintext (never the plaintext, but
+        # masking in audit diff is defence-in-depth: a future code path that
+        # mutates this column on a soft-revoke etc. must not write the hash
+        # into ``audit_logs.diff``). ``webhook_secret`` IS the plaintext shared
+        # secret used for HMAC verification — masking is mandatory.
+        "key_hash",
+        "webhook_secret",
     }
 )
 
