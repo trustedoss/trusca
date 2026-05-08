@@ -42,8 +42,8 @@ gh run list --limit 3                              # CI 최근 상태
 | Step 4 | Phase 3 미완 — SBOM·Settings·/scans | [x] DONE | #19 (merged 2dc547f) |
 | Step 5 | Phase 5 PR #16 — API Key + Webhook (backend only) | [x] DONE | #20 (merged c0cf4c1) |
 | Step 6 | Phase 5 PR #17 — 빌드 게이트 + PR 코멘트 + GitHub Actions | [x] DONE | #21 (merged 2f7c5d7) |
-| Step 7 | Phase 6 PR #18 — i18n + 알림 시스템 | [~] IN_PROGRESS | — |
-| Step 8 | Phase 6 PR #19 — 안정성 + 백업 | [ ] TODO | — |
+| Step 7 | Phase 6 PR #18 — 알림 시스템 + 비밀번호 찾기 (backend) | [x] DONE | #22 (merged 3dbc103) |
+| Step 8 | Phase 6 PR #19 — 안정성 + 백업 | [~] IN_PROGRESS | — |
 | Step 9 | Phase 7 PR #20 — 설치 스크립트 + prod compose | [ ] TODO | — |
 | Step 10 | Phase 7 PR #21 — Docusaurus + 가이드 | [ ] TODO | — |
 | Step 11 | Phase 8 PR #23 — OAuth + Demo SaaS | [ ] TODO | — |
@@ -540,7 +540,8 @@ docker-compose -f docker-compose.dev.yml exec -T postgres \
 
 ## Step 7: Phase 6 PR #18 — i18n 완성 + 알림 시스템
 
-**상태**: `[~] IN_PROGRESS`  
+**상태**: `[x] DONE` (backend only) — PR #22 머지 (commit 3dbc103, 2026-05-08).
+**미흡 (별도 chore)**: 알림 센터 UI, i18n CI 게이트, 비밀번호 찾기 프론트 연동.  
 **브랜치**: `feature/phase6-pr18-i18n-notifications`  
 **예상 PR**: GitHub PR #22  
 **에이전트**: `backend-developer` + `frontend-dev` + `i18n-specialist` (병렬)  
@@ -587,7 +588,7 @@ docker-compose -f docker-compose.dev.yml exec -T postgres \
 
 ## Step 8: Phase 6 PR #19 — 안정성 + 백업
 
-**상태**: `[ ] TODO`  
+**상태**: `[~] IN_PROGRESS`  
 **브랜치**: `feature/phase6-pr19-stability-backup`  
 **예상 PR**: GitHub PR #23  
 **에이전트**: `backend-developer` + `frontend-dev` + `devops-engineer` (병렬)  
