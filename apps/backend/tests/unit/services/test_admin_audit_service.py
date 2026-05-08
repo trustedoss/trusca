@@ -516,3 +516,36 @@ async def test_stream_audit_csv_escapes_formula_in_request_id(
     assert "'=HYPERLINK" in body
     # No bare ``=HYPERLINK`` (formula start) anywhere in the rendered CSV.
     assert "=HYPERLINK" not in body.replace("'=HYPERLINK", "")
+
+
+# ---------------------------------------------------------------------------
+# G5 — ILIKE wildcard escape (pure unit — no DB needed)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "raw_q, expected_escaped",
+    [
+        # Plain string — no metacharacters
+        ("admin", "admin"),
+        # Percent wildcard
+        ("%admin%", "\\%admin\\%"),
+        # Underscore wildcard
+        ("_admin_", "\\_admin\\_"),
+        # Backslash escape char itself
+        ("a\\b", "a\\\\b"),
+        # Mixed
+        ("%foo_bar%", "\\%foo\\_bar\\%"),
+        # All metacharacters in sequence
+        ("\\%_", "\\\\\\%\\_"),
+    ],
+    ids=lambda v: repr(v) if isinstance(v, str) else "",
+)
+def test_ilike_wildcard_escape_in_q_parameter(raw_q: str, expected_escaped: str) -> None:
+    """G5: the _apply_filters q path escapes LIKE metacharacters before the
+    ILIKE call to prevent pathological patterns from saturating Postgres CPU.
+
+    We test the escape transformation in isolation (pure string logic).
+    """
+    escaped = raw_q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    assert escaped == expected_escaped

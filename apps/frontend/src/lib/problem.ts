@@ -44,11 +44,11 @@ import { z } from "zod";
 export const KNOWN_PROBLEM_EXTENSION_KEYS = [
   "last_super_admin_protected",
   "cannot_modify_self",
-  "invalid_role_assignment",
+  // L1: "invalid_role_assignment" and "validation_error" were listed here but
+  // the backend never emits them as extension boolean flags — removed.
   "team_has_active_scans",
   "last_team_admin_protected",
   "team_id", // F9 — team-not-found Problem Details
-  "validation_error",
   // RFC 7807 sometimes sees `errors` as a sub-array on validation problems.
   // We keep it because our 422 envelope embeds Pydantic's redacted error
   // list. Strict-typed below.
@@ -62,7 +62,6 @@ export const KNOWN_PROBLEM_EXTENSION_KEYS = [
   "dt_orphan_cleanup_in_progress",
   "scan_already_cancelled",
   "scan_not_found",
-  "disk_path_unavailable",
   "audit_export_too_large",
 ] as const;
 
@@ -86,17 +85,14 @@ const RESERVED_PROBLEM_KEYS: ReadonlySet<string> = new Set([
 const KNOWN_EXTENSION_SCHEMAS: Record<KnownProblemExtensionKey, z.ZodTypeAny> = {
   last_super_admin_protected: z.boolean(),
   cannot_modify_self: z.boolean(),
-  invalid_role_assignment: z.boolean(),
   team_has_active_scans: z.boolean(),
   last_team_admin_protected: z.boolean(),
   team_id: z.string(),
-  validation_error: z.boolean(),
   errors: z.array(z.unknown()).optional(),
   dt_unreachable: z.boolean(),
   dt_orphan_cleanup_in_progress: z.boolean(),
   scan_already_cancelled: z.boolean(),
   scan_not_found: z.boolean(),
-  disk_path_unavailable: z.boolean(),
   audit_export_too_large: z.boolean(),
 };
 

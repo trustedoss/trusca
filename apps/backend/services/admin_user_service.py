@@ -133,24 +133,27 @@ def _is_team_fk_violation(exc: IntegrityError) -> bool:
     Identify the FK-violation flavour of ``IntegrityError`` we want to
     translate to ``TeamNotFound``.
 
-    Postgres' SQLSTATE for foreign-key violation is ``23503``. The orig
-    DBAPI exception lives at ``exc.orig`` and the SQLSTATE is exposed
-    via ``pgcode`` on asyncpg / psycopg. We also string-match the FK name
-    fragment ``team_id`` as a defensive backup — different drivers may
-    set ``pgcode`` differently and we'd rather over-translate to a 422
-    than leak a 500. False positives here just mean we surface a
-    user-facing 422 for a slightly different schema bug; that beats the
-    500 alternative for the user.
+    Postgres' SQLSTATE for foreign-key violation is ``23503``. We prefer the
+    precise ``orig.diag.constraint_name`` check (L2 — asyncpg / psycopg expose
+    the pg_constraint name via the ``diag`` descriptor) over string-matching
+    the raw error message, which is locale-dependent and can match other FK
+    names accidentally. The text-match on ``str(orig)`` is kept as a fallback
+    for drivers that do not expose ``diag``.
     """
     orig = getattr(exc, "orig", None)
     pgcode = getattr(orig, "pgcode", None) or getattr(orig, "sqlstate", None)
-    if pgcode == "23503":
-        # Confirm it's the team_id FK and not some other FK on the
-        # membership row (user_id is the only other one).
-        message = str(orig).lower()
-        if "team_id" in message or "teams" in message:
-            return True
-    return False
+    if pgcode != "23503":
+        return False
+
+    # Prefer structural constraint-name check (asyncpg/psycopg diag object).
+    diag = getattr(orig, "diag", None)
+    constraint_name: str | None = getattr(diag, "constraint_name", None)
+    if constraint_name is not None:
+        return "team_id" in constraint_name or constraint_name.startswith("memberships_team")
+
+    # Fallback: text-match for drivers without diag (e.g. unit-test stubs).
+    message = str(orig).lower()
+    return "team_id" in message or "teams" in message
 
 
 async def _lock_and_count_active_super_admins(session: AsyncSession) -> int:

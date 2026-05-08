@@ -21,6 +21,7 @@ import structlog
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.audit import get_audit_context
 from core.db import get_db
 from core.errors import problem_response
 from core.security import CurrentUser, require_super_admin_or_404
@@ -126,6 +127,21 @@ async def cleanup_orphans_endpoint(
     session: AsyncSession = Depends(get_db),
     actor: CurrentUser = Depends(require_super_admin_or_404()),
 ) -> Response:
+    # G6: empty list previously triggered a wipe-all (scan full DT catalog and
+    # delete every orphan found). That is a footgun — a client accidentally
+    # sending an empty body would mass-delete. "Cleanup all" is now a separate
+    # explicit action; here we reject the empty case with 400.
+    if not payload.dt_project_uuids:
+        return problem_response(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            title="Empty UUID List",
+            detail=(
+                "dt_project_uuids must contain at least one UUID. "
+                "To delete all detected orphans use POST /v1/admin/dt/orphans/cleanup-all."
+            ),
+            instance=request.url.path,
+        )
+
     try:
         result = enqueue_orphan_cleanup(dt_project_uuids=list(payload.dt_project_uuids))
     except AdminDTError as exc:
@@ -134,12 +150,18 @@ async def cleanup_orphans_endpoint(
     # Emit an audit row for the dispatch event itself. The task does its own
     # per-deletion audit rows from inside the Celery worker; this entry tells
     # the audit reader "an admin pressed the button at T".
+    # G3: populate request_id / ip / user_agent from the middleware-injected
+    # audit context so log correlation works for admin DT actions.
+    _ctx = get_audit_context()
     audit = AuditLog(
         actor_user_id=actor.id,
         team_id=None,
         target_table="dt_projects",
         target_id=result.task_id or None,
         action="cleanup_enqueued",
+        request_id=_ctx.get("request_id"),
+        ip=_ctx.get("ip"),
+        user_agent=_ctx.get("user_agent"),
         diff={
             "task_id": result.task_id,
             "count": result.count,
@@ -183,12 +205,17 @@ async def force_health_check_endpoint(
     # Audit the operator-initiated probe so the audit log shows "admin X
     # forced a DT probe at T". The breaker mutation itself is in Redis, so
     # there is no domain row to drive the listener — emit an explicit row.
+    # G3: populate request_id / ip / user_agent from middleware audit context.
+    _ctx = get_audit_context()
     audit = AuditLog(
         actor_user_id=actor.id,
         team_id=None,
         target_table="dt_health",
         target_id=None,
         action="health_check",
+        request_id=_ctx.get("request_id"),
+        ip=_ctx.get("ip"),
+        user_agent=_ctx.get("user_agent"),
         diff={
             "healthy": outcome.healthy,
             "state_before": outcome.state_before,

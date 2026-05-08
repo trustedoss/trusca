@@ -148,15 +148,22 @@ def dt_orphan_cleanup_task(self: Any, dt_project_uuids: list[str]) -> dict[str, 
 
     finally:
         client.close()
-        # Release the cleanup lock — admin service set it via SETNX. We
-        # always release on terminal completion; autoretry hits Celery's
-        # retry exception path which re-raises before reaching this finally,
-        # so the lock stays held across retries (intentional — autoretry
-        # is part of the same logical "run").
-        try:
-            rds.delete(_CLEANUP_LOCK_KEY)
-        except redis.RedisError as exc:
-            log.warning("orphan_cleanup_lock_release_failed", error=str(exc))
+        # G2 (CWE-362): release the lock only on terminal completion, not on
+        # Celery autoretry.  self.retry() raises celery.exceptions.Retry which
+        # propagates through this finally block; if we deleted the lock here, a
+        # second concurrent invocation could start before the retry fires,
+        # creating a race window.  We detect the in-flight Retry and skip the
+        # delete so the lock stays held for the duration of the logical run.
+        import sys  # noqa: PLC0415 — local import to avoid circular at module level
+
+        from celery.exceptions import Retry  # noqa: PLC0415
+
+        active_exc = sys.exc_info()[1]
+        if not isinstance(active_exc, Retry):
+            try:
+                rds.delete(_CLEANUP_LOCK_KEY)
+            except redis.RedisError as lock_exc:
+                log.warning("orphan_cleanup_lock_release_failed", error=str(lock_exc))
         structlog.contextvars.unbind_contextvars("task_name", "task_id")
 
     summary = {
