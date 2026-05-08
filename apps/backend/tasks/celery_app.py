@@ -36,6 +36,8 @@ _TASK_INCLUDES = [
     "tasks.dt_orphan_cleaner",
     "tasks.dt_orphan_cleanup",
     "tasks.dt_health",
+    # Phase 6 PR #18 — multi-channel notification fan-out (email/Slack/Teams).
+    "tasks.notify",
 ]
 
 

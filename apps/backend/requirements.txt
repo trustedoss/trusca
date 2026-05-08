@@ -33,3 +33,8 @@ python-jose[cryptography]==3.5.0  # H-1 CVE fix (algorithm confusion / DoS) + py
 pyasn1==0.6.3
 slowapi==0.1.9
 email-validator==2.2.0
+# Phase 6 PR #18 — async SMTP for the notifications module. aiosmtplib is the
+# canonical asyncio-native SMTP client; pairs cleanly with httpx for the
+# Slack / Teams webhook channels and avoids spawning threads from the FastAPI
+# event loop just to send mail.
+aiosmtplib==3.0.2

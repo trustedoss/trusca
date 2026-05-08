@@ -24,14 +24,22 @@ from fastapi import APIRouter, Cookie, Depends, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.audit import audit_context
-from core.config import access_token_expire_minutes, app_env, refresh_token_expire_days
+from core.config import (
+    access_token_expire_minutes,
+    app_env,
+    password_reset_email_cooldown_seconds,
+    password_reset_request_rate_limit,
+    refresh_token_expire_days,
+)
 from core.db import get_db
 from core.errors import problem_response
 from core.ratelimit import LOGIN_RATE_LIMIT, limiter
 from core.security import CurrentUser, get_current_user
 from schemas.auth import (
+    ForgotPasswordRequest,
     LoginRequest,
     RegisterRequest,
+    ResetPasswordRequest,
     TokenResponse,
     UserPublic,
 )
@@ -46,6 +54,12 @@ from services.auth_service import (
     register_user,
     revoke_refresh,
     rotate_refresh,
+)
+from services.password_reset_service import (
+    InvalidResetToken,
+    PasswordResetError,
+    consume_reset_token,
+    request_password_reset,
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -292,3 +306,104 @@ async def me(
     result = await session.execute(select(User).where(User.id == current_user.id))
     user = result.scalar_one()
     return UserPublic.model_validate(user)
+
+
+# ---------------------------------------------------------------------------
+# Forgot password (PUBLIC — rate limited)
+#
+# CWE-204 contract: ALWAYS returns 204 regardless of whether the email
+# exists. The service-layer handles the timing-equivalent dummy work + the
+# Celery email enqueue when the email matches. See
+# :mod:`services.password_reset_service` for the design notes.
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/forgot-password",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Request a password reset link (public, rate limited)",
+)
+@limiter.limit(password_reset_request_rate_limit())
+async def forgot_password(
+    request: Request,
+    payload: ForgotPasswordRequest,
+    session: AsyncSession = Depends(get_db),
+) -> Response:
+    """Public — no authentication required, but limited per
+    ``PASSWORD_RESET_RATE_LIMIT`` (5/min/IP by default).
+
+    Body shape: ``{"email": "<address>"}``. Always returns 204 + empty body
+    (CWE-204). When the address matches a registered user we additionally
+    enqueue an email via Celery. When the per-email cooldown is active we
+    set ``Retry-After`` to the configured cooldown and STILL return 204.
+    """
+    outcome = await request_password_reset(session, email=str(payload.email))
+
+    response = Response(status_code=status.HTTP_204_NO_CONTENT)
+    if outcome.get("cooldown_active") and outcome.get("retry_after_seconds"):
+        response.headers["Retry-After"] = str(outcome["retry_after_seconds"])
+    elif not outcome.get("matched"):
+        # Surface the configured cooldown as Retry-After even on the
+        # negative-match branch so an external observer cannot distinguish
+        # "your email is not registered" from "the cooldown is active".
+        response.headers["Retry-After"] = str(password_reset_email_cooldown_seconds())
+    return response
+
+
+# Slowapi wrapper preservation — same hack as ``login`` above. The forgot
+# endpoint also accepts a Pydantic body, so without this fix FastAPI's
+# get_type_hints lookup misclassifies the body as a query parameter.
+for _name in (
+    "ForgotPasswordRequest",
+    "AsyncSession",
+    "Request",
+    "Response",
+    "Depends",
+):
+    if _name in globals():
+        forgot_password.__globals__.setdefault(_name, globals()[_name])
+del _name
+
+
+# ---------------------------------------------------------------------------
+# Reset password (PUBLIC — token IS the credential)
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/reset-password",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Confirm a password reset using a one-shot token (public)",
+)
+async def reset_password(
+    request: Request,
+    payload: ResetPasswordRequest,
+    session: AsyncSession = Depends(get_db),
+) -> Response:
+    """Public — the reset token is the credential.
+
+    On success: 204 + every refresh token for the user is revoked.
+    On bad / expired / used token: 422 problem+json.
+    """
+    try:
+        await consume_reset_token(
+            session,
+            plaintext_token=payload.token,
+            new_password=payload.new_password,
+        )
+    except InvalidResetToken as exc:
+        return problem_response(
+            status_code=exc.status_code,
+            title=exc.title,
+            detail=str(exc) or exc.title,
+            instance=request.url.path,
+        )
+    except PasswordResetError as exc:
+        return problem_response(
+            status_code=exc.status_code,
+            title=exc.title,
+            detail=str(exc) or exc.title,
+            instance=request.url.path,
+        )
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

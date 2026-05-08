@@ -209,6 +209,94 @@ def websocket_auth_timeout_seconds() -> float:
     return float(os.getenv("WEBSOCKET_AUTH_TIMEOUT_SECONDS", "1.0"))
 
 
+# ---------------------------------------------------------------------------
+# Phase 6 PR #18 — notification channel configuration.
+#
+# Every accessor reads the env at call time (CLAUDE.md core rule #11). When
+# the relevant env var is unset / empty we return ``None`` so callers can
+# raise :class:`notifications.NotificationDisabled` and fall through cleanly
+# instead of attempting a connection to a phantom host.
+# ---------------------------------------------------------------------------
+
+
+def smtp_host() -> str | None:
+    raw = os.getenv("SMTP_HOST", "").strip()
+    return raw or None
+
+
+def smtp_port() -> int:
+    return int(os.getenv("SMTP_PORT", "587"))
+
+
+def smtp_user() -> str | None:
+    raw = os.getenv("SMTP_USER", "").strip()
+    return raw or None
+
+
+def smtp_password() -> str | None:
+    raw = os.getenv("SMTP_PASSWORD", "")
+    return raw or None
+
+
+def smtp_use_starttls() -> bool:
+    raw = os.getenv("SMTP_USE_STARTTLS", "true").lower()
+    return raw in ("1", "true", "yes", "on")
+
+
+def smtp_from_address() -> str:
+    """``From:`` header for outgoing notifications.
+
+    Defaults to ``no-reply@trustedoss.local`` so dev bring-up works without
+    extra config; production deployments override via ``SMTP_FROM``.
+    """
+    return os.getenv("SMTP_FROM", "no-reply@trustedoss.local")
+
+
+def smtp_request_timeout_seconds() -> float:
+    return float(os.getenv("SMTP_TIMEOUT_SECONDS", "10"))
+
+
+def slack_webhook_url() -> str | None:
+    raw = os.getenv("SLACK_WEBHOOK_URL", "").strip()
+    return raw or None
+
+
+def teams_webhook_url() -> str | None:
+    raw = os.getenv("TEAMS_WEBHOOK_URL", "").strip()
+    return raw or None
+
+
+def notification_http_timeout_seconds() -> float:
+    return float(os.getenv("NOTIFICATION_HTTP_TIMEOUT_SECONDS", "10"))
+
+
+def password_reset_base_url() -> str:
+    """Frontend base URL embedded in password-reset emails.
+
+    The reset link template is ``{base}/reset-password?token={token}``. Defaults
+    to ``http://localhost:5173`` for the Vite dev server.
+    """
+    return os.getenv("PASSWORD_RESET_BASE_URL", "http://localhost:5173").rstrip("/")
+
+
+def password_reset_request_rate_limit() -> str:
+    """Per-IP slowapi limit for ``POST /auth/forgot-password``.
+
+    Defaults to 5/minute (matches the login policy from CLAUDE.md §3). The
+    email-level cooldown is enforced separately in the service so a single
+    address cannot be spammed even if the limiter quota is shared across IPs.
+    """
+    return os.getenv("PASSWORD_RESET_RATE_LIMIT", "5/minute")
+
+
+def password_reset_email_cooldown_seconds() -> int:
+    """Minimum seconds between two reset emails to the same address.
+
+    Returned to the client as ``Retry-After`` only when the cooldown trips.
+    """
+    return int(os.getenv("PASSWORD_RESET_EMAIL_COOLDOWN_SECONDS", "300"))
+
+
 def validate_cors_origins(origins: list[str], *, env: str) -> None:
     """
     H-3 (security-reviewer blocker): CORS bootstrap guard.
