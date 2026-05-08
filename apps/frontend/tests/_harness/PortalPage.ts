@@ -50,8 +50,10 @@ export class PortalPage {
   }
 
   async expectMounted(): Promise<void> {
+    // AppShell sidebar is the reliable "authenticated shell loaded" sentinel.
+    // The old `home-main` no longer exists — `/` redirects to `/projects`.
     await this.page
-      .getByTestId("home-main")
+      .getByTestId("app-sidebar")
       .waitFor({ state: "visible", timeout: 10_000 });
   }
 

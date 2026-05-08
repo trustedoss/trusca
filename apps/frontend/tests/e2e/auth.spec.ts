@@ -32,12 +32,12 @@ test.describe("@auth gateway flows", () => {
     await auth.gotoRegister();
     await auth.register({ email, password, displayName: "E2E User" });
 
-    // `register()` already waits for / and asserts home-main visible — assert
-    // again here for spec readability.
+    // `register()` already waits for /projects and asserts app-sidebar visible —
+    // re-assert here for spec readability.
     await auth.expectLoggedIn();
 
-    // Home renders the bootstrap title — locale-agnostic check via testid.
-    await expect(page.getByTestId("home-main")).toBeVisible();
+    // AppShell is mounted and the sidebar is visible after login.
+    await expect(page.getByTestId("app-sidebar")).toBeVisible();
   });
 
   test("2) login with bad credentials surfaces inline alert", async ({

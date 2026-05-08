@@ -60,7 +60,7 @@ export class AuthHarness {
     await this.page.getByTestId("register-email").fill(email);
     await this.page.getByTestId("register-password").fill(password);
     await Promise.all([
-      this.page.waitForURL(`${this.baseUrl}/`, { timeout: DEFAULT_TIMEOUT_MS }),
+      this.page.waitForURL(`${this.baseUrl}/projects`, { timeout: DEFAULT_TIMEOUT_MS }),
       this.page.getByTestId("register-submit").click(),
     ]);
     await this.expectLoggedIn();
@@ -70,7 +70,7 @@ export class AuthHarness {
     await this.page.getByTestId("login-email").fill(email);
     await this.page.getByTestId("login-password").fill(password);
     await Promise.all([
-      this.page.waitForURL(`${this.baseUrl}/`, { timeout: DEFAULT_TIMEOUT_MS }),
+      this.page.waitForURL(`${this.baseUrl}/projects`, { timeout: DEFAULT_TIMEOUT_MS }),
       this.page.getByTestId("login-submit").click(),
     ]);
     await this.expectLoggedIn();
@@ -89,10 +89,13 @@ export class AuthHarness {
 
   // ───── assertions ──────────────────────────────────────────────────────
   async expectLoggedIn(): Promise<void> {
-    await expect(this.page).toHaveURL(`${this.baseUrl}/`, {
+    // After login/register, `/` immediately redirects to `/projects` via the
+    // AppShell index route (<Navigate to="/projects" replace />). Assert the
+    // settled URL so we don't race against the intermediate `/` frame.
+    await expect(this.page).toHaveURL(`${this.baseUrl}/projects`, {
       timeout: DEFAULT_TIMEOUT_MS,
     });
-    await expect(this.page.getByTestId("home-main")).toBeVisible({
+    await expect(this.page.getByTestId("app-sidebar")).toBeVisible({
       timeout: DEFAULT_TIMEOUT_MS,
     });
     const isAuthenticated = await this.page.evaluate(() => {
