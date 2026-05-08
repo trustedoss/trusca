@@ -39,51 +39,65 @@ jobs:
       - name: Install bandit
         run: python -m pip install bandit==1.8.0
 
-      - name: Run bandit (advisory)
+      - name: Run bandit (advisory, JSON output)
         working-directory: apps/backend
+        # JSON output never fails to write; SARIF output silently aborts
+        # when the legacy `--severity-level` filter is active and there
+        # are no high-severity findings, so we use JSON and skip the
+        # SARIF upload step. Operators read the bandit summary in the
+        # workflow log and the JSON artifact below.
         run: |
-          # -ll  : log medium+ findings, but
-          # exit 0 always — advisory only until Phase 8 PR #25 (HARD FAIL).
           bandit -r . \
             --exclude ./tests,./alembic/versions \
             --severity-level high \
-            --format sarif \
-            --output bandit.sarif \
+            --format json \
+            --output bandit.json \
             || echo "::warning::bandit reported high-severity findings — advisory in PR #24"
 
-      - name: Upload SARIF
+      - name: Upload bandit JSON
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: actions/upload-artifact@v4
         with:
-          sarif_file: apps/backend/bandit.sarif
-          category: bandit
+          name: bandit-report
+          path: apps/backend/bandit.json
+          if-no-files-found: warn
+          retention-days: 14
 
   semgrep:
     name: semgrep
     runs-on: ubuntu-22.04
-    container:
-      image: semgrep/semgrep:1.96.0
+    # Container removed — `semgrep ci` inside the official container hit
+    # `dubious ownership` on /__w/... and dropped the SARIF before the
+    # uploader could read it. The pip-install path on a stock runner
+    # writes the SARIF reliably.
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install semgrep
+        run: python -m pip install semgrep==1.96.0
+
       - name: Run semgrep (advisory)
-        # `auto` config picks the OSS rule packs matching the languages it
-        # detects. --severity ERROR limits noise to highest-severity findings;
-        # WARNING/INFO findings are still emitted to the SARIF for review.
+        # `--config=auto` picks the OSS rule packs matching the languages
+        # it detects (Python + TypeScript here). --severity=ERROR limits
+        # noise to highest-severity findings; WARNING/INFO findings are
+        # still emitted to the SARIF for review.
         run: |
-          semgrep ci \
+          semgrep scan \
             --config=auto \
             --severity=ERROR \
             --sarif --output=semgrep.sarif \
+            --error \
             || echo "::warning::semgrep reported findings — advisory in PR #24"
 
-      - name: Upload SARIF
+      - name: Upload semgrep SARIF artifact
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: actions/upload-artifact@v4
         with:
-          sarif_file: semgrep.sarif
-          category: semgrep
-        env:
-          # `semgrep ci` runs without an account token in the OSS path; this
-          # prevents it from trying to phone home.
-          SEMGREP_APP_TOKEN: ""
+          name: semgrep-report
+          path: semgrep.sarif
+          if-no-files-found: warn
+          retention-days: 14
