@@ -84,9 +84,9 @@ describe("ProjectCreatePage", () => {
         "true",
       );
     });
-    // The name error paragraph should be present
+    // The name error paragraph should be present (use testid to avoid matching the "Name" label)
     expect(
-      screen.getByText(/required|name/i, { exact: false }),
+      screen.getByTestId("project-name-error"),
     ).toBeInTheDocument();
   });
 

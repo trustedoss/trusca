@@ -113,6 +113,7 @@ export function ProjectCreatePage() {
           {errors.name ? (
             <p
               id="project-name-error"
+              data-testid="project-name-error"
               className="text-xs text-destructive"
               aria-live="polite"
             >
