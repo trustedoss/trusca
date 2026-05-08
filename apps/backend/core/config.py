@@ -297,6 +297,82 @@ def password_reset_email_cooldown_seconds() -> int:
     return int(os.getenv("PASSWORD_RESET_EMAIL_COOLDOWN_SECONDS", "300"))
 
 
+# ---------------------------------------------------------------------------
+# Phase 8 PR #23 — OAuth (GitHub + Google) demo SaaS configuration.
+#
+# Per CLAUDE.md core rule #11 every accessor reads ``os.getenv`` at call
+# time. When the relevant client id / secret pair is unset (production
+# self-hosted deployments without OAuth) the helpers return ``None`` so the
+# service can raise a 503 Problem Details with extension
+# ``oauth_provider_disabled = true``.
+# ---------------------------------------------------------------------------
+
+
+def github_oauth_client_id() -> str | None:
+    raw = os.getenv("GITHUB_CLIENT_ID", "").strip()
+    return raw or None
+
+
+def github_oauth_client_secret() -> str | None:
+    raw = os.getenv("GITHUB_CLIENT_SECRET", "")
+    return raw or None
+
+
+def google_oauth_client_id() -> str | None:
+    raw = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+    return raw or None
+
+
+def google_oauth_client_secret() -> str | None:
+    raw = os.getenv("GOOGLE_CLIENT_SECRET", "")
+    return raw or None
+
+
+def oauth_state_ttl_seconds() -> int:
+    """Lifetime of the signed OAuth ``state`` JWT (CSRF guard).
+
+    Five minutes is the OAuth 2.0 RFC 6749 §10.12 recommendation and is
+    plenty for a normal browser round-trip from /authorize → consent →
+    /callback. Tighter than the access-token TTL because the only
+    legitimate consumer is the redirect within the same browser session.
+    """
+    return int(os.getenv("OAUTH_STATE_TTL_SECONDS", "300"))
+
+
+def oauth_http_timeout_seconds() -> float:
+    """HTTP timeout for outbound calls to OAuth provider APIs.
+
+    GitHub and Google are normally <500ms; we use a 10s timeout so a
+    transient slow-DNS / slow-TLS situation does not crash the callback.
+    The user already paid the consent step, so retrying via "click sign
+    in again" is acceptable on timeout.
+    """
+    return float(os.getenv("OAUTH_HTTP_TIMEOUT_SECONDS", "10"))
+
+
+def oauth_login_redirect_default() -> str:
+    """Where the SPA lands after a successful OAuth callback.
+
+    Used as the fallback when the caller does not supply ``redirect_after``.
+    Mirrors :func:`password_reset_base_url` for the dev Vite server default.
+    """
+    return os.getenv("OAUTH_LOGIN_REDIRECT_DEFAULT", "http://localhost:5173/").rstrip(
+        "/"
+    ) or "http://localhost:5173"
+
+
+def oauth_login_redirect_failure() -> str:
+    """Where the SPA lands when the OAuth callback fails.
+
+    Receives ``?error=oauth_failed`` (or a more specific error code) so the
+    UI can render an actionable message. Defaults to the SPA's /login route.
+    """
+    return os.getenv(
+        "OAUTH_LOGIN_REDIRECT_FAILURE",
+        "http://localhost:5173/login",
+    ).rstrip("/")
+
+
 def validate_cors_origins(origins: list[str], *, env: str) -> None:
     """
     H-3 (security-reviewer blocker): CORS bootstrap guard.

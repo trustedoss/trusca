@@ -40,6 +40,10 @@ from .component_approval import (  # noqa: E402,F401  (imported for metadata sid
 from .license_fetch_cache import (  # noqa: E402,F401  (imported for metadata side effects)
     LicenseFetchCache,
 )
+from .oauth_identity import (  # noqa: E402,F401  (imported for metadata side effects)
+    OAUTH_PROVIDER_VALUES,
+    OAuthIdentity,
+)
 from .scan import (  # noqa: E402,F401  (imported for metadata side effects)
     Component,
     ComponentVersion,
@@ -66,6 +70,8 @@ __all__ = [
     "LicenseFetchCache",
     "LicenseFinding",
     "Membership",
+    "OAUTH_PROVIDER_VALUES",
+    "OAuthIdentity",
     "Obligation",
     "Organization",
     "PasswordResetToken",

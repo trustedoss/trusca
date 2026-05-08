@@ -9,6 +9,7 @@ from .approvals import router as approvals_router
 from .auth import router as auth_router
 from .components import router as components_router
 from .licenses import router as licenses_router
+from .oauth import router as oauth_router
 from .obligations import router as obligations_router
 from .policy_gate import router as policy_gate_router
 from .projects import router as projects_router
@@ -26,6 +27,7 @@ __all__ = [
     "auth_router",
     "components_router",
     "licenses_router",
+    "oauth_router",
     "obligations_router",
     "policy_gate_router",
     "projects_router",

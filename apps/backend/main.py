@@ -28,6 +28,7 @@ from api.v1 import (
     auth_router,
     components_router,
     licenses_router,
+    oauth_router,
     obligations_router,
     policy_gate_router,
     projects_router,
@@ -139,6 +140,10 @@ install_exception_handlers(app)
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
 app.include_router(auth_router)
+# Phase 8 PR #23: OAuth (GitHub + Google) demo SaaS sign-in. Endpoints live
+# under /auth/oauth/{provider}/* and are PUBLIC (no JWT) — the whole point
+# of OAuth is that the caller is anonymous.
+app.include_router(oauth_router)
 app.include_router(admin_router)
 app.include_router(projects_router)
 app.include_router(scans_router)
