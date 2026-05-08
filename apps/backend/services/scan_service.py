@@ -15,6 +15,7 @@ translate that to `ScanInProgressConflict` (409) so callers get a stable RFC
 
 from __future__ import annotations
 
+import os
 import uuid
 
 import structlog
@@ -71,6 +72,16 @@ class ScanEnqueueFailed(ScanError):
     title = "Scan Enqueue Failed"
 
 
+class ScanDiskFull(ScanError):
+    """The host workspace volume is over the hard limit (DISK_HARD_LIMIT_PCT).
+
+    Mapped to 503 Service Unavailable so CI integrations know to retry later.
+    """
+
+    status_code = 503
+    title = "Workspace Disk Full"
+
+
 class ProjectMissingForScan(ScanError):
     """The project referenced by a scan trigger no longer exists."""
 
@@ -101,6 +112,52 @@ async def _load_project(session: AsyncSession, project_id: uuid.UUID) -> Project
     if project is None:
         raise ProjectMissingForScan(f"project {project_id} not found")
     return project
+
+
+def _disk_hard_limit_pct() -> float:
+    """Hard cutoff for workspace disk usage. Above this, new scans 503.
+
+    Default 95% — matches the admin disk warning thresholds (80 warn / 90
+    critical) but stays below 100 so the operator has room to clean up
+    before any one scan exceeds total capacity.
+    """
+    return float(os.getenv("DISK_HARD_LIMIT_PCT", "95.0"))
+
+
+def _check_disk_guard() -> None:
+    """Raise :class:`ScanDiskFull` if workspace volume is past the hard limit.
+
+    Best-effort: if statvfs fails (eg. workspace dir missing), we let the
+    scan through — the alternative (blanket 503) is worse than a scan that
+    hits a real disk error inside the worker. Operators get the warning
+    via the admin disk dashboard either way.
+    """
+    workspace = os.getenv("WORKSPACE_HOST_PATH", "/opt/trustedoss/workspace")
+    try:
+        stat = os.statvfs(workspace)
+    except OSError as exc:
+        log.warning(
+            "scan.disk_guard_unavailable",
+            workspace=workspace,
+            error=type(exc).__name__,
+        )
+        return
+    total = stat.f_blocks * stat.f_frsize
+    free = stat.f_bavail * stat.f_frsize
+    if total <= 0:
+        return
+    used_pct = ((total - free) / total) * 100.0
+    limit = _disk_hard_limit_pct()
+    if used_pct >= limit:
+        log.error(
+            "scan.disk_guard_blocked",
+            workspace=workspace,
+            used_pct=round(used_pct, 1),
+            limit_pct=limit,
+        )
+        raise ScanDiskFull(
+            f"workspace disk usage {used_pct:.1f}% >= hard limit {limit:.1f}%"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -145,6 +202,11 @@ async def trigger_scan(
         raise ScanForbidden(
             f"actor is not a member of team {project.team_id}",
         )
+
+    # Phase 6 PR #19 — disk guard. Reject the scan up front when the
+    # workspace volume is past DISK_HARD_LIMIT_PCT so the operator does
+    # not get an in-flight Celery failure.
+    _check_disk_guard()
 
     _bind_audit_team(project.team_id)
 
