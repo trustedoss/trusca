@@ -41,8 +41,8 @@ gh run list --limit 3                              # CI 최근 상태
 | Step 3 | Phase 4 PR #15 — 컴포넌트 승인 워크플로우 | [x] DONE | #18 (merged 7699d52) |
 | Step 4 | Phase 3 미완 — SBOM·Settings·/scans | [x] DONE | #19 (merged 2dc547f) |
 | Step 5 | Phase 5 PR #16 — API Key + Webhook (backend only) | [x] DONE | #20 (merged c0cf4c1) |
-| Step 6 | Phase 5 PR #17 — 빌드 게이트 + PR 코멘트 + GitHub Actions | [~] IN_PROGRESS | — |
-| Step 7 | Phase 6 PR #18 — i18n + 알림 시스템 | [ ] TODO | — |
+| Step 6 | Phase 5 PR #17 — 빌드 게이트 + PR 코멘트 + GitHub Actions | [x] DONE | #21 (merged 2f7c5d7) |
+| Step 7 | Phase 6 PR #18 — i18n + 알림 시스템 | [~] IN_PROGRESS | — |
 | Step 8 | Phase 6 PR #19 — 안정성 + 백업 | [ ] TODO | — |
 | Step 9 | Phase 7 PR #20 — 설치 스크립트 + prod compose | [ ] TODO | — |
 | Step 10 | Phase 7 PR #21 — Docusaurus + 가이드 | [ ] TODO | — |
@@ -515,7 +515,7 @@ docker-compose -f docker-compose.dev.yml exec -T postgres \
 
 ## Step 6: Phase 5 PR #17 — 빌드 게이트 + PR 코멘트 + GitHub Actions
 
-**상태**: `[~] IN_PROGRESS`  
+**상태**: `[x] DONE` — PR #21 머지 (commit 2f7c5d7, 2026-05-08).  
 **브랜치**: `feature/phase5-pr17-build-gate-pr-comment`  
 **예상 PR**: GitHub PR #21  
 **에이전트**: `backend-developer` + `devops-engineer` (병렬)  
@@ -540,7 +540,7 @@ docker-compose -f docker-compose.dev.yml exec -T postgres \
 
 ## Step 7: Phase 6 PR #18 — i18n 완성 + 알림 시스템
 
-**상태**: `[ ] TODO`  
+**상태**: `[~] IN_PROGRESS`  
 **브랜치**: `feature/phase6-pr18-i18n-notifications`  
 **예상 PR**: GitHub PR #22  
 **에이전트**: `backend-developer` + `frontend-dev` + `i18n-specialist` (병렬)  
