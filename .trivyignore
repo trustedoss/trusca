@@ -237,6 +237,20 @@ CVE-2026-42583
 # parser. Same client-only invocation rationale as CVE-2026-42583. UNREACHED.
 CVE-2026-42584
 
+# CVE-2026-42587 — io.netty:netty-codec-http 4.1.132.Final → 4.1.133.Final — HIGH
+# Third companion CVE in the same Netty release line, HttpContentDecompressor
+# `maxAllocation` bypass when decompressing attacker-controlled gzipped/deflate
+# bodies. Trivy first surfaced this on the Chore P CI run after ORT 85.0.0 →
+# 85.1.1 bump exposed the bundled netty-codec-http jar at 4.1.132.Final
+# (already covered for 42583/42584). Same client-only invocation rationale as
+# CVE-2026-42583: ORT only loads netty inside its `evaluate` command for
+# Maven/Gradle metadata fetches against repo1.maven.org / Gradle Central
+# (TLS-served, not attacker-controlled). The decompressor entry point is
+# never reached by `ort evaluate --rules-file <kts> --ort-file <sbom>
+# --output-formats JSON`. ORT 86.x will likely refresh netty to ≥4.1.133
+# in its bundled fat-jar — re-evaluate then. UNREACHED.
+CVE-2026-42587
+
 # CVE-2026-3505 — org.bouncycastle:bcpg-jdk18on 1.78.1 → 1.84 — HIGH
 # Bouncy Castle OpenPGP packet parser memory-amplification. Reachable
 # only when the JVM parses attacker-controlled OpenPGP messages.
@@ -262,3 +276,55 @@ CVE-2025-67030
 # present in the image. Removed rather than retained-with-justification
 # because the upstream fix is shipped — keeping the entry would defeat
 # the policy's "every entry must have a current target" requirement.
+
+# ---------------------------------------------------------------------------
+# .NET SDK 8.0 reach surface (single source of truth — keep in sync with
+# apps/backend/integrations/dotnet_prep.py and Dockerfile.worker .NET install
+# block at lines 314-325):
+#   cmd = ["dotnet", "restore", "--use-lock-file"]
+# We only invoke `dotnet restore` to populate `obj/project.assets.json`
+# which cdxgen consumes for transitive NuGet enumeration. We do NOT run
+# `dotnet build`, `dotnet publish`, MSBuild via `dotnet msbuild`, or any
+# XML-DSig signature verification (the Microsoft.Build.Tasks.Core spoofing
+# CVEs target build/publish targets, not restore). The bundled assemblies
+# live under `/usr/share/dotnet/sdk/8.0.*/` and `/usr/share/dotnet/shared/
+# Microsoft.NETCore.App/*/`; restore loads NuGet metadata over HTTPS from
+# api.nuget.org (TLS-pinned by the .NET CLI) and writes lockfile JSON.
+# UNREACHED for every CVE below.
+#
+# Re-evaluate when the apt-installed dotnet-sdk-8.0 patch line
+# (currently 8.0.119 from packages.microsoft.com bookworm channel) surfaces
+# the upstream-fixed versions noted in each entry.
+# ---------------------------------------------------------------------------
+
+# CVE-2025-26646 — Microsoft.Build.Tasks.Core 17.11.31 → 17.11.36+ — HIGH
+# .NET / Visual Studio spoofing via crafted MSBuild task input. Vulnerable
+# code path: MSBuild task evaluation during `dotnet build` / `dotnet
+# publish` / direct `msbuild` invocations. We never call any of these.
+# `dotnet restore` does load Microsoft.Build.Tasks.Core into the runtime
+# but does not invoke the spoofing-class APIs. Apt-bookworm dotnet-sdk-8.0
+# pins to a patch level below the upstream fix; re-evaluate when the
+# packages.microsoft.com debian/12 channel ships ≥17.11.36. UNREACHED.
+CVE-2025-26646
+
+# CVE-2025-55247 — Microsoft.Build.Tasks.Core 17.11.31 → 17.11.48+ — HIGH
+# .NET denial-of-service via MSBuild task. Same reach class as
+# CVE-2025-26646 — restore-only invocation, no MSBuild task evaluation.
+# UNREACHED.
+CVE-2025-55247
+
+# CVE-2026-26171 — System.Security.Cryptography.Xml 8.0.0 → 8.0.3+ — HIGH
+# .NET XML-DSig security bypass + DoS in the XmlDsig signature verifier.
+# Reachable only when consuming application code calls SignedXml.CheckSignature
+# / VerifyReference on attacker-controlled XML. `dotnet restore` does not
+# invoke any XmlDsig API — NuGet package signature verification uses
+# X.509 / Authenticode chains, not XmlDsig. The vulnerable assembly is
+# present in the SDK shared framework but is not loaded by `restore`.
+# Re-evaluate when apt-bookworm ships dotnet-sdk-8.0 ≥8.0.3. UNREACHED.
+CVE-2026-26171
+
+# CVE-2026-33116 — System.Security.Cryptography.Xml 8.0.0 → 8.0.3+ — HIGH
+# .NET DoS via infinite recursion in the XmlDsig parser. Same reach class
+# as CVE-2026-26171 — XmlDsig API never invoked from `dotnet restore`.
+# UNREACHED.
+CVE-2026-33116
