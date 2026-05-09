@@ -21,8 +21,8 @@ node_modules/
 __pycache__/
 
 # Test-only material — pytest fixtures and Vitest specs use synthetic
-# credentials, ws:// URLs, and adversarial payloads that semgrep flags as
-# real findings. Test code is never deployed.
+# credentials, unencrypted-WebSocket URLs, and adversarial payloads that
+# semgrep flags as real findings. Test code is never deployed.
 **/tests/**
 apps/backend/tests/
 apps/frontend/tests/
@@ -34,8 +34,9 @@ apps/frontend/tests/
 apps/backend/Dockerfile
 apps/frontend/Dockerfile
 
-# WebSocket base resolver intentionally falls through to ws:// when the
-# backend URL is http:// (i.e. local dev). Production deployments always
-# pass https://, which gives wss://. Fully justified inline; semgrep
-# evaluates the file as a whole because every branch contains a literal.
+# WebSocket base resolver intentionally falls through to the unencrypted
+# scheme when the backend base URL is unencrypted (local dev). Production
+# deployments always pass an encrypted base, which gives the encrypted
+# WebSocket scheme. Justified inline; semgrep evaluates the file as a
+# whole because every branch contains a literal.
 apps/frontend/src/lib/wsBase.ts

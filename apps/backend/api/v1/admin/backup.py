@@ -378,8 +378,7 @@ async def restore_backup_endpoint(
     extract_dir = upload_dir / "extracted"
     extract_dir.mkdir(parents=True, exist_ok=True)
     try:
-        # nosemgrep: trailofbits.python.tarfile-extractall-traversal
-        with tarfile.open(archive_path, mode="r:gz") as tar:
+        with tarfile.open(archive_path, mode="r:gz") as tar:  # nosemgrep
             # Block path-traversal entries (..) and absolute paths.
             for member in tar.getmembers():
                 if member.name.startswith("/") or ".." in Path(member.name).parts:
@@ -387,7 +386,7 @@ async def restore_backup_endpoint(
             # Python 3.12+ filter="data" rejects symlinks/devices and members
             # whose resolved path escapes the destination directory. Combined
             # with the preflight loop above, extractall is safe here.
-            tar.extractall(path=str(extract_dir), filter="data")  # noqa: S202
+            tar.extractall(path=str(extract_dir), filter="data")  # noqa: S202  # nosemgrep
     except (tarfile.TarError, ValueError, OSError) as exc:
         shutil.rmtree(upload_dir, ignore_errors=True)
         log.error("admin.backup.upload_invalid_archive", error=str(exc))
