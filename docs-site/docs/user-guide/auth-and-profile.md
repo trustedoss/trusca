@@ -70,15 +70,16 @@ Errors are surfaced as i18n-mapped messages. The seven distinct codes cover prov
 
 ## Manage connected accounts on `/profile`
 
-`/profile` lists every identity that can sign you in:
+The `/profile` page has a **Connected Accounts** section that lists the OAuth identities currently attached to your account:
 
-- **Password** — present if you registered with email + password or set one later.
 - **GitHub** — present if you have ever signed in with GitHub.
 - **Google** — present if you have ever signed in with Google.
 
 ![Profile page — Connected Accounts](./img/auth-profile.png)
 
-Each row has an **Unlink** button. The portal protects you from locking yourself out:
+Password sign-in is not displayed as a row in the Connected Accounts list at v2.0.0 — it is implicit when your account was registered with email + password (or when you completed a password reset). Use the **Set a password** action elsewhere on the profile page to seed a password for an OAuth-only account.
+
+Each Connected Accounts row has an **Unlink** button. The portal protects you from locking yourself out:
 
 - If unlinking would leave you with **no sign-in method** (e.g. you have only one OAuth identity and no password set), the request returns HTTP 409 and the UI shows an alert: *"Set a password before unlinking your last OAuth identity."*
 - The fallback path is **Forgot password** — request a reset link, set a password, then return to `/profile` and unlink.

@@ -28,9 +28,12 @@ sidebar_position: 9
 1. **New API key**를 클릭합니다.
 2. 폼을 채웁니다.
    - **Label** — Key 용도를 떠올리게 하는 자유 텍스트(예: `github-action-checkout-service`).
-   - **Scope** — `org`, `team`, `project`. 낮은 scope가 더 엄격합니다. 필요한 호출을 커버하는 가장 작은 scope를 선택하세요.
-   - **Expiry** — 30 / 90 / 180 / 365일 프리셋 또는 커스텀. 만료 없는 Key는 권장되지 않습니다.
+   - **Scope** — `org`, `team`, `project`. 낮은 scope가 더 엄격합니다. 필요한 호출을 커버하는 가장 작은 scope를 선택하세요. team / project scope를 선택하면 폼에 팀·프로젝트 선택기가 노출됩니다.
 3. **Create**를 클릭합니다.
+
+:::caution v2.0.0에서는 Key가 만료되지 않음
+Key 생성 폼이 아직 만료를 받지 않습니다. v2.0.0에서 발급된 모든 Key는 명시적으로 **Revoke** 할 때까지 유효합니다. 다른 장기 시크릿과 동일하게 취급하세요 — CI 시크릿 매니저에 보관하고 절대 소스 컨트롤에 두지 마세요. 만료 프리셋은 로드맵 항목입니다(아래 참고).
+:::
 
 포털은 전체 Key가 담긴 **1회 노출 모달**을 엽니다.
 
@@ -51,7 +54,7 @@ tos_a1b2c3d4_eaff8b91d36c5e0a2f1c4d7e8a9b0c2d
 ```bash
 curl -sS \
   -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
-  https://trustedoss.example.com/api/v1/projects
+  https://trustedoss.example.com/v1/projects
 ```
 
 **GitHub Actions**에서는 Key를 저장소 또는 조직 시크릿에 보관하고 환경 변수로 노출합니다.
@@ -91,7 +94,7 @@ GitHub에 등록할 URL — `https://<your-host>/v1/webhooks/github`.
 - **Signature:** `X-Hub-Signature-256`. 프로젝트별 `webhook_secret`을 키로 raw body에 대해 HMAC-SHA256.
 - **Events:** `push`와 `pull_request`가 지원되는 트리거.
 
-프로젝트의 `webhook_secret`은 **Project → Settings → CI/CD**에서 생성합니다. 회전(rotation) 시 새 시크릿이 생성되며, 이를 GitHub Webhook 설정에 복사·붙여넣기 하세요.
+포털은 인바운드 전송을 검증하기 위해 프로젝트별 `webhook_secret` 필드를 저장합니다. 해당 시크릿을 생성·회전하는 UI는 v2.0.0에서 노출되지 않습니다 — [로드맵](#로드맵-v2x) 참고. 현재는 운영자가 서버 측에서 시크릿을 부트스트랩합니다.
 
 ### GitLab
 
@@ -101,17 +104,11 @@ GitLab에 등록할 URL — `https://<your-host>/v1/webhooks/gitlab`.
 - **Token:** `X-Gitlab-Token` 헤더로 전송. 값을 프로젝트의 `webhook_secret`으로 설정.
 - **Events:** **Push events**와 **Merge request events**.
 
-### Webhook 시크릿 회전
-
-Webhook 시크릿은 프로젝트별입니다. 프로젝트의 **Settings → CI/CD** 탭을 열고 **Rotate webhook secret**을 클릭한 뒤 확인합니다. 새 시크릿은 1회 표시됩니다. GitHub / GitLab을 새 값으로 갱신하세요.
-
-회전 후 ~5초 이내에 이전 시크릿의 검증이 중단됩니다. 양쪽이 갱신될 때까지 전송이 HTTP 401로 실패하니 회전 윈도를 짧게 유지하세요.
-
 ## 정상 동작 확인
 
-- Key 생성 후 `curl -sS -H "Authorization: Bearer <key>" .../api/v1/projects`로 200 응답과 팀 프로젝트가 반환되는지 확인하세요.
+- Key 생성 후 `curl -sS -H "Authorization: Bearer <key>" .../v1/projects`로 200 응답과 팀 프로젝트가 반환되는지 확인하세요.
 - GitHub에 Webhook 등록 후 커밋을 푸시하고 GitHub의 **Webhook deliveries** 뷰에서 HTTP 202 성공 전송을 확인하세요.
-- 감사 로그(super-admin은 `/admin/audit`, team admin은 `/audit`)에서 본인 prefix가 포함된 `api_key.create`와 `webhook.delivery` 이벤트를 확인하세요.
+- super-admin이 `/admin/audit`에서 `api_key.create`와 `webhook.delivery` 이벤트를 확인할 수 있습니다. team-범위 감사 로그는 로드맵 항목입니다(아래 참고).
 
 ## 트러블슈팅
 
@@ -120,6 +117,14 @@ Webhook 시크릿은 프로젝트별입니다. 프로젝트의 **Settings → CI
 - **API에서 HTTP 429** — Key별 레이트 리밋에 도달. `Retry-After` 헤더가 대기 시간을 알려줍니다. 백오프 후 재시도.
 - **GitHub Webhook이 401** — `X-Hub-Signature-256` 검증 실패. 시크릿 일치 여부와 GitHub가 **raw** body 기준으로 HMAC을 계산하는지(재직렬화된 JSON이 아님) 확인.
 - **GitLab Webhook이 401** — `X-Gitlab-Token` 헤더 값이 프로젝트 `webhook_secret`과 일치하지 않음.
+
+## 로드맵 (v2.x)
+
+매뉴얼이 이전에 약속했으나 v2.0.0에 포함되지 않은 항목.
+
+- API Key 만료 프리셋(30 / 90 / 180 / 365일, 커스텀) — v2.1 예정. 현재 발급된 모든 Key는 폐기 전까지 만료되지 않습니다.
+- **Project Settings → CI/CD** 서브탭과 **Rotate webhook secret** 동작 — v2.1 예정. 현재 프로젝트별 `webhook_secret`은 서버 측에서 부트스트랩됩니다.
+- `team_admin`을 위한 팀 범위 감사 로그(`/audit`) — v2.2 예정. 현재 감사 로그는 super-admin 전용 (`/admin/audit`).
 
 ## 함께 보기
 

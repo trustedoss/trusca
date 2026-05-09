@@ -1,14 +1,14 @@
 ---
 id: sbom
-title: SBOM & reports
-description: Export CycloneDX (JSON/XML) and SPDX (JSON/Tag-Value) SBOMs, generate the NOTICE file, and download Excel / PDF reports.
-sidebar_label: SBOM & reports
+title: SBOM
+description: Export CycloneDX (JSON/XML) and SPDX (JSON/Tag-Value) SBOMs and generate the NOTICE file in TrustedOSS Portal.
+sidebar_label: SBOM
 sidebar_position: 5
 ---
 
-# SBOM & reports
+# SBOM
 
-The portal generates **Software Bill of Materials** (SBOM) artifacts from the latest successful scan. Four interchange formats are supported, plus an attribution `NOTICE` file and human-readable Excel / PDF reports.
+The portal generates **Software Bill of Materials** (SBOM) artifacts from the latest successful scan. Four interchange formats are supported, plus an attribution `NOTICE` file.
 
 :::note Audience
 Engineers shipping releases, compliance leads filing artifacts, customers fulfilling SBOM requests under [EO 14028](https://www.cisa.gov/topics/cyber-threats-and-advisories/cybersecurity-best-practices/secure-by-design/sbom). Read access via team membership.
@@ -16,12 +16,12 @@ Engineers shipping releases, compliance leads filing artifacts, customers fulfil
 
 ## Supported formats
 
-| Format | MIME | Use case |
-|---|---|---|
-| **CycloneDX 1.6 (JSON)** | `application/vnd.cyclonedx+json` | Modern de-facto standard for SCA tooling. Includes VEX. |
-| **CycloneDX 1.6 (XML)** | `application/vnd.cyclonedx+xml` | Same data; XML for legacy tooling. |
-| **SPDX 2.3 (JSON)** | `application/spdx+json` | NTIA minimum elements; broadly accepted in regulated industries. |
-| **SPDX 2.3 (Tag-Value)** | `text/spdx` | The original SPDX line-based format. |
+| Format | Query value (`format=`) | MIME | Use case |
+|---|---|---|---|
+| **CycloneDX 1.6 (JSON)** | `cyclonedx-json` | `application/vnd.cyclonedx+json` | Modern de-facto standard for SCA tooling. Includes VEX. |
+| **CycloneDX 1.6 (XML)** | `cyclonedx-xml` | `application/vnd.cyclonedx+xml` | Same data; XML for legacy tooling. |
+| **SPDX 2.3 (JSON)** | `spdx-json` | `application/spdx+json` | NTIA minimum elements; broadly accepted in regulated industries. |
+| **SPDX 2.3 (Tag-Value)** | `spdx-tv` | `text/spdx` | The original SPDX line-based format. |
 
 Both formats are produced from the same internal model, so component lists are identical (modulo format-specific fields).
 
@@ -51,15 +51,15 @@ The file name is `<project-name>-<scan-finished-iso>.sbom.<ext>`.
 # CycloneDX JSON
 curl -sS -L -OJ \
   -H "Authorization: ApiKey ${TRUSTEDOSS_API_KEY}" \
-  "https://trustedoss.example.com/api/v1/projects/${PROJECT_ID}/sbom?format=cyclonedx-json"
+  "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/sbom?format=cyclonedx-json"
 
 # SPDX JSON
 curl -sS -L -OJ \
   -H "Authorization: ApiKey ${TRUSTEDOSS_API_KEY}" \
-  "https://trustedoss.example.com/api/v1/projects/${PROJECT_ID}/sbom?format=spdx-json"
+  "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/sbom?format=spdx-json"
 ```
 
-`format` accepts: `cyclonedx-json`, `cyclonedx-xml`, `spdx-json`, `spdx-tag-value`.
+`format` accepts: `cyclonedx-json`, `cyclonedx-xml`, `spdx-json`, `spdx-tv`.
 
 By default, the export reflects the project's **latest successful scan**. Pass `?scan_id=<uuid>` to pin to a specific scan.
 
@@ -81,42 +81,10 @@ The file contains:
   ```bash
   curl -sS -L -OJ \
     -H "Authorization: ApiKey ${TRUSTEDOSS_API_KEY}" \
-    "https://trustedoss.example.com/api/v1/projects/${PROJECT_ID}/notice"
+    "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/notice"
   ```
 
 The `NOTICE` file is byte-stable across exports — diffable across releases.
-
-## Excel & PDF reports
-
-Human-readable reports for stakeholders who do not consume SBOMs directly.
-
-| Report | Contents |
-|---|---|
-| **Components Excel** | One row per component: name, version, type, concluded license, classification, open CVE count, fix-available count. |
-| **Vulnerabilities Excel** | One row per finding: CVE, component, severity, state, justification, discovered, last-seen. |
-| **Compliance PDF** | Risk-score summary, classification distribution, top-10 risky components, obligation list, NOTICE preview. |
-
-### Download
-
-- **UI:** Project → **Reports** menu (top-right of any tab).
-- **API:**
-
-  ```bash
-  # Components Excel
-  curl -sS -L -OJ \
-    -H "Authorization: ApiKey ${TRUSTEDOSS_API_KEY}" \
-    "https://trustedoss.example.com/api/v1/projects/${PROJECT_ID}/reports/components.xlsx"
-
-  # Vulnerabilities Excel
-  curl -sS -L -OJ \
-    -H "Authorization: ApiKey ${TRUSTEDOSS_API_KEY}" \
-    "https://trustedoss.example.com/api/v1/projects/${PROJECT_ID}/reports/vulnerabilities.xlsx"
-
-  # Compliance PDF
-  curl -sS -L -OJ \
-    -H "Authorization: ApiKey ${TRUSTEDOSS_API_KEY}" \
-    "https://trustedoss.example.com/api/v1/projects/${PROJECT_ID}/reports/compliance.pdf"
-  ```
 
 ## VEX exports
 
@@ -161,13 +129,20 @@ The VEX states map directly to CycloneDX's `analysis.state`:
 
 The project has no successful scan yet. Trigger one — see [Scans](./scans.md).
 
-### Excel report opens with garbled non-ASCII
+### `422` from `/sbom?format=…`
 
-The report uses UTF-8 with BOM, which Excel honors on Windows. On macOS, open with **Numbers** or convert via `iconv -f UTF-8 -t UTF-16LE`.
+The query string used a value the API does not accept. Use one of the four canonical query values from the table above — in particular, **the SPDX Tag-Value format is `spdx-tv` (not `spdx-tag-value`)**.
 
 ### NOTICE file is missing copyrights for some components
 
-ORT extracts copyrights from license headers. Some packages omit them; the NOTICE entry will say "Copyright holder unspecified". Add a manual override in the component drawer if needed.
+ORT extracts copyrights from license headers. Some packages omit them; the NOTICE entry will say "Copyright holder unspecified".
+
+## Roadmap (v2.x)
+
+Items the manual previously promised that are not in v2.0.0; tracked for later releases.
+
+- Excel / PDF reports — Components Excel, Vulnerabilities Excel, Compliance PDF — are not implemented at v2.0.0; the **Reports** menu and `/v1/projects/{id}/reports/...` endpoints will land in a later release. Stakeholders who need a tabular view today should consume the SBOM (CycloneDX JSON) via their preferred tooling.
+- Manual copyright override in the component drawer for NOTICE assembly — planned for v2.2.
 
 ## See also
 
