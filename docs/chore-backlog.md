@@ -172,11 +172,62 @@ PR #31 의 13 xfail 정리:
 | 5 | 우선순위 3 (Demo SaaS) | F + G | ✅ PR #33 (`f684ed3`) |
 | 6 | 우선순위 1 (잔여) | A2 | ✅ PR #32 (`df54562`) |
 
-**모든 chore 처리 완료.** 잔여 항목 — Chore E (install/restore UAT — fresh Linux 머신 필요), Chore L2 (xfail 13개 fixture drift fix). 둘 다 별도 단일 세션 분량.
+**기존 11 chore 처리 완료.** v2.0.0 GA 후속 정리 단계로 6 chore 추가 등재.
+
+---
+
+## Post-GA 정리 (v2.0.0 후속)
+
+> 다음 세션 시작 prompt: `docs/sessions/_next-session-prompt-post-ga-cleanup.md`.
+> 우선순위 순서로 한 PR = 한 chore.
+
+### Chore M — 문서화 회수 (`docs-site/`)
+**우선순위**: 1 (CLAUDE.md §8 "문서 동행" 위반 회수)
+**브랜치 제안**: `chore/docs-refresh-post-ga`
+**예상 소요**: 1.5 세션
+
+미흡 — PR #28 ~ #33 신규 기능 가이드 부재 + KO 미러 누락:
+- user-guide/{auth-and-profile, notifications, integrations}.md 신규 (EN + KO)
+- admin-guide/{backup-and-restore, api-keys}.md 갱신 (UI 사용법 추가)
+- contributor-guide/* 신규 디렉토리 (4 파일 EN + KO)
+- ci-integration/* KO 미러 (4 파일)
+- reference/* KO 미러 (3 파일)
+- intro.md GA 배지 + What's new + release-notes/v2.0.0.md
+- `docs/installation/gcp-deploy*.md` → `docs-site/docs/installation/` 이동 + sidebar 등록
+
+### Chore N — UAT 시나리오 갱신 (PR #28 ~ #33)
+**우선순위**: 4
+**브랜치 제안**: `chore/uat-scenarios-v2.0.0`
+**예상 소요**: 0.5 세션
+
+미흡:
+- `docs/sessions/2026-05-08-uat-manual-test-scenarios.md` 가 PR #14 시점 — 신규 12개 시나리오 추가 (forgot/reset, OAuth 로그인 + unlink, /integrations, /admin/backup, /notifications, WebSocket reconnect, GCP demo 배포, EN/KO 토글)
+
+### Chore O — security-reviewer pass (PRs #29 / #32 / #33)
+**우선순위**: 3 (CLAUDE.md §7 Producer-Reviewer 회수)
+**브랜치 제안**: `chore/security-reviewer-pass`
+**예상 소요**: 0.5 ~ 1 세션
+
+미흡 — 자율 실행 시간 압박으로 security-reviewer 위임 생략:
+- PR #29 backup tar extraction + restore destructive flow + Celery subprocess argv
+- PR #32 dispatcher fan-out race / mark-read 다른 사용자 IDOR 가능성 / target_id UUID validation / polling DoS
+- PR #33 last-method 가드 race (TOCTOU) / provider_user_id_hash salt / audit PII / IDOR
+
+### Chore P — Trivy HIGH hard-fail + worker-image refresh
+**우선순위**: 6 (Phase 8 hardening)
+**브랜치 제안**: `chore/phase8-worker-image-refresh`
+**예상 소요**: 1 세션
+
+미흡 — PR #30 (Chore H) 에서 CRITICAL 만 hard-fail; HIGH 잔여 작업:
+- `Dockerfile.worker` base 의존성 bump (Python / Go SDK / Temurin / cdxgen / ORT / Trivy 최신)
+- `.trivyignore` 정비 + 회귀 검증
+- CI Trivy step 에 HIGH 추가 (or `severity=CRITICAL,HIGH` 결합)
 
 ---
 
 ## 새 세션 시작 시 사용
 
-`docs/sessions/_next-session-prompt-chore-backlog.md` 파일이 작성됨.
+`docs/sessions/_next-session-prompt-post-ga-cleanup.md` 파일이 작성됨 (2026-05-09).
 새 세션 첫 메시지에 그 파일 내용을 그대로 붙여넣으면 정확한 컨텍스트로 시작.
+
+이전 세션 prompt (`_next-session-prompt-chore-backlog.md`) 는 11 chore 모두 처리 후 **deprecated**.
