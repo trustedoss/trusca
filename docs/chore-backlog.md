@@ -56,20 +56,13 @@
 
 ## 우선순위 2 — 운영 안정성
 
-### Chore D — 자동 백업 + 수동 백업/복원 UI + WebSocket 재연결
-**기반 PR**: #23 (Step 8)
-**브랜치 제안**: `chore/phase6-pr19-backup-ws`
-**예상 소요**: 1 세션
+### ~~Chore D — 자동 백업 + 수동 백업/복원 UI + WebSocket 재연결~~ ✅ PR #29 (2026-05-09)
+**머지 commit**: `f2b9f9e`
 
-미흡:
-- Celery Beat 매일 자정 자동 백업 (pg_dump + workspace tar)
-  - `tasks/backup.py`: 호스트 디스크에 `backups/auto-YYYYMMDD/` 생성
-  - 7일 retention (이미 `scripts/backup.sh` 패턴 따라)
-- 수동 백업/복원 Admin UI (`/admin/backup`)
-  - 다운로드 버튼 + 업로드 복원 (확인 다이얼로그 + audit emit)
-- WebSocket 재연결 (탭 이탈 후 복귀 시 진행률 즉시 동기화)
-  - `useScanWebSocket` hook에 visibility 이벤트 리스너 추가
-  - `document.visibilityState === 'visible'` → reconnect
+처리 결과:
+- ✅ Celery Beat `daily-auto-backup` (00:00 UTC), 7일 retention (auto-* 만; manual-* 영구)
+- ✅ `/admin/backup` UI: 수동 트리거 + 스트리밍 다운로드 + 업로드+복원 (type-"restore" gate) + 삭제
+- ✅ `useScanWebSocket` 의 visibility-listener — 탭 복귀 시 즉시 reconnect (5분 budget 보존)
 
 ### Chore E — backup.sh / restore.sh 실제 검증
 **기반 PR**: #24 (Step 9)
@@ -85,73 +78,61 @@
 
 ## 우선순위 3 — Demo SaaS / GA 준비
 
-### Chore F — GCP Terraform + Cloud Run + seed_demo
-**기반 PR**: #26 (Step 11 backend)
-**브랜치 제안**: `chore/phase8-pr23-gcp-terraform`
-**예상 소요**: 1.5 세션
+### ~~Chore F — GCP Terraform + Cloud Run + seed_demo~~ ✅ PR #33 (2026-05-09)
+**머지 commit**: `f684ed3`
 
-미흡:
-- `terraform/` 디렉토리: Cloud Run + Cloud SQL PostgreSQL + Memorystore Redis
-- `terraform plan` 오류 없음, 비용 추정 < $50/월
-- `apps/backend/scripts/seed_demo.py`: 데모 시드 (3개 팀, 5개 프로젝트, 10개 스캔, 가짜 CVE)
-- `docs-site/docs/installation/gcp-deploy.md` (EN/KO)
+처리 결과:
+- ✅ `terraform/`: Cloud Run × 2 + Cloud SQL PG17 db-f1-micro + Memorystore 1 GB BASIC + VPC peering + Secret Manager
+- ✅ 비용 추정 ~$46/월 (Memorystore = 78%)
+- ✅ `apps/backend/scripts/seed_demo.py`: 1 org / 3 teams / 5 users / 5 projects / 10 fake CVEs / 5 license findings — APP_ENV in {dev,demo} guard
+- ✅ `docs/installation/gcp-deploy.md` + `.ko.md` 운영 runbook
 
-### Chore G — Admin OAuth identity 관리 UI
-**기반 PR**: #26 (Step 11 backend)
-**브랜치 제안**: `chore/phase8-admin-oauth-unlink`
-**예상 소요**: 0.5 세션
+### ~~Chore G — Admin OAuth identity 관리 UI~~ ✅ PR #33 (2026-05-09)
+**머지 commit**: `f684ed3`
 
-미흡:
-- 사용자 프로필 화면에 "Connected accounts" 섹션
-- "Unlink GitHub" / "Unlink Google" 버튼 → DELETE `/v1/oauth/identities/{id}`
-- 백엔드 엔드포인트 신규 (마지막 인증 수단 보호: password 없으면 unlink 차단)
+처리 결과:
+- ✅ `/profile` 페이지 + Connected Accounts 섹션
+- ✅ Unlink 버튼 + inline 확인 + 9 (`urn:trustedoss:problem:oauth_unlink_blocks_login`) 시 inline 빨강 배너
+- ✅ 백엔드: `GET / DELETE /v1/users/me/oauth-identities[/{id}]` — 마지막 인증 수단 보호 (password 없고 OAuth 1개 → 409 차단), 감사 로그 (provider_user_id sha256 hashed)
 
 ---
 
 ## 우선순위 4 — 보안·성능·릴리스 강화
 
-### Chore H — SAST HARD FAIL 전환
-**기반 PR**: #27 (Step 12)
-**브랜치 제안**: `chore/phase8-pr25-sast-hard-fail`
-**예상 소요**: 0.5 세션
+### ~~Chore H — SAST HARD FAIL 전환~~ ✅ PR #30 (2026-05-09)
+**머지 commit**: `3beb997`
 
-미흡:
-- bandit advisory → HARD FAIL on High+ findings
-- semgrep advisory → HARD FAIL on ERROR severity
-- 기존 finding inventory 점검 후 false positive는 `# nosec`/`# nosemgrep` 명시
-- Trivy CI 게이트 HARD FAIL 활성화 (현재 soft-fail)
+처리 결과:
+- ✅ bandit HARD FAIL on High+
+- ✅ semgrep HARD FAIL on ERROR
+- ✅ Trivy 2-step split: HARD FAIL on CRITICAL + HIGH advisory
+- ✅ 21개 ERROR finding triage (`.semgrepignore` + 인라인 nosemgrep — 모두 false-positive 정당화 첨부)
 
-### Chore I — 부하 테스트 (Locust)
-**기반 PR**: #27 (Step 12)
-**브랜치 제안**: `chore/phase8-pr25-locust`
-**예상 소요**: 1 세션
+### ~~Chore I — 부하 테스트 (Locust)~~ ✅ PR #30 (2026-05-09)
+**머지 commit**: `3beb997`
 
-미흡:
-- `tests/load/locustfile.py`: 동시 스캔 3개, 동시 사용자 50명 시나리오
-- `docker-compose.load.yml`: locust master + worker 2~3 노드
-- 보고서: p95 < 1s 목표 검증
-- CI 게이트는 NO (수동 실행만 — staging 환경)
+처리 결과:
+- ✅ `tests/load/locustfile.py`: AuthenticatedUser × 4 weighted GETs + ScanTriggerUser × 1
+- ✅ `docker-compose.load.yml`: locust master + 2 worker
+- ✅ `tests/load/README.md`: p95 < 1s 목표 검증 + 운영 runbook
+- ✅ CI 미적용 (staging-only)
 
-### Chore J — SCA on self (dog-fooding)
-**기반 PR**: #27 (Step 12)
-**브랜치 제안**: `chore/phase8-pr25-sca-on-self`
-**예상 소요**: 0.5 세션
+### ~~Chore J — SCA on self (dog-fooding)~~ ✅ PR #30 (2026-05-09)
+**머지 commit**: `3beb997`
 
-미흡:
-- 자신의 코드를 TrustedOSS Portal API로 스캔 (CI에서 nightly cron)
-- Critical CVE 발견 시 GitHub Issue 자동 생성
-- README에 "TrustedOSS Portal scans itself" 배지
+처리 결과:
+- ✅ `.github/workflows/sca-self.yml`: nightly cron 07:00 UTC + workflow_dispatch
+- ✅ cdxgen 12.3.3 → CycloneDX SBOM → Trivy 0.58.0 → CRITICAL ≥ 1 시 GitHub Issue 자동 생성/업데이트, 0 시 close
+- ✅ README "SCA self-scan" 배지 + 섹션
 
-### Chore K — v2.0.0 정식 릴리스
-**기반 PR**: #27 (Step 12)
-**브랜치 제안**: 직접 main에서 `bash scripts/release.sh v2.0.0`
-**예상 소요**: 0.25 세션
+### ~~Chore K — v2.0.0 정식 릴리스~~ ✅ tag `v2.0.0` (2026-05-09)
+**머지 commit (CHANGELOG)**: `727942b`
+**Release**: https://github.com/trustedoss/trustedoss-portal/releases/tag/v2.0.0
 
-미흡:
-- CHANGELOG.md `## [Unreleased]` → `## [2.0.0] — YYYY-MM-DD`
-- `bash scripts/release.sh v2.0.0` 실행
-- GitHub Pages 첫 배포 검증 (docs.yml 트리거)
-- 릴리스 공지 (LinkedIn/HN 등은 사용자 책임)
+처리 결과:
+- ✅ CHANGELOG.md `## [2.0.0]` 섹션 (rc.1 promotion + PR #28~#31 변경)
+- ✅ `git tag v2.0.0` 푸시
+- ✅ GitHub Release 발행 (CHANGELOG body)
 
 ---
 
@@ -182,14 +163,16 @@ PR #31 의 13 xfail 정리:
 
 병렬 가능한 항목은 한 세션에 묶어서 처리:
 
-| 세션 | 묶음 | PRs |
-|-----|------|-----|
-| ~~1~~ | ~~우선순위 1~~ | ~~A1 + B + C~~ → **PR #28 머지 (2026-05-09)** |
-| 2 | 우선순위 2 | D 단독 |
-| 3 | 우선순위 4 | H + I + J 한 PR로 (`chore/security-bundle`) |
-| 4 | 우선순위 5 + 4 K | L + K 마지막 (정식 릴리스) |
-| 5 | 우선순위 3 | F + G (Demo SaaS) — GA 후 진행 |
-| 6 | 우선순위 1 (잔여) | **A2** (인앱 알림 센터 + prefs) — backend + frontend |
+| 세션 | 묶음 | PRs | 결과 |
+|-----|------|-----|------|
+| 1 | 우선순위 1 (UI) | A1 + B + C | ✅ PR #28 (`df5bb5e`) |
+| 2 | 우선순위 2 (운영) | D | ✅ PR #29 (`f2b9f9e`) |
+| 3 | 우선순위 4 (보안·성능) | H + I + J | ✅ PR #30 (`3beb997`) |
+| 4 | 우선순위 5 + 4 K | L + K | ✅ PR #31 (`06559d8`) + tag `v2.0.0` (`727942b`) |
+| 5 | 우선순위 3 (Demo SaaS) | F + G | ✅ PR #33 (`f684ed3`) |
+| 6 | 우선순위 1 (잔여) | A2 | ✅ PR #32 (`df54562`) |
+
+**모든 chore 처리 완료.** 잔여 항목 — Chore E (install/restore UAT — fresh Linux 머신 필요), Chore L2 (xfail 13개 fixture drift fix). 둘 다 별도 단일 세션 분량.
 
 ---
 
