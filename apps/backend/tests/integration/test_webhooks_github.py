@@ -44,6 +44,7 @@ from tests._helpers import (
     make_organization,
     make_project,
     make_team,
+    unique_suffix,
 )
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -129,15 +130,25 @@ async def _make_github_project(
     client: AsyncClient,
     *,
     secret: str | None = None,
-    git_url: str = "https://github.com/acme/widgets",
+    git_url: str | None = None,
 ) -> tuple[Project, str]:
-    """Create a project with webhook_provider='github' and a fresh secret."""
+    """Create a project with webhook_provider='github' and a fresh secret.
+
+    NOTE: ``git_url`` defaults to a per-call unique URL. Tests run against the
+    real Postgres dev instance, which is NOT truncated between runs, so a
+    constant default URL would leave many ``Project`` rows sharing the same
+    ``git_url`` from prior sessions. ``services.webhook_service._find_project_by_git_url``
+    does ``select(Project).where(...).first()`` with no ORDER BY, so it would
+    pick an arbitrary stale project (with a different ``webhook_secret``) and
+    HMAC verification would fail (401). Using a unique URL per call is the
+    test-isolation fix.
+    """
     factory = await _factory(client)
     async with factory() as session:
         org = await make_organization(session)
         team = await make_team(session, organization=org)
         project = await make_project(session, team=team)
-        project.git_url = git_url
+        project.git_url = git_url or f"https://github.com/acme/widgets-{unique_suffix()}"
         project.webhook_secret = secret or secrets.token_urlsafe(32)
         project.webhook_provider = "github"
         await session.commit()
@@ -192,10 +203,6 @@ async def test_valid_hmac_push_event_enqueues_scan(
     assert len(captured_dispatches) == 1
 
 
-@pytest.mark.xfail(
-    reason="Chore L2 backlog — fixture webhook_secret/role-scope drift; investigate separately",
-    strict=False,
-)
 async def test_pull_request_event_also_enqueues(
     client: AsyncClient, captured_dispatches: list[str]
 ) -> None:
@@ -221,10 +228,6 @@ async def test_pull_request_event_also_enqueues(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    reason="Chore L2 backlog — fixture webhook_secret/role-scope drift; investigate separately",
-    strict=False,
-)
 async def test_duplicate_delivery_id_is_idempotent(
     client: AsyncClient, captured_dispatches: list[str]
 ) -> None:
@@ -250,10 +253,6 @@ async def test_duplicate_delivery_id_is_idempotent(
     assert len(captured_dispatches) == 1
 
 
-@pytest.mark.xfail(
-    reason="Chore L2 backlog — fixture webhook_secret/role-scope drift; investigate separately",
-    strict=False,
-)
 async def test_duplicate_delivery_persists_one_row(
     client: AsyncClient, captured_dispatches: list[str]
 ) -> None:
@@ -400,10 +399,6 @@ async def test_malformed_signature_returns_401(
     "event_type",
     ["issues", "issue_comment", "pull_request_review_comment", "ping", "release"],
 )
-@pytest.mark.xfail(
-    reason="Chore L2 backlog — fixture webhook_secret/role-scope drift; investigate separately",
-    strict=False,
-)
 async def test_non_scan_event_returns_ignored_no_dispatch(
     client: AsyncClient, captured_dispatches: list[str], event_type: str
 ) -> None:
@@ -497,10 +492,6 @@ async def test_unknown_repo_returns_404(
     assert captured_dispatches == []
 
 
-@pytest.mark.xfail(
-    reason="Chore L2 backlog — fixture webhook_secret/role-scope drift; investigate separately",
-    strict=False,
-)
 async def test_oversized_payload_does_not_500(
     client: AsyncClient, captured_dispatches: list[str]
 ) -> None:
@@ -528,15 +519,28 @@ async def test_oversized_payload_does_not_500(
     assert response.json()["status"] == "enqueued"
 
 
-@pytest.mark.xfail(
-    reason="Chore L2 backlog — fixture webhook_secret/role-scope drift; investigate separately",
-    strict=False,
+@pytest.mark.parametrize(
+    "label,repo",
+    [
+        # NUL byte — Postgres VARCHAR/TEXT cannot encode 0x00; without the
+        # defensive normalize_repo_url filter this would 500
+        # (asyncpg.CharacterNotInRepertoireError).
+        ("rejects_nul_byte", "https://github.com/acme/wid\x00gets"),
+        # CRLF response-splitting attempt embedded in repo URL.
+        ("rejects_crlf", "https://github.com/acme/wid\r\nset-cookie: x=y/gets"),
+        # ASCII C0 control byte (BEL = 0x07).
+        ("rejects_bel_byte", "https://github.com/acme/\x07widgets"),
+        # Mixed control bytes — our normalize must fail closed to None.
+        ("rejects_mixed_controls", "https://github.com/acme/wid\x00\r\ngets"),
+    ],
 )
 async def test_payload_with_control_bytes_in_repo_name_does_not_500(
-    client: AsyncClient, captured_dispatches: list[str]
+    client: AsyncClient,
+    captured_dispatches: list[str],
+    label: str,
+    repo: str,
 ) -> None:
     """Control bytes in repo URL → unmatched project → 404, never 500."""
-    repo = "https://github.com/acme/wid\x00gets\r\nset-cookie: x=y"
     body = json.dumps(_push_payload(repo)).encode()
 
     response = await client.post(
@@ -550,6 +554,8 @@ async def test_payload_with_control_bytes_in_repo_name_does_not_500(
         },
     )
     # No project matches — service raises WebhookProjectNotFound (404).
-    assert response.status_code == 404
+    assert response.status_code == 404, (
+        f"{label!r} got {response.status_code}: {response.text!r}"
+    )
     assert response.headers["content-type"].startswith(PROBLEM_JSON)
     assert captured_dispatches == []

@@ -440,10 +440,6 @@ async def test_get_list_never_returns_raw_key(client: AsyncClient) -> None:
         assert "key_hash" not in item
 
 
-@pytest.mark.xfail(
-    reason="Chore L2 backlog — fixture webhook_secret/role-scope drift; investigate separately",
-    strict=False,
-)
 async def test_get_developer_does_not_see_foreign_team_keys(client: AsyncClient) -> None:
     """Cross-tenant: a developer in team_b does NOT see team_a's project keys."""
     factory = await _factory(client)
@@ -466,8 +462,9 @@ async def test_get_developer_does_not_see_foreign_team_keys(client: AsyncClient)
     foreign_key_id = create_resp.json()["id"]
 
     # Outsider in team_b lists keys; the foreign key MUST be absent.
+    # ``page_size`` max is 200 (api/v1/api_keys.py:Query(le=200)); 500 → 422.
     list_resp = await client.get(
-        "/v1/api-keys?page_size=500",
+        "/v1/api-keys?page_size=200",
         headers=_bearer_for(outsider),
     )
     assert list_resp.status_code == 200

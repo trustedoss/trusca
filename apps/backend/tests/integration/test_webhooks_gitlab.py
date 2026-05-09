@@ -34,6 +34,7 @@ from tests._helpers import (
     make_organization,
     make_project,
     make_team,
+    unique_suffix,
 )
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -115,14 +116,21 @@ async def _make_gitlab_project(
     client: AsyncClient,
     *,
     secret: str | None = None,
-    git_url: str = "https://gitlab.com/acme/widgets",
+    git_url: str | None = None,
 ) -> tuple[Project, str]:
+    """Create a project with webhook_provider='gitlab' and a fresh secret.
+
+    See the matching docstring in test_webhooks_github.py for why
+    ``git_url`` defaults to a per-call unique URL (DB rows persist across
+    test sessions; ``_find_project_by_git_url`` would otherwise pick a stale
+    project with a different ``webhook_secret``).
+    """
     factory = await _factory(client)
     async with factory() as session:
         org = await make_organization(session)
         team = await make_team(session, organization=org)
         project = await make_project(session, team=team)
-        project.git_url = git_url
+        project.git_url = git_url or f"https://gitlab.com/acme/widgets-{unique_suffix()}"
         project.webhook_secret = secret or secrets.token_urlsafe(32)
         project.webhook_provider = "gitlab"
         await session.commit()
@@ -174,10 +182,6 @@ async def test_valid_token_push_hook_enqueues_scan(
     assert len(captured_dispatches) == 1
 
 
-@pytest.mark.xfail(
-    reason="Chore L2 backlog — fixture webhook_secret/role-scope drift; investigate separately",
-    strict=False,
-)
 async def test_merge_request_hook_enqueues_scan(
     client: AsyncClient, captured_dispatches: list[str]
 ) -> None:
@@ -199,10 +203,6 @@ async def test_merge_request_hook_enqueues_scan(
     assert len(captured_dispatches) == 1
 
 
-@pytest.mark.xfail(
-    reason="Chore L2 backlog — fixture webhook_secret/role-scope drift; investigate separately",
-    strict=False,
-)
 async def test_missing_webhook_uuid_falls_back_to_checkout_sha(
     client: AsyncClient, captured_dispatches: list[str]
 ) -> None:
@@ -280,10 +280,6 @@ async def test_missing_token_header_returns_400(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    reason="Chore L2 backlog — fixture webhook_secret/role-scope drift; investigate separately",
-    strict=False,
-)
 async def test_duplicate_webhook_uuid_is_idempotent(
     client: AsyncClient, captured_dispatches: list[str]
 ) -> None:
@@ -305,10 +301,6 @@ async def test_duplicate_webhook_uuid_is_idempotent(
     assert len(captured_dispatches) == 1
 
 
-@pytest.mark.xfail(
-    reason="Chore L2 backlog — fixture webhook_secret/role-scope drift; investigate separately",
-    strict=False,
-)
 async def test_duplicate_persists_one_delivery_row(
     client: AsyncClient, captured_dispatches: list[str]
 ) -> None:
@@ -345,10 +337,6 @@ async def test_duplicate_persists_one_delivery_row(
 @pytest.mark.parametrize(
     "event_header",
     ["Issue Hook", "Note Hook", "Pipeline Hook", "Job Hook", "Wiki Page Hook"],
-)
-@pytest.mark.xfail(
-    reason="Chore L2 backlog — fixture webhook_secret/role-scope drift; investigate separately",
-    strict=False,
 )
 async def test_non_scan_event_returns_ignored_no_dispatch(
     client: AsyncClient, captured_dispatches: list[str], event_header: str
@@ -467,10 +455,6 @@ async def test_unknown_repo_returns_404(
     assert captured_dispatches == []
 
 
-@pytest.mark.xfail(
-    reason="Chore L2 backlog — fixture webhook_secret/role-scope drift; investigate separately",
-    strict=False,
-)
 async def test_oversized_payload_does_not_500(
     client: AsyncClient, captured_dispatches: list[str]
 ) -> None:

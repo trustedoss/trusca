@@ -148,14 +148,15 @@
 - ⚠️ `tests/integration/test_webhooks_github.py`: 23 tests (6 xfail)
 - ⚠️ `tests/integration/test_webhooks_gitlab.py`: 20 tests (6 xfail)
 
-### Chore L2 — Webhook test fixture HMAC drift fix
+### ~~Chore L2 — Webhook test fixture HMAC drift fix~~ ✅ 완료 (2026-05-09)
 **기반 PR**: #31 (Chore L 잔여)
-**예상 소요**: 0.25 세션
+**처리 결과**: 13 xfail → 13 PASS (+ 3 추가 적대적 입력 parametrize). 실제 원인은 fixture commit 누락이 아니라:
+1. **테스트 격리**: webhook fixture 의 `git_url` 이 모든 테스트에 동일한 상수 (`https://github.com/acme/widgets`) → DB 가 세션 간 truncate 되지 않아 19개+ 의 동일 git_url 프로젝트가 누적 → `_find_project_by_git_url(...).first()` 가 임의의 stale 프로젝트 (다른 webhook_secret) 를 반환 → HMAC 401. fix: `unique_suffix()` 로 per-call 고유 URL.
+2. **`MissingGreenlet` 회귀 (실제 backend 버그)**: `_record_delivery` 의 IntegrityError rollback 이후 `project.id` 접근 시 lazy reload 가 greenlet 외부에서 발생. fix: `services/webhook_service.py` 에서 rollback 가능 호출 전에 `project_id_str = str(project.id)` 캐시.
+3. **NUL/CRLF 방어 (실제 backend 버그)**: 컨트롤 바이트가 들어간 git_url 을 그대로 `WHERE git_url IN (...)` 에 넘겨 asyncpg `CharacterNotInRepertoireError` 로 500. fix: `_normalize_repo_url` 이 `\x00`/C0 control bytes 면 `None` 반환 → 깨끗한 404.
+4. **API Key**: `?page_size=500` 이 `Query(le=200)` 를 위반 → 422. fix: 200 으로 정정.
 
-PR #31 의 13 xfail 정리:
-- fixture가 `project.webhook_secret` 을 setattr 만 하고 `await session.commit()` 누락 → backend 가 DB 에서 다른 secret 으로 검증 → 401.
-- 1 API key role-scope test (`test_get_developer_does_not_see_foreign_team_keys`)가 422 반환 — POST validation 시그니처 정렬.
-- 모두 `@pytest.mark.xfail(strict=False)` 표시. fix 하면 strict=True 로 전환.
+세부는 PR #35 본문 참조.
 
 ---
 

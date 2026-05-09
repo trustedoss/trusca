@@ -201,10 +201,20 @@ def _normalize_repo_url(url: str | None) -> str | None:
     GitHub and GitLab payloads sometimes include ``.git`` and sometimes do
     not; users may register either form under ``Project.git_url``. We
     canonicalise both before comparing.
+
+    Defensive: reject URLs containing NUL bytes or other ASCII control bytes.
+    Postgres ``text``/``varchar`` columns cannot encode 0x00 (asyncpg raises
+    ``CharacterNotInRepertoireError``), and CR/LF in a header-derived URL is a
+    response-splitting smell. A payload with such bytes cannot match any
+    legitimate ``Project.git_url`` row, so we return ``None`` and let the
+    caller surface a clean 404 rather than a 500.
     """
     if not url:
         return None
     cleaned = url.strip()
+    # NUL or any C0 control byte (except whitespace already stripped) — reject.
+    if any(ch == "\x00" or (ord(ch) < 0x20 and ch not in ("\t",)) for ch in cleaned):
+        return None
     if cleaned.endswith(".git"):
         cleaned = cleaned[: -len(".git")]
     return cleaned.rstrip("/")
@@ -439,6 +449,13 @@ async def process_github_webhook(
         raise WebhookSignatureInvalid("HMAC verification failed")
 
     payload_hash = compute_payload_hash(body)
+    # Capture project.id BEFORE _record_delivery — that helper may rollback on
+    # a duplicate-delivery IntegrityError, which expires every ORM object in
+    # the session. Accessing ``project.id`` post-rollback would then trigger a
+    # synchronous lazy reload from outside the greenlet context and surface
+    # as ``MissingGreenlet`` (regression seen in Chore L2 duplicate-delivery
+    # tests). The id is a stable UUID, so caching is safe.
+    project_id_str = str(project.id)
 
     # Step 4: idempotency gate.
     delivery, is_new = await _record_delivery(
@@ -452,7 +469,7 @@ async def process_github_webhook(
     if not is_new:
         log.info(
             "webhook.github.duplicate",
-            project_id=str(project.id),
+            project_id=project_id_str,
             delivery_id=delivery_id,
             event_type=event_type,
         )
@@ -462,7 +479,7 @@ async def process_github_webhook(
     if event_type not in _GITHUB_SCAN_EVENTS:
         log.info(
             "webhook.github.ignored",
-            project_id=str(project.id),
+            project_id=project_id_str,
             delivery_id=delivery_id,
             event_type=event_type,
         )
@@ -486,7 +503,7 @@ async def process_github_webhook(
 
     log.info(
         "webhook.github.processed",
-        project_id=str(project.id),
+        project_id=project_id_str,
         delivery_id=delivery_id,
         event_type=event_type,
         scan_id=str(scan_id) if scan_id else None,
@@ -567,6 +584,9 @@ async def process_gitlab_webhook(
         raise WebhookSignatureInvalid("X-Gitlab-Token mismatch")
 
     payload_hash = compute_payload_hash(body)
+    # See process_github_webhook — capture the project id before _record_delivery
+    # may rollback and expire ORM state.
+    project_id_str = str(project.id)
 
     delivery, is_new = await _record_delivery(
         session,
@@ -579,7 +599,7 @@ async def process_gitlab_webhook(
     if not is_new:
         log.info(
             "webhook.gitlab.duplicate",
-            project_id=str(project.id),
+            project_id=project_id_str,
             delivery_id=delivery_id,
             event_type=event_header,
         )
@@ -588,7 +608,7 @@ async def process_gitlab_webhook(
     if event_header not in _GITLAB_SCAN_EVENTS:
         log.info(
             "webhook.gitlab.ignored",
-            project_id=str(project.id),
+            project_id=project_id_str,
             delivery_id=delivery_id,
             event_type=event_header,
         )
@@ -611,7 +631,7 @@ async def process_gitlab_webhook(
 
     log.info(
         "webhook.gitlab.processed",
-        project_id=str(project.id),
+        project_id=project_id_str,
         delivery_id=delivery_id,
         event_type=event_header,
         scan_id=str(scan_id) if scan_id else None,
