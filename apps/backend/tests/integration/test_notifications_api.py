@@ -93,7 +93,7 @@ async def _create_inapp(session, *, user_id: uuid.UUID, **overrides) -> uuid.UUI
     """Insert a notification row directly via the service (test-time helper)."""
     from services.notification_service import create_notification
 
-    payload: dict = {
+    payload: dict[str, object] = {
         "kind": "scan_completed",
         "title": "Scan complete",
         "body": "Project foo finished scanning.",
