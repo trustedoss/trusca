@@ -31,6 +31,10 @@
     "scans": "Scans",
     "approvals": "Approvals",
     "integrations": "Integrations",
+    "bell": {
+      "aria": "Notifications",
+      "aria_with_count": "Notifications, {{count}} unread"
+    },
     "admin": {
       "section": "Administration"
     }

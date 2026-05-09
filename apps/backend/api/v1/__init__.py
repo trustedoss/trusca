@@ -9,12 +9,14 @@ from .approvals import router as approvals_router
 from .auth import router as auth_router
 from .components import router as components_router
 from .licenses import router as licenses_router
+from .notifications import router as notifications_router
 from .oauth import router as oauth_router
 from .obligations import router as obligations_router
 from .policy_gate import router as policy_gate_router
 from .projects import router as projects_router
 from .sbom import router as sbom_router
 from .scans import router as scans_router
+from .users_me import router as users_me_router
 from .vulnerabilities import router as vulnerabilities_router
 from .webhooks import github_router as webhooks_github_router
 from .webhooks import gitlab_router as webhooks_gitlab_router
@@ -27,12 +29,14 @@ __all__ = [
     "auth_router",
     "components_router",
     "licenses_router",
+    "notifications_router",
     "oauth_router",
     "obligations_router",
     "policy_gate_router",
     "projects_router",
     "sbom_router",
     "scans_router",
+    "users_me_router",
     "vulnerabilities_router",
     "webhooks_github_router",
     "webhooks_gitlab_router",

@@ -40,6 +40,11 @@ from .component_approval import (  # noqa: E402,F401  (imported for metadata sid
 from .license_fetch_cache import (  # noqa: E402,F401  (imported for metadata side effects)
     LicenseFetchCache,
 )
+from .notification import (  # noqa: E402,F401  (imported for metadata side effects)
+    NOTIFICATION_KIND_VALUES,
+    Notification,
+    NotificationPreferences,
+)
 from .oauth_identity import (  # noqa: E402,F401  (imported for metadata side effects)
     OAUTH_PROVIDER_VALUES,
     OAuthIdentity,
@@ -70,6 +75,9 @@ __all__ = [
     "LicenseFetchCache",
     "LicenseFinding",
     "Membership",
+    "NOTIFICATION_KIND_VALUES",
+    "Notification",
+    "NotificationPreferences",
     "OAUTH_PROVIDER_VALUES",
     "OAuthIdentity",
     "Obligation",

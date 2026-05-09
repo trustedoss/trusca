@@ -66,9 +66,10 @@ def test_alembic_current_reports_head_revision():
     # (audit_logs target_table / action / composite indexes); Phase 4
     # PR #15 bumped 0007 → 0008 (component_approvals); Phase 5 PR #16
     # bumped 0008 → 0009 (api_keys + webhook_deliveries + projects.webhook_*);
-    # Phase 8 PR #23 bumped 0009 → 0010 (oauth_identities + oauth_provider ENUM).
+    # Phase 8 PR #23 bumped 0009 → 0010 (oauth_identities + oauth_provider ENUM);
+    # Chore A2 bumped 0010 → 0011 (notifications + notification_preferences).
     # Bump again when a future migration lands.
-    assert "0010" in current.stdout, current.stdout
+    assert "0011" in current.stdout, current.stdout
 
 
 @pytest.mark.integration

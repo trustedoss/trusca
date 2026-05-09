@@ -16,6 +16,7 @@ import type { ComponentType, SVGProps } from "react";
 import { useTranslation } from "react-i18next";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 
+import { HeaderBell } from "@/components/HeaderBell";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -194,6 +195,10 @@ export function AppShell() {
             </span>
           </div>
           <div className="flex items-center gap-3">
+            {/* Notification bell — sole entry point to /notifications. We
+                deliberately do NOT add a sidebar nav entry to keep the
+                left rail focused on top-level domains; chore A2 design. */}
+            <HeaderBell />
             <LanguageToggle />
             <Button
               variant="outline"

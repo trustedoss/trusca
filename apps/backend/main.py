@@ -28,12 +28,14 @@ from api.v1 import (
     auth_router,
     components_router,
     licenses_router,
+    notifications_router,
     oauth_router,
     obligations_router,
     policy_gate_router,
     projects_router,
     sbom_router,
     scans_router,
+    users_me_router,
     vulnerabilities_router,
     webhooks_github_router,
     webhooks_gitlab_router,
@@ -162,6 +164,10 @@ app.include_router(webhooks_gitlab_router)
 # Phase 5 PR #17: build-gate result + SCA PR-comment endpoints. Both routes
 # accept JWT or API-key bearer tokens so CI runners can call them.
 app.include_router(policy_gate_router)
+# Chore A2: in-app notification center + per-user notification preferences.
+# /v1/notifications and /v1/users/me/notification-prefs.
+app.include_router(notifications_router)
+app.include_router(users_me_router)
 # Phase 2 PR #9: WebSocket gateway. The router declares the absolute path
 # `/ws/scans/{scan_id}` (no prefix) so future ws routes can group themselves
 # under the same router without nudging this include.
