@@ -8,6 +8,7 @@ import enAuth from "@/locales/en/auth.json";
 import enCommon from "@/locales/en/common.json";
 import enIntegrations from "@/locales/en/integrations.json";
 import enNotifications from "@/locales/en/notifications.json";
+import enProfile from "@/locales/en/profile.json";
 import enProjectDetail from "@/locales/en/project_detail.json";
 import enProjects from "@/locales/en/projects.json";
 import enScans from "@/locales/en/scans.json";
@@ -17,6 +18,7 @@ import koAuth from "@/locales/ko/auth.json";
 import koCommon from "@/locales/ko/common.json";
 import koIntegrations from "@/locales/ko/integrations.json";
 import koNotifications from "@/locales/ko/notifications.json";
+import koProfile from "@/locales/ko/profile.json";
 import koProjectDetail from "@/locales/ko/project_detail.json";
 import koProjects from "@/locales/ko/projects.json";
 import koScans from "@/locales/ko/scans.json";
@@ -39,6 +41,7 @@ void i18n
         approvals: enApprovals,
         integrations: enIntegrations,
         notifications: enNotifications,
+        profile: enProfile,
       },
       ko: {
         common: koCommon,
@@ -50,6 +53,7 @@ void i18n
         approvals: koApprovals,
         integrations: koIntegrations,
         notifications: koNotifications,
+        profile: koProfile,
       },
     },
     fallbackLng: "en",
@@ -65,6 +69,7 @@ void i18n
       "approvals",
       "integrations",
       "notifications",
+      "profile",
     ],
     interpolation: { escapeValue: false },
     detection: {

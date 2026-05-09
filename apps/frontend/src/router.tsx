@@ -15,6 +15,7 @@ import { AdminUsersPage } from "@/features/admin/users/AdminUsersPage";
 import { ApprovalsPage } from "@/features/approvals/ApprovalsPage";
 import { IntegrationsPage } from "@/features/integrations/IntegrationsPage";
 import { NotificationsPage } from "@/features/notifications/NotificationsPage";
+import { UserProfilePage } from "@/features/profile/UserProfilePage";
 import { ProjectCreatePage } from "@/features/projects/ProjectCreatePage";
 import { ProjectDetailPage } from "@/features/projects/ProjectDetailPage";
 import { ProjectListPage } from "@/features/projects/ProjectListPage";
@@ -61,6 +62,7 @@ export function AppRoutes() {
         <Route path="approvals" element={<ApprovalsPage />} />
         <Route path="integrations" element={<IntegrationsPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
+        <Route path="profile" element={<UserProfilePage />} />
       </Route>
 
       {/* Admin section retains its own layout (existence-hide guard inside) */}

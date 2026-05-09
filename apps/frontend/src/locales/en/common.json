@@ -10,7 +10,8 @@
     "korean": "한국어"
   },
   "auth": {
-    "logout": "Sign out"
+    "logout": "Sign out",
+    "profile": "Profile"
   },
   "home": {
     "title": "Welcome to TrustedOSS Portal",

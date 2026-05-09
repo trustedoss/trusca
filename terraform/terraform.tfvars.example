@@ -1,0 +1,24 @@
+# TrustedOSS Portal — Demo SaaS Terraform variables.
+#
+# Copy to terraform.tfvars (git-ignored) and fill in. NEVER commit
+# terraform.tfvars — db_password and app_secret_key are sensitive.
+
+project_id = "my-trustedoss-demo"
+region     = "us-central1"
+zone       = "us-central1-a"
+
+# Generate with: openssl rand -base64 24 | tr -d '=+/' | cut -c1-24
+db_password = "REPLACE_ME_WITH_A_24_CHAR_RANDOM"
+
+# Generate with: openssl rand -hex 32
+app_secret_key = "REPLACE_ME_WITH_64_HEX_CHARS_FROM_OPENSSL"
+
+# Container images — replace PROJECT_ID with your project.
+backend_image  = "us-central1-docker.pkg.dev/my-trustedoss-demo/trustedoss/backend:2.0.0-rc1"
+frontend_image = "us-central1-docker.pkg.dev/my-trustedoss-demo/trustedoss/frontend:2.0.0-rc1"
+
+# Cost controls (defaults shown; override only if you understand the impact).
+# cloud_run_min_instances = 0
+# cloud_run_max_instances = 3
+# redis_memory_size_gb    = 1
+# db_tier                 = "db-f1-micro"
