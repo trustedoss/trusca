@@ -88,6 +88,10 @@ services:
       <<: *backend-env
     volumes:
       - ./apps/backend:/app
+      # Phase 6 chore PR #19 — backup/restore tasks shell out to scripts/.
+      # Mount read-only so the container can locate them at /app/scripts/.
+      - ./scripts:/app/scripts:ro
+      - ./backups:/app/backups
     ports:
       - "8000:8000"
     depends_on:
@@ -111,6 +115,9 @@ services:
       <<: *backend-env
     volumes:
       - ./apps/backend:/app
+      # Phase 6 chore PR #19 — backup/restore tasks shell out to scripts/.
+      - ./scripts:/app/scripts:ro
+      - ./backups:/app/backups
     depends_on:
       postgres:
         condition: service_healthy
@@ -142,6 +149,10 @@ services:
       <<: *backend-env
     volumes:
       - ./apps/backend:/app
+      # Phase 6 chore PR #19 — beat imports tasks.backup at startup; the
+      # module's lazy script lookup needs scripts/ visible at /app/scripts/.
+      - ./scripts:/app/scripts:ro
+      - ./backups:/app/backups
     depends_on:
       postgres:
         condition: service_healthy

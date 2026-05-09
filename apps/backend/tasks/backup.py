@@ -53,11 +53,31 @@ from tasks.celery_app import celery_app
 
 log = structlog.get_logger("tasks.backup")
 
-# Repo root: the shell scripts live in ``<repo>/scripts/`` and assume CWD =
-# repo root (``cd "$ROOT_DIR"`` at the top of each script).
-_REPO_ROOT = Path(__file__).resolve().parents[3]
-_BACKUP_SCRIPT = _REPO_ROOT / "scripts" / "backup.sh"
-_RESTORE_SCRIPT = _REPO_ROOT / "scripts" / "restore.sh"
+# Resolve the scripts/ directory at call time, not import time.
+#
+# In the container the package lives at ``/app/tasks/backup.py`` (only 2
+# parents above the file) so a hard ``parents[3]`` crashes the import. On
+# the host the same file is 3 parents above the repo root. We support both
+# layouts plus a ``TRUSTEDOSS_SCRIPTS_DIR`` env override (used by tests and
+# by deployments where scripts live elsewhere).
+def _scripts_dir() -> Path:
+    env_override = os.environ.get("TRUSTEDOSS_SCRIPTS_DIR")
+    if env_override:
+        return Path(env_override)
+    here = Path(__file__).resolve()
+    candidates: list[Path] = []
+    # Container layout: ``./scripts`` mounted next to ``/app`` (i.e. /app/scripts).
+    if len(here.parents) >= 2:
+        candidates.append(here.parents[1] / "scripts")
+    # Host / monorepo layout: ``<repo>/apps/backend/tasks/backup.py``.
+    if len(here.parents) >= 4:
+        candidates.append(here.parents[3] / "scripts")
+    for c in candidates:
+        if (c / "backup.sh").is_file():
+            return c
+    raise BackupTaskError(
+        f"scripts/ directory with backup.sh not found; tried: {candidates}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -172,10 +192,11 @@ def _run_backup(
     # the repo root before resolving relative paths.
     env["BACKUP_DIR"] = str(backup_dir)
 
+    scripts_dir = _scripts_dir()
     try:
         completed = subprocess.run(  # noqa: S603 — shell=False, fixed argv
-            ["bash", str(_BACKUP_SCRIPT)],  # noqa: S607 — bash via PATH; argv is repo-controlled
-            cwd=str(_REPO_ROOT),
+            ["bash", str(scripts_dir / "backup.sh")],  # noqa: S607 — bash via PATH; argv is repo-controlled
+            cwd=str(scripts_dir.parent),
             env=env,
             capture_output=True,
             text=True,
@@ -333,10 +354,11 @@ def _run_restore(
     env = dict(os.environ)
     env["BACKUP_RESTORE_CONFIRM"] = "yes"
 
+    scripts_dir = _scripts_dir()
     try:
         subprocess.run(  # noqa: S603 — shell=False, fixed argv
-            ["bash", str(_RESTORE_SCRIPT), str(backup_path)],  # noqa: S607 — bash via PATH; argv is repo-controlled
-            cwd=str(_REPO_ROOT),
+            ["bash", str(scripts_dir / "restore.sh"), str(backup_path)],  # noqa: S607 — bash via PATH; argv is repo-controlled
+            cwd=str(scripts_dir.parent),
             env=env,
             capture_output=True,
             text=True,
