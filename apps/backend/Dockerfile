@@ -23,4 +23,8 @@ COPY . /app
 
 EXPOSE 8000
 
+# nosemgrep: dockerfile.security.missing-user.missing-user — dev image only.
+# uvicorn --reload watches the bind-mounted source tree, which requires
+# matching uid/gid with the host. Production uses Dockerfile.prod which
+# pins `USER trustedoss` (see Dockerfile.prod:61).
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

@@ -384,6 +384,9 @@ async def restore_backup_endpoint(
                 if member.name.startswith("/") or ".." in Path(member.name).parts:
                     raise ValueError(f"unsafe tar member: {member.name!r}")
             # Python 3.12+: filter='data' rejects unsafe members.
+            # nosemgrep: trailofbits.python.tarfile-extractall-traversal — preflight
+            # loop above rejects "/"-prefixed and ".." members; filter="data"
+            # adds a second-layer guard that rejects symlinks/devices/oversize.
             tar.extractall(path=str(extract_dir), filter="data")  # noqa: S202
     except (tarfile.TarError, ValueError, OSError) as exc:
         shutil.rmtree(upload_dir, ignore_errors=True)

@@ -1,0 +1,21 @@
+# Semgrep ignore list — TrustedOSS Portal
+#
+# Each entry must be either a glob pattern (one per line) or a comment.
+# We use this for non-product material that semgrep happens to scan but
+# whose findings cannot be acted on (agent definitions, sample snippets,
+# generated artifacts).
+
+# Claude Code agent definitions ship runnable-looking code samples that are
+# documentation, not deployable code. Treating them as product would force
+# every snippet to satisfy production hardening rules.
+.claude/
+
+# Documentation site source — Markdown / MDX with code samples.
+docs/
+
+# Generated bundles / build outputs.
+dist/
+build/
+node_modules/
+.venv/
+__pycache__/
