@@ -75,6 +75,11 @@ def database_url() -> str:
                 "DATABASE_URL not set and composed DB_* env vars incomplete; "
                 f"missing: {', '.join(missing)}"
             )
+        # `missing` empty implies all four are set — narrow types for mypy.
+        assert user is not None
+        assert password is not None
+        assert host is not None
+        assert name is not None
         port = os.getenv("DB_PORT", "5432")
         # asyncpg accepts host=/cloudsql/... as a unix socket path encoded in
         # the host segment (Cloud SQL Auth Proxy). quote_plus on the password
