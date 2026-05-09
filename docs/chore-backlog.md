@@ -194,13 +194,11 @@
 - intro.md GA 배지 + What's new + release-notes/v2.0.0.md
 - `docs/installation/gcp-deploy*.md` → `docs-site/docs/installation/` 이동 + sidebar 등록
 
-### Chore N — UAT 시나리오 갱신 (PR #28 ~ #33)
+### ~~Chore N — UAT 시나리오 갱신 (PR #28 ~ #33)~~ ✅ PR #37 (2026-05-09)
 **우선순위**: 4
-**브랜치 제안**: `chore/uat-scenarios-v2.0.0`
-**예상 소요**: 0.5 세션
+**브랜치**: `chore/uat-scenarios-v2.0.0`
 
-미흡:
-- `docs/sessions/2026-05-08-uat-manual-test-scenarios.md` 가 PR #14 시점 — 신규 12개 시나리오 추가 (forgot/reset, OAuth 로그인 + unlink, /integrations, /admin/backup, /notifications, WebSocket reconnect, GCP demo 배포, EN/KO 토글)
+**처리 결과**: `docs/sessions/2026-05-09-uat-v2.0.0-scenarios.md` 신규 작성 (950 라인). 시나리오 16~27 (12개 / 44개 sub-scenario). PR #28~#33 GA 신규 기능 망라 — forgot/reset, OAuth GitHub/Google, `/profile` Connected Accounts + Unlink, `/integrations` API Key + Webhook, `/admin/backup` UI + typing-gate, 알림 벨 + Inbox + Preferences (in-app always-on 가드 포함), WebSocket 재연결, GCP Demo SaaS 배포, EN/KO 토글.
 
 ### ~~Chore O — security-reviewer pass (PRs #29 / #32 / #33)~~ ✅ PR #36 (2026-05-09)
 **우선순위**: 3 (CLAUDE.md §7 Producer-Reviewer 회수)
