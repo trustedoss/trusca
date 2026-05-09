@@ -91,7 +91,10 @@ jobs:
           python-version: "3.12"
 
       - name: Install semgrep
-        run: python -m pip install semgrep==1.96.0
+        # setuptools is needed because opentelemetry (transitively imported by
+        # semgrep>=1.x via tracing) reaches for pkg_resources, which Python
+        # 3.12 hosted toolcache does not bundle.
+        run: python -m pip install setuptools semgrep==1.96.0
 
       - name: Run semgrep (HARD FAIL on ERROR severity)
         # `--config=auto` picks the OSS rule packs matching the languages

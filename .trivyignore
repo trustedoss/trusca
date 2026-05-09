@@ -252,3 +252,14 @@ CVE-2026-3505
 # repo1.maven.org). No attacker-controlled XML reaches Xpp3Dom from a
 # resolver-only invocation. UNREACHED.
 CVE-2025-67030
+
+# CVE-2025-68121 — Go stdlib v1.22.7 → 1.24.13 / 1.25.7 / 1.26.0-rc.3 — CRITICAL
+# crypto/tls TLS-session-resumption certificate-validation flaw. The
+# vulnerable binaries Trivy reports are
+# `opt/go/pkg/tool/linux_amd64/{trace,vet}` — Go's own developer tools
+# bundled with the SDK install. cdxgen invokes `go list -m all` and
+# `go mod` for SBOM extraction; it never exec's `go tool trace` or
+# `go tool vet`, and these binaries do not start network servers nor
+# accept inbound TLS handshakes. UNREACHED. Tracked for SDK bump in
+# Phase 8 hardening (worker base image refresh).
+CVE-2025-68121
