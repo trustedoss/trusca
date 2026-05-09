@@ -22,7 +22,7 @@
 #   Temurin    — Eclipse Temurin JRE 21                      (GPL-2.0-CE — runtime
 #                only; Classpath Exception lets user code stay non-GPL).
 #   Maven      — Apache Maven 3.9.x                          (Apache-2.0)
-#   Gradle     — Gradle 8.10.x                               (Apache-2.0)
+#   Gradle     — Gradle 8.14.x                               (Apache-2.0)
 #   Composer   — getcomposer.org                             (MIT)
 #   Ruby/MRI   — ruby-lang.org                               (Ruby License / BSD)
 #   Bundler    — bundler.io                                  (MIT)
@@ -36,7 +36,21 @@
 # so the API and worker share the cached Python install layer when both are
 # built on the same host.
 # ---------------------------------------------------------------------------
-FROM python:3.12.7-slim AS base
+# Chore P (Phase 8 worker-image refresh): bumped python:3.12.7 → 3.12.13.
+# 6 patch releases of CPython security fixes land on top of the same Debian
+# bookworm-slim base; all backend deps (asyncpg / sqlalchemy / fastapi)
+# already support 3.12.x without changes. Stays on 3.12 (not 3.13) so the
+# api Dockerfile (still on 3.12) and the worker share a Python ABI.
+#
+# Explicit `-bookworm` suffix: as of late 2026 the upstream `python:3.12-slim`
+# tag was rebased onto Debian 13 (trixie). Our apt-repo additions (Microsoft
+# `/debian/12/` + Adoptium `bookworm main`) and their signing keys are still
+# pinned to bookworm. Trixie's `sqv` rejects the Microsoft repo's SHA1-bound
+# binding signature ("Policy rejected non-revocation signature requiring
+# second pre-image resistance ... SHA1 is not considered secure since
+# 2026-02-01"). Stay on bookworm until both upstreams publish trixie-
+# compatible signing keys; revisit when bumping to Python 3.13.
+FROM python:3.12.13-slim-bookworm AS base
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -129,8 +143,12 @@ ENV JAVA_HOME=/usr/lib/jvm/java-21 \
 # filesystem and the npm bundle is on it, so the only way to keep the
 # image-scan gate green without `.trivyignore` entries for tooling-not-
 # reached-at-runtime is to ship a patched npm.
+# Chore P (Phase 8 worker-image refresh): bumped 11.13.0 → 11.14.1
+# (latest 11.x as of 2026-05). Same drop-cross-spawn / bundled-tar 7.x
+# rationale as the original 11.13.0 bump; 11.14.1 picks up further
+# bundled-dep patches (npm changelog 2026-04~05).
 ENV NODE_MAJOR=20 \
-    NPM_VERSION=11.13.0
+    NPM_VERSION=11.14.1
 RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/* \
@@ -268,8 +286,17 @@ RUN apt-get update \
 # the version requires bumping the hash deliberately, so a CDN compromise
 # can't silently swap a backdoored zip in. Get the next hash with:
 #   curl https://services.gradle.org/distributions/gradle-${V}-bin.zip.sha256
-ENV GRADLE_VERSION=8.10.2 \
-    GRADLE_SHA256=31c55713e40233a8303827ceb42ca48a47267a0ad4bab9177123121e71524c26 \
+# Chore P (Phase 8 worker-image refresh): bumped 8.10.2 → 8.14.3 — latest
+# 8.x patch as of 2026-05. We deliberately stay on 8.x rather than jump to
+# 9.x: Gradle 9 dropped Java 8/11/16 source compat and reworked the
+# configuration cache, which would force every downstream consumer's
+# `gradle dependencies` invocation through a compatibility check that
+# can fail on older lockfiles. cdxgen calls `gradle dependencies` only as
+# an ENUMERATION command, so 8.x covers every modern build (Gradle 8 line
+# released through 2026 still receives security patches).
+# Hash from https://services.gradle.org/distributions/gradle-8.14.3-bin.zip.sha256
+ENV GRADLE_VERSION=8.14.3 \
+    GRADLE_SHA256=bd71102213493060956ec229d946beee57158dbd89d0e62b91bca0fa2c5f3531 \
     GRADLE_HOME=/opt/gradle
 RUN set -eux; \
     curl -fsSL -o /tmp/gradle.zip \
@@ -291,9 +318,19 @@ RUN set -eux; \
 # strictly stronger anyway. Get the next pair with:
 #   curl https://dl.google.com/go/go${V}.linux-amd64.tar.gz.sha256
 #   curl https://dl.google.com/go/go${V}.linux-arm64.tar.gz.sha256
-ENV GO_VERSION=1.22.7 \
-    GO_SHA256_AMD64=fc5d49b7a5035f1f1b265c17aa86e9819e6dc9af8260ad61430ee7fbe27881bb \
-    GO_SHA256_ARM64=ed695684438facbd7e0f286c30b7bc2411cfc605516d8127dc25c62fe5b03885 \
+# Chore P (Phase 8 worker-image refresh): bumped 1.22.7 → 1.25.10. The
+# previous 1.22.7 bundled `pkg/tool/{trace,vet}` binaries that Trivy
+# flagged as carrying CVE-2025-68121 (CRITICAL — crypto/tls session-
+# resumption certificate-validation flaw). The fix landed in 1.24.13 /
+# 1.25.7 / 1.26.0-rc.3; we go to 1.25.10 (latest 1.25.x) for the longest
+# remaining support window without taking 1.26 (released ~2 months ago,
+# limited soak time for the toolchain). cdxgen invokes `go list -m all`
+# / `go mod` only — both work unchanged across 1.22 → 1.25, and any
+# project go.mod with `toolchain go1.22.x` resolves automatically.
+# Hashes from https://go.dev/dl/?mode=json (the `files` array of go1.25.10).
+ENV GO_VERSION=1.25.10 \
+    GO_SHA256_AMD64=42d4f7a32316aa66591eca7e89867256057a4264451aca10570a715b3637ba70 \
+    GO_SHA256_ARM64=654da1f9b50a5d1c2a85ccf8ed405aa89c06e94d18384628bf186f7712677b08 \
     GOROOT=/opt/go
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
@@ -328,7 +365,13 @@ RUN curl -fsSL -o /tmp/ms.deb \
 # OSS Review Toolkit — license & dependency analyzer. ~600MB extracted, so
 # kept as the last big layer to maximise cache hits when smaller tools bump.
 # The release ships a self-contained zip with launcher scripts under bin/.
-ENV ORT_VERSION=85.0.0 \
+# Chore P (Phase 8 worker-image refresh): bumped 85.0.0 → 85.1.1. Stays
+# on the 85.x line so the JRE 21 requirement and our `ort evaluate` CLI
+# invocation are unchanged; 85.1.1 picks up json-smart 2.5.2 / msgpack-
+# core 0.9.11 transitive bumps so the matching `.trivyignore` entries
+# (CVE-2024-57699, CVE-2026-21452) MAY drop out — re-evaluate after
+# the image-scan CI step runs against the bumped image.
+ENV ORT_VERSION=85.1.1 \
     ORT_HOME=/opt/ort
 RUN curl -fsSL -o /tmp/ort.zip \
         "https://github.com/oss-review-toolkit/ort/releases/download/${ORT_VERSION}/ort-${ORT_VERSION}.zip" \

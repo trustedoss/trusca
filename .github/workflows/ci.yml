@@ -265,54 +265,30 @@ jobs:
   image-scan:
     name: image-scan (worker)
     runs-on: ubuntu-22.04
-    # chore PR #25 (chore/security-bundle): CRITICAL is now HARD FAIL,
-    # HIGH remains advisory. This is implemented as two sequential Trivy
-    # steps — the first (severity=CRITICAL) blocks the job, the second
-    # (severity=HIGH, continue-on-error: true) is logged for triage.
-    # See the per-step comments below for the rationale and the Phase 8
-    # promotion plan for HIGH.
+    # Chore P (Phase 8 worker-image refresh): HIGH is now HARD FAIL alongside
+    # CRITICAL. Implemented as a single Trivy step with `severity:
+    # CRITICAL,HIGH`. The previous two-step split (CRITICAL hard /
+    # HIGH advisory, chore PR #25) was a deliberate stop-gap while we
+    # collected reach-analysis on the multi-language toolchain bundle
+    # findings (Maven jars, cdxgen-plugins-bin Go binaries, ORT java
+    # jars). All of those are now either bumped (Go SDK 1.22 → 1.25,
+    # ORT 85.0.0 → 85.1.1, npm 11.13.0 → 11.14.1, Gradle 8.10.2 → 8.14.3)
+    # or carry per-CVE reach-analysis ignores in `.trivyignore` with
+    # category-(3) justification (cdxgen-plugins-bin runtime-unreached
+    # since we never invoke any cdxgen plugin — see the cdxgen reach
+    # surface block in `.trivyignore` and apps/backend/integrations/
+    # cdxgen.py:107-115).
     #
-    # Previous chore PR (Python deps hygiene, merge 6366b62) used the
-    # same softening for the same reason; chore/worker-image-hardening
-    # then briefly restored hard-fail. chore PR #4's multi-language
-    # toolchain expansion landed five new HIGH findings inside the
-    # newly-bundled Maven jars (netty-codec, plexus-utils, etc.) —
-    # those need targeted dep bumps + reach analysis before they go
-    # back behind a hard gate, which we'll do as part of chore PR #5
-    # (the multi-language license fetcher PR — same scope window).
+    # `ignore-unfixed: true` keeps us from chasing CVEs upstream hasn't
+    # patched yet — those remain visible in the table but never bake
+    # into the actionable list. `trivyignores: ./.trivyignore` makes the
+    # file the single source of truth for accepted findings; new HIGH
+    # CVEs from a future bundle dep bump must either land an upstream
+    # fix or get a reach-analysis ignore through code review.
     #
-    # The previous chore PR (Python deps hygiene, merge 6366b62) deferred
-    # this gate because Trivy flagged 33 HIGH+CRITICAL on the non-Python
-    # bundle layers (Debian OS / cdxgen 11.11.0 npm transitives / ORT
-    # 85.0.0 java jars). chore/worker-image-hardening cleared them by:
-    #   1. apt-get upgrade -y in both Dockerfile.worker stages
-    #      → libgnutls30 / Debian OS 7건 cleared at build time.
-    #   2. cdxgen 11.11.0 → 12.3.3 + npm self-upgrade to 11.13.0
-    #      → 11 node-pkg findings under usr/lib/node_modules/npm/**
-    #      cleared (NodeSource Node 20.x ships npm 10.8.2 whose bundled
-    #      cross-spawn 7.0.3 / tar 6.2.1 / glob 10.4.2 / minimatch 9.0.5
-    #      carry the CVEs; npm 11.13.0 drops cross-spawn and bumps the
-    #      others above Trivy's reported fixed-versions).
-    #   3. .trivyignore for residual non-runtime-reached findings:
-    #      a. ORT 85.0.0 java jars — 3 HIGH (json-smart,
-    #         bcprov-jdk18on-in-jruby-stdlib, msgpack-core). Upstream
-    #         fix exists but no patched ORT release ships it yet.
-    #         Category (2). UNREACHED under our `ort evaluate
-    #         --output-formats JSON` invocation (see
-    #         apps/backend/integrations/ort.py:128-139).
-    #      b. cdxgen-plugins-bin Go binaries — 12 findings (1 CRITICAL
-    #         grpc CVE-2026-33186 + 11 HIGH: docker/cli, docker/docker,
-    #         go-jose, go-getter, moby/buildkit×2, moby/spdystream,
-    #         sigstore/timestamp-authority, otel, otel/sdk×2). The
-    #         cdxgen postinstall script downloads this bundle even with
-    #         `npm install --omit=optional`, so it stays on the image
-    #         filesystem. Category (3) — UNREACHED because our cdxgen
-    #         invocation in apps/backend/integrations/cdxgen.py never
-    #         executes any plugin binary (OSV matching → DT, image SAST
-    #         out of scope for the worker). Phase 8 hardening backlog:
-    #         carve plugins-bin out at image build once we verify it
-    #         doesn't break cdxgen's startup.
-    # Re-evaluate every 180 days OR on next upstream release.
+    # Re-evaluate the .trivyignore entries every 180 days OR on next
+    # upstream release of the bundled tool — see `.trivyignore` policy
+    # header.
     steps:
       - uses: actions/checkout@v4
 
@@ -337,14 +313,15 @@ jobs:
           cache-from: type=gha,scope=worker
           cache-to: type=gha,scope=worker,mode=max
 
-      - name: Trivy scan (HARD FAIL on CRITICAL)
-        # Phase 8 PR #25 (chore/security-bundle): partial restoration of
-        # the hard-fail gate — CRITICAL findings now block the job, while
-        # HIGH stays advisory (see the next step). This narrows the gate
-        # to "exploit-grade or RCE-class" CVEs, which is small enough to
-        # service via targeted dep bumps + .trivyignore on a per-PR basis
-        # without re-introducing the moving-corpus problem that motivated
-        # the original soft-fail (chore PR #4).
+      - name: Trivy scan (HARD FAIL on CRITICAL,HIGH)
+        # Chore P (Phase 8 worker-image refresh): single combined gate.
+        # Replaces the chore PR #25 two-step split (CRITICAL hard / HIGH
+        # advisory). All previously-advisory HIGH findings are now either
+        # patched via base-image dep bumps (Go SDK / ORT / Gradle / npm —
+        # see Dockerfile.worker `Chore P` comments) or accepted with a
+        # per-CVE reach-analysis ignore in `.trivyignore`. New HIGH
+        # findings from a future dep bump must clear the same bar
+        # (upstream fix OR reach-analysis ignore) before merge.
         #
         # `ignore-unfixed: true` keeps us from chasing CVEs upstream
         # hasn't patched yet — those remain visible in the table for
@@ -353,34 +330,23 @@ jobs:
         with:
           image-ref: trustedoss/backend-worker:dev
           format: table
-          severity: CRITICAL
+          severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: "1"
           vuln-type: os,library
-          trivyignores: ./.trivyignore
-
-      - name: Trivy scan (HIGH — advisory)
-        # HIGH findings remain advisory in chore PR #25 — the new
-        # multi-language Maven jars (netty-codec, plexus-utils, etc.) and
-        # cdxgen-plugins-bin Go transitives still carry HIGH CVEs that we
-        # haven't reach-analysed end-to-end. `continue-on-error: true`
-        # keeps the JOB green; findings still print to the log + show on
-        # the PR's check-run page so operators triage them async.
-        #
-        # Promotion to HARD FAIL on HIGH is the Phase 8 hardening backlog
-        # task — see CLAUDE.md §Phase 8 + docs/v2-execution-plan.md §8.
-        # The two-step split (CRITICAL hard / HIGH soft) is the single
-        # place to flip the policy back, by deleting this step and
-        # widening the severity filter on the previous step.
-        uses: aquasecurity/trivy-action@v0.36.0
-        continue-on-error: true
-        with:
-          image-ref: trustedoss/backend-worker:dev
-          format: table
-          severity: HIGH
-          ignore-unfixed: true
-          exit-code: "1"
-          vuln-type: os,library
+          # `scanners: vuln` explicitly disables Trivy's secret + license
+          # scanners on this gate. We gate on CVEs here; secrets are
+          # caught by the separate gitleaks job (cleaner separation of
+          # concerns), and licenses are owned by ORT in the runtime
+          # pipeline. Without this Go SDK 1.25 ships a test-fixture
+          # private key at `/opt/go/src/crypto/x509/platform_root_key.pem`
+          # (NOT an operational secret — it's a Go stdlib test artifact
+          # bundled with the source-only `src/` tree) which Trivy's
+          # secret scanner flags as HIGH and breaks this gate. Disabling
+          # the secret scanner here is preferred over a per-file ignore
+          # because the same Go source tree contains other test fixtures
+          # that may surface as secrets in future Go versions.
+          scanners: vuln
           trivyignores: ./.trivyignore
 
   # -------------------------------------------------------------------------

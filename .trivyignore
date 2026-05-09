@@ -26,7 +26,7 @@
 #   `trivyignores: ./.trivyignore` for explicit-ness (zero side effects).
 #
 # ----------------------------------------------------------------------------
-# ORT 85.0.0 reach surface (single source of truth — keep in sync with
+# ORT 85.1.1 reach surface (single source of truth — keep in sync with
 # apps/backend/integrations/ort.py:128-139):
 #   cmd = [
 #       "ort", "evaluate",
@@ -75,7 +75,9 @@
 # ============================================================================
 
 # CVE-2024-57699 — net.minidev:json-smart 2.5.0 → 2.5.2
-# Target: opt/ort/lib/json-smart-2.5.0.jar (ORT 85.0.0 transitive).
+# Target: opt/ort/lib/json-smart-2.5.0.jar (ORT 85.1.1 transitive — same
+#   bundled version as 85.0.0; ORT 85.1.x patch line did not refresh
+#   json-smart, awaiting an 86.x cut on main).
 # CVSS: HIGH (DoS via stack exhaustion, incomplete fix for CVE-2023-1370).
 # Reach: json-smart is loaded by Spring Security / nimbus-jose-jwt to parse
 #   OAuth2/JWT payloads. Our `ort evaluate` invocation makes no HTTP calls
@@ -83,7 +85,7 @@
 #   derived analyzer file are the only inputs, both local files. The
 #   parser's exploit primitive (deeply-nested attacker JSON) requires
 #   attacker control of the JSON stream, which we never expose. UNREACHED.
-# Re-evaluate: 2026-11-06 or on next ORT release.
+# Re-evaluate: 2026-11-09 or on next ORT 86.x release.
 CVE-2024-57699
 
 # CVE-2026-5598 — org.bouncycastle:bcprov-jdk18on 1.79 → 1.84
@@ -98,7 +100,7 @@ CVE-2024-57699
 #   JRuby loaded BC, the CVE requires us to perform asymmetric-crypto
 #   verification with attacker-influenced inputs; we sign/verify nothing
 #   inside the worker via BC. UNREACHED.
-# Re-evaluate: 2026-11-06 or when JRuby ships a stdlib bump.
+# Re-evaluate: 2026-11-09 or when JRuby ships a stdlib bump.
 CVE-2026-5598
 
 # CVE-2026-21452 — org.msgpack:msgpack-core 0.9.10 → 0.9.11
@@ -110,8 +112,8 @@ CVE-2026-5598
 #   the JSON output formatter never goes through msgpack. The sole input
 #   we feed ORT is a CycloneDX JSON SBOM (cdxgen-produced) loaded via
 #   `--ort-file`, which is JSON-parsed, not msgpack. UNREACHED.
-# Re-evaluate: 2026-11-06 or on next ORT release (ORT main has bumped
-#   msgpack-core; awaiting 86.x cut).
+# Re-evaluate: 2026-11-09 or on next ORT 86.x release (ORT main has
+#   bumped msgpack-core; the 85.1.x patch line did not include it).
 CVE-2026-21452
 
 # ============================================================================
@@ -130,7 +132,7 @@ CVE-2026-21452
 # on disk (postinstall script downloads it regardless of
 # `npm install --omit=optional`) but is never executed.
 #
-# Re-evaluate: 2026-11-06 OR when cdxgen publishes a release that
+# Re-evaluate: 2026-11-09 OR when cdxgen publishes a release that
 #   refreshes plugins-bin OR when the Phase 8 hardening item (carving
 #   the plugins-bin directory out of the image) lands — whichever is
 #   sooner.
@@ -235,6 +237,20 @@ CVE-2026-42583
 # parser. Same client-only invocation rationale as CVE-2026-42583. UNREACHED.
 CVE-2026-42584
 
+# CVE-2026-42587 — io.netty:netty-codec-http 4.1.132.Final → 4.1.133.Final — HIGH
+# Third companion CVE in the same Netty release line, HttpContentDecompressor
+# `maxAllocation` bypass when decompressing attacker-controlled gzipped/deflate
+# bodies. Trivy first surfaced this on the Chore P CI run after ORT 85.0.0 →
+# 85.1.1 bump exposed the bundled netty-codec-http jar at 4.1.132.Final
+# (already covered for 42583/42584). Same client-only invocation rationale as
+# CVE-2026-42583: ORT only loads netty inside its `evaluate` command for
+# Maven/Gradle metadata fetches against repo1.maven.org / Gradle Central
+# (TLS-served, not attacker-controlled). The decompressor entry point is
+# never reached by `ort evaluate --rules-file <kts> --ort-file <sbom>
+# --output-formats JSON`. ORT 86.x will likely refresh netty to ≥4.1.133
+# in its bundled fat-jar — re-evaluate then. UNREACHED.
+CVE-2026-42587
+
 # CVE-2026-3505 — org.bouncycastle:bcpg-jdk18on 1.78.1 → 1.84 — HIGH
 # Bouncy Castle OpenPGP packet parser memory-amplification. Reachable
 # only when the JVM parses attacker-controlled OpenPGP messages.
@@ -253,13 +269,62 @@ CVE-2026-3505
 # resolver-only invocation. UNREACHED.
 CVE-2025-67030
 
-# CVE-2025-68121 — Go stdlib v1.22.7 → 1.24.13 / 1.25.7 / 1.26.0-rc.3 — CRITICAL
-# crypto/tls TLS-session-resumption certificate-validation flaw. The
-# vulnerable binaries Trivy reports are
-# `opt/go/pkg/tool/linux_amd64/{trace,vet}` — Go's own developer tools
-# bundled with the SDK install. cdxgen invokes `go list -m all` and
-# `go mod` for SBOM extraction; it never exec's `go tool trace` or
-# `go tool vet`, and these binaries do not start network servers nor
-# accept inbound TLS handshakes. UNREACHED. Tracked for SDK bump in
-# Phase 8 hardening (worker base image refresh).
-CVE-2025-68121
+# CVE-2025-68121 — REMOVED in Chore P (Phase 8 worker-image refresh).
+# Go SDK bumped from 1.22.7 → 1.25.10 in Dockerfile.worker; the
+# crypto/tls TLS-session-resumption fix landed in 1.25.7, so the
+# vulnerable `pkg/tool/linux_amd64/{trace,vet}` binaries are no longer
+# present in the image. Removed rather than retained-with-justification
+# because the upstream fix is shipped — keeping the entry would defeat
+# the policy's "every entry must have a current target" requirement.
+
+# ---------------------------------------------------------------------------
+# .NET SDK 8.0 reach surface (single source of truth — keep in sync with
+# apps/backend/integrations/dotnet_prep.py and Dockerfile.worker .NET install
+# block at lines 314-325):
+#   cmd = ["dotnet", "restore", "--use-lock-file"]
+# We only invoke `dotnet restore` to populate `obj/project.assets.json`
+# which cdxgen consumes for transitive NuGet enumeration. We do NOT run
+# `dotnet build`, `dotnet publish`, MSBuild via `dotnet msbuild`, or any
+# XML-DSig signature verification (the Microsoft.Build.Tasks.Core spoofing
+# CVEs target build/publish targets, not restore). The bundled assemblies
+# live under `/usr/share/dotnet/sdk/8.0.*/` and `/usr/share/dotnet/shared/
+# Microsoft.NETCore.App/*/`; restore loads NuGet metadata over HTTPS from
+# api.nuget.org (TLS-pinned by the .NET CLI) and writes lockfile JSON.
+# UNREACHED for every CVE below.
+#
+# Re-evaluate when the apt-installed dotnet-sdk-8.0 patch line
+# (currently 8.0.119 from packages.microsoft.com bookworm channel) surfaces
+# the upstream-fixed versions noted in each entry.
+# ---------------------------------------------------------------------------
+
+# CVE-2025-26646 — Microsoft.Build.Tasks.Core 17.11.31 → 17.11.36+ — HIGH
+# .NET / Visual Studio spoofing via crafted MSBuild task input. Vulnerable
+# code path: MSBuild task evaluation during `dotnet build` / `dotnet
+# publish` / direct `msbuild` invocations. We never call any of these.
+# `dotnet restore` does load Microsoft.Build.Tasks.Core into the runtime
+# but does not invoke the spoofing-class APIs. Apt-bookworm dotnet-sdk-8.0
+# pins to a patch level below the upstream fix; re-evaluate when the
+# packages.microsoft.com debian/12 channel ships ≥17.11.36. UNREACHED.
+CVE-2025-26646
+
+# CVE-2025-55247 — Microsoft.Build.Tasks.Core 17.11.31 → 17.11.48+ — HIGH
+# .NET denial-of-service via MSBuild task. Same reach class as
+# CVE-2025-26646 — restore-only invocation, no MSBuild task evaluation.
+# UNREACHED.
+CVE-2025-55247
+
+# CVE-2026-26171 — System.Security.Cryptography.Xml 8.0.0 → 8.0.3+ — HIGH
+# .NET XML-DSig security bypass + DoS in the XmlDsig signature verifier.
+# Reachable only when consuming application code calls SignedXml.CheckSignature
+# / VerifyReference on attacker-controlled XML. `dotnet restore` does not
+# invoke any XmlDsig API — NuGet package signature verification uses
+# X.509 / Authenticode chains, not XmlDsig. The vulnerable assembly is
+# present in the SDK shared framework but is not loaded by `restore`.
+# Re-evaluate when apt-bookworm ships dotnet-sdk-8.0 ≥8.0.3. UNREACHED.
+CVE-2026-26171
+
+# CVE-2026-33116 — System.Security.Cryptography.Xml 8.0.0 → 8.0.3+ — HIGH
+# .NET DoS via infinite recursion in the XmlDsig parser. Same reach class
+# as CVE-2026-26171 — XmlDsig API never invoked from `dotnet restore`.
+# UNREACHED.
+CVE-2026-33116

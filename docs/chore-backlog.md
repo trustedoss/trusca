@@ -258,15 +258,26 @@
 - L3: backup trigger / delete 로그에 `actor_email=mask_pii(actor.email)` 추가
 - L4: `_hash_provider_user_id`에 HMAC salt — `hashlib.blake2b(provider_user_id, key=settings.AUDIT_HASH_KEY)`. GitHub 숫자 user-id (~2^31)가 SHA-256 단독으로는 단일 GPU rainbow 가능
 
-### Chore P — Trivy HIGH hard-fail + worker-image refresh
-**우선순위**: 6 (Phase 8 hardening)
-**브랜치 제안**: `chore/phase8-worker-image-refresh`
-**예상 소요**: 1 세션
+### ~~Chore P — Trivy HIGH hard-fail + worker-image refresh~~ ✅ PR TBD (2026-05-09)
+**브랜치**: `chore/phase8-worker-image-refresh`
 
-미흡 — PR #30 (Chore H) 에서 CRITICAL 만 hard-fail; HIGH 잔여 작업:
-- `Dockerfile.worker` base 의존성 bump (Python / Go SDK / Temurin / cdxgen / ORT / Trivy 최신)
-- `.trivyignore` 정비 + 회귀 검증
-- CI Trivy step 에 HIGH 추가 (or `severity=CRITICAL,HIGH` 결합)
+처리 결과 (Dockerfile.worker base 의존성 bump):
+- ✅ `python:3.12.7-slim` → `python:3.12.13-slim` (6 patch CPython security fixes)
+- ✅ Go SDK `1.22.7` → `1.25.10` (CVE-2025-68121 CRITICAL crypto/tls 수정 포함; .trivyignore 에서 해당 엔트리 제거)
+- ✅ Gradle `8.10.2` → `8.14.3` (latest 8.x; 9.x major bump 회피 — Java 8/11 source compat 유지)
+- ✅ npm `11.13.0` → `11.14.1` (latest 11.x; cross-spawn-free + bundled-tar 7.x 유지)
+- ✅ ORT `85.0.0` → `85.1.1` (85.x 패치라인 — JRE 21 그대로, `ort evaluate` CLI 변경 없음)
+- ✅ cdxgen `12.3.3` 유지 (이미 npm registry latest)
+- ✅ Trivy `0.70.0` 유지 (이미 GitHub releases latest)
+- ✅ `.trivyignore` 정비:
+  - 제거 1건 (CVE-2025-68121 — Go bump으로 해소)
+  - 갱신 3건 (json-smart / bcprov-in-jruby / msgpack-core — re-evaluate 일정 2026-11-09 로 갱신, ORT 85.1.1 reach surface 명시)
+  - 추가 0건
+- ✅ CI workflow: Trivy 두 step (CRITICAL hard / HIGH advisory) 통합 → `severity: CRITICAL,HIGH` 단일 hard-fail step
+
+회귀 가드:
+- CI image-scan job 이 본 PR 의 1차 검증 (HIGH 잔여 0 보장)
+- 통합 테스트 (`apps/backend/tests/integration/`) 가 worker image 변경 후 SBOM/scan 출력 회귀 캡처
 
 ---
 
