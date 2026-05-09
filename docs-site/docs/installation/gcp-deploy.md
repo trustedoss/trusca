@@ -1,10 +1,18 @@
+---
+id: gcp-deploy
+title: GCP Demo SaaS deploy
+description: Operator runbook for the public Demo SaaS on GCP — Cloud Run + Cloud SQL + Memorystore via the bundled Terraform module.
+sidebar_label: GCP Demo SaaS
+sidebar_position: 3
+---
+
 # GCP Demo SaaS Deploy
 
 Operator runbook for deploying the TrustedOSS Portal Demo SaaS on Google
 Cloud Platform. Reproducible via the `terraform/` module at the repository
 root.
 
-The Demo SaaS is the public, low-cost (<$50/month idle) showcase
+The Demo SaaS is the public, low-cost (&lt;$50/month idle) showcase
 deployment. It is **not** intended for customer production data —
 production deploys go through the Helm chart instead.
 
@@ -150,7 +158,7 @@ gcloud billing budgets create \
   --threshold-rule=percent=90
 ```
 
-Idle cost target: **<$50/month** (Cloud SQL `db-f1-micro` ~$7 + Memorystore
+Idle cost target: **&lt;$50/month** (Cloud SQL `db-f1-micro` ~$7 + Memorystore
 1 GB BASIC ~$36 + VPC connector ~$3).
 
 ## 8. Cleanup

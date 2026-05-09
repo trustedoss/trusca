@@ -10,7 +10,11 @@ const sidebars: SidebarsConfig = {
       type: "category",
       label: "Installation",
       collapsed: false,
-      items: ["installation/docker-compose", "installation/upgrade"],
+      items: [
+        "installation/docker-compose",
+        "installation/upgrade",
+        "installation/gcp-deploy",
+      ],
     },
     {
       type: "category",
@@ -23,6 +27,20 @@ const sidebars: SidebarsConfig = {
         "user-guide/vulnerabilities",
         "user-guide/sbom",
         "user-guide/approvals",
+        "user-guide/auth-and-profile",
+        "user-guide/notifications",
+        "user-guide/integrations",
+      ],
+    },
+    {
+      type: "category",
+      label: "Contributor guide",
+      collapsed: true,
+      items: [
+        "contributor-guide/getting-started",
+        "contributor-guide/coding-standards",
+        "contributor-guide/testing-guide",
+        "contributor-guide/agent-team",
       ],
     },
     {
@@ -58,6 +76,12 @@ const sidebars: SidebarsConfig = {
         "reference/env-variables",
         "reference/api-overview",
       ],
+    },
+    {
+      type: "category",
+      label: "Release notes",
+      collapsed: true,
+      items: ["release-notes/v2-0-0"],
     },
   ],
 };

@@ -181,12 +181,10 @@ PR #31 의 13 xfail 정리:
 > 다음 세션 시작 prompt: `docs/sessions/_next-session-prompt-post-ga-cleanup.md`.
 > 우선순위 순서로 한 PR = 한 chore.
 
-### Chore M — 문서화 회수 (`docs-site/`)
+### ~~Chore M — 문서화 회수 (`docs-site/`)~~ ✅ PR #34 (2026-05-09)
 **우선순위**: 1 (CLAUDE.md §8 "문서 동행" 위반 회수)
-**브랜치 제안**: `chore/docs-refresh-post-ga`
-**예상 소요**: 1.5 세션
-
-미흡 — PR #28 ~ #33 신규 기능 가이드 부재 + KO 미러 누락:
+**브랜치**: `chore/docs-refresh-post-ga`
+**처리 결과**: EN 8개 신규 + KO 13개 미러 + 3개 갱신 + sidebars/intro/.gitignore 정비. EN/KO Docusaurus build 양쪽 SUCCESS.
 - user-guide/{auth-and-profile, notifications, integrations}.md 신규 (EN + KO)
 - admin-guide/{backup-and-restore, api-keys}.md 갱신 (UI 사용법 추가)
 - contributor-guide/* 신규 디렉토리 (4 파일 EN + KO)

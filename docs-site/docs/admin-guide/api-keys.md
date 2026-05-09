@@ -14,6 +14,16 @@ API keys are credentials for **non-interactive** clients — CI runners, webhook
 `team_admin` (issues team-scoped keys) and `super_admin` (issues org-scoped keys).
 :::
 
+## Manage with the /integrations UI
+
+Most users issue and revoke their own keys from the [Integrations page](../user-guide/integrations.md). The `/integrations` UI:
+
+- Lists every key the signed-in user is permitted to manage.
+- Opens a one-time reveal modal on **Create**, with a copy-to-clipboard button and a hard warning that the full key is shown only once.
+- Offers per-row **Revoke** with a confirmation dialog; revocation propagates within ~5 seconds.
+
+This page covers the **server-side mechanics** — key shape, hashing, scope semantics, audit log, and rotation strategy. Users who only need to wire a key into CI can stop at the [Integrations user guide](../user-guide/integrations.md).
+
 ## Key shape
 
 ```

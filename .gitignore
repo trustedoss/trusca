@@ -46,3 +46,10 @@ redis-data/
 # Workspace / scan output
 workspace/
 .ort/scan-results/
+
+# Docusaurus build cache
+docs-site/.docusaurus/
+docs-site/build/
+
+# apps/frontend artifact (shadcn/ui add output dir)
+apps/frontend/@/

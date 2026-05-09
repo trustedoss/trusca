@@ -1,0 +1,129 @@
+---
+id: integrations
+title: 통합
+description: /integrations 페이지에서 CI 러너용 API Key를 발급하고 GitHub·GitLab Webhook을 구성합니다.
+sidebar_label: 통합
+sidebar_position: 9
+---
+
+# 통합
+
+`/integrations`는 **비대화형 자격증명**을 다루는 사용자용 허브입니다. 두 가지 서로 다른 항목을 묶습니다.
+
+- **API Key** — CI 러너·스크립트·외부 서비스가 포털 API에 인증할 때 사용하는 자격증명.
+- **Webhook** — GitHub와 GitLab이 저장소 이벤트(push, pull request)를 푸시하기 위해 포털이 노출하는 인바운드 URL.
+
+:::note 대상 독자
+조회는 `developer`, 팀 범위 API Key 발급·폐기는 `team_admin`, 조직 범위 Key 발급은 `super_admin`. 페이지는 본인이 수행할 수 없는 동작을 숨깁니다.
+:::
+
+## API Key
+
+`/integrations`를 열고 **API keys** 탭으로 전환합니다. 목록은 본인이 관리할 수 있는 모든 Key를 표시합니다 — 라벨, prefix, scope, 만료, 마지막 사용 메타데이터.
+
+![통합 — API Key 목록](./img/integrations-keys.png)
+
+### Key 생성
+
+1. **New API key**를 클릭합니다.
+2. 폼을 채웁니다.
+   - **Label** — Key 용도를 떠올리게 하는 자유 텍스트(예: `github-action-checkout-service`).
+   - **Scope** — `org`, `team`, `project`. 낮은 scope가 더 엄격합니다. 필요한 호출을 커버하는 가장 작은 scope를 선택하세요.
+   - **Expiry** — 30 / 90 / 180 / 365일 프리셋 또는 커스텀. 만료 없는 Key는 권장되지 않습니다.
+3. **Create**를 클릭합니다.
+
+포털은 전체 Key가 담긴 **1회 노출 모달**을 엽니다.
+
+```text
+tos_a1b2c3d4_eaff8b91d36c5e0a2f1c4d7e8a9b0c2d
+```
+
+:::caution One-time reveal
+전체 Key는 **단 한 번만** 표시됩니다. 모달을 닫으면 prefix만 보입니다. 지금 복사해서 CI의 시크릿 저장소에 붙여 넣은 다음 **Done**을 클릭하세요.
+:::
+
+모달에는 **Copy** 버튼과 명시적 경고가 있습니다 — *"This is the only time you will see the full key. If you lose it, you must create a new one."*
+
+### Key 사용
+
+모든 요청의 `Authorization` 헤더에 Key를 전달하세요. `Bearer`와 `ApiKey` 두 스킴 모두 허용됩니다. OpenAPI 도구 호환성을 위해 `Bearer`를 권장합니다.
+
+```bash
+curl -sS \
+  -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+  https://trustedoss.example.com/api/v1/projects
+```
+
+**GitHub Actions**에서는 Key를 저장소 또는 조직 시크릿에 보관하고 환경 변수로 노출합니다.
+
+```yaml
+- name: Trigger TrustedOSS scan
+  env:
+    TRUSTEDOSS_API_KEY: ${{ secrets.TRUSTEDOSS_API_KEY }}
+  run: curl -sS -H "Authorization: Bearer $TRUSTEDOSS_API_KEY" ...
+```
+
+**Jenkins**에서는 **Credentials** 플러그인(Secret text)을 사용해 stage 안에서 바인딩합니다.
+
+```groovy
+stage('Scan') {
+  withCredentials([string(credentialsId: 'trustedoss-api-key', variable: 'TRUSTEDOSS_API_KEY')]) {
+    sh 'curl -sS -H "Authorization: Bearer $TRUSTEDOSS_API_KEY" ...'
+  }
+}
+```
+
+### Key 폐기
+
+API Key 목록에서 행에 마우스를 올리고 **Revoke**를 클릭한 뒤 다이얼로그에서 확인합니다. 폐기는 즉시 적용되며(인증 캐시 TTL ~5초) 되돌릴 수 없습니다.
+
+## Webhook
+
+**Webhooks** 탭으로 전환합니다. API Key와 달리 Webhook URL은 **고정**입니다 — 포털이 well-known 경로로 노출하며, 공급자(GitHub / GitLab)에서 그 URL로 요청을 보내도록 연결합니다.
+
+![통합 — Webhooks 탭](./img/integrations-webhooks.png)
+
+### GitHub
+
+GitHub에 등록할 URL — `https://<your-host>/v1/webhooks/github`.
+
+- **Content-Type:** `application/json`.
+- **Signature:** `X-Hub-Signature-256`. 프로젝트별 `webhook_secret`을 키로 raw body에 대해 HMAC-SHA256.
+- **Events:** `push`와 `pull_request`가 지원되는 트리거.
+
+프로젝트의 `webhook_secret`은 **Project → Settings → CI/CD**에서 생성합니다. 회전(rotation) 시 새 시크릿이 생성되며, 이를 GitHub Webhook 설정에 복사·붙여넣기 하세요.
+
+### GitLab
+
+GitLab에 등록할 URL — `https://<your-host>/v1/webhooks/gitlab`.
+
+- **Content-Type:** `application/json`.
+- **Token:** `X-Gitlab-Token` 헤더로 전송. 값을 프로젝트의 `webhook_secret`으로 설정.
+- **Events:** **Push events**와 **Merge request events**.
+
+### Webhook 시크릿 회전
+
+Webhook 시크릿은 프로젝트별입니다. 프로젝트의 **Settings → CI/CD** 탭을 열고 **Rotate webhook secret**을 클릭한 뒤 확인합니다. 새 시크릿은 1회 표시됩니다. GitHub / GitLab을 새 값으로 갱신하세요.
+
+회전 후 ~5초 이내에 이전 시크릿의 검증이 중단됩니다. 양쪽이 갱신될 때까지 전송이 HTTP 401로 실패하니 회전 윈도를 짧게 유지하세요.
+
+## 정상 동작 확인
+
+- Key 생성 후 `curl -sS -H "Authorization: Bearer <key>" .../api/v1/projects`로 200 응답과 팀 프로젝트가 반환되는지 확인하세요.
+- GitHub에 Webhook 등록 후 커밋을 푸시하고 GitHub의 **Webhook deliveries** 뷰에서 HTTP 202 성공 전송을 확인하세요.
+- 감사 로그(super-admin은 `/admin/audit`, team admin은 `/audit`)에서 본인 prefix가 포함된 `api_key.create`와 `webhook.delivery` 이벤트를 확인하세요.
+
+## 트러블슈팅
+
+- **API에서 HTTP 401** — Key가 알려지지 않았거나 만료·폐기 상태. 오류 응답은 401(자격증명 문제)과 403(자격증명은 유효하나 동작 비허용)을 구분합니다.
+- **API에서 HTTP 403** — Key의 scope가 호출을 커버하지 않음. 더 넓은 scope의 Key를 새로 발급하거나 다른 엔드포인트를 호출하세요.
+- **API에서 HTTP 429** — Key별 레이트 리밋에 도달. `Retry-After` 헤더가 대기 시간을 알려줍니다. 백오프 후 재시도.
+- **GitHub Webhook이 401** — `X-Hub-Signature-256` 검증 실패. 시크릿 일치 여부와 GitHub가 **raw** body 기준으로 HMAC을 계산하는지(재직렬화된 JSON이 아님) 확인.
+- **GitLab Webhook이 401** — `X-Gitlab-Token` 헤더 값이 프로젝트 `webhook_secret`과 일치하지 않음.
+
+## 함께 보기
+
+- [인증과 프로필](./auth-and-profile.md) — 사람을 위한 대화형 자격증명.
+- [GitHub Actions](../ci-integration/github-actions.md) — 종단 간 CI 통합.
+- [Webhooks (admin reference)](../ci-integration/webhooks.md) — 페이로드 스키마와 admin 측 구성.
+- [API keys (admin reference)](../admin-guide/api-keys.md) — 백엔드 동작·해싱·감사 로그.

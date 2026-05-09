@@ -50,6 +50,40 @@ Backup complete
 
 The script prunes backups older than `BACKUP_RETENTION_DAYS` (default 7) at the end. Pass `--no-prune` to skip pruning.
 
+## Manual backup with the admin UI
+
+For operators who prefer the browser, `/admin/backup` exposes the same backup and restore flows without dropping to a shell.
+
+![Admin backup page](./img/admin-backup.png)
+
+### Trigger a backup
+
+1. Open `/admin/backup` (Admin sidebar → **Backup**).
+2. Click **Trigger backup now**. The button is `super_admin`-only.
+3. The portal queues a Celery task; the row appears in the table immediately with status `running` and a live-updating progress bar.
+4. When the task completes, the row flips to `succeeded` and a **Download** link becomes available next to the timestamp.
+
+The list table shows: timestamp, size, **auto** badge (set on backups created by Celery Beat), **Download**, and **Delete**. Auto-tagged backups display a lock icon — they are subject to the **7-day automatic retention** policy and are pruned in chronological order. Manual backups have no automatic retention and are deleted only when you click **Delete**.
+
+### Schedule via Celery Beat
+
+Daily backups at **00:00 UTC** are scheduled by default in `apps/backend/tasks/backup.py` and require no additional configuration. Disable the schedule by setting `BACKUP_DAILY_ENABLED=false` and falling back to the cron / systemd recipes below.
+
+### Upload + restore from the UI
+
+The **Upload + Restore** section accepts a previously downloaded `.tar.gz` archive (the bundle that `scripts/backup.sh` produces).
+
+1. Click **Choose file** and select the archive (max **10 GB** — larger backups must use the CLI restore path).
+2. Read the warning panel carefully. The restore overwrites the live database and workspace.
+3. Type the word **`restore`** (lower case, exact match) into the confirmation field. The **Restore** button stays disabled until the typing-gate matches.
+4. Click **Restore**.
+
+![Admin backup — restore typing-gate](./img/admin-backup-restore.png)
+
+The frontend submits the form with an explicit `X-Confirm-Restore: yes` header alongside the typed confirmation; the backend validates **both** the header and the `super_admin` role before queuing the restore task. Missing or mismatched headers return HTTP 412 (Precondition Failed). The double-gate is deliberate — restore is destructive and irreversible.
+
+Progress streams the same way as a manual backup. A completed restore flips the row to `succeeded` and the live application reflects the restored state immediately (existing JWTs are revoked because the user table itself is replaced).
+
 ## Schedule automated backups
 
 `cron` is the simplest path:

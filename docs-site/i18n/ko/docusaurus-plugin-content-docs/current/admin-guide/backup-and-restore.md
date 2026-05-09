@@ -50,6 +50,40 @@ Backup complete
 
 스크립트는 종료 시점에 `BACKUP_RETENTION_DAYS`(기본 7)보다 오래된 백업을 정리합니다. `--no-prune`으로 정리 생략 가능.
 
+## Admin UI 로 수동 백업
+
+브라우저를 선호하는 운영자라면 `/admin/backup`이 셸로 떨어지지 않고도 같은 백업·복원 흐름을 노출합니다.
+
+![Admin 백업 페이지](./img/admin-backup.png)
+
+### 백업 트리거
+
+1. `/admin/backup`을 엽니다(Admin 사이드바 → **Backup**).
+2. **Trigger backup now**를 클릭합니다. 버튼은 `super_admin` 전용입니다.
+3. 포털이 Celery 태스크를 큐에 넣습니다 — 행이 즉시 표에 나타나며 상태 `running`과 실시간 진행 바가 표시됩니다.
+4. 태스크 완료 시 행이 `succeeded`로 전환되고 타임스탬프 옆에 **Download** 링크가 표시됩니다.
+
+목록 표는 타임스탬프, 크기, **auto** 배지(Celery Beat가 만든 백업에 부여), **Download**, **Delete**를 보여줍니다. auto-tagged 백업은 자물쇠 아이콘으로 표시되며 — **7일 자동 보존** 정책의 대상이고 시간순으로 정리됩니다. 수동 백업은 자동 보존 대상이 아니며 **Delete**를 클릭해야만 삭제됩니다.
+
+### Celery Beat 로 스케줄
+
+매일 **00:00 UTC**의 백업이 `apps/backend/tasks/backup.py`에 기본 스케줄되어 있으며 추가 구성이 필요 없습니다. `BACKUP_DAILY_ENABLED=false`로 스케줄을 비활성화하고 아래 cron / systemd 레시피로 대체할 수 있습니다.
+
+### UI 에서 Upload + Restore
+
+**Upload + Restore** 섹션은 이전에 다운로드한 `.tar.gz` 아카이브(`scripts/backup.sh`가 만든 번들)를 받습니다.
+
+1. **Choose file**을 클릭해 아카이브를 선택(최대 **10 GB** — 더 큰 백업은 CLI 복원 경로를 사용).
+2. 경고 패널을 주의 깊게 읽으세요. 복원은 라이브 데이터베이스와 workspace를 덮어씁니다.
+3. 확인 필드에 **`restore`**(소문자, 정확히 일치)를 입력하세요. 타이핑 게이트가 매칭될 때까지 **Restore** 버튼은 비활성화 상태입니다.
+4. **Restore**를 클릭합니다.
+
+![Admin 백업 — 복원 타이핑 게이트](./img/admin-backup-restore.png)
+
+프론트엔드는 입력된 확인과 함께 명시적으로 `X-Confirm-Restore: yes` 헤더를 폼에 실어 제출하며, 백엔드는 복원 태스크를 큐에 넣기 전에 **헤더와 `super_admin` 역할 모두**를 검증합니다. 누락 또는 불일치 헤더는 HTTP 412(Precondition Failed)로 응답합니다. 이중 게이트는 의도된 설계입니다 — 복원은 파괴적이고 되돌릴 수 없습니다.
+
+진행은 수동 백업과 같은 방식으로 스트리밍됩니다. 복원이 완료되면 행이 `succeeded`로 전환되며 라이브 애플리케이션이 즉시 복원된 상태를 반영합니다(사용자 테이블 자체가 교체되므로 기존 JWT는 무효화됩니다).
+
 ## 자동 백업 스케줄링
 
 `cron`이 가장 단순한 경로입니다.

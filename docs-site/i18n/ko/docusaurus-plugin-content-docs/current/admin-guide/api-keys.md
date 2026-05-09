@@ -1,0 +1,162 @@
+---
+id: api-keys
+title: API Key
+description: 서비스 계정과 CI 통합을 위한 API Key 발급·scope·회전.
+sidebar_label: API Key
+sidebar_position: 6
+---
+
+# API Key
+
+API Key는 **비대화형** 클라이언트(CI 러너·Webhook·스크립트·GitHub Action)를 위한 자격증명입니다. 사용자의 JWT 세션을 소비하지 않고 머신 간 트래픽을 인증합니다.
+
+:::note 대상 독자
+팀 범위 Key를 발급하는 `team_admin`, 조직 범위 Key를 발급하는 `super_admin`.
+:::
+
+## /integrations UI 로 관리하기
+
+대부분의 사용자는 [통합 페이지](../user-guide/integrations.md)에서 본인의 Key를 직접 발급·폐기합니다. `/integrations` UI는 다음을 제공합니다.
+
+- 로그인한 사용자가 관리할 권한이 있는 모든 Key 나열.
+- **Create** 시 1회 노출 모달과 클립보드 복사 버튼, 전체 Key가 단 한 번만 표시된다는 강한 경고.
+- 행별 **Revoke**와 확인 다이얼로그 — 폐기는 ~5초 내에 전파.
+
+이 페이지는 **서버 측 동작** — Key 형태, 해싱, scope 시멘틱, 감사 로그, 회전 전략을 다룹니다. CI에 Key를 연결하기만 하면 되는 사용자는 [통합 사용자 가이드](../user-guide/integrations.md)에서 멈춰도 됩니다.
+
+## Key 형태
+
+```
+tos_<8-char-prefix>_<32-char-secret>
+```
+
+예시: `tos_a1b2c3d4_eaff8b91d36c5e0a2f1c4d7e8a9b0c2d`.
+
+- **`tos_`** — 고정 prefix.
+- **`<8-char-prefix>`** — 랜덤이며 **공개**. 조회와 표시 라벨에 사용. 감사 로그에 노출.
+- **`<32-char-secret>`** — 랜덤이며 **비공개**. 서버에는 bcrypt 해시로만 저장. 전체 Key는 운영자에게 생성 시 **단 한 번** 표시되며 그 이후로는 절대 보이지 않음.
+
+조회는 prefix 전반에서 상수 시간이며, secret 비교는 타이밍 공격을 막기 위해 `bcrypt.checkpw`를 사용합니다.
+
+## Scope 모델
+
+각 Key는 다음을 가집니다.
+
+- **소유 팀** — Key가 대신 행위하는 팀. 팀 간 API 호출은 403으로 실패.
+- **Effective role** — 해당 팀 안에서 Key가 상속하는 역할. 기본은 `developer`, 설정 관리가 필요한 드문 경우에는 `team_admin`.
+- **허용 동작** — Key가 수행 가능한 작업 — `scan:trigger`, `scan:read`, `report:download`, `webhook:receive`, `*`(전부).
+- **만료** — `null`(만료 없음, 드물게) 또는 ISO 타임스탬프.
+
+전형적인 CI Key는 `developer` + `["scan:trigger", "scan:read", "report:download"]` + 1년 만료입니다.
+
+## Key 발급
+
+### Team admin 으로
+
+1. **Project Settings → CI/CD → API keys**(또는 팀 단위 Key는 **Team settings → API keys**).
+2. **New API key**.
+3. 채우기:
+   - **Label**(예: `github-action-checkout-service`)
+   - **Allowed actions**(다중 선택, 기본은 CI 최소셋)
+   - **Expiry**(30 / 90 / 180 / 365일 프리셋 또는 커스텀)
+4. **Create**.
+
+전체 Key는 모달에서 **단 한 번** 표시됩니다. 복사해 CI 시크릿 저장소(GitHub secrets, GitLab CI variables, Jenkins credentials)에 보관하세요. 모달을 닫으면 UI에서는 prefix만 보이고 전체 Key는 복구 불가입니다.
+
+### Super-admin 으로
+
+같은 흐름이지만 팀 선택기가 잠금 해제되어 어느 팀이든 Key를 발급할 수 있습니다.
+
+## API Key 사용
+
+`Authorization` 헤더로 Key를 전달:
+
+```bash
+curl -sS -H "Authorization: ApiKey ${TRUSTEDOSS_API_KEY}" \
+  https://trustedoss.example.com/api/v1/projects
+```
+
+`Authorization: ApiKey <key>`와 `Authorization: Bearer <key>` 모두 허용됩니다 — 명확성을 위해 `ApiKey`를 권장합니다. 포털은 추적성을 돕기 위해 모든 요청에 prefix를 로깅합니다.
+
+## 회전
+
+### 회전 사유
+
+- **침해** — Key가 공개 레포에 커밋되었거나 CI 러너가 침해됨. **즉시 폐기.**
+- **인사 변경** — Key를 발급한 team admin이 떠나는 경우. 새 Key 발급 후 CI 시크릿 교체, 옛 Key 폐기.
+- **정책** — 분기별 회전을 심층 방어 조치로 진행.
+
+### 무중단 회전 방법
+
+1. 같은 scope로 **새 Key 발급**.
+2. CI 시크릿을 **새 Key로 갱신**.
+3. 한 번의 CI 사이클을 **기다려** 새 Key 동작 확인.
+4. 옛 Key를 **폐기**.
+
+폐기 후 ~5초 이내(인증 캐시 TTL)에 옛 Key가 거절됩니다.
+
+## 폐기
+
+1. **Project Settings → CI/CD → API keys** → Key 행 → **Revoke**.
+2. 확인.
+
+폐기는 즉시이며 되돌릴 수 없습니다. Key를 되살리려면 새로 발급하세요.
+
+## Key 목록
+
+UI는 라벨, prefix, 소유 팀, 역할, 허용 동작, 만료, 마지막 사용 시각, 마지막 사용 IP를 표시합니다. 기존 Key의 secret을 복구할 방법은 없습니다 — 의도된 설계입니다.
+
+## 감사 로그
+
+모든 Key 동작이 로그됩니다.
+
+- `api_key.create` — actor, target prefix, scope.
+- `api_key.revoke` — actor, target prefix.
+- `api_key.use` — API Key로 인증된 모든 요청에서 암묵적(액션의 감사 행에 `actor`로 기록되며 `actor_kind=api_key`).
+
+`actor_kind=api_key`로 감사 로그를 필터링하면 비대화형 클라이언트가 수행한 모든 동작을 볼 수 있습니다.
+
+## Webhook 시크릿 vs API Key
+
+이 둘은 호환되지 않습니다. 포털은 다음을 구분합니다.
+
+- **API Key** — CI 클라이언트에서 포털 API로 향하는 아웃바운드.
+- **Webhook 시크릿** — Webhook의 인바운드 HMAC 서명 검증에 사용(GitHub `X-Hub-Signature-256`, GitLab `X-Gitlab-Token`).
+
+Webhook 흐름은 [Webhooks](../ci-integration/webhooks.md) 참고.
+
+## 정상 동작 확인
+
+Key 발급 후:
+
+1. `curl -sS -H "Authorization: ApiKey <key>" .../api/v1/projects`가 200과 팀 프로젝트를 반환.
+2. 감사 로그가 prefix와 함께 `api_key.create`를 기록.
+3. Key를 소비하는 CI 빌드가 첫 실행에 성공.
+
+## 트러블슈팅
+
+### 방금 만든 Key로 401
+
+가장 흔한 두 가지 원인:
+
+- Key가 앞뒤 공백과 함께 복사됨. 원본 모달에서 다시 붙여넣기 — Key는 정확히 `tos_` + 8 + `_` + 32자.
+- Key의 허용 동작에 해당 작업이 없음. 오류 응답이 401(잘못된 Key)과 403(Key는 유효하나 동작 비허용)을 구분합니다.
+
+### "Key prefix exists but secret does not match"
+
+누군가 secret을 brute-force 시도. 포털은 모든 미스를 로깅하며, 단일 Key가 60초 내 5회 이상 미스하면 super-admin이 Slack 알림을 받습니다. 폐기 후 회전.
+
+### 로컬에선 동작하는데 CI에선 안 됨
+
+확인 사항:
+
+- CI 시크릿이 적절한 환경 / 브랜치에 설정되어 있는지.
+- 러너의 아웃바운드 IP가 포털 방화벽에 차단되지 않았는지(일부 설치는 사무실 IP만 화이트리스트).
+- CI 트래픽이 통과하는 reverse proxy에서 `Authorization` 헤더가 보존되는지.
+
+## 함께 보기
+
+- [GitHub Actions](../ci-integration/github-actions.md)
+- [GitLab CI](../ci-integration/gitlab-ci.md)
+- [Webhooks](../ci-integration/webhooks.md)
+- [감사 로그](./audit-log.md)

@@ -9,11 +9,25 @@ slug: /intro
 
 # TrustedOSS Portal
 
+:::tip Version 2.0.0 (GA) — 2026-05-09
+TrustedOSS Portal is now generally available! See the [v2.0.0 release notes](./release-notes/v2.0.0.md) for what's new.
+:::
+
 **TrustedOSS Portal** is a self-hosted, open-source Software Composition Analysis (SCA) platform. It unifies vulnerability tracking, license compliance, and Software Bill of Materials (SBOM) management in a single web UI — without the per-seat licensing of commercial products.
 
 :::note Audience
 This page is for engineers, platform owners, and legal/compliance leads evaluating an SCA portal for their organization. If you are ready to install, jump to [Install with Docker Compose](./installation/docker-compose.md).
 :::
+
+## What's new in 2.0.0
+
+- **Authentication UX** — `/forgot-password` + `/reset-password` flow, OAuth on `/login` (GitHub + Google), and an `i18next-parser` drift gate that keeps EN / KO in lockstep.
+- **`/integrations` page** — self-service API keys with one-time plaintext reveal, revoke confirmation, and inline GitHub / GitLab webhook URL info.
+- **Backup automation** — daily Celery Beat backup at 00:00 UTC with 7-day auto-retention, plus a `/admin/backup` UI that supports manual trigger, streaming download, and a typing-gated Upload + Restore.
+- **SAST hard-fail in CI** — `bandit`, `semgrep`, and Trivy image-scan now block merges on High / ERROR / CRITICAL respectively.
+- **SCA self-scan** — a nightly workflow that scans the portal's own dependencies and opens / closes a GitHub issue automatically; the project eats its own dog food.
+
+Full details in the [v2.0.0 release notes](./release-notes/v2.0.0.md).
 
 ## What it does
 
