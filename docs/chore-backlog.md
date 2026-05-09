@@ -64,15 +64,17 @@
 - ✅ `/admin/backup` UI: 수동 트리거 + 스트리밍 다운로드 + 업로드+복원 (type-"restore" gate) + 삭제
 - ✅ `useScanWebSocket` 의 visibility-listener — 탭 복귀 시 즉시 reconnect (5분 budget 보존)
 
-### Chore E — backup.sh / restore.sh 실제 검증
+### ~~Chore E — backup.sh / restore.sh 실제 검증~~ ✅ PR #38 (2026-05-09)
 **기반 PR**: #24 (Step 9)
-**브랜치 제안**: `chore/phase7-pr20-install-uat`
-**예상 소요**: 0.5 세션
+**브랜치**: `chore/install-restore-uat`
 
-미흡:
-- fresh Linux machine에서 `bash scripts/install.sh` end-to-end 시나리오 테스트
-- shellcheck CI 게이트 추가 (현재 syntax check만)
-- 멀티 PostgreSQL 버전 (16.x → 17.x) 마이그레이션 시나리오 검증
+처리 결과 — 옵션 A (자동 CI) + 옵션 B (수동 체크리스트) 결합:
+- ✅ `scripts/install.sh` `--no-prompt` 모드 추가. `INSTALL_HOST`, `INSTALL_ADMIN_EMAIL`, `INSTALL_ADMIN_PASSWORD`, `INSTALL_SECRET_KEY`, `INSTALL_REUSE_ENV` env 지원. 기존 대화형 동작은 그대로 유지.
+- ✅ `.github/workflows/install-uat.yml` 신규 — Ubuntu 22.04 GitHub-hosted runner에서 `docker-compose` V1 1.29.2 설치 → `install.sh --no-prompt` → /health probe → login + projects API smoke → `backup.sh` → `restore.sh` 라운드트립 → post-restore /health probe. `workflow_dispatch` + 매주 일요일 03:00 UTC cron.
+- ✅ `.github/workflows/ci.yml`에 `shellcheck` 잡 추가 — `--severity=warning` (error + warning hard-fail). 모든 기존 스크립트 통과 (info-수준 SC1091 2건만 advisory).
+- ✅ `scripts/upgrade.sh`의 SC2034 (unused `i` → `_`) + `scripts/release.sh`의 SC2046 (의도적 word-split disable 주석 추가) fix.
+- ✅ `docs-site/docs/installation/uat-checklist.md` (+ KO mirror) — 운영자가 fresh Ubuntu/Rocky VM에서 cross-host 백업/복원까지 따라할 8단계 체크리스트. sidebar 등록 + 양 로케일 build SUCCESS.
+- ⏸ 멀티 PostgreSQL 버전 (16.x → 17.x) 마이그레이션 — 운영자 체크리스트 §6에 "선택" 절차로 문서화만. 자동 검증은 별도 chore.
 
 ---
 

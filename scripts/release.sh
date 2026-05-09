@@ -81,6 +81,10 @@ body=$(awk -v v="$version_no_v" '
 
 # 8. GitHub Release
 title "Creating GitHub Release"
+# shellcheck disable=SC2046
+# The conditional emits a single literal flag (`--prerelease`) or empty
+# string. Word-splitting is the desired behaviour: an empty expansion must
+# disappear, not become a quoted "" arg. Output is fully controlled.
 gh release create "$TAG" \
   --title "$TAG" \
   --notes "$body" \

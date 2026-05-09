@@ -6,7 +6,18 @@
 # first super_admin user.
 #
 # Usage:
-#   bash scripts/install.sh
+#   bash scripts/install.sh             # interactive wizard
+#   bash scripts/install.sh --no-prompt # non-interactive (CI / automation)
+#
+# In `--no-prompt` mode every interactive question is replaced by an env-var
+# read with a sane default. The fresh-Linux UAT workflow
+# (.github/workflows/install-uat.yml, Chore E) is the primary consumer:
+#   INSTALL_HOST            public URL (default: http://localhost)
+#   INSTALL_ADMIN_EMAIL     super-admin email   (default: admin@trustedoss.local)
+#   INSTALL_ADMIN_PASSWORD  super-admin password (default: openssl rand -base64 24)
+#   INSTALL_SECRET_KEY      JWT signing key      (default: openssl rand -hex 32)
+#   INSTALL_REUSE_ENV       "1" reuses an existing .env, else it is rotated to
+#                           .env.backup-<utc>. Default: 0 (rotate).
 #
 # CLAUDE.md compliance:
 #   - core rule #10: docker-compose (V1). docker compose (V2) refused.
@@ -17,6 +28,30 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
+
+# ---------------------------------------------------------------------------
+# 0. CLI flag parsing
+# ---------------------------------------------------------------------------
+NO_PROMPT=0
+for arg in "$@"; do
+  case "$arg" in
+    --no-prompt) NO_PROMPT=1 ;;
+    -h|--help)
+      cat <<USAGE
+Usage: bash scripts/install.sh [--no-prompt]
+
+  --no-prompt   Run non-interactively. Reads INSTALL_HOST,
+                INSTALL_ADMIN_EMAIL, INSTALL_ADMIN_PASSWORD,
+                INSTALL_SECRET_KEY, INSTALL_REUSE_ENV from the environment.
+USAGE
+      exit 0
+      ;;
+    *)
+      printf '✗ unknown argument: %s (try --help)\n' "$arg" >&2
+      exit 2
+      ;;
+  esac
+done
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -49,12 +84,23 @@ ok "curl found"
 title "Environment configuration"
 
 if [[ -f .env ]]; then
-  read -r -p "Existing .env detected — use it? [Y/n] " reply
-  reply=${reply:-Y}
-  if [[ ! "$reply" =~ ^[Yy]$ ]]; then
-    backup=".env.backup-$(date +%Y%m%d-%H%M%S)"
-    mv .env "$backup"
-    note "moved existing .env → $backup"
+  if [[ $NO_PROMPT -eq 1 ]]; then
+    # Non-interactive: rotate by default unless caller opts in to reuse.
+    if [[ "${INSTALL_REUSE_ENV:-0}" == "1" ]]; then
+      note "INSTALL_REUSE_ENV=1 — keeping existing .env"
+    else
+      backup=".env.backup-$(date +%Y%m%d-%H%M%S)"
+      mv .env "$backup"
+      note "moved existing .env → $backup (set INSTALL_REUSE_ENV=1 to reuse)"
+    fi
+  else
+    read -r -p "Existing .env detected — use it? [Y/n] " reply
+    reply=${reply:-Y}
+    if [[ ! "$reply" =~ ^[Yy]$ ]]; then
+      backup=".env.backup-$(date +%Y%m%d-%H%M%S)"
+      mv .env "$backup"
+      note "moved existing .env → $backup"
+    fi
   fi
 fi
 
@@ -63,8 +109,14 @@ if [[ ! -f .env ]]; then
   cp .env.example .env
   ok "wrote .env from .env.example"
 
-  # Auto-generate the two required secrets with strong entropy.
-  secret_key=$(openssl rand -hex 32)
+  # SECRET_KEY: --no-prompt may pin via INSTALL_SECRET_KEY (CI reproducibility).
+  # Otherwise we always auto-generate strong entropy.
+  if [[ $NO_PROMPT -eq 1 && -n "${INSTALL_SECRET_KEY:-}" ]]; then
+    secret_key="$INSTALL_SECRET_KEY"
+    note "using INSTALL_SECRET_KEY (length=${#secret_key})"
+  else
+    secret_key=$(openssl rand -hex 32)
+  fi
   db_password=$(openssl rand -base64 24 | tr -d '=+/')
 
   # Substitute placeholders. We intentionally do NOT sed -i in place across
@@ -93,8 +145,13 @@ title "Network configuration"
 
 current_url=$(grep -E "^CORS_ALLOWED_ORIGINS=" .env | head -1 | cut -d= -f2- || true)
 default_url=${current_url:-http://localhost}
-read -r -p "Public URL [$default_url]: " public_url
-public_url=${public_url:-$default_url}
+if [[ $NO_PROMPT -eq 1 ]]; then
+  public_url="${INSTALL_HOST:-$default_url}"
+  note "non-interactive: public_url=$public_url"
+else
+  read -r -p "Public URL [$default_url]: " public_url
+  public_url=${public_url:-$default_url}
+fi
 
 # Update / append CORS + DOMAIN keys.
 python3 - <<PYTHON
@@ -149,22 +206,39 @@ ok "schema is at HEAD"
 # ---------------------------------------------------------------------------
 title "Bootstrap super admin account"
 
-read -r -p "Super admin email: " admin_email
-[[ -n "$admin_email" ]] || fail "email required"
-
-while :; do
-  read -r -s -p "Password (12+ chars): " admin_pwd; echo
+if [[ $NO_PROMPT -eq 1 ]]; then
+  admin_email="${INSTALL_ADMIN_EMAIL:-admin@trustedoss.local}"
+  if [[ -n "${INSTALL_ADMIN_PASSWORD:-}" ]]; then
+    admin_pwd="$INSTALL_ADMIN_PASSWORD"
+  else
+    # Last-resort default. We surface it once on stdout so a CI run can
+    # capture it from logs; an operator MUST rotate immediately.
+    admin_pwd=$(openssl rand -base64 24 | tr -d '=+/' | cut -c1-20)
+    note "generated admin password (length=${#admin_pwd}): $admin_pwd"
+    note "ROTATE THIS PASSWORD ON FIRST LOGIN."
+  fi
   if [[ ${#admin_pwd} -lt 12 ]]; then
-    note "password must be at least 12 characters — try again"
-    continue
+    fail "INSTALL_ADMIN_PASSWORD must be at least 12 characters"
   fi
-  read -r -s -p "Confirm password: " admin_pwd2; echo
-  if [[ "$admin_pwd" != "$admin_pwd2" ]]; then
-    note "passwords did not match — try again"
-    continue
-  fi
-  break
-done
+  note "non-interactive: admin_email=$admin_email"
+else
+  read -r -p "Super admin email: " admin_email
+  [[ -n "$admin_email" ]] || fail "email required"
+
+  while :; do
+    read -r -s -p "Password (12+ chars): " admin_pwd; echo
+    if [[ ${#admin_pwd} -lt 12 ]]; then
+      note "password must be at least 12 characters — try again"
+      continue
+    fi
+    read -r -s -p "Confirm password: " admin_pwd2; echo
+    if [[ "$admin_pwd" != "$admin_pwd2" ]]; then
+      note "passwords did not match — try again"
+      continue
+    fi
+    break
+  done
+fi
 
 # We pipe the password via env to avoid showing it in `ps -ef`.
 docker-compose -f docker-compose.yml exec -T \

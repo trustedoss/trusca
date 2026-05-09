@@ -63,7 +63,7 @@ ok "schema is at HEAD"
 # 5. Health probe
 # ---------------------------------------------------------------------------
 title "Post-upgrade health probe"
-for i in $(seq 1 30); do
+for _ in $(seq 1 30); do
   if docker-compose -f docker-compose.yml exec -T backend curl -fsS http://localhost:8000/health >/dev/null 2>&1; then
     ok "backend is healthy"
     title "Upgrade complete"

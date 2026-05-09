@@ -73,6 +73,35 @@ jobs:
         run: npm run i18n:check
 
   # -------------------------------------------------------------------------
+  # 1b) Shellcheck — install/backup/restore/upgrade/release wrappers.
+  #
+  # Chore E (PR #38) added this gate. The wrappers are part of the operator
+  # surface (run on a fresh Ubuntu/Rocky host as `bash scripts/install.sh
+  # --no-prompt`), so a regression here is a release-day blocker.
+  #
+  # We hard-fail on `--severity=warning` (i.e. error + warning). Info-level
+  # findings (mainly SC1091 "not following sourced file" on `. ./.env`)
+  # remain visible in the log for triage but don't block the PR — the
+  # `.env` file is generated at install-time and never committed, so the
+  # static analyser can't follow it. The two affected lines already carry
+  # `# shellcheck disable=SC1091` as documentation of the choice.
+  # -------------------------------------------------------------------------
+  shellcheck:
+    name: shellcheck (scripts)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Show shellcheck version
+        run: shellcheck --version
+
+      - name: Run shellcheck (severity=warning)
+        run: shellcheck --severity=warning scripts/*.sh
+
+  # -------------------------------------------------------------------------
   # 2) Typecheck — mypy (backend) + tsc (frontend)
   # -------------------------------------------------------------------------
   typecheck:

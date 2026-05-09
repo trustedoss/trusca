@@ -14,6 +14,7 @@ const sidebars: SidebarsConfig = {
         "installation/docker-compose",
         "installation/upgrade",
         "installation/gcp-deploy",
+        "installation/uat-checklist",
       ],
     },
     {

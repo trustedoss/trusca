@@ -1,0 +1,159 @@
+name: Install UAT (fresh Ubuntu)
+
+# Chore E (PR #38) — automated end-to-end verification of the operator
+# bundle on a fresh Ubuntu 22.04 runner:
+#
+#   scripts/install.sh --no-prompt   →  bring stack up, run alembic, bootstrap super_admin
+#   scripts/backup.sh                →  pg_dump + workspace tar + manifest
+#   scripts/restore.sh <dir>         →  restore round-trip
+#
+# We run this on demand (workflow_dispatch) and weekly to catch drift in
+# base images / pinned deps. The fresh-OS host UAT for operators (the
+# hand-audited counterpart) lives in docs-site/docs/installation/uat-checklist.md.
+#
+# IMPORTANT — compose file swap:
+# install.sh hardcodes `-f docker-compose.yml`, which in production targets
+# `trustedoss/backend:2.0.0` images that don't exist on Docker Hub (the project
+# never publishes them). For UAT we therefore copy `docker-compose.dev.yml`
+# over `docker-compose.yml` first — install.sh's wrapper logic is what we
+# want to validate (env generation, healthcheck loop, alembic invocation,
+# super_admin bootstrap), not Traefik / Let's Encrypt provisioning. Operators
+# verify the production compose file via the manual `uat-checklist.md` flow.
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    # Weekly Sunday 03:00 UTC — catches drift from base image / dep updates.
+    - cron: "0 3 * * 0"
+
+# Allow only one UAT run at a time per ref so a manual trigger doesn't
+# stack on top of the cron run.
+concurrency:
+  group: install-uat-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  install-uat:
+    name: install-uat (ubuntu-22.04, docker-compose V1)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # CLAUDE.md core rule #10 mandates docker-compose V1 (hyphenated).
+      # Ubuntu 22.04 hosted runners ship Compose V2 only — install V1 from
+      # the upstream pinned release. The version is intentionally pinned so
+      # the UAT result is reproducible across runs.
+      - name: Install docker-compose V1
+        run: |
+          sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" \
+            -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+          docker-compose --version
+
+      # See "compose file swap" note in the workflow header. We keep a
+      # backup so the teardown step restores the production file at the end.
+      - name: Swap to dev compose for UAT
+        run: |
+          cp docker-compose.yml docker-compose.yml.bak
+          cp docker-compose.dev.yml docker-compose.yml
+
+      - name: Run install.sh in non-interactive mode
+        env:
+          INSTALL_HOST: http://localhost:8000
+          INSTALL_ADMIN_EMAIL: admin@uat.local
+          INSTALL_ADMIN_PASSWORD: UatAdminPassword123!
+          INSTALL_SECRET_KEY: ci-uat-secret-key-32-characters-min-padding
+        run: bash scripts/install.sh --no-prompt
+
+      # docker-compose.dev.yml maps backend 8000 to host 8000, so we can
+      # smoke the API directly from the runner. Production goes via Traefik
+      # — that path is exercised in the manual checklist.
+      - name: Wait for backend health (host port 8000)
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 20); do
+            if curl -fsS http://localhost:8000/health >/dev/null 2>&1; then
+              echo "backend up"
+              curl -fsS http://localhost:8000/health
+              exit 0
+            fi
+            echo "waiting for backend ($i/20)"
+            sleep 6
+          done
+          echo "::error::backend never came up"
+          docker-compose -f docker-compose.yml ps
+          docker-compose -f docker-compose.yml logs --tail=200
+          exit 1
+
+      - name: Smoke — login + projects API
+        run: |
+          set -euo pipefail
+          # The auth router lives under /v1/auth (see apps/backend/api/v1/auth.py).
+          TOKEN=$(curl -fsS -X POST http://localhost:8000/v1/auth/login \
+            -H "Content-Type: application/json" \
+            -d '{"email":"admin@uat.local","password":"UatAdminPassword123!"}' \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')
+          test -n "$TOKEN"
+          test "$TOKEN" != "null"
+          echo "got token (length=${#TOKEN})"
+          curl -fsS http://localhost:8000/v1/projects \
+            -H "Authorization: Bearer $TOKEN" >/dev/null
+          echo "projects endpoint reachable"
+
+      - name: Backup round-trip — backup.sh
+        run: |
+          set -euo pipefail
+          bash scripts/backup.sh
+          BACKUP_DIR=$(ls -td backups/*/ | head -1)
+          test -n "$BACKUP_DIR"
+          test -f "$BACKUP_DIR/postgres.sql.gz"
+          test -f "$BACKUP_DIR/manifest.json"
+          echo "backup written to $BACKUP_DIR"
+          ls -la "$BACKUP_DIR"
+          # Surface BACKUP_DIR for the next step.
+          echo "BACKUP_DIR=${BACKUP_DIR%/}" >> "$GITHUB_ENV"
+
+      - name: Restore round-trip — restore.sh
+        env:
+          # Required by restore.sh's destructive-op gate. Chore O M5 is
+          # tracked separately to migrate this to an argv flag.
+          BACKUP_RESTORE_CONFIRM: "yes"
+        run: |
+          set -euo pipefail
+          bash scripts/restore.sh "$BACKUP_DIR"
+
+      # Re-poll /health post-restore — restore.sh stops backend / frontend
+      # / worker / beat, restores the dump, and brings them back. We want
+      # to make sure the post-restore stack is reachable.
+      - name: Verify backend healthy post-restore
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 20); do
+            if curl -fsS http://localhost:8000/health >/dev/null 2>&1; then
+              echo "backend up post-restore"
+              exit 0
+            fi
+            echo "waiting for backend post-restore ($i/20)"
+            sleep 6
+          done
+          echo "::error::backend did not recover after restore"
+          docker-compose -f docker-compose.yml ps
+          docker-compose -f docker-compose.yml logs --tail=200 backend
+          exit 1
+
+      - name: Dump compose logs on failure
+        if: failure()
+        run: |
+          docker-compose -f docker-compose.yml ps || true
+          docker-compose -f docker-compose.yml logs --tail=300 || true
+
+      - name: Tear down
+        if: always()
+        run: |
+          docker-compose -f docker-compose.yml down -v || true
+          # Restore the production compose file so subsequent steps (or
+          # cached runs) see the unmodified tree.
+          if [ -f docker-compose.yml.bak ]; then
+            mv docker-compose.yml.bak docker-compose.yml
+          fi
