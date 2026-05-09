@@ -4,6 +4,7 @@ import {
   KeyRound,
   LogOut,
   ScanLine,
+  UserCircle2,
   Activity,
   Building2,
   ClipboardList,
@@ -200,6 +201,17 @@ export function AppShell() {
                 left rail focused on top-level domains; chore A2 design. */}
             <HeaderBell />
             <LanguageToggle />
+            <Button
+              variant="ghost"
+              size="sm"
+              asChild
+              data-testid="header-profile-link"
+            >
+              <NavLink to="/profile" aria-label={t("auth.profile")}>
+                <UserCircle2 className="h-4 w-4" aria-hidden />
+                <span>{t("auth.profile")}</span>
+              </NavLink>
+            </Button>
             <Button
               variant="outline"
               size="sm"

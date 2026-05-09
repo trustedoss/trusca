@@ -1,0 +1,10 @@
+# Terraform state + plan artifacts.
+*.tfstate
+*.tfstate.*
+*.tfplan
+.terraform/
+.terraform.lock.hcl
+
+# Operator-supplied secrets.
+terraform.tfvars
+*.auto.tfvars
