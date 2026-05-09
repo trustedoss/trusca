@@ -1,0 +1,211 @@
+name: SCA self-scan
+
+# Phase 8 PR #25 — Dog-food SCA on the TrustedOSS Portal repo itself.
+#
+# Runs nightly at 07:00 UTC and on-demand. Generates a CycloneDX SBOM
+# with cdxgen (the same tool the portal ships to end users), feeds it
+# into Trivy with the CRITICAL,HIGH severity filter, and parses the
+# JSON output.
+#
+# Behaviour:
+#   * 1+ CRITICAL    → opens or updates a labelled GitHub issue with the
+#                      vulnerability list (package, version, advisory).
+#   * 0 CRITICAL     → closes any previously-opened issue with the same
+#                      label so the alert auto-resolves.
+#
+# Not wired into PR triggers — the noise / blocker tradeoff is wrong on
+# pull requests (a moving CVE corpus would block unrelated feature
+# work). The image-scan job in ci.yml gates the build image; this
+# workflow gates the *application* dependency tree.
+
+on:
+  schedule:
+    # 07:00 UTC daily — out of the typical PR-merge window so the
+    # nightly artifact is fresh at the start of business hours in EU /
+    # US-East.
+    - cron: "0 7 * * *"
+  workflow_dispatch: {}
+
+# `issues: write` is needed for `gh issue create` / `gh issue close`.
+# `contents: read` is the floor for `actions/checkout`. Everything else
+# stays at the workflow-default (none) per least-privilege.
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  # Single-flight — if a dispatch run lands on top of the cron run, the
+  # later one wins and the earlier one is cancelled. This avoids a race
+  # where two runs simultaneously try to open / close the same issue.
+  group: sca-self-${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    name: scan repo with cdxgen + Trivy
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      ISSUE_LABEL: sca-self-scan
+    steps:
+      - uses: actions/checkout@v4
+
+      # cdxgen ships as an npm package. Pin the version so the SBOM
+      # output schema is stable run-to-run — that makes diffs of
+      # `sbom.cdx.json` between nightly runs meaningful.
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install cdxgen (pinned)
+        run: npm install -g @cyclonedx/cdxgen@12.3.3
+
+      - name: Generate SBOM (CycloneDX JSON)
+        # `-r` walks the whole repo (apps/backend Python + apps/frontend
+        # npm + cdxgen detects the rest). `-o sbom.cdx.json` writes
+        # CycloneDX 1.5 JSON.
+        # FETCH_LICENSE=true tells cdxgen to enrich each component with
+        # license metadata pulled from registries — slower but matches
+        # what the portal does for end-users.
+        env:
+          FETCH_LICENSE: "true"
+        run: cdxgen -r -o sbom.cdx.json .
+
+      # Trivy is bundled into the worker image at apps/backend/Dockerfile.worker;
+      # for this workflow we install the standalone CLI (smaller, faster than
+      # spinning up the worker image just to run trivy sbom).
+      - name: Install Trivy
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sudo sh -s -- -b /usr/local/bin v0.58.0
+
+      - name: Trivy SBOM scan (CRITICAL + HIGH)
+        # --exit-code 0 — never fail the JOB on findings; the parse step
+        # below decides whether to escalate to an Issue. Failing the job
+        # too would make the scheduled run red regardless of whether the
+        # issue was opened, which is noisy for the daily summary.
+        run: |
+          trivy sbom \
+            --format json \
+            --output trivy-report.json \
+            --severity CRITICAL,HIGH \
+            --exit-code 0 \
+            sbom.cdx.json
+
+      - name: Parse Trivy report (count CRITICAL)
+        id: parse
+        # `jq` is installed on ubuntu-22.04 by default. The Trivy schema
+        # nests vulnerabilities under .Results[].Vulnerabilities[]; we
+        # filter by Severity == "CRITICAL" and emit two outputs:
+        #   * critical_count — drives the open-vs-close decision
+        #   * critical_body  — markdown body block for the issue
+        run: |
+          set -euo pipefail
+          critical_count=$(jq '
+            [.Results[]?.Vulnerabilities[]?
+              | select(.Severity == "CRITICAL")] | length
+          ' trivy-report.json)
+          echo "critical_count=$critical_count" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "critical_body<<EOF"
+            jq -r '
+              [.Results[]?.Vulnerabilities[]?
+                | select(.Severity == "CRITICAL")
+                | "- **\(.PkgName)** `\(.InstalledVersion)` → `\(.FixedVersion // "no fix")` · [\(.VulnerabilityID)](\(.PrimaryURL)) — \(.Title // "no title")"
+              ] | unique | .[]
+            ' trivy-report.json
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "::notice::Trivy CRITICAL count = $critical_count"
+
+      - name: Open or update issue (CRITICAL > 0)
+        if: steps.parse.outputs.critical_count != '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CRITICAL_COUNT: ${{ steps.parse.outputs.critical_count }}
+          CRITICAL_BODY: ${{ steps.parse.outputs.critical_body }}
+        run: |
+          set -euo pipefail
+          title="🚨 SCA self-scan: ${CRITICAL_COUNT} Critical CVE(s) detected"
+          body=$(cat <<EOF
+          The nightly SCA self-scan (\`.github/workflows/sca-self.yml\`,
+          run [\`${GITHUB_RUN_ID}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}))
+          detected **${CRITICAL_COUNT}** Critical-severity vulnerabilities in the
+          dependency tree of \`trustedoss-portal\` itself.
+
+          ## Findings
+
+          ${CRITICAL_BODY}
+
+          ## How to triage
+
+          1. Pull the SBOM + Trivy report from this run's artifacts.
+          2. For each finding, check whether the vulnerable code path is
+             reachable from the portal's runtime entrypoints. If not,
+             add an entry to \`.trivyignore\` with a one-line
+             justification.
+          3. If reachable, open a dep-bump PR; the next nightly run will
+             auto-close this issue once the count returns to zero.
+
+          *This issue is auto-managed by the \`sca-self-scan\` label —
+          the workflow opens it when CRITICAL > 0 and closes it on the
+          next clean run. Do not edit the title.*
+          EOF
+          )
+
+          # Search for an existing open issue with our label. `gh` returns
+          # JSON; we pick the first match. The label-based lookup is
+          # idempotent across re-runs.
+          existing=$(gh issue list \
+            --label "$ISSUE_LABEL" \
+            --state open \
+            --json number \
+            --jq '.[0].number // empty')
+
+          if [ -n "$existing" ]; then
+            echo "Updating existing issue #$existing"
+            gh issue edit "$existing" \
+              --title "$title" \
+              --body "$body"
+          else
+            echo "Creating new issue"
+            gh issue create \
+              --title "$title" \
+              --body "$body" \
+              --label "$ISSUE_LABEL"
+          fi
+
+      - name: Close stale issue (CRITICAL == 0)
+        if: steps.parse.outputs.critical_count == '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # If a previous run opened an issue but the latest scan is
+          # clean, close it with a short auto-resolution note.
+          existing=$(gh issue list \
+            --label "$ISSUE_LABEL" \
+            --state open \
+            --json number \
+            --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            echo "Closing stale issue #$existing (no Critical findings on this run)"
+            gh issue close "$existing" \
+              --comment "Auto-closed by \`.github/workflows/sca-self.yml\` — the latest scan reports 0 Critical findings. Run [\`${GITHUB_RUN_ID}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})."
+          else
+            echo "No open sca-self-scan issue — nothing to close."
+          fi
+
+      - name: Upload SBOM + Trivy report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sca-self-${{ github.run_id }}
+          path: |
+            sbom.cdx.json
+            trivy-report.json
+          if-no-files-found: warn
+          retention-days: 90

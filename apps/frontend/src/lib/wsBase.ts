@@ -14,6 +14,13 @@
  * operator override (e.g. `VITE_WS_BASE_URL`) is a future-proofed escape
  * hatch.
  */
+// nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
+// — `ws://` IS the unencrypted scheme, but it is reachable only when the
+// caller passes an `http://` base (i.e. local dev against the Vite proxy
+// or the bundled docker-compose stack). Production deployments always
+// provide an `https://` VITE_API_BASE_URL, which falls through the first
+// branch and yields `wss://`. Stripping ws:// here would break the dev
+// experience without improving real-world security.
 export function httpToWs(httpUrl: string): string {
   if (httpUrl.startsWith("https://")) {
     return "wss://" + httpUrl.slice("https://".length);

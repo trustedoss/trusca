@@ -95,6 +95,12 @@ See [`CLAUDE.md`](CLAUDE.md) for the full architecture and rules.
 
 Contribution guidelines, issue templates, and PR templates land in Phase 0 PR #4 (`CONTRIBUTING.md`, `.github/ISSUE_TEMPLATE/*`, `.github/pull_request_template.md`). Until then, please open a discussion before submitting a PR.
 
+## SCA self-scan
+
+[![SCA self-scan](https://github.com/trustedoss/trustedoss-portal/actions/workflows/sca-self.yml/badge.svg)](https://github.com/trustedoss/trustedoss-portal/actions/workflows/sca-self.yml)
+
+The portal dog-foods its own toolchain. A nightly GitHub Actions workflow ([`.github/workflows/sca-self.yml`](.github/workflows/sca-self.yml)) generates a CycloneDX SBOM with cdxgen, runs Trivy against it, and auto-opens / closes a labelled GitHub issue when Critical CVEs appear in our dependency tree.
+
 ## License
 
 Apache License 2.0 — see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).

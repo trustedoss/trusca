@@ -30,5 +30,10 @@ COPY . .
 ENV HOST=0.0.0.0 PORT=5173
 EXPOSE 5173
 
+# nosemgrep: dockerfile.security.missing-user-entrypoint.missing-user-entrypoint
+# nosemgrep: dockerfile.security.missing-user.missing-user
+# Dev image only — Vite HMR watches the bind-mounted source tree. Production
+# serves a pre-built bundle from a different image; this file is never
+# deployed to prod (see docker-compose.yml vs docker-compose.dev.yml).
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
