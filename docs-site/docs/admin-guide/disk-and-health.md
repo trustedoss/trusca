@@ -13,6 +13,10 @@ The portal exposes two operator dashboards under `/admin`:
 - **/admin/health** — current state of every container service plus the DT connector.
 - **/admin/disk** — workspace and database storage usage with a configurable hard limit.
 
+![Admin System Health — four-card overview of postgres, redis, celery, and dependency-track](/img/screenshots/admin-health-cards.png)
+
+![Admin Disk usage — workspace + database cards with usage gauges](/img/screenshots/admin-disk-list.png)
+
 Together they let you catch problems before users notice.
 
 :::note Audience
