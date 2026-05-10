@@ -338,32 +338,51 @@ User persona (PR #41 발견):
 - BUG-USR-002 (Low) — Scan cancel API 부재. 매뉴얼 정정으로 처리됨 (PR #43)
 
 Admin persona (PR #42 발견):
-- sys-bug-u&t-1 (Low) — last super_admin DB-level CHECK constraint 부재. 매뉴얼 정정 (PR #44 — Roadmap)
-- sys-bug-dt-1 (Low) — DT breaker reset endpoint 부재. 매뉴얼 정정 (PR #44 — Roadmap)
-- sys-bug-audit-1 (Low) — `audit_logs` immutability constraint 부재. 매뉴얼 정정 (PR #44 — Roadmap)
-- sys-bug-bkp-1 (Low) — restore missing X-Confirm-Restore → 400 (RFC 7807 상 412). 매뉴얼 정정 (PR #44 — 400 으로 일치)
-- sys-bug-audit-2 (Low) — CSV export UTF-8 BOM 부재. 매뉴얼 정정 (PR #44 — Roadmap)
+- sys-bug-u&t-1 (Low) — last super_admin DB-level CHECK constraint 부재. 매뉴얼 정정 (PR #44 — Roadmap). **추후 fix 후보**.
+- sys-bug-dt-1 (Low) — DT breaker reset endpoint 부재. 매뉴얼 정정 (PR #44 — Roadmap). **추후 fix 후보**.
+- ~~sys-bug-audit-1 (Low) — `audit_logs` immutability constraint 부재~~ ✅ PR #48 (`defc7e2`, 2026-05-10) — Alembic 0012 forward-only trigger (BEFORE UPDATE OR DELETE row + BEFORE TRUNCATE statement). FK cascade SET NULL 은 통과, content column rotation + 두 non-NULL id 간 actor/team rotation 은 차단. security-reviewer PASS WITH MINOR CHANGES (M1/L2/L3 동일 PR 반영, L1 role 분리는 Phase 7/8).
+- ~~sys-bug-bkp-1 (Low) — restore missing X-Confirm-Restore → 400 (RFC 7807 상 412)~~ ✅ PR #48 (`defc7e2`, 2026-05-10) — 400 → 412 + `urn:trustedoss:problem:restore_confirmation_required` + 매뉴얼 reverse-drift (PR #44 ↔ PR #48 양방향 회수).
+- ~~sys-bug-audit-2 (Low) — CSV export UTF-8 BOM 부재~~ ✅ PR #48 (`defc7e2`, 2026-05-10) — `﻿` 헤더 prepend, Excel CJK 로케일 자동 인식.
 
 추후 fix PR 후보 (별도 chore 등재 권고):
-- `fix/audit-immutability` — DB-level trigger 추가 (Alembic forward-only)
-- `fix/backup-restore-confirm-412` — 400 → 412 status + RFC 7807 problem
-- `fix/audit-csv-utf8-bom` — Excel-friendly BOM
-- `chore/dt-breaker-reset-endpoint` — operator escape hatch
-- `chore/last-super-admin-db-constraint` — defense-in-depth
+- ~~`fix/audit-immutability`~~ ✅ PR #48 (위 sys-bug-audit-1).
+- ~~`fix/backup-restore-confirm-412`~~ ✅ PR #48 (위 sys-bug-bkp-1).
+- ~~`fix/audit-csv-utf8-bom`~~ ✅ PR #48 (위 sys-bug-audit-2).
+- `chore/dt-breaker-reset-endpoint` — operator escape hatch (sys-bug-dt-1)
+- `chore/last-super-admin-db-constraint` — defense-in-depth (sys-bug-u&t-1)
 
 ### 환경 chore 후보 (Walkthrough 부산물)
 
-- **postgres dev volume disk-full** — `docker volume prune` 또는 별도 chore (Phase 2/3 walkthrough Tier 2 검증 차단 원인)
-- **celery-worker stale image** (`aiosmtplib` ModuleNotFoundError restart loop) — `docker-compose build celery-worker --no-cache` 또는 `Dockerfile.worker` requirements-dev install 단계 점검 (Chore P refresh 이후에도 stale)
-- **API path consistency** `/api/v1` vs `/v1` — 매뉴얼은 PR #43 으로 통일됐으나 frontend / API client / 외부 SDK 차원 정합 점검 권고
+- ~~**postgres dev volume disk-full**~~ ✅ PR #47 (`c8c44a0`, 2026-05-10) — `scripts/dev-reset.sh` (project-scoped `down -v` + volume prune + up + optional `--rebuild-worker`/`--seed`/`--no-prompt`) + `Makefile` `dev-reset` / `dev-reset-rebuild` 타겟 + `getting-started.md` (EN+KO) `Reset the dev stack` 섹션.
+- ~~**celery-worker stale image** (`aiosmtplib` ModuleNotFoundError restart loop)~~ ✅ PR #47 (`c8c44a0`, 2026-05-10) — `Dockerfile.worker` 의 pip 단계를 `pip install -r requirements.txt -r requirements-dev.txt` 로 명시 (transitive include 의존 제거) + `Makefile` `dev-rebuild-worker` 타겟 (`--no-cache` + `--force-recreate`).
+- ~~**Vite no `/v1/*` proxy** (Phase 5 회귀 근본 원인)~~ ✅ PR #47 (`c8c44a0`, 2026-05-10) — `vite.config.ts` 가 `/v1` `/auth` `/ws` 프록시 (default `http://backend:8000`, `VITE_PROXY_BACKEND` env 로 override). 3 harness 의 `backendBaseUrl()` fallback 이 `BACKEND_BASE_URL → VITE_API_BASE_URL → this.baseUrl` 로 갱신 → SPA + 하네스가 동일 origin 으로 통일.
+- **API path consistency** `/api/v1` vs `/v1` — 매뉴얼은 PR #43 으로 통일됐으나 frontend / API client / 외부 SDK 차원 정합 점검 권고. 잔여.
+
+### Phase 5 fixme 잔여 (PR #45 산출, D 묶음에서 부분 해소)
+
+PR #45 가 남긴 4건 중 2건 본 세션에서 해소.
+
+- ~~`auth_and_profile.spec.ts` test 4 (Unlink-with-fallback)~~ ✅ PR #49 (`b68b0a5`, 2026-05-10) — `seed_e2e_user --with-oauth-identity {github,google}` 옵션 + `seedE2eUser({ withOAuthIdentity })` harness 옵션 + 실제 unlink → success toast → empty card 흐름 활성화.
+- `auth_and_profile.spec.ts` test 3 (last-only blocks-login alert) — fixme 유지. 사유: blocks-login 분기는 OAuth-only 사용자 (no `hashed_password`) 에서만 발화하는데 seed 가 항상 password 를 provision. 후속 필요: `--no-password` 플래그 또는 JWT-mint 헬퍼. URN 자체는 backend integration 테스트 (`test_users_me_oauth_identities_api.py`) 가 검증.
+- `admin_backup.spec.ts` test 4 (manual trigger row check) — fixme 유지 (사유 정정). PR #45 의 stale-worker 가설은 빗나감. 실제 차단: `scripts/backup.sh` 가 worker 컨테이너 내부에서 `docker-compose` (V1) 바이너리를 요구하는데 worker 이미지에 미포함 → `BackupTaskError("backup.sh exited 1: docker-compose (V1) is required.")`. 해결 경로 3가지: (a) worker 이미지에 docker-compose 번들 (heavy), (b) `tasks.backup` 을 `DATABASE_URL` 직접 사용으로 리팩터링 (권장), (c) `pg_dump` 셰임 with intent-recording. 후속 chore 권고.
+- `admin_backup.spec.ts` toast assertion (manual_triggered) — 본 fixme 안에서도 toast 는 검증되므로 별도 잔여 X.
+
+### Deploy Docs CI 회복 (부산물)
+
+- ~~**docs-site/package-lock.json missing**~~ ✅ PR #50 (`4401a8a`, 2026-05-10) — `.github/workflows/docs.yml` 의 `actions/setup-node@v4` 가 `cache-dependency-path: docs-site/package-lock.json` 을 요구하는데 lockfile 이 git 에 미커밋. 2026-05-09 부터 main 의 Deploy Docs run 5회 연속 실패 (PR #43/#44/#46/#47/#48 머지 trigger). 본 PR 에서 lockfile (lockfileVersion 3, `npm ci --dry-run` 검증) 커밋.
 
 ---
 
 ## 새 세션 시작 시 사용
 
-`docs/sessions/_next-session-prompt-post-ga-cleanup.md` 파일이 작성됨 (2026-05-09).
-새 세션 첫 메시지에 그 파일 내용을 그대로 붙여넣으면 정확한 컨텍스트로 시작.
+다음 세션 후보 (위 "Manual Walkthrough Verification" 섹션 참조):
+- A4/A5 chore 합본 (`chore/dt-breaker-reset-endpoint` + `chore/last-super-admin-db-constraint`) — ~1 세션
+- L1 PostgreSQL role 분리 (`trustedoss_app` DML-only / `trustedoss_owner` migrations) — ~1.5 세션, audit_logs trigger 의 runtime app 우회 가능성 제거
+- D2 `tasks.backup` 리팩터링 (DATABASE_URL 직접 사용) — ~1.5 세션, admin_backup test 4 fixme 해소
+- D1 잔여 fixme (auth_and_profile test 3) — `seed_e2e_user --no-password` 플래그 또는 JWT-mint 헬퍼, ~0.5~1 세션
+- B 묶음 v2.1 sprint (API Key 확장 / Excel·PDF Reports / Profile password row / Project permanent Delete / Scan cancel API / 알림 채널×trigger matrix) — 별도 sprint planning 필요
 
-이전 세션 prompt (`_next-session-prompt-chore-backlog.md`) 는 11 chore 모두 처리 후 **deprecated**.
-
-Manual Walkthrough prompt (`_next-session-prompt-manual-walkthrough.md`) 는 Phase 1~6 모두 처리 후 **deprecated** (2026-05-10).
+**Deprecated prompts**:
+- `_next-session-prompt-chore-backlog.md` — 11 chore 모두 처리 후 (2026-05-09).
+- `_next-session-prompt-manual-walkthrough.md` — Phase 1~6 모두 처리 후 (2026-05-10).
+- `_next-session-prompt-post-walkthrough-stabilization.md` — C/A/D 묶음 모두 처리 후 (2026-05-10). 통합 핸드오프: `docs/sessions/2026-05-10-stabilization-cad-bundle.md`.
