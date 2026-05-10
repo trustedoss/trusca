@@ -73,6 +73,7 @@ sidebar_position: 2
 | `SECRET_KEY` | — | `config.py` | [필수 키](#required-keys) 참고. HS256 서명. |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | `config.py` | JWT access token 수명. |
 | `REFRESH_TOKEN_EXPIRE_DAYS` | `7` | `config.py` | Refresh token 수명. 회전 + 재사용 탐지 활성화. |
+| `RATELIMIT_DISABLED` | `false` | `core/ratelimit.py` | `1` / `true` / `yes`로 설정 시 slowapi 리미터를 우회합니다. e2e CI 잡 전용(GitHub-hosted runner는 egress IP를 공유하므로 시나리오 간 5/분 로그인 예산이 소진됨). 프로덕션과 dev에서는 반드시 미설정으로 두세요. |
 
 ## Dependency-Track
 
@@ -85,6 +86,7 @@ sidebar_position: 2
 | `DT_BREAKER_COOLDOWN_SECONDS` | `30` | `config.py` | breaker가 OPEN을 유지하다 HALF_OPEN 프로브를 허용하기까지의 대기 시간. |
 | `DT_HEALTH_ENDPOINT` | `/api/version` | `config.py` | 60초 heartbeat가 `DT_URL`에 덧붙이는 경로. |
 | `DT_AUTO_RESTART` | `false` | `config.py` | `true`이면 Health monitor가 지속적인 OPEN 후 `docker restart dtrack-api`를 시도. DT가 외부이거나 운영자 주도 복구만 원하면 `false` 유지. |
+| `DT_VOLUME_HOST_PATH` | `/var/lib/dependency-track` | `services/admin_disk_service.py` | admin 디스크 대시보드가 점검하는 DT 데이터 볼륨 경로. 기본값은 번들 compose 마운트와 일치하며 DT가 다른 호스트 볼륨을 사용하면 오버라이드합니다. |
 
 부트스트랩 흐름은 [DT 커넥터](../admin-guide/dt-connector.md) 참고.
 
@@ -96,6 +98,7 @@ sidebar_position: 2
 | `WORKSPACE_HOST_PATH` | `/tmp/trustedoss` | `config.py`, `docker-compose.yml` | worker에 `/workspace`로 마운트되는 호스트 디렉터리. 레포 클론 + ORT 분석기 출력 보관. compose 스택은 컨테이너 내에서 `/workspace`로 오버라이드합니다. |
 | `ORT_RULES_PATH` | `/opt/trustedoss/ort/rules.kts` | `docker-compose.yml` | worker 내부 경로. 커스터마이즈한 룰을 여기에 마운트. |
 | `JSONB_ROW_SIZE_LIMIT_BYTES` | `262144` (256 KB) | `config.py` | writer가 truncate + warn하기 전 행당 JSON 바이트 상한. I-1 무한 페이로드 클래스 가드. |
+| `LICENSE_FETCH_TTL_SECONDS` | `86400` (24시간) | `integrations/license_fetcher/__init__.py` | SPDX 라이선스 텍스트 페처의 캐시 TTL. 음수 또는 정수가 아닌 값은 디버그 로그와 함께 24시간으로 폴백. |
 
 ## WebSocket 게이트웨이
 
@@ -148,12 +151,16 @@ sidebar_position: 2
 |---|---|---|---|
 | `BACKUP_RETENTION_DAYS` | `7` | `scripts/backup.sh` | `scripts/backup.sh --no-prune`로 실행별 오버라이드. |
 | `BACKUP_DIR` | `<repo>/backups` | `scripts/backup.sh` | 백업 스크립트가 쓰는 위치. |
+| `BACKUPS_ROOT` | `backups` | `services/backup_service.py` | API가 백업 디렉터리를 읽을 때 쓰는 경로 오버라이드. 주로 테스트용이며 프로덕션은 미설정으로 두어 `scripts/backup.sh`와 동일하게 레포 루트 기준으로 해석되도록 합니다. |
+| `BACKUP_SUBPROCESS_TIMEOUT` | `3600` (초) | `tasks/backup.py` | 자동 / 수동 백업 태스크가 실행하는 `pg_dump` · `tar` 서브프로세스의 호출당 타임아웃(초). 백업이 1시간을 넘는 대규모 설치에서는 늘리세요. |
 
 ## 디스크 가드
 
 | 키 | 기본값 | 읽는 위치 | 설명 |
 |---|---|---|---|
 | `DISK_HARD_LIMIT_PCT` | `90` | `config.py` (services 레이어) | 빨간 게이지 + 새 스캔 차단 + admin 알림. |
+| `DISK_THRESHOLD_WARNING_PCT` | `80` | `services/admin_disk_service.py` | admin 디스크 대시보드가 백엔드 상태를 `ok` → `warning`으로 전환하는 임계치. |
+| `DISK_THRESHOLD_CRITICAL_PCT` | `90` | `services/admin_disk_service.py` | admin 디스크 대시보드가 백엔드 상태를 `critical`로 전환하는 임계치. 디스크 압박에 의한 스캔 거부는 별개로 `DISK_HARD_LIMIT_PCT`를 사용. |
 
 ## Traefik / TLS
 
@@ -162,6 +169,14 @@ sidebar_position: 2
 | `DOMAIN` | — | `docker-compose.yml` | [필수 키](#required-keys) 참고. |
 | `TLS_EMAIL` | — | `docker-compose.yml` | Let's Encrypt HTTP-01 챌린지가 사용하는 이메일. 인증서 발급에 필수. |
 | `TRAEFIK_LOG_LEVEL` | `INFO` | `docker-compose.yml` | 라우팅 이슈 추적 시 `DEBUG`가 유용. |
+
+## CI 통합
+
+| 키 | 기본값 | 읽는 위치 | 설명 |
+|---|---|---|---|
+| `PORTAL_PUBLIC_URL` | (비어있음) | `api/v1/policy_gate.py` | 포털이 PR 코멘트 마크다운에 임베드해 리뷰어가 전체 보고서로 클릭 이동할 수 있게 하는 공개 base URL(`<base>/projects/<id>`). 미설정이면 코멘트 끝의 "전체 보고서 보기" 링크를 생략. |
+| `GITHUB_TOKEN` | (비어있음) | `api/v1/policy_gate.py` | `POST /v1/scans/{id}/post-pr-comment`로 PR 코멘트를 게시하는 포털 측 GitHub PAT. **워크플로 측 `secrets.GITHUB_TOKEN`과 구분** — 이 토큰은 포털의 아웃바운드 호출자에 속하며 사용자 CI 실행에 속하지 않습니다. |
+| `TRUSTEDOSS_GITHUB_TOKEN` | (비어있음) | `api/v1/policy_gate.py` | `GITHUB_TOKEN`의 별칭. 포털은 `GITHUB_TOKEN`을 먼저 읽고 이 변수로 폴백하므로 `GITHUB_TOKEN`을 다른 도구에 이미 사용 중인 운영자가 분리해 운영할 수 있습니다. |
 
 ## 선택적 통합
 

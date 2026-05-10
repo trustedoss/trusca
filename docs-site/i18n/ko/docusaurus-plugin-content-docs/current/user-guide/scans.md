@@ -116,7 +116,7 @@ UI는 단계·진행률 실시간 갱신을 위해 `ws(s)://<host>/ws/scans/{sca
 }
 ```
 
-`percent`는 0–100 정수입니다. `step`은 7개의 파이프라인 슬러그(`bootstrap`, `fetch`, `prep`, `cdxgen`, `ort`, `dt_upload`, `dt_findings`, `finalize`)와 2개의 종단 상태(`succeeded`, `failed`) 중 하나입니다. 프레임은 `scan_id`를 다시 보내지 않습니다 — 구독자가 URL에서 이미 알고 있기 때문입니다.
+`percent`는 0–100 정수입니다. `step`은 소스 파이프라인의 8개 슬러그(`bootstrap`, `fetch`, `prep`, `cdxgen`, `ort`, `dt_upload`, `dt_findings`, `finalize`) 중 하나이거나, 컨테이너 스캔의 경우 컨테이너 파이프라인의 4개 슬러그(`bootstrap`, `trivy`, `persist`, `finalize`) 중 하나이며, 추가로 2개의 종단 상태(`succeeded`, `failed`)가 있습니다. 프레임은 `scan_id`를 다시 보내지 않습니다 — 구독자가 URL에서 이미 알고 있기 때문입니다.
 
 ## 정상 동작 확인
 

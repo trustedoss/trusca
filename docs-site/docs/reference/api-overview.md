@@ -119,14 +119,16 @@ POST   /auth/reset-password                  anonymous
 GET    /auth/oauth/{provider}/authorize      anonymous
 GET    /auth/oauth/{provider}/callback       anonymous
 
-GET    /v1/users/me                          notification preferences etc.
-PUT    /v1/users/me/notification-prefs
+# /v1/users/me/* exposes only the sub-resources below — see GET /auth/me for self info.
 GET    /v1/users/me/notification-prefs
-DELETE /v1/users/me                          self-deactivate
+PUT    /v1/users/me/notification-prefs
+GET    /v1/users/me/oauth-identities
+DELETE /v1/users/me/oauth-identities/{identity_id}   # last-OAuth + has-password gated
 
 GET    /v1/projects                          list (team-scoped)
 POST   /v1/projects
 GET    /v1/projects/{id}
+GET    /v1/projects/{id}/overview            aggregated risk / scan picture (Overview tab)
 PATCH  /v1/projects/{id}
 DELETE /v1/projects/{id}
 GET    /v1/projects/{id}/sbom?format=…
@@ -203,6 +205,8 @@ DELETE /v1/admin/backup/{name}
 
 The full schema (request bodies, response shapes, validation rules) lives at `/api/docs` on every running install.
 
+`DELETE /v1/users/me/oauth-identities/{identity_id}` is gated by two checks: the caller must still be able to sign in afterwards (either another OAuth identity remains, or the account has a password). When neither path remains the endpoint returns **409 Conflict** with `type=urn:trustedoss:problem:last-oauth-link`.
+
 ### Optimistic concurrency
 
 Endpoints that mutate domain rows with stateful workflows accept (and require) the `If-Match` request header carrying the row's current `version` integer. `PATCH /v1/approvals/{id}/transition` and `PATCH /v1/vulnerability_findings/{finding_id}/status` both use this pattern. Mismatches return `412 Precondition Failed` with a Problem Details body that includes the current version.
@@ -226,7 +230,7 @@ Authentication is handled by the **first message** the client sends, not by quer
 The gateway closes the connection with code `1008` / reason `auth_timeout` if the first frame does not arrive within `WEBSOCKET_AUTH_TIMEOUT_SECONDS` (default 1.0 s). Subsequent server frames carry progress events:
 
 ```json
-{ "percent": 62, "step": "resolving_vulnerabilities", "ts": "2026-05-10T12:34:56Z" }
+{ "percent": 70, "step": "dt_upload", "ts": "2026-05-10T12:34:56Z" }
 ```
 
 Reconnect with exponential backoff. Each reconnect receives one initial-sync frame from the current scan row before live events flow.

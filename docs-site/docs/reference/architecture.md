@@ -23,7 +23,7 @@ The production stack runs seven container services (plus an optional eighth — 
 | `traefik` | `traefik:v3.2.1` | Edge proxy. TLS termination via Let's Encrypt HTTP-01. HTTP→HTTPS redirect. |
 | `postgres` | `postgres:17.2-alpine` | Primary store. All persistent state. |
 | `redis` | `redis:7.4-alpine` | Celery broker + result backend. WebSocket pub/sub. |
-| `backend` | `trustedoss/backend:<tag>` | FastAPI + uvicorn (4 workers). Reachable via Traefik on `/api`, `/health`, `/metrics`. |
+| `backend` | `trustedoss/backend:<tag>` | FastAPI + uvicorn (4 workers). Reachable via Traefik on `/api` and `/health`. (See [Observability](#observability) for `/metrics`.) |
 | `worker` | `trustedoss/backend-worker:<tag>` | Celery worker with `cdxgen`, ORT, Trivy, JRE bundled. |
 | `beat` | `trustedoss/backend-worker:<tag>` | Celery Beat scheduler. DT heartbeat (60 s), DT resync (1 h), orphan cleanup (6 h), backup (daily). |
 | `frontend` | `trustedoss/frontend:<tag>` | nginx serving the Vite build. Reachable via Traefik on `/`. |
@@ -81,24 +81,28 @@ Migrations are forward-only Alembic. Schema and data migrations live in separate
 
 ## Scan pipeline
 
-A scan is a Celery task chain. Source scan stages:
+A scan is a Celery task chain. The stage names below are the literal `step` values streamed on the `scan.<id>.progress` WebSocket channel — they come from `tasks/scan_source.py::_STAGE_PROGRESS` and `tasks/scan_container.py::_STAGE_PROGRESS`.
+
+Source scan stages (`tasks/scan_source.py`):
 
 ```
-1. bootstrapping            (workspace setup, locks the per-project lock)
-2. fetching_source          (git clone / fetch / checkout)
-3. detecting_components     (cdxgen → CycloneDX SBOM)
-4. analyzing_licenses       (ORT consumes the SBOM, emits findings + obligations)
-5. resolving_vulnerabilities (DT correlation OR cache fallback when breaker is OPEN)
-6. persisting               (write to PostgreSQL in one transaction per scan)
+1. bootstrap     (0 %)   workspace setup, per-project lock acquired, scan row marked running
+2. fetch         (10 %)  git clone / fetch / checkout
+3. prep          (18 %)  lockfile pre-pass (one-shot dependency resolve before cdxgen)
+4. cdxgen        (25 %)  cdxgen → CycloneDX SBOM
+5. ort           (50 %)  ORT consumes the SBOM, emits license findings + obligations
+6. dt_upload     (70 %)  upload SBOM to Dependency-Track
+7. dt_findings   (90 %)  pull DT vulnerability findings (or cache fallback when breaker is OPEN)
+8. finalize      (100 %) write to PostgreSQL in one transaction, mark scan completed
 ```
 
-Container scan stages:
+Container scan stages (`tasks/scan_container.py`):
 
 ```
-1. bootstrapping
-2. fetching_image           (skopeo pull or worker-cache hit)
-3. trivy                    (OS-package CVE detection)
-4. persisting
+1. bootstrap     (0 %)   workspace setup + image fetch (skopeo pull or worker-cache hit)
+2. trivy         (60 %)  OS-package CVE detection
+3. persist       (90 %)  insert findings into PostgreSQL
+4. finalize      (100 %) commit transaction, mark scan completed
 ```
 
 Stage transitions emit WebSocket events (`scan.<id>.progress`) so the UI updates in real time. Completion fires the appropriate notification triggers.
@@ -188,9 +192,9 @@ Out of the box:
 
 - **Logs** — `docker-compose logs <service>` (structured JSON, `structlog`).
 - **Health** — `/health` (backend), `/healthz` (frontend container), `/admin/health` UI for the operator dashboard.
-- **Metrics** — basic service-health metrics are shipped at the Traefik level via its access log. A backend `/metrics` endpoint with a Prometheus exporter is on the roadmap (Phase 6).
+- **Metrics** — basic service-health metrics are shipped at the Traefik level via its access log. The backend `/metrics` Prometheus exporter is **not yet implemented**; `docker-compose.yml` reserves a Traefik `PathPrefix(/metrics)` route as a placeholder, but the backend has no handler bound to it. The endpoint will land on the post-GA roadmap.
 
-OpenTelemetry tracing exporter and a bundled Jaeger overlay are on the roadmap (Phase 9) — there is no `docker-compose.tracing.yml` at v2.0.0.
+OpenTelemetry tracing exporter and a bundled Jaeger overlay are on the post-GA roadmap — there is no `docker-compose.tracing.yml` at v2.0.0.
 
 ## Deployment topologies
 

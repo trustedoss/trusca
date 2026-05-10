@@ -8,10 +8,19 @@ sidebar_position: 2
 
 # GitLab CI
 
-The portal ships an `include`-able GitLab CI template that mirrors the GitHub Action: it triggers a scan, polls until terminal, evaluates the build gate, and posts the SCA report as a merge-request note. The template is a single job; you can extend or override any field.
+The portal ships an `include`-able GitLab CI template that mirrors the GitHub Action: it triggers a scan, polls until terminal, and evaluates the build gate. The template is a single job; you can extend or override any field.
 
 :::note Audience
 Engineers maintaining a GitLab project that uses GitLab CI / CD. You need an API key for the portal — see [API keys](../admin-guide/api-keys.md).
+:::
+
+:::warning GitLab MR comments — not yet shipped
+The portal's PR-comment integration is GitHub-only at v2.0.0. The
+`templates/gitlab-ci.yml` MR-comment job stages a request, but the
+backend `services/sca_comment.py` only knows how to call
+`api.github.com` — calling it with a GitLab `repo_full_name` returns
+404. Use the build-gate exit code on the GitLab side until the
+GitLab Notes API client lands.
 :::
 
 ## Quick start
@@ -38,7 +47,11 @@ sca:
 
 ### 1. Generate an API key
 
-In the portal: **Project Settings → CI/CD → API keys → New API key**. Allowed actions: `scan:trigger`, `scan:read`, `report:download`. See [API keys](../admin-guide/api-keys.md).
+In the portal: **Project Settings → CI/CD → API keys → New API key**.
+
+API keys carry a single `scope` (`org`, `team`, or `project`). There is no per-action allowlist at v2.0.0; any caller authenticated with a key in the right scope can hit any endpoint that accepts an api-key. Per-action capabilities are on the roadmap.
+
+See [API keys](../admin-guide/api-keys.md).
 
 ### 2. Store the key as a masked CI/CD variable
 
@@ -71,7 +84,7 @@ Either way, only `TRUSTEDOSS_API_KEY` must be masked.
 | `TRUSTEDOSS_FAIL_ON_GATE` | no | `true` | If `true`, job exits 1 on gate fail. |
 | `TRUSTEDOSS_POLL_TIMEOUT` | no | `1800` | Max seconds to wait for terminal state. |
 | `TRUSTEDOSS_POLL_INTERVAL` | no | `30` | Seconds between polls. |
-| `TRUSTEDOSS_POST_MR_COMMENT` | no | `true` | Post the SCA report as a merge-request note when the pipeline runs in an MR context. |
+| `TRUSTEDOSS_POST_MR_COMMENT` | no | `true` | Reserved for the GitLab Notes API client (not yet shipped — see warning at the top of this page). The flag is parsed but a request to the portal currently fails for GitLab repos. |
 
 ## Recipes
 
@@ -87,7 +100,7 @@ variables:
   TRUSTEDOSS_FAIL_ON_GATE: 'false'
 ```
 
-The job stays green; the MR note still posts.
+The job stays green. (MR note posting is GitHub-only at v2.0.0 — see warning at the top of this page.)
 
 ### Run only on protected branches
 
@@ -124,24 +137,15 @@ Pin the `include` URL to a release tag (`v2.0.0`) instead of `main` for reproduc
 If you need to copy and inline the job — for instance because your runner cannot reach GitHub for the `include` — here is the canonical shape:
 
 ```yaml
+# canonical shape — see templates/gitlab-ci.yml for the live version
 .trustedoss-sca:
-  image: alpine:3.20
+  image: curlimages/curl:8.4.0
   stage: test
   before_script:
-    - apk add --no-cache curl jq bash ca-certificates
+    - command -v jq >/dev/null || apk add --no-cache jq
   script:
-    - bash -c '
-        set -euo pipefail;
-        SCAN_ID=$(curl -fsS -X POST
-          -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}"
-          -H "Content-Type: application/json"
-          -d "{\"kind\": \"${TRUSTEDOSS_SCAN_KIND:-source}\"}"
-          "${TRUSTEDOSS_API_URL}/api/v1/projects/${TRUSTEDOSS_PROJECT_ID}/scans"
-          | jq -r .id);
-        echo "scan_id=$SCAN_ID";
-        # Poll until terminal …
-        # Evaluate gate, post MR note, exit 0/1
-      '
+    - 'curl -fsS -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" -F "...="  ${TRUSTEDOSS_API_URL}/api/v1/scans/source'
+    # ... (full version inline at templates/gitlab-ci.yml)
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
@@ -166,9 +170,7 @@ GitLab strips empty variables. Confirm `TRUSTEDOSS_API_KEY` is defined for the r
 
 ### MR note is not posted
 
-The portal needs the GitLab integration enabled in the project's CI settings. Confirm in the portal: **Project Settings → CI/CD → GitLab integration** is configured with a project access token.
-
-If your GitLab is self-managed and the portal cannot reach `gitlab.example.internal`, the MR note step fails with a network error. Either expose your GitLab to the portal's worker or set `TRUSTEDOSS_POST_MR_COMMENT=false`.
+Expected at v2.0.0 — the portal's PR-comment integration is GitHub-only (see warning at the top of this page). Set `TRUSTEDOSS_POST_MR_COMMENT=false` to suppress the staged request, and rely on the build-gate exit code to enforce policy.
 
 ### Job runs out of time at the polling step
 
@@ -176,7 +178,7 @@ If your GitLab is self-managed and the portal cannot reach `gitlab.example.inter
 
 ### "Forbidden" on `POST /scans`
 
-The API key's allowed actions do not include `scan:trigger`. Re-issue the key with the correct scope.
+The API key's `scope` (`org`, `team`, or `project`) does not cover the project being scanned. Re-issue the key with the correct scope.
 
 ## See also
 

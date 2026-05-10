@@ -119,14 +119,16 @@ POST   /auth/reset-password                  익명
 GET    /auth/oauth/{provider}/authorize      익명
 GET    /auth/oauth/{provider}/callback       익명
 
-GET    /v1/users/me                          알림 환경설정 등
-PUT    /v1/users/me/notification-prefs
+# /v1/users/me/* 는 아래 하위 리소스만 노출 — self 정보는 GET /auth/me 참고.
 GET    /v1/users/me/notification-prefs
-DELETE /v1/users/me                          self-deactivate
+PUT    /v1/users/me/notification-prefs
+GET    /v1/users/me/oauth-identities
+DELETE /v1/users/me/oauth-identities/{identity_id}   # 마지막 OAuth + has-password 가드
 
 GET    /v1/projects                          목록 (팀 범위)
 POST   /v1/projects
 GET    /v1/projects/{id}
+GET    /v1/projects/{id}/overview            집계된 리스크 / 스캔 정보 (Overview 탭)
 PATCH  /v1/projects/{id}
 DELETE /v1/projects/{id}
 GET    /v1/projects/{id}/sbom?format=…
@@ -203,6 +205,8 @@ DELETE /v1/admin/backup/{name}
 
 전체 스키마(요청 본문, 응답 형태, 검증 룰)는 모든 실행 인스턴스의 `/api/docs`에 있습니다.
 
+`DELETE /v1/users/me/oauth-identities/{identity_id}`는 두 단계로 가드됩니다 — 호출자가 이후에도 로그인 가능해야 하며(다른 OAuth 신원이 남아 있거나 계정에 비밀번호가 있어야 함), 어느 쪽도 충족되지 않으면 **409 Conflict**를 `type=urn:trustedoss:problem:last-oauth-link`로 반환합니다.
+
 ### Optimistic concurrency
 
 상태 워크플로 도메인 행을 변경하는 엔드포인트는 행의 현재 `version` 정수를 담은 `If-Match` 요청 헤더를 받습니다(필수). `PATCH /v1/approvals/{id}/transition`과 `PATCH /v1/vulnerability_findings/{finding_id}/status` 모두 이 패턴을 사용합니다. 불일치는 `412 Precondition Failed`와 현재 버전을 포함한 Problem Details 본문을 반환합니다.
@@ -226,7 +230,7 @@ WSS  /api/ws/scans/{scan_id}
 게이트웨이는 첫 프레임이 `WEBSOCKET_AUTH_TIMEOUT_SECONDS`(기본 1.0초) 내 도착하지 않으면 코드 `1008` / reason `auth_timeout`으로 닫습니다. 이후 서버 프레임은 진행 이벤트를 담습니다.
 
 ```json
-{ "percent": 62, "step": "resolving_vulnerabilities", "ts": "2026-05-10T12:34:56Z" }
+{ "percent": 70, "step": "dt_upload", "ts": "2026-05-10T12:34:56Z" }
 ```
 
 지수 backoff로 재연결. 매 재연결 시 라이브 이벤트가 흐르기 전 현재 스캔 행에서 한 번의 초기 동기화 프레임을 받습니다.

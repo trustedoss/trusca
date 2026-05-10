@@ -31,7 +31,7 @@ sidebar_position: 9
 
 2. 폼을 채웁니다.
    - **Name** — Key 용도를 떠올리게 하는 자유 텍스트(예: `github-action-checkout-service`).
-   - **Scope** — `org`, `team`, `project`. 낮은 scope가 더 엄격합니다. 필요한 호출을 커버하는 가장 작은 scope를 선택하세요. team / project scope를 선택하면 폼에 팀·프로젝트 선택기가 노출됩니다.
+   - **Scope** — `org`, `team`, `project`. 낮은 scope가 더 엄격합니다. 필요한 호출을 커버하는 가장 작은 scope를 선택하세요. 폼에는 `team_id`(scope=`team`일 때 필수)와 `project_id`(scope=`project`일 때 필수)를 위한 평문 UUID 입력란이 있습니다. 해당 admin 페이지에서 ID를 복사해 넣으세요. 선택기 UI는 로드맵 항목입니다.
 3. **Create**를 클릭합니다.
 
 :::caution v2.0.0에서는 Key가 만료되지 않음
