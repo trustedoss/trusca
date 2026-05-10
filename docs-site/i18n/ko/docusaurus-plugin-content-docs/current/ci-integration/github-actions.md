@@ -1,17 +1,21 @@
 ---
 id: github-actions
 title: GitHub Actions
-description: trustedoss/scan-action composite action으로 TrustedOSS Portal을 GitHub Actions 워크플로에 연결합니다 — 트리거·폴링·게이트·코멘트.
+description: 모노레포의 actions/scan 컴포지트 액션으로 TrustedOSS Portal을 GitHub Actions 워크플로에 연결합니다 — 트리거·폴링·게이트·코멘트.
 sidebar_label: GitHub Actions
 sidebar_position: 1
 ---
 
 # GitHub Actions
 
-`trustedoss/scan-action` composite action은 TrustedOSS 스캔을 트리거하고 종료를 기다린 다음 빌드 게이트를 평가하고 (pull request에서는) SCA 보고서를 PR로 다시 게시합니다. 게이트가 실패하면 non-zero로 종료해 PR 체크가 빨갛게 변하고 브랜치 보호 룰이 머지를 차단합니다.
+TrustedOSS 컴포지트 액션은 TrustedOSS 스캔을 트리거하고 종료를 기다린 다음 빌드 게이트를 평가하고 (pull request에서는) SCA 보고서를 PR로 다시 게시합니다. 게이트가 실패하면 non-zero로 종료해 PR 체크가 빨갛게 변하고 브랜치 보호 룰이 머지를 차단합니다.
 
 :::note 대상 독자
 GitHub Actions를 사용하는 GitHub 저장소를 운영하는 엔지니어. 포털용 API Key가 필요합니다 — [API keys](../admin-guide/api-keys.md) 참고.
+:::
+
+:::note 액션 출처
+모노레포의 `actions/scan/action.yml` 컴포지트 액션을 `uses: trustedoss/trustedoss-portal/actions/scan@v2.0.0`로 직접 참조하세요. 독립된 Marketplace 게시는 로드맵에 있습니다.
 :::
 
 ## 빠른 시작
@@ -33,7 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: TrustedOSS SCA scan
-        uses: trustedoss/scan-action@v1
+        uses: trustedoss/trustedoss-portal/actions/scan@v2.0.0
         with:
           api-url: https://trustedoss.example.com
           api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -102,7 +106,7 @@ jobs:
 ```yaml
 - name: TrustedOSS SCA scan
   id: sca
-  uses: trustedoss/scan-action@v1
+  uses: trustedoss/trustedoss-portal/actions/scan@v2.0.0
   with:
     api-url: https://trustedoss.example.com
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -123,7 +127,7 @@ jobs:
 정책을 시드하는 동안 PR을 차단하지 않으려는 경우에 유용합니다.
 
 ```yaml
-- uses: trustedoss/scan-action@v1
+- uses: trustedoss/trustedoss-portal/actions/scan@v2.0.0
   with:
     api-url: https://trustedoss.example.com
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -136,7 +140,7 @@ PR 코멘트는 그대로 게시되며 체크는 green으로 유지됩니다.
 ### 컨테이너 스캔
 
 ```yaml
-- uses: trustedoss/scan-action@v1
+- uses: trustedoss/trustedoss-portal/actions/scan@v2.0.0
   with:
     api-url: https://trustedoss.example.com
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -152,7 +156,7 @@ PR 코멘트는 그대로 게시되며 체크는 green으로 유지됩니다.
 
 ```yaml
 - name: SCA — source
-  uses: trustedoss/scan-action@v1
+  uses: trustedoss/trustedoss-portal/actions/scan@v2.0.0
   with:
     api-url: https://trustedoss.example.com
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -160,7 +164,7 @@ PR 코멘트는 그대로 게시되며 체크는 green으로 유지됩니다.
     scan-kind: source
 
 - name: SCA — container
-  uses: trustedoss/scan-action@v1
+  uses: trustedoss/trustedoss-portal/actions/scan@v2.0.0
   with:
     api-url: https://trustedoss.example.com
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -175,7 +179,7 @@ PR 코멘트는 그대로 게시되며 체크는 green으로 유지됩니다.
 `main`에서만 게이트를 적용하고 PR에서는 advisory:
 
 ```yaml
-- uses: trustedoss/scan-action@v1
+- uses: trustedoss/trustedoss-portal/actions/scan@v2.0.0
   with:
     api-url: https://trustedoss.example.com
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -193,7 +197,7 @@ PR 코멘트는 그대로 게시되며 체크는 green으로 유지됩니다.
 
 ## PR 코멘트는 어떻게 게시되나
 
-action은 포털의 `POST /v1/scans/{id}/post-pr-comment` 엔드포인트를 통해 게시합니다. 이 엔드포인트는 포털 측 GitHub App / PAT를 사용합니다. action은 게시에 워크플로의 `GITHUB_TOKEN`을 **사용하지 않습니다** — 권한이 단순해집니다.
+포털은 워크플로의 `GITHUB_TOKEN`(`${{ secrets.GITHUB_TOKEN }}`로 액션에 전달)을 사용해 코멘트를 게시합니다. 포털에 저장된 installation 토큰을 가진 정식 GitHub App은 로드맵에 있습니다.
 
 코멘트는 **idempotent**합니다 — 같은 PR에서 워크플로를 재실행하면 기존 코멘트가 제자리에 갱신됩니다. 마커 `<!-- trustedoss-sca -->`로 식별합니다.
 

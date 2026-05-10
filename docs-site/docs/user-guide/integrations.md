@@ -19,7 +19,7 @@ sidebar_position: 9
 
 ## API keys
 
-Open `/integrations` and switch to the **API keys** tab. The list shows every key you can manage: label, prefix, scope, expiry, and last-used metadata.
+Open `/integrations` and scroll to the **API keys** section. The list shows every key you can manage: label, prefix, scope, expiry, and last-used metadata.
 
 ![Integrations — API keys section with the Create button and the keys table](/img/screenshots/user-integrations-keys.png)
 
@@ -30,7 +30,7 @@ Open `/integrations` and switch to the **API keys** tab. The list shows every ke
    ![Integrations — Create API key dialog with name + scope inputs](/img/screenshots/user-integrations-key-create.png)
 
 2. Fill in the form:
-   - **Label** — free-text reminder of what the key is for (e.g. `github-action-checkout-service`).
+   - **Name** — free-text reminder of what the key is for (e.g. `github-action-checkout-service`).
    - **Scope** — `org`, `team`, or `project`. Lower scopes are stricter; pick the smallest that covers the calls you need to make. The form surfaces a team or project picker when those scopes are selected.
 3. Click **Create**.
 
@@ -52,7 +52,7 @@ The modal has a **Copy** button and an explicit warning: *"This is the only time
 
 ### Use a key
 
-Pass the key in the `Authorization` header of every request. Both `Bearer` and `ApiKey` schemes are accepted; `Bearer` is preferred for OpenAPI tooling compatibility:
+Pass the key in the `Authorization` header of every request using the `Bearer` scheme:
 
 ```bash
 curl -sS \
@@ -85,7 +85,7 @@ In the API keys list, hover the row and click **Revoke**. Confirm in the dialog.
 
 ## Webhooks
 
-Switch to the **Webhooks** tab. Unlike API keys, webhook URLs are **fixed** — the portal exposes them at well-known paths, and you wire your provider (GitHub / GitLab) to post into them.
+Scroll to the **Webhooks** section. Unlike API keys, webhook URLs are **fixed** — the portal exposes them at well-known paths, and you wire your provider (GitHub / GitLab) to post into them.
 
 ![Integrations — Webhooks section with GitHub and GitLab URL cards](/img/screenshots/user-integrations-webhooks.png)
 

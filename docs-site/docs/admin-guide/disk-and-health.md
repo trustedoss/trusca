@@ -125,13 +125,7 @@ After cleanup, **/admin/disk** updates within ~10 seconds. Once below the hard t
 
 ## Notification triggers
 
-When disk usage crosses the hard limit, the portal fires the **disk pressure** notification:
-
-- Email to all `super_admin` users (when SMTP is configured).
-- Slack webhook (when `SLACK_WEBHOOK_URL` is set).
-- MS Teams webhook (when `TEAMS_WEBHOOK_URL` is set).
-
-The same notification fires once per crossing, not on every probe. Crossing back below the warn line emits a "recovered" notification.
+Disk pressure does not generate a notification today; operators are expected to monitor `/admin/disk` directly. A `disk_pressure` notification kind is on the roadmap.
 
 ## Verify it worked
 

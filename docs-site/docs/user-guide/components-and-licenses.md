@@ -54,9 +54,9 @@ For the approval state of a conditional-license component, switch to the project
 
 ## License classification
 
-The **Licenses** tab on a project breaks down the same data by SPDX identifier and tier — a donut chart on top of the same table the Components tab uses, scoped to license rows:
+The **Licenses** tab on a project breaks down the same data by SPDX identifier and tier — a horizontal bar chart on top of the same table the Components tab uses, scoped to license rows:
 
-![Project detail — Licenses tab with a tier donut chart and a per-license breakdown](/img/screenshots/user-licenses-donut.png)
+![Project detail — Licenses tab with a tier horizontal bar chart and a per-license breakdown](/img/screenshots/user-licenses-donut.png)
 
 ORT classifies every license into three tiers, defined in `ort/rules.kts`:
 
@@ -92,7 +92,7 @@ Each license carries **obligations** — duties you must honor when redistributi
 - **Dynamic linking** — LGPL-style: end-users must be able to relink against a modified library.
 - **No endorsement** — do not use the project name to endorse derivatives without permission.
 
-The **Obligations** tab on the project page consolidates obligations across components. Click **Generate NOTICE** to download a `NOTICE.txt` summarizing every attribution and license — see [SBOM](./sbom.md#notice-file).
+The **Obligations** tab on the project page consolidates obligations across components. Click **Download NOTICE** to download a `NOTICE.txt` summarizing every attribution and license — see [SBOM](./sbom.md#notice-file).
 
 ![Project detail — Obligations tab with the per-component obligations distribution](/img/screenshots/user-obligations-distribution.png)
 
@@ -111,7 +111,7 @@ Hovering an expression in the UI shows the SPDX URL for each component license.
 After a successful scan:
 
 1. Component count matches your expectation (close to the count of pinned dependencies in your lockfile).
-2. The classification distribution donut on the Overview tab adds up to 100%.
+2. The classification distribution horizontal bar chart on the Overview tab adds up to 100%.
 3. Forbidden-license components, if any, are highlighted in red and have a CTA to the [approvals queue](./approvals.md).
 
 ## Troubleshooting

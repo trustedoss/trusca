@@ -10,6 +10,8 @@ sidebar_position: 4
 
 **Vulnerabilities** 탭은 스캔 파이프라인이 프로젝트 컴포넌트와 상관시킨 모든 미해결 CVE를 나열합니다. 결과는 스캔을 거쳐 영속화됩니다 — CVE가 한번 발견되면 근본 컴포넌트가 제거·업그레이드될 때까지 상태와 분류 노트와 함께 프로젝트 이력에 남습니다.
 
+![프로젝트 상세 — 심각도 필터와 행별 CVE 링크가 있는 Vulnerabilities 탭](/img/screenshots/user-vulns-list.png)
+
 :::note 대상 독자
 개별 결과를 분류하는 엔지니어; SLA를 추적하는 보안 리드. VEX 상태 변경은 `developer` 이상; 일괄 억제는 `team_admin`.
 :::
@@ -50,7 +52,7 @@ sidebar_position: 4
 
 컬럼:
 
-- **CVE** — CVE ID(예: `CVE-2024-12345`). 클릭하면 NVD 항목으로 이동.
+- **CVE** — CVE-YYYY-NNNN 식별자 (평문 표시; NVD 클릭 이동은 로드맵 항목).
 - **심각도 (Severity)** — 색상 배지.
 - **CVSS** — 상위 피드의 CVSS v3 숫자 점수.
 - **제목 (Title)** — 권고문의 짧은 요약.
@@ -67,8 +69,8 @@ sidebar_position: 4
 - **요약 (Summary)** — 제목, 설명, CWE, CVSS 벡터.
 - **참고 자료 (References)** — 벤더 권고, 수정 커밋, 익스플로잇 데이터베이스.
 - **영향 (Affected)** — 상위에서 보고한 영향 범위와 본 프로젝트 컴포넌트 버전 강조, 그리고 `fixed_in`(수정이 포함된 상위 버전, 가용 시).
-- **분석 (Analysis)** — VEX 상태 드롭다운, 사유 박스, **Save**. `developer` 이상만.
-- **이력 (History)** — 결과가 등장한 모든 스캔과 타임스탬프.
+- **분석 (Analysis)** — VEX 상태 전환별 액션 버튼(허용된 전환마다 한 개씩: Confirm, Mark exploitable, Mark not affected, Mark in triage, Mark resolved, Mark false positive, Mark not applicable). 버튼을 클릭하면 사유 입력 다이얼로그가 열리며 제출합니다. `developer` 이상만.
+- **이력 (History)** — VEX 상태 전환 타임라인(누가, 언제, 어떤 사유로 상태를 변경했는지).
 
 ## 재탐지
 

@@ -42,22 +42,21 @@ The portal achieves byte-stability by:
 
 1. Open the project.
 2. Click the **SBOM** tab.
-3. Choose the format from the dropdown.
-4. Click **Download**.
+3. Click one of the four format buttons (CycloneDX JSON, CycloneDX XML, SPDX JSON, SPDX Tag-Value) to download.
 
-The file name is `<project-name>-<scan-finished-iso>.sbom.<ext>`.
+The file name is `sbom-<project-slug>.<ext>`.
 
 ## Download from the API
 
 ```bash
 # CycloneDX JSON
 curl -sS -L -OJ \
-  -H "Authorization: ApiKey ${TRUSTEDOSS_API_KEY}" \
+  -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
   "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/sbom?format=cyclonedx-json"
 
 # SPDX JSON
 curl -sS -L -OJ \
-  -H "Authorization: ApiKey ${TRUSTEDOSS_API_KEY}" \
+  -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
   "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/sbom?format=spdx-json"
 ```
 
@@ -82,7 +81,7 @@ The file contains:
 
   ```bash
   curl -sS -L -OJ \
-    -H "Authorization: ApiKey ${TRUSTEDOSS_API_KEY}" \
+    -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
     "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/notice"
   ```
 

@@ -52,7 +52,7 @@ sidebar_position: 1
 
 ```bash
 curl -sS -X POST https://trustedoss.example.com/v1/projects \
-  -H "Authorization: ApiKey ${TRUSTEDOSS_API_KEY}" \
+  -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "checkout-service",

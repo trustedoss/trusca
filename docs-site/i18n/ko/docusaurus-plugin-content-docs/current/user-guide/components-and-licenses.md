@@ -54,9 +54,9 @@ sidebar_position: 3
 
 ## 라이선스 분류
 
-**Licenses** 탭은 같은 데이터를 SPDX 식별자와 tier 별로 — Components 탭이 사용하는 같은 표 위에 도넛 차트 — 분리해서 보여줍니다:
+**Licenses** 탭은 같은 데이터를 SPDX 식별자와 tier 별로 — Components 탭이 사용하는 같은 표 위에 가로 막대 차트 — 분리해서 보여줍니다:
 
-![프로젝트 상세 — tier 도넛 차트와 라이선스별 분포가 있는 Licenses 탭](/img/screenshots/user-licenses-donut.png)
+![프로젝트 상세 — tier 가로 막대 차트와 라이선스별 분포가 있는 Licenses 탭](/img/screenshots/user-licenses-donut.png)
 
 
 ORT는 모든 라이선스를 세 단계로 분류하며 정의는 `ort/rules.kts`에 있습니다.
@@ -93,7 +93,7 @@ ORT는 세 가지 신뢰 수준을 구분합니다.
 - **동적 링킹** — LGPL류: 최종 사용자가 수정 라이브러리로 재링크 가능해야 함.
 - **보증 금지** — 허락 없이 프로젝트 이름으로 파생물을 보증할 수 없음.
 
-프로젝트 페이지의 **Obligations** 탭은 컴포넌트 전반의 의무사항을 통합합니다. **Generate NOTICE**를 클릭하여 모든 저작자 표시·라이선스를 요약한 `NOTICE.txt`를 다운로드 — [SBOM](./sbom.md#notice-파일).
+프로젝트 페이지의 **Obligations** 탭은 컴포넌트 전반의 의무사항을 통합합니다. **Download NOTICE**를 클릭하여 모든 저작자 표시·라이선스를 요약한 `NOTICE.txt`를 다운로드 — [SBOM](./sbom.md#notice-파일).
 
 ![프로젝트 상세 — 컴포넌트별 의무사항 분포가 있는 Obligations 탭](/img/screenshots/user-obligations-distribution.png)
 
@@ -112,7 +112,7 @@ UI에서 표현 위에 마우스를 올리면 각 컴포넌트 라이선스의 S
 스캔 성공 후:
 
 1. 컴포넌트 수가 예상과 일치(락파일의 고정된 의존성 수에 가까움).
-2. Overview 탭의 분류 분포 도넛이 100%로 합산됩니다.
+2. Overview 탭의 분류 분포 가로 막대 차트가 100%로 합산됩니다.
 3. 금지 라이선스 컴포넌트가 있으면 빨간색 강조와 함께 [승인 큐](./approvals.md)로 가는 CTA가 보입니다.
 
 ## 트러블슈팅

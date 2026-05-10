@@ -43,6 +43,8 @@ Each row shows:
 - **Requested at** — the request timestamp.
 - **Actions** — the disposition controls for your role (drawer entry, etc.).
 
+![Approvals queue with status, component, and last-actor columns.](/img/screenshots/user-approvals-inbox.png)
+
 ## Requesting approval
 
 When the scan pipeline detects a new conditional-license component, a Pending request is created automatically. No manual action required.

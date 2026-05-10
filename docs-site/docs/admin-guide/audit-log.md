@@ -28,9 +28,9 @@ Each entry has:
 | `created_at` | timestamptz | When the action occurred (server clock, UTC). |
 | `actor_user_id` | UUID | The user who performed the action (null for system jobs). |
 | `team_id` | UUID | Team scope of the action when applicable (null for org-wide writes). |
-| `action` | text | Dot-namespaced verb, e.g. `project.create`, `vuln_finding.update`, `team_membership.delete`. |
+| `action` | text | Verb only (`create` / `update` / `delete`). The table is captured separately in `target_table`. Filter as `target_table=projects&action=create`. |
 | `target_table` | text | Table the affected object lives in (`projects`, `teams`, `users`, `vuln_findings`, …). |
-| `target_id` | UUID | The affected object's UUID. |
+| `target_id` | String(64) | The affected object's identifier. |
 | `request_id` | text | Correlates with structured logs (`X-Request-ID`). |
 | `diff` | jsonb | Sanitized before / after diff. PII is masked (`mask_pii`). |
 | `ip` | inet | Source IP. |
@@ -49,14 +49,14 @@ These triggers close a defense-in-depth gap that PR #44 had documented as roadma
 
 ## What gets logged
 
-Every authenticated `POST`, `PATCH`, `PUT`, and `DELETE` produces exactly one entry. Read endpoints (`GET`) do not, with one exception: SBOM and report downloads emit a `*.export` event so you can prove what was disclosed and to whom.
+Every authenticated `POST`, `PATCH`, `PUT`, and `DELETE` produces exactly one entry. Read endpoints (`GET`) do not. SBOM exports emit a structlog `sbom_exported` event but **do not** create an `audit_logs` row at v2.0.0; integrating exports into the audit table is on the roadmap.
 
-System jobs (Celery) also log. Examples:
+System jobs (Celery) also log. Each row carries the bare action verb plus its `target_table`. Examples:
 
-- `scan.create` (system, when a webhook triggers a scan)
-- `dt_orphan.delete`
-- `backup.complete`
-- `notification.send`
+- `target_table=scans&action=create` (system, when a webhook triggers a scan)
+- `target_table=dt_orphans&action=delete`
+- `target_table=backups&action=create`
+- `target_table=notifications&action=create`
 
 ## The audit log page
 
@@ -98,7 +98,7 @@ The response is paginated by `page` + `page_size`.
 
 ### "Who deleted project X?"
 
-Filter: `action=project.delete`, `target_id=<project-uuid>`. There is exactly one row.
+Filter: `target_table=projects&action=delete&target_id=<project-uuid>`. There is exactly one row.
 
 ### "What did user Y do last week?"
 
@@ -106,7 +106,7 @@ Filter: `actor=y@acme.com`, date range last 7 days. The actions list summarizes 
 
 ### "Who suppressed CVE-2024-12345 across all projects?"
 
-Filter: `action=vuln_finding.update`, then expand each row's payload — the rows where `payload.new_state == "suppressed"` and the matching CVE ID are the answer. (A first-class CVE filter is on the roadmap.)
+Filter: `target_table=vuln_findings&action=update`, then expand each row's diff — the rows where `diff.new_state == "suppressed"` and the matching CVE ID are the answer. (A first-class CVE filter is on the roadmap.)
 
 ### "Trace one request end-to-end"
 
@@ -163,7 +163,7 @@ After any privileged action:
 
 1. **/admin/audit** shows a new row at the top within ~1 second.
 2. The `request_id` matches the `X-Request-ID` response header from the originating request.
-3. The `payload` diff matches your expectation. PII fields (email, password hash, API keys) appear masked.
+3. The `diff` matches your expectation. PII fields (email, password hash, API keys) appear masked.
 
 ## Troubleshooting
 

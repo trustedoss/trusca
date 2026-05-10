@@ -27,9 +27,7 @@ Both endpoints are public (no JWT) but require the project's webhook secret. The
 
 ### 1. Enable the webhook in the portal
 
-1. **Project Settings → CI/CD → Webhooks → Enable GitHub webhook**.
-2. The portal generates a secret and shows it once. Copy it.
-3. Note the delivery URL — `https://trustedoss.example.com/api/v1/webhooks/github`.
+At v2.0.0 webhook activation is operator-only. The Project Settings tab does not yet expose webhook controls. Operators bootstrap a per-project `webhook_secret` server-side (see `apps/backend/services/webhook_service.py`); the resulting webhook URL is shown in the **Integrations** page → Webhooks section. A self-service activation UI is on the roadmap.
 
 ### 2. Configure on GitHub
 
@@ -53,9 +51,7 @@ Push a commit. In the portal: **Project → Scans** should show a new scan withi
 
 ### 1. Enable the webhook in the portal
 
-1. **Project Settings → CI/CD → Webhooks → Enable GitLab webhook**.
-2. The portal generates a secret token and shows it once. Copy it.
-3. Note the delivery URL — `https://trustedoss.example.com/api/v1/webhooks/gitlab`.
+At v2.0.0 webhook activation is operator-only. The Project Settings tab does not yet expose webhook controls. Operators bootstrap a per-project `webhook_secret` server-side (see `apps/backend/services/webhook_service.py`); the resulting webhook URL is shown in the **Integrations** page → Webhooks section. A self-service activation UI is on the roadmap.
 
 ### 2. Configure on GitLab
 
@@ -147,7 +143,6 @@ The delivery was accepted but did not trigger. Possible reasons:
 
 - The push was to a branch other than the project's default branch. The portal scans only the default branch (configurable per project — see [Projects](../user-guide/projects.md)).
 - The PR's head SHA is identical to a previous scan's commit (e.g. force-push that re-uses the SHA). The portal deduplicates by SHA.
-- The project has `auto_scan_on_webhook=false`. Toggle it on in **Project Settings → CI/CD**.
 
 ### Old deliveries replay after a portal outage
 

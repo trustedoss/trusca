@@ -26,7 +26,7 @@ sidebar_position: 8
 
 ## `/notifications` 인박스
 
-`/notifications`는 본인이 받은 모든 알림 목록입니다(최신순). 25개 단위로 한 페이지씩 로드되며, 하단의 **Previous** / **Next** 컨트롤로 이력을 탐색합니다.
+`/notifications`는 본인이 받은 모든 알림 목록입니다(최신순). 20개 단위로 한 페이지씩 로드되며, 하단의 **Previous** / **Next** 컨트롤로 이력을 탐색합니다.
 
 ![/notifications 의 알림 인박스 — 읽음/읽지않음 행, kind 배지, 페이지네이션 컨트롤](/img/screenshots/user-notifications-inbox.png)
 
@@ -39,11 +39,11 @@ sidebar_position: 8
 - **읽음 처리** — 행의 어디든 클릭하면 읽음 처리되며 행이 흐리게 표시됩니다.
 - **열기** — 클릭하면 원본 리소스로 이동하며 도중에 읽음 처리됩니다.
 
-툴바에는 일괄 동작이 있습니다 — **Mark all as read**(읽지 않은 항목이 있을 때만)와 **Filter**(트리거 또는 날짜 범위로).
+일괄 동작: **Mark all as read**(현재 페이지의 읽지 않음 배지를 정리).
 
 ## 환경설정
 
-`/notifications` 우측 상단의 **Preferences** 탭은 **전역·채널별** 토글 4개를 노출합니다. 선택은 모든 트리거에 동일하게 적용됩니다 — v2.0.0에서는 트리거별 매트릭스가 없습니다([로드맵](#로드맵-v2x) 참고).
+인박스 아래의 **Preferences** 섹션은 트리거별로 **전역·채널별** 토글 4개를 나열합니다. 선택은 모든 트리거에 동일하게 적용됩니다 — v2.0.0에서는 트리거별 매트릭스가 없습니다([로드맵](#로드맵-v2x) 참고).
 
 ![알림 환경설정 — 이메일·Slack·Teams 채널 토글과 항상 켜진 인앱 행](/img/screenshots/user-notifications-prefs.png)
 

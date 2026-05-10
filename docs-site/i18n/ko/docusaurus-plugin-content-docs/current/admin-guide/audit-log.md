@@ -28,9 +28,9 @@ sidebar_position: 4
 | `created_at` | timestamptz | 작업 발생 시각(서버 시계, UTC). |
 | `actor_user_id` | UUID | 작업 수행 사용자(시스템 작업은 null). |
 | `team_id` | UUID | 해당 시 작업의 팀 범위(조직 단위 쓰기는 null). |
-| `action` | text | 점-네임스페이스 동사. 예: `project.create`, `vuln_finding.update`, `team_membership.delete`. |
+| `action` | text | 동사만(`create` / `update` / `delete`). 테이블은 `target_table`에 별도 캡처. 예: `target_table=projects&action=create` 로 필터. |
 | `target_table` | text | 영향 받은 객체가 속한 테이블(`projects`, `teams`, `users`, `vuln_findings` 등). |
-| `target_id` | UUID | 영향 받은 객체의 UUID. |
+| `target_id` | String(64) | 영향 받은 객체의 식별자. |
 | `request_id` | text | 구조화 로그(`X-Request-ID`)와 상관. |
 | `diff` | jsonb | 정제된 before/after diff. PII는 마스킹(`mask_pii`). |
 | `ip` | inet | 출처 IP. |
@@ -49,14 +49,14 @@ sidebar_position: 4
 
 ## 무엇이 기록되는가
 
-인증된 모든 `POST`, `PATCH`, `PUT`, `DELETE`가 정확히 하나의 항목을 생성합니다. 읽기 엔드포인트(`GET`)는 기록하지 않으며 예외는 SBOM·보고서 다운로드입니다 — `*.export` 이벤트를 발신해 무엇이 누구에게 공개되었는지 증명할 수 있게 합니다.
+인증된 모든 `POST`, `PATCH`, `PUT`, `DELETE`가 정확히 하나의 항목을 생성합니다. 읽기 엔드포인트(`GET`)는 기록하지 않습니다. SBOM 내보내기는 structlog `sbom_exported` 이벤트를 발신하지만 v2.0.0에서는 `audit_logs` 행을 **생성하지 않습니다** — 내보내기를 감사 테이블에 통합하는 것은 로드맵 항목입니다.
 
-시스템 작업(Celery)도 기록합니다. 예시:
+시스템 작업(Celery)도 기록합니다. 각 행은 동사만 담고 `target_table`을 별도로 가집니다. 예시:
 
-- `scan.create`(시스템, Webhook이 스캔 트리거)
-- `dt_orphan.delete`
-- `backup.complete`
-- `notification.send`
+- `target_table=scans&action=create`(시스템, Webhook이 스캔 트리거)
+- `target_table=dt_orphans&action=delete`
+- `target_table=backups&action=create`
+- `target_table=notifications&action=create`
 
 ## 감사 로그 페이지
 
@@ -98,7 +98,7 @@ curl -sS \
 
 ### "프로젝트 X를 누가 삭제했나?"
 
-필터: `action=project.delete`, `target_id=<project-uuid>`. 정확히 한 행이 있습니다.
+필터: `target_table=projects&action=delete&target_id=<project-uuid>`. 정확히 한 행이 있습니다.
 
 ### "사용자 Y가 지난주에 무엇을 했나?"
 
@@ -106,7 +106,7 @@ curl -sS \
 
 ### "모든 프로젝트에 걸쳐 CVE-2024-12345를 누가 억제했나?"
 
-필터: `action=vuln_finding.update`, 그 후 각 행의 payload를 펼쳐 — `payload.new_state == "suppressed"`이면서 매칭 CVE ID인 행이 답입니다. (1급 CVE 필터는 로드맵 항목)
+필터: `target_table=vuln_findings&action=update`, 그 후 각 행의 diff를 펼쳐 — `diff.new_state == "suppressed"`이면서 매칭 CVE ID인 행이 답입니다. (1급 CVE 필터는 로드맵 항목)
 
 ### "한 요청을 end-to-end 추적"
 
@@ -163,7 +163,7 @@ SELECT tgname FROM pg_trigger
 
 1. **/admin/audit**이 ~1초 이내 최상단에 새 행을 표시.
 2. `request_id`가 원래 요청의 `X-Request-ID` 응답 헤더와 일치.
-3. `payload` diff가 예상과 일치. PII 필드(이메일·비밀번호 해시·API Key)가 마스킹되어 표시.
+3. `diff`가 예상과 일치. PII 필드(이메일·비밀번호 해시·API Key)가 마스킹되어 표시.
 
 ## 트러블슈팅
 

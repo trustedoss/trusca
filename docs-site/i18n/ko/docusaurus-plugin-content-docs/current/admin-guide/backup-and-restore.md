@@ -61,7 +61,7 @@ Backup complete
 ### 백업 트리거
 
 1. `/admin/backup`을 엽니다(Admin 사이드바 → **Backup**).
-2. **Trigger backup now**를 클릭합니다. 버튼은 `super_admin` 전용입니다.
+2. **Run manual backup now**를 클릭합니다. 버튼은 `super_admin` 전용입니다.
 3. 포털이 Celery 태스크를 큐에 넣습니다 — 행이 즉시 표에 나타나며 상태 `running`과 실시간 진행 바가 표시됩니다.
 4. 태스크 완료 시 행이 `succeeded`로 전환되고 타임스탬프 옆에 **Download** 링크가 표시됩니다.
 
@@ -82,7 +82,7 @@ Backup complete
 3. 확인 필드에 **`restore`**(소문자, 정확히 일치)를 입력하세요. 타이핑 게이트가 매칭될 때까지 **Restore** 버튼은 비활성화 상태입니다.
 4. **Restore**를 클릭합니다.
 
-![Admin 백업 — 경고 패널과 비활성 Restore 버튼이 표시된 복원 strip](/img/screenshots/admin-backup-restore-modal.png)
+![경고 패널과 비활성 Restore 버튼이 표시된 복원 모달(타이핑 게이트 통과 시 활성화)](/img/screenshots/admin-backup-restore-modal.png)
 
 타이핑 게이트가 일치하면 파괴적 **Restore** 버튼이 활성화됩니다. 아래 스크린샷은 게이트가 풀리는 순간을 포착했습니다 — 입력된 `restore` 토큰, 표시된 경고 패널, 그리고 이제 클릭 가능해진 버튼:
 

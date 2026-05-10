@@ -52,7 +52,7 @@ Every transition out of `New` / `Analyzing` requires a free-text justification (
 
 Columns:
 
-- **CVE** — the CVE ID (e.g. `CVE-2024-12345`). Click to open the upstream NVD entry.
+- **CVE** — the CVE-YYYY-NNNN identifier (plain text; click-through to NVD is on the roadmap).
 - **Severity** — color-coded badge.
 - **CVSS** — numeric CVSS v3 score from the upstream feed.
 - **Title** — short summary from the advisory.
@@ -69,8 +69,8 @@ Click any row to open:
 - **Summary** — title, description, CWE, CVSS vector.
 - **References** — vendor advisories, fix commits, exploit databases.
 - **Affected** — the upstream-reported affected range with the project's component version highlighted, plus `fixed_in` (the upstream version that ships the fix, when available).
-- **Analysis** — VEX state dropdown, justification box, **Save** button. Only `developer` or higher.
-- **History** — every scan where the finding appeared, with timestamps.
+- **Analysis** — VEX state action buttons (one per allowed transition: Confirm, Mark exploitable, Mark not affected, Mark in triage, Mark resolved, Mark false positive, Mark not applicable). Click a button to open the justification dialog and submit. Only `developer` or higher.
+- **History** — VEX state-transition timeline (who changed the state, when, with what justification).
 
 ## Re-detection
 

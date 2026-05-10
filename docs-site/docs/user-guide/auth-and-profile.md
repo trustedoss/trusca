@@ -81,7 +81,7 @@ The Connected Accounts panel highlights every external identity currently linked
 
 ![Profile — Connected Accounts panel showing the linked GitHub identity](/img/screenshots/user-profile-connected-accounts.png)
 
-Password sign-in is not displayed as a row in the Connected Accounts list at v2.0.0 — it is implicit when your account was registered with email + password (or when you completed a password reset). Use the **Set a password** action elsewhere on the profile page to seed a password for an OAuth-only account.
+Password sign-in is not displayed as a row in the Connected Accounts list at v2.0.0 — it is implicit when your account was registered with email + password (or when you completed a password reset). Password recovery for OAuth-only accounts is on the roadmap; today the only path is the operator-side `/admin/users/{id}/password-reset` endpoint.
 
 Each Connected Accounts row has an **Unlink** button. The portal protects you from locking yourself out:
 

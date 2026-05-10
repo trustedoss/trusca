@@ -27,7 +27,12 @@ variables:
   # TRUSTEDOSS_API_KEY is a masked CI/CD variable — never put it here.
 ```
 
-The included `trustedoss:scan` job runs on every pipeline by default.
+The base template is hidden — extend it from one of your own jobs to materialize it; pipelines that don't extend the base do not auto-trigger SCA. Add a job such as:
+
+```yaml
+sca:
+  extends: .trustedoss-sca
+```
 
 ## Setup
 
@@ -66,7 +71,7 @@ Either way, only `TRUSTEDOSS_API_KEY` must be masked.
 | `TRUSTEDOSS_FAIL_ON_GATE` | no | `true` | If `true`, job exits 1 on gate fail. |
 | `TRUSTEDOSS_POLL_TIMEOUT` | no | `1800` | Max seconds to wait for terminal state. |
 | `TRUSTEDOSS_POLL_INTERVAL` | no | `30` | Seconds between polls. |
-| `TRUSTEDOSS_POST_MR_NOTE` | no | `true` | Post the SCA report as a merge-request note when the pipeline runs in an MR context. |
+| `TRUSTEDOSS_POST_MR_COMMENT` | no | `true` | Post the SCA report as a merge-request note when the pipeline runs in an MR context. |
 
 ## Recipes
 
@@ -92,7 +97,7 @@ Override the rules of the included job:
 include:
   - remote: 'https://raw.githubusercontent.com/trustedoss/trustedoss-portal/v2.0.0/templates/gitlab-ci.yml'
 
-trustedoss:scan:
+.trustedoss-sca:
   rules:
     - if: '$CI_COMMIT_REF_PROTECTED == "true"'
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
@@ -105,7 +110,7 @@ include:
   - remote: 'https://raw.githubusercontent.com/trustedoss/trustedoss-portal/v2.0.0/templates/gitlab-ci.yml'
 
 trustedoss:scan-container:
-  extends: trustedoss:scan
+  extends: .trustedoss-sca
   variables:
     TRUSTEDOSS_SCAN_KIND: 'container'
 ```
@@ -119,7 +124,7 @@ Pin the `include` URL to a release tag (`v2.0.0`) instead of `main` for reproduc
 If you need to copy and inline the job — for instance because your runner cannot reach GitHub for the `include` — here is the canonical shape:
 
 ```yaml
-trustedoss:scan:
+.trustedoss-sca:
   image: alpine:3.20
   stage: test
   before_script:
@@ -128,7 +133,7 @@ trustedoss:scan:
     - bash -c '
         set -euo pipefail;
         SCAN_ID=$(curl -fsS -X POST
-          -H "Authorization: ApiKey ${TRUSTEDOSS_API_KEY}"
+          -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}"
           -H "Content-Type: application/json"
           -d "{\"kind\": \"${TRUSTEDOSS_SCAN_KIND:-source}\"}"
           "${TRUSTEDOSS_API_URL}/api/v1/projects/${TRUSTEDOSS_PROJECT_ID}/scans"
@@ -151,7 +156,7 @@ To enforce SCA on every MR:
 1. **Settings → Repository → Protected branches** — protect `main`.
 2. **Settings → Merge requests → Merge checks** — toggle "Pipelines must succeed".
 
-MRs whose `trustedoss:scan` job is failing cannot be merged.
+MRs whose SCA job (the one extending `.trustedoss-sca`) is failing cannot be merged.
 
 ## Troubleshooting
 
@@ -163,7 +168,7 @@ GitLab strips empty variables. Confirm `TRUSTEDOSS_API_KEY` is defined for the r
 
 The portal needs the GitLab integration enabled in the project's CI settings. Confirm in the portal: **Project Settings → CI/CD → GitLab integration** is configured with a project access token.
 
-If your GitLab is self-managed and the portal cannot reach `gitlab.example.internal`, the MR note step fails with a network error. Either expose your GitLab to the portal's worker or set `TRUSTEDOSS_POST_MR_NOTE=false`.
+If your GitLab is self-managed and the portal cannot reach `gitlab.example.internal`, the MR note step fails with a network error. Either expose your GitLab to the portal's worker or set `TRUSTEDOSS_POST_MR_COMMENT=false`.
 
 ### Job runs out of time at the polling step
 

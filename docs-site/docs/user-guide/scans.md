@@ -31,14 +31,14 @@ Engineers with `developer` or higher on the project's team. Triggering scans aga
 2. Find the project row and click the **Scan** button at the end of the row.
 3. The scan starts immediately as a `source` scan against the project's default branch.
 
-There is no kind-selection dialog or branch-override field in the v2.0.0 UI — those controls are deferred to v2.1 (see [Roadmap](#roadmap-v2x)). The page switches to a live progress view backed by a WebSocket connection. You can close the tab — the scan continues on the worker. Reopen the project and reconnect at any time.
+There is no kind-selection dialog or branch-override field in the v2.0.0 UI — those controls are deferred to v2.1 (see [Roadmap](#roadmap-v2x)). A right-slide drawer opens on the project list page with a live progress view backed by a WebSocket connection. You can close the tab — the scan continues on the worker. Reopen the project and reconnect at any time.
 
 ### From the API
 
 ```bash
 curl -sS -X POST \
   "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/scans" \
-  -H "Authorization: ApiKey ${TRUSTEDOSS_API_KEY}" \
+  -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{"kind": "source"}' | jq .
 ```
@@ -47,7 +47,7 @@ The response carries the scan UUID. Poll:
 
 ```bash
 curl -sS "https://trustedoss.example.com/v1/scans/${SCAN_ID}" \
-  -H "Authorization: ApiKey ${TRUSTEDOSS_API_KEY}" | jq .status
+  -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" | jq .status
 ```
 
 ### From CI
@@ -96,7 +96,9 @@ The dominant cost in a source scan is ORT + Dependency-Track correlation, not `c
 
 ## The global scan queue
 
-Visit **Scans** in the left sidebar for an organization-wide view of every running and queued scan. Filters: status, kind, project, team. Super-admins also see the per-worker breakdown of the queue depth.
+Visit **Scans** in the left sidebar for an organization-wide view of every running and queued scan. The queue is split into 5 status tabs: Running, Queued, Succeeded, Failed, All. Project- / team-level filters and per-worker views are on the roadmap.
+
+![Global scan queue with status tabs and recent runs.](/img/screenshots/user-scans-queue.png)
 
 Cancel actions on this view are not exposed at v2.0.0 — see [Roadmap](#roadmap-v2x).
 
@@ -108,13 +110,13 @@ If you build a custom client, the message shape is:
 
 ```json
 {
-  "step": "resolving_vulnerabilities",
+  "step": "dt_findings",
   "percent": 62,
   "ts": "2026-05-09T13:42:11Z"
 }
 ```
 
-`percent` is an integer 0–100. `step` matches the pipeline-stage slugs above. The frame does not echo `scan_id` — the subscriber already knows it from the URL.
+`percent` is an integer 0–100. `step` is one of the seven pipeline slugs (`bootstrap`, `fetch`, `prep`, `cdxgen`, `ort`, `dt_upload`, `dt_findings`, `finalize`) plus the two terminal states (`succeeded`, `failed`). The frame does not echo `scan_id` — the subscriber already knows it from the URL.
 
 ## Verify it worked
 

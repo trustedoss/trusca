@@ -26,7 +26,7 @@ Click the bell to navigate directly to the **`/notifications`** inbox. The bell 
 
 ## The Inbox at `/notifications`
 
-`/notifications` is the full list of every notification you have received, newest first. Pages of 25 are loaded one at a time; use the **Previous** / **Next** controls at the bottom to walk through history.
+`/notifications` is the full list of every notification you have received, newest first. Pages of 20 are loaded one at a time; use the **Previous** / **Next** controls at the bottom to walk through history.
 
 ![Notifications inbox at /notifications — read/unread rows with kind badges and pagination controls](/img/screenshots/user-notifications-inbox.png)
 
@@ -39,11 +39,11 @@ Each row shows:
 - **Mark read** — a click anywhere on the row marks it read; the row dim-loads.
 - **Open** — clicking navigates to the source resource and marks read on the way.
 
-Bulk actions sit in the toolbar: **Mark all as read** (only if there are unreads) and **Filter** (by trigger or by date range).
+Bulk actions: **Mark all as read** (clears the unread badge for the current page).
 
 ## Preferences
 
-The **Preferences** tab (top-right of `/notifications`) exposes four **global, per-channel** toggles. The choice applies across every trigger — there is no per-trigger matrix at v2.0.0 (see [Roadmap](#roadmap-v2x)).
+Below the inbox, the **Preferences** section lists every trigger with four **global, per-channel** toggles. The choice applies across every trigger — there is no per-trigger matrix at v2.0.0 (see [Roadmap](#roadmap-v2x)).
 
 ![Notifications preferences — per-channel toggles for email, Slack, Teams, and the always-on in-app row](/img/screenshots/user-notifications-prefs.png)
 

@@ -42,22 +42,21 @@ byte-stability 달성 방법:
 
 1. 프로젝트 열기.
 2. **SBOM** 탭 클릭.
-3. 드롭다운에서 포맷 선택.
-4. **Download** 클릭.
+3. 4개 포맷 버튼 중 하나(CycloneDX JSON, CycloneDX XML, SPDX JSON, SPDX Tag-Value)를 클릭하여 다운로드.
 
-파일명은 `<project-name>-<scan-finished-iso>.sbom.<ext>`.
+파일명은 `sbom-<project-slug>.<ext>`.
 
 ## API에서 다운로드
 
 ```bash
 # CycloneDX JSON
 curl -sS -L -OJ \
-  -H "Authorization: ApiKey ${TRUSTEDOSS_API_KEY}" \
+  -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
   "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/sbom?format=cyclonedx-json"
 
 # SPDX JSON
 curl -sS -L -OJ \
-  -H "Authorization: ApiKey ${TRUSTEDOSS_API_KEY}" \
+  -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
   "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/sbom?format=spdx-json"
 ```
 
@@ -82,7 +81,7 @@ Apache-2.0 §4(d)와 유사한 attribution 의무 이행을 위해 포털은 프
 
   ```bash
   curl -sS -L -OJ \
-    -H "Authorization: ApiKey ${TRUSTEDOSS_API_KEY}" \
+    -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
     "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/notice"
   ```
 

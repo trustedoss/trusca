@@ -1,17 +1,21 @@
 ---
 id: github-actions
 title: GitHub Actions
-description: Wire TrustedOSS Portal into a GitHub Actions workflow with the trustedoss/scan-action composite action — trigger, poll, gate, comment.
+description: Wire TrustedOSS Portal into a GitHub Actions workflow with the in-repo composite action at actions/scan — trigger, poll, gate, comment.
 sidebar_label: GitHub Actions
 sidebar_position: 1
 ---
 
 # GitHub Actions
 
-The `trustedoss/scan-action` composite action triggers a TrustedOSS scan, waits for it to finish, evaluates the build gate, and (on pull requests) posts the SCA report back to the PR. It exits non-zero when the gate fails so the PR check turns red and your branch-protection rule blocks the merge.
+The TrustedOSS composite action triggers a TrustedOSS scan, waits for it to finish, evaluates the build gate, and (on pull requests) posts the SCA report back to the PR. It exits non-zero when the gate fails so the PR check turns red and your branch-protection rule blocks the merge.
 
 :::note Audience
 Engineers maintaining a GitHub repository that uses GitHub Actions. You need an API key for the portal — see [API keys](../admin-guide/api-keys.md).
+:::
+
+:::note Action source
+Use the in-repo composite action at `actions/scan/action.yml` directly via `uses: trustedoss/trustedoss-portal/actions/scan@v2.0.0` (referenced from this monorepo). A standalone Marketplace publication is on the roadmap.
 :::
 
 ## Quick start
@@ -33,7 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: TrustedOSS SCA scan
-        uses: trustedoss/scan-action@v1
+        uses: trustedoss/trustedoss-portal/actions/scan@v2.0.0
         with:
           api-url: https://trustedoss.example.com
           api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -102,7 +106,7 @@ Use them in subsequent steps:
 ```yaml
 - name: TrustedOSS SCA scan
   id: sca
-  uses: trustedoss/scan-action@v1
+  uses: trustedoss/trustedoss-portal/actions/scan@v2.0.0
   with:
     api-url: https://trustedoss.example.com
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -123,7 +127,7 @@ Use them in subsequent steps:
 Useful while you are seeding policies and don't want to block PRs yet:
 
 ```yaml
-- uses: trustedoss/scan-action@v1
+- uses: trustedoss/trustedoss-portal/actions/scan@v2.0.0
   with:
     api-url: https://trustedoss.example.com
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -136,7 +140,7 @@ The PR comment still posts; the check stays green.
 ### Container scan
 
 ```yaml
-- uses: trustedoss/scan-action@v1
+- uses: trustedoss/trustedoss-portal/actions/scan@v2.0.0
   with:
     api-url: https://trustedoss.example.com
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -152,7 +156,7 @@ Run two steps with different `id`s:
 
 ```yaml
 - name: SCA — source
-  uses: trustedoss/scan-action@v1
+  uses: trustedoss/trustedoss-portal/actions/scan@v2.0.0
   with:
     api-url: https://trustedoss.example.com
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -160,7 +164,7 @@ Run two steps with different `id`s:
     scan-kind: source
 
 - name: SCA — container
-  uses: trustedoss/scan-action@v1
+  uses: trustedoss/trustedoss-portal/actions/scan@v2.0.0
   with:
     api-url: https://trustedoss.example.com
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -175,7 +179,7 @@ Either step failing fails the job by default.
 Apply the gate only on `main`, advisory on PRs:
 
 ```yaml
-- uses: trustedoss/scan-action@v1
+- uses: trustedoss/trustedoss-portal/actions/scan@v2.0.0
   with:
     api-url: https://trustedoss.example.com
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -193,7 +197,7 @@ The `@v1` tag floats. Pin to a specific commit for reproducibility:
 
 ## How the PR comment is posted
 
-The action posts via the portal's `POST /v1/scans/{id}/post-pr-comment` endpoint, which uses the portal-side GitHub App / PAT. The action **does not** consume your workflow's `GITHUB_TOKEN` for posting — that simplifies permissions.
+The portal posts the comment via the same workflow's `GITHUB_TOKEN` (passed as `${{ secrets.GITHUB_TOKEN }}` to the action). A first-class GitHub App with portal-stored installation tokens is on the roadmap.
 
 The comment is **idempotent**: re-running the workflow on the same PR updates the existing comment in place. The marker `<!-- trustedoss-sca -->` identifies it.
 

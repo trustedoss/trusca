@@ -148,11 +148,11 @@ See [DT connector](../admin-guide/dt-connector.md) for operational detail.
 ## Authentication & sessions
 
 - **Password** — bcrypt cost 12, NIST 800-63B banned-password list, ≥ 12 chars, no PII reuse.
-- **Access token** — JWT, 30-minute lifetime, `RS256` signed, in-app memory only.
+- **Access token** — JWT, 30-minute lifetime, `HS256` signed (symmetric, `SECRET_KEY`), in-app memory only.
 - **Refresh token** — 7-day lifetime, **rotation with reuse detection**. HttpOnly + Secure + SameSite=Lax cookie.
-- **API keys** — `tos_<prefix>_<secret>`. bcrypt-hashed; full key shown once at creation.
-- **CSRF** — tokens for cookie-authenticated POSTs to `/api/v1/auth/*`. Bearer tokens are CSRF-immune by construction.
-- **Rate limit** — IP-keyed 5/minute on login, 429 with `Retry-After`. User-keyed limits on most other endpoints.
+- **API keys** — `tos_<prefix>_<secret>` accepted via `Authorization: Bearer …`. bcrypt-hashed; full key shown once at creation.
+- **CSRF posture** — the SPA uses bearer tokens (CSRF-immune by construction). The refresh cookie is HttpOnly + Secure + SameSite=Lax, which blocks the cross-site POST attack class without an explicit CSRF token. No separate CSRF token endpoint exists at v2.0.0.
+- **Rate limit** — IP-keyed 5/minute on login and forgot-password, 429 with `Retry-After`. Per-address cooldown on password-reset emails.
 
 ## Authorization (RBAC)
 
@@ -186,11 +186,11 @@ Domain-specific extensions are `snake_case` and modelled in OpenAPI.
 
 Out of the box:
 
-- **Logs** — `docker-compose logs <service>` (structured JSON).
-- **Health** — `/health` (backend), `/healthz` (frontend), `/admin/health` UI.
-- **Metrics** — `/metrics` (backend, Prometheus exposition format) — Phase 6.
+- **Logs** — `docker-compose logs <service>` (structured JSON, `structlog`).
+- **Health** — `/health` (backend), `/healthz` (frontend container), `/admin/health` UI for the operator dashboard.
+- **Metrics** — basic service-health metrics are shipped at the Traefik level via its access log. A backend `/metrics` endpoint with a Prometheus exporter is on the roadmap (Phase 6).
 
-Optional Jaeger overlay (`docker-compose.tracing.yml`) wires OpenTelemetry SDK + OTLP exporter to a Jaeger all-in-one. Sampling is **off by default** — turn on via `OTEL_SAMPLER=parentbased_always_on` for incident investigation only.
+OpenTelemetry tracing exporter and a bundled Jaeger overlay are on the roadmap (Phase 9) — there is no `docker-compose.tracing.yml` at v2.0.0.
 
 ## Deployment topologies
 

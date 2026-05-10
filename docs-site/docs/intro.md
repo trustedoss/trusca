@@ -70,7 +70,7 @@ Full details in the [v2.0.0 release notes](./release-notes/v2.0.0.md).
  └───────────┘       └──────────┘           └────────────────────────┘
 ```
 
-Six container services run in production: **traefik**, **postgres**, **redis**, **backend**, **worker**, **beat** (Celery scheduler), and **frontend**. Optional Dependency-Track and Jaeger overlays add bundled vulnerability data and tracing respectively.
+Seven container services run in production: **traefik**, **postgres**, **redis**, **backend**, **worker**, **beat** (Celery scheduler), and **frontend**. An optional Dependency-Track overlay adds bundled vulnerability data.
 
 The full architecture, decision log, and pipeline detail are in the [architecture reference](./reference/architecture.md).
 

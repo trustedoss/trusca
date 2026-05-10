@@ -61,7 +61,7 @@ The list renders six columns: **NAME**, **KIND**, **CREATED**, **SIZE**, **DB RE
 ### Trigger a backup
 
 1. Open `/admin/backup` (Admin sidebar → **Backup**).
-2. Click **Trigger backup now**. The button is `super_admin`-only.
+2. Click **Run manual backup now**. The button is `super_admin`-only.
 3. The portal queues a Celery task; the row appears in the table immediately with status `running` and a live-updating progress bar.
 4. When the task completes, the row flips to `succeeded` and a **Download** link becomes available next to the timestamp.
 
@@ -82,7 +82,7 @@ The **Upload + Restore** section accepts a previously downloaded `.tar.gz` archi
 3. Type the word **`restore`** (lower case, exact match) into the confirmation field. The **Restore** button stays disabled until the typing-gate matches.
 4. Click **Restore**.
 
-![Admin backup — restore strip with warning panel and disabled Restore button](/img/screenshots/admin-backup-restore-modal.png)
+![Restore modal with warning panel and disabled Restore button (typing-gated to enable)](/img/screenshots/admin-backup-restore-modal.png)
 
 Once the typing-gate matches, the destructive **Restore** button enables. The screenshot below captures the moment the gate unlocks — the typed `restore` token, the visible warning panel, and the now-actionable button:
 

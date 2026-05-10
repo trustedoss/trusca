@@ -31,14 +31,14 @@ v2.0.0의 UI 트리거에서는 `source`만 노출됩니다. 직접 호출하는
 2. 프로젝트 행을 찾고, 행 끝의 **Scan** 버튼 클릭.
 3. 스캔이 즉시 시작됩니다 — 프로젝트 기본 브랜치 대상 `source` 스캔.
 
-v2.0.0 UI에는 종류 선택 다이얼로그나 브랜치 오버라이드 필드가 없습니다 — 해당 컨트롤은 v2.1로 이연되었습니다([로드맵](#로드맵-v2x) 참고). 페이지가 WebSocket 기반 실시간 진행 뷰로 전환됩니다. 탭을 닫아도 스캔은 워커에서 계속됩니다. 프로젝트를 다시 열면 언제든 재연결됩니다.
+v2.0.0 UI에는 종류 선택 다이얼로그나 브랜치 오버라이드 필드가 없습니다 — 해당 컨트롤은 v2.1로 이연되었습니다([로드맵](#로드맵-v2x) 참고). 프로젝트 목록 페이지에서 우측 슬라이드 드로어가 열리며 WebSocket 기반의 실시간 진행 뷰가 표시됩니다. 탭을 닫아도 스캔은 워커에서 계속됩니다. 프로젝트를 다시 열면 언제든 재연결됩니다.
 
 ### API에서
 
 ```bash
 curl -sS -X POST \
   "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/scans" \
-  -H "Authorization: ApiKey ${TRUSTEDOSS_API_KEY}" \
+  -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{"kind": "source"}' | jq .
 ```
@@ -47,7 +47,7 @@ curl -sS -X POST \
 
 ```bash
 curl -sS "https://trustedoss.example.com/v1/scans/${SCAN_ID}" \
-  -H "Authorization: ApiKey ${TRUSTEDOSS_API_KEY}" | jq .status
+  -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" | jq .status
 ```
 
 ### CI에서
@@ -96,7 +96,9 @@ queued ─────► running ─────► succeeded
 
 ## 전역 스캔 큐
 
-좌측 사이드바의 **Scans**는 모든 실행 중·대기 중 스캔의 조직 단위 뷰입니다. 필터: 상태·종류·프로젝트·팀. super-admin은 워커별 큐 깊이도 봅니다.
+좌측 사이드바의 **Scans**는 모든 실행 중·대기 중 스캔의 조직 단위 뷰입니다. 큐는 5개의 상태 탭으로 나뉘어 있습니다: Running, Queued, Succeeded, Failed, All. 프로젝트·팀 단위 필터와 워커별 뷰는 로드맵 항목입니다.
+
+![상태 탭과 최근 실행이 표시된 전역 스캔 큐.](/img/screenshots/user-scans-queue.png)
 
 이 뷰의 취소 동작은 v2.0.0에서 노출되지 않습니다 — [로드맵](#로드맵-v2x) 참고.
 
@@ -108,13 +110,13 @@ UI는 단계·진행률 실시간 갱신을 위해 `ws(s)://<host>/ws/scans/{sca
 
 ```json
 {
-  "step": "resolving_vulnerabilities",
+  "step": "dt_findings",
   "percent": 62,
   "ts": "2026-05-09T13:42:11Z"
 }
 ```
 
-`percent`는 0–100 정수입니다. `step`은 위 파이프라인 단계 슬러그와 일치합니다. 프레임은 `scan_id`를 다시 보내지 않습니다 — 구독자가 URL에서 이미 알고 있기 때문입니다.
+`percent`는 0–100 정수입니다. `step`은 7개의 파이프라인 슬러그(`bootstrap`, `fetch`, `prep`, `cdxgen`, `ort`, `dt_upload`, `dt_findings`, `finalize`)와 2개의 종단 상태(`succeeded`, `failed`) 중 하나입니다. 프레임은 `scan_id`를 다시 보내지 않습니다 — 구독자가 URL에서 이미 알고 있기 때문입니다.
 
 ## 정상 동작 확인
 

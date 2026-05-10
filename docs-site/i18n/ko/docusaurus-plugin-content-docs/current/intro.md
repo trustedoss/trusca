@@ -70,7 +70,7 @@ SCA 포털 도입을 검토하는 엔지니어·플랫폼 담당자·법무 및 
  └───────────┘       └──────────┘           └────────────────────────┘
 ```
 
-프로덕션에서는 **traefik**, **postgres**, **redis**, **backend**, **worker**, **beat**(Celery 스케줄러), **frontend** 6~7개 컨테이너 서비스가 동작합니다. Dependency-Track과 Jaeger 오버레이는 선택 사항입니다.
+프로덕션에서는 **traefik**, **postgres**, **redis**, **backend**, **worker**, **beat**(Celery 스케줄러), **frontend** 7개의 컨테이너 서비스가 동작합니다. 선택적 Dependency-Track 오버레이가 번들 취약점 데이터를 추가합니다.
 
 전체 아키텍처와 결정 기록, 파이프라인 상세는 [아키텍처 참고](./reference/architecture.md)를 보세요.
 

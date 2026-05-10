@@ -27,7 +27,12 @@ variables:
   # TRUSTEDOSS_API_KEY는 masked CI/CD 변수입니다 — 여기에 절대 적지 마세요.
 ```
 
-include된 `trustedoss:scan` 잡은 기본적으로 모든 파이프라인에서 실행됩니다.
+베이스 템플릿은 hidden입니다 — 직접 만든 잡에서 extend해 materialize해야 하며, 베이스를 extend하지 않는 파이프라인은 SCA를 자동 트리거하지 않습니다. 다음과 같은 잡을 추가하세요.
+
+```yaml
+sca:
+  extends: .trustedoss-sca
+```
 
 ## 셋업
 
@@ -66,7 +71,7 @@ masked 플래그는 잡 로그에 Key가 그대로 노출되는 것을 막습니
 | `TRUSTEDOSS_FAIL_ON_GATE` | no | `true` | `true`이면 게이트 실패 시 잡이 1로 종료. |
 | `TRUSTEDOSS_POLL_TIMEOUT` | no | `1800` | 최종 상태까지 기다리는 최대 초. |
 | `TRUSTEDOSS_POLL_INTERVAL` | no | `30` | 폴링 간격(초). |
-| `TRUSTEDOSS_POST_MR_NOTE` | no | `true` | 파이프라인이 MR 컨텍스트에서 돌 때 SCA 보고서를 MR 노트로 게시. |
+| `TRUSTEDOSS_POST_MR_COMMENT` | no | `true` | 파이프라인이 MR 컨텍스트에서 돌 때 SCA 보고서를 MR 노트로 게시. |
 
 ## 레시피
 
@@ -92,7 +97,7 @@ include한 잡의 rules를 오버라이드:
 include:
   - remote: 'https://raw.githubusercontent.com/trustedoss/trustedoss-portal/v2.0.0/templates/gitlab-ci.yml'
 
-trustedoss:scan:
+.trustedoss-sca:
   rules:
     - if: '$CI_COMMIT_REF_PROTECTED == "true"'
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
@@ -105,7 +110,7 @@ include:
   - remote: 'https://raw.githubusercontent.com/trustedoss/trustedoss-portal/v2.0.0/templates/gitlab-ci.yml'
 
 trustedoss:scan-container:
-  extends: trustedoss:scan
+  extends: .trustedoss-sca
   variables:
     TRUSTEDOSS_SCAN_KIND: 'container'
 ```
@@ -119,7 +124,7 @@ trustedoss:scan-container:
 러너가 `include`를 위해 GitHub에 도달하지 못하는 등의 이유로 잡을 복사·인라인해야 한다면 표준 형태는 다음과 같습니다.
 
 ```yaml
-trustedoss:scan:
+.trustedoss-sca:
   image: alpine:3.20
   stage: test
   before_script:
@@ -128,7 +133,7 @@ trustedoss:scan:
     - bash -c '
         set -euo pipefail;
         SCAN_ID=$(curl -fsS -X POST
-          -H "Authorization: ApiKey ${TRUSTEDOSS_API_KEY}"
+          -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}"
           -H "Content-Type: application/json"
           -d "{\"kind\": \"${TRUSTEDOSS_SCAN_KIND:-source}\"}"
           "${TRUSTEDOSS_API_URL}/api/v1/projects/${TRUSTEDOSS_PROJECT_ID}/scans"
@@ -151,7 +156,7 @@ trustedoss:scan:
 1. **Settings → Repository → Protected branches** — `main`을 보호.
 2. **Settings → Merge requests → Merge checks** — "Pipelines must succeed"를 켜기.
 
-`trustedoss:scan` 잡이 실패하는 MR은 머지할 수 없습니다.
+SCA 잡(`.trustedoss-sca`를 extend한 잡)이 실패하는 MR은 머지할 수 없습니다.
 
 ## 트러블슈팅
 
@@ -163,7 +168,7 @@ GitLab은 빈 변수를 제거합니다. 관련 환경 / 브랜치에 `TRUSTEDOS
 
 포털의 프로젝트 CI 설정에서 GitLab 통합이 활성화되어 있어야 합니다. 포털에서 **Project Settings → CI/CD → GitLab integration**이 project access token으로 구성되어 있는지 확인.
 
-GitLab이 self-managed이고 포털이 `gitlab.example.internal`에 도달하지 못하면 MR 노트 단계가 네트워크 오류로 실패합니다. 포털의 worker에서 GitLab을 노출하거나 `TRUSTEDOSS_POST_MR_NOTE=false`로 설정하세요.
+GitLab이 self-managed이고 포털이 `gitlab.example.internal`에 도달하지 못하면 MR 노트 단계가 네트워크 오류로 실패합니다. 포털의 worker에서 GitLab을 노출하거나 `TRUSTEDOSS_POST_MR_COMMENT=false`로 설정하세요.
 
 ### 폴링 단계에서 잡이 시간 초과
 

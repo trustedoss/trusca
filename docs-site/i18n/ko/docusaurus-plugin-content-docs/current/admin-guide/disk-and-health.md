@@ -125,13 +125,7 @@ docker-compose -f docker-compose.yml exec backend \
 
 ## 알림 트리거
 
-디스크 사용량이 hard limit를 넘어가면 포털이 **디스크 압박** 알림을 발신합니다.
-
-- 모든 `super_admin`에게 이메일(SMTP 설정 시).
-- Slack Webhook(`SLACK_WEBHOOK_URL` 설정 시).
-- MS Teams Webhook(`TEAMS_WEBHOOK_URL` 설정 시).
-
-같은 알림은 매 프로브마다 발신되지 않고 임계 교차당 한 번 발신됩니다. Warn 라인 아래로 다시 내려가면 "복구" 알림을 발신합니다.
+디스크 압박은 현재 알림을 생성하지 않습니다 — 운영자는 `/admin/disk`를 직접 모니터링해야 합니다. `disk_pressure` 알림 종류는 로드맵 항목입니다.
 
 ## 정상 동작 확인
 

@@ -77,14 +77,14 @@ The same flow at **/integrations**, with the additional option to set the scope 
 
 ## Using an API key
 
-Pass the key in the `Authorization` header:
+Pass the key in the `Authorization` header as a Bearer token:
 
 ```bash
-curl -sS -H "Authorization: ApiKey ${TRUSTEDOSS_API_KEY}" \
+curl -sS -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
   https://trustedoss.example.com/api/v1/projects
 ```
 
-Both `Authorization: ApiKey <key>` and `Authorization: Bearer <key>` are accepted; `ApiKey` is preferred for clarity. The portal logs the prefix on every request to help with traceability.
+The portal logs the prefix on every request to help with traceability.
 
 ## Rotation
 
@@ -118,10 +118,10 @@ The UI shows: label, prefix, scope (`org` / `team` / `project`), creator, create
 
 Key lifecycle events log:
 
-- `api_key.create` — actor, target prefix, scope.
-- `api_key.revoke` — actor, target prefix.
+- `target_table=api_keys&action=create` — emitted by the ORM listener when a key row is inserted (actor, target prefix, scope).
+- `api_key.revoked` — emitted by the API key service on explicit revocation (actor, target prefix).
 
-Per-request audit rows are not emitted for API-key authentication at v2.0.0 (an `api_key.use` event is on the roadmap). Audit rows that are produced by an API-key request still carry the resulting domain action (e.g. `scan.create`); the API key's prefix is captured by structured logs on the request, but the audit row's `actor_user_id` is the issuing user, not the key.
+Per-request audit rows are not emitted for API-key authentication at v2.0.0 (an `api_key.use` event is on the roadmap). Audit rows that are produced by an API-key request still carry the resulting domain action (e.g. `target_table=scans&action=create`); the API key's prefix is captured by structured logs on the request, but the audit row's `actor_user_id` is the issuing user, not the key.
 
 ## Webhook secrets vs. API keys
 
@@ -136,8 +136,8 @@ See [Webhooks](../ci-integration/webhooks.md) for the webhook flow.
 
 After issuing a key:
 
-1. `curl -sS -H "Authorization: ApiKey <key>" .../api/v1/projects` returns 200 with the team's projects.
-2. The audit log records `api_key.create` with the prefix.
+1. `curl -sS -H "Authorization: Bearer <key>" .../api/v1/projects` returns 200 with the team's projects.
+2. The audit log records a `target_table=api_keys&action=create` row with the prefix.
 3. The CI build that consumes the key passes its first run.
 
 ## Troubleshooting
@@ -147,7 +147,7 @@ After issuing a key:
 The two most common causes:
 
 - The key was copied with a leading or trailing whitespace. Re-paste from the original modal — keys are exactly `tos_` + 8 + `_` + 32 chars.
-- The key's allowed actions do not include the operation. The error response distinguishes 401 (bad key) from 403 (key valid but action not permitted).
+- 401 always indicates an invalid / revoked / expired key. The portal does not separate "bad key" from "action not permitted" at the auth layer at v2.0.0 — the key inherits the issuing user's RBAC role, so any 403 you see comes from the same per-route checks a JWT-authenticated request would face.
 
 ### "Key prefix exists but secret does not match"
 
@@ -174,7 +174,7 @@ The following capabilities are referenced in early docs but are **not** shipped 
 
 - Per-key role override (`effective_role`) and a granular `allowed_actions` taxonomy (`scan:trigger`, `scan:read`, `report:download`, `webhook:receive`, `*`). Today the key inherits the issuing user's role and the full RBAC surface.
 - Per-key `expires_at` field and the 30 / 90 / 180 / 365-day expiry presets in the New API key form. Today keys do not expire — they live until revoked.
-- Per-request `api_key.use` audit event with `actor_kind = api_key`. Today key lifecycle (`api_key.create` / `api_key.revoke`) is audited but per-request use is captured only in structured logs.
+- Per-request `api_key.use` audit event with `actor_kind = api_key`. Today key lifecycle (the ORM-listener insert and the explicit `api_key.revoked` action) is audited but per-request use is captured only in structured logs.
 - `last_used_ip` column in the listing.
 - Brute-force secret-mismatch alerting (Slack notification when a single key crosses 5 misses / 60 s).
 
