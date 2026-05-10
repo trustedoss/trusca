@@ -466,6 +466,10 @@ def _extract_workspace_archive(source_tar_gz: Path) -> None:
         # Re-iterate to extract — tarfile.extractall accepts a `filter`
         # callable for member transform/reject; here we already vetted
         # above, so plain extractall with the data filter is fine.
+        # Python 3.12+ ``filter='data'`` rejects symlinks and members whose
+        # resolved path escapes destination — combined with the explicit
+        # path-traversal + size-cap preflight loop above, this is safe.
+        # nosemgrep: trailofbits.python.tarfile-extractall-traversal.tarfile-extractall-traversal
         tf.extractall(path=str(dest_parent), filter="data")  # noqa: S202
 
 
