@@ -158,6 +158,20 @@ class HealthProbeOut(BaseModel):
     checked_at: datetime
 
 
+class BreakerResetOut(BaseModel):
+    """Response of ``POST /v1/admin/dt/breaker/reset``.
+
+    Reports the transition observed by the operator-triggered reset so the
+    UI can render "OPEN → CLOSED" without an extra status round-trip and
+    the audit log captures the same numbers without re-querying Redis.
+    """
+
+    state_before: BreakerState
+    state_after: BreakerState
+    fail_count_before: int = Field(ge=0)
+    reset_at: datetime
+
+
 # ---------------------------------------------------------------------------
 # Scan Queue (4.5)
 # ---------------------------------------------------------------------------

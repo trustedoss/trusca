@@ -183,10 +183,26 @@ docker-compose -f docker-compose.yml -f docker-compose.dt.yml up -d
 
 ### 차단기가 OPEN에 머무름
 
-차단기는 성공한 HALF_OPEN 프로브에서만 닫힙니다. DT가 깜빡이면 차단기가 진동합니다. v2.0.0 에는 운영자용 차단기 리셋 엔드포인트가 없습니다 — 아래 로드맵 참고. 실용적인 회복 절차:
+차단기는 성공한 HALF_OPEN 프로브에서만 닫힙니다. DT가 깜빡이면 차단기가 진동합니다. 실용적인 회복 절차:
 
 1. DT 컨테이너를 재시작해 다음 프로브가 깨끗한 DT를 보게 합니다 — `docker-compose restart dt`.
 2. `POST /v1/admin/dt/health-check`로 즉시 health 프로브를 강제합니다([수동 프로브](#수동-프로브) 참고). 한 번의 녹색 프로브가 HALF_OPEN을 CLOSED로 전환합니다.
+3. 최후 수단으로 운영자가 차단기를 CLOSED 로 강제 전이 — 아래 [차단기 리셋](#차단기-리셋-최후-수단) 참고.
+
+#### 차단기 리셋 (최후 수단)
+
+`POST /v1/admin/dt/breaker/reset`(super_admin 전용)은 쿨다운 창과 무관하게 차단기를 CLOSED 로 강제 전이하고 연속 실패 카운터를 0 으로 초기화합니다. 다음 DT 호출은 대기 없이 즉시 시도됩니다.
+
+차단기가 이미 CLOSED 인 상태에서 호출하면 `409 Conflict` + `dt_breaker_already_closed: true` 로 거부됩니다 — 스크립트 재시도가 조용히 no-op 되지 않게 운영자가 원인을 먼저 확인하도록 강제합니다. 전이 결과(`state_before` / `state_after` / `fail_count_before`)는 감사 로그에 `target_table=dt_breaker`, `action=breaker_reset`, 호출자 user id 와 함께 기록됩니다.
+
+관리자 → DT 커넥터 페이지의 상태 카드에 **브레이커 리셋** 버튼을 노출합니다. 버튼은 차단기가 OPEN 또는 HALF_OPEN 상태일 때만 활성화되어 백엔드의 409 계약과 일치하므로, 클릭 후 오류 토스트로 이어지지 않고 affordance 자체가 비활성화됩니다.
+
+```bash
+curl -X POST -H "Authorization: Bearer $JWT" \
+  https://portal.example.com/v1/admin/dt/breaker/reset
+# 200 OK
+# {"state_before": "open", "state_after": "closed", "fail_count_before": 5, "reset_at": "..."}
+```
 
 ### DT 회복 후 취약점이 갱신되지 않음
 
@@ -207,7 +223,6 @@ docker-compose -f docker-compose.yml restart worker beat
 다음 운영자용 기능들은 초기 문서에 언급되었으나 v2.0.0 에는 **반영되지 않았습니다**.
 
 - Health 모니터가 `down`으로 전환될 때 자동 `docker restart dt` 시도.
-- 운영자용 차단기 리셋 엔드포인트(`POST /v1/admin/dt/breaker/reset`).
 - 운영자용 수동 동기화 엔드포인트(`POST /v1/admin/dt/resync`); Celery Beat 의 시간 단위 동기화 작업 자체는 출하되어 동작합니다.
 
 ## 함께 보기

@@ -156,6 +156,26 @@ def _is_team_fk_violation(exc: IntegrityError) -> bool:
     return "team_id" in message or "teams" in message
 
 
+def _is_last_super_admin_violation(exc: IntegrityError) -> bool:
+    """
+    Identify the trigger-raised CHECK violation from migration 0013
+    (``enforce_last_super_admin``).
+
+    SQLSTATE 23514 (check_violation). We text-match the function-raised
+    message because Postgres does not attach a constraint_name to RAISE
+    EXCEPTION statements — the diag.constraint_name field is empty for
+    plpgsql-raised exceptions. The message string ``last active super_admin
+    cannot be removed or demoted`` is part of the migration contract;
+    changing it requires updating both this matcher and the migration.
+    """
+    orig = getattr(exc, "orig", None)
+    pgcode = getattr(orig, "pgcode", None) or getattr(orig, "sqlstate", None)
+    if pgcode != "23514":
+        return False
+    message = str(orig).lower()
+    return "last active super_admin" in message
+
+
 async def _lock_and_count_active_super_admins(session: AsyncSession) -> int:
     """
     Acquire a row-level lock on the active-super-admin set and return the count.
@@ -448,6 +468,17 @@ async def update_user_role(
                 f"team {target_team_id} does not exist",
                 team_id=target_team_id,
             ) from exc
+        # A5 (sys-bug-u&t-1) — depth-in-defence: the application guard
+        # (_lock_and_count_active_super_admins above) should always trip
+        # first under normal flow. The DB trigger from migration 0013
+        # only fires when something bypasses that guard (e.g. a future
+        # endpoint that forgets to call the locking count). Translate the
+        # 23514 to the same Problem Details shape so the API contract is
+        # invariant of which layer caught the bypass.
+        if _is_last_super_admin_violation(exc):
+            raise LastSuperAdminProtected(
+                "cannot demote the last active super_admin"
+            ) from exc
         raise
     # Expire so the refetch in get_user_detail picks up the new membership
     # row instead of serving the User from the identity map (which may have
@@ -521,7 +552,18 @@ async def deactivate_user(
         token.revoked_at = now
         token.revoked_reason = "logout"
 
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError as exc:
+        # A5 depth-in-defence: same translation as update_user_role above.
+        # Application guard already blocked the last-active deactivation in
+        # the typical path; this branch covers a service-bypassing call.
+        await session.rollback()
+        if _is_last_super_admin_violation(exc):
+            raise LastSuperAdminProtected(
+                "cannot deactivate the last active super_admin"
+            ) from exc
+        raise
     log.info(
         "admin.user.deactivated",
         actor_id=str(actor.id),

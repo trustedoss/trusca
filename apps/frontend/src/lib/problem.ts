@@ -60,6 +60,10 @@ export const KNOWN_PROBLEM_EXTENSION_KEYS = [
   // through the unknown-primitive fallback.
   "dt_unreachable",
   "dt_orphan_cleanup_in_progress",
+  // A4 (manual sys-bug fix): operator-triggered breaker reset refuses 409
+  // when the breaker is already CLOSED so a scripted retry cannot silently
+  // no-op past a stuck-CLOSED investigation.
+  "dt_breaker_already_closed",
   "scan_already_cancelled",
   "scan_not_found",
   "audit_export_too_large",
@@ -91,6 +95,7 @@ const KNOWN_EXTENSION_SCHEMAS: Record<KnownProblemExtensionKey, z.ZodTypeAny> = 
   errors: z.array(z.unknown()).optional(),
   dt_unreachable: z.boolean(),
   dt_orphan_cleanup_in_progress: z.boolean(),
+  dt_breaker_already_closed: z.boolean(),
   scan_already_cancelled: z.boolean(),
   scan_not_found: z.boolean(),
   audit_export_too_large: z.boolean(),

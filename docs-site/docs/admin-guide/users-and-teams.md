@@ -108,7 +108,10 @@ To replace the last super-admin:
 1. Promote a second user to `super_admin` first.
 2. Then demote / deactivate the original.
 
-The guard is enforced at the API level (a `SELECT … FOR UPDATE` row-locked count). A DB-level constraint that would block direct SQL writes is on the roadmap; until then, do not bypass the API.
+The guard is enforced in two layers:
+
+1. **API layer** — a `SELECT … FOR UPDATE` row-locked count inside `admin_user_service` rejects the demote / deactivate before commit.
+2. **DB layer** — a PostgreSQL trigger (`trg_last_super_admin`, migration `0013`) raises `SQLSTATE 23514` for any `UPDATE`/`DELETE` on the `users` table that would leave zero active super-admins, including direct `psql` writes that bypass the API. The same `last_super_admin_protected` Problem Details extension is surfaced regardless of which layer caught the bypass.
 
 ## Deactivating a user
 
@@ -181,7 +184,6 @@ The following capabilities are described elsewhere in early docs but are **not**
 - Per-team role assignment (a single user holding `team_admin` in one team and `developer` in another, set from a Memberships drawer).
 - Soft-delete user action with typed-email confirmation modal.
 - Team archive state (hide-and-disable while preserving read access).
-- DB-level enforcement of last-super-admin protection (PostgreSQL trigger backing the API guard).
 
 ## See also
 

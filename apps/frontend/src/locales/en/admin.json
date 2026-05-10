@@ -154,7 +154,13 @@
       "breaker": {
         "closed": "Closed",
         "open": "Open",
-        "half_open": "Half-open"
+        "half_open": "Half-open",
+        "reset": {
+          "label": "Reset breaker",
+          "confirm_title": "Force the DT breaker back to CLOSED?",
+          "confirm_body": "Use this only when DT has recovered but the breaker is stuck OPEN. The next outbound DT call will probe immediately instead of waiting for the cooldown window.",
+          "disabled_hint": "Reset is only available while the breaker is OPEN or HALF_OPEN."
+        }
       },
       "actions": {
         "force_health_check": "Force health probe",
@@ -179,7 +185,8 @@
       },
       "toast": {
         "health_checked": "Health probe completed.",
-        "cleanup_enqueued": "Cleanup task enqueued."
+        "cleanup_enqueued": "Cleanup task enqueued.",
+        "breaker_reset": "DT breaker reset to CLOSED."
       }
     },
     "scans": {
@@ -376,6 +383,7 @@
       "slug_conflict": "A team with that slug already exists.",
       "dt_unreachable": "Dependency-Track is unreachable. The breaker is OPEN — try again after the next probe succeeds.",
       "dt_orphan_cleanup_in_progress": "An orphan-cleanup task is already running. Wait for it to finish before launching another.",
+      "dt_breaker_already_closed": "The DT breaker is already CLOSED. Investigate why a reset looked necessary instead of retrying.",
       "scan_already_cancelled": "This scan is already terminated and cannot be cancelled again.",
       "scan_not_found": "Scan not found.",
       "audit_export_too_large": "The export exceeds 100,000 rows. Narrow the filter window before retrying.",

@@ -112,6 +112,9 @@ _AUTH_MATRIX_ENDPOINTS = [
     # /dt/orphans/cleanup is POST + body — covered separately because the
     # body must be valid JSON for the auth gate to fire ahead of validation.
     ("POST", "/v1/admin/dt/health-check"),
+    # A4 — manual sys-bug fix. No body required, so the auth gate fires
+    # cleanly across the 4-role matrix.
+    ("POST", "/v1/admin/dt/breaker/reset"),
     ("GET", "/v1/admin/scans"),
     ("POST", f"/v1/admin/scans/{uuid.uuid4()}/cancel"),
     ("GET", "/v1/admin/disk"),
@@ -289,6 +292,84 @@ async def test_dt_orphans_cleanup_happy_path_enqueues_and_audits(
             )
         ).scalar_one()
     assert rows >= 1
+
+
+async def test_dt_breaker_reset_super_admin_returns_200_and_audits(
+    client: AsyncClient,
+) -> None:
+    """A4: super_admin reset on an OPEN breaker returns 200 + transition + audit."""
+    factory = await _factory(client)
+    async with factory() as session:
+        admin = await make_user(session, is_superuser=True)
+
+    # Drive the real Redis breaker to OPEN via the same module the service
+    # uses, then reset the cached singleton so the next call picks up the
+    # fresh state.
+    from integrations.dt.breaker import get_breaker, reset_default_breaker
+
+    reset_default_breaker()
+    breaker = get_breaker()
+    breaker.force_close()  # known-good baseline first
+    # Synthesize OPEN by setting the redis state directly — avoids depending
+    # on the failure_threshold env var.
+    import redis as _redis
+
+    from core.config import redis_url
+
+    rds = _redis.Redis.from_url(redis_url(), decode_responses=True)
+    try:
+        rds.set("dt:breaker:state", "open")
+        rds.set("dt:breaker:fail_count", "5")
+        rds.set("dt:breaker:opened_at", "1700000000.0")
+
+        response = await client.post(
+            "/v1/admin/dt/breaker/reset", headers=_bearer_for(admin)
+        )
+    finally:
+        rds.close()  # type: ignore[no-untyped-call]
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["state_before"] == "open"
+    assert body["state_after"] == "closed"
+    assert body["fail_count_before"] >= 0
+
+    async with factory() as session:
+        rows = (
+            await session.execute(
+                text(
+                    "SELECT count(*) FROM audit_logs "
+                    "WHERE actor_user_id=:a AND target_table='dt_breaker' "
+                    "  AND action='breaker_reset'"
+                ),
+                {"a": str(admin.id)},
+            )
+        ).scalar_one()
+    assert rows >= 1
+
+
+async def test_dt_breaker_reset_already_closed_returns_409_problem(
+    client: AsyncClient,
+) -> None:
+    """A4: CLOSED breaker refuses reset with 409 + dt_breaker_already_closed."""
+    factory = await _factory(client)
+    async with factory() as session:
+        admin = await make_user(session, is_superuser=True)
+
+    from integrations.dt.breaker import get_breaker, reset_default_breaker
+
+    reset_default_breaker()
+    get_breaker().force_close()  # ensure CLOSED baseline
+
+    response = await client.post(
+        "/v1/admin/dt/breaker/reset", headers=_bearer_for(admin)
+    )
+
+    assert response.status_code == 409, response.text
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+    body = response.json()
+    assert body.get("dt_breaker_already_closed") is True
+    assert body["type"].endswith("/dt-breaker-already-closed")
 
 
 async def test_dt_force_health_check_writes_audit(

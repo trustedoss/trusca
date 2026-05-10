@@ -17,6 +17,8 @@ import {
   forceDTHealthCheck,
   getDTStatus,
   listDTOrphans,
+  resetDTBreaker,
+  type BreakerResetOut,
   type DTOrphanListPage,
   type DTOrphanListParams,
   type DTStatus,
@@ -83,6 +85,14 @@ export function useForceDTHealthCheck() {
   const queryClient = useQueryClient();
   return useMutation<HealthProbeOut, Error, void>({
     mutationFn: () => forceDTHealthCheck(),
+    onSuccess: () => invalidateDT(queryClient),
+  });
+}
+
+export function useResetDTBreaker() {
+  const queryClient = useQueryClient();
+  return useMutation<BreakerResetOut, Error, void>({
+    mutationFn: () => resetDTBreaker(),
     onSuccess: () => invalidateDT(queryClient),
   });
 }

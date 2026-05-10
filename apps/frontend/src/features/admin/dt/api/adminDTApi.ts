@@ -66,6 +66,13 @@ export interface HealthProbeOut {
   checked_at: string;
 }
 
+export interface BreakerResetOut {
+  state_before: BreakerState;
+  state_after: BreakerState;
+  fail_count_before: number;
+  reset_at: string;
+}
+
 export interface DTOrphanListParams {
   limit?: number;
   offset?: number;
@@ -102,5 +109,10 @@ export async function cleanupDTOrphans(
 
 export async function forceDTHealthCheck(): Promise<HealthProbeOut> {
   const { data } = await api.post<HealthProbeOut>("/v1/admin/dt/health-check");
+  return data;
+}
+
+export async function resetDTBreaker(): Promise<BreakerResetOut> {
+  const { data } = await api.post<BreakerResetOut>("/v1/admin/dt/breaker/reset");
   return data;
 }

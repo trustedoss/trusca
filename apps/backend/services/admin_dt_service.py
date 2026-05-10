@@ -48,6 +48,7 @@ from integrations.dt.breaker import (
 from integrations.dt.client import DTClient, build_client
 from integrations.dt.health import HealthCheckOutcome, run_health_check
 from schemas.admin_ops import (
+    BreakerResetOut,
     BreakerState,
     DTOrphanItem,
     DTOrphanListPage,
@@ -90,6 +91,21 @@ class OrphanCleanupInProgress(AdminDTError):
     title = "Orphan Cleanup Already In Progress"
     type_uri = "https://docs.trustedoss.io/errors/dt-orphan-cleanup-in-progress"
     extensions = {"dt_orphan_cleanup_in_progress": True}
+
+
+class BreakerAlreadyClosed(AdminDTError):
+    """Reset attempted on a breaker that is already in CLOSED state — no-op refused.
+
+    The endpoint refuses the request rather than silently succeeding so that
+    operators always see a deterministic 409 + audit-row pair when running a
+    reset by mistake. Returning 200 on a no-op would let scripted retries
+    paper over a stuck-CLOSED state that the operator should investigate.
+    """
+
+    status_code = 409
+    title = "Breaker Already Closed"
+    type_uri = "https://docs.trustedoss.io/errors/dt-breaker-already-closed"
+    extensions = {"dt_breaker_already_closed": True}
 
 
 # ---------------------------------------------------------------------------
@@ -472,6 +488,56 @@ def enqueue_orphan_cleanup(
 # ---------------------------------------------------------------------------
 
 
+def force_reset_breaker(
+    *,
+    breaker: CircuitBreaker | None = None,
+) -> BreakerResetOut:
+    """
+    Operator-triggered reset of the DT circuit breaker to CLOSED.
+
+    Refuses (raises :class:`BreakerAlreadyClosed` → 409) when the breaker is
+    already CLOSED so that operators always see a deterministic state +
+    audit row pairing. Drops the cached status payload so the next status
+    poll reflects the fresh breaker state instead of the 30-second cached
+    OPEN snapshot.
+
+    Returns the previous + new state so the caller can render
+    "OPEN → CLOSED" in the UI and log the transition explicitly.
+    """
+    breaker = breaker or get_breaker()
+    snapshot_before = breaker.snapshot()
+    state_before = _normalize_state(snapshot_before.state)
+
+    if state_before == STATE_CLOSED:
+        raise BreakerAlreadyClosed(
+            "DT circuit breaker is already CLOSED; nothing to reset"
+        )
+
+    fail_count_before = snapshot_before.fail_count
+    breaker.force_close()
+
+    # Force a fresh status poll on the next request — the cached payload may
+    # still claim OPEN/HALF_OPEN. Best-effort: a Redis hiccup here just lets
+    # the cache age out naturally over the next 30 seconds.
+    try:
+        rds = _redis_client()
+        rds.delete(_STATUS_CACHE_KEY)
+    except redis.RedisError as exc:
+        log.warning("admin.dt.status_cache_delete_failed", error=str(exc))
+
+    log.warning(
+        "admin.dt.breaker_force_reset",
+        state_before=state_before,
+        fail_count_before=fail_count_before,
+    )
+    return BreakerResetOut(
+        state_before=state_before,
+        state_after="closed",
+        fail_count_before=fail_count_before,
+        reset_at=_now(),
+    )
+
+
 def force_health_check(
     *,
     breaker: CircuitBreaker | None = None,
@@ -530,10 +596,12 @@ _ = os
 
 __all__ = [
     "AdminDTError",
+    "BreakerAlreadyClosed",
     "DTUnreachable",
     "OrphanCleanupInProgress",
     "enqueue_orphan_cleanup",
     "force_health_check",
+    "force_reset_breaker",
     "get_dt_status",
     "list_orphans",
 ]

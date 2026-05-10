@@ -21,6 +21,7 @@ import {
   CheckCircle2,
   Loader2,
   RefreshCw,
+  RotateCcw,
   ShieldAlert,
   Trash2,
 } from "lucide-react";
@@ -37,6 +38,7 @@ import {
   useDTOrphans,
   useDTStatus,
   useForceDTHealthCheck,
+  useResetDTBreaker,
 } from "@/features/admin/dt/api/useAdminDT";
 import {
   AdminToast,
@@ -51,7 +53,7 @@ import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 50;
 
-type ConfirmKind = "cleanup_selected" | "cleanup_all" | null;
+type ConfirmKind = "cleanup_selected" | "cleanup_all" | "reset_breaker" | null;
 
 function breakerTone(state: BreakerState): "ok" | "degraded" | "down" {
   if (state === "closed") return "ok";
@@ -113,6 +115,7 @@ export function AdminDTPage() {
   const orphansQuery = useDTOrphans({ limit: PAGE_SIZE, offset: 0 });
   const cleanup = useCleanupDTOrphans();
   const probe = useForceDTHealthCheck();
+  const resetBreaker = useResetDTBreaker();
 
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [confirm, setConfirm] = useState<ConfirmKind>(null);
@@ -149,6 +152,24 @@ export function AdminDTPage() {
       notify(t(adminErrorMessageKey(err)), "error", adminErrorExtension(err));
     }
   }
+
+  async function handleResetBreaker() {
+    try {
+      await resetBreaker.mutateAsync();
+      notify(t("admin.dt.toast.breaker_reset"), "success", "breaker_reset");
+      setConfirm(null);
+    } catch (err) {
+      notify(t(adminErrorMessageKey(err)), "error", adminErrorExtension(err));
+      setConfirm(null);
+    }
+  }
+
+  // Reset is only meaningful when the breaker is OPEN or HALF_OPEN. Disabling
+  // the button on CLOSED matches the backend's 409 contract — the operator
+  // sees the affordance fade out instead of clicking through to a
+  // dt_breaker_already_closed toast.
+  const breakerResetEnabled =
+    status?.state === "open" || status?.state === "half_open";
 
   async function handleCleanup(scope: "selected" | "all") {
     try {
@@ -205,6 +226,25 @@ export function AdminDTPage() {
               </Button>
               <Button
                 size="sm"
+                variant="outline"
+                onClick={() => setConfirm("reset_breaker")}
+                disabled={!breakerResetEnabled || resetBreaker.isPending}
+                data-testid="admin-dt-reset-breaker"
+                title={
+                  breakerResetEnabled
+                    ? undefined
+                    : t("admin.dt.breaker.reset.disabled_hint")
+                }
+              >
+                {resetBreaker.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                ) : (
+                  <RotateCcw className="h-4 w-4" aria-hidden />
+                )}
+                {t("admin.dt.breaker.reset.label")}
+              </Button>
+              <Button
+                size="sm"
                 onClick={handleProbe}
                 disabled={probe.isPending}
                 data-testid="admin-dt-force-probe"
@@ -216,6 +256,40 @@ export function AdminDTPage() {
               </Button>
             </div>
           </div>
+
+          {confirm === "reset_breaker" ? (
+            <div
+              className="mb-3 flex flex-col gap-2 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900"
+              data-testid="admin-dt-reset-confirm-strip"
+            >
+              <p className="font-semibold">
+                {t("admin.dt.breaker.reset.confirm_title")}
+              </p>
+              <p>{t("admin.dt.breaker.reset.confirm_body")}</p>
+              <div className="flex justify-end gap-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setConfirm(null)}
+                  data-testid="admin-dt-reset-confirm-cancel"
+                >
+                  {t("admin.actions.cancel")}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={handleResetBreaker}
+                  disabled={resetBreaker.isPending}
+                  data-testid="admin-dt-reset-confirm-ok"
+                >
+                  {resetBreaker.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                  ) : null}
+                  {t("admin.actions.confirm")}
+                </Button>
+              </div>
+            </div>
+          ) : null}
 
           {statusQuery.isLoading ? (
             <div className="space-y-2" data-testid="admin-dt-status-loading">
@@ -324,7 +398,7 @@ export function AdminDTPage() {
             </div>
           </div>
 
-          {confirm ? (
+          {confirm === "cleanup_selected" || confirm === "cleanup_all" ? (
             <div
               className="mb-3 flex flex-col gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900"
               data-testid="admin-dt-confirm-strip"

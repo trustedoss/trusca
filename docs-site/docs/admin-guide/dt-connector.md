@@ -183,10 +183,26 @@ docker-compose -f docker-compose.yml -f docker-compose.dt.yml up -d
 
 ### Breaker stuck OPEN
 
-The breaker only closes on a successful HALF_OPEN probe. If DT is flapping, the breaker will oscillate. There is no operator-facing breaker-reset endpoint at v2.0.0 — see the roadmap below. The pragmatic recovery is:
+The breaker only closes on a successful HALF_OPEN probe. If DT is flapping, the breaker will oscillate. The pragmatic recovery is:
 
 1. Restart the DT container so the next probe sees a clean DT: `docker-compose restart dt`.
 2. Force an immediate health probe via `POST /v1/admin/dt/health-check` (see [Manual probes](#manual-probes)). One green probe flips HALF_OPEN to CLOSED.
+3. As a last resort, force the breaker back to CLOSED via the operator endpoint — see [Reset breaker](#reset-breaker-last-resort-recovery) below.
+
+#### Reset breaker (last-resort recovery)
+
+`POST /v1/admin/dt/breaker/reset` (super_admin only) forces the breaker to CLOSED and clears the consecutive-failure counter, regardless of the cooldown window. The next outbound DT call probes immediately instead of waiting.
+
+The endpoint refuses with `409 Conflict` and `dt_breaker_already_closed: true` when the breaker is already CLOSED — operators should investigate why a reset looked necessary instead of letting a scripted retry no-op silently. The transition (`state_before` / `state_after` / `fail_count_before`) is recorded in the audit log under `target_table=dt_breaker`, `action=breaker_reset`, with the actor's user id.
+
+The Admin → DT Connector page surfaces a **Reset breaker** button in the status card; the button enables only while the breaker is OPEN or HALF_OPEN, mirroring the backend's 409 contract so the affordance fades out instead of clicking through to an error toast.
+
+```bash
+curl -X POST -H "Authorization: Bearer $JWT" \
+  https://portal.example.com/v1/admin/dt/breaker/reset
+# 200 OK
+# {"state_before": "open", "state_after": "closed", "fail_count_before": 5, "reset_at": "..."}
+```
 
 ### Vulnerabilities not refreshing after DT comes back
 
@@ -207,7 +223,6 @@ You are pointed at a shared external DT. Other teams may have created projects t
 The following operator affordances are referenced in early docs but are **not** shipped at v2.0.0:
 
 - Automatic `docker restart dt` attempt when the health monitor flips to `down`.
-- Operator-facing breaker reset endpoint (`POST /v1/admin/dt/breaker/reset`).
 - Operator-facing manual resync endpoint (`POST /v1/admin/dt/resync`); the Celery Beat hourly resync task itself ships and runs.
 
 ## See also

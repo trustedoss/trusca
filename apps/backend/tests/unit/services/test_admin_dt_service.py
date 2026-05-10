@@ -27,10 +27,12 @@ import pytest
 
 from integrations.dt.breaker import STATE_CLOSED, STATE_OPEN
 from services.admin_dt_service import (
+    BreakerAlreadyClosed,
     DTUnreachable,
     OrphanCleanupInProgress,
     enqueue_orphan_cleanup,
     force_health_check,
+    force_reset_breaker,
     get_dt_status,
     list_orphans,
 )
@@ -543,3 +545,100 @@ def test_orphan_cleanup_request_caps_list_length() -> None:
     too_many = [str(_uuid.uuid4()) for _ in range(1000)]
     with pytest.raises(ValidationError):
         OrphanCleanupRequest(dt_project_uuids=too_many)  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
+# force_reset_breaker (A4)
+# ---------------------------------------------------------------------------
+
+
+def test_force_reset_open_breaker_returns_transition_and_clears_cache(
+    make_breaker: Callable[..., Any],
+    fakeredis_client: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A breaker tripped to OPEN resets to CLOSED + clears the status cache."""
+    monkeypatch.setattr(
+        "services.admin_dt_service._redis_client",
+        lambda: fakeredis_client,
+    )
+    breaker = make_breaker(failure_threshold=1, cooldown_seconds=300)
+    breaker.record_failure()
+    assert breaker.snapshot().state == STATE_OPEN
+    fail_count_before = breaker.snapshot().fail_count
+    # Plant a stale status payload to verify the reset evicts it.
+    fakeredis_client.set("dt:admin:status_cache", '{"stale": true}')
+
+    result = force_reset_breaker(breaker=breaker)
+
+    assert result.state_before == STATE_OPEN
+    assert result.state_after == STATE_CLOSED
+    assert result.fail_count_before == fail_count_before
+    assert breaker.snapshot().state == STATE_CLOSED
+    # Stale cache entry evicted so the next status poll observes the reset.
+    assert fakeredis_client.get("dt:admin:status_cache") is None
+
+
+def test_force_reset_half_open_breaker_returns_to_closed(
+    make_breaker: Callable[..., Any],
+    fakeredis_client: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """HALF_OPEN is also a valid reset entry point — operator wants a clean slate."""
+    monkeypatch.setattr(
+        "services.admin_dt_service._redis_client",
+        lambda: fakeredis_client,
+    )
+    breaker = make_breaker(failure_threshold=1, cooldown_seconds=300)
+    breaker.record_failure()
+    # Manually flip the redis state key to half_open so we don't have to
+    # fast-forward the cooldown.
+    fakeredis_client.set("dt:breaker:state", "half_open")
+
+    result = force_reset_breaker(breaker=breaker)
+
+    assert result.state_before == "half_open"
+    assert result.state_after == STATE_CLOSED
+
+
+def test_force_reset_already_closed_raises_409(
+    make_breaker: Callable[..., Any],
+    fakeredis_client: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """CLOSED breaker refuses reset — operator should investigate, not retry."""
+    monkeypatch.setattr(
+        "services.admin_dt_service._redis_client",
+        lambda: fakeredis_client,
+    )
+    breaker = make_breaker()
+    assert breaker.snapshot().state == STATE_CLOSED
+
+    with pytest.raises(BreakerAlreadyClosed):
+        force_reset_breaker(breaker=breaker)
+
+
+def test_force_reset_redis_error_does_not_propagate(
+    make_breaker: Callable[..., Any],
+    fakeredis_client: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A Redis hiccup during cache-evict logs but does not fail the reset."""
+    import redis as _redis_module
+
+    breaker = make_breaker(failure_threshold=1, cooldown_seconds=300)
+    breaker.record_failure()
+    assert breaker.snapshot().state == STATE_OPEN
+
+    class _BrokenRedis:
+        def delete(self, _key: str) -> None:
+            raise _redis_module.RedisError("redis offline")
+
+    monkeypatch.setattr(
+        "services.admin_dt_service._redis_client",
+        lambda: _BrokenRedis(),
+    )
+
+    # Reset still succeeds end-to-end despite the cache-delete failing.
+    result = force_reset_breaker(breaker=breaker)
+    assert result.state_after == STATE_CLOSED

@@ -154,7 +154,13 @@
       "breaker": {
         "closed": "닫힘",
         "open": "열림",
-        "half_open": "절반 열림"
+        "half_open": "절반 열림",
+        "reset": {
+          "label": "브레이커 리셋",
+          "confirm_title": "DT 브레이커를 강제로 CLOSED 상태로 되돌리시겠습니까?",
+          "confirm_body": "DT 가 복구되었지만 브레이커가 OPEN 상태에 갇힌 경우에만 사용하세요. 다음 DT 호출이 쿨다운 대기 없이 즉시 시도됩니다.",
+          "disabled_hint": "리셋은 브레이커가 OPEN 또는 HALF_OPEN 상태일 때만 가능합니다."
+        }
       },
       "actions": {
         "force_health_check": "상태 강제 점검",
@@ -179,7 +185,8 @@
       },
       "toast": {
         "health_checked": "상태 점검이 완료되었습니다.",
-        "cleanup_enqueued": "정리 작업이 큐에 등록되었습니다."
+        "cleanup_enqueued": "정리 작업이 큐에 등록되었습니다.",
+        "breaker_reset": "DT 브레이커가 CLOSED 상태로 리셋되었습니다."
       }
     },
     "scans": {
@@ -376,6 +383,7 @@
       "slug_conflict": "동일한 슬러그를 가진 팀이 이미 존재합니다.",
       "dt_unreachable": "Dependency-Track 에 연결할 수 없습니다. 브레이커가 OPEN 상태입니다 — 다음 점검이 성공하면 다시 시도하세요.",
       "dt_orphan_cleanup_in_progress": "이미 고아 정리 작업이 실행 중입니다. 완료된 후 다시 시도하세요.",
+      "dt_breaker_already_closed": "DT 브레이커가 이미 CLOSED 상태입니다. 리셋이 필요해 보였던 원인을 먼저 확인하세요.",
       "scan_already_cancelled": "이미 종료된 스캔은 다시 취소할 수 없습니다.",
       "scan_not_found": "스캔을 찾을 수 없습니다.",
       "audit_export_too_large": "내보낼 행 수가 100,000 건을 초과합니다. 필터 범위를 좁힌 후 다시 시도하세요.",

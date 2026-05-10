@@ -27,6 +27,7 @@ from core.errors import problem_response
 from core.security import CurrentUser, require_super_admin_or_404
 from models import AuditLog
 from schemas.admin_ops import (
+    BreakerResetOut,
     DTOrphanListPage,
     DTStatusOut,
     HealthProbeOut,
@@ -37,6 +38,7 @@ from services.admin_dt_service import (
     AdminDTError,
     enqueue_orphan_cleanup,
     force_health_check,
+    force_reset_breaker,
     get_dt_status,
     list_orphans,
 )
@@ -237,6 +239,72 @@ async def force_health_check_endpoint(
 
     return Response(
         content=outcome.model_dump_json(),
+        status_code=status.HTTP_200_OK,
+        media_type="application/json",
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /v1/admin/dt/breaker/reset — A4 manual sys-bug fix
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/breaker/reset",
+    response_model=BreakerResetOut,
+    summary="Force the DT circuit breaker back to CLOSED (admin) — last-resort recovery",
+)
+async def reset_breaker_endpoint(
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_super_admin_or_404()),
+) -> Response:
+    """
+    Operator escape hatch: when DT has recovered but the breaker is stuck OPEN
+    (e.g. the cooldown window keeps tripping during a flaky restore), this
+    endpoint forces it back to CLOSED + clears the failure counter.
+
+    Refused with 409 + ``dt_breaker_already_closed`` extension when the
+    breaker is already CLOSED — the operator should investigate why a reset
+    looked necessary instead of letting a scripted retry no-op silently.
+    """
+    try:
+        result = force_reset_breaker()
+    except AdminDTError as exc:
+        return _problem_for_admin_dt_error(request, exc)
+
+    # The breaker mutation lives in Redis, so there is no domain row to
+    # drive the audit listener — emit an explicit row using the same
+    # request-context binding pattern as health-check / cleanup-enqueue.
+    _ctx = get_audit_context()
+    audit = AuditLog(
+        actor_user_id=actor.id,
+        team_id=None,
+        target_table="dt_breaker",
+        target_id=None,
+        action="breaker_reset",
+        request_id=_ctx.get("request_id"),
+        ip=_ctx.get("ip"),
+        user_agent=_ctx.get("user_agent"),
+        diff={
+            "state_before": result.state_before,
+            "state_after": result.state_after,
+            "fail_count_before": result.fail_count_before,
+        },
+    )
+    session.add(audit)
+    await session.commit()
+
+    log.warning(
+        "admin.dt.breaker_reset",
+        actor_id=str(actor.id),
+        state_before=result.state_before,
+        state_after=result.state_after,
+        fail_count_before=result.fail_count_before,
+    )
+
+    return Response(
+        content=result.model_dump_json(),
         status_code=status.HTTP_200_OK,
         media_type="application/json",
     )
