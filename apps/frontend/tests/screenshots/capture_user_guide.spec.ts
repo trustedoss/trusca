@@ -1,9 +1,11 @@
 /**
  * Guide-screenshot capture — user-guide bulk.
  *
- * One `describe.serial(...)` per docs page. Each block seeds an isolated
- * super-admin (per-page `componentPrefix`), logs in once, and emits the
- * captures the corresponding Markdown page references.
+ * One `describe.serial(...)` per docs page. Auth is shared via
+ * `global-setup.ts` + `use.storageState`, so each test starts already
+ * logged in as the seeded super-admin. The seed creates two projects
+ * (`SHARED_PROJECT_NAMES` from global-setup.ts) which the spec file
+ * navigates between.
  *
  * Pages covered (matching `docs-site/docs/user-guide/*.md`):
  *   - auth-and-profile
@@ -17,12 +19,12 @@
  *   - notifications
  *   - integrations
  *
- * Captures whose pre-conditions cannot be staged from the standard seed
+ * Captures whose pre-conditions cannot be staged from the shared seed
  * (e.g. a *failed* scan banner, a *suppressed*-state vulnerability, a
- * webhook delivery in progress) are intentionally omitted from this PR
- * and tracked under chore-backlog "Screenshots automation" → backlog.
+ * webhook delivery in progress) are intentionally omitted from this
+ * PR and tracked under chore-backlog "Screenshots automation" → 부산물.
  */
-import { expect, test } from "@playwright/test";
+import { test } from "@playwright/test";
 
 import { ApprovalsHarness } from "../_harness/ApprovalsHarness";
 import { AuthHarness } from "../_harness/auth";
@@ -31,26 +33,20 @@ import { NotificationsHarness } from "../_harness/NotificationsHarness";
 import { PortalPage } from "../_harness/PortalPage";
 import { ProfileHarness } from "../_harness/ProfileHarness";
 import { ScansQueueHarness } from "../_harness/ScansQueueHarness";
-import { type SeedSummary } from "../_harness/seed";
-import {
-  captureScreenshot,
-  withSeedBeforeAll,
-} from "./_helpers";
+import { captureScreenshot } from "./_helpers";
+
+/** First project from globalSetup's `SHARED_PROJECT_NAMES`. */
+const PRIMARY_PROJECT = "screenshots-bulk-alpha";
 
 // ════════════════════════════════════════════════════════════════════
-// auth-and-profile
+// auth-and-profile (login / forgot are pre-auth → must clear state)
 // ════════════════════════════════════════════════════════════════════
 
-test.describe.serial("@screenshots user-guide/auth-and-profile", () => {
-  let seed: SeedSummary | null = null;
-  withSeedBeforeAll(
-    "user-auth-and-profile",
-    ["screenshots-auth"],
-    (s) => { seed = s; },
-  );
-
+test.describe.serial("@screenshots user-guide/auth-and-profile (pre-auth)", () => {
+  // These captures depict the LOGGED-OUT views, so we override the
+  // shared storage state for this block by clearing cookies + localStorage
+  // before navigation.
   test.beforeEach(async ({ page }) => {
-    if (seed === null) test.skip(true, "seed not available");
     const auth = new AuthHarness(page);
     await auth.clearAuthState();
   });
@@ -66,13 +62,12 @@ test.describe.serial("@screenshots user-guide/auth-and-profile", () => {
     await auth.gotoForgotPassword();
     await captureScreenshot(page, "user-auth-forgot");
   });
+});
 
+test.describe.serial("@screenshots user-guide/profile", () => {
   test("user-profile-mounted — profile page header + identity card", async ({
     page,
   }) => {
-    const auth = new AuthHarness(page);
-    await auth.gotoLogin();
-    await auth.login(seed!.email, seed!.password);
     const profile = new ProfileHarness(page);
     await profile.gotoProfile();
     await captureScreenshot(page, "user-profile-mounted");
@@ -81,9 +76,6 @@ test.describe.serial("@screenshots user-guide/auth-and-profile", () => {
   test("user-profile-connected-accounts — Connected Accounts panel", async ({
     page,
   }) => {
-    const auth = new AuthHarness(page);
-    await auth.gotoLogin();
-    await auth.login(seed!.email, seed!.password);
     const profile = new ProfileHarness(page);
     await profile.gotoProfile();
     await profile.expectConnectedAccounts(["github"]);
@@ -96,21 +88,6 @@ test.describe.serial("@screenshots user-guide/auth-and-profile", () => {
 // ════════════════════════════════════════════════════════════════════
 
 test.describe.serial("@screenshots user-guide/projects", () => {
-  let seed: SeedSummary | null = null;
-  withSeedBeforeAll(
-    "user-projects",
-    ["screenshots-projects-alpha", "screenshots-projects-beta"],
-    (s) => { seed = s; },
-  );
-
-  test.beforeEach(async ({ page }) => {
-    if (seed === null) test.skip(true, "seed not available");
-    const auth = new AuthHarness(page);
-    await auth.clearAuthState();
-    await auth.gotoLogin();
-    await auth.login(seed!.email, seed!.password);
-  });
-
   test("user-projects-list — project list with rows", async ({ page }) => {
     const portal = new PortalPage(page);
     await portal.gotoProjects();
@@ -121,10 +98,10 @@ test.describe.serial("@screenshots user-guide/projects", () => {
   test("user-projects-create-form — new project form mounted", async ({
     page,
   }) => {
-    await page.goto("http://localhost:5173/projects/new");
-    await expect(page.getByTestId("project-create-form")).toBeVisible({
-      timeout: 10_000,
-    });
+    await page.goto("/projects/new");
+    await page
+      .getByTestId("project-create-form")
+      .waitFor({ state: "visible", timeout: 10_000 });
     await captureScreenshot(page, "user-projects-create-form");
   });
 
@@ -133,7 +110,7 @@ test.describe.serial("@screenshots user-guide/projects", () => {
   }) => {
     const portal = new PortalPage(page);
     await portal.gotoProjects();
-    await portal.openProjectDetail("screenshots-projects-alpha");
+    await portal.openProjectDetail(PRIMARY_PROJECT);
     await portal.expectProjectDetailMounted();
     await captureScreenshot(page, "user-project-detail-overview");
   });
@@ -144,21 +121,6 @@ test.describe.serial("@screenshots user-guide/projects", () => {
 // ════════════════════════════════════════════════════════════════════
 
 test.describe.serial("@screenshots user-guide/scans", () => {
-  let seed: SeedSummary | null = null;
-  withSeedBeforeAll(
-    "user-scans",
-    ["screenshots-scans"],
-    (s) => { seed = s; },
-  );
-
-  test.beforeEach(async ({ page }) => {
-    if (seed === null) test.skip(true, "seed not available");
-    const auth = new AuthHarness(page);
-    await auth.clearAuthState();
-    await auth.gotoLogin();
-    await auth.login(seed!.email, seed!.password);
-  });
-
   test("user-scans-queue — global scan queue with seeded scan rows", async ({
     page,
   }) => {
@@ -173,27 +135,12 @@ test.describe.serial("@screenshots user-guide/scans", () => {
 // ════════════════════════════════════════════════════════════════════
 
 test.describe.serial("@screenshots user-guide/components-and-licenses", () => {
-  let seed: SeedSummary | null = null;
-  withSeedBeforeAll(
-    "user-components",
-    ["screenshots-components"],
-    (s) => { seed = s; },
-  );
-
-  test.beforeEach(async ({ page }) => {
-    if (seed === null) test.skip(true, "seed not available");
-    const auth = new AuthHarness(page);
-    await auth.clearAuthState();
-    await auth.gotoLogin();
-    await auth.login(seed!.email, seed!.password);
-  });
-
   test("user-components-list — Components tab with virtualized rows", async ({
     page,
   }) => {
     const portal = new PortalPage(page);
     await portal.gotoProjects();
-    await portal.openProjectDetail("screenshots-components");
+    await portal.openProjectDetail(PRIMARY_PROJECT);
     await portal.expectProjectDetailMounted();
     await portal.selectTab("components");
     await portal.expectComponentsTabReady();
@@ -203,7 +150,7 @@ test.describe.serial("@screenshots user-guide/components-and-licenses", () => {
   test("user-licenses-donut — Licenses tab distribution", async ({ page }) => {
     const portal = new PortalPage(page);
     await portal.gotoProjects();
-    await portal.openProjectDetail("screenshots-components");
+    await portal.openProjectDetail(PRIMARY_PROJECT);
     await portal.expectProjectDetailMounted();
     await portal.selectLicensesTab();
     await portal.expectLicensesTabReady();
@@ -216,27 +163,12 @@ test.describe.serial("@screenshots user-guide/components-and-licenses", () => {
 // ════════════════════════════════════════════════════════════════════
 
 test.describe.serial("@screenshots user-guide/vulnerabilities", () => {
-  let seed: SeedSummary | null = null;
-  withSeedBeforeAll(
-    "user-vulns",
-    ["screenshots-vulns"],
-    (s) => { seed = s; },
-  );
-
-  test.beforeEach(async ({ page }) => {
-    if (seed === null) test.skip(true, "seed not available");
-    const auth = new AuthHarness(page);
-    await auth.clearAuthState();
-    await auth.gotoLogin();
-    await auth.login(seed!.email, seed!.password);
-  });
-
   test("user-vulns-list — Vulnerabilities tab with seeded rows", async ({
     page,
   }) => {
     const portal = new PortalPage(page);
     await portal.gotoProjects();
-    await portal.openProjectDetail("screenshots-vulns");
+    await portal.openProjectDetail(PRIMARY_PROJECT);
     await portal.expectProjectDetailMounted();
     await portal.selectVulnerabilitiesTab();
     await portal.expectVulnerabilitiesTabReady();
@@ -249,21 +181,6 @@ test.describe.serial("@screenshots user-guide/vulnerabilities", () => {
 // ════════════════════════════════════════════════════════════════════
 
 test.describe.serial("@screenshots user-guide/approvals", () => {
-  let seed: SeedSummary | null = null;
-  withSeedBeforeAll(
-    "user-approvals",
-    ["screenshots-approvals"],
-    (s) => { seed = s; },
-  );
-
-  test.beforeEach(async ({ page }) => {
-    if (seed === null) test.skip(true, "seed not available");
-    const auth = new AuthHarness(page);
-    await auth.clearAuthState();
-    await auth.gotoLogin();
-    await auth.login(seed!.email, seed!.password);
-  });
-
   test("user-approvals-inbox — approvals page mounted (empty until policy hits)", async ({
     page,
   }) => {
@@ -278,27 +195,12 @@ test.describe.serial("@screenshots user-guide/approvals", () => {
 // ════════════════════════════════════════════════════════════════════
 
 test.describe.serial("@screenshots user-guide/sbom", () => {
-  let seed: SeedSummary | null = null;
-  withSeedBeforeAll(
-    "user-sbom",
-    ["screenshots-sbom"],
-    (s) => { seed = s; },
-  );
-
-  test.beforeEach(async ({ page }) => {
-    if (seed === null) test.skip(true, "seed not available");
-    const auth = new AuthHarness(page);
-    await auth.clearAuthState();
-    await auth.gotoLogin();
-    await auth.login(seed!.email, seed!.password);
-  });
-
   test("user-sbom-tab — SBOM tab on the project detail page", async ({
     page,
   }) => {
     const portal = new PortalPage(page);
     await portal.gotoProjects();
-    await portal.openProjectDetail("screenshots-sbom");
+    await portal.openProjectDetail(PRIMARY_PROJECT);
     await portal.expectProjectDetailMounted();
     await portal.selectSbomTab();
     await captureScreenshot(page, "user-sbom-tab");
@@ -310,27 +212,12 @@ test.describe.serial("@screenshots user-guide/sbom", () => {
 // ════════════════════════════════════════════════════════════════════
 
 test.describe.serial("@screenshots user-guide/obligations", () => {
-  let seed: SeedSummary | null = null;
-  withSeedBeforeAll(
-    "user-obligations",
-    ["screenshots-obligations"],
-    (s) => { seed = s; },
-  );
-
-  test.beforeEach(async ({ page }) => {
-    if (seed === null) test.skip(true, "seed not available");
-    const auth = new AuthHarness(page);
-    await auth.clearAuthState();
-    await auth.gotoLogin();
-    await auth.login(seed!.email, seed!.password);
-  });
-
   test("user-obligations-distribution — Obligations tab on the project detail page", async ({
     page,
   }) => {
     const portal = new PortalPage(page);
     await portal.gotoProjects();
-    await portal.openProjectDetail("screenshots-obligations");
+    await portal.openProjectDetail(PRIMARY_PROJECT);
     await portal.expectProjectDetailMounted();
     await portal.selectObligationsTab();
     await portal.expectObligationsTabReady();
@@ -343,21 +230,6 @@ test.describe.serial("@screenshots user-guide/obligations", () => {
 // ════════════════════════════════════════════════════════════════════
 
 test.describe.serial("@screenshots user-guide/notifications", () => {
-  let seed: SeedSummary | null = null;
-  withSeedBeforeAll(
-    "user-notifications",
-    ["screenshots-notifications"],
-    (s) => { seed = s; },
-  );
-
-  test.beforeEach(async ({ page }) => {
-    if (seed === null) test.skip(true, "seed not available");
-    const auth = new AuthHarness(page);
-    await auth.clearAuthState();
-    await auth.gotoLogin();
-    await auth.login(seed!.email, seed!.password);
-  });
-
   test("user-notifications-inbox — /notifications page mounted", async ({
     page,
   }) => {
@@ -378,21 +250,6 @@ test.describe.serial("@screenshots user-guide/notifications", () => {
 // ════════════════════════════════════════════════════════════════════
 
 test.describe.serial("@screenshots user-guide/integrations", () => {
-  let seed: SeedSummary | null = null;
-  withSeedBeforeAll(
-    "user-integrations",
-    ["screenshots-integrations"],
-    (s) => { seed = s; },
-  );
-
-  test.beforeEach(async ({ page }) => {
-    if (seed === null) test.skip(true, "seed not available");
-    const auth = new AuthHarness(page);
-    await auth.clearAuthState();
-    await auth.gotoLogin();
-    await auth.login(seed!.email, seed!.password);
-  });
-
   test("user-integrations-keys — API keys section", async ({ page }) => {
     const integrations = new IntegrationsHarness(page);
     await integrations.goto();

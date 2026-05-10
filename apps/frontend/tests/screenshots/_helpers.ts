@@ -1,17 +1,18 @@
 /**
  * Shared helpers for the guide-screenshot capture pipeline.
  *
- * Multiple spec files (admin/backup PoC + user-guide bulk + future admin
- * pages) all want the same {viewport hiding, slug-validating PNG writer,
- * seed-or-skip wrapper}, so they live here. The spec files import what
- * they need and stay focused on per-page choreography.
+ * Multiple spec files (admin/backup PoC + user-guide bulk + future
+ * admin pages) all want the same {viewport hiding, slug-validating
+ * PNG writer}, so they live here. Authentication is handled centrally
+ * by `global-setup.ts` + `playwright.screenshots.config.ts use.storageState`,
+ * so the helpers no longer concern themselves with seeding or login —
+ * specs receive an already-authenticated `Page` and only need to
+ * navigate and snapshot.
  */
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { test, type Page, type TestInfo } from "@playwright/test";
-
-import { seedE2eUser, type SeedSummary } from "../_harness/seed";
+import type { Page } from "@playwright/test";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -74,66 +75,4 @@ export async function captureScreenshot(
   await hideDevOnlyChrome(page);
   const out = path.join(SCREENSHOT_DIR, `${slug}.png`);
   await page.screenshot({ path: out, fullPage: false });
-}
-
-/**
- * Acquire a seeded super-admin or skip with a friendly error so the
- * capture run never exits non-zero just because the dev stack is not up.
- */
-export function tryAcquireSeed(
-  testInfo: TestInfo,
-  opts: Parameters<typeof seedE2eUser>[0],
-): SeedSummary | null {
-  try {
-    return seedE2eUser(opts);
-  } catch (err) {
-    testInfo.skip(
-      true,
-      `seed precondition failed — bring docker-compose dev up first: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
-    return null;
-  }
-}
-
-/**
- * Build a seed-options object with the standard guide-capture profile
- * (super_admin + 50 components + 30 vulns + obligations + GitHub OAuth)
- * and a per-page namespaced + timestamped `componentPrefix` so back-to-
- * back runs don't collide on `uq_components_purl`.
- */
-export function buildSeedOptions(
-  pageSlug: string,
-  projectNames: string[],
-): Parameters<typeof seedE2eUser>[0] {
-  return {
-    projectNames,
-    superAdmin: true,
-    withScan: true,
-    componentCount: 50,
-    componentPrefix: `screenshot-${pageSlug}-${Date.now()}`,
-    vulnerabilityCount: 30,
-    withObligations: true,
-    withOAuthIdentity: "github",
-  };
-}
-
-/**
- * `test.beforeAll` callback wrapper that handles Playwright's required
- * destructure-pattern argument shape and ESLint's `no-empty-pattern`
- * lint rule in one place.
- */
-export function withSeedBeforeAll(
-  pageSlug: string,
-  projectNames: string[],
-  setSeed: (s: SeedSummary | null) => void,
-): void {
-  // Playwright requires the first beforeAll argument to be an object-
-  // destructure pattern (even if empty). ESLint's no-empty-pattern would
-  // otherwise reject `({}, testInfo)` — disable threads both.
-  // eslint-disable-next-line no-empty-pattern
-  test.beforeAll(async ({}, testInfo) => {
-    setSeed(tryAcquireSeed(testInfo, buildSeedOptions(pageSlug, projectNames)));
-  });
 }

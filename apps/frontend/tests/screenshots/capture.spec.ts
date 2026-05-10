@@ -7,27 +7,20 @@
  * PR #53). Per-page bulk specs live alongside (e.g.
  * `capture_user_guide.spec.ts`).
  *
- * Hard rules:
- *   - Use the existing harnesses (`AdminBackupHarness`, `AuthHarness`, …)
- *     so selectors stay locale-agnostic and we never re-implement the
- *     navigation logic. Direct `page.click()` / `page.locator()` is
- *     prohibited (CLAUDE.md §품질·보안·운영 §4 + test-writer.md).
- *   - One PNG per `test()` so a single failure does not poison the whole
- *     batch. `describe.serial(...)` shares the seeded super-admin across
- *     captures — re-seeding per-test would multiply DB churn for no gain.
+ * Auth is no longer per-test — `playwright.screenshots.config.ts`
+ * adopts the storage state produced by `global-setup.ts`, so every
+ * test starts already logged-in as the shared super-admin.
  *
- * Adding a new page-level capture: prefer a new `*_spec.ts` per page
- * group rather than growing this file (see `capture_user_guide.spec.ts`).
+ * Hard rules:
+ *   - Use the existing harnesses (`AdminBackupHarness`, …) so selectors
+ *     stay locale-agnostic. Direct `page.click()` is prohibited.
+ *   - One PNG per `test()` so a single failure does not poison the
+ *     batch.
  */
 import { expect, test } from "@playwright/test";
 
 import { AdminBackupHarness } from "../_harness/AdminBackupHarness";
-import { AuthHarness } from "../_harness/auth";
-import { type SeedSummary } from "../_harness/seed";
-import {
-  captureScreenshot,
-  withSeedBeforeAll,
-} from "./_helpers";
+import { captureScreenshot } from "./_helpers";
 
 /**
  * Sentinel gz buffer (10 bytes — gzip magic + minimal header) accepted
@@ -42,20 +35,6 @@ const SENTINEL_BACKUP_FILE = {
 };
 
 test.describe.serial("@screenshots admin/backup", () => {
-  let seed: SeedSummary | null = null;
-
-  withSeedBeforeAll("admin-backup", ["screenshots-admin-backup"], (s) => {
-    seed = s;
-  });
-
-  test.beforeEach(async ({ page }) => {
-    if (seed === null) test.skip(true, "seed not available");
-    const auth = new AuthHarness(page);
-    await auth.clearAuthState();
-    await auth.gotoLogin();
-    await auth.login(seed!.email, seed!.password);
-  });
-
   test("admin-backup-list — list view with mounted table", async ({ page }) => {
     const backup = new AdminBackupHarness(page);
     await backup.gotoBackup();
