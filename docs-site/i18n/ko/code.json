@@ -1,0 +1,102 @@
+{
+  "homepage.meta.title": {
+    "message": "TrustedOSS Portal — 엔터프라이즈 OSS 리스크 관리",
+    "description": "Browser tab title for the homepage"
+  },
+  "homepage.hero.eyebrow": {
+    "message": "Apache-2.0 · 자체 호스팅 · GA 2.0.0",
+    "description": "Hero badge above the title"
+  },
+  "homepage.hero.subtitle": {
+    "message": "엔터프라이즈 SCA — 취약점, 라이선스 컴플라이언스, SBOM을 하나의 자체 호스팅 UI에서. 시트당 라이선스 비용 없음.",
+    "description": "Hero subtitle"
+  },
+  "homepage.hero.cta.install": {
+    "message": "5분 만에 설치",
+    "description": "Primary hero CTA"
+  },
+  "homepage.hero.cta.docs": {
+    "message": "문서 보기",
+    "description": "Secondary hero CTA"
+  },
+  "homepage.hero.cta.github": {
+    "message": "GitHub",
+    "description": "GitHub link CTA"
+  },
+  "homepage.hero.stats.aria": {
+    "message": "프로젝트 주요 지표",
+    "description": "Aria label for the stats list"
+  },
+  "homepage.hero.stats.languages": {
+    "message": "30개 이상의 언어 · 빌드 시스템 탐지 (cdxgen)",
+    "description": "Stat: supported languages"
+  },
+  "homepage.hero.stats.feeds": {
+    "message": "Dependency-Track 기반 취약점 피드",
+    "description": "Stat: vulnerability feeds"
+  },
+  "homepage.hero.stats.i18n": {
+    "message": "GA 시점부터 UI · 문서 이중 언어 지원",
+    "description": "Stat: bilingual"
+  },
+  "homepage.features.title": {
+    "message": "OSS 리스크를 한 곳에서",
+    "description": "Features section heading"
+  },
+  "homepage.features.subtitle": {
+    "message": "엔지니어링·법무·보안 팀을 위한 취약점·라이선스·SBOM 워크플로우. 상용 SaaS 시트 과금 없음.",
+    "description": "Features section subtitle"
+  },
+  "homepage.feature.vulns.title": {
+    "message": "취약점 추적",
+    "description": "Feature card: vulnerability tracking title"
+  },
+  "homepage.feature.vulns.desc": {
+    "message": "Dependency-Track 기반 CVE 탐지 (NVD · OSV · GitHub Advisory). 새 CVE 자동 재스캔, DT 재시작 중에도 PostgreSQL 캐시 + Circuit Breaker로 결과 조회 정상 동작.",
+    "description": "Feature card: vulnerability tracking description"
+  },
+  "homepage.feature.license.title": {
+    "message": "라이선스 컴플라이언스",
+    "description": "Feature card: license compliance title"
+  },
+  "homepage.feature.license.desc": {
+    "message": "ORT 룰셋으로 라이선스를 허용 / 조건부 / 금지로 자동 분류. NOTICE 파일 자동 생성, 조건부 라이선스는 승인 워크플로우로 라우팅.",
+    "description": "Feature card: license compliance description"
+  },
+  "homepage.feature.sbom.title": {
+    "message": "SBOM · 보고서",
+    "description": "Feature card: SBOM title"
+  },
+  "homepage.feature.sbom.desc": {
+    "message": "CycloneDX (JSON / XML) · SPDX (JSON / Tag-Value) 내보내기. 법무 검토용 Excel · PDF 보고서, 컴포넌트별 의무사항 추적 포함.",
+    "description": "Feature card: SBOM description"
+  },
+  "homepage.feature.containers.title": {
+    "message": "컨테이너 스캔",
+    "description": "Feature card: containers title"
+  },
+  "homepage.feature.containers.desc": {
+    "message": "Trivy로 컨테이너 이미지의 OS 패키지 취약점을 애플리케이션 의존성과 함께 스캔. 소스부터 런타임까지 단일 리스크 뷰.",
+    "description": "Feature card: containers description"
+  },
+  "homepage.feature.ci.title": {
+    "message": "CI/CD 빌드 게이트",
+    "description": "Feature card: CI title"
+  },
+  "homepage.feature.ci.desc": {
+    "message": "GitHub Actions · GitLab CI · Jenkins 연동. Critical CVE 또는 금지 라이선스는 빌드 실패(exit 1), PR · MR 코멘트 자동 게시.",
+    "description": "Feature card: CI description"
+  },
+  "homepage.feature.selfhosted.title": {
+    "message": "자체 호스팅 · 오픈소스",
+    "description": "Feature card: self-hosted title"
+  },
+  "homepage.feature.selfhosted.desc": {
+    "message": "Apache-2.0. 단일 호스트는 Docker Compose, Kubernetes는 Helm chart. 데이터는 자사 네트워크 내부에 머묾.",
+    "description": "Feature card: self-hosted description"
+  },
+  "homepage.feature.learnMore": {
+    "message": "자세히 보기 →",
+    "description": "Feature card link label"
+  }
+}
