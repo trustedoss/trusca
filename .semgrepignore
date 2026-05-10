@@ -40,3 +40,13 @@ apps/frontend/Dockerfile
 # WebSocket scheme. Justified inline; semgrep evaluates the file as a
 # whole because every branch contains a literal.
 apps/frontend/src/lib/wsBase.ts
+
+# Vite dev-server config — the `/ws` proxy block carries an unencrypted
+# `ws://backend:8000` default for the docker-compose dev stack. Production
+# never runs the Vite dev server (it ships the SPA as a static bundle
+# fronted by Traefik with `wss://`), so semgrep's `detect-insecure-
+# websocket` is a false positive here. The rule appears to match the
+# entire `proxy: { ... }` object once it sees `ws: true`, so per-line
+# `nosemgrep` comments don't suffice; ignore the whole file like
+# `wsBase.ts` does.
+apps/frontend/vite.config.ts
