@@ -97,7 +97,27 @@ npm install
 npm run dev
 ```
 
-Vite는 `http://localhost:5173`에서 서비스하며 `/api`를 백엔드로 프록시합니다.
+Vite는 `http://localhost:5173`에서 서비스하며 `/v1/*`, `/auth/*`, `/ws/*` 를 백엔드(기본값: docker-compose 서비스 `backend:8000`)로 프록시합니다. docker-compose 안이 아닌 호스트에서 Vite를 직접 실행할 때는 프록시 대상을 덮어쓰세요.
+
+```bash
+VITE_PROXY_BACKEND=http://localhost:8000 \
+VITE_PROXY_WS=ws://localhost:8000 \
+  npm run dev
+```
+
+Playwright 하네스도 `BACKEND_BASE_URL` / `VITE_API_BASE_URL` env 가 비어 있으면 동일한 프록시를 통해 백엔드에 접근합니다.
+
+## dev 스택 리셋
+
+Postgres 데이터 손상, 오래된 celery-worker 이미지(`aiosmtplib` ModuleNotFoundError), 디스크 가득참 — 모두 동일한 처방으로 해결합니다. named volume을 다시 만들고 worker 이미지를 재빌드합니다.
+
+```bash
+make dev-rebuild-worker          # worker 만 재빌드 (DB 데이터 보존)
+make dev-reset                   # 대화형: 볼륨 삭제 후 스택 재생성
+make dev-reset-rebuild           # 볼륨 삭제 + worker 재빌드 + e2e 사용자 시드
+```
+
+`scripts/dev-reset.sh`는 프로젝트 범위입니다 — `com.docker.compose.project=trustedoss-portal` 라벨이 붙은 볼륨만 prune 하므로 동일 호스트의 다른 Compose 프로젝트는 영향받지 않습니다. CI에서는 `--no-prompt` 로 확인 프롬프트를 건너뛸 수 있습니다.
 
 ## 테스트 실행
 

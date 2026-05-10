@@ -84,8 +84,13 @@ RUN apt-get update \
 WORKDIR /app
 
 COPY requirements.txt requirements-dev.txt /app/
+# Install both files explicitly. requirements-dev.txt starts with
+# `-r requirements.txt`, so a single `pip install -r requirements-dev.txt`
+# is functionally equivalent — but listing both makes the dependency
+# surface visible to a build-cache miss diagnostic and forecloses a
+# pip behaviour change that would silently drop the transitive include.
 RUN pip install --upgrade pip \
-    && pip install -r requirements-dev.txt
+    && pip install -r requirements.txt -r requirements-dev.txt
 
 # ---------------------------------------------------------------------------
 # Stage 2: worker — base + JRE 17 + Node 20 LTS + cdxgen + Trivy + ORT.

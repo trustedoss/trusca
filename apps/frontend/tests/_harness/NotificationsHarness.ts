@@ -305,19 +305,21 @@ export class NotificationsHarness {
   }
 
   /**
-   * Resolve the backend host. Vite has no `/v1/*` proxy in this repo,
-   * so adversarial direct-fetch scenarios must hit FastAPI on port 8000
-   * the same way the SPA's axios layer does. Order:
-   *   1. BACKEND_BASE_URL — explicit CI / local override
+   * Resolve the backend host. The dev-stack Vite proxy (chore PR
+   * `dev-stack-stabilization`) routes `/v1/*` and `/auth/*` from 5173
+   * onto the backend service, so by default we issue same-origin
+   * requests through `this.baseUrl`. CI / cross-host runs override
+   * via env. Order:
+   *   1. BACKEND_BASE_URL — explicit override (CI uses this)
    *   2. VITE_API_BASE_URL — mirrors the SPA's runtime resolution
    *      (apps/frontend/src/lib/api.ts) so a single env flips both
-   *   3. http://localhost:8000 — default dev-stack mapped port
+   *   3. this.baseUrl — Vite SPA origin, proxied to FastAPI
    */
   private backendBaseUrl(): string {
     return (
       process.env.BACKEND_BASE_URL ??
       process.env.VITE_API_BASE_URL ??
-      "http://localhost:8000"
+      this.baseUrl
     );
   }
 }

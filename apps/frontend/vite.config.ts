@@ -21,6 +21,32 @@ export default defineConfig({
       usePolling: true,
       interval: 500,
     },
+    // Backend proxy: SPA + Playwright harness both fetch /v1/*, /auth/*,
+    // and /ws/* through the Vite origin so cross-origin cookie / CORS
+    // overhead does not leak into dev. The proxy target defaults to the
+    // docker-compose service name `backend`; on a host-only run override
+    // with VITE_PROXY_BACKEND=http://localhost:8000.
+    proxy: {
+      "/v1": {
+        target: process.env.VITE_PROXY_BACKEND ?? "http://backend:8000",
+        changeOrigin: true,
+      },
+      "/auth": {
+        target: process.env.VITE_PROXY_BACKEND ?? "http://backend:8000",
+        changeOrigin: true,
+      },
+      "/ws": {
+        // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
+        // — `ws://` IS the unencrypted scheme, but it is the dev-stack default
+        // (the Vite dev server is the only consumer of this config; production
+        // builds the SPA into static assets and ships them through Traefik
+        // with `wss://`). The same rationale and `nosemgrep` suppression
+        // applies to `apps/frontend/src/lib/wsBase.ts` for the runtime path.
+        target: process.env.VITE_PROXY_WS ?? "ws://backend:8000",
+        ws: true,
+        changeOrigin: true,
+      },
+    },
   },
   test: {
     globals: true,
