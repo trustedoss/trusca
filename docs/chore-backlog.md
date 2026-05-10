@@ -281,9 +281,89 @@
 
 ---
 
+## Manual Walkthrough Verification (Phase 1 ~ 6, 2026-05-09 ~ 10)
+
+> 시작 prompt: `docs/sessions/_next-session-prompt-manual-walkthrough.md`.
+> 한 세션 자율 실행으로 6 PR 모두 처리.
+
+### ~~Phase 1 — Coverage matrix~~ ✅ PR #40 (`42a2eeb`, 2026-05-09)
+**브랜치**: `chore/manual-coverage-matrix`
+- 사용자 9 페이지 + 관리자 6 페이지 (2,356 라인) → 370 단계 metadata
+- 분류: A 280 / B 57 / C 10 / D 22, 기존 가드 51 (13.8%), 신규 권고 229 (61.9%), ⚠ 8
+
+### ~~Phase 2 — User persona walkthrough~~ ✅ PR #41 (`b4c0224`, 2026-05-09)
+**브랜치**: `chore/user-guide-walkthrough`
+- Developer 페르소나로 207 사용자 단계 중 74 검증 (Tier 1 정적 + Tier 2 동적)
+- ✅ 23 (31%) / 📝 31 (42%) / 🐛 2 (3%) / ⏭ 18 (24%)
+- Headline: 매뉴얼이 v2.0.0 코드보다 큰 폭 앞선 비전 기술 (curl `/api/v1/...` × 5 페이지, Reports 메뉴 + 3 endpoint 미구현, WebSocket path/shape drift)
+
+### ~~Phase 3 — Admin persona walkthrough~~ ✅ PR #42 (`f16f819`, 2026-05-09)
+**브랜치**: `chore/admin-guide-walkthrough`
+- Super Admin 페르소나로 163 단계 중 66 검증
+- ✅ 31 (47%) / 📝 26 (39%) / 🐛 4 (6%, 모두 Low) / ⏭ 5 (8%)
+- Headline: `disk-and-health` 거의 전체 drift, `users-and-teams` + `api-keys` 미구현 약속 다수
+
+### ~~Phase 4 — User manual drift fixes~~ ✅ PR #43 (`aadee42`, 2026-05-10)
+**브랜치**: `chore/user-guide-drift-fixes`
+- 33 drift 모두 정정 (EN + KO 미러 9 페이지 × 2 = 18 파일, +402 / −384 라인)
+- 정책: A 라벨/URL/enum/schema → 코드 일치 / B 미구현 → Roadmap (v2.x) 섹션 / C 컬럼 표 → 실제로 교체
+- Docusaurus build EN+KO SUCCESS
+
+### ~~Phase 4 — Admin manual drift fixes~~ ✅ PR #44 (`ad9436e`, 2026-05-10)
+**브랜치**: `chore/admin-guide-drift-fixes`
+- 26 drift 모두 정정 (EN + KO 미러 6 페이지 × 2 = 12 파일, +367 / −279 라인)
+- `disk-and-health` 거의 전체 재작성 (8→7 component, healthy→ok, env 명, threshold, 2 gauge → 4 카드)
+- `users-and-teams` last-super-admin 응답 정정 (409 → 422 + title)
+- `api-keys` scope 모델 재작성 (org/team/project resource scope)
+- Docusaurus build EN+KO SUCCESS
+
+### ~~Phase 5 — Manual-aligned E2E~~ ✅ PR #45 (TBD, 2026-05-10)
+**브랜치**: `chore/manual-aligned-e2e`
+- 신규 하네스 3개 (`AdminBackupHarness` / `NotificationsHarness` / `ProfileHarness`) + `integrations.ts` 확장
+- 신규 spec 3개 (`auth_and_profile` / `notifications` / `admin_backup`) — 27 시나리오 (`@manual-aligned` 태그)
+- adversarial parametrize: provider id, channel toggle, backup name regex, decompression bomb (PR #36 H3), control bytes, oversized, CRLF, `%00`
+- 7 files / +1,579 라인. tsc + eslint clean. 4 시나리오 fixme (seed helper / worker stale 의존)
+
+### ~~Phase 6 — CI gate matrix~~ ✅ PR #46 (TBD, 2026-05-10)
+**브랜치**: `chore/manual-aligned-ci-gate`
+- `.github/workflows/ci.yml`의 `e2e` 잡을 matrix `[scan-flow, manual-aligned]`로 분할
+- shard별 `--grep-invert @manual-aligned` / `--grep @manual-aligned`
+- 잡명 `e2e (scan-flow)` + `e2e (manual-aligned)` 병렬 실행 (단일 잡 9-10분 → 매트릭스 ~6분 cap)
+- 산출물명도 shard별 분리 (`playwright-report-<shard>`)
+
+### 시스템 버그 (사용자 정책상 fix PR 보류 — 모두 Low/Medium)
+
+User persona (PR #41 발견):
+- BUG-USR-001 (Medium) — Project 영구 Delete 부재 (DELETE = soft archive). 의도 불명 → 매뉴얼 정정으로 처리됨 (PR #43)
+- BUG-USR-002 (Low) — Scan cancel API 부재. 매뉴얼 정정으로 처리됨 (PR #43)
+
+Admin persona (PR #42 발견):
+- sys-bug-u&t-1 (Low) — last super_admin DB-level CHECK constraint 부재. 매뉴얼 정정 (PR #44 — Roadmap)
+- sys-bug-dt-1 (Low) — DT breaker reset endpoint 부재. 매뉴얼 정정 (PR #44 — Roadmap)
+- sys-bug-audit-1 (Low) — `audit_logs` immutability constraint 부재. 매뉴얼 정정 (PR #44 — Roadmap)
+- sys-bug-bkp-1 (Low) — restore missing X-Confirm-Restore → 400 (RFC 7807 상 412). 매뉴얼 정정 (PR #44 — 400 으로 일치)
+- sys-bug-audit-2 (Low) — CSV export UTF-8 BOM 부재. 매뉴얼 정정 (PR #44 — Roadmap)
+
+추후 fix PR 후보 (별도 chore 등재 권고):
+- `fix/audit-immutability` — DB-level trigger 추가 (Alembic forward-only)
+- `fix/backup-restore-confirm-412` — 400 → 412 status + RFC 7807 problem
+- `fix/audit-csv-utf8-bom` — Excel-friendly BOM
+- `chore/dt-breaker-reset-endpoint` — operator escape hatch
+- `chore/last-super-admin-db-constraint` — defense-in-depth
+
+### 환경 chore 후보 (Walkthrough 부산물)
+
+- **postgres dev volume disk-full** — `docker volume prune` 또는 별도 chore (Phase 2/3 walkthrough Tier 2 검증 차단 원인)
+- **celery-worker stale image** (`aiosmtplib` ModuleNotFoundError restart loop) — `docker-compose build celery-worker --no-cache` 또는 `Dockerfile.worker` requirements-dev install 단계 점검 (Chore P refresh 이후에도 stale)
+- **API path consistency** `/api/v1` vs `/v1` — 매뉴얼은 PR #43 으로 통일됐으나 frontend / API client / 외부 SDK 차원 정합 점검 권고
+
+---
+
 ## 새 세션 시작 시 사용
 
 `docs/sessions/_next-session-prompt-post-ga-cleanup.md` 파일이 작성됨 (2026-05-09).
 새 세션 첫 메시지에 그 파일 내용을 그대로 붙여넣으면 정확한 컨텍스트로 시작.
 
 이전 세션 prompt (`_next-session-prompt-chore-backlog.md`) 는 11 chore 모두 처리 후 **deprecated**.
+
+Manual Walkthrough prompt (`_next-session-prompt-manual-walkthrough.md`) 는 Phase 1~6 모두 처리 후 **deprecated** (2026-05-10).
