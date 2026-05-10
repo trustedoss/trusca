@@ -431,7 +431,22 @@ jobs:
   #    fails fast.
   # -------------------------------------------------------------------------
   e2e:
-    name: e2e (scan-flow)
+    # Matrix split (PR #46, Phase 6 of post-GA Manual Walkthrough):
+    #   - shard=scan-flow      → 9 spec / 39 scenario (existing core)
+    #   - shard=manual-aligned → 3 spec / 27 scenario (Phase 5 PR #45)
+    # Both shards run the same dev stack + Playwright config but `--grep`
+    # filter on the `@manual-aligned` tag. Running them as separate matrix
+    # legs parallelises wall-time (~6 min cap) and attributes failures
+    # cleanly without duplicating the 130-line setup block.
+    name: e2e (${{ matrix.shard }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: scan-flow
+            grep_args: "--grep-invert @manual-aligned"
+          - shard: manual-aligned
+            grep_args: "--grep @manual-aligned"
     runs-on: ubuntu-22.04
     timeout-minutes: 20
     env:
@@ -553,7 +568,7 @@ jobs:
           docker compose -f docker-compose.dev.yml exec -T backend \
             python scripts/seed_e2e_user.py --project-names ci-smoke
 
-      - name: Run Playwright e2e
+      - name: Run Playwright e2e (${{ matrix.shard }})
         working-directory: apps/frontend
         env:
           # The harness `seed.ts` uses these to spawn python3 against the
@@ -564,17 +579,19 @@ jobs:
           APP_ENV: dev
           PYTHON: python3
           CI: "true"
-        run: npm run test:e2e
+        run: npm run test:e2e -- ${{ matrix.grep_args }}
 
       - name: Dump compose logs on failure
         if: failure()
         run: docker compose -f docker-compose.dev.yml logs --tail=200
 
       - name: Upload Playwright report
+        # Per-shard artifact name — both shards upload concurrently and
+        # actions/upload-artifact@v4 rejects duplicate names.
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.shard }}
           path: apps/frontend/playwright-report/
           if-no-files-found: ignore
           retention-days: 7
@@ -583,7 +600,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-test-results
+          name: playwright-test-results-${{ matrix.shard }}
           path: apps/frontend/test-results/
           if-no-files-found: ignore
           retention-days: 7
