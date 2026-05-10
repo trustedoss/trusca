@@ -201,10 +201,14 @@ export class ProfileHarness {
   }
 
   private backendBaseUrl(): string {
+    // See NotificationsHarness.backendBaseUrl for the resolution order.
+    // chore PR `dev-stack-stabilization` added a Vite proxy for /v1/*
+    // and /auth/*, so this.baseUrl (5173) is now the default fallback
+    // and the localhost:8000 hard-code has been retired.
     return (
       process.env.BACKEND_BASE_URL ??
       process.env.VITE_API_BASE_URL ??
-      "http://localhost:8000"
+      this.baseUrl
     );
   }
 }

@@ -97,7 +97,27 @@ npm install
 npm run dev
 ```
 
-Vite serves on http://localhost:5173 and proxies `/api` to the backend.
+Vite serves on http://localhost:5173 and proxies `/v1/*`, `/auth/*`, and `/ws/*` to the backend (defaulting to the docker-compose service `backend:8000`). When running Vite on the host instead of inside docker-compose, override the proxy target:
+
+```bash
+VITE_PROXY_BACKEND=http://localhost:8000 \
+VITE_PROXY_WS=ws://localhost:8000 \
+  npm run dev
+```
+
+The Playwright harness exercises the same proxy when no `BACKEND_BASE_URL` / `VITE_API_BASE_URL` env override is set.
+
+## Reset the dev stack
+
+Postgres data corruption, a stale celery-worker image (`aiosmtplib` ModuleNotFoundError), or a full disk all share one fix — recreate the named volumes and rebuild the worker.
+
+```bash
+make dev-rebuild-worker          # only the worker (keeps DB data)
+make dev-reset                   # interactive: drops volumes, recreates stack
+make dev-reset-rebuild           # destroys volumes, rebuilds worker, seeds e2e user
+```
+
+`scripts/dev-reset.sh` is project-scoped — it only prunes volumes labelled `com.docker.compose.project=trustedoss-portal`, leaving other Compose projects on the host untouched. Pass `--no-prompt` to skip the destructive-action confirmation in CI.
 
 ## Run the tests
 
