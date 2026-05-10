@@ -152,14 +152,16 @@ Both endpoints require `super_admin`.
 
 ## Notifications {#notifications}
 
-The five notification triggers are configured at **/notifications**:
+The notification triggers are configured at **/notifications**. The kinds below cover the full closed enum the backend emits (`apps/backend/notifications/dispatcher.NotificationKind`); disk pressure is listed because it is wired into the dashboard banner today, with a `disk_pressure` notification kind on the roadmap.
 
 | Trigger | Default |
 |---|---|
-| Scan finished | Off |
-| Build gate failed | On |
-| New CVE on existing project (re-detection) | On |
-| Approval request | On (team admins) |
+| Scan finished (kind `scan_completed`) | Off |
+| Scan failed (kind `scan_failed`) | On |
+| Build gate failed (kind `policy_gate_failed`) | On |
+| New CVE on existing project / re-detection (kind `cve_detected`) | On |
+| License violation (kind `license_violation`) | On |
+| Approval request (kind `approval_pending`) | On (team admins) |
 | Disk pressure (≥ 90%) | On (super-admins) |
 
 Channels: email (SMTP), Slack webhook, MS Teams webhook. Configure the webhook URLs in `.env` (`SMTP_*`, `SLACK_WEBHOOK_URL`, `TEAMS_WEBHOOK_URL`).

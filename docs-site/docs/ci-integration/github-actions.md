@@ -31,9 +31,6 @@ on:
 jobs:
   sca:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write    # required for PR comments
     steps:
       - uses: actions/checkout@v4
       - name: TrustedOSS SCA scan
@@ -56,7 +53,11 @@ That's the minimum. The action:
 
 ### 1. Generate an API key
 
-In the portal: **Project Settings → CI/CD → API keys → New API key**. Allowed actions: `scan:trigger`, `scan:read`, `report:download`. See [API keys](../admin-guide/api-keys.md).
+In the portal: **Project Settings → CI/CD → API keys → New API key**.
+
+API keys carry a single `scope` (`org`, `team`, or `project`). There is no per-action allowlist at v2.0.0; any caller authenticated with a key in the right scope can hit any endpoint that accepts an api-key. Per-action capabilities are on the roadmap.
+
+See [API keys](../admin-guide/api-keys.md).
 
 ### 2. Store the key in GitHub
 
@@ -189,15 +190,17 @@ Apply the gate only on `main`, advisory on PRs:
 
 ### Pin to a tag
 
-The `@v1` tag floats. Pin to a specific commit for reproducibility:
+For reproducibility, pin to a specific commit SHA instead of a release tag:
 
 ```yaml
-- uses: trustedoss/scan-action@a1b2c3d4e5f6     # v1.2.3
+- uses: trustedoss/trustedoss-portal/actions/scan@a1b2c3d4e5f6     # v2.0.0
 ```
 
 ## How the PR comment is posted
 
-The portal posts the comment via the same workflow's `GITHUB_TOKEN` (passed as `${{ secrets.GITHUB_TOKEN }}` to the action). A first-class GitHub App with portal-stored installation tokens is on the roadmap.
+The PR comment is posted **server-side by the portal**, not by your workflow. After the action uploads the SCA results, the portal evaluates the policy gate and—if comment posting is enabled—calls `https://api.github.com` directly using a GitHub PAT stored in the portal's environment (`GITHUB_TOKEN` or `TRUSTEDOSS_GITHUB_TOKEN`). Your workflow never forwards `secrets.GITHUB_TOKEN` to the portal.
+
+A first-class GitHub App with portal-stored installation tokens is on the roadmap.
 
 The comment is **idempotent**: re-running the workflow on the same PR updates the existing comment in place. The marker `<!-- trustedoss-sca -->` identifies it.
 
@@ -221,14 +224,14 @@ Either the worker is overwhelmed (raise `poll-timeout-seconds`) or the scan genu
 
 ### `403 Forbidden` from the action
 
-The API key is valid but does not have the required action allowed. Re-issue the key with `scan:trigger`, `scan:read`, `report:download`. See [API keys](../admin-guide/api-keys.md).
+The API key's `scope` (`org`, `team`, or `project`) does not cover the project being scanned. Re-issue the key with the correct scope. See [API keys](../admin-guide/api-keys.md).
 
 ### PR comment did not appear
 
 Three possibilities:
 
 - The workflow was triggered by `push`, not `pull_request` — only PR events get a comment.
-- The portal's GitHub App is not installed on the repo. Ask your portal admin to install or extend the App's repo list.
+- The portal's `GITHUB_TOKEN` / `TRUSTEDOSS_GITHUB_TOKEN` env is unset, expired, or lacks the `pull-requests: write` permission for the target repo. Operators rotate / extend the PAT in the portal `.env` and bounce the backend.
 - The portal could not resolve the PR number from the head SHA. Check the action's log output for `pull_request_number=` — empty means the lookup failed.
 
 ### Need to skip on a chore PR

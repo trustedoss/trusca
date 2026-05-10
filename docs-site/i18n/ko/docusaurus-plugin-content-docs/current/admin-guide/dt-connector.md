@@ -152,14 +152,16 @@ curl -sS -X POST \
 
 ## 알림 {#알림}
 
-다섯 가지 알림 트리거는 **/notifications**에서 설정합니다.
+알림 트리거는 **/notifications**에서 설정합니다. 아래 종류는 백엔드가 발신하는 closed enum 전체(`apps/backend/notifications/dispatcher.NotificationKind`)를 포괄합니다. 디스크 압박은 현재 대시보드 배너에만 연결되어 있으며, `disk_pressure` 알림 종류는 로드맵 항목입니다.
 
 | 트리거 | 기본 |
 |---|---|
-| 스캔 완료 | 끔 |
-| 빌드 게이트 실패 | 켬 |
-| 기존 프로젝트의 신규 CVE(재탐지) | 켬 |
-| 승인 요청 | 켬(team admin) |
+| 스캔 완료(kind `scan_completed`) | 끔 |
+| 스캔 실패(kind `scan_failed`) | 켬 |
+| 빌드 게이트 실패(kind `policy_gate_failed`) | 켬 |
+| 기존 프로젝트의 신규 CVE / 재탐지(kind `cve_detected`) | 켬 |
+| 라이선스 위반(kind `license_violation`) | 켬 |
+| 승인 요청(kind `approval_pending`) | 켬(team admin) |
 | 디스크 압박(≥ 90%) | 켬(super-admin) |
 
 채널: 이메일(SMTP), Slack Webhook, MS Teams Webhook. Webhook URL은 `.env`(`SMTP_*`, `SLACK_WEBHOOK_URL`, `TEAMS_WEBHOOK_URL`)에 설정.

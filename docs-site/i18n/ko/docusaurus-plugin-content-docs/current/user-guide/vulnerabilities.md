@@ -46,7 +46,7 @@ sidebar_position: 4
 
 ### 필수 사유
 
-`New` / `Analyzing` 외 상태로 전환할 때마다 자유 텍스트 사유(10자 이상)가 필요합니다. 포털은 사유를 그대로 저장합니다 — 사실 기반으로 작성하세요("lodash를 4.17.21로 업그레이드", "취약 코드 경로는 `dev_only` 모듈에 있음"). 본 텍스트는 CycloneDX VEX 출력에 그대로 노출됩니다.
+사유는 API 레벨에서는 선택 사항입니다. UI는 모든 전환에서 자유 텍스트 textarea를 노출하여 검토자가 감사 맥락을 남길 수 있도록 합니다. 백엔드는 최소 길이를 강제하지 않습니다. 포털은 사유를 그대로 저장합니다 — 사실 기반으로 작성하세요("lodash를 4.17.21로 업그레이드", "취약 코드 경로는 `dev_only` 모듈에 있음"). 본 텍스트는 CycloneDX VEX 출력에 그대로 노출됩니다.
 
 ## 결과 테이블
 
@@ -69,7 +69,7 @@ sidebar_position: 4
 - **요약 (Summary)** — 제목, 설명, CWE, CVSS 벡터.
 - **참고 자료 (References)** — 벤더 권고, 수정 커밋, 익스플로잇 데이터베이스.
 - **영향 (Affected)** — 상위에서 보고한 영향 범위와 본 프로젝트 컴포넌트 버전 강조, 그리고 `fixed_in`(수정이 포함된 상위 버전, 가용 시).
-- **분석 (Analysis)** — VEX 상태 전환별 액션 버튼(허용된 전환마다 한 개씩: Confirm, Mark exploitable, Mark not affected, Mark in triage, Mark resolved, Mark false positive, Mark not applicable). 버튼을 클릭하면 사유 입력 다이얼로그가 열리며 제출합니다. `developer` 이상만.
+- **분석 (Analysis)** — VEX 상태 전환별 액션 버튼(허용된 전환마다 한 개씩: Reopen as new, Move to analyzing, Mark exploitable, Mark not affected, Mark false positive, Suppress, Mark fixed). 버튼을 클릭하면 사유 입력 다이얼로그가 열리며 제출합니다. `developer` 이상만.
 - **이력 (History)** — VEX 상태 전환 타임라인(누가, 언제, 어떤 사유로 상태를 변경했는지).
 
 ## 재탐지

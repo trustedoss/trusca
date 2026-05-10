@@ -73,6 +73,7 @@ If any of the four `DB_*` keys is set, **all** of them must be set (or the compo
 | `SECRET_KEY` | — | `config.py` | See [Required keys](#required-keys). HS256 signing. |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | `config.py` | JWT access token lifetime. |
 | `REFRESH_TOKEN_EXPIRE_DAYS` | `7` | `config.py` | Refresh token lifetime. Rotation + reuse detection enabled. |
+| `RATELIMIT_DISABLED` | `false` | `core/ratelimit.py` | When set to `1` / `true` / `yes` the slowapi limiter is bypassed. Used by the e2e CI job (GitHub-hosted runners share an egress IP and burn the 5/minute login budget across scenarios). Production and dev MUST leave this unset. |
 
 ## Dependency-Track
 
@@ -85,6 +86,7 @@ If any of the four `DB_*` keys is set, **all** of them must be set (or the compo
 | `DT_BREAKER_COOLDOWN_SECONDS` | `30` | `config.py` | How long the breaker stays OPEN before allowing a HALF_OPEN probe. |
 | `DT_HEALTH_ENDPOINT` | `/api/version` | `config.py` | Path appended to `DT_URL` for the 60-second heartbeat. |
 | `DT_AUTO_RESTART` | `false` | `config.py` | When `true`, the health monitor will attempt `docker restart dtrack-api` after a sustained OPEN. Leave `false` if DT is external or you want operator-driven recovery only. |
+| `DT_VOLUME_HOST_PATH` | `/var/lib/dependency-track` | `services/admin_disk_service.py` | DT data-volume path probed by the admin disk dashboard. Defaults match the bundled compose mount; override when DT runs on a different host volume. |
 
 See [DT connector](../admin-guide/dt-connector.md) for the bootstrap flow.
 
@@ -96,6 +98,7 @@ See [DT connector](../admin-guide/dt-connector.md) for the bootstrap flow.
 | `WORKSPACE_HOST_PATH` | `/tmp/trustedoss` | `config.py`, `docker-compose.yml` | Host directory mounted into the worker as `/workspace`. Holds repo clones + ORT analyzer outputs. The compose stack overrides this to `/workspace` inside the container. |
 | `ORT_RULES_PATH` | `/opt/trustedoss/ort/rules.kts` | `docker-compose.yml` | Path inside the worker. Mount your customized rules here. |
 | `JSONB_ROW_SIZE_LIMIT_BYTES` | `262144` (256 KB) | `config.py` | Per-row JSON byte ceiling before the writer truncates and emits a warning. Guards the I-1 unbounded-payload class. |
+| `LICENSE_FETCH_TTL_SECONDS` | `86400` (24 h) | `integrations/license_fetcher/__init__.py` | Cache TTL for the SPDX license-text fetcher. Negative or non-integer values fall back to 24 h with a debug log. |
 
 ## WebSocket gateway
 
@@ -148,12 +151,16 @@ These apply to the demo SaaS deployment. Self-hosted installs leave them empty (
 |---|---|---|---|
 | `BACKUP_RETENTION_DAYS` | `7` | `scripts/backup.sh` | `scripts/backup.sh --no-prune` overrides on a per-run basis. |
 | `BACKUP_DIR` | `<repo>/backups` | `scripts/backup.sh` | Where the backup script writes. |
+| `BACKUPS_ROOT` | `backups` | `services/backup_service.py` | Resolved-Path override for the backup directory the API reads from. Provided primarily for tests; production leaves it unset so paths resolve relative to the repo root, matching `scripts/backup.sh`. |
+| `BACKUP_SUBPROCESS_TIMEOUT` | `3600` (s) | `tasks/backup.py` | Per-subprocess timeout (seconds) for the `pg_dump` and `tar` invocations spawned by the auto / manual backup task. Increase when backups exceed an hour on large installs. |
 
 ## Disk guards
 
 | Key | Default | Read by | Description |
 |---|---|---|---|
 | `DISK_HARD_LIMIT_PCT` | `90` | `config.py` (services layer) | Red gauge + new scans blocked + admin notification. |
+| `DISK_THRESHOLD_WARNING_PCT` | `80` | `services/admin_disk_service.py` | Threshold the admin disk dashboard flips a backend's status from `ok` to `warning`. |
+| `DISK_THRESHOLD_CRITICAL_PCT` | `90` | `services/admin_disk_service.py` | Threshold the admin disk dashboard flips a backend's status to `critical`. Disk-pressure scan rejection uses `DISK_HARD_LIMIT_PCT` independently. |
 
 ## Traefik / TLS
 
@@ -162,6 +169,14 @@ These apply to the demo SaaS deployment. Self-hosted installs leave them empty (
 | `DOMAIN` | — | `docker-compose.yml` | See [Required keys](#required-keys). |
 | `TLS_EMAIL` | — | `docker-compose.yml` | Email used by Let's Encrypt's HTTP-01 challenge. Required for cert issuance. |
 | `TRAEFIK_LOG_LEVEL` | `INFO` | `docker-compose.yml` | `DEBUG` is useful when chasing routing issues. |
+
+## CI integration
+
+| Key | Default | Read by | Description |
+|---|---|---|---|
+| `PORTAL_PUBLIC_URL` | (empty) | `api/v1/policy_gate.py` | Public base URL the portal embeds in PR-comment Markdown so reviewers can click through to the full report (`<base>/projects/<id>`). When unset, the comment skips the trailing "View full report" link. |
+| `GITHUB_TOKEN` | (empty) | `api/v1/policy_gate.py` | Portal-side GitHub PAT used to post PR comments via `POST /v1/scans/{id}/post-pr-comment`. **Distinct from the workflow-side `secrets.GITHUB_TOKEN`** — this token belongs to the portal's outbound caller, not to the user's CI run. |
+| `TRUSTEDOSS_GITHUB_TOKEN` | (empty) | `api/v1/policy_gate.py` | Alias for `GITHUB_TOKEN`. The portal reads `GITHUB_TOKEN` first and falls back to this variable, so operators who already use `GITHUB_TOKEN` for other tooling can keep them separate. |
 
 ## Optional integrations
 

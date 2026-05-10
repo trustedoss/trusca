@@ -52,9 +52,11 @@ tos_<8-char-prefix>_<32-char-secret>
 - **`team`** — `team_admin`이 발급. 특정 팀을 대신해 행위하며, 팀 간 호출은 403으로 실패.
 - **`project`** — `team_admin` 또는 `developer`가 특정 프로젝트에 대해 발급. 해당 프로젝트 외의 호출은 403으로 실패.
 
-Key는 요청 시점에 **발급한 사용자의 역할**을 상속합니다 — v2.0.0에는 별도의 "effective role"이나 "allowed actions" 목록이 없습니다. 권한 검사는 JWT로 인증된 요청과 동일한 RBAC 코드 경로를 따릅니다.
+API Key 는 단일 `scope`(`org`, `team`, `project`) 만 가지며 — v2.0.0 에는 동작 단위 capability 목록이 없습니다. 프로젝트의 scope 와 일치하는 키로 인증한 호출자는 api-key 를 받는 어떤 엔드포인트든 호출할 수 있습니다. 동작 단위 allowlist 는 로드맵 항목입니다.
 
-Key는 v2.0.0에서 **만료되지 않습니다**. 수동으로 폐기될 때까지 유효합니다. 키별 만료 프리셋과 세분화된 `allowed_actions` taxonomy(`scan:trigger`, `scan:read`, `report:download`, …)는 로드맵입니다.
+Key 는 또한 요청 시점에 **발급한 사용자의 역할**을 상속합니다. 권한 검사는 JWT 로 인증된 요청과 동일한 RBAC 코드 경로를 따릅니다 — 라우트별 검사가 평가하는 것은 발급자 역할이지 키별 capability 플래그가 아닙니다.
+
+Key 는 v2.0.0 에서 **만료되지 않습니다**. 수동으로 폐기될 때까지 유효합니다. 키별 만료 프리셋과 위에서 언급한 동작 단위 capability 목록은 로드맵 항목입니다.
 
 ## Key 발급
 
@@ -112,14 +114,14 @@ curl -sS -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
 
 ## Key 목록
 
-UI는 라벨, prefix, scope(`org` / `team` / `project`), 발급자, 생성 시각, 마지막 사용 시각, 폐기 상태를 표시합니다. 기존 Key의 secret을 복구할 방법은 없습니다 — 의도된 설계입니다. 키별 역할, 허용 동작, 만료, 마지막 사용 IP 컬럼은 로드맵입니다(해당 모델 컬럼들이 아직 없음).
+UI는 라벨, prefix, scope(`org` / `team` / `project`), 발급자, 생성 시각, 마지막 사용 시각, 폐기 상태를 표시합니다. 기존 Key의 secret을 복구할 방법은 없습니다 — 의도된 설계입니다. 키별 역할, 동작 단위 capability, 만료, 마지막 사용 IP 컬럼은 로드맵입니다(해당 모델 컬럼들이 아직 없음).
 
 ## 감사 로그
 
 Key 라이프사이클 이벤트가 로그됩니다.
 
 - `target_table=api_keys&action=create` — Key 행이 insert될 때 ORM 리스너가 발신(actor, target prefix, scope).
-- `api_key.revoked` — 명시적 폐기 시 API Key 서비스가 발신(actor, target prefix).
+- API Key 폐기는 structlog `api_key.revoked` 이벤트를 발신하지만 v2.0.0에서는 `audit_logs` 행을 **만들지 않습니다**. 명시적 api-key 이벤트의 감사 테이블 통합은 로드맵 항목입니다. ORM 리스너는 `revoked_at`이 변할 때마다 기반이 되는 `api_keys.update` 행을 여전히 기록합니다.
 
 v2.0.0에서는 API Key 인증의 요청별 감사 행이 발행되지 않습니다(`api_key.use` 이벤트는 로드맵). API Key 요청으로 생성되는 감사 행은 도메인 액션(예: `target_table=scans&action=create`)을 그대로 기록하며, Key의 prefix는 요청에 대한 구조화된 로그에 캡처되지만 감사 행의 `actor_user_id`는 발급한 사용자입니다(Key 자체가 아님).
 
@@ -172,9 +174,9 @@ docker-compose -f docker-compose.yml logs --tail=2000 backend \
 
 다음 기능들은 초기 문서에서 언급되지만 v2.0.0에서는 **출시되지 않았습니다**.
 
-- 키별 역할 오버라이드(`effective_role`)와 세분화된 `allowed_actions` taxonomy(`scan:trigger`, `scan:read`, `report:download`, `webhook:receive`, `*`). 현재 Key는 발급자 역할과 전체 RBAC 표면을 상속.
+- 키별 역할 오버라이드(`effective_role`)와 키 행에 부여하는 동작 단위 capability allowlist. 현재 Key는 발급자 역할과 전체 RBAC 표면을 상속하며, 키별로 강제되는 것은 리소스 scope(`org` / `team` / `project`)뿐입니다.
 - 키별 `expires_at` 필드 + New API key 폼의 30 / 90 / 180 / 365일 만료 프리셋. 현재 Key는 만료 없이 폐기될 때까지 유효.
-- `actor_kind = api_key`인 요청별 `api_key.use` 감사 이벤트. 현재 Key 라이프사이클(ORM 리스너의 insert와 명시적 `api_key.revoked` 액션)은 감사되지만 요청별 사용은 구조화된 로그에만 캡처됨.
+- `actor_kind = api_key`인 요청별 `api_key.use` 감사 이벤트. 현재 ORM 리스너는 기반이 되는 `api_keys` insert + update 행을 캡처하지만, 명시적 `api_key.revoked` 이벤트는 structlog 만에 기록되며 요청별 사용은 구조화된 로그에만 캡처됨.
 - 목록의 `last_used_ip` 컬럼.
 - brute-force secret-mismatch 알림(단일 Key가 60초 내 5회 미스 시 Slack 알림).
 

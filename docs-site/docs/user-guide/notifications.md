@@ -34,10 +34,11 @@ Each row shows:
 
 - **Title** — bold while unread.
 - **Body** — one or two lines.
-- **Channel icons** — which channels delivered this event for you (in-app always shows; email / Slack / Teams show only if you opted in).
 - **Timestamp** — absolute on hover, relative otherwise.
 - **Mark read** — a click anywhere on the row marks it read; the row dim-loads.
 - **Open** — clicking navigates to the source resource and marks read on the way.
+
+Each row shows the **trigger kind** icon (e.g. CVE, scan), title, body, and a relative timestamp. Per-channel delivery indicators (in-app/email/Slack/Teams) are not surfaced in the row at v2.0.0.
 
 Bulk actions: **Mark all as read** (clears the unread badge for the current page).
 

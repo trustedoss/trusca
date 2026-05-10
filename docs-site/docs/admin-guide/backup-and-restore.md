@@ -16,11 +16,25 @@ The portal ships two scripts: `scripts/backup.sh` and `scripts/restore.sh`. They
 
 ## What is in a backup
 
+There are **two on-disk directory layouts**. Both contain the same three files (`postgres.sql.gz`, `workspace.tar.gz`, `manifest.json`); they differ only in the directory name format.
+
+- **CLI (`scripts/backup.sh`)** writes `<backup-dir>/<YYYY-MM-DD>-<HHMMSS>/` (legacy form).
+- **Admin UI / Celery beat** writes `<backup-dir>/{auto,manual}-<YYYYMMDDTHHMMSSZ>/` and the directory name is matched by `BACKUP_NAME_RE` in `apps/backend/services/backup_service.py` (`^(auto|manual)-\d{8}T\d{6}Z$`).
+
+The Admin UI lists only backups created by the portal itself (Celery beat or **Run manual backup now**). Legacy `scripts/backup.sh` outputs use the older `YYYY-MM-DD-HHMMSS` directory format and remain visible to operators on disk; restore them via `scripts/restore.sh` directly.
+
 ```
+# CLI form
 backups/2026-05-09-030000/
 ├── postgres.sql.gz     # pg_dump --clean --if-exists | gzip
 ├── workspace.tar.gz    # tar -czf of $WORKSPACE_HOST_PATH
 └── manifest.json       # timestamp, alembic head, db size, workspace path
+
+# Admin-UI / Celery-beat form
+backups/auto-20260509T030000Z/
+├── postgres.sql.gz
+├── workspace.tar.gz
+└── manifest.json
 ```
 
 - **`postgres.sql.gz`** — full logical dump with `--clean --if-exists`. Re-applying it drops + recreates objects, then re-inserts data.

@@ -127,6 +127,16 @@ docker-compose -f docker-compose.yml exec backend \
 
 디스크 압박은 현재 알림을 생성하지 않습니다 — 운영자는 `/admin/disk`를 직접 모니터링해야 합니다. `disk_pressure` 알림 종류는 로드맵 항목입니다.
 
+## /admin/scans — 스캔 큐와 워커 모니터링
+
+`/admin/scans` 페이지(super-admin 전용)는 조직 전체에 걸친 실행 중·대기·성공·실패 스캔을 모두 나열합니다. 운영자는 다음을 할 수 있습니다.
+
+- 임의 태스크의 전체 진행 페이로드와 마지막 로그 프레임 확인
+- 멈춘 스캔 강제 취소(`POST /v1/admin/scans/{scan_id}/cancel`)
+- 상태·종류·프로젝트·할당된 워커별 필터링
+
+백엔드 — `apps/backend/api/v1/admin/scans.py`. UI — `apps/frontend/src/features/admin/scans/AdminScansPage.tsx`.
+
 ## 정상 동작 확인
 
 변경 후:

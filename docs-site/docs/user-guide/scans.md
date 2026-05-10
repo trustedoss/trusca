@@ -116,7 +116,7 @@ If you build a custom client, the message shape is:
 }
 ```
 
-`percent` is an integer 0–100. `step` is one of the seven pipeline slugs (`bootstrap`, `fetch`, `prep`, `cdxgen`, `ort`, `dt_upload`, `dt_findings`, `finalize`) plus the two terminal states (`succeeded`, `failed`). The frame does not echo `scan_id` — the subscriber already knows it from the URL.
+`percent` is an integer 0–100. `step` is one of the eight source-pipeline slugs (`bootstrap`, `fetch`, `prep`, `cdxgen`, `ort`, `dt_upload`, `dt_findings`, `finalize`) or, for container scans, one of the four container-pipeline slugs (`bootstrap`, `trivy`, `persist`, `finalize`), plus the two terminal states (`succeeded`, `failed`). The frame does not echo `scan_id` — the subscriber already knows it from the URL.
 
 ## Verify it worked
 

@@ -46,7 +46,7 @@ Transitions are logged in the audit log with actor, previous state, new state, a
 
 ### Required justification
 
-Every transition out of `New` / `Analyzing` requires a free-text justification (≥ 10 chars). The portal stores the justification verbatim — keep it factual ("upgraded lodash to 4.17.21", "vulnerable code path is in `dev_only` module"). The text appears in CycloneDX VEX exports.
+Justifications are optional at the API level; the UI surfaces a free-text textarea on every transition so reviewers can leave audit context. Backend does not enforce a minimum length. The portal stores the justification verbatim — keep it factual ("upgraded lodash to 4.17.21", "vulnerable code path is in `dev_only` module"). The text appears in CycloneDX VEX exports.
 
 ## The findings table
 
@@ -69,7 +69,7 @@ Click any row to open:
 - **Summary** — title, description, CWE, CVSS vector.
 - **References** — vendor advisories, fix commits, exploit databases.
 - **Affected** — the upstream-reported affected range with the project's component version highlighted, plus `fixed_in` (the upstream version that ships the fix, when available).
-- **Analysis** — VEX state action buttons (one per allowed transition: Confirm, Mark exploitable, Mark not affected, Mark in triage, Mark resolved, Mark false positive, Mark not applicable). Click a button to open the justification dialog and submit. Only `developer` or higher.
+- **Analysis** — VEX state action buttons (one per allowed transition: Reopen as new, Move to analyzing, Mark exploitable, Mark not affected, Mark false positive, Suppress, Mark fixed). Click a button to open the justification dialog and submit. Only `developer` or higher.
 - **History** — VEX state-transition timeline (who changed the state, when, with what justification).
 
 ## Re-detection

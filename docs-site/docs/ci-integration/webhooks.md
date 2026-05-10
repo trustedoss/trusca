@@ -99,7 +99,7 @@ GitLab does not support HMAC by default. If your security policy requires HMAC, 
 Both Git hosts retry deliveries on failure. The portal handles repeats with `delivery_id` deduplication:
 
 - GitHub provides `X-GitHub-Delivery` (a UUID per delivery).
-- GitLab provides `X-Gitlab-Event-UUID` (a UUID per delivery, since 14.x).
+- GitLab provides `X-Gitlab-Webhook-UUID` (a UUID per delivery; the backend reads this header verbatim — see `apps/backend/services/webhook_service.py`).
 
 The portal stores `(source, delivery_id)` in `webhook_deliveries` with a unique index. A duplicate delivery returns 200 with `{"status": "duplicate"}` instead of triggering a second scan. This keeps the system idempotent across host-side retry storms.
 

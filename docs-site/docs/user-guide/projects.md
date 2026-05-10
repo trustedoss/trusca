@@ -55,15 +55,19 @@ curl -sS -X POST https://trustedoss.example.com/v1/projects \
   -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "checkout-service",
-    "description": "Storefront checkout service",
-    "git_url": "https://github.com/acme/checkout-service.git"
+    "name": "my-service",
+    "slug": "my-service",
+    "team_id": "00000000-0000-0000-0000-000000000000",
+    "description": "Public-facing API",
+    "git_url": "https://github.com/acme/my-service.git",
+    "default_branch": "main",
+    "visibility": "team"
   }' | jq .
 ```
 
 The response includes the project's UUID — keep it; it is the value you wire into the GitHub Action's `project-id` input and the GitLab CI variable.
 
-The schema rejects unknown fields (`extra="forbid"`). Only `name`, `description`, and `git_url` are accepted on create. `default_branch` can be set later via `PATCH /v1/projects/{id}`.
+The schema rejects unknown fields (`extra="forbid"`). Required: `name`, `slug`, `team_id`. Optional: `description`, `git_url`, `default_branch` (default `main`), `visibility` (`team`-only or `org`-wide; default `team`).
 
 ## Visibility
 

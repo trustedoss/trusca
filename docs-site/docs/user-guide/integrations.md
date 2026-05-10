@@ -31,7 +31,7 @@ Open `/integrations` and scroll to the **API keys** section. The list shows ever
 
 2. Fill in the form:
    - **Name** — free-text reminder of what the key is for (e.g. `github-action-checkout-service`).
-   - **Scope** — `org`, `team`, or `project`. Lower scopes are stricter; pick the smallest that covers the calls you need to make. The form surfaces a team or project picker when those scopes are selected.
+   - **Scope** — `org`, `team`, or `project`. Lower scopes are stricter; pick the smallest that covers the calls you need to make. The form has plain UUID inputs for `team_id` (required when scope=`team`) and `project_id` (required when scope=`project`); copy the IDs from the corresponding admin pages. A picker UI is on the roadmap.
 3. Click **Create**.
 
 :::caution Keys do not expire at v2.0.0
