@@ -74,4 +74,66 @@ export class IntegrationsHarness {
       this.page.getByTestId("integrations-create-dialog"),
     ).toHaveCount(0, { timeout: DEFAULT_TIMEOUT_MS });
   }
+
+  // ───── reveal-once dialog (Phase 5 manual-aligned) ─────────────────────
+  /**
+   * Assert the one-time reveal dialog mounted with the issued token. The
+   * value is rendered via `data-testid=integrations-reveal-key-value` —
+   * we check visibility + non-empty content (locale-agnostic; no text
+   * comparison). Caller passes the label they used in the create form;
+   * the assertion does not bind to it because the dialog title flows
+   * through `t()`, but the harness keeps the parameter for spec
+   * readability.
+   */
+  async expectApiKeyOneTimeReveal(_label?: string): Promise<void> {
+    const dialog = this.page.getByTestId("integrations-reveal-dialog");
+    await expect(dialog).toBeVisible({ timeout: DEFAULT_TIMEOUT_MS });
+    const value = this.page.getByTestId("integrations-reveal-key-value");
+    await expect(value).toBeVisible({ timeout: DEFAULT_TIMEOUT_MS });
+    const text = (await value.innerText()).trim();
+    if (text.length === 0) {
+      throw new Error(
+        "integrations-reveal-key-value is empty — backend issued no token?",
+      );
+    }
+    // The Copy button must be reachable so the user can move the secret
+    // into a vault before dismissing the dialog.
+    await expect(
+      this.page.getByTestId("integrations-reveal-copy"),
+    ).toBeVisible({ timeout: DEFAULT_TIMEOUT_MS });
+  }
+
+  /** Dismiss the reveal dialog via the Done button. */
+  async closeRevealDialog(): Promise<void> {
+    await this.page.getByTestId("integrations-reveal-done").click();
+    await expect(
+      this.page.getByTestId("integrations-reveal-dialog"),
+    ).toHaveCount(0, { timeout: DEFAULT_TIMEOUT_MS });
+  }
+
+  /**
+   * Click Revoke on the row whose `data-key-prefix` matches the supplied
+   * prefix, then confirm via the in-dialog destructive button. Waits for
+   * the row to leave the table (TanStack invalidation re-fetches the list).
+   */
+  async revokeKey(prefix: string): Promise<void> {
+    const row = this.page.locator(
+      `[data-testid="integrations-key-row"][data-key-prefix="${cssEscape(prefix)}"]`,
+    );
+    await expect(row).toBeVisible({ timeout: DEFAULT_TIMEOUT_MS });
+    await row.getByTestId("integrations-key-revoke").click();
+    await expect(
+      this.page.getByTestId("integrations-revoke-dialog"),
+    ).toBeVisible({ timeout: DEFAULT_TIMEOUT_MS });
+    await this.page.getByTestId("integrations-revoke-confirm").click();
+    await expect(
+      this.page.getByTestId("integrations-revoke-dialog"),
+    ).toHaveCount(0, { timeout: DEFAULT_TIMEOUT_MS });
+    await expect(row).toHaveCount(0, { timeout: DEFAULT_TIMEOUT_MS });
+  }
+}
+
+/** Escape a value for inclusion in a CSS attribute selector. */
+function cssEscape(value: string): string {
+  return value.replace(/(["\\])/g, "\\$1");
 }
