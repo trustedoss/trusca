@@ -29,7 +29,7 @@ Each entry has:
 | `actor_user_id` | UUID | The user who performed the action (null for system jobs). |
 | `team_id` | UUID | Team scope of the action when applicable (null for org-wide writes). |
 | `action` | text | Verb only (`create` / `update` / `delete`). The table is captured separately in `target_table`. Filter as `target_table=projects&action=create`. |
-| `target_table` | text | Table the affected object lives in (`projects`, `teams`, `users`, `vuln_findings`, …). |
+| `target_table` | text | Table the affected object lives in (`projects`, `teams`, `users`, `vulnerability_findings`, …). |
 | `target_id` | String(64) | The affected object's identifier. |
 | `request_id` | text | Correlates with structured logs (`X-Request-ID`). |
 | `diff` | jsonb | Sanitized before / after diff. PII is masked (`mask_pii`). |
@@ -58,6 +58,14 @@ System jobs (Celery) also log. Each row carries the bare action verb plus its `t
 - `target_table=backups&action=create`
 - `target_table=notifications&action=create`
 
+:::note Filter-visible vs raw-row tables
+The Admin UI filter dropdown for `target_table` is bounded by the
+`AuditTargetTable` whitelist in `apps/backend/schemas/admin_ops.py`.
+Rows with table names outside this whitelist (e.g. `dt_orphans`,
+`backups`, `api_keys`, `notifications`, `dt_breaker`) still land in
+`audit_logs` but can only be queried by raw SQL.
+:::
+
 ## The audit log page
 
 **/admin/audit** is a paginated, filterable view.
@@ -67,10 +75,10 @@ System jobs (Celery) also log. Each row carries the bare action verb plus its `t
 The inline filter bar at v2.0.0:
 
 - **Actor user ID** — exact UUID match.
-- **Target table** — single-select from the enum (`projects`, `teams`, `users`, `vuln_findings`, …).
+- **Target table** — single-select from the enum (`projects`, `teams`, `users`, `vulnerability_findings`, …).
 - **Action** — free-text contains (case-sensitive).
 - **Date range** — `from` and `to` (custom).
-- **Search** — free-text query (`q`); matches across action and target fields.
+- **Search** — free-text query (`q`). Performs an `ilike` match against the JSON-encoded `diff` column. `action` and `target_table` are separate filter parameters (`action=`, `target_table=`); `q` does not match those columns.
 
 Filters compose. The URL updates so you can share a filtered view with a teammate. Multi-select dropdowns, preset date ranges, request-ID filter, and a target-ID filter are on the roadmap (see below).
 
@@ -106,7 +114,7 @@ Filter: `actor=y@acme.com`, date range last 7 days. The actions list summarizes 
 
 ### "Who suppressed CVE-2024-12345 across all projects?"
 
-Filter: `target_table=vuln_findings&action=update`, then expand each row's diff — the rows where `diff.new_state == "suppressed"` and the matching CVE ID are the answer. (A first-class CVE filter is on the roadmap.)
+Filter: `target_table=vulnerability_findings&action=update`, then expand each row's diff — the rows where `diff.new_state == "suppressed"` and the matching CVE ID are the answer. (A first-class CVE filter is on the roadmap.)
 
 ### "Trace one request end-to-end"
 

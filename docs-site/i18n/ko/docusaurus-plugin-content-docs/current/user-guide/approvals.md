@@ -56,7 +56,7 @@ sidebar_position: 6
 1. 행을 클릭해 드로어 열기.
 2. **Start Review** 클릭 — 상태가 검토 중으로 전환되며 검토자 필드가 본인으로 설정.
 3. 라이선스 조건과 포털이 나열한 의무사항 검토.
-4. **Approve** 또는 **Reject**. 둘 다 사유(10자 이상) 필수.
+4. **Approve** 또는 **Reject**. 검토자의 `decision_note`는 선택 사항입니다(최대 2000자, 최소 길이 제한 없음).
 
 성공적인 처리:
 
@@ -90,7 +90,7 @@ sidebar_position: 6
 
 1. 상태 배지가 즉시 갱신.
 2. 다음 스캔이 결정을 존중(반려 → 빌드 게이트가 금지로 취급).
-3. 감사 로그가 `approval.update`를 `previous_state`, `new_state`, `justification`과 함께 기록.
+3. 감사 로그가 `target_table=component_approvals&action=update`를 `previous_status`, `new_status`, `decision_note`와 함께 diff에 담아 기록.
 4. 원래 요청자(있다면)가 팀의 알림 설정에 따라 알림 수신.
 
 ## 트러블슈팅

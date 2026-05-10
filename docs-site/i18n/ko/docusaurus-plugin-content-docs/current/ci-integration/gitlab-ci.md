@@ -8,7 +8,11 @@ sidebar_position: 2
 
 # GitLab CI
 
-포털은 GitHub Action을 미러링하는 `include` 가능한 GitLab CI 템플릿을 제공합니다 — 스캔을 트리거하고 최종 상태까지 폴링한 다음 빌드 게이트를 평가하고 SCA 보고서를 merge-request 노트로 게시합니다. 템플릿은 단일 잡이며, 어떤 필드든 확장하거나 오버라이드할 수 있습니다.
+포털은 GitHub Action을 미러링하는 `include` 가능한 GitLab CI 템플릿을 제공합니다 — 스캔을 트리거하고 최종 상태까지 폴링한 다음 빌드 게이트를 평가합니다. 템플릿은 단일 잡이며, 어떤 필드든 확장하거나 오버라이드할 수 있습니다.
+
+:::warning GitLab MR 코멘트 — 아직 출하되지 않음
+v2.0.0의 포털 PR-코멘트 통합은 GitHub 전용입니다. `templates/gitlab-ci.yml`의 MR-코멘트 잡은 요청을 스테이징하지만, 백엔드 `services/sca_comment.py`는 `api.github.com` 호출만 알고 있습니다 — GitLab `repo_full_name`으로 호출하면 404가 반환됩니다. GitLab Notes API 클라이언트가 도착할 때까지 GitLab 측에서는 빌드 게이트의 종료 코드를 사용하세요.
+:::
 
 :::note 대상 독자
 GitLab CI/CD를 사용하는 GitLab 프로젝트를 운영하는 엔지니어. 포털용 API Key가 필요합니다 — [API keys](../admin-guide/api-keys.md) 참고.
@@ -71,7 +75,7 @@ masked 플래그는 잡 로그에 Key가 그대로 노출되는 것을 막습니
 | `TRUSTEDOSS_FAIL_ON_GATE` | no | `true` | `true`이면 게이트 실패 시 잡이 1로 종료. |
 | `TRUSTEDOSS_POLL_TIMEOUT` | no | `1800` | 최종 상태까지 기다리는 최대 초. |
 | `TRUSTEDOSS_POLL_INTERVAL` | no | `30` | 폴링 간격(초). |
-| `TRUSTEDOSS_POST_MR_COMMENT` | no | `true` | 파이프라인이 MR 컨텍스트에서 돌 때 SCA 보고서를 MR 노트로 게시. |
+| `TRUSTEDOSS_POST_MR_COMMENT` | no | `true` | 향후 GitLab Notes API 통합용 예약. v2.0.0에서는 요청이 스테이징되지만 백엔드가 전송할 수 없습니다 — 위 경고 참고. |
 
 ## 레시피
 
@@ -166,9 +170,7 @@ GitLab은 빈 변수를 제거합니다. 관련 환경 / 브랜치에 `TRUSTEDOS
 
 ### MR 노트가 게시되지 않음
 
-포털의 프로젝트 CI 설정에서 GitLab 통합이 활성화되어 있어야 합니다. 포털에서 **Project Settings → CI/CD → GitLab integration**이 project access token으로 구성되어 있는지 확인.
-
-GitLab이 self-managed이고 포털이 `gitlab.example.internal`에 도달하지 못하면 MR 노트 단계가 네트워크 오류로 실패합니다. 포털의 worker에서 GitLab을 노출하거나 `TRUSTEDOSS_POST_MR_COMMENT=false`로 설정하세요.
+v2.0.0에서는 정상 동작입니다 — GitLab Notes API 클라이언트가 아직 출하되지 않았습니다(페이지 상단 경고 참고). verdict를 표면화하려면 GitLab 측에서 빌드 게이트 종료 코드(`TRUSTEDOSS_FAIL_ON_GATE=true`)를 사용하세요.
 
 ### 폴링 단계에서 잡이 시간 초과
 

@@ -192,12 +192,12 @@ Apply the gate only on `main`, advisory on PRs:
 The `@v1` tag floats. Pin to a specific commit for reproducibility:
 
 ```yaml
-- uses: trustedoss/scan-action@a1b2c3d4e5f6     # v1.2.3
+- uses: trustedoss/trustedoss-portal/actions/scan@a1b2c3d4e5f6     # v2.0.0
 ```
 
 ## How the PR comment is posted
 
-The portal posts the comment via the same workflow's `GITHUB_TOKEN` (passed as `${{ secrets.GITHUB_TOKEN }}` to the action). A first-class GitHub App with portal-stored installation tokens is on the roadmap.
+The PR comment is posted **server-side by the portal**, not by your workflow. After the action uploads the SCA results, the portal evaluates the policy gate and — if comment posting is enabled — calls `https://api.github.com` directly using a GitHub PAT stored in the portal's environment (`GITHUB_TOKEN` or `TRUSTEDOSS_GITHUB_TOKEN`). Your workflow never forwards `secrets.GITHUB_TOKEN` to the portal. A first-class GitHub App with portal-stored installation tokens is on the roadmap.
 
 The comment is **idempotent**: re-running the workflow on the same PR updates the existing comment in place. The marker `<!-- trustedoss-sca -->` identifies it.
 
@@ -228,7 +228,7 @@ The API key is valid but does not have the required action allowed. Re-issue the
 Three possibilities:
 
 - The workflow was triggered by `push`, not `pull_request` — only PR events get a comment.
-- The portal's GitHub App is not installed on the repo. Ask your portal admin to install or extend the App's repo list.
+- The portal's `GITHUB_TOKEN` / `TRUSTEDOSS_GITHUB_TOKEN` env is unset, expired, or lacks the `pull-requests: write` permission for the target repo. Operators rotate / extend the PAT in the portal `.env` and bounce the backend.
 - The portal could not resolve the PR number from the head SHA. Check the action's log output for `pull_request_number=` — empty means the lookup failed.
 
 ### Need to skip on a chore PR

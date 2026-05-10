@@ -105,7 +105,7 @@ After creating a project:
 
 1. The project appears in **Projects** with status **Idle** (no scans yet).
 2. The Overview tab shows zero components and zero vulnerabilities.
-3. The audit log (`/admin/audit`, super-admin only) records `project.create` with your `user_id`.
+3. The audit log (`/admin/audit`, super-admin only) records `target_table=projects&action=create` with your `user_id`.
 
 ## Troubleshooting
 

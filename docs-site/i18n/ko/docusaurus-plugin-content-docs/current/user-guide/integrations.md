@@ -111,7 +111,7 @@ GitLab에 등록할 URL — `https://<your-host>/v1/webhooks/gitlab`.
 
 - Key 생성 후 `curl -sS -H "Authorization: Bearer <key>" .../v1/projects`로 200 응답과 팀 프로젝트가 반환되는지 확인하세요.
 - GitHub에 Webhook 등록 후 커밋을 푸시하고 GitHub의 **Webhook deliveries** 뷰에서 HTTP 202 성공 전송을 확인하세요.
-- super-admin이 `/admin/audit`에서 `api_key.create`와 `webhook.delivery` 이벤트를 확인할 수 있습니다. team-범위 감사 로그는 로드맵 항목입니다(아래 참고).
+- super-admin이 `/admin/audit`에서 `target_table=api_keys&action=create`와 `target_table=webhook_deliveries&action=create` 이벤트를 확인할 수 있습니다. team-범위 감사 로그는 로드맵 항목입니다(아래 참고).
 
 ## 트러블슈팅
 

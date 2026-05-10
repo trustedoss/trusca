@@ -119,7 +119,7 @@ The UI shows: label, prefix, scope (`org` / `team` / `project`), creator, create
 Key lifecycle events log:
 
 - `target_table=api_keys&action=create` — emitted by the ORM listener when a key row is inserted (actor, target prefix, scope).
-- `api_key.revoked` — emitted by the API key service on explicit revocation (actor, target prefix).
+- `api_key.revoked` — emitted by the API key service as a **structlog event only** on explicit revocation (actor, target prefix). It does **not** create an `audit_logs` row at v2.0.0. The ORM listener still records the underlying `api_keys.update` row when `revoked_at` flips, so the revocation is captured on the audit table — under `target_table=api_keys&action=update` rather than under the structlog event name.
 
 Per-request audit rows are not emitted for API-key authentication at v2.0.0 (an `api_key.use` event is on the roadmap). Audit rows that are produced by an API-key request still carry the resulting domain action (e.g. `target_table=scans&action=create`); the API key's prefix is captured by structured logs on the request, but the audit row's `actor_user_id` is the issuing user, not the key.
 
@@ -137,7 +137,16 @@ See [Webhooks](../ci-integration/webhooks.md) for the webhook flow.
 After issuing a key:
 
 1. `curl -sS -H "Authorization: Bearer <key>" .../api/v1/projects` returns 200 with the team's projects.
-2. The audit log records a `target_table=api_keys&action=create` row with the prefix.
+2. The audit log records a `target_table=api_keys&action=create` row with the prefix. The Admin UI cannot filter on `target_table=api_keys` — `api_keys` is not in the `AuditTargetTable` whitelist (see [Audit log → Filter-visible vs raw-row tables](./audit-log.md#what-gets-logged)). Use raw SQL to verify:
+
+   ```sql
+   SELECT * FROM audit_logs
+    WHERE target_table = 'api_keys'
+      AND action = 'create'
+      AND created_at > now() - interval '1 hour'
+    ORDER BY created_at DESC;
+   ```
+
 3. The CI build that consumes the key passes its first run.
 
 ## Troubleshooting

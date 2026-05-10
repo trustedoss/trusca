@@ -16,6 +16,13 @@ sidebar_position: 5
 
 ## 백업 내용
 
+v2.0.0 에는 두 디렉터리 명명 형식이 공존합니다.
+
+- **CLI 레거시** — `backups/YYYY-MM-DD-HHMMSS/` (`scripts/backup.sh` 와 아래 예시에서 사용).
+- **UI / Celery** — `backups/(auto|manual)-YYYYMMDDTHHMMSSZ/` (`apps/backend/tasks/backup.py` 와 `/admin/backup` 페이지에서 사용 — prefix 가 일일 Celery Beat 잡인지 운영자 클릭인지를 표시). [백업 트리거](#백업-트리거) 섹션이 언급하는 `auto-` 보존 정리는 이 prefix 를 키로 동작합니다.
+
+두 형식 모두 동일한 `postgres.sql.gz` + `workspace.tar.gz` + `manifest.json` 트리플로 디코드되며 복원 측에서는 호환 — 복원 스크립트(와 UI 복원 엔드포인트)가 둘 다 받습니다.
+
 ```
 backups/2026-05-09-030000/
 ├── postgres.sql.gz     # pg_dump --clean --if-exists | gzip

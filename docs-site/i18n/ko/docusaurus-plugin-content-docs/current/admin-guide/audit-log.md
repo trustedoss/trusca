@@ -29,7 +29,7 @@ sidebar_position: 4
 | `actor_user_id` | UUID | 작업 수행 사용자(시스템 작업은 null). |
 | `team_id` | UUID | 해당 시 작업의 팀 범위(조직 단위 쓰기는 null). |
 | `action` | text | 동사만(`create` / `update` / `delete`). 테이블은 `target_table`에 별도 캡처. 예: `target_table=projects&action=create` 로 필터. |
-| `target_table` | text | 영향 받은 객체가 속한 테이블(`projects`, `teams`, `users`, `vuln_findings` 등). |
+| `target_table` | text | 영향 받은 객체가 속한 테이블(`projects`, `teams`, `users`, `vulnerability_findings` 등). |
 | `target_id` | String(64) | 영향 받은 객체의 식별자. |
 | `request_id` | text | 구조화 로그(`X-Request-ID`)와 상관. |
 | `diff` | jsonb | 정제된 before/after diff. PII는 마스킹(`mask_pii`). |
@@ -58,6 +58,10 @@ sidebar_position: 4
 - `target_table=backups&action=create`
 - `target_table=notifications&action=create`
 
+:::note 필터 노출 vs raw 행 테이블
+Admin UI 의 `target_table` 필터 드롭다운은 `apps/backend/schemas/admin_ops.py` 의 `AuditTargetTable` 화이트리스트로 제한됩니다. 이 화이트리스트에 없는 테이블 이름(예: `dt_orphans`, `backups`, `api_keys`, `notifications`, `dt_breaker`)을 가진 행은 `audit_logs` 에 그대로 기록되지만 raw SQL 로만 조회 가능합니다.
+:::
+
 ## 감사 로그 페이지
 
 **/admin/audit**은 페이징되고 필터 가능한 뷰입니다.
@@ -67,10 +71,10 @@ sidebar_position: 4
 v2.0.0 의 상단 인라인 필터 바:
 
 - **행위자 user ID** — UUID 정확 일치.
-- **대상 테이블** — enum 단일 선택(`projects`, `teams`, `users`, `vuln_findings` 등).
+- **대상 테이블** — enum 단일 선택(`projects`, `teams`, `users`, `vulnerability_findings` 등).
 - **동작** — 자유 텍스트 contains(대소문자 구분).
 - **날짜 범위** — `from` 과 `to`(사용자 지정).
-- **검색** — 자유 텍스트 쿼리(`q`); action 과 target 필드를 가로질러 매칭.
+- **검색** — 자유 텍스트 쿼리(`q`). JSON 인코딩된 `diff` 컬럼에 대해 `ilike` 매칭을 수행합니다. `action` 과 `target_table` 은 별도 필터 파라미터(`action=`, `target_table=`)이며 `q` 는 이 두 컬럼을 매칭하지 않습니다.
 
 필터는 결합됩니다. URL이 갱신되어 동료와 필터된 뷰를 공유 가능. 다중 선택 드롭다운, 프리셋 날짜 범위, 요청 ID 필터, 대상 ID 필터는 로드맵 항목입니다(아래 참고).
 
@@ -106,7 +110,7 @@ curl -sS \
 
 ### "모든 프로젝트에 걸쳐 CVE-2024-12345를 누가 억제했나?"
 
-필터: `target_table=vuln_findings&action=update`, 그 후 각 행의 diff를 펼쳐 — `diff.new_state == "suppressed"`이면서 매칭 CVE ID인 행이 답입니다. (1급 CVE 필터는 로드맵 항목)
+필터: `target_table=vulnerability_findings&action=update`, 그 후 각 행의 diff를 펼쳐 — `diff.new_state == "suppressed"`이면서 매칭 CVE ID인 행이 답입니다. (1급 CVE 필터는 로드맵 항목)
 
 ### "한 요청을 end-to-end 추적"
 

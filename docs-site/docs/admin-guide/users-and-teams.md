@@ -73,7 +73,7 @@ The user is added immediately; no email confirmation step is sent (they already 
 
 ## Changing a user's role
 
-The drawer at **/admin/users → user** exposes a single **Role** dropdown. The dropdown sets the user's effective global role (`super_admin` / `team_admin` / `developer`); per-team role mixing is on the roadmap (see below).
+The drawer at **/admin/users → user** exposes a **Role** dropdown plus a **Memberships** section. A user can hold a different role in each team they belong to (`team_admin` in team A, `developer` in team B); the Memberships list shows every assignment and edits them in place. The role dropdown sets the role for the team selected in the Memberships list (or the user's global role when promoting to `super_admin`).
 
 1. **/admin/users** → user → **Role**.
 2. Choose the new role → submit.
@@ -155,7 +155,7 @@ After onboarding a user:
 
 1. The user can sign in at `/login` with the password they set during registration.
 2. **/admin/users** lists the user with `is_active = true`.
-3. The audit log records the team-add as a `team_memberships` insert.
+3. The audit log records the team-add as a `memberships` insert.
 4. The user appears in the team's member list with the assigned role.
 
 ## Troubleshooting
@@ -181,7 +181,6 @@ The email is already a portal account (possibly already a member of a different 
 The following capabilities are described elsewhere in early docs but are **not** shipped at v2.0.0. They are tracked for upcoming minor releases:
 
 - Email-based invitation flow with one-time 24-hour activation links and a `pending` user status.
-- Per-team role assignment (a single user holding `team_admin` in one team and `developer` in another, set from a Memberships drawer).
 - Soft-delete user action with typed-email confirmation modal.
 - Team archive state (hide-and-disable while preserving read access).
 

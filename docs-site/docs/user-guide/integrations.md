@@ -111,7 +111,7 @@ URL to register at GitLab: `https://<your-host>/v1/webhooks/gitlab`.
 
 - After creating a key, run `curl -sS -H "Authorization: Bearer <key>" .../v1/projects` and confirm a 200 response with the team's projects.
 - After registering the webhook in GitHub, push a commit and check the **Webhook deliveries** view in GitHub — successful deliveries return HTTP 202.
-- A super-admin can confirm `api_key.create` and `webhook.delivery` events on `/admin/audit`. Team-scoped audit-log access is on the roadmap (see below).
+- A super-admin can confirm `target_table=api_keys&action=create` and `target_table=webhook_deliveries&action=create` events on `/admin/audit`. Team-scoped audit-log access is on the roadmap (see below).
 
 ## Troubleshooting
 

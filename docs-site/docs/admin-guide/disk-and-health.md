@@ -127,6 +127,16 @@ After cleanup, **/admin/disk** updates within ~10 seconds. Once below the hard t
 
 Disk pressure does not generate a notification today; operators are expected to monitor `/admin/disk` directly. A `disk_pressure` notification kind is on the roadmap.
 
+## /admin/scans — Scan queue and worker monitoring
+
+The `/admin/scans` page (super-admin only) lists every running, queued, succeeded, and failed scan across the org. Operators can:
+
+- Inspect any task's full progress payload + last log frame.
+- Force-cancel a stuck scan (`POST /v1/admin/scans/{scan_id}/cancel`).
+- Filter by status, kind, project, or assigned worker.
+
+Backend: `apps/backend/api/v1/admin/scans.py`. UI: `apps/frontend/src/features/admin/scans/AdminScansPage.tsx`.
+
 ## Verify it worked
 
 After making changes:

@@ -153,7 +153,7 @@ These apply to the demo SaaS deployment. Self-hosted installs leave them empty (
 
 | Key | Default | Read by | Description |
 |---|---|---|---|
-| `DISK_HARD_LIMIT_PCT` | `90` | `config.py` (services layer) | Red gauge + new scans blocked + admin notification. |
+| `DISK_HARD_LIMIT_PCT` | `95.0` | `apps/backend/services/scan_service.py` | Red gauge + new scans blocked + admin notification. |
 
 ## Traefik / TLS
 
@@ -171,6 +171,16 @@ These apply to the demo SaaS deployment. Self-hosted installs leave them empty (
 | `JIRA_URL` | (empty) | (none) | Stub. See above. |
 | `JIRA_TOKEN` | (empty) | (none) | Stub. See above. |
 | `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` | (empty) | subprocess env | Honored by `git clone`, `cdxgen`, `trivy`, and DT calls. |
+
+## Bootstrap / scripts
+
+These keys are read only by the bootstrap and demo-seed scripts. They are not consumed by the running backend, but you set them at install / demo time.
+
+| Key | Default | Read by | Description |
+|---|---|---|---|
+| `ADMIN_EMAIL` | — | `apps/backend/scripts/create_super_admin.py` | Email of the first super-admin to provision when the script is invoked. Lower-cased and stripped on read. |
+| `ADMIN_PASSWORD` | — | `apps/backend/scripts/create_super_admin.py` | Password for the bootstrap super-admin. Must be ≥ 12 characters; the script aborts otherwise. |
+| `DEMO_SUPER_ADMIN_PASSWORD` | (auto-generated) | `apps/backend/scripts/seed_demo.py` | Override for the demo seed's super-admin password. Required when `APP_ENV` is `staging` or `prod`; must be ≥ 12 characters when set. |
 
 ## Validation
 

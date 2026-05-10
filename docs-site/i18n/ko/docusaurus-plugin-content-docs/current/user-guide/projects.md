@@ -105,7 +105,7 @@ SSH 배포 키는 [로드맵](#로드맵-v2x)을 보세요.
 
 1. **Projects**에 프로젝트가 **Idle**(스캔 없음) 상태로 표시됩니다.
 2. Overview 탭은 컴포넌트·취약점 모두 0을 보여줍니다.
-3. 감사 로그(`/admin/audit`, super-admin 전용)에 본인의 `user_id`로 `project.create`가 기록됩니다.
+3. 감사 로그(`/admin/audit`, super-admin 전용)에 본인의 `user_id`로 `target_table=projects&action=create`가 기록됩니다.
 
 ## 트러블슈팅
 

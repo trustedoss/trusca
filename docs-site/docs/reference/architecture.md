@@ -23,13 +23,17 @@ The production stack runs seven container services (plus an optional eighth — 
 | `traefik` | `traefik:v3.2.1` | Edge proxy. TLS termination via Let's Encrypt HTTP-01. HTTP→HTTPS redirect. |
 | `postgres` | `postgres:17.2-alpine` | Primary store. All persistent state. |
 | `redis` | `redis:7.4-alpine` | Celery broker + result backend. WebSocket pub/sub. |
-| `backend` | `trustedoss/backend:<tag>` | FastAPI + uvicorn (4 workers). Reachable via Traefik on `/api`, `/health`, `/metrics`. |
+| `backend` | `trustedoss/backend:<tag>` | FastAPI + uvicorn (4 workers). Reachable via Traefik on `/api`, `/health`. |
 | `worker` | `trustedoss/backend-worker:<tag>` | Celery worker with `cdxgen`, ORT, Trivy, JRE bundled. |
 | `beat` | `trustedoss/backend-worker:<tag>` | Celery Beat scheduler. DT heartbeat (60 s), DT resync (1 h), orphan cleanup (6 h), backup (daily). |
 | `frontend` | `trustedoss/frontend:<tag>` | nginx serving the Vite build. Reachable via Traefik on `/`. |
 | `dt` (overlay) | `dependencytrack/apiserver:4.13.2` | Optional bundled Dependency-Track. Brought up via `docker-compose.dt.yml`. |
 
 Image tags are pinned (`CLAUDE.md` rule #9 — never `:latest`).
+
+:::note
+The `/metrics` route is reserved at the Traefik level (`docker-compose.yml`) but no backend handler is mounted at v2.0.0; the Prometheus exporter is on the post-GA roadmap.
+:::
 
 ## Network
 
@@ -81,24 +85,26 @@ Migrations are forward-only Alembic. Schema and data migrations live in separate
 
 ## Scan pipeline
 
-A scan is a Celery task chain. Source scan stages:
+A scan is a Celery task chain. Source scan stages (see `apps/backend/tasks/scan_source.py`):
 
 ```
-1. bootstrapping            (workspace setup, locks the per-project lock)
-2. fetching_source          (git clone / fetch / checkout)
-3. detecting_components     (cdxgen → CycloneDX SBOM)
-4. analyzing_licenses       (ORT consumes the SBOM, emits findings + obligations)
-5. resolving_vulnerabilities (DT correlation OR cache fallback when breaker is OPEN)
-6. persisting               (write to PostgreSQL in one transaction per scan)
+1. bootstrap     (workspace setup, locks the per-project lock)
+2. fetch         (git clone / fetch / checkout)
+3. prep          (workspace layout, ORT analyzer config)
+4. cdxgen        (cdxgen → CycloneDX SBOM)
+5. ort           (ORT consumes the SBOM, emits findings + obligations)
+6. dt_upload     (CycloneDX SBOM uploaded to Dependency-Track)
+7. dt_findings   (DT correlation OR cache fallback when breaker is OPEN)
+8. finalize      (write to PostgreSQL in one transaction per scan)
 ```
 
-Container scan stages:
+Container scan stages (see `apps/backend/tasks/scan_container.py`):
 
 ```
-1. bootstrapping
-2. fetching_image           (skopeo pull or worker-cache hit)
-3. trivy                    (OS-package CVE detection)
-4. persisting
+1. bootstrap
+2. trivy         (OS-package CVE detection)
+3. persist       (write findings to PostgreSQL)
+4. finalize
 ```
 
 Stage transitions emit WebSocket events (`scan.<id>.progress`) so the UI updates in real time. Completion fires the appropriate notification triggers.
@@ -188,9 +194,9 @@ Out of the box:
 
 - **Logs** — `docker-compose logs <service>` (structured JSON, `structlog`).
 - **Health** — `/health` (backend), `/healthz` (frontend container), `/admin/health` UI for the operator dashboard.
-- **Metrics** — basic service-health metrics are shipped at the Traefik level via its access log. A backend `/metrics` endpoint with a Prometheus exporter is on the roadmap (Phase 6).
+- **Metrics** — basic service-health metrics are shipped at the Traefik level via its access log. A backend `/metrics` endpoint with a Prometheus exporter is on the post-GA roadmap.
 
-OpenTelemetry tracing exporter and a bundled Jaeger overlay are on the roadmap (Phase 9) — there is no `docker-compose.tracing.yml` at v2.0.0.
+OpenTelemetry tracing exporter and a bundled Jaeger overlay are on the post-GA roadmap (Phase B) — there is no `docker-compose.tracing.yml` at v2.0.0.
 
 ## Deployment topologies
 

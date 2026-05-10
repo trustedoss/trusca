@@ -119,10 +119,12 @@ POST   /auth/reset-password                  익명
 GET    /auth/oauth/{provider}/authorize      익명
 GET    /auth/oauth/{provider}/callback       익명
 
-GET    /v1/users/me                          알림 환경설정 등
-PUT    /v1/users/me/notification-prefs
+GET    /auth/me                              현재 사용자 정보 (auth 라우터)
 GET    /v1/users/me/notification-prefs
-DELETE /v1/users/me                          self-deactivate
+PUT    /v1/users/me/notification-prefs
+GET    /v1/users/me/oauth-identities
+DELETE /v1/users/me/oauth-identities/{identity_id}   # last-OAuth + has-password 게이팅
+                                                     # 409 → urn:trustedoss:problem:last-oauth-link
 
 GET    /v1/projects                          목록 (팀 범위)
 POST   /v1/projects
@@ -226,7 +228,7 @@ WSS  /api/ws/scans/{scan_id}
 게이트웨이는 첫 프레임이 `WEBSOCKET_AUTH_TIMEOUT_SECONDS`(기본 1.0초) 내 도착하지 않으면 코드 `1008` / reason `auth_timeout`으로 닫습니다. 이후 서버 프레임은 진행 이벤트를 담습니다.
 
 ```json
-{ "percent": 62, "step": "resolving_vulnerabilities", "ts": "2026-05-10T12:34:56Z" }
+{ "percent": 70, "step": "dt_upload", "ts": "2026-05-10T12:34:56Z" }
 ```
 
 지수 backoff로 재연결. 매 재연결 시 라이브 이벤트가 흐르기 전 현재 스캔 행에서 한 번의 초기 동기화 프레임을 받습니다.

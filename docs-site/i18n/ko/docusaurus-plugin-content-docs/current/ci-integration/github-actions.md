@@ -192,12 +192,12 @@ PR 코멘트는 그대로 게시되며 체크는 green으로 유지됩니다.
 `@v1` 태그는 떠 있습니다(floating). 재현성을 위해 특정 커밋에 핀:
 
 ```yaml
-- uses: trustedoss/scan-action@a1b2c3d4e5f6     # v1.2.3
+- uses: trustedoss/trustedoss-portal/actions/scan@a1b2c3d4e5f6     # v2.0.0
 ```
 
 ## PR 코멘트는 어떻게 게시되나
 
-포털은 워크플로의 `GITHUB_TOKEN`(`${{ secrets.GITHUB_TOKEN }}`로 액션에 전달)을 사용해 코멘트를 게시합니다. 포털에 저장된 installation 토큰을 가진 정식 GitHub App은 로드맵에 있습니다.
+PR 코멘트는 워크플로가 아니라 **포털이 서버 측에서** 게시합니다. 액션이 SCA 결과를 업로드한 뒤, 포털이 정책 게이트를 평가하고 코멘트 게시가 활성화되어 있다면 포털 환경에 저장된 GitHub PAT(`GITHUB_TOKEN` 또는 `TRUSTEDOSS_GITHUB_TOKEN`)를 사용해 `https://api.github.com`을 직접 호출합니다. 워크플로는 절대로 `secrets.GITHUB_TOKEN`을 포털로 전달하지 않습니다. 포털에 저장된 installation 토큰을 가진 정식 GitHub App은 로드맵에 있습니다.
 
 코멘트는 **idempotent**합니다 — 같은 PR에서 워크플로를 재실행하면 기존 코멘트가 제자리에 갱신됩니다. 마커 `<!-- trustedoss-sca -->`로 식별합니다.
 
@@ -228,7 +228,7 @@ API Key가 유효하지만 필요한 동작이 허용되지 않았습니다. `sc
 세 가지 가능성:
 
 - 워크플로가 `pull_request`가 아닌 `push`로 트리거됨 — PR 이벤트만 코멘트를 받음.
-- 포털의 GitHub App이 해당 저장소에 설치되지 않음. 포털 admin에게 설치 또는 App 저장소 목록 확장을 요청.
+- 포털의 `GITHUB_TOKEN` / `TRUSTEDOSS_GITHUB_TOKEN` env가 미설정·만료이거나 대상 저장소에 대한 `pull-requests: write` 권한이 없음. 운영자가 포털 `.env`의 PAT를 회전·연장한 뒤 백엔드를 재기동.
 - 포털이 head SHA에서 PR 번호를 해석하지 못함. action 로그의 `pull_request_number=` 출력을 확인 — 비어 있으면 lookup 실패.
 
 ### chore PR에서 건너뛰고 싶음

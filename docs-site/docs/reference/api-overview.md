@@ -119,10 +119,12 @@ POST   /auth/reset-password                  anonymous
 GET    /auth/oauth/{provider}/authorize      anonymous
 GET    /auth/oauth/{provider}/callback       anonymous
 
-GET    /v1/users/me                          notification preferences etc.
-PUT    /v1/users/me/notification-prefs
+GET    /auth/me                              current user info (auth router)
 GET    /v1/users/me/notification-prefs
-DELETE /v1/users/me                          self-deactivate
+PUT    /v1/users/me/notification-prefs
+GET    /v1/users/me/oauth-identities
+DELETE /v1/users/me/oauth-identities/{identity_id}   # gates last-OAuth + has-password
+                                                     # 409 → urn:trustedoss:problem:last-oauth-link
 
 GET    /v1/projects                          list (team-scoped)
 POST   /v1/projects
@@ -226,7 +228,7 @@ Authentication is handled by the **first message** the client sends, not by quer
 The gateway closes the connection with code `1008` / reason `auth_timeout` if the first frame does not arrive within `WEBSOCKET_AUTH_TIMEOUT_SECONDS` (default 1.0 s). Subsequent server frames carry progress events:
 
 ```json
-{ "percent": 62, "step": "resolving_vulnerabilities", "ts": "2026-05-10T12:34:56Z" }
+{ "percent": 70, "step": "dt_upload", "ts": "2026-05-10T12:34:56Z" }
 ```
 
 Reconnect with exponential backoff. Each reconnect receives one initial-sync frame from the current scan row before live events flow.

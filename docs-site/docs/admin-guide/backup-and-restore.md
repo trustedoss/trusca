@@ -16,6 +16,13 @@ The portal ships two scripts: `scripts/backup.sh` and `scripts/restore.sh`. They
 
 ## What is in a backup
 
+Two directory naming formats coexist at v2.0.0:
+
+- **CLI legacy** — `backups/YYYY-MM-DD-HHMMSS/` (used by `scripts/backup.sh` and the examples below).
+- **UI / Celery** — `backups/(auto|manual)-YYYYMMDDTHHMMSSZ/` (used by `apps/backend/tasks/backup.py` and the `/admin/backup` page; the prefix marks whether the backup came from the daily Celery Beat job or an operator click). The `auto-` retention sweep that the [Trigger a backup](#trigger-a-backup) section refers to keys off this prefix.
+
+Both formats decode to the same `postgres.sql.gz` + `workspace.tar.gz` + `manifest.json` triple and are interchangeable on the restore side; the restore script (and the UI restore endpoint) accept either.
+
 ```
 backups/2026-05-09-030000/
 ├── postgres.sql.gz     # pg_dump --clean --if-exists | gzip

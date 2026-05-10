@@ -126,7 +126,7 @@ After a scan completes:
 2. The Components count > 0.
 3. The Vulnerabilities count is visible (may be 0 if the project is genuinely clean).
 4. The Last scan timestamp on the Overview tab reflects "now".
-5. The audit log records `scan.create` and `scan.update` events.
+5. The audit log records `target_table=scans&action=create` and `target_table=scans&action=update` events.
 
 ## Troubleshooting
 

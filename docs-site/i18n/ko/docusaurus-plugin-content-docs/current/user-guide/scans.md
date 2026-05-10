@@ -126,7 +126,7 @@ UI는 단계·진행률 실시간 갱신을 위해 `ws(s)://<host>/ws/scans/{sca
 2. 컴포넌트 수 > 0.
 3. 취약점 수가 표시(프로젝트가 정말 깨끗하면 0일 수도 있음).
 4. Overview 탭의 마지막 스캔 타임스탬프가 "방금"을 반영.
-5. 감사 로그에 `scan.create`와 `scan.update` 이벤트가 기록.
+5. 감사 로그에 `target_table=scans&action=create`와 `target_table=scans&action=update` 이벤트가 기록.
 
 ## 트러블슈팅
 

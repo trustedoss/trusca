@@ -14,6 +14,16 @@ The notification system tells you about events on projects you care about — sc
 Any signed-in user. The header bell and `/notifications` page are visible to every role; admins additionally configure the SMTP / Slack / Teams transports under [Disk & system health](../admin-guide/disk-and-health.md).
 :::
 
+:::warning v2.0.0 limitation
+The notification framework, models, and UI are all shipped, but the
+trigger emit-points (`scan_completed`, `scan_failed`, `cve_detected`,
+`license_violation`, `policy_gate_failed`, `approval_pending`) are
+**not yet wired into the producing services**. The `/notifications`
+inbox + Preferences page are functional and will populate once the
+producer-side calls land in v2.1. Password reset emails are the only
+notifications that flow today.
+:::
+
 ## The header bell
 
 Every page has a bell icon in the top-right of the header. The badge shows the number of **unread** in-app notifications:
@@ -75,7 +85,7 @@ Six distinct triggers fire notifications:
 | `scan_failed` | A scan you started, or one on a project you watch, fails. |
 | `cve_detected` | A new CVE lands on a component already present in one of your scans (DT NVD ingest correlates against existing components). |
 | `license_violation` | A scan surfaces a forbidden-license component on a project you watch. |
-| `approval_pending` | A component requires approval, and you are a designated approver on the project. |
+| `approval_pending` | A component requires approval. At v2.0.0 the notification is delivered to **all super-admins** in the org (no per-team approver routing); a designated-approver model is on the roadmap. |
 | `policy_gate_failed` | A CI build gate fails (Critical CVE or forbidden license blocks the build). |
 
 Channel selection is global — the **Preferences** tab decides which channels deliver every trigger.

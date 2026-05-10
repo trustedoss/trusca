@@ -153,7 +153,7 @@ sidebar_position: 2
 
 | 키 | 기본값 | 읽는 위치 | 설명 |
 |---|---|---|---|
-| `DISK_HARD_LIMIT_PCT` | `90` | `config.py` (services 레이어) | 빨간 게이지 + 새 스캔 차단 + admin 알림. |
+| `DISK_HARD_LIMIT_PCT` | `95.0` | `apps/backend/services/scan_service.py` | 빨간 게이지 + 새 스캔 차단 + admin 알림. |
 
 ## Traefik / TLS
 
@@ -171,6 +171,16 @@ sidebar_position: 2
 | `JIRA_URL` | (비어있음) | (없음) | 스텁. 위 참고. |
 | `JIRA_TOKEN` | (비어있음) | (없음) | 스텁. 위 참고. |
 | `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` | (비어있음) | 서브프로세스 env | `git clone`, `cdxgen`, `trivy`, DT 호출이 존중. |
+
+## 부트스트랩 / 스크립트
+
+다음 키는 부트스트랩과 데모 시드 스크립트만 읽습니다. 동작 중인 백엔드가 소비하지는 않지만 설치·데모 시점에 설정합니다.
+
+| 키 | 기본값 | 읽는 위치 | 설명 |
+|---|---|---|---|
+| `ADMIN_EMAIL` | — | `apps/backend/scripts/create_super_admin.py` | 스크립트 실행 시 프로비저닝할 첫 super-admin의 이메일. 읽을 때 소문자화·trim. |
+| `ADMIN_PASSWORD` | — | `apps/backend/scripts/create_super_admin.py` | 부트스트랩 super-admin의 비밀번호. 12자 이상 필수 — 그렇지 않으면 스크립트가 중단됩니다. |
+| `DEMO_SUPER_ADMIN_PASSWORD` | (자동 생성) | `apps/backend/scripts/seed_demo.py` | 데모 시드의 super-admin 비밀번호 오버라이드. `APP_ENV`가 `staging` 또는 `prod`일 때 필수이며 설정 시 12자 이상이어야 합니다. |
 
 ## 검증
 
