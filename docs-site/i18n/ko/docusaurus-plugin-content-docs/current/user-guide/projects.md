@@ -27,6 +27,10 @@ sidebar_position: 1
 
 ## 프로젝트 추가 — UI
 
+사이드바의 **Projects** 항목은 활성 팀 범위의 프로젝트 목록 — 활성 팀에 속한 모든 프로젝트, 상태 배지와 인라인 **Scan** 액션 — 을 보여줍니다:
+
+![Projects 목록 — 활성 팀의 프로젝트와 상태 배지, 인라인 Scan 액션](/img/screenshots/user-projects-list.png)
+
 1. 로그인.
 2. 사이드바의 **Projects** 클릭.
 3. 우측 상단 **New project** 클릭.
@@ -36,7 +40,11 @@ sidebar_position: 1
    - **Git URL** (소스 스캔에 필수)
 5. **Create** 클릭.
 
+   ![New project 폼 — name / description / Git URL 필드](/img/screenshots/user-projects-create-form.png)
+
 프로젝트의 **Overview** 탭으로 이동합니다. 여기서 첫 스캔을 실행할 수 있습니다 — [스캔](./scans.md) 참고.
+
+![프로젝트 상세 — 리스크 게이지와 빠른 액션이 있는 Overview 탭](/img/screenshots/user-project-detail-overview.png)
 
 기본 브랜치(`main`), 가시성(`team`), 소속 팀(활성 팀)은 서버에서 자동 설정되며 **Project Settings**에서 확인 가능합니다.
 

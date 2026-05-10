@@ -10,6 +10,10 @@ sidebar_position: 4
 
 포털의 모든 쓰기 작업은 **추가 전용** 감사 로그에 기록됩니다. 로그는 "누가 언제 무엇을 무엇에 했는가"의 진실의 원천 — 사고 조사·컴플라이언스 요청 응대 시 가장 먼저 보는 곳입니다.
 
+`/admin/audit` 페이지는 툴바(actor / target table / action / 시간 범위 필터)와 라이브 데이터 위의 행 표를 노출합니다:
+
+![Admin 감사 로그 — actor / target table / action 필터 검색 툴바와 행 표](/img/screenshots/admin-audit-list.png)
+
 :::note 대상 독자
 조직 단위 읽기는 `super_admin`; 팀 단위 읽기는 `team_admin`.
 :::

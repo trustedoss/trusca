@@ -16,6 +16,8 @@ sidebar_position: 3
 
 ## 컴포넌트 테이블
 
+![프로젝트 상세 — 가상 스크롤 행, severity 필터, 라이선스 카테고리 배지가 있는 Components 탭](/img/screenshots/user-components-list.png)
+
 컬럼:
 
 - **컴포넌트 (Component)** — 패키지 이름(예: `lodash`, `org.springframework:spring-web`).
@@ -52,6 +54,11 @@ sidebar_position: 3
 
 ## 라이선스 분류
 
+**Licenses** 탭은 같은 데이터를 SPDX 식별자와 tier 별로 — Components 탭이 사용하는 같은 표 위에 도넛 차트 — 분리해서 보여줍니다:
+
+![프로젝트 상세 — tier 도넛 차트와 라이선스별 분포가 있는 Licenses 탭](/img/screenshots/user-licenses-donut.png)
+
+
 ORT는 모든 라이선스를 세 단계로 분류하며 정의는 `ort/rules.kts`에 있습니다.
 
 | 단계 | 심각도 | 예시 | 효과 |
@@ -87,6 +94,8 @@ ORT는 세 가지 신뢰 수준을 구분합니다.
 - **보증 금지** — 허락 없이 프로젝트 이름으로 파생물을 보증할 수 없음.
 
 프로젝트 페이지의 **Obligations** 탭은 컴포넌트 전반의 의무사항을 통합합니다. **Generate NOTICE**를 클릭하여 모든 저작자 표시·라이선스를 요약한 `NOTICE.txt`를 다운로드 — [SBOM](./sbom.md#notice-파일).
+
+![프로젝트 상세 — 컴포넌트별 의무사항 분포가 있는 Obligations 탭](/img/screenshots/user-obligations-distribution.png)
 
 ## SPDX 표현
 

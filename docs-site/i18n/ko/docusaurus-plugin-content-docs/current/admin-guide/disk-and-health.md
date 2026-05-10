@@ -15,6 +15,10 @@ sidebar_position: 3
 
 이 둘이 함께 사용자가 알아채기 전에 문제를 잡습니다.
 
+![Admin 시스템 Health — postgres·redis·celery·dependency-track 4-카드 개요](/img/screenshots/admin-health-cards.png)
+
+![Admin 디스크 사용량 — workspace·db 카드와 사용률 게이지](/img/screenshots/admin-disk-list.png)
+
 :::note 대상 독자
 호스트를 운영하는 `super_admin`. `docker-compose ps`와 기본 셸에 익숙해야 합니다.
 :::

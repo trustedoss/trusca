@@ -30,7 +30,7 @@ sidebar_position: 8
 
 `/notifications`는 본인이 받은 모든 알림 목록입니다(최신순). 25개 단위로 한 페이지씩 로드되며, 하단의 **Previous** / **Next** 컨트롤로 이력을 탐색합니다.
 
-![알림 인박스](./img/notifications-inbox.png)
+![/notifications 의 알림 인박스 — 읽음/읽지않음 행, kind 배지, 페이지네이션 컨트롤](/img/screenshots/user-notifications-inbox.png)
 
 각 행은 다음을 표시합니다.
 

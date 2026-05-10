@@ -10,6 +10,8 @@ sidebar_position: 5
 
 포털은 가장 최근 성공 스캔으로부터 **Software Bill of Materials**(SBOM) 산출물을 생성합니다. 4가지 교환 포맷과 attribution `NOTICE` 파일을 지원합니다.
 
+![프로젝트 상세 — 포맷 선택기와 마지막 스캔 요약이 있는 SBOM 탭](/img/screenshots/user-sbom-tab.png)
+
 :::note 대상 독자
 릴리스를 출고하는 엔지니어, 산출물을 제출하는 컴플라이언스 리드, [EO 14028](https://www.cisa.gov/topics/cyber-threats-and-advisories/cybersecurity-best-practices/secure-by-design/sbom)에 따라 SBOM 요청을 처리하는 고객. 팀 멤버십 기반 읽기 권한.
 :::

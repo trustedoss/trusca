@@ -10,6 +10,10 @@ sidebar_position: 2
 
 [Dependency-Track](https://dependencytrack.org/)(DT)은 포털이 SBOM을 대조하는 상위 취약점 데이터베이스입니다. 커넥터는 DT API에 없는 신뢰성 프리미티브를 추가합니다 — health 모니터링, 회로 차단기, PostgreSQL 취약점 캐시, 고아 정리.
 
+`/admin/dt` 페이지는 커넥터의 런타임 뷰를 노출합니다 — health 상태 카드, 회로 차단기 배지, 새로고침 액션:
+
+![Admin DT 커넥터 — breaker 배지와 새로고침 액션이 있는 상태 카드](/img/screenshots/admin-dt-status.png)
+
 :::note 대상 독자
 배포를 운영하는 `super_admin`. 이하 화면은 `/admin/dt`에 있습니다.
 :::

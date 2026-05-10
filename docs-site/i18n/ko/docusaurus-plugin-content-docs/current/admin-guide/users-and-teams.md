@@ -42,6 +42,16 @@ Organization (배포당 하나)
 
 `super_admin`은 팀별 역할이 **아닙니다** — 팀 멤버십과 무관하게 조직 전반 접근을 부여합니다.
 
+## Users 페이지
+
+`/admin/users` 페이지는 배포 내 모든 계정을 역할 배지, 활성화 상태, 마지막 로그인 시간, 팀 멤버십 카운트와 함께 보여줍니다. 이메일·이름으로 검색하고 역할·상태로 필터링할 수 있습니다.
+
+![Admin Users 페이지 — 검색·필터 툴바와 역할·상태 컬럼이 있는 사용자 표](/img/screenshots/admin-users-list.png)
+
+`/admin/teams` 페이지는 팀 목록과 각 팀이 보유한 프로젝트·멤버 수를 보여줍니다:
+
+![Admin Teams 페이지 — 팀별 멤버·프로젝트 카운트](/img/screenshots/admin-teams-list.png)
+
 ## 새 사용자 온보딩
 
 v2.0.0 에서는 포털이 초대 이메일을 보내지 않습니다. 새 사용자는 회사 이메일로 `/register`에서 **셀프 가입**하며, 비밀번호 정책은 가입 시점에 강제됩니다(12자 이상, bcrypt cost 12, NIST 차단 비밀번호 제외).

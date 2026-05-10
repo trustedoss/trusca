@@ -21,11 +21,14 @@ sidebar_position: 9
 
 `/integrations`를 열고 **API keys** 탭으로 전환합니다. 목록은 본인이 관리할 수 있는 모든 Key를 표시합니다 — 라벨, prefix, scope, 만료, 마지막 사용 메타데이터.
 
-![통합 — API Key 목록](./img/integrations-keys.png)
+![통합 — Create 버튼과 Key 표가 있는 API keys 섹션](/img/screenshots/user-integrations-keys.png)
 
 ### Key 생성
 
-1. **New API key**를 클릭합니다.
+1. **New API key**를 클릭합니다. 다이얼로그에서 이름과 scope를 입력하고 제출하면 Key가 발급됩니다.
+
+   ![통합 — name과 scope 입력이 있는 API key 생성 다이얼로그](/img/screenshots/user-integrations-key-create.png)
+
 2. 폼을 채웁니다.
    - **Label** — Key 용도를 떠올리게 하는 자유 텍스트(예: `github-action-checkout-service`).
    - **Scope** — `org`, `team`, `project`. 낮은 scope가 더 엄격합니다. 필요한 호출을 커버하는 가장 작은 scope를 선택하세요. team / project scope를 선택하면 폼에 팀·프로젝트 선택기가 노출됩니다.
