@@ -10,6 +10,10 @@ sidebar_position: 4
 
 Every write operation in the portal is recorded to an **append-only** audit log. The log is the source of truth for "who did what, when, and to what" — it is the first place to look when investigating an incident or fulfilling a compliance request.
 
+The `/admin/audit` page exposes the toolbar (actor / target table / action / time-range filters) and the row table over the live data:
+
+![Admin Audit log — search toolbar with actor / target table / action filters and the row table](/img/screenshots/admin-audit-list.png)
+
 :::note Audience
 `super_admin` for org-wide reads; `team_admin` for team-scoped reads.
 :::

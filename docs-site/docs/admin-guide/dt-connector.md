@@ -10,6 +10,10 @@ sidebar_position: 2
 
 [Dependency-Track](https://dependencytrack.org/) (DT) is the upstream vulnerability database the portal correlates SBOMs against. The connector adds reliability primitives the bare DT API does not provide: health monitoring, a circuit breaker, a PostgreSQL vulnerability cache, and orphan cleanup.
 
+The `/admin/dt` page surfaces the connector's runtime view — health status card, circuit-breaker badge, and refresh action:
+
+![Admin DT connector — status card with breaker badge + refresh action](/img/screenshots/admin-dt-status.png)
+
 :::note Audience
 `super_admin` operating the deployment. The screens described live under `/admin/dt`.
 :::

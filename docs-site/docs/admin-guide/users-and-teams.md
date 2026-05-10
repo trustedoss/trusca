@@ -42,6 +42,16 @@ Roles are **additive across teams** — a user can be `team_admin` in one team a
 
 `super_admin` is **not** a per-team role; it grants org-wide access regardless of team membership.
 
+## The Users page
+
+The `/admin/users` page lists every account in the deployment with role badges, activation status, last-sign-in timestamp, and team membership counts. Search by email or name; filter by role and status.
+
+![Admin Users page — search/filter toolbar and the user table with role + status columns](/img/screenshots/admin-users-list.png)
+
+The companion `/admin/teams` page enumerates teams and the projects + members each owns:
+
+![Admin Teams page — per-team rows with member and project counts](/img/screenshots/admin-teams-list.png)
+
 ## Onboarding a new user
 
 At v2.0.0 the portal does not send invitation emails. New users join by **self-registering** at `/register` with their corporate email; the password policy is enforced at registration (≥ 12 chars, bcrypt cost 12, no NIST-banned passwords).
