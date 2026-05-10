@@ -18,12 +18,11 @@ sidebar_position: 3
 
 컬럼:
 
-- **이름** — 패키지 이름(예: `lodash`, `org.springframework:spring-web`).
-- **버전** — 매니페스트나 락파일에서 고정된 버전.
-- **타입** — 생태계(`npm`, `maven`, `pypi`, `golang`, `cargo`, `nuget`, `gem` 등).
-- **Concluded 라이선스** — declared·detected를 화해해 ORT가 선택한 라이선스. 빌드 게이트가 사용하는 값.
-- **분류** — `Allowed` / `Conditional` / `Forbidden`.
-- **결과** — 이 컴포넌트의 미해결 취약점 수(클릭 시 사전 필터링된 Vulnerabilities 탭으로 이동).
+- **컴포넌트 (Component)** — 패키지 이름(예: `lodash`, `org.springframework:spring-web`).
+- **버전 (Version)** — 매니페스트나 락파일에서 고정된 버전.
+- **라이선스 (License)** — declared·detected를 화해해 ORT가 선택한 concluded 라이선스. 빌드 게이트가 사용하는 값.
+- **심각도 (Severity)** — 본 컴포넌트의 미해결 CVE 중 가장 높은 심각도(범례를 통해 라이선스 분류 색상도 함께 표시).
+- **CVEs** — 본 컴포넌트의 미해결 취약점 수(클릭 시 사전 필터링된 Vulnerabilities 탭으로 이동).
 
 테이블은 가상화되어 수천 개의 컴포넌트도 부드럽게 스크롤됩니다.
 
@@ -31,10 +30,10 @@ sidebar_position: 3
 
 상단 인라인 필터 바:
 
-- **분류** (Allowed / Conditional / Forbidden / Unknown).
-- **라이선스** — 정확한 SPDX 표현(예: `MIT`, `LGPL-2.1-only`).
-- **미해결 CVE 보유** — 토글.
-- **검색** — `name@version` 부분 일치.
+- **검색 (Search)** — `name@version` 부분 일치.
+- **심각도 (Severity)** — 다중 선택 배지(Critical / High / Medium / Low / Info).
+- **라이선스 카테고리 (License category)** — 다중 선택(`Allowed` / `Conditional` / `Forbidden` / `Unknown`).
+- **정렬 (Sort)** + **순서 (order)** — 컬럼 기반 정렬과 오름·내림 토글.
 
 필터는 결합됩니다. URL이 갱신되어 필터된 뷰를 공유할 수 있습니다.
 
@@ -42,14 +41,14 @@ sidebar_position: 3
 
 행을 클릭하면 우측 슬라이드 드로어가 열립니다.
 
-- **식별자** — `purl`(Package URL), 상위 홈페이지, 레포 URL.
+- **식별자 (Identity)** — `purl`(Package URL), 상위 홈페이지, 레포 URL.
 - **모든 라이선스 결과** — declared, detected, concluded와 ORT가 각각을 귀속시킨 소스 파일.
 - **의무사항** — concluded 라이선스가 발생시킨 의무([의무사항](#의무사항) 참고).
 - **CVE** — 미해결·해결된 결과, Vulnerability 상세로 딥링크.
-- **승인 상태** — `Pending` / `Under Review` / `Approved` / `Rejected`([승인](./approvals.md) 참고).
-- **Concluded 라이선스 오버라이드** — 자동 결론이 잘못된 경우 `team_admin`이 라이선스를 고정 가능. 오버라이드는 사유와 함께 감사 로그에 기록됩니다.
 
 드로어를 닫아도 테이블 위치를 유지 — 페이지 이동 없음.
+
+조건부 라이선스 컴포넌트의 승인 상태는 프로젝트 레벨 [승인](./approvals.md) 페이지로 이동해 확인하세요(v2.0.0 시점에서 드로어는 승인 상태를 노출하지 않음). concluded 라이선스의 수동 오버라이드 또한 이연되었습니다 — [로드맵](#로드맵-v2x) 참고.
 
 ## 라이선스 분류
 
@@ -87,7 +86,7 @@ ORT는 세 가지 신뢰 수준을 구분합니다.
 - **동적 링킹** — LGPL류: 최종 사용자가 수정 라이브러리로 재링크 가능해야 함.
 - **보증 금지** — 허락 없이 프로젝트 이름으로 파생물을 보증할 수 없음.
 
-프로젝트 페이지의 **Obligations** 탭은 컴포넌트 전반의 의무사항을 통합합니다. **Generate NOTICE**를 클릭하여 모든 저작자 표시·라이선스를 요약한 `NOTICE.txt`를 다운로드 — [SBOM 및 보고서](./sbom.md#notice-파일).
+프로젝트 페이지의 **Obligations** 탭은 컴포넌트 전반의 의무사항을 통합합니다. **Generate NOTICE**를 클릭하여 모든 저작자 표시·라이선스를 요약한 `NOTICE.txt`를 다운로드 — [SBOM](./sbom.md#notice-파일).
 
 ## SPDX 표현
 
@@ -125,9 +124,18 @@ ORT가 메타데이터를 파싱할 수 없었습니다. 일반적 원인:
 
 `cdxgen`은 30개 이상의 생태계를 지원하지만 새 생태계는 지속 추가됩니다. 프로젝트 락파일이 레포 루트 또는 한 단계 아래에 있는지 확인하세요. `cdxgen`은 임의 깊이로 재귀하지 않습니다. 미지원 생태계라면 파이프라인 출력과 함께 이슈를 등록하세요.
 
+## 로드맵 (v2.x)
+
+매뉴얼이 이전에 약속했으나 v2.0.0에 포함되지 않은 항목.
+
+- 컴포넌트 테이블의 별도 **타입 (Type)**(생태계)·**분류 (Classification)** 컬럼 — v2.0.0에서는 타입이 드로어 식별자 행의 `purl`에 포함되며, 분류는 **심각도** 색상 범례로 표현됩니다.
+- 정확 SPDX 표현 기반 **라이선스** 필터와 **미해결 CVE 보유** 토글 — v2.1 예정. 현재는 **라이선스 카테고리** 다중 선택과 검색 박스가 대부분의 워크플로우를 커버합니다.
+- 컴포넌트 드로어 내 **승인 상태** 행 — v2.1 예정. 현재 정답은 프로젝트 레벨 [승인](./approvals.md) 페이지입니다.
+- 드로어의 수동 **Concluded 라이선스 오버라이드** 동작(`team_admin`) — v2.2 예정.
+
 ## 함께 보기
 
 - [취약점](./vulnerabilities.md)
 - [승인](./approvals.md)
-- [SBOM 및 보고서](./sbom.md)
+- [SBOM](./sbom.md)
 - [아키텍처 — ORT 룰](../reference/architecture.md#ort-rules)

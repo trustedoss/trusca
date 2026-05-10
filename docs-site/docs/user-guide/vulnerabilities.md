@@ -51,24 +51,24 @@ Every transition out of `New` / `Analyzing` requires a free-text justification (
 Columns:
 
 - **CVE** — the CVE ID (e.g. `CVE-2024-12345`). Click to open the upstream NVD entry.
-- **Component** — `name@version`.
 - **Severity** — color-coded badge.
-- **State** — current VEX state.
+- **CVSS** — numeric CVSS v3 score from the upstream feed.
+- **Title** — short summary from the advisory.
+- **Affected** — the affected component (`name@version`).
+- **Status** — current VEX state.
 - **Discovered** — first time this finding appeared on a scan.
-- **Last seen** — most recent scan where the finding was confirmed.
 
-Filters on the inline bar: severity, state, component, discovered range.
+Filters on the inline bar: severity, status, plus a **search** box (free text against CVE ID / title / component) and sort + order controls.
 
 ## The drawer — finding detail
 
 Click any row to open:
 
-- **CVE summary** — title, description, CWE, CVSS vector.
-- **Affected versions** — the upstream-reported affected range, with this project's component version highlighted.
+- **Summary** — title, description, CWE, CVSS vector.
 - **References** — vendor advisories, fix commits, exploit databases.
-- **Fix availability** — whether an upstream fix exists and the version that contains it.
-- **Project history** — every scan where the finding appeared, with timestamps.
-- **Triage** — VEX state dropdown, justification box, **Save** button. Only `developer` or higher.
+- **Affected** — the upstream-reported affected range with the project's component version highlighted, plus `fixed_in` (the upstream version that ships the fix, when available).
+- **Analysis** — VEX state dropdown, justification box, **Save** button. Only `developer` or higher.
+- **History** — every scan where the finding appeared, with timestamps.
 
 ## Re-detection
 
@@ -112,6 +112,14 @@ Possible causes:
 - The component's `purl` does not match Dependency-Track's normalization (rare; Maven `groupId:artifactId` style is the most common culprit). File an issue with the scan report.
 - DT was unavailable when the scan ran and the cache did not yet have an entry for that CVE. Run another scan after DT is healthy.
 - The CVE is in an ecosystem DT does not yet ingest. Check **/admin/dt → Vulnerability sources**.
+
+## Roadmap (v2.x)
+
+Items the manual previously promised that are not in v2.0.0; tracked for later releases.
+
+- "Last seen" column on the findings table (most recent scan that confirmed the finding) — planned for v2.1.
+- Per-component filter and discovered-date range filter on the findings toolbar — planned for v2.1; today the search box covers component lookup.
+- Standalone **Fix availability** drawer section — for v2.0.0 the fix version surfaces as `fixed_in` inside the **Affected** section.
 
 ## See also
 

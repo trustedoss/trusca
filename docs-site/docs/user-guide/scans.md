@@ -11,7 +11,7 @@ sidebar_position: 2
 A **scan** is one end-to-end run that detects components, licenses, and vulnerabilities for a project. Scans run on a Celery worker (never inline on the API) — typical durations range from 5 minutes (small npm projects) to 60 minutes (large multi-module Java repositories).
 
 :::note Audience
-Engineers with `developer` or higher on the project's team. Triggering scans against private repos requires repo credentials configured in **Project Settings**.
+Engineers with `developer` or higher on the project's team. Triggering scans against private repos requires repo credentials embedded in the project's `git_url` — see [Projects → Private repositories](./projects.md#private-repositories).
 :::
 
 ## Scan kinds
@@ -21,25 +21,23 @@ Engineers with `developer` or higher on the project's team. Triggering scans aga
 | **`source`** | `cdxgen` → ORT → Dependency-Track | Components and their declared / detected / concluded licenses, plus CVEs from NVD / OSV / GitHub Advisory. |
 | **`container`** | Trivy | OS-package vulnerabilities and (limited) language-package CVEs in a container image. |
 
-Most projects run `source` scans. `container` is additive — it covers the OS layer that `source` cannot see.
+`source` is the only kind exposed in the v2.0.0 UI trigger — the API also accepts `container` for clients that wire it up directly. See [Roadmap](#roadmap-v2x) for UI parity.
 
 ## Trigger a scan
 
 ### From the UI
 
-1. Open the project.
-2. Click the **Scan** button in the top-right.
-3. Choose **Source** or **Container**.
-4. Optionally override the branch (defaults to the project's default branch).
-5. Click **Start scan**.
+1. Open **Projects** in the sidebar.
+2. Find the project row and click the **Scan** button at the end of the row.
+3. The scan starts immediately as a `source` scan against the project's default branch.
 
-The page switches to a live progress view backed by a WebSocket connection. You can close the tab — the scan continues on the worker. Reopen the project and reconnect at any time.
+There is no kind-selection dialog or branch-override field in the v2.0.0 UI — those controls are deferred to v2.1 (see [Roadmap](#roadmap-v2x)). The page switches to a live progress view backed by a WebSocket connection. You can close the tab — the scan continues on the worker. Reopen the project and reconnect at any time.
 
 ### From the API
 
 ```bash
 curl -sS -X POST \
-  "https://trustedoss.example.com/api/v1/projects/${PROJECT_ID}/scans" \
+  "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/scans" \
   -H "Authorization: ApiKey ${TRUSTEDOSS_API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{"kind": "source"}' | jq .
@@ -48,7 +46,7 @@ curl -sS -X POST \
 The response carries the scan UUID. Poll:
 
 ```bash
-curl -sS "https://trustedoss.example.com/api/v1/scans/${SCAN_ID}" \
+curl -sS "https://trustedoss.example.com/v1/scans/${SCAN_ID}" \
   -H "Authorization: ApiKey ${TRUSTEDOSS_API_KEY}" | jq .status
 ```
 
@@ -60,9 +58,8 @@ The recommended path is the [GitHub Action](../ci-integration/github-actions.md)
 
 ```
 queued ─────► running ─────► succeeded
-   │                  │
-   │                  └────► failed
-   └────► cancelled
+                      │
+                      └────► failed
 ```
 
 | Status | Meaning |
@@ -71,7 +68,8 @@ queued ─────► running ─────► succeeded
 | `running` | A worker has picked up the task and is executing the pipeline. |
 | `succeeded` | Pipeline finished, components and findings are now queryable. |
 | `failed` | The worker raised an error. Inspect `error_detail` in the API response or the worker log. |
-| `cancelled` | An operator cancelled the scan via the UI or `DELETE /v1/scans/{id}`. |
+
+A `cancelled` terminal state is reserved in the data model but not exposed by an API or UI control at v2.0.0 — see [Roadmap](#roadmap-v2x).
 
 ### Pipeline stages (source)
 
@@ -100,29 +98,29 @@ The dominant cost in a source scan is ORT + Dependency-Track correlation, not `c
 
 Visit **Scans** in the left sidebar for an organization-wide view of every running and queued scan. Filters: status, kind, project, team. Super-admins also see the per-worker breakdown of the queue depth.
 
-You can cancel any of your team's scans from this view; super-admins can cancel any scan.
+Cancel actions on this view are not exposed at v2.0.0 — see [Roadmap](#roadmap-v2x).
 
 ## WebSocket progress feed
 
-The UI subscribes to `wss://<host>/api/v1/scans/{id}/progress` for live stage and percentage updates. The connection auto-reconnects with exponential backoff if the network drops. Reconnect re-emits the latest stage so the UI converges quickly.
+The UI subscribes to `ws(s)://<host>/ws/scans/{scan_id}` for live stage and percentage updates. The connection auto-reconnects with exponential backoff if the network drops. Reconnect re-emits the latest stage so the UI converges quickly.
 
 If you build a custom client, the message shape is:
 
 ```json
 {
-  "scan_id": "01H…",
-  "stage": "resolving_vulnerabilities",
-  "progress": 0.62,
-  "message": "Correlated 312 of 503 components",
-  "ts": "2026-05-08T13:42:11Z"
+  "step": "resolving_vulnerabilities",
+  "percent": 62,
+  "ts": "2026-05-09T13:42:11Z"
 }
 ```
+
+`percent` is an integer 0–100. `step` matches the pipeline-stage slugs above. The frame does not echo `scan_id` — the subscriber already knows it from the URL.
 
 ## Verify it worked
 
 After a scan completes:
 
-1. The project status switches to **Completed**.
+1. The project status switches to **Succeeded**.
 2. The Components count > 0.
 3. The Vulnerabilities count is visible (may be 0 if the project is genuinely clean).
 4. The Last scan timestamp on the Overview tab reflects "now".
@@ -152,7 +150,7 @@ If the queue is saturated, increase `CELERY_CONCURRENCY` in `.env` and `docker-c
 The worker could not reach the repository. Check:
 
 - Is the repo URL correct? (Test from the worker: `docker-compose exec worker git ls-remote <url>`.)
-- Is the repo private? Configure credentials in **Project Settings** — see [Projects → Private repositories](./projects.md#private-repositories).
+- Is the repo private? Embed credentials in the `git_url` — see [Projects → Private repositories](./projects.md#private-repositories).
 - Does the worker have outbound HTTPS to your Git host? Corporate proxies must be set in `.env` (`HTTP_PROXY`, `HTTPS_PROXY`).
 
 ### Scan finished but vulnerabilities are missing
@@ -162,6 +160,13 @@ Dependency-Track may be unavailable. Check **/admin/dt** — the circuit-breaker
 ### "DT unreachable" warning on the scan
 
 Same as above — the circuit breaker tripped. The scan completed using the cache and the warning is informational. Resolve the underlying DT outage and trigger a fresh scan to refresh.
+
+## Roadmap (v2.x)
+
+Items the manual previously promised that are not in v2.0.0; tracked for later releases.
+
+- Kind-selection dialog (Source / Container) and branch-override field on the project-level **Scan** trigger — planned for v2.1.
+- `cancelled` lifecycle transition with `DELETE /v1/scans/{id}` and a UI cancel button on the global queue — planned for v2.1.
 
 ## See also
 

@@ -8,7 +8,7 @@ sidebar_position: 8
 
 # Notifications
 
-The notification system tells you about events on projects you care about — scans finishing, gates failing, new CVEs landing on a component you depend on, approvals waiting, and disk pressure on the host. Notifications fan out across **four channels** (in-app, email, Slack, Microsoft Teams) and you decide which channels to receive on a per-trigger basis.
+The notification system tells you about events on projects you care about — scans finishing, gates failing, new CVEs landing on a component you depend on, approvals waiting, and license-policy violations. Notifications fan out across **four channels** (in-app, email, Slack, Microsoft Teams) and you decide globally which channels to receive on.
 
 :::note Audience
 Any signed-in user. The header bell and `/notifications` page are visible to every role; admins additionally configure the SMTP / Slack / Teams transports under [Disk & system health](../admin-guide/disk-and-health.md).
@@ -24,13 +24,11 @@ Every page has a bell icon in the top-right of the header. The badge shows the n
 
 ![Header bell with unread badge](./img/notifications-bell.png)
 
-Click the bell to open a dropdown with the **five most recent** notifications. Each row shows the title, a one-line summary, and a relative timestamp. Click a row to mark it read, dismiss the dropdown, and navigate to the related page (e.g. the project page for a `scan_finished` event).
-
-The dropdown footer links to the full inbox.
+Click the bell to navigate directly to the **`/notifications`** inbox. The bell does not surface a dropdown preview at v2.0.0 — see [Roadmap](#roadmap-v2x).
 
 ## The Inbox at `/notifications`
 
-`/notifications` is the full list of every notification you have received, newest first. Scroll continuously — the page lazy-loads pages of 25 with infinite scroll.
+`/notifications` is the full list of every notification you have received, newest first. Pages of 25 are loaded one at a time; use the **Previous** / **Next** controls at the bottom to walk through history.
 
 ![Notifications inbox](./img/notifications-inbox.png)
 
@@ -47,18 +45,18 @@ Bulk actions sit in the toolbar: **Mark all as read** (only if there are unreads
 
 ## Preferences
 
-The **Preferences** tab (top-right of `/notifications`) lets you enable or disable each non-mandatory channel per trigger.
+The **Preferences** tab (top-right of `/notifications`) exposes four **global, per-channel** toggles. The choice applies across every trigger — there is no per-trigger matrix at v2.0.0 (see [Roadmap](#roadmap-v2x)).
 
 ![Notifications preferences](./img/notifications-prefs.png)
 
-| Channel | Toggle | Notes |
+| Channel | Default | Notes |
 |---|---|---|
-| In-app | **disabled toggle** (always on) | A tooltip on the toggle explains: *"In-app notifications cannot be disabled — this is your fallback channel."* |
-| Email | on by default | Requires `SMTP_*` configured by the operator. |
-| Slack | off by default | Requires `SLACK_WEBHOOK_URL` configured. |
-| Teams | off by default | Requires `TEAMS_WEBHOOK_URL` configured. |
+| In-app | on | The fallback channel. Always available; toggle still surfaces for symmetry. |
+| Email | on | Requires `SMTP_*` configured by the operator. |
+| Slack | off | Requires `SLACK_WEBHOOK_URL` configured. |
+| Teams | off | Requires `TEAMS_WEBHOOK_URL` configured. |
 
-Changes save immediately. There is no **Save** button — toast feedback confirms each toggle.
+Toggles enter a draft state. Click **Save** to persist your changes — the page tracks dirty state and disables Save until something changes.
 
 ## How fresh is the bell?
 
@@ -71,29 +69,39 @@ If you have multiple portal tabs open, each polls independently — the unread s
 
 ## Triggers
 
-Five distinct triggers fire notifications:
+Six distinct triggers fire notifications:
 
-| Trigger | When it fires | Default channels |
-|---|---|---|
-| `scan_finished` | A scan you started, or one on a project you watch, completes (success **or** failure). | in-app, email |
-| `gate_failed` | A CI build gate (Critical CVE or forbidden license) fails on a project you watch. | in-app, email, Slack |
-| `new_cve` | A new CVE lands on a component already present in one of your scans. | in-app, email |
-| `approval_request` | A component requires approval, and you are a designated approver on the project. | in-app, email |
-| `disk_pressure` | Workspace disk usage crosses the soft (80 %) or hard (95 %) limit on a host you administer. | in-app, email — admin-only |
+| Trigger | When it fires |
+|---|---|
+| `scan_completed` | A scan you started, or one on a project you watch, finishes successfully. |
+| `scan_failed` | A scan you started, or one on a project you watch, fails. |
+| `cve_detected` | A new CVE lands on a component already present in one of your scans (DT NVD ingest correlates against existing components). |
+| `license_violation` | A scan surfaces a forbidden-license component on a project you watch. |
+| `approval_pending` | A component requires approval, and you are a designated approver on the project. |
+| `policy_gate_failed` | A CI build gate fails (Critical CVE or forbidden license blocks the build). |
 
-Per-trigger channel matrices can be tuned under **Preferences**.
+Channel selection is global — the **Preferences** tab decides which channels deliver every trigger.
 
 ## Verify it worked
 
 - Trigger a scan on a project you own; within seconds of completion, the bell badge increments and `/notifications` shows the new row.
 - Open `/notifications` in a second tab and mark a row read; the first tab's bell badge decrements within 60 seconds.
-- Disable email for `scan_finished`, run another scan, and confirm the next scan-finished notification arrives in-app only.
+- Globally disable email under **Preferences** and click **Save**; run another scan and confirm the next `scan_completed` notification arrives via in-app only.
 
 ## Troubleshooting
 
 - **Bell badge never updates** — the tab may be hidden behind another window. Bring it to the foreground; the immediate poll on focus refreshes the count.
 - **Email never arrives** — verify the operator has configured SMTP and that the destination address is your verified email (visible on `/profile`).
 - **Slack message never arrives** — confirm the operator has set `SLACK_WEBHOOK_URL` and that the channel still exists. Slack returns 404 silently when a webhook is revoked.
+
+## Roadmap (v2.x)
+
+Items the manual previously promised that are not in v2.0.0; tracked for later releases.
+
+- Header-bell dropdown with the five most recent notifications and a "go to inbox" footer — planned for v2.1; today the bell navigates straight to `/notifications`.
+- Infinite scroll on `/notifications` — planned for v2.1; today the inbox uses Previous / Next pagination.
+- Per-trigger × per-channel preference matrix (e.g. Slack only for `policy_gate_failed`) — planned for v2.1; today the channel choice is global across all triggers.
+- `disk_pressure` notification trigger for admins — planned for v2.2; the disk-pressure event is currently surfaced only on the admin dashboard.
 
 ## See also
 

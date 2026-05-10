@@ -18,12 +18,11 @@ Engineers triaging dependency hygiene; legal / compliance reviewers reading lice
 
 Columns:
 
-- **Name** — package name (e.g. `lodash`, `org.springframework:spring-web`).
+- **Component** — package name (e.g. `lodash`, `org.springframework:spring-web`).
 - **Version** — pinned version found in the manifest or lockfile.
-- **Type** — ecosystem (`npm`, `maven`, `pypi`, `golang`, `cargo`, `nuget`, `gem`, …).
-- **Concluded license** — the license ORT chose after reconciling declared and detected sources. This is the value used by the build gate.
-- **Classification** — `Allowed` / `Conditional` / `Forbidden`.
-- **Findings** — count of open vulnerabilities for this component (clickable; jumps to the Vulnerabilities tab pre-filtered).
+- **License** — the concluded license ORT chose after reconciling declared and detected sources. This is the value used by the build gate.
+- **Severity** — the highest severity across this component's open CVEs (carries the license-classification color via the legend).
+- **CVEs** — count of open vulnerabilities for this component (clickable; jumps to the Vulnerabilities tab pre-filtered).
 
 The table is virtualized — projects with thousands of components scroll smoothly.
 
@@ -31,10 +30,10 @@ The table is virtualized — projects with thousands of components scroll smooth
 
 The inline filter bar at the top supports:
 
-- **Classification** (Allowed / Conditional / Forbidden / Unknown).
-- **License** — exact license SPDX expression (e.g. `MIT`, `LGPL-2.1-only`).
-- **Has open CVE** — toggle.
 - **Search** — substring match against `name@version`.
+- **Severity** — multi-select badges (Critical / High / Medium / Low / Info).
+- **License category** — multi-select (`Allowed` / `Conditional` / `Forbidden` / `Unknown`).
+- **Sort** + **order** — column-driven sort with ascending / descending toggle.
 
 Filters compose. The URL updates so you can share a filtered view.
 
@@ -46,10 +45,10 @@ Click any row to open a right-side drawer with:
 - **All license findings** — declared, detected, and concluded, with the source files ORT attributed each one to.
 - **Obligations** — list of obligations triggered by the concluded license (see [Obligations](#obligations)).
 - **CVEs** — open and resolved findings, deep-linked to the vulnerability detail.
-- **Approval status** — `Pending` / `Under Review` / `Approved` / `Rejected` (see [Approvals](./approvals.md)).
-- **Override concluded license** — if the automatic conclusion is wrong, a `team_admin` can override and pin the license. The override carries a reason that lands in the audit log.
 
 Closing the drawer keeps you in place on the table — no full-page navigation.
+
+For the approval state of a conditional-license component, switch to the project-level [Approvals](./approvals.md) page (the drawer does not surface approval state at v2.0.0). Manual override of the concluded license is also deferred — see [Roadmap](#roadmap-v2x).
 
 ## License classification
 
@@ -87,7 +86,7 @@ Each license carries **obligations** — duties you must honor when redistributi
 - **Dynamic linking** — LGPL-style: end-users must be able to relink against a modified library.
 - **No endorsement** — do not use the project name to endorse derivatives without permission.
 
-The **Obligations** tab on the project page consolidates obligations across components. Click **Generate NOTICE** to download a `NOTICE.txt` summarizing every attribution and license — see [SBOM & reports](./sbom.md#notice-file).
+The **Obligations** tab on the project page consolidates obligations across components. Click **Generate NOTICE** to download a `NOTICE.txt` summarizing every attribution and license — see [SBOM](./sbom.md#notice-file).
 
 ## SPDX expressions
 
@@ -125,9 +124,18 @@ The classification is rule-driven. Edit `ort/rules.kts`, restart the worker, re-
 
 `cdxgen` supports 30+ ecosystems but new ones land regularly. Confirm the project's lockfile is at the repo root or one level below; `cdxgen` does not recurse arbitrarily deep. If the ecosystem is unsupported, file an issue with the pipeline output.
 
+## Roadmap (v2.x)
+
+Items the manual previously promised that are not in v2.0.0; tracked for later releases.
+
+- Standalone **Type** (ecosystem) and **Classification** columns on the components table — for v2.0.0 the type is encoded inside the `purl` shown in the drawer's Identity row, and the classification surfaces via the **Severity** color legend.
+- Exact-SPDX **License** filter and **Has open CVE** toggle — planned for v2.1; the current **License category** multi-select and the search box cover most workflows.
+- **Approval status** row inside the component drawer — planned for v2.1; the project-level [Approvals](./approvals.md) page is the source of truth today.
+- Manual **Override concluded license** action in the drawer (`team_admin`) — planned for v2.2.
+
 ## See also
 
 - [Vulnerabilities](./vulnerabilities.md)
 - [Approvals](./approvals.md)
-- [SBOM & reports](./sbom.md)
+- [SBOM](./sbom.md)
 - [Architecture — ORT rules](../reference/architecture.md#ort-rules)
