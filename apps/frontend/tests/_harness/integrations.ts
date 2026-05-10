@@ -103,6 +103,25 @@ export class IntegrationsHarness {
     ).toBeVisible({ timeout: DEFAULT_TIMEOUT_MS });
   }
 
+  // ───── webhooks section (screenshot pipeline) ────────────────────────
+  /**
+   * Scroll the Webhooks section into the viewport. The section lives below
+   * the API keys table on the same `/integrations` page (sections, not
+   * tabs). Used by the screenshot capture spec to compose a Webhooks-tab
+   * view; not required by interactive E2E.
+   */
+  async scrollToWebhooks(): Promise<void> {
+    const section = this.page.getByTestId("integrations-webhooks-section");
+    await expect(section).toBeVisible({ timeout: DEFAULT_TIMEOUT_MS });
+    await section.scrollIntoViewIfNeeded();
+    await expect(this.page.getByTestId("integrations-webhook-github")).toBeVisible({
+      timeout: DEFAULT_TIMEOUT_MS,
+    });
+    await expect(this.page.getByTestId("integrations-webhook-gitlab")).toBeVisible({
+      timeout: DEFAULT_TIMEOUT_MS,
+    });
+  }
+
   /** Dismiss the reveal dialog via the Done button. */
   async closeRevealDialog(): Promise<void> {
     await this.page.getByTestId("integrations-reveal-done").click();

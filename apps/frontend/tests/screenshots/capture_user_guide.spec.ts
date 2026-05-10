@@ -143,17 +143,17 @@ test.describe.serial("@screenshots user-guide/scans", () => {
     await applyAuthFromSeed(page);
   });
 
-  // FIXME(screenshots Session 2.5): `/scans` global queue page does not
-  // settle in time during capture runs even with the shared seed pre-
-  // loading scans. Either the page's initial fetch differs from the
-  // seed shape or the harness mount predicate is too strict. Revisit
-  // when ScansQueueHarness gains a richer mount predicate or when the
-  // seed wires `latest_scan_id` more aggressively.
-  test.fixme("user-scans-queue — global scan queue with seeded scan rows", async ({
+  // Switch to the Succeeded tab so the seeded scan row is visible — the
+  // shared seed (`global-setup.ts` with `withScan: true`) creates a
+  // succeeded scan, while the page defaults to the Running tab which
+  // would render the empty-state card. Both tabs are valid captures, but
+  // a populated row is the more useful guide asset.
+  test("user-scans-queue — global scan queue with seeded scan rows", async ({
     page,
   }) => {
     const scans = new ScansQueueHarness(page);
     await scans.gotoScans();
+    await scans.selectTab("succeeded");
     await captureScreenshot(page, "user-scans-queue");
   });
 });
@@ -221,12 +221,13 @@ test.describe.serial("@screenshots user-guide/approvals", () => {
     await applyAuthFromSeed(page);
   });
 
-  // FIXME(screenshots Session 2.5): `/approvals` page mount times out
-  // under the bulk capture run. The harness expects either a tbody or
-  // an empty card; neither resolves before the 10s timeout. Suspect the
-  // approvals list endpoint requires a team scope the bulk seed does
-  // not provision. Revisit alongside dedicated approvals e2e coverage.
-  test.fixme("user-approvals-inbox — approvals page mounted (empty until policy hits)", async ({
+  // The empty inbox is itself a valid guide asset — most fresh
+  // installations land on this view until the first policy hit. The
+  // harness mount predicate now keys on the always-rendered table +
+  // pagination wrappers (rather than the empty-tbody zero-height race
+  // the original `tbody OR empty-cell` fallback hit) so the capture
+  // settles deterministically.
+  test("user-approvals-inbox — approvals page mounted (empty until policy hits)", async ({
     page,
   }) => {
     const approvals = new ApprovalsHarness(page);
@@ -295,14 +296,14 @@ test.describe.serial("@screenshots user-guide/notifications", () => {
     await captureScreenshot(page, "user-notifications-inbox");
   });
 
-  // FIXME(screenshots Session 2.5): `notifications-prefs-section` does
-  // not become visible during the capture run even though the e2e
-  // notifications spec hits the same harness verb. Likely a viewport
-  // / scroll-into-view race; capturing the prefs section will need a
-  // dedicated harness verb that mounts the section without relying on
-  // the inbox-then-prefs page composition.
-  test.fixme("user-notifications-prefs — preferences screen", async ({ page }) => {
+  // The preferences section sits below the inbox on the same page; the
+  // harness verb scrolls it into view and waits for the prefs query to
+  // settle (form / loading / error — any terminal state is enough for
+  // the capture, downstream interactive verbs still wait on the form
+  // testid before toggling).
+  test("user-notifications-prefs — preferences screen", async ({ page }) => {
     const notif = new NotificationsHarness(page);
+    await notif.gotoNotifications();
     await notif.gotoPreferences();
     await captureScreenshot(page, "user-notifications-prefs");
   });
@@ -333,5 +334,15 @@ test.describe.serial("@screenshots user-guide/integrations", () => {
     await integrations.clickCreate();
     await integrations.expectCreateDialogOpen();
     await captureScreenshot(page, "user-integrations-key-create");
+  });
+
+  test("user-integrations-webhooks — Webhooks section with GitHub + GitLab cards", async ({
+    page,
+  }) => {
+    const integrations = new IntegrationsHarness(page);
+    await integrations.goto();
+    await integrations.expectMounted();
+    await integrations.scrollToWebhooks();
+    await captureScreenshot(page, "user-integrations-webhooks");
   });
 });

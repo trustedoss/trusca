@@ -87,7 +87,7 @@ In the API keys list, hover the row and click **Revoke**. Confirm in the dialog.
 
 Switch to the **Webhooks** tab. Unlike API keys, webhook URLs are **fixed** — the portal exposes them at well-known paths, and you wire your provider (GitHub / GitLab) to post into them.
 
-![Integrations — Webhooks tab](./img/integrations-webhooks.png)
+![Integrations — Webhooks section with GitHub and GitLab URL cards](/img/screenshots/user-integrations-webhooks.png)
 
 ### GitHub
 

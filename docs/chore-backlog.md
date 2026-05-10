@@ -379,8 +379,9 @@ prompt: `docs/sessions/_next-session-prompt-guide-screenshots.md` (PR #52, `d1f1
 - ~~**Session 2 — user-guide bulk**~~ ✅ PR #54 (`fd48e69`, 2026-05-10) — `tests/screenshots/global-setup.ts` + `applyAuthFromSeed` 으로 5/min 로그인 rate-limit + refresh-token 회전 우회. ApprovalsHarness / ScansQueueHarness 신규 + PortalPage SBOM verb. user-guide 15 컷 (auth 2 / profile 2 / projects 3 / components 2 / vulns 1 / sbom 1 / obligations 1 / notifications 1 / integrations 2). 3 컷은 `test.fixme` 로 명시 (`scans-queue` / `approvals-inbox` / `notifications-prefs`). EN 마크다운 sweep.
 - ~~**Session 2.5 — admin-guide bulk**~~ ✅ PR #55 (`72dcc6e`, 2026-05-10) — `capture_admin_guide.spec.ts` 신규. admin/users / admin/teams / admin/dt / admin/audit / admin/disk / admin/health 6 컷. EN 마크다운 sweep (api-keys.md 제외 — 후속).
 - ~~**Session 3 — KO mirror**~~ ✅ PR #56 (`8f457df`, 2026-05-10) — 10 KO 마크다운 페이지 mirror. EN diff 와 1:1 reference 위치 매칭, alt text 한국어 번역. EN+KO 단일 PNG 자산 공유. Docusaurus EN+KO build SUCCESS.
+- ~~**Session 4 — cleanup (fixme 해제 + admin/api-keys + placeholder 정정)**~~ ✅ PR #TBD (2026-05-10) — 3 `test.fixme` 모두 해제 (mount predicate 보강: `scans-table`+`scans-pagination` / `approvals-table`+`approvals-pagination` / prefs-section 의 form|loading|error any-of) + 신규 `user-integrations-webhooks` 캡처 + `admin/api-keys.md` (EN+KO) 에 기존 `/integrations` PNG 재사용 + `notifications.md` / `integrations.md` (EN+KO) 의 `./img/...` placeholder 정리 (prefs/webhooks 절대경로, bell 라인은 0-unread 시드로 가이드 가치 약해 별도 chore 로 분리). 29 캡처 0 fixme, EN+KO Docusaurus build SUCCESS.
 
-총합: PNG 25개 (admin/backup 4 + user-guide 15 + admin-guide 6) + 3 fixme.
+총합: PNG 26개 (admin/backup 4 + user-guide 16 + admin-guide 6) + 0 fixme.
 
 후속 (별도 sprint):
 - **Visual regression CI** — Percy / Chromatic / Playwright `expect(page).toHaveScreenshot()` 픽셀 diff 가드 (1~1.5 세션).
@@ -388,11 +389,7 @@ prompt: `docs/sessions/_next-session-prompt-guide-screenshots.md` (PR #52, `d1f1
 - **Locale-specific 이미지** — 한글 데이터가 보이는 KO 보강 캡처 (1 세션).
 - **a11y alt text 감사** — i18n-specialist 검토 (0.5 세션).
 - **이미지 압축 자동화** — `oxipng` / `pngquant` Makefile + CI 파일 크기 게이트 (0.5 세션).
-
-잔여 (Session 4 후보로 묶음):
-- `admin/api-keys.md` (EN+KO) — `/integrations` 의 API key 화면을 admin 가시성에서도 동일하게 사용. 단순 markdown patch.
-- `test.fixme` 3 컷 (`user-scans-queue` / `user-approvals-inbox` / `user-notifications-prefs`) — 각 페이지의 mount predicate / scroll-into-view 정합성 fix 후 fixme 해제 + capture + 마크다운 reference. 마크다운에는 현재 `./img/...` 1×1 placeholder 가 남아 있어 함께 해결.
-- 잔여 `./img/notifications-bell.png` / `./img/notifications-prefs.png` / `./img/integrations-webhooks.png` 절대경로 정정 — 위 fixme 해제와 동시에.
+- **헤더 종 (unread badge) 캡처** — 시드에 unread notification 1~3 개 provision 후 임의 페이지 (예: `/`)에서 헤더 영역 capture. 시드 보강 (`seedE2eUser({ withNotifications })`) 필요. ~0.5 세션.
 
 부산물 발견 (Session 1 진행 중):
 - `apps/backend/Dockerfile.worker` 가 arm64 macOS 호스트에서 `dotnet-sdk-8.0` 를 Microsoft debian/12 arm64 repo 에서 못 찾아 `--no-cache` 빌드 실패. cdxgen .NET 지원이 dotnet 의존이라 worker 전용. 후속 chore 등록 권고: `dotnet-sdk-8` 또는 ranged version + arm64 fallback 검토.

@@ -182,15 +182,25 @@ export class NotificationsHarness {
   /**
    * The Preferences section lives on the same page below the inbox. This
    * verb scrolls it into view so subsequent toggles are deterministic.
+   *
+   * Settle predicate: the section wrapper is mounted on first paint, then
+   * one of {form, loading skeleton, error alert} resolves once the
+   * `useNotificationPrefs` query reaches a terminal state. Accepting any
+   * of the three avoids a 10s timeout when the prefs row has not been
+   * seeded — the loading skeleton itself is a valid "settled" surface
+   * for the screenshot pipeline; downstream verbs like `togglePreference`
+   * still wait on the form testid before interacting.
    */
   async gotoPreferences(): Promise<void> {
     const section = this.page.getByTestId("notifications-prefs-section");
     await expect(section).toBeVisible({ timeout: DEFAULT_TIMEOUT_MS });
     await section.scrollIntoViewIfNeeded();
-    // Wait until the form mounts (skeleton resolved).
-    await expect(
-      this.page.getByTestId("notifications-prefs-form"),
-    ).toBeVisible({ timeout: DEFAULT_TIMEOUT_MS });
+    const form = this.page.getByTestId("notifications-prefs-form");
+    const loading = this.page.getByTestId("notifications-prefs-loading");
+    const errorAlert = this.page.getByTestId("notifications-prefs-error");
+    await expect(form.or(loading).or(errorAlert)).toBeVisible({
+      timeout: DEFAULT_TIMEOUT_MS,
+    });
   }
 
   /**

@@ -22,6 +22,12 @@ API Key는 **비대화형** 클라이언트(CI 러너·Webhook·스크립트·Gi
 - **Create** 시 1회 노출 모달과 클립보드 복사 버튼, 전체 Key가 단 한 번만 표시된다는 강한 경고.
 - 행별 **Revoke**와 확인 다이얼로그 — 폐기는 ~5초 내에 전파.
 
+![/integrations — admin이 Key를 발급·폐기하는 API keys 섹션](/img/screenshots/user-integrations-keys.png)
+
+생성 다이얼로그는 `team_admin`과 `super_admin`이 동일한 화면을 사용합니다. super-admin의 경우 scope 드롭다운에 `org`가 추가됩니다.
+
+![/integrations — Label과 scope 입력이 있는 API key 생성 다이얼로그](/img/screenshots/user-integrations-key-create.png)
+
 이 페이지는 **서버 측 동작** — Key 형태, 해싱, scope 시멘틱, 감사 로그, 회전 전략을 다룹니다. CI에 Key를 연결하기만 하면 되는 사용자는 [통합 사용자 가이드](../user-guide/integrations.md)에서 멈춰도 됩니다.
 
 ## Key 형태

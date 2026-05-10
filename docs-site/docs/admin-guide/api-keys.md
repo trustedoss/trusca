@@ -22,6 +22,12 @@ Most users issue and revoke their own keys from the [Integrations page](../user-
 - Opens a one-time reveal modal on **Create**, with a copy-to-clipboard button and a hard warning that the full key is shown only once.
 - Offers per-row **Revoke** with a confirmation dialog; revocation propagates within ~5 seconds.
 
+![/integrations — API keys section that admins use to mint and revoke keys](/img/screenshots/user-integrations-keys.png)
+
+The Create dialog is the same surface for `team_admin` and `super_admin`; the scope dropdown adds `org` for super-admins:
+
+![/integrations — Create API key dialog with label and scope inputs](/img/screenshots/user-integrations-key-create.png)
+
 This page covers the **server-side mechanics** — key shape, hashing, scope semantics, audit log, and rotation strategy. Users who only need to wire a key into CI can stop at the [Integrations user guide](../user-guide/integrations.md).
 
 ## Key shape

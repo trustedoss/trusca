@@ -22,8 +22,6 @@ Every page has a bell icon in the top-right of the header. The badge shows the n
 - 1–99 — exact count.
 - 100+ — capped at **99+** so the badge does not break the layout.
 
-![Header bell with unread badge](./img/notifications-bell.png)
-
 Click the bell to navigate directly to the **`/notifications`** inbox. The bell does not surface a dropdown preview at v2.0.0 — see [Roadmap](#roadmap-v2x).
 
 ## The Inbox at `/notifications`
@@ -47,7 +45,7 @@ Bulk actions sit in the toolbar: **Mark all as read** (only if there are unreads
 
 The **Preferences** tab (top-right of `/notifications`) exposes four **global, per-channel** toggles. The choice applies across every trigger — there is no per-trigger matrix at v2.0.0 (see [Roadmap](#roadmap-v2x)).
 
-![Notifications preferences](./img/notifications-prefs.png)
+![Notifications preferences — per-channel toggles for email, Slack, Teams, and the always-on in-app row](/img/screenshots/user-notifications-prefs.png)
 
 | Channel | Default | Notes |
 |---|---|---|

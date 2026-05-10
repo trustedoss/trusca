@@ -22,8 +22,6 @@ sidebar_position: 8
 - 1–99 — 정확한 개수.
 - 100+ — 레이아웃이 깨지지 않도록 **99+**로 상한 처리.
 
-![읽지 않음 배지가 표시된 헤더 종 아이콘](./img/notifications-bell.png)
-
 종을 클릭하면 **`/notifications`** 인박스로 곧장 이동합니다. v2.0.0에서는 종에 드롭다운 미리보기가 노출되지 않습니다 — [로드맵](#로드맵-v2x) 참고.
 
 ## `/notifications` 인박스
@@ -47,7 +45,7 @@ sidebar_position: 8
 
 `/notifications` 우측 상단의 **Preferences** 탭은 **전역·채널별** 토글 4개를 노출합니다. 선택은 모든 트리거에 동일하게 적용됩니다 — v2.0.0에서는 트리거별 매트릭스가 없습니다([로드맵](#로드맵-v2x) 참고).
 
-![알림 환경설정](./img/notifications-prefs.png)
+![알림 환경설정 — 이메일·Slack·Teams 채널 토글과 항상 켜진 인앱 행](/img/screenshots/user-notifications-prefs.png)
 
 | 채널 | 기본값 | 비고 |
 |---|---|---|

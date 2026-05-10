@@ -15,6 +15,8 @@ import { expect, type Page } from "@playwright/test";
 const DEFAULT_BASE_URL = "http://localhost:5173";
 const DEFAULT_TIMEOUT_MS = 10_000;
 
+export type ScansTab = "running" | "queued" | "succeeded" | "failed" | "all";
+
 export class ScansQueueHarness {
   readonly page: Page;
   readonly baseUrl: string;
@@ -34,12 +36,36 @@ export class ScansQueueHarness {
     await expect(this.page.getByTestId("scans-page")).toBeVisible({
       timeout: DEFAULT_TIMEOUT_MS,
     });
-    // Either the table body or the empty card must mount before screenshots.
-    await expect(
-      this.page
-        .getByTestId("scans-tbody")
-        .or(this.page.getByTestId("scans-empty")),
-    ).toBeVisible({ timeout: DEFAULT_TIMEOUT_MS });
+    // The table + footer wrappers always render (skeleton, rows, or empty
+    // cell — they all live inside the same table). Asserting on those keeps
+    // the predicate immune to the empty-tbody zero-height race that the
+    // earlier `tbody OR empty-cell` fallback hit during capture runs.
+    await expect(this.page.getByTestId("scans-table")).toBeVisible({
+      timeout: DEFAULT_TIMEOUT_MS,
+    });
+    await expect(this.page.getByTestId("scans-pagination")).toBeVisible({
+      timeout: DEFAULT_TIMEOUT_MS,
+    });
+    // Wait until the initial fetch settles so screenshots do not capture
+    // the loading skeleton. `aria-busy` flips off once SWR resolves.
+    await expect
+      .poll(() => this.page.getByTestId("scans-table").getAttribute("aria-busy"), {
+        timeout: DEFAULT_TIMEOUT_MS,
+      })
+      .not.toBe("true");
+  }
+
+  // ───── tabs ────────────────────────────────────────────────────────────
+  /**
+   * Switch to a status tab and wait for the table to settle. Useful for
+   * the screenshot pipeline where the default `running` tab is empty
+   * against a `withScan: true` seed (which produces succeeded scans).
+   */
+  async selectTab(tab: ScansTab): Promise<void> {
+    const btn = this.page.getByTestId(`scans-tab-${tab}`);
+    await expect(btn).toBeVisible({ timeout: DEFAULT_TIMEOUT_MS });
+    await btn.click();
+    await this.expectMounted();
   }
 
   // ───── list state ─────────────────────────────────────────────────────
