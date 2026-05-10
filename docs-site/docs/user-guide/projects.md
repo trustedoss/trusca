@@ -65,6 +65,11 @@ The response includes the project's UUID — keep it; it is the value you wire i
 
 The schema rejects unknown fields (`extra="forbid"`). Only `name`, `description`, and `git_url` are accepted on create. `default_branch` can be set later via `PATCH /v1/projects/{id}`.
 
+To find your `team_id`, ask the team-admin or super-admin to share
+it (they see it under `/admin/teams` → row drawer). Developers do
+not have direct access to the `/v1/admin/teams` listing at v2.0.0;
+a `GET /v1/users/me/memberships` shortcut is on the roadmap.
+
 ## Visibility
 
 - **`team`** (default and only accepted value at v2.0.0) — only members of the owning team see the project, its scans, and its findings.
@@ -86,6 +91,20 @@ The Archive action lives on **Project Settings → Archive** and uses an inline 
 Source scans clone the repository from inside the worker container. Authentication option supported at v2.0.0:
 
 - **HTTPS + Personal Access Token** — set the URL to `https://<token>@github.com/acme/checkout-service.git`. The token is stored as part of `git_url` and never returned by the API in plaintext form on read endpoints.
+
+:::caution Private repos at v2.0.0
+Today the only supported credential model is **HTTPS + PAT
+embedded in the git URL**
+(`https://<token>@github.com/acme/payment-service.git`). The PAT is
+persisted in the project row (the API never returns it in plaintext
+on read endpoints, and `git_url` is masked in audit logs).
+
+Implications:
+- A leaked DB snapshot still leaks every embedded PAT. Use a
+  short-lived PAT with read-only scope.
+- SSH keys and GitHub-App installations are on the roadmap for
+  v2.1; rotate aggressively in the meantime.
+:::
 
 For SSH deploy keys, see [Roadmap](#roadmap-v2x).
 

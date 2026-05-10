@@ -44,6 +44,8 @@ The portal achieves byte-stability by:
 2. Click the **SBOM** tab.
 3. Click one of the four format buttons (CycloneDX JSON, CycloneDX XML, SPDX JSON, SPDX Tag-Value) to download.
 
+![SBOM tab — four format download buttons (CycloneDX JSON/XML, SPDX JSON/Tag-Value)](/img/screenshots/user-sbom-format-buttons.png)
+
 The file name is `sbom-<project-slug>.<ext>`.
 
 ## Download from the API

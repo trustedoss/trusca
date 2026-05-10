@@ -33,6 +33,28 @@ curl --version
 df -h /                            # at least 20 GB free
 ```
 
+## Prerequisites for HTTPS deployments
+
+Before running the wizard, make sure your host meets these three
+conditions. The wizard does not validate them and Traefik will fail
+silently if any is missing.
+
+- **DNS**: an `A` record (or `CNAME`) on the domain you plan to use
+  (e.g. `oss.acme.com`) must point at your host's public IP. Verify
+  with `dig +short oss.acme.com`.
+- **Firewall**: ports `80` and `443` must be reachable from the
+  public internet. Traefik uses HTTP-01 challenge on `:80` to issue
+  the Let's Encrypt certificate; once that succeeds it redirects all
+  traffic to `:443`. UFW / cloud-provider firewall / security group
+  all need both open.
+- **TLS_EMAIL**: the wizard collects this when the public URL is
+  `https://...`. Let's Encrypt sends expiry warnings and rate-limit
+  escalation here; use a real mailbox you check.
+
+For HTTP-only / `localhost` installs (development, air-gapped UAT),
+none of the above applies — the wizard skips TLS_EMAIL and Traefik
+does not enter the ACME flow.
+
 ## Step 1 — Clone the repository
 
 ```bash
@@ -106,6 +128,30 @@ docker-compose -f docker-compose.yml -f docker-compose.dt.yml up -d
 ```
 
 Then follow [DT connector](../admin-guide/dt-connector.md) to wire the API key and enable the eight OSV ecosystems. The first vulnerability mirror sync takes ~1 hour for Maven and less for the others.
+
+## End-to-end first-success checklist (30 minutes)
+
+After `bash scripts/install.sh` completes:
+
+- [ ] Open `https://<your-host>` — login screen renders, browser
+  shows a valid TLS lock (if HTTPS).
+- [ ] Log in with the super-admin email/password the wizard
+  printed.
+- [ ] Go to `/admin/dt` — DT row may be OPEN for up to 60 seconds
+  on first boot; wait for it to flip to CLOSED.
+- [ ] Go to `/admin/teams` → **New team** → name it `engineering`.
+- [ ] Ask a teammate to register at `/register`, then add them at
+  `/admin/users → <user> → Memberships → Add to team`.
+- [ ] Switch to the teammate's session → create a project at
+  `/projects → New project` with a small public repo (test).
+- [ ] Trigger a scan; the right-slide progress drawer should walk
+  through `bootstrap → fetch → prep → cdxgen → ort →
+  dt_upload → dt_findings → finalize` in about 2-5 minutes.
+- [ ] Open the project's **Vulnerabilities** tab — any CVEs from
+  the test repo should be listed.
+
+If any step fails, see `/docs/installation/troubleshooting` and the
+Admin → Health dashboard.
 
 ## Troubleshooting
 

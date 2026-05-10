@@ -23,6 +23,40 @@ Webhooks let your Git host push events to the portal — typically `push` and `p
 
 Both endpoints are public (no JWT) but require the project's webhook secret. The secret is per-project, generated when you enable the webhook.
 
+### Bootstrapping a webhook secret (operator-only at v2.0.0)
+
+The Project Settings tab does not yet expose webhook controls.
+Operators set the secret directly via the backend. Two paths:
+
+**Option A — Python REPL inside the backend container:**
+
+```bash
+docker-compose exec backend python -c "
+import asyncio, secrets
+from apps.backend.services.webhook_service import (
+    upsert_webhook_secret,
+)
+asyncio.run(upsert_webhook_secret(
+    project_id='<project-uuid>',
+    secret=secrets.token_urlsafe(32),
+))
+"
+```
+
+**Option B — direct SQL (psql session):**
+
+```sql
+UPDATE projects
+   SET webhook_secret = encode(gen_random_bytes(32), 'base64')
+ WHERE id = '<project-uuid>';
+```
+
+After either command, share the resulting secret with the repo
+owner so they paste it into GitHub/GitLab → Settings → Webhooks →
+"Secret".
+
+A self-service activation UI lives on the v2.1 roadmap.
+
 ## Setup — GitHub
 
 ### 1. Enable the webhook in the portal

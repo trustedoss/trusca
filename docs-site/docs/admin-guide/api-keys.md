@@ -48,9 +48,17 @@ Lookups are constant-time across the prefix; secret comparison uses `bcrypt.chec
 
 Each key carries a single **resource scope** that determines the authorization boundary:
 
-- **`org`** — issued by a `super_admin`. Acts org-wide; can call any endpoint the issuing user could.
-- **`team`** — issued by a `team_admin`. Acts on behalf of a specific team; cross-team calls fail with 403.
-- **`project`** — issued by a `team_admin` or `developer` for a specific project; calls outside that project fail with 403.
+- **`org`** — acts org-wide; can call any endpoint the issuing user could.
+- **`team`** — acts on behalf of a specific team; cross-team calls fail with 403.
+- **`project`** — bound to a specific project; calls outside that project fail with 403.
+
+Who can issue each scope:
+
+| Scope    | Who can issue       |
+|----------|---------------------|
+| `org`    | super-admin only    |
+| `team`   | super-admin, team-admin |
+| `project`| super-admin, team-admin, developer (within their team's projects) |
 
 The key inherits the **role of the issuing user** at request time — there is no separate "effective role" or "allowed actions" list at v2.0.0. Permission checks fall through to the same RBAC code path as a JWT-authenticated request.
 
@@ -156,7 +164,11 @@ After issuing a key:
 The two most common causes:
 
 - The key was copied with a leading or trailing whitespace. Re-paste from the original modal — keys are exactly `tos_` + 8 + `_` + 32 chars.
-- 401 always indicates an invalid / revoked / expired key. The portal does not separate "bad key" from "action not permitted" at the auth layer at v2.0.0 — the key inherits the issuing user's RBAC role, so any 403 you see comes from the same per-route checks a JWT-authenticated request would face.
+- The portal distinguishes the two failure modes:
+  - **401** = credential problem (no header, malformed Bearer, unknown
+    prefix, signature mismatch, revoked, expired).
+  - **403** = credential is valid but the key's scope does not cover the
+    resource (e.g. `team`-scope key hitting an `org`-only endpoint).
 
 ### "Key prefix exists but secret does not match"
 

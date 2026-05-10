@@ -65,6 +65,11 @@ curl -sS -X POST https://trustedoss.example.com/v1/projects \
 
 스키마는 알 수 없는 필드를 거부합니다(`extra="forbid"`). 생성 시 허용되는 필드는 `name`, `description`, `git_url` 뿐입니다. `default_branch`는 이후 `PATCH /v1/projects/{id}`로 설정합니다.
 
+본인의 `team_id` 를 찾으려면 team-admin 이나 super-admin 에게 공유를
+요청하세요(이들은 `/admin/teams` → 행 드로어에서 확인 가능). v2.0.0
+시점에 developer 는 `/v1/admin/teams` 목록에 직접 접근할 수 없습니다;
+`GET /v1/users/me/memberships` 단축 경로는 로드맵 항목입니다.
+
 ## 가시성
 
 - **`team`** (v2.0.0 기본값이자 유일하게 허용되는 값) — 소속 팀 멤버만 프로젝트·스캔·결과를 볼 수 있습니다.
@@ -86,6 +91,19 @@ curl -sS -X POST https://trustedoss.example.com/v1/projects \
 소스 스캔은 워커 컨테이너 안에서 저장소를 클론합니다. v2.0.0에서 지원되는 인증 옵션:
 
 - **HTTPS + Personal Access Token** — URL을 `https://<token>@github.com/acme/checkout-service.git` 형태로 설정. 토큰은 `git_url`의 일부로 저장되며, 읽기 엔드포인트가 평문으로 반환하지 않습니다.
+
+:::caution v2.0.0 의 사설 저장소
+현재 지원되는 자격증명 모델은 **git URL 에 PAT 를 임베드한 HTTPS**
+(`https://<token>@github.com/acme/payment-service.git`) 뿐입니다.
+PAT 는 프로젝트 행에 영구 저장됩니다(읽기 엔드포인트가 평문 PAT 를
+절대 반환하지 않으며, `git_url` 은 감사 로그에서 마스킹됩니다).
+
+함의:
+- 유출된 DB 스냅샷은 임베드된 모든 PAT 를 함께 유출합니다.
+  read-only scope 의 단기 PAT 를 사용하세요.
+- SSH key 와 GitHub-App 설치는 v2.1 로드맵 항목입니다;
+  그때까지 적극적으로 회전하세요.
+:::
 
 SSH 배포 키는 [로드맵](#로드맵-v2x)을 보세요.
 

@@ -56,7 +56,11 @@ sidebar_position: 6
 1. 행을 클릭해 드로어 열기.
 2. **Start Review** 클릭 — 상태가 검토 중으로 전환되며 검토자 필드가 본인으로 설정.
 3. 라이선스 조건과 포털이 나열한 의무사항 검토.
-4. **Approve** 또는 **Reject**. 검토자의 `decision_note`는 선택 사항입니다(최대 2000자, 최소 길이 제한 없음).
+4. **Approve** 또는 **Reject**. 둘 다 선택 사항인 **결정 노트**(`decision_note`, 2000자 이하)를 입력받습니다. 노트는 감사용으로 승인 행에 저장됩니다.
+
+![승인 드로어 — Pending 상태와 Start Review / Reject 결정 버튼](/img/screenshots/user-approvals-decision-drawer.png)
+
+**대기** 상태에서는 검토를 거치지 않고도 **Reject**를 직접 사용할 수 있습니다 — 명백히 잘못된 요청을 빠르게 처리할 때 유용합니다.
 
 성공적인 처리:
 

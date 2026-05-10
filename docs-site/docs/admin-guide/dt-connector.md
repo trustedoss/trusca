@@ -51,6 +51,19 @@ When the state hits `down`, the **circuit breaker** opens and subsequent calls r
 
 ### 2. Circuit breaker
 
+:::note Circuit breaker state terminology
+- **CLOSED** — DT is healthy; requests flow normally.
+- **OPEN** — recent probes failed past the threshold; the portal
+  short-circuits DT calls and serves cached vulnerability data
+  instead. The DT row in `/admin/dt` is marked **OPEN** in red.
+- **HALF_OPEN** — cooldown elapsed; the next probe will decide
+  whether to close (succeed) or stay open (fail).
+
+On a fresh install the breaker is **OPEN** until the first
+successful probe lands (typically within 60 seconds). Wait one
+minute before treating OPEN as a problem.
+:::
+
 The breaker is a three-state machine: `CLOSED` (normal), `HALF_OPEN` (probing), `OPEN` (rejecting).
 
 - `CLOSED` — calls go through.

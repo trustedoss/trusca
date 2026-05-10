@@ -33,6 +33,25 @@ curl --version
 df -h /                            # 20 GB 이상 여유
 ```
 
+## HTTPS 배포의 사전 요구사항
+
+마법사를 실행하기 전에 호스트가 다음 세 가지 조건을 만족하는지 확인하세요.
+마법사는 이를 검증하지 않으며, 하나라도 누락되면 Traefik이 조용히 실패합니다.
+
+- **DNS**: 사용할 도메인(예: `oss.acme.com`)의 `A` 레코드(또는 `CNAME`)가
+  호스트의 공개 IP를 가리켜야 합니다. `dig +short oss.acme.com` 으로 확인합니다.
+- **방화벽**: `80`번과 `443`번 포트가 공개 인터넷에서 도달 가능해야 합니다.
+  Traefik은 `:80`에서 HTTP-01 챌린지를 사용해 Let's Encrypt 인증서를 발급하며,
+  성공 후에는 모든 트래픽을 `:443`으로 리다이렉트합니다. UFW · 클라우드 제공자
+  방화벽 · 보안 그룹 모두 두 포트가 열려 있어야 합니다.
+- **TLS_EMAIL**: 마법사는 공개 URL이 `https://...` 일 때 이 값을 수집합니다.
+  Let's Encrypt 가 만료 경고와 레이트 리밋 상승을 이 주소로 보내므로,
+  실제로 확인하는 메일함을 사용하세요.
+
+HTTP-only / `localhost` 설치(개발, 망분리 UAT)에는 위 셋이 모두 적용되지
+않습니다 — 마법사는 TLS_EMAIL을 건너뛰고 Traefik은 ACME 흐름에 진입하지
+않습니다.
+
 ## 1단계 — 레포 클론
 
 ```bash
@@ -106,6 +125,30 @@ docker-compose -f docker-compose.yml -f docker-compose.dt.yml up -d
 ```
 
 이후 [DT 커넥터](../admin-guide/dt-connector.md)를 따라 API Key를 연결하고 8개 OSV 생태계를 활성화하세요. 첫 미러 동기화는 Maven이 ~1시간, 나머지는 더 짧게 걸립니다.
+
+## 종단 간 첫 성공 체크리스트 (30분)
+
+`bash scripts/install.sh` 완료 후:
+
+- [ ] `https://<your-host>` 열기 — 로그인 화면이 렌더링되고
+  브라우저가 유효한 TLS 자물쇠를 표시(HTTPS 인 경우).
+- [ ] 마법사가 출력한 super-admin 이메일·비밀번호로 로그인.
+- [ ] `/admin/dt` 로 이동 — 첫 부트에서는 최대 60초까지 OPEN 일 수
+  있으므로 CLOSED 로 전환될 때까지 대기.
+- [ ] `/admin/teams` → **New team** 으로 이동 → 이름을 `engineering`
+  으로 설정.
+- [ ] 동료에게 `/register` 에서 가입을 요청한 뒤,
+  `/admin/users → <user> → Memberships → Add to team` 에서 추가.
+- [ ] 동료 세션으로 전환 → `/projects → New project` 에서 작은
+  공개 레포(테스트용)로 프로젝트 생성.
+- [ ] 스캔을 트리거; 우측 슬라이드 진행 드로어가 약 2~5분 안에
+  `bootstrap → fetch → prep → cdxgen → ort →
+  dt_upload → dt_findings → finalize` 순서로 진행되어야 합니다.
+- [ ] 프로젝트의 **Vulnerabilities** 탭 열기 — 테스트 레포의 CVE 들이
+  나열되어야 합니다.
+
+어느 단계든 실패하면 `/docs/installation/troubleshooting` 과
+Admin → Health 대시보드를 보세요.
 
 ## 트러블슈팅
 

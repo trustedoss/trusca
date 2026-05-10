@@ -62,6 +62,22 @@ After they register, a `super_admin` adds them to the right team and assigns the
 2. Once they appear under **/admin/users**, open the user drawer.
 3. Use **Add to team** (or the team's **Members → Add member** flow) to grant team membership at the chosen role.
 
+## Onboarding teammates
+
+The portal does not send invitation emails at v2.0.0. The flow is:
+
+1. **Admin** creates the team at `/admin/teams → New team` and notes
+   the team UUID (visible in the URL or via `GET /v1/admin/teams`).
+2. **Teammate** self-registers at `https://<your-host>/register`.
+3. **Admin** opens the teammate's row at `/admin/users → <user>`,
+   drawer → **Memberships** → **Add to team**, picks the team and a
+   role (`developer` is the safe default).
+
+Result: the teammate now sees the team's projects on next login.
+Mass onboarding can be scripted via
+`POST /v1/admin/teams/{team_id}/members {user_id, role}` once each
+teammate has registered.
+
 ## Adding an existing user to a team
 
 Users can belong to many teams. To add an existing user:

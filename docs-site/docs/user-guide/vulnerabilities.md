@@ -72,6 +72,8 @@ Click any row to open:
 - **Analysis** — VEX status action buttons (one per allowed transition: Confirm, Mark exploitable, Mark not affected, Mark in triage, Mark resolved, Mark false positive, Mark not applicable). Click a button to open the justification dialog and submit. Only `developer` or higher.
 - **History** — VEX status-transition timeline (who changed the status, when, with what justification).
 
+![Vulnerability drawer — Analysis section with VEX action buttons and justification textarea](/img/screenshots/user-vulns-drawer-vex.png)
+
 ## Re-detection
 
 When Dependency-Track ingests new CVEs from upstream feeds (NVD, OSV, GitHub Advisory), the periodic resync task re-correlates them against every project's latest scan. New findings appear automatically — no manual action required.

@@ -72,6 +72,8 @@ sidebar_position: 4
 - **분석 (Analysis)** — VEX status 전환별 액션 버튼(허용된 전환마다 한 개씩: Confirm, Mark exploitable, Mark not affected, Mark in triage, Mark resolved, Mark false positive, Mark not applicable). 버튼을 클릭하면 사유 입력 다이얼로그가 열리며 제출합니다. `developer` 이상만.
 - **이력 (History)** — VEX status 전환 타임라인(누가, 언제, 어떤 사유로 status를 변경했는지).
 
+![취약점 드로어 — VEX 액션 버튼과 사유 입력 텍스트 영역이 있는 Analysis 섹션](/img/screenshots/user-vulns-drawer-vex.png)
+
 ## 재탐지
 
 Dependency-Track이 상위 피드(NVD, OSV, GitHub Advisory)에서 새 CVE를 수신하면 주기 동기화가 모든 프로젝트의 최신 스캔에 대해 재상관을 수행합니다. 새 결과는 자동으로 등장합니다 — 수동 작업 불필요.

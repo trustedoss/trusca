@@ -84,6 +84,8 @@ v2.0.0 의 상단 인라인 필터 바:
 
 테이블은 가상화 — 1만 항목도 부드럽게 스크롤.
 
+![감사 로그 드로어 — 단일 행의 전체 diff JSON 패널 (PII 마스킹 + request_id 상관자)](/img/screenshots/admin-audit-row-diff.png)
+
 ## CSV 내보내기
 
 툴바의 **Export CSV**는 **현재 필터된** 결과 집합을 한 번에 최대 10만 행까지 내보냅니다. CSV 는 UTF-8 이며 선두에 byte-order mark (`EF BB BF`) 가 붙어 있습니다 — 한국어 / 일본어 / 중국어 로케일의 Excel 이 CP949 / SJIS / GB18030 으로 폴백하지 않고 UTF-8 을 자동 인식하므로, 비ASCII actor 이메일이나 감사 행 diff 가 mojibake 로 깨지지 않습니다. 이미 UTF-8 을 자동 인식하는 도구(LibreOffice, awk, Python `csv` / `utf-8-sig` 코덱)는 BOM 을 자동으로 제거합니다.

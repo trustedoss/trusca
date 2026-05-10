@@ -33,6 +33,16 @@ Engineers with `developer` or higher on the project's team. Triggering scans aga
 
 There is no kind-selection dialog or branch-override field in the v2.0.0 UI — those controls are deferred to v2.1 (see [Roadmap](#roadmap-v2x)). A right-slide drawer opens on the project list page with a live progress view backed by a WebSocket connection. You can close the tab — the scan continues on the worker. Reopen the project and reconnect at any time.
 
+![Scan progress drawer — bootstrap → fetch → cdxgen → ORT → DT → finalize stages, live over WebSocket](/img/screenshots/user-scans-progress-drawer.png)
+
+:::warning Branch selection at v2.0.0
+Scans run against the project's `default_branch` (typically `main`).
+The UI does not expose a branch-override field on the scan trigger;
+to scan `develop` or a feature branch, either temporarily change
+`default_branch` in **Project Settings** or use the API:
+`POST /v1/scans/source {project_id, branch: "develop"}`.
+:::
+
 ### From the API
 
 ```bash

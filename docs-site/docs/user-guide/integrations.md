@@ -31,7 +31,16 @@ Open `/integrations` and scroll to the **API keys** section. The list shows ever
 
 2. Fill in the form:
    - **Name** — free-text reminder of what the key is for (e.g. `github-action-checkout-service`).
-   - **Scope** — `org`, `team`, or `project`. Lower scopes are stricter; pick the smallest that covers the calls you need to make. The form surfaces a team or project picker when those scopes are selected.
+   - **Scope** — `org`, `team`, or `project`. Lower scopes are stricter; pick the smallest that covers the calls you need to make. The form has plain UUID inputs for `team_id` (required when scope=`team`) and `project_id` (required when scope=`project`); copy the IDs from the corresponding admin pages. A picker UI is on the roadmap.
+
+   Who can issue each scope:
+
+   | Scope    | Who can issue       |
+   |----------|---------------------|
+   | `org`    | super-admin only    |
+   | `team`   | super-admin, team-admin |
+   | `project`| super-admin, team-admin, developer (within their team's projects) |
+
 3. Click **Create**.
 
 :::caution Keys do not expire at v2.0.0
@@ -91,7 +100,7 @@ Scroll to the **Webhooks** section. Unlike API keys, webhook URLs are **fixed** 
 
 ### GitHub
 
-URL to register at GitHub: `https://<your-host>/v1/webhooks/github`.
+URL to register at GitHub: `https://<your-host>/api/v1/webhooks/github`.
 
 - **Content-Type:** `application/json`.
 - **Signature:** `X-Hub-Signature-256` HMAC-SHA256 over the raw body, with the per-project `webhook_secret` as the key.
@@ -101,7 +110,7 @@ The portal stores a per-project `webhook_secret` field used to verify incoming d
 
 ### GitLab
 
-URL to register at GitLab: `https://<your-host>/v1/webhooks/gitlab`.
+URL to register at GitLab: `https://<your-host>/api/v1/webhooks/gitlab`.
 
 - **Content-Type:** `application/json`.
 - **Token:** sent in the `X-Gitlab-Token` header. Set this to the project's `webhook_secret`.
@@ -115,8 +124,8 @@ URL to register at GitLab: `https://<your-host>/v1/webhooks/gitlab`.
 
 ## Troubleshooting
 
-- **HTTP 401 from the API** — the key is unknown, expired, or revoked. The error response distinguishes 401 (credential problem) from 403 (credential valid but action not allowed).
-- **HTTP 403 from the API** — the key's scope does not cover the call. Issue a new key with a broader scope, or call a different endpoint.
+- **HTTP 401 from the API** — credential problem (no header, malformed Bearer, unknown prefix, signature mismatch, revoked, expired).
+- **HTTP 403 from the API** — credential is valid but the key's scope does not cover the resource (e.g. `team`-scope key hitting an `org`-only endpoint). Issue a new key with a broader scope, or call a different endpoint.
 - **HTTP 429 from the API** — you hit the per-key rate limit. The `Retry-After` header tells you how long to wait. Back off and retry.
 - **GitHub webhook returns 401** — `X-Hub-Signature-256` did not validate. Confirm the secret matches and that GitHub is computing HMAC over the **raw** body, not a re-serialised JSON.
 - **GitLab webhook returns 401** — the `X-Gitlab-Token` header value does not match the project's `webhook_secret`.

@@ -36,6 +36,7 @@ import { ScansQueueHarness } from "../_harness/ScansQueueHarness";
 import {
   applyAuthFromSeed,
   captureScreenshot,
+  ensureSeededPendingApproval,
   readSeedProjectNames,
 } from "./_helpers";
 
@@ -47,6 +48,16 @@ import {
  * therefore throw "seed file missing".
  */
 const primaryProject = (): string => readSeedProjectNames()[0];
+
+/**
+ * Second project from globalSetup's persisted seed. Used by capture
+ * scenarios that mutate state (e.g. clicking Scan, which appends a new
+ * scan row and shifts the project's `latest_scan_id` to a freshly-queued
+ * scan that carries no findings yet). Routing those captures to the
+ * *beta* project keeps the alpha project's seeded findings intact for the
+ * tests that follow.
+ */
+const secondaryProject = (): string => readSeedProjectNames()[1];
 
 // ════════════════════════════════════════════════════════════════════
 // auth-and-profile (login / forgot are pre-auth → must clear state)
@@ -156,6 +167,29 @@ test.describe.serial("@screenshots user-guide/scans", () => {
     await scans.selectTab("succeeded");
     await captureScreenshot(page, "user-scans-queue");
   });
+
+  // Right-slide drawer view that opens when the user clicks Scan on a
+  // project row. The trigger POSTs `/v1/scans/source` and the drawer
+  // mounts the WebSocket-backed ScanProgress component as soon as the
+  // response carries a scan_id. The celery worker doesn't need to be
+  // healthy for this capture — the docs frame is about the drawer's
+  // initial mounted state (project name + bootstrap step), not a fully
+  // completed pipeline.
+  //
+  // We trigger against the *beta* project deliberately: clicking Scan
+  // shifts the target project's `latest_scan_id` to a freshly-queued
+  // scan that carries no findings yet, which would empty the
+  // vulnerabilities / components / licenses tabs that other captures
+  // depend on. Routing the mutation to beta isolates the side effect.
+  test("user-scans-progress-drawer — live scan progress drawer (bootstrap stage)", async ({
+    page,
+  }) => {
+    const portal = new PortalPage(page);
+    await portal.gotoProjects();
+    await portal.clickTriggerScan(secondaryProject());
+    await portal.expectScanProgress();
+    await captureScreenshot(page, "user-scans-progress-drawer");
+  });
 });
 
 // ════════════════════════════════════════════════════════════════════
@@ -210,6 +244,30 @@ test.describe.serial("@screenshots user-guide/vulnerabilities", () => {
     await portal.expectVulnerabilitiesTabReady();
     await captureScreenshot(page, "user-vulns-list");
   });
+
+  // Click the first vulnerability row to slide in the detail drawer and
+  // wait for the Analysis section (the section containing the VEX 7-state
+  // action buttons) to mount. The seed always creates ≥ 30 findings with a
+  // `new` status so every action button is enabled, and the drawer scrolls
+  // down to expose the action buttons before capture.
+  test("user-vulns-drawer-vex — drawer Analysis section with VEX action buttons", async ({
+    page,
+  }) => {
+    const portal = new PortalPage(page);
+    await portal.gotoProjects();
+    await portal.openProjectDetail(primaryProject());
+    await portal.expectProjectDetailMounted();
+    await portal.selectVulnerabilitiesTab();
+    await portal.expectVulnerabilitiesTabReady();
+    await portal.openFirstVulnerabilityDrawer();
+    // Scroll the drawer so the Analysis + action buttons land in the
+    // viewport (the drawer overflows; capture without scrolling would only
+    // show the Summary block).
+    await page
+      .getByTestId("vulnerability-drawer-analysis")
+      .scrollIntoViewIfNeeded();
+    await captureScreenshot(page, "user-vulns-drawer-vex");
+  });
 });
 
 // ════════════════════════════════════════════════════════════════════
@@ -234,6 +292,22 @@ test.describe.serial("@screenshots user-guide/approvals", () => {
     await approvals.gotoApprovals();
     await captureScreenshot(page, "user-approvals-inbox");
   });
+
+  // Open the inline drawer for a pending approval row. The seed pipeline
+  // does not create approvals (those land via the scan path when a
+  // conditional-license component is detected), so the helper inserts
+  // exactly one `pending` row directly against the team's first project
+  // and component. Idempotent — back-to-back runs reuse the existing row
+  // because of the partial unique index `ix_component_approvals_unique_open`.
+  test("user-approvals-decision-drawer — drawer with Start Review / Reject decision buttons", async ({
+    page,
+  }) => {
+    await ensureSeededPendingApproval();
+    const approvals = new ApprovalsHarness(page);
+    await approvals.gotoApprovals();
+    await approvals.openFirstRowDrawer();
+    await captureScreenshot(page, "user-approvals-decision-drawer");
+  });
 });
 
 // ════════════════════════════════════════════════════════════════════
@@ -254,6 +328,36 @@ test.describe.serial("@screenshots user-guide/sbom", () => {
     await portal.expectProjectDetailMounted();
     await portal.selectSbomTab();
     await captureScreenshot(page, "user-sbom-tab");
+  });
+
+  // Variant that emphasises the four format download buttons (CycloneDX
+  // JSON/XML + SPDX JSON/Tag-Value). All four buttons render
+  // unconditionally inside the tab body (see SbomTab.tsx — the FORMATS
+  // array maps directly to the rendered list), so waiting for the first
+  // one to be visible is enough to capture them all together. We wait for
+  // the *first* (CycloneDX JSON) button rather than any specific test-id
+  // so the assertion is locale-agnostic.
+  test("user-sbom-format-buttons — four format download buttons visible", async ({
+    page,
+  }) => {
+    const portal = new PortalPage(page);
+    await portal.gotoProjects();
+    await portal.openProjectDetail(primaryProject());
+    await portal.expectProjectDetailMounted();
+    await portal.selectSbomTab();
+    await page
+      .getByTestId("sbom-download-cyclonedx-json")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    await page
+      .getByTestId("sbom-download-cyclonedx-xml")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    await page
+      .getByTestId("sbom-download-spdx-json")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    await page
+      .getByTestId("sbom-download-spdx-tv")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    await captureScreenshot(page, "user-sbom-format-buttons");
   });
 });
 

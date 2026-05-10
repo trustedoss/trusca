@@ -88,6 +88,8 @@ Default columns: `created_at`, `actor`, `action`, `target`, `ip`. Click a row to
 
 The table is virtualized; 10k entries scroll smoothly.
 
+![Audit log drawer — full diff JSON panel for a single row, with masked PII fields and the request_id correlator](/img/screenshots/admin-audit-row-diff.png)
+
 ## Export to CSV
 
 The **Export CSV** button on the toolbar exports the **currently filtered** result set, up to 100k rows per export. The CSV is UTF-8 with a leading byte-order mark (`EF BB BF`) so Excel on Korean / Japanese / Chinese locales auto-detects the encoding instead of falling back to CP949 / SJIS / GB18030 and rendering non-ASCII actor emails or audit row diffs as mojibake. Tools that already auto-detect UTF-8 (LibreOffice, awk, Python's `csv` / `utf-8-sig` codecs) silently strip the BOM.

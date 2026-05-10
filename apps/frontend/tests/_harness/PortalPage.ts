@@ -514,6 +514,35 @@ export class PortalPage {
       .not.toBeNull();
   }
 
+  /**
+   * Click the first vulnerability row (whatever it happens to be) and wait
+   * for the drawer to mount. Sibling of {@link openVulnerabilityDrawer} for
+   * scenarios that don't care which CVE — e.g. screenshot capture, where
+   * the seeded CVE ids are timestamped and the spec only needs *some*
+   * drawer open. Anchors on the `data-testid="vulnerability-row"` attribute
+   * (locale-agnostic) and waits for the URL to mirror `?vuln=<finding_id>`.
+   */
+  async openFirstVulnerabilityDrawer(): Promise<void> {
+    const row = this.page.getByTestId("vulnerability-row").first();
+    await expect(row).toBeVisible({ timeout: 10_000 });
+    await row.click();
+    await this.page
+      .getByTestId("vulnerability-drawer")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    await expect
+      .poll(() => new URL(this.page.url()).searchParams.get("vuln"), {
+        timeout: 5_000,
+      })
+      .not.toBeNull();
+    // Also wait for the Analysis section to mount — the screenshot caller
+    // depends on the VEX action buttons being visible, which only render
+    // once the detail query resolves (the drawer body is a skeleton until
+    // then).
+    await this.page
+      .getByTestId("vulnerability-drawer-analysis")
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
   // ───── PR #12 — Licenses tab + drawer ────────────────────────────────
   /**
    * Click the Licenses tab trigger and wait for the tab content to mount.

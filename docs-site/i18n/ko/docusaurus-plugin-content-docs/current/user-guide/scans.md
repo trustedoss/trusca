@@ -33,6 +33,16 @@ v2.0.0의 UI 트리거에서는 `source`만 노출됩니다. 직접 호출하는
 
 v2.0.0 UI에는 종류 선택 다이얼로그나 브랜치 오버라이드 필드가 없습니다 — 해당 컨트롤은 v2.1로 이연되었습니다([로드맵](#로드맵-v2x) 참고). 프로젝트 목록 페이지에서 우측 슬라이드 드로어가 열리며 WebSocket 기반의 실시간 진행 뷰가 표시됩니다. 탭을 닫아도 스캔은 워커에서 계속됩니다. 프로젝트를 다시 열면 언제든 재연결됩니다.
 
+![스캔 진행 드로어 — bootstrap → fetch → cdxgen → ORT → DT → finalize 단계, WebSocket 실시간 표시](/img/screenshots/user-scans-progress-drawer.png)
+
+:::warning v2.0.0 의 브랜치 선택
+스캔은 프로젝트의 `default_branch`(보통 `main`) 에 대해 실행됩니다.
+UI 는 스캔 트리거에 브랜치 오버라이드 필드를 노출하지 않습니다;
+`develop` 이나 feature 브랜치를 스캔하려면 **Project Settings** 에서
+`default_branch` 를 임시로 변경하거나 API 를 사용하세요:
+`POST /v1/scans/source {project_id, branch: "develop"}`.
+:::
+
 ### API에서
 
 ```bash

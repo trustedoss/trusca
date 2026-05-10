@@ -44,6 +44,8 @@ byte-stability 달성 방법:
 2. **SBOM** 탭 클릭.
 3. 4개 포맷 버튼 중 하나(CycloneDX JSON, CycloneDX XML, SPDX JSON, SPDX Tag-Value)를 클릭하여 다운로드.
 
+![SBOM 탭 — 4개 포맷 다운로드 버튼(CycloneDX JSON/XML, SPDX JSON/Tag-Value)](/img/screenshots/user-sbom-format-buttons.png)
+
 파일명은 `sbom-<project-slug>.<ext>`.
 
 ## API에서 다운로드

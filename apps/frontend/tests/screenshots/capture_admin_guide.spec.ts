@@ -87,6 +87,27 @@ test.describe.serial("@screenshots admin-guide/audit-log", () => {
     await audit.expectMounted();
     await captureScreenshot(page, "admin-audit-list");
   });
+
+  // Click the first audit row to slide in the diagnostic drawer with the
+  // full sanitised diff (target table, action, request_id, and the
+  // key/value JSON diff list). The dev DB has hundreds of audit entries
+  // accumulated from prior seed runs, so a row is guaranteed to be
+  // present without an extra seed call. The drawer's diff section is the
+  // load-bearing element for the docs reference, so we wait for it
+  // explicitly before capture.
+  test("admin-audit-row-diff — drawer with sanitised diff JSON panel", async ({
+    page,
+  }) => {
+    const audit = new AdminAuditHarness(page);
+    await page.goto("/admin/audit");
+    await audit.expectMounted();
+    await audit.expectRowVisible();
+    await audit.openFirstRowDrawer();
+    await page
+      .getByTestId("admin-audit-drawer-diff")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    await captureScreenshot(page, "admin-audit-row-diff");
+  });
 });
 
 // ════════════════════════════════════════════════════════════════════
