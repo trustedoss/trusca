@@ -145,7 +145,9 @@ async def test_delete_blocked_with_integrity_error(session) -> None:
         # target_table — re-points the audit row at a different table.
         ("target_table", "users"),
         # created_at — antedating ("this happened before the breach").
-        ("created_at", "2020-01-01 00:00:00+00"),
+        # Pass a real datetime instance — asyncpg's TIMESTAMPTZ codec
+        # rejects bare strings.
+        ("created_at", datetime(2020, 1, 1, tzinfo=UTC)),
     ],
 )
 async def test_update_any_content_column_blocked(session, column, value) -> None:
@@ -232,12 +234,20 @@ async def test_team_id_set_null_via_cascade_allowed(session) -> None:
 
 
 async def test_diff_jsonb_overwrite_blocked(session) -> None:
-    """JSONB column overwrites also hit the trigger (no UPDATE bypass)."""
+    """JSONB column overwrites also hit the trigger (no UPDATE bypass).
+
+    asyncpg's parameter binding interprets ``::`` as a named-parameter
+    delimiter, so ``:diff::jsonb`` raises a syntax error before reaching
+    Postgres. Use ``CAST(:diff AS jsonb)`` instead — same semantic.
+    """
     row_id = await _insert_one(session)
 
     with pytest.raises(IntegrityError):
         await session.execute(
-            text("UPDATE audit_logs SET diff = :diff::jsonb WHERE id = :id"),
+            text(
+                "UPDATE audit_logs SET diff = CAST(:diff AS jsonb) "
+                "WHERE id = :id"
+            ),
             {"diff": '{"new_state": "tampered"}', "id": row_id},
         )
         await session.commit()
