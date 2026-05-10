@@ -53,6 +53,7 @@ const sidebars: SidebarsConfig = {
         "admin-guide/dt-connector",
         "admin-guide/disk-and-health",
         "admin-guide/audit-log",
+        "admin-guide/oncall-runbook",
         "admin-guide/backup-and-restore",
         "admin-guide/api-keys",
       ],

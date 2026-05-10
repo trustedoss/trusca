@@ -147,6 +147,12 @@ docker-compose -f docker-compose.yml exec backend \
 
 ## 트러블슈팅
 
+:::info 먼저 확인할 로그
+- `docker-compose logs --tail=200 backend | grep disk_threshold` — 임계 검사 태스크의 직전 판정.
+- `/admin/disk` API — 카드별 분해 JSON(workspace, dt_volume, postgres, redis).
+- 호스트: `df -h /opt/trustedoss && docker system df`.
+:::
+
 ### Health 페이지는 모두 `healthy`인데 사용자가 불만
 
 대시보드는 liveness 스냅샷이지 전체 기능 보장이 아닙니다. Liveness가 통과하더라도 다음이 가능:

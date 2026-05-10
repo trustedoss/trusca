@@ -109,35 +109,57 @@ Container scan stages (see `apps/backend/tasks/scan_container.py`):
 
 Stage transitions emit WebSocket events (`scan.<id>.progress`) so the UI updates in real time. Completion fires the appropriate notification triggers.
 
-## ORT rules {#ort-rules}
+## License-tier classification {#ort-rules}
 
-License classification is rule-driven. The rules live in `ort/rules.kts` and are mounted read-only into the worker:
+:::warning Classification source at v2.0.0
+At v2.0.0, license-tier classification is **not** ORT-rule-driven. The
+tier (`forbidden` / `conditional` / `permissive` / `unknown`) comes
+from the hard-coded `_LICENSE_CATEGORY_DEFAULTS` dictionary in
+`apps/backend/tasks/scan_source.py`. The repo's `ort/rules.kts` is a
+placeholder reserved for the v2.2 customization path. Editing
+`ort/rules.kts` has no effect at v2.0.0.
+:::
 
-```kotlin
-// Excerpt — see ort/rules.kts for the canonical version.
-val forbidden = setOf(
-    "AGPL-3.0-only", "AGPL-3.0-or-later",
-    "GPL-2.0-only",  "GPL-2.0-or-later",
-    "GPL-3.0-only",  "GPL-3.0-or-later",
-    "SSPL-1.0",      "BUSL-1.1",
-)
+The classifier maps SPDX IDs to tiers as follows (representative
+subset — see `_LICENSE_CATEGORY_DEFAULTS` for the canonical list):
 
-val conditional = setOf(
-    "LGPL-2.1-only", "LGPL-2.1-or-later",
-    "LGPL-3.0-only", "LGPL-3.0-or-later",
-    "MPL-2.0", "EPL-1.0", "EPL-2.0", "CDDL-1.0",
-)
-
-// Allowed = anything else that's a recognized SPDX identifier; unknown
-// expressions surface as `Unknown` and need human review.
+```python
+_LICENSE_CATEGORY_DEFAULTS: dict[str, str] = {
+    # forbidden
+    "AGPL-3.0-only": "forbidden",
+    "AGPL-3.0-or-later": "forbidden",
+    "GPL-2.0-only":  "forbidden",
+    "GPL-2.0-or-later": "forbidden",
+    "GPL-3.0-only":  "forbidden",
+    "GPL-3.0-or-later": "forbidden",
+    "SSPL-1.0": "forbidden",
+    "BUSL-1.1": "forbidden",
+    # conditional
+    "LGPL-2.1-only": "conditional",
+    "LGPL-2.1-or-later": "conditional",
+    "LGPL-3.0-only": "conditional",
+    "LGPL-3.0-or-later": "conditional",
+    "MPL-2.0": "conditional",
+    "EPL-1.0": "conditional",
+    "EPL-2.0": "conditional",
+    "CDDL-1.0": "conditional",
+    # ... permissive entries omitted
+}
+# Lookup is exact-match; missing keys (including suffix-less variants
+# like "LGPL-3.0") fall through to "unknown" and need human review.
 ```
 
-Editing the rules is supported. After editing:
+Operator override path at v2.0.0:
 
-1. Restart the worker (`docker-compose restart worker beat`).
-2. Re-scan affected projects to apply the new classification.
+1. Patch `_LICENSE_CATEGORY_DEFAULTS` in `apps/backend/tasks/scan_source.py`.
+2. Rebuild and restart the worker (`docker-compose restart worker beat`).
+3. Re-scan affected projects to apply the new classification.
 
-The portal does not auto-re-classify historical scans — the historical record is preserved with the rules that were in effect at scan time.
+ORT-driven, per-organization rule customization via the `ort/rules.kts`
+DSL is planned for v2.2; the `ORT_RULES_PATH` env var, the mount in
+the worker image, and this anchor are reserved for that release.
+
+The portal does not auto-re-classify historical scans — the historical record is preserved with the classification that was in effect at scan time.
 
 ## Dependency-Track integration {#dependency-track}
 

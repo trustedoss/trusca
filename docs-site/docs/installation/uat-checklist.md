@@ -170,7 +170,10 @@ bash scripts/restore.sh backups/2026-05-09-143022
 ```
 
 When `restore.sh` prints the destructive-action prompt, type **y**. (For
-automation use `BACKUP_RESTORE_CONFIRM=yes bash scripts/restore.sh …`.)
+automation pass the `--confirm` flag: `bash scripts/restore.sh --confirm <backup-dir>`.
+The legacy `BACKUP_RESTORE_CONFIRM=yes` environment variable was removed
+in marathon bundle 4 — argv flags are visible in `ps` output, env vars
+are not.)
 
 **Expected**: `restore.sh` ends with `✓ alembic head matches manifest`.
 Sign in to `vm-b`'s portal — your `vm-a` projects, scans, and users are
@@ -220,8 +223,8 @@ docker-compose -f docker-compose.yml logs -f backend
 
 ### `restore.sh` exits at the confirm prompt
 
-You typed something other than `y` / `Y`. Re-run; for scripted use prefix
-with `BACKUP_RESTORE_CONFIRM=yes`.
+You typed something other than `y` / `Y`. Re-run; for scripted use pass
+the `--confirm` argv flag (`bash scripts/restore.sh --confirm <dir>`).
 
 ### Cross-host restore fails on `alembic head mismatch`
 

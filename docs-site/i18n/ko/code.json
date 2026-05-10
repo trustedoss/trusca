@@ -64,11 +64,11 @@
     "description": "Feature card: license compliance description"
   },
   "homepage.feature.sbom.title": {
-    "message": "SBOM · 보고서",
+    "message": "SBOM",
     "description": "Feature card: SBOM title"
   },
   "homepage.feature.sbom.desc": {
-    "message": "CycloneDX (JSON / XML) · SPDX (JSON / Tag-Value) 내보내기. 법무 검토용 Excel · PDF 보고서, 컴포넌트별 의무사항 추적 포함.",
+    "message": "CycloneDX (JSON / XML) · SPDX (JSON / Tag-Value) 내보내기와 컴포넌트별 의무사항 추적. Excel · PDF 보고서는 v2.x 로드맵 항목입니다.",
     "description": "Feature card: SBOM description"
   },
   "homepage.feature.containers.title": {

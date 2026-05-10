@@ -46,14 +46,12 @@ const FEATURES: FeatureItem[] = [
   },
   {
     id: "sbom",
-    title: (
-      <Translate id="homepage.feature.sbom.title">SBOM &amp; reports</Translate>
-    ),
+    title: <Translate id="homepage.feature.sbom.title">SBOM</Translate>,
     description: (
       <Translate id="homepage.feature.sbom.desc">
-        CycloneDX (JSON / XML) and SPDX (JSON / Tag-Value) export. Excel and
-        PDF reports for legal review, with full obligation tracking per
-        component.
+        CycloneDX (JSON / XML) and SPDX (JSON / Tag-Value) export, with full
+        obligation tracking per component. Excel and PDF reports are on the
+        v2.x roadmap.
       </Translate>
     ),
     href: "/docs/intro",

@@ -275,6 +275,12 @@ sudo systemctl enable --now trustedoss-backup.timer
 
 ## 트러블슈팅
 
+:::info 먼저 확인할 로그
+- `docker-compose logs --tail=500 beat | grep daily-auto-backup` — beat 스케줄러가 예정대로 태스크를 발사했는가?
+- `docker-compose logs --tail=2000 worker | grep "backup\."` — 태스크 결과(completed / failed / pruned / restored).
+- `/admin/backup/list` API — 가장 최근 시도 + 상태.
+:::
+
 ### `pg_dump`가 권한 거부 오류
 
 스크립트는 postgres 컨테이너 안에서 `pg_dump`를 실행합니다 — 호스트 권한 문제는 없어야 합니다. `.env`의 `POSTGRES_USER`가 라이브 사용자와 일치하는지 확인:

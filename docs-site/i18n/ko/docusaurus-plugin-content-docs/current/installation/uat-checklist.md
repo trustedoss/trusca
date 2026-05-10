@@ -170,7 +170,9 @@ bash scripts/restore.sh backups/2026-05-09-143022
 ```
 
 `restore.sh`가 destructive-action 프롬프트를 출력하면 **y**를 입력. 자동화
-시 `BACKUP_RESTORE_CONFIRM=yes bash scripts/restore.sh …`를 사용.
+시 `--confirm` argv flag 전달: `bash scripts/restore.sh --confirm <backup-dir>`.
+(legacy `BACKUP_RESTORE_CONFIRM=yes` env var 는 marathon bundle 4 에서 제거 — argv flag 는
+`ps` 출력에 보이지만 env var 는 보이지 않음.)
 
 **기대**: `restore.sh`가 `✓ alembic head matches manifest`로 종료.
 `vm-b`의 포털에 로그인하면 `vm-a`의 프로젝트/스캔/사용자가 그대로 보여야
@@ -221,7 +223,7 @@ docker-compose -f docker-compose.yml logs -f backend
 ### `restore.sh`가 confirm 프롬프트에서 종료
 
 `y` / `Y` 외의 입력을 했습니다. 재실행하세요. 스크립트 자동화 시
-`BACKUP_RESTORE_CONFIRM=yes`를 prefix.
+`--confirm` argv flag 를 전달 (`bash scripts/restore.sh --confirm <dir>`).
 
 ### 호스트간 복원이 `alembic head mismatch`로 실패
 

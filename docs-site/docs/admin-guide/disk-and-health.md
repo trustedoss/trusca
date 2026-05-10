@@ -147,6 +147,12 @@ After making changes:
 
 ## Troubleshooting
 
+:::info Logs to check first
+- `docker-compose logs --tail=200 backend | grep disk_threshold` — the threshold check task's last verdict.
+- `/admin/disk` API — per-card breakdown JSON (workspace, dt_volume, postgres, redis).
+- Host: `df -h /opt/trustedoss && docker system df`.
+:::
+
 ### Health page says everything is `healthy` but users complain
 
 The dashboard is a snapshot of liveness, not full functionality. Liveness can pass while:
