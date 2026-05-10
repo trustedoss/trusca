@@ -10,6 +10,8 @@ sidebar_position: 4
 
 The **Vulnerabilities** tab lists every open CVE the scan pipeline correlated against the project's components. Findings persist across scans — once a CVE is found, it stays in the project's history with its state and triage notes until the underlying component is removed or upgraded.
 
+![Project detail — Vulnerabilities tab with severity filter and per-row CVE links](/img/screenshots/user-vulns-list.png)
+
 :::note Audience
 Engineers triaging individual findings; security leads tracking SLA. Mutating the VEX state requires `developer` or higher; bulk suppression requires `team_admin`.
 :::

@@ -36,22 +36,34 @@ const __dirname = path.dirname(__filename);
 export const STATE_PATH = path.join(__dirname, ".storage-state.json");
 export const SEED_PATH = path.join(__dirname, ".seed.json");
 
-/** Project names the bulk capture run navigates between. */
-export const SHARED_PROJECT_NAMES = [
-  "screenshots-bulk-alpha",
-  "screenshots-bulk-beta",
-];
+/**
+ * Project names for this capture run. Timestamped so back-to-back runs
+ * do not collide with each other's projects in the shared dev DB —
+ * the SPA's project list otherwise shows multiple rows with the same
+ * name and `openProjectDetail("alpha")` fails Playwright strict mode.
+ *
+ * Spec files do not import these names directly; they read the
+ * persisted `.seed.json` via `_helpers.readSeedProjectNames()` so the
+ * timestamp picked here matches.
+ */
+function buildProjectNames(stamp: number): string[] {
+  return [
+    `screenshots-bulk-alpha-${stamp}`,
+    `screenshots-bulk-beta-${stamp}`,
+  ];
+}
 
 /* eslint-disable @typescript-eslint/no-unused-vars */
 export default async function globalSetup(_config: FullConfig): Promise<void> {
+  const stamp = Date.now();
   const seed = seedE2eUser({
-    projectNames: SHARED_PROJECT_NAMES,
+    projectNames: buildProjectNames(stamp),
     superAdmin: true,
     withScan: true,
     componentCount: 50,
     // Timestamped prefix avoids `uq_components_purl` collisions across
     // back-to-back capture runs (e.g. local iteration).
-    componentPrefix: `screenshot-bulk-${Date.now()}`,
+    componentPrefix: `screenshot-bulk-${stamp}`,
     vulnerabilityCount: 30,
     withObligations: true,
     withOAuthIdentity: "github",
@@ -64,9 +76,23 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
   const auth = new AuthHarness(page, baseURL);
   await auth.gotoLogin();
   await auth.login(seed.email, seed.password);
+
+  // Pull the access token out of the in-memory zustand store so spec
+  // files can re-inject it via `addInitScript` on every fresh page.
+  // This bypasses the refresh-token rotation policy (CLAUDE.md
+  // §품질·보안 §3) which would otherwise invalidate `storageState`
+  // after the second spec re-uses the cookie's refresh token.
+  const accessToken: string | null = await page.evaluate(() => {
+    const w = window as unknown as { __authStore?: { accessToken?: string | null } };
+    return w.__authStore?.accessToken ?? null;
+  });
+
   await ctx.storageState({ path: STATE_PATH });
   await browser.close();
 
-  fs.writeFileSync(SEED_PATH, JSON.stringify(seed, null, 2));
+  fs.writeFileSync(
+    SEED_PATH,
+    JSON.stringify({ ...seed, accessToken }, null, 2),
+  );
 }
 /* eslint-enable @typescript-eslint/no-unused-vars */

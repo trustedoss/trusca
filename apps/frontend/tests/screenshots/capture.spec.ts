@@ -20,7 +20,7 @@
 import { expect, test } from "@playwright/test";
 
 import { AdminBackupHarness } from "../_harness/AdminBackupHarness";
-import { captureScreenshot } from "./_helpers";
+import { applyAuthFromSeed, captureScreenshot } from "./_helpers";
 
 /**
  * Sentinel gz buffer (10 bytes — gzip magic + minimal header) accepted
@@ -35,6 +35,10 @@ const SENTINEL_BACKUP_FILE = {
 };
 
 test.describe.serial("@screenshots admin/backup", () => {
+  test.beforeEach(async ({ page }) => {
+    await applyAuthFromSeed(page);
+  });
+
   test("admin-backup-list — list view with mounted table", async ({ page }) => {
     const backup = new AdminBackupHarness(page);
     await backup.gotoBackup();

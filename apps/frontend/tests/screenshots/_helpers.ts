@@ -9,6 +9,7 @@
  * specs receive an already-authenticated `Page` and only need to
  * navigate and snapshot.
  */
+import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -16,6 +17,95 @@ import type { Page } from "@playwright/test";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+/** Where global-setup.ts persists the seed summary + access token. */
+const SEED_PATH = path.join(__dirname, ".seed.json");
+
+interface SeedFile {
+  email: string;
+  password: string;
+  user_id: string;
+  team_id: string;
+  project_names: string[];
+  project_ids: string[];
+  accessToken?: string | null;
+}
+
+let cachedSeed: SeedFile | null = null;
+
+function readSeed(): SeedFile {
+  if (cachedSeed !== null) return cachedSeed;
+  if (!fs.existsSync(SEED_PATH)) {
+    throw new Error(
+      `seed file missing at ${SEED_PATH} — globalSetup did not run`,
+    );
+  }
+  cachedSeed = JSON.parse(fs.readFileSync(SEED_PATH, "utf8")) as SeedFile;
+  return cachedSeed;
+}
+
+/**
+ * Project names persisted by `global-setup.ts` for this capture run.
+ * Timestamped per run so spec files do not have to hard-code a name
+ * that would collide with a prior run's leftover rows. The spec files
+ * use `[0]` (alpha) for the primary scenario and `[1]` (beta) when
+ * a second project is needed.
+ */
+export function readSeedProjectNames(): string[] {
+  return readSeed().project_names;
+}
+
+/**
+ * Inject the seeded super-admin's access token into the in-memory
+ * zustand store on every navigation in this `Page`.
+ *
+ * Why not just `use.storageState`? The backend's refresh-token
+ * rotation policy (CLAUDE.md §품질·보안 §3 — refresh + reuse
+ * detection) invalidates the cookie's refresh token the first time
+ * a spec consumes it. Subsequent specs that adopt the same
+ * `storageState` would fail at the second `/auth/refresh` call.
+ *
+ * This helper sidesteps the rotation entirely: every fresh page
+ * boots with the access token already populated in zustand, no
+ * refresh dance, no 401. Works because `apps/frontend/src/lib/api.ts`
+ * exposes `window.__setAccessToken` in dev builds.
+ *
+ * Call once per test (`beforeEach`) so each fresh `Page` carries
+ * the hook before any navigation runs.
+ */
+export async function applyAuthFromSeed(page: Page): Promise<void> {
+  const seed = readSeed();
+  const token = seed.accessToken ?? null;
+  if (token === null) {
+    throw new Error(
+      "seed file missing accessToken — re-run globalSetup against a dev build",
+    );
+  }
+  await page.addInitScript((tokenValue: string) => {
+    const w = window as unknown as Record<string, unknown>;
+    const apply = (): boolean => {
+      const fn = w.__setAccessToken as
+        | ((t: string | null) => void)
+        | undefined;
+      if (typeof fn === "function") {
+        fn(tokenValue);
+        return true;
+      }
+      return false;
+    };
+    if (!apply()) {
+      // The hook is mounted lazily by `apps/frontend/src/lib/api.ts`
+      // (after the SPA's first import). Retry on the next microtask
+      // tick — that is enough for the typical Vite + React 18 boot.
+      const handle = setInterval(() => {
+        if (apply()) clearInterval(handle);
+      }, 25);
+      // Safety net: stop polling after 5s; spec assertions will surface
+      // any real auth failure as a test timeout.
+      setTimeout(() => clearInterval(handle), 5_000);
+    }
+  }, token);
+}
 
 /** Repo root, computed from this file's location at module load. */
 export const REPO_ROOT = path.resolve(__dirname, "..", "..", "..", "..");
