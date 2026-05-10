@@ -31,7 +31,7 @@ Open `/integrations` and scroll to the **API keys** section. The list shows ever
 
 2. Fill in the form:
    - **Name** — free-text reminder of what the key is for (e.g. `github-action-checkout-service`).
-   - **Scope** — `org`, `team`, or `project`. Lower scopes are stricter; pick the smallest that covers the calls you need to make. The form has plain UUID inputs for `team_id` (required when scope=`team`) and `project_id` (required when scope=`project`); copy the IDs from the corresponding admin pages. A picker UI is on the roadmap.
+   - **Scope** — `org`, `team`, or `project`. Lower scopes are stricter; pick the smallest that covers the calls you need to make. The form surfaces a team or project picker when those scopes are selected.
 3. Click **Create**.
 
 :::caution Keys do not expire at v2.0.0
@@ -111,7 +111,7 @@ URL to register at GitLab: `https://<your-host>/v1/webhooks/gitlab`.
 
 - After creating a key, run `curl -sS -H "Authorization: Bearer <key>" .../v1/projects` and confirm a 200 response with the team's projects.
 - After registering the webhook in GitHub, push a commit and check the **Webhook deliveries** view in GitHub — successful deliveries return HTTP 202.
-- A super-admin can confirm `api_key.create` and `webhook.delivery` events on `/admin/audit`. Team-scoped audit-log access is on the roadmap (see below).
+- A super-admin can confirm `target_table=api_keys&action=create` and `target_table=webhook_deliveries&action=create` events on `/admin/audit`. Team-scoped audit-log access is on the roadmap (see below).
 
 ## Troubleshooting
 

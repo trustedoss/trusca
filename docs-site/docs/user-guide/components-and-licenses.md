@@ -126,7 +126,7 @@ ORT could not parse the metadata. Common causes:
 
 ### Classification looks wrong
 
-The classification is rule-driven. Edit `ort/rules.kts`, restart the worker, re-scan. If the rule itself is correct but the concluded license is wrong, manual override of the concluded license is on the v2.2 roadmap; the conclusion shown today is purely the ORT/cdxgen output.
+The classification is rule-driven. Edit `ort/rules.kts`, restart the worker, re-scan. If the rule itself is correct but the concluded license is wrong, override the conclusion in the component drawer.
 
 ### Lockfile not detected
 

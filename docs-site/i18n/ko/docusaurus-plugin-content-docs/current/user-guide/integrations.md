@@ -31,7 +31,7 @@ sidebar_position: 9
 
 2. 폼을 채웁니다.
    - **Name** — Key 용도를 떠올리게 하는 자유 텍스트(예: `github-action-checkout-service`).
-   - **Scope** — `org`, `team`, `project`. 낮은 scope가 더 엄격합니다. 필요한 호출을 커버하는 가장 작은 scope를 선택하세요. 폼에는 `team_id`(scope=`team`일 때 필수)와 `project_id`(scope=`project`일 때 필수)를 위한 평문 UUID 입력란이 있습니다. 해당 admin 페이지에서 ID를 복사해 넣으세요. 선택기 UI는 로드맵 항목입니다.
+   - **Scope** — `org`, `team`, `project`. 낮은 scope가 더 엄격합니다. 필요한 호출을 커버하는 가장 작은 scope를 선택하세요. team / project scope를 선택하면 폼에 팀·프로젝트 선택기가 노출됩니다.
 3. **Create**를 클릭합니다.
 
 :::caution v2.0.0에서는 Key가 만료되지 않음
@@ -111,7 +111,7 @@ GitLab에 등록할 URL — `https://<your-host>/v1/webhooks/gitlab`.
 
 - Key 생성 후 `curl -sS -H "Authorization: Bearer <key>" .../v1/projects`로 200 응답과 팀 프로젝트가 반환되는지 확인하세요.
 - GitHub에 Webhook 등록 후 커밋을 푸시하고 GitHub의 **Webhook deliveries** 뷰에서 HTTP 202 성공 전송을 확인하세요.
-- super-admin이 `/admin/audit`에서 `api_key.create`와 `webhook.delivery` 이벤트를 확인할 수 있습니다. team-범위 감사 로그는 로드맵 항목입니다(아래 참고).
+- super-admin이 `/admin/audit`에서 `target_table=api_keys&action=create`와 `target_table=webhook_deliveries&action=create` 이벤트를 확인할 수 있습니다. team-범위 감사 로그는 로드맵 항목입니다(아래 참고).
 
 ## 트러블슈팅
 

@@ -62,7 +62,7 @@ curl -sS -L -OJ \
 
 `format` accepts: `cyclonedx-json`, `cyclonedx-xml`, `spdx-json`, `spdx-tv`.
 
-By default, the export reflects the project's **latest successful scan**. Pass `?scan_id=<uuid>` to pin to a specific scan.
+Endpoint always exports the **latest succeeded** scan's SBOM; pinning to a specific historical scan id is on the roadmap.
 
 ## NOTICE file
 
@@ -126,9 +126,9 @@ The VEX states map directly to CycloneDX's `analysis.state`:
 
 ## Troubleshooting
 
-### `404` when calling `/sbom`
+### Empty SBOM when no scan has succeeded yet
 
-The project has no successful scan yet. Trigger one — see [Scans](./scans.md).
+If the project has no succeeded scan yet, the export still returns a valid SBOM document with empty `components`/`packages` lists (HTTP 200) so downstream tooling can parse it.
 
 ### `422` from `/sbom?format=…`
 

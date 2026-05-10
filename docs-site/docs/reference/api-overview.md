@@ -119,16 +119,16 @@ POST   /auth/reset-password                  anonymous
 GET    /auth/oauth/{provider}/authorize      anonymous
 GET    /auth/oauth/{provider}/callback       anonymous
 
-# /v1/users/me/* exposes only the sub-resources below — see GET /auth/me for self info.
+GET    /auth/me                              current user info (auth router)
 GET    /v1/users/me/notification-prefs
 PUT    /v1/users/me/notification-prefs
 GET    /v1/users/me/oauth-identities
-DELETE /v1/users/me/oauth-identities/{identity_id}   # last-OAuth + has-password gated
+DELETE /v1/users/me/oauth-identities/{identity_id}   # gates last-OAuth + has-password
+                                                     # 409 → urn:trustedoss:problem:last-oauth-link
 
 GET    /v1/projects                          list (team-scoped)
 POST   /v1/projects
 GET    /v1/projects/{id}
-GET    /v1/projects/{id}/overview            aggregated risk / scan picture (Overview tab)
 PATCH  /v1/projects/{id}
 DELETE /v1/projects/{id}
 GET    /v1/projects/{id}/sbom?format=…
@@ -204,8 +204,6 @@ DELETE /v1/admin/backup/{name}
 ```
 
 The full schema (request bodies, response shapes, validation rules) lives at `/api/docs` on every running install.
-
-`DELETE /v1/users/me/oauth-identities/{identity_id}` is gated by two checks: the caller must still be able to sign in afterwards (either another OAuth identity remains, or the account has a password). When neither path remains the endpoint returns **409 Conflict** with `type=urn:trustedoss:problem:last-oauth-link`.
 
 ### Optimistic concurrency
 

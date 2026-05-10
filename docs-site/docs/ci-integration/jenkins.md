@@ -16,10 +16,6 @@ Engineers maintaining a Jenkins controller / agent. Familiarity with declarative
 
 ## Quick start
 
-> **Tip**: A copy-paste-ready 5-stage example with credentials wiring,
-> deadline polling, and a PR-comment stage lives at
-> [`templates/Jenkinsfile.example`](https://github.com/trustedoss/trustedoss-portal/blob/main/templates/Jenkinsfile.example) — recommended starting point for new pipelines.
-
 ```groovy
 // Jenkinsfile
 pipeline {
@@ -79,7 +75,7 @@ Save as `Jenkinsfile` at the repo root. Make sure the agent has `bash`, `curl`, 
 
 ### 1. Generate an API key
 
-In the portal: **Project Settings → CI/CD → API keys → New API key**. Set the `scope` to `project` so the key is bound to this project only. There is no per-action capability list at v2.0.0 — the key inherits the issuing user's role; only scope is enforced per key. See [API keys](../admin-guide/api-keys.md).
+In the portal: **Project Settings → CI/CD → API keys → New API key** with `scan:trigger`, `scan:read`, `report:download`. See [API keys](../admin-guide/api-keys.md).
 
 ### 2. Add the key as a Jenkins credential
 
@@ -143,8 +139,6 @@ when {
   }
 }
 ```
-
-PR comments via Jenkins multibranch hit GitHub only (same backend constraint as GitLab — see the GitLab CI page's warning). The portal posts the comment server-side using its own GitHub PAT; Jenkins itself does not relay any token.
 
 ### Advisory mode (don't fail the build)
 

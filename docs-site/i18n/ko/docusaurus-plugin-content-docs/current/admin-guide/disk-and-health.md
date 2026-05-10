@@ -129,13 +129,13 @@ docker-compose -f docker-compose.yml exec backend \
 
 ## /admin/scans — 스캔 큐와 워커 모니터링
 
-`/admin/scans` 페이지(super-admin 전용)는 조직 전체에 걸친 실행 중·대기·성공·실패 스캔을 모두 나열합니다. 운영자는 다음을 할 수 있습니다.
+`/admin/scans` 페이지(super-admin 전용)는 조직 전체의 실행 중·대기·성공·실패 스캔을 나열합니다. 운영자는 다음을 수행할 수 있습니다.
 
-- 임의 태스크의 전체 진행 페이로드와 마지막 로그 프레임 확인
-- 멈춘 스캔 강제 취소(`POST /v1/admin/scans/{scan_id}/cancel`)
-- 상태·종류·프로젝트·할당된 워커별 필터링
+- 임의 태스크의 전체 progress 페이로드 + 마지막 로그 프레임 검사.
+- 멈춘 스캔 강제 취소(`POST /v1/admin/scans/{scan_id}/cancel`).
+- 상태·종류·프로젝트·할당 워커로 필터링.
 
-백엔드 — `apps/backend/api/v1/admin/scans.py`. UI — `apps/frontend/src/features/admin/scans/AdminScansPage.tsx`.
+백엔드: `apps/backend/api/v1/admin/scans.py`. UI: `apps/frontend/src/features/admin/scans/AdminScansPage.tsx`.
 
 ## 정상 동작 확인
 

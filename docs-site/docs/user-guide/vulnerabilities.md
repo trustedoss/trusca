@@ -8,12 +8,12 @@ sidebar_position: 4
 
 # Vulnerabilities
 
-The **Vulnerabilities** tab lists every open CVE the scan pipeline correlated against the project's components. Findings persist across scans — once a CVE is found, it stays in the project's history with its state and triage notes until the underlying component is removed or upgraded.
+The **Vulnerabilities** tab lists every open CVE the scan pipeline correlated against the project's components. Findings persist across scans — once a CVE is found, it stays in the project's history with its status and triage notes until the underlying component is removed or upgraded.
 
 ![Project detail — Vulnerabilities tab with severity filter and per-row CVE links](/img/screenshots/user-vulns-list.png)
 
 :::note Audience
-Engineers triaging individual findings; security leads tracking SLA. Mutating the VEX state requires `developer` or higher; bulk suppression requires `team_admin`.
+Engineers triaging individual findings; security leads tracking SLA. Mutating the VEX status requires `developer` or higher; bulk suppression requires `team_admin`.
 :::
 
 ## Severity model
@@ -42,11 +42,11 @@ Findings follow the [CycloneDX VEX](https://cyclonedx.org/capabilities/vex/) sev
 | **Suppressed** | Operator-silenced (`not_affected` with explicit suppression). | Excluded. |
 | **Fixed** | Resolved (component upgraded or patch applied). | Excluded. |
 
-Transitions are logged in the audit log with actor, previous state, new state, and the required justification message.
+Transitions are logged in the audit log with actor, previous status, new status, and the required justification message.
 
 ### Required justification
 
-Justifications are optional at the API level; the UI surfaces a free-text textarea on every transition so reviewers can leave audit context. Backend does not enforce a minimum length. The portal stores the justification verbatim — keep it factual ("upgraded lodash to 4.17.21", "vulnerable code path is in `dev_only` module"). The text appears in CycloneDX VEX exports.
+Every transition out of `New` / `Analyzing` requires a free-text justification (≥ 10 chars). The portal stores the justification verbatim — keep it factual ("upgraded lodash to 4.17.21", "vulnerable code path is in `dev_only` module"). The text appears in CycloneDX VEX exports.
 
 ## The findings table
 
@@ -57,7 +57,7 @@ Columns:
 - **CVSS** — numeric CVSS v3 score from the upstream feed.
 - **Title** — short summary from the advisory.
 - **Affected** — the affected component (`name@version`).
-- **Status** — current VEX state.
+- **Status** — current VEX status.
 - **Discovered** — first time this finding appeared on a scan.
 
 Filters on the inline bar: severity, status, plus a **search** box (free text against CVE ID / title / component) and sort + order controls.
@@ -68,15 +68,15 @@ Click any row to open:
 
 - **Summary** — title, description, CWE, CVSS vector.
 - **References** — vendor advisories, fix commits, exploit databases.
-- **Affected** — the upstream-reported affected range with the project's component version highlighted, plus `fixed_in` (the upstream version that ships the fix, when available).
-- **Analysis** — VEX state action buttons (one per allowed transition: Reopen as new, Move to analyzing, Mark exploitable, Mark not affected, Mark false positive, Suppress, Mark fixed). Click a button to open the justification dialog and submit. Only `developer` or higher.
-- **History** — VEX state-transition timeline (who changed the state, when, with what justification).
+- **Affected** — the upstream-reported affected range with the project's component version highlighted, plus `fixed_version` (the upstream version that ships the fix, when available).
+- **Analysis** — VEX status action buttons (one per allowed transition: Confirm, Mark exploitable, Mark not affected, Mark in triage, Mark resolved, Mark false positive, Mark not applicable). Click a button to open the justification dialog and submit. Only `developer` or higher.
+- **History** — VEX status-transition timeline (who changed the status, when, with what justification).
 
 ## Re-detection
 
 When Dependency-Track ingests new CVEs from upstream feeds (NVD, OSV, GitHub Advisory), the periodic resync task re-correlates them against every project's latest scan. New findings appear automatically — no manual action required.
 
-The **CVE re-detection** banner on the dashboard summarizes the most recent resync run: number of feeds processed, number of new findings, and the run timestamp.
+CVE re-detection happens automatically when DT mirrors a new advisory: the next time the Celery beat `dt_findings_resync` task runs (default every hour), affected projects get fresh `vulnerability_findings` rows. There is no in-app banner at v2.0.0; operators monitor `/admin/scans` and the per-project Vulnerabilities tab.
 
 If the **Notify on new CVE** trigger is enabled (see [admin notifications](../admin-guide/dt-connector.md#notifications)), the assigned team or watchers receive an email / Slack / Teams message.
 
@@ -92,8 +92,8 @@ A common point of confusion:
 
 After triaging:
 
-1. The state badge updates immediately in the table.
-2. The audit log records `vuln_finding.update` with `previous_state`, `new_state`, `justification`.
+1. The status badge updates immediately in the table.
+2. The audit log records `target_table=vulnerability_findings&action=update` with `previous_status`, `new_status`, `justification` in the diff.
 3. Excluded findings stop counting toward the project's risk score.
 4. Excluded findings are excluded from the build gate on the next scan.
 
@@ -121,7 +121,7 @@ Items the manual previously promised that are not in v2.0.0; tracked for later r
 
 - "Last seen" column on the findings table (most recent scan that confirmed the finding) — planned for v2.1.
 - Per-component filter and discovered-date range filter on the findings toolbar — planned for v2.1; today the search box covers component lookup.
-- Standalone **Fix availability** drawer section — for v2.0.0 the fix version surfaces as `fixed_in` inside the **Affected** section.
+- Standalone **Fix availability** drawer section — for v2.0.0 the fix version surfaces as `fixed_version` inside the **Affected** section.
 
 ## See also
 

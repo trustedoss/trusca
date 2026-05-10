@@ -62,7 +62,7 @@ curl -sS -L -OJ \
 
 `format` 허용값: `cyclonedx-json`, `cyclonedx-xml`, `spdx-json`, `spdx-tv`.
 
-기본적으로 내보내기는 프로젝트의 **가장 최근 성공 스캔**을 반영합니다. 특정 스캔으로 고정하려면 `?scan_id=<uuid>`를 전달하세요.
+엔드포인트는 항상 **가장 최근에 성공한 스캔(latest succeeded)** 의 SBOM을 내보냅니다. 특정 과거 스캔 ID로 고정하는 기능은 로드맵 항목입니다.
 
 ## NOTICE 파일
 
@@ -126,9 +126,9 @@ VEX 상태와 CycloneDX `analysis.state` 매핑:
 
 ## 트러블슈팅
 
-### `/sbom` 호출 시 `404`
+### 성공한 스캔이 아직 없을 때의 빈 SBOM
 
-프로젝트에 성공 스캔이 아직 없습니다. 스캔을 트리거하세요 — [스캔](./scans.md) 참고.
+프로젝트에 아직 성공한 스캔이 없는 경우에도 내보내기는 빈 `components`/`packages` 리스트를 가진 유효한 SBOM 문서(HTTP 200)를 반환합니다. 다운스트림 도구가 그대로 파싱할 수 있습니다.
 
 ### `/sbom?format=…` 호출 시 `422`
 

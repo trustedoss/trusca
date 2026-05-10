@@ -28,7 +28,7 @@ sidebar_position: 4
 | `created_at` | timestamptz | 작업 발생 시각(서버 시계, UTC). |
 | `actor_user_id` | UUID | 작업 수행 사용자(시스템 작업은 null). |
 | `team_id` | UUID | 해당 시 작업의 팀 범위(조직 단위 쓰기는 null). |
-| `action` | text | ORM 자동 추적은 동사 형태(`create` / `update` / `delete`)이며, 명시적 비즈니스 이벤트는 점-네임스페이스(`backup.completed`, `oauth.identity.unlinked` 등) 이름을 사용합니다. 동사 형태는 `target_table`과 자동으로 짝을 이루고, 명시적 이벤트는 자체 의미를 가지며 `target_table`이 `None`일 수 있습니다. 동사 형태의 필터 예: `target_table=projects&action=create`. |
+| `action` | text | 동사만(`create` / `update` / `delete`). 테이블은 `target_table`에 별도 캡처. 예: `target_table=projects&action=create` 로 필터. |
 | `target_table` | text | 영향 받은 객체가 속한 테이블(`projects`, `teams`, `users`, `vulnerability_findings` 등). |
 | `target_id` | String(64) | 영향 받은 객체의 식별자. |
 | `request_id` | text | 구조화 로그(`X-Request-ID`)와 상관. |
@@ -51,15 +51,16 @@ sidebar_position: 4
 
 인증된 모든 `POST`, `PATCH`, `PUT`, `DELETE`가 정확히 하나의 항목을 생성합니다. 읽기 엔드포인트(`GET`)는 기록하지 않습니다. SBOM 내보내기는 structlog `sbom_exported` 이벤트를 발신하지만 v2.0.0에서는 `audit_logs` 행을 **생성하지 않습니다** — 내보내기를 감사 테이블에 통합하는 것은 로드맵 항목입니다.
 
-시스템 작업(Celery)도 기록합니다. 두 형태의 action 이 모두 등장합니다 — ORM 리스너의 동사형, 명시적 감사 호출의 점-네임스페이스 이벤트:
+시스템 작업(Celery)도 기록합니다. 각 행은 동사만 담고 `target_table`을 별도로 가집니다. 예시:
 
 - `target_table=scans&action=create`(시스템, Webhook이 스캔 트리거)
 - `target_table=dt_orphans&action=delete`
 - `target_table=backups&action=create`
 - `target_table=notifications&action=create`
-- `action=backup.completed`(`tasks/backup.py`의 명시적 비즈니스 이벤트, 행의 `target_table`은 `None`)
-- `action=backup.failed`, `action=backup.pruned`, `action=backup.restored`, `action=backup.restore_failed`(백업 라이프사이클 sibling 이벤트)
-- `action=oauth.identity.unlinked`(`services/oauth_identity_service.py`의 명시적 이벤트, 동시에 `oauth_identities&action=delete` 기본 행도 함께 발신)
+
+:::note 필터 노출 vs raw 행 테이블
+Admin UI 의 `target_table` 필터 드롭다운은 `apps/backend/schemas/admin_ops.py` 의 `AuditTargetTable` 화이트리스트로 제한됩니다. 이 화이트리스트에 없는 테이블 이름(예: `dt_orphans`, `backups`, `api_keys`, `notifications`, `dt_breaker`)을 가진 행은 `audit_logs` 에 그대로 기록되지만 raw SQL 로만 조회 가능합니다.
+:::
 
 ## 감사 로그 페이지
 
@@ -73,7 +74,7 @@ v2.0.0 의 상단 인라인 필터 바:
 - **대상 테이블** — enum 단일 선택(`projects`, `teams`, `users`, `vulnerability_findings` 등).
 - **동작** — 자유 텍스트 contains(대소문자 구분).
 - **날짜 범위** — `from` 과 `to`(사용자 지정).
-- **검색** — 자유 텍스트 쿼리(`q`)는 JSON 인코딩된 `diff` 컬럼에 대한 `ilike` 매칭을 수행합니다. action 과 target_table 은 별도 필터 파라미터(`action=`, `target_table=`).
+- **검색** — 자유 텍스트 쿼리(`q`). JSON 인코딩된 `diff` 컬럼에 대해 `ilike` 매칭을 수행합니다. `action` 과 `target_table` 은 별도 필터 파라미터(`action=`, `target_table=`)이며 `q` 는 이 두 컬럼을 매칭하지 않습니다.
 
 필터는 결합됩니다. URL이 갱신되어 동료와 필터된 뷰를 공유 가능. 다중 선택 드롭다운, 프리셋 날짜 범위, 요청 ID 필터, 대상 ID 필터는 로드맵 항목입니다(아래 참고).
 

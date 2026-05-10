@@ -55,19 +55,15 @@ curl -sS -X POST https://trustedoss.example.com/v1/projects \
   -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "my-service",
-    "slug": "my-service",
-    "team_id": "00000000-0000-0000-0000-000000000000",
-    "description": "Public-facing API",
-    "git_url": "https://github.com/acme/my-service.git",
-    "default_branch": "main",
-    "visibility": "team"
+    "name": "checkout-service",
+    "description": "Storefront checkout service",
+    "git_url": "https://github.com/acme/checkout-service.git"
   }' | jq .
 ```
 
 응답에 프로젝트 UUID가 포함됩니다 — GitHub Action의 `project-id` 입력값과 GitLab CI 변수에 사용하므로 보관하세요.
 
-스키마는 알 수 없는 필드를 거부합니다(`extra="forbid"`). 필수: `name`, `slug`, `team_id`. 선택: `description`, `git_url`, `default_branch`(기본 `main`), `visibility`(`team` 한정 또는 `org` 전체; 기본 `team`).
+스키마는 알 수 없는 필드를 거부합니다(`extra="forbid"`). 생성 시 허용되는 필드는 `name`, `description`, `git_url` 뿐입니다. `default_branch`는 이후 `PATCH /v1/projects/{id}`로 설정합니다.
 
 ## 가시성
 
@@ -109,7 +105,7 @@ SSH 배포 키는 [로드맵](#로드맵-v2x)을 보세요.
 
 1. **Projects**에 프로젝트가 **Idle**(스캔 없음) 상태로 표시됩니다.
 2. Overview 탭은 컴포넌트·취약점 모두 0을 보여줍니다.
-3. 감사 로그(`/admin/audit`, super-admin 전용)에 본인의 `user_id`로 `project.create`가 기록됩니다.
+3. 감사 로그(`/admin/audit`, super-admin 전용)에 본인의 `user_id`로 `target_table=projects&action=create`가 기록됩니다.
 
 ## 트러블슈팅
 
