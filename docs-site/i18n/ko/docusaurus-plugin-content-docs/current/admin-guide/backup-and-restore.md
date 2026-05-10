@@ -54,7 +54,9 @@ Backup complete
 
 브라우저를 선호하는 운영자라면 `/admin/backup`이 셸로 떨어지지 않고도 같은 백업·복원 흐름을 노출합니다.
 
-![Admin 백업 페이지](./img/admin-backup.png)
+![갓 설치된 환경의 Admin 백업 페이지 — 툴바는 마운트됐고, 첫 백업이 만들어지기 전까지 표 본문은 empty-state 카드를 표시](/img/screenshots/admin-backup-list.png)
+
+목록 표는 여섯 컬럼을 보여줍니다 — **NAME**, **KIND**, **CREATED**, **SIZE**, **DB REVISION**, **ACTIONS**. 갓 설치된 환경에서는 본문이 인라인 empty 카드(*"No backups yet…"*)로 시작합니다 — 툴바의 **Run manual backup now** 또는 **Upload and restore…** 로 채우거나 야간 자동 잡을 기다립니다.
 
 ### 백업 트리거
 
@@ -62,6 +64,8 @@ Backup complete
 2. **Trigger backup now**를 클릭합니다. 버튼은 `super_admin` 전용입니다.
 3. 포털이 Celery 태스크를 큐에 넣습니다 — 행이 즉시 표에 나타나며 상태 `running`과 실시간 진행 바가 표시됩니다.
 4. 태스크 완료 시 행이 `succeeded`로 전환되고 타임스탬프 옆에 **Download** 링크가 표시됩니다.
+
+![Admin 백업 — 수동 트리거 직후 표시되는 toast 알림](/img/screenshots/admin-backup-trigger-toast.png)
 
 목록 표는 타임스탬프, 크기, **auto** 배지(Celery Beat가 만든 백업에 부여), **Download**, **Delete**를 보여줍니다. auto-tagged 백업은 자물쇠 아이콘으로 표시되며 — **7일 자동 보존** 정책의 대상이고 시간순으로 정리됩니다. 수동 백업은 자동 보존 대상이 아니며 **Delete**를 클릭해야만 삭제됩니다.
 
@@ -78,7 +82,11 @@ Backup complete
 3. 확인 필드에 **`restore`**(소문자, 정확히 일치)를 입력하세요. 타이핑 게이트가 매칭될 때까지 **Restore** 버튼은 비활성화 상태입니다.
 4. **Restore**를 클릭합니다.
 
-![Admin 백업 — 복원 타이핑 게이트](./img/admin-backup-restore.png)
+![Admin 백업 — 경고 패널과 비활성 Restore 버튼이 표시된 복원 strip](/img/screenshots/admin-backup-restore-modal.png)
+
+타이핑 게이트가 일치하면 파괴적 **Restore** 버튼이 활성화됩니다. 아래 스크린샷은 게이트가 풀리는 순간을 포착했습니다 — 입력된 `restore` 토큰, 표시된 경고 패널, 그리고 이제 클릭 가능해진 버튼:
+
+![Admin 백업 — 타이핑 게이트 통과 후 활성화된 Restore 버튼](/img/screenshots/admin-backup-restore-typing-gate-enabled.png)
 
 프론트엔드는 입력된 확인과 함께 명시적으로 `X-Confirm-Restore: yes` 헤더를 폼에 실어 제출하며, 백엔드는 복원 태스크를 큐에 넣기 전에 **헤더와 `super_admin` 역할 모두**를 검증합니다. 누락 또는 불일치 헤더는 **HTTP 412 (Precondition Failed)** 와 `type=urn:trustedoss:problem:restore_confirmation_required`, `title="Restore confirmation header missing"` 를 가진 problem document 로 응답합니다. 412 는 RFC 9110 §15.5.13 에 부합 — 요청 자체는 well-formed 이며 누락된 것은 파괴적 복원의 사전조건(precondition)입니다. 이중 게이트는 의도된 설계입니다 — 복원은 파괴적이고 되돌릴 수 없습니다.
 

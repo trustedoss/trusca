@@ -54,7 +54,9 @@ The script prunes backups older than `BACKUP_RETENTION_DAYS` (default 7) at the 
 
 For operators who prefer the browser, `/admin/backup` exposes the same backup and restore flows without dropping to a shell.
 
-![Admin backup page](./img/admin-backup.png)
+![Admin backup page on a fresh install — toolbar mounted, the list body shows the empty-state card until the first backup row arrives](/img/screenshots/admin-backup-list.png)
+
+The list renders six columns: **NAME**, **KIND**, **CREATED**, **SIZE**, **DB REVISION**, **ACTIONS**. On a fresh install the body shows the inline empty card (*"No backups yet…"*) — populate it via the toolbar (**Run manual backup now** or **Upload and restore…**) or wait for the nightly auto job.
 
 ### Trigger a backup
 
@@ -62,6 +64,8 @@ For operators who prefer the browser, `/admin/backup` exposes the same backup an
 2. Click **Trigger backup now**. The button is `super_admin`-only.
 3. The portal queues a Celery task; the row appears in the table immediately with status `running` and a live-updating progress bar.
 4. When the task completes, the row flips to `succeeded` and a **Download** link becomes available next to the timestamp.
+
+![Admin backup — toast confirmation right after manual trigger](/img/screenshots/admin-backup-trigger-toast.png)
 
 The list table shows: timestamp, size, **auto** badge (set on backups created by Celery Beat), **Download**, and **Delete**. Auto-tagged backups display a lock icon — they are subject to the **7-day automatic retention** policy and are pruned in chronological order. Manual backups have no automatic retention and are deleted only when you click **Delete**.
 
@@ -78,7 +82,11 @@ The **Upload + Restore** section accepts a previously downloaded `.tar.gz` archi
 3. Type the word **`restore`** (lower case, exact match) into the confirmation field. The **Restore** button stays disabled until the typing-gate matches.
 4. Click **Restore**.
 
-![Admin backup — restore typing-gate](./img/admin-backup-restore.png)
+![Admin backup — restore strip with warning panel and disabled Restore button](/img/screenshots/admin-backup-restore-modal.png)
+
+Once the typing-gate matches, the destructive **Restore** button enables. The screenshot below captures the moment the gate unlocks — the typed `restore` token, the visible warning panel, and the now-actionable button:
+
+![Admin backup — typing-gate satisfied, Restore button enabled](/img/screenshots/admin-backup-restore-typing-gate-enabled.png)
 
 The frontend submits the form with an explicit `X-Confirm-Restore: yes` header alongside the typed confirmation; the backend validates **both** the header and the `super_admin` role before queuing the restore task. Missing or mismatched headers return **HTTP 412 (Precondition Failed)** with a problem document carrying `type=urn:trustedoss:problem:restore_confirmation_required` and `title="Restore confirmation header missing"`. The 412 status matches RFC 9110 §15.5.13 — the request shape is well-formed; what is missing is the destructive-restore precondition. The double-gate is deliberate — restore is destructive and irreversible.
 

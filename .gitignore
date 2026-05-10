@@ -53,3 +53,7 @@ docs-site/build/
 
 # apps/frontend artifact (shadcn/ui add output dir)
 apps/frontend/@/
+
+# Guide screenshot staging area (ad-hoc captures; committed assets live
+# alongside under docs-site/static/img/screenshots/)
+docs-site/static/img/screenshots/staging/

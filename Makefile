@@ -9,8 +9,11 @@
 #
 # Required: docker-compose V1 (hyphen). CLAUDE.md core rule #10.
 
-COMPOSE      := docker-compose -f docker-compose.dev.yml
-WORKER       := celery-worker
+COMPOSE        := docker-compose -f docker-compose.dev.yml
+WORKER         := celery-worker
+FRONTEND_DIR   := apps/frontend
+SCREENSHOT_DIR := docs-site/static/img/screenshots
+SCREENSHOT_STAGING := $(SCREENSHOT_DIR)/staging
 
 .DEFAULT_GOAL := help
 
@@ -24,6 +27,10 @@ help:
 	@echo "  make dev-reset-rebuild     dev-reset + worker rebuild + e2e seed"
 	@echo "  make dev-logs              tail backend + worker logs"
 	@echo "  make dev-ps                list service health"
+	@echo ""
+	@echo "Guide screenshot capture (Playwright)"
+	@echo "  make screenshots-capture   regenerate guide PNGs via tests/screenshots/"
+	@echo "  make screenshots-clean     remove staging captures (keeps committed assets)"
 
 .PHONY: dev-up
 dev-up:
@@ -53,3 +60,27 @@ dev-logs:
 .PHONY: dev-ps
 dev-ps:
 	$(COMPOSE) ps
+
+# ────────────────────────────────────────────────────────────────────
+# Guide screenshot capture
+#
+# Drives `tests/screenshots/capture.spec.ts` via the dedicated Playwright
+# config (`playwright.screenshots.config.ts`) so the e2e CI matrix never
+# triggers a capture run accidentally. Output PNGs land directly under
+# `$(SCREENSHOT_DIR)/` so the EN + KO Markdown share a single asset via
+# the absolute `/img/screenshots/<file>.png` reference.
+#
+# Pre-requisites:
+#   - docker-compose dev stack healthy (the SPA must render against the
+#     real backend; `make dev-up` is enough for fresh stacks).
+#   - python3 on PATH for the seed helper (apps/frontend/tests/_harness/seed.ts).
+# ────────────────────────────────────────────────────────────────────
+
+.PHONY: screenshots-capture
+screenshots-capture:
+	cd $(FRONTEND_DIR) && npx playwright test --config=playwright.screenshots.config.ts
+
+.PHONY: screenshots-clean
+screenshots-clean:
+	rm -rf $(SCREENSHOT_STAGING)
+	@echo "removed $(SCREENSHOT_STAGING) (committed assets under $(SCREENSHOT_DIR) untouched)"

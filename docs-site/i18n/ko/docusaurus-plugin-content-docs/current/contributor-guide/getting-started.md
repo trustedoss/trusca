@@ -148,6 +148,39 @@ CI 워크플로는 lint, typecheck, 단위 테스트, 통합 테스트, Playwrig
 
 `main`을 선형으로 유지하고 changelog 가독성을 위해 **squash-merge**를 사용합니다. PR 제목이 squash 커밋 제목이 됩니다 — 명령형으로, 72자 이내로 작성하세요.
 
+## 가이드 스크린샷 재생성
+
+사용자·관리자·컨트리뷰터 가이드는 `docs-site/static/img/screenshots/` 아래의 PNG 캡처를 동반합니다. 이 캡처는 Playwright spec(`apps/frontend/tests/screenshots/capture.spec.ts`)이 갓 시드한 super-admin 으로 SPA 를 드라이브하여 생성합니다.
+
+다음 시점에 캡처를 재생성하세요:
+
+- 가이드 스크린샷이 묘사하는 UI 요소가 추가·변경된 경우,
+- 새 가이드 단락에 이미지가 필요한 경우, 또는
+- 디자인 시스템(타이포그래피·간격·컬러)이 기존 캡처를 무효화할 만큼 변한 경우.
+
+```bash
+# 1. dev stack 기동 — 캡처는 실제 backend / frontend 를 호출합니다.
+make dev-up
+
+# 2. 캡처. 시드는 spec 내부에서
+#    `seedE2eUser(--super-admin --with-scan --component-count 50 …)`
+#    을 통해 자동 실행됩니다.
+make screenshots-capture
+```
+
+Makefile 타겟은 `playwright.screenshots.config.ts`(e2e 설정과 분리)를 호출하므로 일반 `npm run test:e2e` 매트릭스가 캡처를 우발적으로 트리거하지 않습니다.
+
+PNG 는 `docs-site/static/img/screenshots/<page-slug>-<section-slug>.png` 로 직접 떨어집니다. Markdown 참조는 절대 경로 `/img/screenshots/<file>.png` 를 사용하므로 EN·KO 가 하나의 자산을 공유합니다 — 캡처를 i18n 디렉토리에 **복사하지 마세요**.
+
+새 캡처 추가 절차:
+
+1. 기존 하네스(`AdminBackupHarness`, `AuthHarness`, …)를 활용해 SPA 를 새 `test()` 블록 안에서 드라이브하세요. 직접 `page.click()` 은 금지 — verb 가 부족하면 하네스부터 확장합니다.
+2. 보존하고 싶은 시점에 `captureScreenshot(page, "<slug>")` 호출.
+3. 같은 PR 안에서 `![대체 텍스트](/img/screenshots/<slug>.png)` 를 EN 마크다운과 KO 미러 양쪽에 삽입.
+4. KO 는 alt text 만 번역 — PNG 는 공유 자산입니다.
+
+시각 회귀 테스트(Percy / Chromatic / 픽셀 diff)는 의도적으로 본 시리즈 OUT 입니다 — 캡처는 1회성 매뉴얼 자산이며 UI 가 움직일 때만 재생성합니다.
+
 ## 함께 보기
 
 - [코딩 표준](./coding-standards.md) — TypeScript strict, Pydantic v2, Alembic forward-only, RFC 7807, structlog.

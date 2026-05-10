@@ -148,6 +148,38 @@ The CI workflow runs lint, typecheck, unit tests, integration tests, and a Playw
 
 We **squash-merge** to keep `main` linear and the changelog readable. Your PR title becomes the squash commit subject — write it in imperative mood, ≤ 72 characters.
 
+## Regenerate guide screenshots
+
+The user / admin / contributor guides ship with PNG captures under `docs-site/static/img/screenshots/`. They are produced by a Playwright spec (`apps/frontend/tests/screenshots/capture.spec.ts`) that drives the SPA against a freshly seeded super-admin.
+
+Re-run the captures whenever:
+
+- you add or rename a UI element that a guide screenshot depicts,
+- a new guide section needs an image, or
+- the design system changes (typography, spacing, colour) materially enough to invalidate existing captures.
+
+```bash
+# 1. Bring the dev stack up — captures hit the real backend / frontend.
+make dev-up
+
+# 2. Capture. The seed runs automatically inside the spec via
+#    `seedE2eUser(--super-admin --with-scan --component-count 50 …)`.
+make screenshots-capture
+```
+
+The Makefile target invokes `playwright.screenshots.config.ts` (separate from the e2e config) so the regular `npm run test:e2e` matrix never triggers a capture by accident.
+
+PNGs land directly under `docs-site/static/img/screenshots/<page-slug>-<section-slug>.png`. Markdown references use the absolute path `/img/screenshots/<file>.png` so the EN and KO docs share a single asset; do **not** copy captures into the i18n directory.
+
+When you add a new capture:
+
+1. Drive the SPA via the existing harness (`AdminBackupHarness`, `AuthHarness`, …) inside a new `test()` block. Direct `page.click()` is prohibited — extend the harness first if a verb is missing.
+2. Call `captureScreenshot(page, "<slug>")` at the moment you want preserved.
+3. Insert `![alt text](/img/screenshots/<slug>.png)` into the relevant EN markdown file *and* its KO mirror in the same PR.
+4. Translate only the alt text for KO; the PNG itself is shared.
+
+Visual regression testing (Percy / Chromatic / pixel diff) is intentionally out of scope today — captures are a one-shot manual asset, regenerated when the UI moves.
+
 ## See also
 
 - [Coding standards](./coding-standards.md) — TypeScript strict, Pydantic v2, Alembic forward-only, RFC 7807, structlog.
