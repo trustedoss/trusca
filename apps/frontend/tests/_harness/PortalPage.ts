@@ -659,6 +659,27 @@ export class PortalPage {
     await expect(virtual.or(empty)).toBeVisible({ timeout: 10_000 });
   }
 
+  /**
+   * Switch to the project-detail SBOM tab and wait for it to settle. The
+   * SBOM tab renders a format selector + download list rooted at
+   * `data-testid="sbom-tab"`. When no scan exists yet the tab body shows
+   * `sbom-no-scan`; both are valid mounted states for screenshots.
+   */
+  async selectSbomTab(): Promise<void> {
+    await this.page.getByTestId("project-detail-tab-sbom").click();
+    await this.expectSbomTabReady();
+  }
+
+  async expectSbomTabReady(): Promise<void> {
+    const tab = this.page.getByTestId("sbom-tab");
+    await expect(tab).toBeVisible({ timeout: 10_000 });
+    await expect(
+      this.page
+        .getByTestId("sbom-last-scan")
+        .or(this.page.getByTestId("sbom-no-scan")),
+    ).toBeVisible({ timeout: 10_000 });
+  }
+
   async filterObligationsByKind(kinds: string[]): Promise<void> {
     await this.page
       .getByTestId("obligations-kind-filter")

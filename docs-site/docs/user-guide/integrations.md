@@ -21,11 +21,14 @@ sidebar_position: 9
 
 Open `/integrations` and switch to the **API keys** tab. The list shows every key you can manage: label, prefix, scope, expiry, and last-used metadata.
 
-![Integrations — API keys list](./img/integrations-keys.png)
+![Integrations — API keys section with the Create button and the keys table](/img/screenshots/user-integrations-keys.png)
 
 ### Create a key
 
-1. Click **New API key**.
+1. Click **New API key**. The dialog asks for a name and scope; submit to mint the key.
+
+   ![Integrations — Create API key dialog with name + scope inputs](/img/screenshots/user-integrations-key-create.png)
+
 2. Fill in the form:
    - **Label** — free-text reminder of what the key is for (e.g. `github-action-checkout-service`).
    - **Scope** — `org`, `team`, or `project`. Lower scopes are stricter; pick the smallest that covers the calls you need to make. The form surfaces a team or project picker when those scopes are selected.

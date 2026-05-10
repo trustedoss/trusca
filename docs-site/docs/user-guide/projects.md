@@ -27,6 +27,10 @@ Engineers and team leads who scan their own services. Requires sign-in. The role
 
 ## Adding a project — UI
 
+The **Projects** sidebar entry lands on the team-scoped project list — every project that belongs to your active team, with status badges and inline **Scan** actions:
+
+![Projects list — every project in the active team with status badges and inline Scan actions](/img/screenshots/user-projects-list.png)
+
 1. Sign in.
 2. Click **Projects** in the sidebar.
 3. Click **New project** in the top-right.
@@ -36,7 +40,11 @@ Engineers and team leads who scan their own services. Requires sign-in. The role
    - **Git URL** (required for source scans)
 5. Click **Create**.
 
+   ![New project form — name, description, and Git URL fields](/img/screenshots/user-projects-create-form.png)
+
 You land on the project's **Overview** tab. From here you can run the first scan — see [Scans](./scans.md).
+
+![Project detail — Overview tab with risk gauge and quick actions](/img/screenshots/user-project-detail-overview.png)
 
 The default branch (`main`), visibility (`team`), and owning team (your active team) are set server-side and can be reviewed from **Project Settings**.
 

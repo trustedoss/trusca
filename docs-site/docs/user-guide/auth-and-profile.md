@@ -20,7 +20,7 @@ Any signed-in user. No special role required to manage your own identities. The 
 2. Enter your email and password.
 3. Submit.
 
-![Login page](./img/auth-login.png)
+![Login page with email + password fields and OAuth provider buttons](/img/screenshots/user-auth-login.png)
 
 **What happens server-side**
 
@@ -40,7 +40,7 @@ If you see *"Invalid email or password"*, check the email is correct and try onc
 
 The reset link is **valid for 24 hours and can be used once**. After expiry or first use, the token is revoked.
 
-![Forgot password page](./img/auth-forgot.png)
+![Forgot password page — email input with anti-enumeration submit](/img/screenshots/user-auth-forgot.png)
 
 ## Reset your password
 
@@ -75,7 +75,11 @@ The `/profile` page has a **Connected Accounts** section that lists the OAuth id
 - **GitHub** — present if you have ever signed in with GitHub.
 - **Google** — present if you have ever signed in with Google.
 
-![Profile page — Connected Accounts](./img/auth-profile.png)
+![Profile page — header, identity card, and Connected Accounts panel](/img/screenshots/user-profile-mounted.png)
+
+The Connected Accounts panel highlights every external identity currently linked to your portal account:
+
+![Profile — Connected Accounts panel showing the linked GitHub identity](/img/screenshots/user-profile-connected-accounts.png)
 
 Password sign-in is not displayed as a row in the Connected Accounts list at v2.0.0 — it is implicit when your account was registered with email + password (or when you completed a password reset). Use the **Set a password** action elsewhere on the profile page to seed a password for an OAuth-only account.
 

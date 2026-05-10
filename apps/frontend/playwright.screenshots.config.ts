@@ -20,6 +20,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:5173";
+const STORAGE_STATE_PATH = "./tests/screenshots/.storage-state.json";
 
 export default defineConfig({
   testDir: "./tests/screenshots",
@@ -30,12 +31,18 @@ export default defineConfig({
   forbidOnly: Boolean(process.env.CI),
   retries: 0,
   reporter: [["list"]],
+  // Shared seed + login happen once in globalSetup; specs adopt the
+  // resulting cookies + localStorage via `use.storageState` so the
+  // backend's 5/min IP login rate limit (CLAUDE.md §품질·보안 §3) is
+  // never triggered during the bulk capture matrix.
+  globalSetup: "./tests/screenshots/global-setup.ts",
   use: {
     baseURL,
     trace: "retain-on-failure",
     screenshot: "off",
     video: "off",
     viewport: { width: 1440, height: 900 },
+    storageState: STORAGE_STATE_PATH,
   },
   projects: [
     {

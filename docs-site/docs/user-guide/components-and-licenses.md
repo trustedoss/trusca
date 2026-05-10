@@ -16,6 +16,8 @@ Engineers triaging dependency hygiene; legal / compliance reviewers reading lice
 
 ## The components table
 
+![Project detail — Components tab with virtualized rows, severity filter, and license category badges](/img/screenshots/user-components-list.png)
+
 Columns:
 
 - **Component** — package name (e.g. `lodash`, `org.springframework:spring-web`).
@@ -52,6 +54,10 @@ For the approval state of a conditional-license component, switch to the project
 
 ## License classification
 
+The **Licenses** tab on a project breaks down the same data by SPDX identifier and tier — a donut chart on top of the same table the Components tab uses, scoped to license rows:
+
+![Project detail — Licenses tab with a tier donut chart and a per-license breakdown](/img/screenshots/user-licenses-donut.png)
+
 ORT classifies every license into three tiers, defined in `ort/rules.kts`:
 
 | Tier | Severity | Examples | Effect |
@@ -87,6 +93,8 @@ Each license carries **obligations** — duties you must honor when redistributi
 - **No endorsement** — do not use the project name to endorse derivatives without permission.
 
 The **Obligations** tab on the project page consolidates obligations across components. Click **Generate NOTICE** to download a `NOTICE.txt` summarizing every attribution and license — see [SBOM](./sbom.md#notice-file).
+
+![Project detail — Obligations tab with the per-component obligations distribution](/img/screenshots/user-obligations-distribution.png)
 
 ## SPDX expressions
 

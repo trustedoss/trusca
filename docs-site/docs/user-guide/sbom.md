@@ -10,6 +10,8 @@ sidebar_position: 5
 
 The portal generates **Software Bill of Materials** (SBOM) artifacts from the latest successful scan. Four interchange formats are supported, plus an attribution `NOTICE` file.
 
+![Project detail — SBOM tab with format selector and last-scan summary](/img/screenshots/user-sbom-tab.png)
+
 :::note Audience
 Engineers shipping releases, compliance leads filing artifacts, customers fulfilling SBOM requests under [EO 14028](https://www.cisa.gov/topics/cyber-threats-and-advisories/cybersecurity-best-practices/secure-by-design/sbom). Read access via team membership.
 :::
