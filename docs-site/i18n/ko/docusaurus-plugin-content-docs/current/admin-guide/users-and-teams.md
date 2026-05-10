@@ -42,19 +42,15 @@ Organization (배포당 하나)
 
 `super_admin`은 팀별 역할이 **아닙니다** — 팀 멤버십과 무관하게 조직 전반 접근을 부여합니다.
 
-## 사용자 초대
+## 새 사용자 온보딩
 
-### Super-admin으로
+v2.0.0 에서는 포털이 초대 이메일을 보내지 않습니다. 새 사용자는 회사 이메일로 `/register`에서 **셀프 가입**하며, 비밀번호 정책은 가입 시점에 강제됩니다(12자 이상, bcrypt cost 12, NIST 차단 비밀번호 제외).
 
-1. **/admin/users** → **Invite user**.
-2. 이메일, 이름, 기본 팀, 그 팀의 역할.
-3. 제출.
+가입 후, `super_admin`이 사용자를 적절한 팀에 추가하고 역할을 배정합니다.
 
-초대된 사용자는 일회성 초대 링크(24시간 만료)가 담긴 이메일을 받습니다. 링크 클릭 시 비밀번호(12자 이상, bcrypt cost 12, NIST 차단 비밀번호 제외)를 설정합니다.
-
-### Team admin으로
-
-`team_admin` 권한이 있는 팀으로만 초대 가능. 흐름은 동일하되 팀 선택기가 없습니다.
+1. 사용자에게 `/register`에서 가입을 요청합니다.
+2. **/admin/users**에 사용자가 나타나면 사용자 드로어를 엽니다.
+3. **Add to team**(또는 팀의 **Members → Add member** 흐름)으로 선택한 역할의 팀 멤버십을 부여합니다.
 
 ## 기존 사용자를 팀에 추가
 
@@ -65,13 +61,14 @@ Organization (배포당 하나)
 
 사용자가 즉시 추가됩니다; 이메일 확인 단계 없음(이미 계정 보유).
 
-## 역할 변경
+## 사용자 역할 변경
 
-1. **/admin/users** → 사용자 → **Memberships**.
-2. 해당 팀 행의 **Change role** 클릭.
-3. 새 역할 선택 → 제출.
+**/admin/users → 사용자** 드로어는 단일 **Role** 드롭다운을 노출합니다. 드롭다운은 사용자의 유효 글로벌 역할(`super_admin` / `team_admin` / `developer`)을 설정합니다 — 팀별 역할 혼합은 로드맵 항목입니다(아래 참고).
 
-감사 로그에 `team_membership.update`가 `previous_role`, `new_role`과 함께 기록됩니다.
+1. **/admin/users** → 사용자 → **Role**.
+2. 새 역할 선택 → 제출.
+
+감사 로그는 변경을 `users` 쓰기로 기록하며 역할 diff가 `diff` 컬럼에 담깁니다(감사 행의 `target_table`은 `users`).
 
 ## 팀에서 사용자 제거
 
@@ -81,24 +78,27 @@ Organization (배포당 하나)
 
 ## 마지막 super-admin 보호
 
-포털은 조직의 마지막 `super_admin` 강등·비활성화를 **거부**합니다. 시도하면 API가 다음을 반환합니다.
+포털은 조직의 마지막 활성 `super_admin` 강등·비활성화를 **거부**합니다. 사전 체크는 `SELECT … FOR UPDATE` 트랜잭션 안에서 실행되어 동시 강등 시도가 경합되지 않고 직렬화됩니다. 시도하면 API가 다음을 반환합니다.
 
 ```json
 {
-  "type": "https://trustedoss.io/problems/last-super-admin",
-  "title": "Cannot demote the last super_admin",
-  "status": 409,
-  "detail": "At least one super_admin must remain in the organization.",
-  "instance": "/api/v1/admin/users/01H…/role"
+  "type": "about:blank",
+  "title": "Last Super Admin Protected",
+  "status": 422,
+  "detail": "At least one active super_admin must remain in the organization.",
+  "instance": "/v1/admin/users/01H…/role",
+  "last_super_admin_protected": true
 }
 ```
+
+`last_super_admin_protected: true` 확장 필드는 클라이언트가 본 가드를 일반적인 422 검증 실패와 구분할 수 있게 합니다.
 
 마지막 super-admin 교체:
 
 1. 다른 사용자를 `super_admin`으로 먼저 승격.
 2. 그 다음 원래 사용자를 강등·비활성화.
 
-본 규칙은 UI뿐 아니라 데이터베이스 수준에서 강제됩니다(`CHECK` 제약 + API 사전 체크) — 제약을 비활성화하지 않는 한 직접 SQL로도 우회 불가합니다.
+가드는 API 수준에서 강제됩니다(`SELECT … FOR UPDATE` 행 락 카운트). 직접 SQL 쓰기까지 차단하는 DB 수준 제약은 로드맵 항목이며, 그 전까지는 API를 우회하지 마세요.
 
 ## 사용자 비활성화
 
@@ -109,12 +109,7 @@ Organization (배포당 하나)
 
 같은 화면에서 한 번의 클릭으로 재활성화 가능합니다.
 
-## 삭제 vs. 비활성화
-
-- **비활성화** — 사용자 행 유지, 외래키가 깔끔하게 끊김. 기본·권장.
-- **삭제** — 사용자 소프트 삭제. 계정은 복구 불가하나 감사 로그가 삭제된 사용자의 UUID를 참조. GDPR 잊혀질 권리 요청에만 사용; 그렇지 않으면 비활성화 권장.
-
-"Delete" 버튼은 이메일 입력 확인 모달 뒤에 숨겨져 있습니다.
+비활성화는 v2.0.0 에서 사용 가능한 유일한 오프보딩 동작입니다 — 별도의 사용자 삭제 작업이 없습니다. GDPR 삭제 요청을 처리하려면 사용자를 비활성화한 뒤 엔지니어링 팀에 수동 삭제를 의뢰하세요. 이메일 입력 확인 모달이 있는 1급 소프트-삭제는 로드맵 항목입니다.
 
 ## 팀 생성
 
@@ -126,15 +121,11 @@ Organization (배포당 하나)
 
 팀의 첫 멤버는 다음 화면에서 배정합니다.
 
-## 팀 이름 변경·아카이브
+## 팀 이름 변경
 
-`super_admin`과 팀의 `team_admin`은 이름 변경 가능. 아카이브는 `super_admin` 필요:
+`super_admin`과 팀의 `team_admin`은 팀 이름을 변경할 수 있습니다. 팀의 `name`, `slug`, `description`은 `PATCH /v1/admin/teams/{team_id}`로 변경 가능합니다.
 
-- 기본 목록에서 팀을 숨김.
-- 새 프로젝트 생성 차단.
-- 기존 프로젝트·스캔·결과는 읽을 수 있게 유지.
-
-팀을 삭제하려면 모든 프로젝트가 먼저 아카이브 또는 이동되어야 합니다.
+팀 아카이브(새 프로젝트 생성을 차단하면서 기존 프로젝트는 읽기 가능하게 유지하는 숨김 상태)는 로드맵 항목입니다. v2.0.0 에서는 팀 이름 변경, 또는 모든 프로젝트가 먼저 제거된 상태에서 `super_admin`이 직접 팀 삭제만 가능합니다.
 
 ## 세션
 
@@ -147,32 +138,40 @@ Organization (배포당 하나)
 
 ## 정상 동작 확인
 
-사용자 초대 후:
+사용자 온보딩 후:
 
-1. **/admin/users**가 사용자를 `pending` 상태로 표시.
-2. 감사 로그에 `user.invite` 기록.
-3. 사용자가 링크를 활성화하면 상태가 `active`로 전환.
+1. 사용자가 가입 시 설정한 비밀번호로 `/login`에서 로그인 가능.
+2. **/admin/users**가 사용자를 `is_active = true`로 표시.
+3. 감사 로그에 팀-추가가 `team_memberships` insert로 기록.
 4. 사용자가 배정 역할로 팀 멤버 목록에 등장.
 
 ## 트러블슈팅
 
-### 초대 이메일이 도착하지 않음
+### 신규 사용자가 가입할 수 없음
 
-`.env`의 `SMTP_*`를 확인하세요. 이메일 워커가 SMTP 트랜잭션을 로깅합니다.
+셀프 가입은 기본적으로 열려 있습니다. 사용자가 정확한 URL(`/register`)로 접근하는지, 이메일이 기본 형식 검증을 통과하는지, 선택한 비밀번호가 정책(12자 이상, NIST 차단 목록 외)을 만족하는지 확인하세요. 실패한 가입은 백엔드에 구조화 경고 로그를 남깁니다.
 
 ```bash
-docker-compose -f docker-compose.yml logs --tail=200 worker | grep -i smtp
+docker-compose -f docker-compose.yml logs --tail=200 backend | grep -i register
 ```
-
-흔한 원인: `SMTP_USER` / `SMTP_PASSWORD` 누락, SMTP 호스트가 워커 IP 차단, 수신자 스팸 필터. 사용자 행에서 초대를 재발송하면 새 링크가 생성됩니다.
 
 ### 자기 자신의 역할을 승격할 수 없음
 
 자기 승격은 차단됩니다. 다른 `super_admin`에게 요청하세요. 본인이 유일한 super-admin이라면 다른 super-admin으로 로그인하세요(항상 둘 이상을 유지해야 합니다).
 
-### 초대 시 "User already exists"
+### 팀에 추가 시 "User already exists"
 
-이메일이 이미 등록되어 있습니다(다른 팀 소속일 수 있음). 대신 [기존 사용자를 팀에 추가](#기존-사용자를-팀에-추가)를 사용하세요.
+이메일이 이미 포털 계정입니다(이미 다른 팀 소속일 수 있음). [기존 사용자를 팀에 추가](#기존-사용자를-팀에-추가)를 사용하세요 — 같은 흐름이 이메일로 사용자를 찾아 멤버십만 부착합니다.
+
+## 로드맵 (v2.x)
+
+다음 기능들은 초기 문서에서 다른 곳에 기술되었으나 v2.0.0 에는 **반영되지 않았습니다**. 향후 마이너 릴리스를 위해 추적합니다.
+
+- 24시간 일회성 활성화 링크와 `pending` 사용자 상태가 있는 이메일 기반 초대 흐름.
+- 팀별 역할 배정(한 사용자가 한 팀에서 `team_admin`이고 다른 팀에서 `developer`인 형태, Memberships 드로어에서 설정).
+- 이메일 입력 확인 모달이 있는 사용자 소프트-삭제 동작.
+- 팀 아카이브 상태(읽기 접근은 보존하면서 숨김+비활성화).
+- 마지막 super-admin 보호의 DB 수준 강제(API 가드를 백킹하는 PostgreSQL 트리거).
 
 ## 함께 보기
 

@@ -40,32 +40,34 @@ Lookups are constant-time across the prefix; secret comparison uses `bcrypt.chec
 
 ## Scope model
 
-Each key carries:
+Each key carries a single **resource scope** that determines the authorization boundary:
 
-- **Owning team** — the team the key acts on behalf of. Cross-team API calls fail with 403.
-- **Effective role** — the role the key inherits within that team. `developer` is the default; `team_admin` is supported for keys that need to manage settings (rare).
-- **Allowed actions** — the operations the key can perform: `scan:trigger`, `scan:read`, `report:download`, `webhook:receive`, `*` (all).
-- **Expiry** — `null` (no expiry, rare) or an ISO timestamp.
+- **`org`** — issued by a `super_admin`. Acts org-wide; can call any endpoint the issuing user could.
+- **`team`** — issued by a `team_admin`. Acts on behalf of a specific team; cross-team calls fail with 403.
+- **`project`** — issued by a `team_admin` or `developer` for a specific project; calls outside that project fail with 403.
 
-A typical CI key is `developer` + `["scan:trigger", "scan:read", "report:download"]` + 1-year expiry.
+The key inherits the **role of the issuing user** at request time — there is no separate "effective role" or "allowed actions" list at v2.0.0. Permission checks fall through to the same RBAC code path as a JWT-authenticated request.
+
+Keys are **non-expiring** at v2.0.0. They are valid until manually revoked. Per-key expiry presets and a fine-grained `allowed_actions` taxonomy (`scan:trigger`, `scan:read`, `report:download`, …) are on the roadmap.
 
 ## Issuing a key
 
 ### As a team admin
 
-1. **Project Settings → CI/CD → API keys** (or **Team settings → API keys** for team-wide keys).
-2. **New API key**.
-3. Fill in:
+1. Open **/integrations** (top-level sidebar entry, available to `team_admin` and above).
+2. Switch to the **API keys** tab.
+3. Click **New API key**.
+4. Fill in:
    - **Label** (e.g. `github-action-checkout-service`)
-   - **Allowed actions** (multi-select; defaults to the CI minimum)
-   - **Expiry** (preset 30 / 90 / 180 / 365 days, or custom)
-4. **Create**.
+   - **Scope** — `team` (default) or `project`
+   - **Project** — required when scope is `project`
+5. **Create**.
 
 The full key is shown **once** in a modal. Copy it and store it in your CI's secret store (GitHub secrets, GitLab CI variables, Jenkins credentials). After you close the modal, only the prefix is visible from the UI; the full key is unrecoverable.
 
 ### As a super-admin
 
-The same flow, but the team selector is unlocked so you can issue keys for any team.
+The same flow at **/integrations**, with the additional option to set the scope to `org` for keys that cross team boundaries (rare — most CI integrations should stay at `team` or `project` scope).
 
 ## Using an API key
 
@@ -97,24 +99,23 @@ The old key is rejected within ~5 seconds of revocation (the auth cache TTL).
 
 ## Revocation
 
-1. **Project Settings → CI/CD → API keys** → key row → **Revoke**.
+1. **/integrations → API keys** → key row → **Revoke**.
 2. Confirm.
 
 Revocation is immediate and irreversible. To bring a key back, issue a new one.
 
 ## Listing keys
 
-The UI shows: label, prefix, owning team, role, allowed actions, expiry, last-used timestamp, last-used IP. There is no way to recover the secret of an existing key — by design.
+The UI shows: label, prefix, scope (`org` / `team` / `project`), creator, created timestamp, last-used timestamp, and revocation status. There is no way to recover the secret of an existing key — by design. Per-key role, allowed-actions, expiry, and last-used IP columns are on the roadmap (the corresponding model columns are not yet present).
 
 ## Audit log
 
-Every key operation logs:
+Key lifecycle events log:
 
 - `api_key.create` — actor, target prefix, scope.
 - `api_key.revoke` — actor, target prefix.
-- `api_key.use` — implicit on every authenticated request via the API key (recorded as the `actor` on the action's audit row, with `actor_kind=api_key`).
 
-Filter the audit log by `actor_kind=api_key` to see every action a non-interactive client performed.
+Per-request audit rows are not emitted for API-key authentication at v2.0.0 (an `api_key.use` event is on the roadmap). Audit rows that are produced by an API-key request still carry the resulting domain action (e.g. `scan.create`); the API key's prefix is captured by structured logs on the request, but the audit row's `actor_user_id` is the issuing user, not the key.
 
 ## Webhook secrets vs. API keys
 
@@ -144,7 +145,14 @@ The two most common causes:
 
 ### "Key prefix exists but secret does not match"
 
-Someone tried to brute-force the secret. The portal logs every miss; super-admins receive a Slack notification when a single key has more than 5 misses in 60 seconds. Revoke and rotate.
+Someone tried to brute-force the secret, or a malformed key was sent. The portal logs every miss in the structured backend log. Brute-force detection (a Slack alert when a single key crosses N misses per minute) is on the roadmap; until then, periodically grep the backend logs for repeated `secret_mismatch` lines:
+
+```bash
+docker-compose -f docker-compose.yml logs --tail=2000 backend \
+  | grep secret_mismatch | sort | uniq -c | sort -rn | head
+```
+
+If you see a single prefix repeating, revoke and rotate immediately.
 
 ### Key works locally but not from CI
 
@@ -153,6 +161,16 @@ Confirm:
 - The CI secret is set on the right environment / branch.
 - The runner's outbound IP is not blocked by your portal firewall (some installs whitelist office IPs only).
 - The `Authorization` header is preserved through any reverse proxy your CI traffic transits.
+
+## Roadmap (v2.x)
+
+The following capabilities are referenced in early docs but are **not** shipped at v2.0.0:
+
+- Per-key role override (`effective_role`) and a granular `allowed_actions` taxonomy (`scan:trigger`, `scan:read`, `report:download`, `webhook:receive`, `*`). Today the key inherits the issuing user's role and the full RBAC surface.
+- Per-key `expires_at` field and the 30 / 90 / 180 / 365-day expiry presets in the New API key form. Today keys do not expire — they live until revoked.
+- Per-request `api_key.use` audit event with `actor_kind = api_key`. Today key lifecycle (`api_key.create` / `api_key.revoke`) is audited but per-request use is captured only in structured logs.
+- `last_used_ip` column in the listing.
+- Brute-force secret-mismatch alerting (Slack notification when a single key crosses 5 misses / 60 s).
 
 ## See also
 

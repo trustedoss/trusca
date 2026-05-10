@@ -20,19 +20,19 @@ Each entry has:
 
 | Field | Type | Description |
 |---|---|---|
-| `id` | UUIDv7 | Primary key. Lexicographically sortable by time. |
-| `ts` | timestamptz | When the action occurred (server clock, UTC). |
+| `id` | UUID | Primary key. |
+| `created_at` | timestamptz | When the action occurred (server clock, UTC). |
 | `actor_user_id` | UUID | The user who performed the action (null for system jobs). |
-| `actor_kind` | enum | `user`, `api_key`, `system`. |
+| `team_id` | UUID | Team scope of the action when applicable (null for org-wide writes). |
 | `action` | text | Dot-namespaced verb, e.g. `project.create`, `vuln_finding.update`, `team_membership.delete`. |
-| `target_kind` | text | Object class affected (`project`, `team`, `user`, `vuln_finding`, …). |
+| `target_table` | text | Table the affected object lives in (`projects`, `teams`, `users`, `vuln_findings`, …). |
 | `target_id` | UUID | The affected object's UUID. |
 | `request_id` | text | Correlates with structured logs (`X-Request-ID`). |
-| `payload` | jsonb | Sanitized before / after diff. PII is masked (`mask_pii`). |
+| `diff` | jsonb | Sanitized before / after diff. PII is masked (`mask_pii`). |
 | `ip` | inet | Source IP. |
 | `user_agent` | text | Truncated UA string. |
 
-The table has a `CHECK` constraint that prevents updates and deletes — only inserts are allowed. Forward-only Alembic migrations preserve this property across releases.
+The append-only contract is enforced at the application layer — the audit listener only emits inserts and the API exposes no update / delete endpoints. A DB-level `CHECK` / trigger that would block direct SQL is on the roadmap (see below); until then, do not run UPDATE / DELETE against `audit_logs` outside a deliberate, audited maintenance window.
 
 ## What gets logged
 
@@ -51,36 +51,35 @@ System jobs (Celery) also log. Examples:
 
 ### Filters
 
-The inline filter bar:
+The inline filter bar at v2.0.0:
 
-- **Actor** — search by email, user ID, or `system`.
-- **Action** — multi-select.
-- **Target kind** — multi-select.
-- **Target ID** — exact match.
-- **Date range** — preset (last hour, today, last 7 days) or custom.
-- **Request ID** — exact match (handy when you have a structured-log line).
+- **Actor user ID** — exact UUID match.
+- **Target table** — single-select from the enum (`projects`, `teams`, `users`, `vuln_findings`, …).
+- **Action** — free-text contains (case-sensitive).
+- **Date range** — `from` and `to` (custom).
+- **Search** — free-text query (`q`); matches across action and target fields.
 
-Filters compose. The URL updates so you can share a filtered view with a teammate.
+Filters compose. The URL updates so you can share a filtered view with a teammate. Multi-select dropdowns, preset date ranges, request-ID filter, and a target-ID filter are on the roadmap (see below).
 
 ### Table
 
-Default columns: `ts`, `actor`, `action`, `target`, `ip`. Click a row to expand the full payload diff.
+Default columns: `created_at`, `actor`, `action`, `target`, `ip`. Click a row to expand the full diff.
 
 The table is virtualized; 10k entries scroll smoothly.
 
 ## Export to CSV
 
-The **Export CSV** button on the toolbar exports the **currently filtered** result set, up to 100k rows per export. The CSV is UTF-8 with BOM so Excel handles non-ASCII correctly.
+The **Export CSV** button on the toolbar exports the **currently filtered** result set, up to 100k rows per export. The CSV is UTF-8 (no BOM at v2.0.0 — Excel users on Korean / Japanese locales should pick UTF-8 explicitly when opening; UTF-8 BOM emission is on the roadmap).
 
 For larger windows, paginate via the API:
 
 ```bash
 curl -sS \
   -H "Authorization: Bearer ${ACCESS_TOKEN}" \
-  "https://trustedoss.example.com/api/v1/admin/audit?from=2026-01-01&to=2026-01-31&page=1&size=1000"
+  "https://trustedoss.example.com/v1/admin/audit?from=2026-01-01&to=2026-01-31&page=1&page_size=1000"
 ```
 
-The response is paginated; `next` is null when you are at the last page.
+The response is paginated by `page` + `page_size`.
 
 ## Common queries
 
@@ -111,16 +110,16 @@ The audit log is **never auto-pruned**. Storage is cheap relative to its complia
 
 ```bash
 docker-compose -f docker-compose.yml exec postgres \
-  pg_dump -U trustedoss -t audit_log trustedoss | gzip > audit-archive-2024.sql.gz
+  pg_dump -U trustedoss -t audit_logs trustedoss | gzip > audit-archive-2024.sql.gz
 
 # Then delete rows older than the archive cutoff. There is no UI for this —
 # it requires a manual SQL session by design.
 docker-compose -f docker-compose.yml exec postgres \
   psql -U trustedoss -d trustedoss \
-  -c "DELETE FROM audit_log WHERE ts < '2025-01-01';"
+  -c "DELETE FROM audit_logs WHERE created_at < '2025-01-01';"
 ```
 
-The `DELETE` requires temporarily disabling the immutability constraint, which itself emits an audit-log entry. Use only for genuinely old data.
+The `DELETE` is not blocked at the DB layer at v2.0.0 (the append-only contract is enforced in the application; see [Schema](#schema)). Run it inside a deliberate maintenance window with two operators present, and capture the operator action separately (the deletion itself does not emit an audit row).
 
 ## Verify it worked
 
@@ -146,15 +145,24 @@ The export is capped at 100k rows. Narrow the filter or use the API with paginat
 
 ### Cannot grep payloads
 
-The `payload` column is `jsonb`. SQL queries against it are fast with the GIN index the migrations create:
+The `diff` column is `jsonb`. SQL queries against it are fast with the GIN index the migrations create:
 
 ```sql
-SELECT * FROM audit_log
- WHERE payload @> '{"new_state": "suppressed"}'::jsonb
- ORDER BY ts DESC LIMIT 100;
+SELECT * FROM audit_logs
+ WHERE diff @> '{"new_state": "suppressed"}'::jsonb
+ ORDER BY created_at DESC LIMIT 100;
 ```
 
 This requires a `super_admin` SQL session (no UI).
+
+## Roadmap (v2.x)
+
+The following capabilities are referenced in early docs but are **not** shipped at v2.0.0:
+
+- DB-level immutability (PostgreSQL trigger or `CHECK` blocking UPDATE / DELETE on `audit_logs`).
+- UTF-8 BOM prefix on the CSV export so Excel auto-detects non-ASCII without manual selection.
+- Multi-select filters (Action multi-select, Target table multi-select), preset date ranges (last hour / today / last 7 days), exact-match Target ID filter, and Request ID filter on `/admin/audit`.
+- An `actor_kind` column / filter (today the audit row's actor is identified by `actor_user_id`; API-key actors are inferred from the action context).
 
 ## See also
 

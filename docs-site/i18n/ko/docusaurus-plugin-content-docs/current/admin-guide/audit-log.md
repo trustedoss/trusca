@@ -20,19 +20,19 @@ sidebar_position: 4
 
 | 필드 | 타입 | 설명 |
 |---|---|---|
-| `id` | UUIDv7 | 기본 키. 시간 사전식 정렬. |
-| `ts` | timestamptz | 작업 발생 시각(서버 시계, UTC). |
+| `id` | UUID | 기본 키. |
+| `created_at` | timestamptz | 작업 발생 시각(서버 시계, UTC). |
 | `actor_user_id` | UUID | 작업 수행 사용자(시스템 작업은 null). |
-| `actor_kind` | enum | `user`, `api_key`, `system`. |
+| `team_id` | UUID | 해당 시 작업의 팀 범위(조직 단위 쓰기는 null). |
 | `action` | text | 점-네임스페이스 동사. 예: `project.create`, `vuln_finding.update`, `team_membership.delete`. |
-| `target_kind` | text | 영향 받은 객체 클래스(`project`, `team`, `user`, `vuln_finding` 등). |
+| `target_table` | text | 영향 받은 객체가 속한 테이블(`projects`, `teams`, `users`, `vuln_findings` 등). |
 | `target_id` | UUID | 영향 받은 객체의 UUID. |
 | `request_id` | text | 구조화 로그(`X-Request-ID`)와 상관. |
-| `payload` | jsonb | 정제된 before/after diff. PII는 마스킹(`mask_pii`). |
+| `diff` | jsonb | 정제된 before/after diff. PII는 마스킹(`mask_pii`). |
 | `ip` | inet | 출처 IP. |
 | `user_agent` | text | 잘린 UA 문자열. |
 
-테이블에는 `CHECK` 제약이 있어 update와 delete를 막고 insert만 허용합니다. Forward-only Alembic 마이그레이션이 릴리스 간 본 속성을 보존합니다.
+추가 전용 계약은 애플리케이션 레이어에서 강제됩니다 — 감사 리스너는 insert 만 발신하며 API 가 update / delete 엔드포인트를 노출하지 않습니다. 직접 SQL 까지 차단하는 DB 수준 `CHECK` / 트리거는 로드맵 항목입니다(아래 참고). 그 전까지는 의도된, 감사된 유지보수 윈도 외에 `audit_logs`에 UPDATE / DELETE 를 실행하지 마세요.
 
 ## 무엇이 기록되는가
 
@@ -51,36 +51,35 @@ sidebar_position: 4
 
 ### 필터
 
-상단 인라인 필터 바:
+v2.0.0 의 상단 인라인 필터 바:
 
-- **행위자** — 이메일·user ID·`system`으로 검색.
-- **동작** — 다중 선택.
-- **대상 종류** — 다중 선택.
-- **대상 ID** — 정확 일치.
-- **날짜 범위** — 프리셋(지난 1시간·오늘·지난 7일) 또는 사용자 지정.
-- **요청 ID** — 정확 일치(구조화 로그 라인이 있을 때 유용).
+- **행위자 user ID** — UUID 정확 일치.
+- **대상 테이블** — enum 단일 선택(`projects`, `teams`, `users`, `vuln_findings` 등).
+- **동작** — 자유 텍스트 contains(대소문자 구분).
+- **날짜 범위** — `from` 과 `to`(사용자 지정).
+- **검색** — 자유 텍스트 쿼리(`q`); action 과 target 필드를 가로질러 매칭.
 
-필터는 결합됩니다. URL이 갱신되어 동료와 필터된 뷰를 공유 가능.
+필터는 결합됩니다. URL이 갱신되어 동료와 필터된 뷰를 공유 가능. 다중 선택 드롭다운, 프리셋 날짜 범위, 요청 ID 필터, 대상 ID 필터는 로드맵 항목입니다(아래 참고).
 
 ### 테이블
 
-기본 컬럼: `ts`, `행위자`, `동작`, `대상`, `ip`. 행을 클릭하면 전체 payload diff가 펼쳐집니다.
+기본 컬럼: `created_at`, `행위자`, `동작`, `대상`, `ip`. 행을 클릭하면 전체 diff가 펼쳐집니다.
 
 테이블은 가상화 — 1만 항목도 부드럽게 스크롤.
 
 ## CSV 내보내기
 
-툴바의 **Export CSV**는 **현재 필터된** 결과 집합을 한 번에 최대 10만 행까지 내보냅니다. CSV는 BOM 포함 UTF-8이라 Excel이 비ASCII를 정상 처리합니다.
+툴바의 **Export CSV**는 **현재 필터된** 결과 집합을 한 번에 최대 10만 행까지 내보냅니다. CSV 는 UTF-8 입니다(v2.0.0 에서 BOM 미포함 — 한국어 / 일본어 로케일 Excel 사용자는 열 때 UTF-8 을 명시적으로 선택해야 합니다. UTF-8 BOM 발신은 로드맵 항목입니다).
 
 더 큰 윈도는 API로 페이지네이션:
 
 ```bash
 curl -sS \
   -H "Authorization: Bearer ${ACCESS_TOKEN}" \
-  "https://trustedoss.example.com/api/v1/admin/audit?from=2026-01-01&to=2026-01-31&page=1&size=1000"
+  "https://trustedoss.example.com/v1/admin/audit?from=2026-01-01&to=2026-01-31&page=1&page_size=1000"
 ```
 
-응답이 페이지됩니다; 마지막 페이지면 `next`가 null.
+응답이 `page` + `page_size`로 페이지됩니다.
 
 ## 흔한 쿼리
 
@@ -111,16 +110,16 @@ docker-compose -f docker-compose.yml logs backend \
 
 ```bash
 docker-compose -f docker-compose.yml exec postgres \
-  pg_dump -U trustedoss -t audit_log trustedoss | gzip > audit-archive-2024.sql.gz
+  pg_dump -U trustedoss -t audit_logs trustedoss | gzip > audit-archive-2024.sql.gz
 
 # 그 다음 archive cutoff 이전 행 삭제. UI 없음 —
 # 의도적으로 수동 SQL 세션 필요.
 docker-compose -f docker-compose.yml exec postgres \
   psql -U trustedoss -d trustedoss \
-  -c "DELETE FROM audit_log WHERE ts < '2025-01-01';"
+  -c "DELETE FROM audit_logs WHERE created_at < '2025-01-01';"
 ```
 
-`DELETE`는 immutability 제약을 일시 비활성화 필요하며 그 자체가 감사 로그 항목을 발신합니다. 정말로 오래된 데이터에만 사용하세요.
+`DELETE`는 v2.0.0 에서 DB 레이어가 차단하지 않습니다(추가 전용 계약은 애플리케이션에서 강제됩니다 — [스키마](#스키마) 참고). 두 명의 운영자가 함께 있는 의도된 유지보수 윈도에서 실행하고, 운영자 동작 자체를 별도로 기록하세요(삭제 자체는 감사 행을 발신하지 않습니다).
 
 ## 정상 동작 확인
 
@@ -144,17 +143,26 @@ docker-compose -f docker-compose.yml exec postgres \
 
 내보내기는 10만 행 상한입니다. 필터를 좁히거나 페이지네이션 API를 사용하세요.
 
-### Payload grep 불가
+### diff grep 불가
 
-`payload` 컬럼은 `jsonb`. 마이그레이션이 만든 GIN 인덱스로 SQL 쿼리가 빠릅니다.
+`diff` 컬럼은 `jsonb`. 마이그레이션이 만든 GIN 인덱스로 SQL 쿼리가 빠릅니다.
 
 ```sql
-SELECT * FROM audit_log
- WHERE payload @> '{"new_state": "suppressed"}'::jsonb
- ORDER BY ts DESC LIMIT 100;
+SELECT * FROM audit_logs
+ WHERE diff @> '{"new_state": "suppressed"}'::jsonb
+ ORDER BY created_at DESC LIMIT 100;
 ```
 
 `super_admin` SQL 세션 필요(UI 없음).
+
+## 로드맵 (v2.x)
+
+다음 기능들은 초기 문서에 언급되었으나 v2.0.0 에는 **반영되지 않았습니다**.
+
+- DB 수준 immutability(`audit_logs`의 UPDATE / DELETE 를 차단하는 PostgreSQL 트리거 또는 `CHECK`).
+- CSV 내보내기의 UTF-8 BOM 접두사 — 수동 선택 없이 Excel 이 비ASCII 자동 인식.
+- `/admin/audit`의 다중 선택 필터(Action 다중 선택, Target table 다중 선택), 프리셋 날짜 범위(지난 1시간 / 오늘 / 지난 7일), 정확 일치 Target ID 필터, Request ID 필터.
+- `actor_kind` 컬럼 / 필터(현재는 감사 행의 행위자가 `actor_user_id`로 식별되며 API Key 행위자는 동작 컨텍스트에서 추론).
 
 ## 함께 보기
 

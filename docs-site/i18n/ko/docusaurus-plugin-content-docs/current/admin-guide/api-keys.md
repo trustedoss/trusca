@@ -40,32 +40,34 @@ tos_<8-char-prefix>_<32-char-secret>
 
 ## Scope 모델
 
-각 Key는 다음을 가집니다.
+각 Key는 권한 경계를 결정하는 단일 **리소스 scope**를 가집니다.
 
-- **소유 팀** — Key가 대신 행위하는 팀. 팀 간 API 호출은 403으로 실패.
-- **Effective role** — 해당 팀 안에서 Key가 상속하는 역할. 기본은 `developer`, 설정 관리가 필요한 드문 경우에는 `team_admin`.
-- **허용 동작** — Key가 수행 가능한 작업 — `scan:trigger`, `scan:read`, `report:download`, `webhook:receive`, `*`(전부).
-- **만료** — `null`(만료 없음, 드물게) 또는 ISO 타임스탬프.
+- **`org`** — `super_admin`이 발급. 조직 전체에서 행위하며, 발급자가 호출할 수 있던 어떤 endpoint든 호출 가능.
+- **`team`** — `team_admin`이 발급. 특정 팀을 대신해 행위하며, 팀 간 호출은 403으로 실패.
+- **`project`** — `team_admin` 또는 `developer`가 특정 프로젝트에 대해 발급. 해당 프로젝트 외의 호출은 403으로 실패.
 
-전형적인 CI Key는 `developer` + `["scan:trigger", "scan:read", "report:download"]` + 1년 만료입니다.
+Key는 요청 시점에 **발급한 사용자의 역할**을 상속합니다 — v2.0.0에는 별도의 "effective role"이나 "allowed actions" 목록이 없습니다. 권한 검사는 JWT로 인증된 요청과 동일한 RBAC 코드 경로를 따릅니다.
+
+Key는 v2.0.0에서 **만료되지 않습니다**. 수동으로 폐기될 때까지 유효합니다. 키별 만료 프리셋과 세분화된 `allowed_actions` taxonomy(`scan:trigger`, `scan:read`, `report:download`, …)는 로드맵입니다.
 
 ## Key 발급
 
 ### Team admin 으로
 
-1. **Project Settings → CI/CD → API keys**(또는 팀 단위 Key는 **Team settings → API keys**).
-2. **New API key**.
-3. 채우기:
+1. **/integrations**(`team_admin` 이상 사용 가능한 최상위 사이드바 항목)을 엽니다.
+2. **API keys** 탭으로 전환.
+3. **New API key** 클릭.
+4. 채우기:
    - **Label**(예: `github-action-checkout-service`)
-   - **Allowed actions**(다중 선택, 기본은 CI 최소셋)
-   - **Expiry**(30 / 90 / 180 / 365일 프리셋 또는 커스텀)
-4. **Create**.
+   - **Scope** — `team`(기본) 또는 `project`
+   - **Project** — scope가 `project`일 때 필수
+5. **Create**.
 
 전체 Key는 모달에서 **단 한 번** 표시됩니다. 복사해 CI 시크릿 저장소(GitHub secrets, GitLab CI variables, Jenkins credentials)에 보관하세요. 모달을 닫으면 UI에서는 prefix만 보이고 전체 Key는 복구 불가입니다.
 
 ### Super-admin 으로
 
-같은 흐름이지만 팀 선택기가 잠금 해제되어 어느 팀이든 Key를 발급할 수 있습니다.
+같은 **/integrations** 흐름이지만, 팀 경계를 넘는 Key는 scope를 `org`로 설정할 수 있습니다(드묾 — 대부분의 CI 통합은 `team` 또는 `project` scope에 머물러야 함).
 
 ## API Key 사용
 
@@ -97,24 +99,23 @@ curl -sS -H "Authorization: ApiKey ${TRUSTEDOSS_API_KEY}" \
 
 ## 폐기
 
-1. **Project Settings → CI/CD → API keys** → Key 행 → **Revoke**.
+1. **/integrations → API keys** → Key 행 → **Revoke**.
 2. 확인.
 
 폐기는 즉시이며 되돌릴 수 없습니다. Key를 되살리려면 새로 발급하세요.
 
 ## Key 목록
 
-UI는 라벨, prefix, 소유 팀, 역할, 허용 동작, 만료, 마지막 사용 시각, 마지막 사용 IP를 표시합니다. 기존 Key의 secret을 복구할 방법은 없습니다 — 의도된 설계입니다.
+UI는 라벨, prefix, scope(`org` / `team` / `project`), 발급자, 생성 시각, 마지막 사용 시각, 폐기 상태를 표시합니다. 기존 Key의 secret을 복구할 방법은 없습니다 — 의도된 설계입니다. 키별 역할, 허용 동작, 만료, 마지막 사용 IP 컬럼은 로드맵입니다(해당 모델 컬럼들이 아직 없음).
 
 ## 감사 로그
 
-모든 Key 동작이 로그됩니다.
+Key 라이프사이클 이벤트가 로그됩니다.
 
 - `api_key.create` — actor, target prefix, scope.
 - `api_key.revoke` — actor, target prefix.
-- `api_key.use` — API Key로 인증된 모든 요청에서 암묵적(액션의 감사 행에 `actor`로 기록되며 `actor_kind=api_key`).
 
-`actor_kind=api_key`로 감사 로그를 필터링하면 비대화형 클라이언트가 수행한 모든 동작을 볼 수 있습니다.
+v2.0.0에서는 API Key 인증의 요청별 감사 행이 발행되지 않습니다(`api_key.use` 이벤트는 로드맵). API Key 요청으로 생성되는 감사 행은 도메인 액션(예: `scan.create`)을 그대로 기록하며, Key의 prefix는 요청에 대한 구조화된 로그에 캡처되지만 감사 행의 `actor_user_id`는 발급한 사용자입니다(Key 자체가 아님).
 
 ## Webhook 시크릿 vs API Key
 
@@ -144,7 +145,14 @@ Key 발급 후:
 
 ### "Key prefix exists but secret does not match"
 
-누군가 secret을 brute-force 시도. 포털은 모든 미스를 로깅하며, 단일 Key가 60초 내 5회 이상 미스하면 super-admin이 Slack 알림을 받습니다. 폐기 후 회전.
+누군가 secret을 brute-force 시도했거나 잘못된 형식의 Key가 전송됐습니다. 포털은 모든 미스를 구조화된 백엔드 로그에 기록합니다. brute-force 감지(단일 Key가 분당 N회 미스를 넘으면 Slack 알림)는 로드맵입니다 — 그때까지는 백엔드 로그에서 반복되는 `secret_mismatch` 라인을 주기적으로 grep하세요:
+
+```bash
+docker-compose -f docker-compose.yml logs --tail=2000 backend \
+  | grep secret_mismatch | sort | uniq -c | sort -rn | head
+```
+
+단일 prefix가 반복되면 즉시 폐기 후 회전.
 
 ### 로컬에선 동작하는데 CI에선 안 됨
 
@@ -153,6 +161,16 @@ Key 발급 후:
 - CI 시크릿이 적절한 환경 / 브랜치에 설정되어 있는지.
 - 러너의 아웃바운드 IP가 포털 방화벽에 차단되지 않았는지(일부 설치는 사무실 IP만 화이트리스트).
 - CI 트래픽이 통과하는 reverse proxy에서 `Authorization` 헤더가 보존되는지.
+
+## Roadmap (v2.x)
+
+다음 기능들은 초기 문서에서 언급되지만 v2.0.0에서는 **출시되지 않았습니다**.
+
+- 키별 역할 오버라이드(`effective_role`)와 세분화된 `allowed_actions` taxonomy(`scan:trigger`, `scan:read`, `report:download`, `webhook:receive`, `*`). 현재 Key는 발급자 역할과 전체 RBAC 표면을 상속.
+- 키별 `expires_at` 필드 + New API key 폼의 30 / 90 / 180 / 365일 만료 프리셋. 현재 Key는 만료 없이 폐기될 때까지 유효.
+- `actor_kind = api_key`인 요청별 `api_key.use` 감사 이벤트. 현재 Key 라이프사이클(`api_key.create` / `api_key.revoke`)은 감사되지만 요청별 사용은 구조화된 로그에만 캡처됨.
+- 목록의 `last_used_ip` 컬럼.
+- brute-force secret-mismatch 알림(단일 Key가 60초 내 5회 미스 시 Slack 알림).
 
 ## 함께 보기
 
