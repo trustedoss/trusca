@@ -151,14 +151,9 @@ test.describe("@manual-aligned admin backup", () => {
     await backup.cancelRestore();
   });
 
-  test("4) [fixme] manual backup trigger creates a row (deferred — celery worker)", async ({
+  test("4) manual backup trigger creates a row (kind=manual)", async ({
     page,
   }, testInfo) => {
-    test.fixme(
-      true,
-      "Celery worker image in the dev stack is stale (aiosmtplib missing per prompt context). The toast assertion runs cleanly but the row check races worker availability — re-enable when worker is refreshed.",
-    );
-
     const seed = tryAcquireSeed(testInfo, {
       projectNames: ["admin-backup-trigger"],
       superAdmin: true,
@@ -171,14 +166,24 @@ test.describe("@manual-aligned admin backup", () => {
 
     const backup = new AdminBackupHarness(page);
     await backup.gotoBackup();
+    // Capture the baseline row count BEFORE triggering so a stale row
+    // from a sibling test (or a leaked auto backup) does not satisfy the
+    // post-condition by accident.
+    const before = await backup.getRowCount();
     await backup.triggerManualBackup();
 
-    // After the worker writes the artifact the list re-fetches; the new
-    // row's name follows `manual-<utc-iso>.tar.gz`.
+    // The Celery worker writes the artifact asynchronously. The harness
+    // polls the manual-kind row count instead of `waitForTimeout` to
+    // honour the test-writer.md gate. 30s is comfortable for the
+    // docker-compose dev worker which hashes + tars the workspace.
     await backup.refresh();
-    await expect(
-      page.locator('[data-testid="admin-backup-row"][data-kind="manual"]'),
-    ).toHaveCount(1, { timeout: 30_000 });
+    await backup.waitForManualBackupRow(30_000);
+
+    // Post-condition: total row count grew by at least one. Defensive
+    // against a regression that flips the manual-trigger UI key without
+    // actually persisting the row.
+    const after = await backup.getRowCount();
+    expect(after).toBeGreaterThan(before);
   });
 
   test.describe("adversarial — backup name DELETE rejects malformed input", () => {

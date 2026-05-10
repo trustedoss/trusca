@@ -299,6 +299,22 @@ def _parse_args() -> argparse.Namespace:
             "``developer``. Used by the role-management scenarios."
         ),
     )
+    # ── Phase 5 D bundle — Connected Accounts e2e fixtures ──────────────────
+    parser.add_argument(
+        "--with-oauth-identity",
+        choices=("github", "google"),
+        default=None,
+        help=(
+            "Phase 5 D bundle. Insert one OAuthIdentity row for the primary "
+            "user pinned to the chosen provider with a deterministic test "
+            "fixture for ``provider_user_id`` and ``email``. Used by the "
+            "auth_and_profile e2e to exercise the Unlink-with-fallback "
+            "scenario without driving a real OAuth callback. The user "
+            "still gets the password the seed script normally sets, so "
+            "the SPA login flow keeps working — the OAuth identity is a "
+            "secondary auth method."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -367,6 +383,7 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
     super_admin: bool = False,
     extra_members: int = 0,
     extra_team_admin: bool = False,
+    with_oauth_identity: str | None = None,
 ) -> dict[str, object]:
     """Create the org/team/user/membership/projects[/scans/components]."""
     # M2 — defense-in-depth: re-check APP_ENV inside _seed so the guard
@@ -389,6 +406,7 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
         License,
         LicenseFinding,
         Membership,
+        OAuthIdentity,
         Obligation,
         Organization,
         Project,
@@ -488,6 +506,29 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                         }
                     )
                 await session.commit()
+
+            # Phase 5 D bundle — seed an OAuthIdentity row when requested so
+            # the auth_and_profile e2e can exercise the Unlink flow without
+            # driving a real IdP callback. provider_user_id is a deterministic
+            # test fixture pinned to the suffix so concurrent seed runs do
+            # not collide on the (provider, provider_user_id) unique index.
+            oauth_identity_summary: dict[str, str] | None = None
+            if with_oauth_identity is not None:
+                oauth_row = OAuthIdentity(
+                    user_id=user.id,
+                    provider=with_oauth_identity,
+                    provider_user_id=f"e2e-{suffix}",
+                    email=user.email,
+                    avatar_url=None,
+                )
+                session.add(oauth_row)
+                await session.commit()
+                await session.refresh(oauth_row)
+                oauth_identity_summary = {
+                    "id": str(oauth_row.id),
+                    "provider": with_oauth_identity,
+                    "provider_user_id": oauth_row.provider_user_id,
+                }
 
             project_ids: list[str] = []
             scan_ids: list[str] = []
@@ -735,6 +776,7 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                 "vulnerability_count": seeded_vulnerabilities,
                 "obligation_count": seeded_obligations_count,
                 "extra_members": extra_members_summary,
+                "oauth_identity": oauth_identity_summary,
             }
     finally:
         await engine.dispose()
@@ -804,6 +846,7 @@ def main() -> int:
                 super_admin=args.super_admin,
                 extra_members=args.extra_members,
                 extra_team_admin=args.extra_team_admin,
+                with_oauth_identity=args.with_oauth_identity,
             )
         )
     except Exception as exc:  # noqa: BLE001 — top-level CLI handler

@@ -94,6 +94,30 @@ export class AdminBackupHarness {
     ).toBeVisible({ timeout: DEFAULT_TIMEOUT_MS });
   }
 
+  /**
+   * Wait for at least one row tagged `data-kind="manual"` to mount. Used
+   * by the manual-trigger scenario to give the Celery worker time to
+   * finish writing the artifact and the SPA's TanStack Query cache time
+   * to refetch. Backed by `expect.poll` so we never call
+   * `page.waitForTimeout()` (test-writer.md gate).
+   *
+   * @param timeoutMs — max wait. Defaults to 30s, comfortable for the
+   *   docker-compose dev worker which hashes + tars the workspace.
+   */
+  async waitForManualBackupRow(timeoutMs = 30_000): Promise<void> {
+    await expect
+      .poll(
+        async () =>
+          this.page
+            .locator(
+              '[data-testid="admin-backup-row"][data-kind="manual"]',
+            )
+            .count(),
+        { timeout: timeoutMs },
+      )
+      .toBeGreaterThanOrEqual(1);
+  }
+
   /** Read the row count in the body (skeleton + empty rows excluded). */
   async getRowCount(): Promise<number> {
     return this.page.getByTestId("admin-backup-row").count();

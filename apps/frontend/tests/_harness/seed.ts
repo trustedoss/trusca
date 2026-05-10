@@ -58,6 +58,17 @@ export interface SeedSummary {
     email: string;
     role: "team_admin" | "developer";
   }>;
+  /**
+   * Phase 5 D bundle. Populated when ``SeedOptions.withOAuthIdentity`` is
+   * set. Carries the seeded row's id + provider + the deterministic
+   * ``provider_user_id`` fixture so the spec can correlate the row's
+   * server-side state with what the SPA renders.
+   */
+  oauth_identity?: {
+    id: string;
+    provider: "github" | "google";
+    provider_user_id: string;
+  } | null;
 }
 
 export interface SeedOptions {
@@ -122,6 +133,15 @@ export interface SeedOptions {
    * extra user is given ``team_admin`` role instead of ``developer``.
    */
   extraTeamAdmin?: boolean;
+  /**
+   * Phase 5 D bundle. Insert one OAuthIdentity row for the primary user
+   * pinned to the chosen provider. Used by `auth_and_profile.spec.ts` to
+   * exercise the Unlink-with-fallback scenario without driving a real
+   * IdP callback. The primary user still receives the password the seed
+   * normally sets, so the SPA login flow keeps working — the OAuth
+   * identity is a secondary auth method.
+   */
+  withOAuthIdentity?: "github" | "google";
 }
 
 /**
@@ -180,6 +200,9 @@ export function seedE2eUser(opts: SeedOptions): SeedSummary {
   }
   if (opts.extraTeamAdmin) {
     args.push("--extra-team-admin");
+  }
+  if (opts.withOAuthIdentity) {
+    args.push("--with-oauth-identity", opts.withOAuthIdentity);
   }
 
   // Default DATABASE_URL points at the host-mapped Postgres exposed by

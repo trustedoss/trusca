@@ -106,22 +106,49 @@ test.describe("@manual-aligned profile + connected accounts", () => {
     ).toHaveCount(0);
   });
 
-  // The two scenarios below need a seeded OAuth identity. The seed helper
-  // does not yet expose `--with-oauth-identity`, so we mark them fixme with
-  // a pointer to the backlog item. When the seed gains the flag the spec
-  // unskips automatically because the pre-condition becomes available.
+  // Last-only blocks-login (urn:trustedoss:problem:oauth_unlink_blocks_login)
+  // requires an OAuth-only user (no hashed_password). The seed flow always
+  // provisions a password, so this scenario stays fixme until either the
+  // seed grows a `--no-password` flag or the spec mints a JWT directly for
+  // an OAuth-only fixture user. The blocks-login URN itself is exercised by
+  // the backend unit + integration tests
+  // (apps/backend/tests/integration/test_users_me_oauth_identities_api.py).
   test("3) [fixme] last-only OAuth Unlink surfaces blocks-login alert", async () => {
     test.fixme(
       true,
-      "Requires `seed_e2e_user --with-oauth-identity`; tracked as a Phase 5 follow-up — adversarial path covered via the API-direct test below.",
+      "Requires an OAuth-only user fixture (no hashed_password) so the unlink trips OAuthUnlinkBlocksLoginError. The seed currently always provisions a password; deferred until a `--no-password` flag or a JWT-mint helper lands. The blocks-login URN is exercised by the backend integration suite.",
     );
   });
 
-  test("4) [fixme] Unlink succeeds when password fallback exists", async () => {
-    test.fixme(
-      true,
-      "Requires `seed_e2e_user --with-oauth-identity`; the happy path is exercised by the unit + integration tests on the backend.",
-    );
+  test("4) Unlink succeeds when password fallback exists", async ({
+    page,
+  }, testInfo) => {
+    // Seed user has BOTH a password and a GitHub identity. The unlink path
+    // checks "is the identity being removed the user's last auth method?"
+    // — with the password set, the answer is no, so the row is removed and
+    // the success toast surfaces.
+    const seed = tryAcquireSeed(testInfo, {
+      projectNames: ["profile-unlink-fallback"],
+      withOAuthIdentity: "github",
+    });
+    if (seed === null) return;
+
+    const auth = new AuthHarness(page);
+    await auth.gotoLogin();
+    await auth.login(seed.email, seed.password);
+
+    const profile = new ProfileHarness(page);
+    await profile.gotoProfile();
+    // Defensive — the seeded row should mount before we click Unlink.
+    await profile.expectConnectedAccounts(["github"]);
+
+    await profile.unlinkProvider("github");
+    await profile.expectUnlinkSuccess();
+
+    // Post-condition: the empty card mounts because the user is back to
+    // zero connected identities. The list re-fetch fires implicitly on
+    // the unlink response so we don't need to trigger a manual reload.
+    await profile.expectConnectedAccounts([]);
   });
 
   test.describe("adversarial — malformed identity ids rejected with 4xx", () => {
