@@ -52,11 +52,9 @@ Each key carries a single **resource scope** that determines the authorization b
 - **`team`** — issued by a `team_admin`. Acts on behalf of a specific team; cross-team calls fail with 403.
 - **`project`** — issued by a `team_admin` or `developer` for a specific project; calls outside that project fail with 403.
 
-API keys carry a single `scope` (`org`, `team`, or `project`) — there is no per-action capability list at v2.0.0. Any caller authenticated with a key matching the project's scope can hit any endpoint that accepts an api-key. Per-action allowlists are on the roadmap.
+The key inherits the **role of the issuing user** at request time — there is no separate "effective role" or "allowed actions" list at v2.0.0. Permission checks fall through to the same RBAC code path as a JWT-authenticated request.
 
-The key also inherits the **role of the issuing user** at request time. Permission checks fall through to the same RBAC code path as a JWT-authenticated request — the role is what the per-route checks evaluate against, not a per-key capability flag.
-
-Keys are **non-expiring** at v2.0.0. They are valid until manually revoked. Per-key expiry presets and the per-action capability list above are on the roadmap.
+Keys are **non-expiring** at v2.0.0. They are valid until manually revoked. Per-key expiry presets and a fine-grained `allowed_actions` taxonomy (`scan:trigger`, `scan:read`, `report:download`, …) are on the roadmap.
 
 ## Issuing a key
 
@@ -121,7 +119,7 @@ The UI shows: label, prefix, scope (`org` / `team` / `project`), creator, create
 Key lifecycle events log:
 
 - `target_table=api_keys&action=create` — emitted by the ORM listener when a key row is inserted (actor, target prefix, scope).
-- API key revocations emit a structlog `api_key.revoked` event but **do not** create an `audit_logs` row at v2.0.0. Audit-table integration for explicit api-key events is on the roadmap. The ORM listener still records the underlying `api_keys.update` row whenever `revoked_at` flips.
+- `api_key.revoked` — emitted by the API key service as a **structlog event only** on explicit revocation (actor, target prefix). It does **not** create an `audit_logs` row at v2.0.0. The ORM listener still records the underlying `api_keys.update` row when `revoked_at` flips, so the revocation is captured on the audit table — under `target_table=api_keys&action=update` rather than under the structlog event name.
 
 Per-request audit rows are not emitted for API-key authentication at v2.0.0 (an `api_key.use` event is on the roadmap). Audit rows that are produced by an API-key request still carry the resulting domain action (e.g. `target_table=scans&action=create`); the API key's prefix is captured by structured logs on the request, but the audit row's `actor_user_id` is the issuing user, not the key.
 
@@ -139,7 +137,16 @@ See [Webhooks](../ci-integration/webhooks.md) for the webhook flow.
 After issuing a key:
 
 1. `curl -sS -H "Authorization: Bearer <key>" .../api/v1/projects` returns 200 with the team's projects.
-2. The audit log records a `target_table=api_keys&action=create` row with the prefix.
+2. The audit log records a `target_table=api_keys&action=create` row with the prefix. The Admin UI cannot filter on `target_table=api_keys` — `api_keys` is not in the `AuditTargetTable` whitelist (see [Audit log → Filter-visible vs raw-row tables](./audit-log.md#what-gets-logged)). Use raw SQL to verify:
+
+   ```sql
+   SELECT * FROM audit_logs
+    WHERE target_table = 'api_keys'
+      AND action = 'create'
+      AND created_at > now() - interval '1 hour'
+    ORDER BY created_at DESC;
+   ```
+
 3. The CI build that consumes the key passes its first run.
 
 ## Troubleshooting
@@ -174,9 +181,9 @@ Confirm:
 
 The following capabilities are referenced in early docs but are **not** shipped at v2.0.0:
 
-- Per-key role override (`effective_role`) and a per-action capability allowlist on the key row. Today the key inherits the issuing user's role and the full RBAC surface; only the resource scope (`org` / `team` / `project`) is enforced per key.
+- Per-key role override (`effective_role`) and a granular `allowed_actions` taxonomy (`scan:trigger`, `scan:read`, `report:download`, `webhook:receive`, `*`). Today the key inherits the issuing user's role and the full RBAC surface.
 - Per-key `expires_at` field and the 30 / 90 / 180 / 365-day expiry presets in the New API key form. Today keys do not expire — they live until revoked.
-- Per-request `api_key.use` audit event with `actor_kind = api_key`. Today the ORM listener captures the underlying `api_keys` insert + update rows, but the explicit `api_key.revoked` event is structlog-only and per-request use is captured only in structured logs.
+- Per-request `api_key.use` audit event with `actor_kind = api_key`. Today key lifecycle (the ORM-listener insert and the explicit `api_key.revoked` action) is audited but per-request use is captured only in structured logs.
 - `last_used_ip` column in the listing.
 - Brute-force secret-mismatch alerting (Slack notification when a single key crosses 5 misses / 60 s).
 

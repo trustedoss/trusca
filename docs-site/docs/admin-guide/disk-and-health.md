@@ -129,12 +129,11 @@ Disk pressure does not generate a notification today; operators are expected to 
 
 ## /admin/scans — Scan queue and worker monitoring
 
-The `/admin/scans` page (super-admin only) lists every running, queued,
-succeeded, and failed scan across the org. Operators can:
+The `/admin/scans` page (super-admin only) lists every running, queued, succeeded, and failed scan across the org. Operators can:
 
-- Inspect any task's full progress payload + last log frame
-- Force-cancel a stuck scan (`POST /v1/admin/scans/{scan_id}/cancel`)
-- Filter by status, kind, project, or assigned worker
+- Inspect any task's full progress payload + last log frame.
+- Force-cancel a stuck scan (`POST /v1/admin/scans/{scan_id}/cancel`).
+- Filter by status, kind, project, or assigned worker.
 
 Backend: `apps/backend/api/v1/admin/scans.py`. UI: `apps/frontend/src/features/admin/scans/AdminScansPage.tsx`.
 

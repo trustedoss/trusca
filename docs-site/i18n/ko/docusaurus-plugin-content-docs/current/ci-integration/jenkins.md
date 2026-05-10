@@ -16,8 +16,6 @@ Jenkins controller / agent를 운영하는 엔지니어. declarative pipeline과
 
 ## 빠른 시작
 
-> **Tip**: 자격 증명 와이어링, 데드라인 폴링, PR 코멘트 스테이지가 포함된 복사·붙여넣기용 5-스테이지 예시가 [`templates/Jenkinsfile.example`](https://github.com/trustedoss/trustedoss-portal/blob/main/templates/Jenkinsfile.example)에 있습니다 — 새 파이프라인의 권장 출발점입니다.
-
 ```groovy
 // Jenkinsfile
 pipeline {
@@ -77,7 +75,7 @@ pipeline {
 
 ### 1. API Key 생성
 
-포털에서 **Project Settings → CI/CD → API keys → New API key**. `scope` 를 `project` 로 설정해 키가 이 프로젝트에만 묶이게 합니다. v2.0.0 에는 동작 단위 capability 목록이 없습니다 — Key 는 발급자의 역할을 상속하며 키별로 강제되는 것은 scope 뿐입니다. [API keys](../admin-guide/api-keys.md) 참고.
+포털에서 **Project Settings → CI/CD → API keys → New API key**, 허용 동작 — `scan:trigger`, `scan:read`, `report:download`. [API keys](../admin-guide/api-keys.md) 참고.
 
 ### 2. Jenkins credential로 Key 추가
 
@@ -141,8 +139,6 @@ when {
   }
 }
 ```
-
-Jenkins multibranch를 통한 PR 코멘트는 GitHub만 지원됩니다(GitLab과 동일한 백엔드 제약 — GitLab CI 페이지의 경고 참고). 포털이 자체 GitHub PAT로 서버 사이드에서 코멘트를 게시하며, Jenkins 자체는 어떤 토큰도 중계하지 않습니다.
 
 ### Advisory 모드(빌드를 실패시키지 않음)
 

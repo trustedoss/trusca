@@ -81,7 +81,7 @@ Connected Accounts 패널은 본인 포털 계정에 현재 연결된 모든 외
 
 ![Connected Accounts — 연결된 GitHub 신원이 표시된 패널](/img/screenshots/user-profile-connected-accounts.png)
 
-v2.0.0에서는 비밀번호 로그인이 Connected Accounts 목록에 별도 행으로 표시되지 않습니다 — 이메일+비밀번호로 가입했거나 비밀번호 재설정을 완료했다면 묵시적으로 활성 상태입니다. OAuth만 사용 중인 계정의 비밀번호 복구는 운영자가 API 엔드포인트 `POST /v1/admin/users/{user_id}/password-reset`(super-admin 전용)을 호출해 트리거합니다. 셀프 서비스 UI는 로드맵 항목입니다.
+v2.0.0에서는 비밀번호 로그인이 Connected Accounts 목록에 별도 행으로 표시되지 않습니다 — 이메일+비밀번호로 가입했거나 비밀번호 재설정을 완료했다면 묵시적으로 활성 상태입니다. OAuth만 사용 중인 계정의 비밀번호 복구는 로드맵 항목입니다. 현재는 운영자 측 `/admin/users/{id}/password-reset` 엔드포인트가 유일한 경로입니다.
 
 각 Connected Accounts 행에는 **Unlink** 버튼이 있습니다. 포털은 본인이 로그인 수단을 모두 잃는 상황을 방지합니다(마지막 인증 수단 보호).
 

@@ -119,16 +119,16 @@ POST   /auth/reset-password                  익명
 GET    /auth/oauth/{provider}/authorize      익명
 GET    /auth/oauth/{provider}/callback       익명
 
-# /v1/users/me/* 는 아래 하위 리소스만 노출 — self 정보는 GET /auth/me 참고.
+GET    /auth/me                              현재 사용자 정보 (auth 라우터)
 GET    /v1/users/me/notification-prefs
 PUT    /v1/users/me/notification-prefs
 GET    /v1/users/me/oauth-identities
-DELETE /v1/users/me/oauth-identities/{identity_id}   # 마지막 OAuth + has-password 가드
+DELETE /v1/users/me/oauth-identities/{identity_id}   # last-OAuth + has-password 게이팅
+                                                     # 409 → urn:trustedoss:problem:last-oauth-link
 
 GET    /v1/projects                          목록 (팀 범위)
 POST   /v1/projects
 GET    /v1/projects/{id}
-GET    /v1/projects/{id}/overview            집계된 리스크 / 스캔 정보 (Overview 탭)
 PATCH  /v1/projects/{id}
 DELETE /v1/projects/{id}
 GET    /v1/projects/{id}/sbom?format=…
@@ -204,8 +204,6 @@ DELETE /v1/admin/backup/{name}
 ```
 
 전체 스키마(요청 본문, 응답 형태, 검증 룰)는 모든 실행 인스턴스의 `/api/docs`에 있습니다.
-
-`DELETE /v1/users/me/oauth-identities/{identity_id}`는 두 단계로 가드됩니다 — 호출자가 이후에도 로그인 가능해야 하며(다른 OAuth 신원이 남아 있거나 계정에 비밀번호가 있어야 함), 어느 쪽도 충족되지 않으면 **409 Conflict**를 `type=urn:trustedoss:problem:last-oauth-link`로 반환합니다.
 
 ### Optimistic concurrency
 

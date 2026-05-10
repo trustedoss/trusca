@@ -16,25 +16,18 @@ sidebar_position: 5
 
 ## 백업 내용
 
-디스크에는 **두 가지 디렉터리 형식**이 존재합니다. 두 형식 모두 동일한 세 파일(`postgres.sql.gz`, `workspace.tar.gz`, `manifest.json`)을 담고 있으며, 디렉터리 이름 형식만 다릅니다.
+v2.0.0 에는 두 디렉터리 명명 형식이 공존합니다.
 
-- **CLI(`scripts/backup.sh`)** 가 만든 백업은 `<backup-dir>/<YYYY-MM-DD>-<HHMMSS>/`(레거시 형식).
-- **Admin UI / Celery beat** 가 만든 백업은 `<backup-dir>/{auto,manual}-<YYYYMMDDTHHMMSSZ>/` 형식이며, `apps/backend/services/backup_service.py` 의 `BACKUP_NAME_RE`(`^(auto|manual)-\d{8}T\d{6}Z$`) 가 매칭합니다.
+- **CLI 레거시** — `backups/YYYY-MM-DD-HHMMSS/` (`scripts/backup.sh` 와 아래 예시에서 사용).
+- **UI / Celery** — `backups/(auto|manual)-YYYYMMDDTHHMMSSZ/` (`apps/backend/tasks/backup.py` 와 `/admin/backup` 페이지에서 사용 — prefix 가 일일 Celery Beat 잡인지 운영자 클릭인지를 표시). [백업 트리거](#백업-트리거) 섹션이 언급하는 `auto-` 보존 정리는 이 prefix 를 키로 동작합니다.
 
-Admin UI 는 포털 자체가 만든 백업(Celery beat 또는 **Run manual backup now**)만 나열합니다. 레거시 `scripts/backup.sh` 출력은 이전 `YYYY-MM-DD-HHMMSS` 디렉터리 형식을 사용하며 운영자는 디스크에서 여전히 볼 수 있습니다 — `scripts/restore.sh` 로 직접 복원하세요.
+두 형식 모두 동일한 `postgres.sql.gz` + `workspace.tar.gz` + `manifest.json` 트리플로 디코드되며 복원 측에서는 호환 — 복원 스크립트(와 UI 복원 엔드포인트)가 둘 다 받습니다.
 
 ```
-# CLI 형식
 backups/2026-05-09-030000/
 ├── postgres.sql.gz     # pg_dump --clean --if-exists | gzip
 ├── workspace.tar.gz    # $WORKSPACE_HOST_PATH의 tar -czf
 └── manifest.json       # 타임스탬프, alembic head, db 크기, workspace 경로
-
-# Admin-UI / Celery-beat 형식
-backups/auto-20260509T030000Z/
-├── postgres.sql.gz
-├── workspace.tar.gz
-└── manifest.json
 ```
 
 - **`postgres.sql.gz`** — `--clean --if-exists` 포함 전체 논리적 덤프. 재적용 시 객체를 drop+recreate한 후 데이터 재삽입.

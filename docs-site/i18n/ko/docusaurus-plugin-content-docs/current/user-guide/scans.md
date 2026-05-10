@@ -116,7 +116,7 @@ UI는 단계·진행률 실시간 갱신을 위해 `ws(s)://<host>/ws/scans/{sca
 }
 ```
 
-`percent`는 0–100 정수입니다. `step`은 소스 파이프라인의 8개 슬러그(`bootstrap`, `fetch`, `prep`, `cdxgen`, `ort`, `dt_upload`, `dt_findings`, `finalize`) 중 하나이거나, 컨테이너 스캔의 경우 컨테이너 파이프라인의 4개 슬러그(`bootstrap`, `trivy`, `persist`, `finalize`) 중 하나이며, 추가로 2개의 종단 상태(`succeeded`, `failed`)가 있습니다. 프레임은 `scan_id`를 다시 보내지 않습니다 — 구독자가 URL에서 이미 알고 있기 때문입니다.
+`percent`는 0–100 정수입니다. `step`은 7개의 파이프라인 슬러그(`bootstrap`, `fetch`, `prep`, `cdxgen`, `ort`, `dt_upload`, `dt_findings`, `finalize`)와 2개의 종단 상태(`succeeded`, `failed`) 중 하나입니다. 프레임은 `scan_id`를 다시 보내지 않습니다 — 구독자가 URL에서 이미 알고 있기 때문입니다.
 
 ## 정상 동작 확인
 
@@ -126,7 +126,7 @@ UI는 단계·진행률 실시간 갱신을 위해 `ws(s)://<host>/ws/scans/{sca
 2. 컴포넌트 수 > 0.
 3. 취약점 수가 표시(프로젝트가 정말 깨끗하면 0일 수도 있음).
 4. Overview 탭의 마지막 스캔 타임스탬프가 "방금"을 반영.
-5. 감사 로그에 `scan.create`와 `scan.update` 이벤트가 기록.
+5. 감사 로그에 `target_table=scans&action=create`와 `target_table=scans&action=update` 이벤트가 기록.
 
 ## 트러블슈팅
 

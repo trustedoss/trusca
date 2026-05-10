@@ -38,7 +38,7 @@ Portal API call → Circuit breaker → DT health probe (60s heartbeat)
 
 ### 1. Health monitor
 
-A Celery Beat task pings `${DT_URL}/api/version` every 60 seconds and writes the result to PostgreSQL (`dt_health` table). Three consecutive failures flip the state from `healthy` to `degraded`; the next failure flips it to `down`.
+A Celery Beat task pings `${DT_URL}/api/version` every 60 seconds. Three consecutive failures flip the state from `healthy` to `degraded`; the next failure flips it to `down`. DT probe outcomes are emitted as `dt_health_check` structlog events and consumed by the dashboard endpoint and the breaker; consult Loki / journald for the event stream (there is no `dt_health` SQL table at v2.0.0).
 
 The dashboard at **/admin/dt** shows:
 
@@ -61,7 +61,7 @@ The current state is visible at **/admin/dt** and via `GET /v1/admin/dt/status` 
 
 ### 3. PostgreSQL vulnerability cache
 
-Every successful DT response is mirrored into `vuln_cache` (project / component / cve triple, plus severity, summary, fix availability). The cache is the source of truth when the breaker is OPEN.
+Vulnerability data lives directly in the `vulnerabilities` and `vulnerability_findings` tables — the portal mirrors every successful DT response into these tables (CVE metadata + per-scan findings with severity, summary, fix availability). They are the source of truth when the breaker is OPEN; there is no separate `vuln_cache` table at v2.0.0.
 
 The cache is best-effort: it can lag DT by up to one hour (the resync interval). New CVEs that DT learned about during a portal-side outage will not appear until the next successful resync.
 
@@ -152,19 +152,20 @@ Both endpoints require `super_admin`.
 
 ## Notifications {#notifications}
 
-The notification triggers are configured at **/notifications**. The kinds below cover the full closed enum the backend emits (`apps/backend/notifications/dispatcher.NotificationKind`); disk pressure is listed because it is wired into the dashboard banner today, with a `disk_pressure` notification kind on the roadmap.
+The notification triggers are configured at **/notifications**. The `kind` enum at v2.0.0 has six values, mirrored in `apps/backend/models/notification.py` and `apps/backend/schemas/notification.py`:
 
-| Trigger | Default |
-|---|---|
-| Scan finished (kind `scan_completed`) | Off |
-| Scan failed (kind `scan_failed`) | On |
-| Build gate failed (kind `policy_gate_failed`) | On |
-| New CVE on existing project / re-detection (kind `cve_detected`) | On |
-| License violation (kind `license_violation`) | On |
-| Approval request (kind `approval_pending`) | On (team admins) |
-| Disk pressure (≥ 90%) | On (super-admins) |
+| `kind` | Trigger | Default |
+|---|---|---|
+| `scan_completed` | Scan finished successfully | Off |
+| `scan_failed` | Scan ended in `failed` state | On (team admins) |
+| `cve_detected` | New CVE re-detected on an existing project | On |
+| `license_violation` | Forbidden / conditional license observed on a scan | On (team admins) |
+| `approval_pending` | Component pending approval awaiting decision | On (team admins) |
+| `policy_gate_failed` | Build gate (`POST /v1/scans/{id}/policy-gate`) returned `block` | On |
 
 Channels: email (SMTP), Slack webhook, MS Teams webhook. Configure the webhook URLs in `.env` (`SMTP_*`, `SLACK_WEBHOOK_URL`, `TEAMS_WEBHOOK_URL`).
+
+A `disk_pressure` notification kind is **not** in the enum at v2.0.0; disk pressure surfaces only on `/admin/disk`. See [disk-and-health](./disk-and-health.md).
 
 ## Troubleshooting
 

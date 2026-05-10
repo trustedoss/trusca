@@ -28,7 +28,7 @@ Each entry has:
 | `created_at` | timestamptz | When the action occurred (server clock, UTC). |
 | `actor_user_id` | UUID | The user who performed the action (null for system jobs). |
 | `team_id` | UUID | Team scope of the action when applicable (null for org-wide writes). |
-| `action` | text | Either a bare verb (`create` / `update` / `delete`) for ORM-tracked table mutations, or a dot-namespaced event name (`backup.completed`, `oauth.identity.unlinked`, etc.) for explicit business-event audit calls. The verb-only form is what `target_table` automatically pairs with; explicit event names carry their own meaning and may use a `target_table` of `None`. Filter as `target_table=projects&action=create` for the verb form. |
+| `action` | text | Verb only (`create` / `update` / `delete`). The table is captured separately in `target_table`. Filter as `target_table=projects&action=create`. |
 | `target_table` | text | Table the affected object lives in (`projects`, `teams`, `users`, `vulnerability_findings`, …). |
 | `target_id` | String(64) | The affected object's identifier. |
 | `request_id` | text | Correlates with structured logs (`X-Request-ID`). |
@@ -51,15 +51,20 @@ These triggers close a defense-in-depth gap that PR #44 had documented as roadma
 
 Every authenticated `POST`, `PATCH`, `PUT`, and `DELETE` produces exactly one entry. Read endpoints (`GET`) do not. SBOM exports emit a structlog `sbom_exported` event but **do not** create an `audit_logs` row at v2.0.0; integrating exports into the audit table is on the roadmap.
 
-System jobs (Celery) also log. Examples cover both action forms — bare verbs from the ORM listener and dot-namespaced events from explicit audit calls:
+System jobs (Celery) also log. Each row carries the bare action verb plus its `target_table`. Examples:
 
 - `target_table=scans&action=create` (system, when a webhook triggers a scan)
 - `target_table=dt_orphans&action=delete`
 - `target_table=backups&action=create`
 - `target_table=notifications&action=create`
-- `action=backup.completed` (explicit business event from `tasks/backup.py`; the row's `target_table` is `None`)
-- `action=backup.failed`, `action=backup.pruned`, `action=backup.restored`, `action=backup.restore_failed` (sibling backup lifecycle events)
-- `action=oauth.identity.unlinked` (explicit event from `services/oauth_identity_service.py`, paired with the underlying `oauth_identities&action=delete` row)
+
+:::note Filter-visible vs raw-row tables
+The Admin UI filter dropdown for `target_table` is bounded by the
+`AuditTargetTable` whitelist in `apps/backend/schemas/admin_ops.py`.
+Rows with table names outside this whitelist (e.g. `dt_orphans`,
+`backups`, `api_keys`, `notifications`, `dt_breaker`) still land in
+`audit_logs` but can only be queried by raw SQL.
+:::
 
 ## The audit log page
 
@@ -73,7 +78,7 @@ The inline filter bar at v2.0.0:
 - **Target table** — single-select from the enum (`projects`, `teams`, `users`, `vulnerability_findings`, …).
 - **Action** — free-text contains (case-sensitive).
 - **Date range** — `from` and `to` (custom).
-- **Search** — free-text query (`q`) performs an `ilike` match against the JSON-encoded `diff` column. Action and target_table are separate filter params (`action=`, `target_table=`).
+- **Search** — free-text query (`q`). Performs an `ilike` match against the JSON-encoded `diff` column. `action` and `target_table` are separate filter parameters (`action=`, `target_table=`); `q` does not match those columns.
 
 Filters compose. The URL updates so you can share a filtered view with a teammate. Multi-select dropdowns, preset date ranges, request-ID filter, and a target-ID filter are on the roadmap (see below).
 

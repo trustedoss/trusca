@@ -116,7 +116,7 @@ If you build a custom client, the message shape is:
 }
 ```
 
-`percent` is an integer 0–100. `step` is one of the eight source-pipeline slugs (`bootstrap`, `fetch`, `prep`, `cdxgen`, `ort`, `dt_upload`, `dt_findings`, `finalize`) or, for container scans, one of the four container-pipeline slugs (`bootstrap`, `trivy`, `persist`, `finalize`), plus the two terminal states (`succeeded`, `failed`). The frame does not echo `scan_id` — the subscriber already knows it from the URL.
+`percent` is an integer 0–100. `step` is one of the seven pipeline slugs (`bootstrap`, `fetch`, `prep`, `cdxgen`, `ort`, `dt_upload`, `dt_findings`, `finalize`) plus the two terminal states (`succeeded`, `failed`). The frame does not echo `scan_id` — the subscriber already knows it from the URL.
 
 ## Verify it worked
 
@@ -126,7 +126,7 @@ After a scan completes:
 2. The Components count > 0.
 3. The Vulnerabilities count is visible (may be 0 if the project is genuinely clean).
 4. The Last scan timestamp on the Overview tab reflects "now".
-5. The audit log records `scan.create` and `scan.update` events.
+5. The audit log records `target_table=scans&action=create` and `target_table=scans&action=update` events.
 
 ## Troubleshooting
 

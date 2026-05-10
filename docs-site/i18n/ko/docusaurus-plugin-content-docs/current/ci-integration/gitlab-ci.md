@@ -10,15 +10,12 @@ sidebar_position: 2
 
 포털은 GitHub Action을 미러링하는 `include` 가능한 GitLab CI 템플릿을 제공합니다 — 스캔을 트리거하고 최종 상태까지 폴링한 다음 빌드 게이트를 평가합니다. 템플릿은 단일 잡이며, 어떤 필드든 확장하거나 오버라이드할 수 있습니다.
 
-:::note 대상 독자
-GitLab CI/CD를 사용하는 GitLab 프로젝트를 운영하는 엔지니어. 포털용 API Key가 필요합니다 — [API keys](../admin-guide/api-keys.md) 참고.
+:::warning GitLab MR 코멘트 — 아직 출하되지 않음
+v2.0.0의 포털 PR-코멘트 통합은 GitHub 전용입니다. `templates/gitlab-ci.yml`의 MR-코멘트 잡은 요청을 스테이징하지만, 백엔드 `services/sca_comment.py`는 `api.github.com` 호출만 알고 있습니다 — GitLab `repo_full_name`으로 호출하면 404가 반환됩니다. GitLab Notes API 클라이언트가 도착할 때까지 GitLab 측에서는 빌드 게이트의 종료 코드를 사용하세요.
 :::
 
-:::warning GitLab MR 코멘트 — 아직 미출시
-포털의 PR 코멘트 통합은 v2.0.0에서 GitHub 전용입니다.
-`templates/gitlab-ci.yml`의 MR 코멘트 잡은 요청을 준비하지만,
-백엔드 `services/sca_comment.py`는 `api.github.com`만 호출할 줄 알기 때문에 GitLab `repo_full_name`으로 호출하면 404를 반환합니다.
-GitLab Notes API 클라이언트가 도착할 때까지 GitLab 측에서는 빌드 게이트 종료 코드만 사용하세요.
+:::note 대상 독자
+GitLab CI/CD를 사용하는 GitLab 프로젝트를 운영하는 엔지니어. 포털용 API Key가 필요합니다 — [API keys](../admin-guide/api-keys.md) 참고.
 :::
 
 ## 빠른 시작
@@ -45,11 +42,7 @@ sca:
 
 ### 1. API Key 생성
 
-포털에서 **Project Settings → CI/CD → API keys → New API key**.
-
-API Key는 단일 `scope`(`org`, `team`, 또는 `project`)를 가집니다. v2.0.0에는 동작별 allowlist가 없으며, 적절한 scope의 Key로 인증된 호출자는 api-key를 받는 모든 엔드포인트에 접근할 수 있습니다. 동작별 capability는 로드맵에 있습니다.
-
-[API keys](../admin-guide/api-keys.md) 참고.
+포털에서 **Project Settings → CI/CD → API keys → New API key**. 허용 동작 — `scan:trigger`, `scan:read`, `report:download`. [API keys](../admin-guide/api-keys.md) 참고.
 
 ### 2. masked CI/CD 변수로 Key 저장
 
@@ -82,7 +75,7 @@ masked 플래그는 잡 로그에 Key가 그대로 노출되는 것을 막습니
 | `TRUSTEDOSS_FAIL_ON_GATE` | no | `true` | `true`이면 게이트 실패 시 잡이 1로 종료. |
 | `TRUSTEDOSS_POLL_TIMEOUT` | no | `1800` | 최종 상태까지 기다리는 최대 초. |
 | `TRUSTEDOSS_POLL_INTERVAL` | no | `30` | 폴링 간격(초). |
-| `TRUSTEDOSS_POST_MR_COMMENT` | no | `true` | GitLab Notes API 클라이언트용 예약 (아직 미출시 — 페이지 상단 경고 참고). 플래그는 파싱되지만 GitLab 레포에 대한 포털 요청은 현재 실패합니다. |
+| `TRUSTEDOSS_POST_MR_COMMENT` | no | `true` | 향후 GitLab Notes API 통합용 예약. v2.0.0에서는 요청이 스테이징되지만 백엔드가 전송할 수 없습니다 — 위 경고 참고. |
 
 ## 레시피
 
@@ -98,7 +91,7 @@ variables:
   TRUSTEDOSS_FAIL_ON_GATE: 'false'
 ```
 
-잡은 green을 유지합니다. (MR 노트 게시는 v2.0.0에서 GitHub 전용입니다 — 페이지 상단 경고 참고.)
+잡은 green을 유지하고 MR 노트는 그대로 게시됩니다.
 
 ### 보호된 브랜치에서만 실행
 
@@ -135,15 +128,24 @@ trustedoss:scan-container:
 러너가 `include`를 위해 GitHub에 도달하지 못하는 등의 이유로 잡을 복사·인라인해야 한다면 표준 형태는 다음과 같습니다.
 
 ```yaml
-# 표준 형태 — 라이브 버전은 templates/gitlab-ci.yml 참고
 .trustedoss-sca:
-  image: curlimages/curl:8.4.0
+  image: alpine:3.20
   stage: test
   before_script:
-    - command -v jq >/dev/null || apk add --no-cache jq
+    - apk add --no-cache curl jq bash ca-certificates
   script:
-    - 'curl -fsS -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" -F "...="  ${TRUSTEDOSS_API_URL}/api/v1/scans/source'
-    # ... (전체 인라인 버전은 templates/gitlab-ci.yml에 있음)
+    - bash -c '
+        set -euo pipefail;
+        SCAN_ID=$(curl -fsS -X POST
+          -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}"
+          -H "Content-Type: application/json"
+          -d "{\"kind\": \"${TRUSTEDOSS_SCAN_KIND:-source}\"}"
+          "${TRUSTEDOSS_API_URL}/api/v1/projects/${TRUSTEDOSS_PROJECT_ID}/scans"
+          | jq -r .id);
+        echo "scan_id=$SCAN_ID";
+        # 최종 상태까지 폴링 …
+        # 게이트 평가, MR 노트 게시, 0/1 종료
+      '
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
@@ -168,7 +170,7 @@ GitLab은 빈 변수를 제거합니다. 관련 환경 / 브랜치에 `TRUSTEDOS
 
 ### MR 노트가 게시되지 않음
 
-v2.0.0에서 예상되는 동작입니다 — 포털의 PR 코멘트 통합은 GitHub 전용입니다(페이지 상단 경고 참고). 준비된 요청을 억제하려면 `TRUSTEDOSS_POST_MR_COMMENT=false`로 설정하고, 정책 강제는 빌드 게이트 종료 코드에 의존하세요.
+v2.0.0에서는 정상 동작입니다 — GitLab Notes API 클라이언트가 아직 출하되지 않았습니다(페이지 상단 경고 참고). verdict를 표면화하려면 GitLab 측에서 빌드 게이트 종료 코드(`TRUSTEDOSS_FAIL_ON_GATE=true`)를 사용하세요.
 
 ### 폴링 단계에서 잡이 시간 초과
 
@@ -176,7 +178,7 @@ v2.0.0에서 예상되는 동작입니다 — 포털의 PR 코멘트 통합은 G
 
 ### `POST /scans`에서 "Forbidden"
 
-키의 `scope`가 이 프로젝트와 일치하지 않습니다(다른 팀에 발급된 `team` scope, 또는 다른 프로젝트의 `project` scope). 올바른 scope로 재발급하세요. [API keys](../admin-guide/api-keys.md) 참고.
+API Key의 허용 동작에 `scan:trigger`가 없습니다. 올바른 scope로 재발급.
 
 ## 함께 보기
 

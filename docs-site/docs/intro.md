@@ -40,7 +40,7 @@ Full details in the [v2.0.0 release notes](./release-notes/v2.0.0.md).
 | SBOM export | CycloneDX (JSON / XML) and SPDX (JSON / Tag-Value), byte-stable for diffing. |
 | Obligations & NOTICE | Per-license obligations are tracked, and a `NOTICE` file is generated automatically from the latest scan. |
 | CI/CD integration | REST API + API key auth, GitHub & GitLab webhooks, GitHub Action, GitLab CI template, Jenkinsfile. The build gate exits 1 on Critical CVE or forbidden license. |
-| Notifications | Email (SMTP), Slack, and Microsoft Teams webhooks for the five core triggers (scan finished, gate failed, new CVE, approval request, disk pressure). |
+| Notifications | Email (SMTP), Slack, and Microsoft Teams webhooks for six trigger kinds — scan completed / scan failed / CVE detected / license violation / approval pending / policy gate failed. (Producer-side emit-points for most kinds land in v2.1; the inbox UI is functional today.) |
 | Audit log | Append-only record of every write operation — actor, action, target, request ID. |
 | Internationalization | English and Korean shipped together. The UI, error messages, and this documentation site are all bilingual. |
 
