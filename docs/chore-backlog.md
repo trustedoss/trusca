@@ -375,9 +375,12 @@ PR #45 가 남긴 4건 중 2건 본 세션에서 해소.
 
 prompt: `docs/sessions/_next-session-prompt-guide-screenshots.md` (PR #52, `d1f1b08`, 2026-05-10)
 
-- ~~**Session 1 — Infra**~~ PR #53 (`chore/screenshot-capture-infra`, 2026-05-10) — Playwright `tests/screenshots/capture.spec.ts` + `playwright.screenshots.config.ts` (1440×900, isolated from e2e matrix) + `make screenshots-capture` / `screenshots-clean` + `docs-site/static/img/screenshots/` 절대경로 자산 위치 확정. PoC 4 컷 (`admin-backup-list` / `admin-backup-trigger-toast` / `admin-backup-restore-modal` / `admin-backup-restore-typing-gate-enabled`) 생성, 기존 `./img/admin-backup*.png` 1×1 placeholder 2건 마이그레이션. EN + KO 마크다운 절대경로 단일 자산 공유. contributor-guide 운영 섹션 (EN + KO) 추가.
-- **Session 2 — EN 일괄** (대기) — `chore/screenshot-en-guides`. 22 가이드 페이지 × 평균 4 컷 ≈ 80+ PNG. user-guide 9 / admin-guide 5 (backup 제외) / contributor-guide + installation 8. 회귀 후 EN 마크다운 reference 일괄 삽입.
-- **Session 3 — KO 미러 + Pages 검증** (대기) — `chore/screenshot-ko-mirror`. EN diff 1:1 KO mirror, alt text 한국어 번역. 잔여 `./img/...` 상대경로 7건 절대경로 정정 (사용자 가이드 user-guide notifications/integrations/auth-and-profile). Docusaurus EN + KO build SUCCESS + GitHub Pages 시각 점검.
+- ~~**Session 1 — Infra**~~ ✅ PR #53 (`87b7678`, 2026-05-10) — Playwright `tests/screenshots/capture.spec.ts` + `playwright.screenshots.config.ts` (1440×900, isolated from e2e matrix) + `make screenshots-capture` / `screenshots-clean` + `docs-site/static/img/screenshots/` 절대경로 자산 위치 확정. PoC 4 컷 + 기존 placeholder 마이그레이션 + contributor-guide 운영 섹션 (EN + KO) 추가.
+- ~~**Session 2 — user-guide bulk**~~ ✅ PR #54 (`fd48e69`, 2026-05-10) — `tests/screenshots/global-setup.ts` + `applyAuthFromSeed` 으로 5/min 로그인 rate-limit + refresh-token 회전 우회. ApprovalsHarness / ScansQueueHarness 신규 + PortalPage SBOM verb. user-guide 15 컷 (auth 2 / profile 2 / projects 3 / components 2 / vulns 1 / sbom 1 / obligations 1 / notifications 1 / integrations 2). 3 컷은 `test.fixme` 로 명시 (`scans-queue` / `approvals-inbox` / `notifications-prefs`). EN 마크다운 sweep.
+- ~~**Session 2.5 — admin-guide bulk**~~ ✅ PR #55 (`72dcc6e`, 2026-05-10) — `capture_admin_guide.spec.ts` 신규. admin/users / admin/teams / admin/dt / admin/audit / admin/disk / admin/health 6 컷. EN 마크다운 sweep (api-keys.md 제외 — 후속).
+- ~~**Session 3 — KO mirror**~~ ✅ PR #56 (`8f457df`, 2026-05-10) — 10 KO 마크다운 페이지 mirror. EN diff 와 1:1 reference 위치 매칭, alt text 한국어 번역. EN+KO 단일 PNG 자산 공유. Docusaurus EN+KO build SUCCESS.
+
+총합: PNG 25개 (admin/backup 4 + user-guide 15 + admin-guide 6) + 3 fixme.
 
 후속 (별도 sprint):
 - **Visual regression CI** — Percy / Chromatic / Playwright `expect(page).toHaveScreenshot()` 픽셀 diff 가드 (1~1.5 세션).
@@ -386,9 +389,16 @@ prompt: `docs/sessions/_next-session-prompt-guide-screenshots.md` (PR #52, `d1f1
 - **a11y alt text 감사** — i18n-specialist 검토 (0.5 세션).
 - **이미지 압축 자동화** — `oxipng` / `pngquant` Makefile + CI 파일 크기 게이트 (0.5 세션).
 
+잔여 (Session 4 후보로 묶음):
+- `admin/api-keys.md` (EN+KO) — `/integrations` 의 API key 화면을 admin 가시성에서도 동일하게 사용. 단순 markdown patch.
+- `test.fixme` 3 컷 (`user-scans-queue` / `user-approvals-inbox` / `user-notifications-prefs`) — 각 페이지의 mount predicate / scroll-into-view 정합성 fix 후 fixme 해제 + capture + 마크다운 reference. 마크다운에는 현재 `./img/...` 1×1 placeholder 가 남아 있어 함께 해결.
+- 잔여 `./img/notifications-bell.png` / `./img/notifications-prefs.png` / `./img/integrations-webhooks.png` 절대경로 정정 — 위 fixme 해제와 동시에.
+
 부산물 발견 (Session 1 진행 중):
 - `apps/backend/Dockerfile.worker` 가 arm64 macOS 호스트에서 `dotnet-sdk-8.0` 를 Microsoft debian/12 arm64 repo 에서 못 찾아 `--no-cache` 빌드 실패. cdxgen .NET 지원이 dotnet 의존이라 worker 전용. 후속 chore 등록 권고: `dotnet-sdk-8` 또는 ranged version + arm64 fallback 검토.
 - `frontend` 컨테이너 `node_modules` 가 stale 상태로 남는 케이스 발생 (Vite 가 `@radix-ui/react-tabs` 미해소). dev-reset 가 frontend volume 을 건드리지 않으므로 컨테이너 내부에서 `docker-compose exec frontend npm install` 이 회복 경로. dev-reset 헬퍼에 옵션으로 통합 검토.
+- `dev-reset.sh` 가 postgres volume 만 destroy 하고 alembic upgrade 자동 실행 안 함. 시드 전 `docker-compose exec backend alembic upgrade head` 명시 필요 (memory `feedback_dev_reset_alembic_gap`). entrypoint 회복 chore.
+- super_admin 의 `/projects` 가시성이 organization 전반이라 capture run 마다 ghost project 누적. 대안: capture 실행 전 `TRUNCATE` (Session 2/2.5/3 운영자 노트) 또는 시드 user 가시성 정책 재검토.
 
 ---
 
