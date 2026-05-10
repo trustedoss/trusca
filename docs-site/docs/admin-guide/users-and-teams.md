@@ -42,19 +42,15 @@ Roles are **additive across teams** — a user can be `team_admin` in one team a
 
 `super_admin` is **not** a per-team role; it grants org-wide access regardless of team membership.
 
-## Inviting a user
+## Onboarding a new user
 
-### As a super-admin
+At v2.0.0 the portal does not send invitation emails. New users join by **self-registering** at `/register` with their corporate email; the password policy is enforced at registration (≥ 12 chars, bcrypt cost 12, no NIST-banned passwords).
 
-1. **/admin/users** → **Invite user**.
-2. Email, name, default team, role on that team.
-3. Submit.
+After they register, a `super_admin` adds them to the right team and assigns the role:
 
-The invited user receives an email with a one-time invitation link (24-hour expiry). Clicking the link prompts them to set a password (≥ 12 chars, bcrypt cost 12, no NIST-banned passwords).
-
-### As a team admin
-
-You can only invite into teams where you have `team_admin`. The flow is the same minus the team selector.
+1. Ask the user to register at `/register`.
+2. Once they appear under **/admin/users**, open the user drawer.
+3. Use **Add to team** (or the team's **Members → Add member** flow) to grant team membership at the chosen role.
 
 ## Adding an existing user to a team
 
@@ -65,13 +61,14 @@ Users can belong to many teams. To add an existing user:
 
 The user is added immediately; no email confirmation step is sent (they already have an account).
 
-## Changing a role
+## Changing a user's role
 
-1. **/admin/users** → user → **Memberships**.
-2. Click **Change role** on the relevant team row.
-3. Choose new role → submit.
+The drawer at **/admin/users → user** exposes a single **Role** dropdown. The dropdown sets the user's effective global role (`super_admin` / `team_admin` / `developer`); per-team role mixing is on the roadmap (see below).
 
-Audit log records `team_membership.update` with `previous_role` and `new_role`.
+1. **/admin/users** → user → **Role**.
+2. Choose the new role → submit.
+
+The audit log records the change as a `users` write with the role diff under `diff` (the audit row's `target_table` is `users`).
 
 ## Removing a user from a team
 
@@ -81,24 +78,27 @@ The user loses access to the team's projects but their account remains. To deact
 
 ## Last-super-admin protection
 
-The portal **refuses** to demote or deactivate the last `super_admin` in the organization. If you try, the API returns:
+The portal **refuses** to demote or deactivate the last active `super_admin` in the organization. The pre-flight check runs inside a `SELECT … FOR UPDATE` transaction, so concurrent demote attempts are serialized rather than racing. If you try, the API returns:
 
 ```json
 {
-  "type": "https://trustedoss.io/problems/last-super-admin",
-  "title": "Cannot demote the last super_admin",
-  "status": 409,
-  "detail": "At least one super_admin must remain in the organization.",
-  "instance": "/api/v1/admin/users/01H…/role"
+  "type": "about:blank",
+  "title": "Last Super Admin Protected",
+  "status": 422,
+  "detail": "At least one active super_admin must remain in the organization.",
+  "instance": "/v1/admin/users/01H…/role",
+  "last_super_admin_protected": true
 }
 ```
+
+The `last_super_admin_protected: true` extension lets clients distinguish this guard from generic 422 validation failures.
 
 To replace the last super-admin:
 
 1. Promote a second user to `super_admin` first.
 2. Then demote / deactivate the original.
 
-This rule is enforced at the database level (a `CHECK` constraint plus the API's pre-flight check), not just in the UI — there is no way to bypass it through direct SQL without disabling the constraint.
+The guard is enforced at the API level (a `SELECT … FOR UPDATE` row-locked count). A DB-level constraint that would block direct SQL writes is on the roadmap; until then, do not bypass the API.
 
 ## Deactivating a user
 
@@ -109,12 +109,7 @@ Deactivation revokes all sessions and refresh tokens. The user cannot sign in. T
 
 Reactivation is a single click on the same screen.
 
-## Deletion vs. deactivation
-
-- **Deactivate** — keeps the user row, breaks the foreign keys cleanly. Default and recommended.
-- **Delete** — soft-delete the user. Their account is unrecoverable but their audit-log entries reference the deleted user's UUID. Use for GDPR right-to-erasure requests; otherwise prefer deactivate.
-
-The "Delete" button is hidden behind a typed-email confirmation modal.
+Deactivation is the only off-boarding action available at v2.0.0 — there is no separate user-delete operation. To handle a GDPR erasure request, deactivate the user and contact engineering for a manual purge; a first-class soft-delete with typed-email confirmation is on the roadmap.
 
 ## Creating a team
 
@@ -126,15 +121,11 @@ The "Delete" button is hidden behind a typed-email confirmation modal.
 
 The first member of the team is whoever you assign on the next screen.
 
-## Renaming / archiving a team
+## Renaming a team
 
-`super_admin` and the team's `team_admin` can rename. Archiving requires `super_admin` and:
+`super_admin` and the team's `team_admin` can rename a team. The team's `name`, `slug`, and `description` are mutable via `PATCH /v1/admin/teams/{team_id}`.
 
-- Hides the team from default lists.
-- Disables new project creation.
-- Keeps existing projects, scans, and findings readable.
-
-To delete a team, all its projects must first be archived or moved.
+Team archiving (a hidden state that disables new project creation while keeping existing projects readable) is on the roadmap. At v2.0.0 a team can only be renamed or, with all projects first removed, deleted by a `super_admin`.
 
 ## Sessions
 
@@ -147,32 +138,40 @@ Reuse detection: if a refresh token is presented twice, the entire token family 
 
 ## Verify it worked
 
-After inviting a user:
+After onboarding a user:
 
-1. **/admin/users** lists the user with `pending` status.
-2. The audit log records `user.invite`.
-3. After the user activates the link, the status flips to `active`.
+1. The user can sign in at `/login` with the password they set during registration.
+2. **/admin/users** lists the user with `is_active = true`.
+3. The audit log records the team-add as a `team_memberships` insert.
 4. The user appears in the team's member list with the assigned role.
 
 ## Troubleshooting
 
-### Invitation email never arrived
+### A new user cannot register
 
-Check `SMTP_*` in `.env`. The email worker logs the SMTP transaction:
+Self-registration is open by default. Check that the user is hitting the correct URL (`/register`), the email passes basic format validation, and the chosen password meets the policy (≥ 12 chars, not in the NIST-banned list). Failed registrations log a structured warning on the backend:
 
 ```bash
-docker-compose -f docker-compose.yml logs --tail=200 worker | grep -i smtp
+docker-compose -f docker-compose.yml logs --tail=200 backend | grep -i register
 ```
-
-Common causes: missing `SMTP_USER` / `SMTP_PASSWORD`, the SMTP host blocking the worker IP, the recipient's spam filter. Re-issue the invitation from the user row — a fresh link is generated each time.
 
 ### Cannot promote my own role
 
 Self-elevation is blocked. Ask another `super_admin` to do it. If you are the only super-admin, sign in as another super-admin (you should always have at least two).
 
-### "User already exists" when inviting
+### "User already exists" when adding to a team
 
-The email is already registered (possibly under a different team). Add them to the team via [Adding an existing user to a team](#adding-an-existing-user-to-a-team) instead.
+The email is already a portal account (possibly already a member of a different team). Use [Adding an existing user to a team](#adding-an-existing-user-to-a-team) — the same flow finds them by email and just attaches the membership.
+
+## Roadmap (v2.x)
+
+The following capabilities are described elsewhere in early docs but are **not** shipped at v2.0.0. They are tracked for upcoming minor releases:
+
+- Email-based invitation flow with one-time 24-hour activation links and a `pending` user status.
+- Per-team role assignment (a single user holding `team_admin` in one team and `developer` in another, set from a Memberships drawer).
+- Soft-delete user action with typed-email confirmation modal.
+- Team archive state (hide-and-disable while preserving read access).
+- DB-level enforcement of last-super-admin protection (PostgreSQL trigger backing the API guard).
 
 ## See also
 

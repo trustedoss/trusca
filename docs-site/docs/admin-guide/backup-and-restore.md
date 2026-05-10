@@ -67,7 +67,7 @@ The list table shows: timestamp, size, **auto** badge (set on backups created by
 
 ### Schedule via Celery Beat
 
-Daily backups at **00:00 UTC** are scheduled by default in `apps/backend/tasks/backup.py` and require no additional configuration. Disable the schedule by setting `BACKUP_DAILY_ENABLED=false` and falling back to the cron / systemd recipes below.
+Daily backups at **00:00 UTC** are scheduled by default in `apps/backend/tasks/backup.py` and require no additional configuration. The schedule is always-on at v2.0.0 — there is no env toggle to disable it (a `BACKUP_DAILY_ENABLED` switch is on the roadmap). If you prefer a host-side scheduler instead of Celery Beat, treat the auto-backups as a safety net and add the cron / systemd recipes below; the workflows are independent.
 
 ### Upload + restore from the UI
 
@@ -80,7 +80,7 @@ The **Upload + Restore** section accepts a previously downloaded `.tar.gz` archi
 
 ![Admin backup — restore typing-gate](./img/admin-backup-restore.png)
 
-The frontend submits the form with an explicit `X-Confirm-Restore: yes` header alongside the typed confirmation; the backend validates **both** the header and the `super_admin` role before queuing the restore task. Missing or mismatched headers return HTTP 412 (Precondition Failed). The double-gate is deliberate — restore is destructive and irreversible.
+The frontend submits the form with an explicit `X-Confirm-Restore: yes` header alongside the typed confirmation; the backend validates **both** the header and the `super_admin` role before queuing the restore task. Missing or mismatched headers return HTTP 400 (Bad Request) with a `Restore Confirmation Required` problem document. The double-gate is deliberate — restore is destructive and irreversible. Promoting the missing-header response to HTTP 412 (Precondition Failed) for tighter RFC 7807 semantics is on the roadmap.
 
 Progress streams the same way as a manual backup. A completed restore flips the row to `succeeded` and the live application reflects the restored state immediately (existing JWTs are revoked because the user table itself is replaced).
 
@@ -288,6 +288,13 @@ docker-compose -f docker-compose.yml start worker
 ```
 
 This trades a 30-second scan-pause window for a guaranteed-consistent workspace tar.
+
+## Roadmap (v2.x)
+
+The following affordances are referenced in early docs but are **not** shipped at v2.0.0:
+
+- `BACKUP_DAILY_ENABLED=false` env toggle to opt out of the Celery Beat daily schedule (today the schedule is always-on; use the host scheduler in addition, not as a replacement).
+- HTTP 412 (Precondition Failed) for missing / mismatched `X-Confirm-Restore` headers (today the response is HTTP 400 with the same problem document).
 
 ## See also
 

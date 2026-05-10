@@ -23,62 +23,64 @@ sidebar_position: 3
 
 **/admin/health** 페이지는 포털이 의존하는 모든 컴포넌트를 나열합니다. 각 행:
 
-- **컴포넌트** — `backend`, `postgres`, `redis`, `worker`, `beat`, `frontend`, `traefik`, `dt` 중 하나.
-- **상태** — `healthy`(녹색), `degraded`(노랑), `down`(빨강).
+- **컴포넌트** — `postgres`, `redis`, `celery`, `dt`, `disk`, `active_scans`, `last_24h_errors` 중 하나.
+- **상태** — `ok`(녹색), `degraded`(노랑), `down`(빨강). UI 라벨은 로케일에 따라 다르나(EN 로케일은 "OK / Degraded / Down" 표시) API 계약은 위 소문자 enum을 발신합니다.
 - **마지막 체크** — 가장 최근 프로브 타임스탬프.
-- **상세** — `healthy`가 아닐 때의 오류 메시지.
+- **상세** — `ok`가 아닐 때의 오류 메시지 또는 텔레메트리 요약.
 
-대시보드는 WebSocket을 통해 매 5초 자동 갱신됩니다. 운영자가 벽 디스플레이에 고정해 둘 수 있습니다.
+대시보드는 React Query 폴링으로 자동 갱신됩니다(기본 30초; 사용자는 페이지 헤더에서 폴링을 일시 정지 가능). WebSocket 스트림이 아닙니다 — 벽 디스플레이를 원하는 운영자는 탭을 열어 두면 폴링 갱신에 의존할 수 있습니다.
 
 ### Health 프로브
 
-각 행은 실제 프로브에 매핑됩니다.
+각 행은 `services/admin_health_service.py`의 실제 프로브에 매핑됩니다.
 
 | 컴포넌트 | 프로브 |
 |---|---|
-| `backend` | `curl /health`가 5초 이내 200. |
-| `postgres` | `pg_isready -U $POSTGRES_USER`. |
-| `redis` | `redis-cli ping`이 `PONG` 반환. |
-| `worker` | Celery `inspect ping`이 5초 이내 응답. |
-| `beat` | Beat 스케줄러가 최근 90초 내 heartbeat 발신. |
-| `frontend` | nginx 사이드카의 `curl /healthz`가 200. |
-| `traefik` | 엣지 entrypoint가 `:80`에서 도달 가능. |
-| `dt` | [DT 커넥터 → health 모니터](./dt-connector.md#운영-레이어) 참고. |
+| `postgres` | 애플리케이션의 asyncpg 풀로 `SELECT 1`. |
+| `redis` | asyncio 클라이언트를 통한 `redis-cli ping` 동등 호출. |
+| `celery` | Celery `inspect ping`이 설정 타임아웃 이내 응답. |
+| `dt` | DT health 프로브([DT 커넥터 → health 모니터](./dt-connector.md#운영-레이어) 참고). DT 가 fail-count 카운터를 가진 유일한 컴포넌트입니다 — 연속 3회 미스 시 `down`으로 전환되며, 나머지는 단일 평가입니다. |
+| `disk` | Workspace 볼륨 사용량을 warn / critical 임계와 비교. |
+| `active_scans` | 현재 `running` 상태인 스캔 수 — 정보성, 큐 길이가 내부 임계를 넘으면 `degraded` 노출. |
+| `last_24h_errors` | 최근 24시간 동안 `ERROR` 레벨 구조화 로그 이벤트 수 — 정보성. |
 
-행은 단일 프로브 미스 후 `degraded`, 연속 3회 미스 후 `down`이 됩니다.
+포털은 `backend`, `worker`, `beat`, `frontend`, `traefik`을 별도 프로브하지 않습니다. 이들의 liveness 는 암묵적입니다 — 대시보드가 렌더되면 backend 가동 중, `celery` 행이 `ok`이면 worker(와 worker 가 의존하는 broker)도 도달 가능.
 
 ## 디스크 대시보드 {#disk}
 
-**/admin/disk**는 두 게이지를 표시합니다.
+**/admin/disk**는 포털이 신경 쓰는 파일시스템마다 카드 하나를 렌더합니다. v2.0.0 의 실제 카드는 **workspace**, **dt_volume**, **postgres**, **redis** 입니다(API 가 `items: AdminDiskItem[]` 으로 반환하고 페이지가 항목당 카드 하나를 렌더).
 
-- **Workspace** — `WORKSPACE_HOST_PATH`를 백업하는 볼륨의 사용량 / 용량.
-- **PostgreSQL** — `pg_database_size('trustedoss')` / 볼륨 용량.
-
-두 게이지에 hard 임계와 warn 임계가 있습니다.
+각 카드는 warn 임계와 critical 임계가 있습니다.
 
 | 임계 | 기본 | 효과 |
 |---|---|---|
-| **Warn** | 70% | 노란 게이지, 대시보드 배너, 다른 부수 효과 없음. |
-| **Hard** | 90% | 빨간 게이지, **스캔 차단**, admin 알림 발신. |
+| **Warn** | 80% | 노란 카드, 대시보드 배너, 다른 부수 효과 없음. |
+| **Critical** | 90% | 빨간 카드, 대시보드 배너, admin 알림 발신. |
 
 `.env`에서 변경:
 
 ```bash
-DISK_WARN_LIMIT_PCT=70
-DISK_HARD_LIMIT_PCT=90
+DISK_THRESHOLD_WARNING_PCT=80
+DISK_THRESHOLD_CRITICAL_PCT=90
+```
+
+별개로 **스캔 disk-guard**는 단일 `DISK_HARD_LIMIT_PCT`(기본 `95`)를 사용해 workspace 볼륨이 그 라인을 넘으면 **신규 스캔을 차단**합니다. 분리는 의도된 설계입니다 — 대시보드는 더 이르게(80% / 90%) 경고하고 스캔 가드는 더 늦게(95%) 동작해 운영자에게 놀람을 주지 않으면서 출혈을 막습니다.
+
+```bash
+DISK_HARD_LIMIT_PCT=95
 ```
 
 ### "스캔 차단"의 의미
 
-Hard limit가 트립되면 `POST /api/v1/projects/{id}/scans`가 다음을 반환합니다.
+`DISK_HARD_LIMIT_PCT`가 트립되면 `POST /v1/projects/{id}/scans`가 다음을 반환합니다.
 
 ```json
 {
-  "type": "https://trustedoss.io/problems/disk-pressure",
-  "title": "Scans temporarily disabled — disk usage above hard limit",
+  "type": "about:blank",
+  "title": "Workspace Disk Full",
   "status": 503,
-  "detail": "Workspace is at 92% (hard limit 90%). Free space and try again.",
-  "instance": "/api/v1/projects/01H…/scans"
+  "detail": "Workspace is at 96% (hard limit 95%). Free space and try again.",
+  "instance": "/v1/projects/01H…/scans"
 }
 ```
 
@@ -150,7 +152,15 @@ docker-compose -f docker-compose.yml exec backend \
 
 ### Hard limit가 너무 공격적
 
-높이세요. 90%는 호스트 디스크가 바닥나기 전에 운영자가 대응할 여유를 주는 보수적 기본값입니다. 모니터링이 더 이르게 잡으면 95%까지 올릴 수 있습니다. 95% 이상 일상 운영은 디스크 추가 신호입니다.
+높이세요. 95%는 호스트 디스크가 바닥나기 전에 운영자가 대응할 여유를 주는 `DISK_HARD_LIMIT_PCT`의 보수적 기본값입니다. 모니터링이 더 이르게 잡으면 낮출 수 있습니다. Warn 임계(80%) 이상에서 일상 운영하는 것은 디스크 추가 신호입니다.
+
+## 로드맵 (v2.x)
+
+다음 기능들은 초기 문서에 언급되었으나 v2.0.0 에는 **반영되지 않았습니다**.
+
+- Health 대시보드의 `backend`, `worker`, `beat`, `frontend`, `traefik` 컴포넌트별 liveness 프로브(현재는 대시보드 렌더링과 `celery` 행에서 추론).
+- WebSocket 스트리밍 health 갱신(현재는 React Query 폴링 사용).
+- 비-DT 컴포넌트의 다중 샷 연속-미스 상태 머신(현재는 `dt`만 fail-count 카운터 보유).
 
 ## 함께 보기
 

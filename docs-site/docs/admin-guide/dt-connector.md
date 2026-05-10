@@ -43,7 +43,7 @@ The dashboard at **/admin/dt** shows:
 - Last error message, when not `healthy`.
 - Probe history (last 24h sparkline).
 
-When the state hits `down`, the connector tries `docker restart dt` once and waits 90 seconds. If DT recovers, state goes back to `healthy`. If not, the **circuit breaker** opens.
+When the state hits `down`, the **circuit breaker** opens and subsequent calls return the cached vulnerabilities until the breaker probes successfully again. Automatic container restart on `down` is on the roadmap; until then, an operator restarts DT with `docker-compose restart dt` if the health probe stays red beyond a few minutes.
 
 ### 2. Circuit breaker
 
@@ -53,7 +53,7 @@ The breaker is a three-state machine: `CLOSED` (normal), `HALF_OPEN` (probing), 
 - `OPEN` — calls return cached data immediately. No DT round-trip.
 - `HALF_OPEN` — once every 30 seconds while OPEN, the breaker lets one call through. Success → `CLOSED`. Failure → back to `OPEN`.
 
-The current state is visible at **/admin/dt** and via `GET /api/v1/admin/dt/state`.
+The current state is visible at **/admin/dt** and via `GET /v1/admin/dt/status` (response schema `DTStatusOut`).
 
 ### 3. PostgreSQL vulnerability cache
 
@@ -133,13 +133,14 @@ The connector behaves identically. The orphan-cleanup task will list any DT proj
 For runbook use:
 
 ```bash
-# DT health (no auth)
-curl -fsS https://trustedoss.example.com/api/v1/admin/dt/probe \
+# Force an immediate DT health probe (super_admin only)
+curl -fsS -X POST \
+  https://trustedoss.example.com/v1/admin/dt/health-check \
   -H "Authorization: Bearer ${ACCESS_TOKEN}"
 
 # Trigger an orphan-cleanup pass right now
 curl -sS -X POST \
-  https://trustedoss.example.com/api/v1/admin/dt/orphans/cleanup \
+  https://trustedoss.example.com/v1/admin/dt/orphans/cleanup \
   -H "Authorization: Bearer ${ACCESS_TOKEN}"
 ```
 
@@ -178,31 +179,32 @@ docker-compose -f docker-compose.yml -f docker-compose.dt.yml up -d
 
 ### Breaker stuck OPEN
 
-The breaker only closes on a successful HALF_OPEN probe. If DT is flapping, the breaker will oscillate. You can force a reset:
+The breaker only closes on a successful HALF_OPEN probe. If DT is flapping, the breaker will oscillate. There is no operator-facing breaker-reset endpoint at v2.0.0 — see the roadmap below. The pragmatic recovery is:
 
-```bash
-curl -sS -X POST \
-  https://trustedoss.example.com/api/v1/admin/dt/breaker/reset \
-  -H "Authorization: Bearer ${ACCESS_TOKEN}"
-```
-
-Use sparingly — repeatedly forcing reset while DT is unhealthy will spam the worker with timeouts.
+1. Restart the DT container so the next probe sees a clean DT: `docker-compose restart dt`.
+2. Force an immediate health probe via `POST /v1/admin/dt/health-check` (see [Manual probes](#manual-probes)). One green probe flips HALF_OPEN to CLOSED.
 
 ### Vulnerabilities not refreshing after DT comes back
 
-The hourly resync task is the path that re-runs correlation against existing scans. Trigger it manually:
+The hourly resync Celery Beat task is the path that re-runs correlation against existing scans. There is no manual resync HTTP endpoint at v2.0.0 — wait for the next hourly tick or, if you cannot wait, restart the worker so the periodic schedule re-evaluates immediately:
 
 ```bash
-curl -sS -X POST \
-  https://trustedoss.example.com/api/v1/admin/dt/resync \
-  -H "Authorization: Bearer ${ACCESS_TOKEN}"
+docker-compose -f docker-compose.yml restart worker beat
 ```
 
-Resync is idempotent — running twice produces the same result.
+Resync is idempotent — running twice produces the same result. A first-class manual-resync endpoint is on the roadmap.
 
 ### "Orphan list shows projects I don't recognize"
 
 You are pointed at a shared external DT. Other teams may have created projects there. Set `DT_ORPHAN_AUTODELETE=false` (the default) and only delete orphans you own.
+
+## Roadmap (v2.x)
+
+The following operator affordances are referenced in early docs but are **not** shipped at v2.0.0:
+
+- Automatic `docker restart dt` attempt when the health monitor flips to `down`.
+- Operator-facing breaker reset endpoint (`POST /v1/admin/dt/breaker/reset`).
+- Operator-facing manual resync endpoint (`POST /v1/admin/dt/resync`); the Celery Beat hourly resync task itself ships and runs.
 
 ## See also
 

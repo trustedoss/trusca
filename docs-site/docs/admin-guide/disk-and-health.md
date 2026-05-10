@@ -23,62 +23,64 @@ Together they let you catch problems before users notice.
 
 The **/admin/health** page lists every component the portal depends on. Each row shows:
 
-- **Component** — one of `backend`, `postgres`, `redis`, `worker`, `beat`, `frontend`, `traefik`, `dt`.
-- **State** — `healthy` (green), `degraded` (yellow), `down` (red).
+- **Component** — one of `postgres`, `redis`, `celery`, `dt`, `disk`, `active_scans`, `last_24h_errors`.
+- **State** — `ok` (green), `degraded` (yellow), `down` (red). The label rendered in the UI is locale-aware (the EN locale shows "OK / Degraded / Down"), but the API contract emits the lower-case enum above.
 - **Last check** — timestamp of the most recent probe.
-- **Detail** — error message when the state is not `healthy`.
+- **Detail** — error message or telemetry summary when the state is not `ok`.
 
-The dashboard auto-refreshes every 5 seconds via WebSocket. Operators can pin the page to a wall display.
+The dashboard auto-refreshes via React Query polling (default 30 s; the user can pause polling from the page header). It is not a WebSocket stream — operators who want a wall display can leave the tab open and rely on the polling refresh.
 
 ### Health probes
 
-Each row maps to a real probe:
+Each row maps to a real probe in `services/admin_health_service.py`:
 
 | Component | Probe |
 |---|---|
-| `backend` | `curl /health` returns 200 within 5 s. |
-| `postgres` | `pg_isready -U $POSTGRES_USER`. |
-| `redis` | `redis-cli ping` returns `PONG`. |
-| `worker` | Celery `inspect ping` returns within 5 s. |
-| `beat` | The Beat scheduler emitted a heartbeat in the last 90 s. |
-| `frontend` | `curl /healthz` on the nginx sidecar returns 200. |
-| `traefik` | The edge entrypoint is reachable on `:80`. |
-| `dt` | See [DT connector → health monitor](./dt-connector.md#operational-layers). |
+| `postgres` | `SELECT 1` over the application's asyncpg pool. |
+| `redis` | `redis-cli ping`-equivalent through the asyncio client. |
+| `celery` | Celery `inspect ping` returns within the configured timeout. |
+| `dt` | DT health probe (see [DT connector → health monitor](./dt-connector.md#operational-layers)). DT is the one component with a fail-count counter — three consecutive misses flip it to `down`; the others use single-shot evaluation. |
+| `disk` | Workspace volume usage compared to the warn / critical thresholds. |
+| `active_scans` | Count of scans currently in `running` state — informational, surfaces to `degraded` when the queue length crosses an internal threshold. |
+| `last_24h_errors` | Count of `ERROR`-level structured-log events in the last 24 h — informational. |
 
-A row turns `degraded` after a single probe miss and `down` after three consecutive misses.
+The portal does not separately probe `backend`, `worker`, `beat`, `frontend`, or `traefik`. Their liveness is implicit: if the dashboard renders at all, the backend is up; if the `celery` row is `ok`, the worker (and the broker the worker depends on) are reachable.
 
 ## Disk dashboard {#disk}
 
-**/admin/disk** shows two gauges:
+**/admin/disk** renders one card per filesystem the portal cares about. The actual cards in v2.0.0 are: **workspace**, **dt_volume**, **postgres**, **redis** (the API returns them as `items: AdminDiskItem[]` and the page renders one card per item).
 
-- **Workspace** — bytes used / capacity on the volume backing `WORKSPACE_HOST_PATH`.
-- **PostgreSQL** — `pg_database_size('trustedoss')` over the volume capacity.
-
-Both gauges have a hard threshold and a warn threshold:
+Each card has a warn threshold and a critical threshold:
 
 | Threshold | Default | Effect |
 |---|---|---|
-| **Warn** | 70% | Yellow gauge, dashboard banner, no other side effect. |
-| **Hard** | 90% | Red gauge, **scans are blocked**, an admin notification fires. |
+| **Warn** | 80% | Yellow card, dashboard banner, no other side effect. |
+| **Critical** | 90% | Red card, dashboard banner, an admin notification fires. |
 
 Override in `.env`:
 
 ```bash
-DISK_WARN_LIMIT_PCT=70
-DISK_HARD_LIMIT_PCT=90
+DISK_THRESHOLD_WARNING_PCT=80
+DISK_THRESHOLD_CRITICAL_PCT=90
+```
+
+Separately, the **scan disk-guard** uses a single `DISK_HARD_LIMIT_PCT` (default `95`) to **block new scans** when the workspace volume crosses that line. Cross-reference is intentional: the dashboard warns earlier (80% / 90%), the scan guard kicks in later (95%) to stop the bleed without surprising the operator.
+
+```bash
+DISK_HARD_LIMIT_PCT=95
 ```
 
 ### What "scans blocked" means
 
-When the hard limit trips, `POST /api/v1/projects/{id}/scans` returns:
+When `DISK_HARD_LIMIT_PCT` trips, `POST /v1/projects/{id}/scans` returns:
 
 ```json
 {
-  "type": "https://trustedoss.io/problems/disk-pressure",
-  "title": "Scans temporarily disabled — disk usage above hard limit",
+  "type": "about:blank",
+  "title": "Workspace Disk Full",
   "status": 503,
-  "detail": "Workspace is at 92% (hard limit 90%). Free space and try again.",
-  "instance": "/api/v1/projects/01H…/scans"
+  "detail": "Workspace is at 96% (hard limit 95%). Free space and try again.",
+  "instance": "/v1/projects/01H…/scans"
 }
 ```
 
@@ -150,7 +152,15 @@ The gauge reads the host-mounted volume from inside the backend container. If yo
 
 ### Hard limit is too aggressive
 
-Raise it. 90% is a conservative default that gives operators room to react before the host runs out. If your monitoring catches issues earlier, you can push it to 95%. Going above 95% routinely is a sign you should add disk.
+Raise it. 95% is a conservative default for `DISK_HARD_LIMIT_PCT` that gives operators room to react before the host runs out. If your monitoring catches issues earlier, you can lower it. Routinely operating above the warn threshold (80%) is a sign you should add disk.
+
+## Roadmap (v2.x)
+
+The following affordances are referenced in early docs but are **not** shipped at v2.0.0:
+
+- Per-component liveness probes for `backend`, `worker`, `beat`, `frontend`, and `traefik` on the health dashboard (today these are inferred from the dashboard rendering and the `celery` row).
+- WebSocket-streamed health updates (today the dashboard uses React Query polling).
+- Multi-shot consecutive-miss state machine for non-DT components (today only `dt` carries a fail-count counter).
 
 ## See also
 
