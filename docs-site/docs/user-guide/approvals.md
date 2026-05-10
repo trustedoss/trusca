@@ -26,7 +26,7 @@ Pending ──► Under Review ──► Approved
 | **Pending** | Auto, when a conditional-license component is first detected. | Awaiting a reviewer to claim it. |
 | **Under Review** | Reviewer (`team_admin` or higher). | A reviewer has claimed the request and is investigating. |
 | **Approved** | Reviewer. | Use of the component is approved subject to the noted obligations. |
-| **Rejected** | Reviewer. | Component must be removed; the build gate will treat it as forbidden. |
+| **Rejected** | Reviewer. | Component should be removed; verdict is recorded for audit. See the [Rejected verdict caveat](#rejected-verdict-at-v200) — the build gate does **not** auto-block on a Rejected verdict at v2.0.0. |
 
 Transitions are recorded in the audit log.
 
@@ -69,6 +69,21 @@ A successful disposition:
 - Updates the project's risk score on the next scan.
 - (If notification triggers are enabled) emails the requester and the team.
 
+### Rejected verdict at v2.0.0 {#rejected-verdict-at-v200}
+
+:::warning
+An approval marked **Rejected** does **not** currently re-classify the
+underlying component as forbidden in the build gate — the gate
+evaluates the `forbidden` license tier only (see
+`apps/backend/services/policy_gate.py`). The Rejected verdict is
+recorded on the approval row and in the audit log for evidence, but at
+v2.0.0 it does **not** block CI: a subsequent scan still classifies
+the component as `conditional` and the build proceeds. Until
+promotion-on-rejection lands (v2.1 roadmap), enforce the verdict
+out-of-band — e.g. open a tracking issue against the project and
+remove the dependency in code review.
+:::
+
 ## Cross-project approvals
 
 When the same component appears in multiple projects, each project gets its own Pending request. The portal does not auto-propagate verdicts across projects because:
@@ -93,9 +108,9 @@ A typical flow:
 After disposing a request:
 
 1. The state badge updates immediately.
-2. The next scan honors the verdict (Rejected → build gate treats as forbidden).
-3. The audit log records `target_table=component_approvals&action=update` with `previous_status`, `new_status`, `decision_note` in the diff.
-4. The original requester (if any) receives a notification per the team's notification settings.
+2. The audit log records `target_table=component_approvals&action=update` with `previous_status`, `new_status`, `decision_note` in the diff.
+3. The original requester (if any) receives a notification per the team's notification settings.
+4. **Note**: a Rejected verdict does **not** auto-promote the component to `forbidden` in the next scan's build gate at v2.0.0 — see the [Rejected verdict caveat](#rejected-verdict-at-v200) for the manual follow-up.
 
 ## Troubleshooting
 
@@ -107,9 +122,13 @@ The request was already disposed (Approved / Rejected). The default queue view f
 
 You need `team_admin` or higher on the project's owning team. Ask a team admin to delegate, or change the project's owning team.
 
-### Verdict was not applied to the next scan
+### Rejected verdict did not block the next CI build
 
-The next scan must complete after the verdict. If a scan was already in flight when you disposed the request, that scan still reflects the previous state. Trigger a new scan.
+By design at v2.0.0 — see the [Rejected verdict caveat](#rejected-verdict-at-v200). The build gate evaluates the `forbidden` license tier only; the approval verdict does not back-propagate to the underlying license category. To block the build, either remove the dependency or escalate the underlying license to `forbidden` via the classifier-dictionary patch path (Operator-only).
+
+### Approved verdict still warns in the next scan
+
+The state badge update is immediate, but the project's risk score and the conditional-warning surface only refresh after a new scan completes. If a scan was already in flight when you disposed the request, that scan still reflects the previous state. Trigger a new scan.
 
 ## Roadmap (v2.x)
 

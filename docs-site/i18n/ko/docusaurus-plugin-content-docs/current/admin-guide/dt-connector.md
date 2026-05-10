@@ -182,6 +182,12 @@ curl -sS -X POST \
 
 ## 트러블슈팅
 
+:::info 먼저 확인할 로그
+- `docker-compose logs --tail=500 dt` — JVM 기동, OOM, fatal.
+- `docker-compose logs --tail=500 backend | grep dt_health_check` — 포털이 본 DT 프로브(structlog 이벤트).
+- `/admin/dt/status` API — 차단기 상태 + 직전 프로브 결과 JSON.
+:::
+
 ### `/admin/dt`에 `down`인데 브라우저에서는 DT 도달 가능
 
 포털 워커는 컴포즈 네트워크로 DT에 도달합니다. 공개 URL이 아닙니다. 확인:

@@ -109,35 +109,57 @@ PostgreSQL이 단일 진실 저장소입니다. 주요 테이블:
 
 단계 전환은 WebSocket 이벤트(`scan.<id>.progress`)를 emit해 UI가 실시간으로 업데이트됩니다. 완료 시 적절한 알림 트리거가 발사됩니다.
 
-## ORT 룰 {#ort-rules}
+## 라이선스 단계 분류 {#ort-rules}
 
-라이선스 분류는 룰 기반입니다. 룰은 `ort/rules.kts`에 있으며 worker에 read-only로 마운트됩니다.
+:::warning v2.0.0 의 분류 출처
+v2.0.0 에서 라이선스 단계 분류는 ORT 룰 기반이 **아닙니다**. 단계
+(`forbidden` / `conditional` / `permissive` / `unknown`)는
+`apps/backend/tasks/scan_source.py` 의 하드코딩된
+`_LICENSE_CATEGORY_DEFAULTS` 사전에서 옵니다. 레포의 `ort/rules.kts`
+는 v2.2 커스터마이징 경로를 위해 예약된 placeholder 입니다. v2.0.0
+에서는 `ort/rules.kts` 를 수정해도 효과가 없습니다.
+:::
 
-```kotlin
-// 발췌 — 표준 버전은 ort/rules.kts 참고.
-val forbidden = setOf(
-    "AGPL-3.0-only", "AGPL-3.0-or-later",
-    "GPL-2.0-only",  "GPL-2.0-or-later",
-    "GPL-3.0-only",  "GPL-3.0-or-later",
-    "SSPL-1.0",      "BUSL-1.1",
-)
+분류기는 SPDX ID 를 단계로 다음과 같이 매핑합니다(대표적 부분 집합
+— 표준 목록은 `_LICENSE_CATEGORY_DEFAULTS` 참고):
 
-val conditional = setOf(
-    "LGPL-2.1-only", "LGPL-2.1-or-later",
-    "LGPL-3.0-only", "LGPL-3.0-or-later",
-    "MPL-2.0", "EPL-1.0", "EPL-2.0", "CDDL-1.0",
-)
-
-// 허용 = 인식되는 SPDX 식별자 중 그 외; 알 수 없는 표현식은
-// `Unknown`으로 표면화되어 사람의 검토가 필요.
+```python
+_LICENSE_CATEGORY_DEFAULTS: dict[str, str] = {
+    # forbidden
+    "AGPL-3.0-only": "forbidden",
+    "AGPL-3.0-or-later": "forbidden",
+    "GPL-2.0-only":  "forbidden",
+    "GPL-2.0-or-later": "forbidden",
+    "GPL-3.0-only":  "forbidden",
+    "GPL-3.0-or-later": "forbidden",
+    "SSPL-1.0": "forbidden",
+    "BUSL-1.1": "forbidden",
+    # conditional
+    "LGPL-2.1-only": "conditional",
+    "LGPL-2.1-or-later": "conditional",
+    "LGPL-3.0-only": "conditional",
+    "LGPL-3.0-or-later": "conditional",
+    "MPL-2.0": "conditional",
+    "EPL-1.0": "conditional",
+    "EPL-2.0": "conditional",
+    "CDDL-1.0": "conditional",
+    # ... permissive 항목 생략
+}
+# 조회는 정확 일치; 키가 없으면(접미사 없는 변형 "LGPL-3.0" 포함)
+# "unknown" 으로 떨어지며 사람의 검토가 필요합니다.
 ```
 
-룰 편집은 지원됩니다. 편집 후:
+v2.0.0 의 Operator 오버라이드 경로:
 
-1. worker 재시작(`docker-compose restart worker beat`).
-2. 영향받는 프로젝트를 재스캔해 새 분류 적용.
+1. `apps/backend/tasks/scan_source.py` 의 `_LICENSE_CATEGORY_DEFAULTS` 패치.
+2. worker 재빌드 및 재시작(`docker-compose restart worker beat`).
+3. 영향받는 프로젝트를 재스캔해 새 분류 적용.
 
-포털은 과거 스캔을 자동 재분류하지 않습니다 — 과거 기록은 스캔 시점에 유효했던 룰과 함께 보존됩니다.
+`ort/rules.kts` DSL 을 통한 ORT 기반, 조직별 룰 커스터마이징은
+v2.2 예정입니다; `ORT_RULES_PATH` 환경 변수, worker 이미지의 마운트,
+본 앵커는 그 릴리스를 위해 예약되어 있습니다.
+
+포털은 과거 스캔을 자동 재분류하지 않습니다 — 과거 기록은 스캔 시점에 유효했던 분류와 함께 보존됩니다.
 
 ## Dependency-Track 통합 {#dependency-track}
 

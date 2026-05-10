@@ -58,17 +58,25 @@ The **Licenses** tab on a project breaks down the same data by SPDX identifier a
 
 ![Project detail — Licenses tab with a tier horizontal bar chart and a per-license breakdown](/img/screenshots/user-licenses-donut.png)
 
-ORT classifies every license into three tiers, defined in `ort/rules.kts`:
+ORT classifies every license into three tiers:
 
 | Tier | Severity | Examples | Effect |
 |---|---|---|---|
 | **Allowed** | — | MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, CC0-1.0, Unlicense | No build-gate effect. |
-| **Conditional** | WARNING | LGPL-2.x, LGPL-3.x, MPL-2.0, EPL-1.x, EPL-2.0, CDDL-1.0 | Triggers the [approval workflow](./approvals.md). Build proceeds. |
+| **Conditional** | WARNING | LGPL-2.x, LGPL-3.x, MPL-2.0, EPL-1.x, EPL-2.0, CDDL-1.0 | Triggers the [approval workflow](./approvals.md). Build proceeds — including after a **Rejected** verdict; see the [approvals caveat](./approvals.md#rejected-verdict-at-v200). |
 | **Forbidden** | ERROR | AGPL-3.0, GPL-2.0, GPL-3.0, SSPL-1.0, BUSL-1.1 | Build gate exits 1 in CI. |
 
-`Unknown` (license could not be parsed) renders as a fourth tier with a yellow badge — these always need human review.
+`Unknown` (license could not be parsed, or its SPDX ID was not matched by the classifier — see [below](#why-so-many-unknown)) renders as a fourth tier with a yellow badge — these always need human review.
 
-The classification can be tuned per organization by editing `ort/rules.kts` and re-running scans. See the [architecture reference](../reference/architecture.md#ort-rules) for the rule format.
+:::warning Classification source at v2.0.0
+The legal-tier classification (`forbidden` / `conditional` / `permissive` / `unknown`) is currently driven by a hard-coded SPDX → tier dictionary in `apps/backend/tasks/scan_source.py` (`_LICENSE_CATEGORY_DEFAULTS`). The `ort/rules.kts` file in the repo is a placeholder — editing it does **not** change classification at v2.0.0. ORT-driven, per-organization rule customization is on the v2.2 roadmap. For one-off overrides today, super-admins can patch the dictionary and restart the worker (an Operator-only path).
+:::
+
+### Why so many `unknown`? {#why-so-many-unknown}
+
+:::info
+Classification uses exact-match SPDX IDs. Suffix-less variants (`LGPL-3.0` instead of `LGPL-3.0-or-later`) fall through to `unknown`. ORT typically detects with the `-or-later` / `-only` suffix; if a component shows `unknown` despite a well-known SPDX ID, the detector likely emitted a deprecated alias. Fuzzy SPDX normalization is on the v2.1 roadmap.
+:::
 
 ## Declared vs. detected vs. concluded
 
@@ -96,6 +104,21 @@ The **Obligations** tab on the project page consolidates obligations across comp
 
 ![Project detail — Obligations tab with the per-component obligations distribution](/img/screenshots/user-obligations-distribution.png)
 
+:::note Obligation kinds at v2.0.0
+The obligations catalog covers the seven kinds listed above. Some
+AGPL / SSPL / BUSL-specific obligations are **not** modeled as discrete
+kinds yet:
+
+- **Network-use disclosure** (AGPL §13, SSPL §13) — required when
+  end-users interact with modified software over a network.
+- **Patent grant termination** (Apache-2.0 §3, MPL-2.0 §5.2).
+- **Trademark restrictions** (Apache-2.0 §6, BSD-4-clause).
+- **Field-of-use restrictions** (BUSL-1.1).
+
+For these, see the underlying license text via the component drawer; a
+richer obligation taxonomy is on the v2.2 roadmap.
+:::
+
 ## SPDX expressions
 
 Licenses are identified by [SPDX identifiers](https://spdx.org/licenses/). Compound licenses use the SPDX expression syntax:
@@ -118,15 +141,16 @@ After a successful scan:
 
 ### Many components show `Unknown` license
 
-ORT could not parse the metadata. Common causes:
+ORT could not parse the metadata, or the SPDX ID was not in the classifier's exact-match dictionary (see [Why so many `unknown`?](#why-so-many-unknown)). Common causes:
 
 - The package has no `LICENSE` file and no metadata declaration (rare in well-maintained ecosystems).
-- A custom license string ORT does not recognize. Inspect `ort/rules.kts` and consider adding a mapping.
+- A custom license string ORT does not recognize. The component drawer surfaces the raw string for legal review.
+- The detector emitted a deprecated SPDX alias (e.g. `LGPL-3.0` instead of `LGPL-3.0-or-later`); the exact-match dictionary does not yet normalize these.
 - Source fetch failed for that ecosystem. Check `docker-compose logs worker` for ORT's per-ecosystem warnings.
 
 ### Classification looks wrong
 
-The classification is rule-driven. Edit `ort/rules.kts`, restart the worker, re-scan. If the rule itself is correct but the concluded license is wrong, override the conclusion in the component drawer.
+The classification at v2.0.0 is driven by the hard-coded `_LICENSE_CATEGORY_DEFAULTS` dictionary in `apps/backend/tasks/scan_source.py` (see [Classification source](#license-classification) above). The `ort/rules.kts` placeholder in the repo has no effect. For a one-off override today, a super-admin can patch the dictionary and restart the worker; the ORT-driven, per-organization customization path is on the v2.2 roadmap. If the dictionary entry is correct but the concluded license is wrong, override the conclusion in the component drawer.
 
 ### Lockfile not detected
 
@@ -140,10 +164,11 @@ Items the manual previously promised that are not in v2.0.0; tracked for later r
 - Exact-SPDX **License** filter and **Has open CVE** toggle — planned for v2.1; the current **License category** multi-select and the search box cover most workflows.
 - **Approval status** row inside the component drawer — planned for v2.1; the project-level [Approvals](./approvals.md) page is the source of truth today.
 - Manual **Override concluded license** action in the drawer (`team_admin`) — planned for v2.2.
+- Fuzzy SPDX normalization for suffix-less variants (`LGPL-3.0` → `LGPL-3.0-or-later`) — planned for v2.1.
+- ORT-driven, per-organization rule customization via `ort/rules.kts` — planned for v2.2; today classification is driven by the hard-coded `_LICENSE_CATEGORY_DEFAULTS` dictionary in `apps/backend/tasks/scan_source.py`.
 
 ## See also
 
 - [Vulnerabilities](./vulnerabilities.md)
 - [Approvals](./approvals.md)
-- [SBOM](./sbom.md)
-- [Architecture — ORT rules](../reference/architecture.md#ort-rules)
+- [SBOM](./sbom.md) — including the [Compliance evidence trail](./sbom.md#compliance-evidence-trail-at-v200)

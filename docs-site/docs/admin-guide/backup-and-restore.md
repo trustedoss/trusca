@@ -275,6 +275,12 @@ After running a restore:
 
 ## Troubleshooting
 
+:::info Logs to check first
+- `docker-compose logs --tail=500 beat | grep daily-auto-backup` — beat scheduler fired the task on schedule?
+- `docker-compose logs --tail=2000 worker | grep "backup\."` — task outcome (completed / failed / pruned / restored).
+- `/admin/backup/list` API — most recent attempt + status.
+:::
+
 ### `pg_dump` errors with permission denied
 
 The script runs `pg_dump` inside the postgres container — there should be no host permission issue. Confirm `.env`'s `POSTGRES_USER` matches the live user:

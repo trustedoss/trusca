@@ -59,17 +59,25 @@ sidebar_position: 3
 ![프로젝트 상세 — tier 가로 막대 차트와 라이선스별 분포가 있는 Licenses 탭](/img/screenshots/user-licenses-donut.png)
 
 
-ORT는 모든 라이선스를 세 단계로 분류하며 정의는 `ort/rules.kts`에 있습니다.
+ORT는 모든 라이선스를 세 단계로 분류합니다.
 
 | 단계 | 심각도 | 예시 | 효과 |
 |---|---|---|---|
 | **Allowed** | — | MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, CC0-1.0, Unlicense | 빌드 게이트 영향 없음. |
-| **Conditional** | WARNING | LGPL-2.x, LGPL-3.x, MPL-2.0, EPL-1.x, EPL-2.0, CDDL-1.0 | [승인 워크플로우](./approvals.md) 트리거. 빌드 진행. |
+| **Conditional** | WARNING | LGPL-2.x, LGPL-3.x, MPL-2.0, EPL-1.x, EPL-2.0, CDDL-1.0 | [승인 워크플로우](./approvals.md) 트리거. 빌드 진행 — **반려(Rejected)** 결정 이후에도 동일. [승인 페이지의 caveat](./approvals.md#rejected-verdict-at-v200) 참고. |
 | **Forbidden** | ERROR | AGPL-3.0, GPL-2.0, GPL-3.0, SSPL-1.0, BUSL-1.1 | CI에서 빌드 게이트가 종료 코드 1 반환. |
 
-`Unknown`(라이선스 파싱 실패)은 노란 배지의 4번째 단계로 표시되며 항상 사람의 검토가 필요합니다.
+`Unknown`(라이선스 파싱 실패 또는 SPDX ID 가 분류기 매핑에 없음 — [아래](#why-so-many-unknown) 참고)은 노란 배지의 4번째 단계로 표시되며 항상 사람의 검토가 필요합니다.
 
-분류는 `ort/rules.kts`를 수정하고 재스캔하면 조직별로 조정 가능합니다. 룰 형식은 [아키텍처 참고 → ORT 룰](../reference/architecture.md#ort-rules)을 보세요.
+:::warning v2.0.0 의 분류 출처
+법적 단계 분류(`forbidden` / `conditional` / `permissive` / `unknown`)는 현재 `apps/backend/tasks/scan_source.py` 의 하드코딩된 SPDX → 단계 사전(`_LICENSE_CATEGORY_DEFAULTS`)으로 결정됩니다. 레포의 `ort/rules.kts` 파일은 placeholder 이며, v2.0.0 에서는 이를 수정해도 분류가 **변경되지 않습니다**. ORT 기반의 조직별 룰 커스터마이징은 v2.2 로드맵 항목입니다. 오늘 일회성 오버라이드가 필요하면 super-admin 이 사전을 패치하고 워커를 재시작하는 Operator 전용 경로를 사용하세요.
+:::
+
+### `unknown` 이 왜 이렇게 많은가? {#why-so-many-unknown}
+
+:::info
+분류는 정확 일치(exact-match) SPDX ID 를 사용합니다. 접미사 없는 변형(`LGPL-3.0-or-later` 대신 `LGPL-3.0`)은 `unknown` 으로 떨어집니다. ORT 는 보통 `-or-later` / `-only` 접미사를 붙여 탐지하지만, 잘 알려진 SPDX ID 인데도 `unknown` 으로 표시된다면 탐지기가 deprecated alias 를 발신했을 가능성이 높습니다. fuzzy SPDX 정규화는 v2.1 로드맵 항목입니다.
+:::
 
 ## Declared vs. detected vs. concluded
 
@@ -97,6 +105,20 @@ ORT는 세 가지 신뢰 수준을 구분합니다.
 
 ![프로젝트 상세 — 컴포넌트별 의무사항 분포가 있는 Obligations 탭](/img/screenshots/user-obligations-distribution.png)
 
+:::note v2.0.0 의 의무사항 종류
+의무사항 카탈로그는 위 일곱 가지를 다룹니다. AGPL / SSPL / BUSL 고유
+의무 중 일부는 아직 별도 종류로 모델링되지 **않았습니다**.
+
+- **네트워크 사용 공개**(AGPL §13, SSPL §13) — 최종 사용자가 수정된
+  소프트웨어와 네트워크를 통해 상호작용할 때 요구됩니다.
+- **특허 부여 종료**(Apache-2.0 §3, MPL-2.0 §5.2).
+- **상표권 제한**(Apache-2.0 §6, BSD-4-clause).
+- **사용 분야 제한**(BUSL-1.1).
+
+이 항목은 컴포넌트 드로어에서 라이선스 원문을 통해 확인하세요. 더
+풍부한 의무사항 분류 체계는 v2.2 로드맵 항목입니다.
+:::
+
 ## SPDX 표현
 
 라이선스는 [SPDX 식별자](https://spdx.org/licenses/)로 식별됩니다. 복합 라이선스는 SPDX 표현 문법을 사용합니다.
@@ -119,15 +141,16 @@ UI에서 표현 위에 마우스를 올리면 각 컴포넌트 라이선스의 S
 
 ### 많은 컴포넌트가 `Unknown` 라이선스로 표시
 
-ORT가 메타데이터를 파싱할 수 없었습니다. 일반적 원인:
+ORT 가 메타데이터를 파싱할 수 없었거나 분류기의 정확 일치 사전에 SPDX ID 가 없었습니다([`unknown` 이 왜 이렇게 많은가?](#why-so-many-unknown) 참고). 일반적 원인:
 
 - 패키지에 `LICENSE` 파일도, 메타데이터 선언도 없음(잘 관리되는 생태계에서는 드뭄).
-- ORT가 인식 못하는 커스텀 라이선스 문자열. `ort/rules.kts`를 확인하고 매핑 추가를 검토하세요.
+- ORT 가 인식 못하는 커스텀 라이선스 문자열. 컴포넌트 드로어에 원본 문자열이 노출되어 법무 검토가 가능합니다.
+- 탐지기가 deprecated SPDX alias 를 발신(예: `LGPL-3.0-or-later` 대신 `LGPL-3.0`); 정확 일치 사전은 아직 이를 정규화하지 않습니다.
 - 해당 생태계 소스 fetch 실패. `docker-compose logs worker`에서 ORT의 생태계별 경고를 확인.
 
 ### 분류가 잘못된 것 같음
 
-분류는 룰 기반입니다. `ort/rules.kts`를 수정하고 워커를 재시작 후 재스캔. 룰 자체가 맞는데 concluded 라이선스가 잘못이면 컴포넌트 드로어에서 결론을 오버라이드하세요.
+v2.0.0 의 분류는 `apps/backend/tasks/scan_source.py` 의 하드코딩된 `_LICENSE_CATEGORY_DEFAULTS` 사전으로 결정됩니다([위의 분류 출처](#라이선스-분류) 참고). 레포의 `ort/rules.kts` placeholder 는 효과가 없습니다. 오늘 일회성 오버라이드가 필요하면 super-admin 이 사전을 패치하고 워커를 재시작하세요; ORT 기반의 조직별 커스터마이징 경로는 v2.2 로드맵 항목입니다. 사전 항목이 맞는데 concluded 라이선스가 잘못이면 컴포넌트 드로어에서 결론을 오버라이드하세요.
 
 ### 락파일이 탐지되지 않음
 
@@ -141,10 +164,11 @@ ORT가 메타데이터를 파싱할 수 없었습니다. 일반적 원인:
 - 정확 SPDX 표현 기반 **라이선스** 필터와 **미해결 CVE 보유** 토글 — v2.1 예정. 현재는 **라이선스 카테고리** 다중 선택과 검색 박스가 대부분의 워크플로우를 커버합니다.
 - 컴포넌트 드로어 내 **승인 상태** 행 — v2.1 예정. 현재 정답은 프로젝트 레벨 [승인](./approvals.md) 페이지입니다.
 - 드로어의 수동 **Concluded 라이선스 오버라이드** 동작(`team_admin`) — v2.2 예정.
+- 접미사 없는 변형(`LGPL-3.0` → `LGPL-3.0-or-later`)을 위한 fuzzy SPDX 정규화 — v2.1 예정.
+- `ort/rules.kts` 를 통한 조직별 ORT 룰 커스터마이징 — v2.2 예정. 오늘은 `apps/backend/tasks/scan_source.py` 의 하드코딩된 `_LICENSE_CATEGORY_DEFAULTS` 사전이 분류를 결정합니다.
 
 ## 함께 보기
 
 - [취약점](./vulnerabilities.md)
 - [승인](./approvals.md)
-- [SBOM](./sbom.md)
-- [아키텍처 — ORT 룰](../reference/architecture.md#ort-rules)
+- [SBOM](./sbom.md) — 특히 [v2.0.0 의 컴플라이언스 증거 체인](./sbom.md#compliance-evidence-trail-at-v200)

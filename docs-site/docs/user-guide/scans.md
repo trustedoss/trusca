@@ -88,7 +88,7 @@ The progress view shows real-time stage transitions:
 1. **Bootstrapping** — preparing the workspace.
 2. **Fetching source** — `git clone` (or `git fetch` + checkout for an existing workspace).
 3. **Detecting components** — `cdxgen` walks the repo and emits a CycloneDX SBOM.
-4. **Analyzing licenses** — ORT applies the rule set in `ort/rules.kts`.
+4. **Analyzing licenses** — ORT resolves declared / detected / concluded licenses. Legal-tier classification at v2.0.0 is then applied from the hard-coded `_LICENSE_CATEGORY_DEFAULTS` dictionary in `apps/backend/tasks/scan_source.py` (see [Components & licenses → Classification source](./components-and-licenses.md#license-classification)); the repo's `ort/rules.kts` is a placeholder until ORT-driven customization lands in v2.2.
 5. **Resolving vulnerabilities** — Dependency-Track correlates the SBOM against its feed mirror.
 6. **Persisting** — components, licenses, and findings are written to PostgreSQL.
 
@@ -172,6 +172,11 @@ Dependency-Track may be unavailable. Check **/admin/dt** — the circuit-breaker
 ### "DT unreachable" warning on the scan
 
 Same as above — the circuit breaker tripped. The scan completed using the cache and the warning is informational. Resolve the underlying DT outage and trigger a fresh scan to refresh.
+
+### Scan stuck running for ≥ 4 hours
+
+Use the on-call playbook for force-cancel + worker inspect:
+[On-call runbook → Scan stuck](../admin-guide/oncall-runbook.md#scenario-3--scan-stuck-in-running-for--4-hours).
 
 ## Roadmap (v2.x)
 

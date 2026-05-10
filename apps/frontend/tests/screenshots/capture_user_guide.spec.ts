@@ -36,6 +36,7 @@ import { ScansQueueHarness } from "../_harness/ScansQueueHarness";
 import {
   applyAuthFromSeed,
   captureScreenshot,
+  captureSection,
   ensureSeededPendingApproval,
   readSeedProjectNames,
 } from "./_helpers";
@@ -104,7 +105,11 @@ test.describe.serial("@screenshots user-guide/profile", () => {
     const profile = new ProfileHarness(page);
     await profile.gotoProfile();
     await profile.expectConnectedAccounts(["github"]);
-    await captureScreenshot(page, "user-profile-connected-accounts");
+    await captureSection(
+      page,
+      "user-profile-connected-accounts",
+      "profile-connected-accounts",
+    );
   });
 });
 
@@ -409,7 +414,11 @@ test.describe.serial("@screenshots user-guide/notifications", () => {
     const notif = new NotificationsHarness(page);
     await notif.gotoNotifications();
     await notif.gotoPreferences();
-    await captureScreenshot(page, "user-notifications-prefs");
+    await captureSection(
+      page,
+      "user-notifications-prefs",
+      "notifications-prefs-section",
+    );
   });
 });
 
@@ -447,6 +456,10 @@ test.describe.serial("@screenshots user-guide/integrations", () => {
     await integrations.goto();
     await integrations.expectMounted();
     await integrations.scrollToWebhooks();
-    await captureScreenshot(page, "user-integrations-webhooks");
+    await captureSection(
+      page,
+      "user-integrations-webhooks",
+      "integrations-webhooks-section",
+    );
   });
 });

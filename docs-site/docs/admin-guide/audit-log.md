@@ -51,6 +51,21 @@ These triggers close a defense-in-depth gap that PR #44 had documented as roadma
 
 Every authenticated `POST`, `PATCH`, `PUT`, and `DELETE` produces exactly one entry. Read endpoints (`GET`) do not. SBOM exports emit a structlog `sbom_exported` event but **do not** create an `audit_logs` row at v2.0.0; integrating exports into the audit table is on the roadmap.
 
+:::note What v2.0.0 does NOT audit
+The following user-visible operations emit a `structlog` event but
+do **not** create an `audit_logs` row at v2.0.0:
+
+- SBOM export (`sbom_exported`)
+- NOTICE file download (no structlog event today either; see roadmap)
+- API-key revocation explicit event (`api_key.revoked`; the
+  underlying `api_keys.update` ORM row IS in `audit_logs`)
+
+For compliance audits of "who downloaded what when", check
+`docker-compose logs backend | grep sbom_exported` and your Loki /
+journald aggregator. Promoting these to `audit_logs` rows is on the
+v2.1 roadmap.
+:::
+
 System jobs (Celery) also log. Each row carries the bare action verb plus its `target_table`. Examples:
 
 - `target_table=scans&action=create` (system, when a webhook triggers a scan)
@@ -207,6 +222,7 @@ The following capabilities are referenced in early docs but are **not** shipped 
 
 - Multi-select filters (Action multi-select, Target table multi-select), preset date ranges (last hour / today / last 7 days), exact-match Target ID filter, and Request ID filter on `/admin/audit`.
 - An `actor_kind` column / filter (today the audit row's actor is identified by `actor_user_id`; API-key actors are inferred from the action context).
+- Promote SBOM export (`sbom_exported`), NOTICE file download, and API-key revocation events from `structlog`-only into `audit_logs` rows — planned for v2.1.
 
 ## See also
 

@@ -94,7 +94,7 @@ See [DT connector](../admin-guide/dt-connector.md) for the bootstrap flow.
 |---|---|---|---|
 | `TRUSTEDOSS_SCAN_BACKEND` | `real` | `config.py` | `real` (subprocess `cdxgen` / ORT / Trivy) or `mock` (fixture JSON). `mock` is the dev / CI default for the test harness; production must leave this as `real`. |
 | `WORKSPACE_HOST_PATH` | `/tmp/trustedoss` | `config.py`, `docker-compose.yml` | Host directory mounted into the worker as `/workspace`. Holds repo clones + ORT analyzer outputs. The compose stack overrides this to `/workspace` inside the container. |
-| `ORT_RULES_PATH` | `/opt/trustedoss/ort/rules.kts` | `docker-compose.yml` | Path inside the worker. Mount your customized rules here. |
+| `ORT_RULES_PATH` | `/opt/trustedoss/ort/rules.kts` | `docker-compose.yml` | Path inside the worker. Reserved for the v2.2 ORT-driven customization path; at v2.0.0 the file is a placeholder and editing it has no effect — license-tier classification comes from `_LICENSE_CATEGORY_DEFAULTS` in `apps/backend/tasks/scan_source.py`. |
 | `JSONB_ROW_SIZE_LIMIT_BYTES` | `262144` (256 KB) | `config.py` | Per-row JSON byte ceiling before the writer truncates and emits a warning. Guards the I-1 unbounded-payload class. |
 
 ## WebSocket gateway

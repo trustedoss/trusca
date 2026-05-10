@@ -182,6 +182,12 @@ A `disk_pressure` notification kind is **not** in the enum at v2.0.0; disk press
 
 ## Troubleshooting
 
+:::info Logs to check first
+- `docker-compose logs --tail=500 dt` — JVM startup, OOM, fatal.
+- `docker-compose logs --tail=500 backend | grep dt_health_check` — portal's view of DT probes (structlog events).
+- `/admin/dt/status` API — breaker state + last probe outcome JSON.
+:::
+
 ### `/admin/dt` shows `down` but DT is reachable from a browser
 
 The portal's worker container reaches DT via the compose network, not via the public URL. Confirm:

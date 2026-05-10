@@ -247,3 +247,57 @@ export async function ensureSeededPendingApproval(): Promise<void> {
     );
   }
 }
+
+/**
+ * Capture only the bounding rectangle of a section identified by testId.
+ *
+ * For stacked single-page sections (Integrations API keys + Webhooks,
+ * Notifications inbox + Preferences, Profile identity + Connected
+ * accounts) the 1440×900 viewport fits both sections, so
+ * `scrollIntoViewIfNeeded()` is a no-op and a second viewport capture
+ * returns the same frame — leaving the two PNGs byte-identical. This
+ * helper reads the element's bounding box and feeds a clamped clip
+ * rectangle to `page.screenshot()` so the second-section asset is
+ * distinct from its sibling.
+ */
+export async function captureSection(
+  page: Page,
+  slug: string,
+  testId: string,
+  padding = 16,
+): Promise<void> {
+  if (!/^[a-z0-9-]+$/.test(slug)) {
+    throw new Error(
+      `captureSection: slug "${slug}" must be kebab-case ([a-z0-9-]+)`,
+    );
+  }
+  await hideDevOnlyChrome(page);
+  const rect = await page.evaluate(
+    ({ id, pad }) => {
+      const el = document.querySelector(`[data-testid="${id}"]`);
+      if (!el) return null;
+      const r = (el as HTMLElement).getBoundingClientRect();
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const x = Math.max(0, Math.floor(r.left - pad));
+      const y = Math.max(0, Math.floor(r.top - pad));
+      const width = Math.max(
+        1,
+        Math.min(vw - x, Math.ceil(r.width + pad * 2)),
+      );
+      const height = Math.max(
+        1,
+        Math.min(vh - y, Math.ceil(r.height + pad * 2)),
+      );
+      return { x, y, width, height };
+    },
+    { id: testId, pad: padding },
+  );
+  if (!rect) {
+    throw new Error(
+      `captureSection: testId "${testId}" not found on page (slug=${slug})`,
+    );
+  }
+  const out = path.join(SCREENSHOT_DIR, `${slug}.png`);
+  await page.screenshot({ path: out, clip: rect, animations: "disabled" });
+}
