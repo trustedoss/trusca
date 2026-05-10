@@ -181,12 +181,17 @@ services:
       - "traefik.docker.network=trustedoss"
       - "traefik.http.services.backend.loadbalancer.server.port=8000"
       # Routes: /api/*, /health, /metrics (Phase 6) — everything else
-      # falls through to the frontend router below.
+      # falls through to the frontend router below. The frontend bundle is
+      # built with VITE_API_BASE_URL=/api (Dockerfile.prod), so the browser
+      # hits /api/v1/... on the same origin. Backend routers are mounted at
+      # /v1/*, /auth/*, /ws/* (no /api prefix), so we strip the prefix here
+      # before the request reaches the FastAPI app.
       - "traefik.http.routers.backend.rule=Host(`${DOMAIN}`) && (PathPrefix(`/api`) || Path(`/health`) || PathPrefix(`/metrics`))"
       - "traefik.http.routers.backend.entrypoints=websecure"
       - "traefik.http.routers.backend.tls=true"
       - "traefik.http.routers.backend.tls.certresolver=le"
-      - "traefik.http.routers.backend.middlewares=security-headers@file"
+      - "traefik.http.middlewares.backend-stripapi.stripprefix.prefixes=/api"
+      - "traefik.http.routers.backend.middlewares=backend-stripapi@docker,security-headers@file"
     deploy:
       resources:
         limits:

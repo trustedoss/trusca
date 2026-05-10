@@ -13,6 +13,8 @@
 # read with a sane default. The fresh-Linux UAT workflow
 # (.github/workflows/install-uat.yml, Chore E) is the primary consumer:
 #   INSTALL_HOST            public URL (default: http://localhost)
+#   INSTALL_TLS_EMAIL       Let's Encrypt contact email (HTTPS only)
+#                           (default: admin@<domain> derived from INSTALL_HOST)
 #   INSTALL_ADMIN_EMAIL     super-admin email   (default: admin@trustedoss.local)
 #   INSTALL_ADMIN_PASSWORD  super-admin password (default: openssl rand -base64 24)
 #   INSTALL_SECRET_KEY      JWT signing key      (default: openssl rand -hex 32)
@@ -153,7 +155,30 @@ else
   public_url=${public_url:-$default_url}
 fi
 
-# Update / append CORS + DOMAIN keys.
+# Derive DOMAIN (host without scheme) and decide whether HTTPS / Let's
+# Encrypt is in play. Local hosts (localhost, 127.0.0.1) skip TLS_EMAIL;
+# any real domain reached over https:// requires it for cert issuance.
+domain="${public_url#https://}"
+domain="${domain#http://}"
+domain="${domain%%/*}"
+case "$public_url" in https://*) is_https=1 ;; *) is_https=0 ;; esac
+
+tls_email=""
+if [[ $is_https -eq 1 ]]; then
+  default_tls_email="${INSTALL_TLS_EMAIL:-admin@${domain}}"
+  if [[ $NO_PROMPT -eq 1 ]]; then
+    tls_email="$default_tls_email"
+    note "non-interactive: tls_email=$tls_email"
+  else
+    read -r -p "Let's Encrypt contact email [$default_tls_email]: " tls_email
+    tls_email=${tls_email:-$default_tls_email}
+  fi
+  if [[ ! "$tls_email" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]]; then
+    fail "TLS_EMAIL '$tls_email' is not a valid email address"
+  fi
+fi
+
+# Update / append CORS + DOMAIN + TLS_EMAIL keys.
 python3 - <<PYTHON
 from pathlib import Path
 import re
@@ -165,12 +190,11 @@ def upsert(text: str, key: str, value: str) -> str:
         return re.sub(pattern, f"{key}={value}", text, flags=re.M)
     return text.rstrip() + f"\n{key}={value}\n"
 text = upsert(text, "CORS_ALLOWED_ORIGINS", "${public_url}")
-# DOMAIN powers Traefik's host rule; strip scheme.
-domain = "${public_url}".replace("https://", "").replace("http://", "").split("/")[0]
-text = upsert(text, "DOMAIN", domain)
+text = upsert(text, "DOMAIN", "${domain}")
+text = upsert(text, "TLS_EMAIL", "${tls_email}")
 env.write_text(text)
 PYTHON
-ok "wrote CORS_ALLOWED_ORIGINS=$public_url + DOMAIN to .env"
+ok "wrote CORS_ALLOWED_ORIGINS=$public_url + DOMAIN=$domain + TLS_EMAIL to .env"
 
 # ---------------------------------------------------------------------------
 # 4. docker-compose pull + up
