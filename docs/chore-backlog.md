@@ -401,12 +401,20 @@ prompt: `docs/sessions/_next-session-prompt-guide-screenshots.md` (PR #52, `d1f1
 
 ## 새 세션 시작 시 사용
 
-다음 세션 후보 (위 "Manual Walkthrough Verification" 섹션 참조):
-- A4/A5 chore 합본 (`chore/dt-breaker-reset-endpoint` + `chore/last-super-admin-db-constraint`) — ~1 세션
-- L1 PostgreSQL role 분리 (`trustedoss_app` DML-only / `trustedoss_owner` migrations) — ~1.5 세션, audit_logs trigger 의 runtime app 우회 가능성 제거
-- D2 `tasks.backup` 리팩터링 (DATABASE_URL 직접 사용) — ~1.5 세션, admin_backup test 4 fixme 해소
-- D1 잔여 fixme (auth_and_profile test 3) — `seed_e2e_user --no-password` 플래그 또는 JWT-mint 헬퍼, ~0.5~1 세션
-- B 묶음 v2.1 sprint (API Key 확장 / Excel·PDF Reports / Profile password row / Project permanent Delete / Scan cancel API / 알림 채널×trigger matrix) — 별도 sprint planning 필요
+**활성 prompt**: `docs/sessions/_next-session-prompt-backlog-marathon.md` — backlog 잔여 9 묶음을 권장 순서대로 일괄 처리하는 자율 실행 가이드 (~12 세션 + v2.1 sprint 별도). 새 세션 첫 메시지로 본 파일 경로를 인용하면 메인 세션이 컨텍스트 자동 복원.
+
+묶음 순서:
+1. A4 + A5 (Manual sys-bug fix 회수) ~1 세션
+2. D1 (Phase 5 fixme: auth_and_profile test 3) ~0.5~1 세션
+3. D2 (tasks.backup shell 의존 제거) ~1.5 세션
+4. R + S + T (Post-GA 보안 잔여) ~1.5 세션
+5. Screenshot OUT 4a (헤더 종 unread badge) ~0.5 세션
+6. Q (Cloud Run Cloud Armor) ~0.5 세션
+7. API path consistency (`/api/v1` → `/v1`) ~0.5 세션
+8. L1 (PostgreSQL role 분리) ~1.5 세션
+9. Screenshot OUT 4b ~ 4f (visual regression / animations / KO locale / a11y / 압축) ~3.5 세션 합 (5 sub-PR 분할)
+
+종료 후: **v2.1 sprint planning** (B 묶음 6 기능 — 별도 prompt 필요).
 
 **Deprecated prompts**:
 - `_next-session-prompt-chore-backlog.md` — 11 chore 모두 처리 후 (2026-05-09).
