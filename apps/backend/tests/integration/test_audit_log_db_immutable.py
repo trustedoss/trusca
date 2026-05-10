@@ -140,9 +140,6 @@ async def test_delete_blocked_with_integrity_error(session) -> None:
         ("user_agent", "scrubbed"),
         # request_id (correlation id; tampering hides incident traces)
         ("request_id", "00000000-0000-0000-0000-000000000000"),
-        # actor_user_id — flips ownership ("it wasn't me, it was the
-        # other admin"). Highest-value attacker column.
-        ("actor_user_id", "00000000-0000-0000-0000-000000000000"),
         # target_id — re-points the audit row at a different object.
         ("target_id", "ghosted-target"),
         # target_table — re-points the audit row at a different table.
@@ -151,11 +148,16 @@ async def test_delete_blocked_with_integrity_error(session) -> None:
         ("created_at", "2020-01-01 00:00:00+00"),
     ],
 )
-async def test_update_any_column_subset_blocked(session, column, value) -> None:
-    """Adversarial: confirm there is no "single column" UPDATE loophole.
+async def test_update_any_content_column_blocked(session, column, value) -> None:
+    """Adversarial: confirm there is no "single column" UPDATE loophole on
+    the content surface (id / created_at / action / target_table /
+    target_id / request_id / ip / user_agent / diff).
 
-    The trigger fires BEFORE UPDATE without inspecting which columns the
-    caller targeted, so every column-subset must raise.
+    actor_user_id and team_id are intentionally NOT in this list — the
+    FK ``ON DELETE SET NULL`` cascade needs them mutable to NULL when a
+    referenced User / Team is removed. Their dedicated tests below
+    distinguish the legitimate cascade (NULL transition) from the
+    tampering case (rotation between two non-NULL ids).
     """
     row_id = await _insert_one(session)
 
@@ -166,6 +168,67 @@ async def test_update_any_column_subset_blocked(session, column, value) -> None:
         )
         await session.commit()
     await session.rollback()
+
+
+async def test_actor_user_id_rotate_to_other_id_blocked(session) -> None:
+    """Tampering case: rotate actor_user_id from NULL / non-NULL to a
+    different non-NULL id ("it wasn't me, it was the other admin"). The
+    function gates on ``NEW.actor_user_id IS NOT NULL`` so any non-NULL
+    NEW value that differs from OLD is refused.
+    """
+    row_id = await _insert_one(session)
+
+    with pytest.raises(IntegrityError) as excinfo:
+        await session.execute(
+            text("UPDATE audit_logs SET actor_user_id = :v WHERE id = :id"),
+            {"v": "00000000-0000-0000-0000-000000000000", "id": row_id},
+        )
+        await session.commit()
+    assert "actor_user_id pin" in str(excinfo.value)
+    await session.rollback()
+
+
+async def test_actor_user_id_set_null_via_cascade_allowed(session) -> None:
+    """Legitimate FK cascade: ``ON DELETE SET NULL`` on ``users.id``
+    propagates as ``UPDATE audit_logs SET actor_user_id = NULL`` for
+    every prior row. The trigger MUST allow this — every legitimate
+    User delete with prior audit history depends on it.
+
+    The seeded row's ``actor_user_id`` is already NULL (default), so a
+    NULL → NULL rewrite is a no-op as far as ``IS DISTINCT FROM`` goes
+    and the function's gate accepts it. The post-condition is simply
+    that the UPDATE returns without raising.
+    """
+    row_id = await _insert_one(session)
+    await session.execute(
+        text("UPDATE audit_logs SET actor_user_id = NULL WHERE id = :id"),
+        {"id": row_id},
+    )
+    await session.commit()
+
+
+async def test_team_id_rotate_to_other_id_blocked(session) -> None:
+    """Tampering case: rotate team_id between two non-NULL ids."""
+    row_id = await _insert_one(session)
+
+    with pytest.raises(IntegrityError) as excinfo:
+        await session.execute(
+            text("UPDATE audit_logs SET team_id = :v WHERE id = :id"),
+            {"v": "00000000-0000-0000-0000-000000000000", "id": row_id},
+        )
+        await session.commit()
+    assert "team_id pin" in str(excinfo.value)
+    await session.rollback()
+
+
+async def test_team_id_set_null_via_cascade_allowed(session) -> None:
+    """Legitimate FK cascade for team_id (mirror of the actor_user_id case)."""
+    row_id = await _insert_one(session)
+    await session.execute(
+        text("UPDATE audit_logs SET team_id = NULL WHERE id = :id"),
+        {"id": row_id},
+    )
+    await session.commit()
 
 
 async def test_diff_jsonb_overwrite_blocked(session) -> None:

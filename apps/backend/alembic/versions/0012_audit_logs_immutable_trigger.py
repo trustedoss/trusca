@@ -37,13 +37,22 @@ Why (sys-bug-audit-1, walkthrough 2026-05-09 / -10):
     same PR to flip the doc back to "enforced at the DB".
 
 Adversarial reasoning (memory ``feedback_adversarial_input_parametrize``):
-  - BEFORE-row trigger fires regardless of column subset / filter — there
-    is no "set only one column" loophole.
+  - BEFORE-row trigger fires on any UPDATE that mutates a content column —
+    there is no "set only one column" loophole on the immutable surface.
   - BEFORE TRUNCATE statement-level trigger covers the single-statement
     table-wipe bypass that BEFORE-row cannot intercept.
   - The trigger does NOT block INSERT — the audit listener path stays
     functional. Concurrent INSERTs on the same table are not affected
     (BEFORE UPDATE OR DELETE is a no-op for INSERT).
+  - **FK cascade SET NULL is allowed** on ``actor_user_id`` and
+    ``team_id``. Both columns reference parents (``users``, ``teams``)
+    with ``ON DELETE SET NULL`` so a User / Team deletion would
+    otherwise fire an UPDATE to NULL the FK column on every prior audit
+    row — that propagation must succeed or every legitimate User / Team
+    delete with prior audit history would 500. The function gates on
+    ``NEW.<col> IS NOT NULL`` so the legitimate cascade (non-NULL → NULL)
+    flows through, while a tampering rotation between two non-NULL ids
+    ("it wasn't me, it was the other admin") is refused.
   - **Known residual bypass — role privilege**: in the default install
     (docker-compose.dev.yml + docker-compose.yml), Alembic migrations
     AND the FastAPI / Celery runtime share a single PostgreSQL role
@@ -91,8 +100,45 @@ _FUNCTION_DDL = """
 CREATE OR REPLACE FUNCTION audit_logs_prevent_mutation()
 RETURNS TRIGGER AS $$
 BEGIN
-  RAISE EXCEPTION 'audit_logs is append-only (TG_OP=%)', TG_OP
-    USING ERRCODE = '23000';
+  IF TG_OP = 'TRUNCATE' OR TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'audit_logs is append-only (TG_OP=%)', TG_OP
+      USING ERRCODE = '23000';
+  END IF;
+
+  -- TG_OP = 'UPDATE' from here on.
+  -- Strict: every content column is immutable. These nine carry the
+  -- evidentiary record (who did what, when, against what, with which
+  -- diff). A change to any one is tampering.
+  IF (OLD.id, OLD.created_at, OLD.action, OLD.target_table, OLD.target_id,
+      OLD.request_id, OLD.ip, OLD.user_agent, OLD.diff)
+     IS DISTINCT FROM
+     (NEW.id, NEW.created_at, NEW.action, NEW.target_table, NEW.target_id,
+      NEW.request_id, NEW.ip, NEW.user_agent, NEW.diff)
+  THEN
+    RAISE EXCEPTION 'audit_logs is append-only (TG_OP=UPDATE on content column)'
+      USING ERRCODE = '23000';
+  END IF;
+
+  -- actor_user_id and team_id are FK columns with ON DELETE SET NULL on
+  -- their parent tables. When a User or Team row is removed, Postgres
+  -- propagates the cascade by UPDATEing referencing audit_logs rows to
+  -- NULL their FK column. Allow that exact transition (any → NULL) but
+  -- refuse any other change — rotating to a different non-NULL id would
+  -- be a framing attack.
+  IF NEW.actor_user_id IS NOT NULL
+     AND OLD.actor_user_id IS DISTINCT FROM NEW.actor_user_id
+  THEN
+    RAISE EXCEPTION 'audit_logs is append-only (TG_OP=UPDATE on actor_user_id pin)'
+      USING ERRCODE = '23000';
+  END IF;
+  IF NEW.team_id IS NOT NULL
+     AND OLD.team_id IS DISTINCT FROM NEW.team_id
+  THEN
+    RAISE EXCEPTION 'audit_logs is append-only (TG_OP=UPDATE on team_id pin)'
+      USING ERRCODE = '23000';
+  END IF;
+
+  RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 """.strip()
