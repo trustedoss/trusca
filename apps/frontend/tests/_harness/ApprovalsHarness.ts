@@ -39,13 +39,25 @@ export class ApprovalsHarness {
     await expect(this.page.getByTestId("approvals-page")).toBeVisible({
       timeout: DEFAULT_TIMEOUT_MS,
     });
-    // Either the table body or the empty card must mount before we treat
-    // the page as ready — otherwise screenshot timing races the SWR fetch.
-    await expect(
-      this.page
-        .getByTestId("approvals-tbody")
-        .or(this.page.getByTestId("approvals-empty")),
-    ).toBeVisible({ timeout: DEFAULT_TIMEOUT_MS });
+    // The table + footer wrappers always render (skeleton, rows, or empty
+    // cell — all inside the same table). Asserting on those keeps the
+    // predicate immune to the empty-tbody zero-height race that the earlier
+    // `tbody OR empty-cell` fallback hit during capture runs.
+    await expect(this.page.getByTestId("approvals-table")).toBeVisible({
+      timeout: DEFAULT_TIMEOUT_MS,
+    });
+    await expect(this.page.getByTestId("approvals-pagination")).toBeVisible({
+      timeout: DEFAULT_TIMEOUT_MS,
+    });
+    // Wait until the initial fetch settles so screenshots do not capture
+    // the loading skeleton. `aria-busy` flips off once the query resolves.
+    await expect
+      .poll(
+        () =>
+          this.page.getByTestId("approvals-table").getAttribute("aria-busy"),
+        { timeout: DEFAULT_TIMEOUT_MS },
+      )
+      .not.toBe("true");
   }
 
   // ───── list state ─────────────────────────────────────────────────────
