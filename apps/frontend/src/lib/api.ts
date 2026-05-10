@@ -299,6 +299,15 @@ if (import.meta.env.DEV && typeof window !== "undefined") {
       get isAuthenticated(): boolean {
         return useAuthStore.getState().isAuthenticated;
       },
+      // Phase 5 manual-aligned harnesses (Notifications / Profile /
+      // AdminBackup) issue direct fetch() against the backend with an
+      // explicit Authorization header — the SPA's axios interceptor
+      // doesn't fire for `page.request.*` calls. Cross-origin fetches
+      // also drop the SPA's cookies, so the harness must read the
+      // in-memory access token to forward it. Read-only by design.
+      get accessToken(): string | null {
+        return useAuthStore.getState().accessToken;
+      },
     }),
   });
 }
