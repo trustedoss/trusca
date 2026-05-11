@@ -88,7 +88,7 @@ def downgrade() -> None:
   "title": "Forbidden",
   "status": 403,
   "detail": "API key 'tos_a1b2c3d4_…' lacks the scan:trigger permission.",
-  "instance": "/api/v1/projects/42/scans"
+  "instance": "/v1/projects/42/scans"
 }
 ```
 

@@ -89,7 +89,7 @@ Pass the key in the `Authorization` header as a Bearer token:
 
 ```bash
 curl -sS -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
-  https://trustedoss.example.com/api/v1/projects
+  https://trustedoss.example.com/v1/projects
 ```
 
 The portal logs the prefix on every request to help with traceability.
@@ -144,7 +144,7 @@ See [Webhooks](../ci-integration/webhooks.md) for the webhook flow.
 
 After issuing a key:
 
-1. `curl -sS -H "Authorization: Bearer <key>" .../api/v1/projects` returns 200 with the team's projects.
+1. `curl -sS -H "Authorization: Bearer <key>" .../v1/projects` returns 200 with the team's projects.
 2. The audit log records a `target_table=api_keys&action=create` row with the prefix. The Admin UI cannot filter on `target_table=api_keys` — `api_keys` is not in the `AuditTargetTable` whitelist (see [Audit log → Filter-visible vs raw-row tables](./audit-log.md#what-gets-logged)). Use raw SQL to verify:
 
    ```sql

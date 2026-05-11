@@ -49,7 +49,7 @@ docker-compose logs --tail=200 dt | grep -iE 'error|fatal'
 # 3. Portal's view of DT health (structured)
 docker-compose logs --tail=500 backend | grep dt_health_check | tail -10
 # 4. Breaker state from the portal
-curl -fsS "https://<your-host>/api/v1/admin/dt/status" \
+curl -fsS "https://<your-host>/v1/admin/dt/status" \
   -H "Authorization: Bearer $ACCESS_TOKEN" | jq
 ```
 
@@ -58,12 +58,12 @@ curl -fsS "https://<your-host>/api/v1/admin/dt/status" \
    ```bash
    docker-compose restart dt
    sleep 30
-   curl -fsS https://<your-host>/api/v1/admin/dt/health-check \
+   curl -fsS https://<your-host>/v1/admin/dt/health-check \
      -H "Authorization: Bearer $ACCESS_TOKEN"
    ```
 2. **Manual breaker reset** (if breaker stayed OPEN after DT recovers):
    ```bash
-   curl -fsS -X POST "https://<your-host>/api/v1/admin/dt/breaker/reset" \
+   curl -fsS -X POST "https://<your-host>/v1/admin/dt/breaker/reset" \
      -H "Authorization: Bearer $ACCESS_TOKEN"
    ```
 3. **Mirror re-sync** (if vuln data looks stale post-recovery): wait one full hourly beat cycle (the `dt_findings_resync` task in `celery_app.py`).
@@ -90,7 +90,7 @@ docker-compose logs --tail=500 beat | grep daily-auto-backup
 # 2. Worker logs for backup task runs
 docker-compose logs --tail=2000 worker | grep -E 'backup\.(completed|failed)' | tail -20
 # 3. Most recent backup row + status
-curl -fsS "https://<your-host>/api/v1/admin/backup/list" \
+curl -fsS "https://<your-host>/v1/admin/backup/list" \
   -H "Authorization: Bearer $ACCESS_TOKEN" | jq '.items[0:5]'
 # 4. Disk free on the backup volume
 docker-compose exec backend df -h /backups
@@ -99,7 +99,7 @@ docker-compose exec backend df -h /backups
 ### Recover
 1. **Manual trigger** (UI: `/admin/backup` → **Run manual backup now**, or):
    ```bash
-   curl -fsS -X POST "https://<your-host>/api/v1/admin/backup/trigger" \
+   curl -fsS -X POST "https://<your-host>/v1/admin/backup/trigger" \
      -H "Authorization: Bearer $ACCESS_TOKEN"
    ```
 2. **If manual also fails — inspect `pg_dump` directly**:
@@ -128,7 +128,7 @@ PagerDuty: `TrustedOSS scan running > 4h for project X`.
 ### Diagnose
 ```bash
 # 1. Which stage is it stuck at?
-curl -fsS "https://<your-host>/api/v1/scans/<scan_id>" \
+curl -fsS "https://<your-host>/v1/scans/<scan_id>" \
   -H "Authorization: Bearer $ACCESS_TOKEN" | jq '.progress_payload, .latest_log_frame'
 # 2. Celery active tasks
 docker-compose exec worker celery -A apps.backend.tasks.celery_app inspect active
@@ -139,7 +139,7 @@ docker-compose exec worker ps -ef | grep -E 'cdxgen|ort|trivy'
 ### Recover
 1. **Force-cancel the scan** (preferred — no worker-wide impact):
    ```bash
-   curl -fsS -X POST "https://<your-host>/api/v1/admin/scans/<scan_id>/cancel" \
+   curl -fsS -X POST "https://<your-host>/v1/admin/scans/<scan_id>/cancel" \
      -H "Authorization: Bearer $ACCESS_TOKEN"
    ```
 2. **If cancel doesn't release the task (worker truly hung)**:
@@ -166,7 +166,7 @@ PagerDuty: `TrustedOSS portal disk = 95%+`.
 df -h /opt/trustedoss
 docker system df
 # 2. Per-card breakdown via the portal
-curl -fsS "https://<your-host>/api/v1/admin/disk" \
+curl -fsS "https://<your-host>/v1/admin/disk" \
   -H "Authorization: Bearer $ACCESS_TOKEN" | jq
 # 3. Workspace breakdown (most common offender)
 docker-compose exec worker du -sh /workspace/* | sort -h | tail -10
@@ -204,7 +204,7 @@ When paging the portal dev team, attach:
 - Portal version: `docker-compose exec backend python -c "from main import APP_VERSION; print(APP_VERSION)"`
 - Last 2000 lines of the relevant container: `docker-compose logs --tail=2000 <svc>`
 - For DT issues: `/admin/dt/status` full JSON.
-- For scan issues: `<scan_id>` and `/api/v1/scans/<scan_id>` full JSON.
+- For scan issues: `<scan_id>` and `/v1/scans/<scan_id>` full JSON.
 
 ## See also
 

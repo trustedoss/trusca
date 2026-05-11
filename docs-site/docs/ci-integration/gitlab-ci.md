@@ -140,7 +140,7 @@ If you need to copy and inline the job — for instance because your runner cann
           -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}"
           -H "Content-Type: application/json"
           -d "{\"kind\": \"${TRUSTEDOSS_SCAN_KIND:-source}\"}"
-          "${TRUSTEDOSS_API_URL}/api/v1/projects/${TRUSTEDOSS_PROJECT_ID}/scans"
+          "${TRUSTEDOSS_API_URL}/v1/projects/${TRUSTEDOSS_PROJECT_ID}/scans"
           | jq -r .id);
         echo "scan_id=$SCAN_ID";
         # Poll until terminal …

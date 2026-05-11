@@ -28,11 +28,13 @@ RUN npm ci --no-audit --no-fund
 # Source comes after deps so a source-only edit doesn't bust the npm cache.
 COPY . .
 
-# VITE_API_BASE_URL is baked into the static bundle at build time. It can
-# be overridden per-deployment with a build arg; the default points at
-# `/api` so the prod docker-compose can route via Traefik to the backend
-# under the same origin (no CORS, no mixed-content).
-ARG VITE_API_BASE_URL=/api
+# VITE_API_BASE_URL is baked into the static bundle at build time.
+# Marathon bundle 7 — API path consistency: the SPA emits /v1/...
+# fetches relative to the bundle origin (same-origin). Traefik
+# (docker-compose.yml) routes /v1/*, /auth/*, /ws/* to the backend
+# directly — no /api prefix strip. Override per-deployment with the
+# build arg only if your edge proxy needs a different base.
+ARG VITE_API_BASE_URL=
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 
 RUN npm run build
