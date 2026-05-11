@@ -1,0 +1,97 @@
+name: screenshot-size-gate
+
+# Marathon bundle 9 (4f) — PR diff guard against unbounded screenshot
+# inflation. Triggers when any docs-site/static/img/screenshots/*.png
+# is added or modified in the PR. Computes the cumulative size of
+# changed PNGs vs the same files on main; fails if the PR adds more
+# than ``MAX_INFLATION_PERCENT`` (default 10 %) on top of the baseline.
+#
+# Why a PR-relative gate (vs an absolute MB cap):
+#   - Captures realistic regression: a viewport bump or DPR change
+#     inflates every PNG by ~30 %; a single PNG would slip past an
+#     absolute cap but the cumulative ratio fires immediately.
+#   - The marathon prompt's "+10 %" comes from observed steady-state
+#     drift on no-op recaptures (~3 % from font hinting / antialias);
+#     10 % gives headroom for one legitimate new screenshot at the
+#     median size while still catching a 50-image bulk regression.
+#
+# Operators who add a genuinely larger asset (e.g. a 4f animated
+# walkthrough thumbnail) override the gate by labeling the PR with
+# ``screenshots:size-gate-skip`` (manual review acknowledges the bump).
+
+on:
+  pull_request:
+    paths:
+      - "docs-site/static/img/screenshots/**.png"
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  size-gate:
+    runs-on: ubuntu-22.04
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'screenshots:size-gate-skip') }}
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compare PR vs base for changed PNGs
+        run: |
+          set -euo pipefail
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          # The gate fires only when the PR actually touched a screenshot
+          # PNG. The path filter on the workflow ensures this, but we
+          # double-check inside the job because a future workflow change
+          # might widen the trigger.
+          changed=$(git diff --name-only --diff-filter=AM "$base" "$head" \
+            -- 'docs-site/static/img/screenshots/*.png' || true)
+          if [[ -z "$changed" ]]; then
+            echo "no PNG changes detected — gate is a no-op"
+            exit 0
+          fi
+          printf "Changed screenshot PNGs:\n%s\n\n" "$changed"
+
+          baseline=0
+          new=0
+          while IFS= read -r f; do
+            [[ -z "$f" ]] && continue
+            after=$(stat -c %s "$f" 2>/dev/null || echo 0)
+            new=$((new + after))
+            # Files newly added (not in base) contribute 0 to baseline so
+            # a brand-new screenshot is measured against itself only.
+            if git cat-file -e "$base:$f" 2>/dev/null; then
+              before=$(git cat-file -p "$base:$f" | wc -c)
+              baseline=$((baseline + before))
+            fi
+          done <<< "$changed"
+
+          if [[ $baseline -eq 0 ]]; then
+            printf "%-30s %10s\n" "baseline-bytes:"  "0 (all-new files)"
+            printf "%-30s %10d\n" "pr-bytes:"        "$new"
+            echo "no baseline to compare against — gate passes (additive only)."
+            exit 0
+          fi
+
+          inflation_percent=$(( (new - baseline) * 100 / baseline ))
+          max=${MAX_INFLATION_PERCENT:-10}
+          printf "%-30s %10d\n" "baseline-bytes:"     "$baseline"
+          printf "%-30s %10d\n" "pr-bytes:"           "$new"
+          printf "%-30s %10d%%\n" "inflation:"        "$inflation_percent"
+          printf "%-30s %10d%%\n" "ceiling:"          "$max"
+
+          if [[ $inflation_percent -gt $max ]]; then
+            echo
+            echo "::error::Screenshot PNG cumulative size grew ${inflation_percent}% over baseline (cap ${max}%)."
+            echo "::error::Run \`make screenshots-optimize\` locally to compress, OR label the PR \`screenshots:size-gate-skip\` to override."
+            exit 1
+          fi
+          echo
+          echo "✓ within ceiling — gate passes"
+        env:
+          MAX_INFLATION_PERCENT: "10"
