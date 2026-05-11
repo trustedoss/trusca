@@ -133,8 +133,12 @@ docker-compose -f docker-compose.yml -f docker-compose.dt.yml up -d
 - [ ] `https://<your-host>` 열기 — 로그인 화면이 렌더링되고
   브라우저가 유효한 TLS 자물쇠를 표시(HTTPS 인 경우).
 - [ ] 마법사가 출력한 super-admin 이메일·비밀번호로 로그인.
-- [ ] `/admin/dt` 로 이동 — 첫 부트에서는 최대 60초까지 OPEN 일 수
-  있으므로 CLOSED 로 전환될 때까지 대기.
+- [ ] `/admin/dt` 로 이동 — `bash scripts/install.sh` 는
+  `docker-compose.yml` 만 띄우고 DT 오버레이는 활성화하지 않으므로
+  행은 기본적으로 **OPEN** 입니다. 위 Step 3 의 설명과 동일하며
+  정상입니다. 오버레이를 실행(`docker-compose -f docker-compose.yml
+  -f docker-compose.dt.yml up -d`)하고 `.env` 의 `DT_API_KEY` 를
+  설정한 경우에만 약 60초 안에 CLOSED 로 전환되는 것을 기다립니다.
 - [ ] `/admin/teams` → **New team** 으로 이동 → 이름을 `engineering`
   으로 설정.
 - [ ] 동료에게 `/register` 에서 가입을 요청한 뒤,

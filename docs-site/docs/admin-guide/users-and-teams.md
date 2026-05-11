@@ -66,8 +66,11 @@ After they register, a `super_admin` adds them to the right team and assigns the
 
 The portal does not send invitation emails at v2.0.0. The flow is:
 
-1. **Admin** creates the team at `/admin/teams → New team` and notes
-   the team UUID (visible in the URL or via `GET /v1/admin/teams`).
+1. **Admin** creates the team at `/admin/teams → New team`. (No need
+   to copy the team UUID for the UI flow below — the admin matches
+   teammates by email, not by team id. Scripted mass onboarding is
+   the only path that needs the id; see `GET /v1/admin/teams` and
+   the bulk recipe at the bottom of this section.)
 2. **Teammate** self-registers at `https://<your-host>/register`.
 3. **Admin** opens the teammate's row at `/admin/users → <user>`,
    drawer → **Memberships** → **Add to team**, picks the team and a

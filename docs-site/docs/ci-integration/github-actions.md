@@ -56,7 +56,7 @@ That's the minimum. The action:
 
 ### 1. Generate an API key
 
-In the portal: **Project Settings → CI/CD → API keys → New API key**. Allowed actions: `scan:trigger`, `scan:read`, `report:download`. See [API keys](../admin-guide/api-keys.md).
+In the portal: **/integrations → API keys → New API key**. Pick scope `project` and bind it to the project CI will scan (or `team` if you intend one key to cover every project owned by a team). API keys inherit the issuing user's role at v2.0.0 — there is no per-key allowed-actions list. See [API keys](../admin-guide/api-keys.md) for the scope model.
 
 ### 2. Store the key in GitHub
 
@@ -221,7 +221,7 @@ Either the worker is overwhelmed (raise `poll-timeout-seconds`) or the scan genu
 
 ### `403 Forbidden` from the action
 
-The API key is valid but does not have the required action allowed. Re-issue the key with `scan:trigger`, `scan:read`, `report:download`. See [API keys](../admin-guide/api-keys.md).
+The API key's scope does not cover the project it is calling. Re-issue the key with scope `project` (preferred) bound to that project, or scope `team` if it must reach every project owned by a team. Verify the project belongs to the scope-bound team. See [API keys](../admin-guide/api-keys.md).
 
 ### PR comment did not appear
 

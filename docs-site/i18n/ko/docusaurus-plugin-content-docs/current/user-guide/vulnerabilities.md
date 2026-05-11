@@ -69,7 +69,7 @@ sidebar_position: 4
 - **요약 (Summary)** — 제목, 설명, CWE, CVSS 벡터.
 - **참고 자료 (References)** — 벤더 권고, 수정 커밋, 익스플로잇 데이터베이스.
 - **영향 (Affected)** — 상위에서 보고한 영향 범위와 본 프로젝트 컴포넌트 버전 강조, 그리고 `fixed_version`(수정이 포함된 상위 버전, 가용 시).
-- **분석 (Analysis)** — VEX 상태 전환별 액션 버튼(허용된 전환마다 한 개씩: Confirm, Mark exploitable, Mark not affected, Mark in triage, Mark resolved, Mark false positive, Mark not applicable). 버튼을 클릭하면 사유 입력 다이얼로그가 열리며 제출합니다. `developer` 이상만.
+- **분석 (Analysis)** — VEX 상태 전환별 액션 버튼, 현재 상태에서 허용된 전환마다 한 개씩. 대상 상태는 `VulnFindingStatus` (`apps/backend/schemas/vulnerability_detail.py`) 의 초기 상태 `new` 를 제외한 6개입니다: `analyzing` ("Mark in triage"), `exploitable` ("Mark exploitable"), `not_affected` ("Mark not affected"), `false_positive` ("Mark false positive"), `suppressed` ("Mark suppressed"), `fixed` ("Mark fixed"). 초기 상태 `new` 로 진입하는 버튼은 없습니다. 버튼을 클릭하면 사유 입력 다이얼로그가 열리며 제출합니다. `developer` 이상만.
 - **이력 (History)** — VEX 상태 전환 타임라인(누가, 언제, 어떤 사유로 상태를 변경했는지).
 
 ![취약점 드로어 — VEX 액션 버튼과 사유 입력 텍스트 영역이 있는 Analysis 섹션](/img/screenshots/user-vulns-drawer-vex.png)

@@ -37,10 +37,12 @@ There is no kind-selection dialog or branch-override field in the v2.0.0 UI — 
 
 :::warning Branch selection at v2.0.0
 Scans run against the project's `default_branch` (typically `main`).
-The UI does not expose a branch-override field on the scan trigger;
-to scan `develop` or a feature branch, either temporarily change
-`default_branch` in **Project Settings** or use the API:
-`POST /v1/scans/source {project_id, branch: "develop"}`.
+Neither the UI nor the API exposes a branch-override at v2.0.0 —
+the `ScanCreate` payload accepts only `kind` and `metadata` (see
+`apps/backend/schemas/scan.py`). To scan `develop` or a feature
+branch, temporarily change `default_branch` in **Project Settings**
+before triggering the scan, then revert. A first-class `branch`
+field on the trigger is on the v2.1 roadmap.
 :::
 
 ### From the API

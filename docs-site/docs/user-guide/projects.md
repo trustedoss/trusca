@@ -65,10 +65,10 @@ The response includes the project's UUID — keep it; it is the value you wire i
 
 The schema rejects unknown fields (`extra="forbid"`). Only `name`, `description`, and `git_url` are accepted on create. `default_branch` can be set later via `PATCH /v1/projects/{id}`.
 
-To find your `team_id`, ask the team-admin or super-admin to share
-it (they see it under `/admin/teams` → row drawer). Developers do
-not have direct access to the `/v1/admin/teams` listing at v2.0.0;
-a `GET /v1/users/me/memberships` shortcut is on the roadmap.
+`team_id` is **not** required in the create body — the server
+derives it from your active team. The field is reserved for a
+future multi-team scoping flow; until then, you can ignore it on
+the create call.
 
 ## Visibility
 

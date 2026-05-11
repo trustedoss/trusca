@@ -65,10 +65,9 @@ curl -sS -X POST https://trustedoss.example.com/v1/projects \
 
 스키마는 알 수 없는 필드를 거부합니다(`extra="forbid"`). 생성 시 허용되는 필드는 `name`, `description`, `git_url` 뿐입니다. `default_branch`는 이후 `PATCH /v1/projects/{id}`로 설정합니다.
 
-본인의 `team_id` 를 찾으려면 team-admin 이나 super-admin 에게 공유를
-요청하세요(이들은 `/admin/teams` → 행 드로어에서 확인 가능). v2.0.0
-시점에 developer 는 `/v1/admin/teams` 목록에 직접 접근할 수 없습니다;
-`GET /v1/users/me/memberships` 단축 경로는 로드맵 항목입니다.
+생성 페이로드에 `team_id` 는 **필요하지 않습니다** — 서버가 활성
+팀에서 자동으로 도출합니다. 이 필드는 향후 멀티 팀 스코핑을 위해
+예약되어 있으며, 그 전까지 생성 호출에서는 무시해도 됩니다.
 
 ## 가시성
 

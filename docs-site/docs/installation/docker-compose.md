@@ -137,8 +137,13 @@ After `bash scripts/install.sh` completes:
   shows a valid TLS lock (if HTTPS).
 - [ ] Log in with the super-admin email/password the wizard
   printed.
-- [ ] Go to `/admin/dt` — DT row may be OPEN for up to 60 seconds
-  on first boot; wait for it to flip to CLOSED.
+- [ ] Go to `/admin/dt` — the row is **OPEN** by default because
+  `bash scripts/install.sh` brings up only `docker-compose.yml` and
+  does not enable the DT overlay. This matches Step 3 above and is
+  expected. **Only** if you ran the overlay (`docker-compose -f
+  docker-compose.yml -f docker-compose.dt.yml up -d`) and wired
+  `DT_API_KEY` in `.env` should you wait for it to flip to CLOSED
+  (within ~60 seconds).
 - [ ] Go to `/admin/teams` → **New team** → name it `engineering`.
 - [ ] Ask a teammate to register at `/register`, then add them at
   `/admin/users → <user> → Memberships → Add to team`.
