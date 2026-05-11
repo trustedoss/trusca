@@ -78,7 +78,7 @@ test.describe.serial("@walkthroughs", () => {
   // auto-generated directory names truncate long test titles and
   // strip our slug prefix, so a sidecar is the only reliable
   // slug → video mapping.
-  test.afterEach(async ({}, testInfo) => {
+  test.afterEach(async (_fixtures, testInfo) => {
     const slug = testInfo.annotations.find((a) => a.type === "slug")
       ?.description;
     if (slug) {
