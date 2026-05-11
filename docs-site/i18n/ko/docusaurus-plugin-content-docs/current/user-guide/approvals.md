@@ -43,7 +43,7 @@ sidebar_position: 6
 - **요청 시각 (Requested at)** — 요청 타임스탬프.
 - **동작 (Actions)** — 본인 역할에 맞는 처리 컨트롤(드로어 진입 등).
 
-![상태·컴포넌트·최종 작업자 컬럼이 있는 승인 대기열.](/img/screenshots/user-approvals-inbox.png)
+![/approvals 대기열 — Pending / Under Review / Approved / Rejected 상태 배지, 컴포넌트 식별자, 프로젝트, 요청자(actor), 행별 Actions 컬럼이 있는 표](/img/screenshots/user-approvals-inbox.png)
 
 ## 승인 요청
 

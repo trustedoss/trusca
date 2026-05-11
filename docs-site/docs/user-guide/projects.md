@@ -29,7 +29,7 @@ Engineers and team leads who scan their own services. Requires sign-in. The role
 
 The **Projects** sidebar entry lands on the team-scoped project list — every project that belongs to your active team, with status badges and inline **Scan** actions:
 
-![Projects list — every project in the active team with status badges and inline Scan actions](/img/screenshots/user-projects-list.png)
+![/projects list — team-scoped table with name, last-scan status badge, severity counts, and an inline Scan action per row](/img/screenshots/user-projects-list.png)
 
 1. Sign in.
 2. Click **Projects** in the sidebar.

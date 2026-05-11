@@ -12,7 +12,7 @@ sidebar_position: 2
 
 The `/admin/dt` page surfaces the connector's runtime view — health status card, circuit-breaker badge, and refresh action:
 
-![Admin DT connector — status card with breaker badge + refresh action](/img/screenshots/admin-dt-status.png)
+![/admin/dt status card — Dependency-Track health row with circuit-breaker badge in CLOSED state, last-probe timestamp, and a Refresh action button](/img/screenshots/admin-dt-status.png)
 
 :::note Audience
 `super_admin` operating the deployment. The screens described live under `/admin/dt`.

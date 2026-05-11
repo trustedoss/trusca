@@ -110,7 +110,7 @@ The dominant cost in a source scan is ORT + Dependency-Track correlation, not `c
 
 Visit **Scans** in the left sidebar for an organization-wide view of every running and queued scan. The queue is split into 5 status tabs: Running, Queued, Succeeded, Failed, All. Project- / team-level filters and per-worker views are on the roadmap.
 
-![Global scan queue with status tabs and recent runs.](/img/screenshots/user-scans-queue.png)
+![Global /scans queue — Running / Queued / Succeeded / Failed / All status tabs above a recent-runs table with project, kind, and started-at columns](/img/screenshots/user-scans-queue.png)
 
 Cancel actions on this view are not exposed at v2.0.0 — see [Roadmap](#roadmap-v2x).
 

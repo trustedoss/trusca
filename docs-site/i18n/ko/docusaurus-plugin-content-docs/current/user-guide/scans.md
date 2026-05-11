@@ -110,7 +110,7 @@ queued ─────► running ─────► succeeded
 
 좌측 사이드바의 **Scans**는 모든 실행 중·대기 중 스캔의 조직 단위 뷰입니다. 큐는 5개의 상태 탭으로 나뉘어 있습니다: Running, Queued, Succeeded, Failed, All. 프로젝트·팀 단위 필터와 워커별 뷰는 로드맵 항목입니다.
 
-![상태 탭과 최근 실행이 표시된 전역 스캔 큐.](/img/screenshots/user-scans-queue.png)
+![전역 /scans 큐 — Running / Queued / Succeeded / Failed / All 상태 탭과 project · kind · started-at 컬럼의 최근 실행 표](/img/screenshots/user-scans-queue.png)
 
 이 뷰의 취소 동작은 v2.0.0에서 노출되지 않습니다 — [로드맵](#로드맵-v2x) 참고.
 

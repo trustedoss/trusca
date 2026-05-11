@@ -43,7 +43,7 @@ Each row shows:
 - **Requested at** — the request timestamp.
 - **Actions** — the disposition controls for your role (drawer entry, etc.).
 
-![Approvals queue with status, component, and last-actor columns.](/img/screenshots/user-approvals-inbox.png)
+![/approvals queue — table with Pending / Under Review / Approved / Rejected status badges, component identity, project, requested-by actor, and per-row Actions](/img/screenshots/user-approvals-inbox.png)
 
 ## Requesting approval
 

@@ -29,7 +29,7 @@ sidebar_position: 1
 
 사이드바의 **Projects** 항목은 활성 팀 범위의 프로젝트 목록 — 활성 팀에 속한 모든 프로젝트, 상태 배지와 인라인 **Scan** 액션 — 을 보여줍니다:
 
-![Projects 목록 — 활성 팀의 프로젝트와 상태 배지, 인라인 Scan 액션](/img/screenshots/user-projects-list.png)
+![/projects 목록 — 팀 범위의 표로 name, 마지막 스캔 상태 배지, severity 카운트, 행별 인라인 Scan 액션](/img/screenshots/user-projects-list.png)
 
 1. 로그인.
 2. 사이드바의 **Projects** 클릭.
