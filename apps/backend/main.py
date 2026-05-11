@@ -81,6 +81,29 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # repeated starts (tests + uvicorn reloader) do not double-fire.
     install_audit_listeners(session_factory)
 
+    # Marathon bundle 8 (L1) — surface the connected role at boot so
+    # operators verifying the install can confirm DML-only mode is
+    # active. In APP_ENV=prod with DATABASE_URL_APP set, refuse to
+    # start when the runtime ended up connecting as a non-app role
+    # (mismatched env wiring → fail loud, not silent regression).
+    import os as _os
+
+    from sqlalchemy import text as _sql_text
+
+    async with engine.connect() as _conn:
+        _role = (await _conn.execute(_sql_text("SELECT current_user"))).scalar()
+    log.info("db.role.connected", role=_role)
+    if (
+        app_env() == "prod"
+        and _os.getenv("DATABASE_URL_APP")
+        and _role != "trustedoss_app"
+    ):
+        raise RuntimeError(
+            f"DATABASE_URL_APP is set in APP_ENV=prod but the runtime "
+            f"connected as role={_role!r} (expected 'trustedoss_app'). "
+            f"Check docker-compose env wiring for the L1 split."
+        )
+
     try:
         yield
     finally:

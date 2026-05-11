@@ -1,8 +1,11 @@
 """
 Alembic migration environment.
 
-- DATABASE_URL is read at runtime via `core.config.database_url_sync()` so the
-  same source of truth feeds both the app and migrations.
+- DATABASE_URL_OWNER (with DATABASE_URL fallback) is read at runtime via
+  ``core.config.database_url_owner_sync()``. Alembic must connect as the
+  table-owning role so DDL (CREATE / ALTER / DROP) succeeds — the
+  runtime DML-only role (``trustedoss_app``) intentionally lacks those
+  privileges (Marathon bundle 8 / L1).
 - The sync DSN (psycopg2) is used here because Alembic still drives migrations
   through the synchronous engine; the async driver belongs to the app runtime.
 - target_metadata is wired to `models.Base.metadata` so autogenerate sees
@@ -27,7 +30,7 @@ BACKEND_ROOT = Path(__file__).resolve().parent.parent
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from core.config import database_url_sync  # noqa: E402  (import after sys.path tweak)
+from core.config import database_url_owner_sync  # noqa: E402  (import after sys.path tweak)
 from models import Base  # noqa: E402  (import after sys.path tweak)
 
 config = context.config
@@ -39,7 +42,10 @@ target_metadata = Base.metadata
 
 
 def _resolved_url() -> str:
-    return database_url_sync()
+    # Use the owner DSN so DDL has table ownership. Falls back to
+    # DATABASE_URL when DATABASE_URL_OWNER is unset (legacy / dev /
+    # single-role deployments).
+    return database_url_owner_sync()
 
 
 def run_migrations_offline() -> None:

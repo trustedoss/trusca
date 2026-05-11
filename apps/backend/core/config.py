@@ -25,18 +25,25 @@ _DEV_PLACEHOLDER_SECRET = "dev-only-secret-key-min-32-chars-DO-NOT-USE-IN-PROD" 
 
 
 def database_url() -> str:
-    """Return the SQLAlchemy async DSN (asyncpg driver).
+    """Return the SQLAlchemy async DSN (asyncpg driver) for runtime use.
 
-    Resolution order (Chore O — security-reviewer H2 fix):
+    Resolution order (Chore O — security-reviewer H2 fix; marathon
+    bundle 8 — L1 role separation):
 
-    1. ``DATABASE_URL`` — single connection string. Preserves docker-compose
-       dev/prod and any operator-supplied DSN. Returned verbatim.
-    2. Composed from ``DB_USER`` / ``DB_PASSWORD`` / ``DB_HOST`` / ``DB_NAME``
+    1. ``DATABASE_URL_APP`` — runtime DML-only role (``trustedoss_app``).
+       Set by install.sh / upgrade.sh after migration 0014 grants the
+       role its DML privileges. When set, the runtime cannot DROP
+       triggers, ALTER tables, TRUNCATE audit_logs, etc. Migration code
+       paths use :func:`database_url_owner` instead.
+    2. ``DATABASE_URL`` — single connection string (legacy / dev /
+       single-role deployments). Preserves docker-compose dev/prod and
+       any operator-supplied DSN. Returned verbatim.
+    3. Composed from ``DB_USER`` / ``DB_PASSWORD`` / ``DB_HOST`` / ``DB_NAME``
        (+ optional ``DB_PORT``, default ``5432``). Used by the GCP Cloud Run
        module which mounts ``DB_PASSWORD`` from Secret Manager — building the
        URL at runtime keeps the secret out of Terraform state and out of the
        Cloud Run revision spec.
-    3. Fallback to :data:`DEFAULT_DATABASE_URL` so unit tests and local bring-up
+    4. Fallback to :data:`DEFAULT_DATABASE_URL` so unit tests and local bring-up
        work without explicit configuration.
 
     Per CLAUDE.md core rule #11 every ``os.getenv`` call happens here at
@@ -46,6 +53,9 @@ def database_url() -> str:
     passwords containing ``@``, ``:``, ``/``, ``#``, or ``%`` survive the round
     trip into asyncpg's DSN parser.
     """
+    runtime_url = os.getenv("DATABASE_URL_APP")
+    if runtime_url:
+        return runtime_url
     direct = os.getenv("DATABASE_URL")
     if direct:
         return direct
@@ -101,6 +111,64 @@ def database_url_sync() -> str:
     do not have to think about driver dialects.
     """
     raw = database_url()
+    return raw.replace("postgresql+asyncpg://", "postgresql://")
+
+
+def database_url_owner() -> str:
+    """Return the DSN for the migration-owning role (Marathon bundle 8 / L1).
+
+    Resolution order:
+
+    1. ``DATABASE_URL_OWNER`` — explicit owner DSN (``trustedoss_owner``
+       in the L1 split deployment). Used by ``alembic/env.py`` so DDL
+       (CREATE / ALTER / DROP) runs as a role with table ownership.
+    2. ``DATABASE_URL`` — legacy single-role fallback. Dev / CI use
+       this; the migration's GRANT block is a no-op when the
+       ``trustedoss_app`` runtime role doesn't exist.
+    3. Composed ``DB_*`` env or ``DEFAULT_DATABASE_URL`` — same fallback
+       chain as :func:`database_url`.
+
+    Critical: this MUST NOT silently fall back to ``DATABASE_URL_APP``.
+    If only the runtime URL is set, alembic would try to run DDL as a
+    role without the necessary privileges and fail mid-migration.
+    Operators following the L1 procedure set BOTH env vars; mixing
+    them is an invalid configuration.
+
+    Per CLAUDE.md core rule #11 — read at call time.
+    """
+    owner_url = os.getenv("DATABASE_URL_OWNER")
+    if owner_url:
+        return owner_url
+    # Fall back to the legacy single-role DSN. We deliberately do NOT
+    # consult DATABASE_URL_APP here — see docstring.
+    direct = os.getenv("DATABASE_URL")
+    if direct:
+        return direct
+    # Compose from DB_* env or use the default — duplicate the
+    # database_url() composition path so the owner fallback shape stays
+    # symmetric with the runtime fallback shape.
+    user = os.getenv("DB_USER")
+    password = os.getenv("DB_PASSWORD")
+    host = os.getenv("DB_HOST")
+    name = os.getenv("DB_NAME")
+    if any([user, password, host, name]):
+        if not all([user, password, host, name]):
+            raise RuntimeError(
+                "DATABASE_URL_OWNER unset and composed DB_* env vars "
+                "incomplete; specify DATABASE_URL_OWNER or fill all of "
+                "DB_USER / DB_PASSWORD / DB_HOST / DB_NAME"
+            )
+        assert user and password and host and name
+        port = os.getenv("DB_PORT", "5432")
+        return (
+            f"postgresql+asyncpg://{user}:{quote_plus(password)}@{host}:{port}/{name}"
+        )
+    return DEFAULT_DATABASE_URL
+
+
+def database_url_owner_sync() -> str:
+    """Sync owner DSN — used by alembic/env.py (psycopg2)."""
+    raw = database_url_owner()
     return raw.replace("postgresql+asyncpg://", "postgresql://")
 
 

@@ -70,9 +70,11 @@ def test_alembic_current_reports_head_revision():
     # Chore A2 bumped 0010 → 0011 (notifications + notification_preferences);
     # post-walkthrough A bundle bumped 0011 → 0012 (audit_logs immutability
     # trigger + TRUNCATE guard); manual sys-bug fix A5 bumped 0012 → 0013
-    # (last super_admin BEFORE UPDATE/DELETE trigger on users).
+    # (last super_admin BEFORE UPDATE/DELETE trigger on users); marathon
+    # bundle 8 / L1 bumped 0013 → 0014 (trustedoss_app role grants —
+    # DML-only on audit_logs).
     # Bump again when a future migration lands.
-    assert "0013" in current.stdout, current.stdout
+    assert "0014" in current.stdout, current.stdout
 
 
 @pytest.mark.integration

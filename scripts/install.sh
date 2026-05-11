@@ -120,6 +120,12 @@ if [[ ! -f .env ]]; then
     secret_key=$(openssl rand -hex 32)
   fi
   db_password=$(openssl rand -base64 24 | tr -d '=+/')
+  # Marathon bundle 8 (L1) — split runtime / migration roles. The owner
+  # role keeps the legacy "trustedoss" name (so existing data + grants
+  # stay valid); the runtime role gets its own password and is
+  # provisioned by Postgres at first up via the docker-compose env (see
+  # POSTGRES_APP_USER / POSTGRES_APP_PASSWORD in docker-compose.yml).
+  app_password=$(openssl rand -base64 24 | tr -d '=+/')
 
   # Substitute placeholders. We intentionally do NOT sed -i in place across
   # platforms (BSD sed differs); use a portable temp-file swap instead.
@@ -129,15 +135,36 @@ from pathlib import Path
 env = Path(".env")
 text = env.read_text()
 text = re.sub(r"^SECRET_KEY=.*$", f"SECRET_KEY=${secret_key}", text, flags=re.M)
+# DATABASE_URL stays the legacy single-role DSN so older deployments
+# that haven't yet rotated to the L1 split keep working.
 text = re.sub(
     r"^DATABASE_URL=.*$",
     f"DATABASE_URL=postgresql+asyncpg://trustedoss:${db_password}@postgres:5432/trustedoss",
     text,
     flags=re.M,
 )
+# DATABASE_URL_OWNER + DATABASE_URL_APP — the L1 split. alembic uses
+# OWNER (DDL); backend / worker runtime uses APP (DML-only on
+# audit_logs). When unset, both fall back to DATABASE_URL.
+def _ensure(line: str, value: str, body: str) -> str:
+    if re.search(rf"^{line}=", body, flags=re.M):
+        return re.sub(rf"^{line}=.*$", f"{line}={value}", body, flags=re.M)
+    return body.rstrip() + f"\n{line}={value}\n"
+
+text = _ensure(
+    "DATABASE_URL_OWNER",
+    f"postgresql+asyncpg://trustedoss:${db_password}@postgres:5432/trustedoss",
+    text,
+)
+text = _ensure(
+    "DATABASE_URL_APP",
+    f"postgresql+asyncpg://trustedoss_app:${app_password}@postgres:5432/trustedoss",
+    text,
+)
+text = _ensure("POSTGRES_APP_PASSWORD", "${app_password}", text)
 env.write_text(text)
 PYTHON
-  ok "generated SECRET_KEY (64 hex chars) and Postgres password"
+  ok "generated SECRET_KEY (64 hex chars) and Postgres passwords (owner + app)"
 fi
 
 # ---------------------------------------------------------------------------
@@ -221,8 +248,20 @@ done
 # ---------------------------------------------------------------------------
 # 5. alembic upgrade head
 # ---------------------------------------------------------------------------
+# Marathon bundle 8 (L1) — alembic must run as the OWNER role so DDL
+# (CREATE / ALTER / DROP / GRANT) has the necessary privileges. The
+# runtime containers see only the DML-only DSN; this one-shot exec
+# overrides DATABASE_URL just for the alembic process so the owner
+# DSN never lingers in the live container environment.
 title "Database migration"
-docker-compose -f docker-compose.yml exec -T backend alembic upgrade head
+owner_url=$(grep -E "^DATABASE_URL_OWNER=" .env | head -1 | cut -d= -f2- || true)
+if [[ -z "$owner_url" ]]; then
+  # Legacy / single-role deployments: fall back to DATABASE_URL.
+  owner_url=$(grep -E "^DATABASE_URL=" .env | head -1 | cut -d= -f2-)
+fi
+docker-compose -f docker-compose.yml exec -T \
+  -e DATABASE_URL="$owner_url" \
+  backend alembic upgrade head
 ok "schema is at HEAD"
 
 # ---------------------------------------------------------------------------

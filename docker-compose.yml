@@ -31,7 +31,17 @@
 x-backend-env: &backend-env
   APP_ENV: ${APP_ENV:-prod}
   LOG_LEVEL: ${LOG_LEVEL:-INFO}
-  DATABASE_URL: ${DATABASE_URL}
+  # Marathon bundle 8 (L1) — backend / worker / beat see ONLY the
+  # DML-only runtime DSN. `core.config.database_url()` reads
+  # DATABASE_URL_APP first, falls back to DATABASE_URL for legacy
+  # single-role deployments. We deliberately do NOT propagate
+  # DATABASE_URL_OWNER into runtime containers — alembic upgrade is
+  # invoked with an explicit `-e DATABASE_URL=$DATABASE_URL_OWNER`
+  # override from install.sh / upgrade.sh so the DDL run uses the
+  # owner role exactly once, then exits. The runtime can never see
+  # the owner DSN, so a runtime RCE cannot DROP TRIGGER on audit_logs.
+  DATABASE_URL_APP: ${DATABASE_URL_APP:-${DATABASE_URL}}
+  DATABASE_URL: ${DATABASE_URL_APP:-${DATABASE_URL}}
   REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
   SECRET_KEY: ${SECRET_KEY}
   ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
@@ -112,8 +122,22 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
+      # Marathon bundle 8 (L1) — runtime role provisioning. The init
+      # script reads POSTGRES_APP_USER / POSTGRES_APP_PASSWORD and
+      # creates the trustedoss_app role on FIRST container boot only
+      # (postgres-data volume is empty). Existing deployments with a
+      # populated volume keep their pre-L1 single-role posture until
+      # the operator manually creates the role + re-runs alembic.
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER:-trustedoss_app}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:-}
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      # First-boot init script that creates the L1 runtime role.
+      # Postgres only runs files in /docker-entrypoint-initdb.d/ when
+      # the data dir is empty (i.e. fresh install). Re-applying L1 to
+      # an existing deployment requires the operator to run the SQL
+      # by hand — see docs-site admin-guide for the runbook.
+      - ./scripts/postgres-init.sh:/docker-entrypoint-initdb.d/10-trustedoss-app-role.sh:ro
     networks:
       - trustedoss
     healthcheck:
