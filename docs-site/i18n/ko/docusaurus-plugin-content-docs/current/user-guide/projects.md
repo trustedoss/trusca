@@ -40,7 +40,7 @@ sidebar_position: 1
    - **Git URL** (소스 스캔에 필수)
 5. **Create** 클릭.
 
-   ![New project 폼 — name / description / Git URL 필드](/img/screenshots/user-projects-create-form.png)
+   ![New project 폼 — name / description / Git URL 필드 — KO locale](/img/screenshots/user-projects-create-form-ko.png)
 
 프로젝트의 **Overview** 탭으로 이동합니다. 여기서 첫 스캔을 실행할 수 있습니다 — [스캔](./scans.md) 참고.
 

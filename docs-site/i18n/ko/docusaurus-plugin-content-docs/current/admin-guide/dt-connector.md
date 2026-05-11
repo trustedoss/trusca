@@ -12,7 +12,7 @@ sidebar_position: 2
 
 `/admin/dt` 페이지는 커넥터의 런타임 뷰를 노출합니다 — health 상태 카드, 회로 차단기 배지, 새로고침 액션:
 
-![/admin/dt 상태 카드 — Dependency-Track health 행, CLOSED 상태의 circuit breaker 배지, 마지막 probe 타임스탬프, Refresh 액션 버튼](/img/screenshots/admin-dt-status.png)
+![/admin/dt 상태 카드 — Dependency-Track health 행, CLOSED 상태의 circuit breaker 배지, 마지막 probe 타임스탬프, Refresh 액션 버튼 — KO locale](/img/screenshots/admin-dt-status-ko.png)
 
 :::note 대상 독자
 배포를 운영하는 `super_admin`. 이하 화면은 `/admin/dt`에 있습니다.

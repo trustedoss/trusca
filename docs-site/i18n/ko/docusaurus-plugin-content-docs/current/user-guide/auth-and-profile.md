@@ -20,7 +20,7 @@ TrustedOSS Portal은 두 가지 대화형 로그인 방식 — **이메일 + 비
 2. 이메일과 비밀번호를 입력합니다.
 3. 제출합니다.
 
-![이메일·비밀번호 입력과 OAuth 공급자 버튼이 표시된 로그인 페이지](/img/screenshots/user-auth-login.png)
+![이메일·비밀번호 입력과 OAuth 공급자 버튼이 표시된 로그인 페이지 — KO locale](/img/screenshots/user-auth-login-ko.png)
 
 **서버 측 동작**
 
@@ -40,7 +40,7 @@ TrustedOSS Portal은 두 가지 대화형 로그인 방식 — **이메일 + 비
 
 리셋 링크는 **24시간 동안 유효하며 1회만 사용 가능**합니다. 만료되거나 사용된 후에는 토큰이 폐기됩니다.
 
-![이메일 입력 + 사용자 열거 방지 제출이 적용된 비밀번호 찾기 페이지](/img/screenshots/user-auth-forgot.png)
+![이메일 입력 + 사용자 열거 방지 제출이 적용된 비밀번호 찾기 페이지 — KO locale](/img/screenshots/user-auth-forgot-ko.png)
 
 ## 비밀번호 재설정
 

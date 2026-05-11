@@ -168,6 +168,69 @@ export async function captureScreenshot(
 }
 
 /**
+ * Marathon bundle 9 (4d) — switch the SPA into a target locale before
+ * a capture so the resulting PNG mirrors what a real KO user sees.
+ *
+ * The product i18n module persists the active language under
+ * `localStorage["i18nextLng"]` (apps/frontend/src/lib/i18n.ts uses the
+ * default `i18next-browser-languagedetector` order: querystring → cookie
+ * → localStorage → navigator). Setting that key before any navigation
+ * avoids an in-page click on the LanguageToggle button — a click would
+ * trigger a re-render mid-capture and risk a half-translated frame.
+ *
+ * Call this *once per `Page` instance* (e.g. inside `beforeEach`) before
+ * the spec navigates. The `addInitScript` survives subsequent
+ * `page.goto()` calls within the same Page, so a single setup hook is
+ * enough.
+ *
+ * Why not `LanguageToggle` click + wait? The toggle dispatches an async
+ * `i18n.changeLanguage()` and Playwright cannot reliably observe the
+ * "all React subtrees re-rendered" boundary; a window of a few hundred
+ * ms exists where some panels are KO and others are still EN. Setting
+ * localStorage *before* the SPA boots eliminates that race entirely.
+ */
+export async function setUiLanguage(
+  page: Page,
+  lang: "en" | "ko",
+): Promise<void> {
+  await page.addInitScript((language: string) => {
+    try {
+      window.localStorage.setItem("i18nextLng", language);
+    } catch {
+      // localStorage can be disabled in a hardened context; the spec
+      // will still capture (just in the SPA's default language) which
+      // surfaces as a visible regression at PR review time rather than
+      // a silent test failure here.
+    }
+  }, lang);
+}
+
+/**
+ * Locale-aware variant of `captureScreenshot`. KO captures land at
+ * `<slug>-ko.png` so the EN markdown can keep referencing `<slug>.png`
+ * unchanged while KO markdown points at the localized asset. Default
+ * (`en`) writes to `<slug>.png` for backwards compatibility with the
+ * existing bulk capture spec.
+ *
+ * Marathon bundle 9 (4d).
+ */
+export async function captureLocaleScreenshot(
+  page: Page,
+  slug: string,
+  locale: "en" | "ko" = "en",
+): Promise<void> {
+  if (!/^[a-z0-9-]+$/.test(slug)) {
+    throw new Error(
+      `captureLocaleScreenshot: slug "${slug}" must be kebab-case ([a-z0-9-]+)`,
+    );
+  }
+  await hideDevOnlyChrome(page);
+  const suffix = locale === "ko" ? "-ko" : "";
+  const out = path.join(SCREENSHOT_DIR, `${slug}${suffix}.png`);
+  await page.screenshot({ path: out, fullPage: false });
+}
+
+/**
  * Insert a `pending` ComponentApproval row directly into PostgreSQL so the
  * approvals queue + drawer have data to display for screenshot capture.
  *

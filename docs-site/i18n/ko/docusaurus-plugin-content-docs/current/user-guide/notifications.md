@@ -56,7 +56,7 @@ sidebar_position: 8
 
 인박스 아래의 **Preferences** 섹션은 트리거별로 **전역·채널별** 토글 4개를 나열합니다. 선택은 모든 트리거에 동일하게 적용됩니다 — v2.0.0에서는 트리거별 매트릭스가 없습니다([로드맵](#로드맵-v2x) 참고).
 
-![알림 환경설정 — 이메일·Slack·Teams 채널 토글과 항상 켜진 인앱 행](/img/screenshots/user-notifications-prefs.png)
+![알림 환경설정 — 이메일·Slack·Teams 채널 토글과 항상 켜진 인앱 행 — KO locale](/img/screenshots/user-notifications-prefs-ko.png)
 
 | 채널 | 기본값 | 비고 |
 |---|---|---|
