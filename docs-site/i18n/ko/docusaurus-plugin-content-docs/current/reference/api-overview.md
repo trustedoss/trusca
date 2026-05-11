@@ -8,7 +8,7 @@ sidebar_position: 3
 
 # API 개요
 
-포털은 `/api/v1`을 루트로 한 REST API를 노출합니다. 전체 OpenAPI 3.1 스키마는 FastAPI가 생성하며 `https://<your-portal>/api/docs`(Swagger UI), `/api/redoc`(Redoc), `/api/openapi.json`에서 라이브로 제공됩니다. 이 페이지는 상위 수준 오리엔테이션입니다.
+포털은 `/v1`을 루트로 한 REST API를 노출합니다. 전체 OpenAPI 3.1 스키마는 FastAPI가 생성하며 `https://<your-portal>/api/docs`(Swagger UI), `/api/redoc`(Redoc), `/api/openapi.json`에서 라이브로 제공됩니다. 이 페이지는 상위 수준 오리엔테이션입니다.
 
 :::note 대상 독자
 포털과 통합하는 엔지니어 — CI 러너·파트너 도구·커스텀 대시보드. HTTP, JSON, OAuth 스타일 bearer 토큰에 익숙해야 합니다.
@@ -21,7 +21,7 @@ sidebar_position: 3
 ## Base URL
 
 ```
-https://<your-portal>/api/v1
+https://<your-portal>/v1
 ```
 
 후행 슬래시는 정규화됩니다 — `/projects`와 `/projects/` 모두 동작.
@@ -36,7 +36,7 @@ https://<your-portal>/api/v1
 Authorization: Bearer <access_token>
 ```
 
-`POST /api/v1/auth/login`이 발급합니다. 기본 30분 수명. 로그인 시 반환되는 회전 쿠키로 refresh.
+`POST /v1/auth/login`이 발급합니다. 기본 30분 수명. 로그인 시 반환되는 회전 쿠키로 refresh.
 
 ### API Key (머신 클라이언트)
 
@@ -52,15 +52,15 @@ Authorization: Bearer tos_<prefix>_<secret>
 
 - `GET /health` (백엔드 liveness)
 - `GET /healthz` (프론트엔드 컨테이너 liveness; v1 표면 아님)
-- `POST /api/v1/auth/register`
-- `POST /api/v1/auth/login`
-- `POST /api/v1/auth/refresh`
-- `POST /api/v1/auth/forgot-password`
-- `POST /api/v1/auth/reset-password`
-- `GET  /api/v1/auth/oauth/{provider}/authorize`
-- `GET  /api/v1/auth/oauth/{provider}/callback`
-- `POST /api/v1/webhooks/github` (HMAC 인증)
-- `POST /api/v1/webhooks/gitlab` (token 인증)
+- `POST /v1/auth/register`
+- `POST /v1/auth/login`
+- `POST /v1/auth/refresh`
+- `POST /v1/auth/forgot-password`
+- `POST /v1/auth/reset-password`
+- `GET  /v1/auth/oauth/{provider}/authorize`
+- `GET  /v1/auth/oauth/{provider}/callback`
+- `POST /v1/webhooks/github` (HMAC 인증)
+- `POST /v1/webhooks/gitlab` (token 인증)
 
 ## 오류 — RFC 7807
 
@@ -72,7 +72,7 @@ Authorization: Bearer tos_<prefix>_<secret>
   "title":    "Forbidden",
   "status":   403,
   "detail":   "API key 'tos_a1b2c3d4_…' lacks required action 'scan:trigger'.",
-  "instance": "/api/v1/projects/01H…/scans"
+  "instance": "/v1/projects/01H…/scans"
 }
 ```
 

@@ -100,7 +100,7 @@ Scroll to the **Webhooks** section. Unlike API keys, webhook URLs are **fixed** 
 
 ### GitHub
 
-URL to register at GitHub: `https://<your-host>/api/v1/webhooks/github`.
+URL to register at GitHub: `https://<your-host>/v1/webhooks/github`.
 
 - **Content-Type:** `application/json`.
 - **Signature:** `X-Hub-Signature-256` HMAC-SHA256 over the raw body, with the per-project `webhook_secret` as the key.
@@ -110,7 +110,7 @@ The portal stores a per-project `webhook_secret` field used to verify incoming d
 
 ### GitLab
 
-URL to register at GitLab: `https://<your-host>/api/v1/webhooks/gitlab`.
+URL to register at GitLab: `https://<your-host>/v1/webhooks/gitlab`.
 
 - **Content-Type:** `application/json`.
 - **Token:** sent in the `X-Gitlab-Token` header. Set this to the project's `webhook_secret`.

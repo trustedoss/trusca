@@ -40,14 +40,14 @@ pipeline {
               -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
               -H "Content-Type: application/json" \
               -d '{"kind": "source"}' \
-              "${TRUSTEDOSS_API_URL}/api/v1/projects/${TRUSTEDOSS_PROJECT_ID}/scans" \
+              "${TRUSTEDOSS_API_URL}/v1/projects/${TRUSTEDOSS_PROJECT_ID}/scans" \
               | jq -r .id)
             echo "scan_id=${SCAN_ID}"
 
             # Poll until terminal (timeout 30 min, every 30 s).
             for _ in $(seq 1 60); do
               STATUS=$(curl -fsS -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
-                "${TRUSTEDOSS_API_URL}/api/v1/scans/${SCAN_ID}" | jq -r .status)
+                "${TRUSTEDOSS_API_URL}/v1/scans/${SCAN_ID}" | jq -r .status)
               echo "status=${STATUS}"
               case "${STATUS}" in
                 succeeded|failed|cancelled) break ;;
@@ -57,7 +57,7 @@ pipeline {
 
             # Evaluate the gate.
             GATE=$(curl -fsS -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
-              "${TRUSTEDOSS_API_URL}/api/v1/projects/${TRUSTEDOSS_PROJECT_ID}/gate-result" \
+              "${TRUSTEDOSS_API_URL}/v1/projects/${TRUSTEDOSS_PROJECT_ID}/gate-result" \
               | jq -r .gate)
             echo "gate=${GATE}"
             test "${GATE}" = "pass"
@@ -156,7 +156,7 @@ The build stays green; the gate verdict is recorded in the console log only.
 sh '''
   curl -fsS -L -OJ \
     -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
-    "${TRUSTEDOSS_API_URL}/api/v1/projects/${TRUSTEDOSS_PROJECT_ID}/sbom?format=cyclonedx-json"
+    "${TRUSTEDOSS_API_URL}/v1/projects/${TRUSTEDOSS_PROJECT_ID}/sbom?format=cyclonedx-json"
 '''
 archiveArtifacts artifacts: '*.cyclonedx.json', fingerprint: true
 ```

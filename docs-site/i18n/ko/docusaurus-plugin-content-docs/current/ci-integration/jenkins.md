@@ -40,14 +40,14 @@ pipeline {
               -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
               -H "Content-Type: application/json" \
               -d '{"kind": "source"}' \
-              "${TRUSTEDOSS_API_URL}/api/v1/projects/${TRUSTEDOSS_PROJECT_ID}/scans" \
+              "${TRUSTEDOSS_API_URL}/v1/projects/${TRUSTEDOSS_PROJECT_ID}/scans" \
               | jq -r .id)
             echo "scan_id=${SCAN_ID}"
 
             # 최종 상태까지 폴링 (타임아웃 30분, 30초마다).
             for _ in $(seq 1 60); do
               STATUS=$(curl -fsS -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
-                "${TRUSTEDOSS_API_URL}/api/v1/scans/${SCAN_ID}" | jq -r .status)
+                "${TRUSTEDOSS_API_URL}/v1/scans/${SCAN_ID}" | jq -r .status)
               echo "status=${STATUS}"
               case "${STATUS}" in
                 succeeded|failed|cancelled) break ;;
@@ -57,7 +57,7 @@ pipeline {
 
             # 게이트 평가.
             GATE=$(curl -fsS -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
-              "${TRUSTEDOSS_API_URL}/api/v1/projects/${TRUSTEDOSS_PROJECT_ID}/gate-result" \
+              "${TRUSTEDOSS_API_URL}/v1/projects/${TRUSTEDOSS_PROJECT_ID}/gate-result" \
               | jq -r .gate)
             echo "gate=${GATE}"
             test "${GATE}" = "pass"
@@ -156,7 +156,7 @@ echo "::warning::TrustedOSS gate=${GATE}"
 sh '''
   curl -fsS -L -OJ \
     -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
-    "${TRUSTEDOSS_API_URL}/api/v1/projects/${TRUSTEDOSS_PROJECT_ID}/sbom?format=cyclonedx-json"
+    "${TRUSTEDOSS_API_URL}/v1/projects/${TRUSTEDOSS_PROJECT_ID}/sbom?format=cyclonedx-json"
 '''
 archiveArtifacts artifacts: '*.cyclonedx.json', fingerprint: true
 ```

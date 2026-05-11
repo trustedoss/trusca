@@ -18,8 +18,8 @@ Webhooks let your Git host push events to the portal — typically `push` and `p
 
 | Source | URL | Auth |
 |---|---|---|
-| GitHub | `POST https://trustedoss.example.com/api/v1/webhooks/github` | HMAC-SHA256 signature in `X-Hub-Signature-256`. |
-| GitLab | `POST https://trustedoss.example.com/api/v1/webhooks/gitlab` | Token in `X-Gitlab-Token`. |
+| GitHub | `POST https://trustedoss.example.com/v1/webhooks/github` | HMAC-SHA256 signature in `X-Hub-Signature-256`. |
+| GitLab | `POST https://trustedoss.example.com/v1/webhooks/gitlab` | Token in `X-Gitlab-Token`. |
 
 Both endpoints are public (no JWT) but require the project's webhook secret. The secret is per-project, generated when you enable the webhook.
 
@@ -169,7 +169,7 @@ Re-sync: rotate the secret in the portal, paste the new value into the Git host,
 
 ### "Could not deliver: 404 Not Found"
 
-The URL is wrong. Common typos: missing `/api/`, missing `/v1/`, hitting the frontend instead of the backend (`/webhooks/github` instead of `/api/v1/webhooks/github`).
+The URL is wrong. Common typos: missing `/v1/`, hitting the frontend instead of the backend (`/webhooks/github` instead of `/v1/webhooks/github`).
 
 ### Webhook fires but no scan appears
 

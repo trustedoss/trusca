@@ -140,7 +140,7 @@ trustedoss:scan-container:
           -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}"
           -H "Content-Type: application/json"
           -d "{\"kind\": \"${TRUSTEDOSS_SCAN_KIND:-source}\"}"
-          "${TRUSTEDOSS_API_URL}/api/v1/projects/${TRUSTEDOSS_PROJECT_ID}/scans"
+          "${TRUSTEDOSS_API_URL}/v1/projects/${TRUSTEDOSS_PROJECT_ID}/scans"
           | jq -r .id);
         echo "scan_id=$SCAN_ID";
         # 최종 상태까지 폴링 …

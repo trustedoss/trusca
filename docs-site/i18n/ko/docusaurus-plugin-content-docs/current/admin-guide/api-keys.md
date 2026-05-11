@@ -89,7 +89,7 @@ Key는 v2.0.0에서 **만료되지 않습니다**. 수동으로 폐기될 때까
 
 ```bash
 curl -sS -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
-  https://trustedoss.example.com/api/v1/projects
+  https://trustedoss.example.com/v1/projects
 ```
 
 포털은 추적성을 돕기 위해 모든 요청에 prefix를 로깅합니다.
@@ -144,7 +144,7 @@ Webhook 흐름은 [Webhooks](../ci-integration/webhooks.md) 참고.
 
 Key 발급 후:
 
-1. `curl -sS -H "Authorization: Bearer <key>" .../api/v1/projects`가 200과 팀 프로젝트를 반환.
+1. `curl -sS -H "Authorization: Bearer <key>" .../v1/projects`가 200과 팀 프로젝트를 반환.
 2. 감사 로그가 prefix와 함께 `target_table=api_keys&action=create` 행을 기록. Admin UI 에서는 `target_table=api_keys` 로 필터링할 수 없습니다 — `api_keys` 가 `AuditTargetTable` 화이트리스트에 없기 때문입니다([감사 로그 → 필터 노출 vs raw 행 테이블](./audit-log.md#무엇이-기록되는가) 참고). 검증은 raw SQL 로:
 
    ```sql

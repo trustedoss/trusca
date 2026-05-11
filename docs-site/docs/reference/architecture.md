@@ -200,7 +200,7 @@ Every 4xx / 5xx response uses `application/problem+json`:
   "title":    "Cannot demote the last super_admin",
   "status":   409,
   "detail":   "At least one super_admin must remain in the organization.",
-  "instance": "/api/v1/admin/users/01H…/role"
+  "instance": "/v1/admin/users/01H…/role"
 }
 ```
 

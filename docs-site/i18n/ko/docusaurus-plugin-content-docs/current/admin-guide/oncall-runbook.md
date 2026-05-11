@@ -48,7 +48,7 @@ docker-compose logs --tail=200 dt | grep -iE 'error|fatal'
 # 3. 포털이 본 DT health(구조화 로그)
 docker-compose logs --tail=500 backend | grep dt_health_check | tail -10
 # 4. 포털에서 차단기 상태 조회
-curl -fsS "https://<your-host>/api/v1/admin/dt/status" \
+curl -fsS "https://<your-host>/v1/admin/dt/status" \
   -H "Authorization: Bearer $ACCESS_TOKEN" | jq
 ```
 
@@ -57,12 +57,12 @@ curl -fsS "https://<your-host>/api/v1/admin/dt/status" \
    ```bash
    docker-compose restart dt
    sleep 30
-   curl -fsS https://<your-host>/api/v1/admin/dt/health-check \
+   curl -fsS https://<your-host>/v1/admin/dt/health-check \
      -H "Authorization: Bearer $ACCESS_TOKEN"
    ```
 2. **차단기 수동 리셋**(DT 복구 후에도 차단기가 OPEN 으로 남아 있을 때):
    ```bash
-   curl -fsS -X POST "https://<your-host>/api/v1/admin/dt/breaker/reset" \
+   curl -fsS -X POST "https://<your-host>/v1/admin/dt/breaker/reset" \
      -H "Authorization: Bearer $ACCESS_TOKEN"
    ```
 3. **미러 재동기화**(복구 후 취약점 데이터가 stale 해 보일 때): 한 시간 단위 beat 사이클(`celery_app.py`의 `dt_findings_resync` 태스크)을 한 번 기다립니다.
@@ -89,7 +89,7 @@ docker-compose logs --tail=500 beat | grep daily-auto-backup
 # 2. 워커 로그에서 백업 태스크 실행
 docker-compose logs --tail=2000 worker | grep -E 'backup\.(completed|failed)' | tail -20
 # 3. 가장 최근 백업 행 + 상태
-curl -fsS "https://<your-host>/api/v1/admin/backup/list" \
+curl -fsS "https://<your-host>/v1/admin/backup/list" \
   -H "Authorization: Bearer $ACCESS_TOKEN" | jq '.items[0:5]'
 # 4. 백업 볼륨의 디스크 여유 공간
 docker-compose exec backend df -h /backups
@@ -98,7 +98,7 @@ docker-compose exec backend df -h /backups
 ### 복구
 1. **수동 트리거**(UI: `/admin/backup` → **Run manual backup now**, 또는):
    ```bash
-   curl -fsS -X POST "https://<your-host>/api/v1/admin/backup/trigger" \
+   curl -fsS -X POST "https://<your-host>/v1/admin/backup/trigger" \
      -H "Authorization: Bearer $ACCESS_TOKEN"
    ```
 2. **수동도 실패하면 — `pg_dump` 를 직접 확인**:
@@ -127,7 +127,7 @@ PagerDuty: `TrustedOSS scan running > 4h for project X`.
 ### 진단
 ```bash
 # 1. 어느 단계에서 멈췄는가?
-curl -fsS "https://<your-host>/api/v1/scans/<scan_id>" \
+curl -fsS "https://<your-host>/v1/scans/<scan_id>" \
   -H "Authorization: Bearer $ACCESS_TOKEN" | jq '.progress_payload, .latest_log_frame'
 # 2. Celery active task 목록
 docker-compose exec worker celery -A apps.backend.tasks.celery_app inspect active
@@ -138,7 +138,7 @@ docker-compose exec worker ps -ef | grep -E 'cdxgen|ort|trivy'
 ### 복구
 1. **스캔 강제 취소**(권장 — 워커 전반 영향 없음):
    ```bash
-   curl -fsS -X POST "https://<your-host>/api/v1/admin/scans/<scan_id>/cancel" \
+   curl -fsS -X POST "https://<your-host>/v1/admin/scans/<scan_id>/cancel" \
      -H "Authorization: Bearer $ACCESS_TOKEN"
    ```
 2. **취소로도 태스크가 해제되지 않으면(워커가 진짜로 행 상태)**:
@@ -165,7 +165,7 @@ PagerDuty: `TrustedOSS portal disk = 95%+`.
 df -h /opt/trustedoss
 docker system df
 # 2. 포털을 통한 카드별 분해
-curl -fsS "https://<your-host>/api/v1/admin/disk" \
+curl -fsS "https://<your-host>/v1/admin/disk" \
   -H "Authorization: Bearer $ACCESS_TOKEN" | jq
 # 3. Workspace 분해(가장 흔한 원인)
 docker-compose exec worker du -sh /workspace/* | sort -h | tail -10
@@ -203,7 +203,7 @@ docker-compose exec postgres psql -U trustedoss -d trustedoss \
 - 포털 버전: `docker-compose exec backend python -c "from main import APP_VERSION; print(APP_VERSION)"`
 - 관련 컨테이너의 마지막 2000 라인: `docker-compose logs --tail=2000 <svc>`
 - DT 이슈: `/admin/dt/status` 전체 JSON.
-- 스캔 이슈: `<scan_id>` 와 `/api/v1/scans/<scan_id>` 전체 JSON.
+- 스캔 이슈: `<scan_id>` 와 `/v1/scans/<scan_id>` 전체 JSON.
 
 ## 함께 보기
 
