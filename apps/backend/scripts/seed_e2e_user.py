@@ -333,6 +333,20 @@ def _parse_args() -> argparse.Namespace:
             "blocks-login)."
         ),
     )
+    # ── Marathon bundle 5 (4a) — header bell unread badge fixture ───────────
+    parser.add_argument(
+        "--with-notifications",
+        type=int,
+        default=0,
+        metavar="COUNT",
+        help=(
+            "Marathon bundle 5 (4a). Insert COUNT unread notifications for "
+            "the primary seeded user so the screenshot capture for the "
+            "user-guide notifications page can show the bell badge with a "
+            "non-zero count. Kinds rotate through the closed enum so the "
+            "list page renders mixed icons. Default: 0 (no notifications)."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -403,6 +417,7 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
     extra_team_admin: bool = False,
     with_oauth_identity: str | None = None,
     no_password: bool = False,
+    with_notifications: int = 0,
 ) -> dict[str, object]:
     """Create the org/team/user/membership/projects[/scans/components]."""
     # M2 — defense-in-depth: re-check APP_ENV inside _seed so the guard
@@ -600,6 +615,41 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                     "cookie_name": "refresh_token",
                     "expires_at": expires_at.isoformat(),
                 }
+
+            # Marathon bundle 5 (4a) — header bell unread-badge fixture.
+            # Insert COUNT unread notifications spread across the closed
+            # kind enum so the screenshot capture sees a mixed list +
+            # non-zero badge.
+            seeded_notifications = 0
+            if with_notifications > 0:
+                from models import Notification
+
+                _kinds = (
+                    "scan_completed",
+                    "cve_detected",
+                    "policy_gate_failed",
+                    "approval_pending",
+                    "license_violation",
+                )
+                _bodies = {
+                    "scan_completed": "Project scan completed successfully.",
+                    "cve_detected": "New CVE-2099-EXAMPLE detected in component X.",
+                    "policy_gate_failed": "Build gate blocked: forbidden license found.",
+                    "approval_pending": "Component approval request pending review.",
+                    "license_violation": "Conditional license requires legal review.",
+                }
+                for i in range(with_notifications):
+                    kind = _kinds[i % len(_kinds)]
+                    n = Notification(
+                        user_id=user.id,
+                        kind=kind,
+                        title=f"{kind.replace('_', ' ').title()} #{i + 1}",
+                        body=_bodies[kind],
+                        link="/projects" if kind != "approval_pending" else "/approvals",
+                    )
+                    session.add(n)
+                    seeded_notifications += 1
+                await session.commit()
 
             project_ids: list[str] = []
             scan_ids: list[str] = []
@@ -850,6 +900,7 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                 "extra_members": extra_members_summary,
                 "oauth_identity": oauth_identity_summary,
                 "refresh_token": refresh_token_summary,
+                "notification_count": seeded_notifications,
             }
     finally:
         await engine.dispose()
@@ -897,6 +948,9 @@ def main() -> int:
     if args.extra_members < 0:
         print("--extra-members must be non-negative", file=sys.stderr)
         return 2
+    if args.with_notifications < 0:
+        print("--with-notifications must be non-negative", file=sys.stderr)
+        return 2
 
     # F8 — gate the super-admin convenience path on a known-safe APP_ENV.
     # The check runs ONLY when --super-admin is requested; the rest of the
@@ -921,6 +975,7 @@ def main() -> int:
                 extra_team_admin=args.extra_team_admin,
                 with_oauth_identity=args.with_oauth_identity,
                 no_password=args.no_password,
+                with_notifications=args.with_notifications,
             )
         )
     except ValueError as exc:

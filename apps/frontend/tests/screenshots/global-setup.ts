@@ -67,6 +67,10 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
     vulnerabilityCount: 30,
     withObligations: true,
     withOAuthIdentity: "github",
+    // Marathon bundle 5 (4a) — header bell unread badge fixture.
+    // Three unread notifications spread across 3 distinct kinds so the
+    // bell badge renders "3" and the inbox preview shows mixed icons.
+    notificationCount: 3,
   });
 
   const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:5173";

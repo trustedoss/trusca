@@ -31,6 +31,8 @@ sidebar_position: 8
 - 1–99 — 정확한 개수.
 - 100+ — 레이아웃이 깨지지 않도록 **99+**로 상한 처리.
 
+![헤더 종과 읽지 않은 카운트 배지 — 종 우상단의 빨간 원이 현재 읽지 않은 합계를 표시](/img/screenshots/user-notifications-bell.png)
+
 종을 클릭하면 **`/notifications`** 인박스로 곧장 이동합니다. v2.0.0에서는 종에 드롭다운 미리보기가 노출되지 않습니다 — [로드맵](#로드맵-v2x) 참고.
 
 ## `/notifications` 인박스

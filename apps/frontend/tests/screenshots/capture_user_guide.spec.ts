@@ -24,7 +24,7 @@
  * webhook delivery in progress) are intentionally omitted from this
  * PR and tracked under chore-backlog "Screenshots automation" → 부산물.
  */
-import { test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
 import { ApprovalsHarness } from "../_harness/ApprovalsHarness";
 import { AuthHarness } from "../_harness/auth";
@@ -395,6 +395,22 @@ test.describe.serial("@screenshots user-guide/obligations", () => {
 test.describe.serial("@screenshots user-guide/notifications", () => {
   test.beforeEach(async ({ page }) => {
     await applyAuthFromSeed(page);
+  });
+
+  // Marathon bundle 5 (4a) — header bell with unread badge.
+  // global-setup seeds 3 unread notifications; visit any authenticated
+  // page and capture just the header strip so the badge "3" is the
+  // dominant visual. Anchored to the projects landing because it's the
+  // first page after login (matches the user's first-login flow).
+  test("user-notifications-bell — header bell with unread badge", async ({
+    page,
+  }) => {
+    await page.goto("/projects");
+    // Wait for the bell to mount + the badge to be visible (the
+    // useUnreadCount hook fires on mount).
+    await expect(page.getByTestId("header-bell")).toBeVisible();
+    await expect(page.getByTestId("header-bell-badge")).toBeVisible();
+    await captureSection(page, "user-notifications-bell", "app-header");
   });
 
   test("user-notifications-inbox — /notifications page mounted", async ({

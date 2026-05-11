@@ -86,6 +86,8 @@ export interface SeedSummary {
   } | null;
   /** True when ``SeedOptions.noPassword`` was honored. */
   no_password?: boolean;
+  /** Number of unread notifications inserted (Marathon bundle 5 / 4a). */
+  notification_count?: number;
 }
 
 export interface SeedOptions {
@@ -172,6 +174,13 @@ export interface SeedOptions {
    * (validation failure) and the helper throws a descriptive Error.
    */
   noPassword?: boolean;
+  /**
+   * Marathon bundle 5 (4a). Insert N unread notifications for the
+   * primary user so screenshot captures can show the header bell with
+   * a non-zero badge. Kinds rotate through the closed enum so the list
+   * page renders mixed icons. Default: 0.
+   */
+  notificationCount?: number;
 }
 
 /**
@@ -236,6 +245,9 @@ export function seedE2eUser(opts: SeedOptions): SeedSummary {
   }
   if (opts.noPassword) {
     args.push("--no-password");
+  }
+  if ((opts.notificationCount ?? 0) > 0) {
+    args.push("--with-notifications", String(opts.notificationCount));
   }
 
   // Default DATABASE_URL points at the host-mapped Postgres exposed by

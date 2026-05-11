@@ -32,6 +32,8 @@ Every page has a bell icon in the top-right of the header. The badge shows the n
 - 1–99 — exact count.
 - 100+ — capped at **99+** so the badge does not break the layout.
 
+![Header bell with the unread-count badge — the red circle to the upper right of the bell carries the current unread total](/img/screenshots/user-notifications-bell.png)
+
 Click the bell to navigate directly to the **`/notifications`** inbox. The bell does not surface a dropdown preview at v2.0.0 — see [Roadmap](#roadmap-v2x).
 
 ## The Inbox at `/notifications`
