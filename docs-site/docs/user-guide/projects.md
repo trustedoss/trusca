@@ -48,6 +48,15 @@ You land on the project's **Overview** tab. From here you can run the first scan
 
 The default branch (`main`), visibility (`team`), and owning team (your active team) are set server-side and can be reviewed from **Project Settings**.
 
+### Walkthrough — clicking through the four detail tabs
+
+The detail page exposes four tabs: **Overview**, **Components**, **Vulnerabilities**, and **Licenses**. The walkthrough below opens a project from the list and clicks each tab in order so you can see how the four lenses on a project relate.
+
+<video controls width="100%" preload="metadata" poster="/img/walkthroughs/walkthrough-project-tour.gif">
+  <source src="/img/walkthroughs/walkthrough-project-tour.mp4" type="video/mp4" />
+  ![Animated walkthrough — clicking through the four project detail tabs](/img/walkthroughs/walkthrough-project-tour.gif)
+</video>
+
 ## Adding a project — API
 
 ```bash

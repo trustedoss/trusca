@@ -48,6 +48,15 @@ sidebar_position: 1
 
 기본 브랜치(`main`), 가시성(`team`), 소속 팀(활성 팀)은 서버에서 자동 설정되며 **Project Settings**에서 확인 가능합니다.
 
+### 워크스루 — 프로젝트 상세 4개 탭 둘러보기
+
+프로젝트 상세 페이지는 **Overview**, **Components**, **Vulnerabilities**, **Licenses** 4개 탭을 제공합니다. 아래 워크스루는 프로젝트 목록에서 진입한 뒤 4개 탭을 차례로 클릭해 각 탭의 관계를 보여줍니다.
+
+<video controls width="100%" preload="metadata" poster="/img/walkthroughs/walkthrough-project-tour.gif">
+  <source src="/img/walkthroughs/walkthrough-project-tour.mp4" type="video/mp4" />
+  ![애니메이션 워크스루 — 프로젝트 상세 4개 탭 클릭](/img/walkthroughs/walkthrough-project-tour.gif)
+</video>
+
 ## 프로젝트 추가 — API
 
 ```bash

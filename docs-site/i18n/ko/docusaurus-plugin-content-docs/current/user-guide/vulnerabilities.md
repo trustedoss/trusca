@@ -74,6 +74,15 @@ sidebar_position: 4
 
 ![취약점 드로어 — VEX 액션 버튼과 사유 입력 텍스트 영역이 있는 Analysis 섹션](/img/screenshots/user-vulns-drawer-vex.png)
 
+### 워크스루 — Vulnerabilities 탭 진입 + 드로어 열기
+
+아래 워크스루는 프로젝트를 열고 **Vulnerabilities** 탭으로 전환한 뒤 첫 번째 행을 클릭해 트리아지 준비가 된 Analysis 섹션이 있는 드로어를 표시합니다.
+
+<video controls width="100%" preload="metadata" poster="/img/walkthroughs/walkthrough-cve-triage.gif">
+  <source src="/img/walkthroughs/walkthrough-cve-triage.mp4" type="video/mp4" />
+  ![애니메이션 워크스루 — Vulnerabilities 탭 진입 후 finding 드로어 열기](/img/walkthroughs/walkthrough-cve-triage.gif)
+</video>
+
 ## 재탐지
 
 Dependency-Track이 상위 피드(NVD, OSV, GitHub Advisory)에서 새 CVE를 수신하면 주기 동기화가 모든 프로젝트의 최신 스캔에 대해 재상관을 수행합니다. 새 결과는 자동으로 등장합니다 — 수동 작업 불필요.

@@ -14,6 +14,8 @@ WORKER         := celery-worker
 FRONTEND_DIR   := apps/frontend
 SCREENSHOT_DIR := docs-site/static/img/screenshots
 SCREENSHOT_STAGING := $(SCREENSHOT_DIR)/staging
+WALKTHROUGH_DIR := docs-site/static/img/walkthroughs
+WALKTHROUGH_RAW  := apps/frontend/tests/walkthroughs/.output
 
 .DEFAULT_GOAL := help
 
@@ -31,6 +33,10 @@ help:
 	@echo "Guide screenshot capture (Playwright)"
 	@echo "  make screenshots-capture   regenerate guide PNGs via tests/screenshots/"
 	@echo "  make screenshots-clean     remove staging captures (keeps committed assets)"
+	@echo ""
+	@echo "Animated walkthroughs (Playwright + ffmpeg)"
+	@echo "  make walkthroughs-capture  record webm via tests/walkthroughs/"
+	@echo "  make walkthroughs-encode   convert webm to mp4 + gif under $(WALKTHROUGH_DIR)/"
 
 .PHONY: dev-up
 dev-up:
@@ -122,3 +128,37 @@ screenshots-optimize:
 		       done'
 	@echo
 	@echo "screenshots-optimize done. Review with `git diff --stat`. Re-run `make screenshots-capture` if visual regression is suspected."
+
+# Marathon bundle 9 (4c) — Animated walkthroughs.
+#
+# Two-step pipeline:
+#   1. ``walkthroughs-capture`` — runs the dedicated Playwright config
+#      that records each spec as a webm (1440x900, video=on).
+#   2. ``walkthroughs-encode``  — postprocesses the webm files into
+#      mp4 (h264 baseline, ~700kbps, suitable for the docs <video>
+#      tag) + a low-FPS gif preview (24fps -> 12fps decimate, palette
+#      generation for sub-2MB output).
+#
+# Why two targets and not one: capture runs against the dev stack and
+# may need re-runs while iterating on the user flow. Encode is purely
+# CPU-bound and benefits from caching across iterations once the
+# webm is captured cleanly. Splitting also lets CI run encode-only
+# on artifact uploaded by an operator (no headless browser needed).
+#
+# The encode step pairs each spec's webm with the slug declared in
+# the spec via ``test.info().annotations.push({type: "slug", ...})``.
+# The slug lives in ``test-results.json`` next to the video. We avoid
+# the brittle dance with Playwright's auto-generated test-output
+# directory names — slug-driven naming is stable across spec renames.
+.PHONY: walkthroughs-capture
+walkthroughs-capture:
+	cd $(FRONTEND_DIR) && npx playwright test --config=playwright.walkthroughs.config.ts
+
+.PHONY: walkthroughs-encode
+walkthroughs-encode:
+	@bash scripts/encode-walkthroughs.sh "$(WALKTHROUGH_RAW)" "$(WALKTHROUGH_DIR)"
+
+.PHONY: walkthroughs-clean
+walkthroughs-clean:
+	rm -rf $(WALKTHROUGH_RAW)
+	@echo "removed $(WALKTHROUGH_RAW) (committed assets under $(WALKTHROUGH_DIR) untouched)"
