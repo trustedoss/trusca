@@ -84,3 +84,41 @@ screenshots-capture:
 screenshots-clean:
 	rm -rf $(SCREENSHOT_STAGING)
 	@echo "removed $(SCREENSHOT_STAGING) (committed assets under $(SCREENSHOT_DIR) untouched)"
+
+# Marathon bundle 9 (4f) — PNG compression automation.
+# Runs oxipng (lossless) followed by pngquant (perceptual lossy quant).
+# pngquant before oxipng would inflate the file; oxipng before pngquant
+# loses oxipng's DEFLATE pass on the post-quant bitstream — pngquant
+# pipes to oxipng in one shot for the optimal size.
+#
+# Tools are installed in a tiny Alpine container so operators do not
+# have to apt/brew install on the host. The container mounts the
+# screenshot dir read-write; processed files replace originals
+# in-place. Idempotent — re-running after a clean capture saves a few
+# more bytes from any pixel-noise drift.
+#
+# Quality:
+#   - oxipng -o 4         — exhaustive level 4 (vs the brutal -o max
+#                           which costs minutes for ~5% extra savings).
+#   - pngquant 75-90      — quality floor 75, ceiling 90; the -- forces
+#                           output to stdout so we can pipe to oxipng.
+#                           No --skip-if-larger; we accept marginal
+#                           "no-shrinkage" PNGs to keep the runner
+#                           simple (the size-gate workflow catches
+#                           regressions overall, not per-file).
+.PHONY: screenshots-optimize
+screenshots-optimize:
+	@docker run --rm -v $(PWD)/$(SCREENSHOT_DIR):/work alpine:3.20 \
+		sh -c 'apk add --no-cache oxipng pngquant >/dev/null && \
+		       cd /work && \
+		       for f in *.png; do \
+		         [ -f "$$f" ] || continue; \
+		         orig=$$(wc -c < "$$f"); \
+		         pngquant --quality=75-90 --speed 1 --force --output - "$$f" 2>/dev/null \
+		           | oxipng -o 4 --strip safe - --out - > "$$f.tmp" 2>/dev/null && \
+		         mv "$$f.tmp" "$$f"; \
+		         after=$$(wc -c < "$$f"); \
+		         printf "%-55s %8d -> %8d (%d%%)\n" "$$f" "$$orig" "$$after" "$$((after * 100 / orig))"; \
+		       done'
+	@echo
+	@echo "screenshots-optimize done. Review with `git diff --stat`. Re-run `make screenshots-capture` if visual regression is suspected."
