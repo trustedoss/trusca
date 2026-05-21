@@ -386,3 +386,58 @@ def test_scan_source_cdxgen_failure_marks_scan_failed(
     # Workspace must have been cleaned up by the task's `finally`.
     workspace_dir = tmp_path / str(scan_id)
     assert not workspace_dir.exists(), "workspace must be cleaned up after failure"
+"""Reviewer probe appended into the pipeline test module's namespace so it
+reuses the local sync_session fixture + seed helpers."""
+import uuid
+from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
+
+from core.db import sync_session_scope
+from models import LicenseFinding, ScanComponent
+import tasks.scan_source as ss
+from integrations.scancode import DetectedLicense
+
+
+def test_savepoint_isolates_real_flush_error(monkeypatch, sync_session):
+    """Force a flush-time DB error INSIDE begin_nested via the REAL persist fn
+    and confirm the outer transaction still commits the declared graph."""
+    sbom = {
+        "metadata": {"component": {"name": "probe-app"}},
+        "components": [
+            {"purl": "pkg:pypi/probe-req@9.9.9", "name": "probe-req", "version": "9.9.9",
+             "licenses": [{"license": {"id": "Apache-2.0"}}]}
+        ],
+    }
+    scan_id, _ = _seed_queued_scan(sync_session)
+
+    # Inject a flush-time NOT NULL violation inside the nested block by adding a
+    # LicenseFinding with kind=None when the real persist asks for a license.
+    real_license = ss._get_or_create_license
+    def _bad_license(session, *, spdx_id, reference_url):
+        lic = real_license(session, spdx_id=spdx_id, reference_url=reference_url)
+        session.add(LicenseFinding(scan_id=scan_id, component_version_id=lic.id,
+                                   license_id=lic.id, kind=None, source_path="x"))
+        return lic
+    monkeypatch.setattr(ss, "_get_or_create_license", _bad_license)
+
+    caught = {}
+    with sync_session_scope() as session:
+        ss._persist_components(session, scan_uuid=scan_id, sbom=sbom)
+        try:
+            with session.begin_nested():
+                ss._persist_detected_licenses(
+                    session, scan_uuid=scan_id, sbom=sbom,
+                    detections=[DetectedLicense(spdx_id="MIT", source_path="LICENSE")],
+                )
+        except SQLAlchemyError as exc:
+            caught["type"] = type(exc).__name__
+        session.commit()  # must NOT raise PendingRollbackError
+
+    assert caught.get("type"), "expected a flush-time SQLAlchemyError inside savepoint"
+    with sync_session_scope() as s:
+        comps = s.execute(select(ScanComponent).where(ScanComponent.scan_id == scan_id)).scalars().all()
+        assert len(comps) >= 1, "declared components rolled back -> blast radius NOT isolated"
+        det = s.execute(select(LicenseFinding).where(
+            LicenseFinding.scan_id == scan_id, LicenseFinding.kind == "detected")).scalars().all()
+        assert det == [], "detected findings leaked despite savepoint rollback"
+    print(f"PROBE OK: caught={caught['type']}, components survived, detected rolled back")

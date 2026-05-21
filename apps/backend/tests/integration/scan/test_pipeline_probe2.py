@@ -386,3 +386,76 @@ def test_scan_source_cdxgen_failure_marks_scan_failed(
     # Workspace must have been cleaned up by the task's `finally`.
     workspace_dir = tmp_path / str(scan_id)
     assert not workspace_dir.exists(), "workspace must be cleaned up after failure"
+import uuid
+from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
+from core.db import sync_session_scope
+from models import LicenseFinding, ScanComponent
+import tasks.scan_source as ss
+from integrations.scancode import DetectedLicense
+
+
+def test_savepoint_isolates_unique_violation_real(monkeypatch, sync_session):
+    """Realistic M1 scenario: the detected-license INSERT itself violates the
+    uq_license_findings unique constraint at flush. Confirm the SAVEPOINT
+    isolates it and the OUTER commit still persists the declared component graph.
+    """
+    sbom = {
+        "metadata": {"component": {"name": "probe-app"}},
+        "components": [
+            {"purl": "pkg:pypi/probe-uniq@1.2.3", "name": "probe-uniq", "version": "1.2.3",
+             "licenses": [{"license": {"id": "Apache-2.0"}}]}
+        ],
+    }
+    scan_id, _ = _seed_queued_scan(sync_session)
+
+    # Pre-insert a detected finding so the persist path's INSERT duplicates it.
+    # We need the SAME (scan, cv, license, kind, source_path). The persist fn
+    # creates its own fp component_version; to collide we instead force a
+    # duplicate WITHIN the detections list bypassing the in-fn de-dup by patching
+    # the de-dup set to never see the first. Simpler: pass two identical rows AND
+    # disable the in-fn 'seen' guard by monkeypatching it out is intrusive.
+    #
+    # Cleanest realistic trigger: add the SAME finding twice directly via add()
+    # inside a sabotaged _get_or_create_license that returns the same license id,
+    # and rely on the unique constraint (scan,cv,license,kind,source_path).
+    real_license = ss._get_or_create_license
+    fixed = {}
+    def _same_license(session, *, spdx_id, reference_url):
+        if "lic" not in fixed:
+            fixed["lic"] = real_license(session, spdx_id="MIT", reference_url=None)
+        # add a duplicate finding on the SAME tuple to trip the unique index
+        lic = fixed["lic"]
+        return lic
+    monkeypatch.setattr(ss, "_get_or_create_license", _same_license)
+
+    # Two detections that the in-fn de-dup will KEEP distinct (different path),
+    # but we collapse paths via a patched _truncate? No — instead feed identical
+    # source_path so in-fn de-dup drops one. To actually hit the DB constraint we
+    # must defeat the in-fn de-dup. Use distinct DetectedLicense.source_path but
+    # patch nothing else, then manually pre-seed the colliding row.
+    with sync_session_scope() as session:
+        ss._persist_components(session, scan_uuid=scan_id, sbom=sbom)
+        # Pre-seed the exact detected finding the persist will try to insert.
+        fpv = ss._get_or_create_first_party_component_version(session, scan_uuid=scan_id, sbom=sbom)
+        lic = real_license(session, spdx_id="MIT", reference_url=None)
+        session.add(LicenseFinding(scan_id=scan_id, component_version_id=fpv.id,
+                                   license_id=lic.id, kind="detected", source_path="LICENSE",
+                                   raw_data={"source": "scancode"}))
+        session.flush()
+        caught = {}
+        try:
+            with session.begin_nested():
+                ss._persist_detected_licenses(
+                    session, scan_uuid=scan_id, sbom=sbom,
+                    detections=[DetectedLicense(spdx_id="MIT", source_path="LICENSE")],
+                )
+        except SQLAlchemyError as exc:
+            caught["type"] = type(exc).__name__
+        session.commit()
+
+    assert caught.get("type"), "expected IntegrityError caught inside savepoint"
+    with sync_session_scope() as s:
+        comps = s.execute(select(ScanComponent).where(ScanComponent.scan_id == scan_id)).scalars().all()
+        assert len(comps) >= 1, "declared components rolled back"
+    print(f"PROBE2 OK: caught={caught['type']}, components survived")

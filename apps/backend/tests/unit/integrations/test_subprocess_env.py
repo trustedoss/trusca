@@ -1,15 +1,16 @@
 """
-Unit tests for ``integrations._subprocess_env`` (chore PR #6).
+Unit tests for ``integrations._subprocess_env`` (chore PR #6 + PR-A2).
 
 The helper module centralises subprocess env scrubbing for prep / cdxgen
-/ ORT. These tests pin three properties:
+/ scancode (the ORT variant was dropped in PR-A2). These tests pin three
+properties:
 
 * The shared base allowlist forwards PATH / proxy / CA-bundle hints but
   excludes worker secrets like ``DT_API_KEY`` / ``SECRET_KEY``.
 * Each per-stage builder adds the right ecosystem-specific keys.
-* The prefix-band forwarders (``npm_config_*``, ``CDXGEN_*``, ``ORT_*``)
-  drop credential-named keys via ``_looks_like_credential``, even when
-  the prefix matches.
+* The prefix-band forwarders (``npm_config_*``, ``CDXGEN_*``) drop
+  credential-named keys via ``_looks_like_credential``, even when the prefix
+  matches.
 """
 
 from __future__ import annotations
@@ -19,8 +20,8 @@ import pytest
 from integrations._subprocess_env import (
     _looks_like_credential,
     scrubbed_env_for_cdxgen,
-    scrubbed_env_for_ort,
     scrubbed_env_for_prep,
+    scrubbed_env_for_scancode,
 )
 
 # ---------------------------------------------------------------------------
@@ -60,7 +61,7 @@ def env_seeded(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.parametrize(
     "builder",
-    [scrubbed_env_for_prep, scrubbed_env_for_cdxgen, scrubbed_env_for_ort],
+    [scrubbed_env_for_prep, scrubbed_env_for_cdxgen, scrubbed_env_for_scancode],
 )
 def test_builder_strips_worker_secrets(env_seeded: None, builder) -> None:  # type: ignore[no-untyped-def]
     env = builder()
@@ -72,7 +73,7 @@ def test_builder_strips_worker_secrets(env_seeded: None, builder) -> None:  # ty
 
 @pytest.mark.parametrize(
     "builder",
-    [scrubbed_env_for_prep, scrubbed_env_for_cdxgen, scrubbed_env_for_ort],
+    [scrubbed_env_for_prep, scrubbed_env_for_cdxgen, scrubbed_env_for_scancode],
 )
 def test_builder_forwards_base_proxy_and_ca_hints(
     env_seeded: None, builder
@@ -185,32 +186,65 @@ def test_cdxgen_forwards_jvm_keys(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 # ---------------------------------------------------------------------------
-# ORT: JVM keys + ORT_* prefix band, with credential deny
+# scancode (PR-A2): base allowlist only — no toolchain keys, no prefix band
 # ---------------------------------------------------------------------------
 
 
-def test_ort_forwards_jvm_and_ort_band(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("JAVA_OPTS", "-Xmx4g")
-    monkeypatch.setenv("ORT_DATA_DIR", "/work/ort-data")
-    monkeypatch.setenv("ORT_CONFIG_DIR", "/work/ort-config")
+def test_scancode_forwards_base_hints_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    """scancode is pure Python: it gets PATH / proxy / CA hints but no JVM /
+    Node / ecosystem toolchain keys (it never shells into a language runtime)."""
+    monkeypatch.setenv("PATH", "/usr/local/bin:/usr/bin")
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy.corp.example:8080")
+    monkeypatch.setenv("REQUESTS_CA_BUNDLE", "/etc/ssl/corporate-ca.pem")
+    # Toolchain keys that cdxgen forwards but scancode does NOT need.
+    monkeypatch.setenv("JAVA_HOME", "/opt/java/temurin-21")
+    monkeypatch.setenv("GOPROXY", "https://proxy.golang.org")
 
-    env = scrubbed_env_for_ort()
+    env = scrubbed_env_for_scancode()
 
-    assert env["JAVA_OPTS"] == "-Xmx4g"
-    assert env["ORT_DATA_DIR"] == "/work/ort-data"
-    assert env["ORT_CONFIG_DIR"] == "/work/ort-config"
+    assert env["PATH"] == "/usr/local/bin:/usr/bin"
+    assert env["HTTPS_PROXY"] == "http://proxy.corp.example:8080"
+    assert env["REQUESTS_CA_BUNDLE"] == "/etc/ssl/corporate-ca.pem"
+    # No toolchain leakage — scancode has no use for these.
+    assert "JAVA_HOME" not in env
+    assert "GOPROXY" not in env
 
 
-def test_ort_drops_ort_token_band(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ORT_GITHUB_TOKEN", "gh-secret")
-    monkeypatch.setenv("ORT_NEXUS_PASSWORD", "nexus-secret")
-    monkeypatch.setenv("ORT_API_KEY", "api-secret")
+def test_scancode_strips_worker_secrets(monkeypatch: pytest.MonkeyPatch) -> None:
+    """scancode reads attacker-controlled file contents — secrets must not
+    inherit so an embedded payload / scancode CVE has nothing to exfiltrate."""
+    monkeypatch.setenv("DT_API_KEY", "super-secret")
+    monkeypatch.setenv("SECRET_KEY", "jwt-signing-secret")
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@h/db")
 
-    env = scrubbed_env_for_ort()
+    env = scrubbed_env_for_scancode()
 
-    assert "ORT_GITHUB_TOKEN" not in env
-    assert "ORT_NEXUS_PASSWORD" not in env
-    assert "ORT_API_KEY" not in env
+    assert "DT_API_KEY" not in env
+    assert "SECRET_KEY" not in env
+    assert "DATABASE_URL" not in env
+
+
+def test_scancode_seeds_home_and_lang_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    """HOME / LANG defaults are seeded so scancode's caches/locale resolve."""
+    monkeypatch.delenv("HOME", raising=False)
+    monkeypatch.delenv("LANG", raising=False)
+
+    env = scrubbed_env_for_scancode()
+
+    assert env["HOME"] == "/tmp"  # noqa: S108 — matches the module default hint
+    assert env["LANG"] == "C.UTF-8"
+
+
+def test_scancode_forwards_native_lib_paths(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The image-set libarchive / libmagic path hints MUST reach scancode, or
+    it crashes at import on arm64 (undefined symbol: archive_read_new)."""
+    monkeypatch.setenv("EXTRACTCODE_LIBARCHIVE_PATH", "/usr/local/lib/scancode-libarchive.so")
+    monkeypatch.setenv("TYPECODE_LIBMAGIC_PATH", "/usr/local/lib/scancode-libmagic.so")
+
+    env = scrubbed_env_for_scancode()
+
+    assert env["EXTRACTCODE_LIBARCHIVE_PATH"] == "/usr/local/lib/scancode-libarchive.so"
+    assert env["TYPECODE_LIBMAGIC_PATH"] == "/usr/local/lib/scancode-libmagic.so"
 
 
 # ---------------------------------------------------------------------------

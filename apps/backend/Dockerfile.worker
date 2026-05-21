@@ -2,22 +2,29 @@
 #
 # TrustedOSS Portal — Celery worker image.
 #
-# This image carries the heavy SCA toolchain (cdxgen / ORT / Trivy + JRE +
-# Node + per-ecosystem lockfile resolvers) that backend API containers do
+# This image carries the heavy SCA toolchain (cdxgen / scancode / Trivy + JRE
+# + Node + per-ecosystem lockfile resolvers) that backend API containers do
 # NOT need. Splitting it out keeps the API image small (~200MB) while the
-# worker (~3.5GB after chore PR #4) is deployed and rolled independently.
-# Per CLAUDE.md core rule #3 (ORT/cdxgen/Trivy must run inside Celery —
-# never synchronously) this is the only image that ships the tools.
+# worker is deployed and rolled independently. Per CLAUDE.md core rule #3
+# (ORT/cdxgen/scancode/Trivy must run inside Celery — never synchronously)
+# this is the only image that ships the tools.
+#
+# PR-A2: ORT (~600MB extracted) was removed. The broken `ort evaluate` stage
+# is replaced by scancode-toolkit, which runs first-party license DETECTION
+# over the cloned source tree (third-party dependency licenses stay declared,
+# from cdxgen). scancode is pure Python, installed into an isolated virtualenv
+# (so its large dep tree never collides with the backend's pinned deps) and
+# symlinked onto $PATH. It ships manylinux + aarch64 wheels for its native
+# deps, so the image builds on both amd64 CI and arm64 (Apple Silicon / Colima)
+# without an apt-amd64-only package (the .NET-on-arm64 regression lesson).
 #
 # Layer strategy: each tool is installed in its own RUN so buildx/GHA cache
-# can re-use unchanged layers. ORT (~600MB extracted) is intentionally last
-# among the big tools so a Trivy or cdxgen bump doesn't bust the ORT layer.
-# Multi-language lockfile resolvers (chore PR #4) sit BEFORE ORT for the
-# same reason — a bump to Gradle / Go does not bust the ORT layer.
+# can re-use unchanged layers. The JVM (Temurin 21) is still installed because
+# cdxgen shells into Maven / Gradle for Java SBOM enumeration.
 #
 # All shipped tools are Apache-2.0 unless noted:
 #   cdxgen     — https://github.com/CycloneDX/cdxgen         (Apache-2.0)
-#   ORT        — https://github.com/oss-review-toolkit/ort   (Apache-2.0)
+#   scancode   — https://github.com/aboutcode-org/scancode-toolkit (Apache-2.0)
 #   Trivy      — https://github.com/aquasecurity/trivy       (Apache-2.0)
 #   Temurin    — Eclipse Temurin JRE 21                      (GPL-2.0-CE — runtime
 #                only; Classpath Exception lets user code stay non-GPL).
@@ -119,14 +126,26 @@ RUN pip install --upgrade pip \
     && pip install -r requirements.txt -r requirements-dev.txt
 
 # ---------------------------------------------------------------------------
-# Stage 2: worker — base + JRE 17 + Node 20 LTS + cdxgen + Trivy + ORT.
+# Stage 2: worker — base + JRE 21 + Node 20 LTS + cdxgen + scancode + Trivy.
 # ---------------------------------------------------------------------------
 FROM base AS worker
 
-# OS deps for the SCA toolchain. unzip → ORT zip extraction; git/mercurial →
-# ORT VCS analyzers; ca-certificates already installed in stage 1. Java is
-# installed below from Eclipse Temurin (apt repo) — ORT 85.x requires JRE
-# 21 (class file v65), and Debian bookworm only ships JDK 17 by default.
+# OS deps for the SCA toolchain. unzip → Gradle zip extraction; git/mercurial
+# → VCS fetch + cdxgen VCS analyzers; ca-certificates already installed in
+# stage 1.
+#
+# scancode native deps (PR-A2):
+#   libgomp1 + libpopt0 — runtime libs for scancode's bundled license matchers.
+#   libicu-dev + pkg-config — BUILD deps for PyICU, a scancode transitive dep
+#     that ships NO aarch64 wheel and must compile from sdist on arm64 (Apple
+#     Silicon / Colima). PyICU's setup.py probes ICU via pkg-config and links
+#     against the ICU dev headers; without these the arm64 image build fails
+#     with "Failed to build 'pyicu'". (build-essential is already present from
+#     stage 1.) This is the scancode equivalent of the .NET-on-arm64 lesson:
+#     pick an install path that resolves on BOTH architectures.
+# Java is installed below from Eclipse Temurin (apt repo) — cdxgen's
+# Maven/Gradle SBOM enumeration needs JRE 21, and Debian bookworm only ships
+# JDK 17 by default.
 # `apt-get upgrade -y` repeated here so anything pulled by unzip/git/mercurial
 # also lands on the bookworm-security patch level (see stage 1 comment).
 RUN apt-get update \
@@ -135,10 +154,17 @@ RUN apt-get update \
         unzip \
         git \
         mercurial \
+        libgomp1 \
+        libpopt0 \
+        libicu-dev \
+        pkg-config \
+        libarchive13 \
+        libmagic1 \
     && rm -rf /var/lib/apt/lists/*
 
 # ---- Eclipse Temurin JRE 21 (GPL-2.0-CE — runtime only, Classpath
-#      Exception lets user code stay non-GPL). ORT 85.x requires Java 21.
+#      Exception lets user code stay non-GPL). cdxgen shells into Maven /
+#      Gradle for Java SBOM enumeration and those need Java 21.
 #      Adoptium publishes per-arch debs via their apt repo.
 RUN curl -fsSL https://packages.adoptium.net/artifactory/api/gpg/key/public \
         | gpg --dearmor -o /usr/share/keyrings/adoptium.gpg \
@@ -380,37 +406,83 @@ RUN set -eux; \
     go version
 
 # ---- .NET SDK 8.0 (MIT). ---------------------------------------------------
-# Microsoft publishes a Debian apt repo for the dotnet SDK. We only need the
-# CLI's `dotnet restore` command to populate `obj/project.assets.json`,
-# which cdxgen reads for transitive NuGet deps. ~700MB layer.
-RUN curl -fsSL -o /tmp/ms.deb \
-        "https://packages.microsoft.com/config/debian/12/packages-microsoft-prod.deb" \
-    && dpkg -i /tmp/ms.deb \
-    && rm -f /tmp/ms.deb \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends dotnet-sdk-8.0 \
-    && rm -rf /var/lib/apt/lists/* \
+# cdxgen needs the `dotnet restore` CLI to populate obj/project.assets.json
+# for transitive NuGet deps (~700MB layer). Microsoft's Debian apt repo only
+# carries dotnet-sdk-8.0 for amd64 — on arm64 (Apple Silicon dev laptops /
+# Colima) the package is absent and `apt-get install` fails (E: Unable to
+# locate package dotnet-sdk-8.0). The official dotnet-install.sh resolves the
+# host arch (x64 / arm64) itself, so the same Dockerfile builds on amd64 CI
+# and arm64 dev hosts alike. This is the same cross-arch lesson as Trivy / Go /
+# scancode above: pick an install path that resolves on BOTH architectures.
+ENV DOTNET_ROOT=/usr/share/dotnet \
+    DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+    DOTNET_NOLOGO=1
+RUN curl -fsSL -o /tmp/dotnet-install.sh "https://dot.net/v1/dotnet-install.sh" \
+    && chmod +x /tmp/dotnet-install.sh \
+    && /tmp/dotnet-install.sh --channel 8.0 --install-dir "${DOTNET_ROOT}" \
+    && rm -f /tmp/dotnet-install.sh \
+    && ln -sfn "${DOTNET_ROOT}/dotnet" /usr/local/bin/dotnet \
     && dotnet --version
 
-# ---- ORT 85.0.0 (Apache-2.0). ----------------------------------------------
-# OSS Review Toolkit — license & dependency analyzer. ~600MB extracted, so
-# kept as the last big layer to maximise cache hits when smaller tools bump.
-# The release ships a self-contained zip with launcher scripts under bin/.
-# Chore P (Phase 8 worker-image refresh): bumped 85.0.0 → 85.1.1. Stays
-# on the 85.x line so the JRE 21 requirement and our `ort evaluate` CLI
-# invocation are unchanged; 85.1.1 picks up json-smart 2.5.2 / msgpack-
-# core 0.9.11 transitive bumps so the matching `.trivyignore` entries
-# (CVE-2024-57699, CVE-2026-21452) MAY drop out — re-evaluate after
-# the image-scan CI step runs against the bumped image.
-ENV ORT_VERSION=85.1.1 \
-    ORT_HOME=/opt/ort
-RUN curl -fsSL -o /tmp/ort.zip \
-        "https://github.com/oss-review-toolkit/ort/releases/download/${ORT_VERSION}/ort-${ORT_VERSION}.zip" \
-    && unzip -q /tmp/ort.zip -d /opt \
-    && mv "/opt/ort-${ORT_VERSION}" "${ORT_HOME}" \
-    && rm -f /tmp/ort.zip \
-    && ln -s "${ORT_HOME}/bin/ort" /usr/local/bin/ort \
-    && ort --version
+# ---- scancode-toolkit 32.4.0 (Apache-2.0). ---------------------------------
+# First-party license DETECTION (PR-A2 — replaced the broken ORT evaluator).
+#
+# Cross-arch validated on linux/arm64 (Apple Silicon / Colima) AND amd64. Two
+# arm64-specific gotchas were hit during PR-A2 bring-up and are handled here:
+#
+#   1. PyICU (a scancode transitive dep) ships NO aarch64 wheel and compiles
+#      from sdist — needs libicu-dev + pkg-config (installed in the OS-deps
+#      RUN above). build-essential comes from stage 1.
+#   2. scancode's bundled ``extractcode-libarchive`` / ``typecode-libmagic``
+#      wheels are EMPTY STUBS on aarch64 (2 KB), so scancode falls back to a
+#      system libarchive/libmagic. Without a complete one it crashes at import
+#      with ``undefined symbol: archive_read_new``. We install the full
+#      ``libarchive13`` + ``libmagic1`` (OS-deps RUN) and pin scancode's
+#      ctypes loader at them via ``EXTRACTCODE_LIBARCHIVE_PATH`` /
+#      ``TYPECODE_LIBMAGIC_PATH`` (resolved to the Debian multiarch triplet at
+#      build time so the same Dockerfile works on x86_64 and aarch64).
+#
+# Isolation: scancode pulls a large, version-pinned dependency tree (click /
+# lxml / requests / a license index) that would otherwise fight the backend's
+# pinned deps (requirements.txt). We install it into a dedicated virtualenv
+# under /opt/scancode-venv and symlink only the ``scancode`` launcher onto
+# $PATH. The Celery worker process keeps using the system Python from stage 1;
+# it shells to ``scancode`` via subprocess (integrations/scancode.py), never
+# imports it.
+#
+# ``scancode-reindex-licenses`` builds scancode's license index at image-build
+# time so the first scan does not pay the (multi-minute) index build at
+# runtime. It is wrapped in ``|| true`` because a non-fatal index warning must
+# not fail the build — the index also self-builds lazily on first scan.
+ENV SCANCODE_VERSION=32.4.0 \
+    SCANCODE_VENV=/opt/scancode-venv
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "$arch" in \
+        amd64) triplet="x86_64-linux-gnu" ;; \
+        arm64) triplet="aarch64-linux-gnu" ;; \
+        *) echo "Unsupported arch: $arch" >&2; exit 1 ;; \
+    esac; \
+    python3 -m venv "${SCANCODE_VENV}"; \
+    "${SCANCODE_VENV}/bin/pip" install --no-cache-dir --upgrade pip; \
+    "${SCANCODE_VENV}/bin/pip" install --no-cache-dir \
+        "scancode-toolkit==${SCANCODE_VERSION}"; \
+    ln -s "${SCANCODE_VENV}/bin/scancode" /usr/local/bin/scancode; \
+    ln -sfn "/usr/lib/${triplet}/libarchive.so.13" /usr/local/lib/scancode-libarchive.so; \
+    ln -sfn "/usr/lib/${triplet}/libmagic.so.1" /usr/local/lib/scancode-libmagic.so; \
+    EXTRACTCODE_LIBARCHIVE_PATH=/usr/local/lib/scancode-libarchive.so \
+    TYPECODE_LIBMAGIC_PATH=/usr/local/lib/scancode-libmagic.so \
+        "${SCANCODE_VENV}/bin/scancode-reindex-licenses" || true; \
+    EXTRACTCODE_LIBARCHIVE_PATH=/usr/local/lib/scancode-libarchive.so \
+    TYPECODE_LIBMAGIC_PATH=/usr/local/lib/scancode-libmagic.so \
+        scancode --version
+
+# scancode's ctypes loader reads these at runtime to find a COMPLETE system
+# libarchive/libmagic (the bundled aarch64 wheels are empty stubs). The
+# arch-stable symlinks above let us pin a fixed path here regardless of the
+# Debian multiarch triplet.
+ENV EXTRACTCODE_LIBARCHIVE_PATH=/usr/local/lib/scancode-libarchive.so \
+    TYPECODE_LIBMAGIC_PATH=/usr/local/lib/scancode-libmagic.so
 
 # Application source. The dev compose bind-mounts ./apps/backend:/app on top
 # of this so the COPY here only matters for one-off `docker run` and prod.

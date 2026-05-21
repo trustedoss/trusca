@@ -22,7 +22,7 @@
 #               workers. Reachable only inside the compose network; Traefik
 #               routes `/api` and `/health` to it.
 #   worker    — Celery worker on the heavier image (trustedoss/backend-worker:
-#               ${IMAGE_TAG}) which carries cdxgen / ORT / Trivy / JRE.
+#               ${IMAGE_TAG}) which carries cdxgen / scancode / Trivy / JRE.
 #   beat      — Celery Beat scheduler (DT heartbeat, hourly DT resync, 6h
 #               orphan cleanup) — same worker image, separate process.
 #   frontend  — nginx + Vite static bundle (trustedoss/frontend:${IMAGE_TAG}).
@@ -52,7 +52,11 @@ x-backend-env: &backend-env
   # Workspace is mounted from a host directory (WORKSPACE_HOST_PATH) so
   # large source-trees stay outside the container layer.
   WORKSPACE_HOST_PATH: /workspace
-  ORT_RULES_PATH: /opt/trustedoss/ort/rules.kts
+  # PR-A2: ORT_RULES_PATH removed — the backend no longer shells to ORT.
+  # First-party license detection is done by scancode (bundled in the worker
+  # image); third-party dependency licenses come declared from cdxgen. The
+  # ort/rules.kts file is retained in-repo for reference but is no longer
+  # read at runtime.
   # DT vars are intentionally absent here — bring up
   # docker-compose.dt.yml as a second `-f` to wire them in. Leaving the
   # breaker OPEN (no DT) is a valid prod posture for air-gapped sites
@@ -184,7 +188,7 @@ services:
     environment:
       <<: *backend-env
     volumes:
-      # Workspace is shared with the worker so cdxgen/ORT outputs are
+      # Workspace is shared with the worker so cdxgen / scancode outputs are
       # readable across both processes.
       - workspace:/workspace
     depends_on:
@@ -223,7 +227,7 @@ services:
           memory: 1G
 
   # ---------------------------------------------------------------------------
-  # Celery worker — runs cdxgen / ORT / Trivy / DT integrations.
+  # Celery worker — runs cdxgen / scancode / Trivy / DT integrations.
   # ---------------------------------------------------------------------------
   worker:
     image: trustedoss/backend-worker:${IMAGE_TAG:-2.0.0}
@@ -233,7 +237,6 @@ services:
       <<: *backend-env
     volumes:
       - workspace:/workspace
-      - ./ort:/opt/trustedoss/ort:ro
     depends_on:
       postgres:
         condition: service_healthy

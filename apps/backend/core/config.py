@@ -277,8 +277,67 @@ def dt_auto_restart_enabled() -> bool:
 
 
 def scan_backend_mode() -> str:
-    """`real` (subprocess cdxgen/ort/trivy) or `mock` (fixture JSON)."""
+    """`real` (subprocess cdxgen/scancode/trivy) or `mock` (fixture JSON)."""
     return os.getenv("TRUSTEDOSS_SCAN_BACKEND", "real").lower()
+
+
+# ---------------------------------------------------------------------------
+# scancode first-party license detection (PR-A2 — replaces ORT).
+#
+# scancode runs over the cloned first-party source tree only (third-party
+# dependency licenses stay declared, sourced from cdxgen). Every accessor
+# resolves the env at call time (CLAUDE.md core rule #11) so an operator can
+# retune the worker without a rebuild. The three guards below bound the stage
+# so a hostile / pathological repo cannot starve the scan budget or the DB.
+# ---------------------------------------------------------------------------
+
+
+def scancode_timeout_seconds() -> int:
+    """Hard wall-clock limit (seconds) for one scancode invocation.
+
+    scancode does a per-file license/copyright detection pass; on a large
+    first-party tree it can take several minutes. Default 600s (10 min) sits
+    comfortably inside the scan soft limit (SCAN_SOFT_TIME_LIMIT_SECONDS,
+    default 3600s) alongside cdxgen + DT polling. Read at call time (rule #11).
+    """
+    return int(os.getenv("SCANCODE_TIMEOUT_SECONDS", "600"))
+
+
+def scancode_max_files() -> int:
+    """Maximum first-party files scancode is allowed to scan in one run.
+
+    A pre-scan walk counts eligible files (after the exclude filter); when the
+    count exceeds this ceiling we skip the detection stage with a clear WARNING
+    rather than letting scancode spin for the whole budget on a giant monorepo.
+    Default 20000 — enough for typical first-party trees, a guard for outliers.
+    Read at call time (rule #11).
+    """
+    return int(os.getenv("SCANCODE_MAX_FILES", "20000"))
+
+
+def scancode_max_detections() -> int:
+    """Maximum number of detected license findings persisted from one scan.
+
+    Bounds the row count written to ``license_findings`` (kind='detected') so a
+    pathological tree (every file a distinct LicenseRef) cannot balloon the
+    table. Excess detections beyond this cap are dropped with a WARNING; the
+    scan still succeeds. Default 5000. Read at call time (rule #11).
+    """
+    return int(os.getenv("SCANCODE_MAX_DETECTIONS", "5000"))
+
+
+def scancode_max_result_bytes() -> int:
+    """Maximum size (bytes) of the scancode JSON result we will deserialize.
+
+    scancode's result file is keyed off the (attacker-controlled) first-party
+    tree: a pathological clone with millions of tiny files, or files seeded with
+    huge embedded license texts, can produce a multi-GiB JSON. ``json.load``
+    fully materialises the document in memory, so an unbounded result is an OOM
+    vector for the worker. Before deserializing we ``stat()`` the file and skip
+    parsing (returning zero detections, a degraded-but-non-fatal outcome) when
+    it exceeds this ceiling. Default 256 MiB. Read at call time (rule #11).
+    """
+    return int(os.getenv("SCANCODE_MAX_RESULT_BYTES", str(256 * 1024 * 1024)))
 
 
 def workspace_root() -> str:
