@@ -24,10 +24,11 @@ from pathlib import Path
 from typing import Any
 
 import structlog
+from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from core.config import workspace_root
+from core.config import scan_soft_time_limit_seconds, workspace_root
 from core.db import sync_session_scope
 from integrations import trivy as trivy_adapter
 from integrations._size_guard import enforce_jsonb_row_size_limit
@@ -56,10 +57,12 @@ _STAGE_PROGRESS: dict[str, int] = {
 }
 
 
+# PR-A1 (scan stability): time limits are passed per dispatch by
+# ``tasks.enqueue_scan`` (read from env at call time, rule #11) rather than
+# pinned on the decorator. See ``tasks.scan_source.scan_source_task`` for the
+# full rationale.
 @celery_app.task(  # type: ignore[misc]
     name="trustedoss.scan_container",
-    soft_time_limit=3600,
-    time_limit=4200,
     bind=True,
 )
 def scan_container_task(self: Any, scan_id: str) -> None:
@@ -98,6 +101,16 @@ def scan_container_task(self: Any, scan_id: str) -> None:
             _mark_running(session, scan)
 
         _run_pipeline(scan_uuid=scan_uuid, image_ref=image_ref, workspace=workspace)
+    except SoftTimeLimitExceeded:
+        # PR-A1: Trivy (or a future container stage) exceeded
+        # SCAN_SOFT_TIME_LIMIT_SECONDS. Mark failed with a clear message; the
+        # shared `finally` reclaims the workspace. Caught before the bare
+        # `Exception` handler so the timeout message is not masked.
+        soft_limit = scan_soft_time_limit_seconds()
+        log.warning("scan_timed_out", scan_id=str(scan_uuid), soft_limit_seconds=soft_limit)
+        _record_terminal_failure(
+            scan_uuid, f"scan exceeded the time limit ({soft_limit}s)"
+        )
     except Exception as exc:
         log.exception("scan_container_unhandled_error")
         _record_terminal_failure(scan_uuid, f"unexpected error: {exc}")

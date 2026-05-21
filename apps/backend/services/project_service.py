@@ -28,7 +28,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.audit import audit_context
+from core.audit import bind_audit_team as _bind_audit_team
 from core.security import CurrentUser
 from models import Project
 from schemas.scan import ProjectCreate, ProjectUpdate
@@ -66,13 +66,6 @@ class ProjectForbidden(ProjectError):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _bind_audit_team(team_id: uuid.UUID) -> None:
-    """Attach team_id to the audit ContextVar so audit rows pick it up."""
-    ctx = dict(audit_context.get() or {})
-    ctx["team_id"] = str(team_id)
-    audit_context.set(ctx)
 
 
 from core.authz import assert_team_access  # noqa: E402

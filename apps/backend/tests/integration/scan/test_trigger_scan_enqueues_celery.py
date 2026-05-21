@@ -9,9 +9,11 @@ What we pin:
     a clear `error_message`, and the service raises ScanEnqueueFailed (503).
 
 The Celery dispatcher is monkeypatched at the import site — tests do not
-need a real broker. We patch `tasks.scan_source.scan_source_task.delay` so
-the dispatcher's branch logic (kind='source') runs end-to-end while skipping
-the actual broker round-trip.
+need a real broker. We patch `services.scan_service.enqueue_scan` so the
+trigger_scan ↔ dispatcher contract runs end-to-end while skipping the actual
+broker round-trip. (PR-A1 switched the underlying dispatch from `.delay` to
+`.apply_async(soft_time_limit=..., time_limit=...)` so scan tasks are
+time-boxed; that detail lives in `tasks.enqueue_scan`, not here.)
 """
 
 from __future__ import annotations

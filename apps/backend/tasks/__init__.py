@@ -38,6 +38,23 @@ def enqueue_scan(scan: Scan) -> str:
     value and commit. We deliberately do NOT mutate the ORM row here so the
     service layer remains in control of the transaction boundary.
 
+    PR-A1 (scan stability): the two scan tasks are time-boxed so a hung
+    cdxgen / scancode / Trivy step cannot pin a worker slot forever. We pass
+    ``soft_time_limit`` + ``time_limit`` per dispatch via ``apply_async`` —
+    NOT as a global Celery conf or import-time decorator constant — so:
+
+      1. Only scan tasks get the limit (notifications / backups / DT tasks
+         are unaffected — see ``tasks.celery_app``).
+      2. The env vars are read at call time (CLAUDE.md core rule #11): an
+         operator retunes ``SCAN_SOFT_TIME_LIMIT_SECONDS`` /
+         ``SCAN_HARD_TIME_LIMIT_SECONDS`` and the next dispatch picks it up
+         without a worker rebuild.
+
+    The soft limit is the primary mechanism: it raises
+    :class:`celery.exceptions.SoftTimeLimitExceeded` inside the task so it can
+    clean up the workspace and mark the scan ``failed``. The hard limit is the
+    SIGKILL safety net for a task that ignores the soft signal.
+
     Raises:
         ValueError: when ``scan.kind`` is not a known scan kind. The DB
             ENUM ``scan_kind`` already restricts values, so this is a
@@ -45,14 +62,29 @@ def enqueue_scan(scan: Scan) -> str:
     """
     # Local imports avoid pulling Celery (and Redis) into modules that only
     # need the type hint, e.g. schemas / pure unit tests of the service layer.
+    from core.config import (
+        scan_hard_time_limit_seconds,
+        scan_soft_time_limit_seconds,
+    )
     from tasks.scan_container import scan_container_task
     from tasks.scan_source import scan_source_task
 
     scan_id = str(scan.id)
+    # Read both env-driven limits at dispatch time (rule #11).
+    soft_limit = scan_soft_time_limit_seconds()
+    hard_limit = scan_hard_time_limit_seconds()
     if scan.kind == "source":
-        async_result = scan_source_task.delay(scan_id)
+        async_result = scan_source_task.apply_async(
+            args=(scan_id,),
+            soft_time_limit=soft_limit,
+            time_limit=hard_limit,
+        )
     elif scan.kind == "container":
-        async_result = scan_container_task.delay(scan_id)
+        async_result = scan_container_task.apply_async(
+            args=(scan_id,),
+            soft_time_limit=soft_limit,
+            time_limit=hard_limit,
+        )
     else:
         raise ValueError(f"unknown scan.kind={scan.kind!r}")
     return str(async_result.id)

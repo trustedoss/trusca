@@ -41,6 +41,9 @@ _TASK_INCLUDES = [
     "tasks.notify",
     # Phase 6 chore PR #19 — automated backup + restore tasks.
     "tasks.backup",
+    # PR-A1 (scan stability) — reclaim workspaces left by cancelled / killed /
+    # crashed scans whose `finally: rmtree` did not run.
+    "tasks.workspace_cleaner",
 ]
 
 
@@ -71,6 +74,14 @@ def _build_beat_schedule() -> dict[str, dict[str, object]]:
             "task": "trustedoss.dt_orphan_cleaner",
             "schedule": _schedule(timedelta(hours=6)),
         },
+        # PR-A1 (scan stability) — reclaim orphaned scan workspaces every
+        # 30 minutes. Cheap (one stat() per dir + a single bounded SELECT),
+        # frequent enough that a SIGKILL/cancel orphan never lingers long
+        # enough to threaten the disk hard limit.
+        "workspace-cleaner-half-hourly": {
+            "task": "trustedoss.workspace_cleaner",
+            "schedule": _schedule(timedelta(minutes=30)),
+        },
         # Phase 6 chore PR #19 — daily auto-backup at 00:00 UTC. The task
         # itself applies a 7-day retention pass to ``auto-*`` backups after
         # writing the new artifact; manual backups are never auto-pruned.
@@ -94,6 +105,14 @@ def create_celery_app() -> Celery:
         task_acks_late=True,
         task_reject_on_worker_lost=True,
         worker_prefetch_multiplier=1,
+        # PR-A1 (scan stability): do NOT set a GLOBAL task time limit here.
+        # A global ``task_soft_time_limit`` / ``task_time_limit`` would also
+        # cap notification / backup / DT tasks, which is wrong — a 1-hour
+        # ceiling on a Slack webhook is meaningless and a backup of a large
+        # DB can legitimately run longer than a scan. Scan tasks instead
+        # receive their limits per-dispatch in ``tasks.enqueue_scan`` (read
+        # from env at call time per CLAUDE.md rule #11) so only the two scan
+        # tasks are time-boxed.
         task_default_queue="trustedoss.default",
         timezone="UTC",
         enable_utc=True,
