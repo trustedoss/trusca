@@ -301,6 +301,61 @@ def test_scan_create_rejects_unknown_field() -> None:
 
 
 # ---------------------------------------------------------------------------
+# ScanCreate — source_type / archive_id (feat/zip-upload)
+# ---------------------------------------------------------------------------
+
+
+def test_scan_create_defaults_source_type_to_git() -> None:
+    """Legacy payloads omit source_type entirely — must still validate (git)."""
+    from schemas.scan import ScanCreate
+
+    scan = ScanCreate(metadata={"git_ref": "main"})
+    assert scan.metadata.get("source_type", "git") == "git"
+
+
+def test_scan_create_accepts_explicit_git_source_type() -> None:
+    from schemas.scan import ScanCreate
+
+    scan = ScanCreate(metadata={"source_type": "git"})
+    assert scan.metadata["source_type"] == "git"
+
+
+def test_scan_create_accepts_upload_with_archive_id() -> None:
+    from schemas.scan import ScanCreate
+
+    scan = ScanCreate(
+        metadata={"source_type": "upload", "archive_id": "abc-123"},
+    )
+    assert scan.metadata["source_type"] == "upload"
+    assert scan.metadata["archive_id"] == "abc-123"
+
+
+@pytest.mark.parametrize("bad", ["UPLOAD", "git ", "container", "local", "", "ftp"])
+def test_scan_create_rejects_unknown_source_type(bad: str) -> None:
+    from schemas.scan import ScanCreate
+
+    with pytest.raises(ValidationError):
+        ScanCreate(metadata={"source_type": bad})
+
+
+@pytest.mark.parametrize(
+    "meta",
+    [
+        {"source_type": "upload"},  # archive_id missing
+        {"source_type": "upload", "archive_id": ""},  # blank
+        {"source_type": "upload", "archive_id": "   "},  # whitespace only
+        {"source_type": "upload", "archive_id": 123},  # not a string
+        {"source_type": "upload", "archive_id": None},  # null
+    ],
+)
+def test_scan_create_upload_requires_valid_archive_id(meta: dict[str, Any]) -> None:
+    from schemas.scan import ScanCreate
+
+    with pytest.raises(ValidationError):
+        ScanCreate(metadata=meta)
+
+
+# ---------------------------------------------------------------------------
 # ProjectPublic — ORM round-trip
 # ---------------------------------------------------------------------------
 

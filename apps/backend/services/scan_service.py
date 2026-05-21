@@ -28,6 +28,10 @@ from core.pii_mask import mask_pii
 from core.security import CurrentUser
 from models import Project, Scan
 from schemas.scan import ScanCreate
+from services.source_archive_service import (
+    SourceArchiveError,
+    resolve_existing_archive,
+)
 from tasks import enqueue_scan
 
 log = structlog.get_logger("scan.service")
@@ -87,6 +91,17 @@ class ProjectMissingForScan(ScanError):
 
     status_code = 404
     title = "Project Not Found"
+
+
+class ScanArchiveMissing(ScanError):
+    """An upload-source scan referenced an archive_id with no file on disk.
+
+    Maps to 404 so CI / UI callers learn the zip must be (re-)uploaded via
+    POST /v1/projects/{id}/source-archive before retriggering the scan.
+    """
+
+    status_code = 404
+    title = "Source Archive Not Found"
 
 
 # ---------------------------------------------------------------------------
@@ -202,6 +217,20 @@ async def trigger_scan(
         raise ScanForbidden(
             f"actor is not a member of team {project.team_id}",
         )
+
+    # feat/zip-upload: when the scan asks for an uploaded source archive,
+    # verify the file exists on disk *before* we enqueue. Otherwise the worker
+    # would dequeue, fail to find the archive, and the user sees a delayed
+    # failure instead of an immediate 404. The schema layer already guaranteed
+    # archive_id is a non-empty string when source_type == "upload".
+    if payload.metadata.get("source_type") == "upload":
+        archive_id = str(payload.metadata.get("archive_id", ""))
+        try:
+            resolve_existing_archive(project.id, archive_id)
+        except SourceArchiveError as exc:
+            # ArchiveNotFound (404) — surface as a 404 scan error so the caller
+            # learns the archive must be (re-)uploaded.
+            raise ScanArchiveMissing(str(exc)) from exc
 
     # Phase 6 PR #19 — disk guard. Reject the scan up front when the
     # workspace volume is past DISK_HARD_LIMIT_PCT so the operator does
@@ -443,6 +472,7 @@ async def list_scans_for_actor(
 
 __all__ = [
     "ProjectMissingForScan",
+    "ScanArchiveMissing",
     "ScanEnqueueFailed",
     "ScanError",
     "ScanForbidden",

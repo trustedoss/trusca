@@ -32,7 +32,7 @@ from __future__ import annotations
 import uuid
 
 import structlog
-from fastapi import APIRouter, Depends, Query, Request, Response, status
+from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.db import get_db
@@ -51,6 +51,7 @@ from schemas.scan import (
     ProjectUpdate,
     ScanCreate,
     ScanPublic,
+    SourceArchiveUploadResponse,
 )
 from services.project_detail_service import (
     get_project_overview,
@@ -67,6 +68,14 @@ from services.project_service import (
 from services.scan_service import (
     ScanError,
     trigger_scan,
+)
+from services.source_archive_service import (
+    ArchiveTooLarge,
+    SourceArchiveError,
+    save_uploaded_archive,
+)
+from services.source_archive_service import (
+    _max_upload_bytes as _source_archive_max_upload_bytes,
 )
 
 router = APIRouter(prefix="/v1/projects", tags=["projects"])
@@ -94,6 +103,34 @@ def _problem_for_scan_error(request: Request, exc: ScanError) -> Response:
         detail=str(exc) or exc.title,
         instance=request.url.path,
     )
+
+
+def _problem_for_archive_error(request: Request, exc: SourceArchiveError) -> Response:
+    return problem_response(
+        status_code=exc.status_code,
+        title=exc.title,
+        detail=str(exc) or exc.title,
+        instance=request.url.path,
+        type_=exc.type_uri,
+    )
+
+
+def _declared_content_length(request: Request) -> int | None:
+    """Parse the request's ``Content-Length`` header, or ``None`` if absent/bad.
+
+    A multipart upload's Content-Length covers the whole envelope (part headers
+    + boundaries), so it is always >= the file body — a safe over-estimate for
+    an early-reject ceiling. A malformed value is treated as absent (the
+    streamed-bytes guard in the service is the real cap).
+    """
+    raw = request.headers.get("content-length")
+    if raw is None:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    return value if value >= 0 else None
 
 
 # ---------------------------------------------------------------------------
@@ -397,5 +434,65 @@ async def trigger_scan_endpoint(
         # name) rather than `scan_metadata` (the ORM attribute name).
         content=body.model_dump_json(by_alias=True),
         status_code=status.HTTP_202_ACCEPTED,
+        media_type="application/json",
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /v1/projects/{project_id}/source-archive
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/{project_id}/source-archive",
+    response_model=SourceArchiveUploadResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Upload a .zip of local source for scanning (auth required, role >= developer)",
+)
+async def upload_source_archive_endpoint(
+    request: Request,
+    project_id: uuid.UUID,
+    upload: UploadFile = File(..., description="A .zip archive of the project source tree."),
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_role("developer")),
+) -> Response:
+    # M2-fix (security review): reject before streaming a single body byte when
+    # the declared Content-Length already exceeds the per-upload cap. The
+    # service layer still enforces the cap on the *actual* streamed bytes (a
+    # client can lie about / omit Content-Length), so this is a fast-fail
+    # courtesy that avoids buffering an oversized multipart body — not the
+    # authoritative guard. A genuine edge cap (Traefik) is a devops follow-up.
+    declared = _declared_content_length(request)
+    if declared is not None and declared > _source_archive_max_upload_bytes():
+        return _problem_for_archive_error(
+            request,
+            ArchiveTooLarge(
+                f"declared content-length {declared} exceeds the "
+                f"{_source_archive_max_upload_bytes()}-byte upload limit"
+            ),
+        )
+
+    # The service layer can raise:
+    #   - ArchiveProjectNotFound   (404) — project missing OR in another team
+    #                                       (existence-hide; never 403)
+    #   - ArchiveUnsupportedType   (415) — bad extension / content-type / magic
+    #   - ArchiveTooLarge          (413) — body exceeds SOURCE_ARCHIVE_MAX_BYTES
+    #   - ArchiveQuotaExceeded     (507) — project archive storage budget full
+    #   - ArchiveInvalid           (400) — empty / truncated / unwritable
+    # All carry a `type_uri` so the RFC 7807 envelope gets a stable problem URI.
+    try:
+        archive_id = await save_uploaded_archive(
+            session,
+            project_id=project_id,
+            upload=upload,
+            actor=actor,
+        )
+    except SourceArchiveError as exc:
+        return _problem_for_archive_error(request, exc)
+
+    body = SourceArchiveUploadResponse(archive_id=archive_id)
+    return Response(
+        content=body.model_dump_json(),
+        status_code=status.HTTP_201_CREATED,
         media_type="application/json",
     )

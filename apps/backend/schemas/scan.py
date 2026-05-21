@@ -70,6 +70,11 @@ _GIT_URL_PATTERN = re.compile(
 _SCAN_METADATA_MAX_BYTES = 16 * 1024
 _SCAN_METADATA_MAX_DEPTH = 4
 
+# feat/zip-upload: how the worker materialises the source tree.
+#   - "git"    (default / backward-compatible): clone project.git_url
+#   - "upload": extract a previously-uploaded zip identified by archive_id
+_SCAN_SOURCE_TYPES = frozenset({"git", "upload"})
+
 
 def _measure_metadata_depth(value: Any, *, _level: int = 0) -> int:
     """Return the maximum nesting depth of `value` (scalars = 0)."""
@@ -275,13 +280,18 @@ class ScanCreate(BaseModel):
     @field_validator("metadata")
     @classmethod
     def _validate_metadata(cls, value: dict[str, Any]) -> dict[str, Any]:
-        """Bound the metadata blob in two dimensions (M-2).
+        """Bound the metadata blob in two dimensions (M-2) + validate source_type.
 
         - Serialized JSON byte size must be <= 16 KiB. We measure with
           ``json.dumps(..., separators=(",", ":"))`` (compact form) so the
           number we cap on matches what gets stored on disk most closely.
         - Nested depth must be <= 4. Walk the tree once to compute the max
           level; cheap for any reasonable input.
+        - ``source_type`` (feat/zip-upload) selects how the worker fetches the
+          source. Defaults to ``"git"`` for backward compatibility (existing
+          callers omit the key entirely). When ``"upload"`` is given, an
+          ``archive_id`` string is required so the worker knows which uploaded
+          zip to extract.
         """
         # Depth check first — a shallow but huge dict still gets caught by
         # the size check, but a deeply nested attacker payload should fail
@@ -292,6 +302,22 @@ class ScanCreate(BaseModel):
                 f"metadata nests {depth} levels deep; the maximum allowed is"
                 f" {_SCAN_METADATA_MAX_DEPTH}",
             )
+
+        # source_type / archive_id contract. Absent key == "git" so legacy
+        # payloads keep working without change.
+        source_type = value.get("source_type", "git")
+        if source_type not in _SCAN_SOURCE_TYPES:
+            raise ValueError(
+                "metadata.source_type must be one of"
+                f" {sorted(_SCAN_SOURCE_TYPES)}; got {source_type!r}",
+            )
+        if source_type == "upload":
+            archive_id = value.get("archive_id")
+            if not isinstance(archive_id, str) or not archive_id.strip():
+                raise ValueError(
+                    "metadata.archive_id (str) is required when"
+                    " source_type == 'upload'",
+                )
 
         try:
             encoded = json.dumps(value, separators=(",", ":"), default=str)
@@ -339,6 +365,23 @@ class ScanPublic(BaseModel):
     )
     created_at: datetime
     updated_at: datetime
+
+
+class SourceArchiveUploadResponse(BaseModel):
+    """Outbound shape for POST /v1/projects/{project_id}/source-archive.
+
+    The opaque ``archive_id`` is later echoed into ``ScanCreate.metadata`` as
+    ``{"source_type": "upload", "archive_id": "<id>"}`` to scan the uploaded
+    source instead of cloning a git URL.
+    """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {"archive_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479"},
+        },
+    )
+
+    archive_id: str
 
 
 class ScanListResponse(BaseModel):

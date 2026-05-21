@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
@@ -22,9 +22,9 @@ import {
   type ProjectStatusFilter,
 } from "@/features/projects/components/ProjectListToolbar";
 import { ScanProgress } from "@/features/scan/ScanProgress";
+import { SourceSelectDialog } from "@/features/scan/SourceSelectDialog";
 import {
   listProjects,
-  triggerScan,
   type ProjectPublic,
   type ScanPublic,
 } from "@/lib/projectsApi";
@@ -47,6 +47,11 @@ interface ScanDrawerState {
   open: boolean;
   scanId: string | null;
   projectName: string | null;
+}
+
+interface SourceDialogState {
+  open: boolean;
+  project: ProjectPublic | null;
 }
 
 function compareByName(a: ProjectPublic, b: ProjectPublic): number {
@@ -92,7 +97,6 @@ function statusFilterMatches(
 
 export function ProjectListPage() {
   const { t } = useTranslation("projects");
-  const queryClient = useQueryClient();
 
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
@@ -102,6 +106,10 @@ export function ProjectListPage() {
     open: false,
     scanId: null,
     projectName: null,
+  });
+  const [sourceDialog, setSourceDialog] = useState<SourceDialogState>({
+    open: false,
+    project: null,
   });
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -136,30 +144,20 @@ export function ProjectListPage() {
     return [...filtered].sort(sorter);
   }, [items, debouncedQuery, statusFilter, sort]);
 
-  const triggerScanMutation = useMutation<
-    { scan: ScanPublic; project: ProjectPublic },
-    Error,
-    ProjectPublic
-  >({
-    mutationFn: async (project) => {
-      const scan = await triggerScan(project.id, { kind: "source" });
-      return { scan, project };
-    },
-    onSuccess: ({ scan, project }) => {
-      setScanDrawer({
-        open: true,
-        scanId: scan.id,
-        projectName: project.name,
-      });
-      // Invalidate so the list reflects the new latest_scan_id once the
-      // backend persists it. Stale time is 30s by default — call again
-      // explicitly so the user sees the change quickly.
-      void queryClient.invalidateQueries({ queryKey: ["projects"] });
-    },
-  });
+  function handleScanStarted(scan: ScanPublic, project: ProjectPublic) {
+    setScanDrawer({
+      open: true,
+      scanId: scan.id,
+      projectName: project.name,
+    });
+  }
 
   function handleCloseDrawer() {
     setScanDrawer((s) => ({ ...s, open: false }));
+  }
+
+  function handleOpenSourceDialog(project: ProjectPublic) {
+    setSourceDialog({ open: true, project });
   }
 
   const isLoading = projectsQuery.isLoading;
@@ -238,11 +236,7 @@ export function ProjectListPage() {
               itemContent={(index, project) => (
                 <ProjectRow
                   project={project}
-                  onScan={() => triggerScanMutation.mutate(project)}
-                  isPending={
-                    triggerScanMutation.isPending &&
-                    triggerScanMutation.variables?.id === project.id
-                  }
+                  onScan={() => handleOpenSourceDialog(project)}
                   rowIndex={index}
                 />
               )}
@@ -251,15 +245,15 @@ export function ProjectListPage() {
         ) : null}
       </main>
 
-      {triggerScanMutation.isError ? (
-        <div
-          className="fixed bottom-4 right-4 z-50 max-w-sm"
-          data-testid="project-list-trigger-error"
-        >
-          <Alert variant="destructive">
-            <AlertDescription>{t("errors.trigger_failed")}</AlertDescription>
-          </Alert>
-        </div>
+      {sourceDialog.project ? (
+        <SourceSelectDialog
+          open={sourceDialog.open}
+          onOpenChange={(open) =>
+            setSourceDialog((s) => ({ ...s, open }))
+          }
+          project={sourceDialog.project}
+          onScanStarted={handleScanStarted}
+        />
       ) : null}
 
       <Sheet
@@ -292,11 +286,10 @@ export function ProjectListPage() {
 interface ProjectRowProps {
   project: ProjectPublic;
   onScan: () => void;
-  isPending: boolean;
   rowIndex: number;
 }
 
-function ProjectRow({ project, onScan, isPending, rowIndex }: ProjectRowProps) {
+function ProjectRow({ project, onScan, rowIndex }: ProjectRowProps) {
   const { t } = useTranslation("projects");
   return (
     <div
@@ -332,7 +325,6 @@ function ProjectRow({ project, onScan, isPending, rowIndex }: ProjectRowProps) {
         variant="outline"
         size="sm"
         onClick={onScan}
-        disabled={isPending}
         data-testid="project-row-scan"
         data-project-name={project.name}
       >

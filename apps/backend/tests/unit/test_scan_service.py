@@ -439,3 +439,80 @@ async def test_list_scans_for_project_orders_most_recent_first(
     assert ids[0] == s3.id
     assert ids[1] == s2.id
     assert ids[2] == s1.id
+
+
+# ---------------------------------------------------------------------------
+# trigger_scan — upload source type (feat/zip-upload)
+# ---------------------------------------------------------------------------
+
+
+async def test_trigger_scan_upload_missing_archive_raises_404(
+    db_session: AsyncSession,
+) -> None:
+    """source_type='upload' with no archive file on disk must 404 before enqueue."""
+    from schemas.scan import ScanCreate
+    from services.scan_service import ScanArchiveMissing, trigger_scan
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    user = await make_user(db_session)
+    await make_membership(db_session, user=user, team=team, role="developer")
+    project = await make_project(db_session, team=team)
+    actor = principal_for(user, team_ids=[team.id], role="developer")
+
+    with pytest.raises(ScanArchiveMissing) as ei:
+        await trigger_scan(
+            db_session,
+            project_id=project.id,
+            payload=ScanCreate(
+                kind="source",
+                metadata={"source_type": "upload", "archive_id": str(uuid.uuid4())},
+            ),
+            actor=actor,
+        )
+    assert ei.value.status_code == 404
+
+
+async def test_trigger_scan_upload_with_existing_archive_queues(
+    db_session: AsyncSession,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An uploaded archive that exists on disk lets the upload scan queue."""
+    import zipfile
+
+    from schemas.scan import ScanCreate
+    from services.scan_service import trigger_scan
+    from services.source_archive_service import archive_path
+
+    monkeypatch.setenv("WORKSPACE_HOST_PATH", str(tmp_path))
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    user = await make_user(db_session)
+    await make_membership(db_session, user=user, team=team, role="developer")
+    project = await make_project(db_session, team=team)
+    actor = principal_for(user, team_ids=[team.id], role="developer")
+
+    archive_id = uuid.uuid4()
+    path = archive_path(project.id, str(archive_id))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    import io as _io
+
+    buf = _io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("src/main.py", b"print('hi')\n")
+    path.write_bytes(buf.getvalue())
+
+    scan = await trigger_scan(
+        db_session,
+        project_id=project.id,
+        payload=ScanCreate(
+            kind="source",
+            metadata={"source_type": "upload", "archive_id": str(archive_id)},
+        ),
+        actor=actor,
+    )
+    assert scan.status == "queued"
+    assert scan.scan_metadata["source_type"] == "upload"
+    assert scan.scan_metadata["archive_id"] == str(archive_id)

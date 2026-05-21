@@ -70,6 +70,12 @@ from models import (
     ScanComponent,
     VulnerabilityFinding,
 )
+from services.source_archive_service import (
+    SourceArchiveError,
+    delete_archive,
+    resolve_existing_archive,
+    safe_extract_archive,
+)
 from tasks._progress import publish_progress
 from tasks.celery_app import celery_app
 
@@ -139,6 +145,12 @@ def scan_source_task(self: Any, scan_id: str) -> None:
             _reset_scan_for_rerun(session, scan)
             _mark_running(session, scan)
             project_git_url = project.git_url
+            # feat/zip-upload: snapshot the scan_metadata blob while the row is
+            # session-attached. After the `with` block the ORM attribute is
+            # expired and touching it would trigger a sync lazy-load on the
+            # async engine. A plain dict copy is safe to carry into the
+            # pipeline.
+            scan_metadata = dict(scan.scan_metadata or {})
 
         # Run the pipeline outside the first session so each stage commits
         # its own progress update without holding a long-lived transaction.
@@ -147,6 +159,7 @@ def scan_source_task(self: Any, scan_id: str) -> None:
             project_id=project.id,
             workspace=workspace,
             git_url=project_git_url,
+            scan_metadata=scan_metadata,
         )
     except _FetchAborted as exc:
         # SSRF guard / fetch refused the project URL — terminal, not a
@@ -183,6 +196,7 @@ def _run_pipeline(
     project_id: uuid.UUID,
     workspace: Path,
     git_url: str | None,
+    scan_metadata: dict[str, Any] | None = None,
 ) -> None:
     """Execute the scan stages, each with its own commit."""
     # Stage 1 — bootstrap workspace.
@@ -195,6 +209,8 @@ def _run_pipeline(
         scan_uuid=scan_uuid,
         workspace=workspace,
         git_url=git_url,
+        project_id=project_id,
+        scan_metadata=scan_metadata or {},
         mock_only=False,
     )
 
@@ -307,36 +323,48 @@ def _fetch_source(
     scan_uuid: uuid.UUID,
     workspace: Path,
     git_url: str | None,
+    project_id: uuid.UUID | None = None,
+    scan_metadata: dict[str, Any] | None = None,
     mock_only: bool = True,
 ) -> Path:
-    """Stage 2 fetch — placeholder today, IP-pinned ``git clone`` tomorrow.
+    """Stage 2 fetch — git clone (default) or uploaded-zip extraction.
 
-    Behaviour today (Phase 2 PR #9):
+    Source selection (feat/zip-upload): ``scan_metadata["source_type"]`` picks
+    the strategy. Absent / ``"git"`` keeps the existing git-clone path;
+    ``"upload"`` extracts a previously-uploaded zip identified by
+    ``scan_metadata["archive_id"]`` through :func:`safe_extract_archive`
+    (zip-slip / zip-bomb / symlink hardened) into ``source/``.
+
+    Git behaviour (when ``mock_only=False``):
         - Validate ``git_url`` via :func:`validate_git_url_with_ip` so a
           worker that runs minutes after schema validation re-checks the
-          host. This closes I-1 (DNS rebinding TOCTOU) at the worker
-          boundary even though the actual clone is still mocked.
-        - Materialise an empty ``source/`` directory + placeholder file so
-          downstream stages have something to point at.
-
-    Behaviour tomorrow (when ``mock_only=False``):
+          host. This closes I-1 (DNS rebinding TOCTOU) at the worker boundary.
         - Spawn ``git -c http.curloptResolve=<host>:443:<resolved_ip> clone``
           with the validated URL. Pinning the resolved IP at the libcurl
           layer means even if the DNS for the host has rotated to an
           internal address since validation, the connection lands on the
           public IP we already screened.
 
-    The dead-code clone branch is intentionally written out (rather than
-    a TODO comment) so the IP-pin wiring is reviewable today and dropping
-    a real ``subprocess.run`` call into it later is a one-line change.
-
     Raises:
-        _FetchAborted: when the URL fails the SSRF guard. The task body
-            catches this and transitions the scan to ``failed`` with a
-            human-readable message — same termination path as DT errors.
+        _FetchAborted: when the URL fails the SSRF guard, or when an uploaded
+            archive is missing / fails a safety check. The task body catches
+            this and transitions the scan to ``failed`` with a human-readable,
+            credential-free message — same termination path as DT errors.
     """
     source_dir = workspace / "source"
     source_dir.mkdir(parents=True, exist_ok=True)
+
+    metadata = scan_metadata or {}
+    source_type = metadata.get("source_type", "git")
+
+    # feat/zip-upload: extract an uploaded archive instead of cloning.
+    if source_type == "upload":
+        return _fetch_uploaded_archive(
+            scan_uuid=scan_uuid,
+            source_dir=source_dir,
+            project_id=project_id,
+            archive_id=str(metadata.get("archive_id", "")),
+        )
 
     # Backward-compat path: PR #7/#8 allowed Projects with a NULL git_url
     # (the schema column is still nullable). Refusing those rows would
@@ -438,6 +466,73 @@ def _fetch_source(
         raise _FetchAborted(
             f"git clone exited {completed.returncode}: {completed.stderr.strip()[:500]}"
         )
+    return source_dir
+
+
+def _fetch_uploaded_archive(
+    *,
+    scan_uuid: uuid.UUID,
+    source_dir: Path,
+    project_id: uuid.UUID | None,
+    archive_id: str,
+) -> Path:
+    """Materialise an uploaded zip into ``source_dir`` (feat/zip-upload).
+
+    Resolution + extraction both run inside the worker, never trusting the
+    queued metadata: ``archive_id`` is re-parsed as a UUID by
+    :func:`resolve_existing_archive`, and :func:`safe_extract_archive` rejects
+    zip-slip / zip-bomb / symlink members before any byte lands in the
+    workspace.
+
+    Raises:
+        _FetchAborted: archive missing on disk, or the archive failed a safety
+            check. The message is credential-free and surfaces on the scan row.
+    """
+    if project_id is None:
+        raise _FetchAborted("upload source scan is missing its project id")
+
+    try:
+        zip_path = resolve_existing_archive(project_id, archive_id)
+    except SourceArchiveError as exc:
+        log.warning(
+            "scan_source_fetch_archive_missing",
+            scan_id=str(scan_uuid),
+            project_id=str(project_id),
+            error=str(exc),
+        )
+        raise _FetchAborted(f"uploaded archive unavailable: {exc}") from exc
+
+    try:
+        safe_extract_archive(archive_path=zip_path, target_dir=source_dir)
+    except SourceArchiveError as exc:
+        # ArchiveExtractionRejected (zip slip/bomb/symlink) or ArchiveInvalid
+        # (corrupt zip). Either way the scan terminates; the message never
+        # echoes archive contents. H-fix (part a): a rejected archive is dead
+        # weight — delete it here too so a hostile / corrupt upload cannot sit
+        # on the volume forever (it can never produce a successful scan).
+        deleted = delete_archive(project_id, archive_id)
+        log.warning(
+            "scan_source_fetch_archive_rejected",
+            scan_id=str(scan_uuid),
+            project_id=str(project_id),
+            archive_deleted=deleted,
+            error=str(exc),
+        )
+        raise _FetchAborted(f"uploaded archive rejected: {exc}") from exc
+
+    # H-fix (part a): the archive has been fully extracted into the workspace;
+    # the source of truth from here on is ``source_dir``. Delete the saved zip
+    # so it does not accumulate on the workspace volume after every scan
+    # (disk-exhaustion DoS). Best-effort — a failed unlink is swept by the
+    # retention beat. We never trust info from the queued metadata for the
+    # path: ``delete_archive`` re-validates ``archive_id`` as a UUID.
+    deleted = delete_archive(project_id, archive_id)
+    log.info(
+        "scan_source_fetch_archive_extracted",
+        scan_id=str(scan_uuid),
+        project_id=str(project_id),
+        archive_deleted=deleted,
+    )
     return source_dir
 
 

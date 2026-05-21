@@ -37,6 +37,8 @@ _TASK_INCLUDES = [
     "tasks.dt_orphan_cleaner",
     "tasks.dt_orphan_cleanup",
     "tasks.dt_health",
+    # feat/zip-upload (security H-fix) — stale uploaded-archive retention sweep.
+    "tasks.source_archive_cleaner",
     # Phase 6 PR #18 — multi-channel notification fan-out (email/Slack/Teams).
     "tasks.notify",
     # Phase 6 chore PR #19 — automated backup + restore tasks.
@@ -69,6 +71,13 @@ def _build_beat_schedule() -> dict[str, dict[str, object]]:
         },
         "dt-orphan-cleaner-six-hourly": {
             "task": "trustedoss.dt_orphan_cleaner",
+            "schedule": _schedule(timedelta(hours=6)),
+        },
+        # feat/zip-upload (security H-fix) — reclaim abandoned / orphaned
+        # uploaded archives every 6h so a looped-upload DoS or a
+        # SIGKILL-before-extract leak cannot fill the workspace volume.
+        "source-archive-cleaner-six-hourly": {
+            "task": "trustedoss.source_archive_cleaner",
             "schedule": _schedule(timedelta(hours=6)),
         },
         # Phase 6 chore PR #19 — daily auto-backup at 00:00 UTC. The task
