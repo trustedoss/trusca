@@ -426,6 +426,41 @@ async def test_notice_markdown_format_uses_text_markdown_media_type(client) -> N
     assert f"## {spdx}" in body
 
 
+async def test_notice_html_format_uses_text_html_media_type(client) -> None:
+    _, team, user = await _seed_team_with_user(client)
+    project_id, scan_id, _ = await _seed_scanned_project(client, team_id=team.id)
+    spdx = f"OBL-HT-MIT-{uuid.uuid4().hex[:8]}"
+    await _seed_obligation(client, scan_id=scan_id, spdx_id=spdx, kind="attribution")
+    headers = _bearer_for(user)
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/notice",
+        headers=headers,
+        params={"format": "html", "download": "true"},
+    )
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    # download=true → attachment with the .html extension.
+    disposition = response.headers["content-disposition"]
+    assert disposition.startswith("attachment")
+    assert ".html" in disposition
+    body = response.text
+    assert body.startswith("<!DOCTYPE html>")
+    assert f"<h2>{spdx}" in body
+
+
+async def test_notice_invalid_format_is_rejected_by_query_validation(client) -> None:
+    """The ``format`` query is constrained to text|markdown|html (422 else)."""
+    _, team, user = await _seed_team_with_user(client)
+    project_id, _, _ = await _seed_scanned_project(client, team_id=team.id)
+    response = await client.get(
+        f"/v1/projects/{project_id}/notice",
+        headers=_bearer_for(user),
+        params={"format": "pdf"},
+    )
+    assert response.status_code == 422
+
+
 async def test_notice_download_attaches_filename_with_safe_token(client) -> None:
     """`download=true` adds an RFC 6266 ``Content-Disposition: attachment``
     header with both the ASCII ``filename="NOTICE-<token>.txt"`` fallback
