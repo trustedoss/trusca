@@ -19,6 +19,33 @@ status: ready
 - 직전 세션 산출 PR (머지 대기): **#94 (`fix/scan-pipeline-e2e-bugs`)** — fixtures e2e가 발견한 실제 버그 3건.
 - fixtures e2e 조사 결과: `docs/sessions/2026-05-22-fixtures-scan-results.md` (별도 배치 세션 산출).
 
+## 0.5 ⚠️ 병행 실행 제약 (배치 세션과 동시 진행 시)
+
+이 구현 세션은 fixtures e2e **배치 조사 세션과 병행**될 수 있다(시간 절약 목적).
+같은 로컬 환경을 공유하므로 아래를 반드시 지킨다:
+
+1. **git worktree 필수** — `claude --worktree`(또는 EnterWorktree)로 별도
+   작업트리+브랜치에서 작업한다. 같은 작업트리를 공유하면 브랜치 전환·파일
+   수정이 배치 세션과 충돌한다.
+
+2. **dev 스택(backend/worker/DT/Postgres/Redis)은 배치 세션이 점유 중** —
+   배치가 끝나기 전엔 다음을 **하지 않는다**:
+   - worker/backend **이미지 재빌드**(PDF weasyprint, 트리뷰 시스템 의존성),
+   - **컨테이너 재시작**(`docker-compose restart/up/down`),
+   - **DB 마이그레이션**(`alembic upgrade`),
+   - DT / breaker 조작.
+   하나라도 하면 진행 중인 배치 스캔이 즉시 깨진다. (Colima 12GiB로는 DT 4GB
+   때문에 별도 스택을 따로 띄울 수도 없다.)
+
+3. **배치 중 가능한 작업** — 코드 작성 + **단위/mock 테스트**(dev 스택 불요)까지.
+   NOTICE html(§2.1)·PDF 생성 코드(§2.2)·트리뷰 backend/frontend 코드는 작성
+   가능하다. **단** PDF 의존성 worker 이미지 빌드·트리뷰 Alembic 마이그레이션·
+   통합/E2E 검증은 **배치 완료 후**로 미룬다.
+
+4. **배치 완료 확인** — `/tmp/fixture_results.txt`에 `=== BATCH DONE ===`가
+   찍히거나 배치 세션이 보고하면 완료. 그 후 통합 검증(이미지 빌드/마이그레이션/
+   스택 재시작)을 진행한다.
+
 ## 1. 선행 — PR 머지 + prod 확인
 
 - **PR #94 머지**: cdxgen `--no-validate`(schema 실패 시 SBOM 드롭 버그) + DT BOM hash sanitize(cdxgen base64 hash를 DT가 400 거부) + `docker-compose.dev.yml` backend↔worker `scan-workspace` 공유 볼륨(zip 업로드 archive 공유).
@@ -66,6 +93,9 @@ status: ready
 
 ```
 docs/sessions/2026-05-22-scan-pipeline-gaps-handoff.md 에 따라 진행한다.
+배치 조사 세션과 병행 중이면 §0.5를 반드시 준수한다 — git worktree로 격리,
+dev 스택(이미지 빌드/컨테이너 재시작/DB 마이그레이션) 비점유. 배치 완료 전엔
+코드 작성 + 단위/mock 테스트까지만 하고, 통합 검증은 배치 후로 미룬다.
 PR #94 머지 후, §2 갭을 구현한다 — NOTICE html, 취약점 PDF 보고서,
 소스 코드 파일 트리 뷰(Protex식), cdxgen 생태계별 검출 보강.
 핵심 보안/외부입력 코드는 security-reviewer 통과 후 PR.
