@@ -46,7 +46,7 @@ jobs:
 
 That's the minimum. The action:
 
-1. Calls `POST /v1/projects/{project-id}/scans` with `kind=source` to enqueue cdxgen + ORT + Dependency-Track.
+1. Calls `POST /v1/projects/{project-id}/scans` with `kind=source` to enqueue cdxgen + scancode + Dependency-Track.
 2. Polls `GET /v1/scans/{scan-id}` every 30 seconds until terminal (`succeeded` / `failed` / `cancelled`), with a 30-minute timeout.
 3. Calls `GET /v1/projects/{project-id}/gate-result` and writes the verdict into the workflow's job summary.
 4. On `pull_request` events, calls `POST /v1/scans/{scan-id}/post-pr-comment` so the SCA Markdown report shows up as a PR comment.
@@ -85,7 +85,7 @@ Drop `.github/workflows/sca.yml` (above) into the repo. On the next PR, the SCA 
 | `api-url` | yes | — | Portal base URL, e.g. `https://trustedoss.example.com`. Trailing slash OK. |
 | `api-key` | yes | — | API key. **Always** supply via `${{ secrets.* }}`. |
 | `project-id` | yes | — | Project UUID. |
-| `scan-kind` | no | `source` | `source` (cdxgen + ORT + DT) or `container` (Trivy). |
+| `scan-kind` | no | `source` | `source` (cdxgen + scancode + DT) or `container` (Trivy). |
 | `fail-on-gate` | no | `true` | If `true`, the job exits 1 when the gate verdict is `fail`. |
 | `post-pr-comment` | no | `true` | If `true` (and the workflow was triggered by `pull_request`), posts the SCA report as a PR comment. |
 | `poll-timeout-seconds` | no | `1800` | Max seconds to wait for the scan to reach a terminal state. |

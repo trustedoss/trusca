@@ -141,6 +141,28 @@ describe("ScansPage", () => {
     expect(rows[1]?.textContent).toContain("fedcba98");
   });
 
+  it("shows the cancel affordance only for queued/running rows (PR-A3)", async () => {
+    mockedListMyScans.mockResolvedValue(
+      pageResponse([
+        scanFixture({ id: "scan-a", status: "running" }),
+        scanFixture({
+          id: "scan-b",
+          project_id: "fedcba98-7654-3210-fedc-ba9876543210",
+          status: "succeeded",
+          completed_at: "2026-05-08T00:01:00Z",
+        }),
+      ]),
+    );
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("scans-row")).toHaveLength(2);
+    });
+    // Exactly one cancel button — the running row. The succeeded row has none.
+    const cancelButtons = screen.getAllByTestId("scan-cancel-button");
+    expect(cancelButtons).toHaveLength(1);
+    expect(cancelButtons[0]).toHaveAttribute("data-scan-id", "scan-a");
+  });
+
   it("pagination Previous is disabled on page 1; Next is disabled when total fits one page", async () => {
     mockedListMyScans.mockResolvedValue(pageResponse([scanFixture()], 1));
     renderPage();

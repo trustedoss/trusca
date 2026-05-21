@@ -80,18 +80,21 @@ sidebar_position: 4
 
 ## 도구
 
-- **ORT — OSS Review Toolkit.** 프로젝트의 패키지 생태계(Gradle,
-  Maven, npm, pip, Cargo, …)를 탐색하고 의존성 그래프를 해석하며
-  컴포넌트별 declared / detected 라이선스를 발신하는 스캐너.
-  TrustedOSS는 모든 소스 스캔의 두 번째 단계로 ORT를 호출합니다.
-  [oss-review-toolkit.org](https://oss-review-toolkit.org/) 참고.
+- **scancode — scancode-toolkit.** 프로젝트의 **first-party** 소스
+  파일을 직접 읽어 *detected* SPDX 라이선스를 발신하는 라이선스
+  스캐너로, 각 항목에 라이선스가 발견된 파일의 `source_path` 를
+  태깅합니다. TrustedOSS는 소스 스캔의 두 번째 단계로 scancode 를
+  실행합니다(v2.0.0 에서 OSS Review Toolkit, ORT 를 대체). 서드파티
+  의존성 소스는 스캔하지 않으며 — 그 라이선스는 *declared*(cdxgen
+  에서)로 유지됩니다.
+  [github.com/aboutcode-org/scancode-toolkit](https://github.com/aboutcode-org/scancode-toolkit) 참고.
 - **cdxgen — CycloneDX Generator.** 30개 이상의 언어 / 빌드 시스템
   매니페스트(`package.json`, `pom.xml`, `requirements.txt`, …)로부터
-  CycloneDX SBOM을 생성하는 컴포넌트 탐지기. ORT 이전 첫 번째 스캔
-  단계로 실행됩니다.
+  CycloneDX SBOM을 생성하는 컴포넌트 탐지기. scancode 이전 첫 번째
+  스캔 단계로 실행됩니다.
 - **Trivy.** Aqua Security가 만든 컨테이너 및 OS 패키지 취약점
   스캐너. TrustedOSS는 컨테이너 스캔 파이프라인에 Trivy를 사용합니다
-  (cdxgen + ORT 소스 스캔 경로와는 분리).
+  (cdxgen + scancode 소스 스캔 경로와는 분리).
 - **DT — Dependency-Track.** NVD / OSV / GHSA를 미러링하여 SBOM과 CVE를
   대조하는 취약점 인텔리전스 플랫폼. TrustedOSS는 DT 4.x를 옵션 Docker
   Compose 오버레이로 번들하고, 회로 차단기 + 캐시 레이어로 감쌉니다.
