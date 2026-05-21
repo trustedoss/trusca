@@ -46,10 +46,11 @@ from pathlib import Path
 from typing import Any
 
 import structlog
+from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from core.config import workspace_root
+from core.config import scan_soft_time_limit_seconds, workspace_root
 from core.db import sync_session_scope
 from core.pii_mask import redact_url_userinfo
 from core.url_guard import GitUrlValidationError, validate_git_url_with_ip
@@ -97,10 +98,16 @@ _STAGE_PROGRESS: dict[str, int] = {
 # ---------------------------------------------------------------------------
 
 
+# PR-A1 (scan stability): the soft/hard time limits are NOT pinned on the
+# decorator. Import-time decorator constants would (a) cache the value at
+# module load — violating CLAUDE.md rule #11 — and (b) bypass per-dispatch
+# env tuning. The limits are passed per call by ``tasks.enqueue_scan`` via
+# ``apply_async(soft_time_limit=..., time_limit=...)``, read from
+# ``SCAN_SOFT_TIME_LIMIT_SECONDS`` / ``SCAN_HARD_TIME_LIMIT_SECONDS`` at
+# dispatch time. Celery preserves those message options across an
+# ``acks_late`` redelivery, so a re-executed task stays time-boxed too.
 @celery_app.task(  # type: ignore[misc]
     name="trustedoss.scan_source",
-    soft_time_limit=3600,
-    time_limit=4200,
     bind=True,
 )
 def scan_source_task(self: Any, scan_id: str) -> None:
@@ -160,6 +167,19 @@ def scan_source_task(self: Any, scan_id: str) -> None:
     except DTError as exc:
         log.error("scan_source_dt_error", error=str(exc))
         _record_terminal_failure(scan_uuid, f"DT error: {exc}")
+    except SoftTimeLimitExceeded:
+        # PR-A1: the scan exceeded SCAN_SOFT_TIME_LIMIT_SECONDS. Celery raised
+        # this inside the worker thread; we mark the scan failed with a clear
+        # message and let the shared `finally` reclaim the workspace. We catch
+        # this BEFORE the bare `Exception` handler so the message stays
+        # specific (a generic "unexpected error" would be misleading for a
+        # timeout). Re-raising is intentionally avoided — a timed-out scan is
+        # terminal, not retryable.
+        soft_limit = scan_soft_time_limit_seconds()
+        log.warning("scan_timed_out", scan_id=str(scan_uuid), soft_limit_seconds=soft_limit)
+        _record_terminal_failure(
+            scan_uuid, f"scan exceeded the time limit ({soft_limit}s)"
+        )
     except Exception as exc:
         # Any unhandled exception terminates the scan with status='failed'
         # and surfaces the error message in the UI. Re-raising would have

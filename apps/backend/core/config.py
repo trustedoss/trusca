@@ -286,6 +286,73 @@ def workspace_root() -> str:
     return os.getenv("WORKSPACE_HOST_PATH", "/tmp/trustedoss")  # noqa: S108
 
 
+def scan_soft_time_limit_seconds() -> int:
+    """Celery ``soft_time_limit`` for scan tasks (PR-A1 scan stability).
+
+    When a scan task runs longer than this, Celery raises
+    :class:`celery.exceptions.SoftTimeLimitExceeded` inside the worker. The
+    task catches it, cleans up the workspace, and marks the scan ``failed``
+    with a clear ``error_message`` — this is the *primary* timeout mechanism.
+
+    Default 3600s (1 hour) covers cdxgen + ORT + DT polling on the pilot repos
+    with comfortable headroom. The hard limit (SIGKILL) sits above this as a
+    safety net for a task that ignores or deadlocks past the soft signal.
+
+    Read at call time per CLAUDE.md core rule #11 so an operator can retune
+    the worker via env without a rebuild.
+    """
+    return int(os.getenv("SCAN_SOFT_TIME_LIMIT_SECONDS", "3600"))
+
+
+# Minimum grace window the hard (SIGKILL) limit must sit ABOVE the soft limit,
+# in seconds. The soft-limit handler needs time to rmtree the workspace and
+# mark the scan ``failed`` before SIGKILL lands; 60s is comfortable for that
+# bookkeeping even on a loaded worker.
+SCAN_TIMEOUT_MIN_GRACE_SECONDS = 60
+
+
+def scan_hard_time_limit_seconds() -> int:
+    """Celery ``time_limit`` (hard, SIGKILL) for scan tasks (PR-A1).
+
+    The hard limit is the last-resort backstop: if the worker thread does not
+    surface ``SoftTimeLimitExceeded`` (e.g. a C-extension or subprocess stuck
+    in an uninterruptible syscall), Celery sends SIGKILL at this boundary so
+    the worker slot is reclaimed. It must be strictly greater than the soft
+    limit; the default leaves a 5-minute window for graceful soft-limit
+    cleanup before the kill.
+
+    Default 3900s (65 minutes). Read at call time (rule #11).
+
+    M2 (security-reviewer): we *enforce* the ``hard > soft`` invariant at read
+    time by clamping, rather than trusting the operator. If someone sets
+    ``SCAN_HARD_TIME_LIMIT_SECONDS <= SCAN_SOFT_TIME_LIMIT_SECONDS`` (e.g. a
+    typo, or swapping the two env vars), SIGKILL would fire at or before the
+    soft-limit handler — killing the worker mid-cleanup, leaking the workspace,
+    and leaving the scan stuck in ``running`` forever. We clamp the effective
+    hard limit to ``soft + SCAN_TIMEOUT_MIN_GRACE_SECONDS`` so the soft handler
+    always gets a window. Clamp (not raise) is deliberate: a single mis-set env
+    var must not break *every* scan dispatch — it degrades to a safe default
+    instead. Both inputs are read via ``os.getenv`` at call time (rule #11).
+    """
+    soft = scan_soft_time_limit_seconds()
+    raw_hard = int(os.getenv("SCAN_HARD_TIME_LIMIT_SECONDS", "3900"))
+    return max(raw_hard, soft + SCAN_TIMEOUT_MIN_GRACE_SECONDS)
+
+
+def workspace_orphan_max_age_seconds() -> int:
+    """Minimum age before a terminal-scan workspace is eligible for reclaim.
+
+    The workspace orphan cleaner only deletes a per-scan workspace directory
+    when (a) the scan row is in a terminal state (succeeded / failed /
+    cancelled) and (b) the directory's mtime is older than this grace period.
+    The grace window avoids racing a worker that is still inside its
+    ``finally: shutil.rmtree(...)`` block right after the row flipped terminal.
+
+    Default 900s (15 minutes). Read at call time (rule #11).
+    """
+    return int(os.getenv("WORKSPACE_ORPHAN_MAX_AGE_SECONDS", "900"))
+
+
 def jsonb_row_size_limit_bytes() -> int:
     """Per-row JSON byte ceiling before truncate (I-1 guard)."""
     return int(os.getenv("JSONB_ROW_SIZE_LIMIT_BYTES", str(256 * 1024)))

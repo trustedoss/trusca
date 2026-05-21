@@ -26,6 +26,7 @@ import structlog
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.audit import bind_audit_team
 from core.security import CurrentUser
 from models import Project, Scan, Team
 from schemas.admin_ops import (
@@ -38,6 +39,44 @@ log = structlog.get_logger("admin.scan.service")
 
 # Terminal statuses where cancellation is a no-op (already done).
 _TERMINAL_STATUSES = frozenset({"succeeded", "failed", "cancelled"})
+
+
+def _revoke_transport_errors() -> tuple[type[BaseException], ...]:
+    """Exception types ``celery.control.revoke`` may raise on a broker outage.
+
+    Imported lazily so the service module stays importable without kombu /
+    redis present (pure unit tests of unrelated helpers), mirroring the lazy
+    ``from tasks.celery_app import celery_app`` inside the revoke path.
+
+    - ``kombu.exceptions.OperationalError`` — kombu's declared transport error,
+      raised when the broker connection cannot be established / used.
+    - ``redis.exceptions.RedisError`` — when the redis transport surfaces its
+      own error before kombu wraps it.
+    - ``OSError`` — raw socket-level failure (connection refused / reset).
+
+    Programming errors (TypeError / AttributeError / ValueError) are
+    intentionally absent so they propagate (Low #5).
+    """
+    errors: list[type[BaseException]] = [OSError]
+    try:
+        from kombu.exceptions import OperationalError as _KombuOperationalError
+
+        errors.append(_KombuOperationalError)
+    except ImportError:  # pragma: no cover - kombu always present with celery
+        pass
+    try:
+        from redis.exceptions import RedisError as _RedisError
+
+        errors.append(_RedisError)
+    except ImportError:  # pragma: no cover - redis always present with celery
+        pass
+    return tuple(errors)
+
+
+# Resolved once at import: the worker process (and the API process that issues
+# the revoke) always have kombu + redis available. Kept as a module value, not
+# an env-derived constant, so rule #11 (runtime os.getenv) is not implicated.
+_REVOKE_TRANSPORT_ERRORS: tuple[type[BaseException], ...] = _revoke_transport_errors()
 
 
 # ---------------------------------------------------------------------------
@@ -194,7 +233,7 @@ async def cancel_scan(
     celery_app_override: Any | None = None,
 ) -> AdminScanListItem:
     """
-    Cancel a running / queued scan.
+    Cancel a running / queued scan (super-admin — cross-team).
 
     Behaviour:
       - 404 when the scan does not exist (typed exception, RFC 7807 by
@@ -213,22 +252,138 @@ async def cancel_scan(
         which records a ``target_table='scans', action='update'`` row
         with the diff. No explicit AuditLog insert needed.
     """
-    # Lock the row so two concurrent cancel calls cannot both pass the
-    # terminal-state guard. `with_for_update` mirrors the pattern used in
-    # :mod:`services.admin_user_service` for last-super-admin protection.
+    scan = await _lock_cancellable_scan(session, scan_id)
+    return await _revoke_and_mark_cancelled(
+        session,
+        actor=actor,
+        scan=scan,
+        reason="cancelled by admin",
+        celery_app_override=celery_app_override,
+        log_event="admin.scan.cancelled",
+    )
+
+
+async def cancel_scan_for_actor(
+    session: AsyncSession,
+    *,
+    actor: CurrentUser,
+    scan_id: uuid.UUID,
+    celery_app_override: Any | None = None,
+) -> AdminScanListItem:
+    """
+    Cancel a running / queued scan the *actor's own team* owns (PR-A1).
+
+    This is the user-facing counterpart to :func:`cancel_scan`. It reuses the
+    same revoke + status-mutation core (so the two paths never drift on
+    idempotency / race handling) but adds a team-access gate:
+
+      - **Other team's scan → 404** (``AdminScanNotFound``). We deliberately
+        existence-hide rather than 403: a developer who is not on the owning
+        team must not be able to distinguish "this scan exists but you can't
+        touch it" from "no such scan", which would leak cross-team scan ids.
+        super_admin bypasses the team gate (parity with admin tooling).
+      - Missing scan → 404 (same as admin).
+      - Already terminal → 409 (``ScanAlreadyCancelled``).
+
+    The team check happens AFTER the row lock so a concurrent cancel cannot
+    slip a TOCTOU window between the access check and the status mutation.
+    """
+    scan = await _lock_cancellable_scan(session, scan_id)
+
+    # Team-access gate. Resolve the owning team from the parent project. We do
+    # this while holding the row lock so the access decision and the mutation
+    # are in the same transaction.
+    team_id = (
+        await session.execute(
+            select(Project.team_id).where(Project.id == scan.project_id)
+        )
+    ).scalar_one_or_none()
+    if not _actor_can_access_team(actor, team_id):
+        # Existence-hide: same shape as a non-existent scan.
+        raise AdminScanNotFound(f"scan {scan_id} not found")
+
+    # M1: bind the owning team to the audit ContextVar BEFORE the mutating
+    # commit so the audit_logs row for the status='cancelled' update carries a
+    # non-NULL team_id. Same pattern as services.scan_service._bind_audit_team
+    # (project_service uses it too); we resolved team_id above for the access
+    # gate, so this is a free re-use rather than an extra query. ``team_id`` is
+    # guaranteed non-None here: a None team_id fails _actor_can_access_team for
+    # non-admins, and for super_admin the FK from scan -> project -> team means
+    # the only way it is None is a project deleted underfoot (best-effort skip).
+    if team_id is not None:
+        bind_audit_team(team_id)
+
+    return await _revoke_and_mark_cancelled(
+        session,
+        actor=actor,
+        scan=scan,
+        reason="cancelled by user",
+        celery_app_override=celery_app_override,
+        log_event="scan.user_cancelled",
+    )
+
+
+def _actor_can_access_team(actor: CurrentUser, team_id: uuid.UUID | None) -> bool:
+    """True when ``actor`` may act on resources owned by ``team_id``.
+
+    super_admin / superuser always pass. Everyone else must have the team in
+    their membership list. A ``None`` team_id (project vanished underfoot)
+    is treated as no-access for non-admins.
+
+    Low #3 (policy note): scan cancellation is intentionally *membership*-gated
+    (any team member, i.e. developer) — NOT team_admin-gated like project
+    writes (``project_service._can_write_project``). A developer may cancel
+    their own team's scan by confirmed policy; this is deliberately a weaker
+    gate than mutating project settings. Hence we check ``team_id in
+    actor.team_ids`` (membership) rather than ``actor.team_roles[...] ==
+    "team_admin"`` (role).
+    """
+    if actor.is_superuser or actor.role == "super_admin":
+        return True
+    if team_id is None:
+        return False
+    return team_id in actor.team_ids
+
+
+async def _lock_cancellable_scan(session: AsyncSession, scan_id: uuid.UUID) -> Scan:
+    """Row-lock the scan and assert it is not already terminal.
+
+    Shared by the admin + user cancel paths so the 404 / 409 semantics and the
+    ``with_for_update`` race protection are defined exactly once. The lock
+    means two concurrent cancel calls cannot both pass the terminal-state
+    guard (CWE-362).
+    """
     stmt = select(Scan).where(Scan.id == scan_id).with_for_update()
     scan = (await session.execute(stmt)).scalar_one_or_none()
     if scan is None:
         raise AdminScanNotFound(f"scan {scan_id} not found")
-
     if scan.status in _TERMINAL_STATUSES:
         raise ScanAlreadyCancelled(
             f"scan {scan_id} is already in terminal state {scan.status!r}"
         )
+    return scan
 
+
+async def _revoke_and_mark_cancelled(
+    session: AsyncSession,
+    *,
+    actor: CurrentUser,
+    scan: Scan,
+    reason: str,
+    celery_app_override: Any | None,
+    log_event: str,
+) -> AdminScanListItem:
+    """Revoke the Celery task and stamp the scan ``cancelled``.
+
+    Extracted from the original admin ``cancel_scan`` body so the user-facing
+    path shares identical revoke + commit + response-shaping behaviour. The
+    only caller-controlled differences are the ``error_message`` (``reason``)
+    and the structlog event name.
+    """
+    scan_id = scan.id
     # Revoke the Celery task BEFORE mutating the row so that if the worker
     # is mid-flight, the SIGTERM lands while the row is still 'running'
-    # (the worker's own progress hooks check for this and bail out).
+    # (the worker's own progress hooks / `finally` reclaim the workspace).
     if scan.celery_task_id:
         if celery_app_override is not None:
             celery = celery_app_override
@@ -238,13 +393,25 @@ async def cancel_scan(
             celery = celery_app
         try:
             celery.control.revoke(scan.celery_task_id, terminate=True, signal="SIGTERM")
-        except Exception as exc:  # noqa: BLE001
-            # Revoke is best-effort — the broker may be unreachable, the
-            # task may have finished, or the worker may be unhealthy. We
-            # log and continue with the status update so the operator is
-            # not blocked on transient broker hiccups.
+        except _REVOKE_TRANSPORT_ERRORS as exc:
+            # Low #5: best-effort, but ONLY for broker / transport failures.
+            #
+            # ``control.revoke`` publishes a broadcast control message over the
+            # broker; when the broker is unreachable kombu surfaces a
+            # ``kombu.exceptions.OperationalError`` (its declared transport
+            # error), and the underlying redis / socket layer can raise
+            # ``redis.exceptions.RedisError`` / ``OSError``. Those are the
+            # transient conditions we deliberately swallow: the scan must still
+            # be marked ``cancelled`` so the user is not stuck on a broker
+            # hiccup, and the workspace cleaner + hard-limit backstop reclaim
+            # the slot regardless.
+            #
+            # We do NOT catch bare ``Exception`` any more: a TypeError /
+            # AttributeError / ValueError here means a programming error in the
+            # call (wrong arg, bad celery_app_override) and must surface in
+            # tests rather than masquerade as a transient broker outage.
             log.warning(
-                "admin.scan.revoke_failed",
+                "scan.revoke_failed",
                 scan_id=str(scan_id),
                 celery_task_id=scan.celery_task_id,
                 error=str(exc),
@@ -253,14 +420,14 @@ async def cancel_scan(
     now = _now()
     scan.status = "cancelled"
     scan.completed_at = now
-    scan.error_message = "cancelled by admin"
+    scan.error_message = reason
     scan.updated_at = now
 
     await session.commit()
     await session.refresh(scan)
 
     log.warning(
-        "admin.scan.cancelled",
+        log_event,
         actor_id=str(actor.id),
         scan_id=str(scan_id),
         celery_task_id=scan.celery_task_id,
@@ -306,5 +473,6 @@ __all__ = [
     "AdminScanNotFound",
     "ScanAlreadyCancelled",
     "cancel_scan",
+    "cancel_scan_for_actor",
     "list_scans",
 ]

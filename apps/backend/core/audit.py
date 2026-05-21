@@ -110,6 +110,26 @@ def get_audit_context() -> dict[str, Any]:
     return dict(raw) if raw else {}
 
 
+def bind_audit_team(team_id: uuid.UUID) -> None:
+    """Attach ``team_id`` to the audit ContextVar so audit rows pick it up.
+
+    The ``before_flush`` listener reads ``team_id`` from this ContextVar at
+    flush time (see :func:`_build_audit_row`). Request-time middleware /
+    ``get_current_user`` bind ``user_id`` / ``request_id`` / ``ip`` etc., but
+    the *team* scope of a mutation is only known once the service has resolved
+    which team owns the resource being written. Services therefore call this
+    after their team-access gate and before the mutating ``commit`` so the
+    resulting ``audit_logs.team_id`` is non-NULL.
+
+    This is the canonical implementation; ``services.scan_service`` and
+    ``services.project_service`` re-export / delegate to it so the three write
+    paths never drift on the contextvar key name or copy semantics.
+    """
+    ctx = dict(audit_context.get() or {})
+    ctx["team_id"] = str(team_id)
+    audit_context.set(ctx)
+
+
 def _read_ctx() -> dict[str, Any]:
     """Internal helper: snapshot for the listener (defensive copy)."""
     return get_audit_context()
@@ -291,6 +311,17 @@ def _before_flush(session: Session, _flush_context: Any, _instances: Any) -> Non
 
     for row in rows:
         session.add(AuditLog(**row))
+
+
+__all__ = [
+    "audit_context",
+    "bind_audit_team",
+    "build_audit_action",
+    "get_audit_context",
+    "install_audit_listeners",
+    "is_audited_table",
+    "mask_sensitive_columns",
+]
 
 
 def install_audit_listeners(session_factory: async_sessionmaker[Any]) -> None:

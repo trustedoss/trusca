@@ -23,7 +23,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.audit import audit_context
+from core.audit import bind_audit_team as _bind_audit_team
 from core.pii_mask import mask_pii
 from core.security import CurrentUser
 from models import Project, Scan
@@ -92,12 +92,6 @@ class ProjectMissingForScan(ScanError):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _bind_audit_team(team_id: uuid.UUID) -> None:
-    ctx = dict(audit_context.get() or {})
-    ctx["team_id"] = str(team_id)
-    audit_context.set(ctx)
 
 
 def _can_access_team(actor: CurrentUser, team_id: uuid.UUID) -> bool:
