@@ -73,6 +73,54 @@
   "alerts": {
     "dt_unavailable": "Dependency-Track is temporarily unavailable. Showing cached vulnerability data."
   },
+  "source": {
+    "title": "Start a scan",
+    "subtitle": "Choose how to provide the source for {{project}}.",
+    "method_legend": "Source provision method",
+    "method": {
+      "git": "Git URL",
+      "upload": "Upload .zip",
+      "folder": "Select folder"
+    },
+    "git": {
+      "label": "Configured Git URL",
+      "missing": "This project has no Git URL. Upload a .zip or select a folder instead, or add a Git URL in project settings."
+    },
+    "upload": {
+      "label": "Source archive (.zip)",
+      "hint": "ZIP archive, up to {{max}}.",
+      "selected": "Selected: {{name}} ({{size}})"
+    },
+    "folder": {
+      "label": "Project folder",
+      "hint": "The folder is zipped in your browser before upload, up to {{max}}.",
+      "selected": "{{count}} files selected ({{size}})",
+      "too_large": "The selected folder exceeds the {{max}} limit. Remove large directories and try again.",
+      "noisy": "Large directories detected: {{dirs}}. These will inflate the upload — consider excluding them."
+    },
+    "stage": {
+      "idle": "Preparing…",
+      "zipping": "Compressing folder…",
+      "uploading": "Uploading archive…",
+      "triggering": "Starting scan…"
+    },
+    "percent": "{{value}}%",
+    "start": "Start scan",
+    "starting": "Starting…",
+    "cancel": "Cancel"
+  },
+  "upload": {
+    "errors": {
+      "too_large": "The archive is too large. The limit is 100 MiB.",
+      "not_a_zip": "Only .zip archives are supported.",
+      "quota_exceeded": "This project has reached its storage quota.",
+      "not_found": "Project not found.",
+      "bad_request": "The upload could not be processed.",
+      "empty_folder": "The selected folder is empty.",
+      "network": "Upload failed due to a network error. Please try again.",
+      "unknown": "The upload failed. Please try again."
+    }
+  },
   "close_codes": {
     "auth_expired": "Session expired. Please sign in again.",
     "forbidden": "You no longer have access to this scan.",

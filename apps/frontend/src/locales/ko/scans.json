@@ -73,6 +73,54 @@
   "alerts": {
     "dt_unavailable": "Dependency-Track에 일시적으로 연결할 수 없습니다. 캐시된 취약점 데이터를 표시합니다."
   },
+  "source": {
+    "title": "스캔 시작",
+    "subtitle": "{{project}}의 소스를 제공할 방식을 선택하세요.",
+    "method_legend": "소스 제공 방식",
+    "method": {
+      "git": "Git URL",
+      "upload": ".zip 업로드",
+      "folder": "폴더 선택"
+    },
+    "git": {
+      "label": "설정된 Git URL",
+      "missing": "이 프로젝트에는 Git URL이 없습니다. .zip을 업로드하거나 폴더를 선택하거나, 프로젝트 설정에서 Git URL을 추가하세요."
+    },
+    "upload": {
+      "label": "소스 아카이브 (.zip)",
+      "hint": "ZIP 아카이브, 최대 {{max}}.",
+      "selected": "선택됨: {{name}} ({{size}})"
+    },
+    "folder": {
+      "label": "프로젝트 폴더",
+      "hint": "폴더는 업로드 전에 브라우저에서 압축됩니다. 최대 {{max}}.",
+      "selected": "파일 {{count}}개 선택됨 ({{size}})",
+      "too_large": "선택한 폴더가 {{max}} 제한을 초과합니다. 큰 디렉터리를 제거하고 다시 시도하세요.",
+      "noisy": "큰 디렉터리가 감지되었습니다: {{dirs}}. 업로드 크기가 커질 수 있으니 제외를 고려하세요."
+    },
+    "stage": {
+      "idle": "준비 중…",
+      "zipping": "폴더 압축 중…",
+      "uploading": "아카이브 업로드 중…",
+      "triggering": "스캔 시작 중…"
+    },
+    "percent": "{{value}}%",
+    "start": "스캔 시작",
+    "starting": "시작 중…",
+    "cancel": "취소"
+  },
+  "upload": {
+    "errors": {
+      "too_large": "아카이브가 너무 큽니다. 제한은 100 MiB입니다.",
+      "not_a_zip": ".zip 아카이브만 지원됩니다.",
+      "quota_exceeded": "이 프로젝트의 저장 용량 한도에 도달했습니다.",
+      "not_found": "프로젝트를 찾을 수 없습니다.",
+      "bad_request": "업로드를 처리할 수 없습니다.",
+      "empty_folder": "선택한 폴더가 비어 있습니다.",
+      "network": "네트워크 오류로 업로드에 실패했습니다. 다시 시도하세요.",
+      "unknown": "업로드에 실패했습니다. 다시 시도하세요."
+    }
+  },
   "close_codes": {
     "auth_expired": "세션이 만료되었습니다. 다시 로그인해 주세요.",
     "forbidden": "이 스캔에 대한 접근 권한이 없습니다.",

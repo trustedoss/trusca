@@ -1,9 +1,10 @@
 /**
- * ProjectListPage — unit tests (PR #9 task 2.11).
+ * ProjectListPage — unit tests (PR #9 task 2.11, updated feat/zip-upload).
  *
- * We mock the projectsApi wire layer and the ScanProgress component so the
- * tests focus on the page's behavior: loading, empty/error, filter+sort,
- * and trigger-scan flow opening the drawer.
+ * We mock the projectsApi wire layer, the ScanProgress component, and the
+ * SourceSelectDialog so the tests focus on the page's behavior: loading,
+ * empty/error, filter+sort, and the scan button opening the source dialog
+ * which (when its scan starts) opens the progress drawer.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
@@ -22,7 +23,6 @@ import type {
 vi.mock("@/lib/projectsApi", async () => {
   return {
     listProjects: vi.fn(),
-    triggerScan: vi.fn(),
   };
 });
 
@@ -33,6 +33,51 @@ vi.mock("@/features/scan/ScanProgress", () => ({
       <button onClick={onClose}>close-mock</button>
     </div>
   ),
+}));
+
+// SourceSelectDialog is exercised in its own suite. Here we stub it so the
+// list test can drive the scan-started callback directly without the file
+// pickers / upload machinery.
+vi.mock("@/features/scan/SourceSelectDialog", () => ({
+  SourceSelectDialog: ({
+    open,
+    project,
+    onScanStarted,
+  }: {
+    open: boolean;
+    project: ProjectPublic;
+    onScanStarted: (scan: ScanPublic, project: ProjectPublic) => void;
+  }) =>
+    open ? (
+      <div data-testid="source-dialog-mock" data-project-id={project.id}>
+        <button
+          data-testid="source-dialog-start"
+          onClick={() =>
+            onScanStarted(
+              {
+                id: "scan-1",
+                project_id: project.id,
+                kind: "source",
+                status: "queued",
+                progress_percent: 0,
+                current_step: null,
+                started_at: null,
+                completed_at: null,
+                error_message: null,
+                requested_by_user_id: null,
+                celery_task_id: null,
+                metadata: {},
+                created_at: "2026-05-22T00:00:00Z",
+                updated_at: "2026-05-22T00:00:00Z",
+              },
+              project,
+            )
+          }
+        >
+          start
+        </button>
+      </div>
+    ) : null,
 }));
 
 // react-virtuoso refuses to render items in jsdom because it relies on
@@ -55,10 +100,9 @@ vi.mock("react-virtuoso", () => ({
   ),
 }));
 
-import { listProjects, triggerScan } from "@/lib/projectsApi";
+import { listProjects } from "@/lib/projectsApi";
 
 const mockedListProjects = vi.mocked(listProjects);
-const mockedTriggerScan = vi.mocked(triggerScan);
 
 function project(name: string, overrides: Partial<ProjectPublic> = {}): ProjectPublic {
   const id =
@@ -86,25 +130,6 @@ function listResponse(items: ProjectPublic[]): ProjectListResponse {
   return { items, total: items.length, page: 1, size: 200 };
 }
 
-function scan(id: string, projectId: string): ScanPublic {
-  return {
-    id,
-    project_id: projectId,
-    kind: "source",
-    status: "queued",
-    progress_percent: 0,
-    current_step: null,
-    started_at: null,
-    completed_at: null,
-    error_message: null,
-    requested_by_user_id: null,
-    celery_task_id: null,
-    metadata: {},
-    created_at: "2026-05-06T00:00:00Z",
-    updated_at: "2026-05-06T00:00:00Z",
-  };
-}
-
 function renderPage() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -121,7 +146,6 @@ function renderPage() {
 describe("ProjectListPage", () => {
   beforeEach(() => {
     mockedListProjects.mockReset();
-    mockedTriggerScan.mockReset();
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -178,16 +202,34 @@ describe("ProjectListPage", () => {
     );
   });
 
-  it("triggers a scan and opens the progress drawer on success", async () => {
+  it("opens the source dialog when the scan button is clicked", async () => {
     mockedListProjects.mockResolvedValueOnce(
       listResponse([project("Alpha")]),
     );
-    mockedTriggerScan.mockResolvedValueOnce(scan("scan-1", project("Alpha").id));
     renderPage();
     await waitFor(() => {
       expect(screen.getByTestId("project-row-scan")).toBeInTheDocument();
     });
     await userEvent.click(screen.getByTestId("project-row-scan"));
+    await waitFor(() => {
+      expect(screen.getByTestId("source-dialog-mock")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("source-dialog-mock")).toHaveAttribute(
+      "data-project-id",
+      project("Alpha").id,
+    );
+  });
+
+  it("opens the progress drawer once the source dialog reports a started scan", async () => {
+    mockedListProjects.mockResolvedValueOnce(
+      listResponse([project("Alpha")]),
+    );
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByTestId("project-row-scan")).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByTestId("project-row-scan"));
+    await userEvent.click(await screen.findByTestId("source-dialog-start"));
     await waitFor(() => {
       expect(screen.getByTestId("scan-progress-mock")).toBeInTheDocument();
     });
@@ -195,26 +237,5 @@ describe("ProjectListPage", () => {
       "data-scan-id",
       "scan-1",
     );
-    expect(mockedTriggerScan).toHaveBeenCalledWith(
-      project("Alpha").id,
-      expect.objectContaining({ kind: "source" }),
-    );
-  });
-
-  it("shows the trigger error alert when triggerScan fails", async () => {
-    mockedListProjects.mockResolvedValueOnce(
-      listResponse([project("Alpha")]),
-    );
-    mockedTriggerScan.mockRejectedValueOnce(new Error("rate limited"));
-    renderPage();
-    await waitFor(() => {
-      expect(screen.getByTestId("project-row-scan")).toBeInTheDocument();
-    });
-    await userEvent.click(screen.getByTestId("project-row-scan"));
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("project-list-trigger-error"),
-      ).toBeInTheDocument();
-    });
   });
 });
