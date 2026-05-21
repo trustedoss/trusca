@@ -176,6 +176,197 @@ def redis_url() -> str:
     return os.getenv("REDIS_URL", DEFAULT_REDIS_URL)
 
 
+# ---------------------------------------------------------------------------
+# B1 — connection-pool tuning (concurrency / stability for hundreds of
+# simultaneous users).
+#
+# SQLAlchemy's QueuePool defaults (pool_size=5, max_overflow=10) cap the
+# FastAPI process at ~15 connections, which exhausts under a few dozen
+# concurrent request handlers each holding a session across an awaited DB
+# round-trip. We raise the ceiling and expose every knob via os.getenv so an
+# operator can match the pool to their Postgres `max_connections` budget
+# without a rebuild (CLAUDE.md core rule #11 — read at call time, no
+# module-level caching).
+#
+# Sizing guidance (per process):
+#   total connections = pool_size + max_overflow
+# Multiply by the number of uvicorn workers AND add the Celery worker pools
+# (see *_sync helpers below) to stay under Postgres `max_connections`. The
+# defaults below (20 + 10 = 30 per FastAPI process; 5 + 5 = 10 per Celery
+# worker process) leave generous headroom under Postgres' default 100.
+# ---------------------------------------------------------------------------
+
+
+# L2 (security-reviewer): upper bounds on the connection-pool knobs. A typo
+# like ``DB_POOL_SIZE=100000`` would otherwise have each FastAPI/Celery process
+# try to open tens of thousands of connections, blowing past Postgres'
+# ``max_connections`` (default 100) and DoS-ing the very database the pool is
+# meant to serve. We clamp each knob to a generous ceiling — high enough that
+# no legitimate single-process deployment is constrained, low enough that a
+# fat-finger cannot exhaust ``max_connections``. Per-process total connections
+# are ``pool_size + max_overflow``; with the ceilings below a single process
+# tops out at 200 + 200 = 400, which an operator running that hot would have
+# raised ``max_connections`` for deliberately.
+_MAX_POOL_SIZE = 200
+_MAX_POOL_OVERFLOW = 200
+# Timeout / recycle are time values, not connection counts, but an absurd value
+# (a multi-hour acquire timeout, a recycle age of years) is still a misconfig
+# worth bounding so the pool stays responsive / fresh.
+_MAX_POOL_TIMEOUT_SECONDS = 3600  # 1h — far past any sane acquire wait
+_MAX_POOL_RECYCLE_SECONDS = 86_400  # 24h — past any proxy idle-reaper window
+
+
+def _int_env(
+    name: str, default: int, *, minimum: int = 0, maximum: int | None = None
+) -> int:
+    """Parse an int env var, clamping to ``[minimum, maximum]`` and ignoring junk.
+
+    A misconfigured pool size (negative, zero where positive is required, a
+    non-numeric string, or an absurdly large typo) must never crash engine
+    construction at startup *or* let a single fat-finger exhaust Postgres'
+    ``max_connections``. We fall back to the default on junk, clamp up to
+    ``minimum`` (lower bound), and — when ``maximum`` is given — clamp down to
+    ``maximum`` (upper bound). An over-the-ceiling value is logged at WARNING
+    so the operator notices the typo instead of silently running clamped.
+    """
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        value = default
+    else:
+        try:
+            value = int(raw)
+        except ValueError:
+            value = default
+    value = max(value, minimum)
+    if maximum is not None and value > maximum:
+        # Local import keeps config import-time free of the logging stack.
+        import structlog
+
+        structlog.get_logger("config").warning(
+            "config.int_env_clamped_to_max",
+            env_var=name,
+            requested=value,
+            clamped_to=maximum,
+        )
+        value = maximum
+    return value
+
+
+def db_pool_size() -> int:
+    """Persistent connections kept open by the async (FastAPI) engine pool."""
+    return _int_env("DB_POOL_SIZE", 20, minimum=1, maximum=_MAX_POOL_SIZE)
+
+
+def db_max_overflow() -> int:
+    """Burst connections allowed above ``db_pool_size()`` under load.
+
+    0 is valid (hard cap at pool_size); negative is clamped to 0; an absurd
+    value is clamped down to ``_MAX_POOL_OVERFLOW`` (L2).
+    """
+    return _int_env("DB_MAX_OVERFLOW", 10, minimum=0, maximum=_MAX_POOL_OVERFLOW)
+
+
+def db_pool_timeout_seconds() -> int:
+    """Seconds a request waits for a free connection before raising.
+
+    Bounds tail latency: a request that cannot get a connection within this
+    window fails fast (and surfaces as a 500 problem+json) instead of hanging
+    the worker indefinitely under a connection stampede.
+    """
+    return _int_env(
+        "DB_POOL_TIMEOUT", 30, minimum=1, maximum=_MAX_POOL_TIMEOUT_SECONDS
+    )
+
+
+def db_pool_recycle_seconds() -> int:
+    """Recycle a pooled connection after this many seconds of age.
+
+    Defends against Postgres / proxy idle-connection reaping (PgBouncer,
+    Cloud SQL, stateful firewalls drop idle TCP after ~30-60 min). 1800s
+    (30 min) keeps connections fresh well inside typical reaper windows.
+    -1 disables recycling. An absurdly large value is clamped down to
+    ``_MAX_POOL_RECYCLE_SECONDS`` (24h) so a typo cannot effectively disable
+    recycling (the -1 disable sentinel is below the ceiling and unaffected).
+    """
+    return _int_env(
+        "DB_POOL_RECYCLE", 1800, minimum=-1, maximum=_MAX_POOL_RECYCLE_SECONDS
+    )
+
+
+def db_sync_pool_size() -> int:
+    """Persistent connections for the sync (Celery worker) engine pool.
+
+    Celery worker concurrency is low (default 2), so each worker process needs
+    far fewer connections than a FastAPI process. Kept on a separate env var
+    so operators can tune worker pools independently of the API pool. Clamped
+    up to ``_MAX_POOL_SIZE`` (L2) so a typo cannot exhaust max_connections.
+    """
+    return _int_env("DB_SYNC_POOL_SIZE", 5, minimum=1, maximum=_MAX_POOL_SIZE)
+
+
+def db_sync_max_overflow() -> int:
+    """Burst connections above ``db_sync_pool_size()`` for the Celery engine."""
+    return _int_env(
+        "DB_SYNC_MAX_OVERFLOW", 5, minimum=0, maximum=_MAX_POOL_OVERFLOW
+    )
+
+
+def db_sync_pool_timeout_seconds() -> int:
+    """Connection-acquire timeout (seconds) for the Celery sync engine."""
+    return _int_env(
+        "DB_SYNC_POOL_TIMEOUT", 30, minimum=1, maximum=_MAX_POOL_TIMEOUT_SECONDS
+    )
+
+
+def db_sync_pool_recycle_seconds() -> int:
+    """Connection recycle age (seconds) for the Celery sync engine."""
+    return _int_env(
+        "DB_SYNC_POOL_RECYCLE", 1800, minimum=-1, maximum=_MAX_POOL_RECYCLE_SECONDS
+    )
+
+
+# ---------------------------------------------------------------------------
+# B1 — scan-trigger abuse controls.
+#
+# Two independent layers guard the scan-trigger surface against abuse and
+# accidental overload from hundreds of concurrent users:
+#
+#   1. Per-user rate limit (slowapi) on POST /v1/projects/{id}/scans — caps
+#      how *fast* a single authenticated user can fire triggers.
+#   2. Per-team concurrent-scan cap (counted in the service) — caps how *many*
+#      scans one team can have queued+running at once, protecting the shared
+#      Celery worker pool from a single team's burst.
+#
+# These are stability caps, distinct from free-tier *quota* (project count /
+# daily scan budget), which is a separate concern (bundle 5).
+# ---------------------------------------------------------------------------
+
+
+def scan_trigger_rate_limit() -> str:
+    """slowapi limit string for POST /v1/projects/{id}/scans (per user).
+
+    Format is slowapi's ``"<n>/<period>"`` (e.g. ``"20/minute"``). Keyed by
+    authenticated user id (falling back to client IP for anonymous callers —
+    though the route requires auth, so the fallback only matters for malformed
+    tokens). Default 20/minute is generous for interactive use and CI bursts
+    while still throttling a runaway script.
+    """
+    return os.getenv("SCAN_TRIGGER_RATE_LIMIT", "20/minute")
+
+
+def scan_concurrency_cap_per_team() -> int:
+    """Max concurrent (queued+running) scans allowed per team.
+
+    When a trigger would push the team's active-scan count to this value or
+    above, the service raises ``ConcurrentScanLimitExceeded`` (429). 0 or a
+    negative value disables the cap entirely (treated as "unlimited") so an
+    operator can opt out without code changes; this is intentional — the
+    per-user rate limit and the per-project active-scan unique index still
+    apply.
+    """
+    return _int_env("SCAN_CONCURRENCY_CAP_PER_TEAM", 10, minimum=0)
+
+
 def secret_key() -> str:
     """
     Return the JWT signing key.
