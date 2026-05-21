@@ -132,6 +132,10 @@ services:
       # for the host operator path only; tasks.backup no longer reads it.
       - ./scripts:/opt/trustedoss/scripts:ro
       - ./backups:/opt/trustedoss/backups
+      # Shared scan workspace so backend-saved uploaded archives
+      # (zip-upload source input) are visible to the worker that extracts
+      # and scans them. WORKSPACE_HOST_PATH defaults to /tmp/trustedoss.
+      - scan-workspace:/tmp/trustedoss
     ports:
       - "8000:8000"
     depends_on:
@@ -158,6 +162,9 @@ services:
       # Marathon bundle 3 (D2) — tasks.backup writes via pg_dump directly.
       - ./scripts:/opt/trustedoss/scripts:ro
       - ./backups:/opt/trustedoss/backups
+      # Shared scan workspace (see backend) — the worker reads uploaded
+      # archives + extracts/clones source here.
+      - scan-workspace:/tmp/trustedoss
     depends_on:
       postgres:
         condition: service_healthy
@@ -228,3 +235,6 @@ services:
 
 volumes:
   postgres-data:
+  # Shared between backend (uploaded-archive save) and worker (extract/scan)
+  # so zip-upload source scans can hand the archive across containers.
+  scan-workspace:

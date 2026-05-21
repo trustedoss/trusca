@@ -120,6 +120,14 @@ def run_cdxgen(
     cmd = [
         "cdxgen",
         "-r",  # recurse
+        # cdxgen 12.x validates the generated BOM against the CycloneDX JSON
+        # schema by default and emits NO output file when validation fails.
+        # Some lockfile integrity values (e.g. npm's base64 sha512) violate the
+        # schema's hash-content hex pattern, so an otherwise-valid SBOM with real
+        # components gets dropped entirely (cdxgen exits non-zero, no -o file).
+        # We persist + size-guard the SBOM ourselves downstream, so disable
+        # cdxgen's own validation to keep valid-component SBOMs.
+        "--no-validate",
         "-o",
         str(sbom_path),
         "--spec-version",
