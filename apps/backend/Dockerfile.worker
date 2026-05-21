@@ -380,16 +380,21 @@ RUN set -eux; \
     go version
 
 # ---- .NET SDK 8.0 (MIT). ---------------------------------------------------
-# Microsoft publishes a Debian apt repo for the dotnet SDK. We only need the
-# CLI's `dotnet restore` command to populate `obj/project.assets.json`,
-# which cdxgen reads for transitive NuGet deps. ~700MB layer.
-RUN curl -fsSL -o /tmp/ms.deb \
-        "https://packages.microsoft.com/config/debian/12/packages-microsoft-prod.deb" \
-    && dpkg -i /tmp/ms.deb \
-    && rm -f /tmp/ms.deb \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends dotnet-sdk-8.0 \
-    && rm -rf /var/lib/apt/lists/* \
+# cdxgen needs the `dotnet restore` CLI to populate obj/project.assets.json
+# for transitive NuGet deps (~700MB layer). Microsoft's Debian apt repo only
+# carries dotnet-sdk-8.0 for amd64 — on arm64 (Apple Silicon dev laptops) the
+# package is absent and `apt-get install` fails (E: Unable to locate package
+# dotnet-sdk-8.0). The official dotnet-install.sh resolves the host arch
+# (x64 / arm64) itself, so the same Dockerfile builds on amd64 CI and arm64
+# dev hosts alike.
+ENV DOTNET_ROOT=/usr/share/dotnet \
+    DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+    DOTNET_NOLOGO=1
+RUN curl -fsSL -o /tmp/dotnet-install.sh "https://dot.net/v1/dotnet-install.sh" \
+    && chmod +x /tmp/dotnet-install.sh \
+    && /tmp/dotnet-install.sh --channel 8.0 --install-dir "${DOTNET_ROOT}" \
+    && rm -f /tmp/dotnet-install.sh \
+    && ln -sfn "${DOTNET_ROOT}/dotnet" /usr/local/bin/dotnet \
     && dotnet --version
 
 # ---- ORT 85.0.0 (Apache-2.0). ----------------------------------------------
