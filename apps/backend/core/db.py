@@ -23,12 +23,37 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.orm import Session, sessionmaker
 
-from .config import database_url, database_url_sync
+from .config import (
+    database_url,
+    database_url_sync,
+    db_max_overflow,
+    db_pool_recycle_seconds,
+    db_pool_size,
+    db_pool_timeout_seconds,
+    db_sync_max_overflow,
+    db_sync_pool_recycle_seconds,
+    db_sync_pool_size,
+    db_sync_pool_timeout_seconds,
+)
 
 
 def build_engine() -> AsyncEngine:
-    """Create a fresh async engine using the current DATABASE_URL value."""
-    return create_async_engine(database_url(), pool_pre_ping=True, future=True)
+    """Create a fresh async engine using the current DATABASE_URL value.
+
+    B1: pool sizing is read from the environment at construction time
+    (CLAUDE.md core rule #11). The async engine serves the FastAPI request
+    handlers, so it gets the larger pool (default 20 + 10 overflow). See
+    core.config for the env var names and sizing guidance.
+    """
+    return create_async_engine(
+        database_url(),
+        pool_pre_ping=True,
+        future=True,
+        pool_size=db_pool_size(),
+        max_overflow=db_max_overflow(),
+        pool_timeout=db_pool_timeout_seconds(),
+        pool_recycle=db_pool_recycle_seconds(),
+    )
 
 
 def build_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
@@ -89,8 +114,23 @@ _sync_session_factory: sessionmaker[Session] | None = None
 
 
 def build_sync_engine() -> Engine:
-    """Create a fresh sync engine using the current DATABASE_URL value."""
-    return create_engine(database_url_sync(), pool_pre_ping=True, future=True)
+    """Create a fresh sync engine using the current DATABASE_URL value.
+
+    B1: the sync engine backs Celery worker tasks (scan pipeline, dt_resync,
+    orphan cleaner). Worker concurrency is low, so it uses the smaller sync
+    pool (default 5 + 5 overflow) tuned via the DB_SYNC_* env vars — separate
+    from the FastAPI pool so the two can be sized independently against the
+    shared Postgres `max_connections` budget.
+    """
+    return create_engine(
+        database_url_sync(),
+        pool_pre_ping=True,
+        future=True,
+        pool_size=db_sync_pool_size(),
+        max_overflow=db_sync_max_overflow(),
+        pool_timeout=db_sync_pool_timeout_seconds(),
+        pool_recycle=db_sync_pool_recycle_seconds(),
+    )
 
 
 def get_sync_session_factory() -> sessionmaker[Session]:

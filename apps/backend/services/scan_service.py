@@ -60,6 +60,39 @@ class ScanInProgressConflict(ScanError):
     title = "Scan Already In Progress"
 
 
+class ConcurrentScanLimitExceeded(ScanError):
+    """The triggering team already has the max number of active scans.
+
+    B1: a per-team stability cap on concurrent (queued+running) scans,
+    independent of the per-project active-scan unique index. Protects the
+    shared Celery worker pool from a single team's burst when hundreds of
+    users are online. Mapped to 429 Too Many Requests with a ``Retry-After``
+    header and the RFC 7807 extension field ``limit`` so callers (and CI
+    automation) can back off intelligently.
+
+    M1 (security-reviewer): the live ``running_scans`` count is carried on the
+    exception instance for server-side logging only — it is deliberately NOT
+    exposed in the response body. Returning the team's real-time active-scan
+    count to every team developer is an intra-team side-channel (it leaks how
+    busy teammates are / how close the team is to its cap on each individual
+    request). ``limit`` + ``Retry-After`` are sufficient for a client to back
+    off; the precise count adds no client value over those two.
+    """
+
+    status_code = 429
+    title = "Concurrent Scan Limit Exceeded"
+    type_uri = "urn:trustedoss:problem:concurrent_scan_limit"
+    # Seconds the client should wait before retrying; scans are long-running
+    # so a coarse 30s back-off is appropriate (a finished scan frees a slot).
+    retry_after_seconds = 30
+
+    def __init__(self, message: str, *, running_scans: int, limit: int) -> None:
+        super().__init__(message)
+        # Server-side only (log context). Not serialized into the 429 body.
+        self.running_scans = running_scans
+        self.limit = limit
+
+
 class ScanEnqueueFailed(ScanError):
     """The Celery dispatcher rejected the scan (broker down, bad kind, etc.).
 
@@ -112,6 +145,92 @@ async def _load_project(session: AsyncSession, project_id: uuid.UUID) -> Project
     if project is None:
         raise ProjectMissingForScan(f"project {project_id} not found")
     return project
+
+
+def _concurrency_cap_per_team() -> int:
+    """Per-team active-scan cap. Read at call time (CLAUDE.md core rule #11)."""
+    from core.config import scan_concurrency_cap_per_team
+
+    return scan_concurrency_cap_per_team()
+
+
+async def _count_active_scans_for_team(
+    session: AsyncSession, team_id: uuid.UUID
+) -> int:
+    """Count scans in state queued|running across all of the team's projects.
+
+    B1: the per-team concurrency cap. We JOIN scans -> projects and clamp by
+    Project.team_id so the count covers every project the team owns, not just
+    the one being triggered. ``ix_scans_project_active`` (partial index on the
+    active states) keeps the predicate cheap; ``ix_projects_team_id`` covers
+    the team clamp.
+    """
+    stmt = (
+        select(func.count())
+        .select_from(Scan)
+        .join(Project, Project.id == Scan.project_id)
+        .where(Project.team_id == team_id)
+        .where(Scan.status.in_(("queued", "running")))
+    )
+    result = await session.execute(stmt)
+    return int(result.scalar_one())
+
+
+async def _enforce_team_concurrency_cap(
+    session: AsyncSession, team_id: uuid.UUID
+) -> None:
+    """Raise :class:`ConcurrentScanLimitExceeded` if the team is at the cap.
+
+    A cap of 0 (or negative) disables the check entirely — the operator has
+    opted out and only the per-project unique index + per-user rate limit
+    apply.
+
+    Note (race window — soft cap): this SELECT-then-INSERT is not atomic
+    across concurrent triggers from the same team. N requests can each read
+    ``active == cap - 1`` before any of them INSERTs, and all N proceed,
+    overshooting the cap.
+
+    M2 (security-reviewer): worst-case bound. The overshoot is bounded, not
+    unbounded, by two independent controls:
+
+      * the per-project unique partial index (``ix_scans_project_active``)
+        guarantees at most ONE active scan per project, so a single project
+        can never contribute more than 1 to the overshoot; and
+      * the per-user scan-trigger rate limit (``SCAN_TRIGGER_RATE_LIMIT``,
+        default 20/min) bounds how many triggers any one member can fire in
+        the race window.
+
+    So with ``cap`` and ``n_members`` members each able to fire at their
+    per-user rate limit ``rate_limit``, the active-scan count for a team is
+    bounded by::
+
+        cap + (rate_limit * n_members) - 1
+
+    i.e. a brief, bounded burst rather than a runaway. That is acceptable for
+    a *stability* guard — the worker pool tolerates a transient overshoot, and
+    finished scans free slots within minutes. We deliberately do NOT take a
+    team-level advisory lock (``pg_advisory_xact_lock``): it would add a
+    round-trip on the hot trigger path for a guard whose only failure mode is
+    a short, bounded overshoot. The boundary + the bounded-race behaviour are
+    pinned by the unit tests (incl. the high fan-out race) so a future
+    tightening is a conscious change.
+    """
+    cap = _concurrency_cap_per_team()
+    if cap <= 0:
+        return
+    active = await _count_active_scans_for_team(session, team_id)
+    if active >= cap:
+        log.warning(
+            "scan.concurrency_cap_blocked",
+            team_id=str(team_id),
+            active_scans=active,
+            limit=cap,
+        )
+        raise ConcurrentScanLimitExceeded(
+            f"team {team_id} has {active} active scans (limit {cap})",
+            running_scans=active,
+            limit=cap,
+        )
 
 
 def _disk_hard_limit_pct() -> float:
@@ -202,6 +321,14 @@ async def trigger_scan(
         raise ScanForbidden(
             f"actor is not a member of team {project.team_id}",
         )
+
+    # B1 — per-team concurrency cap. Reject the trigger up front when the
+    # team already has the maximum number of queued+running scans, protecting
+    # the shared Celery worker pool from a single team's burst. This is a
+    # soft stability cap (see _enforce_team_concurrency_cap docstring on the
+    # SELECT-then-INSERT race), distinct from the hard per-project unique
+    # index enforced below at flush time.
+    await _enforce_team_concurrency_cap(session, project.team_id)
 
     # Phase 6 PR #19 — disk guard. Reject the scan up front when the
     # workspace volume is past DISK_HARD_LIMIT_PCT so the operator does
@@ -442,6 +569,7 @@ async def list_scans_for_actor(
 
 
 __all__ = [
+    "ConcurrentScanLimitExceeded",
     "ProjectMissingForScan",
     "ScanEnqueueFailed",
     "ScanError",
