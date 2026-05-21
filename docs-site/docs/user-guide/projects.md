@@ -64,7 +64,9 @@ curl -sS -X POST https://trustedoss.example.com/v1/projects \
   -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{
+    "team_id": "8f0c1e2a-...your team UUID...",
     "name": "checkout-service",
+    "slug": "checkout-service",
     "description": "Storefront checkout service",
     "git_url": "https://github.com/acme/checkout-service.git"
   }' | jq .
@@ -72,12 +74,9 @@ curl -sS -X POST https://trustedoss.example.com/v1/projects \
 
 The response includes the project's UUID — keep it; it is the value you wire into the GitHub Action's `project-id` input and the GitLab CI variable.
 
-The schema rejects unknown fields (`extra="forbid"`). Only `name`, `description`, and `git_url` are accepted on create. `default_branch` can be set later via `PATCH /v1/projects/{id}`.
+**Required fields**: `team_id`, `name`, and `slug`. Optional: `description`, `git_url`, `default_branch`, and `visibility`. The schema rejects unknown fields (`extra="forbid"`), so omitting `team_id` or `slug` returns `422` (`missing: body.team_id`).
 
-`team_id` is **not** required in the create body — the server
-derives it from your active team. The field is reserved for a
-future multi-team scoping flow; until then, you can ignore it on
-the create call.
+Finding your `team_id`: in the UI the project-create form has a team selector, so you never type the UUID. Over the API a `team_admin` or `super_admin` reads it from `GET /v1/admin/teams`; a self-service `GET /v1/users/me/memberships` is on the roadmap for v2.x. At v2.0.0 the field is **not** derived from your session — it must be in the body.
 
 ## Visibility
 
