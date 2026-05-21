@@ -27,6 +27,7 @@ import {
   triggerScan,
   type ProjectPublic,
   type ScanPublic,
+  type ScanStatus,
 } from "@/lib/projectsApi";
 import { cn } from "@/lib/utils";
 
@@ -47,6 +48,7 @@ interface ScanDrawerState {
   open: boolean;
   scanId: string | null;
   projectName: string | null;
+  status: ScanStatus | null;
 }
 
 function compareByName(a: ProjectPublic, b: ProjectPublic): number {
@@ -102,6 +104,7 @@ export function ProjectListPage() {
     open: false,
     scanId: null,
     projectName: null,
+    status: null,
   });
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -150,6 +153,7 @@ export function ProjectListPage() {
         open: true,
         scanId: scan.id,
         projectName: project.name,
+        status: scan.status,
       });
       // Invalidate so the list reflects the new latest_scan_id once the
       // backend persists it. Stale time is 30s by default — call again
@@ -280,7 +284,11 @@ export function ProjectListPage() {
           {scanDrawer.scanId ? (
             <ScanProgress
               scanId={scanDrawer.scanId}
+              status={scanDrawer.status ?? "queued"}
               onClose={handleCloseDrawer}
+              onCancelled={() =>
+                setScanDrawer((s) => ({ ...s, status: "cancelled" }))
+              }
             />
           ) : null}
         </SheetContent>

@@ -14,7 +14,8 @@
       "kind": "종류",
       "status": "상태",
       "started": "시작",
-      "duration": "소요 시간"
+      "duration": "소요 시간",
+      "actions": "작업"
     },
     "kind": {
       "source": "소스",
@@ -40,7 +41,7 @@
     "step_bootstrap": "작업 공간 준비",
     "step_fetch": "소스 가져오는 중",
     "step_cdxgen": "SBOM 생성 중",
-    "step_ort": "라이선스 분석 중",
+    "step_scancode": "first-party 라이선스 탐지 중",
     "step_dt_upload": "Dependency-Track에 SBOM 업로드",
     "step_dt_findings": "취약점 탐지 중",
     "step_finalize": "마무리 중",
@@ -53,6 +54,21 @@
     "close": "닫기",
     "retry": "재시도",
     "percent_label": "{{value}}%"
+  },
+  "cancel": {
+    "action": "스캔 취소",
+    "confirm": {
+      "title": "스캔 취소",
+      "message": "이 스캔을 취소하시겠습니까? 진행 중인 작업이 중단되고 스캔이 취소됨으로 표시됩니다.",
+      "confirm": "스캔 취소",
+      "dismiss": "계속 진행"
+    },
+    "errors": {
+      "already_terminal": "이미 종료된 스캔이라 더 이상 취소할 수 없습니다.",
+      "not_found": "스캔이 존재하지 않거나 접근 권한이 없습니다.",
+      "forbidden": "이 스캔을 취소할 권한이 없습니다.",
+      "unknown": "스캔을 취소하지 못했습니다. 다시 시도해 주세요."
+    }
   },
   "alerts": {
     "dt_unavailable": "Dependency-Track에 일시적으로 연결할 수 없습니다. 캐시된 취약점 데이터를 표시합니다."

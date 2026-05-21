@@ -83,19 +83,21 @@ column.
 
 ## Tools
 
-- **ORT — OSS Review Toolkit.** Scanner that walks a project's package
-  ecosystem (Gradle, Maven, npm, pip, Cargo, …), resolves the
-  dependency graph, and emits declared / detected licenses per
-  component. TrustedOSS invokes ORT as the second stage of every
-  source scan. See
-  [oss-review-toolkit.org](https://oss-review-toolkit.org/).
+- **scancode — scancode-toolkit.** License scanner that reads a
+  project's **first-party** source files directly and emits *detected*
+  SPDX licenses, each tagged with the `source_path` of the file it was
+  found in. TrustedOSS runs scancode as the second source-scan stage
+  (it replaced the OSS Review Toolkit, ORT, in v2.0.0). Third-party
+  dependency sources are not scanned — their licenses stay *declared*
+  (from cdxgen). See
+  [github.com/aboutcode-org/scancode-toolkit](https://github.com/aboutcode-org/scancode-toolkit).
 - **cdxgen — CycloneDX Generator.** Component detector that produces
   CycloneDX SBOMs from 30+ language / build-system manifests
   (`package.json`, `pom.xml`, `requirements.txt`, …). Runs as the
-  first scan stage before ORT.
+  first scan stage, before scancode.
 - **Trivy.** Container and OS-package vulnerability scanner from
   Aqua Security. TrustedOSS uses Trivy for the container-scan
-  pipeline (separate from the cdxgen + ORT source-scan path).
+  pipeline (separate from the cdxgen + scancode source-scan path).
 - **DT — Dependency-Track.** Vulnerability intelligence platform that
   mirrors NVD / OSV / GHSA and matches CVEs against your SBOMs.
   TrustedOSS bundles DT 4.x as an optional Docker Compose overlay and

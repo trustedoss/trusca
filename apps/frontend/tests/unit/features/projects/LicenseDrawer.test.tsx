@@ -289,6 +289,41 @@ describe("LicenseDrawer", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
+  it("labels a detected (first-party) finding with its source_path (PR-A3)", async () => {
+    mockedGet.mockResolvedValueOnce(
+      detail({
+        finding_kind: "detected",
+        affected_components: [
+          {
+            component_version_id: "00000000-0000-0000-0000-cv0000000010",
+            component_name: "my-app",
+            version: "0.0.0",
+            kind: "detected",
+            source_path: "src/lib/vendored/foo.go",
+          },
+        ],
+      }),
+    );
+    renderDrawer("00000000-0000-0000-0000-licfind00001");
+    await waitFor(() => {
+      expect(screen.getByTestId("license-drawer-affected")).toBeInTheDocument();
+    });
+    // The header kind badge shows the detected provenance. The affected row
+    // also renders one, so there are two detected badges in the tree.
+    expect(
+      screen.getAllByTestId("license-kind-badge-detected").length,
+    ).toBeGreaterThanOrEqual(1);
+    // The header meta wrapper carries the kind badge.
+    expect(
+      screen.getByTestId("license-drawer-kind"),
+    ).toBeInTheDocument();
+    // The affected row carries the labeled source path in mono.
+    const sourcePath = screen.getByTestId(
+      "license-drawer-affected-source-path",
+    );
+    expect(sourcePath).toHaveTextContent("src/lib/vendored/foo.go");
+  });
+
   it("renders the RFC 7807 detail in the drawer error alert", async () => {
     mockedGet.mockRejectedValueOnce(
       new ProblemError("not found", {
