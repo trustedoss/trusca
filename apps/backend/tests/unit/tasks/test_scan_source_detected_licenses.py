@@ -130,7 +130,7 @@ def test_first_party_component_named_from_sbom_metadata(
     session = _FakeSession()
     sbom = {"metadata": {"component": {"name": "cool-service"}}}
     _persist_detected_licenses(
-        session,
+        session,  # type: ignore[arg-type]
         scan_uuid=uuid.uuid4(),
         sbom=sbom,  # type: ignore[arg-type]
         detections=[DetectedLicense(spdx_id="MIT", source_path="LICENSE")],
@@ -147,7 +147,7 @@ def test_first_party_component_falls_back_when_metadata_absent(
 
     session = _FakeSession()
     _persist_detected_licenses(
-        session,
+        session,  # type: ignore[arg-type]
         scan_uuid=uuid.uuid4(),
         sbom={},  # type: ignore[arg-type]
         detections=[DetectedLicense(spdx_id="MIT", source_path="LICENSE")],
@@ -164,7 +164,7 @@ def test_first_party_version_is_scan_scoped(
     session = _FakeSession()
     scan_uuid = uuid.uuid4()
     _persist_detected_licenses(
-        session,
+        session,  # type: ignore[arg-type]
         scan_uuid=scan_uuid,
         sbom={},  # type: ignore[arg-type]
         detections=[DetectedLicense(spdx_id="MIT", source_path="LICENSE")],
@@ -197,7 +197,7 @@ def test_duplicate_detections_deduped(patched_helpers: dict[str, Any]) -> None:
         DetectedLicense(spdx_id="MIT", source_path="src/a.py"),  # distinct path
     ]
     _persist_detected_licenses(
-        session,
+        session,  # type: ignore[arg-type]
         scan_uuid=uuid.uuid4(),
         sbom={},  # type: ignore[arg-type]
         detections=detections,
@@ -234,7 +234,7 @@ def test_persist_skips_oversized_spdx_token(
         DetectedLicense(spdx_id="MIT", source_path="good.py"),  # clean sibling
     ]
     _persist_detected_licenses(
-        session,
+        session,  # type: ignore[arg-type]
         scan_uuid=uuid.uuid4(),
         sbom={},  # type: ignore[arg-type]
         detections=detections,
@@ -254,7 +254,7 @@ def test_persist_keeps_spdx_at_exactly_limit(
     at_limit = "L" * _SPDX_ID_MAX_LENGTH
     session = _FakeSession()
     _persist_detected_licenses(
-        session,
+        session,  # type: ignore[arg-type]
         scan_uuid=uuid.uuid4(),
         sbom={},  # type: ignore[arg-type]
         detections=[DetectedLicense(spdx_id=at_limit, source_path="a.py")],
