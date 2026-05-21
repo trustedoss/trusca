@@ -44,6 +44,8 @@ Workspace:
 
 from __future__ import annotations
 
+import json
+import re
 import shutil
 import subprocess
 import time
@@ -340,7 +342,13 @@ def _run_pipeline(
                 version=str(scan_uuid),
             )
         )
-        sbom_bytes = cdxgen_result.sbom_path.read_bytes()
+        # cdxgen 12.3.3 puts npm lockfile ``integrity`` (base64 sha512) into
+        # ``hashes[].content``, which violates the CycloneDX hex-content schema
+        # and makes DT reject the BOM with HTTP 400 — sinking vuln matching for
+        # every npm-lockfile project. Sanitize the bytes we send to DT only;
+        # the on-disk artifact and ``_persist_components`` (purl-based) are
+        # untouched. Best-effort: a parse failure returns the original bytes.
+        sbom_bytes = _sanitize_sbom_hashes_for_dt(cdxgen_result.sbom_path.read_bytes())
         breaker.call(
             lambda: dt_client.upload_sbom(
                 project_uuid=dt_project_uuid,
@@ -817,6 +825,137 @@ def _run_prep(
             cmd=cmd[0],
             error=str(exc),
         )
+
+
+# ---------------------------------------------------------------------------
+# SBOM hash sanitization for the DT upload path
+# ---------------------------------------------------------------------------
+
+
+# CycloneDX schema constrains ``components[].hashes[].content`` to a *hex*
+# digest whose length matches one of the supported algorithms:
+#   MD5 = 32, SHA-1 = 40, SHA-256 = 64, SHA-384 = 96, SHA-512 = 128.
+# cdxgen 12.3.3 copies an npm lockfile's ``integrity`` value (base64 sha512,
+# e.g. ``sha512-...==``) verbatim into ``hashes[].content``. That string is
+# base64, not hex, so DT's server-side schema validation rejects the whole BOM
+# with HTTP 400 ("does not match the regex pattern ^([a-fA-F0-9]{32}|...$"),
+# which sinks vulnerability matching for every npm-lockfile project.
+#
+# We strip the offending hash entries (NOT the components) from the bytes we
+# send to DT, immediately before upload. The on-disk SBOM artifact and our own
+# component/license persistence are purl-based and untouched — see
+# ``_sanitize_sbom_hashes_for_dt`` for the contract.
+# NOTE: ``fullmatch`` (not ``match`` + ``$``) — Python's ``$`` also matches just
+# before a trailing newline, so ``"<64 hex>\n"`` would slip through a ``$``
+# anchor. We require the whole string to be hex of an exact supported width.
+_VALID_HASH_CONTENT_RE = re.compile(r"[a-fA-F0-9]{32}|[a-fA-F0-9]{40}|"
+                                    r"[a-fA-F0-9]{64}|[a-fA-F0-9]{96}|"
+                                    r"[a-fA-F0-9]{128}")
+
+
+def _is_valid_hash_content(content: Any) -> bool:
+    """True when ``content`` is a CycloneDX-valid hex digest of supported width."""
+    return isinstance(content, str) and bool(_VALID_HASH_CONTENT_RE.fullmatch(content))
+
+
+def _sanitize_hashes_array(hashes: Any) -> list[Any] | None:
+    """Return ``hashes`` keeping only schema-valid entries.
+
+    A ``hashes`` entry is kept iff it is a dict whose ``content`` matches the
+    CycloneDX hex pattern. Returns:
+      * the filtered list when at least one entry survives,
+      * ``None`` when the array is missing, not a list, or all entries are
+        invalid — the caller drops the ``hashes`` key entirely in that case
+        (an empty ``hashes: []`` is itself a schema violation in some DT
+        versions, so we remove the key rather than leave it empty).
+    """
+    if not isinstance(hashes, list):
+        return None
+    kept = [
+        h for h in hashes
+        if isinstance(h, dict) and _is_valid_hash_content(h.get("content"))
+    ]
+    return kept or None
+
+
+def _sanitize_component_hashes(component: Any) -> int:
+    """In-place sanitize a single component's ``hashes`` array.
+
+    Returns the number of hash entries removed (drives the "did we mutate?"
+    decision and the log line). A non-list ``hashes`` value (malformed BOM) is
+    counted as one removal so the caller re-serializes the cleaned document.
+    No-op when the component is not a dict or carries no ``hashes`` key.
+    """
+    if not isinstance(component, dict) or "hashes" not in component:
+        return 0
+    original = component.get("hashes")
+    if not isinstance(original, list):
+        # Malformed: ``hashes`` must be an array. Drop the key and count it as
+        # a change so the document is re-serialized without it.
+        del component["hashes"]
+        return 1
+    original_count = len(original)
+    kept = _sanitize_hashes_array(original)
+    if kept is None:
+        del component["hashes"]
+        # An already-empty ``hashes: []`` is itself a schema violation in some
+        # DT versions; count its removal as a change (max(1, ...)) so the
+        # document is re-serialized without the empty key.
+        return max(1, original_count)
+    component["hashes"] = kept
+    return original_count - len(kept)
+
+
+def _sanitize_sbom_hashes_for_dt(sbom_bytes: bytes) -> bytes:
+    """Strip CycloneDX-invalid hash entries from an SBOM before DT upload.
+
+    DT validates the uploaded BOM against the CycloneDX schema server-side and
+    rejects the entire document (HTTP 400) when any ``hashes[].content`` is not
+    a hex digest of supported width. cdxgen 12.3.3 emits base64 npm
+    ``integrity`` values there, so this sanitizer removes the offending entries
+    so the rest of the BOM (the part DT needs for vulnerability matching)
+    survives.
+
+    Scope of mutation:
+      * ``components[].hashes`` (the npm-integrity culprit), and
+      * ``metadata.component.hashes`` (the root component).
+    Invalid entries are dropped; valid hex hashes are preserved; a component
+    whose every hash is invalid loses its ``hashes`` key but is otherwise
+    untouched.
+
+    Best-effort: on a JSON parse failure (truncated / non-JSON artifact) we
+    return the original bytes unchanged. The DT upload stage already runs
+    inside the breaker-guarded try/except, so a malformed SBOM that DT then
+    rejects fails the scan with a clear message rather than crashing here.
+
+    This operates on a parsed copy and returns fresh bytes — it never touches
+    the on-disk artifact or the ``sbom`` dict used by ``_persist_components``.
+    """
+    try:
+        doc = json.loads(sbom_bytes)
+    except (ValueError, TypeError):
+        log.warning("dt_sbom_hash_sanitize_parse_failed")
+        return sbom_bytes
+    if not isinstance(doc, dict):
+        return sbom_bytes
+
+    removed = 0
+    components = doc.get("components")
+    if isinstance(components, list):
+        for comp in components:
+            removed += _sanitize_component_hashes(comp)
+
+    metadata = doc.get("metadata")
+    if isinstance(metadata, dict):
+        removed += _sanitize_component_hashes(metadata.get("component"))
+
+    if removed == 0:
+        # Nothing to fix — return the original bytes so a clean SBOM is
+        # byte-for-byte preserved (avoids needless re-serialization).
+        return sbom_bytes
+
+    log.info("dt_sbom_hash_sanitized", removed_hashes=removed)
+    return json.dumps(doc).encode("utf-8")
 
 
 # ---------------------------------------------------------------------------

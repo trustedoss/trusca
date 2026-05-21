@@ -243,7 +243,7 @@ def test_build_engine_applies_pool_settings() -> None:
         pool = engine.pool
         # AsyncEngine wraps a sync Engine; pool.size() is the configured
         # pool_size, _max_overflow / _timeout / _recycle the rest.
-        assert pool.size() == 17
+        assert pool.size() == 17  # type: ignore[attr-defined]
         assert pool._max_overflow == 9  # type: ignore[attr-defined]
         assert pool._timeout == 25  # type: ignore[attr-defined]
         assert pool._recycle == 900  # type: ignore[attr-defined]
@@ -264,7 +264,7 @@ def test_build_sync_engine_applies_sync_pool_settings() -> None:
     engine = build_sync_engine()
     try:
         pool = engine.pool
-        assert pool.size() == 4
+        assert pool.size() == 4  # type: ignore[attr-defined]
         assert pool._max_overflow == 2  # type: ignore[attr-defined]
         assert pool._timeout == 15  # type: ignore[attr-defined]
         assert pool._recycle == 600  # type: ignore[attr-defined]
