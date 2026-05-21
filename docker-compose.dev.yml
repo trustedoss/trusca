@@ -56,6 +56,36 @@ x-backend-env: &backend-env
   # Backup output directory mounted from the host. tasks.backup writes
   # here, the admin API lists from the same root.
   BACKUPS_ROOT: ${BACKUPS_ROOT:-/opt/trustedoss/backups}
+  # ---------------------------------------------------------------------------
+  # Concurrency / stability tuning knobs (work-B / B1 + A1 + A2).
+  #
+  # Exposed in dev so an operator can reproduce a prod tuning locally; backend
+  # reads each via os.getenv() at runtime (CLAUDE.md #11). Defaults match
+  # .env.example exactly. Dev keeps a single worker at --concurrency=2 (below),
+  # so these mostly just give you a knob to experiment with.
+  #
+  # DB connection pool — async (FastAPI) engine.
+  DB_POOL_SIZE: ${DB_POOL_SIZE:-20}
+  DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-10}
+  DB_POOL_TIMEOUT: ${DB_POOL_TIMEOUT:-30}
+  DB_POOL_RECYCLE: ${DB_POOL_RECYCLE:-1800}
+  # DB connection pool — sync (Celery / psycopg2) engine.
+  DB_SYNC_POOL_SIZE: ${DB_SYNC_POOL_SIZE:-5}
+  DB_SYNC_MAX_OVERFLOW: ${DB_SYNC_MAX_OVERFLOW:-5}
+  DB_SYNC_POOL_TIMEOUT: ${DB_SYNC_POOL_TIMEOUT:-30}
+  DB_SYNC_POOL_RECYCLE: ${DB_SYNC_POOL_RECYCLE:-1800}
+  # Scan-trigger abuse controls.
+  SCAN_TRIGGER_RATE_LIMIT: ${SCAN_TRIGGER_RATE_LIMIT:-20/minute}
+  SCAN_CONCURRENCY_CAP_PER_TEAM: ${SCAN_CONCURRENCY_CAP_PER_TEAM:-10}
+  # Scan task time limits + orphan-workspace reclaim grace.
+  SCAN_SOFT_TIME_LIMIT_SECONDS: ${SCAN_SOFT_TIME_LIMIT_SECONDS:-3600}
+  SCAN_HARD_TIME_LIMIT_SECONDS: ${SCAN_HARD_TIME_LIMIT_SECONDS:-3900}
+  WORKSPACE_ORPHAN_MAX_AGE_SECONDS: ${WORKSPACE_ORPHAN_MAX_AGE_SECONDS:-900}
+  # scancode first-party license detection guards.
+  SCANCODE_TIMEOUT_SECONDS: ${SCANCODE_TIMEOUT_SECONDS:-600}
+  SCANCODE_MAX_FILES: ${SCANCODE_MAX_FILES:-20000}
+  SCANCODE_MAX_DETECTIONS: ${SCANCODE_MAX_DETECTIONS:-5000}
+  SCANCODE_MAX_RESULT_BYTES: ${SCANCODE_MAX_RESULT_BYTES:-268435456}
 
 services:
   postgres:

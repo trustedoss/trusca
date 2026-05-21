@@ -63,6 +63,46 @@ x-backend-env: &backend-env
   SMTP_PASSWORD: ${SMTP_PASSWORD:-}
   SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
   TEAMS_WEBHOOK_URL: ${TEAMS_WEBHOOK_URL:-}
+  # ---------------------------------------------------------------------------
+  # Concurrency / stability tuning knobs (work-B / B1 + A1 + A2).
+  #
+  # Backend reads every one of these via os.getenv() at runtime (CLAUDE.md
+  # rule #11) — they are NOT baked into the image, so an operator can tune
+  # them in .env and bounce the affected service. Defaults below are kept
+  # in lock-step with .env.example; the ${VAR:-default} form means an
+  # unset .env value resolves to the documented default rather than empty.
+  #
+  # DB connection pool — async (FastAPI) engine. Total connections opened by
+  # ONE backend process = DB_POOL_SIZE + DB_MAX_OVERFLOW. See the sizing
+  # formula in .env.example before raising these on a busy stack.
+  DB_POOL_SIZE: ${DB_POOL_SIZE:-20}
+  DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-10}
+  DB_POOL_TIMEOUT: ${DB_POOL_TIMEOUT:-30}
+  DB_POOL_RECYCLE: ${DB_POOL_RECYCLE:-1800}
+  # DB connection pool — sync (Celery / psycopg2) engine. Applies per worker
+  # AND per beat process. With worker.replicas=N this multiplies by N.
+  DB_SYNC_POOL_SIZE: ${DB_SYNC_POOL_SIZE:-5}
+  DB_SYNC_MAX_OVERFLOW: ${DB_SYNC_MAX_OVERFLOW:-5}
+  DB_SYNC_POOL_TIMEOUT: ${DB_SYNC_POOL_TIMEOUT:-30}
+  DB_SYNC_POOL_RECYCLE: ${DB_SYNC_POOL_RECYCLE:-1800}
+  # Scan-trigger abuse controls. Per-user rate limit (slowapi "<n>/<period>")
+  # and per-team concurrent (queued+running) scan cap (0 disables).
+  SCAN_TRIGGER_RATE_LIMIT: ${SCAN_TRIGGER_RATE_LIMIT:-20/minute}
+  SCAN_CONCURRENCY_CAP_PER_TEAM: ${SCAN_CONCURRENCY_CAP_PER_TEAM:-10}
+  # Scan task time limits (Celery soft/hard) + orphan-workspace reclaim grace.
+  # Backend clamps hard >= soft + 60s, so a soft >= hard typo is self-healing.
+  # Consumed by worker + beat (the orphan cleaner runs on the beat schedule);
+  # backend reads them too for surfacing in the admin UI.
+  SCAN_SOFT_TIME_LIMIT_SECONDS: ${SCAN_SOFT_TIME_LIMIT_SECONDS:-3600}
+  SCAN_HARD_TIME_LIMIT_SECONDS: ${SCAN_HARD_TIME_LIMIT_SECONDS:-3900}
+  WORKSPACE_ORPHAN_MAX_AGE_SECONDS: ${WORKSPACE_ORPHAN_MAX_AGE_SECONDS:-900}
+  # scancode first-party license detection guards (worker stage). Caps wall
+  # clock, eligible file count, persisted detections, and result-JSON bytes so
+  # an attacker-controlled source tree cannot DoS / OOM the worker.
+  SCANCODE_TIMEOUT_SECONDS: ${SCANCODE_TIMEOUT_SECONDS:-600}
+  SCANCODE_MAX_FILES: ${SCANCODE_MAX_FILES:-20000}
+  SCANCODE_MAX_DETECTIONS: ${SCANCODE_MAX_DETECTIONS:-5000}
+  SCANCODE_MAX_RESULT_BYTES: ${SCANCODE_MAX_RESULT_BYTES:-268435456}
 
 services:
   # ---------------------------------------------------------------------------
@@ -223,7 +263,37 @@ services:
           memory: 1G
 
   # ---------------------------------------------------------------------------
-  # Celery worker — runs cdxgen / ORT / Trivy / DT integrations.
+  # Celery worker — runs cdxgen / scancode / Trivy / DT integrations.
+  #
+  # Scaling out (work-B / B2): the worker is stateless apart from the shared
+  # `workspace` volume + the Redis broker, so it scales horizontally. Two
+  # knobs, used together:
+  #
+  #   * CELERY_CONCURRENCY  — parallel task slots INSIDE one worker process
+  #                           (prefork). Each slot can fork a full
+  #                           cdxgen / scancode / Trivy / dotnet pipeline, so
+  #                           a slot can transiently use ~1.5-2 GB. Keep this
+  #                           modest (2-4) and prefer adding replicas.
+  #   * replicas            — number of worker CONTAINERS. Run more containers
+  #                           to spread load across cores / hosts.
+  #
+  # Bring up N worker containers two ways (docker-compose V1 — CLAUDE.md #10):
+  #
+  #   a) Ad-hoc:   docker-compose -f docker-compose.yml up -d --scale worker=4
+  #   b) Pinned:   set `deploy.replicas` below (Swarm mode) OR keep --scale in
+  #                your install/upgrade scripts. We default to a single
+  #                replica; uncomment `deploy.replicas` only under Swarm.
+  #
+  # SIZING: total Postgres connections from the worker fleet =
+  #   replicas x (DB_SYNC_POOL_SIZE + DB_SYNC_MAX_OVERFLOW).
+  # With the defaults (5+5) and 4 replicas that is 40 connections — add the
+  # backend + beat draw and stay under Postgres `max_connections` (100). See
+  # the formula block in .env.example.
+  #
+  # MEMORY: a worker container needs roughly
+  #   CELERY_CONCURRENCY x ~2 GB  +  ~1 GB base (JRE / Node / scancode).
+  # The 6G limit below comfortably covers concurrency=2. Raise it in step
+  # with CELERY_CONCURRENCY; the SCANCODE_* guards cap per-task blowups.
   # ---------------------------------------------------------------------------
   worker:
     image: trustedoss/backend-worker:${IMAGE_TAG:-2.0.0}
@@ -250,11 +320,22 @@ services:
       retries: 5
       start_period: 60s
     deploy:
+      # `replicas` is honoured only under `docker stack deploy` (Swarm). Under
+      # plain `docker-compose up` it is ignored — use `--scale worker=N`
+      # instead (see the header note). Left at 1 so a non-Swarm `up` is
+      # predictable; bump for a Swarm deployment.
+      replicas: ${WORKER_REPLICAS:-1}
       resources:
         limits:
-          # Workers do real work (Java + Node + Trivy) — give them headroom.
+          # Workers do real work (Java + Node + scancode + Trivy) — give them
+          # headroom. Scale this WITH CELERY_CONCURRENCY (~2G per slot + 1G base).
           cpus: "4.0"
           memory: 6G
+        reservations:
+          # Guarantee a worker the floor it needs to even start the toolchain,
+          # so the scheduler does not over-pack a host and OOM-kill mid-scan.
+          cpus: "1.0"
+          memory: 2G
 
   # ---------------------------------------------------------------------------
   # Celery Beat — periodic scheduler for DT heartbeat / resync / orphan cleaner.

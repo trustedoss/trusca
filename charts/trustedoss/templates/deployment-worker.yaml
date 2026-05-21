@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "trustedoss.fullname" . }}-worker
+  labels:
+    {{- include "trustedoss.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  {{- if not .Values.worker.autoscaling.enabled }}
+  # When the HPA is enabled (worker.autoscaling.enabled) we omit replicas so the
+  # autoscaler owns the count; otherwise this static value applies.
+  replicas: {{ .Values.worker.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "trustedoss.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      labels:
+        {{- include "trustedoss.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: worker
+      annotations:
+        checksum/env: {{ include (print $.Template.BasePath "/configmap-env.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "trustedoss.serviceAccountName" (dict "root" $ "component" "worker") }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: worker
+          image: "{{ .Values.image.workerRepository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # Prefork concurrency = task slots per pod. Scale pods (replicaCount /
+          # HPA) in preference to this; each slot can fork a full pipeline.
+          command:
+            - celery
+            - -A
+            - tasks.celery_app
+            - worker
+            - --loglevel=info
+            - --concurrency={{ .Values.worker.concurrency }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "trustedoss.fullname" . }}-env
+          env:
+            {{- include "trustedoss.secretEnv" . | nindent 12 }}
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - celery -A tasks.celery_app inspect ping --timeout=5 -d celery@$HOSTNAME > /dev/null 2>&1
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 15
+          resources:
+            {{- toYaml .Values.worker.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

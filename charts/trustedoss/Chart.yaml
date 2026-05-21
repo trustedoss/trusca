@@ -1,0 +1,28 @@
+apiVersion: v2
+name: trustedoss
+description: >-
+  TrustedOSS Portal — enterprise open-source risk management (SCA: CVE,
+  license compliance, SBOM). This chart is an early Phase B / v2.1 scaffold
+  whose first job (work-B / B2) is to expose the B1/A1/A2 concurrency &
+  stability tuning knobs as Kubernetes-native values. It is NOT yet a
+  production-complete deployment (no Ingress/TLS, DB/Redis are expected to be
+  external — Cloud SQL / Memorystore per docs/v2-execution-plan.md §1.3).
+type: application
+
+# Chart version is the packaging version (SemVer); bump on every chart change.
+version: 0.1.0
+
+# appVersion tracks the released container image tag (image.tag default).
+# Keep in lock-step with .env.example IMAGE_TAG / docker-compose IMAGE_TAG.
+appVersion: "2.0.0"
+
+keywords:
+  - sca
+  - sbom
+  - vulnerability
+  - license-compliance
+home: https://github.com/trustedoss/trustedoss-portal
+sources:
+  - https://github.com/trustedoss/trustedoss-portal
+maintainers:
+  - name: TrustedOSS
