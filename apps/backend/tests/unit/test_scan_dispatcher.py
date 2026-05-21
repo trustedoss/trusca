@@ -24,13 +24,18 @@ def test_enqueue_scan_routes_source_kind_to_scan_source_task(
     class _AsyncResult:
         id = "fake-task-id"
 
-    def fake_source_delay(scan_id: str) -> _AsyncResult:
-        invocations.append(("source", scan_id))
+    # PR-A1: the dispatcher now uses apply_async(args=..., soft_time_limit=...,
+    # time_limit=...) so scan tasks are time-boxed. We accept the kwargs and
+    # record the dispatch.
+    def fake_source_apply_async(
+        *, args: tuple[str, ...], soft_time_limit: int, time_limit: int
+    ) -> _AsyncResult:
+        invocations.append(("source", args[0]))
         return _AsyncResult()
 
     monkeypatch.setattr(
-        "tasks.scan_source.scan_source_task.delay",
-        fake_source_delay,
+        "tasks.scan_source.scan_source_task.apply_async",
+        fake_source_apply_async,
     )
 
     class _Scan:
@@ -52,13 +57,15 @@ def test_enqueue_scan_routes_container_kind_to_scan_container_task(
     class _AsyncResult:
         id = "fake-container-id"
 
-    def fake_container_delay(scan_id: str) -> _AsyncResult:
-        invocations.append(("container", scan_id))
+    def fake_container_apply_async(
+        *, args: tuple[str, ...], soft_time_limit: int, time_limit: int
+    ) -> _AsyncResult:
+        invocations.append(("container", args[0]))
         return _AsyncResult()
 
     monkeypatch.setattr(
-        "tasks.scan_container.scan_container_task.delay",
-        fake_container_delay,
+        "tasks.scan_container.scan_container_task.apply_async",
+        fake_container_apply_async,
     )
 
     class _Scan:

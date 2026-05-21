@@ -19,6 +19,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ScanCancelButton } from "@/features/scans/ScanCancelButton";
 import { useScans } from "@/features/scans/useScans";
 import { formatRelativeToNow } from "@/lib/relativeTime";
 import { cn } from "@/lib/utils";
@@ -155,13 +156,16 @@ export function ScansPage() {
               <th className="px-3 py-2 text-right">
                 {t("page.column.duration")}
               </th>
+              <th className="px-3 py-2 text-right">
+                {t("page.column.actions")}
+              </th>
             </tr>
           </thead>
           <tbody data-testid="scans-tbody">
             {scansQuery.isLoading
               ? Array.from({ length: 5 }).map((_, i) => (
                   <tr key={`skeleton-${i}`} className="border-b">
-                    <td className="px-6 py-2" colSpan={5}>
+                    <td className="px-6 py-2" colSpan={6}>
                       <Skeleton className="h-5 w-full" />
                     </td>
                   </tr>
@@ -202,13 +206,21 @@ export function ScansPage() {
                       <td className="px-3 text-right text-xs text-muted-foreground">
                         {dur == null ? "—" : `${dur}s`}
                       </td>
+                      <td className="px-3 text-right">
+                        <div className="flex justify-end">
+                          <ScanCancelButton
+                            scanId={scan.id}
+                            status={scan.status}
+                          />
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}
             {!scansQuery.isLoading && items.length === 0 ? (
               <tr>
                 <td
-                  colSpan={5}
+                  colSpan={6}
                   className="px-6 py-12 text-center text-sm text-muted-foreground"
                   data-testid="scans-empty"
                 >

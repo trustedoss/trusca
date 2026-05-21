@@ -92,9 +92,13 @@ sidebar_position: 2
 
 | 키 | 기본값 | 읽는 위치 | 설명 |
 |---|---|---|---|
-| `TRUSTEDOSS_SCAN_BACKEND` | `real` | `config.py` | `real`(서브프로세스 `cdxgen` / ORT / Trivy) 또는 `mock`(픽스쳐 JSON). `mock`은 테스트 하네스의 dev / CI 기본값입니다. 프로덕션은 `real` 유지. |
-| `WORKSPACE_HOST_PATH` | `/tmp/trustedoss` | `config.py`, `docker-compose.yml` | worker에 `/workspace`로 마운트되는 호스트 디렉터리. 레포 클론 + ORT 분석기 출력 보관. compose 스택은 컨테이너 내에서 `/workspace`로 오버라이드합니다. |
-| `ORT_RULES_PATH` | `/opt/trustedoss/ort/rules.kts` | `docker-compose.yml` | worker 내부 경로. v2.2 의 ORT 기반 커스터마이징 경로를 위해 예약. v2.0.0 에서는 파일이 placeholder 이며 수정해도 효과가 없습니다 — 라이선스 단계 분류는 `apps/backend/tasks/scan_source.py` 의 `_LICENSE_CATEGORY_DEFAULTS` 에서 옵니다. |
+| `TRUSTEDOSS_SCAN_BACKEND` | `real` | `config.py` | `real`(서브프로세스 `cdxgen` / scancode / Trivy) 또는 `mock`(픽스쳐 JSON). `mock`은 테스트 하네스의 dev / CI 기본값입니다. 프로덕션은 `real` 유지. |
+| `SCANCODE_TIMEOUT_SECONDS` | `600` | `config.py` | scancode first-party 라이선스 단계의 hard wall-clock 한도. 타임아웃 시 declared 라이선스만으로 스캔을 계속합니다(best-effort). |
+| `SCANCODE_MAX_FILES` | `20000` | `config.py` | 적격 first-party 파일(제외 필터 적용 후) 상한. 초과 시 scancode 를 건너뛰고 declared 라이선스만 유지합니다. |
+| `SCANCODE_MAX_DETECTIONS` | `5000` | `config.py` | 스캔당 저장되는 detected 라이선스 결과 수 상한. |
+| `SCANCODE_MAX_RESULT_BYTES` | `268435456` (256 MB) | `config.py` | 파싱 전 scancode JSON 아티팩트 상한 — 악의적 트리의 OOM 가드. |
+| `WORKSPACE_HOST_PATH` | `/tmp/trustedoss` | `config.py`, `docker-compose.yml` | worker에 `/workspace`로 마운트되는 호스트 디렉터리. 레포 클론 + 스캔 아티팩트(cdxgen SBOM, scancode 출력) 보관. compose 스택은 컨테이너 내에서 `/workspace`로 오버라이드합니다. |
+| `ORT_RULES_PATH` | `/opt/trustedoss/ort/rules.kts` | `docker-compose.yml` | worker 내부 레거시 경로로, ORT 단계 제거 후 잔재입니다. 파일은 placeholder 이며 v2.0.0 에서는 효과가 없습니다 — 라이선스 단계 분류는 `apps/backend/tasks/scan_source.py` 의 `_LICENSE_CATEGORY_DEFAULTS` 에서 옵니다. |
 | `JSONB_ROW_SIZE_LIMIT_BYTES` | `262144` (256 KB) | `config.py` | writer가 truncate + warn하기 전 행당 JSON 바이트 상한. I-1 무한 페이로드 클래스 가드. |
 
 ## WebSocket 게이트웨이

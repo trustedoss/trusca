@@ -272,6 +272,172 @@ async def test_inactive_user_cannot_trigger_scan(client) -> None:
 
 
 # ---------------------------------------------------------------------------
+# POST /v1/projects/{id}/scans — B1 abuse controls (rate limit + team cap)
+# ---------------------------------------------------------------------------
+
+
+async def _seed_extra_project(client: AsyncClient, *, team_id: uuid.UUID):
+    """Create another project in an existing team and return it."""
+    factory = await _factory(client)
+    async with factory() as session:
+        from sqlalchemy import select
+
+        from models import Team
+
+        team = (
+            await session.execute(select(Team).where(Team.id == team_id))
+        ).scalar_one()
+        project = await make_project(session, team=team)
+        return project
+
+
+async def test_team_concurrency_cap_returns_429_problem_with_extensions(
+    client, monkeypatch
+) -> None:
+    """B1: team at its concurrent-scan cap → 429 + RFC 7807 + Retry-After.
+
+    The cap counts queued+running across the team's projects. We set the cap
+    to 2 and fire triggers on three distinct projects in the same team; the
+    third is blocked.
+    """
+    monkeypatch.setenv("SCAN_CONCURRENCY_CAP_PER_TEAM", "2")
+    # Keep the per-user rate limit out of the way for this test.
+    monkeypatch.setenv("SCAN_TRIGGER_RATE_LIMIT", "100/minute")
+
+    team, user, project1 = await _seed(client, role="developer")
+    project2 = await _seed_extra_project(client, team_id=team.id)
+    project3 = await _seed_extra_project(client, team_id=team.id)
+    headers = _bearer_for(user)
+
+    r1 = await client.post(
+        f"/v1/projects/{project1.id}/scans", headers=headers, json={"kind": "source"}
+    )
+    r2 = await client.post(
+        f"/v1/projects/{project2.id}/scans", headers=headers, json={"kind": "source"}
+    )
+    assert r1.status_code == 202, r1.text
+    assert r2.status_code == 202, r2.text
+
+    r3 = await client.post(
+        f"/v1/projects/{project3.id}/scans", headers=headers, json={"kind": "source"}
+    )
+    assert r3.status_code == 429, r3.text
+    assert r3.headers["content-type"].startswith(PROBLEM_JSON)
+    assert r3.headers["Retry-After"] == "30"
+    body = r3.json()
+    assert body["type"] == "urn:trustedoss:problem:concurrent_scan_limit"
+    assert body["status"] == 429
+    assert body["title"] == "Concurrent Scan Limit Exceeded"
+    assert body["limit"] == 2
+    assert body["instance"] == f"/v1/projects/{project3.id}/scans"
+    # M1: the live per-team active-scan count must not leak into the body.
+    assert "running_scans" not in body
+
+
+async def test_team_concurrency_cap_disabled_when_zero(client, monkeypatch) -> None:
+    """Cap 0 = unlimited: many concurrent triggers all succeed."""
+    monkeypatch.setenv("SCAN_CONCURRENCY_CAP_PER_TEAM", "0")
+    monkeypatch.setenv("SCAN_TRIGGER_RATE_LIMIT", "100/minute")
+
+    team, user, project1 = await _seed(client, role="developer")
+    project2 = await _seed_extra_project(client, team_id=team.id)
+    project3 = await _seed_extra_project(client, team_id=team.id)
+    headers = _bearer_for(user)
+
+    for project in (project1, project2, project3):
+        r = await client.post(
+            f"/v1/projects/{project.id}/scans",
+            headers=headers,
+            json={"kind": "source"},
+        )
+        assert r.status_code == 202, r.text
+
+
+async def test_scan_trigger_per_user_rate_limit_returns_429(
+    client, monkeypatch
+) -> None:
+    """B1: more triggers than the per-user budget → 429 + Retry-After.
+
+    We set a tiny budget (2/minute) and a high concurrency cap so the rate
+    limiter is the control under test. Each trigger is on a distinct project
+    in the same team so the per-project unique index (409) does not fire
+    first. The limit string is read per request (callable), so the env set
+    here takes effect immediately.
+    """
+    monkeypatch.setenv("SCAN_TRIGGER_RATE_LIMIT", "2/minute")
+    monkeypatch.setenv("SCAN_CONCURRENCY_CAP_PER_TEAM", "0")  # disable cap
+
+    team, user, project1 = await _seed(client, role="developer")
+    project2 = await _seed_extra_project(client, team_id=team.id)
+    project3 = await _seed_extra_project(client, team_id=team.id)
+    headers = _bearer_for(user)
+
+    r1 = await client.post(
+        f"/v1/projects/{project1.id}/scans", headers=headers, json={"kind": "source"}
+    )
+    r2 = await client.post(
+        f"/v1/projects/{project2.id}/scans", headers=headers, json={"kind": "source"}
+    )
+    assert r1.status_code == 202, r1.text
+    assert r2.status_code == 202, r2.text
+
+    # Third trigger within the same minute exceeds the 2/minute user budget.
+    r3 = await client.post(
+        f"/v1/projects/{project3.id}/scans", headers=headers, json={"kind": "source"}
+    )
+    assert r3.status_code == 429, r3.text
+    assert r3.headers["content-type"].startswith(PROBLEM_JSON)
+    assert "Retry-After" in r3.headers
+    assert r3.json()["status"] == 429
+
+
+async def test_scan_trigger_rate_limit_is_per_user_not_shared(
+    client, monkeypatch
+) -> None:
+    """A second user in the same team gets a fresh budget (per-user keying).
+
+    User A exhausts a 1/minute budget; user B (same team, same egress IP in
+    the test transport) must still be able to trigger — proving the limiter
+    keys by token sub, not by IP.
+    """
+    monkeypatch.setenv("SCAN_TRIGGER_RATE_LIMIT", "1/minute")
+    monkeypatch.setenv("SCAN_CONCURRENCY_CAP_PER_TEAM", "0")
+
+    factory = await _factory(client)
+    async with factory() as session:
+        org = await make_organization(session)
+        team = await make_team(session, organization=org)
+        user_a = await make_user(session)
+        user_b = await make_user(session)
+        await make_membership(session, user=user_a, team=team, role="developer")
+        await make_membership(session, user=user_b, team=team, role="developer")
+        project_a = await make_project(session, team=team)
+        project_b = await make_project(session, team=team)
+        a_id, b_id = user_a.id, user_b.id
+        pa_id, pb_id = project_a.id, project_b.id
+
+    headers_a = {"Authorization": f"Bearer {create_access_token(subject=str(a_id))}"}
+    headers_b = {"Authorization": f"Bearer {create_access_token(subject=str(b_id))}"}
+
+    # User A: first allowed, second blocked (1/minute budget).
+    ra1 = await client.post(
+        f"/v1/projects/{pa_id}/scans", headers=headers_a, json={"kind": "source"}
+    )
+    assert ra1.status_code == 202, ra1.text
+    ra2 = await client.post(
+        f"/v1/projects/{pa_id}/scans", headers=headers_a, json={"kind": "source"}
+    )
+    # 429 (rate) — would otherwise be 409 (active scan); rate check runs first.
+    assert ra2.status_code == 429, ra2.text
+
+    # User B has a separate bucket → still allowed.
+    rb1 = await client.post(
+        f"/v1/projects/{pb_id}/scans", headers=headers_b, json={"kind": "source"}
+    )
+    assert rb1.status_code == 202, rb1.text
+
+
+# ---------------------------------------------------------------------------
 # GET /v1/scans/{scan_id}
 # ---------------------------------------------------------------------------
 

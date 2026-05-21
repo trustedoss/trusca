@@ -2,7 +2,7 @@
 End-to-end source scan pipeline — mock backend + mocked DT.
 
 We drive `tasks.scan_source.scan_source_task` directly (NOT through Celery's
-broker) with `TRUSTEDOSS_SCAN_BACKEND=mock` so cdxgen + ORT emit fixture
+broker) with `TRUSTEDOSS_SCAN_BACKEND=mock` so cdxgen + scancode emit fixture
 JSON. The DT client + breaker are monkeypatched so the test never touches a
 real Redis or DT instance.
 
@@ -31,7 +31,7 @@ import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from models import Scan, ScanArtifact, ScanComponent
+from models import LicenseFinding, Scan, ScanArtifact, ScanComponent
 from tests._helpers import (
     make_membership,
     make_organization,
@@ -172,7 +172,7 @@ def test_scan_source_pipeline_completes_with_mock_backend(
     tmp_path: Path,
     sync_session: Session,
 ) -> None:
-    """A full pipeline run against mock cdxgen / ORT / DT must reach `succeeded`."""
+    """A full pipeline run against mock cdxgen / scancode / DT must reach `succeeded`."""
     monkeypatch.setenv("TRUSTEDOSS_SCAN_BACKEND", "mock")
     monkeypatch.setenv("WORKSPACE_HOST_PATH", str(tmp_path))
 
@@ -213,7 +213,7 @@ def test_scan_source_pipeline_completes_with_mock_backend(
     assert scan.completed_at is not None
     assert scan.error_message is None
 
-    # The cdxgen + ORT artifacts were persisted.
+    # The cdxgen + scancode artifacts were persisted.
     artifacts = (
         sync_session.execute(
             select(ScanArtifact).where(ScanArtifact.scan_id == scan_id)
@@ -223,7 +223,7 @@ def test_scan_source_pipeline_completes_with_mock_backend(
     )
     kinds = {a.kind for a in artifacts}
     assert "sbom_cyclonedx" in kinds
-    assert "ort_result" in kinds
+    assert "scancode_result" in kinds
 
     # cdxgen mock emits at least one component → ScanComponent rows exist.
     components = (
@@ -273,6 +273,77 @@ def test_scan_source_succeeded_run_is_noop(
     scan_again = sync_session.execute(select(Scan).where(Scan.id == scan_id)).scalar_one()
     assert scan_again.completed_at == completed_at_first
     assert scan_again.status == "succeeded"
+
+
+# ---------------------------------------------------------------------------
+# Blast-radius isolation — detected-license failure must NOT roll back the
+# declared findings + component graph (security-reviewer Medium #1).
+# ---------------------------------------------------------------------------
+
+
+def test_detected_license_failure_does_not_roll_back_components(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    sync_session: Session,
+) -> None:
+    """A SQLAlchemyError while persisting scancode-detected licenses is wrapped
+    in a SAVEPOINT: the high-value declared findings + components still commit
+    and the scan still reaches ``succeeded``.
+
+    This is the cache the UI shows when DT is down — it must survive a hostile
+    file that trips an unexpected constraint in the detected-license write.
+    """
+    monkeypatch.setenv("TRUSTEDOSS_SCAN_BACKEND", "mock")
+    monkeypatch.setenv("WORKSPACE_HOST_PATH", str(tmp_path))
+    monkeypatch.setattr("tasks.scan_source.get_breaker", lambda: _FakeBreaker())
+    monkeypatch.setattr("tasks.scan_source.build_client", lambda: _FakeDTClient())
+    monkeypatch.setattr("tasks.scan_source._DT_FINDINGS_POLL_DELAYS_SECONDS", (0,))
+
+    # Sabotage detected-license persistence to raise mid-SAVEPOINT. We let it
+    # add a row first (so the nested transaction is non-trivially dirty) then
+    # raise, mirroring an INSERT that fails on flush.
+    from sqlalchemy.exc import DataError
+
+    def _boom(session, *, scan_uuid, sbom, detections):  # type: ignore[no-untyped-def]
+        raise DataError("simulated detected-license INSERT failure", None, Exception())
+
+    monkeypatch.setattr("tasks.scan_source._persist_detected_licenses", _boom)
+
+    scan_id, _ = _seed_queued_scan(sync_session)
+
+    from tasks.scan_source import scan_source_task
+
+    result = scan_source_task.apply(args=[str(scan_id)])
+    assert result.successful(), f"task failed: {result.traceback}"
+
+    sync_session.expire_all()
+    scan = sync_session.execute(select(Scan).where(Scan.id == scan_id)).scalar_one()
+    # The scan still succeeds — detected-license failure is degraded, not fatal.
+    assert scan.status == "succeeded"
+
+    # Components committed despite the detected-license failure.
+    components = (
+        sync_session.execute(
+            select(ScanComponent).where(ScanComponent.scan_id == scan_id)
+        )
+        .scalars()
+        .all()
+    )
+    assert len(components) >= 1
+
+    # No detected (scancode) findings were persisted — the SAVEPOINT rolled
+    # them back without touching the declared findings / components.
+    detected = (
+        sync_session.execute(
+            select(LicenseFinding).where(
+                LicenseFinding.scan_id == scan_id,
+                LicenseFinding.kind == "detected",
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert detected == []
 
 
 # ---------------------------------------------------------------------------

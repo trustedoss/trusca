@@ -176,6 +176,197 @@ def redis_url() -> str:
     return os.getenv("REDIS_URL", DEFAULT_REDIS_URL)
 
 
+# ---------------------------------------------------------------------------
+# B1 — connection-pool tuning (concurrency / stability for hundreds of
+# simultaneous users).
+#
+# SQLAlchemy's QueuePool defaults (pool_size=5, max_overflow=10) cap the
+# FastAPI process at ~15 connections, which exhausts under a few dozen
+# concurrent request handlers each holding a session across an awaited DB
+# round-trip. We raise the ceiling and expose every knob via os.getenv so an
+# operator can match the pool to their Postgres `max_connections` budget
+# without a rebuild (CLAUDE.md core rule #11 — read at call time, no
+# module-level caching).
+#
+# Sizing guidance (per process):
+#   total connections = pool_size + max_overflow
+# Multiply by the number of uvicorn workers AND add the Celery worker pools
+# (see *_sync helpers below) to stay under Postgres `max_connections`. The
+# defaults below (20 + 10 = 30 per FastAPI process; 5 + 5 = 10 per Celery
+# worker process) leave generous headroom under Postgres' default 100.
+# ---------------------------------------------------------------------------
+
+
+# L2 (security-reviewer): upper bounds on the connection-pool knobs. A typo
+# like ``DB_POOL_SIZE=100000`` would otherwise have each FastAPI/Celery process
+# try to open tens of thousands of connections, blowing past Postgres'
+# ``max_connections`` (default 100) and DoS-ing the very database the pool is
+# meant to serve. We clamp each knob to a generous ceiling — high enough that
+# no legitimate single-process deployment is constrained, low enough that a
+# fat-finger cannot exhaust ``max_connections``. Per-process total connections
+# are ``pool_size + max_overflow``; with the ceilings below a single process
+# tops out at 200 + 200 = 400, which an operator running that hot would have
+# raised ``max_connections`` for deliberately.
+_MAX_POOL_SIZE = 200
+_MAX_POOL_OVERFLOW = 200
+# Timeout / recycle are time values, not connection counts, but an absurd value
+# (a multi-hour acquire timeout, a recycle age of years) is still a misconfig
+# worth bounding so the pool stays responsive / fresh.
+_MAX_POOL_TIMEOUT_SECONDS = 3600  # 1h — far past any sane acquire wait
+_MAX_POOL_RECYCLE_SECONDS = 86_400  # 24h — past any proxy idle-reaper window
+
+
+def _int_env(
+    name: str, default: int, *, minimum: int = 0, maximum: int | None = None
+) -> int:
+    """Parse an int env var, clamping to ``[minimum, maximum]`` and ignoring junk.
+
+    A misconfigured pool size (negative, zero where positive is required, a
+    non-numeric string, or an absurdly large typo) must never crash engine
+    construction at startup *or* let a single fat-finger exhaust Postgres'
+    ``max_connections``. We fall back to the default on junk, clamp up to
+    ``minimum`` (lower bound), and — when ``maximum`` is given — clamp down to
+    ``maximum`` (upper bound). An over-the-ceiling value is logged at WARNING
+    so the operator notices the typo instead of silently running clamped.
+    """
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        value = default
+    else:
+        try:
+            value = int(raw)
+        except ValueError:
+            value = default
+    value = max(value, minimum)
+    if maximum is not None and value > maximum:
+        # Local import keeps config import-time free of the logging stack.
+        import structlog
+
+        structlog.get_logger("config").warning(
+            "config.int_env_clamped_to_max",
+            env_var=name,
+            requested=value,
+            clamped_to=maximum,
+        )
+        value = maximum
+    return value
+
+
+def db_pool_size() -> int:
+    """Persistent connections kept open by the async (FastAPI) engine pool."""
+    return _int_env("DB_POOL_SIZE", 20, minimum=1, maximum=_MAX_POOL_SIZE)
+
+
+def db_max_overflow() -> int:
+    """Burst connections allowed above ``db_pool_size()`` under load.
+
+    0 is valid (hard cap at pool_size); negative is clamped to 0; an absurd
+    value is clamped down to ``_MAX_POOL_OVERFLOW`` (L2).
+    """
+    return _int_env("DB_MAX_OVERFLOW", 10, minimum=0, maximum=_MAX_POOL_OVERFLOW)
+
+
+def db_pool_timeout_seconds() -> int:
+    """Seconds a request waits for a free connection before raising.
+
+    Bounds tail latency: a request that cannot get a connection within this
+    window fails fast (and surfaces as a 500 problem+json) instead of hanging
+    the worker indefinitely under a connection stampede.
+    """
+    return _int_env(
+        "DB_POOL_TIMEOUT", 30, minimum=1, maximum=_MAX_POOL_TIMEOUT_SECONDS
+    )
+
+
+def db_pool_recycle_seconds() -> int:
+    """Recycle a pooled connection after this many seconds of age.
+
+    Defends against Postgres / proxy idle-connection reaping (PgBouncer,
+    Cloud SQL, stateful firewalls drop idle TCP after ~30-60 min). 1800s
+    (30 min) keeps connections fresh well inside typical reaper windows.
+    -1 disables recycling. An absurdly large value is clamped down to
+    ``_MAX_POOL_RECYCLE_SECONDS`` (24h) so a typo cannot effectively disable
+    recycling (the -1 disable sentinel is below the ceiling and unaffected).
+    """
+    return _int_env(
+        "DB_POOL_RECYCLE", 1800, minimum=-1, maximum=_MAX_POOL_RECYCLE_SECONDS
+    )
+
+
+def db_sync_pool_size() -> int:
+    """Persistent connections for the sync (Celery worker) engine pool.
+
+    Celery worker concurrency is low (default 2), so each worker process needs
+    far fewer connections than a FastAPI process. Kept on a separate env var
+    so operators can tune worker pools independently of the API pool. Clamped
+    up to ``_MAX_POOL_SIZE`` (L2) so a typo cannot exhaust max_connections.
+    """
+    return _int_env("DB_SYNC_POOL_SIZE", 5, minimum=1, maximum=_MAX_POOL_SIZE)
+
+
+def db_sync_max_overflow() -> int:
+    """Burst connections above ``db_sync_pool_size()`` for the Celery engine."""
+    return _int_env(
+        "DB_SYNC_MAX_OVERFLOW", 5, minimum=0, maximum=_MAX_POOL_OVERFLOW
+    )
+
+
+def db_sync_pool_timeout_seconds() -> int:
+    """Connection-acquire timeout (seconds) for the Celery sync engine."""
+    return _int_env(
+        "DB_SYNC_POOL_TIMEOUT", 30, minimum=1, maximum=_MAX_POOL_TIMEOUT_SECONDS
+    )
+
+
+def db_sync_pool_recycle_seconds() -> int:
+    """Connection recycle age (seconds) for the Celery sync engine."""
+    return _int_env(
+        "DB_SYNC_POOL_RECYCLE", 1800, minimum=-1, maximum=_MAX_POOL_RECYCLE_SECONDS
+    )
+
+
+# ---------------------------------------------------------------------------
+# B1 — scan-trigger abuse controls.
+#
+# Two independent layers guard the scan-trigger surface against abuse and
+# accidental overload from hundreds of concurrent users:
+#
+#   1. Per-user rate limit (slowapi) on POST /v1/projects/{id}/scans — caps
+#      how *fast* a single authenticated user can fire triggers.
+#   2. Per-team concurrent-scan cap (counted in the service) — caps how *many*
+#      scans one team can have queued+running at once, protecting the shared
+#      Celery worker pool from a single team's burst.
+#
+# These are stability caps, distinct from free-tier *quota* (project count /
+# daily scan budget), which is a separate concern (bundle 5).
+# ---------------------------------------------------------------------------
+
+
+def scan_trigger_rate_limit() -> str:
+    """slowapi limit string for POST /v1/projects/{id}/scans (per user).
+
+    Format is slowapi's ``"<n>/<period>"`` (e.g. ``"20/minute"``). Keyed by
+    authenticated user id (falling back to client IP for anonymous callers —
+    though the route requires auth, so the fallback only matters for malformed
+    tokens). Default 20/minute is generous for interactive use and CI bursts
+    while still throttling a runaway script.
+    """
+    return os.getenv("SCAN_TRIGGER_RATE_LIMIT", "20/minute")
+
+
+def scan_concurrency_cap_per_team() -> int:
+    """Max concurrent (queued+running) scans allowed per team.
+
+    When a trigger would push the team's active-scan count to this value or
+    above, the service raises ``ConcurrentScanLimitExceeded`` (429). 0 or a
+    negative value disables the cap entirely (treated as "unlimited") so an
+    operator can opt out without code changes; this is intentional — the
+    per-user rate limit and the per-project active-scan unique index still
+    apply.
+    """
+    return _int_env("SCAN_CONCURRENCY_CAP_PER_TEAM", 10, minimum=0)
+
+
 def secret_key() -> str:
     """
     Return the JWT signing key.
@@ -277,13 +468,139 @@ def dt_auto_restart_enabled() -> bool:
 
 
 def scan_backend_mode() -> str:
-    """`real` (subprocess cdxgen/ort/trivy) or `mock` (fixture JSON)."""
+    """`real` (subprocess cdxgen/scancode/trivy) or `mock` (fixture JSON)."""
     return os.getenv("TRUSTEDOSS_SCAN_BACKEND", "real").lower()
+
+
+# ---------------------------------------------------------------------------
+# scancode first-party license detection (PR-A2 — replaces ORT).
+#
+# scancode runs over the cloned first-party source tree only (third-party
+# dependency licenses stay declared, sourced from cdxgen). Every accessor
+# resolves the env at call time (CLAUDE.md core rule #11) so an operator can
+# retune the worker without a rebuild. The three guards below bound the stage
+# so a hostile / pathological repo cannot starve the scan budget or the DB.
+# ---------------------------------------------------------------------------
+
+
+def scancode_timeout_seconds() -> int:
+    """Hard wall-clock limit (seconds) for one scancode invocation.
+
+    scancode does a per-file license/copyright detection pass; on a large
+    first-party tree it can take several minutes. Default 600s (10 min) sits
+    comfortably inside the scan soft limit (SCAN_SOFT_TIME_LIMIT_SECONDS,
+    default 3600s) alongside cdxgen + DT polling. Read at call time (rule #11).
+    """
+    return int(os.getenv("SCANCODE_TIMEOUT_SECONDS", "600"))
+
+
+def scancode_max_files() -> int:
+    """Maximum first-party files scancode is allowed to scan in one run.
+
+    A pre-scan walk counts eligible files (after the exclude filter); when the
+    count exceeds this ceiling we skip the detection stage with a clear WARNING
+    rather than letting scancode spin for the whole budget on a giant monorepo.
+    Default 20000 — enough for typical first-party trees, a guard for outliers.
+    Read at call time (rule #11).
+    """
+    return int(os.getenv("SCANCODE_MAX_FILES", "20000"))
+
+
+def scancode_max_detections() -> int:
+    """Maximum number of detected license findings persisted from one scan.
+
+    Bounds the row count written to ``license_findings`` (kind='detected') so a
+    pathological tree (every file a distinct LicenseRef) cannot balloon the
+    table. Excess detections beyond this cap are dropped with a WARNING; the
+    scan still succeeds. Default 5000. Read at call time (rule #11).
+    """
+    return int(os.getenv("SCANCODE_MAX_DETECTIONS", "5000"))
+
+
+def scancode_max_result_bytes() -> int:
+    """Maximum size (bytes) of the scancode JSON result we will deserialize.
+
+    scancode's result file is keyed off the (attacker-controlled) first-party
+    tree: a pathological clone with millions of tiny files, or files seeded with
+    huge embedded license texts, can produce a multi-GiB JSON. ``json.load``
+    fully materialises the document in memory, so an unbounded result is an OOM
+    vector for the worker. Before deserializing we ``stat()`` the file and skip
+    parsing (returning zero detections, a degraded-but-non-fatal outcome) when
+    it exceeds this ceiling. Default 256 MiB. Read at call time (rule #11).
+    """
+    return int(os.getenv("SCANCODE_MAX_RESULT_BYTES", str(256 * 1024 * 1024)))
 
 
 def workspace_root() -> str:
     """Root directory under which per-scan workspaces live."""
     return os.getenv("WORKSPACE_HOST_PATH", "/tmp/trustedoss")  # noqa: S108
+
+
+def scan_soft_time_limit_seconds() -> int:
+    """Celery ``soft_time_limit`` for scan tasks (PR-A1 scan stability).
+
+    When a scan task runs longer than this, Celery raises
+    :class:`celery.exceptions.SoftTimeLimitExceeded` inside the worker. The
+    task catches it, cleans up the workspace, and marks the scan ``failed``
+    with a clear ``error_message`` — this is the *primary* timeout mechanism.
+
+    Default 3600s (1 hour) covers cdxgen + ORT + DT polling on the pilot repos
+    with comfortable headroom. The hard limit (SIGKILL) sits above this as a
+    safety net for a task that ignores or deadlocks past the soft signal.
+
+    Read at call time per CLAUDE.md core rule #11 so an operator can retune
+    the worker via env without a rebuild.
+    """
+    return int(os.getenv("SCAN_SOFT_TIME_LIMIT_SECONDS", "3600"))
+
+
+# Minimum grace window the hard (SIGKILL) limit must sit ABOVE the soft limit,
+# in seconds. The soft-limit handler needs time to rmtree the workspace and
+# mark the scan ``failed`` before SIGKILL lands; 60s is comfortable for that
+# bookkeeping even on a loaded worker.
+SCAN_TIMEOUT_MIN_GRACE_SECONDS = 60
+
+
+def scan_hard_time_limit_seconds() -> int:
+    """Celery ``time_limit`` (hard, SIGKILL) for scan tasks (PR-A1).
+
+    The hard limit is the last-resort backstop: if the worker thread does not
+    surface ``SoftTimeLimitExceeded`` (e.g. a C-extension or subprocess stuck
+    in an uninterruptible syscall), Celery sends SIGKILL at this boundary so
+    the worker slot is reclaimed. It must be strictly greater than the soft
+    limit; the default leaves a 5-minute window for graceful soft-limit
+    cleanup before the kill.
+
+    Default 3900s (65 minutes). Read at call time (rule #11).
+
+    M2 (security-reviewer): we *enforce* the ``hard > soft`` invariant at read
+    time by clamping, rather than trusting the operator. If someone sets
+    ``SCAN_HARD_TIME_LIMIT_SECONDS <= SCAN_SOFT_TIME_LIMIT_SECONDS`` (e.g. a
+    typo, or swapping the two env vars), SIGKILL would fire at or before the
+    soft-limit handler — killing the worker mid-cleanup, leaking the workspace,
+    and leaving the scan stuck in ``running`` forever. We clamp the effective
+    hard limit to ``soft + SCAN_TIMEOUT_MIN_GRACE_SECONDS`` so the soft handler
+    always gets a window. Clamp (not raise) is deliberate: a single mis-set env
+    var must not break *every* scan dispatch — it degrades to a safe default
+    instead. Both inputs are read via ``os.getenv`` at call time (rule #11).
+    """
+    soft = scan_soft_time_limit_seconds()
+    raw_hard = int(os.getenv("SCAN_HARD_TIME_LIMIT_SECONDS", "3900"))
+    return max(raw_hard, soft + SCAN_TIMEOUT_MIN_GRACE_SECONDS)
+
+
+def workspace_orphan_max_age_seconds() -> int:
+    """Minimum age before a terminal-scan workspace is eligible for reclaim.
+
+    The workspace orphan cleaner only deletes a per-scan workspace directory
+    when (a) the scan row is in a terminal state (succeeded / failed /
+    cancelled) and (b) the directory's mtime is older than this grace period.
+    The grace window avoids racing a worker that is still inside its
+    ``finally: shutil.rmtree(...)`` block right after the row flipped terminal.
+
+    Default 900s (15 minutes). Read at call time (rule #11).
+    """
+    return int(os.getenv("WORKSPACE_ORPHAN_MAX_AGE_SECONDS", "900"))
 
 
 def jsonb_row_size_limit_bytes() -> int:

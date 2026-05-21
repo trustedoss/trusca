@@ -154,8 +154,11 @@ _LICENSE_BANK: tuple[tuple[str, str, str], ...] = (
     ("GPL-3.0-only", "GNU General Public License v3.0", "forbidden"),
 )
 
-# Demo component bank — one component per license so license findings have
-# a believable name in the UI.
+# Demo component bank. The first five map 1:1 to _LICENSE_BANK so every
+# license finding has a believable package name in the UI. All ten give each
+# entry in _CVE_BANK (10 CVEs) its own component, so the scan_components
+# uniqueness constraint (scan_id, component_version_id, dependency_path) never
+# collides — the CVE loop indexes this bank by `cve_idx`, which runs 0..9.
 _COMPONENT_BANK: tuple[tuple[str, str, str], ...] = (
     # (purl, package_type, name)
     ("pkg:npm/lodash", "npm", "lodash"),
@@ -163,6 +166,62 @@ _COMPONENT_BANK: tuple[tuple[str, str, str], ...] = (
     ("pkg:maven/org.springframework/spring-core", "maven", "spring-core"),
     ("pkg:npm/readline-sync", "npm", "readline-sync"),
     ("pkg:pypi/pyyaml", "pypi", "PyYAML"),
+    ("pkg:npm/axios", "npm", "axios"),
+    ("pkg:pypi/jinja2", "pypi", "Jinja2"),
+    ("pkg:maven/com.fasterxml.jackson.core/jackson-databind", "maven", "jackson-databind"),
+    ("pkg:npm/minimist", "npm", "minimist"),
+    ("pkg:golang/github.com/gin-gonic/gin", "golang", "gin"),
+)
+
+# Per-license obligations so the Obligations tab and the NOTICE-file generator
+# have content in the demo. Obligations are a separate table keyed by license,
+# surfaced only when their license appears in a project's latest scan — every
+# spdx_id below is in _LICENSE_BANK, which the license-finding loop attaches to
+# the two CVE-target projects.
+_OBLIGATION_BANK: tuple[tuple[str, str, str], ...] = (
+    # (spdx_id, kind, text)
+    (
+        "MIT",
+        "notice",
+        "Include the copyright notice and the permission notice in all copies "
+        "or substantial portions of the software.",
+    ),
+    (
+        "Apache-2.0",
+        "notice",
+        "Retain the NOTICE file and all attribution notices; state significant "
+        "changes made to the files.",
+    ),
+    (
+        "Apache-2.0",
+        "patent",
+        "Apache-2.0 includes an express patent grant that terminates for a party "
+        "who initiates patent litigation over the work.",
+    ),
+    (
+        "BSD-3-Clause",
+        "notice",
+        "Reproduce the copyright notice, the condition list, and the disclaimer "
+        "in the documentation and other materials.",
+    ),
+    (
+        "LGPL-2.1-only",
+        "source_disclosure",
+        "Provide the source of the LGPL library (or a written offer) and allow "
+        "the end user to relink against a modified version.",
+    ),
+    (
+        "GPL-3.0-only",
+        "source_disclosure",
+        "Convey the complete corresponding source under GPL-3.0 to every "
+        "recipient of the binary.",
+    ),
+    (
+        "GPL-3.0-only",
+        "copyleft",
+        "Keep the GPL-3.0 license text, copyright notices, and the 'no warranty' "
+        "disclaimers intact in all conveyed copies.",
+    ),
 )
 
 
@@ -236,6 +295,7 @@ async def _seed() -> dict[str, Any]:  # noqa: PLR0915 — single linear seed rea
         LicenseFinding,
         Membership,
         Notification,
+        Obligation,
         Organization,
         Project,
         Scan,
@@ -357,6 +417,25 @@ async def _seed() -> dict[str, Any]:  # noqa: PLR0915 — single linear seed rea
                     license_by_spdx[spdx_id] = lic
                 else:
                     license_by_spdx[spdx_id] = existing
+            await session.flush()
+
+            # ── Obligations (idempotent on (license, kind)) ────────────────
+            # Keyed to the shared license catalog so the Obligations tab and the
+            # NOTICE-file download are populated, not empty, in the demo.
+            for ob_spdx, ob_kind, ob_text in _OBLIGATION_BANK:
+                ob_lic = license_by_spdx[ob_spdx]
+                existing_ob = (
+                    await session.execute(
+                        select(Obligation).where(
+                            Obligation.license_id == ob_lic.id,
+                            Obligation.kind == ob_kind,
+                        )
+                    )
+                ).scalar_one_or_none()
+                if existing_ob is None:
+                    session.add(
+                        Obligation(license_id=ob_lic.id, kind=ob_kind, text=ob_text)
+                    )
             await session.flush()
 
             # ── Components (shared catalog, idempotent on purl) ────────────

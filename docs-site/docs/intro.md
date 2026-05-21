@@ -34,7 +34,7 @@ Full details in the [v2.0.0 release notes](./release-notes/v2.0.0.md).
 | Capability | Detail |
 |---|---|
 | Component detection | `cdxgen` (CycloneDX generator) discovers packages across 30+ ecosystems (npm, Maven, PyPI, Go, Cargo, NuGet, Composer, RubyGems, Gradle, Hex, …). |
-| License classification | OSS Review Toolkit (ORT) rules tag every license as **Allowed**, **Conditional**, or **Forbidden**. Forbidden licenses block the build. |
+| License classification | Every license is tagged **Allowed**, **Conditional**, or **Forbidden**; declared licenses come from `cdxgen` and detected first-party licenses from scancode. Forbidden licenses block the build. |
 | Vulnerability detection | Dependency-Track (DT) correlates components against NVD, OSV, and the GitHub Advisory Database. |
 | Container scanning | Trivy (Aqua Security container scanner) detects OS-package CVEs (Common Vulnerabilities and Exposures) in container images. |
 | SBOM export | CycloneDX (JSON / XML) and SPDX (JSON / Tag-Value), byte-stable for diffing. |
@@ -64,10 +64,10 @@ Full details in the [v2.0.0 release notes](./release-notes/v2.0.0.md).
                             │
        ┌────────────────────┼────────────────────────┐
        ↓                    ↓                        ↓
- ┌───────────┐       ┌──────────┐           ┌────────────────────────┐
- │ Postgres  │       │ Celery   │ → tasks → │ cdxgen / ORT / Trivy / │
- │   (17)    │       │ + Redis  │           │ Dependency-Track       │
- └───────────┘       └──────────┘           └────────────────────────┘
+ ┌───────────┐       ┌──────────┐           ┌────────────────────────────┐
+ │ Postgres  │       │ Celery   │ → tasks → │ cdxgen / scancode / Trivy /│
+ │   (17)    │       │ + Redis  │           │ Dependency-Track           │
+ └───────────┘       └──────────┘           └────────────────────────────┘
 ```
 
 Seven container services run in production: **traefik**, **postgres**, **redis**, **backend**, **worker**, **beat** (Celery scheduler), and **frontend**. An optional Dependency-Track overlay adds bundled vulnerability data.

@@ -27,6 +27,10 @@ from core.db import get_db
 from core.errors import problem_response
 from core.security import CurrentUser, require_role
 from schemas.scan import ScanListResponse, ScanPublic
+from services.admin_scan_service import (
+    AdminScanError,
+    cancel_scan_for_actor,
+)
 from services.scan_service import (
     ScanError,
     get_scan,
@@ -44,6 +48,24 @@ def _problem_for_scan_error(request: Request, exc: ScanError) -> Response:
         title=exc.title,
         detail=str(exc) or exc.title,
         instance=request.url.path,
+    )
+
+
+def _problem_for_admin_scan_error(request: Request, exc: AdminScanError) -> Response:
+    """Translate an AdminScanError (shared cancel core) into RFC 7807.
+
+    Mirrors the admin endpoint's translator so the user-facing cancel returns
+    the identical envelope (incl. ``scan_already_cancelled`` extension) on a
+    409 — the only difference between the two surfaces is the team-access gate.
+    """
+    extensions: dict[str, object] = dict(exc.extensions)
+    return problem_response(
+        status_code=exc.status_code,
+        title=exc.title,
+        detail=str(exc) or exc.title,
+        instance=request.url.path,
+        type_=exc.type_uri,
+        **extensions,
     )
 
 
@@ -117,6 +139,48 @@ async def get_scan_endpoint(
     body = ScanPublic.model_validate(scan)
     return Response(
         content=body.model_dump_json(by_alias=True),
+        status_code=status.HTTP_200_OK,
+        media_type="application/json",
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /v1/scans/{scan_id}/cancel  (user-facing — own-team scans only)
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/scans/{scan_id}/cancel",
+    summary="Cancel a queued / running scan owned by the caller's team",
+)
+async def cancel_scan_endpoint(
+    request: Request,
+    scan_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_role("developer")),
+) -> Response:
+    """Cancel one of the caller's own team's scans.
+
+    PR-A1 (scan stability). Auth: any authenticated team member
+    (``developer`` or higher). The owning-team check lives in the service
+    (``cancel_scan_for_actor``) which existence-hides other teams' scans as
+    404 — so a developer cannot probe scan ids belonging to other teams.
+
+    Admin force-cancel (``POST /v1/admin/scans/{id}/cancel``) remains separate
+    and cross-team; the two share the same revoke + status-mutation core.
+    """
+    try:
+        item = await cancel_scan_for_actor(session, actor=actor, scan_id=scan_id)
+    except AdminScanError as exc:
+        return _problem_for_admin_scan_error(request, exc)
+
+    log.warning(
+        "scan.cancel",
+        actor_id=str(actor.id),
+        scan_id=str(scan_id),
+    )
+    return Response(
+        content=item.model_dump_json(),
         status_code=status.HTTP_200_OK,
         media_type="application/json",
     )

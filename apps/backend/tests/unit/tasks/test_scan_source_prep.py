@@ -397,8 +397,9 @@ def test_extract_spdx_ids_skips_compound_expression() -> None:
     """`MIT OR Apache-2.0` requires an SPDX expression parser — skip it.
 
     cdxgen-fast-path scope: declared-from-metadata only. Compound
-    expressions are intentionally deferred to the (future) ORT analyzer
-    integration that emits per-file findings instead.
+    expressions on third-party deps are intentionally not split here; the
+    scancode first-party stage (PR-A2) emits per-file detected findings
+    separately.
     """
     from tasks.scan_source import _extract_spdx_ids
 

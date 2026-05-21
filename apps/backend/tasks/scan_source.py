@@ -1,5 +1,14 @@
 """
-Source scan Celery task — cdxgen → ORT → DT upload → DT findings.
+Source scan Celery task — cdxgen → scancode (first-party) → DT upload → DT findings.
+
+PR-A2: the ORT ``evaluate`` stage was removed (it was broken — it fed a
+CycloneDX SBOM to ``ort evaluate --ort-file``, which expects an OrtResult JSON,
+and aborted every scan with a KotlinInvalidNullException; we had been swallowing
+that with a try/except). License classification for *third-party* dependencies
+remains *declared* (cdxgen package metadata, persisted in ``_persist_components``
+→ ``_persist_component_licenses``). PR-A2 adds *detected* license findings for
+*first-party* source via scancode — third-party dependency sources are NOT
+downloaded (that deep-scan path is out of scope; it would blow the budget).
 
 CLAUDE.md core rule #3: this pipeline runs asynchronously inside a Celery
 worker; the FastAPI request handler that triggered the scan only persisted a
@@ -46,15 +55,17 @@ from pathlib import Path
 from typing import Any
 
 import structlog
+from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy import delete, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from core.config import workspace_root
+from core.config import scan_soft_time_limit_seconds, workspace_root
 from core.db import sync_session_scope
 from core.pii_mask import redact_url_userinfo
 from core.url_guard import GitUrlValidationError, validate_git_url_with_ip
 from integrations import cdxgen as cdxgen_adapter
-from integrations import ort as ort_adapter
+from integrations import scancode as scancode_adapter
 from integrations._size_guard import enforce_jsonb_row_size_limit
 from integrations._subprocess_env import scrubbed_env_for_prep
 from integrations.dt import DTBreakerOpen, DTError
@@ -91,7 +102,10 @@ _STAGE_PROGRESS: dict[str, int] = {
     "fetch": 10,
     "prep": 18,
     "cdxgen": 25,
-    "ort": 50,
+    # PR-A2: the "ort" stage slug (50) is replaced by "scancode" at the same
+    # percent so the WS progress frame contract stays monotonic — clients that
+    # rendered "50%" for the license stage keep rendering 50% for it.
+    "scancode": 50,
     "dt_upload": 70,
     "dt_findings": 90,
     "finalize": 100,
@@ -103,10 +117,16 @@ _STAGE_PROGRESS: dict[str, int] = {
 # ---------------------------------------------------------------------------
 
 
+# PR-A1 (scan stability): the soft/hard time limits are NOT pinned on the
+# decorator. Import-time decorator constants would (a) cache the value at
+# module load — violating CLAUDE.md rule #11 — and (b) bypass per-dispatch
+# env tuning. The limits are passed per call by ``tasks.enqueue_scan`` via
+# ``apply_async(soft_time_limit=..., time_limit=...)``, read from
+# ``SCAN_SOFT_TIME_LIMIT_SECONDS`` / ``SCAN_HARD_TIME_LIMIT_SECONDS`` at
+# dispatch time. Celery preserves those message options across an
+# ``acks_late`` redelivery, so a re-executed task stays time-boxed too.
 @celery_app.task(  # type: ignore[misc]
     name="trustedoss.scan_source",
-    soft_time_limit=3600,
-    time_limit=4200,
     bind=True,
 )
 def scan_source_task(self: Any, scan_id: str) -> None:
@@ -173,6 +193,19 @@ def scan_source_task(self: Any, scan_id: str) -> None:
     except DTError as exc:
         log.error("scan_source_dt_error", error=str(exc))
         _record_terminal_failure(scan_uuid, f"DT error: {exc}")
+    except SoftTimeLimitExceeded:
+        # PR-A1: the scan exceeded SCAN_SOFT_TIME_LIMIT_SECONDS. Celery raised
+        # this inside the worker thread; we mark the scan failed with a clear
+        # message and let the shared `finally` reclaim the workspace. We catch
+        # this BEFORE the bare `Exception` handler so the message stays
+        # specific (a generic "unexpected error" would be misleading for a
+        # timeout). Re-raising is intentionally avoided — a timed-out scan is
+        # terminal, not retryable.
+        soft_limit = scan_soft_time_limit_seconds()
+        log.warning("scan_timed_out", scan_id=str(scan_uuid), soft_limit_seconds=soft_limit)
+        _record_terminal_failure(
+            scan_uuid, f"scan exceeded the time limit ({soft_limit}s)"
+        )
     except Exception as exc:
         # Any unhandled exception terminates the scan with status='failed'
         # and surfaces the error message in the UI. Re-raising would have
@@ -234,34 +267,66 @@ def _run_pipeline(
         path=cdxgen_result.sbom_path,
     )
 
-    # Stage 4 — ORT evaluate.
-    # UAT patch (2026-05-07): ORT integration is currently broken — it
-    # passes the cdxgen CycloneDX SBOM to `ort evaluate --ort-file ...`
-    # which expects an OrtResult JSON produced by `ort analyze`. The
-    # KotlinInvalidNullException at parse time aborts every scan. Until
-    # the integration is fixed (separate `ort analyze` stage feeding the
-    # evaluator), wrap the call in a try/except so the rest of the
-    # pipeline (component + license persistence, DT upload, CVE
-    # matching) still runs.
-    _set_stage(scan_uuid, "ort")
+    # Stage 4 — scancode first-party license detection (PR-A2, replaces ORT).
+    # scancode runs over the cloned first-party tree only (vendored deps /
+    # build output / VCS metadata are excluded — see scancode.EXCLUDED_DIR_NAMES).
+    # It is best-effort: a scancode failure / timeout / too-large tree logs a
+    # WARNING and the scan continues with declared (cdxgen) licenses only. We
+    # never raise from this stage onto the terminal-failure path — a missing
+    # detected-license set is a degraded-output scenario, not a fatal one
+    # (same philosophy as the prep stage). Third-party dependency sources are
+    # NOT downloaded; their licenses stay declared via _persist_components.
+    _set_stage(scan_uuid, "scancode")
+    scancode_detections: list[scancode_adapter.DetectedLicense] = []
     try:
-        ort_result = ort_adapter.run_ort(
+        scancode_result = scancode_adapter.run_scancode(
             source_dir=source_dir,
-            sbom_path=cdxgen_result.sbom_path,
-            output_dir=workspace / "ort",
+            output_dir=workspace / "scancode",
         )
-        _persist_artifact(scan_uuid, kind="ort_result", path=ort_result.result_path)
-    except Exception as exc:
-        log.warning("ort_stage_skipped", error=str(exc)[:300])
+        scancode_detections = scancode_result.detections
+        _persist_artifact(
+            scan_uuid, kind="scancode_result", path=scancode_result.result_path
+        )
+        log.info("scancode_stage_done", detections=len(scancode_detections))
+    except scancode_adapter.ScancodeError as exc:
+        # ScancodeNotInstalled / Failed / Timeout / TooLarge all land here —
+        # all are "detected-license enrichment unavailable", not "abort scan".
+        log.warning("scancode_stage_skipped", error=str(exc)[:300])
 
-    # Persist the SBOM components (independent of DT availability — this is
-    # the cached license + component data the UI shows when DT is down).
+    # Persist the SBOM components + declared (cdxgen) licenses, then attach the
+    # scancode-detected first-party licenses to the project's own component.
+    #
+    # Blast-radius isolation (security-reviewer Medium #1): the components +
+    # declared (cdxgen) licenses are the HIGH-VALUE cache the UI shows when DT is
+    # down. The detected (scancode) licenses are auxiliary and are derived from
+    # attacker-controlled file content. We therefore wrap the detected write in a
+    # SAVEPOINT (``begin_nested``) so a failure there (e.g. an unexpected
+    # constraint violation from a hostile path / SPDX token that slipped the
+    # adapter caps) rolls back ONLY the detected findings — the declared findings
+    # and component graph still commit. A detected-license failure is degraded,
+    # never fatal, mirroring the best-effort scancode stage above.
     with sync_session_scope() as session:
         _persist_components(
             session,
             scan_uuid=scan_uuid,
             sbom=cdxgen_result.sbom,
         )
+        if scancode_detections:
+            try:
+                with session.begin_nested():
+                    _persist_detected_licenses(
+                        session,
+                        scan_uuid=scan_uuid,
+                        sbom=cdxgen_result.sbom,
+                        detections=scancode_detections,
+                    )
+            except SQLAlchemyError as exc:
+                # SAVEPOINT rolled back; declared findings + components survive.
+                log.warning(
+                    "detected_license_persist_skipped",
+                    error=str(exc)[:300],
+                    detections=len(scancode_detections),
+                )
         session.commit()
 
     # Stage 5 — DT upload (gated by the breaker).
@@ -633,9 +698,9 @@ _PREP_STEP_TIMEOUT_SECONDS = 300
 
 
 # subprocess env scrubbing was promoted to ``integrations._subprocess_env``
-# in chore PR #6 so the same helper covers prep / cdxgen / ORT. The
-# alias below preserves the legacy module path used by tests and the
-# ``_run_prep`` call site below.
+# in chore PR #6 so the same helper covers prep / cdxgen / scancode (the ORT
+# variant was dropped in PR-A2). The alias below preserves the legacy module
+# path used by tests and the ``_run_prep`` call site below.
 _scrubbed_env = scrubbed_env_for_prep
 
 
@@ -816,16 +881,20 @@ def _persist_components(
     """Upsert components / component versions / scan components / license
     findings from a cdxgen CycloneDX SBOM.
 
-    UAT patch (2026-05-07): the original implementation only persisted the
-    component graph and left ``license_findings`` empty (the original design
-    relied on ORT's evaluator output, but the ORT integration is broken —
-    see scan_source._run_pipeline). cdxgen does emit each component's
-    declared SPDX license inside ``components[].licenses``, so we now also
-    upsert ``licenses`` + ``license_findings`` rows here. License kind is
-    fixed to ``"declared"`` because cdxgen's data is package-metadata-derived
-    (npm `license`, maven `<licenses>`, gradle resolved POM); ORT would
-    additionally emit ``concluded`` / ``detected`` after running the license
-    scanner, which we'll wire when the analyzer stage is fixed.
+    UAT patch (2026-05-07): the original design relied on ORT's evaluator
+    output for ``license_findings``, but the ORT integration was broken (it fed
+    a CycloneDX SBOM to ``ort evaluate --ort-file``, which aborted every scan).
+    cdxgen does emit each component's declared SPDX license inside
+    ``components[].licenses``, so we upsert ``licenses`` + ``license_findings``
+    rows here. License kind is fixed to ``"declared"`` because cdxgen's data is
+    package-metadata-derived (npm `license`, maven `<licenses>`, gradle
+    resolved POM) — these are THIRD-PARTY dependency licenses.
+
+    PR-A2: ORT was removed entirely. Detected (first-party) licenses now come
+    from scancode and are persisted separately by ``_persist_detected_licenses``
+    with ``kind='detected'`` against the synthetic first-party component — they
+    do NOT flow through this function (which only walks ``sbom.components``,
+    i.e. the third-party dependency graph).
     """
     components = sbom.get("components", []) or []
     for raw in components:
@@ -940,7 +1009,7 @@ def _extract_spdx_ids(cdxgen_component: dict[str, Any]) -> list[tuple[str, str |
     We accept the first form (preferred — exact SPDX), accept the third when
     it parses as a single SPDX id (no AND/OR/WITH), and skip free-text
     license names — those would require a license-text identifier scanner
-    (ORT or scancode) to map to SPDX, which is out of scope for the cdxgen
+    (scancode) to map to SPDX, which is out of scope for the cdxgen
     fast-path.
     """
     out: list[tuple[str, str | None]] = []
@@ -1008,9 +1077,9 @@ def _persist_component_licenses(
     negative), and returns a single ``LicenseFetchResult``. We then
     emit a *concluded* LicenseFinding so downstream consumers can tell
     a registry-derived licence apart from a package-metadata-derived
-    one (cdxgen → ``declared``, fetcher → ``concluded``). When ORT's
-    real concluded analysis lands the two paths reconcile via the
-    existing ``kind`` discriminator.
+    one (cdxgen → ``declared``, fetcher → ``concluded``, scancode →
+    ``detected``). All three coexist on a component via the ``kind``
+    discriminator (part of the ``uq_license_findings_*`` unique key).
     """
     spdx_pairs = _extract_spdx_ids(cdxgen_component)
     for spdx_id, ref_url in spdx_pairs:
@@ -1065,6 +1134,145 @@ def _persist_component_licenses(
         raw_data={"source": result.source},
     )
     session.add(finding)
+
+
+# ---------------------------------------------------------------------------
+# scancode detected first-party licenses → license_findings (PR-A2)
+# ---------------------------------------------------------------------------
+
+
+# Synthetic purl for the project's own first-party source. scancode detects
+# licenses in code the team WROTE, which has no package identity of its own —
+# so we anchor those findings on a deterministic per-scan first-party
+# ComponentVersion. The purl is namespaced under a private `pkg:trustedoss/...`
+# type so it can never collide with a real ecosystem purl from cdxgen.
+_FIRST_PARTY_PURL_PREFIX = "pkg:trustedoss/first-party"
+
+# Width of ``licenses.spdx_id`` (models/scan.py — ``String(64)``). Persistence-
+# layer guard mirroring ``scancode.SPDX_ID_MAX_LENGTH``: a detected SPDX token
+# wider than the column would raise StringDataRightTruncation on INSERT and roll
+# back the whole transaction. We re-validate here (defence in depth) because the
+# detection data is attacker-controlled and must not depend solely on the
+# adapter having capped it.
+_SPDX_ID_MAX_LENGTH = 64
+
+
+def _persist_detected_licenses(
+    session: Session,
+    *,
+    scan_uuid: uuid.UUID,
+    sbom: dict[str, Any],
+    detections: list[scancode_adapter.DetectedLicense],
+) -> None:
+    """Emit ``detected`` LicenseFindings for scancode's first-party results.
+
+    PR-A2: scancode scans the cloned first-party tree and reports per-file
+    detected SPDX licenses. Those describe the project's OWN source, which has
+    no third-party package identity — so we anchor every detected finding on a
+    single synthetic first-party ComponentVersion (purl
+    ``pkg:trustedoss/first-party@<scan_id>``). The ``source_path`` column
+    carries scancode's per-file path so the UI (PR-A3) can distinguish e.g.
+    "LICENSE → MIT" from "src/foo.py → Apache-2.0".
+
+    Provenance is unambiguous on three axes, so detected findings never collide
+    with the declared (cdxgen) findings written by ``_persist_component_licenses``:
+      * ``kind='detected'`` (vs ``'declared'`` / ``'concluded'``) — the primary
+        discriminator, and part of the ``uq_license_findings_*`` unique key.
+      * ``source_path`` set to the file (declared findings use ``NULL``).
+      * ``raw_data['source'] = 'scancode'`` (declared use ``'cdxgen'``).
+
+    Idempotency: ``_reset_scan_for_rerun`` deletes all of this scan's
+    license_findings before a re-run, so re-execution cannot duplicate rows. The
+    synthetic first-party ComponentVersion is upserted on its stable purl, so a
+    re-run reuses the same row rather than creating a second.
+
+    No-op when scancode produced no detections (binary repo, scancode skipped,
+    or the tool not installed) — the declared licenses stand on their own.
+    """
+    if not detections:
+        return
+
+    fp_version = _get_or_create_first_party_component_version(
+        session, scan_uuid=scan_uuid, sbom=sbom
+    )
+
+    # De-dupe on (spdx_id, source_path) defensively — the adapter already
+    # de-dupes, but the unique constraint is (scan, cv, license, kind,
+    # source_path), so two detections with the same spdx on the same path would
+    # otherwise raise an IntegrityError on flush.
+    seen: set[tuple[str, str]] = set()
+    for det in detections:
+        # Defence in depth (security-reviewer High): the adapter already drops
+        # SPDX tokens wider than ``licenses.spdx_id`` (String(64)), but the
+        # detection comes from attacker-controlled content — re-check here so a
+        # bypass of the adapter cap cannot raise StringDataRightTruncation and
+        # roll back the (already-committed-intent) declared findings + component
+        # graph. Over-length tokens are skipped, not truncated (a truncated SPDX
+        # id is meaningless and could collide).
+        if len(det.spdx_id) > _SPDX_ID_MAX_LENGTH:
+            log.warning(
+                "detected_license_spdx_too_long",
+                length=len(det.spdx_id),
+                limit=_SPDX_ID_MAX_LENGTH,
+                preview=det.spdx_id[:80],
+            )
+            continue
+        key = (det.spdx_id, det.source_path)
+        if key in seen:
+            continue
+        seen.add(key)
+        license_row = _get_or_create_license(
+            session, spdx_id=det.spdx_id, reference_url=None
+        )
+        finding = LicenseFinding(
+            scan_id=scan_uuid,
+            component_version_id=fp_version.id,
+            license_id=license_row.id,
+            kind="detected",
+            source_path=det.source_path,
+            raw_data={"source": "scancode"},
+        )
+        session.add(finding)
+
+
+def _get_or_create_first_party_component_version(
+    session: Session,
+    *,
+    scan_uuid: uuid.UUID,
+    sbom: dict[str, Any],
+) -> ComponentVersion:
+    """Upsert the synthetic first-party ComponentVersion for this scan.
+
+    The component name is taken from the SBOM's ``metadata.component.name``
+    (the project root cdxgen identified) when available, falling back to a
+    generic label. The version segment of the purl is the scan id, giving a
+    stable-per-scan identity that ``_reset_scan_for_rerun`` does not need to
+    delete (it is reused on re-run) while still being unique per scan so two
+    scans of the same project do not share first-party finding rows.
+    """
+    metadata = sbom.get("metadata") if isinstance(sbom, dict) else None
+    root_name = "first-party"
+    if isinstance(metadata, dict):
+        root = metadata.get("component")
+        if isinstance(root, dict):
+            candidate = root.get("name")
+            if isinstance(candidate, str) and candidate:
+                root_name = candidate
+
+    purl_base = _FIRST_PARTY_PURL_PREFIX
+    purl_with_version = f"{_FIRST_PARTY_PURL_PREFIX}@{scan_uuid}"
+    component = _get_or_create_component(
+        session,
+        purl=purl_base,
+        name=root_name,
+        package_type="trustedoss",
+    )
+    return _get_or_create_component_version(
+        session,
+        component=component,
+        version=str(scan_uuid),
+        purl_with_version=purl_with_version,
+    )
 
 
 def _persist_findings(

@@ -92,7 +92,13 @@ class _FakeControl:
 
     def revoke(self, task_id: str, *, terminate: bool = False, signal: str | None = None) -> None:
         if self.raise_on_revoke:
-            raise RuntimeError("broker unreachable")
+            # Model a real broker outage: kombu raises OperationalError, which
+            # the service's best-effort catch is now narrowed to (Low #5). A
+            # bare RuntimeError would (correctly) propagate as a programming
+            # error rather than be swallowed as a transient broker hiccup.
+            from kombu.exceptions import OperationalError
+
+            raise OperationalError("broker unreachable")
         self.calls.append({"task_id": task_id, "terminate": terminate, "signal": signal})
 
 

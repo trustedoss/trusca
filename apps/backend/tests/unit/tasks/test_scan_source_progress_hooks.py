@@ -131,9 +131,9 @@ def test_mark_failed_publishes_with_last_known_percent(
     """Failure mid-pipeline carries the snapshot of progress_percent."""
     from tasks.scan_source import _mark_failed
 
-    patch_session.progress_percent = 50  # we'd failed during ORT
+    patch_session.progress_percent = 50  # we'd failed during scancode
     fake_session = _FakeSession(patch_session)
-    _mark_failed(fake_session, patch_session, "ort exited 1")  # type: ignore[arg-type]
+    _mark_failed(fake_session, patch_session, "scancode exited 1")  # type: ignore[arg-type]
     assert captured_publishes[-1]["step"] == "failed"
     assert captured_publishes[-1]["percent"] == 50
 

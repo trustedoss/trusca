@@ -27,6 +27,7 @@ import {
   listProjects,
   type ProjectPublic,
   type ScanPublic,
+  type ScanStatus,
 } from "@/lib/projectsApi";
 import { cn } from "@/lib/utils";
 
@@ -47,6 +48,7 @@ interface ScanDrawerState {
   open: boolean;
   scanId: string | null;
   projectName: string | null;
+  status: ScanStatus | null;
 }
 
 interface SourceDialogState {
@@ -106,6 +108,7 @@ export function ProjectListPage() {
     open: false,
     scanId: null,
     projectName: null,
+    status: null,
   });
   const [sourceDialog, setSourceDialog] = useState<SourceDialogState>({
     open: false,
@@ -149,6 +152,7 @@ export function ProjectListPage() {
       open: true,
       scanId: scan.id,
       projectName: project.name,
+      status: scan.status,
     });
   }
 
@@ -274,7 +278,11 @@ export function ProjectListPage() {
           {scanDrawer.scanId ? (
             <ScanProgress
               scanId={scanDrawer.scanId}
+              status={scanDrawer.status ?? "queued"}
               onClose={handleCloseDrawer}
+              onCancelled={() =>
+                setScanDrawer((s) => ({ ...s, status: "cancelled" }))
+              }
             />
           ) : null}
         </SheetContent>

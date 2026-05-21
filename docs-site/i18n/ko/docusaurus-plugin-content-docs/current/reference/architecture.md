@@ -24,7 +24,7 @@ sidebar_position: 1
 | `postgres` | `postgres:17.2-alpine` | 주 저장소. 모든 영구 상태. |
 | `redis` | `redis:7.4-alpine` | Celery 브로커 + 결과 백엔드. WebSocket pub/sub. |
 | `backend` | `trustedoss/backend:<tag>` | FastAPI + uvicorn(4 workers). Traefik이 `/api`, `/health`로 라우팅. |
-| `worker` | `trustedoss/backend-worker:<tag>` | `cdxgen`, ORT, Trivy, JRE가 번들된 Celery worker. |
+| `worker` | `trustedoss/backend-worker:<tag>` | `cdxgen`, scancode, Trivy, JRE가 번들된 Celery worker(JRE는 `cdxgen`의 Maven / Gradle SBOM 열거용). |
 | `beat` | `trustedoss/backend-worker:<tag>` | Celery Beat 스케줄러. DT heartbeat(60초), DT resync(1시간), 고아 정리(6시간), 백업(매일). |
 | `frontend` | `trustedoss/frontend:<tag>` | Vite 빌드를 nginx로 서비스. Traefik이 `/`로 라우팅. |
 | `dt` (overlay) | `dependencytrack/apiserver:4.13.2` | 선택적 번들 Dependency-Track. `docker-compose.dt.yml`로 기동. |
@@ -90,13 +90,15 @@ PostgreSQL이 단일 진실 저장소입니다. 주요 테이블:
 ```
 1. bootstrap     (workspace 셋업, 프로젝트별 lock 획득)
 2. fetch         (git clone / fetch / checkout)
-3. prep          (workspace 레이아웃, ORT analyzer 구성)
-4. cdxgen        (cdxgen → CycloneDX SBOM)
-5. ort           (ORT가 SBOM을 소비, 발견 + 의무사항 emit)
+3. prep          (workspace 레이아웃)
+4. cdxgen        (cdxgen → CycloneDX SBOM + declared 라이선스)
+5. scancode      (scancode가 first-party 소스 스캔 → detected 라이선스; best-effort)
 6. dt_upload     (CycloneDX SBOM을 Dependency-Track에 업로드)
 7. dt_findings   (DT 상관 OR breaker OPEN 시 캐시 fallback)
 8. finalize      (스캔당 단일 트랜잭션으로 PostgreSQL에 기록)
 ```
+
+`scancode` 단계는 v2.0.0 에서 이전의 `ort` 단계를 대체했습니다; WebSocket 진행 슬러그가 같은 percent 에서 `ort` 에서 `scancode` 로 변경되었습니다. [사용자 가이드 — 스캔](../user-guide/scans.md#파이프라인-단계-source) 참고.
 
 컨테이너 스캔 단계(`apps/backend/tasks/scan_container.py` 참고):
 
@@ -155,9 +157,9 @@ v2.0.0 의 Operator 오버라이드 경로:
 2. worker 재빌드 및 재시작(`docker-compose restart worker beat`).
 3. 영향받는 프로젝트를 재스캔해 새 분류 적용.
 
-`ort/rules.kts` DSL 을 통한 ORT 기반, 조직별 룰 커스터마이징은
-v2.2 예정입니다; `ORT_RULES_PATH` 환경 변수, worker 이미지의 마운트,
-본 앵커는 그 릴리스를 위해 예약되어 있습니다.
+조직별 룰 커스터마이징은 v2.2 예정입니다; 레거시 `ORT_RULES_PATH`
+환경 변수와 worker 이미지의 `ort/rules.kts` 마운트는 제거된 ORT
+단계에서 남은 잔재 placeholder 이며 v2.0.0 에서는 효과가 없습니다.
 
 포털은 과거 스캔을 자동 재분류하지 않습니다 — 과거 기록은 스캔 시점에 유효했던 분류와 함께 보존됩니다.
 

@@ -25,11 +25,11 @@ services:
       DT_URL: ${DT_URL:-http://dtrack-api:8080}
       DT_API_KEY: ${DT_API_KEY:-}
     volumes:
-      # Mount the local ORT ruleset into the path the integration expects.
-      # Combined with the existing bind-mount of ./apps/backend in the base
-      # compose (overridden here by appending — Compose merges volume lists).
+      # Re-assert the source bind-mount from the dev base compose (Compose
+      # merges volume lists across -f files). PR-A2 removed the ORT ruleset
+      # mount here — the backend no longer reads ORT; scancode (bundled in
+      # the worker image) does first-party license detection.
       - ./apps/backend:/app
-      - ./ort:/opt/trustedoss/ort:ro
 
   dtrack-api:
     image: dependencytrack/apiserver:4.13.2

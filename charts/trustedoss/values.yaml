@@ -1,0 +1,180 @@
+# Default values for the trustedoss chart.
+# Every value is documented inline (chart convention). Override with
+# `-f my-values.yaml` or `--set key=value`.
+#
+# Scope note (work-B / B2): this scaffold focuses on the application workloads
+# (backend / worker / beat) and the concurrency + stability tuning knobs that
+# B1/A1/A2 added to the backend. PostgreSQL and Redis are expected to be
+# EXTERNAL (Cloud SQL + Memorystore per docs/v2-execution-plan.md §1.3); wire
+# them via `env.database.url` / `env.redis.url` below.
+
+# -- Override the chart name / fullname used in object names (rarely needed).
+nameOverride: ""
+fullnameOverride: ""
+
+# -- Container image shared by backend, worker, and beat workloads.
+#    Pin to minor+patch — never `:latest` (CLAUDE.md core rule #9).
+image:
+  # API image (FastAPI). Slim, no SCA toolchain.
+  backendRepository: trustedoss/backend
+  # Worker image (carries cdxgen / scancode / Trivy / JRE). Heavier.
+  workerRepository: trustedoss/backend-worker
+  # Tag applied to BOTH images. Matches Chart.yaml appVersion.
+  tag: "2.0.0"
+  pullPolicy: IfNotPresent
+# -- Image pull secrets for private registries (list of {name: ...}).
+imagePullSecrets: []
+
+# -- Per-workload ServiceAccounts (least privilege). One account per workload;
+#    no cluster-wide RBAC is requested (the app talks to external Postgres /
+#    Redis, not the Kubernetes API).
+serviceAccount:
+  create: true
+  annotations: {}
+
+# ===========================================================================
+# Application environment.
+#
+# These map 1:1 to the os.getenv() accessors in apps/backend/core/config.py
+# and to the docker-compose `${VAR:-default}` defaults. Anything left empty
+# here falls back to the backend's own in-code default at runtime.
+# ===========================================================================
+env:
+  # APP_ENV: dev | staging | prod. Drives CORS/log strictness in the backend.
+  appEnv: prod
+  # LOG_LEVEL: DEBUG | INFO | WARNING | ERROR.
+  logLevel: INFO
+  # CORS allow-list (comma-separated). Production MUST enumerate origins
+  # (CLAUDE.md core rule #13) — no wildcard.
+  corsAllowedOrigins: ""
+
+  database:
+    # Full SQLAlchemy async DSN (DATABASE_URL). Point at external Postgres.
+    # Leave empty to use a Secret instead (see existingSecret below).
+    url: ""
+    # Optional: source DATABASE_URL from a pre-created Secret instead of values.
+    # existingSecret/secretKey win over `url` when set.
+    existingSecret: ""
+    secretKey: DATABASE_URL
+
+  redis:
+    # REDIS_URL — broker + result backend. Point at external Redis/Memorystore.
+    url: ""
+
+  # SECRET_KEY (JWT signing). Source from a Secret in real deployments.
+  secret:
+    existingSecret: ""
+    secretKey: SECRET_KEY
+    # Inline value ONLY for dev/test. Prefer existingSecret in prod.
+    value: ""
+
+  # -------------------------------------------------------------------------
+  # DB connection pool (B1). Total connections per process = size + overflow.
+  # Mind the budget: see docs / .env.example sizing formula. The backend
+  # clamps each value, so an over-large number is capped, not fatal.
+  # -------------------------------------------------------------------------
+  dbPool:
+    # FastAPI async (asyncpg) engine — request handlers, larger pool.
+    size: 20            # DB_POOL_SIZE
+    maxOverflow: 10     # DB_MAX_OVERFLOW
+    timeout: 30         # DB_POOL_TIMEOUT (seconds waiting for a free conn)
+    recycle: 1800       # DB_POOL_RECYCLE (seconds; -1 = never recycle)
+    # Celery sync (psycopg2) engine — applies per worker AND per beat pod.
+    syncSize: 5         # DB_SYNC_POOL_SIZE
+    syncMaxOverflow: 5  # DB_SYNC_MAX_OVERFLOW
+    syncTimeout: 30     # DB_SYNC_POOL_TIMEOUT
+    syncRecycle: 1800   # DB_SYNC_POOL_RECYCLE
+
+  # -------------------------------------------------------------------------
+  # Scan controls (B1 abuse limits + A1 stability).
+  # -------------------------------------------------------------------------
+  scan:
+    # Per-user rate limit on POST /v1/projects/{id}/scans (slowapi format).
+    triggerRateLimit: "20/minute"   # SCAN_TRIGGER_RATE_LIMIT
+    # Per-team concurrent (queued+running) cap. 0 disables.
+    concurrencyCapPerTeam: 10        # SCAN_CONCURRENCY_CAP_PER_TEAM
+    # Celery soft time limit (seconds) — primary timeout; cleans up workspace.
+    softTimeLimitSeconds: 3600       # SCAN_SOFT_TIME_LIMIT_SECONDS
+    # Hard time limit (seconds, SIGKILL backstop). Backend clamps hard >= soft+60.
+    hardTimeLimitSeconds: 3900       # SCAN_HARD_TIME_LIMIT_SECONDS
+    # Grace before the orphan cleaner reclaims a terminal scan's workspace.
+    workspaceOrphanMaxAgeSeconds: 900  # WORKSPACE_ORPHAN_MAX_AGE_SECONDS
+
+  # -------------------------------------------------------------------------
+  # scancode first-party license detection guards (A2). Caps wall clock,
+  # eligible files, persisted detections, and result-JSON bytes (OOM guard).
+  # -------------------------------------------------------------------------
+  scancode:
+    timeoutSeconds: 600          # SCANCODE_TIMEOUT_SECONDS
+    maxFiles: 20000              # SCANCODE_MAX_FILES
+    maxDetections: 5000          # SCANCODE_MAX_DETECTIONS
+    # Quoted so YAML keeps it an integer string, not a float in scientific
+    # notation (the template also applies `int64` as a second guard). 256 MiB.
+    maxResultBytes: "268435456"  # SCANCODE_MAX_RESULT_BYTES
+
+# ===========================================================================
+# Backend (FastAPI) workload.
+# ===========================================================================
+backend:
+  replicaCount: 2
+  port: 8000
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "2"
+      memory: 1Gi
+  # Liveness/readiness probe path (the backend exposes /health).
+  healthPath: /health
+
+# ===========================================================================
+# Celery worker workload.
+#
+# Horizontal scaling (B2): prefer raising `replicaCount` (more pods) over
+# `concurrency` (more prefork slots per pod), because each slot can fork a
+# full cdxgen/scancode/Trivy/dotnet pipeline (~1.5-2 GB transient).
+# Postgres connection draw = replicaCount x (dbPool.syncSize + syncMaxOverflow).
+# ===========================================================================
+worker:
+  # Number of worker PODS.
+  replicaCount: 2
+  # Prefork task slots per worker process (--concurrency). Keep modest.
+  concurrency: 2
+  resources:
+    requests:
+      # Floor a worker needs to even start the toolchain — keeps the scheduler
+      # from over-packing a node and OOM-killing mid-scan.
+      cpu: "1"
+      memory: 2Gi
+    limits:
+      # Scale WITH concurrency (~2Gi per slot + ~1Gi base).
+      cpu: "4"
+      memory: 6Gi
+
+  # Optional HorizontalPodAutoscaler — OFF by default (chart convention).
+  # When enabled the static replicaCount above is ignored by the HPA.
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 75
+
+# ===========================================================================
+# Celery beat (singleton scheduler — DT heartbeat / resync / orphan cleaner).
+# Must stay at exactly one replica to avoid duplicate periodic firing.
+# ===========================================================================
+beat:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# Pod scheduling extras applied to all workloads.
+nodeSelector: {}
+tolerations: []
+affinity: {}
+podAnnotations: {}
