@@ -23,11 +23,18 @@ Public API
 ----------
 * :func:`scrubbed_env_for_prep` — for the lockfile-resolver step.
 * :func:`scrubbed_env_for_cdxgen` — for the cdxgen invocation.
-* :func:`scrubbed_env_for_ort` — for the ORT invocation.
+* :func:`scrubbed_env_for_scancode` — for the scancode invocation (PR-A2).
 
-All three resolve ``os.environ`` *at call time* — never at import — so
+All resolve ``os.environ`` *at call time* — never at import — so
 ``os.getenv(...)`` patches in tests, and operator changes that cycle the
 worker, take effect on the next subprocess.
+
+PR-A2 removed the ORT integration; :func:`scrubbed_env_for_ort` and the
+``_ORT_*`` allowlists were dropped along with it. scancode is a pure-Python
+tool that needs no JVM / Node toolchain, so its env is the shared base
+allowlist (PATH / HOME / proxy / CA hints) plus the generic defaults — no
+ecosystem-specific keys, and no prefix band (scancode has no operator-override
+env surface that we forward).
 """
 
 from __future__ import annotations
@@ -160,24 +167,6 @@ _CDXGEN_PREFIX_ALLOWLIST: tuple[str, ...] = (
     "cdxgen_",  # cdxgen operator overrides (CDXGEN_GRADLE_ARGS et al.).
 )
 
-# ORT — JVM toolchain plus the ``ORT_*`` operator-override band.
-_ORT_EXTRA_ALLOWLIST: frozenset[str] = frozenset(
-    {
-        "JAVA_HOME",
-        "JAVA_OPTS",
-        "_JAVA_OPTIONS",
-        "JDK_JAVA_OPTIONS",
-        "GRADLE_USER_HOME",
-        "GRADLE_OPTS",
-        "MAVEN_OPTS",
-        "MAVEN_HOME",
-        "M2_HOME",
-    }
-)
-
-_ORT_PREFIX_ALLOWLIST: tuple[str, ...] = ("ort_",)
-
-
 # ---------------------------------------------------------------------------
 # Credential heuristic
 # ---------------------------------------------------------------------------
@@ -281,17 +270,45 @@ def scrubbed_env_for_cdxgen() -> dict[str, str]:
     )
 
 
-def scrubbed_env_for_ort() -> dict[str, str]:
-    """Env dict for the ORT invocation (chore PR #6)."""
+# scancode native-lib path hints. The worker image (Dockerfile.worker) sets
+# these to point scancode's ctypes loader at a COMPLETE system libarchive /
+# libmagic (the bundled aarch64 wheels are empty stubs). They are
+# image-operator-set paths, never carried in via the clone, so they are not an
+# exfil vector — but they MUST be forwarded or scancode crashes at import on
+# arm64 with ``undefined symbol: archive_read_new``.
+_SCANCODE_EXTRA_ALLOWLIST: frozenset[str] = frozenset(
+    {
+        "EXTRACTCODE_LIBARCHIVE_PATH",
+        "TYPECODE_LIBMAGIC_PATH",
+        # scancode honours these for its index / temp dirs; harmless to forward.
+        "SCANCODE_CACHE",
+        "SCANCODE_LICENSE_INDEX_CACHE",
+    }
+)
+
+
+def scrubbed_env_for_scancode() -> dict[str, str]:
+    """Env dict for the scancode invocation (PR-A2).
+
+    scancode is pure Python: it needs the shared base allowlist (PATH / HOME /
+    proxy / CA hints) plus the generic defaults (HOME / LANG) plus the
+    image-set native-lib path hints (``EXTRACTCODE_LIBARCHIVE_PATH`` /
+    ``TYPECODE_LIBMAGIC_PATH`` — see :data:`_SCANCODE_EXTRA_ALLOWLIST`). It has
+    no language-toolchain dependency and no operator-override prefix band we
+    forward, so — unlike cdxgen — it gets a small env. Worker secrets
+    (``DT_API_KEY`` / ``SECRET_KEY`` / ``DATABASE_URL`` / ``*_WEBHOOK_URL``)
+    are stripped: scancode reads attacker-controlled file contents from the
+    clone, so an embedded-payload or scancode CVE must not have a credential
+    to exfiltrate.
+    """
     return _build_env(
-        explicit=_BASE_ALLOWLIST | _ORT_EXTRA_ALLOWLIST,
-        prefix_allow=_ORT_PREFIX_ALLOWLIST,
+        explicit=_BASE_ALLOWLIST | _SCANCODE_EXTRA_ALLOWLIST,
         defaults=_GENERIC_DEFAULTS,
     )
 
 
 __all__ = [
     "scrubbed_env_for_cdxgen",
-    "scrubbed_env_for_ort",
     "scrubbed_env_for_prep",
+    "scrubbed_env_for_scancode",
 ]

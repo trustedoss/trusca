@@ -4,12 +4,26 @@
  * The component reads from `useScanWebSocket`, which we drive via the
  * `socketFactory` injection seam. No real WebSocket is created.
  */
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ScanProgress } from "@/features/scan/ScanProgress";
 import { useAuthStore } from "@/stores/authStore";
+
+/**
+ * ScanProgress now renders `ScanCancelButton` (PR-A3) for in-progress scans,
+ * which calls `useQueryClient`. Wrap every render in a provider so the cancel
+ * affordance can mount.
+ */
+function renderProgress(ui: ReactElement) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
 
 class FakeSocket {
   static instances: FakeSocket[] = [];
@@ -65,21 +79,21 @@ describe("ScanProgress", () => {
   });
 
   it("renders the title and the 7-step pipeline list", async () => {
-    render(<ScanProgress scanId="scan-1" socketFactory={factory} />);
+    renderProgress(<ScanProgress scanId="scan-1" socketFactory={factory} />);
     expect(screen.getByTestId("scan-progress")).toBeInTheDocument();
     const steps = screen.getByTestId("scan-progress-steps");
     expect(steps.querySelectorAll("[data-step]")).toHaveLength(7);
   });
 
   it("shows skeleton during connecting state", () => {
-    render(<ScanProgress scanId="scan-1" socketFactory={factory} />);
+    renderProgress(<ScanProgress scanId="scan-1" socketFactory={factory} />);
     expect(
       screen.getByTestId("scan-progress-skeleton"),
     ).toBeInTheDocument();
   });
 
   it("renders progress and marks the current step on incoming frame", async () => {
-    render(<ScanProgress scanId="scan-1" socketFactory={factory} />);
+    renderProgress(<ScanProgress scanId="scan-1" socketFactory={factory} />);
     act(() => FakeSocket.instances[0].__open());
     act(() =>
       FakeSocket.instances[0].__message({
@@ -104,7 +118,7 @@ describe("ScanProgress", () => {
 
   it("renders the success state and offers a close affordance", async () => {
     const onClose = vi.fn();
-    render(
+    renderProgress(
       <ScanProgress
         scanId="scan-1"
         socketFactory={factory}
@@ -129,7 +143,7 @@ describe("ScanProgress", () => {
 
   it("renders the failed state and shows the retry button when handler is provided", async () => {
     const onRetry = vi.fn();
-    render(
+    renderProgress(
       <ScanProgress
         scanId="scan-1"
         socketFactory={factory}
@@ -153,7 +167,7 @@ describe("ScanProgress", () => {
   });
 
   it("shows the DT-cached alert when the prop is true", () => {
-    render(
+    renderProgress(
       <ScanProgress
         scanId="scan-1"
         socketFactory={factory}
@@ -161,5 +175,30 @@ describe("ScanProgress", () => {
       />,
     );
     expect(screen.getByTestId("scan-dt-cached-alert")).toBeInTheDocument();
+  });
+
+  it("offers the cancel affordance for a running scan (PR-A3)", () => {
+    renderProgress(
+      <ScanProgress scanId="scan-1" socketFactory={factory} status="running" />,
+    );
+    expect(screen.getByTestId("scan-cancel-button")).toBeInTheDocument();
+  });
+
+  it("hides the cancel affordance once a terminal frame arrives (PR-A3)", async () => {
+    renderProgress(
+      <ScanProgress scanId="scan-1" socketFactory={factory} status="running" />,
+    );
+    expect(screen.getByTestId("scan-cancel-button")).toBeInTheDocument();
+    act(() => FakeSocket.instances[0].__open());
+    act(() =>
+      FakeSocket.instances[0].__message({
+        percent: 100,
+        step: "succeeded",
+        ts: "2026-05-06T12:00:02.000Z",
+      }),
+    );
+    await waitFor(() => {
+      expect(screen.queryByTestId("scan-cancel-button")).not.toBeInTheDocument();
+    });
   });
 });

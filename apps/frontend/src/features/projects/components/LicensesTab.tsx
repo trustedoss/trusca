@@ -17,6 +17,7 @@ import { useLicenses } from "@/features/projects/api/useLicenses";
 import { LicenseCategoryBadge } from "@/features/projects/components/LicenseCategoryBadge";
 import { LicenseDistributionChart } from "@/features/projects/components/LicenseDistributionChart";
 import { LicenseDrawer } from "@/features/projects/components/LicenseDrawer";
+import { LicenseKindBadge } from "@/features/projects/components/LicenseKindBadge";
 import { LicensesToolbar } from "@/features/projects/components/LicensesToolbar";
 import { ProblemError } from "@/lib/problem";
 import { cn } from "@/lib/utils";
@@ -382,8 +383,8 @@ function LicenseRow({ license, rowIndex, onSelect }: LicenseRowProps) {
       <span className="w-32">
         <LicenseCategoryBadge category={license.category} />
       </span>
-      <span className="w-28 text-xs text-muted-foreground">
-        {t(`licenses.kind.${license.kind}`)}
+      <span className="w-28">
+        <LicenseKindBadge kind={license.kind} />
       </span>
       <span
         className="w-20 text-right font-mono text-xs tabular-nums"

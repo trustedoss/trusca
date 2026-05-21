@@ -6,9 +6,10 @@ migration): ``scan_components.raw_data``, ``vulnerability_findings.analysis_resp
 and ``license_findings.raw_data``. Postgres' ``btree``/``gin`` page format
 allows individual JSONB values up to ~1 GiB but practical operational limits
 (replication latency, pg_dump size, GIN index bloat) make multi-megabyte rows
-toxic. cdxgen / ORT / Trivy can occasionally emit unusually large per-component
-metadata blobs (huge dependency trees, embedded license texts, raw SBOM
-sub-trees) — we want to keep the scan succeeding, but with a bounded payload.
+toxic. cdxgen / scancode / Trivy can occasionally emit unusually large
+per-component metadata blobs (huge dependency trees, embedded license texts,
+raw SBOM sub-trees) — we want to keep the scan succeeding, but with a bounded
+payload.
 
 Policy:
 
@@ -101,7 +102,7 @@ def enforce_jsonb_row_size_limit(
     }
     summary = payload.get("summary")
     if isinstance(summary, str):
-        # ``summary`` is the cdxgen / ORT canonical short field. Keeping it on
+        # ``summary`` is the cdxgen / Trivy canonical short field. Keeping it on
         # the marker means UI surfaces can still render a one-line description
         # of the component without hydrating the full blob.
         marker["summary"] = summary[:_PREVIEW_LIMIT]

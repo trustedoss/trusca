@@ -14,7 +14,8 @@
       "kind": "Kind",
       "status": "Status",
       "started": "Started",
-      "duration": "Duration"
+      "duration": "Duration",
+      "actions": "Actions"
     },
     "kind": {
       "source": "Source",
@@ -40,7 +41,7 @@
     "step_bootstrap": "Bootstrapping workspace",
     "step_fetch": "Fetching source",
     "step_cdxgen": "Generating SBOM",
-    "step_ort": "Analyzing licenses",
+    "step_scancode": "Detecting first-party licenses",
     "step_dt_upload": "Uploading SBOM to Dependency-Track",
     "step_dt_findings": "Resolving vulnerabilities",
     "step_finalize": "Finalizing",
@@ -53,6 +54,21 @@
     "close": "Close",
     "retry": "Retry",
     "percent_label": "{{value}}%"
+  },
+  "cancel": {
+    "action": "Cancel scan",
+    "confirm": {
+      "title": "Cancel scan",
+      "message": "Cancel this scan? Any in-progress work will be stopped and the scan will be marked as cancelled.",
+      "confirm": "Cancel scan",
+      "dismiss": "Keep running"
+    },
+    "errors": {
+      "already_terminal": "This scan already finished and can no longer be cancelled.",
+      "not_found": "This scan no longer exists or you no longer have access to it.",
+      "forbidden": "You do not have permission to cancel this scan.",
+      "unknown": "Could not cancel the scan. Please try again."
+    }
   },
   "alerts": {
     "dt_unavailable": "Dependency-Track is temporarily unavailable. Showing cached vulnerability data."

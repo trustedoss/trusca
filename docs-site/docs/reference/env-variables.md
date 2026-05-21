@@ -92,9 +92,13 @@ See [DT connector](../admin-guide/dt-connector.md) for the bootstrap flow.
 
 | Key | Default | Read by | Description |
 |---|---|---|---|
-| `TRUSTEDOSS_SCAN_BACKEND` | `real` | `config.py` | `real` (subprocess `cdxgen` / ORT / Trivy) or `mock` (fixture JSON). `mock` is the dev / CI default for the test harness; production must leave this as `real`. |
-| `WORKSPACE_HOST_PATH` | `/tmp/trustedoss` | `config.py`, `docker-compose.yml` | Host directory mounted into the worker as `/workspace`. Holds repo clones + ORT analyzer outputs. The compose stack overrides this to `/workspace` inside the container. |
-| `ORT_RULES_PATH` | `/opt/trustedoss/ort/rules.kts` | `docker-compose.yml` | Path inside the worker. Reserved for the v2.2 ORT-driven customization path; at v2.0.0 the file is a placeholder and editing it has no effect — license-tier classification comes from `_LICENSE_CATEGORY_DEFAULTS` in `apps/backend/tasks/scan_source.py`. |
+| `TRUSTEDOSS_SCAN_BACKEND` | `real` | `config.py` | `real` (subprocess `cdxgen` / scancode / Trivy) or `mock` (fixture JSON). `mock` is the dev / CI default for the test harness; production must leave this as `real`. |
+| `SCANCODE_TIMEOUT_SECONDS` | `600` | `config.py` | Hard wall-clock limit for the scancode first-party license stage. On timeout the scan continues with declared licenses only (best-effort). |
+| `SCANCODE_MAX_FILES` | `20000` | `config.py` | Ceiling on eligible first-party files (after the exclude filter). Over this, scancode is skipped and the scan keeps declared licenses only. |
+| `SCANCODE_MAX_DETECTIONS` | `5000` | `config.py` | Cap on the number of detected-license findings persisted per scan. |
+| `SCANCODE_MAX_RESULT_BYTES` | `268435456` (256 MB) | `config.py` | Ceiling on the scancode JSON artefact before parsing — guards against an OOM from a hostile tree. |
+| `WORKSPACE_HOST_PATH` | `/tmp/trustedoss` | `config.py`, `docker-compose.yml` | Host directory mounted into the worker as `/workspace`. Holds repo clones + scan artefacts (cdxgen SBOM, scancode output). The compose stack overrides this to `/workspace` inside the container. |
+| `ORT_RULES_PATH` | `/opt/trustedoss/ort/rules.kts` | `docker-compose.yml` | Legacy path inside the worker, vestigial after the ORT stage was removed. The file is a placeholder and has no effect at v2.0.0 — license-tier classification comes from `_LICENSE_CATEGORY_DEFAULTS` in `apps/backend/tasks/scan_source.py`. |
 | `JSONB_ROW_SIZE_LIMIT_BYTES` | `262144` (256 KB) | `config.py` | Per-row JSON byte ceiling before the writer truncates and emits a warning. Guards the I-1 unbounded-payload class. |
 
 ## WebSocket gateway
