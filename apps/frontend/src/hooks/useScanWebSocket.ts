@@ -36,7 +36,7 @@ export type ScanStep =
   | "bootstrap"
   | "fetch"
   | "cdxgen"
-  | "ort"
+  | "scancode"
   | "dt_upload"
   | "dt_findings"
   | "finalize"

@@ -8,7 +8,7 @@ sidebar_position: 3
 
 # Components & licenses
 
-After a scan completes, the project's **Components** tab lists every package the pipeline discovered, along with the licenses ORT attached to each one. This page covers reading the table, the license-classification model, and the obligations the portal tracks.
+After a scan completes, the project's **Components** tab lists every package the pipeline discovered, along with the licenses the scan attached to each one. This page covers reading the table, the license-classification model, the difference between **declared** and **detected** licenses, and the obligations the portal tracks.
 
 :::note Audience
 Engineers triaging dependency hygiene; legal / compliance reviewers reading licenses. Read access requires team membership; mutating actions (suppression, manual concluded license) require `developer` or higher.
@@ -22,7 +22,7 @@ Columns:
 
 - **Component** — package name (e.g. `lodash`, `org.springframework:spring-web`).
 - **Version** — pinned version found in the manifest or lockfile.
-- **License** — the concluded license ORT chose after reconciling declared and detected sources. This is the value used by the build gate.
+- **License** — the license attached to the component. For a dependency this is the **declared** license `cdxgen` read from package metadata; see [Declared vs. detected](#declared-vs-detected) for how detected and concluded licenses relate. This is the value used by the build gate.
 - **Severity** — the highest severity across this component's open CVEs (carries the license-classification color via the legend).
 - **CVEs** — count of open vulnerabilities for this component (clickable; jumps to the Vulnerabilities tab pre-filtered).
 
@@ -44,8 +44,8 @@ Filters compose. The URL updates so you can share a filtered view.
 Click any row to open a right-side drawer with:
 
 - **Identity** — `purl` (Package URL), upstream homepage, repo URL.
-- **All license findings** — declared, detected, and concluded, with the source files ORT attributed each one to.
-- **Obligations** — list of obligations triggered by the concluded license (see [Obligations](#obligations)).
+- **All license findings** — each finding carries a **provenance badge** (**Declared** / **Detected** / **Concluded**); a **Detected** finding also shows the `source_path` — the first-party file scancode found the license in. See [Declared vs. detected](#declared-vs-detected).
+- **Obligations** — list of obligations triggered by the component's license (see [Obligations](#obligations)).
 - **CVEs** — open and resolved findings, deep-linked to the vulnerability detail.
 
 Closing the drawer keeps you in place on the table — no full-page navigation.
@@ -58,7 +58,7 @@ The **Licenses** tab on a project breaks down the same data by SPDX identifier a
 
 ![Project detail — Licenses tab with a tier horizontal bar chart and a per-license breakdown](/img/screenshots/user-licenses-donut.png)
 
-ORT classifies every license into four tiers. The **code value** column
+Every license is classified into one of four tiers. The **code value** column
 shows the value used in API responses, audit logs, and the build gate;
 the **UI label** column is what appears in tables and badges.
 
@@ -70,24 +70,40 @@ the **UI label** column is what appears in tables and badges.
 | `unknown` | **Unknown** | Surfaced for review; no automatic block. Always needs human review. | License could not be parsed; SPDX ID not matched by the classifier — see [below](#why-so-many-unknown). |
 
 :::warning Classification source at v2.0.0
-The legal-tier classification (`forbidden` / `conditional` / `permissive` / `unknown`) is currently driven by a hard-coded SPDX → tier dictionary in `apps/backend/tasks/scan_source.py` (`_LICENSE_CATEGORY_DEFAULTS`). The `ort/rules.kts` file in the repo is a placeholder — editing it does **not** change classification at v2.0.0. ORT-driven, per-organization rule customization is on the v2.2 roadmap. For one-off overrides today, super-admins can patch the dictionary and restart the worker (an Operator-only path).
+The legal-tier classification (`forbidden` / `conditional` / `permissive` / `unknown`) is currently driven by a hard-coded SPDX → tier dictionary in `apps/backend/tasks/scan_source.py` (`_LICENSE_CATEGORY_DEFAULTS`). Per-organization rule customization is on the v2.2 roadmap. For one-off overrides today, super-admins can patch the dictionary and restart the worker (an Operator-only path).
 :::
 
 ### Why so many `unknown`? {#why-so-many-unknown}
 
 :::info
-Classification uses exact-match SPDX IDs. Suffix-less variants (`LGPL-3.0` instead of `LGPL-3.0-or-later`) fall through to `unknown`. ORT typically detects with the `-or-later` / `-only` suffix; if a component shows `unknown` despite a well-known SPDX ID, the detector likely emitted a deprecated alias. Fuzzy SPDX normalization is on the v2.1 roadmap.
+Classification uses exact-match SPDX IDs. Suffix-less variants (`LGPL-3.0` instead of `LGPL-3.0-or-later`) fall through to `unknown`. If a component shows `unknown` despite a well-known SPDX ID, the source likely emitted a deprecated alias. Fuzzy SPDX normalization is on the v2.1 roadmap.
 :::
 
-## Declared vs. detected vs. concluded
+## Declared vs. detected {#declared-vs-detected}
 
-ORT distinguishes three levels of confidence:
+Each license finding has a **kind** that tells you where the license came from. The kind shows as a provenance badge in the components table, the Licenses tab, and the component drawer, and you can filter the Licenses tab by it.
 
-- **Declared** — license stated in the package's own metadata (e.g. `package.json`, `pom.xml`, `setup.py`).
-- **Detected** — license discovered by scanning the package source files.
-- **Concluded** — the license ORT settles on after reconciling the two. Conflicts (e.g. declared `MIT`, detected `GPL-3.0`) are flagged and require human review before the conclusion is final.
+| Kind | Source | What it tells you |
+|---|---|---|
+| **Declared** | `cdxgen` — read from a dependency's published package metadata (`package.json`, `pom.xml`, `setup.py`, …). | The license the dependency's author *says* it ships under. This is the value the build gate evaluates. Most dependency findings are declared. |
+| **Detected** | scancode — scans your project's **first-party** source files directly. Each detected finding carries a `source_path` (the file the license text was found in). | The license actually present in **your own code**. This catches cases the metadata misses — for example a dependency declared `MIT` but with `GPL-3.0`-licensed code copied into your tree. |
+| **Concluded** | The multi-ecosystem registry fetcher (Maven Central / PyPI / crates.io / pkg.go.dev), used as a fallback **only** when `cdxgen` produced no SPDX id for a dependency. | A registry-derived license for a dependency whose own metadata was silent. It is *not* the result of reconciling declared and detected — v2.0.0 does not perform automatic reconciliation. |
 
-The concluded license is the one the build gate evaluates. The drawer shows all three so you can audit the trail.
+:::note "Detected" means first-party, not dependency source
+scancode runs over your **own** source tree only. Third-party dependency sources are deliberately **not** downloaded — that keeps per-scan runtime within budget. So a dependency's license is **declared** (or **concluded** via the registry fallback), never **detected**; **detected** licenses always describe code in your repository.
+:::
+
+:::caution Declared and detected can disagree
+A component can carry both a **declared** finding (e.g. `MIT` from metadata) and a **detected** finding (e.g. `GPL-3.0` from a source file). v2.0.0 surfaces both side by side and does **not** auto-reconcile them into a single verdict — review the conflict yourself. A `GPL-3.0` detected inside a project you ship as `MIT` is exactly the kind of contamination the detected scan exists to surface.
+:::
+
+### When detected licenses are missing
+
+scancode is **best-effort**. Detected licenses can be absent — which is normal and non-fatal; the scan still succeeds with declared licenses — when:
+
+- scancode is not installed in the worker image.
+- The first-party tree exceeds the `SCANCODE_MAX_FILES` ceiling, scancode timed out, or its result was too large.
+- The relevant code lives inside an **excluded** directory. To stay within the resource budget, scancode skips directories named `node_modules`, `vendor`, `bower_components`, `.venv`, `venv`, `virtualenv`, `site-packages`, `dist`, `build`, `target`, `out`, `.next`, `.nuxt`, `__pycache__`, `.gradle`, `.git`, `.hg`, `.svn`, `.tox`, `.mypy_cache`, `.pytest_cache`, `.ruff_cache`, `.idea`, and `.vscode` — at any depth. Code committed under one of these names will not produce a detected license.
 
 ## Obligations
 
@@ -142,16 +158,16 @@ After a successful scan:
 
 ### Many components show `Unknown` license
 
-ORT could not parse the metadata, or the SPDX ID was not in the classifier's exact-match dictionary (see [Why so many `unknown`?](#why-so-many-unknown)). Common causes:
+The license could not be parsed, or the SPDX ID was not in the classifier's exact-match dictionary (see [Why so many `unknown`?](#why-so-many-unknown)). Common causes:
 
 - The package has no `LICENSE` file and no metadata declaration (rare in well-maintained ecosystems).
-- A custom license string ORT does not recognize. The component drawer surfaces the raw string for legal review.
-- The detector emitted a deprecated SPDX alias (e.g. `LGPL-3.0` instead of `LGPL-3.0-or-later`); the exact-match dictionary does not yet normalize these.
-- Source fetch failed for that ecosystem. Check `docker-compose logs worker` for ORT's per-ecosystem warnings.
+- A custom license string the classifier does not recognize. The component drawer surfaces the raw string for legal review.
+- The source emitted a deprecated SPDX alias (e.g. `LGPL-3.0` instead of `LGPL-3.0-or-later`); the exact-match dictionary does not yet normalize these.
+- Metadata fetch failed for that ecosystem. Check `docker-compose logs worker` for `cdxgen` per-ecosystem warnings.
 
 ### Classification looks wrong
 
-The classification at v2.0.0 is driven by the hard-coded `_LICENSE_CATEGORY_DEFAULTS` dictionary in `apps/backend/tasks/scan_source.py` (see [Classification source](#license-classification) above). The `ort/rules.kts` placeholder in the repo has no effect. For a one-off override today, a super-admin can patch the dictionary and restart the worker; the ORT-driven, per-organization customization path is on the v2.2 roadmap. If the dictionary entry is correct but the concluded license is wrong, override the conclusion in the component drawer.
+The classification at v2.0.0 is driven by the hard-coded `_LICENSE_CATEGORY_DEFAULTS` dictionary in `apps/backend/tasks/scan_source.py` (see [Classification source](#license-classification) above). For a one-off override today, a super-admin can patch the dictionary and restart the worker; the per-organization customization path is on the v2.2 roadmap. If the dictionary entry is correct but a detected license disagrees with the declared one, review both findings in the component drawer (see [Declared vs. detected](#declared-vs-detected)).
 
 ### Lockfile not detected
 
@@ -166,7 +182,7 @@ Items the manual previously promised that are not in v2.0.0; tracked for later r
 - **Approval status** row inside the component drawer — planned for v2.1; the project-level [Approvals](./approvals.md) page is the source of truth today.
 - Manual **Override concluded license** action in the drawer (`team_admin`) — planned for v2.2.
 - Fuzzy SPDX normalization for suffix-less variants (`LGPL-3.0` → `LGPL-3.0-or-later`) — planned for v2.1.
-- ORT-driven, per-organization rule customization via `ort/rules.kts` — planned for v2.2; today classification is driven by the hard-coded `_LICENSE_CATEGORY_DEFAULTS` dictionary in `apps/backend/tasks/scan_source.py`.
+- Per-organization license-classification rule customization — planned for v2.2; today classification is driven by the hard-coded `_LICENSE_CATEGORY_DEFAULTS` dictionary in `apps/backend/tasks/scan_source.py`.
 
 ## See also
 

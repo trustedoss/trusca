@@ -82,7 +82,7 @@ For Apache-2.0 §4(d) compliance and similar attribution obligations, the portal
 The file contains:
 
 - A header with the project name and scan timestamp.
-- For each component: name, version, license, copyright statement (when ORT extracted one), and a link to the upstream license text.
+- For each component: name, version, license, copyright statement (when the scan captured one), and a link to the upstream license text.
 - Grouped by license to make the redistribution package straightforward.
 
 ### Download
@@ -147,7 +147,7 @@ The query string used a value the API does not accept. Use one of the four canon
 
 ### NOTICE file is missing copyrights for some components
 
-ORT extracts copyrights from license headers. Some packages omit them; the NOTICE entry will say "Copyright holder unspecified".
+Copyright statements come from package metadata and license headers. Some packages omit them; the NOTICE entry will say "Copyright holder unspecified".
 
 ## Compliance evidence trail at v2.0.0 {#compliance-evidence-trail-at-v200}
 

@@ -191,6 +191,23 @@ export async function getScan(scanId: string): Promise<ScanPublic> {
   return data;
 }
 
+/**
+ * Cancel a queued/running scan owned by the current user's team (PR-A1).
+ *
+ * Backend contract — `POST /v1/scans/{scan_id}/cancel`:
+ *   - `developer` role, own-team scans only (other teams 404 — existence-hide).
+ *   - Already-terminal scans (succeeded/failed/cancelled) → 409 with the
+ *     `scan_already_cancelled` Problem extension.
+ *   - Unknown / cross-team scan id → 404 with `scan_not_found`.
+ * On success the cancelled `ScanPublic` row is returned (status `cancelled`).
+ * The WebSocket then streams a terminal `cancelled` frame on its own; this
+ * call only flips the persisted row.
+ */
+export async function cancelScan(scanId: string): Promise<ScanPublic> {
+  const { data } = await api.post<ScanPublic>(`/v1/scans/${scanId}/cancel`);
+  return data;
+}
+
 export async function listScans(
   projectId: string,
   params: { page?: number; size?: number } = {},

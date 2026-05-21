@@ -146,7 +146,7 @@ docker-compose -f docker-compose.yml -f docker-compose.dt.yml up -d
 - [ ] 동료 세션으로 전환 → `/projects → New project` 에서 작은
   공개 레포(테스트용)로 프로젝트 생성.
 - [ ] 스캔을 트리거; 우측 슬라이드 진행 드로어가 약 2~5분 안에
-  `bootstrap → fetch → prep → cdxgen → ort →
+  `bootstrap → fetch → prep → cdxgen → scancode →
   dt_upload → dt_findings → finalize` 순서로 진행되어야 합니다.
 - [ ] 프로젝트의 **Vulnerabilities** 탭 열기 — 테스트 레포의 CVE 들이
   나열되어야 합니다.

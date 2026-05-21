@@ -24,7 +24,7 @@ The production stack runs seven container services (plus an optional eighth — 
 | `postgres` | `postgres:17.2-alpine` | Primary store. All persistent state. |
 | `redis` | `redis:7.4-alpine` | Celery broker + result backend. WebSocket pub/sub. |
 | `backend` | `trustedoss/backend:<tag>` | FastAPI + uvicorn (4 workers). Reachable via Traefik on `/api`, `/health`. |
-| `worker` | `trustedoss/backend-worker:<tag>` | Celery worker with `cdxgen`, ORT, Trivy, JRE bundled. |
+| `worker` | `trustedoss/backend-worker:<tag>` | Celery worker with `cdxgen`, scancode, Trivy, JRE bundled (JRE is for `cdxgen`'s Maven / Gradle SBOM enumeration). |
 | `beat` | `trustedoss/backend-worker:<tag>` | Celery Beat scheduler. DT heartbeat (60 s), DT resync (1 h), orphan cleanup (6 h), backup (daily). |
 | `frontend` | `trustedoss/frontend:<tag>` | nginx serving the Vite build. Reachable via Traefik on `/`. |
 | `dt` (overlay) | `dependencytrack/apiserver:4.13.2` | Optional bundled Dependency-Track. Brought up via `docker-compose.dt.yml`. |
@@ -90,13 +90,15 @@ A scan is a Celery task chain. Source scan stages (see `apps/backend/tasks/scan_
 ```
 1. bootstrap     (workspace setup, locks the per-project lock)
 2. fetch         (git clone / fetch / checkout)
-3. prep          (workspace layout, ORT analyzer config)
-4. cdxgen        (cdxgen → CycloneDX SBOM)
-5. ort           (ORT consumes the SBOM, emits findings + obligations)
+3. prep          (workspace layout)
+4. cdxgen        (cdxgen → CycloneDX SBOM + declared licenses)
+5. scancode      (scancode scans first-party source → detected licenses; best-effort)
 6. dt_upload     (CycloneDX SBOM uploaded to Dependency-Track)
 7. dt_findings   (DT correlation OR cache fallback when breaker is OPEN)
 8. finalize      (write to PostgreSQL in one transaction per scan)
 ```
+
+The `scancode` stage replaced the former `ort` stage in v2.0.0; the WebSocket progress slug changed from `ort` to `scancode` at the same percent. See [User guide — Scans](../user-guide/scans.md#pipeline-stages-source).
 
 Container scan stages (see `apps/backend/tasks/scan_container.py`):
 
@@ -155,9 +157,10 @@ Operator override path at v2.0.0:
 2. Rebuild and restart the worker (`docker-compose restart worker beat`).
 3. Re-scan affected projects to apply the new classification.
 
-ORT-driven, per-organization rule customization via the `ort/rules.kts`
-DSL is planned for v2.2; the `ORT_RULES_PATH` env var, the mount in
-the worker image, and this anchor are reserved for that release.
+Per-organization rule customization is planned for v2.2; the legacy
+`ORT_RULES_PATH` env var and the `ort/rules.kts` mount in the worker
+image are vestigial placeholders from the removed ORT stage and have no
+effect at v2.0.0.
 
 The portal does not auto-re-classify historical scans — the historical record is preserved with the classification that was in effect at scan time.
 

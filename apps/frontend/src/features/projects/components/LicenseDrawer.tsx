@@ -19,6 +19,7 @@ import type {
 } from "@/features/projects/api/licensesApi";
 import { useLicenseFinding } from "@/features/projects/api/useLicenseFinding";
 import { LicenseCategoryBadge } from "@/features/projects/components/LicenseCategoryBadge";
+import { LicenseKindBadge } from "@/features/projects/components/LicenseKindBadge";
 import { ProblemError } from "@/lib/problem";
 import { cn } from "@/lib/utils";
 
@@ -147,9 +148,9 @@ function DrawerMetaSection({ detail }: MetaProps) {
     >
       <div className="flex flex-wrap items-center gap-2">
         <LicenseCategoryBadge category={detail.category} />
-        <Badge tone="info" data-testid="license-drawer-kind">
-          {t(`licenses.kind.${detail.finding_kind}`)}
-        </Badge>
+        <span data-testid="license-drawer-kind">
+          <LicenseKindBadge kind={detail.finding_kind} />
+        </span>
         {detail.is_osi_approved ? (
           <Badge tone="info" data-testid="license-drawer-flag-osi">
             {t("licenses.drawer.flag.osi_approved")}
@@ -437,11 +438,25 @@ function DrawerAffectedSection({
                   {c.component_name}
                 </button>
                 <span className="font-mono text-xs">{c.version}</span>
-                <Badge tone="info">{t(`licenses.kind.${c.kind}`)}</Badge>
+                <LicenseKindBadge kind={c.kind} />
               </div>
               {c.source_path ? (
-                <div className="mt-1 truncate font-mono text-xs text-muted-foreground">
-                  {c.source_path}
+                // First-party (scancode) evidence carries the exact file the
+                // license was found in. Label it explicitly + render the path
+                // in mono so the user can locate it in their tree.
+                <div
+                  className="mt-1 flex items-baseline gap-1.5 text-xs"
+                  data-testid="license-drawer-affected-source-path"
+                >
+                  <span className="shrink-0 uppercase tracking-wide text-muted-foreground">
+                    {t("licenses.drawer.affected.source_path_label")}
+                  </span>
+                  <span
+                    className="truncate font-mono text-muted-foreground"
+                    title={c.source_path}
+                  >
+                    {c.source_path}
+                  </span>
                 </div>
               ) : null}
             </li>

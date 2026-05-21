@@ -11,15 +11,17 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ScanCancelButton } from "@/features/scans/ScanCancelButton";
 import { useScanWebSocket, type ScanStep } from "@/hooks/useScanWebSocket";
 import { cn } from "@/lib/utils";
+import type { ScanStatus } from "@/lib/projectsApi";
 
 /**
  * ScanProgress — Phase 2 PR #9 task 2.10.
  *
  * Subscribes to /ws/scans/{scanId} and renders:
  *   - A bar with the current percent + step label.
- *   - A 7-step pipeline list (bootstrap → fetch → cdxgen → ort → dt_upload
+ *   - A 7-step pipeline list (bootstrap → fetch → cdxgen → scancode → dt_upload
  *     → dt_findings → finalize) with a tick / spinner / waiting glyph per
  *     step.
  *   - "Reconnecting…" inline notice while the hook backs off.
@@ -42,6 +44,15 @@ export interface ScanProgressProps {
    * a single boolean.
    */
   cachedFromDtDown?: boolean;
+  /**
+   * Persisted scan status (PR-A3). When `queued`/`running` and the live
+   * WebSocket has not yet reported a terminal step, the panel shows a
+   * "Cancel scan" affordance. Omit to hide cancellation entirely (e.g. a
+   * read-only viewer). Defaults to `running`.
+   */
+  status?: ScanStatus;
+  /** Fired after the backend confirms a user-initiated cancellation. */
+  onCancelled?: () => void;
   /** Test seam — inject a custom WebSocket factory through to the hook. */
   socketFactory?: (url: string) => WebSocket;
   /** Test seam — override URL building. */
@@ -52,7 +63,7 @@ const PIPELINE_STEPS: ScanStep[] = [
   "bootstrap",
   "fetch",
   "cdxgen",
-  "ort",
+  "scancode",
   "dt_upload",
   "dt_findings",
   "finalize",
@@ -70,6 +81,8 @@ export function ScanProgress({
   onClose,
   onRetry,
   cachedFromDtDown = false,
+  status = "running",
+  onCancelled,
   socketFactory,
   urlBuilder,
 }: ScanProgressProps) {
@@ -81,6 +94,12 @@ export function ScanProgress({
   const step = lastMessage?.step ?? null;
   const succeeded = step === "succeeded";
   const failed = step === "failed";
+
+  // The cancel affordance is gated on BOTH the persisted status (queued /
+  // running) AND the absence of a live terminal frame — so it disappears the
+  // instant the WebSocket reports success/failure even before the row refetch.
+  const showCancel =
+    !isTerminal && (status === "queued" || status === "running");
 
   return (
     <div className="flex flex-col gap-4" data-testid="scan-progress">
@@ -208,7 +227,16 @@ export function ScanProgress({
         </p>
       ) : null}
 
-      <div className="flex items-center justify-end gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {showCancel ? (
+          <div className="mr-auto" data-testid="scan-progress-cancel-slot">
+            <ScanCancelButton
+              scanId={scanId}
+              status={status}
+              onCancelled={onCancelled}
+            />
+          </div>
+        ) : null}
         {failed && onRetry ? (
           <Button
             variant="outline"

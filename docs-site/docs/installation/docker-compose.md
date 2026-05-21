@@ -150,7 +150,7 @@ After `bash scripts/install.sh` completes:
 - [ ] Switch to the teammate's session → create a project at
   `/projects → New project` with a small public repo (test).
 - [ ] Trigger a scan; the right-slide progress drawer should walk
-  through `bootstrap → fetch → prep → cdxgen → ort →
+  through `bootstrap → fetch → prep → cdxgen → scancode →
   dt_upload → dt_findings → finalize` in about 2-5 minutes.
 - [ ] Open the project's **Vulnerabilities** tab — any CVEs from
   the test repo should be listed.
