@@ -35,8 +35,10 @@ import structlog
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.config import scan_trigger_rate_limit
 from core.db import get_db
 from core.errors import problem_response
+from core.ratelimit import _authenticated_user_key, limiter
 from core.security import CurrentUser, require_role
 from schemas.project_detail import (
     ComponentListResponse,
@@ -65,6 +67,7 @@ from services.project_service import (
     update_project,
 )
 from services.scan_service import (
+    ConcurrentScanLimitExceeded,
     ScanError,
     trigger_scan,
 )
@@ -88,6 +91,27 @@ def _problem_for_project_error(request: Request, exc: ProjectError) -> Response:
 
 
 def _problem_for_scan_error(request: Request, exc: ScanError) -> Response:
+    # B1: the per-team concurrency cap carries the RFC 7807 extension field
+    # `limit`, a domain `type` URI, and a Retry-After header so callers can
+    # back off intelligently. All other scan errors use the plain about:blank
+    # envelope.
+    #
+    # M1 (security-reviewer): we deliberately do NOT include the team's live
+    # `running_scans` count in the body — that would leak the team's real-time
+    # active-scan count to every team developer on each request (an intra-team
+    # side-channel). `limit` + `Retry-After` are enough for client back-off;
+    # the count stays in the server-side log.warning only.
+    if isinstance(exc, ConcurrentScanLimitExceeded):
+        response = problem_response(
+            status_code=exc.status_code,
+            title=exc.title,
+            detail=str(exc) or exc.title,
+            instance=request.url.path,
+            type_=exc.type_uri,
+            limit=exc.limit,
+        )
+        response.headers["Retry-After"] = str(exc.retry_after_seconds)
+        return response
     return problem_response(
         status_code=exc.status_code,
         title=exc.title,
@@ -364,6 +388,42 @@ async def list_project_components_endpoint(
     response_model=ScanPublic,
     status_code=status.HTTP_202_ACCEPTED,
     summary="Trigger a scan for the project (queues a Celery task; returns 202 Accepted)",
+    responses={
+        429: {
+            "description": (
+                "Rate limited (too many triggers from this user) or the "
+                "team's concurrent-scan cap is reached. RFC 7807 problem+json "
+                "with a Retry-After header; the concurrency-cap variant adds a "
+                "`limit` extension field. (The live per-team active-scan count "
+                "is intentionally not exposed — see M1.)"
+            ),
+            "content": {"application/problem+json": {}},
+        },
+    },
+)
+# B1: per-USER scan-trigger rate limit (keyed by access-token sub, not IP, so
+# NAT'd users / CI runners don't share a bucket). We pass the config accessor
+# itself (not its result) so slowapi evaluates the limit string per request —
+# os.getenv is read at call time (CLAUDE.md core rule #11), letting an operator
+# retune SCAN_TRIGGER_RATE_LIMIT without a restart.
+#
+# L1 (security-reviewer): why `shared_limit` with a FIXED `scope`, not `@limit`.
+# slowapi builds the per-request bucket key from the limit's key components.
+# `@limiter.limit(...)` includes the matched route path in that key, so because
+# this route's path template carries a per-call {project_id}, every project id
+# would land in its OWN bucket — a single user could bypass the cap by spraying
+# triggers across many projects. `@limiter.shared_limit(..., scope="scan_trigger")`
+# builds the bucket key from `key_func(request)` (here the user id) plus the
+# constant string `scope` and EXCLUDES the request URL/route path. That makes
+# the bucket key effectively (user, "scan_trigger"), so the budget is shared
+# across all of a user's projects. (There is no `key_style="url"` setting on our
+# Limiter — the route-path-in-key behaviour is intrinsic to plain `@limit`.) The
+# per-team concurrency cap below is a separate, complementary control enforced
+# in the service.
+@limiter.shared_limit(
+    scan_trigger_rate_limit,
+    scope="scan_trigger",
+    key_func=_authenticated_user_key,
 )
 async def trigger_scan_endpoint(
     request: Request,
@@ -373,14 +433,17 @@ async def trigger_scan_endpoint(
     actor: CurrentUser = Depends(require_role("developer")),
 ) -> Response:
     # The service layer can raise:
-    #   - ScanForbidden            (403) — caller not in the project's team
-    #   - ProjectMissingForScan    (404) — project id does not exist
-    #   - ScanInProgressConflict   (409) — partial unique index hit
-    #   - ScanEnqueueFailed        (503) — Celery dispatch failed; scan row
-    #                                       was marked 'failed' before this
-    #                                       branch returns
-    # _problem_for_scan_error reads exc.status_code so all four map to the
-    # right RFC 7807 envelope without a per-exception switch here.
+    #   - ScanForbidden               (403) — caller not in the project's team
+    #   - ProjectMissingForScan       (404) — project id does not exist
+    #   - ConcurrentScanLimitExceeded (429) — team at its concurrent-scan cap
+    #   - ScanInProgressConflict      (409) — partial unique index hit
+    #   - ScanEnqueueFailed           (503) — Celery dispatch failed; scan row
+    #                                          was marked 'failed' before this
+    #                                          branch returns
+    # _problem_for_scan_error reads exc.status_code so all map to the right
+    # RFC 7807 envelope; the 429 concurrency variant additionally gets a
+    # Retry-After header + a `limit` extension field (the live running_scans
+    # count is logged server-side only — M1).
     try:
         scan = await trigger_scan(
             session,
@@ -399,3 +462,24 @@ async def trigger_scan_endpoint(
         status_code=status.HTTP_202_ACCEPTED,
         media_type="application/json",
     )
+
+
+# slowapi's `@limiter.limit` wraps the endpoint with functools.wraps. The
+# wrapper inherits slowapi's module as its `__globals__`, so under
+# `from __future__ import annotations` FastAPI's `get_type_hints()` call on
+# the wrapper cannot resolve our string annotations (ScanCreate, AsyncSession,
+# ...) and misclassifies the body / dependencies. Mirror the fix used in
+# auth.py and obligations.py: copy the names the wrapper needs into its
+# `__globals__` (the dict is mutable even though the attribute is read-only).
+for _name in (
+    "uuid",
+    "ScanCreate",
+    "AsyncSession",
+    "CurrentUser",
+    "Request",
+    "Response",
+    "Depends",
+):
+    if _name in globals():
+        trigger_scan_endpoint.__globals__.setdefault(_name, globals()[_name])
+del _name

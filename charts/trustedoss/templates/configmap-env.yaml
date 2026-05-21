@@ -1,0 +1,47 @@
+{{/*
+Shared non-secret environment for backend / worker / beat.
+
+Every key maps 1:1 to an os.getenv() accessor in
+apps/backend/core/config.py and to the docker-compose `${VAR:-default}`
+defaults. Secrets (DATABASE_URL, SECRET_KEY) are injected separately via
+Secret references in the Deployments — they are intentionally NOT here.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "trustedoss.fullname" . }}-env
+  labels:
+    {{- include "trustedoss.labels" . | nindent 4 }}
+data:
+  APP_ENV: {{ .Values.env.appEnv | quote }}
+  LOG_LEVEL: {{ .Values.env.logLevel | quote }}
+  CORS_ALLOWED_ORIGINS: {{ .Values.env.corsAllowedOrigins | quote }}
+  {{- if .Values.env.redis.url }}
+  REDIS_URL: {{ .Values.env.redis.url | quote }}
+  {{- end }}
+
+  # ---- DB connection pool (B1) ----
+  DB_POOL_SIZE: {{ .Values.env.dbPool.size | quote }}
+  DB_MAX_OVERFLOW: {{ .Values.env.dbPool.maxOverflow | quote }}
+  DB_POOL_TIMEOUT: {{ .Values.env.dbPool.timeout | quote }}
+  DB_POOL_RECYCLE: {{ .Values.env.dbPool.recycle | quote }}
+  DB_SYNC_POOL_SIZE: {{ .Values.env.dbPool.syncSize | quote }}
+  DB_SYNC_MAX_OVERFLOW: {{ .Values.env.dbPool.syncMaxOverflow | quote }}
+  DB_SYNC_POOL_TIMEOUT: {{ .Values.env.dbPool.syncTimeout | quote }}
+  DB_SYNC_POOL_RECYCLE: {{ .Values.env.dbPool.syncRecycle | quote }}
+
+  # ---- Scan controls (B1 + A1) ----
+  SCAN_TRIGGER_RATE_LIMIT: {{ .Values.env.scan.triggerRateLimit | quote }}
+  SCAN_CONCURRENCY_CAP_PER_TEAM: {{ .Values.env.scan.concurrencyCapPerTeam | quote }}
+  SCAN_SOFT_TIME_LIMIT_SECONDS: {{ .Values.env.scan.softTimeLimitSeconds | quote }}
+  SCAN_HARD_TIME_LIMIT_SECONDS: {{ .Values.env.scan.hardTimeLimitSeconds | quote }}
+  WORKSPACE_ORPHAN_MAX_AGE_SECONDS: {{ .Values.env.scan.workspaceOrphanMaxAgeSeconds | quote }}
+
+  # ---- scancode guards (A2) ----
+  SCANCODE_TIMEOUT_SECONDS: {{ .Values.env.scancode.timeoutSeconds | quote }}
+  SCANCODE_MAX_FILES: {{ .Values.env.scancode.maxFiles | quote }}
+  SCANCODE_MAX_DETECTIONS: {{ .Values.env.scancode.maxDetections | quote }}
+  # maxResultBytes is large enough that YAML/Helm would otherwise render it in
+  # scientific notation ("2.68e+08"), which the backend's int(os.getenv(...))
+  # cannot parse. int64 forces a plain-integer string.
+  SCANCODE_MAX_RESULT_BYTES: {{ .Values.env.scancode.maxResultBytes | int64 | quote }}

@@ -66,6 +66,49 @@ def _client_ip_for_limit(request: Request) -> str:
     return get_remote_address(request)
 
 
+def _authenticated_user_key(request: Request) -> str:
+    """slowapi key function for per-*user* limits on authenticated endpoints.
+
+    B1: scan triggers should be throttled per user, not per IP — many
+    legitimate users (and CI runners) share an egress IP behind NAT, so an
+    IP-keyed bucket would let one abuser starve everyone or, conversely,
+    punish a whole office for one user's burst.
+
+    We derive the key from the access token's ``sub`` claim. The slowapi key
+    function runs in the route decorator *before* FastAPI resolves the
+    ``current_user`` dependency, so we decode the bearer token directly here
+    (signature + type + expiry verified). Resolution order:
+
+      1. ``user:<uuid>``  — valid access token present (the normal path; the
+         route requires auth so this is what we expect).
+      2. ``ip:<addr>``    — no/invalid/expired token. The auth dependency will
+         reject the request with 401 regardless; bucketing by IP in this case
+         just prevents an unauthenticated flood from sharing the global
+         no-key bucket.
+
+    Decoding is cheap (HS256 verify) and the token is already in memory; we
+    deliberately do NOT hit the DB here (the key func is on the hot path and
+    must not add a round-trip).
+    """
+    # Local imports keep this module importable without pulling the security
+    # stack at load time and avoid a circular import (security -> audit ->
+    # config; ratelimit -> security would close the loop).
+    from jose import JWTError
+
+    from core.security import TOKEN_TYPE_ACCESS, _bearer_token, decode_token
+
+    token = _bearer_token(request)
+    if token:
+        try:
+            claims = decode_token(token, expected_type=TOKEN_TYPE_ACCESS)
+            sub = claims.get("sub")
+            if sub:
+                return f"user:{sub}"
+        except (JWTError, ValueError):
+            pass
+    return f"ip:{_client_ip_for_limit(request)}"
+
+
 # Limiter keyed by client IP. `default_limits=[]` → endpoints opt in via
 # @limiter.limit(...). storage_uri uses Redis so the 5/min budget is shared
 # across uvicorn workers (the function call is a runtime call, not a cached

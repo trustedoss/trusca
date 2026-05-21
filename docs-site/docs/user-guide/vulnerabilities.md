@@ -69,7 +69,12 @@ Click any row to open:
 - **Summary** — title, description, CWE, CVSS vector.
 - **References** — vendor advisories, fix commits, exploit databases.
 - **Affected** — the upstream-reported affected range with the project's component version highlighted, plus `fixed_version` (the upstream version that ships the fix, when available).
-- **Analysis** — VEX status action buttons, one per allowed transition out of the current state. The target-state set is the six non-initial states from `VulnFindingStatus` (`apps/backend/schemas/vulnerability_detail.py`): `analyzing` ("Mark in triage"), `exploitable` ("Mark exploitable"), `not_affected` ("Mark not affected"), `false_positive` ("Mark false positive"), `suppressed` ("Mark suppressed"), and `fixed` ("Mark fixed"). The initial state `new` has no inbound button. Click a button to open the justification dialog and submit. Only `developer` or higher.
+- **Analysis** — VEX status action buttons. **The buttons you see depend on the finding's _current_ state.** The transition matrix (`apps/backend/services/vulnerability_service.py`, the source of truth) routes every terminal decision through the `analyzing` state, so a brand-new finding cannot jump straight to a verdict:
+  - **`new`** (just discovered) → **Mark in triage** (`analyzing`) or **Mark suppressed** (`suppressed`). You **cannot** go directly to "not affected" / "exploitable" / "false positive" / "fixed" — triage first.
+  - **`analyzing`** (working state) → the five verdicts: **Mark exploitable**, **Mark not affected**, **Mark false positive**, **Mark fixed**, **Mark suppressed**.
+  - any **terminal** state (`exploitable` / `not_affected` / `false_positive` / `fixed` / `suppressed`) → **Reopen** back to `analyzing` to re-triage.
+
+  Click a button to open the justification dialog and submit. Moving **into** `suppressed` requires `team_admin` or higher (suppression is gated to keep the audit trail clean); every other transition is `developer` or higher.
 - **History** — VEX status-transition timeline (who changed the status, when, with what justification).
 
 ![Vulnerability drawer — Analysis section with VEX action buttons and justification textarea](/img/screenshots/user-vulns-drawer-vex.png)

@@ -1,0 +1,25 @@
+TrustedOSS Portal ({{ .Chart.Name }}-{{ .Chart.Version }}, app {{ .Chart.AppVersion }}) installed.
+
+Workloads:
+  backend  x {{ .Values.backend.replicaCount }}   (FastAPI, Service :{{ .Values.backend.port }})
+  worker   x {{ if .Values.worker.autoscaling.enabled }}HPA {{ .Values.worker.autoscaling.minReplicas }}-{{ .Values.worker.autoscaling.maxReplicas }}{{ else }}{{ .Values.worker.replicaCount }}{{ end }}   (Celery, concurrency={{ .Values.worker.concurrency }})
+  beat     x 1   (Celery scheduler — singleton)
+
+Scale workers out (preferred over raising concurrency):
+  helm upgrade {{ .Release.Name }} . --set worker.replicaCount=4
+  # or enable the HPA:
+  helm upgrade {{ .Release.Name }} . --set worker.autoscaling.enabled=true
+
+Postgres connection budget (keep under Postgres max_connections):
+  backend = {{ .Values.backend.replicaCount }} x ({{ .Values.env.dbPool.size }} + {{ .Values.env.dbPool.maxOverflow }})
+  worker  = {{ .Values.worker.replicaCount }} x ({{ .Values.env.dbPool.syncSize }} + {{ .Values.env.dbPool.syncMaxOverflow }})
+  beat    = 1 x ({{ .Values.env.dbPool.syncSize }} + {{ .Values.env.dbPool.syncMaxOverflow }})
+
+{{- if not .Values.env.database.url }}
+{{- if not .Values.env.database.existingSecret }}
+
+WARNING: no DATABASE_URL configured (env.database.url / env.database.existingSecret).
+The backend will fall back to its in-code default DSN, which will not reach your
+external Postgres. Set one before relying on this release.
+{{- end }}
+{{- end }}
