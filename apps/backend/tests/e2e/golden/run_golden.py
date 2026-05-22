@@ -166,6 +166,18 @@ def _capture(api, token, pid, sid, status) -> dict:
         sbom[fmt] = g(f"/v1/projects/{pid}/sbom?format={fmt}")[0] == 200
     ps, pbytes, _ = g(f"/v1/projects/{pid}/vulnerability-report.pdf")
     pdf_ok = ps == 200 and pbytes[:5] == b"%PDF-"
+    # Tier H — governance enforcement end-to-end: a real scan with a forbidden
+    # license / critical CVE must drive gate=fail. Captured + baselined so a
+    # regression that lets a forbidden license PASS the gate is caught.
+    gs, gb, _ = g(f"/v1/projects/{pid}/gate-result")
+    gate: dict[str, object] = {}
+    if gs == 200:
+        gd = json.loads(gb)
+        gate = {
+            "gate": gd.get("gate"),
+            "critical_cve": gd.get("critical_cve_count"),
+            "forbidden_license": gd.get("forbidden_license_count"),
+        }
     return {
         "scan_status": status,
         "components": {"count": comp.get("total"), "purls": purls,
@@ -176,6 +188,7 @@ def _capture(api, token, pid, sid, status) -> dict:
         "notice": {"text_ok": nt == 200, "html_ok": nh_s == 200, "csp": csp},
         "sbom": sbom,
         "report_pdf_ok": pdf_ok,
+        "gate": gate,
     }
 
 

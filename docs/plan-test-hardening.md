@@ -140,6 +140,65 @@ owner: scan-pipeline e2e hardening
 - 부하 SLO 게이트 + async 감사 + 적대적 + 백엔드 disconnect는 PR 게이트로 상시 green.
 - 각 발견 버그는 회귀 테스트로 고정 후 머지 (Producer-Reviewer: 보안/외부입력은 security-reviewer 통과).
 
+## 확장 Tier H–O (서비스 안정화 — 운영 장애 축)
+
+> 6-Tier가 happy-path + 발견된 버그 클래스를 덮은 뒤, *운영 장애를 일으키는* 축의
+> 공백을 메운다. 동일 원칙: 결정적=PR 게이트, 느린/카오스=nightly, 비결정=불변식.
+
+### Tier H — 거버넌스 집행 e2e (빌드 게이트)
+게이트 *로직*은 unit/integration(`test_policy_gate*.py`)으로 커버됨. 공백은
+**실 스캔→게이트 결과** 연결: forbidden 라이선스(mixed-policy의 GPL) / critical CVE를
+가진 실 스캔이 `gate-result=fail` + 사유를 내는지. → 골든 캡처에 `gate` 축 추가
+(scan→gate end-to-end). "금지 라이선스가 게이트를 통과" 회귀 차단.
+
+### Tier I — 생성 산출물 유효성
+SBOM을 외부 검증기(cyclonedx validate / SPDX)로 **스키마 검증**, NOTICE 법적 완전성
+(모든 conditional/forbidden 라이선스 누락 없이 고지). 골든에 `valid` 축. nightly.
+
+### Tier J — write/scan 경로 부하 + 동시성
+스캔 트리거 폭주(팀 캡·레이트리밋·enqueue), 동일 프로젝트 동시 re-scan
+(`_reset_scan_for_rerun` race + `uq_components_purl` dedup race), 혼합 read+write 풀
+고갈, WS 다중 스트림. locust에 write 시나리오 추가. nightly.
+
+### Tier K — 광범위 카오스 (불변식)
+Redis 다운(broker+레이트리밋), Postgres 연결 끊김, worker OOM/kill 중 스캔, 디스크
+가득, cdxgen/scancode 크래시·타임아웃. 불변식: 고아 0 / 스캔 상태 정확 / 5xx 0 /
+데이터 무결 / breaker OPEN→캐시. nightly (스택 조작) + 결정적 단위(타임아웃/실패 경로).
+
+### Tier L — authZ 매트릭스 + JWT 수명주기
+모든 엔드포인트 × {anon, developer, team_admin, super_admin, cross-team} 권한 매트릭스
+(parametrize). JWT 만료/refresh 회전+재사용 탐지/변조/alg-confusion. 레이트리밋 실제
+429 검증. PR 게이트(통합).
+
+### Tier M — 백업/복원 + 마이그레이션 정확성
+백업→복원 후 데이터 동일성(프로젝트/스캔/findings), Alembic forward-only가 채워진
+DB에 클린 적용, 데이터 마이그레이션 멱등성. nightly.
+
+### Tier N — 계약/OpenAPI 드리프트
+OpenAPI 스냅샷 diff(엔드포인트/스키마 변경), 프론트↔백엔드 계약(프론트 요청 파라미터가
+백엔드 제약과 일치 — page-size 버그 클래스). PR 게이트(정적).
+
+### Tier O — 상태머신 + 시간 의존
+컴포넌트 승인 전이, VEX 7-state 전이 매트릭스, 새 CVE 재탐지(DT sync→갱신+알림), 고아
+정리 beat, 알림(SMTP/Slack/Teams) 발송. 결정적 전이=PR, 비동기 파이프라인=nightly.
+
+### H–O 빌드 순서 (안정화 ROI)
+1. **H** 골든에 게이트 축 (실 스캔→게이트 집행).
+2. **N** OpenAPI/계약 드리프트 (정적, PR, page-size류 차단).
+3. **L** authZ 매트릭스 + JWT 수명주기 (PR).
+4. **K** 카오스 (Redis/PG/worker/disk, nightly).
+5. **I** SBOM/NOTICE 유효성, **M** 복원/마이그레이션, **J** write 부하, **O** 워크플로.
+
+## 실행 관측 — e2e 스위트 단일-패스 제약 (2026-05-22 전체 실행)
+전체 e2e(14 파일)를 실제 실행한 결과 실패 10건 중 **9건이 로그인 레이트리밋
+(5/분/IP) 아티팩트**였다: 각 테스트가 per-test 로그인을 하는데 단일 드라이버 IP라
+멀티-테스트 파일의 6번째 로그인부터 429 → `waitForURL(/projects)` 타임아웃. 나머지
+1건은 scan_flow 빈-zip 테스트 결함(수정됨). **제품 버그 0건.**
+→ **필수 follow-up (e2e를 CI 게이트로 만들려면 선결)**: Playwright `globalSetup`에서
+**1회 로그인 → `storageState` 공유**로 전 스펙이 재사용(per-test 로그인 제거). 그래야
+스위트가 단일 패스로 결정적으로 돌고 nightly 게이트가 된다. (보안 약화 없이; 레이트리밋
+*동작*은 별도 Tier L에서 검증.) test-writer 핸드오프에도 동일 권고 존재.
+
 ## 알려진 선결/리스크
 - **NVD 데이터 부재**(현재 fresh DT): Tier 5 vuln 검출은 결정적 vuln 데이터 시딩 전략 확정이 선결.
 - **로컬 자원**(Colima 12GiB): nightly e2e는 ephemeral 스택 + 부하 레벨 조정 필요(10k는 CI 러너 한계).

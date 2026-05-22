@@ -55,6 +55,11 @@
       "pkg:npm/path-to-regexp@0.1.7"
     ]
   },
+  "gate": {
+    "critical_cve": 0,
+    "forbidden_license": 0,
+    "gate": "pass"
+  },
   "licenses": [
     "BSD-3-Clause|allowed|declared",
     "ISC|allowed|declared",

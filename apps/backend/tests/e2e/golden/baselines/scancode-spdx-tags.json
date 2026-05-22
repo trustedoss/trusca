@@ -4,6 +4,11 @@
     "nix_spurious": 0,
     "purls": []
   },
+  "gate": {
+    "critical_cve": 0,
+    "forbidden_license": 1,
+    "gate": "fail"
+  },
   "licenses": [
     "Apache-2.0|allowed|detected",
     "BSD-3-Clause|allowed|detected",
