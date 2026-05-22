@@ -224,6 +224,52 @@ async def test_source_file_reads_content_and_line_matches(client: AsyncClient) -
 
 
 # ---------------------------------------------------------------------------
+# Raw download — streamed application/octet-stream (G3.3 + streaming follow-up)
+# ---------------------------------------------------------------------------
+
+
+async def test_source_file_raw_streams_full_member_as_octet_stream(
+    client: AsyncClient,
+) -> None:
+    """``raw=true`` streams the WHOLE member as application/octet-stream with an
+    RFC 6266 Content-Disposition — exercising the StreamingResponse branch."""
+    _, user, project, scan_id = await _seed(client)
+    _write_tarball(project.id, scan_id)
+    headers = _bearer_for(user)
+
+    response = await client.get(
+        f"/v1/projects/{project.id}/source-file",
+        headers=headers,
+        params={"path": "LICENSE", "raw": "true"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"].startswith("application/octet-stream")
+    cd = response.headers["content-disposition"]
+    assert cd.startswith("attachment;")
+    assert 'filename="LICENSE"' in cd
+    # Body is the full member byte-exact (httpx reassembles the streamed chunks).
+    assert response.content == b"MIT License\n\nCopyright\n"
+
+
+async def test_source_file_raw_hostile_path_is_problem_json_not_partial_body(
+    client: AsyncClient,
+) -> None:
+    """A hostile ?path= on the raw branch is rejected EAGERLY → RFC 7807
+    problem+json (400), never a partial 200 octet-stream body."""
+    _, user, project, scan_id = await _seed(client)
+    _write_tarball(project.id, scan_id)
+    headers = _bearer_for(user)
+
+    response = await client.get(
+        f"/v1/projects/{project.id}/source-file",
+        headers=headers,
+        params={"path": "a/../../etc/passwd", "raw": "true"},
+    )
+    assert response.status_code == 400
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+# ---------------------------------------------------------------------------
 # IDOR / RBAC + existence-hide
 # ---------------------------------------------------------------------------
 

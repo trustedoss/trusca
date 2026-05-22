@@ -137,6 +137,22 @@ _OBLIGATION_TEXT_CAP_BYTES = 64 * 1024  # 64 KiB
 # tail at a sane size.
 _NOTICE_COMPONENT_LABELS_CAP = 5000
 
+# G2 follow-up (security-reviewer Low/Info from PR #107) — the per-license
+# ``component_labels`` list was already capped above, but the NUMBER of license
+# sections and the NUMBER of obligations rendered PER license were unbounded. A
+# pathological catalog (tens of thousands of distinct licenses, or one license
+# carrying a runaway obligation set) would still inflate the synchronous NOTICE
+# body section-by-section. We cap both axes and record an honest omitted-count
+# in every format, mirroring the component "+N omitted" pattern, so the document
+# stays legally complete for NORMAL catalogs and only clamps the extreme tail.
+#
+# 2000 distinct third-party licenses in a single project is already far beyond
+# any real attribution surface (a NOTICE credits distinct licenses, not files),
+# and 500 obligations on ONE license dwarfs every license in the seeded catalog
+# — both bound the body without clipping a realistic document.
+_NOTICE_LICENSE_CAP = 2000
+_NOTICE_OBLIGATIONS_PER_LICENSE_CAP = 500
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -749,8 +765,8 @@ async def generate_notice(
             "obligation_count": 0,
         }
 
-    licenses_with_components, obligations_by_license = await _load_notice_data(
-        session, scan_id=project.latest_scan_id
+    licenses_with_components, obligations_by_license, licenses_omitted = (
+        await _load_notice_data(session, scan_id=project.latest_scan_id)
     )
 
     body = _render_notice(
@@ -759,17 +775,24 @@ async def generate_notice(
         licenses_with_components=licenses_with_components,
         obligations_by_license=obligations_by_license,
         fmt=fmt,
+        licenses_omitted=licenses_omitted,
     )
 
-    obligation_count = sum(len(rows) for rows in obligations_by_license.values())
+    # Inspection headers report the TRUE totals (rendered head + omitted tail)
+    # so the X-Notice-* counts stay honest even when a body cap clipped the
+    # document. ``obligations_omitted`` rides on each license entry.
+    rendered_obligations = sum(len(rows) for rows in obligations_by_license.values())
+    obligations_omitted_total = sum(
+        int(e.get("obligations_omitted", 0)) for e in licenses_with_components
+    )
     return {
         "project_id": project.id,
         "project_name": project.name,
         "generated_at": generated_at,
         "format": fmt,
         "body": body,
-        "license_count": len(licenses_with_components),
-        "obligation_count": obligation_count,
+        "license_count": len(licenses_with_components) + licenses_omitted,
+        "obligation_count": rendered_obligations + obligations_omitted_total,
     }
 
 
@@ -780,8 +803,20 @@ async def _load_notice_data(
 ) -> tuple[
     list[dict[str, Any]],
     dict[uuid.UUID, list[dict[str, Any]]],
+    int,
 ]:
-    """Two trips: licenses + components, then per-license obligation rows."""
+    """Two trips: licenses + components, then per-license obligation rows.
+
+    Returns ``(licenses_with_components, obligations_by_license, licenses_omitted)``.
+
+    Body-size caps (G2 follow-up):
+      - the number of license SECTIONS is capped at ``_NOTICE_LICENSE_CAP``; the
+        excess count is returned as ``licenses_omitted`` so the renderer can add
+        an honest footer instead of silently dropping sections.
+      - each license entry carries ``obligations_omitted`` — the number of
+        obligation rows beyond ``_NOTICE_OBLIGATIONS_PER_LICENSE_CAP`` that were
+        clipped from that license's section.
+    """
     license_stmt = (
         select(
             LicenseModel.id.label("license_id"),
@@ -807,7 +842,12 @@ async def _load_notice_data(
         )
         .order_by(LicenseModel.spdx_id.asc().nullslast(), LicenseModel.name.asc())
     )
-    license_rows = (await session.execute(license_stmt)).all()
+    all_license_rows = (await session.execute(license_stmt)).all()
+    # G2 follow-up: cap the number of license SECTIONS. The query is already
+    # deterministically ordered (spdx_id asc nullslast, name asc) so the kept
+    # head is stable across runs; the tail is recorded as an honest footer.
+    licenses_omitted = max(len(all_license_rows) - _NOTICE_LICENSE_CAP, 0)
+    license_rows = all_license_rows[:_NOTICE_LICENSE_CAP]
     licenses_with_components: list[dict[str, Any]] = []
     license_ids: list[uuid.UUID] = []
     for r in license_rows:
@@ -831,6 +871,8 @@ async def _load_notice_data(
                 "reference_url": r.reference_url,
                 "component_labels": labels,
                 "component_labels_omitted": labels_omitted,
+                # Filled in below once the per-license obligation rows are capped.
+                "obligations_omitted": 0,
             }
         )
 
@@ -844,7 +886,21 @@ async def _load_notice_data(
             .order_by(Obligation.license_id.asc(), Obligation.kind.asc())
         )
         ob_rows = (await session.execute(ob_stmt)).scalars().all()
+        # Count how many obligations each license carries BEFORE clamping so we
+        # can record the per-license omitted tail. The ordered fetch above means
+        # the kept head (first ``_NOTICE_OBLIGATIONS_PER_LICENSE_CAP`` rows by
+        # kind) is stable across runs.
+        seen_per_license: dict[uuid.UUID, int] = {}
+        omitted_per_license: dict[uuid.UUID, int] = {}
         for ob in ob_rows:
+            kept = seen_per_license.get(ob.license_id, 0)
+            if kept >= _NOTICE_OBLIGATIONS_PER_LICENSE_CAP:
+                # G2 follow-up: cap the per-license obligation list. We stop
+                # appending past the cap and tally the excess for an honest note.
+                omitted_per_license[ob.license_id] = (
+                    omitted_per_license.get(ob.license_id, 0) + 1
+                )
+                continue
             # G2: clamp obligation text at the same 64 KiB byte budget the
             # drawer uses so a runaway catalog row cannot bloat the NOTICE body.
             clamped_text, _text_truncated = _clamp_obligation_text(ob.text or "")
@@ -855,8 +911,15 @@ async def _load_notice_data(
                     "link": ob.link,
                 }
             )
+            seen_per_license[ob.license_id] = kept + 1
 
-    return licenses_with_components, obligations_by_license
+        if omitted_per_license:
+            for entry in licenses_with_components:
+                entry["obligations_omitted"] = omitted_per_license.get(
+                    entry["license_id"], 0
+                )
+
+    return licenses_with_components, obligations_by_license, licenses_omitted
 
 
 def _render_empty_notice(project_name: str, generated_at: datetime, *, fmt: str) -> str:
@@ -889,6 +952,7 @@ def _render_notice(
     licenses_with_components: list[dict[str, Any]],
     obligations_by_license: dict[uuid.UUID, list[dict[str, Any]]],
     fmt: str,
+    licenses_omitted: int = 0,
 ) -> str:
     if fmt == "html":
         return _render_notice_html(
@@ -896,6 +960,7 @@ def _render_notice(
             generated_at=generated_at,
             licenses_with_components=licenses_with_components,
             obligations_by_license=obligations_by_license,
+            licenses_omitted=licenses_omitted,
         )
 
     parts: list[str] = [_format_header(project_name, generated_at, fmt=fmt), ""]
@@ -941,8 +1006,21 @@ def _render_notice(
                         # Clamp to 2048 chars (mirrors the html ``_safe_href`` cap).
                         parts.append(f"Reference: {_md_escape(ob['link'][:2048])}")
                     parts.append("")
+                obs_omitted = entry.get("obligations_omitted", 0)
+                if obs_omitted:
+                    parts.append(
+                        f"_… and {obs_omitted} more obligation(s) omitted for "
+                        "this license._"
+                    )
+                    parts.append("")
         parts.append("---")
         parts.append("")
+        if licenses_omitted:
+            parts.append(
+                f"_… and {licenses_omitted} more license(s) omitted from this "
+                "NOTICE._"
+            )
+            parts.append("")
         return "\n".join(parts).rstrip() + "\n"
 
     # plain text
@@ -972,8 +1050,20 @@ def _render_notice(
                 if ob["link"]:
                     parts.append(f"Reference: {ob['link']}")
                 parts.append("")
+            obs_omitted = entry.get("obligations_omitted", 0)
+            if obs_omitted:
+                parts.append(
+                    f"... and {obs_omitted} more obligation(s) omitted for this "
+                    "license"
+                )
+                parts.append("")
     parts.append(_NOTICE_DIVIDER)
     parts.append("")
+    if licenses_omitted:
+        parts.append(
+            f"... and {licenses_omitted} more license(s) omitted from this NOTICE"
+        )
+        parts.append("")
     return "\n".join(parts).rstrip() + "\n"
 
 
@@ -994,6 +1084,7 @@ _NOTICE_HTML_STYLE = (
     ".generated{color:#64748b;font-size:.85rem}"
     ".no-obligations{color:#64748b;font-style:italic}"
     "li.muted{color:#64748b;font-style:italic;list-style:none}"
+    "p.muted{color:#64748b;font-style:italic}"
     ".obligation{margin:.5rem 0}"
 )
 
@@ -1027,6 +1118,7 @@ def _render_notice_html(
     licenses_with_components: list[dict[str, Any]],
     obligations_by_license: dict[uuid.UUID, list[dict[str, Any]]],
     empty_reason: str | None = None,
+    licenses_omitted: int = 0,
 ) -> str:
     """Render the NOTICE as a complete, fully-escaped HTML document."""
     iso = generated_at.replace(microsecond=0).isoformat()
@@ -1083,7 +1175,19 @@ def _render_notice_html(
                     parts.append(f"<pre>{html_escape(ob['text'] or '')}</pre>")
                     parts.append(_html_reference_line(ob["link"]))
                     parts.append("</div>")
+                obs_omitted = entry.get("obligations_omitted", 0)
+                if obs_omitted:
+                    parts.append(
+                        f'<p class="muted">… and {obs_omitted} more obligation(s) '
+                        "omitted for this license.</p>"
+                    )
             parts.append("</section>")
+
+        if licenses_omitted:
+            parts.append(
+                f'<p class="muted">… and {licenses_omitted} more license(s) '
+                "omitted from this NOTICE.</p>"
+            )
 
     parts.append("</body>")
     parts.append("</html>")

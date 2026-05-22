@@ -64,6 +64,7 @@ from __future__ import annotations
 import json
 import tarfile
 import uuid
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -179,19 +180,27 @@ class FileContent:
 
 @dataclass(frozen=True)
 class RawFileContent:
-    """The FULL bytes of one preserved member for the raw download path (G3.3).
+    """A streaming handle to one preserved member for the raw download (G3.3).
 
     Unlike :class:`FileContent` this carries no per-line matches and no viewer
     cap — it is the whole member, bounded only by the (generous) raw-download
     ceiling, streamed back as ``application/octet-stream`` for the download
     button on a truncated / binary file.
+
+    The body is NOT buffered: ``chunks`` is a generator that yields the member in
+    bounded slices (and owns closing the open tarball + member handle when it is
+    fully consumed or the client disconnects), so peak memory is one chunk — not
+    the whole (up to 512 MiB) member. ``byte_size`` is the member's declared size
+    from the tar header (the Content-Length is intentionally omitted: a member
+    that grows past the cap mid-stream is aborted, so we never promise a length
+    we might not deliver).
     """
 
     scan_id: uuid.UUID
     path: str
     filename: str
     byte_size: int
-    data: bytes
+    chunks: Iterator[bytes]
 
 
 # ---------------------------------------------------------------------------
@@ -651,6 +660,71 @@ async def read_file(
 # Raw full-file download (G3.3) — no per-file viewer cap
 # ---------------------------------------------------------------------------
 
+# The streamed-chunk size for the raw download. Peak memory per request is one
+# chunk (plus tarfile's own gzip window), NOT the whole member, so even a
+# 512 MiB member streams at ~64 KiB of resident body memory.
+_RAW_STREAM_CHUNK_BYTES = 64 * 1024
+
+
+def _stream_member_bytes(
+    tar: tarfile.TarFile,
+    extracted: Any,
+    *,
+    cap: int,
+    chunk_size: int,
+    member_path: str,
+    project_id: uuid.UUID,
+    scan_id: uuid.UUID,
+) -> Iterator[bytes]:
+    """Yield ``extracted`` in ``chunk_size`` slices, owning handle cleanup.
+
+    The cap is enforced WHILE streaming: we tally the bytes already yielded and
+    abort with :class:`SourceFileTooLarge` if the running total would exceed the
+    raw-download cap. The eager size pre-check in :func:`read_file_raw` already
+    rejects an over-cap member from a STATIC tarball, but enforcing the cap again
+    here keeps the bound honest for a member whose declared header size understates
+    its body (defence in depth, mirroring the old ``cap + 1`` re-check) and means
+    the stream can never deliver more than ``cap`` bytes.
+
+    The generator owns both the extracted member handle and the open tarball: a
+    ``finally`` closes them whether the stream is fully consumed, aborted by the
+    cap, or abandoned (``GeneratorExit`` on client disconnect). This is why the
+    eager phase must NOT close the tar.
+    """
+    yielded = 0
+    try:
+        while True:
+            chunk = extracted.read(chunk_size)
+            if not chunk:
+                break
+            yielded += len(chunk)
+            if yielded > cap:
+                log.warning(
+                    "source_tree_file_raw_cap_abort",
+                    project_id=str(project_id),
+                    scan_id=str(scan_id),
+                    path=member_path,
+                    cap_bytes=cap,
+                )
+                raise SourceFileTooLarge(
+                    f"{member_path!r} exceeds the {cap}-byte raw-download cap"
+                )
+            yield chunk
+        log.info(
+            "source_tree_file_raw_read",
+            project_id=str(project_id),
+            scan_id=str(scan_id),
+            path=member_path,
+            byte_size=yielded,
+        )
+    finally:
+        # Close both handles regardless of how the generator terminates
+        # (exhausted, cap-abort, or GeneratorExit on client disconnect).
+        try:
+            extracted.close()
+        finally:
+            tar.close()
+
 
 async def read_file_raw(
     session: AsyncSession,
@@ -660,23 +734,33 @@ async def read_file_raw(
     scan_id: uuid.UUID | None,
     actor: CurrentUser,
 ) -> RawFileContent:
-    """Read the FULL bytes of one preserved member for a raw download (G3.3).
+    """Open one preserved member for a STREAMING raw download (G3.3).
 
     The in-app viewer (:func:`read_file`) caps content at
     ``scan_source_viewer_max_file_bytes()`` for the rendered preview. The
     download button on a truncated / binary file needs the WHOLE member, so this
-    path returns the full bytes — bounded only by the generous
-    ``scan_source_raw_download_max_bytes()`` ceiling (so a pathological member
-    still cannot stream an unbounded body into the request).
+    path streams the full member — bounded only by the generous
+    ``scan_source_raw_download_max_bytes()`` ceiling.
+
+    Memory bound: the member is NOT read into a single ``bytes`` (which would peak
+    at up to 512 MiB per request, then be buffered AGAIN by the response). The
+    returned :class:`RawFileContent` carries a ``chunks`` generator that yields
+    the member in ``_RAW_STREAM_CHUNK_BYTES`` (64 KiB) slices, so peak resident
+    body memory is one chunk. The router hands ``chunks`` to a ``StreamingResponse``.
 
     It reuses EXACTLY the same defences as :func:`read_file`:
       - the same ``?path=`` sanitisation (NUL / absolute / ``..`` rejection),
       - the same exact-name member lookup (never a filesystem join),
       - the same non-regular-member (symlink / hardlink / device / fifo) refusal,
-      - the same team scoping + 404 existence-hide via ``_resolve_accessible_scan``.
+      - the same team scoping + 404 existence-hide via ``_resolve_accessible_scan``,
+      - the same UUID-only on-disk tarball path.
 
-    Raises :class:`SourceFileTooLarge` (413) when the member exceeds the raw cap
-    — the only case where the viewer truncates but raw cannot serve the file.
+    All of the above run EAGERLY (before any byte is streamed) so a rejection
+    surfaces as an RFC 7807 problem response, never a partial 200 body. The
+    raw-download cap is enforced both eagerly (declared member size) AND while
+    streaming (running byte tally) — see :func:`_stream_member_bytes`.
+
+    Raises :class:`SourceFileTooLarge` (413) when the member exceeds the raw cap.
     """
     member_path = _sanitize_member_path(raw_path)
     if not member_path:
@@ -689,6 +773,9 @@ async def read_file_raw(
 
     cap = scan_source_raw_download_max_bytes()
     tar = _open_tarball(project_id, resolved_scan)
+    # On ANY eager-validation failure below we must close the tar ourselves — it
+    # is only handed to the streaming generator (which then owns closing it) once
+    # every check has passed.
     try:
         info = _lookup_member(tar.getmembers(), member_path)
 
@@ -704,7 +791,7 @@ async def read_file_raw(
         full_size = int(info.size)
         # Refuse a member over the raw cap rather than streaming an unbounded
         # body. In practice a preserved member can never exceed the tarball cap,
-        # but the explicit guard keeps the bound honest.
+        # but the explicit guard keeps the bound honest BEFORE we start the body.
         if full_size > cap:
             raise SourceFileTooLarge(
                 f"{member_path!r} is {full_size} bytes, over the "
@@ -716,32 +803,33 @@ async def read_file_raw(
             raise SourceUnavailable(
                 f"could not read member from preserved source: {member_path!r}"
             )
-        # Read at most cap+1 so a member that grows past the cap between the stat
-        # and the read still cannot stream unbounded; we then re-check.
-        with extracted:
-            data = extracted.read(cap + 1)
-        if len(data) > cap:  # pragma: no cover — full_size guarded above
-            raise SourceFileTooLarge(
-                f"{member_path!r} exceeds the {cap}-byte raw-download cap"
-            )
-    finally:
+    except BaseException:
+        # Any eager failure (validation OR an unexpected error) must not leak the
+        # open tarball; the generator never runs in these cases.
         tar.close()
+        raise
 
     filename = member_path.rsplit("/", 1)[-1] or "download"
 
-    log.info(
-        "source_tree_file_raw_read",
-        project_id=str(project_id),
-        scan_id=str(resolved_scan),
-        path=member_path,
-        byte_size=len(data),
+    # The generator now OWNS ``tar`` + ``extracted`` and closes them when the
+    # stream ends / aborts / is abandoned. No byte is read here — peak body
+    # memory is one chunk inside ``StreamingResponse``.
+    chunks = _stream_member_bytes(
+        tar,
+        extracted,
+        cap=cap,
+        chunk_size=_RAW_STREAM_CHUNK_BYTES,
+        member_path=member_path,
+        project_id=project_id,
+        scan_id=resolved_scan,
     )
+
     return RawFileContent(
         scan_id=resolved_scan,
         path=member_path,
         filename=filename,
-        byte_size=len(data),
-        data=data,
+        byte_size=full_size,
+        chunks=chunks,
     )
 
 
