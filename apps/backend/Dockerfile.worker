@@ -2,7 +2,7 @@
 #
 # TrustedOSS Portal — Celery worker image.
 #
-# This image carries the heavy SCA toolchain (cdxgen / scancode / Trivy + JRE
+# This image carries the heavy SCA toolchain (cdxgen / scancode / Trivy + JDK
 # + Node + per-ecosystem lockfile resolvers) that backend API containers do
 # NOT need. Splitting it out keeps the API image small (~200MB) while the
 # worker is deployed and rolled independently. Per CLAUDE.md core rule #3
@@ -26,8 +26,10 @@
 #   cdxgen     — https://github.com/CycloneDX/cdxgen         (Apache-2.0)
 #   scancode   — https://github.com/aboutcode-org/scancode-toolkit (Apache-2.0)
 #   Trivy      — https://github.com/aquasecurity/trivy       (Apache-2.0)
-#   Temurin    — Eclipse Temurin JRE 21                      (GPL-2.0-CE — runtime
+#   Temurin    — Eclipse Temurin JDK 21                      (GPL-2.0-CE — runtime
 #                only; Classpath Exception lets user code stay non-GPL).
+#                Full JDK (not JRE): Gradle's java plugin needs javac /
+#                JAVA_COMPILER for `gradle dependencies` enumeration.
 #   Maven      — Apache Maven 3.9.x                          (Apache-2.0)
 #   Gradle     — Gradle 8.14.x                               (Apache-2.0)
 #   Composer   — getcomposer.org                             (MIT)
@@ -126,7 +128,7 @@ RUN pip install --upgrade pip \
     && pip install -r requirements.txt -r requirements-dev.txt
 
 # ---------------------------------------------------------------------------
-# Stage 2: worker — base + JRE 21 + Node 20 LTS + cdxgen + scancode + Trivy.
+# Stage 2: worker — base + JDK 21 + Node 20 LTS + cdxgen + scancode + Trivy.
 # ---------------------------------------------------------------------------
 FROM base AS worker
 
@@ -144,7 +146,8 @@ FROM base AS worker
 #     stage 1.) This is the scancode equivalent of the .NET-on-arm64 lesson:
 #     pick an install path that resolves on BOTH architectures.
 # Java is installed below from Eclipse Temurin (apt repo) — cdxgen's
-# Maven/Gradle SBOM enumeration needs JRE 21, and Debian bookworm only ships
+# Maven/Gradle SBOM enumeration needs a JDK 21 (Gradle's java plugin requires
+# javac / JAVA_COMPILER even to enumerate deps), and Debian bookworm only ships
 # JDK 17 by default.
 # `apt-get upgrade -y` repeated here so anything pulled by unzip/git/mercurial
 # also lands on the bookworm-security patch level (see stage 1 comment).
@@ -162,22 +165,36 @@ RUN apt-get update \
         libmagic1 \
     && rm -rf /var/lib/apt/lists/*
 
-# ---- Eclipse Temurin JRE 21 (GPL-2.0-CE — runtime only, Classpath
+# ---- Eclipse Temurin JDK 21 (GPL-2.0-CE — runtime only, Classpath
 #      Exception lets user code stay non-GPL). cdxgen shells into Maven /
 #      Gradle for Java SBOM enumeration and those need Java 21.
 #      Adoptium publishes per-arch debs via their apt repo.
+#
+#      JDK, not JRE (chore PR — JDK toolchain for gradle cdxgen resolution):
+#      Gradle's `java` plugin requires a JDK toolchain (`javac` /
+#      JAVA_COMPILER capability) even when cdxgen only runs
+#      `gradle dependencies` for ENUMERATION — Gradle resolves a Java
+#      toolchain for every project that applies the `java` plugin. With a
+#      JRE, `gradle dependencies` aborts with:
+#        "Toolchain installation '/usr/lib/jvm/temurin-21-jre-<arch>' does
+#         not provide the required capabilities: [JAVA_COMPILER]"
+#      and cdxgen returns 0 components for ALL gradle fixtures. The full
+#      JDK ships `javac`, satisfying the toolchain probe. Proven: a
+#      throwaway eclipse-temurin:21-jdk container resolved 7 maven
+#      components on the gradle fixture with cdxgen 12.3.3; the JRE errored.
 RUN curl -fsSL https://packages.adoptium.net/artifactory/api/gpg/key/public \
         | gpg --dearmor -o /usr/share/keyrings/adoptium.gpg \
     && echo "deb [signed-by=/usr/share/keyrings/adoptium.gpg] https://packages.adoptium.net/artifactory/deb bookworm main" \
         > /etc/apt/sources.list.d/adoptium.list \
     && apt-get update \
-    && apt-get install -y --no-install-recommends temurin-21-jre \
+    && apt-get install -y --no-install-recommends temurin-21-jdk \
     && rm -rf /var/lib/apt/lists/* \
-    && java -version
+    && java -version \
+    && javac -version
 
-# JAVA_HOME is arch-suffixed by Temurin (`/usr/lib/jvm/temurin-21-jre-{amd64,arm64}`).
+# JAVA_HOME is arch-suffixed by Temurin (`/usr/lib/jvm/temurin-21-jdk-{amd64,arm64}`).
 # Resolve at build time so the same Dockerfile works on x86_64 and arm64 hosts.
-RUN ln -sfn "/usr/lib/jvm/temurin-21-jre-$(dpkg --print-architecture)" /usr/lib/jvm/java-21
+RUN ln -sfn "/usr/lib/jvm/temurin-21-jdk-$(dpkg --print-architecture)" /usr/lib/jvm/java-21
 ENV JAVA_HOME=/usr/lib/jvm/java-21 \
     PATH=/usr/lib/jvm/java-21/bin:$PATH
 
