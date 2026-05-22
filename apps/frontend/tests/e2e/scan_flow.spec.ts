@@ -15,9 +15,10 @@
  *      `gamma`).
  *   4. Status filter to `Running` shows only the project currently being
  *      scanned.
- *   5. The upload (`.zip`) source method drives the dialog: staging an
- *      in-memory zip enables submit, and submitting opens the progress drawer
- *      (the non-git input path, complementary to scenario 1's git default).
+ *   5. The upload (`.zip`) source method gates submit (disabled until a zip is
+ *      staged) and rejects an EMPTY archive server-side with an error (no
+ *      drawer). The happy upload→scan→drawer path with a REAL archive is
+ *      covered end-to-end by the golden-fixture harness (tests/e2e/golden/).
  *
  * Pre-requisites (auto-skip otherwise):
  *   - docker-compose -f docker-compose.dev.yml up -d
@@ -210,7 +211,7 @@ test.describe("@scan-flow project list + scan progress", () => {
     await portal.expectVisibleProjectCount(2);
   });
 
-  test("5) upload (.zip) source method enables submit and opens the progress drawer", async ({
+  test("5) upload (.zip) source method gates submit + rejects an empty archive", async ({
     page,
   }, testInfo) => {
     test.fixme(
@@ -241,11 +242,14 @@ test.describe("@scan-flow project list + scan progress", () => {
     await expect(page.getByTestId("source-submit")).toBeEnabled();
     await expect(page.getByTestId("source-upload-selected")).toBeVisible();
 
-    // Submitting the upload path opens the same progress drawer as the git
-    // path. The worker (mock backend) extracts the (empty) archive and the WS
-    // pushes the initial sync frame.
+    // Submitting an EMPTY archive is correctly rejected server-side (there are
+    // no entries to scan): the dialog surfaces the error and does NOT open the
+    // progress drawer. (The happy upload→scan→drawer path with a REAL archive is
+    // exercised end-to-end by the golden-fixture harness, which uploads real
+    // fixture zips — see apps/backend/tests/e2e/golden/. Asserting the drawer
+    // here with the empty default zip was the original scenario's bug.)
     await page.getByTestId("source-submit").click();
-    await portal.expectScanProgress();
-    await expect(page.getByTestId("scan-progress-percent")).toBeVisible();
+    await expect(page.getByTestId("source-error")).toBeVisible();
+    await expect(page.getByTestId("scan-progress-drawer")).toBeHidden();
   });
 });
