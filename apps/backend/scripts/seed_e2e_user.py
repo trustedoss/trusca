@@ -505,6 +505,19 @@ def _parse_args() -> argparse.Namespace:
             "blocks-login)."
         ),
     )
+    parser.add_argument(
+        "--with-refresh-token",
+        action="store_true",
+        default=False,
+        help=(
+            "Mint + persist a refresh token for a PASSWORD user too (the "
+            "--no-password path already does this for OAuth-only users). The "
+            "e2e then authenticates via the refresh-cookie path "
+            "(auth.loginViaRefreshCookie) instead of POST /auth/login, so a "
+            "full single-IP suite run never trips the 5/min login limiter "
+            "(test-hardening Tier N follow-up)."
+        ),
+    )
     # ── Marathon bundle 5 (4a) — header bell unread badge fixture ───────────
     parser.add_argument(
         "--with-notifications",
@@ -590,6 +603,7 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
     extra_team_admin: bool = False,
     with_oauth_identity: str | None = None,
     no_password: bool = False,
+    with_refresh_token: bool = False,
     with_notifications: int = 0,
 ) -> dict[str, object]:
     """Create the org/team/user/membership/projects[/scans/components]."""
@@ -774,7 +788,7 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
             # endpoint reads this cookie, looks up the row by jti, and issues
             # an access token.
             refresh_token_summary: dict[str, str] | None = None
-            if no_password:
+            if no_password or with_refresh_token:
                 token_str, jti, expires_at = create_refresh_token(
                     subject=str(user.id)
                 )
@@ -1184,6 +1198,7 @@ def main() -> int:
                 extra_team_admin=args.extra_team_admin,
                 with_oauth_identity=args.with_oauth_identity,
                 no_password=args.no_password,
+                with_refresh_token=args.with_refresh_token,
                 with_notifications=args.with_notifications,
             )
         )

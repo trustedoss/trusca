@@ -194,10 +194,23 @@ OpenAPI 스냅샷 diff(엔드포인트/스키마 변경), 프론트↔백엔드 
 (5/분/IP) 아티팩트**였다: 각 테스트가 per-test 로그인을 하는데 단일 드라이버 IP라
 멀티-테스트 파일의 6번째 로그인부터 429 → `waitForURL(/projects)` 타임아웃. 나머지
 1건은 scan_flow 빈-zip 테스트 결함(수정됨). **제품 버그 0건.**
-→ **필수 follow-up (e2e를 CI 게이트로 만들려면 선결)**: Playwright `globalSetup`에서
-**1회 로그인 → `storageState` 공유**로 전 스펙이 재사용(per-test 로그인 제거). 그래야
-스위트가 단일 패스로 결정적으로 돌고 nightly 게이트가 된다. (보안 약화 없이; 레이트리밋
-*동작*은 별도 Tier L에서 검증.) test-writer 핸드오프에도 동일 권고 존재.
+→ **필수 follow-up (e2e를 CI 게이트로 만들려면 선결)** — 정밀 진단 결과 **두 개의 독립
+test-infra 이슈**가 단일-패스를 막는다:
+
+1. **로그인 레이트리밋(5/분/IP)** — per-test `POST /auth/login`. **enabler 완료**:
+   seed에 `--with-refresh-token`(+ `seedE2eUser({withRefreshToken})`) 추가 — password
+   유저에도 refresh 토큰 발급(검증: `/auth/refresh` → 200 + access_token). 스펙을
+   `auth.gotoLogin()+login()` → `auth.loginViaRefreshCookie(seed.refresh_token.token)`
+   로 전환하면 `/auth/login`을 안 거쳐 한도 회피. **남은 일**: 14개 스펙 bootstrap을
+   이 verb로 일괄 전환(스펙당 1곳; auth 스펙 제외).
+2. **seed 컴포넌트 멱등성** — 컴포넌트 purl이 `pkg:{type}/{prefix}-{NNNNN}`로 seed-call
+   고유 suffix가 없어, 같은 prefix를 per-test 재seed하면 2번째부터 `uq_components_purl`
+   충돌 → skip. (licenses/vulnerabilities/obligations가 full-run에서 "1 passed"로 보인
+   진짜 이유 — 레이트리밋이 아니라 이 충돌.) **남은 일**: 컴포넌트 purl에 seed-call 고유
+   suffix(또는 get-or-create), 전 스펙 purl-assert 영향 검토 후 적용.
+
+둘 다 신중한 별도 PR이 적합(보안 약화 없이; 레이트리밋 *동작*은 Tier L에서 검증).
+test-writer 핸드오프에도 동일 권고 존재.
 
 ## 알려진 선결/리스크
 - **NVD 데이터 부재**(현재 fresh DT): Tier 5 vuln 검출은 결정적 vuln 데이터 시딩 전략 확정이 선결.
