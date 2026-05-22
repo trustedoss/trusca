@@ -227,24 +227,27 @@ async def test_upload_over_project_quota_returns_507_problem(
     client, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """H-fix (part b): once the per-project quota is exhausted, uploads 507."""
-    # Generous single-upload cap; tiny per-project quota so the second upload
-    # is refused by the cumulative guard, not the per-file cap.
+    # Generous single-upload cap; per-project quota sized so the FIRST upload
+    # fits but the SECOND tips the cumulative (existing + written) total over
+    # the cap. Each archive is ~1.1 KiB (1000-byte stored member + zip
+    # overhead), so quota 1500 lets one through and refuses the second — the
+    # margin survives small zip-overhead differences across platforms.
     monkeypatch.setenv("SOURCE_ARCHIVE_MAX_BYTES", str(10 * 1024 * 1024))
-    monkeypatch.setenv("SOURCE_ARCHIVE_PROJECT_QUOTA_BYTES", "300")
+    monkeypatch.setenv("SOURCE_ARCHIVE_PROJECT_QUOTA_BYTES", "1500")
     _team, user, project = await _seed(client, role="developer")
     headers = _bearer_for(user)
 
     first = await client.post(
         f"/v1/projects/{project.id}/source-archive",
         headers=headers,
-        files=_zip_part(_zip_bytes({"a.py": b"x = 1\n"})),
+        files=_zip_part(_zip_bytes({"a.py": b"A" * 1000})),
     )
     assert first.status_code == 201, first.text
 
     second = await client.post(
         f"/v1/projects/{project.id}/source-archive",
         headers=headers,
-        files=_zip_part(_zip_bytes({"b.py": b"y = 2\n"})),
+        files=_zip_part(_zip_bytes({"b.py": b"B" * 1000})),
     )
     assert second.status_code == 507
     assert second.headers["content-type"].startswith(PROBLEM_JSON)
