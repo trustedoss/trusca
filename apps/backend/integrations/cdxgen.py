@@ -2,10 +2,22 @@
 cdxgen adapter — CycloneDX SBOM generator.
 
 cdxgen ships as the ``@cyclonedx/cdxgen`` Node package. The worker image
-(``apps/backend/Dockerfile.worker``) installs version 11.11.0 globally so the
+(``apps/backend/Dockerfile.worker``) installs cdxgen globally so the
 ``cdxgen`` binary is on $PATH; the host machine running unit tests usually has
 no such binary, which is why this adapter supports a ``mock`` mode keyed off
 ``TRUSTEDOSS_SCAN_BACKEND=mock``.
+
+Gradle worker-image requirement (G4, 2026-05-22):
+    cdxgen's Gradle path shells out to ``gradle dependencies``. The Gradle
+    ``java`` plugin requires a **JDK** toolchain (``JAVA_COMPILER``) even for
+    dependency resolution — a JRE-only image fails every plain-Gradle build
+    with ``Toolchain installation ... does not provide the required
+    capabilities: [JAVA_COMPILER]`` and emits 0 components. The worker image
+    therefore MUST ship a full JDK (``temurin-21-jdk``), not a JRE. This is a
+    devops-owned image invariant, not something the adapter can work around.
+    Android fixtures (``com.android.application``, root plugin ``apply
+    false``) happen to resolve without the compiler because they never trigger
+    the ``compileJava`` toolchain check.
 
 Contract:
 

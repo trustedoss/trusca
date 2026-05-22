@@ -170,6 +170,248 @@ def test_prepare_for_cdxgen_dispatches_multiple_languages(
 
 
 # ---------------------------------------------------------------------------
+# _prepare_yarn — empty-lock heal (G4)
+# ---------------------------------------------------------------------------
+
+
+def test_prepare_yarn_removes_empty_lock_so_cdxgen_uses_package_json(
+    tmp_path: Path,
+) -> None:
+    """An empty ``yarn.lock`` shadows ``package.json`` in cdxgen — remove it.
+
+    cdxgen prefers a present yarn.lock and never falls back to the manifest,
+    so a 0-byte lock yields 0 components. Healing = delete the empty lock.
+    """
+    from tasks.scan_source import _prepare_for_cdxgen
+
+    (tmp_path / "package.json").write_text(
+        '{"name":"x","dependencies":{"lodash":"4.17.21"}}'
+    )
+    (tmp_path / "yarn.lock").write_text("")  # 0 bytes — the broken case.
+
+    _prepare_for_cdxgen(source_dir=tmp_path, scan_uuid=uuid.uuid4())
+
+    assert not (tmp_path / "yarn.lock").exists()
+    assert (tmp_path / "package.json").exists()
+
+
+def test_prepare_yarn_removes_whitespace_only_lock(tmp_path: Path) -> None:
+    from tasks.scan_source import _prepare_for_cdxgen
+
+    (tmp_path / "package.json").write_text('{"name":"x"}')
+    (tmp_path / "yarn.lock").write_text("\n  \n\t\n")
+
+    _prepare_for_cdxgen(source_dir=tmp_path, scan_uuid=uuid.uuid4())
+
+    assert not (tmp_path / "yarn.lock").exists()
+
+
+def test_prepare_yarn_keeps_populated_lock(tmp_path: Path) -> None:
+    """A real yarn.lock carries the transitive graph — never delete it."""
+    from tasks.scan_source import _prepare_for_cdxgen
+
+    (tmp_path / "package.json").write_text('{"name":"x"}')
+    lock = tmp_path / "yarn.lock"
+    lock.write_text('lodash@4.17.21:\n  version "4.17.21"\n')
+
+    _prepare_for_cdxgen(source_dir=tmp_path, scan_uuid=uuid.uuid4())
+
+    assert lock.exists()
+    assert "lodash" in lock.read_text()
+
+
+def test_prepare_yarn_noop_without_package_json(tmp_path: Path) -> None:
+    """An orphan empty yarn.lock with no manifest is left alone."""
+    from tasks.scan_source import _prepare_for_cdxgen
+
+    (tmp_path / "yarn.lock").write_text("")
+
+    _prepare_for_cdxgen(source_dir=tmp_path, scan_uuid=uuid.uuid4())
+
+    assert (tmp_path / "yarn.lock").exists()
+
+
+def test_prepare_yarn_swallows_unlink_oserror(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A filesystem error removing the empty lock is logged, never raised."""
+    from tasks.scan_source import _prepare_for_cdxgen
+
+    (tmp_path / "package.json").write_text('{"name":"x"}')
+    (tmp_path / "yarn.lock").write_text("")
+
+    def _boom(self: Path) -> None:
+        raise OSError("read-only filesystem")
+
+    monkeypatch.setattr(Path, "unlink", _boom)
+
+    # Must return cleanly despite the unlink failure.
+    _prepare_for_cdxgen(source_dir=tmp_path, scan_uuid=uuid.uuid4())
+
+
+# ---------------------------------------------------------------------------
+# _prepare_poetry — requirements.txt synthesis (G4)
+# ---------------------------------------------------------------------------
+
+
+def test_prepare_poetry_synthesizes_requirements_for_pinned_deps(
+    tmp_path: Path,
+) -> None:
+    """Legacy [tool.poetry.dependencies] + no lock → requirements.txt.
+
+    The worker ships no `poetry` binary, so cdxgen cannot resolve the legacy
+    table. We translate exact pins into a requirements.txt cdxgen can read.
+    """
+    from tasks.scan_source import _prepare_for_cdxgen
+
+    (tmp_path / "pyproject.toml").write_text(
+        "[tool.poetry]\n"
+        'name = "x"\n'
+        'version = "1.0.0"\n'
+        "[tool.poetry.dependencies]\n"
+        'python = "^3.11"\n'
+        'requests = "2.31.0"\n'
+    )
+
+    _prepare_for_cdxgen(source_dir=tmp_path, scan_uuid=uuid.uuid4())
+
+    req = tmp_path / "requirements.txt"
+    assert req.exists()
+    body = req.read_text()
+    assert "requests==2.31.0" in body
+    # The python interpreter constraint is not a package.
+    assert "python" not in body
+
+
+def test_prepare_poetry_skips_when_lock_present(tmp_path: Path) -> None:
+    """A poetry.lock means cdxgen has the full graph — do nothing."""
+    from tasks.scan_source import _prepare_for_cdxgen
+
+    (tmp_path / "pyproject.toml").write_text(
+        "[tool.poetry.dependencies]\nrequests = \"2.31.0\"\n"
+    )
+    (tmp_path / "poetry.lock").write_text("[[package]]\nname = \"requests\"\n")
+
+    _prepare_for_cdxgen(source_dir=tmp_path, scan_uuid=uuid.uuid4())
+
+    assert not (tmp_path / "requirements.txt").exists()
+
+
+def test_prepare_poetry_does_not_clobber_existing_requirements(
+    tmp_path: Path,
+) -> None:
+    from tasks.scan_source import _prepare_for_cdxgen
+
+    (tmp_path / "pyproject.toml").write_text(
+        "[tool.poetry.dependencies]\nrequests = \"2.31.0\"\n"
+    )
+    (tmp_path / "requirements.txt").write_text("flask==3.0.0\n")
+
+    _prepare_for_cdxgen(source_dir=tmp_path, scan_uuid=uuid.uuid4())
+
+    assert (tmp_path / "requirements.txt").read_text() == "flask==3.0.0\n"
+
+
+def test_prepare_poetry_skips_pep621_project_table(tmp_path: Path) -> None:
+    """PEP-621 [project.dependencies] is parsed by cdxgen natively — skip."""
+    from tasks.scan_source import _prepare_for_cdxgen
+
+    (tmp_path / "pyproject.toml").write_text(
+        "[project]\n"
+        'name = "x"\n'
+        'dependencies = ["requests==2.31.0"]\n'
+    )
+
+    _prepare_for_cdxgen(source_dir=tmp_path, scan_uuid=uuid.uuid4())
+
+    assert not (tmp_path / "requirements.txt").exists()
+
+
+def test_prepare_poetry_skips_unreadable_pyproject(tmp_path: Path) -> None:
+    """Malformed TOML is logged and swallowed, never raised."""
+    from tasks.scan_source import _prepare_for_cdxgen
+
+    (tmp_path / "pyproject.toml").write_text("this is = not valid toml [[[")
+
+    _prepare_for_cdxgen(source_dir=tmp_path, scan_uuid=uuid.uuid4())
+
+    assert not (tmp_path / "requirements.txt").exists()
+
+
+def test_prepare_poetry_noop_when_no_pinned_deps(tmp_path: Path) -> None:
+    """A poetry table with only range specs yields no requirements file."""
+    from tasks.scan_source import _prepare_for_cdxgen
+
+    (tmp_path / "pyproject.toml").write_text(
+        "[tool.poetry.dependencies]\n"
+        'python = "^3.11"\n'
+        'requests = "^2.0"\n'  # range — cannot pin offline
+    )
+
+    _prepare_for_cdxgen(source_dir=tmp_path, scan_uuid=uuid.uuid4())
+
+    assert not (tmp_path / "requirements.txt").exists()
+
+
+def test_prepare_poetry_swallows_write_oserror(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A write failure on requirements.txt is logged, never raised."""
+    from tasks.scan_source import _prepare_for_cdxgen
+
+    (tmp_path / "pyproject.toml").write_text(
+        "[tool.poetry.dependencies]\nrequests = \"2.31.0\"\n"
+    )
+
+    real_write_text = Path.write_text
+
+    def _selective_boom(self: Path, *args: Any, **kwargs: Any) -> int:
+        if self.name == "requirements.txt":
+            raise OSError("disk full")
+        return real_write_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", _selective_boom)
+
+    _prepare_for_cdxgen(source_dir=tmp_path, scan_uuid=uuid.uuid4())
+
+    assert not (tmp_path / "requirements.txt").exists()
+
+
+@pytest.mark.parametrize(
+    "spec,expected",
+    [
+        ("2.31.0", ["requests==2.31.0"]),  # bare exact pin
+        ("==2.31.0", ["requests==2.31.0"]),  # explicit ==
+        ("^1.0.0", []),  # caret range — cannot pin offline
+        ("~=2.0", []),  # compatible-release range
+        (">=1.0,<2.0", []),  # bounded range
+        ("*", []),  # wildcard
+    ],
+)
+def test_poetry_deps_to_requirements_only_emits_exact_pins(
+    spec: str, expected: list[str]
+) -> None:
+    from tasks.scan_source import _poetry_deps_to_requirements
+
+    assert _poetry_deps_to_requirements({"requests": spec}) == expected
+
+
+def test_poetry_deps_to_requirements_skips_table_form_and_python(
+    tmp_path: Path,
+) -> None:
+    """Table-form deps (git/path/extras) have no offline-installable version."""
+    from tasks.scan_source import _poetry_deps_to_requirements
+
+    deps = {
+        "python": "^3.11",
+        "requests": "2.31.0",
+        "internal": {"git": "https://example.com/x.git"},
+        "local": {"path": "../local"},
+    }
+    assert _poetry_deps_to_requirements(deps) == ["requests==2.31.0"]
+
+
+# ---------------------------------------------------------------------------
 # _run_prep — best-effort, never raises
 # ---------------------------------------------------------------------------
 

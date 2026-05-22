@@ -49,6 +49,7 @@ import re
 import shutil
 import subprocess
 import time
+import tomllib
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -874,6 +875,154 @@ def _prepare_for_cdxgen(*, source_dir: Path, scan_uuid: uuid.UUID) -> None:
         _run_prep("go mod tidy", ["go", "mod", "tidy"], source_dir, timeout, scan_uuid)
     if any(source_dir.glob("*.csproj")) and shutil.which("dotnet"):
         _run_prep("dotnet restore", ["dotnet", "restore"], source_dir, timeout, scan_uuid)
+
+    # Lockfile-only ecosystems where the worker image has no resolver binary
+    # (no `yarn`, no `poetry`) and we cannot run a live install offline. cdxgen
+    # parses these from on-disk manifests instead — see G4 fixtures batch.
+    _prepare_yarn(source_dir=source_dir, scan_uuid=scan_uuid)
+    _prepare_poetry(source_dir=source_dir, scan_uuid=scan_uuid)
+
+
+def _prepare_yarn(*, source_dir: Path, scan_uuid: uuid.UUID) -> None:
+    """Heal a yarn project whose ``yarn.lock`` is empty or missing.
+
+    cdxgen's npm path *prefers* ``yarn.lock`` over ``package.json`` when the
+    lock is present: it parses the lock and never falls back to the manifest.
+    An **empty** ``yarn.lock`` (0 bytes — common when teams gitignore the
+    lock, as the node-yarn fixture does) therefore yields 0 components even
+    though ``package.json`` lists real dependencies.
+
+    The worker image ships no ``yarn`` binary and a real ``yarn install``
+    needs network anyway, so we cannot regenerate the lock offline. Instead
+    we remove the empty/whitespace-only lock so cdxgen falls back to
+    ``package.json`` and at least enumerates the **direct** dependencies. A
+    populated ``yarn.lock`` (transitive graph already resolved) is left
+    untouched — it is the richer source.
+    """
+    package_json = source_dir / "package.json"
+    yarn_lock = source_dir / "yarn.lock"
+    if not package_json.is_file() or not yarn_lock.is_file():
+        return
+    try:
+        # An empty lock is the broken case. We treat whitespace-only as empty
+        # too — some tools touch a placeholder header line with no entries.
+        if yarn_lock.read_text(encoding="utf-8", errors="replace").strip():
+            return  # Populated lock — cdxgen has the full transitive graph.
+        yarn_lock.unlink()
+    except OSError as exc:
+        log.warning(
+            "prep_yarn_unlock_failed",
+            scan_id=str(scan_uuid),
+            error=str(exc),
+        )
+        return
+    log.info(
+        "prep_yarn_empty_lock_removed",
+        scan_id=str(scan_uuid),
+        detail="empty yarn.lock removed so cdxgen falls back to package.json",
+    )
+
+
+def _prepare_poetry(*, source_dir: Path, scan_uuid: uuid.UUID) -> None:
+    """Synthesize a ``requirements.txt`` for a lock-less legacy Poetry project.
+
+    cdxgen resolves ``[tool.poetry.dependencies]`` (Poetry's legacy,
+    non-PEP-621 table) only by shelling out to ``poetry``. The worker image
+    ships no ``poetry`` binary (``spawnSync poetry ENOENT``) and there is no
+    ``poetry.lock`` to parse, so cdxgen reports 0 components — even though the
+    manifest pins concrete versions.
+
+    cdxgen *does* parse ``requirements.txt`` via its pip path without any
+    extra tooling, so we translate each pinned, exact-version Poetry dep into
+    a ``name==version`` requirements line. This is best-effort and intended to
+    surface **direct** dependencies; the full transitive graph still requires
+    a real ``poetry.lock`` (devops hand-off if transitive depth matters).
+
+    We never overwrite an existing ``requirements.txt`` (operator's source of
+    truth), never act when a ``poetry.lock`` exists (richer), and skip
+    PEP-621 ``[project.dependencies]`` projects — cdxgen handles those
+    natively.
+    """
+    pyproject = source_dir / "pyproject.toml"
+    if not pyproject.is_file():
+        return
+    if (source_dir / "poetry.lock").is_file():
+        return  # cdxgen reads the lock — full graph available.
+    if (source_dir / "requirements.txt").is_file():
+        return  # Do not clobber an existing requirements source.
+
+    try:
+        with pyproject.open("rb") as fh:
+            data = tomllib.load(fh)
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        log.warning(
+            "prep_poetry_pyproject_unreadable",
+            scan_id=str(scan_uuid),
+            error=str(exc),
+        )
+        return
+
+    poetry_deps = (
+        data.get("tool", {}).get("poetry", {}).get("dependencies", {})
+        if isinstance(data.get("tool"), dict)
+        else {}
+    )
+    if not isinstance(poetry_deps, dict) or not poetry_deps:
+        return  # Not a legacy-Poetry layout (PEP-621 handled by cdxgen).
+
+    lines = _poetry_deps_to_requirements(poetry_deps)
+    if not lines:
+        log.info(
+            "prep_poetry_no_pinned_deps",
+            scan_id=str(scan_uuid),
+            detail="no exact-version poetry deps to translate",
+        )
+        return
+
+    try:
+        (source_dir / "requirements.txt").write_text(
+            "\n".join(lines) + "\n", encoding="utf-8"
+        )
+    except OSError as exc:
+        log.warning(
+            "prep_poetry_requirements_write_failed",
+            scan_id=str(scan_uuid),
+            error=str(exc),
+        )
+        return
+    log.info(
+        "prep_poetry_requirements_synthesized",
+        scan_id=str(scan_uuid),
+        deps=len(lines),
+    )
+
+
+def _poetry_deps_to_requirements(poetry_deps: dict[str, Any]) -> list[str]:
+    """Translate a ``[tool.poetry.dependencies]`` table to pip requirement lines.
+
+    Poetry version specs use the caret/tilde families plus PEP-440 operators.
+    cdxgen's requirements parser keys components off an exact ``==`` pin, so we
+    only emit lines for **exact** pins (a bare ``"2.31.0"`` or an explicit
+    ``"==2.31.0"``). Range specs (``^1``, ``~=2``, ``>=1,<2``, ``*``) cannot be
+    pinned to a single version offline, and a table-form dep (git/path/extras)
+    has no installable version here — both are skipped rather than guessed.
+    The ``python`` interpreter constraint is always dropped (not a package).
+    """
+    requirements: list[str] = []
+    for name, spec in poetry_deps.items():
+        if name.lower() == "python":
+            continue
+        if not isinstance(spec, str):
+            continue  # Table form: {git=..}, {path=..}, {version=.., extras=..}.
+        version = spec.strip()
+        if version.startswith("=="):
+            version = version[2:].strip()
+        # Reject any spec that still carries a range/wildcard operator after
+        # stripping a leading ``==``. Exact pins are bare digits-and-dots(+pre).
+        if not re.fullmatch(r"[0-9][0-9A-Za-z.\-+!]*", version):
+            continue
+        requirements.append(f"{name}=={version}")
+    return requirements
 
 
 def _run_prep(
