@@ -38,6 +38,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from schemas.obligation_detail import KNOWN_OBLIGATION_KINDS
 from services.obligation_service import (
     _NOTICE_COMPONENT_LABELS_CAP,
+    _NOTICE_LICENSE_CAP,
+    _NOTICE_OBLIGATIONS_PER_LICENSE_CAP,
     ObligationError,
     ObligationNotFound,
     _clamp_obligation_text,
@@ -608,6 +610,156 @@ def test_notice_component_labels_cap_is_sane() -> None:
     # The cap is large enough to never clip a realistic attribution list, but
     # bounded so a pathological scan can't produce an unbounded body.
     assert 1000 <= _NOTICE_COMPONENT_LABELS_CAP <= 100_000
+
+
+# ---------------------------------------------------------------------------
+# G2 follow-up — NOTICE license-count + per-license obligation caps
+# (security-reviewer Low/Info from PR #107)
+# ---------------------------------------------------------------------------
+
+
+def test_notice_license_and_obligation_caps_are_sane() -> None:
+    # Bounded so a pathological catalog can't produce an unbounded body, but far
+    # past any realistic distinct-license / per-license-obligation surface.
+    assert 100 <= _NOTICE_LICENSE_CAP <= 100_000
+    assert 50 <= _NOTICE_OBLIGATIONS_PER_LICENSE_CAP <= 10_000
+
+
+@pytest.mark.parametrize("fmt", ["text", "markdown", "html"])
+def test_render_notice_records_omitted_license_count(fmt: str) -> None:
+    """The license cap fires → every format records '+N more license(s) omitted'."""
+    when = datetime(2026, 5, 22, 12, 0, 0, tzinfo=UTC)
+    lic_id = uuid.uuid4()
+    entry = {
+        "license_id": lic_id,
+        "spdx_id": "MIT",
+        "name": "MIT License",
+        "reference_url": None,
+        "component_labels": ["a @ 1"],
+        "component_labels_omitted": 0,
+        "obligations_omitted": 0,
+    }
+    if fmt == "html":
+        body = _render_notice_html(
+            project_name="P",
+            generated_at=when,
+            licenses_with_components=[entry],
+            obligations_by_license={lic_id: []},
+            licenses_omitted=777,
+        )
+    else:
+        body = _render_notice(
+            project_name="P",
+            generated_at=when,
+            licenses_with_components=[entry],
+            obligations_by_license={lic_id: []},
+            fmt=fmt,
+            licenses_omitted=777,
+        )
+    assert "777 more license(s) omitted" in body
+    # The license section we DID keep is still rendered (legally complete head).
+    assert "MIT" in body and "a @ 1" in body
+
+
+@pytest.mark.parametrize("fmt", ["text", "markdown", "html"])
+def test_render_notice_no_license_omitted_note_under_cap(fmt: str) -> None:
+    when = datetime(2026, 5, 22, 12, 0, 0, tzinfo=UTC)
+    lic_id = uuid.uuid4()
+    entry = {
+        "license_id": lic_id,
+        "spdx_id": "MIT",
+        "name": "MIT License",
+        "reference_url": None,
+        "component_labels": ["a @ 1"],
+        "component_labels_omitted": 0,
+        "obligations_omitted": 0,
+    }
+    if fmt == "html":
+        body = _render_notice_html(
+            project_name="P",
+            generated_at=when,
+            licenses_with_components=[entry],
+            obligations_by_license={lic_id: []},
+            licenses_omitted=0,
+        )
+    else:
+        body = _render_notice(
+            project_name="P",
+            generated_at=when,
+            licenses_with_components=[entry],
+            obligations_by_license={lic_id: []},
+            fmt=fmt,
+            licenses_omitted=0,
+        )
+    assert "more license(s) omitted" not in body
+
+
+@pytest.mark.parametrize("fmt", ["text", "markdown", "html"])
+def test_render_notice_records_omitted_obligations_per_license(fmt: str) -> None:
+    """The per-license obligation cap fires → every format records the note next
+    to that license's rendered obligations."""
+    when = datetime(2026, 5, 22, 12, 0, 0, tzinfo=UTC)
+    lic_id = uuid.uuid4()
+    entry = {
+        "license_id": lic_id,
+        "spdx_id": "GPL-3.0-only",
+        "name": "GNU GPL v3",
+        "reference_url": None,
+        "component_labels": ["a @ 1"],
+        "component_labels_omitted": 0,
+        "obligations_omitted": 42,
+    }
+    obs = [{"kind": "notice", "text": "Keep this notice.", "link": None}]
+    if fmt == "html":
+        body = _render_notice_html(
+            project_name="P",
+            generated_at=when,
+            licenses_with_components=[entry],
+            obligations_by_license={lic_id: obs},
+        )
+    else:
+        body = _render_notice(
+            project_name="P",
+            generated_at=when,
+            licenses_with_components=[entry],
+            obligations_by_license={lic_id: obs},
+            fmt=fmt,
+        )
+    assert "42 more obligation(s) omitted" in body
+    # The obligation we DID keep is still rendered.
+    assert "Keep this notice." in body
+
+
+@pytest.mark.parametrize("fmt", ["text", "markdown", "html"])
+def test_render_notice_no_obligations_omitted_note_under_cap(fmt: str) -> None:
+    when = datetime(2026, 5, 22, 12, 0, 0, tzinfo=UTC)
+    lic_id = uuid.uuid4()
+    entry = {
+        "license_id": lic_id,
+        "spdx_id": "MIT",
+        "name": "MIT License",
+        "reference_url": None,
+        "component_labels": ["a @ 1"],
+        "component_labels_omitted": 0,
+        "obligations_omitted": 0,
+    }
+    obs = [{"kind": "notice", "text": "Keep this notice.", "link": None}]
+    if fmt == "html":
+        body = _render_notice_html(
+            project_name="P",
+            generated_at=when,
+            licenses_with_components=[entry],
+            obligations_by_license={lic_id: obs},
+        )
+    else:
+        body = _render_notice(
+            project_name="P",
+            generated_at=when,
+            licenses_with_components=[entry],
+            obligations_by_license={lic_id: obs},
+            fmt=fmt,
+        )
+    assert "more obligation(s) omitted" not in body
 
 
 # ---------------------------------------------------------------------------
@@ -1578,6 +1730,82 @@ async def test_generate_notice_license_without_obligations_renders_marker(
     assert payload["license_count"] == 1
     assert payload["obligation_count"] == 0
     assert "no obligations recorded" in payload["body"].lower()
+
+
+@pytestmark_db
+async def test_generate_notice_caps_obligations_per_license_with_omitted_note(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When a license carries more obligations than the per-license cap, the
+    NOTICE body keeps the head, records an honest '+N more obligation(s) omitted'
+    note, and the inspection ``obligation_count`` reflects the TRUE total."""
+    import services.obligation_service as svc
+
+    # Shrink the per-license cap so a handful of rows trips it (keeps the test
+    # fast — no need to seed thousands of obligations).
+    monkeypatch.setattr(svc, "_NOTICE_OBLIGATIONS_PER_LICENSE_CAP", 2)
+
+    team, user, project, scan = await _make_project_with_scan(db_session)
+    actor = principal_for(user, team_ids=[team.id], role="developer")
+
+    suffix = unique_suffix()
+    _, cv = await _make_component_version(db_session, name=f"many-ob-{suffix}")
+    lic = await _make_license(
+        db_session, spdx_id=f"OB-{suffix}", name="ManyOb", category="conditional"
+    )
+    await _attach_license_finding(db_session, scan_id=scan.id, cv_id=cv.id, license_id=lic.id)
+    # 5 obligations on one license, cap is 2 → 3 omitted.
+    for i in range(5):
+        await _make_obligation(
+            db_session, license_id=lic.id, kind=f"kind-{i:02d}", text=f"duty {i}"
+        )
+
+    payload = await generate_notice(
+        db_session, project_id=project.id, actor=actor, fmt="text"
+    )
+    body = payload["body"]
+    assert "3 more obligation(s) omitted" in body
+    # The kept head (first 2 by kind) is present; the omitted tail is not.
+    assert "duty 0" in body and "duty 1" in body
+    # Inspection count reports the TRUE total (5), not the rendered (2).
+    assert payload["obligation_count"] == 5
+
+
+@pytestmark_db
+async def test_generate_notice_caps_license_count_with_omitted_footer(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When the scan surfaces more distinct licenses than the license cap, the
+    NOTICE renders the head sections + an honest '+N more license(s) omitted'
+    footer, and ``license_count`` reflects the TRUE total."""
+    import services.obligation_service as svc
+
+    monkeypatch.setattr(svc, "_NOTICE_LICENSE_CAP", 2)
+
+    team, user, project, scan = await _make_project_with_scan(db_session)
+    actor = principal_for(user, team_ids=[team.id], role="developer")
+
+    suffix = unique_suffix()
+    _, cv = await _make_component_version(db_session, name=f"multi-lic-{suffix}")
+    # 4 distinct licenses on one component → cap 2 → 2 omitted.
+    for i in range(4):
+        lic = await _make_license(
+            db_session,
+            spdx_id=f"LC{i:02d}-{suffix}",
+            name=f"Lic {i}",
+            category="allowed",
+        )
+        await _attach_license_finding(
+            db_session, scan_id=scan.id, cv_id=cv.id, license_id=lic.id
+        )
+
+    payload = await generate_notice(
+        db_session, project_id=project.id, actor=actor, fmt="text"
+    )
+    body = payload["body"]
+    assert "2 more license(s) omitted" in body
+    # Inspection count reports the TRUE total (4), not the rendered (2).
+    assert payload["license_count"] == 4
 
 
 @pytestmark_db

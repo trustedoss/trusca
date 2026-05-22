@@ -36,10 +36,12 @@ from services.source_preservation_service import (
     scan_source_tarball_path,
 )
 from services.source_tree_service import (
+    _RAW_STREAM_CHUNK_BYTES,
     SourceFileTooLarge,
     SourcePathRejected,
     SourceUnavailable,
     _sanitize_member_path,
+    _stream_member_bytes,
     list_dir,
     read_file,
     read_file_raw,
@@ -984,8 +986,9 @@ async def test_read_file_raw_returns_full_bytes_ignoring_viewer_cap(
         scan_id=None,
         actor=actor,
     )
-    # Full member, NOT the capped viewer bytes.
-    assert raw.data == body
+    # Full member streamed, NOT the capped viewer bytes. byte_size is the
+    # member's declared size; the body is reassembled by draining the generator.
+    assert b"".join(raw.chunks) == body
     assert raw.byte_size == 16
     assert raw.filename == "big.bin"
 
@@ -1082,3 +1085,203 @@ async def test_read_file_raw_root_is_413() -> None:
             scan_id=None,
             actor=actor,
         )
+
+
+# ===========================================================================
+# G3.3 follow-up — raw download STREAMS in bounded chunks (peak memory = 1 chunk)
+# ===========================================================================
+
+
+def test_raw_stream_chunk_size_is_bounded() -> None:
+    """The streamed chunk size is small + fixed so peak body memory is per-chunk,
+    NOT the whole (up to 512 MiB) member."""
+    assert 1024 <= _RAW_STREAM_CHUNK_BYTES <= 1024 * 1024
+
+
+async def test_read_file_raw_yields_multiple_bounded_chunks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A member larger than the chunk size is delivered as >1 bounded slice and
+    every slice is <= the chunk size — so no slice is the whole member."""
+    # Force a tiny chunk size so a small member still spans several chunks.
+    monkeypatch.setattr(
+        "services.source_tree_service._RAW_STREAM_CHUNK_BYTES", 4
+    )
+    team_id = uuid.uuid4()
+    scan_id = uuid.uuid4()
+    project = _project(team_id, scan_id)
+    body = b"0123456789ABCDEF"  # 16 bytes / 4-byte chunks → 4 chunks
+    _write_tarball(project_id=project.id, scan_id=scan_id, files={"big.bin": body})
+    session = _FakeSession(project=project)
+    actor = _principal(team_ids=[team_id])
+
+    raw = await read_file_raw(
+        session,  # type: ignore[arg-type]
+        project_id=project.id,
+        raw_path="big.bin",
+        scan_id=None,
+        actor=actor,
+    )
+    chunks = list(raw.chunks)
+    # More than one slice, each bounded by the chunk size — peak memory is a chunk.
+    assert len(chunks) > 1
+    assert all(len(c) <= 4 for c in chunks)
+    # Reassembled body is byte-exact, and byte_size reports the full member.
+    assert b"".join(chunks) == body
+    assert raw.byte_size == 16
+
+
+def test_stream_member_bytes_aborts_when_running_total_exceeds_cap() -> None:
+    """Defence in depth: the streaming generator stops yielding and raises once
+    the running byte tally crosses the raw cap — so even a member whose declared
+    header size UNDERSTATED its body (the only way to bypass the eager pre-check)
+    can never stream more than ``cap`` bytes. We drive ``_stream_member_bytes``
+    with fake handles whose body is larger than the (small) cap to exercise the
+    in-stream abort directly."""
+
+    class _FakeExtracted:
+        def __init__(self, data: bytes) -> None:
+            self._buf = io.BytesIO(data)
+            self.closed = False
+
+        def read(self, n: int) -> bytes:
+            return self._buf.read(n)
+
+        def close(self) -> None:
+            self.closed = True
+
+    class _FakeTar:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    extracted = _FakeExtracted(b"0123456789ABCDEF")  # 16 bytes
+    tar = _FakeTar()
+    gen = _stream_member_bytes(
+        tar,  # type: ignore[arg-type]
+        extracted,
+        cap=8,  # member (16) > cap (8) → abort mid-stream
+        chunk_size=4,
+        member_path="big.bin",
+        project_id=uuid.uuid4(),
+        scan_id=uuid.uuid4(),
+    )
+    streamed = bytearray()
+    with pytest.raises(SourceFileTooLarge):
+        for chunk in gen:
+            streamed.extend(chunk)
+    # Never delivered more than the cap, and BOTH handles were closed on abort.
+    assert len(streamed) <= 8
+    assert extracted.closed is True
+    assert tar.closed is True
+
+
+async def test_read_file_raw_over_cap_member_is_413_before_streaming(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A member whose DECLARED size is over the raw cap is refused eagerly (413)
+    — before any byte streams — so the cap is enforced on the happy tarball path
+    too, not only by the in-stream abort."""
+    monkeypatch.setenv("SCAN_SOURCE_RAW_DOWNLOAD_MAX_BYTES", "8")  # tiny raw cap
+    team_id = uuid.uuid4()
+    scan_id = uuid.uuid4()
+    project = _project(team_id, scan_id)
+    body = b"0123456789ABCDEF"  # 16 bytes, raw cap is 8
+    _write_tarball(project_id=project.id, scan_id=scan_id, files={"big.bin": body})
+    session = _FakeSession(project=project)
+    actor = _principal(team_ids=[team_id])
+
+    # The call itself raises (eager) — no chunks are produced.
+    with pytest.raises(SourceFileTooLarge):
+        await read_file_raw(
+            session,  # type: ignore[arg-type]
+            project_id=project.id,
+            raw_path="big.bin",
+            scan_id=None,
+            actor=actor,
+        )
+
+
+async def test_read_file_raw_path_traversal_rejected_before_any_stream(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A hostile ?path= is rejected EAGERLY (before a single byte streams), so the
+    router can return an RFC 7807 problem response, never a partial 200 body."""
+    team_id = uuid.uuid4()
+    scan_id = uuid.uuid4()
+    project = _project(team_id, scan_id)
+    _write_tarball(project_id=project.id, scan_id=scan_id, files={"a.py": b"x\n"})
+    session = _FakeSession(project=project)
+    actor = _principal(team_ids=[team_id])
+
+    # The exception is raised by the call itself (eager), not by draining chunks.
+    with pytest.raises(SourcePathRejected):
+        await read_file_raw(
+            session,  # type: ignore[arg-type]
+            project_id=project.id,
+            raw_path="a/../../etc/passwd",
+            scan_id=None,
+            actor=actor,
+        )
+
+
+async def test_read_file_raw_closes_handles_when_stream_exhausted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Draining the stream to completion closes the open tarball + member handle
+    (no descriptor leak per download)."""
+    team_id = uuid.uuid4()
+    scan_id = uuid.uuid4()
+    project = _project(team_id, scan_id)
+    # Write the tarball FIRST, then install the tracking patch — otherwise the
+    # writer's own ``with tarfile.open(... w:gz)`` close would pollute the flag.
+    _write_tarball(project_id=project.id, scan_id=scan_id, files={"a.bin": b"hello"})
+
+    closed: dict[str, bool] = {"tar": False, "member": False}
+
+    real_open = tarfile.open
+
+    def _tracking_open(*args: Any, **kwargs: Any) -> tarfile.TarFile:
+        tar = real_open(*args, **kwargs)
+        orig_tar_close = tar.close
+        orig_extractfile = tar.extractfile
+
+        def _tar_close() -> None:
+            closed["tar"] = True
+            orig_tar_close()
+
+        def _extractfile(member: Any) -> Any:
+            fobj = orig_extractfile(member)
+            if fobj is not None:
+                orig_fobj_close = fobj.close
+
+                def _fobj_close() -> None:
+                    closed["member"] = True
+                    orig_fobj_close()
+
+                fobj.close = _fobj_close  # type: ignore[method-assign]
+            return fobj
+
+        tar.close = _tar_close  # type: ignore[method-assign]
+        tar.extractfile = _extractfile  # type: ignore[method-assign]
+        return tar
+
+    monkeypatch.setattr(tarfile, "open", _tracking_open)
+
+    session = _FakeSession(project=project)
+    actor = _principal(team_ids=[team_id])
+
+    raw = await read_file_raw(
+        session,  # type: ignore[arg-type]
+        project_id=project.id,
+        raw_path="a.bin",
+        scan_id=None,
+        actor=actor,
+    )
+    # Not closed yet — the handles stay open across the eager phase for streaming.
+    assert closed == {"tar": False, "member": False}
+    assert b"".join(raw.chunks) == b"hello"
+    # Exhausting the generator closed BOTH handles.
+    assert closed == {"tar": True, "member": True}

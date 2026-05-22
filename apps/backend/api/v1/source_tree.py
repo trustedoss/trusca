@@ -27,7 +27,7 @@ import uuid
 
 import structlog
 from fastapi import APIRouter, Depends, Query, Request, Response, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.db import get_db
@@ -199,6 +199,13 @@ async def get_source_file(
     actor: CurrentUser = Depends(require_role("developer")),
 ) -> JSONResponse | SourceFileResponse | Response:
     if raw:
+        # Every validation (path traversal, member lookup, dir / non-regular
+        # refusal, team scoping, raw cap on the declared size) runs EAGERLY inside
+        # read_file_raw and raises before any byte streams — so a rejection is an
+        # RFC 7807 problem response, never a partial 200 body. The returned
+        # ``chunks`` generator yields the member in 64 KiB slices and owns closing
+        # the open tarball, so peak body memory is one chunk (not the whole, up to
+        # 512 MiB, member). The cap is re-enforced WHILE streaming.
         try:
             raw_result = await read_file_raw(
                 session,
@@ -209,8 +216,8 @@ async def get_source_file(
             )
         except SourceTreeError as exc:
             return _problem(request, exc)
-        return Response(
-            content=raw_result.data,
+        return StreamingResponse(
+            raw_result.chunks,
             status_code=status.HTTP_200_OK,
             media_type="application/octet-stream",
             headers={
