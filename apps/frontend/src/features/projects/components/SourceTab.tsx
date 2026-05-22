@@ -83,6 +83,7 @@ export function SourceTab({ projectId, projectName }: SourceTabProps) {
       </div>
       <div className="min-h-0 overflow-hidden" data-testid="source-tab-viewer-pane">
         <SourceFileViewer
+          projectId={projectId}
           projectName={projectName}
           selectedPath={selectedPath}
           data={file.data}

@@ -15,6 +15,17 @@ import type { SourceFileResponse } from "@/features/projects/api/sourceTreeApi";
 import { SourceFileViewer } from "@/features/projects/components/SourceFileViewer";
 import { ProblemError } from "@/lib/problem";
 
+const getSourceFileRaw = vi.fn();
+vi.mock("@/features/projects/api/sourceTreeApi", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/features/projects/api/sourceTreeApi")
+  >("@/features/projects/api/sourceTreeApi");
+  return {
+    ...actual,
+    getSourceFileRaw: (...args: unknown[]) => getSourceFileRaw(...args),
+  };
+});
+
 vi.mock("react-virtuoso", () => ({
   Virtuoso: <T,>({
     data,
@@ -58,6 +69,7 @@ function file(overrides: Partial<SourceFileResponse> = {}): SourceFileResponse {
 function renderViewer(props: Partial<React.ComponentProps<typeof SourceFileViewer>> = {}) {
   return render(
     <SourceFileViewer
+      projectId="project-1"
       projectName="Demo"
       selectedPath="src/main.py"
       data={file()}
@@ -115,8 +127,33 @@ describe("SourceFileViewer", () => {
     expect(screen.queryByTestId("source-line")).not.toBeInTheDocument();
   });
 
-  it("shows the truncated banner and downloads the received bytes", async () => {
+  it("offers a raw full-file download for a binary file (G3.3)", async () => {
+    getSourceFileRaw.mockClear();
     triggerBlobDownload.mockClear();
+    getSourceFileRaw.mockResolvedValue({
+      blob: new Blob([new Uint8Array([1, 2, 3])]),
+      filename: "main.py",
+    });
+    renderViewer({
+      data: file({ encoding: "binary", content: null }),
+    });
+    await userEvent.click(screen.getByTestId("source-file-binary-download"));
+    expect(getSourceFileRaw).toHaveBeenCalledWith("project-1", {
+      path: "src/main.py",
+    });
+    expect(triggerBlobDownload).toHaveBeenCalledTimes(1);
+    const [blob, filename] = triggerBlobDownload.mock.calls[0];
+    expect(blob).toBeInstanceOf(Blob);
+    expect(filename).toBe("main.py");
+  });
+
+  it("shows the truncated banner and downloads the FULL file via the raw path", async () => {
+    getSourceFileRaw.mockClear();
+    triggerBlobDownload.mockClear();
+    getSourceFileRaw.mockResolvedValue({
+      blob: new Blob(["the whole file"]),
+      filename: "main.py",
+    });
     renderViewer({
       data: file({ truncated: true, content: "partial\ncontent" }),
     });
@@ -124,10 +161,15 @@ describe("SourceFileViewer", () => {
       screen.getByTestId("source-file-truncated-banner"),
     ).toBeInTheDocument();
     await userEvent.click(screen.getByTestId("source-file-download"));
+    // The button hits the raw endpoint (full member), NOT the capped viewer
+    // bytes already in `data.content`.
+    expect(getSourceFileRaw).toHaveBeenCalledWith("project-1", {
+      path: "src/main.py",
+    });
     expect(triggerBlobDownload).toHaveBeenCalledTimes(1);
     const [blob, filename] = triggerBlobDownload.mock.calls[0];
     expect(blob).toBeInstanceOf(Blob);
-    expect(filename).toBe("src-main.py");
+    expect(filename).toBe("main.py");
   });
 
   it("renders the 're-scan to enable' empty state on a 404", () => {

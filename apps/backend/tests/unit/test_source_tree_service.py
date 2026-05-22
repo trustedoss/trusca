@@ -39,8 +39,10 @@ from services.source_tree_service import (
     SourceFileTooLarge,
     SourcePathRejected,
     SourceUnavailable,
+    _sanitize_member_path,
     list_dir,
     read_file,
+    read_file_raw,
 )
 
 # ---------------------------------------------------------------------------
@@ -919,3 +921,164 @@ async def test_read_file_over_cap_scancode_json_is_skipped(
     # Over-cap scancode JSON → matches skipped, file body still returned.
     assert result.license_matches == []
     assert result.content == "x\n"
+
+
+# ===========================================================================
+# G3.2 Low (a) — rejected ?path= is NOT echoed into the 4xx detail
+# ===========================================================================
+
+
+@pytest.mark.parametrize(
+    "hostile",
+    ["/secret/path", "..\\..\\evil", "a/../../etc/passwd", "x\x00y"],
+)
+def test_sanitize_member_path_uses_static_message_not_reflected_input(
+    hostile: str,
+) -> None:
+    """The rejected raw value must NOT appear in the exception detail."""
+    with pytest.raises(SourcePathRejected) as excinfo:
+        _sanitize_member_path(hostile)
+    detail = str(excinfo.value)
+    assert detail == "path selector rejected"
+    # The hostile token (minus NUL, which str() drops) never leaks into detail.
+    assert hostile.replace("\x00", "") not in detail or hostile == ""
+
+
+def test_sanitize_member_path_logs_raw_value_to_warning() -> None:
+    """The raw selector goes to a structlog WARNING field, not the response."""
+    import structlog.testing
+
+    with structlog.testing.capture_logs() as caplog:
+        with pytest.raises(SourcePathRejected):
+            _sanitize_member_path("/etc/passwd")
+
+    rejected = [e for e in caplog if e.get("event") == "source_tree_path_rejected"]
+    assert rejected, "a path rejection must emit a warning event"
+    assert rejected[0]["raw_path"] == "/etc/passwd"
+    assert rejected[0]["reason"] == "absolute"
+    assert rejected[0]["log_level"] == "warning"
+
+
+# ===========================================================================
+# G3.3 — raw full-file download (no per-file viewer cap)
+# ===========================================================================
+
+
+async def test_read_file_raw_returns_full_bytes_ignoring_viewer_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The raw path returns the WHOLE member even when the viewer cap is tiny."""
+    monkeypatch.setenv("SCAN_SOURCE_VIEWER_MAX_FILE_BYTES", "4")  # viewer truncates
+    team_id = uuid.uuid4()
+    scan_id = uuid.uuid4()
+    project = _project(team_id, scan_id)
+    body = b"0123456789ABCDEF"  # 16 bytes — far over the 4-byte viewer cap
+    _write_tarball(project_id=project.id, scan_id=scan_id, files={"big.bin": body})
+    session = _FakeSession(project=project)
+    actor = _principal(team_ids=[team_id])
+
+    raw = await read_file_raw(
+        session,  # type: ignore[arg-type]
+        project_id=project.id,
+        raw_path="big.bin",
+        scan_id=None,
+        actor=actor,
+    )
+    # Full member, NOT the capped viewer bytes.
+    assert raw.data == body
+    assert raw.byte_size == 16
+    assert raw.filename == "big.bin"
+
+
+async def test_read_file_raw_rejects_over_raw_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SCAN_SOURCE_RAW_DOWNLOAD_MAX_BYTES", "8")  # tiny raw cap
+    team_id = uuid.uuid4()
+    scan_id = uuid.uuid4()
+    project = _project(team_id, scan_id)
+    body = b"0123456789"  # 10 bytes, raw cap is 8
+    _write_tarball(project_id=project.id, scan_id=scan_id, files={"big.bin": body})
+    session = _FakeSession(project=project)
+    actor = _principal(team_ids=[team_id])
+
+    with pytest.raises(SourceFileTooLarge):
+        await read_file_raw(
+            session,  # type: ignore[arg-type]
+            project_id=project.id,
+            raw_path="big.bin",
+            scan_id=None,
+            actor=actor,
+        )
+
+
+@pytest.mark.parametrize("hostile", ["../etc/passwd", "/etc/passwd", "x\x00.py"])
+async def test_read_file_raw_rejects_hostile_path(hostile: str) -> None:
+    team_id = uuid.uuid4()
+    scan_id = uuid.uuid4()
+    project = _project(team_id, scan_id)
+    _write_tarball(project_id=project.id, scan_id=scan_id, files={"a.py": b"x\n"})
+    session = _FakeSession(project=project)
+    actor = _principal(team_ids=[team_id])
+    with pytest.raises(SourcePathRejected):
+        await read_file_raw(
+            session,  # type: ignore[arg-type]
+            project_id=project.id,
+            raw_path=hostile,
+            scan_id=None,
+            actor=actor,
+        )
+
+
+async def test_read_file_raw_refuses_symlink_member() -> None:
+    """A symlink member must never be served by the raw download path either."""
+    team_id = uuid.uuid4()
+    scan_id = uuid.uuid4()
+    project = _project(team_id, scan_id)
+    _write_tarball(
+        project_id=project.id,
+        scan_id=scan_id,
+        files={"real.py": b"x\n"},
+        symlinks={"evil": "/etc/passwd"},
+    )
+    session = _FakeSession(project=project)
+    actor = _principal(team_ids=[team_id])
+    with pytest.raises(SourceFileTooLarge):
+        await read_file_raw(
+            session,  # type: ignore[arg-type]
+            project_id=project.id,
+            raw_path="evil",
+            scan_id=None,
+            actor=actor,
+        )
+
+
+async def test_read_file_raw_other_team_is_404() -> None:
+    project = _project(team_id=uuid.uuid4(), latest_scan_id=uuid.uuid4())
+    session = _FakeSession(project=project)
+    actor = _principal(team_ids=[uuid.uuid4()])  # different team
+    with pytest.raises(SourceUnavailable):
+        await read_file_raw(
+            session,  # type: ignore[arg-type]
+            project_id=project.id,
+            raw_path="a.py",
+            scan_id=None,
+            actor=actor,
+        )
+
+
+async def test_read_file_raw_root_is_413() -> None:
+    team_id = uuid.uuid4()
+    scan_id = uuid.uuid4()
+    project = _project(team_id, scan_id)
+    _write_tarball(project_id=project.id, scan_id=scan_id, files={"a.py": b"x\n"})
+    session = _FakeSession(project=project)
+    actor = _principal(team_ids=[team_id])
+    with pytest.raises(SourceFileTooLarge):
+        await read_file_raw(
+            session,  # type: ignore[arg-type]
+            project_id=project.id,
+            raw_path="",
+            scan_id=None,
+            actor=actor,
+        )

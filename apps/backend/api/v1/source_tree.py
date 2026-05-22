@@ -21,10 +21,12 @@ All 4xx / 5xx responses are RFC 7807 ``application/problem+json`` via
 
 from __future__ import annotations
 
+import re
+import urllib.parse
 import uuid
 
 import structlog
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -41,6 +43,7 @@ from services.source_tree_service import (
     SourceTreeError,
     list_dir,
     read_file,
+    read_file_raw,
 )
 
 router = APIRouter(prefix="/v1", tags=["source-tree"])
@@ -56,6 +59,35 @@ def _problem(request: Request, exc: SourceTreeError) -> JSONResponse:
         instance=request.url.path,
         type_=exc.type_uri,
     )
+
+
+# ---------------------------------------------------------------------------
+# Content-Disposition filename helper (RFC 6266) — mirrors reports.py
+# ---------------------------------------------------------------------------
+
+# The member's base name flows into the Content-Disposition filename for the
+# raw download. Strip everything outside ``[A-Za-z0-9._-]`` for the ASCII
+# fallback so a filesystem can persist it (and CR/LF can never reach the
+# header), then carry the original name percent-encoded in the UTF-8 extended
+# parameter so the user still sees a readable download name.
+_FILENAME_SAFE_RE = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+def _safe_filename_token(name: str) -> str:
+    token = _FILENAME_SAFE_RE.sub("-", name).strip("-")
+    return token or "download"
+
+
+def _format_content_disposition(filename: str) -> str:
+    """Build an RFC 6266 ``Content-Disposition: attachment`` value.
+
+    Emits both the ASCII ``filename=`` fallback and the UTF-8
+    ``filename*=UTF-8''…`` extended parameter, exactly like the reports / NOTICE
+    endpoints.
+    """
+    token = _safe_filename_token(filename)
+    utf8_encoded = urllib.parse.quote(filename, safe="")
+    return f'attachment; filename="{token}"; filename*=UTF-8\'\'{utf8_encoded}'
 
 
 # ---------------------------------------------------------------------------
@@ -131,6 +163,16 @@ async def get_source_tree(
     summary="Read one file from a scan's preserved source + per-line license matches",
     response_model=SourceFileResponse,
     responses={
+        200: {
+            "description": (
+                "Capped file JSON (default), or — with ``raw=true`` — the FULL "
+                "member streamed as application/octet-stream."
+            ),
+            "content": {
+                "application/json": {},
+                "application/octet-stream": {},
+            },
+        },
         400: {"description": "Malformed path selector"},
         401: {"description": "Authentication required"},
         404: {"description": "Project / scan / file not available"},
@@ -145,9 +187,39 @@ async def get_source_file(
         default=None,
         description="Scan to read; defaults to the project's latest scan.",
     ),
+    raw: bool = Query(
+        default=False,
+        description=(
+            "When true, stream the FULL member as application/octet-stream "
+            "(no per-file viewer cap) for download instead of the capped JSON "
+            "preview. Same path-traversal / symlink defences apply."
+        ),
+    ),
     session: AsyncSession = Depends(get_db),
     actor: CurrentUser = Depends(require_role("developer")),
-) -> JSONResponse | SourceFileResponse:
+) -> JSONResponse | SourceFileResponse | Response:
+    if raw:
+        try:
+            raw_result = await read_file_raw(
+                session,
+                project_id=project_id,
+                raw_path=path,
+                scan_id=scan_id,
+                actor=actor,
+            )
+        except SourceTreeError as exc:
+            return _problem(request, exc)
+        return Response(
+            content=raw_result.data,
+            status_code=status.HTTP_200_OK,
+            media_type="application/octet-stream",
+            headers={
+                "content-disposition": _format_content_disposition(
+                    raw_result.filename
+                ),
+            },
+        )
+
     try:
         file_result = await read_file(
             session,
