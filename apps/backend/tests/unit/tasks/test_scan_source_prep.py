@@ -75,6 +75,58 @@ def test_prepare_for_cdxgen_skips_bundle_lock_when_lockfile_present(
     assert captured_prep_calls == []
 
 
+def test_prepare_npm_generates_lockfile_only_when_no_lock(
+    tmp_path: Path,
+    captured_prep_calls: list[dict[str, Any]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A lockless npm project gets ``npm install --package-lock-only`` so cdxgen
+    reads a lock instead of full-installing node_modules — which would pull in
+    spurious ``pkg:nix/*`` components from dependency-shipped flake.lock files
+    (fixtures e2e finding)."""
+    from tasks import scan_source
+
+    (tmp_path / "package.json").write_text('{"name":"x","dependencies":{"lodash":"4.17.21"}}')
+    monkeypatch.setattr(scan_source.shutil, "which", lambda _b: "/usr/bin/npm")
+    scan_source._prepare_for_cdxgen(source_dir=tmp_path, scan_uuid=uuid.uuid4())
+
+    npm_calls = [c for c in captured_prep_calls if c["cmd"][:2] == ["npm", "install"]]
+    assert len(npm_calls) == 1
+    assert "--package-lock-only" in npm_calls[0]["cmd"]
+    assert "--ignore-scripts" in npm_calls[0]["cmd"]
+
+
+@pytest.mark.parametrize("lock", ["package-lock.json", "npm-shrinkwrap.json", "yarn.lock", "pnpm-lock.yaml"])
+def test_prepare_npm_skipped_when_any_lock_present(
+    tmp_path: Path,
+    captured_prep_calls: list[dict[str, Any]],
+    monkeypatch: pytest.MonkeyPatch,
+    lock: str,
+) -> None:
+    from tasks import scan_source
+
+    (tmp_path / "package.json").write_text('{"name":"x"}')
+    (tmp_path / lock).write_text("{}")
+    monkeypatch.setattr(scan_source.shutil, "which", lambda _b: "/usr/bin/npm")
+    scan_source._prepare_for_cdxgen(source_dir=tmp_path, scan_uuid=uuid.uuid4())
+
+    assert [c for c in captured_prep_calls if c["cmd"][:2] == ["npm", "install"]] == []
+
+
+def test_prepare_npm_skipped_without_npm_binary(
+    tmp_path: Path,
+    captured_prep_calls: list[dict[str, Any]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tasks import scan_source
+
+    (tmp_path / "package.json").write_text('{"name":"x"}')
+    monkeypatch.setattr(scan_source.shutil, "which", lambda _b: None)
+    scan_source._prepare_for_cdxgen(source_dir=tmp_path, scan_uuid=uuid.uuid4())
+
+    assert [c for c in captured_prep_calls if c["cmd"][:2] == ["npm", "install"]] == []
+
+
 def test_prepare_for_cdxgen_runs_cargo_for_rust_without_lockfile(
     tmp_path: Path, captured_prep_calls: list[dict[str, Any]]
 ) -> None:
@@ -607,6 +659,31 @@ def test_classify_license_category_unknown_for_unmapped(spdx_id: str | None) -> 
     from tasks.scan_source import _classify_license_category
 
     assert _classify_license_category(spdx_id) == "unknown"
+
+
+@pytest.mark.parametrize(
+    ("spdx_id", "expected"),
+    [
+        # Compound expressions → most-restrictive recognised operand
+        # (forbidden > conditional > allowed). Fixtures e2e: scancode emits these
+        # for multi-license files and they must not degrade to 'unknown'.
+        ("GPL-3.0-or-later AND GPL-3.0-only", "forbidden"),
+        ("MIT AND ISC AND BSD-3-Clause", "allowed"),
+        ("MIT OR Apache-2.0", "allowed"),
+        ("Apache-2.0 AND MPL-2.0", "conditional"),
+        ("(MIT OR Apache-2.0) AND GPL-3.0-only", "forbidden"),
+        ("Apache-2.0 WITH LLVM-exception", "allowed"),
+        ("MPL-2.0 OR LGPL-2.1-or-later", "conditional"),
+        # No recognised operand → still unknown.
+        ("Custom-A AND Custom-B", "unknown"),
+    ],
+)
+def test_classify_license_category_resolves_compound_expressions(
+    spdx_id: str, expected: str
+) -> None:
+    from tasks.scan_source import _classify_license_category
+
+    assert _classify_license_category(spdx_id) == expected
 
 
 # ---------------------------------------------------------------------------

@@ -882,6 +882,60 @@ def _prepare_for_cdxgen(*, source_dir: Path, scan_uuid: uuid.UUID) -> None:
     _prepare_yarn(source_dir=source_dir, scan_uuid=scan_uuid)
     _prepare_poetry(source_dir=source_dir, scan_uuid=scan_uuid)
 
+    # npm LAST, on purpose: `_prepare_yarn` may have just removed an empty
+    # `yarn.lock`. Only after that does a lockless `package.json` need a
+    # ``--package-lock-only`` generation — otherwise cdxgen full-installs
+    # node_modules and scrapes nested dependency ``flake.lock`` files, emitting
+    # phantom ``pkg:nix/*`` components (node-yarn fixtures e2e regression).
+    _prepare_npm(source_dir=source_dir, scan_uuid=scan_uuid)
+
+
+def _prepare_npm(*, source_dir: Path, scan_uuid: uuid.UUID) -> None:
+    """Generate a *lockfile-only* npm lock for a lockless npm project.
+
+    Why: cdxgen, given a ``package.json`` with no lockfile, runs a full
+    ``npm install`` to materialise ``node_modules`` and then resolves deps from
+    it. That has two problems observed in the fixtures e2e:
+
+    1. **Spurious components** — cdxgen recurses (``-r``) into the freshly
+       installed ``node_modules`` and parses *nested, dependency-shipped*
+       manifests (e.g. a ``flake.lock`` bundled inside ``node_modules/lodash``),
+       emitting phantom ``pkg:nix/nixpkgs`` / ``pkg:nix/flake-utils`` components
+       that are NOT dependencies of the scanned project.
+    2. Cost — a full install is slower and pulls every package's contents.
+
+    Pre-generating the lock with ``npm install --package-lock-only`` produces
+    ``package-lock.json`` (the full *transitive* graph) WITHOUT a
+    ``node_modules`` tree, so cdxgen reads the lock and never walks installed
+    package internals — accurate transitive deps, no nested-manifest noise.
+
+    Best-effort and offline-tolerant: skipped when ``npm`` is absent or a lock
+    already exists; a failure (no network, private registry) logs a warning and
+    cdxgen still falls back to ``package.json`` direct deps.
+    """
+    package_json = source_dir / "package.json"
+    if not package_json.is_file():
+        return
+    existing_locks = ("package-lock.json", "npm-shrinkwrap.json", "yarn.lock", "pnpm-lock.yaml")
+    if any((source_dir / name).is_file() for name in existing_locks):
+        return  # A lock already exists — cdxgen parses it; do not full-install.
+    if not shutil.which("npm"):
+        return
+    _run_prep(
+        "npm package-lock-only",
+        [
+            "npm",
+            "install",
+            "--package-lock-only",
+            "--ignore-scripts",
+            "--no-audit",
+            "--no-fund",
+        ],
+        source_dir,
+        _PREP_STEP_TIMEOUT_SECONDS,
+        scan_uuid,
+    )
+
 
 def _prepare_yarn(*, source_dir: Path, scan_uuid: uuid.UUID) -> None:
     """Heal a yarn project whose ``yarn.lock`` is empty or missing.
@@ -1404,10 +1458,36 @@ _LICENSE_CATEGORY_DEFAULTS: dict[str, str] = {
 }
 
 
+_CATEGORY_RANK = {"forbidden": 3, "conditional": 2, "allowed": 1, "unknown": 0}
+
+
 def _classify_license_category(spdx_id: str | None) -> str:
+    """Map an SPDX id — single OR a compound expression — to a policy category.
+
+    A single id is a direct dict lookup. A *compound* SPDX expression
+    (``GPL-3.0-or-later AND GPL-3.0-only``, ``MIT OR Apache-2.0``,
+    ``Apache-2.0 WITH LLVM-exception``) is split into its operand license ids
+    and classified as the **most restrictive** operand
+    (forbidden > conditional > allowed). This ensures a compound that contains a
+    forbidden term (e.g. any GPL) is itself flagged forbidden rather than
+    silently degrading to ``unknown`` — the fixtures e2e showed scancode emits
+    such compounds for multi-license files. Returns ``unknown`` only when no
+    operand is recognised.
+    """
     if not spdx_id:
         return "unknown"
-    return _LICENSE_CATEGORY_DEFAULTS.get(spdx_id, "unknown")
+    direct = _LICENSE_CATEGORY_DEFAULTS.get(spdx_id)
+    if direct is not None:
+        return direct
+    # Compound expression: split on boolean/exception operators + parentheses,
+    # classify each operand, keep the most restrictive recognised category.
+    tokens = re.split(r"\s+(?:AND|OR|WITH)\s+|[()]", spdx_id)
+    best = "unknown"
+    for tok in tokens:
+        cat = _LICENSE_CATEGORY_DEFAULTS.get(tok.strip())
+        if cat and _CATEGORY_RANK[cat] > _CATEGORY_RANK[best]:
+            best = cat
+    return best
 
 
 def _extract_spdx_ids(cdxgen_component: dict[str, Any]) -> list[tuple[str, str | None]]:
@@ -1459,6 +1539,16 @@ def _get_or_create_license(
         select(LicenseModel).where(LicenseModel.spdx_id == spdx_id)
     ).scalar_one_or_none()
     if existing is not None:
+        # Self-heal a stale ``unknown`` classification: the row may have been
+        # created before the classifier learned this id (e.g. compound SPDX
+        # expressions like "GPL-3.0-or-later AND GPL-3.0-only", which must read
+        # as forbidden, not unknown — a build-gate-relevant policy fix). Only
+        # upgrade unknown→known; never overwrite an already-classified category.
+        if existing.category == "unknown":
+            reclassified = _classify_license_category(spdx_id)
+            if reclassified != "unknown":
+                existing.category = reclassified
+                session.flush()
         return existing
     lic = LicenseModel(
         spdx_id=spdx_id,
