@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import sys
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 
@@ -34,7 +35,7 @@ from services.report_service import (
 )
 
 
-def _base_kwargs(**overrides):
+def _base_kwargs(**overrides: Any) -> dict[str, Any]:
     kwargs = {
         "project_name": "Acme Web",
         "generated_at": datetime(2026, 5, 22, 12, 0, 0, tzinfo=UTC),
