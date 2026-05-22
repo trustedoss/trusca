@@ -17,16 +17,17 @@ IMPORTANT — image rebuild required
 The happy-path assertions exercise weasyprint, which dlopen's native
 rendering libs (libpango / cairo / gdk-pixbuf) that are only present after the
 backend image is rebuilt with the G2 Dockerfile changes. Tests that need a
-real PDF are gated behind :func:`_require_weasyprint`, which *skips* (not
-fails) when weasyprint cannot be imported, so this file is green on a stale
-image and only proves the PDF path once the image is rebuilt. The auth-gate /
-IDOR tests do NOT need weasyprint (they 401 / 404 before rendering) and run
-unconditionally.
+real PDF are gated behind :func:`_require_weasyprint`, which actually tries to
+render a tiny PDF and *skips* (not fails) on ANY failure — module missing,
+native libs absent (the CI ``test (backend)`` lane), or a broken
+weasyprint↔pydyf pin. So this file is green on a stale / pip-only image and
+only proves the PDF path once a properly built image renders ``%PDF``. The
+auth-gate / IDOR tests do NOT need weasyprint (they 401 / 404 before
+rendering) and run unconditionally.
 """
 
 from __future__ import annotations
 
-import importlib.util
 import os
 import subprocess
 import uuid
@@ -62,13 +63,32 @@ def _require_database_url() -> str:
 
 
 def _require_weasyprint() -> None:
-    """Skip (not fail) when weasyprint is unavailable — i.e. the image has not
-    yet been rebuilt with the G2 native deps."""
-    if importlib.util.find_spec("weasyprint") is None:
+    """Skip (not fail) unless weasyprint can actually *render* a PDF here.
+
+    A bare ``find_spec`` check is too weak: on the CI ``test (backend)`` lane
+    weasyprint pip-installs fine (it ships pure-Python wheels) but cannot
+    render — either the native pango / cairo / gdk-pixbuf libs are absent, or a
+    broken weasyprint↔pydyf combo raises at ``write_pdf()`` time (the PR #97
+    ``AttributeError: 'super' object has no attribute 'transform'``). Either
+    way the happy-path tests must *skip*, not fail. We prove rendering works by
+    writing a one-element PDF and swallowing ANY exception (ImportError for the
+    missing module, OSError for missing native libs, AttributeError for a bad
+    pydyf pin, etc.). Only a properly built image — where the render succeeds —
+    runs the PDF assertions.
+    """
+    try:
+        import weasyprint  # noqa: PLC0415 — gated probe, kept local to the guard
+
+        pdf = weasyprint.HTML(string="<p>x</p>").write_pdf()
+    except Exception as exc:  # noqa: BLE001 — any failure means "cannot render"
         pytest.skip(
-            "weasyprint not installed — rebuild the backend image with the G2 "
-            "Dockerfile changes to exercise PDF rendering"
+            "weasyprint cannot render a PDF in this environment "
+            f"({type(exc).__name__}: {exc}) — rebuild the backend image with "
+            "the G2 native deps + a working weasyprint/pydyf pin to exercise "
+            "PDF rendering"
         )
+    if not pdf or not pdf.startswith(b"%PDF"):
+        pytest.skip("weasyprint produced no PDF bytes in this environment")
 
 
 @pytest.fixture(scope="module", autouse=True)

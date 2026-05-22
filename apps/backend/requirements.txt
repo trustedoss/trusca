@@ -43,4 +43,15 @@ aiosmtplib==3.0.2
 # (see apps/backend/Dockerfile* for the apt list). It is imported LAZILY in
 # services.report_service.render_report_pdf so the unit-test lane and a
 # not-yet-rebuilt image still import the module cleanly.
+#
+# pydyf is pinned EXPLICITLY alongside weasyprint. weasyprint 62.3 only
+# requires `pydyf>=0.10.0`, so an unpinned resolve picks up pydyf 0.12.x,
+# which removed the `Stream.transform` method that weasyprint 62.3's
+# `pdf/stream.py` calls via `super().transform(...)` — every `write_pdf()`
+# then 500s with `AttributeError: 'super' object has no attribute 'transform'`
+# (observed on PR #97's CI `test (backend)` lane). pydyf 0.10.0 is the version
+# weasyprint 62.3 was built against and renders a real PDF; verified by
+# building the backend image and rendering a `b'%PDF'`. Bump pydyf only in
+# lockstep with a weasyprint bump, re-verifying the render each time.
 weasyprint==62.3
+pydyf==0.10.0
