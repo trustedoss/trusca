@@ -350,6 +350,10 @@ def test_build_report_html_clamps_huge_cve_summary() -> None:
         "",
         None,
         "ftp://host/file",
+        # Embedded control chars rejected (CRLF-injection defence, reviewer Low #3).
+        "http://h/\r\nX-Injected: 1",
+        "https://h/\tpath",
+        "http://h/\x00",
     ],
 )
 def test_safe_href_rejects_non_http_schemes(url) -> None:

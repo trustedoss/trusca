@@ -286,7 +286,9 @@ async def test_list_invalid_sort_returns_422_problem(client) -> None:
     assert response.headers["content-type"].startswith(PROBLEM_JSON)
 
 
-async def test_list_cross_team_returns_403(client) -> None:
+async def test_list_cross_team_existence_hide_returns_404(client) -> None:
+    """Cross-team list reads existence-hide as 404 (security-reviewer Low #4),
+    uniform with the detail / report / source-tree endpoints."""
     _, team_a, _ = await _seed_team_with_user(client)
     project_id, _, _ = await _seed_scanned_project(client, team_id=team_a.id)
 
@@ -302,7 +304,27 @@ async def test_list_cross_team_returns_403(client) -> None:
         f"/v1/projects/{project_id}/obligations",
         headers=headers,
     )
-    assert response.status_code == 403
+    assert response.status_code == 404
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_notice_cross_team_existence_hide_returns_404(client) -> None:
+    """Cross-team NOTICE reads existence-hide as 404 (security-reviewer Low #4)."""
+    _, team_a, _ = await _seed_team_with_user(client)
+    project_id, _, _ = await _seed_scanned_project(client, team_id=team_a.id)
+
+    factory = await _factory(client)
+    async with factory() as session:
+        org = await make_organization(session)
+        team_b = await make_team(session, organization=org)
+        outsider = await make_user(session)
+        await make_membership(session, user=outsider, team=team_b, role="developer")
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/notice",
+        headers=_bearer_for(outsider),
+    )
+    assert response.status_code == 404
     assert response.headers["content-type"].startswith(PROBLEM_JSON)
 
 
@@ -447,6 +469,26 @@ async def test_notice_html_format_uses_text_html_media_type(client) -> None:
     body = response.text
     assert body.startswith("<!DOCTYPE html>")
     assert f"<h2>{spdx}" in body
+    # security-reviewer Low #5: the same-origin HTML NOTICE carries a restrictive
+    # CSP so any future escaping regression cannot execute against the API origin.
+    csp = response.headers["content-security-policy"]
+    assert "default-src 'none'" in csp
+    assert "style-src 'unsafe-inline'" in csp
+
+
+async def test_notice_csp_absent_for_non_html_formats(client) -> None:
+    """The CSP header is HTML-specific — text/markdown NOTICEs don't carry it."""
+    _, team, user = await _seed_team_with_user(client)
+    project_id, scan_id, _ = await _seed_scanned_project(client, team_id=team.id)
+    spdx = f"OBL-NOCSP-{uuid.uuid4().hex[:8]}"
+    await _seed_obligation(client, scan_id=scan_id, spdx_id=spdx, kind="attribution")
+    response = await client.get(
+        f"/v1/projects/{project_id}/notice",
+        headers=_bearer_for(user),
+        params={"format": "text"},
+    )
+    assert response.status_code == 200
+    assert "content-security-policy" not in response.headers
 
 
 async def test_notice_invalid_format_is_rejected_by_query_validation(client) -> None:

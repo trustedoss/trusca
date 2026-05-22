@@ -1363,11 +1363,12 @@ async def test_list_distribution_unfiltered_when_filter_active(
 
 
 @pytestmark_db
-async def test_list_idor_other_team_returns_403_and_logs(
+async def test_list_idor_other_team_returns_404_and_logs(
     db_session: AsyncSession,
 ) -> None:
-    """List endpoint surfaces 403 + emits ``authz.cross_team_attempt``."""
-    from services.project_service import ProjectForbidden
+    """List endpoint existence-hides cross-team as 404 (Low #4) + emits
+    ``authz.cross_team_attempt``."""
+    from services.project_service import ProjectNotFound
 
     org = await make_organization(db_session)
     target_team = await make_team(db_session, organization=org)
@@ -1379,7 +1380,7 @@ async def test_list_idor_other_team_returns_403_and_logs(
     actor = principal_for(user, team_ids=[other_team.id], role="developer")
 
     with structlog.testing.capture_logs() as captured:
-        with pytest.raises(ProjectForbidden):
+        with pytest.raises(ProjectNotFound):
             await list_project_obligations(
                 db_session, project_id=project.id, actor=actor
             )
@@ -1821,11 +1822,12 @@ async def test_generate_notice_invalid_format_raises_obligation_error(
 
 
 @pytestmark_db
-async def test_generate_notice_idor_other_team_returns_403_and_logs(
+async def test_generate_notice_idor_other_team_returns_404_and_logs(
     db_session: AsyncSession,
 ) -> None:
-    """Notice endpoint surfaces 403 + emits ``authz.cross_team_attempt``."""
-    from services.project_service import ProjectForbidden
+    """Notice endpoint existence-hides cross-team as 404 (Low #4) + emits
+    ``authz.cross_team_attempt``."""
+    from services.project_service import ProjectNotFound
 
     org = await make_organization(db_session)
     target_team = await make_team(db_session, organization=org)
@@ -1837,7 +1839,7 @@ async def test_generate_notice_idor_other_team_returns_403_and_logs(
     actor = principal_for(user, team_ids=[other_team.id], role="developer")
 
     with structlog.testing.capture_logs() as captured:
-        with pytest.raises(ProjectForbidden):
+        with pytest.raises(ProjectNotFound):
             await generate_notice(
                 db_session, project_id=project.id, actor=actor, fmt="text"
             )

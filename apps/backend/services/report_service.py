@@ -130,6 +130,11 @@ def _safe_href(url: Any) -> str | None:
     raw = str(url).strip()
     if not raw:
         return None
+    # An http(s) URL never contains control chars; tolerating an embedded
+    # CR/LF/TAB would make this a CRLF-injection vector if the helper is ever
+    # reused in a header / ``Location`` context (security-reviewer Low #3).
+    if any(ord(c) < 0x20 or c == "\x7f" for c in raw):
+        return None
     try:
         parsed = urlsplit(raw)
     except ValueError:

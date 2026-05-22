@@ -22,11 +22,10 @@ tab (PR #12).
 
 Cross-team policy
 -----------------
-- List + Notice: 403 on cross-team. The project's existence is not a secret
-  across teams (PR #10 / PR #12 pattern).
-- Detail: 404 on cross-team. The URL exposes both project_id and
-  obligation_id, so we existence-hide cross-team reads to avoid leaking that
-  a given catalog row is in use elsewhere.
+- All endpoints (List, Notice, Detail): 404 on cross-team (security-reviewer
+  Low #4). Project-scoped reads existence-hide so a non-member cannot
+  distinguish "exists but forbidden" from "does not exist" — uniform with the
+  report / source-tree / SBOM endpoints.
 
 All cross-team rejections emit ``log.warning("authz.cross_team_attempt", ...)``
 in the service layer *before* raising, so SOC tooling sees the rejection
@@ -260,8 +259,12 @@ def _format_content_disposition(project_name: str, ext: str) -> str:
                 "text/html": {},
             },
         },
-        403: {"description": "Caller is not a member of the project's team."},
-        404: {"description": "Project does not exist."},
+        404: {
+            "description": (
+                "Project does not exist, or the caller is not a member of the "
+                "project's team (existence-hidden)."
+            )
+        },
         429: {
             "description": "Rate limit exceeded for this client IP.",
             "content": {"application/problem+json": {}},
@@ -313,6 +316,14 @@ async def get_project_notice_endpoint(
         "X-Notice-License-Count": str(payload["license_count"]),
         "X-Notice-Obligation-Count": str(payload["obligation_count"]),
     }
+    if fmt == "html":
+        # Defense-in-depth (security-reviewer Low #5): the HTML NOTICE is served
+        # text/html, same-origin with the API, and inline when ``download`` is
+        # false. Escaping in ``_render_notice_html`` is the primary XSS control;
+        # a restrictive CSP neutralises any future escaping regression. The
+        # document only needs its own inline ``<style>`` — no scripts, no
+        # external assets — so lock everything else down.
+        headers["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'"
     if download:
         ext = {"text": "txt", "markdown": "md", "html": "html"}[fmt]
         headers["Content-Disposition"] = _format_content_disposition(
