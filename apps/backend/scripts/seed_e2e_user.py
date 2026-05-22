@@ -189,6 +189,160 @@ _OBLIGATIONS_BY_CATEGORY: dict[str, tuple[tuple[str, str, str], ...]] = {
 }
 
 
+# ── G3.3 — preserved-source staging fixture ────────────────────────────────
+# The source-tree e2e (apps/frontend/tests/e2e/source_tree.spec.ts S3/S4)
+# needs a preserved tarball whose tree exercises every viewer code path:
+#
+#   src/app/main.py        utf-8 text file carrying an MIT header on lines 1-3
+#                          (a license_matches range in the folded scancode JSON)
+#   src/app/logo.bin       binary file (NUL byte) → byte-safe-notice path
+#   src/app/huge.txt       oversized file (> the 2 MiB viewer cap) → truncated
+#   README.md              a root-level text file so the root listing is non-empty
+#
+# The viewer's per-file content cap is `scan_source_viewer_max_file_bytes()`
+# (default 2 MiB). `huge.txt` is sized just over that so the API returns
+# `truncated=true`; the value is read at staging time so a non-default cap in
+# the e2e environment still produces a truncated member.
+_SOURCE_TEXT_FILE_REL = "src/app/main.py"
+_SOURCE_BINARY_FILE_REL = "src/app/logo.bin"
+_SOURCE_HUGE_FILE_REL = "src/app/huge.txt"
+_SOURCE_README_REL = "README.md"
+
+# The utf-8 text member's content. Lines 1-3 carry an MIT header so the
+# synthetic scancode JSON can attach a `matches` range to exactly those lines —
+# the source-tree viewer then highlights them with an MIT SPDX chip (S3).
+_SOURCE_TEXT_CONTENT = (
+    "# SPDX-License-Identifier: MIT\n"
+    "# Copyright (c) 2026 TrustedOSS e2e fixture\n"
+    "# Permission is hereby granted, free of charge, to any person ...\n"
+    "\n"
+    'def main() -> None:\n'
+    '    print("hello from the preserved-source e2e fixture")\n'
+    "\n"
+    'if __name__ == "__main__":\n'
+    "    main()\n"
+)
+
+
+def _build_synthetic_scancode_json(*, files_with_matches: dict[str, str]) -> str:
+    """Return a minimal scancode 32.x result document as a JSON string.
+
+    ``files_with_matches`` maps an arcname → SPDX id; each entry gets a single
+    ``license_detections[].matches[]`` covering lines 1-3 so the source-tree
+    viewer's per-line projection (``_matches_from_scancode``) surfaces a chip.
+    The shape mirrors the real adapter output that
+    ``source_tree_service._matches_from_scancode`` reads:
+
+        {"files": [{"path": "<arc>", "type": "file",
+                    "license_detections": [{"matches": [
+                        {"license_expression_spdx": "MIT",
+                         "start_line": 1, "end_line": 3, "score": 100.0}]}]}]}
+    """
+    files: list[dict[str, object]] = []
+    for arcname, spdx in files_with_matches.items():
+        files.append(
+            {
+                "path": arcname,
+                "type": "file",
+                "detected_license_expression_spdx": spdx,
+                "license_detections": [
+                    {
+                        "license_expression_spdx": spdx,
+                        "matches": [
+                            {
+                                "license_expression_spdx": spdx,
+                                "start_line": 1,
+                                "end_line": 3,
+                                "score": 100.0,
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+    document = {
+        "headers": [{"tool_name": "scancode-toolkit", "tool_version": "e2e-seed"}],
+        "files": files,
+    }
+    return json.dumps(document, indent=2)
+
+
+def _stage_preserved_source(
+    *,
+    project_id: uuid.UUID,
+    scan_id: uuid.UUID,
+) -> str | None:
+    """Build a tiny source tree + scancode JSON and preserve it as a tarball.
+
+    Reuses ``preserve_scan_source`` so the on-disk tarball is byte-identical in
+    shape to a real scan's preserved source (gzip tar + folded-in
+    ``.trustedoss/scancode.json``) — guaranteeing ``source_tree_service`` reads
+    it back without surprises.
+
+    Returns the tarball path as a string on success, or ``None`` when
+    preservation was skipped (quota / over-cap — never raised, mirroring the
+    service contract). The caller records a ``source_tarball`` ScanArtifact row
+    when a path is returned.
+    """
+    import tempfile
+    from pathlib import Path
+
+    from core.config import scan_source_viewer_max_file_bytes
+    from services.source_preservation_service import preserve_scan_source
+
+    viewer_cap = scan_source_viewer_max_file_bytes()
+
+    # Stage the tree under a throwaway temp dir; preserve_scan_source tars it
+    # into the project's scan-sources/ directory, after which the temp dir is
+    # removed. The tarball (not the staging dir) is what the viewer reads.
+    staging_root = Path(tempfile.mkdtemp(prefix="e2e-source-"))
+    try:
+        source_dir = staging_root / "source"
+        # Nested directory + utf-8 text file with an MIT header.
+        text_path = source_dir / _SOURCE_TEXT_FILE_REL
+        text_path.parent.mkdir(parents=True, exist_ok=True)
+        text_path.write_text(_SOURCE_TEXT_CONTENT, encoding="utf-8")
+
+        # Root-level text file so the root listing is non-empty.
+        (source_dir / _SOURCE_README_REL).write_text(
+            "# e2e preserved-source fixture\n\nSee src/app/main.py.\n",
+            encoding="utf-8",
+        )
+
+        # Binary file — a NUL byte makes source_tree_service classify it as
+        # binary (encoding='binary', content=None) → byte-safe notice (S4).
+        (source_dir / _SOURCE_BINARY_FILE_REL).write_bytes(
+            b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR" + bytes(64)
+        )
+
+        # Oversized file — just over the viewer's per-file cap so read_file
+        # returns truncated=true (S4). Repeated ASCII gzips to a few KiB so the
+        # tarball stays well under the 512 MiB tarball cap.
+        huge_path = source_dir / _SOURCE_HUGE_FILE_REL
+        huge_bytes = b"A" * (viewer_cap + 4096)
+        huge_path.write_bytes(huge_bytes)
+
+        # Synthetic scancode JSON attaching an MIT match to the text file's
+        # lines 1-3 so the per-line license chip surfaces in S3.
+        scancode_json = _build_synthetic_scancode_json(
+            files_with_matches={_SOURCE_TEXT_FILE_REL: "MIT"}
+        )
+        scancode_path = staging_root / "scancode.json"
+        scancode_path.write_text(scancode_json, encoding="utf-8")
+
+        tar_path = preserve_scan_source(
+            scan_id=scan_id,
+            project_id=project_id,
+            source_dir=source_dir,
+            scancode_json_path=scancode_path,
+        )
+        return str(tar_path) if tar_path is not None else None
+    finally:
+        import shutil
+
+        shutil.rmtree(staging_root, ignore_errors=True)
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Seed an e2e user + projects.")
     parser.add_argument(
@@ -242,6 +396,24 @@ def _parse_args() -> argparse.Namespace:
             "Phase 3 PR #13. Attach a small obligation catalog (1-2 rows) "
             "to each seed-license created by --component-count. No-op when "
             "--component-count is 0 because no seed-licenses exist."
+        ),
+    )
+    parser.add_argument(
+        "--with-source",
+        action="store_true",
+        default=False,
+        help=(
+            "G3.3 source-tree e2e. Stage a real preserved-source tarball for "
+            "the first project's succeeded scan so the source-tree endpoints "
+            "(`/source-tree`, `/source-file`) return 200 instead of the 404 "
+            "empty-state. Builds a tiny tree (nested dir + utf-8 text file "
+            "with an MIT license_matches range + a binary file + an oversized "
+            "truncated file) and a synthetic scancode JSON, then reuses "
+            "services.source_preservation_service.preserve_scan_source(...) so "
+            "the tarball format matches what source_tree_service reads "
+            "(`.trustedoss/scancode.json` folded in). Records a "
+            "`source_tarball` ScanArtifact row. Implies --with-scan. No-op "
+            "without a project. Default: off (no regression to existing seeds)."
         ),
     )
     parser.add_argument(
@@ -412,6 +584,7 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
     vulnerability_count: int = 0,
     vulnerability_severity_mix: str | None = None,
     with_obligations: bool = False,
+    with_source: bool = False,
     super_admin: bool = False,
     extra_members: int = 0,
     extra_team_admin: bool = False,
@@ -459,6 +632,7 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
         Project,
         RefreshToken,
         Scan,
+        ScanArtifact,
         ScanComponent,
         Team,
         User,
@@ -480,6 +654,9 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
         with_scan = True
     # --vulnerability-count likewise implies --with-scan.
     if vulnerability_count > 0 and not with_scan:
+        with_scan = True
+    # --with-source needs a succeeded scan to anchor the preserved tarball on.
+    if with_source and not with_scan:
         with_scan = True
 
     engine = create_async_engine(database_url(), pool_pre_ping=True, future=True)
@@ -696,6 +873,31 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                     await session.refresh(project)
                     scan_ids.append(str(scan.id))
 
+            # G3.3 — stage a preserved-source tarball for the first project's
+            # scan so the source-tree viewer endpoints return a populated tree
+            # (lights up source_tree.spec.ts S3/S4). The tarball is built via
+            # preserve_scan_source so its on-disk shape exactly matches a real
+            # scan's; we then record a `source_tarball` ScanArtifact row.
+            source_tarball_path: str | None = None
+            if with_source and project_rows:
+                first_project = project_rows[0]
+                anchor_scan_id = first_project.latest_scan_id
+                assert anchor_scan_id is not None  # with_scan was forced True
+                source_tarball_path = _stage_preserved_source(
+                    project_id=first_project.id,
+                    scan_id=anchor_scan_id,
+                )
+                if source_tarball_path is not None:
+                    size = os.path.getsize(source_tarball_path)
+                    artifact = ScanArtifact(
+                        scan_id=anchor_scan_id,
+                        kind="source_tarball",
+                        storage_path=source_tarball_path,
+                        byte_size=size,
+                    )
+                    session.add(artifact)
+                    await session.commit()
+
             seeded_components = 0
             seeded_obligations_count = 0
             if component_count > 0 and project_rows:
@@ -902,6 +1104,7 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                 "component_count": seeded_components,
                 "vulnerability_count": seeded_vulnerabilities,
                 "obligation_count": seeded_obligations_count,
+                "source_tarball": source_tarball_path,
                 "extra_members": extra_members_summary,
                 "oauth_identity": oauth_identity_summary,
                 "refresh_token": refresh_token_summary,
@@ -975,6 +1178,7 @@ def main() -> int:
                 vulnerability_count=args.vulnerability_count,
                 vulnerability_severity_mix=args.vulnerability_severity_mix,
                 with_obligations=args.with_obligations,
+                with_source=args.with_source,
                 super_admin=args.super_admin,
                 extra_members=args.extra_members,
                 extra_team_admin=args.extra_team_admin,

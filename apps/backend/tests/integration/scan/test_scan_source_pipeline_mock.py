@@ -225,6 +225,42 @@ def test_scan_source_pipeline_completes_with_mock_backend(
     assert "sbom_cyclonedx" in kinds
     assert "scancode_result" in kinds
 
+    # Stage 6.5 (G3.1) — the in-task source preservation must have run AND
+    # recorded a `source_tarball` ScanArtifact row pointing at a tarball that
+    # actually exists on disk. Before this assertion nothing verified the
+    # in-task preserve_scan_source(...) call automatically; a regression that
+    # silently dropped Stage 6.5 (or wrote the artifact row but no file) would
+    # have gone unnoticed until the source-tree e2e 404'd.
+    assert "source_tarball" in kinds, (
+        "Stage 6.5 must persist a `source_tarball` artifact for a succeeded "
+        f"source scan; got kinds={sorted(kinds)}"
+    )
+    source_tarballs = [a for a in artifacts if a.kind == "source_tarball"]
+    assert len(source_tarballs) == 1, (
+        "exactly one source_tarball artifact expected per succeeded scan"
+    )
+    tarball = source_tarballs[0]
+    # The recorded path must exist (the worker wrote the file under
+    # WORKSPACE_HOST_PATH, which the monkeypatch points at tmp_path) and the
+    # row's byte_size must match the on-disk size.
+    tarball_path = Path(tarball.storage_path)
+    assert tarball_path.is_file(), (
+        f"source_tarball artifact path does not exist on disk: {tarball_path}"
+    )
+    assert tarball.byte_size == tarball_path.stat().st_size
+    # The tarball is a readable gzip tar that folds in the scancode JSON under
+    # the reserved member name — the exact shape source_tree_service reads.
+    import tarfile
+
+    from services.source_preservation_service import SCANCODE_MEMBER_NAME
+
+    with tarfile.open(tarball_path, "r:gz") as tar:
+        member_names = {m.name for m in tar.getmembers()}
+    assert SCANCODE_MEMBER_NAME in member_names, (
+        "preserved tarball must fold in the scancode JSON under "
+        f"{SCANCODE_MEMBER_NAME!r}; got {sorted(member_names)}"
+    )
+
     # cdxgen mock emits at least one component → ScanComponent rows exist.
     components = (
         sync_session.execute(
