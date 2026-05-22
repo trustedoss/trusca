@@ -207,6 +207,14 @@ async def get_vulnerability_report_pdf_endpoint(
         vulnerabilities_total=vulnerabilities_total,
     )
 
+    # Client-abandonment guard (Tier 6): skip the expensive weasyprint render if
+    # the caller has already disconnected (closed the tab / hit a download then
+    # navigated away). Avoids burning CPU rendering a PDF nobody will receive —
+    # which, under a 10k-user load with abandoned downloads, is real waste.
+    if await request.is_disconnected():
+        log.info("report.client_disconnected_before_render", project_id=str(project_id))
+        return Response(status_code=499)
+
     try:
         # weasyprint rendering is CPU-bound and blocking; this endpoint is
         # ``async def``, so calling it inline would block the event loop and
