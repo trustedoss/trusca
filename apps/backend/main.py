@@ -33,6 +33,7 @@ from api.v1 import (
     obligations_router,
     policy_gate_router,
     projects_router,
+    reports_router,
     sbom_router,
     scans_router,
     users_me_router,
@@ -178,6 +179,8 @@ app.include_router(licenses_router)
 app.include_router(obligations_router)
 app.include_router(approvals_router)
 app.include_router(sbom_router)
+# Scan-gap G2: vulnerability PDF report download.
+app.include_router(reports_router)
 # Phase 5 PR #16: API Key management + Webhook receivers (GitHub / GitLab).
 # Webhook endpoints are PUBLIC (no JWT) but each delivery is HMAC-authenticated
 # against a per-project shared secret stored in `projects.webhook_secret`.

@@ -8,12 +8,23 @@ ENV PYTHONUNBUFFERED=1 \
 # psycopg2 (sync, used by alembic) needs libpq + a C compiler;
 # curl powers the docker-compose healthcheck;
 # gnupg lets us add the PostgreSQL apt repo for postgresql-client-17.
+#
+# weasyprint (scan-gap G2 — vulnerability PDF report) needs native rendering
+# libs at runtime: pango (text layout, pulls cairo + harfbuzz), gdk-pixbuf
+# (raster images) and the matching shared objects. See the weasyprint install
+# docs for Debian/bookworm. font packages give the PDF a usable default face.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         libpq-dev \
         curl \
         ca-certificates \
         gnupg \
+        libpango-1.0-0 \
+        libpangoft2-1.0-0 \
+        libharfbuzz-subset0 \
+        libgdk-pixbuf-2.0-0 \
+        libffi-dev \
+        fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 # Marathon bundle 3 (D2) — install postgresql-client-17 so the backup
