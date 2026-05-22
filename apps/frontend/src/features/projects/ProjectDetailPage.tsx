@@ -18,6 +18,7 @@ import { OverviewTab } from "@/features/projects/components/OverviewTab";
 import { RiskGauge } from "@/features/projects/components/RiskGauge";
 import { SbomTab } from "@/features/projects/components/SbomTab";
 import { SettingsTab } from "@/features/projects/components/SettingsTab";
+import { SourceTab } from "@/features/projects/components/SourceTab";
 import { VulnerabilitiesTab } from "@/features/projects/components/VulnerabilitiesTab";
 import { ProblemError } from "@/lib/problem";
 import { getProject } from "@/lib/projectsApi";
@@ -40,6 +41,7 @@ const ALLOWED_TABS = new Set([
   "licenses",
   "obligations",
   "sbom",
+  "source",
   "settings",
 ]);
 
@@ -132,6 +134,12 @@ export function ProjectDetailPage() {
         if (next !== "obligations") {
           merged.delete("obligation");
         }
+        if (next !== "source") {
+          // The Source tab mirrors the open file path into `?path=`. Drop it
+          // when leaving so another tab doesn't inherit a stale file selector
+          // (Components/Vulnerabilities use distinct drawer keys, not `path`).
+          merged.delete("path");
+        }
         if (next === "overview") {
           merged.delete("tab");
         } else {
@@ -194,6 +202,12 @@ export function ProjectDetailPage() {
             {t("tabs.sbom")}
           </TabsTrigger>
           <TabsTrigger
+            value="source"
+            data-testid="project-detail-tab-source"
+          >
+            {t("tabs.source")}
+          </TabsTrigger>
+          <TabsTrigger
             value="settings"
             data-testid="project-detail-tab-settings"
           >
@@ -226,6 +240,12 @@ export function ProjectDetailPage() {
           <SbomTab
             projectId={projectId}
             lastScanAt={overview.data?.last_scan_at ?? null}
+          />
+        </TabsContent>
+        <TabsContent value="source">
+          <SourceTab
+            projectId={projectId}
+            projectName={projectQuery.data?.name ?? null}
           />
         </TabsContent>
         <TabsContent value="settings">

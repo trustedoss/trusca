@@ -13,6 +13,7 @@
     "licenses": "라이선스",
     "obligations": "의무사항",
     "sbom": "SBOM",
+    "source": "소스",
     "settings": "설정"
   },
   "severity": {
@@ -414,6 +415,29 @@
     },
     "errors": {
       "download_failed": "SBOM을 다운로드하지 못했습니다."
+    }
+  },
+  "source": {
+    "empty": {
+      "title": "이 스캔에 보존된 소스가 없습니다",
+      "description": "이 스캔은 분석한 소스 파일 사본을 보존하지 않았습니다. 소스 파일 뷰어를 사용하려면 프로젝트를 다시 스캔하세요."
+    },
+    "tree": {
+      "empty_dir": "빈 디렉터리",
+      "errors": {
+        "load": "이 디렉터리를 불러올 수 없습니다."
+      }
+    },
+    "viewer": {
+      "no_selection": "트리에서 파일을 선택하면 소스와 라이선스 매치를 볼 수 있습니다.",
+      "binary": "바이너리 파일 — 미리보기를 사용할 수 없습니다.",
+      "truncated": "이 파일은 뷰어에 맞게 잘렸습니다. 전체 내용을 보려면 다운로드하세요.",
+      "download": "파일 다운로드",
+      "byte_size": "{{bytes}}바이트",
+      "license_match": "라이선스 매치: {{matches}}",
+      "errors": {
+        "load": "이 파일을 불러올 수 없습니다."
+      }
     }
   },
   "settings": {

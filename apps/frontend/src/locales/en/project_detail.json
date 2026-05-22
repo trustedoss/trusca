@@ -13,6 +13,7 @@
     "licenses": "Licenses",
     "obligations": "Obligations",
     "sbom": "SBOM",
+    "source": "Source",
     "settings": "Settings"
   },
   "severity": {
@@ -414,6 +415,29 @@
     },
     "errors": {
       "download_failed": "Could not download the SBOM."
+    }
+  },
+  "source": {
+    "empty": {
+      "title": "No preserved source for this scan",
+      "description": "This scan did not keep a copy of the analysed source files. Re-scan the project to enable the source file viewer."
+    },
+    "tree": {
+      "empty_dir": "Empty directory",
+      "errors": {
+        "load": "Could not load this directory."
+      }
+    },
+    "viewer": {
+      "no_selection": "Select a file in the tree to view its source and license matches.",
+      "binary": "Binary file — preview is not available.",
+      "truncated": "This file was truncated to fit the viewer. Download it to see the full contents.",
+      "download": "Download file",
+      "byte_size": "{{bytes}} bytes",
+      "license_match": "License match: {{matches}}",
+      "errors": {
+        "load": "Could not load this file."
+      }
     }
   },
   "settings": {
