@@ -22,9 +22,11 @@ details (component names, versions, CVEs) about a project.
 All 4xx / 5xx responses are RFC 7807 ``application/problem+json``; the success
 response is a PDF download with ``Content-Disposition: attachment``.
 
-PDF generation is synchronous (the data is already materialized in PostgreSQL;
+PDF generation is in-request (the data is already materialized in PostgreSQL;
 weasyprint renders a bounded document in seconds), so this is NOT a Celery
-task — same rationale as the SBOM export and NOTICE generator.
+task — same rationale as the SBOM export and NOTICE generator. The blocking
+weasyprint call is offloaded to the threadpool (``run_in_threadpool``) so it
+never stalls the async event loop under concurrent load.
 """
 
 from __future__ import annotations
@@ -36,6 +38,7 @@ from datetime import UTC, datetime
 
 import structlog
 from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.authz import assert_team_access
@@ -205,7 +208,11 @@ async def get_vulnerability_report_pdf_endpoint(
     )
 
     try:
-        pdf_bytes = render_report_pdf(html_str)
+        # weasyprint rendering is CPU-bound and blocking; this endpoint is
+        # ``async def``, so calling it inline would block the event loop and
+        # serialize every concurrent request on this worker. Offload to the
+        # threadpool so the loop stays free under load (10k-user profile).
+        pdf_bytes = await run_in_threadpool(render_report_pdf, html_str)
     except ReportRenderingError as exc:
         # weasyprint missing (image not yet rebuilt) or a render failure.
         # Log with the stack and return a 500 problem+json — never a stack to
