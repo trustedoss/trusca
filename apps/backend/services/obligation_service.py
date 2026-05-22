@@ -612,8 +612,11 @@ _NOTICE_DIVIDER = "=" * 80
 # table cell when interpolated MID-LINE (which is the only way this module
 # interpolates untrusted text — after ``## ``, ``- ``, ``Reference: ``, etc.).
 # Line-start-only markers (``#`` ``-`` ``+`` ``.`` ``>``) are deliberately NOT
-# escaped: they are inert mid-line and escaping ``.``/``-`` would corrupt every
-# version string (``1\.0\.0``) for no security gain. The angle brackets and
+# backslash-escaped: they are inert mid-line and escaping ``.``/``-`` would
+# corrupt every version string (``1\.0\.0``) for no security gain. Their safety
+# relies on the value never reaching column 0 — which is why ``_md_escape`` must
+# also COLLAPSE embedded newlines (a value containing ``\n## x`` would otherwise
+# push ``## x`` to line-start and inject a live heading). The angle brackets and
 # ampersand are handled separately by an HTML-escape so a markdown→HTML render
 # cannot execute an embedded ``<script>``.
 _MD_INLINE_PUNCTUATION = frozenset("\\`*_[]()~|")
@@ -640,8 +643,16 @@ def _md_escape(value: str | None) -> str:
     attribution readable (a version string survives intact) while making the
     markdown output safe even for a viewer that pipes it through an HTML
     renderer. This mirrors the html branch's escape posture (every interpolated
-    value is neutralised). Mid-line interpolation means the line-start-only
-    markers (``#`` ``-`` ``.`` ``>``) need no escaping.
+    value is neutralised).
+
+    Mid-line interpolation is what makes leaving the line-start-only markers
+    (``#`` ``-`` ``.`` ``>``) un-escaped safe — BUT only if the value cannot
+    smuggle its own newline. A value such as ``"\n## INJECTED\n---\n> q"`` would
+    otherwise carry ``## INJECTED`` / ``---`` / ``> q`` to column 0 and inject a
+    live heading / thematic break / blockquote into the rendered NOTICE (content
+    & attribution spoofing of a legal artifact). We therefore collapse every
+    line break to a single space as the final step, guaranteeing the value stays
+    on one (interpolated, mid-line) line.
     """
     if not value:
         return ""
@@ -654,7 +665,11 @@ def _md_escape(value: str | None) -> str:
             out.append("\\" + ch)
         else:
             out.append(ch)
-    return "".join(out)
+    result = "".join(out)
+    # Collapse line breaks so an interpolated value can never reach line-start
+    # (where ``#``/``-``/``>`` would become live markdown structure).
+    result = result.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
+    return result
 
 
 async def generate_notice(
@@ -897,7 +912,10 @@ def _render_notice(
             parts.append(f"## {spdx} — {_md_escape(entry['name'])}")
             parts.append("")
             if entry["reference_url"]:
-                parts.append(f"Reference: {_md_escape(entry['reference_url'])}")
+                # Clamp to 2048 chars (mirrors the html branch's ``_safe_href``
+                # cap) so an attacker-controlled metadata URL can't bloat the
+                # document with a multi-KiB link.
+                parts.append(f"Reference: {_md_escape(entry['reference_url'][:2048])}")
                 parts.append("")
             parts.append("**Components:**")
             parts.append("")
@@ -920,7 +938,8 @@ def _render_notice(
                     parts.append(_md_escape(ob["text"]))
                     if ob["link"]:
                         parts.append("")
-                        parts.append(f"Reference: {_md_escape(ob['link'])}")
+                        # Clamp to 2048 chars (mirrors the html ``_safe_href`` cap).
+                        parts.append(f"Reference: {_md_escape(ob['link'][:2048])}")
                     parts.append("")
         parts.append("---")
         parts.append("")

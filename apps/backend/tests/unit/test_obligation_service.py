@@ -422,6 +422,107 @@ def test_render_notice_markdown_component_fence_breakout_is_neutralized() -> Non
     assert "\\`\\`\\`" in body
 
 
+_NEWLINE_INJECTION = "\n## x\n---\n> q\n* item"
+
+
+@pytest.mark.parametrize("hostile_field", ["label", "name", "obligation_text"])
+def test_render_notice_markdown_newline_cannot_inject_line_start_structure(
+    hostile_field: str,
+) -> None:
+    """A value carrying its own newlines must NOT reach markdown line-start.
+
+    Without collapsing newlines, an untrusted value like ``"\n## x\n---\n> q"``
+    would push ``## x`` / ``---`` / ``> q`` / ``* item`` to column 0 and inject a
+    live heading / thematic break / blockquote / list — content & attribution
+    spoofing of the generated NOTICE (a legal artifact). The hostile payload is
+    parametrized across the three untrusted text fields (component label /
+    license name / obligation text).
+    """
+    when = datetime(2026, 5, 7, 12, 0, 0, tzinfo=UTC)
+    lic_id = uuid.uuid4()
+    name = "MIT"
+    label = "pkg @ 1.0"
+    obligation_text = "Must include the license."
+    if hostile_field == "label":
+        label = label + _NEWLINE_INJECTION
+    elif hostile_field == "name":
+        name = name + _NEWLINE_INJECTION
+    else:
+        obligation_text = obligation_text + _NEWLINE_INJECTION
+
+    body = _render_notice(
+        project_name="P",
+        generated_at=when,
+        licenses_with_components=[
+            {
+                "license_id": lic_id,
+                "spdx_id": "MIT",
+                "name": name,
+                "reference_url": None,
+                "component_labels": [label],
+                "component_labels_omitted": 0,
+            }
+        ],
+        obligations_by_license={
+            lic_id: [{"kind": "notice", "text": obligation_text, "link": None}]
+        },
+        fmt="markdown",
+    )
+    # The injected line-start structure from the UNTRUSTED value must not reach
+    # column 0 (newlines are collapsed to spaces) — so no body LINE is a live
+    # heading / blockquote / list-item / thematic-break sourced from the payload.
+    # (The renderer's own ``---`` separators and ``## MIT — MIT`` heading are
+    # legitimate; the payload's marker is ``## x`` / ``> q`` / ``* item``, none of
+    # which the renderer emits, so a simple per-line check is unambiguous.)
+    assert "\n## x" not in body
+    assert "\n> q" not in body
+    assert "\n* item" not in body
+    assert "\n\\* item" not in body
+    body_lines = body.split("\n")
+    assert not any(ln.startswith("## x") for ln in body_lines)
+    assert not any(ln.startswith("> q") or ln.startswith("&gt; q") for ln in body_lines)
+    assert not any(ln.lstrip().startswith(("* item", "\\* item")) for ln in body_lines)
+    # The payload's text still survives (collapsed onto one line), so we didn't
+    # silently drop attribution — only the structural newlines were neutralized.
+    # ``>`` is HTML-escaped (``&gt;``) and ``*`` is backslash-escaped (``\*``).
+    assert "## x" in body
+    assert "&gt; q" in body
+    assert "\\* item" in body
+
+
+def test_render_notice_markdown_clamps_reference_and_obligation_link_length() -> None:
+    """reference_url / obligation link are bounded to 2048 chars (html parity)."""
+    when = datetime(2026, 5, 7, 12, 0, 0, tzinfo=UTC)
+    lic_id = uuid.uuid4()
+    prefix = "https://example.com/"
+    huge = prefix + ("a" * 5000)
+    body = _render_notice(
+        project_name="P",
+        generated_at=when,
+        licenses_with_components=[
+            {
+                "license_id": lic_id,
+                "spdx_id": "MIT",
+                "name": "MIT",
+                "reference_url": huge,
+                "component_labels": ["pkg @ 1.0"],
+                "component_labels_omitted": 0,
+            }
+        ],
+        obligations_by_license={
+            lic_id: [{"kind": "notice", "text": "t", "link": huge}]
+        },
+        fmt="markdown",
+    )
+    # The 5000-char URL is clamped to 2048 chars before escaping, so the raw
+    # tail is gone but exactly the first 2048 chars (prefix + 'a' tail) survive.
+    assert "a" * 5000 not in body
+    kept = huge[:2048]
+    assert kept in body
+    # Nothing beyond the cap leaks (the char at index 2048 must not extend the run).
+    assert (kept + "a") not in body
+
+
 # ---------------------------------------------------------------------------
 # G2 — NOTICE body-size caps (component-label tail + omitted note)
 # ---------------------------------------------------------------------------
