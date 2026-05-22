@@ -38,10 +38,20 @@ ENV PYTHONUNBUFFERED=1 \
 
 # Runtime libs only — libpq for psycopg, curl for the healthcheck, tini for
 # PID 1 signal handling.
+#
+# weasyprint (scan-gap G2 — vulnerability PDF report) dlopen's its native
+# rendering libs at runtime: pango (pulls cairo + harfbuzz), gdk-pixbuf and
+# a default font face. These belong in the runtime stage (weasyprint ships as
+# pure-Python wheels, so the build stage needs no extra packages).
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libpq5 \
         curl \
         tini \
+        libpango-1.0-0 \
+        libpangoft2-1.0-0 \
+        libharfbuzz-subset0 \
+        libgdk-pixbuf-2.0-0 \
+        fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/* \
     && addgroup --system --gid 1000 trustedoss \
     && adduser  --system --uid 1000 --gid 1000 --home /app trustedoss

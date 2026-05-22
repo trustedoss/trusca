@@ -38,3 +38,9 @@ email-validator==2.2.0
 # Slack / Teams webhook channels and avoids spawning threads from the FastAPI
 # event loop just to send mail.
 aiosmtplib==3.0.2
+# Scan-gap G2 — HTML → PDF for the vulnerability report download. weasyprint
+# needs native libs (libpango / cairo / gdk-pixbuf) installed in the image
+# (see apps/backend/Dockerfile* for the apt list). It is imported LAZILY in
+# services.report_service.render_report_pdf so the unit-test lane and a
+# not-yet-rebuilt image still import the module cleanly.
+weasyprint==62.3
