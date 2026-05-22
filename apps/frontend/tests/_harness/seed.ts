@@ -184,6 +184,15 @@ export interface SeedOptions {
    */
   noPassword?: boolean;
   /**
+   * Test-hardening Tier N follow-up. Mint + persist a refresh token for this
+   * (password) user so the spec can authenticate via the refresh-cookie path
+   * (`AuthHarness.loginViaRefreshCookie`) instead of `POST /auth/login`. This
+   * keeps a full single-IP suite run under the 5/min login limiter — the
+   * artifact that made the e2e suite non-single-pass-runnable. `noPassword`
+   * already implies this; set it explicitly for a normal password user.
+   */
+  withRefreshToken?: boolean;
+  /**
    * Marathon bundle 5 (4a). Insert N unread notifications for the
    * primary user so screenshot captures can show the header bell with
    * a non-zero badge. Kinds rotate through the closed enum so the list
@@ -277,6 +286,9 @@ export function seedE2eUser(opts: SeedOptions): SeedSummary {
   }
   if (opts.withOAuthIdentity) {
     scriptArgs.push("--with-oauth-identity", opts.withOAuthIdentity);
+  }
+  if (opts.withRefreshToken) {
+    scriptArgs.push("--with-refresh-token");
   }
   if (opts.noPassword) {
     scriptArgs.push("--no-password");
