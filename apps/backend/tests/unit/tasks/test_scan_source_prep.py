@@ -87,7 +87,7 @@ def test_prepare_npm_generates_lockfile_only_when_no_lock(
     from tasks import scan_source
 
     (tmp_path / "package.json").write_text('{"name":"x","dependencies":{"lodash":"4.17.21"}}')
-    monkeypatch.setattr(scan_source.shutil, "which", lambda _b: "/usr/bin/npm")
+    monkeypatch.setattr("tasks.scan_source.shutil.which", lambda _b: "/usr/bin/npm")
     scan_source._prepare_for_cdxgen(source_dir=tmp_path, scan_uuid=uuid.uuid4())
 
     npm_calls = [c for c in captured_prep_calls if c["cmd"][:2] == ["npm", "install"]]
@@ -96,7 +96,10 @@ def test_prepare_npm_generates_lockfile_only_when_no_lock(
     assert "--ignore-scripts" in npm_calls[0]["cmd"]
 
 
-@pytest.mark.parametrize("lock", ["package-lock.json", "npm-shrinkwrap.json", "yarn.lock", "pnpm-lock.yaml"])
+@pytest.mark.parametrize(
+    "lock",
+    ["package-lock.json", "npm-shrinkwrap.json", "yarn.lock", "pnpm-lock.yaml"],
+)
 def test_prepare_npm_skipped_when_any_lock_present(
     tmp_path: Path,
     captured_prep_calls: list[dict[str, Any]],
@@ -107,7 +110,7 @@ def test_prepare_npm_skipped_when_any_lock_present(
 
     (tmp_path / "package.json").write_text('{"name":"x"}')
     (tmp_path / lock).write_text("{}")
-    monkeypatch.setattr(scan_source.shutil, "which", lambda _b: "/usr/bin/npm")
+    monkeypatch.setattr("tasks.scan_source.shutil.which", lambda _b: "/usr/bin/npm")
     scan_source._prepare_for_cdxgen(source_dir=tmp_path, scan_uuid=uuid.uuid4())
 
     assert [c for c in captured_prep_calls if c["cmd"][:2] == ["npm", "install"]] == []
@@ -121,7 +124,7 @@ def test_prepare_npm_skipped_without_npm_binary(
     from tasks import scan_source
 
     (tmp_path / "package.json").write_text('{"name":"x"}')
-    monkeypatch.setattr(scan_source.shutil, "which", lambda _b: None)
+    monkeypatch.setattr("tasks.scan_source.shutil.which", lambda _b: None)
     scan_source._prepare_for_cdxgen(source_dir=tmp_path, scan_uuid=uuid.uuid4())
 
     assert [c for c in captured_prep_calls if c["cmd"][:2] == ["npm", "install"]] == []
