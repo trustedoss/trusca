@@ -83,6 +83,26 @@ jobs:
           cache: "npm"
           cache-dependency-path: apps/frontend/package-lock.json
 
+      # Backend deps are installed on the host runner only because the
+      # Playwright harness (`tests/_harness/seed.ts`) spawns `python3
+      # apps/backend/scripts/seed_e2e_user.py` directly during globalSetup;
+      # the script imports SQLAlchemy + asyncpg + bcrypt and uses
+      # `from datetime import UTC` (Python 3.11+). Without this step the
+      # runner's system python (3.10 on ubuntu-22.04) raises
+      # `ImportError: cannot import name 'UTC'`. Mirrors ci.yml's e2e job.
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/backend/requirements-dev.txt
+
+      - name: Install backend deps (for host-side seed)
+        working-directory: apps/backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
       - name: Install frontend deps
         working-directory: apps/frontend
         run: npm ci
@@ -137,6 +157,15 @@ jobs:
         working-directory: apps/frontend
         env:
           PLAYWRIGHT_BASE_URL: http://localhost:5173
+          # The harness `seed.ts` (globalSetup) spawns python3 against the
+          # docker-compose Postgres mapped to localhost:5432. The job-level
+          # DATABASE_URL points at `postgres:5432`, which only resolves inside
+          # the compose network — the host-side seed needs the published port
+          # on localhost. Mirrors ci.yml's e2e "Run Playwright" step.
+          DATABASE_URL: postgresql+asyncpg://trustedoss:trustedoss@localhost:5432/trustedoss
+          APP_ENV: dev
+          PYTHON: python3
+          CI: "true"
         run: |
           npx playwright test --config=playwright.visual.config.ts
 
