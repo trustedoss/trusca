@@ -15,6 +15,9 @@
  *      `gamma`).
  *   4. Status filter to `Running` shows only the project currently being
  *      scanned.
+ *   5. The upload (`.zip`) source method drives the dialog: staging an
+ *      in-memory zip enables submit, and submitting opens the progress drawer
+ *      (the non-git input path, complementary to scenario 1's git default).
  *
  * Pre-requisites (auto-skip otherwise):
  *   - docker-compose -f docker-compose.dev.yml up -d
@@ -205,5 +208,44 @@ test.describe("@scan-flow project list + scan progress", () => {
 
     await portal.filterProjectsByStatus("all");
     await portal.expectVisibleProjectCount(2);
+  });
+
+  test("5) upload (.zip) source method enables submit and opens the progress drawer", async ({
+    page,
+  }, testInfo) => {
+    test.fixme(
+      KNOWN_PAGE_SIZE_BUG,
+      "Blocked by the same ?size=200 product bug — see scenario 1.",
+    );
+    const seed = tryAcquireSeed(testInfo, { projectNames: ["alpha"] });
+    if (seed === null) return;
+
+    const auth = new AuthHarness(page);
+    const portal = new PortalPage(page);
+
+    await auth.gotoLogin();
+    await auth.login(seed.email, seed.password);
+    await portal.gotoProjects();
+    await portal.expectProjectRowVisible("alpha");
+
+    // Open the dialog and assert submit is gated until a file is staged — the
+    // upload method has nothing to submit yet.
+    await portal.openSourceSelectDialog("alpha");
+    await page.getByTestId("source-method-upload").click();
+    await expect(page.getByTestId("source-submit")).toBeDisabled();
+
+    // Stage an in-memory .zip via the harness (no host temp file). The
+    // selected-file echo proves the client-side .zip guard accepted it, and
+    // submit flips to enabled.
+    await portal.attachScanZip();
+    await expect(page.getByTestId("source-submit")).toBeEnabled();
+    await expect(page.getByTestId("source-upload-selected")).toBeVisible();
+
+    // Submitting the upload path opens the same progress drawer as the git
+    // path. The worker (mock backend) extracts the (empty) archive and the WS
+    // pushes the initial sync frame.
+    await page.getByTestId("source-submit").click();
+    await portal.expectScanProgress();
+    await expect(page.getByTestId("scan-progress-percent")).toBeVisible();
   });
 });

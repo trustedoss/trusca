@@ -134,6 +134,63 @@ export class PortalPage {
   }
 
   /**
+   * Drive the source-select dialog's "upload .zip" path end to end:
+   * select the upload method, stage an in-memory `.zip` (so the test never
+   * touches the host filesystem), wait for the submit button to enable, then
+   * submit. The dialog requires a `.zip` (the file picker rejects other
+   * extensions client-side), so callers pass a tiny valid zip payload.
+   *
+   * `zip` defaults to a minimal empty-zip byte sequence (the PK end-of-central-
+   * directory record), which is enough for the SPA's client-side `.zip`
+   * extension guard + multipart upload. The backend's archive extractor may
+   * reject a zip with no entries — for tests that need the worker to actually
+   * process the upload, pass a real fixture zip's bytes.
+   *
+   * Must be called from the projects list (it opens the row's dialog itself).
+   */
+  async startScanByUpload(
+    projectName: string,
+    zip?: { name?: string; bytes?: Uint8Array },
+  ): Promise<void> {
+    await this.openSourceSelectDialog(projectName);
+    await this.page.getByTestId("source-method-upload").click();
+    await this.attachScanZip(zip);
+    // The submit button is disabled until a valid file is staged — wait for
+    // it to enable (event-driven), then submit.
+    const submit = this.page.getByTestId("source-submit");
+    await expect(submit).toBeEnabled({ timeout: 10_000 });
+    await submit.click();
+  }
+
+  /**
+   * Stage a `.zip` on the dialog's hidden `<input type=file>` using an
+   * in-memory buffer so no temp file is written to the host. Mirrors the
+   * shape Playwright's `setInputFiles({ name, mimeType, buffer })` expects.
+   */
+  async attachScanZip(zip?: {
+    name?: string;
+    bytes?: Uint8Array;
+  }): Promise<void> {
+    const name = zip?.name ?? "source.zip";
+    // Minimal valid empty-zip: just the End Of Central Directory record.
+    const bytes =
+      zip?.bytes ??
+      new Uint8Array([
+        0x50, 0x4b, 0x05, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      ]);
+    await this.page.getByTestId("source-zip-input").setInputFiles({
+      name,
+      mimeType: "application/zip",
+      buffer: Buffer.from(bytes),
+    });
+    // The dialog echoes the staged file name once accepted.
+    await this.page
+      .getByTestId("source-upload-selected")
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  /**
    * Assert the scan progress drawer is visible. Optionally pass a step
    * label (e.g. "cdxgen") and the harness verifies that step has reached
    * the "current" or "completed" state.
@@ -790,27 +847,298 @@ export class PortalPage {
    * Click the NOTICE download button and wait for the browser download
    * event. Returns `{ filename, body }` so callers can assert provenance
    * without snooping the response stream themselves.
+   *
+   * `format` drives the toolbar's format `<select>` (`data-testid=
+   * obligations-notice-format`) before clicking download — the UI exposes
+   * `text` + `html` (markdown stays API-only, see NOTICE_DOWNLOAD_FORMATS).
+   * Passing "markdown" falls through to the same select; if the option is not
+   * present Playwright's `selectOption` throws, surfacing the contract drift
+   * rather than silently downloading text. Defaults to "text" so existing
+   * callers stay source-compatible.
    */
-  async downloadNotice(): Promise<{ filename: string; body: string }> {
+  async downloadNotice(
+    format: "text" | "markdown" | "html" = "text",
+  ): Promise<{ filename: string; body: string }> {
+    // The format select defaults to "text"; only touch it when the caller
+    // asked for something else so the default path stays a single click.
+    if (format !== "text") {
+      await this.page
+        .getByTestId("obligations-notice-format")
+        .selectOption(format);
+    }
     const downloadPromise = this.page.waitForEvent("download", {
       timeout: 15_000,
     });
     await this.page.getByTestId("obligations-download-notice").click();
     const download = await downloadPromise;
-    const fs = await import("node:fs/promises");
-    const path = await download.path();
-    const body = path
-      ? await fs.readFile(path, "utf-8")
-      : await (async () => {
-          const buf = await download.createReadStream();
-          if (!buf) return "";
-          let out = "";
-          for await (const chunk of buf) {
-            out += chunk.toString();
-          }
-          return out;
-        })();
-    return { filename: download.suggestedFilename(), body };
+    return readDownload(download);
+  }
+
+  // ───── G3.3 — Source file-tree viewer (Source tab) ─────────────────────
+  /**
+   * Click the Source tab trigger and wait for the tab body to mount. The tab
+   * renders `[data-testid="source-tab"]` in both the populated (two-pane) and
+   * the "no preserved source" empty states, so its visibility is the
+   * synchronization signal. Inside, the harness waits until the tree's first
+   * level resolves — either rows mounted, the empty-source card mounted, or
+   * the tree error alert mounted — so subsequent verbs target a settled DOM.
+   *
+   * Locale-agnostic — anchors on `data-testid` attributes, never the
+   * translated tab label.
+   */
+  async selectSourceTab(): Promise<void> {
+    await this.page.getByTestId("project-detail-tab-source").click();
+    await this.page
+      .getByTestId("source-tab")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    await this.expectSourceTreeReady();
+  }
+
+  /**
+   * Wait until the source tree's root level has settled into one of its
+   * terminal states. The tree mounts a loading skeleton first; we wait until
+   * one of {first row, empty-dir note, no-preserved-source card, tree error}
+   * is visible. Event-driven — never `waitForTimeout`.
+   */
+  async expectSourceTreeReady(): Promise<void> {
+    const firstRow = this.page.getByTestId("source-tree-row").first();
+    const noSource = this.page.getByTestId("source-no-preserved");
+    const treeError = this.page.getByTestId("source-tree-error");
+    await expect(firstRow.or(noSource).or(treeError)).toBeVisible({
+      timeout: 10_000,
+    });
+  }
+
+  /**
+   * Assert the "no preserved source" empty state is showing. Old scans (or
+   * the current e2e seed, which does not stage a source tarball) return a 404
+   * for the tree root, which the tab swaps for this single card instead of an
+   * error toast.
+   */
+  async expectSourceEmptyState(): Promise<void> {
+    await this.page
+      .getByTestId("source-no-preserved")
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  /**
+   * Expand the directory tree node whose `data-path` equals `dirPath`. The
+   * row is a `<button role=treeitem>` carrying `data-is-dir="true"`; clicking
+   * toggles `data-expanded`. The harness waits until the row reports
+   * `data-expanded="true"` and the child level (`source-tree-level` /
+   * `…-level-virtual` keyed by `data-dir=dirPath`) mounts, so callers can
+   * immediately target deeper rows. Lazy disclosure means the child level's
+   * own network call resolves before its rows appear — we wait on the level
+   * wrapper, then on its readiness, both event-driven.
+   *
+   * Throws (via auto-retry) if the path is not a directory row.
+   */
+  async expandSourceTreeNode(dirPath: string): Promise<void> {
+    const row = this.page.locator(
+      `[data-testid="source-tree-row"][data-path="${cssEscapeAttr(dirPath)}"][data-is-dir="true"]`,
+    );
+    await expect(row.first()).toBeVisible({ timeout: 10_000 });
+    // Toggle open only if currently collapsed (idempotent).
+    if ((await row.first().getAttribute("data-expanded")) !== "true") {
+      await row.first().click();
+    }
+    await expect(row.first()).toHaveAttribute("data-expanded", "true", {
+      timeout: 10_000,
+    });
+    // The child level mounts keyed by data-dir; wait for either the plain or
+    // the virtualized wrapper to appear so deeper-row queries are stable.
+    const level = this.page.locator(
+      `[data-dir="${cssEscapeAttr(dirPath)}"]`,
+    );
+    await expect(level.first()).toBeVisible({ timeout: 10_000 });
+  }
+
+  /**
+   * Click the file tree row whose `data-path` equals `filePath` (a leaf,
+   * `data-is-dir="false"`) and wait for the viewer to render that file. The
+   * viewer mirrors the path to `?path=` and renders
+   * `[data-testid="source-file-viewer"][data-path=…]` once the file query
+   * resolves. The harness waits for both the URL mirror and the viewer's
+   * `data-path` to converge on `filePath`, so the per-line assertions below
+   * read a settled DOM. Binary / truncated / not-found terminal states are
+   * still inside `source-file-viewer`'s siblings and have their own verbs.
+   */
+  async openSourceFile(filePath: string): Promise<void> {
+    const row = this.page.locator(
+      `[data-testid="source-tree-row"][data-path="${cssEscapeAttr(filePath)}"][data-is-dir="false"]`,
+    );
+    await expect(row.first()).toBeVisible({ timeout: 10_000 });
+    await row.first().click();
+    // URL mirrors the selection (?path=…).
+    await expect
+      .poll(() => new URL(this.page.url()).searchParams.get("path"), {
+        timeout: 5_000,
+      })
+      .toBe(filePath);
+    // The viewer resolves to one of: content viewer, binary note, not-found,
+    // or error. Wait until the loading skeleton clears (any terminal mounts).
+    await this.expectSourceFileSettled();
+  }
+
+  /**
+   * Wait until the file viewer pane has left its loading skeleton — one of
+   * {content viewer, binary note, not-found card, error alert} is visible.
+   * Event-driven.
+   */
+  async expectSourceFileSettled(): Promise<void> {
+    const viewer = this.page.getByTestId("source-file-viewer");
+    const binary = this.page.getByTestId("source-file-binary");
+    const notFound = this.page.getByTestId("source-file-not-found");
+    const error = this.page.getByTestId("source-file-error");
+    await expect(
+      viewer.or(binary).or(notFound).or(error),
+    ).toBeVisible({ timeout: 10_000 });
+  }
+
+  /**
+   * Assert the viewer is showing a decoded text file (utf-8) — the content
+   * pane (`source-file-content`) is mounted and the viewer's `data-encoding`
+   * is "utf-8". Returns once both hold.
+   */
+  async expectSourceFileText(): Promise<void> {
+    const viewer = this.page.getByTestId("source-file-viewer");
+    await expect(viewer).toBeVisible({ timeout: 10_000 });
+    await expect(viewer).toHaveAttribute("data-encoding", "utf-8", {
+      timeout: 10_000,
+    });
+    await expect(this.page.getByTestId("source-file-content")).toBeVisible({
+      timeout: 10_000,
+    });
+  }
+
+  /** Assert the viewer rendered the binary-file notice (we never show bytes). */
+  async expectSourceFileBinary(): Promise<void> {
+    await this.page
+      .getByTestId("source-file-binary")
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  /**
+   * Assert the viewer rendered the truncated banner + download button (the
+   * file exceeded the per-file byte cap). Optionally returns nothing — pair
+   * with {@link downloadTruncatedSourceFile} to exercise the download.
+   */
+  async expectSourceFileTruncated(): Promise<void> {
+    const viewer = this.page.getByTestId("source-file-viewer");
+    await expect(viewer).toHaveAttribute("data-truncated", "true", {
+      timeout: 10_000,
+    });
+    await expect(
+      this.page.getByTestId("source-file-truncated-banner"),
+    ).toBeVisible({ timeout: 10_000 });
+  }
+
+  /**
+   * Assert that the line numbered `lineNumber` (1-based) carries a license
+   * match. The line row exposes `data-highlighted="true"` and a sibling
+   * license chip (`source-line-license-chip`) whose `data-spdx-ids` lists the
+   * matched SPDX ids (CSV). When `expectedSpdxId` is given, the harness
+   * additionally asserts it appears in that CSV — locale-agnostic, reads the
+   * attribute not the rendered label.
+   *
+   * NOTE: lines virtualize through react-virtuoso, so a line far down a long
+   * file may not be mounted until scrolled into view. Use this for lines in
+   * the first viewport (the seeded fixtures keep matches near the top); a
+   * `scrollSourceLineIntoView` verb can be added if deeper assertions are
+   * needed.
+   */
+  async expectSourceLineLicense(
+    lineNumber: number,
+    expectedSpdxId?: string,
+  ): Promise<void> {
+    const line = this.page.locator(
+      `[data-testid="source-line"][data-line="${lineNumber}"]`,
+    );
+    await expect(line.first()).toBeVisible({ timeout: 10_000 });
+    await expect(line.first()).toHaveAttribute("data-highlighted", "true", {
+      timeout: 10_000,
+    });
+    const chip = line
+      .first()
+      .locator('[data-testid="source-line-license-chip"]');
+    await expect(chip).toBeVisible({ timeout: 10_000 });
+    if (expectedSpdxId !== undefined) {
+      const raw = (await chip.getAttribute("data-spdx-ids")) ?? "";
+      const ids = raw.split(",").map((s) => s.trim());
+      expect(ids).toContain(expectedSpdxId);
+    }
+  }
+
+  /**
+   * Assert the line numbered `lineNumber` is NOT highlighted (no license
+   * match). Companion of {@link expectSourceLineLicense} so a spec can show
+   * the per-line panel is selective, not a blanket tint.
+   */
+  async expectSourceLineUnmatched(lineNumber: number): Promise<void> {
+    const line = this.page.locator(
+      `[data-testid="source-line"][data-line="${lineNumber}"]`,
+    );
+    await expect(line.first()).toBeVisible({ timeout: 10_000 });
+    await expect(line.first()).toHaveAttribute(
+      "data-highlighted",
+      "false",
+      { timeout: 10_000 },
+    );
+  }
+
+  /**
+   * Click the truncated-file download button and capture the resulting
+   * browser download. Returns `{ filename, body }` so the spec can assert the
+   * downloaded slice matches the bytes that were rendered. Throws (via
+   * auto-retry on the button) when the file is not truncated.
+   */
+  async downloadTruncatedSourceFile(): Promise<{
+    filename: string;
+    body: string;
+  }> {
+    const downloadPromise = this.page.waitForEvent("download", {
+      timeout: 15_000,
+    });
+    await this.page.getByTestId("source-file-download").click();
+    const download = await downloadPromise;
+    return readDownload(download);
+  }
+
+  // ───── G2 — Vulnerability PDF report download ──────────────────────────
+  /**
+   * Click the "Download PDF report" button on the Vulnerabilities toolbar and
+   * wait for the browser download event. Returns `{ filename, body }` — the
+   * body is the raw PDF bytes as a binary string so the caller can assert the
+   * `%PDF-` magic header without rolling its own stream plumbing.
+   *
+   * Must be called with the Vulnerabilities tab mounted (the button lives in
+   * its toolbar). The button disables itself while generating; the harness
+   * does not need to poll the disabled state because the download event only
+   * fires once the blob is ready.
+   *
+   * Locale-agnostic — anchors on `data-testid="vuln-download-pdf"`.
+   */
+  async downloadVulnReportPdf(): Promise<{ filename: string; body: string }> {
+    const downloadPromise = this.page.waitForEvent("download", {
+      timeout: 20_000,
+    });
+    await this.page.getByTestId("vuln-download-pdf").click();
+    const download = await downloadPromise;
+    // PDFs are binary — read as latin1 so the %PDF- magic + %%EOF trailer
+    // survive byte-for-byte for the magic-header assertion.
+    return readDownload(download, "latin1");
+  }
+
+  /**
+   * Assert the PDF download surfaced an inline error (e.g. the project has no
+   * succeeded scan). The toolbar renders `vuln-download-pdf-error` with the
+   * problem detail; the harness only asserts presence so the spec stays
+   * locale-agnostic.
+   */
+  async expectVulnReportPdfError(): Promise<void> {
+    await this.page
+      .getByTestId("vuln-download-pdf-error")
+      .waitFor({ state: "visible", timeout: 10_000 });
   }
 
   /**
@@ -927,4 +1255,49 @@ function assertSupported(value: string | null): SupportedLanguage {
     return value as SupportedLanguage;
   }
   throw new Error(`Unsupported language attribute: ${String(value)}`);
+}
+
+/**
+ * Read a Playwright `Download` into memory. Prefers the on-disk path (set
+ * when downloads are saved) and falls back to the stream. `encoding` selects
+ * the decoding: 'utf-8' for text artifacts (NOTICE), 'latin1' for binary ones
+ * (PDF) so the bytes round-trip 1:1 for magic-header assertions.
+ *
+ * Shared by `downloadNotice`, `downloadVulnReportPdf`, and
+ * `downloadTruncatedSourceFile` so the download plumbing lives in exactly one
+ * place — spec files only see `{ filename, body }`.
+ */
+async function readDownload(
+  download: import("@playwright/test").Download,
+  encoding: BufferEncoding = "utf-8",
+): Promise<{ filename: string; body: string }> {
+  const fs = await import("node:fs/promises");
+  const onDisk = await download.path();
+  let body: string;
+  if (onDisk) {
+    const buf = await fs.readFile(onDisk);
+    body = buf.toString(encoding);
+  } else {
+    const stream = await download.createReadStream();
+    if (!stream) {
+      body = "";
+    } else {
+      const chunks: Buffer[] = [];
+      for await (const chunk of stream) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      }
+      body = Buffer.concat(chunks).toString(encoding);
+    }
+  }
+  return { filename: download.suggestedFilename(), body };
+}
+
+/**
+ * Escape a `data-*` attribute value for embedding inside a CSS attribute
+ * selector. Source paths can contain quotes/backslashes; we escape `\` and
+ * `"` so `[data-path="<value>"]` stays well-formed. POSIX source paths in the
+ * preserved tree never contain newlines, so this minimal escape is sufficient.
+ */
+function cssEscapeAttr(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }

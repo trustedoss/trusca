@@ -7,7 +7,10 @@
  *   S1 — Tab entry: list + per-kind distribution chips render
  *   S2 — Kind multi-filter sync (URL persists, narrows results)
  *   S3 — Drawer open: meta + obligation body + reference link
- *   S4 — NOTICE download: file is delivered with sane filename + body
+ *   S4 — NOTICE download (text): file is delivered with sane filename + body
+ *   S5 — NOTICE download (html): the format select switches the response to
+ *        an HTML body (`.html` filename + markup), proving the format toggle
+ *        round-trips to the server
  *
  * Selectors live in `apps/frontend/tests/_harness/PortalPage.ts`. The
  * scenarios are EN-locale-agnostic — every assertion uses `data-testid`
@@ -174,6 +177,35 @@ test.describe("@obligations project obligations tab", () => {
     // Header line carries the project name.
     expect(body).toContain(PROJECT_NAME);
     // The body lists the seed E2E SPDX prefix (`E2E-` from seed_e2e_user.py).
+    expect(body).toMatch(/E2E-[A-Z]+-/);
+  });
+
+  test("S5) NOTICE download in HTML format delivers an .html file with markup", async ({
+    page,
+  }, testInfo) => {
+    const seed = await bootstrap(testInfo, page);
+    if (seed === null) return;
+
+    const portal = new PortalPage(page);
+    await portal.gotoProjects();
+    await portal.openProjectDetail(PROJECT_NAME);
+    await portal.selectObligationsTab();
+
+    // Switch the toolbar's format select to "html" before downloading. The
+    // harness drives the `obligations-notice-format` select, so the spec stays
+    // out of the selector business.
+    const { filename, body } = await portal.downloadNotice("html");
+
+    // Filename extension flips to .html (useNotice maps format → ext).
+    expect(filename).toMatch(/^NOTICE-.+\.html$/);
+    // The HTML rendering carries markup the text format does not — assert at
+    // least one tag is present so we know the server honored ?format=html and
+    // we didn't just relabel the text body. We stay lenient on which tag
+    // (the NOTICE template is owned server-side) but require angle-bracket
+    // markup plus the project name still being present.
+    expect(body).toContain(PROJECT_NAME);
+    expect(body).toMatch(/<[a-z!][^>]*>/i);
+    // Sanity: the SPDX ids still surface in the HTML body.
     expect(body).toMatch(/E2E-[A-Z]+-/);
   });
 });
