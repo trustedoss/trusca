@@ -9,42 +9,52 @@
  * Scenarios (`@source-tree` tag):
  *   S1 — Tab entry: the Source tab mounts and the tree settles into a
  *        terminal state (rows OR the "no preserved source" empty card).
- *   S2 — Empty state: the current e2e seed does NOT stage a source tarball,
- *        so the tree root 404s and the tab shows the single "re-scan to
- *        enable" card instead of an error toast.
- *   S3 — Populated tree (auto-skips when no preserved source): lazy expand a
- *        directory, open a file, assert the viewer renders content + per-line
- *        license panel.
- *   S4 — Binary / large-file guidance (auto-skips when no preserved source):
- *        a binary file shows the byte-safe notice; a truncated file shows the
- *        truncated banner + download button.
+ *   S2 — Empty state: a scan WITHOUT a preserved tarball 404s the tree root
+ *        and the tab shows the single "re-scan to enable" card instead of an
+ *        error toast. This scenario seeds a scan but NOT a source tarball, so
+ *        it always lands on the empty-state contract.
+ *   S3 — Populated tree: lazy expand a directory, open a file, assert the
+ *        viewer renders content + per-line license panel. Seeds the
+ *        `--with-source` fixture (G3.3).
+ *   S4 — Binary / large-file guidance: a binary file shows the byte-safe
+ *        notice; a truncated file shows the truncated banner + download
+ *        button. Seeds the `--with-source` fixture (G3.3).
  *
  * Selectors live in `apps/frontend/tests/_harness/PortalPage.ts`. Every
  * assertion is EN-locale-agnostic — anchored on `data-testid` / `data-*`
  * attributes, never translated strings.
  *
  * ────────────────────────────────────────────────────────────────────────
- * KNOWN SEED GAP (hand-off → test-writer + scan-pipeline-specialist):
+ * SEED FIXTURE (G3.3 — gap now closed):
  *
- *   `apps/backend/scripts/seed_e2e_user.py` (and the SeedOptions surface in
- *   `apps/frontend/tests/_harness/seed.ts`) seed a `succeeded` scan but do
- *   NOT stage the per-scan preserved-source tarball that the source-tree
- *   endpoints read (introduced in G3.1). As a result the tree root returns
- *   404 and only the EMPTY-STATE path (S1 partial + S2) is exercisable end to
- *   end today.
+ *   `seedE2eUser({ withSource: true })` stages a real preserved-source
+ *   tarball for the first project's succeeded scan via
+ *   `apps/backend/scripts/seed_e2e_user.py --with-source`. It reuses
+ *   `services.source_preservation_service.preserve_scan_source(...)` so the
+ *   tarball shape is byte-identical to a real scan's (gzip tar + folded-in
+ *   `.trustedoss/scancode.json`). The staged tree:
  *
- *   To light up S3/S4 the seed needs a `--with-source` option that writes a
- *   tiny preserved-source tarball with: at least one nested directory, one
- *   utf-8 file carrying a license_matches range (e.g. an MIT header on lines
- *   1-3), one binary file, and one oversized file (> the viewer byte cap) so
- *   `truncated=true`. S3/S4 below are written against that future fixture and
- *   `test.skip()` themselves at runtime when the empty state is detected, so
- *   they go green automatically the day the seed lands — no spec rewrite.
+ *     README.md            root-level utf-8 file (non-empty root listing)
+ *     src/app/main.py      utf-8 file with an MIT header → license_matches on
+ *                          lines 1-3 (the per-line license chip, S3)
+ *     src/app/logo.bin     binary file (NUL byte) → byte-safe notice (S4)
+ *     src/app/huge.txt     oversized file (> the 2 MiB viewer cap) →
+ *                          truncated=true + download button (S4)
+ *
+ *   IMPORTANT — the `withSource` seed runs INSIDE the backend container (via
+ *   `docker-compose exec`) because the tarball is written into the
+ *   `scan-workspace` Docker volume the API reads, not a host directory. The
+ *   harness switches runners automatically; see `SeedOptions.withSource`.
+ *
+ *   S3/S4 still defensively `test.skip()` when the empty state is detected so
+ *   a stack without the dev volume (or a quota-skip) degrades to skipped
+ *   rather than a hard failure.
  * ────────────────────────────────────────────────────────────────────────
  *
  * Pre-requisites (auto-skip otherwise):
  *   - docker-compose -f docker-compose.dev.yml up -d
- *   - python3 reachable from host PATH (the seed.ts harness validates this)
+ *   - python3 reachable from host PATH (S1/S2 host seed) AND the
+ *     `docker-compose` binary reachable (S3/S4 in-container seed)
  */
 import { expect, test } from "@playwright/test";
 
@@ -52,7 +62,17 @@ import { AuthHarness } from "../_harness/auth";
 import { PortalPage } from "../_harness/PortalPage";
 import { seedE2eUser, type SeedSummary } from "../_harness/seed";
 
-const PROJECT_NAME = "ci-source";
+// Each test seeds its OWN uniquely-named project. The dev DB is shared across
+// runs and `openProjectDetail(name)` matches a row by `data-project-name`, so a
+// fixed name would collide with prior `ci-source` rows (and a source-less older
+// row could shadow the freshly-seeded one — making S3/S4 see the empty state).
+// A per-test unique suffix makes the navigation pick exactly the project this
+// test seeded. Mirrors the screenshot pipeline's timestamped-name approach.
+function uniqueProjectName(): string {
+  return `ci-source-${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
+}
 // A handful of components so the scan + seed-licenses exist; the source tree
 // is independent of component_count (it reads the preserved tarball), but a
 // scan must exist for the Source tab to attempt the tree root.
@@ -74,29 +94,43 @@ function tryAcquireSeed(
   }
 }
 
+interface Bootstrapped {
+  seed: SeedSummary;
+  projectName: string;
+}
+
 async function bootstrap(
   testInfo: import("@playwright/test").TestInfo,
   page: import("@playwright/test").Page,
-): Promise<SeedSummary | null> {
+  opts: { withSource?: boolean } = {},
+): Promise<Bootstrapped | null> {
+  const projectName = uniqueProjectName();
   const seed = tryAcquireSeed(testInfo, {
-    projectNames: [PROJECT_NAME],
+    projectNames: [projectName],
     withScan: true,
     componentCount: DEFAULT_COMPONENT_COUNT,
-    componentPrefix: "src",
+    // Unique component prefix per project so the seed never trips
+    // `uq_components_purl` against a prior run's `src-*` components in the
+    // shared dev DB.
+    componentPrefix: `srctree-${Date.now().toString(36)}`,
+    // S3/S4 stage a preserved-source tarball (G3.3); S1/S2 deliberately do
+    // not, so they exercise the empty-state contract.
+    withSource: opts.withSource ?? false,
   });
   if (seed === null) return null;
 
   const auth = new AuthHarness(page);
   await auth.gotoLogin();
   await auth.login(seed.email, seed.password);
-  return seed;
+  return { seed, projectName };
 }
 
 /**
  * Returns true when the Source tab is showing the "no preserved source"
- * empty card — the current seed always lands here (see KNOWN SEED GAP). The
- * populated-tree scenarios call this and skip themselves rather than fail, so
- * they auto-enable once a `--with-source` seed exists.
+ * empty card. S1/S2 (no `--with-source` seed) land here by design; S3/S4
+ * (with `--with-source`) expect a populated tree and defensively skip on the
+ * empty state so a stack missing the dev volume degrades to skipped, not
+ * failed.
  */
 async function isEmptySource(
   page: import("@playwright/test").Page,
@@ -113,12 +147,12 @@ test.describe("@source-tree project source tab", () => {
   test("S1) Source tab mounts and the tree settles into a terminal state", async ({
     page,
   }, testInfo) => {
-    const seed = await bootstrap(testInfo, page);
-    if (seed === null) return;
+    const boot = await bootstrap(testInfo, page);
+    if (boot === null) return;
 
     const portal = new PortalPage(page);
     await portal.gotoProjects();
-    await portal.openProjectDetail(PROJECT_NAME);
+    await portal.openProjectDetail(boot.projectName);
     await portal.selectSourceTab();
 
     // The tab body is mounted regardless of populated vs empty.
@@ -135,12 +169,12 @@ test.describe("@source-tree project source tab", () => {
   test("S2) old/seeded scan with no preserved source shows the re-scan empty card", async ({
     page,
   }, testInfo) => {
-    const seed = await bootstrap(testInfo, page);
-    if (seed === null) return;
+    const boot = await bootstrap(testInfo, page);
+    if (boot === null) return;
 
     const portal = new PortalPage(page);
     await portal.gotoProjects();
-    await portal.openProjectDetail(PROJECT_NAME);
+    await portal.openProjectDetail(boot.projectName);
     await portal.selectSourceTab();
 
     // The seed does not stage a source tarball → 404 → single empty card,
@@ -163,18 +197,18 @@ test.describe("@source-tree project source tab", () => {
   test("S3) lazy expand a directory, open a file → content + per-line license panel", async ({
     page,
   }, testInfo) => {
-    const seed = await bootstrap(testInfo, page);
-    if (seed === null) return;
+    const boot = await bootstrap(testInfo, page, { withSource: true });
+    if (boot === null) return;
 
     const portal = new PortalPage(page);
     await portal.gotoProjects();
-    await portal.openProjectDetail(PROJECT_NAME);
+    await portal.openProjectDetail(boot.projectName);
     await portal.selectSourceTab();
 
     test.skip(
       await isEmptySource(page),
-      "no preserved source for the seeded scan — KNOWN SEED GAP, needs a " +
-        "--with-source seed (see file header). Auto-enables when it lands.",
+      "no preserved source for the --with-source seed — the dev `scan-workspace` " +
+        "volume is likely unavailable to the API; cannot exercise the populated tree.",
     );
 
     // Pick the first directory row in the root level and expand it lazily.
@@ -226,19 +260,18 @@ test.describe("@source-tree project source tab", () => {
   test("S4) binary file shows the byte-safe notice; large file shows truncation guidance", async ({
     page,
   }, testInfo) => {
-    const seed = await bootstrap(testInfo, page);
-    if (seed === null) return;
+    const boot = await bootstrap(testInfo, page, { withSource: true });
+    if (boot === null) return;
 
     const portal = new PortalPage(page);
     await portal.gotoProjects();
-    await portal.openProjectDetail(PROJECT_NAME);
+    await portal.openProjectDetail(boot.projectName);
     await portal.selectSourceTab();
 
     test.skip(
       await isEmptySource(page),
-      "no preserved source for the seeded scan — KNOWN SEED GAP, needs a " +
-        "--with-source seed that stages a binary + an oversized file. " +
-        "Auto-enables when it lands.",
+      "no preserved source for the --with-source seed — the dev `scan-workspace` " +
+        "volume is likely unavailable to the API; cannot exercise binary + truncated guidance.",
     );
 
     // The fixture stages a binary file and an oversized (truncated) file. We

@@ -88,6 +88,15 @@ export interface SeedSummary {
   no_password?: boolean;
   /** Number of unread notifications inserted (Marathon bundle 5 / 4a). */
   notification_count?: number;
+  /**
+   * G3.3 source-tree e2e. Absolute path (inside the backend/worker container)
+   * of the preserved-source tarball staged for the first project's scan when
+   * `SeedOptions.withSource` is set. `null` when preservation was skipped
+   * (quota / over-cap — the service never raises) or `withSource` was off.
+   * The spec does not read the path directly (it drives the viewer through the
+   * harness); it is surfaced for debuggability of the seed run.
+   */
+  source_tarball?: string | null;
 }
 
 export interface SeedOptions {
@@ -181,6 +190,26 @@ export interface SeedOptions {
    * page renders mixed icons. Default: 0.
    */
   notificationCount?: number;
+  /**
+   * G3.3 source-tree e2e. Stage a real preserved-source tarball for the
+   * first project's succeeded scan so the `/source-tree` + `/source-file`
+   * endpoints return a populated tree (lights up
+   * `source_tree.spec.ts` S3/S4) instead of the 404 empty-state. Implies
+   * `withScan`.
+   *
+   * IMPORTANT — execution location: the preserved tarball is written under
+   * the backend's `WORKSPACE_HOST_PATH` (`/tmp/trustedoss`), which in the dev
+   * stack is the `scan-workspace` Docker volume mounted into the backend +
+   * worker containers — NOT a host directory. So when this option is set the
+   * seed MUST run *inside the backend container* (via `docker-compose exec`)
+   * so the tarball lands in the same volume the API reads. The plain
+   * host-`python3` path (used by every other seed) would write the tarball to
+   * the host filesystem where the container can never see it, and the viewer
+   * would still 404. The helper switches to the container-exec runner
+   * automatically when this flag is true; the DB rows are written to the same
+   * shared Postgres either way. Default: off.
+   */
+  withSource?: boolean;
 }
 
 /**
@@ -196,59 +225,87 @@ export function seedE2eUser(opts: SeedOptions): SeedSummary {
     throw new Error(`seed script not found: ${scriptHost}`);
   }
 
-  const args = [
-    scriptHost,
-    "--project-names",
-    opts.projectNames.join(","),
-  ];
+  // Script flags WITHOUT the leading interpreter/script token, so the same
+  // list works for both the host runner (`python3 <script> ...`) and the
+  // container runner (`python -m scripts.seed_e2e_user ...`).
+  const scriptArgs = ["--project-names", opts.projectNames.join(",")];
   if (opts.password) {
-    args.push("--password", opts.password);
+    scriptArgs.push("--password", opts.password);
   }
   if (opts.email) {
-    args.push("--email", opts.email);
+    scriptArgs.push("--email", opts.email);
   }
-  if (opts.withScan || (opts.componentCount ?? 0) > 0) {
-    // --component-count > 0 implies --with-scan in the script; we still
-    // pass the flag explicitly when the caller asked for a scan but no
-    // components, so the spec stays self-documenting at the call site.
-    args.push("--with-scan");
+  if (opts.withScan || (opts.componentCount ?? 0) > 0 || opts.withSource) {
+    // --component-count > 0 and --with-source both imply --with-scan in the
+    // script; we still pass the flag explicitly when the caller asked for a
+    // scan but no components, so the spec stays self-documenting at the call
+    // site.
+    scriptArgs.push("--with-scan");
   }
   if ((opts.componentCount ?? 0) > 0) {
-    args.push("--component-count", String(opts.componentCount));
+    scriptArgs.push("--component-count", String(opts.componentCount));
   }
   if (opts.componentPrefix) {
-    args.push("--component-prefix", opts.componentPrefix);
+    scriptArgs.push("--component-prefix", opts.componentPrefix);
   }
   if ((opts.vulnerabilityCount ?? 0) > 0) {
-    args.push("--vulnerability-count", String(opts.vulnerabilityCount));
+    scriptArgs.push("--vulnerability-count", String(opts.vulnerabilityCount));
     // The Python script's `--vulnerability-count` flag implies `--with-scan`
     // there too, but we set both anyway for consistency.
-    if (!args.includes("--with-scan")) args.push("--with-scan");
+    if (!scriptArgs.includes("--with-scan")) scriptArgs.push("--with-scan");
   }
   if (opts.vulnerabilitySeverityMix) {
-    args.push("--vulnerability-severity-mix", opts.vulnerabilitySeverityMix);
+    scriptArgs.push(
+      "--vulnerability-severity-mix",
+      opts.vulnerabilitySeverityMix,
+    );
   }
   if (opts.withObligations) {
-    args.push("--with-obligations");
+    scriptArgs.push("--with-obligations");
+  }
+  if (opts.withSource) {
+    scriptArgs.push("--with-source");
   }
   if (opts.superAdmin) {
-    args.push("--super-admin");
+    scriptArgs.push("--super-admin");
   }
   if ((opts.extraMembers ?? 0) > 0) {
-    args.push("--extra-members", String(opts.extraMembers));
+    scriptArgs.push("--extra-members", String(opts.extraMembers));
   }
   if (opts.extraTeamAdmin) {
-    args.push("--extra-team-admin");
+    scriptArgs.push("--extra-team-admin");
   }
   if (opts.withOAuthIdentity) {
-    args.push("--with-oauth-identity", opts.withOAuthIdentity);
+    scriptArgs.push("--with-oauth-identity", opts.withOAuthIdentity);
   }
   if (opts.noPassword) {
-    args.push("--no-password");
+    scriptArgs.push("--no-password");
   }
   if ((opts.notificationCount ?? 0) > 0) {
-    args.push("--with-notifications", String(opts.notificationCount));
+    scriptArgs.push("--with-notifications", String(opts.notificationCount));
   }
+
+  // G3.3 — `withSource` writes a preserved-source tarball under the backend's
+  // WORKSPACE_HOST_PATH (`/tmp/trustedoss`), which is the `scan-workspace`
+  // Docker volume in the dev stack, NOT a host directory. The tarball must
+  // land in the same volume the API reads, so this seed runs INSIDE the
+  // backend container. Every other seed stays on the fast host-`python3`
+  // path. See SeedOptions.withSource for the rationale.
+  if (opts.withSource) {
+    return runSeedInContainer(scriptArgs);
+  }
+  return runSeedOnHost(scriptHost, scriptArgs);
+}
+
+/**
+ * Host runner — the default for every seed except `withSource`. Runs the
+ * Python script directly against the host-mapped Postgres.
+ */
+function runSeedOnHost(
+  scriptHost: string,
+  scriptArgs: string[],
+): SeedSummary {
+  const args = [scriptHost, ...scriptArgs];
 
   // Default DATABASE_URL points at the host-mapped Postgres exposed by
   // docker-compose dev. SECRET_KEY is required by core.config.secret_key()
@@ -298,6 +355,56 @@ export function seedE2eUser(opts: SeedOptions): SeedSummary {
     );
   }
   throw new Error("no python interpreter could run the seed script");
+}
+
+/**
+ * Container runner — used only for `withSource`. Executes the seed module
+ * inside the backend container (`docker-compose exec -T backend python -m
+ * scripts.seed_e2e_user ...`) so the preserved-source tarball it writes lands
+ * in the `scan-workspace` volume the API reads back. The container's own
+ * `DATABASE_URL` (pointing at `postgres:5432`) + `APP_ENV` are used; we never
+ * override them here.
+ *
+ * `COMPOSE_FILE` / `COMPOSE_SERVICE` env vars allow CI to point at a
+ * non-default compose file or service name. The repo standard is the V1
+ * `docker-compose` binary (hyphen) per CLAUDE.md core rule #10.
+ */
+function runSeedInContainer(scriptArgs: string[]): SeedSummary {
+  const composeBin = process.env.COMPOSE_BIN ?? "docker-compose";
+  const composeFile =
+    process.env.COMPOSE_FILE ??
+    path.join(REPO_ROOT, "docker-compose.dev.yml");
+  const service = process.env.COMPOSE_SERVICE ?? "backend";
+
+  const args = [
+    "-f",
+    composeFile,
+    "exec",
+    "-T",
+    service,
+    "python",
+    "-m",
+    "scripts.seed_e2e_user",
+    ...scriptArgs,
+  ];
+
+  const result = spawnSync(composeBin, args, {
+    encoding: "utf8",
+    env: process.env,
+  });
+  if (result.error) {
+    throw new Error(
+      `failed to spawn ${composeBin} for in-container seed (is the dev ` +
+        `stack up?): ${result.error.message}`,
+    );
+  }
+  if (result.status !== 0) {
+    throw new Error(
+      `in-container seed exited ${result.status} via ${composeBin} exec ` +
+        `${service}: ${result.stderr.trim()}`,
+    );
+  }
+  return parseSeedSummary(result.stdout);
 }
 
 function parseSeedSummary(stdout: string): SeedSummary {
