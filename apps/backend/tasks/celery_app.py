@@ -39,6 +39,8 @@ _TASK_INCLUDES = [
     "tasks.dt_health",
     # feat/zip-upload (security H-fix) — stale uploaded-archive retention sweep.
     "tasks.source_archive_cleaner",
+    # G3.1 — preserved scan-source tarball retention sweep (latest-per-project).
+    "tasks.scan_source_cleaner",
     # Phase 6 PR #18 — multi-channel notification fan-out (email/Slack/Teams).
     "tasks.notify",
     # Phase 6 chore PR #19 — automated backup + restore tasks.
@@ -81,6 +83,14 @@ def _build_beat_schedule() -> dict[str, dict[str, object]]:
         # SIGKILL-before-extract leak cannot fill the workspace volume.
         "source-archive-cleaner-six-hourly": {
             "task": "trustedoss.source_archive_cleaner",
+            "schedule": _schedule(timedelta(hours=6)),
+        },
+        # G3.1 — reclaim superseded preserved-source tarballs every 6h. Retention
+        # is latest-succeeded-per-project; a new succeeded scan supersedes the
+        # prior tarball, and this sweep deletes everything but the retained one
+        # (plus any referenced by a non-terminal scan).
+        "scan-source-cleaner-six-hourly": {
+            "task": "trustedoss.scan_source_cleaner",
             "schedule": _schedule(timedelta(hours=6)),
         },
         # PR-A1 (scan stability) — reclaim orphaned scan workspaces every

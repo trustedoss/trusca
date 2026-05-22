@@ -531,6 +531,70 @@ def scancode_max_result_bytes() -> int:
     return int(os.getenv("SCANCODE_MAX_RESULT_BYTES", str(256 * 1024 * 1024)))
 
 
+# ---------------------------------------------------------------------------
+# G3.1 — source preservation (Protex-style source-tree view).
+#
+# After a successful source scan we preserve a gzip tarball of the scanned
+# tree PLUS the scancode result JSON (folded in as ``.trustedoss/scancode.json``)
+# so a later UI can render a file tree + per-line license matches. The scancode
+# JSON is the ONLY place per-line match data survives — the adapter discards
+# line numbers and ``license_findings`` keeps only spdx + source_path. The
+# tarball would otherwise die with the workspace in the task's ``finally`` rmtree.
+#
+# All four accessors read env at call time (rule #11). Defaults are deliberately
+# conservative: preservation is best-effort and must never threaten the volume.
+# ---------------------------------------------------------------------------
+
+
+def scan_source_retention() -> str:
+    """Retention policy for preserved scan-source tarballs.
+
+    Only ``"latest"`` is implemented today: a new succeeded scan supersedes the
+    project's prior tarball, and the retention beat keeps exactly the tarball
+    matching ``Project.latest_scan_id`` (plus any referenced by a non-terminal
+    scan). The accessor exists so a future ``"all"`` / ``"none"`` policy can be
+    wired without changing call sites. Read at call time (rule #11).
+    """
+    return os.getenv("SCAN_SOURCE_RETENTION", "latest")
+
+
+def scan_source_project_quota_bytes() -> int:
+    """Per-project ceiling on total preserved-tarball bytes (default 1 GiB).
+
+    Mirrors ``SOURCE_ARCHIVE_PROJECT_QUOTA_BYTES``: a project that scans a huge
+    tree repeatedly must not fill the workspace volume. With retention=latest a
+    project normally holds a single tarball, but a re-run that has not yet
+    superseded the prior one, or a sweep that lost a race, can transiently leave
+    two — the quota bounds that. On exceed the preservation stage skips + logs;
+    it NEVER raises into the scan. Read at call time (rule #11).
+    """
+    return int(os.getenv("SCAN_SOURCE_PROJECT_QUOTA_BYTES", str(1024**3)))
+
+
+def scan_source_max_tarball_bytes() -> int:
+    """Hard ceiling on a single preserved tarball's *written* size (default 512 MiB).
+
+    We count the actual gzip bytes as we stream members into the tar and abort
+    (deleting the partial temp file, skipping preservation) the instant the total
+    crosses this cap — a large monorepo source tree must not produce a multi-GiB
+    artifact that defeats the per-project quota in one shot. Best-effort: an
+    over-cap tree degrades to "no tarball", never a failed scan. Read at call
+    time (rule #11).
+    """
+    return int(os.getenv("SCAN_SOURCE_MAX_TARBALL_BYTES", str(512 * 1024 * 1024)))
+
+
+def scan_source_viewer_max_file_bytes() -> int:
+    """Max bytes of a single preserved file the source-tree viewer will return.
+
+    Defined now for G3.2 (the viewer endpoint): a tarball can hold an arbitrarily
+    large individual file, and the viewer must bound how much it reads back into
+    a response so a single huge member cannot OOM the API process. Default 2 MiB.
+    Read at call time (rule #11).
+    """
+    return int(os.getenv("SCAN_SOURCE_VIEWER_MAX_FILE_BYTES", str(2 * 1024 * 1024)))
+
+
 def workspace_root() -> str:
     """Root directory under which per-scan workspaces live."""
     return os.getenv("WORKSPACE_HOST_PATH", "/tmp/trustedoss")  # noqa: S108
