@@ -1238,6 +1238,34 @@ export class PortalPage {
     await harness.goto();
     return harness;
   }
+
+  // -------------------------------------------------------------------------
+  // Tier 6 — client-abandonment / bad-client resilience verbs
+  // -------------------------------------------------------------------------
+
+  /** Abort every in-flight + future request whose URL contains `urlSubstring`
+   * (simulates a flaky connection / a download the browser cancels). */
+  async abortRequests(urlSubstring: string): Promise<void> {
+    await this.page.route(
+      (url) => url.href.includes(urlSubstring),
+      (route) => route.abort("aborted"),
+    );
+  }
+
+  /** Toggle the browser context offline (mid-stream network drop). */
+  async setOffline(offline: boolean): Promise<void> {
+    await this.page.context().setOffline(offline);
+  }
+
+  /** Reload the current page (e.g. mid-scan) — the app must recover. */
+  async reload(): Promise<void> {
+    await this.page.reload({ waitUntil: "domcontentloaded" });
+  }
+
+  /** Abruptly close the page (user closes the tab mid-operation). */
+  async closeTab(): Promise<void> {
+    await this.page.close({ runBeforeUnload: false });
+  }
 }
 
 /** CycloneDX VEX status union — mirrors the backend ENUM. */
