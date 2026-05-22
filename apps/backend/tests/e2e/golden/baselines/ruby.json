@@ -1,0 +1,29 @@
+{
+  "components": {
+    "count": 5,
+    "nix_spurious": 0,
+    "purls": [
+      "pkg:gem/mustermann@3.1.1",
+      "pkg:gem/rack-protection@3.1.0",
+      "pkg:gem/rack@2.2.23",
+      "pkg:gem/sinatra@3.1.0",
+      "pkg:gem/tilt@2.7.0"
+    ]
+  },
+  "licenses": [],
+  "notice": {
+    "csp": true,
+    "html_ok": true,
+    "text_ok": true
+  },
+  "report_pdf_ok": true,
+  "sbom": {
+    "cyclonedx-json": true,
+    "cyclonedx-xml": true,
+    "spdx-json": true,
+    "spdx-tv": true
+  },
+  "scan_status": "succeeded",
+  "source_tree_root_entries": 2,
+  "vulnerabilities_count": 0
+}

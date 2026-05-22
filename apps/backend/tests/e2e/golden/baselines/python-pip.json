@@ -1,0 +1,33 @@
+{
+  "components": {
+    "count": 5,
+    "nix_spurious": 0,
+    "purls": [
+      "pkg:pypi/certifi@2026.5.20",
+      "pkg:pypi/charset-normalizer@2.0.12",
+      "pkg:pypi/idna@3.16",
+      "pkg:pypi/requests@2.28.0",
+      "pkg:pypi/urllib3@1.26.20"
+    ]
+  },
+  "licenses": [
+    "Apache-2.0|allowed|concluded",
+    "MIT|allowed|concluded",
+    "MPL-2.0|conditional|concluded"
+  ],
+  "notice": {
+    "csp": true,
+    "html_ok": true,
+    "text_ok": true
+  },
+  "report_pdf_ok": true,
+  "sbom": {
+    "cyclonedx-json": true,
+    "cyclonedx-xml": true,
+    "spdx-json": true,
+    "spdx-tv": true
+  },
+  "scan_status": "succeeded",
+  "source_tree_root_entries": 1,
+  "vulnerabilities_count": 0
+}

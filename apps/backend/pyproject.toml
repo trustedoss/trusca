@@ -4,6 +4,7 @@ testpaths = ["tests"]
 pythonpath = ["."]
 markers = [
     "integration: requires DATABASE_URL (and usually REDIS_URL) — runs against real services",
+    "golden: real-stack golden-fixture drift gate (Tier 1) — nightly only; lives under tests/e2e/ which the PR run (tests/unit tests/integration) does not collect",
 ]
 
 [tool.ruff]
