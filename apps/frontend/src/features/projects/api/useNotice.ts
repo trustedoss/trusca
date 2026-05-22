@@ -16,6 +16,7 @@ import {
   type NoticeFormat,
   type NoticeResult,
 } from "@/features/projects/api/obligationsApi";
+import { safeFilenameToken, triggerBlobDownload } from "@/lib/download";
 
 export interface UseNoticeOptions {
   defaultFormat?: NoticeFormat;
@@ -31,36 +32,18 @@ export interface UseNoticeReturn {
   lastResult: NoticeResult | null;
 }
 
-function safeFilenameToken(name: string): string {
-  const cleaned = name.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
-  return cleaned || "project";
-}
-
-function triggerBrowserDownload(
+function triggerNoticeDownload(
   body: string,
   filename: string,
   format: NoticeFormat,
 ) {
-  if (typeof document === "undefined" || typeof URL === "undefined") return;
   const mime =
     format === "markdown"
       ? "text/markdown;charset=utf-8"
       : format === "html"
         ? "text/html;charset=utf-8"
         : "text/plain;charset=utf-8";
-  const blob = new Blob([body], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  // Avoid mounting in body — Safari requires the click handler to be in a
-  // user-event task; we keep the call synchronous.
-  anchor.style.display = "none";
-  document.body.appendChild(anchor);
-  anchor.click();
-  document.body.removeChild(anchor);
-  // Defer revocation slightly so the browser has time to start the download.
-  setTimeout(() => URL.revokeObjectURL(url), 1_000);
+  triggerBlobDownload(new Blob([body], { type: mime }), filename);
 }
 
 export function useNotice(
@@ -87,7 +70,7 @@ export function useNotice(
         });
         const ext = fmt === "markdown" ? "md" : fmt === "html" ? "html" : "txt";
         const fallbackName = `NOTICE-${safeFilenameToken(projectName ?? projectId)}.${ext}`;
-        triggerBrowserDownload(result.body, opts.filename ?? fallbackName, fmt);
+        triggerNoticeDownload(result.body, opts.filename ?? fallbackName, fmt);
         setLastResult(result);
         return result;
       } catch (e) {

@@ -22,6 +22,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { triggerBlobDownload } from "@/lib/download";
 import { ProblemError } from "@/lib/problem";
 import { downloadSbom, type SbomFormat } from "@/lib/projectsApi";
 
@@ -43,20 +44,6 @@ const FORMATS: SbomFormatRow[] = [
   { format: "spdx-tv", testIdSuffix: "spdx-tv" },
 ];
 
-function triggerBrowserDownload(blob: Blob, filename: string) {
-  if (typeof document === "undefined" || typeof URL === "undefined") return;
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.style.display = "none";
-  document.body.appendChild(anchor);
-  anchor.click();
-  document.body.removeChild(anchor);
-  // Defer revocation so the browser starts the download before we drop the URL.
-  setTimeout(() => URL.revokeObjectURL(url), 1_000);
-}
-
 export function SbomTab({ projectId, lastScanAt }: SbomTabProps) {
   const { t, i18n } = useTranslation("project_detail");
   const [busyFormat, setBusyFormat] = useState<SbomFormat | null>(null);
@@ -71,7 +58,7 @@ export function SbomTab({ projectId, lastScanAt }: SbomTabProps) {
       setError(null);
       try {
         const result = await downloadSbom(projectId, format);
-        triggerBrowserDownload(result.blob, result.filename);
+        triggerBlobDownload(result.blob, result.filename);
       } catch (err) {
         const message =
           err instanceof ProblemError
