@@ -13,6 +13,11 @@
       "pkg:cargo/unicode-ident@1.0.24"
     ]
   },
+  "gate": {
+    "critical_cve": 0,
+    "forbidden_license": 0,
+    "gate": "pass"
+  },
   "licenses": [
     "MIT|allowed|concluded"
   ],

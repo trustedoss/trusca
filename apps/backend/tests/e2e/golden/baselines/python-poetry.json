@@ -6,6 +6,11 @@
       "pkg:pypi/requests@2.31.0"
     ]
   },
+  "gate": {
+    "critical_cve": 0,
+    "forbidden_license": 0,
+    "gate": "pass"
+  },
   "licenses": [
     "Apache-2.0|allowed|concluded"
   ],

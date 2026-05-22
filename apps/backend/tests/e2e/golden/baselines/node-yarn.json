@@ -6,6 +6,11 @@
       "pkg:npm/lodash@4.17.21"
     ]
   },
+  "gate": {
+    "critical_cve": 0,
+    "forbidden_license": 0,
+    "gate": "pass"
+  },
   "licenses": [
     "MIT|allowed|declared"
   ],

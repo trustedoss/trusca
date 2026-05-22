@@ -10,6 +10,11 @@
       "pkg:pypi/urllib3@1.26.20"
     ]
   },
+  "gate": {
+    "critical_cve": 0,
+    "forbidden_license": 0,
+    "gate": "pass"
+  },
   "licenses": [
     "Apache-2.0|allowed|concluded",
     "MIT|allowed|concluded",
