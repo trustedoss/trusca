@@ -34,7 +34,7 @@ export type ObligationSortKey =
   | "kind"
   | "affected_count";
 export type SortOrder = "asc" | "desc";
-export type NoticeFormat = "text" | "markdown";
+export type NoticeFormat = "text" | "markdown" | "html";
 
 /**
  * Ranked allow-list of obligation kinds the backend advertises in the

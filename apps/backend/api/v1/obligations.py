@@ -249,13 +249,15 @@ def _format_content_disposition(project_name: str, ext: str) -> str:
     responses={
         200: {
             "description": (
-                "Plain text (or markdown) NOTICE body. ``Content-Disposition`` "
-                "is set to ``attachment`` when ``download=true``; otherwise "
-                "the body streams inline."
+                "NOTICE body in the requested format (plain text, markdown, or "
+                "a self-contained HTML document). ``Content-Disposition`` is set "
+                "to ``attachment`` when ``download=true``; otherwise the body "
+                "streams inline."
             ),
             "content": {
                 "text/plain": {},
                 "text/markdown": {},
+                "text/html": {},
             },
         },
         403: {"description": "Caller is not a member of the project's team."},
@@ -273,9 +275,10 @@ async def get_project_notice_endpoint(
     fmt: str = Query(
         default="text",
         alias="format",
-        pattern=r"^(text|markdown)$",
+        pattern=r"^(text|markdown|html)$",
         description=(
-            "Output format. ``text`` returns text/plain, ``markdown`` returns text/markdown."
+            "Output format. ``text`` returns text/plain, ``markdown`` returns "
+            "text/markdown, ``html`` returns a self-contained text/html document."
         ),
     ),
     download: bool = Query(
@@ -298,7 +301,11 @@ async def get_project_notice_endpoint(
     except (ObligationError, ProjectError) as exc:
         return _problem_for_obligation_error(request, exc)
 
-    media_type = "text/plain; charset=utf-8" if fmt == "text" else "text/markdown; charset=utf-8"
+    media_type = {
+        "text": "text/plain; charset=utf-8",
+        "markdown": "text/markdown; charset=utf-8",
+        "html": "text/html; charset=utf-8",
+    }[fmt]
     headers = {
         "X-Notice-Generated-At": payload["generated_at"]
         .replace(microsecond=0)
@@ -307,7 +314,7 @@ async def get_project_notice_endpoint(
         "X-Notice-Obligation-Count": str(payload["obligation_count"]),
     }
     if download:
-        ext = "md" if fmt == "markdown" else "txt"
+        ext = {"text": "txt", "markdown": "md", "html": "html"}[fmt]
         headers["Content-Disposition"] = _format_content_disposition(
             payload["project_name"], ext
         )

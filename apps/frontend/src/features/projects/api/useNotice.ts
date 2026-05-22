@@ -42,7 +42,12 @@ function triggerBrowserDownload(
   format: NoticeFormat,
 ) {
   if (typeof document === "undefined" || typeof URL === "undefined") return;
-  const mime = format === "markdown" ? "text/markdown;charset=utf-8" : "text/plain;charset=utf-8";
+  const mime =
+    format === "markdown"
+      ? "text/markdown;charset=utf-8"
+      : format === "html"
+        ? "text/html;charset=utf-8"
+        : "text/plain;charset=utf-8";
   const blob = new Blob([body], { type: mime });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
@@ -80,7 +85,7 @@ export function useNotice(
           format: fmt,
           download: true,
         });
-        const ext = fmt === "markdown" ? "md" : "txt";
+        const ext = fmt === "markdown" ? "md" : fmt === "html" ? "html" : "txt";
         const fallbackName = `NOTICE-${safeFilenameToken(projectName ?? projectId)}.${ext}`;
         triggerBrowserDownload(result.body, opts.filename ?? fallbackName, fmt);
         setLastResult(result);

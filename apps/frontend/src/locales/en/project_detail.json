@@ -363,7 +363,10 @@
       "order_desc": "Descending",
       "notice_label": "NOTICE file",
       "notice_download": "Download NOTICE",
-      "notice_downloading": "Generating…"
+      "notice_downloading": "Generating…",
+      "notice_format_label": "NOTICE format",
+      "notice_format_text": "Text",
+      "notice_format_html": "HTML"
     },
     "empty": {
       "title": "No obligations recorded",

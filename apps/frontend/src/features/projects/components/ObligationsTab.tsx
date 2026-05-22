@@ -227,10 +227,10 @@ export function ObligationsTab({ projectId, projectName }: ObligationsTabProps) 
           setOrder(next);
           setPage(1);
         }}
-        onDownloadNotice={() => {
+        onDownloadNotice={(format) => {
           // The promise rejection is caught by useNotice's internal error
           // state — we don't surface here so the UI doesn't double-toast.
-          void notice.download();
+          void notice.download({ format });
         }}
         isNoticeDownloading={notice.isLoading}
         noticeError={notice.error}

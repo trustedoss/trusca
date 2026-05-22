@@ -56,6 +56,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from html import escape as html_escape
 from typing import Any, cast
 
 import structlog
@@ -625,12 +626,16 @@ async def generate_notice(
     what the catalog covers.
 
     The markdown variant uses H2 headings, fenced code blocks for the
-    component list, and bold labels.
+    component list, and bold labels. The html variant emits a complete,
+    self-contained HTML document with every interpolated value escaped
+    (component names / license texts / reference URLs come from scanned
+    package metadata and are untrusted), suitable for inline viewing or
+    download.
 
     Returns the raw ``body`` text plus provenance fields a router can hand
     to ``Content-Disposition`` and inspection headers.
     """
-    if fmt not in {"text", "markdown"}:
+    if fmt not in {"text", "markdown", "html"}:
         raise ObligationError(f"unsupported format: {fmt!r}")
 
     project_result = await session.execute(select(Project).where(Project.id == project_id))
@@ -761,6 +766,14 @@ async def _load_notice_data(
 
 def _render_empty_notice(project_name: str, generated_at: datetime, *, fmt: str) -> str:
     """Body for projects with no scan yet — keep the document well-formed."""
+    if fmt == "html":
+        return _render_notice_html(
+            project_name=project_name,
+            generated_at=generated_at,
+            licenses_with_components=[],
+            obligations_by_license={},
+            empty_reason="No scan has been run for this project yet.",
+        )
     header = _format_header(project_name, generated_at, fmt=fmt)
     if fmt == "markdown":
         return f"{header}\n\n_No scan has been run for this project yet._\n"
@@ -782,6 +795,14 @@ def _render_notice(
     obligations_by_license: dict[uuid.UUID, list[dict[str, Any]]],
     fmt: str,
 ) -> str:
+    if fmt == "html":
+        return _render_notice_html(
+            project_name=project_name,
+            generated_at=generated_at,
+            licenses_with_components=licenses_with_components,
+            obligations_by_license=obligations_by_license,
+        )
+
     parts: list[str] = [_format_header(project_name, generated_at, fmt=fmt), ""]
 
     if fmt == "markdown":
@@ -845,6 +866,129 @@ def _render_notice(
     parts.append(_NOTICE_DIVIDER)
     parts.append("")
     return "\n".join(parts).rstrip() + "\n"
+
+
+# A compact, self-contained stylesheet so the downloaded .html renders well
+# offline (no external assets). Mirrors the portal's enterprise-SCA palette.
+_NOTICE_HTML_STYLE = (
+    "body{font-family:Inter,system-ui,-apple-system,sans-serif;max-width:880px;"
+    "margin:2rem auto;padding:0 1rem;color:#0f172a;line-height:1.5}"
+    "h1{font-size:1.5rem;border-bottom:2px solid #0f172a;padding-bottom:.3rem}"
+    "h2{font-size:1.1rem;margin-top:1.5rem}"
+    "h3{font-size:.8rem;text-transform:uppercase;letter-spacing:.04em;"
+    "color:#64748b;margin:.6rem 0 .3rem}"
+    "section.license{border-top:1px solid #e2e8f0;padding-top:.4rem}"
+    "ul{margin:.3rem 0}"
+    'code,pre{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:.85rem}'
+    "pre{background:#f8fafc;padding:.6rem;border-radius:4px;white-space:pre-wrap;"
+    "word-break:break-word}"
+    ".generated{color:#64748b;font-size:.85rem}"
+    ".no-obligations{color:#64748b;font-style:italic}"
+    ".obligation{margin:.5rem 0}"
+)
+
+
+def _safe_href(url: str | None) -> str | None:
+    """Return an attribute-escaped href, but only for http(s) URLs.
+
+    The reference URLs originate from scanned package / license metadata,
+    which is untrusted. Emitting them into an ``href`` verbatim would allow
+    ``javascript:``/``data:``/``file:`` scheme injection (stored XSS in the
+    downloaded NOTICE). We allow only http/https and escape quotes; anything
+    else falls back to plain escaped text at the call site.
+    """
+    if not url:
+        return None
+    stripped = url.strip()
+    # Bound the href length so an attacker-controlled metadata URL can't bloat
+    # the document via a multi-KiB link (defence in depth; a holistic body-size
+    # cap across all NOTICE formats is tracked as a separate follow-up).
+    if len(stripped) > 2048:
+        return None
+    if stripped.lower().startswith(("http://", "https://")):
+        return html_escape(stripped, quote=True)
+    return None
+
+
+def _render_notice_html(
+    *,
+    project_name: str,
+    generated_at: datetime,
+    licenses_with_components: list[dict[str, Any]],
+    obligations_by_license: dict[uuid.UUID, list[dict[str, Any]]],
+    empty_reason: str | None = None,
+) -> str:
+    """Render the NOTICE as a complete, fully-escaped HTML document."""
+    iso = generated_at.replace(microsecond=0).isoformat()
+    esc_name = html_escape(project_name)
+    parts: list[str] = [
+        "<!DOCTYPE html>",
+        '<html lang="en">',
+        "<head>",
+        '<meta charset="utf-8">',
+        '<meta name="viewport" content="width=device-width, initial-scale=1">',
+        f"<title>Third-party Licenses for {esc_name}</title>",
+        f"<style>{_NOTICE_HTML_STYLE}</style>",
+        "</head>",
+        "<body>",
+        f"<h1>Third-party Licenses for {esc_name}</h1>",
+        f'<p class="generated">Generated: <code>{html_escape(iso)}</code></p>',
+    ]
+
+    if empty_reason is not None:
+        parts.append(f"<p>{html_escape(empty_reason)}</p>")
+    elif not licenses_with_components:
+        parts.append("<p>(no third-party licenses detected for this project)</p>")
+    else:
+        for entry in licenses_with_components:
+            parts.append('<section class="license">')
+            spdx = entry["spdx_id"] or "(no SPDX id)"
+            parts.append(
+                f"<h2>{html_escape(spdx)} — {html_escape(entry['name'] or '')}</h2>"
+            )
+            parts.append(_html_reference_line(entry["reference_url"]))
+            parts.append("<h3>Components</h3>")
+            parts.append("<ul>")
+            for label in entry["component_labels"]:
+                parts.append(f"<li>{html_escape(label)}</li>")
+            parts.append("</ul>")
+            obs = obligations_by_license.get(entry["license_id"], [])
+            if not obs:
+                parts.append(
+                    '<p class="no-obligations">'
+                    "No obligations recorded for this license.</p>"
+                )
+            else:
+                for ob in obs:
+                    parts.append('<div class="obligation">')
+                    parts.append(
+                        f"<p><strong>Obligation: {html_escape(ob['kind'])}</strong></p>"
+                    )
+                    parts.append(f"<pre>{html_escape(ob['text'] or '')}</pre>")
+                    parts.append(_html_reference_line(ob["link"]))
+                    parts.append("</div>")
+            parts.append("</section>")
+
+    parts.append("</body>")
+    parts.append("</html>")
+    # Drop the empty strings _html_reference_line returns for absent URLs.
+    return "\n".join(p for p in parts if p) + "\n"
+
+
+def _html_reference_line(url: str | None) -> str:
+    """A ``Reference:`` paragraph for an optional URL, or "" when absent.
+
+    Linkifies only safe http(s) URLs; other schemes degrade to escaped text.
+    """
+    if not url:
+        return ""
+    href = _safe_href(url)
+    if href is not None:
+        return (
+            f'<p class="reference">Reference: '
+            f'<a href="{href}" rel="noopener noreferrer">{html_escape(url)}</a></p>'
+        )
+    return f'<p class="reference">Reference: {html_escape(url)}</p>'
 
 
 __all__ = [

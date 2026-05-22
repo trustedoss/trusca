@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
@@ -5,10 +6,14 @@ import { Input } from "@/components/ui/input";
 import type { LicenseCategoryName } from "@/features/projects/api/projectDetailApi";
 import {
   KNOWN_OBLIGATION_KINDS,
+  type NoticeFormat,
   type ObligationSortKey,
   type SortOrder,
 } from "@/features/projects/api/obligationsApi";
 import { cn } from "@/lib/utils";
+
+/** Formats exposed in the NOTICE download UI (markdown stays API-only). */
+export const NOTICE_DOWNLOAD_FORMATS: NoticeFormat[] = ["text", "html"];
 
 /**
  * ObligationsToolbar — Phase 3 PR #13.
@@ -49,7 +54,7 @@ export interface ObligationsToolbarProps {
   onSortChange: (value: ObligationSortKey) => void;
   order: SortOrder;
   onOrderChange: (value: SortOrder) => void;
-  onDownloadNotice: () => void;
+  onDownloadNotice: (format: NoticeFormat) => void;
   isNoticeDownloading: boolean;
   noticeError: Error | null;
   className?: string;
@@ -78,6 +83,7 @@ export function ObligationsToolbar({
   className,
 }: ObligationsToolbarProps) {
   const { t } = useTranslation("project_detail");
+  const [noticeFormat, setNoticeFormat] = useState<NoticeFormat>("text");
   return (
     <div
       className={cn(
@@ -201,19 +207,37 @@ export function ObligationsToolbar({
         <span className="text-xs font-medium text-muted-foreground">
           {t("obligations.toolbar.notice_label")}
         </span>
-        <Button
-          type="button"
-          variant="default"
-          size="sm"
-          className="mt-1 h-9"
-          onClick={onDownloadNotice}
-          disabled={isNoticeDownloading}
-          data-testid="obligations-download-notice"
-        >
-          {isNoticeDownloading
-            ? t("obligations.toolbar.notice_downloading")
-            : t("obligations.toolbar.notice_download")}
-        </Button>
+        <div className="mt-1 flex gap-1">
+          <select
+            value={noticeFormat}
+            onChange={(event) =>
+              setNoticeFormat(event.target.value as NoticeFormat)
+            }
+            disabled={isNoticeDownloading}
+            aria-label={t("obligations.toolbar.notice_format_label")}
+            data-testid="obligations-notice-format"
+            className="h-9 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          >
+            {NOTICE_DOWNLOAD_FORMATS.map((fmt) => (
+              <option key={fmt} value={fmt}>
+                {t(`obligations.toolbar.notice_format_${fmt}`)}
+              </option>
+            ))}
+          </select>
+          <Button
+            type="button"
+            variant="default"
+            size="sm"
+            className="h-9"
+            onClick={() => onDownloadNotice(noticeFormat)}
+            disabled={isNoticeDownloading}
+            data-testid="obligations-download-notice"
+          >
+            {isNoticeDownloading
+              ? t("obligations.toolbar.notice_downloading")
+              : t("obligations.toolbar.notice_download")}
+          </Button>
+        </div>
         {noticeError ? (
           <span
             className="mt-1 text-xs text-destructive"

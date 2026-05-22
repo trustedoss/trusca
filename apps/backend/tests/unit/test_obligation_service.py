@@ -40,10 +40,12 @@ from services.obligation_service import (
     ObligationError,
     ObligationNotFound,
     _format_header,
+    _html_reference_line,
     _normalize_category_filter,
     _normalize_kind_filter,
     _order_distribution,
     _render_empty_notice,
+    _render_notice_html,
     generate_notice,
     get_obligation_detail,
     list_project_obligations,
@@ -192,6 +194,136 @@ def test_render_empty_notice_markdown_uses_emphasis() -> None:
     assert body.startswith("# Third-party Licenses for MyProj")
     # Markdown variant uses italic emphasis on the empty marker.
     assert "_No scan has been run" in body
+
+
+# ---------------------------------------------------------------------------
+# HTML NOTICE rendering (G1) — pure, no DB. The interpolated values come from
+# scanned package metadata (untrusted), so escaping is a security property.
+# ---------------------------------------------------------------------------
+
+
+def test_render_empty_notice_html_is_complete_document() -> None:
+    when = datetime(2026, 5, 7, 0, 0, 0, tzinfo=UTC)
+    body = _render_empty_notice("MyProj", when, fmt="html")
+    assert body.startswith("<!DOCTYPE html>")
+    assert "<title>Third-party Licenses for MyProj</title>" in body
+    assert "<h1>Third-party Licenses for MyProj</h1>" in body
+    assert "No scan has been run for this project yet." in body
+    assert body.rstrip().endswith("</html>")
+    assert body.endswith("\n")
+
+
+def test_render_notice_html_renders_licenses_components_and_obligations() -> None:
+    when = datetime(2026, 5, 7, 12, 0, 0, tzinfo=UTC)
+    lic_id = uuid.uuid4()
+    body = _render_notice_html(
+        project_name="MyProj",
+        generated_at=when,
+        licenses_with_components=[
+            {
+                "license_id": lic_id,
+                "spdx_id": "MIT",
+                "name": "MIT License",
+                "reference_url": "https://opensource.org/licenses/MIT",
+                "component_labels": ["foo @ 1.2.3", "bar @ 4.5.6"],
+            }
+        ],
+        obligations_by_license={
+            lic_id: [{"kind": "notice", "text": "Preserve the copyright.", "link": None}]
+        },
+    )
+    assert "<h2>MIT — MIT License</h2>" in body
+    assert "<li>foo @ 1.2.3</li>" in body
+    assert "<li>bar @ 4.5.6</li>" in body
+    assert "Obligation: notice" in body
+    assert "<pre>Preserve the copyright.</pre>" in body
+    # Safe http(s) reference becomes a real link.
+    assert 'href="https://opensource.org/licenses/MIT"' in body
+    assert 'rel="noopener noreferrer"' in body
+
+
+def test_render_notice_html_marks_licenses_without_obligations() -> None:
+    when = datetime(2026, 5, 7, 12, 0, 0, tzinfo=UTC)
+    lic_id = uuid.uuid4()
+    body = _render_notice_html(
+        project_name="P",
+        generated_at=when,
+        licenses_with_components=[
+            {
+                "license_id": lic_id,
+                "spdx_id": None,
+                "name": "Weird",
+                "reference_url": None,
+                "component_labels": ["x @ 1"],
+            }
+        ],
+        obligations_by_license={lic_id: []},
+    )
+    # Missing SPDX id degrades gracefully, no obligations is called out.
+    assert "(no SPDX id)" in body
+    assert "No obligations recorded for this license." in body
+
+
+def test_render_notice_html_escapes_untrusted_fields() -> None:
+    """A hostile component / license / obligation must not break out of HTML."""
+    when = datetime(2026, 5, 7, 12, 0, 0, tzinfo=UTC)
+    lic_id = uuid.uuid4()
+    body = _render_notice_html(
+        project_name='<script>alert("xss")</script>',
+        generated_at=when,
+        licenses_with_components=[
+            {
+                "license_id": lic_id,
+                "spdx_id": "<b>MIT</b>",
+                "name": 'name"&<>',
+                "reference_url": None,
+                "component_labels": ["<img src=x onerror=alert(1)>"],
+            }
+        ],
+        obligations_by_license={
+            lic_id: [{"kind": "<i>k</i>", "text": "</pre><script>1</script>", "link": None}]
+        },
+    )
+    # No raw tags from untrusted input survive.
+    assert "<script>" not in body
+    assert "<img " not in body
+    assert "onerror=alert(1)" in body  # but only as escaped text
+    assert "&lt;script&gt;" in body
+    assert "&lt;img src=x onerror=alert(1)&gt;" in body
+    # The document's own structural tags are still present.
+    assert "<!DOCTYPE html>" in body
+    assert "<h1>" in body
+
+
+@pytest.mark.parametrize(
+    ("url", "should_link"),
+    [
+        ("https://example.com/license", True),
+        ("http://example.com/license", True),
+        ("HTTPS://EXAMPLE.COM", True),  # scheme match is case-insensitive
+        ("javascript:alert(1)", False),
+        ("data:text/html,<script>1</script>", False),
+        ("file:///etc/passwd", False),
+        ("  javascript:alert(1)", False),  # leading whitespace doesn't bypass
+        ("vbscript:msgbox(1)", False),
+        ("//evil.example.com", False),  # scheme-relative is not http(s)
+        ("https://example.com/" + "a" * 4000, False),  # over the 2 KiB href cap
+    ],
+)
+def test_html_reference_line_only_links_safe_schemes(url: str, should_link: bool) -> None:
+    line = _html_reference_line(url)
+    assert line.startswith('<p class="reference">Reference: ')
+    if should_link:
+        assert "<a href=" in line
+    else:
+        # Dangerous schemes degrade to inert escaped text — never an href
+        # attribute, so the scheme can't be clicked/executed.
+        assert "href=" not in line
+
+
+def test_html_reference_line_absent_url_is_empty() -> None:
+    assert _html_reference_line(None) == ""
+    assert _html_reference_line("") == ""
 
 
 # ---------------------------------------------------------------------------
@@ -1079,6 +1211,43 @@ async def test_generate_notice_markdown_format_uses_h1_and_code_blocks(
     assert "```" in body
     # Bold obligation label.
     assert "**Obligation: attribution**" in body
+
+
+@pytestmark_db
+async def test_generate_notice_html_format_emits_complete_document(
+    db_session: AsyncSession,
+) -> None:
+    team, user, project, scan = await _make_project_with_scan(db_session)
+    actor = principal_for(user, team_ids=[team.id], role="developer")
+
+    suffix = unique_suffix()
+    _, cv = await _make_component_version(db_session, name=f"alpha-{suffix}")
+    lic = await _make_license(
+        db_session, spdx_id=f"HT-{suffix}", name=f"HT License {suffix}", category="allowed"
+    )
+    await _attach_license_finding(db_session, scan_id=scan.id, cv_id=cv.id, license_id=lic.id)
+    await _make_obligation(
+        db_session,
+        license_id=lic.id,
+        kind="attribution",
+        text="preserve attribution",
+        link="https://example.com/attribution",
+    )
+
+    payload = await generate_notice(
+        db_session, project_id=project.id, actor=actor, fmt="html"
+    )
+    assert payload["format"] == "html"
+    assert payload["license_count"] == 1
+    assert payload["obligation_count"] == 1
+    body = payload["body"]
+    assert body.startswith("<!DOCTYPE html>")
+    assert body.rstrip().endswith("</html>")
+    assert f"HT-{suffix}" in body
+    assert f"alpha-{suffix}" in body
+    assert "<pre>preserve attribution</pre>" in body
+    # Safe http(s) obligation link is linkified.
+    assert 'href="https://example.com/attribution"' in body
 
 
 @pytestmark_db

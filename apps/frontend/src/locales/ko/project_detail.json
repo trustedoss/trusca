@@ -363,7 +363,10 @@
       "order_desc": "내림차순",
       "notice_label": "NOTICE 파일",
       "notice_download": "NOTICE 다운로드",
-      "notice_downloading": "생성 중…"
+      "notice_downloading": "생성 중…",
+      "notice_format_label": "NOTICE 형식",
+      "notice_format_text": "텍스트",
+      "notice_format_html": "HTML"
     },
     "empty": {
       "title": "기록된 의무사항 없음",
