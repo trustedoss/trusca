@@ -73,6 +73,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.authz import assert_team_access
 from core.config import (
+    scan_source_raw_download_max_bytes,
     scan_source_viewer_max_file_bytes,
     scancode_max_result_bytes,
 )
@@ -176,6 +177,23 @@ class FileContent:
     license_matches: list[LineMatch]
 
 
+@dataclass(frozen=True)
+class RawFileContent:
+    """The FULL bytes of one preserved member for the raw download path (G3.3).
+
+    Unlike :class:`FileContent` this carries no per-line matches and no viewer
+    cap — it is the whole member, bounded only by the (generous) raw-download
+    ceiling, streamed back as ``application/octet-stream`` for the download
+    button on a truncated / binary file.
+    """
+
+    scan_id: uuid.UUID
+    path: str
+    filename: str
+    byte_size: int
+    data: bytes
+
+
 # ---------------------------------------------------------------------------
 # Path sanitisation (the attacker surface)
 # ---------------------------------------------------------------------------
@@ -198,14 +216,20 @@ def _sanitize_member_path(raw: str) -> str:
     if raw is None:  # pragma: no cover — Query default is ""
         return ""
     if "\x00" in raw:
-        raise SourcePathRejected("path contains a NUL byte")
+        # G3.2 Low (a): never echo the rejected selector back into the 4xx
+        # detail (reflected-input). The raw value goes to a WARNING field only;
+        # the client sees a STATIC message.
+        log.warning("source_tree_path_rejected", reason="nul_byte", raw_path=raw)
+        raise SourcePathRejected("path selector rejected")
     # Absolute paths are rejected before any normalisation — loud, unambiguous.
     if raw.startswith("/") or raw.startswith("\\"):
-        raise SourcePathRejected(f"absolute path rejected: {raw!r}")
+        log.warning("source_tree_path_rejected", reason="absolute", raw_path=raw)
+        raise SourcePathRejected("path selector rejected")
     normalised = raw.replace("\\", "/")
     parts = normalised.split("/")
     if ".." in parts:
-        raise SourcePathRejected(f"path traversal rejected: {raw!r}")
+        log.warning("source_tree_path_rejected", reason="traversal", raw_path=raw)
+        raise SourcePathRejected("path selector rejected")
     clean = [p for p in parts if p not in ("", ".")]
     return "/".join(clean)
 
@@ -558,7 +582,12 @@ async def read_file(
     cap = scan_source_viewer_max_file_bytes()
     tar = _open_tarball(project_id, resolved_scan)
     try:
-        info = _lookup_member(tar.getmembers(), member_path)
+        # G3.2 Low (b): open + parse the tarball ONCE per request. ``getmembers``
+        # walks the whole archive; reuse that single member list for the file
+        # lookup AND the per-line scancode-match projection below instead of
+        # re-opening the tar a second time.
+        members = tar.getmembers()
+        info = _lookup_member(members, member_path)
 
         if info.isdir():
             raise SourceFileTooLarge(f"{member_path!r} is a directory, not a file")
@@ -579,18 +608,23 @@ async def read_file(
         # an unbounded member into memory.
         with extracted:
             data = extracted.read(cap + 1)
+
+        truncated = len(data) > cap
+        if truncated:
+            data = data[:cap]
+
+        encoding, content = _detect_encoding(data)
+
+        # Project per-line matches from the SAME open tar (no second open).
+        matches = _line_matches_for_path(
+            tar,
+            members,
+            project_id=project_id,
+            scan_id=resolved_scan,
+            member_path=member_path,
+        )
     finally:
         tar.close()
-
-    truncated = len(data) > cap
-    if truncated:
-        data = data[:cap]
-
-    encoding, content = _detect_encoding(data)
-
-    matches = await _line_matches_for_path(
-        project_id=project_id, scan_id=resolved_scan, member_path=member_path
-    )
 
     log.info(
         "source_tree_file_read",
@@ -614,11 +648,111 @@ async def read_file(
 
 
 # ---------------------------------------------------------------------------
+# Raw full-file download (G3.3) — no per-file viewer cap
+# ---------------------------------------------------------------------------
+
+
+async def read_file_raw(
+    session: AsyncSession,
+    *,
+    project_id: uuid.UUID,
+    raw_path: str,
+    scan_id: uuid.UUID | None,
+    actor: CurrentUser,
+) -> RawFileContent:
+    """Read the FULL bytes of one preserved member for a raw download (G3.3).
+
+    The in-app viewer (:func:`read_file`) caps content at
+    ``scan_source_viewer_max_file_bytes()`` for the rendered preview. The
+    download button on a truncated / binary file needs the WHOLE member, so this
+    path returns the full bytes — bounded only by the generous
+    ``scan_source_raw_download_max_bytes()`` ceiling (so a pathological member
+    still cannot stream an unbounded body into the request).
+
+    It reuses EXACTLY the same defences as :func:`read_file`:
+      - the same ``?path=`` sanitisation (NUL / absolute / ``..`` rejection),
+      - the same exact-name member lookup (never a filesystem join),
+      - the same non-regular-member (symlink / hardlink / device / fifo) refusal,
+      - the same team scoping + 404 existence-hide via ``_resolve_accessible_scan``.
+
+    Raises :class:`SourceFileTooLarge` (413) when the member exceeds the raw cap
+    — the only case where the viewer truncates but raw cannot serve the file.
+    """
+    member_path = _sanitize_member_path(raw_path)
+    if not member_path:
+        # The root is a directory, not a file.
+        raise SourceFileTooLarge("the source root is a directory, not a file")
+
+    _project, resolved_scan = await _resolve_accessible_scan(
+        session, project_id=project_id, scan_id=scan_id, actor=actor
+    )
+
+    cap = scan_source_raw_download_max_bytes()
+    tar = _open_tarball(project_id, resolved_scan)
+    try:
+        info = _lookup_member(tar.getmembers(), member_path)
+
+        if info.isdir():
+            raise SourceFileTooLarge(f"{member_path!r} is a directory, not a file")
+        # Reject non-regular members (symlink / hardlink / device / fifo) — even
+        # if a non-writer-produced tarball smuggled one in, we never follow it.
+        if info.type in _NON_REGULAR_TYPES or not info.isreg():
+            raise SourceFileTooLarge(
+                f"{member_path!r} is not a regular file (type {info.type!r})"
+            )
+
+        full_size = int(info.size)
+        # Refuse a member over the raw cap rather than streaming an unbounded
+        # body. In practice a preserved member can never exceed the tarball cap,
+        # but the explicit guard keeps the bound honest.
+        if full_size > cap:
+            raise SourceFileTooLarge(
+                f"{member_path!r} is {full_size} bytes, over the "
+                f"{cap}-byte raw-download cap"
+            )
+
+        extracted = tar.extractfile(info)
+        if extracted is None:  # pragma: no cover — isreg() guards this
+            raise SourceUnavailable(
+                f"could not read member from preserved source: {member_path!r}"
+            )
+        # Read at most cap+1 so a member that grows past the cap between the stat
+        # and the read still cannot stream unbounded; we then re-check.
+        with extracted:
+            data = extracted.read(cap + 1)
+        if len(data) > cap:  # pragma: no cover — full_size guarded above
+            raise SourceFileTooLarge(
+                f"{member_path!r} exceeds the {cap}-byte raw-download cap"
+            )
+    finally:
+        tar.close()
+
+    filename = member_path.rsplit("/", 1)[-1] or "download"
+
+    log.info(
+        "source_tree_file_raw_read",
+        project_id=str(project_id),
+        scan_id=str(resolved_scan),
+        path=member_path,
+        byte_size=len(data),
+    )
+    return RawFileContent(
+        scan_id=resolved_scan,
+        path=member_path,
+        filename=filename,
+        byte_size=len(data),
+        data=data,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Per-line license-match projection from the folded scancode JSON
 # ---------------------------------------------------------------------------
 
 
-async def _line_matches_for_path(
+def _line_matches_for_path(
+    tar: tarfile.TarFile,
+    members: list[tarfile.TarInfo],
     *,
     project_id: uuid.UUID,
     scan_id: uuid.UUID,
@@ -632,36 +766,37 @@ async def _line_matches_for_path(
     ..., "score": ...}]}]}]}``. We read ONLY the entry whose ``path`` equals
     ``member_path`` and flatten its matches.
 
+    G3.2 Low (b): this reads the scancode member from the ALREADY-OPEN ``tar``
+    handed in by :func:`read_file` (with its pre-parsed ``members`` list), so the
+    tarball is opened and walked exactly ONCE per request — no second
+    ``tarfile.open`` / ``getmembers`` pass.
+
     Best-effort: a missing / over-cap / unparseable JSON yields ``[]`` — the
     per-line view is auxiliary (the file content + badge set still render).
     The parse is bounded by ``scancode_max_result_bytes()``.
     """
-    tar_path = scan_source_tarball_path(project_id, scan_id)
-    if not tar_path.is_file():  # pragma: no cover — caller already opened it
+    member = next(
+        (m for m in members if _canonical_arcname(m.name) == SCANCODE_MEMBER_NAME),
+        None,
+    )
+    if member is None or not member.isreg():
+        return []
+    limit = scancode_max_result_bytes()
+    if int(member.size) > limit:
+        log.warning(
+            "source_tree_scancode_too_large",
+            project_id=str(project_id),
+            scan_id=str(scan_id),
+            size_bytes=int(member.size),
+            limit_bytes=limit,
+        )
         return []
     try:
-        with tarfile.open(tar_path, mode="r:gz") as tar:
-            try:
-                member = tar.getmember(SCANCODE_MEMBER_NAME)
-            except KeyError:
-                return []
-            if not member.isreg():
-                return []
-            limit = scancode_max_result_bytes()
-            if int(member.size) > limit:
-                log.warning(
-                    "source_tree_scancode_too_large",
-                    project_id=str(project_id),
-                    scan_id=str(scan_id),
-                    size_bytes=int(member.size),
-                    limit_bytes=limit,
-                )
-                return []
-            extracted = tar.extractfile(member)
-            if extracted is None:  # pragma: no cover
-                return []
-            with extracted:
-                raw = extracted.read(limit + 1)
+        extracted = tar.extractfile(member)
+        if extracted is None:  # pragma: no cover
+            return []
+        with extracted:
+            raw = extracted.read(limit + 1)
         if len(raw) > limit:  # pragma: no cover — size checked above
             return []
         data = json.loads(raw.decode("utf-8"))
@@ -750,6 +885,7 @@ def _parse_match(match: Any) -> LineMatch | None:
 __all__ = [
     "FileContent",
     "LineMatch",
+    "RawFileContent",
     "SourceFileTooLarge",
     "SourcePathRejected",
     "SourceTreeError",
@@ -758,4 +894,5 @@ __all__ = [
     "TreePage",
     "list_dir",
     "read_file",
+    "read_file_raw",
 ]

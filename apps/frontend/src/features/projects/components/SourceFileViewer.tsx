@@ -1,11 +1,14 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Virtuoso } from "react-virtuoso";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { SourceFileResponse } from "@/features/projects/api/sourceTreeApi";
+import {
+  getSourceFileRaw,
+  type SourceFileResponse,
+} from "@/features/projects/api/sourceTreeApi";
 import {
   buildSourceLines,
   formatMatchTooltip,
@@ -35,7 +38,9 @@ import { cn } from "@/lib/utils";
  */
 
 export interface SourceFileViewerProps {
-  /** Project for the download filename + nothing else (data comes via props). */
+  /** Project id — needed for the raw full-file download (G3.3). */
+  projectId: string;
+  /** Project for the download filename fallback (data comes via props). */
   projectName?: string | null;
   /** Selected file path; null when nothing is selected. */
   selectedPath: string | null;
@@ -46,6 +51,7 @@ export interface SourceFileViewerProps {
 }
 
 export function SourceFileViewer({
+  projectId,
   projectName,
   selectedPath,
   data,
@@ -54,6 +60,7 @@ export function SourceFileViewer({
   error,
 }: SourceFileViewerProps) {
   const { t } = useTranslation("project_detail");
+  const [downloading, setDownloading] = useState(false);
 
   const lines = useMemo<SourceLine[]>(
     () =>
@@ -67,13 +74,26 @@ export function SourceFileViewer({
   // or missing path) — show the same "re-scan" empty state as the tree.
   const isNotFound = error instanceof ProblemError && error.status === 404;
 
-  function onDownloadTruncated() {
-    if (!data || data.content == null) return;
-    const base = safeFilenameToken(selectedPath ?? projectName ?? "source");
-    const blob = new Blob([data.content], {
-      type: "text/plain;charset=utf-8",
-    });
-    triggerBlobDownload(blob, base);
+  // G3.3 raw download: fetch the FULL member (not the capped viewer bytes) via
+  // `source-file?raw=true` so a truncated / binary file downloads completely.
+  async function onDownloadFull() {
+    if (!selectedPath || downloading) return;
+    setDownloading(true);
+    try {
+      const { blob, filename } = await getSourceFileRaw(projectId, {
+        path: selectedPath,
+      });
+      triggerBlobDownload(
+        blob,
+        filename ||
+          safeFilenameToken(selectedPath ?? projectName ?? "source"),
+      );
+    } catch {
+      // The shared interceptor surfaces a ProblemError; the viewer keeps its
+      // current state and the user can retry. No silent corruption.
+    } finally {
+      setDownloading(false);
+    }
   }
 
   if (!selectedPath) {
@@ -148,7 +168,8 @@ export function SourceFileViewer({
             type="button"
             variant="outline"
             size="sm"
-            onClick={onDownloadTruncated}
+            onClick={onDownloadFull}
+            disabled={downloading}
             data-testid="source-file-download"
           >
             {t("source.viewer.download")}
@@ -158,10 +179,20 @@ export function SourceFileViewer({
 
       {data.encoding === "binary" ? (
         <div
-          className="flex flex-1 items-center justify-center p-6 text-center text-sm text-muted-foreground"
+          className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-sm text-muted-foreground"
           data-testid="source-file-binary"
         >
-          {t("source.viewer.binary")}
+          <span>{t("source.viewer.binary")}</span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onDownloadFull}
+            disabled={downloading}
+            data-testid="source-file-binary-download"
+          >
+            {t("source.viewer.download")}
+          </Button>
         </div>
       ) : (
         <div className="min-h-0 flex-1" data-testid="source-file-content">

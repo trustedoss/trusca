@@ -120,6 +120,23 @@ _VALID_SORT_KEYS = frozenset({"category", "license_name", "kind", "affected_coun
 _AFFECTED_COMPONENTS_CAP = 500
 _OBLIGATION_TEXT_CAP_BYTES = 64 * 1024  # 64 KiB
 
+# G2 — body-size caps on the NOTICE document (text / markdown / html). A
+# pathological scan (a license attached to tens of thousands of components, or a
+# runaway obligation/license text) must not produce an unbounded synchronous
+# response. We keep the document legally complete for NORMAL sizes and only
+# clamp the extreme tail:
+#   - the per-license credited-component list is capped at
+#     ``_NOTICE_COMPONENT_LABELS_CAP`` entries; the document records an honest
+#     "+N more component(s) omitted" note when the cap fires so the NOTICE is
+#     never silently incomplete.
+#   - obligation text and license names/refs ride through ``_clamp_obligation_text``
+#     (the existing 64 KiB byte clamp) so a single runaway field cannot inflate
+#     the body.
+# 5000 credited components per license is well past any real attribution need
+# (a NOTICE lists distinct third-party packages, not files) while bounding the
+# tail at a sane size.
+_NOTICE_COMPONENT_LABELS_CAP = 5000
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -590,6 +607,70 @@ async def _load_affected_components(
 
 _NOTICE_DIVIDER = "=" * 80
 
+# CommonMark inline-active metacharacters we backslash-escape in untrusted
+# values so a value can never open an emphasis run, link, image, code span, or
+# table cell when interpolated MID-LINE (which is the only way this module
+# interpolates untrusted text — after ``## ``, ``- ``, ``Reference: ``, etc.).
+# Line-start-only markers (``#`` ``-`` ``+`` ``.`` ``>``) are deliberately NOT
+# backslash-escaped: they are inert mid-line and escaping ``.``/``-`` would
+# corrupt every version string (``1\.0\.0``) for no security gain. Their safety
+# relies on the value never reaching column 0 — which is why ``_md_escape`` must
+# also COLLAPSE embedded newlines (a value containing ``\n## x`` would otherwise
+# push ``## x`` to line-start and inject a live heading). The angle brackets and
+# ampersand are handled separately by an HTML-escape so a markdown→HTML render
+# cannot execute an embedded ``<script>``.
+_MD_INLINE_PUNCTUATION = frozenset("\\`*_[]()~|")
+
+
+def _md_escape(value: str | None) -> str:
+    """Escape untrusted text for safe interpolation into the markdown NOTICE.
+
+    The markdown NOTICE interpolates component / license names, obligation text
+    and reference URLs that all originate from scanned third-party metadata
+    (untrusted). If a downstream viewer renders the markdown as HTML, an embedded
+    ``<script>`` or a ``[x](javascript:…)`` link would execute. We:
+
+      1. HTML-escape ``&`` / ``<`` / ``>`` so raw HTML tags become inert text in
+         a markdown→HTML render, and
+      2. backslash-escape the CommonMark inline-active punctuation
+         (:data:`_MD_INLINE_PUNCTUATION`) so the value is shown literally and
+         cannot start an emphasis run, link, image, code span, or table cell.
+
+    Decision (G2 — markdown escape vs document-as-unsafe): we ESCAPE rather than
+    declare the format unsafe. The untrusted fields here are attribution data
+    (``name @ version``, a license name, an obligation paragraph), not authored
+    markdown — escaping only the inline-active metacharacters keeps legitimate
+    attribution readable (a version string survives intact) while making the
+    markdown output safe even for a viewer that pipes it through an HTML
+    renderer. This mirrors the html branch's escape posture (every interpolated
+    value is neutralised).
+
+    Mid-line interpolation is what makes leaving the line-start-only markers
+    (``#`` ``-`` ``.`` ``>``) un-escaped safe — BUT only if the value cannot
+    smuggle its own newline. A value such as ``"\n## INJECTED\n---\n> q"`` would
+    otherwise carry ``## INJECTED`` / ``---`` / ``> q`` to column 0 and inject a
+    live heading / thematic break / blockquote into the rendered NOTICE (content
+    & attribution spoofing of a legal artifact). We therefore collapse every
+    line break to a single space as the final step, guaranteeing the value stays
+    on one (interpolated, mid-line) line.
+    """
+    if not value:
+        return ""
+    # HTML-escape first (so a literal backslash we add next is not itself
+    # double-handled), then backslash-escape the inline markdown punctuation.
+    escaped = html_escape(value, quote=False)
+    out: list[str] = []
+    for ch in escaped:
+        if ch in _MD_INLINE_PUNCTUATION:
+            out.append("\\" + ch)
+        else:
+            out.append(ch)
+    result = "".join(out)
+    # Collapse line breaks so an interpolated value can never reach line-start
+    # (where ``#``/``-``/``>`` would become live markdown structure).
+    result = result.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
+    return result
+
 
 async def generate_notice(
     session: AsyncSession,
@@ -731,14 +812,25 @@ async def _load_notice_data(
     license_ids: list[uuid.UUID] = []
     for r in license_rows:
         license_ids.append(r.license_id)
-        labels = sorted(label for label in (r.component_labels or []) if label)
+        all_labels = sorted(label for label in (r.component_labels or []) if label)
+        # G2: cap the credited-component list with an honest omitted-count so a
+        # license attached to a pathological number of components cannot inflate
+        # the body. Renderers append a "+N more omitted" note when this fires.
+        labels = all_labels[:_NOTICE_COMPONENT_LABELS_CAP]
+        labels_omitted = max(len(all_labels) - len(labels), 0)
+        # G2: clamp the license display name defensively (the column is bounded
+        # in practice, but the NOTICE body must not trust any single field).
+        clamped_name, _name_truncated = (
+            _clamp_obligation_text(r.name) if r.name else (r.name, False)
+        )
         licenses_with_components.append(
             {
                 "license_id": r.license_id,
                 "spdx_id": r.spdx_id,
-                "name": r.name,
+                "name": clamped_name,
                 "reference_url": r.reference_url,
                 "component_labels": labels,
+                "component_labels_omitted": labels_omitted,
             }
         )
 
@@ -753,10 +845,13 @@ async def _load_notice_data(
         )
         ob_rows = (await session.execute(ob_stmt)).scalars().all()
         for ob in ob_rows:
+            # G2: clamp obligation text at the same 64 KiB byte budget the
+            # drawer uses so a runaway catalog row cannot bloat the NOTICE body.
+            clamped_text, _text_truncated = _clamp_obligation_text(ob.text or "")
             obligations_by_license.setdefault(ob.license_id, []).append(
                 {
                     "kind": ob.kind,
-                    "text": ob.text,
+                    "text": clamped_text,
                     "link": ob.link,
                 }
             )
@@ -806,21 +901,31 @@ def _render_notice(
     parts: list[str] = [_format_header(project_name, generated_at, fmt=fmt), ""]
 
     if fmt == "markdown":
+        # G2/markdown-escape: every interpolated value below is untrusted
+        # (scanned third-party metadata). We route it through ``_md_escape`` so a
+        # markdown→HTML renderer cannot execute embedded ``<script>`` or
+        # ``[x](javascript:…)``. ``spdx_id`` is also escaped defensively.
         for entry in licenses_with_components:
             parts.append("---")
             parts.append("")
-            spdx = entry["spdx_id"] or "(no SPDX id)"
-            parts.append(f"## {spdx} — {entry['name']}")
+            spdx = _md_escape(entry["spdx_id"]) if entry["spdx_id"] else "(no SPDX id)"
+            parts.append(f"## {spdx} — {_md_escape(entry['name'])}")
             parts.append("")
             if entry["reference_url"]:
-                parts.append(f"Reference: <{entry['reference_url']}>")
+                # Clamp to 2048 chars (mirrors the html branch's ``_safe_href``
+                # cap) so an attacker-controlled metadata URL can't bloat the
+                # document with a multi-KiB link.
+                parts.append(f"Reference: {_md_escape(entry['reference_url'][:2048])}")
                 parts.append("")
             parts.append("**Components:**")
             parts.append("")
-            parts.append("```")
+            # Escaped bullet list (not a fenced block) so a label containing a
+            # ``` fence delimiter cannot break out and so each label is inert.
             for label in entry["component_labels"]:
-                parts.append(label)
-            parts.append("```")
+                parts.append(f"- {_md_escape(label)}")
+            omitted = entry.get("component_labels_omitted", 0)
+            if omitted:
+                parts.append(f"- _… and {omitted} more component(s) omitted_")
             parts.append("")
             obs = obligations_by_license.get(entry["license_id"], [])
             if not obs:
@@ -828,12 +933,13 @@ def _render_notice(
                 parts.append("")
             else:
                 for ob in obs:
-                    parts.append(f"**Obligation: {ob['kind']}**")
+                    parts.append(f"**Obligation: {_md_escape(ob['kind'])}**")
                     parts.append("")
-                    parts.append(ob["text"])
+                    parts.append(_md_escape(ob["text"]))
                     if ob["link"]:
                         parts.append("")
-                        parts.append(f"Reference: <{ob['link']}>")
+                        # Clamp to 2048 chars (mirrors the html ``_safe_href`` cap).
+                        parts.append(f"Reference: {_md_escape(ob['link'][:2048])}")
                     parts.append("")
         parts.append("---")
         parts.append("")
@@ -851,6 +957,9 @@ def _render_notice(
         parts.append("Components:")
         for label in entry["component_labels"]:
             parts.append(f"  - {label}")
+        omitted = entry.get("component_labels_omitted", 0)
+        if omitted:
+            parts.append(f"  - ... and {omitted} more component(s) omitted")
         parts.append("")
         obs = obligations_by_license.get(entry["license_id"], [])
         if not obs:
@@ -884,6 +993,7 @@ _NOTICE_HTML_STYLE = (
     "word-break:break-word}"
     ".generated{color:#64748b;font-size:.85rem}"
     ".no-obligations{color:#64748b;font-style:italic}"
+    "li.muted{color:#64748b;font-style:italic;list-style:none}"
     ".obligation{margin:.5rem 0}"
 )
 
@@ -951,6 +1061,12 @@ def _render_notice_html(
             parts.append("<ul>")
             for label in entry["component_labels"]:
                 parts.append(f"<li>{html_escape(label)}</li>")
+            omitted = entry.get("component_labels_omitted", 0)
+            if omitted:
+                parts.append(
+                    f'<li class="muted">… and {omitted} more component(s) '
+                    "omitted</li>"
+                )
             parts.append("</ul>")
             obs = obligations_by_license.get(entry["license_id"], [])
             if not obs:

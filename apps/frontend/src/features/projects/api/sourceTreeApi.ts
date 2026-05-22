@@ -20,6 +20,10 @@
  * surface as an EMPTY state ("re-scan to enable"), not an error toast.
  */
 import { api } from "@/lib/api";
+import {
+  parseContentDispositionFilename,
+  safeFilenameToken,
+} from "@/lib/download";
 
 // ---------------------------------------------------------------------------
 // Wire types — mirror apps/backend/schemas/source_tree.py
@@ -145,4 +149,44 @@ export async function getSourceFile(
     { params: query },
   );
   return data;
+}
+
+export interface SourceFileRawDownload {
+  blob: Blob;
+  filename: string;
+}
+
+/**
+ * Download the FULL bytes of one preserved file (G3.3 raw download).
+ *
+ * The viewer JSON above (`getSourceFile`) is capped at the server's per-file
+ * viewer limit, so a truncated / binary file's download button needs the WHOLE
+ * member instead. This hits the same `source-file` endpoint with `raw=true`,
+ * which streams the full member as `application/octet-stream` (still bounded by
+ * a generous server cap + the same path-traversal / symlink defences). The
+ * request rides through the shared axios `api` instance with
+ * `responseType: "blob"` so the bearer token stays on the `Authorization`
+ * header — same wiring as the vulnerability PDF download.
+ */
+export async function getSourceFileRaw(
+  projectId: string,
+  params: GetSourceFileParams,
+): Promise<SourceFileRawDownload> {
+  const query: Record<string, unknown> = { path: params.path, raw: true };
+  if (params.scanId != null && params.scanId.length > 0) {
+    query.scan_id = params.scanId;
+  }
+  const response = await api.get<Blob>(
+    `/v1/projects/${projectId}/source-file`,
+    { params: query, responseType: "blob" },
+  );
+  const headers = (response.headers ?? {}) as Record<string, string>;
+  const disposition =
+    headers["content-disposition"] ?? headers["Content-Disposition"] ?? "";
+  const headerFilename = parseContentDispositionFilename(disposition);
+  const fallback = safeFilenameToken(params.path.split("/").pop() ?? "download");
+  const blob = new Blob([response.data as Blob], {
+    type: "application/octet-stream",
+  });
+  return { blob, filename: headerFilename ?? fallback };
 }

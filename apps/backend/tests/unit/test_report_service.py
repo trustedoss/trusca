@@ -298,6 +298,41 @@ def test_esc_non_string_is_stringified_then_escaped() -> None:
     assert _esc(5) == "5"
 
 
+def test_esc_clamps_pathological_field_to_max_chars() -> None:
+    """G2 body-size cap: a runaway free-text field is clamped before escaping."""
+    from services.report_service import _MAX_FIELD_CHARS
+
+    out = _esc("x" * (_MAX_FIELD_CHARS * 4))
+    # The escaped result is bounded (chars + the trailing ellipsis), never the
+    # full multi-MiB body.
+    assert len(out) <= _MAX_FIELD_CHARS + 1
+    assert out.endswith("…")
+    # A normal-length field is untouched (no ellipsis).
+    assert _esc("CVE summary text") == "CVE summary text"
+
+
+def test_build_report_html_clamps_huge_cve_summary() -> None:
+    from services.report_service import _MAX_FIELD_CHARS
+
+    huge = "S" * (_MAX_FIELD_CHARS * 10)
+    html = build_report_html(
+        **_base_kwargs(
+            vulnerabilities=[
+                {
+                    "cve_id": "CVE-2099-0001",
+                    "cvss_score": 9.8,
+                    "summary": huge,
+                    "status": "open",
+                    "severity": "critical",
+                }
+            ]
+        )
+    )
+    # The pathological summary never lands in full — the document stays bounded.
+    assert huge not in html
+    assert "…" in html
+
+
 # ---------------------------------------------------------------------------
 # _safe_href — only http/https survive
 # ---------------------------------------------------------------------------

@@ -37,14 +37,18 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from schemas.obligation_detail import KNOWN_OBLIGATION_KINDS
 from services.obligation_service import (
+    _NOTICE_COMPONENT_LABELS_CAP,
     ObligationError,
     ObligationNotFound,
+    _clamp_obligation_text,
     _format_header,
     _html_reference_line,
+    _md_escape,
     _normalize_category_filter,
     _normalize_kind_filter,
     _order_distribution,
     _render_empty_notice,
+    _render_notice,
     _render_notice_html,
     generate_notice,
     get_obligation_detail,
@@ -324,6 +328,286 @@ def test_html_reference_line_only_links_safe_schemes(url: str, should_link: bool
 def test_html_reference_line_absent_url_is_empty() -> None:
     assert _html_reference_line(None) == ""
     assert _html_reference_line("") == ""
+
+
+# ---------------------------------------------------------------------------
+# G2 — markdown escape (markdown-escape decision: ESCAPE, not document-unsafe)
+# ---------------------------------------------------------------------------
+
+
+def test_md_escape_neutralizes_inline_markdown_and_html() -> None:
+    """A hostile value cannot inject a link/emphasis/script into the markdown."""
+    out = _md_escape("[click](javascript:alert(1)) **bold** `code` <script>x</script>")
+    # Link / image syntax is broken (brackets + parens escaped).
+    assert "\\[" in out and "\\]" in out
+    assert "\\(" in out and "\\)" in out
+    # Emphasis + code span markers escaped.
+    assert "\\*\\*bold\\*\\*" in out
+    assert "\\`code\\`" in out
+    # Raw HTML angle brackets are HTML-escaped so a markdown→HTML render is inert.
+    assert "<script>" not in out
+    assert "&lt;script&gt;" in out
+
+
+def test_md_escape_keeps_version_strings_readable() -> None:
+    """Line-start-only markers (-, ., #) are NOT escaped so attribution reads cleanly."""
+    assert _md_escape("requests @ 2.31.0") == "requests @ 2.31.0"
+    assert _md_escape("scikit-learn @ 1.4.0") == "scikit-learn @ 1.4.0"
+
+
+def test_md_escape_empty_is_empty() -> None:
+    assert _md_escape(None) == ""
+    assert _md_escape("") == ""
+
+
+def test_render_notice_markdown_escapes_untrusted_fields() -> None:
+    """The markdown branch must neutralize hostile component/license/obligation text."""
+    when = datetime(2026, 5, 7, 12, 0, 0, tzinfo=UTC)
+    lic_id = uuid.uuid4()
+    body = _render_notice(
+        project_name="P",
+        generated_at=when,
+        licenses_with_components=[
+            {
+                "license_id": lic_id,
+                "spdx_id": "MIT",
+                "name": "evil [x](javascript:alert(1))",
+                "reference_url": "javascript:alert(2)",
+                "component_labels": ["pkg `inject` @ 1.0"],
+                "component_labels_omitted": 0,
+            }
+        ],
+        obligations_by_license={
+            lic_id: [
+                {"kind": "notice", "text": "<script>bad</script>", "link": None}
+            ]
+        },
+        fmt="markdown",
+    )
+    # No active markdown link survives from untrusted input (the brackets +
+    # parens are backslash-escaped so ``[x](javascript:…)`` cannot form a link).
+    assert "](javascript:alert(1))" not in body
+    assert "\\[x\\]\\(javascript:alert\\(1\\)\\)" in body
+    # The reference_url is present but inert — its parens are escaped so it is
+    # plain text, never an autolink/active link.
+    assert "javascript:alert\\(2\\)" in body
+    # Raw script tag is HTML-escaped.
+    assert "<script>bad</script>" not in body
+    assert "&lt;script&gt;bad&lt;/script&gt;" in body
+    # The component label's code span is neutralized.
+    assert "\\`inject\\`" in body
+
+
+def test_render_notice_markdown_component_fence_breakout_is_neutralized() -> None:
+    """A label containing a ``` fence cannot break out (we use an escaped list)."""
+    when = datetime(2026, 5, 7, 12, 0, 0, tzinfo=UTC)
+    lic_id = uuid.uuid4()
+    body = _render_notice(
+        project_name="P",
+        generated_at=when,
+        licenses_with_components=[
+            {
+                "license_id": lic_id,
+                "spdx_id": "MIT",
+                "name": "MIT",
+                "reference_url": None,
+                "component_labels": ["```\n# heading injection"],
+                "component_labels_omitted": 0,
+            }
+        ],
+        obligations_by_license={lic_id: []},
+        fmt="markdown",
+    )
+    # The triple-backtick is escaped, so it cannot open/close a code fence.
+    assert "\\`\\`\\`" in body
+
+
+_NEWLINE_INJECTION = "\n## x\n---\n> q\n* item"
+
+
+@pytest.mark.parametrize("hostile_field", ["label", "name", "obligation_text"])
+def test_render_notice_markdown_newline_cannot_inject_line_start_structure(
+    hostile_field: str,
+) -> None:
+    """A value carrying its own newlines must NOT reach markdown line-start.
+
+    Without collapsing newlines, an untrusted value like ``"\n## x\n---\n> q"``
+    would push ``## x`` / ``---`` / ``> q`` / ``* item`` to column 0 and inject a
+    live heading / thematic break / blockquote / list — content & attribution
+    spoofing of the generated NOTICE (a legal artifact). The hostile payload is
+    parametrized across the three untrusted text fields (component label /
+    license name / obligation text).
+    """
+    when = datetime(2026, 5, 7, 12, 0, 0, tzinfo=UTC)
+    lic_id = uuid.uuid4()
+    name = "MIT"
+    label = "pkg @ 1.0"
+    obligation_text = "Must include the license."
+    if hostile_field == "label":
+        label = label + _NEWLINE_INJECTION
+    elif hostile_field == "name":
+        name = name + _NEWLINE_INJECTION
+    else:
+        obligation_text = obligation_text + _NEWLINE_INJECTION
+
+    body = _render_notice(
+        project_name="P",
+        generated_at=when,
+        licenses_with_components=[
+            {
+                "license_id": lic_id,
+                "spdx_id": "MIT",
+                "name": name,
+                "reference_url": None,
+                "component_labels": [label],
+                "component_labels_omitted": 0,
+            }
+        ],
+        obligations_by_license={
+            lic_id: [{"kind": "notice", "text": obligation_text, "link": None}]
+        },
+        fmt="markdown",
+    )
+    # The injected line-start structure from the UNTRUSTED value must not reach
+    # column 0 (newlines are collapsed to spaces) — so no body LINE is a live
+    # heading / blockquote / list-item / thematic-break sourced from the payload.
+    # (The renderer's own ``---`` separators and ``## MIT — MIT`` heading are
+    # legitimate; the payload's marker is ``## x`` / ``> q`` / ``* item``, none of
+    # which the renderer emits, so a simple per-line check is unambiguous.)
+    assert "\n## x" not in body
+    assert "\n> q" not in body
+    assert "\n* item" not in body
+    assert "\n\\* item" not in body
+    body_lines = body.split("\n")
+    assert not any(ln.startswith("## x") for ln in body_lines)
+    assert not any(ln.startswith("> q") or ln.startswith("&gt; q") for ln in body_lines)
+    assert not any(ln.lstrip().startswith(("* item", "\\* item")) for ln in body_lines)
+    # The payload's text still survives (collapsed onto one line), so we didn't
+    # silently drop attribution — only the structural newlines were neutralized.
+    # ``>`` is HTML-escaped (``&gt;``) and ``*`` is backslash-escaped (``\*``).
+    assert "## x" in body
+    assert "&gt; q" in body
+    assert "\\* item" in body
+
+
+def test_render_notice_markdown_clamps_reference_and_obligation_link_length() -> None:
+    """reference_url / obligation link are bounded to 2048 chars (html parity)."""
+    when = datetime(2026, 5, 7, 12, 0, 0, tzinfo=UTC)
+    lic_id = uuid.uuid4()
+    prefix = "https://example.com/"
+    huge = prefix + ("a" * 5000)
+    body = _render_notice(
+        project_name="P",
+        generated_at=when,
+        licenses_with_components=[
+            {
+                "license_id": lic_id,
+                "spdx_id": "MIT",
+                "name": "MIT",
+                "reference_url": huge,
+                "component_labels": ["pkg @ 1.0"],
+                "component_labels_omitted": 0,
+            }
+        ],
+        obligations_by_license={
+            lic_id: [{"kind": "notice", "text": "t", "link": huge}]
+        },
+        fmt="markdown",
+    )
+    # The 5000-char URL is clamped to 2048 chars before escaping, so the raw
+    # tail is gone but exactly the first 2048 chars (prefix + 'a' tail) survive.
+    assert "a" * 5000 not in body
+    kept = huge[:2048]
+    assert kept in body
+    # Nothing beyond the cap leaks (the char at index 2048 must not extend the run).
+    assert (kept + "a") not in body
+
+
+# ---------------------------------------------------------------------------
+# G2 — NOTICE body-size caps (component-label tail + omitted note)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("fmt", ["text", "markdown", "html"])
+def test_render_notice_records_omitted_component_count(fmt: str) -> None:
+    """The cap fires → every format records an honest '+N more omitted' note."""
+    when = datetime(2026, 5, 7, 12, 0, 0, tzinfo=UTC)
+    lic_id = uuid.uuid4()
+    entry = {
+        "license_id": lic_id,
+        "spdx_id": "MIT",
+        "name": "MIT License",
+        "reference_url": None,
+        "component_labels": ["a @ 1", "b @ 2"],
+        "component_labels_omitted": 12345,
+    }
+    if fmt == "html":
+        body = _render_notice_html(
+            project_name="P",
+            generated_at=when,
+            licenses_with_components=[entry],
+            obligations_by_license={lic_id: []},
+        )
+    else:
+        body = _render_notice(
+            project_name="P",
+            generated_at=when,
+            licenses_with_components=[entry],
+            obligations_by_license={lic_id: []},
+            fmt=fmt,
+        )
+    assert "12345 more component(s) omitted" in body
+    # The credited components we DID keep are still present (NOTICE stays
+    # legally complete for the normal head of the list).
+    assert "a @ 1" in body and "b @ 2" in body
+
+
+@pytest.mark.parametrize("fmt", ["text", "markdown", "html"])
+def test_render_notice_no_omitted_note_when_under_cap(fmt: str) -> None:
+    when = datetime(2026, 5, 7, 12, 0, 0, tzinfo=UTC)
+    lic_id = uuid.uuid4()
+    entry = {
+        "license_id": lic_id,
+        "spdx_id": "MIT",
+        "name": "MIT License",
+        "reference_url": None,
+        "component_labels": ["a @ 1"],
+        "component_labels_omitted": 0,
+    }
+    if fmt == "html":
+        body = _render_notice_html(
+            project_name="P",
+            generated_at=when,
+            licenses_with_components=[entry],
+            obligations_by_license={lic_id: []},
+        )
+    else:
+        body = _render_notice(
+            project_name="P",
+            generated_at=when,
+            licenses_with_components=[entry],
+            obligations_by_license={lic_id: []},
+            fmt=fmt,
+        )
+    assert "more component(s) omitted" not in body
+
+
+def test_clamp_obligation_text_caps_at_byte_budget() -> None:
+    """The shared clamp the NOTICE reuses bounds a runaway field at 64 KiB."""
+    big = "x" * (200 * 1024)
+    capped, truncated = _clamp_obligation_text(big)
+    assert truncated is True
+    assert len(capped.encode("utf-8")) <= 64 * 1024
+    # A normal-sized field is untouched.
+    small, small_truncated = _clamp_obligation_text("preserve attribution")
+    assert small == "preserve attribution"
+    assert small_truncated is False
+
+
+def test_notice_component_labels_cap_is_sane() -> None:
+    # The cap is large enough to never clip a realistic attribution list, but
+    # bounded so a pathological scan can't produce an unbounded body.
+    assert 1000 <= _NOTICE_COMPONENT_LABELS_CAP <= 100_000
 
 
 # ---------------------------------------------------------------------------
@@ -1207,8 +1491,9 @@ async def test_generate_notice_markdown_format_uses_h1_and_code_blocks(
     assert body.startswith("# Third-party Licenses for ")
     # H2 license heading.
     assert f"## MD-{suffix}" in body
-    # Components rendered inside a fenced code block.
-    assert "```" in body
+    # Components rendered as an escaped bullet list (G2/markdown-escape: a
+    # fenced code block could be broken out of by a label containing ```).
+    assert f"- alpha-{suffix} @ 1.0.0" in body
     # Bold obligation label.
     assert "**Obligation: attribution**" in body
 

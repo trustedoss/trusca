@@ -82,6 +82,15 @@ _LICENSE_COLOR: dict[str, str] = {
 _MAX_COMPONENTS = 1000
 _MAX_VULNERABILITIES = 1000
 
+# G2 body-size cap (per-field): the row-count caps above bound how MANY rows the
+# document carries, but a single pathological field (a multi-MiB CVE summary or
+# a runaway component name from crafted package metadata) could still inflate
+# the rendered HTML — and with it the synchronous render time. We clamp each
+# free-text field to this many characters before escaping; an ellipsis marks a
+# clamped value. 2000 chars is far past any real CVE summary while bounding the
+# tail.
+_MAX_FIELD_CHARS = 2000
+
 
 # ---------------------------------------------------------------------------
 # Escaping helpers (CRITICAL — every untrusted value flows through these)
@@ -94,10 +103,18 @@ def _esc(value: Any) -> str:
     ``quote=True`` so the result is safe both as element text *and* inside a
     double/single-quoted attribute value. ``None`` renders as an empty string
     rather than the literal ``"None"``.
+
+    G2 body-size cap: the raw value is clamped to ``_MAX_FIELD_CHARS`` (with an
+    ellipsis) BEFORE escaping so a single pathological free-text field cannot
+    inflate the rendered document. The clamp is on the source string, so the
+    escaped result never splits an HTML entity.
     """
     if value is None:
         return ""
-    return html.escape(str(value), quote=True)
+    text = str(value)
+    if len(text) > _MAX_FIELD_CHARS:
+        text = text[:_MAX_FIELD_CHARS] + "…"
+    return html.escape(text, quote=True)
 
 
 def _safe_href(url: Any) -> str | None:

@@ -595,6 +595,24 @@ def scan_source_viewer_max_file_bytes() -> int:
     return int(os.getenv("SCAN_SOURCE_VIEWER_MAX_FILE_BYTES", str(2 * 1024 * 1024)))
 
 
+def scan_source_raw_download_max_bytes() -> int:
+    """Max bytes of a single preserved file the RAW download endpoint will stream.
+
+    G3.3 raw download: the in-app viewer caps content at
+    ``scan_source_viewer_max_file_bytes()`` (default 2 MiB) for the rendered
+    line-by-line preview. A truncated / binary file's "download" button needs the
+    WHOLE member, not the capped viewer bytes, so it streams through
+    ``source-file?raw=true`` bounded by this much larger ceiling instead. It is
+    still a hard cap (a single preserved member cannot exceed
+    ``scan_source_max_tarball_bytes()`` anyway) so a pathological member can never
+    stream an unbounded body into the request. Default 512 MiB — large enough to
+    cover any preserved member while still bounded. Read at call time (rule #11).
+    """
+    return int(
+        os.getenv("SCAN_SOURCE_RAW_DOWNLOAD_MAX_BYTES", str(512 * 1024 * 1024))
+    )
+
+
 def workspace_root() -> str:
     """Root directory under which per-scan workspaces live."""
     return os.getenv("WORKSPACE_HOST_PATH", "/tmp/trustedoss")  # noqa: S108
