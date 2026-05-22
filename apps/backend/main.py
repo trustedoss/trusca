@@ -36,6 +36,7 @@ from api.v1 import (
     reports_router,
     sbom_router,
     scans_router,
+    source_tree_router,
     users_me_router,
     vulnerabilities_router,
     webhooks_github_router,
@@ -181,6 +182,9 @@ app.include_router(approvals_router)
 app.include_router(sbom_router)
 # Scan-gap G2: vulnerability PDF report download.
 app.include_router(reports_router)
+# Scan-gap G3.2: source-tree viewer (list dir + read file) over the per-scan
+# tarball preserved in G3.1.
+app.include_router(source_tree_router)
 # Phase 5 PR #16: API Key management + Webhook receivers (GitHub / GitLab).
 # Webhook endpoints are PUBLIC (no JWT) but each delivery is HMAC-authenticated
 # against a per-project shared secret stored in `projects.webhook_secret`.

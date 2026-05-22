@@ -17,6 +17,7 @@ from .projects import router as projects_router
 from .reports import router as reports_router
 from .sbom import router as sbom_router
 from .scans import router as scans_router
+from .source_tree import router as source_tree_router
 from .users_me import router as users_me_router
 from .vulnerabilities import router as vulnerabilities_router
 from .webhooks import github_router as webhooks_github_router
@@ -38,6 +39,7 @@ __all__ = [
     "reports_router",
     "sbom_router",
     "scans_router",
+    "source_tree_router",
     "users_me_router",
     "vulnerabilities_router",
     "webhooks_github_router",
