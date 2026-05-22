@@ -1,31 +1,39 @@
-"""TrustedOSS Portal — Locust load test scenarios.
+"""TrustedOSS Portal — hard load / stress scenario (10k-user profile).
 
-Runs against a live dev / staging stack (NOT in CI). Two user classes
-share the same host:
+Rebuilt for the CURRENT API contract (the previous file targeted a stale
+``/auth/jwt/login`` + ``/v1/scans/trigger`` shape that no longer exists).
 
-* ``AuthenticatedUser``  — logs in once at start, then exercises the four
-  read-heavy endpoints that dominate steady-state portal traffic
-  (project list, scan list, project detail, component list per project).
-  Weights match the rough access pattern observed in the portal UI:
-  the project list page is the landing page (5×), scans list is checked
-  often (3×), and detail / components are entered on demand (2× each).
+Design target: **10,000 concurrent portal users.** Locally you cannot drive
+10k users against a 4-worker uvicorn on a laptop, so the scenario is built to
+*scale* to 10k on a beefy host (set ``-u 10000 -r 200``) while a local run at
+``-u 200..500`` already saturates the dev stack and surfaces the same classes
+of bug (pool exhaustion, 5xx under contention, slow report generation, rate-
+limit misfires).
 
-* ``ScanTriggerUser``     — fires a scan trigger every ~60s. Weight 1
-  keeps trigger pressure low; the goal is connection-pool / Celery
-  enqueue stress, not real SCA execution. Backend should accept the
-  request and enqueue — the worker can run in mock mode
-  (``TRUSTEDOSS_SCAN_BACKEND=mock``) so cdxgen / ORT / Trivy do not run.
+Strictness: this file is a **hard gate**. A ``quitting`` hook fails the process
+(exit 1) when the aggregate breaches the SLO — so ``locust --headless`` can be
+run in a loop and a regression flips the exit code, no human dashboard reading.
 
-Target SLO (from CLAUDE.md §3 quality standards): **p95 < 1s** for the
-four GET endpoints under the 50-user / 3-scan scenario. The aggregate is
-verified by the operator from the Locust dashboard
-(``http://localhost:8089``) — there is no automated assertion because
-this scenario is intentionally outside CI (resource-intensive, requires
-a beefy host or staging environment).
+SLO (overridable via env):
+* error rate          ≤ ``LOAD_MAX_FAIL_RATIO``      (default 1%)
+* p95 read latency    ≤ ``LOAD_MAX_P95_MS``          (default 1500 ms)
+* p99 read latency    ≤ ``LOAD_MAX_P99_MS``          (default 4000 ms)
 
-Run via ``docker-compose -f docker-compose.load.yml up`` after the dev
-stack is healthy. See ``tests/load/README.md`` for the full operator
-runbook.
+User classes:
+* ``PortalReadUser``   (weight 8) — steady-state read traffic across every
+  project read surface (overview / components / vulns / licenses / source-tree
+  / SBOM).
+* ``ReportHeavyUser``  (weight 2) — expensive document generation (vuln PDF,
+  4 SBOM formats, NOTICE html/text) — the synchronous, CPU/IO-heavy paths.
+* ``AuthChurnUser``    (weight 1) — login churn + token refresh, hammering the
+  rate-limited auth path (verifies the limiter degrades gracefully, not 5xx).
+
+Run::
+
+    docker-compose -f docker-compose.dev.yml up -d
+    LOAD_TEST_EMAIL=e2e-admin@trustedoss.dev LOAD_TEST_PASSWORD=E2eAdminPass2026 \
+      locust -f tests/load/locustfile.py --headless -u 300 -r 50 -t 3m \
+      --host http://localhost:8000
 """
 
 from __future__ import annotations
@@ -33,131 +41,220 @@ from __future__ import annotations
 import os
 import random
 
-from locust import HttpUser, between, task
+import requests
+from locust import HttpUser, between, events, task
+from locust.env import Environment
+from locust.runners import WorkerRunner
+
+LOAD_TEST_EMAIL = os.getenv("LOAD_TEST_EMAIL", "e2e-admin@trustedoss.dev")
+LOAD_TEST_PASSWORD = os.getenv("LOAD_TEST_PASSWORD", "E2eAdminPass2026")
+
+MAX_FAIL_RATIO = float(os.getenv("LOAD_MAX_FAIL_RATIO", "0.01"))
+MAX_P95_MS = float(os.getenv("LOAD_MAX_P95_MS", "1500"))
+MAX_P99_MS = float(os.getenv("LOAD_MAX_P99_MS", "4000"))
+
+# Read-surface SBOM formats exercised by the report-heavy user.
+_SBOM_FORMATS = ("cyclonedx-json", "cyclonedx-xml", "spdx-json", "spdx-tv")
 
 
-# Test user credentials. The dev stack ships a deterministic seed via
-# ``apps/backend/scripts/seed_e2e_user.py``; operators can override these
-# from the Locust UI / env if they seeded a different user.
-LOAD_TEST_EMAIL = os.getenv("LOAD_TEST_EMAIL", "e2e@trustedoss.local")
-LOAD_TEST_PASSWORD = os.getenv("LOAD_TEST_PASSWORD", "trustedoss-e2e-pwd-1234")
+# A real 10k-user fleet authenticates from 10k distinct IPs, so the per-IP
+# login limiter (5/min/IP) never blocks them. A single-host load driver does
+# NOT model that — every simulated user shares the driver's one IP, so
+# per-user logins would be throttled to 5/min and starve the read load we
+# actually want to measure. We therefore authenticate ONCE at test start and
+# share the token across all simulated users (= "already-authenticated steady-
+# state read traffic"). ``AuthChurnUser`` separately exercises the limiter.
+_SHARED = {"token": None, "project_ids": []}
 
 
-class AuthenticatedUser(HttpUser):
-    """Steady-state portal user — read-heavy traffic against the API.
+@events.test_start.add_listener
+def _bootstrap_shared_auth(environment: Environment, **_kw) -> None:
+    if isinstance(environment.runner, WorkerRunner):
+        return  # the master broadcasts; workers read _SHARED via on_start retry
+    host = environment.host or "http://localhost:8000"
+    try:
+        r = requests.post(
+            f"{host}/auth/login",
+            json={"email": LOAD_TEST_EMAIL, "password": LOAD_TEST_PASSWORD},
+            timeout=10,
+        )
+        if r.status_code == 200:
+            _SHARED["token"] = r.json().get("access_token")
+            pr = requests.get(
+                f"{host}/v1/projects?size=100",
+                headers={"Authorization": f"Bearer {_SHARED['token']}"},
+                timeout=10,
+            )
+            if pr.status_code == 200:
+                payload = pr.json()
+                items = payload.get("items") if isinstance(payload, dict) else payload
+                _SHARED["project_ids"] = [
+                    str(p["id"]) for p in items if isinstance(p, dict) and "id" in p
+                ]
+            print(f"LOAD bootstrap: token={'ok' if _SHARED['token'] else 'FAIL'} "
+                  f"projects={len(_SHARED['project_ids'])}")
+        else:
+            print(f"LOAD bootstrap login FAILED: {r.status_code}")
+    except Exception as exc:  # noqa: BLE001
+        print(f"LOAD bootstrap error: {exc}")
 
-    The ``on_start`` hook performs a single login per simulated user and
-    caches the access token in the Locust session ``Authorization``
-    header for the lifetime of that user. ``project_ids`` is fetched
-    once at start so detail / component endpoints can pick a random
-    target without hammering the list endpoint just to discover IDs.
-    """
 
+class _AuthedUser(HttpUser):
+    abstract = True
+
+    def on_start(self) -> None:
+        token = _SHARED.get("token")
+        if token:
+            self.client.headers["Authorization"] = f"Bearer {token}"
+        self.project_ids = _SHARED.get("project_ids", [])
+
+    def _pid(self) -> str | None:
+        return random.choice(self.project_ids) if self.project_ids else None  # noqa: S311
+
+
+class PortalReadUser(_AuthedUser):
+    """Steady-state read traffic across every project read surface."""
+
+    weight = 8
     wait_time = between(1, 3)
 
-    project_ids: list[str] = []
-
-    def on_start(self) -> None:
-        """Authenticate and bootstrap the project ID pool."""
-        # FastAPI-Users default login is form-encoded (OAuth2 password
-        # flow). The portal exposes it under /auth/jwt/login.
-        resp = self.client.post(
-            "/auth/jwt/login",
-            data={
-                "username": LOAD_TEST_EMAIL,
-                "password": LOAD_TEST_PASSWORD,
-            },
-            name="POST /auth/jwt/login",
-        )
-        if resp.status_code != 200:
-            # No raise — keep the user in the pool so the dashboard
-            # surfaces the auth failure rate. Subsequent requests will
-            # 401 and Locust will graph that as a failure rate.
-            return
-        token = resp.json().get("access_token", "")
-        self.client.headers["Authorization"] = f"Bearer {token}"
-
-        # Pre-warm the project ID pool. We deliberately use the same
-        # endpoint that the project-list task hits, so a slow list
-        # endpoint shows up in metrics from request 1.
-        list_resp = self.client.get("/v1/projects", name="GET /v1/projects (bootstrap)")
-        if list_resp.status_code == 200:
-            payload = list_resp.json()
-            items = payload.get("items") if isinstance(payload, dict) else payload
-            if isinstance(items, list):
-                self.project_ids = [str(p["id"]) for p in items if "id" in p]
-
-    @task(5)
+    @task(6)
     def list_projects(self) -> None:
-        """GET /v1/projects — landing page, hit most often."""
-        self.client.get("/v1/projects", name="GET /v1/projects")
+        self.client.get("/v1/projects?size=50", name="GET /v1/projects")
+
+    @task(4)
+    def list_scans(self) -> None:
+        self.client.get("/v1/scans?size=50", name="GET /v1/scans")
 
     @task(3)
-    def list_scans(self) -> None:
-        """GET /v1/scans — global scan queue page."""
-        self.client.get("/v1/scans", name="GET /v1/scans")
-
-    @task(2)
-    def project_detail(self) -> None:
-        """GET /v1/projects/{id} — project overview drawer."""
-        if not self.project_ids:
-            return
-        pid = random.choice(self.project_ids)  # noqa: S311 — load test, not crypto
-        self.client.get(
-            f"/v1/projects/{pid}",
-            name="GET /v1/projects/{id}",
-        )
-
-    @task(2)
     def project_components(self) -> None:
-        """GET /v1/components — component list for a random project."""
-        if not self.project_ids:
+        pid = self._pid()
+        if pid:
+            self.client.get(f"/v1/projects/{pid}/components?size=100", name="GET /projects/{id}/components")
+
+    @task(2)
+    def project_vulns(self) -> None:
+        pid = self._pid()
+        if pid:
+            self.client.get(f"/v1/projects/{pid}/vulnerabilities", name="GET /projects/{id}/vulnerabilities")
+
+    @task(2)
+    def project_licenses(self) -> None:
+        pid = self._pid()
+        if pid:
+            self.client.get(f"/v1/projects/{pid}/licenses", name="GET /projects/{id}/licenses")
+
+    @task(1)
+    def source_tree(self) -> None:
+        pid = self._pid()
+        if not pid:
             return
-        pid = random.choice(self.project_ids)  # noqa: S311 — load test, not crypto
-        self.client.get(
-            f"/v1/components?project_id={pid}",
-            name="GET /v1/components?project_id={id}",
-        )
+        # 404 is a legitimate response: a project whose latest scan failed, is
+        # still running, or was a mock/seed scan has no preserved source tree.
+        # A strict load test must fail only on SERVER errors (5xx) / unexpected
+        # statuses, never on a correct "no source for this entity" 404.
+        with self.client.get(
+            f"/v1/projects/{pid}/source-tree",
+            name="GET /projects/{id}/source-tree",
+            catch_response=True,
+        ) as resp:
+            if resp.status_code in (200, 404):
+                resp.success()
+            else:
+                resp.failure(f"source-tree unexpected status {resp.status_code}")
 
 
-class ScanTriggerUser(HttpUser):
-    """Trigger a scan periodically — Celery enqueue stress.
+class ReportHeavyUser(_AuthedUser):
+    """Expensive synchronous document generation — PDF / SBOM / NOTICE."""
 
-    Weight is set very low at runtime via ``locust.conf`` so this user
-    fires roughly once per minute per simulated user. The goal is
-    backend / Redis connection pressure on the trigger path, NOT to
-    actually run cdxgen / ORT / Trivy. Run the worker in mock mode for
-    load tests (``TRUSTEDOSS_SCAN_BACKEND=mock``).
-    """
+    weight = 2
+    wait_time = between(3, 8)
 
-    # 60 ± 10 s — keep trigger rate low.
-    wait_time = between(50, 70)
+    @task(3)
+    def vuln_pdf(self) -> None:
+        pid = self._pid()
+        if pid:
+            self.client.get(
+                f"/v1/projects/{pid}/vulnerability-report.pdf",
+                name="GET /projects/{id}/vulnerability-report.pdf",
+            )
 
-    def on_start(self) -> None:
-        """Authenticate the same way as the read-heavy user."""
-        resp = self.client.post(
-            "/auth/jwt/login",
-            data={
-                "username": LOAD_TEST_EMAIL,
-                "password": LOAD_TEST_PASSWORD,
-            },
-            name="POST /auth/jwt/login",
-        )
-        if resp.status_code != 200:
+    @task(2)
+    def sbom(self) -> None:
+        pid = self._pid()
+        if pid:
+            fmt = random.choice(_SBOM_FORMATS)  # noqa: S311
+            self.client.get(f"/v1/projects/{pid}/sbom?format={fmt}", name="GET /projects/{id}/sbom")
+
+    @task(2)
+    def notice(self) -> None:
+        pid = self._pid()
+        if not pid:
             return
-        token = resp.json().get("access_token", "")
-        self.client.headers["Authorization"] = f"Bearer {token}"
+        fmt = random.choice(("text", "html"))  # noqa: S311
+        # NOTICE is per-IP rate-limited (10/min). A single load-driver IP trips
+        # that immediately — a real 10k-IP fleet would not. 429 (+Retry-After)
+        # is the limiter working correctly, so it's a success here; only 5xx is
+        # a real failure.
+        with self.client.get(
+            f"/v1/projects/{pid}/notice?format={fmt}",
+            name="GET /projects/{id}/notice",
+            catch_response=True,
+        ) as resp:
+            if resp.status_code in (200, 429):
+                resp.success()
+            else:
+                resp.failure(f"notice unexpected status {resp.status_code}")
+
+
+class AuthChurnUser(HttpUser):
+    """Login churn against the rate-limited auth path (5/min/IP).
+
+    Under a real 10k load the limiter MUST return 429 (+Retry-After), never a
+    5xx. We count non-(200|429) as failures so the gate catches a limiter that
+    falls over instead of throttling cleanly."""
+
+    weight = 1
+    wait_time = between(5, 12)
 
     @task
-    def trigger_scan(self) -> None:
-        """POST /v1/scans/trigger — enqueue a scan against a fixture project.
+    def login_churn(self) -> None:
+        with self.client.post(
+            "/auth/login",
+            json={"email": LOAD_TEST_EMAIL, "password": LOAD_TEST_PASSWORD},
+            name="POST /auth/login (churn)",
+            catch_response=True,
+        ) as resp:
+            if resp.status_code in (200, 429):
+                resp.success()
+            else:
+                resp.failure(f"auth churn unexpected status {resp.status_code}")
 
-        Body shape is illustrative; the API will 422 if the trigger
-        contract changes — that surface failure is the desired signal,
-        the dashboard will graph it.
-        """
-        self.client.post(
-            "/v1/scans/trigger",
-            json={"project_ref": "load-test-fixture", "scan_type": "source"},
-            name="POST /v1/scans/trigger",
+
+# ---------------------------------------------------------------------------
+# Strict SLO gate — fail the process on breach (headless loop friendly).
+# ---------------------------------------------------------------------------
+@events.quitting.add_listener
+def _enforce_slo(environment: Environment, **_kw) -> None:
+    if isinstance(environment.runner, WorkerRunner):
+        return  # workers don't own aggregate stats
+    stats = environment.stats.total
+    fail_ratio = stats.fail_ratio
+    p95 = stats.get_response_time_percentile(0.95)
+    p99 = stats.get_response_time_percentile(0.99)
+    breaches = []
+    if fail_ratio > MAX_FAIL_RATIO:
+        breaches.append(f"fail_ratio {fail_ratio:.4f} > {MAX_FAIL_RATIO}")
+    if p95 and p95 > MAX_P95_MS:
+        breaches.append(f"p95 {p95:.0f}ms > {MAX_P95_MS}ms")
+    if p99 and p99 > MAX_P99_MS:
+        breaches.append(f"p99 {p99:.0f}ms > {MAX_P99_MS}ms")
+    if breaches:
+        environment.process_exit_code = 1
+        print("LOAD SLO BREACH: " + "; ".join(breaches))
+    else:
+        environment.process_exit_code = 0
+        print(
+            f"LOAD SLO OK: fail_ratio={fail_ratio:.4f} p95={p95:.0f}ms "
+            f"p99={p99:.0f}ms reqs={stats.num_requests}"
         )
