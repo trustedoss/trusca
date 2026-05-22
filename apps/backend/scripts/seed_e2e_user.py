@@ -661,7 +661,12 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                     name=name,
                     slug=slug,
                     description=f"Seeded for e2e — {name}",
-                    git_url=None,
+                    # A git_url makes the SourceSelectDialog default to the
+                    # "git" method, so the scan-flow e2e can trigger a scan
+                    # without attaching a file. The clone itself is async and
+                    # irrelevant to the specs (they assert the progress drawer's
+                    # initial frame, not scan completion).
+                    git_url=f"https://github.com/trustedoss-e2e/{slug}.git",
                     default_branch="main",
                     visibility="team",
                     created_by_user_id=user.id,

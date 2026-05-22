@@ -100,13 +100,37 @@ export class PortalPage {
 
   /**
    * Click the "Scan" button on the project row whose `data-project-name`
-   * equals `projectName`. Uses the row's button so the test does not depend
-   * on visual ordering of the virtualized list.
+   * equals `projectName`, then drive the source-select dialog (PR #91) to
+   * actually start the scan. Uses the row's button so the test does not
+   * depend on visual ordering of the virtualized list.
+   *
+   * `method` defaults to "git" — the seed project carries a git_url, so the
+   * dialog can submit without attaching a file. Pass "upload"/"folder" only
+   * for tests that exercise those input paths (they must stage a file first).
    */
-  async clickTriggerScan(projectName: string): Promise<void> {
+  async clickTriggerScan(
+    projectName: string,
+    method: "git" | "upload" | "folder" = "git",
+  ): Promise<void> {
     await this.page
       .locator(`[data-testid="project-row-scan"][data-project-name="${projectName}"]`)
       .click();
+    // PR #91: the scan button opens the source-select dialog first.
+    await this.page
+      .getByTestId("source-select-dialog")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    await this.page.getByTestId(`source-method-${method}`).click();
+    await this.page.getByTestId("source-submit").click();
+  }
+
+  /** Open the source-select dialog without submitting (input-path tests). */
+  async openSourceSelectDialog(projectName: string): Promise<void> {
+    await this.page
+      .locator(`[data-testid="project-row-scan"][data-project-name="${projectName}"]`)
+      .click();
+    await this.page
+      .getByTestId("source-select-dialog")
+      .waitFor({ state: "visible", timeout: 10_000 });
   }
 
   /**
