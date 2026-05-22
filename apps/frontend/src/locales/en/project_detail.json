@@ -171,7 +171,10 @@
       "sort_by_discovered_at": "Discovered",
       "order_label": "Order",
       "order_asc": "Ascending",
-      "order_desc": "Descending"
+      "order_desc": "Descending",
+      "report_label": "Report",
+      "download_pdf": "Download PDF report",
+      "download_pdf_generating": "Generating…"
     },
     "empty": {
       "title": "No vulnerabilities match",

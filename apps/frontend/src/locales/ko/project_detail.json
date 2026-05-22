@@ -171,7 +171,10 @@
       "sort_by_discovered_at": "발견 시각",
       "order_label": "순서",
       "order_asc": "오름차순",
-      "order_desc": "내림차순"
+      "order_desc": "내림차순",
+      "report_label": "보고서",
+      "download_pdf": "PDF 보고서 다운로드",
+      "download_pdf_generating": "생성 중…"
     },
     "empty": {
       "title": "조건에 맞는 취약점이 없습니다",

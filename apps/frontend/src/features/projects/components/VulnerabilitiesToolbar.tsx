@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type {
   SortOrder,
@@ -51,6 +52,12 @@ export interface VulnerabilitiesToolbarProps {
   onSortChange: (value: VulnerabilitySortKey) => void;
   order: SortOrder;
   onOrderChange: (value: SortOrder) => void;
+  /** Trigger the vulnerability PDF report download (G2). */
+  onDownloadPdf: () => void;
+  /** True while the PDF is being generated/fetched — drives the loading label. */
+  isPdfDownloading: boolean;
+  /** Inline error from the last PDF download attempt, if any. */
+  pdfError: Error | null;
   className?: string;
 }
 
@@ -73,6 +80,9 @@ export function VulnerabilitiesToolbar({
   onSortChange,
   order,
   onOrderChange,
+  onDownloadPdf,
+  isPdfDownloading,
+  pdfError,
   className,
 }: VulnerabilitiesToolbarProps) {
   const { t } = useTranslation("project_detail");
@@ -199,6 +209,33 @@ export function VulnerabilitiesToolbar({
             {t("vulnerabilities.toolbar.order_desc")}
           </option>
         </select>
+      </div>
+
+      <div className="flex flex-col lg:ml-auto">
+        <span className="text-xs font-medium text-muted-foreground">
+          {t("vulnerabilities.toolbar.report_label")}
+        </span>
+        <Button
+          type="button"
+          variant="default"
+          size="sm"
+          className="mt-1 h-9"
+          onClick={onDownloadPdf}
+          disabled={isPdfDownloading}
+          data-testid="vuln-download-pdf"
+        >
+          {isPdfDownloading
+            ? t("vulnerabilities.toolbar.download_pdf_generating")
+            : t("vulnerabilities.toolbar.download_pdf")}
+        </Button>
+        {pdfError ? (
+          <span
+            className="mt-1 text-xs text-destructive"
+            data-testid="vuln-download-pdf-error"
+          >
+            {pdfError.message}
+          </span>
+        ) : null}
       </div>
     </div>
   );

@@ -7,6 +7,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useVulnerabilities } from "@/features/projects/api/useVulnerabilities";
+import { useVulnReport } from "@/features/projects/api/useVulnReport";
 import type {
   SortOrder,
   VulnFindingStatus,
@@ -94,9 +95,14 @@ function parsePage(raw: string | null): number {
 
 export interface VulnerabilitiesTabProps {
   projectId: string;
+  /** Used to build the PDF report download filename fallback (G2). */
+  projectName?: string | null;
 }
 
-export function VulnerabilitiesTab({ projectId }: VulnerabilitiesTabProps) {
+export function VulnerabilitiesTab({
+  projectId,
+  projectName,
+}: VulnerabilitiesTabProps) {
   const { t, i18n } = useTranslation("project_detail");
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -199,6 +205,7 @@ export function VulnerabilitiesTab({ projectId }: VulnerabilitiesTabProps) {
   );
 
   const vulnerabilities = useVulnerabilities(projectId, filters);
+  const vulnReport = useVulnReport(projectId, projectName);
 
   const items: VulnerabilityListItem[] = vulnerabilities.data?.items ?? [];
   const total = vulnerabilities.data?.total ?? 0;
@@ -228,6 +235,16 @@ export function VulnerabilitiesTab({ projectId }: VulnerabilitiesTabProps) {
           setOrder(next);
           setPage(1);
         }}
+        onDownloadPdf={() => {
+          // The rejection is captured by useVulnReport's internal error state
+          // and rendered inline in the toolbar — swallow it here so it doesn't
+          // bubble up as an unhandled promise rejection.
+          vulnReport.download().catch(() => {
+            /* error already surfaced via vulnReport.error */
+          });
+        }}
+        isPdfDownloading={vulnReport.isLoading}
+        pdfError={vulnReport.error}
       />
 
       <div

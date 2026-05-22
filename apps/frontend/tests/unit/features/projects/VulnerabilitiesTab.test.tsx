@@ -31,6 +31,12 @@ vi.mock("@/features/projects/api/vulnerabilitiesApi", async () => {
   };
 });
 
+vi.mock("@/features/projects/api/vulnReportApi", async () => {
+  return {
+    fetchVulnerabilityReportPdf: vi.fn(),
+  };
+});
+
 vi.mock("react-virtuoso", () => ({
   Virtuoso: <T,>({
     data,
@@ -47,6 +53,7 @@ vi.mock("react-virtuoso", () => ({
   ),
 }));
 
+import { fetchVulnerabilityReportPdf } from "@/features/projects/api/vulnReportApi";
 import {
   getVulnerabilityFinding,
   listProjectVulnerabilities,
@@ -54,6 +61,7 @@ import {
 
 const mockedList = vi.mocked(listProjectVulnerabilities);
 const mockedGet = vi.mocked(getVulnerabilityFinding);
+const mockedReport = vi.mocked(fetchVulnerabilityReportPdf);
 
 function vuln(
   cveId: string,
@@ -82,14 +90,17 @@ function listResponse(
   return { items, total, limit, offset };
 }
 
-function renderTab(initialEntries: string[] = ["/projects/proj-1"]) {
+function renderTab(
+  initialEntries: string[] = ["/projects/proj-1"],
+  projectName: string | null = "My Project",
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={initialEntries}>
-        <VulnerabilitiesTab projectId="proj-1" />
+        <VulnerabilitiesTab projectId="proj-1" projectName={projectName} />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -99,6 +110,7 @@ describe("VulnerabilitiesTab", () => {
   beforeEach(() => {
     mockedList.mockReset();
     mockedGet.mockReset();
+    mockedReport.mockReset();
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -300,5 +312,79 @@ describe("VulnerabilitiesTab", () => {
     await waitFor(() => {
       expect(screen.getByTestId("vulnerability-drawer")).toBeInTheDocument();
     });
+  });
+
+  it("renders the Download PDF report button in the toolbar", async () => {
+    mockedList.mockResolvedValueOnce(listResponse([vuln("CVE-2024-1111")]));
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getByTestId("vuln-download-pdf")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("vuln-download-pdf")).toHaveTextContent(
+      "Download PDF report",
+    );
+  });
+
+  it("clicking Download PDF fetches the report with the project id + name", async () => {
+    mockedList.mockResolvedValueOnce(listResponse([vuln("CVE-2024-1111")]));
+    mockedReport.mockResolvedValueOnce({
+      blob: new Blob(["%PDF-1.7"], { type: "application/pdf" }),
+      filename: "vulnerability-report-My-Project.pdf",
+    });
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getByTestId("vuln-download-pdf")).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByTestId("vuln-download-pdf"));
+
+    await waitFor(() => {
+      expect(mockedReport).toHaveBeenCalledWith("proj-1", "My Project");
+    });
+  });
+
+  it("shows the generating label while the PDF is being fetched", async () => {
+    mockedList.mockResolvedValueOnce(listResponse([vuln("CVE-2024-1111")]));
+    // Never-resolving fetch keeps the button in its loading state.
+    mockedReport.mockReturnValue(new Promise(() => {}));
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getByTestId("vuln-download-pdf")).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByTestId("vuln-download-pdf"));
+
+    await waitFor(() => {
+      const button = screen.getByTestId("vuln-download-pdf");
+      expect(button).toHaveTextContent("Generating…");
+      expect(button).toBeDisabled();
+    });
+  });
+
+  it("surfaces an inline error when the PDF download fails", async () => {
+    mockedList.mockResolvedValueOnce(listResponse([vuln("CVE-2024-1111")]));
+    mockedReport.mockRejectedValueOnce(
+      new ProblemError("Project not found.", {
+        status: 404,
+        title: "Not Found",
+        detail: "Project not found.",
+        problem: null,
+      }),
+    );
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getByTestId("vuln-download-pdf")).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByTestId("vuln-download-pdf"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("vuln-download-pdf-error"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getByTestId("vuln-download-pdf-error").textContent,
+    ).toContain("Project not found.");
   });
 });

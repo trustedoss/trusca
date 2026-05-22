@@ -208,7 +208,10 @@ export function ProjectDetailPage() {
           <ComponentsTab projectId={projectId} />
         </TabsContent>
         <TabsContent value="vulnerabilities">
-          <VulnerabilitiesTab projectId={projectId} />
+          <VulnerabilitiesTab
+            projectId={projectId}
+            projectName={projectQuery.data?.name ?? null}
+          />
         </TabsContent>
         <TabsContent value="licenses">
           <LicensesTab projectId={projectId} />
