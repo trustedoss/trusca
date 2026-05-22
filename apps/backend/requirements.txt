@@ -44,14 +44,26 @@ aiosmtplib==3.0.2
 # services.report_service.render_report_pdf so the unit-test lane and a
 # not-yet-rebuilt image still import the module cleanly.
 #
-# pydyf is pinned EXPLICITLY alongside weasyprint. weasyprint 62.3 only
-# requires `pydyf>=0.10.0`, so an unpinned resolve picks up pydyf 0.12.x,
-# which removed the `Stream.transform` method that weasyprint 62.3's
-# `pdf/stream.py` calls via `super().transform(...)` — every `write_pdf()`
-# then 500s with `AttributeError: 'super' object has no attribute 'transform'`
-# (observed on PR #97's CI `test (backend)` lane). pydyf 0.10.0 is the version
-# weasyprint 62.3 was built against and renders a real PDF; verified by
-# building the backend image and rendering a `b'%PDF'`. Bump pydyf only in
-# lockstep with a weasyprint bump, re-verifying the render each time.
-weasyprint==62.3
-pydyf==0.10.0
+# pydyf is pinned EXPLICITLY alongside weasyprint and MUST be bumped in
+# lockstep — the two libraries share a tightly-coupled private API surface.
+#
+# History: weasyprint 62.3 required only `pydyf>=0.10.0`, so an unpinned
+# resolve picked up pydyf 0.12.x, which REMOVED the `Stream.transform` method
+# that weasyprint 62.3's `pdf/stream.py` calls via `super().transform(...)` —
+# every `write_pdf()` then 500'd with `AttributeError: 'super' object has no
+# attribute 'transform'` (observed on PR #97's CI `test (backend)` lane). So
+# 62.3 was hard-pinned with pydyf 0.10.0, the version it was built against.
+#
+# CVE-2025-68616 — weasyprint < 68.0 is vulnerable; the fix ships in 68.0.
+# weasyprint 68.0 (2026-01-19) declares `pydyf>=0.11.0` and the 67.x/68.x line
+# was developed against the pydyf 0.12.x API (weasyprint 67.0 and pydyf 0.12.0
+# both released 2025-12-02), so 68.0 calls the NEW pydyf surface — the
+# 62.3↔0.12 `Stream.transform` mismatch does not apply to this pairing. We pin
+# pydyf 0.12.1 (current latest, same API generation as 68.0). VERIFIED by
+# building the API image (apps/backend/Dockerfile, NOT Dockerfile.worker: the
+# native pango/cairo/gdk-pixbuf render libs only live in the API image, because
+# render_report_pdf runs in the API endpoint api/v1/reports.py, not a Celery
+# task) and rendering a real PDF -- services.report_service.render_report_pdf
+# returns `b'%PDF'`. Re-verify the render on every future bump of either pin.
+weasyprint==68.0
+pydyf==0.12.1
