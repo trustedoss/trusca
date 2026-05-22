@@ -89,6 +89,7 @@ from services.source_archive_service import (
     resolve_existing_archive,
     safe_extract_archive,
 )
+from services.source_preservation_service import preserve_scan_source
 from tasks._progress import publish_progress
 from tasks.celery_app import celery_app
 
@@ -280,12 +281,19 @@ def _run_pipeline(
     # NOT downloaded; their licenses stay declared via _persist_components.
     _set_stage(scan_uuid, "scancode")
     scancode_detections: list[scancode_adapter.DetectedLicense] = []
+    # G3.1: capture the scancode result JSON path so the preservation stage can
+    # fold it into the source tarball. The JSON is the only place per-line
+    # license-match data survives the workspace rmtree (the adapter discards line
+    # numbers; license_findings keeps only spdx + source_path). None when
+    # scancode was skipped — preservation then archives the source tree alone.
+    scancode_json_path: Path | None = None
     try:
         scancode_result = scancode_adapter.run_scancode(
             source_dir=source_dir,
             output_dir=workspace / "scancode",
         )
         scancode_detections = scancode_result.detections
+        scancode_json_path = scancode_result.result_path
         _persist_artifact(
             scan_uuid, kind="scancode_result", path=scancode_result.result_path
         )
@@ -376,6 +384,21 @@ def _run_pipeline(
             session.commit()
     finally:
         dt_client.close()
+
+    # Stage 6.5 — preserve the source tree + scancode JSON (G3.1).
+    #
+    # This MUST run before the shared `finally: shutil.rmtree(workspace)` deletes
+    # `source_dir`. It is best-effort, mirroring the scancode stage above: a
+    # preservation failure (quota, over-cap tree, I/O error) logs a WARNING and
+    # the scan still succeeds — we never raise onto the terminal-failure path. We
+    # call it here (not in `finally`) so a failed scan does NOT leave a tarball
+    # behind, and so the retained tarball reflects only succeeded scans.
+    _preserve_source_tree(
+        scan_uuid=scan_uuid,
+        project_id=project_id,
+        source_dir=source_dir,
+        scancode_json_path=scancode_json_path,
+    )
 
     # Stage 7 — finalize.
     _set_stage(scan_uuid, "finalize")
@@ -691,6 +714,108 @@ def _persist_artifact(scan_uuid: uuid.UUID, *, kind: str, path: Path) -> None:
         )
         session.add(artifact)
         session.commit()
+
+
+# ---------------------------------------------------------------------------
+# Source preservation (G3.1) — tar the source + scancode JSON for the tree view
+# ---------------------------------------------------------------------------
+
+# Free-form ScanArtifact.kind for the preserved source tarball. The column is
+# String(32) (models/scan.py) and free-form, so no migration is needed.
+_SOURCE_TARBALL_ARTIFACT_KIND = "source_tarball"
+
+
+def _resolve_scancode_json_path(
+    scan_uuid: uuid.UUID,
+    workspace: Path,
+    captured: Path | None,
+) -> Path | None:
+    """Best-effort resolve the scancode result JSON path for preservation.
+
+    Resolution order:
+      1. the path captured from the scancode stage in this run (authoritative),
+      2. the ``kind='scancode_result'`` ScanArtifact row written this run,
+      3. the known workspace location ``{workspace}/scancode/`` (a re-run whose
+         scancode stage failed but a prior artifact path is unavailable).
+
+    Returns ``None`` when no readable JSON can be found — preservation then
+    archives the source tree alone (the per-line view degrades, the file tree
+    still works).
+    """
+    if captured is not None and captured.is_file():
+        return captured
+
+    with sync_session_scope() as session:
+        row = session.execute(
+            select(ScanArtifact.storage_path).where(
+                ScanArtifact.scan_id == scan_uuid,
+                ScanArtifact.kind == "scancode_result",
+            )
+        ).scalar_one_or_none()
+    if isinstance(row, str) and row:
+        candidate = Path(row)
+        if candidate.is_file():
+            return candidate
+
+    # Last resort: the adapter writes its result under {workspace}/scancode/.
+    scancode_dir = workspace / "scancode"
+    if scancode_dir.is_dir():
+        for child in sorted(scancode_dir.glob("*.json")):
+            if child.is_file():
+                return child
+    return None
+
+
+def _preserve_source_tree(
+    *,
+    scan_uuid: uuid.UUID,
+    project_id: uuid.UUID,
+    source_dir: Path,
+    scancode_json_path: Path | None,
+) -> None:
+    """Preserve the source tree + scancode JSON as a tarball (G3.1).
+
+    Best-effort — mirrors the scancode stage's swallow-and-log contract: a
+    failure here NEVER fails the scan. On success we write a free-form
+    ``source_tarball`` ScanArtifact row pointing at the retained tar; on a re-run
+    the prior artifact row was already deleted by ``_reset_scan_for_rerun`` and
+    the tarball itself is overwritten atomically by the service.
+
+    The workspace is the parent of ``source_dir`` (``{workspace}/source``); we
+    derive it so the scancode-JSON fallback can probe ``{workspace}/scancode/``.
+    """
+    try:
+        workspace = source_dir.parent
+        json_path = _resolve_scancode_json_path(
+            scan_uuid, workspace, scancode_json_path
+        )
+        tar_path = preserve_scan_source(
+            scan_id=scan_uuid,
+            project_id=project_id,
+            source_dir=source_dir,
+            scancode_json_path=json_path,
+        )
+        if tar_path is None:
+            log.info("scan_source_preserve_skipped_stage", scan_id=str(scan_uuid))
+            return
+        _persist_artifact(
+            scan_uuid, kind=_SOURCE_TARBALL_ARTIFACT_KIND, path=tar_path
+        )
+        log.info(
+            "scan_source_preserve_artifact_written",
+            scan_id=str(scan_uuid),
+            storage_path=str(tar_path),
+        )
+    except Exception as exc:  # noqa: BLE001 — preservation must never fail a scan
+        # The service already swallows its own errors and returns None; this
+        # outer guard covers an unexpected failure in artifact persistence (e.g.
+        # a transient DB error) so a degraded preservation never sinks a
+        # succeeded scan. Same philosophy as the scancode stage.
+        log.warning(
+            "scan_source_preserve_stage_error",
+            scan_id=str(scan_uuid),
+            error=str(exc)[:300],
+        )
 
 
 # ---------------------------------------------------------------------------
