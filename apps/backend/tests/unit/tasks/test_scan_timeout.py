@@ -208,6 +208,9 @@ def test_scan_source_softtimeout_marks_failed_and_cleans_workspace(
     class _FakeScan:
         status = "queued"
         project_id = uuid.uuid4()
+        # scan_source_task copies scan.scan_metadata before running the
+        # pipeline; the source path carries no image_ref, so None → {}.
+        scan_metadata = None
         id = scan_uuid
 
     class _FakeProject:
