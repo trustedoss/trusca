@@ -26,12 +26,13 @@ end-user mutation.
 
 Authorization
 -------------
-- List: ``ProjectForbidden`` (403) on cross-team. Existence of a project is
-  not a secret across teams (PR #10 / PR #12 pattern).
-- Detail: ``ObligationNotFound`` (404) on cross-team — the URL is
-  project-scoped, so we existence-hide cross-team reads in the same way the
-  vulnerability and license drawers do (PR #11 / PR #12).
-- Notice: ``ProjectForbidden`` (403) on cross-team — same shape as List.
+All project-scoped reads existence-hide cross-team access as 404
+(security-reviewer Low #4) so a non-member cannot distinguish "exists but
+forbidden" from "does not exist" — uniform with the obligation-detail,
+vulnerability, license, SBOM, report, and source-tree endpoints.
+- List: ``ProjectNotFound`` (404) on cross-team.
+- Detail: ``ObligationNotFound`` (404) on cross-team.
+- Notice: ``ProjectNotFound`` (404) on cross-team.
 
 Both the list and notice paths emit a ``log.warning("authz.cross_team_attempt",
 ...)`` *before* raising so SOC tooling sees the rejection regardless of which
@@ -78,7 +79,7 @@ from models import (
 )
 from schemas.obligation_detail import KNOWN_OBLIGATION_KINDS
 from services.project_detail_service import _license_rank_case
-from services.project_service import ProjectError, ProjectForbidden, ProjectNotFound
+from services.project_service import ProjectError, ProjectNotFound
 
 log = structlog.get_logger("obligation.service")
 
@@ -244,8 +245,8 @@ async def list_project_obligations(
 
     Authorization
     -------------
-    - ``ProjectNotFound`` (404) if the project id doesn't exist.
-    - ``ProjectForbidden`` (403) if the actor is not a team member. We log
+    - ``ProjectNotFound`` (404) if the project id doesn't exist OR the actor is
+      not a team member (existence-hide, security-reviewer Low #4). We log
       ``authz.cross_team_attempt`` before raising.
 
     If the project has no ``latest_scan_id``, returns
@@ -270,9 +271,11 @@ async def list_project_obligations(
         log=log,
         resource="project_obligations",
         resource_id=str(project_id),
-        deny=lambda: ProjectForbidden(
-            f"actor is not a member of team {project.team_id}"
-        ),
+        # Existence-hide cross-team reads as 404 (security-reviewer Low #4):
+        # uniform with the obligation-detail / vulnerability / license / SBOM /
+        # report / source-tree endpoints so a non-member cannot distinguish
+        # "exists but forbidden" from "does not exist".
+        deny=lambda: ProjectNotFound(f"project {project_id} not found"),
     )
 
     if project.latest_scan_id is None:
@@ -746,9 +749,11 @@ async def generate_notice(
         log=log,
         resource="project_notice",
         resource_id=str(project_id),
-        deny=lambda: ProjectForbidden(
-            f"actor is not a member of team {project.team_id}"
-        ),
+        # Existence-hide cross-team reads as 404 (security-reviewer Low #4):
+        # uniform with the obligation-detail / vulnerability / license / SBOM /
+        # report / source-tree endpoints so a non-member cannot distinguish
+        # "exists but forbidden" from "does not exist".
+        deny=lambda: ProjectNotFound(f"project {project_id} not found"),
     )
 
     generated_at = datetime.now(tz=UTC)
