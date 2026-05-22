@@ -53,6 +53,7 @@ from fastapi import (
     status,
 )
 from fastapi import Path as FastapiPath
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.background import BackgroundTask
 from starlette.responses import StreamingResponse
@@ -284,9 +285,14 @@ async def download_backup_endpoint(
     tmp_path = Path(tmp.name)
     tmp.close()
 
-    try:
+    def _build_tar() -> None:
         with tarfile.open(tmp_path, mode="w:gz") as tar:
             tar.add(str(backup_path), arcname=name)
+
+    try:
+        # Building a (potentially multi-GB) tar.gz is blocking I/O; offload off
+        # the event loop so it never serialises concurrent requests (Tier 3).
+        await run_in_threadpool(_build_tar)
     except Exception as exc:  # noqa: BLE001 — convert any IO error to 500 problem
         _remove_path(tmp_path)
         log.error("admin.backup.tar_build_failed", name=name, error=str(exc))
@@ -412,7 +418,7 @@ async def restore_backup_endpoint(
     # anything else.
     extract_dir = upload_dir / "extracted"
     extract_dir.mkdir(parents=True, exist_ok=True)
-    try:
+    def _extract_archive() -> None:
         # nosemgrep: trailofbits.python.tarfile-extractall-traversal.tarfile-extractall-traversal
         with tarfile.open(archive_path, mode="r:gz") as tar:
             # Block path-traversal entries (..) and absolute paths, AND
@@ -439,6 +445,11 @@ async def restore_backup_endpoint(
             # whose resolved path escapes the destination directory. Combined
             # with the preflight loop above, extractall is safe here.
             tar.extractall(path=str(extract_dir), filter="data")  # noqa: S202
+
+    try:
+        # Decompress + extract is blocking, potentially large I/O; offload off
+        # the event loop so a big restore can't stall the worker (Tier 3).
+        await run_in_threadpool(_extract_archive)
     except _DecompressionBombError as exc:
         shutil.rmtree(upload_dir, ignore_errors=True)
         log.warning("admin.backup.upload_decompression_bomb", error=str(exc))

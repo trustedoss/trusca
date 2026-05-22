@@ -69,6 +69,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import structlog
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -455,11 +456,16 @@ async def list_dir(
         session, project_id=project_id, scan_id=scan_id, actor=actor
     )
 
-    tar = _open_tarball(project_id, resolved_scan)
-    try:
-        members = tar.getmembers()
-    finally:
-        tar.close()
+    def _load_members() -> list[tarfile.TarInfo]:
+        tar = _open_tarball(project_id, resolved_scan)
+        try:
+            return tar.getmembers()
+        finally:
+            tar.close()
+
+    # tarfile open + getmembers is blocking gzip I/O; offload off the event loop
+    # so concurrent source-tree reads don't serialise (test-hardening Tier 3).
+    members = await run_in_threadpool(_load_members)
 
     raw_children = _immediate_children(members, parent=member_path)
 
@@ -589,51 +595,56 @@ async def read_file(
     )
 
     cap = scan_source_viewer_max_file_bytes()
-    tar = _open_tarball(project_id, resolved_scan)
-    try:
-        # G3.2 Low (b): open + parse the tarball ONCE per request. ``getmembers``
-        # walks the whole archive; reuse that single member list for the file
-        # lookup AND the per-line scancode-match projection below instead of
-        # re-opening the tar a second time.
-        members = tar.getmembers()
-        info = _lookup_member(members, member_path)
 
-        if info.isdir():
-            raise SourceFileTooLarge(f"{member_path!r} is a directory, not a file")
-        # Reject non-regular members (symlink / hardlink / device / fifo) — even
-        # if a non-writer-produced tarball smuggled one in, we never follow it.
-        if info.type in _NON_REGULAR_TYPES or not info.isreg():
-            raise SourceFileTooLarge(
-                f"{member_path!r} is not a regular file (type {info.type!r})"
+    def _read_member() -> tuple[int, bool, str, str | None, list[LineMatch]]:
+        # All of this is blocking gzip tar I/O — runs in the threadpool (below)
+        # so concurrent file reads never stall the event loop (Tier 3 hardening).
+        tar = _open_tarball(project_id, resolved_scan)
+        try:
+            # G3.2 Low (b): open + parse the tarball ONCE per request. ``getmembers``
+            # walks the whole archive; reuse that single member list for the file
+            # lookup AND the per-line scancode-match projection below.
+            members = tar.getmembers()
+            info = _lookup_member(members, member_path)
+
+            if info.isdir():
+                raise SourceFileTooLarge(f"{member_path!r} is a directory, not a file")
+            # Reject non-regular members (symlink / hardlink / device / fifo).
+            if info.type in _NON_REGULAR_TYPES or not info.isreg():
+                raise SourceFileTooLarge(
+                    f"{member_path!r} is not a regular file (type {info.type!r})"
+                )
+
+            full_size = int(info.size)
+            extracted = tar.extractfile(info)
+            if extracted is None:  # pragma: no cover — isreg() guards this
+                raise SourceUnavailable(
+                    f"could not read member from preserved source: {member_path!r}"
+                )
+            # Bounded read: cap+1 bytes detects truncation without reading an
+            # unbounded member into memory.
+            with extracted:
+                data = extracted.read(cap + 1)
+
+            truncated = len(data) > cap
+            if truncated:
+                data = data[:cap]
+
+            encoding, content = _detect_encoding(data)
+
+            # Project per-line matches from the SAME open tar (no second open).
+            matches = _line_matches_for_path(
+                tar,
+                members,
+                project_id=project_id,
+                scan_id=resolved_scan,
+                member_path=member_path,
             )
+            return full_size, truncated, encoding, content, matches
+        finally:
+            tar.close()
 
-        full_size = int(info.size)
-        extracted = tar.extractfile(info)
-        if extracted is None:  # pragma: no cover — isreg() guards this
-            raise SourceUnavailable(
-                f"could not read member from preserved source: {member_path!r}"
-            )
-        # Bounded read: cap+1 bytes lets us detect truncation without reading
-        # an unbounded member into memory.
-        with extracted:
-            data = extracted.read(cap + 1)
-
-        truncated = len(data) > cap
-        if truncated:
-            data = data[:cap]
-
-        encoding, content = _detect_encoding(data)
-
-        # Project per-line matches from the SAME open tar (no second open).
-        matches = _line_matches_for_path(
-            tar,
-            members,
-            project_id=project_id,
-            scan_id=resolved_scan,
-            member_path=member_path,
-        )
-    finally:
-        tar.close()
+    full_size, truncated, encoding, content, matches = await run_in_threadpool(_read_member)
 
     log.info(
         "source_tree_file_read",
@@ -772,42 +783,44 @@ async def read_file_raw(
     )
 
     cap = scan_source_raw_download_max_bytes()
-    tar = _open_tarball(project_id, resolved_scan)
-    # On ANY eager-validation failure below we must close the tar ourselves — it
-    # is only handed to the streaming generator (which then owns closing it) once
-    # every check has passed.
-    try:
-        info = _lookup_member(tar.getmembers(), member_path)
 
-        if info.isdir():
-            raise SourceFileTooLarge(f"{member_path!r} is a directory, not a file")
-        # Reject non-regular members (symlink / hardlink / device / fifo) — even
-        # if a non-writer-produced tarball smuggled one in, we never follow it.
-        if info.type in _NON_REGULAR_TYPES or not info.isreg():
-            raise SourceFileTooLarge(
-                f"{member_path!r} is not a regular file (type {info.type!r})"
-            )
+    def _eager_open() -> tuple[tarfile.TarFile, Any, int]:
+        # Eager validation + open is blocking gzip I/O → offload off the event
+        # loop (Tier 3 hardening). The streaming generator (run by Starlette in
+        # its own threadpool) then owns the open tar. On ANY eager failure we
+        # close the tar here — the generator never runs in those cases.
+        tar = _open_tarball(project_id, resolved_scan)
+        try:
+            info = _lookup_member(tar.getmembers(), member_path)
 
-        full_size = int(info.size)
-        # Refuse a member over the raw cap rather than streaming an unbounded
-        # body. In practice a preserved member can never exceed the tarball cap,
-        # but the explicit guard keeps the bound honest BEFORE we start the body.
-        if full_size > cap:
-            raise SourceFileTooLarge(
-                f"{member_path!r} is {full_size} bytes, over the "
-                f"{cap}-byte raw-download cap"
-            )
+            if info.isdir():
+                raise SourceFileTooLarge(f"{member_path!r} is a directory, not a file")
+            # Reject non-regular members (symlink / hardlink / device / fifo).
+            if info.type in _NON_REGULAR_TYPES or not info.isreg():
+                raise SourceFileTooLarge(
+                    f"{member_path!r} is not a regular file (type {info.type!r})"
+                )
 
-        extracted = tar.extractfile(info)
-        if extracted is None:  # pragma: no cover — isreg() guards this
-            raise SourceUnavailable(
-                f"could not read member from preserved source: {member_path!r}"
-            )
-    except BaseException:
-        # Any eager failure (validation OR an unexpected error) must not leak the
-        # open tarball; the generator never runs in these cases.
-        tar.close()
-        raise
+            full_size = int(info.size)
+            # Refuse a member over the raw cap rather than streaming an unbounded
+            # body. The explicit guard keeps the bound honest BEFORE the body.
+            if full_size > cap:
+                raise SourceFileTooLarge(
+                    f"{member_path!r} is {full_size} bytes, over the "
+                    f"{cap}-byte raw-download cap"
+                )
+
+            extracted = tar.extractfile(info)
+            if extracted is None:  # pragma: no cover — isreg() guards this
+                raise SourceUnavailable(
+                    f"could not read member from preserved source: {member_path!r}"
+                )
+            return tar, extracted, full_size
+        except BaseException:
+            tar.close()
+            raise
+
+    tar, extracted, full_size = await run_in_threadpool(_eager_open)
 
     filename = member_path.rsplit("/", 1)[-1] or "download"
 
