@@ -1,0 +1,303 @@
+{
+  "DELETE /v1/admin/backup/{name}": [
+    "name"
+  ],
+  "DELETE /v1/admin/teams/{team_id}": [
+    "team_id"
+  ],
+  "DELETE /v1/admin/teams/{team_id}/members/{user_id}": [
+    "team_id",
+    "user_id"
+  ],
+  "DELETE /v1/api-keys/{api_key_id}": [
+    "api_key_id"
+  ],
+  "DELETE /v1/approvals/{approval_id}": [
+    "approval_id"
+  ],
+  "DELETE /v1/projects/{project_id}": [
+    "project_id"
+  ],
+  "DELETE /v1/users/me/oauth-identities/{identity_id}": [
+    "identity_id"
+  ],
+  "GET /auth/me": [],
+  "GET /auth/oauth/{provider}/authorize": [
+    "provider",
+    "redirect_after"
+  ],
+  "GET /auth/oauth/{provider}/callback": [
+    "code",
+    "error",
+    "provider",
+    "state"
+  ],
+  "GET /health": [],
+  "GET /v1/admin/audit": [
+    "action",
+    "actor_user_id",
+    "from",
+    "page",
+    "page_size",
+    "q",
+    "target_table",
+    "to"
+  ],
+  "GET /v1/admin/audit/export.csv": [
+    "action",
+    "actor_user_id",
+    "from",
+    "q",
+    "target_table",
+    "to"
+  ],
+  "GET /v1/admin/backup": [],
+  "GET /v1/admin/backup/{name}/download": [
+    "name"
+  ],
+  "GET /v1/admin/disk": [],
+  "GET /v1/admin/dt/orphans": [
+    "limit",
+    "offset"
+  ],
+  "GET /v1/admin/dt/status": [],
+  "GET /v1/admin/health": [],
+  "GET /v1/admin/scans": [
+    "page",
+    "page_size",
+    "status"
+  ],
+  "GET /v1/admin/teams": [
+    "page",
+    "page_size",
+    "search"
+  ],
+  "GET /v1/admin/teams/{team_id}": [
+    "team_id"
+  ],
+  "GET /v1/admin/users": [
+    "active",
+    "page",
+    "page_size",
+    "role",
+    "search"
+  ],
+  "GET /v1/admin/users/{user_id}": [
+    "user_id"
+  ],
+  "GET /v1/api-keys": [
+    "include_revoked",
+    "page",
+    "page_size",
+    "project_id",
+    "scope",
+    "team_id"
+  ],
+  "GET /v1/approvals": [
+    "from_dt",
+    "page",
+    "page_size",
+    "requested_by_user_id",
+    "status",
+    "team_id",
+    "to_dt"
+  ],
+  "GET /v1/approvals/{approval_id}": [
+    "approval_id"
+  ],
+  "GET /v1/components/{component_id}": [
+    "component_id"
+  ],
+  "GET /v1/license_findings/{finding_id}": [
+    "finding_id"
+  ],
+  "GET /v1/notifications": [
+    "page",
+    "page_size",
+    "unread_only"
+  ],
+  "GET /v1/notifications/unread-count": [],
+  "GET /v1/projects": [
+    "include_archived",
+    "page",
+    "q",
+    "size",
+    "team_id"
+  ],
+  "GET /v1/projects/{project_id}": [
+    "project_id"
+  ],
+  "GET /v1/projects/{project_id}/components": [
+    "license_category",
+    "limit",
+    "offset",
+    "order",
+    "project_id",
+    "search",
+    "severity",
+    "sort"
+  ],
+  "GET /v1/projects/{project_id}/gate-result": [
+    "project_id"
+  ],
+  "GET /v1/projects/{project_id}/licenses": [
+    "category",
+    "kind",
+    "limit",
+    "offset",
+    "order",
+    "project_id",
+    "search",
+    "sort"
+  ],
+  "GET /v1/projects/{project_id}/notice": [
+    "download",
+    "format",
+    "project_id"
+  ],
+  "GET /v1/projects/{project_id}/obligations": [
+    "category",
+    "kind",
+    "limit",
+    "offset",
+    "order",
+    "project_id",
+    "search",
+    "sort"
+  ],
+  "GET /v1/projects/{project_id}/obligations/{obligation_id}": [
+    "obligation_id",
+    "project_id"
+  ],
+  "GET /v1/projects/{project_id}/overview": [
+    "project_id"
+  ],
+  "GET /v1/projects/{project_id}/sbom": [
+    "format",
+    "project_id"
+  ],
+  "GET /v1/projects/{project_id}/scans": [
+    "page",
+    "project_id",
+    "size"
+  ],
+  "GET /v1/projects/{project_id}/source-file": [
+    "path",
+    "project_id",
+    "raw",
+    "scan_id"
+  ],
+  "GET /v1/projects/{project_id}/source-tree": [
+    "page",
+    "path",
+    "project_id",
+    "scan_id",
+    "size"
+  ],
+  "GET /v1/projects/{project_id}/vulnerabilities": [
+    "limit",
+    "offset",
+    "order",
+    "project_id",
+    "search",
+    "severity",
+    "sort",
+    "status"
+  ],
+  "GET /v1/projects/{project_id}/vulnerability-report.pdf": [
+    "project_id"
+  ],
+  "GET /v1/scans": [
+    "page",
+    "size",
+    "status"
+  ],
+  "GET /v1/scans/{scan_id}": [
+    "scan_id"
+  ],
+  "GET /v1/users/me/notification-prefs": [],
+  "GET /v1/users/me/oauth-identities": [],
+  "GET /v1/vulnerability_findings/{finding_id}": [
+    "finding_id"
+  ],
+  "PATCH /v1/admin/teams/{team_id}": [
+    "team_id"
+  ],
+  "PATCH /v1/admin/users/{user_id}/activate": [
+    "user_id"
+  ],
+  "PATCH /v1/admin/users/{user_id}/deactivate": [
+    "user_id"
+  ],
+  "PATCH /v1/admin/users/{user_id}/role": [
+    "user_id"
+  ],
+  "PATCH /v1/approvals/{approval_id}/transition": [
+    "approval_id",
+    "if-match"
+  ],
+  "PATCH /v1/notifications/read-all": [],
+  "PATCH /v1/notifications/{notification_id}/read": [
+    "notification_id"
+  ],
+  "PATCH /v1/projects/{project_id}": [
+    "project_id"
+  ],
+  "PATCH /v1/vulnerability_findings/{finding_id}/status": [
+    "finding_id"
+  ],
+  "POST /auth/forgot-password": [],
+  "POST /auth/login": [],
+  "POST /auth/logout": [
+    "refresh_token"
+  ],
+  "POST /auth/refresh": [
+    "refresh_token"
+  ],
+  "POST /auth/register": [],
+  "POST /auth/reset-password": [],
+  "POST /v1/admin/backup": [],
+  "POST /v1/admin/backup/restore": [
+    "Content-Length",
+    "X-Confirm-Restore"
+  ],
+  "POST /v1/admin/dt/breaker/reset": [],
+  "POST /v1/admin/dt/health-check": [],
+  "POST /v1/admin/dt/orphans/cleanup": [],
+  "POST /v1/admin/scans/{scan_id}/cancel": [
+    "scan_id"
+  ],
+  "POST /v1/admin/teams": [],
+  "POST /v1/admin/teams/{team_id}/members": [
+    "team_id"
+  ],
+  "POST /v1/admin/users/{user_id}/password-reset": [
+    "user_id"
+  ],
+  "POST /v1/api-keys": [],
+  "POST /v1/approvals": [],
+  "POST /v1/projects": [],
+  "POST /v1/projects/{project_id}/scans": [
+    "project_id"
+  ],
+  "POST /v1/projects/{project_id}/source-archive": [
+    "project_id"
+  ],
+  "POST /v1/scans/{scan_id}/cancel": [
+    "scan_id"
+  ],
+  "POST /v1/scans/{scan_id}/post-pr-comment": [
+    "scan_id"
+  ],
+  "POST /v1/webhooks/github": [
+    "X-GitHub-Delivery",
+    "X-GitHub-Event",
+    "X-Hub-Signature-256"
+  ],
+  "POST /v1/webhooks/gitlab": [
+    "X-Gitlab-Event",
+    "X-Gitlab-Token",
+    "X-Gitlab-Webhook-UUID"
+  ],
+  "PUT /v1/users/me/notification-prefs": []
+}
