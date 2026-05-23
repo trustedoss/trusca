@@ -596,3 +596,63 @@ async def test_evaluate_gate_epss_below_threshold_passes(
 
     assert result.gate == "pass"
     assert result.epss_gate_count == 0
+
+
+@pytest.mark.parametrize(
+    ("epss_score", "expected_gate", "expected_count"),
+    [
+        # security-reviewer Low #1 — pin the `>=` boundary of
+        # `_count_open_epss_findings`. The threshold is GATE_EPSS_THRESHOLD=0.5;
+        # the column is Numeric(6, 5) so both values below are exactly
+        # representable (no float-rounding fuzz on the boundary).
+        #
+        #   score == threshold (0.50000)  → counted (>= is inclusive)  → FAIL
+        #   score just-below   (0.49999)  → NOT counted (strictly <)   → PASS
+        #
+        # These two cases are the contract that distinguishes `>=` from `>`:
+        # a `>` regression would flip the equality row to pass, and a `>=`-but-
+        # off-by-an-epsilon bug would flip the just-below row to fail. Pinning
+        # both directions fences the comparator on the exact boundary.
+        pytest.param(Decimal("0.50000"), "fail", 1, id="equal_to_threshold_counts"),
+        pytest.param(Decimal("0.49999"), "pass", 0, id="just_below_threshold_excluded"),
+    ],
+)
+async def test_evaluate_gate_epss_ge_boundary(
+    db_session: AsyncSession,
+    monkeypatch,
+    epss_score: Decimal,
+    expected_gate: str,
+    expected_count: int,
+) -> None:
+    """Pin the inclusive `>=` semantics of the EPSS gate at the exact boundary.
+
+    An open finding whose CVE EPSS equals the threshold MUST count (the gate
+    fails); one a single representable step below MUST NOT (the gate passes).
+    This is the boundary the existing fail/pass/disabled/NULL/closed cases
+    leave un-fenced — they all sit comfortably away from the threshold.
+    """
+    from services.policy_gate import evaluate_gate
+
+    monkeypatch.setenv("GATE_EPSS_THRESHOLD", "0.5")
+
+    _, _, project = await _seed_project_with_team(db_session)
+    scan = await make_scan(db_session, project=project, status="succeeded")
+    _, cv = await _make_component_version(db_session)
+    await _attach_scan_component(db_session, scan_id=scan.id, cv_id=cv.id)
+    vuln = await _make_vulnerability(
+        db_session, severity="medium", epss_score=epss_score
+    )
+    await _attach_vuln_finding(
+        db_session, scan_id=scan.id, cv_id=cv.id, vulnerability_id=vuln.id, status="new"
+    )
+
+    result = await evaluate_gate(db_session, project.id)
+
+    assert result.gate == expected_gate
+    assert result.epss_gate_count == expected_count
+    assert result.epss_threshold == 0.5
+    # The boundary must not be reached through the critical/forbidden paths —
+    # the seeded finding is `medium` severity with no license, so any failure
+    # here is attributable to the EPSS comparator alone.
+    assert result.critical_cve_count == 0
+    assert result.forbidden_license_count == 0
