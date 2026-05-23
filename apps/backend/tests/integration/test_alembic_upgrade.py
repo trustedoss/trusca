@@ -58,23 +58,12 @@ def test_alembic_current_reports_head_revision():
         timeout=30,
     )
     assert current.returncode == 0, current.stderr
-    # `alembic current` prints the head revision. Each migration
-    # advances this — chore PR #5 bumped 0003 → 0004 (license fetcher
-    # cache); chore PR #7 bumped 0004 → 0005 (data wipe of
-    # phishing-prone reference URLs); Phase 4 PR #13 bumped 0005 → 0006
-    # (password_reset_tokens); Phase 4 PR #14 bumped 0006 → 0007
-    # (audit_logs target_table / action / composite indexes); Phase 4
-    # PR #15 bumped 0007 → 0008 (component_approvals); Phase 5 PR #16
-    # bumped 0008 → 0009 (api_keys + webhook_deliveries + projects.webhook_*);
-    # Phase 8 PR #23 bumped 0009 → 0010 (oauth_identities + oauth_provider ENUM);
-    # Chore A2 bumped 0010 → 0011 (notifications + notification_preferences);
-    # post-walkthrough A bundle bumped 0011 → 0012 (audit_logs immutability
-    # trigger + TRUNCATE guard); manual sys-bug fix A5 bumped 0012 → 0013
-    # (last super_admin BEFORE UPDATE/DELETE trigger on users); marathon
-    # bundle 8 / L1 bumped 0013 → 0014 (trustedoss_app role grants —
-    # DML-only on audit_logs).
-    # Bump again when a future migration lands.
-    assert "0014" in current.stdout, current.stdout
+    # After `upgrade head`, `alembic current` marks the applied revision
+    # with "(head)". Assert the head *marker* rather than a hardcoded
+    # revision id, so a new migration never requires editing this test.
+    # (This previously hardcoded the latest id and broke on every migration —
+    # 0014 → 0015 EPSS was the most recent breakage.)
+    assert "(head)" in current.stdout, current.stdout
 
 
 @pytest.mark.integration
