@@ -191,9 +191,6 @@ export function AppShell() {
             <span className="font-semibold tracking-tight">
               {t("app.name")}
             </span>
-            <span className="text-xs text-muted-foreground">
-              {t("app.version")}
-            </span>
           </div>
           <div className="flex items-center gap-3">
             {/* Notification bell — sole entry point to /notifications. We
