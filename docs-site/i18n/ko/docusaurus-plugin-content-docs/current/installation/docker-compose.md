@@ -8,7 +8,7 @@ sidebar_position: 1
 
 # Docker Compose 설치
 
-자체 호스팅 환경에 권장하는 설치 경로입니다. `scripts/install.sh` 마법사가 이미지 풀, 비밀값 생성, Alembic 마이그레이션 실행, 첫 `super_admin` 사용자 생성을 일괄 수행합니다. Docker 캐시가 따뜻한 상태라면 보통 10분 이내에 끝납니다.
+자체 호스팅 환경에 권장하는 설치 경로입니다. `scripts/install.sh` 마법사가 이미지 풀, 비밀값 생성, 첫 `super_admin` 사용자 생성을 일괄 수행합니다. Alembic 마이그레이션은 backend 컨테이너가 기동 시 자동 적용하므로(`AUTO_MIGRATE`, 기본 `true`), 아래 두 경로 모두 수동 `alembic upgrade head` 가 필요 없습니다. Docker 캐시가 따뜻한 상태라면 보통 10분 이내에 끝납니다.
 
 :::note 대상 독자
 Linux 호스트에서 `sudo` 권한을 가진 운영자. `docker-compose`와 기본 셸 사용에 익숙해야 합니다. 최종 사용자 대상은 아닙니다 — 설치 완료 후 URL을 안내하세요.
@@ -86,21 +86,35 @@ docker-compose -f docker-compose.yml pull
 docker-compose -f docker-compose.yml up -d
 ```
 
-게시된 backend 이미지의 entrypoint는 **uvicorn만 실행하며 마이그레이션을 자동 실행하지 않습니다.** 스택이 올라온 뒤, 스키마 마이그레이션과 첫 관리자 생성을 한 번 수동으로 수행합니다:
+게시된 backend 이미지의 entrypoint는 **기동 시 Alembic 마이그레이션을 자동 적용**(`AUTO_MIGRATE`, 기본 `true`)한 뒤 uvicorn을 시작합니다 — backend가 healthy로 보고될 때 스키마는 이미 HEAD입니다. 수동 `alembic upgrade head` 는 필요 없습니다. 다만 자동 마이그레이션은 사용자를 생성하지 않으므로, 첫 관리자는 한 번 부트스트랩합니다:
 
 ```bash
-# 스키마를 HEAD로 (.env에 DATABASE_URL_OWNER를 설정했다면 그 역할 사용,
-# 없으면 DATABASE_URL).
-docker-compose -f docker-compose.yml exec -T \
-  -e DATABASE_URL="$(grep -E '^DATABASE_URL_OWNER=' .env | cut -d= -f2- || true)" \
-  backend alembic upgrade head
+# 비밀번호를 화면에 노출하지 않고 셸 변수로 읽은 뒤, `-e` 에는 변수 "이름만"
+# 넘깁니다. 값은 호출 셸에서 상속되므로 argv(`ps -ef` 노출)나 셸 히스토리에
+# 남지 않습니다.
+read -rs ADMIN_PASSWORD; export ADMIN_PASSWORD   # 12자 이상 비밀번호 입력 후 Enter
 
-# 첫 super_admin 생성.
+# 첫 super_admin 생성 (스키마는 이미 HEAD).
 docker-compose -f docker-compose.yml exec -T \
   -e ADMIN_EMAIL=you@example.com \
-  -e ADMIN_PASSWORD='<12자 이상 비밀번호>' \
+  -e ADMIN_PASSWORD \
   backend python -m scripts.create_super_admin
+
+unset ADMIN_PASSWORD   # 사용자 생성 후 셸에서 제거
 ```
+
+:::warning 비밀번호를 인라인으로 넣지 마세요
+`-e ADMIN_PASSWORD='리터럴'` 은 피하세요: 명령 실행 중 `ps -ef` 를 실행하는
+모든 사용자에게 리터럴이 노출되고 셸 히스토리에도 기록됩니다. 이름만
+넘기면(`-e ADMIN_PASSWORD`) Docker 가 환경에서 값을 상속합니다.
+:::
+
+:::note 스키마를 외부에서 관리하는 경우
+단일 역할 `.env` 템플릿은 `AUTO_MIGRATE=true` 로 출하되며 그대로 동작합니다. **L1 역할 분리** 스택(DDL용 `DATABASE_URL_OWNER` 와 런타임용 `DATABASE_URL_APP` 분리)에서는 런타임 컨테이너가 DML 전용 app DSN만 보유해 DDL을 실행할 수 없으므로 자동 마이그레이션을 꺼야 합니다.
+
+- **마법사 사용 시(2단계):** `install.sh` 가 **L1을 감지**(`DATABASE_URL_OWNER` 가 설정돼 있고 런타임 DSN과 다름)하면 **`.env` 에 `AUTO_MIGRATE=false` 를 자동 기록**한 뒤 owner 역할로 직접 마이그레이션합니다. 별도로 설정할 필요가 없습니다.
+- **이 클론 없는 경로:** 마법사가 없으므로 L1 스택에서는 **운영자가 직접 `.env` 에 `AUTO_MIGRATE=false` 를 설정**하고 owner 역할로 `alembic upgrade head` 를 실행해야 합니다(그 한 명령에서 `DATABASE_URL` 을 `DATABASE_URL_OWNER` 로 덮어씀). L1 스택에서 `true` 로 두면 backend entrypoint 가 명확한 DDL 권한 오류와 함께 즉시 실패(exit 1, 크래시 루프 없음)하고 로그에 원인을 남깁니다.
+:::
 
 :::tip 가이드 설치는 마법사를 권장
 아래 1~3단계의 `install.sh` 마법사는 위 작업을 대신 처리합니다 — 비밀값 생성, health 대기 루프, 마이그레이션, 관리자 부트스트랩까지. 또한 호스트에 V1이 없으면 Compose **V2** 플러그인(`docker compose`)으로도 동작합니다. 각 단계를 직접 제어하거나 자체 자동화를 구성할 때 클론 없는 경로를 사용하세요.
@@ -131,12 +145,13 @@ bash scripts/install.sh
 2. `.env`가 없으면 `.env.example`을 복사 (있다면 백업 후 교체 옵션).
 3. 64-hex `SECRET_KEY`와 강력한 PostgreSQL 비밀번호 생성.
 4. 포털이 노출될 **공개 URL**을 입력받아 `.env`에 `CORS_ALLOWED_ORIGINS`와 `DOMAIN`을 기록.
-5. `docker-compose pull` — 고정된 이미지 풀.
-6. `docker-compose up -d` — 스택 기동.
-7. 백엔드 `/health`가 200 응답할 때까지 60초 폴링.
-8. `alembic upgrade head` — 스키마 최신화.
-9. 첫 super-admin 이메일과 비밀번호(12자 이상, 확인 입력) 입력.
-10. 최종 URL과 다음 단계 안내 출력.
+5. **마이그레이션 정책 결정**: L1 역할 분리 스택(`DATABASE_URL_OWNER` 가 설정돼 있고 런타임 DSN과 다름)을 감지하면 `.env` 에 `AUTO_MIGRATE=false` 를 기록해 런타임 컨테이너가 app 역할로 DDL을 시도하지 않게 합니다. 단일 역할 스택은 기본값 `true` 유지.
+6. `docker-compose pull` — 고정된 이미지 풀.
+7. `docker-compose up -d` — 스택 기동. 단일 역할 스택에서는 backend 컨테이너가 기동 시 Alembic 마이그레이션을 자동 적용(`AUTO_MIGRATE=true`); L1에서는 적용하지 않습니다(앞 단계에서 정책 설정).
+8. 백엔드 `/health`가 200 응답할 때까지 60초 폴링.
+9. **owner** 역할(`DATABASE_URL_OWNER`)로 `alembic upgrade head` 를 한 번 실행합니다. L1에서는 권위 있는 DDL 패스(런타임 컨테이너는 DML 전용 app DSN만 보유); 단일 역할 스택에서 entrypoint 가 이미 마이그레이션한 경우 멱등 재확인입니다 — 이미 적용된 리비전은 건너뜁니다.
+10. 첫 super-admin 이메일과 비밀번호(12자 이상, 확인 입력) 입력. 자동 마이그레이션은 사용자를 만들지 않으므로 이 단계는 항상 실행됩니다.
+11. 최종 URL과 다음 단계 안내 출력.
 
 ### 정상 종료 시 출력
 
@@ -234,7 +249,7 @@ sudo ss -tlnp | grep -E ':80|:443'
 
 - `DATABASE_URL`의 호스트가 컴포즈 네트워크에 없는 호스트입니다. 호스트 부분이 `postgres`(서비스명)인지 확인하세요. `localhost`나 `127.0.0.1` 금지.
 - Postgres 컨테이너가 아직 healthy가 아닙니다. `docker-compose ps`에서 `postgres`가 `Up (healthy)`로 표시되어야 합니다. 재시작 중이라면 `docker-compose logs postgres`로 자격증명 불일치를 확인하세요.
-- 스키마 마이그레이션 실패. `docker-compose exec backend alembic upgrade head`를 직접 실행해 트레이스백을 확인합니다.
+- 자동 마이그레이션 실패. `AUTO_MIGRATE=true`(기본)일 때 backend는 기동 시 `alembic upgrade head` 를 실행하며, 재시도 루프 후에도 실패하면 비정상 종료하므로 컨테이너가 healthy로 전환되지 않습니다. `docker-compose logs backend` 의 alembic 트레이스백을 확인하세요. L1 역할 분리 스택에서는 런타임 DSN으로 DDL을 실행할 수 없으므로 `AUTO_MIGRATE=false` 로 설정하고 owner 역할로 마이그레이션을 실행하세요(마법사 2단계가 이를 처리).
 
 ### 설치 중 디스크 부족
 

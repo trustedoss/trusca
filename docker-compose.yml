@@ -324,6 +324,22 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      # v2.1 — startup ordering gate (M2). The worker image (Dockerfile.worker)
+      # deliberately does NOT run migrations — backend is the sole migrator —
+      # so the worker waits for backend to be healthy before starting Celery.
+      # What this gate buys you depends on AUTO_MIGRATE:
+      #   * AUTO_MIGRATE=true  — backend applies `alembic upgrade head` on start
+      #     and only then answers /health, so when this condition is satisfied
+      #     the schema is at HEAD before any Celery task touches the DB.
+      #   * AUTO_MIGRATE=false — backend becomes healthy as soon as uvicorn
+      #     answers /health, WITHOUT having migrated. This gate then degrades to
+      #     a plain ordering dependency: it does NOT guarantee the schema is at
+      #     HEAD — that is the operator's responsibility (run alembic as the
+      #     owner role; install.sh / upgrade.sh do this). A real readiness gate
+      #     (backend /health/ready that asserts schema == HEAD) is a v2.1
+      #     backend follow-up tracked in docs/post-ga-roadmap.md.
+      backend:
+        condition: service_healthy
     networks:
       - trustedoss
     healthcheck:
@@ -365,6 +381,16 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      # v2.1 — startup ordering gate (M2, same rationale as the worker). beat
+      # already waits on worker-healthy (which in turn waits on backend), so
+      # beat starts after backend. With AUTO_MIGRATE=true that means the schema
+      # is at HEAD before beat schedules its first DB-touching task; with
+      # AUTO_MIGRATE=false it is ordering only — the operator owns migrating the
+      # schema (see the worker gate note above and the /health/ready follow-up
+      # in docs/post-ga-roadmap.md). We list backend explicitly so the gate is
+      # self-documenting and holds even if the worker dependency is relaxed.
+      backend:
         condition: service_healthy
       worker:
         condition: service_healthy

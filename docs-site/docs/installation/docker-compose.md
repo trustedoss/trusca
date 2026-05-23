@@ -8,7 +8,7 @@ sidebar_position: 1
 
 # Install with Docker Compose
 
-This is the supported install path for self-hosted deployments. The `scripts/install.sh` wizard pulls images, generates secrets, runs Alembic migrations, and creates the first `super_admin` user — typically in under 10 minutes on a warm Docker cache.
+This is the supported install path for self-hosted deployments. The `scripts/install.sh` wizard pulls images, generates secrets, and creates the first `super_admin` user — typically in under 10 minutes on a warm Docker cache. Alembic migrations are applied automatically by the backend container on start (`AUTO_MIGRATE`, default `true`), so neither path below needs a manual `alembic upgrade head`.
 
 :::note Audience
 Operators with `sudo` on a Linux host. Familiarity with `docker-compose` and basic shell. Not for end users — point them at the URL once the install completes.
@@ -89,21 +89,36 @@ docker-compose -f docker-compose.yml pull
 docker-compose -f docker-compose.yml up -d
 ```
 
-The published backend image's entrypoint runs **uvicorn only — it does not run migrations automatically**. After the stack is up, run the schema migration and create the first admin once, by hand:
+The published backend image's entrypoint **applies Alembic migrations automatically on start** (`AUTO_MIGRATE`, default `true`) and only then starts uvicorn — so the schema is at HEAD by the time the backend reports healthy. You do **not** need to run `alembic upgrade head` by hand. Automatic migration does **not** create users, so you still bootstrap the first admin once:
 
 ```bash
-# Bring the schema to HEAD (uses the DATABASE_URL_OWNER role if you set one in
-# .env; otherwise DATABASE_URL).
-docker-compose -f docker-compose.yml exec -T \
-  -e DATABASE_URL="$(grep -E '^DATABASE_URL_OWNER=' .env | cut -d= -f2- || true)" \
-  backend alembic upgrade head
+# Read the password into the shell WITHOUT echoing it, then pass only the
+# variable NAME to `-e` so the value is inherited from the calling shell and
+# never lands in argv (visible in `ps -ef`) or in your shell history.
+read -rs ADMIN_PASSWORD; export ADMIN_PASSWORD   # type the 12+ char password, press Enter
 
-# Create the first super_admin.
+# Create the first super_admin (the schema is already at HEAD).
 docker-compose -f docker-compose.yml exec -T \
   -e ADMIN_EMAIL=you@example.com \
-  -e ADMIN_PASSWORD='<12+ char password>' \
+  -e ADMIN_PASSWORD \
   backend python -m scripts.create_super_admin
+
+unset ADMIN_PASSWORD   # clear it from the shell once the user exists
 ```
+
+:::warning Do not inline the password
+Avoid `-e ADMIN_PASSWORD='literal'`: the literal is visible to any user who
+runs `ps -ef` while the command executes and is written to your shell history.
+Passing the bare name (`-e ADMIN_PASSWORD`) makes Docker inherit the value
+from the environment instead.
+:::
+
+:::note Managing the schema out-of-band
+The single-role `.env` template ships `AUTO_MIGRATE=true` and it just works. If you run an **L1 role-separated** stack (separate `DATABASE_URL_OWNER` for DDL and `DATABASE_URL_APP` for runtime), the runtime container only holds the DML-only app DSN and cannot run DDL, so automatic migration must be off.
+
+- **With the wizard (Step 2):** `install.sh` **detects L1** (`DATABASE_URL_OWNER` is set and differs from the runtime DSN) and **writes `AUTO_MIGRATE=false` to `.env` automatically**, then applies migrations as the owner role itself. You do not need to set anything.
+- **On this no-clone path:** there is no wizard, so **you must set `AUTO_MIGRATE=false` in `.env` yourself** for an L1 stack and run `alembic upgrade head` as the owner role (override `DATABASE_URL` with `DATABASE_URL_OWNER` for that one command). If you leave it `true` on an L1 stack the backend entrypoint fails fast (exit 1, no crash-loop) with a clear DDL-permission error in the logs.
+:::
 
 :::tip Prefer the wizard for a guided install
 The `install.sh` wizard (Steps 1–3 below) does all of this for you — secret generation, the health-wait loop, the migration, and the admin bootstrap — and it also works with the Compose **V2** plugin (`docker compose`) if your host doesn't have V1. Use the no-clone path when you want full control over each step or are baking your own automation.
@@ -134,12 +149,13 @@ The wizard does the following in order:
 2. Copies `.env.example` to `.env` if `.env` is absent (or backs up the existing one on request).
 3. Generates a 64-hex-char `SECRET_KEY` and a strong PostgreSQL password.
 4. Prompts for the **public URL** the portal should be reachable at, then writes `CORS_ALLOWED_ORIGINS` and `DOMAIN` to `.env`.
-5. `docker-compose pull` — pulls the pinned images.
-6. `docker-compose up -d` — starts the stack.
-7. Waits for the backend `/health` endpoint to return 200 (60-second timeout).
-8. Runs `alembic upgrade head` to bring the schema to the latest revision.
-9. Prompts for the first super-admin email and password (12+ characters, confirmed).
-10. Prints the final URL and next-steps reminder.
+5. Decides the **migration policy**: if it detects an L1 role-separated stack (`DATABASE_URL_OWNER` is set and differs from the runtime DSN), it writes `AUTO_MIGRATE=false` to `.env` so the runtime container does not attempt an app-role DDL run; single-role stacks keep the default `true`.
+6. `docker-compose pull` — pulls the pinned images.
+7. `docker-compose up -d` — starts the stack. On a single-role stack the backend container applies Alembic migrations on start (`AUTO_MIGRATE=true`); on L1 it does not (policy set in the previous step).
+8. Waits for the backend `/health` endpoint to return 200 (60-second timeout).
+9. Runs `alembic upgrade head` once as the **owner** role (`DATABASE_URL_OWNER`). On L1 this is the authoritative DDL pass (the runtime container only holds the DML-only app DSN); on a single-role stack where the entrypoint already migrated it is an idempotent re-check — already-applied revisions are skipped.
+10. Prompts for the first super-admin email and password (12+ characters, confirmed). Automatic migration does not create users, so this step always runs.
+11. Prints the final URL and next-steps reminder.
 
 ### What you should see at the end
 
@@ -238,7 +254,7 @@ The most common causes:
 
 - `DATABASE_URL` references a host that is not on the compose network. Ensure the host part is `postgres` (the service name), not `localhost` or `127.0.0.1`.
 - The Postgres container is not yet healthy. `docker-compose ps` should show `postgres` as `Up (healthy)`. If it is restarting, check `docker-compose logs postgres` for credential mismatches with `.env`.
-- Schema migration failed. Run `docker-compose exec backend alembic upgrade head` manually and read the traceback.
+- Automatic migration failed. With `AUTO_MIGRATE=true` (default) the backend runs `alembic upgrade head` on start and exits non-zero if it fails after its retry loop, so the container never becomes healthy. Read the alembic traceback in `docker-compose logs backend`. On an L1 role-separated stack the runtime DSN cannot run DDL — set `AUTO_MIGRATE=false` and run the migration as the owner role (the wizard does this in Step 2).
 
 ### Out of disk space mid-install
 

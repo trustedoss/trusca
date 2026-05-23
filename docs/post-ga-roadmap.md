@@ -130,7 +130,9 @@ CISA 2025 SBOM 요건. 상세 인벤토리는 본 세션 핸드오프에 보존.
 ### P2 — Helm chart 프로덕션화 (`devops-engineer`)
 - **현재상태:** `charts/trustedoss` 0.1.0 scaffold — Ingress/TLS 없음, DB/Redis 외부 전제, postgres/redis/frontend 템플릿 부재, ArtifactHub/OCI 미게시.
 - **작업:** Ingress + cert-manager TLS, 번들/외부 DB·Redis 선택, frontend/beat 포함 전체 템플릿, values 문서화, **OCI(ghcr) 차트 게시 + ArtifactHub 등록**. v2.0.1의 이미지 게시에 의존.
-- **DoD:** `helm install`로 단일 네임스페이스 기동. 차트 lint/template 테스트 green.
+- **마이그레이션 처리 (멀티 레플리카 주의):** v2.1에서 backend 이미지 entrypoint가 기동 시 `alembic upgrade head` 를 자동 적용(`AUTO_MIGRATE`)한다. **이는 docker-compose의 단일 backend 컨테이너 전제다.** `docker-compose up --scale backend=N` 또는 K8s에서 backend Deployment를 `replicas > 1` 로 띄우면 각 파드가 동시에 마이그레이션을 실행할 수 있는데, 이 동시 실행은 `alembic/env.py` 의 트랜잭션 범위 advisory lock(`pg_advisory_xact_lock`, security-reviewer M4/L1race)으로 직렬화되어 안전하다(두 번째 실행은 대기 후 이미 HEAD를 보고 no-op). 그래도 **Helm 차트에서는 backend 파드의 `AUTO_MIGRATE=false` 로 두고, 마이그레이션을 init-container 또는 `pre-install`/`pre-upgrade` Job(`alembic upgrade head`, 1회·owner 역할)으로 분리하는 것을 권장한다** — advisory lock은 안전망일 뿐 모든 파드에서 마이그레이션을 돌리라는 허가가 아니다.
+- **마이그레이션 readiness follow-up (security-reviewer M2):** worker/beat의 `depends_on: backend(service_healthy)` 게이트는 `AUTO_MIGRATE=true` 일 때만 "스키마가 HEAD"를 보장한다(=false면 단순 기동 순서 의존). 진짜 readiness를 위해 backend에 **스키마가 HEAD인지 확인하는 `/health/ready` 엔드포인트**를 추가(현재 마이그레이션 head vs `alembic_version` 비교)하고 compose/Helm 게이트를 `service_healthy` 대신 readiness 기준으로 전환한다. (backend follow-up — `backend-developer`.)
+- **DoD:** `helm install`로 단일 네임스페이스 기동. 차트 lint/template 테스트 green. 마이그레이션은 Job/init-container로 1회 실행되고 backend 파드는 자동 마이그레이션을 끈다.
 
 ### P2 — 평가용 경량 프로파일 & 시드 데이터
 - **현재상태:** 최소 4 vCPU/8 GB(DT 힙 4 GB), 설치 후 빈 화면.

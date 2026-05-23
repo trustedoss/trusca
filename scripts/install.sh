@@ -241,6 +241,54 @@ PYTHON
 ok "wrote CORS_ALLOWED_ORIGINS=$public_url + DOMAIN=$domain + TLS_EMAIL to .env"
 
 # ---------------------------------------------------------------------------
+# 3b. AUTO_MIGRATE policy — disable on L1 role-separated stacks (H1)
+# ---------------------------------------------------------------------------
+# The backend container's entrypoint auto-applies `alembic upgrade head` on
+# start when AUTO_MIGRATE=true. Under an L1 role-separated stack the runtime
+# container holds only the DML-only app DSN (DATABASE_URL_APP), so an
+# entrypoint DDL run would FAIL — install.sh runs the authoritative migration
+# as the OWNER role in Step 5 instead. Detect L1 (DATABASE_URL_OWNER is set
+# AND differs from the runtime DSN) and pin AUTO_MIGRATE=false so the
+# entrypoint does not even attempt a doomed app-role DDL. Single-role stacks
+# (no split, or owner == runtime) keep the default true.
+title "Migration policy (AUTO_MIGRATE)"
+owner_dsn=$(grep -E "^DATABASE_URL_OWNER=" .env | head -1 | cut -d= -f2- || true)
+app_dsn=$(grep -E "^DATABASE_URL_APP=" .env | head -1 | cut -d= -f2- || true)
+runtime_dsn=$(grep -E "^DATABASE_URL=" .env | head -1 | cut -d= -f2- || true)
+# The runtime container's effective DSN is DATABASE_URL_APP when set, else
+# DATABASE_URL (mirrors docker-compose.yml's `${DATABASE_URL_APP:-${DATABASE_URL}}`).
+effective_runtime_dsn="${app_dsn:-$runtime_dsn}"
+is_l1=0
+if [[ -n "$owner_dsn" && -n "$effective_runtime_dsn" && "$owner_dsn" != "$effective_runtime_dsn" ]]; then
+  is_l1=1
+fi
+
+python3 - "$is_l1" <<'PYTHON'
+import re, sys
+from pathlib import Path
+is_l1 = sys.argv[1] == "1"
+env = Path(".env")
+text = env.read_text()
+def upsert(text: str, key: str, value: str) -> str:
+    pattern = rf"^{key}=.*$"
+    if re.search(pattern, text, flags=re.M):
+        return re.sub(pattern, f"{key}={value}", text, flags=re.M)
+    return text.rstrip() + f"\n{key}={value}\n"
+if is_l1:
+    text = upsert(text, "AUTO_MIGRATE", "false")
+    env.write_text(text)
+PYTHON
+
+if [[ $is_l1 -eq 1 ]]; then
+  ok "detected L1 role-separated stack (DATABASE_URL_OWNER differs from runtime DSN)"
+  note "set AUTO_MIGRATE=false in .env — the runtime app role cannot run DDL;"
+  note "this script applies migrations as the owner role in Step 5 instead."
+else
+  note "single-role stack — AUTO_MIGRATE left at default (true); the backend"
+  note "container migrates on start, Step 5 below is then an idempotent re-check."
+fi
+
+# ---------------------------------------------------------------------------
 # 4. docker-compose pull + up
 # ---------------------------------------------------------------------------
 title "Bringing up the stack"
@@ -266,13 +314,20 @@ for i in $(seq 1 30); do
 done
 
 # ---------------------------------------------------------------------------
-# 5. alembic upgrade head
+# 5. alembic upgrade head (owner role — authoritative DDL pass)
 # ---------------------------------------------------------------------------
-# Marathon bundle 8 (L1) — alembic must run as the OWNER role so DDL
-# (CREATE / ALTER / DROP / GRANT) has the necessary privileges. The
-# runtime containers see only the DML-only DSN; this one-shot exec
-# overrides DATABASE_URL just for the alembic process so the owner
-# DSN never lingers in the live container environment.
+# v2.1: the backend container entrypoint already applied migrations on start
+# (AUTO_MIGRATE=true) using whatever DATABASE_URL the container holds. We
+# STILL run this explicit pass because:
+#   * Marathon bundle 8 (L1) — alembic must run as the OWNER role so DDL
+#     (CREATE / ALTER / DROP / GRANT) has the necessary privileges. Under L1
+#     the runtime container holds only the DML-only app DSN, so the
+#     entrypoint's auto-migration would FAIL on DDL; this one-shot exec
+#     overrides DATABASE_URL with the owner DSN just for the alembic process
+#     so the owner DSN never lingers in the live container environment.
+#   * It is idempotent — already-applied revisions are skipped — so on a
+#     single-role stack (where the entrypoint already succeeded) this is a
+#     harmless no-op confirmation.
 title "Database migration"
 owner_url=$(grep -E "^DATABASE_URL_OWNER=" .env | head -1 | cut -d= -f2- || true)
 if [[ -z "$owner_url" ]]; then
