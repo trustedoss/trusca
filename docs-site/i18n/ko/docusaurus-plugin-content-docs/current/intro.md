@@ -48,7 +48,7 @@ SCA 포털 도입을 검토하는 엔지니어·플랫폼 담당자·법무 및 
 
 - **SAST 스캐너 아님.** 자체 작성한 코드의 정적 분석은 다루지 않습니다. 본 포털은 제3자 컴포넌트에 집중합니다.
 - **취약점 데이터베이스 아님.** Dependency-Track을 통해 NVD·OSV·GitHub Advisory를 소비할 뿐, 직접 큐레이션하지 않습니다.
-- **호스팅 SaaS 아직 아님.** 기본 배포 형태는 직접 운영하는 인프라에 `docker-compose`로 설치하는 방식입니다. GCP 데모 SaaS는 Phase 8에서 후속 제공 예정입니다.
+- **호스팅 SaaS 아직 아님.** 기본 배포 형태는 직접 운영하는 인프라에 `docker-compose`로 설치하는 방식입니다. 호스팅 데모는 로드맵에 있습니다.
 
 ## 아키텍처 개요
 
@@ -78,7 +78,7 @@ SCA 포털 도입을 검토하는 엔지니어·플랫폼 담당자·법무 및 
 
 - **라이선스**: Apache-2.0 — [`LICENSE`](https://github.com/trustedoss/trustedoss-portal/blob/main/LICENSE) 참고.
 - **소스**: [github.com/trustedoss/trustedoss-portal](https://github.com/trustedoss/trustedoss-portal).
-- **로드맵**: [`docs/v2-execution-plan.md`](https://github.com/trustedoss/trustedoss-portal/blob/main/docs/v2-execution-plan.md) — 진행 중 작업의 단일 진실 문서.
+- **로드맵**: [`ROADMAP.md`](https://github.com/trustedoss/trustedoss-portal/blob/main/ROADMAP.md) — GA 이후 작업의 공개 요약. 상세 계획은 [`docs/post-ga-roadmap.md`](https://github.com/trustedoss/trustedoss-portal/blob/main/docs/post-ga-roadmap.md)에 있습니다. GA 이전 [`docs/v2-execution-plan.md`](https://github.com/trustedoss/trustedoss-portal/blob/main/docs/v2-execution-plan.md)은 완료된 기록으로 보존됩니다.
 - **보안 신고**: [`SECURITY.md`](https://github.com/trustedoss/trustedoss-portal/blob/main/SECURITY.md).
 
 ## 다음으로 읽을 곳

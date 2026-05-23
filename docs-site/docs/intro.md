@@ -48,7 +48,7 @@ Full details in the [v2.0.0 release notes](./release-notes/v2.0.0.md).
 
 - **Not a SAST scanner.** No source-code analysis for custom code; the portal focuses on third-party components.
 - **Not a vulnerability database.** It consumes feeds (NVD, OSV, GitHub Advisory) via Dependency-Track but does not curate them.
-- **Not a hosted service** (yet). The primary distribution is a `docker-compose` install you run on your own infrastructure. A demo SaaS on GCP follows in Phase 8.
+- **Not a hosted service** (yet). The primary distribution is a `docker-compose` install you run on your own infrastructure. A hosted demo is on the roadmap.
 
 ## Architecture at a glance
 
@@ -78,7 +78,7 @@ The full architecture, decision log, and pipeline detail are in the [architectur
 
 - **License:** Apache-2.0 — see [`LICENSE`](https://github.com/trustedoss/trustedoss-portal/blob/main/LICENSE).
 - **Source:** [github.com/trustedoss/trustedoss-portal](https://github.com/trustedoss/trustedoss-portal).
-- **Roadmap:** [`docs/v2-execution-plan.md`](https://github.com/trustedoss/trustedoss-portal/blob/main/docs/v2-execution-plan.md) — single source of truth for in-flight work.
+- **Roadmap:** [`ROADMAP.md`](https://github.com/trustedoss/trustedoss-portal/blob/main/ROADMAP.md) — public summary of post-GA work, with the detailed plan in [`docs/post-ga-roadmap.md`](https://github.com/trustedoss/trustedoss-portal/blob/main/docs/post-ga-roadmap.md). The pre-GA [`docs/v2-execution-plan.md`](https://github.com/trustedoss/trustedoss-portal/blob/main/docs/v2-execution-plan.md) is kept as a completed record.
 - **Security disclosures:** [`SECURITY.md`](https://github.com/trustedoss/trustedoss-portal/blob/main/SECURITY.md).
 
 ## Where to go next

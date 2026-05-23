@@ -246,6 +246,16 @@ This is the [Developer Certificate of Origin (DCO) 1.1](https://developercertifi
 
 ---
 
+## Related documents
+
+- [`GOVERNANCE.md`](GOVERNANCE.md) — how decisions are made and how to become a maintainer
+- [`MAINTAINERS.md`](MAINTAINERS.md) — who maintains which area
+- [`SUPPORT.md`](SUPPORT.md) — where to ask questions and report problems
+- [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) — community standards
+- [`SECURITY.md`](SECURITY.md) — vulnerability disclosure
+
+---
+
 Thanks again for contributing — every PR, issue, translation, and design suggestion makes the project better.
 
 — The TrustedOSS Portal maintainers

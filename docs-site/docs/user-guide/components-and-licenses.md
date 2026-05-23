@@ -117,7 +117,7 @@ Each license carries **obligations** — duties you must honor when redistributi
 - **Dynamic linking** — LGPL-style: end-users must be able to relink against a modified library.
 - **No endorsement** — do not use the project name to endorse derivatives without permission.
 
-The **Obligations** tab on the project page consolidates obligations across components. Click **Download NOTICE** to download a `NOTICE.txt` summarizing every attribution and license — see [SBOM](./sbom.md#notice-file).
+The **Obligations** tab on the project page consolidates obligations across components. Pick a format (**text** or **HTML**) and click **Download NOTICE** to save a NOTICE document summarizing every attribution and license. The endpoint also serves a `markdown` variant via the API. See [SBOM → NOTICE file](./sbom.md#notice-file) for the format / MIME / extension table.
 
 ![Project detail — Obligations tab with the per-component obligations distribution](/img/screenshots/user-obligations-distribution.png)
 

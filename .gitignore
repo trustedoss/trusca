@@ -1,3 +1,7 @@
+# Agent worktrees (harness isolation) + runtime backups
+.claude/worktrees/
+backups/
+
 # Python
 __pycache__/
 *.py[cod]

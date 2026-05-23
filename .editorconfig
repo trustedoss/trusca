@@ -1,0 +1,35 @@
+# EditorConfig — https://editorconfig.org
+# Top-most EditorConfig file for the TrustedOSS Portal monorepo.
+root = true
+
+# Defaults for every file.
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# Python — 4-space indent (PEP 8).
+[*.py]
+indent_size = 4
+
+# Makefiles require real tabs.
+[Makefile]
+indent_style = tab
+
+# Go uses tabs by convention.
+[*.go]
+indent_style = tab
+
+# Markdown — trailing whitespace can be a meaningful line break, so keep it.
+[*.md]
+trim_trailing_whitespace = false
+
+# Avoid reformatting vendored or generated lockfiles.
+[{*.lock,package-lock.json,poetry.lock,uv.lock}]
+indent_style = unset
+indent_size = unset
+trim_trailing_whitespace = unset
+insert_final_newline = unset

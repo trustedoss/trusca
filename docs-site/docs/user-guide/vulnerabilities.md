@@ -88,6 +88,39 @@ The walkthrough below opens a project, switches to **Vulnerabilities**, and clic
   ![Animated walkthrough — opening the Vulnerabilities tab and the finding detail drawer](/img/walkthroughs/walkthrough-cve-triage.gif)
 </video>
 
+## Download a PDF report
+
+The portal renders a project-level **vulnerability PDF report** from the latest successful scan: a risk summary, the severity and license distribution, the vulnerabilities grouped by severity (with CVE id and CVSS), and the component list. It is generated on demand — there is no batch job to schedule.
+
+### Download from the UI
+
+1. Open the project.
+2. Click the **Vulnerabilities** tab.
+3. Click **Download PDF report** in the toolbar (top right). The button shows **Generating…** while the document renders, then the download starts.
+
+The file name is `vulnerability-report-<project>.pdf`. Any inline error from the last attempt appears beside the button.
+
+### Download from the API
+
+```bash
+curl -sS -L -OJ \
+  -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+  "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/vulnerability-report.pdf"
+```
+
+The response is `application/pdf` with `Content-Disposition: attachment` (the `-OJ` flags tell curl to save it under the server-supplied file name). The report always reflects the **latest succeeded** scan — pinning to a specific historical scan id is not supported at v2.0.0.
+
+| Status | Meaning |
+|---|---|
+| `200` | PDF download. |
+| `401` | Not authenticated — supply a valid token. |
+| `404` | Project does not exist, or the caller is not a member of its team (existence-hidden, same posture as the SBOM export). |
+| `500` | The PDF renderer failed; the body is `application/problem+json`. Retry, then check the worker image (see Troubleshooting). |
+
+:::note Access
+Downloading the report requires `developer` or higher. Cross-team callers receive `404`, not `403`, so a non-member cannot tell whether the project exists.
+:::
+
 ## Re-detection
 
 When Dependency-Track ingests new CVEs from upstream feeds (NVD, OSV, GitHub Advisory), the periodic resync task re-correlates them against every project's latest scan. New findings appear automatically — no manual action required.
@@ -130,6 +163,10 @@ Possible causes:
 - The component's `purl` does not match Dependency-Track's normalization (rare; Maven `groupId:artifactId` style is the most common culprit). File an issue with the scan report.
 - DT was unavailable when the scan ran and the cache did not yet have an entry for that CVE. Run another scan after DT is healthy.
 - The CVE is in an ecosystem DT does not yet ingest. Check **/admin/dt → Vulnerability sources**.
+
+### PDF report download returns `500`
+
+The PDF is rendered in-request with weasyprint. A `500` (with an `application/problem+json` body) means the renderer is unavailable — most often the backend image predates the weasyprint dependency. Rebuild the backend image and retry; if it persists, file an issue with the project id and the request timestamp.
 
 ## Roadmap (v2.x)
 
