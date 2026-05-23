@@ -77,7 +77,7 @@ SBOM, not the *historical* one.
 
 ## NOTICE file
 
-For Apache-2.0 §4(d) compliance and similar attribution obligations, the portal auto-generates a `NOTICE.txt` from the project's latest scan.
+For Apache-2.0 §4(d) compliance and similar attribution obligations, the portal auto-generates a NOTICE attribution body from the project's latest scan.
 
 The file contains:
 
@@ -85,18 +85,36 @@ The file contains:
 - For each component: name, version, license, copyright statement (when the scan captured one), and a link to the upstream license text.
 - Grouped by license to make the redistribution package straightforward.
 
+### Supported formats
+
+The NOTICE endpoint accepts a `format` query value (default `text`):
+
+| Format | Query value (`format=`) | MIME | Extension | Use case |
+|---|---|---|---|---|
+| **Plain text** | `text` | `text/plain` | `.txt` | Drop into a release tarball's `NOTICE` file. The default. |
+| **Markdown** | `markdown` | `text/markdown` | `.md` | Render in a docs site or PR description. |
+| **HTML** | `html` | `text/html` | `.html` | A self-contained document (inline `<style>`, no scripts) for an attribution page. |
+
+The output is byte-stable across exports for a given scan and format — diffable across releases.
+
 ### Download
 
-- **UI:** Project → **Obligations** tab → **Download NOTICE**.
+- **UI:** Project → **Obligations** tab → pick a format (**text** or **HTML**) → **Download NOTICE**. The browser saves `NOTICE-<project>.<ext>`. The markdown variant is available from the API.
 - **API:**
 
   ```bash
+  # Plain text (default)
   curl -sS -L -OJ \
     -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
-    "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/notice"
+    "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/notice?format=text&download=true"
+
+  # HTML
+  curl -sS -L -OJ \
+    -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+    "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/notice?format=html&download=true"
   ```
 
-The `NOTICE` file is byte-stable across exports — diffable across releases.
+  `format` accepts `text`, `markdown`, `html`. Pass `download=true` so the response carries `Content-Disposition: attachment` and `-OJ` saves it under the server-supplied file name (`NOTICE-<project>.<ext>`); omit it to stream the body inline.
 
 ## VEX exports
 
@@ -167,7 +185,7 @@ workarounds.
 
 Items the manual previously promised that are not in v2.0.0; tracked for later releases.
 
-- Excel / PDF reports — Components Excel, Vulnerabilities Excel, Compliance PDF — are not implemented at v2.0.0; the **Reports** menu and `/v1/projects/{id}/reports/...` endpoints will land in a later release. Stakeholders who need a tabular view today should consume the SBOM (CycloneDX JSON) via their preferred tooling.
+- The **vulnerability PDF report** _is_ implemented at v2.0.0 — see [Vulnerabilities → Download a PDF report](./vulnerabilities.md#download-a-pdf-report) (`GET /v1/projects/{id}/vulnerability-report.pdf`). Still **not** implemented: the **Excel** reports (Components Excel, Vulnerabilities Excel) and the **Compliance PDF**; there are no `/v1/projects/{id}/reports/...` endpoints for those, and they will land in a later release. Stakeholders who need a tabular view today should consume the SBOM (CycloneDX JSON) via their preferred tooling.
 - Manual copyright override in the component drawer for NOTICE assembly — planned for v2.2.
 - Historical-scan pinning on the SBOM and NOTICE exports — planned for v2.1.
 - Promote SBOM / NOTICE downloads from `structlog` events to `audit_logs` rows — planned for v2.1.

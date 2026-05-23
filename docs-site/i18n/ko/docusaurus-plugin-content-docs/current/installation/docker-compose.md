@@ -17,17 +17,19 @@ Linux 호스트에서 `sudo` 권한을 가진 운영자. `docker-compose`와 기
 ## 사전 요구사항
 
 - **Linux 호스트** (Ubuntu 22.04 LTS, Debian 12, RHEL 9에서 검증). macOS는 개발용으로만 작동하며 프로덕션 대상이 아닙니다.
-- **`docker-compose` (V1, 하이픈).** Compose V2(`docker compose`)는 미지원입니다 — [이유](#왜-docker-compose-v1-인가).
+- **Docker Compose.** `docker-compose`(V1, 하이픈)가 프로젝트 표준이며, `install.sh` 마법사는 이를 우선 사용하되 V1이 없으면 **`docker compose`(V2) 플러그인으로 폴백**합니다 — 따라서 최신 호스트에서도 그대로 동작합니다. [V1/V2 안내](#왜-docker-compose-v1-인가) 참고.
 - **`openssl`** — SECRET_KEY와 데이터베이스 비밀번호 생성에 사용.
-- **`curl`** — 설치 후 health 프로브에 사용.
-- **외부 HTTPS 접근** — Docker Hub(또는 미러 레지스트리)와 Dependency-Track을 번들로 띄울 경우 OSV/NVD 피드 도달 가능해야 합니다.
+- **`curl`** — 설치 후 health 프로브(및 위의 클론 없는 빠른 설치)에 사용.
+- **외부 HTTPS 접근** — 포털 이미지가 게시되는 GitHub Container Registry(`ghcr.io`)와, Dependency-Track을 번들로 띄울 경우 OSV/NVD 피드에 도달 가능해야 합니다.
 - **디스크**: 이미지·workspace 마운트·최소 7일치 백업을 위해 20 GB 이상 여유.
-- **CPU/RAM**: 최소 4 vCPU / 8 GB RAM. 실제 ORT 스캔은 워커에서 ~6 GB까지 사용하므로 여유를 확보해 두세요.
+- **CPU/RAM**: 최소 4 vCPU / 8 GB RAM. 실제 소스 스캔(cdxgen + scancode)은 워커에서 ~6 GB까지 사용하므로 여유를 확보해 두세요.
 
 환경 검증:
 
 ```bash
-docker-compose --version           # Compose 1.x여야 합니다 — V2 아님
+docker-compose --version           # Compose 1.x (권장)
+# …V2 플러그인만 있다면 마법사가 다음으로 폴백합니다:
+docker compose version             # Compose v2.x
 openssl version
 curl --version
 df -h /                            # 20 GB 이상 여유
@@ -51,6 +53,58 @@ df -h /                            # 20 GB 이상 여유
 HTTP-only / `localhost` 설치(개발, 망분리 UAT)에는 위 셋이 모두 적용되지
 않습니다 — 마법사는 TLS_EMAIL을 건너뛰고 Traefik은 ACME 흐름에 진입하지
 않습니다.
+
+## 빠른 설치 (클론 없이)
+
+스택을 바로 띄우기만 하면 되고 보조 스크립트가 필요 없다면, 레포를 클론하지 않고 게시된 이미지로 곧장 설치할 수 있습니다 — Dependency-Track과 동일한 단일 파일 경험입니다. 프로덕션 이미지는 GitHub Container Registry(`ghcr.io/trustedoss/backend`, `…/backend-worker`, `…/frontend`)에 게시되며 익명 pull이 가능합니다.
+
+compose 스택에 필요한 세 파일(compose 파일, env 템플릿, 1회용 Postgres 역할 초기화 스크립트)을 받고 `.env`를 편집한 뒤 기동합니다:
+
+```bash
+mkdir -p trustedoss && cd trustedoss
+BASE=https://raw.githubusercontent.com/trustedoss/trustedoss-portal/v2.0.0
+
+# 1. 자기완결적 프로덕션 compose 파일(`build:` 섹션 없음 — ghcr.io에서 이미지 pull)
+#    과 env 템플릿.
+curl -fsSLO "$BASE/docker-compose.yml"
+curl -fsSL  "$BASE/.env.example" -o .env
+
+# 2. compose 파일은 첫 부팅 역할 프로비저닝을 위해 레포 파일 하나를 Postgres에
+#    마운트합니다. compose가 기대하는 경로로 받습니다.
+mkdir -p scripts
+curl -fsSL "$BASE/scripts/postgres-init.sh" -o scripts/postgres-init.sh
+chmod +x scripts/postgres-init.sh
+
+# 3. .env 편집 — 최소한 SECRET_KEY(openssl rand -hex 32), 강력한
+#    POSTGRES_PASSWORD / POSTGRES_APP_PASSWORD, DOMAIN, TLS_EMAIL,
+#    CORS_ALLOWED_ORIGINS=https://<도메인> 을 설정. 원하는 릴리스로 IMAGE_TAG
+#    고정(기본 2.0.0).
+$EDITOR .env
+
+# 4. pull 후 기동.
+docker-compose -f docker-compose.yml pull
+docker-compose -f docker-compose.yml up -d
+```
+
+게시된 backend 이미지의 entrypoint는 **uvicorn만 실행하며 마이그레이션을 자동 실행하지 않습니다.** 스택이 올라온 뒤, 스키마 마이그레이션과 첫 관리자 생성을 한 번 수동으로 수행합니다:
+
+```bash
+# 스키마를 HEAD로 (.env에 DATABASE_URL_OWNER를 설정했다면 그 역할 사용,
+# 없으면 DATABASE_URL).
+docker-compose -f docker-compose.yml exec -T \
+  -e DATABASE_URL="$(grep -E '^DATABASE_URL_OWNER=' .env | cut -d= -f2- || true)" \
+  backend alembic upgrade head
+
+# 첫 super_admin 생성.
+docker-compose -f docker-compose.yml exec -T \
+  -e ADMIN_EMAIL=you@example.com \
+  -e ADMIN_PASSWORD='<12자 이상 비밀번호>' \
+  backend python -m scripts.create_super_admin
+```
+
+:::tip 가이드 설치는 마법사를 권장
+아래 1~3단계의 `install.sh` 마법사는 위 작업을 대신 처리합니다 — 비밀값 생성, health 대기 루프, 마이그레이션, 관리자 부트스트랩까지. 또한 호스트에 V1이 없으면 Compose **V2** 플러그인(`docker compose`)으로도 동작합니다. 각 단계를 직접 제어하거나 자체 자동화를 구성할 때 클론 없는 경로를 사용하세요.
+:::
 
 ## 1단계 — 레포 클론
 
@@ -184,7 +238,7 @@ sudo ss -tlnp | grep -E ':80|:443'
 
 ### 설치 중 디스크 부족
 
-cdxgen + ORT + Trivy의 Docker 레이어 캐시는 ~4 GB입니다. `/var/lib/docker`가 가득 차면 풀이 중단됩니다. 공간을 확보한 뒤 `docker-compose pull`과 `docker-compose up -d`를 다시 실행합니다.
+cdxgen + scancode + Trivy의 Docker 레이어 캐시는 ~4 GB입니다. `/var/lib/docker`가 가득 차면 풀이 중단됩니다. 공간을 확보한 뒤 `docker-compose pull`과 `docker-compose up -d`를 다시 실행합니다.
 
 ### `.env`를 새로 시작하기
 
@@ -216,9 +270,17 @@ sudo rm -rf /opt/trustedoss/workspace
 `docker-compose down -v`는 명명 볼륨(`postgres-data`, `redis-data`, `traefik-acme`, `workspace`)을 삭제합니다. 최근 백업 없이는 복구할 수 없습니다.
 :::
 
+## 메인테이너 안내 — 이미지 게시 (조직 1회 설정)
+
+포털 이미지는 [`release.yml`](https://github.com/trustedoss/trustedoss-portal/blob/main/.github/workflows/release.yml) 워크플로우가 GitHub Container Registry에 게시하며, `vX.Y.Z` git 태그 push(또는 **Run workflow**에 태그 입력)로 트리거됩니다. 이 워크플로우가 push하려면 **조직이 GitHub Actions의 패키지 쓰기를 허용**해야 합니다 — Org → Settings → Actions → Workflow permissions → *Read and write permissions* (또는 패키지의 *Manage Actions access*에서 해당 레포에 *Write* 부여). 워크플로우는 내장 `GITHUB_TOKEN`을 사용하며 별도 PAT는 필요 없습니다.
+
+첫 push 이후 각 패키지 가시성을 **Public**(ghcr 패키지 → Package settings → Change visibility → Public)으로 바꿔 운영자가 익명으로 `docker pull` 할 수 있게 합니다 — 클론 없는 빠른 설치가 이에 의존합니다. 릴리스마다 불변 `X.Y.Z` 태그와 이동 가능한 `X.Y` 태그를 게시하며 `latest` 태그는 만들지 않습니다(CLAUDE.md 규칙 #9).
+
 ## 왜 docker-compose V1 인가
 
-본 프로젝트는 현재 모든 대상 환경이 V1을 제공한다는 이유로 Compose V1(`docker-compose`)을 표준으로 합니다. V2 문법 차이(특히 `version:` 헤더와 의존성 조건)는 CI에서 검증되지 않습니다. `docker compose`(V2) 사용을 도입한 PR은 리뷰에서 차단됩니다. [`CLAUDE.md`](https://github.com/trustedoss/trustedoss-portal/blob/main/CLAUDE.md) 규칙 #10 참고.
+본 프로젝트의 **개발·CI** 환경은 Compose V1(`docker-compose`)을 표준으로 합니다 — V2 문법 차이가 내부 파이프라인에서 검증되지 않으며, dev/CI 영역에 `docker compose`(V2)를 도입한 PR은 리뷰에서 차단됩니다([`CLAUDE.md`](https://github.com/trustedoss/trustedoss-portal/blob/main/CLAUDE.md) 규칙 #10).
+
+이 제약은 내부 한정입니다. **최종 사용자 설치**에서는 `install.sh` 마법사가 V1을 우선 사용하되, V1이 2023년 EOL을 맞은 최신 호스트에서도 동작하도록 V2 플러그인(`docker compose`)으로 폴백합니다. compose 파일 자체는 V1 파일 포맷을 쓰며 V2도 이를 읽습니다.
 
 ## 함께 보기
 

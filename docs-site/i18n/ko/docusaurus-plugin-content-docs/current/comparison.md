@@ -1,0 +1,135 @@
+---
+id: comparison
+title: TrustedOSS Portal 비교
+sidebar_label: 비교
+description: TrustedOSS Portal과 상용 SCA(Black Duck, Snyk), Dependency-Track 단독, SW360을 정직하게 비교합니다 — 강점과 현재 한계.
+---
+
+# TrustedOSS Portal 비교
+
+:::note 대상 독자
+TrustedOSS Portal이 조직에 적합한지 판단하려는 엔지니어·플랫폼 담당자·법무 및
+컴플라이언스 리드. 이 페이지는 의도적으로 정직합니다. 포털이 잘하는 점과 아직
+하지 못하는 점을 함께 기재합니다. "로드맵" 항목의 배경은
+[`ROADMAP.md`](https://github.com/trustedoss/trustedoss-portal/blob/main/ROADMAP.md)를
+참고하십시오.
+:::
+
+TrustedOSS Portal의 핵심 아이디어는 검증된 오픈소스 도구(cdxgen, scancode, Trivy,
+Dependency-Track)를 팀·역할·승인·CI 게이트가 포함된 하나의 자체 호스팅 UI로 묶는
+것입니다. 아래 비교는 그 아이디어를 세 가지 대표 대안과 견줍니다. 모든 내용은
+**v2.0.0** 릴리스 기준 기능을 설명하며, 벤치마크가 아니고 다른 프로젝트를
+비방하지 않습니다 — 그중 여럿은 TrustedOSS Portal이 직접 활용하는 도구입니다.
+
+용어 정의(SCA, SBOM, VEX, EPSS, reachability)는 [용어집](./reference/glossary.md)을
+보십시오.
+
+## 한눈에 보기
+
+| | TrustedOSS Portal | 상용 SCA (Black Duck / Snyk) | Dependency-Track 단독 | Eclipse SW360 |
+|---|---|---|---|---|
+| 라이선스 | Apache-2.0 | 독점 | Apache-2.0 | EPL-2.0 |
+| 호스팅 | 자체 호스팅 (Docker / Helm) | SaaS 또는 자체 관리 | 자체 호스팅 | 자체 호스팅 |
+| 가격 모델 | 무료, 좌석당 비용 없음 | 좌석당 / 프로젝트당 | 무료 | 무료 |
+| 컴포넌트 탐지 | cdxgen (30+ 생태계) | 광범위, 독점 | SBOM 소비 | SBOM 소비 |
+| 라이선스 탐지 | declared + detected (scancode) | 깊음, 큐레이션 | 제한적 | 강함 (라이선스 clearing) |
+| 취약점 데이터 | Dependency-Track 경유 | 큐레이션 독점 피드 | NVD / OSV / GHSA | 애드온 경유 |
+| 컨테이너 스캔 | Trivy (OS 패키지) | 지원 | 미지원 | 미지원 |
+| SBOM 내보내기 | CycloneDX + SPDX, byte-stable | 지원 | CycloneDX | SPDX / CycloneDX |
+| RBAC | 3개 역할 (super / team / developer) | 풍부 | 팀 + 권한 | LDAP 역할 |
+| 승인 워크플로우 | 내장 | 지원 | 미지원 | clearing 워크플로우 |
+| CI 빌드 게이트 | Critical CVE / 금지 라이선스 시 exit 1 | 지원 | API 경유 | 미지원 |
+| 이중 언어 UI (EN/KO) | 지원 | 부분 | 미지원 | 미지원 |
+| 자동 리메디에이션 / PR | 로드맵 | 지원 | 미지원 | 미지원 |
+| EPSS 우선순위화 | 로드맵 | 지원 | 부분 | 미지원 |
+| VEX 소비 | 로드맵 (export는 현재 지원) | 지원 | 부분 | 미지원 |
+| Reachability 분석 | 로드맵 | 일부 지원 | 미지원 | 미지원 |
+| SBOM 서명 / provenance | 로드맵 | 부분 | 미지원 | 미지원 |
+
+## 상용 SCA(Black Duck, Snyk)와 비교
+
+**TrustedOSS Portal을 선택하는 경우:** 데이터를 직접 소유하고 좌석당 라이선스
+비용을 피하고 싶을 때, 자체 호스팅에 익숙할 때, 그리고 탐지·라이선스·SBOM·승인·CI
+게이트를 아우르는 통합 오픈소스 포털이 요구사항을 충족할 때입니다.
+
+**오늘 상용 도구가 앞서는 지점:**
+
+- **큐레이션된 취약점·라이선스 인텔리전스.** 상용 벤더는 독점 데이터베이스와 전담
+  연구 조직을 운영합니다. TrustedOSS Portal은 Dependency-Track을 통해 공개
+  피드(NVD, OSV, GitHub Advisory)에 의존합니다.
+- **자동 리메디에이션.** Snyk 등은 수정 PR을 자동으로 생성합니다. TrustedOSS
+  Portal에서는 로드맵 항목입니다. 현재는 탐지·게이트만 하고 업그레이드를 제안하지
+  않습니다.
+- **우선순위화 신호.** Reachability 분석과 1급 EPSS 우선순위화는 출시가 아니라
+  계획 단계입니다.
+
+**TrustedOSS Portal이 경쟁력 있는 지점:** 좌석 비용 없는 자체 호스팅, Apache-2.0
+라이선스, 여러 콘솔 대신 하나의 포털, 내장 컴포넌트 승인 워크플로우, 빌드 차단 CI
+게이트, 완전 이중 언어(EN/KO) UI 및 문서입니다.
+
+## Dependency-Track 단독과 비교
+
+Dependency-Track은 본연의 역할에 탁월하며, TrustedOSS Portal은 이를 취약점
+엔진으로 사용합니다. 관건은 그 위를 둘러싸는 포털이 필요한가입니다.
+
+**TrustedOSS Portal이 Dependency-Track 위에 더하는 것:**
+
+- **스캔 오케스트레이션.** SBOM을 직접 생성·업로드하도록 요구하는 대신 cdxgen,
+  scancode, Trivy를 실행하고 결과를 투입합니다.
+- **라이선스 컴플라이언스.** 허용 / 조건부 / 금지 분류, 의무사항 추적, `NOTICE`
+  자동 생성 — Dependency-Track 범위 밖입니다.
+- **복원력.** circuit breaker와 PostgreSQL 캐시로 Dependency-Track이 재시작
+  중이거나 도달 불가일 때도 포털을 계속 사용할 수 있습니다.
+- **워크플로우와 거버넌스.** 컴포넌트 승인, 빌드 차단 게이트, 추가 전용 감사 로그,
+  3개 역할 RBAC.
+- **이중 언어 UI.** 영어와 한국어.
+
+**Dependency-Track을 직접 쓰는 경우:** 이미 생성한 SBOM에서 취약점 추적만
+필요하거나, Dependency-Track의 네이티브 기능 전체를 즉시 쓰고 싶거나, 포털이 아직
+노출하지 않은 신호(예: 원시 EPSS 컬럼)가 필요할 때입니다. Dependency-Track 직접
+사용 대비 동등성 회복은 명시적 로드맵 목표입니다.
+
+## Eclipse SW360과 비교
+
+SW360은 **라이선스 clearing**과 컴포넌트 카탈로깅에 집중하는 성숙한 오픈소스
+플랫폼입니다.
+
+**SW360이 앞서는 지점:** 라이선스 clearing 워크플로우의 깊이, 대규모 컴포넌트
+clearing 카탈로그, 정착된 엔터프라이즈 통합 패턴.
+
+**TrustedOSS Portal이 앞서는 지점:** 기본 제공되는 통합 스캔 파이프라인(cdxgen /
+scancode / Trivy), 컨테이너 스캔, 1급 CI 빌드 게이트, byte-stable CycloneDX **및**
+SPDX 내보내기, 현대적 단일 페이지 UI, EN/KO 이중 언어 지원. SW360은 일반적으로
+SBOM·컴포넌트가 공급되는 것을 전제하며 스캔보다 clearing을 강조합니다.
+
+**SW360을 선택하는 경우:** 깊고 형식화된 라이선스 clearing이 주된 요구사항이며 이미
+그 주위로 프로세스를 구축한 경우입니다.
+
+## 현재 한계 (도입 전 유의)
+
+다음은 v2.0.0 기준의 실제이며 의도된 갭입니다. 각 항목은
+[로드맵](https://github.com/trustedoss/trustedoss-portal/blob/main/ROADMAP.md)에
+있습니다:
+
+- **자동 리메디에이션 없음.** 탐지·게이트만 하고 업그레이드 PR을 아직 생성하지
+  않습니다(v2.2 계획).
+- **취약점 데이터가 Dependency-Track에 의존.** 신호는 Dependency-Track 노출분에
+  한정되며, 1급 EPSS 우선순위화는 계획 단계입니다(v2.1).
+- **VEX 소비 없음.** 현재 VEX를 내보내기만 하며, 외부 VEX를 임포트해 finding을 자동
+  억제하는 기능은 계획 단계입니다(v2.1).
+- **Reachability 우선순위화 없음.** 취약 코드의 도달 가능성으로 순위를 매기는 대신
+  전체를 나열합니다(v2.3 계획, 베스트에포트).
+- **정적 라이선스 정책.** 분류는 고정 카탈로그를 사용하며, per-team / per-org 편집
+  가능 정책은 계획 단계입니다(v2.2).
+- **SBOM 서명 / provenance 없음.** SBOM 서명과 SLSA provenance는 계획
+  단계입니다(v2.3).
+- **네이티브 Jenkins 플러그인 없음.** GitHub Actions와 GitLab CI는 1급 지원이며,
+  Jenkins는 worked `Jenkinsfile` 예제로 지원합니다.
+- **SSO / OIDC 없음.** 비밀번호와 OAuth(GitHub / Google, 데모 전용) 인증은 현재
+  제공되며, SSO / OIDC는 백로그입니다.
+
+## 함께 보기
+
+- [소개](./intro.md) — 포털이 제공하는 기능과 제공하지 않는 기능
+- [용어집](./reference/glossary.md) — SCA, SBOM, VEX, EPSS 등
+- [로드맵](https://github.com/trustedoss/trustedoss-portal/blob/main/ROADMAP.md) — "로드맵" 항목이 도착하는 곳

@@ -17,17 +17,19 @@ Operators with `sudo` on a Linux host. Familiarity with `docker-compose` and bas
 ## Prerequisites
 
 - **Linux host** (tested on Ubuntu 22.04 LTS, Debian 12, RHEL 9). macOS works for development but is not a supported production target.
-- **`docker-compose` (V1, hyphenated).** Compose V2 (`docker compose`) is not supported — see [why](#why-docker-compose-v1-not-v2).
+- **Docker Compose.** `docker-compose` (V1, hyphenated) is the project standard; the `install.sh` wizard prefers it but **falls back to the `docker compose` (V2) plugin** when V1 is absent — so a stock modern host works. See [the V1/V2 note](#why-docker-compose-v1-not-v2).
 - **`openssl`** — used to generate the SECRET_KEY and database password.
-- **`curl`** — used by the post-install health probe.
-- **Outbound HTTPS** to Docker Hub (or a mirrored registry) and to the OSV / NVD feeds if you bundle Dependency-Track.
+- **`curl`** — used by the post-install health probe (and by the no-clone quick install above).
+- **Outbound HTTPS** to GitHub Container Registry (`ghcr.io`, where the portal images are published) and to the OSV / NVD feeds if you bundle Dependency-Track.
 - **Disk:** ≥ 20 GB free for images, the workspace mount, and at least seven days of backups.
-- **CPU/RAM:** 4 vCPU / 8 GB RAM minimum. Real ORT scans peak at ~6 GB on the worker — give it headroom.
+- **CPU/RAM:** 4 vCPU / 8 GB RAM minimum. Real source scans (cdxgen + scancode) peak at ~6 GB on the worker — give it headroom.
 
 Verify your environment:
 
 ```bash
-docker-compose --version           # must print Compose 1.x — not V2
+docker-compose --version           # prints Compose 1.x (preferred)
+# …or, if you only have the V2 plugin, the wizard falls back to:
+docker compose version             # prints Compose v2.x
 openssl version
 curl --version
 df -h /                            # at least 20 GB free
@@ -54,6 +56,58 @@ silently if any is missing.
 For HTTP-only / `localhost` installs (development, air-gapped UAT),
 none of the above applies — the wizard skips TLS_EMAIL and Traefik
 does not enter the ACME flow.
+
+## Quick install (no clone)
+
+If you just want the stack running and don't need the helper scripts, you can install directly from the published images without cloning the repository — the same single-file experience as Dependency-Track. The production images are published to GitHub Container Registry (`ghcr.io/trustedoss/backend`, `…/backend-worker`, `…/frontend`) and pull anonymously.
+
+Fetch the three files the compose stack needs (the compose file, the env template, and the one-time Postgres role init script), edit `.env`, then start:
+
+```bash
+mkdir -p trustedoss && cd trustedoss
+BASE=https://raw.githubusercontent.com/trustedoss/trustedoss-portal/v2.0.0
+
+# 1. The self-contained production compose file (no `build:` section — pulls
+#    images from ghcr.io) and the env template.
+curl -fsSLO "$BASE/docker-compose.yml"
+curl -fsSL  "$BASE/.env.example" -o .env
+
+# 2. The compose file mounts one repo file into Postgres for first-boot role
+#    provisioning. Fetch it to the path the compose file expects.
+mkdir -p scripts
+curl -fsSL "$BASE/scripts/postgres-init.sh" -o scripts/postgres-init.sh
+chmod +x scripts/postgres-init.sh
+
+# 3. Edit .env — at minimum set SECRET_KEY (openssl rand -hex 32), strong
+#    POSTGRES_PASSWORD / POSTGRES_APP_PASSWORD, DOMAIN, TLS_EMAIL, and
+#    CORS_ALLOWED_ORIGINS=https://<your-domain>. Pin IMAGE_TAG to the release
+#    you want (defaults to 2.0.0).
+$EDITOR .env
+
+# 4. Pull and start.
+docker-compose -f docker-compose.yml pull
+docker-compose -f docker-compose.yml up -d
+```
+
+The published backend image's entrypoint runs **uvicorn only — it does not run migrations automatically**. After the stack is up, run the schema migration and create the first admin once, by hand:
+
+```bash
+# Bring the schema to HEAD (uses the DATABASE_URL_OWNER role if you set one in
+# .env; otherwise DATABASE_URL).
+docker-compose -f docker-compose.yml exec -T \
+  -e DATABASE_URL="$(grep -E '^DATABASE_URL_OWNER=' .env | cut -d= -f2- || true)" \
+  backend alembic upgrade head
+
+# Create the first super_admin.
+docker-compose -f docker-compose.yml exec -T \
+  -e ADMIN_EMAIL=you@example.com \
+  -e ADMIN_PASSWORD='<12+ char password>' \
+  backend python -m scripts.create_super_admin
+```
+
+:::tip Prefer the wizard for a guided install
+The `install.sh` wizard (Steps 1–3 below) does all of this for you — secret generation, the health-wait loop, the migration, and the admin bootstrap — and it also works with the Compose **V2** plugin (`docker compose`) if your host doesn't have V1. Use the no-clone path when you want full control over each step or are baking your own automation.
+:::
 
 ## Step 1 — Clone the repository
 
@@ -188,7 +242,7 @@ The most common causes:
 
 ### Out of disk space mid-install
 
-The Docker layer cache for `cdxgen` + ORT + Trivy is around 4 GB. If `/var/lib/docker` runs out, the pull aborts. Free space and re-run `docker-compose pull` followed by `docker-compose up -d`.
+The Docker layer cache for `cdxgen` + scancode + Trivy is around 4 GB. If `/var/lib/docker` runs out, the pull aborts. Free space and re-run `docker-compose pull` followed by `docker-compose up -d`.
 
 ### Need to start over with a fresh `.env`
 
@@ -220,9 +274,17 @@ sudo rm -rf /opt/trustedoss/workspace
 `docker-compose down -v` deletes the named volumes (`postgres-data`, `redis-data`, `traefik-acme`, `workspace`). There is no recovery without a recent backup.
 :::
 
+## Maintainer note — publishing the images (one-time org setup)
+
+The portal images are published to GitHub Container Registry by the [`release.yml`](https://github.com/trustedoss/trustedoss-portal/blob/main/.github/workflows/release.yml) workflow, triggered by pushing a `vX.Y.Z` git tag (or via **Run workflow** with a tag input). For that workflow to push, the **organisation must let GitHub Actions write packages** — Org → Settings → Actions → Workflow permissions → *Read and write permissions* (or grant the repo the *Write* role under the package's *Manage Actions access*). The workflow uses the built-in `GITHUB_TOKEN`; no personal access token is required.
+
+After the first push, set each package's visibility to **Public** (ghcr package → Package settings → Change visibility → Public) so operators can `docker pull` anonymously — the no-clone quick install relies on this. Each release publishes an immutable `X.Y.Z` tag and a movable `X.Y` tag; there is no `latest` tag (CLAUDE.md rule #9).
+
 ## Why docker-compose V1, not V2?
 
-The project standardizes on Compose V1 (`docker-compose`) because all current target environments ship V1. V2 syntax differences (notably around `version:` headers and dependency conditions) are not exercised in CI. PRs that introduce `docker compose` (V2) usage are blocked by review. See [`CLAUDE.md`](https://github.com/trustedoss/trustedoss-portal/blob/main/CLAUDE.md) rule #10.
+The project's **development and CI** environment standardizes on Compose V1 (`docker-compose`) — V2 syntax differences are not exercised in our internal pipelines, and PRs that introduce `docker compose` (V2) into the dev/CI surface are blocked by review (see [`CLAUDE.md`](https://github.com/trustedoss/trustedoss-portal/blob/main/CLAUDE.md) rule #10).
+
+That constraint is internal. For **end-user installs**, the `install.sh` wizard prefers V1 but falls back to the V2 plugin (`docker compose`) so a stock modern host — where V1 reached end-of-life in 2023 — works out of the box. The compose files themselves use the V1 file format, which V2 also reads.
 
 ## See also
 

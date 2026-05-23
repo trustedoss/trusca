@@ -99,14 +99,18 @@ docker-compose -f docker-compose.yml exec backend \
   du -sh /workspace/*  | sort -h | tail -20
 ```
 
-대개 단일 프로젝트의 레포 + ORT 분석기 출력이 workspace를 지배합니다. `cdxgen` 캐시도 시간이 지나면서 커집니다.
+대개 단일 스캔의 소스 클론(`<scan_id>/source/`) + scancode 라이선스 탐지 출력(`<scan_id>/scancode/scancode.json`)이 workspace를 지배합니다. `cdxgen` 캐시(`<scan_id>/cdxgen/`)도 시간이 지나면서 커집니다.
 
 ### 2. 공간 확보
 
 ```bash
-# 30일 이상 지난 ORT 분석기 출력 삭제(안전 — 다음 스캔에서 재생성).
+# 30일 이상 지난 scancode 결과 JSON 삭제(안전 — 다음 스캔에서 재생성).
 docker-compose -f docker-compose.yml exec backend \
-  find /workspace -name "analyzer-result.yml" -mtime +30 -delete
+  find /workspace -name "scancode.json" -mtime +30 -delete
+
+# 30일 이상 지난 cdxgen SBOM 캐시 삭제(안전 — 다음 스캔에서 재생성).
+docker-compose -f docker-compose.yml exec backend \
+  find /workspace -type d -name "cdxgen" -mtime +30 -exec rm -rf {} +
 
 # 아카이브된 프로젝트의 workspace 디렉터리 통째 삭제.
 docker-compose -f docker-compose.yml exec backend \

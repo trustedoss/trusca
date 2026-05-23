@@ -13,13 +13,16 @@ nameOverride: ""
 fullnameOverride: ""
 
 # -- Container image shared by backend, worker, and beat workloads.
-#    Pin to minor+patch — never `:latest` (CLAUDE.md core rule #9).
+#    Pin to minor+patch — never `:latest` (CLAUDE.md core rule #9). Images are
+#    published to GitHub Container Registry by .github/workflows/release.yml on
+#    each vX.Y.Z tag (ghcr.io/trustedoss/...). Override the repositories for a
+#    fork / private mirror / air-gapped registry.
 image:
   # API image (FastAPI). Slim, no SCA toolchain.
-  backendRepository: trustedoss/backend
+  backendRepository: ghcr.io/trustedoss/backend
   # Worker image (carries cdxgen / scancode / Trivy / JRE). Heavier.
-  workerRepository: trustedoss/backend-worker
-  # Tag applied to BOTH images. Matches Chart.yaml appVersion.
+  workerRepository: ghcr.io/trustedoss/backend-worker
+  # Tag applied to BOTH images. Kept in lock-step with Chart.yaml appVersion.
   tag: "2.0.0"
   pullPolicy: IfNotPresent
 # -- Image pull secrets for private registries (list of {name: ...}).

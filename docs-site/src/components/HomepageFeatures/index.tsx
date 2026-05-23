@@ -37,9 +37,9 @@ const FEATURES: FeatureItem[] = [
     ),
     description: (
       <Translate id="homepage.feature.license.desc">
-        ORT rulesets classify licenses as allowed / conditional / forbidden.
-        NOTICE files generate automatically; conditional licenses route through
-        an approval workflow.
+        Declared licenses from cdxgen plus detected first-party licenses from
+        scancode, classified allowed / conditional / forbidden. NOTICE files
+        auto-generate; conditional licenses route through an approval workflow.
       </Translate>
     ),
     href: "/docs/admin-guide/users-and-teams",
@@ -49,9 +49,9 @@ const FEATURES: FeatureItem[] = [
     title: <Translate id="homepage.feature.sbom.title">SBOM</Translate>,
     description: (
       <Translate id="homepage.feature.sbom.desc">
-        CycloneDX (JSON / XML) and SPDX (JSON / Tag-Value) export, with full
-        obligation tracking per component. Excel and PDF reports are on the
-        v2.x roadmap.
+        CycloneDX (JSON / XML) and SPDX (JSON / Tag-Value) export, byte-stable,
+        with per-component obligation tracking and a vulnerability PDF report.
+        Excel and the compliance PDF are on the roadmap.
       </Translate>
     ),
     href: "/docs/intro",
@@ -78,9 +78,9 @@ const FEATURES: FeatureItem[] = [
     ),
     description: (
       <Translate id="homepage.feature.ci.desc">
-        GitHub Actions, GitLab CI, and Jenkins integrations. Critical CVEs and
-        forbidden licenses fail the build (exit 1); PR / MR comments post
-        automatically.
+        GitHub Actions and GitLab CI integrations (plus a Jenkinsfile example).
+        Critical CVEs and forbidden licenses fail the build (exit 1); PR / MR
+        comments post automatically.
       </Translate>
     ),
     href: "/docs/ci-integration/github-actions",

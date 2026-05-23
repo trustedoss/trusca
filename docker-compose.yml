@@ -18,15 +18,27 @@
 #               publishes :80 and :443 only.
 #   postgres  — PostgreSQL 17.2-alpine, primary store, named volume.
 #   redis     — Redis 7.4-alpine, Celery broker + result backend.
-#   backend   — FastAPI image (trustedoss/backend:${IMAGE_TAG}), 4 uvicorn
-#               workers. Reachable only inside the compose network; Traefik
-#               routes `/api` and `/health` to it.
-#   worker    — Celery worker on the heavier image (trustedoss/backend-worker:
-#               ${IMAGE_TAG}) which carries cdxgen / scancode / Trivy / JRE.
+#   backend   — FastAPI image (ghcr.io/trustedoss/backend:${IMAGE_TAG}), 4
+#               uvicorn workers. Reachable only inside the compose network;
+#               Traefik routes `/v1`, `/auth`, `/ws`, `/health`, `/metrics`.
+#   worker    — Celery worker on the heavier image
+#               (ghcr.io/trustedoss/backend-worker:${IMAGE_TAG}) which carries
+#               cdxgen / scancode / Trivy / JRE.
 #   beat      — Celery Beat scheduler (DT heartbeat, hourly DT resync, 6h
 #               orphan cleanup) — same worker image, separate process.
-#   frontend  — nginx + Vite static bundle (trustedoss/frontend:${IMAGE_TAG}).
-#               Reachable only inside the compose network; Traefik routes `/`.
+#   frontend  — nginx + Vite static bundle (ghcr.io/trustedoss/frontend:
+#               ${IMAGE_TAG}). Reachable only inside the compose network;
+#               Traefik routes `/`.
+#
+# Images are pulled from GitHub Container Registry (ghcr.io) published by
+# .github/workflows/release.yml on each vX.Y.Z tag. The registry namespace is
+# overridable via ${IMAGE_REGISTRY} (default ghcr.io/trustedoss) for forks /
+# mirrors / air-gapped sites. There is NO `build:` section here on purpose:
+# the file is self-contained so an operator can `curl` just this file plus
+# `.env.example` and `docker-compose up -d` — no repository clone required.
+# (The only repo-relative path below is scripts/postgres-init.sh, mounted into
+# postgres for first-boot role provisioning; the no-clone quick-install doc
+# tells the operator to fetch that one file too — see installation/docker-compose.md.)
 
 x-backend-env: &backend-env
   APP_ENV: ${APP_ENV:-prod}
@@ -223,7 +235,7 @@ services:
   # API — FastAPI + uvicorn, fronted by Traefik on /api and /health.
   # ---------------------------------------------------------------------------
   backend:
-    image: trustedoss/backend:${IMAGE_TAG:-2.0.0}
+    image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/backend:${IMAGE_TAG:-2.0.0}
     restart: unless-stopped
     environment:
       <<: *backend-env
@@ -300,7 +312,7 @@ services:
   # with CELERY_CONCURRENCY; the SCANCODE_* guards cap per-task blowups.
   # ---------------------------------------------------------------------------
   worker:
-    image: trustedoss/backend-worker:${IMAGE_TAG:-2.0.0}
+    image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/backend-worker:${IMAGE_TAG:-2.0.0}
     restart: unless-stopped
     command: celery -A tasks.celery_app worker --loglevel=info --concurrency=${CELERY_CONCURRENCY:-2}
     environment:
@@ -344,7 +356,7 @@ services:
   # Celery Beat — periodic scheduler for DT heartbeat / resync / orphan cleaner.
   # ---------------------------------------------------------------------------
   beat:
-    image: trustedoss/backend-worker:${IMAGE_TAG:-2.0.0}
+    image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/backend-worker:${IMAGE_TAG:-2.0.0}
     restart: unless-stopped
     command: celery -A tasks.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule
     environment:
@@ -368,7 +380,7 @@ services:
   # SPA — Vite bundle served by nginx, fronted by Traefik on `/`.
   # ---------------------------------------------------------------------------
   frontend:
-    image: trustedoss/frontend:${IMAGE_TAG:-2.0.0}
+    image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/frontend:${IMAGE_TAG:-2.0.0}
     restart: unless-stopped
     networks:
       - trustedoss

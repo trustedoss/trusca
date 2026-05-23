@@ -6,6 +6,7 @@ import useDocusaurusContext from "@docusaurus/useDocusaurusContext";
 import Layout from "@theme/Layout";
 
 import HomepageFeatures from "@site/src/components/HomepageFeatures";
+import HomepageShowcase from "@site/src/components/HomepageShowcase";
 import styles from "./index.module.css";
 
 function HomepageHero(): ReactNode {
@@ -94,6 +95,7 @@ export default function Home(): ReactNode {
       <HomepageHero />
       <main>
         <HomepageFeatures />
+        <HomepageShowcase />
       </main>
     </Layout>
   );

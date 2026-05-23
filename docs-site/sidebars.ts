@@ -74,6 +74,7 @@ const sidebars: SidebarsConfig = {
       label: "Reference",
       collapsed: true,
       items: [
+        "comparison",
         "reference/architecture",
         "reference/glossary",
         "reference/env-variables",

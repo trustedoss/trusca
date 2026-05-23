@@ -22,7 +22,12 @@
 #                           .env.backup-<utc>. Default: 0 (rotate).
 #
 # CLAUDE.md compliance:
-#   - core rule #10: docker-compose (V1). docker compose (V2) refused.
+#   - core rule #10: our DEV/CI environment is docker-compose V1 (hyphen). This
+#     install script ships to END USERS whose hosts increasingly carry only the
+#     Compose V2 plugin (`docker compose`, V1 reached EOL in 2023). To keep the
+#     low-friction install path working for them we prefer V1 and fall back to
+#     V2 (see the $DC selection below). This does NOT change the project's
+#     internal V1-only stance — CLAUDE.md rule #10 and our CI stay V1.
 #   - core rule #11: env values written to .env, never inlined.
 #   - core rule #9 : image tags pinned in docker-compose.yml.
 
@@ -66,13 +71,25 @@ note()  { printf "  %s\n" "$1"; }
 title() { printf "\n${BOLD}%s${RESET}\n" "$1"; }
 
 # ---------------------------------------------------------------------------
-# 1. Pre-flight: docker-compose V1, openssl, curl
+# 1. Pre-flight: Docker Compose (V1 preferred, V2 fallback), openssl, curl
 # ---------------------------------------------------------------------------
 title "Pre-flight checks"
 
-command -v docker-compose >/dev/null 2>&1 \
-  || fail "docker-compose (V1, hyphenated) is required. Compose V2 'docker compose' is unsupported."
-ok "docker-compose found: $(docker-compose --version)"
+# $DC is the Compose invocation used everywhere below. We prefer V1
+# (`docker-compose`, the project standard per CLAUDE.md rule #10) and fall
+# back to the V2 plugin (`docker compose`) when V1 is absent — this is a
+# DEPLOY-TARGET compatibility shim for end users on modern hosts, not a change
+# to the project's V1-only dev/CI stance. Fail only when neither is present.
+if command -v docker-compose >/dev/null 2>&1; then
+  DC="docker-compose"
+  ok "docker-compose (V1) found: $(docker-compose --version)"
+elif docker compose version >/dev/null 2>&1; then
+  DC="docker compose"
+  ok "docker compose (V2 plugin) found: $(docker compose version | head -1)"
+  note "V1 preferred (project standard) but unavailable — using V2 fallback for this host."
+else
+  fail "Docker Compose is required: install docker-compose (V1) or the 'docker compose' (V2) plugin."
+fi
 
 command -v openssl >/dev/null 2>&1 || fail "openssl is required for secret generation."
 ok "openssl found"
@@ -228,20 +245,23 @@ ok "wrote CORS_ALLOWED_ORIGINS=$public_url + DOMAIN=$domain + TLS_EMAIL to .env"
 # ---------------------------------------------------------------------------
 title "Bringing up the stack"
 
-docker-compose -f docker-compose.yml pull
-docker-compose -f docker-compose.yml up -d
+# shellcheck disable=SC2086  # $DC may be "docker compose" (two words) — intentional word-split.
+$DC -f docker-compose.yml pull
+# shellcheck disable=SC2086
+$DC -f docker-compose.yml up -d
 ok "containers started"
 
 # Wait for backend health
 note "waiting for backend to become healthy (60s timeout)..."
 for i in $(seq 1 30); do
-  if docker-compose -f docker-compose.yml exec -T backend curl -fsS http://localhost:8000/health >/dev/null 2>&1; then
+  # shellcheck disable=SC2086
+  if $DC -f docker-compose.yml exec -T backend curl -fsS http://localhost:8000/health >/dev/null 2>&1; then
     ok "backend is healthy"
     break
   fi
   sleep 2
   if [[ $i -eq 30 ]]; then
-    fail "backend did not become healthy. Run: docker-compose -f docker-compose.yml logs backend"
+    fail "backend did not become healthy. Run: $DC -f docker-compose.yml logs backend"
   fi
 done
 
@@ -259,7 +279,8 @@ if [[ -z "$owner_url" ]]; then
   # Legacy / single-role deployments: fall back to DATABASE_URL.
   owner_url=$(grep -E "^DATABASE_URL=" .env | head -1 | cut -d= -f2-)
 fi
-docker-compose -f docker-compose.yml exec -T \
+# shellcheck disable=SC2086
+$DC -f docker-compose.yml exec -T \
   -e DATABASE_URL="$owner_url" \
   backend alembic upgrade head
 ok "schema is at HEAD"
@@ -304,7 +325,8 @@ else
 fi
 
 # We pipe the password via env to avoid showing it in `ps -ef`.
-docker-compose -f docker-compose.yml exec -T \
+# shellcheck disable=SC2086
+$DC -f docker-compose.yml exec -T \
   -e ADMIN_EMAIL="$admin_email" \
   -e ADMIN_PASSWORD="$admin_pwd" \
   backend python -m scripts.create_super_admin

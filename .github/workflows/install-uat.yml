@@ -11,17 +11,31 @@ name: Install UAT (fresh Ubuntu)
 # base images / pinned deps. The fresh-OS host UAT for operators (the
 # hand-audited counterpart) lives in docs-site/docs/installation/uat-checklist.md.
 #
-# IMPORTANT — compose file swap:
+# IMPORTANT — compose file swap (install-uat job):
 # install.sh hardcodes `-f docker-compose.yml`, which in production targets
-# `trustedoss/backend:2.0.0` images that don't exist on Docker Hub (the project
-# never publishes them). For UAT we therefore copy `docker-compose.dev.yml`
-# over `docker-compose.yml` first — install.sh's wrapper logic is what we
-# want to validate (env generation, healthcheck loop, alembic invocation,
-# super_admin bootstrap), not Traefik / Let's Encrypt provisioning. Operators
-# verify the production compose file via the manual `uat-checklist.md` flow.
+# the published `ghcr.io/trustedoss/backend:<tag>` image set. The `install-uat`
+# job below validates install.sh's WRAPPER logic (env generation, $DC
+# selection, healthcheck loop, alembic invocation, super_admin bootstrap) —
+# not Traefik / Let's Encrypt — so it copies `docker-compose.dev.yml` over
+# `docker-compose.yml` first (dev compose builds images locally, no registry
+# needed). Operators verify the production Traefik path via the manual
+# `uat-checklist.md` flow.
+#
+# The separate `published-image-pull` job (post-GA roadmap §2 P0 ⑤) verifies
+# the REAL distribution path: that the production `docker-compose.yml` resolves
+# `ghcr.io/trustedoss/...:${IMAGE_TAG}` and pulls multi-arch images. Because a
+# given commit may predate a published tag, that job pulls a known-published
+# IMAGE_TAG (default 2.0.0, overridable on dispatch) rather than the repo ref,
+# and is non-blocking until the first tag is cut (see `continue-on-error`).
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      pull_image_tag:
+        description: "Published IMAGE_TAG to verify the ghcr pull path against (e.g. 2.0.1)."
+        required: false
+        default: "2.0.0"
+        type: string
   schedule:
     # Weekly Sunday 03:00 UTC — catches drift from base image / dep updates.
     - cron: "0 3 * * 0"
@@ -40,10 +54,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # CLAUDE.md core rule #10 mandates docker-compose V1 (hyphenated).
+      # We validate the V1 path here (project standard, CLAUDE.md rule #10):
       # Ubuntu 22.04 hosted runners ship Compose V2 only — install V1 from
       # the upstream pinned release. The version is intentionally pinned so
-      # the UAT result is reproducible across runs.
+      # the UAT result is reproducible across runs. install.sh's $DC fallback
+      # to V2 is exercised implicitly on hosts without V1; here we pin V1 so
+      # this job keeps testing the primary, project-standard invocation.
       - name: Install docker-compose V1
         run: |
           sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" \
@@ -156,3 +172,62 @@ jobs:
           if [ -f docker-compose.yml.bak ]; then
             mv docker-compose.yml.bak docker-compose.yml
           fi
+
+  # ===========================================================================
+  # Post-GA roadmap §2 P0 ⑤ — verify the REAL distribution path: that the
+  # production docker-compose.yml resolves ghcr.io/trustedoss/...:${IMAGE_TAG}
+  # and that those multi-arch images actually pull off the registry. This is
+  # the install path external users hit; install.sh's wrapper logic is covered
+  # by the install-uat job above with dev (locally-built) images.
+  #
+  # Pulls only — no `up` — because the production stack needs Traefik + DNS +
+  # a real domain to come fully healthy (covered by the manual uat-checklist).
+  # ===========================================================================
+  published-image-pull:
+    name: published-image-pull (ghcr multi-arch)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    # Anonymous pull suffices once the packages are public; read-only token
+    # otherwise. No push here, so least privilege = packages: read.
+    permissions:
+      contents: read
+      packages: read
+    # Until the first vX.Y.Z tag is published the referenced images may not yet
+    # exist; keep this advisory rather than blocking install-uat scheduling.
+    # Remove `continue-on-error` once a release tag has been cut.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install docker-compose V1
+        run: |
+          sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" \
+            -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+          docker-compose --version
+
+      - name: Verify production compose resolves & pulls ghcr images
+        env:
+          # A known-published tag, NOT the repo ref — the commit under test may
+          # predate any release. Override on dispatch via `pull_image_tag`.
+          IMAGE_TAG: ${{ github.event.inputs.pull_image_tag || '2.0.0' }}
+          # The published-image services need these to be set for `config` to
+          # interpolate without warnings; values are irrelevant to a pull.
+          DOMAIN: example.invalid
+          TLS_EMAIL: ops@example.invalid
+          SECRET_KEY: ci-pull-check-secret-key-32-characters-min
+          CORS_ALLOWED_ORIGINS: https://example.invalid
+          POSTGRES_USER: trustedoss
+          POSTGRES_PASSWORD: trustedoss
+          POSTGRES_DB: trustedoss
+          DATABASE_URL: postgresql+asyncpg://trustedoss:trustedoss@postgres:5432/trustedoss
+        run: |
+          set -euo pipefail
+          # IMAGE_REGISTRY defaults to ghcr.io/trustedoss inside the compose file.
+          echo "Resolving production compose for IMAGE_TAG=${IMAGE_TAG}"
+          docker-compose -f docker-compose.yml config | grep -E "image: ghcr.io/trustedoss/(backend|backend-worker|frontend):"
+          # Pull only the three first-party published images (postgres/redis/
+          # traefik are upstream and always available). --include-deps off via
+          # explicit service list.
+          docker-compose -f docker-compose.yml pull backend worker frontend
+          echo "all three first-party images pulled for amd64"

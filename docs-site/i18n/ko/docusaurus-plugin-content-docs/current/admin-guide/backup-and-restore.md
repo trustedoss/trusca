@@ -31,7 +31,7 @@ backups/2026-05-09-030000/
 ```
 
 - **`postgres.sql.gz`** — `--clean --if-exists` 포함 전체 논리적 덤프. 재적용 시 객체를 drop+recreate한 후 데이터 재삽입.
-- **`workspace.tar.gz`** — 워커에 `/workspace`로 마운트된 호스트 디렉터리. 프로젝트별 클론과 ORT 분석기 출력 포함.
+- **`workspace.tar.gz`** — 워커에 `/workspace`로 마운트된 호스트 디렉터리. 스캔별 소스 클론(`<scan_id>/source/`), scancode 라이선스 탐지 출력(`<scan_id>/scancode/scancode.json`), cdxgen SBOM 캐시(`<scan_id>/cdxgen/`)를 포함.
 - **`manifest.json`** — `timestamp`, `alembic_head`, `db_size`, `workspace_path`. 복원 스크립트가 라이브 상태와 `alembic_head`를 검증.
 
 포털은 `.env`(비밀값 포함 — 별도 비밀 관리 도구로 보관)와 Traefik의 ACME 상태(Let's Encrypt가 몇 분 내 재발급)는 백업하지 **않습니다**.

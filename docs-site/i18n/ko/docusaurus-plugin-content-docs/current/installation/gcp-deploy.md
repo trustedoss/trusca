@@ -1,3 +1,11 @@
+---
+id: gcp-deploy
+title: GCP 데모 SaaS 배포
+description: GCP 공개 데모 SaaS 운영자 런북 — 번들 Terraform 모듈을 통한 Cloud Run + Cloud SQL + Memorystore 배포.
+sidebar_label: GCP 데모 SaaS
+sidebar_position: 3
+---
+
 # GCP 데모 SaaS 배포 가이드
 
 TrustedOSS Portal 데모 SaaS를 Google Cloud Platform에 배포하기 위한 운영자 가이드. 저장소 루트의 `terraform/` 모듈로 재현 가능하다.

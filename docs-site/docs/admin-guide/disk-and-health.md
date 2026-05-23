@@ -99,14 +99,18 @@ docker-compose -f docker-compose.yml exec backend \
   du -sh /workspace/*  | sort -h | tail -20
 ```
 
-Most often a single project's repo + ORT analyzer output dominates the workspace. The `cdxgen` cache also grows over time.
+Most often a single scan's source clone (`<scan_id>/source/`) + scancode license-detection output (`<scan_id>/scancode/scancode.json`) dominates the workspace. The `cdxgen` cache (`<scan_id>/cdxgen/`) also grows over time.
 
 ### 2. Free space
 
 ```bash
-# Drop ORT analyzer outputs older than 30 days (safe — rebuilt on next scan).
+# Drop scancode result JSON older than 30 days (safe — rebuilt on next scan).
 docker-compose -f docker-compose.yml exec backend \
-  find /workspace -name "analyzer-result.yml" -mtime +30 -delete
+  find /workspace -name "scancode.json" -mtime +30 -delete
+
+# Drop cdxgen SBOM caches older than 30 days (safe — rebuilt on next scan).
+docker-compose -f docker-compose.yml exec backend \
+  find /workspace -type d -name "cdxgen" -mtime +30 -exec rm -rf {} +
 
 # Drop entire workspace directories for projects that have been archived.
 docker-compose -f docker-compose.yml exec backend \

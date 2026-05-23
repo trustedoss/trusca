@@ -31,7 +31,7 @@ backups/2026-05-09-030000/
 ```
 
 - **`postgres.sql.gz`** — full logical dump with `--clean --if-exists`. Re-applying it drops + recreates objects, then re-inserts data.
-- **`workspace.tar.gz`** — the host directory mounted into the worker as `/workspace`. Contains the per-project clones and ORT analyzer outputs.
+- **`workspace.tar.gz`** — the host directory mounted into the worker as `/workspace`. Contains the per-scan source clones (`<scan_id>/source/`), the scancode license-detection output (`<scan_id>/scancode/scancode.json`), and the cdxgen SBOM cache (`<scan_id>/cdxgen/`).
 - **`manifest.json`** — `timestamp`, `alembic_head`, `db_size`, `workspace_path`. The restore script validates `alembic_head` against the live state.
 
 The portal does **not** back up `.env` (it contains secrets — store it via your existing secret-management tooling) and does **not** back up Traefik's ACME state (Let's Encrypt re-issues certificates within minutes).
