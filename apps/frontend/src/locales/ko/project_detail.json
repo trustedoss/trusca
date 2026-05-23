@@ -80,6 +80,20 @@
         "container": "컨테이너"
       }
     },
+    "gate_card": {
+      "title": "빌드 차단 게이트",
+      "subtitle": "최근 성공한 스캔을 기준으로 한 빌드 차단 판정입니다.",
+      "pass": "통과",
+      "fail": "차단",
+      "no_scan_badge": "스캔 전",
+      "no_scan_detail": "빌드 차단 게이트를 평가하려면 스캔을 한 번 성공적으로 실행하세요.",
+      "pass_detail": "이 빌드를 차단하는 Critical CVE나 금지 라이선스가 없습니다.",
+      "critical_cves": "Critical CVE",
+      "forbidden_licenses": "금지 라이선스",
+      "epss_findings": "EPSS ≥ {{threshold}}",
+      "error_title": "빌드 차단 게이트를 불러오지 못했습니다",
+      "error_detail": "다시 시도해 주세요."
+    },
     "errors": {
       "title": "개요를 불러오지 못했습니다.",
       "detail": "페이지를 새로고침해 주세요."

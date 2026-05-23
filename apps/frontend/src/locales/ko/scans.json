@@ -73,6 +73,20 @@
   "alerts": {
     "dt_unavailable": "Dependency-Track에 일시적으로 연결할 수 없습니다. 캐시된 취약점 데이터를 표시합니다."
   },
+  "kind": {
+    "legend": "스캔 유형",
+    "source": "소스",
+    "container": "컨테이너"
+  },
+  "container": {
+    "label": "컨테이너 이미지",
+    "placeholder": "alpine:3.19",
+    "hint": "Trivy가 이미지의 OS 패키지에서 취약점을 검사합니다. 예: ghcr.io/org/app:1.2.3.",
+    "subtitle": "Trivy로 {{project}}의 컨테이너 이미지를 스캔합니다.",
+    "errors": {
+      "image_required": "스캔할 이미지 참조를 입력하세요."
+    }
+  },
   "source": {
     "title": "스캔 시작",
     "subtitle": "{{project}}의 소스를 제공할 방식을 선택하세요.",

@@ -24,6 +24,9 @@ translate proper nouns (Dependency-Track, SBOM, CVE, ORT, Trivy, cdxgen).
 | Component Approval | 컴포넌트 승인 | Workflow for vetting components: Pending → Under Review → Approved / Rejected. | 컴포넌트 검토 워크플로우: 대기 → 검토 중 → 승인 / 반려. |
 | Audit Log | 감사 로그 | Append-only record of every write operation, with actor, action, and target. | 모든 쓰기 작업의 추가 전용 기록. 행위자·동작·대상을 보존합니다. |
 | Build Gate | 빌드 차단 게이트 | CI step that exits with code 1 when a Critical CVE or forbidden license is found. | Critical CVE 또는 금지 라이선스 발견 시 종료 코드 1로 빌드를 중단하는 CI 단계. |
+| Build gate verdict — Pass / Fail | 빌드 차단 판정 — 통과 / 차단 | The build-gate outcome for a project's latest successful scan: Pass = nothing blocks the build, Fail = a Critical CVE or forbidden license blocks it. | 프로젝트의 최근 성공 스캔에 대한 빌드 차단 게이트 결과: 통과 = 빌드를 막는 항목 없음, 차단 = Critical CVE 또는 금지 라이선스가 빌드를 막음. |
+| Container scan | 컨테이너 스캔 | A scan that runs Trivy against a Docker image reference to find OS-package vulnerabilities, as opposed to a source scan. | 소스 스캔과 달리 Docker 이미지 참조에 Trivy를 실행하여 OS 패키지 취약점을 찾는 스캔. |
+| Image reference | 이미지 참조 | The name and tag/digest identifying a container image to scan (e.g. `ghcr.io/org/app:1.2.3`). | 스캔할 컨테이너 이미지를 식별하는 이름과 태그/다이제스트 (예: `ghcr.io/org/app:1.2.3`). |
 | Project | 프로젝트 | A unit of source-tracked software registered in the portal; carries scans, components, and risk scores. | 포털에 등록된 소스 추적 단위. 스캔·컴포넌트·리스크 점수를 보유합니다. |
 | Repository | 저장소 | The git source location (URL + branch) tied to a project. | 프로젝트와 연결된 git 소스 위치 (URL + 브랜치). |
 | Risk Score | 리스크 점수 | Aggregated numeric indicator combining vulnerability severity and license risk for a project. | 프로젝트의 취약점 심각도와 라이선스 리스크를 합산한 수치 지표. |

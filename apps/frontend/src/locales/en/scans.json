@@ -73,6 +73,20 @@
   "alerts": {
     "dt_unavailable": "Dependency-Track is temporarily unavailable. Showing cached vulnerability data."
   },
+  "kind": {
+    "legend": "Scan type",
+    "source": "Source",
+    "container": "Container"
+  },
+  "container": {
+    "label": "Container image",
+    "placeholder": "alpine:3.19",
+    "hint": "Trivy scans the image's OS packages for vulnerabilities, e.g. ghcr.io/org/app:1.2.3.",
+    "subtitle": "Scan a container image for {{project}} with Trivy.",
+    "errors": {
+      "image_required": "Enter an image reference to scan."
+    }
+  },
   "source": {
     "title": "Start a scan",
     "subtitle": "Choose how to provide the source for {{project}}.",
