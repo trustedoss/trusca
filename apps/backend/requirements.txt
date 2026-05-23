@@ -1,12 +1,25 @@
-fastapi==0.120.4
+# fastapi 0.133.1 is the FIRST line that drops the upper bound on starlette
+# (its dep is `starlette>=0.40.0`, no `<` cap). Every fastapi up to and
+# including 0.132.x pins `starlette<1.0.0` (0.121–0.127 pinned `<0.51.0`,
+# 0.120.x pinned `<0.50.0`), which BLOCKS the starlette 1.0.1 CVE fix below.
+# So this fastapi bump is a hard precondition for the starlette pin — see the
+# starlette comment. 0.133.1 raises the floor to pydantic>=2.7.0 and adds a
+# typing-inspection>=0.4.2 transitive; both resolve cleanly (pip dry-run +
+# import smoke verified) and need py>=3.10, which our python:3.12.7-slim image
+# already satisfies.
+fastapi==0.133.1
 # fastapi 0.120+ pulls in annotated-doc (formerly typing-extensions only).
 # Pinning explicitly so a future fastapi bump cannot silently drop it.
 annotated-doc==0.0.4
 uvicorn[standard]==0.32.1
-# starlette 0.49.x bundles the CVE-2025-62727 Range-header DoS fix.
-# fastapi 0.120.x is the first line that admits starlette<0.50, so the
-# fastapi bump above is a precondition for this pin.
-starlette==0.49.3
+# starlette 1.0.1 fixes PYSEC-2026-161 (the fix version is 1.0.1); 0.49.3 is
+# affected. The 0.x→1.0 major jump requires fastapi>=0.133.1 (see the fastapi
+# comment above) because every earlier fastapi pins starlette<1.0.0. fastapi
+# 0.133.1 re-exports all starlette surfaces the backend imports (HTTPException,
+# Request, BackgroundTask, StreamingResponse, CORSMiddleware, WebSocket,
+# types.{ASGIApp,Receive,Scope,Send}) — verified by import smoke against 1.0.1.
+# 1.0.1 also carries forward the prior CVE-2025-62727 Range-header DoS fix.
+starlette==1.0.1
 sqlalchemy[asyncio]==2.0.36
 asyncpg==0.30.0
 psycopg2-binary==2.9.10
