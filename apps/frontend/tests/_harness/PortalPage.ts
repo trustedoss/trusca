@@ -607,6 +607,77 @@ export class PortalPage {
   }
 
   /**
+   * Read the ordered list of per-row EPSS scores from the mounted
+   * vulnerability rows (top → bottom). Each entry is the row's
+   * `data-epss-score` parsed as a number, or `null` when the cell rendered
+   * the "no EPSS" placeholder (`data-epss-empty="true"`). Locale-agnostic —
+   * reads the data anchors the EpssCell exposes verbatim, never the rendered
+   * percentage text.
+   *
+   * NOTE: the list virtualizes, so this returns only the rows currently
+   * mounted in the viewport. For the seeded fixture (≤ a few dozen rows) the
+   * top of the list is mounted from the first frame, which is all the
+   * sort/NULLS-LAST scenarios need to assert on.
+   */
+  async getMountedRowEpssScores(): Promise<(number | null)[]> {
+    const cells = this.page
+      .getByTestId("vulnerability-row")
+      .locator('[data-testid="vulnerability-row-epss"]');
+    const count = await cells.count();
+    const out: (number | null)[] = [];
+    for (let i = 0; i < count; i++) {
+      const cell = cells.nth(i);
+      const empty = await cell.getAttribute("data-epss-empty");
+      if (empty === "true") {
+        out.push(null);
+        continue;
+      }
+      const raw = await cell.getAttribute("data-epss-score");
+      out.push(raw == null ? null : Number(raw));
+    }
+    return out;
+  }
+
+  /**
+   * Read the EPSS score (raw [0,1] value) shown inside the open drawer's EPSS
+   * chip, or `null` when the chip is absent (no EPSS published for the CVE).
+   * Locale-agnostic — reads `data-epss-score`.
+   */
+  async getDrawerEpssScore(): Promise<number | null> {
+    const chip = this.page.getByTestId("vulnerability-drawer-epss");
+    if ((await chip.count()) === 0) return null;
+    const raw = await chip.first().getAttribute("data-epss-score");
+    return raw == null ? null : Number(raw);
+  }
+
+  /**
+   * Read the EPSS percentile (raw [0,1] rank) shown inside the open drawer's
+   * EPSS chip, or `null` when absent. The chip renders the percentile as
+   * localized "Top N%" text; this reads the `data-epss-percentile` anchor so
+   * the assertion stays locale-agnostic.
+   */
+  async getDrawerEpssPercentile(): Promise<number | null> {
+    const chip = this.page.getByTestId("vulnerability-drawer-epss");
+    if ((await chip.count()) === 0) return null;
+    const raw = await chip.first().getAttribute("data-epss-percentile");
+    return raw == null ? null : Number(raw);
+  }
+
+  /**
+   * Read the CVSS score (one-decimal numeric) shown inside the open drawer's
+   * CVSS chip, or `null` when absent. Lets the divergence scenario assert "high
+   * CVSS, low EPSS" on the same drawer. Locale-agnostic — the chip text is
+   * `"<label>: 9.8"`, so we strip the leading label and parse the number.
+   */
+  async getDrawerCvssScore(): Promise<number | null> {
+    const chip = this.page.getByTestId("vulnerability-drawer-cvss");
+    if ((await chip.count()) === 0) return null;
+    const text = (await chip.first().textContent()) ?? "";
+    const match = text.match(/([0-9]+(?:\.[0-9]+)?)\s*$/);
+    return match ? Number(match[1]) : null;
+  }
+
+  /**
    * Find the row whose `data-cve-id` equals `cveId` and click it. Wait
    * for the drawer to open (URL carries `?vuln=<finding_id>` and the
    * drawer container is visible).
