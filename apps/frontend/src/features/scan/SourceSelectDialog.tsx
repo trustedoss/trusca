@@ -1,4 +1,4 @@
-import { FileArchive, FolderOpen, GitBranch } from "lucide-react";
+import { Box, FileArchive, FolderOpen, GitBranch } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import {
   type ScanStage,
@@ -53,6 +54,13 @@ export interface SourceSelectDialogProps {
   onScanStarted: (scan: ScanPublic, project: ProjectPublic) => void;
 }
 
+/**
+ * Top-level scan kind. `source` runs cdxgen + ORT + DT on a source tree;
+ * `container` runs Trivy on a Docker image reference. Mirrors the backend
+ * `ScanKind` enum (apps/backend/schemas/scan.py).
+ */
+type ScanKind = "source" | "container";
+
 interface MethodMeta {
   value: SourceMethod;
   icon: typeof GitBranch;
@@ -65,6 +73,17 @@ const METHODS: MethodMeta[] = [
   { value: "folder", icon: FolderOpen, testid: "source-method-folder" },
 ];
 
+interface KindMeta {
+  value: ScanKind;
+  icon: typeof GitBranch;
+  testid: string;
+}
+
+const KINDS: KindMeta[] = [
+  { value: "source", icon: GitBranch, testid: "scan-kind-source" },
+  { value: "container", icon: Box, testid: "scan-kind-container" },
+];
+
 export function SourceSelectDialog({
   open,
   onOpenChange,
@@ -73,9 +92,12 @@ export function SourceSelectDialog({
 }: SourceSelectDialogProps) {
   const { t } = useTranslation("scans");
   const hasGitUrl = Boolean(project.git_url);
+  const [kind, setKind] = useState<ScanKind>("source");
   const [method, setMethod] = useState<SourceMethod>(
     hasGitUrl ? "git" : "upload",
   );
+  const [imageRef, setImageRef] = useState("");
+  const [imageRefTouched, setImageRefTouched] = useState(false);
   const [progress, setProgress] = useState<TriggerScanProgress>({
     stage: "idle",
     percent: 0,
@@ -123,8 +145,11 @@ export function SourceSelectDialog({
     setFolderRoot(rootFolderName(list));
   }
 
+  const trimmedImageRef = imageRef.trim();
+
   const canSubmit = useMemo(() => {
     if (mutation.isPending) return false;
+    if (kind === "container") return trimmedImageRef.length > 0;
     if (method === "git") return hasGitUrl;
     if (method === "upload") return Boolean(selectedFile);
     if (method === "folder") {
@@ -135,13 +160,35 @@ export function SourceSelectDialog({
       );
     }
     return false;
-  }, [method, hasGitUrl, selectedFile, folderInspection, mutation.isPending]);
+  }, [
+    kind,
+    trimmedImageRef,
+    method,
+    hasGitUrl,
+    selectedFile,
+    folderInspection,
+    mutation.isPending,
+  ]);
 
   async function handleSubmit() {
     setPreflightError(null);
     try {
       let scan: ScanPublic;
-      if (method === "git") {
+      if (kind === "container") {
+        if (trimmedImageRef.length === 0) {
+          setImageRefTouched(true);
+          setPreflightError(
+            t("container.errors.image_required", {
+              defaultValue: "Enter an image reference to scan.",
+            }),
+          );
+          return;
+        }
+        scan = await mutation.mutateAsync({
+          method: "container",
+          imageRef: trimmedImageRef,
+        });
+      } else if (method === "git") {
         scan = await mutation.mutateAsync({ method: "git" });
       } else if (method === "upload" && selectedFile) {
         scan = await mutation.mutateAsync({ method: "upload", file: selectedFile });
@@ -184,7 +231,11 @@ export function SourceSelectDialog({
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        if (!next) resetTransient();
+        if (!next) {
+          resetTransient();
+          setImageRef("");
+          setImageRefTouched(false);
+        }
         onOpenChange(next);
       }}
     >
@@ -198,69 +249,130 @@ export function SourceSelectDialog({
         <DialogHeader>
           <DialogTitle>{t("source.title")}</DialogTitle>
           <DialogDescription>
-            {t("source.subtitle", { project: project.name })}
+            {kind === "container"
+              ? t("container.subtitle", {
+                  defaultValue:
+                    "Scan a container image for {{project}} with Trivy.",
+                  project: project.name,
+                })
+              : t("source.subtitle", { project: project.name })}
           </DialogDescription>
         </DialogHeader>
 
         <div
           role="radiogroup"
-          aria-label={t("source.method_legend")}
-          className="grid grid-cols-3 gap-2"
-          data-testid="source-method-group"
+          aria-label={t("kind.legend", { defaultValue: "Scan type" })}
+          className="grid grid-cols-2 gap-2"
+          data-testid="scan-kind-group"
         >
-          {METHODS.map(({ value, icon: Icon, testid }) => {
-            const disabled = value === "git" && !hasGitUrl;
-            const active = method === value;
+          {KINDS.map(({ value, icon: Icon, testid }) => {
+            const active = kind === value;
             return (
               <button
                 key={value}
                 type="button"
                 role="radio"
                 aria-checked={active}
-                disabled={disabled || isBusy}
+                disabled={isBusy}
                 onClick={() => {
                   resetTransient();
-                  setMethod(value);
+                  setImageRefTouched(false);
+                  setKind(value);
                 }}
                 data-testid={testid}
                 data-active={active ? "true" : "false"}
                 className={cn(
-                  "flex flex-col items-center gap-1.5 rounded-md border p-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+                  "flex items-center justify-center gap-2 rounded-md border p-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
                   active
                     ? "border-primary bg-primary/5 text-foreground"
                     : "border-input hover:bg-accent",
                 )}
               >
-                <Icon className="h-5 w-5" aria-hidden />
-                <span>{t(`source.method.${value}`)}</span>
+                <Icon className="h-4 w-4" aria-hidden />
+                <span>
+                  {value === "source"
+                    ? t("kind.source", { defaultValue: "Source" })
+                    : t("kind.container", { defaultValue: "Container" })}
+                </span>
               </button>
             );
           })}
         </div>
 
-        <div className="min-h-[7rem]" data-testid="source-method-panel">
-          {method === "git" ? (
-            <GitPanel gitUrl={project.git_url} />
-          ) : null}
+        {kind === "source" ? (
+          <>
+            <div
+              role="radiogroup"
+              aria-label={t("source.method_legend")}
+              className="grid grid-cols-3 gap-2"
+              data-testid="source-method-group"
+            >
+              {METHODS.map(({ value, icon: Icon, testid }) => {
+                const disabled = value === "git" && !hasGitUrl;
+                const active = method === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    disabled={disabled || isBusy}
+                    onClick={() => {
+                      resetTransient();
+                      setMethod(value);
+                    }}
+                    data-testid={testid}
+                    data-active={active ? "true" : "false"}
+                    className={cn(
+                      "flex flex-col items-center gap-1.5 rounded-md border p-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+                      active
+                        ? "border-primary bg-primary/5 text-foreground"
+                        : "border-input hover:bg-accent",
+                    )}
+                  >
+                    <Icon className="h-5 w-5" aria-hidden />
+                    <span>{t(`source.method.${value}`)}</span>
+                  </button>
+                );
+              })}
+            </div>
 
-          {method === "upload" ? (
-            <UploadPanel
-              fileInputRef={fileInputRef}
-              selectedFile={selectedFile}
-              onPick={handleFilePick}
-              disabled={isBusy}
-            />
-          ) : null}
+            <div className="min-h-[7rem]" data-testid="source-method-panel">
+              {method === "git" ? (
+                <GitPanel gitUrl={project.git_url} />
+              ) : null}
 
-          {method === "folder" ? (
-            <FolderPanel
-              folderInputRef={folderInputRef}
-              inspection={folderInspection}
-              onPick={handleFolderPick}
-              disabled={isBusy}
-            />
-          ) : null}
-        </div>
+              {method === "upload" ? (
+                <UploadPanel
+                  fileInputRef={fileInputRef}
+                  selectedFile={selectedFile}
+                  onPick={handleFilePick}
+                  disabled={isBusy}
+                />
+              ) : null}
+
+              {method === "folder" ? (
+                <FolderPanel
+                  folderInputRef={folderInputRef}
+                  inspection={folderInspection}
+                  onPick={handleFolderPick}
+                  disabled={isBusy}
+                />
+              ) : null}
+            </div>
+          </>
+        ) : (
+          <ContainerPanel
+            imageRef={imageRef}
+            onChange={(value) => {
+              setPreflightError(null);
+              setImageRef(value);
+            }}
+            onBlur={() => setImageRefTouched(true)}
+            invalid={imageRefTouched && trimmedImageRef.length === 0}
+            disabled={isBusy}
+          />
+        )}
 
         {isBusy ? (
           <div className="space-y-1.5" data-testid="source-progress">
@@ -470,6 +582,73 @@ function FolderPanel({
             </p>
           ) : null}
         </div>
+      ) : null}
+    </div>
+  );
+}
+
+interface ContainerPanelProps {
+  imageRef: string;
+  onChange: (value: string) => void;
+  onBlur: () => void;
+  invalid: boolean;
+  disabled: boolean;
+}
+
+function ContainerPanel({
+  imageRef,
+  onChange,
+  onBlur,
+  invalid,
+  disabled,
+}: ContainerPanelProps) {
+  const { t } = useTranslation("scans");
+  return (
+    <div className="min-h-[7rem] space-y-2" data-testid="source-container-panel">
+      <label
+        htmlFor="scan-image-ref-input"
+        className="block text-xs font-medium text-muted-foreground"
+      >
+        {t("container.label", { defaultValue: "Container image" })}
+      </label>
+      <Input
+        id="scan-image-ref-input"
+        type="text"
+        inputMode="text"
+        autoComplete="off"
+        spellCheck={false}
+        value={imageRef}
+        onChange={(event) => onChange(event.target.value)}
+        onBlur={onBlur}
+        disabled={disabled}
+        placeholder={t("container.placeholder", {
+          defaultValue: "alpine:3.19",
+        })}
+        aria-invalid={invalid}
+        aria-describedby="scan-image-ref-hint"
+        data-testid="scan-image-ref-input"
+        className="font-mono"
+      />
+      <p
+        id="scan-image-ref-hint"
+        className="text-xs text-muted-foreground"
+        data-testid="container-hint"
+      >
+        {t("container.hint", {
+          defaultValue:
+            "Trivy scans the image's OS packages for vulnerabilities, e.g. ghcr.io/org/app:1.2.3.",
+        })}
+      </p>
+      {invalid ? (
+        <p
+          className="text-xs text-risk-critical"
+          data-testid="container-error"
+          aria-live="polite"
+        >
+          {t("container.errors.image_required", {
+            defaultValue: "Enter an image reference to scan.",
+          })}
+        </p>
       ) : null}
     </div>
   );

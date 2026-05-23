@@ -222,4 +222,76 @@ describe("SourceSelectDialog", () => {
     renderDialog();
     expect(screen.getByTestId("source-error")).toHaveTextContent(/quota/i);
   });
+
+  // ---- v2.1 UI gap #2 — container scan kind selection --------------------
+
+  it("defaults to the source kind and shows the source-method group", () => {
+    renderDialog();
+    expect(screen.getByTestId("scan-kind-source")).toHaveAttribute(
+      "data-active",
+      "true",
+    );
+    expect(screen.getByTestId("scan-kind-container")).toHaveAttribute(
+      "data-active",
+      "false",
+    );
+    expect(screen.getByTestId("source-method-group")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("source-container-panel"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("switches to the container kind and reveals the image_ref input", async () => {
+    renderDialog();
+    await userEvent.click(screen.getByTestId("scan-kind-container"));
+    expect(screen.getByTestId("scan-kind-container")).toHaveAttribute(
+      "data-active",
+      "true",
+    );
+    expect(screen.getByTestId("source-container-panel")).toBeInTheDocument();
+    expect(screen.getByTestId("scan-image-ref-input")).toBeInTheDocument();
+    // The source-method picker is hidden in container mode.
+    expect(screen.queryByTestId("source-method-group")).not.toBeInTheDocument();
+  });
+
+  it("blocks submission of a container scan with an empty image_ref", async () => {
+    renderDialog();
+    await userEvent.click(screen.getByTestId("scan-kind-container"));
+    // Submit is disabled until an image ref is entered.
+    expect(screen.getByTestId("source-submit")).toBeDisabled();
+    // Whitespace-only is treated as empty.
+    await userEvent.type(screen.getByTestId("scan-image-ref-input"), "   ");
+    expect(screen.getByTestId("source-submit")).toBeDisabled();
+    expect(mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("triggers a container scan with the trimmed image_ref", async () => {
+    mutateAsync.mockResolvedValue({ ...fakeScan(), kind: "container" });
+    const { onScanStarted, onOpenChange } = renderDialog();
+    await userEvent.click(screen.getByTestId("scan-kind-container"));
+    await userEvent.type(
+      screen.getByTestId("scan-image-ref-input"),
+      "  alpine:3.19  ",
+    );
+    expect(screen.getByTestId("source-submit")).toBeEnabled();
+    await userEvent.click(screen.getByTestId("source-submit"));
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledWith({
+        method: "container",
+        imageRef: "alpine:3.19",
+      });
+    });
+    expect(onScanStarted).toHaveBeenCalled();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("flags the image_ref field as invalid after it is blurred empty", async () => {
+    renderDialog();
+    await userEvent.click(screen.getByTestId("scan-kind-container"));
+    const input = screen.getByTestId("scan-image-ref-input");
+    await userEvent.click(input);
+    await userEvent.tab();
+    expect(input).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByTestId("container-error")).toBeInTheDocument();
+  });
 });

@@ -141,4 +141,26 @@ describe("useTriggerScan", () => {
     ).rejects.toThrow();
     await waitFor(() => expect(result.current.isError).toBe(true));
   });
+
+  it("container method triggers kind=container with the trimmed image_ref in metadata", async () => {
+    mockedTrigger.mockResolvedValue({ ...fakeScan(), kind: "container" });
+    const { result } = renderHook(() => useTriggerScan("proj-1"), { wrapper });
+    await result.current.mutateAsync({
+      method: "container",
+      imageRef: "  alpine:3.19 ",
+    });
+    expect(mockedUpload).not.toHaveBeenCalled();
+    expect(mockedTrigger).toHaveBeenCalledWith("proj-1", {
+      kind: "container",
+      metadata: { image_ref: "alpine:3.19" },
+    });
+  });
+
+  it("rejects a container scan with a blank image_ref before any trigger", async () => {
+    const { result } = renderHook(() => useTriggerScan("proj-1"), { wrapper });
+    await expect(
+      result.current.mutateAsync({ method: "container", imageRef: "   " }),
+    ).rejects.toThrow();
+    expect(mockedTrigger).not.toHaveBeenCalled();
+  });
 });

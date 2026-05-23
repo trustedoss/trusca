@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProjectOverview } from "@/features/projects/api/useProjectOverview";
+import { GateResultCard } from "@/features/projects/components/GateResultCard";
 import { LicenseDistributionChart } from "@/features/projects/components/LicenseDistributionChart";
 import { RecentScansTable } from "@/features/projects/components/RecentScansTable";
 import { RiskGauge } from "@/features/projects/components/RiskGauge";
@@ -90,6 +91,8 @@ export function OverviewTab({ projectId }: OverviewTabProps) {
           <RiskGauge score={data.risk_score} />
         </CardContent>
       </Card>
+
+      <GateResultCard projectId={projectId} />
 
       <Card data-testid="overview-severity-card">
         <CardHeader>

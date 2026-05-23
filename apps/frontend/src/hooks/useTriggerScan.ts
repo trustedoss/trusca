@@ -11,6 +11,10 @@
  *   3. `folder` — caller passes a FileList from a `webkitdirectory` input; we
  *                 zip it client-side (lib/zipFolder), then take the `upload`
  *                 path.
+ *   4. `container` — no body source; the caller supplies a Docker `image_ref`
+ *                 (e.g. `alpine:3.19`) which the backend Trivy pipeline reads
+ *                 from `metadata.image_ref` (apps/backend/tasks/scan_container
+ *                 ::_resolve_image_ref). Triggers `kind: "container"`.
  *
  * Progress is exposed as a Zustand-free local signal via the `onUpdate`
  * callback (zip %, then upload %) so the dialog can render a single staged
@@ -30,16 +34,26 @@ import { zipFolderSelection } from "@/lib/zipFolder";
 
 export type SourceMethod = "git" | "upload" | "folder";
 
+/**
+ * `container` is a distinct scan kind (Trivy on a Docker image) rather than a
+ * source-provision method. It rides through the same mutation so the dialog
+ * has a single submit path; the `runTrigger` switch routes it to a
+ * `kind: "container"` trigger with the image reference in metadata.
+ */
+export type TriggerMethod = SourceMethod | "container";
+
 export type ScanStage = "idle" | "zipping" | "uploading" | "triggering";
 
 export interface TriggerScanInput {
-  method: SourceMethod;
+  method: TriggerMethod;
   /** Required for `method: "upload"`. */
   file?: File;
   /** Required for `method: "folder"`. */
   folderFiles?: FileList | File[];
   /** Optional name used for the generated folder zip. */
   rootName?: string;
+  /** Required for `method: "container"`. Docker image reference, e.g. `alpine:3.19`. */
+  imageRef?: string;
 }
 
 export interface TriggerScanProgress {
@@ -62,6 +76,20 @@ async function runTrigger(
     return triggerScanApi(projectId, {
       kind: "source",
       metadata: { source_type: "git" },
+    });
+  }
+
+  if (input.method === "container") {
+    const imageRef = input.imageRef?.trim();
+    if (!imageRef) {
+      throw new Error("image reference is required for a container scan");
+    }
+    onUpdate?.({ stage: "triggering", percent: 0 });
+    // Backend Trivy pipeline reads metadata.image_ref
+    // (apps/backend/tasks/scan_container.py::_resolve_image_ref).
+    return triggerScanApi(projectId, {
+      kind: "container",
+      metadata: { image_ref: imageRef },
     });
   }
 
