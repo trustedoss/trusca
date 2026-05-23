@@ -16,6 +16,7 @@ vi.mock("@/lib/api", () => {
 import { api } from "@/lib/api";
 import {
   getComponent,
+  getGateResult,
   getProjectOverview,
   listProjectComponents,
 } from "@/features/projects/api/projectDetailApi";
@@ -73,5 +74,25 @@ describe("projectDetailApi", () => {
   it("getComponent hits /v1/components/{id}", async () => {
     await getComponent("alpha-id");
     expect(mockedGet).toHaveBeenCalledWith("/v1/components/alpha-id");
+  });
+
+  it("getGateResult hits /v1/projects/{id}/gate-result and returns the body", async () => {
+    mockedGet.mockResolvedValueOnce({
+      data: {
+        gate: "fail",
+        reason: "1 critical CVE blocks this build.",
+        critical_cve_count: 1,
+        forbidden_license_count: 0,
+        epss_gate_count: 0,
+        epss_threshold: null,
+        project_id: "proj-1",
+        scan_id: "scan-9",
+        evaluated_at: "2026-05-23T00:00:00Z",
+      },
+    });
+    const result = await getGateResult("proj-1");
+    expect(mockedGet).toHaveBeenCalledWith("/v1/projects/proj-1/gate-result");
+    expect(result.gate).toBe("fail");
+    expect(result.critical_cve_count).toBe(1);
   });
 });

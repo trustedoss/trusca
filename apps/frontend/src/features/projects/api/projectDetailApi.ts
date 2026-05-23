@@ -181,3 +181,55 @@ export async function getComponent(
   );
   return data;
 }
+
+// ---------------------------------------------------------------------------
+// Policy gate (build-blocking verdict) — v2.1 UI gap #1.
+//
+// Mirrors apps/backend/schemas/policy_gate.py::GateResultResponse 1:1. The
+// gate is the build-blocking decision CI asks the portal to make, evaluated
+// against the project's most recent successful scan. The Overview tab shows it
+// next to the risk gauge so a developer can see the verdict + reason without
+// opening a CI log.
+// ---------------------------------------------------------------------------
+
+export type GateOutcome = "pass" | "fail";
+
+export interface GateResultResponse {
+  /**
+   * Overall outcome. `pass` when no open critical CVEs and no forbidden
+   * licenses are present (and, when enabled, no findings at/above the EPSS
+   * threshold), otherwise `fail`.
+   */
+  gate: GateOutcome;
+  /** Human-readable explanation when `gate === "fail"`; `null` for passing builds. */
+  reason: string | null;
+  /** Open critical-severity findings on the evaluated scan. */
+  critical_cve_count: number;
+  /** Distinct component versions carrying a forbidden-classification license. */
+  forbidden_license_count: number;
+  /**
+   * Open findings whose CVE EPSS score is at/above `epss_threshold`. Always 0
+   * when the EPSS gate is disabled (`epss_threshold === null`).
+   */
+  epss_gate_count: number;
+  /** Active EPSS gate threshold in [0, 1], or `null` when the EPSS gate is off. */
+  epss_threshold: number | null;
+  project_id: string;
+  /**
+   * The scan the verdict was computed against. `null` when the project has
+   * never had a successful scan, in which case `gate === "pass"` by convention
+   * (no signal = no block).
+   */
+  scan_id: string | null;
+  /** Server timestamp at which the verdict was computed (UTC, ISO-8601). */
+  evaluated_at: string;
+}
+
+export async function getGateResult(
+  projectId: string,
+): Promise<GateResultResponse> {
+  const { data } = await api.get<GateResultResponse>(
+    `/v1/projects/${projectId}/gate-result`,
+  );
+  return data;
+}

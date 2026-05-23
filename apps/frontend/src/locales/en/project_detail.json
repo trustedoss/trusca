@@ -80,6 +80,20 @@
         "container": "Container"
       }
     },
+    "gate_card": {
+      "title": "Build gate",
+      "subtitle": "Build-blocking verdict from the latest successful scan.",
+      "pass": "Pass",
+      "fail": "Fail",
+      "no_scan_badge": "No scan yet",
+      "no_scan_detail": "Run a successful scan to evaluate the build gate.",
+      "pass_detail": "No critical CVEs or forbidden licenses block this build.",
+      "critical_cves": "Critical CVEs",
+      "forbidden_licenses": "Forbidden licenses",
+      "epss_findings": "EPSS ≥ {{threshold}}",
+      "error_title": "Could not load the build gate",
+      "error_detail": "Please try again."
+    },
     "errors": {
       "title": "Could not load overview.",
       "detail": "Try refreshing the page."
