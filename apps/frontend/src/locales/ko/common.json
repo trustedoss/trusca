@@ -1,8 +1,7 @@
 {
   "app": {
     "name": "TrustedOSS Portal",
-    "tagline": "엔터프라이즈를 위한 오픈소스 SCA 플랫폼",
-    "version": "v2 — Phase 0"
+    "tagline": "엔터프라이즈를 위한 오픈소스 SCA 플랫폼"
   },
   "language": {
     "label": "언어",
