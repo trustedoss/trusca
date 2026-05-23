@@ -17,17 +17,17 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from jose import jwt
 
+from core.config import secret_key
 from core.security import (
     JWT_ALGORITHM,
     create_access_token,
     create_refresh_token,
     decode_token,
-    secret_key,
 )
 
 
 def _encode(claims: dict) -> str:
-    return jwt.encode(claims, secret_key(), algorithm=JWT_ALGORITHM)
+    return str(jwt.encode(claims, secret_key(), algorithm=JWT_ALGORITHM))
 
 
 def _base(**over) -> dict:
