@@ -61,14 +61,33 @@ Align with CISA 2025 / SLSA, and cut noise further.
 - ☐ **Signed SBOMs** — cosign signatures, in-toto attestation, SLSA provenance, CISA 2025 / NTIA element coverage
 - ☐ **Reachability**-based prioritization (best-effort, rolled out per language)
 
+## v2.4 — Supply-chain Threat Detection & Deeper Prioritization
+
+Close the biggest remaining gaps vs commercial SCA (Black Duck / Snyk / Sonatype), reusing
+best-of-breed open source rather than building from scratch.
+
+- ☐ **Malicious / typosquatting package detection** — OSSF malicious-packages + OSV `MAL-`
+  feeds plus typosquat heuristics; a new `malicious` finding type that blocks the build gate
+  (parity with Snyk / Sonatype Repository Firewall)
+- ☐ **CISA KEV + unified Risk Score** — a known-exploited flag plus a single 0–100 score
+  combining CVSS, EPSS, KEV, fix availability, and dependency depth (capstone over the v2.1
+  EPSS / v2.3 reachability signals)
+- ☐ **Binary scanning** (OSS-in-binary) — Syft binary classifier + Trivy filesystem mode
+  feeding the existing Dependency-Track pipeline (best-effort; no modified-binary fingerprinting)
+- ☐ **AI-BOM** — CycloneDX ML-BOM via cdxgen: detect AI model / dataset components and their licenses
+- ☐ **Snippet / AI-generated-code origin matching** — *lowest priority, RFC-gated.* ScanOSS
+  (MIT client + GPL-2.0 engine as an isolated sidecar). Requires a separate RFC on knowledge-base
+  hosting and fingerprint egress before any work starts.
+
 ---
 
 ## Explicitly out of scope
 
-- **Snippet / full-text origin detection** (ScanOSS-style). We stay with declared (cdxgen) + detected
-  (scancode) license detection. May be revisited later via a separate RFC.
 - **Building our own vulnerability database** — we continue to aggregate through Dependency-Track,
-  augmented by EPSS and VEX.
+  augmented by EPSS, CISA KEV, and VEX.
+
+> Note: snippet / full-text origin detection (ScanOSS-style), previously out of scope, is now
+> tracked at the **lowest priority** under v2.4 (RFC-gated) rather than excluded outright.
 
 ## Backlog (not yet scheduled)
 
