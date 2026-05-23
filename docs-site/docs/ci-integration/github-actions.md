@@ -149,7 +149,7 @@ The PR comment still posts; the check stays green.
     scan-kind: container
 ```
 
-The portal's project metadata determines which image is scanned (`container_image` field). Container scans run Trivy on the OS layer.
+Container scans run Trivy on the image's OS packages. The action does not carry an image-reference input today, so the portal applies its default image resolution for the project; to scan a specific image reference (`name:tag`), trigger the scan from the UI (**Container** in the [scan dialog](../user-guide/scans.md#scan-a-container-image)) or call the API directly with `metadata.image_ref` (see [Scans → From the API](../user-guide/scans.md#from-the-api)). An `image-ref` action input is on the roadmap.
 
 ### Both source and container
 

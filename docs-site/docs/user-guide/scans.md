@@ -21,7 +21,7 @@ Engineers with `developer` or higher on the project's team. Triggering scans aga
 | **`source`** | `cdxgen` (CycloneDX generator) → scancode (first-party license detection) → Dependency-Track (DT) | Components and their **declared** licenses (from dependency metadata) plus **detected** licenses (scancode reading your own first-party source), and CVEs (Common Vulnerabilities and Exposures) from NVD / OSV / GitHub Advisory. |
 | **`container`** | Trivy (Aqua Security container scanner) | OS-package vulnerabilities and (limited) language-package CVEs in a container image. |
 
-`source` is the only kind exposed in the v2.0.0 UI trigger — the API also accepts `container` for clients that wire it up directly. See [Roadmap](#roadmap-v2x) for UI parity.
+Both kinds are selectable from the UI scan dialog as of v2.1 — pick **Source** or **Container** when you trigger a scan (see [Trigger a scan → From the UI](#from-the-ui)). The API accepts both kinds as well.
 
 ## Trigger a scan
 
@@ -29,20 +29,38 @@ Engineers with `developer` or higher on the project's team. Triggering scans aga
 
 1. Open **Projects** in the sidebar.
 2. Find the project row and click the **Scan** button at the end of the row.
-3. The scan starts immediately as a `source` scan against the project's default branch.
+3. The **scan dialog** opens. At the top, choose the scan type:
+   - **Source** — runs cdxgen + scancode + Dependency-Track on the project's source. This is the default.
+   - **Container** — runs Trivy on a container image you name. See [Scan a container image](#scan-a-container-image).
+4. For a **Source** scan, pick how to provide the source (Git URL, an uploaded `.zip`, or a folder zipped in the browser), then click **Start scan**.
 
-There is no kind-selection dialog or branch-override field in the v2.0.0 UI — those controls are deferred to v2.1 (see [Roadmap](#roadmap-v2x)). A right-slide drawer opens on the project list page with a live progress view backed by a WebSocket connection. You can close the tab — the scan continues on the worker. Reopen the project and reconnect at any time. While a scan is `queued` or `running`, the drawer carries a **Cancel scan** action — see [Cancel a scan](#cancel-a-scan).
+A right-slide drawer opens on the project list page with a live progress view backed by a WebSocket connection. You can close the tab — the scan continues on the worker. Reopen the project and reconnect at any time. While a scan is `queued` or `running`, the drawer carries a **Cancel scan** action — see [Cancel a scan](#cancel-a-scan).
 
 ![Scan progress drawer — bootstrap → fetch → cdxgen → scancode → DT → finalize stages, live over WebSocket](/img/screenshots/user-scans-progress-drawer.png)
 
-:::warning Branch selection at v2.0.0
-Scans run against the project's `default_branch` (typically `main`).
-Neither the UI nor the API exposes a branch-override at v2.0.0 —
+:::warning Branch selection for source scans
+Source scans run against the project's `default_branch` (typically
+`main`). Neither the UI nor the API exposes a branch-override —
 the `ScanCreate` payload accepts only `kind` and `metadata` (see
 `apps/backend/schemas/scan.py`). To scan `develop` or a feature
 branch, temporarily change `default_branch` in **Project Settings**
 before triggering the scan, then revert. A first-class `branch`
-field on the trigger is on the v2.1 roadmap.
+field on the trigger is on the v2.x roadmap.
+:::
+
+### Scan a container image
+
+Pick **Container** in the scan dialog to scan a built image instead of source. Trivy (the Aqua Security container scanner) inspects the image's **OS packages** for known vulnerabilities — complementary to a source scan, which covers your application's dependency tree.
+
+1. Open the scan dialog from the project row's **Scan** button.
+2. At the top of the dialog, select **Container**.
+3. Enter the **container image** reference in `name:tag` form, for example `alpine:3.19` or `ghcr.io/org/app:1.2.3`. The image must be pullable from the worker (public registries, or a registry the worker is authenticated against).
+4. Click **Start scan**.
+
+The same progress drawer opens. When the scan reaches `succeeded`, the OS-package vulnerabilities appear under the project's **Vulnerabilities** tab.
+
+:::note Container scans do not need a Git URL
+A container scan reads an image reference, not the repository. A project with no `git_url` can still run container scans. The Source / Container choice is independent of the project's source configuration.
 :::
 
 ### From the API
@@ -60,6 +78,16 @@ The response carries the scan UUID. Poll:
 ```bash
 curl -sS "https://trustedoss.example.com/v1/scans/${SCAN_ID}" \
   -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" | jq .status
+```
+
+For a container scan, set `kind` to `container` and pass the image reference under `metadata.image_ref`:
+
+```bash
+curl -sS -X POST \
+  "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/scans" \
+  -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"kind": "container", "metadata": {"image_ref": "alpine:3.19"}}' | jq .
 ```
 
 ### From CI
@@ -265,9 +293,9 @@ The **Detected** licenses come from scancode and are best-effort. They may be ab
 
 ## Roadmap (v2.x)
 
-Items the manual previously promised that are not in v2.0.0; tracked for later releases.
+Items tracked for later releases.
 
-- Kind-selection dialog (Source / Container) and branch-override field on the project-level **Scan** trigger — planned for v2.1.
+- Branch-override field on the project-level **Scan** trigger — planned for a later v2.x. (The Source / Container kind-selection dialog shipped in v2.1 — see [Trigger a scan → From the UI](#from-the-ui).)
 
 ## See also
 

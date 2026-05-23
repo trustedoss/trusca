@@ -125,6 +125,30 @@ SSH 배포 키는 [로드맵](#로드맵-v2x)을 보세요.
 
 점수는 매 스캔 후, 그리고 매 CVE 재탐지 후 갱신됩니다. 절대적 SLA가 아닌 포트폴리오 내 상대 지표로 읽으세요. 프로젝트로 들어가면 분해도가 보입니다.
 
+## 빌드 게이트 판정 (Overview 탭)
+
+**Overview** 탭은 리스크 게이지 옆에 **Build gate**(빌드 게이트) 카드를 표시합니다. CI 연동이 계산하는 것과 동일한 빌드 차단 판정을 노출하므로 — CI 로그를 열지 않고도 포털에서 게이트 결과를 확인할 수 있습니다. 이 카드는 프로젝트의 **최근 성공한 스캔**을 기준으로 평가합니다.
+
+**빌드 게이트**(또는 **정책 게이트**)는 빌드에 critical CVE 나 금지 등급 라이선스가 있으면 0이 아닌 종료 코드를 반환하는 CI 차단 메커니즘입니다. 개념과 파이프라인 연동 방법은 [GitHub Actions → 출력](../ci-integration/github-actions.md#출력)과 [용어집 → 빌드 게이트](../reference/glossary.md#빌드-게이트)에 있으며, 이 카드는 동일한 판정을 UI에서 읽기 전용으로 보여 줍니다.
+
+카드가 표시하는 항목:
+
+| 요소 | 의미 |
+|---|---|
+| **Pass / Fail 배지** | 최근 성공한 스캔에 critical CVE 와 금지 라이선스가 없으면 `Pass`(녹색, 방패 체크), 그렇지 않으면 `Fail`(빨강, 방패 X). |
+| **사유 (Reason)** | `Fail` 일 때 게이트를 트립시킨 원인을 한 줄로 설명. |
+| **Critical CVEs** | 평가된 스캔의 미해결 critical 심각도 결과 수. 미해결 = 상태가 `not_affected`, `fixed`, `false_positive` 가 아닌 경우. |
+| **Forbidden licenses** | 금지 등급 라이선스를 하나 이상 가진 고유 컴포넌트 수. |
+| **`EPSS ≥ {threshold}`** | 운영자가 EPSS 게이트를 활성화한 경우(포털에 `GATE_EPSS_THRESHOLD` 설정)에만 표시. EPSS 점수가 임계값 이상인 미해결 결과 수. EPSS 게이트가 비활성(기본값)이면 숨겨집니다. [EPSS로 빌드 게이팅](../ci-integration/github-actions.md#epss로-빌드-게이팅-선택) 참고. |
+
+:::note 스캔 없음 (No scan yet)
+성공한 스캔이 한 번도 없는 프로젝트는 녹색 pass 대신 중립적인 **No scan yet** 상태를 표시합니다 — 평가할 대상이 없기 때문입니다. 스캔을 실행하면([스캔](./scans.md) 참고) 카드가 채워집니다.
+:::
+
+CVE — Common Vulnerabilities and Exposures, EPSS — Exploit Prediction Scoring System. 둘 다 [용어집](../reference/glossary.md)을 보세요.
+
+이 카드는 읽기 전용입니다 — 판정을 반영하되 정책을 변경하지는 않습니다. 임계값(심각도 하한, EPSS)은 운영자·CI 측 설정입니다. [GitHub Actions](../ci-integration/github-actions.md)와 [`GATE_EPSS_THRESHOLD`](../reference/env-variables.md#빌드--정책-게이트)를 보세요.
+
 ## 정상 동작 확인
 
 프로젝트 생성 후:
@@ -151,7 +175,6 @@ SSH 배포 키는 [로드맵](#로드맵-v2x)을 보세요.
 
 매뉴얼이 이전에 약속했으나 v2.0.0에 포함되지 않은 항목 — 향후 릴리스에서 다룹니다.
 
-- 프로젝트의 `container_image` 필드(및 Container 스캔 트리거) — v2.1 예정.
 - 포트폴리오 그룹핑용 프로젝트 태그 — v2.1 예정.
 - `organization`(조직 전체) 가시성 — v2.2 예정.
 - **Project Settings**에서의 SSH 배포 키 생성 — v2.2 예정.

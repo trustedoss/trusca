@@ -126,6 +126,30 @@ Each project surfaces an aggregated **risk score** (0–100) that combines:
 
 The score updates after every scan and after every CVE re-detection. Read it as a relative indicator across your portfolio, not an absolute SLA. Drilling into the project shows the breakdown.
 
+## Build gate verdict (Overview tab)
+
+The **Overview** tab shows a **Build gate** card next to the risk gauge. It surfaces the same build-blocking verdict the CI integration computes — so you can read the gate result in the portal without opening a CI log. The card evaluates the project's **latest successful scan**.
+
+The **build gate** (also called the **policy gate**) is the CI-blocking mechanism that exits non-zero when a build carries critical CVEs or forbidden-tier licenses. The concept and how to wire it into a pipeline live in [GitHub Actions → the build gate](../ci-integration/github-actions.md#outputs) and [Glossary → Build gates](../reference/glossary.md#build-gates); this card is the read-only, in-UI view of the same verdict.
+
+The card shows:
+
+| Element | Meaning |
+|---|---|
+| **Pass / Fail badge** | `Pass` (green, shield-check) when the latest successful scan has no critical CVEs and no forbidden licenses; `Fail` (red, shield-x) otherwise. |
+| **Reason** | On `Fail`, a one-line explanation of what tripped the gate. |
+| **Critical CVEs** | Count of open critical-severity findings on the evaluated scan. Open = status not in `not_affected`, `fixed`, `false_positive`. |
+| **Forbidden licenses** | Count of distinct components carrying at least one forbidden-tier license. |
+| **`EPSS ≥ {threshold}`** | Shown **only** when an operator has enabled the EPSS gate (`GATE_EPSS_THRESHOLD` set on the portal). Count of open findings whose EPSS score meets or exceeds the threshold. Hidden when the EPSS gate is disabled (the default). See [Gate the build on EPSS](../ci-integration/github-actions.md#gate-the-build-on-epss-optional). |
+
+:::note No scan yet
+A project that has never had a successful scan shows a neutral **No scan yet** state instead of a green pass — there is nothing to evaluate. Run a scan (see [Scans](./scans.md)) and the card fills in.
+:::
+
+CVE — Common Vulnerabilities and Exposures; EPSS — Exploit Prediction Scoring System. See the [Glossary](../reference/glossary.md) for both.
+
+The card is read-only — it reflects the verdict but does not change policy. The thresholds (severity floor, EPSS) are operator- and CI-side settings; see [GitHub Actions](../ci-integration/github-actions.md) and [`GATE_EPSS_THRESHOLD`](../reference/env-variables.md#build--policy-gate).
+
 ## Verify it worked
 
 After creating a project:
@@ -152,7 +176,6 @@ Your role on the owning team is below `developer`. Ask a team admin to invite yo
 
 Items the manual previously promised that are not in v2.0.0; tracked for later releases.
 
-- `container_image` field on the project (and a Container scan trigger) — planned for v2.1.
 - Project tags for portfolio grouping — planned for v2.1.
 - `organization` (org-wide) visibility — reserved for v2.2.
 - SSH deploy-key generation from **Project Settings** — planned for v2.2.
