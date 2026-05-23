@@ -125,6 +125,7 @@
       "title": "Vulnerabilities ({{count}})",
       "empty": "No known vulnerabilities for this component.",
       "cvss_label": "CVSS",
+      "epss_label": "EPSS",
       "fixed_in": "Fixed in"
     },
     "raw": {
@@ -138,10 +139,22 @@
       "cve_id": "CVE ID",
       "severity": "Severity",
       "cvss": "CVSS",
+      "epss": "EPSS",
       "summary": "Title",
       "affected": "Affected",
       "status": "Status",
       "discovered": "Discovered"
+    },
+    "epss": {
+      "tooltip": "EPSS — probability this CVE is exploited in the wild within 30 days. Complements CVSS (severity).",
+      "empty": "No EPSS data for this CVE",
+      "cell_tooltip": "{{score}} · {{percentile}} most likely to be exploited"
+    },
+    "filter": {
+      "minEpss": "EPSS ≥",
+      "minEpssPlaceholder": "0.00–1.00",
+      "minEpssClear": "Clear",
+      "minEpssHint": "Enter an EPSS probability between 0 and 1 to keep findings at or above it."
     },
     "severity": {
       "critical": "Critical",
@@ -168,6 +181,7 @@
       "sort_label": "Sort by",
       "sort_by_severity": "Severity",
       "sort_by_cvss": "CVSS",
+      "sort_by_epss": "EPSS",
       "sort_by_status": "Status",
       "sort_by_discovered_at": "Discovered",
       "order_label": "Order",
@@ -190,6 +204,7 @@
       "subtitle": "Status: {{status}}",
       "cve_id_label": "CVE ID",
       "cvss_label": "CVSS",
+      "epss_label": "EPSS",
       "cvss_vector_label": "Vector",
       "summary_heading": "Summary",
       "summary_empty": "No summary available for this finding.",

@@ -196,6 +196,7 @@
   ],
   "GET /v1/projects/{project_id}/vulnerabilities": [
     "limit",
+    "min_epss",
     "offset",
     "order",
     "project_id",

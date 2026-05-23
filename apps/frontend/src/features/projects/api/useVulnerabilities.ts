@@ -28,6 +28,11 @@ export interface VulnerabilitiesQueryFilters {
   status: VulnFindingStatus[];
   sort: VulnerabilitySortKey;
   order: SortOrder;
+  /**
+   * EPSS threshold (0–1), or `null` for "no threshold". When set, the backend
+   * keeps findings with `epss_score >= min_epss` and drops NULL-EPSS rows.
+   */
+  min_epss: number | null;
   limit: number;
   offset: number;
 }
@@ -49,6 +54,7 @@ export function vulnerabilitiesKey(
       status: [...filters.status].sort(),
       sort: filters.sort,
       order: filters.order,
+      min_epss: filters.min_epss,
       limit: filters.limit,
       offset: filters.offset,
     },
@@ -71,6 +77,7 @@ export function useVulnerabilities(
         status: filters.status.length ? filters.status : undefined,
         sort: filters.sort,
         order: filters.order,
+        min_epss: filters.min_epss ?? undefined,
       }),
     placeholderData: keepPreviousData,
   });

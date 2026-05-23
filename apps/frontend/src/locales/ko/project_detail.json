@@ -125,6 +125,7 @@
       "title": "취약점 ({{count}})",
       "empty": "이 컴포넌트에 알려진 취약점이 없습니다.",
       "cvss_label": "CVSS",
+      "epss_label": "EPSS",
       "fixed_in": "수정 버전"
     },
     "raw": {
@@ -138,10 +139,22 @@
       "cve_id": "CVE ID",
       "severity": "심각도",
       "cvss": "CVSS",
+      "epss": "EPSS",
       "summary": "제목",
       "affected": "영향 컴포넌트",
       "status": "상태",
       "discovered": "발견 시각"
+    },
+    "epss": {
+      "tooltip": "EPSS — 이 CVE가 향후 30일 내 실제로 악용될 확률. CVSS(심각도)를 보완합니다.",
+      "empty": "이 CVE의 EPSS 데이터 없음",
+      "cell_tooltip": "{{score}} · 악용 가능성 {{percentile}}"
+    },
+    "filter": {
+      "minEpss": "EPSS ≥",
+      "minEpssPlaceholder": "0.00–1.00",
+      "minEpssClear": "지우기",
+      "minEpssHint": "0과 1 사이의 EPSS 확률을 입력하면 그 값 이상인 취약점만 표시됩니다."
     },
     "severity": {
       "critical": "치명",
@@ -168,6 +181,7 @@
       "sort_label": "정렬 기준",
       "sort_by_severity": "심각도",
       "sort_by_cvss": "CVSS",
+      "sort_by_epss": "EPSS",
       "sort_by_status": "상태",
       "sort_by_discovered_at": "발견 시각",
       "order_label": "순서",
@@ -190,6 +204,7 @@
       "subtitle": "상태: {{status}}",
       "cve_id_label": "CVE ID",
       "cvss_label": "CVSS",
+      "epss_label": "EPSS",
       "cvss_vector_label": "벡터",
       "summary_heading": "요약",
       "summary_empty": "이 취약점에 대한 요약이 없습니다.",

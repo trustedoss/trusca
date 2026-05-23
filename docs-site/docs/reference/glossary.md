@@ -49,6 +49,17 @@ guides.
 - **NVD — National Vulnerability Database.** NIST's analysis layer on
   top of CVE — adds CVSS scores, CPE matching, references. See
   [nvd.nist.gov](https://nvd.nist.gov/).
+- **CVSS — Common Vulnerability Scoring System.** A 0–10 score for the
+  theoretical **severity** (impact) of a CVE. Says nothing about whether
+  it is being exploited.
+- **EPSS — Exploit Prediction Scoring System.** A 0–1 probability that a
+  CVE will be **exploited in the wild** within the next 30 days. EPSS
+  complements CVSS: CVSS is severity, EPSS is likelihood. TrustedOSS
+  shows the score as a percentage and the percentile as "top N%", and
+  can drive the build gate via `GATE_EPSS_THRESHOLD`. EPSS is collected
+  from Dependency-Track and is absent for CVEs DT does not score. See
+  [first.org/epss](https://www.first.org/epss/) and the
+  [EPSS user guide](../user-guide/vulnerabilities.md#epss--exploitation-probability).
 - **OSV — Open Source Vulnerabilities database.** Google-led, ecosystem-
   scoped vulnerability database (npm, PyPI, Maven, etc.). See
   [osv.dev](https://osv.dev/).
@@ -135,10 +146,17 @@ contexts — they are the same thing). The gate evaluates:
    `Critical`; per-project `policy_gate.severity_floor` is
    configurable)?
 2. Are there any components in the `forbidden` license tier?
+3. *(Optional)* Are there any open findings whose **EPSS** score meets
+   or exceeds `GATE_EPSS_THRESHOLD`? This third condition is **disabled
+   by default** — it activates only when an operator sets the
+   `GATE_EPSS_THRESHOLD` env var (a value from `0` to `1`). When unset,
+   the gate evaluates conditions 1 and 2 exactly as before. See
+   [EPSS](../user-guide/vulnerabilities.md#epss--exploitation-probability).
 
-Either condition triggers exit code 1 in the CI integration's
+Any active condition triggers exit code 1 in the CI integration's
 composite action. A failed gate is recorded in `audit_logs` with the
-list of offending CVEs / licenses.
+list of offending CVEs / licenses; when the EPSS condition is enabled,
+the gate result also carries `epss_gate_count` and `epss_threshold`.
 
 ## RBAC roles
 

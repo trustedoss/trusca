@@ -88,6 +88,16 @@ sidebar_position: 2
 
 부트스트랩 흐름은 [DT 커넥터](../admin-guide/dt-connector.md) 참고.
 
+## 빌드 / 정책 게이트
+
+CI 빌드 게이트는 기본적으로 Critical CVE와 금지 라이선스에서 빌드를 실패시키며, 이 조건들은 env로 구동되지 않습니다. 아래 단일 env 노브는 **선택적** EPSS 차원을 더합니다.
+
+| 키 | 기본값 | 읽는 위치 | 설명 |
+|---|---|---|---|
+| `GATE_EPSS_THRESHOLD` | (미설정) | `config.py` | 선택적 EPSS 게이트. `0`~`1` 값. 설정 시 미해결 결과 중 `epss_score >= GATE_EPSS_THRESHOLD`인 것이 있으면 빌드 게이트도 실패하며, 게이트 결과에 `epss_gate_count` + `epss_threshold`가 실립니다. **미설정(기본)이면 EPSS 게이트는 비활성** — 기존 Critical-CVE / 금지-라이선스 조건만 적용됩니다. EPSS 값이 없는 결과는 게이트를 트리거하지 않습니다. EPSS 데이터는 DT 동기화 중 수집되므로 DT가 값을 제공하는 CVE만 대상입니다. |
+
+게이트 모델은 [빌드 게이트](./glossary.md#빌드-게이트), CI 워크스루는 [EPSS로 빌드 게이팅](../ci-integration/github-actions.md#epss로-빌드-게이팅-선택) 참고.
+
 ## 스캔 파이프라인
 
 | 키 | 기본값 | 읽는 위치 | 설명 |

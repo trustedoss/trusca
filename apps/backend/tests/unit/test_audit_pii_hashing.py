@@ -102,6 +102,23 @@ def test_non_pii_columns_pass_through_unchanged() -> None:
     }
 
 
+def test_serialize_value_decimal_becomes_float() -> None:
+    """Numeric columns (cvss_score / epss_score) arrive as Decimal — the JSONB
+    diff cannot serialize Decimal, so the audit serializer coerces to float."""
+    import json
+    from decimal import Decimal
+
+    from core.audit import _serialize_dict, _serialize_value
+
+    assert _serialize_value(Decimal("0.97123")) == pytest.approx(0.97123)
+    assert isinstance(_serialize_value(Decimal("0.97123")), float)
+    # None passes through; the whole diff must be json.dumps-able.
+    diff = _serialize_dict({"epss_score": Decimal("0.40000"), "cvss_score": None})
+    json.dumps(diff)  # would raise TypeError before the fix
+    assert diff["epss_score"] == pytest.approx(0.40)
+    assert diff["cvss_score"] is None
+
+
 def test_sensitive_and_pii_coexist_in_same_payload() -> None:
     """A user-row payload routes each key to the right redaction."""
     from core.audit import mask_sensitive_columns

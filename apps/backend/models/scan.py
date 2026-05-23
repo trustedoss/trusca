@@ -507,6 +507,16 @@ class Vulnerability(Base):
     source: Mapped[str] = mapped_column(String(32), nullable=False)
     severity: Mapped[str] = mapped_column(_vuln_severity_enum(), nullable=False)
     cvss_score: Mapped[Decimal | None] = mapped_column(Numeric(3, 1), nullable=True)
+    # EPSS (Exploit Prediction Scoring System) — a CVE-level attribute, NOT
+    # per-finding. Both probability and percentile live on (0, 1]. Collected
+    # from DT findings (v2.1 "EPSS UI first-class"). Nullable because older DT
+    # versions / CVEs without an EPSS publication leave these unset; they are
+    # backfilled by re-scan / DT resync (a separate data migration), so this
+    # schema revision lands them as NULL.
+    #   Numeric(6, 5): scale 5 preserves EPSS's published precision
+    #   (e.g. 0.00042, 0.97123); precision 6 admits the closed-set max 1.00000.
+    epss_score: Mapped[Decimal | None] = mapped_column(Numeric(6, 5), nullable=True)
+    epss_percentile: Mapped[Decimal | None] = mapped_column(Numeric(6, 5), nullable=True)
     cvss_vector: Mapped[str | None] = mapped_column(String(128), nullable=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     details: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -536,6 +546,10 @@ class Vulnerability(Base):
         Index("ix_vulnerabilities_source", "source"),
         # "Newly modified critical CVEs" → dashboard widget.
         Index("ix_vulnerabilities_severity_modified", "severity", "modified_at"),
+        # Sort the vulnerability list by EPSS (v2.1 "EPSS UI first-class").
+        # A plain b-tree is enough: NULL ordering (NULLS LAST) is handled in
+        # the API query, and Postgres b-tree indexes scan in either direction.
+        Index("ix_vulnerabilities_epss_score", "epss_score"),
         Index(
             "ix_vulnerabilities_references_gin",
             "references",

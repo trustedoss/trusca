@@ -28,6 +28,7 @@ from __future__ import annotations
 import hashlib
 import uuid
 from contextvars import ContextVar
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import event, inspect
@@ -221,6 +222,17 @@ def _serialize_value(value: Any) -> Any:
     """Make a value JSON-safe for the JSONB diff column."""
     if isinstance(value, uuid.UUID):
         return str(value)
+    if isinstance(value, Decimal):
+        # Numeric columns (e.g. vulnerabilities.cvss_score / epss_score) arrive
+        # as Decimal, which the stdlib json encoder cannot serialize. Coerce to
+        # float so the diff lands in JSONB. We accept the float round-trip:
+        # the audit diff is a human-readable record, not a source of truth for
+        # re-deriving the exact Numeric scale. Guard non-finite Decimals
+        # (NaN/Inf): json.dumps would emit tokens PostgreSQL JSONB rejects, and
+        # a failed audit INSERT aborts the business txn it records — fall back
+        # to str so the diff still lands. (Bounded Numeric cols can't reach this
+        # today; the guard hardens the general Decimal path.)
+        return float(value) if value.is_finite() else str(value)
     if hasattr(value, "isoformat"):  # datetime/date
         return value.isoformat()
     return value

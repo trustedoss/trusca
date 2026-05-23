@@ -19,6 +19,11 @@ import { SeverityBadge } from "@/features/projects/components/SeverityBadge";
 import { VulnerabilitiesToolbar } from "@/features/projects/components/VulnerabilitiesToolbar";
 import { VulnerabilityDrawer } from "@/features/projects/components/VulnerabilityDrawer";
 import { VulnerabilityStatusBadge } from "@/features/projects/components/VulnerabilityStatusBadge";
+import {
+  EPSS_EMPTY,
+  formatEpssPercentile,
+  formatEpssScore,
+} from "@/features/projects/lib/epss";
 import { ALL_VULNERABILITY_STATUSES } from "@/features/projects/lib/vulnerabilityTransitions";
 import { ProblemError } from "@/lib/problem";
 import { formatRelativeToNow } from "@/lib/relativeTime";
@@ -63,6 +68,7 @@ const VALID_SORT = new Set<VulnerabilitySortKey>([
   "cvss",
   "status",
   "discovered_at",
+  "epss",
 ]);
 
 function parseList<T extends string>(
@@ -93,6 +99,18 @@ function parsePage(raw: string | null): number {
   return n;
 }
 
+/**
+ * Parse the `min_epss` URL param into a [0, 1] threshold, or `null` for "no
+ * threshold". Out-of-range / non-numeric values fall back to null so a hand
+ * edited URL can't wedge the filter.
+ */
+function parseMinEpss(raw: string | null): number | null {
+  if (raw == null || raw.length === 0) return null;
+  const n = Number.parseFloat(raw);
+  if (!Number.isFinite(n) || n < 0 || n > 1) return null;
+  return n;
+}
+
 export interface VulnerabilitiesTabProps {
   projectId: string;
   /** Used to build the PDF report download filename fallback (G2). */
@@ -120,6 +138,9 @@ export function VulnerabilitiesTab({
   );
   const [order, setOrder] = useState<SortOrder>(() =>
     parseOrder(searchParams.get("order")),
+  );
+  const [minEpss, setMinEpss] = useState<number | null>(() =>
+    parseMinEpss(searchParams.get("min_epss")),
   );
   const [page, setPage] = useState<number>(() =>
     parsePage(searchParams.get("page")),
@@ -175,6 +196,8 @@ export function VulnerabilitiesTab({
         else next.delete("sort");
         if (order !== "desc") next.set("order", order);
         else next.delete("order");
+        if (minEpss != null) next.set("min_epss", String(minEpss));
+        else next.delete("min_epss");
         if (page !== 1) next.set("page", String(page));
         else next.delete("page");
         return next;
@@ -187,6 +210,7 @@ export function VulnerabilitiesTab({
     status,
     sort,
     order,
+    minEpss,
     page,
     setSearchParams,
   ]);
@@ -198,10 +222,11 @@ export function VulnerabilitiesTab({
       status,
       sort,
       order,
+      min_epss: minEpss,
       limit: PAGE_SIZE,
       offset: (page - 1) * PAGE_SIZE,
     }),
-    [debouncedSearch, severity, status, sort, order, page],
+    [debouncedSearch, severity, status, sort, order, minEpss, page],
   );
 
   const vulnerabilities = useVulnerabilities(projectId, filters);
@@ -233,6 +258,11 @@ export function VulnerabilitiesTab({
         order={order}
         onOrderChange={(next) => {
           setOrder(next);
+          setPage(1);
+        }}
+        minEpss={minEpss}
+        onMinEpssChange={(next) => {
+          setMinEpss(next);
           setPage(1);
         }}
         onDownloadPdf={() => {
@@ -352,6 +382,15 @@ function VulnerabilitiesTableHeader() {
       <span className="w-16 text-right">
         {t("vulnerabilities.column.cvss")}
       </span>
+      <span
+        className="w-20 text-right"
+        title={t("vulnerabilities.epss.tooltip", {
+          defaultValue:
+            "EPSS — probability this CVE is exploited in the wild within 30 days. Complements CVSS (severity).",
+        })}
+      >
+        {t("vulnerabilities.column.epss", { defaultValue: "EPSS" })}
+      </span>
       <span className="flex-1">{t("vulnerabilities.column.summary")}</span>
       <span className="w-20 text-right">
         {t("vulnerabilities.column.affected")}
@@ -406,6 +445,10 @@ function VulnerabilityRow({
           ? vulnerability.cvss_score.toFixed(1)
           : "—"}
       </span>
+      <EpssCell
+        score={vulnerability.epss_score}
+        percentile={vulnerability.epss_percentile}
+      />
       <span
         className="flex-1 truncate"
         title={vulnerability.summary ?? ""}
@@ -428,5 +471,59 @@ function VulnerabilityRow({
         {formatRelativeToNow(vulnerability.discovered_at, locale)}
       </span>
     </button>
+  );
+}
+
+interface EpssCellProps {
+  score: number | null;
+  percentile: number | null;
+}
+
+/**
+ * EPSS table cell. Renders the score as a one-decimal percentage in the mono
+ * accent font and folds the percentile ("Top N%") into the title tooltip so
+ * the compact 40px row stays narrow. A missing score renders the em-dash
+ * placeholder — never "0%".
+ */
+function EpssCell({ score, percentile }: EpssCellProps) {
+  const { t } = useTranslation("project_detail");
+  const formattedScore = formatEpssScore(score);
+  const formattedPercentile = formatEpssPercentile(percentile);
+
+  if (formattedScore == null) {
+    return (
+      <span
+        className="w-20 text-right font-mono text-xs tabular-nums text-muted-foreground"
+        data-testid="vulnerability-row-epss"
+        data-epss-empty="true"
+        title={t("vulnerabilities.epss.empty", {
+          defaultValue: "No EPSS data for this CVE",
+        })}
+      >
+        {EPSS_EMPTY}
+      </span>
+    );
+  }
+
+  // Percentile becomes the tooltip — "97.3% · Top 9%" — so triagers can read
+  // the rank without widening the column.
+  const tooltip =
+    formattedPercentile != null
+      ? t("vulnerabilities.epss.cell_tooltip", {
+          score: formattedScore,
+          percentile: formattedPercentile,
+          defaultValue: "{{score}} · {{percentile}} most likely to be exploited",
+        })
+      : formattedScore;
+
+  return (
+    <span
+      className="w-20 text-right font-mono text-xs tabular-nums"
+      data-testid="vulnerability-row-epss"
+      data-epss-score={score ?? undefined}
+      title={tooltip}
+    >
+      {formattedScore}
+    </span>
   );
 }
