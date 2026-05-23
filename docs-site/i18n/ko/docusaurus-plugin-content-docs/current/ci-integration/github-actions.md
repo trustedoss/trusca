@@ -149,7 +149,7 @@ PR 코멘트는 그대로 게시되며 체크는 green으로 유지됩니다.
     scan-kind: container
 ```
 
-스캔 대상 이미지는 포털의 프로젝트 메타데이터(`container_image` 필드)가 결정합니다. 컨테이너 스캔은 OS 레이어에 Trivy를 실행합니다.
+컨테이너 스캔은 이미지의 OS 패키지에 Trivy를 실행합니다. 현재 이 액션에는 이미지 참조 입력값이 없으므로, 포털이 해당 프로젝트의 기본 이미지 해석을 적용합니다. 특정 이미지 참조(`name:tag`)를 스캔하려면 UI에서 트리거하거나([스캔 다이얼로그](../user-guide/scans.md#컨테이너-이미지-스캔)의 **Container**), `metadata.image_ref` 로 API를 직접 호출하세요([스캔 → API에서](../user-guide/scans.md#api에서) 참고). 액션의 `image-ref` 입력값은 로드맵 항목입니다.
 
 ### 소스와 컨테이너 둘 다
 
