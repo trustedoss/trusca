@@ -13,6 +13,15 @@ Alembic migration environment.
   metadata side effects).
 - Forward-only policy: see versions/0001_init.py — `downgrade()` raises
   NotImplementedError per CLAUDE.md §6 (Migration policy).
+- Concurrency guard (M4 + L1race): run_migrations_online() takes a
+  transaction-scoped Postgres advisory lock before running migrations, so two
+  concurrent `alembic upgrade head` runs (e.g. ``docker-compose up
+  --scale backend=N`` or a K8s rollout) serialise instead of racing on DDL.
+  This is migration *infrastructure*, not migration logic — it changes no
+  schema, only who gets to apply it at a given instant.
+- Secret hygiene (M1 / CLAUDE.md §5): the engine is created with
+  ``hide_parameters=True`` so a failed statement's traceback never echoes the
+  DSN / bound password into the logs.
 """
 
 from __future__ import annotations
@@ -21,9 +30,25 @@ import sys
 from logging.config import fileConfig
 from pathlib import Path
 
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import engine_from_config, pool, text
 
 from alembic import context
+
+# ---------------------------------------------------------------------------
+# Advisory-lock key (M4 + L1race).
+#
+# A single fixed 64-bit integer namespaces the migration lock. Postgres
+# advisory locks are pure conventions keyed by this number — any session that
+# asks for the SAME key contends; unrelated keys never collide. We derive the
+# value from the ASCII bytes of "TOSSMIGR" (TrustedOSS MIGRation) so it is
+# memorable, stable across releases, and unlikely to clash with an app-level
+# advisory lock chosen elsewhere:
+#   0x544F53534D494752 = b"TOSSMIGR" big-endian.
+# Postgres advisory-lock keys are signed bigint, and 0x544F53534D494752
+# already fits in the positive signed range (< 2**63), so no wraparound.
+# DO NOT change this value: an in-flight migration on an old replica and a
+# new replica must agree on the key to serialise correctly.
+MIGRATION_ADVISORY_LOCK_KEY = 0x544F53534D494752  # b"TOSSMIGR", 6075166039590127442
 
 # Make the backend root importable so we can pull in core.config.
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
@@ -66,10 +91,26 @@ def run_migrations_online() -> None:
         section,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        # M1 / CLAUDE.md §5 — never echo the DSN or bound params (incl. the
+        # password) into a failed-statement traceback.
+        hide_parameters=True,
     )
     with connectable.connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata)
+        # M4 + L1race — serialise concurrent migration runs. A
+        # transaction-scoped advisory lock (pg_advisory_xact_lock) blocks any
+        # second `alembic upgrade head` until this transaction commits/rolls
+        # back, then the loser finds the schema already at HEAD and no-ops.
+        # _xact_ scope means the lock is released automatically with the
+        # transaction even if a migration raises — no manual unlock / leak on
+        # error. This makes --scale backend=N and K8s rollouts safe regardless
+        # of replica count; it is a concurrency guard only and changes no
+        # schema.
         with context.begin_transaction():
+            connection.execute(
+                text("SELECT pg_advisory_xact_lock(:k)"),
+                {"k": MIGRATION_ADVISORY_LOCK_KEY},
+            )
             context.run_migrations()
 
 
