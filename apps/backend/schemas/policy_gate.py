@@ -63,6 +63,22 @@ class GateResultResponse(BaseModel):
         description="Distinct component_versions on the evaluated scan that carry "
         "at least one forbidden-classification license.",
     )
+    epss_gate_count: int = Field(
+        default=0,
+        ge=0,
+        description="Number of open findings on the evaluated scan whose CVE has an "
+        "EPSS score at or above ``epss_threshold``. Always 0 when the EPSS gate is "
+        "disabled (``epss_threshold == null``).",
+    )
+    epss_threshold: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="The active EPSS gate threshold in [0, 1], read from the "
+        "``GATE_EPSS_THRESHOLD`` environment variable at evaluation time. ``null`` "
+        "when the EPSS gate is disabled (unset/unparseable env), in which case the "
+        "gate behaves exactly as the critical-CVE + forbidden-license gate.",
+    )
     project_id: uuid.UUID
     scan_id: uuid.UUID | None = Field(
         default=None,

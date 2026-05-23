@@ -135,6 +135,8 @@ async def _seed_finding(
     cve_id: str | None = None,
     summary: str | None = None,
     initial_status: str = "new",
+    epss_score: float | None = None,
+    epss_percentile: float | None = None,
 ) -> uuid.UUID:
     """Insert one component_version + vulnerability + finding tied to scan_id."""
     factory = await _factory(client)
@@ -168,6 +170,8 @@ async def _seed_finding(
             source="NVD",
             severity=severity,
             summary=summary or f"summary {suffix}",
+            epss_score=epss_score,
+            epss_percentile=epss_percentile,
         )
         session.add(vuln)
         await session.commit()
@@ -570,3 +574,106 @@ async def test_patch_optimistic_concurrency_mismatch_returns_409(client) -> None
     )
     assert response.status_code == 409
     assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+# ---------------------------------------------------------------------------
+# EPSS exposure (v2.1) — response fields, sort=epss, min_epss filter (incl.
+# adversarial out-of-range → 422).
+# ---------------------------------------------------------------------------
+
+
+async def test_list_response_carries_epss_fields(client) -> None:
+    _, team, user = await _seed_team_with_user(client)
+    project_id, scan_id = await _seed_scanned_project(client, team_id=team.id)
+    await _seed_finding(
+        client, scan_id=scan_id, severity="high", epss_score=0.97123, epss_percentile=0.99412
+    )
+    headers = _bearer_for(user)
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/vulnerabilities", headers=headers
+    )
+    assert response.status_code == 200, response.text
+    item = response.json()["items"][0]
+    assert item["epss_score"] == pytest.approx(0.97123)
+    assert item["epss_percentile"] == pytest.approx(0.99412)
+
+
+async def test_detail_response_carries_epss_fields(client) -> None:
+    _, team, user = await _seed_team_with_user(client)
+    _, scan_id = await _seed_scanned_project(client, team_id=team.id)
+    finding_id = await _seed_finding(
+        client, scan_id=scan_id, epss_score=0.12345, epss_percentile=0.54321
+    )
+    headers = _bearer_for(user)
+
+    response = await client.get(
+        f"/v1/vulnerability_findings/{finding_id}", headers=headers
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["epss_score"] == pytest.approx(0.12345)
+    assert body["epss_percentile"] == pytest.approx(0.54321)
+
+
+async def test_list_sort_epss_accepted(client) -> None:
+    _, team, user = await _seed_team_with_user(client)
+    project_id, _ = await _seed_scanned_project(client, team_id=team.id)
+    headers = _bearer_for(user)
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/vulnerabilities",
+        headers=headers,
+        params={"sort": "epss", "order": "desc"},
+    )
+    assert response.status_code == 200
+
+
+async def test_list_min_epss_filter_applied(client) -> None:
+    _, team, user = await _seed_team_with_user(client)
+    project_id, scan_id = await _seed_scanned_project(client, team_id=team.id)
+    await _seed_finding(client, scan_id=scan_id, cve_id=None, epss_score=0.90)
+    await _seed_finding(client, scan_id=scan_id, cve_id=None, epss_score=0.10)
+    await _seed_finding(client, scan_id=scan_id, cve_id=None, epss_score=None)
+    headers = _bearer_for(user)
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/vulnerabilities",
+        headers=headers,
+        params={"min_epss": 0.5},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["total"] == 1
+    assert body["items"][0]["epss_score"] == pytest.approx(0.90)
+
+
+async def test_list_min_epss_out_of_range_returns_422(client) -> None:
+    """Adversarial: min_epss outside [0, 1] is rejected at the query layer."""
+    _, team, user = await _seed_team_with_user(client)
+    project_id, _ = await _seed_scanned_project(client, team_id=team.id)
+    headers = _bearer_for(user)
+
+    for bad in (1.5, -0.1):
+        response = await client.get(
+            f"/v1/projects/{project_id}/vulnerabilities",
+            headers=headers,
+            params={"min_epss": bad},
+        )
+        assert response.status_code == 422, (bad, response.text)
+        assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_list_min_epss_boundary_values_accepted(client) -> None:
+    """0 and 1 are valid boundaries (ge=0, le=1)."""
+    _, team, user = await _seed_team_with_user(client)
+    project_id, _ = await _seed_scanned_project(client, team_id=team.id)
+    headers = _bearer_for(user)
+
+    for ok in (0, 1):
+        response = await client.get(
+            f"/v1/projects/{project_id}/vulnerabilities",
+            headers=headers,
+            params={"min_epss": ok},
+        )
+        assert response.status_code == 200, (ok, response.text)

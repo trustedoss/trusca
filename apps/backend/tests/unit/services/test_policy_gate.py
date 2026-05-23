@@ -28,6 +28,7 @@ import subprocess
 import uuid
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -138,7 +139,9 @@ async def _attach_scan_component(
     return sc
 
 
-async def _make_vulnerability(session: AsyncSession, *, severity: str):
+async def _make_vulnerability(
+    session: AsyncSession, *, severity: str, epss_score: Decimal | None = None
+):
     from models import Vulnerability
 
     suffix = unique_suffix()
@@ -147,6 +150,9 @@ async def _make_vulnerability(session: AsyncSession, *, severity: str):
         source="NVD",
         severity=severity,
         summary=f"Test vuln {suffix}",
+        # Set at INSERT (not via a post-create UPDATE) so the audit listener
+        # never captures a Decimal in a JSONB diff.
+        epss_score=epss_score,
     )
     session.add(v)
     await session.commit()
@@ -412,3 +418,181 @@ async def test_evaluate_gate_distinct_components_for_forbidden_count(
 
     assert result.gate == "fail"
     assert result.forbidden_license_count == 1
+
+
+# ---------------------------------------------------------------------------
+# EPSS gate option (v2.1) — env-driven, opt-in. Pure unit cases (no DB) for
+# the threshold parser + reason builder, plus DB-backed cases for the count.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("env_value", "expected"),
+    [
+        (None, None),  # unset → disabled
+        ("", None),  # empty → disabled
+        ("   ", None),  # whitespace → disabled
+        ("not-a-float", None),  # unparseable → disabled (fail-safe)
+        ("-0.1", None),  # below range → disabled
+        ("1.5", None),  # above range → disabled
+        ("0", 0.0),
+        ("1", 1.0),
+        ("0.5", 0.5),
+        ("0.97123", 0.97123),
+    ],
+)
+def test_resolve_epss_threshold(monkeypatch, env_value, expected) -> None:
+    """Env parse: only a float in [0, 1] enables the gate; everything else
+    fails safe to disabled (None) and never relaxes the gate."""
+    from services.policy_gate import _resolve_epss_threshold
+
+    if env_value is None:
+        monkeypatch.delenv("GATE_EPSS_THRESHOLD", raising=False)
+    else:
+        monkeypatch.setenv("GATE_EPSS_THRESHOLD", env_value)
+
+    assert _resolve_epss_threshold() == expected
+
+
+def test_build_reason_omits_epss_when_disabled() -> None:
+    """A None threshold (gate disabled) must not append an EPSS clause even if
+    a count is somehow passed — legacy reason text stays byte-for-byte."""
+    from services.policy_gate import _build_reason
+
+    assert _build_reason(0, 0, 5, None) is None
+    assert _build_reason(1, 0, 5, None) == "1 critical CVE detected"
+
+
+def test_build_reason_appends_epss_clause_when_active() -> None:
+    from services.policy_gate import _build_reason
+
+    reason = _build_reason(0, 0, 3, 0.5)
+    assert reason == "3 open CVEs with EPSS >= 0.5"
+    # Singular form + combined with the critical clause.
+    combined = _build_reason(1, 0, 1, 0.9)
+    assert combined == "1 critical CVE detected; 1 open CVE with EPSS >= 0.9"
+
+
+async def test_evaluate_gate_epss_disabled_preserves_legacy_behaviour(
+    db_session: AsyncSession, monkeypatch
+) -> None:
+    """With GATE_EPSS_THRESHOLD unset, a high-EPSS open CVE does NOT fail the
+    gate — the legacy critical/forbidden contract is 100% preserved."""
+    from services.policy_gate import evaluate_gate
+
+    monkeypatch.delenv("GATE_EPSS_THRESHOLD", raising=False)
+
+    _, _, project = await _seed_project_with_team(db_session)
+    scan = await make_scan(db_session, project=project, status="succeeded")
+    _, cv = await _make_component_version(db_session)
+    await _attach_scan_component(db_session, scan_id=scan.id, cv_id=cv.id)
+
+    # A non-critical CVE with a very high EPSS score.
+    vuln = await _make_vulnerability(
+        db_session, severity="medium", epss_score=Decimal("0.99000")
+    )
+    await _attach_vuln_finding(
+        db_session, scan_id=scan.id, cv_id=cv.id, vulnerability_id=vuln.id, status="new"
+    )
+
+    result = await evaluate_gate(db_session, project.id)
+
+    assert result.gate == "pass"
+    assert result.epss_gate_count == 0
+    assert result.epss_threshold is None
+
+
+async def test_evaluate_gate_epss_threshold_fails_on_high_epss(
+    db_session: AsyncSession, monkeypatch
+) -> None:
+    """With the threshold set, an open finding whose CVE EPSS >= threshold
+    fails the gate even when severity is not critical."""
+    from services.policy_gate import evaluate_gate
+
+    monkeypatch.setenv("GATE_EPSS_THRESHOLD", "0.5")
+
+    _, _, project = await _seed_project_with_team(db_session)
+    scan = await make_scan(db_session, project=project, status="succeeded")
+    _, cv = await _make_component_version(db_session)
+    await _attach_scan_component(db_session, scan_id=scan.id, cv_id=cv.id)
+
+    vuln = await _make_vulnerability(
+        db_session, severity="medium", epss_score=Decimal("0.80000")
+    )
+    await _attach_vuln_finding(
+        db_session, scan_id=scan.id, cv_id=cv.id, vulnerability_id=vuln.id, status="new"
+    )
+
+    result = await evaluate_gate(db_session, project.id)
+
+    assert result.gate == "fail"
+    assert result.epss_gate_count == 1
+    assert result.epss_threshold == 0.5
+    assert result.critical_cve_count == 0
+    assert result.reason is not None
+    assert "EPSS" in result.reason
+
+
+async def test_evaluate_gate_epss_excludes_null_and_closed(
+    db_session: AsyncSession, monkeypatch
+) -> None:
+    """NULL EPSS and dispositioned (closed) findings do not trip the EPSS gate."""
+    from services.policy_gate import evaluate_gate
+
+    monkeypatch.setenv("GATE_EPSS_THRESHOLD", "0.5")
+
+    _, _, project = await _seed_project_with_team(db_session)
+    scan = await make_scan(db_session, project=project, status="succeeded")
+
+    # (a) NULL epss — must be excluded.
+    _, cv_null = await _make_component_version(db_session)
+    await _attach_scan_component(db_session, scan_id=scan.id, cv_id=cv_null.id)
+    v_null = await _make_vulnerability(db_session, severity="high")  # epss_score stays None
+    await _attach_vuln_finding(
+        db_session, scan_id=scan.id, cv_id=cv_null.id, vulnerability_id=v_null.id, status="new"
+    )
+
+    # (b) high epss but CLOSED finding — must be excluded.
+    _, cv_closed = await _make_component_version(db_session)
+    await _attach_scan_component(db_session, scan_id=scan.id, cv_id=cv_closed.id)
+    v_closed = await _make_vulnerability(
+        db_session, severity="high", epss_score=Decimal("0.90000")
+    )
+    await _attach_vuln_finding(
+        db_session,
+        scan_id=scan.id,
+        cv_id=cv_closed.id,
+        vulnerability_id=v_closed.id,
+        status="not_affected",
+    )
+
+    result = await evaluate_gate(db_session, project.id)
+
+    assert result.gate == "pass"
+    assert result.epss_gate_count == 0
+    assert result.epss_threshold == 0.5
+
+
+async def test_evaluate_gate_epss_below_threshold_passes(
+    db_session: AsyncSession, monkeypatch
+) -> None:
+    """An open finding with EPSS strictly below the threshold passes."""
+    from services.policy_gate import evaluate_gate
+
+    monkeypatch.setenv("GATE_EPSS_THRESHOLD", "0.5")
+
+    _, _, project = await _seed_project_with_team(db_session)
+    scan = await make_scan(db_session, project=project, status="succeeded")
+    _, cv = await _make_component_version(db_session)
+    await _attach_scan_component(db_session, scan_id=scan.id, cv_id=cv.id)
+    vuln = await _make_vulnerability(
+        db_session, severity="low", epss_score=Decimal("0.40000")
+    )
+    await _attach_vuln_finding(
+        db_session, scan_id=scan.id, cv_id=cv.id, vulnerability_id=vuln.id, status="new"
+    )
+
+    result = await evaluate_gate(db_session, project.id)
+
+    assert result.gate == "pass"
+    assert result.epss_gate_count == 0

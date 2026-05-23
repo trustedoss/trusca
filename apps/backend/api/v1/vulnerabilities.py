@@ -98,9 +98,19 @@ async def list_project_vulnerabilities_endpoint(
     search: str | None = Query(default=None, max_length=255),
     severity: list[str] | None = Query(default=None),
     finding_status: list[str] | None = Query(default=None, alias="status"),
+    min_epss: float | None = Query(
+        default=None,
+        ge=0,
+        le=1,
+        description=(
+            "Keep only findings whose CVE has an EPSS exploit-probability >= this "
+            "threshold, in [0, 1]. CVEs with no published EPSS score are excluded. "
+            "Omit to disable EPSS filtering."
+        ),
+    ),
     sort: str = Query(
         default="severity",
-        pattern=r"^(severity|cvss|status|discovered_at)$",
+        pattern=r"^(severity|cvss|status|discovered_at|epss)$",
     ),
     order: str = Query(default="desc", pattern=r"^(asc|desc)$"),
     session: AsyncSession = Depends(get_db),
@@ -116,6 +126,7 @@ async def list_project_vulnerabilities_endpoint(
             search=search,
             severity=severity,
             status=finding_status,
+            min_epss=min_epss,
             sort=sort,
             order=order,
         )
@@ -149,6 +160,8 @@ def _detail_response(payload: dict[str, Any]) -> Response:
         cve_id=payload["cve_id"],
         severity=payload["severity"],
         cvss_score=payload["cvss_score"],
+        epss_score=payload["epss_score"],
+        epss_percentile=payload["epss_percentile"],
         cvss_vector=payload["cvss_vector"],
         summary=payload["summary"],
         details=payload["details"],

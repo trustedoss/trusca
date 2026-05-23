@@ -178,6 +178,8 @@ def _build_response_body(result: GateResult) -> GateResultResponse:
         reason=result.reason,
         critical_cve_count=result.critical_cve_count,
         forbidden_license_count=result.forbidden_license_count,
+        epss_gate_count=result.epss_gate_count,
+        epss_threshold=result.epss_threshold,
         project_id=result.project_id,
         scan_id=result.scan_id,
         evaluated_at=result.evaluated_at,

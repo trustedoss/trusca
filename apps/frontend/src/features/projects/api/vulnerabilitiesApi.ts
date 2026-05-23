@@ -40,7 +40,8 @@ export type VulnerabilitySortKey =
   | "severity"
   | "cvss"
   | "status"
-  | "discovered_at";
+  | "discovered_at"
+  | "epss";
 export type SortOrder = "asc" | "desc";
 
 export interface VulnerabilityListItem {
@@ -48,6 +49,14 @@ export interface VulnerabilityListItem {
   cve_id: string;
   severity: VulnSeverity;
   cvss_score: number | null;
+  /**
+   * EPSS probability (0–1) that this CVE is exploited in the wild over the
+   * next 30 days. `null` when EPSS has no entry for the CVE. Surfaced as a
+   * first-class column / sort key / filter alongside CVSS (v2.1).
+   */
+  epss_score: number | null;
+  /** EPSS percentile (0–1) — rank of this score among all scored CVEs. */
+  epss_percentile: number | null;
   summary: string | null;
   status: VulnFindingStatus;
   affected_component_count: number;
@@ -101,6 +110,10 @@ export interface VulnerabilityDetail {
   severity: VulnSeverity;
   cvss_score: number | null;
   cvss_vector: string | null;
+  /** EPSS probability (0–1) of exploitation in the next 30 days. */
+  epss_score: number | null;
+  /** EPSS percentile (0–1) — rank among all scored CVEs. */
+  epss_percentile: number | null;
   summary: string | null;
   details: string | null;
   references: VulnerabilityReference[];
@@ -128,6 +141,11 @@ export interface ListVulnerabilitiesParams {
   status?: VulnFindingStatus[];
   sort?: VulnerabilitySortKey;
   order?: SortOrder;
+  /**
+   * EPSS threshold (0–1). When set, the backend keeps findings whose
+   * `epss_score >= min_epss` and drops NULL-EPSS rows entirely.
+   */
+  min_epss?: number;
 }
 
 function listVulnerabilitiesQuery(
@@ -147,6 +165,16 @@ function listVulnerabilitiesQuery(
   }
   if (params.sort != null) out.sort = params.sort;
   if (params.order != null) out.order = params.order;
+  // Only send a finite, in-range threshold. 0 is a meaningful lower bound
+  // (keep every scored CVE, drop NULL), so we explicitly allow it.
+  if (
+    params.min_epss != null &&
+    Number.isFinite(params.min_epss) &&
+    params.min_epss >= 0 &&
+    params.min_epss <= 1
+  ) {
+    out.min_epss = params.min_epss;
+  }
   return out;
 }
 

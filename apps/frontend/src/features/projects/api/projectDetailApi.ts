@@ -83,6 +83,10 @@ export interface VulnerabilityRef {
   cve_id: string;
   severity: string;
   cvss: number | null;
+  /** EPSS probability (0–1) of exploitation in the next 30 days, or null. */
+  epss_score: number | null;
+  /** EPSS percentile (0–1) — rank among all scored CVEs, or null. */
+  epss_percentile: number | null;
   title: string;
   description: string | null;
   fixed_version: string | null;

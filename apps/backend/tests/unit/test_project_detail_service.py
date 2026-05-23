@@ -206,6 +206,8 @@ async def _make_vulnerability(
     severity: str = "high",
     cve_id: str | None = None,
     summary: str | None = None,
+    epss_score: float | None = None,
+    epss_percentile: float | None = None,
 ):
     from models import Vulnerability
 
@@ -215,6 +217,10 @@ async def _make_vulnerability(
         source="NVD",
         severity=severity,
         summary=summary or f"Test vuln {suffix}",
+        # Set at INSERT (not a post-create UPDATE) to keep the audit JSONB diff
+        # free of Decimal serialization concerns.
+        epss_score=epss_score,
+        epss_percentile=epss_percentile,
     )
     session.add(v)
     await session.commit()
@@ -662,6 +668,66 @@ async def test_component_detail_returns_drawer_payload_with_vulns(
     assert len(detail["vulnerabilities"]) == 1
     assert detail["vulnerabilities"][0]["cve_id"] == crit_v.external_id
     assert detail["vulnerabilities"][0]["title"] == "Critical RCE"
+
+
+async def test_component_detail_vuln_ref_carries_epss(
+    db_session: AsyncSession,
+) -> None:
+    """The component drawer's per-CVE entries surface EPSS (Decimal→float)."""
+    from services.project_detail_service import get_component_detail
+
+    team, user, project, scan = await _make_project_with_scan(db_session)
+    actor = principal_for(user, team_ids=[team.id], role="developer")
+
+    # Unique name avoids the shared-dev-DB `uq_components_purl` pollution that
+    # a hardcoded name like "foo" is prone to.
+    _, cv = await _make_component_version(db_session, name=f"epss-drawer-{unique_suffix()}")
+    await _attach_to_scan(db_session, scan_id=scan.id, cv_id=cv.id)
+
+    v = await _make_vulnerability(
+        db_session,
+        severity="high",
+        summary="EPSS-scored CVE",
+        epss_score=0.73210,
+        epss_percentile=0.98765,
+    )
+    await _attach_vuln_finding(
+        db_session, scan_id=scan.id, cv_id=cv.id, vulnerability_id=v.id
+    )
+
+    detail = await get_component_detail(
+        db_session, component_version_id=cv.id, actor=actor
+    )
+    assert len(detail["vulnerabilities"]) == 1
+    entry = detail["vulnerabilities"][0]
+    assert isinstance(entry["epss_score"], float)
+    assert entry["epss_score"] == pytest.approx(0.73210)
+    assert isinstance(entry["epss_percentile"], float)
+    assert entry["epss_percentile"] == pytest.approx(0.98765)
+
+
+async def test_component_detail_vuln_ref_epss_none_when_unset(
+    db_session: AsyncSession,
+) -> None:
+    from services.project_detail_service import get_component_detail
+
+    team, user, project, scan = await _make_project_with_scan(db_session)
+    actor = principal_for(user, team_ids=[team.id], role="developer")
+
+    _, cv = await _make_component_version(db_session, name=f"epss-none-{unique_suffix()}")
+    await _attach_to_scan(db_session, scan_id=scan.id, cv_id=cv.id)
+
+    v = await _make_vulnerability(db_session, severity="high")  # no EPSS
+    await _attach_vuln_finding(
+        db_session, scan_id=scan.id, cv_id=cv.id, vulnerability_id=v.id
+    )
+
+    detail = await get_component_detail(
+        db_session, component_version_id=cv.id, actor=actor
+    )
+    entry = detail["vulnerabilities"][0]
+    assert entry["epss_score"] is None
+    assert entry["epss_percentile"] is None
 
 
 async def test_component_detail_unknown_id_is_404(

@@ -72,6 +72,8 @@ function vuln(
     cve_id: cveId,
     severity: "high",
     cvss_score: 7.5,
+    epss_score: 0.42,
+    epss_percentile: 0.7,
     summary: `summary for ${cveId}`,
     status: "new",
     affected_component_count: 1,
@@ -386,5 +388,115 @@ describe("VulnerabilitiesTab", () => {
     expect(
       screen.getByTestId("vuln-download-pdf-error").textContent,
     ).toContain("Project not found.");
+  });
+
+  // ----- EPSS first-class surface (v2.1) -----------------------------------
+
+  it("renders the EPSS score as a one-decimal percentage in the row", async () => {
+    mockedList.mockResolvedValueOnce(
+      listResponse([
+        vuln("CVE-2024-1111", { epss_score: 0.973, epss_percentile: 0.91 }),
+      ]),
+    );
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getByTestId("vulnerability-row-epss")).toBeInTheDocument();
+    });
+    const cell = screen.getByTestId("vulnerability-row-epss");
+    expect(cell.textContent).toBe("97.3%");
+    // Percentile is folded into the tooltip ("Top 9%"), not a second column.
+    expect(cell.getAttribute("title")).toContain("Top 9%");
+  });
+
+  it("renders an em-dash for a finding with no EPSS score", async () => {
+    mockedList.mockResolvedValueOnce(
+      listResponse([
+        vuln("CVE-2024-2222", { epss_score: null, epss_percentile: null }),
+      ]),
+    );
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getByTestId("vulnerability-row-epss")).toBeInTheDocument();
+    });
+    const cell = screen.getByTestId("vulnerability-row-epss");
+    expect(cell.textContent).toBe("—");
+    expect(cell).toHaveAttribute("data-epss-empty", "true");
+  });
+
+  it("selecting the EPSS sort key requests sort=epss from the wire", async () => {
+    mockedList.mockResolvedValue(listResponse([vuln("CVE-2024-1111")]));
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("vulnerability-row")).toHaveLength(1);
+    });
+    mockedList.mockClear();
+
+    await userEvent.selectOptions(
+      screen.getByTestId("vulnerabilities-sort"),
+      "epss",
+    );
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalledWith(
+        "proj-1",
+        expect.objectContaining({ sort: "epss" }),
+      );
+    });
+  });
+
+  it("typing an EPSS threshold forwards min_epss at offset 0", async () => {
+    mockedList.mockResolvedValue(listResponse([vuln("CVE-2024-1111")]));
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("vulnerability-row")).toHaveLength(1);
+    });
+    mockedList.mockClear();
+
+    await userEvent.type(
+      screen.getByTestId("vulnerabilities-min-epss"),
+      "0.5",
+    );
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalledWith(
+        "proj-1",
+        expect.objectContaining({ min_epss: 0.5, offset: 0 }),
+      );
+    });
+  });
+
+  it("clears the EPSS threshold and drops min_epss from the query", async () => {
+    mockedList.mockResolvedValue(listResponse([vuln("CVE-2024-1111")]));
+    renderTab(["/projects/proj-1?min_epss=0.5"]);
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalledWith(
+        "proj-1",
+        expect.objectContaining({ min_epss: 0.5 }),
+      );
+    });
+    mockedList.mockClear();
+
+    await userEvent.click(
+      screen.getByTestId("vulnerabilities-min-epss-clear"),
+    );
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalledWith(
+        "proj-1",
+        expect.objectContaining({ min_epss: undefined }),
+      );
+    });
+  });
+
+  it("hydrates the EPSS threshold from the URL on first render", async () => {
+    mockedList.mockResolvedValueOnce(listResponse([vuln("CVE-2024-1111")]));
+    renderTab(["/projects/proj-1?min_epss=0.8&sort=epss&order=asc"]);
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalledWith(
+        "proj-1",
+        expect.objectContaining({
+          min_epss: 0.8,
+          sort: "epss",
+          order: "asc",
+        }),
+      );
+    });
   });
 });

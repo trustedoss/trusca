@@ -112,6 +112,13 @@ def _upsert_vulnerability(session: Session, raw: dict[str, Any]) -> bool:
     severity = _normalize_severity(raw.get("severity"))
     cvss_score = _coerce_cvss(raw.get("cvssV3BaseScore") or raw.get("cvssV2BaseScore"))
     cvss_vector = raw.get("cvssV3Vector") or raw.get("cvssV2Vector")
+    # EPSS (Exploit Prediction Scoring System) — DT 4.x exposes it on the
+    # vulnerability object as camelCase `epssScore` / `epssPercentile`. On the
+    # /api/v1/vulnerability catalog (this code path) they sit at the top level
+    # of `raw`. Both are probabilities on [0, 1]; out-of-range / non-numeric
+    # values are treated as untrusted and dropped to None by `_coerce_epss`.
+    epss_score = _coerce_epss(raw.get("epssScore"))
+    epss_percentile = _coerce_epss(raw.get("epssPercentile"))
     summary = raw.get("title") or raw.get("description")
     details = raw.get("description")
     references = raw.get("references") or []
@@ -135,6 +142,8 @@ def _upsert_vulnerability(session: Session, raw: dict[str, Any]) -> bool:
                 source=source,
                 severity=severity,
                 cvss_score=cvss_score,
+                epss_score=epss_score,
+                epss_percentile=epss_percentile,
                 cvss_vector=cvss_vector,
                 summary=summary,
                 details=details,
@@ -148,6 +157,8 @@ def _upsert_vulnerability(session: Session, raw: dict[str, Any]) -> bool:
 
     existing.severity = severity
     existing.cvss_score = cvss_score
+    existing.epss_score = epss_score
+    existing.epss_percentile = epss_percentile
     existing.cvss_vector = cvss_vector
     existing.summary = summary
     existing.details = details
@@ -172,6 +183,40 @@ def _coerce_cvss(value: Any) -> Decimal | None:
         return Decimal(str(value)).quantize(Decimal("0.1"))
     except (ValueError, ArithmeticError):
         return None
+
+
+# EPSS scores are probabilities, so they are quantized to the column's scale
+# (Numeric(6, 5)) and validated against the closed [0, 1] interval. Anything
+# outside that interval is not a valid probability — we treat it as untrusted
+# DT output and drop it to None rather than persisting a meaningless value.
+_EPSS_QUANT = Decimal("0.00001")
+_EPSS_MIN = Decimal("0")
+_EPSS_MAX = Decimal("1")
+
+
+def _coerce_epss(value: Any) -> Decimal | None:
+    """Coerce a DT EPSS field (probability/percentile) to a Decimal in [0, 1].
+
+    Returns None for missing, non-numeric, non-finite, or out-of-range input.
+    EPSS is a probability: values < 0 or > 1 cannot be trusted, so we drop
+    them to None instead of clamping (a clamped 0/1 would silently fabricate a
+    score). Booleans are rejected explicitly — ``Decimal(str(True))`` raises,
+    but we guard so a stray ``True``/``False`` never coerces to 1/0.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        dec = Decimal(str(value))
+    except (ValueError, ArithmeticError):
+        return None
+    # Reject NaN / +-Inf which compare oddly and are not valid probabilities.
+    if not dec.is_finite():
+        return None
+    if dec < _EPSS_MIN or dec > _EPSS_MAX:
+        return None
+    # Safe: dec is finite and in [0, 1], so quantizing to scale 5 (the
+    # Numeric(6, 5) column) never exceeds the precision budget.
+    return dec.quantize(_EPSS_QUANT)
 
 
 def _parse_dt_timestamp(value: Any) -> datetime | None:

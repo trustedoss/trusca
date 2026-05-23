@@ -100,6 +100,7 @@ Drop `.github/workflows/sca.yml` (above) into the repo. On the next PR, the SCA 
 | `reason` | Human-readable reason when `gate == 'fail'`; empty otherwise. |
 | `critical-cve-count` | Open critical-severity findings on the evaluated scan. |
 | `forbidden-license-count` | Distinct components carrying a forbidden-classification license. |
+| `epss-gate-count` | Open findings whose EPSS score met or exceeded the configured EPSS threshold. `0` when the EPSS gate is disabled (the default). See [Gate the build on EPSS](#gate-the-build-on-epss-optional). |
 
 Use them in subsequent steps:
 
@@ -186,6 +187,19 @@ Apply the gate only on `main`, advisory on PRs:
     project-id: ${{ vars.TRUSTEDOSS_PROJECT_ID }}
     fail-on-gate: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'true' || 'false' }}
 ```
+
+### Gate the build on EPSS (optional)
+
+The build gate evaluates Critical CVEs and forbidden licenses by default. You can add an EPSS dimension so a CVE with a high predicted exploitation probability fails the build **even when it is not Critical** — useful for catching the small set of findings most likely to be attacked.
+
+This is an **operator-side, org-wide** switch, not a workflow input: set the `GATE_EPSS_THRESHOLD` environment variable on the **portal** (`.env`), then restart the backend. It is **disabled by default** — leaving it unset preserves the existing Critical-CVE / forbidden-license gate exactly as before.
+
+```bash
+# In the portal's .env (not your CI workflow), a value from 0 to 1:
+GATE_EPSS_THRESHOLD=0.5
+```
+
+With the threshold set, the gate also fails when any open finding has `epss_score >= GATE_EPSS_THRESHOLD`. The gate result then carries two extra fields, `epss_gate_count` (offending findings) and `epss_threshold` (the configured value), and the action exposes `epss-gate-count` as an [output](#outputs). Findings without an EPSS value never trip the gate (a missing score cannot satisfy `>=`). See [`GATE_EPSS_THRESHOLD`](../reference/env-variables.md#build--policy-gate) for the full reference and [EPSS — exploitation probability](../user-guide/vulnerabilities.md#epss--exploitation-probability) for the concept.
 
 ### Pin to a tag
 

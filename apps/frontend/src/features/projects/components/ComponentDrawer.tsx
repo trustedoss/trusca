@@ -16,6 +16,10 @@ import type { VulnerabilityRef } from "@/features/projects/api/projectDetailApi"
 import { useComponent } from "@/features/projects/api/useComponent";
 import { LicenseCategoryBadge } from "@/features/projects/components/LicenseCategoryBadge";
 import { SeverityBadge } from "@/features/projects/components/SeverityBadge";
+import {
+  formatEpssPercentile,
+  formatEpssScore,
+} from "@/features/projects/lib/epss";
 import { ProblemError } from "@/lib/problem";
 import { cn } from "@/lib/utils";
 
@@ -190,6 +194,8 @@ export function ComponentDrawer({
 
 function VulnerabilityRow({ vuln }: { vuln: VulnerabilityRef }) {
   const { t } = useTranslation("project_detail");
+  const epssScore = formatEpssScore(vuln.epss_score);
+  const epssPercentile = formatEpssPercentile(vuln.epss_percentile);
   return (
     <li
       data-testid="component-drawer-vuln"
@@ -207,6 +213,21 @@ function VulnerabilityRow({ vuln }: { vuln: VulnerabilityRef }) {
         {vuln.cvss != null ? (
           <span className="text-xs text-muted-foreground">
             {t("drawer.vulns.cvss_label")}: {vuln.cvss.toFixed(1)}
+          </span>
+        ) : null}
+        {epssScore != null ? (
+          <span
+            className="font-mono text-xs text-muted-foreground"
+            data-testid="component-drawer-vuln-epss"
+            data-epss-score={vuln.epss_score ?? undefined}
+            title={t("vulnerabilities.epss.tooltip", {
+              defaultValue:
+                "EPSS — probability this CVE is exploited in the wild within 30 days. Complements CVSS (severity).",
+            })}
+          >
+            {t("drawer.vulns.epss_label", { defaultValue: "EPSS" })}:{" "}
+            {epssScore}
+            {epssPercentile != null ? ` (${epssPercentile})` : ""}
           </span>
         ) : null}
       </div>

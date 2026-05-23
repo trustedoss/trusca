@@ -55,18 +55,19 @@ Columns:
 - **CVE** — the CVE-YYYY-NNNN identifier (plain text; click-through to NVD is on the roadmap).
 - **Severity** — color-coded badge.
 - **CVSS** — numeric CVSS v3 score from the upstream feed.
+- **EPSS** — the EPSS probability rendered as a percentage (for example `97.3%`). CVEs without an EPSS value show `—`. See [EPSS — exploitation probability](#epss--exploitation-probability).
 - **Title** — short summary from the advisory.
 - **Affected** — the affected component (`name@version`).
 - **Status** — current VEX status.
 - **Discovered** — first time this finding appeared on a scan.
 
-Filters on the inline bar: severity, status, plus a **search** box (free text against CVE ID / title / component) and sort + order controls.
+Filters on the inline bar: severity, status, an **EPSS threshold** filter (`min_epss`), plus a **search** box (free text against CVE ID / title / component) and sort + order controls. The sort control includes **EPSS** (`sort=epss`); rows without an EPSS value sort last.
 
 ## The drawer — finding detail
 
 Click any row to open:
 
-- **Summary** — title, description, CWE, CVSS vector.
+- **Summary** — title, description, CWE, CVSS vector, and the **EPSS score and percentile** when Dependency-Track supplies them (otherwise `—`). See [EPSS — exploitation probability](#epss--exploitation-probability).
 - **References** — vendor advisories, fix commits, exploit databases.
 - **Affected** — the upstream-reported affected range with the project's component version highlighted, plus `fixed_version` (the upstream version that ships the fix, when available).
 - **Analysis** — VEX status action buttons. **The buttons you see depend on the finding's _current_ state.** The transition matrix (`apps/backend/services/vulnerability_service.py`, the source of truth) routes every terminal decision through the `analyzing` state, so a brand-new finding cannot jump straight to a verdict:
@@ -87,6 +88,71 @@ The walkthrough below opens a project, switches to **Vulnerabilities**, and clic
   <source src="/img/walkthroughs/walkthrough-cve-triage.mp4" type="video/mp4" />
   ![Animated walkthrough — opening the Vulnerabilities tab and the finding detail drawer](/img/walkthroughs/walkthrough-cve-triage.gif)
 </video>
+
+## EPSS — exploitation probability
+
+The portal surfaces the [EPSS (Exploit Prediction Scoring System)](https://www.first.org/epss/) score next to CVSS so you can tell *severe* CVEs apart from *likely-to-be-attacked* CVEs.
+
+### EPSS vs. CVSS — what each one answers
+
+- **CVSS** measures **severity** — the theoretical impact if a CVE is exploited. It does not say whether anyone is, or will, exploit it.
+- **EPSS** measures the **probability of real-world exploitation** in the next 30 days, as a number from `0` to `1`.
+
+The two are complementary. It is common to find a CVE with CVSS `9.8` (Critical) and an EPSS of `0.01` — severe on paper, but with a low predicted chance of being attacked. Sorting and filtering by EPSS lets you concentrate on the small set of findings that are *actually* dangerous and cut the noise.
+
+:::caution EPSS is best-effort
+EPSS data is collected during the Dependency-Track resync and is present **only for CVEs that DT supplies an EPSS value for**. Findings without an EPSS value show `—` in the UI and `null` in the API — treat a missing EPSS as "unknown", not "low". EPSS never replaces CVSS or your VEX triage; it is one more signal.
+:::
+
+### How the portal displays EPSS
+
+- **Score** — rendered as a percentage. An EPSS of `0.973` shows as `97.3%`.
+- **Percentile** — rendered as "top N%". A finding in the 99th percentile shows as roughly "top 1%", meaning its score is higher than ~99% of all scored CVEs.
+- **Missing** — `—` (the CVE has no EPSS value from DT).
+
+The score and percentile appear in the findings table's **EPSS** column and in the drawer's **Summary** section.
+
+### Sort and filter by EPSS
+
+- **Sort** — pick **EPSS** in the toolbar's sort control (descending puts the most-likely-exploited findings on top). Findings without an EPSS value always sort last (`NULLS LAST`), regardless of order.
+- **Filter** — set the **EPSS threshold** (`min_epss`, a value from `0` to `1`) to show only findings with `epss_score >= min_epss`. For example, `min_epss=0.5` hides everything the model predicts has under a 50% chance of exploitation. Findings with no EPSS value are excluded by the threshold filter (a missing score cannot satisfy `>=`).
+
+### Read EPSS from the API
+
+`GET /v1/projects/{id}/vulnerabilities` returns `epss_score` and `epss_percentile` on every finding (both `null` when DT supplied no value). The same fields appear on the finding detail (`GET /v1/vulnerability_findings/{finding_id}`) and on the nested `VulnerabilityRef`.
+
+Sort by EPSS, highest first:
+
+```bash
+curl -sS \
+  -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+  "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/vulnerabilities?sort=epss&order=desc"
+```
+
+Return only findings the model predicts have at least a 50% exploitation probability:
+
+```bash
+curl -sS \
+  -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+  "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/vulnerabilities?min_epss=0.5"
+```
+
+A finding in the response looks like this (other fields omitted):
+
+```json
+{
+  "cve_id": "CVE-2021-44228",
+  "severity": "critical",
+  "cvss_score": 10.0,
+  "epss_score": 0.974,
+  "epss_percentile": 0.999,
+  "status": "new"
+}
+```
+
+:::tip Gate the build on EPSS
+EPSS can also drive the CI build gate, so a high-probability CVE fails the build even when it is not Critical. See [Gate the build on EPSS](../ci-integration/github-actions.md#gate-the-build-on-epss-optional).
+:::
 
 ## Download a PDF report
 

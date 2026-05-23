@@ -55,5 +55,8 @@ translate proper nouns (Dependency-Track, SBOM, CVE, ORT, Trivy, cdxgen).
 | Obligation kind — Dynamic linking | 의무 종류 — 동적 링킹 | LGPL-style requirement: end-users must be able to relink against a modified library. | LGPL류의 의무: 최종 사용자가 수정된 라이브러리로 재링크할 수 있어야 함. |
 | Obligation kind — No endorsement | 의무 종류 — 보증 금지 | Project name or contributors may not be used to endorse derivative products without permission. | 허락 없이 프로젝트 이름이나 기여자를 파생 제품 보증에 사용할 수 없음. |
 | NOTICE file | NOTICE 파일 | Generated attribution document listing third-party licenses, components, and obligations from a project's latest scan. | 프로젝트 최근 스캔에서 추출한 제3자 라이선스·컴포넌트·의무사항을 정리한 자동 생성 attribution 문서. |
+| EPSS | EPSS | Exploit Prediction Scoring System — the probability (0–1) that a CVE is exploited in the wild within the next 30 days. Complements CVSS. | 악용 예측 점수 체계 — 해당 CVE가 향후 30일 내 실제로 악용될 확률(0~1). CVSS를 보완합니다. |
+| EPSS percentile | EPSS 백분위 | The rank of an EPSS score among all scored CVEs, read as "this CVE is more likely to be exploited than N% of CVEs". | EPSS 점수가 전체 채점 CVE 중 차지하는 순위. "이 CVE가 전체 CVE의 N%보다 악용 가능성이 높음"으로 해석. |
+| CVSS | CVSS | Common Vulnerability Scoring System — the standardized severity score (0–10) of a vulnerability. | 공통 취약점 점수 체계 — 취약점의 표준 심각도 점수(0~10). |
 
-Updated 2026-05-07 — Phase 3 PR #13 (Obligations tab + NOTICE generator).
+Updated 2026-05-23 — v2.1 (EPSS UI first-class: EPSS / EPSS percentile / CVSS terms).

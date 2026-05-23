@@ -572,6 +572,41 @@ export class PortalPage {
   }
 
   /**
+   * Sort the vulnerabilities list by a given key. EPSS (v2.1) joins the
+   * existing severity/cvss/status/discovered_at keys; the toolbar is a native
+   * `<select>` so `selectOption` drives it. Locale-agnostic — anchors on the
+   * option value, not the translated label.
+   */
+  async sortVulnerabilitiesBy(
+    sort: "severity" | "cvss" | "epss" | "status" | "discovered_at",
+  ): Promise<void> {
+    await this.page.getByTestId("vulnerabilities-sort").selectOption(sort);
+    await this.expectVulnerabilitiesTabReady();
+  }
+
+  /**
+   * Set the inline EPSS threshold filter ("EPSS ≥ x", v2.1). Pass a number in
+   * [0, 1] to keep findings at or above that EPSS probability, or `null` to
+   * clear the filter via the Clear button. After mutating, waits for the URL
+   * to mirror `?min_epss=…` (set) or to drop it (cleared).
+   */
+  async filterVulnerabilitiesByMinEpss(min: number | null): Promise<void> {
+    const input = this.page.getByTestId("vulnerabilities-min-epss");
+    if (min == null) {
+      await this.page.getByTestId("vulnerabilities-min-epss-clear").click();
+      await expect
+        .poll(() => new URL(this.page.url()).searchParams.get("min_epss"))
+        .toBeNull();
+    } else {
+      await input.fill(String(min));
+      await expect
+        .poll(() => new URL(this.page.url()).searchParams.get("min_epss"))
+        .toBe(String(min));
+    }
+    await this.expectVulnerabilitiesTabReady();
+  }
+
+  /**
    * Find the row whose `data-cve-id` equals `cveId` and click it. Wait
    * for the drawer to open (URL carries `?vuln=<finding_id>` and the
    * drawer container is visible).

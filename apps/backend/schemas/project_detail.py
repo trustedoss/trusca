@@ -151,6 +151,21 @@ class VulnerabilityRef(BaseModel):
     cve_id: str = Field(description="DT/NVD external id (e.g. CVE-2024-1234, GHSA-...).")
     severity: str
     cvss: float | None = None
+    epss_score: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "EPSS exploit-probability for the CVE, in [0, 1]. ``null`` when no "
+            "EPSS publication exists for this CVE."
+        ),
+    )
+    epss_percentile: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="EPSS percentile rank for the CVE, in [0, 1]. ``null`` when unset.",
+    )
     title: str
     description: str | None = None
     fixed_version: str | None = None

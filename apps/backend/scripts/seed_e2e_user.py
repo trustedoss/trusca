@@ -90,6 +90,7 @@ import os
 import sys
 import uuid
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 
 # Environments where this seed script is allowed to mint a super-admin via
@@ -134,6 +135,24 @@ _VULN_STATUS_CYCLE: tuple[str, ...] = (
 )
 _VULN_SEVERITY_VALUES: frozenset[str] = frozenset(
     {"critical", "high", "medium", "low", "info", "unknown"}
+)
+
+# v2.1 "EPSS UI first-class" — seed a spread of EPSS (score, percentile) pairs
+# so e2e sort/filter scenarios have meaningful, distinct values to assert on.
+# `None` entries exercise the "EPSS absent" rendering path (NULLS LAST sort,
+# em-dash cell). Each entry is (epss_score, epss_percentile) or None.
+#   - 0.97 / 0.99  — high exploit probability (top of the list)
+#   - 0.30 / 0.65  — middling
+#   - 0.001/0.05   — low
+#   - None         — unscored CVE (older DT / no EPSS publication)
+# The cycle deliberately decouples EPSS from severity so the bulk seed below
+# can place a high-CVSS / low-EPSS divergence (e.g. critical + 0.001) — the
+# canonical "scary CVSS, unlikely to be exploited" triage demo case.
+_EPSS_CYCLE: tuple[tuple[Decimal, Decimal] | None, ...] = (
+    (Decimal("0.97000"), Decimal("0.99000")),
+    (Decimal("0.30000"), Decimal("0.65000")),
+    (Decimal("0.00100"), Decimal("0.05000")),
+    None,
 )
 
 # PR #13 — obligation catalog seed.
@@ -958,12 +977,26 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                 # 'info' / 'none' buckets get no finding (so the component's
                 # severity_max collapses to the absence of CVEs).
                 vulns_by_severity: dict[str, Vulnerability] = {}
+                # Per-severity EPSS so the component-mode seed exercises the
+                # EPSS column. `critical` is deliberately the CVSS↔EPSS
+                # divergence case: a 9.8 CVSS with a 0.001 EPSS ("scary score,
+                # unlikely to be exploited") — the headline v2.1 triage demo.
+                _SEV_EPSS: dict[str, tuple[Decimal, Decimal, Decimal] | None] = {
+                    # severity: (cvss_score, epss_score, epss_percentile)
+                    "critical": (Decimal("9.8"), Decimal("0.00100"), Decimal("0.05000")),
+                    "high": (Decimal("8.1"), Decimal("0.97000"), Decimal("0.99000")),
+                    "medium": (Decimal("5.4"), Decimal("0.30000"), Decimal("0.65000")),
+                    "low": None,  # unscored CVE — EPSS absent
+                }
                 for sev in ("critical", "high", "medium", "low"):
+                    sev_epss = _SEV_EPSS.get(sev)
                     v = Vulnerability(
                         external_id=f"CVE-2099-{sev[:3].upper()}-{suffix}",
                         source="NVD",
                         severity=sev,
-                        cvss_score=None,
+                        cvss_score=sev_epss[0] if sev_epss else None,
+                        epss_score=sev_epss[1] if sev_epss else None,
+                        epss_percentile=sev_epss[2] if sev_epss else None,
                         summary=f"e2e seed CVE — {sev}",
                     )
                     session.add(v)
@@ -1080,11 +1113,18 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                     )
                     session.add(sc)
 
+                    # Round-robin EPSS across the seed so sort/filter scenarios
+                    # see distinct values and a `None` (unscored) bucket. The
+                    # cycle is decoupled from severity, so the plan naturally
+                    # produces CVSS↔EPSS divergence rows.
+                    epss_pair = _EPSS_CYCLE[idx % len(_EPSS_CYCLE)]
                     vuln = Vulnerability(
                         external_id=f"CVE-2099-VLN-{suffix}-{idx:05d}",
                         source="NVD",
                         severity=sev,
                         cvss_score=None,
+                        epss_score=epss_pair[0] if epss_pair else None,
+                        epss_percentile=epss_pair[1] if epss_pair else None,
                         summary=f"e2e seed vulnerability {idx} ({sev})",
                     )
                     session.add(vuln)

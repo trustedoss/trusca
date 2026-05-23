@@ -46,6 +46,17 @@ sidebar_position: 4
 - **NVD — National Vulnerability Database.** CVE 위에 NIST가 분석
   레이어를 얹은 것 — CVSS 점수, CPE 매칭, 참조 링크를 추가합니다.
   [nvd.nist.gov](https://nvd.nist.gov/) 참고.
+- **CVSS — Common Vulnerability Scoring System.** CVE의 이론적
+  **심각도**(영향)를 나타내는 0–10 점수. 실제 악용 여부는 말하지
+  않습니다.
+- **EPSS — Exploit Prediction Scoring System.** CVE가 향후 30일 내
+  **실제 악용**될 0–1 확률. EPSS는 CVSS를 보완합니다 — CVSS는
+  심각도, EPSS는 가능성. TrustedOSS는 score를 백분율로, percentile을
+  "상위 N%"로 표시하며 `GATE_EPSS_THRESHOLD`로 빌드 게이트를 구동할 수
+  있습니다. EPSS는 Dependency-Track에서 수집되며 DT가 채점하지 않는
+  CVE에는 없습니다. [first.org/epss](https://www.first.org/epss/)와
+  [EPSS 사용자 가이드](../user-guide/vulnerabilities.md#epss--악용-확률)
+  참고.
 - **OSV — Open Source Vulnerabilities database.** Google이 주도하는
   생태계별(npm, PyPI, Maven 등) 취약점 데이터베이스.
   [osv.dev](https://osv.dev/) 참고.
@@ -130,10 +141,17 @@ sidebar_position: 4
    `policy_gate.severity_floor` 구성 가능) 이상에 해당하는 CVE가
    있는가?
 2. `forbidden` 라이선스 단계의 컴포넌트가 있는가?
+3. *(선택)* **EPSS** score가 `GATE_EPSS_THRESHOLD` 이상인 미해결
+   결과가 있는가? 이 세 번째 조건은 **기본 비활성**으로, 운영자가
+   `GATE_EPSS_THRESHOLD` 환경변수(`0`~`1` 값)를 설정할 때만
+   활성화됩니다. 미설정 시 게이트는 조건 1·2를 기존과 동일하게
+   평가합니다.
+   [EPSS](../user-guide/vulnerabilities.md#epss--악용-확률) 참고.
 
-둘 중 하나라도 참이면 CI 통합의 컴포지트 액션은 종료 코드 1을
+활성 조건 중 하나라도 참이면 CI 통합의 컴포지트 액션은 종료 코드 1을
 반환합니다. 실패한 게이트는 위반 CVE / 라이선스 목록과 함께
-`audit_logs`에 기록됩니다.
+`audit_logs`에 기록되며, EPSS 조건이 활성화된 경우 게이트 결과는
+`epss_gate_count`와 `epss_threshold`도 함께 담습니다.
 
 ## RBAC 역할
 

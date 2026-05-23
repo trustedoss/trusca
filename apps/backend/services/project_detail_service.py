@@ -672,6 +672,8 @@ async def get_component_detail(
             Vulnerability.external_id,
             Vulnerability.severity,
             Vulnerability.cvss_score,
+            Vulnerability.epss_score,
+            Vulnerability.epss_percentile,
             Vulnerability.summary,
             Vulnerability.details,
         )
@@ -722,6 +724,10 @@ async def get_component_detail(
                 "cve_id": vr.external_id,
                 "severity": vr.severity,
                 "cvss": float(vr.cvss_score) if vr.cvss_score is not None else None,
+                "epss_score": float(vr.epss_score) if vr.epss_score is not None else None,
+                "epss_percentile": (
+                    float(vr.epss_percentile) if vr.epss_percentile is not None else None
+                ),
                 "title": vr.summary or vr.external_id,
                 "description": vr.details,
                 "fixed_version": None,

@@ -37,6 +37,7 @@ export const STATUS_OPTIONS: VulnFindingStatus[] = [
 export const SORT_OPTIONS: VulnerabilitySortKey[] = [
   "severity",
   "cvss",
+  "epss",
   "status",
   "discovered_at",
 ];
@@ -52,6 +53,12 @@ export interface VulnerabilitiesToolbarProps {
   onSortChange: (value: VulnerabilitySortKey) => void;
   order: SortOrder;
   onOrderChange: (value: SortOrder) => void;
+  /**
+   * EPSS threshold (0–1) or `null` for "no threshold". Keeps findings with
+   * `epss_score >= minEpss` and drops NULL-EPSS rows (v2.1).
+   */
+  minEpss: number | null;
+  onMinEpssChange: (value: number | null) => void;
   /** Trigger the vulnerability PDF report download (G2). */
   onDownloadPdf: () => void;
   /** True while the PDF is being generated/fetched — drives the loading label. */
@@ -80,12 +87,30 @@ export function VulnerabilitiesToolbar({
   onSortChange,
   order,
   onOrderChange,
+  minEpss,
+  onMinEpssChange,
   onDownloadPdf,
   isPdfDownloading,
   pdfError,
   className,
 }: VulnerabilitiesToolbarProps) {
   const { t } = useTranslation("project_detail");
+
+  /**
+   * Parse a free-text EPSS threshold. Empty → null (filter off). Numbers are
+   * clamped to [0, 1] so a typo can't send an out-of-range value to the wire.
+   */
+  function handleMinEpssInput(raw: string) {
+    const trimmed = raw.trim();
+    if (trimmed.length === 0) {
+      onMinEpssChange(null);
+      return;
+    }
+    const parsed = Number.parseFloat(trimmed);
+    if (!Number.isFinite(parsed)) return;
+    const clamped = Math.min(1, Math.max(0, parsed));
+    onMinEpssChange(clamped);
+  }
   return (
     <div
       className={cn(
@@ -182,7 +207,9 @@ export function VulnerabilitiesToolbar({
         >
           {SORT_OPTIONS.map((key) => (
             <option key={key} value={key}>
-              {t(`vulnerabilities.toolbar.sort_by_${key}`)}
+              {t(`vulnerabilities.toolbar.sort_by_${key}`, {
+                defaultValue: key === "epss" ? "EPSS" : undefined,
+              })}
             </option>
           ))}
         </select>
@@ -209,6 +236,59 @@ export function VulnerabilitiesToolbar({
             {t("vulnerabilities.toolbar.order_desc")}
           </option>
         </select>
+      </div>
+
+      <div className="flex flex-col">
+        <label
+          htmlFor="vulnerabilities-min-epss"
+          className="text-xs font-medium text-muted-foreground"
+          title={t("vulnerabilities.epss.tooltip", {
+            defaultValue:
+              "EPSS — probability this CVE is exploited in the wild within 30 days. Complements CVSS (severity).",
+          })}
+        >
+          {t("vulnerabilities.filter.minEpss", {
+            defaultValue: "EPSS ≥",
+          })}
+        </label>
+        <div className="mt-1 flex items-center gap-1">
+          <Input
+            id="vulnerabilities-min-epss"
+            type="number"
+            inputMode="decimal"
+            min={0}
+            max={1}
+            step={0.01}
+            value={minEpss ?? ""}
+            onChange={(event) => handleMinEpssInput(event.target.value)}
+            placeholder={t("vulnerabilities.filter.minEpssPlaceholder", {
+              defaultValue: "0.00–1.00",
+            })}
+            data-testid="vulnerabilities-min-epss"
+            className="h-9 w-24 font-mono tabular-nums"
+            aria-describedby="vulnerabilities-min-epss-hint"
+          />
+          {minEpss != null ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-9 px-2 text-xs"
+              onClick={() => onMinEpssChange(null)}
+              data-testid="vulnerabilities-min-epss-clear"
+            >
+              {t("vulnerabilities.filter.minEpssClear", {
+                defaultValue: "Clear",
+              })}
+            </Button>
+          ) : null}
+        </div>
+        <span id="vulnerabilities-min-epss-hint" className="sr-only">
+          {t("vulnerabilities.filter.minEpssHint", {
+            defaultValue:
+              "Enter an EPSS probability between 0 and 1 to keep findings at or above it.",
+          })}
+        </span>
       </div>
 
       <div className="flex flex-col lg:ml-auto">

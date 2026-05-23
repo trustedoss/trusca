@@ -100,6 +100,7 @@ jobs:
 | `reason` | `gate == 'fail'`일 때 사람이 읽는 사유, 그 외에는 빈 문자열. |
 | `critical-cve-count` | 평가된 스캔의 미해결 critical 발견 수. |
 | `forbidden-license-count` | 금지 분류 라이선스를 가진 고유 컴포넌트 수. |
+| `epss-gate-count` | EPSS score가 구성된 EPSS 임계 이상인 미해결 결과 수. EPSS 게이트가 비활성(기본)이면 `0`. [EPSS로 빌드 게이팅](#epss로-빌드-게이팅-선택) 참고. |
 
 후속 스텝에서 사용:
 
@@ -186,6 +187,19 @@ PR 코멘트는 그대로 게시되며 체크는 green으로 유지됩니다.
     project-id: ${{ vars.TRUSTEDOSS_PROJECT_ID }}
     fail-on-gate: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'true' || 'false' }}
 ```
+
+### EPSS로 빌드 게이팅 (선택)
+
+빌드 게이트는 기본적으로 Critical CVE와 금지 라이선스를 평가합니다. 여기에 EPSS 차원을 더하면 악용 예측 확률이 높은 CVE가 **Critical이 아니어도** 빌드를 실패시킬 수 있습니다 — 가장 공격받기 쉬운 소수의 결과를 잡는 데 유용합니다.
+
+이는 워크플로 입력이 아니라 **운영자 측, 조직 단위** 스위치입니다. **포털**(`.env`)에 `GATE_EPSS_THRESHOLD` 환경변수를 설정한 뒤 백엔드를 재기동하세요. **기본은 비활성**입니다 — 미설정으로 두면 기존 Critical-CVE / 금지-라이선스 게이트가 그대로 보존됩니다.
+
+```bash
+# 포털의 .env(CI 워크플로가 아님), 0~1 사이 값:
+GATE_EPSS_THRESHOLD=0.5
+```
+
+임계가 설정되면 미해결 결과 중 `epss_score >= GATE_EPSS_THRESHOLD`인 것이 있을 때도 게이트가 실패합니다. 게이트 결과에는 추가 필드 `epss_gate_count`(위반 결과 수)와 `epss_threshold`(구성된 값)가 실리며, action은 `epss-gate-count`를 [출력](#출력)으로 노출합니다. EPSS 값이 없는 결과는 게이트를 트리거하지 않습니다(누락된 score는 `>=`를 만족할 수 없음). 전체 레퍼런스는 [`GATE_EPSS_THRESHOLD`](../reference/env-variables.md#빌드--정책-게이트), 개념은 [EPSS — 악용 확률](../user-guide/vulnerabilities.md#epss--악용-확률) 참고.
 
 ### 태그 핀
 
