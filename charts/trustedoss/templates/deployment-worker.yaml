@@ -48,7 +48,10 @@ spec:
             - configMapRef:
                 name: {{ include "trustedoss.fullname" . }}-env
           env:
-            {{- include "trustedoss.secretEnv" . | nindent 12 }}
+            {{- include "trustedoss.runtimeSecretEnv" . | nindent 12 }}
+          volumeMounts:
+            - name: workspace
+              mountPath: {{ .Values.workspace.mountPath }}
           livenessProbe:
             exec:
               command:
@@ -60,6 +63,14 @@ spec:
             timeoutSeconds: 15
           resources:
             {{- toYaml .Values.worker.resources | nindent 12 }}
+      volumes:
+        - name: workspace
+          {{- if .Values.workspace.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.workspace.persistence.existingClaim | default (printf "%s-workspace" (include "trustedoss.fullname" .)) }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

@@ -47,7 +47,7 @@ spec:
             - configMapRef:
                 name: {{ include "trustedoss.fullname" . }}-env
           env:
-            {{- include "trustedoss.secretEnv" . | nindent 12 }}
+            {{- include "trustedoss.runtimeSecretEnv" . | nindent 12 }}
           resources:
             {{- toYaml .Values.beat.resources | nindent 12 }}
       {{- with .Values.nodeSelector }}

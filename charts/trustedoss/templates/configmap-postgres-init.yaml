@@ -1,0 +1,67 @@
+{{- /*
+Bundled-Postgres first-boot init script (L1 role separation). Mirrors
+scripts/postgres-init.sh (the docker-compose path) so the two deployment modes
+provision the DML-only trustedoss_app role identically. The postgres image runs
+files in /docker-entrypoint-initdb.d/ ONCE, only when the data dir is empty.
+GRANTs/REVOKEs are NOT here — Alembic migration 0014 (run by the migration Job)
+applies them so they replay deterministically.
+
+Rendered ONLY when postgres.bundled=true AND postgres.auth.roleSeparation=true.
+*/ -}}
+{{- if and .Values.postgres.bundled .Values.postgres.auth.roleSeparation -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "trustedoss.postgres.fullname" . }}-init
+  labels:
+    {{- include "trustedoss.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+  annotations:
+    # Hook (weight -20) — must exist before the Postgres StatefulSet hook mounts
+    # it. Persists past the hook phase.
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-20"
+    "helm.sh/hook-delete-policy": before-hook-creation
+data:
+  10-trustedoss-app-role.sh: |
+    #!/usr/bin/env bash
+    # L1 role provisioning — mirrors scripts/postgres-init.sh.
+    set -euo pipefail
+
+    if [[ -z "${POSTGRES_APP_PASSWORD:-}" ]]; then
+      echo "[trustedoss-app-role] POSTGRES_APP_PASSWORD unset — skipping L1 provisioning"
+      exit 0
+    fi
+
+    app_user="${POSTGRES_APP_USER:-trustedoss_app}"
+
+    # Validate the role name (letters / digits / underscore) to prevent
+    # injection from a tampered env.
+    if [[ ! "$app_user" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+      echo "[trustedoss-app-role] illegal POSTGRES_APP_USER: $app_user" >&2
+      exit 1
+    fi
+
+    # Pass the password through psql --variable (:'name' SQL-quotes inside
+    # psql's lexer) — never via shell heredoc expansion.
+    psql --username "${POSTGRES_USER}" --dbname "${POSTGRES_DB}" \
+         --set ON_ERROR_STOP=1 \
+         --variable=app_user="${app_user}" \
+         --variable=app_password="${POSTGRES_APP_PASSWORD}" <<-'SQL'
+    	DO $$
+    	DECLARE
+    	  v_user TEXT := :'app_user';
+    	  v_pass TEXT := :'app_password';
+    	BEGIN
+    	  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = v_user) THEN
+    	    EXECUTE format('CREATE ROLE %I WITH LOGIN INHERIT PASSWORD %L', v_user, v_pass);
+    	    RAISE NOTICE 'created role %', v_user;
+    	  ELSE
+    	    RAISE NOTICE 'role % already exists — skipping CREATE', v_user;
+    	  END IF;
+    	END
+    	$$;
+    SQL
+
+    echo "[trustedoss-app-role] provisioned ${app_user} (alembic 0014 applies GRANTs)"
+{{- end -}}

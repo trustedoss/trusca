@@ -2,18 +2,21 @@ apiVersion: v2
 name: trustedoss
 description: >-
   TrustedOSS Portal — enterprise open-source risk management (SCA: CVE,
-  license compliance, SBOM). This chart is an early Phase B / v2.1 scaffold
-  whose first job (work-B / B2) is to expose the B1/A1/A2 concurrency &
-  stability tuning knobs as Kubernetes-native values. It is NOT yet a
-  production-complete deployment (no Ingress/TLS, DB/Redis are expected to be
-  external — Cloud SQL / Memorystore per docs/v2-execution-plan.md §1.3).
+  license compliance, SBOM). Production-complete chart (v2.1 / B3): bundled-or-
+  external PostgreSQL & Redis, a frontend Deployment, an Ingress with
+  cert-manager TLS, and a pre-install/pre-upgrade migration Job that runs
+  `alembic upgrade head` as the owner DB role (pods run AUTO_MIGRATE=false).
+  Dependency-Track is NOT bundled — point at an external instance.
 type: application
 
 # Chart version is the packaging version (SemVer); bump on every chart change.
-version: 0.1.0
+# B3 — production-complete chart (Postgres/Redis bundle toggles, frontend,
+# Ingress/TLS, migration Job, OCI publication).
+version: 0.2.0
 
 # appVersion tracks the released container image tag (image.tag default).
-# Keep in lock-step with .env.example IMAGE_TAG / docker-compose IMAGE_TAG.
+# Keep in lock-step with .env.example IMAGE_TAG / docker-compose IMAGE_TAG and
+# the .github/workflows/release.yml image tags.
 appVersion: "2.0.0"
 
 keywords:
@@ -26,3 +29,33 @@ sources:
   - https://github.com/trustedoss/trustedoss-portal
 maintainers:
   - name: TrustedOSS
+icon: https://raw.githubusercontent.com/trustedoss/trustedoss-portal/main/docs/static/img/logo.png
+
+# ArtifactHub metadata (https://artifacthub.io/docs/topics/annotations/helm/).
+# Surfaced on the ArtifactHub package page once the OCI repo is registered (a
+# one-time operator action — see charts/trustedoss/artifacthub-repo.yml).
+annotations:
+  artifacthub.io/license: Apache-2.0
+  artifacthub.io/links: |
+    - name: source
+      url: https://github.com/trustedoss/trustedoss-portal
+    - name: documentation
+      url: https://trustedoss.github.io/trustedoss-portal
+  artifacthub.io/maintainers: |
+    - name: TrustedOSS
+      email: maintainers@trustedoss.dev
+  artifacthub.io/prerelease: "false"
+  artifacthub.io/containsSecurityUpdates: "false"
+  artifacthub.io/changes: |
+    - kind: added
+      description: "Bundled-or-external PostgreSQL (StatefulSet) and Redis toggles"
+    - kind: added
+      description: "Frontend Deployment + Service (React SPA on nginx)"
+    - kind: added
+      description: "Ingress with cert-manager TLS and API/SPA path routing"
+    - kind: added
+      description: "Pre-install/pre-upgrade migration Job (alembic upgrade head, owner role)"
+    - kind: changed
+      description: "Pods run AUTO_MIGRATE=false; the migration Job is the sole migrator"
+    - kind: added
+      description: "OCI (ghcr) chart publication workflow + ArtifactHub metadata"
