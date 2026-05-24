@@ -15,10 +15,11 @@ built-in catalog. A policy makes that classification *data* you can edit at
 runtime — no redeploy.
 
 :::note Status
-This release ships the policy **data model + CRUD API**. Wiring the build-gate
-and scan classification to consult these policies (including compound-SPDX
-resolution) lands in a follow-up. Until then a policy is stored and readable but
-does not yet change gate verdicts.
+The policy **data model + CRUD API** and the **dynamic build-gate evaluation**
+(including hardened compound-SPDX resolution) are now wired: an effective,
+enabled policy changes the gate's forbidden-license verdict for that team. See
+[Dynamic gate evaluation](#dynamic-gate-evaluation) below. The UI for previewing
+a license's effective category under a policy lands in a follow-up.
 :::
 
 ## Scopes
@@ -96,6 +97,45 @@ Values are `most_restrictive` or `least_restrictive`. The default keeps the most
 restrictive sub-license for `AND` / `WITH`, and the least restrictive for `OR`
 (the usual reading of a dual-licensed dependency). A partial object is merged
 with the defaults — you only send the operators you want to change.
+
+## Dynamic gate evaluation
+
+The build-blocking gate (see [CI integration](../ci-integration/github-actions.md))
+blocks a build when a project has at least one **forbidden-licensed** component.
+With **no** effective policy, "forbidden" means the license category the scanner
+persisted at scan time against the built-in catalog — behaviour is unchanged.
+
+When the project's owning team has an **effective, enabled** policy, the gate
+re-classifies each component's license expression **dynamically** before
+counting:
+
+1. Each component's stored SPDX expression is parsed by a hardened
+   compound-SPDX evaluator (single id, `A AND B`, `A OR B`, `A WITH exc`,
+   parentheses, nesting).
+2. Each operand id is resolved through the policy in order: a matching,
+   non-expired **exception** (forces `allowed`) → an explicit
+   **override** → the built-in catalog → the **`unknown_license_category`**
+   posture for anything uncatalogued.
+3. Operands are folded with the per-operator
+   **`compound_operator_strategy`** (`AND`/`WITH` most-restrictive, `OR`
+   least-restrictive by default).
+4. A component whose expression resolves to `forbidden` is counted; a positive
+   count fails the gate.
+
+So a team can, for example, **forbid** a normally-allowed license, **waive** a
+normally-forbidden one for a single dependency, or read a dual-license `A OR B`
+permissively — all without a redeploy. Disabling the policy (`enabled: false`)
+or deleting it reverts the gate to the static catalog.
+
+### Robustness
+
+License expressions come from scanner output and dependency metadata — untrusted
+input. The evaluator is bounded and fails safe: it never hangs and never errors
+out the gate. An expression that is too long, nested too deeply, has too many
+tokens, is unbalanced, or contains control characters is **not** parsed; the
+component is treated with the policy's `unknown_license_category` posture and a
+warning is logged. The bounds are: max **4096** characters, max **64**
+parenthesis nesting levels, max **1024** tokens.
 
 ## API
 
