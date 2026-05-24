@@ -1,5 +1,5 @@
 variable "resource_prefix" {
-  description = "Resource name prefix."
+  description = "Resource name prefix (e.g. trustedoss-demo)."
   type        = string
 }
 
@@ -9,17 +9,20 @@ variable "region" {
 }
 
 variable "project_id" {
-  description = "GCP project ID (reserved for future per-project resource references)."
+  description = "GCP project ID."
   type        = string
 }
 
 variable "image" {
-  description = "Full container image reference (Artifact Registry path + tag)."
+  description = "Backend container image reference (same image the backend service runs)."
   type        = string
 }
 
 variable "service_account_email" {
-  description = "Service account email for the Cloud Run service."
+  description = <<-EOT
+    Service account the reset Job runs as. Reuse the backend SA so it already
+    has roles/cloudsql.client + secretAccessor on the DB password / SECRET_KEY.
+  EOT
   type        = string
 }
 
@@ -29,7 +32,7 @@ variable "vpc_connector" {
 }
 
 variable "cloud_sql_instance" {
-  description = "Cloud SQL connection name (project:region:instance) for the Auth Proxy sidecar."
+  description = "Cloud SQL connection name (project:region:instance) for the Auth Proxy."
   type        = string
 }
 
@@ -64,27 +67,30 @@ variable "db_name" {
   type        = string
 }
 
-variable "demo_read_only" {
+variable "schedule" {
   description = <<-EOT
-    v2.1 B5 — when true the backend runs in read-only live-demo mode: the
-    DemoReadOnlyMiddleware rejects every mutation that is not an allow-listed
-    auth flow (login/refresh/logout) with an RFC 7807 403. Surfaces on the
-    public GET /health response so the SPA can render its banner.
+    Cron schedule (Cloud Scheduler syntax) for the daily reset. Default 03:17
+    to avoid the top-of-hour thundering herd. Interpreted in `time_zone`.
   EOT
-  type        = bool
-  default     = false
+  type        = string
+  default     = "17 3 * * *"
 }
 
-variable "min_instances" {
-  description = "Cloud Run minimum instances."
-  type        = number
-  default     = 0
+variable "time_zone" {
+  description = "IANA time zone the schedule is evaluated in."
+  type        = string
+  default     = "Etc/UTC"
 }
 
-variable "max_instances" {
-  description = "Cloud Run maximum instances."
-  type        = number
-  default     = 3
+variable "demo_super_admin_password_secret_id" {
+  description = <<-EOT
+    OPTIONAL Secret Manager secret ID for DEMO_SUPER_ADMIN_PASSWORD. When set,
+    the reset Job reseeds the demo super-admin with a STABLE password (so the
+    public demo credentials do not change every night). When empty, seed_demo
+    generates a random password each run and logs it once.
+  EOT
+  type        = string
+  default     = ""
 }
 
 variable "labels" {

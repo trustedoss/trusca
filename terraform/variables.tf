@@ -163,3 +163,53 @@ variable "common_labels" {
     managed = "terraform"
   }
 }
+
+# ---------------------------------------------------------------------------
+# v2.1 Track B (B5) — live read-only demo + daily reset.
+# ---------------------------------------------------------------------------
+
+variable "demo_read_only" {
+  description = <<-EOT
+    Run the backend as a READ-ONLY live demo: the DemoReadOnlyMiddleware blocks
+    every non-auth mutation with an RFC 7807 403, and GET /health reports the
+    flag so the SPA shows a read-only banner. Recommended `true` for the public
+    demo deploy.
+  EOT
+  type        = bool
+  default     = true
+}
+
+variable "demo_reset_enabled" {
+  description = "Provision the daily Cloud Scheduler → Cloud Run Job that drops + reseeds the demo dataset."
+  type        = bool
+  default     = true
+}
+
+variable "demo_reset_schedule" {
+  description = "Cron schedule (Cloud Scheduler syntax) for the daily demo reset."
+  type        = string
+  default     = "17 3 * * *"
+}
+
+variable "demo_reset_time_zone" {
+  description = "IANA time zone the demo reset schedule runs in."
+  type        = string
+  default     = "Etc/UTC"
+}
+
+variable "demo_super_admin_password" {
+  description = <<-EOT
+    OPTIONAL stable password for the demo super-admin so the published demo
+    credentials do not rotate on every nightly reset. Leave empty to have
+    seed_demo generate a random one each run (logged once in the Job output).
+    Must be ≥ 12 chars when set.
+  EOT
+  type        = string
+  default     = ""
+  sensitive   = true
+
+  validation {
+    condition     = var.demo_super_admin_password == "" || length(var.demo_super_admin_password) >= 12
+    error_message = "demo_super_admin_password must be empty or at least 12 characters."
+  }
+}

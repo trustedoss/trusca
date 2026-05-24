@@ -45,5 +45,10 @@
   "scans": {
     "title": "스캔",
     "coming_soon": "Step 4에서 추가됩니다."
+  },
+  "demo": {
+    "banner_title": "읽기 전용 데모",
+    "banner_detail": "라이브 데모입니다. 자유롭게 둘러보세요. 생성·수정·삭제는 비활성화되어 있습니다.",
+    "write_disabled": "읽기 전용 데모에서는 사용할 수 없습니다"
   }
 }

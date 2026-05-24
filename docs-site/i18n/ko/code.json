@@ -14,6 +14,9 @@
   "homepage.hero.cta.docs": {
     "message": "문서 보기"
   },
+  "homepage.hero.cta.demo": {
+    "message": "라이브 데모"
+  },
   "homepage.hero.cta.github": {
     "message": "GitHub"
   },

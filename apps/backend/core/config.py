@@ -423,6 +423,20 @@ def app_env() -> str:
     return os.getenv("APP_ENV", "dev").lower()
 
 
+def demo_read_only() -> bool:
+    """v2.1 Track B (B5) — live-demo read-only guard.
+
+    When ``DEMO_READ_ONLY`` is truthy, the ``DemoReadOnlyMiddleware`` (core.middleware)
+    rejects every state-changing HTTP request (POST/PUT/PATCH/DELETE) that is not on
+    the auth allow-list, returning an RFC 7807 403. GET/HEAD/OPTIONS always pass.
+
+    Resolved at call time per CLAUDE.md core rule #11 so a deploy can flip the flag
+    via env without a code change. Accepts the same truthy spellings as the other
+    boolean accessors (``1``/``true``/``yes``/``on``, case-insensitive)."""
+    raw = os.getenv("DEMO_READ_ONLY", "false").lower()
+    return raw in ("1", "true", "yes", "on")
+
+
 # ---------------------------------------------------------------------------
 # Phase 2 PR #8 — scan pipeline configuration accessors.
 #

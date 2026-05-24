@@ -45,5 +45,10 @@
   "scans": {
     "title": "Scans",
     "coming_soon": "Coming soon in Step 4."
+  },
+  "demo": {
+    "banner_title": "Read-only demo",
+    "banner_detail": "This is a live demo. Browse freely — creating, editing, and deleting are disabled.",
+    "write_disabled": "Disabled in the read-only demo"
   }
 }
