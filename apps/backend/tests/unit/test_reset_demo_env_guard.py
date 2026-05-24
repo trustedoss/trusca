@@ -18,7 +18,7 @@ import pytest
 
 def test_reset_demo_guard_allows_demo(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("APP_ENV", "demo")
-    from scripts.reset_demo import seed_demo
+    from scripts import seed_demo
 
     # reset_demo reuses seed_demo's guard — exercise it through the module ref.
     seed_demo._refuse_outside_safe_env()
@@ -70,7 +70,8 @@ def test_reset_demo_main_dry_run_succeeds(
 def test_reset_demo_email_suffix_is_scoped() -> None:
     """The deletion filter must be tied to the stable demo email suffix so a
     real user can never be swept up by the reset."""
-    from scripts.reset_demo import _DEMO_EMAIL_SUFFIX, seed_demo
+    from scripts import seed_demo
+    from scripts.reset_demo import _DEMO_EMAIL_SUFFIX
 
     assert _DEMO_EMAIL_SUFFIX == "@demo.trustedoss.dev"
     # The seed's super-admin email lives under that suffix (cross-check the two

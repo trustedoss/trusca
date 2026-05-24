@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -209,12 +209,10 @@ async def test_reset_preserves_cross_tenant_user_and_deletes_demo_only(
         async with db_factory() as session:
             await session.execute(
                 # delete cross user (its other-org membership cascades)
-                User.__table__.delete().where(User.id == cross_user_id)
+                delete(User).where(User.id == cross_user_id)
             )
             await session.execute(
-                Organization.__table__.delete().where(
-                    Organization.id == other_org_id
-                )
+                delete(Organization).where(Organization.id == other_org_id)
             )
             await session.commit()
         # Re-seed so other suites that assume the demo dataset still find it.
@@ -277,6 +275,6 @@ async def test_demo_only_user_ids_empty_when_org_has_no_members(
     finally:
         async with db_factory() as session:
             await session.execute(
-                Organization.__table__.delete().where(Organization.id == org_id)
+                delete(Organization).where(Organization.id == org_id)
             )
             await session.commit()

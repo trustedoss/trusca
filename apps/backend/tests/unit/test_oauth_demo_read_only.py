@@ -13,6 +13,7 @@ asserting the RFC 7807 403 short-circuit happens BEFORE any I/O.
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import pytest
 from starlette.requests import Request
@@ -34,20 +35,21 @@ def _make_request(path: str) -> Request:
     return Request(scope)
 
 
-async def _read_body(response: object) -> dict:
+async def _read_body(response: object) -> dict[Any, Any]:
     """Render a Starlette JSONResponse body to a dict (no live transport)."""
     chunks: list[bytes] = []
 
-    async def _send(message: dict) -> None:
+    async def _send(message: dict[str, Any]) -> None:
         if message["type"] == "http.response.body":
             chunks.append(message.get("body", b""))
 
-    async def _receive() -> dict:  # pragma: no cover - not used by JSONResponse
+    async def _receive() -> dict[str, Any]:  # pragma: no cover - unused by JSON
         return {"type": "http.request"}
 
     scope = {"type": "http"}
     await response(scope, _receive, _send)  # type: ignore[operator]
-    return json.loads(b"".join(chunks).decode())
+    parsed: dict[Any, Any] = json.loads(b"".join(chunks).decode())
+    return parsed
 
 
 def test_demo_read_only_helper_returns_problem_json() -> None:
