@@ -730,6 +730,99 @@ export class PortalPage {
       .waitFor({ state: "visible", timeout: 10_000 });
   }
 
+  // ───── v2.1 A3 — VEX consume UI (import / filter / provenance) ─────────
+  /**
+   * Whether the VEX import trigger is enabled for the current user. Disabled
+   * for a developer (role gate), enabled for a team_admin / super_admin. Reads
+   * the native `disabled` property — locale-agnostic.
+   */
+  async isVexImportEnabled(): Promise<boolean> {
+    return this.page.getByTestId("vex-import-open").isEnabled();
+  }
+
+  /**
+   * Upload a VEX document via the import dialog and wait for the result summary
+   * (or an error) to render. Drives the real `<input type=file>` with
+   * `setInputFiles`, so the multipart body is built by the browser exactly as
+   * in production. Returns once either the summary panel or the error alert is
+   * visible.
+   *
+   * `filePath` is an absolute path to a JSON document on disk; callers
+   * typically write a fixture to a temp dir first.
+   */
+  async importVexDocument(filePath: string): Promise<void> {
+    await this.page.getByTestId("vex-import-open").click();
+    await this.page
+      .getByTestId("vex-import-dialog")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    await this.page.getByTestId("vex-import-file").setInputFiles(filePath);
+    await this.page.getByTestId("vex-import-submit").click();
+    const summary = this.page.getByTestId("vex-import-summary");
+    const error = this.page.getByTestId("vex-import-error");
+    await expect(summary.or(error)).toBeVisible({ timeout: 15_000 });
+  }
+
+  /**
+   * Read the `applied` count from the VEX import summary panel (the number of
+   * findings whose status the upload changed). Returns `null` if the summary is
+   * not present (e.g. an error was shown instead). Reads the `data-applied`
+   * anchor — locale-agnostic.
+   */
+  async getVexImportApplied(): Promise<number | null> {
+    const panel = this.page.getByTestId("vex-import-summary");
+    if ((await panel.count()) === 0) return null;
+    const raw = await panel.first().getAttribute("data-applied");
+    return raw == null ? null : Number(raw);
+  }
+
+  /** Close the VEX import dialog. */
+  async closeVexImportDialog(): Promise<void> {
+    await this.page.getByTestId("vex-import-cancel").click();
+    await this.page
+      .getByTestId("vex-import-dialog")
+      .waitFor({ state: "hidden", timeout: 10_000 });
+  }
+
+  /**
+   * Toggle the inline "VEX-suppressed only" filter on, then wait for the URL to
+   * mirror `vex_suppressed=1` (so callers can read it deterministically) and
+   * for the list / empty state to settle.
+   */
+  async enableVexSuppressedFilter(): Promise<void> {
+    await this.page.getByTestId("vulnerabilities-vex-suppressed-filter").check();
+    await expect
+      .poll(() => new URL(this.page.url()).searchParams.get("vex_suppressed"))
+      .toBe("1");
+    await this.expectVulnerabilitiesTabReady();
+  }
+
+  /**
+   * Count the mounted rows that carry the "VEX" provenance marker (status set
+   * by an imported VEX document). Locale-agnostic — anchors on the marker's
+   * `data-testid`.
+   */
+  async getVexMarkedRowCount(): Promise<number> {
+    return this.page.getByTestId("vulnerability-row-vex-marker").count();
+  }
+
+  /**
+   * Read the VEX provenance author shown in the open drawer's VEX section, or
+   * `null` when the section is absent (a manually-triaged finding). Locale-
+   * agnostic — reads the `data-testid` value verbatim.
+   */
+  async getDrawerVexAuthor(): Promise<string | null> {
+    const cell = this.page.getByTestId("vulnerability-drawer-vex-author");
+    if ((await cell.count()) === 0) return null;
+    return cell.first().textContent();
+  }
+
+  /** Whether the open drawer shows the VEX provenance section. */
+  async drawerHasVexProvenance(): Promise<boolean> {
+    return (
+      (await this.page.getByTestId("vulnerability-drawer-vex").count()) > 0
+    );
+  }
+
   // ───── PR #12 — Licenses tab + drawer ────────────────────────────────
   /**
    * Click the Licenses tab trigger and wait for the tab content to mount.

@@ -44,6 +44,37 @@ export type VulnerabilitySortKey =
   | "epss";
 export type SortOrder = "asc" | "desc";
 
+/**
+ * Provenance of a finding's current status (v2.1 A2 — VEX import / consume).
+ * `vex_import` marks a status that was auto-transitioned by an uploaded VEX
+ * document; `manual` (or `null` on legacy rows) is the human PATCH workflow.
+ * The column is free TEXT on the backend, so a future source could appear —
+ * callers treat any unknown value the same as `manual` for display.
+ */
+export type AnalysisSource = "manual" | "vex_import";
+
+/**
+ * Provenance of the consuming VEX document, surfaced on a finding whose
+ * `analysis_source === "vex_import"`. Every field is document-/analyst-supplied
+ * and MUST be rendered through React's default text escaping (never
+ * `dangerouslySetInnerHTML`). All fields are optional — the two VEX dialects
+ * carry different provenance and producers omit fields.
+ */
+export interface VexOrigin {
+  format?: "openvex" | "cyclonedx" | null;
+  /** OpenVEX `@id` or CycloneDX `serialNumber`. */
+  id?: string | null;
+  author?: string | null;
+  /** Document timestamp, verbatim from the source document. */
+  timestamp?: string | null;
+  /** The raw VEX status the matching statement carried. */
+  vex_status?: string | null;
+  /** ISO-8601 instant the import ran. */
+  imported_at?: string | null;
+  /** Forward-compat: keep any future provenance key without losing the typed ones. */
+  [k: string]: unknown;
+}
+
 export interface VulnerabilityListItem {
   id: string;
   cve_id: string;
@@ -59,6 +90,12 @@ export interface VulnerabilityListItem {
   epss_percentile: number | null;
   summary: string | null;
   status: VulnFindingStatus;
+  /**
+   * Provenance of the row's current status (v2.1 A2). `vex_import` when an
+   * uploaded VEX document drove the transition; `manual` / `null` otherwise.
+   * Backs the "suppressed via VEX" inline filter and the row's VEX marker.
+   */
+  analysis_source: AnalysisSource | null;
   affected_component_count: number;
   discovered_at: string;
   updated_at: string;
@@ -121,6 +158,10 @@ export interface VulnerabilityDetail {
   status: VulnFindingStatus;
   analysis_state: string | null;
   analysis_justification: string | null;
+  /** Provenance of the current status (v2.1 A2): `vex_import` | `manual` | null. */
+  analysis_source: AnalysisSource | null;
+  /** Consuming VEX document provenance when `analysis_source === "vex_import"`. */
+  vex_origin: VexOrigin | null;
   analyst_user_id: string | null;
   analyzed_at: string | null;
   affected_components: AffectedComponent[];

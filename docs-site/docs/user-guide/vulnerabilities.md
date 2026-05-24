@@ -371,6 +371,49 @@ The response is a JSON summary:
 | `413` | The uploaded document exceeds the size limit (`VEX_IMPORT_MAX_BYTES`, default 8 MiB). |
 | `422` | The document is not valid JSON, or is neither OpenVEX nor CycloneDX VEX. Body is `application/problem+json`. |
 
+## VEX in the UI
+
+Everything above is also available without the API, from the **Vulnerabilities tab**
+toolbar.
+
+### Export and import buttons
+
+- **Export VEX** — two buttons, **OpenVEX** and **CycloneDX VEX**. Click either
+  to download the project's current triage as a standalone VEX document. The
+  download goes through your authenticated session (the token never appears in
+  the URL), the same as the SBOM and PDF report downloads. Export is a read, so
+  any `developer` (or higher) can use it.
+- **Import VEX** — opens a dialog where you choose an OpenVEX or CycloneDX VEX
+  JSON file and upload it. The format is auto-detected. After the import runs the
+  dialog shows a summary panel with three counts — **Matched** (findings a
+  statement resolved to), **Applied** (findings whose status actually changed),
+  and **Skipped** — plus a per-statement list of skip reasons for anything that
+  did not apply (unknown CVE/component, illegal transition, already at target, …).
+  Import is a bulk-triage action: the button is **only enabled for `team_admin`**
+  (and `super_admin`). A `developer` sees it disabled with a tooltip explaining
+  the requirement. A `403`, `413`, or `422` from the server is shown inline as a
+  plain-language message — the dialog never leaves you guessing.
+
+### Filter: VEX-suppressed only
+
+The toolbar has a **VEX-suppressed only** checkbox. Turn it on to keep only the
+findings on the current page whose status was set by a VEX import
+(`analysis_source = vex_import`) — handy for eyeballing exactly what a document you
+just imported changed. The toggle is mirrored into the URL (`?vex_suppressed=1`)
+so it survives a reload and can be shared as a deep link. Rows set by a VEX import
+also carry a small **VEX** badge next to their status, paired with the label (not
+color alone) so the provenance is visible at a glance.
+
+### Provenance badge in the drawer
+
+Open a finding whose status came from an import and the drawer shows a **VEX
+provenance** panel: the consuming document's author, id (`@id` /
+`serialNumber`), timestamp, the VEX status the matching statement carried, when
+the import ran, and the imported justification. All of these fields come from the
+uploaded document and are rendered strictly as **text** — the portal never
+interprets them as HTML, so a justification or author containing markup is shown
+verbatim and is inert.
+
 ## Re-detection
 
 When Dependency-Track ingests new CVEs from upstream feeds (NVD, OSV, GitHub Advisory), the periodic resync task re-correlates them against every project's latest scan. New findings appear automatically — no manual action required.
