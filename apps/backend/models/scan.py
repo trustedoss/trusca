@@ -461,6 +461,15 @@ class ScanComponent(Base):
     dependency_scope: Mapped[str | None] = mapped_column(String(32), nullable=True)
     dependency_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     direct: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    # v2.2 2.2-a2 — shortest-path distance from a graph root (the scanned
+    # project / a top-level direct dependency). Direct deps are depth ``1``,
+    # transitive ``2+``. NULL when the cdxgen SBOM carried no ``dependencies``
+    # graph (older scans, ecosystems where only a flat component list was
+    # produced) — i.e. "depth not computed", distinct from a real depth value.
+    # SmallInteger (max 32767) is ample: integrations.dependency_graph clamps
+    # depth at MAX_DEPTH (64) so a hostile deep chain can never overflow it.
+    # Read by 2.2-a3 (upgrade recommendation) to prioritise direct/shallow deps.
+    depth: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     raw_data: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=EMPTY_JSONB_OBJ
     )
@@ -484,11 +493,81 @@ class ScanComponent(Base):
         Index("ix_scan_components_component_version_id", "component_version_id"),
         # "Show direct dependencies for this scan" — a default UI tab.
         Index("ix_scan_components_scan_direct", "scan_id", "direct"),
+        # v2.2 2.2-a2 — "shallowest dependencies first" for the upgrade
+        # recommender (2.2-a3): order this scan's components by graph depth.
+        Index("ix_scan_components_scan_depth", "scan_id", "depth"),
         Index(
             "ix_scan_components_raw_data_gin",
             "raw_data",
             postgresql_using="gin",
         ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# ComponentDependencyEdge (cdxgen dependency graph, v2.2 2.2-a2)
+# ---------------------------------------------------------------------------
+
+
+class ComponentDependencyEdge(Base):
+    """
+    One ``parent dependsOn child`` edge of a scan's resolved dependency graph,
+    extracted from the cdxgen CycloneDX ``dependencies`` array (v2.2 2.2-a2).
+
+    Why a dedicated edge table (vs. only ``raw_data``):
+      * The graph is the input to 2.2-a3 (upgrade recommendation): "if I bump
+        component X, which dependents are impacted?" is a parent/child query
+        that a normalized, indexed edge table answers cheaply, whereas a
+        per-component ``raw_data.dependsOn`` blob would force a full JSONB scan.
+      * Both endpoints are real ``component_versions`` rows (the cdxgen ref →
+        component_version mapping is resolved at ingest), so reverse lookups
+        ("who depends on this cv?") and forward lookups both ride FK indexes.
+
+    Edges whose parent OR child ref does not resolve to a component_version in
+    this scan (dangling refs, the scanned project's own metadata component) are
+    NOT stored — only edges between two persisted components survive. ``depth``
+    is recorded on ``ScanComponent`` instead; this table is the raw adjacency.
+
+    Scoped by ``scan_id`` (ON DELETE CASCADE) so a re-run / scan delete reclaims
+    every edge with the scan, matching ``ScanComponent``'s lifecycle.
+    """
+
+    __tablename__ = "component_dependency_edges"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID_PK, primary_key=True, server_default=GEN_UUID)
+    scan_id: Mapped[uuid.UUID] = mapped_column(
+        UUID_PK,
+        ForeignKey("scans.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    parent_component_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID_PK,
+        ForeignKey("component_versions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    child_component_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID_PK,
+        ForeignKey("component_versions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=NOW
+    )
+
+    __table_args__ = (
+        # An edge is unique per (scan, parent, child); a re-run that re-inserts
+        # the same graph collapses onto the same rows (idempotency).
+        UniqueConstraint(
+            "scan_id",
+            "parent_component_version_id",
+            "child_component_version_id",
+            name="uq_dep_edges_scan_parent_child",
+        ),
+        Index("ix_dep_edges_scan_id", "scan_id"),
+        # Forward ("children of X in this scan") and reverse ("dependents of Y
+        # in this scan") traversals for 2.2-a3 each ride a composite index.
+        Index("ix_dep_edges_scan_parent", "scan_id", "parent_component_version_id"),
+        Index("ix_dep_edges_scan_child", "scan_id", "child_component_version_id"),
     )
 
 

@@ -51,6 +51,7 @@ from .oauth_identity import (  # noqa: E402,F401  (imported for metadata side ef
 )
 from .scan import (  # noqa: E402,F401  (imported for metadata side effects)
     Component,
+    ComponentDependencyEdge,
     ComponentVersion,
     License,
     LicenseFinding,
@@ -70,6 +71,7 @@ __all__ = [
     "Base",
     "Component",
     "ComponentApproval",
+    "ComponentDependencyEdge",
     "ComponentVersion",
     "License",
     "LicenseFetchCache",

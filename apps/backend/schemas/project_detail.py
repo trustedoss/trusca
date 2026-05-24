@@ -145,6 +145,24 @@ class ComponentSummary(BaseModel):
     license_category: LicenseCategoryName
     severity_max: ComponentSeverity
     vulnerability_count: int = Field(ge=0)
+    depth: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Shortest-path distance from a dependency-graph root (v2.2): 1 = "
+            "direct, 2+ = transitive. The shallowest path when the component "
+            "appears at several. ``null`` when the scan carried no dependency "
+            "graph (older scans / flat-list ecosystems)."
+        ),
+    )
+    direct: bool = Field(
+        default=False,
+        description=(
+            "True when this component is a direct dependency of the scanned "
+            "project (graph depth 1). False for transitive deps and when the "
+            "graph was unavailable."
+        ),
+    )
 
 
 class ComponentListResponse(BaseModel):
@@ -209,6 +227,19 @@ class ComponentDetailResponse(BaseModel):
     severity_max: ComponentSeverity
     vulnerabilities: list[VulnerabilityRef] = Field(default_factory=list)
     raw_data: dict[str, Any] = Field(default_factory=dict)
+    depth: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Shortest-path distance from a dependency-graph root (v2.2): 1 = "
+            "direct, 2+ = transitive. ``null`` when the scan carried no "
+            "dependency graph."
+        ),
+    )
+    direct: bool = Field(
+        default=False,
+        description="True when this is a direct dependency (graph depth 1).",
+    )
     created_at: datetime
     updated_at: datetime
 

@@ -25,6 +25,7 @@ Columns:
 - **License** — the license attached to the component. For a dependency this is the **declared** license `cdxgen` read from package metadata; see [Declared vs. detected](#declared-vs-detected) for how detected and concluded licenses relate. This is the value used by the build gate.
 - **Severity** — the highest severity across this component's open CVEs (carries the license-classification color via the legend).
 - **CVEs** — count of open vulnerabilities for this component (clickable; jumps to the Vulnerabilities tab pre-filtered).
+- **Depth / Direct** — the component's distance in the dependency graph: `1` = a **direct** dependency you declared, `2+` = a **transitive** dependency pulled in by another. Empty for scans before v2.2. See [Direct vs. transitive](#dependency-depth).
 
 The table is virtualized — projects with thousands of components scroll smoothly.
 
@@ -51,6 +52,26 @@ Click any row to open a right-side drawer with:
 Closing the drawer keeps you in place on the table — no full-page navigation.
 
 For the approval state of a conditional-license component, switch to the project-level [Approvals](./approvals.md) page (the drawer does not surface approval state at v2.0.0). Manual override of the concluded license is also deferred — see [Roadmap](#roadmap-v2x).
+
+## Direct vs. transitive (dependency depth) {#dependency-depth}
+
+Starting in v2.2 the pipeline collects the **dependency graph** that `cdxgen` records (which package depends on which) and computes, for each component, its **depth** — the shortest distance from a graph root:
+
+| Depth | Meaning | Label |
+|---|---|---|
+| `1` | A **direct** dependency — your project declares it in its manifest / lockfile. | **Direct** |
+| `2` and up | A **transitive** dependency — pulled in only because a direct dependency (or one of *its* dependencies) requires it. | **Transitive** |
+| *(empty)* | No depth was computed for this scan — older scans before v2.2, or ecosystems where the scan produced a flat component list with no graph. | — |
+
+The drawer shows the component's depth and a **Direct** / **Transitive** label; the component list surfaces the same values so you can tell at a glance which findings you own directly.
+
+:::note Why depth matters
+A vulnerability in a **direct** dependency is usually yours to fix — bump the version you declared. A vulnerability in a **transitive** dependency is the responsibility of whichever direct dependency pulls it in; the fix is often "upgrade the direct parent until it stops requiring the vulnerable version." Depth therefore drives remediation prioritisation — shallow, directly-depended components are the cheapest to fix. The upgrade-recommendation feature builds on this signal.
+:::
+
+:::info Shallowest path wins
+A component can be reached by several paths at once (a "diamond" — two of your dependencies both pull in the same package). The portal reports the **shallowest** path: if `lodash` is both a direct dependency *and* a transitive one, it is shown as **Direct** (depth `1`). The dependency graph itself (every parent → child edge) is stored per scan so future tooling can show the full path.
+:::
 
 ## License classification
 
