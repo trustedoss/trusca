@@ -49,6 +49,7 @@ from core.audit import install_audit_listeners
 from core.config import (
     app_env,
     cors_allowed_origins,
+    demo_read_only,
     log_level,
     secret_key,
     validate_cors_origins,
@@ -58,6 +59,7 @@ from core.errors import install_exception_handlers
 from core.logging import configure_logging
 from core.middleware import (
     AuditContextMiddleware,
+    DemoReadOnlyMiddleware,
     RequestIDMiddleware,
     SecurityHeadersMiddleware,
 )
@@ -129,9 +131,13 @@ app = FastAPI(
 #   - CORS pre-flight (OPTIONS) responses produced by CORSMiddleware itself,
 #   - 4xx/5xx error envelopes emitted by the exception handlers,
 #   - WebSocket-upgrade rejections.
-# Inner stack: RequestID → AuditContext → CORS → SecurityHeaders (outermost).
-# Outermost (read top-to-bottom for request flow): SecurityHeaders → CORS →
-# RequestID → AuditContext → app handler.
+# Inner stack: AuditContext → DemoReadOnly → RequestID → CORS → SecurityHeaders
+# (outermost). Outermost (read top-to-bottom for request flow): SecurityHeaders
+# → CORS → RequestID → DemoReadOnly → AuditContext → app handler.
+# DemoReadOnlyMiddleware (v2.1 B5) sits INSIDE RequestIDMiddleware so the
+# "request blocked" warning carries the bound request_id, but OUTSIDE the app
+# router so a rejected mutation never reaches any endpoint/dependency. It is a
+# no-op unless DEMO_READ_ONLY is truthy.
 # slowapi rate limiting is applied via the @limiter.limit decorator inside
 # routes; we deliberately avoid SlowAPIMiddleware (which is a
 # BaseHTTPMiddleware) because it interacts badly with async SQLAlchemy
@@ -140,6 +146,7 @@ app = FastAPI(
 # guarantee without the side effects.
 app.state.limiter = limiter
 app.add_middleware(AuditContextMiddleware)
+app.add_middleware(DemoReadOnlyMiddleware)
 app.add_middleware(RequestIDMiddleware)
 
 # H-3: validate CORS configuration before registering the middleware so a
@@ -217,12 +224,17 @@ app.include_router(health_router)
 
 
 @app.get("/health", tags=["public"], summary="Liveness probe — PUBLIC, unauthenticated")
-async def health() -> dict[str, str]:
+async def health() -> dict[str, object]:
     """Cheap PURE-LIVENESS probe used by docker-compose / k8s liveness checks.
 
     PUBLIC / unauthenticated (CLAUDE.md rule #12 explicit exception). This proves
     only that the uvicorn process is accepting requests — it does NOT touch the
     database and says nothing about schema state. For "is the schema migrated and
     safe to serve traffic / start workers", use GET /health/ready (api/v1/health.py).
+
+    v2.1 Track B (B5): also surfaces ``demo_read_only`` so the SPA can render the
+    read-only banner and disable write actions without needing a separate build.
+    The flag is resolved at request time (CLAUDE.md rule #11), so the same image
+    behaves correctly whether DEMO_READ_ONLY is set or not.
     """
-    return {"status": "ok"}
+    return {"status": "ok", "demo_read_only": demo_read_only()}

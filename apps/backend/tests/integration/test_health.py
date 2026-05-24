@@ -38,7 +38,11 @@ async def test_health_returns_ok(client):
     response = await client.get("/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    body = response.json()
+    assert body["status"] == "ok"
+    # v2.1 Track B (B5): the liveness probe surfaces the read-only demo flag so
+    # the SPA can render its banner. Defaults to False outside the demo deploy.
+    assert body["demo_read_only"] is False
 
 
 async def test_health_emits_request_id_header(client):

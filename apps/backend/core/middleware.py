@@ -31,6 +31,7 @@ and our RFC 7807 handlers.
 
 from __future__ import annotations
 
+import posixpath
 import time
 import uuid
 from collections.abc import Awaitable, Callable, MutableMapping
@@ -40,6 +41,7 @@ import structlog
 from structlog.contextvars import bind_contextvars, clear_contextvars
 
 from core.audit import audit_context
+from core.config import demo_read_only
 
 REQUEST_ID_HEADER = "x-request-id"
 REQUEST_ID_HEADER_BYTES = REQUEST_ID_HEADER.encode("latin-1")
@@ -205,3 +207,141 @@ class AuditContextMiddleware:
             await self.app(scope, receive, send)
         finally:
             audit_context.reset(token)
+
+
+# ---------------------------------------------------------------------------
+# v2.1 Track B (B5) — DEMO_READ_ONLY guard.
+#
+# Core SECURITY boundary. When DEMO_READ_ONLY is on (the public live demo), the
+# instance must serve reads but reject every mutation. We enforce this in ONE
+# place (this middleware) instead of sprinkling per-endpoint guards, so a new
+# router added later cannot silently escape the policy — the middleware sees the
+# raw ASGI scope for *every* HTTP request before any router/dependency runs.
+#
+# Design (allow-list, fail-closed):
+#   * "safe" HTTP methods (GET / HEAD / OPTIONS) always pass — they cannot
+#     mutate state, and OPTIONS must pass so CORS preflight keeps working.
+#   * every OTHER method (POST / PUT / PATCH / DELETE, plus any exotic verb) is
+#     BLOCKED by default. We only let a request through if its *normalized* path
+#     is on a tiny, explicit allow-list of auth flows the demo still needs
+#     (login / refresh / logout). This is deliberately a deny-by-default policy:
+#     adding a new mutating endpoint requires no change here and is blocked
+#     automatically, which is the safe direction for a public demo.
+#   * WebSocket upgrades (scope["type"] == "websocket") are *not* a mutation
+#     surface we expose for writes — the only ws route streams read-only scan
+#     progress — but to be safe we let the upgrade through unchanged (a ws
+#     connection cannot POST/PUT; any server-side mutation would itself be an
+#     HTTP call that this middleware already gates). Non-http/ws scopes
+#     (lifespan) pass through untouched.
+#
+# Bypass hardening:
+#   * The path is normalized with posixpath.normpath after collapsing '\' to '/'
+#     and percent-decoding is NOT relied upon (the ASGI scope path is already
+#     percent-decoded by the server). normpath resolves '.'/'..' segments so a
+#     traversal like '/v1/projects/../auth/login' cannot smuggle a write path
+#     onto the allow-list, and an attempt like '/auth/login/../../v1/projects'
+#     collapses to a NON-allow-listed path and is blocked.
+#   * Method comparison is case-insensitive (HTTP methods are case-sensitive per
+#     RFC 7231, but we upper-case defensively so a server that forwards a
+#     lower-case verb cannot dodge the check).
+#   * Trailing slashes are stripped before the allow-list comparison so
+#     '/auth/login/' and '/auth/login' are treated identically.
+# ---------------------------------------------------------------------------
+
+_SAFE_METHODS: frozenset[str] = frozenset({"GET", "HEAD", "OPTIONS"})
+
+# Exact (METHOD, normalized-path) pairs for the auth flows a read-only demo must
+# still permit. We key on the method too (not the path alone) so an exotic verb
+# such as ``CONNECT /auth/login`` cannot ride the allow-list — every real auth
+# write is a POST. Registration / password-reset / password-change are
+# intentionally OMITTED: a public read-only demo uses pre-seeded shared
+# accounts, so allowing self-registration or password mutation would let a
+# visitor change demo state.
+_DEMO_WRITE_ALLOWLIST: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("POST", "/auth/login"),
+        ("POST", "/auth/refresh"),
+        ("POST", "/auth/logout"),
+    }
+)
+
+_DEMO_READ_ONLY_TYPE = "urn:trustedoss:problem:demo-read-only"
+
+
+def _normalize_path(raw: str) -> str:
+    """Collapse a request path to a canonical form for allow-list comparison.
+
+    Defends the allow-list against traversal / separator tricks:
+      * back-slashes are folded to forward-slashes,
+      * '.'/'..' segments are resolved (posixpath.normpath),
+      * a single trailing slash is removed (root '/' is preserved).
+    The ASGI server has already percent-decoded scope['path'], so we operate on
+    the decoded value directly.
+    """
+    if not raw:
+        return "/"
+    candidate = raw.replace("\\", "/")
+    # normpath collapses '//', '/./' and resolves '/../'. It also strips a
+    # trailing slash except for the root.
+    normalized = posixpath.normpath(candidate)
+    # normpath turns '' into '.'; guard that and force a leading slash so the
+    # comparison is always against an absolute path.
+    if not normalized.startswith("/"):
+        normalized = "/" + normalized
+    return normalized
+
+
+def _is_demo_write_allowed(method: str, path: str) -> bool:
+    """True iff a mutating request should be permitted under DEMO_READ_ONLY."""
+    upper = method.upper()
+    if upper in _SAFE_METHODS:
+        return True
+    return (upper, _normalize_path(path)) in _DEMO_WRITE_ALLOWLIST
+
+
+class DemoReadOnlyMiddleware:
+    """Reject mutating HTTP requests when DEMO_READ_ONLY is enabled.
+
+    See the module-level section above for the full allow-list / bypass-hardening
+    rationale. The flag is read at request time (CLAUDE.md rule #11) so the guard
+    can be toggled by env without a rebuild; when the flag is off this middleware
+    is a no-op pass-through with negligible overhead.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or not demo_read_only():
+            await self.app(scope, receive, send)
+            return
+
+        method = str(scope.get("method", "")).upper()
+        path = str(scope.get("path", "/"))
+
+        if _is_demo_write_allowed(method, path):
+            await self.app(scope, receive, send)
+            return
+
+        # Blocked: emit an RFC 7807 403 directly from the middleware. We import
+        # the helper lazily to avoid a circular import at module load (errors.py
+        # has no dependency on middleware, but keeping the import local matches
+        # the "build the response only on the rejection path" intent).
+        from core.errors import problem_response
+
+        structlog.get_logger("demo").warning(
+            "demo_read_only_blocked", method=method, path=path
+        )
+        response = problem_response(
+            status_code=403,
+            title="Read-only demo",
+            detail=(
+                "This is a read-only live demo. Creating, updating, or deleting "
+                "data is disabled. Sign in and explore the pre-seeded projects, "
+                "scans, vulnerabilities, and reports."
+            ),
+            instance=path,
+            type_=_DEMO_READ_ONLY_TYPE,
+            demo_read_only=True,
+        )
+        await response(scope, receive, send)

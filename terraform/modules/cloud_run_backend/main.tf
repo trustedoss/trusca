@@ -99,6 +99,13 @@ resource "google_cloud_run_v2_service" "backend" {
         name  = "REFRESH_TOKEN_EXPIRE_DAYS"
         value = "7"
       }
+      # v2.1 B5 — read-only live-demo guard. When true the
+      # DemoReadOnlyMiddleware blocks all non-auth mutations (RFC 7807 403) and
+      # GET /health reports demo_read_only=true for the SPA banner.
+      env {
+        name  = "DEMO_READ_ONLY"
+        value = var.demo_read_only ? "true" : "false"
+      }
 
       # ---- DB connection parts (composed at runtime by core.config) --------
       # The asyncpg DSN is built inside the container by

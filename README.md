@@ -10,6 +10,8 @@
 
 > **Status:** Generally available — **v2.0.0** ([CHANGELOG](CHANGELOG.md)). See the published [documentation site](https://trustedoss.github.io/trustedoss-portal/) to get started, and [`ROADMAP.md`](ROADMAP.md) for what comes next.
 
+> **🔭 Live demo:** _coming soon_ — a public, **read-only** instance with a pre-seeded dataset (resets nightly). The URL will be published here once deployed. Read-only mode and the daily reset are documented in [Live demo](https://trustedoss.github.io/trustedoss-portal/docs/installation/live-demo).
+
 > **v1 → v2 transition (2026-05-05):** `main` tracks the v2 rewrite. The previous v1 codebase is preserved on the [`legacy/v1`](https://github.com/trustedoss/trustedoss-portal/tree/legacy/v1) branch (read-only, not maintained). v2 is a clean re-implementation — there is no automatic data migration from v1.
 
 ---

@@ -58,3 +58,20 @@ output "app_secret_key_secret_id" {
   value       = google_secret_manager_secret.app_secret_key.id
   sensitive   = true
 }
+
+# v2.1 B5 — live demo read-only + daily reset.
+
+output "demo_read_only" {
+  description = "Whether the backend runs in read-only live-demo mode."
+  value       = var.demo_read_only
+}
+
+output "demo_reset_job_name" {
+  description = "Cloud Run Job that performs the daily demo reset (null when disabled)."
+  value       = var.demo_reset_enabled ? module.demo_reset[0].job_name : null
+}
+
+output "demo_reset_scheduler_job_name" {
+  description = "Cloud Scheduler job that triggers the daily demo reset (null when disabled)."
+  value       = var.demo_reset_enabled ? module.demo_reset[0].scheduler_job_name : null
+}

@@ -64,6 +64,17 @@ variable "db_name" {
   type        = string
 }
 
+variable "demo_read_only" {
+  description = <<-EOT
+    v2.1 B5 — when true the backend runs in read-only live-demo mode: the
+    DemoReadOnlyMiddleware rejects every mutation that is not an allow-listed
+    auth flow (login/refresh/logout) with an RFC 7807 403. Surfaces on the
+    public GET /health response so the SPA can render its banner.
+  EOT
+  type        = bool
+  default     = false
+}
+
 variable "min_instances" {
   description = "Cloud Run minimum instances."
   type        = number

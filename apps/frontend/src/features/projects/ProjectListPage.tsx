@@ -23,6 +23,7 @@ import {
 } from "@/features/projects/components/ProjectListToolbar";
 import { ScanProgress } from "@/features/scan/ScanProgress";
 import { SourceSelectDialog } from "@/features/scan/SourceSelectDialog";
+import { useDemoMode } from "@/hooks/useDemoMode";
 import {
   listProjects,
   type ProjectPublic,
@@ -99,6 +100,10 @@ function statusFilterMatches(
 
 export function ProjectListPage() {
   const { t } = useTranslation("projects");
+  // v2.1 B5: in the read-only live demo, write actions (trigger scan, create
+  // project) are disabled in the UI. The backend middleware is the real guard;
+  // this just avoids dead-end clicks that would 403.
+  const { demoReadOnly } = useDemoMode();
 
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
@@ -221,7 +226,11 @@ export function ProjectListPage() {
               <p className="text-sm text-muted-foreground">
                 {t("empty.subtitle")}
               </p>
-              <Button data-testid="project-list-empty-cta">
+              <Button
+                data-testid="project-list-empty-cta"
+                disabled={demoReadOnly}
+                title={demoReadOnly ? t("demo.write_disabled") : undefined}
+              >
                 {t("empty.cta")}
               </Button>
             </CardContent>
@@ -242,6 +251,7 @@ export function ProjectListPage() {
                   project={project}
                   onScan={() => handleOpenSourceDialog(project)}
                   rowIndex={index}
+                  writeDisabled={demoReadOnly}
                 />
               )}
             />
@@ -295,9 +305,15 @@ interface ProjectRowProps {
   project: ProjectPublic;
   onScan: () => void;
   rowIndex: number;
+  writeDisabled?: boolean;
 }
 
-function ProjectRow({ project, onScan, rowIndex }: ProjectRowProps) {
+function ProjectRow({
+  project,
+  onScan,
+  rowIndex,
+  writeDisabled = false,
+}: ProjectRowProps) {
   const { t } = useTranslation("projects");
   return (
     <div
@@ -333,6 +349,8 @@ function ProjectRow({ project, onScan, rowIndex }: ProjectRowProps) {
         variant="outline"
         size="sm"
         onClick={onScan}
+        disabled={writeDisabled}
+        title={writeDisabled ? t("demo.write_disabled") : undefined}
         data-testid="project-row-scan"
         data-project-name={project.name}
       >

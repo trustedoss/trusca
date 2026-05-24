@@ -17,6 +17,7 @@ import type { ComponentType, SVGProps } from "react";
 import { useTranslation } from "react-i18next";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 
+import { DemoBanner } from "@/components/DemoBanner";
 import { HeaderBell } from "@/components/HeaderBell";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import { Button } from "@/components/ui/button";
@@ -182,6 +183,9 @@ export function AppShell() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
+        {/* v2.1 B5: read-only live-demo banner. Renders only when the backend
+            reports demo_read_only (useDemoMode), so a normal deploy is unaffected. */}
+        <DemoBanner />
         <header
           className="flex shrink-0 items-center justify-between border-b px-6"
           style={{ height: "var(--layout-header)" }}

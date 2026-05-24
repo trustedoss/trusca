@@ -29,6 +29,9 @@
     "subtitle": "Register your first repository to start scanning.",
     "cta": "Register project"
   },
+  "demo": {
+    "write_disabled": "Disabled in the read-only demo"
+  },
   "errors": {
     "load_failed": "Could not load projects.",
     "trigger_failed": "Could not start the scan."

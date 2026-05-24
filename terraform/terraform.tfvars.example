@@ -22,3 +22,12 @@ frontend_image = "us-central1-docker.pkg.dev/my-trustedoss-demo/trustedoss/front
 # cloud_run_max_instances = 3
 # redis_memory_size_gb    = 1
 # db_tier                 = "db-f1-micro"
+
+# v2.1 B5 — live read-only demo + daily reset (defaults shown).
+# demo_read_only       = true          # block all non-auth mutations (RFC 7807 403)
+# demo_reset_enabled   = true          # provision the daily Cloud Scheduler → Job
+# demo_reset_schedule  = "17 3 * * *"  # cron (Cloud Scheduler syntax)
+# demo_reset_time_zone = "Etc/UTC"
+# Optional: pin a STABLE demo super-admin password so published creds survive
+# the nightly reset (≥ 12 chars). Leave unset to rotate randomly each night.
+# demo_super_admin_password = "REPLACE_ME_MIN_12_CHARS"

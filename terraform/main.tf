@@ -43,6 +43,8 @@ locals {
     "servicenetworking.googleapis.com",
     "compute.googleapis.com",
     "artifactregistry.googleapis.com",
+    # v2.1 B5 — Cloud Scheduler drives the daily demo reset Job.
+    "cloudscheduler.googleapis.com",
   ]
 
   labels = merge(var.common_labels, {
@@ -230,6 +232,7 @@ module "cloud_run_backend" {
   db_name                 = module.cloud_sql.db_name
   min_instances           = var.cloud_run_min_instances
   max_instances           = var.cloud_run_max_instances
+  demo_read_only          = var.demo_read_only
   labels                  = local.labels
 }
 
@@ -244,4 +247,71 @@ module "cloud_run_frontend" {
   min_instances         = var.cloud_run_min_instances
   max_instances         = var.cloud_run_max_instances
   labels                = local.labels
+}
+
+# ---------------------------------------------------------------------------
+# v2.1 Track B (B5) — daily demo reset.
+#
+# RECOMMENDED Secret Manager secret holding a STABLE demo super-admin password
+# so the published demo credentials survive the nightly reseed (security-reviewer
+# M-2 — the recommended path so the Job never generates/logs a credential).
+# Created only when `demo_super_admin_password` is supplied; otherwise the reset
+# Job lets seed_demo generate a random one each night and, in the demo env, does
+# NOT log the plaintext (only a masked advisory).
+# ---------------------------------------------------------------------------
+
+resource "google_secret_manager_secret" "demo_super_admin_password" {
+  count = var.demo_reset_enabled && var.demo_super_admin_password != "" ? 1 : 0
+
+  secret_id = "${local.resource_prefix}-demo-admin-password"
+
+  replication {
+    auto {}
+  }
+
+  labels     = local.labels
+  depends_on = [google_project_service.required]
+}
+
+resource "google_secret_manager_secret_version" "demo_super_admin_password" {
+  count = var.demo_reset_enabled && var.demo_super_admin_password != "" ? 1 : 0
+
+  secret      = google_secret_manager_secret.demo_super_admin_password[0].id
+  secret_data = var.demo_super_admin_password
+}
+
+resource "google_secret_manager_secret_iam_member" "backend_demo_admin_password" {
+  count = var.demo_reset_enabled && var.demo_super_admin_password != "" ? 1 : 0
+
+  secret_id = google_secret_manager_secret.demo_super_admin_password[0].id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.backend.email}"
+}
+
+module "demo_reset" {
+  count  = var.demo_reset_enabled ? 1 : 0
+  source = "./modules/demo_reset"
+
+  resource_prefix          = local.resource_prefix
+  region                   = var.region
+  project_id               = var.project_id
+  image                    = var.backend_image
+  # Reuse the backend SA — it already has cloudsql.client + secretAccessor.
+  service_account_email    = google_service_account.backend.email
+  vpc_connector            = google_vpc_access_connector.connector.id
+  cloud_sql_instance       = module.cloud_sql.connection_name
+  redis_host               = module.memorystore_redis.host
+  redis_port               = module.memorystore_redis.port
+  db_password_secret_id    = google_secret_manager_secret.db_password.secret_id
+  app_secret_key_secret_id = google_secret_manager_secret.app_secret_key.secret_id
+  db_user                  = module.cloud_sql.db_user
+  db_name                  = module.cloud_sql.db_name
+  schedule                 = var.demo_reset_schedule
+  time_zone                = var.demo_reset_time_zone
+  demo_super_admin_password_secret_id = (
+    var.demo_super_admin_password != ""
+    ? google_secret_manager_secret.demo_super_admin_password[0].secret_id
+    : ""
+  )
+  labels = local.labels
 }

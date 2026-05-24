@@ -41,6 +41,14 @@ function HomepageHero(): ReactNode {
           >
             <Translate id="homepage.hero.cta.docs">Read the docs</Translate>
           </Link>
+          {/* v2.1 B5 — Live read-only demo. Points at the docs page until the
+              public instance URL is published (set after the O2 deploy). */}
+          <Link
+            className="button button--secondary button--lg"
+            to="/docs/installation/live-demo"
+          >
+            <Translate id="homepage.hero.cta.demo">Live demo</Translate>
+          </Link>
           <Link
             className="button button--outline button--secondary button--lg"
             href="https://github.com/trustedoss/trustedoss-portal"
