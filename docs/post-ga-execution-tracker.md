@@ -15,7 +15,7 @@
 |---|---|---|---|---|
 | v2.1 | A. VEX 소비 (트리아지) | 3 | 3 | ✅ 완료 (#145,#148,#150) |
 | v2.1 | B. 평가·배포 경로 | 5 | 5 | ✅ 완료 (#146,#147,#149,#151,#152) |
-| v2.2 | 리메디에이션 + 정책 | 10 | 8 | 🟦 a(3)+b1(#157)+c1(#158)+b2(#159)+b3백엔드(#160)+c2(#161) 완료 · 남음 c3·c4·b3-UI |
+| v2.2 | 리메디에이션 + 정책 | 10 | 9 | 🟦 a(3)+b1+c1+b2+b3백엔드+c2+c3(#162) 완료 · 남음 c4(진행)·b3-UI |
 | v2.3 | 무결성 + 우선순위화 | 6 | 0 | ⬜ 대기 |
 | — | 운영 레인 (외부 블로커) | 4 | 0 | ⬜ 대기 |
 
@@ -159,7 +159,7 @@
   - per-team/org 정책(허용/조건부/금지 + 예외 + SPDX expression 룰) 모델 + 마이그레이션.
 - [x] **2.2-c2 — Policy Gate 동적 룰 평가** ✅ #161 (머지 `e155ee7`) — `services/license_expression.py` 하드닝 compound-SPDX 평가기(길이4096/깊이64/토큰1024 bound, 선형 lexer+depth-guarded recursive descent, un-parseable→unknown posture+warning, never hang/raise/500), `policy_gate` 정책-aware 전환(정책 시 동적 재분류·무정책 시 byte-identical, golden 25 통과, batched+memoised no-N+1). 마이그/엔드포인트 없음. `dep: 2.2-c1` `owner: backend-developer`
   - 게이트가 정적 lookup 대신 동적 룰 평가(정적 카탈로그는 기본값으로 유지). SPDX expression **adversarial 테스트**([[feedback-adversarial-input-parametrize]] normalize_spdx_id 재귀 DoS 선례).
-- [ ] **2.2-c3 — 정책 편집 Admin UI** `dep: 2.2-c2` `owner: frontend-dev + i18n-specialist`
+- [x] **2.2-c3 — 정책 편집 Admin UI** ✅ #162 (머지 `1e2d135`) — `/policies` 라우트+사이드바, category_overrides/license_exceptions(시한부 waiver)/unknown posture/compound 전략/enabled 편집기, scope-aware(super_admin=org+팀, 비-team_admin=graceful read-only), TanStack Query 저장/리셋·422 RFC7807 surfacing, 신규 `policies` i18n ns(EN/KO, i18n:check OK), vitest 26 신규. `dep: 2.2-c2` `owner: frontend-dev + i18n-specialist`
 - [ ] **2.2-c4 — 라이선스 텍스트/의무 카탈로그 보강** `dep: 2.2-c1` `owner: backend-developer + doc-writer`
   - **v2.2 마일스톤 종료조건:** ≥1 생태계 자동 PR + 보안리뷰 · 코드 변경 없이 팀이 정책 편집 · adversarial SPDX green.
 
