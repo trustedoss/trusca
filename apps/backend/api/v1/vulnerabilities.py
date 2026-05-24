@@ -30,6 +30,7 @@ from core.errors import problem_response
 from core.security import CurrentUser, require_role
 from schemas.vulnerability_detail import (
     AffectedComponent,
+    UpgradeRecommendation,
     VulnerabilityDetailResponse,
     VulnerabilityListItem,
     VulnerabilityListResponse,
@@ -180,6 +181,11 @@ def _detail_response(payload: dict[str, Any]) -> Response:
         status_history=[
             VulnerabilityStatusHistoryEntry.model_validate(h) for h in payload["status_history"]
         ],
+        upgrade_recommendation=(
+            UpgradeRecommendation.model_validate(payload["upgrade_recommendation"])
+            if payload.get("upgrade_recommendation") is not None
+            else None
+        ),
         created_at=payload["created_at"],
         updated_at=payload["updated_at"],
     )

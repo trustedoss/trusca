@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from typing import Any
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -46,14 +47,16 @@ from core.db import get_db
 from core.errors import problem_response
 from core.security import CurrentUser, get_optional_current_user
 from models import (
-    License as LicenseModel,
-)
-from models import (
+    Component,
+    ComponentVersion,
     LicenseFinding,
     Project,
     Scan,
     ScanComponent,
     VulnerabilityFinding,
+)
+from models import (
+    License as LicenseModel,
 )
 from models import (
     Vulnerability as VulnerabilityModel,
@@ -67,8 +70,14 @@ from services.policy_gate import GateResult, evaluate_gate
 from services.project_service import ProjectError, ProjectNotFound
 from services.sca_comment import (
     CommentSummary,
+    RecommendedUpgrade,
     SCACommentError,
     post_pr_comment,
+)
+from services.upgrade_recommendation import (
+    FindingSignal,
+    priority_rank,
+    recommend_for_component,
 )
 
 # Severity / license category buckets we always emit in the SCA-comment
@@ -77,6 +86,18 @@ from services.sca_comment import (
 # private symbol to keep the module boundary clean.
 _SEVERITY_KEYS = ("critical", "high", "medium", "low", "info", "none")
 _LICENSE_KEYS = ("forbidden", "conditional", "allowed", "unknown")
+
+# Cap on how many "upgrade to X" rows the PR comment surfaces (v2.2 2.2-a3) so
+# the comment stays scannable even for a large dependency tree. The highest-
+# priority (direct, high-severity, high-EPSS) upgrades win the slots.
+_MAX_COMMENT_RECOMMENDATIONS = 10
+# Cap on how many CVE ids we list per recommended upgrade row.
+_MAX_CVES_PER_RECOMMENDATION = 5
+
+# Finding statuses that are NOT open work — mirrors
+# services.policy_gate._CLOSED_FINDING_STATUSES so the comment's upgrade
+# recommendations reflect exactly the findings the gate still considers open.
+_CLOSED_FINDING_STATUSES = ("not_affected", "fixed", "false_positive")
 
 router = APIRouter(prefix="/v1", tags=["policy-gate"])
 log = structlog.get_logger("policy_gate.api")
@@ -238,6 +259,114 @@ def _resolve_github_token() -> str | None:
     return os.getenv("GITHUB_TOKEN") or os.getenv("TRUSTEDOSS_GITHUB_TOKEN")
 
 
+async def _build_recommended_upgrades(
+    session: AsyncSession,
+    *,
+    scan_id: uuid.UUID,
+) -> tuple[RecommendedUpgrade, ...]:
+    """Compute the scan's highest-priority "upgrade to X" rows (v2.2 2.2-a3).
+
+    One query pulls every open finding on the scan with its component identity
+    (name + current version), the per-finding ``fixed_version``, severity, EPSS,
+    and the ``direct`` graph signal. We group by ``component_version`` and run
+    the upgrade engine per component, keep only the components with an
+    actionable recommendation, sort by :func:`priority_rank` (direct → severity
+    → EPSS), and cap the list. Pure stored-data read — never touches DT.
+    """
+    rows = (
+        await session.execute(
+            select(
+                VulnerabilityFinding.component_version_id.label("cv_id"),
+                Component.name.label("component_name"),
+                ComponentVersion.version.label("current_version"),
+                VulnerabilityFinding.fixed_version.label("fixed_version"),
+                cast(VulnerabilityModel.severity, String).label("severity"),
+                VulnerabilityModel.epss_score.label("epss_score"),
+                VulnerabilityModel.external_id.label("cve_id"),
+                func.coalesce(ScanComponent.direct, False).label("direct"),
+                ScanComponent.depth.label("depth"),
+            )
+            .select_from(VulnerabilityFinding)
+            .join(
+                VulnerabilityModel,
+                VulnerabilityModel.id == VulnerabilityFinding.vulnerability_id,
+            )
+            .join(
+                ComponentVersion,
+                ComponentVersion.id == VulnerabilityFinding.component_version_id,
+            )
+            .join(Component, Component.id == ComponentVersion.component_id)
+            .outerjoin(
+                ScanComponent,
+                (ScanComponent.scan_id == VulnerabilityFinding.scan_id)
+                & (
+                    ScanComponent.component_version_id
+                    == VulnerabilityFinding.component_version_id
+                ),
+            )
+            .where(VulnerabilityFinding.scan_id == scan_id)
+            .where(
+                cast(VulnerabilityFinding.status, String).notin_(_CLOSED_FINDING_STATUSES)
+            )
+        )
+    ).all()
+
+    # Group by component_version. A diamond dep can produce multiple
+    # ScanComponent rows (different paths), so dedupe (cv_id, cve_id) for the
+    # signal list and OR the direct flag.
+    grouped: dict[uuid.UUID, dict[str, Any]] = {}
+    for row in rows:
+        bucket = grouped.setdefault(
+            row.cv_id,
+            {
+                "name": row.component_name,
+                "current_version": row.current_version,
+                "direct": False,
+                "min_depth": None,
+                "signals": {},  # cve_id -> FindingSignal
+            },
+        )
+        if bool(row.direct):
+            bucket["direct"] = True
+        if row.depth is not None:
+            prev = bucket["min_depth"]
+            bucket["min_depth"] = row.depth if prev is None else min(prev, row.depth)
+        bucket["signals"][row.cve_id] = FindingSignal(
+            fixed_version=row.fixed_version,
+            severity=str(row.severity),
+            epss_score=float(row.epss_score) if row.epss_score is not None else None,
+        )
+
+    scored: list[tuple[tuple[int, int, float], RecommendedUpgrade]] = []
+    for bucket in grouped.values():
+        signals = list(bucket["signals"].values())
+        is_direct = bool(bucket["direct"]) or (
+            bucket["min_depth"] is not None and int(bucket["min_depth"]) == 1
+        )
+        rec = recommend_for_component(signals, direct=is_direct)
+        if rec.recommended_version is None:
+            continue  # only surface actionable upgrades in the comment.
+        cve_ids = tuple(sorted(bucket["signals"].keys()))[:_MAX_CVES_PER_RECOMMENDATION]
+        scored.append(
+            (
+                priority_rank(rec),
+                RecommendedUpgrade(
+                    component_name=str(bucket["name"]),
+                    current_version=str(bucket["current_version"]),
+                    recommended_version=rec.recommended_version,
+                    max_severity=rec.max_severity or "unknown",
+                    direct=rec.direct,
+                    cve_ids=cve_ids,
+                ),
+            )
+        )
+
+    # Most urgent first; stable tie-break on component name keeps output
+    # deterministic across runs.
+    scored.sort(key=lambda item: (item[0], item[1].component_name), reverse=True)
+    return tuple(rec for _, rec in scored[:_MAX_COMMENT_RECOMMENDATIONS])
+
+
 async def _build_summary_for_scan(
     session: AsyncSession,
     *,
@@ -315,11 +444,18 @@ async def _build_summary_for_scan(
             if key in lic:
                 lic[key] = int(row.n)
 
+    recommended_upgrades: tuple[RecommendedUpgrade, ...] = ()
+    if scan_id is not None:
+        recommended_upgrades = await _build_recommended_upgrades(
+            session, scan_id=scan_id
+        )
+
     return CommentSummary(
         components_count=components_count,
         severity_distribution=sev,
         license_distribution=lic,
         project_url=_project_view_url(project_id),
+        recommended_upgrades=recommended_upgrades,
     )
 
 

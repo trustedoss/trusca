@@ -295,6 +295,14 @@
       "affected_heading": "Affected components ({{count}})",
       "affected_empty": "No affected components linked to this finding.",
       "affected_fixed_in": "Fixed in",
+      "upgrade_heading": "Recommended upgrade",
+      "upgrade_to": "Upgrade to",
+      "upgrade_direct": "Direct dependency",
+      "upgrade_max_severity": "Highest severity: {{severity}}",
+      "upgrade_reason": {
+        "no_fix_version": "No recommendation: at least one open CVE for this component has no known fix version.",
+        "unparseable_version": "No recommendation: the available fix versions could not be parsed."
+      },
       "analysis_heading": "Analysis",
       "justification_label": "Justification",
       "justification_placeholder": "Explain why this finding moves to its new status.",
