@@ -10,7 +10,7 @@
 
 > **Status:** Generally available — **v2.0.0** ([CHANGELOG](CHANGELOG.md)). See the published [documentation site](https://trustedoss.github.io/trustedoss-portal/) to get started, and [`ROADMAP.md`](ROADMAP.md) for what comes next.
 
-> **🔭 Live demo:** _coming soon_ — a public, **read-only** instance with a pre-seeded dataset (resets nightly). The URL will be published here once deployed. Read-only mode and the daily reset are documented in [Live demo](https://trustedoss.github.io/trustedoss-portal/docs/installation/live-demo).
+> **🔭 Live demo:** read-only demo mode (`DEMO_READ_ONLY`) and the nightly dataset reset are shipped (v2.1); a public hosted instance URL is published once the demo host is provisioned. Read-only mode and the daily reset are documented in [Live demo](https://trustedoss.github.io/trustedoss-portal/docs/installation/live-demo). You can also run a read-only demo locally — see the doc.
 
 > **v1 → v2 transition (2026-05-05):** `main` tracks the v2 rewrite. The previous v1 codebase is preserved on the [`legacy/v1`](https://github.com/trustedoss/trustedoss-portal/tree/legacy/v1) branch (read-only, not maintained). v2 is a clean re-implementation — there is no automatic data migration from v1.
 
@@ -38,17 +38,18 @@
 
 ## Feature highlights
 
-- Component detection across 30+ language ecosystems (cdxgen, CycloneDX generator)
+- Component detection across 30+ language ecosystems (cdxgen, CycloneDX generator), with direct vs. transitive dependency-graph depth
 - License classification with allowed / conditional / forbidden tiers — declared licenses from cdxgen, detected first-party licenses from scancode, scored against a fixed classification catalog (dynamic per-team policy editing is on the [roadmap](ROADMAP.md))
-- Vulnerability detection from NVD / OSV / GitHub Advisory (Dependency-Track) with a circuit breaker + PostgreSQL cache, 7-state VEX triage, and automatic re-detection of new CVEs
+- Vulnerability detection from NVD / OSV / GitHub Advisory (Dependency-Track) with a circuit breaker + PostgreSQL cache, 7-state VEX triage, EPSS prioritization (column / sort / filter / policy-gate threshold), per-finding `fixed_version`, and automatic re-detection of new CVEs
 - Container image scanning for OS-package CVEs (Trivy)
-- SBOM export — CycloneDX (JSON/XML) + SPDX (JSON/Tag-Value), byte-stable, plus VEX export
+- SBOM export — CycloneDX (JSON/XML) + SPDX (JSON/Tag-Value), byte-stable; VEX export **and** VEX consumption (import OpenVEX / CycloneDX VEX to auto-suppress findings)
 - Vulnerability report as PDF (`GET /v1/projects/{id}/vulnerability-report.pdf`) — Excel and compliance-PDF reports are on the [roadmap](ROADMAP.md)
 - Obligations tracking + auto-generated `NOTICE` files (text / markdown / HTML)
 - Component approval workflow (Pending → Under Review → Approved / Rejected)
-- Notifications: Email (SMTP), Slack, Microsoft Teams (inbox UI is functional; some producer emit-points land in v2.1)
+- Notifications: Email (SMTP), Slack, Microsoft Teams
 - Admin: user/team management, DT health monitoring + orphan cleanup, scan queue, disk dashboard, audit log
 - CI integrations: GitHub Action, GitLab CI template, Jenkinsfile example (Jenkins has no native plugin — the Jenkinsfile is a worked example)
+- Hosted OpenAPI reference on the docs site, a `/health/ready` schema-gated readiness probe, an evaluation Compose profile, a read-only live-demo mode, and a production-grade Helm chart
 
 ## Tech stack
 
@@ -79,7 +80,22 @@ docker-compose -f docker-compose.dev.yml up
 # → http://localhost:5173 (frontend) · http://localhost:8000/docs (API) · http://localhost:8080 (Dependency-Track)
 ```
 
-After roughly 30 seconds the dev containers (`postgres`, `redis`, `backend`, `celery-worker`, `frontend`) are healthy. For a production install, use the bundled `docker-compose.yml` (Traefik + Let's Encrypt) or the Helm chart under `charts/`. Step-by-step instructions are in the [installation guide](https://trustedoss.github.io/trustedoss-portal/docs/installation/docker-compose).
+After roughly 30 seconds the dev containers (`postgres`, `redis`, `backend`, `celery-worker`, `frontend`) are healthy.
+
+### Other ways to run it
+
+- **Evaluate on a small host** — one command brings the portal up on a 2 vCPU / 4 GB machine and seeds a realistic dataset (no Dependency-Track required):
+
+  ```bash
+  ./scripts/eval-up.sh        # add --no-prompt for CI / automation
+  ```
+
+  Details in the [evaluation section of the installation guide](https://trustedoss.github.io/trustedoss-portal/docs/installation/docker-compose).
+
+- **Production (Docker Compose)** — use the bundled `docker-compose.yml` (Traefik + Let's Encrypt). See the [installation guide](https://trustedoss.github.io/trustedoss-portal/docs/installation/docker-compose).
+- **Production (Kubernetes / Helm)** — the production-grade chart (`charts/trustedoss`, 0.2.0) ships bundled-or-external PostgreSQL & Redis, an Ingress with cert-manager TLS, and a migration Job. See the [Helm / Kubernetes guide](https://trustedoss.github.io/trustedoss-portal/docs/installation/helm).
+- **Read-only live demo** — run any deploy with `DEMO_READ_ONLY=true`. See [Live demo](https://trustedoss.github.io/trustedoss-portal/docs/installation/live-demo).
+- **API reference** — the hosted OpenAPI reference is at [`/reference/api`](https://trustedoss.github.io/trustedoss-portal/reference/api).
 
 ## Repository layout
 

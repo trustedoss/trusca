@@ -48,7 +48,7 @@ Full details in the [v2.0.0 release notes](./release-notes/v2.0.0.md).
 
 - **Not a SAST scanner.** No source-code analysis for custom code; the portal focuses on third-party components.
 - **Not a vulnerability database.** It consumes feeds (NVD, OSV, GitHub Advisory) via Dependency-Track but does not curate them.
-- **Not a hosted service** (yet). The primary distribution is a `docker-compose` install you run on your own infrastructure. A hosted demo is on the roadmap.
+- **Not a hosted service.** The primary distribution is a `docker-compose` install (or the Helm chart) you run on your own infrastructure. A public **read-only** live demo is supported — `DEMO_READ_ONLY` mode plus a nightly dataset reset shipped in v2.1; see [Live demo](./installation/live-demo.md).
 
 ## Architecture at a glance
 

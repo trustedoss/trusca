@@ -13,6 +13,7 @@ const sidebars: SidebarsConfig = {
       items: [
         "installation/docker-compose",
         "installation/upgrade",
+        "installation/helm",
         "installation/gcp-deploy",
         "installation/live-demo",
         "installation/uat-checklist",
