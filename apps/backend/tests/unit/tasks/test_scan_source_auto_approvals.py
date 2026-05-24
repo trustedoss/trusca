@@ -31,6 +31,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from models import (
+    AuditLog,
     Component,
     ComponentApproval,
     ComponentVersion,
@@ -43,7 +44,13 @@ from models import (
 )
 from models.component_approval import ApprovalStatus
 from services.component_approval_service import auto_create_pending_approvals
-from tasks.scan_source import _CATEGORY_RANK, _CONDITIONAL_RANK, _conditional_component_ids
+from tasks.scan_source import (
+    _AUTO_ENROL_AUDIT_ACTION,
+    _AUTO_ENROL_AUDIT_TARGET_TABLE,
+    _CATEGORY_RANK,
+    _CONDITIONAL_RANK,
+    _conditional_component_ids,
+)
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
@@ -226,6 +233,29 @@ def _open_approval_count(
     )
 
 
+def _auto_enrol_audit_rows(
+    session: Session, *, scan_id: uuid.UUID
+) -> list[AuditLog]:
+    """Return the auto-enrolment audit summary rows for this scan.
+
+    Matches on the action verb + scan_id inside the JSONB ``diff`` so a sibling
+    suite's rows on the shared DB never leak into the assertion.
+    """
+    session.expire_all()
+    rows = (
+        session.execute(
+            select(AuditLog).where(AuditLog.action == _AUTO_ENROL_AUDIT_ACTION)
+        )
+        .scalars()
+        .all()
+    )
+    return [
+        r
+        for r in rows
+        if isinstance(r.diff, dict) and r.diff.get("scan_id") == str(scan_id)
+    ]
+
+
 # ---------------------------------------------------------------------------
 # _conditional_component_ids — selection logic
 # ---------------------------------------------------------------------------
@@ -318,7 +348,8 @@ def test_creates_pending_with_null_actor(session: Session) -> None:
     )
     session.commit()
 
-    assert created == 1
+    # The function now returns the list of created component ids (RETURNING).
+    assert created == [comp_id]
     row = session.execute(
         select(ComponentApproval).where(
             ComponentApproval.component_id == comp_id,
@@ -351,7 +382,8 @@ def test_multiple_conditional_components_each_get_one(session: Session) -> None:
     )
     session.commit()
 
-    assert created == 3
+    assert len(created) == 3
+    assert set(created) == set(ids)
     for comp_id in ids:
         assert _open_approval_count(
             session, component_id=comp_id, project_id=project_id
@@ -386,8 +418,8 @@ def test_idempotent_double_call_no_duplicate(session: Session) -> None:
     )
     session.commit()
 
-    assert first == 1
-    assert second == 0  # preflight skip — nothing new created
+    assert first == [comp_id]
+    assert second == []  # ON CONFLICT skip — nothing new created
     assert _open_approval_count(
         session, component_id=comp_id, project_id=project_id
     ) == 1
@@ -424,7 +456,7 @@ def test_skips_when_under_review_already_open(session: Session) -> None:
     )
     session.commit()
 
-    assert created == 0
+    assert created == []
     assert _open_approval_count(
         session, component_id=comp_id, project_id=project_id
     ) == 1
@@ -448,30 +480,28 @@ def test_duplicate_ids_in_one_call_create_one(session: Session) -> None:
     )
     session.commit()
 
-    assert created == 1
+    assert created == [comp_id]
     assert _open_approval_count(
         session, component_id=comp_id, project_id=project_id
     ) == 1
 
 
-def test_integrity_error_race_caught_by_savepoint(
-    session: Session, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """TOCTOU race: a concurrent writer opens an approval *between* our preflight
-    and our flush. The preflight misses it, the partial unique index fires on
-    flush, and the per-row SAVEPOINT swallows the IntegrityError so the loop
-    continues. We simulate the missed preflight by forcing it to return no rows
-    while a real open approval exists in the DB.
+def test_concurrent_open_skipped_by_on_conflict(session: Session) -> None:
+    """Concurrent-writer race: another writer (the manual POST endpoint, or a
+    prior scan) has already committed an open approval for this (component,
+    project). The set-based ``INSERT ... ON CONFLICT DO NOTHING`` resolves the
+    conflict against the partial unique index atomically — the row is skipped,
+    RETURNING omits it, and ``created`` does NOT include the component. No
+    IntegrityError surfaces (the TOCTOU window the old per-row SAVEPOINT covered
+    is gone — ON CONFLICT closes it in a single statement).
     """
-    import services.component_approval_service as svc
-
     project_id, team_id = _seed_project(session)
     scan_id = _seed_scan(session, project_id)
     comp_id = _seed_component_with_licenses(
         session, scan_id=scan_id, licenses=[("MPL-2.0", "conditional")]
     )
-    # A real open approval already exists — the DB unique index will reject a
-    # second one on flush.
+    # A real open approval already exists — the partial unique index makes the
+    # batch INSERT skip this component via ON CONFLICT.
     session.add(
         ComponentApproval(
             component_id=comp_id,
@@ -484,20 +514,48 @@ def test_integrity_error_race_caught_by_savepoint(
     )
     session.commit()
 
-    # Blind the preflight: make its SELECT match an id that cannot exist, so the
-    # helper believes no open approval is present and proceeds to INSERT — which
-    # then trips the unique index on flush (the race we want to cover).
-    real_select = svc.select  # type: ignore[attr-defined]
-    state = {"first": True}
+    created = auto_create_pending_approvals(
+        session,
+        project_id=project_id,
+        team_id=team_id,
+        component_ids=[comp_id],
+        scan_id=scan_id,
+    )
+    session.commit()
 
-    def _blinded_select(*args, **kwargs):  # type: ignore[no-untyped-def]
-        stmt = real_select(*args, **kwargs)
-        if state["first"]:
-            state["first"] = False
-            return stmt.where(svc.ComponentApproval.id == uuid.uuid4())
-        return stmt
+    # The insert was skipped by ON CONFLICT: nothing new created, the original
+    # lone approval still stands, and no exception was raised.
+    assert created == []
+    assert _open_approval_count(
+        session, component_id=comp_id, project_id=project_id
+    ) == 1
 
-    monkeypatch.setattr(svc, "select", _blinded_select)
+
+def test_partial_index_predicate_lets_terminal_rows_coexist(session: Session) -> None:
+    """ON CONFLICT targets the PARTIAL index (status IN open set). A component
+    whose only existing approval is TERMINAL (approved/rejected) is NOT a
+    conflict — the index_where predicate excludes terminal rows — so a fresh
+    Pending approval is created. This pins that the ``index_where`` matches the
+    partial-index predicate (a missing/over-broad predicate would wrongly skip).
+    """
+    project_id, team_id = _seed_project(session)
+    scan_id = _seed_scan(session, project_id)
+    comp_id = _seed_component_with_licenses(
+        session, scan_id=scan_id, licenses=[("MPL-2.0", "conditional")]
+    )
+    # A *terminal* (rejected) approval exists — outside the partial index, so it
+    # must NOT block a new Pending approval.
+    session.add(
+        ComponentApproval(
+            component_id=comp_id,
+            project_id=project_id,
+            team_id=team_id,
+            requested_by_user_id=None,
+            status=ApprovalStatus.rejected,
+            version=3,
+        )
+    )
+    session.commit()
 
     created = auto_create_pending_approvals(
         session,
@@ -508,9 +566,8 @@ def test_integrity_error_race_caught_by_savepoint(
     )
     session.commit()
 
-    # The insert was rejected by the unique index and swallowed by the SAVEPOINT:
-    # nothing new created, the original lone approval still stands.
-    assert created == 0
+    assert created == [comp_id]
+    # Exactly one OPEN approval now (the new Pending); the rejected one is closed.
     assert _open_approval_count(
         session, component_id=comp_id, project_id=project_id
     ) == 1
@@ -586,13 +643,14 @@ def test_stage_swallows_errors(
     ss._auto_create_conditional_approvals(scan_uuid=scan_id, project_id=project_id)
 
 
-def test_savepoint_isolation_one_open_does_not_block_others(session: Session) -> None:
-    """One component already-open must not poison the inserts for the rest.
+def test_one_open_does_not_block_others_in_batch(session: Session) -> None:
+    """One already-open component must not block the inserts for the rest.
 
     We seed two conditional components, pre-open an approval for the first, then
-    call the helper with BOTH ids. The first is skipped (preflight), the second
-    still inserts — and crucially a stale preflight (TOCTOU) would still be
-    caught by the per-row SAVEPOINT, so the loop never aborts midway.
+    call the helper with BOTH ids in one batch. The set-based ON CONFLICT skips
+    the already-open component (it stays at one approval) while the fresh one is
+    inserted in the same statement — partial conflicts in a multi-row INSERT do
+    not abort the rows that don't conflict.
     """
     project_id, team_id = _seed_project(session)
     scan_id = _seed_scan(session, project_id)
@@ -623,10 +681,132 @@ def test_savepoint_isolation_one_open_does_not_block_others(session: Session) ->
     )
     session.commit()
 
-    assert created == 1
+    # Only the fresh component is newly created; the already-open one is skipped.
+    assert created == [comp_fresh]
     assert _open_approval_count(
         session, component_id=comp_open, project_id=project_id
     ) == 1
     assert _open_approval_count(
         session, component_id=comp_fresh, project_id=project_id
     ) == 1
+
+
+# ---------------------------------------------------------------------------
+# QA follow-up Medium — auto-enrolment audit summary row
+# ---------------------------------------------------------------------------
+
+
+def test_audit_summary_written_for_conditional_scan(session: Session) -> None:
+    """A scan that enrols 2 conditional components writes exactly ONE summary
+    ``audit_logs`` row: action ``approvals.auto_enrolled``, system actor (NULL),
+    team_id = project's team, target_table 'component_approvals', target_id NULL,
+    and a diff whose ``created_count`` is exact and ``component_ids`` lists both.
+    """
+    from tasks.scan_source import _auto_create_conditional_approvals
+
+    project_id, team_id = _seed_project(session)
+    scan_id = _seed_scan(session, project_id)
+    cond_a = _seed_component_with_licenses(
+        session, scan_id=scan_id, licenses=[("LGPL-3.0-only", "conditional")]
+    )
+    cond_b = _seed_component_with_licenses(
+        session, scan_id=scan_id, licenses=[("MPL-2.0", "conditional")]
+    )
+    # An allowed component must not be enrolled (so created_count == 2, not 3).
+    _seed_component_with_licenses(
+        session, scan_id=scan_id, licenses=[("MIT", "allowed")]
+    )
+    session.commit()
+
+    _auto_create_conditional_approvals(scan_uuid=scan_id, project_id=project_id)
+
+    rows = _auto_enrol_audit_rows(session, scan_id=scan_id)
+    assert len(rows) == 1, "exactly one summary audit row per scan"
+    row = rows[0]
+    assert row.actor_user_id is None  # system context
+    assert row.team_id == team_id
+    assert row.target_table == _AUTO_ENROL_AUDIT_TARGET_TABLE
+    assert row.target_id is None  # summary spans many approvals
+    assert isinstance(row.diff, dict)
+    assert row.diff["created_count"] == 2
+    assert row.diff["project_id"] == str(project_id)
+    assert set(row.diff["component_ids"]) == {str(cond_a), str(cond_b)}
+    assert row.diff["component_ids_truncated"] is False
+
+
+def test_no_audit_row_for_non_conditional_scan(session: Session) -> None:
+    """A scan with only allowed-license components creates 0 approvals and writes
+    NO audit summary row (created == 0 → no row, to keep audit_logs lean).
+    """
+    from tasks.scan_source import _auto_create_conditional_approvals
+
+    project_id, _team_id = _seed_project(session)
+    scan_id = _seed_scan(session, project_id)
+    _seed_component_with_licenses(
+        session, scan_id=scan_id, licenses=[("MIT", "allowed")]
+    )
+    session.commit()
+
+    _auto_create_conditional_approvals(scan_uuid=scan_id, project_id=project_id)
+
+    assert _auto_enrol_audit_rows(session, scan_id=scan_id) == []
+
+
+def test_no_audit_row_on_idempotent_rerun(session: Session) -> None:
+    """The first run writes one summary row (created == 1). A re-run that
+    re-discovers the same conditional component creates 0 new approvals, so it
+    writes NO additional audit row — the count of summary rows stays at one.
+    """
+    from tasks.scan_source import _auto_create_conditional_approvals
+
+    project_id, _team_id = _seed_project(session)
+    scan_id = _seed_scan(session, project_id)
+    _seed_component_with_licenses(
+        session, scan_id=scan_id, licenses=[("EPL-2.0", "conditional")]
+    )
+    session.commit()
+
+    _auto_create_conditional_approvals(scan_uuid=scan_id, project_id=project_id)
+    assert len(_auto_enrol_audit_rows(session, scan_id=scan_id)) == 1
+
+    # Re-run: same findings, the open approval already exists → created == 0.
+    _auto_create_conditional_approvals(scan_uuid=scan_id, project_id=project_id)
+    assert len(_auto_enrol_audit_rows(session, scan_id=scan_id)) == 1
+
+
+def test_audit_diff_truncates_component_ids_over_cap(session: Session) -> None:
+    """When the created set exceeds ``_AUDIT_COMPONENT_IDS_CAP`` the diff stores
+    a capped ``component_ids`` list plus ``component_ids_truncated=True`` while
+    ``created_count`` remains exact. Exercises the cap branch without seeding
+    50+ rows by patching the cap down to 1.
+    """
+    import tasks.scan_source as ss
+    from tasks.scan_source import _auto_create_conditional_approvals
+
+    project_id, _team_id = _seed_project(session)
+    scan_id = _seed_scan(session, project_id)
+    _seed_component_with_licenses(
+        session, scan_id=scan_id, licenses=[("MPL-2.0", "conditional")]
+    )
+    _seed_component_with_licenses(
+        session, scan_id=scan_id, licenses=[("EPL-2.0", "conditional")]
+    )
+    session.commit()
+
+    # Shrink the cap to 1 so 2 created ids trip the truncation branch.
+    import pytest as _pytest  # local alias avoids shadowing the module-level mark
+
+    mp = _pytest.MonkeyPatch()
+    mp.setattr(ss, "_AUDIT_COMPONENT_IDS_CAP", 1)
+    try:
+        _auto_create_conditional_approvals(scan_uuid=scan_id, project_id=project_id)
+    finally:
+        mp.undo()
+
+    rows = _auto_enrol_audit_rows(session, scan_id=scan_id)
+    assert len(rows) == 1
+    diff = rows[0].diff
+    assert isinstance(diff, dict)
+    assert diff["created_count"] == 2  # exact, not capped
+    assert len(diff["component_ids"]) == 1  # capped
+    assert diff["component_ids_truncated"] is True
