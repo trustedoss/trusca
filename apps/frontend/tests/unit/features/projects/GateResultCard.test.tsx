@@ -81,10 +81,12 @@ describe("GateResultCard", () => {
     );
   });
 
-  it("renders the fail badge with the reason and non-zero counts", async () => {
+  it("composes a localized fail reason from the counts, ignoring the backend reason (BUG-002)", async () => {
     mockedGet.mockResolvedValueOnce(
       gate({
         gate: "fail",
+        // The backend's English `reason` must NOT be rendered — the card
+        // composes a localized reason from the structured counts instead.
         reason: "1 critical CVE and 2 forbidden licenses block this build.",
         critical_cve_count: 1,
         forbidden_license_count: 2,
@@ -97,9 +99,15 @@ describe("GateResultCard", () => {
     expect(screen.getByTestId("gate-card")).toHaveAttribute("data-gate", "fail");
     expect(screen.getByTestId("gate-badge-fail")).toBeInTheDocument();
     expect(screen.getByTestId("gate-badge-fail").textContent).toMatch(/fail/i);
-    expect(screen.getByTestId("gate-reason").textContent).toContain(
-      "block this build",
-    );
+
+    const reason = screen.getByTestId("gate-reason");
+    // The backend's raw English sentence is gone.
+    expect(reason.textContent).not.toContain("block this build");
+    // Two positive counts → two composed clauses (EN pluralized).
+    expect(reason).toHaveAttribute("data-reason-clauses", "2");
+    expect(reason.textContent).toContain("1 open critical CVE");
+    expect(reason.textContent).toContain("2 forbidden licenses");
+
     expect(screen.getByTestId("gate-metric-critical")).toHaveAttribute(
       "data-value",
       "1",
@@ -108,6 +116,48 @@ describe("GateResultCard", () => {
       "data-value",
       "2",
     );
+  });
+
+  it("falls back to a generic localized reason when no count is positive (BUG-002)", async () => {
+    // Forward-compat: a fail with zero modeled counts (e.g. a new gate axis)
+    // still renders a localized fallback, not blank.
+    mockedGet.mockResolvedValueOnce(
+      gate({
+        gate: "fail",
+        reason: "Some new gate axis blocked the build.",
+        critical_cve_count: 0,
+        forbidden_license_count: 0,
+        epss_gate_count: 0,
+      }),
+    );
+    renderCard();
+    await waitFor(() => {
+      expect(screen.getByTestId("gate-reason")).toBeInTheDocument();
+    });
+    const reason = screen.getByTestId("gate-reason");
+    expect(reason).toHaveAttribute("data-reason-clauses", "0");
+    expect(reason.textContent).not.toContain("Some new gate axis");
+    expect(reason.textContent).toContain("The build gate failed");
+  });
+
+  it("composes an EPSS clause when the EPSS gate trips (BUG-002)", async () => {
+    mockedGet.mockResolvedValueOnce(
+      gate({
+        gate: "fail",
+        critical_cve_count: 0,
+        forbidden_license_count: 0,
+        epss_threshold: 0.5,
+        epss_gate_count: 3,
+      }),
+    );
+    renderCard();
+    await waitFor(() => {
+      expect(screen.getByTestId("gate-reason")).toBeInTheDocument();
+    });
+    const reason = screen.getByTestId("gate-reason");
+    expect(reason).toHaveAttribute("data-reason-clauses", "1");
+    expect(reason.textContent).toContain("EPSS");
+    expect(reason.textContent).toContain("0.5");
   });
 
   it("hides the EPSS metric when the gate is disabled and shows it when enabled", async () => {
@@ -146,7 +196,7 @@ describe("GateResultCard", () => {
     expect(screen.queryByTestId("gate-badge-fail")).not.toBeInTheDocument();
   });
 
-  it("renders an RFC 7807 problem error", async () => {
+  it("renders a localized error for a 403, not the backend English detail (BUG-002)", async () => {
     mockedGet.mockRejectedValueOnce(
       new ProblemError("forbidden", {
         status: 403,
@@ -159,11 +209,34 @@ describe("GateResultCard", () => {
     await waitFor(() => {
       expect(screen.getByTestId("gate-card-error")).toBeInTheDocument();
     });
+    // The backend's English detail must NOT leak through.
+    expect(screen.getByTestId("gate-card-error").textContent).not.toContain(
+      "You cannot view this project.",
+    );
+    // Localized 403 message (EN locale resolves the `forbidden` key).
     expect(screen.getByTestId("gate-card-error").textContent).toContain(
-      "Forbidden",
+      "do not have permission",
+    );
+  });
+
+  it("renders a localized error for a 404 (BUG-002)", async () => {
+    mockedGet.mockRejectedValueOnce(
+      new ProblemError("not found", {
+        status: 404,
+        title: "Project Not Found",
+        detail: "project abc not found",
+        problem: null,
+      }),
+    );
+    renderCard();
+    await waitFor(() => {
+      expect(screen.getByTestId("gate-card-error")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("gate-card-error").textContent).not.toContain(
+      "project abc not found",
     );
     expect(screen.getByTestId("gate-card-error").textContent).toContain(
-      "You cannot view this project.",
+      "no longer exists",
     );
   });
 });

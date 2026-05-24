@@ -13,6 +13,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ScanProgress } from "@/features/scan/ScanProgress";
 import { useAuthStore } from "@/stores/authStore";
 
+// BUG-007: ScanProgress refetches the scan status (`getScan`) after a
+// non-terminal socket close to detect a cancellation the backend never
+// published over WS. Mock the wire call so tests can drive that path.
+vi.mock("@/lib/projectsApi", async () => {
+  const actual =
+    await vi.importActual<typeof import("@/lib/projectsApi")>(
+      "@/lib/projectsApi",
+    );
+  return { ...actual, getScan: vi.fn() };
+});
+
+import { getScan } from "@/lib/projectsApi";
+
+const mockedGetScan = vi.mocked(getScan);
+
 /**
  * ScanProgress now renders `ScanCancelButton` (PR-A3) for in-progress scans,
  * which calls `useQueryClient`. Wrap every render in a provider so the cancel
@@ -66,6 +81,7 @@ const factory = (url: string) => new FakeSocket(url) as unknown as WebSocket;
 describe("ScanProgress", () => {
   beforeEach(() => {
     FakeSocket.instances = [];
+    mockedGetScan.mockReset();
     useAuthStore.setState({
       user: null,
       accessToken: "tok-progress",
@@ -199,6 +215,86 @@ describe("ScanProgress", () => {
     );
     await waitFor(() => {
       expect(screen.queryByTestId("scan-cancel-button")).not.toBeInTheDocument();
+    });
+  });
+
+  // ---- BUG-007: cancelled-state handling ---------------------------------
+
+  it("renders the cancelled terminal state on a cancelled WS frame (BUG-007)", async () => {
+    renderProgress(<ScanProgress scanId="scan-1" socketFactory={factory} />);
+    act(() => FakeSocket.instances[0].__open());
+    act(() =>
+      FakeSocket.instances[0].__message({
+        percent: 90,
+        step: "cancelled",
+        ts: "2026-05-24T12:00:00.000Z",
+      }),
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("scan-progress-cancelled")).toBeInTheDocument();
+    });
+    // Title flips to the cancelled label, the bar carries the cancelled marker,
+    // and the "continues in the background" notice is gone.
+    expect(screen.getByText(/Scan cancelled/i)).toBeInTheDocument();
+    expect(screen.getByTestId("scan-progress-bar")).toHaveAttribute(
+      "data-cancelled",
+      "true",
+    );
+  });
+
+  it("renders the cancelled state when the parent passes status='cancelled' (BUG-007)", () => {
+    // The cancel button confirmed and the parent flipped status to cancelled
+    // before any WS frame; the panel must reflect that immediately.
+    renderProgress(
+      <ScanProgress
+        scanId="scan-1"
+        socketFactory={factory}
+        status="cancelled"
+      />,
+    );
+    expect(screen.getByTestId("scan-progress-cancelled")).toBeInTheDocument();
+    // Cancel affordance must not be offered for a cancelled scan.
+    expect(screen.queryByTestId("scan-cancel-button")).not.toBeInTheDocument();
+  });
+
+  it("refetches the scan status on a non-terminal close and reflects cancelled (BUG-007)", async () => {
+    // Backend cancel path closes the socket WITHOUT a `cancelled` frame; the
+    // fallback refetch resolves to status='cancelled' and the panel updates.
+    mockedGetScan.mockResolvedValueOnce({
+      id: "scan-1",
+      project_id: "p1",
+      kind: "source",
+      status: "cancelled",
+      progress_percent: 90,
+      current_step: "dt_findings",
+      started_at: null,
+      completed_at: null,
+      error_message: "Cancelled by user",
+      requested_by_user_id: null,
+      celery_task_id: null,
+      metadata: {},
+      created_at: "2026-05-24T12:00:00.000Z",
+      updated_at: "2026-05-24T12:00:05.000Z",
+    });
+    renderProgress(
+      <ScanProgress scanId="scan-1" socketFactory={factory} status="running" />,
+    );
+    act(() => FakeSocket.instances[0].__open());
+    act(() =>
+      FakeSocket.instances[0].__message({
+        percent: 90,
+        step: "dt_findings",
+        ts: "2026-05-24T12:00:00.000Z",
+      }),
+    );
+    // Stream drops without a terminal frame (server-side cancel).
+    act(() => FakeSocket.instances[0].close(1011, "internal"));
+
+    await waitFor(() => {
+      expect(mockedGetScan).toHaveBeenCalledWith("scan-1");
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("scan-progress-cancelled")).toBeInTheDocument();
     });
   });
 });

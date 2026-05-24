@@ -47,6 +47,8 @@
     "step_finalize": "Finalizing",
     "step_succeeded": "Scan completed",
     "step_failed": "Scan failed",
+    "step_cancelled": "Scan cancelled",
+    "cancelled_notice": "This scan was cancelled. Any in-progress work has been stopped.",
     "step_unknown": "Working…",
     "reconnecting": "Reconnecting…",
     "reconnect_attempt": "Attempt {{n}}",

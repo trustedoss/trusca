@@ -4,7 +4,12 @@
     "breadcrumb_projects": "Projects",
     "loading_name": "Loading…",
     "load_error": "Could not load project.",
-    "missing_id": "No project id was provided in the URL."
+    "missing_id": "No project id was provided in the URL.",
+    "errors": {
+      "not_found": "Project not found.",
+      "forbidden": "You do not have permission to view this project.",
+      "unknown": "Could not load this project. Please try again."
+    }
   },
   "tabs": {
     "overview": "Overview",
@@ -92,7 +97,22 @@
       "forbidden_licenses": "Forbidden licenses",
       "epss_findings": "EPSS ≥ {{threshold}}",
       "error_title": "Could not load the build gate",
-      "error_detail": "Please try again."
+      "error_detail": "Please try again.",
+      "reason": {
+        "intro": "This build is blocked because:",
+        "critical_cve_one": "{{count}} open critical CVE",
+        "critical_cve_other": "{{count}} open critical CVEs",
+        "forbidden_license_one": "{{count}} forbidden license",
+        "forbidden_license_other": "{{count}} forbidden licenses",
+        "epss_one": "{{count}} finding with EPSS ≥ {{threshold}}",
+        "epss_other": "{{count}} findings with EPSS ≥ {{threshold}}",
+        "fallback": "The build gate failed. See the metrics below for details."
+      },
+      "errors": {
+        "not_found": "This project no longer exists or you no longer have access to it.",
+        "forbidden": "You do not have permission to view this project's build gate.",
+        "unknown": "Could not load the build gate. Please try again."
+      }
     },
     "errors": {
       "title": "Could not load overview.",

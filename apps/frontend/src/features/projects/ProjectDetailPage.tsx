@@ -20,7 +20,7 @@ import { SbomTab } from "@/features/projects/components/SbomTab";
 import { SettingsTab } from "@/features/projects/components/SettingsTab";
 import { SourceTab } from "@/features/projects/components/SourceTab";
 import { VulnerabilitiesTab } from "@/features/projects/components/VulnerabilitiesTab";
-import { ProblemError } from "@/lib/problem";
+import { projectErrorMessageKey } from "@/features/projects/lib/projectErrorMessage";
 import { getProject } from "@/lib/projectsApi";
 import { cn } from "@/lib/utils";
 
@@ -308,9 +308,12 @@ function ProjectDetailHeader({
             className="text-base font-semibold text-destructive"
             data-testid="project-detail-load-error"
           >
-            {projectError instanceof ProblemError
-              ? projectError.title
-              : t("page.load_error")}
+            {/* BUG-002: localize the RFC 7807 problem (404/403) instead of
+                rendering the backend's English `title` (e.g. "Project Not
+                Found") so the KO locale shows Korean. */}
+            {t(projectErrorMessageKey(projectError, "page.errors"), {
+              defaultValue: t("page.load_error"),
+            })}
           </span>
         ) : (
           <h1

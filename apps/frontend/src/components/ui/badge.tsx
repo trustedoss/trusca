@@ -22,8 +22,14 @@ const badgeVariants = cva(
         outline: "text-foreground",
         destructive:
           "border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80",
+        // BUG-001 (a11y): the previous `text-muted-foreground` on `bg-muted`
+        // measured 4.34:1 — below WCAG AA (4.5:1) — and axe flagged the
+        // "new"/"suppressed" status badges. Scoping a darker subtle slate to
+        // THIS variant only (not the global `--muted-foreground` token) keeps
+        // the badge visually subtle while clearing AA (6.9:1 light / 9.8:1
+        // dark) without regressing every other muted-foreground surface.
         muted:
-          "border-transparent bg-muted text-muted-foreground hover:bg-muted/80",
+          "border-transparent bg-muted text-slate-600 hover:bg-muted/80 dark:text-slate-300",
       },
       tone: {
         none: "",

@@ -4,7 +4,12 @@
     "breadcrumb_projects": "프로젝트",
     "loading_name": "불러오는 중…",
     "load_error": "프로젝트를 불러오지 못했습니다.",
-    "missing_id": "URL에 프로젝트 ID가 없습니다."
+    "missing_id": "URL에 프로젝트 ID가 없습니다.",
+    "errors": {
+      "not_found": "프로젝트를 찾을 수 없습니다.",
+      "forbidden": "이 프로젝트를 볼 권한이 없습니다.",
+      "unknown": "이 프로젝트를 불러오지 못했습니다. 다시 시도해 주세요."
+    }
   },
   "tabs": {
     "overview": "개요",
@@ -92,7 +97,19 @@
       "forbidden_licenses": "금지 라이선스",
       "epss_findings": "EPSS ≥ {{threshold}}",
       "error_title": "빌드 차단 게이트를 불러오지 못했습니다",
-      "error_detail": "다시 시도해 주세요."
+      "error_detail": "다시 시도해 주세요.",
+      "reason": {
+        "intro": "다음 사유로 이 빌드가 차단되었습니다:",
+        "critical_cve_other": "미해결 Critical CVE {{count}}건",
+        "forbidden_license_other": "금지 라이선스 {{count}}건",
+        "epss_other": "EPSS ≥ {{threshold}} 취약점 {{count}}건",
+        "fallback": "빌드 차단 게이트가 실패했습니다. 자세한 내용은 아래 지표를 확인하세요."
+      },
+      "errors": {
+        "not_found": "이 프로젝트가 더 이상 존재하지 않거나 접근 권한이 없습니다.",
+        "forbidden": "이 프로젝트의 빌드 차단 게이트를 볼 권한이 없습니다.",
+        "unknown": "빌드 차단 게이트를 불러오지 못했습니다. 다시 시도해 주세요."
+      }
     },
     "errors": {
       "title": "개요를 불러오지 못했습니다.",

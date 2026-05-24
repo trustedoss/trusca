@@ -10,8 +10,8 @@
  *      from the auth store at send time, never cached).
  *   3. Server emits initial sync frame → state="open" → onmessage drives
  *      `lastMessage` updates.
- *   4. Terminal step (succeeded / failed) → close 1000 ourselves and stay
- *      in state="closed" with `isTerminal=true`. No reconnect.
+ *   4. Terminal step (succeeded / failed / cancelled) → close 1000 ourselves
+ *      and stay in state="closed" with `isTerminal=true`. No reconnect.
  *
  * Reconnect policy (close codes — see ws.py):
  *   - 1000 (normal) / 1001 (newer_connection) → no reconnect.
@@ -42,6 +42,12 @@ export type ScanStep =
   | "finalize"
   | "succeeded"
   | "failed"
+  // BUG-007: a user/admin cancellation is a terminal disposition too. The
+  // backend cancel path may not publish a `cancelled` progress frame today
+  // (it mutates the DB row + revokes Celery), but if it ever does, the hook
+  // must treat it as terminal so the drawer stops at the cancelled state
+  // instead of leaving the bar stuck near completion.
+  | "cancelled"
   // The publisher may emit other strings if the pipeline grows; keeping
   // the type open at the boundary keeps callers honest.
   | (string & {});
@@ -66,7 +72,10 @@ export interface UseScanWebSocketResult {
   closeCode: number | null;
   closeReason: string | null;
   reconnectAttempt: number;
-  /** True once the latest frame's step is a terminal value (succeeded/failed). */
+  /**
+   * True once the latest frame's step is a terminal value
+   * (succeeded / failed / cancelled).
+   */
   isTerminal: boolean;
 }
 
@@ -87,6 +96,16 @@ interface UseScanWebSocketOptions {
    * Override the dispatcher for `auth:expired`. Tests use this to assert.
    */
   onAuthExpired?: () => void;
+  /**
+   * BUG-007 fallback — invoked when the socket closes WITHOUT having reached a
+   * terminal step (succeeded / failed / cancelled) and the close is not an
+   * auth bounce. The backend cancel path closes the stream without publishing
+   * a `cancelled` frame, so the drawer uses this hook to refetch the scan
+   * status once and reflect the real disposition (e.g. cancelled). `code`
+   * carries the WebSocket close code so callers can ignore expected codes if
+   * they want to.
+   */
+  onNonTerminalClose?: (code: number) => void;
 }
 
 // Reconnect schedule (ms). The 5th and beyond cap at 30s.
@@ -95,7 +114,13 @@ const RECONNECT_BACKOFF_MS = [1_000, 2_000, 4_000, 8_000, 30_000];
 // the user is almost certainly offline.
 const RECONNECT_BUDGET_MS = 5 * 60_000;
 
-const TERMINAL_STEPS: ReadonlySet<string> = new Set(["succeeded", "failed"]);
+const TERMINAL_STEPS: ReadonlySet<string> = new Set([
+  "succeeded",
+  "failed",
+  // BUG-007: cancellation is terminal — the drawer must recognise it so the
+  // progress bar stops and the close handler skips reconnect.
+  "cancelled",
+]);
 
 const NO_RECONNECT_CODES: ReadonlySet<number> = new Set([
   1000, 1001, 1008, 4400, 4403, 4404,
@@ -114,7 +139,13 @@ export function useScanWebSocket(
   scanId: string | null,
   opts: UseScanWebSocketOptions = {},
 ): UseScanWebSocketResult {
-  const { enabled = true, socketFactory, urlBuilder, onAuthExpired } = opts;
+  const {
+    enabled = true,
+    socketFactory,
+    urlBuilder,
+    onAuthExpired,
+    onNonTerminalClose,
+  } = opts;
 
   const [state, setState] = useState<ScanWebSocketState>("idle");
   const [lastMessage, setLastMessage] = useState<ScanProgressMessage | null>(
@@ -138,6 +169,12 @@ export function useScanWebSocket(
   // must read the freshest value synchronously without re-running the
   // effect.
   const lastAttemptRef = useRef(0);
+
+  // Keep the latest `onNonTerminalClose` in a ref so the close handler (which
+  // is created once per effect run, keyed on scanId/enabled) always calls the
+  // freshest callback without re-opening the socket.
+  const onNonTerminalCloseRef = useRef(onNonTerminalClose);
+  onNonTerminalCloseRef.current = onNonTerminalClose;
 
   useEffect(() => {
     cancelledRef.current = false;
@@ -167,6 +204,11 @@ export function useScanWebSocket(
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("auth:expired"));
       }
+    }
+
+    function notifyNonTerminalClose(code: number) {
+      const cb = onNonTerminalCloseRef.current;
+      if (cb) cb(code);
     }
 
     function open(attempt: number) {
@@ -300,7 +342,8 @@ export function useScanWebSocket(
           return;
         }
 
-        // 1008 → auth: bounce to login, no reconnect.
+        // 1008 → auth: bounce to login, no reconnect. NOT a candidate for the
+        // BUG-007 status refetch — the session is gone, a refetch would 401.
         if (event.code === 1008) {
           setState("closed");
           dispatchAuthExpired();
@@ -315,11 +358,19 @@ export function useScanWebSocket(
               event.reason,
             );
           }
+          // BUG-007: the stream ended without a terminal frame and we will
+          // NOT reconnect — refetch the scan status so a cancellation that the
+          // backend never published over WS still surfaces in the drawer.
+          notifyNonTerminalClose(event.code);
           return;
         }
 
-        // Everything else (1011, 1006 transport, 0) → reconnect.
+        // Everything else (1011, 1006 transport, 0) → reconnect. We still
+        // signal a non-terminal close so the drawer can refetch the scan
+        // status — a cancellation revokes the worker, which can drop the
+        // socket with 1011/1006 and never sends a `cancelled` frame.
         setState("closed");
+        notifyNonTerminalClose(event.code);
         scheduleReconnect(attempt);
       };
     }

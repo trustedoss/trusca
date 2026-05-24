@@ -36,6 +36,15 @@ export type LicenseCategoryName =
   | "allowed"
   | "unknown";
 
+/**
+ * The requesting user's effective role *within this project's owning team*.
+ * NOT the global JWT role (which only yields `super_admin`/`developer`): a
+ * membership-based `team_admin` of this project's team must see `team_admin`
+ * here so the frontend can gate team-scoped actions like vulnerability
+ * suppression (BUG-005). Mirrors `schemas/project_detail.py::TeamScopedRole`.
+ */
+export type TeamScopedRole = "super_admin" | "team_admin" | "developer";
+
 export interface ScanSummary {
   id: string;
   kind: string;
@@ -57,6 +66,12 @@ export interface ProjectOverviewResponse {
   risk_score: number;
   recent_scans: ScanSummary[];
   last_scan_at: string | null;
+  /**
+   * The requesting user's effective role within this project's owning team.
+   * Used (not the global JWT role) to gate team-scoped actions such as
+   * vulnerability suppression (BUG-005).
+   */
+  current_user_role: TeamScopedRole;
 }
 
 export interface ComponentSummary {

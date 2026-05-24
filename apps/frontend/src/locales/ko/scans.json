@@ -47,6 +47,8 @@
     "step_finalize": "마무리 중",
     "step_succeeded": "스캔 완료",
     "step_failed": "스캔 실패",
+    "step_cancelled": "스캔 취소됨",
+    "cancelled_notice": "이 스캔은 취소되었습니다. 진행 중이던 작업은 중단되었습니다.",
     "step_unknown": "작업 중…",
     "reconnecting": "재연결 중…",
     "reconnect_attempt": "{{n}}번째 시도",

@@ -12,7 +12,8 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useGateResult } from "@/features/projects/api/useGateResult";
-import { ProblemError } from "@/lib/problem";
+import { projectErrorMessageKey } from "@/features/projects/lib/projectErrorMessage";
+import type { GateResultResponse } from "@/features/projects/api/projectDetailApi";
 import { cn } from "@/lib/utils";
 
 /**
@@ -66,19 +67,17 @@ export function GateResultCard({ projectId }: GateResultCardProps) {
   }
 
   if (query.isError) {
-    const err = query.error;
-    const title =
-      err instanceof ProblemError
-        ? err.title
-        : t("overview.gate_card.error_title", {
-            defaultValue: "Could not load the build gate",
-          });
-    const detail =
-      err instanceof ProblemError && err.detail
-        ? err.detail
-        : t("overview.gate_card.error_detail", {
-            defaultValue: "Please try again.",
-          });
+    // BUG-002: map the RFC 7807 problem to a localized key instead of
+    // rendering the backend's English `title`/`detail` (which leaked into the
+    // KO locale). The structured count-based reason below covers the success
+    // path; this covers the load-failure path.
+    const title = t("overview.gate_card.error_title", {
+      defaultValue: "Could not load the build gate",
+    });
+    const detail = t(
+      projectErrorMessageKey(query.error, "overview.gate_card.errors"),
+      { defaultValue: "Please try again." },
+    );
     return (
       <Card data-testid="gate-card-error-wrap">
         <CardHeader>
@@ -163,14 +162,8 @@ export function GateResultCard({ projectId }: GateResultCardProps) {
           </p>
         ) : (
           <>
-            {!passed && data.reason ? (
-              <p
-                className="text-sm font-medium text-risk-critical"
-                data-testid="gate-reason"
-                aria-live="polite"
-              >
-                {data.reason}
-              </p>
+            {!passed ? (
+              <GateFailReason data={data} />
             ) : null}
             {passed ? (
               <p
@@ -217,6 +210,66 @@ export function GateResultCard({ projectId }: GateResultCardProps) {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * GateFailReason — BUG-002.
+ *
+ * Composes a localized failure reason from the gate's structured counts
+ * instead of rendering the backend's English `data.reason`. Each count > 0
+ * contributes one ICU-pluralized clause (so KO renders Korean and EN renders
+ * English). When no count is positive (e.g. a forward-compat fail reason the
+ * frontend doesn't model yet) we fall back to a generic localized message and
+ * still surface the metric grid below.
+ */
+function GateFailReason({ data }: { data: GateResultResponse }) {
+  const { t } = useTranslation("project_detail");
+
+  const clauses: string[] = [];
+  if (data.critical_cve_count > 0) {
+    clauses.push(
+      t("overview.gate_card.reason.critical_cve", {
+        count: data.critical_cve_count,
+      }),
+    );
+  }
+  if (data.forbidden_license_count > 0) {
+    clauses.push(
+      t("overview.gate_card.reason.forbidden_license", {
+        count: data.forbidden_license_count,
+      }),
+    );
+  }
+  if (data.epss_threshold != null && data.epss_gate_count > 0) {
+    clauses.push(
+      t("overview.gate_card.reason.epss", {
+        count: data.epss_gate_count,
+        threshold: data.epss_threshold,
+      }),
+    );
+  }
+
+  return (
+    <div
+      className="text-sm font-medium text-risk-critical"
+      data-testid="gate-reason"
+      data-reason-clauses={clauses.length}
+      aria-live="polite"
+    >
+      {clauses.length > 0 ? (
+        <>
+          <p>{t("overview.gate_card.reason.intro")}</p>
+          <ul className="ml-4 list-disc">
+            {clauses.map((clause, idx) => (
+              <li key={idx}>{clause}</li>
+            ))}
+          </ul>
+        </>
+      ) : (
+        <p>{t("overview.gate_card.reason.fallback")}</p>
+      )}
+    </div>
   );
 }
 
