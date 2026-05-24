@@ -69,7 +69,7 @@ sidebar_position: 4
 
 - **요약 (Summary)** — 제목, 설명, CWE, CVSS 벡터, 그리고 Dependency-Track이 제공할 때의 **EPSS score와 percentile**(미제공 시 `—`). [EPSS — 악용 확률](#epss--악용-확률) 참고.
 - **참고 자료 (References)** — 벤더 권고, 수정 커밋, 익스플로잇 데이터베이스.
-- **영향 (Affected)** — 상위에서 보고한 영향 범위와 본 프로젝트 컴포넌트 버전 강조, 그리고 `fixed_version`(수정이 포함된 상위 버전, 가용 시).
+- **영향 (Affected)** — 상위에서 보고한 영향 범위와 본 프로젝트 컴포넌트 버전 강조, 그리고 **수정 버전(fixed version)** — *이 컴포넌트*에 대해 *이 CVE*를 해소하는 버전 — 을 스캔 파이프라인이 판별할 수 있었던 경우 표시합니다. [수정 버전 — CVE를 해소하는 버전](#수정-버전--cve를-해소하는-버전) 참고.
 - **분석 (Analysis)** — VEX 상태 전환별 액션 버튼, 현재 상태에서 허용된 전환마다 한 개씩. 대상 상태는 `VulnFindingStatus` (`apps/backend/schemas/vulnerability_detail.py`) 의 초기 상태 `new` 를 제외한 6개입니다: `analyzing` ("Mark in triage"), `exploitable` ("Mark exploitable"), `not_affected` ("Mark not affected"), `false_positive` ("Mark false positive"), `suppressed` ("Mark suppressed"), `fixed` ("Mark fixed"). 초기 상태 `new` 로 진입하는 버튼은 없습니다. 버튼을 클릭하면 사유 입력 다이얼로그가 열리며 제출합니다. `developer` 이상만.
 - **이력 (History)** — VEX 상태 전환 타임라인(누가, 언제, 어떤 사유로 상태를 변경했는지).
 
@@ -147,6 +147,62 @@ curl -sS \
 
 :::tip EPSS로 빌드 게이팅
 EPSS는 CI 빌드 게이트도 구동할 수 있어, Critical이 아니어도 악용 확률이 높은 CVE가 빌드를 실패시킬 수 있습니다. [EPSS로 빌드 게이팅](../ci-integration/github-actions.md#epss로-빌드-게이팅-선택) 참고.
+:::
+
+## 수정 버전 — CVE를 해소하는 버전
+
+결과 드로어의 **영향(Affected)** 섹션은 영향 받는 각 컴포넌트 옆에 **수정 버전(fixed version)** 을 표시합니다. *그 컴포넌트*를 어느 버전으로 올리면 *그 CVE*를 더 이상 가지지 않는지 알려줍니다 — 모든 트리아지 담당자가 가장 먼저 묻는 "무엇으로 올리면 되나?"에 답합니다.
+
+### CVE 단위가 아니라 (컴포넌트 × CVE) 단위입니다
+
+하나의 CVE라도 **패키지마다 서로 다른 버전에서 패치**되는 경우가 흔하고, 하나의 패키지라도 **CVE마다 서로 다른 버전에서 패치**될 수 있습니다. 따라서 수정 버전은 CVE 전역이 아니라 개별 결과(즉 `(컴포넌트, CVE)` 쌍)에 저장됩니다. 같은 CVE에 영향받는 두 컴포넌트가 서로 다른 수정 버전을 보이는 것은 정상이며, 버그가 아닙니다.
+
+### 데이터 출처
+
+스캔 파이프라인은 **Dependency-Track 결과(findings)** 로부터 다음 우선순위로 수정 버전을 수집합니다.
+
+1. DT가 결과에 첨부한 **구조화된 패치 버전 목록**(가장 낮은 패치 버전 채택).
+2. `status: fixed`로 표시된 **CycloneDX VEX `affects[].versions[]`** 항목.
+3. 권고문의 자유 텍스트 **recommendation**("Upgrade to 2.17.1 or later")에서 구체적 버전을 추출.
+
+수집된 문자열은 저장 전에 검증됩니다 — 제어 문자, 과도한 길이, 범위 연산자(`^`, `>=`), 그리고 그럴듯한 버전 토큰이 아닌 값은 저장하지 않고 "알 수 없음"으로 처리합니다.
+
+### 비어 있을 때
+
+다음의 경우 수정 버전은 `—`로 표시(API는 `null` 반환)됩니다.
+
+- DT가 이 컴포넌트/CVE에 대한 수정을 보고하지 않은 경우(상위 권고에 아직 패치 버전이 없음 — 실제 제로데이거나 아직 미수정 CVE), **또는**
+- 해당 결과가 이 수집 기능을 도입한 **v2.2 이전** 스캔에서 발견된 경우. 프로젝트를 재스캔하면 채워집니다.
+
+수정 버전이 비어 있다는 것은 "수정이 존재하지 않는다"가 아니라 **"알려진 수정 버전이 없다"** 는 의미입니다 — CVE가 수정 불가하다고 결론짓기 전에 항상 상위 권고를 확인하세요.
+
+### API로 읽기
+
+수정 버전은 결과 상세의 영향 컴포넌트와 컴포넌트 드로어의 중첩 CVE 참조에 `fixed_version`으로 노출됩니다.
+
+```bash
+# 결과 상세 — 각 영향 컴포넌트의 fixed_version
+curl -sS \
+  -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+  "https://trustedoss.example.com/v1/vulnerability_findings/${FINDING_ID}"
+```
+
+```json
+{
+  "cve_id": "CVE-2021-44228",
+  "affected_components": [
+    {
+      "name": "log4j-core",
+      "version": "2.14.1",
+      "purl": "pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1",
+      "fixed_version": "2.17.1"
+    }
+  ]
+}
+```
+
+:::note 업그레이드 추천이 이 위에 쌓입니다
+수정 버전은 곧 추가될 **업그레이드 추천** 기능(v2.2)의 입력입니다. 각 결과가 수정 버전을 알게 되면, 포털은 의존성 그래프 전반에서 최소한의 안전한 업그레이드를 계산할 수 있습니다.
 :::
 
 ## PDF 보고서 다운로드
@@ -449,7 +505,7 @@ PDF는 요청 시점에 weasyprint로 렌더링됩니다. `500`(본문은 `appli
 
 - 결과 테이블의 "마지막 확인 (Last seen)" 컬럼(결과를 마지막으로 확인한 스캔) — v2.1 예정.
 - 결과 툴바의 컴포넌트 단위 필터와 발견 일자 범위 필터 — v2.1 예정. 현재는 검색 박스가 컴포넌트 조회를 대체합니다.
-- 별도의 **수정 가용성** 드로어 섹션 — v2.0.0에서는 수정 버전이 **영향** 섹션 안의 `fixed_version`으로 노출됩니다.
+- 별도의 **수정 가용성** 드로어 섹션 — 현재는 수정 버전이 **영향** 섹션 안의 `fixed_version`으로 노출됩니다(v2.2부터 실데이터 — [수정 버전](#수정-버전--cve를-해소하는-버전) 참고).
 
 ## 함께 보기
 

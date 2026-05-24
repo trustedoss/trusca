@@ -234,6 +234,7 @@ async def _attach_vuln_finding(
     scan_id: uuid.UUID,
     cv_id: uuid.UUID,
     vulnerability_id: uuid.UUID,
+    fixed_version: str | None = None,
 ):
     from models import VulnerabilityFinding
 
@@ -241,6 +242,7 @@ async def _attach_vuln_finding(
         scan_id=scan_id,
         component_version_id=cv_id,
         vulnerability_id=vulnerability_id,
+        fixed_version=fixed_version,
     )
     session.add(vf)
     await session.commit()
@@ -780,6 +782,48 @@ async def test_component_detail_returns_drawer_payload_with_vulns(
     assert len(detail["vulnerabilities"]) == 1
     assert detail["vulnerabilities"][0]["cve_id"] == crit_v.external_id
     assert detail["vulnerabilities"][0]["title"] == "Critical RCE"
+
+
+async def test_component_detail_vuln_ref_exposes_fixed_version(
+    db_session: AsyncSession,
+) -> None:
+    """v2.2 2.2-a1 — the per-finding ``fixed_version`` must surface on the
+    component drawer's ``VulnerabilityRef`` (the hard-coded ``None`` is gone)."""
+    from services.project_detail_service import get_component_detail
+
+    team, user, project, scan = await _make_project_with_scan(db_session)
+    actor = principal_for(user, team_ids=[team.id], role="developer")
+
+    # Unique component name so a re-run against the persistent dev DB does not
+    # collide on uq_components_purl (cross-suite isolation — see MEMORY note).
+    _, cv = await _make_component_version(db_session, name=f"needs-bump-{unique_suffix()}")
+    await _attach_to_scan(db_session, scan_id=scan.id, cv_id=cv.id)
+
+    v_fixed = await _make_vulnerability(db_session, severity="high", summary="Fixable")
+    v_unfixed = await _make_vulnerability(
+        db_session, severity="low", summary="No fix yet"
+    )
+    await _attach_vuln_finding(
+        db_session,
+        scan_id=scan.id,
+        cv_id=cv.id,
+        vulnerability_id=v_fixed.id,
+        fixed_version="3.2.0",
+    )
+    await _attach_vuln_finding(
+        db_session,
+        scan_id=scan.id,
+        cv_id=cv.id,
+        vulnerability_id=v_unfixed.id,
+        fixed_version=None,
+    )
+
+    detail = await get_component_detail(
+        db_session, component_version_id=cv.id, actor=actor
+    )
+    by_cve = {v["cve_id"]: v for v in detail["vulnerabilities"]}
+    assert by_cve[v_fixed.external_id]["fixed_version"] == "3.2.0"
+    assert by_cve[v_unfixed.external_id]["fixed_version"] is None
 
 
 async def test_component_detail_vuln_ref_carries_epss(

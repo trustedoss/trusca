@@ -709,6 +709,9 @@ async def get_component_detail(
 
     # Vulnerability list — de-duplicated by external_id; many findings can
     # reference the same CVE if multiple paths hit the same component.
+    # ``fixed_version`` comes from the per-finding column (v2.2 2.2-a1): this
+    # component_version is fixed, so each CVE row carries the fix version that
+    # remediates THIS package for THAT CVE. NULL when the pipeline found none.
     vulns_stmt = (
         select(
             Vulnerability.external_id,
@@ -718,6 +721,7 @@ async def get_component_detail(
             Vulnerability.epss_percentile,
             Vulnerability.summary,
             Vulnerability.details,
+            VulnerabilityFinding.fixed_version.label("fixed_version"),
         )
         .join(
             VulnerabilityFinding,
@@ -772,7 +776,7 @@ async def get_component_detail(
                 ),
                 "title": vr.summary or vr.external_id,
                 "description": vr.details,
-                "fixed_version": None,
+                "fixed_version": vr.fixed_version,
             }
         )
 

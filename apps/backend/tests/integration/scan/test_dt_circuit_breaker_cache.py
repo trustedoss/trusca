@@ -18,6 +18,7 @@ enough. This test makes the regression visible at the integration layer
 
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
 import httpx
@@ -195,3 +196,28 @@ def test_vulnerability_cache_query_does_not_consult_dt() -> None:
     assert vuln.severity == "high"
     assert vuln.summary == "cached summary"
     assert vuln.references[0]["name"] == "NVD"
+
+
+def test_finding_fixed_version_is_a_cached_column_readable_without_dt() -> None:
+    """v2.2 2.2-a1 — ``fixed_version`` lives on the cached per-finding row, so
+    the OPEN-breaker read path (component drawer / vuln detail) serves it from
+    Postgres without ever calling DT.
+
+    The collection of ``fixed_version`` happens at scan time through the breaker
+    (``_persist_findings`` runs after the gated DT poll); the *read* services
+    (``get_vulnerability_detail`` / ``get_component_detail``) select the column
+    straight off ``vulnerability_findings`` with no DT dependency. This model-
+    layer smoke test mirrors ``test_vulnerability_cache_query_does_not_consult_dt``
+    and pins that the column holds the value the UI renders during an outage.
+    """
+    from models import VulnerabilityFinding
+
+    finding = VulnerabilityFinding(
+        scan_id=uuid.uuid4(),
+        component_version_id=uuid.uuid4(),
+        vulnerability_id=uuid.uuid4(),
+        status="new",
+        fixed_version="2.17.1",
+    )
+    # Plain attribute access — no DB round-trip, no DT call.
+    assert finding.fixed_version == "2.17.1"
