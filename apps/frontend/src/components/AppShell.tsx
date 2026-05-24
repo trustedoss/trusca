@@ -3,6 +3,7 @@ import {
   FolderOpen,
   KeyRound,
   LogOut,
+  Scale,
   ScanLine,
   UserCircle2,
   Activity,
@@ -49,6 +50,12 @@ const MAIN_NAV: NavItem[] = [
     labelKey: "nav.approvals",
     icon: ClipboardCheck,
     testId: "nav-approvals",
+  },
+  {
+    to: "/policies",
+    labelKey: "nav.policies",
+    icon: Scale,
+    testId: "nav-policies",
   },
   {
     to: "/integrations",

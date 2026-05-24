@@ -30,6 +30,7 @@
     "projects": "Projects",
     "scans": "Scans",
     "approvals": "Approvals",
+    "policies": "Policies",
     "integrations": "Integrations",
     "bell": {
       "aria": "Notifications",

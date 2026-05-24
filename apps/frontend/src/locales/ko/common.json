@@ -30,6 +30,7 @@
     "projects": "프로젝트",
     "scans": "스캔",
     "approvals": "승인",
+    "policies": "정책",
     "integrations": "통합",
     "bell": {
       "aria": "알림",
