@@ -120,6 +120,26 @@ The single-role `.env` template ships `AUTO_MIGRATE=true` and it just works. If 
 - **On this no-clone path:** there is no wizard, so **you must set `AUTO_MIGRATE=false` in `.env` yourself** for an L1 stack and run `alembic upgrade head` as the owner role (override `DATABASE_URL` with `DATABASE_URL_OWNER` for that one command). If you leave it `true` on an L1 stack the backend entrypoint fails fast (exit 1, no crash-loop) with a clear DDL-permission error in the logs.
 :::
 
+### Liveness vs. readiness: how the stack waits for the schema
+
+The backend exposes **two** unauthenticated health endpoints. They answer different questions, and the Compose / Kubernetes startup gates depend on the distinction.
+
+| Endpoint | Question it answers | Touches the DB? | Used by |
+| --- | --- | --- | --- |
+| `GET /health` | Is the uvicorn **process** up and accepting requests? (pure liveness) | No | Kubernetes `livenessProbe`; liveness-only consumers |
+| `GET /health/ready` | Is the Postgres **schema at the Alembic HEAD** revision, i.e. is it safe to serve traffic and start workers? (readiness) | Yes (a read-only `SELECT` on `alembic_version`) | Compose backend `healthcheck`; Kubernetes `readinessProbe` |
+
+`/health/ready` returns `200 {"status":"ready"}` only when the schema matches HEAD. Otherwise it returns `503` with an RFC 7807 `application/problem+json` body summarising the revision mismatch (it never leaks the DSN or credentials).
+
+Since v2.1 (Track B), the `backend` service's Compose `healthcheck` probes **`/health/ready`**, so the `worker` and `beat` services — which declare `depends_on: backend (condition: service_healthy)` — start only **after the schema is migrated**, under both toggles:
+
+- **`AUTO_MIGRATE=true`** (single-role default): the backend container runs `alembic upgrade head` on start and `/health/ready` flips to `200` once it finishes. Workers then start against a migrated schema. This is the normal path and needs no operator action.
+- **`AUTO_MIGRATE=false`** (L1 role-separated stack): uvicorn answers `/health` immediately, but `/health/ready` stays `503` (the container stays `health: starting`) until your **external** `alembic upgrade head` (run as the owner role — `install.sh` / `upgrade.sh` do this) brings the schema to HEAD. **This is intended:** the worker and beat wait for the schema instead of starting against a not-yet-migrated database. If you forget to run the migration on an L1 stack, the backend will simply never become healthy — check `docker-compose logs backend` and run the owner-role migration.
+
+:::note Why a long migration won't flip the container to `unhealthy`
+The backend healthcheck uses a generous `start_period` (60s). A large first migration on a big database can run for a while before `/health/ready` turns `200`; the `start_period` keeps Docker from marking the container `unhealthy` (and restarting it) before that first migrate completes.
+:::
+
 :::tip Prefer the wizard for a guided install
 The `install.sh` wizard (Steps 1–3 below) does all of this for you — secret generation, the health-wait loop, the migration, and the admin bootstrap — and it also works with the Compose **V2** plugin (`docker compose`) if your host doesn't have V1. Use the no-clone path when you want full control over each step or are baking your own automation.
 :::
@@ -242,7 +262,7 @@ Another process holds the port. List bound ports and free them:
 sudo ss -tlnp | grep -E ':80|:443'
 ```
 
-If you intend to keep an existing reverse proxy, edit `docker-compose.yml` to drop the Traefik service and route `/api`, `/health`, `/metrics` to the backend container, and `/` to the frontend.
+If you intend to keep an existing reverse proxy, edit `docker-compose.yml` to drop the Traefik service and route `/api`, `/health`, `/health/ready`, `/metrics` to the backend container, and `/` to the frontend.
 
 ### Backend never becomes healthy
 

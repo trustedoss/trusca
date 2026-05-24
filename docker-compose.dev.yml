@@ -144,11 +144,17 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1"]
+      # v2.1 Track B (B1) — READINESS gate (schema == Alembic HEAD), so the
+      # worker / beat `service_healthy` gates below mean "schema migrated", not
+      # just "uvicorn answers". With AUTO_MIGRATE=true (the dev default) backend
+      # runs `alembic upgrade head` on start and /health/ready flips to 200 once
+      # it finishes. The pure-liveness /health route still exists for
+      # liveness-only consumers. (See docs-site deployment notes.)
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health/ready || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 6
-      start_period: 30s
+      start_period: 60s
 
   celery-worker:
     <<: *worker-build
@@ -169,6 +175,14 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      # v2.1 Track B (B1) — wait for the SCHEMA to be at HEAD, not just for
+      # Postgres to accept connections. backend's healthcheck probes
+      # /health/ready (schema == Alembic HEAD), and with AUTO_MIGRATE=true (dev
+      # default) backend applies the migration on start, so this gate ensures the
+      # dev worker never runs a task against a half-migrated schema after a fresh
+      # `docker-compose up` that includes a new revision.
+      backend:
         condition: service_healthy
     healthcheck:
       test:

@@ -251,11 +251,26 @@ services:
     networks:
       - trustedoss
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/health || exit 1"]
+      # v2.1 Track B (B1) — READINESS gate, not liveness. The compose
+      # `service_healthy` condition on worker / beat (below) must mean "the
+      # Postgres schema is at the Alembic HEAD", not merely "uvicorn answers".
+      # /health/ready returns 200 only when the schema == HEAD, so:
+      #   * AUTO_MIGRATE=true  — backend runs `alembic upgrade head` on start
+      #     (docker-entrypoint.sh) and only then does /health/ready flip to 200;
+      #     dependents start against a migrated schema.
+      #   * AUTO_MIGRATE=false — uvicorn answers /health immediately, but
+      #     /health/ready stays 503 (and the container stays `health: starting`)
+      #     until an EXTERNAL `alembic upgrade head` (owner role; install.sh /
+      #     upgrade.sh) brings the schema to HEAD. This is intentional: worker /
+      #     beat wait for the schema, not just for the process. The pure-liveness
+      #     /health route still exists for liveness-only consumers / debugging.
+      # `start_period` is generous so a long migration on a big DB does not flip
+      # the container to `unhealthy` before the first migrate completes.
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/health/ready || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 6
-      start_period: 30s
+      start_period: 60s
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=trustedoss"
@@ -265,9 +280,12 @@ services:
       # those prefixes 1:1 to the backend service (no /api prefix, no
       # strip middleware). Operator-facing docs / CI integrations /
       # webhook URLs all reference /v1/... — this rule makes the
-      # documented paths actually work against the prod stack. /health
-      # and /metrics stay routed for liveness probes.
-      - "traefik.http.routers.backend.rule=Host(`${DOMAIN}`) && (PathPrefix(`/v1`) || PathPrefix(`/auth`) || PathPrefix(`/ws`) || Path(`/health`) || PathPrefix(`/metrics`))"
+      # documented paths actually work against the prod stack. The
+      # `/health` PREFIX (v2.1 B1) routes BOTH /health (liveness) and
+      # /health/ready (readiness) to the backend so external probes /
+      # load balancers reach the readiness gate, not just the in-container
+      # Compose healthcheck. /metrics stays routed for scrapers.
+      - "traefik.http.routers.backend.rule=Host(`${DOMAIN}`) && (PathPrefix(`/v1`) || PathPrefix(`/auth`) || PathPrefix(`/ws`) || PathPrefix(`/health`) || PathPrefix(`/metrics`))"
       - "traefik.http.routers.backend.entrypoints=websecure"
       - "traefik.http.routers.backend.tls=true"
       - "traefik.http.routers.backend.tls.certresolver=le"
@@ -324,20 +342,20 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      # v2.1 — startup ordering gate (M2). The worker image (Dockerfile.worker)
-      # deliberately does NOT run migrations — backend is the sole migrator —
-      # so the worker waits for backend to be healthy before starting Celery.
-      # What this gate buys you depends on AUTO_MIGRATE:
-      #   * AUTO_MIGRATE=true  — backend applies `alembic upgrade head` on start
-      #     and only then answers /health, so when this condition is satisfied
-      #     the schema is at HEAD before any Celery task touches the DB.
-      #   * AUTO_MIGRATE=false — backend becomes healthy as soon as uvicorn
-      #     answers /health, WITHOUT having migrated. This gate then degrades to
-      #     a plain ordering dependency: it does NOT guarantee the schema is at
-      #     HEAD — that is the operator's responsibility (run alembic as the
-      #     owner role; install.sh / upgrade.sh do this). A real readiness gate
-      #     (backend /health/ready that asserts schema == HEAD) is a v2.1
-      #     backend follow-up tracked in docs/post-ga-roadmap.md.
+      # v2.1 — SCHEMA-READINESS gate (B1). The worker image (Dockerfile.worker)
+      # deliberately does NOT run migrations — backend is the sole migrator — so
+      # the worker waits for backend to be healthy before starting Celery. As of
+      # B1, backend's healthcheck probes /health/ready (schema == Alembic HEAD),
+      # so `service_healthy` now GUARANTEES the schema is migrated before any
+      # Celery task touches the DB — under BOTH toggles:
+      #   * AUTO_MIGRATE=true  — backend runs `alembic upgrade head` on start and
+      #     /health/ready flips to 200 once it finishes; the worker then starts.
+      #   * AUTO_MIGRATE=false — backend answers /health immediately but stays
+      #     `health: starting` (/health/ready = 503) until an EXTERNAL
+      #     `alembic upgrade head` (owner role; install.sh / upgrade.sh) brings
+      #     the schema to HEAD. The worker correctly WAITS for that, instead of
+      #     starting against a not-yet-migrated schema. (Pre-B1 this case degraded
+      #     to a plain ordering dependency — see docs-site deployment notes.)
       backend:
         condition: service_healthy
     networks:
@@ -382,14 +400,15 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      # v2.1 — startup ordering gate (M2, same rationale as the worker). beat
-      # already waits on worker-healthy (which in turn waits on backend), so
-      # beat starts after backend. With AUTO_MIGRATE=true that means the schema
-      # is at HEAD before beat schedules its first DB-touching task; with
-      # AUTO_MIGRATE=false it is ordering only — the operator owns migrating the
-      # schema (see the worker gate note above and the /health/ready follow-up
-      # in docs/post-ga-roadmap.md). We list backend explicitly so the gate is
-      # self-documenting and holds even if the worker dependency is relaxed.
+      # v2.1 — SCHEMA-READINESS gate (B1, same rationale as the worker). beat
+      # already waits on worker-healthy (which in turn waits on backend), so beat
+      # starts after backend. Since backend's healthcheck now probes
+      # /health/ready (schema == Alembic HEAD), `service_healthy` GUARANTEES the
+      # schema is migrated before beat schedules its first DB-touching task —
+      # under BOTH toggles (AUTO_MIGRATE=true migrates on start; =false waits for
+      # the external owner-role `alembic upgrade head` before backend goes
+      # healthy). We list backend explicitly so the gate is self-documenting and
+      # holds even if the worker dependency is relaxed.
       backend:
         condition: service_healthy
       worker:
