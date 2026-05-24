@@ -1,0 +1,182 @@
+{{- /*
+Bundled PostgreSQL — StatefulSet + headless Service + per-replica PVC.
+
+Rendered ONLY when postgres.bundled=true. For managed-cloud production prefer
+an external Postgres (Cloud SQL / RDS): set postgres.bundled=false and supply
+env.database.url (+ env.database.ownerUrl for role separation).
+
+When postgres.auth.roleSeparation=true the L1 init script (mirrored from
+scripts/postgres-init.sh via configmap-postgres-init.yaml) creates the DML-only
+trustedoss_app role on first boot; Alembic migration 0014 (run by the migration
+Job) applies its GRANTs/REVOKEs.
+*/ -}}
+{{- if .Values.postgres.bundled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "trustedoss.postgres.fullname" . }}
+  labels:
+    {{- include "trustedoss.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+  annotations:
+    # Hook (weight -10) — created after the auth Secret / init ConfigMap (-20),
+    # before the migration Job (-5). Persists past the hook phase.
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  # Headless — StatefulSet stable network identity.
+  clusterIP: None
+  ports:
+    - name: postgres
+      port: {{ .Values.postgres.service.port }}
+      targetPort: postgres
+      protocol: TCP
+  selector:
+    {{- include "trustedoss.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "trustedoss.postgres.fullname" . }}
+  labels:
+    {{- include "trustedoss.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+  annotations:
+    # Hook (weight -10). before-hook-creation deletes the old StatefulSet on
+    # upgrade then recreates it — the volumeClaimTemplates PVC SURVIVES that
+    # (StatefulSet deletion never deletes its PVCs), so data is preserved; the
+    # Postgres pod restarts once per upgrade. For zero-restart upgrades or HA,
+    # use an external managed Postgres (postgres.bundled=false).
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  serviceName: {{ include "trustedoss.postgres.fullname" . }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "trustedoss.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: postgres
+  template:
+    metadata:
+      labels:
+        {{- include "trustedoss.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: postgres
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        # Let the kubelet chown the data dir to the postgres uid/gid (70 in
+        # the alpine image) so a non-root container can write the PVC.
+        fsGroup: 70
+      containers:
+        - name: postgres
+          image: "{{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}"
+          imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
+          ports:
+            - name: postgres
+              containerPort: {{ .Values.postgres.service.port }}
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trustedoss.postgres.fullname" . }}-auth
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trustedoss.postgres.fullname" . }}-auth
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trustedoss.postgres.fullname" . }}-auth
+                  key: POSTGRES_DB
+            {{- if .Values.postgres.auth.roleSeparation }}
+            - name: POSTGRES_APP_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trustedoss.postgres.fullname" . }}-auth
+                  key: POSTGRES_APP_USER
+            - name: POSTGRES_APP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trustedoss.postgres.fullname" . }}-auth
+                  key: POSTGRES_APP_PASSWORD
+            {{- end }}
+            # Postgres writes its data under a subdir so the lost+found on some
+            # RWO volumes does not collide with initdb's empty-dir check.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            {{- if .Values.postgres.auth.roleSeparation }}
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+            {{- end }}
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml .Values.postgres.resources | nindent 12 }}
+      {{- if or .Values.postgres.auth.roleSeparation (not .Values.postgres.persistence.enabled) }}
+      volumes:
+        {{- if .Values.postgres.auth.roleSeparation }}
+        - name: init
+          configMap:
+            name: {{ include "trustedoss.postgres.fullname" . }}-init
+            # 0555 (octal) = r-xr-xr-x — the postgres entrypoint execs initdb.d
+            # scripts, so they must be executable.
+            defaultMode: 0555
+        {{- end }}
+        {{- if not .Values.postgres.persistence.enabled }}
+        # No PVC — ephemeral data (eval only; data is lost on pod restart).
+        - name: data
+          emptyDir: {}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  {{- if .Values.postgres.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "trustedoss.labels" . | nindent 10 }}
+          app.kubernetes.io/component: postgres
+      spec:
+        accessModes:
+          - {{ .Values.postgres.persistence.accessMode }}
+        resources:
+          requests:
+            storage: {{ .Values.postgres.persistence.size }}
+        {{- if .Values.postgres.persistence.storageClassName }}
+        storageClassName: {{ .Values.postgres.persistence.storageClassName | quote }}
+        {{- end }}
+  {{- end }}
+{{- end -}}

@@ -1,0 +1,21 @@
+# ArtifactHub OCI-repository ownership metadata.
+#
+# This file is pushed as an OCI artifact alongside the chart so ArtifactHub can
+# verify repository ownership and attribute the package. The chart-publish
+# workflow runs:
+#
+#   oras push \
+#     ghcr.io/trustedoss/charts/trustedoss:artifacthub.io \
+#     artifacthub-repo.yml:application/vnd.cncf.artifacthub.repository-metadata.layer.v1.yaml
+#
+# Registering the repo on ArtifactHub itself (Control Panel → Add → Helm repo,
+# URL: oci://ghcr.io/trustedoss/charts) is a one-time OPERATOR action — see
+# docs-site deployment/helm.md. The repositoryID below is filled in by the
+# operator after ArtifactHub assigns it on first registration.
+repositoryID: ""
+owners:
+  - name: TrustedOSS
+    email: maintainers@trustedoss.dev
+ignore:
+  # Nothing ignored — single chart per repo.
+  []

@@ -1,0 +1,26 @@
+{{- /*
+Shared scan workspace PVC. Mounted at workspace.mountPath by BOTH the backend
+and the worker (source-scan tasks write `${WORKSPACE_HOST_PATH}/<scan_id>/`; the
+backend reads it back for archive download / backup). On multi-node clusters
+the access mode MUST be ReadWriteMany. Skipped when persistence is disabled
+(workloads fall back to per-pod emptyDir — single-node / eval only) or when an
+existingClaim is supplied.
+*/ -}}
+{{- if and .Values.workspace.persistence.enabled (not .Values.workspace.persistence.existingClaim) -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "trustedoss.fullname" . }}-workspace
+  labels:
+    {{- include "trustedoss.labels" . | nindent 4 }}
+    app.kubernetes.io/component: workspace
+spec:
+  accessModes:
+    - {{ .Values.workspace.persistence.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.workspace.persistence.size }}
+  {{- if .Values.workspace.persistence.storageClassName }}
+  storageClassName: {{ .Values.workspace.persistence.storageClassName | quote }}
+  {{- end }}
+{{- end -}}

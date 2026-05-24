@@ -16,8 +16,24 @@ data:
   APP_ENV: {{ .Values.env.appEnv | quote }}
   LOG_LEVEL: {{ .Values.env.logLevel | quote }}
   CORS_ALLOWED_ORIGINS: {{ .Values.env.corsAllowedOrigins | quote }}
-  {{- if .Values.env.redis.url }}
-  REDIS_URL: {{ .Values.env.redis.url | quote }}
+  ACCESS_TOKEN_EXPIRE_MINUTES: {{ .Values.env.accessTokenExpireMinutes | quote }}
+  REFRESH_TOKEN_EXPIRE_DAYS: {{ .Values.env.refreshTokenExpireDays | quote }}
+
+  # B3: AUTO_MIGRATE=false on every workload — the Helm migration Job (a
+  # pre-install/pre-upgrade hook) is the SOLE migrator. The advisory lock in
+  # alembic/env.py remains a safety net, but pods never run alembic on start.
+  AUTO_MIGRATE: "false"
+
+  # Shared scan workspace mount (WORKSPACE_HOST_PATH). backend + worker mount
+  # the same PVC here so cdxgen / scancode outputs are readable across both.
+  WORKSPACE_HOST_PATH: {{ .Values.workspace.mountPath | quote }}
+
+  {{- /* REDIS_URL is secret-backed (it may carry a password) — see secret.yaml
+         + trustedoss.runtimeSecretEnv. Not emitted here. */ -}}
+
+  # ---- Dependency-Track (external; breaker OPEN when url is unset) ----
+  {{- if .Values.env.dt.url }}
+  DT_URL: {{ .Values.env.dt.url | quote }}
   {{- end }}
 
   # ---- DB connection pool (B1) ----
