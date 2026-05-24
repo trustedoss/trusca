@@ -15,7 +15,7 @@
 |---|---|---|---|---|
 | v2.1 | A. VEX 소비 (트리아지) | 3 | 3 | ✅ 완료 (#145,#148,#150) |
 | v2.1 | B. 평가·배포 경로 | 5 | 5 | ✅ 완료 (#146,#147,#149,#151,#152) |
-| v2.2 | 리메디에이션 + 정책 | 10 | 4 | 🟦 a-트랙(#153,#154,#156)+문서동기화(#155)+b1(#157) 완료 · 진행 c1(통합중)·b2 |
+| v2.2 | 리메디에이션 + 정책 | 10 | 5 | 🟦 a(#153,#154,#156)+문서(#155)+b1(#157)+c1(#158) 완료 · 진행 b2(통합)·c2 |
 | v2.3 | 무결성 + 우선순위화 | 6 | 0 | ⬜ 대기 |
 | — | 운영 레인 (외부 블로커) | 4 | 0 | ⬜ 대기 |
 
@@ -155,7 +155,7 @@
   - manifest 수정 어댑터(npm→pip→maven 순). dry-run 기본.
 - [ ] **2.2-b3 — 자동 PR 생성(옵트인) + UI + 감사** `dep: 2.2-b2` · `rev: ✅` `owner: backend-developer + frontend-dev → security-reviewer`
   - 브랜치→PR 자동생성, 옵트인, 감사로그. **종료조건: 최소 1개 생태계 PR 생성 + 보안리뷰 통과.**
-- [ ] **2.2-c1 — 동적 라이선스 정책 모델** `dep: 2.2-a3 (병렬 가능)` `owner: db-designer + backend-developer`
+- [x] **2.2-c1 — 동적 라이선스 정책 모델** ✅ #158 (머지 `2453501`) — `license_policies` 테이블(마이그 0020, org/team 스코프, `category_overrides`/`license_exceptions`(시한부 waiver)/`unknown_license_category` posture/`compound_operator_strategy`/`enabled`), CRUD API `/v1/license-policies`, `get_effective_policy` 우선순위 resolver(team>org>static) + 단일-id `effective_category` 헬퍼, adversarial 스키마검증. b1과 병렬개발→통합 시 마이그 0019→0020 재번호. `policy_gate` 미수정(c2). `dep: 2.2-a3 (병렬 가능)` `owner: db-designer + backend-developer`
   - per-team/org 정책(허용/조건부/금지 + 예외 + SPDX expression 룰) 모델 + 마이그레이션.
 - [ ] **2.2-c2 — Policy Gate 동적 룰 평가** `dep: 2.2-c1` `owner: backend-developer`
   - 게이트가 정적 lookup 대신 동적 룰 평가(정적 카탈로그는 기본값으로 유지). SPDX expression **adversarial 테스트**([[feedback-adversarial-input-parametrize]] normalize_spdx_id 재귀 DoS 선례).
