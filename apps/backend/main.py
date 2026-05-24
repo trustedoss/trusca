@@ -36,6 +36,7 @@ from api.v1 import (
     obligations_router,
     policy_gate_router,
     projects_router,
+    remediation_router,
     reports_router,
     sbom_router,
     scans_router,
@@ -204,6 +205,9 @@ app.include_router(reports_router)
 # Scan-gap G3.2: source-tree viewer (list dir + read file) over the per-scan
 # tarball preserved in G3.1.
 app.include_router(source_tree_router)
+# v2.2-b2: npm manifest-remediation dry-run (compute the edited package.json +
+# diff for vulnerable npm deps; no PR, no persistence — that is b3).
+app.include_router(remediation_router)
 # Phase 5 PR #16: API Key management + Webhook receivers (GitHub / GitLab).
 # Webhook endpoints are PUBLIC (no JWT) but each delivery is HMAC-authenticated
 # against a per-project shared secret stored in `projects.webhook_secret`.
