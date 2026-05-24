@@ -35,6 +35,120 @@ curl --version
 df -h /                            # at least 20 GB free
 ```
 
+## Evaluation install (lightweight, one command)
+
+Want to *try* TrustedOSS Portal before committing a production host? The
+**evaluation profile** stands the portal up on a small machine and seeds a
+realistic demo dataset, so you go from clone to a populated dashboard in one
+command — no Dependency-Track, no manual migration, no empty screen.
+
+:::note When to use this
+A laptop, a throwaway cloud VM, or any **2 vCPU / 4 GB RAM** host. For a real
+deployment use the [install wizard](#step-2--run-the-install-wizard) instead —
+the eval profile trades production hardening (TLS, role separation, the full
+6 GB scan worker) for a low-friction first look.
+:::
+
+### Requirements
+
+- **2 vCPU / 4 GB RAM** (vs. 4 vCPU / 8 GB for the full stack with bundled
+  Dependency-Track).
+- `docker-compose` (V1 preferred; the script falls back to the `docker compose`
+  V2 plugin), `openssl`, and `curl`.
+- A clone of the repository (the eval script lives at `scripts/eval-up.sh`).
+
+### One command
+
+```bash
+git clone https://github.com/trustedoss/trustedoss-portal.git
+cd trustedoss-portal
+./scripts/eval-up.sh            # add --no-prompt for CI / automation
+```
+
+The script:
+
+1. Picks the Compose binary (V1 preferred).
+2. Bootstraps `.env` from `.env.example` — generates a strong `SECRET_KEY`, sets
+   `APP_ENV=demo`, and pins `CORS_ALLOWED_ORIGINS` to `EVAL_URL`
+   (default `http://localhost`). An existing `.env` is left untouched.
+3. Brings up the eval stack:
+
+   ```bash
+   docker-compose -f docker-compose.yml -f docker-compose.eval.yml up -d
+   ```
+
+   with `--compatibility` so the eval resource limits actually bind.
+4. Waits for the backend **readiness gate** — `GET /health/ready` returns `200`
+   only once the Postgres schema is at the Alembic HEAD (`AUTO_MIGRATE=true`
+   applies it on start). If readiness never flips, it runs a one-shot
+   `alembic upgrade head` and re-polls.
+5. Seeds the **demo dataset** (`scripts/seed_demo.py`, idempotent): 1 org,
+   3 teams, 5 users, 5 projects, 10 CVEs, license findings, obligations, and
+   in-app notifications.
+6. Prints the URL and the demo accounts.
+
+Open **`http://localhost/`** (or your `EVAL_URL`) and sign in:
+
+| Account | Email |
+| --- | --- |
+| Super admin | `admin@demo.trustedoss.dev` |
+| Team admins | `frontend-admin@demo.trustedoss.dev`, `backend-admin@…`, `security-admin@…` |
+| Developer | `dev@demo.trustedoss.dev` |
+
+The password is whatever you set in `DEMO_SUPER_ADMIN_PASSWORD` (in `.env`)
+before the first run. If you leave it unset, `seed_demo.py` generates a random
+one and `eval-up.sh` prints it once — store it, it is not persisted anywhere.
+
+### Resource budget (2 vCPU / 4 GB)
+
+The eval overlay (`docker-compose.eval.yml`) caps every container so no single
+service starves the host:
+
+| Service | CPU limit | Memory limit |
+| --- | --- | --- |
+| traefik (HTTP-only) | 0.25 | 128M |
+| postgres | 0.50 | 768M |
+| redis | 0.25 | 128M |
+| backend | 0.75 | 768M |
+| worker (concurrency 1) | 0.75 | 1280M |
+| beat | 0.25 | 192M |
+| frontend | 0.25 | 128M |
+
+CPU caps deliberately oversubscribe the two cores (they are ceilings, not
+reservations); the memory limits sum to ~3.4 GB, leaving headroom on a 4 GB
+host. Compared to the prod stack, Traefik runs plain **HTTP only** (no Let's
+Encrypt — so no public DNS / port 443 needed), and the worker runs a single
+low-concurrency slot.
+
+### DT-less: how vulnerabilities still show up
+
+The eval profile does **not** run Dependency-Track — its recommended 4 GB JVM
+heap alone would eat half the eval host. The portal works fine without it: the
+DT client sits behind a **circuit breaker**, and vulnerability data is cached in
+PostgreSQL. With the breaker **OPEN** (no DT reachable) the portal serves the
+seeded/cached findings instead of erroring. `seed_demo.py` populates that cache,
+so the dashboard is populated on first login.
+
+To point the eval stack at an **external** Dependency-Track you already run, set
+`DT_URL` and `DT_API_KEY` in `.env` and uncomment the matching lines under
+`backend:` / `worker:` in `docker-compose.eval.yml`.
+
+:::warning Eval ≠ production
+Real source scans (cdxgen + scancode) peak at ~6 GB on the worker; the eval
+worker (1280M, concurrency 1) is sized for **browsing the seeded dataset**, not
+for production scanning. It can run a small scan but will struggle on a large
+repository. The eval profile also skips TLS and the L1 DB role separation — do
+not expose it to the public internet. Use the [install
+wizard](#step-2--run-the-install-wizard) for anything beyond a first look.
+:::
+
+Tear down when you are done:
+
+```bash
+docker-compose -f docker-compose.yml -f docker-compose.eval.yml down
+# add -v to also delete the Postgres / workspace volumes (wipes the demo data)
+```
+
 ## Prerequisites for HTTPS deployments
 
 Before running the wizard, make sure your host meets these three
