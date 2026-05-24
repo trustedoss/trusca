@@ -71,6 +71,15 @@ def test_project_create_rejects_invalid_slug(slug: str) -> None:
         ProjectCreate(team_id=uuid.uuid4(), name="ok", slug=slug)
 
 
+def test_project_create_rejects_reserved_slug_organization() -> None:
+    """BUG-011: 'organization' matches the pattern but is reserved for the
+    Phase 3+ org-wide projects feature, so the schema must reject it."""
+    from schemas.scan import ProjectCreate
+
+    with pytest.raises(ValidationError):
+        ProjectCreate(team_id=uuid.uuid4(), name="ok", slug="organization")
+
+
 # ---------------------------------------------------------------------------
 # ProjectCreate — git_url
 # ---------------------------------------------------------------------------

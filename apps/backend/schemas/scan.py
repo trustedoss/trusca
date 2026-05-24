@@ -41,6 +41,13 @@ from core.url_guard import GitUrlValidationError, validate_git_url
 # trailing dash. The DB column already enforces 64 char max via String(64).
 _SLUG_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$")
 
+# Reserved slugs that the schema rejects even though they match the pattern
+# (BUG-011). ``organization`` is reserved for the Phase 3+ org-wide projects
+# feature: an org-wide route/segment would collide with a project that owns the
+# slug. Rejecting it at the schema layer keeps the guarantee next to the
+# contract (the visibility validator below references the same reservation).
+_RESERVED_SLUGS = frozenset({"organization"})
+
 # Loose git URL guard. We accept:
 #   - https://host/path(.git)
 #   - http://host/path  (intranet HTTP — common in self-hosted GitLab)
@@ -142,6 +149,8 @@ class ProjectCreate(BaseModel):
                 "slug must be lowercase alphanumerics and dashes,"
                 " 1-64 chars, no leading/trailing dash",
             )
+        if value in _RESERVED_SLUGS:
+            raise ValueError(f"slug {value!r} is reserved and cannot be used")
         return value
 
     @field_validator("git_url")

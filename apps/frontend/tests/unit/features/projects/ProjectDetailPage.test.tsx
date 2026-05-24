@@ -15,6 +15,7 @@ import type {
   ProjectOverviewResponse,
 } from "@/features/projects/api/projectDetailApi";
 import { ProjectDetailPage } from "@/features/projects/ProjectDetailPage";
+import { ProblemError } from "@/lib/problem";
 import type { ProjectPublic } from "@/lib/projectsApi";
 
 vi.mock("@/lib/projectsApi", async () => {
@@ -136,6 +137,35 @@ describe("ProjectDetailPage", () => {
       );
     });
     expect(screen.getByTestId("project-detail-id").textContent).toBe("proj-1");
+  });
+
+  it("shows an 'unavailable' breadcrumb, not a stuck 'Loading…', on a 404 (BUG-004)", async () => {
+    mockedGetProject.mockRejectedValueOnce(
+      new ProblemError("not_found", {
+        status: 404,
+        title: "Project Not Found",
+        detail: "project proj-1 not found",
+        problem: null,
+      }),
+    );
+    mockedOverview.mockRejectedValueOnce(
+      new ProblemError("not_found", {
+        status: 404,
+        title: "Project Not Found",
+        detail: "not found",
+        problem: null,
+      }),
+    );
+    renderPage();
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("project-detail-load-error"),
+      ).toBeInTheDocument();
+    });
+    const crumb = screen.getByTestId("project-detail-breadcrumb-current");
+    // The crumb must settle on the error label, not keep the loading placeholder.
+    expect(crumb.textContent).toBe("Unavailable");
+    expect(crumb.textContent).not.toBe("Loading…");
   });
 
   it("renders the four tab triggers, all enabled (PR #12 lit up Licenses)", async () => {

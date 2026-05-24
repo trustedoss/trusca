@@ -298,7 +298,13 @@ function ProjectDetailHeader({
           </Link>
           <span aria-hidden>/</span>
           <span data-testid="project-detail-breadcrumb-current">
-            {projectName ?? t("page.loading_name")}
+            {/* BUG-004: once the load has settled into an error (e.g. 404) the
+                crumb must stop showing the loading placeholder — fall through to
+                an "unavailable" label instead of a perpetual "Loading…". */}
+            {projectName ??
+              (isProjectError
+                ? t("page.breadcrumb_unavailable")
+                : t("page.loading_name"))}
           </span>
         </nav>
         {isProjectLoading ? (

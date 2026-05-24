@@ -3,6 +3,7 @@
     "breadcrumb_aria": "Breadcrumb",
     "breadcrumb_projects": "Projects",
     "loading_name": "Loading…",
+    "breadcrumb_unavailable": "Unavailable",
     "load_error": "Could not load project.",
     "missing_id": "No project id was provided in the URL.",
     "errors": {
