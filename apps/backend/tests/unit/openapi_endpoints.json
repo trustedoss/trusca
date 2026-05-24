@@ -22,6 +22,9 @@
     "credential_id",
     "installation_row_id"
   ],
+  "DELETE /v1/license-policies/teams/{team_id}": [
+    "team_id"
+  ],
   "DELETE /v1/projects/{project_id}": [
     "project_id"
   ],
@@ -129,6 +132,18 @@
     "credential_id",
     "page",
     "page_size"
+  ],
+  "GET /v1/license-policies": [
+    "organization_id",
+    "page",
+    "page_size",
+    "team_id"
+  ],
+  "GET /v1/license-policies/org/{organization_id}": [
+    "organization_id"
+  ],
+  "GET /v1/license-policies/teams/{team_id}": [
+    "team_id"
   ],
   "GET /v1/license_findings/{finding_id}": [
     "finding_id"
@@ -334,6 +349,12 @@
     "X-Gitlab-Event",
     "X-Gitlab-Token",
     "X-Gitlab-Webhook-UUID"
+  ],
+  "PUT /v1/license-policies/org/{organization_id}": [
+    "organization_id"
+  ],
+  "PUT /v1/license-policies/teams/{team_id}": [
+    "team_id"
   ],
   "PUT /v1/users/me/notification-prefs": []
 }

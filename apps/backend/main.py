@@ -29,6 +29,7 @@ from api.v1 import (
     components_router,
     github_app_router,
     health_router,
+    license_policies_router,
     licenses_router,
     notifications_router,
     oauth_router,
@@ -187,6 +188,10 @@ app.include_router(scans_router)
 app.include_router(components_router)
 app.include_router(vulnerabilities_router)
 app.include_router(licenses_router)
+# v2.2 Track C (c1): per-team / org dynamic license policy CRUD. The policy GATE
+# wiring that consults these rows (and SPDX compound/adversarial hardening) is c2;
+# this PR ships the data model + CRUD surface only.
+app.include_router(license_policies_router)
 app.include_router(obligations_router)
 app.include_router(approvals_router)
 app.include_router(sbom_router)

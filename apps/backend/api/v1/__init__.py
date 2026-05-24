@@ -10,6 +10,7 @@ from .auth import router as auth_router
 from .components import router as components_router
 from .github_app import router as github_app_router
 from .health import router as health_router
+from .license_policies import router as license_policies_router
 from .licenses import router as licenses_router
 from .notifications import router as notifications_router
 from .oauth import router as oauth_router
@@ -35,6 +36,7 @@ __all__ = [
     "components_router",
     "github_app_router",
     "health_router",
+    "license_policies_router",
     "licenses_router",
     "notifications_router",
     "oauth_router",

@@ -82,6 +82,7 @@ const sidebars: SidebarsConfig = {
         "reference/glossary",
         "reference/env-variables",
         "reference/api-overview",
+        "reference/license-policies",
       ],
     },
     {
