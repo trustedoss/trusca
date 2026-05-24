@@ -244,19 +244,23 @@ jobs:
             --cov-report=xml \
             tests/unit tests/integration
 
-      # v2.1 Track B (B4) — OpenAPI spec freshness gate. The docs site renders
-      # the API reference (redocusaurus / Redoc) from a COMMITTED static
-      # snapshot at docs-site/static/openapi.json. This step regenerates the
-      # snapshot from the backend's app.openapi() and fails the PR if the
-      # committed file is stale — same philosophy as the OpenAPI drift gate in
-      # tests/unit/test_openapi_contract.py. Runs in the backend test job
-      # because that is where backend deps + dummy env (SECRET_KEY /
-      # DATABASE_URL / REDIS_URL) are already present. The dump script is
-      # read-only: it only imports `main.app` and calls `app.openapi()`.
-      # If this fails: run `python scripts/dump_openapi.py` and commit the diff.
-      - name: Check committed OpenAPI snapshot is fresh
-        if: matrix.target == 'backend'
-        run: python scripts/dump_openapi.py --check
+      # v2.1 Track B (B4) — NOTE: there is deliberately NO byte-exact OpenAPI
+      # freshness gate here. A previous version ran
+      # `python scripts/dump_openapi.py --check` to diff the committed
+      # docs-site/static/openapi.json against `app.openapi()`. That gate was
+      # brittle across environments: FastAPI/Pydantic serialise the schema
+      # slightly differently depending on the Python / library minor version,
+      # so a snapshot generated locally on Python 3.11 would not be
+      # byte-identical to one regenerated on CI's Python 3.12 — failing the PR
+      # for a non-substantive reason. The committed openapi.json is now only a
+      # local-build fallback; the docs deploy workflow (.github/workflows/
+      # docs.yml) regenerates it from the live app on the same Python as CI
+      # before publishing, so the hosted Redoc reference is always fresh.
+      #
+      # Real contract drift (a route / method / param added or removed) is
+      # still gated — version-independently — by the METHOD+path→param subset
+      # check in apps/backend/tests/unit/test_openapi_contract.py
+      # (openapi_endpoints.json), which runs as part of the pytest step above.
 
       - name: Upload backend coverage
         if: matrix.target == 'backend'
