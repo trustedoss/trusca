@@ -37,6 +37,10 @@ from .component_approval import (  # noqa: E402,F401  (imported for metadata sid
     ApprovalStatus,
     ComponentApproval,
 )
+from .github_app import (  # noqa: E402,F401  (imported for metadata side effects)
+    GitHubAppCredential,
+    GitHubAppInstallation,
+)
 from .license_fetch_cache import (  # noqa: E402,F401  (imported for metadata side effects)
     LicenseFetchCache,
 )
@@ -73,6 +77,8 @@ __all__ = [
     "ComponentApproval",
     "ComponentDependencyEdge",
     "ComponentVersion",
+    "GitHubAppCredential",
+    "GitHubAppInstallation",
     "License",
     "LicenseFetchCache",
     "LicenseFinding",

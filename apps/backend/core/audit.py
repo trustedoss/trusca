@@ -69,6 +69,14 @@ _SENSITIVE_COLUMNS = frozenset(
         # secret used for HMAC verification — masking is mandatory.
         "key_hash",
         "webhook_secret",
+        # v2.2-b1 — GitHub App credential columns. ``private_key_encrypted`` is
+        # the Fernet ciphertext of the App PEM private key and
+        # ``webhook_secret_encrypted`` the ciphertext of the webhook HMAC secret.
+        # Both are already encrypted at rest, but masking them out of the audit
+        # diff is defence-in-depth: a register / soft-revoke / re-link UPDATE
+        # must never copy credential ciphertext into ``audit_logs.diff``.
+        "private_key_encrypted",
+        "webhook_secret_encrypted",
     }
 )
 
