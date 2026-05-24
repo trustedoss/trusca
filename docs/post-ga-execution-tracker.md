@@ -15,7 +15,7 @@
 |---|---|---|---|---|
 | v2.1 | A. VEX 소비 (트리아지) | 3 | 3 | ✅ 완료 (#145,#148,#150) |
 | v2.1 | B. 평가·배포 경로 | 5 | 5 | ✅ 완료 (#146,#147,#149,#151,#152) |
-| v2.2 | 리메디에이션 + 정책 | 10 | 5 | 🟦 a(#153,#154,#156)+문서(#155)+b1(#157)+c1(#158) 완료 · 진행 b2(통합)·c2 |
+| v2.2 | 리메디에이션 + 정책 | 10 | 6 | 🟦 a(3)+문서+b1(#157)+c1(#158)+b2(#159) 완료 · 진행 b3·c2 |
 | v2.3 | 무결성 + 우선순위화 | 6 | 0 | ⬜ 대기 |
 | — | 운영 레인 (외부 블로커) | 4 | 0 | ⬜ 대기 |
 
@@ -151,7 +151,7 @@
 - [x] **2.2-b1 — GitHub 쓰기 자격 모델** ✅ #157 (머지 `96fdeae`) — `github_app_credentials`+`github_app_installations`(마이그 0019), `core/crypto.py` Fernet 암호화저장(prod fail-closed), 설치별 단기 RS256 App JWT→installation token(`mint_installation_token`), per-project 옵트인, per-team RBAC. security-reviewer PASS-WITH-FOLLOWUPS(Crit/High 0)→Medium 3(redirect-disable·GITHUB_API_URL allowlist·installation_id 재검증)+Low 2 fix-first(`70eb877`). `dep: 2.2-a3` · `rev: ✅` `owner: backend-developer → security-reviewer`
   - GitHub App/토큰 자격 DB 저장(암호화) — 현 env-only 확장. 최소 권한·옵트인 per-project.
   - **후속(비머지, b3 전):** MultiFernet 롤링 키회전(현재 단일키 회전 시 기존 자격 brick) — 트래커 task #8.
-- [ ] **2.2-b2 — 생태계 어댑터(npm 우선) + dry-run** `dep: 2.2-b1` `owner: scan-pipeline-specialist`
+- [x] **2.2-b2 — 생태계 어댑터(npm 우선) + dry-run** ✅ #159 (머지 `4b40533`) — 순수 npm 어댑터(operator-preserving semver 재작성·format-preserving·lockfile 재생성 플래그), `compute_npm_dry_run`(a3 추천 + preserved-source 타르볼/override manifest), `POST /v1/projects/{id}/remediation/npm/dry-run`(member-gated). compute-only(마이그 없음·GitHub write 없음=b3). package.json adversarial 하드닝. `dep: 2.2-b1` `owner: scan-pipeline-specialist`
   - manifest 수정 어댑터(npm→pip→maven 순). dry-run 기본.
 - [ ] **2.2-b3 — 자동 PR 생성(옵트인) + UI + 감사** `dep: 2.2-b2` · `rev: ✅` `owner: backend-developer + frontend-dev → security-reviewer`
   - 브랜치→PR 자동생성, 옵트인, 감사로그. **종료조건: 최소 1개 생태계 PR 생성 + 보안리뷰 통과.**
