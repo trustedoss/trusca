@@ -56,6 +56,10 @@ from .oauth_identity import (  # noqa: E402,F401  (imported for metadata side ef
     OAUTH_PROVIDER_VALUES,
     OAuthIdentity,
 )
+from .remediation_pr import (  # noqa: E402,F401  (imported for metadata side effects)
+    REMEDIATION_PR_STATUS_VALUES,
+    RemediationPullRequest,
+)
 from .scan import (  # noqa: E402,F401  (imported for metadata side effects)
     Component,
     ComponentDependencyEdge,
@@ -96,7 +100,9 @@ __all__ = [
     "Organization",
     "PasswordResetToken",
     "Project",
+    "REMEDIATION_PR_STATUS_VALUES",
     "RefreshToken",
+    "RemediationPullRequest",
     "Scan",
     "ScanArtifact",
     "ScanComponent",

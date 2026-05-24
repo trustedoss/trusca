@@ -209,6 +209,11 @@
   "GET /v1/projects/{project_id}/overview": [
     "project_id"
   ],
+  "GET /v1/projects/{project_id}/remediation/pull-requests": [
+    "page",
+    "page_size",
+    "project_id"
+  ],
   "GET /v1/projects/{project_id}/sbom": [
     "format",
     "project_id"
@@ -326,6 +331,9 @@
   ],
   "POST /v1/projects": [],
   "POST /v1/projects/{project_id}/remediation/npm/dry-run": [
+    "project_id"
+  ],
+  "POST /v1/projects/{project_id}/remediation/npm/pull-request": [
     "project_id"
   ],
   "POST /v1/projects/{project_id}/scans": [
