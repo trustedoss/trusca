@@ -84,6 +84,7 @@ const sidebars: SidebarsConfig = {
         "reference/api-overview",
         "reference/license-policies",
         "reference/remediation-dry-run",
+        "reference/remediation-pull-request",
       ],
     },
     {
