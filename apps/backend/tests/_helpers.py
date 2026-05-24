@@ -131,7 +131,13 @@ async def make_project(
     slug: str | None = None,
     visibility: str = "team",
     archived: bool = False,
+    git_url: str | None = "https://github.com/example/trustedoss-fixture.git",
 ) -> Project:
+    # git_url defaults to a valid placeholder so a fixture project is
+    # source-scannable out of the box: `trigger_scan` rejects a `kind='source'`
+    # scan that has neither a git_url nor an uploaded archive (ScanSourceUnavailable,
+    # the BUG-008 silent-empty guard). Tests that specifically need a sourceless
+    # project pass `git_url=None`.
     suffix = unique_suffix()
     project = Project(
         team_id=team.id,
@@ -139,6 +145,7 @@ async def make_project(
         slug=slug or f"project-{suffix}",
         visibility=visibility,
         created_by_user_id=created_by.id if created_by else None,
+        git_url=git_url,
     )
     session.add(project)
     await session.commit()

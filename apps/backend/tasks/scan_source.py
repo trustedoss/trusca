@@ -59,7 +59,7 @@ from typing import Any
 
 import structlog
 from celery.exceptions import SoftTimeLimitExceeded
-from sqlalchemy import delete, select
+from sqlalchemy import String, case, cast, delete, func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -77,6 +77,7 @@ from integrations.dt.client import DTClient, build_client
 from models import (
     Component,
     ComponentVersion,
+    License,
     LicenseFinding,
     Project,
     Scan,
@@ -84,6 +85,7 @@ from models import (
     ScanComponent,
     VulnerabilityFinding,
 )
+from services.component_approval_service import auto_create_pending_approvals
 from services.source_archive_service import (
     SourceArchiveError,
     delete_archive,
@@ -110,6 +112,11 @@ _STAGE_PROGRESS: dict[str, int] = {
     # percent so the WS progress frame contract stays monotonic — clients that
     # rendered "50%" for the license stage keep rendering 50% for it.
     "scancode": 50,
+    # BUG-010: conditional-license components are auto-enrolled into the legal
+    # review queue right after the component graph commits, before the DT
+    # upload. Slotted between "scancode" (50) and "dt_upload" (70) so the WS
+    # progress frame stays monotonic.
+    "approvals": 60,
     "dt_upload": 70,
     "dt_findings": 90,
     "finalize": 100,
@@ -340,6 +347,16 @@ def _run_pipeline(
                 )
         session.commit()
 
+    # Stage 4.5 — auto-enrol conditional-license components into the legal
+    # review queue (BUG-010). MUST run AFTER the component + license findings
+    # commit above (it reads them back to decide which components are
+    # conditional). Best-effort, mirroring the scancode / preserve stages: a
+    # failure here logs a WARNING and the scan still succeeds. Idempotent on
+    # re-run because the helper skips components that already have an open
+    # approval (and _reset_scan_for_rerun never deletes approvals).
+    _set_stage(scan_uuid, "approvals")
+    _auto_create_conditional_approvals(scan_uuid=scan_uuid, project_id=project_id)
+
     # Stage 5 — DT upload (gated by the breaker).
     _set_stage(scan_uuid, "dt_upload")
     breaker = get_breaker()
@@ -452,7 +469,10 @@ def _fetch_source(
     source_dir.mkdir(parents=True, exist_ok=True)
 
     metadata = scan_metadata or {}
-    source_type = metadata.get("source_type", "git")
+    # Normalize to match the trigger-layer guard (services/scan_service.py): a
+    # canonical strip().lower() so worker and API agree on the source strategy
+    # and neither relies on the schema being the sole gatekeeper.
+    source_type = str(metadata.get("source_type", "git")).strip().lower()
 
     # feat/zip-upload: extract an uploaded archive instead of cloning.
     if source_type == "upload":
@@ -715,6 +735,129 @@ def _persist_artifact(scan_uuid: uuid.UUID, *, kind: str, path: Path) -> None:
         )
         session.add(artifact)
         session.commit()
+
+
+# ---------------------------------------------------------------------------
+# Conditional-license auto-approval (BUG-010)
+# ---------------------------------------------------------------------------
+
+# Numeric rank for the conditional category, mirroring _CATEGORY_RANK below
+# (defined later in this module). Defined here as a literal to avoid a forward
+# reference; the value is asserted consistent with _CATEGORY_RANK by the unit
+# tests so a future re-rank cannot silently drift.
+_CONDITIONAL_RANK = 2
+
+
+def _conditional_component_ids(
+    session: Session, *, scan_uuid: uuid.UUID
+) -> list[uuid.UUID]:
+    """Return the components in this scan whose *effective* license category is
+    exactly ``conditional``.
+
+    Mirrors how the components-list API derives a per-component
+    ``license_category``: a component may carry several license findings (one
+    per declared / detected / concluded SPDX id), and the component's effective
+    category is the **most restrictive** of them
+    (forbidden > conditional > allowed > unknown — see ``_CATEGORY_RANK``). We
+    group this scan's ``license_findings`` up to the owning ``component`` via
+    ``component_versions`` and keep only components whose ``MAX(category rank)``
+    equals the conditional rank.
+
+    Why exactly-conditional (not ``>= conditional``):
+      * ``forbidden`` is the build-gate's job, not the approval queue's — a
+        component with any forbidden license must NOT silently land in legal
+        review (the prompt + ``approvals.md`` scope auto-approval to
+        conditional only). ``MAX(rank) == conditional`` excludes any component
+        that also has a forbidden license.
+      * ``allowed`` / ``unknown`` rank below conditional, so a component whose
+        max is conditional cannot be one of those.
+
+    The category lives on the ``licenses`` row (set by
+    ``_classify_license_category`` at license-upsert time), so this is a pure
+    read of already-committed state.
+    """
+    rank_case = case(
+        {
+            "forbidden": 3,
+            "conditional": 2,
+            "allowed": 1,
+        },
+        value=cast(License.category, String),
+        else_=0,
+    )
+    stmt = (
+        select(
+            Component.id.label("component_id"),
+            func.max(rank_case).label("max_rank"),
+        )
+        .select_from(LicenseFinding)
+        .join(License, License.id == LicenseFinding.license_id)
+        .join(
+            ComponentVersion,
+            ComponentVersion.id == LicenseFinding.component_version_id,
+        )
+        .join(Component, Component.id == ComponentVersion.component_id)
+        .where(LicenseFinding.scan_id == scan_uuid)
+        .group_by(Component.id)
+        .having(func.max(rank_case) == _CONDITIONAL_RANK)
+    )
+    return [row.component_id for row in session.execute(stmt).all()]
+
+
+def _auto_create_conditional_approvals(
+    *, scan_uuid: uuid.UUID, project_id: uuid.UUID
+) -> None:
+    """Stage 4.5 — open a Pending approval for every conditional-license
+    component in this scan (BUG-010).
+
+    Best-effort: a failure here NEVER fails the scan (same swallow-and-log
+    contract as the scancode + preserve stages). The work is idempotent
+    (``auto_create_pending_approvals`` skips components that already have an
+    open approval), so a re-run that re-creates the findings does not duplicate
+    approvals, and a transient failure is healed on the next scan.
+    """
+    try:
+        with sync_session_scope() as session:
+            project = session.get(Project, project_id)
+            if project is None:
+                # Project deleted mid-scan — nothing to enrol against.
+                log.warning(
+                    "approval.auto_create_project_missing",
+                    scan_id=str(scan_uuid),
+                    project_id=str(project_id),
+                )
+                return
+            team_id = project.team_id
+            component_ids = _conditional_component_ids(session, scan_uuid=scan_uuid)
+            if not component_ids:
+                log.info(
+                    "approval.auto_create_none",
+                    scan_id=str(scan_uuid),
+                    project_id=str(project_id),
+                )
+                return
+            created = auto_create_pending_approvals(
+                session,
+                project_id=project_id,
+                team_id=team_id,
+                component_ids=component_ids,
+                scan_id=scan_uuid,
+            )
+            session.commit()
+        log.info(
+            "approval.auto_create_done",
+            scan_id=str(scan_uuid),
+            project_id=str(project_id),
+            conditional_components=len(component_ids),
+            created=created,
+        )
+    except Exception as exc:  # noqa: BLE001 — auto-approval must never fail a scan
+        log.warning(
+            "approval.auto_create_stage_error",
+            scan_id=str(scan_uuid),
+            project_id=str(project_id),
+            error=str(exc)[:300],
+        )
 
 
 # ---------------------------------------------------------------------------

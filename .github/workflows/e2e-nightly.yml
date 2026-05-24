@@ -78,17 +78,28 @@ jobs:
           fi
 
       - name: Tier 1/2 — golden-fixture drift gate (real cdxgen/scancode/DT)
-        if: steps.fixtures.outputs.have_fixtures == '1'
+        # Always runs (no `if:` gate). When BD_SCAN_REPO_URL is set, the full
+        # language matrix is diffed against its baselines. When it is NOT set,
+        # the test self-narrows to the in-repo fixture subset
+        # (apps/backend/tests/e2e/golden/fixtures/: node, python-pip) so the
+        # BUG-008 silent-failure class — "scan succeeded but 0 components" — is
+        # guarded nightly with NO external dependency. Other baselines skip
+        # cleanly when their fixture is absent.
+        #
         # Runs on the RUNNER (not in the container): run_golden is stdlib-only
-        # and drives the published API at localhost:8000, and the fixtures were
-        # cloned to the runner's $HOME — the backend container can't see them.
+        # and drives the published API at localhost:8000; external fixtures (when
+        # cloned) live on the runner's $HOME — the backend container can't see them.
         env:
           GOLDEN_API: http://localhost:8000
           GOLDEN_EMAIL: e2e-admin@trustedoss.dev
           GOLDEN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
-          GOLDEN_FIXTURES: ${{ steps.fixtures.outputs.fixtures_dir }}
         run: |
           pip install pytest
+          # Only export GOLDEN_FIXTURES when the external corpus was cloned;
+          # leaving it unset lets the in-repo fallback drive the subset.
+          if [ -n "${{ steps.fixtures.outputs.fixtures_dir }}" ]; then
+            export GOLDEN_FIXTURES="${{ steps.fixtures.outputs.fixtures_dir }}"
+          fi
           cd apps/backend && python -m pytest -m golden tests/e2e/golden -q
 
       - name: Tier 3 — load SLO gate (Locust headless, strict)

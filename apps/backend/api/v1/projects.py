@@ -472,6 +472,9 @@ async def trigger_scan_endpoint(
     # The service layer can raise:
     #   - ScanForbidden               (403) — caller not in the project's team
     #   - ProjectMissingForScan       (404) — project id does not exist
+    #   - ScanArchiveMissing          (404) — upload scan, archive id not on disk
+    #   - ScanSourceUnavailable       (422) — source scan with no git_url and no
+    #                                          uploaded archive (silent-empty guard)
     #   - ConcurrentScanLimitExceeded (429) — team at its concurrent-scan cap
     #   - ScanInProgressConflict      (409) — partial unique index hit
     #   - ScanEnqueueFailed           (503) — Celery dispatch failed; scan row

@@ -138,6 +138,68 @@ async def test_trigger_scan_persists_queued_row_and_writes_audit_log(
 
 
 # ---------------------------------------------------------------------------
+# trigger_scan — BUG-008 silent-empty-source guard
+# ---------------------------------------------------------------------------
+
+
+async def test_trigger_source_scan_without_source_raises_unavailable(
+    db_session: AsyncSession,
+) -> None:
+    """A `source` scan with neither a git_url nor an uploaded archive is
+    rejected up front (ScanSourceUnavailable / 422) instead of being queued and
+    silently succeeding with 0 components — the BUG-008 silent-failure class."""
+    from schemas.scan import ScanCreate
+    from services.scan_service import ScanSourceUnavailable, trigger_scan
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    user = await make_user(db_session)
+    await make_membership(db_session, user=user, team=team, role="developer")
+    project = await make_project(db_session, team=team, git_url=None)
+    actor = principal_for(user, team_ids=[team.id], role="developer")
+
+    with pytest.raises(ScanSourceUnavailable):
+        await trigger_scan(
+            db_session,
+            project_id=project.id,
+            payload=ScanCreate(kind="source", metadata={}),
+            actor=actor,
+        )
+
+    # Nothing was queued — the guard fires before the scans row is written.
+    count = (
+        await db_session.execute(
+            text("SELECT count(*) FROM scans WHERE project_id = :pid"),
+            {"pid": str(project.id)},
+        )
+    ).scalar_one()
+    assert count == 0
+
+
+async def test_trigger_source_scan_with_git_url_is_allowed(
+    db_session: AsyncSession,
+) -> None:
+    """The guard allows a source scan when the project has a git_url."""
+    from schemas.scan import ScanCreate
+    from services.scan_service import trigger_scan
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    user = await make_user(db_session)
+    await make_membership(db_session, user=user, team=team, role="developer")
+    project = await make_project(db_session, team=team)  # default valid git_url
+    actor = principal_for(user, team_ids=[team.id], role="developer")
+
+    scan = await trigger_scan(
+        db_session,
+        project_id=project.id,
+        payload=ScanCreate(kind="source", metadata={}),
+        actor=actor,
+    )
+    assert scan.status == "queued"
+
+
+# ---------------------------------------------------------------------------
 # trigger_scan — partial unique index gate
 # ---------------------------------------------------------------------------
 

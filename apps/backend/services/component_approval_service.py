@@ -39,12 +39,14 @@ State machine:
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterable
 from datetime import UTC, datetime
 
 import structlog
 from sqlalchemy import and_, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from core.authz import assert_team_access, can_access_team
 from core.security import CurrentUser
@@ -376,6 +378,119 @@ async def create_approval(
 
 
 # ---------------------------------------------------------------------------
+# auto_create_pending_approvals — sync, system-context (scan pipeline)
+# ---------------------------------------------------------------------------
+
+
+def auto_create_pending_approvals(
+    session: Session,
+    *,
+    project_id: uuid.UUID,
+    team_id: uuid.UUID,
+    component_ids: Iterable[uuid.UUID],
+    scan_id: uuid.UUID | None = None,
+) -> int:
+    """Open a Pending approval for each component, system-context (no actor).
+
+    BUG-010: the scan pipeline must auto-enrol conditional-license components
+    into the legal-review queue (``docs-site/docs/user-guide/approvals.md``
+    promises "a Pending request is created automatically. No manual action
+    required."). The user-facing :func:`create_approval` is async, demands a
+    ``CurrentUser`` actor, and runs team-access checks — none of which fit the
+    Celery worker, which runs on a **sync** session
+    (``core.db.sync_session_scope``) as a system actor with no request context.
+    This helper is the sync, actor-less counterpart.
+
+    Contract:
+      * Each component gets a ``ComponentApproval`` row with
+        ``requested_by_user_id=NULL`` (system-created — the model column is
+        nullable / ON DELETE SET NULL) and ``status='pending'``.
+      * **Idempotent.** A component that already has an *open*
+        (pending / under_review) approval for this project is skipped, so a
+        re-run of the scan (which purges + re-creates findings) never
+        double-creates. Idempotency is enforced two ways: a preflight SELECT
+        against the open set, AND a per-row SAVEPOINT that swallows the
+        ``IntegrityError`` raised by the partial unique index
+        ``ix_component_approvals_unique_open`` when a concurrent writer beats
+        the preflight (TOCTOU).
+      * **Per-row isolation.** Each insert runs inside its own
+        ``session.begin_nested()`` SAVEPOINT, so one component's unique-violation
+        rolls back ONLY that SAVEPOINT — the remaining components still insert.
+        A single shared transaction would otherwise be poisoned by the first
+        ``IntegrityError`` and lose every subsequent insert.
+
+    The caller is responsible for the outer ``session.commit()`` (the sync
+    session does not auto-commit — see ``sync_session_scope``). Returns the
+    number of approvals actually created (skipped duplicates are not counted).
+
+    Audit: the sync session has **no** audit listeners installed (see
+    ``core/db.py`` — Celery system writes are deliberately un-audited to avoid
+    ballooning ``audit_logs`` with per-scan rows), so these inserts produce no
+    ``audit_logs`` entry, which is consistent with every other row the scan
+    pipeline writes. The structlog ``approval.auto_created`` line is the
+    system-context audit trail.
+    """
+    created = 0
+    # De-dupe the incoming ids so a caller that passes the same component twice
+    # (e.g. one component with two conditional license findings) only attempts
+    # one insert.
+    unique_ids = list(dict.fromkeys(component_ids))
+    for component_id in unique_ids:
+        # Preflight: skip when an open approval already exists. Cheap, and it
+        # keeps the common (already-enrolled) path off the SAVEPOINT/rollback
+        # machinery.
+        existing = session.execute(
+            select(ComponentApproval.id).where(
+                and_(
+                    ComponentApproval.component_id == component_id,
+                    ComponentApproval.project_id == project_id,
+                    ComponentApproval.status.in_(
+                        [ApprovalStatus.pending, ApprovalStatus.under_review]
+                    ),
+                )
+            )
+        ).first()
+        if existing is not None:
+            continue
+
+        row = ComponentApproval(
+            component_id=component_id,
+            project_id=project_id,
+            team_id=team_id,
+            requested_by_user_id=None,  # system-created
+            status=ApprovalStatus.pending,
+            version=1,
+        )
+        try:
+            with session.begin_nested():
+                session.add(row)
+                session.flush()  # force the INSERT so the unique index fires here
+        except IntegrityError:
+            # The partial unique index fired — a concurrent writer (or the
+            # manual POST endpoint) opened an approval between our preflight and
+            # this flush. The SAVEPOINT rolled back only this row; carry on with
+            # the rest. Not an error condition — idempotency in action.
+            log.info(
+                "approval.auto_create_skipped_open",
+                component_id=str(component_id),
+                project_id=str(project_id),
+                scan_id=str(scan_id) if scan_id is not None else None,
+            )
+            continue
+
+        created += 1
+        log.info(
+            "approval.auto_created",
+            component_id=str(component_id),
+            project_id=str(project_id),
+            team_id=str(team_id),
+            scan_id=str(scan_id) if scan_id is not None else None,
+        )
+
+    return created
+
+
+# ---------------------------------------------------------------------------
 # transition_approval
 # ---------------------------------------------------------------------------
 
@@ -536,6 +651,7 @@ __all__ = [
     "ApprovalInvalidTransition",
     "ApprovalNotFound",
     "ApprovalTerminalState",
+    "auto_create_pending_approvals",
     "create_approval",
     "delete_approval",
     "get_approval",
