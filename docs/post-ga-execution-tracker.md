@@ -153,8 +153,8 @@
   - **후속(비머지, b3 전):** MultiFernet 롤링 키회전(현재 단일키 회전 시 기존 자격 brick) — 트래커 task #8.
 - [x] **2.2-b2 — 생태계 어댑터(npm 우선) + dry-run** ✅ #159 (머지 `4b40533`) — 순수 npm 어댑터(operator-preserving semver 재작성·format-preserving·lockfile 재생성 플래그), `compute_npm_dry_run`(a3 추천 + preserved-source 타르볼/override manifest), `POST /v1/projects/{id}/remediation/npm/dry-run`(member-gated). compute-only(마이그 없음·GitHub write 없음=b3). package.json adversarial 하드닝. `dep: 2.2-b1` `owner: scan-pipeline-specialist`
   - manifest 수정 어댑터(npm→pip→maven 순). dry-run 기본.
-- [ ] **2.2-b3 — 자동 PR 생성(옵트인) + UI + 감사** `dep: 2.2-b2` · `rev: ✅` `owner: backend-developer + frontend-dev → security-reviewer`
-  - 브랜치→PR 자동생성, 옵트인, 감사로그. **종료조건: 최소 1개 생태계 PR 생성 + 보안리뷰 통과.**
+- [~] **2.2-b3 — 자동 PR 생성(옵트인) + UI + 감사** 🟦 백엔드+보안리뷰 ✅ #160 (머지 `5c75a4a`) — `remediation_pull_requests`(마이그 0021), `create_npm_remediation_pr`(opt-in: 타깃 repo는 저장된 설치링크에서만 도출·caller 지정 불가, b1 토큰→branch/commit/PR, change_fingerprint idempotency), `POST .../remediation/npm/pull-request`+`GET .../pull-requests`. security-reviewer CHANGES REQUESTED(High base_branch 인젝션+Medium 3)→fix-first(`967900a`). **UI(b3-frontend) 미착수.** `dep: 2.2-b2` · `rev: ✅` `owner: backend-developer + frontend-dev → security-reviewer`
+  - 브랜치→PR 자동생성, 옵트인, 감사로그. **종료조건: 최소 1개 생태계 PR 생성 + 보안리뷰 통과.** (백엔드 종료조건 충족; UI는 완성도 후속.)
 - [x] **2.2-c1 — 동적 라이선스 정책 모델** ✅ #158 (머지 `2453501`) — `license_policies` 테이블(마이그 0020, org/team 스코프, `category_overrides`/`license_exceptions`(시한부 waiver)/`unknown_license_category` posture/`compound_operator_strategy`/`enabled`), CRUD API `/v1/license-policies`, `get_effective_policy` 우선순위 resolver(team>org>static) + 단일-id `effective_category` 헬퍼, adversarial 스키마검증. b1과 병렬개발→통합 시 마이그 0019→0020 재번호. `policy_gate` 미수정(c2). `dep: 2.2-a3 (병렬 가능)` `owner: db-designer + backend-developer`
   - per-team/org 정책(허용/조건부/금지 + 예외 + SPDX expression 룰) 모델 + 마이그레이션.
 - [ ] **2.2-c2 — Policy Gate 동적 룰 평가** `dep: 2.2-c1` `owner: backend-developer`
