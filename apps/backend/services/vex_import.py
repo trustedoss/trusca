@@ -113,7 +113,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.audit import bind_audit_team
 from core.security import CurrentUser
 from models import (
-    Component,
     ComponentVersion,
     Project,
     Vulnerability,
@@ -320,6 +319,30 @@ def _clean_justification(value: Any) -> str | None:
     return cleaned[:_MAX_JUSTIFICATION_CHARS]
 
 
+def _clean_provenance(value: Any) -> str | None:
+    """Sanitize a document provenance field (@id / author / serialNumber /
+    timestamp) for persistence in the ``vex_origin`` JSONB column.
+
+    Mirrors :func:`_clean_justification`'s control-character / NUL stripping —
+    the *only* difference is there is no length cap (provenance fields are short
+    identifiers, not free prose). ``_as_str`` alone only ``strip()``s the ends,
+    so an *embedded* NUL (``\\x00``) or C0 control byte survives and a JSONB
+    commit then fails with a Postgres ``DataError`` — which would abort the
+    whole import (a 500) and break the per-statement partial-failure contract.
+
+    Drops C0 control chars except TAB (\\x09): removes CR/LF (log/record
+    injection), NUL (Postgres TEXT/JSONB cannot store \\x00), and DEL (\\x7f);
+    keeps printable Unicode (incl. non-ASCII) intact. Returns None for a
+    non-string / empty value.
+    """
+    if not isinstance(value, str):
+        return None
+    cleaned = "".join(
+        ch for ch in value if ch == "\t" or (ord(ch) >= 0x20 and ord(ch) != 0x7F)
+    ).strip()
+    return cleaned or None
+
+
 def _detect_and_parse(doc: Any) -> tuple[str, list[_Statement], dict[str, Any]]:
     """Detect the VEX dialect and parse it into ``(format, statements, origin)``.
 
@@ -362,9 +385,9 @@ def _parse_openvex(doc: dict[str, Any]) -> tuple[list[_Statement], dict[str, Any
 
     origin = {
         "format": "openvex",
-        "id": _as_str(doc.get("@id")),
-        "author": _as_str(doc.get("author")),
-        "timestamp": _as_str(doc.get("timestamp")),
+        "id": _clean_provenance(doc.get("@id")),
+        "author": _clean_provenance(doc.get("author")),
+        "timestamp": _clean_provenance(doc.get("timestamp")),
     }
 
     statements: list[_Statement] = []
@@ -424,15 +447,15 @@ def _parse_cyclonedx(doc: dict[str, Any]) -> tuple[list[_Statement], dict[str, A
     timestamp = None
     author = None
     if isinstance(metadata, dict):
-        timestamp = _as_str(metadata.get("timestamp"))
+        timestamp = _clean_provenance(metadata.get("timestamp"))
         # CycloneDX has no single author; use the first tool name if present.
         tools = metadata.get("tools")
         if isinstance(tools, list) and tools and isinstance(tools[0], dict):
-            author = _as_str(tools[0].get("name"))
+            author = _clean_provenance(tools[0].get("name"))
 
     origin = {
         "format": "cyclonedx",
-        "id": _as_str(doc.get("serialNumber")),
+        "id": _clean_provenance(doc.get("serialNumber")),
         "author": author,
         "timestamp": timestamp,
     }
@@ -507,7 +530,9 @@ async def _load_findings_index(
             ComponentVersion,
             ComponentVersion.id == VulnerabilityFinding.component_version_id,
         )
-        .join(Component, Component.id == ComponentVersion.component_id)
+        # No Component join: the purl comes from ComponentVersion and tenancy is
+        # already enforced by ``scan_id`` (the scan belongs to the authorized
+        # project), so joining Component added a row with no filtering value.
         .where(VulnerabilityFinding.scan_id == scan_id)
     )
     result = await session.execute(stmt)
@@ -636,7 +661,20 @@ async def _apply_to_finding(
     """
     result.matched += 1
     target = statement.target
-    assert target is not None  # guarded by caller
+    if target is None:
+        # Fail-closed invariant guard. The caller already skips statements with
+        # an unmapped status before reaching here, so this is unreachable in
+        # normal flow — but an ``assert`` is stripped under ``python -O``, which
+        # would let a ``None`` target slip into ``_legal_path`` and raise deeper.
+        # Record a structured skip and return so the contract (one bad statement
+        # never aborts the import) holds even in an optimized build.
+        result.skip(
+            vuln=statement.vuln,
+            product=_first_product(statement),
+            reason="unmapped_status",
+            detail=f"VEX status {statement.vex_status!r} has no internal mapping",
+        )
+        return
 
     current = finding.status
     path = _legal_path(current, target)
@@ -711,7 +749,10 @@ async def _apply_to_finding(
     finding.analysis_source = "vex_import"
     finding.vex_origin = {
         **origin,
-        "vex_status": statement.vex_status,
+        # ``vex_status`` also lands in the JSONB column, so it gets the same
+        # control-char / NUL stripping as the origin provenance fields — an
+        # embedded NUL here would likewise fail the JSONB commit.
+        "vex_status": _clean_provenance(statement.vex_status),
         "imported_at": now.isoformat(),
     }
     result.applied += 1

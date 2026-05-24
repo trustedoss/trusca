@@ -78,6 +78,34 @@ def _declared_content_length(request: Request) -> int | None:
     return value if value >= 0 else None
 
 
+async def _read_bounded(upload: UploadFile, *, max_bytes: int) -> bytes:
+    """Read an uploaded body in chunks, aborting once it exceeds ``max_bytes``.
+
+    The declared Content-Length is only a courtesy fast-fail — a client can omit
+    or understate it. This streams the body and raises
+    :class:`~services.vex_import.VEXImportTooLarge` the moment the accumulated
+    size crosses the cap, so a body with a missing/false Content-Length still
+    yields a 413 without buffering the whole (possibly huge) payload.
+
+    We read one chunk past the cap (cap + 1 byte) to detect the overflow, then
+    stop — at most ``max_bytes`` + one chunk is ever held in memory.
+    """
+    from services.vex_import import VEXImportTooLarge
+
+    chunk_size = 64 * 1024
+    buf = bytearray()
+    while True:
+        chunk = await upload.read(chunk_size)
+        if not chunk:
+            break
+        buf.extend(chunk)
+        if len(buf) > max_bytes:
+            raise VEXImportTooLarge(
+                f"VEX document exceeds the {max_bytes}-byte limit",
+            )
+    return bytes(buf)
+
+
 # `format` is keyed both as a Pydantic Literal (so 422 fires for invalid values
 # at the OpenAPI layer) and re-validated inside the service for defense in
 # depth. The Literal mirrors ``services.vex_export.SUPPORTED_FORMATS``.
@@ -266,21 +294,29 @@ async def import_project_vex_endpoint(
     # Fast-fail on an oversized declared Content-Length before buffering the
     # body. The service re-checks the decoded size (a client can lie about /
     # omit Content-Length), so this is a courtesy ceiling, not the authority.
-    from services.vex_import import _max_document_bytes
+    from services.vex_import import VEXImportTooLarge, _max_document_bytes
 
+    max_bytes = _max_document_bytes()
     declared = _declared_content_length(request)
-    if declared is not None and declared > _max_document_bytes():
+    if declared is not None and declared > max_bytes:
         return problem_response(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             title="VEX Document Too Large",
             detail=(
                 f"declared content-length {declared} exceeds the "
-                f"{_max_document_bytes()}-byte VEX import limit"
+                f"{max_bytes}-byte VEX import limit"
             ),
             instance=request.url.path,
         )
 
-    raw = await upload.read()
+    # Bounded read: accumulate chunks and abort the moment we exceed the cap,
+    # rather than buffering the entire (possibly multi-GB) body up-front. A
+    # client that omits or lies about Content-Length cannot bypass the limit by
+    # streaming — we stop reading as soon as the cap is crossed.
+    try:
+        raw = await _read_bounded(upload, max_bytes=max_bytes)
+    except VEXImportTooLarge as exc:
+        return _problem_for_import_error(request, exc)
 
     try:
         summary = await import_vex(

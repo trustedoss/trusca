@@ -340,6 +340,68 @@ async def test_import_transitions_matching_finding(client: AsyncClient) -> None:
     assert finding.vex_origin["vex_status"] == "not_affected"
 
 
+@pytest.mark.parametrize(
+    ("field", "origin_key"),
+    [
+        ("@id", "id"),
+        ("author", "author"),
+        ("timestamp", "timestamp"),
+    ],
+)
+async def test_import_provenance_control_chars_does_not_500(
+    client: AsyncClient, field: str, origin_key: str
+) -> None:
+    """Reviewer repro: an embedded NUL / CRLF / DEL in a top-level OpenVEX
+    provenance field (@id / author / timestamp) used to slip past ``_as_str``
+    (strip-only) into the ``vex_origin`` JSONB column, raising a Postgres
+    DataError on commit → 500 (whole import aborted, partial-failure contract
+    broken). With ``_clean_provenance`` it must be a clean 200, the stored
+    provenance must be free of control bytes, and the matching finding must
+    still transition."""
+    _, user, project, scan = await _seed_project(client, role="team_admin")
+    headers = _bearer_for(user)
+    cve = f"CVE-2099-{unique_suffix()}"
+    finding_id, purl, _ = await _seed_finding(
+        client, scan_id=scan.id, status="analyzing", cve_id=cve
+    )
+
+    doc = {
+        "@context": "https://openvex.dev/ns/v0.2.0",
+        "@id": "https://trustedoss.io/vex/test/doc",
+        "author": "tester",
+        "timestamp": "2025-01-02T03:04:05.000Z",
+        "version": 1,
+        "statements": [
+            {
+                "vulnerability": {"name": cve},
+                "products": [{"@id": purl}],
+                "status": "not_affected",
+            }
+        ],
+    }
+    # Inject the hostile control bytes into the field under test.
+    doc[field] = "ev\x00il\r\nval\x7fue"
+    raw = json.dumps(doc).encode("utf-8")
+
+    response = await client.post(
+        f"/v1/projects/{project.id}/vex/import", headers=headers, files=_upload(raw)
+    )
+    assert response.status_code == 200, response.text
+    summary = response.json()
+    assert summary["applied"] == 1
+    assert summary["matched"] == 1
+
+    finding = await _read_finding(client, finding_id)
+    assert finding is not None
+    assert finding.status == "not_affected"
+    assert finding.vex_origin is not None
+    stored = finding.vex_origin[origin_key]
+    assert stored == "evilvalue"
+    assert "\x00" not in stored
+    assert "\r" not in stored and "\n" not in stored
+    assert "\x7f" not in stored
+
+
 async def test_import_new_to_not_affected_uses_legal_multistep(
     client: AsyncClient,
 ) -> None:
@@ -713,6 +775,49 @@ async def test_import_oversized_returns_413(client: AsyncClient) -> None:
             files=_upload(big),
         )
         assert response.status_code == 413
+        assert response.headers["content-type"].startswith(PROBLEM_JSON)
+        assert response.json()["title"] == "VEX Document Too Large"
+    finally:
+        del os.environ["VEX_IMPORT_MAX_BYTES"]
+
+
+async def test_import_oversized_without_content_length_returns_413(
+    client: AsyncClient,
+) -> None:
+    """Bounded-read guard, end-to-end: an over-cap multipart upload whose
+    declared Content-Length is *stripped* still yields 413. With the header
+    removed the router's declared-length fast-fail cannot fire, so a 413 here
+    proves the in-router bounded read (``_read_bounded``) is the backstop — not
+    just the service's post-decode size guard."""
+    _, user, project, _ = await _seed_project(client, role="team_admin")
+    import os
+
+    os.environ["VEX_IMPORT_MAX_BYTES"] = "100"
+    try:
+        big = _openvex_bytes(
+            [
+                {
+                    "vulnerability": {"name": f"CVE-{i}"},
+                    "products": [{"@id": f"pkg:npm/p{i}@1"}],
+                    "status": "fixed",
+                }
+                for i in range(80)
+            ]
+        )
+        assert len(big) > 100
+
+        # Build the multipart envelope ourselves so we can drop Content-Length.
+        request = client.build_request(
+            "POST",
+            f"/v1/projects/{project.id}/vex/import",
+            headers=_bearer_for(user),
+            files=_upload(big),
+        )
+        request.headers.pop("content-length", None)
+        request.headers["transfer-encoding"] = "chunked"
+        response = await client.send(request)
+
+        assert response.status_code == 413, response.text
         assert response.headers["content-type"].startswith(PROBLEM_JSON)
         assert response.json()["title"] == "VEX Document Too Large"
     finally:

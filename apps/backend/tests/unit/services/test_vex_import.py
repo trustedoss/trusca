@@ -32,6 +32,7 @@ from services.vex_import import (
     VEXImportUnsupportedFormat,
     _apply_to_finding,
     _clean_justification,
+    _clean_provenance,
     _decode_json,
     _detect_and_parse,
     _legal_path,
@@ -440,6 +441,77 @@ def test_justification_non_text_or_empty_is_none(value: object) -> None:
 
 
 # ===========================================================================
+# Provenance sanitization — control-char / NUL stripping for vex_origin (JSONB)
+# ===========================================================================
+
+
+def test_provenance_strips_crlf_null_and_del() -> None:
+    """Embedded NUL / C0 / DEL would fail the JSONB commit; they are stripped."""
+    cleaned = _clean_provenance("urn:uuid\x00:ab\r\ncd\x7fef")
+    assert cleaned is not None
+    assert "\x00" not in cleaned
+    assert "\r" not in cleaned
+    assert "\n" not in cleaned
+    assert "\x7f" not in cleaned
+    assert cleaned == "urn:uuid:abcdef"
+
+
+def test_provenance_keeps_tab_and_unicode() -> None:
+    assert _clean_provenance("Tool\tName — 한국어 ✓") == "Tool\tName — 한국어 ✓"
+
+
+def test_provenance_has_no_length_cap() -> None:
+    """Unlike justification (4000-char cap), provenance is not truncated."""
+    long_id = "u" * 9000
+    assert _clean_provenance(long_id) == long_id
+
+
+@pytest.mark.parametrize("value", [None, 123, [], {}, "", "   ", "\x00\r\n"])
+def test_provenance_non_text_or_empty_is_none(value: object) -> None:
+    assert _clean_provenance(value) is None
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["@id", "author", "timestamp"],
+)
+def test_openvex_origin_provenance_is_sanitized(field: str) -> None:
+    """A NUL / CRLF / DEL in an OpenVEX top-level provenance field is stripped
+    before it reaches ``vex_origin`` (would otherwise break the JSONB commit)."""
+    doc = _openvex_doc(
+        [{"vulnerability": {"name": "CVE-1"}, "products": ["pkg:npm/x@1"], "status": "fixed"}]
+    )
+    doc[field] = "ev\x00il\r\nval\x7fue"
+    _, _, origin = _detect_and_parse(doc)
+    key = "id" if field == "@id" else field
+    assert origin[key] == "evilvalue"
+    assert "\x00" not in origin[key]
+    assert "\r" not in origin[key] and "\n" not in origin[key]
+    assert "\x7f" not in origin[key]
+
+
+def test_cyclonedx_origin_serial_number_is_sanitized() -> None:
+    doc = {
+        "bomFormat": "CycloneDX",
+        "specVersion": "1.5",
+        "serialNumber": "urn:uuid\x00:abc\r\n",
+        "metadata": {
+            "timestamp": "2025-01-01T00:00:00Z\x00",
+            "tools": [{"name": "Tool\x7fA\r\n"}],
+        },
+        "vulnerabilities": [],
+    }
+    _, _, origin = _detect_and_parse(doc)
+    assert origin["id"] == "urn:uuid:abc"
+    assert origin["timestamp"] == "2025-01-01T00:00:00Z"
+    assert origin["author"] == "ToolA"
+    for key in ("id", "timestamp", "author"):
+        assert "\x00" not in origin[key]
+        assert "\r" not in origin[key] and "\n" not in origin[key]
+        assert "\x7f" not in origin[key]
+
+
+# ===========================================================================
 # CycloneDX parser — adversarial edges
 # ===========================================================================
 
@@ -630,3 +702,53 @@ async def test_apply_suppressed_by_developer_is_forbidden() -> None:
     assert result.skipped == 1
     assert result.errors[0]["reason"] == "forbidden_transition"
     assert finding.status == "analyzing"  # untouched
+
+
+async def test_apply_none_target_fails_closed_as_skip() -> None:
+    """Fail-closed guard: a None target (would be stripped ``assert`` under -O)
+    yields a structured skip, not a crash, and leaves the finding untouched."""
+    from datetime import UTC, datetime
+
+    team_id = uuid.uuid4()
+    finding = _FakeFinding("analyzing")
+    result = _Result()
+    await _apply_to_finding(
+        _FakeSession(),  # type: ignore[arg-type]
+        finding,  # type: ignore[arg-type]
+        statement=_statement(None, vex_status="made-up"),
+        actor=_developer(team_id),
+        team_id=team_id,
+        origin={"format": "openvex"},
+        result=result,
+        now=datetime.now(tz=UTC),
+    )
+    assert result.matched == 1
+    assert result.applied == 0
+    assert result.skipped == 1
+    assert result.errors[0]["reason"] == "unmapped_status"
+    assert finding.status == "analyzing"  # untouched
+    assert finding.vex_origin is None
+
+
+async def test_apply_sanitizes_vex_status_into_origin() -> None:
+    """A control-char / NUL in vex_status is stripped before it lands in the
+    JSONB ``vex_origin`` (an embedded NUL would fail the commit)."""
+    from datetime import UTC, datetime
+
+    team_id = uuid.uuid4()
+    finding = _FakeFinding("analyzing")
+    result = _Result()
+    await _apply_to_finding(
+        _FakeSession(),  # type: ignore[arg-type]
+        finding,  # type: ignore[arg-type]
+        statement=_statement("fixed", vex_status="fi\x00xe\r\nd"),
+        actor=_developer(team_id),
+        team_id=team_id,
+        origin={"format": "openvex", "id": "doc-1"},
+        result=result,
+        now=datetime.now(tz=UTC),
+    )
+    assert result.applied == 1
+    assert finding.vex_origin is not None
+    assert finding.vex_origin["vex_status"] == "fixed"
+    assert "\x00" not in finding.vex_origin["vex_status"]
