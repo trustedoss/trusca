@@ -264,6 +264,113 @@ Downloading the VEX document requires `developer` or higher. Cross-team callers
 receive `404`, not `403`, so a non-member cannot tell whether the project exists.
 :::
 
+## Import a VEX document (consume)
+
+The portal can also **import** an external VEX document (OpenVEX or CycloneDX
+VEX) and auto-apply its statements to your findings, suppressing triage noise.
+This is the inverse of [exporting a VEX document](#export-a-vex-document):
+export captures your triage as a standards document; import applies someone
+else's (or a previously-exported) document back onto your findings.
+
+Typical uses:
+
+- A vendor or upstream maintainer publishes a VEX document saying a CVE is
+  **not affected** in their package — import it instead of re-triaging by hand.
+- You exported a VEX document, edited it in another tool, and want the decisions
+  back in the portal.
+- A CI step generated a VEX document you want to consume on the next sync.
+
+### Permissions
+
+VEX import is a **bulk-triage** action — a single upload can transition many
+findings — so it requires **`team_admin`** within the project's team (the same
+bar as moving a finding *into* `Suppressed`). A `developer` who is a team member
+receives `403`; a non-member receives `404` (existence-hidden, same posture as
+export).
+
+### How matching works
+
+Each VEX statement is matched to a finding by **vulnerability id** (CVE/GHSA/OSV
+name) **+ component purl** against your project's **latest succeeded** scan. A
+statement that resolves to no finding (the CVE isn't in this scan, or the purl
+doesn't match) is **skipped with a reason** — it never errors the whole import.
+
+### Status mapping (VEX → portal)
+
+The import reverse-maps each VEX status to a single canonical portal state:
+
+| OpenVEX `status` | CycloneDX `analysis.state` | Portal state |
+|---|---|---|
+| `not_affected` | `not_affected` | **Not affected** |
+| — | `false_positive` | **False positive** |
+| `affected` | `exploitable` | **Exploitable** |
+| `fixed` | `resolved` | **Fixed** |
+| `under_investigation` | `in_triage` | **Analyzing** |
+
+`under_investigation` / `in_triage` map to **Analyzing** (not `New`): `New` is
+the discovery inbox and nothing transitions *into* it.
+
+### Legal transitions are preserved
+
+Import obeys the same [VEX state machine](#vex-state-machine) as the manual
+workflow. Because every verdict routes through `Analyzing`, importing (say)
+`not_affected` onto a finding that is still **New** applies the **legal two-step
+path** `New → Analyzing → Not affected` automatically, and the audit log records
+**both** steps. The justification from the VEX document (`impact_statement` /
+`analysis.detail`) is preserved on the finding.
+
+### Idempotency & round-trip
+
+Importing the same document twice is safe: a finding already in the target state
+is **skipped** (`already_at_target`), not re-written. Exporting your triage and
+immediately re-importing it is a **no-op** — the portal's export/import
+round-trip is status-stable.
+
+### Import from the API
+
+```bash
+curl -sS -X POST \
+  -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+  -F "upload=@vex.openvex.json;type=application/json" \
+  "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/vex/import"
+```
+
+The response is a JSON summary:
+
+```json
+{
+  "format": "openvex",
+  "matched": 12,
+  "applied": 9,
+  "skipped": 3,
+  "errors": [
+    {
+      "vulnerability": "CVE-2024-0001",
+      "product": "pkg:npm/left-pad@1.0.0",
+      "reason": "unknown_component",
+      "detail": "CVE-2024-0001 has no finding on pkg:npm/left-pad@1.0.0 in the latest scan"
+    }
+  ]
+}
+```
+
+- `matched` — findings a statement resolved to.
+- `applied` — findings whose status actually changed.
+- `skipped` — findings/statements deliberately not applied (no-op, unknown
+  vuln/purl, …).
+- `errors[].reason` — one of `unknown_vulnerability`, `unknown_component`,
+  `ambiguous_match`, `unmapped_status`, `illegal_transition`,
+  `already_at_target`, `forbidden_transition`, `malformed_statement`.
+
+| Status | Meaning |
+|---|---|
+| `200` | Import ran — see the summary (even when 0 applied). |
+| `401` | Not authenticated. |
+| `403` | Authenticated, member of the team, but not `team_admin`. |
+| `404` | Project missing or caller not a team member (existence-hidden). |
+| `413` | The uploaded document exceeds the size limit (`VEX_IMPORT_MAX_BYTES`, default 8 MiB). |
+| `422` | The document is not valid JSON, or is neither OpenVEX nor CycloneDX VEX. Body is `application/problem+json`. |
+
 ## Re-detection
 
 When Dependency-Track ingests new CVEs from upstream feeds (NVD, OSV, GitHub Advisory), the periodic resync task re-correlates them against every project's latest scan. New findings appear automatically — no manual action required.

@@ -1,18 +1,28 @@
 """
-VEX export HTTP surface — v2.1 Track A (A1).
+VEX export + import HTTP surface — v2.1 Track A (A1 export, A2 import).
 
-Endpoint:
-  - GET /v1/projects/{project_id}/vex?format=openvex|cyclonedx
+Endpoints:
+  - GET  /v1/projects/{project_id}/vex?format=openvex|cyclonedx   (A1 export)
+  - POST /v1/projects/{project_id}/vex/import                     (A2 import)
 
-Auth: every route requires a valid access token (``require_role("developer")``).
+Auth: every route requires a valid access token.
+  - Export (GET) requires ``require_role("developer")`` — a read.
+  - Import (POST) additionally requires *team_admin within the project's team*.
+    Import is a bulk-triage privileged action: a single upload can transition
+    many findings (including into ``suppressed``, which the manual PATCH path
+    already gates at team_admin). The role check is enforced in this router
+    against the *project's* team (not the actor's highest role) to avoid
+    cross-team escalation.
+
 IDOR is enforced inline — outsiders see 404 (existence-hide), exactly as for the
 SBOM export and component detail. We use 404-not-403 here because the VEX
 endpoint leaks structural details (component purls, CVE ids, triage state) about
 a project; matching the SBOM endpoint's behaviour keeps the IDOR-leak surface
-uniform.
+uniform. A same-team developer who lacks team_admin sees 403 (the project's
+existence is already known to a team member).
 
-All 4xx / 5xx responses are RFC 7807 problem+json; the success response is a
-file download with ``Content-Disposition: attachment``.
+All 4xx / 5xx responses are RFC 7807 problem+json; the export success response
+is a file download, the import success response is a JSON summary.
 """
 
 from __future__ import annotations
@@ -21,13 +31,14 @@ import uuid
 from typing import Literal
 
 import structlog
-from fastapi import APIRouter, Depends, Query, Request, Response, status
+from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.authz import assert_team_access
 from core.db import get_db
 from core.errors import problem_response
 from core.security import CurrentUser, require_role
+from schemas.vex_import import VEXImportSummary
 from services.project_service import (
     ProjectError,
     ProjectForbidden,
@@ -39,9 +50,32 @@ from services.vex_export import (
     VEXUnsupportedFormat,
     export_vex,
 )
+from services.vex_import import (
+    VEXImportError,
+    import_vex,
+)
+from services.vulnerability_service import _has_team_admin
 
 router = APIRouter(prefix="/v1", tags=["vex"])
 log = structlog.get_logger("vex.api")
+
+
+def _declared_content_length(request: Request) -> int | None:
+    """Parse the request's ``Content-Length`` header, or ``None`` if absent/bad.
+
+    A multipart upload's Content-Length covers the whole envelope (part headers
+    + boundaries), so it is always >= the file body — a safe over-estimate for
+    an early-reject ceiling. A malformed value is treated as absent (the
+    decoded-bytes guard in the service is the real cap).
+    """
+    raw = request.headers.get("content-length")
+    if raw is None:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    return value if value >= 0 else None
 
 
 # `format` is keyed both as a Pydantic Literal (so 422 fires for invalid values
@@ -74,6 +108,15 @@ def _problem_for_project_error(request: Request, exc: ProjectError) -> Response:
 
 
 def _problem_for_vex_error(request: Request, exc: VEXExportError) -> Response:
+    return problem_response(
+        status_code=exc.status_code,
+        title=exc.title,
+        detail=str(exc) or exc.title,
+        instance=request.url.path,
+    )
+
+
+def _problem_for_import_error(request: Request, exc: VEXImportError) -> Response:
     return problem_response(
         status_code=exc.status_code,
         title=exc.title,
@@ -158,4 +201,100 @@ async def export_project_vex_endpoint(
         status_code=status.HTTP_200_OK,
         media_type=content_type,
         headers=headers,
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /v1/projects/{project_id}/vex/import
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/projects/{project_id}/vex/import",
+    summary="Import a VEX document, auto-transitioning matching findings (team_admin)",
+    response_model=VEXImportSummary,
+    responses={
+        200: {"description": "Import summary (matched/applied/skipped/errors)"},
+        401: {"description": "Authentication required"},
+        403: {"description": "Requires team_admin within the project's team"},
+        404: {"description": "Project not found or not accessible"},
+        413: {"description": "VEX document too large"},
+        422: {"description": "Malformed or unsupported VEX document"},
+    },
+)
+async def import_project_vex_endpoint(
+    request: Request,
+    project_id: uuid.UUID,
+    upload: UploadFile = File(
+        ...,
+        description="An OpenVEX or CycloneDX VEX JSON document (format auto-detected).",
+    ),
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_role("developer")),
+) -> Response:
+    # IDOR guard — reuse ``get_project`` so the "can the actor see this
+    # project?" decision lives in one place. Existence-hide: a non-member sees
+    # the same 404 as for an unknown project id (see helper above).
+    try:
+        project = await get_project(session, project_id=project_id, actor=actor)
+    except ProjectNotFound as exc:
+        return _problem_for_project_error(request, exc)
+    except ProjectForbidden as exc:
+        # Cross-team → 404 existence-hide (the helper rewrites Forbidden→404).
+        return _problem_for_project_error(request, exc)
+    except ProjectError as exc:  # pragma: no cover - defensive catch-all
+        return _problem_for_project_error(request, exc)
+
+    # Team-admin gate, evaluated against the PROJECT's team (not the actor's
+    # highest role) to block cross-team escalation. A same-team developer who
+    # is visible-as-a-member but lacks team_admin gets a 403 here — the 404
+    # existence-hide above already protected the cross-team case.
+    if not _has_team_admin(actor, project.team_id):
+        log.warning(
+            "vex_import.forbidden",
+            actor_id=str(actor.id),
+            project_id=str(project_id),
+            team_id=str(project.team_id),
+        )
+        return problem_response(
+            status_code=status.HTTP_403_FORBIDDEN,
+            title="Forbidden",
+            detail="VEX import requires role >= team_admin within the project's team.",
+            instance=request.url.path,
+        )
+
+    # Fast-fail on an oversized declared Content-Length before buffering the
+    # body. The service re-checks the decoded size (a client can lie about /
+    # omit Content-Length), so this is a courtesy ceiling, not the authority.
+    from services.vex_import import _max_document_bytes
+
+    declared = _declared_content_length(request)
+    if declared is not None and declared > _max_document_bytes():
+        return problem_response(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            title="VEX Document Too Large",
+            detail=(
+                f"declared content-length {declared} exceeds the "
+                f"{_max_document_bytes()}-byte VEX import limit"
+            ),
+            instance=request.url.path,
+        )
+
+    raw = await upload.read()
+
+    try:
+        summary = await import_vex(
+            session,
+            project=project,
+            raw=raw,
+            actor=actor,
+        )
+    except VEXImportError as exc:
+        return _problem_for_import_error(request, exc)
+
+    body = VEXImportSummary.model_validate(summary)
+    return Response(
+        content=body.model_dump_json(),
+        status_code=status.HTTP_200_OK,
+        media_type="application/json",
     )
