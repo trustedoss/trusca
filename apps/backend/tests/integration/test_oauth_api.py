@@ -179,6 +179,80 @@ async def test_authorize_disabled_provider_returns_503_problem_details(
 
 
 # ---------------------------------------------------------------------------
+# M-1 — demo read-only blocks OAuth (authorize + callback)
+# ---------------------------------------------------------------------------
+
+
+async def test_authorize_blocked_when_demo_read_only(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """M-1: even with a fully-configured provider, demo read-only mode 403s the
+    authorize endpoint (OAuth sign-in is a write — it can create a user/team)."""
+    monkeypatch.setenv("DEMO_READ_ONLY", "true")
+    response = await client.get("/auth/oauth/github/authorize")
+    assert response.status_code == 403
+    assert response.headers["content-type"].startswith("application/problem+json")
+    body = response.json()
+    assert body["status"] == 403
+    assert body.get("demo_read_only") is True
+    # It must NOT redirect to the provider.
+    assert "location" not in {k.lower() for k in response.headers}
+
+
+async def test_callback_blocked_when_demo_read_only_creates_no_user(
+    client: AsyncClient,
+    db_factory: async_sessionmaker[Any],
+    seed_organization: None,
+    monkeypatch: pytest.MonkeyPatch,
+    patch_async_client: Callable[[Callable[[httpx.Request], httpx.Response]], None],
+) -> None:
+    """M-1: the callback 403s BEFORE any token exchange / DB write under demo
+    read-only — no User / OAuthIdentity / Team is created."""
+    from models import OAuthIdentity, User
+
+    monkeypatch.setenv("DEMO_READ_ONLY", "true")
+
+    email = f"demo-block-{uuid.uuid4().hex[:8]}@example.com"
+    user_id = abs(hash(email)) % (10**9)
+    patch_async_client(_github_handler(user_id=user_id, email=email, name="Blocked"))
+    state = await _mint_state("github", "/dashboard")
+
+    response = await client.get(
+        "/auth/oauth/github/callback",
+        params={"code": "abc", "state": state},
+    )
+    assert response.status_code == 403
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert response.json().get("demo_read_only") is True
+    # No write happened.
+    async with db_factory() as session:
+        user = (
+            await session.execute(select(User).where(User.email == email))
+        ).scalar_one_or_none()
+        assert user is None
+        any_identity = (
+            await session.execute(
+                select(OAuthIdentity).where(
+                    OAuthIdentity.provider_user_id == str(user_id)
+                )
+            )
+        ).scalar_one_or_none()
+        assert any_identity is None
+
+
+async def test_authorize_allowed_when_demo_read_only_off(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Sanity: with the flag off the authorize endpoint still redirects."""
+    monkeypatch.setenv("DEMO_READ_ONLY", "false")
+    response = await client.get("/auth/oauth/github/authorize")
+    assert response.status_code == 302
+    assert response.headers["location"].startswith(
+        "https://github.com/login/oauth/authorize?"
+    )
+
+
+# ---------------------------------------------------------------------------
 # /callback — happy path: brand new user
 # ---------------------------------------------------------------------------
 

@@ -86,10 +86,20 @@ def _resolve_demo_password() -> str:
 
     Resolution order:
       1. ``DEMO_SUPER_ADMIN_PASSWORD`` env var if set (must be ≥ 12 chars).
+         This is the **recommended** path for the demo deploy: provision the
+         value in Secret Manager (terraform ``demo_super_admin_password``) so
+         the daily reset Job never has to generate or surface a credential.
       2. Random ``secrets.token_urlsafe(18)`` if ``APP_ENV`` is ``dev`` or
-         ``demo``. The generated password is printed once to stdout as a
-         JSON event so the Cloud Run seed Job's log captures it for the
-         operator. It is never persisted anywhere else.
+         ``demo``.
+           * ``dev`` — the plaintext is printed once to stdout for local
+             convenience (a developer's own machine, not a shared log sink).
+           * ``demo`` (and any other allowed-but-not-dev env) — the plaintext
+             is **never** logged (CLAUDE.md §5: passwords must not appear in
+             logs in plaintext). The Cloud Run Job log captured the value on
+             every nightly run, persisting it in Cloud Logging — a standing
+             credential leak. Instead we emit a masked advisory event pointing
+             the operator at the secret-backed path. The generated value is
+             only written to the super-admin user row (hashed).
       3. ``RuntimeError`` for any other ``APP_ENV`` (production guard).
 
     Replaces the previously-hardcoded ``DemoAdmin2026!`` constant. Called
@@ -110,18 +120,42 @@ def _resolve_demo_password() -> str:
             "outside dev/demo."
         )
     pw = secrets.token_urlsafe(18)
-    # Print once to stdout — the Cloud Run seed Job log captures this.
-    # The value is never written to file, env, or DB beyond the user row.
-    print(
-        json.dumps(
-            {
-                "event": "seed_demo.generated_password",
-                "email": _DEMO_SUPER_ADMIN_EMAIL,
-                "password": pw,
-            }
-        ),
-        flush=True,
-    )
+    if app_env == "dev":
+        # Local dev only — print once to stdout for the developer's convenience.
+        # This is a single-developer machine, not a shared/retained log sink.
+        print(
+            json.dumps(
+                {
+                    "event": "seed_demo.generated_password",
+                    "email": _DEMO_SUPER_ADMIN_EMAIL,
+                    "password": pw,
+                }
+            ),
+            flush=True,
+        )
+    else:
+        # demo (or any other allowed non-dev env): NEVER log the plaintext.
+        # Emit a masked advisory so the operator knows a credential was minted
+        # and how to make it stable (Secret Manager) instead of relying on a
+        # value that used to leak into Cloud Logging on every reset.
+        from core.logging import mask_pii  # local import — see module header
+
+        print(
+            json.dumps(
+                {
+                    "event": "seed_demo.generated_password",
+                    "email": mask_pii(_DEMO_SUPER_ADMIN_EMAIL),
+                    "password": "***",
+                    "note": (
+                        "A random demo super-admin password was generated and "
+                        "is NOT logged. Set DEMO_SUPER_ADMIN_PASSWORD (via "
+                        "Secret Manager / terraform demo_super_admin_password) "
+                        "to pin a known, stable credential."
+                    ),
+                }
+            ),
+            flush=True,
+        )
     return pw
 
 # Realistic fake CVE catalog. Severity buckets match VULN_SEVERITY_VALUES.

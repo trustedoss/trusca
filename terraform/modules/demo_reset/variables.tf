@@ -84,10 +84,13 @@ variable "time_zone" {
 
 variable "demo_super_admin_password_secret_id" {
   description = <<-EOT
-    OPTIONAL Secret Manager secret ID for DEMO_SUPER_ADMIN_PASSWORD. When set,
-    the reset Job reseeds the demo super-admin with a STABLE password (so the
-    public demo credentials do not change every night). When empty, seed_demo
-    generates a random password each run and logs it once.
+    RECOMMENDED Secret Manager secret ID for DEMO_SUPER_ADMIN_PASSWORD
+    (security-reviewer M-2). When set, the reset Job reseeds the demo
+    super-admin with a STABLE, KNOWN password (so the public demo credentials
+    do not change every night) and the Job never generates or logs a
+    credential. When empty, seed_demo generates a random password each run but
+    does NOT log the plaintext in the demo env (only a masked advisory event);
+    provision this secret so you actually know the published credential.
   EOT
   type        = string
   default     = ""

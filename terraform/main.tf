@@ -252,10 +252,12 @@ module "cloud_run_frontend" {
 # ---------------------------------------------------------------------------
 # v2.1 Track B (B5) — daily demo reset.
 #
-# Optional Secret Manager secret holding a STABLE demo super-admin password so
-# the published demo credentials survive the nightly reseed. Created only when
-# `demo_super_admin_password` is supplied; otherwise the reset Job lets
-# seed_demo generate a random one each night (logged once).
+# RECOMMENDED Secret Manager secret holding a STABLE demo super-admin password
+# so the published demo credentials survive the nightly reseed (security-reviewer
+# M-2 — the recommended path so the Job never generates/logs a credential).
+# Created only when `demo_super_admin_password` is supplied; otherwise the reset
+# Job lets seed_demo generate a random one each night and, in the demo env, does
+# NOT log the plaintext (only a masked advisory).
 # ---------------------------------------------------------------------------
 
 resource "google_secret_manager_secret" "demo_super_admin_password" {

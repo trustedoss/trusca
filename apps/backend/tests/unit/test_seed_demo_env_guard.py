@@ -173,8 +173,12 @@ def test_resolve_demo_password_rejects_short_explicit(
 def test_resolve_demo_password_generates_random_in_dev(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Without an explicit env, dev/demo gets a random password printed once."""
-    monkeypatch.setenv("APP_ENV", "demo")
+    """In *dev only*, a random password is generated and printed once.
+
+    dev is a single-developer machine, so printing the plaintext for local
+    convenience is acceptable (CLAUDE.md §5 targets shared/retained log sinks).
+    """
+    monkeypatch.setenv("APP_ENV", "dev")
     monkeypatch.delenv("DEMO_SUPER_ADMIN_PASSWORD", raising=False)
     from scripts.seed_demo import _resolve_demo_password
 
@@ -184,6 +188,54 @@ def test_resolve_demo_password_generates_random_in_dev(
     payload = json.loads(captured.out.strip())
     assert payload["event"] == "seed_demo.generated_password"
     assert payload["password"] == pw
+
+
+def test_resolve_demo_password_demo_never_logs_plaintext(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """M-2: in the demo env the generated plaintext is NEVER logged.
+
+    The Cloud Run reset Job runs with APP_ENV=demo every night, so any plaintext
+    here would persist in Cloud Logging (CLAUDE.md §5 violation). We still
+    generate a valid password (it is hashed into the user row) but only emit a
+    masked advisory event — the value itself must not appear anywhere in stdout.
+    """
+    monkeypatch.setenv("APP_ENV", "demo")
+    monkeypatch.delenv("DEMO_SUPER_ADMIN_PASSWORD", raising=False)
+    from scripts.seed_demo import _resolve_demo_password
+
+    pw = _resolve_demo_password()
+    assert len(pw) >= 24  # still a strong random password
+    out = capsys.readouterr().out
+    # The plaintext password must NOT appear anywhere in the captured output.
+    assert pw not in out
+    payload = json.loads(out.strip())
+    assert payload["event"] == "seed_demo.generated_password"
+    assert payload["password"] == "***"  # masked, not the real value
+    # The email local-part is masked (mask_pii keeps the domain, hides the
+    # identity), and an advisory note points at the Secret Manager path.
+    assert payload["email"].startswith("ad***")
+    assert "admin@demo.trustedoss.dev" not in payload["email"]
+    assert "DEMO_SUPER_ADMIN_PASSWORD" in payload["note"]
+
+
+def test_resolve_demo_password_explicit_demo_not_logged(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An explicit (Secret Manager-backed) demo password is used and not logged.
+
+    The recommended path: the operator provisions DEMO_SUPER_ADMIN_PASSWORD, so
+    nothing is generated and nothing is printed at all.
+    """
+    monkeypatch.setenv("APP_ENV", "demo")
+    monkeypatch.setenv("DEMO_SUPER_ADMIN_PASSWORD", "StableDemoPw-OK!")
+    from scripts.seed_demo import _resolve_demo_password
+
+    pw = _resolve_demo_password()
+    assert pw == "StableDemoPw-OK!"
+    out = capsys.readouterr().out
+    assert pw not in out
+    assert out.strip() == ""  # the explicit path is entirely silent
 
 
 def test_resolve_demo_password_refuses_production(

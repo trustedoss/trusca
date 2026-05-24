@@ -199,10 +199,13 @@ variable "demo_reset_time_zone" {
 
 variable "demo_super_admin_password" {
   description = <<-EOT
-    OPTIONAL stable password for the demo super-admin so the published demo
-    credentials do not rotate on every nightly reset. Leave empty to have
-    seed_demo generate a random one each run (logged once in the Job output).
-    Must be ≥ 12 chars when set.
+    RECOMMENDED stable password for the demo super-admin (security-reviewer
+    M-2). When set it is stored in Secret Manager and the nightly reset Job
+    reseeds with this KNOWN credential — the Job never generates or logs a
+    password. Leave empty to have seed_demo generate a random one each run;
+    note that in the demo env the plaintext is NOT logged (only a masked
+    advisory), so you would not learn the credential. Must be ≥ 12 chars when
+    set.
   EOT
   type        = string
   default     = ""

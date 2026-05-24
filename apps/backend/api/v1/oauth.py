@@ -38,6 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import (
     app_env,
+    demo_read_only,
     oauth_login_redirect_default,
     oauth_login_redirect_failure,
     refresh_token_expire_days,
@@ -115,6 +116,44 @@ def _failure_redirect(reason: str) -> RedirectResponse:
     return RedirectResponse(target, status_code=status.HTTP_302_FOUND)
 
 
+# Stable Problem-Details ``type`` URI for the demo read-only short-circuit,
+# mirroring ``DemoReadOnlyMiddleware`` so callers see a consistent envelope.
+_DEMO_READ_ONLY_TYPE = "https://trustedoss.dev/problems/demo-read-only"
+
+
+def _demo_read_only_blocked(request: Request, *, provider: str) -> Response:
+    """Short-circuit an OAuth flow when ``DEMO_READ_ONLY`` is enabled.
+
+    Security (security-reviewer M-1, defense-in-depth): the OAuth ``authorize``
+    and ``callback`` endpoints are GETs, so they sail past
+    ``DemoReadOnlyMiddleware`` (which only gates unsafe methods). Yet a
+    successful ``callback`` *writes* — it can create a brand-new User + personal
+    Team or link/rotate an OAuth identity. In a read-only live demo that is a
+    mutation, so we disable OAuth sign-in entirely here rather than relying on
+    OAuth simply being unconfigured.
+
+    The flag is read at call time (CLAUDE.md core rule #11) so a deploy can
+    toggle it via env without a code change. We return an RFC 7807 403
+    ``application/problem+json`` — both endpoints can render JSON (``authorize``
+    has no redirect contract until it reaches the provider; ``callback`` only
+    redirects on the success/provider-failure paths, and a demo block is
+    neither).
+    """
+    log.warning("oauth_demo_read_only_blocked", provider=provider)
+    return problem_response(
+        status_code=403,
+        title="Read-only demo",
+        detail=(
+            "OAuth sign-in is disabled in this read-only live demo. Sign in "
+            "with the published demo credentials to explore the pre-seeded "
+            "projects, scans, vulnerabilities, and reports."
+        ),
+        instance=request.url.path,
+        type_=_DEMO_READ_ONLY_TYPE,
+        demo_read_only=True,
+    )
+
+
 # ---------------------------------------------------------------------------
 # GET /auth/oauth/{provider}/authorize  (PUBLIC)
 # ---------------------------------------------------------------------------
@@ -139,7 +178,13 @@ async def authorize(
       - 404 Problem Details when the provider name is unknown (FastAPI's
         Literal[] gate normally catches this; the explicit branch survives
         future enum widening).
+      - 403 ``demo_read_only`` Problem Details when the deployment runs in
+        read-only live-demo mode (OAuth sign-in is a write; see
+        :func:`_demo_read_only_blocked`).
     """
+    if demo_read_only():
+        return _demo_read_only_blocked(request, provider=provider)
+
     callback_uri = _redirect_uri_for(request, provider)
     try:
         url, _state = initiate_oauth(
@@ -183,7 +228,14 @@ async def callback(
     Failure path: 302 → configured failure URL with ``?error=<reason>``. The
     provider's own ``?error=access_denied`` (user clicked "Cancel") falls
     through here too — we forward a normalised ``error=oauth_denied``.
+
+    Read-only demo: if ``DEMO_READ_ONLY`` is enabled we 403 BEFORE any token
+    exchange or DB write (see :func:`_demo_read_only_blocked`), so the callback
+    can never create/link a User or Team in the demo.
     """
+    if demo_read_only():
+        return _demo_read_only_blocked(request, provider=provider)
+
     if error:
         # User clicked "Cancel" on the consent page or the provider
         # otherwise declined. We do NOT log the raw provider error code

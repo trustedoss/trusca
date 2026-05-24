@@ -83,10 +83,10 @@ The bundled Terraform module ships a **Cloud Scheduler → Cloud Run Job** that
 runs `scripts/reset_demo.py` once a day. The job:
 
 - **drops only the demo dataset** — the `demo-org` organization (FK cascade
-  removes its teams → projects → scans → findings) and the demo users (matched
-  by the stable `@demo.trustedoss.dev` email suffix; cascade removes their
-  memberships / notifications). No global truncate; a co-tenant's data is never
-  touched.
+  removes its teams → projects → scans → findings) and the demo users (scoped
+  by **demo-org membership** — only users who belong exclusively to the demo
+  org are removed; cascade removes their memberships / notifications). No global
+  truncate; a co-tenant who also belongs to another org is never touched.
 - **reseeds** via the idempotent `seed_demo._seed`, so the dataset shape is
   single-sourced with the normal seed.
 - **refuses to run** unless `APP_ENV` is `dev` or `demo` (it can never run
@@ -100,9 +100,12 @@ demo_reset_enabled   = true          # provision the daily Scheduler + Job
 demo_reset_schedule  = "17 3 * * *"  # cron (Cloud Scheduler syntax)
 demo_reset_time_zone = "Etc/UTC"
 
-# Optional — pin a STABLE demo super-admin password so the published demo
-# credentials survive the nightly reset. Leave unset to rotate it randomly
-# each night (the new value is logged once in the Job output).
+# Recommended — pin a STABLE demo super-admin password so the published demo
+# credentials survive the nightly reset. It is stored in Secret Manager and the
+# reset Job never generates or logs a credential. If you leave this unset the
+# Job generates a random password each night but does NOT log the plaintext
+# (only a masked advisory), so you would not learn the new credential — set
+# this to a known value you can publish.
 # demo_super_admin_password = "REPLACE_ME_MIN_12_CHARS"
 ```
 

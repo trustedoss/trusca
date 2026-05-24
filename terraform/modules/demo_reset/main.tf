@@ -124,9 +124,12 @@ resource "google_cloud_run_v2_job" "demo_reset" {
           }
         }
 
-        # OPTIONAL — stable demo super-admin password across nightly resets so
-        # the published demo credentials do not rotate. When unset, seed_demo
-        # generates a random one and logs it once (visible in the Job logs).
+        # RECOMMENDED — a Secret Manager-backed, stable demo super-admin
+        # password (security-reviewer M-2). When set, the daily reset Job
+        # reseeds with a KNOWN credential and never has to generate or surface
+        # one. When unset, seed_demo generates a random password but — in the
+        # demo env — does NOT log the plaintext (only a masked advisory), so
+        # the operator must set this secret to know the published credential.
         dynamic "env" {
           for_each = var.demo_super_admin_password_secret_id == "" ? [] : [1]
           content {
