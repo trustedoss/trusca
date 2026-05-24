@@ -8,6 +8,7 @@ from .api_keys import router as api_keys_router
 from .approvals import router as approvals_router
 from .auth import router as auth_router
 from .components import router as components_router
+from .github_app import router as github_app_router
 from .health import router as health_router
 from .licenses import router as licenses_router
 from .notifications import router as notifications_router
@@ -32,6 +33,7 @@ __all__ = [
     "approvals_router",
     "auth_router",
     "components_router",
+    "github_app_router",
     "health_router",
     "licenses_router",
     "notifications_router",

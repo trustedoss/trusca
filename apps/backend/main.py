@@ -27,6 +27,7 @@ from api.v1 import (
     approvals_router,
     auth_router,
     components_router,
+    github_app_router,
     health_router,
     licenses_router,
     notifications_router,
@@ -99,11 +100,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     async with engine.connect() as _conn:
         _role = (await _conn.execute(_sql_text("SELECT current_user"))).scalar()
     log.info("db.role.connected", role=_role)
-    if (
-        app_env() == "prod"
-        and _os.getenv("DATABASE_URL_APP")
-        and _role != "trustedoss_app"
-    ):
+    if app_env() == "prod" and _os.getenv("DATABASE_URL_APP") and _role != "trustedoss_app":
         raise RuntimeError(
             f"DATABASE_URL_APP is set in APP_ENV=prod but the runtime "
             f"connected as role={_role!r} (expected 'trustedoss_app'). "
@@ -206,6 +203,11 @@ app.include_router(source_tree_router)
 # Webhook endpoints are PUBLIC (no JWT) but each delivery is HMAC-authenticated
 # against a per-project shared secret stored in `projects.webhook_secret`.
 app.include_router(api_keys_router)
+# v2.2-b1: GitHub App credential storage + token-minting foundation. Team-scoped
+# CRUD for a GitHub App's reversibly-encrypted PEM private key (Fernet at rest)
+# and per-project installation opt-in links. Every endpoint requires JWT auth;
+# fine-grained team_admin/member RBAC is enforced in services.github_app_service.
+app.include_router(github_app_router)
 app.include_router(webhooks_github_router)
 app.include_router(webhooks_gitlab_router)
 # Phase 5 PR #17: build-gate result + SCA PR-comment endpoints. Both routes

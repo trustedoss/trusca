@@ -15,6 +15,13 @@
   "DELETE /v1/approvals/{approval_id}": [
     "approval_id"
   ],
+  "DELETE /v1/github-app-credentials/{credential_id}": [
+    "credential_id"
+  ],
+  "DELETE /v1/github-app-credentials/{credential_id}/installations/{installation_row_id}": [
+    "credential_id",
+    "installation_row_id"
+  ],
   "DELETE /v1/projects/{project_id}": [
     "project_id"
   ],
@@ -108,6 +115,20 @@
   ],
   "GET /v1/components/{component_id}": [
     "component_id"
+  ],
+  "GET /v1/github-app-credentials": [
+    "include_revoked",
+    "page",
+    "page_size",
+    "team_id"
+  ],
+  "GET /v1/github-app-credentials/{credential_id}": [
+    "credential_id"
+  ],
+  "GET /v1/github-app-credentials/{credential_id}/installations": [
+    "credential_id",
+    "page",
+    "page_size"
   ],
   "GET /v1/license_findings/{finding_id}": [
     "finding_id"
@@ -282,6 +303,12 @@
   ],
   "POST /v1/api-keys": [],
   "POST /v1/approvals": [],
+  "POST /v1/github-app-credentials": [
+    "team_id"
+  ],
+  "POST /v1/github-app-credentials/{credential_id}/installations": [
+    "credential_id"
+  ],
   "POST /v1/projects": [],
   "POST /v1/projects/{project_id}/scans": [
     "project_id"

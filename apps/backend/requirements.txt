@@ -44,6 +44,14 @@ python-jose[cryptography]==3.5.0  # H-1 CVE fix (algorithm confusion / DoS) + py
 # Transitive of python-jose / rsa. Pinned explicitly so Trivy / pip-audit
 # can verify the CVE-2026-30922 fix on a clean image rebuild.
 pyasn1==0.6.3
+# v2.2-b1 — GitHub App credential storage. ``cryptography`` was previously only
+# a TRANSITIVE dep (via python-jose[cryptography]); the b1 reversible-encryption
+# helper (core/crypto.py, Fernet at-rest encryption of the App PEM private key)
+# imports it DIRECTLY, so we pin it explicitly. 48.0.0 is the version already
+# resolved into the image by python-jose[cryptography]; pinning it keeps Trivy /
+# pip-audit able to track CVEs against a named direct dependency and prevents a
+# future jose bump from silently moving the Fernet surface out from under us.
+cryptography==48.0.0
 slowapi==0.1.9
 email-validator==2.2.0
 # Phase 6 PR #18 — async SMTP for the notifications module. aiosmtplib is the

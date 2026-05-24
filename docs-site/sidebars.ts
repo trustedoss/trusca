@@ -58,6 +58,7 @@ const sidebars: SidebarsConfig = {
         "admin-guide/oncall-runbook",
         "admin-guide/backup-and-restore",
         "admin-guide/api-keys",
+        "admin-guide/github-app",
       ],
     },
     {
