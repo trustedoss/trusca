@@ -10,6 +10,8 @@ parsing must parametrize oversized / control-char / wrong-type cases).
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import pytest
 from pydantic import ValidationError
 
@@ -39,13 +41,13 @@ def test_full_valid_body() -> None:
         name="Engineering",
         category_overrides={"MPL-2.0": "forbidden", "MIT": "allowed"},
         license_exceptions=[
-            {"spdx_id": "GPL-3.0-only", "reason": "legal waiver TICKET-1"},
-            {
-                "spdx_id": "LGPL-3.0",
-                "reason": "vendored",
-                "expires_at": "2026-12-31T00:00:00Z",
-                "component_purl": "pkg:pypi/x@1.2.3",
-            },
+            LicenseException(spdx_id="GPL-3.0-only", reason="legal waiver TICKET-1"),
+            LicenseException(
+                spdx_id="LGPL-3.0",
+                reason="vendored",
+                expires_at=datetime(2026, 12, 31, tzinfo=timezone.utc),
+                component_purl="pkg:pypi/x@1.2.3",
+            ),
         ],
         unknown_license_category="forbidden",
         compound_operator_strategy={"OR": "most_restrictive"},
@@ -89,7 +91,7 @@ def test_oversized_exceptions_array_rejected() -> None:
 )
 def test_invalid_override_category_value_rejected(label: str, bad_value: object) -> None:
     with pytest.raises(ValidationError):
-        LicensePolicyUpsertIn(category_overrides={"MIT": bad_value})
+        LicensePolicyUpsertIn(category_overrides={"MIT": bad_value})  # type: ignore[dict-item]
 
 
 @pytest.mark.parametrize(
