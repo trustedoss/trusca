@@ -44,6 +44,9 @@ from .github_app import (  # noqa: E402,F401  (imported for metadata side effect
 from .license_fetch_cache import (  # noqa: E402,F401  (imported for metadata side effects)
     LicenseFetchCache,
 )
+from .license_policy import (  # noqa: E402,F401  (imported for metadata side effects)
+    LicensePolicy,
+)
 from .notification import (  # noqa: E402,F401  (imported for metadata side effects)
     NOTIFICATION_KIND_VALUES,
     Notification,
@@ -82,6 +85,7 @@ __all__ = [
     "License",
     "LicenseFetchCache",
     "LicenseFinding",
+    "LicensePolicy",
     "Membership",
     "NOTIFICATION_KIND_VALUES",
     "Notification",
