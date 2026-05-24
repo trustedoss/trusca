@@ -51,6 +51,10 @@
     "message": "API 개요",
     "description": "The label of footer link with label=API overview linking to /docs/reference/api-overview"
   },
+  "link.item.label.API reference (Redoc)": {
+    "message": "API 레퍼런스 (Redoc)",
+    "description": "The label of footer link with label=API reference (Redoc) linking to /reference/api"
+  },
   "copyright": {
     "message": "Copyright © 2026 TrustedOSS — Apache-2.0 라이선스.",
     "description": "The footer copyright"

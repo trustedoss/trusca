@@ -14,6 +14,10 @@ The portal exposes a REST API rooted at `/v1`. The full OpenAPI 3.1 schema is ge
 Engineers integrating with the portal — CI runners, partner tooling, custom dashboards. Familiarity with HTTP, JSON, and OAuth-style bearer tokens.
 :::
 
+:::tip Full reference
+This page is the orientation. For the complete, browsable endpoint-by-endpoint reference — request bodies, response schemas, and validation rules — see the **[API reference (Redoc)](pathname:///reference/api)**. It is rendered from a committed OpenAPI snapshot and ships with the docs site (no running backend required).
+:::
+
 :::info Path mapping
 Browser-visible paths begin with `/api/...`. Traefik's `stripprefix` middleware strips `/api` before forwarding to FastAPI, so the backend's internal mount points are `/v1/*`, `/auth/*`, `/ws/*`, `/health`, and FastAPI's own `/docs`, `/redoc`, `/openapi.json`. Operators debugging inside the backend container should drop the `/api` prefix.
 :::
@@ -271,6 +275,7 @@ The path includes `/v1`. Breaking changes go to `/v2`. Within `/v1`:
 
 ## See also
 
+- **[API reference (Redoc)](pathname:///reference/api)** — full endpoint-by-endpoint schema, hosted with the docs.
 - `/api/docs` (Swagger UI) on every install.
 - [Architecture](./architecture.md)
 - [API keys](../admin-guide/api-keys.md)

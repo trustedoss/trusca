@@ -6,6 +6,12 @@ on:
     paths:
       - "docs-site/**"
       - ".github/workflows/docs.yml"
+      # B4: the hosted API reference (Redoc) renders from
+      # docs-site/static/openapi.json, which this workflow regenerates from
+      # the live FastAPI app. Backend API changes must therefore re-trigger a
+      # docs deploy so the published spec stays in sync with the code.
+      - "apps/backend/**"
+      - "scripts/dump_openapi.py"
   workflow_dispatch: {}
 
 # Cancel any in-flight deploy when a newer commit lands.
@@ -16,8 +22,39 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Dummy runtime env so `import main` succeeds in dump_openapi.py without
+    # real Postgres/Redis. These satisfy import-time reads in core.config only;
+    # app.openapi() is pure schema generation and never connects to services
+    # (the lifespan does not run on import). Values mirror the ci.yml backend
+    # job so the regenerated spec matches what CI would produce.
+    env:
+      SECRET_KEY: ci-secret-key-min-32-chars-padding-1234
+      DATABASE_URL: postgresql+asyncpg://trustedoss:trustedoss@localhost:5432/trustedoss
+      REDIS_URL: redis://localhost:6379/0
     steps:
       - uses: actions/checkout@v4
+
+      # --- Regenerate the OpenAPI spec from the live backend BEFORE the docs
+      # build, so the published Redoc reference always reflects the current
+      # API on the same Python (3.12) CI uses. The committed
+      # docs-site/static/openapi.json is only a local-build fallback; this
+      # step overwrites it for the deploy. dump_openapi.py is read-only on the
+      # backend (it imports main.app and calls app.openapi()). -------------
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/backend/requirements.txt
+
+      - name: Install backend deps
+        working-directory: apps/backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Regenerate OpenAPI spec
+        run: python scripts/dump_openapi.py
 
       - uses: actions/setup-node@v4
         with:

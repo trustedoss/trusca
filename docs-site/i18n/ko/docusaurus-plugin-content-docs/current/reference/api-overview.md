@@ -14,6 +14,10 @@ sidebar_position: 3
 포털과 통합하는 엔지니어 — CI 러너·파트너 도구·커스텀 대시보드. HTTP, JSON, OAuth 스타일 bearer 토큰에 익숙해야 합니다.
 :::
 
+:::tip 전체 레퍼런스
+이 페이지는 오리엔테이션입니다. 요청 본문·응답 스키마·검증 규칙까지 엔드포인트별로 탐색 가능한 전체 레퍼런스는 **[API 레퍼런스 (Redoc)](pathname:///reference/api)** 를 참고하세요. 커밋된 OpenAPI 스냅샷에서 렌더되며 문서 사이트와 함께 배포됩니다(백엔드 구동 불필요).
+:::
+
 :::info 경로 매핑
 브라우저에 보이는 경로는 `/api/...`로 시작합니다. Traefik의 `stripprefix` 미들웨어가 FastAPI로 포워딩하기 전 `/api`를 제거하므로, 백엔드 내부 마운트 지점은 `/v1/*`, `/auth/*`, `/ws/*`, `/health` 그리고 FastAPI 자체의 `/docs`, `/redoc`, `/openapi.json` 입니다. 백엔드 컨테이너 내부에서 디버깅하는 운영자는 `/api` 접두사를 떼고 호출하세요.
 :::
@@ -271,6 +275,7 @@ curl -sS https://trustedoss.example.com/api/openapi.json > openapi.json
 
 ## 함께 보기
 
+- **[API 레퍼런스 (Redoc)](pathname:///reference/api)** — 엔드포인트별 전체 스키마, 문서와 함께 호스팅.
 - 모든 설치의 `/api/docs`(Swagger UI).
 - [아키텍처](./architecture.md)
 - [API keys](../admin-guide/api-keys.md)

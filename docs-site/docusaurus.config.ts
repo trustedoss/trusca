@@ -53,6 +53,30 @@ const config: Config = {
         },
       } satisfies Preset.Options,
     ],
+    // v2.1 Track B (B4): API reference hosting via redocusaurus (Redoc).
+    // The spec is a STATIC, committed snapshot at static/openapi.json,
+    // regenerated from FastAPI's app.openapi() by scripts/dump_openapi.py and
+    // guarded against drift in CI (ci.yml backend test job). The docs build
+    // therefore needs no running backend. Rendered at /reference/api so it sits
+    // next to the hand-written API overview. The same static route is emitted
+    // for both locales; the spec itself is language-neutral (HTTP contract).
+    [
+      "redocusaurus",
+      {
+        specs: [
+          {
+            id: "trustedoss-api",
+            spec: "static/openapi.json",
+            route: "/reference/api",
+          },
+        ],
+        theme: {
+          // Match the site's primary (dark navy, Black Duck style) so the
+          // Redoc panel does not look bolted on.
+          primaryColor: "#0f172a",
+        },
+      },
+    ],
   ],
 
   themeConfig: {
@@ -93,6 +117,11 @@ const config: Config = {
         {
           to: "/docs/reference/architecture",
           label: "Reference",
+          position: "left",
+        },
+        {
+          to: "/reference/api",
+          label: "API reference",
           position: "left",
         },
         { type: "localeDropdown", position: "right" },
@@ -138,6 +167,7 @@ const config: Config = {
             { label: "Architecture", to: "/docs/reference/architecture" },
             { label: "Environment variables", to: "/docs/reference/env-variables" },
             { label: "API overview", to: "/docs/reference/api-overview" },
+            { label: "API reference (Redoc)", to: "/reference/api" },
           ],
         },
       ],
