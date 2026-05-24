@@ -133,6 +133,7 @@ PATCH  /v1/projects/{id}
 DELETE /v1/projects/{id}
 GET    /v1/projects/{id}/sbom?format=…
 GET    /v1/projects/{id}/vex?format=…       openvex | cyclonedx; VEX from finding triage
+POST   /v1/projects/{id}/vex/import         consume a VEX doc (team_admin); multipart upload
 GET    /v1/projects/{id}/notice
 GET    /v1/projects/{id}/components
 GET    /v1/projects/{id}/scans

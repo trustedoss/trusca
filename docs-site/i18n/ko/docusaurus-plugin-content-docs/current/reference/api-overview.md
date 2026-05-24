@@ -133,6 +133,7 @@ PATCH  /v1/projects/{id}
 DELETE /v1/projects/{id}
 GET    /v1/projects/{id}/sbom?format=…
 GET    /v1/projects/{id}/vex?format=…       openvex | cyclonedx; 결과 분류 기반 VEX
+POST   /v1/projects/{id}/vex/import         VEX 문서 소비(team_admin); multipart 업로드
 GET    /v1/projects/{id}/notice
 GET    /v1/projects/{id}/components
 GET    /v1/projects/{id}/scans

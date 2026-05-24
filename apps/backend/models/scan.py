@@ -593,6 +593,16 @@ class VulnerabilityFinding(Base):
     analysis_response: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=EMPTY_JSONB_OBJ
     )
+    # Provenance of the last status mutation (v2.1 A2 — VEX import). NULL on
+    # legacy rows and treated as 'manual' by the API; 'vex_import' marks a
+    # status that was auto-transitioned by an uploaded VEX document. Free TEXT
+    # (not an ENUM) so adding a future source needs no ALTER TYPE migration.
+    analysis_source: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Provenance of the *document* that drove a VEX import: doc @id /
+    # serialNumber, author, document timestamp, and the VEX status the
+    # statement carried. JSONB so the two VEX dialects' differing shapes live
+    # in one nullable field; NULL for manual transitions.
+    vex_origin: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     analyst_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID_PK,
         ForeignKey("users.id", ondelete="SET NULL"),
