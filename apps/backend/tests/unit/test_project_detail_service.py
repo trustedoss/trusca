@@ -126,6 +126,7 @@ async def _attach_to_scan(
     scan_id: uuid.UUID,
     cv_id: uuid.UUID,
     direct: bool = True,
+    depth: int | None = None,
 ):
     from models import ScanComponent
 
@@ -133,6 +134,7 @@ async def _attach_to_scan(
         scan_id=scan_id,
         component_version_id=cv_id,
         direct=direct,
+        depth=depth,
         raw_data={"path": "test/path"},
     )
     session.add(sc)
@@ -949,3 +951,99 @@ async def test_component_detail_super_admin_bypasses_team_check(
     )
     assert detail["id"] == cv.id
     assert detail["project_id"] == project.id
+
+
+# ---------------------------------------------------------------------------
+# v2.2 2.2-a2 — depth / direct exposure on list + detail
+# ---------------------------------------------------------------------------
+
+
+async def test_list_components_exposes_depth_and_direct(
+    db_session: AsyncSession,
+) -> None:
+    """The components list surfaces graph depth (1 = direct, 2+ = transitive)
+    and a ``direct`` flag derived from it (v2.2 2.2-a2)."""
+    from services.project_detail_service import list_components_for_project
+
+    team, user, project, scan = await _make_project_with_scan(db_session)
+    actor = principal_for(user, team_ids=[team.id], role="developer")
+
+    _, cv_direct = await _make_component_version(
+        db_session, name=f"direct-{unique_suffix()}"
+    )
+    _, cv_trans = await _make_component_version(
+        db_session, name=f"transitive-{unique_suffix()}"
+    )
+    _, cv_nograph = await _make_component_version(
+        db_session, name=f"nograph-{unique_suffix()}"
+    )
+    await _attach_to_scan(
+        db_session, scan_id=scan.id, cv_id=cv_direct.id, direct=True, depth=1
+    )
+    await _attach_to_scan(
+        db_session, scan_id=scan.id, cv_id=cv_trans.id, direct=False, depth=3
+    )
+    # No graph for this one — depth NULL, direct False.
+    await _attach_to_scan(
+        db_session, scan_id=scan.id, cv_id=cv_nograph.id, direct=False, depth=None
+    )
+
+    items, _ = await list_components_for_project(
+        db_session, project_id=project.id, actor=actor, limit=50, offset=0
+    )
+    by_id = {i["id"]: i for i in items}
+    assert by_id[cv_direct.id]["depth"] == 1
+    assert by_id[cv_direct.id]["direct"] is True
+    assert by_id[cv_trans.id]["depth"] == 3
+    assert by_id[cv_trans.id]["direct"] is False
+    assert by_id[cv_nograph.id]["depth"] is None
+    assert by_id[cv_nograph.id]["direct"] is False
+
+
+async def test_list_components_reports_shallowest_depth_across_paths(
+    db_session: AsyncSession,
+) -> None:
+    """A cv reachable at several dependency paths reports the SHALLOWEST
+    (MIN) depth and ORs the direct flags (v2.2 2.2-a2)."""
+    from services.project_detail_service import list_components_for_project
+
+    team, user, project, scan = await _make_project_with_scan(db_session)
+    actor = principal_for(user, team_ids=[team.id], role="developer")
+
+    _, cv = await _make_component_version(db_session, name=f"diamond-{unique_suffix()}")
+    # Same cv at two paths: a transitive one (depth 4) and a direct one (depth 1).
+    await _attach_to_scan(
+        db_session, scan_id=scan.id, cv_id=cv.id, direct=False, depth=4
+    )
+    await _attach_to_scan(
+        db_session, scan_id=scan.id, cv_id=cv.id, direct=True, depth=1
+    )
+
+    items, _ = await list_components_for_project(
+        db_session, project_id=project.id, actor=actor, limit=50, offset=0
+    )
+    row = next(i for i in items if i["id"] == cv.id)
+    assert row["depth"] == 1  # MIN of {4, 1}
+    assert row["direct"] is True  # bool_or of {False, True}
+
+
+async def test_component_detail_exposes_depth_and_direct(
+    db_session: AsyncSession,
+) -> None:
+    """The component drawer surfaces depth + direct for the shallowest path
+    (v2.2 2.2-a2)."""
+    from services.project_detail_service import get_component_detail
+
+    team, user, project, scan = await _make_project_with_scan(db_session)
+    actor = principal_for(user, team_ids=[team.id], role="developer")
+
+    _, cv = await _make_component_version(db_session, name=f"drawer-{unique_suffix()}")
+    await _attach_to_scan(
+        db_session, scan_id=scan.id, cv_id=cv.id, direct=True, depth=1
+    )
+
+    detail = await get_component_detail(
+        db_session, component_version_id=cv.id, actor=actor
+    )
+    assert detail["depth"] == 1
+    assert detail["direct"] is True

@@ -470,6 +470,15 @@ async def list_components_for_project(
             func.coalesce(func.max(sev_rank), 0).label("max_sev_rank"),
             func.coalesce(func.max(lic_rank), 0).label("max_lic_rank"),
             func.count(VulnerabilityFinding.id).label("vuln_count"),
+            # v2.2 2.2-a2 — the same cv can appear at several dependency paths
+            # (diamond deps, monorepos), each a ScanComponent row with its own
+            # depth. We surface the SHALLOWEST path (MIN) — the most "direct"
+            # way the project reaches this component — and OR the direct flags.
+            # MIN over a set that includes NULLs ignores the NULLs, so a cv with
+            # at least one graph-derived depth reports that; a cv with only
+            # NULL depths reports NULL ("graph not available").
+            func.min(ScanComponent.depth).label("min_depth"),
+            func.bool_or(ScanComponent.direct).label("is_direct"),
         )
         .select_from(ScanComponent)
         .outerjoin(
@@ -516,6 +525,8 @@ async def list_components_for_project(
             per_cv_subq.c.max_sev_rank.label("max_sev_rank"),
             per_cv_subq.c.max_lic_rank.label("max_lic_rank"),
             per_cv_subq.c.vuln_count.label("vuln_count"),
+            per_cv_subq.c.min_depth.label("min_depth"),
+            per_cv_subq.c.is_direct.label("is_direct"),
         )
         .select_from(per_cv_subq)
         .join(ComponentVersion, ComponentVersion.id == per_cv_subq.c.cv_id)
@@ -621,6 +632,12 @@ async def list_components_for_project(
                 ),
                 "severity_max": _SEVERITY_FROM_RANK.get(int(r.max_sev_rank), "none"),
                 "vulnerability_count": int(r.vuln_count),
+                # v2.2 2.2-a2 — graph depth (1 = direct, 2+ = transitive) and a
+                # convenience ``direct`` flag. NULL depth when the scan carried
+                # no dependency graph; ``direct`` is then False (we never claim
+                # directness we cannot prove).
+                "depth": int(r.min_depth) if r.min_depth is not None else None,
+                "direct": bool(r.is_direct),
             }
         )
 
@@ -662,6 +679,8 @@ async def get_component_detail(
             Project.team_id.label("team_id"),
             Scan.id.label("scan_id"),
             ScanComponent.raw_data.label("raw_data"),
+            ScanComponent.depth.label("depth"),
+            ScanComponent.direct.label("direct"),
         )
         .select_from(ComponentVersion)
         .join(Component, Component.id == ComponentVersion.component_id)
@@ -670,7 +689,11 @@ async def get_component_detail(
         .join(Project, Project.id == Scan.project_id)
         .where(ComponentVersion.id == component_version_id)
         .where(Project.latest_scan_id == Scan.id)
-        .order_by(Scan.created_at.desc())
+        # Most recent project view first; within that, the SHALLOWEST path
+        # (v2.2 2.2-a2) — ``depth ASC NULLS LAST`` — so the drawer reports the
+        # most-direct way the project reaches this component when the same cv
+        # sits at several dependency paths in one scan (diamond deps).
+        .order_by(Scan.created_at.desc(), ScanComponent.depth.asc().nulls_last())
         .limit(1)
     )
     cv_result = await session.execute(cv_stmt)
@@ -791,6 +814,10 @@ async def get_component_detail(
         "severity_max": _SEVERITY_FROM_RANK.get(sev_rank_val, "none"),
         "vulnerabilities": vulns,
         "raw_data": dict(row.raw_data or {}),
+        # v2.2 2.2-a2 — graph depth + direct flag for the chosen (shallowest)
+        # path. NULL depth when the scan carried no dependency graph.
+        "depth": int(row.depth) if row.depth is not None else None,
+        "direct": bool(row.direct),
         "created_at": row.created_at,
         "updated_at": row.updated_at,
     }

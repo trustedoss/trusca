@@ -72,6 +72,8 @@ async def get_component_detail_endpoint(
         severity_max=payload["severity_max"],
         vulnerabilities=[VulnerabilityRef.model_validate(v) for v in payload["vulnerabilities"]],
         raw_data=payload["raw_data"],
+        depth=payload["depth"],
+        direct=payload["direct"],
         created_at=payload["created_at"],
         updated_at=payload["updated_at"],
     )

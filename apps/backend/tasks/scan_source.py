@@ -71,12 +71,17 @@ from integrations import cdxgen as cdxgen_adapter
 from integrations import scancode as scancode_adapter
 from integrations._size_guard import enforce_jsonb_row_size_limit
 from integrations._subprocess_env import scrubbed_env_for_prep
+from integrations.dependency_graph import (
+    graph_depths_from_sbom,
+    parse_dependency_graph,
+)
 from integrations.dt import DTBreakerOpen, DTError
 from integrations.dt.breaker import CircuitBreaker, get_breaker
 from integrations.dt.client import DTClient, build_client
 from models import (
     AuditLog,
     Component,
+    ComponentDependencyEdge,
     ComponentVersion,
     License,
     LicenseFinding,
@@ -663,6 +668,14 @@ def _reset_scan_for_rerun(session: Session, scan: Scan) -> None:
     """Wipe child rows so a re-execution starts from a clean slate."""
     session.execute(delete(VulnerabilityFinding).where(VulnerabilityFinding.scan_id == scan.id))
     session.execute(delete(LicenseFinding).where(LicenseFinding.scan_id == scan.id))
+    # v2.2 2.2-a2 — drop the prior dependency-graph edges BEFORE the
+    # ScanComponent rows. The edge FK on (parent/child)_component_version_id is
+    # ON DELETE CASCADE, but a ScanComponent delete does not delete a
+    # component_version (those are cross-scan), so the edges would otherwise
+    # survive a re-run and double up. Deleting by scan_id is exact + idempotent.
+    session.execute(
+        delete(ComponentDependencyEdge).where(ComponentDependencyEdge.scan_id == scan.id)
+    )
     session.execute(delete(ScanComponent).where(ScanComponent.scan_id == scan.id))
     session.execute(delete(ScanArtifact).where(ScanArtifact.scan_id == scan.id))
 
@@ -1577,8 +1590,27 @@ def _persist_components(
     with ``kind='detected'`` against the synthetic first-party component — they
     do NOT flow through this function (which only walks ``sbom.components``,
     i.e. the third-party dependency graph).
+
+    v2.2 2.2-a2 (dependency graph): cdxgen's top-level ``dependencies`` array
+    (``ref`` → ``dependsOn[]``) is parsed into a depth map + adjacency by
+    :mod:`integrations.dependency_graph` (cycle/self-ref/dangling/giant-fanout
+    safe). As we persist each component we build a ``cdxgen ref →
+    component_version_id`` map; afterwards we (a) stamp each ScanComponent's
+    ``depth`` (and ``direct`` := ``depth == 1``) and (b) write the resolved
+    parent/child edges to ``component_dependency_edges`` — only edges where BOTH
+    endpoints resolved to a persisted component (dangling refs / the scanned
+    project's own metadata component are dropped). NULL depth means the SBOM
+    carried no usable graph.
     """
     components = sbom.get("components", []) or []
+    # cdxgen ref → component_version_id, for stamping depth + resolving edges
+    # once the whole component set is persisted. The graph's ``ref`` is a
+    # component's bom-ref (== its purl in cdxgen output); we key the map on the
+    # same string the graph uses.
+    ref_to_cv_id: dict[str, uuid.UUID] = {}
+    # cdxgen ref → the ScanComponent we created, so we can backfill depth.
+    ref_to_scan_component: dict[str, ScanComponent] = {}
+
     for raw in components:
         if not isinstance(raw, dict):
             continue
@@ -1617,6 +1649,16 @@ def _persist_components(
         )
         session.add(scan_component)
 
+        # Map BOTH the bom-ref and the purl to this component_version: cdxgen
+        # graph refs are bom-refs, which usually equal the purl but can differ
+        # (e.g. a scoped/aliased ref). Recording both maximises edge resolution.
+        bom_ref = raw.get("bom-ref")
+        if isinstance(bom_ref, str) and bom_ref:
+            ref_to_cv_id[bom_ref] = component_version.id
+            ref_to_scan_component[bom_ref] = scan_component
+        ref_to_cv_id.setdefault(purl, component_version.id)
+        ref_to_scan_component.setdefault(purl, scan_component)
+
         _persist_component_licenses(
             session,
             scan_uuid=scan_uuid,
@@ -1624,6 +1666,104 @@ def _persist_components(
             cdxgen_component=raw,
             purl=purl,
         )
+
+    # v2.2 2.2-a2 — stamp depth + persist the resolved dependency edges. Runs
+    # after the component loop so every ref the graph might reference is already
+    # mapped. Best-effort and isolated: a malformed graph degrades to "no depth /
+    # no edges", it never sinks the component persistence above.
+    _persist_dependency_graph(
+        session,
+        scan_uuid=scan_uuid,
+        sbom=sbom,
+        ref_to_cv_id=ref_to_cv_id,
+        ref_to_scan_component=ref_to_scan_component,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Dependency graph (cdxgen dependencies → depth + edges) — v2.2 2.2-a2
+# ---------------------------------------------------------------------------
+
+
+def _persist_dependency_graph(
+    session: Session,
+    *,
+    scan_uuid: uuid.UUID,
+    sbom: dict[str, Any],
+    ref_to_cv_id: dict[str, uuid.UUID],
+    ref_to_scan_component: dict[str, ScanComponent],
+) -> None:
+    """Stamp ``ScanComponent.depth`` + persist resolved dependency edges.
+
+    Reads the cdxgen ``sbom["dependencies"]`` graph through
+    :mod:`integrations.dependency_graph` (the trust boundary — cycle / self-ref /
+    dangling / giant-fanout safe, depth clamped at ``MAX_DEPTH``). Then:
+
+      1. For every graph ref that maps to a ScanComponent we created, set its
+         ``depth`` and ``direct`` (``direct := depth == 1``). The scanned
+         project's own metadata component sits at depth 0 and is NOT one of our
+         ScanComponents (it has no purl in ``components``), so it is skipped.
+      2. For every ``parent dependsOn child`` edge where BOTH refs resolve to a
+         persisted component_version, insert a ``ComponentDependencyEdge``.
+         Dangling refs (child not in ``ref_to_cv_id``) and self-edges are
+         dropped. Duplicate edges are de-duplicated in-memory so the per-run
+         insert set is unique even before the DB UNIQUE constraint.
+
+    Best-effort: a malformed / absent graph leaves ``depth`` NULL and writes no
+    edges — it never raises onto the caller's component-persistence path. The
+    rows are added to the SAME session as the components, so they commit (or roll
+    back) atomically with the component graph in the caller's ``session.commit()``.
+    """
+    dependencies = sbom.get("dependencies")
+    adjacency = parse_dependency_graph(dependencies)
+    if not adjacency:
+        return  # No usable graph — depth stays NULL, no edges.
+
+    depths = graph_depths_from_sbom(sbom)
+
+    # 1) Stamp depth + direct on the ScanComponents we created.
+    for ref, depth in depths.items():
+        scan_component = ref_to_scan_component.get(ref)
+        if scan_component is None:
+            # The ref is the project's metadata component or a graph-only node
+            # with no matching SBOM component — nothing to stamp.
+            continue
+        scan_component.depth = depth
+        scan_component.direct = depth == 1
+
+    # 2) Persist resolved edges (both endpoints must be persisted components).
+    seen_edges: set[tuple[uuid.UUID, uuid.UUID]] = set()
+    edge_count = 0
+    for parent_ref, child_refs in adjacency.items():
+        parent_cv_id = ref_to_cv_id.get(parent_ref)
+        if parent_cv_id is None:
+            continue  # parent is the project metadata component / unresolved.
+        for child_ref in child_refs:
+            child_cv_id = ref_to_cv_id.get(child_ref)
+            if child_cv_id is None:
+                continue  # dangling child ref — skip (never invent a node).
+            if child_cv_id == parent_cv_id:
+                continue  # self-edge after resolution — skip.
+            key = (parent_cv_id, child_cv_id)
+            if key in seen_edges:
+                continue  # duplicate edge collapsed.
+            seen_edges.add(key)
+            session.add(
+                ComponentDependencyEdge(
+                    scan_id=scan_uuid,
+                    parent_component_version_id=parent_cv_id,
+                    child_component_version_id=child_cv_id,
+                )
+            )
+            edge_count += 1
+
+    log.info(
+        "dependency_graph_persisted",
+        scan_id=str(scan_uuid),
+        nodes=len(adjacency),
+        depths=len(depths),
+        edges=edge_count,
+    )
 
 
 # ---------------------------------------------------------------------------
