@@ -120,7 +120,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(
     title="TrustedOSS Portal API",
     version="2.2.0-dev",
-    description="Open-source self-hosted SCA portal — CVE, license compliance, and SBOM management with EPSS prioritization, VEX consumption, CI build gating, and a Dependency-Track circuit breaker.",
+    description=(
+        "Open-source self-hosted SCA portal — CVE, license compliance, and SBOM "
+        "management with EPSS prioritization, VEX consumption, CI build gating, "
+        "and a Dependency-Track circuit breaker."
+    ),
     lifespan=lifespan,
 )
 
