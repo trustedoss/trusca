@@ -180,3 +180,56 @@ def test_encrypt_non_string_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     _set_env_key(monkeypatch)
     with pytest.raises(SecretEncryptionError):
         encrypt_secret(b"bytes-not-str")  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
+# Prod fail-closed on missing encryption key (Low #1 follow-up)
+# ---------------------------------------------------------------------------
+
+
+def test_prod_missing_key_fails_closed_on_encrypt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Prod + no GITHUB_APP_ENCRYPTION_KEY must REFUSE to derive from SECRET_KEY."""
+    from core.crypto import SecretEncryptionError, encrypt_secret
+
+    monkeypatch.delenv("GITHUB_APP_ENCRYPTION_KEY", raising=False)
+    monkeypatch.setenv("APP_ENV", "prod")
+    monkeypatch.setenv("SECRET_KEY", "p" * 40)
+    with pytest.raises(SecretEncryptionError):
+        encrypt_secret(PEM_SAMPLE)
+
+
+def test_prod_blank_key_fails_closed_on_decrypt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A blank key in prod is treated as unset → fail closed (no derive)."""
+    from core.crypto import SecretEncryptionError, decrypt_secret
+
+    monkeypatch.setenv("GITHUB_APP_ENCRYPTION_KEY", "   ")
+    monkeypatch.setenv("APP_ENV", "prod")
+    monkeypatch.setenv("SECRET_KEY", "q" * 40)
+    with pytest.raises(SecretEncryptionError):
+        # Any non-empty token reaches the key-resolution step, which fails closed.
+        decrypt_secret("gAAAAA-not-a-real-token-but-non-empty")
+
+
+def test_prod_with_explicit_key_still_works(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Prod fail-closed only applies to the DERIVE path; an explicit key works."""
+    from core.crypto import decrypt_secret, encrypt_secret
+
+    monkeypatch.setenv("APP_ENV", "prod")
+    _set_env_key(monkeypatch)
+    token = encrypt_secret(PEM_SAMPLE)
+    assert decrypt_secret(token) == PEM_SAMPLE
+
+
+def test_non_prod_missing_key_still_derives(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Non-prod keeps the derive-from-secret fallback (existing behavior)."""
+    from core.crypto import decrypt_secret, encrypt_secret
+
+    monkeypatch.delenv("GITHUB_APP_ENCRYPTION_KEY", raising=False)
+    monkeypatch.setenv("APP_ENV", "staging")
+    monkeypatch.setenv("SECRET_KEY", "r" * 40)
+    token = encrypt_secret(PEM_SAMPLE)
+    assert decrypt_secret(token) == PEM_SAMPLE

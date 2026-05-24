@@ -44,6 +44,7 @@ Security contracts:
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -119,7 +120,15 @@ class GitHubAppConfigError(GitHubAppError):
 
 # GitHub rejects App JWTs with an expiry more than 10 minutes out. We mint for
 # strictly less (9 min effective after skew padding) to stay inside the ceiling.
+# NB: this assumes host clocks are NTP-synced (within ~1 min). The 60s backdated
+# iat plus the 9-min exp (1 min under GitHub's 10-min ceiling) leaves margin so a
+# modest forward skew on either side does not push us outside the window.
 _APP_JWT_MAX_TTL_SECONDS = 9 * 60
+# installation_id is GitHub's numeric installation id. We re-validate it at the
+# mint boundary (defence in depth — never trust callers pre-validated) before
+# interpolating it into the request URL. Mirrors schemas.github_app's
+# ``_INSTALLATION_ID_RE`` so the service and the HTTP edge agree.
+_INSTALLATION_ID_RE = re.compile(r"^[0-9]{1,32}$")
 # Backdate iat to absorb clock skew between us and GitHub (a forward-skewed iat
 # is rejected as "issued in the future").
 _APP_JWT_CLOCK_SKEW_SECONDS = 60
@@ -133,6 +142,42 @@ _APP_JWT_ALGORITHM = "RS256"
 
 def _now() -> datetime:
     return datetime.now(tz=UTC)
+
+
+# PostgreSQL SQLSTATE for foreign_key_violation (class 23 integrity constraint).
+_PG_FK_VIOLATION_SQLSTATE = "23503"
+
+
+def _is_foreign_key_violation(exc: IntegrityError) -> bool:
+    """True if ``exc`` is a Postgres foreign-key violation (SQLSTATE 23503).
+
+    Primary signal is the driver's SQLSTATE (asyncpg exposes ``sqlstate`` on the
+    wrapped ``orig`` exception; psycopg exposes ``pgcode``). Falls back to a
+    substring scan of the message so the classification still works if a driver
+    surfaces the code differently. Conservative: anything we cannot positively
+    identify as an FK violation is treated as NOT one (so it stays a 409).
+    """
+    orig = getattr(exc, "orig", None)
+    if orig is not None:
+        sqlstate = getattr(orig, "sqlstate", None) or getattr(orig, "pgcode", None)
+        if sqlstate is not None:
+            return str(sqlstate) == _PG_FK_VIOLATION_SQLSTATE
+    text = str(getattr(exc, "orig", exc)).lower()
+    return "foreignkeyviolation" in text or "foreign key constraint" in text
+
+
+def _validate_installation_id(installation_id: str) -> None:
+    """Re-validate an installation id at a trust boundary (defence in depth).
+
+    Raises :class:`GitHubAppError` (400) if ``installation_id`` is not a bare
+    numeric string. Called BEFORE the value is interpolated into the GitHub URL
+    so a CRLF / path-traversal / non-numeric value can never reach the network
+    layer — we do not trust that the caller pre-validated.
+    """
+    if not isinstance(installation_id, str) or not _INSTALLATION_ID_RE.match(
+        installation_id
+    ):
+        raise GitHubAppError("installation_id must be a numeric GitHub installation id")
 
 
 def _is_super_admin(actor: CurrentUser) -> bool:
@@ -220,8 +265,19 @@ async def register_credential(
         await session.commit()
     except IntegrityError as exc:
         await session.rollback()
-        # uq_github_app_credentials_team_app — a credential for this app already
-        # exists. We surface 409 without leaking which other team/row collided.
+        # Two distinct integrity failures land here and must NOT both be 409:
+        #   - unique violation (uq_github_app_credentials_team_app): a live
+        #     credential for (team, app_id) already exists → genuine 409.
+        #   - FK violation (team_id → teams.id): the target team does not exist.
+        #     Only reachable via the super_admin path (a team member's team_id is
+        #     gated by RBAC), but a stale/typo'd team_id must surface as 404, not
+        #     a misleading "already exists" 409.
+        if _is_foreign_key_violation(exc):
+            raise GitHubAppNotFound(
+                f"team {team_id} does not exist"
+            ) from exc
+        # Default to 409 (unique violation, or any other integrity error we
+        # cannot positively attribute) — never leak which other team/row collided.
         raise GitHubAppConflict(
             f"a GitHub App credential for app_id={app_id} already exists for this team"
         ) from exc
@@ -559,6 +615,10 @@ def build_app_jwt(*, app_id: str, private_key_pem: str, now: datetime | None = N
       - ``exp`` = iat + min(TTL, 9 min) — strictly inside GitHub's 10-min ceiling
 
     The JWT is signed in-memory and returned; the PEM is never logged.
+
+    Clock assumption: this assumes host clocks are NTP-synced (within ~1 min);
+    the 9-min exp sits 1 min under GitHub's 10-min ceiling, leaving margin under
+    modest forward skew.
     """
     issued = now or _now()
     iat = int((issued - timedelta(seconds=_APP_JWT_CLOCK_SKEW_SECONDS)).timestamp())
@@ -593,6 +653,11 @@ async def mint_installation_token(
     wired to an HTTP endpoint in b1 — exercising it requires the credential row
     + a mocked GitHub, which the unit tests provide.
     """
+    # Re-validate the installation id at this trust boundary BEFORE any DB load
+    # or URL interpolation — never trust the caller pre-validated. A non-numeric
+    # / CRLF / path-traversal value raises here, so it can never reach the URL.
+    _validate_installation_id(installation_id)
+
     row = (
         await session.execute(
             select(GitHubAppCredential).where(
@@ -633,7 +698,12 @@ async def mint_installation_token(
     owns_client = http_client is None
     client = http_client or httpx.AsyncClient(timeout=timeout)
     try:
-        resp = await client.post(url, headers=headers, timeout=timeout)
+        # follow_redirects=False per-request: the App JWT must NEVER follow a 3xx
+        # to an attacker-controlled host, regardless of how an injected client was
+        # constructed. Matches the repo-wide outbound-client contract.
+        resp = await client.post(
+            url, headers=headers, timeout=timeout, follow_redirects=False
+        )
     except httpx.HTTPError as exc:
         raise GitHubAppTokenError(
             "failed to reach GitHub to exchange the App JWT for an installation token"

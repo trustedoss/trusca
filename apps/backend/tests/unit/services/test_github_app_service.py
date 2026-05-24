@@ -831,3 +831,214 @@ def test_build_app_jwt_signature_and_claims() -> None:
     assert claims["iss"] == "4242"
     assert claims["iat"] < claims["exp"]
     assert (claims["exp"] - claims["iat"]) <= 600
+
+
+# ---------------------------------------------------------------------------
+# mint_installation_token — security-reviewer follow-ups
+#   Medium #1: follow_redirects=False on the exchange POST.
+#   Medium #3: re-validate installation_id at the mint boundary (no HTTP first).
+# ---------------------------------------------------------------------------
+
+
+class _RecordingClient:
+    """A stand-in AsyncClient that records the post() call args without I/O.
+
+    Lets us assert (a) the bad-installation_id path NEVER calls .post (no HTTP
+    attempt) and (b) the happy path passes follow_redirects=False.
+    """
+
+    def __init__(self, response: httpx.Response | None = None) -> None:
+        self.calls: list[dict[str, object]] = []
+        self._response = response or httpx.Response(
+            201, json={"token": "t", "expires_at": "z"}
+        )
+
+    async def post(self, url: str, **kwargs: object) -> httpx.Response:
+        self.calls.append({"url": url, **kwargs})
+        return self._response
+
+
+@pytest.mark.parametrize(
+    "bad_id",
+    [
+        "abc",  # non-numeric
+        "123\r\nHost: evil",  # CRLF header smuggling
+        "../../app/installations/1",  # path traversal
+        "1 2",  # embedded space
+        "",  # empty
+        "9" * 33,  # over the 32-digit bound
+    ],
+)
+async def test_mint_token_rejects_bad_installation_id_before_http(
+    db_session: AsyncSession, bad_id: str
+) -> None:
+    """A malformed installation_id raises BEFORE any HTTP attempt (no .post)."""
+    from services.github_app_service import (
+        GitHubAppError,
+        mint_installation_token,
+        register_credential,
+    )
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+    private_pem, _ = _make_keypair()
+    cred = await register_credential(
+        db_session,
+        actor,
+        team_id=team.id,
+        app_id="4001",
+        app_slug=None,
+        private_key=private_pem,
+        webhook_secret=None,
+    )
+
+    recording = _RecordingClient()
+    with pytest.raises(GitHubAppError):
+        await mint_installation_token(
+            db_session, cred.id, bad_id, http_client=recording  # type: ignore[arg-type]
+        )
+    # The mock client's post() must never have been called — no HTTP attempt.
+    assert recording.calls == []
+
+
+async def test_mint_token_passes_follow_redirects_false(
+    db_session: AsyncSession,
+) -> None:
+    """The exchange POST must disable redirects so the App JWT can't be replayed."""
+    from services.github_app_service import mint_installation_token, register_credential
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+    private_pem, _ = _make_keypair()
+    cred = await register_credential(
+        db_session,
+        actor,
+        team_id=team.id,
+        app_id="4002",
+        app_slug=None,
+        private_key=private_pem,
+        webhook_secret=None,
+    )
+
+    recording = _RecordingClient(
+        httpx.Response(201, json={"token": "ghs_x", "expires_at": "2026-01-01T00:00:00Z"})
+    )
+    result = await mint_installation_token(
+        db_session, cred.id, "12345", http_client=recording  # type: ignore[arg-type]
+    )
+    assert result["token"] == "ghs_x"
+    assert len(recording.calls) == 1
+    assert recording.calls[0]["follow_redirects"] is False
+
+
+async def test_mint_token_does_not_follow_3xx(db_session: AsyncSession) -> None:
+    """A real MockTransport 3xx must NOT be followed (returns the 3xx → 502)."""
+    from services.github_app_service import (
+        GitHubAppTokenError,
+        mint_installation_token,
+        register_credential,
+    )
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+    private_pem, _ = _make_keypair()
+    cred = await register_credential(
+        db_session,
+        actor,
+        team_id=team.id,
+        app_id="4003",
+        app_slug=None,
+        private_key=private_pem,
+        webhook_secret=None,
+    )
+
+    redirect_targets: list[str] = []
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        redirect_targets.append(str(request.url))
+        # Redirect toward an internal host — must NOT be followed.
+        return httpx.Response(302, headers={"Location": "https://169.254.169.254/steal"})
+
+    transport = httpx.MockTransport(_handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        with pytest.raises(GitHubAppTokenError):
+            await mint_installation_token(db_session, cred.id, "54321", http_client=client)
+    # Only the original exchange URL was hit; the redirect Location was not.
+    assert len(redirect_targets) == 1
+    assert "169.254.169.254" not in redirect_targets[0]
+
+
+# ---------------------------------------------------------------------------
+# register_credential — FK (bad team) vs unique (duplicate) status (Low #4)
+# ---------------------------------------------------------------------------
+
+
+async def test_register_nonexistent_team_raises_not_found(
+    db_session: AsyncSession,
+) -> None:
+    """super_admin registering against a non-existent team → 404, NOT 409."""
+    from services.github_app_service import (
+        GitHubAppConflict,
+        GitHubAppNotFound,
+        register_credential,
+    )
+
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+
+    ghost_team_id = uuid.uuid4()  # no such team row → FK violation on commit
+    with pytest.raises(GitHubAppNotFound) as exc_info:
+        await register_credential(
+            db_session,
+            actor,
+            team_id=ghost_team_id,
+            app_id="5001",
+            app_slug=None,
+            private_key=_make_rsa_pem(),
+            webhook_secret=None,
+        )
+    # It must be the 404 class, never the 409 conflict class.
+    assert not isinstance(exc_info.value, GitHubAppConflict)
+    assert exc_info.value.status_code == 404
+
+
+async def test_register_genuine_duplicate_still_conflict(
+    db_session: AsyncSession,
+) -> None:
+    """A real (team, app_id) duplicate still maps to 409 (unchanged behavior)."""
+    from services.github_app_service import (
+        GitHubAppConflict,
+        register_credential,
+    )
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+
+    await register_credential(
+        db_session,
+        actor,
+        team_id=team.id,
+        app_id="5002",
+        app_slug=None,
+        private_key=_make_rsa_pem(),
+        webhook_secret=None,
+    )
+    with pytest.raises(GitHubAppConflict) as exc_info:
+        await register_credential(
+            db_session,
+            actor,
+            team_id=team.id,
+            app_id="5002",
+            app_slug=None,
+            private_key=_make_rsa_pem(),
+            webhook_secret=None,
+        )
+    assert exc_info.value.status_code == 409

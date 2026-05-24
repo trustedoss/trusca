@@ -31,6 +31,19 @@ Security contract:
     that leaks internals.
   - The derived-key path is deterministic so a process restart can still decrypt
     rows it wrote before the restart; it is NOT a substitute for a managed key.
+  - **Prod fail-closed.** When ``app_env() == "prod"`` and
+    ``GITHUB_APP_ENCRYPTION_KEY`` is unset/blank, key resolution RAISES
+    :class:`SecretEncryptionError` instead of deriving from ``SECRET_KEY`` — a
+    forgotten dedicated key must not silently bind every stored credential to
+    the JWT secret's blast radius. The derive-from-secret fallback is non-prod
+    only.
+
+  Follow-up (tracked): key ROTATION currently requires re-registering every
+  credential (the new key cannot decrypt rows written under the old one).
+  Rolling rotation via ``cryptography.fernet.MultiFernet`` (accept old keys for
+  decrypt, encrypt with the newest) is a planned enhancement; until then,
+  ``.env.example`` documents the re-registration requirement next to
+  ``GITHUB_APP_ENCRYPTION_KEY``.
 """
 
 from __future__ import annotations
@@ -64,13 +77,25 @@ def _derive_key_from_secret() -> bytes:
     """Deterministically derive a 32-byte urlsafe-base64 Fernet key.
 
     Derived from the JWT signing secret via SHA-256 so dev/CI need no extra
-    config. Emits a WARNING on every call so a prod deployment lacking a
+    config. Emits a WARNING on every call so a non-prod deployment lacking a
     dedicated ``GITHUB_APP_ENCRYPTION_KEY`` is loud about the shared blast
     radius (rotating ``SECRET_KEY`` would orphan all stored credentials).
+
+    Prod fail-closed: if ``app_env() == "prod"`` this RAISES
+    :class:`SecretEncryptionError` rather than deriving, so a forgotten
+    dedicated key cannot silently bind every credential to the JWT secret.
     """
     # Local import keeps this module importable even in contexts where the
     # full config stack is not yet wired, and honours rule #11 (read at call).
-    from core.config import secret_key
+    from core.config import app_env, secret_key
+
+    if app_env() == "prod":
+        raise SecretEncryptionError(
+            "GITHUB_APP_ENCRYPTION_KEY is unset in production. Refusing to "
+            "derive the credential encryption key from SECRET_KEY (that would "
+            "bind every stored GitHub App credential to the JWT secret's blast "
+            "radius). Set a dedicated, rotatable GITHUB_APP_ENCRYPTION_KEY."
+        )
 
     digest = hashlib.sha256(secret_key().encode("utf-8")).digest()  # 32 bytes
     log.warning(

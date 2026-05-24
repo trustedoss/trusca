@@ -9,8 +9,9 @@ docker-compose --env-file changes between sessions).
 
 from __future__ import annotations
 
+import ipaddress
 import os
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlparse
 
 DEFAULT_DATABASE_URL = "postgresql+asyncpg://trustedoss:trustedoss@postgres:5432/trustedoss"
 DEFAULT_REDIS_URL = "redis://redis:6379/0"
@@ -910,6 +911,42 @@ def oauth_login_redirect_failure() -> str:
 # ---------------------------------------------------------------------------
 
 
+class GitHubAppConfigError(RuntimeError):
+    """Raised when a GitHub-App-related config value is unsafe / malformed.
+
+    Surfaced at the call boundary (e.g. :func:`github_api_url`) rather than at
+    import time so CLAUDE.md core rule #11 (runtime ``os.getenv``) still holds:
+    a misconfigured deployment fails the first time it tries to reach GitHub,
+    with a clear operator-actionable message and NO secret material echoed.
+    """
+
+
+def _is_internal_host(host: str) -> bool:
+    """Return True if ``host`` resolves to an obviously-internal target.
+
+    SSRF guard for the prod App-token exchange: blocks loopback, link-local
+    (incl. the cloud metadata IP ``169.254.169.254``), and RFC-1918 private
+    ranges when the value is an IP literal, plus the literal ``localhost`` and
+    bare single-label hostnames. We do NOT perform DNS resolution here (that
+    would be a TOCTOU + a network call at config time); this is a cheap,
+    fail-fast literal screen, not a substitute for egress network policy.
+    """
+    host = host.strip().lower()
+    if host == "" or host == "localhost" or host.endswith(".localhost"):
+        return True
+    # Strip IPv6 brackets if present (urlparse leaves them on for [::1]).
+    bare = host[1:-1] if host.startswith("[") and host.endswith("]") else host
+    try:
+        ip = ipaddress.ip_address(bare)
+    except ValueError:
+        # Not an IP literal. Block obvious single-label internal names ("vault",
+        # "metadata") — anything without a dot is not a public FQDN.
+        return "." not in host
+    # IP literal: block loopback (127/8, ::1), link-local (169.254/16, fe80::/10
+    # — covers the cloud metadata endpoint), and RFC-1918 private ranges.
+    return ip.is_loopback or ip.is_link_local or ip.is_private
+
+
 def github_api_url() -> str:
     """Base URL for the GitHub REST API (no trailing slash).
 
@@ -917,8 +954,32 @@ def github_api_url() -> str:
     deployments override this with ``https://<host>/api/v3``. Used by
     ``services.github_app_service.mint_installation_token`` to exchange the
     short-lived App JWT for an installation access token.
+
+    SSRF / cleartext guard (prod only): when ``app_env() == "prod"`` the value
+    MUST be ``https://`` and MUST NOT point at an internal host (loopback,
+    link-local incl. the ``169.254.169.254`` metadata IP, or RFC-1918 private
+    ranges). A violation raises :class:`GitHubAppConfigError` so a misconfigured
+    prod deployment cannot silently send the App JWT over cleartext or to an
+    attacker-controlled / metadata host. In non-prod (dev / CI / local GHES)
+    any scheme and host is allowed so tests and on-box GitHub Enterprise work.
     """
-    return os.getenv("GITHUB_API_URL", "https://api.github.com").rstrip("/")
+    value = os.getenv("GITHUB_API_URL", "https://api.github.com").rstrip("/")
+    if app_env() != "prod":
+        return value
+
+    parsed = urlparse(value)
+    if parsed.scheme != "https":
+        raise GitHubAppConfigError(
+            "GITHUB_API_URL must use the https:// scheme in production "
+            "(the App JWT must never traverse cleartext)"
+        )
+    host = parsed.hostname or ""
+    if _is_internal_host(host):
+        raise GitHubAppConfigError(
+            "GITHUB_API_URL must not point at an internal host (loopback, "
+            "link-local/metadata, or RFC-1918 private range) in production"
+        )
+    return value
 
 
 def github_app_token_http_timeout_seconds() -> float:
