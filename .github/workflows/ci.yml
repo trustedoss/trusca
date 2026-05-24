@@ -244,6 +244,20 @@ jobs:
             --cov-report=xml \
             tests/unit tests/integration
 
+      # v2.1 Track B (B4) — OpenAPI spec freshness gate. The docs site renders
+      # the API reference (redocusaurus / Redoc) from a COMMITTED static
+      # snapshot at docs-site/static/openapi.json. This step regenerates the
+      # snapshot from the backend's app.openapi() and fails the PR if the
+      # committed file is stale — same philosophy as the OpenAPI drift gate in
+      # tests/unit/test_openapi_contract.py. Runs in the backend test job
+      # because that is where backend deps + dummy env (SECRET_KEY /
+      # DATABASE_URL / REDIS_URL) are already present. The dump script is
+      # read-only: it only imports `main.app` and calls `app.openapi()`.
+      # If this fails: run `python scripts/dump_openapi.py` and commit the diff.
+      - name: Check committed OpenAPI snapshot is fresh
+        if: matrix.target == 'backend'
+        run: python scripts/dump_openapi.py --check
+
       - name: Upload backend coverage
         if: matrix.target == 'backend'
         uses: actions/upload-artifact@v4
