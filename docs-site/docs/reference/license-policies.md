@@ -15,11 +15,11 @@ built-in catalog. A policy makes that classification *data* you can edit at
 runtime — no redeploy.
 
 :::note Status
-The policy **data model + CRUD API** and the **dynamic build-gate evaluation**
-(including hardened compound-SPDX resolution) are now wired: an effective,
-enabled policy changes the gate's forbidden-license verdict for that team. See
-[Dynamic gate evaluation](#dynamic-gate-evaluation) below. The UI for previewing
-a license's effective category under a policy lands in a follow-up.
+The policy **data model + CRUD API**, the **dynamic build-gate evaluation**
+(including hardened compound-SPDX resolution), and the **in-app editor** are now
+wired: an effective, enabled policy changes the gate's forbidden-license verdict
+for that team. See [Editing policies in the portal](#editing-policies-in-the-portal)
+and [Dynamic gate evaluation](#dynamic-gate-evaluation) below.
 :::
 
 ## Scopes
@@ -97,6 +97,46 @@ Values are `most_restrictive` or `least_restrictive`. The default keeps the most
 restrictive sub-license for `AND` / `WITH`, and the least restrictive for `OR`
 (the usual reading of a dual-licensed dependency). A partial object is merged
 with the defaults — you only send the operators you want to change.
+
+## Editing policies in the portal
+
+The **Policies** screen (sidebar → **Policies**, route `/policies`) is the
+no-code way to author a policy — it drives the same REST API documented below.
+
+1. **Pick a scope.** Use the **Team** picker in the toolbar and click **Edit team
+   policy**, or click any row in the policies table to edit that scope. A
+   `super_admin` additionally sees **Edit org default** for the organization-wide
+   fallback. The selected scope is encoded in the URL
+   (`/policies?policy=team:<id>` / `?policy=org:<id>`), so a bookmark or a hard
+   reload reopens the same editor.
+2. **Edit in the drawer.** The editor slides in from the right and exposes every
+   field:
+   - **Policy enabled** — master toggle. Off ⇒ the team falls back to the org
+     default or the static catalog without losing the policy's contents.
+   - **Name** — an optional display label.
+   - **Uncatalogued license posture** — the category for a license in neither the
+     catalog nor the overrides.
+   - **Compound expression strategy** — the `AND` / `OR` / `WITH` resolution.
+   - **Category overrides** — add / edit / remove rows mapping an SPDX id to a
+     category.
+   - **License exceptions** — add / remove waivers (SPDX id + reason required;
+     optional expiry date and component PURL).
+3. **Save or reset.** **Save policy** issues the upsert `PUT`; **Reset to default**
+   (team scope only) deletes the team policy via `DELETE`, reverting to the org
+   default / static catalog. Validation failures from the server (oversized maps,
+   bad identifiers) surface as an error toast.
+
+### Who can edit
+
+| Role | Team policy | Org default |
+| --- | --- | --- |
+| `super_admin` | any team | yes |
+| `team_admin` (of the team) | that team | no |
+| team member (not admin) | **read-only** | no |
+
+A team member who is not a `team_admin` can open the editor to view the
+**effective** policy, but every control is disabled and a read-only notice is
+shown — the underlying read returns `403`, and the UI degrades gracefully.
 
 ## Dynamic gate evaluation
 

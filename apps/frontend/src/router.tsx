@@ -15,6 +15,7 @@ import { AdminUsersPage } from "@/features/admin/users/AdminUsersPage";
 import { ApprovalsPage } from "@/features/approvals/ApprovalsPage";
 import { IntegrationsPage } from "@/features/integrations/IntegrationsPage";
 import { NotificationsPage } from "@/features/notifications/NotificationsPage";
+import { PoliciesPage } from "@/features/policies/PoliciesPage";
 import { UserProfilePage } from "@/features/profile/UserProfilePage";
 import { ProjectCreatePage } from "@/features/projects/ProjectCreatePage";
 import { ProjectDetailPage } from "@/features/projects/ProjectDetailPage";
@@ -60,6 +61,7 @@ export function AppRoutes() {
         <Route path="projects/:id" element={<ProjectDetailPage />} />
         <Route path="scans" element={<ScansPage />} />
         <Route path="approvals" element={<ApprovalsPage />} />
+        <Route path="policies" element={<PoliciesPage />} />
         <Route path="integrations" element={<IntegrationsPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
         <Route path="profile" element={<UserProfilePage />} />
