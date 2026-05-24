@@ -15,7 +15,7 @@
 |---|---|---|---|---|
 | v2.1 | A. VEX 소비 (트리아지) | 3 | 3 | ✅ 완료 (#145,#148,#150) |
 | v2.1 | B. 평가·배포 경로 | 5 | 5 | ✅ 완료 (#146,#147,#149,#151,#152) |
-| v2.2 | 리메디에이션 + 정책 | 10 | 6 | 🟦 a(3)+문서+b1(#157)+c1(#158)+b2(#159) 완료 · 진행 b3·c2 |
+| v2.2 | 리메디에이션 + 정책 | 10 | 8 | 🟦 a(3)+b1(#157)+c1(#158)+b2(#159)+b3백엔드(#160)+c2(#161) 완료 · 남음 c3·c4·b3-UI |
 | v2.3 | 무결성 + 우선순위화 | 6 | 0 | ⬜ 대기 |
 | — | 운영 레인 (외부 블로커) | 4 | 0 | ⬜ 대기 |
 
@@ -157,7 +157,7 @@
   - 브랜치→PR 자동생성, 옵트인, 감사로그. **종료조건: 최소 1개 생태계 PR 생성 + 보안리뷰 통과.** (백엔드 종료조건 충족; UI는 완성도 후속.)
 - [x] **2.2-c1 — 동적 라이선스 정책 모델** ✅ #158 (머지 `2453501`) — `license_policies` 테이블(마이그 0020, org/team 스코프, `category_overrides`/`license_exceptions`(시한부 waiver)/`unknown_license_category` posture/`compound_operator_strategy`/`enabled`), CRUD API `/v1/license-policies`, `get_effective_policy` 우선순위 resolver(team>org>static) + 단일-id `effective_category` 헬퍼, adversarial 스키마검증. b1과 병렬개발→통합 시 마이그 0019→0020 재번호. `policy_gate` 미수정(c2). `dep: 2.2-a3 (병렬 가능)` `owner: db-designer + backend-developer`
   - per-team/org 정책(허용/조건부/금지 + 예외 + SPDX expression 룰) 모델 + 마이그레이션.
-- [ ] **2.2-c2 — Policy Gate 동적 룰 평가** `dep: 2.2-c1` `owner: backend-developer`
+- [x] **2.2-c2 — Policy Gate 동적 룰 평가** ✅ #161 (머지 `e155ee7`) — `services/license_expression.py` 하드닝 compound-SPDX 평가기(길이4096/깊이64/토큰1024 bound, 선형 lexer+depth-guarded recursive descent, un-parseable→unknown posture+warning, never hang/raise/500), `policy_gate` 정책-aware 전환(정책 시 동적 재분류·무정책 시 byte-identical, golden 25 통과, batched+memoised no-N+1). 마이그/엔드포인트 없음. `dep: 2.2-c1` `owner: backend-developer`
   - 게이트가 정적 lookup 대신 동적 룰 평가(정적 카탈로그는 기본값으로 유지). SPDX expression **adversarial 테스트**([[feedback-adversarial-input-parametrize]] normalize_spdx_id 재귀 DoS 선례).
 - [ ] **2.2-c3 — 정책 편집 Admin UI** `dep: 2.2-c2` `owner: frontend-dev + i18n-specialist`
 - [ ] **2.2-c4 — 라이선스 텍스트/의무 카탈로그 보강** `dep: 2.2-c1` `owner: backend-developer + doc-writer`
