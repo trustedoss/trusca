@@ -146,6 +146,13 @@ export function VulnerabilitiesTab({
   const [minEpss, setMinEpss] = useState<number | null>(() =>
     parseMinEpss(searchParams.get("min_epss")),
   );
+  // v2.1 A3 — "suppressed via VEX" inline filter. URL flag `vex_suppressed=1`.
+  // The backend has no `analysis_source` query param yet, so we narrow the
+  // current page client-side (sufficient for the triage workflow: a reviewer
+  // wants to eyeball what a just-uploaded VEX document changed on this page).
+  const [vexSuppressedOnly, setVexSuppressedOnly] = useState<boolean>(
+    () => searchParams.get("vex_suppressed") === "1",
+  );
   const [page, setPage] = useState<number>(() =>
     parsePage(searchParams.get("page")),
   );
@@ -202,6 +209,8 @@ export function VulnerabilitiesTab({
         else next.delete("order");
         if (minEpss != null) next.set("min_epss", String(minEpss));
         else next.delete("min_epss");
+        if (vexSuppressedOnly) next.set("vex_suppressed", "1");
+        else next.delete("vex_suppressed");
         if (page !== 1) next.set("page", String(page));
         else next.delete("page");
         return next;
@@ -215,6 +224,7 @@ export function VulnerabilitiesTab({
     sort,
     order,
     minEpss,
+    vexSuppressedOnly,
     page,
     setSearchParams,
   ]);
@@ -245,8 +255,17 @@ export function VulnerabilitiesTab({
   const projectRole: TriageRole =
     overview.data?.current_user_role ?? "developer";
 
-  const items: VulnerabilityListItem[] = vulnerabilities.data?.items ?? [];
   const total = vulnerabilities.data?.total ?? 0;
+  const fetchedItems = vulnerabilities.data?.items;
+
+  // Client-side narrowing for the "suppressed via VEX" filter. A finding counts
+  // as VEX-suppressed when its last status mutation came from a VEX import.
+  const items: VulnerabilityListItem[] = useMemo(() => {
+    const source = fetchedItems ?? [];
+    return vexSuppressedOnly
+      ? source.filter((it) => it.analysis_source === "vex_import")
+      : source;
+  }, [fetchedItems, vexSuppressedOnly]);
 
   return (
     <div data-testid="vulnerabilities-tab" className="flex flex-1 flex-col">
@@ -288,6 +307,14 @@ export function VulnerabilitiesTab({
         }}
         isPdfDownloading={vulnReport.isLoading}
         pdfError={vulnReport.error}
+        vexSuppressedOnly={vexSuppressedOnly}
+        onVexSuppressedOnlyChange={(next) => {
+          setVexSuppressedOnly(next);
+          setPage(1);
+        }}
+        projectId={projectId}
+        projectName={projectName}
+        projectRole={projectRole}
       />
 
       <div
@@ -475,8 +502,11 @@ function VulnerabilityRow({
       >
         {vulnerability.affected_component_count}
       </span>
-      <span className="w-32">
+      <span className="flex w-32 items-center gap-1">
         <VulnerabilityStatusBadge status={vulnerability.status} />
+        {vulnerability.analysis_source === "vex_import" ? (
+          <VexProvenanceMarker />
+        ) : null}
       </span>
       <span
         className="w-32 truncate text-xs text-muted-foreground"
@@ -538,6 +568,24 @@ function EpssCell({ score, percentile }: EpssCellProps) {
       title={tooltip}
     >
       {formattedScore}
+    </span>
+  );
+}
+
+/**
+ * Small "VEX" marker shown beside a finding's status badge when the status was
+ * driven by a VEX import (`analysis_source === "vex_import"`). Pairs the color
+ * with the literal "VEX" label so the signal is not color-only (a11y).
+ */
+function VexProvenanceMarker() {
+  const { t } = useTranslation("project_detail");
+  return (
+    <span
+      data-testid="vulnerability-row-vex-marker"
+      className="rounded border border-primary/40 bg-primary/10 px-1 text-[9px] font-semibold uppercase tracking-wide text-primary"
+      title={t("vulnerabilities.vex.marker_tooltip")}
+    >
+      {t("vulnerabilities.vex.marker")}
     </span>
   );
 }

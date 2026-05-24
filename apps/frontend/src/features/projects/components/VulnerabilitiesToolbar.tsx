@@ -2,12 +2,15 @@ import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import type { TeamScopedRole } from "@/features/projects/api/projectDetailApi";
 import type {
   SortOrder,
   VulnFindingStatus,
   VulnSeverity,
   VulnerabilitySortKey,
 } from "@/features/projects/api/vulnerabilitiesApi";
+import { VexExportMenu } from "@/features/projects/components/VexExportMenu";
+import { VexImportDialog } from "@/features/projects/components/VexImportDialog";
 import { ALL_VULNERABILITY_STATUSES } from "@/features/projects/lib/vulnerabilityTransitions";
 import { cn } from "@/lib/utils";
 
@@ -65,6 +68,19 @@ export interface VulnerabilitiesToolbarProps {
   isPdfDownloading: boolean;
   /** Inline error from the last PDF download attempt, if any. */
   pdfError: Error | null;
+  /**
+   * Keep only findings whose status was driven by a VEX import
+   * (`analysis_source === "vex_import"`), v2.1 A3. Client-side narrowing of the
+   * current page since the backend has no dedicated source filter yet.
+   */
+  vexSuppressedOnly: boolean;
+  onVexSuppressedOnlyChange: (value: boolean) => void;
+  /** Project id (for the VEX import/export controls). */
+  projectId: string;
+  /** Project name (download filename fallback). */
+  projectName?: string | null;
+  /** The actor's project-team-scoped role — gates the VEX import button. */
+  projectRole?: TeamScopedRole;
   className?: string;
 }
 
@@ -92,6 +108,11 @@ export function VulnerabilitiesToolbar({
   onDownloadPdf,
   isPdfDownloading,
   pdfError,
+  vexSuppressedOnly,
+  onVexSuppressedOnlyChange,
+  projectId,
+  projectName,
+  projectRole = "developer",
   className,
 }: VulnerabilitiesToolbarProps) {
   const { t } = useTranslation("project_detail");
@@ -291,7 +312,33 @@ export function VulnerabilitiesToolbar({
         </span>
       </div>
 
-      <div className="flex flex-col lg:ml-auto">
+      <div className="flex flex-col">
+        <span className="text-xs font-medium text-muted-foreground">
+          {t("vulnerabilities.vex.filter_label")}
+        </span>
+        <label className="mt-1 flex h-9 items-center gap-2 rounded-md border border-input bg-background px-2 text-sm">
+          <input
+            type="checkbox"
+            checked={vexSuppressedOnly}
+            onChange={(event) =>
+              onVexSuppressedOnlyChange(event.target.checked)
+            }
+            data-testid="vulnerabilities-vex-suppressed-filter"
+            className="h-4 w-4 rounded border-input focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+          <span>{t("vulnerabilities.vex.filter_suppressed")}</span>
+        </label>
+      </div>
+
+      <VexExportMenu
+        projectId={projectId}
+        projectName={projectName}
+        className="lg:ml-auto"
+      />
+
+      <VexImportDialog projectId={projectId} projectRole={projectRole} />
+
+      <div className="flex flex-col">
         <span className="text-xs font-medium text-muted-foreground">
           {t("vulnerabilities.toolbar.report_label")}
         </span>

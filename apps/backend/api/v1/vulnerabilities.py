@@ -170,6 +170,8 @@ def _detail_response(payload: dict[str, Any]) -> Response:
         status=payload["status"],
         analysis_state=payload["analysis_state"],
         analysis_justification=payload["analysis_justification"],
+        analysis_source=payload["analysis_source"],
+        vex_origin=payload["vex_origin"],
         analyst_user_id=payload["analyst_user_id"],
         analyzed_at=payload["analyzed_at"],
         affected_components=[

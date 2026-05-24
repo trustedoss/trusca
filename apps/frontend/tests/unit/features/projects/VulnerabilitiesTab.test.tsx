@@ -76,6 +76,7 @@ function vuln(
     epss_percentile: 0.7,
     summary: `summary for ${cveId}`,
     status: "new",
+    analysis_source: null,
     affected_component_count: 1,
     discovered_at: "2026-05-01T00:00:00Z",
     updated_at: "2026-05-01T00:00:00Z",
@@ -314,6 +315,87 @@ describe("VulnerabilitiesTab", () => {
     await waitFor(() => {
       expect(screen.getByTestId("vulnerability-drawer")).toBeInTheDocument();
     });
+  });
+
+  // ─── v2.1 A3 — VEX provenance marker + "suppressed via VEX" filter ─────
+
+  it("shows a VEX marker on a row whose status came from a VEX import", async () => {
+    mockedList.mockResolvedValueOnce(
+      listResponse([
+        vuln("CVE-2024-1111", { analysis_source: "vex_import" }),
+        vuln("CVE-2024-2222", { analysis_source: "manual" }),
+      ]),
+    );
+    renderTab();
+    await waitFor(() =>
+      expect(screen.getAllByTestId("vulnerability-row")).toHaveLength(2),
+    );
+    // Exactly one row carries the VEX marker.
+    expect(
+      screen.getAllByTestId("vulnerability-row-vex-marker"),
+    ).toHaveLength(1);
+  });
+
+  it("the 'VEX-suppressed only' filter narrows the page to vex_import rows", async () => {
+    const user = userEvent.setup();
+    mockedList.mockResolvedValue(
+      listResponse([
+        vuln("CVE-2024-1111", {
+          id: "00000000-0000-0000-0000-1111aaaa1111",
+          analysis_source: "vex_import",
+        }),
+        vuln("CVE-2024-2222", {
+          id: "00000000-0000-0000-0000-2222bbbb2222",
+          analysis_source: "manual",
+        }),
+      ]),
+    );
+    renderTab();
+    await waitFor(() =>
+      expect(screen.getAllByTestId("vulnerability-row")).toHaveLength(2),
+    );
+
+    await user.click(
+      screen.getByTestId("vulnerabilities-vex-suppressed-filter"),
+    );
+
+    await waitFor(() =>
+      expect(screen.getAllByTestId("vulnerability-row")).toHaveLength(1),
+    );
+    expect(
+      screen.getByTestId("vulnerability-row").getAttribute("data-cve-id"),
+    ).toBe("CVE-2024-1111");
+  });
+
+  it("hydrates the VEX-suppressed filter from ?vex_suppressed=1", async () => {
+    mockedList.mockResolvedValue(
+      listResponse([
+        vuln("CVE-2024-1111", { analysis_source: "vex_import" }),
+        vuln("CVE-2024-2222", { analysis_source: "manual" }),
+      ]),
+    );
+    renderTab(["/projects/proj-1?vex_suppressed=1"]);
+    await waitFor(() =>
+      expect(screen.getAllByTestId("vulnerability-row")).toHaveLength(1),
+    );
+    expect(
+      (
+        screen.getByTestId(
+          "vulnerabilities-vex-suppressed-filter",
+        ) as HTMLInputElement
+      ).checked,
+    ).toBe(true);
+  });
+
+  it("exposes the VEX export buttons + (gated) import trigger in the toolbar", async () => {
+    mockedList.mockResolvedValueOnce(listResponse([vuln("CVE-2024-1111")]));
+    renderTab();
+    await waitFor(() =>
+      expect(screen.getByTestId("vex-export-openvex")).toBeInTheDocument(),
+    );
+    expect(screen.getByTestId("vex-export-cyclonedx")).toBeInTheDocument();
+    // Default project role is developer (overview unresolved) → import gated.
+    expect(screen.getByTestId("vex-import-open")).toBeDisabled();
   });
 
   it("renders the Download PDF report button in the toolbar", async () => {
