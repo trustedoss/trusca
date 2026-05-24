@@ -64,7 +64,7 @@ from dataclasses import dataclass
 
 import httpx
 import structlog
-from sqlalchemy import select
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -107,6 +107,37 @@ _BRANCH_NAME_RE = re.compile(r"^[A-Za-z0-9._/-]{1,200}$")
 
 _GITHUB_ACCEPT = "application/vnd.github+json"
 _GITHUB_API_VERSION = "2022-11-28"
+
+# A 'creating' row is committed BEFORE the GitHub writes (so a crash mid-flight
+# leaves a visible trail). It is normally flipped to 'open'/'failed' in the same
+# request. If the process is KILLED (OOM / SIGKILL) between the commit and that
+# flip, the row is stranded in 'creating' and the partial unique index
+# (WHERE status IN ('creating','open')) would then reject every identical retry
+# forever (a self-DoS). We treat a 'creating' row older than this TTL as STALE
+# and reclaim it (flip to 'failed', releasing the lock) on the next identical
+# request. A Celery Beat reaper sweeping stale 'creating' rows is a possible
+# future hardening; we do NOT implement one here (this inline reclaim is
+# sufficient for the retry path and avoids a new task surface).
+_CREATING_STALE_TTL = "15 minutes"
+
+# An npm package name (untrusted: derived from a DT/cdxgen purl or a manifest
+# key). Scoped or un-scoped, npm's documented charset: lowercase letters,
+# digits, hyphen, dot, underscore (we allow the documented set case-insensitively
+# for robustness). A name that does not match is DROPPED before it can reach a
+# rendered surface (commit message / PR title / PR body) — defence in depth on
+# top of markdown escaping.
+_NPM_NAME_RE = re.compile(r"^(?:@[a-z0-9-._]+/)?[a-z0-9-._]+$", re.IGNORECASE)
+
+# GitHub's numeric installation id. Re-validated locally at b3's trust boundary
+# (b1 also validates, but b3's invariant is to re-validate at its own boundary,
+# so it does not silently depend on b1's internal guard).
+_INSTALLATION_ID_RE = re.compile(r"^[0-9]{1,32}$")
+
+# Cap the number of bump rows rendered into the PR body (the rest collapse to a
+# "+ N more" line) and the total body length, so an oversized bump set can never
+# produce a body GitHub rejects (its limit is ~65 KB).
+_PR_BODY_MAX_ROWS = 50
+_PR_BODY_MAX_CHARS = 60_000
 
 
 # ---------------------------------------------------------------------------
@@ -205,12 +236,28 @@ def _applied_bumps(result: DryRunResult) -> list[tuple[str, str | None, str]]:
     fingerprint. We key off the ``changes`` the adapter reported as ``changed``
     (a recommendation whose range already satisfied the target is NOT a bump) and
     join the advisory ``current`` version from the recommendation list.
+
+    The package name is UNTRUSTED (derived from a DT/cdxgen purl via
+    ``decode_npm_package_name`` or a manifest key). We DROP any name that does not
+    match the npm name allow-list (:data:`_NPM_NAME_RE`) so a crafted name can
+    never reach a rendered surface (commit / PR title / PR body) nor the persisted
+    ``package_changes``. This is the primary guard; markdown escaping in the
+    renderers is defence in depth.
     """
     current_by_pkg = {rec.package: rec.current_version for rec in result.recommendations}
     target_by_pkg = {rec.package: rec.recommended_version for rec in result.recommendations}
     bumps: list[tuple[str, str | None, str]] = []
     for change in result.changes:
         if not change.changed:
+            continue
+        if not _NPM_NAME_RE.match(change.package or ""):
+            # A package name that does not conform to npm's documented charset is
+            # not trusted to render or persist — drop it (and log at WARNING so a
+            # genuine data-quality problem is visible).
+            log.warning(
+                "remediation_pr.dropped_non_conforming_package_name",
+                package_name=_safe_log_token(change.package),
+            )
             continue
         target = target_by_pkg.get(change.package)
         if target is None:
@@ -242,6 +289,45 @@ def _package_changes_json(
     return [{"package": pkg, "from": frm, "to": to} for pkg, frm, to in bumps]
 
 
+# Markdown metacharacters that could let a crafted name/version break out of a
+# table cell / inline-code span into clickable / structural markdown in the PR
+# body or title. We backslash-escape them and strip CR/LF so a value can never
+# inject a new row, a link, or HTML.
+_MD_META = ("\\", "`", "|", "[", "]", "<", ">", "*", "_", "~")
+
+
+def _escape_md(value: str | None) -> str:
+    """Escape markdown metacharacters and strip newlines from an untrusted value.
+
+    Used when embedding a (already allow-listed) package name or a version string
+    into the rendered PR body / title — defence in depth on top of the
+    :data:`_NPM_NAME_RE` allow-list applied in :func:`_applied_bumps`.
+    """
+    if value is None:
+        return "?"
+    # Strip CR/LF first so a value cannot add a markdown row / break the layout.
+    text_value = value.replace("\r", " ").replace("\n", " ")
+    for ch in _MD_META:
+        text_value = text_value.replace(ch, "\\" + ch)
+    return text_value
+
+
+def _strip_newlines(value: str) -> str:
+    """Collapse CR/LF to spaces (for commit messages — no markdown, but no CRLF)."""
+    return value.replace("\r", " ").replace("\n", " ")
+
+
+def _safe_log_token(value: object) -> str:
+    """Render an untrusted token safe for a single structlog field.
+
+    Strips control characters (prevents log-line injection) and truncates so a
+    pathological value cannot bloat a log line.
+    """
+    text_value = str(value)
+    cleaned = "".join(c if c.isprintable() else "?" for c in text_value)
+    return cleaned[:128]
+
+
 def _validate_repo_full_name(repository_full_name: str) -> tuple[str, str]:
     """Re-validate a stored ``owner/repo`` and return ``(owner, repo)``.
 
@@ -264,6 +350,32 @@ def _validate_branch_name(branch: str) -> None:
     """Belt-and-braces check on a ref name we build before interpolating it."""
     if not _BRANCH_NAME_RE.match(branch):  # pragma: no cover — fingerprint is hex
         raise RemediationConfigError("computed branch name is not a safe git ref")
+
+
+def _validate_base_branch(branch: str) -> None:
+    """Re-validate the operator-supplied base branch at the trust boundary.
+
+    ``base_branch`` comes from ``project.default_branch`` and is interpolated RAW
+    into GitHub URL paths (``.../git/ref/heads/{base_branch}``), a query
+    (``?ref={base_branch}``) and the PR ``base`` field. Unlike ``head_branch``
+    (which we build from a hex fingerprint we control) this value is operator
+    input, so it MUST be re-validated before any interpolation.
+
+    Reuses ``_BRANCH_NAME_RE`` (the safe git-ref charset — rejects spaces, ``&``,
+    ``?``, ``#``, control chars by construction) and additionally rejects path
+    traversal (``..``) and a leading ``/`` (an empty path segment). On a mismatch
+    we raise :class:`RemediationConfigError` (→ 422). The project schema also
+    rejects these at the API boundary (defence in depth); this guard protects
+    against a corrupted/legacy row that bypassed the schema.
+    """
+    if (
+        not _BRANCH_NAME_RE.match(branch)
+        or ".." in branch
+        or branch.startswith("/")
+    ):
+        raise RemediationConfigError(
+            "the project's default_branch is not a safe git ref for a base branch"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -336,12 +448,165 @@ async def _resolve_opt_in(
     installation, credential = row
     # repository_full_name is guaranteed non-NULL by the WHERE clause above.
     assert installation.repository_full_name is not None  # noqa: S101 — invariant
+    # Re-validate the stored installation_id at b3's OWN trust boundary before it
+    # is forwarded to b1's mint_installation_token. b1 also validates it, but b3's
+    # invariant is to re-validate every value it derives from storage at its own
+    # boundary so it does not silently depend on b1's internal guard (a corrupted
+    # / legacy row would otherwise be forwarded raw into the token exchange URL).
+    if not _INSTALLATION_ID_RE.match(installation.installation_id or ""):
+        raise RemediationConfigError(
+            "the opted-in installation's installation_id is not a valid numeric id"
+        )
     return _OptIn(
         installation_row_id=installation.id,
         installation_id=installation.installation_id,
         credential_id=credential.id,
         repository_full_name=installation.repository_full_name,
     )
+
+
+# ---------------------------------------------------------------------------
+# 'creating' row persistence (with stale-row reclaim)
+# ---------------------------------------------------------------------------
+
+
+async def _persist_creating_row(
+    session: AsyncSession,
+    *,
+    project: Project,
+    opt_in: _OptIn,
+    head_branch: str,
+    bumps: list[tuple[str, str | None, str]],
+    fingerprint: str,
+    actor: CurrentUser,
+) -> RemediationPullRequest | None:
+    """INSERT the 'creating' lock row, reclaiming a STALE prior attempt if needed.
+
+    The partial unique index ``uq_remediation_prs_open_fingerprint`` (covering
+    ``status IN ('creating','open')``) makes this INSERT the in-flight lock so two
+    racing requests can never open two real PRs. Returns the inserted row on
+    success.
+
+    On an :class:`IntegrityError` (the lock is held), we lock the conflicting row
+    ``FOR UPDATE`` and branch:
+
+      * **open** row → there is already a usable PR for this bump set → return
+        ``None`` (the caller returns it idempotently).
+      * **fresh 'creating'** row (``updated_at`` within ``_CREATING_STALE_TTL``)
+        → a concurrent request is mid-flight → return ``None`` (idempotent hit).
+      * **stale 'creating'** row (older than ``_CREATING_STALE_TTL``) → a previous
+        attempt was KILLED between its commit and the 'open'/'failed' flip and
+        stranded the lock. Reclaim it: flip it to ``failed`` (releasing the
+        partial-unique lock) and re-attempt the INSERT ONCE. If that re-attempt
+        also conflicts (another request reclaimed first), return ``None``.
+
+    NOTE: a Celery Beat reaper sweeping stale 'creating' rows is a possible future
+    hardening; we intentionally do NOT add a Celery task here — this inline
+    reclaim is sufficient for the retry path and avoids a new task surface.
+    """
+    # Capture the scalar values we need up front. A rollback below EXPIRES every
+    # ORM attribute on ``project``; re-reading one afterwards would trigger a
+    # sync lazy-load in async context (MissingGreenlet), so we never touch the
+    # ORM instance again after a rollback.
+    project_id = project.id
+    team_id = project.team_id
+    package_changes = _package_changes_json(bumps)
+    bind_audit_team(team_id)
+
+    async def _try_insert() -> RemediationPullRequest:
+        record = RemediationPullRequest(
+            project_id=project_id,
+            installation_row_id=opt_in.installation_row_id,
+            ecosystem="npm",
+            repository_full_name=opt_in.repository_full_name,
+            head_branch=head_branch,
+            base_branch="",  # filled once we read the default branch / base ref
+            status="creating",
+            package_changes=package_changes,
+            change_fingerprint=fingerprint,
+            created_by_user_id=actor.id,
+        )
+        session.add(record)
+        await session.commit()
+        await session.refresh(record)
+        return record
+
+    try:
+        return await _try_insert()
+    except IntegrityError:
+        await session.rollback()
+
+    # Lock the conflicting in-flight-or-open row to decide deterministically. The
+    # staleness predicate is evaluated in the SAME query on the SERVER clock
+    # (no client/server skew) so we never read an expired ORM attribute.
+    stale_cutoff = func.now() - text(f"INTERVAL '{_CREATING_STALE_TTL}'")
+    conflicting_row = (
+        await session.execute(
+            select(
+                RemediationPullRequest,
+                (RemediationPullRequest.updated_at < stale_cutoff).label("is_stale"),
+            )
+            .where(RemediationPullRequest.project_id == project_id)
+            .where(RemediationPullRequest.change_fingerprint == fingerprint)
+            .where(RemediationPullRequest.status.in_(("creating", "open")))
+            .order_by(RemediationPullRequest.created_at.desc())
+            .with_for_update(of=RemediationPullRequest)
+        )
+    ).first()
+
+    if conflicting_row is None:  # pragma: no cover — needs a concurrent race
+        # The conflicting row was flipped to failed/superseded between our INSERT
+        # and this SELECT — the lock is free now; retry once.
+        try:
+            return await _try_insert()
+        except IntegrityError:
+            await session.rollback()
+            return None
+
+    conflicting, is_stale = conflicting_row
+
+    if conflicting.status == "open":  # pragma: no cover — caught by early idem check
+        # An 'open' PR with this fingerprint is normally returned by the early
+        # idempotency check before we ever reach here; this is the race backstop.
+        log.info(
+            "remediation_pr.lock_race_idempotent_hit",
+            project_id=str(project_id),
+            remediation_pr_id=str(conflicting.id),
+        )
+        # Release the SELECT ... FOR UPDATE row lock before returning (we made no
+        # changes) — otherwise it would be held for the rest of the session and
+        # serialise concurrent requests / other work on this row.
+        await session.rollback()
+        return None
+
+    # status == 'creating': fresh → in-progress; stale → reclaim + retry once.
+    if not is_stale:
+        log.info(
+            "remediation_pr.creating_in_progress",
+            project_id=str(project_id),
+            remediation_pr_id=str(conflicting.id),
+        )
+        # Release the row lock (no changes) — see note above.
+        await session.rollback()
+        return None
+
+    # Reclaim the stranded lock: flip to 'failed' (releases the partial unique
+    # index), commit, then re-attempt the INSERT once.
+    reclaimed_id = conflicting.id
+    bind_audit_team(team_id)
+    conflicting.status = "failed"
+    await session.commit()
+    log.warning(
+        "remediation_pr.stale_creating_reclaimed",
+        project_id=str(project_id),
+        remediation_pr_id=str(reclaimed_id),
+    )
+    try:
+        return await _try_insert()
+    except IntegrityError:  # pragma: no cover — needs a concurrent double-reclaim
+        # Another request reclaimed/retried first — return None (idempotent).
+        await session.rollback()
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -556,6 +821,12 @@ async def create_npm_remediation_pr(
     project = await _resolve_project_team_admin(
         session, project_id=project_id, actor=actor
     )
+    # Capture team_id eagerly: the 'creating'-row reclaim path inside
+    # _persist_creating_row may rollback (which EXPIRES every ORM attribute on
+    # ``project``); reading ``project.team_id`` afterwards would trigger a sync
+    # lazy-load in async context (MissingGreenlet). We bind the audit team from
+    # this captured scalar throughout instead.
+    team_id = project.team_id
     opt_in = await _resolve_opt_in(session, project_id=project_id)
 
     # b2 is the single source of the proposed edit — never recompute it here.
@@ -603,32 +874,35 @@ async def create_npm_remediation_pr(
     head_branch = f"trustedoss/remediation-{fingerprint[:8]}"
     _validate_branch_name(head_branch)
 
+    # base_branch is derived from project.default_branch (operator-supplied) and
+    # is interpolated RAW into GitHub URL paths/queries and the PR `base` field.
+    # Re-validate it to the safe git-ref charset BEFORE any URL interpolation —
+    # and BEFORE we persist the 'creating' row / call GitHub — so a crafted
+    # default_branch (e.g. "main&injected=1", "main /../admin", "main#x") raises
+    # 422 here and never reaches GitHub. (head_branch and repository_full_name
+    # are already re-validated above; this closes the same gap for base_branch.)
+    base_branch = (project.default_branch or "main").strip() or "main"
+    _validate_base_branch(base_branch)
+
     # Persist a 'creating' row BEFORE the writes so a crash mid-flight leaves a
-    # visible trail (no silent partial). Bind the audit team for the commit.
-    bind_audit_team(project.team_id)
-    record = RemediationPullRequest(
-        project_id=project_id,
-        installation_row_id=opt_in.installation_row_id,
-        ecosystem="npm",
-        repository_full_name=opt_in.repository_full_name,
+    # visible trail (no silent partial). The partial unique index (covering
+    # 'creating'|'open') makes this INSERT the in-flight lock. An IntegrityError
+    # means a concurrent request already holds it (or a previous attempt left a
+    # row) — resolve it (possibly reclaiming a STALE 'creating' row from a
+    # crashed attempt) and either return the winner idempotently or retry once.
+    record = await _persist_creating_row(
+        session,
+        project=project,
+        opt_in=opt_in,
         head_branch=head_branch,
-        base_branch="",  # filled once we read the default branch / base ref
-        status="creating",
-        package_changes=_package_changes_json(bumps),
-        change_fingerprint=fingerprint,
-        created_by_user_id=actor.id,
+        bumps=bumps,
+        fingerprint=fingerprint,
+        actor=actor,
     )
-    session.add(record)
-    try:
-        await session.commit()
-    except IntegrityError:
-        # Lost the lock race: a concurrent request already inserted a 'creating'
-        # (or flipped to 'open') row for this fingerprint, and the partial unique
-        # index (covering creating|open) rejected our INSERT. Re-read and return
-        # the winner idempotently — crucially BEFORE any GitHub work, so two
-        # racing requests never open two real PRs.
-        await session.rollback()
-        winner = (
+    if record is None:
+        # The conflict resolved to a usable existing row (an 'open' PR or a fresh
+        # in-progress 'creating' row) — return it idempotently, no GitHub work.
+        existing = (
             await session.execute(
                 select(RemediationPullRequest)
                 .where(RemediationPullRequest.project_id == project_id)
@@ -637,17 +911,13 @@ async def create_npm_remediation_pr(
                 .order_by(RemediationPullRequest.created_at.desc())
             )
         ).scalars().first()
-        if winner is not None:
-            log.info(
-                "remediation_pr.lock_race_idempotent_hit",
-                project_id=str(project_id),
-                remediation_pr_id=str(winner.id),
-            )
-            return RemediationPRResult(record=winner, created=False)
-        raise
-    await session.refresh(record)
-
-    base_branch = (project.default_branch or "main").strip() or "main"
+        if existing is not None:
+            return RemediationPRResult(record=existing, created=False)
+        # No usable row survived the conflict resolution: a genuine integrity
+        # error we cannot recover from — surface it.
+        raise RemediationConfigError(  # pragma: no cover — needs a concurrent race
+            "could not persist a remediation-PR record (integrity conflict)"
+        )
 
     try:
         token_info = await _mint_token(session, opt_in, http_client=http_client)
@@ -713,7 +983,7 @@ async def create_npm_remediation_pr(
     except RemediationError:
         # A GitHub write (or token mint) failed: flip the row to 'failed' so the
         # attempt is auditable, then re-raise the typed error for the router.
-        bind_audit_team(project.team_id)
+        bind_audit_team(team_id)
         record.status = "failed"
         record.base_branch = base_branch
         await session.commit()
@@ -721,7 +991,7 @@ async def create_npm_remediation_pr(
         raise
 
     # Success: record the PR coordinates and flip to 'open'.
-    bind_audit_team(project.team_id)
+    bind_audit_team(team_id)
     record.status = "open"
     record.base_branch = base_branch
     record.pr_number = pr_number
@@ -776,21 +1046,34 @@ async def _mint_token(
 
 
 def _commit_message(bumps: list[tuple[str, str | None, str]]) -> str:
+    # Commit messages are plain text (not markdown) but must NOT carry CR/LF (a
+    # newline could forge a fake trailer / split the subject from the body).
     if len(bumps) == 1:
         pkg, _frm, to = bumps[0]
-        return f"chore(deps): bump {pkg} to {to} (TrustedOSS remediation)"
+        return _strip_newlines(
+            f"chore(deps): bump {pkg} to {to} (TrustedOSS remediation)"
+        )
     return f"chore(deps): bump {len(bumps)} vulnerable dependencies (TrustedOSS remediation)"
 
 
 def _pr_title(bumps: list[tuple[str, str | None, str]]) -> str:
     if len(bumps) == 1:
         pkg, _frm, to = bumps[0]
-        return f"[TrustedOSS] Bump {pkg} to {to}"
+        # Escape the (allow-listed) name/version — defence in depth so a value can
+        # never break out of the title into markdown / a newline.
+        return f"[TrustedOSS] Bump {_escape_md(pkg)} to {_escape_md(to)}"
     return f"[TrustedOSS] Bump {len(bumps)} vulnerable npm dependencies"
 
 
 def _pr_body(bumps: list[tuple[str, str | None, str]], dry_run: DryRunResult) -> str:
-    """Human-readable PR description. NEVER includes secrets — bumps only."""
+    """Human-readable PR description. NEVER includes secrets — bumps only.
+
+    Every embedded name/version is markdown-escaped (defence in depth on top of
+    the :data:`_NPM_NAME_RE` allow-list). The rendered rows are capped at
+    :data:`_PR_BODY_MAX_ROWS` (the rest collapse to a "+ N more" line) and the
+    whole body is bounded to :data:`_PR_BODY_MAX_CHARS` so an oversized bump set
+    can never produce a body GitHub rejects (its limit is ~65 KB).
+    """
     lines = [
         "This pull request was opened automatically by **TrustedOSS** to "
         "remediate known vulnerabilities in your npm dependencies.",
@@ -800,8 +1083,12 @@ def _pr_body(bumps: list[tuple[str, str | None, str]], dry_run: DryRunResult) ->
         "| Package | From | To |",
         "| --- | --- | --- |",
     ]
-    for pkg, frm, to in bumps:
-        lines.append(f"| `{pkg}` | {frm or '?'} | {to} |")
+    shown = bumps[:_PR_BODY_MAX_ROWS]
+    for pkg, frm, to in shown:
+        lines.append(f"| `{_escape_md(pkg)}` | {_escape_md(frm)} | {_escape_md(to)} |")
+    remaining = len(bumps) - len(shown)
+    if remaining > 0:
+        lines.append(f"| _+ {remaining} more_ | | |")
     lines.append("")
     if any(w.code == "lockfile_regeneration_required" for w in dry_run.warnings):
         lines.append(
@@ -810,7 +1097,11 @@ def _pr_body(bumps: list[tuple[str, str | None, str]], dry_run: DryRunResult) ->
         )
     lines.append("")
     lines.append("_Review the changes carefully before merging._")
-    return "\n".join(lines)
+    body = "\n".join(lines)
+    if len(body) > _PR_BODY_MAX_CHARS:
+        # Hard ceiling backstop (the row cap normally keeps us well under this).
+        body = body[:_PR_BODY_MAX_CHARS] + "\n\n_(truncated)_"
+    return body
 
 
 async def list_remediation_prs(
@@ -834,8 +1125,6 @@ async def list_remediation_prs(
 
     page = max(page, 1)
     page_size = max(min(page_size, 200), 1)
-
-    from sqlalchemy import func
 
     base = select(RemediationPullRequest).where(
         RemediationPullRequest.project_id == project_id

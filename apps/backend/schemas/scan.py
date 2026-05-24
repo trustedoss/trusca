@@ -62,6 +62,40 @@ _GIT_URL_PATTERN = re.compile(
     r"^(?:https?://|ssh://|git\+ssh://|git://|[A-Za-z0-9_.\-]+@[A-Za-z0-9_.\-]+:).+",
 )
 
+# default_branch is forwarded to the GitHub remediation-PR service (b3), where it
+# is interpolated into GitHub API URL paths/queries and the PR `base` field. We
+# restrict it to a git-ref-safe charset here at the API boundary (defence in
+# depth — b3 re-validates too). The charset is letters/digits and the ref-safe
+# punctuation `._/-`; we additionally reject `..` (path traversal) and a leading
+# `/` (empty path segment) in the validator. This rejects control chars, spaces,
+# `&`, `?`, `#` by construction (they are not in the charset).
+_DEFAULT_BRANCH_PATTERN = re.compile(r"^[A-Za-z0-9._/-]{1,255}$")
+
+
+def _validate_default_branch(value: str | None) -> str | None:
+    """Shared default_branch validator for ProjectCreate / ProjectUpdate.
+
+    Returns ``None`` for an empty/blank value (the project falls back to the
+    server default ``main``); otherwise enforces the git-ref-safe shape and
+    rejects traversal / leading-slash. Raises ``ValueError`` (Pydantic → 422).
+    """
+    if value is None:
+        return None
+    stripped = value.strip()
+    if not stripped:
+        return None
+    if (
+        not _DEFAULT_BRANCH_PATTERN.match(stripped)
+        or ".." in stripped
+        or stripped.startswith("/")
+    ):
+        raise ValueError(
+            "default_branch must be a git-ref-safe name (letters, digits, and"
+            " '._/-' only; no spaces, control chars, '&', '?', '#', '..', or a"
+            " leading '/')",
+        )
+    return stripped
+
 # ---------------------------------------------------------------------------
 # Scan metadata bounds (M-2 — security-reviewer finding from PR #7)
 # ---------------------------------------------------------------------------
@@ -174,6 +208,11 @@ class ProjectCreate(BaseModel):
         except GitUrlValidationError as exc:
             raise ValueError(str(exc)) from exc
 
+    @field_validator("default_branch")
+    @classmethod
+    def _validate_default_branch(cls, value: str | None) -> str | None:
+        return _validate_default_branch(value)
+
     @field_validator("visibility")
     @classmethod
     def _enforce_team_visibility(cls, value: str) -> str:
@@ -223,6 +262,11 @@ class ProjectUpdate(BaseModel):
             return validate_git_url(stripped)
         except GitUrlValidationError as exc:
             raise ValueError(str(exc)) from exc
+
+    @field_validator("default_branch")
+    @classmethod
+    def _validate_default_branch(cls, value: str | None) -> str | None:
+        return _validate_default_branch(value)
 
     @field_validator("visibility")
     @classmethod

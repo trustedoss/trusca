@@ -810,6 +810,423 @@ async def test_branch_name_is_hex_derived(db_session: AsyncSession) -> None:
 
 
 # ---------------------------------------------------------------------------
+# High — base_branch (project.default_branch) re-validated at the trust boundary
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "bad_branch",
+    [
+        "main&injected=1",     # query-param smuggle into the GitHub URL
+        "main /../admin",      # space + traversal
+        "main#frag",           # fragment smuggle
+        "main/../admin",       # path traversal (no space)
+        "/leading",            # leading slash → empty path segment
+        "main\r\nHost: evil",  # CRLF smuggle
+    ],
+)
+async def test_malicious_base_branch_rejected_before_github(
+    db_session: AsyncSession, bad_branch: str
+) -> None:
+    """A crafted project.default_branch → 422 BEFORE any GitHub call.
+
+    We write the bad value directly onto the project row (modelling a corrupted /
+    legacy row that bypassed the schema validator). The service MUST re-validate
+    base_branch at its own trust boundary and raise before interpolating it into
+    a GitHub URL — assert NO GitHub call (incl. the token mint) is made.
+    """
+    from services.remediation_pr_service import (
+        RemediationConfigError,
+        create_npm_remediation_pr,
+    )
+
+    team, admin, project, _scan, pkg = await _seed_opted_in_project(db_session)
+    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+
+    # Bypass the schema validator by writing straight to the column.
+    project.default_branch = bad_branch
+    await db_session.commit()
+
+    transport = httpx.MockTransport(
+        lambda _r: (_ for _ in ()).throw(AssertionError("no GitHub call expected"))
+    )
+    async with httpx.AsyncClient(transport=transport) as client:
+        with pytest.raises(RemediationConfigError):
+            await create_npm_remediation_pr(
+                db_session, actor, project.id,
+                manifest_override=_manifest_for(pkg), http_client=client,
+            )
+
+    # No 'creating' row should have been persisted for a rejected attempt.
+    rows = (
+        await db_session.execute(
+            text("SELECT count(*) FROM remediation_pull_requests WHERE project_id = :p"),
+            {"p": str(project.id)},
+        )
+    ).scalar_one()
+    assert rows == 0
+
+
+@pytest.mark.parametrize("good_branch", ["main", "release/1.x"])
+async def test_valid_base_branch_proceeds(
+    db_session: AsyncSession, good_branch: str
+) -> None:
+    """A git-ref-safe default_branch opens a PR against that base."""
+    from services.remediation_pr_service import create_npm_remediation_pr
+
+    team, admin, project, _scan, pkg = await _seed_opted_in_project(db_session)
+    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+    project.default_branch = good_branch
+    await db_session.commit()
+
+    transport = httpx.MockTransport(_github_handler())
+    async with httpx.AsyncClient(transport=transport) as client:
+        result = await create_npm_remediation_pr(
+            db_session, actor, project.id,
+            manifest_override=_manifest_for(pkg), http_client=client,
+        )
+    assert result.created is True
+    assert result.record is not None
+    assert result.record.base_branch == good_branch
+
+
+# ---------------------------------------------------------------------------
+# Medium 1 — stale 'creating' row is reclaimable (self-DoS on crash)
+# ---------------------------------------------------------------------------
+
+
+async def _seed_creating_row(
+    session: AsyncSession,
+    *,
+    project,
+    pkg: str,
+    age_minutes: int,
+):
+    """Insert a 'creating' row matching the manifest's fingerprint, aged N min.
+
+    Models a previous attempt that committed the lock row then was KILLED before
+    flipping it. Returns the inserted record.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from models import RemediationPullRequest
+    from services.remediation_pr_service import _applied_bumps, _fingerprint
+    from services.remediation_service import compute_npm_dry_run
+
+    # Compute the SAME fingerprint the service will, so the partial unique index
+    # (status IN ('creating','open')) conflicts with the next identical request.
+    dry = await compute_npm_dry_run(
+        session,
+        principal_for(
+            (await _owner_of(session, project)),
+            team_ids=[project.team_id],
+            role="team_admin",
+        ),
+        project.id,
+        manifest_override=_manifest_for(pkg),
+    )
+    fp = _fingerprint(_applied_bumps(dry))
+
+    rec = RemediationPullRequest(
+        project_id=project.id,
+        ecosystem="npm",
+        repository_full_name="acme/widget",
+        head_branch=f"trustedoss/remediation-{fp[:8]}",
+        base_branch="",
+        status="creating",
+        package_changes=[],
+        change_fingerprint=fp,
+    )
+    session.add(rec)
+    await session.commit()
+    await session.refresh(rec)
+    # Backdate updated_at directly (onupdate would otherwise refresh it).
+    aged = datetime.now(tz=UTC) - timedelta(minutes=age_minutes)
+    await session.execute(
+        text(
+            "UPDATE remediation_pull_requests SET updated_at = :ts WHERE id = :id"
+        ),
+        {"ts": aged, "id": str(rec.id)},
+    )
+    await session.commit()
+    return rec, fp
+
+
+async def _owner_of(session: AsyncSession, project):
+    """Return the project's creator user (for building a dry-run actor)."""
+    from models import User
+
+    return (
+        await session.execute(
+            select(User).where(User.id == project.created_by_user_id)
+        )
+    ).scalar_one()
+
+
+async def test_stale_creating_row_is_reclaimed_and_pr_opened(
+    db_session: AsyncSession,
+) -> None:
+    """A 'creating' row stranded by a crash (20 min old) is reclaimed; PR opens."""
+    from models import RemediationPullRequest
+    from services.remediation_pr_service import create_npm_remediation_pr
+
+    team, admin, project, _scan, pkg = await _seed_opted_in_project(db_session)
+    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+
+    stale, fp = await _seed_creating_row(
+        db_session, project=project, pkg=pkg, age_minutes=20
+    )
+    # Capture PKs into locals: the reclaim path rolls back, which EXPIRES the
+    # `project` / `stale` ORM instances — re-reading them after the service call
+    # would trigger a sync lazy-load in async context.
+    project_id = project.id
+    stale_id = stale.id
+
+    transport = httpx.MockTransport(_github_handler(pr_number=77))
+    async with httpx.AsyncClient(transport=transport) as client:
+        result = await create_npm_remediation_pr(
+            db_session, actor, project_id,
+            manifest_override=_manifest_for(pkg), http_client=client,
+        )
+
+    # A fresh PR was opened (the stale lock was reclaimed, not rejected).
+    assert result.created is True
+    assert result.record is not None
+    assert result.record.status == "open"
+    assert result.record.pr_number == 77
+    assert result.record.id != stale_id
+
+    # The stale row was flipped to 'failed' (lock released).
+    reclaimed = (
+        await db_session.execute(
+            select(RemediationPullRequest).where(RemediationPullRequest.id == stale_id)
+        )
+    ).scalar_one()
+    assert reclaimed.status == "failed"
+
+    # Exactly one OPEN row now exists for this fingerprint.
+    open_rows = (
+        await db_session.execute(
+            select(RemediationPullRequest)
+            .where(RemediationPullRequest.project_id == project_id)
+            .where(RemediationPullRequest.change_fingerprint == fp)
+            .where(RemediationPullRequest.status == "open")
+        )
+    ).scalars().all()
+    assert len(open_rows) == 1
+
+
+async def test_fresh_creating_row_returns_in_progress_no_second_pr(
+    db_session: AsyncSession,
+) -> None:
+    """A FRESH 'creating' row (concurrent in-flight) → in-progress, no 2nd PR."""
+    from models import RemediationPullRequest
+    from services.remediation_pr_service import create_npm_remediation_pr
+
+    team, admin, project, _scan, pkg = await _seed_opted_in_project(db_session)
+    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+
+    fresh, fp = await _seed_creating_row(
+        db_session, project=project, pkg=pkg, age_minutes=1  # well within the TTL
+    )
+
+    # If ANY GitHub call were made, a second PR would be opening — fail the test.
+    transport = httpx.MockTransport(
+        lambda _r: (_ for _ in ()).throw(AssertionError("no GitHub call expected"))
+    )
+    async with httpx.AsyncClient(transport=transport) as client:
+        result = await create_npm_remediation_pr(
+            db_session, actor, project.id,
+            manifest_override=_manifest_for(pkg), http_client=client,
+        )
+
+    # The existing in-progress row is returned; nothing was reclaimed/opened.
+    assert result.created is False
+    assert result.record is not None
+    assert result.record.id == fresh.id
+
+    still = (
+        await db_session.execute(
+            select(RemediationPullRequest).where(RemediationPullRequest.id == fresh.id)
+        )
+    ).scalar_one()
+    assert still.status == "creating"
+
+
+# ---------------------------------------------------------------------------
+# Medium 2 — untrusted package names escaped / dropped in rendered surfaces
+# ---------------------------------------------------------------------------
+
+
+def test_pr_body_escapes_markdown_metacharacters() -> None:
+    """A name/version with markdown metachars/newlines cannot break out."""
+    from services.remediation_pr_service import _pr_body
+    from services.remediation_service import DryRunResult
+
+    # These bumps reach the renderer AFTER the allow-list (we call the renderer
+    # directly to exercise the escaping defence-in-depth layer). Names contain
+    # backtick / pipe / link-breakout / newline; versions too.
+    bumps = [
+        ("evil`code`", "1.0.0", "2.0.0"),
+        ("a|b", "1", "2"),
+        ("x](http://evil)", "1", "2"),
+        ("nl\nrow", "1\n2", "3"),
+    ]
+    dry = DryRunResult(
+        project_id=uuid.uuid4(),
+        scan_id=None,
+        ecosystem="npm",
+        manifest_source="override",
+        manifest_found=True,
+        changed=True,
+        edited_manifest="{}",
+    )
+    body = _pr_body(bumps, dry)  # type: ignore[arg-type]
+
+    # No raw (unescaped) markdown metacharacter survives in a rendered value, so
+    # nothing can break out into a code span, a table cell, or a clickable link.
+    # Backtick: never unescaped (every ` is preceded by a backslash except inside
+    #   the fixed ``| `name` |`` wrapper) — assert the raw injected span is gone.
+    assert "evil`code`" not in body
+    # Pipe: an unescaped | would forge a new table column — assert it is escaped.
+    assert "a|b" not in body
+    # Link breakout: `[text](url)` needs an unescaped `]` immediately before `(`.
+    #   Our escaping turns `]` into `\]`, so `](` can only appear as `\](` — never
+    #   a bare `](`. Assert no bare (unescaped) `](` exists anywhere in the body.
+    assert "](" not in body.replace("\\](", "")
+    # Newlines were stripped from every embedded value, so no injected table row.
+    assert "nl\nrow" not in body
+    # The escaped forms ARE present (defence-in-depth escaping, not silent drop).
+    assert "\\`" in body
+    assert "\\|" in body
+    assert "\\]" in body
+
+
+async def test_non_conforming_package_name_dropped_from_render(
+    db_session: AsyncSession,
+) -> None:
+    """A purl that decodes to a non-allow-listed name never reaches the body.
+
+    We seed a component whose npm name contains a backtick (not in the npm name
+    allow-list). The b2 dry-run will surface it; b3's _applied_bumps MUST drop it
+    so it is absent from the commit / PR title / PR body.
+    """
+    from services.remediation_pr_service import (
+        _applied_bumps,
+        _commit_message,
+        _pr_body,
+        _pr_title,
+    )
+    from services.remediation_service import compute_npm_dry_run
+
+    team, admin, project, scan, _pkg = await _seed_opted_in_project(db_session)
+    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+
+    # A second, vulnerable dep whose decoded npm name carries a backtick.
+    suffix = unique_suffix()
+    bad_name = f"ev`il-{suffix}"
+    cv = await _make_npm_cv(db_session, name=bad_name, version="1.0.0")
+    await _attach_scan_component(db_session, scan_id=scan.id, cv_id=cv.id)
+    v = await _make_vuln(db_session, cve_id=f"CVE-bad-{suffix}", severity="high")
+    await _attach_finding(
+        db_session, scan_id=scan.id, cv_id=cv.id, vuln_id=v.id, fixed_version="1.0.1"
+    )
+
+    manifest = json.dumps({"dependencies": {bad_name: "^1.0.0"}}, indent=2) + "\n"
+    dry = await compute_npm_dry_run(
+        db_session, actor, project.id, manifest_override=manifest
+    )
+    bumps = _applied_bumps(dry)
+
+    # The non-conforming name was dropped before it could render or persist.
+    assert all("`" not in pkg for pkg, _f, _t in bumps)
+    assert bad_name not in _pr_body(bumps, dry)
+    assert bad_name not in _pr_title(bumps)
+    assert bad_name not in _commit_message(bumps)
+
+
+# ---------------------------------------------------------------------------
+# Low — oversized bump set is capped in the rendered PR body
+# ---------------------------------------------------------------------------
+
+
+def test_pr_body_caps_rows_and_length() -> None:
+    from services.remediation_pr_service import (
+        _PR_BODY_MAX_CHARS,
+        _PR_BODY_MAX_ROWS,
+        _pr_body,
+    )
+    from services.remediation_service import DryRunResult
+
+    bumps = [(f"pkg-{i}", "1.0.0", "2.0.0") for i in range(500)]
+    dry = DryRunResult(
+        project_id=uuid.uuid4(),
+        scan_id=None,
+        ecosystem="npm",
+        manifest_source="override",
+        manifest_found=True,
+        changed=True,
+        edited_manifest="{}",
+    )
+    body = _pr_body(bumps, dry)  # type: ignore[arg-type]
+
+    # Only the first _PR_BODY_MAX_ROWS package rows are rendered, then "+ N more".
+    rendered_rows = sum(1 for line in body.splitlines() if line.startswith("| `pkg-"))
+    assert rendered_rows == _PR_BODY_MAX_ROWS
+    assert f"+ {500 - _PR_BODY_MAX_ROWS} more" in body
+    assert len(body) <= _PR_BODY_MAX_CHARS
+
+
+# ---------------------------------------------------------------------------
+# Medium 3 — installation_id re-validated locally before mint
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "bad_id",
+    [
+        "not-numeric",
+        "123; DROP",
+        "12 34",
+        "",
+        "1" * 40,  # over the 32-char cap
+    ],
+)
+async def test_corrupted_installation_id_rejected_before_mint(
+    db_session: AsyncSession, bad_id: str
+) -> None:
+    """A non-numeric stored installation_id → 422 before the token mint."""
+    from models import GitHubAppInstallation
+    from services.remediation_pr_service import (
+        RemediationConfigError,
+        create_npm_remediation_pr,
+    )
+
+    team, admin, project, _scan, pkg = await _seed_opted_in_project(db_session)
+    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+
+    inst = (
+        await db_session.execute(
+            select(GitHubAppInstallation).where(
+                GitHubAppInstallation.project_id == project.id
+            )
+        )
+    ).scalar_one()
+    inst.installation_id = bad_id
+    await db_session.commit()
+
+    transport = httpx.MockTransport(
+        lambda _r: (_ for _ in ()).throw(AssertionError("no GitHub call expected"))
+    )
+    async with httpx.AsyncClient(transport=transport) as client:
+        with pytest.raises(RemediationConfigError):
+            await create_npm_remediation_pr(
+                db_session, actor, project.id,
+                manifest_override=_manifest_for(pkg), http_client=client,
+            )
+
+
+# ---------------------------------------------------------------------------
 # list_remediation_prs
 # ---------------------------------------------------------------------------
 
