@@ -17,9 +17,10 @@ roadmap behind the "planned" rows, see [`ROADMAP.md`](https://github.com/trusted
 TrustedOSS Portal's core idea is to wrap several best-of-breed open-source
 tools — cdxgen, scancode, Trivy, and Dependency-Track — in one self-hosted UI
 with teams, roles, approvals, and CI gating. The comparisons below frame that
-idea against three common alternatives. They describe capabilities as of the
-**v2.0.0** release; they are not benchmarks and they do not disparage other
-projects, several of which TrustedOSS Portal builds on.
+idea against three common alternatives. They describe shipped capabilities
+through the **v2.1** release (with in-progress v2.2 items marked); they are not
+benchmarks and they do not disparage other projects, several of which TrustedOSS
+Portal builds on.
 
 For term definitions (SCA, SBOM, VEX, EPSS, reachability), see the
 [glossary](./reference/glossary.md).
@@ -40,9 +41,9 @@ For term definitions (SCA, SBOM, VEX, EPSS, reachability), see the
 | Approval workflow | Built in | Yes | No | Clearing workflow |
 | CI build gate | exit 1 on Critical CVE / forbidden license | Yes | Via API | No |
 | Bilingual UI (EN/KO) | Yes | Partial | No | No |
-| Auto remediation / PRs | Planned | Yes | No | No |
-| EPSS prioritization | Planned | Yes | Partial | No |
-| VEX consumption | Planned (export today) | Yes | Partial | No |
+| Auto remediation / PRs | In progress (v2.2) | Yes | No | No |
+| EPSS prioritization | **Shipped (v2.1)** | Yes | Partial | No |
+| VEX consumption | **Shipped (v2.1)** | Yes | Partial | No |
 | Reachability analysis | Planned | Yes (some) | No | No |
 | Signed SBOM / provenance | Planned | Partial | No | No |
 
@@ -59,10 +60,13 @@ covering detection, licenses, SBOM, approvals, and CI gating meets your needs.
   Portal relies on public feeds (NVD, OSV, GitHub Advisory) through
   Dependency-Track.
 - **Automated remediation.** Snyk and others open fix pull requests
-  automatically. In TrustedOSS Portal this is on the roadmap; today the portal
-  detects and gates but does not yet propose upgrades.
-- **Prioritization signals.** Reachability analysis and first-class EPSS
-  prioritization are planned, not shipped.
+  automatically. In TrustedOSS Portal this is in progress (v2.2): per-finding
+  `fixed_version` and dependency-graph depth are shipped, and suggested upgrades
+  are being built. Today the portal detects and gates but does not yet open
+  upgrade pull requests.
+- **Prioritization signals.** First-class EPSS prioritization is shipped
+  (v2.1) — column, sort, filter, and a policy-gate threshold. Reachability
+  analysis is still planned, not shipped.
 
 **Where TrustedOSS Portal is competitive:** self-hosting with no seat cost,
 Apache-2.0 licensing, a single portal instead of several consoles, a built-in
@@ -88,11 +92,15 @@ portal.
   append-only audit log, and a 3-role RBAC model.
 - **Bilingual UI.** English and Korean.
 
+- **Triage signals.** EPSS is a first-class signal in the portal (column,
+  sort, filter, policy-gate threshold), and external VEX (OpenVEX /
+  CycloneDX VEX) can be imported to auto-suppress findings.
+
 **Use Dependency-Track directly when** you only need vulnerability tracking from
 SBOMs you already produce, want the broadest set of Dependency-Track's native
-features immediately, or need signals (such as raw EPSS columns) that the portal
-has not surfaced yet. Bringing the portal to parity with running
-Dependency-Track directly is an explicit roadmap goal.
+features immediately, or need a native Dependency-Track feature the portal has
+not surfaced yet. Bringing the portal to parity with running Dependency-Track
+directly is an explicit roadmap goal.
 
 ## vs Eclipse SW360
 
@@ -113,16 +121,16 @@ already have a process built around it.
 
 ## Current limitations (be aware before you adopt)
 
-These are real and intentional gaps as of v2.0.0. Each is on the
+These are real and intentional gaps. Each is on the
 [roadmap](https://github.com/trustedoss/trustedoss-portal/blob/main/ROADMAP.md):
 
-- **No automated remediation.** The portal detects and gates but does not yet
-  open upgrade pull requests (planned for v2.2).
+- **Automated remediation is in progress.** The portal detects and gates, and
+  surfaces per-finding `fixed_version` and dependency-graph depth (v2.2), but
+  does not yet open upgrade pull requests — suggested upgrades are being built
+  (v2.2).
 - **Vulnerability data depends on Dependency-Track.** Signals are limited to
-  what Dependency-Track exposes; first-class EPSS prioritization is planned
-  (v2.1).
-- **No VEX consumption.** VEX is exported today, but importing external VEX to
-  auto-suppress findings is planned (v2.1).
+  what Dependency-Track exposes, augmented by first-class EPSS prioritization
+  (shipped v2.1) and imported VEX.
 - **No reachability prioritization.** Findings are listed in full rather than
   ranked by whether vulnerable code is reachable (planned, v2.3, best-effort).
 - **Static license policy.** Classification uses a fixed catalog; per-team /

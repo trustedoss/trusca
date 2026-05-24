@@ -35,22 +35,25 @@ code changes, but it does include release/CI work — images that aren't publish
 > `trustedoss` org enable Actions "read and write permissions" and flip each ghcr package to
 > **public**. Until a tag is published, `install-uat.yml`'s image-pull job stays `continue-on-error`.
 
-## v2.1 — Triage Confidence (reduce Dependency-Track lock-in & noise)
+## v2.1 — Triage Confidence (reduce Dependency-Track lock-in & noise) — shipped
 
 Recover parity with using DT directly, and give evaluators a way to try the product.
+**Shipped.**
 
-- ☐ Surface **EPSS** scores as a first-class signal — column, sort, filter, and a policy-gate threshold
-- ☐ **VEX consumption** — import OpenVEX / CycloneDX VEX to auto-suppress findings (we already export VEX)
-- ☐ Live demo instance with seeded data and daily reset
-- ☐ Hosted API reference (OpenAPI) on the docs site
-- ☐ **Production-grade Helm chart** — Ingress/TLS, full templates, OCI/ArtifactHub publish (current chart is a 0.1.0 scaffold)
-- ☐ **Evaluation profile & seed data** — low-spec compose profile + optional sample data so the product isn't an empty screen on first run
+- ☑ Surface **EPSS** scores as a first-class signal — column, sort, filter, and a policy-gate threshold
+- ☑ **VEX consumption** — import OpenVEX / CycloneDX VEX to auto-suppress findings (export was already shipped)
+- ☑ Live demo instance with seeded data and daily reset (read-only `DEMO_READ_ONLY` mode + GCP nightly reset Job)
+- ☑ Hosted API reference (OpenAPI) on the docs site (redocusaurus at `/reference/api`)
+- ☑ **Production-grade Helm chart** — Ingress/TLS, full templates, bundled-or-external PostgreSQL & Redis, pre-install/pre-upgrade migration Job, OCI/ArtifactHub publish (`charts/trustedoss` 0.2.0)
+- ☑ **Evaluation profile & seed data** — low-spec (2 vCPU / 4 GB) compose profile (`docker-compose.eval.yml` + `scripts/eval-up.sh`) with seeded sample data so the product isn't an empty screen on first run, plus a `/health/ready` schema-gated readiness probe
 
-## v2.2 — Remediation & Policy
+## v2.2 — Remediation & Policy — in progress
 
 Close the "detect → act" loop and remove the static-policy limitation.
 
-- ☐ **Suggested dependency upgrades** — compute the minimal safe bump from `fixed_version` + dependency graph
+- ☑ **Per-finding `fixed_version`** — real fixed-version data surfaced on each vulnerability finding (#153)
+- ☑ **Dependency-graph depth** — direct vs. transitive classification with depth (#154)
+- ◐ **Suggested dependency upgrades** — compute the minimal safe bump from `fixed_version` + dependency graph (in progress)
 - ☐ **Automated upgrade PRs** (opt-in, per-ecosystem, dry-run first)
 - ☐ **Dynamic license policy engine** — per-team/org editable rules (replaces the removed ORT evaluator)
 

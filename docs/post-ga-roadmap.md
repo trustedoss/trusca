@@ -102,8 +102,12 @@ CISA 2025 SBOM 요건. 상세 인벤토리는 본 세션 핸드오프에 보존.
 
 ---
 
-## 3. 마일스톤 v2.1 — Triage 신뢰성 (DT 종속 완화 + 노이즈 감소)
+## 3. 마일스톤 v2.1 — Triage 신뢰성 (DT 종속 완화 + 노이즈 감소) — ✅ 구현 완료
 
+> **상태(2026-05-24):** P0~P2 전 항목 구현 완료 — EPSS UI 1급화, VEX 소비,
+> 라이브 데모(`DEMO_READ_ONLY` + GCP 야간 리셋), API 레퍼런스 호스팅
+> (`/reference/api`), 프로덕션 Helm 차트(`charts/trustedoss` 0.2.0), 평가 프로파일
+> (`docker-compose.eval.yml` + `scripts/eval-up.sh`) 및 `/health/ready`.
 > 목표: DT를 **직접** 쓰는 사용자 대비 최소 동등성 회복 + 평가 경로 제공.
 > 선행: v2.0.1. 담당: `scan-pipeline-specialist`(DT), `backend-developer`, `frontend-dev`, `security-reviewer`(VEX 소비).
 

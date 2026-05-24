@@ -7,6 +7,37 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added — v2.1 (Triage Confidence)
+- **EPSS prioritization** — Exploit Prediction Scoring System surfaced as a
+  first-class signal: column, sort, filter, and a policy-gate threshold.
+- **VEX consumption** — import OpenVEX / CycloneDX VEX to auto-suppress
+  findings (export already shipped in 2.0.0); findings are suppressed
+  automatically from the imported assertions, with UI surfacing.
+- **`/health/ready`** — schema-gated readiness probe; returns `503` until the
+  Alembic schema is at HEAD, so traffic only reaches a migrated schema.
+- **Evaluation profile** — `docker-compose.eval.yml` + `scripts/eval-up.sh`
+  stand the portal up on a 2 vCPU / 4 GB host and seed a realistic dataset in
+  one command (no Dependency-Track required).
+- **Production-grade Helm chart** (`charts/trustedoss` 0.2.0) — bundled-or-
+  external PostgreSQL & Redis, a frontend Deployment, an Ingress with
+  cert-manager TLS, a pre-install/pre-upgrade migration Job (`alembic upgrade
+  head` as the owner role), and OCI (ghcr) publication with ArtifactHub
+  metadata.
+- **Hosted API reference** — redocusaurus renders a committed `openapi.json`
+  snapshot at `/reference/api` on the docs site.
+- **Live read-only demo** — `DEMO_READ_ONLY` middleware (allow-list, blocks all
+  non-auth mutations API-wide) plus a GCP nightly demo reset (Cloud Scheduler →
+  Cloud Run Job) that drops and reseeds only the demo dataset.
+
+### Added — v2.2 (Remediation & Policy, in progress)
+- **Per-finding `fixed_version`** — real fixed-version data surfaced on each
+  vulnerability finding (#153).
+- **Dependency-graph depth** — direct vs. transitive classification with depth
+  on components / findings (#154).
+- Suggested dependency upgrades are in progress; automated upgrade PRs and a
+  dynamic license-policy engine are planned. See
+  [`ROADMAP.md`](ROADMAP.md).
+
 ## [2.0.0] — 2026-05-09
 
 First general-availability release. Promotes `2.0.0-rc.1` and absorbs the
