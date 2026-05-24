@@ -10,7 +10,7 @@ parsing must parametrize oversized / control-char / wrong-type cases).
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
@@ -45,7 +45,7 @@ def test_full_valid_body() -> None:
             LicenseException(
                 spdx_id="LGPL-3.0",
                 reason="vendored",
-                expires_at=datetime(2026, 12, 31, tzinfo=timezone.utc),
+                expires_at=datetime(2026, 12, 31, tzinfo=UTC),
                 component_purl="pkg:pypi/x@1.2.3",
             ),
         ],
