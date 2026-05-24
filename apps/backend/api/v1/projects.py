@@ -360,6 +360,7 @@ async def get_project_overview_endpoint(
         risk_score=payload["risk_score"],
         recent_scans=[ScanSummary.model_validate(s) for s in payload["recent_scans"]],
         last_scan_at=payload["last_scan_at"],
+        current_user_role=payload["current_user_role"],
     )
     return Response(
         content=body.model_dump_json(),

@@ -312,7 +312,7 @@ async def _seed_three_components(session: AsyncSession, *, scan_id: uuid.UUID):
     return react_name
 
 
-async def test_cyclonedx_json_emits_components_in_alphabetical_order(
+async def test_cyclonedx_json_emits_components_in_purl_lexical_order(
     db_session: AsyncSession,
 ) -> None:
     from services.sbom_export import export_sbom
@@ -324,10 +324,11 @@ async def test_cyclonedx_json_emits_components_in_alphabetical_order(
         db_session, project_id=project.id, fmt="cyclonedx-json"
     )
     parsed = json.loads(body)
-    names = [c["name"] for c in parsed["components"]]
-    # Seeded names follow the pattern lodash- / react- / zod-, so alphabetical.
-    assert names == sorted(names)
-    assert len(names) == 3
+    # BUG-006: the guide guarantees purl-lexical order, not name-alphabetical.
+    # (react carries a `facebook` namespace, so its purl sorts before lodash.)
+    purls = [c["purl"] for c in parsed["components"]]
+    assert purls == sorted(purls)
+    assert len(purls) == 3
     # Mandatory CycloneDX fields per component.
     for c in parsed["components"]:
         assert c["type"] == "library"
@@ -435,3 +436,119 @@ async def test_export_uses_latest_succeeded_scan_not_running(
     parsed = json.loads(body)
     # The succeeded scan's three components made it into the export.
     assert len(parsed["components"]) == 3
+
+
+# ---------------------------------------------------------------------------
+# Byte-stability (BUG-006): re-exporting the same scan is byte-for-byte equal,
+# across all four formats. The user guide promises hash-stable SBOMs.
+# ---------------------------------------------------------------------------
+
+
+_ALL_FORMATS = ("cyclonedx-json", "cyclonedx-xml", "spdx-json", "spdx-tv")
+
+
+@pytest.mark.parametrize("fmt", _ALL_FORMATS)
+async def test_reexport_same_scan_is_byte_identical(
+    db_session: AsyncSession, fmt: str
+) -> None:
+    """Two exports of the same scan produce byte-for-byte identical output."""
+    from services.sbom_export import export_sbom
+
+    _, project, scan = await _make_project_with_succeeded_scan(db_session)
+    await _seed_three_components(db_session, scan_id=scan.id)
+
+    body1, _, _ = await export_sbom(db_session, project_id=project.id, fmt=fmt)
+    body2, _, _ = await export_sbom(db_session, project_id=project.id, fmt=fmt)
+
+    assert body1 == body2, f"{fmt} export is not byte-stable"
+
+
+@pytest.mark.parametrize("fmt", _ALL_FORMATS)
+async def test_reexport_empty_project_is_byte_identical(
+    db_session: AsyncSession, fmt: str
+) -> None:
+    """Even an empty project (no components) re-exports identical bytes."""
+    from services.sbom_export import export_sbom
+
+    _, project, _ = await _make_project_with_succeeded_scan(db_session)
+
+    body1, _, _ = await export_sbom(db_session, project_id=project.id, fmt=fmt)
+    body2, _, _ = await export_sbom(db_session, project_id=project.id, fmt=fmt)
+
+    assert body1 == body2, f"empty-project {fmt} export is not byte-stable"
+
+
+async def test_serial_number_is_deterministic_uuidv5_from_scan(
+    db_session: AsyncSession,
+) -> None:
+    """serialNumber derives from the scan id (UUIDv5), not a fresh uuid4."""
+    import uuid as _uuid
+
+    from services.sbom_export import _SBOM_UUID_NAMESPACE, export_sbom
+
+    _, project, scan = await _make_project_with_succeeded_scan(db_session)
+    await _seed_three_components(db_session, scan_id=scan.id)
+
+    body, _, _ = await export_sbom(
+        db_session, project_id=project.id, fmt="cyclonedx-json"
+    )
+    parsed = json.loads(body)
+    expected = _uuid.uuid5(_SBOM_UUID_NAMESPACE, str(scan.id))
+    assert parsed["serialNumber"] == f"urn:uuid:{expected}"
+
+
+async def test_timestamp_uses_scan_completion_not_wall_clock(
+    db_session: AsyncSession,
+) -> None:
+    """metadata.timestamp reflects the scan's persisted completion time."""
+    from datetime import UTC, datetime
+
+    from services.sbom_export import export_sbom
+
+    _, project, scan = await _make_project_with_succeeded_scan(db_session)
+    # Pin a known completion time and persist it.
+    completed = datetime(2025, 1, 2, 3, 4, 5, tzinfo=UTC)
+    scan.completed_at = completed
+    await db_session.commit()
+    await db_session.refresh(scan)
+
+    body, _, _ = await export_sbom(
+        db_session, project_id=project.id, fmt="cyclonedx-json"
+    )
+    parsed = json.loads(body)
+    # Deterministic, millisecond-precision Z form derived from completed_at.
+    assert parsed["metadata"]["timestamp"] == "2025-01-02T03:04:05.000Z"
+
+
+async def test_spdx_namespace_is_deterministic_across_reexports(
+    db_session: AsyncSession,
+) -> None:
+    """SPDX documentNamespace is stable across re-exports (no uuid4 fallback)."""
+    from services.sbom_export import export_sbom
+
+    # Empty project exercises the no-succeeded-scan path that previously used
+    # a fresh uuid4 for the namespace.
+    _, project, _ = await _make_project_with_succeeded_scan(db_session)
+
+    body1, _, _ = await export_sbom(db_session, project_id=project.id, fmt="spdx-json")
+    body2, _, _ = await export_sbom(db_session, project_id=project.id, fmt="spdx-json")
+    ns1 = json.loads(body1)["documentNamespace"]
+    ns2 = json.loads(body2)["documentNamespace"]
+    assert ns1 == ns2
+    assert ns1.startswith("https://trustedoss.io/spdx/")
+
+
+async def test_components_emitted_in_purl_lexical_order(
+    db_session: AsyncSession,
+) -> None:
+    """CycloneDX components are ordered by purl (the guide's stated sort)."""
+    from services.sbom_export import export_sbom
+
+    _, project, scan = await _make_project_with_succeeded_scan(db_session)
+    await _seed_three_components(db_session, scan_id=scan.id)
+
+    body, _, _ = await export_sbom(
+        db_session, project_id=project.id, fmt="cyclonedx-json"
+    )
+    purls = [c["purl"] for c in json.loads(body)["components"]]
+    assert purls == sorted(purls)

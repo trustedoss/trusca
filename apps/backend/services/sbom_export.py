@@ -17,8 +17,28 @@ Output formats
 Each export is fully self-contained: we do not stream from disk, do not depend
 on the scan_artifacts side-channel, and do not require Dependency-Track.
 Components come from ``ScanComponent`` ⨝ ``ComponentVersion`` ⨝ ``Component``
-of the project's latest *succeeded* scan, ordered by component name + version
-for a stable byte-for-byte output (so callers may content-hash the body).
+of the project's latest *succeeded* scan, ordered by purl (falling back to
+bom-ref / name) for a stable byte-for-byte output (so callers may content-hash
+the body).
+
+Byte-stability (BUG-006)
+------------------------
+The user guide (``docs-site/docs/user-guide/sbom.md``) promises: re-exporting
+the same scan yields identical bytes across all four formats. That requires
+*every* field that could vary between two calls to be derived from persisted,
+scan-bound state — never from wall-clock time or a fresh ``uuid4()``:
+
+- ``serialNumber`` / ``documentNamespace`` derive deterministically from the
+  scan id via a UUIDv5 in a fixed namespace (:data:`_SBOM_UUID_NAMESPACE`).
+  Two exports of the same scan share the same serial number; a project with no
+  succeeded scan derives its serial from the *project* id instead (still
+  stable across re-exports).
+- ``metadata.timestamp`` / SPDX ``Created`` use the scan's persisted
+  completion time (``completed_at`` → ``updated_at`` → ``created_at``), never
+  ``datetime.now()``. A project with no scan uses the Unix epoch sentinel so
+  the document is still well-formed and stable.
+- components / packages are emitted in purl-lexical order (bom-ref / name as
+  tiebreak), matching the guide's "purl lexical sort" guarantee.
 
 Empty-project policy
 --------------------
@@ -87,6 +107,20 @@ _FORMAT_CATALOG: dict[str, tuple[str, str]] = {
 SUPPORTED_FORMATS: tuple[str, ...] = tuple(_FORMAT_CATALOG.keys())
 
 
+# Fixed UUIDv5 namespace for deriving deterministic serialNumber /
+# documentNamespace values from a scan (or project) id. This is a constant
+# *label* — NOT environment / config — so it is safe at module scope under
+# CLAUDE.md rule #11 (no env access at import time). It must never change once
+# shipped: changing it would alter every previously-emitted serialNumber and
+# break hash-based compliance verification of older SBOMs.
+_SBOM_UUID_NAMESPACE = uuid.UUID("6f3f5b1e-2c9a-5e4d-9b7a-0c1d2e3f4a5b")
+
+# Sentinel timestamp for a project that has never produced a succeeded scan.
+# Using a fixed epoch keeps the "empty SBOM" document byte-stable across
+# re-exports (the alternative — current time — would re-introduce BUG-006).
+_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
+
+
 # ---------------------------------------------------------------------------
 # Loaders
 # ---------------------------------------------------------------------------
@@ -137,10 +171,17 @@ async def _load_scan_components(
         .join(ComponentVersion, ComponentVersion.id == ScanComponent.component_version_id)
         .join(Component, Component.id == ComponentVersion.component_id)
         .where(ScanComponent.scan_id == scan_id)
-        # Stable byte-for-byte output: name → version → cv_id triple is a
-        # strict total order (cv_id is unique). Callers can content-hash the
-        # body and de-duplicate identical exports.
-        .order_by(Component.name.asc(), ComponentVersion.version.asc(), ComponentVersion.id.asc())
+        # Stable byte-for-byte output (BUG-006): the user guide promises a
+        # purl-lexical sort, so order by purl first. purl_with_version is
+        # unique (DB constraint) so it is already a strict total order; the
+        # name → version → cv_id tiebreak below only matters for the
+        # (rare) rows with a NULL purl, where it restores a total order.
+        .order_by(
+            ComponentVersion.purl_with_version.asc(),
+            Component.name.asc(),
+            ComponentVersion.version.asc(),
+            ComponentVersion.id.asc(),
+        )
     )
     result = await session.execute(stmt)
     return [dict(row._mapping) for row in result.all()]
@@ -159,6 +200,33 @@ def _utc_iso(now: datetime) -> str:
     """
     # `isoformat(timespec="milliseconds")` keeps the body compact and stable.
     return now.astimezone(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def _deterministic_timestamp(scan: Scan | None) -> datetime:
+    """The persisted scan-completion time used for the SBOM's timestamp.
+
+    BUG-006: the timestamp must derive from scan-bound, persisted state so two
+    exports of the same scan are byte-identical. We prefer the most specific
+    completion marker available and fall back through ``updated_at`` →
+    ``created_at``. A project with no succeeded scan uses the Unix-epoch
+    sentinel so the empty document is still well-formed and stable.
+    """
+    if scan is None:
+        return _EPOCH
+    return scan.completed_at or scan.updated_at or scan.created_at or _EPOCH
+
+
+def _deterministic_serial_uuid(project: Project, scan: Scan | None) -> uuid.UUID:
+    """A stable UUIDv5 derived from the scan id (or project id when no scan).
+
+    Re-exporting the same scan reproduces the same UUID, so the CycloneDX
+    ``serialNumber`` and SPDX ``documentNamespace`` are byte-stable. We anchor
+    on the *scan* id (not the project) so two different scans of the same
+    project get distinct serial numbers, which is what compliance tooling
+    expects when diffing SBOMs over time.
+    """
+    anchor = str(scan.id) if scan is not None else f"project:{project.id}"
+    return uuid.uuid5(_SBOM_UUID_NAMESPACE, anchor)
 
 
 def _cyclonedx_components(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -194,8 +262,10 @@ def _build_cyclonedx_doc(
     return {
         "bomFormat": "CycloneDX",
         "specVersion": "1.5",
-        # urn:uuid: is the CycloneDX-prescribed serialNumber form.
-        "serialNumber": f"urn:uuid:{uuid.uuid4()}",
+        # urn:uuid: is the CycloneDX-prescribed serialNumber form. BUG-006:
+        # the UUID derives deterministically from the scan id so re-exporting
+        # the same scan is byte-identical — never a fresh uuid4().
+        "serialNumber": f"urn:uuid:{_deterministic_serial_uuid(project, scan)}",
         "version": 1,
         "metadata": {
             "timestamp": _utc_iso(now),
@@ -308,14 +378,14 @@ def _spdx_id_for_component(cv_id: uuid.UUID) -> str:
 
 def _spdx_doc_namespace(project: Project, scan: Scan | None) -> str:
     """
-    SPDX requires a unique documentNamespace per export. We use the scan id
-    when available so two exports of the same scan share a namespace; an
-    export with no successful scan falls back to a fresh uuid4.
+    SPDX requires a unique documentNamespace per *document*. BUG-006: it must
+    also be byte-stable across re-exports of the same scan, so we derive it
+    deterministically from a UUIDv5 (scan id, or project id when the project
+    has no succeeded scan) instead of a fresh uuid4. Two exports of the same
+    scan therefore share a namespace; two different scans get distinct ones.
     """
     base = "https://trustedoss.io/spdx"
-    if scan is not None:
-        return f"{base}/{project.id}/{scan.id}"
-    return f"{base}/{project.id}/{uuid.uuid4()}"
+    return f"{base}/{project.id}/{_deterministic_serial_uuid(project, scan)}"
 
 
 def _spdx_clean(value: str) -> str:
@@ -459,6 +529,12 @@ async def export_sbom(
     Empty-project policy (see module docstring): if the project has no
     succeeded scan we still return a valid SBOM document with an empty
     components/packages list, not 404.
+
+    Byte-stability (BUG-006): by default the document timestamp derives from
+    the scan's persisted completion time, so two exports of the same scan are
+    byte-identical. ``now`` is an explicit override retained only for callers
+    that must stamp a specific time (and accept the non-determinism that
+    implies); production / HTTP callers pass nothing.
     """
     if fmt not in _FORMAT_CATALOG:
         raise SBOMUnsupportedFormat(
@@ -478,7 +554,10 @@ async def export_sbom(
     if scan is not None:
         rows = await _load_scan_components(session, scan_id=scan.id)
 
-    timestamp = now or datetime.now(tz=UTC)
+    # BUG-006: default to the scan's persisted completion time so re-exports
+    # are byte-stable. `now` stays an explicit override for callers that need
+    # to pin a specific stamp.
+    timestamp = now if now is not None else _deterministic_timestamp(scan)
 
     content_type, _ = _FORMAT_CATALOG[fmt]
     filename = _filename(project, fmt)
