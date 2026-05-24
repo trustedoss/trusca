@@ -187,6 +187,83 @@ The response is `application/pdf` with `Content-Disposition: attachment` (the `-
 Downloading the report requires `developer` or higher. Cross-team callers receive `404`, not `403`, so a non-member cannot tell whether the project exists.
 :::
 
+## Export a VEX document
+
+Beyond the VEX state embedded in a CycloneDX **SBOM**, the portal can export a
+standalone **VEX document** built purely from the project's current finding
+triage. A VEX (Vulnerability Exploitability eXchange) document tells downstream
+consumers *which CVEs actually affect your product* — so a consumer can suppress
+the noise from CVEs you have already analyzed as `not_affected` or `fixed`.
+
+Two formats are supported:
+
+| Format | Query value (`format=`) | MIME | Use case |
+|---|---|---|---|
+| **OpenVEX 0.2.0** | `openvex` | `application/json` | The minimal, vendor-neutral OpenVEX schema. Default. |
+| **CycloneDX 1.5 VEX** | `cyclonedx` | `application/json` | A CycloneDX BOM carrying only `vulnerabilities[]` + analysis — pairs with a CycloneDX SBOM. |
+
+The document is built from the **latest succeeded** scan's findings. A project
+with no succeeded scan (or no findings) still exports a valid, empty VEX
+document (HTTP 200) so downstream tooling can parse it.
+
+### Status mapping
+
+Each internal VEX state maps to the target format's status vocabulary. The
+free-text justification you entered during triage is carried verbatim into a
+free-text field — it is **never** force-fit onto the OpenVEX `justification`
+enum (whose members have precise legal meaning the portal cannot infer from
+arbitrary analyst prose).
+
+| Portal state | OpenVEX `status` | CycloneDX `analysis.state` |
+|---|---|---|
+| **New** | `under_investigation` | `in_triage` |
+| **Analyzing** | `under_investigation` | `in_triage` |
+| **Exploitable** | `affected` | `exploitable` |
+| **Not affected** | `not_affected` | `not_affected` |
+| **False positive** | `not_affected` | `false_positive` |
+| **Suppressed** | `not_affected` | `not_affected` |
+| **Fixed** | `fixed` | `resolved` |
+
+The justification text lands in OpenVEX `impact_statement` and in CycloneDX
+`analysis.detail`.
+
+### Byte-stable output
+
+Like the SBOM export, the VEX export is **byte-stable**: re-exporting the same
+scan produces identical bytes, so the document can be signed, cached, and
+diffed across releases. Statements are sorted by `(CVE id, purl)`, the document
+id is derived deterministically from the scan id, and the timestamp reflects the
+scan's persisted completion time (not the moment of export).
+
+### Download from the API
+
+```bash
+# OpenVEX (default)
+curl -sS -L -OJ \
+  -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+  "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/vex?format=openvex"
+
+# CycloneDX VEX
+curl -sS -L -OJ \
+  -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+  "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/vex?format=cyclonedx"
+```
+
+`format` accepts `openvex` or `cyclonedx`. The file name is
+`vex-<project-slug>.<ext>`.
+
+| Status | Meaning |
+|---|---|
+| `200` | VEX document download. |
+| `401` | Not authenticated — supply a valid token. |
+| `404` | Project does not exist, or the caller is not a member of its team (existence-hidden, same posture as the SBOM export). |
+| `422` | Unknown `format` — use `openvex` or `cyclonedx`. |
+
+:::note Access
+Downloading the VEX document requires `developer` or higher. Cross-team callers
+receive `404`, not `403`, so a non-member cannot tell whether the project exists.
+:::
+
 ## Re-detection
 
 When Dependency-Track ingests new CVEs from upstream feeds (NVD, OSV, GitHub Advisory), the periodic resync task re-correlates them against every project's latest scan. New findings appear automatically — no manual action required.
