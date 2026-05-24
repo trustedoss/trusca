@@ -100,9 +100,9 @@
       "error_detail": "다시 시도해 주세요.",
       "reason": {
         "intro": "다음 사유로 이 빌드가 차단되었습니다:",
-        "critical_cve_other": "미해결 Critical CVE {{count}}건",
-        "forbidden_license_other": "금지 라이선스 {{count}}건",
-        "epss_other": "EPSS ≥ {{threshold}} 취약점 {{count}}건",
+        "critical_cve": "미해결 Critical CVE {{count}}건",
+        "forbidden_license": "금지 라이선스 {{count}}건",
+        "epss": "EPSS ≥ {{threshold}} 취약점 {{count}}건",
         "fallback": "빌드 차단 게이트가 실패했습니다. 자세한 내용은 아래 지표를 확인하세요."
       },
       "errors": {

@@ -100,12 +100,9 @@
       "error_detail": "Please try again.",
       "reason": {
         "intro": "This build is blocked because:",
-        "critical_cve_one": "{{count}} open critical CVE",
-        "critical_cve_other": "{{count}} open critical CVEs",
-        "forbidden_license_one": "{{count}} forbidden license",
-        "forbidden_license_other": "{{count}} forbidden licenses",
-        "epss_one": "{{count}} finding with EPSS ≥ {{threshold}}",
-        "epss_other": "{{count}} findings with EPSS ≥ {{threshold}}",
+        "critical_cve": "{{count}} open critical CVE(s)",
+        "forbidden_license": "{{count}} forbidden license(s)",
+        "epss": "{{count}} finding(s) with EPSS ≥ {{threshold}}",
         "fallback": "The build gate failed. See the metrics below for details."
       },
       "errors": {
