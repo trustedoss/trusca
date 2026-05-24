@@ -588,6 +588,16 @@ class VulnerabilityFinding(Base):
         nullable=False,
         server_default=text("'new'"),
     )
+    # Fix version for THIS (component_version × vulnerability) pairing — v2.2
+    # 2.2-a1. Per-finding (not CVE-level) because the same CVE is patched at
+    # different versions across packages, and the same package is patched at
+    # different versions for different CVEs. Collected from DT findings by
+    # ``tasks.scan_source._extract_fixed_version`` (untrusted string →
+    # validated/normalized before persistence). NULL means "no fix version is
+    # known" (legacy rows pre-0017, or DT reported none). VARCHAR(255) mirrors
+    # ``component_versions.version`` so any observed version fits; the collector
+    # caps the value well below this width.
+    fixed_version: Mapped[str | None] = mapped_column(String(255), nullable=True)
     analysis_state: Mapped[str | None] = mapped_column(String(32), nullable=True)
     analysis_justification: Mapped[str | None] = mapped_column(Text, nullable=True)
     analysis_response: Mapped[dict[str, Any]] = mapped_column(

@@ -2007,6 +2007,12 @@ def _persist_findings(
     we skip the finding (the resync will pick it up on its next pass and a
     follow-up scan will materialize the join). This avoids hot-path inserts
     into the cross-scan vulnerability catalog.
+
+    v2.2 (2.2-a1): each finding also captures ``fixed_version`` — the version
+    that remediates THIS (component × CVE) pairing — extracted from the DT
+    finding's ``vulnerability`` sub-object via :func:`_extract_fixed_version`.
+    The value is untrusted DT output, so it is length-/charset-validated there
+    and persisted as NULL when DT reported nothing usable.
     """
     from models import Vulnerability  # local import to avoid circular hint
 
@@ -2042,14 +2048,176 @@ def _persist_findings(
                 "external_id": external_id,
             },
         )
+        fixed_version = _extract_fixed_version(raw)
         finding = VulnerabilityFinding(
             scan_id=scan_uuid,
             component_version_id=cv.id,
             vulnerability_id=vuln.id,
             status="new",
             analysis_response=guarded,
+            fixed_version=fixed_version,
         )
         session.add(finding)
+
+
+# ---------------------------------------------------------------------------
+# Fixed-version extraction (DT finding → vulnerability_findings.fixed_version)
+# ---------------------------------------------------------------------------
+
+# v2.2 (2.2-a1). A DT finding object from ``GET /api/v1/finding/project/{uuid}``
+# is per-(component × vulnerability), so its ``vulnerability`` sub-object is the
+# natural carrier of "the version that fixes THIS package for THIS CVE". DT does
+# not expose a single canonical "fixedVersion" field, so we probe several known
+# shapes in priority order (most → least structured) and fall back to parsing
+# the free-text remediation note. Every candidate is run through
+# ``_normalize_fixed_version`` so an untrusted DT string can never land an
+# oversized / control-char / separator-only value in the column.
+
+# Hard cap on the stored string. Well below the VARCHAR(255) column width so the
+# DB length is only a backstop. Real version strings (incl. long SemVer build
+# metadata) sit comfortably under this.
+_FIXED_VERSION_MAX_LEN = 100
+
+# A version token must start with a digit and contain only the characters that
+# appear in real package versions: digits, dots, hyphens, plus, tilde, colon
+# (epochs), underscore, and alphanumerics (pre-release / build identifiers).
+# Anchored so a hostile prefix/suffix (``../``, ``javascript:``, whitespace
+# padding) cannot smuggle past. ``re.fullmatch`` enforces the whole-string match.
+_VERSION_TOKEN_RE = re.compile(r"[0-9][0-9A-Za-z.\-+~:_]*")
+
+# Pull a concrete version out of a free-text remediation sentence such as
+# "Upgrade to 2.17.1 or later" / "Fixed in v3.2.0". We require a version-looking
+# token (starts with a digit, contains a dot) so a bare "Upgrade your runtime"
+# never yields a phantom version. The optional leading ``v`` is stripped.
+_RECOMMENDATION_VERSION_RE = re.compile(
+    r"\bv?([0-9]+(?:\.[0-9A-Za-z.\-+~:_]+)+)\b"
+)
+
+
+def _normalize_fixed_version(value: Any) -> str | None:
+    """Validate + normalize an untrusted fix-version candidate to ``str | None``.
+
+    Returns None for anything that is not a plausible version token:
+      - non-string / empty / whitespace-only input,
+      - control characters (CR/LF/NUL/etc.) — rejected outright, never stripped,
+        so a CRLF-injection attempt cannot fold into a clean-looking value,
+      - oversized input (> ``_FIXED_VERSION_MAX_LEN``),
+      - separator-only / operator-only tokens ("*", ">=", "-", ".") that do not
+        start with a digit,
+      - tokens carrying characters outside the version charset (path traversal,
+        URL schemes, spaces).
+
+    The accepted form mirrors the exact-pin rule used by the Poetry prep
+    translator (``_poetry_deps_to_requirements``): a real version is a
+    digit-led, dotted/dashed alphanumeric token.
+    """
+    if not isinstance(value, str):
+        return None
+    candidate = value.strip()
+    if not candidate:
+        return None
+    # Reject control characters anywhere (NUL, CR, LF, tab, vertical tab, ...).
+    # We refuse rather than sanitize: a value that needed stripping is not a
+    # trustworthy version.
+    if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in candidate):
+        return None
+    if len(candidate) > _FIXED_VERSION_MAX_LEN:
+        return None
+    # Drop a single leading "v"/"V" prefix (common in DT/GHSA notes: "v2.17.1").
+    if candidate[:1] in ("v", "V") and len(candidate) > 1 and candidate[1].isdigit():
+        candidate = candidate[1:]
+    if not _VERSION_TOKEN_RE.fullmatch(candidate):
+        return None
+    return candidate
+
+
+def _coerce_version_list(value: Any) -> list[str]:
+    """Best-effort flatten a DT 'versions' field into a list of raw strings.
+
+    DT shapes this differently across versions: a plain ``"2.17.1"``, a comma /
+    pipe separated string (``"2.17.0, 2.17.1"``), or a list of strings / dicts
+    (``[{"version": "2.17.1"}]``). We never trust the structure — anything that
+    is not a string or a dict-with-a-version is ignored.
+    """
+    out: list[str] = []
+    if isinstance(value, str):
+        # Split on the separators DT has been observed to use; the per-token
+        # normalizer rejects empties / junk so a separator-only string yields [].
+        for part in re.split(r"[,\|;\s]+", value):
+            if part:
+                out.append(part)
+    elif isinstance(value, list):
+        for item in value:
+            if isinstance(item, str) and item:
+                out.append(item)
+            elif isinstance(item, dict):
+                v = item.get("version") or item.get("fixedVersion") or item.get("value")
+                if isinstance(v, str) and v:
+                    out.append(v)
+    return out
+
+
+def _extract_fixed_version(finding: dict[str, Any]) -> str | None:
+    """Extract the fix version for a single DT finding, or None.
+
+    Probes the finding's ``vulnerability`` sub-object in priority order:
+
+      1. Structured patched-version lists DT may attach to the finding
+         (``patchedVersions`` / ``fixedVersions`` / ``fixedVersion``). The first
+         token that normalizes wins — DT lists the lowest patched version first.
+      2. CycloneDX VEX ``affects[].versions[]`` entries with ``status == "fixed"``
+         (present when the finding rides a CycloneDX VEX statement).
+      3. The free-text ``recommendation`` note, scanned for the first concrete
+         version token ("Upgrade to 2.17.1" → ``2.17.1``).
+
+    Returns None when no source yields a value that passes
+    :func:`_normalize_fixed_version`. Defensive against every malformed shape
+    (None, non-dict ``vulnerability``, missing keys) — it must never raise on a
+    hostile finding payload (the persistence loop runs it for every finding).
+    """
+    if not isinstance(finding, dict):
+        return None
+    vuln = finding.get("vulnerability")
+    if not isinstance(vuln, dict):
+        return None
+
+    # (1) Structured patched-version fields.
+    for key in ("patchedVersions", "fixedVersions", "fixedVersion"):
+        for raw_token in _coerce_version_list(vuln.get(key)):
+            normalized = _normalize_fixed_version(raw_token)
+            if normalized is not None:
+                return normalized
+
+    # (2) CycloneDX VEX affects[].versions[] with status == "fixed".
+    affects = vuln.get("affects")
+    if isinstance(affects, list):
+        for affect in affects:
+            if not isinstance(affect, dict):
+                continue
+            versions = affect.get("versions")
+            if not isinstance(versions, list):
+                continue
+            for ver in versions:
+                if not isinstance(ver, dict):
+                    continue
+                if str(ver.get("status", "")).strip().lower() != "fixed":
+                    continue
+                normalized = _normalize_fixed_version(ver.get("version"))
+                if normalized is not None:
+                    return normalized
+
+    # (3) Free-text remediation note.
+    recommendation = vuln.get("recommendation")
+    if isinstance(recommendation, str) and recommendation:
+        # Cap the scanned text so a pathological multi-megabyte note can't
+        # drive a catastrophic regex scan.
+        match = _RECOMMENDATION_VERSION_RE.search(recommendation[:4000])
+        if match is not None:
+            normalized = _normalize_fixed_version(match.group(1))
+            if normalized is not None:
+                return normalized
+
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -2123,7 +2291,11 @@ def _noop_workspace(path: Path) -> Iterator[Path]:
         shutil.rmtree(path, ignore_errors=True)
 
 
-__all__ = ["scan_source_task"]
+__all__ = [
+    "_extract_fixed_version",
+    "_normalize_fixed_version",
+    "scan_source_task",
+]
 
 
 # Optional injection points for unit tests — the real task uses module

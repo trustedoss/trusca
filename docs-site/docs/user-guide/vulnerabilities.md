@@ -69,7 +69,7 @@ Click any row to open:
 
 - **Summary** — title, description, CWE, CVSS vector, and the **EPSS score and percentile** when Dependency-Track supplies them (otherwise `—`). See [EPSS — exploitation probability](#epss--exploitation-probability).
 - **References** — vendor advisories, fix commits, exploit databases.
-- **Affected** — the upstream-reported affected range with the project's component version highlighted, plus `fixed_version` (the upstream version that ships the fix, when available).
+- **Affected** — the upstream-reported affected range with the project's component version highlighted, plus the **fixed version** — the version that remediates this CVE *for this component* — when the scan pipeline could determine one. See [Fixed version — the version that remediates the CVE](#fixed-version--the-version-that-remediates-the-cve).
 - **Analysis** — VEX status action buttons. **The buttons you see depend on the finding's _current_ state.** The transition matrix (`apps/backend/services/vulnerability_service.py`, the source of truth) routes every terminal decision through the `analyzing` state, so a brand-new finding cannot jump straight to a verdict:
   - **`new`** (just discovered) → **Mark in triage** (`analyzing`) or **Mark suppressed** (`suppressed`). You **cannot** go directly to "not affected" / "exploitable" / "false positive" / "fixed" — triage first.
   - **`analyzing`** (working state) → the five verdicts: **Mark exploitable**, **Mark not affected**, **Mark false positive**, **Mark fixed**, **Mark suppressed**.
@@ -152,6 +152,62 @@ A finding in the response looks like this (other fields omitted):
 
 :::tip Gate the build on EPSS
 EPSS can also drive the CI build gate, so a high-probability CVE fails the build even when it is not Critical. See [Gate the build on EPSS](../ci-integration/github-actions.md#gate-the-build-on-epss-optional).
+:::
+
+## Fixed version — the version that remediates the CVE
+
+The finding drawer's **Affected** section shows a **fixed version** next to each affected component: the version you can upgrade *that component* to so it no longer carries *that CVE*. It answers the first question every triager asks — "what do I bump it to?".
+
+### It is per-(component × CVE), not per-CVE
+
+A single CVE is often patched at **different versions across different packages**, and a single package can be patched at **different versions for different CVEs**. So the fixed version is stored on the individual finding (the `(component, CVE)` pairing), not on the CVE globally. Two components affected by the same CVE can legitimately show two different fixed versions — that is expected, not a bug.
+
+### Where the value comes from
+
+The scan pipeline collects the fixed version from the **Dependency-Track findings** for your scan, in priority order:
+
+1. **Structured patched-version lists** DT attaches to the finding (the lowest patched version wins).
+2. **CycloneDX VEX `affects[].versions[]`** entries marked `status: fixed`.
+3. The advisory's free-text **recommendation** ("Upgrade to 2.17.1 or later"), from which the portal extracts the concrete version.
+
+The collected string is validated before it is stored — control characters, oversized values, range operators (`^`, `>=`), and anything that is not a plausible version token are rejected to "unknown" rather than persisted.
+
+### When it is blank
+
+The fixed version shows `—` (and the API returns `null`) when:
+
+- DT reported no fix for this component / CVE (the upstream advisory has no patched version yet — a true zero-day or an as-yet-unfixed CVE), **or**
+- the finding was discovered by a scan that ran **before v2.2** shipped this collection. Re-scan the project to backfill it.
+
+A blank fixed version means **"no fix version is known"**, not "no fix exists" — always confirm against the upstream advisory before concluding a CVE is unfixable.
+
+### Read it from the API
+
+The fixed version appears as `fixed_version` on the finding detail's affected components and on the component drawer's nested CVE references:
+
+```bash
+# finding detail — fixed_version on each affected component
+curl -sS \
+  -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+  "https://trustedoss.example.com/v1/vulnerability_findings/${FINDING_ID}"
+```
+
+```json
+{
+  "cve_id": "CVE-2021-44228",
+  "affected_components": [
+    {
+      "name": "log4j-core",
+      "version": "2.14.1",
+      "purl": "pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1",
+      "fixed_version": "2.17.1"
+    }
+  ]
+}
+```
+
+:::note Upgrade recommendations build on this
+The fixed version is the input to the upcoming **upgrade recommendation** feature (v2.2): once each finding knows its fix version, the portal can compute the minimal safe bump across your dependency graph.
 :::
 
 ## Download a PDF report
@@ -467,7 +523,7 @@ Items the manual previously promised that are not in v2.0.0; tracked for later r
 
 - "Last seen" column on the findings table (most recent scan that confirmed the finding) — planned for v2.1.
 - Per-component filter and discovered-date range filter on the findings toolbar — planned for v2.1; today the search box covers component lookup.
-- Standalone **Fix availability** drawer section — for v2.0.0 the fix version surfaces as `fixed_version` inside the **Affected** section.
+- Standalone **Fix availability** drawer section — today the fix version surfaces as `fixed_version` inside the **Affected** section (real data since v2.2 — see [Fixed version](#fixed-version--the-version-that-remediates-the-cve)).
 
 ## See also
 

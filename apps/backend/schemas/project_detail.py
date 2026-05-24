@@ -186,7 +186,14 @@ class VulnerabilityRef(BaseModel):
     )
     title: str
     description: str | None = None
-    fixed_version: str | None = None
+    fixed_version: str | None = Field(
+        default=None,
+        description=(
+            "Version that remediates this CVE for this component, when the scan "
+            "pipeline could determine one from DT findings (v2.2). ``null`` when "
+            "DT reported no fix version, or for findings scanned before v2.2."
+        ),
+    )
 
 
 class ComponentDetailResponse(BaseModel):
