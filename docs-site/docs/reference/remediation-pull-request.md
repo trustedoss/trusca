@@ -88,6 +88,16 @@ GET /v1/projects/{project_id}/remediation/pull-requests
 
 Any team member can read the project's remediation-PR records (newest first), paginated with `page` / `page_size`.
 
+## Using the portal UI
+
+The same flow is available without the API, from the project's **Remediation** tab (`/projects/:id?tab=remediation`):
+
+1. **Preview** — click **Run preview** to compute the dry-run. The proposed bumps are shown as a `package → current → recommended` table, alongside the manifest source (uploaded / preserved scan source / not available) and any warnings — most importantly *"run `npm install` to regenerate package-lock.json"*. A no-change result and a no-manifest result are shown as explicit empty states.
+2. **Open remediation PR** — visible only to **team admins**. Clicking it opens (or idempotently returns) the PR and surfaces the result as a link that opens GitHub in a new tab.
+   - If the project is **not opted in** (no linked GitHub App installation), the button is replaced with inline guidance instead of failing — a team admin must link a repository first.
+   - A non-team-admin sees read-only guidance, not the button.
+3. **Remediation pull requests** — the list below shows every PR opened for the project with a status badge (`creating` / `open` / `failed` / `superseded`), the target repository, and the creation time. Each row links out to the PR on GitHub.
+
 ## Status lifecycle
 
 | Status | Meaning |

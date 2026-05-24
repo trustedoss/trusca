@@ -1,0 +1,49 @@
+{
+  "preview": {
+    "title": "Dependency remediation preview",
+    "subtitle": "Compute the proposed package.json edit for this project's vulnerable npm dependencies. This is a dry-run — it never opens a pull request.",
+    "action": {
+      "run": "Run preview",
+      "running": "Computing preview…"
+    },
+    "column": {
+      "package": "Package",
+      "current": "Current",
+      "recommended": "Recommended"
+    },
+    "manifest_source": "Manifest: {{source}}",
+    "manifest_source_value": {
+      "override": "uploaded",
+      "preserved_source": "preserved scan source",
+      "none": "not available"
+    },
+    "warning_label": "Note",
+    "no_changes": "No upgrades are available. The manifest's npm dependencies are already at their minimum-safe versions.",
+    "no_manifest": "No package.json was found for this project. Run a scan that preserves the source, or upload a manifest, to compute a preview."
+  },
+  "pr": {
+    "title": "Automated remediation pull request",
+    "subtitle": "Open a pull request on this project's linked GitHub repository that applies the proposed bump. Team admins only.",
+    "role_gated": "Only team admins can open an automated remediation pull request. Ask a team admin to run it, or review the preview above.",
+    "not_opted_in": "This project is not linked to a GitHub App installation, so automated pull requests are disabled. A team admin can link a repository in the project's integration settings to enable this.",
+    "forbidden": "You do not have permission to open an automated remediation pull request for this project.",
+    "noop": "There is nothing to remediate — the manifest is already up to date, so no pull request was opened.",
+    "created": "Pull request opened:",
+    "link_label": "PR #{{number}}",
+    "link_label_pending": "Pull request (pending)",
+    "action": {
+      "create": "Open remediation PR",
+      "creating": "Opening pull request…"
+    },
+    "status": {
+      "creating": "Creating",
+      "open": "Open",
+      "failed": "Failed",
+      "superseded": "Superseded"
+    },
+    "list": {
+      "title": "Remediation pull requests",
+      "empty": "No remediation pull requests have been opened for this project yet."
+    }
+  }
+}

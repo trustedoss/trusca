@@ -12,6 +12,7 @@ import enPolicies from "@/locales/en/policies.json";
 import enProfile from "@/locales/en/profile.json";
 import enProjectDetail from "@/locales/en/project_detail.json";
 import enProjects from "@/locales/en/projects.json";
+import enRemediation from "@/locales/en/remediation.json";
 import enScans from "@/locales/en/scans.json";
 import koAdmin from "@/locales/ko/admin.json";
 import koApprovals from "@/locales/ko/approvals.json";
@@ -23,6 +24,7 @@ import koPolicies from "@/locales/ko/policies.json";
 import koProfile from "@/locales/ko/profile.json";
 import koProjectDetail from "@/locales/ko/project_detail.json";
 import koProjects from "@/locales/ko/projects.json";
+import koRemediation from "@/locales/ko/remediation.json";
 import koScans from "@/locales/ko/scans.json";
 
 export const SUPPORTED_LANGUAGES = ["en", "ko"] as const;
@@ -45,6 +47,7 @@ void i18n
         notifications: enNotifications,
         policies: enPolicies,
         profile: enProfile,
+        remediation: enRemediation,
       },
       ko: {
         common: koCommon,
@@ -58,6 +61,7 @@ void i18n
         notifications: koNotifications,
         policies: koPolicies,
         profile: koProfile,
+        remediation: koRemediation,
       },
     },
     fallbackLng: "en",
@@ -75,6 +79,7 @@ void i18n
       "notifications",
       "policies",
       "profile",
+      "remediation",
     ],
     interpolation: { escapeValue: false },
     detection: {

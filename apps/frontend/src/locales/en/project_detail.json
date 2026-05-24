@@ -20,6 +20,7 @@
     "obligations": "Obligations",
     "sbom": "SBOM",
     "source": "Source",
+    "remediation": "Remediation",
     "settings": "Settings"
   },
   "severity": {
