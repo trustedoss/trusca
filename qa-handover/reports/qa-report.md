@@ -10,6 +10,12 @@
 ## 0. Executive Summary (1분 요약)
 **핵심 기능·엣지 처리는 견고합니다. 다만 "성공처럼 보이는 침묵의 실패" 2건이 출시 blocker입니다.**
 
+> **🛠 메인테이너 정정 (2026-05-24, 런타임 검증 후)**: cdxgen 런타임 직접 검증 결과 **BUG-008은 Critical 오진** —
+> QA 하네스가 `source_type=upload`를 누락해 빈 워크스페이스를 스캔한 아티팩트였다. 올바른 페이로드로 재검증 시
+> node/python/maven 모두 BD ground truth 충족(실제 UI 경로 정상). 따라서 **출시 가부의 BUG-008 근거는 무효**이며
+> 잔여는 Medium robustness 버그(소스 없는 스캔의 조용한 성공)다. **BUG-010(High)만 실제 코드 blocker**로 유효.
+> 상세 근거·증거는 `bug-report.md` BUG-008의 메인테이너 부록 참조.
+
 - 🔴 **BUG-008 (Critical)** — 소스 아카이브 스캔이 의존성을 **전 언어에서 미탐지**(15 fixture, Black Duck ground truth 대비). 스캔은 `succeeded`로 표시되어 **SCA 핵심 기능이 조용히 무력화**. UI 경로도 동일하므로 사용자 스캔도 0. (cdxgen 런타임은 팀 검증 필수)
 - 🟠 **BUG-010 (High)** — 조건부 라이선스(LGPL 등) 컴포넌트의 Pending 승인 **자동 생성 누락**(가이드 명세 위반) → 법무 검토가 조용히 누락.
 - **발견 총 11건**: Critical 1 / High 1 / Medium 6 / Low 3 (상세 `bug-report.md`).

@@ -83,11 +83,19 @@ async function scanOne(token, teamId, fixture) {
   form.append('upload', new Blob([fs.readFileSync(zip)]), `${fixture}.zip`);
   const up = await fetch(`${BASE}/v1/projects/${projectId}/source-archive`, { method: 'POST', headers: auth(token), body: form });
   if (!up.ok) throw new Error(`upload ${up.status}`);
+  // BUG-008 진단 후속(2026-05-24): 업로드만으로는 스캔이 아카이브를 쓰지 않는다.
+  // 스캔 트리거에 source_type=upload + archive_id 를 반드시 넣어야 백엔드가
+  // 업로드된 zip을 추출해 cdxgen에 넘긴다(apps/backend/services/scan_service.py).
+  // 이게 빠지면 백엔드가 legacy no-git_url placeholder 경로로 빠져 빈 워크스페이스를
+  // 스캔하고 components=0 으로 "조용히 성공"한다 — 실제 UI(useTriggerScan.ts)는
+  // 항상 이 metadata를 보내므로 이 스크립트도 동일하게 맞춘다.
+  const { archive_id: archiveId } = await up.json();
+  if (!archiveId) throw new Error('upload response missing archive_id');
 
   const sc = await fetch(`${BASE}/v1/projects/${projectId}/scans`, {
     method: 'POST',
     headers: auth(token, { 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ kind: 'source' }),
+    body: JSON.stringify({ kind: 'source', metadata: { source_type: 'upload', archive_id: archiveId } }),
   });
   if (!sc.ok) throw new Error(`scan ${sc.status}`);
   const scanId = (await sc.json()).id;

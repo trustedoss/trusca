@@ -105,6 +105,15 @@
 
 ### BUG-008: SCA false negative — 소스 아카이브 스캔이 의존성을 전 언어에서 미탐지 ⚠️ 최우선(blocker)
 
+> **🛠 메인테이너 부록 (2026-05-24, 런타임 검증 후 — 심각도 Critical→Medium 정정)**
+> 외부 QA가 `docker exec` 차단으로 못 했던 cdxgen 런타임 검증을 워커에서 직접 수행한 결과,
+> **이 "전 언어 전면 미탐지"는 cdxgen 버그가 아니라 QA 하네스(`scan-all-fixtures.js`)의 페이로드 누락 아티팩트**로 확인되었다.
+> - **근본원인**: 하네스가 스캔을 `{kind:"source"}`로만 트리거하고 `metadata.source_type="upload"` + `archive_id`를 누락 → 백엔드 `_fetch_source`가 업로드 아카이브를 못 찾고 legacy no-git_url placeholder 경로로 빠져 **빈 워크스페이스**를 cdxgen에 넘김(워커 로그: cdxgen 매 실행 0.6초·SBOM 557바이트 = 빈 디렉토리 스캔).
+> - **실제 UI는 정상**: `apps/frontend/src/hooks/useTriggerScan.ts:136`이 `metadata:{source_type:"upload", archive_id}`를 정확히 전송. "UI도 동일 경로(sourceArchiveApi.ts)" 주장은 부정확 — sourceArchiveApi는 업로드만, 스캔 트리거는 useTriggerScan이 담당.
+> - **올바른 페이로드 재검증(end-to-end, DB scan_components 영속까지 succeeded)**: node 1(BD 1)·python-pip 5(BD 3)·maven 8(BD 3) — 전부 BD ground truth 충족. cdxgen·추출·영속·실제 UI 경로 모두 정상.
+> - **남은 진짜 버그(Medium)**: 소스가 없는(`git_url` 없음 + 업로드 없음) 소스 스캔이 실패가 아니라 **조용히 `succeeded`(0개)** 로 끝남 = 진짜 "침묵 실패". 조치: `trigger_scan`에 loud-fail 가드 추가 + 하네스 `source_type=upload` 수정(완료).
+> 아래 원문은 외부 QA의 기록으로 보존한다(당시 환경에서의 관찰은 정확했고, 검출 파이프라인이 "스캔 succeeded·컴포넌트 0"을 잡아낸 것 자체는 가치 있음 — 페이로드만 교정하면 그대로 회귀 방어 자산이 된다).
+
 - **영역**: Backend / SCA 스캔 파이프라인 (cdxgen)
 - **심각도**: **Critical** (SCA 포털의 존재 이유인 의존성 탐지가 **전 언어 생태계에서 전면 실패** — 컴포넌트 0이면 CVE·라이선스·승인·SBOM이 모두 빈 값)
 - **재현 절차**:
