@@ -17,6 +17,7 @@ from .oauth import router as oauth_router
 from .obligations import router as obligations_router
 from .policy_gate import router as policy_gate_router
 from .projects import router as projects_router
+from .remediation import router as remediation_router
 from .reports import router as reports_router
 from .sbom import router as sbom_router
 from .scans import router as scans_router
@@ -43,6 +44,7 @@ __all__ = [
     "obligations_router",
     "policy_gate_router",
     "projects_router",
+    "remediation_router",
     "reports_router",
     "sbom_router",
     "scans_router",
