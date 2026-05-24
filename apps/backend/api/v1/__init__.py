@@ -19,6 +19,7 @@ from .sbom import router as sbom_router
 from .scans import router as scans_router
 from .source_tree import router as source_tree_router
 from .users_me import router as users_me_router
+from .vex import router as vex_router
 from .vulnerabilities import router as vulnerabilities_router
 from .webhooks import github_router as webhooks_github_router
 from .webhooks import gitlab_router as webhooks_gitlab_router
@@ -41,6 +42,7 @@ __all__ = [
     "scans_router",
     "source_tree_router",
     "users_me_router",
+    "vex_router",
     "vulnerabilities_router",
     "webhooks_github_router",
     "webhooks_gitlab_router",
