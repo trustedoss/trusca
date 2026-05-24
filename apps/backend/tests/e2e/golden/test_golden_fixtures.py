@@ -35,7 +35,24 @@ FIXTURES = os.getenv(
     "GOLDEN_FIXTURES",
     str(Path.home() / "projects" / "bd-scan" / "tests" / "fixtures" / "projects"),
 )
+# Self-contained subset committed in-repo so the BUG-008 guard ("scan succeeded
+# but 0 components") runs in nightly even without the external bd-scan corpus
+# (BD_SCAN_REPO_URL secret). Resolution prefers the external corpus and falls
+# back here, so `node` / `python-pip` always run while the full language matrix
+# still needs the external clone.
+IN_REPO_FIXTURES = Path(__file__).resolve().parent / "fixtures"
 BASELINES = sorted(p.stem for p in rg.BASELINE_DIR.glob("*.json"))
+
+
+def _resolve_fixture(name: str) -> Path | None:
+    """External corpus first, then the committed in-repo subset; None if neither."""
+    external = Path(FIXTURES) / name
+    if external.is_dir():
+        return external
+    in_repo = IN_REPO_FIXTURES / name
+    if in_repo.is_dir():
+        return in_repo
+    return None
 
 
 def _api_up() -> bool:
@@ -48,10 +65,11 @@ def _api_up() -> bool:
 
 @pytest.fixture(scope="session")
 def _auth():
+    # Only the live stack is required up front — fixtures are resolved per-case
+    # (external corpus or the in-repo fallback), so a missing external corpus no
+    # longer skips the whole suite; it just narrows it to the in-repo subset.
     if not _api_up():
         pytest.skip(f"golden stack not reachable at {API}")
-    if not Path(FIXTURES).is_dir():
-        pytest.skip(f"fixtures dir not found: {FIXTURES}")
     token = rg.login(API)
     team = rg._team(API, token)
     return token, team
@@ -61,9 +79,9 @@ def _auth():
 @pytest.mark.parametrize("name", BASELINES)
 def test_fixture_matches_baseline(name: str, _auth) -> None:
     token, team = _auth
-    src = Path(FIXTURES) / name
-    if not src.is_dir():
-        pytest.skip(f"fixture {name} not present")
+    src = _resolve_fixture(name)
+    if src is None:
+        pytest.skip(f"fixture {name} not present (external corpus or in-repo)")
     got = rg.scan_fixture(API, token, team, name, src)
     want = json.loads((rg.BASELINE_DIR / f"{name}.json").read_text())
     # vulnerabilities_count is NVD-mirror-dependent → asserted in the Tier 5
