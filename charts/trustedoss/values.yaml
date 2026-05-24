@@ -128,8 +128,16 @@ backend:
     limits:
       cpu: "2"
       memory: 1Gi
-  # Liveness/readiness probe path (the backend exposes /health).
+  # Liveness probe path — PURE liveness (the backend exposes /health; proves
+  # only that the uvicorn process is up, touches no DB).
   healthPath: /health
+  # Readiness probe path — v2.1 Track B (B1). /health/ready returns 200 only
+  # when the Postgres schema is at the Alembic HEAD, so the pod is marked Ready
+  # (and starts receiving Service traffic) only after migrations have landed.
+  # The full Helm migration-Job design (AUTO_MIGRATE=false on pods + a
+  # pre-install/pre-upgrade Job that runs `alembic upgrade head` as the owner
+  # role) is B3; this probe path is the prerequisite hook for it.
+  readyPath: /health/ready
 
 # ===========================================================================
 # Celery worker workload.

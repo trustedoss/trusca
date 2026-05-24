@@ -116,6 +116,26 @@ unset ADMIN_PASSWORD   # 사용자 생성 후 셸에서 제거
 - **이 클론 없는 경로:** 마법사가 없으므로 L1 스택에서는 **운영자가 직접 `.env` 에 `AUTO_MIGRATE=false` 를 설정**하고 owner 역할로 `alembic upgrade head` 를 실행해야 합니다(그 한 명령에서 `DATABASE_URL` 을 `DATABASE_URL_OWNER` 로 덮어씀). L1 스택에서 `true` 로 두면 backend entrypoint 가 명확한 DDL 권한 오류와 함께 즉시 실패(exit 1, 크래시 루프 없음)하고 로그에 원인을 남깁니다.
 :::
 
+### Liveness vs. readiness: 스택이 스키마를 기다리는 방식
+
+backend 는 인증이 필요 없는 health 엔드포인트를 **두 개** 노출합니다. 둘은 서로 다른 질문에 답하며, Compose / Kubernetes 의 기동 게이트가 이 구분에 의존합니다.
+
+| 엔드포인트 | 답하는 질문 | DB 접근? | 사용처 |
+| --- | --- | --- | --- |
+| `GET /health` | uvicorn **프로세스**가 떠서 요청을 받는가? (순수 liveness) | 아니오 | Kubernetes `livenessProbe`; liveness 전용 소비자 |
+| `GET /health/ready` | Postgres **스키마가 Alembic HEAD** 인가, 즉 트래픽을 처리하고 워커를 띄워도 안전한가? (readiness) | 예 (`alembic_version` 에 대한 읽기 전용 `SELECT`) | Compose backend `healthcheck`; Kubernetes `readinessProbe` |
+
+`/health/ready` 는 스키마가 HEAD 와 일치할 때만 `200 {"status":"ready"}` 를 반환합니다. 그렇지 않으면 RFC 7807 `application/problem+json` 본문으로 리비전 불일치를 요약한 `503` 을 반환합니다(DSN 이나 자격 증명은 절대 노출하지 않습니다).
+
+v2.1(Track B)부터 `backend` 서비스의 Compose `healthcheck` 가 **`/health/ready`** 를 검사하므로, `depends_on: backend (condition: service_healthy)` 를 선언한 `worker` / `beat` 서비스는 **스키마가 마이그레이션된 뒤에야** 기동합니다. 두 토글 모두에서:
+
+- **`AUTO_MIGRATE=true`**(단일 역할 기본값): backend 컨테이너가 기동 시 `alembic upgrade head` 를 실행하고, 완료되면 `/health/ready` 가 `200` 으로 바뀝니다. 그 후 워커가 마이그레이션된 스키마 위에서 시작합니다. 일반 경로이며 운영자 조치가 필요 없습니다.
+- **`AUTO_MIGRATE=false`**(L1 역할 분리 스택): uvicorn 은 `/health` 에 즉시 응답하지만, **외부**에서 owner 역할로 `alembic upgrade head`(`install.sh` / `upgrade.sh` 가 수행)를 실행해 스키마를 HEAD 로 올릴 때까지 `/health/ready` 는 `503` 으로 남습니다(컨테이너는 `health: starting` 유지). **이는 의도된 동작입니다.** 워커와 beat 는 아직 마이그레이션되지 않은 DB 위에서 시작하는 대신 스키마를 기다립니다. L1 스택에서 마이그레이션을 깜빡하면 backend 가 영영 healthy 가 되지 않으니 `docker-compose logs backend` 를 확인하고 owner 역할 마이그레이션을 실행하세요.
+
+:::note 긴 마이그레이션이 컨테이너를 `unhealthy` 로 만들지 않는 이유
+backend healthcheck 는 넉넉한 `start_period`(60s)를 사용합니다. 큰 DB 의 첫 마이그레이션은 `/health/ready` 가 `200` 이 되기 전까지 한동안 걸릴 수 있는데, `start_period` 가 그 첫 마이그레이션 완료 전에 Docker 가 컨테이너를 `unhealthy` 로 표시(및 재시작)하지 않도록 막아 줍니다.
+:::
+
 :::tip 가이드 설치는 마법사를 권장
 아래 1~3단계의 `install.sh` 마법사는 위 작업을 대신 처리합니다 — 비밀값 생성, health 대기 루프, 마이그레이션, 관리자 부트스트랩까지. 또한 호스트에 V1이 없으면 Compose **V2** 플러그인(`docker compose`)으로도 동작합니다. 각 단계를 직접 제어하거나 자체 자동화를 구성할 때 클론 없는 경로를 사용하세요.
 :::
@@ -237,7 +257,7 @@ Bind for 0.0.0.0:443 failed: port is already allocated
 sudo ss -tlnp | grep -E ':80|:443'
 ```
 
-기존 리버스 프록시를 유지하려면 `docker-compose.yml`에서 Traefik 서비스를 제거하고 `/api`, `/health`, `/metrics`는 backend 컨테이너로, `/`는 frontend 컨테이너로 라우팅하도록 설정합니다.
+기존 리버스 프록시를 유지하려면 `docker-compose.yml`에서 Traefik 서비스를 제거하고 `/api`, `/health`, `/health/ready`, `/metrics`는 backend 컨테이너로, `/`는 frontend 컨테이너로 라우팅하도록 설정합니다.
 
 ### 백엔드가 healthy로 전환되지 않음
 

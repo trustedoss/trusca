@@ -27,6 +27,7 @@ from api.v1 import (
     approvals_router,
     auth_router,
     components_router,
+    health_router,
     licenses_router,
     notifications_router,
     oauth_router,
@@ -202,9 +203,21 @@ app.include_router(users_me_router)
 # `/ws/scans/{scan_id}` (no prefix) so future ws routes can group themselves
 # under the same router without nudging this include.
 app.include_router(ws_router)
+# v2.1 Track B (B1): PUBLIC, unauthenticated readiness probe GET /health/ready.
+# It asserts the Postgres schema is at the Alembic HEAD (CLAUDE.md rule #12 —
+# this is an explicit public exception, grouped under the OpenAPI `public` tag).
+# Liveness (/health below) only proves the process is up; readiness gates worker
+# / beat startup on a migrated schema. See api/v1/health.py for the contract.
+app.include_router(health_router)
 
 
-@app.get("/health", tags=["system"], summary="Liveness probe")
+@app.get("/health", tags=["public"], summary="Liveness probe — PUBLIC, unauthenticated")
 async def health() -> dict[str, str]:
-    """Cheap liveness probe used by docker-compose healthchecks."""
+    """Cheap PURE-LIVENESS probe used by docker-compose / k8s liveness checks.
+
+    PUBLIC / unauthenticated (CLAUDE.md rule #12 explicit exception). This proves
+    only that the uvicorn process is accepting requests — it does NOT touch the
+    database and says nothing about schema state. For "is the schema migrated and
+    safe to serve traffic / start workers", use GET /health/ready (api/v1/health.py).
+    """
     return {"status": "ok"}

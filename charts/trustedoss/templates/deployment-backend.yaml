@@ -40,15 +40,22 @@ spec:
                 name: {{ include "trustedoss.fullname" . }}-env
           env:
             {{- include "trustedoss.secretEnv" . | nindent 12 }}
+          # Liveness — PURE liveness (/health). Restarts the pod only when the
+          # process itself is wedged; it must NOT depend on schema state, or a
+          # pre-migration pod would be killed in a loop.
           livenessProbe:
             httpGet:
               path: {{ .Values.backend.healthPath }}
               port: http
             initialDelaySeconds: 30
             periodSeconds: 15
+          # Readiness — v2.1 Track B (B1). /health/ready returns 200 only when
+          # the schema == Alembic HEAD, so the pod joins the Service endpoints
+          # (and traffic flows) only after migrations have landed. Falls back to
+          # healthPath if readyPath is unset (older values.yaml overrides).
           readinessProbe:
             httpGet:
-              path: {{ .Values.backend.healthPath }}
+              path: {{ .Values.backend.readyPath | default .Values.backend.healthPath }}
               port: http
             initialDelaySeconds: 10
             periodSeconds: 10

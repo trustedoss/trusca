@@ -33,6 +33,7 @@
     "state"
   ],
   "GET /health": [],
+  "GET /health/ready": [],
   "GET /v1/admin/audit": [
     "action",
     "actor_user_id",
