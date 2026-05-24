@@ -32,6 +32,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from models import (
+    AuditLog,
     ComponentApproval,
     LicenseFinding,
     Scan,
@@ -565,6 +566,33 @@ def test_conditional_license_component_creates_pending_approval(
     )
     assert conditional_finding == "pkg:npm/conditional-lib"
 
+    # QA follow-up Medium — the full pipeline (real Celery task path, sync
+    # session, system context) must have written exactly ONE auto-enrolment
+    # audit summary row past the audit_logs append-only trigger: NULL actor,
+    # action 'approvals.auto_enrolled', created_count 1 for this conditional
+    # component.
+    audit_rows = (
+        sync_session.execute(
+            select(AuditLog).where(AuditLog.action == "approvals.auto_enrolled")
+        )
+        .scalars()
+        .all()
+    )
+    scan_audit_rows = [
+        r
+        for r in audit_rows
+        if isinstance(r.diff, dict) and r.diff.get("scan_id") == str(scan_id)
+    ]
+    assert len(scan_audit_rows) == 1
+    audit_row = scan_audit_rows[0]
+    assert audit_row.actor_user_id is None  # system context
+    assert audit_row.target_table == "component_approvals"
+    assert audit_row.target_id is None
+    audit_diff = audit_row.diff
+    assert isinstance(audit_diff, dict)
+    assert audit_diff["created_count"] == 1
+    assert audit_diff["component_ids"] == [str(approval.component_id)]
+
 
 def test_conditional_approval_is_idempotent_across_reruns(
     monkeypatch: pytest.MonkeyPatch,
@@ -611,4 +639,21 @@ def test_conditional_approval_is_idempotent_across_reruns(
     )
     assert len(approvals) == 1, (
         f"re-run must not duplicate the auto-created approval; got {len(approvals)}"
+    )
+
+    # QA follow-up Medium — the re-run created 0 new approvals, so it must NOT
+    # have written a second audit summary row. Exactly one auto-enrolment audit
+    # row exists for this scan (from the first run).
+    scan_audit_rows = [
+        r
+        for r in sync_session.execute(
+            select(AuditLog).where(AuditLog.action == "approvals.auto_enrolled")
+        )
+        .scalars()
+        .all()
+        if isinstance(r.diff, dict) and r.diff.get("scan_id") == str(scan_id)
+    ]
+    assert len(scan_audit_rows) == 1, (
+        f"idempotent re-run must not add a second audit summary row; "
+        f"got {len(scan_audit_rows)}"
     )

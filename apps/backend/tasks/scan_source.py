@@ -75,6 +75,7 @@ from integrations.dt import DTBreakerOpen, DTError
 from integrations.dt.breaker import CircuitBreaker, get_breaker
 from integrations.dt.client import DTClient, build_client
 from models import (
+    AuditLog,
     Component,
     ComponentVersion,
     License,
@@ -747,6 +748,43 @@ def _persist_artifact(scan_uuid: uuid.UUID, *, kind: str, path: Path) -> None:
 # tests so a future re-rank cannot silently drift.
 _CONDITIONAL_RANK = 2
 
+# QA follow-up Medium — the auto-enrolment audit summary records the affected
+# component ids inline in the JSONB ``diff``. Cap the list so a scan that
+# enrols thousands of conditional components cannot bloat a single audit row
+# (and, transitively, the GIN index over ``audit_logs.diff``). When the created
+# set exceeds the cap we store the first N ids plus a ``component_ids_truncated``
+# flag; the ``created_count`` is always exact regardless of the cap.
+_AUDIT_COMPONENT_IDS_CAP = 50
+
+# Stable action verb + target for the auto-enrolment audit summary. ``action``
+# must fit ``audit_logs.action`` (String(32)) and ``target_table`` must fit
+# String(64) — "approvals.auto_enrolled" is 23 chars, "component_approvals" 19.
+_AUTO_ENROL_AUDIT_ACTION = "approvals.auto_enrolled"
+_AUTO_ENROL_AUDIT_TARGET_TABLE = "component_approvals"
+
+
+def _build_auto_enrol_audit_diff(
+    *,
+    scan_uuid: uuid.UUID,
+    project_id: uuid.UUID,
+    created_ids: list[uuid.UUID],
+) -> dict[str, Any]:
+    """Compose the JSONB ``diff`` payload for the auto-enrolment audit summary.
+
+    ``created_count`` is exact; ``component_ids`` is capped at
+    ``_AUDIT_COMPONENT_IDS_CAP`` with a ``component_ids_truncated`` flag so a
+    mass-conditional scan cannot bloat the row / GIN index. All ids are
+    stringified (JSONB has no native UUID type).
+    """
+    capped = created_ids[:_AUDIT_COMPONENT_IDS_CAP]
+    return {
+        "scan_id": str(scan_uuid),
+        "project_id": str(project_id),
+        "created_count": len(created_ids),
+        "component_ids": [str(cid) for cid in capped],
+        "component_ids_truncated": len(created_ids) > _AUDIT_COMPONENT_IDS_CAP,
+    }
+
 
 def _conditional_component_ids(
     session: Session, *, scan_uuid: uuid.UUID
@@ -815,6 +853,22 @@ def _auto_create_conditional_approvals(
     (``auto_create_pending_approvals`` skips components that already have an
     open approval), so a re-run that re-creates the findings does not duplicate
     approvals, and a transient failure is healed on the next scan.
+
+    QA follow-up Medium — audit trail: when one or more approvals are actually
+    created, this stage writes ONE summary ``audit_logs`` row (action
+    ``approvals.auto_enrolled``, system actor ``actor_user_id=NULL``,
+    ``target_table='component_approvals'``, ``target_id=NULL`` because the row
+    summarises many approvals) so a compliance reviewer can see when / how
+    conditional licenses entered the legal-review queue. It is a SUMMARY, not
+    one row per component, to keep ``audit_logs`` from ballooning — consistent
+    with the un-audited per-row sync writes (see ``core/db.py``). The INSERT
+    rides in the SAME transaction as the approval inserts and commits with them.
+    The ``audit_logs`` append-only trigger (migration 0012) gates UPDATE/DELETE
+    only, so this INSERT is permitted. ``actor_user_id``/``team_id`` are
+    ON DELETE SET NULL FKs — NULL actor + the project's team_id never violate
+    them. When NO approval is created (``created_ids`` empty — already enrolled
+    or none conditional) NO audit row is written, so an idempotent re-run leaves
+    no audit noise.
     """
     try:
         with sync_session_scope() as session:
@@ -836,20 +890,38 @@ def _auto_create_conditional_approvals(
                     project_id=str(project_id),
                 )
                 return
-            created = auto_create_pending_approvals(
+            created_ids = auto_create_pending_approvals(
                 session,
                 project_id=project_id,
                 team_id=team_id,
                 component_ids=component_ids,
                 scan_id=scan_uuid,
             )
+            # Summary audit row — only when at least one approval was created.
+            # Same transaction as the approval inserts so the audit row and the
+            # approvals commit (or roll back) together.
+            if created_ids:
+                session.add(
+                    AuditLog(
+                        actor_user_id=None,  # system context — no request actor
+                        team_id=team_id,
+                        action=_AUTO_ENROL_AUDIT_ACTION,
+                        target_table=_AUTO_ENROL_AUDIT_TARGET_TABLE,
+                        target_id=None,  # summary row spans many approvals
+                        diff=_build_auto_enrol_audit_diff(
+                            scan_uuid=scan_uuid,
+                            project_id=project_id,
+                            created_ids=created_ids,
+                        ),
+                    )
+                )
             session.commit()
         log.info(
             "approval.auto_create_done",
             scan_id=str(scan_uuid),
             project_id=str(project_id),
             conditional_components=len(component_ids),
-            created=created,
+            created=len(created_ids),
         )
     except Exception as exc:  # noqa: BLE001 — auto-approval must never fail a scan
         log.warning(

@@ -44,6 +44,7 @@ from datetime import UTC, datetime
 
 import structlog
 from sqlalchemy import and_, func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -389,7 +390,7 @@ def auto_create_pending_approvals(
     team_id: uuid.UUID,
     component_ids: Iterable[uuid.UUID],
     scan_id: uuid.UUID | None = None,
-) -> int:
+) -> list[uuid.UUID]:
     """Open a Pending approval for each component, system-context (no actor).
 
     BUG-010: the scan pipeline must auto-enrol conditional-license components
@@ -408,86 +409,96 @@ def auto_create_pending_approvals(
       * **Idempotent.** A component that already has an *open*
         (pending / under_review) approval for this project is skipped, so a
         re-run of the scan (which purges + re-creates findings) never
-        double-creates. Idempotency is enforced two ways: a preflight SELECT
-        against the open set, AND a per-row SAVEPOINT that swallows the
-        ``IntegrityError`` raised by the partial unique index
-        ``ix_component_approvals_unique_open`` when a concurrent writer beats
-        the preflight (TOCTOU).
-      * **Per-row isolation.** Each insert runs inside its own
-        ``session.begin_nested()`` SAVEPOINT, so one component's unique-violation
-        rolls back ONLY that SAVEPOINT — the remaining components still insert.
-        A single shared transaction would otherwise be poisoned by the first
-        ``IntegrityError`` and lose every subsequent insert.
+        double-creates.
+
+    Implementation (QA follow-up Low — was per-row SAVEPOINT, now set-based):
+      The previous implementation looped one component at a time with a
+      preflight ``SELECT`` + ``begin_nested()`` SAVEPOINT + ``flush`` — O(N)
+      round-trips and a TOCTOU window between the preflight and the flush. We
+      now issue a **single** ``INSERT ... ON CONFLICT DO NOTHING`` keyed on the
+      partial unique index ``ix_component_approvals_unique_open`` (component_id,
+      project_id) ``WHERE status IN ('pending','under_review')``. One statement
+      replaces N round-trips and the conflict resolution happens atomically in
+      the DB, eliminating the TOCTOU window entirely:
+
+        * ``index_elements=[component_id, project_id]`` + ``index_where=<same
+          predicate as the partial index>`` make the ON CONFLICT target match
+          the partial unique index exactly. The ``index_where`` is **mandatory**
+          — omitting it leaves the conflict target unmatched against a *partial*
+          index and Postgres raises "no unique or exclusion constraint matching
+          the ON CONFLICT specification".
+        * ``RETURNING component_id`` reports the rows actually inserted. Rows
+          skipped by ON CONFLICT (an open approval already existed, including a
+          row opened by a concurrent writer that committed before this
+          statement) do NOT appear in RETURNING, so the returned list is the
+          precise set of newly-created approvals — used by the caller to write
+          an accurate audit-summary ``created_count`` / ``component_ids``.
 
     The caller is responsible for the outer ``session.commit()`` (the sync
-    session does not auto-commit — see ``sync_session_scope``). Returns the
-    number of approvals actually created (skipped duplicates are not counted).
+    session does not auto-commit — see ``sync_session_scope``). Returns the list
+    of component ids for which a brand-new approval was created (skipped
+    duplicates are not in the list).
 
     Audit: the sync session has **no** audit listeners installed (see
     ``core/db.py`` — Celery system writes are deliberately un-audited to avoid
-    ballooning ``audit_logs`` with per-scan rows), so these inserts produce no
-    ``audit_logs`` entry, which is consistent with every other row the scan
-    pipeline writes. The structlog ``approval.auto_created`` line is the
-    system-context audit trail.
+    ballooning ``audit_logs`` with per-scan rows). Per ``core/db.py``'s contract
+    ("Tasks that need an audit trail emit explicit AuditLog rows from inside the
+    service layer"), the scan-pipeline stage wrapper
+    (``tasks.scan_source._auto_create_conditional_approvals``) writes ONE
+    summary ``audit_logs`` row per scan using this function's return value — not
+    one row per component, to keep the table from ballooning.
     """
-    created = 0
     # De-dupe the incoming ids so a caller that passes the same component twice
     # (e.g. one component with two conditional license findings) only attempts
-    # one insert.
+    # one insert. ON CONFLICT would not deduplicate *within the same INSERT*
+    # (two rows with identical (component_id, project_id) both pass the conflict
+    # check before either commits), so the pre-INSERT de-dupe is load-bearing.
     unique_ids = list(dict.fromkeys(component_ids))
-    for component_id in unique_ids:
-        # Preflight: skip when an open approval already exists. Cheap, and it
-        # keeps the common (already-enrolled) path off the SAVEPOINT/rollback
-        # machinery.
-        existing = session.execute(
-            select(ComponentApproval.id).where(
-                and_(
-                    ComponentApproval.component_id == component_id,
-                    ComponentApproval.project_id == project_id,
-                    ComponentApproval.status.in_(
-                        [ApprovalStatus.pending, ApprovalStatus.under_review]
-                    ),
-                )
-            )
-        ).first()
-        if existing is not None:
-            continue
+    if not unique_ids:
+        return []
 
-        row = ComponentApproval(
-            component_id=component_id,
-            project_id=project_id,
-            team_id=team_id,
-            requested_by_user_id=None,  # system-created
-            status=ApprovalStatus.pending,
-            version=1,
+    # Match the partial unique index predicate EXACTLY (see model
+    # ``ix_component_approvals_unique_open`` postgresql_where) so ON CONFLICT
+    # resolves against it. ``status`` is the enum string column; the literal
+    # IN-list mirrors the index DDL.
+    index_where = ComponentApproval.status.in_(
+        [ApprovalStatus.pending.value, ApprovalStatus.under_review.value]
+    )
+
+    stmt = (
+        pg_insert(ComponentApproval)
+        .values(
+            [
+                {
+                    "component_id": component_id,
+                    "project_id": project_id,
+                    "team_id": team_id,
+                    "requested_by_user_id": None,  # system-created
+                    "status": ApprovalStatus.pending.value,
+                    "version": 1,
+                }
+                for component_id in unique_ids
+            ]
         )
-        try:
-            with session.begin_nested():
-                session.add(row)
-                session.flush()  # force the INSERT so the unique index fires here
-        except IntegrityError:
-            # The partial unique index fired — a concurrent writer (or the
-            # manual POST endpoint) opened an approval between our preflight and
-            # this flush. The SAVEPOINT rolled back only this row; carry on with
-            # the rest. Not an error condition — idempotency in action.
-            log.info(
-                "approval.auto_create_skipped_open",
-                component_id=str(component_id),
-                project_id=str(project_id),
-                scan_id=str(scan_id) if scan_id is not None else None,
-            )
-            continue
-
-        created += 1
-        log.info(
-            "approval.auto_created",
-            component_id=str(component_id),
-            project_id=str(project_id),
-            team_id=str(team_id),
-            scan_id=str(scan_id) if scan_id is not None else None,
+        .on_conflict_do_nothing(
+            index_elements=["component_id", "project_id"],
+            index_where=index_where,
         )
+        .returning(ComponentApproval.component_id)
+    )
 
-    return created
+    created_ids = list(session.execute(stmt).scalars().all())
+
+    log.info(
+        "approval.auto_created_batch",
+        project_id=str(project_id),
+        team_id=str(team_id),
+        scan_id=str(scan_id) if scan_id is not None else None,
+        requested=len(unique_ids),
+        created=len(created_ids),
+        skipped=len(unique_ids) - len(created_ids),
+    )
+    return created_ids
 
 
 # ---------------------------------------------------------------------------
