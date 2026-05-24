@@ -20,6 +20,7 @@
     "obligations": "의무사항",
     "sbom": "SBOM",
     "source": "소스",
+    "remediation": "보안 조치",
     "settings": "설정"
   },
   "severity": {

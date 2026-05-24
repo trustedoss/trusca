@@ -15,6 +15,7 @@ import { ComponentsTab } from "@/features/projects/components/ComponentsTab";
 import { LicensesTab } from "@/features/projects/components/LicensesTab";
 import { ObligationsTab } from "@/features/projects/components/ObligationsTab";
 import { OverviewTab } from "@/features/projects/components/OverviewTab";
+import { RemediationTab } from "@/features/projects/components/RemediationTab";
 import { RiskGauge } from "@/features/projects/components/RiskGauge";
 import { SbomTab } from "@/features/projects/components/SbomTab";
 import { SettingsTab } from "@/features/projects/components/SettingsTab";
@@ -42,6 +43,7 @@ const ALLOWED_TABS = new Set([
   "obligations",
   "sbom",
   "source",
+  "remediation",
   "settings",
 ]);
 
@@ -208,6 +210,12 @@ export function ProjectDetailPage() {
             {t("tabs.source")}
           </TabsTrigger>
           <TabsTrigger
+            value="remediation"
+            data-testid="project-detail-tab-remediation"
+          >
+            {t("tabs.remediation")}
+          </TabsTrigger>
+          <TabsTrigger
             value="settings"
             data-testid="project-detail-tab-settings"
           >
@@ -247,6 +255,9 @@ export function ProjectDetailPage() {
             projectId={projectId}
             projectName={projectQuery.data?.name ?? null}
           />
+        </TabsContent>
+        <TabsContent value="remediation">
+          <RemediationTab projectId={projectId} />
         </TabsContent>
         <TabsContent value="settings">
           <SettingsTab
