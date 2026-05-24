@@ -15,6 +15,13 @@ export default defineConfig({
     host: "0.0.0.0",
     port: 5173,
     strictPort: true,
+    // Clickjacking / framing defense (BUG-009). Mirrors the production nginx
+    // headers in `nginx/default.conf` so dev and prod behave identically:
+    // the SPA can only be framed by its own origin.
+    headers: {
+      "X-Frame-Options": "SAMEORIGIN",
+      "Content-Security-Policy": "frame-ancestors 'self'",
+    },
     watch: {
       // Polling is required when source is bind-mounted from a host with a
       // different filesystem (macOS/Windows → Linux container).

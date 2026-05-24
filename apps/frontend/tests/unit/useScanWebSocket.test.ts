@@ -155,6 +155,87 @@ describe("useScanWebSocket", () => {
     expect(FakeSocket.instances[0].readyState).toBe(3);
   });
 
+  it("marks isTerminal=true on a cancelled frame and closes the socket (BUG-007)", async () => {
+    const { result } = renderHook(() =>
+      useScanWebSocket("scan-1", { socketFactory: factory }),
+    );
+    act(() => FakeSocket.instances[0].__open());
+    act(() =>
+      FakeSocket.instances[0].__message({
+        percent: 90,
+        step: "cancelled",
+        ts: "2026-05-24T12:01:00.000Z",
+      }),
+    );
+    await waitFor(() => {
+      expect(result.current.isTerminal).toBe(true);
+    });
+    // The hook initiates a clean close itself (terminal disposition).
+    expect(FakeSocket.instances[0].readyState).toBe(3);
+  });
+
+  it("fires onNonTerminalClose when the socket closes without a terminal frame (BUG-007)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const onNonTerminalClose = vi.fn();
+    const { result } = renderHook(() =>
+      useScanWebSocket("scan-1", { socketFactory: factory, onNonTerminalClose }),
+    );
+    act(() => FakeSocket.instances[0].__open());
+    act(() =>
+      FakeSocket.instances[0].__message({
+        percent: 90,
+        step: "dt_findings",
+        ts: "2026-05-24T12:00:00.000Z",
+      }),
+    );
+    // Server-side cancel revokes the worker; the stream drops with 1011 and no
+    // `cancelled` frame is ever published.
+    act(() => FakeSocket.instances[0].__closeFromServer(1011, "internal"));
+    await waitFor(() => {
+      expect(onNonTerminalClose).toHaveBeenCalledWith(1011);
+    });
+    expect(result.current.isTerminal).toBe(false);
+  });
+
+  it("does NOT fire onNonTerminalClose on a terminal frame close (BUG-007)", async () => {
+    const onNonTerminalClose = vi.fn();
+    const { result } = renderHook(() =>
+      useScanWebSocket("scan-1", { socketFactory: factory, onNonTerminalClose }),
+    );
+    act(() => FakeSocket.instances[0].__open());
+    act(() =>
+      FakeSocket.instances[0].__message({
+        percent: 100,
+        step: "succeeded",
+        ts: "2026-05-24T12:02:00.000Z",
+      }),
+    );
+    await waitFor(() => {
+      expect(result.current.isTerminal).toBe(true);
+    });
+    expect(onNonTerminalClose).not.toHaveBeenCalled();
+  });
+
+  it("does NOT fire onNonTerminalClose on an auth bounce (1008) (BUG-007)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const onNonTerminalClose = vi.fn();
+    const onAuthExpired = vi.fn();
+    renderHook(() =>
+      useScanWebSocket("scan-1", {
+        socketFactory: factory,
+        onNonTerminalClose,
+        onAuthExpired,
+      }),
+    );
+    act(() => FakeSocket.instances[0].__open());
+    act(() => FakeSocket.instances[0].__closeFromServer(1008, "auth_invalid"));
+    await waitFor(() => {
+      expect(onAuthExpired).toHaveBeenCalledTimes(1);
+    });
+    // Auth bounce → refetch would 401, so the fallback must stay quiet.
+    expect(onNonTerminalClose).not.toHaveBeenCalled();
+  });
+
   it("dispatches auth:expired and stops reconnecting on close 1008", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const onAuthExpired = vi.fn();

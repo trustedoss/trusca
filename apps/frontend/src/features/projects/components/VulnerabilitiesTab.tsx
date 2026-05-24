@@ -6,6 +6,7 @@ import { Virtuoso } from "react-virtuoso";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useProjectOverview } from "@/features/projects/api/useProjectOverview";
 import { useVulnerabilities } from "@/features/projects/api/useVulnerabilities";
 import { useVulnReport } from "@/features/projects/api/useVulnReport";
 import type {
@@ -24,7 +25,10 @@ import {
   formatEpssPercentile,
   formatEpssScore,
 } from "@/features/projects/lib/epss";
-import { ALL_VULNERABILITY_STATUSES } from "@/features/projects/lib/vulnerabilityTransitions";
+import {
+  ALL_VULNERABILITY_STATUSES,
+  type TriageRole,
+} from "@/features/projects/lib/vulnerabilityTransitions";
 import { ProblemError } from "@/lib/problem";
 import { formatRelativeToNow } from "@/lib/relativeTime";
 import { cn } from "@/lib/utils";
@@ -232,6 +236,15 @@ export function VulnerabilitiesTab({
   const vulnerabilities = useVulnerabilities(projectId, filters);
   const vulnReport = useVulnReport(projectId, projectName);
 
+  // BUG-005: the suppression gate must use the project-team-scoped role, not
+  // the global JWT role. The overview query carries `current_user_role`; this
+  // shares the `["projects", projectId, "overview"]` key with the page-level
+  // fetch so TanStack Query dedupes it (no extra request). Default to the
+  // least-privileged `developer` until it resolves.
+  const overview = useProjectOverview(projectId);
+  const projectRole: TriageRole =
+    overview.data?.current_user_role ?? "developer";
+
   const items: VulnerabilityListItem[] = vulnerabilities.data?.items ?? [];
   const total = vulnerabilities.data?.total ?? 0;
 
@@ -361,6 +374,7 @@ export function VulnerabilitiesTab({
       <VulnerabilityDrawer
         open={drawerOpen}
         findingId={drawerId}
+        projectRole={projectRole}
         onOpenChange={(open) => {
           if (!open) setDrawerVuln(null);
         }}

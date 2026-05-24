@@ -36,6 +36,7 @@ function overview(
     risk_score: 42,
     recent_scans: [],
     last_scan_at: null,
+    current_user_role: "developer",
     ...overrides,
   };
 }

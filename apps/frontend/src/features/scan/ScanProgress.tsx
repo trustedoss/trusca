@@ -1,10 +1,13 @@
+import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  Ban,
   CheckCircle2,
   Circle,
   Loader2,
   XCircle,
 } from "lucide-react";
+import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -14,7 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ScanCancelButton } from "@/features/scans/ScanCancelButton";
 import { useScanWebSocket, type ScanStep } from "@/hooks/useScanWebSocket";
 import { cn } from "@/lib/utils";
-import type { ScanStatus } from "@/lib/projectsApi";
+import { getScan, type ScanStatus } from "@/lib/projectsApi";
 
 /**
  * ScanProgress — Phase 2 PR #9 task 2.10.
@@ -69,7 +72,7 @@ const PIPELINE_STEPS: ScanStep[] = [
   "finalize",
 ];
 
-const TERMINAL_STEPS = new Set<ScanStep>(["succeeded", "failed"]);
+const TERMINAL_STEPS = new Set<ScanStep>(["succeeded", "failed", "cancelled"]);
 
 function indexOfStep(step: ScanStep | null | undefined): number {
   if (!step) return -1;
@@ -87,19 +90,59 @@ export function ScanProgress({
   urlBuilder,
 }: ScanProgressProps) {
   const { t } = useTranslation("scans");
-  const { state, lastMessage, reconnectAttempt, isTerminal } =
-    useScanWebSocket(scanId, { socketFactory, urlBuilder });
+
+  // BUG-007 fallback: the backend cancel path closes the WebSocket without
+  // publishing a `cancelled` frame, so a non-terminal close arms a one-shot
+  // refetch of the scan status. When that comes back `cancelled` the panel
+  // flips to the cancelled terminal state instead of leaving the bar stuck.
+  const [closedNonTerminally, setClosedNonTerminally] = useState(false);
+  const handleNonTerminalClose = useCallback(() => {
+    setClosedNonTerminally(true);
+  }, []);
+
+  const { state, lastMessage, reconnectAttempt, isTerminal } = useScanWebSocket(
+    scanId,
+    {
+      socketFactory,
+      urlBuilder,
+      onNonTerminalClose: handleNonTerminalClose,
+    },
+  );
+
+  // One-shot status refetch — only enabled after a non-terminal socket close
+  // and only while the live stream has not already reported a terminal step.
+  const fallbackQuery = useQuery({
+    queryKey: ["scans", scanId, "status-fallback"],
+    queryFn: () => getScan(scanId),
+    enabled: closedNonTerminally && !isTerminal,
+    staleTime: 0,
+    retry: false,
+  });
+
+  const fetchedStatus = fallbackQuery.data?.status ?? null;
 
   const percent = lastMessage?.percent ?? 0;
   const step = lastMessage?.step ?? null;
   const succeeded = step === "succeeded";
   const failed = step === "failed";
+  // A scan is cancelled when ANY of: the live frame says so, the parent passed
+  // a cancelled status (the cancel button confirmed), or the fallback refetch
+  // resolved to cancelled.
+  const cancelled =
+    step === "cancelled" ||
+    status === "cancelled" ||
+    fetchedStatus === "cancelled";
+
+  // Treat cancellation as terminal for the panel even when the WS hook itself
+  // never saw a terminal frame (status prop / fallback path).
+  const terminal = isTerminal || cancelled;
 
   // The cancel affordance is gated on BOTH the persisted status (queued /
   // running) AND the absence of a live terminal frame — so it disappears the
-  // instant the WebSocket reports success/failure even before the row refetch.
+  // instant the WebSocket reports success/failure/cancellation even before the
+  // row refetch.
   const showCancel =
-    !isTerminal && (status === "queued" || status === "running");
+    !terminal && (status === "queued" || status === "running");
 
   return (
     <div className="flex flex-col gap-4" data-testid="scan-progress">
@@ -109,7 +152,9 @@ export function ScanProgress({
             ? t("progress.step_succeeded")
             : failed
               ? t("progress.step_failed")
-              : t("progress.title")}
+              : cancelled
+                ? t("progress.step_cancelled")
+                : t("progress.title")}
         </h2>
         <span
           className="font-mono text-xs text-muted-foreground"
@@ -129,7 +174,7 @@ export function ScanProgress({
         </Alert>
       ) : null}
 
-      {state === "connecting" || state === "authenticating" ? (
+      {(state === "connecting" || state === "authenticating") && !cancelled ? (
         <Skeleton
           className="h-2 w-full"
           data-testid="scan-progress-skeleton"
@@ -140,15 +185,32 @@ export function ScanProgress({
           className={cn(
             failed && "bg-risk-critical/15",
             succeeded && "bg-emerald-100",
+            cancelled && "bg-muted",
           )}
           indicatorClassName={cn(
             failed && "bg-risk-critical",
             succeeded && "bg-emerald-600",
+            // Cancelled = stopped. Tint the (frozen) bar the neutral
+            // info/muted tone so it never reads as either success or failure.
+            cancelled && "bg-muted-foreground",
           )}
           aria-label={t("progress.title")}
           data-testid="scan-progress-bar"
+          data-cancelled={cancelled ? "true" : undefined}
         />
       )}
+
+      {cancelled ? (
+        <Alert
+          className="border-muted-foreground/30 bg-muted/40 text-foreground"
+          data-testid="scan-progress-cancelled"
+          role="status"
+          aria-live="polite"
+        >
+          <Ban className="h-4 w-4" aria-hidden />
+          <AlertDescription>{t("progress.cancelled_notice")}</AlertDescription>
+        </Alert>
+      ) : null}
 
       <ol
         className="grid grid-cols-1 gap-1 text-xs"
@@ -157,7 +219,13 @@ export function ScanProgress({
         {PIPELINE_STEPS.map((s) => {
           const stepIndex = indexOfStep(step);
           const myIndex = indexOfStep(s);
-          const isCurrent = step === s && !TERMINAL_STEPS.has(step as ScanStep);
+          // When cancelled, freeze the spinner: the in-flight step is no longer
+          // "current" (work has stopped), so it renders as a neutral pending
+          // glyph rather than an animated loader.
+          const isCurrent =
+            step === s &&
+            !cancelled &&
+            !TERMINAL_STEPS.has(step as ScanStep);
           const isCompleted =
             (stepIndex > myIndex && stepIndex !== -1) || succeeded;
           const isFailedAtThisStep = failed && stepIndex === myIndex;
@@ -208,7 +276,7 @@ export function ScanProgress({
         })}
       </ol>
 
-      {!isTerminal && state !== "open" && reconnectAttempt > 0 ? (
+      {!terminal && state !== "open" && reconnectAttempt > 0 ? (
         <p
           className="text-xs text-muted-foreground"
           data-testid="scan-progress-reconnecting"
@@ -221,7 +289,7 @@ export function ScanProgress({
         </p>
       ) : null}
 
-      {!isTerminal ? (
+      {!terminal ? (
         <p className="text-xs text-muted-foreground">
           {t("progress.background_notice")}
         </p>
@@ -249,7 +317,7 @@ export function ScanProgress({
         ) : null}
         {onClose ? (
           <Button
-            variant={isTerminal ? "default" : "outline"}
+            variant={terminal ? "default" : "outline"}
             size="sm"
             onClick={onClose}
             data-testid="scan-progress-close"
