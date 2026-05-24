@@ -137,6 +137,24 @@ class ScanArchiveMissing(ScanError):
     title = "Source Archive Not Found"
 
 
+class ScanSourceUnavailable(ScanError):
+    """A source scan has no resolvable source — no git_url and no uploaded zip.
+
+    BUG-008 silent-empty-success guard. A ``kind='source'`` scan resolves its
+    tree two ways: ``metadata.source_type='upload'`` (extract an uploaded
+    archive) or the default git path (clone ``project.git_url``). When BOTH are
+    absent the worker's ``_fetch_source`` falls through to a legacy
+    no-git_url placeholder and hands cdxgen an EMPTY workspace — the scan then
+    reaches ``succeeded`` with 0 components, i.e. a *silent failure* the user
+    reads as "no risks found". We reject the trigger up front with 422 so the
+    caller learns it must attach a git_url or upload an archive first, instead
+    of getting a misleading green scan.
+    """
+
+    status_code = 422
+    title = "Source Scan Has No Source"
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -344,7 +362,14 @@ async def trigger_scan(
     # would dequeue, fail to find the archive, and the user sees a delayed
     # failure instead of an immediate 404. The schema layer already guaranteed
     # archive_id is a non-empty string when source_type == "upload".
-    if payload.metadata.get("source_type") == "upload":
+    # Normalize defensively: ScanCreate._validate_metadata already constrains
+    # source_type to {"git","upload"}, but normalizing here (and identically in
+    # the worker's _fetch_source) means the guard never silently assumes the
+    # schema is the sole gatekeeper — a future schema change or a code path that
+    # builds ScanCreate without validation cannot slip a "UPLOAD"/" upload "
+    # variant past the comparison (security-reviewer Medium, defense-in-depth).
+    source_type = str(payload.metadata.get("source_type", "git")).strip().lower()
+    if source_type == "upload":
         archive_id = str(payload.metadata.get("archive_id", ""))
         try:
             resolve_existing_archive(project.id, archive_id)
@@ -352,6 +377,18 @@ async def trigger_scan(
             # ArchiveNotFound (404) — surface as a 404 scan error so the caller
             # learns the archive must be (re-)uploaded.
             raise ScanArchiveMissing(str(exc)) from exc
+
+    # BUG-008 silent-empty-success guard: a source scan with neither an upload
+    # archive nor a project git_url would have the worker scan an empty
+    # workspace and report `succeeded` with 0 components — a silent failure.
+    # Reject it here with an actionable 422. Only `source` scans need a source
+    # tree; container scans resolve their target differently and are exempt.
+    if payload.kind == "source" and source_type != "upload" and not (project.git_url or "").strip():
+        raise ScanSourceUnavailable(
+            "source scan requires a git_url on the project or an uploaded "
+            "source archive (metadata.source_type='upload'); the project has "
+            "neither"
+        )
 
     # Phase 6 PR #19 — disk guard. Reject the scan up front when the
     # workspace volume is past DISK_HARD_LIMIT_PCT so the operator does

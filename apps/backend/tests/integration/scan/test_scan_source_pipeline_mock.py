@@ -31,7 +31,14 @@ import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from models import LicenseFinding, Scan, ScanArtifact, ScanComponent
+from models import (
+    ComponentApproval,
+    LicenseFinding,
+    Scan,
+    ScanArtifact,
+    ScanComponent,
+)
+from models.component_approval import ApprovalStatus
 from tests._helpers import (
     make_membership,
     make_organization,
@@ -111,7 +118,14 @@ def _seed_queued_scan(session: Session) -> tuple[uuid.UUID, uuid.UUID]:
             team = await make_team(s, organization=org)
             user = await make_user(s)
             await make_membership(s, user=user, team=team, role="developer")
-            project = await make_project(s, team=team)
+            # git_url=None keeps the worker on the no-source placeholder fetch
+            # path: these tests drive the task directly with the mock cdxgen
+            # backend (which emits a fixture SBOM regardless of source), so a
+            # real git_url would make _fetch_source attempt an actual clone
+            # (no `git` binary in the test image). The trigger-layer
+            # ScanSourceUnavailable guard is bypassed here because we insert the
+            # Scan row directly rather than going through trigger_scan.
+            project = await make_project(s, team=team, git_url=None)
             from models import Scan as ScanModel
 
             scan = ScanModel(
@@ -422,3 +436,179 @@ def test_scan_source_cdxgen_failure_marks_scan_failed(
     # Workspace must have been cleaned up by the task's `finally`.
     workspace_dir = tmp_path / str(scan_id)
     assert not workspace_dir.exists(), "workspace must be cleaned up after failure"
+
+
+# ---------------------------------------------------------------------------
+# BUG-010 — conditional-license component auto-enrols into the approval queue
+# ---------------------------------------------------------------------------
+
+
+def _conditional_cdxgen_factory():  # type: ignore[no-untyped-def]
+    """Return a fake ``run_cdxgen`` that emits an SBOM with one conditional
+    (MPL-2.0) and one allowed (MIT) component.
+
+    It writes a real CycloneDX file to ``output_dir`` so the downstream artifact
+    + DT-upload-bytes stages (which read ``sbom_path``) keep working, and returns
+    a ``CdxgenResult`` whose ``sbom`` drives ``_persist_components``.
+    """
+    import json
+
+    from integrations.cdxgen import CdxgenResult
+
+    def _fake_run_cdxgen(*, source_dir: Path, output_dir: Path) -> CdxgenResult:  # noqa: ARG001
+        output_dir.mkdir(parents=True, exist_ok=True)
+        sbom = {
+            "bomFormat": "CycloneDX",
+            "specVersion": "1.5",
+            "serialNumber": f"urn:uuid:cond-{source_dir.name}",
+            "version": 1,
+            "metadata": {
+                "component": {
+                    "type": "application",
+                    "name": source_dir.name,
+                    "version": "0.0.0",
+                }
+            },
+            "components": [
+                {
+                    "type": "library",
+                    "bom-ref": "pkg:npm/permissive@1.0.0",
+                    "name": "permissive",
+                    "version": "1.0.0",
+                    "purl": "pkg:npm/permissive@1.0.0",
+                    "licenses": [{"license": {"id": "MIT"}}],
+                },
+                {
+                    "type": "library",
+                    "bom-ref": "pkg:npm/conditional-lib@2.0.0",
+                    "name": "conditional-lib",
+                    "version": "2.0.0",
+                    "purl": "pkg:npm/conditional-lib@2.0.0",
+                    "licenses": [{"license": {"id": "MPL-2.0"}}],
+                },
+            ],
+        }
+        sbom_path = output_dir / "cdxgen.cdx.json"
+        sbom_path.write_text(json.dumps(sbom), encoding="utf-8")
+        return CdxgenResult(sbom_path=sbom_path, sbom=sbom)
+
+    return _fake_run_cdxgen
+
+
+def test_conditional_license_component_creates_pending_approval(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    sync_session: Session,
+) -> None:
+    """A scan over an SBOM with a conditional (MPL-2.0) component must, after
+    finalize, leave exactly one Pending, system-created (NULL actor) approval
+    for that component — and none for the permissive (MIT) component.
+
+    This is the BUG-010 fix end-to-end: the guide promised auto-enrolment but
+    the pipeline never created the approval.
+    """
+    monkeypatch.setenv("TRUSTEDOSS_SCAN_BACKEND", "mock")
+    monkeypatch.setenv("WORKSPACE_HOST_PATH", str(tmp_path))
+    monkeypatch.setattr("tasks.scan_source.get_breaker", lambda: _FakeBreaker())
+    monkeypatch.setattr("tasks.scan_source.build_client", lambda: _FakeDTClient())
+    monkeypatch.setattr("tasks.scan_source._DT_FINDINGS_POLL_DELAYS_SECONDS", (0,))
+    monkeypatch.setattr(
+        "tasks.scan_source.cdxgen_adapter.run_cdxgen",
+        _conditional_cdxgen_factory(),
+    )
+
+    scan_id, project_id = _seed_queued_scan(sync_session)
+
+    from tasks.scan_source import scan_source_task
+
+    result = scan_source_task.apply(args=[str(scan_id)])
+    assert result.successful(), f"task failed: {result.traceback}"
+
+    sync_session.expire_all()
+    scan = sync_session.execute(select(Scan).where(Scan.id == scan_id)).scalar_one()
+    assert scan.status == "succeeded"
+
+    # Exactly one approval was created, against the conditional component, in
+    # Pending, with a NULL requester (system-created).
+    approvals = (
+        sync_session.execute(
+            select(ComponentApproval).where(
+                ComponentApproval.project_id == project_id
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(approvals) == 1, (
+        f"expected one auto-created approval for the conditional component; "
+        f"got {len(approvals)}"
+    )
+    approval = approvals[0]
+    assert approval.status == ApprovalStatus.pending
+    assert approval.requested_by_user_id is None
+
+    # Confirm it points at the conditional component (purl namespace), not the
+    # permissive one.
+    from models import Component, ComponentVersion, License
+    from models import LicenseFinding as LF
+
+    conditional_finding = (
+        sync_session.execute(
+            select(Component.purl)
+            .join(ComponentVersion, ComponentVersion.component_id == Component.id)
+            .join(LF, LF.component_version_id == ComponentVersion.id)
+            .join(License, License.id == LF.license_id)
+            .where(Component.id == approval.component_id, LF.scan_id == scan_id)
+        )
+        .scalars()
+        .first()
+    )
+    assert conditional_finding == "pkg:npm/conditional-lib"
+
+
+def test_conditional_approval_is_idempotent_across_reruns(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    sync_session: Session,
+) -> None:
+    """Re-running the scan (which purges + re-creates findings) must NOT create a
+    second approval — the open-approval guard keeps it at one.
+    """
+    monkeypatch.setenv("TRUSTEDOSS_SCAN_BACKEND", "mock")
+    monkeypatch.setenv("WORKSPACE_HOST_PATH", str(tmp_path))
+    monkeypatch.setattr("tasks.scan_source.get_breaker", lambda: _FakeBreaker())
+    monkeypatch.setattr("tasks.scan_source.build_client", lambda: _FakeDTClient())
+    monkeypatch.setattr("tasks.scan_source._DT_FINDINGS_POLL_DELAYS_SECONDS", (0,))
+    monkeypatch.setattr(
+        "tasks.scan_source.cdxgen_adapter.run_cdxgen",
+        _conditional_cdxgen_factory(),
+    )
+
+    scan_id, project_id = _seed_queued_scan(sync_session)
+
+    from tasks.scan_source import scan_source_task
+
+    scan_source_task.apply(args=[str(scan_id)])
+
+    # Force a re-run by flipping the scan back to queued (mirrors what the
+    # re-scan endpoint does — the task's idempotency reset re-creates findings).
+    sync_session.expire_all()
+    scan = sync_session.execute(select(Scan).where(Scan.id == scan_id)).scalar_one()
+    scan.status = "queued"
+    sync_session.commit()
+
+    scan_source_task.apply(args=[str(scan_id)])
+
+    sync_session.expire_all()
+    approvals = (
+        sync_session.execute(
+            select(ComponentApproval).where(
+                ComponentApproval.project_id == project_id
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(approvals) == 1, (
+        f"re-run must not duplicate the auto-created approval; got {len(approvals)}"
+    )
