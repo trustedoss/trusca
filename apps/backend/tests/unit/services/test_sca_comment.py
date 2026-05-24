@@ -21,6 +21,7 @@ from services.policy_gate import GateResult
 from services.sca_comment import (
     COMMENT_MARKER,
     CommentSummary,
+    RecommendedUpgrade,
     SCACommentBadGateway,
     SCACommentUnauthorized,
     build_pr_comment_markdown,
@@ -123,6 +124,77 @@ def test_markdown_skips_view_link_when_project_url_missing() -> None:
         summary=_make_summary(project_url=None),
     )
     assert "View full report" not in body
+
+
+# ---------------------------------------------------------------------------
+# Recommended upgrades section (v2.2 2.2-a3)
+# ---------------------------------------------------------------------------
+
+
+def test_markdown_omits_recommended_upgrades_when_empty() -> None:
+    # The default summary carries no recommendations → no section.
+    body = build_pr_comment_markdown(
+        gate_result=_make_gate_result(),
+        summary=_make_summary(),
+    )
+    assert "Recommended upgrades" not in body
+
+
+def test_markdown_renders_recommended_upgrades() -> None:
+    body = build_pr_comment_markdown(
+        gate_result=_make_gate_result(),
+        summary=_make_summary(
+            recommended_upgrades=(
+                RecommendedUpgrade(
+                    component_name="log4j-core",
+                    current_version="2.14.1",
+                    recommended_version="2.17.1",
+                    max_severity="critical",
+                    direct=True,
+                    cve_ids=("CVE-2021-44228", "CVE-2021-45046"),
+                ),
+                RecommendedUpgrade(
+                    component_name="lodash",
+                    current_version="4.17.11",
+                    recommended_version="4.17.21",
+                    max_severity="high",
+                    direct=False,
+                    cve_ids=("CVE-2019-10744",),
+                ),
+            ),
+        ),
+    )
+    assert "### Recommended upgrades" in body
+    # Component, current → recommended, severity tag, direct marker, CVE list.
+    assert "`log4j-core`" in body
+    assert "2.14.1 → **2.17.1**" in body
+    assert "[critical]" in body
+    assert "(direct)" in body
+    assert "CVE-2021-44228" in body
+    # The transitive row has no direct marker.
+    assert "`lodash`" in body
+    assert "4.17.11 → **4.17.21**" in body
+
+
+def test_markdown_recommended_upgrade_without_cves_or_direct() -> None:
+    body = build_pr_comment_markdown(
+        gate_result=_make_gate_result(),
+        summary=_make_summary(
+            recommended_upgrades=(
+                RecommendedUpgrade(
+                    component_name="pkg",
+                    current_version="1.0.0",
+                    recommended_version="1.2.0",
+                    max_severity="medium",
+                    direct=False,
+                    cve_ids=(),
+                ),
+            ),
+        ),
+    )
+    assert "1.0.0 → **1.2.0**" in body
+    assert "(direct)" not in body
+    assert "fixes" not in body
 
 
 # ---------------------------------------------------------------------------

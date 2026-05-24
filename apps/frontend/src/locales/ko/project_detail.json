@@ -295,6 +295,14 @@
       "affected_heading": "영향 컴포넌트 ({{count}})",
       "affected_empty": "이 취약점에 연결된 영향 컴포넌트가 없습니다.",
       "affected_fixed_in": "수정 버전",
+      "upgrade_heading": "권장 업그레이드",
+      "upgrade_to": "업그레이드 버전",
+      "upgrade_direct": "직접 의존성",
+      "upgrade_max_severity": "최고 심각도: {{severity}}",
+      "upgrade_reason": {
+        "no_fix_version": "권장 불가: 이 컴포넌트의 미해결 CVE 중 하나 이상에 알려진 수정 버전이 없습니다.",
+        "unparseable_version": "권장 불가: 제공된 수정 버전을 해석할 수 없습니다."
+      },
       "analysis_heading": "분석",
       "justification_label": "사유",
       "justification_placeholder": "이 취약점을 새 상태로 변경하는 이유를 설명해 주세요.",

@@ -207,8 +207,65 @@ curl -sS \
 ```
 
 :::note Upgrade recommendations build on this
-The fixed version is the input to the upcoming **upgrade recommendation** feature (v2.2): once each finding knows its fix version, the portal can compute the minimal safe bump across your dependency graph.
+The fixed version is the input to the **upgrade recommendation (recommended version)** (v2.2): once each finding knows its fix version, the portal computes the minimal safe bump per component. See [Upgrade recommendation (recommended version)](#upgrade-recommendation-recommended-version).
 :::
+
+## Upgrade recommendation (recommended version)
+
+While the [fixed version](#fixed-version--the-version-that-remediates-the-cve) answers "what patches *this* CVE", the **recommended version** answers the next question — "what one version do I bump this component to so it is clean?". It is the **minimum safe upgrade**: the lowest version that resolves **all** of the component's open CVEs at once.
+
+The finding drawer shows it in a **Recommended upgrade** panel, above the references and affected components.
+
+### How it is computed
+
+A single component can carry several open CVEs, each fixed at its own version. The recommended version is the **semantic-version maximum** of those per-CVE [fixed versions](#fixed-version--the-version-that-remediates-the-cve) — the lowest version that is at least every individual fix:
+
+- Component `log4j-core@2.14.1` has two open CVEs, fixed at `2.16.0` and `2.17.1`. The recommended version is **`2.17.1`** — bumping to it clears both.
+
+Only **open** findings count. CVEs you have dispositioned (`Not affected`, `False positive`, `Fixed`) are excluded — exactly the same set the [build gate](#severity-model) considers, so the recommendation never tells you to chase a CVE you already closed.
+
+### Priority signals
+
+The panel also surfaces three signals so you can tell a "fix this now" upgrade from a "fix it eventually" one:
+
+- **Direct dependency** — the component is one you declared yourself (graph depth `1`), so you can bump it in your own manifest immediately. A transitive dependency shows no badge — you fix it by upgrading the direct parent that pulls it in (see [Direct vs. transitive](./components-and-licenses.md#dependency-depth)).
+- **Highest severity** — the most severe CVE among the component's open findings.
+- **Highest EPSS** — the highest [exploitation probability](#epss--exploitation-probability) among them.
+
+These signals **order** the recommendations (a direct, high-EPSS, critical upgrade is the one to do first); they never change the recommended *version* itself.
+
+### When there is no recommendation
+
+The portal deliberately declines to recommend a version — and says why — rather than suggest a misleading partial upgrade:
+
+- **No known fix version** — at least one of the component's open CVEs has no [fixed version](#fixed-version--the-version-that-remediates-the-cve) (a true zero-day, or a finding scanned before v2.2). Bumping to the maximum of the *known* fixes would falsely imply the component is fully clean, so the panel shows a "no recommendation" hint instead.
+- **Unparseable fix versions** — every available fix string was malformed and could not be compared.
+
+A "no recommendation" state is informational, not an error — confirm the un-fixed CVEs against their upstream advisories.
+
+### In the CI build-gate comment
+
+The SCA PR comment the [build gate](../ci-integration/github-actions.md) posts includes a **Recommended upgrades** section listing the highest-priority bumps (direct and most severe first), each as `component current → recommended` with the CVEs it resolves. It only appears when there is at least one actionable upgrade.
+
+### Read it from the API
+
+The finding detail (`GET /v1/vulnerability_findings/{finding_id}`) carries an `upgrade_recommendation` object:
+
+```json
+{
+  "cve_id": "CVE-2021-44228",
+  "upgrade_recommendation": {
+    "recommended_version": "2.17.1",
+    "reason": "ok",
+    "direct": true,
+    "max_severity": "critical",
+    "max_epss": 0.974,
+    "finding_count": 2
+  }
+}
+```
+
+`reason` is `ok` (a version was computed), `no_fix_version`, `unparseable_version`, or `no_open_findings`; `recommended_version` is `null` for every value except `ok`.
 
 ## Download a PDF report
 
@@ -523,7 +580,7 @@ Items the manual previously promised that are not in v2.0.0; tracked for later r
 
 - "Last seen" column on the findings table (most recent scan that confirmed the finding) — planned for v2.1.
 - Per-component filter and discovered-date range filter on the findings toolbar — planned for v2.1; today the search box covers component lookup.
-- Standalone **Fix availability** drawer section — today the fix version surfaces as `fixed_version` inside the **Affected** section (real data since v2.2 — see [Fixed version](#fixed-version--the-version-that-remediates-the-cve)).
+- Standalone **Fix availability** drawer section — today the fix version surfaces as `fixed_version` inside the **Affected** section (real data since v2.2 — see [Fixed version](#fixed-version--the-version-that-remediates-the-cve)), and the per-component minimum safe bump surfaces in the **Recommended upgrade** panel (v2.2 — see [Upgrade recommendation](#upgrade-recommendation-recommended-version)).
 
 ## See also
 

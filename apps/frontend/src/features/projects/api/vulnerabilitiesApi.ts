@@ -128,6 +128,33 @@ export interface VulnerabilityReference {
   [k: string]: unknown;
 }
 
+/**
+ * Minimum-safe-upgrade recommendation for a finding's component (v2.2 2.2-a3).
+ * Mirrors `schemas.vulnerability_detail.UpgradeRecommendation`.
+ *
+ * `recommended_version` is the semver maximum of the component's open findings'
+ * fix versions — the lowest version that resolves all of them. `null` (with a
+ * `reason`) when no concrete version could be recommended; the drawer then shows
+ * a "no recommendation" hint instead of a misleading partial upgrade.
+ *
+ * `direct` / `max_severity` / `max_epss` are priority signals (not used to
+ * compute the version) so the UI can flag the highest-leverage upgrade.
+ */
+export type UpgradeRecommendationReason =
+  | "ok"
+  | "no_fix_version"
+  | "unparseable_version"
+  | "no_open_findings";
+
+export interface UpgradeRecommendation {
+  recommended_version: string | null;
+  reason: UpgradeRecommendationReason;
+  direct: boolean;
+  max_severity: VulnSeverity | null;
+  max_epss: number | null;
+  finding_count: number;
+}
+
 export interface VulnerabilityStatusHistoryEntry {
   actor_user_id: string | null;
   /** Always 'create' or 'update'. */
@@ -166,6 +193,8 @@ export interface VulnerabilityDetail {
   analyzed_at: string | null;
   affected_components: AffectedComponent[];
   status_history: VulnerabilityStatusHistoryEntry[];
+  /** Minimum-safe-upgrade recommendation for this finding's component (v2.2 2.2-a3). */
+  upgrade_recommendation: UpgradeRecommendation | null;
   created_at: string;
   updated_at: string;
 }

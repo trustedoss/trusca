@@ -91,6 +91,24 @@ class SCACommentUnauthorized(SCACommentError):
 
 
 @dataclass(frozen=True)
+class RecommendedUpgrade:
+    """One "bump this dependency" row the comment surfaces (v2.2 2.2-a3).
+
+    Built by the router from the scan's open findings + the upgrade
+    recommendation engine. The service stays pure (no DB access). ``cve_ids``
+    is a short list of the CVEs the upgrade resolves for the component (capped
+    by the router so the comment never explodes).
+    """
+
+    component_name: str
+    current_version: str
+    recommended_version: str
+    max_severity: str
+    direct: bool
+    cve_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class CommentSummary:
     """Numbers the Markdown body needs beyond the gate result.
 
@@ -102,6 +120,10 @@ class CommentSummary:
     severity_distribution: dict[str, int]
     license_distribution: dict[str, int]
     project_url: str | None = None
+    # v2.2 2.2-a3 — the highest-priority "upgrade to X" recommendations for this
+    # scan, already sorted (most urgent first) and capped by the router. Empty
+    # when no actionable upgrade was found; the comment then omits the section.
+    recommended_upgrades: tuple[RecommendedUpgrade, ...] = ()
 
 
 def _format_severity_line(label: str, glyph: str, count: int) -> str:
@@ -154,6 +176,25 @@ def build_pr_comment_markdown(
     lines.append(f"- Conditional: {int(lic.get('conditional', 0))}")
     lines.append(f"- Forbidden: {int(lic.get('forbidden', 0))}")
     lines.append("")
+
+    # v2.2 2.2-a3 — recommended upgrades ("finding → action"). Only rendered
+    # when the engine found at least one actionable upgrade so a clean PR
+    # doesn't carry an empty section.
+    if summary.recommended_upgrades:
+        lines.append("### Recommended upgrades")
+        for rec in summary.recommended_upgrades:
+            marker = " (direct)" if rec.direct else ""
+            cve_note = ""
+            if rec.cve_ids:
+                cve_note = f" — fixes {', '.join(rec.cve_ids)}"
+            # `component current → recommended` with a severity tag. All values
+            # are package/version/CVE-id tokens (no untrusted free text).
+            lines.append(
+                f"- `{rec.component_name}` "
+                f"{rec.current_version} → **{rec.recommended_version}** "
+                f"[{rec.max_severity}]{marker}{cve_note}"
+            )
+        lines.append("")
 
     if summary.project_url:
         # Markdown auto-links bare URLs, but an explicit anchor reads better
@@ -453,6 +494,7 @@ __all__ = [
     "COMMENT_MARKER",
     "CommentSummary",
     "PostedComment",
+    "RecommendedUpgrade",
     "SCACommentBadGateway",
     "SCACommentError",
     "SCACommentUnauthorized",
