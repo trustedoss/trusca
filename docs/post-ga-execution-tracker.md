@@ -15,7 +15,7 @@
 |---|---|---|---|---|
 | v2.1 | A. VEX 소비 (트리아지) | 3 | 3 | ✅ 완료 (#145,#148,#150) |
 | v2.1 | B. 평가·배포 경로 | 5 | 5 | ✅ 완료 (#146,#147,#149,#151,#152) |
-| v2.2 | 리메디에이션 + 정책 | 10 | 3 | 🟦 a-트랙 완료 (#153,#154,#156) + 문서동기화(#155) · 다음 b(GitHub App)·c(정책엔진) |
+| v2.2 | 리메디에이션 + 정책 | 10 | 4 | 🟦 a-트랙(#153,#154,#156)+문서동기화(#155)+b1(#157) 완료 · 진행 c1(통합중)·b2 |
 | v2.3 | 무결성 + 우선순위화 | 6 | 0 | ⬜ 대기 |
 | — | 운영 레인 (외부 블로커) | 4 | 0 | ⬜ 대기 |
 
@@ -148,8 +148,9 @@
   - cdxgen `dependsOn` 파싱 → depth/그래프 저장(신규 테이블 또는 `raw_data` 구조화). 직접/전이 depth 산출.
 - [x] **2.2-a3 — 업그레이드 추천 엔진 + UI** ✅ #156 (머지 `69c4b96`) — 컴포넌트별 최소 안전 업그레이드(semver 최대), 드로어·게이트 코멘트 노출, 우선순위 신호(direct/severity/EPSS), adversarial 99%. **a-트랙(리메디에이션 추천) 완결.** `dep: 2.2-a2` `owner: backend-developer + frontend-dev`
   - `fixed_version`+그래프+severity/EPSS → "최소 안전 업그레이드" 계산. 취약점 드로어·게이트 코멘트에 권장 버전.
-- [ ] **2.2-b1 — GitHub 쓰기 자격 모델** `dep: 2.2-a3` · `rev: ✅` `owner: backend-developer → security-reviewer`
+- [x] **2.2-b1 — GitHub 쓰기 자격 모델** ✅ #157 (머지 `96fdeae`) — `github_app_credentials`+`github_app_installations`(마이그 0019), `core/crypto.py` Fernet 암호화저장(prod fail-closed), 설치별 단기 RS256 App JWT→installation token(`mint_installation_token`), per-project 옵트인, per-team RBAC. security-reviewer PASS-WITH-FOLLOWUPS(Crit/High 0)→Medium 3(redirect-disable·GITHUB_API_URL allowlist·installation_id 재검증)+Low 2 fix-first(`70eb877`). `dep: 2.2-a3` · `rev: ✅` `owner: backend-developer → security-reviewer`
   - GitHub App/토큰 자격 DB 저장(암호화) — 현 env-only 확장. 최소 권한·옵트인 per-project.
+  - **후속(비머지, b3 전):** MultiFernet 롤링 키회전(현재 단일키 회전 시 기존 자격 brick) — 트래커 task #8.
 - [ ] **2.2-b2 — 생태계 어댑터(npm 우선) + dry-run** `dep: 2.2-b1` `owner: scan-pipeline-specialist`
   - manifest 수정 어댑터(npm→pip→maven 순). dry-run 기본.
 - [ ] **2.2-b3 — 자동 PR 생성(옵트인) + UI + 감사** `dep: 2.2-b2` · `rev: ✅` `owner: backend-developer + frontend-dev → security-reviewer`
