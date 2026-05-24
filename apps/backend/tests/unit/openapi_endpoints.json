@@ -194,6 +194,10 @@
     "scan_id",
     "size"
   ],
+  "GET /v1/projects/{project_id}/vex": [
+    "format",
+    "project_id"
+  ],
   "GET /v1/projects/{project_id}/vulnerabilities": [
     "limit",
     "min_epss",

@@ -132,6 +132,7 @@ GET    /v1/projects/{id}
 PATCH  /v1/projects/{id}
 DELETE /v1/projects/{id}
 GET    /v1/projects/{id}/sbom?format=…
+GET    /v1/projects/{id}/vex?format=…       openvex | cyclonedx; 결과 분류 기반 VEX
 GET    /v1/projects/{id}/notice
 GET    /v1/projects/{id}/components
 GET    /v1/projects/{id}/scans

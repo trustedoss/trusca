@@ -38,6 +38,7 @@ from api.v1 import (
     scans_router,
     source_tree_router,
     users_me_router,
+    vex_router,
     vulnerabilities_router,
     webhooks_github_router,
     webhooks_gitlab_router,
@@ -180,6 +181,10 @@ app.include_router(licenses_router)
 app.include_router(obligations_router)
 app.include_router(approvals_router)
 app.include_router(sbom_router)
+# v2.1 Track A (A1): VEX document export (OpenVEX / CycloneDX-VEX) derived from
+# the project's current finding triage. Read-only; basis for the A2 import
+# round-trip test.
+app.include_router(vex_router)
 # Scan-gap G2: vulnerability PDF report download.
 app.include_router(reports_router)
 # Scan-gap G3.2: source-tree viewer (list dir + read file) over the per-scan

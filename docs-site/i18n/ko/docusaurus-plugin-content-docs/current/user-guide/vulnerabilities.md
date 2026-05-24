@@ -182,6 +182,82 @@ curl -sS -L -OJ \
 보고서 다운로드는 `developer` 이상이 필요합니다. 크로스팀 호출자는 `403`이 아닌 `404`를 받으므로 비멤버는 프로젝트의 존재 여부를 알 수 없습니다.
 :::
 
+## VEX 문서 내보내기
+
+CycloneDX **SBOM**에 포함되는 VEX 상태와 별개로, 포털은 프로젝트의 현재 결과
+분류(triage)만으로 구성한 **독립 VEX 문서**를 내보낼 수 있습니다. VEX(Vulnerability
+Exploitability eXchange) 문서는 다운스트림 소비자에게 *어떤 CVE가 실제로 제품에
+영향을 주는지*를 알려줍니다 — 따라서 소비자는 이미 `not_affected`나 `fixed`로
+분석한 CVE의 노이즈를 억제할 수 있습니다.
+
+두 가지 포맷을 지원합니다:
+
+| 포맷 | 쿼리 값 (`format=`) | MIME | 용도 |
+|---|---|---|---|
+| **OpenVEX 0.2.0** | `openvex` | `application/json` | 최소한의 벤더 중립 OpenVEX 스키마. 기본값. |
+| **CycloneDX 1.5 VEX** | `cyclonedx` | `application/json` | `vulnerabilities[]` + 분석만 담은 CycloneDX BOM — CycloneDX SBOM과 짝을 이룹니다. |
+
+문서는 **가장 최근에 성공한(latest succeeded)** 스캔의 결과로부터 만들어집니다.
+성공한 스캔이 없거나(또는 결과가 없는) 프로젝트라도 다운스트림 도구가 파싱할 수
+있도록 유효한 빈 VEX 문서(HTTP 200)를 내보냅니다.
+
+### 상태 매핑
+
+각 내부 VEX 상태는 대상 포맷의 상태 어휘로 매핑됩니다. 분류 중 입력한 자유 텍스트
+justification은 자유 텍스트 필드에 그대로 전달됩니다 — OpenVEX `justification`
+enum(임의의 분석가 서술로는 추론할 수 없는 정확한 법적 의미를 가짐)에 억지로
+끼워 맞추지 **않습니다**.
+
+| 포털 상태 | OpenVEX `status` | CycloneDX `analysis.state` |
+|---|---|---|
+| **New** | `under_investigation` | `in_triage` |
+| **Analyzing** | `under_investigation` | `in_triage` |
+| **Exploitable** | `affected` | `exploitable` |
+| **Not affected** | `not_affected` | `not_affected` |
+| **False positive** | `not_affected` | `false_positive` |
+| **Suppressed** | `not_affected` | `not_affected` |
+| **Fixed** | `fixed` | `resolved` |
+
+justification 텍스트는 OpenVEX `impact_statement`와 CycloneDX `analysis.detail`에
+들어갑니다.
+
+### 바이트 안정 출력
+
+SBOM 내보내기와 마찬가지로 VEX 내보내기는 **바이트 안정(byte-stable)** 합니다.
+동일한 스캔을 다시 내보내면 동일한 바이트가 생성되므로 문서를 서명·캐싱하고
+릴리스 간에 diff할 수 있습니다. statement는 `(CVE id, purl)` 순으로 정렬되고,
+문서 id는 스캔 id에서 결정적으로 파생되며, 타임스탬프는 내보낸 순간이 아니라
+스캔의 영속화된 완료 시각을 반영합니다.
+
+### API에서 다운로드
+
+```bash
+# OpenVEX (기본값)
+curl -sS -L -OJ \
+  -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+  "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/vex?format=openvex"
+
+# CycloneDX VEX
+curl -sS -L -OJ \
+  -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+  "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/vex?format=cyclonedx"
+```
+
+`format`은 `openvex` 또는 `cyclonedx`를 받습니다. 파일명은
+`vex-<project-slug>.<ext>`.
+
+| 상태 | 의미 |
+|---|---|
+| `200` | VEX 문서 다운로드. |
+| `401` | 미인증 — 유효한 토큰을 제공하세요. |
+| `404` | 프로젝트가 없거나, 호출자가 해당 팀의 멤버가 아님(existence-hide, SBOM 내보내기와 동일한 정책). |
+| `422` | 알 수 없는 `format` — `openvex` 또는 `cyclonedx`를 사용하세요. |
+
+:::note 접근 권한
+VEX 문서 다운로드는 `developer` 이상이 필요합니다. 크로스팀 호출자는 `403`이 아닌
+`404`를 받으므로 비멤버는 프로젝트의 존재 여부를 알 수 없습니다.
+:::
+
 ## 재탐지
 
 Dependency-Track이 상위 피드(NVD, OSV, GitHub Advisory)에서 새 CVE를 수신하면 주기 동기화가 모든 프로젝트의 최신 스캔에 대해 재상관을 수행합니다. 새 결과는 자동으로 등장합니다 — 수동 작업 불필요.
