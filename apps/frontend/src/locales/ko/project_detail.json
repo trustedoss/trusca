@@ -3,6 +3,7 @@
     "breadcrumb_aria": "탐색 경로",
     "breadcrumb_projects": "프로젝트",
     "loading_name": "불러오는 중…",
+    "breadcrumb_unavailable": "사용할 수 없음",
     "load_error": "프로젝트를 불러오지 못했습니다.",
     "missing_id": "URL에 프로젝트 ID가 없습니다.",
     "errors": {
