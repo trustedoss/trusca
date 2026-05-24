@@ -51,6 +51,13 @@ from pydantic import BaseModel, ConfigDict, Field
 ComponentSeverity = Literal["critical", "high", "medium", "low", "info", "none"]
 LicenseCategoryName = Literal["forbidden", "conditional", "allowed", "unknown"]
 
+# The actor's effective role *within the project's owning team*. This is NOT
+# the global `role` from JWT/`/auth/me` (which only ever yields `super_admin`
+# or developer): a user who is `team_admin` of this project's team must see
+# `team_admin` here so the frontend can enable team-scoped actions such as
+# vulnerability suppression (BUG-005). See `current_user_role` below.
+TeamScopedRole = Literal["super_admin", "team_admin", "developer"]
+
 
 # ---------------------------------------------------------------------------
 # Overview
@@ -103,6 +110,17 @@ class ProjectOverviewResponse(BaseModel):
     )
     recent_scans: list[ScanSummary] = Field(default_factory=list)
     last_scan_at: datetime | None = None
+    current_user_role: TeamScopedRole = Field(
+        description=(
+            "The requesting user's effective role *within this project's owning "
+            "team*: 'super_admin' for platform superusers, otherwise the user's "
+            "membership role on the project's team ('team_admin' / 'developer'). "
+            "Users who can read the project via org-wide visibility but hold no "
+            "membership default to the least-privileged 'developer'. The "
+            "frontend uses this (not the global JWT role) to gate team-scoped "
+            "actions such as vulnerability suppression (BUG-005)."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -196,5 +214,6 @@ __all__ = [
     "LicenseCategoryName",
     "ProjectOverviewResponse",
     "ScanSummary",
+    "TeamScopedRole",
     "VulnerabilityRef",
 ]

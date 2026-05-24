@@ -171,6 +171,38 @@ async def test_overview_happy_path_returns_well_formed_payload(client) -> None:
     assert body["risk_score"] == 0.0
 
 
+async def test_overview_exposes_current_user_role_team_admin(client) -> None:
+    """The overview payload surfaces the actor's team-scoped role (BUG-005)."""
+    _, team, user = await _seed_team_with_user(client, role="team_admin")
+    project_id, _ = await _seed_scanned_project(client, team_id=team.id)
+    headers = _bearer_for(user)
+
+    response = await client.get(f"/v1/projects/{project_id}/overview", headers=headers)
+    assert response.status_code == 200, response.text
+    assert response.json()["current_user_role"] == "team_admin"
+
+
+async def test_overview_exposes_current_user_role_developer(client) -> None:
+    _, team, user = await _seed_team_with_user(client, role="developer")
+    project_id, _ = await _seed_scanned_project(client, team_id=team.id)
+    headers = _bearer_for(user)
+
+    response = await client.get(f"/v1/projects/{project_id}/overview", headers=headers)
+    assert response.status_code == 200, response.text
+    assert response.json()["current_user_role"] == "developer"
+
+
+async def test_overview_exposes_current_user_role_super_admin(client) -> None:
+    _, team, _ = await _seed_team_with_user(client)
+    _, _, admin = await _seed_team_with_user(client, is_superuser=True)
+    project_id, _ = await _seed_scanned_project(client, team_id=team.id)
+    headers = _bearer_for(admin)
+
+    response = await client.get(f"/v1/projects/{project_id}/overview", headers=headers)
+    assert response.status_code == 200, response.text
+    assert response.json()["current_user_role"] == "super_admin"
+
+
 async def test_overview_other_team_returns_403_problem(client) -> None:
     _, my_team, my_user = await _seed_team_with_user(client)
     _, other_team, _ = await _seed_team_with_user(client)

@@ -53,6 +53,7 @@ from models import (
     Component,
     ComponentVersion,
     LicenseFinding,
+    Membership,
     Project,
     Scan,
     ScanComponent,
@@ -157,6 +158,42 @@ async def _load_project(session: AsyncSession, project_id: uuid.UUID) -> Project
     if project is None:
         raise ProjectNotFound(f"project {project_id} not found")
     return project
+
+
+async def _resolve_team_scoped_role(
+    session: AsyncSession,
+    *,
+    actor: CurrentUser,
+    team_id: uuid.UUID,
+) -> str:
+    """The actor's effective role *within the project's owning team* (BUG-005).
+
+    The global ``CurrentUser.role`` / JWT role only distinguishes super_admin
+    from "everyone else" — a membership-based ``team_admin`` is invisible to
+    the frontend, which then wrongly disables team-scoped actions such as
+    vulnerability suppression. The frontend needs the per-team role, so we
+    resolve it here:
+
+    - super-users are ``super_admin`` (they bypass team membership everywhere);
+    - otherwise we read the actor's membership row for *this* team and return
+      its role (``team_admin`` / ``developer``);
+    - a reader who reaches the project via org-wide visibility but holds no
+      membership defaults to the least-privileged ``developer`` (fail-closed).
+
+    We query ``memberships`` directly (team_id + user_id, both covered by an
+    index) rather than trusting the JWT-derived ``actor.team_roles`` so the
+    value is authoritative even if the token predates a membership change.
+    """
+    if actor.is_superuser:
+        return "super_admin"
+
+    role = await session.scalar(
+        select(Membership.role).where(
+            (Membership.team_id == team_id) & (Membership.user_id == actor.id)
+        )
+    )
+    # No membership row → org-wide reader. Fail closed to the minimum role.
+    return role or "developer"
 
 
 def _compute_risk_score(
@@ -326,6 +363,10 @@ async def get_project_overview(
 
     risk_score = _compute_risk_score(severity_distribution, license_distribution)
 
+    current_user_role = await _resolve_team_scoped_role(
+        session, actor=actor, team_id=project.team_id
+    )
+
     return {
         "project_id": project.id,
         "project_name": project.name,
@@ -335,6 +376,7 @@ async def get_project_overview(
         "risk_score": risk_score,
         "recent_scans": recent,
         "last_scan_at": last_scan_at,
+        "current_user_role": current_user_role,
     }
 
 

@@ -397,6 +397,118 @@ async def test_overview_super_admin_bypasses_team_check(
 
 
 # ---------------------------------------------------------------------------
+# current_user_role — actor's effective role within the project's team (BUG-005)
+# ---------------------------------------------------------------------------
+
+
+async def test_overview_current_user_role_super_admin(
+    db_session: AsyncSession,
+) -> None:
+    """A platform super-user always sees 'super_admin' (bypasses membership)."""
+    from services.project_detail_service import get_project_overview
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    project = await make_project(db_session, team=team)
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+
+    overview = await get_project_overview(
+        db_session, project_id=project.id, actor=actor
+    )
+    assert overview["current_user_role"] == "super_admin"
+
+
+async def test_overview_current_user_role_team_admin(
+    db_session: AsyncSession,
+) -> None:
+    """A team_admin of the project's team sees 'team_admin' (the BUG-005 case)."""
+    from services.project_detail_service import get_project_overview
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    user = await make_user(db_session)
+    await make_membership(db_session, user=user, team=team, role="team_admin")
+    project = await make_project(db_session, team=team)
+    # The JWT/global role only ever yields developer for a non-superuser; the
+    # service must resolve team_admin from the DB membership regardless.
+    actor = principal_for(user, team_ids=[team.id], role="team_admin")
+
+    overview = await get_project_overview(
+        db_session, project_id=project.id, actor=actor
+    )
+    assert overview["current_user_role"] == "team_admin"
+
+
+async def test_overview_current_user_role_developer(
+    db_session: AsyncSession,
+) -> None:
+    """A developer of the project's team sees 'developer'."""
+    from services.project_detail_service import get_project_overview
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    user = await make_user(db_session)
+    await make_membership(db_session, user=user, team=team, role="developer")
+    project = await make_project(db_session, team=team)
+    actor = principal_for(user, team_ids=[team.id], role="developer")
+
+    overview = await get_project_overview(
+        db_session, project_id=project.id, actor=actor
+    )
+    assert overview["current_user_role"] == "developer"
+
+
+async def test_overview_current_user_role_resolved_from_db_not_jwt(
+    db_session: AsyncSession,
+) -> None:
+    """The role comes from the DB membership, not a stale JWT-derived role.
+
+    We build a principal that *claims* developer (mimicking a token issued
+    before a promotion) while the DB says team_admin; the service must trust
+    the DB row.
+    """
+    from services.project_detail_service import get_project_overview
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    user = await make_user(db_session)
+    await make_membership(db_session, user=user, team=team, role="team_admin")
+    project = await make_project(db_session, team=team)
+    # Stale claim: principal says developer, DB says team_admin.
+    actor = principal_for(user, team_ids=[team.id], role="developer")
+
+    overview = await get_project_overview(
+        db_session, project_id=project.id, actor=actor
+    )
+    assert overview["current_user_role"] == "team_admin"
+
+
+async def test_overview_current_user_role_org_wide_reader_defaults_developer(
+    db_session: AsyncSession,
+) -> None:
+    """An org-wide reader with no membership fails closed to 'developer'.
+
+    A super-user (who can read every project) but who holds no team membership
+    is the cleanest way to exercise the "access granted, no membership row"
+    branch without depending on org-wide visibility plumbing. We assert the
+    *non-superuser* fallback by directly invoking the resolver with a plain
+    principal that has access but no membership.
+    """
+    from services.project_detail_service import _resolve_team_scoped_role
+    from tests._helpers import principal_for as _principal_for
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    # A user with NO membership on `team`.
+    reader = await make_user(db_session)
+    actor = _principal_for(reader, team_ids=[], role="developer")
+
+    role = await _resolve_team_scoped_role(db_session, actor=actor, team_id=team.id)
+    assert role == "developer"
+
+
+# ---------------------------------------------------------------------------
 # list_components_for_project
 # ---------------------------------------------------------------------------
 
