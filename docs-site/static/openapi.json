@@ -1609,8 +1609,8 @@
       "Body_import_project_vex_endpoint_v1_projects__project_id__vex_import_post": {
         "properties": {
           "upload": {
-            "contentMediaType": "application/octet-stream",
             "description": "An OpenVEX or CycloneDX VEX JSON document (format auto-detected).",
+            "format": "binary",
             "title": "Upload",
             "type": "string"
           }
@@ -1624,8 +1624,8 @@
       "Body_restore_backup_endpoint_v1_admin_backup_restore_post": {
         "properties": {
           "archive": {
-            "contentMediaType": "application/octet-stream",
             "description": "tar.gz produced by GET /download.",
+            "format": "binary",
             "title": "Archive",
             "type": "string"
           }
@@ -1639,8 +1639,8 @@
       "Body_upload_source_archive_endpoint_v1_projects__project_id__source_archive_post": {
         "properties": {
           "upload": {
-            "contentMediaType": "application/octet-stream",
             "description": "A .zip archive of the project source tree.",
+            "format": "binary",
             "title": "Upload",
             "type": "string"
           }
@@ -5675,13 +5675,6 @@
       },
       "ValidationError": {
         "properties": {
-          "ctx": {
-            "title": "Context",
-            "type": "object"
-          },
-          "input": {
-            "title": "Input"
-          },
           "loc": {
             "items": {
               "anyOf": [
@@ -11259,6 +11252,276 @@
           }
         },
         "summary": "Export SBOM for the project's latest succeeded scan",
+        "tags": [
+          "sbom"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/sbom/attestation": {
+      "get": {
+        "operationId": "download_sbom_attestation_endpoint_v1_projects__project_id__sbom_attestation_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {}
+            },
+            "description": "in-toto / DSSE SLSA provenance attestation"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "404": {
+            "description": "Project not accessible, or no attestation exists"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download the in-toto / SLSA provenance attestation for the latest SBOM",
+        "tags": [
+          "sbom"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/sbom/attestation-certificate": {
+      "get": {
+        "operationId": "download_sbom_attestation_certificate_endpoint_v1_projects__project_id__sbom_attestation_certificate_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/x-pem-file": {}
+            },
+            "description": "Fulcio certificate for the in-toto attestation (keyless verification)"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "404": {
+            "description": "Project not accessible, or no attestation certificate exists"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download the Fulcio certificate for the attestation (keyless signing only)",
+        "tags": [
+          "sbom"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/sbom/certificate": {
+      "get": {
+        "operationId": "download_sbom_certificate_endpoint_v1_projects__project_id__sbom_certificate_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/x-pem-file": {}
+            },
+            "description": "Fulcio signing certificate (keyless verification)"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "404": {
+            "description": "Project not accessible, or no keyless certificate exists"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download the Fulcio signing certificate (keyless signing only)",
+        "tags": [
+          "sbom"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/sbom/public-key": {
+      "get": {
+        "operationId": "download_sbom_public_key_endpoint_v1_projects__project_id__sbom_public_key_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/x-pem-file": {}
+            },
+            "description": "cosign PUBLIC key (verify with cosign verify-blob --key)"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "404": {
+            "description": "Project not accessible, or no public key is configured"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download the cosign public key for verifying SBOM signatures",
+        "tags": [
+          "sbom"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/sbom/signature": {
+      "get": {
+        "operationId": "download_sbom_signature_endpoint_v1_projects__project_id__sbom_signature_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {}
+            },
+            "description": "Detached cosign signature (verify with cosign verify-blob)"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "404": {
+            "description": "Project not accessible, or the SBOM was not signed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download the detached cosign signature for the latest SBOM",
+        "tags": [
+          "sbom"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/sbom/signature-bundle": {
+      "get": {
+        "operationId": "download_sbom_signature_bundle_endpoint_v1_projects__project_id__sbom_signature_bundle_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/zip": {}
+            },
+            "description": "Zip bundle for external cosign verification"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "404": {
+            "description": "Project not accessible, or the SBOM was not signed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download a zip bundle (SBOM + signature + cert/public-key + attestation + README)",
         "tags": [
           "sbom"
         ]
