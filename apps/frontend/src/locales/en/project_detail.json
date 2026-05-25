@@ -171,12 +171,27 @@
     "column": {
       "cve_id": "CVE ID",
       "severity": "Severity",
+      "reachable": "Reachability",
       "cvss": "CVSS",
       "epss": "EPSS",
       "summary": "Title",
       "affected": "Affected",
       "status": "Status",
       "discovered": "Discovered"
+    },
+    "reachability": {
+      "label": {
+        "reachable": "Reachable",
+        "unreachable": "Not reachable",
+        "unknown": "Not analyzed"
+      },
+      "tooltip": {
+        "reachable": "The vulnerable code is reachable on this project's call graph — prioritize this finding.",
+        "unreachable": "An analyzer ran and proved the vulnerable code is not reachable in this project.",
+        "unknown": "Reachability has not been analyzed for this finding."
+      },
+      "tooltip_with_source": "{{label}} (analyzed by {{source}})",
+      "tooltip_filter": "Filter findings by whether the vulnerable code is reachable on this project's call graph."
     },
     "epss": {
       "tooltip": "EPSS — probability this CVE is exploited in the wild within 30 days. Complements CVSS (severity).",
@@ -260,8 +275,16 @@
       "search_placeholder": "Search by CVE ID or summary",
       "severity_label": "Severity",
       "status_label": "Status",
+      "reachable_label": "Reachability",
+      "reachable_any": "Any reachability",
+      "reachable_option": {
+        "true": "Reachable",
+        "false": "Not reachable",
+        "unknown": "Not analyzed"
+      },
       "sort_label": "Sort by",
       "sort_by_severity": "Severity",
+      "sort_by_reachable": "Reachability",
       "sort_by_cvss": "CVSS",
       "sort_by_epss": "EPSS",
       "sort_by_status": "Status",

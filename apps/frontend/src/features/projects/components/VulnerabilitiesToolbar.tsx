@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { TeamScopedRole } from "@/features/projects/api/projectDetailApi";
 import type {
+  ReachabilityFilter,
   SortOrder,
   VulnFindingStatus,
   VulnSeverity,
@@ -39,10 +40,21 @@ export const STATUS_OPTIONS: VulnFindingStatus[] = [
 
 export const SORT_OPTIONS: VulnerabilitySortKey[] = [
   "severity",
+  "reachable",
   "cvss",
   "epss",
   "status",
   "discovered_at",
+];
+
+/**
+ * Reachability filter dropdown options (v2.3 r2). `""` is the "any" / off state;
+ * the three tokens map to the backend's `?reachable=` parameter.
+ */
+export const REACHABLE_OPTIONS: ReachabilityFilter[] = [
+  "true",
+  "false",
+  "unknown",
 ];
 
 export interface VulnerabilitiesToolbarProps {
@@ -62,6 +74,12 @@ export interface VulnerabilitiesToolbarProps {
    */
   minEpss: number | null;
   onMinEpssChange: (value: number | null) => void;
+  /**
+   * Tri-state reachability filter (v2.3 r2): `"true"` / `"false"` / `"unknown"`
+   * or `null` for "any". Backs the `?reachable=` query parameter.
+   */
+  reachable: ReachabilityFilter | null;
+  onReachableChange: (value: ReachabilityFilter | null) => void;
   /** Trigger the vulnerability PDF report download (G2). */
   onDownloadPdf: () => void;
   /** True while the PDF is being generated/fetched — drives the loading label. */
@@ -105,6 +123,8 @@ export function VulnerabilitiesToolbar({
   onOrderChange,
   minEpss,
   onMinEpssChange,
+  reachable,
+  onReachableChange,
   onDownloadPdf,
   isPdfDownloading,
   pdfError,
@@ -205,6 +225,38 @@ export function VulnerabilitiesToolbar({
           {STATUS_OPTIONS.map((opt) => (
             <option key={opt} value={opt}>
               {t(`vulnerabilities.status.${opt}`)}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="flex flex-col">
+        <label
+          htmlFor="vulnerabilities-reachable-filter"
+          className="text-xs font-medium text-muted-foreground"
+          title={t("vulnerabilities.reachability.tooltip_filter")}
+        >
+          {t("vulnerabilities.toolbar.reachable_label")}
+        </label>
+        <select
+          id="vulnerabilities-reachable-filter"
+          value={reachable ?? ""}
+          onChange={(event) =>
+            onReachableChange(
+              event.target.value === ""
+                ? null
+                : (event.target.value as ReachabilityFilter),
+            )
+          }
+          className="mt-1 h-9 w-40 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          data-testid="vulnerabilities-reachable-filter"
+        >
+          <option value="">
+            {t("vulnerabilities.toolbar.reachable_any")}
+          </option>
+          {REACHABLE_OPTIONS.map((opt) => (
+            <option key={opt} value={opt}>
+              {t(`vulnerabilities.toolbar.reachable_option.${opt}`)}
             </option>
           ))}
         </select>

@@ -171,12 +171,27 @@
     "column": {
       "cve_id": "CVE ID",
       "severity": "심각도",
+      "reachable": "도달 가능성",
       "cvss": "CVSS",
       "epss": "EPSS",
       "summary": "제목",
       "affected": "영향 컴포넌트",
       "status": "상태",
       "discovered": "발견 시각"
+    },
+    "reachability": {
+      "label": {
+        "reachable": "도달 가능",
+        "unreachable": "도달 불가",
+        "unknown": "미분석"
+      },
+      "tooltip": {
+        "reachable": "취약 코드가 이 프로젝트의 콜 그래프에서 도달 가능합니다 — 우선 처리하세요.",
+        "unreachable": "분석기가 실행되어 취약 코드가 이 프로젝트에서 도달 불가함을 확인했습니다.",
+        "unknown": "이 취약점의 도달 가능성은 아직 분석되지 않았습니다."
+      },
+      "tooltip_with_source": "{{label}} ({{source}} 분석)",
+      "tooltip_filter": "취약 코드가 이 프로젝트의 콜 그래프에서 도달 가능한지로 취약점을 필터링합니다."
     },
     "epss": {
       "tooltip": "EPSS — 이 CVE가 향후 30일 내 실제로 악용될 확률. CVSS(심각도)를 보완합니다.",
@@ -260,8 +275,16 @@
       "search_placeholder": "CVE ID 또는 제목으로 검색",
       "severity_label": "심각도",
       "status_label": "상태",
+      "reachable_label": "도달 가능성",
+      "reachable_any": "전체",
+      "reachable_option": {
+        "true": "도달 가능",
+        "false": "도달 불가",
+        "unknown": "미분석"
+      },
       "sort_label": "정렬 기준",
       "sort_by_severity": "심각도",
+      "sort_by_reachable": "도달 가능성",
       "sort_by_cvss": "CVSS",
       "sort_by_epss": "EPSS",
       "sort_by_status": "상태",
