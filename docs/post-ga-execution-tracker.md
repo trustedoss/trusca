@@ -15,7 +15,7 @@
 |---|---|---|---|---|
 | v2.1 | A. VEX 소비 (트리아지) | 3 | 3 | ✅ 완료 (#145,#148,#150) |
 | v2.1 | B. 평가·배포 경로 | 5 | 5 | ✅ 완료 (#146,#147,#149,#151,#152) |
-| v2.2 | 리메디에이션 + 정책 | 10 | 9 | 🟦 a(3)+b1+c1+b2+b3백엔드+c2+c3(#162) 완료 · 남음 c4(진행)·b3-UI |
+| v2.2 | 리메디에이션 + 정책 | 10 | 10 | ✅ 완료 (#153,154,156,157,158,159,160,161,162,163,164) — b/c 전 트랙 + b3-UI |
 | v2.3 | 무결성 + 우선순위화 | 6 | 0 | ⬜ 대기 |
 | — | 운영 레인 (외부 블로커) | 4 | 0 | ⬜ 대기 |
 
@@ -153,15 +153,15 @@
   - **후속(비머지, b3 전):** MultiFernet 롤링 키회전(현재 단일키 회전 시 기존 자격 brick) — 트래커 task #8.
 - [x] **2.2-b2 — 생태계 어댑터(npm 우선) + dry-run** ✅ #159 (머지 `4b40533`) — 순수 npm 어댑터(operator-preserving semver 재작성·format-preserving·lockfile 재생성 플래그), `compute_npm_dry_run`(a3 추천 + preserved-source 타르볼/override manifest), `POST /v1/projects/{id}/remediation/npm/dry-run`(member-gated). compute-only(마이그 없음·GitHub write 없음=b3). package.json adversarial 하드닝. `dep: 2.2-b1` `owner: scan-pipeline-specialist`
   - manifest 수정 어댑터(npm→pip→maven 순). dry-run 기본.
-- [~] **2.2-b3 — 자동 PR 생성(옵트인) + UI + 감사** 🟦 백엔드+보안리뷰 ✅ #160 (머지 `5c75a4a`) — `remediation_pull_requests`(마이그 0021), `create_npm_remediation_pr`(opt-in: 타깃 repo는 저장된 설치링크에서만 도출·caller 지정 불가, b1 토큰→branch/commit/PR, change_fingerprint idempotency), `POST .../remediation/npm/pull-request`+`GET .../pull-requests`. security-reviewer CHANGES REQUESTED(High base_branch 인젝션+Medium 3)→fix-first(`967900a`). **UI(b3-frontend) 미착수.** `dep: 2.2-b2` · `rev: ✅` `owner: backend-developer + frontend-dev → security-reviewer`
+- [x] **2.2-b3 — 자동 PR 생성(옵트인) + UI + 감사** ✅ 백엔드+보안리뷰 #160 (`5c75a4a`) + UI #163 (`f27cb15`, 프로젝트 상세 Remediation 탭: dry-run 미리보기·PR 생성(team_admin·opt-in)·PR 목록, 신규 `remediation` i18n ns, vitest 10신규) — `remediation_pull_requests`(마이그 0021), `create_npm_remediation_pr`(opt-in: 타깃 repo는 저장된 설치링크에서만 도출·caller 지정 불가, b1 토큰→branch/commit/PR, change_fingerprint idempotency), `POST .../remediation/npm/pull-request`+`GET .../pull-requests`. security-reviewer CHANGES REQUESTED(High base_branch 인젝션+Medium 3)→fix-first(`967900a`). **UI(b3-frontend) 미착수.** `dep: 2.2-b2` · `rev: ✅` `owner: backend-developer + frontend-dev → security-reviewer`
   - 브랜치→PR 자동생성, 옵트인, 감사로그. **종료조건: 최소 1개 생태계 PR 생성 + 보안리뷰 통과.** (백엔드 종료조건 충족; UI는 완성도 후속.)
 - [x] **2.2-c1 — 동적 라이선스 정책 모델** ✅ #158 (머지 `2453501`) — `license_policies` 테이블(마이그 0020, org/team 스코프, `category_overrides`/`license_exceptions`(시한부 waiver)/`unknown_license_category` posture/`compound_operator_strategy`/`enabled`), CRUD API `/v1/license-policies`, `get_effective_policy` 우선순위 resolver(team>org>static) + 단일-id `effective_category` 헬퍼, adversarial 스키마검증. b1과 병렬개발→통합 시 마이그 0019→0020 재번호. `policy_gate` 미수정(c2). `dep: 2.2-a3 (병렬 가능)` `owner: db-designer + backend-developer`
   - per-team/org 정책(허용/조건부/금지 + 예외 + SPDX expression 룰) 모델 + 마이그레이션.
 - [x] **2.2-c2 — Policy Gate 동적 룰 평가** ✅ #161 (머지 `e155ee7`) — `services/license_expression.py` 하드닝 compound-SPDX 평가기(길이4096/깊이64/토큰1024 bound, 선형 lexer+depth-guarded recursive descent, un-parseable→unknown posture+warning, never hang/raise/500), `policy_gate` 정책-aware 전환(정책 시 동적 재분류·무정책 시 byte-identical, golden 25 통과, batched+memoised no-N+1). 마이그/엔드포인트 없음. `dep: 2.2-c1` `owner: backend-developer`
   - 게이트가 정적 lookup 대신 동적 룰 평가(정적 카탈로그는 기본값으로 유지). SPDX expression **adversarial 테스트**([[feedback-adversarial-input-parametrize]] normalize_spdx_id 재귀 DoS 선례).
 - [x] **2.2-c3 — 정책 편집 Admin UI** ✅ #162 (머지 `1e2d135`) — `/policies` 라우트+사이드바, category_overrides/license_exceptions(시한부 waiver)/unknown posture/compound 전략/enabled 편집기, scope-aware(super_admin=org+팀, 비-team_admin=graceful read-only), TanStack Query 저장/리셋·422 RFC7807 surfacing, 신규 `policies` i18n ns(EN/KO, i18n:check OK), vitest 26 신규. `dep: 2.2-c2` `owner: frontend-dev + i18n-specialist`
-- [ ] **2.2-c4 — 라이선스 텍스트/의무 카탈로그 보강** `dep: 2.2-c1` `owner: backend-developer + doc-writer`
-  - **v2.2 마일스톤 종료조건:** ≥1 생태계 자동 PR + 보안리뷰 · 코드 변경 없이 팀이 정책 편집 · adversarial SPDX green.
+- [x] **2.2-c4 — 라이선스 텍스트/의무 카탈로그 보강** ✅ #164 (머지 `fdea868`) — `services/obligation_catalog.py`(32개 카탈로그 라이선스의 구조화 의무: attribution/text/copyright/state-changes/source-disclosure none·library·network/patent/same-license/notice-file), `sync_catalog_obligations` 멱등 upsert(read-path, 기존 obligations 테이블, 마이그 없음) — **실제 스캔이 License는 만들되 Obligation 0개였던 갭 해소**. link은 reference_url 없으면 canonical SPDX URL fallback(통합 시 CI clean-DB 모순 테스트 수정). `dep: 2.2-c1` `owner: backend-developer + doc-writer`
+  - **v2.2 마일스톤 종료조건:** ≥1 생태계 자동 PR + 보안리뷰 · 코드 변경 없이 팀이 정책 편집 · adversarial SPDX green. **→ ✅ 전부 충족 (2026-05-25).**
 
 ### v2.3 — 공급망 무결성 & 우선순위화 (순차)
 
@@ -219,7 +219,7 @@ v2.3 (순차)  s1(rev)→s2→s3   ‖   r1→r2→r3
 각 마일스톤은 아래를 **모두** 만족해야 "완료" 선언 + 다음 착수.
 
 - **v2.1: ✅ 충족 (2026-05-24, 8 PR #145–#152 머지, main CI green).** A1–A3·B1–B5 머지 green · VEX export/import/UI 왕복 + adversarial + security-reviewer green · helm 프로덕션 차트(lint/template) · `/health/ready` 게이트 전환 · eval 프로파일 · API 레퍼런스(redoc) 공개 · 데모 read-only+일일리셋(코드) · EN/KO·문서 동기. **잔여=운영 레인만**: O1(이미지 게시·공개차단점), O2(데모 GCP 배포), O3(차트 ArtifactHub). → v2.2 착수 가능.
-- **v2.2:** ≥1 생태계 자동 PR 생성 + security-reviewer green(b1·b3) · 팀이 코드 변경 없이 정책 편집 · SPDX adversarial green · `fixed_version` 실데이터 노출 · main CI green.
+- **v2.2: ✅ 충족 (2026-05-25, 10 PR #153,154,156–164 머지, main CI green).** ≥1 생태계 자동 PR 생성(b3 #160 백엔드+#163 UI, opt-in·idempotent) + security-reviewer green(b1 #157·b3 #160 모두 fix-first 통과) · 팀이 코드 변경 없이 정책 편집(c1 #158 모델+c2 #161 동적게이트+c3 #162 UI) · SPDX adversarial green(c2 길이/깊이/토큰 bound·no-policy byte-identical) · `fixed_version` 실데이터 노출(a1 #153) · 의무 카탈로그(c4 #164) · main CI green. **잔여=후속만**: MultiFernet 키회전(태스크#8, b3 GA 전) + 사전존재 CI flake(태스크#10). → v2.3 착수 가능.
 - **v2.3:** 서명 SBOM `cosign verify` 외부 검증 + security-reviewer green(s1) · ≥1 언어 reachability 구분 노출(베스트에포트 라벨) · main CI green.
 
 ---
