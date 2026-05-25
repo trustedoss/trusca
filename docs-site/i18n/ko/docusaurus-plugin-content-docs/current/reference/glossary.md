@@ -110,6 +110,22 @@ sidebar_position: 4
   대조하는 취약점 인텔리전스 플랫폼. TrustedOSS는 DT 4.x를 옵션 Docker
   Compose 오버레이로 번들하고, 회로 차단기 + 캐시 레이어로 감쌉니다.
   [dependencytrack.org](https://dependencytrack.org/) 참고.
+- **cosign.** Sigstore의 서명 CLI. TrustedOSS는 모든 소스 스캔의
+  CycloneDX SBOM을 cosign(`cosign sign-blob`)으로 서명하여 소비자가
+  `cosign verify-blob`으로 검증할 수 있게 합니다. 자체 호스팅에서는
+  key-based 서명이 기본값이고 keyless(OIDC)는 옵트인입니다.
+  [SBOM 서명 검증](./sbom-signature-verification.md)과
+  [docs.sigstore.dev/cosign](https://docs.sigstore.dev/cosign/overview/) 참고.
+- **Sigstore / Fulcio / Rekor.** cosign이 keyless 서명에 사용하는
+  생태계: **Fulcio**는 OIDC 신원에 바인딩된 단기 서명 인증서를
+  발급하고, **Rekor**는 서명이 기록되는 공개 투명성 로그입니다.
+  `COSIGN_KEYLESS=true`일 때만 사용됩니다.
+  [sigstore.dev](https://www.sigstore.dev/) 참고.
+- **Attestation / provenance (in-toto, SLSA).** 산출물이 *어떻게*
+  생성되었는지에 대한 서명된 명세. TrustedOSS는 SBOM 서명과 함께
+  [SLSA](https://slsa.dev/) provenance(빌더 신원 + 빌드 컨텍스트)를 담은
+  [in-toto](https://in-toto.io/) Statement를 생성합니다.
+  [SBOM 서명 검증](./sbom-signature-verification.md#provenance-attestation-확인) 참고.
 
 ## 라이선스 분류
 

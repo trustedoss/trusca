@@ -114,6 +114,23 @@ column.
   TrustedOSS bundles DT 4.x as an optional Docker Compose overlay and
   fronts it with a circuit-breaker + cache layer.
   See [dependencytrack.org](https://dependencytrack.org/).
+- **cosign.** Sigstore's signing CLI. TrustedOSS signs every source
+  scan's CycloneDX SBOM with cosign (`cosign sign-blob`) so a consumer
+  can verify it with `cosign verify-blob`. Key-based signing is the
+  self-hosted default; keyless (OIDC) is opt-in. See
+  [Verify SBOM signatures](./sbom-signature-verification.md) and
+  [docs.sigstore.dev/cosign](https://docs.sigstore.dev/cosign/overview/).
+- **Sigstore / Fulcio / Rekor.** The keyless-signing ecosystem cosign
+  draws on: **Fulcio** issues a short-lived signing certificate bound to
+  an OIDC identity, and **Rekor** is the public transparency log the
+  signature is recorded in. Only used when `COSIGN_KEYLESS=true`. See
+  [sigstore.dev](https://www.sigstore.dev/).
+- **Attestation / provenance (in-toto, SLSA).** A signed statement about
+  *how* an artifact was produced. TrustedOSS emits an
+  [in-toto](https://in-toto.io/) Statement carrying
+  [SLSA](https://slsa.dev/) provenance (builder identity + build
+  context) alongside the SBOM signature. See
+  [Verify SBOM signatures](./sbom-signature-verification.md#inspect-the-provenance-attestation).
 
 ## License classification
 
