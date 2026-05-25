@@ -16,7 +16,7 @@
 | v2.1 | A. VEX 소비 (트리아지) | 3 | 3 | ✅ 완료 (#145,#148,#150) |
 | v2.1 | B. 평가·배포 경로 | 5 | 5 | ✅ 완료 (#146,#147,#149,#151,#152) |
 | v2.2 | 리메디에이션 + 정책 | 10 | 10 | ✅ 완료 (#153,154,156,157,158,159,160,161,162,163,164) — b/c 전 트랙 + b3-UI |
-| v2.3 | 무결성 + 우선순위화 | 6 | 2 | 🟡 진행 중 (s1·r1 머지) |
+| v2.3 | 무결성 + 우선순위화 | 6 | 3 | 🟡 진행 중 (s1·r1·s2·r2-be 머지; r2-fe·s3·r3 남음) |
 | — | 운영 레인 (외부 블로커) | 4 | 0 | ⬜ 대기 |
 
 범례: ⬜ 대기 · 🟦 진행중 · ✅ 완료 · ⛔ 블로킹
@@ -169,13 +169,15 @@
 
 - [x] **2.3-s1 — SBOM 서명 인프라(cosign)** ✅ #166 (머지 `044ac6f`) — `integrations/cosign.py`(`sign_blob`/`verify_blob`, 고정 argv·`--` 센티넬·blob symlink 거부·best-effort skip), cdxgen SBOM persist 직후 `sign` 스테이지(30%) → ScanArtifact 새 kind `sbom_cyclonedx_sig`/(keyless 시)`sbom_cyclonedx_cert`(**마이그 없음**, 기존 `kind`+미사용 `sha256` 재사용). **D2 ✅ key-based 기본 + keyless 옵션**: private key password Fernet(`core.crypto`) 암호화 → `COSIGN_PASSWORD` subprocess env로만(argv/로그 금지, prod fail-closed). `Dockerfile.worker` cosign 2.4.1 + **per-arch SHA256 in-repo ARG 핀**. `scrubbed_env_for_cosign`(Sigstore 엔드포인트만). security-reviewer **PASS**(Crit/High 0)→fix-first(SHA256 in-repo 핀·prod fail-closed `SecretEncryptionError` 흡수·stderr 시크릿 스크럽·blob symlink 거부). `rev: ✅` `owner: scan-pipeline-specialist → security-reviewer`
   - worker 이미지에 cosign. SBOM 생성 시 서명(key-based 기본/keyless 옵션, §8 D2 결정). 키 취급은 보안리뷰.
-- [ ] **2.3-s2 — in-toto attestation + SLSA provenance** `dep: 2.3-s1` `owner: scan-pipeline-specialist`
+- [x] **2.3-s2 — in-toto attestation + SLSA provenance** ✅ #167 (머지 `d803a29`) — `integrations/attestation.py`(SLSA provenance v1 predicate/statement 순수 빌더 + `cisa_minimum_elements_present`), `integrations/cosign.py` `attest_blob`/`AttestResult`(s1 헬퍼 재사용, key-based 기본+keyless 옵션). `sign` 스테이지에서 서명 성공 시에만 `_attest_sbom` → ScanArtifact 새 kind `sbom_attestation`/(keyless)`sbom_attest_cert`(**마이그 없음**). predicate=opaque scan/project UUID+builder+timestamp만(git URL/경로/시크릿 없음). CISA generation-context(component hash·tool name/version·context) 강제, NTIA 7요소는 SBOM 본문. security-reviewer **PASS**(Crit/High 0)→fix-first(keyless cert 누락 시 skip[s1 `_sign_keyless`도]·로그 마스킹 일관·subject.name trust 주석). `dep: 2.3-s1` `owner: scan-pipeline-specialist → security-reviewer`
   - attestation 생성. CISA 2025(component hash·tool/generation context)·NTIA 7요소 점검.
 - [ ] **2.3-s3 — 서명 다운로드 UX + 검증 문서** `dep: 2.3-s2` `owner: frontend-dev + doc-writer`
   - 다운로드 시 서명 동봉. **종료조건: `cosign verify` 외부 검증 가능.**
 - [x] **2.3-r1 — Reachability 스캔 태스크(Go govulncheck 우선)** ✅ #165 (머지 `b3a7045`) — `integrations/govulncheck.py`(subprocess 어댑터 + 스트리밍 JSON 파서, 적대적 출력 방어), `tasks/scan_reachability.py` Celery 태스크(규칙 3: 동기 금지, 보존 소스 tarball 사용, best-effort skip). **마이그 0022**(expand): `vulnerability_findings`에 nullable `reachable`(tri-state)·`reachability_source`·`reachability_analyzed_at`(백필/NOT-NULL 없음). 소스 스캔 성공 후 비블로킹 chain(`enqueue_reachability`, `REACHABILITY_ENABLED` 게이트). GO-id+CVE/GHSA alias→`pkg:golang/%` finding per-pk UPDATE(멱등). `govulncheck@v1.1.4` 핀(Go 1.25.10 기존). `owner: scan-pipeline-specialist`
   - Celery 태스크(규칙 3: 동기 금지). finding에 reachability 신호 저장(expand 마이그 0022). 베스트에포트 라벨.
-- [ ] **2.3-r2 — reachability 정렬·게이트·UI 배지** `dep: 2.3-r1` `owner: backend-developer + frontend-dev`
+- [ ] **2.3-r2 — reachability 정렬·게이트·UI 배지** (백엔드 ✅ / UI 남음) `dep: 2.3-r1` `owner: backend-developer + frontend-dev`
+  - **r2-be ✅ #168 (머지 `51a0577`)** — **마이그 0023**(partial index `WHERE reachable IS TRUE`), `?reachable=true|false|unknown` 필터 + `sort=reachable`(reachable→NULL→false, 버킷 내 severity desc), 응답 `reachable`/`reachability_source`/`reachability_analyzed_at` 노출, 게이트 `reachable_critical_cve_count`+`reachable_gate_enforced`. 게이트 완화 플래그 `GATE_REACHABLE_CRITICAL_ONLY`(opt-in, 기본 off). security-reviewer **PASS**(Crit/High 0, Medium 2 fix-first): **safe-by-default fallback**(`analysed>0`일 때만 완화, `blocking=total-unreachable`로 `reachable IS FALSE`만 제외·**NULL 보수적 차단 유지** → non-Go silent-disable 제거) + 완화 발동 WARNING 로그 + .env 문서 + SCA 코멘트 advisory. tri-state/IDOR/인젝션 안전 확인.
+  - **r2-fe ⬜** — Vulnerabilities 탭 reachability 배지/필터/정렬 UI (응답필드 `reachable`/`reachability_source`/`reachability_analyzed_at`, `?reachable=`, `sort=reachable`).
 - [ ] **2.3-r3 — 차기 언어 확대(베스트에포트)** `dep: 2.3-r2` `owner: scan-pipeline-specialist`
   - **v2.3 마일스톤 종료조건:** 서명 SBOM 외부 검증 · ≥1 언어 reachable/unreachable 구분 노출.
 
