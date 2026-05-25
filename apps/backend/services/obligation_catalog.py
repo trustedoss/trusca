@@ -601,9 +601,10 @@ def obligations_for(
     Returns a list of ``(kind, text, link)`` tuples ready to upsert into the
     ``obligations`` table. The list is de-duplicated on ``(kind, text)`` so a
     compound expression contributing the same obligation from two operands does
-    not create duplicate rows. ``link`` defaults to ``reference_url`` (the
-    license's own URL) so the Obligations drawer / NOTICE can deep-link to the
-    canonical text.
+    not create duplicate rows. ``link`` is the license's own ``reference_url``
+    when set, else the canonical ``https://spdx.org/licenses/<id>.html`` page for
+    that operand, so the Obligations drawer / NOTICE can always deep-link to the
+    canonical text — even for scan-created licenses with a NULL ``reference_url``.
 
     Behaviour:
       - Unknown / custom / empty id        → ``[]`` (no obligations, no crash).
@@ -637,12 +638,19 @@ def obligations_for(
     out: list[tuple[str, str, str | None]] = []
     seen: set[tuple[str, str]] = set()
     for entry in entries:
+        # Deep-link target: the license's own ``reference_url`` when the row has
+        # one, else the canonical SPDX page for that operand. Scan-created
+        # ``License`` rows frequently have a NULL ``reference_url`` (the very
+        # sparseness this catalog fixes), so falling back to the deterministic
+        # SPDX URL keeps the Obligations drawer / NOTICE link working instead of
+        # emitting a null link.
+        link = reference_url or f"https://spdx.org/licenses/{entry.spdx_id}.html"
         for kind, text in entry.rows:
             key = (kind, text)
             if key in seen:
                 continue
             seen.add(key)
-            out.append((kind, text, reference_url))
+            out.append((kind, text, link))
     return out
 
 

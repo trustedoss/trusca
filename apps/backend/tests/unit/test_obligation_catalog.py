@@ -163,9 +163,19 @@ def test_obligations_for_attaches_reference_url_as_link() -> None:
     assert all(link == "https://spdx.org/licenses/MIT.html" for _, _, link in rows)
 
 
-def test_obligations_for_link_is_none_without_reference_url() -> None:
+def test_obligations_for_link_falls_back_to_canonical_spdx_url() -> None:
+    # Without a reference_url, the link deep-links to the canonical SPDX page for
+    # the operand (scan-created licenses frequently have a NULL reference_url, so
+    # a null link would defeat the Obligations-drawer / NOTICE deep-link).
     rows = obligations_for("MIT")
-    assert all(link is None for _, _, link in rows)
+    assert rows
+    assert all(link == "https://spdx.org/licenses/MIT.html" for _, _, link in rows)
+
+
+def test_obligations_for_link_prefers_reference_url_when_present() -> None:
+    rows = obligations_for("MIT", reference_url="https://example.test/mit")
+    assert rows
+    assert all(link == "https://example.test/mit" for _, _, link in rows)
 
 
 # ---------------------------------------------------------------------------
