@@ -44,6 +44,7 @@ Workspace:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import shutil
@@ -68,6 +69,7 @@ from core.db import sync_session_scope
 from core.pii_mask import redact_url_userinfo
 from core.url_guard import GitUrlValidationError, validate_git_url_with_ip
 from integrations import cdxgen as cdxgen_adapter
+from integrations import cosign as cosign_adapter
 from integrations import scancode as scancode_adapter
 from integrations._size_guard import enforce_jsonb_row_size_limit
 from integrations._subprocess_env import scrubbed_env_for_prep
@@ -114,6 +116,10 @@ _STAGE_PROGRESS: dict[str, int] = {
     "fetch": 10,
     "prep": 18,
     "cdxgen": 25,
+    # v2.3-s1: cosign SBOM signing runs right after the SBOM is generated +
+    # persisted, before scancode. Slotted at 30 (between cdxgen=25 and
+    # scancode=50) so the WS progress frame stays monotonic.
+    "sign": 30,
     # PR-A2: the "ort" stage slug (50) is replaced by "scancode" at the same
     # percent so the WS progress frame contract stays monotonic — clients that
     # rendered "50%" for the license stage keep rendering 50% for it.
@@ -283,6 +289,16 @@ def _run_pipeline(
         kind="sbom_cyclonedx",
         path=cdxgen_result.sbom_path,
     )
+
+    # Stage 3.5 — cosign SBOM signing (v2.3-s1). BEST-EFFORT: a missing cosign
+    # binary, an unconfigured key, or a cosign failure logs a WARNING and the
+    # scan continues unsigned — an unsigned SBOM is degraded, never fatal (same
+    # philosophy as scancode / preserve). cosign runs inside this Celery worker
+    # (CLAUDE.md core rule #3 — never on the synchronous API path). Idempotent on
+    # re-run: _reset_scan_for_rerun clears prior scan_artifacts, so re-signing
+    # cannot accumulate duplicate signature rows.
+    _set_stage(scan_uuid, "sign")
+    _sign_sbom(scan_uuid=scan_uuid, sbom_path=cdxgen_result.sbom_path, workspace=workspace)
 
     # Stage 4 — scancode first-party license detection (PR-A2, replaces ORT).
     # scancode runs over the cloned first-party tree only (vendored deps /
@@ -736,7 +752,9 @@ def _set_stage(scan_uuid: uuid.UUID, stage: str) -> None:
     publish_progress(scan_uuid, step=stage, percent=committed_percent)
 
 
-def _persist_artifact(scan_uuid: uuid.UUID, *, kind: str, path: Path) -> None:
+def _persist_artifact(
+    scan_uuid: uuid.UUID, *, kind: str, path: Path, sha256: str | None = None
+) -> None:
     if not path.exists():
         return
     size = path.stat().st_size
@@ -746,9 +764,70 @@ def _persist_artifact(scan_uuid: uuid.UUID, *, kind: str, path: Path) -> None:
             kind=kind,
             storage_path=str(path),
             byte_size=size,
+            sha256=sha256,
         )
         session.add(artifact)
         session.commit()
+
+
+# Free-form ScanArtifact.kind values for cosign signing outputs (v2.3-s1). The
+# column is String(32); all three are well under the limit
+# ("sbom_cyclonedx_sig"=18, "sbom_cyclonedx_cert"=19).
+_SBOM_SIG_KIND = "sbom_cyclonedx_sig"
+_SBOM_CERT_KIND = "sbom_cyclonedx_cert"
+
+
+def _sign_sbom(*, scan_uuid: uuid.UUID, sbom_path: Path, workspace: Path) -> None:
+    """Sign the generated SBOM with cosign and persist the signature artifact.
+
+    BEST-EFFORT (v2.3-s1): the cosign adapter never raises into the scan — a
+    missing binary, unconfigured key, decrypt failure, or cosign error returns a
+    ``SignResult(signed=False, ...)`` and we simply skip persisting (the scan
+    proceeds unsigned). We additionally wrap the whole helper in a broad
+    try/except so any UNEXPECTED error (e.g. a transient DB failure persisting
+    the artifact) is logged and swallowed rather than failing the scan — signing
+    is auxiliary, the SBOM + components are the high-value output.
+
+    On success we persist:
+      - the detached signature as ``sbom_cyclonedx_sig`` (with the SBOM's sha256
+        in ``ScanArtifact.sha256`` so a consumer can bind signature → exact bytes
+        without re-reading the SBOM), and
+      - (keyless only) the Fulcio certificate as ``sbom_cyclonedx_cert``.
+    """
+    try:
+        result = cosign_adapter.sign_blob(
+            blob_path=sbom_path,
+            output_dir=workspace / "cosign",
+        )
+
+        if not result.signed:
+            # The adapter already logged the specific skip reason; this is the
+            # task-level breadcrumb tying it to the scan stage.
+            log.warning("sbom_sign_skipped", reason=result.skip_reason)
+            return
+
+        sbom_sha256 = hashlib.sha256(sbom_path.read_bytes()).hexdigest()
+        if result.signature_path is not None:
+            _persist_artifact(
+                scan_uuid,
+                kind=_SBOM_SIG_KIND,
+                path=result.signature_path,
+                sha256=sbom_sha256,
+            )
+        if result.certificate_path is not None:
+            _persist_artifact(
+                scan_uuid,
+                kind=_SBOM_CERT_KIND,
+                path=result.certificate_path,
+            )
+        log.info("sbom_sign_persisted", mode=result.mode)
+    except Exception as exc:  # noqa: BLE001 — signing is best-effort, never fatal
+        # Covers an UNEXPECTED error anywhere in the stage: the adapter (which
+        # itself is best-effort but could be patched / monkeypatched), the sha256
+        # read, or the artifact persist (a transient DB failure). Signing is
+        # auxiliary — the SBOM + components are the high-value output — so we log
+        # and swallow rather than fail the scan.
+        log.warning("sbom_sign_unexpected_error", error=str(exc)[:300])
 
 
 # ---------------------------------------------------------------------------

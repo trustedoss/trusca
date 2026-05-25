@@ -610,6 +610,80 @@ def scan_source_raw_download_max_bytes() -> int:
     return int(os.getenv("SCAN_SOURCE_RAW_DOWNLOAD_MAX_BYTES", str(512 * 1024 * 1024)))
 
 
+# ---------------------------------------------------------------------------
+# v2.3-s1 — cosign SBOM signing.
+#
+# After a source scan generates the CycloneDX SBOM we sign it with cosign so a
+# downstream consumer can verify the artifact's integrity + provenance. D2
+# decision: KEY-BASED signing is the DEFAULT (self-hosted / on-prem / air-gapped
+# is the first-class target); KEYLESS (OIDC, sigstore Fulcio/Rekor) is an opt-in
+# alternative enabled via COSIGN_KEYLESS=true.
+#
+# Signing is BEST-EFFORT: a missing cosign binary, an unconfigured key, or a
+# cosign failure logs a structured WARNING and the scan still succeeds — an
+# unsigned SBOM is a degraded-but-non-fatal outcome, never a scan-breaking one
+# (same philosophy as the scancode / preserve stages). Every accessor reads env
+# at call time (CLAUDE.md core rule #11) so an operator can flip the toggle /
+# rotate the key path without rebuilding the image.
+# ---------------------------------------------------------------------------
+
+
+def cosign_keyless() -> bool:
+    """Whether to use cosign KEYLESS (OIDC) signing instead of key-based.
+
+    Default ``false`` → key-based (the D2 default for self-hosted / air-gapped).
+    When truthy the adapter signs with ``cosign sign-blob --yes`` and lets cosign
+    drive its keyless OIDC flow (ambient identity token in CI, or the configured
+    OIDC provider). Read at call time (rule #11). Accepts the same truthy
+    spellings as the other boolean accessors.
+    """
+    raw = os.getenv("COSIGN_KEYLESS", "false").lower()
+    return raw in ("1", "true", "yes", "on")
+
+
+def cosign_key_path() -> str | None:
+    """Filesystem path to the cosign PRIVATE key (key-based signing).
+
+    The key file itself lives on a mounted volume (NOT encrypted at rest — it is
+    a file, and a passwordless key is meaningless); the key's PASSWORD is what we
+    encrypt via ``core.crypto`` (Fernet) and store / pass through env. Returns
+    ``None`` when unset/blank so the adapter can skip signing (best-effort).
+    Read at call time (rule #11).
+    """
+    raw = os.getenv("COSIGN_KEY_PATH")
+    if raw is None or raw.strip() == "":
+        return None
+    return raw.strip()
+
+
+def cosign_key_password_encrypted() -> str | None:
+    """Fernet-encrypted ciphertext of the cosign private-key password.
+
+    The plaintext password NEVER lives in env / config in cleartext: an operator
+    encrypts it once (``core.crypto.encrypt_secret``) and stores the token here.
+    The adapter decrypts it at signing time and feeds it to cosign via the
+    ``COSIGN_PASSWORD`` subprocess env (never on the command line / argv, never
+    logged). Returns ``None`` when unset/blank — a passwordless key is then
+    assumed (cosign reads an empty ``COSIGN_PASSWORD``). Read at call time
+    (rule #11).
+    """
+    raw = os.getenv("COSIGN_KEY_PASSWORD_ENCRYPTED")
+    if raw is None or raw.strip() == "":
+        return None
+    return raw.strip()
+
+
+def cosign_timeout_seconds() -> int:
+    """Hard wall-clock limit (seconds) for one cosign invocation.
+
+    Signing a blob is fast (sub-second for key-based; keyless adds an OIDC +
+    Rekor round-trip). Default 120s is generous headroom that still bounds a
+    hung keyless network call so it cannot eat the scan budget. Read at call
+    time (rule #11).
+    """
+    return int(os.getenv("COSIGN_TIMEOUT_SECONDS", "120"))
+
+
 def workspace_root() -> str:
     """Root directory under which per-scan workspaces live."""
     return os.getenv("WORKSPACE_HOST_PATH", "/tmp/trustedoss")  # noqa: S108

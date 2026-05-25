@@ -20,6 +20,7 @@ import pytest
 from integrations._subprocess_env import (
     _looks_like_credential,
     scrubbed_env_for_cdxgen,
+    scrubbed_env_for_cosign,
     scrubbed_env_for_prep,
     scrubbed_env_for_scancode,
 )
@@ -61,7 +62,12 @@ def env_seeded(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.parametrize(
     "builder",
-    [scrubbed_env_for_prep, scrubbed_env_for_cdxgen, scrubbed_env_for_scancode],
+    [
+        scrubbed_env_for_prep,
+        scrubbed_env_for_cdxgen,
+        scrubbed_env_for_scancode,
+        scrubbed_env_for_cosign,
+    ],
 )
 def test_builder_strips_worker_secrets(env_seeded: None, builder) -> None:  # type: ignore[no-untyped-def]
     env = builder()
@@ -73,7 +79,12 @@ def test_builder_strips_worker_secrets(env_seeded: None, builder) -> None:  # ty
 
 @pytest.mark.parametrize(
     "builder",
-    [scrubbed_env_for_prep, scrubbed_env_for_cdxgen, scrubbed_env_for_scancode],
+    [
+        scrubbed_env_for_prep,
+        scrubbed_env_for_cdxgen,
+        scrubbed_env_for_scancode,
+        scrubbed_env_for_cosign,
+    ],
 )
 def test_builder_forwards_base_proxy_and_ca_hints(
     env_seeded: None, builder
@@ -245,6 +256,53 @@ def test_scancode_forwards_native_lib_paths(monkeypatch: pytest.MonkeyPatch) -> 
 
     assert env["EXTRACTCODE_LIBARCHIVE_PATH"] == "/usr/local/lib/scancode-libarchive.so"
     assert env["TYPECODE_LIBMAGIC_PATH"] == "/usr/local/lib/scancode-libmagic.so"
+
+
+# ---------------------------------------------------------------------------
+# cosign (v2.3-s1): base allowlist + Sigstore endpoints; NO inherited password
+# ---------------------------------------------------------------------------
+
+
+def test_cosign_forwards_sigstore_endpoint_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keyless needs the OIDC / Fulcio / Rekor endpoints forwarded."""
+    monkeypatch.setenv("COSIGN_OIDC_ISSUER", "https://oidc.corp.example")
+    monkeypatch.setenv("SIGSTORE_FULCIO_URL", "https://fulcio.corp.example")
+    monkeypatch.setenv("SIGSTORE_REKOR_URL", "https://rekor.corp.example")
+
+    env = scrubbed_env_for_cosign()
+
+    assert env["COSIGN_OIDC_ISSUER"] == "https://oidc.corp.example"
+    assert env["SIGSTORE_FULCIO_URL"] == "https://fulcio.corp.example"
+    assert env["SIGSTORE_REKOR_URL"] == "https://rekor.corp.example"
+
+
+def test_cosign_does_not_inherit_an_ambient_password(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An operator-exported COSIGN_PASSWORD must NOT leak through the scrubber.
+
+    The cosign adapter sets COSIGN_PASSWORD itself (decrypted at call time) on
+    the dict it passes to the subprocess; the scrubber must not forward an
+    inherited one (which would be both redundant and a leak vector).
+    """
+    monkeypatch.setenv("COSIGN_PASSWORD", "an-ambient-shell-export")
+
+    env = scrubbed_env_for_cosign()
+
+    assert "COSIGN_PASSWORD" not in env
+
+
+def test_cosign_strips_worker_secrets(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DT_API_KEY", "dt-secret")
+    monkeypatch.setenv("SECRET_KEY", "jwt-signing-secret")
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@h/db")
+    monkeypatch.setenv("COSIGN_KEY_PASSWORD_ENCRYPTED", "ciphertext-config-not-a-cosign-env")
+
+    env = scrubbed_env_for_cosign()
+
+    assert "DT_API_KEY" not in env
+    assert "SECRET_KEY" not in env
+    assert "DATABASE_URL" not in env
+    # The encrypted-password CONFIG var is not a cosign env and must not forward.
+    assert "COSIGN_KEY_PASSWORD_ENCRYPTED" not in env
 
 
 # ---------------------------------------------------------------------------

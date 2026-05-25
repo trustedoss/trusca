@@ -501,6 +501,57 @@ RUN set -eux; \
 ENV EXTRACTCODE_LIBARCHIVE_PATH=/usr/local/lib/scancode-libarchive.so \
     TYPECODE_LIBMAGIC_PATH=/usr/local/lib/scancode-libmagic.so
 
+# ===========================================================================
+# >>> v2.3-s1 (s-track) cosign — BEGIN. Self-contained block. r-track
+#     (govulncheck) adds its OWN binary in a SEPARATE block; keep the two
+#     apart so a sequential merge has no overlapping context.
+# ===========================================================================
+# ---- cosign 2.4.1 (Apache-2.0). --------------------------------------------
+# Sigstore cosign signs the generated CycloneDX SBOM (v2.3-s1). Installed from
+# the upstream GitHub release binary (sigstore/cosign) with a per-arch SHA256
+# pinned IN-REPO as a build ARG (no `:latest`, CLAUDE.md rule #9 — the version
+# AND the hash are version-controlled). cosign publishes per-arch binaries
+# (cosign-linux-amd64 / cosign-linux-arm64) so we resolve the dpkg arch at build
+# time — same amd64-CI / arm64-laptop pattern as the Trivy + scancode layers
+# above.
+#
+# Checksum verification (supply-chain hardening, security-reviewer fix-first):
+# the expected SHA256 is pinned here as a build-time constant rather than fetched
+# from the release's own ``cosign_checksums.txt`` at build time. That file is
+# served unauthenticated from the SAME origin as the binary, so trusting it to
+# verify the binary is circular — a tampered release that swaps the binary can
+# swap the checksums file in lockstep. Pinning the hash in-repo makes it a code-
+# review + version-control artifact: bumping COSIGN_VERSION requires deliberately
+# updating these hashes, and any CDN/origin compromise that swaps the binary
+# fails `sha256sum -c` (`set -eux` → build aborts). This mirrors the Gradle / Go
+# layers above, which already pin their hashes as Dockerfile constants.
+#
+# Refresh the hashes when bumping COSIGN_VERSION:
+#   curl -fsSL https://github.com/sigstore/cosign/releases/download/v<VER>/cosign_checksums.txt \
+#     | grep -E 'cosign-linux-(amd64|arm64)$'
+# (the checksums file is fine to read interactively for the value — it is the
+#  build-time *automatic* trust of it that we removed.)
+# Hashes from cosign v2.4.1 cosign_checksums.txt.
+ENV COSIGN_VERSION=2.4.1
+ARG COSIGN_SHA256_AMD64=8b24b946dd5809c6bd93de08033bcf6bc0ed7d336b7785787c080f574b89249b
+ARG COSIGN_SHA256_ARM64=3b2e2e3854d0356c45fe6607047526ccd04742d20bd44afb5be91fa2a6e7cb4a
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "$arch" in \
+        amd64)  cosign_arch="amd64"; expected_sha="${COSIGN_SHA256_AMD64}" ;; \
+        arm64)  cosign_arch="arm64"; expected_sha="${COSIGN_SHA256_ARM64}" ;; \
+        *) echo "Unsupported arch: $arch" >&2; exit 1 ;; \
+    esac; \
+    base="https://github.com/sigstore/cosign/releases/download/v${COSIGN_VERSION}"; \
+    curl -fsSL -o /tmp/cosign "${base}/cosign-linux-${cosign_arch}"; \
+    echo "${expected_sha}  /tmp/cosign" | sha256sum -c -; \
+    install -m 0755 /tmp/cosign /usr/local/bin/cosign; \
+    rm -f /tmp/cosign; \
+    cosign version
+# ===========================================================================
+# <<< v2.3-s1 (s-track) cosign — END.
+# ===========================================================================
+
 # Application source. The dev compose bind-mounts ./apps/backend:/app on top
 # of this so the COPY here only matters for one-off `docker run` and prod.
 COPY . /app
