@@ -191,6 +191,7 @@ VEX 상태와 CycloneDX `analysis.state` 매핑:
 
 ## 함께 보기
 
+- [SBOM 서명 검증 (cosign)](../reference/sbom-signature-verification.md) — SBOM이 온전하며 이 배포에서 서명되었음을 증명
 - [컴포넌트·라이선스](./components-and-licenses.md)
 - [취약점](./vulnerabilities.md)
 - [API 개요](../reference/api-overview.md)

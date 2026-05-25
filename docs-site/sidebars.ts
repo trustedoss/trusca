@@ -86,6 +86,7 @@ const sidebars: SidebarsConfig = {
         "reference/obligation-catalog",
         "reference/remediation-dry-run",
         "reference/remediation-pull-request",
+        "reference/sbom-signature-verification",
       ],
     },
     {

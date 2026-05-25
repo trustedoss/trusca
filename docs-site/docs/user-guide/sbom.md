@@ -192,6 +192,7 @@ Items the manual previously promised that are not in v2.0.0; tracked for later r
 
 ## See also
 
+- [Verify SBOM signatures (cosign)](../reference/sbom-signature-verification.md) — prove the SBOM is intact and signed by this deployment
 - [Components & licenses](./components-and-licenses.md)
 - [Vulnerabilities](./vulnerabilities.md)
 - [API overview](../reference/api-overview.md)
