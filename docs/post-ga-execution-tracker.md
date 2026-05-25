@@ -16,7 +16,7 @@
 | v2.1 | A. VEX 소비 (트리아지) | 3 | 3 | ✅ 완료 (#145,#148,#150) |
 | v2.1 | B. 평가·배포 경로 | 5 | 5 | ✅ 완료 (#146,#147,#149,#151,#152) |
 | v2.2 | 리메디에이션 + 정책 | 10 | 10 | ✅ 완료 (#153,154,156,157,158,159,160,161,162,163,164) — b/c 전 트랙 + b3-UI |
-| v2.3 | 무결성 + 우선순위화 | 6 | 0 | ⬜ 대기 |
+| v2.3 | 무결성 + 우선순위화 | 6 | 2 | 🟡 진행 중 (s1·r1 머지) |
 | — | 운영 레인 (외부 블로커) | 4 | 0 | ⬜ 대기 |
 
 범례: ⬜ 대기 · 🟦 진행중 · ✅ 완료 · ⛔ 블로킹
@@ -167,14 +167,14 @@
 
 > 선행: v2.2 종료.
 
-- [ ] **2.3-s1 — SBOM 서명 인프라(cosign)** `rev: ✅` `owner: devops-engineer + backend-developer → security-reviewer`
-  - worker 이미지에 cosign. SBOM 생성 시 서명(keyless OIDC vs key-based 결정 §8 D2). 키 취급은 보안리뷰.
+- [x] **2.3-s1 — SBOM 서명 인프라(cosign)** ✅ #166 (머지 `044ac6f`) — `integrations/cosign.py`(`sign_blob`/`verify_blob`, 고정 argv·`--` 센티넬·blob symlink 거부·best-effort skip), cdxgen SBOM persist 직후 `sign` 스테이지(30%) → ScanArtifact 새 kind `sbom_cyclonedx_sig`/(keyless 시)`sbom_cyclonedx_cert`(**마이그 없음**, 기존 `kind`+미사용 `sha256` 재사용). **D2 ✅ key-based 기본 + keyless 옵션**: private key password Fernet(`core.crypto`) 암호화 → `COSIGN_PASSWORD` subprocess env로만(argv/로그 금지, prod fail-closed). `Dockerfile.worker` cosign 2.4.1 + **per-arch SHA256 in-repo ARG 핀**. `scrubbed_env_for_cosign`(Sigstore 엔드포인트만). security-reviewer **PASS**(Crit/High 0)→fix-first(SHA256 in-repo 핀·prod fail-closed `SecretEncryptionError` 흡수·stderr 시크릿 스크럽·blob symlink 거부). `rev: ✅` `owner: scan-pipeline-specialist → security-reviewer`
+  - worker 이미지에 cosign. SBOM 생성 시 서명(key-based 기본/keyless 옵션, §8 D2 결정). 키 취급은 보안리뷰.
 - [ ] **2.3-s2 — in-toto attestation + SLSA provenance** `dep: 2.3-s1` `owner: scan-pipeline-specialist`
   - attestation 생성. CISA 2025(component hash·tool/generation context)·NTIA 7요소 점검.
 - [ ] **2.3-s3 — 서명 다운로드 UX + 검증 문서** `dep: 2.3-s2` `owner: frontend-dev + doc-writer`
   - 다운로드 시 서명 동봉. **종료조건: `cosign verify` 외부 검증 가능.**
-- [ ] **2.3-r1 — Reachability 스캔 태스크(Go govulncheck 우선)** `owner: scan-pipeline-specialist`
-  - Celery 태스크(규칙 3: 동기 금지). finding에 reachability 신호 저장(expand 마이그레이션). 베스트에포트 라벨.
+- [x] **2.3-r1 — Reachability 스캔 태스크(Go govulncheck 우선)** ✅ #165 (머지 `b3a7045`) — `integrations/govulncheck.py`(subprocess 어댑터 + 스트리밍 JSON 파서, 적대적 출력 방어), `tasks/scan_reachability.py` Celery 태스크(규칙 3: 동기 금지, 보존 소스 tarball 사용, best-effort skip). **마이그 0022**(expand): `vulnerability_findings`에 nullable `reachable`(tri-state)·`reachability_source`·`reachability_analyzed_at`(백필/NOT-NULL 없음). 소스 스캔 성공 후 비블로킹 chain(`enqueue_reachability`, `REACHABILITY_ENABLED` 게이트). GO-id+CVE/GHSA alias→`pkg:golang/%` finding per-pk UPDATE(멱등). `govulncheck@v1.1.4` 핀(Go 1.25.10 기존). `owner: scan-pipeline-specialist`
+  - Celery 태스크(규칙 3: 동기 금지). finding에 reachability 신호 저장(expand 마이그 0022). 베스트에포트 라벨.
 - [ ] **2.3-r2 — reachability 정렬·게이트·UI 배지** `dep: 2.3-r1` `owner: backend-developer + frontend-dev`
 - [ ] **2.3-r3 — 차기 언어 확대(베스트에포트)** `dep: 2.3-r2` `owner: scan-pipeline-specialist`
   - **v2.3 마일스톤 종료조건:** 서명 SBOM 외부 검증 · ≥1 언어 reachable/unreachable 구분 노출.
@@ -227,7 +227,7 @@ v2.3 (순차)  s1(rev)→s2→s3   ‖   r1→r2→r3
 ## 8. 미결 결정 (착수 시점에 확정)
 
 - **D1 ✅ 결정(2026-05-24): GitHub App** — 설치형, per-repo 세밀 권한(contents/pull_requests:write), 설치별 단기 토큰, 멀티테넌트. 2.2-b1에서 App 자격 모델 구현, security-reviewer 동반.
-- **D2 (2.3-s1 착수 전): cosign 서명 방식** — keyless(OIDC, CI 친화, 키 관리 없음) vs key-based(온프렘/에어갭 적합). → 셀프호스팅 포지셔닝상 key-based 기본 + keyless 옵션 검토.
+- **D2 ✅ 결정(2026-05-25): key-based 기본 + keyless 옵션** — 셀프호스팅/온프렘/에어갭 포지셔닝상 cosign **key-based**(키페어 생성·암호화 보관)를 기본으로, CI 친화 **keyless(OIDC)**는 옵션 경로로 제공. 키 취급은 security-reviewer 동반(2.3-s1).
 - **D3 (B4): OpenAPI 통합 라이브러리** — redocusaurus(권장) vs docusaurus-openapi-docs. 착수 시 빌드 호환 확인.
 
 ---
