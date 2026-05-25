@@ -293,3 +293,88 @@ export async function downloadSbom(
     match?.[1] ?? `sbom-${projectId}.${SBOM_FALLBACK_EXTENSIONS[format]}`;
   return { blob: response.data as Blob, filename, format };
 }
+
+// ---------------------------------------------------------------------------
+// SBOM signature & verification download — v2.3-s3.
+//
+// The backend (apps/backend/api/v1/sbom.py) exposes a small family of
+// authenticated, IDOR-guarded (404 existence-hide) download endpoints that all
+// reply with `Content-Disposition: attachment`. They let a consumer verify the
+// project's signed SBOM offline with cosign:
+//   - `signature-bundle` → a self-contained zip (SBOM + .sig + cert|public-key +
+//     attestation + keyless attest cert + VERIFY.md). This is the recommended
+//     single-button download.
+//   - the individual artifacts below, for power users assembling their own flow.
+//
+// Key-based deployments emit NO Fulcio certificates: `certificate` and
+// `attestation-certificate` return 404 there. That 404 is an expected branch,
+// not an error — the caller renders it as "not applicable / keyless only".
+// A scan that was never signed returns 404 from every endpoint.
+// ---------------------------------------------------------------------------
+
+/**
+ * The signature artifacts the project detail SBOM tab can download. `bundle` is
+ * the recommended zip; the rest are individual artifacts.
+ */
+export type SbomSignatureArtifact =
+  | "bundle"
+  | "signature"
+  | "certificate"
+  | "attestation"
+  | "attestation-certificate"
+  | "public-key";
+
+export interface SbomSignatureDownload {
+  blob: Blob;
+  filename: string;
+  artifact: SbomSignatureArtifact;
+}
+
+/** Backend route segment for each artifact, relative to `.../sbom`. */
+const SBOM_SIGNATURE_PATHS: Record<SbomSignatureArtifact, string> = {
+  bundle: "signature-bundle",
+  signature: "signature",
+  certificate: "certificate",
+  attestation: "attestation",
+  "attestation-certificate": "attestation-certificate",
+  "public-key": "public-key",
+};
+
+/** Filename used if the server omits a `Content-Disposition` filename. */
+const SBOM_SIGNATURE_FALLBACK_FILENAMES: Record<SbomSignatureArtifact, string> =
+  {
+    bundle: "sbom-signature-bundle.zip",
+    signature: "sbom.sig",
+    certificate: "sbom-certificate.pem",
+    attestation: "sbom-attestation.json",
+    "attestation-certificate": "sbom-attestation-certificate.pem",
+    "public-key": "cosign.pub",
+  };
+
+/**
+ * Fetch a signing artifact (or the verification bundle) as a Blob through the
+ * authenticated axios instance so the bearer token rides the Authorization
+ * header, never the URL/history. The caller wires the blob into a transient
+ * `<a download>` click.
+ *
+ * Errors propagate as `ProblemError`; a 404 from the cert endpoints on a
+ * key-based deployment is an expected "not applicable" branch the UI handles.
+ */
+export async function downloadSbomSignatureArtifact(
+  projectId: string,
+  artifact: SbomSignatureArtifact,
+): Promise<SbomSignatureDownload> {
+  const segment = SBOM_SIGNATURE_PATHS[artifact];
+  const response = await api.get<Blob>(
+    `/v1/projects/${projectId}/sbom/${segment}`,
+    { responseType: "blob" },
+  );
+  const headers = (response.headers ?? {}) as Record<string, string>;
+  const disposition =
+    headers["content-disposition"] ?? headers["Content-Disposition"] ?? "";
+  // RFC 6266 filename — handles `filename="x.zip"` and bare `filename=x.zip`.
+  const match = disposition.match(/filename\*?=(?:UTF-8''|")?([^";]+)"?/i);
+  const filename =
+    match?.[1] ?? SBOM_SIGNATURE_FALLBACK_FILENAMES[artifact];
+  return { blob: response.data as Blob, filename, artifact };
+}
