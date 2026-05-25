@@ -63,6 +63,7 @@ from typing import Any, cast
 import structlog
 from sqlalchemy import String, func, or_, select
 from sqlalchemy import cast as sql_cast
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.security import CurrentUser
@@ -78,6 +79,7 @@ from models import (
     License as LicenseModel,
 )
 from schemas.obligation_detail import KNOWN_OBLIGATION_KINDS
+from services.obligation_catalog import obligations_for
 from services.project_detail_service import _license_rank_case
 from services.project_service import ProjectError, ProjectNotFound
 
@@ -213,6 +215,96 @@ def _order_distribution(counts: dict[str, int]) -> dict[str, int]:
 
 
 # ---------------------------------------------------------------------------
+# Catalog enrichment (v2.2 c4)
+# ---------------------------------------------------------------------------
+
+
+async def sync_catalog_obligations(
+    session: AsyncSession,
+    *,
+    scan_id: uuid.UUID,
+) -> int:
+    """Idempotently populate ``obligations`` from the structured catalog.
+
+    v2.2 c4 — before this, ``obligations`` was filled ONLY by the seed scripts,
+    so a real scan (which creates ``License`` rows but no ``Obligation`` rows in
+    ``tasks/scan_source.py``) surfaced an empty Obligations tab and an
+    obligation-free NOTICE. This function closes the gap on the READ path: for
+    every license materially observed in ``scan_id`` whose SPDX id is in
+    :mod:`services.obligation_catalog`, it upserts that license's concrete
+    obligation rows.
+
+    Idempotency / non-destruction (CLAUDE.md §6):
+      - Uses ``INSERT ... ON CONFLICT (license_id, kind) DO NOTHING`` against the
+        existing ``uq_obligations_license_kind`` constraint, so re-running is a
+        no-op and any obligation a seed script / operator authored by hand for
+        the SAME ``(license, kind)`` is NEVER overwritten. We only ADD missing
+        rows. The ``link`` defaults to the license's ``reference_url`` so the
+        drawer / NOTICE can deep-link to the canonical text.
+
+    Scope: only licenses present in the given scan are considered, so the upsert
+    cost is bounded by the project's license surface, not the whole 30-entry
+    catalog × every license row in the database.
+
+    Returns the number of obligation rows inserted (0 when nothing was missing).
+    The caller is responsible for the surrounding transaction; this function
+    flushes but does not commit so it composes inside a read request.
+    """
+    # Licenses observed in this scan, with their SPDX id + reference URL. We only
+    # enrich licenses ORT actually saw — enriching the entire catalog on every
+    # read would write obligations for licenses the project does not use.
+    lic_stmt = (
+        select(
+            LicenseModel.id,
+            LicenseModel.spdx_id,
+            LicenseModel.reference_url,
+        )
+        .join(LicenseFinding, LicenseFinding.license_id == LicenseModel.id)
+        .where(LicenseFinding.scan_id == scan_id)
+        .where(LicenseModel.spdx_id.is_not(None))
+        .distinct()
+    )
+    lic_rows = (await session.execute(lic_stmt)).all()
+    if not lic_rows:
+        return 0
+
+    values: list[dict[str, Any]] = []
+    for lic_id, spdx_id, reference_url in lic_rows:
+        for kind, text, link in obligations_for(spdx_id, reference_url=reference_url):
+            values.append(
+                {
+                    "license_id": lic_id,
+                    "kind": kind,
+                    "text": text,
+                    "link": link,
+                }
+            )
+    if not values:
+        return 0
+
+    # ON CONFLICT DO NOTHING on the existing (license_id, kind) unique index:
+    # never clobber an operator-/seed-authored row, only fill gaps. The insert
+    # is a single round-trip regardless of how many rows it carries.
+    stmt = (
+        pg_insert(Obligation)
+        .values(values)
+        .on_conflict_do_nothing(constraint="uq_obligations_license_kind")
+        .returning(Obligation.id)
+    )
+    result = await session.execute(stmt)
+    inserted = len(result.fetchall())
+    if inserted:
+        await session.flush()
+        log.info(
+            "obligation.catalog.synced",
+            scan_id=str(scan_id),
+            licenses=len(lic_rows),
+            inserted=inserted,
+        )
+    return inserted
+
+
+# ---------------------------------------------------------------------------
 # List endpoint
 # ---------------------------------------------------------------------------
 
@@ -280,6 +372,11 @@ async def list_project_obligations(
 
     if project.latest_scan_id is None:
         return [], {}, 0
+
+    # v2.2 c4: ensure the structured obligation catalog is materialised for the
+    # licenses this scan observed before we read/aggregate. Idempotent — a no-op
+    # once populated, and it never overwrites seed-/operator-authored rows.
+    await sync_catalog_obligations(session, scan_id=project.latest_scan_id)
 
     category_filter = _normalize_category_filter(categories)
     if category_filter == []:
@@ -494,6 +591,13 @@ async def get_obligation_detail(
         raise ObligationNotFound(
             f"obligation {obligation_id} not visible in project {project_id}"
         )
+
+    # NOTE (v2.2 c4): the drawer is reached only via the list endpoint, which
+    # has already materialised the catalog obligations (so the row id this
+    # detail call resolves was created there). We deliberately do NOT re-run
+    # ``sync_catalog_obligations`` here — the obligation row is fetched above by
+    # id, so a sync after the lookup could not surface a not-yet-created row, and
+    # keeping detail a pure read avoids an unexpected write on the drawer path.
 
     presence_stmt = (
         select(LicenseFinding.id)
@@ -769,6 +873,11 @@ async def generate_notice(
             "license_count": 0,
             "obligation_count": 0,
         }
+
+    # v2.2 c4: materialise the structured obligation catalog for this scan's
+    # licenses so the NOTICE renders attribution / source-disclosure / patent
+    # guidance instead of "(no obligations recorded)". Idempotent + additive.
+    await sync_catalog_obligations(session, scan_id=project.latest_scan_id)
 
     licenses_with_components, obligations_by_license, licenses_omitted = (
         await _load_notice_data(session, scan_id=project.latest_scan_id)
@@ -1222,4 +1331,5 @@ __all__ = [
     "generate_notice",
     "get_obligation_detail",
     "list_project_obligations",
+    "sync_catalog_obligations",
 ]

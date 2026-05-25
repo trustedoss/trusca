@@ -83,6 +83,7 @@ const sidebars: SidebarsConfig = {
         "reference/env-variables",
         "reference/api-overview",
         "reference/license-policies",
+        "reference/obligation-catalog",
         "reference/remediation-dry-run",
         "reference/remediation-pull-request",
       ],
