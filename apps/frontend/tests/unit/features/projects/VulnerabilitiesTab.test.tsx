@@ -77,6 +77,9 @@ function vuln(
     summary: `summary for ${cveId}`,
     status: "new",
     analysis_source: null,
+    reachable: null,
+    reachability_source: null,
+    reachability_analyzed_at: null,
     affected_component_count: 1,
     discovered_at: "2026-05-01T00:00:00Z",
     updated_at: "2026-05-01T00:00:00Z",
@@ -578,6 +581,144 @@ describe("VulnerabilitiesTab", () => {
           sort: "epss",
           order: "asc",
         }),
+      );
+    });
+  });
+
+  // ----- Reachability surface (v2.3 r2) -----------------------------------
+
+  it("renders a Reachable badge on a reachable row and omits the badge for not-analyzed", async () => {
+    mockedList.mockResolvedValueOnce(
+      listResponse([
+        vuln("CVE-2024-1111", {
+          reachable: true,
+          reachability_source: "govulncheck",
+        }),
+        vuln("CVE-2024-2222", { reachable: null }),
+      ]),
+    );
+    renderTab();
+    await waitFor(() =>
+      expect(screen.getAllByTestId("vulnerability-row")).toHaveLength(2),
+    );
+    // The reachable row carries the loud badge; the not-analyzed row omits it
+    // (compact mode renders nothing for null).
+    expect(
+      screen.getByTestId("reachability-badge-reachable"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("reachability-badge-unknown"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders a 'Not reachable' badge for a proven-unreachable row", async () => {
+    mockedList.mockResolvedValueOnce(
+      listResponse([
+        vuln("CVE-2024-3333", {
+          reachable: false,
+          reachability_source: "govulncheck",
+        }),
+      ]),
+    );
+    renderTab();
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("reachability-badge-unreachable"),
+      ).toBeInTheDocument(),
+    );
+    expect(
+      screen.getByTestId("reachability-badge-unreachable").textContent,
+    ).toContain("Not reachable");
+  });
+
+  it("selecting the reachable filter forwards ?reachable=true at offset 0", async () => {
+    mockedList.mockResolvedValue(listResponse([vuln("CVE-2024-1111")]));
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("vulnerability-row")).toHaveLength(1);
+    });
+    mockedList.mockClear();
+
+    await userEvent.selectOptions(
+      screen.getByTestId("vulnerabilities-reachable-filter"),
+      "true",
+    );
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalledWith(
+        "proj-1",
+        expect.objectContaining({ reachable: "true", offset: 0 }),
+      );
+    });
+  });
+
+  it("resetting the reachable filter to 'any' drops reachable from the query", async () => {
+    mockedList.mockResolvedValue(listResponse([vuln("CVE-2024-1111")]));
+    renderTab(["/projects/proj-1?reachable=false"]);
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalledWith(
+        "proj-1",
+        expect.objectContaining({ reachable: "false" }),
+      );
+    });
+    mockedList.mockClear();
+
+    await userEvent.selectOptions(
+      screen.getByTestId("vulnerabilities-reachable-filter"),
+      "",
+    );
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalledWith(
+        "proj-1",
+        expect.objectContaining({ reachable: undefined }),
+      );
+    });
+  });
+
+  it("selecting the reachability sort key requests sort=reachable from the wire", async () => {
+    mockedList.mockResolvedValue(listResponse([vuln("CVE-2024-1111")]));
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("vulnerability-row")).toHaveLength(1);
+    });
+    mockedList.mockClear();
+
+    await userEvent.selectOptions(
+      screen.getByTestId("vulnerabilities-sort"),
+      "reachable",
+    );
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalledWith(
+        "proj-1",
+        expect.objectContaining({ sort: "reachable" }),
+      );
+    });
+  });
+
+  it("hydrates the reachable filter from the URL on first render", async () => {
+    mockedList.mockResolvedValueOnce(listResponse([vuln("CVE-2024-1111")]));
+    renderTab(["/projects/proj-1?reachable=unknown"]);
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalledWith(
+        "proj-1",
+        expect.objectContaining({ reachable: "unknown" }),
+      );
+    });
+    expect(
+      (
+        screen.getByTestId(
+          "vulnerabilities-reachable-filter",
+        ) as HTMLSelectElement
+      ).value,
+    ).toBe("unknown");
+  });
+
+  it("ignores an out-of-range reachable URL value (no wire param)", async () => {
+    mockedList.mockResolvedValueOnce(listResponse([vuln("CVE-2024-1111")]));
+    renderTab(["/projects/proj-1?reachable=bogus"]);
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalledWith(
+        "proj-1",
+        expect.objectContaining({ reachable: undefined }),
       );
     });
   });

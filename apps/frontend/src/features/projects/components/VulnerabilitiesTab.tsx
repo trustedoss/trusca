@@ -10,12 +10,14 @@ import { useProjectOverview } from "@/features/projects/api/useProjectOverview";
 import { useVulnerabilities } from "@/features/projects/api/useVulnerabilities";
 import { useVulnReport } from "@/features/projects/api/useVulnReport";
 import type {
+  ReachabilityFilter,
   SortOrder,
   VulnFindingStatus,
   VulnSeverity,
   VulnerabilityListItem,
   VulnerabilitySortKey,
 } from "@/features/projects/api/vulnerabilitiesApi";
+import { ReachabilityBadge } from "@/features/projects/components/ReachabilityBadge";
 import { SeverityBadge } from "@/features/projects/components/SeverityBadge";
 import { VulnerabilitiesToolbar } from "@/features/projects/components/VulnerabilitiesToolbar";
 import { VulnerabilityDrawer } from "@/features/projects/components/VulnerabilityDrawer";
@@ -73,6 +75,13 @@ const VALID_SORT = new Set<VulnerabilitySortKey>([
   "status",
   "discovered_at",
   "epss",
+  "reachable",
+]);
+
+const VALID_REACHABLE = new Set<ReachabilityFilter>([
+  "true",
+  "false",
+  "unknown",
 ]);
 
 function parseList<T extends string>(
@@ -115,6 +124,19 @@ function parseMinEpss(raw: string | null): number | null {
   return n;
 }
 
+/**
+ * Parse the `reachable` URL param into one of the three legal tokens, or `null`
+ * for "no filter". A hand-edited URL with anything else (or the empty string)
+ * falls back to null so the filter can't get wedged into an invalid value the
+ * backend would 422 on.
+ */
+function parseReachable(raw: string | null): ReachabilityFilter | null {
+  if (raw && VALID_REACHABLE.has(raw as ReachabilityFilter)) {
+    return raw as ReachabilityFilter;
+  }
+  return null;
+}
+
 export interface VulnerabilitiesTabProps {
   projectId: string;
   /** Used to build the PDF report download filename fallback (G2). */
@@ -145,6 +167,10 @@ export function VulnerabilitiesTab({
   );
   const [minEpss, setMinEpss] = useState<number | null>(() =>
     parseMinEpss(searchParams.get("min_epss")),
+  );
+  // v2.3 r2 — tri-state reachability filter. URL flag `reachable=true|false|unknown`.
+  const [reachable, setReachable] = useState<ReachabilityFilter | null>(() =>
+    parseReachable(searchParams.get("reachable")),
   );
   // v2.1 A3 — "suppressed via VEX" inline filter. URL flag `vex_suppressed=1`.
   // The backend has no `analysis_source` query param yet, so we narrow the
@@ -209,6 +235,8 @@ export function VulnerabilitiesTab({
         else next.delete("order");
         if (minEpss != null) next.set("min_epss", String(minEpss));
         else next.delete("min_epss");
+        if (reachable != null) next.set("reachable", reachable);
+        else next.delete("reachable");
         if (vexSuppressedOnly) next.set("vex_suppressed", "1");
         else next.delete("vex_suppressed");
         if (page !== 1) next.set("page", String(page));
@@ -224,6 +252,7 @@ export function VulnerabilitiesTab({
     sort,
     order,
     minEpss,
+    reachable,
     vexSuppressedOnly,
     page,
     setSearchParams,
@@ -237,10 +266,11 @@ export function VulnerabilitiesTab({
       sort,
       order,
       min_epss: minEpss,
+      reachable,
       limit: PAGE_SIZE,
       offset: (page - 1) * PAGE_SIZE,
     }),
-    [debouncedSearch, severity, status, sort, order, minEpss, page],
+    [debouncedSearch, severity, status, sort, order, minEpss, reachable, page],
   );
 
   const vulnerabilities = useVulnerabilities(projectId, filters);
@@ -295,6 +325,11 @@ export function VulnerabilitiesTab({
         minEpss={minEpss}
         onMinEpssChange={(next) => {
           setMinEpss(next);
+          setPage(1);
+        }}
+        reachable={reachable}
+        onReachableChange={(next) => {
+          setReachable(next);
           setPage(1);
         }}
         onDownloadPdf={() => {
@@ -420,6 +455,7 @@ function VulnerabilitiesTableHeader() {
     >
       <span className="w-44">{t("vulnerabilities.column.cve_id")}</span>
       <span className="w-28">{t("vulnerabilities.column.severity")}</span>
+      <span className="w-28">{t("vulnerabilities.column.reachable")}</span>
       <span className="w-16 text-right">
         {t("vulnerabilities.column.cvss")}
       </span>
@@ -477,6 +513,20 @@ function VulnerabilityRow({
       </span>
       <span className="w-28">
         <SeverityBadge severity={vulnerability.severity} />
+      </span>
+      <span
+        className="flex w-28 items-center"
+        data-testid="vulnerability-row-reachability"
+        data-reachable={
+          vulnerability.reachable == null
+            ? "unknown"
+            : String(vulnerability.reachable)
+        }
+      >
+        <ReachabilityBadge
+          reachable={vulnerability.reachable}
+          source={vulnerability.reachability_source}
+        />
       </span>
       <span
         className="w-16 text-right font-mono text-xs tabular-nums"

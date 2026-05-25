@@ -15,6 +15,7 @@ import { keepPreviousData, useQuery, type UseQueryResult } from "@tanstack/react
 
 import {
   listProjectVulnerabilities,
+  type ReachabilityFilter,
   type SortOrder,
   type VulnFindingStatus,
   type VulnSeverity,
@@ -33,6 +34,12 @@ export interface VulnerabilitiesQueryFilters {
    * keeps findings with `epss_score >= min_epss` and drops NULL-EPSS rows.
    */
   min_epss: number | null;
+  /**
+   * Tri-state reachability filter (v2.3 r2), or `null` for "no filter".
+   * `"true"` / `"false"` / `"unknown"` keep reachable / proven-unreachable /
+   * not-analysed findings respectively.
+   */
+  reachable: ReachabilityFilter | null;
   limit: number;
   offset: number;
 }
@@ -55,6 +62,7 @@ export function vulnerabilitiesKey(
       sort: filters.sort,
       order: filters.order,
       min_epss: filters.min_epss,
+      reachable: filters.reachable,
       limit: filters.limit,
       offset: filters.offset,
     },
@@ -78,6 +86,7 @@ export function useVulnerabilities(
         sort: filters.sort,
         order: filters.order,
         min_epss: filters.min_epss ?? undefined,
+        reachable: filters.reachable ?? undefined,
       }),
     placeholderData: keepPreviousData,
   });

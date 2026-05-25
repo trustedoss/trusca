@@ -41,8 +41,24 @@ export type VulnerabilitySortKey =
   | "cvss"
   | "status"
   | "discovered_at"
-  | "epss";
+  | "epss"
+  | "reachable";
 export type SortOrder = "asc" | "desc";
+
+/**
+ * Tri-state reachability filter token (v2.3 r2). Mirrors the backend's
+ * `?reachable=` query parameter (`true` / `false` / `unknown`):
+ *
+ *   - `"true"`    → only findings whose vulnerable symbol is reachable on the
+ *                   call graph (`reachable === true`).
+ *   - `"false"`   → only findings an analyser proved NOT reachable
+ *                   (`reachable === false`).
+ *   - `"unknown"` → only not-analysed findings (`reachable IS NULL`).
+ *
+ * Omit the param to disable the filter. Any other value is a 422 on the wire,
+ * so the UI only ever sends these three tokens.
+ */
+export type ReachabilityFilter = "true" | "false" | "unknown";
 
 /**
  * Provenance of a finding's current status (v2.1 A2 — VEX import / consume).
@@ -96,6 +112,25 @@ export interface VulnerabilityListItem {
    * Backs the "suppressed via VEX" inline filter and the row's VEX marker.
    */
   analysis_source: AnalysisSource | null;
+  /**
+   * Tri-state reachability signal (v2.3 r2). `true` = the vulnerable symbol is
+   * reachable on the project's call graph (a priority signal); `false` = an
+   * analyser ran and concluded it is NOT reachable; `null` = not analysed (no
+   * reachability run, or the package was out of the analyser's language scope).
+   * Drives the row's {@link ReachabilityBadge}, the `?reachable=` filter, and
+   * the `sort=reachable` ranking.
+   */
+  reachable: boolean | null;
+  /**
+   * Identifier of the analyser that produced `reachable` ("govulncheck" today).
+   * `null` when `reachable` is `null`.
+   */
+  reachability_source: string | null;
+  /**
+   * ISO-8601 instant the reachability signal was last written, or `null` until
+   * a reachability run touches this finding.
+   */
+  reachability_analyzed_at: string | null;
   affected_component_count: number;
   discovered_at: string;
   updated_at: string;
@@ -191,6 +226,16 @@ export interface VulnerabilityDetail {
   vex_origin: VexOrigin | null;
   analyst_user_id: string | null;
   analyzed_at: string | null;
+  /**
+   * Tri-state reachability signal (v2.3 r2): `true` = reachable; `false` =
+   * analysed and NOT reachable; `null` = not analysed. Drives the drawer's
+   * {@link ReachabilityBadge}.
+   */
+  reachable: boolean | null;
+  /** Analyser that produced `reachable` ("govulncheck"); `null` when unanalysed. */
+  reachability_source: string | null;
+  /** ISO-8601 instant the reachability signal was last written; `null` if unanalysed. */
+  reachability_analyzed_at: string | null;
   affected_components: AffectedComponent[];
   status_history: VulnerabilityStatusHistoryEntry[];
   /** Minimum-safe-upgrade recommendation for this finding's component (v2.2 2.2-a3). */
@@ -216,6 +261,11 @@ export interface ListVulnerabilitiesParams {
    * `epss_score >= min_epss` and drops NULL-EPSS rows entirely.
    */
   min_epss?: number;
+  /**
+   * Tri-state reachability filter (v2.3 r2). `"true"` / `"false"` / `"unknown"`
+   * map to `reachable === true` / `=== false` / `IS NULL`. Omit to disable.
+   */
+  reachable?: ReachabilityFilter;
 }
 
 function listVulnerabilitiesQuery(
@@ -244,6 +294,15 @@ function listVulnerabilitiesQuery(
     params.min_epss <= 1
   ) {
     out.min_epss = params.min_epss;
+  }
+  // Only forward one of the three legal reachability tokens. A hand-edited URL
+  // with anything else is dropped here so we never trip the backend's 422.
+  if (
+    params.reachable === "true" ||
+    params.reachable === "false" ||
+    params.reachable === "unknown"
+  ) {
+    out.reachable = params.reachable;
   }
   return out;
 }
