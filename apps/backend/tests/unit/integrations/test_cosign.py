@@ -534,10 +534,16 @@ def test_keyless_skip_on_nonzero_exit_with_stderr(
     assert result.skip_reason == "cosign_nonzero_exit"
 
 
-def test_keyless_succeeds_without_certificate(
+def test_keyless_skips_when_certificate_missing(
     real_backend: None, cosign_installed: None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """cosign wrote a signature but no cert → still 'signed', cert is None."""
+    """Security hardening: keyless trust anchor is the Fulcio cert.
+
+    cosign wrote a signature but no certificate → we must NOT report 'signed':
+    without the short-lived Fulcio cert a consumer cannot verify the signing
+    identity (there is no operator-held public key on the keyless path). The
+    result is a skip, not a degraded-but-"signed" outcome.
+    """
     from integrations import cosign
 
     def _fake_run(cmd: list[str], **kwargs: Any) -> _FakeCompleted:
@@ -551,9 +557,24 @@ def test_keyless_succeeds_without_certificate(
     monkeypatch.setattr("integrations.cosign.subprocess.run", _fake_run)
     blob = _write_blob(tmp_path)
     result = cosign.sign_blob(blob_path=blob, output_dir=tmp_path / "out", keyless=True)
+    assert result.signed is False
+    assert result.skip_reason == "keyless_certificate_missing"
+    assert result.certificate_path is None
+
+
+def test_keyless_succeeds_with_certificate(
+    real_backend: None, cosign_installed: None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The happy keyless path: cosign writes BOTH the signature and the cert."""
+    from integrations import cosign
+
+    captured = _capture_run(monkeypatch)  # writes signature + certificate
+    blob = _write_blob(tmp_path)
+    result = cosign.sign_blob(blob_path=blob, output_dir=tmp_path / "out", keyless=True)
     assert result.signed is True
     assert result.mode == "keyless"
-    assert result.certificate_path is None
+    assert result.certificate_path is not None and result.certificate_path.exists()
+    assert "--output-certificate" in captured["cmd"]
 
 
 def test_keyless_skip_when_signature_not_written(

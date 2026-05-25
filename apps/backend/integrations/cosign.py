@@ -67,11 +67,13 @@ cert as ``sbom_cyclonedx_cert`` alongside the signature.
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import subprocess  # noqa: S404 — running a vetted local binary, not user input
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import structlog
 
@@ -113,6 +115,30 @@ class SignResult:
     skip_reason: str | None = None
 
 
+@dataclass(frozen=True)
+class AttestResult:
+    """Outcome of an :func:`attest_blob` call (v2.3-s2).
+
+    ``attested`` is the single boolean the caller checks. When ``False`` the scan
+    proceeds without an attestation and ``skip_reason`` carries a short,
+    secret-free hint. When ``True``:
+      - ``attestation_path`` points at the in-toto attestation (DSSE envelope)
+        file cosign wrote.
+      - ``certificate_path`` is set only for the keyless flow (Fulcio cert).
+      - ``mode`` is ``"key"`` or ``"keyless"``.
+
+    The contract mirrors :class:`SignResult`: :func:`attest_blob` NEVER raises
+    into the scan. An un-attested SBOM is degraded-but-non-fatal, exactly like
+    an unsigned one.
+    """
+
+    attested: bool
+    mode: str | None = None
+    attestation_path: Path | None = None
+    certificate_path: Path | None = None
+    skip_reason: str | None = None
+
+
 # Stable skip-reason tokens (secret-free, log/audit friendly).
 _SKIP_NOT_INSTALLED = "cosign_not_installed"
 _SKIP_NO_KEY = "key_based_no_key_configured"
@@ -125,6 +151,18 @@ _SKIP_BLOB_MISSING = "blob_path_not_a_regular_file"
 _SKIP_KEY_MISSING = "key_path_not_a_regular_file"
 _SKIP_TIMEOUT = "cosign_timeout"
 _SKIP_FAILED = "cosign_nonzero_exit"
+# v2.3-s2 attestation-specific: the predicate JSON could not be written to the
+# workspace before invoking cosign (an unexpected I/O error). Distinct from
+# _SKIP_FAILED so the log/audit can tell a predicate-write failure from a cosign
+# non-zero exit.
+_SKIP_PREDICATE_WRITE = "predicate_write_failed"
+# v2.3-s2 security hardening: a keyless flow produced a signature / attestation but
+# cosign emitted NO Fulcio certificate. In the keyless trust model the short-lived
+# Fulcio cert IS the verifiable identity (there is no operator-held public key), so
+# a missing cert means a downstream consumer cannot establish provenance. We must
+# NOT report success in that case — treat it as a skip rather than silently dropping
+# the trust anchor. Key-based flows are unaffected (their trust anchor is the key).
+_SKIP_NO_CERTIFICATE = "keyless_certificate_missing"
 
 
 # ---------------------------------------------------------------------------
@@ -199,6 +237,257 @@ def sign_blob(
         blob_path=blob_path,
         signature_path=signature_path,
         timeout=timeout,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Attestation (v2.3-s2) — in-toto / SLSA provenance over the SBOM
+# ---------------------------------------------------------------------------
+
+
+def attest_blob(
+    *,
+    blob_path: Path,
+    predicate: dict[str, Any],
+    predicate_type: str,
+    output_dir: Path,
+    keyless: bool | None = None,
+    backend: str | None = None,
+    timeout_seconds: int | None = None,
+) -> AttestResult:
+    """Attest ``blob_path`` with cosign, embedding ``predicate`` as an in-toto
+    Statement signed into a DSSE envelope (v2.3-s2).
+
+    Mirrors :func:`sign_blob`'s contract exactly — it NEVER raises into the
+    scan. Every failure mode (missing binary, unconfigured key, predicate-write
+    error, decrypt failure, cosign non-zero / timeout) returns an
+    ``AttestResult(attested=False, skip_reason=...)`` with a WARNING. An
+    un-attested SBOM is degraded-but-non-fatal.
+
+    Reuses the s1 helpers (``_is_regular_blob``, ``_resolve_key_password``,
+    ``scrubbed_env_for_cosign``, the argv-safety ``--`` sentinel, the secret
+    scrubber) so the security posture is identical to signing.
+
+    Args:
+        blob_path: The SBOM file the attestation is *about* (the subject). Same
+            trust assumption as :func:`sign_blob`: a worker-generated,
+            non-symlink workspace artifact.
+        predicate: The (already-built) SLSA provenance predicate dict. cosign
+            wraps it in an in-toto Statement keyed to the blob's digest and
+            signs the DSSE envelope. The predicate must contain NO secrets — see
+            ``integrations.attestation``.
+        predicate_type: The in-toto predicateType URI cosign records (e.g.
+            ``https://slsa.dev/provenance/v1``). cosign 2.x accepts a custom URI
+            via ``--type``.
+        output_dir: Workspace subdirectory for the predicate file + attestation.
+        keyless / backend / timeout_seconds: Same overrides as :func:`sign_blob`.
+    """
+    mode_backend = (backend or scan_backend_mode()).lower()
+    use_keyless = cosign_keyless() if keyless is None else keyless
+
+    # Same pre-spawn argv-safety + symlink-swap guard as sign_blob.
+    if not _is_regular_blob(blob_path):
+        log.warning("cosign_attest_skipped", reason=_SKIP_BLOB_MISSING, blob=str(blob_path))
+        return AttestResult(attested=False, skip_reason=_SKIP_BLOB_MISSING)
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    predicate_path = output_dir / "sbom.predicate.json"
+    attestation_path = output_dir / "sbom.intoto.jsonl"
+    certificate_path = output_dir / "sbom.attest.cert"
+
+    # Serialize the predicate to disk first — cosign reads it via --predicate.
+    # A write failure is its own skip token (distinct from a cosign exit).
+    try:
+        predicate_path.write_text(
+            json.dumps(predicate, separators=(",", ":"), sort_keys=True),
+            encoding="utf-8",
+        )
+    except OSError as exc:
+        log.warning("cosign_attest_skipped", reason=_SKIP_PREDICATE_WRITE, detail=str(exc)[:200])
+        return AttestResult(attested=False, skip_reason=_SKIP_PREDICATE_WRITE)
+
+    if mode_backend == "mock":
+        return _write_mock_attestation(
+            predicate_path=predicate_path,
+            attestation_path=attestation_path,
+            certificate_path=certificate_path,
+            keyless=use_keyless,
+        )
+
+    if shutil.which("cosign") is None:
+        log.warning("cosign_attest_skipped", reason=_SKIP_NOT_INSTALLED)
+        return AttestResult(attested=False, skip_reason=_SKIP_NOT_INSTALLED)
+
+    timeout = timeout_seconds if timeout_seconds is not None else cosign_timeout_seconds()
+
+    if use_keyless:
+        return _attest_keyless(
+            blob_path=blob_path,
+            predicate_path=predicate_path,
+            predicate_type=predicate_type,
+            attestation_path=attestation_path,
+            certificate_path=certificate_path,
+            timeout=timeout,
+        )
+    return _attest_key_based(
+        blob_path=blob_path,
+        predicate_path=predicate_path,
+        predicate_type=predicate_type,
+        attestation_path=attestation_path,
+        timeout=timeout,
+    )
+
+
+def _attest_key_based(
+    *,
+    blob_path: Path,
+    predicate_path: Path,
+    predicate_type: str,
+    attestation_path: Path,
+    timeout: int,
+) -> AttestResult:
+    """Key-based ``cosign attest-blob --key <key>`` flow (the D2 default).
+
+    Resolves the key + password exactly like :func:`_sign_key_based` (password
+    via COSIGN_PASSWORD env, never argv) and reuses the same graceful-skip
+    branches so the attestation path honours the "NEVER raises" contract.
+    """
+    key_path_raw = cosign_key_path()
+    if key_path_raw is None:
+        log.warning("cosign_attest_skipped", reason=_SKIP_NO_KEY)
+        return AttestResult(attested=False, skip_reason=_SKIP_NO_KEY)
+
+    key_path = Path(key_path_raw)
+    if not _is_regular_file(key_path):
+        log.warning("cosign_attest_skipped", reason=_SKIP_KEY_MISSING)
+        return AttestResult(attested=False, skip_reason=_SKIP_KEY_MISSING)
+
+    try:
+        password = _resolve_key_password()
+    except SecretDecryptionError:
+        log.warning("cosign_attest_skipped", reason=_SKIP_BAD_PASSWORD)
+        return AttestResult(attested=False, skip_reason=_SKIP_BAD_PASSWORD)
+    except SecretEncryptionError:
+        log.warning("cosign_attest_skipped", reason=_SKIP_KEY_CONFIG)
+        return AttestResult(attested=False, skip_reason=_SKIP_KEY_CONFIG)
+
+    env = scrubbed_env_for_cosign()
+    env["COSIGN_PASSWORD"] = password
+
+    cmd = [
+        "cosign",
+        "attest-blob",
+        "--yes",
+        "--key",
+        str(key_path),
+        "--predicate",
+        str(predicate_path),
+        "--type",
+        predicate_type,
+        "--output-attestation",
+        str(attestation_path),
+        # Blob validated as a regular file above; after ``--`` so a path that
+        # looks like an option cannot be parsed as one.
+        "--",
+        str(blob_path),
+    ]
+    log.info("cosign_attest_start", mode="key", blob=str(blob_path))
+    completed = _run_cosign(cmd, env=env, timeout=timeout)
+    if completed is None:
+        return AttestResult(attested=False, skip_reason=_SKIP_TIMEOUT)
+    if completed.returncode != 0:
+        log.warning(
+            "cosign_attest_skipped",
+            reason=_SKIP_FAILED,
+            mode="key",
+            returncode=completed.returncode,
+            stderr=_safe_stderr(completed.stderr),
+        )
+        return AttestResult(attested=False, skip_reason=_SKIP_FAILED)
+    if not attestation_path.exists():
+        log.warning(
+            "cosign_attest_skipped", reason=_SKIP_FAILED, mode="key", detail="no attestation"
+        )
+        return AttestResult(attested=False, skip_reason=_SKIP_FAILED)
+
+    log.info("cosign_attest_succeeded", mode="key", attestation=str(attestation_path))
+    return AttestResult(attested=True, mode="key", attestation_path=attestation_path)
+
+
+def _attest_keyless(
+    *,
+    blob_path: Path,
+    predicate_path: Path,
+    predicate_type: str,
+    attestation_path: Path,
+    certificate_path: Path,
+    timeout: int,
+) -> AttestResult:
+    """Keyless ``cosign attest-blob --yes`` (Fulcio/Rekor) flow — opt-in.
+
+    cosign drives its own OIDC identity and emits the Fulcio signing certificate
+    alongside the attestation. No private key / password is involved, so no
+    Fernet decrypt happens on this path (mirrors :func:`_sign_keyless`).
+    """
+    env = scrubbed_env_for_cosign()
+    cmd = [
+        "cosign",
+        "attest-blob",
+        "--yes",
+        "--predicate",
+        str(predicate_path),
+        "--type",
+        predicate_type,
+        "--output-attestation",
+        str(attestation_path),
+        "--output-certificate",
+        str(certificate_path),
+        "--",
+        str(blob_path),
+    ]
+    log.info("cosign_attest_start", mode="keyless", blob=str(blob_path))
+    completed = _run_cosign(cmd, env=env, timeout=timeout)
+    if completed is None:
+        return AttestResult(attested=False, skip_reason=_SKIP_TIMEOUT)
+    if completed.returncode != 0:
+        log.warning(
+            "cosign_attest_skipped",
+            reason=_SKIP_FAILED,
+            mode="keyless",
+            returncode=completed.returncode,
+            stderr=_safe_stderr(completed.stderr),
+        )
+        return AttestResult(attested=False, skip_reason=_SKIP_FAILED)
+    if not attestation_path.exists():
+        log.warning(
+            "cosign_attest_skipped", reason=_SKIP_FAILED, mode="keyless", detail="no attestation"
+        )
+        return AttestResult(attested=False, skip_reason=_SKIP_FAILED)
+
+    # Keyless trust anchor: the Fulcio cert IS the verifiable identity (there is no
+    # operator-held public key on this path). If cosign exited 0 but emitted no
+    # certificate, a downstream consumer cannot establish provenance — so we must
+    # NOT report success. Skip (WARNING) rather than silently drop the trust root.
+    if not certificate_path.exists():
+        log.warning(
+            "cosign_attest_skipped",
+            reason=_SKIP_NO_CERTIFICATE,
+            mode="keyless",
+            detail="cosign exited 0 but emitted no Fulcio certificate",
+        )
+        return AttestResult(attested=False, skip_reason=_SKIP_NO_CERTIFICATE)
+
+    log.info(
+        "cosign_attest_succeeded",
+        mode="keyless",
+        attestation=str(attestation_path),
+        certificate=str(certificate_path),
+    )
+    return AttestResult(
+        attested=True,
+        mode="keyless",
+        attestation_path=attestation_path,
+        certificate_path=certificate_path,
     )
 
 
@@ -338,18 +627,31 @@ def _sign_keyless(
         )
         return SignResult(signed=False, skip_reason=_SKIP_FAILED)
 
-    cert = certificate_path if certificate_path.exists() else None
+    # Keyless trust anchor: the Fulcio cert IS the verifiable identity (there is no
+    # operator-held public key on this path). If cosign exited 0 but emitted no
+    # certificate, a downstream consumer cannot verify the signature's identity — so
+    # we must NOT report success. Skip (WARNING) rather than silently drop the trust
+    # root. Mirrors :func:`_attest_keyless`. Key-based signing is unaffected.
+    if not certificate_path.exists():
+        log.warning(
+            "cosign_sign_skipped",
+            reason=_SKIP_NO_CERTIFICATE,
+            mode="keyless",
+            detail="cosign exited 0 but emitted no Fulcio certificate",
+        )
+        return SignResult(signed=False, skip_reason=_SKIP_NO_CERTIFICATE)
+
     log.info(
         "cosign_sign_succeeded",
         mode="keyless",
         signature=str(signature_path),
-        certificate=str(cert) if cert else None,
+        certificate=str(certificate_path),
     )
     return SignResult(
         signed=True,
         mode="keyless",
         signature_path=signature_path,
-        certificate_path=cert,
+        certificate_path=certificate_path,
     )
 
 
@@ -602,8 +904,50 @@ def _verify_mock_signature(*, blob_path: Path, signature_path: Path) -> bool:
     return actual == expected
 
 
+def _write_mock_attestation(
+    *,
+    predicate_path: Path,
+    attestation_path: Path,
+    certificate_path: Path,
+    keyless: bool,
+) -> AttestResult:
+    """Write a deterministic fixture attestation without invoking cosign (v2.3-s2).
+
+    The mock attestation wraps the (already-written) predicate in a minimal DSSE-
+    shaped envelope so a test can assert the file exists + carries the predicate.
+    No key / password / network is touched. The keyless mock also writes a
+    placeholder certificate, mirroring :func:`_write_mock_signature`.
+    """
+    import base64
+
+    predicate_b64 = base64.b64encode(predicate_path.read_bytes()).decode("ascii")
+    envelope = {
+        "payloadType": "application/vnd.in-toto+json",
+        "payload": predicate_b64,
+        "signatures": [{"sig": "MOCK-COSIGN-ATTESTATION"}],
+    }
+    attestation_path.write_text(json.dumps(envelope), encoding="utf-8")
+    mode = "keyless" if keyless else "key"
+    cert: Path | None = None
+    if keyless:
+        certificate_path.write_text(
+            "-----BEGIN CERTIFICATE-----\nMOCK-COSIGN-CERT\n-----END CERTIFICATE-----\n",
+            encoding="utf-8",
+        )
+        cert = certificate_path
+    log.info("cosign_attest_mock", mode=mode, attestation=str(attestation_path))
+    return AttestResult(
+        attested=True,
+        mode=mode,
+        attestation_path=attestation_path,
+        certificate_path=cert,
+    )
+
+
 __all__ = [
+    "AttestResult",
     "SignResult",
+    "attest_blob",
     "sign_blob",
     "verify_blob",
 ]
