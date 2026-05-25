@@ -246,6 +246,7 @@
     "offset",
     "order",
     "project_id",
+    "reachable",
     "search",
     "severity",
     "sort",

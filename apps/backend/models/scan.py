@@ -743,6 +743,18 @@ class VulnerabilityFinding(Base):
         Index("ix_vuln_findings_analyst_user_id", "analyst_user_id"),
         # "Show open findings for this scan" — list view default filter.
         Index("ix_vuln_findings_scan_status", "scan_id", "status"),
+        # Reachable-only hot path (v2.3 r2, migration 0023). PARTIAL index keyed
+        # on ``reachable IS TRUE`` so the "show reachable-only" list filter, the
+        # ``sort=reachable`` ranking, and the gate's reachable-critical count
+        # range-scan a single scan's (small) set of reachable findings instead of
+        # seq-scanning every finding. Most rows are NULL ("not analysed"), so a
+        # partial index keeps the structure tiny. See the migration docstring for
+        # why FALSE is deliberately NOT indexed.
+        Index(
+            "ix_vuln_findings_reachable",
+            "scan_id",
+            postgresql_where=text("reachable IS TRUE"),
+        ),
     )
 
 

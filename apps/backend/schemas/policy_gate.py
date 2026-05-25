@@ -79,6 +79,29 @@ class GateResultResponse(BaseModel):
         "when the EPSS gate is disabled (unset/unparseable env), in which case the "
         "gate behaves exactly as the critical-CVE + forbidden-license gate.",
     )
+    reachable_critical_cve_count: int = Field(
+        default=0,
+        ge=0,
+        description="Subset of the open critical findings on the evaluated scan "
+        "that an analyser has additionally proven REACHABLE (reachable IS TRUE) — "
+        "a v2.3 priority signal. Always populated; ``0`` when no finding is proven "
+        "reachable or no reachability analysis has run. By default this does NOT "
+        "change the verdict (it is informational), unless the reachable-only "
+        "critical mode is enabled (see ``reachable_gate_enforced``).",
+    )
+    reachable_gate_enforced: bool = Field(
+        default=False,
+        description="Whether the opt-in reachable-only critical mode "
+        "(``GATE_REACHABLE_CRITICAL_ONLY`` env) was active for this evaluation. "
+        "When ``false`` (default) every open critical counts — the legacy "
+        "behaviour. When ``true`` the relaxation is requested, but it is "
+        "applied SAFELY: it takes effect only on scans actually "
+        "reachability-analysed (reachability is Go-only today), and even then it "
+        "excludes ONLY criticals PROVEN unreachable — criticals not yet analysed "
+        "(reachable IS NULL) keep blocking. On a scan with no reachability "
+        "analysis the gate falls back to counting every open critical, so the "
+        "flag never silently disables the gate for un-analysed ecosystems.",
+    )
     project_id: uuid.UUID
     scan_id: uuid.UUID | None = Field(
         default=None,

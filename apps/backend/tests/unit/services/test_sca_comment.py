@@ -36,6 +36,9 @@ def _make_gate_result(
     critical_cve_count: int = 2,
     forbidden_license_count: int = 0,
     scan_id: uuid.UUID | None = None,
+    reachable_critical_cve_count: int = 0,
+    reachable_gate_enforced: bool = False,
+    reachable_relaxation_applied: bool = False,
 ) -> GateResult:
     return GateResult(
         gate=gate,  # type: ignore[arg-type]
@@ -45,6 +48,9 @@ def _make_gate_result(
         project_id=uuid.uuid4(),
         scan_id=scan_id or uuid.uuid4(),
         evaluated_at=datetime(2026, 5, 8, 12, 0, tzinfo=UTC),
+        reachable_critical_cve_count=reachable_critical_cve_count,
+        reachable_gate_enforced=reachable_gate_enforced,
+        reachable_relaxation_applied=reachable_relaxation_applied,
     )
 
 
@@ -124,6 +130,58 @@ def test_markdown_skips_view_link_when_project_url_missing() -> None:
         summary=_make_summary(project_url=None),
     )
     assert "View full report" not in body
+
+
+# ---------------------------------------------------------------------------
+# Reachable-only mode advisory (security-reviewer fix-first, Medium #2)
+# ---------------------------------------------------------------------------
+
+
+def test_markdown_omits_reachable_advisory_when_mode_off() -> None:
+    """Mode off → no advisory line; legacy body byte-for-byte preserved."""
+    body = build_pr_comment_markdown(
+        gate_result=_make_gate_result(reachable_gate_enforced=False),
+        summary=_make_summary(),
+    )
+    assert "Reachable-only critical mode" not in body
+
+
+def test_markdown_shows_reachable_advisory_when_relaxation_applied() -> None:
+    """Mode on AND it took effect → advisory states the reachable count and that
+    criticals not proven reachable were not counted. Verdict is NOT altered."""
+    body = build_pr_comment_markdown(
+        gate_result=_make_gate_result(
+            gate="fail",
+            reason="1 reachable critical CVE detected",
+            critical_cve_count=1,
+            reachable_critical_cve_count=1,
+            reachable_gate_enforced=True,
+            reachable_relaxation_applied=True,
+        ),
+        summary=_make_summary(),
+    )
+    assert "**FAIL**" in body  # display-only, verdict unchanged
+    assert "Reachable-only critical mode active" in body
+    assert "1 reachable critical" in body
+    assert "not proven reachable were not counted" in body
+
+
+def test_markdown_shows_fallback_advisory_when_mode_had_no_effect() -> None:
+    """Mode on but the scan has no reachability analysis (safe fallback) → the
+    advisory says so explicitly, so nobody assumes a relaxed gate."""
+    body = build_pr_comment_markdown(
+        gate_result=_make_gate_result(
+            gate="fail",
+            reason="2 critical CVEs detected",
+            critical_cve_count=2,
+            reachable_critical_cve_count=0,
+            reachable_gate_enforced=True,
+            reachable_relaxation_applied=False,
+        ),
+        summary=_make_summary(),
+    )
+    assert "no reachability analysis" in body
+    assert "evaluated all open criticals" in body
 
 
 # ---------------------------------------------------------------------------
