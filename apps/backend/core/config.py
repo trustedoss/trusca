@@ -531,6 +531,58 @@ def scancode_max_result_bytes() -> int:
 
 
 # ---------------------------------------------------------------------------
+# v2.3 r1 — govulncheck reachability analysis (Go call-graph, best-effort).
+#
+# A follow-up Celery task (``tasks.scan_reachability``) runs Go ``govulncheck``
+# over a scanned project's preserved source and marks which vulnerability
+# findings sit on a real call path. Every guard resolves env at call time
+# (CLAUDE.md core rule #11) so an operator retunes the worker without a rebuild.
+# Reachability is enrichment, never a primary stage — the defaults bound the run
+# so a hostile / pathological module cannot starve the budget or OOM the worker.
+# ---------------------------------------------------------------------------
+
+
+def reachability_enabled() -> bool:
+    """Whether the reachability follow-up task is dispatched after a source scan.
+
+    Default ``True`` — reachability is a best-effort enrichment that no-ops
+    gracefully when govulncheck is absent / the project isn't Go, so it is safe
+    to leave on. An operator can disable the dispatch entirely with
+    ``REACHABILITY_ENABLED=false`` (e.g. to shed worker load). Read at call time
+    (rule #11). Accepts the usual truthy spellings.
+    """
+    return os.getenv("REACHABILITY_ENABLED", "true").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def govulncheck_timeout_seconds() -> int:
+    """Hard wall-clock limit (seconds) for one ``govulncheck`` invocation.
+
+    govulncheck does a whole-module build + call-graph analysis; on a large Go
+    module it can take a few minutes. Default 600s (10 min) sits comfortably
+    inside the scan soft limit. On timeout the adapter returns an empty result
+    and the findings stay NULL ("not analysed"). Read at call time (rule #11).
+    """
+    return int(os.getenv("GOVULNCHECK_TIMEOUT_SECONDS", "600"))
+
+
+def govulncheck_max_output_bytes() -> int:
+    """Maximum size (bytes) of govulncheck stdout we will parse.
+
+    The ``-json`` stream is keyed off the (attacker-controlled) module graph; a
+    pathological module could in principle emit an unbounded report. The
+    streaming parser materialises the text before decoding, so we cap stdout
+    before parsing (parsing only the prefix that fits — the parser tolerates a
+    truncated final object). Default 64 MiB. Read at call time (rule #11).
+    """
+    return int(os.getenv("GOVULNCHECK_MAX_OUTPUT_BYTES", str(64 * 1024 * 1024)))
+
+
+# ---------------------------------------------------------------------------
 # G3.1 — source preservation (Protex-style source-tree view).
 #
 # After a successful source scan we preserve a gzip tarball of the scanned

@@ -90,4 +90,33 @@ def enqueue_scan(scan: Scan) -> str:
     return str(async_result.id)
 
 
-__all__ = ["enqueue_scan"]
+def enqueue_reachability(scan_id: str) -> str | None:
+    """Dispatch the v2.3 r1 reachability enrichment for a succeeded source scan.
+
+    Called by ``tasks.scan_source`` at the end of a successful source scan to run
+    Go ``govulncheck`` over the preserved source and stamp a reachability signal
+    onto the scan's findings. It is a SEPARATE task (not part of the scan
+    pipeline) so the user-facing scan completes and reports ``succeeded``
+    immediately — reachability arrives asynchronously after.
+
+    Returns the Celery task id, or ``None`` when reachability is disabled via
+    ``REACHABILITY_ENABLED=false`` (read at call time per CLAUDE.md rule #11).
+    Best-effort: a dispatch failure NEVER propagates into the calling scan — the
+    caller wraps this in its own swallow-and-log guard.
+
+    Args:
+        scan_id: the source scan's UUID **string** (Celery JSON serialization).
+    """
+    from core.config import reachability_enabled
+
+    if not reachability_enabled():
+        return None
+    # Local import (mirrors enqueue_scan) so modules that only type-check
+    # ``Scan`` never pull Celery / Redis at import time.
+    from tasks.scan_reachability import scan_reachability_task
+
+    async_result = scan_reachability_task.apply_async(args=(scan_id,))
+    return str(async_result.id)
+
+
+__all__ = ["enqueue_reachability", "enqueue_scan"]

@@ -33,6 +33,9 @@ from core.logging import configure_logging
 _TASK_INCLUDES = [
     "tasks.scan_source",
     "tasks.scan_container",
+    # v2.3 r1 — Go govulncheck call-graph reachability enrichment, dispatched as
+    # a follow-up after a source scan succeeds (best-effort, never blocks a scan).
+    "tasks.scan_reachability",
     "tasks.dt_resync",
     "tasks.dt_orphan_cleaner",
     "tasks.dt_orphan_cleanup",
