@@ -109,9 +109,24 @@ async def list_project_vulnerabilities_endpoint(
             "Omit to disable EPSS filtering."
         ),
     ),
+    reachable: str | None = Query(
+        default=None,
+        pattern=r"^(true|false|unknown)$",
+        description=(
+            "Tri-state reachability filter (v2.3). ``true`` → only findings whose "
+            "vulnerable symbol is reachable on the call graph; ``false`` → only "
+            "findings an analyser proved NOT reachable; ``unknown`` → only "
+            "not-analysed findings (reachable IS NULL). Omit to disable the "
+            "reachability filter."
+        ),
+    ),
     sort: str = Query(
         default="severity",
-        pattern=r"^(severity|cvss|status|discovered_at|epss)$",
+        pattern=r"^(severity|cvss|status|discovered_at|epss|reachable)$",
+        description=(
+            "Sort key. ``reachable`` ranks reachable findings first (then "
+            "not-analysed, then proven-unreachable), tie-broken by severity desc."
+        ),
     ),
     order: str = Query(default="desc", pattern=r"^(asc|desc)$"),
     session: AsyncSession = Depends(get_db),
@@ -128,6 +143,7 @@ async def list_project_vulnerabilities_endpoint(
             severity=severity,
             status=finding_status,
             min_epss=min_epss,
+            reachable=reachable,
             sort=sort,
             order=order,
         )
@@ -175,6 +191,9 @@ def _detail_response(payload: dict[str, Any]) -> Response:
         vex_origin=payload["vex_origin"],
         analyst_user_id=payload["analyst_user_id"],
         analyzed_at=payload["analyzed_at"],
+        reachable=payload["reachable"],
+        reachability_source=payload["reachability_source"],
+        reachability_analyzed_at=payload["reachability_analyzed_at"],
         affected_components=[
             AffectedComponent.model_validate(c) for c in payload["affected_components"]
         ],

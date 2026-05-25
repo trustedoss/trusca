@@ -138,6 +138,42 @@ def _gate_badge(gate: str) -> str:
     return "PASS"
 
 
+def _reachable_mode_advisory(gate_result: GateResult) -> str | None:
+    """Advisory line surfacing the reachable-only critical mode (display only).
+
+    Security-reviewer fix-first (Medium #2): when the opt-in
+    ``GATE_REACHABLE_CRITICAL_ONLY`` mode is enabled, a reviewer reading the PR
+    comment must be able to SEE that the critical verdict may have been narrowed
+    to reachable findings — otherwise the relaxation is invisible. This NEVER
+    changes the verdict; it only annotates it.
+
+    Two truthful states:
+      * The mode was enabled AND actually took effect (the scan was
+        reachability-analysed): tell the reviewer that criticals not proven
+        reachable were not counted, and how many reachable criticals remain.
+      * The mode was enabled but had NO effect (safe-by-default fallback: the
+        scan has no reachability analysis — e.g. a non-Go ecosystem): say so
+        explicitly, so nobody assumes a relaxed gate when the gate actually ran
+        at full strength.
+
+    Returns None when the mode is off (``reachable_gate_enforced`` False), so the
+    legacy comment body is byte-for-byte unchanged.
+    """
+    if not gate_result.reachable_gate_enforced:
+        return None
+    if gate_result.reachable_relaxation_applied:
+        n = gate_result.reachable_critical_cve_count
+        noun = "critical" if n == 1 else "criticals"
+        return (
+            f"> Reachable-only critical mode active — {n} reachable {noun}; "
+            "criticals not proven reachable were not counted toward the gate."
+        )
+    return (
+        "> Reachable-only critical mode requested, but this scan has no "
+        "reachability analysis — the gate evaluated all open criticals."
+    )
+
+
 def build_pr_comment_markdown(
     *,
     gate_result: GateResult,
@@ -159,6 +195,9 @@ def build_pr_comment_markdown(
     lines.append(f"**Gate**: **{_gate_badge(gate_result.gate)}**")
     if gate_result.reason:
         lines.append(f"**Reason**: {gate_result.reason}")
+    advisory = _reachable_mode_advisory(gate_result)
+    if advisory:
+        lines.append(advisory)
     lines.append("")
 
     lines.append(f"**Components scanned**: {summary.components_count}")

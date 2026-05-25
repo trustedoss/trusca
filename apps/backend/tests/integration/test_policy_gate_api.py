@@ -165,6 +165,22 @@ async def test_gate_result_member_with_no_scan_returns_pass(client) -> None:
     assert "evaluated_at" in body
 
 
+async def test_gate_result_exposes_reachability_fields(client) -> None:
+    """v2.3 r2: the gate-result body carries the reachability surfacing fields,
+    defaulted on a project with no scan / no reachable findings."""
+    _, team, user = await _seed_team_and_user(client)
+    project_id = await _seed_project(client, team_id=team.id)
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/gate-result",
+        headers=_bearer_for(user),
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["reachable_critical_cve_count"] == 0
+    assert body["reachable_gate_enforced"] is False
+
+
 async def test_gate_result_member_with_succeeded_scan_returns_pass_with_scan_id(
     client,
 ) -> None:

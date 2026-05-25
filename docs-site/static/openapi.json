@@ -1058,7 +1058,7 @@
                 "type": "null"
               }
             ],
-            "description": "Suggested fix version, when DT/NVD reported one. Currently always null — the upstream pipeline does not yet persist this. Reserved for Phase 3.5.",
+            "description": "Version that remediates this CVE for this component, when the scan pipeline could determine one from DT findings (v2.2). Per-(component × CVE): the same CVE may be fixed at different versions across packages. ``null`` when DT reported no fix version, or for findings scanned before v2.2.",
             "title": "Fixed Version"
           },
           "name": {
@@ -1609,8 +1609,8 @@
       "Body_import_project_vex_endpoint_v1_projects__project_id__vex_import_post": {
         "properties": {
           "upload": {
+            "contentMediaType": "application/octet-stream",
             "description": "An OpenVEX or CycloneDX VEX JSON document (format auto-detected).",
-            "format": "binary",
             "title": "Upload",
             "type": "string"
           }
@@ -1624,8 +1624,8 @@
       "Body_restore_backup_endpoint_v1_admin_backup_restore_post": {
         "properties": {
           "archive": {
+            "contentMediaType": "application/octet-stream",
             "description": "tar.gz produced by GET /download.",
-            "format": "binary",
             "title": "Archive",
             "type": "string"
           }
@@ -1639,8 +1639,8 @@
       "Body_upload_source_archive_endpoint_v1_projects__project_id__source_archive_post": {
         "properties": {
           "upload": {
+            "contentMediaType": "application/octet-stream",
             "description": "A .zip archive of the project source tree.",
-            "format": "binary",
             "title": "Upload",
             "type": "string"
           }
@@ -1699,6 +1699,25 @@
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "depth": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Shortest-path distance from a dependency-graph root (v2.2): 1 = direct, 2+ = transitive. ``null`` when the scan carried no dependency graph.",
+            "title": "Depth"
+          },
+          "direct": {
+            "default": false,
+            "description": "True when this is a direct dependency (graph depth 1).",
+            "title": "Direct",
+            "type": "boolean"
           },
           "id": {
             "format": "uuid",
@@ -1832,6 +1851,25 @@
             "format": "uuid",
             "title": "Component Id",
             "type": "string"
+          },
+          "depth": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Shortest-path distance from a dependency-graph root (v2.2): 1 = direct, 2+ = transitive. The shallowest path when the component appears at several. ``null`` when the scan carried no dependency graph (older scans / flat-list ecosystems).",
+            "title": "Depth"
+          },
+          "direct": {
+            "default": false,
+            "description": "True when this component is a direct dependency of the scanned project (graph depth 1). False for transitive deps and when the graph was unavailable.",
+            "title": "Direct",
+            "type": "boolean"
           },
           "id": {
             "description": "component_version id (the scan-bound row)",
@@ -2040,6 +2078,88 @@
         "title": "DTStatusOut",
         "type": "object"
       },
+      "DependencyChangeOut": {
+        "description": "One applied range edit in the proposed manifest.",
+        "examples": [
+          {
+            "after": "^4.17.21",
+            "before": "^4.17.20",
+            "changed": true,
+            "package": "lodash",
+            "section": "dependencies"
+          }
+        ],
+        "properties": {
+          "after": {
+            "description": "The range string after the edit.",
+            "title": "After",
+            "type": "string"
+          },
+          "before": {
+            "description": "The range string before the edit.",
+            "title": "Before",
+            "type": "string"
+          },
+          "changed": {
+            "description": "Whether the range actually changed.",
+            "title": "Changed",
+            "type": "boolean"
+          },
+          "package": {
+            "description": "The npm package name (scoped names kept).",
+            "title": "Package",
+            "type": "string"
+          },
+          "section": {
+            "description": "Manifest block the entry lives in (dependencies / devDependencies / optionalDependencies / peerDependencies).",
+            "title": "Section",
+            "type": "string"
+          }
+        },
+        "required": [
+          "package",
+          "section",
+          "before",
+          "after",
+          "changed"
+        ],
+        "title": "DependencyChangeOut",
+        "type": "object"
+      },
+      "DryRunRecommendationOut": {
+        "description": "One npm component the dry-run proposes to bump (advisory).",
+        "examples": [
+          {
+            "current_version": "4.17.20",
+            "package": "lodash",
+            "recommended_version": "4.17.21"
+          }
+        ],
+        "properties": {
+          "current_version": {
+            "description": "The version the latest scan saw.",
+            "title": "Current Version",
+            "type": "string"
+          },
+          "package": {
+            "description": "The npm package name (scoped names kept).",
+            "title": "Package",
+            "type": "string"
+          },
+          "recommended_version": {
+            "description": "The minimum-safe upgrade target (from the a3 engine).",
+            "title": "Recommended Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "package",
+          "current_version",
+          "recommended_version"
+        ],
+        "title": "DryRunRecommendationOut",
+        "type": "object"
+      },
       "ForgotPasswordRequest": {
         "description": "Inbound payload for POST /auth/forgot-password.",
         "properties": {
@@ -2111,6 +2231,19 @@
             "title": "Project Id",
             "type": "string"
           },
+          "reachable_critical_cve_count": {
+            "default": 0,
+            "description": "Subset of the open critical findings on the evaluated scan that an analyser has additionally proven REACHABLE (reachable IS TRUE) — a v2.3 priority signal. Always populated; ``0`` when no finding is proven reachable or no reachability analysis has run. By default this does NOT change the verdict (it is informational), unless the reachable-only critical mode is enabled (see ``reachable_gate_enforced``).",
+            "minimum": 0.0,
+            "title": "Reachable Critical Cve Count",
+            "type": "integer"
+          },
+          "reachable_gate_enforced": {
+            "default": false,
+            "description": "Whether the opt-in reachable-only critical mode (``GATE_REACHABLE_CRITICAL_ONLY`` env) was active for this evaluation. When ``false`` (default) every open critical counts — the legacy behaviour. When ``true`` the relaxation is requested, but it is applied SAFELY: it takes effect only on scans actually reachability-analysed (reachability is Go-only today), and even then it excludes ONLY criticals PROVEN unreachable — criticals not yet analysed (reachable IS NULL) keep blocking. On a scan with no reachability analysis the gate falls back to counting every open critical, so the flag never silently disables the gate for un-analysed ecosystems.",
+            "title": "Reachable Gate Enforced",
+            "type": "boolean"
+          },
           "reason": {
             "anyOf": [
               {
@@ -2145,6 +2278,344 @@
           "evaluated_at"
         ],
         "title": "GateResultResponse",
+        "type": "object"
+      },
+      "GitHubAppCredentialCreateIn": {
+        "description": "Request body for registering a GitHub App credential.\n\n``private_key`` is the plaintext PEM — the ONLY place it is accepted. It is\nencrypted before persist and never returned.",
+        "properties": {
+          "app_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "App Id",
+            "type": "string"
+          },
+          "app_slug": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "App Slug"
+          },
+          "private_key": {
+            "description": "The GitHub App PEM private key (plaintext). Accepted ONCE at registration, encrypted at rest, and never returned.",
+            "minLength": 1,
+            "title": "Private Key",
+            "type": "string"
+          },
+          "webhook_secret": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Webhook Secret"
+          }
+        },
+        "required": [
+          "app_id",
+          "private_key"
+        ],
+        "title": "GitHubAppCredentialCreateIn",
+        "type": "object"
+      },
+      "GitHubAppCredentialListPage": {
+        "description": "Paginated list of GitHub App credentials.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GitHubAppCredentialOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "GitHubAppCredentialListPage",
+        "type": "object"
+      },
+      "GitHubAppCredentialOut": {
+        "description": "Response shape for a credential — metadata only, NEVER any key material.\n\n``has_private_key`` is always True for a persisted credential (the column is\nNOT NULL); it is surfaced explicitly so the UI can render a \"configured\"\nstate without the schema ever carrying the key or its ciphertext.",
+        "properties": {
+          "app_id": {
+            "title": "App Id",
+            "type": "string"
+          },
+          "app_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "App Slug"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By User Id"
+          },
+          "has_private_key": {
+            "title": "Has Private Key",
+            "type": "boolean"
+          },
+          "has_webhook_secret": {
+            "title": "Has Webhook Secret",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "team_id": {
+            "format": "uuid",
+            "title": "Team Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "team_id",
+          "app_id",
+          "app_slug",
+          "has_private_key",
+          "has_webhook_secret",
+          "created_by_user_id",
+          "created_at",
+          "updated_at",
+          "revoked_at"
+        ],
+        "title": "GitHubAppCredentialOut",
+        "type": "object"
+      },
+      "GitHubAppInstallationLinkIn": {
+        "description": "Request body for linking (opting-in) an installation to a project.",
+        "properties": {
+          "account_login": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Login"
+          },
+          "installation_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Installation Id",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The TrustedOSS project this installation is opted-in to.",
+            "title": "Project Id"
+          },
+          "repository_full_name": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repository Full Name"
+          }
+        },
+        "required": [
+          "installation_id"
+        ],
+        "title": "GitHubAppInstallationLinkIn",
+        "type": "object"
+      },
+      "GitHubAppInstallationListPage": {
+        "description": "Paginated list of installations under a credential.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GitHubAppInstallationOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "GitHubAppInstallationListPage",
+        "type": "object"
+      },
+      "GitHubAppInstallationOut": {
+        "description": "Installation row — no secrets at all.",
+        "properties": {
+          "account_login": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Login"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By User Id"
+          },
+          "credential_id": {
+            "format": "uuid",
+            "title": "Credential Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "installation_id": {
+            "title": "Installation Id",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "repository_full_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repository Full Name"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "credential_id",
+          "installation_id",
+          "account_login",
+          "repository_full_name",
+          "project_id",
+          "created_by_user_id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "GitHubAppInstallationOut",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -2445,6 +2916,54 @@
         "title": "LicenseDistribution",
         "type": "object"
       },
+      "LicenseException": {
+        "additionalProperties": false,
+        "description": "One explicit allow-regardless-of-category waiver.\n\n``spdx_id`` + ``reason`` are required. ``expires_at`` (optional) lets c2\ntreat an expired waiver as absent. ``component_purl`` (optional) scopes the\nwaiver to a single component; absent → applies to any component carrying\n``spdx_id``. Extra keys are rejected so a typo cannot silently smuggle an\nun-validated field through the JSONB column.",
+        "properties": {
+          "component_purl": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Component Purl"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "reason": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "spdx_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Spdx Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "spdx_id",
+          "reason"
+        ],
+        "title": "LicenseException",
+        "type": "object"
+      },
       "LicenseListItem": {
         "description": "One row in the Licenses tab table.\n\nA row represents a single license observed in the project's latest scan,\naggregated across all component_versions that carry it. ``id`` carries the\nlicense_findings row id of a representative finding (usually the\nlexicographically first by source_path) so the drawer endpoint has a\nstable handle to dereference.",
         "properties": {
@@ -2605,6 +3124,216 @@
           "end_line"
         ],
         "title": "LicenseMatch",
+        "type": "object"
+      },
+      "LicensePolicyListPage": {
+        "description": "Paginated list of license policies.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LicensePolicyOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "LicensePolicyListPage",
+        "type": "object"
+      },
+      "LicensePolicyOut": {
+        "description": "ORM-derived response shape for a single license policy.",
+        "properties": {
+          "category_overrides": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Category Overrides",
+            "type": "object"
+          },
+          "compound_operator_strategy": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Compound Operator Strategy",
+            "type": "object"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By User Id"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "license_exceptions": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "License Exceptions",
+            "type": "array"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "organization_id": {
+            "format": "uuid",
+            "title": "Organization Id",
+            "type": "string"
+          },
+          "team_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Id"
+          },
+          "unknown_license_category": {
+            "title": "Unknown License Category",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "organization_id",
+          "team_id",
+          "name",
+          "category_overrides",
+          "license_exceptions",
+          "unknown_license_category",
+          "compound_operator_strategy",
+          "enabled",
+          "created_by_user_id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "LicensePolicyOut",
+        "type": "object"
+      },
+      "LicensePolicyUpsertIn": {
+        "additionalProperties": false,
+        "description": "Request body for PUT (upsert) of a team or org license policy.\n\nAll fields are optional with sensible defaults so a minimal ``{}`` body\ncreates an empty (effectively no-op) policy. Strict validation rejects\noversized / malformed maps with a 422 (never a 500).",
+        "properties": {
+          "category_overrides": {
+            "additionalProperties": {
+              "enum": [
+                "allowed",
+                "conditional",
+                "forbidden"
+              ],
+              "type": "string"
+            },
+            "title": "Category Overrides",
+            "type": "object"
+          },
+          "compound_operator_strategy": {
+            "additionalProperties": {
+              "enum": [
+                "most_restrictive",
+                "least_restrictive"
+              ],
+              "type": "string"
+            },
+            "propertyNames": {
+              "enum": [
+                "AND",
+                "OR",
+                "WITH"
+              ]
+            },
+            "title": "Compound Operator Strategy",
+            "type": "object"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "license_exceptions": {
+            "items": {
+              "$ref": "#/components/schemas/LicenseException"
+            },
+            "title": "License Exceptions",
+            "type": "array"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "unknown_license_category": {
+            "default": "conditional",
+            "enum": [
+              "allowed",
+              "conditional",
+              "forbidden"
+            ],
+            "title": "Unknown License Category",
+            "type": "string"
+          }
+        },
+        "title": "LicensePolicyUpsertIn",
         "type": "object"
       },
       "LoginRequest": {
@@ -2816,6 +3545,190 @@
           "in_app_enabled"
         ],
         "title": "NotificationPrefsOut",
+        "type": "object"
+      },
+      "NpmDryRunRequest": {
+        "description": "Optional uploaded ``package.json`` body.\n\nWhen omitted, the endpoint best-effort fetches the manifest from the\nproject's latest preserved scan source. Supplying ``manifest`` is the\nreliable path when the source was never preserved (or was swept).",
+        "examples": [
+          {
+            "manifest": "{\n  \"name\": \"demo\",\n  \"dependencies\": {\n    \"lodash\": \"^4.17.20\"\n  }\n}\n"
+          }
+        ],
+        "properties": {
+          "manifest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Raw package.json text to edit. When omitted, the endpoint reads the manifest from the latest preserved scan source (best-effort).",
+            "title": "Manifest"
+          }
+        },
+        "title": "NpmDryRunRequest",
+        "type": "object"
+      },
+      "NpmDryRunResponse": {
+        "description": "The computed npm remediation dry-run.",
+        "examples": [
+          {
+            "changed": true,
+            "changes": [
+              {
+                "after": "^4.17.21",
+                "before": "^4.17.20",
+                "changed": true,
+                "package": "lodash",
+                "section": "dependencies"
+              }
+            ],
+            "ecosystem": "npm",
+            "edited_manifest": "{\n  \"name\": \"demo\",\n  \"dependencies\": {\n    \"lodash\": \"^4.17.21\"\n  }\n}\n",
+            "manifest_found": true,
+            "manifest_source": "preserved_source",
+            "notes": [],
+            "project_id": "5b8f1c2e-0c2a-4a1e-9c3d-9c2b1a0f7e11",
+            "recommendations": [
+              {
+                "current_version": "4.17.20",
+                "package": "lodash",
+                "recommended_version": "4.17.21"
+              }
+            ],
+            "scan_id": "7a1d2c3b-4e5f-6a7b-8c9d-0e1f2a3b4c5d",
+            "warnings": [
+              {
+                "code": "lockfile_regeneration_required",
+                "detail": "run `npm install` to regenerate package-lock.json"
+              }
+            ]
+          }
+        ],
+        "properties": {
+          "changed": {
+            "description": "True iff at least one dependency range was rewritten.",
+            "title": "Changed",
+            "type": "boolean"
+          },
+          "changes": {
+            "description": "The applied range edits.",
+            "items": {
+              "$ref": "#/components/schemas/DependencyChangeOut"
+            },
+            "title": "Changes",
+            "type": "array"
+          },
+          "ecosystem": {
+            "description": "Always 'npm' for this endpoint.",
+            "title": "Ecosystem",
+            "type": "string"
+          },
+          "edited_manifest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The proposed edited package.json text (only present when changed); the lockfile is NOT edited — regenerate it with `npm install`.",
+            "title": "Edited Manifest"
+          },
+          "manifest_found": {
+            "description": "True iff a manifest was available to edit.",
+            "title": "Manifest Found",
+            "type": "boolean"
+          },
+          "manifest_source": {
+            "description": "Where the manifest came from: 'override' (request body), 'preserved_source' (latest scan tarball), or 'none' (not available).",
+            "enum": [
+              "override",
+              "preserved_source",
+              "none"
+            ],
+            "title": "Manifest Source",
+            "type": "string"
+          },
+          "notes": {
+            "description": "High-level notes about the dry-run (e.g. 'no manifest found').",
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "project_id": {
+            "description": "The project the dry-run is for.",
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "recommendations": {
+            "description": "The npm upgrade recommendations considered for the edit.",
+            "items": {
+              "$ref": "#/components/schemas/DryRunRecommendationOut"
+            },
+            "title": "Recommendations",
+            "type": "array"
+          },
+          "scan_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The scan the recommendations were derived from (latest scan).",
+            "title": "Scan Id"
+          },
+          "warnings": {
+            "description": "Non-fatal notes (skipped packages, lockfile guidance, …).",
+            "items": {
+              "$ref": "#/components/schemas/RemediationWarningOut"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "project_id",
+          "ecosystem",
+          "manifest_source",
+          "manifest_found",
+          "changed"
+        ],
+        "title": "NpmDryRunResponse",
+        "type": "object"
+      },
+      "NpmPullRequestCreate": {
+        "description": "Optional uploaded ``package.json`` body (mirrors the b2 dry-run request).\n\nWhen omitted, the service best-effort fetches the manifest from the project's\nlatest preserved scan source. NOTE: the target repository is NOT part of this\nbody — it is derived from the project's opted-in GitHub App installation, so a\ncaller can never point the PR at an arbitrary repo.",
+        "examples": [
+          {
+            "manifest": "{\n  \"name\": \"demo\",\n  \"dependencies\": {\n    \"lodash\": \"^4.17.20\"\n  }\n}\n"
+          }
+        ],
+        "properties": {
+          "manifest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Raw package.json text to edit. When omitted, the service reads the manifest from the latest preserved scan source (best-effort).",
+            "title": "Manifest"
+          }
+        },
+        "title": "NpmPullRequestCreate",
         "type": "object"
       },
       "OAuthIdentityListResponse": {
@@ -3679,6 +4592,262 @@
         "title": "RegisterRequest",
         "type": "object"
       },
+      "RemediationPackageChangeOut": {
+        "description": "One package bump recorded on the PR (for audit / human review).\n\n``populate_by_name`` lets the service build this from keyword args\n(``from_version`` / ``to_version``) while the wire / JSONB shape uses the\nnatural ``from`` / ``to`` keys via the field aliases (``from`` is a Python\nkeyword, hence the suffix on the attribute name).",
+        "examples": [
+          {
+            "from": "4.17.20",
+            "package": "lodash",
+            "to": "4.17.21"
+          }
+        ],
+        "properties": {
+          "from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The version the scan saw (advisory; may be null).",
+            "title": "From"
+          },
+          "package": {
+            "description": "The npm package name (scoped names kept).",
+            "title": "Package",
+            "type": "string"
+          },
+          "to": {
+            "description": "The minimum-safe upgrade target the PR applies.",
+            "title": "To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "package",
+          "to"
+        ],
+        "title": "RemediationPackageChangeOut",
+        "type": "object"
+      },
+      "RemediationPullRequestList": {
+        "description": "A page of remediation-PR records for a project (newest first).",
+        "examples": [
+          {
+            "items": [
+              {
+                "base_branch": "main",
+                "created_at": "2026-05-25T12:00:00Z",
+                "ecosystem": "npm",
+                "head_branch": "trustedoss/remediation-1a2b3c4d",
+                "id": "9c2b1a0f-7e11-4a1e-9c3d-5b8f1c2e0c2a",
+                "package_changes": [
+                  {
+                    "from": "4.17.20",
+                    "package": "lodash",
+                    "to": "4.17.21"
+                  }
+                ],
+                "pr_number": 42,
+                "pr_url": "https://github.com/acme/widget/pull/42",
+                "project_id": "5b8f1c2e-0c2a-4a1e-9c3d-9c2b1a0f7e11",
+                "repository_full_name": "acme/widget",
+                "status": "open",
+                "updated_at": "2026-05-25T12:00:01Z"
+              }
+            ],
+            "total": 1
+          }
+        ],
+        "properties": {
+          "items": {
+            "description": "The remediation-PR records.",
+            "items": {
+              "$ref": "#/components/schemas/RemediationPullRequestOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "description": "Total records for the project.",
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total"
+        ],
+        "title": "RemediationPullRequestList",
+        "type": "object"
+      },
+      "RemediationPullRequestOut": {
+        "description": "The persisted remediation-PR record returned to the UI.",
+        "examples": [
+          {
+            "base_branch": "main",
+            "created_at": "2026-05-25T12:00:00Z",
+            "ecosystem": "npm",
+            "head_branch": "trustedoss/remediation-1a2b3c4d",
+            "id": "9c2b1a0f-7e11-4a1e-9c3d-5b8f1c2e0c2a",
+            "package_changes": [
+              {
+                "from": "4.17.20",
+                "package": "lodash",
+                "to": "4.17.21"
+              }
+            ],
+            "pr_number": 42,
+            "pr_url": "https://github.com/acme/widget/pull/42",
+            "project_id": "5b8f1c2e-0c2a-4a1e-9c3d-9c2b1a0f7e11",
+            "repository_full_name": "acme/widget",
+            "status": "open",
+            "updated_at": "2026-05-25T12:00:01Z"
+          }
+        ],
+        "properties": {
+          "base_branch": {
+            "description": "The repo default branch the PR targets.",
+            "title": "Base Branch",
+            "type": "string"
+          },
+          "created_at": {
+            "description": "When the record was created.",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "ecosystem": {
+            "description": "Always 'npm' for this endpoint.",
+            "title": "Ecosystem",
+            "type": "string"
+          },
+          "head_branch": {
+            "description": "The branch the portal created for the bump.",
+            "title": "Head Branch",
+            "type": "string"
+          },
+          "id": {
+            "description": "The remediation-PR record id.",
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "package_changes": {
+            "description": "The package bumps the PR applies.",
+            "items": {
+              "$ref": "#/components/schemas/RemediationPackageChangeOut"
+            },
+            "title": "Package Changes",
+            "type": "array"
+          },
+          "pr_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The GitHub PR number (null until opened).",
+            "title": "Pr Number"
+          },
+          "pr_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The GitHub PR URL (null until opened).",
+            "title": "Pr Url"
+          },
+          "project_id": {
+            "description": "The project the PR remediates.",
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "repository_full_name": {
+            "description": "The 'owner/repo' the PR targets (derived from the opt-in link).",
+            "title": "Repository Full Name",
+            "type": "string"
+          },
+          "status": {
+            "description": "creating | open | failed | superseded.",
+            "enum": [
+              "creating",
+              "open",
+              "failed",
+              "superseded"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "When the record was last updated.",
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "ecosystem",
+          "repository_full_name",
+          "head_branch",
+          "base_branch",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "RemediationPullRequestOut",
+        "type": "object"
+      },
+      "RemediationWarningOut": {
+        "description": "A non-fatal note about the dry-run (skip reason / lockfile guidance).",
+        "examples": [
+          {
+            "code": "lockfile_regeneration_required",
+            "detail": "package.json was edited; run `npm install` to regenerate package-lock.json"
+          }
+        ],
+        "properties": {
+          "code": {
+            "description": "Machine-readable warning code.",
+            "title": "Code",
+            "type": "string"
+          },
+          "detail": {
+            "description": "Human-readable explanation.",
+            "title": "Detail",
+            "type": "string"
+          },
+          "package": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The package the warning concerns, if any.",
+            "title": "Package"
+          }
+        },
+        "required": [
+          "code",
+          "detail"
+        ],
+        "title": "RemediationWarningOut",
+        "type": "object"
+      },
       "ResetPasswordRequest": {
         "description": "Inbound payload for POST /auth/reset-password.\n\nThe new password reuses the registration policy (≥ 12 chars / NIST\n800-63B baseline). The token is a URL-safe string up to ~64 chars\n(``secrets.token_urlsafe(32)`` produces ~43 chars; we cap at 256 for\ndefence in depth against pathological inputs).",
         "properties": {
@@ -4270,6 +5439,88 @@
         "title": "UnreadCountOut",
         "type": "object"
       },
+      "UpgradeRecommendation": {
+        "description": "Minimum-safe-upgrade recommendation for a finding's component (v2.2 2.2-a3).\n\nComputed from the per-finding ``fixed_version`` values (2.2-a1) of *all* the\ncomponent's open CVEs in the same scan: ``recommended_version`` is their\nsemver maximum — the lowest version that resolves every open finding for\nthis component at once. ``null`` ``recommended_version`` with a ``reason``\nmeans we declined to recommend (see below); the UI then shows a \"no\nrecommendation\" hint rather than a misleading partial upgrade.\n\nThe ``direct`` / ``max_severity`` / ``max_epss`` fields are *priority\nsignals* (not used to compute the version) so the drawer / PR comment can\nflag the highest-leverage upgrades — a direct dependency with a high-EPSS\ncritical CVE is the one to bump first.",
+        "properties": {
+          "direct": {
+            "description": "Priority signal: the component is a direct dependency (the scan's ``direct`` flag or graph depth == 1) — actionable in the developer's own manifest right now.",
+            "title": "Direct",
+            "type": "boolean"
+          },
+          "finding_count": {
+            "default": 0,
+            "description": "Number of the component's open findings the recommendation reflects.",
+            "minimum": 0.0,
+            "title": "Finding Count",
+            "type": "integer"
+          },
+          "max_epss": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Priority signal: highest EPSS exploit-probability among the open findings.",
+            "example": 0.97123,
+            "title": "Max Epss"
+          },
+          "max_severity": {
+            "anyOf": [
+              {
+                "enum": [
+                  "critical",
+                  "high",
+                  "medium",
+                  "low",
+                  "info",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Priority signal: highest CVE severity among the component's open findings.",
+            "title": "Max Severity"
+          },
+          "reason": {
+            "description": "Why ``recommended_version`` is set or null: 'ok' (computed); 'no_fix_version' (an open finding has no known fix, so a partial upgrade would be misleading); 'unparseable_version' (all fix strings were malformed); 'no_open_findings' (the component is fully dispositioned).",
+            "enum": [
+              "ok",
+              "no_fix_version",
+              "unparseable_version",
+              "no_open_findings"
+            ],
+            "title": "Reason",
+            "type": "string"
+          },
+          "recommended_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Semver maximum of the component's open findings' fix versions — the lowest version that resolves all of this component's open CVEs in the scan. ``null`` when no recommendation could be made (see ``reason``).",
+            "example": "2.17.1",
+            "title": "Recommended Version"
+          }
+        },
+        "required": [
+          "reason",
+          "direct"
+        ],
+        "title": "UpgradeRecommendation",
+        "type": "object"
+      },
       "UserPublic": {
         "description": "Shape returned for every user-bearing response. Never includes secrets.",
         "properties": {
@@ -4424,6 +5675,13 @@
       },
       "ValidationError": {
         "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
           "loc": {
             "items": {
               "anyOf": [
@@ -4705,6 +5963,46 @@
             ],
             "title": "Published At"
           },
+          "reachability_analyzed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the reachability signal was last written (UTC, ISO-8601). ``null`` until a reachability run touches this finding.",
+            "title": "Reachability Analyzed At"
+          },
+          "reachability_source": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Identifier of the analyser that produced ``reachable`` ('govulncheck' today). ``null`` when ``reachable`` is ``null``.",
+            "example": "govulncheck",
+            "title": "Reachability Source"
+          },
+          "reachable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Tri-state reachability signal (v2.3). ``true`` = the vulnerable symbol is reachable on the project's call graph; ``false`` = analysed and NOT reachable; ``null`` = not analysed. Drives the drawer's reachability badge.",
+            "example": true,
+            "title": "Reachable"
+          },
           "references": {
             "description": "Pass-through of vulnerabilities.references JSONB.",
             "items": {},
@@ -4763,6 +6061,17 @@
             "format": "date-time",
             "title": "Updated At",
             "type": "string"
+          },
+          "upgrade_recommendation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UpgradeRecommendation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Minimum-safe-upgrade recommendation for this finding's component (v2.2 2.2-a3). ``null`` only on legacy responses; otherwise present with a ``reason`` even when no concrete version could be recommended."
           },
           "vex_origin": {
             "anyOf": [
@@ -4871,6 +6180,46 @@
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "reachability_analyzed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the reachability signal was last written (UTC, ISO-8601). ``null`` until a reachability run touches this finding — lets the UI distinguish a stale signal from a never-analysed one.",
+            "title": "Reachability Analyzed At"
+          },
+          "reachability_source": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Identifier of the analyser that produced ``reachable`` ('govulncheck' today). ``null`` when ``reachable`` is ``null``.",
+            "example": "govulncheck",
+            "title": "Reachability Source"
+          },
+          "reachable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Tri-state reachability signal (v2.3). ``true`` = the vulnerable symbol is reachable on the project's call graph; ``false`` = an analyser ran and concluded it is NOT reachable; ``null`` = not analysed (no reachability run, or the package was out of the analyser's language scope). Drives the list's reachability badge and the ``?reachable=`` filter / ``sort=reachable`` ranking.",
+            "example": true,
+            "title": "Reachable"
           },
           "severity": {
             "enum": [
@@ -5025,6 +6374,7 @@
                 "type": "null"
               }
             ],
+            "description": "Version that remediates this CVE for this component, when the scan pipeline could determine one from DT findings (v2.2). ``null`` when DT reported no fix version, or for findings scanned before v2.2.",
             "title": "Fixed Version"
           },
           "severity": {
@@ -5177,9 +6527,9 @@
     }
   },
   "info": {
-    "description": "Open-source enterprise SCA portal — auth surface (Phase 1 PR #5).",
+    "description": "Open-source self-hosted SCA portal — CVE, license compliance, and SBOM management with EPSS prioritization, VEX consumption, CI build gating, and a Dependency-Track circuit breaker.",
     "title": "TrustedOSS Portal API",
-    "version": "0.0.1"
+    "version": "2.2.0-dev"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -5327,7 +6677,7 @@
     },
     "/auth/oauth/{provider}/authorize": {
       "get": {
-        "description": "Public — no authentication required.\n\n302 → provider's authorize URL with a signed state. Returns:\n  - 503 + ``oauth_provider_disabled`` Problem Details when the\n    provider's client id/secret is not configured.\n  - 404 Problem Details when the provider name is unknown (FastAPI's\n    Literal[] gate normally catches this; the explicit branch survives\n    future enum widening).",
+        "description": "Public — no authentication required.\n\n302 → provider's authorize URL with a signed state. Returns:\n  - 503 + ``oauth_provider_disabled`` Problem Details when the\n    provider's client id/secret is not configured.\n  - 404 Problem Details when the provider name is unknown (FastAPI's\n    Literal[] gate normally catches this; the explicit branch survives\n    future enum widening).\n  - 403 ``demo_read_only`` Problem Details when the deployment runs in\n    read-only live-demo mode (OAuth sign-in is a write; see\n    :func:`_demo_read_only_blocked`).",
         "operationId": "oauth_authorize_auth_oauth__provider__authorize_get",
         "parameters": [
           {
@@ -5388,7 +6738,7 @@
     },
     "/auth/oauth/{provider}/callback": {
       "get": {
-        "description": "Public — the provider's redirect lands here after consent.\n\nSuccess path: 302 → ``redirect_after`` (or configured default) with the\nrefresh-token HttpOnly cookie attached.\n\nFailure path: 302 → configured failure URL with ``?error=<reason>``. The\nprovider's own ``?error=access_denied`` (user clicked \"Cancel\") falls\nthrough here too — we forward a normalised ``error=oauth_denied``.",
+        "description": "Public — the provider's redirect lands here after consent.\n\nSuccess path: 302 → ``redirect_after`` (or configured default) with the\nrefresh-token HttpOnly cookie attached.\n\nFailure path: 302 → configured failure URL with ``?error=<reason>``. The\nprovider's own ``?error=access_denied`` (user clicked \"Cancel\") falls\nthrough here too — we forward a normalised ``error=oauth_denied``.\n\nRead-only demo: if ``DEMO_READ_ONLY`` is enabled we 403 BEFORE any token\nexchange or DB write (see :func:`_demo_read_only_blocked`), so the callback\ncan never create/link a User or Team in the demo.",
         "operationId": "oauth_callback_auth_oauth__provider__callback_get",
         "parameters": [
           {
@@ -5608,16 +6958,14 @@
     },
     "/health": {
       "get": {
-        "description": "Cheap PURE-LIVENESS probe used by docker-compose / k8s liveness checks.\n\nPUBLIC / unauthenticated (CLAUDE.md rule #12 explicit exception). This proves\nonly that the uvicorn process is accepting requests — it does NOT touch the\ndatabase and says nothing about schema state. For \"is the schema migrated and\nsafe to serve traffic / start workers\", use GET /health/ready (api/v1/health.py).",
+        "description": "Cheap PURE-LIVENESS probe used by docker-compose / k8s liveness checks.\n\nPUBLIC / unauthenticated (CLAUDE.md rule #12 explicit exception). This proves\nonly that the uvicorn process is accepting requests — it does NOT touch the\ndatabase and says nothing about schema state. For \"is the schema migrated and\nsafe to serve traffic / start workers\", use GET /health/ready (api/v1/health.py).\n\nv2.1 Track B (B5): also surfaces ``demo_read_only`` so the SPA can render the\nread-only banner and disable write actions without needing a separate build.\nThe flag is resolved at request time (CLAUDE.md rule #11), so the same image\nbehaves correctly whether DEMO_READ_ONLY is set or not.",
         "operationId": "health_health_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
+                  "additionalProperties": true,
                   "title": "Response Health Health Get",
                   "type": "object"
                 }
@@ -7823,6 +9171,733 @@
         ]
       }
     },
+    "/v1/github-app-credentials": {
+      "get": {
+        "operationId": "list_credentials_endpoint_v1_github_app_credentials_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "team_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Team Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_revoked",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Revoked",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitHubAppCredentialListPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Paginated list of GitHub App credentials visible to the caller",
+        "tags": [
+          "github-app"
+        ]
+      },
+      "post": {
+        "operationId": "register_credential_endpoint_v1_github_app_credentials_post",
+        "parameters": [
+          {
+            "description": "The team that owns this credential.",
+            "in": "query",
+            "name": "team_id",
+            "required": true,
+            "schema": {
+              "description": "The team that owns this credential.",
+              "format": "uuid",
+              "title": "Team Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GitHubAppCredentialCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitHubAppCredentialOut"
+                }
+              }
+            },
+            "description": "Credential registered. Private key is never returned."
+          },
+          "403": {
+            "description": "Caller is not a team admin of the target team."
+          },
+          "409": {
+            "description": "A credential for this (team, app_id) already exists."
+          },
+          "422": {
+            "description": "Malformed PEM / app_id / metadata, or unusable key."
+          }
+        },
+        "summary": "Register a GitHub App credential (private key encrypted at rest)",
+        "tags": [
+          "github-app"
+        ]
+      }
+    },
+    "/v1/github-app-credentials/{credential_id}": {
+      "delete": {
+        "operationId": "revoke_credential_endpoint_v1_github_app_credentials__credential_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "credential_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Credential Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked (or already revoked — idempotent)."
+          },
+          "403": {
+            "description": "Caller is not a team admin of the credential's team."
+          },
+          "404": {
+            "description": "Not found, or not visible to the caller."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke (soft-delete) a GitHub App credential",
+        "tags": [
+          "github-app"
+        ]
+      },
+      "get": {
+        "operationId": "get_credential_endpoint_v1_github_app_credentials__credential_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "credential_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Credential Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitHubAppCredentialOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found, or not visible to the caller."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Fetch one GitHub App credential's metadata",
+        "tags": [
+          "github-app"
+        ]
+      }
+    },
+    "/v1/github-app-credentials/{credential_id}/installations": {
+      "get": {
+        "operationId": "list_installations_endpoint_v1_github_app_credentials__credential_id__installations_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "credential_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Credential Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitHubAppInstallationListPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Credential not found / not visible."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List installations under a credential",
+        "tags": [
+          "github-app"
+        ]
+      },
+      "post": {
+        "operationId": "link_installation_endpoint_v1_github_app_credentials__credential_id__installations_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "credential_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Credential Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GitHubAppInstallationLinkIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitHubAppInstallationOut"
+                }
+              }
+            },
+            "description": "Installation linked (idempotent on re-link)."
+          },
+          "403": {
+            "description": "Caller is not a team admin, or the project belongs to another team."
+          },
+          "404": {
+            "description": "Credential or project not found / not visible."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Link (opt-in) an installation under a credential",
+        "tags": [
+          "github-app"
+        ]
+      }
+    },
+    "/v1/github-app-credentials/{credential_id}/installations/{installation_row_id}": {
+      "delete": {
+        "operationId": "unlink_installation_endpoint_v1_github_app_credentials__credential_id__installations__installation_row_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "credential_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Credential Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "installation_row_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Installation Row Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Unlinked (idempotent — absent link is a no-op)."
+          },
+          "403": {
+            "description": "Caller is not a team admin of the credential's team."
+          },
+          "404": {
+            "description": "Credential not found / not visible."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Unlink an installation from a credential",
+        "tags": [
+          "github-app"
+        ]
+      }
+    },
+    "/v1/license-policies": {
+      "get": {
+        "operationId": "list_policies_endpoint_v1_license_policies_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "organization_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Organization Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "team_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Team Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LicensePolicyListPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Paginated list of license policies visible to the caller",
+        "tags": [
+          "license-policies"
+        ]
+      }
+    },
+    "/v1/license-policies/org/{organization_id}": {
+      "get": {
+        "operationId": "get_org_policy_endpoint_v1_license_policies_org__organization_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Organization Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LicensePolicyOut"
+                }
+              }
+            },
+            "description": "The org-default policy."
+          },
+          "404": {
+            "description": "No org default, or non-super-admin existence-hide."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read the org-default license policy (super_admin)",
+        "tags": [
+          "license-policies"
+        ]
+      },
+      "put": {
+        "operationId": "upsert_org_policy_endpoint_v1_license_policies_org__organization_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Organization Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LicensePolicyUpsertIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LicensePolicyOut"
+                }
+              }
+            },
+            "description": "Org-default policy created or updated."
+          },
+          "404": {
+            "description": "Not found (non-super-admin existence-hide)."
+          },
+          "409": {
+            "description": "An org-default policy already exists (race)."
+          },
+          "422": {
+            "description": "Malformed / oversized policy payload."
+          }
+        },
+        "summary": "Create or update the org-default license policy (super_admin)",
+        "tags": [
+          "license-policies"
+        ]
+      }
+    },
+    "/v1/license-policies/teams/{team_id}": {
+      "delete": {
+        "operationId": "delete_team_policy_endpoint_v1_license_policies_teams__team_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "team_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Team Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Policy deleted; team falls back to org default / static."
+          },
+          "403": {
+            "description": "Caller is not a team_admin of this team."
+          },
+          "404": {
+            "description": "Team or policy not found (existence-hidden)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reset (delete) a team's license policy",
+        "tags": [
+          "license-policies"
+        ]
+      },
+      "get": {
+        "operationId": "get_team_policy_endpoint_v1_license_policies_teams__team_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "team_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Team Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LicensePolicyOut"
+                }
+              }
+            },
+            "description": "The effective policy (team override, else org default)."
+          },
+          "403": {
+            "description": "Caller is not a member of this team."
+          },
+          "404": {
+            "description": "No enabled policy applies (the team falls back to the static catalog)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read the effective license policy for a team",
+        "tags": [
+          "license-policies"
+        ]
+      },
+      "put": {
+        "operationId": "upsert_team_policy_endpoint_v1_license_policies_teams__team_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "team_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Team Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LicensePolicyUpsertIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LicensePolicyOut"
+                }
+              }
+            },
+            "description": "Policy created or updated (idempotent upsert)."
+          },
+          "403": {
+            "description": "Caller is not a team_admin of this team."
+          },
+          "404": {
+            "description": "Team not found (existence-hidden)."
+          },
+          "409": {
+            "description": "Uniqueness conflict on the (org, team) scope."
+          },
+          "422": {
+            "description": "Malformed / oversized policy payload."
+          }
+        },
+        "summary": "Create or update a team's license policy",
+        "tags": [
+          "license-policies"
+        ]
+      }
+    },
     "/v1/license_findings/{finding_id}": {
       "get": {
         "operationId": "get_license_finding_endpoint_v1_license_findings__finding_id__get",
@@ -8925,6 +11000,212 @@
         ]
       }
     },
+    "/v1/projects/{project_id}/remediation/npm/dry-run": {
+      "post": {
+        "operationId": "post_npm_dry_run_v1_projects__project_id__remediation_npm_dry_run_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/NpmDryRunRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NpmDryRunResponse"
+                }
+              }
+            },
+            "description": "Computed dry-run (may be a no-op / no-manifest)."
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "404": {
+            "description": "Project not found / not accessible"
+          },
+          "422": {
+            "description": "Supplied/fetched package.json could not be edited"
+          }
+        },
+        "summary": "Preview the npm dependency-bump edit for a project (dry-run, no PR)",
+        "tags": [
+          "remediation"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/remediation/npm/pull-request": {
+      "post": {
+        "description": "Open (or return the existing) automated npm remediation PR.\n\nteam_admin RBAC + opt-in enforcement live in the service. Returns 201 for a\nfreshly opened PR, 200 for an idempotent hit on an existing open PR, and 204\nwhen there is nothing to remediate.",
+        "operationId": "post_npm_pull_request_v1_projects__project_id__remediation_npm_pull_request_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/NpmPullRequestCreate"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemediationPullRequestOut"
+                }
+              }
+            },
+            "description": "An existing open PR was returned (idempotent hit)."
+          },
+          "201": {
+            "description": "A new remediation PR was opened."
+          },
+          "204": {
+            "description": "Nothing to remediate (no manifest change)."
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Caller is not a team_admin of the project's team"
+          },
+          "404": {
+            "description": "Project not found / not accessible"
+          },
+          "409": {
+            "description": "Project is not opted in to automated remediation PRs"
+          },
+          "422": {
+            "description": "Manifest / stored config unusable"
+          },
+          "502": {
+            "description": "A GitHub write failed"
+          }
+        },
+        "summary": "Open an automated npm remediation PR on the project's opted-in repo",
+        "tags": [
+          "remediation"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/remediation/pull-requests": {
+      "get": {
+        "operationId": "get_remediation_pull_requests_v1_projects__project_id__remediation_pull_requests_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemediationPullRequestList"
+                }
+              }
+            },
+            "description": "The project's remediation-PR records (newest first)."
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "404": {
+            "description": "Project not found / not accessible"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List the project's automated remediation PR records",
+        "tags": [
+          "remediation"
+        ]
+      }
+    },
     "/v1/projects/{project_id}/sbom": {
       "get": {
         "operationId": "export_project_sbom_endpoint_v1_projects__project_id__sbom_get",
@@ -9592,12 +11873,33 @@
             }
           },
           {
+            "description": "Tri-state reachability filter (v2.3). ``true`` → only findings whose vulnerable symbol is reachable on the call graph; ``false`` → only findings an analyser proved NOT reachable; ``unknown`` → only not-analysed findings (reachable IS NULL). Omit to disable the reachability filter.",
+            "in": "query",
+            "name": "reachable",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(true|false|unknown)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Tri-state reachability filter (v2.3). ``true`` → only findings whose vulnerable symbol is reachable on the call graph; ``false`` → only findings an analyser proved NOT reachable; ``unknown`` → only not-analysed findings (reachable IS NULL). Omit to disable the reachability filter.",
+              "title": "Reachable"
+            }
+          },
+          {
+            "description": "Sort key. ``reachable`` ranks reachable findings first (then not-analysed, then proven-unreachable), tie-broken by severity desc.",
             "in": "query",
             "name": "sort",
             "required": false,
             "schema": {
               "default": "severity",
-              "pattern": "^(severity|cvss|status|discovered_at|epss)$",
+              "description": "Sort key. ``reachable`` ranks reachable findings first (then not-analysed, then proven-unreachable), tie-broken by severity desc.",
+              "pattern": "^(severity|cvss|status|discovered_at|epss|reachable)$",
               "title": "Sort",
               "type": "string"
             }

@@ -76,7 +76,7 @@ from datetime import UTC, datetime
 from typing import Literal
 
 import structlog
-from sqlalchemy import String, cast, func, select
+from sqlalchemy import String, case, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import (
@@ -127,6 +127,25 @@ class GateResult:
     # existing keyword-construction call site (and pickled/old callers) valid.
     epss_gate_count: int = 0
     epss_threshold: float | None = None
+    # Reachability surfacing (v2.3 r2). ``reachable_critical_cve_count`` is a
+    # SUBSET of ``critical_cve_count``: open critical findings that an analyser
+    # has additionally proven REACHABLE (``reachable IS TRUE``). It is a priority
+    # signal the gate result / SCA comment surface so a reviewer can see "of the
+    # N blocking criticals, M sit on a real call path" — it does NOT, by itself,
+    # change the pass/fail verdict. ``reachable_gate_enforced`` reflects whether
+    # the opt-in ``GATE_REACHABLE_CRITICAL_ONLY`` mode was active for this
+    # evaluation (default False → legacy behaviour, see ``evaluate_gate``).
+    # Defaults keep every existing keyword-construction call site valid.
+    reachable_critical_cve_count: int = 0
+    reachable_gate_enforced: bool = False
+    # Whether the opt-in relaxation ACTUALLY took effect for this evaluation.
+    # ``reachable_gate_enforced`` only reflects that the env flag was SET; the
+    # relaxation additionally requires the scan's open criticals to have been
+    # reachability-analysed (see ``evaluate_gate`` safe-by-default fallback). On a
+    # non-Go / un-analysed scan ``reachable_gate_enforced`` is True but
+    # ``reachable_relaxation_applied`` is False — the gate ran at full strength.
+    # Consumers (SCA comment) use this to render an accurate advisory.
+    reachable_relaxation_applied: bool = False
 
 
 async def _latest_succeeded_scan_id(
@@ -154,20 +173,79 @@ async def _latest_succeeded_scan_id(
     return result.scalar_one_or_none()
 
 
-async def _count_open_critical_cves(
+@dataclass(frozen=True)
+class _CriticalReachabilityCounts:
+    """Reachability breakdown of a scan's OPEN critical findings, one query.
+
+    All four counts share the same population: open (``status NOT IN
+    _CLOSED_FINDING_STATUSES``) ``severity == 'critical'`` findings on one scan.
+
+    * ``total`` — every open critical (the legacy blocking population).
+    * ``reachable`` — ``reachable IS TRUE`` (analyser PROVED a real call path).
+    * ``analysed`` — ``reachable IS NOT NULL`` (the analyser produced a verdict
+      either way — TRUE or FALSE). This is the safe-by-default gate: the
+      reachable-only RELAXATION only ever applies when ``analysed > 0``, i.e. the
+      scan's ecosystem was actually reachability-analysed. Reachability is
+      Go-only today, so a non-Go scan has ``analysed == 0`` and the relaxation is
+      a no-op there (the gate stays full-strength).
+    * ``unreachable`` — ``reachable IS FALSE`` (analyser PROVED no call path).
+      The ONLY findings the relaxation suppresses. NULL (not analysed) is NEVER
+      suppressed: an unanalysed finding is treated conservatively as "could be
+      reachable" and keeps blocking.
+
+    Invariant: ``reachable + unreachable == analysed`` and
+    ``analysed <= total``. One round-trip via conditional aggregation — no N+1.
+    """
+
+    total: int
+    reachable: int
+    analysed: int
+    unreachable: int
+
+
+async def _critical_reachability_counts(
     session: AsyncSession,
     scan_id: uuid.UUID,
-) -> int:
-    """Count critical-severity findings on ``scan_id`` that are still open.
+) -> _CriticalReachabilityCounts:
+    """Compute the open-critical reachability breakdown for ``scan_id`` in ONE query.
 
-    "Open" = ``vulnerability_findings.status NOT IN
-    ('not_affected', 'fixed', 'false_positive')``. ``suppressed`` IS counted
-    because suppressing a critical CVE without a justification (the
-    vulnerability triage UI requires one) is itself a release-blocking
-    signal — we'd rather over-count than miss.
+    Uses conditional aggregation (``COUNT(*) FILTER``-style ``case`` sums) so the
+    total / reachable / analysed / unreachable counts come back from a single
+    indexed scan rather than four separate round-trips (no N+1). The base
+    predicate is the legacy open-critical population — open
+    (``status NOT IN _CLOSED_FINDING_STATUSES``) ``severity == 'critical'`` —
+    so ``total`` here is byte-for-byte the pre-r2 blocking count, keeping the
+    legacy gate population and the reachability breakdown provably consistent.
+
+    NULL handling is deliberate and tri-state-safe:
+      * ``reachable`` counts ``reachable IS TRUE`` only.
+      * ``unreachable`` counts ``reachable IS FALSE`` only.
+      * ``analysed`` counts ``reachable IS NOT NULL`` (TRUE or FALSE).
+      * NULL (not analysed) contributes to ``total`` but to NONE of the others —
+        it is never treated as reachable OR unreachable.
     """
     stmt = (
-        select(func.count())
+        select(
+            func.count(),
+            func.coalesce(
+                func.sum(
+                    case((VulnerabilityFinding.reachable.is_(True), 1), else_=0)
+                ),
+                0,
+            ),
+            func.coalesce(
+                func.sum(
+                    case((VulnerabilityFinding.reachable.isnot(None), 1), else_=0)
+                ),
+                0,
+            ),
+            func.coalesce(
+                func.sum(
+                    case((VulnerabilityFinding.reachable.is_(False), 1), else_=0)
+                ),
+                0,
+            ),
+        )
         .select_from(VulnerabilityFinding)
         .join(
             VulnerabilityModel,
@@ -179,8 +257,54 @@ async def _count_open_critical_cves(
             cast(VulnerabilityFinding.status, String).notin_(_CLOSED_FINDING_STATUSES),
         )
     )
-    result = await session.execute(stmt)
-    return int(result.scalar_one())
+    row = (await session.execute(stmt)).one()
+    return _CriticalReachabilityCounts(
+        total=int(row[0]),
+        reachable=int(row[1]),
+        analysed=int(row[2]),
+        unreachable=int(row[3]),
+    )
+
+
+def _resolve_reachable_critical_only() -> bool:
+    """Read the opt-in ``GATE_REACHABLE_CRITICAL_ONLY`` flag at evaluation time.
+
+    Default OFF (returns False) → the critical-CVE gate condition is unchanged:
+    ANY open critical CVE blocks, regardless of reachability. This preserves the
+    legacy contract byte-for-byte (the golden ``test_policy_gate`` cases author
+    no reachability and must stay green).
+
+    When set to a truthy value (``1``/``true``/``yes``/``on``, case-insensitive)
+    the critical condition is RELAXED: open critical findings the analyser PROVED
+    UNREACHABLE (``reachable IS FALSE``) no longer block the build. This is a
+    deliberate relaxation an operator opts into ("don't fail my build for a
+    critical CVE that isn't on a real call path"), so it is gated behind an
+    explicit env flag and never silently enabled. Read inside the function per
+    CLAUDE.md core rule #11.
+
+    SAFE-BY-DEFAULT FALLBACK (security-reviewer fix-first, Medium #1)
+    ----------------------------------------------------------------
+    This flag is GLOBAL but reachability is currently a Go-only signal. On a
+    non-Go scan every finding is ``reachable IS NULL`` (never analysed). A naive
+    "block only reachable-TRUE" relaxation would then yield an EMPTY blocking set
+    on those scans — silently DISABLING the gate for whole ecosystems. To prevent
+    that foot-gun, the actual relaxation in :func:`evaluate_gate` applies ONLY when
+    the scan's open criticals were actually reachability-analysed (at least one
+    ``reachable IS NOT NULL``); otherwise the gate falls back to the full legacy
+    blocking population. And even when it applies, ONLY proven-unreachable
+    (``reachable IS FALSE``) criticals are excluded — NULL (not analysed) stays
+    BLOCKING, so an unanalysed finding is never silently treated as unreachable.
+    See :class:`_CriticalReachabilityCounts` and ``evaluate_gate``.
+
+    Important: this flag never STRENGTHENS the gate — it can only shrink the set
+    of blocking criticals, and only by removing PROVEN-unreachable findings on a
+    scan that was actually analysed. With it off, behaviour is identical to
+    before r2.
+    """
+    raw = os.getenv("GATE_REACHABLE_CRITICAL_ONLY")
+    if raw is None:
+        return False
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _resolve_epss_threshold() -> float | None:
@@ -412,17 +536,26 @@ def _build_reason(
     forbidden_license_count: int,
     epss_gate_count: int = 0,
     epss_threshold: float | None = None,
+    *,
+    reachable_critical_only: bool = False,
 ) -> str | None:
     """Compose the human-readable ``reason`` field. ``None`` on pass.
 
     The EPSS clause is appended only when the EPSS gate is active
     (``epss_threshold`` is not None) AND at least one finding tripped it, so a
     disabled or passing EPSS gate leaves the legacy reason text untouched.
+
+    ``reachable_critical_only`` only changes the WORDING of the critical clause
+    (it reads "reachable critical CVE(s)" so the reviewer knows the count was
+    narrowed to reachable findings). The counting is done by the caller; with the
+    flag off the legacy "critical CVE(s) detected" wording is byte-for-byte
+    preserved.
     """
     parts: list[str] = []
     if critical_cve_count > 0:
+        noun = "reachable critical" if reachable_critical_only else "critical"
         parts.append(
-            f"{critical_cve_count} critical "
+            f"{critical_cve_count} {noun} "
             f"{'CVE' if critical_cve_count == 1 else 'CVEs'} detected",
         )
     if forbidden_license_count > 0:
@@ -457,6 +590,8 @@ async def evaluate_gate(
     # disabled). We surface it in the result meta even on the no-scan path so
     # callers can render "EPSS gate: 0.5 (no signal)" consistently.
     epss_threshold = _resolve_epss_threshold()
+    # Opt-in reachable-only critical mode (default OFF → legacy behaviour).
+    reachable_critical_only = _resolve_reachable_critical_only()
 
     if scan_id is None:
         # No signal: we explicitly pass. See module docstring.
@@ -470,6 +605,10 @@ async def evaluate_gate(
             evaluated_at=evaluated_at,
             epss_gate_count=0,
             epss_threshold=epss_threshold,
+            reachable_critical_cve_count=0,
+            reachable_gate_enforced=reachable_critical_only,
+            # No scan → nothing analysed → the relaxation can never have applied.
+            reachable_relaxation_applied=False,
         )
         log.info(
             "policy_gate.evaluated",
@@ -480,11 +619,18 @@ async def evaluate_gate(
             forbidden_license_count=0,
             epss_gate_count=0,
             epss_threshold=epss_threshold,
+            reachable_critical_cve_count=0,
+            reachable_gate_enforced=reachable_critical_only,
+            reachable_relaxation_applied=False,
             reason=None,
         )
         return result
 
-    critical_cve_count = await _count_open_critical_cves(session, scan_id)
+    # One round-trip: total / reachable / analysed / unreachable open criticals.
+    crit = await _critical_reachability_counts(session, scan_id)
+    all_critical_cve_count = crit.total
+    # Always surfaced (subset signal), independent of the opt-in mode.
+    reachable_critical_cve_count = crit.reachable
     forbidden_license_count = await _resolve_forbidden_license_count(
         session, project_id=project_id, scan_id=scan_id
     )
@@ -494,31 +640,89 @@ async def evaluate_gate(
         else 0
     )
 
+    # The critical count that DRIVES the verdict.
+    #
+    # Default (flag off): every open critical blocks — identical to the pre-r2
+    # contract.
+    #
+    # Opt-in (flag on) with SAFE-BY-DEFAULT FALLBACK: the relaxation applies ONLY
+    # when this scan's open criticals were actually reachability-analysed
+    # (``crit.analysed > 0`` — true on Go scans, false on never-analysed
+    # ecosystems like a pure-npm/PyPI scan whose findings are all NULL). When it
+    # applies, we exclude ONLY proven-unreachable (``reachable IS FALSE``)
+    # criticals; NULL (not analysed) stays blocking. When it does NOT apply
+    # (analysed == 0), we fall back to the full legacy blocking population so the
+    # gate is never silently disabled on an un-analysed ecosystem.
+    relaxation_applies = reachable_critical_only and crit.analysed > 0
+    if relaxation_applies:
+        # total - unreachable == (reachable + null). NULL kept conservatively.
+        blocking_critical_count = all_critical_cve_count - crit.unreachable
+    else:
+        blocking_critical_count = all_critical_cve_count
+
+    # The relaxation actually SUPPRESSED at least one otherwise-blocking critical.
+    # This is an operational signal (the gate verdict was softened from what the
+    # legacy gate would have produced), so it is WARNING, not INFO.
+    relaxation_suppressed = (
+        relaxation_applies
+        and all_critical_cve_count > 0
+        and blocking_critical_count < all_critical_cve_count
+    )
+    if relaxation_suppressed:
+        log.warning(
+            "policy_gate.reachable_relaxation_suppressed_criticals",
+            project_id=str(project_id),
+            scan_id=str(scan_id),
+            all_critical_cve_count=all_critical_cve_count,
+            blocking_critical_count=blocking_critical_count,
+            unreachable_critical_count=crit.unreachable,
+            reachable_critical_cve_count=reachable_critical_cve_count,
+            analysed_critical_count=crit.analysed,
+        )
+
+    # Reason wording reflects the narrowed population only when the relaxation is
+    # actually in effect for this scan (analysed). On the safe-fallback path the
+    # legacy "critical" wording is preserved — the operator turned the flag on but
+    # it had no effect, so we must not claim "reachable critical".
     reason = _build_reason(
-        critical_cve_count,
+        blocking_critical_count,
         forbidden_license_count,
         epss_gate_count,
         epss_threshold,
+        reachable_critical_only=relaxation_applies,
     )
     gate: GateOutcome = "fail" if reason is not None else "pass"
 
     result = GateResult(
         gate=gate,
         reason=reason,
-        critical_cve_count=critical_cve_count,
+        # ``critical_cve_count`` reflects the count the gate ACTED ON so existing
+        # consumers (SCA comment, CI) read a count consistent with the verdict.
+        # The full population is recoverable as reachable + (the rest); the
+        # always-present ``reachable_critical_cve_count`` is the subset signal.
+        critical_cve_count=blocking_critical_count,
         forbidden_license_count=forbidden_license_count,
         project_id=project_id,
         scan_id=scan_id,
         evaluated_at=evaluated_at,
         epss_gate_count=epss_gate_count,
         epss_threshold=epss_threshold,
+        reachable_critical_cve_count=reachable_critical_cve_count,
+        reachable_gate_enforced=reachable_critical_only,
+        reachable_relaxation_applied=relaxation_applies,
     )
     log.info(
         "policy_gate.evaluated",
         project_id=str(project_id),
         gate=result.gate,
         scan_id=str(scan_id),
-        critical_cve_count=critical_cve_count,
+        critical_cve_count=blocking_critical_count,
+        all_critical_cve_count=all_critical_cve_count,
+        reachable_critical_cve_count=reachable_critical_cve_count,
+        analysed_critical_count=crit.analysed,
+        unreachable_critical_count=crit.unreachable,
+        reachable_gate_enforced=reachable_critical_only,
+        reachable_relaxation_applied=relaxation_applies,
         forbidden_license_count=forbidden_license_count,
         epss_gate_count=epss_gate_count,
         epss_threshold=epss_threshold,

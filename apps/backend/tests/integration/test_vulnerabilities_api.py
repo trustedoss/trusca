@@ -137,6 +137,9 @@ async def _seed_finding(
     initial_status: str = "new",
     epss_score: float | None = None,
     epss_percentile: float | None = None,
+    reachable: bool | None = None,
+    reachability_source: str | None = None,
+    reachability_analyzed_at: datetime | None = None,
 ) -> uuid.UUID:
     """Insert one component_version + vulnerability + finding tied to scan_id."""
     factory = await _factory(client)
@@ -183,6 +186,9 @@ async def _seed_finding(
             vulnerability_id=vuln.id,
             status=initial_status,
             analysis_state=initial_status,
+            reachable=reachable,
+            reachability_source=reachability_source,
+            reachability_analyzed_at=reachability_analyzed_at,
         )
         session.add(finding)
         await session.commit()
@@ -677,3 +683,120 @@ async def test_list_min_epss_boundary_values_accepted(client) -> None:
             params={"min_epss": ok},
         )
         assert response.status_code == 200, (ok, response.text)
+
+
+# ---------------------------------------------------------------------------
+# Reachability (v2.3 r2) — response fields, ?reachable= filter (true/false/
+# unknown + bad token → 422), sort=reachable.
+# ---------------------------------------------------------------------------
+
+
+async def test_list_response_carries_reachability_fields(client) -> None:
+    _, team, user = await _seed_team_with_user(client)
+    project_id, scan_id = await _seed_scanned_project(client, team_id=team.id)
+    analyzed = datetime(2026, 5, 1, 12, 0, 0, tzinfo=UTC)
+    await _seed_finding(
+        client,
+        scan_id=scan_id,
+        reachable=True,
+        reachability_source="govulncheck",
+        reachability_analyzed_at=analyzed,
+    )
+    headers = _bearer_for(user)
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/vulnerabilities", headers=headers
+    )
+    assert response.status_code == 200, response.text
+    item = response.json()["items"][0]
+    assert item["reachable"] is True
+    assert item["reachability_source"] == "govulncheck"
+    assert item["reachability_analyzed_at"] is not None
+
+
+async def test_detail_response_carries_reachability_fields(client) -> None:
+    _, team, user = await _seed_team_with_user(client)
+    _, scan_id = await _seed_scanned_project(client, team_id=team.id)
+    finding_id = await _seed_finding(
+        client, scan_id=scan_id, reachable=False, reachability_source="govulncheck"
+    )
+    headers = _bearer_for(user)
+
+    response = await client.get(
+        f"/v1/vulnerability_findings/{finding_id}", headers=headers
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["reachable"] is False
+    assert body["reachability_source"] == "govulncheck"
+
+
+async def test_list_reachable_filter_true(client) -> None:
+    _, team, user = await _seed_team_with_user(client)
+    project_id, scan_id = await _seed_scanned_project(client, team_id=team.id)
+    rid_true = await _seed_finding(client, scan_id=scan_id, reachable=True)
+    await _seed_finding(client, scan_id=scan_id, reachable=False)
+    await _seed_finding(client, scan_id=scan_id, reachable=None)
+    headers = _bearer_for(user)
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/vulnerabilities",
+        headers=headers,
+        params={"reachable": "true"},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["total"] == 1
+    assert body["items"][0]["id"] == str(rid_true)
+
+
+async def test_list_reachable_filter_unknown_matches_null(client) -> None:
+    _, team, user = await _seed_team_with_user(client)
+    project_id, scan_id = await _seed_scanned_project(client, team_id=team.id)
+    await _seed_finding(client, scan_id=scan_id, reachable=True)
+    await _seed_finding(client, scan_id=scan_id, reachable=False)
+    rid_null = await _seed_finding(client, scan_id=scan_id, reachable=None)
+    headers = _bearer_for(user)
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/vulnerabilities",
+        headers=headers,
+        params={"reachable": "unknown"},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["total"] == 1
+    assert body["items"][0]["id"] == str(rid_null)
+    assert body["items"][0]["reachable"] is None
+
+
+async def test_list_reachable_bad_token_returns_422(client) -> None:
+    _, team, user = await _seed_team_with_user(client)
+    project_id, _ = await _seed_scanned_project(client, team_id=team.id)
+    headers = _bearer_for(user)
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/vulnerabilities",
+        headers=headers,
+        params={"reachable": "maybe"},
+    )
+    assert response.status_code == 422
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_list_sort_reachable_ranks_reachable_first(client) -> None:
+    _, team, user = await _seed_team_with_user(client)
+    project_id, scan_id = await _seed_scanned_project(client, team_id=team.id)
+    rid_true = await _seed_finding(client, scan_id=scan_id, reachable=True)
+    rid_false = await _seed_finding(client, scan_id=scan_id, reachable=False)
+    rid_null = await _seed_finding(client, scan_id=scan_id, reachable=None)
+    headers = _bearer_for(user)
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/vulnerabilities",
+        headers=headers,
+        params={"sort": "reachable", "order": "desc", "limit": 100},
+    )
+    assert response.status_code == 200, response.text
+    order = [i["id"] for i in response.json()["items"]]
+    assert order == [str(rid_true), str(rid_null), str(rid_false)]
