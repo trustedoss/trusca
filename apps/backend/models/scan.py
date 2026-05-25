@@ -677,6 +677,27 @@ class VulnerabilityFinding(Base):
     # ``component_versions.version`` so any observed version fits; the collector
     # caps the value well below this width.
     fixed_version: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Reachability signal (v2.3 r1, migration 0022). Best-effort enrichment
+    # written by ``tasks.scan_reachability`` via a static call-graph analyser
+    # (Go ``govulncheck`` today). Tri-state on purpose — the three states are
+    # semantically distinct and downstream (r2 sort / gate / UI badge) MUST keep
+    # them apart:
+    #   NULL  → not analysed (no reachability run, or this finding's package was
+    #           out of the analyser's language/scope). Default for every row.
+    #   True  → the vulnerable symbol is reachable on the project's call graph.
+    #   False → the analyser ran and concluded the symbol is NOT reachable.
+    # A NOT-NULL DEFAULT FALSE would wrongly merge "unknown" with "unreachable",
+    # so the column is NULLable (expand step; no backfill — see 0022 docstring).
+    reachable: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    # Which analyser produced ``reachable`` ('govulncheck' today). Free TEXT-ish
+    # VARCHAR(64) — adding a future analyser needs no ALTER TYPE. NULL when
+    # ``reachable`` is NULL.
+    reachability_source: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # When the reachability signal was last written. NULL until a run touches the
+    # row; lets r2 distinguish a stale signal from a never-run one.
+    reachability_analyzed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     analysis_state: Mapped[str | None] = mapped_column(String(32), nullable=True)
     analysis_justification: Mapped[str | None] = mapped_column(Text, nullable=True)
     analysis_response: Mapped[dict[str, Any]] = mapped_column(

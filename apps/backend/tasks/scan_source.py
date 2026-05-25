@@ -428,6 +428,34 @@ def _run_pipeline(
     _set_stage(scan_uuid, "finalize")
     _mark_succeeded(scan_uuid)
 
+    # v2.3 r1 — fan out a follow-up reachability enrichment task (Go govulncheck
+    # over the just-preserved source). MUST run AFTER `_mark_succeeded` and
+    # AFTER `_preserve_source_tree` above (the reachability task reads the
+    # preserved tarball). Best-effort, mirroring the scancode / preserve stages:
+    # a dispatch failure logs a WARNING and the scan still reports succeeded — a
+    # missing reachability signal is degraded, never fatal. The enqueue itself
+    # honours REACHABILITY_ENABLED and returns None when disabled (no-op here).
+    _dispatch_reachability(scan_uuid)
+
+
+def _dispatch_reachability(scan_uuid: uuid.UUID) -> None:
+    """Best-effort dispatch of the v2.3 r1 reachability follow-up task.
+
+    Swallows and logs any error so a broker hiccup at dispatch time cannot turn
+    a succeeded scan into a failure (the scan row is already ``succeeded`` by the
+    time we get here).
+    """
+    try:
+        from tasks import enqueue_reachability
+
+        task_id = enqueue_reachability(str(scan_uuid))
+        if task_id is not None:
+            log.info("reachability_enqueued", scan_id=str(scan_uuid), task_id=task_id)
+    except Exception as exc:  # noqa: BLE001 — dispatch must never fail the scan
+        log.warning(
+            "reachability_enqueue_failed", scan_id=str(scan_uuid), error=str(exc)[:300]
+        )
+
 
 # ---------------------------------------------------------------------------
 # Fetch
