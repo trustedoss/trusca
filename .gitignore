@@ -31,6 +31,15 @@ test-results/
 .env.local
 .env.*.local
 
+# cosign signing keys (v2.3-s1) — the encrypted private key + public key live
+# under ./secrets/cosign (default COSIGN_KEYS_HOST_PATH) but must NEVER be
+# committed. The directory itself is kept via secrets/cosign/.gitkeep so the
+# docker-compose bind mount resolves on a fresh checkout.
+secrets/cosign/cosign.key
+secrets/cosign/cosign.pub
+secrets/**/*.key
+secrets/**/*.pub
+
 # Editor / OS
 .idea/
 .vscode/

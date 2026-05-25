@@ -307,8 +307,57 @@ def scrubbed_env_for_scancode() -> dict[str, str]:
     )
 
 
+# ---------------------------------------------------------------------------
+# cosign (v2.3-s1 — SBOM signing)
+# ---------------------------------------------------------------------------
+
+# cosign's keyless flow needs the OIDC / Sigstore endpoints, which it reads from
+# its own ``COSIGN_*`` / ``SIGSTORE_*`` env band. These are operator-set on the
+# worker (or ambient CI identity), never carried in via the clone, so they are
+# not an exfil vector — but they MUST be forwarded for keyless to work behind a
+# private Fulcio/Rekor or with a non-default OIDC issuer. ``COSIGN_PASSWORD`` is
+# DELIBERATELY EXCLUDED here: the cosign adapter sets it explicitly on the env it
+# passes to the subprocess (decrypted at call time), so forwarding an inherited
+# one would (a) be redundant and (b) risk leaking an operator's shell-exported
+# password into a path we did not intend. ``COSIGN_KEY_PASSWORD_ENCRYPTED`` is
+# config, not a cosign env, and is never forwarded.
+_COSIGN_EXTRA_ALLOWLIST: frozenset[str] = frozenset(
+    {
+        # Keyless OIDC / Sigstore endpoints + identity hints.
+        "COSIGN_EXPERIMENTAL",
+        "COSIGN_OIDC_ISSUER",
+        "COSIGN_OIDC_CLIENT_ID",
+        "SIGSTORE_OIDC_ISSUER",
+        "SIGSTORE_REKOR_URL",
+        "SIGSTORE_FULCIO_URL",
+        "FULCIO_URL",
+        "REKOR_URL",
+        "TUF_ROOT",
+        "SIGSTORE_ID_TOKEN",
+    }
+)
+
+
+def scrubbed_env_for_cosign() -> dict[str, str]:
+    """Env dict for the cosign invocation (v2.3-s1).
+
+    The shared base allowlist (PATH / HOME / proxy / CA hints) plus the
+    cosign / Sigstore endpoint band — and nothing else. Worker secrets
+    (``DT_API_KEY`` / ``SECRET_KEY`` / ``DATABASE_URL`` / ``*_WEBHOOK_URL``) are
+    stripped: cosign signs an attacker-influenced SBOM blob, so a cosign CVE or
+    a hostile plugin path must have no credential to exfiltrate. The cosign
+    adapter sets ``COSIGN_PASSWORD`` on the returned dict itself (decrypted at
+    call time) — it is intentionally NOT inherited here.
+    """
+    return _build_env(
+        explicit=_BASE_ALLOWLIST | _COSIGN_EXTRA_ALLOWLIST,
+        defaults=_GENERIC_DEFAULTS,
+    )
+
+
 __all__ = [
     "scrubbed_env_for_cdxgen",
+    "scrubbed_env_for_cosign",
     "scrubbed_env_for_prep",
     "scrubbed_env_for_scancode",
 ]

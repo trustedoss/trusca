@@ -119,6 +119,19 @@ x-backend-env: &backend-env
   SCANCODE_MAX_FILES: ${SCANCODE_MAX_FILES:-20000}
   SCANCODE_MAX_DETECTIONS: ${SCANCODE_MAX_DETECTIONS:-5000}
   SCANCODE_MAX_RESULT_BYTES: ${SCANCODE_MAX_RESULT_BYTES:-268435456}
+  # Fernet key for secrets-at-rest (GitHub App credentials AND — v2.3-s1 — the
+  # cosign key password). Unset in dev/CI derives from SECRET_KEY (WARNING);
+  # APP_ENV=prod with no key FAILS CLOSED. See core/crypto.py + .env.example.
+  GITHUB_APP_ENCRYPTION_KEY: ${GITHUB_APP_ENCRYPTION_KEY:-}
+  # cosign SBOM signing (v2.3-s1). KEY-BASED is the default (D2); keyless is
+  # opt-in via COSIGN_KEYLESS=true. Signing is best-effort — an unset key just
+  # means unsigned SBOMs, not a failed scan. Worker reads each via os.getenv()
+  # at runtime (rule #11). The cosign key volume is mounted on the worker/beat
+  # services below (read-only) from COSIGN_KEYS_HOST_PATH.
+  COSIGN_KEYLESS: ${COSIGN_KEYLESS:-false}
+  COSIGN_KEY_PATH: ${COSIGN_KEY_PATH:-}
+  COSIGN_KEY_PASSWORD_ENCRYPTED: ${COSIGN_KEY_PASSWORD_ENCRYPTED:-}
+  COSIGN_TIMEOUT_SECONDS: ${COSIGN_TIMEOUT_SECONDS:-120}
 
 services:
   # ---------------------------------------------------------------------------
@@ -337,6 +350,12 @@ services:
       <<: *backend-env
     volumes:
       - workspace:/workspace
+      # v2.3-s1 — cosign signing keys (read-only). COSIGN_KEYS_HOST_PATH points
+      # at the host dir holding cosign.key/cosign.pub (default ./secrets/cosign,
+      # created by scripts/cosign-keygen.sh). Mounted at /cosign so
+      # COSIGN_KEY_PATH=/cosign/cosign.key. Harmless when keyless / unconfigured
+      # — an empty/absent dir just yields unsigned SBOMs (best-effort).
+      - ${COSIGN_KEYS_HOST_PATH:-./secrets/cosign}:/cosign:ro
     depends_on:
       postgres:
         condition: service_healthy
