@@ -218,6 +218,24 @@
     "format",
     "project_id"
   ],
+  "GET /v1/projects/{project_id}/sbom/attestation": [
+    "project_id"
+  ],
+  "GET /v1/projects/{project_id}/sbom/attestation-certificate": [
+    "project_id"
+  ],
+  "GET /v1/projects/{project_id}/sbom/certificate": [
+    "project_id"
+  ],
+  "GET /v1/projects/{project_id}/sbom/public-key": [
+    "project_id"
+  ],
+  "GET /v1/projects/{project_id}/sbom/signature": [
+    "project_id"
+  ],
+  "GET /v1/projects/{project_id}/sbom/signature-bundle": [
+    "project_id"
+  ],
   "GET /v1/projects/{project_id}/scans": [
     "page",
     "project_id",

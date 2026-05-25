@@ -786,6 +786,61 @@ def slsa_builder_version() -> str:
     return raw.strip()
 
 
+def cosign_public_key_path() -> str | None:
+    """Filesystem path to the cosign PUBLIC key (key-based verification).
+
+    v2.3-s3 — the SBOM signature download surface exposes the cosign PUBLIC key
+    so a downstream consumer can run ``cosign verify-blob --key cosign.pub``
+    *without* contacting the portal's private key. This accessor resolves, in
+    order:
+
+    1. ``COSIGN_PUBLIC_KEY_PATH`` when explicitly set (an operator who keeps the
+       public key somewhere other than next to the private key), else
+    2. the cosign convention: the private key path with a ``.key`` suffix
+       swapped for ``.pub`` (``cosign generate-key-pair`` emits ``cosign.key`` +
+       ``cosign.pub`` side by side), else
+    3. ``<private-key-path>.pub`` as a last resort.
+
+    Returns ``None`` when neither an explicit public key nor a private key path
+    is configured (keyless mode, or signing not configured) — the download
+    surface then advises certificate-based verification instead. NEVER returns
+    the private key path. Read at call time (CLAUDE.md core rule #11).
+    """
+    explicit = os.getenv("COSIGN_PUBLIC_KEY_PATH")
+    if explicit is not None and explicit.strip() != "":
+        return explicit.strip()
+
+    # Derive from the private key path using the cosign generate-key-pair
+    # naming convention (cosign.key -> cosign.pub). We only ever return a
+    # ``.pub`` path here; the private key bytes are never read or exposed.
+    private = cosign_key_path()
+    if private is None:
+        return None
+    if private.endswith(".key"):
+        return private[: -len(".key")] + ".pub"
+    return private + ".pub"
+
+
+def sbom_download_max_bytes() -> int:
+    """Max bytes of a single SBOM signing artifact (or bundle total) we will serve.
+
+    v2.3-s3 (security hardening): the signature download surface reads each
+    artifact fully into memory and buffers the bundle zip in a ``BytesIO``. With
+    no ceiling, a pathological / tampered ``ScanArtifact`` (e.g. a multi-GiB SBOM,
+    or a ``storage_path`` swapped to a huge file inside the workspace) could OOM
+    the API process — a denial-of-service. We gate the read on the persisted
+    ``ScanArtifact.byte_size`` BEFORE touching disk, and re-check the actual byte
+    length after reading (defense in depth, since ``byte_size`` is itself a row we
+    treat as untrusted), and cap the bundle's running total. An over-cap artifact
+    surfaces as a 413 (RFC 7807), never an OOM.
+
+    Default 64 MiB comfortably covers any realistic SBOM + signature + cert +
+    attestation while still bounding the request. Read at call time
+    (CLAUDE.md core rule #11) so an operator can retune without a rebuild.
+    """
+    return int(os.getenv("SBOM_DOWNLOAD_MAX_BYTES", str(64 * 1024 * 1024)))
+
+
 def workspace_root() -> str:
     """Root directory under which per-scan workspaces live."""
     return os.getenv("WORKSPACE_HOST_PATH", "/tmp/trustedoss")  # noqa: S108
