@@ -64,10 +64,16 @@ from sqlalchemy import String, case, cast, delete, func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from core.config import scan_soft_time_limit_seconds, workspace_root
+from core.config import (
+    scan_soft_time_limit_seconds,
+    slsa_builder_id,
+    slsa_builder_version,
+    workspace_root,
+)
 from core.db import sync_session_scope
-from core.pii_mask import redact_url_userinfo
+from core.pii_mask import mask_pii, redact_url_userinfo
 from core.url_guard import GitUrlValidationError, validate_git_url_with_ip
+from integrations import attestation as attestation_builder
 from integrations import cdxgen as cdxgen_adapter
 from integrations import cosign as cosign_adapter
 from integrations import scancode as scancode_adapter
@@ -290,15 +296,26 @@ def _run_pipeline(
         path=cdxgen_result.sbom_path,
     )
 
-    # Stage 3.5 — cosign SBOM signing (v2.3-s1). BEST-EFFORT: a missing cosign
-    # binary, an unconfigured key, or a cosign failure logs a WARNING and the
-    # scan continues unsigned — an unsigned SBOM is degraded, never fatal (same
-    # philosophy as scancode / preserve). cosign runs inside this Celery worker
-    # (CLAUDE.md core rule #3 — never on the synchronous API path). Idempotent on
-    # re-run: _reset_scan_for_rerun clears prior scan_artifacts, so re-signing
-    # cannot accumulate duplicate signature rows.
+    # Stage 3.5 — cosign SBOM signing (v2.3-s1) + in-toto attestation (v2.3-s2).
+    # BEST-EFFORT: a missing cosign binary, an unconfigured key, or a cosign
+    # failure logs a WARNING and the scan continues unsigned/un-attested — both
+    # are degraded, never fatal (same philosophy as scancode / preserve). cosign
+    # runs inside this Celery worker (CLAUDE.md core rule #3 — never on the
+    # synchronous API path). Idempotent on re-run: _reset_scan_for_rerun clears
+    # prior scan_artifacts, so re-signing/re-attesting cannot accumulate
+    # duplicate rows. Attestation only runs when signing produced a signature, so
+    # we never claim "attested" over an SBOM whose integrity we could not sign.
     _set_stage(scan_uuid, "sign")
-    _sign_sbom(scan_uuid=scan_uuid, sbom_path=cdxgen_result.sbom_path, workspace=workspace)
+    signed = _sign_sbom(
+        scan_uuid=scan_uuid, sbom_path=cdxgen_result.sbom_path, workspace=workspace
+    )
+    if signed:
+        _attest_sbom(
+            scan_uuid=scan_uuid,
+            project_id=project_id,
+            sbom_path=cdxgen_result.sbom_path,
+            workspace=workspace,
+        )
 
     # Stage 4 — scancode first-party license detection (PR-A2, replaces ORT).
     # scancode runs over the cloned first-party tree only (vendored deps /
@@ -804,8 +821,13 @@ def _persist_artifact(
 _SBOM_SIG_KIND = "sbom_cyclonedx_sig"
 _SBOM_CERT_KIND = "sbom_cyclonedx_cert"
 
+# Free-form ScanArtifact.kind values for the in-toto attestation (v2.3-s2). The
+# column is String(32); both fit ("sbom_attestation"=16, "sbom_attest_cert"=16).
+_SBOM_ATTESTATION_KIND = "sbom_attestation"
+_SBOM_ATTEST_CERT_KIND = "sbom_attest_cert"
 
-def _sign_sbom(*, scan_uuid: uuid.UUID, sbom_path: Path, workspace: Path) -> None:
+
+def _sign_sbom(*, scan_uuid: uuid.UUID, sbom_path: Path, workspace: Path) -> bool:
     """Sign the generated SBOM with cosign and persist the signature artifact.
 
     BEST-EFFORT (v2.3-s1): the cosign adapter never raises into the scan — a
@@ -821,6 +843,11 @@ def _sign_sbom(*, scan_uuid: uuid.UUID, sbom_path: Path, workspace: Path) -> Non
         in ``ScanArtifact.sha256`` so a consumer can bind signature → exact bytes
         without re-reading the SBOM), and
       - (keyless only) the Fulcio certificate as ``sbom_cyclonedx_cert``.
+
+    Returns:
+        ``True`` iff a signature was produced + persisted. The caller gates the
+        v2.3-s2 attestation on this so we never attest an SBOM whose integrity we
+        could not sign. An unexpected error returns ``False`` (degraded).
     """
     try:
         result = cosign_adapter.sign_blob(
@@ -832,7 +859,7 @@ def _sign_sbom(*, scan_uuid: uuid.UUID, sbom_path: Path, workspace: Path) -> Non
             # The adapter already logged the specific skip reason; this is the
             # task-level breadcrumb tying it to the scan stage.
             log.warning("sbom_sign_skipped", reason=result.skip_reason)
-            return
+            return False
 
         sbom_sha256 = hashlib.sha256(sbom_path.read_bytes()).hexdigest()
         if result.signature_path is not None:
@@ -849,13 +876,92 @@ def _sign_sbom(*, scan_uuid: uuid.UUID, sbom_path: Path, workspace: Path) -> Non
                 path=result.certificate_path,
             )
         log.info("sbom_sign_persisted", mode=result.mode)
+        return True
     except Exception as exc:  # noqa: BLE001 — signing is best-effort, never fatal
         # Covers an UNEXPECTED error anywhere in the stage: the adapter (which
         # itself is best-effort but could be patched / monkeypatched), the sha256
         # read, or the artifact persist (a transient DB failure). Signing is
         # auxiliary — the SBOM + components are the high-value output — so we log
-        # and swallow rather than fail the scan.
-        log.warning("sbom_sign_unexpected_error", error=str(exc)[:300])
+        # and swallow rather than fail the scan. Route the (best-effort) exception
+        # text through the documented masking helper before logging so an exception
+        # message that happened to interpolate a secret-shaped value is redacted —
+        # consistent with the cosign adapter's stderr scrub (CLAUDE.md §5).
+        log.warning("sbom_sign_unexpected_error", error=str(mask_pii(str(exc)))[:300])
+        return False
+
+
+def _attest_sbom(
+    *,
+    scan_uuid: uuid.UUID,
+    project_id: uuid.UUID,
+    sbom_path: Path,
+    workspace: Path,
+) -> None:
+    """Generate + persist an in-toto SLSA provenance attestation over the SBOM (v2.3-s2).
+
+    BEST-EFFORT, identical contract to :func:`_sign_sbom`: the attestation
+    adapter never raises into the scan, and a broad try/except swallows any
+    UNEXPECTED error (predicate build, sha256 read, DB persist) so attestation —
+    which is auxiliary metadata — can never break a scan.
+
+    Only invoked when signing succeeded (the caller gates on the ``_sign_sbom``
+    return), so we never claim "attested" over an SBOM whose integrity we could
+    not sign. The predicate carries ONLY the scan/project ids + build context
+    (timestamps, builder id/version) — NEVER secrets, the git URL, or paths (see
+    ``integrations.attestation``).
+
+    On success we persist:
+      - the in-toto attestation (DSSE envelope) as ``sbom_attestation`` (with the
+        SBOM's sha256 in ``ScanArtifact.sha256`` so a consumer can bind
+        attestation → exact bytes), and
+      - (keyless only) the Fulcio certificate as ``sbom_attest_cert``.
+    """
+    try:
+        sbom_sha256 = hashlib.sha256(sbom_path.read_bytes()).hexdigest()
+        statement = attestation_builder.build_slsa_provenance_statement(
+            # subject.name trust: the basename is worker-GENERATED (the cdxgen
+            # stage always writes "cdxgen.cdx.json" into the scan workspace), NOT
+            # a repo-controlled / attacker-influenced filename. So embedding it in
+            # the in-toto subject leaks nothing and cannot be used to smuggle
+            # attacker-chosen content into the signed statement.
+            sbom_name=sbom_path.name,
+            sbom_sha256=sbom_sha256,
+            scan_id=str(scan_uuid),
+            project_id=str(project_id),
+            builder_id=slsa_builder_id(),
+            builder_version=slsa_builder_version(),
+            finished_on=datetime.now(UTC),
+        )
+        result = cosign_adapter.attest_blob(
+            blob_path=sbom_path,
+            predicate=statement["predicate"],
+            predicate_type=attestation_builder.SLSA_PROVENANCE_PREDICATE_TYPE,
+            output_dir=workspace / "cosign",
+        )
+
+        if not result.attested:
+            log.warning("sbom_attest_skipped", reason=result.skip_reason)
+            return
+
+        if result.attestation_path is not None:
+            _persist_artifact(
+                scan_uuid,
+                kind=_SBOM_ATTESTATION_KIND,
+                path=result.attestation_path,
+                sha256=sbom_sha256,
+            )
+        if result.certificate_path is not None:
+            _persist_artifact(
+                scan_uuid,
+                kind=_SBOM_ATTEST_CERT_KIND,
+                path=result.certificate_path,
+            )
+        log.info("sbom_attest_persisted", mode=result.mode)
+    except Exception as exc:  # noqa: BLE001 — attestation is best-effort, never fatal
+        # Mask the best-effort exception text before logging so a message that
+        # happened to interpolate a secret-shaped value is redacted — consistent
+        # with the cosign adapter's stderr scrub (CLAUDE.md §5).
+        log.warning("sbom_attest_unexpected_error", error=str(mask_pii(str(exc)))[:300])
 
 
 # ---------------------------------------------------------------------------

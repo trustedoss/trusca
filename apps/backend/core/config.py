@@ -736,6 +736,56 @@ def cosign_timeout_seconds() -> int:
     return int(os.getenv("COSIGN_TIMEOUT_SECONDS", "120"))
 
 
+# ---------------------------------------------------------------------------
+# v2.3-s2 — in-toto attestation + SLSA provenance.
+#
+# After the SBOM is signed (v2.3-s1) we additionally generate a SLSA provenance
+# attestation (an in-toto Statement signed with ``cosign attest-blob``) so a
+# downstream consumer can verify HOW + WHERE the SBOM was produced, not just
+# that the bytes are intact. The predicate carries only the scan/project ids and
+# the build context (timestamps, tool name/version) — NEVER secrets or PII.
+#
+# Attestation is BEST-EFFORT: it reuses the same cosign key / keyless config as
+# signing, and a missing binary / unconfigured key / cosign failure logs a
+# structured WARNING and the scan still succeeds (an un-attested SBOM is a
+# degraded-but-non-fatal outcome). Both accessors read env at call time
+# (CLAUDE.md core rule #11) so an operator can rebrand the builder id without a
+# rebuild.
+# ---------------------------------------------------------------------------
+
+
+def slsa_builder_id() -> str:
+    """Stable identifier for the TrustedOSS worker as a SLSA build platform.
+
+    Goes into the SLSA provenance predicate's ``runDetails.builder.id`` — a URI
+    naming the build platform that produced the SBOM. The default is a
+    vendor-neutral URN; an operator can override it with ``SLSA_BUILDER_ID`` to
+    name their own deployment (e.g. ``https://ci.example.com/trustedoss-worker``)
+    so a verifier can pin provenance to a known builder. Read at call time
+    (rule #11). It is build-platform identity, NOT a secret — safe in the
+    predicate and logs.
+    """
+    raw = os.getenv("SLSA_BUILDER_ID")
+    if raw is None or raw.strip() == "":
+        return "https://github.com/trustedoss/trustedoss-portal/worker"
+    return raw.strip()
+
+
+def slsa_builder_version() -> str:
+    """Version string recorded for the TrustedOSS build platform in provenance.
+
+    Goes into the predicate's ``runDetails.builder.version`` (and the SBOM
+    generation context's tool version) so a CISA-2025 / NTIA "tool name +
+    version" element is satisfiable from the attestation alone. Defaults to the
+    bundled portal version; override with ``TRUSTEDOSS_VERSION`` to stamp the
+    exact release. Read at call time (rule #11). Not a secret.
+    """
+    raw = os.getenv("TRUSTEDOSS_VERSION")
+    if raw is None or raw.strip() == "":
+        return "2.3.0-dev"
+    return raw.strip()
+
+
 def workspace_root() -> str:
     """Root directory under which per-scan workspaces live."""
     return os.getenv("WORKSPACE_HOST_PATH", "/tmp/trustedoss")  # noqa: S108

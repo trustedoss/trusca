@@ -240,6 +240,27 @@ def test_scan_source_pipeline_completes_with_mock_backend(
     assert "sbom_cyclonedx" in kinds
     assert "scancode_result" in kinds
 
+    # v2.3-s1 — the mock cosign backend signs the SBOM, so the detached signature
+    # artifact must be persisted with the SBOM's sha256 recorded on the row.
+    assert "sbom_cyclonedx_sig" in kinds, (
+        "Stage 3.5 must persist a `sbom_cyclonedx_sig` artifact (mock cosign "
+        f"backend); got kinds={sorted(kinds)}"
+    )
+    sig_artifacts = [a for a in artifacts if a.kind == "sbom_cyclonedx_sig"]
+    assert len(sig_artifacts) == 1
+    assert sig_artifacts[0].sha256 and len(sig_artifacts[0].sha256) == 64
+
+    # v2.3-s2 — signing succeeded, so the in-toto SLSA provenance attestation must
+    # also be persisted (the pipeline gates attestation on a successful sign). Its
+    # sha256 binds the attestation to the exact SBOM bytes, same as the signature.
+    assert "sbom_attestation" in kinds, (
+        "Stage 3.5 must persist a `sbom_attestation` artifact after a successful "
+        f"sign (mock cosign backend); got kinds={sorted(kinds)}"
+    )
+    attest_artifacts = [a for a in artifacts if a.kind == "sbom_attestation"]
+    assert len(attest_artifacts) == 1
+    assert attest_artifacts[0].sha256 == sig_artifacts[0].sha256
+
     # Stage 6.5 (G3.1) — the in-task source preservation must have run AND
     # recorded a `source_tarball` ScanArtifact row pointing at a tarball that
     # actually exists on disk. Before this assertion nothing verified the
