@@ -22,6 +22,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { SbomSignatureSection } from "@/features/projects/components/SbomSignatureSection";
 import { triggerBlobDownload } from "@/lib/download";
 import { ProblemError } from "@/lib/problem";
 import { downloadSbom, type SbomFormat } from "@/lib/projectsApi";
@@ -129,6 +130,8 @@ export function SbomTab({ projectId, lastScanAt }: SbomTabProps) {
               <AlertDescription>{error.message}</AlertDescription>
             </Alert>
           ) : null}
+
+          <SbomSignatureSection projectId={projectId} />
         </CardContent>
       </Card>
     </div>

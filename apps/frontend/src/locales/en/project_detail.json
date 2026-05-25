@@ -543,6 +543,24 @@
     },
     "errors": {
       "download_failed": "Could not download the SBOM."
+    },
+    "signature": {
+      "title": "Signature & verification",
+      "subtitle": "Download everything needed to verify this project's signed SBOM offline with cosign.",
+      "download_bundle": "Download signature bundle (.zip)",
+      "downloading": "Downloading…",
+      "individual_label": "Individual artifacts",
+      "artifact": {
+        "signature": "Signature (.sig)",
+        "public_key": "Public key",
+        "attestation": "Attestation",
+        "certificate": "Certificate",
+        "attestation_certificate": "Attestation certificate"
+      },
+      "not_applicable": "{{artifact}} is only available for keyless (sigstore) signing. For key-based signing, verify with the public key instead.",
+      "unsigned": "The latest scan has no signature. SBOM signing may be disabled, or this scan was not signed.",
+      "verify_hint": "The bundle includes a VERIFY.md with step-by-step cosign verify-blob instructions.",
+      "verify_docs_link": "Verification guide"
     }
   },
   "source": {

@@ -543,6 +543,24 @@
     },
     "errors": {
       "download_failed": "SBOM을 다운로드하지 못했습니다."
+    },
+    "signature": {
+      "title": "서명 및 검증",
+      "subtitle": "cosign으로 이 프로젝트의 서명된 SBOM을 오프라인에서 검증하는 데 필요한 모든 파일을 다운로드합니다.",
+      "download_bundle": "서명 번들 다운로드 (.zip)",
+      "downloading": "다운로드 중…",
+      "individual_label": "개별 산출물",
+      "artifact": {
+        "signature": "서명 (.sig)",
+        "public_key": "공개 키",
+        "attestation": "어테스테이션",
+        "certificate": "인증서",
+        "attestation_certificate": "어테스테이션 인증서"
+      },
+      "not_applicable": "{{artifact}}은(는) keyless(sigstore) 서명에서만 제공됩니다. 키 기반 서명은 공개 키로 검증하세요.",
+      "unsigned": "최근 스캔에 서명이 없습니다. SBOM 서명이 비활성화되었거나 이 스캔이 서명되지 않았습니다.",
+      "verify_hint": "번들에는 cosign verify-blob 단계별 안내가 담긴 VERIFY.md가 포함됩니다.",
+      "verify_docs_link": "검증 가이드"
     }
   },
   "source": {
