@@ -14,7 +14,7 @@
  */
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -82,9 +82,19 @@ function durationSeconds(scan: ScanPublic): number | null {
 export function ScansPage() {
   const { t, i18n } = useTranslation("scans");
 
-  // Default to "all" so the page shows the user's scans on open. "Running" is
-  // almost always empty, which used to greet users with an empty-state message.
-  const [tab, setTab] = useState<ScansTab>("all");
+  // P2 #4 — accept `?status=running|queued|succeeded|failed|all` so the
+  // Dashboard StatCards can deep-link straight into the matching tab.
+  // Default tab stays "all" so the page itself opens unchanged when there
+  // are no params.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const statusParam = searchParams.get("status");
+  const initialTab: ScansTab = (TABS as readonly string[]).includes(
+    statusParam ?? "",
+  )
+    ? (statusParam as ScansTab)
+    : "all";
+
+  const [tab, setTab] = useState<ScansTab>(initialTab);
   const [page, setPage] = useState(1);
 
   const queryParams = useMemo(
@@ -104,6 +114,20 @@ export function ScansPage() {
   function changeTab(next: ScansTab) {
     setTab(next);
     setPage(1);
+    // Mirror into the URL so refresh / share preserves the active tab. The
+    // "all" tab clears the param (default state should not carry noise).
+    setSearchParams(
+      (prev) => {
+        const merged = new URLSearchParams(prev);
+        if (next === "all") {
+          merged.delete("status");
+        } else {
+          merged.set("status", next);
+        }
+        return merged;
+      },
+      { replace: false },
+    );
   }
 
   return (
