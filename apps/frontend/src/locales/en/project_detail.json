@@ -8,6 +8,7 @@
     "missing_id": "No project id was provided in the URL.",
     "scan": "Scan",
     "scan_demo_disabled": "Disabled in the read-only demo",
+    "scan_already_active": "A scan is already running for this project — open the in-progress drawer to view it.",
     "scan_drawer_subtitle": "Scan progress",
     "scan_active_running": "Scan running",
     "scan_active_queued": "Scan queued",

@@ -79,6 +79,7 @@ from services.scan_resolution import SnapshotScanNotFound, resolve_snapshot_scan
 from services.scan_service import (
     ConcurrentScanLimitExceeded,
     ScanError,
+    ScanInProgressConflict,
     trigger_scan,
 )
 from services.source_archive_service import (
@@ -146,6 +147,19 @@ def _problem_for_scan_error(request: Request, exc: ScanError) -> Response:
         )
         response.headers["Retry-After"] = str(exc.retry_after_seconds)
         return response
+    # P1 #10 — surface a machine-checkable extension on the per-project active-
+    # scan conflict so the SPA can render a targeted notice ("a scan is already
+    # running for this project") and recommend the in-progress drawer rather
+    # than parsing the human-readable detail. The 409 envelope was always
+    # returned; the boolean flag is the only addition.
+    if isinstance(exc, ScanInProgressConflict):
+        return problem_response(
+            status_code=exc.status_code,
+            title=exc.title,
+            detail=str(exc) or exc.title,
+            instance=request.url.path,
+            scan_already_in_progress=True,
+        )
     return problem_response(
         status_code=exc.status_code,
         title=exc.title,
