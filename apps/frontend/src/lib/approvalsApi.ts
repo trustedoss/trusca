@@ -43,6 +43,19 @@ export interface ApprovalOut {
   decided_at: string | null;
   decision_note: string | null;
   version: number; // ETag value
+  /**
+   * P1 #6 — denormalised display fields surfaced on every approval row by
+   * the list endpoint (`GET /v1/approvals`) via batched IN(...) lookups, so
+   * the Approvals queue UI can render real labels in the Component / Project
+   * columns instead of UUID prefixes. Declared optional (not required-
+   * nullable) so test fixtures and the single-row endpoints (POST / PATCH /
+   * GET-by-id) don't have to populate them — the UI guards with a truthy
+   * check and falls back to the UUID prefix when absent.
+   */
+  component_name?: string | null;
+  component_purl?: string | null;
+  project_name?: string | null;
+  project_slug?: string | null;
 }
 
 export interface ApprovalListPage {

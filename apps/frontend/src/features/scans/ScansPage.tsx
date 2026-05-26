@@ -14,6 +14,7 @@
  */
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -183,11 +184,27 @@ export function ScansPage() {
                       className="border-b transition-colors hover:bg-accent/40"
                       style={{ height: "var(--table-row)" }}
                     >
-                      <td className="px-6 font-mono text-xs">
+                      <td className="px-6 text-xs">
                         <div className="flex items-center gap-2">
-                          <span className="truncate">
-                            {scan.project_id.slice(0, 8)}
-                          </span>
+                          {/* P1 #5 — show the project name + link to
+                              /projects/{id} when the BE surfaced it, fall
+                              back to the legacy 8-char UUID otherwise so
+                              older snapshots (or the single-row endpoints
+                              that don't ship project_name yet) still
+                              render. */}
+                          {scan.project_name ? (
+                            <Link
+                              to={`/projects/${scan.project_id}`}
+                              className="truncate font-medium text-foreground hover:underline"
+                              data-testid="scans-row-project-link"
+                            >
+                              {scan.project_name}
+                            </Link>
+                          ) : (
+                            <span className="truncate font-mono">
+                              {scan.project_id.slice(0, 8)}
+                            </span>
+                          )}
                           {scan.release ? (
                             <span
                               className="inline-flex shrink-0 items-center rounded border border-border bg-muted px-1.5 py-0.5 text-[11px] font-medium text-foreground"

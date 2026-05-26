@@ -131,7 +131,7 @@ async def list_approvals_endpoint(
         return _problem_for_approval_error(request, exc)
 
     body = ApprovalListPage(
-        items=[ApprovalOut.model_validate(r) for r in rows],
+        items=[ApprovalOut.from_list_row(r) for r in rows],
         total=total,
         page=page,
         page_size=page_size,

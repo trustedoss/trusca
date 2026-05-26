@@ -22,6 +22,7 @@ import structlog
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from core.audit import bind_audit_team as _bind_audit_team
 from core.pii_mask import mask_pii
@@ -551,6 +552,10 @@ async def list_scans_for_project(
     rows_stmt = (
         select(Scan)
         .where(Scan.project_id == project_id)
+        # P1 #5 — eager-load the parent project so ScanPublic.from_scan can
+        # surface project_name / project_slug on each row without a per-row
+        # lazy load (which would trip the asyncpg greenlet guard).
+        .options(selectinload(Scan.project))
         # ix_scans_project_created_at supports this ordering directly.
         .order_by(Scan.created_at.desc(), Scan.id.desc())
         .limit(size)
@@ -618,8 +623,13 @@ async def list_scans_for_actor(
 
     # Order by created_at DESC (most recent first). Tie-break on id so
     # pagination is stable when two scans share a microsecond.
+    # P1 #5 — eager-load the parent project so ScanPublic.from_scan surfaces
+    # project_name / project_slug without per-row round-trips. The query
+    # already JOINs Project (for the team gate) so selectinload here is a
+    # second batched IN(...) — still cheap, no N+1.
     rows_stmt = (
-        base.order_by(Scan.created_at.desc(), Scan.id.desc())
+        base.options(selectinload(Scan.project))
+        .order_by(Scan.created_at.desc(), Scan.id.desc())
         .limit(size)
         .offset((page - 1) * size)
     )

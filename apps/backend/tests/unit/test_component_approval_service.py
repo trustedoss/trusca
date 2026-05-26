@@ -700,8 +700,10 @@ async def test_list_is_team_scoped(
     outsider = principal_for(outsider_user, team_ids=[team_b.id], role="developer")
     rows_b, total_b = await list_approvals(session, outsider)
     # team_b has no approvals yet.
+    # P1 #6: list_approvals now returns ApprovalListRow envelopes carrying
+    # the approval + display fields, so read team_id off the embedded row.
     for row in rows_b:
-        assert row.team_id == team_b.id
+        assert row.approval.team_id == team_b.id
 
 
 @pytest.mark.asyncio
@@ -743,10 +745,36 @@ async def test_list_status_filter(
         session, developer_actor, status_filter="pending"
     )
     for row in rows_pending:
-        assert row.status == ApprovalStatus.pending
+        assert row.approval.status == ApprovalStatus.pending
 
     rows_approved, _ = await list_approvals(
         session, developer_actor, status_filter="approved"
     )
     for row in rows_approved:
-        assert row.status == ApprovalStatus.approved
+        assert row.approval.status == ApprovalStatus.approved
+
+
+@pytest.mark.asyncio
+async def test_list_returns_component_and_project_display_fields(
+    session: AsyncSession,
+    project_a,
+    component,
+    developer_actor,
+):
+    """P1 #6 — every row carries the component + project display fields."""
+    await create_approval(
+        session,
+        developer_actor,
+        component_id=component.id,
+        project_id=project_a.id,
+    )
+    rows, _ = await list_approvals(session, developer_actor)
+    assert rows, "expected at least one approval row for the actor's team"
+    # The row created above must surface non-empty component + project labels.
+    matching = [r for r in rows if r.approval.component_id == component.id]
+    assert matching, "expected the newly-created approval to be in the page"
+    row = matching[0]
+    assert row.component_name == component.name
+    assert row.component_purl == component.purl
+    assert row.project_name == project_a.name
+    assert row.project_slug == project_a.slug

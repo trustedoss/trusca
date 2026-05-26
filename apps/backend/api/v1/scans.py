@@ -103,7 +103,7 @@ async def list_my_scans_endpoint(
         size=size,
     )
     body = ScanListResponse(
-        items=[ScanPublic.model_validate(s) for s in rows],
+        items=[ScanPublic.from_scan(s) for s in rows],
         total=total,
         page=page,
         size=size,
@@ -216,7 +216,7 @@ async def list_scans_endpoint(
         return _problem_for_scan_error(request, exc)
 
     body = ScanListResponse(
-        items=[ScanPublic.model_validate(s) for s in rows],
+        items=[ScanPublic.from_scan(s) for s in rows],
         total=total,
         page=page,
         size=size,
