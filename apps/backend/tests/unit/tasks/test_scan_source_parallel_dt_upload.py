@@ -204,7 +204,7 @@ def patch_pipeline_minimal(
     # 8) Stub the writers that the pipeline calls inside sessions.
     monkeypatch.setattr(
         "tasks.scan_source._persist_components",
-        lambda session, *, scan_uuid, sbom: None,
+        lambda session, *, scan_uuid, sbom, source_dir=None: None,
     )
     monkeypatch.setattr(
         "tasks.scan_source._persist_detected_licenses",
