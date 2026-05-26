@@ -31,6 +31,7 @@ import {
   type ScanPublic,
   type ScanStatus,
 } from "@/lib/projectsApi";
+import { formatRelativeToNow } from "@/lib/relativeTime";
 import { cn } from "@/lib/utils";
 
 /**
@@ -367,6 +368,7 @@ function ProjectRow({
         </span>
       </div>
       <SeveritySummary summary={project.severity_summary} />
+      <ScanMetadataSummary project={project} />
       <div data-testid="project-row-status">
         <ProjectStatusBadge status={project.latest_scan_status ?? "idle"} />
       </div>
@@ -456,6 +458,70 @@ function SeveritySummary({
           </span>
         </span>
       ))}
+    </div>
+  );
+}
+
+/**
+ * Compact per-row scan-aggregate summary, e.g.
+ * `Rel 12 · Scn 47 · 2h ago` (W3 #30).
+ *
+ * Renders nothing when the project has never been scanned
+ * (`last_scan_at == null` && `scan_count === 0`) — matches the
+ * SeveritySummary "render nothing when there's nothing to show" pattern so
+ * never-scanned rows stay visually clean. A project with attempts but zero
+ * releases (e.g. one failed scan) still renders the cluster — there's
+ * discoverability value in surfacing "we tried, it failed" via the visible
+ * `Scn N` count and timestamp.
+ *
+ * Colour is `text-muted-foreground` (a design token, never a hex literal):
+ * this is a navigation/discoverability cue, NOT a risk signal — risk signals
+ * live in the SeveritySummary's risk tokens. The relative timestamp is
+ * paired with an absolute-ISO `title` tooltip so power users can hover for
+ * the exact moment.
+ */
+function ScanMetadataSummary({ project }: { project: ProjectPublic }) {
+  const { t, i18n } = useTranslation("projects");
+  const lastScanAt = project.last_scan_at;
+  const scanCount = project.scan_count;
+  const releaseCount = project.release_count;
+
+  // Never-scanned: skip the cluster entirely. Defensive on both fields —
+  // a future shape where last_scan_at is null but scan_count > 0 would still
+  // be worth surfacing ("we tried, lost the timestamp"), and vice versa.
+  if (lastScanAt == null && scanCount === 0) return null;
+
+  const locale = i18n.resolvedLanguage;
+  const relative =
+    lastScanAt != null
+      ? formatRelativeToNow(lastScanAt, locale)
+      : t("row.never_scanned");
+
+  const ariaLabel = t("row.scan_meta_aria", {
+    releases: releaseCount,
+    scans: scanCount,
+    when: relative,
+  });
+
+  return (
+    <div
+      className="flex items-center gap-2 font-mono text-xs text-muted-foreground"
+      data-testid="project-row-scan-meta"
+      data-release-count={releaseCount}
+      data-scan-count={scanCount}
+      aria-label={ariaLabel}
+    >
+      <span>
+        <span aria-hidden>{t("row.releases_abbrev")}</span> {releaseCount}
+      </span>
+      <span aria-hidden>·</span>
+      <span>
+        <span aria-hidden>{t("row.scans_abbrev")}</span> {scanCount}
+      </span>
+      <span aria-hidden>·</span>
+      <span title={lastScanAt ?? undefined} data-testid="project-row-scan-meta-when">
+        {relative}
+      </span>
     </div>
   );
 }

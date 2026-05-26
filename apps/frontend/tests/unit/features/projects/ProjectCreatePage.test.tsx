@@ -125,6 +125,9 @@ describe("ProjectCreatePage", () => {
       latest_scan_status: null,
       severity_summary: null,
       has_git_credential: false,
+      scan_count: 0,
+      release_count: 0,
+      last_scan_at: null,
       created_at: "2026-05-08T00:00:00Z",
       updated_at: "2026-05-08T00:00:00Z",
     });

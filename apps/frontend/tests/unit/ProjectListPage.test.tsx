@@ -124,6 +124,11 @@ function project(name: string, overrides: Partial<ProjectPublic> = {}): ProjectP
     latest_scan_status: null,
     severity_summary: null,
     has_git_credential: false,
+    // W3 #30 — list-row discoverability aggregates default to never-scanned.
+    // Individual tests override these to exercise the ScanMetadataSummary.
+    scan_count: 0,
+    release_count: 0,
+    last_scan_at: null,
     created_at: "2026-05-01T00:00:00Z",
     updated_at: "2026-05-01T00:00:00Z",
     ...overrides,
@@ -286,6 +291,81 @@ describe("ProjectListPage", () => {
       expect(screen.getAllByTestId("project-row")).toHaveLength(2);
     });
     expect(screen.queryByTestId("project-row-severity")).not.toBeInTheDocument();
+  });
+
+  it("renders the scan-meta cluster (Rel · Scn · relative) for scanned rows", async () => {
+    // Pin "now" so the relative-time helper is deterministic in jsdom.
+    const now = new Date("2026-05-22T10:00:00Z");
+    vi.useFakeTimers({ shouldAdvanceTime: true, now });
+    const lastScan = "2026-05-22T08:00:00Z"; // 2 hours before now
+    mockedListProjects.mockResolvedValueOnce(
+      listResponse([
+        project("Alpha", {
+          latest_scan_status: "succeeded",
+          scan_count: 47,
+          release_count: 12,
+          last_scan_at: lastScan,
+        }),
+      ]),
+    );
+    renderPage();
+    const meta = await screen.findByTestId("project-row-scan-meta");
+    // Counts surface raw, no plural fork.
+    expect(meta).toHaveAttribute("data-release-count", "12");
+    expect(meta).toHaveAttribute("data-scan-count", "47");
+    expect(meta.textContent).toContain("12");
+    expect(meta.textContent).toContain("47");
+    // The relative label includes "hour(s)" wording from Intl.RelativeTimeFormat.
+    expect(meta.textContent?.toLowerCase()).toContain("hour");
+    // The absolute timestamp lives on the title tooltip, NEVER inline.
+    const whenSpan = screen.getByTestId("project-row-scan-meta-when");
+    expect(whenSpan).toHaveAttribute("title", lastScan);
+    // Discoverability colour is a design token, NOT a risk colour.
+    expect(meta.className).toContain("text-muted-foreground");
+    expect(meta.className).not.toContain("text-risk-");
+  });
+
+  it("does not render the scan-meta cluster for never-scanned rows", async () => {
+    mockedListProjects.mockResolvedValueOnce(
+      listResponse([
+        project("Alpha", {
+          latest_scan_status: null,
+          scan_count: 0,
+          release_count: 0,
+          last_scan_at: null,
+        }),
+      ]),
+    );
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByTestId("project-row")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByTestId("project-row-scan-meta"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders the scan-meta cluster for a project with attempts but zero releases", async () => {
+    // 5 failed attempts, no successes — the cluster still surfaces so users
+    // can see the project has been tried (and is failing).
+    const now = new Date("2026-05-22T10:00:00Z");
+    vi.useFakeTimers({ shouldAdvanceTime: true, now });
+    mockedListProjects.mockResolvedValueOnce(
+      listResponse([
+        project("Alpha", {
+          latest_scan_status: "failed",
+          scan_count: 5,
+          release_count: 0,
+          last_scan_at: "2026-05-22T09:30:00Z",
+        }),
+      ]),
+    );
+    renderPage();
+    const meta = await screen.findByTestId("project-row-scan-meta");
+    expect(meta).toHaveAttribute("data-release-count", "0");
+    expect(meta).toHaveAttribute("data-scan-count", "5");
+    expect(meta.textContent).toContain("0");
+    expect(meta.textContent).toContain("5");
   });
 
   it("opens the progress drawer once the source dialog reports a started scan", async () => {

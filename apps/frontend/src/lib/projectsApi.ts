@@ -57,6 +57,27 @@ export interface ProjectPublic {
    * the backend — only this boolean presence flag.
    */
   has_git_credential: boolean;
+  /**
+   * Total scan attempts for this project (any status). Populated only on the
+   * list endpoint (`GET /v1/projects`); single-project responses default to 0.
+   * Always a number — never null — so a never-scanned project comes back as 0.
+   * Drives the per-row "Scn N" discoverability badge (W3 #30).
+   */
+  scan_count: number;
+  /**
+   * Count of *succeeded* scans (release model — every succeeded scan IS a
+   * release snapshot). Populated only on the list endpoint; single-project
+   * responses default to 0. Always a number — never null.
+   * Drives the per-row "Rel N" discoverability badge (W3 #30).
+   */
+  release_count: number;
+  /**
+   * ISO-8601 timestamp of the most recent scan *attempt* (any status). `null`
+   * when the project has never been scanned. Populated only on the list
+   * endpoint; single-project responses default to null.
+   * Drives the per-row relative-time label (W3 #30).
+   */
+  last_scan_at: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -16,7 +16,11 @@
   "row": {
     "trigger_scan": "스캔",
     "view_details": "상세 보기",
-    "no_scans_yet": "아직 스캔 이력 없음"
+    "no_scans_yet": "아직 스캔 이력 없음",
+    "releases_abbrev": "릴",
+    "scans_abbrev": "스캔",
+    "never_scanned": "스캔 이력 없음",
+    "scan_meta_aria": "릴리스 {{releases}}개, 전체 {{scans}}회 스캔, 마지막 {{when}}"
   },
   "status": {
     "queued": "대기 중",

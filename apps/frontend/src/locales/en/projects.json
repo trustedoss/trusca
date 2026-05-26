@@ -16,7 +16,11 @@
   "row": {
     "trigger_scan": "Scan",
     "view_details": "View details",
-    "no_scans_yet": "No scans yet"
+    "no_scans_yet": "No scans yet",
+    "releases_abbrev": "Rel",
+    "scans_abbrev": "Scn",
+    "never_scanned": "Never scanned",
+    "scan_meta_aria": "Releases {{releases}} of {{scans}} scans, last {{when}}"
   },
   "status": {
     "queued": "Queued",
