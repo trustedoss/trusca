@@ -834,8 +834,23 @@ export class PortalPage {
    * Locale-agnostic — anchors on `data-testid` attributes, never the
    * translated tab label.
    */
+  /**
+   * Click the (W4-C) Compliance tab and switch to its Licenses sub-view. The
+   * IA overhaul (W4-C #20) absorbed the standalone Licenses tab into the
+   * unified Compliance tab; this verb still lands callers on the licenses
+   * surface so existing specs keep working without a sweep.
+   */
   async selectLicensesTab(): Promise<void> {
-    await this.page.getByTestId("project-detail-tab-licenses").click();
+    await this.page.getByTestId("project-detail-tab-compliance").click();
+    await this.page
+      .getByTestId("compliance-tab")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    // Ensure we're on the Licenses sub-view (it is the default, but a prior
+    // navigation could have left ?cview=obligations in the URL).
+    const subtab = this.page.getByTestId("compliance-subtab-licenses");
+    if ((await subtab.getAttribute("data-state")) !== "active") {
+      await subtab.click();
+    }
     await this.page
       .getByTestId("licenses-tab")
       .waitFor({ state: "visible", timeout: 10_000 });
@@ -954,8 +969,20 @@ export class PortalPage {
    * `page.waitForEvent('download')` so callers can assert the file name +
    * MIME without rolling their own download plumbing per spec.
    */
+  /**
+   * Click the (W4-C) Compliance tab and switch to its Obligations sub-view.
+   * Same redirect note as {@link selectLicensesTab}.
+   */
   async selectObligationsTab(): Promise<void> {
-    await this.page.getByTestId("project-detail-tab-obligations").click();
+    await this.page.getByTestId("project-detail-tab-compliance").click();
+    await this.page
+      .getByTestId("compliance-tab")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    // The default sub-view is Licenses; switch over.
+    const subtab = this.page.getByTestId("compliance-subtab-obligations");
+    if ((await subtab.getAttribute("data-state")) !== "active") {
+      await subtab.click();
+    }
     await this.page
       .getByTestId("obligations-tab")
       .waitFor({ state: "visible", timeout: 10_000 });
@@ -969,13 +996,20 @@ export class PortalPage {
   }
 
   /**
-   * Switch to the project-detail SBOM tab and wait for it to settle. The
-   * SBOM tab renders a format selector + download list rooted at
-   * `data-testid="sbom-tab"`. When no scan exists yet the tab body shows
-   * `sbom-no-scan`; both are valid mounted states for screenshots.
+   * Switch to the project-detail SBOM surface. W4-C #21 absorbed the
+   * standalone SBOM tab into the Reports tab as an in-page section, so this
+   * verb now lands on Reports and scrolls to the SBOM area. The
+   * ``sbom-tab`` testid still rooting the section (we reuse the same
+   * `SbomTab` component) so caller assertions remain stable.
    */
   async selectSbomTab(): Promise<void> {
-    await this.page.getByTestId("project-detail-tab-sbom").click();
+    await this.page.getByTestId("project-detail-tab-reports").click();
+    await this.page
+      .getByTestId("reports-tab")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    await this.page
+      .getByTestId("reports-sbom-section")
+      .waitFor({ state: "visible", timeout: 10_000 });
     await this.expectSbomTabReady();
   }
 

@@ -23,14 +23,17 @@
     "overview": "개요",
     "components": "컴포넌트",
     "vulnerabilities": "취약점",
-    "licenses": "라이선스",
-    "obligations": "의무사항",
-    "sbom": "SBOM",
     "source": "소스",
-    "remediation": "보안 조치",
+    "compliance": "컴플라이언스",
     "settings": "설정",
     "releases": "릴리스",
     "reports": "리포트"
+  },
+  "compliance": {
+    "subtab": {
+      "licenses": "라이선스",
+      "obligations": "의무사항"
+    }
   },
   "severity": {
     "critical": "치명",
@@ -232,6 +235,12 @@
   },
   "vulnerabilities": {
     "summary": "전체 {{total}}개 중 {{loaded}}개 로드됨.",
+    "remediation": {
+      "heading": "보안 조치",
+      "subheading": "이 프로젝트의 npm 버전 업그레이드 제안을 미리 보고, 권한이 있을 때 보안 조치 PR을 생성합니다.",
+      "expand": "보안 조치 열기",
+      "collapse": "보안 조치 닫기"
+    },
     "column": {
       "cve_id": "CVE ID",
       "severity": "심각도",
@@ -849,16 +858,20 @@
       "heading": "생성",
       "subheading": "프로젝트 산출물을 생성하거나 내보냅니다. 각 바로가기는 해당 작업이 있는 도메인 탭으로 이동합니다."
     },
+    "sbom": {
+      "heading": "SBOM 다운로드",
+      "subheading": "최신 스캔의 CycloneDX 또는 SPDX SBOM과 서명·검증 번들을 다운로드합니다."
+    },
     "cards": {
       "notice": {
         "title": "NOTICE",
         "description": "라이선스 의무사항이 포함된 저작자 표시 NOTICE 파일.",
-        "action": "의무사항 탭으로 이동"
+        "action": "컴플라이언스 탭으로 이동"
       },
       "sbom": {
         "title": "SBOM",
         "description": "CycloneDX 또는 SPDX 형식의 소프트웨어 부품 명세서.",
-        "action": "SBOM 탭으로 이동"
+        "action": "SBOM 다운로드로 이동"
       },
       "vuln-pdf": {
         "title": "취약점 PDF",

@@ -99,7 +99,11 @@ export function OverviewTab({
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);
-        next.set("tab", "licenses");
+        // W4-C #20 — Licenses tab was absorbed into the unified Compliance
+        // tab. Land on its Licenses sub-view so the deep-link still surfaces
+        // the license inventory filtered by category.
+        next.set("tab", "compliance");
+        next.set("cview", "licenses");
         next.set("license_category", key);
         return next;
       },
