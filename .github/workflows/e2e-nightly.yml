@@ -11,8 +11,10 @@ name: e2e-nightly
 # the load gate runs. Validate changes via the workflow_dispatch trigger.
 
 on:
-  schedule:
-    - cron: "0 17 * * *"   # 02:00 KST nightly
+  # Nightly schedule disabled until release (CI hardening deferred — see
+  # docs/plan-test-hardening.md). Re-enable by uncommenting the cron below.
+  # schedule:
+  #   - cron: "0 17 * * *"   # 02:00 KST nightly
   workflow_dispatch:
     inputs:
       load_users:
