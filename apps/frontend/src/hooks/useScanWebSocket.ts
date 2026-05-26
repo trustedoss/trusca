@@ -53,8 +53,28 @@ export type ScanStep =
   | (string & {});
 
 export interface ScanProgressMessage {
+  /**
+   * P2 #8c — explicit frame-type discriminator. Older backends omit this
+   * field; the hook treats a missing `type` as `"progress"` for back-compat.
+   */
+  type?: "progress";
   percent: number;
   step: ScanStep;
+  ts: string;
+}
+
+/**
+ * P2 #8c — a single tool log line streamed from a subprocess (cdxgen /
+ * scancode). The backend publishes one of these per stdout/stderr line; the
+ * scan drawer renders them as a live tool trace.
+ */
+export interface ScanLogMessage {
+  type: "log";
+  /** Pipeline stage that produced the line (e.g. `"cdxgen"` / `"scancode"`). */
+  stage: ScanStep | string;
+  stream: "stdout" | "stderr";
+  /** Line text, truncated server-side. May carry a `…(truncated)` suffix. */
+  line: string;
   ts: string;
 }
 
@@ -70,15 +90,26 @@ export interface UseScanWebSocketResult {
   state: ScanWebSocketState;
   lastMessage: ScanProgressMessage | null;
   /**
-   * P2 #8 — append-only ring buffer of every frame the hook has received
-   * for this connection, capped at {@link MESSAGE_HISTORY_CAP}. The log
-   * panel in ScanProgress renders this so users can see the full per-step
-   * trace (timestamps, percent jumps, step transitions) instead of only
-   * the latest frame's headline. Oldest entries are dropped FIFO once the
-   * cap is hit; a single scan rarely produces more than a few dozen
-   * frames, so the cap is generous.
+   * P2 #8 — append-only ring buffer of every PROGRESS frame the hook has
+   * received for this connection, capped at {@link MESSAGE_HISTORY_CAP}.
+   * The pipeline glyph row in ScanProgress consults this for the per-step
+   * trace (timestamps, percent jumps, step transitions). Oldest entries
+   * are dropped FIFO once the cap is hit.
+   *
+   * Tool log lines (cdxgen / scancode stdout / stderr) are NOT carried
+   * here — they live on `logMessages` so the log panel can FIFO-cap them
+   * independently at a much higher ceiling (subprocess output volume is
+   * orders of magnitude larger than progress event volume).
    */
   messages: ScanProgressMessage[];
+  /**
+   * P2 #8c — append-only ring buffer of every LOG frame (tool stdout /
+   * stderr line) received for this connection, capped at
+   * {@link LOG_HISTORY_CAP}. The log panel in ScanProgress renders these
+   * verbatim, color-coded by stream. Oldest entries are dropped FIFO once
+   * the cap is hit. Cleared when the hook reconnects to a fresh `scanId`.
+   */
+  logMessages: ScanLogMessage[];
   closeCode: number | null;
   closeReason: string | null;
   reconnectAttempt: number;
@@ -89,8 +120,17 @@ export interface UseScanWebSocketResult {
   isTerminal: boolean;
 }
 
-/** P2 #8 — hard cap on the message history ring buffer (FIFO eviction). */
+/** P2 #8 — hard cap on the progress-message history ring buffer. */
 const MESSAGE_HISTORY_CAP = 500;
+/**
+ * P2 #8c — hard cap on the tool-log ring buffer. Tool stdout/stderr is
+ * far higher-volume than progress events (a 30-minute scan can emit
+ * thousands of lines), so the budget is correspondingly larger. The
+ * backend independently caps at SCAN_LOG_MAX_LINES_PER_SCAN — this UI
+ * cap defends against the rare case where the operator dialled up the
+ * server-side cap past 5000.
+ */
+const LOG_HISTORY_CAP = 5000;
 
 interface UseScanWebSocketOptions {
   /** Disable the connection without unmounting the component. */
@@ -164,9 +204,12 @@ export function useScanWebSocket(
   const [lastMessage, setLastMessage] = useState<ScanProgressMessage | null>(
     null,
   );
-  // P2 #8 — message history for the log panel. Same lifetime as
-  // `lastMessage`: cleared when the hook reconnects to a fresh scanId.
+  // P2 #8 — progress-frame history for the per-step glyph row.
   const [messages, setMessages] = useState<ScanProgressMessage[]>([]);
+  // P2 #8c — tool log lines (cdxgen / scancode stdout / stderr) separated
+  // from progress frames so the log panel can FIFO-cap them at a higher
+  // ceiling than progress events.
+  const [logMessages, setLogMessages] = useState<ScanLogMessage[]>([]);
   const [closeCode, setCloseCode] = useState<number | null>(null);
   const [closeReason, setCloseReason] = useState<string | null>(null);
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
@@ -199,6 +242,8 @@ export function useScanWebSocket(
     // P2 #8 — reset the log buffer on every connect; a fresh scanId must
     // not carry frames from a previous scan into the new panel.
     setMessages([]);
+    // P2 #8c — same for the tool-log buffer.
+    setLogMessages([]);
 
     if (!enabled || scanId == null || scanId === "") {
       // Nothing to do — make sure we report idle and clear any leftover state.
@@ -296,45 +341,74 @@ export function useScanWebSocket(
         if (cancelledRef.current) {
           return;
         }
-        let parsed: ScanProgressMessage | null = null;
+        // P2 #8c — parse first, then dispatch on the `type` discriminator.
+        // Older backends omit `type`; the historical {percent, step, ts}
+        // shape is interpreted as a progress frame (back-compat). A log
+        // frame is recognised by `type: "log"` AND a string `line` — both
+        // checks are belt-and-suspenders because the payload is JSON parsed
+        // from untrusted bytes.
+        let parsedProgress: ScanProgressMessage | null = null;
+        let parsedLog: ScanLogMessage | null = null;
         try {
           const raw =
             typeof event.data === "string"
               ? event.data
               : new TextDecoder().decode(event.data as ArrayBuffer);
-          const obj = JSON.parse(raw) as Partial<ScanProgressMessage>;
-          if (
-            typeof obj?.percent === "number" &&
-            typeof obj?.step === "string" &&
-            typeof obj?.ts === "string"
-          ) {
-            parsed = {
-              percent: obj.percent,
-              step: obj.step,
-              ts: obj.ts,
-            };
+          const obj = JSON.parse(raw) as Record<string, unknown>;
+          const ty = typeof obj?.type === "string" ? obj.type : undefined;
+          if (ty === "log") {
+            if (
+              typeof obj.stage === "string" &&
+              (obj.stream === "stdout" || obj.stream === "stderr") &&
+              typeof obj.line === "string" &&
+              typeof obj.ts === "string"
+            ) {
+              parsedLog = {
+                type: "log",
+                stage: obj.stage,
+                stream: obj.stream,
+                line: obj.line,
+                ts: obj.ts,
+              };
+            }
+          } else {
+            // `progress` OR missing `type` (legacy) — same shape as before.
+            if (
+              typeof obj.percent === "number" &&
+              typeof obj.step === "string" &&
+              typeof obj.ts === "string"
+            ) {
+              parsedProgress = {
+                type: "progress",
+                percent: obj.percent,
+                step: obj.step,
+                ts: obj.ts,
+              };
+            }
           }
         } catch (err) {
           console.error("useScanWebSocket: bad frame", err);
         }
-        if (parsed != null) {
-          setLastMessage(parsed);
-          // P2 #8 — also append into the bounded history for the log panel.
-          // Functional update so concurrent renders see a consistent buffer;
-          // FIFO eviction keeps the array length ≤ MESSAGE_HISTORY_CAP.
+
+        // Any valid frame counts as the connection being live — reset the
+        // reconnect budget BEFORE we decide what to do with the payload.
+        if (parsedProgress != null || parsedLog != null) {
+          setState("open");
+          reconnectStartedAtRef.current = null;
+          lastAttemptRef.current = 0;
+          setReconnectAttempt(0);
+        }
+
+        if (parsedProgress != null) {
+          setLastMessage(parsedProgress);
           setMessages((prev) => {
             const next = prev.length >= MESSAGE_HISTORY_CAP
               ? prev.slice(prev.length - MESSAGE_HISTORY_CAP + 1)
               : prev.slice();
-            next.push(parsed!);
+            next.push(parsedProgress!);
             return next;
           });
-          setState("open");
-          // Reset the reconnect budget once we've received a valid frame.
-          reconnectStartedAtRef.current = null;
-          lastAttemptRef.current = 0;
-          setReconnectAttempt(0);
-          if (isTerminalStep(parsed.step)) {
+          if (isTerminalStep(parsedProgress.step)) {
             terminalReachedRef.current = true;
             // Close cleanly; the close handler will record code 1000 and
             // skip reconnect.
@@ -344,6 +418,19 @@ export function useScanWebSocket(
               // Already-closed is fine.
             }
           }
+        }
+
+        if (parsedLog != null) {
+          // P2 #8c — append into the bounded log buffer. We use a
+          // functional update so concurrent renders see a consistent
+          // buffer; FIFO eviction keeps the array length ≤ LOG_HISTORY_CAP.
+          setLogMessages((prev) => {
+            const next = prev.length >= LOG_HISTORY_CAP
+              ? prev.slice(prev.length - LOG_HISTORY_CAP + 1)
+              : prev.slice();
+            next.push(parsedLog!);
+            return next;
+          });
         }
       };
 
@@ -502,6 +589,7 @@ export function useScanWebSocket(
     state,
     lastMessage,
     messages,
+    logMessages,
     closeCode,
     closeReason,
     reconnectAttempt,

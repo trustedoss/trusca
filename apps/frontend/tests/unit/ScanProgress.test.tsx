@@ -361,4 +361,103 @@ describe("ScanProgress", () => {
       .querySelector('[data-step="dt_findings"]');
     expect(stepItem).not.toHaveAttribute("data-state", "current");
   });
+
+  // ---------------------------------------------------------------------
+  // P2 #8c — tool log panel (cdxgen / scancode stdout / stderr streaming)
+  // ---------------------------------------------------------------------
+
+  it("renders the tool log panel when a log frame arrives", async () => {
+    renderProgress(<ScanProgress scanId="scan-1" socketFactory={factory} />);
+    act(() => FakeSocket.instances[0].__open());
+    act(() =>
+      FakeSocket.instances[0].__message({
+        type: "log",
+        stage: "cdxgen",
+        stream: "stdout",
+        line: "resolving package tree…",
+        ts: "2026-05-26T12:00:00.000Z",
+      }),
+    );
+
+    // The toggle button surfaces once the first frame lands.
+    const toggle = await screen.findByTestId("scan-progress-log-toggle");
+    expect(toggle.textContent).toMatch(/Tool log/i);
+
+    // Expand and assert the line renders with the stage badge + content.
+    await userEvent.click(toggle);
+    const body = await screen.findByTestId("scan-progress-log-body");
+    const row = body.querySelector('[data-stage="cdxgen"]');
+    expect(row).not.toBeNull();
+    expect(row).toHaveAttribute("data-stream", "stdout");
+    expect(row?.textContent).toMatch(/resolving package tree/);
+  });
+
+  it("tints stderr lines and shows the err badge", async () => {
+    renderProgress(<ScanProgress scanId="scan-1" socketFactory={factory} />);
+    act(() => FakeSocket.instances[0].__open());
+    act(() =>
+      FakeSocket.instances[0].__message({
+        type: "log",
+        stage: "scancode",
+        stream: "stderr",
+        line: "warning: licenseref unknown",
+        ts: "2026-05-26T12:00:00.000Z",
+      }),
+    );
+
+    const toggle = await screen.findByTestId("scan-progress-log-toggle");
+    await userEvent.click(toggle);
+    const body = await screen.findByTestId("scan-progress-log-body");
+    const row = body.querySelector('[data-stream="stderr"]');
+    expect(row).not.toBeNull();
+    // The err badge is rendered with an explicit aria-label.
+    expect(row?.querySelector('[aria-label="stderr"]')).not.toBeNull();
+  });
+
+  it("falls back to the per-step progress log when no tool lines have arrived", async () => {
+    renderProgress(<ScanProgress scanId="scan-1" socketFactory={factory} />);
+    act(() => FakeSocket.instances[0].__open());
+    // Only a progress frame — no tool stdout yet.
+    act(() =>
+      FakeSocket.instances[0].__message({
+        type: "progress",
+        percent: 18,
+        step: "prep",
+        ts: "2026-05-26T12:00:00.000Z",
+      }),
+    );
+
+    const toggle = await screen.findByTestId("scan-progress-log-toggle");
+    expect(toggle.textContent).toMatch(/Per-step log/i);
+  });
+
+  it("interleaves multiple tool log frames in arrival order", async () => {
+    renderProgress(<ScanProgress scanId="scan-1" socketFactory={factory} />);
+    act(() => FakeSocket.instances[0].__open());
+    act(() =>
+      FakeSocket.instances[0].__message({
+        type: "log",
+        stage: "cdxgen",
+        stream: "stdout",
+        line: "line1",
+        ts: "2026-05-26T12:00:00.000Z",
+      }),
+    );
+    act(() =>
+      FakeSocket.instances[0].__message({
+        type: "log",
+        stage: "scancode",
+        stream: "stdout",
+        line: "line2",
+        ts: "2026-05-26T12:00:01.000Z",
+      }),
+    );
+    const toggle = await screen.findByTestId("scan-progress-log-toggle");
+    await userEvent.click(toggle);
+    const body = await screen.findByTestId("scan-progress-log-body");
+    const rows = body.querySelectorAll("li");
+    expect(rows).toHaveLength(2);
+    expect(rows[0].textContent).toMatch(/line1/);
+    expect(rows[1].textContent).toMatch(/line2/);
+  });
 });

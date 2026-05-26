@@ -79,6 +79,7 @@ from core.config import (
     scancode_max_result_bytes,
     scancode_timeout_seconds,
 )
+from integrations._line_streamer import LineCallback, run_with_line_streaming
 from integrations._subprocess_env import scrubbed_env_for_scancode
 
 log = structlog.get_logger("integrations.scancode")
@@ -193,6 +194,7 @@ def run_scancode(
     max_files: int | None = None,
     max_detections: int | None = None,
     backend: str | None = None,
+    line_callback: LineCallback | None = None,
 ) -> ScancodeResult:
     """
     Run scancode over the **first-party** ``source_dir`` and return detected
@@ -205,6 +207,11 @@ def run_scancode(
         max_files: Override ``SCANCODE_MAX_FILES`` (eligible-file ceiling).
         max_detections: Override ``SCANCODE_MAX_DETECTIONS`` (returned cap).
         backend: Override ``scan_backend_mode()`` (``mock`` writes a fixture).
+        line_callback: P2 #8c — invoked from a background drain thread for
+            every stdout / stderr line. ``(stream, line)`` where ``stream`` is
+            ``"stdout"`` or ``"stderr"``. The callback runs in the drain
+            thread; failures are caught and logged. The mock path emits no
+            lines.
 
     Raises:
         ScancodeTooLarge: when the eligible-file count exceeds the ceiling.
@@ -245,15 +252,16 @@ def run_scancode(
         output=str(result_path),
         eligible_files=eligible,
         timeout_seconds=timeout,
+        streaming=line_callback is not None,
     )
     try:
-        completed = subprocess.run(  # noqa: S603 — fixed args list, no shell
+        completed = run_with_line_streaming(
             cmd,
-            capture_output=True,
-            check=False,
-            timeout=timeout,
+            timeout_seconds=timeout,
             cwd=str(source_dir),
             env=scrubbed_env_for_scancode(),
+            line_callback=line_callback,
+            stage="scancode",
         )
     except subprocess.TimeoutExpired as exc:
         raise ScancodeTimeout(
@@ -595,6 +603,7 @@ __all__ = [
     "SOURCE_PATH_MAX_LENGTH",
     "SPDX_ID_MAX_LENGTH",
     "DetectedLicense",
+    "LineCallback",
     "ScancodeError",
     "ScancodeFailed",
     "ScancodeNotInstalled",

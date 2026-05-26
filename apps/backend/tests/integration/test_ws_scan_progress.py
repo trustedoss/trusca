@@ -616,6 +616,59 @@ def test_ws_forwards_published_progress(client: TestClient) -> None:
     assert forwarded["percent"] == 42
     assert forwarded["step"] == "cdxgen"
     assert isinstance(forwarded["ts"], str) and forwarded["ts"]
+    # P2 #8c — frame carries an explicit ``type`` discriminator. Older
+    # publishers without the field would forward verbatim; new publishers
+    # always set ``type: "progress"``.
+    assert forwarded.get("type") == "progress"
+
+
+# ---------------------------------------------------------------------------
+# 6.1 ``publish_log`` is forwarded with the canonical log frame shape (P2 #8c)
+# ---------------------------------------------------------------------------
+
+
+def test_ws_forwards_published_tool_log_line(client: TestClient) -> None:
+    """``publish_log(scan_id, stage="cdxgen", stream="stdout", line=…)`` must
+    reach a connected client as a ``{type:"log", stage, stream, line, ts}``
+    frame on the same channel as progress frames."""
+    from tasks._progress import (
+        publish_log,
+        reset_log_counter,
+        reset_publisher_for_tests,
+    )
+
+    reset_publisher_for_tests()
+
+    user_id, _team_id, scan_id = _seed_user_with_team_scan()
+    reset_log_counter(scan_id)
+    token = _bearer_token(user_id)
+
+    with client.websocket_connect(f"/ws/scans/{scan_id}") as ws:
+        _send_auth(ws, token)
+        # Drain the initial sync (progress frame).
+        ws.receive_text()
+
+        def _publish_log() -> None:
+            time.sleep(0.05)
+            publish_log(
+                scan_id,
+                stage="cdxgen",
+                stream="stdout",
+                line="resolving package tree…",
+            )
+
+        publisher = threading.Thread(target=_publish_log)
+        publisher.start()
+        try:
+            forwarded = json.loads(ws.receive_text())
+        finally:
+            publisher.join(timeout=2.0)
+
+    assert forwarded["type"] == "log"
+    assert forwarded["stage"] == "cdxgen"
+    assert forwarded["stream"] == "stdout"
+    assert forwarded["line"] == "resolving package tree…"
+    assert isinstance(forwarded["ts"], str) and forwarded["ts"]
 
 
 # ---------------------------------------------------------------------------
