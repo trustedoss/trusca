@@ -1,18 +1,18 @@
 /**
- * AdminLayout — existence-hide tests.
+ * AdminLayout — existence-hide guard tests.
  *
- * Renders the layout under three actors:
- *   1. Super-admin → the layout chrome and the matching outlet text appear.
- *   2. Authenticated developer → the AdminNotFound page renders instead.
- *   3. No user (defensive) → the AdminNotFound page renders instead.
+ * W4-A reduced AdminLayout to a guard wrapper: chrome (sidebar/header/logout)
+ * is now owned by AppShell, so this layout only checks the super-admin bit
+ * and renders either the outlet or the AdminNotFound page.
  *
- * We use MemoryRouter and a tiny stub child route so the layout's <Outlet />
- * has something to render.
+ * We render under three actors:
+ *   1. Super-admin → the outlet renders inside the guarded wrapper.
+ *   2. Authenticated developer → AdminNotFound renders, guard hides the wrapper.
+ *   3. No user (defensive) → AdminNotFound renders, guard hides the wrapper.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import { AdminLayout } from "@/features/admin/AdminLayout";
@@ -55,7 +55,7 @@ describe("AdminLayout", () => {
     useAuthStore.getState().reset();
   });
 
-  it("renders the chrome and outlet for a super-admin", () => {
+  it("renders the outlet inside the guarded wrapper for a super-admin", () => {
     setUser({
       id: "u-super",
       email: "super@example.com",
@@ -67,11 +67,7 @@ describe("AdminLayout", () => {
     });
     renderLayout();
     expect(screen.getByTestId("admin-layout")).toBeInTheDocument();
-    expect(screen.getByTestId("admin-sidebar")).toBeInTheDocument();
     expect(screen.getByTestId("stub-outlet")).toHaveTextContent("stub-outlet");
-    // Sidebar nav links present.
-    expect(screen.getByTestId("admin-nav-users")).toBeInTheDocument();
-    expect(screen.getByTestId("admin-nav-teams")).toBeInTheDocument();
   });
 
   it("hides the layout (renders 404) for a non-super-admin", () => {
@@ -94,27 +90,5 @@ describe("AdminLayout", () => {
     renderLayout();
     expect(screen.queryByTestId("admin-layout")).not.toBeInTheDocument();
     expect(screen.getByTestId("admin-not-found")).toBeInTheDocument();
-  });
-
-  it("invokes auth.logout when the sign-out button is clicked", async () => {
-    setUser({
-      id: "u-super",
-      email: "super@example.com",
-      displayName: "Super",
-      role: "super_admin",
-      isActive: true,
-      isSuperuser: true,
-      teamId: null,
-    });
-    const logoutSpy = vi.fn(async () => {});
-    // Replace the store's logout with the spy so the component invokes it.
-    useAuthStore.setState({ logout: logoutSpy });
-
-    renderLayout();
-    await userEvent.click(screen.getByTestId("admin-logout"));
-
-    await waitFor(() => {
-      expect(logoutSpy).toHaveBeenCalledTimes(1);
-    });
   });
 });

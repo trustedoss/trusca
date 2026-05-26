@@ -43,6 +43,19 @@
 | **W3 통합/발견성** | #32 | Reports 센터 탭 — **다운로드/익스포트 이력 통합 + 4영역 진입점 deeplink**(생성 UI는 도메인 탭 유지; 2026-05-26 사전 갭 분석으로 좁힘, [[feedback-tracker-text-may-overstate-gaps]]). **BE ✅ `dbd8c31`**: `report_downloads` 테이블(0025, append-only, ENUM `report_type_enum`, FK 4개 CASCADE/SET NULL, 3 compound 인덱스) + `record_report_download`(best-effort emit, 실패 swallow, UA `mask_pii`+512자, XFF-aware IP) + 4 read-only 엔드포인트 emit(NOTICE/SBOM/Vuln-PDF/VEX export; VEX import는 audit_log 자연 흡수) + `GET /v1/projects/{id}/reports/history`(404 existence-hide, OUTER JOIN user, 페이지 1..200 기본 50). 게이트 ruff/mypy(417) clean·신규 unit 21+integration 9·OpenAPI 1엔트리 추가·alembic head 0025. **FE ✅ `689baa4`**: 신규 `Reports` 탭(sbom↔source 사이, `?tab=reports` URL 거울) — 좌 4 generate 카드(NOTICE/SBOM/Vuln-PDF/VEX) `setSearchParams({tab})`로 도메인 탭 deeplink + `?scan=` 보존, 우 이력 테이블(When/Who/Type/Format/Scan/Size + type MultiSelect 필터 + URL state `?rpt_type=`/`?rpt_page=` + Prev/Next 페이저). 404 일반화("Reports unavailable" — existence-hide), 빈 상태·스켈레톤·429 처리. `reportHistoryApi.ts`+`useReportHistory.ts`(`paramsSerializer: {indexes:null}`로 `?type=a&type=b` 직렬화, `keepPreviousData`). i18n EN/KO 미러(plural 미사용). 하네스 3 verb 추가(`selectReportsTab`/`expectReportsTabReady`/`clickReportsGenerateCard`). 게이트 typecheck clean·lint 0 errors·i18n:check OK·vitest 926(+8). Playwright `reports.spec.ts` 1 시나리오(spec만, 실행 후속). **부속(분리)**: Vuln PDF `scan_id` pin 미지원 → #32c 또는 #30과 묶음. | ✅ 완료(2026-05-26) |
 | W3 | #30 | 프로젝트 목록 행에 릴리스/스캔 수 표시(발견성). 2026-05-26 사전 갭 분석으로 BE+FE 양쪽 진짜 갭 확인(트래커 본문 정확). **BE ✅ `6255700`**: `project_list_enrichment._scan_counts_map` 신규(단일 GROUP BY로 `scan_count`/`release_count`/`MAX(created_at)` 동시 산출, `ix_scans_project_created_at` 활용·N+1 없음) + `enrich_project_rows` 3-튜플 반환 + `ProjectPublic`에 `scan_count`/`release_count: int = 0`·`last_scan_at: datetime|None = None` 추가(list endpoint에서만 채움, detail은 default). 게이트 ruff/mypy(417) clean·pytest 38(+5)·alembic 0025 유지·OpenAPI 스냅샷 무영향. **FE ✅ `971af25`**: `ProjectListPage.tsx` `<ScanMetadataSummary>` 컴포넌트(severity 뒤·status badge 앞 인라인) — `Rel 12 · Scn 47 · 2h ago` (font-mono text-xs `text-muted-foreground`, abs ISO `title` tooltip, never-scanned 행은 미렌더). `formatRelativeToNow` 헬퍼 재사용. i18n EN/KO 4키(`row.releases_abbrev`·`row.scans_abbrev`·`row.never_scanned`·`row.scan_meta_aria`, plural 미사용). 정렬 정정(`compareByLatestScan` updated_at→last_scan_at)은 scope 밖 후속. 게이트 typecheck clean·lint 0 errors·i18n:check OK·vitest 929(+3). | ✅ 완료(2026-05-26) |
 
+**W4 — UX 정합성 + 정보 구조 재정비 (2026-05-26 사용자 핸즈온 #16~#22)**
+
+| 항목 | 내용 | 상태 |
+|---|---|---|
+| W4-A #18 | Admin 메뉴 진입 시 일반 메뉴(Dashboard 등) 사라지는 layout 버그 — P0 단독 PR. `/admin/*` 를 `AppShell` 하위로 nest, `AdminLayout`은 super-admin 가드 + `<Outlet/>`로 축소(자체 sidebar/header 제거; AppShell이 admin 섹션 nav 이미 렌더 중). `admin.layout.*` i18n 키 2개 제거(EN/KO). 단위 테스트 갱신(`admin-sidebar`/`admin-nav-*`/`admin-logout` 어서션 삭제, 가드 3 케이스 유지). 게이트 typecheck clean·lint 0 errors·vitest 930·i18n:check OK. | 🟡 PR 대기 |
+| W4-B #16/#17/#19 | UX 정합성 — Overview 차트 deep-link + 컬럼 헤더 정렬 + License 컬럼 분리 + 필터 단순화 + Components/Vulnerabilities에 누락 컬럼 추가 (Dependency Type, Component@version) | 📋 pending |
+| W4-C #20/#21/#22 | IA 재정비 — Licenses+Obligations→Compliance, SBOM→Reports, Remediation→Vulnerabilities 흡수. 탭 11개 → 8개 | 📋 pending |
+| W4-D | TYPE/USAGE 본격 픽스 (cdxgen `dependencies` 누락 / npm scope 미배출, P3 #183 진단 후속) | 📋 pending |
+
+→ 상세 계획·갭 분석·출발 파일은 **`docs/plan-w4-ui-ia-overhaul.md`** 단일 진실. 진행 전 반드시 참조.
+
+---
+
 **#29 구현 요지(완료):** `services/project_detail_service.py::get_project_overview` — `recent_stmt`를 `if aggregate_scan_id is not None` 블록 밖으로 빼 **성공 스냅샷 없어도(첫 스캔 queued/running) recent_scans를 항상 조회**. 분포 집계만 스냅샷에 의존. 프론트 `ProjectDetailPage` 헤더에 queued/running 스캔용 영속 칩(`project-detail-active-scan`) 추가 → 클릭 시 진행 드로어 재오픈. 가드: `test_latest_succeeded_scan_anchoring.py`(running-only overview), `tests/unit/ProjectDetailPage.test.tsx`(칩 3케이스).
 
 ---
