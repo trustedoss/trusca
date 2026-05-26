@@ -157,7 +157,19 @@ export function ApprovalsPage() {
           </select>
         </div>
 
-        {/* From date */}
+        {/* P2 #7 — From / To date pickers.
+            Native `<input type="date">` renders its calendar popover in the
+            OS locale (a Korean macOS shows "2026년 5월 26일"). We do NOT
+            want to ship a 50 kB react-day-picker just for this control, so
+            instead:
+              1. `lang="en"` forces Chrome / Edge to render an English
+                 datepicker regardless of OS locale (Safari falls back to
+                 OS, Firefox ignores `lang` on `input[type=date]` — both
+                 are then covered by step 2).
+              2. The visible value is YYYY-MM-DD (ISO 8601) which is
+                 locale-agnostic, so even on a fallback UI the input value
+                 itself stays English.
+              3. The placeholder makes the expected format explicit. */}
         <div className="flex flex-col gap-1">
           <Label
             htmlFor="approval-from-dt"
@@ -169,6 +181,8 @@ export function ApprovalsPage() {
             id="approval-from-dt"
             data-testid="approval-from-dt"
             type="date"
+            lang="en"
+            placeholder="YYYY-MM-DD"
             className="h-8 w-36 text-sm"
             value={fromDt}
             onChange={(e) => {
@@ -190,6 +204,8 @@ export function ApprovalsPage() {
             id="approval-to-dt"
             data-testid="approval-to-dt"
             type="date"
+            lang="en"
+            placeholder="YYYY-MM-DD"
             className="h-8 w-36 text-sm"
             value={toDt}
             onChange={(e) => {
