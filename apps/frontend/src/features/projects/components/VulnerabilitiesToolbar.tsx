@@ -3,7 +3,10 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MultiSelect } from "@/components/ui/multi-select";
-import type { TeamScopedRole } from "@/features/projects/api/projectDetailApi";
+import type {
+  LicenseCategoryName,
+  TeamScopedRole,
+} from "@/features/projects/api/projectDetailApi";
 import type {
   ReachabilityFilter,
   SortOrder,
@@ -58,6 +61,18 @@ export const REACHABLE_OPTIONS: ReachabilityFilter[] = [
   "unknown",
 ];
 
+/**
+ * License-category filter options (W2 #33). Same set + order the Components
+ * tab uses so the two facets feel like one — a triager can pivot tabs without
+ * remapping the chips.
+ */
+export const LICENSE_OPTIONS: LicenseCategoryName[] = [
+  "forbidden",
+  "conditional",
+  "allowed",
+  "unknown",
+];
+
 export interface VulnerabilitiesToolbarProps {
   search: string;
   onSearchChange: (value: string) => void;
@@ -81,6 +96,13 @@ export interface VulnerabilitiesToolbarProps {
    */
   reachable: ReachabilityFilter | null;
   onReachableChange: (value: ReachabilityFilter | null) => void;
+  /**
+   * License-category multi-select (W2 #33). Empty array = no filter. Members
+   * are forwarded as repeated `?license_category=` query params; unknown
+   * values are dropped server-side so a hand-typed URL never 422s.
+   */
+  licenseCategory: LicenseCategoryName[];
+  onLicenseCategoryChange: (value: LicenseCategoryName[]) => void;
   /** Trigger the vulnerability PDF report download (G2). */
   onDownloadPdf: () => void;
   /** True while the PDF is being generated/fetched — drives the loading label. */
@@ -125,6 +147,8 @@ export function VulnerabilitiesToolbar({
   onMinEpssChange,
   reachable,
   onReachableChange,
+  licenseCategory,
+  onLicenseCategoryChange,
   onDownloadPdf,
   isPdfDownloading,
   pdfError,
@@ -251,6 +275,31 @@ export function VulnerabilitiesToolbar({
             </option>
           ))}
         </select>
+      </div>
+
+      <div className="flex flex-col">
+        <label
+          htmlFor="vulnerabilities-license-filter"
+          className="text-xs font-medium text-muted-foreground"
+        >
+          {t("vulnerabilities.toolbar.license_label")}
+        </label>
+        <MultiSelect
+          id="vulnerabilities-license-filter"
+          testId="vulnerabilities-license-filter"
+          className="w-40"
+          label={t("vulnerabilities.toolbar.license_label")}
+          options={LICENSE_OPTIONS.map((opt) => ({
+            value: opt,
+            // Reuse the shared `license_category.*` keys (the Components tab
+            // uses the same set) instead of minting a per-toolbar duplicate.
+            label: t(`license_category.${opt}`),
+          }))}
+          selected={licenseCategory}
+          onChange={(next) =>
+            onLicenseCategoryChange(next as LicenseCategoryName[])
+          }
+        />
       </div>
 
       <div className="flex flex-col">

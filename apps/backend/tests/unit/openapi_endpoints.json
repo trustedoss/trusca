@@ -278,6 +278,7 @@
     "project_id"
   ],
   "GET /v1/projects/{project_id}/vulnerabilities": [
+    "license_category",
     "limit",
     "min_epss",
     "offset",

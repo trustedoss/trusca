@@ -19,6 +19,7 @@
 import { api } from "@/lib/api";
 import { ProblemError } from "@/lib/problem";
 
+import type { LicenseCategoryName } from "@/features/projects/api/projectDetailApi";
 import type { VulnerabilityStatus } from "@/features/projects/lib/vulnerabilityTransitions";
 
 // ---------------------------------------------------------------------------
@@ -132,6 +133,16 @@ export interface VulnerabilityListItem {
    */
   reachability_analyzed_at: string | null;
   affected_component_count: number;
+  /**
+   * Worst-category license classification of the finding's component_version
+   * (W2 #33). When the component_version carries multiple licenses, the
+   * backend collapses them with the same `_license_rank_case` used by the
+   * Components tab — so a row's License axis is identical across the two
+   * tabs. `"unknown"` covers both "no license finding" and a LEFT-JOIN miss;
+   * `null` is never on the wire (defended in the schema), so the UI treats
+   * the field as always-present.
+   */
+  component_license_category: LicenseCategoryName;
   discovered_at: string;
   updated_at: string;
 }
@@ -267,6 +278,14 @@ export interface ListVulnerabilitiesParams {
    */
   reachable?: ReachabilityFilter;
   /**
+   * License-category buckets (W2 #33). Multi-value; the backend keeps any
+   * finding whose component's worst-category license is in the set. The
+   * "unknown" bucket also includes findings whose component_version has no
+   * license finding. Unknown values are dropped server-side (no 422); a
+   * filter with only unknown values yields an empty page.
+   */
+  license_category?: LicenseCategoryName[];
+  /**
    * Pin the read to a specific succeeded scan (feature #28 snapshot anchoring).
    * Omit → the project's latest succeeded scan (unchanged default). An invalid /
    * cross-project / non-succeeded id is a 404 problem+json on the wire.
@@ -309,6 +328,11 @@ function listVulnerabilitiesQuery(
     params.reachable === "unknown"
   ) {
     out.reachable = params.reachable;
+  }
+  // W2 #33 — multi-value license_category. The repeat-key axios serializer
+  // (`paramsSerializer: { indexes: null }` below) handles array → repeated key.
+  if (params.license_category && params.license_category.length > 0) {
+    out.license_category = params.license_category;
   }
   if (params.scanId != null && params.scanId.length > 0) {
     out.scan_id = params.scanId;

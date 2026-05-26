@@ -217,6 +217,7 @@
     "column": {
       "cve_id": "CVE ID",
       "severity": "Severity",
+      "license": "License",
       "reachable": "Reachability",
       "cvss": "CVSS",
       "epss": "EPSS",
@@ -328,6 +329,7 @@
         "false": "Not reachable",
         "unknown": "Not analyzed"
       },
+      "license_label": "License",
       "sort_label": "Sort by",
       "sort_by_severity": "Severity",
       "sort_by_reachable": "Reachability",

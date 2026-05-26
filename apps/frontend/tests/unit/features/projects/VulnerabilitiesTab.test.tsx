@@ -81,6 +81,7 @@ function vuln(
     reachability_source: null,
     reachability_analyzed_at: null,
     affected_component_count: 1,
+    component_license_category: "unknown",
     discovered_at: "2026-05-01T00:00:00Z",
     updated_at: "2026-05-01T00:00:00Z",
     ...overrides,
@@ -725,6 +726,113 @@ describe("VulnerabilitiesTab", () => {
       expect(mockedList).toHaveBeenCalledWith(
         "proj-1",
         expect.objectContaining({ reachable: undefined }),
+      );
+    });
+  });
+
+  // ----- License risk axis (W2 #33) ---------------------------------------
+
+  it("renders the License column header", async () => {
+    mockedList.mockResolvedValueOnce(listResponse([vuln("CVE-2024-1111")]));
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getByTestId("vulnerabilities-header")).toBeInTheDocument();
+    });
+    // The header carries the localized "License" label as plain text.
+    expect(
+      screen.getByTestId("vulnerabilities-header").textContent,
+    ).toContain("License");
+  });
+
+  it("renders a LicenseCategoryBadge per row for each category", async () => {
+    mockedList.mockResolvedValueOnce(
+      listResponse([
+        vuln("CVE-2024-1111", { component_license_category: "forbidden" }),
+        vuln("CVE-2024-2222", { component_license_category: "conditional" }),
+        vuln("CVE-2024-3333", { component_license_category: "allowed" }),
+        vuln("CVE-2024-4444", { component_license_category: "unknown" }),
+      ]),
+    );
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("vuln-row-license")).toHaveLength(4);
+    });
+    const cells = screen.getAllByTestId("vuln-row-license");
+    expect(cells[0].getAttribute("data-license-category")).toBe("forbidden");
+    expect(cells[1].getAttribute("data-license-category")).toBe("conditional");
+    expect(cells[2].getAttribute("data-license-category")).toBe("allowed");
+    expect(cells[3].getAttribute("data-license-category")).toBe("unknown");
+    // The shared LicenseCategoryBadge surfaces a stable per-category testid.
+    expect(
+      screen.getByTestId("license-category-badge-forbidden"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("license-category-badge-conditional"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("license-category-badge-allowed"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("license-category-badge-unknown"),
+    ).toBeInTheDocument();
+  });
+
+  it("defensively renders the 'unknown' bucket when the wire field is missing", async () => {
+    // Backend contract guarantees the field, but if a stale-cached row drops
+    // it we still render the unknown badge instead of crashing.
+    const bare = vuln("CVE-2024-9999");
+    // Strip the field as if it never landed (the type guarantees it, so we
+    // unsafely cast to simulate a contract drift / regression).
+    delete (bare as Partial<VulnerabilityListItem>).component_license_category;
+    mockedList.mockResolvedValueOnce(listResponse([bare]));
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getByTestId("vuln-row-license")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByTestId("license-category-badge-unknown"),
+    ).toBeInTheDocument();
+  });
+
+  it("selecting the license filter forwards ?license_category=forbidden at offset 0", async () => {
+    mockedList.mockResolvedValue(listResponse([vuln("CVE-2024-1111")]));
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("vulnerability-row")).toHaveLength(1);
+    });
+    mockedList.mockClear();
+
+    // Open the MultiSelect dropdown and toggle the "forbidden" row.
+    await userEvent.click(screen.getByTestId("vulnerabilities-license-filter"));
+    const forbidden = await waitFor(() => {
+      const option = screen
+        .getAllByTestId("vulnerabilities-license-filter-option")
+        .find((el) => el.getAttribute("data-value") === "forbidden");
+      if (!option) throw new Error("forbidden option not mounted");
+      return option;
+    });
+    await userEvent.click(forbidden);
+
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalledWith(
+        "proj-1",
+        expect.objectContaining({
+          license_category: ["forbidden"],
+          offset: 0,
+        }),
+      );
+    });
+  });
+
+  it("hydrates the license filter from ?license_category=forbidden,allowed", async () => {
+    mockedList.mockResolvedValueOnce(listResponse([vuln("CVE-2024-1111")]));
+    renderTab(["/projects/proj-1?license_category=forbidden,allowed"]);
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalledWith(
+        "proj-1",
+        expect.objectContaining({
+          license_category: ["forbidden", "allowed"],
+        }),
       );
     });
   });

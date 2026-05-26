@@ -115,6 +115,16 @@ async def list_project_vulnerabilities_endpoint(
     search: str | None = Query(default=None, max_length=255),
     severity: list[str] | None = Query(default=None),
     finding_status: list[str] | None = Query(default=None, alias="status"),
+    license_category: list[str] | None = Query(
+        default=None,
+        description=(
+            "W2 #33 — License risk-axis filter. Repeatable; accepted values: "
+            "``forbidden``, ``conditional``, ``allowed``, ``unknown`` (the cv "
+            "had no license finding in this scan). Unknown values are dropped, "
+            "so a query that filters ONLY by unknown values returns an empty "
+            "page (not a 422). Omit to include all categories."
+        ),
+    ),
     min_epss: float | None = Query(
         default=None,
         ge=0,
@@ -167,6 +177,7 @@ async def list_project_vulnerabilities_endpoint(
             search=search,
             severity=severity,
             status=finding_status,
+            license_category=license_category,
             min_epss=min_epss,
             reachable=reachable,
             sort=sort,

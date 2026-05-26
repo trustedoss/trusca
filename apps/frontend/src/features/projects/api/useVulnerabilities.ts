@@ -13,6 +13,7 @@
  */
 import { keepPreviousData, useQuery, type UseQueryResult } from "@tanstack/react-query";
 
+import type { LicenseCategoryName } from "@/features/projects/api/projectDetailApi";
 import {
   listProjectVulnerabilities,
   type ReachabilityFilter,
@@ -40,6 +41,13 @@ export interface VulnerabilitiesQueryFilters {
    * not-analysed findings respectively.
    */
   reachable: ReachabilityFilter | null;
+  /**
+   * License-category buckets to keep (W2 #33). Empty array = no filter (all
+   * categories). Members are the four `LicenseCategoryName` tokens; the
+   * "unknown" bucket also covers findings whose component has no license
+   * finding (the backend joins LEFT and falls back to "unknown").
+   */
+  license_category: LicenseCategoryName[];
   limit: number;
   offset: number;
   /**
@@ -69,6 +77,7 @@ export function vulnerabilitiesKey(
       order: filters.order,
       min_epss: filters.min_epss,
       reachable: filters.reachable,
+      license_category: [...filters.license_category].sort(),
       limit: filters.limit,
       offset: filters.offset,
       scanId: filters.scanId ?? null,
@@ -94,6 +103,9 @@ export function useVulnerabilities(
         order: filters.order,
         min_epss: filters.min_epss ?? undefined,
         reachable: filters.reachable ?? undefined,
+        license_category: filters.license_category.length
+          ? filters.license_category
+          : undefined,
         scanId: filters.scanId,
       }),
     placeholderData: keepPreviousData,

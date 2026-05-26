@@ -6,6 +6,7 @@ import { Virtuoso } from "react-virtuoso";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import type { LicenseCategoryName } from "@/features/projects/api/projectDetailApi";
 import { useProjectOverview } from "@/features/projects/api/useProjectOverview";
 import { useVulnerabilities } from "@/features/projects/api/useVulnerabilities";
 import { useVulnReport } from "@/features/projects/api/useVulnReport";
@@ -17,6 +18,7 @@ import type {
   VulnerabilityListItem,
   VulnerabilitySortKey,
 } from "@/features/projects/api/vulnerabilitiesApi";
+import { LicenseCategoryBadge } from "@/features/projects/components/LicenseCategoryBadge";
 import { ReachabilityBadge } from "@/features/projects/components/ReachabilityBadge";
 import { SeverityBadge } from "@/features/projects/components/SeverityBadge";
 import { VulnerabilitiesToolbar } from "@/features/projects/components/VulnerabilitiesToolbar";
@@ -81,6 +83,13 @@ const VALID_SORT = new Set<VulnerabilitySortKey>([
 const VALID_REACHABLE = new Set<ReachabilityFilter>([
   "true",
   "false",
+  "unknown",
+]);
+
+const VALID_LICENSE = new Set<LicenseCategoryName>([
+  "forbidden",
+  "conditional",
+  "allowed",
   "unknown",
 ]);
 
@@ -186,6 +195,17 @@ export function VulnerabilitiesTab({
   const [reachable, setReachable] = useState<ReachabilityFilter | null>(() =>
     parseReachable(searchParams.get("reachable")),
   );
+  // W2 #33 — License-risk multi-select. Mirrors the Components tab's pattern:
+  // CSV-encoded in `?license_category=`, the same `parseList` helper, and the
+  // same four `LicenseCategoryName` tokens so a triager can pivot between
+  // tabs without re-learning the facet.
+  const [licenseCategory, setLicenseCategory] = useState<LicenseCategoryName[]>(
+    () =>
+      parseList<LicenseCategoryName>(
+        searchParams.get("license_category"),
+        VALID_LICENSE,
+      ),
+  );
   // v2.1 A3 — "suppressed via VEX" inline filter. URL flag `vex_suppressed=1`.
   // The backend has no `analysis_source` query param yet, so we narrow the
   // current page client-side (sufficient for the triage workflow: a reviewer
@@ -251,6 +271,11 @@ export function VulnerabilitiesTab({
         else next.delete("min_epss");
         if (reachable != null) next.set("reachable", reachable);
         else next.delete("reachable");
+        // W2 #33 — `?license_category=forbidden,conditional,...`. Empty array
+        // drops the key entirely so the default URL stays clean.
+        if (licenseCategory.length)
+          next.set("license_category", licenseCategory.join(","));
+        else next.delete("license_category");
         if (vexSuppressedOnly) next.set("vex_suppressed", "1");
         else next.delete("vex_suppressed");
         if (page !== 1) next.set("page", String(page));
@@ -267,6 +292,7 @@ export function VulnerabilitiesTab({
     order,
     minEpss,
     reachable,
+    licenseCategory,
     vexSuppressedOnly,
     page,
     setSearchParams,
@@ -281,6 +307,7 @@ export function VulnerabilitiesTab({
       order,
       min_epss: minEpss,
       reachable,
+      license_category: licenseCategory,
       limit: PAGE_SIZE,
       offset: (page - 1) * PAGE_SIZE,
       scanId,
@@ -293,6 +320,7 @@ export function VulnerabilitiesTab({
       order,
       minEpss,
       reachable,
+      licenseCategory,
       page,
       scanId,
     ],
@@ -355,6 +383,11 @@ export function VulnerabilitiesTab({
         reachable={reachable}
         onReachableChange={(next) => {
           setReachable(next);
+          setPage(1);
+        }}
+        licenseCategory={licenseCategory}
+        onLicenseCategoryChange={(next) => {
+          setLicenseCategory(next);
           setPage(1);
         }}
         onDownloadPdf={() => {
@@ -482,6 +515,7 @@ function VulnerabilitiesTableHeader() {
     >
       <span className="w-44">{t("vulnerabilities.column.cve_id")}</span>
       <span className="w-28">{t("vulnerabilities.column.severity")}</span>
+      <span className="w-28">{t("vulnerabilities.column.license")}</span>
       <span className="w-28">{t("vulnerabilities.column.reachable")}</span>
       <span className="w-16 text-right">
         {t("vulnerabilities.column.cvss")}
@@ -540,6 +574,21 @@ function VulnerabilityRow({
       </span>
       <span className="w-28">
         <SeverityBadge severity={vulnerability.severity} />
+      </span>
+      <span
+        className="w-28"
+        data-testid="vuln-row-license"
+        data-license-category={vulnerability.component_license_category}
+      >
+        {/*
+          W2 #33 — Defensive fallback: the backend contract guarantees this
+          field is always one of the four enum values (LEFT-JOIN miss → "unknown"),
+          but if a stale-cached response misses it we still render the
+          "unknown" bucket rather than crashing the row.
+         */}
+        <LicenseCategoryBadge
+          category={vulnerability.component_license_category ?? "unknown"}
+        />
       </span>
       <span
         className="flex w-28 items-center"

@@ -217,6 +217,7 @@
     "column": {
       "cve_id": "CVE ID",
       "severity": "심각도",
+      "license": "라이선스",
       "reachable": "도달 가능성",
       "cvss": "CVSS",
       "epss": "EPSS",
@@ -328,6 +329,7 @@
         "false": "도달 불가",
         "unknown": "미분석"
       },
+      "license_label": "라이선스",
       "sort_label": "정렬 기준",
       "sort_by_severity": "심각도",
       "sort_by_reachable": "도달 가능성",
