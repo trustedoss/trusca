@@ -107,14 +107,17 @@ export function ScanProgress({
     setClosedNonTerminally(true);
   }, []);
 
-  const { state, lastMessage, reconnectAttempt, isTerminal } = useScanWebSocket(
-    scanId,
-    {
+  const { state, lastMessage, messages, reconnectAttempt, isTerminal } =
+    useScanWebSocket(scanId, {
       socketFactory,
       urlBuilder,
       onNonTerminalClose: handleNonTerminalClose,
-    },
-  );
+    });
+
+  // P2 #8b — collapsible per-step log panel. Default collapsed; the headline
+  // panel already shows percent + step + the per-step pipeline list. The
+  // log is the deep-dive for users debugging a slow / stuck scan.
+  const [logOpen, setLogOpen] = useState(false);
 
   // One-shot status refetch — only enabled after a non-terminal socket close
   // and only while the live stream has not already reported a terminal step.
@@ -328,6 +331,72 @@ export function ScanProgress({
         <p className="text-xs text-muted-foreground">
           {t("progress.background_notice")}
         </p>
+      ) : null}
+
+      {/* P2 #8b — per-step log panel. Collapsed by default; the headline
+          summary above is enough for the common case. When expanded the
+          panel renders every frame the WebSocket has delivered (capped at
+          500 in the hook) so users can see when each step started, how
+          long it took, and whether a step bounced between percents while
+          the worker was retrying. */}
+      {messages.length > 0 ? (
+        <div
+          className="rounded-md border bg-muted/30"
+          data-testid="scan-progress-log"
+          data-open={logOpen ? "true" : "false"}
+        >
+          <button
+            type="button"
+            onClick={() => setLogOpen((v) => !v)}
+            aria-expanded={logOpen}
+            aria-controls="scan-progress-log-body"
+            className="flex w-full items-center justify-between gap-2 px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            data-testid="scan-progress-log-toggle"
+          >
+            <span>
+              {t("progress.log_toggle", {
+                defaultValue: "Per-step log",
+              })}
+              <span
+                className="ml-2 inline-flex items-center rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] tabular-nums"
+                aria-hidden
+              >
+                {messages.length}
+              </span>
+            </span>
+            <span aria-hidden className="font-mono text-[10px]">
+              {logOpen ? "▼" : "▶"}
+            </span>
+          </button>
+          {logOpen ? (
+            <ol
+              id="scan-progress-log-body"
+              className="max-h-48 overflow-y-auto border-t font-mono text-[11px] leading-snug"
+              data-testid="scan-progress-log-body"
+            >
+              {messages.map((msg, idx) => (
+                <li
+                  key={`${msg.ts}-${idx}`}
+                  className="flex items-baseline gap-2 border-b px-3 py-1 last:border-b-0"
+                  data-step={msg.step}
+                >
+                  <span
+                    className="shrink-0 text-muted-foreground"
+                    title={msg.ts}
+                  >
+                    {msg.ts.slice(11, 19)}
+                  </span>
+                  <span className="shrink-0 tabular-nums text-foreground">
+                    {String(msg.percent).padStart(3, " ")}%
+                  </span>
+                  <span className="truncate text-foreground">
+                    {msg.step || "—"}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          ) : null}
+        </div>
       ) : null}
 
       <div className="flex flex-wrap items-center justify-end gap-2">

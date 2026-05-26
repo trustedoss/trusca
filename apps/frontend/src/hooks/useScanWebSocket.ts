@@ -69,6 +69,16 @@ export type ScanWebSocketState =
 export interface UseScanWebSocketResult {
   state: ScanWebSocketState;
   lastMessage: ScanProgressMessage | null;
+  /**
+   * P2 #8 — append-only ring buffer of every frame the hook has received
+   * for this connection, capped at {@link MESSAGE_HISTORY_CAP}. The log
+   * panel in ScanProgress renders this so users can see the full per-step
+   * trace (timestamps, percent jumps, step transitions) instead of only
+   * the latest frame's headline. Oldest entries are dropped FIFO once the
+   * cap is hit; a single scan rarely produces more than a few dozen
+   * frames, so the cap is generous.
+   */
+  messages: ScanProgressMessage[];
   closeCode: number | null;
   closeReason: string | null;
   reconnectAttempt: number;
@@ -78,6 +88,9 @@ export interface UseScanWebSocketResult {
    */
   isTerminal: boolean;
 }
+
+/** P2 #8 — hard cap on the message history ring buffer (FIFO eviction). */
+const MESSAGE_HISTORY_CAP = 500;
 
 interface UseScanWebSocketOptions {
   /** Disable the connection without unmounting the component. */
@@ -151,6 +164,9 @@ export function useScanWebSocket(
   const [lastMessage, setLastMessage] = useState<ScanProgressMessage | null>(
     null,
   );
+  // P2 #8 — message history for the log panel. Same lifetime as
+  // `lastMessage`: cleared when the hook reconnects to a fresh scanId.
+  const [messages, setMessages] = useState<ScanProgressMessage[]>([]);
   const [closeCode, setCloseCode] = useState<number | null>(null);
   const [closeReason, setCloseReason] = useState<string | null>(null);
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
@@ -180,6 +196,9 @@ export function useScanWebSocket(
     cancelledRef.current = false;
     terminalReachedRef.current = false;
     lastAttemptRef.current = 0;
+    // P2 #8 — reset the log buffer on every connect; a fresh scanId must
+    // not carry frames from a previous scan into the new panel.
+    setMessages([]);
 
     if (!enabled || scanId == null || scanId === "") {
       // Nothing to do — make sure we report idle and clear any leftover state.
@@ -300,6 +319,16 @@ export function useScanWebSocket(
         }
         if (parsed != null) {
           setLastMessage(parsed);
+          // P2 #8 — also append into the bounded history for the log panel.
+          // Functional update so concurrent renders see a consistent buffer;
+          // FIFO eviction keeps the array length ≤ MESSAGE_HISTORY_CAP.
+          setMessages((prev) => {
+            const next = prev.length >= MESSAGE_HISTORY_CAP
+              ? prev.slice(prev.length - MESSAGE_HISTORY_CAP + 1)
+              : prev.slice();
+            next.push(parsed!);
+            return next;
+          });
           setState("open");
           // Reset the reconnect budget once we've received a valid frame.
           reconnectStartedAtRef.current = null;
@@ -472,6 +501,7 @@ export function useScanWebSocket(
   return {
     state,
     lastMessage,
+    messages,
     closeCode,
     closeReason,
     reconnectAttempt,
