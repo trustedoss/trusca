@@ -200,6 +200,9 @@ async def test_concurrent_trigger_returns_409_problem(client) -> None:
     body = second.json()
     assert body["title"] == "Scan Already In Progress"
     assert body["status"] == 409
+    # P1 #10 — machine-checkable extension so the SPA can render a targeted
+    # notice and link to the in-progress drawer without parsing the detail.
+    assert body.get("scan_already_in_progress") is True
 
 
 async def test_trigger_scan_other_team_returns_403(client) -> None:

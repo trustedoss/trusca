@@ -654,12 +654,29 @@ function ProjectDetailHeader({
               : t("page.scan_active_running")}
           </button>
         ) : null}
+        {/* P1 #10 — block re-trigger while a scan is queued or running for
+            this project. The DB already enforces this via the partial unique
+            index `ix_scans_project_active` (the trigger endpoint returns 409
+            with `scan_already_in_progress=true`), but disabling the button
+            prevents the user from ever hitting that conflict. The "scan
+            running" chip to the left remains as the explicit affordance —
+            click it to re-open the in-flight drawer. */}
         <Button
           size="sm"
           onClick={onScan}
-          disabled={!canScan}
-          title={demoReadOnly ? t("page.scan_demo_disabled") : undefined}
+          disabled={!canScan || activeScan !== null}
+          title={
+            demoReadOnly
+              ? t("page.scan_demo_disabled")
+              : activeScan !== null
+                ? t("page.scan_already_active", {
+                    defaultValue:
+                      "A scan is already running for this project — open the in-progress drawer to view it.",
+                  })
+                : undefined
+          }
           data-testid="project-detail-scan"
+          data-scan-blocked={activeScan !== null ? "active" : undefined}
         >
           {t("page.scan")}
         </Button>
