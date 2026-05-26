@@ -246,10 +246,12 @@ async def list_projects_endpoint(
         return _problem_for_project_error(request, exc)
 
     # #25 — enrich each page row with its latest scan status (status badge) and a
-    # severity summary from its latest *succeeded* scan (risk indicator). Both
-    # maps are computed in batched queries over the page's project ids (no N+1);
-    # the page is already team-scoped by ``list_projects`` above.
-    status_by_project, severity_by_project = await enrich_project_rows(
+    # severity summary from its latest *succeeded* scan (risk indicator). W3 #30
+    # adds three discoverability aggregates (scan_count / release_count /
+    # last_scan_at). All three maps are computed in batched queries over the
+    # page's project ids (no N+1); the page is already team-scoped by
+    # ``list_projects`` above.
+    status_by_project, severity_by_project, counts_by_project = await enrich_project_rows(
         session, projects=rows
     )
 
@@ -262,6 +264,13 @@ async def list_projects_endpoint(
         item.latest_scan_status = cast(ScanStatus, raw_status) if raw_status else None
         sev = severity_by_project.get(p.id)
         item.severity_summary = SeveritySummary(**sev) if sev is not None else None
+        # W3 #30 — absent ⇒ project has no scans at all; keep schema defaults
+        # (0 / 0 / null) instead of overwriting with explicit zeros.
+        counts = counts_by_project.get(p.id)
+        if counts is not None:
+            item.scan_count = counts["scan_count"]
+            item.release_count = counts["release_count"]
+            item.last_scan_at = counts["last_scan_at"]
         items.append(item)
 
     body = ProjectListResponse(

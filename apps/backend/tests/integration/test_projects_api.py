@@ -505,6 +505,70 @@ async def test_list_row_never_scanned_is_idle_with_null_summary(client) -> None:
     )
     assert row["latest_scan_status"] is None  # → "Idle" badge
     assert row["severity_summary"] is None
+    # W3 #30 — never-scanned row defaults to (0, 0, null).
+    assert row["scan_count"] == 0
+    assert row["release_count"] == 0
+    assert row["last_scan_at"] is None
+
+
+async def test_list_row_exposes_scan_release_counts_and_last_scan_at_on_wire(
+    client,
+) -> None:
+    """W3 #30 — list rows carry ``scan_count`` / ``release_count`` / ``last_scan_at``.
+
+    Headline shape: the ci-vulns seed has 2 attempts (1 succeeded + 1 later
+    failed), so the row must expose ``scan_count=2``, ``release_count=1``, and
+    ``last_scan_at`` = the failed attempt's time (the MAX over all attempts,
+    regardless of status — mirrors the overview's ``last_scan_at``).
+    """
+    _, team, user = await _seed_team_with_user(client, role="developer")
+    headers = _bearer_for(user)
+    project_id, succeeded_at, failed_at = await _seed_ci_vulns_shape(
+        client, team_id=team.id
+    )
+
+    response = await client.get(
+        "/v1/projects",
+        headers=headers,
+        params={"team_id": str(team.id), "size": 100},
+    )
+    assert response.status_code == 200, response.text
+    row = next(
+        item for item in response.json()["items"] if item["id"] == str(project_id)
+    )
+    assert row["scan_count"] == 2
+    assert row["release_count"] == 1
+    # last_scan_at tracks the latest *attempt* (the failed scan, newer than
+    # the succeeded one).
+    assert row["last_scan_at"][:19] == failed_at.isoformat()[:19]
+    # Sanity-check the relationship matches the overview field of the same name.
+    assert succeeded_at < failed_at
+
+
+async def test_single_project_response_keeps_count_defaults(client) -> None:
+    """W3 #30 — single-project GET surfaces (0, 0, null) defaults.
+
+    The count fields are populated ONLY on the list endpoint. ``GET
+    /v1/projects/{id}`` returns the bare project row, so the schema defaults
+    must serialize through cleanly — they're not authoritative on this
+    surface, the overview is.
+    """
+    _, team, user = await _seed_team_with_user(client, role="developer")
+    headers = _bearer_for(user)
+    # Reuse the ci-vulns seed (2 attempts, 1 succeeded) — the LIST surface
+    # would show 2/1/<failed_at>, but the DETAIL surface keeps schema defaults.
+    project_id, _succeeded_at, _failed_at = await _seed_ci_vulns_shape(
+        client, team_id=team.id
+    )
+
+    response = await client.get(f"/v1/projects/{project_id}", headers=headers)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    # The router serializes ProjectPublic without overlaying the list-only
+    # aggregates, so defaults are what the wire carries.
+    assert body["scan_count"] == 0
+    assert body["release_count"] == 0
+    assert body["last_scan_at"] is None
 
 
 async def test_overview_emits_last_succeeded_scan_at_on_the_wire(client) -> None:

@@ -1,16 +1,19 @@
 """
 #25 — project-list row enrichment (latest scan status + severity summary) and
-the overview's ``last_succeeded_scan_at``.
+the overview's ``last_succeeded_scan_at``. W3 #30 — list-row count aggregates
+(scan_count / release_count / last_scan_at).
 
-These cover the two read-only additions:
+These cover the read-only additions:
 
 TASK 1 — ``services.project_list_enrichment.enrich_project_rows`` returns, for a
-page of project rows, two BATCHED maps:
+page of project rows, three BATCHED maps:
   * ``latest_scan_status`` from the project's latest scan *attempt*
     (``Project.latest_scan_id``) — drives the status badge (None ⇒ "Idle"),
   * ``severity_summary`` from the project's latest *succeeded* scan
     (``services.scan_resolution.latest_succeeded_scan_id``) — drives the risk
-    indicator (None ⇒ no succeeded scan).
+    indicator (None ⇒ no succeeded scan),
+  * ``scan_count`` / ``release_count`` / ``last_scan_at`` (W3 #30) from a single
+    GROUP BY over ``scans`` — drives the list-row discoverability column trio.
 
 The headline case is the verified ``ci-vulns`` shape: an EARLIER succeeded scan
 with findings (incl. critical) followed by a LATER FAILED attempt, with
@@ -22,11 +25,11 @@ TASK 2 — ``get_project_overview`` returns ``last_succeeded_scan_at`` = the
 latest succeeded scan's ``created_at`` (the same anchor sbom_export uses), or null
 when there is no succeeded scan. ``last_scan_at`` (the last *attempt*) is kept.
 
-Batched-ness: ``enrich_project_rows`` issues exactly 3 statements regardless of
-page size (status map / succeeded-id map / one grouped severity aggregation). The
-batching test asserts the statement count does NOT grow with the number of
-projects (no per-row query explosion), via a SQLAlchemy ``before_cursor_execute``
-counter.
+Batched-ness: ``enrich_project_rows`` issues exactly 4 statements regardless of
+page size (status map / succeeded-id map / one grouped severity aggregation / one
+grouped count aggregation). The batching test asserts the statement count does
+NOT grow with the number of projects (no per-row query explosion), via a
+SQLAlchemy ``before_cursor_execute`` counter.
 
 Runs against the real Postgres (CLAUDE.md core rule #1) — the severity
 aggregation depends on live ENUM / CASE behaviour; mocking would test the mock.
@@ -263,7 +266,9 @@ async def test_failed_latest_attempt_keeps_severity_from_earlier_succeeded_scan(
 
     _team, _user, project, _succeeded, _failed = await _ci_vulns_like_project(db_session)
 
-    status_map, sev_map = await enrich_project_rows(db_session, projects=[project])
+    status_map, sev_map, counts_map = await enrich_project_rows(
+        db_session, projects=[project]
+    )
 
     assert status_map[project.id] == "failed"
     assert project.id in sev_map
@@ -272,6 +277,11 @@ async def test_failed_latest_attempt_keeps_severity_from_earlier_succeeded_scan(
     assert summary["high"] == 1
     assert summary["medium"] == 0
     assert summary["low"] == 0
+    # W3 #30 — counts: 2 attempts (succeeded + failed), 1 release, last_scan_at
+    # tracks the latest attempt (the failed one, which is newer).
+    assert counts_map[project.id]["scan_count"] == 2
+    assert counts_map[project.id]["release_count"] == 1
+    assert counts_map[project.id]["last_scan_at"] == _failed.created_at
 
 
 async def test_never_scanned_project_both_null(db_session: AsyncSession) -> None:
@@ -282,10 +292,15 @@ async def test_never_scanned_project_both_null(db_session: AsyncSession) -> None
     team = await make_team(db_session, organization=org)
     project = await make_project(db_session, team=team)
 
-    status_map, sev_map = await enrich_project_rows(db_session, projects=[project])
+    status_map, sev_map, counts_map = await enrich_project_rows(
+        db_session, projects=[project]
+    )
 
     assert project.id not in status_map  # caller maps absence → None ("Idle")
     assert project.id not in sev_map  # caller maps absence → null severity_summary
+    # W3 #30 — never scanned ⇒ absent from counts map ⇒ caller defaults to
+    # (0, 0, None).
+    assert project.id not in counts_map
 
 
 async def test_succeeded_scan_with_no_cves_is_all_zero_not_null(
@@ -306,11 +321,17 @@ async def test_succeeded_scan_with_no_cves_is_all_zero_not_null(
     await _attach_component(db_session, scan_id=succeeded.id, cv_id=cv.id)
     await _set_latest_scan(db_session, project=project, scan_id=succeeded.id)
 
-    status_map, sev_map = await enrich_project_rows(db_session, projects=[project])
+    status_map, sev_map, counts_map = await enrich_project_rows(
+        db_session, projects=[project]
+    )
 
     assert status_map[project.id] == "succeeded"
     assert project.id in sev_map
     assert sev_map[project.id] == {"critical": 0, "high": 0, "medium": 0, "low": 0}
+    # W3 #30 — 1 attempt, 1 succeeded, last_scan_at = the succeeded scan's time.
+    assert counts_map[project.id]["scan_count"] == 1
+    assert counts_map[project.id]["release_count"] == 1
+    assert counts_map[project.id]["last_scan_at"] == succeeded.created_at
 
 
 async def test_info_severity_findings_excluded_from_summary_buckets(
@@ -343,7 +364,9 @@ async def test_info_severity_findings_excluded_from_summary_buckets(
     )
     await _set_latest_scan(db_session, project=project, scan_id=succeeded.id)
 
-    _status_map, sev_map = await enrich_project_rows(db_session, projects=[project])
+    _status_map, sev_map, _counts_map = await enrich_project_rows(
+        db_session, projects=[project]
+    )
 
     # The info component is excluded; only the low one counts.
     assert sev_map[project.id] == {"critical": 0, "high": 0, "medium": 0, "low": 1}
@@ -364,17 +387,24 @@ async def test_only_failed_scan_status_failed_but_no_severity(
     )
     await _set_latest_scan(db_session, project=project, scan_id=failed.id)
 
-    status_map, sev_map = await enrich_project_rows(db_session, projects=[project])
+    status_map, sev_map, counts_map = await enrich_project_rows(
+        db_session, projects=[project]
+    )
 
     assert status_map[project.id] == "failed"
     assert project.id not in sev_map
+    # W3 #30 — counts ARE populated for the failed-only project (the count
+    # query is status-agnostic); release_count is 0 since no scan succeeded.
+    assert counts_map[project.id]["scan_count"] == 1
+    assert counts_map[project.id]["release_count"] == 0
+    assert counts_map[project.id]["last_scan_at"] == failed.created_at
 
 
 async def test_empty_page_issues_no_sql(db_session: AsyncSession) -> None:
     from services.project_list_enrichment import enrich_project_rows
 
-    status_map, sev_map = await enrich_project_rows(db_session, projects=[])
-    assert (status_map, sev_map) == ({}, {})
+    status_map, sev_map, counts_map = await enrich_project_rows(db_session, projects=[])
+    assert (status_map, sev_map, counts_map) == ({}, {}, {})
 
 
 async def test_enrichment_is_batched_not_per_row(db_session: AsyncSession) -> None:
@@ -428,13 +458,158 @@ async def test_enrichment_is_batched_not_per_row(db_session: AsyncSession) -> No
 
     # Constant statement count regardless of page size — no N+1.
     assert one_row_stmts == five_row_stmts
-    # And it is a small constant (status map + succeeded-id map + severity agg).
-    assert five_row_stmts <= 3
+    # And it is a small constant (status map + succeeded-id map + severity agg
+    # + count agg — W3 #30 adds the 4th batched query).
+    assert five_row_stmts <= 4
 
-    # Correctness over the 5-project page: each has 1 critical.
-    _status_map, sev_map = await enrich_project_rows(db_session, projects=projects)
+    # Correctness over the 5-project page: each has 1 critical, 1 scan, 1 release.
+    _status_map, sev_map, counts_map = await enrich_project_rows(
+        db_session, projects=projects
+    )
     for project in projects:
         assert sev_map[project.id]["critical"] == 1
+        assert counts_map[project.id]["scan_count"] == 1
+        assert counts_map[project.id]["release_count"] == 1
+        assert counts_map[project.id]["last_scan_at"] is not None
+
+
+# ---------------------------------------------------------------------------
+# W3 #30 — _scan_counts_map shape tests
+# ---------------------------------------------------------------------------
+
+
+async def test_counts_map_multi_attempt_partial_success(
+    db_session: AsyncSession,
+) -> None:
+    """5 attempts, 2 succeeded → scan_count=5, release_count=2, last_scan_at=max."""
+    from services.project_list_enrichment import _scan_counts_map
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    project = await make_project(db_session, team=team)
+
+    base = datetime.now(tz=UTC) - timedelta(hours=10)
+    # Build 5 attempts at staggered times: 3 failed, 2 succeeded.
+    statuses = ["failed", "succeeded", "failed", "succeeded", "failed"]
+    scans = []
+    for i, st in enumerate(statuses):
+        scan = await _make_scan_at(
+            db_session,
+            project_id=project.id,
+            status=st,
+            created_at=base + timedelta(hours=i),
+        )
+        scans.append(scan)
+
+    counts = await _scan_counts_map(db_session, project_ids=[project.id])
+
+    assert counts[project.id]["scan_count"] == 5
+    assert counts[project.id]["release_count"] == 2
+    # last_scan_at is the MAX(created_at) regardless of status — the latest
+    # attempt is the final 'failed' one.
+    assert counts[project.id]["last_scan_at"] == scans[-1].created_at
+
+
+async def test_counts_map_groups_per_project_single_query(
+    db_session: AsyncSession,
+) -> None:
+    """Multiple projects in one call → each gets its own correctly-grouped row."""
+    from sqlalchemy import event
+
+    from services.project_list_enrichment import _scan_counts_map
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+
+    # Project A: 3 attempts, 1 succeeded.
+    project_a = await make_project(db_session, team=team)
+    base_a = datetime.now(tz=UTC) - timedelta(hours=5)
+    await _make_scan_at(
+        db_session, project_id=project_a.id, status="failed", created_at=base_a
+    )
+    a_succeeded = await _make_scan_at(
+        db_session,
+        project_id=project_a.id,
+        status="succeeded",
+        created_at=base_a + timedelta(hours=1),
+    )
+    a_last = await _make_scan_at(
+        db_session,
+        project_id=project_a.id,
+        status="failed",
+        created_at=base_a + timedelta(hours=2),
+    )
+
+    # Project B: 2 attempts, both succeeded.
+    project_b = await make_project(db_session, team=team)
+    base_b = datetime.now(tz=UTC) - timedelta(hours=4)
+    await _make_scan_at(
+        db_session, project_id=project_b.id, status="succeeded", created_at=base_b
+    )
+    b_last = await _make_scan_at(
+        db_session,
+        project_id=project_b.id,
+        status="succeeded",
+        created_at=base_b + timedelta(hours=1),
+    )
+
+    # Project C: never scanned. Must be absent from the result (caller defaults).
+    project_c = await make_project(db_session, team=team)
+
+    # Pin the statement count: must be exactly 1 SQL execution (single GROUP BY).
+    engine = db_session.get_bind()
+    sync_engine = getattr(engine, "sync_engine", engine)
+    counter = {"n": 0}
+
+    def _count(conn, cursor, statement, parameters, context, executemany):  # type: ignore[no-untyped-def]
+        counter["n"] += 1
+
+    event.listen(sync_engine, "before_cursor_execute", _count)
+    try:
+        counts = await _scan_counts_map(
+            db_session, project_ids=[project_a.id, project_b.id, project_c.id]
+        )
+    finally:
+        event.remove(sync_engine, "before_cursor_execute", _count)
+
+    assert counter["n"] == 1, f"expected 1 statement, got {counter['n']}"
+
+    # A: 3 attempts, 1 succeeded, last_scan_at = latest failed.
+    assert counts[project_a.id]["scan_count"] == 3
+    assert counts[project_a.id]["release_count"] == 1
+    assert counts[project_a.id]["last_scan_at"] == a_last.created_at
+    assert a_succeeded.created_at < a_last.created_at  # sanity
+
+    # B: 2 attempts, both succeeded, last_scan_at = newest succeeded.
+    assert counts[project_b.id]["scan_count"] == 2
+    assert counts[project_b.id]["release_count"] == 2
+    assert counts[project_b.id]["last_scan_at"] == b_last.created_at
+
+    # C: never scanned ⇒ absent (caller defaults to 0/0/None).
+    assert project_c.id not in counts
+
+
+async def test_counts_map_empty_project_ids_no_sql(db_session: AsyncSession) -> None:
+    """Empty page guard mirrors enrich_project_rows: no SQL, empty dict."""
+    from sqlalchemy import event
+
+    from services.project_list_enrichment import _scan_counts_map
+
+    engine = db_session.get_bind()
+    sync_engine = getattr(engine, "sync_engine", engine)
+    counter = {"n": 0}
+
+    def _count(conn, cursor, statement, parameters, context, executemany):  # type: ignore[no-untyped-def]
+        counter["n"] += 1
+
+    event.listen(sync_engine, "before_cursor_execute", _count)
+    try:
+        out = await _scan_counts_map(db_session, project_ids=[])
+    finally:
+        event.remove(sync_engine, "before_cursor_execute", _count)
+
+    assert out == {}
+    assert counter["n"] == 0
 
 
 # ---------------------------------------------------------------------------

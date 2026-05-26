@@ -1,9 +1,9 @@
 """
-Project-list row enrichment — batched scan-status + severity-summary (#25).
+Project-list row enrichment — batched scan-status + severity-summary + counts.
 
 The project-list endpoint (``GET /v1/projects``) used to return bare project
 rows, so the UI rendered every project as "Idle" with no risk indicator. This
-module enriches a *page* of project rows with two derived fields:
+module enriches a *page* of project rows with derived fields:
 
   - ``latest_scan_status`` — the status of each project's latest scan *attempt*
     (the scan denormalized into ``Project.latest_scan_id``). Drives the row's
@@ -13,6 +13,13 @@ module enriches a *page* of project rows with two derived fields:
     project's latest *succeeded* scan (the same anchor the overview / build gate
     use via ``services.scan_resolution.latest_succeeded_scan_id``). Drives the
     per-row risk indicator; ``None`` when the project has no succeeded scan.
+
+  - ``scan_count`` / ``release_count`` / ``last_scan_at`` (W3 #30) — list-row
+    discoverability aggregates. ``scan_count`` is total scan attempts (any
+    status), ``release_count`` is succeeded-scan count (the "release" model in
+    tracker §0.5: every succeeded scan IS a release snapshot), and
+    ``last_scan_at`` is the most-recent scan attempt's timestamp (regardless of
+    status). All three are produced by a SINGLE batched GROUP BY query.
 
 Why these two anchor on DIFFERENT scans
 ----------------------------------------
@@ -26,14 +33,18 @@ show ``latest_scan_status="failed"`` AND a non-null ``severity_summary`` at once
 
 Efficiency (the whole point — DoD: up to 100 rows per page, no N+1)
 ------------------------------------------------------------------
-Both fields are computed in BATCHED queries over the page's project ids:
+Every field is computed in BATCHED queries over the page's project ids:
 
   1. one query joining ``scans`` by the page's ``latest_scan_id`` set → a
      ``{project_id: status}`` map (the status-badge source);
   2. one ``DISTINCT ON`` query resolving the latest-succeeded scan id per
      project (mirroring ``dashboard_service._latest_succeeded_scan_ids``), then a
      SINGLE grouped severity aggregation over exactly that scan-id set →
-     ``{project_id: {critical, high, medium, low}}``.
+     ``{project_id: {critical, high, medium, low}}``;
+  3. one ``GROUP BY project_id`` aggregation over ``scans`` → a
+     ``{project_id: {scan_count, release_count, last_scan_at}}`` map (W3 #30).
+     This uses the existing ``ix_scans_project_created_at`` (project_id leading
+     + created_at) covering index — no separate index needed.
 
 No per-row query is ever issued. The aggregation mirrors
 ``dashboard_service._severity_counts`` (worst CVE per component, MAX over a rank
@@ -52,6 +63,7 @@ CLAUDE.md compliance:
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import String, case, cast, func, literal, select
@@ -225,26 +237,88 @@ async def _severity_summary_map(
     return summaries
 
 
+async def _scan_counts_map(
+    session: AsyncSession,
+    *,
+    project_ids: list[uuid.UUID],
+) -> dict[uuid.UUID, dict[str, Any]]:
+    """``{project_id: {scan_count, release_count, last_scan_at}}`` for the page.
+
+    W3 #30 — list-row discoverability aggregates produced by a SINGLE
+    ``GROUP BY project_id`` query over ``scans``:
+
+      - ``scan_count``    = total scan attempts (any status),
+      - ``release_count`` = COUNT of attempts whose status='succeeded'
+                            (tracker §0.5: every succeeded scan = a release),
+      - ``last_scan_at``  = MAX(created_at) of any attempt (last *attempt*,
+                            NOT last success — mirrors the overview field of
+                            the same name).
+
+    Projects with no scans at all are absent from the result map — the caller
+    overlays defaults ``(0, 0, None)`` onto those rows. The existing covering
+    index ``ix_scans_project_created_at`` (project_id leading + created_at)
+    serves the GROUP BY without an index scan over the whole table.
+    """
+    if not project_ids:
+        return {}
+
+    scan_count_col = func.count().label("scan_count")
+    release_count_col = func.count(
+        case(
+            (cast(Scan.status, String) == "succeeded", 1),
+        )
+    ).label("release_count")
+    last_scan_at_col = func.max(Scan.created_at).label("last_scan_at")
+
+    stmt = (
+        select(
+            Scan.project_id,
+            scan_count_col,
+            release_count_col,
+            last_scan_at_col,
+        )
+        .where(Scan.project_id.in_(project_ids))
+        .group_by(Scan.project_id)
+    )
+    result = await session.execute(stmt)
+    out: dict[uuid.UUID, dict[str, Any]] = {}
+    for row in result.all():
+        last_at: datetime | None = row.last_scan_at
+        out[row.project_id] = {
+            "scan_count": int(row.scan_count),
+            "release_count": int(row.release_count),
+            "last_scan_at": last_at,
+        }
+    return out
+
+
 async def enrich_project_rows(
     session: AsyncSession,
     *,
     projects: list[Any],
-) -> tuple[dict[uuid.UUID, str], dict[uuid.UUID, dict[str, int]]]:
-    """Return ``(status_by_project, severity_summary_by_project)`` for the page.
+) -> tuple[
+    dict[uuid.UUID, str],
+    dict[uuid.UUID, dict[str, int]],
+    dict[uuid.UUID, dict[str, Any]],
+]:
+    """Return ``(status_by_project, severity_summary_by_project, counts_by_project)``.
 
-    Both maps are computed in batched queries over the page's project ids — never
-    per row. The caller overlays them onto each ``ProjectPublic`` row:
+    All three maps are computed in BATCHED queries over the page's project ids —
+    never per row. The caller overlays them onto each ``ProjectPublic`` row:
 
       - ``status_by_project.get(p.id)`` → ``latest_scan_status`` (None ⇒ "Idle"),
       - ``severity_summary_by_project.get(p.id)`` → ``severity_summary`` (absent
         ⇒ null; present ⇒ a four-bucket dict, all-zero when the succeeded scan had
-        no CVE findings).
+        no CVE findings),
+      - ``counts_by_project.get(p.id)`` → ``{scan_count, release_count,
+        last_scan_at}`` (absent ⇒ caller defaults to ``(0, 0, None)`` — the
+        project has no scans at all). W3 #30 discoverability aggregates.
 
     A pure read with NO auth check: the caller has already team-scoped ``projects``.
-    Returns two empty dicts for an empty page (no SQL issued).
+    Returns three empty dicts for an empty page (no SQL issued).
     """
     if not projects:
-        return {}, {}
+        return {}, {}, {}
 
     project_ids = [p.id for p in projects]
 
@@ -255,8 +329,9 @@ async def enrich_project_rows(
     severity_summary_by_project = await _severity_summary_map(
         session, succeeded_by_project=succeeded_by_project
     )
+    counts_by_project = await _scan_counts_map(session, project_ids=project_ids)
 
-    return status_by_project, severity_summary_by_project
+    return status_by_project, severity_summary_by_project, counts_by_project
 
 
 __all__ = ["enrich_project_rows"]

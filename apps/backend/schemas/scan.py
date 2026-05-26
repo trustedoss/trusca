@@ -421,6 +421,36 @@ class ProjectPublic(BaseModel):
             "earlier scan succeeded and its findings remain the current posture."
         ),
     )
+    # W3 #30 — list-row discoverability aggregates. Populated ONLY on the list
+    # endpoint (GET /v1/projects), which fills them via one batched GROUP BY
+    # query alongside the status / severity maps. On single-project responses
+    # (GET/POST/PATCH /v1/projects/{id}) they default to 0 / 0 / null — those
+    # surfaces read the richer overview endpoint instead.
+    scan_count: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Total scan attempts for the project (any status). Populated only "
+            "on the list endpoint; defaults to 0 on single-project responses."
+        ),
+    )
+    release_count: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Count of succeeded scans (the 'release' model: every succeeded "
+            "scan IS a release snapshot). Populated only on the list endpoint; "
+            "defaults to 0 on single-project responses."
+        ),
+    )
+    last_scan_at: datetime | None = Field(
+        default=None,
+        description=(
+            "Timestamp of the most recent scan *attempt* (any status). `null` "
+            "when the project has never been scanned. Populated only on the "
+            "list endpoint; defaults to null on single-project responses."
+        ),
+    )
     created_at: datetime
     updated_at: datetime
 
