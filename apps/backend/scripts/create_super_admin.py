@@ -11,8 +11,13 @@ Why env vars instead of CLI flags?
   - Avoids leaking the password into ``ps -ef`` / Docker container args.
   - Lets the wizard pipe the password without echoing it.
 
-Idempotent:
-  - If a user with the email already exists AND is super_admin → noop.
+Idempotent (ensure-active semantics):
+  - If a user with the email already exists AND is super_admin → ensure
+    ``is_active=True`` (lift any stale deactivation) and return 0. This makes
+    the script a safe recovery hatch when something in the dev/demo
+    environment has deactivated the admin row (e.g. a stray integration test
+    run against the dev DB), so the operator can simply re-run the same
+    bootstrap command instead of opening a psql shell.
   - If the email exists but the user is NOT super_admin → SystemExit (the
     operator must explicitly demote / promote outside this script).
 """
@@ -51,6 +56,19 @@ async def _main() -> int:
 
             if existing is not None:
                 if existing.is_superuser:
+                    # Ensure-active recovery hatch: a re-run with the same env
+                    # vars must restore a usable admin even if the row was
+                    # flipped to is_active=False by something else (an admin
+                    # mistakenly deactivated it via the UI, a stray dev test
+                    # tripped the `deactivate_user` path, etc.). We only touch
+                    # is_active here — the password is left alone so a re-run
+                    # is non-destructive for an admin who simply forgot they
+                    # had been disabled.
+                    if not existing.is_active:
+                        existing.is_active = True
+                        await session.commit()
+                        print(f"super admin {email} reactivated")
+                        return 0
                     print(f"super admin {email} already exists — noop")
                     return 0
                 print(
