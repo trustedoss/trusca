@@ -222,7 +222,10 @@ describe("OverviewTab", () => {
     });
   });
 
-  it("clicking a license chart segment deep-links to ?tab=licenses&license_category=<key>", async () => {
+  it("clicking a license chart segment deep-links to ?tab=compliance&cview=licenses&license_category=<key>", async () => {
+    // W4-C #20 — Licenses was absorbed into Compliance. The deeplink now
+    // routes to the Compliance tab's Licenses sub-view and carries the
+    // category bucket so the inventory still lands filtered.
     mockedGet.mockResolvedValueOnce(
       overview({
         license_distribution: { forbidden: 1, allowed: 5 },
@@ -237,7 +240,8 @@ describe("OverviewTab", () => {
       const search = screen
         .getByTestId("location-probe")
         .getAttribute("data-search");
-      expect(search).toContain("tab=licenses");
+      expect(search).toContain("tab=compliance");
+      expect(search).toContain("cview=licenses");
       expect(search).toContain("license_category=forbidden");
     });
   });

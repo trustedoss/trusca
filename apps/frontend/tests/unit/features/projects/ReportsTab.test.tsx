@@ -237,7 +237,9 @@ describe("ReportsTab", () => {
     );
   });
 
-  it("clicking a generate-card deeplink sets ?tab=… and preserves ?scan=", async () => {
+  it("clicking the NOTICE generate-card deeplinks to Compliance and preserves ?scan=", async () => {
+    // W4-C #20 — NOTICE now lives under the unified Compliance tab
+    // (it is the headline output of the Obligations sub-view).
     mockedFetch.mockResolvedValueOnce(response([]));
     renderTab(["/projects/proj-1?tab=reports&scan=scan-pinned-id"]);
     await waitFor(() => {
@@ -251,9 +253,9 @@ describe("ReportsTab", () => {
       screen.getByTestId("reports-card-notice-deeplink"),
     );
 
-    // The deeplink switches `?tab=obligations` but keeps `?scan=` pinned.
+    // The deeplink switches `?tab=compliance` but keeps `?scan=` pinned.
     expect(screen.getByTestId("url-probe").getAttribute("data-tab")).toBe(
-      "obligations",
+      "compliance",
     );
     expect(screen.getByTestId("url-probe").getAttribute("data-scan")).toBe(
       "scan-pinned-id",

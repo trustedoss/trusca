@@ -31,7 +31,7 @@
  *   - Color is never the only signal: the type badge pairs a token-tinted
  *     background with a localised label (Notice / SBOM / Vuln PDF / VEX).
  */
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
@@ -53,6 +53,7 @@ import {
   type ReportType,
 } from "@/features/projects/api/reportHistoryApi";
 import { useReportHistory } from "@/features/projects/api/useReportHistory";
+import { SbomTab } from "@/features/projects/components/SbomTab";
 import { ProblemError } from "@/lib/problem";
 import { formatRelativeToNow } from "@/lib/relativeTime";
 import { cn } from "@/lib/utils";
@@ -82,9 +83,13 @@ function formatBytes(bytes: number | null | undefined): string {
 // Each report type maps to (1) the domain tab to deeplink into and (2) a tone
 // for the type badge. The tone is a design-token (no hex) — pairs a tinted
 // background with the localised label so color is not the only signal.
+//
+// W4-C #21 — the SBOM surface no longer has its own tab. It lives inside this
+// Reports tab as an in-page section, so `targetTab: "reports"` keeps the user
+// here while a dedicated "Scroll to SBOM" affordance handles the in-page jump.
 type ReportTypeUiMeta = {
   /** Target value for `?tab=…` deeplink. */
-  targetTab: "obligations" | "sbom" | "vulnerabilities";
+  targetTab: "compliance" | "reports" | "vulnerabilities";
   /** Badge tone (design-token via the cva variant). */
   tone: "info" | "low" | "high" | "medium";
   /** Stable test-id slug used by `reports-card-*` + `reports-history-*`. */
@@ -92,8 +97,10 @@ type ReportTypeUiMeta = {
 };
 
 const REPORT_TYPE_UI: Record<ReportType, ReportTypeUiMeta> = {
-  notice: { targetTab: "obligations", tone: "info", slug: "notice" },
-  sbom: { targetTab: "sbom", tone: "low", slug: "sbom" },
+  // W4-C #20 — NOTICE now lives under the unified Compliance tab.
+  notice: { targetTab: "compliance", tone: "info", slug: "notice" },
+  // W4-C #21 — SBOM is an in-page section here in Reports, not a separate tab.
+  sbom: { targetTab: "reports", tone: "low", slug: "sbom" },
   vuln_pdf: { targetTab: "vulnerabilities", tone: "high", slug: "vuln-pdf" },
   vex_export: { targetTab: "vulnerabilities", tone: "medium", slug: "vex" },
 };
@@ -108,11 +115,23 @@ export interface ReportsTabProps {
    * snapshot's artefacts.
    */
   scanId?: string;
+  /**
+   * W4-C #21 — Timestamp of the latest *succeeded* scan (ISO-8601). Threaded
+   * through to the embedded SBOM section so it can render the "Latest scan
+   * was X" label without a second round-trip. Optional — the section renders
+   * a "no scan yet" empty state when omitted/null.
+   */
+  lastSucceededScanAt?: string | null;
 }
 
-export function ReportsTab({ projectId }: ReportsTabProps) {
+export function ReportsTab({
+  projectId,
+  scanId,
+  lastSucceededScanAt,
+}: ReportsTabProps) {
   const { t, i18n } = useTranslation("project_detail");
   const [searchParams, setSearchParams] = useSearchParams();
+  const sbomSectionRef = useRef<HTMLElement>(null);
 
   // URL state — page + multi-select type filter persisted as comma-separated
   // tokens so a deep-link survives reload. Mirrors the LicensesTab /
@@ -180,7 +199,23 @@ export function ReportsTab({ projectId }: ReportsTabProps) {
   // tab handler would also have cleared. We deliberately do NOT clear
   // `rpt_type` / `rpt_page` because returning to the Reports tab should
   // restore the same filter state.
+  //
+  // W4-C #21 — when the target is "reports" (the SBOM card), no navigation is
+  // needed: the SBOM section is inline. Pin the `rpt_section=sbom` flag and
+  // scroll to the section so the user lands on it.
   function deeplinkToTab(target: ReportTypeUiMeta["targetTab"]) {
+    if (target === "reports") {
+      setSearchParams(
+        (prev) => {
+          const merged = new URLSearchParams(prev);
+          merged.set("rpt_section", "sbom");
+          return merged;
+        },
+        { replace: true },
+      );
+      sbomSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
     setSearchParams(
       (prev) => {
         const merged = new URLSearchParams(prev);
@@ -190,6 +225,24 @@ export function ReportsTab({ projectId }: ReportsTabProps) {
       { replace: false },
     );
   }
+
+  // W4-C #21 — when the URL carries `?rpt_section=sbom`, scroll to the SBOM
+  // section once it mounts. This handles the redirect from the old `?tab=sbom`
+  // URL (rewritten by ProjectDetailPage::setTab) so a deep-link still lands
+  // the user on the SBOM downloads.
+  const rptSection = searchParams.get("rpt_section");
+  useEffect(() => {
+    if (rptSection === "sbom") {
+      // requestAnimationFrame defers until layout has settled so the ref has
+      // the in-document node and the offsetTop reflects the rendered DOM.
+      requestAnimationFrame(() => {
+        sbomSectionRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      });
+    }
+  }, [rptSection]);
 
   const items = query.data?.items ?? [];
   const total = query.data?.total ?? 0;
@@ -209,44 +262,49 @@ export function ReportsTab({ projectId }: ReportsTabProps) {
   })();
 
   return (
-    <div
-      className="flex flex-col gap-6 p-6 lg:flex-row"
-      data-testid="reports-tab"
-    >
-      {/* ---------- Left: generate cards ----------------------------------- */}
-      <section
-        className="flex flex-col gap-3 lg:w-80 lg:shrink-0"
-        aria-labelledby="reports-generate-heading"
-        data-testid="reports-generate"
-      >
-        <div>
-          <h2
-            id="reports-generate-heading"
-            className="text-base font-semibold"
-          >
-            {t("reports.generate.heading")}
-          </h2>
-          <p className="text-xs text-muted-foreground">
-            {t("reports.generate.subheading")}
-          </p>
-        </div>
-        <GenerateCard
-          slug="notice"
-          target="obligations"
-          onDeeplink={deeplinkToTab}
-        />
-        <GenerateCard slug="sbom" target="sbom" onDeeplink={deeplinkToTab} />
-        <GenerateCard
-          slug="vuln-pdf"
-          target="vulnerabilities"
-          onDeeplink={deeplinkToTab}
-        />
-        <GenerateCard
-          slug="vex"
-          target="vulnerabilities"
-          onDeeplink={deeplinkToTab}
-        />
-      </section>
+    <div className="flex flex-col gap-6 p-6" data-testid="reports-tab">
+      <div className="flex flex-col gap-6 lg:flex-row">
+        {/* ---------- Left: generate cards --------------------------------- */}
+        <section
+          className="flex flex-col gap-3 lg:w-80 lg:shrink-0"
+          aria-labelledby="reports-generate-heading"
+          data-testid="reports-generate"
+        >
+          <div>
+            <h2
+              id="reports-generate-heading"
+              className="text-base font-semibold"
+            >
+              {t("reports.generate.heading")}
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              {t("reports.generate.subheading")}
+            </p>
+          </div>
+          {/* W4-C #20 — NOTICE deep-links into the unified Compliance tab. */}
+          <GenerateCard
+            slug="notice"
+            target="compliance"
+            onDeeplink={deeplinkToTab}
+          />
+          {/* W4-C #21 — SBOM card scrolls to the in-page SBOM section below
+              instead of navigating to a separate tab. */}
+          <GenerateCard
+            slug="sbom"
+            target="reports"
+            onDeeplink={deeplinkToTab}
+          />
+          <GenerateCard
+            slug="vuln-pdf"
+            target="vulnerabilities"
+            onDeeplink={deeplinkToTab}
+          />
+          <GenerateCard
+            slug="vex"
+            target="vulnerabilities"
+            onDeeplink={deeplinkToTab}
+          />
+        </section>
 
       {/* ---------- Right: history table ----------------------------------- */}
       <section
@@ -347,6 +405,33 @@ export function ReportsTab({ projectId }: ReportsTabProps) {
             </div>
           </div>
         ) : null}
+      </section>
+      </div>
+
+      {/* ---------- Below: SBOM section (W4-C #21 absorbs SbomTab) -------- */}
+      <section
+        ref={sbomSectionRef}
+        id="sbom"
+        aria-labelledby="reports-sbom-heading"
+        data-testid="reports-sbom-section"
+        className="flex flex-col gap-3 scroll-mt-16"
+      >
+        <div>
+          <h2
+            id="reports-sbom-heading"
+            className="text-base font-semibold"
+          >
+            {t("reports.sbom.heading")}
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            {t("reports.sbom.subheading")}
+          </p>
+        </div>
+        <SbomTab
+          projectId={projectId}
+          lastScanAt={lastSucceededScanAt ?? null}
+          scanId={scanId}
+        />
       </section>
     </div>
   );

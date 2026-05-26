@@ -278,21 +278,88 @@ describe("ProjectDetailPage", () => {
     expect(crumb.textContent).not.toBe("Loading…");
   });
 
-  it("renders the four tab triggers, all enabled (PR #12 lit up Licenses)", async () => {
+  it("renders the W4-C 8-tab strip with every trigger enabled", async () => {
     mockedGetProject.mockResolvedValueOnce(project());
     mockedOverview.mockResolvedValueOnce(overview());
     renderPage();
     await waitFor(() => {
       expect(screen.getByTestId("project-detail-tabs")).toBeInTheDocument();
     });
-    expect(screen.getByTestId("project-detail-tab-overview")).toBeEnabled();
-    expect(screen.getByTestId("project-detail-tab-components")).toBeEnabled();
-    // PR #11 lit up Vulnerabilities; PR #12 lit up Licenses. The four-tab
-    // strip is now fully active until Obligations lands in PR #13.
+    // W4-C #20/21/22 — 8 tabs total: overview / releases / components /
+    // vulnerabilities / source / compliance / reports / settings. The
+    // legacy quad (licenses / obligations / sbom / remediation) is absorbed
+    // and must not appear as a top-level trigger.
+    for (const slug of [
+      "overview",
+      "releases",
+      "components",
+      "vulnerabilities",
+      "source",
+      "compliance",
+      "reports",
+      "settings",
+    ]) {
+      expect(
+        screen.getByTestId(`project-detail-tab-${slug}`),
+      ).toBeEnabled();
+    }
     expect(
-      screen.getByTestId("project-detail-tab-vulnerabilities"),
-    ).toBeEnabled();
-    expect(screen.getByTestId("project-detail-tab-licenses")).toBeEnabled();
+      screen.queryByTestId("project-detail-tab-licenses"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("project-detail-tab-obligations"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("project-detail-tab-sbom"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("project-detail-tab-remediation"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("redirects ?tab=licenses to ?tab=compliance&cview=licenses", async () => {
+    mockedGetProject.mockResolvedValue(project());
+    mockedOverview.mockResolvedValue(overview());
+    renderPage("/projects/proj-1?tab=licenses");
+    await waitFor(() => {
+      expect(screen.getByTestId("compliance-tab")).toBeInTheDocument();
+    });
+    // The licenses sub-view is the default; URL gets rewritten to canonical.
+    expect(screen.getByTestId("licenses-tab")).toBeInTheDocument();
+  });
+
+  it("redirects ?tab=obligations to ?tab=compliance&cview=obligations", async () => {
+    mockedGetProject.mockResolvedValue(project());
+    mockedOverview.mockResolvedValue(overview());
+    renderPage("/projects/proj-1?tab=obligations");
+    await waitFor(() => {
+      expect(screen.getByTestId("compliance-tab")).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("obligations-tab")).toBeInTheDocument();
+    });
+  });
+
+  it("redirects ?tab=sbom to ?tab=reports with the SBOM section anchor", async () => {
+    mockedGetProject.mockResolvedValue(project());
+    mockedOverview.mockResolvedValue(overview());
+    renderPage("/projects/proj-1?tab=sbom");
+    await waitFor(() => {
+      expect(screen.getByTestId("reports-tab")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("reports-sbom-section")).toBeInTheDocument();
+  });
+
+  it("redirects ?tab=remediation to ?tab=vulnerabilities with the remediation panel", async () => {
+    mockedGetProject.mockResolvedValue(project());
+    mockedOverview.mockResolvedValue(overview());
+    renderPage("/projects/proj-1?tab=remediation");
+    await waitFor(() => {
+      expect(screen.getByTestId("vulnerabilities-tab")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByTestId("vulnerabilities-remediation-panel"),
+    ).toBeInTheDocument();
   });
 
   it("switches to the Components tab on click", async () => {

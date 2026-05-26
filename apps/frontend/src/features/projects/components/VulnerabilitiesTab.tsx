@@ -27,6 +27,7 @@ import { ActiveFilterChips } from "@/features/projects/components/ActiveFilterCh
 import { LicenseColumnCell } from "@/features/projects/components/LicenseColumnCell";
 import { ReachabilityBadge } from "@/features/projects/components/ReachabilityBadge";
 import { SeverityBadge } from "@/features/projects/components/SeverityBadge";
+import { VulnerabilitiesRemediationPanel } from "@/features/projects/components/VulnerabilitiesRemediationPanel";
 import { VulnerabilitiesToolbar } from "@/features/projects/components/VulnerabilitiesToolbar";
 import { VulnerabilityBulkActionBar } from "@/features/projects/components/VulnerabilityBulkActionBar";
 import { VulnerabilityDrawer } from "@/features/projects/components/VulnerabilityDrawer";
@@ -602,6 +603,15 @@ export function VulnerabilitiesTab({
           if (!open) setDrawerVuln(null);
         }}
       />
+
+      {/* W4-C #22 — Remediation slot. The collapsible panel keeps the table
+          above as the primary surface while exposing the npm dry-run preview
+          and team-admin PR creation in one place. Skip in historical mode so
+          a user looking at an old snapshot can't queue a PR against a
+          stale findings set. */}
+      {!readOnly ? (
+        <VulnerabilitiesRemediationPanel projectId={projectId} />
+      ) : null}
     </div>
   );
 }
