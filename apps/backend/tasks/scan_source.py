@@ -44,6 +44,7 @@ Workspace:
 
 from __future__ import annotations
 
+import concurrent.futures
 import hashlib
 import json
 import re
@@ -317,91 +318,44 @@ def _run_pipeline(
             workspace=workspace,
         )
 
-    # Stage 4 — scancode first-party license detection (PR-A2, replaces ORT).
-    # scancode runs over the cloned first-party tree only (vendored deps /
-    # build output / VCS metadata are excluded — see scancode.EXCLUDED_DIR_NAMES).
-    # It is best-effort: a scancode failure / timeout / too-large tree logs a
-    # WARNING and the scan continues with declared (cdxgen) licenses only. We
-    # never raise from this stage onto the terminal-failure path — a missing
-    # detected-license set is a degraded-output scenario, not a fatal one
-    # (same philosophy as the prep stage). Third-party dependency sources are
-    # NOT downloaded; their licenses stay declared via _persist_components.
-    _set_stage(scan_uuid, "scancode")
-    scancode_detections: list[scancode_adapter.DetectedLicense] = []
-    # G3.1: capture the scancode result JSON path so the preservation stage can
-    # fold it into the source tarball. The JSON is the only place per-line
-    # license-match data survives the workspace rmtree (the adapter discards line
-    # numbers; license_findings keeps only spdx + source_path). None when
-    # scancode was skipped — preservation then archives the source tree alone.
-    scancode_json_path: Path | None = None
-    try:
-        scancode_result = scancode_adapter.run_scancode(
-            source_dir=source_dir,
-            output_dir=workspace / "scancode",
-        )
-        scancode_detections = scancode_result.detections
-        scancode_json_path = scancode_result.result_path
-        _persist_artifact(
-            scan_uuid, kind="scancode_result", path=scancode_result.result_path
-        )
-        log.info("scancode_stage_done", detections=len(scancode_detections))
-    except scancode_adapter.ScancodeError as exc:
-        # ScancodeNotInstalled / Failed / Timeout / TooLarge all land here —
-        # all are "detected-license enrichment unavailable", not "abort scan".
-        log.warning("scancode_stage_skipped", error=str(exc)[:300])
-
-    # Persist the SBOM components + declared (cdxgen) licenses, then attach the
-    # scancode-detected first-party licenses to the project's own component.
+    # P2 #8a — parallel phase. The DT BOM upload (sanitize + upsert_project +
+    # upload_sbom) is purely network-bound and DT then runs its NVD/OSV matcher
+    # asynchronously on the server side; in the sequential layout that idle
+    # time after upload (~10-30s) was the long pole before the findings poll
+    # could return useful data. By kicking the upload off on a worker thread
+    # the moment the SBOM is on disk we overlap it with scancode + persist +
+    # approvals on the main thread, so DT's server-side matcher is warming up
+    # while the CPU-bound stages run. Wall-time saving on a healthy DT is the
+    # smaller of (scancode wall-time) and (dt-upload wall-time + DT analyzer
+    # ramp-up); on a slow DT the saving is larger because the matcher gets
+    # extra ramp-up before the findings poll begins.
     #
-    # Blast-radius isolation (security-reviewer Medium #1): the components +
-    # declared (cdxgen) licenses are the HIGH-VALUE cache the UI shows when DT is
-    # down. The detected (scancode) licenses are auxiliary and are derived from
-    # attacker-controlled file content. We therefore wrap the detected write in a
-    # SAVEPOINT (``begin_nested``) so a failure there (e.g. an unexpected
-    # constraint violation from a hostile path / SPDX token that slipped the
-    # adapter caps) rolls back ONLY the detected findings — the declared findings
-    # and component graph still commit. A detected-license failure is degraded,
-    # never fatal, mirroring the best-effort scancode stage above.
-    with sync_session_scope() as session:
-        _persist_components(
-            session,
-            scan_uuid=scan_uuid,
-            sbom=cdxgen_result.sbom,
-        )
-        if scancode_detections:
-            try:
-                with session.begin_nested():
-                    _persist_detected_licenses(
-                        session,
-                        scan_uuid=scan_uuid,
-                        sbom=cdxgen_result.sbom,
-                        detections=scancode_detections,
-                    )
-            except SQLAlchemyError as exc:
-                # SAVEPOINT rolled back; declared findings + components survive.
-                log.warning(
-                    "detected_license_persist_skipped",
-                    error=str(exc)[:300],
-                    detections=len(scancode_detections),
-                )
-        session.commit()
-
-    # Stage 4.5 — auto-enrol conditional-license components into the legal
-    # review queue (BUG-010). MUST run AFTER the component + license findings
-    # commit above (it reads them back to decide which components are
-    # conditional). Best-effort, mirroring the scancode / preserve stages: a
-    # failure here logs a WARNING and the scan still succeeds. Idempotent on
-    # re-run because the helper skips components that already have an open
-    # approval (and _reset_scan_for_rerun never deletes approvals).
-    _set_stage(scan_uuid, "approvals")
-    _auto_create_conditional_approvals(scan_uuid=scan_uuid, project_id=project_id)
-
-    # Stage 5 — DT upload (gated by the breaker).
-    _set_stage(scan_uuid, "dt_upload")
+    # Safety:
+    #   - The DT thread does ONLY two outbound HTTP calls (upsert_project +
+    #     upload_sbom) wrapped through the existing breaker. It never touches
+    #     the DB session, so it cannot interleave with the main thread's
+    #     sync_session_scope writes.
+    #   - ``httpx.Client`` (the underlying transport) is documented as
+    #     thread-safe for concurrent requests, and the breaker's Redis-backed
+    #     state is mutated through atomic Lua scripts — both call sites are
+    #     safe from a second thread.
+    #   - The future is created with ``max_workers=1`` to keep the parallel
+    #     fan-out to exactly two paths (one main + one DT) — we are NOT
+    #     unbounded-pooling here. The executor is wrapped in ``with`` so
+    #     EVERY exit path (success / exception / SoftTimeLimitExceeded /
+    #     worker-lost) drains the upload thread before workspace cleanup.
+    #   - Any DT error (DTBreakerOpen / DTError / DTUnavailable / DTClientError)
+    #     raised inside the thread is re-raised at ``future.result()`` time on
+    #     the main thread, hitting the same task-body except blocks that
+    #     handle the sequential path — so error semantics are byte-for-byte
+    #     identical to the old order.
     breaker = get_breaker()
     dt_client = build_client()
-    try:
-        dt_project_uuid = breaker.call(
+    sbom_bytes_path = cdxgen_result.sbom_path  # captured for the closure
+
+    def _dt_upload() -> str:
+        """Run inside the background thread: upsert + BOM upload, return DT uuid."""
+        dt_project_uuid_local = breaker.call(
             lambda: dt_client.upsert_project(
                 name=str(project_id),
                 version=str(scan_uuid),
@@ -413,29 +367,163 @@ def _run_pipeline(
         # every npm-lockfile project. Sanitize the bytes we send to DT only;
         # the on-disk artifact and ``_persist_components`` (purl-based) are
         # untouched. Best-effort: a parse failure returns the original bytes.
-        sbom_bytes = _sanitize_sbom_hashes_for_dt(cdxgen_result.sbom_path.read_bytes())
+        sbom_bytes = _sanitize_sbom_hashes_for_dt(sbom_bytes_path.read_bytes())
         breaker.call(
             lambda: dt_client.upload_sbom(
-                project_uuid=dt_project_uuid,
+                project_uuid=dt_project_uuid_local,
                 sbom_json=sbom_bytes,
             )
         )
+        return dt_project_uuid_local
 
-        # Stage 6 — DT findings poll.
-        # DT runs vulnerability matching asynchronously after BOM upload
-        # (BOM_UPLOAD_ANALYSIS event). The first poll within ~1 second of
-        # upload typically returns 0 findings even when matches exist —
-        # this was the false-empty path observed during the 2026-05-07
-        # UAT (54 Maven CVEs that DT had matched, but the scan persisted
-        # 0 because the synchronous poll fired too early). Retry with
-        # exponential backoff (≤60s budget) so the eventual findings make
-        # it onto the scan row before the user sees it.
-        _set_stage(scan_uuid, "dt_findings")
-        findings = _poll_dt_findings_with_retry(
-            dt_client=dt_client,
-            breaker=breaker,
-            dt_project_uuid=dt_project_uuid,
-        )
+    # Outer try/finally: ``dt_client.close()`` MUST run on every exit path so
+    # the httpx connection pool is reclaimed even when the parallel phase
+    # raises (DTBreakerOpen, scancode bug, soft-time-limit hitting during the
+    # join). This wraps the ThreadPoolExecutor block below.
+    scancode_json_path: Path | None = None
+    try:
+        # ThreadPoolExecutor as a context manager so any exit drains the future
+        # (it joins worker threads on __exit__). This is the cleanup guarantee that
+        # SoftTimeLimitExceeded / worker SIGKILL / KeyboardInterrupt would
+        # otherwise miss if we held a bare Thread.
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="scan-dt-upload"
+        ) as dt_executor:
+            dt_upload_started_at = time.monotonic()
+            dt_upload_future: concurrent.futures.Future[str] = dt_executor.submit(_dt_upload)
+            log.info("scan_dt_upload_dispatched", scan_id=str(scan_uuid))
+
+            # Stage 4 — scancode first-party license detection (PR-A2, replaces ORT).
+            # scancode runs over the cloned first-party tree only (vendored deps /
+            # build output / VCS metadata are excluded — see scancode.EXCLUDED_DIR_NAMES).
+            # It is best-effort: a scancode failure / timeout / too-large tree logs a
+            # WARNING and the scan continues with declared (cdxgen) licenses only. We
+            # never raise from this stage onto the terminal-failure path — a missing
+            # detected-license set is a degraded-output scenario, not a fatal one
+            # (same philosophy as the prep stage). Third-party dependency sources are
+            # NOT downloaded; their licenses stay declared via _persist_components.
+            _set_stage(scan_uuid, "scancode")
+            scancode_started_at = time.monotonic()
+            scancode_detections: list[scancode_adapter.DetectedLicense] = []
+            # G3.1: capture the scancode result JSON path so the preservation stage can
+            # fold it into the source tarball. The JSON is the only place per-line
+            # license-match data survives the workspace rmtree (the adapter discards line
+            # numbers; license_findings keeps only spdx + source_path). None when
+            # scancode was skipped — preservation then archives the source tree alone.
+            # (P2 #8a: declared above this block so it survives into the
+            # post-executor preservation stage even when scancode raises.)
+            try:
+                scancode_result = scancode_adapter.run_scancode(
+                    source_dir=source_dir,
+                    output_dir=workspace / "scancode",
+                )
+                scancode_detections = scancode_result.detections
+                scancode_json_path = scancode_result.result_path
+                _persist_artifact(
+                    scan_uuid, kind="scancode_result", path=scancode_result.result_path
+                )
+                log.info("scancode_stage_done", detections=len(scancode_detections))
+            except scancode_adapter.ScancodeError as exc:
+                # ScancodeNotInstalled / Failed / Timeout / TooLarge all land here —
+                # all are "detected-license enrichment unavailable", not "abort scan".
+                # The DT upload future stays in flight; we'll surface any DT failure
+                # at the join below regardless of whether scancode succeeded.
+                log.warning("scancode_stage_skipped", error=str(exc)[:300])
+
+            # Persist the SBOM components + declared (cdxgen) licenses, then attach the
+            # scancode-detected first-party licenses to the project's own component.
+            #
+            # Blast-radius isolation (security-reviewer Medium #1): the components +
+            # declared (cdxgen) licenses are the HIGH-VALUE cache the UI shows when DT is
+            # down. The detected (scancode) licenses are auxiliary and are derived from
+            # attacker-controlled file content. We therefore wrap the detected write in a
+            # SAVEPOINT (``begin_nested``) so a failure there (e.g. an unexpected
+            # constraint violation from a hostile path / SPDX token that slipped the
+            # adapter caps) rolls back ONLY the detected findings — the declared findings
+            # and component graph still commit. A detected-license failure is degraded,
+            # never fatal, mirroring the best-effort scancode stage above.
+            with sync_session_scope() as session:
+                _persist_components(
+                    session,
+                    scan_uuid=scan_uuid,
+                    sbom=cdxgen_result.sbom,
+                )
+                if scancode_detections:
+                    try:
+                        with session.begin_nested():
+                            _persist_detected_licenses(
+                                session,
+                                scan_uuid=scan_uuid,
+                                sbom=cdxgen_result.sbom,
+                                detections=scancode_detections,
+                            )
+                    except SQLAlchemyError as exc:
+                        # SAVEPOINT rolled back; declared findings + components survive.
+                        log.warning(
+                            "detected_license_persist_skipped",
+                            error=str(exc)[:300],
+                            detections=len(scancode_detections),
+                        )
+                session.commit()
+            scancode_elapsed = time.monotonic() - scancode_started_at
+
+            # Stage 4.5 — auto-enrol conditional-license components into the legal
+            # review queue (BUG-010). MUST run AFTER the component + license findings
+            # commit above (it reads them back to decide which components are
+            # conditional). Best-effort, mirroring the scancode / preserve stages: a
+            # failure here logs a WARNING and the scan still succeeds. Idempotent on
+            # re-run because the helper skips components that already have an open
+            # approval (and _reset_scan_for_rerun never deletes approvals).
+            _set_stage(scan_uuid, "approvals")
+            _auto_create_conditional_approvals(scan_uuid=scan_uuid, project_id=project_id)
+
+            # Stage 5 — DT upload (join). We mark the WS stage here, NOT before the
+            # future was submitted, so the FE's 7-step pipeline glyph row keeps the
+            # familiar bootstrap → fetch → cdxgen → scancode → dt_upload → dt_findings
+            # → finalize narrative even though the HTTP work happened in the
+            # background. The future has typically resolved by now (DT upload is
+            # ~2-30s on a healthy instance, scancode is ~10-120s); the result() call
+            # below will either return immediately or block until DT completes /
+            # raises.
+            _set_stage(scan_uuid, "dt_upload")
+            try:
+                dt_project_uuid = dt_upload_future.result()
+            except Exception:
+                # DTBreakerOpen / DTError / DTUnavailable / DTClientError — re-raise
+                # so the outer task body's except blocks map them to the same
+                # terminal-failure paths as the sequential layout did. Any other
+                # exception (e.g. a bug) also propagates so we fail loudly rather
+                # than silently sinking the scan.
+                raise
+            dt_upload_elapsed = time.monotonic() - dt_upload_started_at
+            log.info(
+                "scan_parallel_phase_done",
+                scan_id=str(scan_uuid),
+                dt_upload_seconds=round(dt_upload_elapsed, 2),
+                scancode_seconds=round(scancode_elapsed, 2),
+            )
+
+            # Stage 6 — DT findings poll.
+            # DT runs vulnerability matching asynchronously after BOM upload
+            # (BOM_UPLOAD_ANALYSIS event). The first poll within ~1 second of
+            # upload typically returns 0 findings even when matches exist —
+            # this was the false-empty path observed during the 2026-05-07
+            # UAT (54 Maven CVEs that DT had matched, but the scan persisted
+            # 0 because the synchronous poll fired too early). Retry with
+            # exponential backoff (≤60s budget) so the eventual findings make
+            # it onto the scan row before the user sees it.
+            #
+            # P2 #8a — because the upload thread ran concurrently with scancode,
+            # DT's matcher has already had ``scancode_elapsed`` extra wall-time
+            # to chew through the BOM by the time we reach this poll; the
+            # backoff schedule is unchanged but the first poll is far more
+            # likely to return non-empty.
+            _set_stage(scan_uuid, "dt_findings")
+            findings = _poll_dt_findings_with_retry(
+                dt_client=dt_client,
+                breaker=breaker,
+                dt_project_uuid=dt_project_uuid,
+            )
         # #35 Surface B — capture the DT vulnerability-DB size AT scan time so the
         # Overview can tell "0 CVEs = safe" apart from "0 CVEs = empty DB". Strictly
         # best-effort: a probe failure (breaker OPEN, DT down, bad header) must
