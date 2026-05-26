@@ -179,9 +179,22 @@ def run_cdxgen(
         )
 
     sbom = _load_sbom(sbom_path)
+    # P3 #12 diagnostic (2026-05-26): the per-component ``depth`` / ``direct``
+    # and the ``component_dependency_edges`` table are populated from
+    # ``sbom["dependencies"]``. Surfacing the entry count on every successful
+    # cdxgen run lets operators trace "Type/Usage columns are dash" gaps back
+    # to cdxgen output quality (a 0 / missing array is the systemic skip mode
+    # observed across the 2026-05-26 scan corpus). ``dependencies`` must be a
+    # list of ``{"ref": str, "dependsOn": [str, ...]}`` dicts; non-list / missing
+    # is reported as 0 so the log line always carries an integer field.
+    raw_dependencies = sbom.get("dependencies")
+    dependencies_count = (
+        len(raw_dependencies) if isinstance(raw_dependencies, list) else 0
+    )
     log.info(
         "cdxgen_succeeded",
         components=len(sbom.get("components", [])),
+        dependencies_count=dependencies_count,
         sbom_size_bytes=sbom_path.stat().st_size,
     )
     return CdxgenResult(sbom_path=sbom_path, sbom=sbom)

@@ -1941,7 +1941,25 @@ def _sanitize_sbom_hashes_for_dt(sbom_bytes: bytes) -> bytes:
 # ---------------------------------------------------------------------------
 
 
-_DT_FINDINGS_POLL_DELAYS_SECONDS: tuple[int, ...] = (2, 4, 8, 16, 30)
+# DT runs the OSV / NVD / OSS Index matchers ASYNCHRONOUSLY after the BOM
+# upload event. On a freshly-uploaded large project that ramp-up can take
+# multiple minutes — the 2026-05-26 maven-node UAT measured ~33 minutes from
+# ``lastBomImport`` to ``lastVulnerabilityAnalysis``. The old 60s budget
+# (2+4+8+16+30) declared the project "0 findings" long before DT's matcher
+# finished, so the persisted findings count was deterministically zero on any
+# scan that involved npm/maven purls (where OSS Index is the dominant matcher
+# and OSS Index throttles anonymous traffic with HTTP 401 → DT retry path).
+# Budget below sums to ~9.5 minutes (570s) which clears DT's typical analyzer
+# wall-time even with a slow OSS Index response chain. The polls themselves are
+# cheap (DT serves an empty findings array in <100ms), so the budget is bounded
+# by elapsed wall-clock, not by traffic to DT. The whole loop short-circuits
+# the moment we see any findings, so a healthy DT still finishes in seconds.
+#
+# Tests still inject ``(0,)`` / short schedules via ``monkeypatch.setattr`` so
+# the longer default does not slow them down.
+_DT_FINDINGS_POLL_DELAYS_SECONDS: tuple[int, ...] = (
+    2, 4, 8, 16, 30, 60, 60, 60, 60, 60, 60, 60, 60, 60,
+)
 
 
 def _poll_dt_findings_with_retry(
@@ -1952,18 +1970,23 @@ def _poll_dt_findings_with_retry(
 ) -> list[dict[str, Any]]:
     """Poll DT for findings with exponential backoff.
 
-    DT runs the OSV / NVD matcher asynchronously when a BOM is uploaded
-    (BOM_UPLOAD_ANALYSIS event). The first poll within ~1s of upload
+    DT runs the OSV / NVD / OSS Index matchers ASYNCHRONOUSLY after a BOM
+    upload (BOM_UPLOAD_ANALYSIS event). The first poll within ~1s of upload
     typically returns 0 findings even when matches will eventually
     materialise — this was the false-empty seen across the UAT pilots.
 
     Strategy: sleep, then poll. Total budget is the sum of
-    ``_DT_FINDINGS_POLL_DELAYS_SECONDS`` (~60s for the default
-    2/4/8/16/30 schedule). Return as soon as we see a non-empty result —
-    DT's matcher emits the full set in one go, not a streaming partial
-    view. If every attempt returns empty we return an empty list rather
-    than raising; the caller persists zero findings, which matches the
-    current "no matches" behaviour.
+    ``_DT_FINDINGS_POLL_DELAYS_SECONDS`` (~9.5 minutes for the current
+    schedule, raised from the original 60s after the 2026-05-26 maven-node
+    UAT measured DT's full analyzer pipeline at 33+ minutes on a freshly
+    seeded project — see ``docs/diagnose/p3-12-vulns-type-usage-2026-05-26.md``).
+    Return as soon as we see a non-empty result — DT's matcher emits the
+    full set in one go, not a streaming partial view. If every attempt
+    returns empty we return an empty list rather than raising; the caller
+    persists zero findings, which matches the "no matches" / "still
+    matching" terminal behaviour. Both surface ``vuln_count=0`` to the user
+    today; #35 Surface B (the vuln-data caveat) tells them whether DT was
+    still mirroring at scan time.
 
     The breaker still wraps each poll, so a DT outage mid-retry trips
     the breaker and short-circuits the remaining attempts.
@@ -2139,6 +2162,23 @@ def _persist_dependency_graph(
     dependencies = sbom.get("dependencies")
     adjacency = parse_dependency_graph(dependencies)
     if not adjacency:
+        # P3 #12 diagnostic (2026-05-26): a silent skip here is the dominant
+        # reason ScanComponent.depth / .direct end up NULL across the whole
+        # scan corpus. WARN so the next scan immediately surfaces whether the
+        # cdxgen SBOM lacked a usable graph (empty / missing ``dependencies``
+        # array) versus a downstream bug in the persistence loop. The scan
+        # still succeeds — graph is best-effort, never fatal.
+        raw_count = (
+            len(dependencies)
+            if isinstance(dependencies, list)
+            else (-1 if dependencies is not None else 0)
+        )
+        log.warning(
+            "dependency_graph_missing",
+            scan_id=str(scan_uuid),
+            raw_entries=raw_count,
+            component_count=len(ref_to_cv_id),
+        )
         return  # No usable graph — depth stays NULL, no edges.
 
     depths = graph_depths_from_sbom(sbom)
