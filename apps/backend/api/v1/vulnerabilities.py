@@ -19,7 +19,7 @@ All 4xx/5xx responses are RFC 7807 `application/problem+json`.
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from typing import Any, cast
 
 import structlog
 from fastapi import APIRouter, Depends, Query, Request, Response, status
@@ -31,6 +31,9 @@ from core.security import CurrentUser, require_role
 from schemas.vulnerability_detail import (
     AffectedComponent,
     UpgradeRecommendation,
+    VulnerabilityBulkStatusResponse,
+    VulnerabilityBulkStatusResult,
+    VulnerabilityBulkStatusUpdate,
     VulnerabilityDetailResponse,
     VulnerabilityListItem,
     VulnerabilityListResponse,
@@ -40,9 +43,11 @@ from schemas.vulnerability_detail import (
 from services.project_service import ProjectError
 from services.scan_resolution import SnapshotScanNotFound
 from services.vulnerability_service import (
+    VulnerabilityBulkInputError,
     VulnerabilityConflict,
     VulnerabilityError,
     VulnerabilityInvalidTransition,
+    bulk_transition_status,
     get_vulnerability_detail,
     list_project_vulnerabilities,
     update_vulnerability_status,
@@ -331,6 +336,101 @@ async def update_vulnerability_status_endpoint(
     except (VulnerabilityError, ProjectError) as exc:
         return _problem_for_vulnerability_error(request, exc)
     return _detail_response(result)
+
+
+# ---------------------------------------------------------------------------
+# POST /v1/projects/{project_id}/vulnerabilities:bulk-transition  (W2 #33b)
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/projects/{project_id}/vulnerabilities:bulk-transition",
+    response_model=VulnerabilityBulkStatusResponse,
+    summary="Transition many findings in one project to the same VEX status",
+    responses={
+        200: {
+            "description": (
+                "Bulk envelope completed. ``results[*].status_code`` reports per-row "
+                "outcomes (200/403/404/422). ``succeeded`` + ``failed`` == ``total``."
+            ),
+        },
+        404: {
+            "description": (
+                "Project does not exist, OR the caller is not a member of the "
+                "project's team. Returned in lieu of 403 to avoid leaking team "
+                "membership (mirrors the single-row PATCH existence-hide policy)."
+            ),
+        },
+        422: {
+            "description": (
+                "Envelope-level shape violation: empty ``finding_ids``, more than "
+                "``BULK_TRANSITION_MAX`` entries, unknown ``target_status``. "
+                "Per-row matrix violations are NOT envelope 422 — they are "
+                "reported as ``results[*].status_code == 422``."
+            ),
+        },
+    },
+)
+async def bulk_transition_vulnerabilities_endpoint(
+    request: Request,
+    project_id: uuid.UUID,
+    payload: VulnerabilityBulkStatusUpdate,
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_role("developer")),
+) -> Response:
+    """W2 #33b — apply one VEX transition across many findings in one round-trip.
+
+    Per-row failures (404 / 403 / 422) are surfaced in the response envelope
+    so the UI can render "succeeded N · failed M" with per-row details.
+    Only envelope-level shape violations (empty list, > cap, unknown enum)
+    return RFC 7807 — those would still abort a per-row partial commit, so
+    they belong on the envelope rather than masquerading as per-row outcomes.
+    """
+    try:
+        project, results = await bulk_transition_status(
+            session,
+            project_id=project_id,
+            actor=actor,
+            finding_ids=payload.finding_ids,
+            target_status=payload.target_status,
+            justification=payload.justification,
+        )
+    except VulnerabilityBulkInputError as exc:
+        return _problem_for_vulnerability_error(request, exc)
+    except (VulnerabilityError, ProjectError) as exc:
+        return _problem_for_vulnerability_error(request, exc)
+
+    # `project` is returned for future audit-correlation use; bind here so
+    # the per-row audit rows (already emitted by the before_flush listener
+    # at commit time) share a stable request_id grouping.
+    _ = project
+
+    succeeded = sum(1 for r in results if r.success)
+    body = VulnerabilityBulkStatusResponse(
+        target_status=payload.target_status,
+        total=len(results),
+        succeeded=succeeded,
+        failed=len(results) - succeeded,
+        results=[
+            VulnerabilityBulkStatusResult(
+                finding_id=r.finding_id,
+                success=r.success,
+                status_code=r.status_code,
+                error=r.error,
+                detail=r.detail,
+                # service returns plain str[] of VEX statuses (which are the
+                # transition matrix's outgoing edges); narrow to the wire
+                # Literal so Pydantic validates against the canonical set.
+                allowed_to=cast("list[Any] | None", r.allowed_to),
+            )
+            for r in results
+        ],
+    )
+    return Response(
+        content=body.model_dump_json(),
+        status_code=status.HTTP_200_OK,
+        media_type="application/json",
+    )
 
 
 __all__ = ["router"]

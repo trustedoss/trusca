@@ -18,10 +18,12 @@ import type {
   VulnerabilityListItem,
   VulnerabilitySortKey,
 } from "@/features/projects/api/vulnerabilitiesApi";
+import { BULK_TRANSITION_MAX } from "@/features/projects/api/vulnerabilitiesApi";
 import { LicenseCategoryBadge } from "@/features/projects/components/LicenseCategoryBadge";
 import { ReachabilityBadge } from "@/features/projects/components/ReachabilityBadge";
 import { SeverityBadge } from "@/features/projects/components/SeverityBadge";
 import { VulnerabilitiesToolbar } from "@/features/projects/components/VulnerabilitiesToolbar";
+import { VulnerabilityBulkActionBar } from "@/features/projects/components/VulnerabilityBulkActionBar";
 import { VulnerabilityDrawer } from "@/features/projects/components/VulnerabilityDrawer";
 import { VulnerabilityStatusBadge } from "@/features/projects/components/VulnerabilityStatusBadge";
 import {
@@ -217,6 +219,29 @@ export function VulnerabilitiesTab({
     parsePage(searchParams.get("page")),
   );
 
+  // W2 #33b — bulk-selection state. Single-page only (D-bulk): we clear the
+  // set on page / filter / sort / scanId change because the row population
+  // shifts under selection. Persisting across pages would require a server-
+  // side "all matching" token which is out of scope for this PR.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  function toggleSelection(findingId: string, checked: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) {
+        // Hard cap matches the backend's `BULK_TRANSITION_MAX` so the UI
+        // can never queue an oversize selection that would 422 on submit.
+        if (next.size >= BULK_TRANSITION_MAX) return prev;
+        next.add(findingId);
+      } else {
+        next.delete(findingId);
+      }
+      return next;
+    });
+  }
+  function clearSelection() {
+    setSelectedIds((prev) => (prev.size === 0 ? prev : new Set()));
+  }
+
   // Drawer state — `?vuln=<finding_id>` so reload restores the selection.
   const drawerId = searchParams.get("vuln");
   const drawerOpen = drawerId != null && drawerId.length > 0;
@@ -329,6 +354,27 @@ export function VulnerabilitiesTab({
   const vulnerabilities = useVulnerabilities(projectId, filters);
   const vulnReport = useVulnReport(projectId, projectName);
 
+  // W2 #33b — drop selection when the row set shifts. Refs to the filter
+  // tuple change atomically with the query key, so this fires exactly when
+  // the table is about to repopulate from a different rowset.
+  const severityKey = severity.join(",");
+  const statusKey = status.join(",");
+  const licenseKey = licenseCategory.join(",");
+  useEffect(() => {
+    clearSelection();
+  }, [
+    debouncedSearch,
+    severityKey,
+    statusKey,
+    sort,
+    order,
+    minEpss,
+    reachable,
+    licenseKey,
+    page,
+    scanId,
+  ]);
+
   // BUG-005: the suppression gate must use the project-team-scoped role, not
   // the global JWT role. The overview query carries `current_user_role`; this
   // shares the `["projects", projectId, "overview"]` key with the page-level
@@ -425,6 +471,14 @@ export function VulnerabilitiesTab({
         </span>
       </div>
 
+      <VulnerabilityBulkActionBar
+        projectId={projectId}
+        selectedIds={Array.from(selectedIds)}
+        projectRole={projectRole}
+        readOnly={readOnly}
+        onCleared={clearSelection}
+      />
+
       {vulnerabilities.isError ? (
         <div className="px-6 py-6">
           <Alert variant="destructive" data-testid="vulnerabilities-error">
@@ -467,7 +521,29 @@ export function VulnerabilitiesTab({
       !vulnerabilities.isError &&
       items.length > 0 ? (
         <>
-          <VulnerabilitiesTableHeader />
+          <VulnerabilitiesTableHeader
+            allSelected={
+              items.length > 0 &&
+              items.every((it) => selectedIds.has(it.id))
+            }
+            someSelected={
+              items.some((it) => selectedIds.has(it.id)) &&
+              !items.every((it) => selectedIds.has(it.id))
+            }
+            disabled={readOnly}
+            onToggleAll={(checked) => {
+              if (checked) {
+                // Select-all is single-page (D-bulk). Truncate to the cap if
+                // the page is larger than what one bulk call can carry.
+                const pageIds = items
+                  .slice(0, BULK_TRANSITION_MAX)
+                  .map((it) => it.id);
+                setSelectedIds(new Set(pageIds));
+              } else {
+                clearSelection();
+              }
+            }}
+          />
           <div
             className="flex-1"
             data-testid="vulnerabilities-virtual"
@@ -484,6 +560,11 @@ export function VulnerabilitiesTab({
                   vulnerability={item}
                   rowIndex={index}
                   locale={i18n.language}
+                  selected={selectedIds.has(item.id)}
+                  selectionDisabled={readOnly}
+                  onToggleSelected={(checked) =>
+                    toggleSelection(item.id, checked)
+                  }
                   onSelect={() => setDrawerVuln(item.id)}
                 />
               )}
@@ -505,7 +586,19 @@ export function VulnerabilitiesTab({
   );
 }
 
-function VulnerabilitiesTableHeader() {
+interface VulnerabilitiesTableHeaderProps {
+  allSelected: boolean;
+  someSelected: boolean;
+  disabled?: boolean;
+  onToggleAll: (checked: boolean) => void;
+}
+
+function VulnerabilitiesTableHeader({
+  allSelected,
+  someSelected,
+  disabled = false,
+  onToggleAll,
+}: VulnerabilitiesTableHeaderProps) {
   const { t } = useTranslation("project_detail");
   return (
     <div
@@ -513,6 +606,21 @@ function VulnerabilitiesTableHeader() {
       style={{ height: "32px" }}
       data-testid="vulnerabilities-header"
     >
+      <span className="w-6">
+        <input
+          type="checkbox"
+          data-testid="vulnerabilities-select-all"
+          aria-label={t("vulnerabilities.bulk.select_all_aria")}
+          checked={allSelected}
+          ref={(el) => {
+            // Show the tri-state indeterminate visual when some (but not all)
+            // rows on the page are selected — matches BD's bulk affordance.
+            if (el) el.indeterminate = someSelected && !allSelected;
+          }}
+          onChange={(e) => onToggleAll(e.currentTarget.checked)}
+          disabled={disabled}
+        />
+      </span>
       <span className="w-44">{t("vulnerabilities.column.cve_id")}</span>
       <span className="w-28">{t("vulnerabilities.column.severity")}</span>
       <span className="w-28">{t("vulnerabilities.column.license")}</span>
@@ -543,6 +651,9 @@ interface VulnerabilityRowProps {
   vulnerability: VulnerabilityListItem;
   rowIndex: number;
   locale: string;
+  selected: boolean;
+  selectionDisabled?: boolean;
+  onToggleSelected: (checked: boolean) => void;
   onSelect: () => void;
 }
 
@@ -550,22 +661,48 @@ function VulnerabilityRow({
   vulnerability,
   rowIndex,
   locale,
+  selected,
+  selectionDisabled = false,
+  onToggleSelected,
   onSelect,
 }: VulnerabilityRowProps) {
   return (
-    <button
-      type="button"
-      onClick={onSelect}
+    <div
       data-testid="vulnerability-row"
       data-finding-id={vulnerability.id}
       data-cve-id={vulnerability.cve_id}
       data-row-index={rowIndex}
+      data-selected={selected ? "true" : "false"}
       className={cn(
         "flex w-full items-center gap-3 border-b px-4 text-left text-sm hover:bg-muted/50",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+        selected ? "bg-muted/30" : undefined,
       )}
       style={{ height: "var(--table-row)" }}
     >
+      <span className="w-6" data-testid="vulnerability-row-checkbox-cell">
+        <input
+          type="checkbox"
+          data-testid="vulnerability-row-checkbox"
+          aria-label={`select-${vulnerability.cve_id}`}
+          checked={selected}
+          disabled={selectionDisabled}
+          onChange={(e) => onToggleSelected(e.currentTarget.checked)}
+          onClick={(e) => {
+            // Stop the row body's click handler from also opening the drawer
+            // when the user is just toggling selection.
+            e.stopPropagation();
+          }}
+        />
+      </span>
+      <button
+        type="button"
+        onClick={onSelect}
+        data-testid="vulnerability-row-open"
+        className={cn(
+          "flex flex-1 items-center gap-3 text-left",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+        )}
+      >
       <span
         className="w-44 truncate font-mono text-xs"
         title={vulnerability.cve_id}
@@ -640,7 +777,8 @@ function VulnerabilityRow({
       >
         {formatRelativeToNow(vulnerability.discovered_at, locale)}
       </span>
-    </button>
+      </button>
+    </div>
   );
 }
 

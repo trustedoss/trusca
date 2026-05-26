@@ -385,6 +385,9 @@
   "POST /v1/projects/{project_id}/vex/import": [
     "project_id"
   ],
+  "POST /v1/projects/{project_id}/vulnerabilities:bulk-transition": [
+    "project_id"
+  ],
   "POST /v1/scans/{scan_id}/cancel": [
     "scan_id"
   ],

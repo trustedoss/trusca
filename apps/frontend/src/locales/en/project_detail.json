@@ -317,6 +317,25 @@
       "suppressed": "Suppressed",
       "fixed": "Fixed"
     },
+    "bulk": {
+      "select_all_aria": "Select all findings on this page",
+      "selected": "{{count}} selected",
+      "target_label": "Set status to",
+      "target_placeholder": "Choose status…",
+      "apply": "Apply",
+      "applying": "Applying…",
+      "clear": "Clear",
+      "result_title": "{{succeeded}} succeeded · {{failed}} failed (of {{total}})",
+      "result_dismiss": "Dismiss",
+      "more_failures": "+{{count}} more",
+      "error_code": {
+        "not_found": "Not found in this project",
+        "forbidden": "Permission denied",
+        "invalid_transition": "Transition not allowed",
+        "envelope_error": "Request failed",
+        "unknown": "Error"
+      }
+    },
     "toolbar": {
       "search_label": "Search",
       "search_placeholder": "Search by CVE ID or summary",

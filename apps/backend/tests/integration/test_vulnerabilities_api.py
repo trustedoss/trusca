@@ -800,3 +800,197 @@ async def test_list_sort_reachable_ranks_reachable_first(client) -> None:
     assert response.status_code == 200, response.text
     order = [i["id"] for i in response.json()["items"]]
     assert order == [str(rid_true), str(rid_null), str(rid_false)]
+
+
+# ---------------------------------------------------------------------------
+# POST /v1/projects/{id}/vulnerabilities:bulk-transition — W2 #33b
+# ---------------------------------------------------------------------------
+
+
+async def test_bulk_transition_without_auth_returns_401(client) -> None:
+    response = await client.post(
+        f"/v1/projects/{uuid.uuid4()}/vulnerabilities:bulk-transition",
+        json={"finding_ids": [str(uuid.uuid4())], "target_status": "analyzing"},
+    )
+    assert response.status_code == 401
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_bulk_transition_happy_path_returns_envelope_with_per_row_results(
+    client,
+) -> None:
+    """Happy path: 3 valid ids in one project → 200, succeeded=3, failed=0."""
+    _, team, user = await _seed_team_with_user(client)
+    project_id, scan_id = await _seed_scanned_project(client, team_id=team.id)
+    ids = [
+        await _seed_finding(client, scan_id=scan_id) for _ in range(3)
+    ]
+    headers = _bearer_for(user)
+
+    response = await client.post(
+        f"/v1/projects/{project_id}/vulnerabilities:bulk-transition",
+        headers=headers,
+        json={
+            "finding_ids": [str(fid) for fid in ids],
+            "target_status": "analyzing",
+            "justification": "bulk via API",
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["target_status"] == "analyzing"
+    assert body["total"] == 3
+    assert body["succeeded"] == 3
+    assert body["failed"] == 0
+    assert {r["finding_id"] for r in body["results"]} == {str(fid) for fid in ids}
+    assert all(r["success"] is True and r["status_code"] == 200 for r in body["results"])
+
+
+async def test_bulk_transition_partial_failure_returns_200_with_mixed_rows(
+    client,
+) -> None:
+    """One ok, one already-at-target (422), one missing (404) → envelope 200."""
+    _, team, user = await _seed_team_with_user(client)
+    project_id, scan_id = await _seed_scanned_project(client, team_id=team.id)
+    ok_id = await _seed_finding(client, scan_id=scan_id, initial_status="new")
+    idem_id = await _seed_finding(client, scan_id=scan_id, initial_status="analyzing")
+    missing_id = str(uuid.uuid4())
+    headers = _bearer_for(user)
+
+    response = await client.post(
+        f"/v1/projects/{project_id}/vulnerabilities:bulk-transition",
+        headers=headers,
+        json={
+            "finding_ids": [str(ok_id), str(idem_id), missing_id],
+            "target_status": "analyzing",
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["total"] == 3
+    assert body["succeeded"] == 1
+    assert body["failed"] == 2
+
+    by_id = {r["finding_id"]: r for r in body["results"]}
+    assert by_id[str(ok_id)]["success"] is True
+    assert by_id[str(idem_id)]["status_code"] == 422
+    assert by_id[str(idem_id)]["error"] == "invalid_transition"
+    assert by_id[str(idem_id)]["allowed_to"] is not None
+    assert by_id[missing_id]["status_code"] == 404
+
+
+async def test_bulk_transition_developer_to_suppressed_is_per_row_403(client) -> None:
+    """Developer attempts a bulk → suppressed: row reports 403, envelope is 200."""
+    _, team, user = await _seed_team_with_user(client, role="developer")
+    project_id, scan_id = await _seed_scanned_project(client, team_id=team.id)
+    fid = await _seed_finding(client, scan_id=scan_id)
+    headers = _bearer_for(user)
+
+    response = await client.post(
+        f"/v1/projects/{project_id}/vulnerabilities:bulk-transition",
+        headers=headers,
+        json={"finding_ids": [str(fid)], "target_status": "suppressed"},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["succeeded"] == 0
+    assert body["results"][0]["status_code"] == 403
+    assert body["results"][0]["error"] == "forbidden"
+
+
+async def test_bulk_transition_team_admin_can_suppress_via_bulk(client) -> None:
+    _, team, admin = await _seed_team_with_user(client, role="team_admin")
+    project_id, scan_id = await _seed_scanned_project(client, team_id=team.id)
+    fid = await _seed_finding(client, scan_id=scan_id)
+    headers = _bearer_for(admin)
+
+    response = await client.post(
+        f"/v1/projects/{project_id}/vulnerabilities:bulk-transition",
+        headers=headers,
+        json={"finding_ids": [str(fid)], "target_status": "suppressed"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["succeeded"] == 1
+
+
+async def test_bulk_transition_cross_team_envelope_404(client) -> None:
+    """Caller not in the project's team → envelope 404 (existence-hide)."""
+    _, my_team, my_user = await _seed_team_with_user(client)
+    _, other_team, _ = await _seed_team_with_user(client)
+    project_id, scan_id = await _seed_scanned_project(client, team_id=other_team.id)
+    fid = await _seed_finding(client, scan_id=scan_id)
+    headers = _bearer_for(my_user)
+
+    response = await client.post(
+        f"/v1/projects/{project_id}/vulnerabilities:bulk-transition",
+        headers=headers,
+        json={"finding_ids": [str(fid)], "target_status": "analyzing"},
+    )
+    assert response.status_code == 404
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_bulk_transition_empty_finding_ids_returns_422(client) -> None:
+    """Pydantic min_length=1 → 422 problem envelope."""
+    _, team, user = await _seed_team_with_user(client)
+    project_id, _ = await _seed_scanned_project(client, team_id=team.id)
+    headers = _bearer_for(user)
+
+    response = await client.post(
+        f"/v1/projects/{project_id}/vulnerabilities:bulk-transition",
+        headers=headers,
+        json={"finding_ids": [], "target_status": "analyzing"},
+    )
+    assert response.status_code == 422
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_bulk_transition_over_cap_returns_422(client) -> None:
+    """Pydantic max_length=200 enforces cap at the envelope boundary."""
+    _, team, user = await _seed_team_with_user(client)
+    project_id, _ = await _seed_scanned_project(client, team_id=team.id)
+    headers = _bearer_for(user)
+
+    too_many = [str(uuid.uuid4()) for _ in range(201)]
+    response = await client.post(
+        f"/v1/projects/{project_id}/vulnerabilities:bulk-transition",
+        headers=headers,
+        json={"finding_ids": too_many, "target_status": "analyzing"},
+    )
+    assert response.status_code == 422
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_bulk_transition_unknown_status_returns_422(client) -> None:
+    _, team, user = await _seed_team_with_user(client)
+    project_id, scan_id = await _seed_scanned_project(client, team_id=team.id)
+    fid = await _seed_finding(client, scan_id=scan_id)
+    headers = _bearer_for(user)
+
+    response = await client.post(
+        f"/v1/projects/{project_id}/vulnerabilities:bulk-transition",
+        headers=headers,
+        json={"finding_ids": [str(fid)], "target_status": "not-a-status"},
+    )
+    assert response.status_code == 422
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_bulk_transition_extra_field_rejected(client) -> None:
+    """``extra='forbid'`` rejects unknown body keys."""
+    _, team, user = await _seed_team_with_user(client)
+    project_id, scan_id = await _seed_scanned_project(client, team_id=team.id)
+    fid = await _seed_finding(client, scan_id=scan_id)
+    headers = _bearer_for(user)
+
+    response = await client.post(
+        f"/v1/projects/{project_id}/vulnerabilities:bulk-transition",
+        headers=headers,
+        json={
+            "finding_ids": [str(fid)],
+            "target_status": "analyzing",
+            "rogue": "field",
+        },
+    )
+    assert response.status_code == 422
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)

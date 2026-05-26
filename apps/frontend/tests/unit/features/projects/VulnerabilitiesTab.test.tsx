@@ -26,8 +26,10 @@ vi.mock("@/features/projects/api/vulnerabilitiesApi", async () => {
     listProjectVulnerabilities: vi.fn(),
     getVulnerabilityFinding: vi.fn(),
     updateVulnerabilityStatus: vi.fn(),
+    bulkTransitionVulnerabilities: vi.fn(),
     extractAllowedTo: vi.fn(() => null),
     isConflictError: vi.fn(() => false),
+    BULK_TRANSITION_MAX: 200,
   };
 });
 
@@ -55,6 +57,7 @@ vi.mock("react-virtuoso", () => ({
 
 import { fetchVulnerabilityReportPdf } from "@/features/projects/api/vulnReportApi";
 import {
+  bulkTransitionVulnerabilities,
   getVulnerabilityFinding,
   listProjectVulnerabilities,
 } from "@/features/projects/api/vulnerabilitiesApi";
@@ -62,6 +65,7 @@ import {
 const mockedList = vi.mocked(listProjectVulnerabilities);
 const mockedGet = vi.mocked(getVulnerabilityFinding);
 const mockedReport = vi.mocked(fetchVulnerabilityReportPdf);
+const mockedBulk = vi.mocked(bulkTransitionVulnerabilities);
 
 function vuln(
   cveId: string,
@@ -321,7 +325,9 @@ describe("VulnerabilitiesTab", () => {
     await waitFor(() => {
       expect(screen.getByTestId("vulnerability-row")).toBeInTheDocument();
     });
-    await userEvent.click(screen.getByTestId("vulnerability-row"));
+    // W2 #33b — the row container is now a <div>; the openable button is the
+    // inner `vulnerability-row-open` element (split from the checkbox cell).
+    await userEvent.click(screen.getByTestId("vulnerability-row-open"));
     await waitFor(() => {
       expect(screen.getByTestId("vulnerability-drawer")).toBeInTheDocument();
     });
@@ -834,6 +840,169 @@ describe("VulnerabilitiesTab", () => {
           license_category: ["forbidden", "allowed"],
         }),
       );
+    });
+  });
+
+  // ─── W2 #33b — bulk-transition selection + action bar ─────────────────
+
+  it("does not render the bulk action bar until a row is selected", async () => {
+    mockedList.mockResolvedValueOnce(listResponse([vuln("CVE-2024-1111")]));
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("vulnerability-row")).toHaveLength(1);
+    });
+    expect(
+      screen.queryByTestId("vulnerabilities-bulk-action-bar"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("toggling a row checkbox surfaces the action bar with the selected count", async () => {
+    mockedList.mockResolvedValueOnce(
+      listResponse([
+        vuln("CVE-2024-1111"),
+        vuln("CVE-2024-2222"),
+      ]),
+    );
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("vulnerability-row")).toHaveLength(2);
+    });
+    const checkboxes = screen.getAllByTestId("vulnerability-row-checkbox");
+    await userEvent.click(checkboxes[0]);
+    expect(
+      screen.getByTestId("vulnerabilities-bulk-action-bar"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("vulnerabilities-bulk-selected-count").textContent,
+    ).toContain("1");
+    await userEvent.click(checkboxes[1]);
+    expect(
+      screen.getByTestId("vulnerabilities-bulk-selected-count").textContent,
+    ).toContain("2");
+  });
+
+  it("checking the header select-all selects every row on the current page", async () => {
+    mockedList.mockResolvedValueOnce(
+      listResponse([
+        vuln("CVE-2024-1111"),
+        vuln("CVE-2024-2222"),
+        vuln("CVE-2024-3333"),
+      ]),
+    );
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("vulnerability-row")).toHaveLength(3);
+    });
+    await userEvent.click(screen.getByTestId("vulnerabilities-select-all"));
+    expect(
+      screen.getByTestId("vulnerabilities-bulk-selected-count").textContent,
+    ).toContain("3");
+    // Re-clicking the header select-all clears the selection.
+    await userEvent.click(screen.getByTestId("vulnerabilities-select-all"));
+    expect(
+      screen.queryByTestId("vulnerabilities-bulk-action-bar"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("apply posts the selected ids + target status and shows succeeded/failed counts", async () => {
+    mockedList.mockResolvedValueOnce(
+      listResponse([
+        vuln("CVE-2024-1111", { id: "row-aaaa" }),
+        vuln("CVE-2024-2222", { id: "row-bbbb" }),
+      ]),
+    );
+    mockedBulk.mockResolvedValueOnce({
+      target_status: "analyzing",
+      total: 2,
+      succeeded: 1,
+      failed: 1,
+      results: [
+        {
+          finding_id: "row-aaaa",
+          success: true,
+          status_code: 200,
+          error: null,
+          detail: null,
+          allowed_to: null,
+        },
+        {
+          finding_id: "row-bbbb",
+          success: false,
+          status_code: 422,
+          error: "invalid_transition",
+          detail: "finding is already in status 'analyzing'",
+          allowed_to: null,
+        },
+      ],
+    });
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("vulnerability-row")).toHaveLength(2);
+    });
+    await userEvent.click(screen.getByTestId("vulnerabilities-select-all"));
+    // Choose the target status from the inline dropdown.
+    await userEvent.selectOptions(
+      screen.getByTestId("vulnerabilities-bulk-target-select"),
+      "analyzing",
+    );
+    await userEvent.click(screen.getByTestId("vulnerabilities-bulk-apply"));
+    await waitFor(() => {
+      expect(mockedBulk).toHaveBeenCalledWith(
+        "proj-1",
+        expect.objectContaining({
+          finding_ids: ["row-aaaa", "row-bbbb"],
+          target_status: "analyzing",
+        }),
+      );
+    });
+    // Result alert reports the per-row outcome counts.
+    await waitFor(() => {
+      expect(screen.getByTestId("vulnerabilities-bulk-result")).toHaveAttribute(
+        "data-succeeded",
+        "1",
+      );
+    });
+    expect(screen.getByTestId("vulnerabilities-bulk-result")).toHaveAttribute(
+      "data-failed",
+      "1",
+    );
+    // Per-row failure preview surfaces the detail.
+    const failure = screen.getByTestId(
+      "vulnerabilities-bulk-result-failure",
+    );
+    expect(failure.textContent).toContain("already in status");
+  });
+
+  it("changing a filter clears the selection", async () => {
+    mockedList.mockResolvedValue(
+      listResponse([
+        vuln("CVE-2024-1111"),
+        vuln("CVE-2024-2222"),
+      ]),
+    );
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("vulnerability-row")).toHaveLength(2);
+    });
+    await userEvent.click(screen.getByTestId("vulnerabilities-select-all"));
+    expect(
+      screen.getByTestId("vulnerabilities-bulk-action-bar"),
+    ).toBeInTheDocument();
+
+    // Toggle a severity filter via the toolbar — should drop the selection.
+    await userEvent.click(screen.getByTestId("vulnerabilities-severity-filter"));
+    const critical = await waitFor(() => {
+      const option = screen
+        .getAllByTestId("vulnerabilities-severity-filter-option")
+        .find((el) => el.getAttribute("data-value") === "critical");
+      if (!option) throw new Error("critical option not mounted");
+      return option;
+    });
+    await userEvent.click(critical);
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("vulnerabilities-bulk-action-bar"),
+      ).not.toBeInTheDocument();
     });
   });
 });

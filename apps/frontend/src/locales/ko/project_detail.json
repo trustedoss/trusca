@@ -317,6 +317,25 @@
       "suppressed": "억제됨",
       "fixed": "수정됨"
     },
+    "bulk": {
+      "select_all_aria": "현재 페이지의 모든 항목 선택",
+      "selected": "{{count}}건 선택됨",
+      "target_label": "상태 변경",
+      "target_placeholder": "상태 선택…",
+      "apply": "적용",
+      "applying": "적용 중…",
+      "clear": "선택 해제",
+      "result_title": "{{succeeded}}건 성공 · {{failed}}건 실패 (총 {{total}}건)",
+      "result_dismiss": "닫기",
+      "more_failures": "외 {{count}}건",
+      "error_code": {
+        "not_found": "이 프로젝트에서 찾을 수 없음",
+        "forbidden": "권한이 없습니다",
+        "invalid_transition": "허용되지 않는 전이",
+        "envelope_error": "요청 실패",
+        "unknown": "오류"
+      }
+    },
     "toolbar": {
       "search_label": "검색",
       "search_placeholder": "CVE ID 또는 제목으로 검색",

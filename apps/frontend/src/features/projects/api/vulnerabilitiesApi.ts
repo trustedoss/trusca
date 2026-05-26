@@ -429,3 +429,62 @@ export function extractAllowedTo(error: unknown): VulnFindingStatus[] | null {
 export function isConflictError(error: unknown): boolean {
   return error instanceof ProblemError && error.status === 409;
 }
+
+// ---------------------------------------------------------------------------
+// Bulk status transition (W2 #33b)
+// ---------------------------------------------------------------------------
+
+/**
+ * Maximum finding ids per single bulk call. Mirrors the backend's
+ * `BULK_TRANSITION_MAX` so the UI rejects oversize selections client-side
+ * (instead of round-tripping a 422). The cap absorbs ~90% of practical
+ * triage gestures; larger sweeps split into chunks of this size.
+ */
+export const BULK_TRANSITION_MAX = 200;
+
+export interface BulkStatusUpdateBody {
+  finding_ids: string[];
+  target_status: VulnFindingStatus;
+  justification?: string;
+}
+
+/**
+ * Per-row outcome of one entry in a bulk transition. `success` is the most
+ * concise signal; `status_code` carries the HTTP-style result code so the UI
+ * can disambiguate 404 (id missing in this project) / 403 (role insufficient
+ * for `→ suppressed`) / 422 (transition matrix forbids it). `allowed_to` is
+ * populated on 422 so a future per-row hint can offer a legal alternative.
+ */
+export interface BulkStatusResult {
+  finding_id: string;
+  success: boolean;
+  status_code: number;
+  error: string | null;
+  detail: string | null;
+  allowed_to: VulnFindingStatus[] | null;
+}
+
+export interface BulkStatusResponse {
+  target_status: VulnFindingStatus;
+  total: number;
+  succeeded: number;
+  failed: number;
+  results: BulkStatusResult[];
+}
+
+/**
+ * POST `/v1/projects/{id}/vulnerabilities:bulk-transition`. Returns 200 with
+ * a per-row outcome envelope; envelope-level 4xx (empty list, > cap, unknown
+ * enum, cross-team caller) arrives via the shared `api` interceptor as a
+ * `ProblemError`.
+ */
+export async function bulkTransitionVulnerabilities(
+  projectId: string,
+  body: BulkStatusUpdateBody,
+): Promise<BulkStatusResponse> {
+  const { data } = await api.post<BulkStatusResponse>(
+    `/v1/projects/${projectId}/vulnerabilities:bulk-transition`,
+    body,
+  );
+  return data;
+}
