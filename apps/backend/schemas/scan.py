@@ -598,8 +598,35 @@ class ScanPublic(BaseModel):
     # `null` when the scan carried no release. The value is still present in
     # `metadata` too; this is a read-only mirror, not a second source of truth.
     release: str | None = None
+    # P1 #5 — denormalized project name/slug surfaced on every scan row so the
+    # cross-project Scans queue and project-deeplinking UIs don't have to issue
+    # a second round-trip per row. Both are nullable: the listing endpoints
+    # eager-load `Scan.project` (selectinload) but a defensive `None` is the
+    # safe fallback for any code path that constructs a ScanPublic directly
+    # from a Scan without the relationship loaded.
+    project_name: str | None = None
+    project_slug: str | None = None
     created_at: datetime
     updated_at: datetime
+
+    @classmethod
+    def from_scan(cls, scan: Any) -> ScanPublic:
+        """Build a ScanPublic from a Scan ORM row, populating project_name /
+        project_slug from the loaded ``Scan.project`` relationship.
+
+        Callers MUST have eager-loaded the relationship (selectinload) — this
+        helper does not lazy-load (a lazy load would trip the async greenlet
+        guard). When the relationship is not loaded the two fields default to
+        None so the response stays well-formed.
+        """
+        pub = cls.model_validate(scan)
+        # `scan.project` may not be loaded; access via __dict__ so we never
+        # trigger a lazy-load that would crash under asyncpg.
+        project = scan.__dict__.get("project")
+        if project is not None:
+            pub.project_name = project.name
+            pub.project_slug = project.slug
+        return pub
 
     @model_validator(mode="after")
     def _derive_release(self) -> ScanPublic:

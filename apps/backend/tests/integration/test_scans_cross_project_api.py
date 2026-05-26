@@ -286,3 +286,31 @@ async def test_size_over_cap_returns_422(client: AsyncClient) -> None:
     response = await client.get("/v1/scans", headers=headers, params={"size": 5000})
     assert response.status_code == 422
     assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_list_includes_project_name_and_slug(client: AsyncClient) -> None:
+    """P1 #5 — every scan row carries denormalised project_name + project_slug.
+
+    The Scans queue UI shows these in place of the first 8 chars of a raw
+    UUID. The list endpoint eager-loads ``Scan.project`` and the schema
+    factory splices the two fields onto each ScanPublic.
+    """
+    factory = await _factory(client)
+    async with factory() as session:
+        org = await make_organization(session)
+        team = await make_team(session, organization=org)
+        user = await make_user(session)
+        await make_membership(session, user=user, team=team, role="developer")
+        project = await make_project(session, team=team)
+        scan = await make_scan(session, project=project, status="succeeded")
+
+    headers = _bearer_for(user)
+    response = await client.get("/v1/scans", headers=headers)
+    assert response.status_code == 200, response.text
+    body = response.json()
+
+    matching = [item for item in body["items"] if item["id"] == str(scan.id)]
+    assert matching, "expected the newly-created scan in the page"
+    item = matching[0]
+    assert item["project_name"] == project.name
+    assert item["project_slug"] == project.slug

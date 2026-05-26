@@ -121,6 +121,16 @@ export interface ScanPublic {
    * surfaced here on read models. `null` when no release was supplied.
    */
   release: string | null;
+  /**
+   * P1 #5 — denormalised project name/slug surfaced on every scan row by the
+   * list endpoint (`GET /v1/scans` and `GET /v1/projects/{id}/scans`) so the
+   * cross-project Scans queue can render the project in a human label and
+   * link to `/projects/{project_id}` instead of showing the first 8 chars of
+   * the UUID. Optional because the single-row endpoints don't eager-load the
+   * relationship yet — the UI must fall back to `project_id` when null.
+   */
+  project_name: string | null;
+  project_slug: string | null;
   created_at: string;
   updated_at: string;
 }

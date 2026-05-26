@@ -23,12 +23,15 @@ Design notes:
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from models.component_approval import ApprovalStatus
+
+if TYPE_CHECKING:
+    from services.component_approval_service import ApprovalListRow
 
 
 class ApprovalOut(BaseModel):
@@ -45,8 +48,35 @@ class ApprovalOut(BaseModel):
     decided_at: datetime | None
     decision_note: str | None
     version: int
+    # P1 #6 — denormalised display fields surfaced on every approval row so
+    # the cross-project Approvals queue UI doesn't show raw UUIDs in the
+    # Component / Project columns. All four are nullable because:
+    #   * cross-domain ORM relationships are intentionally NOT declared on
+    #     ComponentApproval (see model docstring) — the service layer fills
+    #     these via batch IN(...) lookups,
+    #   * a hardened-row whose referent was hard-deleted should still render
+    #     as a known approval id rather than a 500.
+    component_name: str | None = None
+    component_purl: str | None = None
+    project_name: str | None = None
+    project_slug: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+    @classmethod
+    def from_list_row(cls, row: ApprovalListRow) -> ApprovalOut:
+        """Build an ApprovalOut from a service-layer ``ApprovalListRow`` envelope.
+
+        The envelope already carries the component / project display fields
+        the list service resolved via batched IN(...) lookups; we just splice
+        them onto the model-validated approval row.
+        """
+        pub = cls.model_validate(row.approval)
+        pub.component_name = row.component_name
+        pub.component_purl = row.component_purl
+        pub.project_name = row.project_name
+        pub.project_slug = row.project_slug
+        return pub
 
 
 class ApprovalListPage(BaseModel):

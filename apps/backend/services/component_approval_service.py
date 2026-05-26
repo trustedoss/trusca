@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import structlog
@@ -56,6 +57,29 @@ from models.component_approval import ApprovalStatus
 from models.scan import Component  # explicit import avoids implicit lazy load
 
 log = structlog.get_logger("component_approval.service")
+
+
+# ---------------------------------------------------------------------------
+# Result envelope for the list endpoint — P1 #6
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ApprovalListRow:
+    """One approval row plus display fields for the cross-project list UI.
+
+    The component / project FK relationships are intentionally NOT declared
+    on ComponentApproval (cross-domain, one-way per the model docstring), so
+    we cannot ``selectinload`` them. Instead the list service fetches the
+    display fields with two batched IN(...) lookups and returns them
+    alongside the ORM row in this envelope.
+    """
+
+    approval: ComponentApproval
+    component_name: str | None
+    component_purl: str | None
+    project_name: str | None
+    project_slug: str | None
 
 
 # ---------------------------------------------------------------------------
@@ -185,7 +209,7 @@ async def list_approvals(
     to_dt: datetime | None = None,
     page: int = 1,
     page_size: int = 50,
-) -> tuple[list[ComponentApproval], int]:
+) -> tuple[list[ApprovalListRow], int]:
     """
     Return a paginated list of approvals.
 
@@ -239,6 +263,55 @@ async def list_approvals(
     )
     rows = list((await session.execute(rows_stmt)).scalars().all())
 
+    # P1 #6 — batch-load component name/purl + project name/slug so the UI
+    # can render real labels in the Component / Project columns instead of
+    # the first 8 chars of a UUID. Two indexed IN(...) lookups; both empty
+    # if the page is empty so an actor with zero approvals still pays nothing.
+    comp_ids = {r.component_id for r in rows}
+    proj_ids = {r.project_id for r in rows}
+    comp_meta: dict[uuid.UUID, tuple[str, str]] = {}
+    proj_meta: dict[uuid.UUID, tuple[str, str]] = {}
+    if comp_ids:
+        comp_rows = (
+            await session.execute(
+                select(Component.id, Component.name, Component.purl).where(
+                    Component.id.in_(comp_ids)
+                )
+            )
+        ).all()
+        comp_meta = {cid: (cname, cpurl) for cid, cname, cpurl in comp_rows}
+    if proj_ids:
+        proj_rows = (
+            await session.execute(
+                select(Project.id, Project.name, Project.slug).where(
+                    Project.id.in_(proj_ids)
+                )
+            )
+        ).all()
+        proj_meta = {pid: (pname, pslug) for pid, pname, pslug in proj_rows}
+
+    def _comp(cid: uuid.UUID) -> tuple[str | None, str | None]:
+        m = comp_meta.get(cid)
+        return (m[0], m[1]) if m else (None, None)
+
+    def _proj(pid: uuid.UUID) -> tuple[str | None, str | None]:
+        m = proj_meta.get(pid)
+        return (m[0], m[1]) if m else (None, None)
+
+    enriched: list[ApprovalListRow] = []
+    for r in rows:
+        cn, cp = _comp(r.component_id)
+        pn, ps = _proj(r.project_id)
+        enriched.append(
+            ApprovalListRow(
+                approval=r,
+                component_name=cn,
+                component_purl=cp,
+                project_name=pn,
+                project_slug=ps,
+            )
+        )
+
     log.info(
         "approval.list",
         actor_id=str(actor.id),
@@ -246,7 +319,7 @@ async def list_approvals(
         page=page,
         page_size=page_size,
     )
-    return rows, total
+    return enriched, total
 
 
 # ---------------------------------------------------------------------------

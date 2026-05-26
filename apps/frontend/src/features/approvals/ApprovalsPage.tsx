@@ -277,18 +277,50 @@ export function ApprovalsPage() {
                       }
                     }}
                   >
-                    {/* Component — show first 8 chars of component_id */}
+                    {/* P1 #6 — Component column: show the component name with
+                        purl in a smaller line below; fall back to the legacy
+                        UUID prefix when the BE didn't supply the labels (e.g.
+                        a single-row endpoint or a hard-deleted referent). */}
                     <td className="px-6">
-                      <span className="font-mono text-xs">
-                        {item.component_id.slice(0, 8)}
-                      </span>
+                      {item.component_name ? (
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium text-foreground">
+                            {item.component_name}
+                          </span>
+                          {item.component_purl ? (
+                            <span
+                              className="truncate font-mono text-xs text-muted-foreground"
+                              title={item.component_purl}
+                            >
+                              {item.component_purl}
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <span className="font-mono text-xs">
+                          {item.component_id.slice(0, 8)}
+                        </span>
+                      )}
                     </td>
 
-                    {/* Project */}
+                    {/* P1 #6 — Project column: link to /projects/{id} when
+                        BE surfaced the name. Stop click propagation so the
+                        link doesn't also trip the row's drawer-open handler. */}
                     <td className="px-3">
-                      <span className="font-mono text-xs">
-                        {item.project_id.slice(0, 8)}
-                      </span>
+                      {item.project_name ? (
+                        <a
+                          href={`/projects/${item.project_id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-sm font-medium text-foreground hover:underline"
+                          data-testid="approvals-row-project-link"
+                        >
+                          {item.project_name}
+                        </a>
+                      ) : (
+                        <span className="font-mono text-xs">
+                          {item.project_id.slice(0, 8)}
+                        </span>
+                      )}
                     </td>
 
                     {/* Status */}
