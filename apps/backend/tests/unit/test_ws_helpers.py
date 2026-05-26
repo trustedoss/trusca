@@ -537,10 +537,22 @@ class _FakeUser:
 
 
 class _FakeScan:
-    def __init__(self, *, percent: int = 25, step: str | None = "cdxgen") -> None:
+    def __init__(
+        self,
+        *,
+        percent: int = 25,
+        step: str | None = "cdxgen",
+        status: str = "running",
+    ) -> None:
         self.id = uuid.uuid4()
         self.progress_percent = percent
         self.current_step = step
+        # P1 #11 — the gateway's initial-sync builder now reads `scan.status`
+        # to rewrite a terminal row's step to the terminal verdict. Default to
+        # "running" so the bulk of these tests exercise the live-stream path
+        # unchanged; the terminal branches have dedicated integration tests in
+        # tests/integration/test_ws_scan_progress.py.
+        self.status = status
 
 
 class _FakeSessionCM:

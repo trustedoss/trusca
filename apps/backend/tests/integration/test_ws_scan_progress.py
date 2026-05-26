@@ -318,6 +318,122 @@ def test_ws_auth_pass_pushes_initial_sync_frame(client: TestClient) -> None:
         assert isinstance(body["ts"], str) and body["ts"]
 
 
+def _seed_user_with_terminal_scan(
+    *,
+    scan_status: str,
+    current_step: str = "finalize",
+    progress_percent: int = 90,
+) -> tuple[uuid.UUID, uuid.UUID]:
+    """Seed a user + a terminal scan whose ``current_step`` is *not* terminal.
+
+    Mirrors the production hazard the P1 #11 fix targets: the worker's last
+    ``current_step`` write is ``finalize`` (or anything pre-terminal), but
+    ``status`` has been flipped to a terminal value. The initial sync push
+    must surface the terminal status as the step so a re-opened drawer does
+    not render a spinner on a done scan.
+    """
+    import asyncio
+
+    from sqlalchemy.ext.asyncio import (
+        AsyncSession,
+        async_sessionmaker,
+        create_async_engine,
+    )
+
+    from core.config import database_url
+
+    async def _build() -> tuple[uuid.UUID, uuid.UUID]:
+        engine = create_async_engine(database_url(), pool_pre_ping=True, future=True)
+        factory = async_sessionmaker(
+            engine, expire_on_commit=False, class_=AsyncSession
+        )
+        async with factory() as s:
+            org = await make_organization(s)
+            team = await make_team(s, organization=org)
+            user = await make_user(s)
+            await make_membership(s, user=user, team=team, role="developer")
+            project = await make_project(s, team=team)
+            from models import Scan as ScanModel
+
+            scan = ScanModel(
+                project_id=project.id,
+                kind="source",
+                status=scan_status,
+                progress_percent=progress_percent,
+                current_step=current_step,
+                requested_by_user_id=user.id,
+                scan_metadata={},
+            )
+            s.add(scan)
+            await s.commit()
+            await s.refresh(scan)
+            user_id = user.id
+            scan_id = scan.id
+        await engine.dispose()
+        return user_id, scan_id
+
+    return asyncio.run(_build())
+
+
+def test_ws_initial_sync_for_succeeded_scan_reports_terminal_step(
+    client: TestClient,
+) -> None:
+    """P1 #11 — re-opening a succeeded scan's drawer must NOT report the
+    worker's last pre-terminal ``current_step`` (commonly ``finalize``).
+
+    The gateway rewrites the initial sync step to the terminal status, so the
+    SPA can flip its panel to the success branch on the very first frame
+    instead of rendering a spinner on a step that is in fact done.
+    """
+    user_id, scan_id = _seed_user_with_terminal_scan(scan_status="succeeded")
+    token = _bearer_token(user_id)
+
+    with client.websocket_connect(f"/ws/scans/{scan_id}") as ws:
+        _send_auth(ws, token)
+        raw = ws.receive_text()
+        body = json.loads(raw)
+        # Step is the terminal verdict — NOT the worker's last write ("finalize").
+        assert body["step"] == "succeeded"
+        # Percent is pinned at 100 for the succeeded branch so a UI that
+        # binds the progress bar value to the initial frame renders a full bar.
+        assert body["percent"] == 100
+
+
+def test_ws_initial_sync_for_failed_scan_reports_failed_step(
+    client: TestClient,
+) -> None:
+    """Mirror of the succeeded test for the failed terminal branch."""
+    user_id, scan_id = _seed_user_with_terminal_scan(
+        scan_status="failed", progress_percent=60
+    )
+    token = _bearer_token(user_id)
+
+    with client.websocket_connect(f"/ws/scans/{scan_id}") as ws:
+        _send_auth(ws, token)
+        raw = ws.receive_text()
+        body = json.loads(raw)
+        assert body["step"] == "failed"
+        # Failed keeps the persisted percent — we do not pretend completion.
+        assert body["percent"] == 60
+
+
+def test_ws_initial_sync_for_cancelled_scan_reports_cancelled_step(
+    client: TestClient,
+) -> None:
+    """Mirror of the succeeded test for the cancelled terminal branch."""
+    user_id, scan_id = _seed_user_with_terminal_scan(
+        scan_status="cancelled", progress_percent=30
+    )
+    token = _bearer_token(user_id)
+
+    with client.websocket_connect(f"/ws/scans/{scan_id}") as ws:
+        _send_auth(ws, token)
+        raw = ws.receive_text()
+        body = json.loads(raw)
+        assert body["step"] == "cancelled"
+        assert body["percent"] == 30
+
+
 # ---------------------------------------------------------------------------
 # 2. Bad / wrong-typed / unsigned tokens
 # ---------------------------------------------------------------------------

@@ -298,4 +298,67 @@ describe("ScanProgress", () => {
       expect(screen.getByTestId("scan-progress-cancelled")).toBeInTheDocument();
     });
   });
+
+  // ---- P1 #11: re-opening a completed scan's drawer --------------------
+
+  it("renders the success state when parent passes status='succeeded' and WS reports a pre-terminal step", async () => {
+    // The Recent Scans table re-opens this drawer for a finished scan. The
+    // BE rewrites the initial sync step to the terminal verdict, but even if
+    // the SPA ever sees a stale `step="finalize"` (older worker write, retry,
+    // etc.) it must trust the `status` prop and flip to the success branch
+    // rather than render an animated spinner on a step that is done.
+    renderProgress(
+      <ScanProgress
+        scanId="scan-1"
+        socketFactory={factory}
+        status="succeeded"
+      />,
+    );
+    act(() => FakeSocket.instances[0].__open());
+    act(() =>
+      FakeSocket.instances[0].__message({
+        percent: 95,
+        step: "finalize",
+        ts: "2026-05-26T12:00:00.000Z",
+      }),
+    );
+
+    // Title flips to the success label.
+    await waitFor(() => {
+      expect(screen.getByText(/Scan completed/i)).toBeInTheDocument();
+    });
+    // The `finalize` row is NOT showing the "current" spinner — it should be
+    // marked completed because the scan as a whole succeeded.
+    const finalizeItem = screen
+      .getByTestId("scan-progress-steps")
+      .querySelector('[data-step="finalize"]');
+    expect(finalizeItem).not.toHaveAttribute("data-state", "current");
+    // No cancel affordance for a terminal scan.
+    expect(screen.queryByTestId("scan-cancel-button")).not.toBeInTheDocument();
+  });
+
+  it("renders the failed state when parent passes status='failed' even with a pre-terminal WS step", async () => {
+    renderProgress(
+      <ScanProgress
+        scanId="scan-1"
+        socketFactory={factory}
+        status="failed"
+      />,
+    );
+    act(() => FakeSocket.instances[0].__open());
+    act(() =>
+      FakeSocket.instances[0].__message({
+        percent: 50,
+        step: "dt_findings",
+        ts: "2026-05-26T12:00:00.000Z",
+      }),
+    );
+    await waitFor(() => {
+      expect(screen.getByText(/Scan failed/i)).toBeInTheDocument();
+    });
+    const stepItem = screen
+      .getByTestId("scan-progress-steps")
+      .querySelector('[data-step="dt_findings"]');
+    expect(stepItem).not.toHaveAttribute("data-state", "current");
+  });
 });

@@ -130,8 +130,19 @@ export function ScanProgress({
 
   const percent = lastMessage?.percent ?? 0;
   const step = lastMessage?.step ?? null;
-  const succeeded = step === "succeeded";
-  const failed = step === "failed";
+  // P1 #11 — derive each terminal verdict from the *union* of (live WS frame,
+  // parent-supplied status prop, fallback refetch). Re-opening a completed
+  // scan's drawer (RecentScansTable row click) lands here with status =
+  // "succeeded" but the live frame can transiently report step = "finalize"
+  // (the worker's last `current_step` write before flipping status). Treating
+  // `status` as a peer of `step` keeps the panel from rendering a spinner on
+  // a scan that is in fact done.
+  const succeeded =
+    step === "succeeded" ||
+    status === "succeeded" ||
+    fetchedStatus === "succeeded";
+  const failed =
+    step === "failed" || status === "failed" || fetchedStatus === "failed";
   // A scan is cancelled when ANY of: the live frame says so, the parent passed
   // a cancelled status (the cancel button confirmed), or the fallback refetch
   // resolved to cancelled.
@@ -140,9 +151,9 @@ export function ScanProgress({
     status === "cancelled" ||
     fetchedStatus === "cancelled";
 
-  // Treat cancellation as terminal for the panel even when the WS hook itself
-  // never saw a terminal frame (status prop / fallback path).
-  const terminal = isTerminal || cancelled;
+  // Treat any terminal verdict as terminal for the panel even when the WS
+  // hook itself never saw a terminal frame (status prop / fallback path).
+  const terminal = isTerminal || cancelled || succeeded || failed;
 
   // The cancel affordance is gated on BOTH the persisted status (queued /
   // running) AND the absence of a live terminal frame — so it disappears the
@@ -193,7 +204,7 @@ export function ScanProgress({
         </Alert>
       ) : null}
 
-      {(state === "connecting" || state === "authenticating") && !cancelled ? (
+      {(state === "connecting" || state === "authenticating") && !terminal ? (
         <Skeleton
           className="h-2 w-full"
           data-testid="scan-progress-skeleton"
@@ -238,12 +249,17 @@ export function ScanProgress({
         {PIPELINE_STEPS.map((s) => {
           const stepIndex = indexOfStep(step);
           const myIndex = indexOfStep(s);
-          // When cancelled, freeze the spinner: the in-flight step is no longer
-          // "current" (work has stopped), so it renders as a neutral pending
-          // glyph rather than an animated loader.
+          // P1 #11 — once the scan reached any terminal verdict (cancelled /
+          // succeeded / failed), freeze the per-step spinner: the in-flight
+          // step is no longer "current" (work has stopped), so it renders as
+          // a neutral / completed glyph rather than an animated loader. The
+          // earlier guard only covered the cancelled branch, which left a
+          // re-opened succeeded scan stuck spinning on `finalize`.
           const isCurrent =
             step === s &&
             !cancelled &&
+            !succeeded &&
+            !failed &&
             !TERMINAL_STEPS.has(step as ScanStep);
           const isCompleted =
             (stepIndex > myIndex && stepIndex !== -1) || succeeded;
