@@ -126,11 +126,12 @@ export interface ScanPublic {
    * list endpoint (`GET /v1/scans` and `GET /v1/projects/{id}/scans`) so the
    * cross-project Scans queue can render the project in a human label and
    * link to `/projects/{project_id}` instead of showing the first 8 chars of
-   * the UUID. Optional because the single-row endpoints don't eager-load the
-   * relationship yet — the UI must fall back to `project_id` when null.
+   * the UUID. Declared optional (not required-nullable) so test fixtures and
+   * single-row endpoints don't have to populate them — the UI guards with a
+   * truthy check and falls back to `project_id` when absent.
    */
-  project_name: string | null;
-  project_slug: string | null;
+  project_name?: string | null;
+  project_slug?: string | null;
   created_at: string;
   updated_at: string;
 }
