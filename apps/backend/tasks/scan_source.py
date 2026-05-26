@@ -81,12 +81,14 @@ from integrations import scancode as scancode_adapter
 from integrations._size_guard import enforce_jsonb_row_size_limit
 from integrations._subprocess_env import scrubbed_env_for_prep
 from integrations.dependency_graph import (
+    compute_depths,
     graph_depths_from_sbom,
     parse_dependency_graph,
 )
 from integrations.dt import DTBreakerOpen, DTError
 from integrations.dt.breaker import CircuitBreaker, get_breaker
 from integrations.dt.client import DTClient, build_client
+from integrations.npm_lockfile import NpmLockfileData, read_lockfile
 from models import (
     AuditLog,
     Component,
@@ -462,6 +464,7 @@ def _run_pipeline(
                     session,
                     scan_uuid=scan_uuid,
                     sbom=cdxgen_result.sbom,
+                    source_dir=source_dir,
                 )
                 if scancode_detections:
                     try:
@@ -2116,6 +2119,7 @@ def _persist_components(
     *,
     scan_uuid: uuid.UUID,
     sbom: dict[str, Any],
+    source_dir: Path | None = None,
 ) -> None:
     """Upsert components / component versions / scan components / license
     findings from a cdxgen CycloneDX SBOM.
@@ -2145,8 +2149,35 @@ def _persist_components(
     endpoints resolved to a persisted component (dangling refs / the scanned
     project's own metadata component are dropped). NULL depth means the SBOM
     carried no usable graph.
+
+    W4-D npm enrichment (2026-05-27): when ``source_dir`` is provided AND a
+    ``package-lock.json`` is on disk, the lockfile is parsed once and used to
+    fill the two cdxgen-shaped npm gaps observed in P3 #12 diagnostics:
+
+      (a) cdxgen 12.3.3 does not emit ``scope`` for npm components — we read
+          ``dev`` / ``optional`` / ``peer`` flags from the lockfile and the
+          root ``package.json``'s dependency categories to derive a
+          deterministic scope (USAGE column in the UI).
+      (b) cdxgen sometimes emits ``components`` without a ``dependencies``
+          graph — when ``sbom["dependencies"]`` parses to an empty adjacency
+          AND the lockfile is available, we hand the lockfile-derived
+          adjacency to :mod:`integrations.dependency_graph` so the per-row
+          TYPE column shows direct/transitive instead of dash.
+
+    Maven, Gradle, Cargo, Go, .NET are unaffected — cdxgen emits scope/graph
+    for those ecosystems via their respective build files.
     """
     components = sbom.get("components", []) or []
+    # W4-D: load npm lockfile once. None for non-npm projects or when the
+    # lockfile is absent / malformed — downstream callers degrade silently.
+    npm_lock = read_lockfile(source_dir) if source_dir is not None else None
+    if npm_lock is not None:
+        log.info(
+            "npm_lockfile_loaded",
+            scan_id=str(scan_uuid),
+            packages=len(npm_lock.scope_by_purl),
+            graph_nodes=len(npm_lock.adjacency),
+        )
     # cdxgen ref → component_version_id, for stamping depth + resolving edges
     # once the whole component set is persisted. The graph's ``ref`` is a
     # component's bom-ref (== its purl in cdxgen output); we key the map on the
@@ -2183,10 +2214,22 @@ def _persist_components(
                 "purl": purl,
             },
         )
+        # W4-D: scope precedence — cdxgen first (Maven POMs / Gradle DSL carry
+        # explicit scope), then npm lockfile fallback (cdxgen never emits scope
+        # for npm). The lookup is by purl, which is the same string cdxgen uses
+        # — for non-npm purls the lockup misses harmlessly.
+        cdxgen_scope = raw.get("scope")
+        scope_value: str | None
+        if isinstance(cdxgen_scope, str) and cdxgen_scope:
+            scope_value = cdxgen_scope
+        elif npm_lock is not None and package_type == "npm":
+            scope_value = npm_lock.scope_for_purl(purl)
+        else:
+            scope_value = None
         scan_component = ScanComponent(
             scan_id=scan_uuid,
             component_version_id=component_version.id,
-            dependency_scope=raw.get("scope"),
+            dependency_scope=scope_value,
             dependency_path=raw.get("bom-ref"),
             direct=False,
             raw_data=guarded_raw,
@@ -2215,12 +2258,17 @@ def _persist_components(
     # after the component loop so every ref the graph might reference is already
     # mapped. Best-effort and isolated: a malformed graph degrades to "no depth /
     # no edges", it never sinks the component persistence above.
+    #
+    # W4-D: when cdxgen emitted no usable graph but the npm lockfile gave us
+    # one, the lockfile adjacency is used as a fallback so the Components tab
+    # TYPE column (direct vs transitive) is filled for npm projects.
     _persist_dependency_graph(
         session,
         scan_uuid=scan_uuid,
         sbom=sbom,
         ref_to_cv_id=ref_to_cv_id,
         ref_to_scan_component=ref_to_scan_component,
+        npm_lock=npm_lock,
     )
 
 
@@ -2236,6 +2284,7 @@ def _persist_dependency_graph(
     sbom: dict[str, Any],
     ref_to_cv_id: dict[str, uuid.UUID],
     ref_to_scan_component: dict[str, ScanComponent],
+    npm_lock: NpmLockfileData | None = None,
 ) -> None:
     """Stamp ``ScanComponent.depth`` + persist resolved dependency edges.
 
@@ -2257,9 +2306,34 @@ def _persist_dependency_graph(
     edges — it never raises onto the caller's component-persistence path. The
     rows are added to the SAME session as the components, so they commit (or roll
     back) atomically with the component graph in the caller's ``session.commit()``.
+
+    W4-D fallback: when ``npm_lock`` is provided AND the cdxgen graph parses to
+    an empty adjacency, the lockfile's synthesized adjacency is used instead so
+    npm projects whose cdxgen run produced ``components`` but no
+    ``dependencies`` still get direct/transitive distinction. The fallback
+    flows through the SAME ``parse_dependency_graph`` / ``compute_depths`` path
+    so all adversarial-input guarantees (cycle / dangling / MAX_DEPTH cap)
+    apply identically.
     """
     dependencies = sbom.get("dependencies")
     adjacency = parse_dependency_graph(dependencies)
+    cdxgen_graph_empty = not adjacency
+    used_lockfile_fallback = False
+
+    if cdxgen_graph_empty and npm_lock is not None and npm_lock.adjacency:
+        # W4-D fallback: re-parse through the same trust boundary so the
+        # adversarial-input guarantees apply to lockfile-derived data too.
+        adjacency = parse_dependency_graph(npm_lock.synthesize_cdxgen_dependencies())
+        if adjacency:
+            used_lockfile_fallback = True
+            log.info(
+                "dependency_graph_lockfile_fallback",
+                scan_id=str(scan_uuid),
+                source="package-lock.json",
+                nodes=len(adjacency),
+                component_count=len(ref_to_cv_id),
+            )
+
     if not adjacency:
         # P3 #12 diagnostic (2026-05-26): a silent skip here is the dominant
         # reason ScanComponent.depth / .direct end up NULL across the whole
@@ -2277,10 +2351,17 @@ def _persist_dependency_graph(
             scan_id=str(scan_uuid),
             raw_entries=raw_count,
             component_count=len(ref_to_cv_id),
+            npm_lockfile_available=npm_lock is not None,
         )
         return  # No usable graph — depth stays NULL, no edges.
 
-    depths = graph_depths_from_sbom(sbom)
+    if used_lockfile_fallback:
+        # Lockfile root is the empty string ``""`` — force it as the graph
+        # root so its immediate children become depth-1 (direct) deps,
+        # matching the cdxgen ``metadata.component`` semantics.
+        depths = compute_depths(adjacency, root_refs=[""])
+    else:
+        depths = graph_depths_from_sbom(sbom)
 
     # 1) Stamp depth + direct on the ScanComponents we created.
     for ref, depth in depths.items():
@@ -2324,6 +2405,7 @@ def _persist_dependency_graph(
         nodes=len(adjacency),
         depths=len(depths),
         edges=edge_count,
+        source="npm_lockfile_fallback" if used_lockfile_fallback else "cdxgen",
     )
 
 
