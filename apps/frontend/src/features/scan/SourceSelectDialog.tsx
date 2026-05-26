@@ -502,6 +502,11 @@ function UploadPanel({
       >
         {t("source.upload.label")}
       </label>
+      {/* P2 #9 — native `<input type="file">` renders its own button label in
+          the OS locale ("파일 선택" on a Korean macOS regardless of app i18n).
+          Hide it visually + drive a Button label we control via react-i18next.
+          The hidden input keeps `id` so the `<label htmlFor>` association
+          still works for screen readers / form labelling. */}
       <input
         ref={fileInputRef}
         id="source-zip-input"
@@ -510,8 +515,30 @@ function UploadPanel({
         onChange={onPick}
         disabled={disabled}
         data-testid="source-zip-input"
-        className="block w-full cursor-pointer rounded-md border border-input bg-background text-sm file:mr-3 file:border-0 file:bg-muted file:px-3 file:py-2 file:text-sm file:font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50"
+        className="sr-only"
       />
+      <div className="flex items-center gap-3">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={disabled}
+          data-testid="source-zip-pick-button"
+        >
+          {t("source.upload.choose_file", { defaultValue: "Choose file" })}
+        </Button>
+        <span
+          className="truncate text-xs text-muted-foreground"
+          data-testid="source-zip-filename"
+        >
+          {selectedFile
+            ? selectedFile.name
+            : t("source.upload.no_file_chosen", {
+                defaultValue: "No file chosen",
+              })}
+        </span>
+      </div>
       <p className="text-xs text-muted-foreground">
         {t("source.upload.hint", { max: "100 MiB" })}
       </p>
@@ -552,6 +579,9 @@ function FolderPanel({
       >
         {t("source.folder.label")}
       </label>
+      {/* P2 #9 — see UploadPanel for rationale: hide the native input so its
+          OS-locale "Choose Files / 파일 선택" label is not shown, and drive
+          the visible action through an i18n'd Button instead. */}
       <input
         ref={folderInputRef}
         id="source-folder-input"
@@ -564,8 +594,33 @@ function FolderPanel({
         onChange={onPick}
         disabled={disabled}
         data-testid="source-folder-input"
-        className="block w-full cursor-pointer rounded-md border border-input bg-background text-sm file:mr-3 file:border-0 file:bg-muted file:px-3 file:py-2 file:text-sm file:font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50"
+        className="sr-only"
       />
+      <div className="flex items-center gap-3">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => folderInputRef.current?.click()}
+          disabled={disabled}
+          data-testid="source-folder-pick-button"
+        >
+          {t("source.folder.choose_folder", { defaultValue: "Choose folder" })}
+        </Button>
+        <span
+          className="truncate text-xs text-muted-foreground"
+          data-testid="source-folder-status"
+        >
+          {inspection && !inspection.isEmpty
+            ? t("source.folder.files_count", {
+                defaultValue: "{{count}} file(s) selected",
+                count: inspection.files.length,
+              })
+            : t("source.folder.no_folder_chosen", {
+                defaultValue: "No folder chosen",
+              })}
+        </span>
+      </div>
       <p className="text-xs text-muted-foreground">
         {t("source.folder.hint", { max: "100 MiB" })}
       </p>

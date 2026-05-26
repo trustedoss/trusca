@@ -267,18 +267,23 @@ export function ProjectDetailPage() {
     );
   }
 
-  // Pin a snapshot (from the Releases tab "View snapshot" action) and jump to
-  // Overview so the user sees the full snapshot picture. We preserve other
-  // params but drop tab-scoped filter/drawer params (a stale severity filter or
-  // an open drawer keyed to a different scan would be confusing) and set
-  // `?scan=` + clear `tab` (Overview is the default tab).
-  function handleViewSnapshot(scanId: string) {
+  // Pin a snapshot and jump to a target tab. We preserve other params but
+  // drop tab-scoped filter/drawer params (a stale severity filter or an open
+  // drawer keyed to a different scan would be confusing) and set `?scan=`.
+  //
+  // P2 #2 — Releases tab now routes to Components (target tab passed by
+  // caller); the header ReleaseSwitcher keeps the original Overview target.
+  function pinSnapshotAndGoToTab(scanId: string, targetTab: string | null) {
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);
         next.set("scan", scanId);
-        next.delete("tab");
-        // Drop every tab-scoped param so Overview opens clean on the snapshot.
+        if (targetTab) {
+          next.set("tab", targetTab);
+        } else {
+          next.delete("tab");
+        }
+        // Drop every tab-scoped param so the target tab opens clean on the snapshot.
         for (const key of [
           "search",
           "sort",
@@ -303,6 +308,19 @@ export function ProjectDetailPage() {
       },
       { replace: false },
     );
+  }
+
+  // Header ReleaseSwitcher action: pin + jump to Overview (the snapshot's
+  // landing view).
+  function handleViewSnapshot(scanId: string) {
+    pinSnapshotAndGoToTab(scanId, null);
+  }
+
+  // P2 #2 — Releases tab row action: pin + jump straight to Components.
+  // A release IS a component snapshot, so the Components tab is the natural
+  // landing surface when the user picks a row in the release history.
+  function handleViewSnapshotComponents(scanId: string) {
+    pinSnapshotAndGoToTab(scanId, "components");
   }
 
   // Clear the pinned snapshot — "Back to latest" returns to the live view.
@@ -377,6 +395,16 @@ export function ProjectDetailPage() {
           >
             {t("tabs.vulnerabilities")}
           </TabsTrigger>
+          {/* P2 #3 — Source (raw artifact) is the cognitive predecessor of
+              Licenses (classified output of that artifact), so Source sits
+              to the left of Licenses now. The tab key/route is unchanged so
+              deep links and tests keep working. */}
+          <TabsTrigger
+            value="source"
+            data-testid="project-detail-tab-source"
+          >
+            {t("tabs.source")}
+          </TabsTrigger>
           <TabsTrigger
             value="licenses"
             data-testid="project-detail-tab-licenses"
@@ -399,12 +427,6 @@ export function ProjectDetailPage() {
             {t("tabs.reports")}
           </TabsTrigger>
           <TabsTrigger
-            value="source"
-            data-testid="project-detail-tab-source"
-          >
-            {t("tabs.source")}
-          </TabsTrigger>
-          <TabsTrigger
             value="remediation"
             data-testid="project-detail-tab-remediation"
           >
@@ -421,6 +443,7 @@ export function ProjectDetailPage() {
         <TabsContent value="overview">
           <OverviewTab
             projectId={projectId}
+            project={project}
             scanId={pinnedScanId}
             onSelectScan={handleReopenScan}
           />
@@ -428,7 +451,7 @@ export function ProjectDetailPage() {
         <TabsContent value="releases">
           <ReleasesTab
             projectId={projectId}
-            onViewSnapshot={handleViewSnapshot}
+            onViewSnapshot={handleViewSnapshotComponents}
           />
         </TabsContent>
         <TabsContent value="components">

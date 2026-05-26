@@ -110,11 +110,16 @@
     },
     "upload": {
       "label": "소스 아카이브 (.zip)",
+      "choose_file": "파일 선택",
+      "no_file_chosen": "선택된 파일 없음",
       "hint": "ZIP 아카이브, 최대 {{max}}.",
       "selected": "선택됨: {{name}} ({{size}})"
     },
     "folder": {
       "label": "프로젝트 폴더",
+      "choose_folder": "폴더 선택",
+      "no_folder_chosen": "선택된 폴더 없음",
+      "files_count": "파일 {{count}}개 선택됨",
       "hint": "폴더는 업로드 전에 브라우저에서 압축됩니다. 최대 {{max}}.",
       "selected": "파일 {{count}}개 선택됨 ({{size}})",
       "too_large": "선택한 폴더가 {{max}} 제한을 초과합니다. 큰 디렉터리를 제거하고 다시 시도하세요.",

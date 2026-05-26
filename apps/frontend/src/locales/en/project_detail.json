@@ -55,6 +55,20 @@
     "none": "No risk"
   },
   "overview": {
+    "info_card": {
+      "title": "Project info",
+      "description": "Description",
+      "no_description": "No description set.",
+      "git_url": "Repository",
+      "no_git_url": "No git URL configured.",
+      "default_branch": "Default branch",
+      "visibility": "Visibility",
+      "visibility_value": {
+        "team": "Team-only",
+        "organization": "Organization-wide"
+      },
+      "credential_configured": "Credential configured"
+    },
     "risk_card": {
       "title": "Risk score",
       "subtitle": "Computed from {{total}} component(s) in the latest scan.",
@@ -256,6 +270,8 @@
     "vex": {
       "marker": "VEX",
       "marker_tooltip": "This finding's status was set by an imported VEX document.",
+      "choose_file": "Choose file",
+      "no_file_chosen": "No file chosen",
       "filter_label": "VEX",
       "filter_suppressed": "VEX-suppressed only",
       "export_label": "Export VEX",
