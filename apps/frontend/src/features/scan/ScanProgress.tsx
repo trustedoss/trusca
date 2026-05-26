@@ -68,12 +68,17 @@ export interface ScanProgressProps {
   urlBuilder?: (scanId: string) => string;
 }
 
+// P2 #8 hotfix — dt_upload now appears BEFORE scancode in the glyph row. The
+// worker publishes step="dt_upload" right after submitting the background DT
+// thread (PR #181), then publishes step="scancode" once scancode actually
+// starts on the main thread. Putting dt_upload to the left of scancode keeps
+// the "step === s → current; later index → completed" math correct.
 const PIPELINE_STEPS: ScanStep[] = [
   "bootstrap",
   "fetch",
   "cdxgen",
-  "scancode",
   "dt_upload",
+  "scancode",
   "dt_findings",
   "finalize",
 ];
