@@ -13,6 +13,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ScansPage } from "@/features/scans/ScansPage";
@@ -56,13 +57,18 @@ function pageResponse(items: ScanPublic[], total = items.length): ScanListRespon
   return { items, total, page: 1, size: 20 };
 }
 
-function renderPage() {
+function renderPage(initialEntry = "/scans") {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  // P2 #4 — ScansPage now reads `?status=` via useSearchParams to support
+  // Dashboard deep-links, so the test renderer must mount inside a router.
+  // MemoryRouter is sufficient — we don't exercise navigation across pages.
   return render(
     <QueryClientProvider client={client}>
-      <ScansPage />
+      <MemoryRouter initialEntries={[initialEntry]}>
+        <ScansPage />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
