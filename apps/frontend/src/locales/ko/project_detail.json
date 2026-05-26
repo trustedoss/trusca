@@ -159,6 +159,9 @@
       "severity": "심각도",
       "vulns": "CVE"
     },
+    "license": {
+      "unknown_dash": "—"
+    },
     "badge": {
       "dependency_type": {
         "direct": "직접",

@@ -13,6 +13,11 @@
     "clear": "지우기",
     "count_selected": "{{count}}개 선택됨"
   },
+  "sort": {
+    "aria_ascending": "오름차순 정렬됨 — 클릭하여 내림차순 정렬",
+    "aria_descending": "내림차순 정렬됨 — 클릭하여 정렬 해제",
+    "aria_unsorted": "정렬되지 않음 — 클릭하여 오름차순 정렬"
+  },
   "auth": {
     "logout": "로그아웃",
     "profile": "프로필"
