@@ -59,9 +59,15 @@ def test_expired_token_rejected() -> None:
 
 def test_tampered_signature_rejected() -> None:
     token = create_access_token(subject="user-1")
-    # Flip the last char of the signature segment.
+    # Flip the FIRST char of the signature segment, not the last. HS256
+    # signatures are 32 bytes → 256 bits, base64url-encoded as 43 chars which
+    # carry 258 bits; the last char's low 2 bits are padding and are silently
+    # discarded on decode. Flipping the trailing char can therefore produce a
+    # different string that decodes to the *same* 32-byte HMAC, leaving the
+    # signature valid — a probabilistic flake that bit us in CI (run 26435784546).
+    # The first char has no such ignored bits.
     head, payload, sig = token.split(".")
-    bad_sig = sig[:-1] + ("a" if sig[-1] != "a" else "b")
+    bad_sig = ("a" if sig[0] != "a" else "b") + sig[1:]
     with pytest.raises(Exception):
         decode_token(f"{head}.{payload}.{bad_sig}", expected_type="access")
 
