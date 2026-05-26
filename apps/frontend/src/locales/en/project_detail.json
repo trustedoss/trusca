@@ -249,6 +249,9 @@
       "cvss": "CVSS",
       "epss": "EPSS",
       "summary": "Title",
+      "component": "Component",
+      "affected_more_count": "+{{count}}",
+      "affected_more_count_tooltip": "{{count}} more component(s) also affected — see drawer",
       "affected": "Affected",
       "status": "Status",
       "discovered": "Discovered"

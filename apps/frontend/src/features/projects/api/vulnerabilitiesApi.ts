@@ -134,13 +134,41 @@ export interface VulnerabilityListItem {
   reachability_analyzed_at: string | null;
   affected_component_count: number;
   /**
+   * Name of the component_version THIS finding row is FK-pinned to (one row =
+   * one (cv × CVE) pairing). NOT an aggregate across the CVE's OTHER affected
+   * cvs — when `affected_component_count > 1` the additional cvs surface via
+   * the drawer's `affected_components` list, and the UI hints at them on the
+   * row with a `+N-1` suffix. `null` only on legacy rows whose target was
+   * since CASCADE-deleted (effectively unreachable in practice).
+   * Backend follow-up to W4-B.
+   */
+  affected_component_name: string | null;
+  /** Version string of the row's pinned cv (same single-cv rationale). */
+  affected_component_version: string | null;
+  /**
+   * SPDX id of the worst-rank license attached to the row's pinned cv in this
+   * scan. Same aggregation rule as `affected_component_license_category` so
+   * the SPDX label and the policy badge always agree. `null` when the cv has
+   * no license finding OR when the worst-rank license is a `LicenseRef-*`
+   * custom license (we never invent an SPDX string).
+   */
+  affected_component_license: string | null;
+  /**
+   * Policy category of the SPDX id reported in `affected_component_license`
+   * (back-compat duplicate of the longstanding `component_license_category`).
+   * `null` only when `affected_component_license` is also `null`; otherwise
+   * always matches the badge rendered by the components tab for the same cv.
+   */
+  affected_component_license_category: LicenseCategoryName | null;
+  /**
    * Worst-category license classification of the finding's component_version
    * (W2 #33). When the component_version carries multiple licenses, the
    * backend collapses them with the same `_license_rank_case` used by the
    * Components tab — so a row's License axis is identical across the two
    * tabs. `"unknown"` covers both "no license finding" and a LEFT-JOIN miss;
    * `null` is never on the wire (defended in the schema), so the UI treats
-   * the field as always-present.
+   * the field as always-present. Kept alongside the new null-bearing
+   * `affected_component_license_category` for back-compat.
    */
   component_license_category: LicenseCategoryName;
   discovered_at: string;
