@@ -6,6 +6,10 @@ import { Virtuoso } from "react-virtuoso";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  type SortState,
+  SortableColumnHeader,
+} from "@/components/ui/sortable-column-header";
 import type { LicenseCategoryName } from "@/features/projects/api/projectDetailApi";
 import { useProjectOverview } from "@/features/projects/api/useProjectOverview";
 import { useVulnerabilities } from "@/features/projects/api/useVulnerabilities";
@@ -19,7 +23,8 @@ import type {
   VulnerabilitySortKey,
 } from "@/features/projects/api/vulnerabilitiesApi";
 import { BULK_TRANSITION_MAX } from "@/features/projects/api/vulnerabilitiesApi";
-import { LicenseCategoryBadge } from "@/features/projects/components/LicenseCategoryBadge";
+import { ActiveFilterChips } from "@/features/projects/components/ActiveFilterChips";
+import { LicenseColumnCell } from "@/features/projects/components/LicenseColumnCell";
 import { ReachabilityBadge } from "@/features/projects/components/ReachabilityBadge";
 import { SeverityBadge } from "@/features/projects/components/SeverityBadge";
 import { VulnerabilitiesToolbar } from "@/features/projects/components/VulnerabilitiesToolbar";
@@ -36,7 +41,6 @@ import {
   type TriageRole,
 } from "@/features/projects/lib/vulnerabilityTransitions";
 import { ProblemError } from "@/lib/problem";
-import { formatRelativeToNow } from "@/lib/relativeTime";
 import { cn } from "@/lib/utils";
 
 /**
@@ -172,7 +176,7 @@ export function VulnerabilitiesTab({
   scanId,
   readOnly = false,
 }: VulnerabilitiesTabProps) {
-  const { t, i18n } = useTranslation("project_detail");
+  const { t } = useTranslation("project_detail");
   const [searchParams, setSearchParams] = useSearchParams();
 
   // ----- filter state, hydrated from URL on first render -------------------
@@ -396,29 +400,36 @@ export function VulnerabilitiesTab({
       : source;
   }, [fetchedItems, vexSuppressedOnly]);
 
+  // W4-B #19 — SortableColumnHeader state derived from the existing
+  // `sort` + `order` state. The default surface state is "severity desc"
+  // (the most useful triage order); we treat the default as the un-sorted
+  // bucket so the Severity header's cycle returns to no-explicit-sort
+  // rather than being stuck on asc/desc forever.
+  const currentSort: SortState | null = useMemo(() => {
+    if (sort === "severity" && order === "desc") return null;
+    return { key: sort, order };
+  }, [sort, order]);
+
+  function handleSortChange(next: SortState | null) {
+    if (!next) {
+      setSort("severity");
+      setOrder("desc");
+      setPage(1);
+      return;
+    }
+    setSort(next.key as VulnerabilitySortKey);
+    setOrder(next.order);
+    setPage(1);
+  }
+
   return (
     <div data-testid="vulnerabilities-tab" className="flex flex-1 flex-col">
       <VulnerabilitiesToolbar
         search={search}
         onSearchChange={setSearch}
-        severity={severity}
-        onSeverityChange={(next) => {
-          setSeverity(next);
-          setPage(1);
-        }}
         status={status}
         onStatusChange={(next) => {
           setStatus(next);
-          setPage(1);
-        }}
-        sort={sort}
-        onSortChange={(next) => {
-          setSort(next);
-          setPage(1);
-        }}
-        order={order}
-        onOrderChange={(next) => {
-          setOrder(next);
           setPage(1);
         }}
         minEpss={minEpss}
@@ -429,11 +440,6 @@ export function VulnerabilitiesTab({
         reachable={reachable}
         onReachableChange={(next) => {
           setReachable(next);
-          setPage(1);
-        }}
-        licenseCategory={licenseCategory}
-        onLicenseCategoryChange={(next) => {
-          setLicenseCategory(next);
           setPage(1);
         }}
         onDownloadPdf={() => {
@@ -455,6 +461,19 @@ export function VulnerabilitiesTab({
         projectName={projectName}
         projectRole={projectRole}
         readOnly={readOnly}
+      />
+
+      <ActiveFilterChips<VulnSeverity>
+        severity={severity}
+        onSeverityChange={(next) => {
+          setSeverity(next);
+          setPage(1);
+        }}
+        licenseCategory={licenseCategory}
+        onLicenseCategoryChange={(next) => {
+          setLicenseCategory(next);
+          setPage(1);
+        }}
       />
 
       <div
@@ -531,6 +550,8 @@ export function VulnerabilitiesTab({
               !items.every((it) => selectedIds.has(it.id))
             }
             disabled={readOnly}
+            currentSort={currentSort}
+            onSortChange={handleSortChange}
             onToggleAll={(checked) => {
               if (checked) {
                 // Select-all is single-page (D-bulk). Truncate to the cap if
@@ -559,7 +580,6 @@ export function VulnerabilitiesTab({
                 <VulnerabilityRow
                   vulnerability={item}
                   rowIndex={index}
-                  locale={i18n.language}
                   selected={selectedIds.has(item.id)}
                   selectionDisabled={readOnly}
                   onToggleSelected={(checked) =>
@@ -590,6 +610,8 @@ interface VulnerabilitiesTableHeaderProps {
   allSelected: boolean;
   someSelected: boolean;
   disabled?: boolean;
+  currentSort: SortState | null;
+  onSortChange: (next: SortState | null) => void;
   onToggleAll: (checked: boolean) => void;
 }
 
@@ -597,6 +619,8 @@ function VulnerabilitiesTableHeader({
   allSelected,
   someSelected,
   disabled = false,
+  currentSort,
+  onSortChange,
   onToggleAll,
 }: VulnerabilitiesTableHeaderProps) {
   const { t } = useTranslation("project_detail");
@@ -621,12 +645,27 @@ function VulnerabilitiesTableHeader({
           disabled={disabled}
         />
       </span>
+      {/* W4-B #19 — column order: CVE / Severity / CVSS / EPSS / Reachability /
+          License / Title / Affected / Status. Discovered moved to the
+          drawer to reduce horizontal scroll on a 13" laptop. */}
       <span className="w-44">{t("vulnerabilities.column.cve_id")}</span>
-      <span className="w-28">{t("vulnerabilities.column.severity")}</span>
-      <span className="w-28">{t("vulnerabilities.column.license")}</span>
-      <span className="w-28">{t("vulnerabilities.column.reachable")}</span>
+      <span className="w-28">
+        <SortableColumnHeader
+          column="severity"
+          label={t("vulnerabilities.column.severity")}
+          currentSort={currentSort}
+          onSort={onSortChange}
+          testId="vulnerabilities-sort-header-severity"
+        />
+      </span>
       <span className="w-16 text-right">
-        {t("vulnerabilities.column.cvss")}
+        <SortableColumnHeader
+          column="cvss"
+          label={t("vulnerabilities.column.cvss")}
+          currentSort={currentSort}
+          onSort={onSortChange}
+          testId="vulnerabilities-sort-header-cvss"
+        />
       </span>
       <span
         className="w-20 text-right"
@@ -635,14 +674,37 @@ function VulnerabilitiesTableHeader({
             "EPSS — probability this CVE is exploited in the wild within 30 days. Complements CVSS (severity).",
         })}
       >
-        {t("vulnerabilities.column.epss", { defaultValue: "EPSS" })}
+        <SortableColumnHeader
+          column="epss"
+          label={t("vulnerabilities.column.epss", { defaultValue: "EPSS" })}
+          currentSort={currentSort}
+          onSort={onSortChange}
+          testId="vulnerabilities-sort-header-epss"
+        />
       </span>
+      <span className="w-28">
+        <SortableColumnHeader
+          column="reachable"
+          label={t("vulnerabilities.column.reachable")}
+          currentSort={currentSort}
+          onSort={onSortChange}
+          testId="vulnerabilities-sort-header-reachable"
+        />
+      </span>
+      <span className="w-32">{t("vulnerabilities.column.license")}</span>
       <span className="flex-1">{t("vulnerabilities.column.summary")}</span>
       <span className="w-20 text-right">
         {t("vulnerabilities.column.affected")}
       </span>
-      <span className="w-32">{t("vulnerabilities.column.status")}</span>
-      <span className="w-32">{t("vulnerabilities.column.discovered")}</span>
+      <span className="w-32">
+        <SortableColumnHeader
+          column="status"
+          label={t("vulnerabilities.column.status")}
+          currentSort={currentSort}
+          onSort={onSortChange}
+          testId="vulnerabilities-sort-header-status"
+        />
+      </span>
     </div>
   );
 }
@@ -650,7 +712,6 @@ function VulnerabilitiesTableHeader({
 interface VulnerabilityRowProps {
   vulnerability: VulnerabilityListItem;
   rowIndex: number;
-  locale: string;
   selected: boolean;
   selectionDisabled?: boolean;
   onToggleSelected: (checked: boolean) => void;
@@ -660,7 +721,6 @@ interface VulnerabilityRowProps {
 function VulnerabilityRow({
   vulnerability,
   rowIndex,
-  locale,
   selected,
   selectionDisabled = false,
   onToggleSelected,
@@ -703,6 +763,10 @@ function VulnerabilityRow({
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
         )}
       >
+      {/* W4-B #19 — column order matches the header: CVE / Severity / CVSS /
+          EPSS / Reachability / License / Title / Affected / Status. The
+          Discovered column moved to the drawer to keep the row from
+          horizontally scrolling on a 13" laptop. */}
       <span
         className="w-44 truncate font-mono text-xs"
         title={vulnerability.cve_id}
@@ -713,20 +777,17 @@ function VulnerabilityRow({
         <SeverityBadge severity={vulnerability.severity} />
       </span>
       <span
-        className="w-28"
-        data-testid="vuln-row-license"
-        data-license-category={vulnerability.component_license_category}
+        className="w-16 text-right font-mono text-xs tabular-nums"
+        data-testid="vulnerability-row-cvss"
       >
-        {/*
-          W2 #33 — Defensive fallback: the backend contract guarantees this
-          field is always one of the four enum values (LEFT-JOIN miss → "unknown"),
-          but if a stale-cached response misses it we still render the
-          "unknown" bucket rather than crashing the row.
-         */}
-        <LicenseCategoryBadge
-          category={vulnerability.component_license_category ?? "unknown"}
-        />
+        {vulnerability.cvss_score != null
+          ? vulnerability.cvss_score.toFixed(1)
+          : "—"}
       </span>
+      <EpssCell
+        score={vulnerability.epss_score}
+        percentile={vulnerability.epss_percentile}
+      />
       <span
         className="flex w-28 items-center"
         data-testid="vulnerability-row-reachability"
@@ -742,17 +803,23 @@ function VulnerabilityRow({
         />
       </span>
       <span
-        className="w-16 text-right font-mono text-xs tabular-nums"
-        data-testid="vulnerability-row-cvss"
+        className="w-32"
+        data-testid="vuln-row-license"
+        data-license-category={vulnerability.component_license_category}
       >
-        {vulnerability.cvss_score != null
-          ? vulnerability.cvss_score.toFixed(1)
-          : "—"}
+        {/* W4-B #19 — License axis is now SPDX + policy badge stacked.
+            BE schema (W2 #33) guarantees `component_license_category`; if a
+            stale-cached row misses it we still render the unknown bucket.
+            Note: VulnerabilityListItem has no `license` (SPDX) field on the
+            wire today — we render the category badge alone via the shared
+            primitive's null-SPDX path so the visual matches Components
+            without inventing data. Adding the SPDX string here is a
+            follow-up that needs a BE schema bump. */}
+        <LicenseColumnCell
+          license={null}
+          category={vulnerability.component_license_category ?? "unknown"}
+        />
       </span>
-      <EpssCell
-        score={vulnerability.epss_score}
-        percentile={vulnerability.epss_percentile}
-      />
       <span
         className="flex-1 truncate"
         title={vulnerability.summary ?? ""}
@@ -770,12 +837,6 @@ function VulnerabilityRow({
         {vulnerability.analysis_source === "vex_import" ? (
           <VexProvenanceMarker />
         ) : null}
-      </span>
-      <span
-        className="w-32 truncate text-xs text-muted-foreground"
-        title={vulnerability.discovered_at}
-      >
-        {formatRelativeToNow(vulnerability.discovered_at, locale)}
       </span>
       </button>
     </div>

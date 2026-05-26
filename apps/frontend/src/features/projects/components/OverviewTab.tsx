@@ -1,5 +1,6 @@
 import { AlertTriangle, ExternalLink } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useSearchParams } from "react-router-dom";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -11,12 +12,15 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { ScanSummary } from "@/features/projects/api/projectDetailApi";
+import type {
+  ComponentSeverity,
+  LicenseCategoryName,
+  ScanSummary,
+} from "@/features/projects/api/projectDetailApi";
 import { useProjectOverview } from "@/features/projects/api/useProjectOverview";
 import { GateResultCard } from "@/features/projects/components/GateResultCard";
 import { LicenseDistributionChart } from "@/features/projects/components/LicenseDistributionChart";
 import { RecentScansTable } from "@/features/projects/components/RecentScansTable";
-import { RiskAxes } from "@/features/projects/components/RiskAxes";
 import { SeverityDistributionChart } from "@/features/projects/components/SeverityDistributionChart";
 import { ProblemError } from "@/lib/problem";
 import type { ProjectPublic } from "@/lib/projectsApi";
@@ -40,11 +44,19 @@ export interface OverviewTabProps {
    */
   project?: ProjectPublic | null;
   /**
-   * Called when a row in the recent-scans table is clicked. The parent uses
-   * it to re-open the live progress drawer for that scan. Omit to render the
-   * table as read-only (no row affordance).
+   * Called when a row in the recent-scans table is clicked AND the row's status
+   * is queued/running. The parent uses it to re-open the live progress drawer
+   * for that scan. Omit to render the table as read-only (no row affordance).
    */
   onSelectScan?: (scan: ScanSummary) => void;
+  /**
+   * W4-B #16 — Called when a row in the recent-scans table is clicked AND the
+   * row's status is succeeded/failed/cancelled (the "result is final" lanes).
+   * The parent pins that scan and jumps to the Components tab so the user
+   * lands on the result the scan produced. Omit to keep all clicks routing
+   * through `onSelectScan` (legacy behaviour).
+   */
+  onJumpToComponents?: (scan: ScanSummary) => void;
   /**
    * Pinned snapshot scan id (feature #28). When set, the risk gauge,
    * distributions, and gate card reflect that historical scan instead of the
@@ -57,10 +69,64 @@ export function OverviewTab({
   projectId,
   project,
   onSelectScan,
+  onJumpToComponents,
   scanId,
 }: OverviewTabProps) {
   const { t } = useTranslation("project_detail");
   const overview = useProjectOverview(projectId, scanId);
+  const [, setSearchParams] = useSearchParams();
+
+  // W4-B #16 — chart segment deep-link to the corresponding filtered list.
+  // We write tab + the single facet directly to URL params (CSV-encoded so
+  // it stays compatible with the multi-select convention used by the
+  // Components / Vulnerabilities filters). `setTab` in the parent PDP drops
+  // tab-scoped filters when LEAVING a tab, but ENTERING Components or
+  // Vulnerabilities preserves `severity` / `license_category` (see PDP
+  // line 196-218), so the deep-link survives unchanged.
+  function jumpToVulnerabilitiesBySeverity(key: ComponentSeverity) {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set("tab", "vulnerabilities");
+        next.set("severity", key);
+        return next;
+      },
+      { replace: true },
+    );
+  }
+
+  function jumpToLicensesByCategory(key: LicenseCategoryName) {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set("tab", "licenses");
+        next.set("license_category", key);
+        return next;
+      },
+      { replace: true },
+    );
+  }
+
+  // W4-B #16 — Recent Scans row click branches on scan.status:
+  //   succeeded/failed/cancelled → pin the snapshot + jump to Components.
+  //   queued/running             → re-open the live progress drawer.
+  // The two callbacks are independent so a host that wires only one (legacy
+  // tests, snapshots) doesn't lose the other lane silently.
+  function handleScanRowClick(scan: ScanSummary) {
+    const status = scan.status;
+    if (status === "queued" || status === "running") {
+      onSelectScan?.(scan);
+      return;
+    }
+    // succeeded / failed / cancelled / any future "result-final" status.
+    if (onJumpToComponents) {
+      onJumpToComponents(scan);
+    } else {
+      // Fallback to onSelectScan so the row remains clickable in standalone
+      // tests / harnesses that haven't wired the new prop yet.
+      onSelectScan?.(scan);
+    }
+  }
 
   if (overview.isLoading) {
     return (
@@ -210,46 +276,28 @@ export function OverviewTab({
         </Card>
       ) : null}
 
-      <Card data-testid="overview-risk-card">
-        <CardHeader>
-          <CardTitle className="text-base">
-            {t("overview.risk_card.title")}
-          </CardTitle>
-          <CardDescription>
-            {t("overview.risk_card.subtitle", {
-              total: data.total_components,
-            })}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3 pt-0">
-          <RiskAxes
-            securityScore={data.security_score}
-            licenseScore={data.license_score}
-            severityDistribution={data.severity_distribution}
-            licenseDistribution={data.license_distribution}
-          />
-          {/* #35 Surface B — an empty Security axis is ambiguous when the vuln DB
-              was empty at scan time: 0 CVEs may mean "no data", not "safe". */}
-          {data.total_components > 0 &&
-          data.security_score === 0 &&
-          data.vuln_data_available === false ? (
-            <Alert
-              className="border-amber-300 bg-amber-50 text-amber-900"
-              data-testid="overview-vuln-data-unavailable"
-            >
-              <AlertTriangle className="h-4 w-4" aria-hidden />
-              <AlertDescription>
-                <span className="font-semibold">
-                  {t("overview.risk_card.vuln_data_empty_title")}
-                </span>
-                <span className="mt-1 block">
-                  {t("overview.risk_card.vuln_data_empty_body")}
-                </span>
-              </AlertDescription>
-            </Alert>
-          ) : null}
-        </CardContent>
-      </Card>
+      {/* W4-B #16 — Risk Score card removed (the header's RiskGauge already
+          covers the score), but the #35 Surface B empty-vuln caveat survives
+          as a standalone alert at the top of Overview so users still see it
+          when 0 CVEs means "no data". */}
+      {data.total_components > 0 &&
+      data.security_score === 0 &&
+      data.vuln_data_available === false ? (
+        <Alert
+          className="border-amber-300 bg-amber-50 text-amber-900 md:col-span-2"
+          data-testid="overview-vuln-data-unavailable"
+        >
+          <AlertTriangle className="h-4 w-4" aria-hidden />
+          <AlertDescription>
+            <span className="font-semibold">
+              {t("overview.risk_card.vuln_data_empty_title")}
+            </span>
+            <span className="mt-1 block">
+              {t("overview.risk_card.vuln_data_empty_body")}
+            </span>
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       <GateResultCard projectId={projectId} scanId={scanId} />
 
@@ -263,8 +311,11 @@ export function OverviewTab({
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {/* W4-B #16 — segment click deep-links to the filtered Vulnerabilities
+              tab. Zero-count buckets stay non-interactive (chart guards). */}
           <SeverityDistributionChart
             distribution={data.severity_distribution}
+            onSegmentClick={jumpToVulnerabilitiesBySeverity}
           />
         </CardContent>
       </Card>
@@ -279,7 +330,11 @@ export function OverviewTab({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <LicenseDistributionChart distribution={data.license_distribution} />
+          {/* W4-B #16 — segment click deep-links to the filtered Licenses tab. */}
+          <LicenseDistributionChart
+            distribution={data.license_distribution}
+            onSegmentClick={jumpToLicensesByCategory}
+          />
         </CardContent>
       </Card>
 
@@ -293,9 +348,14 @@ export function OverviewTab({
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {/* W4-B #16 — row click is status-aware (see handleScanRowClick). */}
           <RecentScansTable
             scans={data.recent_scans}
-            onSelectScan={onSelectScan}
+            onSelectScan={
+              onSelectScan || onJumpToComponents
+                ? handleScanRowClick
+                : undefined
+            }
           />
         </CardContent>
       </Card>

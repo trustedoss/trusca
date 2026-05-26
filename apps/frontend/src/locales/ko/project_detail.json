@@ -47,6 +47,14 @@
     "allowed": "허용",
     "unknown": "미상"
   },
+  "active_filters": {
+    "aria_label": "활성 필터",
+    "heading": "필터:",
+    "severity_chip_label": "심각도: {{value}}",
+    "license_chip_label": "라이선스: {{value}}",
+    "clear_severity_aria": "심각도 필터 {{value}} 제거",
+    "clear_license_aria": "라이선스 필터 {{value}} 제거"
+  },
   "risk": {
     "critical": "치명 리스크",
     "high": "높은 리스크",
@@ -181,8 +189,6 @@
     "toolbar": {
       "search_label": "검색",
       "search_placeholder": "이름 또는 purl로 검색",
-      "severity_label": "심각도",
-      "license_label": "라이선스",
       "dependency_type_label": "의존성 유형",
       "dependency_type": {
         "all": "전체",
@@ -194,14 +200,7 @@
         "required": "필수",
         "optional": "선택",
         "unspecified": "지정 안 됨"
-      },
-      "sort_label": "정렬 기준",
-      "sort_by_name": "이름",
-      "sort_by_severity": "심각도",
-      "sort_by_license": "라이선스",
-      "order_label": "순서",
-      "order_asc": "오름차순",
-      "order_desc": "내림차순"
+      }
     },
     "empty": {
       "title": "조건에 맞는 컴포넌트가 없습니다",
@@ -360,7 +359,6 @@
     "toolbar": {
       "search_label": "검색",
       "search_placeholder": "CVE ID 또는 제목으로 검색",
-      "severity_label": "심각도",
       "status_label": "상태",
       "reachable_label": "도달 가능성",
       "reachable_any": "전체",
@@ -369,17 +367,6 @@
         "false": "도달 불가",
         "unknown": "미분석"
       },
-      "license_label": "라이선스",
-      "sort_label": "정렬 기준",
-      "sort_by_severity": "심각도",
-      "sort_by_reachable": "도달 가능성",
-      "sort_by_cvss": "CVSS",
-      "sort_by_epss": "EPSS",
-      "sort_by_status": "상태",
-      "sort_by_discovered_at": "발견 시각",
-      "order_label": "순서",
-      "order_asc": "오름차순",
-      "order_desc": "내림차순",
       "report_label": "보고서",
       "download_pdf": "PDF 보고서 다운로드",
       "download_pdf_generating": "생성 중…"

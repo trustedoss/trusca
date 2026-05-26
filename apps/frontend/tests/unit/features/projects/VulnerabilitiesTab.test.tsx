@@ -203,29 +203,30 @@ describe("VulnerabilitiesTab", () => {
     });
   });
 
-  it("changing the severity filter triggers a fresh query at offset 0", async () => {
+  // W4-B #19 — the severity / license MultiSelect drops are gone from the
+  // toolbar. Severity now arrives via the Overview chart deep-link
+  // (`?severity=critical`) and is surfaced as an ActiveFilterChips chip; the
+  // user clears it from there.
+  it("hydrating ?severity=critical surfaces a removable chip and forwards the wire filter", async () => {
     mockedList.mockResolvedValue(listResponse([vuln("CVE-2024-1111")]));
-    renderTab();
+    renderTab(["/projects/proj-1?severity=critical"]);
     await waitFor(() => {
       expect(screen.getAllByTestId("vulnerability-row")).toHaveLength(1);
     });
+    expect(mockedList).toHaveBeenCalledWith(
+      "proj-1",
+      expect.objectContaining({ severity: ["critical"], offset: 0 }),
+    );
+    const chip = await screen.findByTestId("active-filter-chip");
+    expect(chip.getAttribute("data-facet")).toBe("severity");
+    expect(chip.getAttribute("data-value")).toBe("critical");
+
     mockedList.mockClear();
-
-    // Open the MultiSelect dropdown, then toggle the "critical" checkbox row.
-    await userEvent.click(screen.getByTestId("vulnerabilities-severity-filter"));
-    const critical = await waitFor(() => {
-      const option = screen
-        .getAllByTestId("vulnerabilities-severity-filter-option")
-        .find((el) => el.getAttribute("data-value") === "critical");
-      if (!option) throw new Error("critical option not mounted");
-      return option;
-    });
-    await userEvent.click(critical);
-
+    await userEvent.click(screen.getByTestId("active-filter-chip-clear"));
     await waitFor(() => {
       expect(mockedList).toHaveBeenCalledWith(
         "proj-1",
-        expect.objectContaining({ severity: ["critical"], offset: 0 }),
+        expect.objectContaining({ severity: undefined }),
       );
     });
   });
@@ -257,17 +258,19 @@ describe("VulnerabilitiesTab", () => {
     });
   });
 
-  it("changing the sort key triggers a query with that sort", async () => {
+  // W4-B #19 — sort / order are now on the column headers (SortableColumnHeader
+  // primitive). The toolbar no longer hosts <select> drops.
+  it("clicking the CVSS column header triggers a query with sort=cvss", async () => {
     mockedList.mockResolvedValue(listResponse([vuln("CVE-2024-1111")]));
     renderTab();
     await waitFor(() => {
       expect(screen.getAllByTestId("vulnerability-row")).toHaveLength(1);
     });
-    mockedList.mockClear();
+    expect(screen.queryByTestId("vulnerabilities-sort")).not.toBeInTheDocument();
 
-    await userEvent.selectOptions(
-      screen.getByTestId("vulnerabilities-sort"),
-      "cvss",
+    mockedList.mockClear();
+    await userEvent.click(
+      screen.getByTestId("vulnerabilities-sort-header-cvss"),
     );
     await waitFor(() => {
       expect(mockedList).toHaveBeenCalledWith(
@@ -277,22 +280,39 @@ describe("VulnerabilitiesTab", () => {
     });
   });
 
-  it("changing the order triggers a query with that order", async () => {
+  it("clicking a header cycles asc → desc on the second click", async () => {
     mockedList.mockResolvedValue(listResponse([vuln("CVE-2024-1111")]));
     renderTab();
     await waitFor(() => {
       expect(screen.getAllByTestId("vulnerability-row")).toHaveLength(1);
     });
-    mockedList.mockClear();
 
-    await userEvent.selectOptions(
-      screen.getByTestId("vulnerabilities-order"),
-      "asc",
+    mockedList.mockClear();
+    await userEvent.click(
+      screen.getByTestId("vulnerabilities-sort-header-cvss"),
     );
+    await waitFor(() => {
+      expect(
+        screen
+          .getByTestId("vulnerabilities-sort-header-cvss")
+          .getAttribute("data-sort-order"),
+      ).toBe("asc");
+    });
+    mockedList.mockClear();
+    await userEvent.click(
+      screen.getByTestId("vulnerabilities-sort-header-cvss"),
+    );
+    await waitFor(() => {
+      expect(
+        screen
+          .getByTestId("vulnerabilities-sort-header-cvss")
+          .getAttribute("data-sort-order"),
+      ).toBe("desc");
+    });
     await waitFor(() => {
       expect(mockedList).toHaveBeenCalledWith(
         "proj-1",
-        expect.objectContaining({ order: "asc" }),
+        expect.objectContaining({ sort: "cvss", order: "desc" }),
       );
     });
   });
@@ -521,7 +541,7 @@ describe("VulnerabilitiesTab", () => {
     expect(cell).toHaveAttribute("data-epss-empty", "true");
   });
 
-  it("selecting the EPSS sort key requests sort=epss from the wire", async () => {
+  it("clicking the EPSS column header requests sort=epss from the wire", async () => {
     mockedList.mockResolvedValue(listResponse([vuln("CVE-2024-1111")]));
     renderTab();
     await waitFor(() => {
@@ -529,9 +549,8 @@ describe("VulnerabilitiesTab", () => {
     });
     mockedList.mockClear();
 
-    await userEvent.selectOptions(
-      screen.getByTestId("vulnerabilities-sort"),
-      "epss",
+    await userEvent.click(
+      screen.getByTestId("vulnerabilities-sort-header-epss"),
     );
     await waitFor(() => {
       expect(mockedList).toHaveBeenCalledWith(
@@ -687,7 +706,7 @@ describe("VulnerabilitiesTab", () => {
     });
   });
 
-  it("selecting the reachability sort key requests sort=reachable from the wire", async () => {
+  it("clicking the reachability column header requests sort=reachable from the wire", async () => {
     mockedList.mockResolvedValue(listResponse([vuln("CVE-2024-1111")]));
     renderTab();
     await waitFor(() => {
@@ -695,9 +714,8 @@ describe("VulnerabilitiesTab", () => {
     });
     mockedList.mockClear();
 
-    await userEvent.selectOptions(
-      screen.getByTestId("vulnerabilities-sort"),
-      "reachable",
+    await userEvent.click(
+      screen.getByTestId("vulnerabilities-sort-header-reachable"),
     );
     await waitFor(() => {
       expect(mockedList).toHaveBeenCalledWith(
@@ -800,34 +818,24 @@ describe("VulnerabilitiesTab", () => {
     ).toBeInTheDocument();
   });
 
-  it("selecting the license filter forwards ?license_category=forbidden at offset 0", async () => {
+  // W4-B #19 — license MultiSelect dropped from toolbar; arrives via the
+  // Overview chart deep-link and is surfaced via ActiveFilterChips.
+  it("hydrating ?license_category=forbidden surfaces a removable chip", async () => {
     mockedList.mockResolvedValue(listResponse([vuln("CVE-2024-1111")]));
-    renderTab();
+    renderTab(["/projects/proj-1?license_category=forbidden"]);
     await waitFor(() => {
       expect(screen.getAllByTestId("vulnerability-row")).toHaveLength(1);
     });
-    mockedList.mockClear();
-
-    // Open the MultiSelect dropdown and toggle the "forbidden" row.
-    await userEvent.click(screen.getByTestId("vulnerabilities-license-filter"));
-    const forbidden = await waitFor(() => {
-      const option = screen
-        .getAllByTestId("vulnerabilities-license-filter-option")
-        .find((el) => el.getAttribute("data-value") === "forbidden");
-      if (!option) throw new Error("forbidden option not mounted");
-      return option;
-    });
-    await userEvent.click(forbidden);
-
-    await waitFor(() => {
-      expect(mockedList).toHaveBeenCalledWith(
-        "proj-1",
-        expect.objectContaining({
-          license_category: ["forbidden"],
-          offset: 0,
-        }),
-      );
-    });
+    expect(mockedList).toHaveBeenCalledWith(
+      "proj-1",
+      expect.objectContaining({
+        license_category: ["forbidden"],
+        offset: 0,
+      }),
+    );
+    const chip = await screen.findByTestId("active-filter-chip");
+    expect(chip.getAttribute("data-facet")).toBe("license_category");
+    expect(chip.getAttribute("data-value")).toBe("forbidden");
   });
 
   it("hydrates the license filter from ?license_category=forbidden,allowed", async () => {
@@ -973,6 +981,37 @@ describe("VulnerabilitiesTab", () => {
     expect(failure.textContent).toContain("already in status");
   });
 
+  // ─── W4-B #19 — License column cell + chip layout ──────────────────────
+
+  it("renders the License column via LicenseColumnCell (BE has no SPDX yet)", async () => {
+    mockedList.mockResolvedValueOnce(
+      listResponse([
+        vuln("CVE-2024-1111", { component_license_category: "forbidden" }),
+        vuln("CVE-2024-2222", { component_license_category: "allowed" }),
+      ]),
+    );
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("license-column-cell")).toHaveLength(2);
+    });
+    const cells = screen.getAllByTestId("license-column-cell");
+    // The SPDX axis is null today (BE list schema has no `license` field),
+    // so the cell stacks the localized dash above the category badge.
+    expect(cells[0].getAttribute("data-license-spdx")).toBe("");
+    expect(cells[0].getAttribute("data-license-category")).toBe("forbidden");
+  });
+
+  it("does not render an ActiveFilterChips row when neither facet is active", async () => {
+    mockedList.mockResolvedValueOnce(listResponse([vuln("CVE-2024-1111")]));
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("vulnerability-row")).toHaveLength(1);
+    });
+    expect(
+      screen.queryByTestId("active-filter-chips"),
+    ).not.toBeInTheDocument();
+  });
+
   it("changing a filter clears the selection", async () => {
     mockedList.mockResolvedValue(
       listResponse([
@@ -980,7 +1019,7 @@ describe("VulnerabilitiesTab", () => {
         vuln("CVE-2024-2222"),
       ]),
     );
-    renderTab();
+    renderTab(["/projects/proj-1?severity=high"]);
     await waitFor(() => {
       expect(screen.getAllByTestId("vulnerability-row")).toHaveLength(2);
     });
@@ -989,16 +1028,9 @@ describe("VulnerabilitiesTab", () => {
       screen.getByTestId("vulnerabilities-bulk-action-bar"),
     ).toBeInTheDocument();
 
-    // Toggle a severity filter via the toolbar — should drop the selection.
-    await userEvent.click(screen.getByTestId("vulnerabilities-severity-filter"));
-    const critical = await waitFor(() => {
-      const option = screen
-        .getAllByTestId("vulnerabilities-severity-filter-option")
-        .find((el) => el.getAttribute("data-value") === "critical");
-      if (!option) throw new Error("critical option not mounted");
-      return option;
-    });
-    await userEvent.click(critical);
+    // W4-B #19 — removing a severity filter via the chips row mutates the
+    // severity state which (per the filter-change effect) drops the selection.
+    await userEvent.click(screen.getByTestId("active-filter-chip-clear"));
     await waitFor(() => {
       expect(
         screen.queryByTestId("vulnerabilities-bulk-action-bar"),

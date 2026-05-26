@@ -3,16 +3,10 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MultiSelect } from "@/components/ui/multi-select";
-import type {
-  LicenseCategoryName,
-  TeamScopedRole,
-} from "@/features/projects/api/projectDetailApi";
+import type { TeamScopedRole } from "@/features/projects/api/projectDetailApi";
 import type {
   ReachabilityFilter,
-  SortOrder,
   VulnFindingStatus,
-  VulnSeverity,
-  VulnerabilitySortKey,
 } from "@/features/projects/api/vulnerabilitiesApi";
 import { VexExportMenu } from "@/features/projects/components/VexExportMenu";
 import { VexImportDialog } from "@/features/projects/components/VexImportDialog";
@@ -20,35 +14,24 @@ import { ALL_VULNERABILITY_STATUSES } from "@/features/projects/lib/vulnerabilit
 import { cn } from "@/lib/utils";
 
 /**
- * VulnerabilitiesToolbar — Phase 3 PR #11.
+ * VulnerabilitiesToolbar — Phase 3 PR #11, updated in W4-B #19.
  *
  * Inline filter row above the virtualized vulnerabilities list. Mirrors the
  * shape of `ComponentsToolbar` (CLAUDE.md "디자인 시스템": filters appear
- * inline at the top of lists, no modal filter dialogs). Severity and status
- * use the reusable `MultiSelect` (app-i18n checkbox dropdown); the search
- * input is debounced upstream in the tab.
+ * inline at the top of lists, no modal filter dialogs).
+ *
+ * W4-B #19 removed the severity / license MultiSelect drops and the
+ * sort / order <select> controls. Severity + license are now driven by the
+ * Overview chart deep-links (#16) and visualized via the standalone
+ * `ActiveFilterChips` row in the parent tab. Sort is in the column headers
+ * themselves (SortableColumnHeader primitive).
+ *
+ * What stays here: Search, Status MultiSelect, Reachability filter, EPSS
+ * threshold, VEX-suppressed toggle, VEX export/import + PDF download.
  */
-
-export const SEVERITY_OPTIONS: VulnSeverity[] = [
-  "critical",
-  "high",
-  "medium",
-  "low",
-  "info",
-  "unknown",
-];
 
 export const STATUS_OPTIONS: VulnFindingStatus[] = [
   ...ALL_VULNERABILITY_STATUSES,
-];
-
-export const SORT_OPTIONS: VulnerabilitySortKey[] = [
-  "severity",
-  "reachable",
-  "cvss",
-  "epss",
-  "status",
-  "discovered_at",
 ];
 
 /**
@@ -61,29 +44,11 @@ export const REACHABLE_OPTIONS: ReachabilityFilter[] = [
   "unknown",
 ];
 
-/**
- * License-category filter options (W2 #33). Same set + order the Components
- * tab uses so the two facets feel like one — a triager can pivot tabs without
- * remapping the chips.
- */
-export const LICENSE_OPTIONS: LicenseCategoryName[] = [
-  "forbidden",
-  "conditional",
-  "allowed",
-  "unknown",
-];
-
 export interface VulnerabilitiesToolbarProps {
   search: string;
   onSearchChange: (value: string) => void;
-  severity: VulnSeverity[];
-  onSeverityChange: (value: VulnSeverity[]) => void;
   status: VulnFindingStatus[];
   onStatusChange: (value: VulnFindingStatus[]) => void;
-  sort: VulnerabilitySortKey;
-  onSortChange: (value: VulnerabilitySortKey) => void;
-  order: SortOrder;
-  onOrderChange: (value: SortOrder) => void;
   /**
    * EPSS threshold (0–1) or `null` for "no threshold". Keeps findings with
    * `epss_score >= minEpss` and drops NULL-EPSS rows (v2.1).
@@ -96,13 +61,6 @@ export interface VulnerabilitiesToolbarProps {
    */
   reachable: ReachabilityFilter | null;
   onReachableChange: (value: ReachabilityFilter | null) => void;
-  /**
-   * License-category multi-select (W2 #33). Empty array = no filter. Members
-   * are forwarded as repeated `?license_category=` query params; unknown
-   * values are dropped server-side so a hand-typed URL never 422s.
-   */
-  licenseCategory: LicenseCategoryName[];
-  onLicenseCategoryChange: (value: LicenseCategoryName[]) => void;
   /** Trigger the vulnerability PDF report download (G2). */
   onDownloadPdf: () => void;
   /** True while the PDF is being generated/fetched — drives the loading label. */
@@ -135,20 +93,12 @@ export interface VulnerabilitiesToolbarProps {
 export function VulnerabilitiesToolbar({
   search,
   onSearchChange,
-  severity,
-  onSeverityChange,
   status,
   onStatusChange,
-  sort,
-  onSortChange,
-  order,
-  onOrderChange,
   minEpss,
   onMinEpssChange,
   reachable,
   onReachableChange,
-  licenseCategory,
-  onLicenseCategoryChange,
   onDownloadPdf,
   isPdfDownloading,
   pdfError,
@@ -205,27 +155,6 @@ export function VulnerabilitiesToolbar({
 
       <div className="flex flex-col">
         <label
-          htmlFor="vulnerabilities-severity-filter"
-          className="text-xs font-medium text-muted-foreground"
-        >
-          {t("vulnerabilities.toolbar.severity_label")}
-        </label>
-        <MultiSelect
-          id="vulnerabilities-severity-filter"
-          testId="vulnerabilities-severity-filter"
-          className="w-40"
-          label={t("vulnerabilities.toolbar.severity_label")}
-          options={SEVERITY_OPTIONS.map((opt) => ({
-            value: opt,
-            label: t(`vulnerabilities.severity.${opt}`),
-          }))}
-          selected={severity}
-          onChange={(next) => onSeverityChange(next as VulnSeverity[])}
-        />
-      </div>
-
-      <div className="flex flex-col">
-        <label
           htmlFor="vulnerabilities-status-filter"
           className="text-xs font-medium text-muted-foreground"
         >
@@ -274,80 +203,6 @@ export function VulnerabilitiesToolbar({
               {t(`vulnerabilities.toolbar.reachable_option.${opt}`)}
             </option>
           ))}
-        </select>
-      </div>
-
-      <div className="flex flex-col">
-        <label
-          htmlFor="vulnerabilities-license-filter"
-          className="text-xs font-medium text-muted-foreground"
-        >
-          {t("vulnerabilities.toolbar.license_label")}
-        </label>
-        <MultiSelect
-          id="vulnerabilities-license-filter"
-          testId="vulnerabilities-license-filter"
-          className="w-40"
-          label={t("vulnerabilities.toolbar.license_label")}
-          options={LICENSE_OPTIONS.map((opt) => ({
-            value: opt,
-            // Reuse the shared `license_category.*` keys (the Components tab
-            // uses the same set) instead of minting a per-toolbar duplicate.
-            label: t(`license_category.${opt}`),
-          }))}
-          selected={licenseCategory}
-          onChange={(next) =>
-            onLicenseCategoryChange(next as LicenseCategoryName[])
-          }
-        />
-      </div>
-
-      <div className="flex flex-col">
-        <label
-          htmlFor="vulnerabilities-sort"
-          className="text-xs font-medium text-muted-foreground"
-        >
-          {t("vulnerabilities.toolbar.sort_label")}
-        </label>
-        <select
-          id="vulnerabilities-sort"
-          value={sort}
-          onChange={(event) =>
-            onSortChange(event.target.value as VulnerabilitySortKey)
-          }
-          className="mt-1 h-9 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          data-testid="vulnerabilities-sort"
-        >
-          {SORT_OPTIONS.map((key) => (
-            <option key={key} value={key}>
-              {t(`vulnerabilities.toolbar.sort_by_${key}`, {
-                defaultValue: key === "epss" ? "EPSS" : undefined,
-              })}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="flex flex-col">
-        <label
-          htmlFor="vulnerabilities-order"
-          className="text-xs font-medium text-muted-foreground"
-        >
-          {t("vulnerabilities.toolbar.order_label")}
-        </label>
-        <select
-          id="vulnerabilities-order"
-          value={order}
-          onChange={(event) => onOrderChange(event.target.value as SortOrder)}
-          className="mt-1 h-9 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          data-testid="vulnerabilities-order"
-        >
-          <option value="asc">
-            {t("vulnerabilities.toolbar.order_asc")}
-          </option>
-          <option value="desc">
-            {t("vulnerabilities.toolbar.order_desc")}
-          </option>
         </select>
       </div>
 

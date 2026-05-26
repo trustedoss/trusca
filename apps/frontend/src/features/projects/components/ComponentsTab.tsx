@@ -6,6 +6,10 @@ import { Virtuoso } from "react-virtuoso";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  type SortState,
+  SortableColumnHeader,
+} from "@/components/ui/sortable-column-header";
 import type {
   ComponentSeverity,
   ComponentSortKey,
@@ -15,11 +19,12 @@ import type {
   SortOrder,
 } from "@/features/projects/api/projectDetailApi";
 import { useComponents } from "@/features/projects/api/useComponents";
+import { ActiveFilterChips } from "@/features/projects/components/ActiveFilterChips";
 import { ComponentDrawer } from "@/features/projects/components/ComponentDrawer";
 import { ComponentsToolbar } from "@/features/projects/components/ComponentsToolbar";
 import { DependencyScopeBadge } from "@/features/projects/components/DependencyScopeBadge";
 import { DependencyTypeBadge } from "@/features/projects/components/DependencyTypeBadge";
-import { LicenseCategoryBadge } from "@/features/projects/components/LicenseCategoryBadge";
+import { LicenseColumnCell } from "@/features/projects/components/LicenseColumnCell";
 import { SeverityBadge } from "@/features/projects/components/SeverityBadge";
 import { ProblemError } from "@/lib/problem";
 import { cn } from "@/lib/utils";
@@ -248,23 +253,44 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
 
   const total = components.data?.pages[0]?.total ?? 0;
 
+  // W4-B #17 — sortable-column-header callback. Cycle is unset→asc→desc→unset;
+  // we mirror the next state into the existing `sort` / `order` state which
+  // already flows into URL params via the effect below.
+  const currentSort: SortState | null = useMemo(() => {
+    // Treat the default "name asc" as the un-sorted bucket so a click on the
+    // Name header cycles through the same asc/desc/unsorted states the user
+    // sees on the other columns — otherwise the column would never have an
+    // "unsorted" state and the cycle would be stuck on asc→desc→asc.
+    if (sort === "name" && order === "asc") return null;
+    return { key: sort, order };
+  }, [sort, order]);
+
+  function handleSortChange(next: SortState | null) {
+    if (!next) {
+      setSort("name");
+      setOrder("asc");
+      return;
+    }
+    setSort(next.key as ComponentSortKey);
+    setOrder(next.order);
+  }
+
   return (
     <div data-testid="components-tab" className="flex flex-1 flex-col">
       <ComponentsToolbar
         search={search}
         onSearchChange={setSearch}
-        severity={severity}
-        onSeverityChange={setSeverity}
-        licenseCategory={licenseCategory}
-        onLicenseCategoryChange={setLicenseCategory}
         direct={direct}
         onDirectChange={setDirect}
         dependencyScope={dependencyScope}
         onDependencyScopeChange={setDependencyScope}
-        sort={sort}
-        onSortChange={setSort}
-        order={order}
-        onOrderChange={setOrder}
+      />
+
+      <ActiveFilterChips
+        severity={severity}
+        onSeverityChange={setSeverity}
+        licenseCategory={licenseCategory}
+        onLicenseCategoryChange={setLicenseCategory}
       />
 
       <div
@@ -316,7 +342,10 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
 
       {!components.isLoading && !components.isError && items.length > 0 ? (
         <>
-          <ComponentsTableHeader />
+          <ComponentsTableHeader
+            currentSort={currentSort}
+            onSortChange={handleSortChange}
+          />
           <div
             className="flex-1"
             data-testid="components-virtual"
@@ -354,7 +383,15 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
   );
 }
 
-function ComponentsTableHeader() {
+interface ComponentsTableHeaderProps {
+  currentSort: SortState | null;
+  onSortChange: (next: SortState | null) => void;
+}
+
+function ComponentsTableHeader({
+  currentSort,
+  onSortChange,
+}: ComponentsTableHeaderProps) {
   const { t } = useTranslation("project_detail");
   return (
     <div
@@ -362,16 +399,44 @@ function ComponentsTableHeader() {
       style={{ height: "32px" }}
       data-testid="components-header"
     >
-      <span className="flex-1">{t("components.col.name")}</span>
+      {/* W4-B #17 — Name / Severity / License are sortable; click cycles
+          unset → asc → desc → unset. URL `?sort=` / `?order=` mirror the
+          state below (existing effect). The remaining columns are static. */}
+      <span className="flex-1">
+        <SortableColumnHeader
+          column="name"
+          label={t("components.col.name")}
+          currentSort={currentSort}
+          onSort={onSortChange}
+          testId="components-sort-header-name"
+        />
+      </span>
       <span className="w-24">{t("components.col.type")}</span>
       <span className="w-28 text-right">{t("components.col.version")}</span>
-      <span className="w-36">{t("components.col.license")}</span>
+      <span className="w-44">
+        <SortableColumnHeader
+          column="license"
+          label={t("components.col.license")}
+          currentSort={currentSort}
+          onSort={onSortChange}
+          testId="components-sort-header-license"
+        />
+      </span>
       <span className="w-24">{t("components.col.usage")}</span>
-      <span className="w-28">{t("components.col.severity")}</span>
+      <span className="w-28">
+        <SortableColumnHeader
+          column="severity"
+          label={t("components.col.severity")}
+          currentSort={currentSort}
+          onSort={onSortChange}
+          testId="components-sort-header-severity"
+        />
+      </span>
       <span className="w-14 text-right">{t("components.col.vulns")}</span>
     </div>
   );
 }
+
 
 interface ComponentRowProps {
   component: ComponentSummary;
@@ -418,8 +483,14 @@ function ComponentRow({ component, rowIndex, onSelect }: ComponentRowProps) {
       >
         {component.version}
       </span>
-      <span className="w-36">
-        <LicenseCategoryBadge category={component.license_category} />
+      <span className="w-44">
+        {/* W4-B #17 — License column is now SPDX + policy badge stacked, so two
+            Allowed components are distinguishable at a glance. The cell does
+            its own truncation; the surrounding row keeps the same width. */}
+        <LicenseColumnCell
+          license={component.license}
+          category={component.license_category}
+        />
       </span>
       <span className="w-24">
         <DependencyScopeBadge scope={component.dependency_scope} />

@@ -250,6 +250,9 @@ Step 5: W4-D (TYPE/USAGE 본격) — 별도 트랙 (scan-pipeline-specialist)
 | ID | 상태 | 비고 |
 |---|---|---|
 | PR #185 (예정) | scan-pipeline-specialist agent — P2 #8c (cdxgen+scancode stdout WS streaming) | background, isolation: worktree. 완료 알림 대기. |
+| PR #186 W4-A #18 | Admin 진입 시 메인 nav 유지 — `/admin/*`를 AppShell 하위로 nest. | ✅ 머지 `0c77338`. |
+| PR #187 W4-B-prep | 공통 primitive 3종 (`SortableColumnHeader`, `LicenseColumnCell`, 차트 `onSegmentClick`) 사전 분리. | ✅ 머지 `07a8c9f`. |
+| PR (예정) W4-B #16/#17/#19 | UX 정합성 단일 PR — Overview 차트 deep-link + Components/Vulnerabilities 컬럼 헤더 정렬·License 분리·Severity/License 토글 제거·`ActiveFilterChips`. **Component@Version 컬럼은 BE schema 갭(`VulnerabilityListItem`에 affected name/version 미존재)으로 보류 → BE 스키마 보강 후 follow-up.** 게이트 typecheck/lint/vitest 958/i18n:check 모두 green. | 🟡 PR 생성 대기 (orchestrator) |
 | Task #17 | DT propagation 자동화 (.env → ConfigProperty PUT) | 사용자 "좀 더 고민해볼게" — 보류 |
 
 머지된 운영 트리아지 PR: #173 ~ #184 (15개 항목 + hotfix #184 완료).
