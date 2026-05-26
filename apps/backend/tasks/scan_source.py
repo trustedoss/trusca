@@ -127,6 +127,13 @@ _STAGE_PROGRESS: dict[str, int] = {
     # persisted, before scancode. Slotted at 30 (between cdxgen=25 and
     # scancode=50) so the WS progress frame stays monotonic.
     "sign": 30,
+    # P2 #8 hotfix — dt_upload now publishes BEFORE scancode in the WS frame
+    # stream (worker submits the upload thread right after cdxgen + sign, and
+    # we want the UI to reflect that). Slotted at 35 between sign (30) and
+    # scancode (50) so the WS percent contract stays monotonic. The actual
+    # background HTTP upload work still overlaps with scancode under PR #181;
+    # this is purely a UI sequencing fix.
+    "dt_upload": 35,
     # PR-A2: the "ort" stage slug (50) is replaced by "scancode" at the same
     # percent so the WS progress frame contract stays monotonic — clients that
     # rendered "50%" for the license stage keep rendering 50% for it.
@@ -136,7 +143,6 @@ _STAGE_PROGRESS: dict[str, int] = {
     # upload. Slotted between "scancode" (50) and "dt_upload" (70) so the WS
     # progress frame stays monotonic.
     "approvals": 60,
-    "dt_upload": 70,
     "dt_findings": 90,
     "finalize": 100,
 }
@@ -392,6 +398,15 @@ def _run_pipeline(
             dt_upload_started_at = time.monotonic()
             dt_upload_future: concurrent.futures.Future[str] = dt_executor.submit(_dt_upload)
             log.info("scan_dt_upload_dispatched", scan_id=str(scan_uuid))
+            # P2 #8 hotfix — publish the dt_upload stage NOW (right after submit)
+            # instead of at the join point. The HTTP work happens on the bg
+            # thread while scancode runs on this thread; the UI's 7-step glyph
+            # row now flows cdxgen → dt_upload → scancode → dt_findings →
+            # finalize, matching what the user asked for in the ops triage. The
+            # join below will block on the future but no longer re-publish a
+            # stage (the FE has already painted dt_upload as in-progress, then
+            # completed once scancode publishes step=50).
+            _set_stage(scan_uuid, "dt_upload")
 
             # Stage 4 — scancode first-party license detection (PR-A2, replaces ORT).
             # scancode runs over the cloned first-party tree only (vendored deps /
@@ -477,15 +492,11 @@ def _run_pipeline(
             _set_stage(scan_uuid, "approvals")
             _auto_create_conditional_approvals(scan_uuid=scan_uuid, project_id=project_id)
 
-            # Stage 5 — DT upload (join). We mark the WS stage here, NOT before the
-            # future was submitted, so the FE's 7-step pipeline glyph row keeps the
-            # familiar bootstrap → fetch → cdxgen → scancode → dt_upload → dt_findings
-            # → finalize narrative even though the HTTP work happened in the
-            # background. The future has typically resolved by now (DT upload is
-            # ~2-30s on a healthy instance, scancode is ~10-120s); the result() call
-            # below will either return immediately or block until DT completes /
-            # raises.
-            _set_stage(scan_uuid, "dt_upload")
+            # Stage 5 — DT upload (join). The stage was already published right
+            # after submit (P2 #8 hotfix), so we no longer re-publish here.
+            # The future has typically resolved by now (DT upload is ~2-30s on a
+            # healthy instance, scancode is ~10-120s); the result() call below
+            # will either return immediately or block until DT completes / raises.
             try:
                 dt_project_uuid = dt_upload_future.result()
             except Exception:

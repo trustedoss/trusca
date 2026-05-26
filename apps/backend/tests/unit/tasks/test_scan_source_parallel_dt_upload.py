@@ -497,13 +497,16 @@ def test_stage_labels_emit_in_fe_compatible_order(
     monkeypatch: pytest.MonkeyPatch, patch_pipeline_minimal: dict[str, Any]
 ) -> None:
     """The FE's PIPELINE_STEPS expects the 7-step sequence
-    ``bootstrap → fetch → cdxgen → scancode → dt_upload → dt_findings → finalize``.
+    ``bootstrap → fetch → cdxgen → dt_upload → scancode → dt_findings → finalize``.
 
-    We changed *internal* concurrency only; the publish_progress vocabulary
-    MUST keep emitting those labels in that order so the FE 7-step glyph row
-    stays stable. The pipeline also publishes ``prep``, ``sign``, ``approvals``
-    which the FE ignores — but the seven canonical labels above MUST appear
-    in this exact relative order.
+    P2 #8 hotfix moved ``dt_upload`` BEFORE ``scancode`` in the WS publish
+    stream: the worker now ``_set_stage("dt_upload")`` right after submitting
+    the background upload future, then proceeds to scancode on the main
+    thread. The internal concurrency (PR #181) is unchanged — only the
+    publish ordering shifted so the UI glyph row matches "SBOM generated →
+    DT upload first" that the ops triage asked for. The pipeline also
+    publishes ``prep``, ``sign``, ``approvals`` which the FE ignores — but
+    the seven canonical labels above MUST appear in this exact relative order.
     """
     dt_client = _RecordingDTClient()
     _run_pipeline_with_dt(monkeypatch, patch_pipeline_minimal, dt_client)
@@ -513,8 +516,8 @@ def test_stage_labels_emit_in_fe_compatible_order(
         "bootstrap",
         "fetch",
         "cdxgen",
-        "scancode",
         "dt_upload",
+        "scancode",
         "dt_findings",
         "finalize",
     ]
