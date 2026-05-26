@@ -87,6 +87,46 @@ describe("projectDetailApi", () => {
     expect(call[1].params).not.toHaveProperty("search");
   });
 
+  // W2 #31 — Direct/Transitive + Usage facet wire shape.
+
+  it("listProjectComponents emits ?direct=true only when explicitly true", async () => {
+    await listProjectComponents("proj-1", { direct: true });
+    expect(mockedGet.mock.calls[0]![1].params).toMatchObject({ direct: true });
+  });
+
+  it("listProjectComponents emits ?direct=false only when explicitly false", async () => {
+    await listProjectComponents("proj-1", { direct: false });
+    expect(mockedGet.mock.calls[0]![1].params).toMatchObject({
+      direct: false,
+    });
+  });
+
+  it("listProjectComponents omits direct when null/undefined (include both)", async () => {
+    await listProjectComponents("proj-1", { direct: null });
+    expect(mockedGet.mock.calls[0]![1].params).not.toHaveProperty("direct");
+    mockedGet.mockReset();
+    mockedGet.mockResolvedValue({ data: {} });
+    await listProjectComponents("proj-1", {});
+    expect(mockedGet.mock.calls[0]![1].params).not.toHaveProperty("direct");
+  });
+
+  it("listProjectComponents sends dependency_scope array when non-empty (repeated key)", async () => {
+    await listProjectComponents("proj-1", {
+      dependency_scope: ["required", "unspecified"],
+    });
+    const call = mockedGet.mock.calls[0]!;
+    expect(call[1].params.dependency_scope).toEqual(["required", "unspecified"]);
+    // Repeat-key serializer is enabled so FastAPI parses `list[str]`.
+    expect(call[1].paramsSerializer).toEqual({ indexes: null });
+  });
+
+  it("listProjectComponents omits dependency_scope when empty", async () => {
+    await listProjectComponents("proj-1", { dependency_scope: [] });
+    expect(mockedGet.mock.calls[0]![1].params).not.toHaveProperty(
+      "dependency_scope",
+    );
+  });
+
   it("getComponent hits /v1/components/{id}", async () => {
     await getComponent("alpha-id");
     expect(mockedGet).toHaveBeenCalledWith("/v1/components/alpha-id");

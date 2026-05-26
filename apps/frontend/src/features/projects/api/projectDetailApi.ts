@@ -111,6 +111,28 @@ export interface ComponentSummary {
   license_category: LicenseCategoryName;
   severity_max: ComponentSeverity;
   vulnerability_count: number;
+  /**
+   * Dependency graph depth from the scanned root (W2 #31). ``1`` = direct,
+   * ``2+`` = transitive. ``null`` when the scan recorded no dependency graph
+   * (e.g. an SBOM without dependency edges) — render as "—" with muted styling.
+   * When a component version is reachable by multiple paths the *shallowest*
+   * wins.
+   */
+  depth: number | null;
+  /**
+   * Convenience flag mirroring ``depth === 1``. Server-side OR across paths
+   * when several scan paths reach the same version. ``false`` for transitive
+   * deps and for the depth-null bucket.
+   */
+  direct: boolean;
+  /**
+   * BD-style "Usage" facet (W2 #31). ``required`` / ``optional`` is the raw
+   * scope of the chosen (shallowest) path. ``null`` when cdxgen produced no
+   * scope on any edge — common for SBOMs that don't encode it; render as "—".
+   * Aggregation across multiple reaching paths prefers ``required`` over
+   * ``optional`` so the strictest wins.
+   */
+  dependency_scope: "required" | "optional" | null;
 }
 
 export interface ComponentListResponse {
@@ -146,6 +168,18 @@ export interface ComponentDetailResponse {
   raw_data: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+  /**
+   * Dependency depth from the scanned root (W2 #31). 1 = direct, 2+ =
+   * transitive, ``null`` when the scan carried no dependency graph.
+   */
+  depth: number | null;
+  /** ``true`` when this component is a direct dependency (depth 1). */
+  direct: boolean;
+  /**
+   * BD-style "Usage" of the chosen (shallowest) path. ``null`` when the
+   * scan didn't encode a scope on the edge.
+   */
+  dependency_scope: "required" | "optional" | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -155,6 +189,14 @@ export interface ComponentDetailResponse {
 export type ComponentSortKey = "name" | "severity" | "license";
 export type SortOrder = "asc" | "desc";
 
+/**
+ * BD-style "Usage" filter bucket (W2 #31). ``unspecified`` maps to the NULL
+ * scope bucket on the backend (cdxgen often produces no scope on edges). The
+ * server drops unknown values silently — a query that filters only by unknown
+ * values returns an empty page (not a 422).
+ */
+export type DependencyScopeFilter = "required" | "optional" | "unspecified";
+
 export interface ListComponentsParams {
   limit?: number;
   offset?: number;
@@ -163,6 +205,17 @@ export interface ListComponentsParams {
   license_category?: LicenseCategoryName[];
   sort?: ComponentSortKey;
   order?: SortOrder;
+  /**
+   * Dependency-type 3-state (W2 #31). ``true`` keeps only direct dependencies
+   * (depth 1), ``false`` only transitive (or graph-less) ones. Omit / ``null``
+   * to include both.
+   */
+  direct?: boolean | null;
+  /**
+   * "Usage" facet (W2 #31). Multiple values OR together. Omit / empty array
+   * to include all buckets.
+   */
+  dependency_scope?: DependencyScopeFilter[];
   /**
    * Pin the read to a specific succeeded scan (feature #28 snapshot anchoring).
    * Omit → the project's latest succeeded scan (unchanged default). An invalid /
@@ -193,6 +246,15 @@ function listComponentsQuery(
   }
   if (params.sort != null) out.sort = params.sort;
   if (params.order != null) out.order = params.order;
+  // W2 #31 — only emit `direct` when the caller has an opinion (null/undefined
+  // means "include both"). axios drops `undefined` from the query string for
+  // us, but we omit it explicitly so the wire shape is obvious.
+  if (params.direct === true || params.direct === false) {
+    out.direct = params.direct;
+  }
+  if (params.dependency_scope && params.dependency_scope.length > 0) {
+    out.dependency_scope = params.dependency_scope;
+  }
   if (params.scanId != null && params.scanId.length > 0) {
     out.scan_id = params.scanId;
   }

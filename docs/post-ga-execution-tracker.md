@@ -35,7 +35,7 @@
 | **W1 신뢰 복구** | **#29** | 스캔 트리거 후 상태 추적: `recent_scans` 항상 노출(스냅샷 게이팅 제거) + 헤더 영속 "진행 중" 칩으로 드로어 재오픈 | ✅ 완료 (2026-05-26) |
 | W1 | **#35** | DT 무경고(silent zero): (운영) `nvd.api.enabled=true`+재시작 → NVD 미러 가동(0→43k+, 352k 목표). (Surface A) admin/DT vuln-DB 카운트 + 0건 경고 Alert. (Surface B) 스캔 시점 DT vuln-DB 크기를 `scan_metadata`에 저장 → Overview에 `vuln_data_available` 노출, Security 0·DB비었음 시 "데이터 미적재" 캐비엇 | ✅ 완료 (2026-05-26, A·B·운영) |
 | W1 | **#34** | 리스크 점수 2축 재설계: Security/License 분리 + 비포화 점수(`services/risk_score.py` 단일 소스, conditional 단독 "Critical" 제거). 밴드=최악 등급, 밴드 내 `n/(n+4)`. `risk_score`=max(축) back-compat | ✅ 완료 (2026-05-26) |
-| **W2 BD 정합** | #31 | Components 탭 Direct/Transitive + Usage 노출 | ⬜ 대기 |
+| **W2 BD 정합** | **#31** | Components 탭 Direct/Transitive + Usage 노출. (BE) `ComponentSummary`/`ComponentDetailResponse`에 `dependency_scope`(req>opt 집계, NULL→`—`) 추가, `?direct=true|false`·`?dependency_scope=required\|optional\|unspecified`(미지값 drop, no 422) 필터, `_SCOPE_RANK`/`_normalize_scope_filter` 미러. (FE) `DependencyTypeBadge`/`DependencyScopeBadge` 신규, Components 테이블 컬럼·툴바(Type 3-state segment + Usage MultiSelect) + 드로어 meta, EN/KO 22키. 게이트: ruff/mypy clean·pytest 54·typecheck·lint·i18n:check·vitest 908(+21). | ✅ 완료 (2026-05-26) |
 | W2 | #33 | 취약점 조치신호(Exploitable/Solution)+CVSS 벡터 · 목록 License 리스크축 · Bulk actions | ⬜ 대기 |
 | **W3 통합/발견성** | #32 | 통합 Reports 센터 탭 (Notices/SBOM/Vulnerability/VEX 생성·이력) | ⬜ 대기 |
 | W3 | #30 | 프로젝트 목록 행에 릴리스/스캔 수 표시 | ⬜ 대기 |

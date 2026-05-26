@@ -136,16 +136,46 @@
     "summary": "{{loaded}} of {{total}} components loaded.",
     "col": {
       "name": "Component",
+      "type": "Type",
       "version": "Version",
       "license": "License",
+      "usage": "Usage",
       "severity": "Severity",
       "vulns": "CVEs"
+    },
+    "badge": {
+      "dependency_type": {
+        "direct": "Direct",
+        "transitive": "Transitive",
+        "unknown": "—",
+        "aria_direct": "Direct dependency (depth 1)",
+        "aria_transitive": "Transitive dependency (depth {{depth}})",
+        "aria_unknown": "Dependency type unknown — this scan has no dependency graph"
+      },
+      "dependency_scope": {
+        "required": "Required",
+        "optional": "Optional",
+        "unknown": "—",
+        "aria_unknown": "Usage not specified by this scan"
+      }
     },
     "toolbar": {
       "search_label": "Search",
       "search_placeholder": "Search by name or purl",
       "severity_label": "Severity",
       "license_label": "License",
+      "dependency_type_label": "Dependency type",
+      "dependency_type": {
+        "all": "All",
+        "direct": "Direct",
+        "transitive": "Transitive"
+      },
+      "usage_label": "Usage",
+      "usage": {
+        "required": "Required",
+        "optional": "Optional",
+        "unspecified": "Unspecified"
+      },
       "sort_label": "Sort by",
       "sort_by_name": "Name",
       "sort_by_severity": "Severity",
@@ -167,6 +197,8 @@
     "loading_subtitle": "Fetching component details.",
     "subtitle": "Version {{version}}",
     "purl_label": "purl",
+    "dependency_type_label": "Type",
+    "usage_label": "Usage",
     "error": "Could not load component.",
     "vulns": {
       "title": "Vulnerabilities ({{count}})",

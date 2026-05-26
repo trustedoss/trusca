@@ -127,6 +127,7 @@ async def _attach_to_scan(
     cv_id: uuid.UUID,
     direct: bool = True,
     depth: int | None = None,
+    dependency_scope: str | None = None,
 ):
     from models import ScanComponent
 
@@ -135,6 +136,9 @@ async def _attach_to_scan(
         component_version_id=cv_id,
         direct=direct,
         depth=depth,
+        # W2 #31 — cdxgen writes a CycloneDX ``scope`` here when the SBOM
+        # encodes one (``required``/``optional``); NULL otherwise.
+        dependency_scope=dependency_scope,
         raw_data={"path": "test/path"},
     )
     session.add(sc)
@@ -1091,3 +1095,269 @@ async def test_component_detail_exposes_depth_and_direct(
     )
     assert detail["depth"] == 1
     assert detail["direct"] is True
+
+
+# ---------------------------------------------------------------------------
+# W2 #31 — dependency_scope ("Usage") + direct/scope filters
+# ---------------------------------------------------------------------------
+
+
+async def test_list_components_exposes_dependency_scope(
+    db_session: AsyncSession,
+) -> None:
+    """The list surfaces cdxgen's CycloneDX ``component.scope`` as a
+    3-state ``dependency_scope`` (``required``/``optional``/``None``)."""
+    from services.project_detail_service import list_components_for_project
+
+    team, user, project, scan = await _make_project_with_scan(db_session)
+    actor = principal_for(user, team_ids=[team.id], role="developer")
+
+    _, cv_req = await _make_component_version(
+        db_session, name=f"req-{unique_suffix()}"
+    )
+    _, cv_opt = await _make_component_version(
+        db_session, name=f"opt-{unique_suffix()}"
+    )
+    _, cv_unspec = await _make_component_version(
+        db_session, name=f"unspec-{unique_suffix()}"
+    )
+    await _attach_to_scan(
+        db_session, scan_id=scan.id, cv_id=cv_req.id, dependency_scope="required"
+    )
+    await _attach_to_scan(
+        db_session, scan_id=scan.id, cv_id=cv_opt.id, dependency_scope="optional"
+    )
+    # NULL scope: the common case for ecosystems that don't encode scope.
+    await _attach_to_scan(
+        db_session, scan_id=scan.id, cv_id=cv_unspec.id, dependency_scope=None
+    )
+
+    items, _ = await list_components_for_project(
+        db_session, project_id=project.id, actor=actor, limit=50, offset=0
+    )
+    by_id = {i["id"]: i for i in items}
+    assert by_id[cv_req.id]["dependency_scope"] == "required"
+    assert by_id[cv_opt.id]["dependency_scope"] == "optional"
+    # NULL scope must NOT be invented as "required" or "optional"; the UI
+    # renders it as "—" rather than guessing.
+    assert by_id[cv_unspec.id]["dependency_scope"] is None
+
+
+async def test_list_components_required_wins_over_optional_across_paths(
+    db_session: AsyncSession,
+) -> None:
+    """When the same cv appears at two paths with different scopes, the
+    list surfaces ``required`` — a component used at runtime from *any*
+    path is reported as runtime-required (BD-style 'Usage' semantics)."""
+    from services.project_detail_service import list_components_for_project
+
+    team, user, project, scan = await _make_project_with_scan(db_session)
+    actor = principal_for(user, team_ids=[team.id], role="developer")
+
+    _, cv = await _make_component_version(
+        db_session, name=f"mixed-{unique_suffix()}"
+    )
+    await _attach_to_scan(
+        db_session, scan_id=scan.id, cv_id=cv.id, dependency_scope="optional"
+    )
+    await _attach_to_scan(
+        db_session, scan_id=scan.id, cv_id=cv.id, dependency_scope="required"
+    )
+
+    items, _ = await list_components_for_project(
+        db_session, project_id=project.id, actor=actor, limit=50, offset=0
+    )
+    row = next(i for i in items if i["id"] == cv.id)
+    assert row["dependency_scope"] == "required"
+
+
+async def test_list_components_filters_by_direct_true(
+    db_session: AsyncSession,
+) -> None:
+    """``?direct=true`` keeps only graph-root deps; transitives drop."""
+    from services.project_detail_service import list_components_for_project
+
+    team, user, project, scan = await _make_project_with_scan(db_session)
+    actor = principal_for(user, team_ids=[team.id], role="developer")
+
+    _, cv_direct = await _make_component_version(
+        db_session, name=f"d-{unique_suffix()}"
+    )
+    _, cv_trans = await _make_component_version(
+        db_session, name=f"t-{unique_suffix()}"
+    )
+    await _attach_to_scan(
+        db_session, scan_id=scan.id, cv_id=cv_direct.id, direct=True, depth=1
+    )
+    await _attach_to_scan(
+        db_session, scan_id=scan.id, cv_id=cv_trans.id, direct=False, depth=2
+    )
+
+    items_direct, total_direct = await list_components_for_project(
+        db_session,
+        project_id=project.id,
+        actor=actor,
+        direct=True,
+        limit=50,
+        offset=0,
+    )
+    items_trans, total_trans = await list_components_for_project(
+        db_session,
+        project_id=project.id,
+        actor=actor,
+        direct=False,
+        limit=50,
+        offset=0,
+    )
+    items_all, _ = await list_components_for_project(
+        db_session, project_id=project.id, actor=actor, limit=50, offset=0
+    )
+
+    assert total_direct == 1
+    assert {i["id"] for i in items_direct} == {cv_direct.id}
+    assert total_trans == 1
+    assert {i["id"] for i in items_trans} == {cv_trans.id}
+    # Omitting the filter must return BOTH — proves the param is opt-in.
+    assert {cv_direct.id, cv_trans.id} <= {i["id"] for i in items_all}
+
+
+async def test_list_components_filters_by_dependency_scope(
+    db_session: AsyncSession,
+) -> None:
+    """``?dependency_scope=`` accepts required/optional/unspecified and is
+    multi-valued; the unspecified bucket matches NULL-scope rows."""
+    from services.project_detail_service import list_components_for_project
+
+    team, user, project, scan = await _make_project_with_scan(db_session)
+    actor = principal_for(user, team_ids=[team.id], role="developer")
+
+    _, cv_req = await _make_component_version(
+        db_session, name=f"r-{unique_suffix()}"
+    )
+    _, cv_opt = await _make_component_version(
+        db_session, name=f"o-{unique_suffix()}"
+    )
+    _, cv_unspec = await _make_component_version(
+        db_session, name=f"u-{unique_suffix()}"
+    )
+    await _attach_to_scan(
+        db_session, scan_id=scan.id, cv_id=cv_req.id, dependency_scope="required"
+    )
+    await _attach_to_scan(
+        db_session, scan_id=scan.id, cv_id=cv_opt.id, dependency_scope="optional"
+    )
+    await _attach_to_scan(
+        db_session, scan_id=scan.id, cv_id=cv_unspec.id, dependency_scope=None
+    )
+
+    items_req, _ = await list_components_for_project(
+        db_session,
+        project_id=project.id,
+        actor=actor,
+        dependency_scope=["required"],
+        limit=50,
+        offset=0,
+    )
+    items_unspec, _ = await list_components_for_project(
+        db_session,
+        project_id=project.id,
+        actor=actor,
+        dependency_scope=["unspecified"],
+        limit=50,
+        offset=0,
+    )
+    items_multi, _ = await list_components_for_project(
+        db_session,
+        project_id=project.id,
+        actor=actor,
+        dependency_scope=["required", "optional"],
+        limit=50,
+        offset=0,
+    )
+
+    assert {i["id"] for i in items_req} == {cv_req.id}
+    # "unspecified" must hit the NULL-scope bucket only — never invent a
+    # match against optional/required.
+    assert {i["id"] for i in items_unspec} == {cv_unspec.id}
+    assert {i["id"] for i in items_multi} == {cv_req.id, cv_opt.id}
+
+
+async def test_list_components_scope_filter_drops_unknown_values(
+    db_session: AsyncSession,
+) -> None:
+    """Unknown filter values silently drop (no 422). A query that filters
+    by ONLY unknown values returns an empty page — never the full set."""
+    from services.project_detail_service import list_components_for_project
+
+    team, user, project, scan = await _make_project_with_scan(db_session)
+    actor = principal_for(user, team_ids=[team.id], role="developer")
+
+    _, cv = await _make_component_version(db_session, name=f"x-{unique_suffix()}")
+    await _attach_to_scan(
+        db_session, scan_id=scan.id, cv_id=cv.id, dependency_scope="required"
+    )
+
+    items_garbage, total_garbage = await list_components_for_project(
+        db_session,
+        project_id=project.id,
+        actor=actor,
+        dependency_scope=["bogus", "another"],
+        limit=50,
+        offset=0,
+    )
+    # Mixed valid + invalid keeps just the valid bucket.
+    items_mixed, _ = await list_components_for_project(
+        db_session,
+        project_id=project.id,
+        actor=actor,
+        dependency_scope=["bogus", "required"],
+        limit=50,
+        offset=0,
+    )
+
+    assert items_garbage == []
+    assert total_garbage == 0
+    assert {i["id"] for i in items_mixed} == {cv.id}
+
+
+async def test_component_detail_exposes_dependency_scope(
+    db_session: AsyncSession,
+) -> None:
+    """The drawer reports the chosen (shallowest) row's own scope verbatim;
+    unknown / NULL maps to None so the UI never invents a label."""
+    from services.project_detail_service import get_component_detail
+
+    team, user, project, scan = await _make_project_with_scan(db_session)
+    actor = principal_for(user, team_ids=[team.id], role="developer")
+
+    _, cv_req = await _make_component_version(
+        db_session, name=f"drawer-req-{unique_suffix()}"
+    )
+    _, cv_unspec = await _make_component_version(
+        db_session, name=f"drawer-unspec-{unique_suffix()}"
+    )
+    await _attach_to_scan(
+        db_session,
+        scan_id=scan.id,
+        cv_id=cv_req.id,
+        direct=True,
+        depth=1,
+        dependency_scope="required",
+    )
+    await _attach_to_scan(
+        db_session,
+        scan_id=scan.id,
+        cv_id=cv_unspec.id,
+        direct=True,
+        depth=1,
+        dependency_scope=None,
+    )
+
+    detail_req = await get_component_detail(
+        db_session, component_version_id=cv_req.id, actor=actor
+    )
+    detail_unspec = await get_component_detail(
+        db_session, component_version_id=cv_unspec.id, actor=actor
+    )
+    assert detail_req["dependency_scope"] == "required"
+    assert detail_unspec["dependency_scope"] is None

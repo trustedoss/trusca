@@ -14,6 +14,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import type { VulnerabilityRef } from "@/features/projects/api/projectDetailApi";
 import { useComponent } from "@/features/projects/api/useComponent";
+import { DependencyScopeBadge } from "@/features/projects/components/DependencyScopeBadge";
+import { DependencyTypeBadge } from "@/features/projects/components/DependencyTypeBadge";
 import { LicenseCategoryBadge } from "@/features/projects/components/LicenseCategoryBadge";
 import { SeverityBadge } from "@/features/projects/components/SeverityBadge";
 import {
@@ -133,6 +135,33 @@ export function ComponentDrawer({
                   </span>
                 </div>
               ) : null}
+              {/*
+                * W2 #31 — BD-style Type + Usage rows.
+                * Always rendered (even when depth is null / scope is null) so
+                * the drawer's information layout doesn't jump between
+                * components and the badge itself can express "—".
+                */}
+              <div
+                className="flex items-center gap-2 text-xs"
+                data-testid="component-drawer-dependency-type"
+              >
+                <span className="uppercase tracking-wide text-muted-foreground">
+                  {t("drawer.dependency_type_label")}
+                </span>
+                <DependencyTypeBadge
+                  direct={detail.data.direct}
+                  depth={detail.data.depth}
+                />
+              </div>
+              <div
+                className="flex items-center gap-2 text-xs"
+                data-testid="component-drawer-usage"
+              >
+                <span className="uppercase tracking-wide text-muted-foreground">
+                  {t("drawer.usage_label")}
+                </span>
+                <DependencyScopeBadge scope={detail.data.dependency_scope} />
+              </div>
             </section>
 
             <section

@@ -19,6 +19,7 @@ import {
   type ComponentListResponse,
   type ComponentSeverity,
   type ComponentSortKey,
+  type DependencyScopeFilter,
   type LicenseCategoryName,
   type SortOrder,
 } from "@/features/projects/api/projectDetailApi";
@@ -30,6 +31,19 @@ export interface ComponentsQueryFilters {
   sort: ComponentSortKey;
   order: SortOrder;
   pageSize: number;
+  /**
+   * Dependency-type 3-state (W2 #31). ``null`` → include both direct and
+   * transitive; ``true`` → only direct; ``false`` → only transitive (and the
+   * graph-less depth-null bucket). Part of the cache key so the toggle
+   * refetches from offset 0.
+   */
+  direct?: boolean | null;
+  /**
+   * BD-style "Usage" multi-select (W2 #31). Empty array → all buckets. Each
+   * value maps 1:1 to the backend ``dependency_scope`` repeated query param
+   * (``unspecified`` is the NULL-scope bucket).
+   */
+  dependency_scope?: DependencyScopeFilter[];
   /**
    * Pin the list to a specific succeeded scan (feature #28 snapshot anchoring).
    * `undefined` → latest succeeded scan. Part of the cache key so flipping the
@@ -55,6 +69,9 @@ export function componentsKey(
       sort: filters.sort,
       order: filters.order,
       pageSize: filters.pageSize,
+      // W2 #31 — normalise to `null` so undefined ≡ null in the cache key.
+      direct: filters.direct ?? null,
+      dependency_scope: [...(filters.dependency_scope ?? [])].sort(),
       scanId: filters.scanId ?? null,
     },
   ] as const;
@@ -77,6 +94,13 @@ export function useComponents(
         license_category: filters.license_category.length
           ? filters.license_category
           : undefined,
+        // W2 #31 — pass undefined when the toggle is "all" so the wire stays
+        // clean (the backend treats `direct` omitted as include-both).
+        direct: filters.direct ?? undefined,
+        dependency_scope:
+          filters.dependency_scope && filters.dependency_scope.length > 0
+            ? filters.dependency_scope
+            : undefined,
         sort: filters.sort,
         order: filters.order,
         scanId: filters.scanId,

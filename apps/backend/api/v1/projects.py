@@ -448,6 +448,25 @@ async def list_project_components_endpoint(
     search: str | None = Query(default=None, max_length=255),
     severity: list[str] | None = Query(default=None),
     license_category: list[str] | None = Query(default=None),
+    direct: bool | None = Query(
+        default=None,
+        description=(
+            "W2 #31 — Direct/Transitive toggle. ``true`` keeps only direct "
+            "deps (graph depth 1), ``false`` only transitive (or graph-less) "
+            "deps. Omit to include both. BD-equivalent of the 'Dependency "
+            "type' facet."
+        ),
+    ),
+    dependency_scope: list[str] | None = Query(
+        default=None,
+        description=(
+            "W2 #31 — BD-style 'Usage' facet. Repeatable; accepted values: "
+            "``required``, ``optional``, ``unspecified`` (the NULL-scope "
+            "bucket — common for SBOMs that don't encode scope). Unknown "
+            "values are dropped, so a query that filters only by unknown "
+            "values returns an empty page (not a 422). Omit to include all."
+        ),
+    ),
     sort: str = Query(default="name", pattern=r"^(name|severity|license)$"),
     order: str = Query(default="asc", pattern=r"^(asc|desc)$"),
     scan_id: uuid.UUID | None = Query(
@@ -472,6 +491,8 @@ async def list_project_components_endpoint(
             search=search,
             severity=severity,
             license_category=license_category,
+            direct=direct,
+            dependency_scope=dependency_scope,
             sort=sort,
             order=order,
             scan_id=scan_id,

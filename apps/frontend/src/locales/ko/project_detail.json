@@ -136,16 +136,46 @@
     "summary": "전체 {{total}}개 중 {{loaded}}개 로드됨.",
     "col": {
       "name": "컴포넌트",
+      "type": "유형",
       "version": "버전",
       "license": "라이선스",
+      "usage": "용도",
       "severity": "심각도",
       "vulns": "CVE"
+    },
+    "badge": {
+      "dependency_type": {
+        "direct": "직접",
+        "transitive": "전이",
+        "unknown": "—",
+        "aria_direct": "직접 의존성 (깊이 1)",
+        "aria_transitive": "전이 의존성 (깊이 {{depth}})",
+        "aria_unknown": "의존성 유형 불명 — 이 스캔에는 의존성 그래프가 없습니다"
+      },
+      "dependency_scope": {
+        "required": "필수",
+        "optional": "선택",
+        "unknown": "—",
+        "aria_unknown": "이 스캔에 용도가 지정되지 않았습니다"
+      }
     },
     "toolbar": {
       "search_label": "검색",
       "search_placeholder": "이름 또는 purl로 검색",
       "severity_label": "심각도",
       "license_label": "라이선스",
+      "dependency_type_label": "의존성 유형",
+      "dependency_type": {
+        "all": "전체",
+        "direct": "직접",
+        "transitive": "전이"
+      },
+      "usage_label": "용도",
+      "usage": {
+        "required": "필수",
+        "optional": "선택",
+        "unspecified": "지정 안 됨"
+      },
       "sort_label": "정렬 기준",
       "sort_by_name": "이름",
       "sort_by_severity": "심각도",
@@ -167,6 +197,8 @@
     "loading_subtitle": "컴포넌트 상세 정보를 가져오고 있습니다.",
     "subtitle": "버전 {{version}}",
     "purl_label": "purl",
+    "dependency_type_label": "유형",
+    "usage_label": "용도",
     "error": "컴포넌트를 불러오지 못했습니다.",
     "vulns": {
       "title": "취약점 ({{count}})",

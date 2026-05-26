@@ -166,6 +166,8 @@
     "project_id"
   ],
   "GET /v1/projects/{project_id}/components": [
+    "dependency_scope",
+    "direct",
     "license_category",
     "limit",
     "offset",

@@ -5,6 +5,7 @@ import { MultiSelect } from "@/components/ui/multi-select";
 import type {
   ComponentSeverity,
   ComponentSortKey,
+  DependencyScopeFilter,
   LicenseCategoryName,
   SortOrder,
 } from "@/features/projects/api/projectDetailApi";
@@ -43,6 +44,28 @@ export const SORT_OPTIONS: ComponentSortKey[] = [
   "license",
 ];
 
+/**
+ * W2 #31 — BD-style "Usage" facet options. Mirrors the backend's accepted
+ * values for ``?dependency_scope=``; ``unspecified`` selects the NULL-scope
+ * bucket (cdxgen often produces no scope on edges).
+ */
+export const USAGE_OPTIONS: DependencyScopeFilter[] = [
+  "required",
+  "optional",
+  "unspecified",
+];
+
+/**
+ * W2 #31 — Dependency-type segmented control values. ``null`` means "All"
+ * (no `?direct=` on the wire), ``true`` keeps only direct, ``false`` only
+ * transitive (and the depth-null bucket).
+ */
+const DEPENDENCY_TYPE_OPTIONS: { value: boolean | null; key: string }[] = [
+  { value: null, key: "all" },
+  { value: true, key: "direct" },
+  { value: false, key: "transitive" },
+];
+
 export interface ComponentsToolbarProps {
   search: string;
   onSearchChange: (value: string) => void;
@@ -50,6 +73,12 @@ export interface ComponentsToolbarProps {
   onSeverityChange: (value: ComponentSeverity[]) => void;
   licenseCategory: LicenseCategoryName[];
   onLicenseCategoryChange: (value: LicenseCategoryName[]) => void;
+  /** Dependency-type 3-state (null/true/false). */
+  direct: boolean | null;
+  onDirectChange: (value: boolean | null) => void;
+  /** BD-style "Usage" multi-select. */
+  dependencyScope: DependencyScopeFilter[];
+  onDependencyScopeChange: (value: DependencyScopeFilter[]) => void;
   sort: ComponentSortKey;
   onSortChange: (value: ComponentSortKey) => void;
   order: SortOrder;
@@ -64,6 +93,10 @@ export function ComponentsToolbar({
   onSeverityChange,
   licenseCategory,
   onLicenseCategoryChange,
+  direct,
+  onDirectChange,
+  dependencyScope,
+  onDependencyScopeChange,
   sort,
   onSortChange,
   order,
@@ -137,6 +170,67 @@ export function ComponentsToolbar({
           selected={licenseCategory}
           onChange={(next) =>
             onLicenseCategoryChange(next as LicenseCategoryName[])
+          }
+        />
+      </div>
+
+      <div
+        className="flex flex-col"
+        data-testid="components-dependency-type-filter"
+      >
+        <span className="text-xs font-medium text-muted-foreground">
+          {t("components.toolbar.dependency_type_label")}
+        </span>
+        <div
+          role="group"
+          aria-label={t("components.toolbar.dependency_type_label")}
+          className="mt-1 inline-flex h-9 items-stretch overflow-hidden rounded-md border border-input bg-background"
+        >
+          {DEPENDENCY_TYPE_OPTIONS.map((opt, idx) => {
+            const isActive = direct === opt.value;
+            return (
+              <button
+                key={opt.key}
+                type="button"
+                aria-pressed={isActive}
+                data-testid={`components-dependency-type-${opt.key}`}
+                data-active={isActive ? "true" : "false"}
+                onClick={() => onDirectChange(opt.value)}
+                className={cn(
+                  "px-3 text-xs font-medium",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+                  idx > 0 && "border-l border-input",
+                  isActive
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-muted",
+                )}
+              >
+                {t(`components.toolbar.dependency_type.${opt.key}`)}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="flex flex-col">
+        <label
+          htmlFor="components-usage-filter"
+          className="text-xs font-medium text-muted-foreground"
+        >
+          {t("components.toolbar.usage_label")}
+        </label>
+        <MultiSelect
+          id="components-usage-filter"
+          testId="components-usage-filter"
+          className="w-40"
+          label={t("components.toolbar.usage_label")}
+          options={USAGE_OPTIONS.map((opt) => ({
+            value: opt,
+            label: t(`components.toolbar.usage.${opt}`),
+          }))}
+          selected={dependencyScope}
+          onChange={(next) =>
+            onDependencyScopeChange(next as DependencyScopeFilter[])
           }
         />
       </div>

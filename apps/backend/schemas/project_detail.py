@@ -223,6 +223,19 @@ class ComponentSummary(BaseModel):
             "graph was unavailable."
         ),
     )
+    dependency_scope: Literal["required", "optional"] | None = Field(
+        default=None,
+        description=(
+            "W2 #31 — BD-style 'Usage' for the component, derived from the "
+            "CycloneDX ``component.scope`` field cdxgen emits. The value is "
+            "aggregated across the same cv's dependency paths (``required`` "
+            "wins over ``optional`` — a component used at runtime from any "
+            "path is reported as ``required``). ``null`` when every path "
+            "left scope unset (the common case for ecosystems whose SBOMs "
+            "do not encode scope) — the UI renders that as '—' rather than "
+            "guessing."
+        ),
+    )
 
 
 class ComponentListResponse(BaseModel):
@@ -299,6 +312,15 @@ class ComponentDetailResponse(BaseModel):
     direct: bool = Field(
         default=False,
         description="True when this is a direct dependency (graph depth 1).",
+    )
+    dependency_scope: Literal["required", "optional"] | None = Field(
+        default=None,
+        description=(
+            "W2 #31 — BD-style 'Usage' for the chosen (shallowest) path. "
+            "``null`` when cdxgen left the field unset on that path. Drawers "
+            "surface the row's own scope rather than an aggregate, because "
+            "depth/direct already pin one path."
+        ),
     )
     created_at: datetime
     updated_at: datetime

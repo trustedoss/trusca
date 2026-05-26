@@ -10,12 +10,15 @@ import type {
   ComponentSeverity,
   ComponentSortKey,
   ComponentSummary,
+  DependencyScopeFilter,
   LicenseCategoryName,
   SortOrder,
 } from "@/features/projects/api/projectDetailApi";
 import { useComponents } from "@/features/projects/api/useComponents";
 import { ComponentDrawer } from "@/features/projects/components/ComponentDrawer";
 import { ComponentsToolbar } from "@/features/projects/components/ComponentsToolbar";
+import { DependencyScopeBadge } from "@/features/projects/components/DependencyScopeBadge";
+import { DependencyTypeBadge } from "@/features/projects/components/DependencyTypeBadge";
 import { LicenseCategoryBadge } from "@/features/projects/components/LicenseCategoryBadge";
 import { SeverityBadge } from "@/features/projects/components/SeverityBadge";
 import { ProblemError } from "@/lib/problem";
@@ -55,6 +58,12 @@ const VALID_LICENSE = new Set<LicenseCategoryName>([
   "unknown",
 ]);
 
+const VALID_SCOPE = new Set<DependencyScopeFilter>([
+  "required",
+  "optional",
+  "unspecified",
+]);
+
 const VALID_SORT = new Set<ComponentSortKey>(["name", "severity", "license"]);
 
 function parseList<T extends string>(
@@ -77,6 +86,17 @@ function parseSort(raw: string | null): ComponentSortKey {
 
 function parseOrder(raw: string | null): SortOrder {
   return raw === "desc" ? "desc" : "asc";
+}
+
+/**
+ * W2 #31 — hydrate the dependency-type 3-state from a URL string. Anything
+ * other than the two literals collapses to `null` (= "All") so a typoed URL
+ * never sticks the toolbar in an unreachable state.
+ */
+function parseDirect(raw: string | null): boolean | null {
+  if (raw === "true") return true;
+  if (raw === "false") return false;
+  return null;
 }
 
 export interface ComponentsTabProps {
@@ -104,6 +124,19 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
         searchParams.get("license_category"),
         VALID_LICENSE,
       ),
+  );
+  // W2 #31 — Direct/Transitive 3-state and BD-style "Usage" multi-select.
+  // Both hydrate from URL so deep-links/reload keep the facet selection.
+  const [direct, setDirect] = useState<boolean | null>(() =>
+    parseDirect(searchParams.get("direct")),
+  );
+  const [dependencyScope, setDependencyScope] = useState<
+    DependencyScopeFilter[]
+  >(() =>
+    parseList<DependencyScopeFilter>(
+      searchParams.get("dependency_scope"),
+      VALID_SCOPE,
+    ),
   );
   const [sort, setSort] = useState<ComponentSortKey>(() =>
     parseSort(searchParams.get("sort")),
@@ -153,6 +186,16 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
         if (licenseCategory.length)
           next.set("license_category", licenseCategory.join(","));
         else next.delete("license_category");
+        // W2 #31 — `?direct=true|false`; drop the key entirely on "All" so
+        // the URL stays clean for the default state.
+        if (direct === true) next.set("direct", "true");
+        else if (direct === false) next.set("direct", "false");
+        else next.delete("direct");
+        // W2 #31 — `?dependency_scope=required,optional,unspecified`. Comma
+        // join matches the parseList convention used by severity / license.
+        if (dependencyScope.length)
+          next.set("dependency_scope", dependencyScope.join(","));
+        else next.delete("dependency_scope");
         if (sort !== "name") next.set("sort", sort);
         else next.delete("sort");
         if (order !== "asc") next.set("order", order);
@@ -161,19 +204,39 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
       },
       { replace: true },
     );
-  }, [debouncedSearch, severity, licenseCategory, sort, order, setSearchParams]);
+  }, [
+    debouncedSearch,
+    severity,
+    licenseCategory,
+    direct,
+    dependencyScope,
+    sort,
+    order,
+    setSearchParams,
+  ]);
 
   const filters = useMemo(
     () => ({
       search: debouncedSearch,
       severity,
       license_category: licenseCategory,
+      direct,
+      dependency_scope: dependencyScope,
       sort,
       order,
       pageSize: PAGE_SIZE,
       scanId,
     }),
-    [debouncedSearch, severity, licenseCategory, sort, order, scanId],
+    [
+      debouncedSearch,
+      severity,
+      licenseCategory,
+      direct,
+      dependencyScope,
+      sort,
+      order,
+      scanId,
+    ],
   );
 
   const components = useComponents(projectId, filters);
@@ -194,6 +257,10 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
         onSeverityChange={setSeverity}
         licenseCategory={licenseCategory}
         onLicenseCategoryChange={setLicenseCategory}
+        direct={direct}
+        onDirectChange={setDirect}
+        dependencyScope={dependencyScope}
+        onDependencyScopeChange={setDependencyScope}
         sort={sort}
         onSortChange={setSort}
         order={order}
@@ -296,10 +363,12 @@ function ComponentsTableHeader() {
       data-testid="components-header"
     >
       <span className="flex-1">{t("components.col.name")}</span>
-      <span className="w-32 text-right">{t("components.col.version")}</span>
-      <span className="w-40">{t("components.col.license")}</span>
-      <span className="w-32">{t("components.col.severity")}</span>
-      <span className="w-16 text-right">{t("components.col.vulns")}</span>
+      <span className="w-24">{t("components.col.type")}</span>
+      <span className="w-28 text-right">{t("components.col.version")}</span>
+      <span className="w-36">{t("components.col.license")}</span>
+      <span className="w-24">{t("components.col.usage")}</span>
+      <span className="w-28">{t("components.col.severity")}</span>
+      <span className="w-14 text-right">{t("components.col.vulns")}</span>
     </div>
   );
 }
@@ -337,20 +406,29 @@ function ComponentRow({ component, rowIndex, onSelect }: ComponentRowProps) {
           </span>
         ) : null}
       </span>
+      <span className="w-24">
+        <DependencyTypeBadge
+          direct={component.direct}
+          depth={component.depth}
+        />
+      </span>
       <span
-        className="w-32 truncate text-right font-mono text-xs"
+        className="w-28 truncate text-right font-mono text-xs"
         title={component.version}
       >
         {component.version}
       </span>
-      <span className="w-40">
+      <span className="w-36">
         <LicenseCategoryBadge category={component.license_category} />
       </span>
-      <span className="w-32">
+      <span className="w-24">
+        <DependencyScopeBadge scope={component.dependency_scope} />
+      </span>
+      <span className="w-28">
         <SeverityBadge severity={component.severity_max} />
       </span>
       <span
-        className="w-16 text-right font-mono text-xs tabular-nums"
+        className="w-14 text-right font-mono text-xs tabular-nums"
         data-testid="component-row-vuln-count"
       >
         {component.vulnerability_count}

@@ -122,6 +122,38 @@ _LICENSE_CATEGORY_RANK: dict[str, int] = {
     "forbidden": 3,
 }
 
+# W2 #31 — BD-style "Usage" rank for ``ScanComponent.dependency_scope``
+# (populated from cdxgen SBOM ``component.scope``, a CycloneDX 1.6 field).
+# Higher rank = "more required". The same component_version can appear at
+# several paths with different scopes (diamond deps); we surface the
+# *most-required* one, mirroring how depth picks the *shallowest* path —
+# both report the dependency at its "strongest" claim on the project.
+#
+# Rank 0 is reserved for "no scope observed" (the column is NULL on every
+# path). cdxgen leaves scope NULL for most ecosystems where the SBOM does
+# not encode the field; we map that to ``dependency_scope=None`` in the
+# response (UI label: "—").
+_SCOPE_RANK: dict[str, int] = {
+    "optional": 1,
+    "required": 2,
+}
+
+_SCOPE_FROM_RANK: dict[int, str | None] = {
+    0: None,
+    1: "optional",
+    2: "required",
+}
+
+# Accepted ``?dependency_scope=`` filter values. "unspecified" matches the
+# (very common) NULL rows so callers can isolate the "scope unknown" bucket
+# without conflating it with optional/required deps.
+_SCOPE_FILTER_VALUES: set[str] = {"required", "optional", "unspecified"}
+_SCOPE_FILTER_RANK: dict[str, int] = {
+    "unspecified": 0,
+    "optional": 1,
+    "required": 2,
+}
+
 _LICENSE_CATEGORY_FROM_RANK: dict[int, str] = {
     0: "unknown",
     1: "allowed",
@@ -475,6 +507,23 @@ def _normalize_license_filter(
     return cleaned
 
 
+def _normalize_scope_filter(
+    raw: list[str] | None,
+) -> list[str] | None:
+    """W2 #31 — accept ``required``/``optional``/``unspecified``, drop others.
+
+    Returns ``None`` (no filter), ``[]`` (caller passed only invalid values →
+    "no rows match" without a 422), or the cleaned subset. Validation lives
+    in the router for the API surface; this guards the service contract.
+    """
+    if raw is None:
+        return None
+    cleaned = [s for s in raw if s in _SCOPE_FILTER_VALUES]
+    if not cleaned:
+        return []
+    return cleaned
+
+
 async def list_components_for_project(
     session: AsyncSession,
     *,
@@ -485,6 +534,8 @@ async def list_components_for_project(
     search: str | None = None,
     severity: list[str] | None = None,
     license_category: list[str] | None = None,
+    direct: bool | None = None,
+    dependency_scope: list[str] | None = None,
     sort: str = "name",
     order: str = "asc",
     scan_id: uuid.UUID | None = None,
@@ -551,6 +602,20 @@ async def list_components_for_project(
             # NULL depths reports NULL ("graph not available").
             func.min(ScanComponent.depth).label("min_depth"),
             func.bool_or(ScanComponent.direct).label("is_direct"),
+            # W2 #31 — pick the *most-required* scope across this cv's paths
+            # (required > optional). Rank 0 means every path had NULL scope,
+            # which maps back to ``dependency_scope=None`` in the response.
+            # CASE is portable; ``case`` is already imported.
+            func.coalesce(
+                func.max(
+                    case(
+                        (ScanComponent.dependency_scope == "required", 2),
+                        (ScanComponent.dependency_scope == "optional", 1),
+                        else_=0,
+                    )
+                ),
+                0,
+            ).label("max_scope_rank"),
         )
         .select_from(ScanComponent)
         .outerjoin(
@@ -599,6 +664,7 @@ async def list_components_for_project(
             per_cv_subq.c.vuln_count.label("vuln_count"),
             per_cv_subq.c.min_depth.label("min_depth"),
             per_cv_subq.c.is_direct.label("is_direct"),
+            per_cv_subq.c.max_scope_rank.label("max_scope_rank"),
         )
         .select_from(per_cv_subq)
         .join(ComponentVersion, ComponentVersion.id == per_cv_subq.c.cv_id)
@@ -626,6 +692,23 @@ async def list_components_for_project(
             return [], 0
         ranks = [_LICENSE_CATEGORY_RANK[c] for c in license_filter]
         base = base.where(per_cv_subq.c.max_lic_rank.in_(ranks))
+
+    # W2 #31 — Direct/Transitive toggle. ``direct=True`` keeps only graph-
+    # roots (depth==1); ``direct=False`` keeps every non-root, including the
+    # cvs whose scan carried no graph (``is_direct`` defaults False there).
+    # Skipped entirely when the caller did not pass the param.
+    if direct is not None:
+        base = base.where(per_cv_subq.c.is_direct.is_(direct))
+
+    # W2 #31 — BD-style "Usage" filter. The cv-level rank is compared to the
+    # caller's requested ranks; an "unspecified" request matches the (very
+    # common) NULL-scope bucket without conflating it with optional/required.
+    scope_filter = _normalize_scope_filter(dependency_scope)
+    if scope_filter is not None:
+        if not scope_filter:
+            return [], 0
+        scope_ranks = [_SCOPE_FILTER_RANK[s] for s in scope_filter]
+        base = base.where(per_cv_subq.c.max_scope_rank.in_(scope_ranks))
 
     # Sorting. We pick the primary column then call .asc()/.desc() inline so
     # mypy --strict doesn't complain about an untyped lambda factory.
@@ -710,6 +793,11 @@ async def list_components_for_project(
                 # directness we cannot prove).
                 "depth": int(r.min_depth) if r.min_depth is not None else None,
                 "direct": bool(r.is_direct),
+                # W2 #31 — BD-style "Usage" mapped back from the per-cv rank.
+                # ``None`` (rank 0) means every path had NULL scope (the cdxgen
+                # SBOM didn't encode one); the UI renders that as "—" rather
+                # than guessing.
+                "dependency_scope": _SCOPE_FROM_RANK[int(r.max_scope_rank)],
             }
         )
 
@@ -756,6 +844,11 @@ async def get_component_detail(
             ScanComponent.raw_data.label("raw_data"),
             ScanComponent.depth.label("depth"),
             ScanComponent.direct.label("direct"),
+            # W2 #31 — Usage at the chosen (shallowest) path. The drawer
+            # surfaces the row's own scope, not an aggregate across paths,
+            # because the depth/direct fields already pin one path. ``None``
+            # when cdxgen left the field unset on this row.
+            ScanComponent.dependency_scope.label("dependency_scope"),
         )
         .select_from(ComponentVersion)
         .join(Component, Component.id == ComponentVersion.component_id)
@@ -901,6 +994,15 @@ async def get_component_detail(
         # path. NULL depth when the scan carried no dependency graph.
         "depth": int(row.depth) if row.depth is not None else None,
         "direct": bool(row.direct),
+        # W2 #31 — BD-style "Usage" for the chosen path. Only ``required`` /
+        # ``optional`` / ``None`` reach the response: ``ScanComponent`` rows
+        # written by cdxgen carry exactly the CycloneDX value (no normalisation),
+        # so any other string would be a data bug we want to surface as "—".
+        "dependency_scope": (
+            row.dependency_scope
+            if row.dependency_scope in ("required", "optional")
+            else None
+        ),
         "created_at": row.created_at,
         "updated_at": row.updated_at,
     }
