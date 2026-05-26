@@ -28,7 +28,8 @@
     "source": "Source",
     "remediation": "Remediation",
     "settings": "Settings",
-    "releases": "Releases"
+    "releases": "Releases",
+    "reports": "Reports"
   },
   "severity": {
     "critical": "Critical",
@@ -834,6 +835,74 @@
       "not_found": "One of the selected releases could not be found. It may have been removed.",
       "forbidden": "You do not have permission to compare this project's releases.",
       "unknown": "Could not load the comparison. Please try again."
+    }
+  },
+  "reports": {
+    "generate": {
+      "heading": "Generate",
+      "subheading": "Generate or export a project artefact. Each shortcut opens the domain tab where the action lives."
+    },
+    "cards": {
+      "notice": {
+        "title": "NOTICE",
+        "description": "Attribution NOTICE file with license obligations.",
+        "action": "Go to Obligations"
+      },
+      "sbom": {
+        "title": "SBOM",
+        "description": "Software Bill of Materials in CycloneDX or SPDX.",
+        "action": "Go to SBOM"
+      },
+      "vuln-pdf": {
+        "title": "Vulnerability PDF",
+        "description": "Risk report with severity / license distribution and CVE list.",
+        "action": "Go to Vulnerabilities"
+      },
+      "vex": {
+        "title": "VEX",
+        "description": "Export or import VEX statements for the project's findings.",
+        "action": "Go to Vulnerabilities"
+      }
+    },
+    "history": {
+      "heading": "Recent activity",
+      "subheading": "Downloads and exports for this project, newest first.",
+      "columns": {
+        "when": "When",
+        "who": "Who",
+        "type": "Type",
+        "format": "Format",
+        "scan": "Scan",
+        "size": "Size"
+      },
+      "type": {
+        "notice": "Notice",
+        "sbom": "SBOM",
+        "vuln_pdf": "Vuln PDF",
+        "vex_export": "VEX"
+      },
+      "filter": {
+        "type_label": "Type",
+        "type_placeholder": "All types",
+        "clear": "Clear"
+      },
+      "pagination": {
+        "prev": "Previous",
+        "next": "Next",
+        "page_of": "Page {{page}} of {{total}}"
+      },
+      "empty": {
+        "title": "No downloads yet.",
+        "body": "Use the shortcuts on the left to generate a NOTICE, SBOM, vulnerability PDF, or VEX export."
+      },
+      "errors": {
+        "unavailable": "Reports are unavailable for this project.",
+        "rate_limited": "Too many requests — please try again in a moment.",
+        "generic": "Could not load the report history. Please try again."
+      },
+      "user_unknown": "Deleted user",
+      "scan_unknown": "—",
+      "size_unknown": "—"
     }
   }
 }

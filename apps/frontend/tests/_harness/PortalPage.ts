@@ -989,6 +989,43 @@ export class PortalPage {
     ).toBeVisible({ timeout: 10_000 });
   }
 
+  /**
+   * W3 #32 — Reports tab harness verbs.
+   *
+   * The Reports tab is a navigation hub: 4 generate cards (deep-links to
+   * Obligations / SBOM / Vulnerabilities) on the left + a chronological
+   * history table on the right. Tab-ready is signalled by either the table
+   * or the empty-state card being mounted — both are valid "settled" states.
+   */
+  async selectReportsTab(): Promise<void> {
+    await this.page.getByTestId("project-detail-tab-reports").click();
+    await this.expectReportsTabReady();
+  }
+
+  async expectReportsTabReady(): Promise<void> {
+    const tab = this.page.getByTestId("reports-tab");
+    await expect(tab).toBeVisible({ timeout: 10_000 });
+    const table = this.page.getByTestId("reports-history-table");
+    const empty = this.page.getByTestId("reports-history-empty");
+    const errored = this.page.getByTestId("reports-history-error");
+    await expect(table.or(empty).or(errored)).toBeVisible({
+      timeout: 10_000,
+    });
+  }
+
+  /**
+   * Click one of the four generate-card deeplinks. Each takes the user to
+   * the corresponding domain tab where the artefact's generation UI lives.
+   *
+   * @param slug ``notice`` → Obligations / ``sbom`` → SBOM /
+   *             ``vuln-pdf`` → Vulnerabilities / ``vex`` → Vulnerabilities.
+   */
+  async clickReportsGenerateCard(
+    slug: "notice" | "sbom" | "vuln-pdf" | "vex",
+  ): Promise<void> {
+    await this.page.getByTestId(`reports-card-${slug}-deeplink`).click();
+  }
+
   async filterObligationsByKind(kinds: string[]): Promise<void> {
     await this.page
       .getByTestId("obligations-kind-filter")

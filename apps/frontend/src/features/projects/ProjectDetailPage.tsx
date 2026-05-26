@@ -31,6 +31,7 @@ import { OverviewTab } from "@/features/projects/components/OverviewTab";
 import { ReleaseSwitcher } from "@/features/projects/components/ReleaseSwitcher";
 import { ReleasesTab } from "@/features/projects/components/ReleasesTab";
 import { RemediationTab } from "@/features/projects/components/RemediationTab";
+import { ReportsTab } from "@/features/projects/components/ReportsTab";
 import { RiskGauge } from "@/features/projects/components/RiskGauge";
 import { SbomTab } from "@/features/projects/components/SbomTab";
 import { SettingsTab } from "@/features/projects/components/SettingsTab";
@@ -68,6 +69,7 @@ const ALLOWED_TABS = new Set([
   "licenses",
   "obligations",
   "sbom",
+  "reports",
   "source",
   "remediation",
   "settings",
@@ -247,6 +249,13 @@ export function ProjectDetailPage() {
           // (Components/Vulnerabilities use distinct drawer keys, not `path`).
           merged.delete("path");
         }
+        if (next !== "reports") {
+          // Reports tab mirrors its filter / page into `?rpt_type=` /
+          // `?rpt_page=`. Drop them when leaving so re-entry to another tab
+          // doesn't carry a stale Reports filter into a different surface.
+          merged.delete("rpt_type");
+          merged.delete("rpt_page");
+        }
         if (next === "overview") {
           merged.delete("tab");
         } else {
@@ -384,6 +393,12 @@ export function ProjectDetailPage() {
             {t("tabs.sbom")}
           </TabsTrigger>
           <TabsTrigger
+            value="reports"
+            data-testid="project-detail-tab-reports"
+          >
+            {t("tabs.reports")}
+          </TabsTrigger>
+          <TabsTrigger
             value="source"
             data-testid="project-detail-tab-source"
           >
@@ -443,6 +458,9 @@ export function ProjectDetailPage() {
             lastScanAt={overview.data?.last_succeeded_scan_at ?? null}
             scanId={pinnedScanId}
           />
+        </TabsContent>
+        <TabsContent value="reports">
+          <ReportsTab projectId={projectId} scanId={pinnedScanId} />
         </TabsContent>
         <TabsContent value="source">
           <SourceTab
