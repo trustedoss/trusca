@@ -21,11 +21,12 @@ Engineers triaging dependency hygiene; legal / compliance reviewers reading lice
 Columns:
 
 - **Component** — package name (e.g. `lodash`, `org.springframework:spring-web`).
+- **Type** — **Direct** / **Transitive** / `—`. A coloured badge that summarises the dependency graph depth: `Direct` (depth 1, you declared it) vs. `Transitive` (depth 2+, pulled in by another package); `—` for scans before v2.2 or ecosystems whose graph the scanner could not record. See [Direct vs. transitive](#dependency-depth).
 - **Version** — pinned version found in the manifest or lockfile.
 - **License** — the license attached to the component. For a dependency this is the **declared** license `cdxgen` read from package metadata; see [Declared vs. detected](#declared-vs-detected) for how detected and concluded licenses relate. This is the value used by the build gate.
+- **Usage** — **Required** / **Optional** / `—`. The dependency scope `cdxgen` recorded along the *shortest* path to this component (when the same component is reachable via several paths the highest-scope path wins, i.e. `Required` > `Optional`). `—` means the scanner did not emit a scope for this component. Optional dependencies often carry the same legal obligations as required ones, but the **Required** / **Optional** distinction maps to license-compliance burden — an unused `Optional` extra is cheaper to remove than a deeply-required transitive dependency.
 - **Severity** — the highest severity across this component's open CVEs (carries the license-classification color via the legend).
 - **CVEs** — count of open vulnerabilities for this component (clickable; jumps to the Vulnerabilities tab pre-filtered).
-- **Depth / Direct** — the component's distance in the dependency graph: `1` = a **direct** dependency you declared, `2+` = a **transitive** dependency pulled in by another. Empty for scans before v2.2. See [Direct vs. transitive](#dependency-depth).
 
 The table is virtualized — projects with thousands of components scroll smoothly.
 
@@ -34,17 +35,19 @@ The table is virtualized — projects with thousands of components scroll smooth
 The inline filter bar at the top supports:
 
 - **Search** — substring match against `name@version`.
+- **Dependency type** — a three-state segmented control (`Any` / `Direct only` / `Transitive only`). The Direct-only segment maps to `?direct=true` on the API; Transitive-only maps to `?direct=false`.
+- **Usage** — multi-select (`Required` / `Optional`). Selecting both is equivalent to no filter; selecting only an unknown value drops to an empty page rather than 422-rejecting (consistent with severity / license-category filter semantics).
 - **Severity** — multi-select badges (Critical / High / Medium / Low / Info).
 - **License category** — multi-select (`Allowed` / `Conditional` / `Forbidden` / `Unknown`).
 - **Sort** + **order** — column-driven sort with ascending / descending toggle.
 
-Filters compose. The URL updates so you can share a filtered view.
+Filters compose. The URL updates (`?direct=…`, `?dependency_scope=…`, …) so you can share a filtered view.
 
 ## The drawer — component detail
 
 Click any row to open a right-side drawer with:
 
-- **Identity** — `purl` (Package URL), upstream homepage, repo URL.
+- **Identity** — `purl` (Package URL), upstream homepage, repo URL. The two lines under `purl` carry the component's **Type** (Direct / Transitive / `—`) and **Usage** (Required / Optional / `—`) badges, the same values the row shows.
 - **All license findings** — each finding carries a **provenance badge** (**Declared** / **Detected** / **Concluded**); a **Detected** finding also shows the `source_path` — the first-party file scancode found the license in. See [Declared vs. detected](#declared-vs-detected).
 - **Obligations** — list of obligations triggered by the component's license (see [Obligations](#obligations)).
 - **CVEs** — open and resolved findings, deep-linked to the vulnerability detail.

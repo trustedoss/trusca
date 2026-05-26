@@ -36,12 +36,14 @@ sidebar_position: 6
 
 각 행 표시:
 
-- **컴포넌트 (Component)** — `name@version`.
-- **프로젝트 (Project)** — 요청이 적용되는 프로젝트(같은 컴포넌트가 여러 프로젝트에 등장하면 프로젝트당 한 행).
+- **컴포넌트 (Component)** — 컴포넌트 표시 이름과 두 번째 monospace 줄의 package URL(`purl`). 행의 기본 컴포넌트 이름을 해석하지 못한 경우 컴포넌트 UUID 앞 8 자로 폴백합니다.
+- **프로젝트 (Project)** — 요청이 적용되는 프로젝트. 프로젝트 이름과 함께 `/projects/{id}` 로 가는 click-through 링크로 렌더링됩니다(같은 컴포넌트가 여러 프로젝트에 등장하면 프로젝트당 한 행). 이름이 사용 불가능한 경우 프로젝트 UUID 앞부분으로 폴백합니다. 링크는 클릭 전파를 중단하므로 프로젝트를 여는 동작이 행의 드로어를 함께 열지는 않습니다.
 - **상태 (Status)** — 대기 / 검토 중 / 승인 / 반려.
 - **요청자 (Requested by)** — 요청을 생성한 사용자(또는 시스템).
 - **요청 시각 (Requested at)** — 요청 타임스탬프.
 - **동작 (Actions)** — 본인 역할에 맞는 처리 컨트롤(드로어 진입 등).
+
+목록 엔드포인트는 컴포넌트·프로젝트 표시 필드를 두 번의 batched `IN(...)` 조회로 해석합니다(`ComponentApproval` 모델은 의도적으로 도메인을 가로지르는 관계를 보유하지 않음). 따라서 수백 행짜리 큐도 한 번의 round-trip 으로 렌더됩니다.
 
 ![/approvals 대기열 — Pending / Under Review / Approved / Rejected 상태 배지, 컴포넌트 식별자, 프로젝트, 요청자(actor), 행별 Actions 컬럼이 있는 표](/img/screenshots/user-approvals-inbox.png)
 

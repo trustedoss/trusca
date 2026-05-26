@@ -27,9 +27,19 @@ Engineers and team leads who scan their own services. Requires sign-in. The role
 
 ## Adding a project — UI
 
-The **Projects** sidebar entry lands on the team-scoped project list — every project that belongs to your active team, with status badges and inline **Scan** actions:
+The **Projects** sidebar entry lands on the team-scoped project list — every project that belongs to your active team, with status badges, severity counts, an inline **Scan** action, and a compact per-project meta row showing `n scans · m releases · last scan <relative time>`:
 
 ![/projects list — team-scoped table with name, last-scan status badge, severity counts, and an inline Scan action per row](/img/screenshots/user-projects-list.png)
+
+<!-- screenshot above predates the scan_count/release_count/last_scan_at meta row added by #30; refresh post-merge -->
+
+The meta row sums:
+
+- **scans** — total scans this project has ever run (any status; archived runs included).
+- **releases** — count of release snapshots the project has accumulated (see [Releases](#the-releases-tab)).
+- **last scan** — relative time since the last scan moved to a terminal status. `—` until the first scan completes.
+
+The list endpoint aggregates these three fields server-side in a single query, so the row is cheap to render even on portfolios of hundreds of projects.
 
 1. Sign in.
 2. Click **Projects** in the sidebar.
@@ -48,13 +58,37 @@ You land on the project's **Overview** tab. From here you can run the first scan
 
 The default branch (`main`), visibility (`team`), and owning team (your active team) are set server-side and can be reviewed from **Project Settings**.
 
-### Walkthrough — clicking through the four detail tabs
+### Detail-page tabs
 
-The detail page exposes four tabs: **Overview**, **Components**, **Vulnerabilities**, and **Licenses**. The walkthrough below opens a project from the list and clicks each tab in order so you can see how the four lenses on a project relate.
+The detail page exposes the following tabs, left-to-right:
+
+| Tab | What it shows |
+|---|---|
+| **Overview** | Risk axes (Security + License), the [Build gate verdict](#build-gate-verdict-overview-tab), the **Project info** card (Git URL, default branch, owning team, created-at, last-scan time), and recent scans. |
+| **Releases** | Snapshots of the project at each terminal scan — the snapshot list, a "view snapshot" pin action, and per-release diff entry points. See [The Releases tab](#the-releases-tab). |
+| **Components** | Every component the scan discovered. See [Components & licenses](./components-and-licenses.md). |
+| **Vulnerabilities** | Open and triaged CVE findings. See [Vulnerabilities](./vulnerabilities.md). |
+| **Licenses** | The same data viewed by SPDX identifier and tier. |
+| **Obligations** | Per-component obligations + NOTICE-file generation. See [Components & licenses → Obligations](./components-and-licenses.md#obligations). |
+| **SBOM** | CycloneDX / SPDX exports, byte-stable. See [SBOM](./sbom.md). |
+| **Reports** | Generate-cards for NOTICE, SBOM, Vulnerability PDF, and VEX **plus** the project's unified download / export history. See [The Reports tab](#the-reports-tab). |
+| **Source** | The fetched first-party source tree from the latest succeeded scan, with file-level license findings highlighted. Sits between **Reports** and **Remediation** (per the post-v2.3 tab reorder). |
+| **Remediation** | Per-component upgrade recommendations from the latest scan, including the opt-in npm remediation PR flow. |
+| **Settings** | Project metadata, archive action, CI-integration helpers. |
+
+:::note Tab order changed in post-v2.3
+The **Source** tab used to sit immediately after **Licenses**; it was moved to the right of **Reports** so the data-output cluster (SBOM / Reports / Source) is contiguous. Bookmarks and `?tab=source` deep links continue to work — the slug is unchanged.
+:::
+
+### Walkthrough — clicking through the project detail tabs
+
+The walkthrough below opens a project from the list and clicks each tab in order so you can see how the lenses relate.
+
+<!-- walkthrough video is stale — it captures the pre-post-v2.3 four-tab layout; refresh post-merge to include Releases / Reports / Source / Remediation -->
 
 <video controls width="100%" preload="metadata" poster="/img/walkthroughs/walkthrough-project-tour.gif">
   <source src="/img/walkthroughs/walkthrough-project-tour.mp4" type="video/mp4" />
-  ![Animated walkthrough — clicking through the four project detail tabs](/img/walkthroughs/walkthrough-project-tour.gif)
+  ![Animated walkthrough — clicking through the project detail tabs](/img/walkthroughs/walkthrough-project-tour.gif)
 </video>
 
 ## Adding a project — API
@@ -116,15 +150,20 @@ Implications:
 
 For SSH deploy keys, see [Roadmap](#roadmap-v2x).
 
-## Risk score
+## Risk score — two axes
 
-Each project surfaces an aggregated **risk score** (0–100) that combines:
+The Overview tab now surfaces **two** risk axes on the project gauge instead of one composite number, so the two failure modes can be read independently:
 
-- Open vulnerabilities by severity (Critical, High, Medium, Low).
-- License classification mix (forbidden licenses dominate the score).
-- Time since last scan (older scans depreciate).
+- **Security risk** — driven by the project's open vulnerability mix. The band (Critical / High / Medium / Low / Info) is set by the **most severe** open finding; within the band the score scales as `n / (n + 4)` (non-saturating, so the band itself is the primary signal — adding more findings cannot bump you up a band).
+- **License risk** — driven by the project's license-tier mix. **Forbidden** licenses dominate the band; **Conditional** rows raise the score within the band but never promote it to `Critical` on their own (the previous "any conditional component = Risk 100" behaviour was removed in post-v2.3 W1).
 
-The score updates after every scan and after every CVE re-detection. Read it as a relative indicator across your portfolio, not an absolute SLA. Drilling into the project shows the breakdown.
+The legacy single `risk_score` field is still exposed on the API as `max(security_axis, license_axis)` for back-compat with the build gate and CI integrations; the UI uses the two-axis breakdown.
+
+Both axes refresh after every scan and after every CVE re-detection. Read them as relative indicators across your portfolio, not absolute SLAs — drilling into the project shows the per-axis breakdown.
+
+:::note Old "single risk gauge" screenshots
+Screenshots taken before post-v2.3 W1 show a single gauge labelled "Risk". The two-axis card replaces it. The numbers are not strictly comparable between the old single score and either of the two new axes — re-baseline against your portfolio after the upgrade.
+:::
 
 ## Build gate verdict (Overview tab)
 
@@ -149,6 +188,50 @@ A project that has never had a successful scan shows a neutral **No scan yet** s
 CVE — Common Vulnerabilities and Exposures; EPSS — Exploit Prediction Scoring System. See the [Glossary](../reference/glossary.md) for both.
 
 The card is read-only — it reflects the verdict but does not change policy. The thresholds (severity floor, EPSS) are operator- and CI-side settings; see [GitHub Actions](../ci-integration/github-actions.md) and [`GATE_EPSS_THRESHOLD`](../reference/env-variables.md#build--policy-gate).
+
+## Project info (Overview tab) {#project-info-card}
+
+The Overview tab has a **Project info** card next to the risk gauges. It collapses the project's identifying metadata into one read-only block, so you do not have to open **Settings** for a quick lookup:
+
+| Field | Source | Notes |
+|---|---|---|
+| **Git URL** | Project `git_url`. | Click-to-copy. The URL is masked when a personal-access token is embedded (the token segment is rendered as `***`); the raw value never appears on read endpoints. |
+| **Default branch** | Project `default_branch`. | Editable from **Settings**. |
+| **Owning team** | Project `team`. | Links to the team's `/admin/teams/{id}` admin view when the viewer is `super_admin`. |
+| **Created** | Project `created_at`. | Absolute timestamp on hover, relative time on the face. |
+| **Last scan** | Project `last_scan_at` (the same value the project list aggregates). | `—` until the first scan reaches a terminal status. |
+
+The card is the same data the project-list meta row exposes, surfaced once at the top of the detail page so the reader does not have to bounce back to the list to remember the project's repo URL.
+
+## The Releases tab {#the-releases-tab}
+
+Every time a scan reaches a terminal `succeeded` status the portal records a **release snapshot** — an immutable point-in-time view of the project (component list, license tier mix, vulnerability findings, scan id) tagged with the scan's completion timestamp. The **Releases** tab on a project lists those snapshots newest-first:
+
+| Column | What it shows |
+|---|---|
+| **Snapshot** | The scan completion time (`yyyy-mm-dd HH:MM`) + relative time. |
+| **Scan kind** | `source` or `container`. |
+| **Severity counts** | Critical / High / Medium / Low at snapshot time. |
+| **License mix** | Allowed / Conditional / Forbidden bars at snapshot time. |
+| **Actions** | **View components** (jumps to the **Components** tab pinned to that scan) and **View snapshot** (pins `?scan=<id>` and reloads the Overview with the snapshot's data). |
+
+Click a release row directly to navigate to the **Components** tab with the snapshot pinned. The pin propagates as a `?scan=<id>` URL parameter so the deep link survives reload and can be shared with a teammate — every tab on the project (Components, Vulnerabilities, Licenses, …) reads from the pinned snapshot until you clear the pin in the breadcrumb. Removing the pin restores the *latest succeeded* scan as the data anchor everywhere.
+
+The companion **Compare** screen (linked from the Releases-tab toolbar) takes two snapshot ids and shows the added / removed components and severities between them — the canonical diff view for "what changed between release X and release Y".
+
+## The Reports tab {#the-reports-tab}
+
+The **Reports** tab is a single landing page that unifies the project's downloadable artifacts:
+
+- Four **generate cards** for **NOTICE**, **SBOM**, **Vulnerability PDF**, and **VEX**. Each card is a deep link — clicking the card's action button switches to the relevant domain tab (Obligations / SBOM / Vulnerabilities / Vulnerabilities) where the actual format chooser and download buttons live. The currently pinned `?scan=` snapshot is preserved across the jump.
+- An **export history table** on the right, with columns **When** (relative + absolute timestamp), **Who** (the actor's email — `—` for anonymized rows kept for audit), **Type** (one of NOTICE / SBOM / Vulnerability PDF / VEX), **Format** (the exact format string — `cyclonedx-json`, `spdx-tv`, `openvex`, etc.), **Scan** (first eight characters of the scan id), and **Size** (humanized; `—` when the renderer did not record a size).
+- A toolbar **Type** multi-select filter and Prev / Next pagination, both mirrored to the URL as `?rpt_type=<type>` / `?rpt_page=<n>` so a filtered view is reload-safe and link-shareable.
+
+Authorisation is the same posture as the SBOM and PDF exports — any team member with at least `developer` can read history; non-members receive `404` (existence-hide). The history table is **append-only**: there is no edit, delete, or replay action. To re-download an artifact, click the relevant generate card and re-export it from the domain tab.
+
+:::note The Reports tab does not duplicate the domain-tab download UX
+Generate cards always deep-link to the domain tab (Obligations, SBOM, Vulnerabilities) rather than spawning a generation dialog inside the Reports tab. The intent is to keep one canonical UX per format and avoid drift between two download surfaces. The added value of the tab is the **history** view across all formats in one place.
+:::
 
 ## Verify it worked
 

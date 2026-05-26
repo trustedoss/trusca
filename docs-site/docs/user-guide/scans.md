@@ -36,6 +36,10 @@ Both kinds are selectable from the UI scan dialog as of v2.1 — pick **Source**
 
 A right-slide drawer opens on the project list page with a live progress view backed by a WebSocket connection. You can close the tab — the scan continues on the worker. Reopen the project and reconnect at any time. While a scan is `queued` or `running`, the drawer carries a **Cancel scan** action — see [Cancel a scan](#cancel-a-scan).
 
+:::note Only one scan at a time per project
+If a project already has a `queued` or `running` scan, the **Scan** button is disabled on the project detail header and its tooltip points you at the in-progress chip in the header (clicking the chip re-opens the existing scan's progress drawer). Triggering a second scan via the API returns `409 Conflict` with the RFC 7807 extension `scan_already_in_progress: true` — wait for the active scan to reach a terminal state, or **Cancel** it, before starting another. The constraint is enforced by a partial unique index in the database (`ix_scans_project_active`) so the same guard applies to UI, API, and CI clients.
+:::
+
 ![Scan progress drawer — bootstrap → fetch → cdxgen → scancode → DT → finalize stages, live over WebSocket](/img/screenshots/user-scans-progress-drawer.png)
 
 :::warning Branch selection for source scans
@@ -147,6 +151,10 @@ Visit **Scans** in the left sidebar for an organization-wide view of every runni
 
 ![Global /scans queue — Running / Queued / Succeeded / Failed / All status tabs above a recent-runs table with project, kind, and started-at columns](/img/screenshots/user-scans-queue.png)
 
+<!-- screenshot above predates the project-name column added in P1 #5; refresh post-merge -->
+
+The **Project** column shows the project's display name and links to its detail page; rows where the underlying project name could not be resolved (a foreign-key fallback path) fall back to the first 8 characters of the project UUID. The list endpoint batch-loads the project relationship in a single round-trip, so the column populates without per-row lookups even on a queue of hundreds of scans.
+
 Each `queued` or `running` row carries a **Cancel scan** action in its Actions column — see [Cancel a scan](#cancel-a-scan).
 
 ## Cancel a scan
@@ -206,7 +214,17 @@ curl -sS -X POST \
 3. The worker slot is free — a `queued` scan behind it begins `running`.
 4. The audit log records a `scans` `update` event with the new status.
 
-## WebSocket progress feed
+## Watching scan progress
+
+Once a scan is queued the **scan progress drawer** opens with three panels stacked top-to-bottom:
+
+1. **Stage list** — every pipeline stage with its current state (`pending`, `running`, `succeeded`, `failed`, `skipped`). The active stage carries a live spinner.
+2. **Per-stage log panel** — a scrollable text panel mirroring the worker's log frames for the *currently selected* stage. Click any stage row to switch the panel to that stage's frames; the panel auto-scrolls to the latest frame while you stay near the bottom and pauses auto-scroll when you scroll up to read earlier output. Frames are buffered up to the most recent ~500 lines per stage; older lines roll off.
+3. **Action footer** — **Cancel scan** while the run is non-terminal; close affordance once it reaches `succeeded` / `failed` / `cancelled`.
+
+Re-opening the drawer for an already-completed scan replays the persisted stage transitions and final log frame from the database (the spinner does **not** keep spinning on a `succeeded` row — the stage's terminal state is shown). Live frames stream over the WebSocket below.
+
+### WebSocket progress feed
 
 The UI subscribes to `ws(s)://<host>/ws/scans/{scan_id}` for live stage and percentage updates. The connection auto-reconnects with exponential backoff if the network drops. Reconnect re-emits the latest stage so the UI converges quickly.
 
@@ -282,6 +300,14 @@ The cancel request reached the API but the worker did not stop in time:
 ### "This scan already finished and can no longer be cancelled"
 
 The scan reached a terminal state (`succeeded` / `failed` / `cancelled`) between the moment the page loaded and the moment you clicked **Cancel scan**. Reload the queue to see the up-to-date status — no action is needed.
+
+### A second scan won't start — the **Scan** button is greyed out
+
+The project already has a `queued` or `running` scan. Only one active scan per project is allowed. Open the in-progress chip in the project header (or the row in the global queue) to see the existing run, wait for it to finish, or **Cancel** it before starting another. See [Only one scan at a time per project](#from-the-ui).
+
+### A completed scan's drawer shows a spinner that never finishes
+
+Older builds (pre-P1) left the **Finalizing** step's spinner animating after the scan had already reached `succeeded`. The fix freezes the spinner on the terminal state when the drawer is opened on a completed run. If you still see the symptom, force-reload the project page to refresh the cached scan record.
 
 ### Detected (first-party) licenses are missing
 

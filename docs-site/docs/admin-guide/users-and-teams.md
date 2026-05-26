@@ -132,6 +132,33 @@ The guard is enforced in two layers:
 1. **API layer** — a `SELECT … FOR UPDATE` row-locked count inside `admin_user_service` rejects the demote / deactivate before commit.
 2. **DB layer** — a PostgreSQL trigger (`trg_last_super_admin`, migration `0013`) raises `SQLSTATE 23514` for any `UPDATE`/`DELETE` on the `users` table that would leave zero active super-admins, including direct `psql` writes that bypass the API. The same `last_super_admin_protected` Problem Details extension is surfaced regardless of which layer caught the bypass.
 
+## Recovering a deactivated super-admin {#recovering-a-deactivated-super-admin}
+
+If the **last** super-admin row gets flipped to `is_active=false` despite the [last-super-admin protection](#last-super-admin-protection) — for example, an integration test against the deployment's database tripped `deactivate_user`, or another super-admin demoted you before promoting a replacement — re-run the same bootstrap script `scripts/install.sh` used at install time. It detects the existing row and lifts `is_active` back to `true` without touching the stored password.
+
+```bash
+docker-compose -f docker-compose.yml exec -T \
+  -e ADMIN_EMAIL="admin@example.com" \
+  -e ADMIN_PASSWORD="<existing password — 12+ chars>" \
+  backend python -m scripts.create_super_admin
+```
+
+What the script does, in order:
+
+1. Looks up the row by `ADMIN_EMAIL`.
+2. If the row exists **and** is a `super_admin` **and** is inactive → flips `is_active` back to `true`, commits, and prints `super admin <email> reactivated`. The stored password hash is **not** rewritten (a re-run stays non-destructive when you simply forgot the row was disabled).
+3. If the row exists and is already active → prints `super admin <email> already exists — noop` and exits 0.
+4. If the row exists but is **not** a `super_admin` → prints an error and exits non-zero. Promote or replace the row manually before re-running.
+5. If no row matches → creates a fresh super-admin with the supplied password.
+
+:::caution Password is left intact on reactivation
+The `ADMIN_PASSWORD` value is **only** used when the row is being created. On the reactivation path the password hash stays as it was — supply the current password, not a new one. If you have lost the password too, follow [Reset your password](../user-guide/auth-and-profile.md#reset-your-password) **after** reactivation lifts `is_active`, or use the operator-side `/admin/users/{id}/password-reset` endpoint from a second super-admin account.
+:::
+
+:::note Why a re-run, not a UI button?
+Reactivating the *last* admin from the UI would be a bootstrap paradox — there is no admin available to click the button. The script runs inside the backend container with database credentials, so it is the safe recovery hatch even when no super-admin can sign in. The action is idempotent: running it on an already-active row is a no-op.
+:::
+
 ## Deactivating a user
 
 Deactivation revokes all sessions and refresh tokens. The user cannot sign in. Their audit-log entries persist (rows are append-only).

@@ -36,12 +36,14 @@ Sidebar → **Approvals**. Filters: status (state) and a date range against `req
 
 Each row shows:
 
-- **Component** — `name@version`.
-- **Project** — the project the request is scoped to (one row per project even when the same component appears in many).
+- **Component** — the component's display name with the package URL (`purl`) on a second monospace line; falls back to the first 8 characters of the component UUID when the row's underlying component name could not be resolved.
+- **Project** — the project the request is scoped to, rendered as a click-through link to `/projects/{id}` with the project name (one row per project even when the same component appears in many). Falls back to the project UUID prefix when the name is unavailable. The link stops click propagation so opening the project does not also open the row's drawer.
 - **Status** — Pending / Under Review / Approved / Rejected.
 - **Requested by** — the user (or system) that created the request.
 - **Requested at** — the request timestamp.
 - **Actions** — the disposition controls for your role (drawer entry, etc.).
+
+The list endpoint resolves the component and project display fields with two batched `IN(...)` lookups (the `ComponentApproval` model intentionally does not carry cross-domain relationships), so a queue with hundreds of rows still renders in one round-trip.
 
 ![/approvals queue — table with Pending / Under Review / Approved / Rejected status badges, component identity, project, requested-by actor, and per-row Actions](/img/screenshots/user-approvals-inbox.png)
 

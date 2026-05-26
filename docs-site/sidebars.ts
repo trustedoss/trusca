@@ -24,6 +24,7 @@ const sidebars: SidebarsConfig = {
       label: "User guide",
       collapsed: false,
       items: [
+        "user-guide/dashboard",
         "user-guide/projects",
         "user-guide/scans",
         "user-guide/components-and-licenses",
