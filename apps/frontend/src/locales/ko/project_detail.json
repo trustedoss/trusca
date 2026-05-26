@@ -270,6 +270,8 @@
     "vex": {
       "marker": "VEX",
       "marker_tooltip": "이 취약점의 상태는 가져온 VEX 문서로 설정되었습니다.",
+      "choose_file": "파일 선택",
+      "no_file_chosen": "선택된 파일 없음",
       "filter_label": "VEX",
       "filter_suppressed": "VEX로 억제된 항목만",
       "export_label": "VEX 내보내기",

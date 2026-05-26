@@ -110,11 +110,16 @@
     },
     "upload": {
       "label": "Source archive (.zip)",
+      "choose_file": "Choose file",
+      "no_file_chosen": "No file chosen",
       "hint": "ZIP archive, up to {{max}}.",
       "selected": "Selected: {{name}} ({{size}})"
     },
     "folder": {
       "label": "Project folder",
+      "choose_folder": "Choose folder",
+      "no_folder_chosen": "No folder chosen",
+      "files_count": "{{count}} file(s) selected",
       "hint": "The folder is zipped in your browser before upload, up to {{max}}.",
       "selected": "{{count}} files selected ({{size}})",
       "too_large": "The selected folder exceeds the {{max}} limit. Remove large directories and try again.",

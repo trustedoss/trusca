@@ -270,6 +270,8 @@
     "vex": {
       "marker": "VEX",
       "marker_tooltip": "This finding's status was set by an imported VEX document.",
+      "choose_file": "Choose file",
+      "no_file_chosen": "No file chosen",
       "filter_label": "VEX",
       "filter_suppressed": "VEX-suppressed only",
       "export_label": "Export VEX",
