@@ -655,9 +655,11 @@ function VulnerabilitiesTableHeader({
           disabled={disabled}
         />
       </span>
-      {/* W4-B #19 — column order: CVE / Severity / CVSS / EPSS / Reachability /
-          License / Title / Affected / Status. Discovered moved to the
-          drawer to reduce horizontal scroll on a 13" laptop. */}
+      {/* Follow-up to W4-B #19 — column order: CVE / Severity / CVSS / EPSS /
+          Reachability / Component / License / Title / Status. The standalone
+          "Affected" count column merged into the Component column ("+N-1"
+          suffix when the CVE touches more cvs); the drawer still carries the
+          full affected_components list. Discovered moved to the drawer. */}
       <span className="w-44">{t("vulnerabilities.column.cve_id")}</span>
       <span className="w-28">
         <SortableColumnHeader
@@ -701,11 +703,9 @@ function VulnerabilitiesTableHeader({
           testId="vulnerabilities-sort-header-reachable"
         />
       </span>
+      <span className="w-40">{t("vulnerabilities.column.component")}</span>
       <span className="w-32">{t("vulnerabilities.column.license")}</span>
       <span className="flex-1">{t("vulnerabilities.column.summary")}</span>
-      <span className="w-20 text-right">
-        {t("vulnerabilities.column.affected")}
-      </span>
       <span className="w-32">
         <SortableColumnHeader
           column="status"
@@ -773,10 +773,10 @@ function VulnerabilityRow({
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
         )}
       >
-      {/* W4-B #19 — column order matches the header: CVE / Severity / CVSS /
-          EPSS / Reachability / License / Title / Affected / Status. The
-          Discovered column moved to the drawer to keep the row from
-          horizontally scrolling on a 13" laptop. */}
+      {/* Follow-up to W4-B #19 — column order matches the header: CVE /
+          Severity / CVSS / EPSS / Reachability / Component / License /
+          Title / Status. The standalone affected count column folded into
+          the Component cell's "+N-1" suffix. Discovered moved to drawer. */}
       <span
         className="w-44 truncate font-mono text-xs"
         title={vulnerability.cve_id}
@@ -812,22 +812,34 @@ function VulnerabilityRow({
           source={vulnerability.reachability_source}
         />
       </span>
+      <ComponentColumnCell
+        name={vulnerability.affected_component_name}
+        version={vulnerability.affected_component_version}
+        count={vulnerability.affected_component_count}
+      />
       <span
         className="w-32"
         data-testid="vuln-row-license"
-        data-license-category={vulnerability.component_license_category}
+        data-license-category={
+          vulnerability.affected_component_license_category ??
+          vulnerability.component_license_category
+        }
+        data-license-spdx={vulnerability.affected_component_license ?? ""}
       >
-        {/* W4-B #19 — License axis is now SPDX + policy badge stacked.
-            BE schema (W2 #33) guarantees `component_license_category`; if a
-            stale-cached row misses it we still render the unknown bucket.
-            Note: VulnerabilityListItem has no `license` (SPDX) field on the
-            wire today — we render the category badge alone via the shared
-            primitive's null-SPDX path so the visual matches Components
-            without inventing data. Adding the SPDX string here is a
-            follow-up that needs a BE schema bump. */}
+        {/* Follow-up to W4-B #19 — License axis is SPDX + policy badge
+            stacked. The BE schema bump exposes `affected_component_license`
+            (SPDX) + `affected_component_license_category` (null-bearing).
+            We prefer those, falling back to the legacy
+            `component_license_category` (non-null, defaults to "unknown")
+            so stale-cached rows from before the bump still render the
+            category badge — no UI regression while the cache turns over. */}
         <LicenseColumnCell
-          license={null}
-          category={vulnerability.component_license_category ?? "unknown"}
+          license={vulnerability.affected_component_license}
+          category={
+            vulnerability.affected_component_license_category ??
+            vulnerability.component_license_category ??
+            "unknown"
+          }
         />
       </span>
       <span
@@ -835,12 +847,6 @@ function VulnerabilityRow({
         title={vulnerability.summary ?? ""}
       >
         {vulnerability.summary ?? "—"}
-      </span>
-      <span
-        className="w-20 text-right font-mono text-xs tabular-nums"
-        data-testid="vulnerability-row-affected"
-      >
-        {vulnerability.affected_component_count}
       </span>
       <span className="flex w-32 items-center gap-1">
         <VulnerabilityStatusBadge status={vulnerability.status} />
@@ -903,6 +909,75 @@ function EpssCell({ score, percentile }: EpssCellProps) {
       title={tooltip}
     >
       {formattedScore}
+    </span>
+  );
+}
+
+interface ComponentColumnCellProps {
+  /** Pinned cv name. Backend may return null on legacy rows (cv deleted). */
+  name: string | null;
+  /** Pinned cv version string. */
+  version: string | null;
+  /**
+   * Distinct cvs affected by this CVE in the scan (the row is one of them).
+   * Drives the `+N-1` suffix when the CVE bundles more than one cv.
+   */
+  count: number;
+}
+
+/**
+ * Component@Version cell — replaces the old standalone "Affected count"
+ * column. Renders the FK-pinned cv as `name@version` in the mono accent so
+ * package names stand out, then appends `+N-1` when the CVE touches more
+ * cvs (the drawer still carries the full list via `affected_components`).
+ * A row missing both name and version renders the localized dash so empty
+ * cells are obvious — never the bare string "null@null".
+ *
+ * The count badge stays inline (not stacked) so the column doubles as
+ * "Affected": triagers reading the list see at a glance whether the CVE
+ * touches one or many packages without opening the drawer.
+ */
+function ComponentColumnCell({ name, version, count }: ComponentColumnCellProps) {
+  const { t } = useTranslation("project_detail");
+  const hasIdentity = name != null && version != null;
+  const label = hasIdentity
+    ? `${name}@${version}`
+    : t("components.license.unknown_dash");
+  const remainder = Math.max(0, count - 1);
+  // tabular-nums on the suffix keeps "+9" / "+99" aligned across rows.
+  return (
+    <span
+      className="flex w-40 items-center gap-1 truncate"
+      data-testid="vulnerability-row-component"
+      data-component-name={name ?? ""}
+      data-component-version={version ?? ""}
+      data-affected-count={count}
+      title={hasIdentity ? label : undefined}
+    >
+      <span
+        className={cn(
+          "truncate font-mono text-xs",
+          hasIdentity ? "text-foreground" : "text-muted-foreground",
+        )}
+      >
+        {label}
+      </span>
+      {remainder > 0 ? (
+        <span
+          className="shrink-0 rounded bg-muted px-1 text-[10px] font-medium tabular-nums text-muted-foreground"
+          data-testid="vulnerability-row-component-more"
+          title={t("vulnerabilities.column.affected_more_count_tooltip", {
+            count: remainder,
+            defaultValue:
+              "{{count}} more component(s) also affected — see drawer",
+          })}
+        >
+          {t("vulnerabilities.column.affected_more_count", {
+            count: remainder,
+            defaultValue: "+{{count}}",
+          })}
+        </span>
+      ) : null}
     </span>
   );
 }

@@ -249,6 +249,9 @@
       "cvss": "CVSS",
       "epss": "EPSS",
       "summary": "제목",
+      "component": "컴포넌트",
+      "affected_more_count": "+{{count}}",
+      "affected_more_count_tooltip": "추가로 {{count}}개의 컴포넌트가 영향을 받음 — 드로어에서 확인",
       "affected": "영향 컴포넌트",
       "status": "상태",
       "discovered": "발견 시각"

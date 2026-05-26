@@ -85,6 +85,10 @@ function vuln(
     reachability_source: null,
     reachability_analyzed_at: null,
     affected_component_count: 1,
+    affected_component_name: null,
+    affected_component_version: null,
+    affected_component_license: null,
+    affected_component_license_category: null,
     component_license_category: "unknown",
     discovered_at: "2026-05-01T00:00:00Z",
     updated_at: "2026-05-01T00:00:00Z",
@@ -815,6 +819,125 @@ describe("VulnerabilitiesTab", () => {
     });
     expect(
       screen.getByTestId("license-category-badge-unknown"),
+    ).toBeInTheDocument();
+  });
+
+  // -----------------------------------------------------------------
+  // Follow-up to W4-B — Component@Version + License SPDX wired into the
+  // list row from the BE schema bump (affected_component_{name,version,
+  // license,license_category}).
+  // -----------------------------------------------------------------
+
+  it("renders Component@Version in the new Component column", async () => {
+    mockedList.mockResolvedValueOnce(
+      listResponse([
+        vuln("CVE-2024-1111", {
+          affected_component_name: "lodash",
+          affected_component_version: "4.17.20",
+        }),
+      ]),
+    );
+    renderTab();
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("vulnerability-row-component"),
+      ).toBeInTheDocument();
+    });
+    const cell = screen.getByTestId("vulnerability-row-component");
+    expect(cell.textContent).toContain("lodash@4.17.20");
+    expect(cell.getAttribute("data-component-name")).toBe("lodash");
+    expect(cell.getAttribute("data-component-version")).toBe("4.17.20");
+    // count == 1 → no "+N-1" suffix badge.
+    expect(
+      screen.queryByTestId("vulnerability-row-component-more"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("appends a +N-1 suffix when the CVE touches additional cvs", async () => {
+    mockedList.mockResolvedValueOnce(
+      listResponse([
+        vuln("CVE-2024-2222", {
+          affected_component_name: "axios",
+          affected_component_version: "0.21.1",
+          affected_component_count: 3,
+        }),
+      ]),
+    );
+    renderTab();
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("vulnerability-row-component-more"),
+      ).toBeInTheDocument();
+    });
+    const cell = screen.getByTestId("vulnerability-row-component");
+    expect(cell.getAttribute("data-affected-count")).toBe("3");
+    expect(
+      screen.getByTestId("vulnerability-row-component-more").textContent,
+    ).toBe("+2");
+  });
+
+  it("renders the dash placeholder when the pinned cv is unknown", async () => {
+    // Legacy / CASCADE-deleted rows can leave name+version null. The cell
+    // must render the localized em-dash, never the bare string "null@null".
+    mockedList.mockResolvedValueOnce(
+      listResponse([
+        vuln("CVE-2024-3333", {
+          affected_component_name: null,
+          affected_component_version: null,
+        }),
+      ]),
+    );
+    renderTab();
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("vulnerability-row-component"),
+      ).toBeInTheDocument();
+    });
+    const cell = screen.getByTestId("vulnerability-row-component");
+    expect(cell.textContent).not.toContain("null");
+    expect(cell.getAttribute("data-component-name")).toBe("");
+    expect(cell.getAttribute("data-component-version")).toBe("");
+  });
+
+  it("wires the SPDX id from affected_component_license into the License cell", async () => {
+    mockedList.mockResolvedValueOnce(
+      listResponse([
+        vuln("CVE-2024-4444", {
+          affected_component_license: "MIT",
+          affected_component_license_category: "allowed",
+        }),
+      ]),
+    );
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getByTestId("vuln-row-license")).toBeInTheDocument();
+    });
+    const cell = screen.getByTestId("vuln-row-license");
+    expect(cell.getAttribute("data-license-spdx")).toBe("MIT");
+    expect(cell.getAttribute("data-license-category")).toBe("allowed");
+    expect(cell.textContent).toContain("MIT");
+  });
+
+  it("falls back to the legacy category when only component_license_category is on the wire", async () => {
+    // Stale-cached row from before the BE schema bump: the new null-bearing
+    // fields are absent but the legacy non-null field is still authoritative.
+    mockedList.mockResolvedValueOnce(
+      listResponse([
+        vuln("CVE-2024-5555", {
+          affected_component_license: null,
+          affected_component_license_category: null,
+          component_license_category: "forbidden",
+        }),
+      ]),
+    );
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getByTestId("vuln-row-license")).toBeInTheDocument();
+    });
+    const cell = screen.getByTestId("vuln-row-license");
+    expect(cell.getAttribute("data-license-category")).toBe("forbidden");
+    expect(
+      screen.getByTestId("license-category-badge-forbidden"),
     ).toBeInTheDocument();
   });
 
