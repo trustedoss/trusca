@@ -159,6 +159,9 @@
       "severity": "Severity",
       "vulns": "CVEs"
     },
+    "license": {
+      "unknown_dash": "—"
+    },
     "badge": {
       "dependency_type": {
         "direct": "Direct",
