@@ -32,12 +32,15 @@ import { ResetPasswordPage } from "@/pages/auth/ResetPasswordPage";
  * Central route table — CLAUDE.md "Routing" convention.
  *
  * - Public auth pages live under /login, /register, /forgot-password.
- * - All authenticated pages nest inside <AppShell /> via <RequireAuth />.
- *   AppShell renders the 48px header + 224px sidebar + <Outlet />.
+ * - All authenticated pages — including /admin/* — nest inside <AppShell />
+ *   via <RequireAuth />. AppShell owns the only sidebar + header chrome and
+ *   already renders the admin nav section for super-admins, so entering the
+ *   admin area no longer unmounts the main nav (W4-A fix).
  * - The "/" index renders the Dashboard (org/team risk portfolio), the
  *   CLAUDE.md screen spec for "/". /projects remains its own route.
- * - Admin pages nest under <AdminLayout /> which enforces the super-admin
- *   existence-hide guard (404 for non-super-admins, matching backend behavior).
+ * - <AdminLayout /> wraps /admin/* with the super-admin existence-hide guard
+ *   (404 for non-super-admins, matching backend behavior). It no longer
+ *   renders its own chrome — the AppShell sidebar/header carries through.
  * - Unknown top-level routes fall back to /login.
  */
 export function AppRoutes() {
@@ -68,27 +71,21 @@ export function AppRoutes() {
         <Route path="integrations" element={<IntegrationsPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
         <Route path="profile" element={<UserProfilePage />} />
-      </Route>
 
-      {/* Admin section retains its own layout (existence-hide guard inside) */}
-      <Route
-        path="/admin"
-        element={
-          <RequireAuth>
-            <AdminLayout />
-          </RequireAuth>
-        }
-      >
-        <Route index element={<Navigate to="users" replace />} />
-        <Route path="users" element={<AdminUsersPage />} />
-        <Route path="teams" element={<AdminTeamsPage />} />
-        <Route path="dt" element={<AdminDTPage />} />
-        <Route path="scans" element={<AdminScansPage />} />
-        <Route path="disk" element={<AdminDiskPage />} />
-        <Route path="audit" element={<AdminAuditPage />} />
-        <Route path="health" element={<AdminHealthPage />} />
-        <Route path="backup" element={<AdminBackupPage />} />
-        <Route path="*" element={<AdminNotFound />} />
+        {/* Admin section — nested so AppShell chrome persists; AdminLayout
+            still enforces the super-admin existence-hide guard. */}
+        <Route path="admin" element={<AdminLayout />}>
+          <Route index element={<Navigate to="users" replace />} />
+          <Route path="users" element={<AdminUsersPage />} />
+          <Route path="teams" element={<AdminTeamsPage />} />
+          <Route path="dt" element={<AdminDTPage />} />
+          <Route path="scans" element={<AdminScansPage />} />
+          <Route path="disk" element={<AdminDiskPage />} />
+          <Route path="audit" element={<AdminAuditPage />} />
+          <Route path="health" element={<AdminHealthPage />} />
+          <Route path="backup" element={<AdminBackupPage />} />
+          <Route path="*" element={<AdminNotFound />} />
+        </Route>
       </Route>
 
       <Route path="*" element={<Navigate to="/login" replace />} />

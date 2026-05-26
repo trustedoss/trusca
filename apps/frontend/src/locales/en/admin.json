@@ -13,10 +13,6 @@
     }
   },
   "admin": {
-    "layout": {
-      "title": "Administration",
-      "signed_in_as": "Signed in as {{email}}"
-    },
     "users": {
       "title": "Users",
       "subtitle": "Manage roles, activation status, and password resets across the organization.",
