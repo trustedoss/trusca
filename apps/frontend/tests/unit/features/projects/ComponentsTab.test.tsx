@@ -184,52 +184,111 @@ describe("ComponentsTab", () => {
     });
   });
 
-  it("changing the severity filter triggers a fresh query at offset 0", async () => {
+  // W4-B #17 — the severity / license MultiSelect drops are gone from the
+  // toolbar. The URL params still drive the wire (deep-links from the
+  // Overview chart populate them); the user removes a filter via a chip in
+  // the new ActiveFilterChips row.
+  it("hydrating ?severity=critical surfaces a removable chip", async () => {
+    mockedList.mockResolvedValue(listResponse([comp("Alpha")]));
+    renderTab(["/projects/proj-1?severity=critical"]);
+    await waitFor(() => {
+      expect(screen.getAllByTestId("component-row")).toHaveLength(1);
+    });
+    // Filter was applied on first fetch.
+    expect(mockedList).toHaveBeenCalledWith(
+      "proj-1",
+      expect.objectContaining({ severity: ["critical"] }),
+    );
+    // A chip surfaces the active filter so the user can see + clear it
+    // without an extra dropdown.
+    const chip = await screen.findByTestId("active-filter-chip");
+    expect(chip.getAttribute("data-facet")).toBe("severity");
+    expect(chip.getAttribute("data-value")).toBe("critical");
+
+    // Clearing the chip drops the filter from the wire on the next call.
+    mockedList.mockClear();
+    await userEvent.click(
+      screen.getByTestId("active-filter-chip-clear"),
+    );
+    await waitFor(() => {
+      // `useComponents` translates an empty array to `severity: undefined`
+      // on the wire so an empty CSV never appears in the query string.
+      expect(mockedList).toHaveBeenCalledWith(
+        "proj-1",
+        expect.objectContaining({ severity: undefined }),
+      );
+    });
+    expect(screen.queryByTestId("active-filter-chip")).not.toBeInTheDocument();
+  });
+
+  it("clicking a sortable column header cycles unset → asc → desc → unset", async () => {
     mockedList.mockResolvedValue(listResponse([comp("Alpha")]));
     renderTab();
     await waitFor(() => {
       expect(screen.getAllByTestId("component-row")).toHaveLength(1);
     });
+
+    // The toolbar no longer has a dropdown; the column header is the sort UI.
+    expect(screen.queryByTestId("components-sort")).not.toBeInTheDocument();
+
+    // unset → asc — re-resolve the header on every click since the data-sort-order
+    // attribute changes and we want to assert against the live state.
     mockedList.mockClear();
-
-    // Open the MultiSelect dropdown, then toggle the "critical" checkbox row.
-    await userEvent.click(screen.getByTestId("components-severity-filter"));
-    const critical = await waitFor(() => {
-      const option = screen
-        .getAllByTestId("components-severity-filter-option")
-        .find((el) => el.getAttribute("data-value") === "critical");
-      if (!option) throw new Error("critical option not mounted");
-      return option;
-    });
-    await userEvent.click(critical);
-
+    await userEvent.click(
+      screen.getByTestId("components-sort-header-severity"),
+    );
     await waitFor(() => {
       expect(mockedList).toHaveBeenCalledWith(
         "proj-1",
-        expect.objectContaining({ severity: ["critical"], offset: 0 }),
+        expect.objectContaining({ sort: "severity", order: "asc" }),
+      );
+    });
+    await waitFor(() => {
+      expect(
+        screen
+          .getByTestId("components-sort-header-severity")
+          .getAttribute("data-sort-order"),
+      ).toBe("asc");
+    });
+
+    // asc → desc
+    mockedList.mockClear();
+    await userEvent.click(
+      screen.getByTestId("components-sort-header-severity"),
+    );
+    await waitFor(() => {
+      expect(
+        screen
+          .getByTestId("components-sort-header-severity")
+          .getAttribute("data-sort-order"),
+      ).toBe("desc");
+    });
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalledWith(
+        "proj-1",
+        expect.objectContaining({ sort: "severity", order: "desc" }),
       );
     });
   });
 
-  it("changing the sort key triggers a query with that sort", async () => {
-    mockedList.mockResolvedValue(listResponse([comp("Alpha")]));
+  it("license cell renders SPDX above the policy category badge", async () => {
+    mockedList.mockResolvedValueOnce(
+      listResponse([
+        comp("Alpha", { license: "MIT", license_category: "allowed" }),
+        comp("Bravo", { license: null, license_category: "unknown" }),
+      ]),
+    );
     renderTab();
     await waitFor(() => {
-      expect(screen.getAllByTestId("component-row")).toHaveLength(1);
+      expect(screen.getAllByTestId("license-column-cell")).toHaveLength(2);
     });
-    mockedList.mockClear();
-
-    await userEvent.selectOptions(
-      screen.getByTestId("components-sort"),
-      "severity",
-    );
-
-    await waitFor(() => {
-      expect(mockedList).toHaveBeenCalledWith(
-        "proj-1",
-        expect.objectContaining({ sort: "severity" }),
-      );
-    });
+    const cells = screen.getAllByTestId("license-column-cell");
+    expect(cells[0].getAttribute("data-license-spdx")).toBe("MIT");
+    expect(cells[0].getAttribute("data-license-category")).toBe("allowed");
+    expect(cells[0].textContent).toContain("MIT");
+    // null SPDX renders the localized dash but still keeps the category.
+    expect(cells[1].getAttribute("data-license-spdx")).toBe("");
+    expect(cells[1].getAttribute("data-license-category")).toBe("unknown");
   });
 
   it("clicking a row opens the drawer and fetches the detail", async () => {

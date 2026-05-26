@@ -446,6 +446,7 @@ export function ProjectDetailPage() {
             project={project}
             scanId={pinnedScanId}
             onSelectScan={handleReopenScan}
+            onJumpToComponents={(scan) => handleViewSnapshotComponents(scan.id)}
           />
         </TabsContent>
         <TabsContent value="releases">

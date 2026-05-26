@@ -47,6 +47,14 @@
     "allowed": "Allowed",
     "unknown": "Unknown"
   },
+  "active_filters": {
+    "aria_label": "Active filters",
+    "heading": "Filters:",
+    "severity_chip_label": "Severity: {{value}}",
+    "license_chip_label": "License: {{value}}",
+    "clear_severity_aria": "Remove severity filter {{value}}",
+    "clear_license_aria": "Remove license filter {{value}}"
+  },
   "risk": {
     "critical": "Critical risk",
     "high": "High risk",
@@ -181,8 +189,6 @@
     "toolbar": {
       "search_label": "Search",
       "search_placeholder": "Search by name or purl",
-      "severity_label": "Severity",
-      "license_label": "License",
       "dependency_type_label": "Dependency type",
       "dependency_type": {
         "all": "All",
@@ -194,14 +200,7 @@
         "required": "Required",
         "optional": "Optional",
         "unspecified": "Unspecified"
-      },
-      "sort_label": "Sort by",
-      "sort_by_name": "Name",
-      "sort_by_severity": "Severity",
-      "sort_by_license": "License",
-      "order_label": "Order",
-      "order_asc": "Ascending",
-      "order_desc": "Descending"
+      }
     },
     "empty": {
       "title": "No components match",
@@ -360,7 +359,6 @@
     "toolbar": {
       "search_label": "Search",
       "search_placeholder": "Search by CVE ID or summary",
-      "severity_label": "Severity",
       "status_label": "Status",
       "reachable_label": "Reachability",
       "reachable_any": "Any reachability",
@@ -369,17 +367,6 @@
         "false": "Not reachable",
         "unknown": "Not analyzed"
       },
-      "license_label": "License",
-      "sort_label": "Sort by",
-      "sort_by_severity": "Severity",
-      "sort_by_reachable": "Reachability",
-      "sort_by_cvss": "CVSS",
-      "sort_by_epss": "EPSS",
-      "sort_by_status": "Status",
-      "sort_by_discovered_at": "Discovered",
-      "order_label": "Order",
-      "order_asc": "Ascending",
-      "order_desc": "Descending",
       "report_label": "Report",
       "download_pdf": "Download PDF report",
       "download_pdf_generating": "Generating…"
