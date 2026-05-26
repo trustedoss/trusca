@@ -283,6 +283,10 @@ async def get_project_overview(
     total_components = 0
     last_scan_at: Any = None
     last_succeeded_scan_at: Any = None
+    # #35 Surface B — tri-state: True/False once we know the DT vuln-DB size at
+    # scan time, None when unknown (no succeeded scan, or a scan predating the
+    # capture). None means "no caveat" — we never cry wolf on missing data.
+    vuln_data_available: bool | None = None
     recent: list[Scan] = []
 
     # Anchor the current-state aggregation on the resolved snapshot scan: the
@@ -368,15 +372,30 @@ async def get_project_overview(
         # The succeeded scan may be OLDER than the 5 most-recent attempts in
         # `recent`, so we resolve its created_at directly rather than reading it
         # off `recent[0]`.
-        succeeded_at_stmt = select(Scan.created_at).where(Scan.id == aggregate_scan_id)
-
-        agg_result, recent_result, succeeded_at_result = await asyncio.gather(
-            session.execute(agg_stmt),
-            session.execute(recent_stmt),
-            session.execute(succeeded_at_stmt),
+        # Also read the anchor scan's metadata: it carries the DT vulnerability-DB
+        # size captured AT scan time (#35 Surface B). A succeeded scan that ran
+        # while the DB was empty produces 0 CVEs that mean "no data", not "safe" —
+        # the overview surfaces this so a developer doesn't read an empty Security
+        # axis as a clean bill of health.
+        succeeded_meta_stmt = select(Scan.created_at, Scan.scan_metadata).where(
+            Scan.id == aggregate_scan_id
         )
 
-        last_succeeded_scan_at = succeeded_at_result.scalar_one_or_none()
+        agg_result, recent_result, succeeded_meta_result = await asyncio.gather(
+            session.execute(agg_stmt),
+            session.execute(recent_stmt),
+            session.execute(succeeded_meta_stmt),
+        )
+
+        succeeded_row = succeeded_meta_result.one_or_none()
+        if succeeded_row is not None:
+            last_succeeded_scan_at = succeeded_row.created_at
+            dt_vuln_count = (succeeded_row.scan_metadata or {}).get(
+                "dt_vulnerability_count"
+            )
+            # Absent key (scan predates the capture) → leave None (no caveat).
+            if dt_vuln_count is not None:
+                vuln_data_available = int(dt_vuln_count) > 0
 
         for row in agg_result.all():
             sev_key = _SEVERITY_FROM_RANK.get(int(row.max_sev_rank), "none")
@@ -418,6 +437,7 @@ async def get_project_overview(
         "recent_scans": recent,
         "last_scan_at": last_scan_at,
         "last_succeeded_scan_at": last_succeeded_scan_at,
+        "vuln_data_available": vuln_data_available,
         # Feature #18 Part B — read-only "credential configured?" flag. Never the
         # plaintext / ciphertext, only the boolean derived from the model property.
         "has_git_credential": project.has_git_credential,

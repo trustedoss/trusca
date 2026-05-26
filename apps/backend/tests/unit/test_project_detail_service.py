@@ -295,6 +295,42 @@ async def test_overview_for_project_without_any_scan_returns_empty_distributions
     # Buckets present even if empty (frontend stable bar/donut).
     assert set(overview["severity_distribution"].keys()) >= {"critical", "high", "medium"}
     assert all(v == 0 for v in overview["severity_distribution"].values())
+    # No succeeded scan → vuln-data availability is unknown, never a false caveat.
+    assert overview["vuln_data_available"] is None
+
+
+@pytest.mark.parametrize(
+    ("metadata", "expected"),
+    [
+        # DB empty when this scan ran → 0 CVEs means "no data", not "safe" (#35).
+        ({"dt_vulnerability_count": 0}, False),
+        # DB populated → an empty Security axis is a genuine clean result.
+        ({"dt_vulnerability_count": 43048}, True),
+        # Scan predates the capture (no key) → unknown → no caveat.
+        ({}, None),
+    ],
+)
+async def test_overview_vuln_data_available_from_scan_metadata(
+    db_session: AsyncSession,
+    metadata: dict[str, int],
+    expected: bool | None,
+) -> None:
+    from services.project_detail_service import get_project_overview
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    user = await make_user(db_session)
+    await make_membership(db_session, user=user, team=team, role="developer")
+    project = await make_project(db_session, team=team)
+    scan = await make_scan(db_session, project=project, status="succeeded")
+    scan.scan_metadata = metadata
+    await db_session.commit()
+
+    actor = principal_for(user, team_ids=[team.id], role="developer")
+    overview = await get_project_overview(
+        db_session, project_id=project.id, actor=actor
+    )
+    assert overview["vuln_data_available"] is expected
 
 
 async def test_overview_aggregates_severity_and_license_distributions(

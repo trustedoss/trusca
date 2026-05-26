@@ -59,7 +59,9 @@
       "security": "Security",
       "license": "License",
       "security_counts": "{{critical}} Critical · {{high}} High",
-      "license_counts": "{{forbidden}} Forbidden · {{conditional}} Conditional"
+      "license_counts": "{{forbidden}} Forbidden · {{conditional}} Conditional",
+      "vuln_data_empty_title": "No vulnerability data at scan time",
+      "vuln_data_empty_body": "The vulnerability database was empty when this scan ran, so 0 CVEs means data was missing — not that the project is safe. Re-scan once the NVD mirror has finished loading."
     },
     "risk_gauge": {
       "aria": "Project risk score: {{score}} of 100"

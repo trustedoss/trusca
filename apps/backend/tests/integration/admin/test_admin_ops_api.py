@@ -184,12 +184,18 @@ async def test_dt_status_super_admin_returns_payload(
         "services.admin_dt_service.build_client"
     ) as mock_build:
         mock_breaker.return_value.snapshot.return_value = snapshot
-        # Force a successful version probe.
-        mock_breaker.return_value.call.return_value = {"version": "4.13.2"}
+        # Two breaker.call() invocations now: the version probe, then the #35
+        # vulnerability-DB count probe. A single return_value would hand the
+        # version dict to count_vulnerabilities too (→ DTStatusOut int validation
+        # error), so model each call's result with side_effect.
+        mock_breaker.return_value.call.side_effect = [{"version": "4.13.2"}, 274321]
 
         class _DummyClient:
             def health(self) -> dict[str, str]:
                 return {"version": "4.13.2"}
+
+            def count_vulnerabilities(self) -> int:
+                return 274321
 
             def close(self) -> None:
                 pass

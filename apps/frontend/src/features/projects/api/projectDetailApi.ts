@@ -80,6 +80,13 @@ export interface ProjectOverviewResponse {
    */
   last_succeeded_scan_at: string | null;
   /**
+   * #35 Surface B — whether DT's vulnerability DB held data WHEN the anchored
+   * scan ran. `false` → 0 CVEs means "no data", not "safe" (show a caveat);
+   * `true` → an empty Security axis is a real clean result; `null` → unknown
+   * (no succeeded scan or a scan predating the capture) → show no caveat.
+   */
+  vuln_data_available: boolean | null;
+  /**
    * The requesting user's effective role within this project's owning team.
    * Used (not the global JWT role) to gate team-scoped actions such as
    * vulnerability suppression (BUG-005).

@@ -436,8 +436,23 @@ def _run_pipeline(
             breaker=breaker,
             dt_project_uuid=dt_project_uuid,
         )
+        # #35 Surface B — capture the DT vulnerability-DB size AT scan time so the
+        # Overview can tell "0 CVEs = safe" apart from "0 CVEs = empty DB". Strictly
+        # best-effort: a probe failure (breaker OPEN, DT down, bad header) must
+        # never turn a succeeded scan into a failure, so we swallow everything and
+        # simply omit the metadata (Overview then treats it as unknown → no caveat).
+        dt_vuln_count: int | None = None
+        try:
+            # Coerce inside the guard: a non-int (e.g. a test double) must degrade
+            # to "unknown", never raise onto the scan's success path.
+            dt_vuln_count = int(breaker.call(lambda: dt_client.count_vulnerabilities()))
+        except Exception:
+            log.warning("dt_vuln_count_probe_failed", exc_info=True)
+            dt_vuln_count = None
         with sync_session_scope() as session:
             _persist_findings(session, scan_uuid=scan_uuid, findings=findings)
+            if dt_vuln_count is not None:
+                _record_dt_vuln_count(session, scan_uuid=scan_uuid, count=dt_vuln_count)
             session.commit()
     finally:
         dt_client.close()
@@ -943,6 +958,24 @@ def _record_terminal_failure(scan_uuid: uuid.UUID, message: str) -> None:
         if scan is None:
             return
         _mark_failed(session, scan, message)
+
+
+def _record_dt_vuln_count(
+    session: Session, *, scan_uuid: uuid.UUID, count: int
+) -> None:
+    """Persist the DT vulnerability-DB size seen during this scan into
+    ``scan_metadata['dt_vulnerability_count']`` (#35 Surface B).
+
+    Reassigns the JSONB dict to a fresh object so SQLAlchemy registers the
+    mutation (in-place ``dict`` edits on a plain ``JSONB`` column are not
+    tracked). No-op if the row vanished. The caller owns the commit.
+    """
+    scan = session.get(Scan, scan_uuid)
+    if scan is None:
+        return
+    meta = dict(scan.scan_metadata or {})
+    meta["dt_vulnerability_count"] = int(count)
+    scan.scan_metadata = meta
 
 
 def _mark_succeeded(scan_uuid: uuid.UUID) -> None:

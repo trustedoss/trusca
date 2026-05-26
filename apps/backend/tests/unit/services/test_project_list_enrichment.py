@@ -480,5 +480,7 @@ async def test_overview_last_succeeded_scan_at_null_when_no_succeeded_scan(
     overview = await get_project_overview(db_session, project_id=project.id, actor=actor)
 
     assert overview["last_succeeded_scan_at"] is None
-    # A project with only a failed attempt still surfaces last_scan_at (the attempt).
-    assert overview["last_scan_at"] is None  # only set when a succeeded scan exists
+    # A project with only a failed attempt still surfaces last_scan_at — it tracks
+    # the latest *attempt* (#29), regardless of status. Only last_succeeded_scan_at
+    # gates on a succeeded scan existing.
+    assert overview["last_scan_at"] == failed.created_at

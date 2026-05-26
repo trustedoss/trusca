@@ -59,7 +59,9 @@
       "security": "보안",
       "license": "라이선스",
       "security_counts": "Critical {{critical}} · High {{high}}",
-      "license_counts": "금지 {{forbidden}} · 조건부 {{conditional}}"
+      "license_counts": "금지 {{forbidden}} · 조건부 {{conditional}}",
+      "vuln_data_empty_title": "스캔 시점에 취약점 데이터 없음",
+      "vuln_data_empty_body": "이 스캔이 실행될 때 취약점 데이터베이스가 비어 있었습니다. 따라서 CVE 0건은 안전을 의미하지 않고 데이터가 없었다는 뜻입니다. NVD 미러 적재가 끝난 뒤 다시 스캔하세요."
     },
     "risk_gauge": {
       "aria": "프로젝트 리스크 점수: 100점 만점에 {{score}}점"

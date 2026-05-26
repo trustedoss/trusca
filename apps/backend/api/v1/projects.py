@@ -419,6 +419,7 @@ async def get_project_overview_endpoint(
         recent_scans=[ScanSummary.model_validate(s) for s in payload["recent_scans"]],
         last_scan_at=payload["last_scan_at"],
         last_succeeded_scan_at=payload["last_succeeded_scan_at"],
+        vuln_data_available=payload["vuln_data_available"],
         has_git_credential=payload["has_git_credential"],
         current_user_role=payload["current_user_role"],
     )

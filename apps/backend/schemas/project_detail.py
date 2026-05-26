@@ -149,6 +149,18 @@ class ProjectOverviewResponse(BaseModel):
             "downloaded; the two differ whenever the latest attempt failed."
         ),
     )
+    vuln_data_available: bool | None = Field(
+        default=None,
+        description=(
+            "#35 Surface B — whether the DT vulnerability database held any data "
+            "WHEN the anchored scan ran (captured in scan_metadata at scan time). "
+            "True = the DB was populated, so an empty Security axis is a real "
+            "clean result. False = the DB was empty, so 0 CVEs means 'no data', "
+            "NOT 'safe' — the UI shows a caveat prompting a rescan once the NVD "
+            "mirror finishes. None = unknown (no succeeded scan, or a scan that "
+            "predates this capture); the UI shows no caveat (never cry wolf)."
+        ),
+    )
     has_git_credential: bool = Field(
         default=False,
         description=(

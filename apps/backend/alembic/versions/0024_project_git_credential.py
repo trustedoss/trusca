@@ -1,4 +1,4 @@
-"""projects.git_credential_encrypted column — feature #18 Part B (private-repo scanning, schema half)
+"""projects.git_credential_encrypted column — feature #18 Part B (private-repo scanning)
 
 Revision ID: 0024
 Revises: 0023

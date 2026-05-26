@@ -1,3 +1,4 @@
+import { AlertTriangle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -100,13 +101,33 @@ export function OverviewTab({ projectId, onSelectScan, scanId }: OverviewTabProp
             })}
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex justify-center pt-0">
+        <CardContent className="flex flex-col gap-3 pt-0">
           <RiskAxes
             securityScore={data.security_score}
             licenseScore={data.license_score}
             severityDistribution={data.severity_distribution}
             licenseDistribution={data.license_distribution}
           />
+          {/* #35 Surface B — an empty Security axis is ambiguous when the vuln DB
+              was empty at scan time: 0 CVEs may mean "no data", not "safe". */}
+          {data.total_components > 0 &&
+          data.security_score === 0 &&
+          data.vuln_data_available === false ? (
+            <Alert
+              className="border-amber-300 bg-amber-50 text-amber-900"
+              data-testid="overview-vuln-data-unavailable"
+            >
+              <AlertTriangle className="h-4 w-4" aria-hidden />
+              <AlertDescription>
+                <span className="font-semibold">
+                  {t("overview.risk_card.vuln_data_empty_title")}
+                </span>
+                <span className="mt-1 block">
+                  {t("overview.risk_card.vuln_data_empty_body")}
+                </span>
+              </AlertDescription>
+            </Alert>
+          ) : null}
         </CardContent>
       </Card>
 

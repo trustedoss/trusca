@@ -138,6 +138,7 @@ function overview(
     recent_scans: [],
     last_scan_at: null,
     last_succeeded_scan_at: null,
+    vuln_data_available: true,
     current_user_role: "developer",
     has_git_credential: false,
     ...overrides,

@@ -39,6 +39,7 @@ function overview(
     recent_scans: [],
     last_scan_at: null,
     last_succeeded_scan_at: null,
+    vuln_data_available: true,
     current_user_role: "developer",
     has_git_credential: false,
     ...overrides,
@@ -92,6 +93,59 @@ describe("OverviewTab", () => {
       "data-score",
       "30",
     );
+  });
+
+  it("warns when the vuln DB was empty at scan time and Security is 0 (#35 Surface B)", async () => {
+    mockedGet.mockResolvedValueOnce(
+      overview({
+        total_components: 12,
+        severity_distribution: {},
+        security_score: 0,
+        vuln_data_available: false,
+      }),
+    );
+    renderTab();
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("overview-vuln-data-unavailable"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("shows NO caveat when vuln data was available, even with Security 0", async () => {
+    mockedGet.mockResolvedValueOnce(
+      overview({
+        total_components: 12,
+        severity_distribution: {},
+        security_score: 0,
+        vuln_data_available: true,
+      }),
+    );
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getByTestId("overview-tab")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByTestId("overview-vuln-data-unavailable"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows NO caveat when availability is unknown (null)", async () => {
+    mockedGet.mockResolvedValueOnce(
+      overview({
+        total_components: 12,
+        severity_distribution: {},
+        security_score: 0,
+        vuln_data_available: null,
+      }),
+    );
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getByTestId("overview-tab")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByTestId("overview-vuln-data-unavailable"),
+    ).not.toBeInTheDocument();
   });
 
   it("renders an RFC 7807 problem error", async () => {
