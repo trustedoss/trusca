@@ -6,7 +6,8 @@
     "high": "High",
     "medium": "Medium",
     "low": "Low",
-    "info": "Info"
+    "info": "Info",
+    "card_aria": "{{label}}: {{count}} — view projects"
   },
   "portfolio": {
     "title": "Portfolio",

@@ -86,29 +86,46 @@ function SeverityCard({
   text: string;
 }) {
   const { t } = useTranslation("dashboard");
+  // P2 #4 — Severity tiles deep-link to the projects list. There is no
+  // cross-project vuln aggregation view yet, so we route to `/projects`
+  // where the user can scan the per-project severity columns. The card is
+  // always clickable (uniform affordance); when `count === 0` the link is
+  // still useful — "no Critical CVEs anywhere — confirm in the list".
   return (
-    <Card
-      className="p-3"
-      data-testid="dashboard-severity-card"
+    <Link
+      to="/projects"
+      className="rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      data-testid="dashboard-severity-card-link"
       data-severity={severityKey}
-      data-count={count}
+      aria-label={t("severity.card_aria", {
+        defaultValue: "{{label}}: {{count}} — view projects",
+        label: t(`severity.${severityKey}`),
+        count,
+      })}
     >
-      <div className="flex items-center gap-2">
-        <span
-          aria-hidden
-          className={cn("inline-block h-2 w-2 rounded-full", dot)}
-        />
-        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          {t(`severity.${severityKey}`)}
-        </span>
-      </div>
-      <div
-        className={cn("mt-1 text-2xl font-semibold tabular-nums", text)}
-        data-testid="dashboard-severity-count"
+      <Card
+        className="p-3 transition-colors hover:bg-accent"
+        data-testid="dashboard-severity-card"
+        data-severity={severityKey}
+        data-count={count}
       >
-        {count}
-      </div>
-    </Card>
+        <div className="flex items-center gap-2">
+          <span
+            aria-hidden
+            className={cn("inline-block h-2 w-2 rounded-full", dot)}
+          />
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {t(`severity.${severityKey}`)}
+          </span>
+        </div>
+        <div
+          className={cn("mt-1 text-2xl font-semibold tabular-nums", text)}
+          data-testid="dashboard-severity-count"
+        >
+          {count}
+        </div>
+      </Card>
+    </Link>
   );
 }
 
@@ -117,14 +134,29 @@ function StatCard({
   value,
   testid,
   emphasis = false,
+  to,
 }: {
   label: string;
   value: number;
   testid: string;
   emphasis?: boolean;
+  /**
+   * P2 #4 — when set, the card becomes a Link to the matching deep-link
+   * destination (e.g. `/projects` for "Projects", `/scans?status=running`
+   * for the Running scan-status counter). Omit to render a non-clickable
+   * stat card unchanged.
+   */
+  to?: string;
 }) {
-  return (
-    <Card className="p-3" data-testid={testid} data-count={value}>
+  const body = (
+    <Card
+      className={cn(
+        "h-full p-3",
+        to ? "transition-colors hover:bg-accent" : undefined,
+      )}
+      data-testid={testid}
+      data-count={value}
+    >
       <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
         {label}
       </div>
@@ -138,6 +170,17 @@ function StatCard({
         {value}
       </div>
     </Card>
+  );
+  if (!to) return body;
+  return (
+    <Link
+      to={to}
+      className="rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      data-testid={`${testid}-link`}
+      aria-label={`${label}: ${value}`}
+    >
+      {body}
+    </Link>
   );
 }
 
@@ -376,6 +419,7 @@ export function DashboardPage() {
                   label={t("portfolio.projects")}
                   value={data.project_count}
                   testid="dashboard-project-count"
+                  to="/projects"
                 />
                 {SCAN_STATUS_ORDER.map((status) => (
                   <StatCard
@@ -384,6 +428,7 @@ export function DashboardPage() {
                     value={data.scan_status_counts[status]}
                     testid={`dashboard-scan-status-${status}`}
                     emphasis={status === "failed"}
+                    to={`/scans?status=${status}`}
                   />
                 ))}
                 <Link
