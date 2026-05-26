@@ -344,8 +344,13 @@ async def test_overview_aggregates_severity_and_license_distributions(
     assert overview["license_distribution"]["forbidden"] == 1
     assert overview["license_distribution"]["allowed"] == 1
     assert overview["license_distribution"]["unknown"] == 1
-    # 1 critical (15) + 1 high (5) + 1 forbidden (30) + 0 conditional = 50
-    assert overview["risk_score"] == 50.0
+    # Two non-saturating axes (services.risk_score):
+    #   Security: 1 critical → band 75–100, n=1 → 75 + 25·(1/5) = 80.0
+    #   License:  1 forbidden → band 75–100, n=1 → 80.0
+    #   Overall = max(security, license) = 80.0
+    assert overview["security_score"] == 80.0
+    assert overview["license_score"] == 80.0
+    assert overview["risk_score"] == 80.0
     assert overview["last_scan_at"] is not None
     # recent_scans present (we created exactly one).
     assert len(overview["recent_scans"]) == 1
@@ -758,7 +763,10 @@ async def test_component_detail_returns_drawer_payload_with_vulns(
     team, user, project, scan = await _make_project_with_scan(db_session)
     actor = principal_for(user, team_ids=[team.id], role="developer")
 
-    _, cv = await _make_component_version(db_session, name="foo")
+    # Unique name so a re-run against the persistent dev DB does not collide on
+    # uq_components_purl (cross-suite isolation — see MEMORY note; the neighbour
+    # drawer tests already do this).
+    _, cv = await _make_component_version(db_session, name=f"drawer-vulns-{unique_suffix()}")
     await _attach_to_scan(db_session, scan_id=scan.id, cv_id=cv.id)
 
     crit_v = await _make_vulnerability(

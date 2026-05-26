@@ -33,10 +33,14 @@ function overview(
     total_components: 12,
     severity_distribution: { critical: 1, high: 2, medium: 3, low: 6 },
     license_distribution: { forbidden: 1, allowed: 11 },
-    risk_score: 42,
+    risk_score: 80,
+    security_score: 80,
+    license_score: 30,
     recent_scans: [],
     last_scan_at: null,
+    last_succeeded_scan_at: null,
     current_user_role: "developer",
+    has_git_credential: false,
     ...overrides,
   };
 }
@@ -78,7 +82,16 @@ describe("OverviewTab", () => {
     expect(
       screen.getByTestId("overview-recent-scans-card"),
     ).toBeInTheDocument();
-    expect(screen.getByTestId("risk-gauge-value").textContent).toContain("42");
+    // Risk is now two separate axes (Security / License), not one composite.
+    expect(screen.getByTestId("risk-axes")).toBeInTheDocument();
+    expect(screen.getByTestId("risk-axis-security")).toHaveAttribute(
+      "data-score",
+      "80",
+    );
+    expect(screen.getByTestId("risk-axis-license")).toHaveAttribute(
+      "data-score",
+      "30",
+    );
   });
 
   it("renders an RFC 7807 problem error", async () => {

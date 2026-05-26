@@ -53,7 +53,7 @@ describe("ResetPasswordPage", () => {
     );
   });
 
-  it("blocks submit when password is shorter than 12 chars", async () => {
+  it("blocks submit when password is shorter than 8 chars", async () => {
     const user = userEvent.setup();
     renderReset("/reset-password?token=abcd1234");
 
@@ -64,7 +64,7 @@ describe("ResetPasswordPage", () => {
     // The form-level error message is rendered inside the FormMessage <p>
     // tag with a destructive-text class. We look for that exact copy.
     expect(
-      await screen.findByText("Password must be at least 12 characters."),
+      await screen.findByText("Password must be at least 8 characters."),
     ).toBeInTheDocument();
     expect(mockedPostReset).not.toHaveBeenCalled();
   });

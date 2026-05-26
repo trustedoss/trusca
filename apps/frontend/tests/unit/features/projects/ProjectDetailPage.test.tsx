@@ -8,8 +8,21 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type React from "react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useSearchParams,
+} from "react-router-dom";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 import type {
   ProjectOverviewResponse,
@@ -31,6 +44,13 @@ vi.mock("@/features/projects/api/projectDetailApi", async () => {
     getProjectOverview: vi.fn(),
     listProjectComponents: vi.fn(),
     getComponent: vi.fn(),
+    getGateResult: vi.fn(),
+  };
+});
+
+vi.mock("@/features/projects/api/releasesApi", async () => {
+  return {
+    listProjectReleases: vi.fn(),
   };
 });
 
@@ -52,13 +72,34 @@ vi.mock("react-virtuoso", () => ({
 
 import { getProject } from "@/lib/projectsApi";
 import {
+  getGateResult,
   getProjectOverview,
   listProjectComponents,
 } from "@/features/projects/api/projectDetailApi";
+import { listProjectReleases } from "@/features/projects/api/releasesApi";
+import type { ReleaseSnapshot } from "@/features/projects/api/releasesApi";
 
 const mockedGetProject = vi.mocked(getProject);
 const mockedOverview = vi.mocked(getProjectOverview);
 const mockedListComponents = vi.mocked(listProjectComponents);
+const mockedGateResult = vi.mocked(getGateResult);
+const mockedListReleases = vi.mocked(listProjectReleases);
+
+function release(
+  scanId: string,
+  overrides: Partial<ReleaseSnapshot> = {},
+): ReleaseSnapshot {
+  return {
+    scan_id: scanId,
+    release: null,
+    created_at: "2026-05-22T10:00:00Z",
+    risk_score: 80,
+    severity_summary: { critical: 10, high: 0, medium: 0, low: 0 },
+    gate_status: "fail",
+    component_count: 42,
+    ...overrides,
+  };
+}
 
 function project(overrides: Partial<ProjectPublic> = {}): ProjectPublic {
   return {
@@ -73,6 +114,9 @@ function project(overrides: Partial<ProjectPublic> = {}): ProjectPublic {
     archived_at: null,
     created_by_user_id: null,
     latest_scan_id: null,
+    latest_scan_status: null,
+    severity_summary: null,
+    has_git_credential: false,
     created_at: "2026-05-01T00:00:00Z",
     updated_at: "2026-05-01T00:00:00Z",
     ...overrides,
@@ -88,12 +132,27 @@ function overview(
     total_components: 5,
     severity_distribution: { critical: 1, high: 1 },
     license_distribution: { allowed: 4, forbidden: 1 },
-    risk_score: 60,
+    risk_score: 80,
+    security_score: 80,
+    license_score: 80,
     recent_scans: [],
     last_scan_at: null,
+    last_succeeded_scan_at: null,
     current_user_role: "developer",
+    has_git_credential: false,
     ...overrides,
   };
+}
+
+/**
+ * Mirrors the live `?scan=` param into a testid so a test can assert the URL
+ * the switcher / banner write without reaching into router internals.
+ */
+function ScanParamProbe() {
+  const [params] = useSearchParams();
+  return (
+    <span data-testid="scan-param-probe">{params.get("scan") ?? ""}</span>
+  );
 }
 
 function renderPage(initialPath = "/projects/proj-1") {
@@ -104,7 +163,15 @@ function renderPage(initialPath = "/projects/proj-1") {
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[initialPath]}>
         <Routes>
-          <Route path="/projects/:id" element={<ProjectDetailPage />} />
+          <Route
+            path="/projects/:id"
+            element={
+              <>
+                <ProjectDetailPage />
+                <ScanParamProbe />
+              </>
+            }
+          />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -112,15 +179,54 @@ function renderPage(initialPath = "/projects/proj-1") {
 }
 
 describe("ProjectDetailPage", () => {
+  beforeAll(() => {
+    // Radix DropdownMenu (the header release switcher) needs these DOM APIs
+    // that jsdom omits.
+    if (!Element.prototype.hasPointerCapture) {
+      Element.prototype.hasPointerCapture = () => false;
+    }
+    if (!Element.prototype.setPointerCapture) {
+      Element.prototype.setPointerCapture = () => {};
+    }
+    if (!Element.prototype.releasePointerCapture) {
+      Element.prototype.releasePointerCapture = () => {};
+    }
+    if (!Element.prototype.scrollIntoView) {
+      Element.prototype.scrollIntoView = () => {};
+    }
+  });
   beforeEach(() => {
     mockedGetProject.mockReset();
     mockedOverview.mockReset();
     mockedListComponents.mockReset();
+    mockedGateResult.mockReset();
+    mockedListReleases.mockReset();
     mockedListComponents.mockResolvedValue({
       items: [],
       total: 0,
       limit: 100,
       offset: 0,
+    });
+    // Default: two releases, newest-first. scan-latest is the live snapshot.
+    mockedListReleases.mockResolvedValue({
+      items: [
+        release("scan-latest", { release: "v2.0.0" }),
+        release("scan-old", { release: "v1.0.0" }),
+      ],
+      total: 2,
+      page: 1,
+      size: 50,
+    });
+    mockedGateResult.mockResolvedValue({
+      gate: "fail",
+      reason: null,
+      critical_cve_count: 10,
+      forbidden_license_count: 0,
+      epss_gate_count: 0,
+      epss_threshold: null,
+      project_id: "proj-1",
+      scan_id: "scan-latest",
+      evaluated_at: "2026-05-22T10:00:00Z",
     });
   });
   afterEach(() => {
@@ -216,6 +322,154 @@ describe("ProjectDetailPage", () => {
       expect(
         screen.getByTestId("project-detail-risk-badge"),
       ).toBeInTheDocument();
+    });
+  });
+
+  it("renders the Releases tab trigger and switches to it", async () => {
+    mockedGetProject.mockResolvedValueOnce(project());
+    mockedOverview.mockResolvedValue(overview());
+    renderPage();
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("project-detail-tab-releases"),
+      ).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByTestId("project-detail-tab-releases"));
+    await waitFor(() => {
+      expect(screen.getByTestId("releases-tab")).toBeInTheDocument();
+    });
+  });
+
+  it("shows no historical banner when ?scan= equals the latest succeeded id", async () => {
+    mockedGetProject.mockResolvedValue(project());
+    mockedOverview.mockResolvedValue(overview());
+    renderPage("/projects/proj-1?scan=scan-latest");
+    await waitFor(() => {
+      expect(screen.getByTestId("overview-tab")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("snapshot-banner")).not.toBeInTheDocument();
+  });
+
+  it("shows the historical banner when ?scan= is an older snapshot", async () => {
+    mockedGetProject.mockResolvedValue(project());
+    mockedOverview.mockResolvedValue(overview());
+    renderPage("/projects/proj-1?scan=scan-old");
+    await waitFor(() => {
+      expect(screen.getByTestId("snapshot-banner")).toBeInTheDocument();
+    });
+    // The banner names the snapshot (release label from the releases list).
+    expect(screen.getByTestId("snapshot-banner").textContent).toContain(
+      "v1.0.0",
+    );
+  });
+
+  it("'Back to latest' clears ?scan= and removes the banner", async () => {
+    mockedGetProject.mockResolvedValue(project());
+    mockedOverview.mockResolvedValue(overview());
+    renderPage("/projects/proj-1?scan=scan-old");
+    await waitFor(() => {
+      expect(screen.getByTestId("snapshot-exit")).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByTestId("snapshot-exit"));
+    await waitFor(() => {
+      expect(screen.queryByTestId("snapshot-banner")).not.toBeInTheDocument();
+    });
+  });
+
+  it("disables vulnerability write controls in historical mode", async () => {
+    mockedGetProject.mockResolvedValue(project());
+    mockedOverview.mockResolvedValue(overview());
+    renderPage("/projects/proj-1?scan=scan-old&tab=vulnerabilities");
+    await waitFor(() => {
+      expect(screen.getByTestId("snapshot-banner")).toBeInTheDocument();
+    });
+    // VEX import button on the Vulnerabilities toolbar is read-only-gated.
+    await waitFor(() => {
+      expect(screen.getByTestId("vex-import-open")).toBeInTheDocument();
+    });
+    const importBtn = screen.getByTestId("vex-import-open");
+    expect(importBtn).toBeDisabled();
+    expect(importBtn).toHaveAttribute("data-readonly-gated", "true");
+  });
+
+  it("keeps the header Scan button enabled in historical mode", async () => {
+    mockedGetProject.mockResolvedValue(project());
+    mockedOverview.mockResolvedValue(overview());
+    renderPage("/projects/proj-1?scan=scan-old");
+    await waitFor(() => {
+      expect(screen.getByTestId("snapshot-banner")).toBeInTheDocument();
+    });
+    // Starting a new scan is always allowed, even when viewing an old snapshot.
+    expect(screen.getByTestId("project-detail-scan")).toBeEnabled();
+  });
+
+  it("renders the header release switcher with the latest context label", async () => {
+    mockedGetProject.mockResolvedValue(project());
+    mockedOverview.mockResolvedValue(overview());
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByTestId("release-switcher")).toBeInTheDocument();
+    });
+    // Live view → "Latest" context, not read-only.
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("release-switcher-label").textContent,
+      ).toContain("v2.0.0");
+    });
+    expect(
+      screen.getByTestId("release-switcher-label").textContent,
+    ).toContain("Latest");
+    expect(screen.getByTestId("release-switcher")).toHaveAttribute(
+      "data-historical",
+      "false",
+    );
+  });
+
+  it("selecting a release in the header switcher pins ?scan= and shows the banner", async () => {
+    mockedGetProject.mockResolvedValue(project());
+    mockedOverview.mockResolvedValue(overview());
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByTestId("release-switcher")).toBeEnabled();
+    });
+    await userEvent.click(screen.getByTestId("release-switcher"));
+    await waitFor(() => {
+      expect(screen.getAllByTestId("release-switcher-item").length).toBe(2);
+    });
+    const old = screen
+      .getAllByTestId("release-switcher-item")
+      .find((el) => el.getAttribute("data-scan-id") === "scan-old");
+    await userEvent.click(old as HTMLElement);
+
+    // URL re-anchored to the older snapshot + the read-only banner appears.
+    await waitFor(() => {
+      expect(screen.getByTestId("scan-param-probe").textContent).toBe(
+        "scan-old",
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("snapshot-banner")).toBeInTheDocument();
+    });
+  });
+
+  it("selecting 'Latest' in the header switcher clears ?scan= and the banner", async () => {
+    mockedGetProject.mockResolvedValue(project());
+    mockedOverview.mockResolvedValue(overview());
+    renderPage("/projects/proj-1?scan=scan-old");
+    await waitFor(() => {
+      expect(screen.getByTestId("snapshot-banner")).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByTestId("release-switcher"));
+    await waitFor(() => {
+      expect(screen.getByTestId("release-switcher-latest")).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByTestId("release-switcher-latest"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("scan-param-probe").textContent).toBe("");
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId("snapshot-banner")).not.toBeInTheDocument();
     });
   });
 });

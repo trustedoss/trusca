@@ -43,6 +43,13 @@ const config: Config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        // popover: the CSS vars (--popover / --popover-foreground) exist in
+        // index.css but were never mapped here, so `bg-popover` resolved to
+        // nothing and the DropdownMenu (release switcher) rendered transparent.
+        popover: {
+          DEFAULT: "hsl(var(--popover))",
+          foreground: "hsl(var(--popover-foreground))",
+        },
         // Risk severity tokens (CLAUDE.md "디자인 시스템")
         risk: {
           critical: "var(--risk-critical)",

@@ -30,6 +30,12 @@ export interface ComponentsQueryFilters {
   sort: ComponentSortKey;
   order: SortOrder;
   pageSize: number;
+  /**
+   * Pin the list to a specific succeeded scan (feature #28 snapshot anchoring).
+   * `undefined` → latest succeeded scan. Part of the cache key so flipping the
+   * pinned snapshot refetches from offset 0.
+   */
+  scanId?: string;
 }
 
 export function componentsKey(
@@ -49,6 +55,7 @@ export function componentsKey(
       sort: filters.sort,
       order: filters.order,
       pageSize: filters.pageSize,
+      scanId: filters.scanId ?? null,
     },
   ] as const;
 }
@@ -72,6 +79,7 @@ export function useComponents(
           : undefined,
         sort: filters.sort,
         order: filters.order,
+        scanId: filters.scanId,
       }),
     getNextPageParam: (lastPage) => {
       const consumed = lastPage.offset + lastPage.items.length;

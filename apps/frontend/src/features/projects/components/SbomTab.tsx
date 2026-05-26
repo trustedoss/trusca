@@ -29,8 +29,19 @@ import { downloadSbom, type SbomFormat } from "@/lib/projectsApi";
 
 interface SbomTabProps {
   projectId: string;
-  /** Latest scan timestamp (ISO-8601). Optional; rendered when present. */
+  /**
+   * Timestamp of the latest *succeeded* scan (ISO-8601) — the scan the SBOM is
+   * actually exported from. Optional; rendered when present, otherwise the
+   * "no scan yet" empty state shows. Callers pass `last_succeeded_scan_at`
+   * (NOT `last_scan_at`, which may be a failed attempt) so the label matches
+   * the downloaded artifact.
+   */
   lastScanAt?: string | null;
+  /**
+   * Pinned snapshot scan id (feature #28). When set, downloads export that
+   * historical scan's SBOM instead of the latest succeeded one. Omit → latest.
+   */
+  scanId?: string;
 }
 
 interface SbomFormatRow {
@@ -45,7 +56,7 @@ const FORMATS: SbomFormatRow[] = [
   { format: "spdx-tv", testIdSuffix: "spdx-tv" },
 ];
 
-export function SbomTab({ projectId, lastScanAt }: SbomTabProps) {
+export function SbomTab({ projectId, lastScanAt, scanId }: SbomTabProps) {
   const { t, i18n } = useTranslation("project_detail");
   const [busyFormat, setBusyFormat] = useState<SbomFormat | null>(null);
   const [error, setError] = useState<{
@@ -58,7 +69,7 @@ export function SbomTab({ projectId, lastScanAt }: SbomTabProps) {
       setBusyFormat(format);
       setError(null);
       try {
-        const result = await downloadSbom(projectId, format);
+        const result = await downloadSbom(projectId, format, { scanId });
         triggerBlobDownload(result.blob, result.filename);
       } catch (err) {
         const message =
@@ -72,7 +83,7 @@ export function SbomTab({ projectId, lastScanAt }: SbomTabProps) {
         setBusyFormat(null);
       }
     },
-    [projectId, t],
+    [projectId, scanId, t],
   );
 
   const lastScanLabel = lastScanAt

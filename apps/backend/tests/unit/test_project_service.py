@@ -487,6 +487,226 @@ async def test_update_project_clears_optional_field_when_set_to_none(
 
 
 # ---------------------------------------------------------------------------
+# update_project — git credential (feature #18 Part B)
+# ---------------------------------------------------------------------------
+
+
+async def test_update_project_sets_git_credential_as_ciphertext(
+    db_session: AsyncSession,
+) -> None:
+    """Setting git_credential stores a Fernet ciphertext (NOT the plaintext) and
+    decrypt_secret recovers it; has_git_credential becomes True; no response
+    field leaks the secret."""
+    from core.crypto import decrypt_secret
+    from schemas.scan import ProjectPublic, ProjectUpdate
+    from services.project_service import update_project
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    project = await make_project(db_session, team=team)
+    admin = await make_user(db_session)
+    await make_membership(db_session, user=admin, team=team, role="team_admin")
+    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+
+    plaintext = "ghp_super_secret_pat_value_123"
+    updated = await update_project(
+        db_session,
+        project_id=project.id,
+        payload=ProjectUpdate(git_credential=plaintext),
+        actor=actor,
+    )
+
+    # Column holds ciphertext, never the plaintext.
+    assert updated.git_credential_encrypted is not None
+    assert updated.git_credential_encrypted != plaintext
+    assert plaintext not in updated.git_credential_encrypted
+    # ...and it round-trips back to the plaintext.
+    assert decrypt_secret(updated.git_credential_encrypted) == plaintext
+    # The model property + the public read model report "configured".
+    assert updated.has_git_credential is True
+
+    public = ProjectPublic.model_validate(updated)
+    assert public.has_git_credential is True
+    dumped = public.model_dump()
+    # The response NEVER carries the plaintext or the ciphertext.
+    assert "git_credential" not in dumped
+    assert "git_credential_encrypted" not in dumped
+    assert plaintext not in str(dumped)
+    assert updated.git_credential_encrypted not in str(dumped)
+
+
+async def test_update_project_clears_git_credential(
+    db_session: AsyncSession,
+) -> None:
+    """clear_git_credential=true sets the column back to NULL; has_git_credential
+    becomes False."""
+    from schemas.scan import ProjectUpdate
+    from services.project_service import update_project
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    project = await make_project(db_session, team=team)
+    admin = await make_user(db_session)
+    await make_membership(db_session, user=admin, team=team, role="team_admin")
+    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+
+    # Arrange: a credential is set.
+    await update_project(
+        db_session,
+        project_id=project.id,
+        payload=ProjectUpdate(git_credential="ghp_to_be_removed"),
+        actor=actor,
+    )
+
+    cleared = await update_project(
+        db_session,
+        project_id=project.id,
+        payload=ProjectUpdate(clear_git_credential=True),
+        actor=actor,
+    )
+    assert cleared.git_credential_encrypted is None
+    assert cleared.has_git_credential is False
+
+
+async def test_update_project_blank_credential_is_a_noop(
+    db_session: AsyncSession,
+) -> None:
+    """A blank git_credential (and no clear flag) leaves the column unchanged."""
+    from schemas.scan import ProjectUpdate
+    from services.project_service import update_project
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    project = await make_project(db_session, team=team)
+    admin = await make_user(db_session)
+    await make_membership(db_session, user=admin, team=team, role="team_admin")
+    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+
+    # Set one first.
+    await update_project(
+        db_session,
+        project_id=project.id,
+        payload=ProjectUpdate(git_credential="ghp_keep_me"),
+        actor=actor,
+    )
+
+    # A blank credential without clear must NOT wipe it.
+    same = await update_project(
+        db_session,
+        project_id=project.id,
+        payload=ProjectUpdate(git_credential="", name="renamed-x"),
+        actor=actor,
+    )
+    assert same.has_git_credential is True
+    assert same.name == "renamed-x"
+
+
+async def test_update_project_credential_developer_is_forbidden(
+    db_session: AsyncSession,
+) -> None:
+    """A developer (non-admin) cannot set the credential — role gate (403)."""
+    from schemas.scan import ProjectUpdate
+    from services.project_service import ProjectForbidden, update_project
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    project = await make_project(db_session, team=team)
+    user = await make_user(db_session)
+    await make_membership(db_session, user=user, team=team, role="developer")
+    actor = principal_for(user, team_ids=[team.id], role="developer")
+
+    with pytest.raises(ProjectForbidden):
+        await update_project(
+            db_session,
+            project_id=project.id,
+            payload=ProjectUpdate(git_credential="ghp_x"),
+            actor=actor,
+        )
+    # And the column was never written.
+    await db_session.refresh(project)
+    assert project.git_credential_encrypted is None
+
+
+async def test_update_project_credential_outsider_cannot_set_other_team(
+    db_session: AsyncSession,
+) -> None:
+    """A non-member (even team_admin elsewhere) cannot set another team's
+    credential — cross-team escalation guard (P0)."""
+    from schemas.scan import ProjectUpdate
+    from services.project_service import ProjectForbidden, update_project
+
+    org = await make_organization(db_session)
+    target_team = await make_team(db_session, organization=org)
+    other_team = await make_team(db_session, organization=org)
+    project = await make_project(db_session, team=target_team)
+
+    user = await make_user(db_session)
+    await make_membership(db_session, user=user, team=other_team, role="team_admin")
+    actor = principal_for(
+        user,
+        team_ids=[other_team.id],
+        role="team_admin",
+        team_roles={other_team.id: "team_admin"},
+    )
+
+    with pytest.raises(ProjectForbidden):
+        await update_project(
+            db_session,
+            project_id=project.id,
+            payload=ProjectUpdate(git_credential="ghp_cross_team"),
+            actor=actor,
+        )
+    await db_session.refresh(project)
+    assert project.git_credential_encrypted is None
+
+
+async def test_update_project_credential_masked_in_audit_diff(
+    db_session: AsyncSession,
+) -> None:
+    """The audit_logs diff for a credential change masks the ciphertext (***)."""
+    from schemas.scan import ProjectUpdate
+    from services.project_service import update_project
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    project = await make_project(db_session, team=team)
+    admin = await make_user(db_session)
+    await make_membership(db_session, user=admin, team=team, role="team_admin")
+    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+
+    plaintext = "ghp_audit_secret_value"
+    updated = await update_project(
+        db_session,
+        project_id=project.id,
+        payload=ProjectUpdate(git_credential=plaintext),
+        actor=actor,
+    )
+    ciphertext = updated.git_credential_encrypted
+    assert ciphertext is not None
+
+    rows = (
+        await db_session.execute(
+            text(
+                "SELECT diff FROM audit_logs "
+                "WHERE target_table = 'projects' AND target_id = :pid "
+                "  AND action = 'update'"
+            ),
+            {"pid": str(project.id)},
+        )
+    ).all()
+    assert rows, "expected an update audit row for the credential change"
+    # No audit diff may carry the plaintext or the ciphertext; when the column is
+    # present in a diff it must be masked to '***'.
+    for row in rows:
+        diff = row.diff or {}
+        serialized = str(diff)
+        assert plaintext not in serialized
+        assert ciphertext not in serialized
+        if "git_credential_encrypted" in diff:
+            assert diff["git_credential_encrypted"] == "***"
+
+
+# ---------------------------------------------------------------------------
 # archive_project
 # ---------------------------------------------------------------------------
 

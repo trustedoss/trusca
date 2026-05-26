@@ -34,8 +34,12 @@ Performance
 - Component list emits 2 statements (count + items) executed concurrently
   via ``asyncio.gather`` so the round-trip cost is one RTT, not two.
 - The aggregation queries always anchor on ``scan_components.scan_id =
-  project.latest_scan_id``; existing index ``ix_scan_components_scan_id``
-  covers the join.
+  <latest succeeded scan>`` (resolved once per request via
+  :func:`services.scan_resolution.latest_succeeded_scan_id` — NOT the
+  ``project.latest_scan_id`` pointer, which tracks the last *attempted* scan and
+  would otherwise blank the whole tab whenever the most recent attempt failed,
+  contradicting the build gate). Existing index ``ix_scan_components_scan_id``
+  covers the join; ``ix_scans_project_created_at`` covers the resolver.
 """
 
 from __future__ import annotations
@@ -63,11 +67,13 @@ from models import (
 from models import (
     License as LicenseModel,
 )
+from services import risk_score
 from services.project_service import (
     ProjectError,
     ProjectForbidden,
     ProjectNotFound,
 )
+from services.scan_resolution import resolve_snapshot_scan_id
 
 log = structlog.get_logger("project_detail.service")
 
@@ -128,10 +134,8 @@ _LICENSE_CATEGORY_FROM_RANK: dict[int, str] = {
 _ALL_SEVERITY_KEYS = ("critical", "high", "medium", "low", "info", "none")
 _ALL_LICENSE_KEYS = ("forbidden", "conditional", "allowed", "unknown")
 
-# Risk-score weights. Tunable via the formula in the schema docstring.
-_RISK_WEIGHTS_SEVERITY = {"critical": 15, "high": 5, "medium": 1, "low": 0, "info": 0, "none": 0}
-_RISK_WEIGHTS_LICENSE = {"forbidden": 30, "conditional": 5, "allowed": 0, "unknown": 0}
-_RISK_SCORE_CAP = 100.0
+# Risk scoring (security / license axes + overall) lives in `services.risk_score`
+# — the single source of truth shared with release snapshots and project diff.
 
 # Component list pagination + sort caps.
 _LIST_LIMIT_DEFAULT = 50
@@ -196,19 +200,6 @@ async def _resolve_team_scoped_role(
     return role or "developer"
 
 
-def _compute_risk_score(
-    severity_distribution: dict[str, int],
-    license_distribution: dict[str, int],
-) -> float:
-    """Weighted sum capped at 100. See module docstring for the formula."""
-    score = 0.0
-    for key, weight in _RISK_WEIGHTS_SEVERITY.items():
-        score += severity_distribution.get(key, 0) * weight
-    for key, weight in _RISK_WEIGHTS_LICENSE.items():
-        score += license_distribution.get(key, 0) * weight
-    return min(_RISK_SCORE_CAP, float(score))
-
-
 def _severity_rank_case() -> Any:
     """SQLAlchemy CASE that maps a vuln_severity ENUM value to its rank int.
 
@@ -257,6 +248,7 @@ async def get_project_overview(
     *,
     project_id: uuid.UUID,
     actor: CurrentUser,
+    scan_id: uuid.UUID | None = None,
 ) -> dict[str, Any]:
     """
     Aggregate the Overview tab payload for ``project_id``.
@@ -265,6 +257,14 @@ async def get_project_overview(
 
     Raises :class:`ProjectNotFound` (404) if the project does not exist and
     :class:`ProjectForbidden` (403) if the caller is not on the owning team.
+
+    ``scan_id`` (feature #28) optionally pins the aggregation to a SPECIFIC
+    succeeded snapshot instead of the latest succeeded scan. When provided it is
+    validated by :func:`services.scan_resolution.resolve_snapshot_scan_id`
+    (must belong to THIS project and be ``status='succeeded'``); an invalid /
+    cross-project / non-succeeded id raises :class:`SnapshotScanNotFound`, which
+    the router maps to a 404 (existence-hide). Omitting it preserves the
+    unchanged latest-succeeded default.
     """
     project = await _load_project(session, project_id)
     assert_team_access(
@@ -282,9 +282,33 @@ async def get_project_overview(
     license_distribution = dict.fromkeys(_ALL_LICENSE_KEYS, 0)
     total_components = 0
     last_scan_at: Any = None
+    last_succeeded_scan_at: Any = None
     recent: list[Scan] = []
 
-    if project.latest_scan_id is not None:
+    # Anchor the current-state aggregation on the resolved snapshot scan: the
+    # pinned ``scan_id`` when given (feature #28), else the latest SUCCEEDED scan
+    # — NOT ``project.latest_scan_id`` (the last *attempted* scan). Otherwise a
+    # project whose newest attempt failed shows "NO RISK / 0 components" while
+    # the build gate (which already uses the succeeded scan) reads "blocked". See
+    # ``services.scan_resolution`` for the full rationale.
+    aggregate_scan_id = await resolve_snapshot_scan_id(session, project_id, scan_id)
+
+    # Recent scans are PROJECT-wide (filtered only by project_id) and must NOT be
+    # gated on a resolved snapshot: a project whose only scan is still
+    # queued/running — or whose every attempt failed — has no succeeded snapshot
+    # (``aggregate_scan_id is None``) yet absolutely has scans to track. Gating
+    # this on the snapshot blanked the recent-scans table for a freshly-triggered
+    # first scan, stranding the user with no way to re-open the live progress
+    # drawer (#29). So the list always runs; only the distribution aggregation
+    # below depends on a succeeded snapshot existing.
+    recent_stmt = (
+        select(Scan)
+        .where(Scan.project_id == project_id)
+        .order_by(Scan.created_at.desc(), Scan.id.desc())
+        .limit(5)
+    )
+
+    if aggregate_scan_id is not None:
         # Per-component-version aggregation. We aggregate inside one CTE
         # rather than emitting two GROUP BYs over scan_components, because
         # the same (cv) row can have several findings (multiple CVEs, multi-
@@ -324,7 +348,7 @@ async def get_project_overview(
                 LicenseModel,
                 LicenseModel.id == LicenseFinding.license_id,
             )
-            .where(ScanComponent.scan_id == project.latest_scan_id)
+            .where(ScanComponent.scan_id == aggregate_scan_id)
             .group_by(ScanComponent.component_version_id)
             .subquery()
         )
@@ -337,17 +361,22 @@ async def get_project_overview(
 
         # Run aggregation + recent-scans concurrently. We deliberately gather
         # to keep the overview within p95 < 200ms (DoD §3.1).
-        recent_stmt = (
-            select(Scan)
-            .where(Scan.project_id == project_id)
-            .order_by(Scan.created_at.desc(), Scan.id.desc())
-            .limit(5)
-        )
 
-        agg_result, recent_result = await asyncio.gather(
+        # #25 / SBOM-label fix — the latest *succeeded* scan's created_at. The
+        # SBOM tab labels its download with this (not last_scan_at, the last
+        # *attempt*) so the timestamp matches what sbom_export actually exports.
+        # The succeeded scan may be OLDER than the 5 most-recent attempts in
+        # `recent`, so we resolve its created_at directly rather than reading it
+        # off `recent[0]`.
+        succeeded_at_stmt = select(Scan.created_at).where(Scan.id == aggregate_scan_id)
+
+        agg_result, recent_result, succeeded_at_result = await asyncio.gather(
             session.execute(agg_stmt),
             session.execute(recent_stmt),
+            session.execute(succeeded_at_stmt),
         )
+
+        last_succeeded_scan_at = succeeded_at_result.scalar_one_or_none()
 
         for row in agg_result.all():
             sev_key = _SEVERITY_FROM_RANK.get(int(row.max_sev_rank), "none")
@@ -358,10 +387,20 @@ async def get_project_overview(
             total_components += count
 
         recent = list(recent_result.scalars().all())
-        if recent:
-            last_scan_at = recent[0].created_at
+    else:
+        # No succeeded snapshot yet — distributions stay zeroed (nothing to
+        # aggregate), but the project may still have queued/running/failed
+        # attempts. Always surface them so the user can track / re-open an
+        # in-flight scan (#29). ``last_succeeded_scan_at`` stays None.
+        recent_result = await session.execute(recent_stmt)
+        recent = list(recent_result.scalars().all())
 
-    risk_score = _compute_risk_score(severity_distribution, license_distribution)
+    if recent:
+        last_scan_at = recent[0].created_at
+
+    security_score = risk_score.security_score(severity_distribution)
+    license_score = risk_score.license_score(license_distribution)
+    overall_risk = risk_score.overall_risk_score(security_score, license_score)
 
     current_user_role = await _resolve_team_scoped_role(
         session, actor=actor, team_id=project.team_id
@@ -373,9 +412,15 @@ async def get_project_overview(
         "total_components": total_components,
         "severity_distribution": severity_distribution,
         "license_distribution": license_distribution,
-        "risk_score": risk_score,
+        "risk_score": overall_risk,
+        "security_score": security_score,
+        "license_score": license_score,
         "recent_scans": recent,
         "last_scan_at": last_scan_at,
+        "last_succeeded_scan_at": last_succeeded_scan_at,
+        # Feature #18 Part B — read-only "credential configured?" flag. Never the
+        # plaintext / ciphertext, only the boolean derived from the model property.
+        "has_git_credential": project.has_git_credential,
         "current_user_role": current_user_role,
     }
 
@@ -422,6 +467,7 @@ async def list_components_for_project(
     license_category: list[str] | None = None,
     sort: str = "name",
     order: str = "asc",
+    scan_id: uuid.UUID | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
     """
     Page of components for the project's latest scan.
@@ -455,7 +501,13 @@ async def list_components_for_project(
         ),
     )
 
-    if project.latest_scan_id is None:
+    # Anchor on the resolved snapshot scan (see ``services.scan_resolution``):
+    # the pinned ``scan_id`` when given (feature #28), else the latest SUCCEEDED
+    # scan — the same scan the build gate / overview use, not the last attempted
+    # scan (which may have failed and carry no rows). An invalid pinned id raises
+    # SnapshotScanNotFound → 404 at the router.
+    aggregate_scan_id = await resolve_snapshot_scan_id(session, project_id, scan_id)
+    if aggregate_scan_id is None:
         return [], 0
 
     sev_rank = _severity_rank_case()
@@ -505,7 +557,7 @@ async def list_components_for_project(
             LicenseModel,
             LicenseModel.id == LicenseFinding.license_id,
         )
-        .where(ScanComponent.scan_id == project.latest_scan_id)
+        .where(ScanComponent.scan_id == aggregate_scan_id)
         .group_by(ScanComponent.component_version_id)
         .subquery()
     )
@@ -603,7 +655,7 @@ async def list_components_for_project(
             )
             .join(LicenseModel, LicenseModel.id == LicenseFinding.license_id)
             .where(
-                (LicenseFinding.scan_id == project.latest_scan_id)
+                (LicenseFinding.scan_id == aggregate_scan_id)
                 & LicenseFinding.component_version_id.in_(cv_ids)
             )
         )
@@ -664,8 +716,11 @@ async def get_component_detail(
     :class:`ComponentNotFound` (404) so we don't leak existence.
     """
     # Find a scan_components row for this cv inside a project the actor can
-    # see. We pick the most recent project.latest_scan_id where the cv was
-    # observed; that gives us the user's "current view" of the component.
+    # see. We pick the most recent SUCCEEDED scan where the cv was observed;
+    # that gives us the user's "current view" of the component — consistent with
+    # the overview / components-list / vuln-list, which all anchor on the latest
+    # succeeded scan rather than ``project.latest_scan_id`` (the last *attempted*
+    # scan, which may have failed). See ``services.scan_resolution``.
     cv_stmt = (
         select(
             ComponentVersion.id,
@@ -688,12 +743,20 @@ async def get_component_detail(
         .join(Scan, Scan.id == ScanComponent.scan_id)
         .join(Project, Project.id == Scan.project_id)
         .where(ComponentVersion.id == component_version_id)
-        .where(Project.latest_scan_id == Scan.id)
-        # Most recent project view first; within that, the SHALLOWEST path
+        # Anchor on SUCCEEDED scans only (not ``project.latest_scan_id``); the
+        # most recent one containing this cv is the project's current view of it.
+        .where(cast(Scan.status, String) == "succeeded")
+        # Most recent (succeeded) scan first; within that, the SHALLOWEST path
         # (v2.2 2.2-a2) — ``depth ASC NULLS LAST`` — so the drawer reports the
         # most-direct way the project reaches this component when the same cv
-        # sits at several dependency paths in one scan (diamond deps).
-        .order_by(Scan.created_at.desc(), ScanComponent.depth.asc().nulls_last())
+        # sits at several dependency paths in one scan (diamond deps). The
+        # ``scan_id`` tiebreak keeps selection deterministic across two scans
+        # sharing a ``created_at``.
+        .order_by(
+            Scan.created_at.desc(),
+            Scan.id.desc(),
+            ScanComponent.depth.asc().nulls_last(),
+        )
         .limit(1)
     )
     cv_result = await session.execute(cv_stmt)

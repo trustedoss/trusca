@@ -182,14 +182,16 @@ describe("ComponentsTab", () => {
     });
     mockedList.mockClear();
 
-    const select = screen.getByTestId(
-      "components-severity-filter",
-    ) as HTMLSelectElement;
-    // Select critical via DOM API since multi-selects are awkward to drive.
-    Array.from(select.options).forEach((opt) => {
-      opt.selected = opt.value === "critical";
+    // Open the MultiSelect dropdown, then toggle the "critical" checkbox row.
+    await userEvent.click(screen.getByTestId("components-severity-filter"));
+    const critical = await waitFor(() => {
+      const option = screen
+        .getAllByTestId("components-severity-filter-option")
+        .find((el) => el.getAttribute("data-value") === "critical");
+      if (!option) throw new Error("critical option not mounted");
+      return option;
     });
-    select.dispatchEvent(new Event("change", { bubbles: true }));
+    await userEvent.click(critical);
 
     await waitFor(() => {
       expect(mockedList).toHaveBeenCalledWith(

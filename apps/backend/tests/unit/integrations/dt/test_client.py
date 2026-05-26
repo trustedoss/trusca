@@ -109,6 +109,59 @@ def test_get_findings_raises_dt_client_error_on_403(make_dt_client) -> None:
 
 
 # ---------------------------------------------------------------------------
+# count_vulnerabilities — reads the X-Total-Count header (#35)
+# ---------------------------------------------------------------------------
+
+
+def test_count_vulnerabilities_reads_x_total_count(make_dt_client) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v1/vulnerability"
+        # pageSize=1 — we never want to materialise the catalog just to count.
+        assert request.url.params.get("pageSize") == "1"
+        return httpx.Response(200, json=[{}], headers={"X-Total-Count": "274321"})
+
+    client = make_dt_client(handler)
+    try:
+        assert client.count_vulnerabilities() == 274321
+    finally:
+        client.close()
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {},  # header absent entirely (some proxies strip it)
+        {"X-Total-Count": "not-a-number"},  # garbage
+        {"X-Total-Count": ""},  # empty
+        {"X-Total-Count": "-5"},  # negative is clamped to 0
+    ],
+)
+def test_count_vulnerabilities_degrades_to_zero_on_bad_header(
+    make_dt_client, headers
+) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=[], headers=headers)
+
+    client = make_dt_client(handler)
+    try:
+        assert client.count_vulnerabilities() == 0
+    finally:
+        client.close()
+
+
+def test_count_vulnerabilities_raises_dt_unavailable_on_500(make_dt_client) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, text="vuln list unavailable")
+
+    client = make_dt_client(handler)
+    try:
+        with pytest.raises(DTUnavailable):
+            client.count_vulnerabilities()
+    finally:
+        client.close()
+
+
+# ---------------------------------------------------------------------------
 # 5xx — DTUnavailable
 # ---------------------------------------------------------------------------
 

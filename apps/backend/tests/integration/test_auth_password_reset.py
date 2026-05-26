@@ -16,7 +16,7 @@ Token contract:
   - 1-hour TTL.
   - One-shot — a second reset with the same token returns 422.
   - Tokens older than the TTL return 422 (manually expired in the row).
-  - new_password < 12 chars rejected at the schema layer with 422.
+  - new_password < 8 chars rejected at the schema layer with 422.
 
 These tests run against the real Postgres in docker-compose.dev.yml — the
 admin password-reset suite uses the same harness so we follow the pattern.

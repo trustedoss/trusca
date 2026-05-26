@@ -146,6 +146,11 @@
         "last_check_at_label": "Last check",
         "last_error_label": "Last error",
         "auto_restart_label": "Auto-restart attempted",
+        "vuln_db_label": "Vulnerability DB",
+        "vuln_db_count": "{{value}} loaded",
+        "vuln_db_unknown": "Unknown",
+        "vuln_db_empty_title": "Vulnerability database is empty",
+        "vuln_db_empty_body": "Dependency-Track has 0 vulnerabilities loaded, so scans find components but report no CVEs — a clean result is indistinguishable from missing data. Enable NVD mirroring (set nvd.api.enabled in Dependency-Track) and wait for the initial sync to finish; an NVD API key makes it much faster.",
         "no_version": "Unavailable",
         "no_error": "None",
         "yes": "Yes",
@@ -263,10 +268,11 @@
       "status": {
         "ok": "Healthy",
         "degraded": "Approaching limit",
-        "down": "Critical"
+        "down": "Critical",
+        "unavailable": "Unavailable"
       },
       "errors": {
-        "unavailable": "Telemetry unavailable: {{detail}}"
+        "unavailable": "Telemetry is unavailable for this volume. Check the server logs for details."
       },
       "collected_at": "Collected {{when}}"
     },

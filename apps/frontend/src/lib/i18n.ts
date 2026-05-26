@@ -6,6 +6,7 @@ import enAdmin from "@/locales/en/admin.json";
 import enApprovals from "@/locales/en/approvals.json";
 import enAuth from "@/locales/en/auth.json";
 import enCommon from "@/locales/en/common.json";
+import enDashboard from "@/locales/en/dashboard.json";
 import enIntegrations from "@/locales/en/integrations.json";
 import enNotifications from "@/locales/en/notifications.json";
 import enPolicies from "@/locales/en/policies.json";
@@ -18,6 +19,7 @@ import koAdmin from "@/locales/ko/admin.json";
 import koApprovals from "@/locales/ko/approvals.json";
 import koAuth from "@/locales/ko/auth.json";
 import koCommon from "@/locales/ko/common.json";
+import koDashboard from "@/locales/ko/dashboard.json";
 import koIntegrations from "@/locales/ko/integrations.json";
 import koNotifications from "@/locales/ko/notifications.json";
 import koPolicies from "@/locales/ko/policies.json";
@@ -38,6 +40,7 @@ void i18n
       en: {
         common: enCommon,
         auth: enAuth,
+        dashboard: enDashboard,
         projects: enProjects,
         project_detail: enProjectDetail,
         scans: enScans,
@@ -52,6 +55,7 @@ void i18n
       ko: {
         common: koCommon,
         auth: koAuth,
+        dashboard: koDashboard,
         projects: koProjects,
         project_detail: koProjectDetail,
         scans: koScans,
@@ -70,6 +74,7 @@ void i18n
     ns: [
       "common",
       "auth",
+      "dashboard",
       "projects",
       "project_detail",
       "scans",
@@ -88,5 +93,16 @@ void i18n
       lookupLocalStorage: "trustedoss.lang",
     },
   });
+
+// Keep <html lang> in sync with the active language (a11y/SEO). i18next does
+// not touch the document element, so without this the attribute stayed "en"
+// even while the UI rendered Korean.
+function syncHtmlLang(lng: string): void {
+  if (typeof document !== "undefined") {
+    document.documentElement.lang = lng.split("-")[0];
+  }
+}
+syncHtmlLang(i18n.resolvedLanguage ?? "en");
+i18n.on("languageChanged", syncHtmlLang);
 
 export default i18n;

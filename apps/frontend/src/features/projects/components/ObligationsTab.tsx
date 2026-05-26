@@ -90,9 +90,18 @@ function parsePage(raw: string | null): number {
 export interface ObligationsTabProps {
   projectId: string;
   projectName?: string | null;
+  /**
+   * Pinned snapshot scan id (feature #28). When set, the list reflects that
+   * historical scan instead of the latest succeeded one. Omit → latest.
+   */
+  scanId?: string;
 }
 
-export function ObligationsTab({ projectId, projectName }: ObligationsTabProps) {
+export function ObligationsTab({
+  projectId,
+  projectName,
+  scanId,
+}: ObligationsTabProps) {
   const { t } = useTranslation("project_detail");
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -189,8 +198,9 @@ export function ObligationsTab({ projectId, projectName }: ObligationsTabProps) 
       order,
       limit: PAGE_SIZE,
       offset: (page - 1) * PAGE_SIZE,
+      scanId,
     }),
-    [debouncedSearch, kinds, categories, sort, order, page],
+    [debouncedSearch, kinds, categories, sort, order, page, scanId],
   );
 
   const obligations = useObligations(projectId, filters);

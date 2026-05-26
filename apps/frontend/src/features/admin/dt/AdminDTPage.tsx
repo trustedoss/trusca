@@ -320,6 +320,19 @@ export function AdminDTPage() {
                 testId="admin-dt-version"
               />
               <MetaRow
+                label={t("admin.dt.status.vuln_db_label")}
+                value={
+                  status.vulnerability_count == null
+                    ? t("admin.dt.status.vuln_db_unknown")
+                    : t("admin.dt.status.vuln_db_count", {
+                        value: status.vulnerability_count.toLocaleString(
+                          i18n.resolvedLanguage,
+                        ),
+                      })
+                }
+                testId="admin-dt-vuln-count"
+              />
+              <MetaRow
                 label={t("admin.dt.status.last_check_at_label")}
                 value={formatRelativeToNow(
                   status.last_check_at,
@@ -342,6 +355,25 @@ export function AdminDTPage() {
                 testId="admin-dt-auto-restart"
               />
             </div>
+          ) : null}
+
+          {/* #35 silent-zero guard: an empty vuln mirror makes every scan look
+              "clean". Warn the operator explicitly with the fix. */}
+          {status && status.vulnerability_count === 0 ? (
+            <Alert
+              className="mt-3 border-amber-300 bg-amber-50 text-amber-900"
+              data-testid="admin-dt-vuln-db-empty"
+            >
+              <ShieldAlert className="h-4 w-4" aria-hidden />
+              <AlertDescription>
+                <span className="font-semibold">
+                  {t("admin.dt.status.vuln_db_empty_title")}
+                </span>
+                <span className="mt-1 block">
+                  {t("admin.dt.status.vuln_db_empty_body")}
+                </span>
+              </AlertDescription>
+            </Alert>
           ) : null}
         </section>
 

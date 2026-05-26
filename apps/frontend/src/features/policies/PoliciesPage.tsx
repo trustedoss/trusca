@@ -109,8 +109,10 @@ export function PoliciesPage() {
 
   // --- non-admin: derive reachable team ids from their projects ---
   const myProjectsQuery = useQuery({
-    queryKey: ["projects", { page: 1, size: 200, scope: "policies" }],
-    queryFn: () => listProjects({ page: 1, size: 200 }),
+    // The backend caps GET /v1/projects at size=100 (le=100). Requesting 200
+    // returned a 422 and broke the team picker for non-admins.
+    queryKey: ["projects", { page: 1, size: 100, scope: "policies" }],
+    queryFn: () => listProjects({ page: 1, size: 100 }),
     enabled: !isSuperAdmin,
     staleTime: 30_000,
   });

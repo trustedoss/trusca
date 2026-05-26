@@ -85,17 +85,17 @@ describe("LoginPage", () => {
     expect(mockedPostLogin).not.toHaveBeenCalled();
   });
 
-  it("blocks submit when password is shorter than 12 chars", async () => {
+  it("blocks submit when password is shorter than 8 chars", async () => {
     const user = userEvent.setup();
     renderLogin();
 
     await user.type(screen.getByTestId("login-email"), "alice@example.com");
-    // 11 characters — one short of the policy floor.
-    await user.type(screen.getByTestId("login-password"), "elevenchars");
+    // 7 characters — one short of the policy floor.
+    await user.type(screen.getByTestId("login-password"), "seven77");
     await user.click(screen.getByTestId("login-submit"));
 
     expect(
-      await screen.findByText(/at least 12 characters/i),
+      await screen.findByText(/at least 8 characters/i),
     ).toBeInTheDocument();
     expect(mockedPostLogin).not.toHaveBeenCalled();
   });

@@ -164,6 +164,7 @@ def _build_status(
     *,
     snapshot: BreakerSnapshot,
     version: str | None,
+    vulnerability_count: int | None,
     last_error: str | None,
 ) -> DTStatusOut:
     opened_at_dt: datetime | None = None
@@ -177,6 +178,7 @@ def _build_status(
         opened_at=opened_at_dt,
         last_check_at=_now(),
         version=version,
+        vulnerability_count=vulnerability_count,
         last_error=last_error,
     )
 
@@ -225,6 +227,7 @@ def get_dt_status(
 
     snapshot = breaker.snapshot()
     version: str | None = None
+    vulnerability_count: int | None = None
     last_error: str | None = None
 
     # Skip the version probe when the breaker is OPEN — calling DT would
@@ -252,11 +255,33 @@ def get_dt_status(
                 last_error = _strip_credentials(str(exc))
                 # Re-snapshot because record_failure may have flipped to OPEN.
                 snapshot = breaker.snapshot()
+
+            # Vulnerability-DB size probe (the NVD/OSV/GHSA mirror). Surfacing it
+            # lets an operator tell "scans find 0 CVEs because the project is
+            # clean" apart from "…because DT's vuln mirror is empty" (#35). Only
+            # probe when the version call above did not just trip the breaker
+            # OPEN; a failure here is non-fatal (count stays None).
+            if breaker.snapshot().state != STATE_OPEN:
+
+                def _count() -> int:
+                    return client.count_vulnerabilities()
+
+                try:
+                    vulnerability_count = breaker.call(_count)
+                except DTError as exc:
+                    if last_error is None:
+                        last_error = _strip_credentials(str(exc))
+                    snapshot = breaker.snapshot()
         finally:
             if owns_client:
                 client.close()
 
-    result = _build_status(snapshot=snapshot, version=version, last_error=last_error)
+    result = _build_status(
+        snapshot=snapshot,
+        version=version,
+        vulnerability_count=vulnerability_count,
+        last_error=last_error,
+    )
 
     # Best-effort cache write. A Redis outage here should not bubble up;
     # the next call simply re-probes.

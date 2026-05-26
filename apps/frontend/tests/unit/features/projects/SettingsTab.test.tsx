@@ -55,6 +55,9 @@ function project(overrides: Partial<ProjectPublic> = {}): ProjectPublic {
     archived_at: null,
     created_by_user_id: null,
     latest_scan_id: null,
+    latest_scan_status: null,
+    severity_summary: null,
+    has_git_credential: false,
     created_at: "2026-05-01T00:00:00Z",
     updated_at: "2026-05-01T00:00:00Z",
     ...overrides,
@@ -198,5 +201,114 @@ describe("SettingsTab", () => {
     renderTab(null);
     expect(screen.getByTestId("settings-tab")).toBeInTheDocument();
     expect(screen.getByTestId("settings-form")).toBeInTheDocument();
+  });
+
+  // ---- feature #18 — git credential (private repository) ----------------
+
+  it("shows the credential input when no credential is configured", () => {
+    renderTab(project({ has_git_credential: false }));
+    expect(
+      screen.getByTestId("project-git-credential-input"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("project-git-credential-configured"),
+    ).not.toBeInTheDocument();
+    // Save is disabled until a token is entered.
+    expect(screen.getByTestId("project-git-credential-save")).toBeDisabled();
+  });
+
+  it("uses a password-type input that never echoes a value", () => {
+    renderTab(project({ has_git_credential: false }));
+    const input = screen.getByTestId(
+      "project-git-credential-input",
+    ) as HTMLInputElement;
+    expect(input.type).toBe("password");
+  });
+
+  it("saves a credential via PATCH { git_credential } (trimmed)", async () => {
+    mockedUpdate.mockResolvedValueOnce(project({ has_git_credential: true }));
+    const user = userEvent.setup();
+    renderTab(project({ has_git_credential: false }));
+    await user.type(
+      screen.getByTestId("project-git-credential-input"),
+      "  ghp_secret_token  ",
+    );
+    await user.click(screen.getByTestId("project-git-credential-save"));
+    await waitFor(() => {
+      expect(mockedUpdate).toHaveBeenCalledWith("proj-1", {
+        git_credential: "ghp_secret_token",
+      });
+    });
+  });
+
+  it("renders the configured state with a masked badge when a credential is set", () => {
+    renderTab(project({ has_git_credential: true }));
+    expect(
+      screen.getByTestId("project-git-credential-configured"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("project-git-credential-badge"),
+    ).toBeInTheDocument();
+    // The input is hidden behind the Replace affordance in the configured state.
+    expect(
+      screen.queryByTestId("project-git-credential-input"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByTestId("project-git-credential-remove"),
+    ).toBeInTheDocument();
+  });
+
+  it("clears a credential via PATCH { clear_git_credential: true }", async () => {
+    mockedUpdate.mockResolvedValueOnce(project({ has_git_credential: false }));
+    const user = userEvent.setup();
+    renderTab(project({ has_git_credential: true }));
+    await user.click(screen.getByTestId("project-git-credential-remove"));
+    await waitFor(() => {
+      expect(mockedUpdate).toHaveBeenCalledWith("proj-1", {
+        clear_git_credential: true,
+      });
+    });
+  });
+
+  it("reveals the input on Replace and never sends both fields", async () => {
+    const user = userEvent.setup();
+    renderTab(project({ has_git_credential: true }));
+    await user.click(screen.getByTestId("project-git-credential-replace"));
+    const input = screen.getByTestId("project-git-credential-input");
+    expect(input).toBeInTheDocument();
+    mockedUpdate.mockResolvedValueOnce(project({ has_git_credential: true }));
+    await user.type(input, "new_token");
+    await user.click(screen.getByTestId("project-git-credential-save"));
+    await waitFor(() => {
+      expect(mockedUpdate).toHaveBeenCalledWith("proj-1", {
+        git_credential: "new_token",
+      });
+    });
+    // Mutual-exclusion guard: the payload must NOT carry clear_git_credential.
+    const payload = mockedUpdate.mock.calls.at(-1)?.[1];
+    expect(payload).not.toHaveProperty("clear_git_credential");
+  });
+
+  it("surfaces a 503 RFC7807 credential-encryption error inline", async () => {
+    mockedUpdate.mockRejectedValueOnce(
+      new ProblemError("Credential Encryption Unavailable", {
+        status: 503,
+        title: "Credential Encryption Unavailable",
+        detail: "Credential encryption is not configured on this server.",
+        problem: null,
+      }),
+    );
+    const user = userEvent.setup();
+    renderTab(project({ has_git_credential: false }));
+    await user.type(
+      screen.getByTestId("project-git-credential-input"),
+      "ghp_token",
+    );
+    await user.click(screen.getByTestId("project-git-credential-save"));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("project-git-credential-error"),
+      ).toHaveTextContent("Credential encryption is not configured");
+    });
   });
 });

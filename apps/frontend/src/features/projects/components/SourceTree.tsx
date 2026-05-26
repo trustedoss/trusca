@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronDown, ChevronRight, File, Folder } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Virtuoso } from "react-virtuoso";
@@ -100,9 +100,15 @@ function SourceTreeLevel({
     query.error instanceof ProblemError && query.error.status === 404;
 
   // The root 404 is the "no preserved source" signal — let the tab own the
-  // empty state. We render nothing here so the tab's single empty state shows.
+  // empty state. Fire the callback from an effect (not during render) so we
+  // don't call the parent's setState while React is rendering this child
+  // (which triggered a "Cannot update a component while rendering a different
+  // component" warning). We still render nothing so the tab's empty state shows.
+  useEffect(() => {
+    if (isRoot && isNotFound) onNoSource?.();
+  }, [isRoot, isNotFound, onNoSource]);
+
   if (isRoot && isNotFound) {
-    onNoSource?.();
     return null;
   }
 

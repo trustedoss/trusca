@@ -82,6 +82,10 @@ from schemas.obligation_detail import KNOWN_OBLIGATION_KINDS
 from services.obligation_catalog import obligations_for
 from services.project_detail_service import _license_rank_case
 from services.project_service import ProjectError, ProjectNotFound
+from services.scan_resolution import (
+    latest_succeeded_scan_id,
+    resolve_snapshot_scan_id,
+)
 
 log = structlog.get_logger("obligation.service")
 
@@ -321,9 +325,15 @@ async def list_project_obligations(
     search: str | None = None,
     sort: str = "category",
     order: str = "desc",
+    snapshot_scan_id: uuid.UUID | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, int], int]:
     """
     Page of obligations + per-kind distribution for the project's latest scan.
+
+    ``snapshot_scan_id`` (feature #28) optionally pins the listing to a SPECIFIC
+    succeeded snapshot instead of the latest succeeded scan; validated via
+    :func:`services.scan_resolution.resolve_snapshot_scan_id` (cross-project /
+    non-succeeded / nonexistent → :class:`SnapshotScanNotFound` → 404 at router).
 
     Returns ``(items, distribution, total)``:
 
@@ -341,7 +351,7 @@ async def list_project_obligations(
       not a team member (existence-hide, security-reviewer Low #4). We log
       ``authz.cross_team_attempt`` before raising.
 
-    If the project has no ``latest_scan_id``, returns
+    If the project has no SUCCEEDED scan, returns
     ``([], {}, 0)`` with success — empty result, not 404.
     """
     if sort not in _VALID_SORT_KEYS:
@@ -370,24 +380,31 @@ async def list_project_obligations(
         deny=lambda: ProjectNotFound(f"project {project_id} not found"),
     )
 
-    if project.latest_scan_id is None:
+    # Anchor on the resolved snapshot scan — the pinned ``snapshot_scan_id`` when
+    # given (feature #28), else the latest SUCCEEDED scan; never
+    # ``project.latest_scan_id`` (the last *attempted* scan). The Obligations tab
+    # must reflect the same scan the build gate / overview use. See
+    # ``services.scan_resolution``. An invalid pinned id raises
+    # SnapshotScanNotFound → 404 at the router.
+    scan_id = await resolve_snapshot_scan_id(session, project_id, snapshot_scan_id)
+    if scan_id is None:
         return [], {}, 0
 
     # v2.2 c4: ensure the structured obligation catalog is materialised for the
     # licenses this scan observed before we read/aggregate. Idempotent — a no-op
     # once populated, and it never overwrites seed-/operator-authored rows.
-    await sync_catalog_obligations(session, scan_id=project.latest_scan_id)
+    await sync_catalog_obligations(session, scan_id=scan_id)
 
     category_filter = _normalize_category_filter(categories)
     if category_filter == []:
         # Caller passed only invalid categories — match nothing without 422.
         # Distribution still reflects the underlying scan so the chart isn't
         # zeroed out behind a stale filter.
-        distribution = await _compute_kind_distribution(session, project.latest_scan_id)
+        distribution = await _compute_kind_distribution(session, scan_id)
         return [], distribution, 0
     kind_filter = _normalize_kind_filter(kinds)
     if kind_filter == []:
-        distribution = await _compute_kind_distribution(session, project.latest_scan_id)
+        distribution = await _compute_kind_distribution(session, scan_id)
         return [], distribution, 0
 
     rank = _license_rank_case()
@@ -402,7 +419,7 @@ async def list_project_obligations(
                 "affected_count"
             ),
         )
-        .where(LicenseFinding.scan_id == project.latest_scan_id)
+        .where(LicenseFinding.scan_id == scan_id)
         .group_by(LicenseFinding.license_id)
         .subquery()
     )
@@ -479,7 +496,7 @@ async def list_project_obligations(
     count_result = await session.execute(count_stmt)
     total = int(count_result.scalar_one())
 
-    distribution = await _compute_kind_distribution(session, project.latest_scan_id)
+    distribution = await _compute_kind_distribution(session, scan_id)
 
     items: list[dict[str, Any]] = []
     for r in rows:
@@ -584,10 +601,14 @@ async def get_obligation_detail(
         raise ObligationNotFound(f"obligation {obligation_id} not found")
     obligation, lic = cast(Obligation, row[0]), cast(LicenseModel, row[1])
 
-    # Verify the parent license is materially present in the project's
-    # latest scan — otherwise the obligation is a stale catalog handle from
-    # this project's perspective and we existence-hide.
-    if project.latest_scan_id is None:
+    # Verify the parent license is materially present in the project's latest
+    # SUCCEEDED scan — not ``project.latest_scan_id`` (the last *attempted*
+    # scan). Otherwise the obligation is a stale catalog handle from this
+    # project's perspective and we existence-hide. Anchoring on the succeeded
+    # scan keeps the drawer reachable for exactly the licenses the Obligations
+    # tab lists. See ``services.scan_resolution``.
+    scan_id = await latest_succeeded_scan_id(session, project_id)
+    if scan_id is None:
         raise ObligationNotFound(
             f"obligation {obligation_id} not visible in project {project_id}"
         )
@@ -601,7 +622,7 @@ async def get_obligation_detail(
 
     presence_stmt = (
         select(LicenseFinding.id)
-        .where(LicenseFinding.scan_id == project.latest_scan_id)
+        .where(LicenseFinding.scan_id == scan_id)
         .where(LicenseFinding.license_id == lic.id)
         .limit(1)
     )
@@ -612,7 +633,7 @@ async def get_obligation_detail(
 
     affected_components, ac_total, ac_truncated = await _load_affected_components(
         session,
-        scan_id=project.latest_scan_id,
+        scan_id=scan_id,
         license_id=lic.id,
     )
 
@@ -862,7 +883,12 @@ async def generate_notice(
 
     generated_at = datetime.now(tz=UTC)
 
-    if project.latest_scan_id is None:
+    # Anchor the NOTICE on the latest SUCCEEDED scan — not
+    # ``project.latest_scan_id`` (the last *attempted* scan). A failed newest
+    # attempt must not erase the attribution document the last good scan earned.
+    # See ``services.scan_resolution``.
+    scan_id = await latest_succeeded_scan_id(session, project_id)
+    if scan_id is None:
         body = _render_empty_notice(project.name, generated_at, fmt=fmt)
         return {
             "project_id": project.id,
@@ -877,10 +903,10 @@ async def generate_notice(
     # v2.2 c4: materialise the structured obligation catalog for this scan's
     # licenses so the NOTICE renders attribution / source-disclosure / patent
     # guidance instead of "(no obligations recorded)". Idempotent + additive.
-    await sync_catalog_obligations(session, scan_id=project.latest_scan_id)
+    await sync_catalog_obligations(session, scan_id=scan_id)
 
     licenses_with_components, obligations_by_license, licenses_omitted = (
-        await _load_notice_data(session, scan_id=project.latest_scan_id)
+        await _load_notice_data(session, scan_id=scan_id)
     )
 
     body = _render_notice(

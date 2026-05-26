@@ -115,6 +115,11 @@ export interface ListLicensesParams {
   kinds?: LicenseFindingKind[];
   sort?: LicenseSortKey;
   order?: SortOrder;
+  /**
+   * Pin the read to a specific succeeded scan (feature #28 snapshot anchoring).
+   * Omit → the project's latest succeeded scan (unchanged default).
+   */
+  scanId?: string;
 }
 
 /**
@@ -143,6 +148,9 @@ function listLicensesQuery(
   }
   if (params.sort != null) out.sort = params.sort;
   if (params.order != null) out.order = params.order;
+  if (params.scanId != null && params.scanId.length > 0) {
+    out.scan_id = params.scanId;
+  }
   return out;
 }
 

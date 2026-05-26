@@ -27,12 +27,12 @@ function buildSchema(t: (key: string) => string) {
   return z.object({
     display_name: z.string().min(1, { message: t("errors.required") }),
     email: z.string().email({ message: t("errors.email_invalid") }),
-    // Backend enforces ≥12 (NIST 800-63B). We mirror the policy on the client
-    // so users get inline feedback before round-tripping. Backend remains the
-    // source of truth — its 422 flows through the alert.
+    // Backend enforces ≥8 (NIST 800-63B minimum). We mirror the policy on the
+    // client so users get inline feedback before round-tripping. Backend
+    // remains the source of truth — its 422 flows through the alert.
     password: z
       .string()
-      .min(12, { message: t("errors.password_too_short") }),
+      .min(8, { message: t("errors.password_too_short") }),
   });
 }
 

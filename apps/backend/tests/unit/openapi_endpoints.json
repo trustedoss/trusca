@@ -119,6 +119,7 @@
   "GET /v1/components/{component_id}": [
     "component_id"
   ],
+  "GET /v1/dashboard/summary": [],
   "GET /v1/github-app-credentials": [
     "include_revoked",
     "page",
@@ -170,12 +171,19 @@
     "offset",
     "order",
     "project_id",
+    "scan_id",
     "search",
     "severity",
     "sort"
   ],
+  "GET /v1/projects/{project_id}/diff": [
+    "base",
+    "project_id",
+    "target"
+  ],
   "GET /v1/projects/{project_id}/gate-result": [
-    "project_id"
+    "project_id",
+    "scan_id"
   ],
   "GET /v1/projects/{project_id}/licenses": [
     "category",
@@ -184,6 +192,7 @@
     "offset",
     "order",
     "project_id",
+    "scan_id",
     "search",
     "sort"
   ],
@@ -199,6 +208,7 @@
     "offset",
     "order",
     "project_id",
+    "scan_id",
     "search",
     "sort"
   ],
@@ -207,7 +217,13 @@
     "project_id"
   ],
   "GET /v1/projects/{project_id}/overview": [
-    "project_id"
+    "project_id",
+    "scan_id"
+  ],
+  "GET /v1/projects/{project_id}/releases": [
+    "page",
+    "project_id",
+    "size"
   ],
   "GET /v1/projects/{project_id}/remediation/pull-requests": [
     "page",
@@ -216,7 +232,8 @@
   ],
   "GET /v1/projects/{project_id}/sbom": [
     "format",
-    "project_id"
+    "project_id",
+    "scan_id"
   ],
   "GET /v1/projects/{project_id}/sbom/attestation": [
     "project_id"
@@ -265,6 +282,7 @@
     "order",
     "project_id",
     "reachable",
+    "scan_id",
     "search",
     "severity",
     "sort",

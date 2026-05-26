@@ -48,6 +48,7 @@ from services.license_service import (
     list_project_licenses,
 )
 from services.project_service import ProjectError
+from services.scan_resolution import SnapshotScanNotFound
 
 router = APIRouter(prefix="/v1", tags=["licenses"])
 log = structlog.get_logger("licenses.api")
@@ -67,6 +68,20 @@ def _problem_for_license_error(
         status_code=exc.status_code,
         title=exc.title,
         detail=str(exc) or exc.title,
+        instance=request.url.path,
+    )
+
+
+def _problem_for_snapshot_not_found(request: Request) -> Response:
+    """RFC 7807 404 for an unresolvable ``?scan_id=`` snapshot anchor (feature #28).
+
+    Existence-hide: uniform detail whether the scan is nonexistent, in another
+    project (IDOR probe), or not succeeded.
+    """
+    return problem_response(
+        status_code=status.HTTP_404_NOT_FOUND,
+        title="Scan Snapshot Not Found",
+        detail="No succeeded scan with that id exists for this project.",
         instance=request.url.path,
     )
 
@@ -94,6 +109,15 @@ async def list_project_licenses_endpoint(
         pattern=r"^(category|name|spdx_id|affected_count)$",
     ),
     order: str = Query(default="desc", pattern=r"^(asc|desc)$"),
+    scan_id: uuid.UUID | None = Query(
+        default=None,
+        description=(
+            "Optional release-snapshot anchor (feature #28). When given, list "
+            "license rows of this SPECIFIC succeeded scan instead of the project's "
+            "latest succeeded scan. Must belong to this project and be succeeded, "
+            "else 404. Omit for the default latest-succeeded behaviour."
+        ),
+    ),
     session: AsyncSession = Depends(get_db),
     actor: CurrentUser = Depends(require_role("developer")),
 ) -> Response:
@@ -109,7 +133,10 @@ async def list_project_licenses_endpoint(
             search=search,
             sort=sort,
             order=order,
+            snapshot_scan_id=scan_id,
         )
+    except SnapshotScanNotFound:
+        return _problem_for_snapshot_not_found(request)
     except (LicenseError, ProjectError) as exc:
         return _problem_for_license_error(request, exc)
 

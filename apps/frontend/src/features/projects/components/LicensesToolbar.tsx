@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 
 import { Input } from "@/components/ui/input";
+import { MultiSelect } from "@/components/ui/multi-select";
 import type {
   LicenseCategoryName,
   LicenseFindingKind,
@@ -15,8 +16,8 @@ import { cn } from "@/lib/utils";
  * Inline filter row above the virtualized licenses list. Mirrors the shape
  * of `VulnerabilitiesToolbar` (CLAUDE.md "디자인 시스템": filters appear
  * inline at the top of lists, no modal filter dialogs). Category and kind
- * are native `<select multiple>` to avoid a new dependency; the search input
- * is debounced upstream in the tab.
+ * use the reusable `MultiSelect` (app-i18n checkbox dropdown); the search
+ * input is debounced upstream in the tab.
  *
  * Search matches license name, SPDX id, and (server-side) the underlying
  * license catalog row. The input placeholder advertises both axes so the
@@ -55,14 +56,6 @@ export interface LicensesToolbarProps {
   order: SortOrder;
   onOrderChange: (value: SortOrder) => void;
   className?: string;
-}
-
-function selectedValues<T extends string>(
-  event: React.ChangeEvent<HTMLSelectElement>,
-): T[] {
-  return Array.from(event.target.selectedOptions).map(
-    (opt) => opt.value as T,
-  );
 }
 
 export function LicensesToolbar({
@@ -112,23 +105,18 @@ export function LicensesToolbar({
         >
           {t("licenses.toolbar.filter_category")}
         </label>
-        <select
+        <MultiSelect
           id="licenses-category-filter"
-          multiple
-          size={1}
-          value={categories}
-          onChange={(event) =>
-            onCategoriesChange(selectedValues<LicenseCategoryName>(event))
-          }
-          className="mt-1 h-9 w-40 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          data-testid="licenses-category-filter"
-        >
-          {CATEGORY_OPTIONS.map((opt) => (
-            <option key={opt} value={opt}>
-              {t(`license_category.${opt}`)}
-            </option>
-          ))}
-        </select>
+          testId="licenses-category-filter"
+          className="w-40"
+          label={t("licenses.toolbar.filter_category")}
+          options={CATEGORY_OPTIONS.map((opt) => ({
+            value: opt,
+            label: t(`license_category.${opt}`),
+          }))}
+          selected={categories}
+          onChange={(next) => onCategoriesChange(next as LicenseCategoryName[])}
+        />
       </div>
 
       <div className="flex flex-col">
@@ -138,23 +126,18 @@ export function LicensesToolbar({
         >
           {t("licenses.toolbar.filter_kind")}
         </label>
-        <select
+        <MultiSelect
           id="licenses-kind-filter"
-          multiple
-          size={1}
-          value={kinds}
-          onChange={(event) =>
-            onKindsChange(selectedValues<LicenseFindingKind>(event))
-          }
-          className="mt-1 h-9 w-40 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          data-testid="licenses-kind-filter"
-        >
-          {KIND_OPTIONS.map((opt) => (
-            <option key={opt} value={opt}>
-              {t(`licenses.kind.${opt}`)}
-            </option>
-          ))}
-        </select>
+          testId="licenses-kind-filter"
+          className="w-40"
+          label={t("licenses.toolbar.filter_kind")}
+          options={KIND_OPTIONS.map((opt) => ({
+            value: opt,
+            label: t(`licenses.kind.${opt}`),
+          }))}
+          selected={kinds}
+          onChange={(next) => onKindsChange(next as LicenseFindingKind[])}
+        />
       </div>
 
       <div className="flex flex-col">

@@ -77,6 +77,13 @@ _SENSITIVE_COLUMNS = frozenset(
         # must never copy credential ciphertext into ``audit_logs.diff``.
         "private_key_encrypted",
         "webhook_secret_encrypted",
+        # Feature #18 Part B — per-project git credential for private-repo
+        # scanning. ``git_credential_encrypted`` is the Fernet ciphertext of a
+        # user-supplied PAT / deploy token (later an SSH key). Encrypted at
+        # rest; masking it out of the audit diff is defence-in-depth so a
+        # credential add / rotate / clear UPDATE on ``projects`` never copies
+        # the ciphertext into ``audit_logs.diff``.
+        "git_credential_encrypted",
     }
 )
 

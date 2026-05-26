@@ -82,7 +82,7 @@ export class AuthHarness {
     await this.page.getByTestId("register-email").fill(email);
     await this.page.getByTestId("register-password").fill(password);
     await Promise.all([
-      this.page.waitForURL(`${this.baseUrl}/projects`, { timeout: DEFAULT_TIMEOUT_MS }),
+      this.page.waitForURL(`${this.baseUrl}/`, { timeout: DEFAULT_TIMEOUT_MS }),
       this.page.getByTestId("register-submit").click(),
     ]);
     await this.expectLoggedIn();
@@ -92,7 +92,7 @@ export class AuthHarness {
     await this.page.getByTestId("login-email").fill(email);
     await this.page.getByTestId("login-password").fill(password);
     await Promise.all([
-      this.page.waitForURL(`${this.baseUrl}/projects`, { timeout: DEFAULT_TIMEOUT_MS }),
+      this.page.waitForURL(`${this.baseUrl}/`, { timeout: DEFAULT_TIMEOUT_MS }),
       this.page.getByTestId("login-submit").click(),
     ]);
     await this.expectLoggedIn();
@@ -138,10 +138,9 @@ export class AuthHarness {
 
   // ───── assertions ──────────────────────────────────────────────────────
   async expectLoggedIn(): Promise<void> {
-    // After login/register, `/` immediately redirects to `/projects` via the
-    // AppShell index route (<Navigate to="/projects" replace />). Assert the
-    // settled URL so we don't race against the intermediate `/` frame.
-    await expect(this.page).toHaveURL(`${this.baseUrl}/projects`, {
+    // After login/register the app navigates to `/`, which now renders the
+    // Dashboard (the AppShell index route — it used to redirect to /projects).
+    await expect(this.page).toHaveURL(`${this.baseUrl}/`, {
       timeout: DEFAULT_TIMEOUT_MS,
     });
     await expect(this.page.getByTestId("app-sidebar")).toBeVisible({
@@ -278,7 +277,7 @@ export class AuthHarness {
     // authStore.bootstrap() → /auth/refresh fires and redirects to
     // /projects when authenticated.
     await Promise.all([
-      this.page.waitForURL(`${this.baseUrl}/projects`, {
+      this.page.waitForURL(`${this.baseUrl}/`, {
         timeout: DEFAULT_TIMEOUT_MS,
       }),
       this.page.goto(`${this.baseUrl}/`),

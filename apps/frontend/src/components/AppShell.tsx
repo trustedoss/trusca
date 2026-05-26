@@ -2,6 +2,7 @@ import {
   ClipboardCheck,
   FolderOpen,
   KeyRound,
+  LayoutDashboard,
   LogOut,
   Scale,
   ScanLine,
@@ -30,9 +31,18 @@ interface NavItem {
   labelKey: string;
   icon: ComponentType<SVGProps<SVGSVGElement>>;
   testId: string;
+  /** Use exact matching so a prefix route ("/") isn't always-active. */
+  end?: boolean;
 }
 
 const MAIN_NAV: NavItem[] = [
+  {
+    to: "/",
+    labelKey: "nav.dashboard",
+    icon: LayoutDashboard,
+    testId: "nav-dashboard",
+    end: true,
+  },
   {
     to: "/projects",
     labelKey: "nav.projects",
@@ -117,6 +127,7 @@ function NavItemLink({ item, ns }: { item: NavItem; ns: string }) {
     <li>
       <NavLink
         to={item.to}
+        end={item.end}
         data-testid={item.testId}
         className={({ isActive }) =>
           cn(

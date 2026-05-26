@@ -51,6 +51,7 @@ from services.sbom_signature import (
     get_public_key,
     get_signature_artifact,
 )
+from services.scan_resolution import SnapshotScanNotFound
 
 router = APIRouter(prefix="/v1", tags=["sbom"])
 log = structlog.get_logger("sbom.api")
@@ -125,6 +126,15 @@ async def export_project_sbom_endpoint(
         alias="format",
         description="SBOM output format.",
     ),
+    scan_id: uuid.UUID | None = Query(
+        default=None,
+        description=(
+            "Optional release-snapshot anchor (feature #28). When given, export "
+            "this SPECIFIC succeeded scan instead of the project's latest succeeded "
+            "scan. Must belong to this project and be succeeded, else 404. Omit for "
+            "the default latest-succeeded behaviour."
+        ),
+    ),
     session: AsyncSession = Depends(get_db),
     actor: CurrentUser = Depends(require_role("developer")),
 ) -> Response:
@@ -157,6 +167,16 @@ async def export_project_sbom_endpoint(
             session,
             project_id=project_id,
             fmt=fmt,
+            scan_id=scan_id,
+        )
+    except SnapshotScanNotFound:
+        # Existence-hide: a pinned scan_id that is cross-project / non-succeeded /
+        # nonexistent surfaces the same 404 as an unknown project id.
+        return problem_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            title="Scan Snapshot Not Found",
+            detail="No succeeded scan with that id exists for this project.",
+            instance=request.url.path,
         )
     except SBOMUnsupportedFormat as exc:
         return _problem_for_sbom_error(request, exc)

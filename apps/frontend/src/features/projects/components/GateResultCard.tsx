@@ -37,11 +37,16 @@ import { cn } from "@/lib/utils";
 
 export interface GateResultCardProps {
   projectId: string;
+  /**
+   * Pinned snapshot scan id (feature #28). When set, the gate verdict is
+   * evaluated against that historical scan. Omit → latest succeeded scan.
+   */
+  scanId?: string;
 }
 
-export function GateResultCard({ projectId }: GateResultCardProps) {
+export function GateResultCard({ projectId, scanId }: GateResultCardProps) {
   const { t } = useTranslation("project_detail");
-  const query = useGateResult(projectId);
+  const query = useGateResult(projectId, scanId);
 
   if (query.isLoading) {
     return (

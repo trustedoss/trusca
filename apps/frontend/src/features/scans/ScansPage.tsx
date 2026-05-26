@@ -81,7 +81,9 @@ function durationSeconds(scan: ScanPublic): number | null {
 export function ScansPage() {
   const { t, i18n } = useTranslation("scans");
 
-  const [tab, setTab] = useState<ScansTab>("running");
+  // Default to "all" so the page shows the user's scans on open. "Running" is
+  // almost always empty, which used to greet users with an empty-state message.
+  const [tab, setTab] = useState<ScansTab>("all");
   const [page, setPage] = useState(1);
 
   const queryParams = useMemo(
@@ -181,8 +183,24 @@ export function ScansPage() {
                       className="border-b transition-colors hover:bg-accent/40"
                       style={{ height: "var(--table-row)" }}
                     >
-                      <td className="truncate px-6 font-mono text-xs">
-                        {scan.project_id.slice(0, 8)}
+                      <td className="px-6 font-mono text-xs">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate">
+                            {scan.project_id.slice(0, 8)}
+                          </span>
+                          {scan.release ? (
+                            <span
+                              className="inline-flex shrink-0 items-center rounded border border-border bg-muted px-1.5 py-0.5 text-[11px] font-medium text-foreground"
+                              data-testid="scans-row-release"
+                              data-release={scan.release}
+                              title={t("release.chip_aria", {
+                                release: scan.release,
+                              })}
+                            >
+                              {scan.release}
+                            </span>
+                          ) : null}
+                        </div>
                       </td>
                       <td className="px-3">
                         <Badge

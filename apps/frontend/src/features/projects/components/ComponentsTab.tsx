@@ -81,9 +81,14 @@ function parseOrder(raw: string | null): SortOrder {
 
 export interface ComponentsTabProps {
   projectId: string;
+  /**
+   * Pinned snapshot scan id (feature #28). When set, the list reflects that
+   * historical scan instead of the latest succeeded one. Omit → latest.
+   */
+  scanId?: string;
 }
 
-export function ComponentsTab({ projectId }: ComponentsTabProps) {
+export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
   const { t } = useTranslation("project_detail");
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -166,8 +171,9 @@ export function ComponentsTab({ projectId }: ComponentsTabProps) {
       sort,
       order,
       pageSize: PAGE_SIZE,
+      scanId,
     }),
-    [debouncedSearch, severity, licenseCategory, sort, order],
+    [debouncedSearch, severity, licenseCategory, sort, order, scanId],
   );
 
   const components = useComponents(projectId, filters);

@@ -103,7 +103,9 @@ function DiskCard({ item }: { item: AdminDiskItem }) {
           data-status={item.status}
         >
           <Icon className="h-3 w-3" aria-hidden />
-          {t(`admin.disk.status.${item.status}`)}
+          {item.error
+            ? t("admin.disk.status.unavailable")
+            : t(`admin.disk.status.${item.status}`)}
         </Badge>
       </div>
 
@@ -114,7 +116,7 @@ function DiskCard({ item }: { item: AdminDiskItem }) {
           className="mt-2"
         >
           <AlertDescription>
-            {t("admin.disk.errors.unavailable", { detail: item.error })}
+            {t("admin.disk.errors.unavailable")}
           </AlertDescription>
         </Alert>
       ) : (

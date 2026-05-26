@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 
 import { Input } from "@/components/ui/input";
+import { MultiSelect } from "@/components/ui/multi-select";
 import type {
   ComponentSeverity,
   ComponentSortKey,
@@ -14,9 +15,10 @@ import { cn } from "@/lib/utils";
  *
  * Inline filter row above the virtualized component list. CLAUDE.md
  * "디자인 시스템" — filters appear inline at the top of lists, no modal
- * filter dialogs. Multi-select severity/license filters are rendered as
- * native `<select multiple>` for now (zero new dependency); the sort key
- * and direction are paired so deep-links remain stable.
+ * filter dialogs. The severity/license filters use the reusable
+ * `MultiSelect` (app-i18n checkbox dropdown) so the collapsed trigger label
+ * is driven by the app language, not the OS locale; the sort key and
+ * direction are paired so deep-links remain stable.
  */
 
 export const SEVERITY_OPTIONS: ComponentSeverity[] = [
@@ -53,14 +55,6 @@ export interface ComponentsToolbarProps {
   order: SortOrder;
   onOrderChange: (value: SortOrder) => void;
   className?: string;
-}
-
-function selectedValues<T extends string>(
-  event: React.ChangeEvent<HTMLSelectElement>,
-): T[] {
-  return Array.from(event.target.selectedOptions).map(
-    (opt) => opt.value as T,
-  );
 }
 
 export function ComponentsToolbar({
@@ -110,23 +104,18 @@ export function ComponentsToolbar({
         >
           {t("components.toolbar.severity_label")}
         </label>
-        <select
+        <MultiSelect
           id="components-severity-filter"
-          multiple
-          size={1}
-          value={severity}
-          onChange={(event) =>
-            onSeverityChange(selectedValues<ComponentSeverity>(event))
-          }
-          className="mt-1 h-9 w-40 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          data-testid="components-severity-filter"
-        >
-          {SEVERITY_OPTIONS.map((opt) => (
-            <option key={opt} value={opt}>
-              {t(`severity.${opt}`)}
-            </option>
-          ))}
-        </select>
+          testId="components-severity-filter"
+          className="w-40"
+          label={t("components.toolbar.severity_label")}
+          options={SEVERITY_OPTIONS.map((opt) => ({
+            value: opt,
+            label: t(`severity.${opt}`),
+          }))}
+          selected={severity}
+          onChange={(next) => onSeverityChange(next as ComponentSeverity[])}
+        />
       </div>
 
       <div className="flex flex-col">
@@ -136,23 +125,20 @@ export function ComponentsToolbar({
         >
           {t("components.toolbar.license_label")}
         </label>
-        <select
+        <MultiSelect
           id="components-license-filter"
-          multiple
-          size={1}
-          value={licenseCategory}
-          onChange={(event) =>
-            onLicenseCategoryChange(selectedValues<LicenseCategoryName>(event))
+          testId="components-license-filter"
+          className="w-40"
+          label={t("components.toolbar.license_label")}
+          options={LICENSE_OPTIONS.map((opt) => ({
+            value: opt,
+            label: t(`license_category.${opt}`),
+          }))}
+          selected={licenseCategory}
+          onChange={(next) =>
+            onLicenseCategoryChange(next as LicenseCategoryName[])
           }
-          className="mt-1 h-9 w-40 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          data-testid="components-license-filter"
-        >
-          {LICENSE_OPTIONS.map((opt) => (
-            <option key={opt} value={opt}>
-              {t(`license_category.${opt}`)}
-            </option>
-          ))}
-        </select>
+        />
       </div>
 
       <div className="flex flex-col">

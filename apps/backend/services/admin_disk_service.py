@@ -139,6 +139,9 @@ def _probe_filesystem(*, name: str, path: str) -> AdminDiskItem:
     try:
         usage = shutil.disk_usage(path)
     except OSError as exc:
+        # The full exception (type, errno, path) goes to the structured log
+        # for operators. The API/UI gets a stable, non-revealing reason so we
+        # never surface a raw Python traceback / errno to the browser.
         log.warning(
             "admin.disk.probe_failed",
             name=name,
@@ -155,7 +158,7 @@ def _probe_filesystem(*, name: str, path: str) -> AdminDiskItem:
             threshold_warning=warn,
             threshold_critical=crit,
             status="down",
-            error=_strip_credentials(f"{type(exc).__name__}: {exc}"),
+            error="path not found or inaccessible",
         )
 
     total = int(usage.total)

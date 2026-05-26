@@ -123,6 +123,11 @@ export interface ListObligationsParams {
   categories?: LicenseCategoryName[];
   sort?: ObligationSortKey;
   order?: SortOrder;
+  /**
+   * Pin the read to a specific succeeded scan (feature #28 snapshot anchoring).
+   * Omit → the project's latest succeeded scan (unchanged default).
+   */
+  scanId?: string;
 }
 
 function listObligationsQuery(
@@ -142,6 +147,9 @@ function listObligationsQuery(
   }
   if (params.sort != null) out.sort = params.sort;
   if (params.order != null) out.order = params.order;
+  if (params.scanId != null && params.scanId.length > 0) {
+    out.scan_id = params.scanId;
+  }
   return out;
 }
 

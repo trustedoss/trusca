@@ -71,10 +71,17 @@ class _RowsResult:
 class _FakeSession:
     """Dispatches ``execute`` by inspecting the compiled statement text.
 
-    Three shapes the service issues:
-      - ``SELECT projects...``        → project row (scalar_one_or_none)
-      - ``SELECT scans.id...``        → scan id or None (scalar_one_or_none)
-      - ``SELECT ... license_findings → (source_path, spdx_id) rows (.all)
+    Four shapes the service issues:
+      - ``SELECT projects...``                    → project row (scalar_one_or_none)
+      - latest-succeeded resolver (``FROM scans``
+        with a ``status`` clause + ``LIMIT 1``)   → the project's ``latest_scan_id``
+        (the default-scan branch now anchors on the latest *succeeded* scan via
+        ``services.scan_resolution.latest_succeeded_scan_id`` rather than reading
+        ``project.latest_scan_id`` directly — the fixture models that as
+        "the project's preserved scan succeeded").
+      - explicit-scan-belongs check (``FROM scans``
+        with ``scans.id =``)                      → scan id or None
+      - ``SELECT ... license_findings``           → (source_path, spdx_id) rows (.all)
     """
 
     def __init__(
@@ -93,6 +100,12 @@ class _FakeSession:
         if "license_findings" in text:
             return _RowsResult(list(self._badge_rows))
         if "from scans" in text:
+            # The latest-succeeded resolver carries a status filter; map it to the
+            # project's own preserved scan id so the default-scan path reads the
+            # same tarball the test wrote. The explicit-belongs check (scans.id =)
+            # keeps the legacy "does this scan belong to the project?" semantics.
+            if "status" in text:
+                return _ScalarResult(getattr(self._project, "latest_scan_id", None))
             return _ScalarResult(uuid.uuid4() if self._scan_belongs else None)
         # Default: the project lookup.
         return _ScalarResult(self._project)

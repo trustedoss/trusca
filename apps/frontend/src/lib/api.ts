@@ -196,6 +196,12 @@ export interface RegisterPayload {
   full_name: string;
 }
 
+export interface MembershipWire {
+  team_id: string;
+  team_name: string;
+  role: string;
+}
+
 export interface UserPublicWire {
   id: string;
   email: string;
@@ -203,6 +209,8 @@ export interface UserPublicWire {
   is_active: boolean;
   is_superuser: boolean;
   created_at: string;
+  /** Present on /auth/me; absent on /auth/register. */
+  memberships?: MembershipWire[];
 }
 
 export interface TokenResponse {
@@ -213,6 +221,12 @@ export interface TokenResponse {
 
 /** Map the wire shape to the canonical {@link AuthUser}. */
 function toAuthUser(u: UserPublicWire): AuthUser {
+  const memberships = u.memberships ?? [];
+  const teams = memberships.map((m) => ({
+    id: m.team_id,
+    name: m.team_name,
+    role: m.role,
+  }));
   return {
     id: u.id,
     email: u.email,
@@ -220,7 +234,10 @@ function toAuthUser(u: UserPublicWire): AuthUser {
     role: u.is_superuser ? "super_admin" : "developer",
     isActive: u.is_active,
     isSuperuser: u.is_superuser,
-    teamId: null,
+    // memberships are ordered oldest-first by the backend; [0] is the stable
+    // default team used for project creation / write scoping.
+    teamId: teams[0]?.id ?? null,
+    teams,
   };
 }
 

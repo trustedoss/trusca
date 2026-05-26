@@ -93,6 +93,16 @@ class DTStatusOut(BaseModel):
         default=None,
         description="DT version string when reachable; null when the breaker is OPEN.",
     )
+    vulnerability_count: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Total vulnerabilities in DT's database (the NVD/OSV/GHSA mirror size). "
+            "0 means the mirror is empty — NVD mirroring is disabled or still "
+            "downloading — so scans find components but no CVEs. null when the "
+            "breaker is OPEN or the count probe failed."
+        ),
+    )
     last_error: str | None = None
 
 

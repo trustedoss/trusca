@@ -273,6 +273,7 @@ describe("ScanProgress", () => {
       requested_by_user_id: null,
       celery_task_id: null,
       metadata: {},
+      release: null,
       created_at: "2026-05-24T12:00:00.000Z",
       updated_at: "2026-05-24T12:00:05.000Z",
     });

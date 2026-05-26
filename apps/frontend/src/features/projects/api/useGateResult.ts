@@ -14,16 +14,17 @@ import {
   type GateResultResponse,
 } from "@/features/projects/api/projectDetailApi";
 
-export function gateResultKey(projectId: string) {
-  return ["projects", projectId, "gate-result"] as const;
+export function gateResultKey(projectId: string, scanId?: string) {
+  return ["projects", projectId, "gate-result", scanId ?? "latest"] as const;
 }
 
 export function useGateResult(
   projectId: string | undefined,
+  scanId?: string,
 ): UseQueryResult<GateResultResponse> {
   return useQuery({
-    queryKey: gateResultKey(projectId ?? ""),
-    queryFn: () => getGateResult(projectId as string),
+    queryKey: gateResultKey(projectId ?? "", scanId),
+    queryFn: () => getGateResult(projectId as string, { scanId }),
     enabled: typeof projectId === "string" && projectId.length > 0,
   });
 }

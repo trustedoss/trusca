@@ -141,11 +141,25 @@ export interface VulnerabilitiesTabProps {
   projectId: string;
   /** Used to build the PDF report download filename fallback (G2). */
   projectName?: string | null;
+  /**
+   * Pinned snapshot scan id (feature #28). When set, the list reflects that
+   * historical scan instead of the latest succeeded one. Omit → latest.
+   */
+  scanId?: string;
+  /**
+   * Historical (read-only) snapshot mode (feature #28). When `true`, all
+   * write controls that mutate the *current* findings — VEX import and the
+   * per-finding status transition — are disabled with a tooltip; editing an
+   * old snapshot's findings would be wrong. Read paths are unaffected.
+   */
+  readOnly?: boolean;
 }
 
 export function VulnerabilitiesTab({
   projectId,
   projectName,
+  scanId,
+  readOnly = false,
 }: VulnerabilitiesTabProps) {
   const { t, i18n } = useTranslation("project_detail");
   const [searchParams, setSearchParams] = useSearchParams();
@@ -269,8 +283,19 @@ export function VulnerabilitiesTab({
       reachable,
       limit: PAGE_SIZE,
       offset: (page - 1) * PAGE_SIZE,
+      scanId,
     }),
-    [debouncedSearch, severity, status, sort, order, minEpss, reachable, page],
+    [
+      debouncedSearch,
+      severity,
+      status,
+      sort,
+      order,
+      minEpss,
+      reachable,
+      page,
+      scanId,
+    ],
   );
 
   const vulnerabilities = useVulnerabilities(projectId, filters);
@@ -350,6 +375,7 @@ export function VulnerabilitiesTab({
         projectId={projectId}
         projectName={projectName}
         projectRole={projectRole}
+        readOnly={readOnly}
       />
 
       <div
@@ -437,6 +463,7 @@ export function VulnerabilitiesTab({
         open={drawerOpen}
         findingId={drawerId}
         projectRole={projectRole}
+        readOnly={readOnly}
         onOpenChange={(open) => {
           if (!open) setDrawerVuln(null);
         }}

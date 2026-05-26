@@ -37,7 +37,7 @@ import uuid
 from typing import Any
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import String, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -74,6 +74,7 @@ from services.sca_comment import (
     SCACommentError,
     post_pr_comment,
 )
+from services.scan_resolution import SnapshotScanNotFound, resolve_snapshot_scan_id
 from services.upgrade_recommendation import (
     FindingSignal,
     priority_rank,
@@ -222,6 +223,16 @@ def _build_response_body(result: GateResult) -> GateResultResponse:
 async def get_gate_result_endpoint(
     request: Request,
     project_id: uuid.UUID,
+    scan_id: uuid.UUID | None = Query(
+        default=None,
+        description=(
+            "Optional release-snapshot anchor (feature #28). When given, evaluate "
+            "the build gate against this SPECIFIC succeeded scan instead of the "
+            "project's latest succeeded scan (so the Overview gate card can reflect "
+            "a pinned release). Must belong to this project and be succeeded, else "
+            "404. Omit for the default latest-succeeded behaviour (the CI contract)."
+        ),
+    ),
     session: AsyncSession = Depends(get_db),
     actor: CurrentUser = Depends(_principal_from_jwt_or_api_key),
 ) -> Response:
@@ -230,7 +241,21 @@ async def get_gate_result_endpoint(
     except ProjectError as exc:
         return _problem_for_project_error(request, exc)
 
-    gate_result = await evaluate_gate(session, project_id)
+    # Resolve the snapshot anchor AFTER the project access check so a cross-team
+    # caller is rejected by the project guard before any scan lookup. An invalid
+    # pinned scan_id (cross-project / non-succeeded / nonexistent) → existence-
+    # hide 404. ``None`` → latest succeeded (unchanged CI default).
+    try:
+        resolved_scan_id = await resolve_snapshot_scan_id(session, project_id, scan_id)
+    except SnapshotScanNotFound:
+        return problem_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            title="Scan Snapshot Not Found",
+            detail="No succeeded scan with that id exists for this project.",
+            instance=request.url.path,
+        )
+
+    gate_result = await evaluate_gate(session, project_id, scan_id=resolved_scan_id)
     body = _build_response_body(gate_result)
     return Response(
         content=body.model_dump_json(),

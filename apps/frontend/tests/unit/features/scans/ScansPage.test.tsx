@@ -45,6 +45,7 @@ function scanFixture(overrides: Partial<ScanPublic> = {}): ScanPublic {
     requested_by_user_id: null,
     celery_task_id: null,
     metadata: {},
+    release: null,
     created_at: "2026-05-08T00:00:00Z",
     updated_at: "2026-05-08T00:00:00Z",
     ...overrides,
@@ -71,16 +72,20 @@ describe("ScansPage", () => {
     mockedListMyScans.mockReset();
   });
 
-  it("renders the page and queries with the running tab's status filter", async () => {
+  it("defaults to the All tab and queries with no status filter", async () => {
     mockedListMyScans.mockResolvedValue(pageResponse([scanFixture()]));
     renderPage();
     expect(screen.getByTestId("scans-page")).toBeInTheDocument();
     await waitFor(() => {
       expect(mockedListMyScans).toHaveBeenCalled();
     });
-    expect(mockedListMyScans.mock.calls[0]?.[0]).toMatchObject({
-      status: "running",
-    });
+    // "all" is the default → no status filter is sent so every status returns.
+    expect(mockedListMyScans.mock.calls[0]?.[0]?.status).toBeUndefined();
+    // The All tab is the active one on open.
+    expect(screen.getByTestId("scans-tab-all")).toHaveAttribute(
+      "data-active",
+      "true",
+    );
   });
 
   it("switching to the failed tab re-queries with status=failed", async () => {

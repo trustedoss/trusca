@@ -63,15 +63,34 @@ export interface ProjectOverviewResponse {
   severity_distribution: Partial<Record<ComponentSeverity, number>>;
   /** Counts per license category. */
   license_distribution: Partial<Record<LicenseCategoryName, number>>;
+  /** Overall risk 0–100 = max(security_score, license_score). Non-saturating. */
   risk_score: number;
+  /** Security axis 0–100, driven by the worst CVE severity present (band-by-severity). */
+  security_score: number;
+  /** License axis 0–100; `conditional` alone caps at Medium (≤49), never Critical. */
+  license_score: number;
   recent_scans: ScanSummary[];
+  /** Timestamp of the latest scan *attempt* (may be a failed scan). */
   last_scan_at: string | null;
+  /**
+   * Timestamp of the latest *succeeded* scan — the scan the SBOM export is
+   * actually generated from. `null` when there is no succeeded scan yet. The
+   * SBOM tab labels its "Latest scan" with this (not `last_scan_at`) so the
+   * label matches the artifact a download would produce.
+   */
+  last_succeeded_scan_at: string | null;
   /**
    * The requesting user's effective role within this project's owning team.
    * Used (not the global JWT role) to gate team-scoped actions such as
    * vulnerability suppression (BUG-005).
    */
   current_user_role: TeamScopedRole;
+  /**
+   * Whether a git credential is stored for this project (feature #18). Presence
+   * only — the value is never returned. Mirrors
+   * `ProjectPublic.has_git_credential`.
+   */
+  has_git_credential: boolean;
 }
 
 export interface ComponentSummary {
@@ -137,6 +156,12 @@ export interface ListComponentsParams {
   license_category?: LicenseCategoryName[];
   sort?: ComponentSortKey;
   order?: SortOrder;
+  /**
+   * Pin the read to a specific succeeded scan (feature #28 snapshot anchoring).
+   * Omit → the project's latest succeeded scan (unchanged default). An invalid /
+   * cross-project / non-succeeded id is a 404 problem+json on the wire.
+   */
+  scanId?: string;
 }
 
 /**
@@ -161,14 +186,23 @@ function listComponentsQuery(
   }
   if (params.sort != null) out.sort = params.sort;
   if (params.order != null) out.order = params.order;
+  if (params.scanId != null && params.scanId.length > 0) {
+    out.scan_id = params.scanId;
+  }
   return out;
 }
 
 export async function getProjectOverview(
   projectId: string,
+  options: { scanId?: string } = {},
 ): Promise<ProjectOverviewResponse> {
+  const params: Record<string, unknown> = {};
+  if (options.scanId != null && options.scanId.length > 0) {
+    params.scan_id = options.scanId;
+  }
   const { data } = await api.get<ProjectOverviewResponse>(
     `/v1/projects/${projectId}/overview`,
+    { params },
   );
   return data;
 }
@@ -242,9 +276,15 @@ export interface GateResultResponse {
 
 export async function getGateResult(
   projectId: string,
+  options: { scanId?: string } = {},
 ): Promise<GateResultResponse> {
+  const params: Record<string, unknown> = {};
+  if (options.scanId != null && options.scanId.length > 0) {
+    params.scan_id = options.scanId;
+  }
   const { data } = await api.get<GateResultResponse>(
     `/v1/projects/${projectId}/gate-result`,
+    { params },
   );
   return data;
 }

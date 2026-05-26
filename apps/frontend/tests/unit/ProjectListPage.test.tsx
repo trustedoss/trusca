@@ -67,6 +67,7 @@ vi.mock("@/features/scan/SourceSelectDialog", () => ({
                 requested_by_user_id: null,
                 celery_task_id: null,
                 metadata: {},
+                release: null,
                 created_at: "2026-05-22T00:00:00Z",
                 updated_at: "2026-05-22T00:00:00Z",
               },
@@ -120,6 +121,9 @@ function project(name: string, overrides: Partial<ProjectPublic> = {}): ProjectP
     archived_at: null,
     created_by_user_id: null,
     latest_scan_id: null,
+    latest_scan_status: null,
+    severity_summary: null,
+    has_git_credential: false,
     created_at: "2026-05-01T00:00:00Z",
     updated_at: "2026-05-01T00:00:00Z",
     ...overrides,
@@ -218,6 +222,70 @@ describe("ProjectListPage", () => {
       "data-project-id",
       project("Alpha").id,
     );
+  });
+
+  it("renders the latest-scan status badge driven by latest_scan_status", async () => {
+    mockedListProjects.mockResolvedValueOnce(
+      listResponse([
+        project("Alpha", { latest_scan_status: "failed" }),
+        project("Bravo", { latest_scan_status: null }),
+      ]),
+    );
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("project-row")).toHaveLength(2);
+    });
+    const statusCells = screen.getAllByTestId("project-row-status");
+    // Alpha → Failed badge; Bravo (never scanned) → Idle badge.
+    expect(statusCells[0]?.querySelector("[data-status]")).toHaveAttribute(
+      "data-status",
+      "failed",
+    );
+    expect(statusCells[1]?.querySelector("[data-status]")).toHaveAttribute(
+      "data-status",
+      "idle",
+    );
+  });
+
+  it("renders a colored severity summary when severity_summary has non-zero buckets", async () => {
+    mockedListProjects.mockResolvedValueOnce(
+      listResponse([
+        project("Alpha", {
+          latest_scan_status: "succeeded",
+          severity_summary: { critical: 10, high: 13, medium: 0, low: 27 },
+        }),
+      ]),
+    );
+    renderPage();
+    const summary = await screen.findByTestId("project-row-severity");
+    // Non-zero buckets render with their counts; the zero "medium" bucket omitted.
+    expect(summary.textContent).toContain("10");
+    expect(summary.textContent).toContain("13");
+    expect(summary.textContent).toContain("27");
+    expect(summary.textContent).not.toContain("17");
+    // Risk design tokens, not hex literals.
+    expect(summary.querySelector(".text-risk-critical")).toBeInTheDocument();
+    expect(summary.querySelector(".text-risk-high")).toBeInTheDocument();
+    expect(summary.querySelector(".text-risk-low")).toBeInTheDocument();
+    // The omitted (zero) bucket renders no medium token.
+    expect(summary.querySelector(".text-risk-medium")).not.toBeInTheDocument();
+  });
+
+  it("renders no severity summary when severity_summary is null or all-zero", async () => {
+    mockedListProjects.mockResolvedValueOnce(
+      listResponse([
+        project("Alpha", { latest_scan_status: "failed", severity_summary: null }),
+        project("Bravo", {
+          latest_scan_status: "succeeded",
+          severity_summary: { critical: 0, high: 0, medium: 0, low: 0 },
+        }),
+      ]),
+    );
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("project-row")).toHaveLength(2);
+    });
+    expect(screen.queryByTestId("project-row-severity")).not.toBeInTheDocument();
   });
 
   it("opens the progress drawer once the source dialog reports a started scan", async () => {

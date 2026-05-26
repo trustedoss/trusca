@@ -1,3 +1,4 @@
+import type { KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { ScanSummary } from "@/features/projects/api/projectDetailApi";
@@ -14,6 +15,12 @@ import { cn } from "@/lib/utils";
 export interface RecentScansTableProps {
   scans: ScanSummary[];
   className?: string;
+  /**
+   * When provided, each row becomes an activatable control (click / Enter /
+   * Space) that re-opens the live progress drawer for that scan. Omit to keep
+   * the table read-only.
+   */
+  onSelectScan?: (scan: ScanSummary) => void;
 }
 
 function formatDateTime(value: string | null): string {
@@ -47,7 +54,11 @@ const STATUS_TONE: Record<string, string> = {
   cancelled: "bg-risk-high",
 };
 
-export function RecentScansTable({ scans, className }: RecentScansTableProps) {
+export function RecentScansTable({
+  scans,
+  className,
+  onSelectScan,
+}: RecentScansTableProps) {
   const { t } = useTranslation("project_detail");
 
   if (scans.length === 0) {
@@ -90,8 +101,28 @@ export function RecentScansTable({ scans, className }: RecentScansTableProps) {
               data-testid="recent-scan-row"
               data-scan-id={scan.id}
               data-status={scan.status}
-              className="border-b last:border-b-0"
+              className={cn(
+                "border-b last:border-b-0",
+                onSelectScan &&
+                  "cursor-pointer transition-colors hover:bg-accent/40 focus-visible:bg-accent/40 focus-visible:outline-none",
+              )}
               style={{ height: "var(--table-row)" }}
+              {...(onSelectScan
+                ? {
+                    role: "button",
+                    tabIndex: 0,
+                    "aria-label": t("overview.recent_scans.reopen_aria", {
+                      defaultValue: "View progress for this scan",
+                    }),
+                    onClick: () => onSelectScan(scan),
+                    onKeyDown: (event: KeyboardEvent<HTMLTableRowElement>) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        onSelectScan(scan);
+                      }
+                    },
+                  }
+                : {})}
             >
               <td className="px-3 py-2 font-mono text-xs text-muted-foreground">
                 {formatDateTime(scan.started_at ?? scan.created_at)}

@@ -29,6 +29,7 @@ from pydantic import (
     Field,
     StringConstraints,
     field_validator,
+    model_validator,
 )
 
 from core.url_guard import GitUrlValidationError, validate_git_url
@@ -115,6 +116,18 @@ _SCAN_METADATA_MAX_DEPTH = 4
 #   - "git"    (default / backward-compatible): clone project.git_url
 #   - "upload": extract a previously-uploaded zip identified by archive_id
 _SCAN_SOURCE_TYPES = frozenset({"git", "upload"})
+
+# Feature #18 Part A — release/version label. An optional ``metadata.release``
+# (e.g. "v1.2.3") lets a user map a release tag → its scan findings. We restrict
+# it to the SAME git-ref-safe charset/length approach used for ``default_branch``
+# (letters, digits, and the ref-safe punctuation ``._/-``), bounded at 100 chars
+# (a generous cap for a version/ref label — well under the 16 KiB metadata cap).
+# The label is descriptive-only metadata: it is never interpolated into a shell,
+# a URL path, or a git ref, but we still validate it at the boundary so the
+# stored value is predictable and the UI never has to defend against control
+# chars / spaces / shell metacharacters. Empty / missing is allowed.
+_SCAN_RELEASE_MAX_LEN = 100
+_SCAN_RELEASE_PATTERN = re.compile(r"^[A-Za-z0-9._/-]{1,100}$")
 
 
 def _measure_metadata_depth(value: Any, *, _level: int = 0) -> int:
@@ -244,6 +257,61 @@ class ProjectUpdate(BaseModel):
     git_url: str | None = Field(default=None, max_length=2048)
     default_branch: str | None = Field(default=None, max_length=255)
     visibility: ProjectVisibility | None = None
+    # Feature #18 Part B — private-repo git credential (WRITE-ONLY).
+    #
+    # `git_credential` is a plaintext PAT / deploy token. When provided and
+    # non-empty the service encrypts it (core.crypto.encrypt_secret) and stores
+    # the Fernet ciphertext in `projects.git_credential_encrypted`. It is NEVER
+    # echoed back in any response (there is deliberately NO matching field on
+    # ProjectPublic) — the read side only exposes the boolean `has_git_credential`.
+    # An 8 KiB cap is a generous ceiling for a PAT / deploy token (GitHub PATs are
+    # ~40-93 chars; an SSH key is a future step) while bounding the encrypt input.
+    #
+    # `clear_git_credential` is the explicit way to remove a stored credential
+    # (set the column back to NULL). We use a dedicated boolean flag rather than
+    # overloading `git_credential=""`/`null`, because the field is write-only and
+    # "unset vs explicit-null" under PATCH semantics is ambiguous for a secret —
+    # a boolean flag makes the caller's intent unambiguous and is self-documenting
+    # in the OpenAPI schema. Setting both `git_credential` (non-empty) AND
+    # `clear_git_credential=true` in one request is rejected (422) by the
+    # validator below as a contradictory payload.
+    git_credential: str | None = Field(
+        default=None,
+        max_length=8192,
+        description=(
+            "Write-only plaintext git credential (PAT / deploy token) for cloning "
+            "a private repo. Encrypted at rest; NEVER returned in any response. "
+            "Provide a non-empty value to set/rotate it. Omit to leave it "
+            "unchanged. Use `clear_git_credential: true` to remove it."
+        ),
+    )
+    clear_git_credential: bool = Field(
+        default=False,
+        description=(
+            "Set true to remove a stored git credential (column → NULL). "
+            "Cannot be combined with a non-empty `git_credential`."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _validate_credential_intent(self) -> ProjectUpdate:
+        """Reject a contradictory credential payload (set AND clear in one request).
+
+        A non-empty `git_credential` means "set/rotate"; `clear_git_credential`
+        means "remove". Asking for both at once is ambiguous, so we 422 rather
+        than silently picking one.
+        """
+        if (
+            self.clear_git_credential
+            and self.git_credential is not None
+            and self.git_credential.strip() != ""
+        ):
+            raise ValueError(
+                "git_credential and clear_git_credential are mutually exclusive:"
+                " provide a non-empty git_credential to set it, OR"
+                " clear_git_credential=true to remove it, not both",
+            )
+        return self
 
     @field_validator("git_url")
     @classmethod
@@ -281,6 +349,28 @@ class ProjectUpdate(BaseModel):
         return value
 
 
+class SeveritySummary(BaseModel):
+    """Per-project vulnerability-severity counts for the project-list risk badge.
+
+    Counts are the number of *components* (component_versions) landing in each
+    severity bucket — the worst CVE finding per component — within the project's
+    latest **succeeded** scan (resolved via
+    ``services.scan_resolution.latest_succeeded_scan_id``, the same anchor the
+    overview / build-gate use). Only the four risk-bearing buckets are surfaced
+    (``info`` / ``none`` are not actionable on a list-row indicator). A project
+    with a succeeded scan but no CVE findings yields all-zero counts; a project
+    that has never succeeded a scan surfaces ``severity_summary = null`` instead
+    (see ``ProjectPublic.severity_summary``).
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    critical: int = Field(default=0, ge=0)
+    high: int = Field(default=0, ge=0)
+    medium: int = Field(default=0, ge=0)
+    low: int = Field(default=0, ge=0)
+
+
 class ProjectPublic(BaseModel):
     """Outbound shape for every project-bearing response."""
 
@@ -297,6 +387,40 @@ class ProjectPublic(BaseModel):
     archived_at: datetime | None
     created_by_user_id: uuid.UUID | None
     latest_scan_id: uuid.UUID | None
+    # Feature #18 Part B — read-only "is a private-repo credential configured?"
+    # flag. This is the ONLY thing the read side exposes about the credential:
+    # the plaintext and the ciphertext are NEVER returned. Derived from the
+    # `Project.has_git_credential` computed property (true iff
+    # `git_credential_encrypted` is non-null) so `from_attributes` picks it up
+    # without the schema ever touching the ciphertext column.
+    has_git_credential: bool = False
+    # #25 — project-list status badge + risk indicator. These two fields are
+    # populated ONLY on the list endpoint (GET /v1/projects), which enriches each
+    # page row in TWO batched queries (no N+1). On single-project responses
+    # (GET/POST/PATCH /v1/projects/{id}) they default to null — the detail UI
+    # reads status / severity from the richer overview endpoint instead.
+    latest_scan_status: ScanStatus | None = Field(
+        default=None,
+        description=(
+            "Status of the project's latest scan *attempt* (the scan pointed at "
+            "by `latest_scan_id`): queued|running|succeeded|failed|cancelled. "
+            "`null` when the project has never been scanned — the UI renders an "
+            "'Idle' badge. This tracks the attempt timeline, NOT the current SCA "
+            "posture (a failed latest attempt still shows `failed` here while "
+            "`severity_summary` reflects the last succeeded scan)."
+        ),
+    )
+    severity_summary: SeveritySummary | None = Field(
+        default=None,
+        description=(
+            "Vulnerability-severity component counts from the project's latest "
+            "*succeeded* scan (the same anchor the overview / build-gate use). "
+            "`null` when the project has no succeeded scan. Drives the per-row "
+            "risk indicator. Note this can be non-null even when "
+            "`latest_scan_status` is 'failed' — the last *attempt* failed but an "
+            "earlier scan succeeded and its findings remain the current posture."
+        ),
+    )
     created_at: datetime
     updated_at: datetime
 
@@ -372,6 +496,27 @@ class ScanCreate(BaseModel):
                     " source_type == 'upload'",
                 )
 
+        # Feature #18 Part A — optional release/version label. Absent / blank is
+        # allowed (the scan simply carries no release). When present it must be a
+        # short, ref-safe label (same charset as default_branch). This rejects
+        # spaces, control chars, and shell metacharacters (`;`, `&`, `|`, ...)
+        # by construction — they are not in the charset.
+        release = value.get("release")
+        if release is not None:
+            if not isinstance(release, str):
+                raise ValueError("metadata.release must be a string when present")
+            stripped_release = release.strip()
+            if stripped_release and (
+                len(stripped_release) > _SCAN_RELEASE_MAX_LEN
+                or not _SCAN_RELEASE_PATTERN.match(stripped_release)
+            ):
+                raise ValueError(
+                    "metadata.release must be a short version/ref-safe label"
+                    " (letters, digits, and '._/-' only; no spaces, control"
+                    f" chars, or shell metacharacters; max {_SCAN_RELEASE_MAX_LEN}"
+                    " chars)",
+                )
+
         try:
             encoded = json.dumps(value, separators=(",", ":"), default=str)
         except (TypeError, ValueError) as exc:
@@ -416,8 +561,32 @@ class ScanPublic(BaseModel):
         validation_alias="scan_metadata",
         serialization_alias="metadata",
     )
+    # Feature #18 Part A — convenience surfacing of the release/version label that
+    # rides inside `metadata` (the canonical store). It is derived from
+    # `metadata.get("release")` in the `_derive_release` validator below so a
+    # client never has to dig into the metadata blob to map a release → findings.
+    # `null` when the scan carried no release. The value is still present in
+    # `metadata` too; this is a read-only mirror, not a second source of truth.
+    release: str | None = None
     created_at: datetime
     updated_at: datetime
+
+    @model_validator(mode="after")
+    def _derive_release(self) -> ScanPublic:
+        """Populate `release` from the metadata blob (the canonical store).
+
+        Runs after field population so `self.metadata` is already remapped off the
+        ORM `scan_metadata` attribute. A non-string / blank stored value collapses
+        to `None` (defensive — the inbound validator already enforces the shape,
+        but a row written before this feature, or by a future code path, must not
+        surface a non-string here).
+        """
+        raw = self.metadata.get("release") if isinstance(self.metadata, dict) else None
+        if isinstance(raw, str) and raw.strip():
+            self.release = raw.strip()
+        else:
+            self.release = None
+        return self
 
 
 class SourceArchiveUploadResponse(BaseModel):
@@ -457,4 +626,5 @@ __all__ = [
     "ScanListResponse",
     "ScanPublic",
     "ScanStatus",
+    "SeveritySummary",
 ]

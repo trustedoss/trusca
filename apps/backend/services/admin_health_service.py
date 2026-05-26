@@ -22,6 +22,7 @@ cache the redis URL / celery app reference at module level.
 
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -187,6 +188,18 @@ async def _probe_disk(session: AsyncSession) -> HealthComponent:
     return HealthComponent(name="disk", status=worst, detail=detail, value=worst_pct)
 
 
+def _active_scans_warn() -> int:
+    """Queued+running count at/above which the queue is flagged ``degraded``."""
+    return int(os.getenv("HEALTH_ACTIVE_SCANS_WARN", "50"))
+
+
+def _active_scans_crit() -> int:
+    """Queued+running count at/above which the queue is flagged ``down`` —
+    a backlog this large almost always means stuck / zombie scans rather than
+    legitimate load (worker concurrency is small)."""
+    return int(os.getenv("HEALTH_ACTIVE_SCANS_CRIT", "200"))
+
+
 async def _probe_active_scans(session: AsyncSession) -> HealthComponent:
     stmt = select(func.count()).select_from(Scan).where(Scan.status.in_(("queued", "running")))
     try:
@@ -199,9 +212,22 @@ async def _probe_active_scans(session: AsyncSession) -> HealthComponent:
             detail=_strip_credentials(f"{type(exc).__name__}: {exc}"),
             value=None,
         )
+
+    # A perpetually-large in-flight queue is a real operational signal (stuck
+    # dispatch, dead workers, zombie scans), not "healthy". Classify against
+    # env-tunable thresholds instead of always reporting ok.
+    warn = _active_scans_warn()
+    crit = _active_scans_crit()
+    if count >= crit:
+        status: HealthStatus = "down"
+    elif count >= warn:
+        status = "degraded"
+    else:
+        status = "ok"
+
     return HealthComponent(
         name="active_scans",
-        status="ok",
+        status=status,
         detail=f"{count} scan(s) queued or running",
         value=count,
     )

@@ -262,6 +262,31 @@ class DTClient:
         vulns: list[dict[str, Any]] = response.json()
         return vulns
 
+    def count_vulnerabilities(self) -> int:
+        """
+        Total vulnerabilities in DT's database — the NVD/OSV/GHSA mirror size.
+
+        Reads the ``X-Total-Count`` header DT sets on its paginated list
+        endpoints, so we ask for the smallest possible page (``pageSize=1``)
+        and never materialise rows. A return of ``0`` means DT's vulnerability
+        mirror has not been populated (NVD mirroring disabled, or still
+        downloading): scans will then find components but report no CVEs, which
+        looks indistinguishable from a genuinely clean project. The admin DT
+        status surfaces this so an operator can tell the two apart.
+        """
+        response = self._request(
+            "GET",
+            "/api/v1/vulnerability",
+            params={"pageSize": 1, "pageNumber": 1},
+        )
+        raw = response.headers.get("X-Total-Count")
+        if raw is None:
+            return 0
+        try:
+            return max(int(raw), 0)
+        except (TypeError, ValueError):
+            return 0
+
     # ------------------------------------------------------------------ admin
 
     def delete_project(self, *, project_uuid: str) -> None:

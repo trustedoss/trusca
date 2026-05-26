@@ -48,6 +48,7 @@ function scanFixture(status: ScanStatus): ScanPublic {
     requested_by_user_id: null,
     celery_task_id: null,
     metadata: {},
+    release: null,
     created_at: "2026-05-08T00:00:00Z",
     updated_at: "2026-05-08T00:00:00Z",
   };

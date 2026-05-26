@@ -206,6 +206,19 @@ class Project(Base):
     # gateway knows which header schema to apply.
     webhook_secret: Mapped[str | None] = mapped_column(String(64), nullable=True)
     webhook_provider: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # Feature #18 Part B (schema half) — private-repo scanning. Stores the
+    # Fernet ciphertext of the user-supplied git credential (a PAT / deploy
+    # token today; an SSH private key later) used to clone a private repo.
+    # This is a REVERSIBLE secret (we must recover the plaintext to inject it
+    # into the clone) — mirrors ``github_app_credentials.private_key_encrypted``:
+    # the plaintext is NEVER persisted, encryption / decryption lives in
+    # ``core.crypto``. Typed ``Text`` because Fernet tokens are urlsafe-base64
+    # strings of unbounded length. Nullable — most projects are public / have
+    # no credential. Masked in ``audit_logs.diff`` via
+    # ``core.audit._SENSITIVE_COLUMNS`` (defence-in-depth: a credential
+    # add / rotate / clear UPDATE must never copy ciphertext into the diff).
+    # The backend service + clone injection + UI land in later #18-B steps.
+    git_credential_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=NOW
     )
@@ -220,6 +233,17 @@ class Project(Base):
         # Disambiguate against the latest_scan_id FK below.
         foreign_keys="Scan.project_id",
     )
+
+    @property
+    def has_git_credential(self) -> bool:
+        """True iff a private-repo git credential is configured (#18 Part B).
+
+        Read-only derived flag exposed on ``ProjectPublic.has_git_credential`` so
+        the UI can show "credential configured" WITHOUT the schema ever reading
+        the ciphertext column. Never exposes the plaintext or the ciphertext —
+        only whether one is set.
+        """
+        return self.git_credential_encrypted is not None
 
     __table_args__ = (
         UniqueConstraint("team_id", "slug", name="uq_projects_team_slug"),

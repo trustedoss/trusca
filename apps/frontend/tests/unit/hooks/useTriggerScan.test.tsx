@@ -49,6 +49,7 @@ function fakeScan(): ScanPublic {
     requested_by_user_id: null,
     celery_task_id: null,
     metadata: {},
+    release: null,
     created_at: "2026-05-22T00:00:00Z",
     updated_at: "2026-05-22T00:00:00Z",
   };
@@ -162,5 +163,51 @@ describe("useTriggerScan", () => {
       result.current.mutateAsync({ method: "container", imageRef: "   " }),
     ).rejects.toThrow();
     expect(mockedTrigger).not.toHaveBeenCalled();
+  });
+
+  // ---- feature #18 — release/version metadata ---------------------------
+
+  it("threads a trimmed release into metadata.release for the git path", async () => {
+    mockedTrigger.mockResolvedValue(fakeScan());
+    const { result } = renderHook(() => useTriggerScan("proj-1"), { wrapper });
+    await result.current.mutateAsync({ method: "git", release: "  v1.2.3 " });
+    expect(mockedTrigger).toHaveBeenCalledWith("proj-1", {
+      kind: "source",
+      metadata: { source_type: "git", release: "v1.2.3" },
+    });
+  });
+
+  it("includes metadata.release on the upload and container paths", async () => {
+    mockedUpload.mockResolvedValue({ archive_id: "arch-7" });
+    mockedTrigger.mockResolvedValue(fakeScan());
+    const file = new File([new Uint8Array(4)], "src.zip");
+    const { result } = renderHook(() => useTriggerScan("proj-1"), { wrapper });
+    await result.current.mutateAsync({ method: "upload", file, release: "v2.0.0" });
+    expect(mockedTrigger).toHaveBeenCalledWith("proj-1", {
+      kind: "source",
+      metadata: { source_type: "upload", archive_id: "arch-7", release: "v2.0.0" },
+    });
+
+    mockedTrigger.mockClear();
+    mockedTrigger.mockResolvedValue({ ...fakeScan(), kind: "container" });
+    await result.current.mutateAsync({
+      method: "container",
+      imageRef: "alpine:3.19",
+      release: "v2.0.0",
+    });
+    expect(mockedTrigger).toHaveBeenCalledWith("proj-1", {
+      kind: "container",
+      metadata: { image_ref: "alpine:3.19", release: "v2.0.0" },
+    });
+  });
+
+  it("omits metadata.release when the release is empty or whitespace", async () => {
+    mockedTrigger.mockResolvedValue(fakeScan());
+    const { result } = renderHook(() => useTriggerScan("proj-1"), { wrapper });
+    await result.current.mutateAsync({ method: "git", release: "   " });
+    expect(mockedTrigger).toHaveBeenCalledWith("proj-1", {
+      kind: "source",
+      metadata: { source_type: "git" },
+    });
   });
 });

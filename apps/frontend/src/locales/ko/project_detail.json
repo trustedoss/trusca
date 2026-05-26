@@ -6,6 +6,12 @@
     "breadcrumb_unavailable": "사용할 수 없음",
     "load_error": "프로젝트를 불러오지 못했습니다.",
     "missing_id": "URL에 프로젝트 ID가 없습니다.",
+    "scan": "스캔",
+    "scan_demo_disabled": "읽기 전용 데모에서는 사용할 수 없습니다",
+    "scan_drawer_subtitle": "스캔 진행 상황",
+    "scan_active_running": "스캔 진행 중",
+    "scan_active_queued": "스캔 대기 중",
+    "scan_active_reopen_aria": "진행 중인 스캔 보기",
     "errors": {
       "not_found": "프로젝트를 찾을 수 없습니다.",
       "forbidden": "이 프로젝트를 볼 권한이 없습니다.",
@@ -21,7 +27,8 @@
     "sbom": "SBOM",
     "source": "소스",
     "remediation": "보안 조치",
-    "settings": "설정"
+    "settings": "설정",
+    "releases": "릴리스"
   },
   "severity": {
     "critical": "치명",
@@ -48,7 +55,11 @@
   "overview": {
     "risk_card": {
       "title": "리스크 점수",
-      "subtitle": "최근 스캔의 컴포넌트 {{total}}개를 기반으로 산출되었습니다."
+      "subtitle": "최근 스캔의 컴포넌트 {{total}}개를 기반으로 산출되었습니다.",
+      "security": "보안",
+      "license": "라이선스",
+      "security_counts": "Critical {{critical}} · High {{high}}",
+      "license_counts": "금지 {{forbidden}} · 조건부 {{conditional}}"
     },
     "risk_gauge": {
       "aria": "프로젝트 리스크 점수: 100점 만점에 {{score}}점"
@@ -71,6 +82,7 @@
       "title": "최근 스캔",
       "subtitle": "이 프로젝트의 최근 스캔 5건입니다.",
       "empty": "아직 스캔 이력이 없습니다.",
+      "reopen_aria": "이 스캔의 진행 상태 보기",
       "col_started": "시작 시각",
       "col_status": "상태",
       "col_duration": "소요 시간",
@@ -614,6 +626,19 @@
       "unarchive": "보관 해제",
       "unarchiving": "복구 중…"
     },
+    "git_credential": {
+      "title": "Git 자격 증명 (비공개 저장소)",
+      "help": "토큰은 암호화되어 저장되며 비공개 https 저장소를 클론하는 데 사용됩니다. SSH URL은 키 자료가 필요하며 아직 지원되지 않습니다.",
+      "field_label": "액세스 토큰",
+      "field_placeholder": "개인 액세스 토큰",
+      "configured_badge": "자격 증명 설정됨",
+      "save": "자격 증명 저장",
+      "saving": "저장 중…",
+      "replace": "교체",
+      "remove": "삭제",
+      "removing": "삭제 중…",
+      "cancel": "취소"
+    },
     "archive": {
       "active_title": "프로젝트 보관",
       "active_subtitle": "보관된 프로젝트는 목록에서 숨겨지지만 스캔 이력은 유지됩니다.",
@@ -625,6 +650,135 @@
       "saved": "설정이 저장되었습니다.",
       "archived": "프로젝트가 보관되었습니다.",
       "unarchived": "프로젝트가 복구되었습니다."
+    }
+  },
+  "releases": {
+    "title": "릴리스",
+    "subtitle": "성공한 각 스캔이 릴리스 스냅샷입니다. 스냅샷을 열어 해당 시점의 전체 현황을 확인하세요.",
+    "empty": "아직 성공한 스캔이 없습니다 — 스캔을 실행하면 릴리스 스냅샷이 생성됩니다.",
+    "view_snapshot": "스냅샷 보기",
+    "view_snapshot_aria": "{{label}} 스냅샷 보기",
+    "severity_none": "취약점 없음",
+    "col": {
+      "release": "릴리스",
+      "date": "날짜",
+      "risk": "리스크",
+      "severity": "심각도",
+      "gate": "게이트",
+      "actions": "작업"
+    },
+    "severity_abbr": {
+      "critical": "C",
+      "high": "H",
+      "medium": "M",
+      "low": "L"
+    },
+    "gate": {
+      "pass": "통과",
+      "fail": "실패"
+    },
+    "errors": {
+      "load_failed": "릴리스를 불러오지 못했습니다. 다시 시도해 주세요."
+    }
+  },
+  "release_switcher": {
+    "menu_label": "릴리스",
+    "trigger_latest": "릴리스: {{label}} · 최신",
+    "trigger_historical": "릴리스: {{label}} · 읽기 전용",
+    "trigger_loading": "릴리스: …",
+    "loading": "릴리스 불러오는 중…",
+    "none": "릴리스 없음",
+    "latest": "최신",
+    "latest_hint": "가장 최근 성공한 스캔의 실시간 보기",
+    "latest_tag": "최신",
+    "gate_fail": "실패",
+    "item_aria": "{{label}} 스냅샷 보기"
+  },
+  "snapshot": {
+    "banner": "{{label}} 보는 중 — 과거 스냅샷 (읽기 전용)",
+    "back_to_latest": "최신으로 돌아가기",
+    "readonly_tooltip": "읽기 전용 과거 스냅샷"
+  },
+  "compare": {
+    "title": "릴리스 비교",
+    "subtitle": "두 릴리스 스냅샷 사이에 무엇이 바뀌었는지 확인합니다.",
+    "open_button": "비교",
+    "open_button_aria": "최근 두 릴리스를 비교",
+    "open_disabled_hint": "성공한 스캔이 최소 2개 필요합니다",
+    "switcher_item": "릴리스 비교…",
+    "breadcrumb_compare": "비교",
+    "back_to_project": "프로젝트로 돌아가기",
+    "selector": {
+      "base_label": "기준",
+      "target_label": "대상",
+      "base_aria": "기준 릴리스 (이전)",
+      "target_aria": "대상 릴리스 (이후)",
+      "swap": "기준과 대상 바꾸기",
+      "menu_label": "릴리스",
+      "loading": "릴리스를 불러오는 중…",
+      "none": "릴리스가 아직 없습니다"
+    },
+    "missing_params": {
+      "title": "비교할 두 릴리스를 선택하세요",
+      "description": "위에서 기준 릴리스와 대상 릴리스를 선택하면 변경 사항이 표시됩니다."
+    },
+    "summary": {
+      "risk_score": "위험 점수",
+      "severity": "심각도",
+      "gate": "빌드 게이트",
+      "component_count": "컴포넌트",
+      "no_value": "—",
+      "no_change": "변경 없음",
+      "delta_increase_aria": "{{delta}}만큼 증가",
+      "delta_decrease_aria": "{{delta}}만큼 감소",
+      "gate_change_aria": "게이트가 {{base}}에서 {{target}}(으)로 변경됨",
+      "gate_pass": "통과",
+      "gate_fail": "실패",
+      "gate_none": "게이트 없음"
+    },
+    "components": {
+      "title": "컴포넌트",
+      "removed_header": "제거됨 ({{count}})",
+      "added_header": "추가됨 ({{count}})",
+      "changed_header": "변경됨 ({{count}})",
+      "removed_empty": "제거된 컴포넌트가 없습니다.",
+      "added_empty": "추가된 컴포넌트가 없습니다.",
+      "changed_empty": "버전이 변경된 컴포넌트가 없습니다.",
+      "version_change": "{{base}} → {{target}}"
+    },
+    "vulnerabilities": {
+      "title": "취약점",
+      "resolved_header": "해결됨 ({{count}})",
+      "introduced_header": "새로 발생 ({{count}})",
+      "resolved_empty": "해결된 취약점이 없습니다.",
+      "introduced_empty": "새로 발생한 취약점이 없습니다.",
+      "at_component": "{{name}}@{{version}}"
+    },
+    "licenses": {
+      "title": "라이선스",
+      "col_category": "분류",
+      "col_base": "기준",
+      "col_target": "대상",
+      "category": {
+        "prohibited": "금지",
+        "conditional": "조건부",
+        "permissive": "허용",
+        "unknown": "알 수 없음"
+      },
+      "introduced_badge": "신규",
+      "introduced_aria": "대상에서 기준에 없던 {{category}} 라이선스가 새로 추가되었습니다."
+    },
+    "empty": {
+      "title": "두 릴리스 사이에 차이가 없습니다.",
+      "description": "두 스냅샷의 컴포넌트, 취약점, 라이선스가 모두 동일합니다."
+    },
+    "truncated": "일부 목록은 1000개 항목으로 제한되었습니다.",
+    "loading_aria": "릴리스 비교를 불러오는 중",
+    "errors": {
+      "title": "비교를 불러올 수 없습니다",
+      "not_found": "선택한 릴리스 중 하나를 찾을 수 없습니다. 삭제되었을 수 있습니다.",
+      "forbidden": "이 프로젝트의 릴리스를 비교할 권한이 없습니다.",
+      "unknown": "비교를 불러올 수 없습니다. 다시 시도해 주세요."
     }
   }
 }

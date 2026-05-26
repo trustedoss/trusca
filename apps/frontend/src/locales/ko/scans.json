@@ -89,6 +89,12 @@
       "image_required": "스캔할 이미지 참조를 입력하세요."
     }
   },
+  "release": {
+    "label": "릴리스 / 버전",
+    "placeholder": "v1.2.3",
+    "hint": "선택 사항. 이 스캔에 릴리스 라벨을 지정합니다. 예: v1.2.3.",
+    "chip_aria": "릴리스 {{release}}"
+  },
   "source": {
     "title": "스캔 시작",
     "subtitle": "{{project}}의 소스를 제공할 방식을 선택하세요.",

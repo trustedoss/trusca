@@ -38,6 +38,7 @@ from schemas.vulnerability_detail import (
     VulnerabilityStatusUpdate,
 )
 from services.project_service import ProjectError
+from services.scan_resolution import SnapshotScanNotFound
 from services.vulnerability_service import (
     VulnerabilityConflict,
     VulnerabilityError,
@@ -77,6 +78,21 @@ def _problem_for_vulnerability_error(request: Request, exc: ProjectError) -> Res
         status_code=exc.status_code,
         title=exc.title,
         detail=str(exc) or exc.title,
+        instance=request.url.path,
+    )
+
+
+def _problem_for_snapshot_not_found(request: Request) -> Response:
+    """RFC 7807 404 for an unresolvable ``?scan_id=`` snapshot anchor (feature #28).
+
+    Existence-hide: the detail is uniform whether the scan is nonexistent,
+    belongs to another project (IDOR probe), or is not succeeded — so the caller
+    learns nothing about whether the id exists elsewhere.
+    """
+    return problem_response(
+        status_code=status.HTTP_404_NOT_FOUND,
+        title="Scan Snapshot Not Found",
+        detail="No succeeded scan with that id exists for this project.",
         instance=request.url.path,
     )
 
@@ -129,6 +145,15 @@ async def list_project_vulnerabilities_endpoint(
         ),
     ),
     order: str = Query(default="desc", pattern=r"^(asc|desc)$"),
+    scan_id: uuid.UUID | None = Query(
+        default=None,
+        description=(
+            "Optional release-snapshot anchor (feature #28). When given, list CVE "
+            "findings of this SPECIFIC succeeded scan instead of the project's "
+            "latest succeeded scan. Must belong to this project and be succeeded, "
+            "else 404. Omit for the default latest-succeeded behaviour."
+        ),
+    ),
     session: AsyncSession = Depends(get_db),
     actor: CurrentUser = Depends(require_role("developer")),
 ) -> Response:
@@ -146,7 +171,10 @@ async def list_project_vulnerabilities_endpoint(
             reachable=reachable,
             sort=sort,
             order=order,
+            snapshot_scan_id=scan_id,
         )
+    except SnapshotScanNotFound:
+        return _problem_for_snapshot_not_found(request)
     except (VulnerabilityError, ProjectError) as exc:
         return _problem_for_vulnerability_error(request, exc)
 

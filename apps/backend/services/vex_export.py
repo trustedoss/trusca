@@ -106,6 +106,7 @@ from models import (
     Vulnerability,
     VulnerabilityFinding,
 )
+from services.scan_resolution import latest_succeeded_scan_id
 
 log = structlog.get_logger("vex_export.service")
 
@@ -245,20 +246,21 @@ async def _load_findings(
 async def _load_latest_succeeded_scan(
     session: AsyncSession, *, project: Project
 ) -> Scan | None:
-    """Return the project's latest-scan row when it succeeded, else None.
+    """Return the project's latest *succeeded* scan row, or None.
 
-    We anchor on ``project.latest_scan_id`` (the denormalized pointer the
-    vulnerability list endpoint also uses) so the VEX export reflects exactly
-    the findings the triage UI shows. If that scan is missing or did not
-    succeed we treat the project as empty (no findings, well-formed doc).
+    We resolve the latest SUCCEEDED scan via
+    :func:`services.scan_resolution.latest_succeeded_scan_id` — NOT
+    ``project.latest_scan_id`` (the last *attempted* scan). That way the VEX
+    export reflects exactly the findings the vulnerability list / build gate show:
+    a project whose newest attempt failed still exports its last good scan's
+    triage instead of an empty document. When the project has never succeeded a
+    scan we treat it as empty (no findings, well-formed doc).
     """
-    if project.latest_scan_id is None:
+    scan_id = await latest_succeeded_scan_id(session, project.id)
+    if scan_id is None:
         return None
-    result = await session.execute(select(Scan).where(Scan.id == project.latest_scan_id))
-    scan = result.scalar_one_or_none()
-    if scan is None or scan.status != "succeeded":
-        return None
-    return scan
+    result = await session.execute(select(Scan).where(Scan.id == scan_id))
+    return result.scalar_one_or_none()
 
 
 # ---------------------------------------------------------------------------

@@ -36,19 +36,30 @@ function severityForScore(score: number): {
   return { token: "var(--risk-info)", i18nKey: "risk.none" };
 }
 
+/** Pixel + type-scale presets. The SVG viewBox is fixed (0 0 180 110) so the
+ *  drawing simply scales to the chosen width/height; only the HTML number
+ *  block needs its own type size + overlap offset per preset. */
+const SIZES = {
+  default: { w: 180, h: 110, valueClass: "text-3xl", offsetClass: "-mt-6" },
+  sm: { w: 132, h: 80, valueClass: "text-xl", offsetClass: "-mt-4" },
+} as const;
+
 export interface RiskGaugeProps {
   /** 0..100 risk score from the project overview endpoint. */
   score: number;
+  /** Visual size preset. `sm` is used for the side-by-side Security/License axes. */
+  size?: keyof typeof SIZES;
   className?: string;
 }
 
-export function RiskGauge({ score, className }: RiskGaugeProps) {
+export function RiskGauge({ score, size = "default", className }: RiskGaugeProps) {
   const { t } = useTranslation("project_detail");
 
   // Clamp defensively even though the backend already enforces 0..100.
   const clamped = Math.max(0, Math.min(100, Number(score) || 0));
   const filled = (clamped / 100) * ARC_LENGTH;
   const severity = severityForScore(clamped);
+  const dims = SIZES[size];
 
   return (
     <div
@@ -58,8 +69,8 @@ export function RiskGauge({ score, className }: RiskGaugeProps) {
     >
       <svg
         viewBox="0 0 180 110"
-        width="180"
-        height="110"
+        width={dims.w}
+        height={dims.h}
         role="img"
         aria-label={t("overview.risk_gauge.aria", { score: clamped })}
       >
@@ -81,9 +92,9 @@ export function RiskGauge({ score, className }: RiskGaugeProps) {
           strokeDasharray={`${filled} ${ARC_LENGTH}`}
         />
       </svg>
-      <div className="-mt-6 flex flex-col items-center">
+      <div className={cn(dims.offsetClass, "flex flex-col items-center")}>
         <span
-          className="text-3xl font-semibold tabular-nums"
+          className={cn("font-semibold tabular-nums", dims.valueClass)}
           data-testid="risk-gauge-value"
         >
           {clamped.toFixed(0)}

@@ -103,13 +103,61 @@ class ProjectOverviewResponse(BaseModel):
         ge=0.0,
         le=100.0,
         description=(
-            "Composite risk 0–100 derived from severity + license distribution. "
-            "Formula: min(100, critical*15 + high*5 + medium*1 + forbidden*30 "
-            "+ conditional*5)."
+            "Overall project risk 0–100 = max(security_score, license_score) — "
+            "the worse of the two axes. Non-saturating (band-by-worst-severity, "
+            "see security_score/license_score). Kept for back-compat and for "
+            "'riskiest project' sorting / release trends."
+        ),
+    )
+    security_score: float = Field(
+        ge=0.0,
+        le=100.0,
+        description=(
+            "Security risk 0–100 driven by the worst CVE severity present: "
+            "critical→75–100, high→50–74, medium→25–49, low→1–24, none→0. The "
+            "count of that severity sets the position within the band (n/(n+4)), "
+            "so the score rises with count without saturating at a hard cap."
+        ),
+    )
+    license_score: float = Field(
+        ge=0.0,
+        le=100.0,
+        description=(
+            "License risk 0–100 driven by the worst license category present: "
+            "forbidden→75–100 (build-blocking), conditional→25–49 (review; never "
+            "Critical on its own), unknown→1–24, allowed→0. Same n/(n+4) "
+            "within-band scaling as security_score."
         ),
     )
     recent_scans: list[ScanSummary] = Field(default_factory=list)
-    last_scan_at: datetime | None = None
+    last_scan_at: datetime | None = Field(
+        default=None,
+        description=(
+            "Timestamp (`created_at`) of the project's latest scan *attempt* "
+            "regardless of status — the attempt timeline. May be a failed scan. "
+            "`null` when the project has never been scanned."
+        ),
+    )
+    last_succeeded_scan_at: datetime | None = Field(
+        default=None,
+        description=(
+            "Timestamp (`created_at`) of the project's latest *succeeded* scan — "
+            "the scan whose findings this overview (and the SBOM export) actually "
+            "reflect, resolved via the same anchor as the build gate. `null` when "
+            "the project has no succeeded scan. The SBOM tab labels its download "
+            "with THIS field (not `last_scan_at`) so the timestamp matches what is "
+            "downloaded; the two differ whenever the latest attempt failed."
+        ),
+    )
+    has_git_credential: bool = Field(
+        default=False,
+        description=(
+            "Feature #18 Part B — True when a private-repo git credential is "
+            "configured for this project. Read-only; the plaintext and ciphertext "
+            "are NEVER returned. The UI uses this to show a 'credential configured' "
+            "badge and to drive the set/rotate/clear control."
+        ),
+    )
     current_user_role: TeamScopedRole = Field(
         description=(
             "The requesting user's effective role *within this project's owning "

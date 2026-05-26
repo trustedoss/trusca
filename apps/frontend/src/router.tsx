@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 
 import { AppShell } from "@/components/AppShell";
 import { RequireAuth } from "@/components/RequireAuth";
+import { DashboardPage } from "@/features/dashboard/DashboardPage";
 import { AdminAuditPage } from "@/features/admin/audit/AdminAuditPage";
 import { AdminBackupPage } from "@/features/admin/backup/AdminBackupPage";
 import { AdminDiskPage } from "@/features/admin/disk/AdminDiskPage";
@@ -17,6 +18,7 @@ import { IntegrationsPage } from "@/features/integrations/IntegrationsPage";
 import { NotificationsPage } from "@/features/notifications/NotificationsPage";
 import { PoliciesPage } from "@/features/policies/PoliciesPage";
 import { UserProfilePage } from "@/features/profile/UserProfilePage";
+import { ComparePage } from "@/features/projects/ComparePage";
 import { ProjectCreatePage } from "@/features/projects/ProjectCreatePage";
 import { ProjectDetailPage } from "@/features/projects/ProjectDetailPage";
 import { ProjectListPage } from "@/features/projects/ProjectListPage";
@@ -32,8 +34,8 @@ import { ResetPasswordPage } from "@/pages/auth/ResetPasswordPage";
  * - Public auth pages live under /login, /register, /forgot-password.
  * - All authenticated pages nest inside <AppShell /> via <RequireAuth />.
  *   AppShell renders the 48px header + 224px sidebar + <Outlet />.
- * - The "/" index redirects to /projects; Home.tsx handles the same redirect
- *   as a safety net for any legacy deep link.
+ * - The "/" index renders the Dashboard (org/team risk portfolio), the
+ *   CLAUDE.md screen spec for "/". /projects remains its own route.
  * - Admin pages nest under <AdminLayout /> which enforces the super-admin
  *   existence-hide guard (404 for non-super-admins, matching backend behavior).
  * - Unknown top-level routes fall back to /login.
@@ -55,10 +57,11 @@ export function AppRoutes() {
           </RequireAuth>
         }
       >
-        <Route index element={<Navigate to="/projects" replace />} />
+        <Route index element={<DashboardPage />} />
         <Route path="projects" element={<ProjectListPage />} />
         <Route path="projects/new" element={<ProjectCreatePage />} />
         <Route path="projects/:id" element={<ProjectDetailPage />} />
+        <Route path="projects/:id/compare" element={<ComparePage />} />
         <Route path="scans" element={<ScansPage />} />
         <Route path="approvals" element={<ApprovalsPage />} />
         <Route path="policies" element={<PoliciesPage />} />

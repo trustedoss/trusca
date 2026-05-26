@@ -39,8 +39,39 @@ export interface ProjectPublic {
   archived_at: string | null;
   created_by_user_id: string | null;
   latest_scan_id: string | null;
+  /**
+   * Status of the latest scan *attempt* for this project (most recent row,
+   * regardless of outcome). `null` when the project has never been scanned.
+   * Drives the per-row status badge on the project list.
+   */
+  latest_scan_status: ScanStatus | null;
+  /**
+   * Vuln-severity component counts from the latest *succeeded* scan. `null`
+   * when the project has no succeeded scan yet (so the list row renders no
+   * severity summary). Buckets may legitimately be 0.
+   */
+  severity_summary: ProjectSeveritySummary | null;
+  /**
+   * Whether a git credential (PAT/token) is stored for cloning private https
+   * repos (feature #18). The plaintext/ciphertext value is NEVER returned by
+   * the backend — only this boolean presence flag.
+   */
+  has_git_credential: boolean;
   created_at: string;
   updated_at: string;
+}
+
+/**
+ * Per-project vulnerability-severity component counts (from the latest
+ * succeeded scan). Mirrors the backend `severity_summary` wire object. Every
+ * bucket is present; a missing succeeded scan is signalled by the whole object
+ * being `null` on {@link ProjectPublic}, not by omitting buckets.
+ */
+export interface ProjectSeveritySummary {
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
 }
 
 export interface ProjectListResponse {
@@ -63,6 +94,12 @@ export interface ScanPublic {
   requested_by_user_id: string | null;
   celery_task_id: string | null;
   metadata: Record<string, unknown>;
+  /**
+   * Optional release/version label this scan was triggered against (feature
+   * #18), e.g. `v1.2.3`. Passed through `metadata.release` on trigger and
+   * surfaced here on read models. `null` when no release was supplied.
+   */
+  release: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -90,6 +127,15 @@ export interface ProjectUpdatePayload {
   git_url?: string | null;
   default_branch?: string | null;
   visibility?: ProjectVisibility;
+  /**
+   * Write-only git credential (feature #18). Set a non-empty token to store it
+   * encrypted for cloning private https repos. Never returned on read — the
+   * presence is reflected by `ProjectPublic.has_git_credential`. Do NOT send
+   * together with `clear_git_credential: true` (backend → 422).
+   */
+  git_credential?: string;
+  /** Clear the stored git credential. Mutually exclusive with `git_credential`. */
+  clear_git_credential?: boolean;
 }
 
 export interface ScanTriggerPayload {
@@ -279,9 +325,14 @@ const SBOM_FALLBACK_EXTENSIONS: Record<SbomFormat, string> = {
 export async function downloadSbom(
   projectId: string,
   format: SbomFormat,
+  options: { scanId?: string } = {},
 ): Promise<SbomDownload> {
+  const params: Record<string, unknown> = { format };
+  if (options.scanId != null && options.scanId.length > 0) {
+    params.scan_id = options.scanId;
+  }
   const response = await api.get<Blob>(`/v1/projects/${projectId}/sbom`, {
-    params: { format },
+    params,
     responseType: "blob",
   });
   const headers = (response.headers ?? {}) as Record<string, string>;

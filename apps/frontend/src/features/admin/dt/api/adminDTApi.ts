@@ -21,6 +21,14 @@ export interface DTStatus {
   opened_at: string | null;
   last_check_at: string;
   version: string | null;
+  /**
+   * Total vulnerabilities in DT's database — the NVD/OSV/GHSA mirror size.
+   * `0` means the mirror is empty (NVD mirroring disabled or still
+   * downloading), so scans find components but report no CVEs — which looks
+   * identical to a genuinely clean project. `null` when the breaker is OPEN or
+   * the count probe failed. Surfaced so an operator can tell the two apart.
+   */
+  vulnerability_count: number | null;
   last_error: string | null;
   /**
    * Optional — present when the auto-restart watchdog has tripped a

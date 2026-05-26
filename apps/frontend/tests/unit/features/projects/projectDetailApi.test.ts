@@ -31,7 +31,23 @@ describe("projectDetailApi", () => {
 
   it("getProjectOverview hits /v1/projects/{id}/overview", async () => {
     await getProjectOverview("proj-1");
-    expect(mockedGet).toHaveBeenCalledWith("/v1/projects/proj-1/overview");
+    expect(mockedGet).toHaveBeenCalledWith("/v1/projects/proj-1/overview", {
+      params: {},
+    });
+  });
+
+  it("getProjectOverview sends scan_id when a snapshot is pinned (feature #28)", async () => {
+    await getProjectOverview("proj-1", { scanId: "scan-old" });
+    expect(mockedGet).toHaveBeenCalledWith(
+      "/v1/projects/proj-1/overview",
+      expect.objectContaining({ params: { scan_id: "scan-old" } }),
+    );
+  });
+
+  it("listProjectComponents sends scan_id when a snapshot is pinned (feature #28)", async () => {
+    await listProjectComponents("proj-1", { scanId: "scan-old" });
+    const call = mockedGet.mock.calls[0]!;
+    expect(call[1].params).toMatchObject({ scan_id: "scan-old" });
   });
 
   it("listProjectComponents passes pagination + sort params", async () => {
@@ -91,8 +107,18 @@ describe("projectDetailApi", () => {
       },
     });
     const result = await getGateResult("proj-1");
-    expect(mockedGet).toHaveBeenCalledWith("/v1/projects/proj-1/gate-result");
+    expect(mockedGet).toHaveBeenCalledWith("/v1/projects/proj-1/gate-result", {
+      params: {},
+    });
     expect(result.gate).toBe("fail");
     expect(result.critical_cve_count).toBe(1);
+  });
+
+  it("getGateResult sends scan_id when a snapshot is pinned (feature #28)", async () => {
+    await getGateResult("proj-1", { scanId: "scan-old" });
+    expect(mockedGet).toHaveBeenCalledWith(
+      "/v1/projects/proj-1/gate-result",
+      expect.objectContaining({ params: { scan_id: "scan-old" } }),
+    );
   });
 });

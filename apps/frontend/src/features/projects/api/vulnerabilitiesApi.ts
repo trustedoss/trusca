@@ -266,6 +266,12 @@ export interface ListVulnerabilitiesParams {
    * map to `reachable === true` / `=== false` / `IS NULL`. Omit to disable.
    */
   reachable?: ReachabilityFilter;
+  /**
+   * Pin the read to a specific succeeded scan (feature #28 snapshot anchoring).
+   * Omit → the project's latest succeeded scan (unchanged default). An invalid /
+   * cross-project / non-succeeded id is a 404 problem+json on the wire.
+   */
+  scanId?: string;
 }
 
 function listVulnerabilitiesQuery(
@@ -303,6 +309,9 @@ function listVulnerabilitiesQuery(
     params.reachable === "unknown"
   ) {
     out.reachable = params.reachable;
+  }
+  if (params.scanId != null && params.scanId.length > 0) {
+    out.scan_id = params.scanId;
   }
   return out;
 }

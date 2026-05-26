@@ -89,6 +89,12 @@
       "image_required": "Enter an image reference to scan."
     }
   },
+  "release": {
+    "label": "Release / version",
+    "placeholder": "v1.2.3",
+    "hint": "Optional. Tags this scan with a release label, e.g. v1.2.3.",
+    "chip_aria": "Release {{release}}"
+  },
   "source": {
     "title": "Start a scan",
     "subtitle": "Choose how to provide the source for {{project}}.",

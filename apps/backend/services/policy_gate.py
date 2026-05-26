@@ -86,7 +86,6 @@ from models import (
     LicenseFinding,
     LicensePolicy,
     Project,
-    Scan,
     VulnerabilityFinding,
 )
 from models import (
@@ -94,6 +93,7 @@ from models import (
 )
 from services.license_expression import evaluate_expression
 from services.license_policy_service import effective_category, get_effective_policy
+from services.scan_resolution import latest_succeeded_scan_id
 
 log = structlog.get_logger("policy_gate.service")
 
@@ -148,29 +148,12 @@ class GateResult:
     reachable_relaxation_applied: bool = False
 
 
-async def _latest_succeeded_scan_id(
-    session: AsyncSession,
-    project_id: uuid.UUID,
-) -> uuid.UUID | None:
-    """Return the ID of the most recent ``status='succeeded'`` scan, or None.
-
-    We deliberately do NOT use ``Project.latest_scan_id`` here: that pointer
-    is updated on every trigger (queued/running/failed), so a project whose
-    last attempt failed would otherwise be evaluated against a non-succeeded
-    scan and produce a noisy ``gate='fail'``. Querying ``scans`` directly,
-    ordered by ``created_at DESC`` and clamped to ``status='succeeded'``,
-    gives the contract every caller wants. The compound index
-    ``ix_scans_project_created_at`` covers this access path.
-    """
-    stmt = (
-        select(Scan.id)
-        .where(Scan.project_id == project_id)
-        .where(cast(Scan.status, String) == "succeeded")
-        .order_by(Scan.created_at.desc(), Scan.id.desc())
-        .limit(1)
-    )
-    result = await session.execute(stmt)
-    return result.scalar_one_or_none()
+# The latest-succeeded-scan resolver was PROMOTED to ``services.scan_resolution``
+# so the build gate and every current-state display reader (overview / vuln list
+# / license / obligation / source tree) share ONE definition and cannot drift
+# (see that module's docstring for the bug this prevents). ``_latest_succeeded_scan_id``
+# is kept as a thin re-export so existing in-tree callers / tests keep working.
+_latest_succeeded_scan_id = latest_succeeded_scan_id
 
 
 @dataclass(frozen=True)
@@ -576,14 +559,25 @@ def _build_reason(
 async def evaluate_gate(
     session: AsyncSession,
     project_id: uuid.UUID,
+    *,
+    scan_id: uuid.UUID | None = None,
 ) -> GateResult:
     """Compute the build-gate verdict for ``project_id``.
 
     The function is a pure read against the live session — no auth check
     happens here. Callers (HTTP routers, Celery tasks) are responsible for
     asserting team access before invoking it.
+
+    ``scan_id`` (feature #28) optionally pins the verdict to a SPECIFIC
+    pre-resolved succeeded scan instead of the project's latest succeeded scan.
+    The CALLER is responsible for validating that the scan belongs to this
+    project and is succeeded (the HTTP layer does so via
+    :func:`services.scan_resolution.resolve_snapshot_scan_id` before calling).
+    When ``None`` (the default, used by CI's "latest verdict" contract) the
+    latest succeeded scan is resolved here exactly as before.
     """
-    scan_id = await _latest_succeeded_scan_id(session, project_id)
+    if scan_id is None:
+        scan_id = await _latest_succeeded_scan_id(session, project_id)
     evaluated_at = datetime.now(tz=UTC)
 
     # Read the EPSS threshold once per evaluation (None when the gate is

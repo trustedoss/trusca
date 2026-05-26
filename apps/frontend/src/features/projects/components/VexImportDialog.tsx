@@ -56,12 +56,20 @@ export interface VexImportDialogProps {
   projectId: string;
   /** The actor's effective role within the project's owning team. */
   projectRole?: TeamScopedRole;
+  /**
+   * Historical (read-only) snapshot mode (feature #28). When `true`, the import
+   * trigger is disabled regardless of role — importing into an older snapshot
+   * would mutate the *current* findings, which is wrong. The tooltip explains
+   * the read-only state; it takes precedence over the role-gated tooltip.
+   */
+  readOnly?: boolean;
   className?: string;
 }
 
 export function VexImportDialog({
   projectId,
   projectRole = "developer",
+  readOnly = false,
   className,
 }: VexImportDialogProps) {
   const { t } = useTranslation("project_detail");
@@ -72,8 +80,11 @@ export function VexImportDialog({
   const fileInputId = useId();
 
   const mutation = useVexImport(projectId);
-  const canImport =
+  const roleAllowsImport =
     projectRole === "team_admin" || projectRole === "super_admin";
+  // Read-only historical snapshot disables the import entirely (a higher
+  // precedence gate than the role check).
+  const canImport = roleAllowsImport && !readOnly;
 
   function reset() {
     setFile(null);
@@ -114,8 +125,13 @@ export function VexImportDialog({
         onClick={() => handleOpenChange(true)}
         data-testid="vex-import-open"
         data-role-gated={!canImport ? "true" : undefined}
+        data-readonly-gated={readOnly ? "true" : undefined}
         title={
-          canImport ? undefined : t("vulnerabilities.vex.import_role_gated")
+          readOnly
+            ? t("snapshot.readonly_tooltip")
+            : canImport
+              ? undefined
+              : t("vulnerabilities.vex.import_role_gated")
         }
       >
         {t("vulnerabilities.vex.import_button")}

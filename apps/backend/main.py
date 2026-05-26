@@ -27,6 +27,7 @@ from api.v1 import (
     approvals_router,
     auth_router,
     components_router,
+    dashboard_router,
     github_app_router,
     health_router,
     license_policies_router,
@@ -185,6 +186,10 @@ app.include_router(auth_router)
 app.include_router(oauth_router)
 app.include_router(admin_router)
 app.include_router(projects_router)
+# Portfolio overview aggregate for the app-root Dashboard page. Read-only,
+# JWT-required; every aggregate is scoped to the caller's accessible projects
+# inside services.dashboard_service (super-admin → all; otherwise → own teams).
+app.include_router(dashboard_router)
 app.include_router(scans_router)
 app.include_router(components_router)
 app.include_router(vulnerabilities_router)

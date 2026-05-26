@@ -29,6 +29,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.audit import bind_audit_team as _bind_audit_team
+from core.crypto import SecretEncryptionError, encrypt_secret
 from core.security import CurrentUser
 from models import Project
 from schemas.scan import ProjectCreate, ProjectUpdate
@@ -61,6 +62,18 @@ class ProjectSlugConflict(ProjectError):
 class ProjectForbidden(ProjectError):
     status_code = 403
     title = "Forbidden"
+
+
+class ProjectCredentialEncryptionError(ProjectError):
+    """The git credential could not be encrypted (misconfigured encryption key).
+
+    Maps to 503: this is an operational / deployment misconfiguration
+    (``GITHUB_APP_ENCRYPTION_KEY`` unset in prod, or malformed), not a client
+    error. The RFC 7807 detail is credential-free — it never echoes the plaintext.
+    """
+
+    status_code = 503
+    title = "Credential Encryption Unavailable"
 
 
 # ---------------------------------------------------------------------------
@@ -293,8 +306,52 @@ async def update_project(
     # is a legitimate "clear this field" value — distinguishing "unset" from
     # "explicit null" is what gives us PATCH semantics.
     updates = payload.model_dump(exclude_unset=True)
+
+    # Feature #18 Part B — the git credential is handled SEPARATELY from the
+    # generic setattr loop because (a) the inbound `git_credential` /
+    # `clear_git_credential` are NOT ORM columns (the column is
+    # `git_credential_encrypted`), and (b) the plaintext must be encrypted before
+    # it touches the row and must NEVER be logged. We pop both keys out of
+    # `updates` so the generic loop below never sees them.
+    raw_credential = updates.pop("git_credential", None)
+    clear_credential = updates.pop("clear_git_credential", False)
+
+    # `audit_fields` is the credential-free list we log + record (we log the
+    # *fact* a credential changed, never the value).
+    audit_fields = list(updates.keys())
+    credential_changed = False
+
     for field, value in updates.items():
         setattr(project, field, value)
+
+    # Credential set/rotate takes precedence is impossible here — the schema's
+    # model_validator already rejected "set AND clear" in one request, so at most
+    # one of these branches runs.
+    if isinstance(raw_credential, str) and raw_credential.strip() != "":
+        # Encrypt the plaintext BEFORE assigning to the row. encrypt_secret never
+        # logs the plaintext; we never log `raw_credential` here either. On a
+        # misconfigured key we surface a clean 503 with NO plaintext in the message.
+        try:
+            project.git_credential_encrypted = encrypt_secret(raw_credential)
+        except SecretEncryptionError as exc:
+            # The exception message from core.crypto is credential-free (it talks
+            # about the KEY, never the plaintext) — but we deliberately do NOT
+            # interpolate the secret regardless. Log without any credential bytes.
+            log.error(
+                "project_credential_encrypt_failed",
+                project_id=str(project.id),
+                error=str(exc),
+            )
+            raise ProjectCredentialEncryptionError(
+                "the git credential could not be encrypted; the deployment's "
+                "credential encryption key is unset or misconfigured",
+            ) from exc
+        credential_changed = True
+        audit_fields.append("git_credential")
+    elif clear_credential:
+        project.git_credential_encrypted = None
+        credential_changed = True
+        audit_fields.append("git_credential")
 
     project.updated_at = datetime.now(tz=UTC)
 
@@ -308,7 +365,14 @@ async def update_project(
         raise ProjectSlugConflict("project update violated a uniqueness constraint") from exc
 
     await session.refresh(project)
-    log.info("project_updated", project_id=str(project.id), fields=list(updates.keys()))
+    # NEVER log the plaintext or the ciphertext — only that a credential changed.
+    # `fields` carries the non-secret field names; `credential_changed` is a bool.
+    log.info(
+        "project_updated",
+        project_id=str(project.id),
+        fields=audit_fields,
+        credential_changed=credential_changed,
+    )
     return project
 
 
@@ -335,6 +399,7 @@ async def archive_project(
 
 
 __all__ = [
+    "ProjectCredentialEncryptionError",
     "ProjectError",
     "ProjectForbidden",
     "ProjectNotFound",

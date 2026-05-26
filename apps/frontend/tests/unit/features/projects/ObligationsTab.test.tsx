@@ -200,13 +200,16 @@ describe("ObligationsTab", () => {
     });
     mockedList.mockClear();
 
-    const select = screen.getByTestId(
-      "obligations-kind-filter",
-    ) as HTMLSelectElement;
-    Array.from(select.options).forEach((opt) => {
-      opt.selected = opt.value === "copyleft";
+    // Open the MultiSelect dropdown, then toggle the "copyleft" checkbox row.
+    await userEvent.click(screen.getByTestId("obligations-kind-filter"));
+    const copyleft = await waitFor(() => {
+      const option = screen
+        .getAllByTestId("obligations-kind-filter-option")
+        .find((el) => el.getAttribute("data-value") === "copyleft");
+      if (!option) throw new Error("copyleft option not mounted");
+      return option;
     });
-    select.dispatchEvent(new Event("change", { bubbles: true }));
+    await userEvent.click(copyleft);
 
     await waitFor(() => {
       expect(mockedList).toHaveBeenCalledWith(

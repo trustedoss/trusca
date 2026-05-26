@@ -40,12 +40,12 @@ import { ProblemError } from "@/lib/problem";
 function buildSchema(t: (key: string) => string) {
   return z
     .object({
-      // Mirror the backend NIST 800-63B floor (12 chars). The backend
+      // Mirror the backend NIST 800-63B floor (8 chars). The backend
       // remains the source of truth: a 422 from the server still flows
       // into the alert.
       password: z
         .string()
-        .min(12, { message: t("errors.password_too_short") }),
+        .min(8, { message: t("errors.password_too_short") }),
       confirmPassword: z.string(),
     })
     .refine((v) => v.password === v.confirmPassword, {

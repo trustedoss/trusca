@@ -98,6 +98,7 @@ export function SourceSelectDialog({
   );
   const [imageRef, setImageRef] = useState("");
   const [imageRefTouched, setImageRefTouched] = useState(false);
+  const [release, setRelease] = useState("");
   const [progress, setProgress] = useState<TriggerScanProgress>({
     stage: "idle",
     percent: 0,
@@ -170,8 +171,14 @@ export function SourceSelectDialog({
     mutation.isPending,
   ]);
 
+  const trimmedRelease = release.trim();
+
   async function handleSubmit() {
     setPreflightError(null);
+    // Threaded into every trigger branch's metadata.release. Omitted (undefined)
+    // when empty so the hook never puts an empty key on the wire; the backend
+    // validates the charset and is the source of truth (a 422 surfaces below).
+    const releaseArg = trimmedRelease.length > 0 ? trimmedRelease : undefined;
     try {
       let scan: ScanPublic;
       if (kind === "container") {
@@ -187,16 +194,22 @@ export function SourceSelectDialog({
         scan = await mutation.mutateAsync({
           method: "container",
           imageRef: trimmedImageRef,
+          release: releaseArg,
         });
       } else if (method === "git") {
-        scan = await mutation.mutateAsync({ method: "git" });
+        scan = await mutation.mutateAsync({ method: "git", release: releaseArg });
       } else if (method === "upload" && selectedFile) {
-        scan = await mutation.mutateAsync({ method: "upload", file: selectedFile });
+        scan = await mutation.mutateAsync({
+          method: "upload",
+          file: selectedFile,
+          release: releaseArg,
+        });
       } else if (method === "folder" && folderInspection) {
         scan = await mutation.mutateAsync({
           method: "folder",
           folderFiles: folderInspection.files,
           rootName: folderRoot ?? project.slug,
+          release: releaseArg,
         });
       } else {
         return;
@@ -235,6 +248,7 @@ export function SourceSelectDialog({
           resetTransient();
           setImageRef("");
           setImageRefTouched(false);
+          setRelease("");
         }
         onOpenChange(next);
       }}
@@ -373,6 +387,12 @@ export function SourceSelectDialog({
             disabled={isBusy}
           />
         )}
+
+        <ReleaseField
+          value={release}
+          onChange={setRelease}
+          disabled={isBusy}
+        />
 
         {isBusy ? (
           <div className="space-y-1.5" data-testid="source-progress">
@@ -583,6 +603,54 @@ function FolderPanel({
           ) : null}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+interface ReleaseFieldProps {
+  value: string;
+  onChange: (value: string) => void;
+  disabled: boolean;
+}
+
+/**
+ * Optional release/version label (feature #18). Applies to every scan kind, so
+ * it lives below the kind/method selectors. The backend validates the charset
+ * (ref-safe, ≤100 chars) and is the source of truth — we only trim + omit when
+ * empty here; a malformed value surfaces as a 422 in the dialog error alert.
+ */
+function ReleaseField({ value, onChange, disabled }: ReleaseFieldProps) {
+  const { t } = useTranslation("scans");
+  return (
+    <div className="space-y-1.5" data-testid="scan-release-field">
+      <label
+        htmlFor="scan-release-input"
+        className="block text-xs font-medium text-muted-foreground"
+      >
+        {t("release.label")}
+      </label>
+      <Input
+        id="scan-release-input"
+        type="text"
+        inputMode="text"
+        autoComplete="off"
+        spellCheck={false}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        disabled={disabled}
+        maxLength={100}
+        placeholder={t("release.placeholder")}
+        aria-describedby="scan-release-hint"
+        data-testid="scan-release-input"
+        className="font-mono"
+      />
+      <p
+        id="scan-release-hint"
+        className="text-xs text-muted-foreground"
+        data-testid="scan-release-hint"
+      >
+        {t("release.hint")}
+      </p>
     </div>
   );
 }

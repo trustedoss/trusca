@@ -228,7 +228,15 @@ def test_probe_dt_open_returns_down() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_probe_active_scans_counts_queued_and_running(db_session: AsyncSession) -> None:
+async def test_probe_active_scans_counts_queued_and_running(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Pin a very high warn threshold so queued/running rows accumulated by
+    # sibling tests can't flip the status — this case only asserts counting
+    # and the ok classification below the threshold.
+    monkeypatch.setenv("HEALTH_ACTIVE_SCANS_WARN", "1000000")
+    monkeypatch.setenv("HEALTH_ACTIVE_SCANS_CRIT", "2000000")
+
     org = await make_organization(db_session)
     team = await make_team(db_session, organization=org)
     project = await make_project(db_session, team=team)
@@ -242,6 +250,38 @@ async def test_probe_active_scans_counts_queued_and_running(db_session: AsyncSes
     # added more queued/running rows so we use ``>= 1`` rather than equality.
     assert component.value is not None
     assert int(component.value) >= 1
+
+
+async def test_probe_active_scans_flags_backlog(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A large queued+running backlog is degraded/down — not 'healthy'.
+
+    Regression guard for the manual-walkthrough finding: 410 in-flight scans
+    were reported as ok. Thresholds are env-tunable; we set tiny ones so the
+    seeded rows deterministically trip each band regardless of accumulation.
+    """
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    # One active scan per project (partial unique ix_scans_project_active), so
+    # seed two projects to get two in-flight rows.
+    project = await make_project(db_session, team=team)
+    await make_scan(db_session, project=project, status="queued")
+    project2 = await make_project(db_session, team=team)
+    await make_scan(db_session, project=project2, status="running")
+
+    # crit at 1 → any in-flight scan trips ``down``.
+    monkeypatch.setenv("HEALTH_ACTIVE_SCANS_WARN", "1")
+    monkeypatch.setenv("HEALTH_ACTIVE_SCANS_CRIT", "1")
+    component = await _probe_active_scans(db_session)
+    assert component.status == "down"
+    assert int(component.value or 0) >= 2
+
+    # warn ≤ count < crit → ``degraded``.
+    monkeypatch.setenv("HEALTH_ACTIVE_SCANS_WARN", "1")
+    monkeypatch.setenv("HEALTH_ACTIVE_SCANS_CRIT", "1000000")
+    component = await _probe_active_scans(db_session)
+    assert component.status == "degraded"
 
 
 async def test_probe_last_24h_errors_counts_recent_failures(db_session: AsyncSession) -> None:

@@ -74,6 +74,7 @@ from models import (
 )
 from services.project_detail_service import _license_rank_case
 from services.project_service import ProjectError, ProjectForbidden, ProjectNotFound
+from services.scan_resolution import resolve_snapshot_scan_id
 
 log = structlog.get_logger("license.service")
 
@@ -167,9 +168,15 @@ async def list_project_licenses(
     search: str | None = None,
     sort: str = "category",
     order: str = "desc",
+    snapshot_scan_id: uuid.UUID | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, int], int]:
     """
     Page of licenses for the project's latest scan + the global distribution.
+
+    ``snapshot_scan_id`` (feature #28) optionally pins the listing to a SPECIFIC
+    succeeded snapshot instead of the latest succeeded scan; validated via
+    :func:`services.scan_resolution.resolve_snapshot_scan_id` (cross-project /
+    non-succeeded / nonexistent → :class:`SnapshotScanNotFound` → 404 at router).
 
     Returns ``(items, distribution, total)``:
 
@@ -188,7 +195,7 @@ async def list_project_licenses(
     - ``ProjectForbidden`` (403) if the actor is not a team member. We log
       ``authz.cross_team_attempt`` before raising.
 
-    If the project has no ``latest_scan_id``, returns
+    If the project has no SUCCEEDED scan, returns
     ``([], <all-zero distribution>, 0)`` with success — empty result, not 404.
     """
     if sort not in _VALID_SORT_KEYS:
@@ -217,7 +224,14 @@ async def list_project_licenses(
 
     empty_distribution: dict[str, int] = dict.fromkeys(_DISTRIBUTION_KEYS, 0)
 
-    if project.latest_scan_id is None:
+    # Anchor on the resolved snapshot scan — the pinned ``snapshot_scan_id`` when
+    # given (feature #28), else the latest SUCCEEDED scan; never
+    # ``project.latest_scan_id`` (the last *attempted* scan). The Licenses tab
+    # must reflect the same scan the build gate / overview use. See
+    # ``services.scan_resolution``. An invalid pinned id raises
+    # SnapshotScanNotFound → 404 at the router.
+    scan_id = await resolve_snapshot_scan_id(session, project_id, snapshot_scan_id)
+    if scan_id is None:
         return [], empty_distribution, 0
 
     category_filter = _normalize_category_filter(categories)
@@ -225,11 +239,11 @@ async def list_project_licenses(
         # Caller passed only invalid categories — match nothing without 422.
         # Distribution still reflects the underlying scan so the chart isn't
         # zeroed out behind a stale filter.
-        distribution = await _compute_distribution(session, project.latest_scan_id)
+        distribution = await _compute_distribution(session, scan_id)
         return [], distribution, 0
     kind_filter = _normalize_kind_filter(kinds)
     if kind_filter == []:
-        distribution = await _compute_distribution(session, project.latest_scan_id)
+        distribution = await _compute_distribution(session, scan_id)
         return [], distribution, 0
 
     # Aggregate per-license inside the latest scan. We pick a representative
@@ -258,7 +272,7 @@ async def list_project_licenses(
         )
         .select_from(LicenseFinding)
         .join(LicenseModel, LicenseModel.id == LicenseFinding.license_id)
-        .where(LicenseFinding.scan_id == project.latest_scan_id)
+        .where(LicenseFinding.scan_id == scan_id)
         .group_by(
             LicenseModel.id,
             LicenseModel.spdx_id,
@@ -324,7 +338,7 @@ async def list_project_licenses(
     # Distribution is computed unfiltered — it represents the project's
     # license posture, not the active page filter. Single source of truth
     # with the Overview tab's license_distribution.
-    distribution = await _compute_distribution(session, project.latest_scan_id)
+    distribution = await _compute_distribution(session, scan_id)
 
     items: list[dict[str, Any]] = []
     for r in rows:

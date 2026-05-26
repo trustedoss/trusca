@@ -5,18 +5,23 @@ import { describe, expect, it } from "vitest";
 import { Home } from "@/pages/Home";
 
 describe("Home", () => {
-  it("redirects from / to /projects", () => {
+  it("redirects to the dashboard root", () => {
+    // The "/" index now renders the Dashboard directly; the legacy Home
+    // safety-net redirect points at "/". We mount it under a distinct path so
+    // the redirect target ("/") resolves to a sentinel we can assert on.
     const { container } = render(
-      <MemoryRouter initialEntries={["/"]}>
+      <MemoryRouter initialEntries={["/legacy"]}>
         <Routes>
-          <Route path="/" element={<Home />} />
+          <Route path="/legacy" element={<Home />} />
           <Route
-            path="/projects"
-            element={<div data-testid="projects-page">projects</div>}
+            path="/"
+            element={<div data-testid="dashboard-page">dashboard</div>}
           />
         </Routes>
       </MemoryRouter>,
     );
-    expect(container.querySelector('[data-testid="projects-page"]')).not.toBeNull();
+    expect(
+      container.querySelector('[data-testid="dashboard-page"]'),
+    ).not.toBeNull();
   });
 });

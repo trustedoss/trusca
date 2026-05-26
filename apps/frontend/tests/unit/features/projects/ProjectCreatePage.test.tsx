@@ -41,6 +41,7 @@ const fakeUser = {
   isActive: true,
   isSuperuser: false,
   teamId: "team-1",
+  teams: [],
 };
 
 function renderPage() {
@@ -121,6 +122,9 @@ describe("ProjectCreatePage", () => {
       archived_at: null,
       created_by_user_id: "u1",
       latest_scan_id: null,
+      latest_scan_status: null,
+      severity_summary: null,
+      has_git_credential: false,
       created_at: "2026-05-08T00:00:00Z",
       updated_at: "2026-05-08T00:00:00Z",
     });

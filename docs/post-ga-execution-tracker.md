@@ -23,6 +23,28 @@
 
 ---
 
+## 0.5 마일스톤 후 — 수동 테스트 발견 + Black Duck 정합 (Wave 1~4)
+
+> 출처: 2026-05-25~26 사용자 핸즈온 테스트(실제 github repo 스캔) + Black Duck 6화면 UX 갭분석.
+> 태스크 #29~#35가 PR-단위 SoT. **버전 엔티티는 보류** — "릴리스 = 성공한 스캔" 모델 유지(사용자 "릴리스마다 해야해" 확정), #28(스냅샷 조회+diff)로 충족, 발견성은 #30로 보완.
+
+**핵심 통찰:** #29·#35·#34는 한 화면 여정에서 연쇄로 터진 **"스캔 결과 신뢰 루프"** 붕괴다 — 스캔 시작 → 상태를 다시 못 봄(#29) → 결과 취약점 0(#35) → 그런데 Risk 100(#34). 표준 기능(#30~#33)보다 신뢰 복구가 먼저.
+
+| Wave | 태스크 | 내용 | 상태 |
+|---|---|---|---|
+| **W1 신뢰 복구** | **#29** | 스캔 트리거 후 상태 추적: `recent_scans` 항상 노출(스냅샷 게이팅 제거) + 헤더 영속 "진행 중" 칩으로 드로어 재오픈 | ✅ 완료 (2026-05-26) |
+| W1 | **#35** | DT 무경고(silent zero): (운영) `nvd.api.enabled=true`+재시작 → NVD 미러 가동(0→43k+, 352k 목표). (코드) admin/DT vuln-DB 카운트 + 0건 경고 Alert | ✅ 완료 (2026-05-26, Surface A·운영) |
+| W1 | **#34** | 리스크 점수 2축 재설계: Security/License 분리 + 비포화 점수(`services/risk_score.py` 단일 소스, conditional 단독 "Critical" 제거). 밴드=최악 등급, 밴드 내 `n/(n+4)`. `risk_score`=max(축) back-compat | ✅ 완료 (2026-05-26, 축 재설계 코어). ⚠ #35 Surface B "데이터 미적재" 캐비엇은 미포함 |
+| **W2 BD 정합** | #31 | Components 탭 Direct/Transitive + Usage 노출 | ⬜ 대기 |
+| W2 | #33 | 취약점 조치신호(Exploitable/Solution)+CVSS 벡터 · 목록 License 리스크축 · Bulk actions | ⬜ 대기 |
+| **W3 통합/발견성** | #32 | 통합 Reports 센터 탭 (Notices/SBOM/Vulnerability/VEX 생성·이력) | ⬜ 대기 |
+| W3 | #30 | 프로젝트 목록 행에 릴리스/스캔 수 표시 | ⬜ 대기 |
+| **W4 후속/위생** | #26·#27·#19~#22 | vex_import 앵커(#24 동일 클래스·보안검토) · vuln 툴바 레이아웃 · 콘솔 위생/임계/정리/housekeeping | ⬜ 대기 |
+
+**#29 구현 요지(완료):** `services/project_detail_service.py::get_project_overview` — `recent_stmt`를 `if aggregate_scan_id is not None` 블록 밖으로 빼 **성공 스냅샷 없어도(첫 스캔 queued/running) recent_scans를 항상 조회**. 분포 집계만 스냅샷에 의존. 프론트 `ProjectDetailPage` 헤더에 queued/running 스캔용 영속 칩(`project-detail-active-scan`) 추가 → 클릭 시 진행 드로어 재오픈. 가드: `test_latest_succeeded_scan_anchoring.py`(running-only overview), `tests/unit/ProjectDetailPage.test.tsx`(칩 3케이스).
+
+---
+
 ## 1. 흐지부지 방지 메커니즘 (Anti-Fizzle Backbone)
 
 > 이 마일스톤이 "중간 이후 흐지부지"되는 전형적 원인과 그 차단 장치. **이 절이 본 계획의 핵심이다.**

@@ -27,12 +27,12 @@ import { useAuthStore } from "@/stores/authStore";
 function buildSchema(t: (key: string) => string) {
   return z.object({
     email: z.string().email({ message: t("errors.email_invalid") }),
-    // Mirror the backend's NIST 800-63B floor of 12. Backend remains the
-    // source of truth — its 422 (or our shorter-than-12 error) flows to the
+    // Mirror the backend's NIST 800-63B floor of 8. Backend remains the
+    // source of truth — its 422 (or our shorter-than-8 error) flows to the
     // alert if the client gate is somehow bypassed.
     password: z
       .string()
-      .min(12, { message: t("errors.password_too_short") }),
+      .min(8, { message: t("errors.password_too_short") }),
   });
 }
 

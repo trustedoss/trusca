@@ -42,6 +42,12 @@ export interface VulnerabilitiesQueryFilters {
   reachable: ReachabilityFilter | null;
   limit: number;
   offset: number;
+  /**
+   * Pin the list to a specific succeeded scan (feature #28 snapshot anchoring).
+   * `undefined` → latest succeeded scan. Part of the cache key so flipping the
+   * pinned snapshot refetches.
+   */
+  scanId?: string;
 }
 
 export function vulnerabilitiesKey(
@@ -65,6 +71,7 @@ export function vulnerabilitiesKey(
       reachable: filters.reachable,
       limit: filters.limit,
       offset: filters.offset,
+      scanId: filters.scanId ?? null,
     },
   ] as const;
 }
@@ -87,6 +94,7 @@ export function useVulnerabilities(
         order: filters.order,
         min_epss: filters.min_epss ?? undefined,
         reachable: filters.reachable ?? undefined,
+        scanId: filters.scanId,
       }),
     placeholderData: keepPreviousData,
   });

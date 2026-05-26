@@ -1,8 +1,8 @@
 /**
  * RecentScansTable — unit tests (PR #10).
  */
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
 import type { ScanSummary } from "@/features/projects/api/projectDetailApi";
 import { RecentScansTable } from "@/features/projects/components/RecentScansTable";
@@ -49,5 +49,43 @@ describe("RecentScansTable", () => {
     );
     // Two columns (Started + Duration) should show the em-dash.
     expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("keeps rows read-only (no button role) when onSelectScan is omitted", () => {
+    render(<RecentScansTable scans={[scan()]} />);
+    const row = screen.getByTestId("recent-scan-row");
+    expect(row).not.toHaveAttribute("role", "button");
+    expect(row).not.toHaveAttribute("tabindex");
+  });
+
+  it("makes each row an activatable control when onSelectScan is supplied", () => {
+    render(<RecentScansTable scans={[scan()]} onSelectScan={vi.fn()} />);
+    const row = screen.getByTestId("recent-scan-row");
+    expect(row).toHaveAttribute("role", "button");
+    expect(row).toHaveAttribute("tabindex", "0");
+    expect(row).toHaveAttribute("aria-label");
+  });
+
+  it("invokes onSelectScan with the scan on click", () => {
+    const onSelectScan = vi.fn();
+    const target = scan({ id: "scan-42", status: "running" });
+    render(<RecentScansTable scans={[target]} onSelectScan={onSelectScan} />);
+    fireEvent.click(screen.getByTestId("recent-scan-row"));
+    expect(onSelectScan).toHaveBeenCalledTimes(1);
+    expect(onSelectScan).toHaveBeenCalledWith(target);
+  });
+
+  it("invokes onSelectScan on Enter and Space, but ignores other keys", () => {
+    const onSelectScan = vi.fn();
+    const target = scan({ id: "scan-7", status: "queued" });
+    render(<RecentScansTable scans={[target]} onSelectScan={onSelectScan} />);
+    const row = screen.getByTestId("recent-scan-row");
+    fireEvent.keyDown(row, { key: "Tab" });
+    expect(onSelectScan).not.toHaveBeenCalled();
+    fireEvent.keyDown(row, { key: "Enter" });
+    fireEvent.keyDown(row, { key: " " });
+    expect(onSelectScan).toHaveBeenCalledTimes(2);
+    expect(onSelectScan).toHaveBeenNthCalledWith(1, target);
+    expect(onSelectScan).toHaveBeenNthCalledWith(2, target);
   });
 });

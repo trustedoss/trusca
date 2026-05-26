@@ -146,6 +146,11 @@
         "last_check_at_label": "마지막 점검",
         "last_error_label": "마지막 오류",
         "auto_restart_label": "자동 재시작 시도",
+        "vuln_db_label": "취약점 DB",
+        "vuln_db_count": "{{value}}건 적재됨",
+        "vuln_db_unknown": "알 수 없음",
+        "vuln_db_empty_title": "취약점 데이터베이스가 비어 있음",
+        "vuln_db_empty_body": "Dependency-Track에 적재된 취약점이 0건이라 스캔은 컴포넌트만 찾고 CVE는 보고하지 못합니다 — 깨끗한 결과인지 데이터가 없는 것인지 구분할 수 없습니다. Dependency-Track에서 NVD 미러링(nvd.api.enabled)을 켜고 초기 동기화가 끝날 때까지 기다리세요. NVD API 키가 있으면 훨씬 빠릅니다.",
         "no_version": "확인 불가",
         "no_error": "없음",
         "yes": "예",
@@ -263,10 +268,11 @@
       "status": {
         "ok": "정상",
         "degraded": "한계 근접",
-        "down": "심각"
+        "down": "심각",
+        "unavailable": "사용 불가"
       },
       "errors": {
-        "unavailable": "텔레메트리를 사용할 수 없습니다: {{detail}}"
+        "unavailable": "이 볼륨의 텔레메트리를 사용할 수 없습니다. 자세한 내용은 서버 로그를 확인하세요."
       },
       "collected_at": "수집 시각: {{when}}"
     },

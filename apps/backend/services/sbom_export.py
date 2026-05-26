@@ -69,6 +69,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import Component, ComponentVersion, Project, Scan, ScanComponent
+from services.scan_resolution import resolve_snapshot_scan_id
 
 log = structlog.get_logger("sbom_export.service")
 
@@ -131,18 +132,9 @@ async def _load_project(session: AsyncSession, project_id: uuid.UUID) -> Project
     return result.scalar_one_or_none()
 
 
-async def _load_latest_succeeded_scan(
-    session: AsyncSession, *, project_id: uuid.UUID
-) -> Scan | None:
-    """Return the most recent ``status='succeeded'`` scan for the project, or None."""
-    stmt = (
-        select(Scan)
-        .where(Scan.project_id == project_id)
-        .where(Scan.status == "succeeded")
-        .order_by(Scan.created_at.desc(), Scan.id.desc())
-        .limit(1)
-    )
-    result = await session.execute(stmt)
+async def _load_scan_by_id(session: AsyncSession, *, scan_id: uuid.UUID) -> Scan | None:
+    """Load one scan row by id (already validated by the snapshot resolver)."""
+    result = await session.execute(select(Scan).where(Scan.id == scan_id))
     return result.scalar_one_or_none()
 
 
@@ -516,6 +508,7 @@ async def export_sbom(
     project_id: uuid.UUID,
     fmt: str,
     now: datetime | None = None,
+    scan_id: uuid.UUID | None = None,
 ) -> tuple[str, str, str]:
     """
     Build the SBOM body for ``project_id`` in the requested format.
@@ -526,9 +519,17 @@ async def export_sbom(
     router is responsible for translating the missing-project / forbidden
     cases to RFC 7807 — those checks fire BEFORE this function runs.
 
+    ``scan_id`` (feature #28) optionally pins the export to a SPECIFIC succeeded
+    snapshot instead of the latest succeeded scan. It is validated via
+    :func:`services.scan_resolution.resolve_snapshot_scan_id` (must belong to
+    THIS project AND be ``status='succeeded'``); an invalid / cross-project /
+    non-succeeded id raises :class:`SnapshotScanNotFound`, which the router maps
+    to a 404 (existence-hide). Omitting it preserves the latest-succeeded
+    default.
+
     Empty-project policy (see module docstring): if the project has no
-    succeeded scan we still return a valid SBOM document with an empty
-    components/packages list, not 404.
+    succeeded scan (and no ``scan_id`` was pinned) we still return a valid SBOM
+    document with an empty components/packages list, not 404.
 
     Byte-stability (BUG-006): by default the document timestamp derives from
     the scan's persisted completion time, so two exports of the same scan are
@@ -549,7 +550,15 @@ async def export_sbom(
         # it here keeps the contract self-consistent.
         raise SBOMUnsupportedFormat(f"project {project_id} not found")
 
-    scan = await _load_latest_succeeded_scan(session, project_id=project_id)
+    # Resolve the snapshot scan: the pinned ``scan_id`` (validated to belong to
+    # this project AND be succeeded) when given, else the latest succeeded scan.
+    # SnapshotScanNotFound (invalid pin) propagates to the router → 404.
+    resolved_scan_id = await resolve_snapshot_scan_id(session, project_id, scan_id)
+    scan = (
+        await _load_scan_by_id(session, scan_id=resolved_scan_id)
+        if resolved_scan_id is not None
+        else None
+    )
     rows: list[dict[str, Any]] = []
     if scan is not None:
         rows = await _load_scan_components(session, scan_id=scan.id)

@@ -20,6 +20,31 @@ vi.mock("@/lib/projectsApi", () => ({
   triggerScan: vi.fn(),
 }));
 
+// The "/" index now renders the Dashboard, which fetches the summary via the
+// real TanStack Query hook. Mock the fetch fn so mounting at "/" doesn't hit
+// the network; project_count > 0 keeps it on the populated (non-empty) view.
+vi.mock("@/features/dashboard/api/dashboardApi", () => ({
+  getDashboardSummary: vi.fn().mockResolvedValue({
+    project_count: 1,
+    scan_status_counts: { queued: 0, running: 0, succeeded: 0, failed: 0 },
+    vulnerability_severity_counts: {
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+      info: 0,
+    },
+    license_category_counts: {
+      prohibited: 0,
+      conditional: 0,
+      permissive: 0,
+      unknown: 0,
+    },
+    pending_approvals_count: 0,
+    recent_scans: [],
+  }),
+}));
+
 import { postLogout } from "@/lib/api";
 const mockedPostLogout = vi.mocked(postLogout);
 
@@ -31,6 +56,7 @@ const fakeUser: AuthUser = {
   isActive: true,
   isSuperuser: false,
   teamId: null,
+  teams: [],
 };
 
 function renderAppAt(path: string) {
@@ -56,11 +82,19 @@ describe("App smoke (authenticated)", () => {
     window.history.replaceState(null, "", "/");
   });
 
-  it("redirects / to /projects and shows the project list", async () => {
+  it("renders the dashboard at the / index route", async () => {
     renderAppAt("/");
     await waitFor(() => {
-      expect(screen.getByTestId("project-list-page")).toBeInTheDocument();
+      expect(screen.getByTestId("dashboard-page")).toBeInTheDocument();
     });
+  });
+
+  it("renders the dashboard nav link as the first sidebar item", async () => {
+    renderAppAt("/");
+    await waitFor(() => {
+      expect(screen.getByTestId("nav-dashboard")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("nav-dashboard")).toHaveAttribute("href", "/");
   });
 
   it("renders the sidebar navigation links", async () => {

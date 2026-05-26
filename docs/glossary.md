@@ -29,7 +29,9 @@ translate proper nouns (Dependency-Track, SBOM, CVE, ORT, Trivy, cdxgen).
 | Image reference | 이미지 참조 | The name and tag/digest identifying a container image to scan (e.g. `ghcr.io/org/app:1.2.3`). | 스캔할 컨테이너 이미지를 식별하는 이름과 태그/다이제스트 (예: `ghcr.io/org/app:1.2.3`). |
 | Project | 프로젝트 | A unit of source-tracked software registered in the portal; carries scans, components, and risk scores. | 포털에 등록된 소스 추적 단위. 스캔·컴포넌트·리스크 점수를 보유합니다. |
 | Repository | 저장소 | The git source location (URL + branch) tied to a project. | 프로젝트와 연결된 git 소스 위치 (URL + 브랜치). |
-| Risk Score | 리스크 점수 | Aggregated numeric indicator combining vulnerability severity and license risk for a project. | 프로젝트의 취약점 심각도와 라이선스 리스크를 합산한 수치 지표. |
+| Risk Score | 리스크 점수 | Overall project risk 0–100 = the worse of the Security and License scores (max). Non-saturating. | 프로젝트 전체 리스크 0–100 = 보안 점수와 라이선스 점수 중 더 높은 값(최댓값). 포화되지 않습니다. |
+| Security Score | 보안 점수 | Security-axis risk 0–100 set by the worst CVE severity present (Critical→75–100, High→50–74, Medium→25–49, Low→1–24); count scales within the band, never saturating. | 존재하는 최악의 CVE 심각도로 결정되는 보안 축 리스크 0–100 (치명→75–100, 높음→50–74, 중간→25–49, 낮음→1–24). 밴드 안에서 건수에 따라 변하며 포화되지 않습니다. |
+| License Score | 라이선스 점수 | License-axis risk 0–100 set by the worst license category (Forbidden→75–100, Conditional→25–49, Unknown→1–24); conditional licenses alone never reach Critical. | 존재하는 최악의 라이선스 분류로 결정되는 라이선스 축 리스크 0–100 (금지→75–100, 조건부→25–49, 미상→1–24). 조건부 라이선스만으로는 Critical에 도달하지 않습니다. |
 | Cache (vulnerability) | 캐시 (취약점) | PostgreSQL-stored snapshot of DT findings, served when DT is unavailable. | DT findings의 PostgreSQL 보관 스냅샷. DT 장애 시 대체 데이터로 사용됩니다. |
 | Workspace | 작업 공간 | The temporary filesystem area where source is fetched and scanned. | 소스를 가져와 스캔을 실행하는 임시 파일시스템 영역. |
 | Reconnect | 재연결 | WebSocket auto-reconnect with exponential backoff during a scan stream. | 스캔 스트리밍 중 지수 백오프로 자동 재연결하는 동작. |

@@ -1,0 +1,49 @@
+{
+  "title": "Dashboard",
+  "severity": {
+    "title": "Vulnerabilities by severity",
+    "critical": "Critical",
+    "high": "High",
+    "medium": "Medium",
+    "low": "Low",
+    "info": "Info"
+  },
+  "portfolio": {
+    "title": "Portfolio",
+    "projects": "Projects",
+    "pending_approvals": "Pending approvals"
+  },
+  "scan_status": {
+    "queued": "Queued",
+    "running": "Running",
+    "succeeded": "Succeeded",
+    "failed": "Failed"
+  },
+  "scan_kind": {
+    "source": "Source",
+    "container": "Container"
+  },
+  "license": {
+    "title": "License classification",
+    "empty": "No license data yet.",
+    "category": {
+      "prohibited": "Prohibited",
+      "conditional": "Conditional",
+      "permissive": "Permissive",
+      "unknown": "Unknown"
+    }
+  },
+  "recent_scans": {
+    "title": "Recent scans",
+    "empty": "No scans have run yet.",
+    "release_aria": "Release {{release}}"
+  },
+  "errors": {
+    "load_failed": "Couldn't load the dashboard. Please try again."
+  },
+  "empty": {
+    "title": "No projects yet",
+    "subtitle": "Register your first project to start scanning for vulnerabilities and license risk.",
+    "cta": "Register project"
+  }
+}

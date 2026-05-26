@@ -17,6 +17,7 @@ Refresh rotation contract (CLAUDE.md §3):
 
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
 
 import structlog
@@ -34,7 +35,7 @@ from core.security import (
     hash_refresh_token,
     verify_password,
 )
-from models import RefreshToken, User
+from models import Membership, Organization, RefreshToken, Team, User
 
 log = structlog.get_logger("auth.service")
 
@@ -90,6 +91,24 @@ class RefreshReuseDetected(AuthError):
 # ---------------------------------------------------------------------------
 
 
+def _register_creates_team() -> bool:
+    """Whether self-registration provisions a personal org + team.
+
+    Without a membership the new user has no ``team_id`` (``/auth/me`` returns
+    an empty list) and cannot create projects — the form blocks with a "no
+    team" notice. The demo / open-registration model (CLAUDE.md "데모 SaaS:
+    가입 시 개인 Team 자동 생성") gives every signup their own space. On-prem
+    org deployments that assign teams via an admin can disable this with
+    ``AUTH_REGISTER_CREATES_TEAM=false``.
+    """
+    return os.getenv("AUTH_REGISTER_CREATES_TEAM", "true").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
 async def register_user(
     session: AsyncSession,
     *,
@@ -97,7 +116,12 @@ async def register_user(
     password: str,
     full_name: str | None,
 ) -> User:
-    """Create a new user. Raises EmailAlreadyExists on duplicate email."""
+    """Create a new user. Raises EmailAlreadyExists on duplicate email.
+
+    When ``AUTH_REGISTER_CREATES_TEAM`` is enabled (default) the user also gets
+    a personal Organization + Team and a ``team_admin`` Membership so they can
+    create projects immediately after signing up.
+    """
     normalized_email = email.strip().lower()
 
     user = User(
@@ -109,6 +133,29 @@ async def register_user(
         is_verified=False,
     )
     session.add(user)
+    try:
+        # Flush (not commit) so we hold user.id for the personal team while the
+        # whole signup stays in one transaction — a failed team provision must
+        # roll the user back too.
+        await session.flush()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise EmailAlreadyExists(f"email already registered: {normalized_email}") from exc
+
+    if _register_creates_team():
+        suffix = user.id.hex[:12]
+        org = Organization(name=f"Personal org ({suffix})", slug=f"org-{suffix}")
+        session.add(org)
+        await session.flush()
+        team = Team(
+            organization_id=org.id,
+            name=f"Personal team ({suffix})",
+            slug=f"team-{suffix}",
+        )
+        session.add(team)
+        await session.flush()
+        session.add(Membership(user_id=user.id, team_id=team.id, role="team_admin"))
+
     try:
         await session.commit()
     except IntegrityError as exc:

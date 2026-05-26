@@ -138,9 +138,13 @@ def test_get_dt_status_cache_hit_returns_cached_payload(
 
     call_count = {"n": 0}
 
-    def ok(_request: httpx.Request) -> httpx.Response:
-        call_count["n"] += 1
-        return httpx.Response(200, json={"version": "4.13.2"})
+    def ok(request: httpx.Request) -> httpx.Response:
+        # Count only the version probe so the cache assertion stays precise even
+        # though get_dt_status now also probes the vuln-DB size (#35).
+        if request.url.path == "/api/version":
+            call_count["n"] += 1
+            return httpx.Response(200, json={"version": "4.13.2"})
+        return httpx.Response(200, json=[], headers={"X-Total-Count": "5"})
 
     breaker = make_breaker()
     monkeypatch.setattr(
@@ -194,6 +198,96 @@ def test_get_dt_status_cache_invalid_payload_falls_through(
         client.close()
 
     assert result.version == "4.13.2"
+
+
+def test_get_dt_status_reports_vulnerability_count(
+    make_breaker: Any,
+    make_dt_client: Any,
+    fakeredis_client: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """get_dt_status surfaces DT's vulnerability-DB size via X-Total-Count (#35)."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/version":
+            return httpx.Response(200, json={"version": "4.13.2"})
+        if request.url.path == "/api/v1/vulnerability":
+            return httpx.Response(200, json=[{}], headers={"X-Total-Count": "274321"})
+        raise AssertionError(f"unexpected DT path {request.url.path}")
+
+    breaker = make_breaker()
+    client = make_dt_client(handler)
+    monkeypatch.setattr(
+        "services.admin_dt_service._redis_client",
+        lambda: fakeredis_client,
+    )
+    try:
+        result = get_dt_status(breaker=breaker, client=client, force_refresh=True)
+    finally:
+        client.close()
+
+    assert result.version == "4.13.2"
+    assert result.vulnerability_count == 274321
+    assert result.last_error is None
+
+
+def test_get_dt_status_empty_vuln_db_reports_zero(
+    make_breaker: Any,
+    make_dt_client: Any,
+    fakeredis_client: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An empty DT mirror surfaces as vulnerability_count=0 — the silent-zero
+    signal an operator needs to tell 'clean project' from 'no vuln data' (#35)."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/version":
+            return httpx.Response(200, json={"version": "4.13.2"})
+        return httpx.Response(200, json=[], headers={"X-Total-Count": "0"})
+
+    breaker = make_breaker()
+    client = make_dt_client(handler)
+    monkeypatch.setattr(
+        "services.admin_dt_service._redis_client",
+        lambda: fakeredis_client,
+    )
+    try:
+        result = get_dt_status(breaker=breaker, client=client, force_refresh=True)
+    finally:
+        client.close()
+
+    assert result.version == "4.13.2"
+    assert result.vulnerability_count == 0
+
+
+def test_get_dt_status_count_probe_failure_is_non_fatal(
+    make_breaker: Any,
+    make_dt_client: Any,
+    fakeredis_client: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If the version probe succeeds but the vuln-count probe 5xx's, the version
+    is still reported and the count degrades to None (not a hard failure)."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/version":
+            return httpx.Response(200, json={"version": "4.13.2"})
+        return httpx.Response(503, text="DT vuln list unavailable")
+
+    breaker = make_breaker(failure_threshold=10)
+    client = make_dt_client(handler)
+    monkeypatch.setattr(
+        "services.admin_dt_service._redis_client",
+        lambda: fakeredis_client,
+    )
+    try:
+        result = get_dt_status(breaker=breaker, client=client, force_refresh=True)
+    finally:
+        client.close()
+
+    assert result.version == "4.13.2"
+    assert result.vulnerability_count is None
+    assert result.last_error is not None and "503" in result.last_error
 
 
 # ---------------------------------------------------------------------------

@@ -47,6 +47,7 @@ function statusFixture(overrides: Partial<DTStatus> = {}): DTStatus {
     opened_at: null,
     last_check_at: "2026-05-08T00:00:00Z",
     version: "4.13.2",
+    vulnerability_count: 274321,
     last_error: null,
     auto_restart_attempted: false,
     ...overrides,
@@ -134,6 +135,28 @@ describe("AdminDTPage", () => {
       "data-tone",
       "ok",
     );
+  });
+
+  it("shows the vuln-DB count and NO empty-warning when the mirror is populated (#35)", async () => {
+    mockedStatus.mockResolvedValue(statusFixture({ vulnerability_count: 274321 }));
+    mockedOrphans.mockResolvedValue(orphansFixture(0));
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByTestId("admin-dt-vuln-count")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("admin-dt-vuln-count").textContent).toContain(
+      "274,321",
+    );
+    expect(screen.queryByTestId("admin-dt-vuln-db-empty")).not.toBeInTheDocument();
+  });
+
+  it("warns the operator when DT's vulnerability DB is empty (#35 silent-zero)", async () => {
+    mockedStatus.mockResolvedValue(statusFixture({ vulnerability_count: 0 }));
+    mockedOrphans.mockResolvedValue(orphansFixture(0));
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByTestId("admin-dt-vuln-db-empty")).toBeInTheDocument();
+    });
   });
 
   it("renders the breaker badge with degraded tone when state=half_open", async () => {

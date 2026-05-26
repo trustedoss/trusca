@@ -27,6 +27,7 @@ import { useDemoMode } from "@/hooks/useDemoMode";
 import {
   listProjects,
   type ProjectPublic,
+  type ProjectSeveritySummary,
   type ScanPublic,
   type ScanStatus,
 } from "@/lib/projectsApi";
@@ -50,6 +51,7 @@ interface ScanDrawerState {
   scanId: string | null;
   projectName: string | null;
   status: ScanStatus | null;
+  release: string | null;
 }
 
 interface SourceDialogState {
@@ -90,12 +92,11 @@ function statusFilterMatches(
   filter: ProjectStatusFilter,
 ): boolean {
   if (filter === "all") return true;
-  if (filter === "idle") return project.latest_scan_id == null;
-  // Without joined scan rows on the project wire shape (PR #10 backlog) we
-  // cannot reliably narrow by running/queued/succeeded/failed yet. Keep the
-  // selector visible and permissive so e2e and design checks still flow; a
-  // follow-up backend change carries `latest_scan_status` on the row.
-  return true;
+  // `latest_scan_status` is now on the wire shape, so the status filter can
+  // narrow for real. "idle" = never scanned (no latest_scan_status). The other
+  // buckets compare against the latest scan attempt's status.
+  if (filter === "idle") return project.latest_scan_status == null;
+  return project.latest_scan_status === filter;
 }
 
 export function ProjectListPage() {
@@ -114,6 +115,7 @@ export function ProjectListPage() {
     scanId: null,
     projectName: null,
     status: null,
+    release: null,
   });
   const [sourceDialog, setSourceDialog] = useState<SourceDialogState>({
     open: false,
@@ -158,6 +160,7 @@ export function ProjectListPage() {
       scanId: scan.id,
       projectName: project.name,
       status: scan.status,
+      release: scan.release,
     });
   }
 
@@ -187,6 +190,20 @@ export function ProjectListPage() {
             {t("page.title")}
           </h1>
         </div>
+        {demoReadOnly ? (
+          <Button
+            size="sm"
+            disabled
+            title={t("demo.write_disabled")}
+            data-testid="project-list-register"
+          >
+            {t("page.register")}
+          </Button>
+        ) : (
+          <Button asChild size="sm" data-testid="project-list-register">
+            <Link to="/projects/new">{t("page.register")}</Link>
+          </Button>
+        )}
       </header>
 
       <div className="flex flex-col">
@@ -226,13 +243,19 @@ export function ProjectListPage() {
               <p className="text-sm text-muted-foreground">
                 {t("empty.subtitle")}
               </p>
-              <Button
-                data-testid="project-list-empty-cta"
-                disabled={demoReadOnly}
-                title={demoReadOnly ? t("demo.write_disabled") : undefined}
-              >
-                {t("empty.cta")}
-              </Button>
+              {demoReadOnly ? (
+                <Button
+                  data-testid="project-list-empty-cta"
+                  disabled
+                  title={t("demo.write_disabled")}
+                >
+                  {t("empty.cta")}
+                </Button>
+              ) : (
+                <Button asChild data-testid="project-list-empty-cta">
+                  <Link to="/projects/new">{t("empty.cta")}</Link>
+                </Button>
+              )}
             </CardContent>
           </Card>
         ) : null}
@@ -288,6 +311,7 @@ export function ProjectListPage() {
           {scanDrawer.scanId ? (
             <ScanProgress
               scanId={scanDrawer.scanId}
+              release={scanDrawer.release}
               status={scanDrawer.status ?? "queued"}
               onClose={handleCloseDrawer}
               onCancelled={() =>
@@ -342,9 +366,10 @@ function ProjectRow({
           {project.git_url ?? ""}
         </span>
       </div>
-      <ProjectStatusBadge
-        status={project.latest_scan_id == null ? "idle" : null}
-      />
+      <SeveritySummary summary={project.severity_summary} />
+      <div data-testid="project-row-status">
+        <ProjectStatusBadge status={project.latest_scan_status ?? "idle"} />
+      </div>
       <Button
         variant="outline"
         size="sm"
@@ -356,6 +381,81 @@ function ProjectRow({
       >
         {t("row.trigger_scan")}
       </Button>
+    </div>
+  );
+}
+
+interface SeverityBucket {
+  key: keyof ProjectSeveritySummary;
+  count: number;
+  /** Tailwind risk token class — never a hex literal (CLAUDE.md design tokens). */
+  colorClass: string;
+  /** Short uppercase label (C / H / M / L), translated for screen readers. */
+  abbrevKey: string;
+}
+
+/**
+ * Compact per-row vulnerability-severity summary, e.g. `C 10 · H 13 · M 17 ·
+ * L 27`. Renders nothing when the project has no succeeded scan
+ * (`summary == null`) or every bucket is 0. Colors come from the design risk
+ * tokens; each count is paired with a letter label so color is not the only
+ * signal (CLAUDE.md accessibility rule).
+ */
+function SeveritySummary({
+  summary,
+}: {
+  summary: ProjectSeveritySummary | null;
+}) {
+  const { t } = useTranslation("projects");
+  if (summary == null) return null;
+
+  const buckets: SeverityBucket[] = [
+    {
+      key: "critical",
+      count: summary.critical,
+      colorClass: "text-risk-critical",
+      abbrevKey: "severity.abbrev.critical",
+    },
+    {
+      key: "high",
+      count: summary.high,
+      colorClass: "text-risk-high",
+      abbrevKey: "severity.abbrev.high",
+    },
+    {
+      key: "medium",
+      count: summary.medium,
+      colorClass: "text-risk-medium",
+      abbrevKey: "severity.abbrev.medium",
+    },
+    {
+      key: "low",
+      count: summary.low,
+      colorClass: "text-risk-low",
+      abbrevKey: "severity.abbrev.low",
+    },
+  ];
+  const present = buckets.filter((b) => b.count > 0);
+  if (present.length === 0) return null;
+
+  return (
+    <div
+      className="flex items-center gap-2 font-mono text-xs"
+      data-testid="project-row-severity"
+      aria-label={t("severity.summary_aria")}
+    >
+      {present.map((bucket, idx) => (
+        <span key={bucket.key} className="flex items-center gap-2">
+          {idx > 0 ? (
+            <span aria-hidden className="text-muted-foreground">
+              ·
+            </span>
+          ) : null}
+          <span className={cn("font-medium", bucket.colorClass)}>
+            <span aria-hidden>{t(bucket.abbrevKey)}</span> {bucket.count}
+          </span>
+        </span>
+      ))}
     </div>
   );
 }

@@ -51,6 +51,9 @@ function project(overrides: Partial<ProjectPublic> = {}): ProjectPublic {
     archived_at: null,
     created_by_user_id: null,
     latest_scan_id: null,
+    latest_scan_status: null,
+    severity_summary: null,
+    has_git_credential: false,
     created_at: "2026-05-22T00:00:00Z",
     updated_at: "2026-05-22T00:00:00Z",
     ...overrides,
@@ -71,6 +74,7 @@ function fakeScan(): ScanPublic {
     requested_by_user_id: null,
     celery_task_id: null,
     metadata: {},
+    release: null,
     created_at: "2026-05-22T00:00:00Z",
     updated_at: "2026-05-22T00:00:00Z",
   };
@@ -293,5 +297,60 @@ describe("SourceSelectDialog", () => {
     await userEvent.tab();
     expect(input).toHaveAttribute("aria-invalid", "true");
     expect(screen.getByTestId("container-error")).toBeInTheDocument();
+  });
+
+  // ---- feature #18 — optional release/version label ----------------------
+
+  it("renders the optional release input for both scan kinds", async () => {
+    renderDialog();
+    expect(screen.getByTestId("scan-release-input")).toBeInTheDocument();
+    // Still present after switching to the container kind.
+    await userEvent.click(screen.getByTestId("scan-kind-container"));
+    expect(screen.getByTestId("scan-release-input")).toBeInTheDocument();
+  });
+
+  it("passes a trimmed metadata.release when the release field is filled", async () => {
+    mutateAsync.mockResolvedValue(fakeScan());
+    renderDialog();
+    // Git is the default method when the project has a git_url.
+    await userEvent.type(screen.getByTestId("scan-release-input"), "  v1.2.3 ");
+    await userEvent.click(screen.getByTestId("source-submit"));
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledWith({
+        method: "git",
+        release: "v1.2.3",
+      });
+    });
+  });
+
+  it("omits release (undefined) when the field is empty", async () => {
+    mutateAsync.mockResolvedValue(fakeScan());
+    renderDialog();
+    await userEvent.click(screen.getByTestId("source-submit"));
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledWith({
+        method: "git",
+        release: undefined,
+      });
+    });
+  });
+
+  it("threads the release through the container submit branch", async () => {
+    mutateAsync.mockResolvedValue({ ...fakeScan(), kind: "container" });
+    renderDialog();
+    await userEvent.click(screen.getByTestId("scan-kind-container"));
+    await userEvent.type(
+      screen.getByTestId("scan-image-ref-input"),
+      "alpine:3.19",
+    );
+    await userEvent.type(screen.getByTestId("scan-release-input"), "v3.0.0");
+    await userEvent.click(screen.getByTestId("source-submit"));
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledWith({
+        method: "container",
+        imageRef: "alpine:3.19",
+        release: "v3.0.0",
+      });
+    });
   });
 });

@@ -34,6 +34,11 @@ export interface LicensesQueryFilters {
   order: SortOrder;
   limit: number;
   offset: number;
+  /**
+   * Pin the list to a specific succeeded scan (feature #28 snapshot anchoring).
+   * `undefined` → latest succeeded scan.
+   */
+  scanId?: string;
 }
 
 export function licensesKey(
@@ -55,6 +60,7 @@ export function licensesKey(
       order: filters.order,
       limit: filters.limit,
       offset: filters.offset,
+      scanId: filters.scanId ?? null,
     },
   ] as const;
 }
@@ -75,6 +81,7 @@ export function useLicenses(
         kinds: filters.kinds.length ? filters.kinds : undefined,
         sort: filters.sort,
         order: filters.order,
+        scanId: filters.scanId,
       }),
     staleTime: 30_000,
     placeholderData: keepPreviousData,

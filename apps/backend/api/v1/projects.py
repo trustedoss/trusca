@@ -30,6 +30,7 @@ decides who is authenticated.
 from __future__ import annotations
 
 import uuid
+from typing import cast
 
 import structlog
 from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile, status
@@ -46,6 +47,8 @@ from schemas.project_detail import (
     ProjectOverviewResponse,
     ScanSummary,
 )
+from schemas.project_diff import ProjectDiff
+from schemas.release_snapshot import ReleaseListResponse, ReleaseSnapshot
 from schemas.scan import (
     ProjectCreate,
     ProjectListResponse,
@@ -53,12 +56,16 @@ from schemas.scan import (
     ProjectUpdate,
     ScanCreate,
     ScanPublic,
+    ScanStatus,
+    SeveritySummary,
     SourceArchiveUploadResponse,
 )
 from services.project_detail_service import (
     get_project_overview,
     list_components_for_project,
 )
+from services.project_diff_service import diff_release_snapshots
+from services.project_list_enrichment import enrich_project_rows
 from services.project_service import (
     ProjectError,
     archive_project,
@@ -67,6 +74,8 @@ from services.project_service import (
     list_projects,
     update_project,
 )
+from services.release_snapshot_service import list_release_snapshots
+from services.scan_resolution import SnapshotScanNotFound, resolve_snapshot_scan_id
 from services.scan_service import (
     ConcurrentScanLimitExceeded,
     ScanError,
@@ -95,6 +104,22 @@ def _problem_for_project_error(request: Request, exc: ProjectError) -> Response:
         status_code=exc.status_code,
         title=exc.title,
         detail=str(exc) or exc.title,
+        instance=request.url.path,
+    )
+
+
+def _problem_for_snapshot_not_found(request: Request) -> Response:
+    """RFC 7807 404 for an unresolvable ``?scan_id=`` snapshot anchor (feature #28).
+
+    Existence-hide: the detail is deliberately uniform whether the scan is
+    nonexistent, belongs to another project (an IDOR probe), or is not
+    ``status='succeeded'`` — so a caller pinning another project's scan id learns
+    nothing about whether that id exists elsewhere.
+    """
+    return problem_response(
+        status_code=status.HTTP_404_NOT_FOUND,
+        title="Scan Snapshot Not Found",
+        detail="No succeeded scan with that id exists for this project.",
         instance=request.url.path,
     )
 
@@ -220,8 +245,27 @@ async def list_projects_endpoint(
     except ProjectError as exc:
         return _problem_for_project_error(request, exc)
 
+    # #25 — enrich each page row with its latest scan status (status badge) and a
+    # severity summary from its latest *succeeded* scan (risk indicator). Both
+    # maps are computed in batched queries over the page's project ids (no N+1);
+    # the page is already team-scoped by ``list_projects`` above.
+    status_by_project, severity_by_project = await enrich_project_rows(
+        session, projects=rows
+    )
+
+    items: list[ProjectPublic] = []
+    for p in rows:
+        item = ProjectPublic.model_validate(p)
+        # The DB scan_status ENUM is exactly the ScanStatus Literal set; cast to
+        # satisfy the typed field (the DB constraint guarantees membership).
+        raw_status = status_by_project.get(p.id)
+        item.latest_scan_status = cast(ScanStatus, raw_status) if raw_status else None
+        sev = severity_by_project.get(p.id)
+        item.severity_summary = SeveritySummary(**sev) if sev is not None else None
+        items.append(item)
+
     body = ProjectListResponse(
-        items=[ProjectPublic.model_validate(p) for p in rows],
+        items=items,
         total=total,
         page=page,
         size=size,
@@ -339,6 +383,15 @@ async def delete_project_endpoint(
 async def get_project_overview_endpoint(
     request: Request,
     project_id: uuid.UUID,
+    scan_id: uuid.UUID | None = Query(
+        default=None,
+        description=(
+            "Optional release-snapshot anchor (feature #28). When given, aggregate "
+            "this SPECIFIC succeeded scan instead of the project's latest succeeded "
+            "scan. Must belong to this project and be succeeded, else 404. Omit for "
+            "the default latest-succeeded behaviour."
+        ),
+    ),
     session: AsyncSession = Depends(get_db),
     actor: CurrentUser = Depends(require_role("developer")),
 ) -> Response:
@@ -347,7 +400,10 @@ async def get_project_overview_endpoint(
             session,
             project_id=project_id,
             actor=actor,
+            scan_id=scan_id,
         )
+    except SnapshotScanNotFound:
+        return _problem_for_snapshot_not_found(request)
     except ProjectError as exc:
         return _problem_for_project_error(request, exc)
 
@@ -358,8 +414,12 @@ async def get_project_overview_endpoint(
         severity_distribution=payload["severity_distribution"],
         license_distribution=payload["license_distribution"],
         risk_score=payload["risk_score"],
+        security_score=payload["security_score"],
+        license_score=payload["license_score"],
         recent_scans=[ScanSummary.model_validate(s) for s in payload["recent_scans"]],
         last_scan_at=payload["last_scan_at"],
+        last_succeeded_scan_at=payload["last_succeeded_scan_at"],
+        has_git_credential=payload["has_git_credential"],
         current_user_role=payload["current_user_role"],
     )
     return Response(
@@ -389,6 +449,15 @@ async def list_project_components_endpoint(
     license_category: list[str] | None = Query(default=None),
     sort: str = Query(default="name", pattern=r"^(name|severity|license)$"),
     order: str = Query(default="asc", pattern=r"^(asc|desc)$"),
+    scan_id: uuid.UUID | None = Query(
+        default=None,
+        description=(
+            "Optional release-snapshot anchor (feature #28). When given, list "
+            "components of this SPECIFIC succeeded scan instead of the project's "
+            "latest succeeded scan. Must belong to this project and be succeeded, "
+            "else 404. Omit for the default latest-succeeded behaviour."
+        ),
+    ),
     session: AsyncSession = Depends(get_db),
     actor: CurrentUser = Depends(require_role("developer")),
 ) -> Response:
@@ -404,7 +473,10 @@ async def list_project_components_endpoint(
             license_category=license_category,
             sort=sort,
             order=order,
+            scan_id=scan_id,
         )
+    except SnapshotScanNotFound:
+        return _problem_for_snapshot_not_found(request)
     except ProjectError as exc:
         return _problem_for_project_error(request, exc)
 
@@ -414,6 +486,148 @@ async def list_project_components_endpoint(
         limit=limit,
         offset=offset,
     )
+    return Response(
+        content=body.model_dump_json(),
+        status_code=status.HTTP_200_OK,
+        media_type="application/json",
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/projects/{project_id}/releases  (feature #28 — release snapshots)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/{project_id}/releases",
+    response_model=ReleaseListResponse,
+    summary="List the project's release snapshots (succeeded scans, newest-first)",
+    responses={
+        403: {
+            "description": (
+                "Caller is not a member of the project's owning team (super_admin "
+                "bypasses). RFC 7807 problem+json."
+            ),
+            "content": {"application/problem+json": {}},
+        },
+        404: {
+            "description": "Project does not exist. RFC 7807 problem+json.",
+            "content": {"application/problem+json": {}},
+        },
+    },
+)
+async def list_project_releases_endpoint(
+    request: Request,
+    project_id: uuid.UUID,
+    page: int = Query(default=1, ge=1),
+    size: int = Query(default=20, ge=1, le=100),
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_role("developer")),
+) -> Response:
+    # Each row is one succeeded scan = an immutable release snapshot. RBAC mirrors
+    # the overview endpoint: ProjectNotFound (404) / ProjectForbidden (403). A
+    # project with no succeeded scan returns an empty 200, never a 404.
+    try:
+        items, total = await list_release_snapshots(
+            session,
+            project_id=project_id,
+            actor=actor,
+            page=page,
+            size=size,
+        )
+    except ProjectError as exc:
+        return _problem_for_project_error(request, exc)
+
+    body = ReleaseListResponse(
+        items=[ReleaseSnapshot.model_validate(item) for item in items],
+        total=total,
+        page=page,
+        size=size,
+    )
+    return Response(
+        content=body.model_dump_json(),
+        status_code=status.HTTP_200_OK,
+        media_type="application/json",
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/projects/{project_id}/diff  (feature #28 Phase 2 — release diff)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/{project_id}/diff",
+    response_model=ProjectDiff,
+    summary="Diff two release snapshots (succeeded scans) of the project",
+    responses={
+        403: {
+            "description": (
+                "Caller is not a member of the project's owning team (super_admin "
+                "bypasses). RFC 7807 problem+json."
+            ),
+            "content": {"application/problem+json": {}},
+        },
+        404: {
+            "description": (
+                "Project does not exist, or one of `base`/`target` is not a "
+                "succeeded scan of THIS project (existence-hidden: nonexistent / "
+                "another project's scan / non-succeeded all collapse to the same "
+                "404). RFC 7807 problem+json."
+            ),
+            "content": {"application/problem+json": {}},
+        },
+    },
+)
+async def diff_project_releases_endpoint(
+    request: Request,
+    project_id: uuid.UUID,
+    base: uuid.UUID = Query(
+        description=(
+            "Base snapshot scan id (typically the OLDER release, e.g. v0.1). Must "
+            "belong to this project and be succeeded, else 404 (existence-hide)."
+        ),
+    ),
+    target: uuid.UUID = Query(
+        description=(
+            "Target snapshot scan id (typically the NEWER release, e.g. v0.2). "
+            "Must belong to this project and be succeeded, else 404. `base == "
+            "target` is allowed and yields an all-empty diff."
+        ),
+    ),
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_role("developer")),
+) -> Response:
+    # Validate BOTH anchors are succeeded snapshots of THIS project before running
+    # any aggregation. resolve_snapshot_scan_id is the single source of truth for
+    # the "belongs-to-project AND succeeded" rule and existence-hides the three
+    # failure modes (nonexistent / cross-project / non-succeeded) behind one 404.
+    # RBAC (team membership) is enforced inside diff_release_snapshots, mirroring
+    # the other detail endpoints. We validate the anchors first so a cross-project
+    # base/target probe is rejected uniformly regardless of membership outcome.
+    try:
+        resolved_base = await resolve_snapshot_scan_id(session, project_id, base)
+        resolved_target = await resolve_snapshot_scan_id(session, project_id, target)
+    except SnapshotScanNotFound:
+        return _problem_for_snapshot_not_found(request)
+
+    # resolve_snapshot_scan_id returns None only when the input id is None; both
+    # inputs are required path/query params here, so a None result is impossible.
+    # The assertion documents the invariant for the type checker.
+    assert resolved_base is not None and resolved_target is not None
+
+    try:
+        payload = await diff_release_snapshots(
+            session,
+            project_id=project_id,
+            actor=actor,
+            base_scan_id=resolved_base,
+            target_scan_id=resolved_target,
+        )
+    except ProjectError as exc:
+        return _problem_for_project_error(request, exc)
+
+    body = ProjectDiff.model_validate(payload)
     return Response(
         content=body.model_dump_json(),
         status_code=status.HTTP_200_OK,

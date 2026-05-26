@@ -94,9 +94,14 @@ function parsePage(raw: string | null): number {
 
 export interface LicensesTabProps {
   projectId: string;
+  /**
+   * Pinned snapshot scan id (feature #28). When set, the list reflects that
+   * historical scan instead of the latest succeeded one. Omit → latest.
+   */
+  scanId?: string;
 }
 
-export function LicensesTab({ projectId }: LicensesTabProps) {
+export function LicensesTab({ projectId, scanId }: LicensesTabProps) {
   const { t } = useTranslation("project_detail");
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -198,8 +203,9 @@ export function LicensesTab({ projectId }: LicensesTabProps) {
       order,
       limit: PAGE_SIZE,
       offset: (page - 1) * PAGE_SIZE,
+      scanId,
     }),
-    [debouncedSearch, categories, kinds, sort, order, page],
+    [debouncedSearch, categories, kinds, sort, order, page, scanId],
   );
 
   const licenses = useLicenses(projectId, filters);

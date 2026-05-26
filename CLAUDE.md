@@ -73,7 +73,7 @@
 - 하네스가 없는 신규 화면/도메인은 PR에서 하네스를 같이 추가한다 (선구현 후테스트 금지).
 
 ### 3. 보안 기본값
-- **비밀번호**: 최소 12자, bcrypt cost **12**, NIST 800-63B 권고 차단 사전 적용.
+- **비밀번호**: 사용자 비밀번호 최소 **8자**(NIST 800-63B 최소), bcrypt cost **12**, NIST 800-63B 권고 차단 사전 적용. (관리자 부트스트랩 `create_super_admin`/`seed_demo`는 12자 유지 — 운영 시크릿 강화 기준.)
 - **JWT**: access 토큰 만료 **30분**, refresh 토큰 만료 **7일**, refresh는 회전(rotation) + 재사용 탐지.
 - **레이트 리밋**: 로그인 엔드포인트 **IP당 5회/분**(429 + Retry-After 헤더 반환), 인증된 API는 사용자 단위로 별도 정책.
 - **CSRF/CORS**: 프로덕션 CORS 화이트리스트 강제, SameSite=Lax 쿠키, refresh 토큰은 HttpOnly+Secure.

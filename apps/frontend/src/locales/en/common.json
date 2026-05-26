@@ -8,6 +8,11 @@
     "english": "English",
     "korean": "한국어"
   },
+  "multiselect": {
+    "all": "All",
+    "clear": "Clear",
+    "count_selected": "{{count}} selected"
+  },
   "auth": {
     "logout": "Sign out",
     "profile": "Profile"
@@ -27,6 +32,7 @@
     "info": "Info"
   },
   "nav": {
+    "dashboard": "Dashboard",
     "projects": "Projects",
     "scans": "Scans",
     "approvals": "Approvals",

@@ -206,13 +206,16 @@ describe("VulnerabilitiesTab", () => {
     });
     mockedList.mockClear();
 
-    const select = screen.getByTestId(
-      "vulnerabilities-severity-filter",
-    ) as HTMLSelectElement;
-    Array.from(select.options).forEach((opt) => {
-      opt.selected = opt.value === "critical";
+    // Open the MultiSelect dropdown, then toggle the "critical" checkbox row.
+    await userEvent.click(screen.getByTestId("vulnerabilities-severity-filter"));
+    const critical = await waitFor(() => {
+      const option = screen
+        .getAllByTestId("vulnerabilities-severity-filter-option")
+        .find((el) => el.getAttribute("data-value") === "critical");
+      if (!option) throw new Error("critical option not mounted");
+      return option;
     });
-    select.dispatchEvent(new Event("change", { bubbles: true }));
+    await userEvent.click(critical);
 
     await waitFor(() => {
       expect(mockedList).toHaveBeenCalledWith(
@@ -230,13 +233,16 @@ describe("VulnerabilitiesTab", () => {
     });
     mockedList.mockClear();
 
-    const select = screen.getByTestId(
-      "vulnerabilities-status-filter",
-    ) as HTMLSelectElement;
-    Array.from(select.options).forEach((opt) => {
-      opt.selected = opt.value === "analyzing";
+    // Open the MultiSelect dropdown, then toggle the "analyzing" checkbox row.
+    await userEvent.click(screen.getByTestId("vulnerabilities-status-filter"));
+    const analyzing = await waitFor(() => {
+      const option = screen
+        .getAllByTestId("vulnerabilities-status-filter-option")
+        .find((el) => el.getAttribute("data-value") === "analyzing");
+      if (!option) throw new Error("analyzing option not mounted");
+      return option;
     });
-    select.dispatchEvent(new Event("change", { bubbles: true }));
+    await userEvent.click(analyzing);
 
     await waitFor(() => {
       expect(mockedList).toHaveBeenCalledWith(

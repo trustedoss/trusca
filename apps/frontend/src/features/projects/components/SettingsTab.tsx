@@ -122,6 +122,56 @@ export function SettingsTab({ projectId, project }: SettingsTabProps) {
     },
   });
 
+  // --- Git credential (private repository) — feature #18 -------------------
+  // Write-only: the backend never returns the value, only the presence flag
+  // `project.has_git_credential`. We keep the input in local state (NOT in the
+  // project query) and switch to the "configured" state after a successful
+  // save by invalidating + refetching the project so the flag flips.
+  const hasCredential = project?.has_git_credential ?? false;
+  const [credentialInput, setCredentialInput] = useState("");
+  // When configured, the input is hidden behind a "Replace" affordance so the
+  // operator opts in to re-entering rather than the field appearing primed.
+  const [replacingCredential, setReplacingCredential] = useState(false);
+
+  const credentialMutation = useMutation({
+    mutationFn: (variables: { token: string } | { clear: true }) =>
+      updateProject(
+        projectId,
+        "clear" in variables
+          ? { clear_git_credential: true }
+          : { git_credential: variables.token },
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ["projects", projectId, "summary"],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["projects", projectId, "overview"],
+      });
+      void queryClient.invalidateQueries({ queryKey: ["projects"] });
+      setCredentialInput("");
+      setReplacingCredential(false);
+    },
+  });
+
+  const credentialError = (() => {
+    const err = credentialMutation.error;
+    if (!err) return null;
+    if (err instanceof ProblemError) return err.detail;
+    return err instanceof Error ? err.message : String(err);
+  })();
+
+  const trimmedCredential = credentialInput.trim();
+
+  function saveCredential() {
+    if (trimmedCredential.length === 0) return;
+    credentialMutation.mutate({ token: trimmedCredential });
+  }
+
+  function clearCredential() {
+    credentialMutation.mutate({ clear: true });
+  }
+
   const archiveMutation = useMutation({
     mutationFn: () => archiveProject(projectId),
     onSuccess: () => {
@@ -311,6 +361,122 @@ export function SettingsTab({ projectId, project }: SettingsTabProps) {
           ) : null}
         </div>
       </form>
+
+      <hr className="my-8 border-border" />
+
+      <section
+        className="space-y-3"
+        data-testid="settings-git-credential-section"
+        data-configured={hasCredential ? "true" : "false"}
+      >
+        <div>
+          <h3 className="text-sm font-semibold">
+            {t("settings.git_credential.title")}
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            {t("settings.git_credential.help")}
+          </p>
+        </div>
+
+        {credentialError ? (
+          <Alert
+            variant="destructive"
+            data-testid="project-git-credential-error"
+          >
+            <AlertDescription>{credentialError}</AlertDescription>
+          </Alert>
+        ) : null}
+
+        {hasCredential && !replacingCredential ? (
+          <div className="space-y-3" data-testid="project-git-credential-configured">
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className="inline-flex items-center gap-2 rounded-md border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700"
+                data-testid="project-git-credential-badge"
+              >
+                <span aria-hidden className="font-mono tracking-widest">
+                  ••••••••
+                </span>
+                <span>{t("settings.git_credential.configured_badge")}</span>
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={credentialMutation.isPending}
+                onClick={() => {
+                  setCredentialInput("");
+                  setReplacingCredential(true);
+                }}
+                data-testid="project-git-credential-replace"
+              >
+                {t("settings.git_credential.replace")}
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                disabled={credentialMutation.isPending}
+                onClick={clearCredential}
+                data-testid="project-git-credential-remove"
+              >
+                {credentialMutation.isPending
+                  ? t("settings.git_credential.removing")
+                  : t("settings.git_credential.remove")}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <Label htmlFor="project-git-credential-input">
+              {t("settings.git_credential.field_label")}
+            </Label>
+            <Input
+              id="project-git-credential-input"
+              type="password"
+              autoComplete="off"
+              spellCheck={false}
+              value={credentialInput}
+              onChange={(event) => setCredentialInput(event.target.value)}
+              placeholder={t("settings.git_credential.field_placeholder")}
+              disabled={credentialMutation.isPending}
+              data-testid="project-git-credential-input"
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                disabled={
+                  credentialMutation.isPending || trimmedCredential.length === 0
+                }
+                onClick={saveCredential}
+                data-testid="project-git-credential-save"
+              >
+                {credentialMutation.isPending
+                  ? t("settings.git_credential.saving")
+                  : t("settings.git_credential.save")}
+              </Button>
+              {hasCredential && replacingCredential ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={credentialMutation.isPending}
+                  onClick={() => {
+                    setCredentialInput("");
+                    setReplacingCredential(false);
+                  }}
+                  data-testid="project-git-credential-cancel"
+                >
+                  {t("settings.git_credential.cancel")}
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        )}
+      </section>
 
       <hr className="my-8 border-border" />
 

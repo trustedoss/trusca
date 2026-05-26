@@ -6,6 +6,12 @@
     "breadcrumb_unavailable": "Unavailable",
     "load_error": "Could not load project.",
     "missing_id": "No project id was provided in the URL.",
+    "scan": "Scan",
+    "scan_demo_disabled": "Disabled in the read-only demo",
+    "scan_drawer_subtitle": "Scan progress",
+    "scan_active_running": "Scan running",
+    "scan_active_queued": "Scan queued",
+    "scan_active_reopen_aria": "View the in-progress scan",
     "errors": {
       "not_found": "Project not found.",
       "forbidden": "You do not have permission to view this project.",
@@ -21,7 +27,8 @@
     "sbom": "SBOM",
     "source": "Source",
     "remediation": "Remediation",
-    "settings": "Settings"
+    "settings": "Settings",
+    "releases": "Releases"
   },
   "severity": {
     "critical": "Critical",
@@ -48,7 +55,11 @@
   "overview": {
     "risk_card": {
       "title": "Risk score",
-      "subtitle": "Computed from {{total}} component(s) in the latest scan."
+      "subtitle": "Computed from {{total}} component(s) in the latest scan.",
+      "security": "Security",
+      "license": "License",
+      "security_counts": "{{critical}} Critical · {{high}} High",
+      "license_counts": "{{forbidden}} Forbidden · {{conditional}} Conditional"
     },
     "risk_gauge": {
       "aria": "Project risk score: {{score}} of 100"
@@ -71,6 +82,7 @@
       "title": "Recent scans",
       "subtitle": "Last five scans for this project.",
       "empty": "No scans have been recorded yet.",
+      "reopen_aria": "View progress for this scan",
       "col_started": "Started",
       "col_status": "Status",
       "col_duration": "Duration",
@@ -614,6 +626,19 @@
       "unarchive": "Unarchive project",
       "unarchiving": "Unarchiving…"
     },
+    "git_credential": {
+      "title": "Git credential (private repository)",
+      "help": "Tokens are stored encrypted and used to clone private https repositories. SSH URLs need key material, which is not supported here yet.",
+      "field_label": "Access token",
+      "field_placeholder": "Personal access token",
+      "configured_badge": "Credential set",
+      "save": "Save credential",
+      "saving": "Saving…",
+      "replace": "Replace",
+      "remove": "Remove",
+      "removing": "Removing…",
+      "cancel": "Cancel"
+    },
     "archive": {
       "active_title": "Archive project",
       "active_subtitle": "Archived projects are hidden from listings but their scan history is preserved.",
@@ -625,6 +650,135 @@
       "saved": "Settings saved.",
       "archived": "Project archived.",
       "unarchived": "Project restored."
+    }
+  },
+  "releases": {
+    "title": "Releases",
+    "subtitle": "Each successful scan is a release snapshot. Open one to view that snapshot's full picture.",
+    "empty": "No successful scans yet — run a scan to create a release snapshot.",
+    "view_snapshot": "View snapshot",
+    "view_snapshot_aria": "View snapshot for {{label}}",
+    "severity_none": "No findings",
+    "col": {
+      "release": "Release",
+      "date": "Date",
+      "risk": "Risk",
+      "severity": "Severity",
+      "gate": "Gate",
+      "actions": "Actions"
+    },
+    "severity_abbr": {
+      "critical": "C",
+      "high": "H",
+      "medium": "M",
+      "low": "L"
+    },
+    "gate": {
+      "pass": "Pass",
+      "fail": "Fail"
+    },
+    "errors": {
+      "load_failed": "Could not load releases. Please try again."
+    }
+  },
+  "release_switcher": {
+    "menu_label": "Release",
+    "trigger_latest": "Release: {{label}} · Latest",
+    "trigger_historical": "Release: {{label}} · read-only",
+    "trigger_loading": "Release: …",
+    "loading": "Loading releases…",
+    "none": "No releases yet",
+    "latest": "Latest",
+    "latest_hint": "Live view of the latest successful scan",
+    "latest_tag": "Latest",
+    "gate_fail": "Fail",
+    "item_aria": "View the {{label}} snapshot"
+  },
+  "snapshot": {
+    "banner": "Viewing {{label}} — historical snapshot (read-only)",
+    "back_to_latest": "Back to latest",
+    "readonly_tooltip": "Read-only historical snapshot"
+  },
+  "compare": {
+    "title": "Compare releases",
+    "subtitle": "See what changed between two release snapshots.",
+    "open_button": "Compare",
+    "open_button_aria": "Compare the two most recent releases",
+    "open_disabled_hint": "Need at least two successful scans",
+    "switcher_item": "Compare releases…",
+    "breadcrumb_compare": "Compare",
+    "back_to_project": "Back to project",
+    "selector": {
+      "base_label": "Base",
+      "target_label": "Target",
+      "base_aria": "Base release (before)",
+      "target_aria": "Target release (after)",
+      "swap": "Swap base and target",
+      "menu_label": "Release",
+      "loading": "Loading releases…",
+      "none": "No releases yet"
+    },
+    "missing_params": {
+      "title": "Pick two releases to compare",
+      "description": "Select a base and a target release above to see what changed."
+    },
+    "summary": {
+      "risk_score": "Risk score",
+      "severity": "Severity",
+      "gate": "Build gate",
+      "component_count": "Components",
+      "no_value": "—",
+      "no_change": "No change",
+      "delta_increase_aria": "Increased by {{delta}}",
+      "delta_decrease_aria": "Decreased by {{delta}}",
+      "gate_change_aria": "Gate changed from {{base}} to {{target}}",
+      "gate_pass": "Pass",
+      "gate_fail": "Fail",
+      "gate_none": "No gate"
+    },
+    "components": {
+      "title": "Components",
+      "removed_header": "Removed ({{count}})",
+      "added_header": "Added ({{count}})",
+      "changed_header": "Changed ({{count}})",
+      "removed_empty": "No components removed.",
+      "added_empty": "No components added.",
+      "changed_empty": "No component versions changed.",
+      "version_change": "{{base}} → {{target}}"
+    },
+    "vulnerabilities": {
+      "title": "Vulnerabilities",
+      "resolved_header": "Resolved ({{count}})",
+      "introduced_header": "Introduced ({{count}})",
+      "resolved_empty": "No vulnerabilities resolved.",
+      "introduced_empty": "No vulnerabilities introduced.",
+      "at_component": "{{name}}@{{version}}"
+    },
+    "licenses": {
+      "title": "Licenses",
+      "col_category": "Category",
+      "col_base": "Base",
+      "col_target": "Target",
+      "category": {
+        "prohibited": "Prohibited",
+        "conditional": "Conditional",
+        "permissive": "Permissive",
+        "unknown": "Unknown"
+      },
+      "introduced_badge": "New",
+      "introduced_aria": "Target introduces a {{category}} license the base did not have."
+    },
+    "empty": {
+      "title": "No differences between these releases.",
+      "description": "These two snapshots have the same components, vulnerabilities, and licenses."
+    },
+    "truncated": "Some lists were capped at 1000 items.",
+    "loading_aria": "Loading the release comparison",
+    "errors": {
+      "title": "Could not load the comparison",
+      "not_found": "One of the selected releases could not be found. It may have been removed.",
+      "forbidden": "You do not have permission to compare this project's releases.",
+      "unknown": "Could not load the comparison. Please try again."
     }
   }
 }

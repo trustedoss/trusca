@@ -12,9 +12,12 @@ reads that tarball back for the viewer UI:
     with binary detection, PLUS the per-LINE license matches projected from the
     folded scancode JSON for THAT path only.
 
-Both entry points resolve the scan (defaulting to ``Project.latest_scan_id``),
-enforce team access with 404 existence-hide, and then read DIRECTLY from the tar
-by exact member name — never by joining a user string onto a real directory.
+Both entry points resolve the scan (defaulting to the project's latest
+*succeeded* scan via :func:`services.scan_resolution.latest_succeeded_scan_id`,
+NOT ``Project.latest_scan_id`` — the last *attempted* scan, which may have failed
+and never written a preserved tree), enforce team access with 404 existence-hide,
+and then read DIRECTLY from the tar by exact member name — never by joining a
+user string onto a real directory.
 
 ==========================================================================
 SECURITY — path traversal is THE risk (recorded for the security reviewer)
@@ -80,7 +83,11 @@ from core.config import (
     scancode_max_result_bytes,
 )
 from core.security import CurrentUser
-from models import License, LicenseFinding, Project, Scan
+from models import License, LicenseFinding, Project
+from services.scan_resolution import (
+    SnapshotScanNotFound,
+    resolve_snapshot_scan_id,
+)
 from services.source_preservation_service import (
     SCANCODE_MEMBER_NAME,
     scan_source_tarball_path,
@@ -270,8 +277,13 @@ async def _resolve_accessible_scan(
 ) -> tuple[Project, uuid.UUID]:
     """Load the project (team-scoped, existence-hide) and resolve the scan id.
 
-    ``scan_id`` defaults to ``Project.latest_scan_id``. When an explicit
-    ``scan_id`` is given it MUST belong to ``project_id`` — a cross-project scan
+    ``scan_id`` defaults to the project's latest *succeeded* scan (resolved via
+    :func:`services.scan_resolution.resolve_snapshot_scan_id`), NOT
+    ``Project.latest_scan_id`` (the last *attempted* scan): a failed newest
+    attempt never preserves a source tree, so anchoring on it would 404 the
+    Source tab even when an earlier good scan's tree is on disk. When an explicit
+    ``scan_id`` is given (feature #28) it MUST belong to ``project_id`` AND be
+    ``status='succeeded'`` — a cross-project / non-succeeded / nonexistent scan
     id is treated as "not available" (404), never a leak.
     """
     result = await session.execute(select(Project).where(Project.id == project_id))
@@ -290,24 +302,20 @@ async def _resolve_accessible_scan(
         deny=lambda: SourceUnavailable(f"project {project_id} not found"),
     )
 
-    if scan_id is not None:
-        # Validate the explicit scan belongs to THIS project before it can drive
-        # a tarball read. A scan id from another project must not be readable
-        # through this project's surface.
-        scan_result = await session.execute(
-            select(Scan.id).where(Scan.id == scan_id, Scan.project_id == project_id)
+    # Shared snapshot resolver (feature #28): an explicit ``scan_id`` must belong
+    # to THIS project AND be succeeded, else SnapshotScanNotFound → existence-hide
+    # 404 here. ``None`` falls back to the latest succeeded scan; if the project
+    # has never succeeded a scan the resolver returns None and we 404 (no tree).
+    try:
+        resolved = await resolve_snapshot_scan_id(session, project_id, scan_id)
+    except SnapshotScanNotFound as exc:
+        raise SourceUnavailable(
+            f"scan {scan_id} not found for project {project_id}"
+        ) from exc
+    if resolved is None:
+        raise SourceUnavailable(
+            f"project {project_id} has no scan with preserved source"
         )
-        if scan_result.scalar_one_or_none() is None:
-            raise SourceUnavailable(
-                f"scan {scan_id} not found for project {project_id}"
-            )
-        resolved = scan_id
-    else:
-        if project.latest_scan_id is None:
-            raise SourceUnavailable(
-                f"project {project_id} has no scan with preserved source"
-            )
-        resolved = project.latest_scan_id
 
     return project, resolved
 

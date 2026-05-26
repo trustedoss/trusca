@@ -24,9 +24,15 @@ import { SourceTree } from "@/features/projects/components/SourceTree";
 export interface SourceTabProps {
   projectId: string;
   projectName?: string | null;
+  /**
+   * Pinned snapshot scan id (feature #28). When set, the file tree + viewer
+   * read that historical scan's preserved source instead of the latest one.
+   * Omit → latest succeeded scan (the server default).
+   */
+  scanId?: string;
 }
 
-export function SourceTab({ projectId, projectName }: SourceTabProps) {
+export function SourceTab({ projectId, projectName, scanId }: SourceTabProps) {
   const { t } = useTranslation("project_detail");
   const [searchParams, setSearchParams] = useSearchParams();
   const [noSource, setNoSource] = useState(false);
@@ -48,7 +54,7 @@ export function SourceTab({ projectId, projectName }: SourceTabProps) {
     [setSearchParams],
   );
 
-  const file = useSourceFile(projectId, selectedPath);
+  const file = useSourceFile(projectId, selectedPath, { scanId });
 
   if (noSource) {
     return (
@@ -76,6 +82,7 @@ export function SourceTab({ projectId, projectName }: SourceTabProps) {
       <div className="min-h-0 overflow-hidden" data-testid="source-tab-tree-pane">
         <SourceTree
           projectId={projectId}
+          scanId={scanId}
           selectedPath={selectedPath}
           onSelectFile={setSelectedPath}
           onNoSource={() => setNoSource(true)}

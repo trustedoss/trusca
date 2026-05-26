@@ -442,6 +442,268 @@ def test_scan_public_remaps_scan_metadata_to_metadata_field() -> None:
     assert dumped["metadata"] == {"git_ref": "main"}
 
 
+# ---------------------------------------------------------------------------
+# ScanCreate — release label (feature #18 Part A)
+# ---------------------------------------------------------------------------
+
+
+def test_scan_create_accepts_missing_release() -> None:
+    """Release is optional — a payload without it must validate (no release)."""
+    from schemas.scan import ScanCreate
+
+    scan = ScanCreate(metadata={"git_ref": "main"})
+    assert "release" not in scan.metadata
+
+
+@pytest.mark.parametrize(
+    "release",
+    [
+        "v1.2.3",
+        "1.0.0",
+        "release/2024-05",
+        "v2.0.0-rc.1",
+        "main",
+        "feature_x",
+        "x" * 100,  # exactly at the 100-char cap
+    ],
+)
+def test_scan_create_accepts_valid_release(release: str) -> None:
+    from schemas.scan import ScanCreate
+
+    scan = ScanCreate(metadata={"release": release})
+    assert scan.metadata["release"] == release
+
+
+def test_scan_create_accepts_blank_release() -> None:
+    """A blank / whitespace-only release is allowed (treated as no release)."""
+    from schemas.scan import ScanCreate
+
+    assert ScanCreate(metadata={"release": ""}).metadata["release"] == ""
+    assert ScanCreate(metadata={"release": "   "}).metadata["release"] == "   "
+
+
+@pytest.mark.parametrize(
+    "release",
+    [
+        "v1 2 3",  # spaces
+        "v1.2.3; rm -rf /",  # shell metacharacter + space
+        "v1&v2",  # ampersand
+        "v1|v2",  # pipe
+        "tag\nwith\nnewline",  # control chars
+        "tag\twith\ttab",  # tab
+        "réléase",  # non-ascii
+        "x" * 101,  # exceeds the 100-char cap
+        "ver#1",  # hash
+        "ver?1",  # question mark
+        "ver@1",  # at sign (would matter for URL userinfo)
+    ],
+)
+def test_scan_create_rejects_malformed_release(release: str) -> None:
+    from schemas.scan import ScanCreate
+
+    with pytest.raises(ValidationError):
+        ScanCreate(metadata={"release": release})
+
+
+def test_scan_create_rejects_non_string_release() -> None:
+    from schemas.scan import ScanCreate
+
+    with pytest.raises(ValidationError):
+        ScanCreate(metadata={"release": 123})
+
+
+def test_scan_public_surfaces_release_from_metadata() -> None:
+    """ScanPublic.release mirrors metadata.release (#18 Part A)."""
+    from schemas.scan import ScanPublic
+
+    now = datetime.now(tz=UTC)
+    fake_row = SimpleNamespace(
+        id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        kind="source",
+        status="succeeded",
+        progress_percent=100,
+        current_step=None,
+        started_at=now,
+        completed_at=now,
+        error_message=None,
+        requested_by_user_id=None,
+        celery_task_id=None,
+        scan_metadata={"git_ref": "main", "release": "v1.2.3"},
+        created_at=now,
+        updated_at=now,
+    )
+
+    public = ScanPublic.model_validate(fake_row)
+    assert public.release == "v1.2.3"
+    # `release` is also serialized on the wire alongside `metadata`.
+    dumped = public.model_dump(by_alias=True)
+    assert dumped["release"] == "v1.2.3"
+    assert dumped["metadata"]["release"] == "v1.2.3"
+
+
+def test_scan_public_release_is_none_when_absent() -> None:
+    from schemas.scan import ScanPublic
+
+    now = datetime.now(tz=UTC)
+    fake_row = SimpleNamespace(
+        id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        kind="source",
+        status="queued",
+        progress_percent=0,
+        current_step=None,
+        started_at=None,
+        completed_at=None,
+        error_message=None,
+        requested_by_user_id=None,
+        celery_task_id=None,
+        scan_metadata={"git_ref": "main"},
+        created_at=now,
+        updated_at=now,
+    )
+
+    public = ScanPublic.model_validate(fake_row)
+    assert public.release is None
+
+
+def test_scan_public_release_none_for_non_string_stored_value() -> None:
+    """A non-string / blank stored release collapses to None defensively."""
+    from schemas.scan import ScanPublic
+
+    now = datetime.now(tz=UTC)
+    base = {
+        "id": uuid.uuid4(),
+        "project_id": uuid.uuid4(),
+        "kind": "source",
+        "status": "queued",
+        "progress_percent": 0,
+        "current_step": None,
+        "started_at": None,
+        "completed_at": None,
+        "error_message": None,
+        "requested_by_user_id": None,
+        "celery_task_id": None,
+        "created_at": now,
+        "updated_at": now,
+    }
+    for bad in ({"release": 123}, {"release": ""}, {"release": "   "}, {"release": None}):
+        public = ScanPublic.model_validate(SimpleNamespace(scan_metadata=bad, **base))
+        assert public.release is None
+
+
+# ---------------------------------------------------------------------------
+# ProjectUpdate — git credential (feature #18 Part B)
+# ---------------------------------------------------------------------------
+
+
+def test_project_update_accepts_git_credential() -> None:
+    from schemas.scan import ProjectUpdate
+
+    update = ProjectUpdate(git_credential="ghp_secrettoken")
+    dumped = update.model_dump(exclude_unset=True)
+    assert dumped["git_credential"] == "ghp_secrettoken"
+
+
+def test_project_update_accepts_clear_git_credential_flag() -> None:
+    from schemas.scan import ProjectUpdate
+
+    update = ProjectUpdate(clear_git_credential=True)
+    dumped = update.model_dump(exclude_unset=True)
+    assert dumped["clear_git_credential"] is True
+
+
+def test_project_update_rejects_set_and_clear_together() -> None:
+    """Setting a non-empty credential AND clearing it in one request is a 422."""
+    from schemas.scan import ProjectUpdate
+
+    with pytest.raises(ValidationError):
+        ProjectUpdate(git_credential="ghp_x", clear_git_credential=True)
+
+
+def test_project_update_allows_clear_with_blank_credential() -> None:
+    """clear + blank/empty git_credential is not contradictory (blank == unset)."""
+    from schemas.scan import ProjectUpdate
+
+    # blank string alongside clear is allowed (the blank is a no-op set).
+    update = ProjectUpdate(git_credential="", clear_git_credential=True)
+    assert update.clear_git_credential is True
+
+
+def test_project_update_no_credential_fields_by_default() -> None:
+    from schemas.scan import ProjectUpdate
+
+    update = ProjectUpdate(name="renamed")
+    dumped = update.model_dump(exclude_unset=True)
+    assert "git_credential" not in dumped
+    assert "clear_git_credential" not in dumped
+
+
+def test_project_update_rejects_oversized_credential() -> None:
+    from schemas.scan import ProjectUpdate
+
+    with pytest.raises(ValidationError):
+        ProjectUpdate(git_credential="x" * 8193)
+
+
+# ---------------------------------------------------------------------------
+# ProjectPublic — has_git_credential (feature #18 Part B)
+# ---------------------------------------------------------------------------
+
+
+def test_project_public_has_git_credential_true_when_property_true() -> None:
+    """ProjectPublic surfaces the boolean WITHOUT exposing the ciphertext."""
+    from schemas.scan import ProjectPublic
+
+    now = datetime.now(tz=UTC)
+    fake_row = SimpleNamespace(
+        id=uuid.uuid4(),
+        team_id=uuid.uuid4(),
+        name="P",
+        slug="p",
+        description=None,
+        git_url=None,
+        default_branch=None,
+        visibility="team",
+        archived_at=None,
+        created_by_user_id=None,
+        latest_scan_id=None,
+        has_git_credential=True,
+        created_at=now,
+        updated_at=now,
+    )
+    public = ProjectPublic.model_validate(fake_row)
+    assert public.has_git_credential is True
+    # The response must NEVER carry the plaintext or the ciphertext column.
+    dumped = public.model_dump()
+    assert "git_credential" not in dumped
+    assert "git_credential_encrypted" not in dumped
+
+
+def test_project_public_has_git_credential_false_default() -> None:
+    from schemas.scan import ProjectPublic
+
+    now = datetime.now(tz=UTC)
+    fake_row = SimpleNamespace(
+        id=uuid.uuid4(),
+        team_id=uuid.uuid4(),
+        name="P",
+        slug="p",
+        description=None,
+        git_url=None,
+        default_branch=None,
+        visibility="team",
+        archived_at=None,
+        created_by_user_id=None,
+        latest_scan_id=None,
+        has_git_credential=False,
+        created_at=now,
+        updated_at=now,
+    )
+    public = ProjectPublic.model_validate(fake_row)
+    assert public.has_git_credential is False
+
+
 def test_scan_public_handles_missing_optional_fields() -> None:
     from schemas.scan import ScanPublic
 

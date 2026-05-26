@@ -1,7 +1,8 @@
 {
   "page": {
     "title": "Projects",
-    "subtitle": "Open-source components, vulnerabilities, and license risk."
+    "subtitle": "Open-source components, vulnerabilities, and license risk.",
+    "register": "Register project"
   },
   "toolbar": {
     "search_placeholder": "Search by name or git URL",
@@ -22,7 +23,17 @@
     "running": "Running",
     "succeeded": "Succeeded",
     "failed": "Failed",
+    "cancelled": "Cancelled",
     "idle": "Idle"
+  },
+  "severity": {
+    "summary_aria": "Vulnerability counts by severity",
+    "abbrev": {
+      "critical": "C",
+      "high": "H",
+      "medium": "M",
+      "low": "L"
+    }
   },
   "empty": {
     "title": "No projects yet",
@@ -38,17 +49,24 @@
   },
   "create": {
     "title": "New Project",
+    "scan_hint": "This registers the project. After creating it, start a scan (and pick source / container, upload, and a release label) from the project page or the project list.",
     "name_label": "Name",
     "name_placeholder": "my-awesome-project",
     "description_label": "Description",
     "description_placeholder": "Short description (optional)",
     "git_url_label": "Git URL",
     "git_url_placeholder": "https://github.com/org/repo",
+    "git_url_hint": "Optional. Leave empty to upload a .zip or a folder when you run a scan. HTTPS, SSH (git@host:…), and git+ssh URLs are accepted; a private repo needs credentials embedded in the URL.",
+    "default_branch_label": "Default branch",
+    "default_branch_placeholder": "main (optional)",
+    "team_label": "Team",
+    "no_team": "You are not a member of any team yet, so you cannot create a project. Ask an administrator to add you to a team.",
     "submit": "Create Project",
     "cancel": "Cancel",
     "error_name_required": "Project name is required",
     "error_name_max": "Name must be 100 characters or less",
     "error_description_max": "Description must be 500 characters or less",
-    "error_git_url_invalid": "Must be a valid URL (https:// or http://)"
+    "error_git_url_invalid": "Enter a valid repository URL (https://, ssh://, git@host:…, or git+ssh://)",
+    "error_default_branch_invalid": "Branch names may use letters, numbers, and . _ / - only"
   }
 }

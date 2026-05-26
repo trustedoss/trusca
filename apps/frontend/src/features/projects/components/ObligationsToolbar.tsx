@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { MultiSelect } from "@/components/ui/multi-select";
 import type { LicenseCategoryName } from "@/features/projects/api/projectDetailApi";
 import {
   KNOWN_OBLIGATION_KINDS,
@@ -60,12 +61,6 @@ export interface ObligationsToolbarProps {
   className?: string;
 }
 
-function selectedValues<T extends string>(
-  event: React.ChangeEvent<HTMLSelectElement>,
-): T[] {
-  return Array.from(event.target.selectedOptions).map((opt) => opt.value as T);
-}
-
 export function ObligationsToolbar({
   search,
   onSearchChange,
@@ -117,21 +112,18 @@ export function ObligationsToolbar({
         >
           {t("obligations.toolbar.filter_kind")}
         </label>
-        <select
+        <MultiSelect
           id="obligations-kind-filter"
-          multiple
-          size={1}
-          value={kinds}
-          onChange={(event) => onKindsChange(selectedValues<string>(event))}
-          className="mt-1 h-9 w-40 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          data-testid="obligations-kind-filter"
-        >
-          {KNOWN_OBLIGATION_KINDS.map((opt) => (
-            <option key={opt} value={opt}>
-              {t(`obligations.kind.${opt}`, { defaultValue: opt })}
-            </option>
-          ))}
-        </select>
+          testId="obligations-kind-filter"
+          className="w-40"
+          label={t("obligations.toolbar.filter_kind")}
+          options={KNOWN_OBLIGATION_KINDS.map((opt) => ({
+            value: opt,
+            label: t(`obligations.kind.${opt}`, { defaultValue: opt }),
+          }))}
+          selected={kinds}
+          onChange={onKindsChange}
+        />
       </div>
 
       <div className="flex flex-col">
@@ -141,23 +133,18 @@ export function ObligationsToolbar({
         >
           {t("obligations.toolbar.filter_category")}
         </label>
-        <select
+        <MultiSelect
           id="obligations-category-filter"
-          multiple
-          size={1}
-          value={categories}
-          onChange={(event) =>
-            onCategoriesChange(selectedValues<LicenseCategoryName>(event))
-          }
-          className="mt-1 h-9 w-40 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          data-testid="obligations-category-filter"
-        >
-          {CATEGORY_OPTIONS.map((opt) => (
-            <option key={opt} value={opt}>
-              {t(`license_category.${opt}`)}
-            </option>
-          ))}
-        </select>
+          testId="obligations-category-filter"
+          className="w-40"
+          label={t("obligations.toolbar.filter_category")}
+          options={CATEGORY_OPTIONS.map((opt) => ({
+            value: opt,
+            label: t(`license_category.${opt}`),
+          }))}
+          selected={categories}
+          onChange={(next) => onCategoriesChange(next as LicenseCategoryName[])}
+        />
       </div>
 
       <div className="flex flex-col">

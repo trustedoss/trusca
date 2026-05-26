@@ -89,6 +89,16 @@ describe("SbomTab", () => {
     expect(screen.queryByTestId("sbom-no-scan")).not.toBeInTheDocument();
   });
 
+  it("labels 'Latest scan' with the (succeeded) timestamp it is given", () => {
+    // FIX 3: ProjectDetailPage now passes `last_succeeded_scan_at` here. The
+    // SbomTab renders the year of whatever timestamp it receives, so the label
+    // reflects the scan the SBOM is actually exported from.
+    render(<SbomTab projectId="proj-1" lastScanAt="2026-05-22T03:00:00Z" />);
+    const label = screen.getByTestId("sbom-last-scan");
+    expect(label.textContent).toContain("2026");
+    expect(screen.queryByTestId("sbom-no-scan")).not.toBeInTheDocument();
+  });
+
   it("invokes downloadSbom with the matching format for each button", async () => {
     mockedDownloadSbom.mockResolvedValue({
       blob: new Blob(["{}"], { type: "application/json" }),
@@ -102,6 +112,9 @@ describe("SbomTab", () => {
       expect(mockedDownloadSbom).toHaveBeenCalledWith(
         "proj-1",
         "cyclonedx-json",
+        // feature #28: the SBOM tab threads the (possibly undefined) pinned scan
+        // id through as the third arg so a historical snapshot exports its own SBOM.
+        { scanId: undefined },
       );
     });
     // Blob was handed off to the browser via createObjectURL.
@@ -121,7 +134,27 @@ describe("SbomTab", () => {
     render(<SbomTab projectId="proj-1" />);
     await user.click(screen.getByTestId("sbom-download-spdx-tv"));
     await waitFor(() => {
-      expect(mockedDownloadSbom).toHaveBeenCalledWith("proj-1", "spdx-tv");
+      expect(mockedDownloadSbom).toHaveBeenCalledWith("proj-1", "spdx-tv", {
+        scanId: undefined,
+      });
+    });
+  });
+
+  it("threads the pinned scan id into downloadSbom in historical mode (feature #28)", async () => {
+    mockedDownloadSbom.mockResolvedValue({
+      blob: new Blob(["{}"], { type: "application/json" }),
+      filename: "sbom-proj-1.cdx.json",
+      format: "cyclonedx-json",
+    });
+    const user = userEvent.setup();
+    render(<SbomTab projectId="proj-1" scanId="scan-old" />);
+    await user.click(screen.getByTestId("sbom-download-cyclonedx-json"));
+    await waitFor(() => {
+      expect(mockedDownloadSbom).toHaveBeenCalledWith(
+        "proj-1",
+        "cyclonedx-json",
+        { scanId: "scan-old" },
+      );
     });
   });
 

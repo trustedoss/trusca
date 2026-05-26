@@ -33,11 +33,24 @@ export interface AuthUser {
   isActive: boolean;
   isSuperuser: boolean;
   /**
-   * Team association is not yet returned by the v1 /auth/me endpoint, but
-   * downstream consumers reference it — keep the slot so we don't churn the
-   * type when the backend lands the column.
+   * Default team id, resolved from the first membership returned by
+   * /auth/me (oldest-first). `null` only when the user has no memberships.
+   * Used by project creation / write scoping.
    */
   teamId: string | null;
+  /**
+   * All of the user's team memberships (from /auth/me). Drives the team
+   * picker on project creation for multi-team users. Optional because some
+   * callers hydrate from a shape without memberships (e.g. /register, or
+   * older test fixtures); consumers read it as `user?.teams ?? []`.
+   */
+  teams?: TeamMembership[];
+}
+
+export interface TeamMembership {
+  id: string;
+  name: string;
+  role: string;
 }
 
 export type AuthStatus =

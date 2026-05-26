@@ -499,6 +499,147 @@ class _FetchAborted(Exception):
     """Raised when the fetch step rejects a project — caught by the task body."""
 
 
+# GitHub / GitLab convention for token-over-https cloning: the username segment
+# is a fixed placeholder and the token rides as the password
+# (``https://x-access-token:<token>@host/path``). Both providers accept this; the
+# username is ignored by GitHub and treated as the OAuth2 username by GitLab.
+_HTTPS_CREDENTIAL_USERNAME = "x-access-token"
+
+
+def build_authenticated_clone_url(normalized_url: str, credential: str | None) -> str:
+    """Inject a git credential into an https clone URL as userinfo (#18 Part B).
+
+    Returns the URL unchanged when:
+      - ``credential`` is falsy (None / empty / blank), OR
+      - the URL scheme is not ``https`` (ssh:// / git@ / git:// need key material,
+        not a token — token injection is out of scope for them), OR
+      - the URL already carries userinfo (we never double-inject / overwrite an
+        operator-supplied credential).
+
+    For an eligible https URL we produce
+    ``https://x-access-token:<token>@host[:port]/path`` (the GitHub/GitLab
+    convention). The token is URL-encoded so a token containing reserved
+    characters (``@ : / ?`` ...) cannot break out of the userinfo segment or
+    smuggle a different host.
+
+    SECURITY: the returned URL contains the plaintext credential. Callers MUST
+    pass it ONLY to the git clone subprocess and MUST route every logged copy
+    through :func:`redact_url_userinfo`. This helper never logs.
+    """
+    if not credential or not credential.strip():
+        return normalized_url
+
+    from urllib.parse import quote, urlsplit, urlunsplit
+
+    parts = urlsplit(normalized_url)
+    if (parts.scheme or "").lower() != "https":
+        # ssh:// / git@host: / git:// — token injection does not apply. Clone as
+        # today (SSH relies on key material mounted into the worker).
+        return normalized_url
+    if parts.username or parts.password:
+        # Already authenticated (operator put userinfo in git_url). Do not
+        # overwrite — respect the explicit credential already present.
+        return normalized_url
+
+    host = parts.hostname or ""
+    if not host:
+        # Defensive: an https URL with no host is malformed; the SSRF guard
+        # upstream would already have rejected it, but never build a broken URL.
+        return normalized_url
+
+    userinfo = f"{_HTTPS_CREDENTIAL_USERNAME}:{quote(credential, safe='')}"
+    netloc = f"{userinfo}@{host}"
+    if parts.port:
+        netloc = f"{netloc}:{parts.port}"
+    return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
+
+
+# ``scheme://userinfo@`` matcher used by :func:`_scrub_clone_stderr`. We do NOT
+# whitespace-tokenize first: git wraps the URL in single quotes and a trailing
+# colon (e.g. ``... for 'https://x-access-token:<TOKEN>@host/repo.git':``), so a
+# token-level urlsplit sees the leading ``'`` as a path, finds no userinfo, and
+# leaks the credential. Matching the scheme://userinfo@ shape anywhere in the
+# string is robust against any surrounding quoting / punctuation.
+_USERINFO_IN_URL_RE = re.compile(r"([A-Za-z][A-Za-z0-9+.\-]*://)[^/@\s]+@")
+
+
+def _scrub_clone_stderr(stderr: str, credential: str | None) -> str:
+    """Redact any injected git credential from ``git clone`` stderr (#18 Part B).
+
+    git can echo the remote URL — including the injected ``x-access-token:<TOKEN>``
+    userinfo — into stderr on an auth failure. That stderr feeds
+    ``_FetchAborted`` → ``scan.error_message``, an API/UI-exposed field readable
+    by any team member (and likely captured in logs / screenshots), so the
+    plaintext credential must never survive into the returned string.
+
+    Layered defenses:
+      (a) Regex-redact any ``scheme://userinfo@`` occurrence anywhere in the
+          string. This is quoting/punctuation-independent (unlike a per-token
+          ``urlsplit``, which the leading single quote git emits defeats).
+      (b) Belt-and-suspenders when ``credential`` is non-empty: replace the raw
+          credential AND its URL-encoded form (``quote(credential, safe="")`` —
+          the percent-encoded shape that actually appears inside the injected
+          URL) with ``"***"``. This catches a bare token echoed in prose with no
+          URL wrapping, and a token whose reserved chars were percent-encoded.
+
+    Finally truncate to the existing 500-char bound. Correct for
+    ``credential is None`` (public repo / no credential): only (a) + truncate.
+    """
+    scrubbed = _USERINFO_IN_URL_RE.sub(r"\1***@", stderr)
+    if credential:
+        scrubbed = scrubbed.replace(credential, "***")
+        from urllib.parse import quote
+
+        encoded = quote(credential, safe="")
+        if encoded != credential:
+            scrubbed = scrubbed.replace(encoded, "***")
+    return scrubbed[:500]
+
+
+def _decrypt_project_credential(
+    *, scan_uuid: uuid.UUID, project_id: uuid.UUID | None
+) -> str | None:
+    """Load + decrypt the project's git credential, or ``None`` if not configured.
+
+    Reads ``projects.git_credential_encrypted`` (Fernet ciphertext) for
+    ``project_id`` and decrypts it via :func:`core.crypto.decrypt_secret`.
+    Returns ``None`` when no project / no credential is configured.
+
+    Raises:
+        _FetchAborted: a decrypt failure (rotated/unset key, corrupted ciphertext)
+            with a credential-free message. The credential is NEVER logged.
+    """
+    if project_id is None:
+        return None
+
+    from core.crypto import SecretDecryptionError, decrypt_secret
+
+    with sync_session_scope() as session:
+        ciphertext = session.execute(
+            select(Project.git_credential_encrypted).where(Project.id == project_id)
+        ).scalar_one_or_none()
+
+    if not ciphertext:
+        return None
+
+    try:
+        return decrypt_secret(ciphertext)
+    except SecretDecryptionError as exc:
+        # The message from core.crypto is credential-free (it talks about the key
+        # / corruption, never the plaintext). We still keep the surfaced
+        # scan.error_message generic so nothing credential-shaped can leak.
+        log.warning(
+            "scan_source_credential_decrypt_failed",
+            scan_id=str(scan_uuid),
+            project_id=str(project_id),
+            error=str(exc),
+        )
+        raise _FetchAborted(
+            "the project git credential could not be decrypted; the encryption "
+            "key may have been rotated or the stored credential is corrupted",
+        ) from exc
+
+
 def _fetch_source(
     *,
     scan_uuid: uuid.UUID,
@@ -600,19 +741,41 @@ def _fetch_source(
         )
         return source_dir
 
-    # Real clone path (dead today; activated when mock_only=False).
+    # Real clone path (activated when mock_only=False). This whole branch needs a
+    # live network + a real `git clone` subprocess, so it is `# pragma: no cover`
+    # at the unit-test layer — the credential-bearing logic it relies on
+    # (`build_authenticated_clone_url`, `_decrypt_project_credential`,
+    # `redact_url_userinfo`) is each unit-tested independently above, and an
+    # integration scan exercises the subprocess end-to-end.
+    #
     # IP-pin format: host:port:ip. We default to 443 for https and 22 for
     # ssh; the curl option only matters for HTTPS, so SSH skips the -c
     # flag entirely.
-    from urllib.parse import urlsplit
+    from urllib.parse import urlsplit  # pragma: no cover
 
-    parts = urlsplit(normalized_url)
-    scheme = (parts.scheme or "").lower()
-    host = (parts.hostname or "").lower()
-    port = parts.port or (443 if scheme == "https" else 80 if scheme == "http" else 22)
-    target = source_dir / "repo"
+    parts = urlsplit(normalized_url)  # pragma: no cover
+    scheme = (parts.scheme or "").lower()  # pragma: no cover
+    host = (parts.hostname or "").lower()  # pragma: no cover
+    port = parts.port or (  # pragma: no cover
+        443 if scheme == "https" else 80 if scheme == "http" else 22
+    )
+    target = source_dir / "repo"  # pragma: no cover
 
-    if scheme in ("http", "https"):
+    # Feature #18 Part B — private-repo credential injection. We decrypt the
+    # project's stored git credential (if any) and inject it into the clone URL
+    # as userinfo, but ONLY for https (build_authenticated_clone_url returns the
+    # URL unchanged for ssh:// / git@ / git://, and when no credential is set).
+    # A decrypt failure raises _FetchAborted with a credential-free message
+    # (terminal, not a crash). The plaintext credential lives ONLY in
+    # `clone_url` from here on; every log line below uses `normalized_url`
+    # (userinfo-free) or routes through `redact_url_userinfo`.
+    credential = _decrypt_project_credential(  # pragma: no cover
+        scan_uuid=scan_uuid, project_id=project_id
+    )
+    clone_url = build_authenticated_clone_url(normalized_url, credential)  # pragma: no cover
+    credential_injected = clone_url != normalized_url  # pragma: no cover
+
+    if scheme in ("http", "https"):  # pragma: no cover
         cmd = [
             "git",
             "-c",
@@ -620,22 +783,28 @@ def _fetch_source(
             "clone",
             "--depth",
             "1",
-            normalized_url,
+            clone_url,
             str(target),
         ]
     else:
-        cmd = ["git", "clone", "--depth", "1", normalized_url, str(target)]
+        cmd = ["git", "clone", "--depth", "1", clone_url, str(target)]
 
     # subprocess is imported at module scope so the prep helper can use it
     # too (chore PR #4); the dead-code branch below shares that import.
-    log.info(  # pragma: no cover — dead-code branch
+    #
+    # M-1 / #18-B: NEVER log `clone_url` (it may carry the injected credential).
+    # We log `normalized_url` (the SSRF guard's userinfo-free form) and a boolean
+    # `credential_injected` flag so operators can confirm auth was applied
+    # without the value ever reaching structlog.
+    log.info(  # pragma: no cover
         "scan_source_fetch_real",
         normalized_url=redact_url_userinfo(normalized_url),
         resolved_ip=resolved_ip,
         host=host,
         port=port,
+        credential_injected=credential_injected,
     )
-    completed = subprocess.run(  # noqa: S603  # pragma: no cover — dead-code branch
+    completed = subprocess.run(  # noqa: S603  # pragma: no cover
         # cmd is built from validate_git_url_with_ip output (allowlisted scheme,
         # screened IP) — there is no shell execution and no user-controlled
         # arguments past the URL itself. Bandit's "untrusted input" warning
@@ -646,11 +815,18 @@ def _fetch_source(
         timeout=600,
         check=False,
     )
-    if completed.returncode != 0:  # pragma: no cover — dead-code branch
-        raise _FetchAborted(
-            f"git clone exited {completed.returncode}: {completed.stderr.strip()[:500]}"
-        )
-    return source_dir
+    if completed.returncode != 0:  # pragma: no cover
+        # git can echo the remote URL (with credential) into stderr on auth
+        # failure ("fatal: could not read Username for 'https://...':"). The
+        # single-quote/trailing-colon wrapping defeats a per-token urlsplit, so
+        # scrub via `_scrub_clone_stderr`, which regex-redacts the
+        # scheme://userinfo@ shape anywhere in the string AND (belt-and-
+        # suspenders) replaces the raw + URL-encoded `credential` value. This is
+        # the only sink for the credential on this failure path; the message
+        # lands in `scan.error_message` (surfaced in the UI / audit).
+        safe_stderr = _scrub_clone_stderr(completed.stderr.strip(), credential)
+        raise _FetchAborted(f"git clone exited {completed.returncode}: {safe_stderr}")
+    return source_dir  # pragma: no cover
 
 
 def _fetch_uploaded_archive(

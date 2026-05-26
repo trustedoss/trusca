@@ -67,6 +67,7 @@ from models import (
     Vulnerability as VulnerabilityModel,
 )
 from services.policy_gate import _CLOSED_FINDING_STATUSES
+from services.scan_resolution import latest_succeeded_scan_id
 from services.source_preservation_service import scan_source_tarball_path
 from services.upgrade_recommendation import (
     FindingSignal,
@@ -406,8 +407,16 @@ async def compute_npm_dry_run(
     or preserved source), runs the adapter, and returns the proposed diff +
     per-package before/after + warnings.
     """
-    project = await _resolve_accessible_project(session, project_id=project_id, actor=actor)
-    scan_id = project.latest_scan_id
+    # Authorize first (team-scoped, 404 existence-hide); the returned project row
+    # is no longer needed for scan resolution, but the check MUST run.
+    await _resolve_accessible_project(session, project_id=project_id, actor=actor)
+    # Anchor the dry-run on the latest SUCCEEDED scan — not
+    # ``project.latest_scan_id`` (the last *attempted* scan). The recommendations
+    # must be derived from the same open findings the vuln list / build gate
+    # surface, so a failed newest attempt doesn't erase them. The preserved
+    # ``package.json`` is also read from this succeeded scan's tarball (a failed
+    # attempt preserves no source). See ``services.scan_resolution``.
+    scan_id = await latest_succeeded_scan_id(session, project_id)
 
     notes: list[str] = []
 

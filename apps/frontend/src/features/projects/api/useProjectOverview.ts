@@ -13,16 +13,28 @@ import {
   type ProjectOverviewResponse,
 } from "@/features/projects/api/projectDetailApi";
 
-export function projectOverviewKey(projectId: string) {
-  return ["projects", projectId, "overview"] as const;
+export function projectOverviewKey(projectId: string, scanId?: string) {
+  return ["projects", projectId, "overview", scanId ?? "latest"] as const;
 }
 
 export function useProjectOverview(
   projectId: string | undefined,
+  scanId?: string,
 ): UseQueryResult<ProjectOverviewResponse> {
   return useQuery({
-    queryKey: projectOverviewKey(projectId ?? ""),
-    queryFn: () => getProjectOverview(projectId as string),
+    queryKey: projectOverviewKey(projectId ?? "", scanId),
+    queryFn: () => getProjectOverview(projectId as string, { scanId }),
     enabled: typeof projectId === "string" && projectId.length > 0,
+    // While any recent scan is still queued/running, poll so the "recent
+    // scans" table flips from 대기 중/진행 중 → 성공/실패 without a manual
+    // page reload. The WebSocket drawer streams live progress but does not
+    // invalidate this query, so polling is what keeps the overview fresh.
+    // Returns false once every scan is terminal to avoid idle polling.
+    refetchInterval: (query) => {
+      const active = query.state.data?.recent_scans.some(
+        (scan) => scan.status === "queued" || scan.status === "running",
+      );
+      return active ? 4000 : false;
+    },
   });
 }

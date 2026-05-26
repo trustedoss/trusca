@@ -22,6 +22,7 @@ const sampleUser: AuthUser = {
   isActive: true,
   isSuperuser: false,
   teamId: null,
+  teams: [],
 };
 
 describe("authStore", () => {

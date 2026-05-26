@@ -54,6 +54,24 @@ export interface TriggerScanInput {
   rootName?: string;
   /** Required for `method: "container"`. Docker image reference, e.g. `alpine:3.19`. */
   imageRef?: string;
+  /**
+   * Optional release/version label for the scan (feature #18), e.g. `v1.2.3`.
+   * Threaded into `metadata.release` on every trigger branch. Trimmed by the
+   * caller; the key is omitted when empty. The backend validates the charset
+   * (ref-safe, ≤100 chars) and is the source of truth — a malformed value
+   * surfaces as a 422 in the dialog's error alert.
+   */
+  release?: string;
+}
+
+/**
+ * Build the shared `metadata.release` fragment. Trims and only emits the key
+ * when a non-empty value remains, so an empty/whitespace release never lands
+ * on the wire.
+ */
+function releaseMetadata(release?: string): { release?: string } {
+  const trimmed = release?.trim();
+  return trimmed ? { release: trimmed } : {};
 }
 
 export interface TriggerScanProgress {
@@ -71,11 +89,13 @@ async function runTrigger(
   input: TriggerScanInput,
   onUpdate?: (progress: TriggerScanProgress) => void,
 ): Promise<ScanPublic> {
+  const release = releaseMetadata(input.release);
+
   if (input.method === "git") {
     onUpdate?.({ stage: "triggering", percent: 0 });
     return triggerScanApi(projectId, {
       kind: "source",
-      metadata: { source_type: "git" },
+      metadata: { source_type: "git", ...release },
     });
   }
 
@@ -89,7 +109,7 @@ async function runTrigger(
     // (apps/backend/tasks/scan_container.py::_resolve_image_ref).
     return triggerScanApi(projectId, {
       kind: "container",
-      metadata: { image_ref: imageRef },
+      metadata: { image_ref: imageRef, ...release },
     });
   }
 
@@ -133,7 +153,7 @@ async function runTrigger(
   onUpdate?.({ stage: "triggering", percent: 100 });
   return triggerScanApi(projectId, {
     kind: "source",
-    metadata: { source_type: "upload", archive_id },
+    metadata: { source_type: "upload", archive_id, ...release },
   });
 }
 

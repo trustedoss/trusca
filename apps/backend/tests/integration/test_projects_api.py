@@ -343,6 +343,192 @@ async def test_list_projects_excludes_archived_by_default(client) -> None:
 
 
 # ---------------------------------------------------------------------------
+# #25 — list-row enrichment (latest_scan_status + severity_summary) and the
+# overview's last_succeeded_scan_at. These are WIRE-LEVEL tests: they drive the
+# real ASGI app so a router serialization regression (e.g. forgetting to thread
+# a field into the response model) fails CI even though the service is correct.
+# ---------------------------------------------------------------------------
+
+
+async def _seed_ci_vulns_shape(client: AsyncClient, *, team_id: uuid.UUID):
+    """Seed the verified ``ci-vulns`` shape and return ``(project_id, succeeded)``.
+
+    An EARLIER succeeded scan carrying findings (incl. 1 critical) followed by a
+    LATER FAILED attempt, with ``latest_scan_id`` → the failed attempt. This is
+    the case where the status badge (latest attempt = failed) and the risk
+    summary (latest succeeded scan) must DIVERGE.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from models import (
+        Component,
+        ComponentVersion,
+        Project,
+        Scan,
+        ScanComponent,
+        Vulnerability,
+        VulnerabilityFinding,
+    )
+
+    factory = await _factory(client)
+    async with factory() as session:
+        project = Project(
+            team_id=team_id,
+            name=f"ci-vulns {unique_suffix()}",
+            slug=f"ci-vulns-{unique_suffix()}",
+            visibility="team",
+            git_url="https://github.com/example/ci-vulns.git",
+        )
+        session.add(project)
+        await session.commit()
+        await session.refresh(project)
+
+        base = datetime.now(tz=UTC) - timedelta(hours=3)
+        succeeded = Scan(
+            project_id=project.id,
+            kind="source",
+            status="succeeded",
+            progress_percent=100,
+            scan_metadata={},
+            created_at=base,
+            completed_at=base,
+        )
+        failed = Scan(
+            project_id=project.id,
+            kind="source",
+            status="failed",
+            progress_percent=0,
+            scan_metadata={},
+            created_at=base + timedelta(hours=1),
+        )
+        session.add_all([succeeded, failed])
+        await session.commit()
+        await session.refresh(succeeded)
+        await session.refresh(failed)
+
+        project.latest_scan_id = failed.id  # the denormalized pointer = last attempt
+        await session.commit()
+
+        suffix = unique_suffix()
+        component = Component(
+            purl=f"pkg:npm/ci-pkg-{suffix}", package_type="npm", name=f"ci-pkg-{suffix}"
+        )
+        session.add(component)
+        await session.commit()
+        await session.refresh(component)
+        cv = ComponentVersion(
+            component_id=component.id,
+            version="1.0.0",
+            purl_with_version=f"pkg:npm/ci-pkg-{suffix}@1.0.0",
+        )
+        session.add(cv)
+        await session.commit()
+        await session.refresh(cv)
+        session.add(
+            ScanComponent(
+                scan_id=succeeded.id,
+                component_version_id=cv.id,
+                direct=True,
+                depth=1,
+                raw_data={},
+            )
+        )
+        await session.commit()
+
+        crit = Vulnerability(
+            external_id=f"CVE-2024-{suffix}",
+            source="NVD",
+            severity="critical",
+            summary="critical finding",
+        )
+        session.add(crit)
+        await session.commit()
+        await session.refresh(crit)
+        session.add(
+            VulnerabilityFinding(
+                scan_id=succeeded.id,
+                component_version_id=cv.id,
+                vulnerability_id=crit.id,
+                status="new",
+                analysis_state="new",
+            )
+        )
+        await session.commit()
+
+        return project.id, succeeded.created_at, failed.created_at
+
+
+async def test_list_row_shows_failed_status_with_severity_from_succeeded_scan(
+    client,
+) -> None:
+    """The headline #25 case on the wire: a project whose latest attempt FAILED
+    but has an earlier SUCCEEDED scan returns latest_scan_status='failed' AND a
+    non-null severity_summary (critical:1) from the succeeded scan."""
+    _, team, user = await _seed_team_with_user(client, role="developer")
+    headers = _bearer_for(user)
+    project_id, _succeeded_at, _failed_at = await _seed_ci_vulns_shape(
+        client, team_id=team.id
+    )
+
+    response = await client.get(
+        "/v1/projects",
+        headers=headers,
+        params={"team_id": str(team.id), "size": 100},
+    )
+    assert response.status_code == 200, response.text
+    row = next(
+        item for item in response.json()["items"] if item["id"] == str(project_id)
+    )
+    assert row["latest_scan_status"] == "failed"
+    assert row["severity_summary"] is not None
+    assert row["severity_summary"]["critical"] == 1
+    assert row["severity_summary"] == {
+        "critical": 1,
+        "high": 0,
+        "medium": 0,
+        "low": 0,
+    }
+
+
+async def test_list_row_never_scanned_is_idle_with_null_summary(client) -> None:
+    _, team, user = await _seed_team_with_user(client, role="developer")
+    headers = _bearer_for(user)
+    project_id, _ = await _seed_project(client, team_id=team.id)
+
+    response = await client.get(
+        "/v1/projects",
+        headers=headers,
+        params={"team_id": str(team.id), "size": 100},
+    )
+    row = next(
+        item for item in response.json()["items"] if item["id"] == str(project_id)
+    )
+    assert row["latest_scan_status"] is None  # → "Idle" badge
+    assert row["severity_summary"] is None
+
+
+async def test_overview_emits_last_succeeded_scan_at_on_the_wire(client) -> None:
+    """Wire-level guard: the overview response carries last_succeeded_scan_at =
+    the succeeded scan's time (NOT the later failed attempt's), and keeps
+    last_scan_at = the latest attempt's time."""
+    _, team, user = await _seed_team_with_user(client, role="developer")
+    headers = _bearer_for(user)
+    project_id, succeeded_at, failed_at = await _seed_ci_vulns_shape(
+        client, team_id=team.id
+    )
+
+    response = await client.get(f"/v1/projects/{project_id}/overview", headers=headers)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    # last_succeeded_scan_at must be present and equal the succeeded scan time.
+    assert body["last_succeeded_scan_at"] is not None
+    assert body["last_succeeded_scan_at"][:19] == succeeded_at.isoformat()[:19]
+    # last_scan_at tracks the latest attempt (the failed scan), which is newer.
+    assert body["last_scan_at"][:19] == failed_at.isoformat()[:19]
+    assert body["last_succeeded_scan_at"] < body["last_scan_at"]
+
+
+# ---------------------------------------------------------------------------
 # GET /v1/projects/{id}
 # ---------------------------------------------------------------------------
 

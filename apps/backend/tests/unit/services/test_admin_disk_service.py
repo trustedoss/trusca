@@ -104,7 +104,11 @@ def test_probe_filesystem_oserror_returns_error_item(
     item = _probe_filesystem(name="workspace", path="/missing")
     assert item.status == "down"
     assert item.error is not None
-    assert "FileNotFoundError" in item.error
+    # The raw Python exception type / errno must NOT leak to the API/UI; the
+    # error is a stable, non-revealing reason (full detail is logged instead).
+    assert "FileNotFoundError" not in item.error
+    assert "Errno" not in item.error
+    assert "not found" in item.error.lower()
 
 
 @pytest.mark.parametrize(
@@ -306,7 +310,9 @@ def test_strip_credentials(raw: str, expected: str) -> None:
 def test_probe_filesystem_oserror_strips_credentials(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """G4: connection string credentials must not appear in the error field."""
+    """G4: the filesystem probe error is a fixed, non-revealing message — it
+    never echoes the raw exception, so connection-string credentials (or any
+    other exception detail) can never leak into the API/UI error field."""
 
     def boom(_path: str) -> Any:
         raise OSError("OSError: path not found via postgresql://user:pass@db/db")
@@ -315,4 +321,5 @@ def test_probe_filesystem_oserror_strips_credentials(
     item = _probe_filesystem(name="workspace", path="/missing")
     assert item.error is not None
     assert "pass" not in item.error
-    assert "****@" in item.error
+    assert "postgresql" not in item.error
+    assert "@" not in item.error

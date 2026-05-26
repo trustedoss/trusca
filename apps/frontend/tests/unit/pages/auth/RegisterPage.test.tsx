@@ -88,17 +88,17 @@ describe("RegisterPage", () => {
     expect(mockedPostRegister).not.toHaveBeenCalled();
   });
 
-  it("blocks submit when password is shorter than 12 chars (client-side)", async () => {
+  it("blocks submit when password is shorter than 8 chars (client-side)", async () => {
     const user = userEvent.setup();
     renderRegister();
     await user.type(screen.getByTestId("register-display-name"), "Alice");
     await user.type(screen.getByTestId("register-email"), "alice@example.com");
-    // 11 chars — short of the 12-char floor.
-    await user.type(screen.getByTestId("register-password"), "elevenchars");
+    // 7 chars — short of the 8-char floor.
+    await user.type(screen.getByTestId("register-password"), "seven77");
     await user.click(screen.getByTestId("register-submit"));
 
     expect(
-      await screen.findByText(/at least 12 characters/i),
+      await screen.findByText(/at least 8 characters/i),
     ).toBeInTheDocument();
     expect(mockedPostRegister).not.toHaveBeenCalled();
   });

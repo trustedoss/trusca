@@ -13,7 +13,10 @@ export function LanguageToggle() {
     void i18n.changeLanguage(next);
   }
 
-  const label = t(`language.${next === "en" ? "english" : "korean"}`);
+  // Show the CURRENT language (with the globe icon signalling it's a switcher).
+  // Showing the *target* language read as "you are in that language" and
+  // confused users into thinking the UI was set to the language on the button.
+  const label = t(`language.${current === "en" ? "english" : "korean"}`);
 
   return (
     <Button

@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { MultiSelect } from "@/components/ui/multi-select";
 import type { TeamScopedRole } from "@/features/projects/api/projectDetailApi";
 import type {
   ReachabilityFilter,
@@ -21,8 +22,8 @@ import { cn } from "@/lib/utils";
  * Inline filter row above the virtualized vulnerabilities list. Mirrors the
  * shape of `ComponentsToolbar` (CLAUDE.md "디자인 시스템": filters appear
  * inline at the top of lists, no modal filter dialogs). Severity and status
- * are native `<select multiple>` to avoid a new dependency; the search input
- * is debounced upstream in the tab.
+ * use the reusable `MultiSelect` (app-i18n checkbox dropdown); the search
+ * input is debounced upstream in the tab.
  */
 
 export const SEVERITY_OPTIONS: VulnSeverity[] = [
@@ -99,15 +100,14 @@ export interface VulnerabilitiesToolbarProps {
   projectName?: string | null;
   /** The actor's project-team-scoped role — gates the VEX import button. */
   projectRole?: TeamScopedRole;
+  /**
+   * Historical (read-only) snapshot mode (feature #28). When `true`, the VEX
+   * import control is disabled (importing into an old snapshot would mutate the
+   * current findings). The export + PDF report controls stay enabled — they are
+   * read-only.
+   */
+  readOnly?: boolean;
   className?: string;
-}
-
-function selectedValues<T extends string>(
-  event: React.ChangeEvent<HTMLSelectElement>,
-): T[] {
-  return Array.from(event.target.selectedOptions).map(
-    (opt) => opt.value as T,
-  );
 }
 
 export function VulnerabilitiesToolbar({
@@ -133,6 +133,7 @@ export function VulnerabilitiesToolbar({
   projectId,
   projectName,
   projectRole = "developer",
+  readOnly = false,
   className,
 }: VulnerabilitiesToolbarProps) {
   const { t } = useTranslation("project_detail");
@@ -185,23 +186,18 @@ export function VulnerabilitiesToolbar({
         >
           {t("vulnerabilities.toolbar.severity_label")}
         </label>
-        <select
+        <MultiSelect
           id="vulnerabilities-severity-filter"
-          multiple
-          size={1}
-          value={severity}
-          onChange={(event) =>
-            onSeverityChange(selectedValues<VulnSeverity>(event))
-          }
-          className="mt-1 h-9 w-40 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          data-testid="vulnerabilities-severity-filter"
-        >
-          {SEVERITY_OPTIONS.map((opt) => (
-            <option key={opt} value={opt}>
-              {t(`vulnerabilities.severity.${opt}`)}
-            </option>
-          ))}
-        </select>
+          testId="vulnerabilities-severity-filter"
+          className="w-40"
+          label={t("vulnerabilities.toolbar.severity_label")}
+          options={SEVERITY_OPTIONS.map((opt) => ({
+            value: opt,
+            label: t(`vulnerabilities.severity.${opt}`),
+          }))}
+          selected={severity}
+          onChange={(next) => onSeverityChange(next as VulnSeverity[])}
+        />
       </div>
 
       <div className="flex flex-col">
@@ -211,23 +207,18 @@ export function VulnerabilitiesToolbar({
         >
           {t("vulnerabilities.toolbar.status_label")}
         </label>
-        <select
+        <MultiSelect
           id="vulnerabilities-status-filter"
-          multiple
-          size={1}
-          value={status}
-          onChange={(event) =>
-            onStatusChange(selectedValues<VulnFindingStatus>(event))
-          }
-          className="mt-1 h-9 w-44 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          data-testid="vulnerabilities-status-filter"
-        >
-          {STATUS_OPTIONS.map((opt) => (
-            <option key={opt} value={opt}>
-              {t(`vulnerabilities.status.${opt}`)}
-            </option>
-          ))}
-        </select>
+          testId="vulnerabilities-status-filter"
+          className="w-44"
+          label={t("vulnerabilities.toolbar.status_label")}
+          options={STATUS_OPTIONS.map((opt) => ({
+            value: opt,
+            label: t(`vulnerabilities.status.${opt}`),
+          }))}
+          selected={status}
+          onChange={(next) => onStatusChange(next as VulnFindingStatus[])}
+        />
       </div>
 
       <div className="flex flex-col">
@@ -388,7 +379,11 @@ export function VulnerabilitiesToolbar({
         className="lg:ml-auto"
       />
 
-      <VexImportDialog projectId={projectId} projectRole={projectRole} />
+      <VexImportDialog
+        projectId={projectId}
+        projectRole={projectRole}
+        readOnly={readOnly}
+      />
 
       <div className="flex flex-col">
         <span className="text-xs font-medium text-muted-foreground">

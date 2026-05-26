@@ -38,9 +38,11 @@ from core.security import CurrentUser, get_current_user
 from schemas.auth import (
     ForgotPasswordRequest,
     LoginRequest,
+    MembershipPublic,
     RegisterRequest,
     ResetPasswordRequest,
     TokenResponse,
+    UserMeResponse,
     UserPublic,
 )
 from services.auth_service import (
@@ -291,21 +293,43 @@ async def logout(
 
 @router.get(
     "/me",
-    response_model=UserPublic,
-    summary="Return the currently authenticated user",
+    response_model=UserMeResponse,
+    summary="Return the currently authenticated user and their memberships",
 )
 async def me(
     current_user: CurrentUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
-) -> UserPublic:
-    """Authenticated. Returns the same shape as /auth/register."""
+) -> UserMeResponse:
+    """Authenticated. UserPublic + the caller's team memberships.
+
+    The frontend reads ``memberships`` to resolve a ``team_id`` for project
+    creation / write scoping. Ordered oldest-first so ``memberships[0]`` is a
+    stable default team.
+    """
     from sqlalchemy import select
 
-    from models import User
+    from models import Membership, Team, User
 
     result = await session.execute(select(User).where(User.id == current_user.id))
     user = result.scalar_one()
-    return UserPublic.model_validate(user)
+
+    rows = await session.execute(
+        select(Membership.team_id, Team.name, Membership.role)
+        .join(Team, Team.id == Membership.team_id)
+        .where(Membership.user_id == current_user.id)
+        .order_by(Membership.created_at.asc())
+    )
+    memberships = [
+        MembershipPublic(team_id=team_id, team_name=team_name, role=str(role))
+        for team_id, team_name, role in rows.all()
+    ]
+
+    # Validate the base shape from the ORM row (UserPublic has no relationship
+    # fields), then attach memberships explicitly. Validating UserMeResponse
+    # directly would make Pydantic read user.memberships (a lazy ORM
+    # relationship) and trigger async IO outside the greenlet (MissingGreenlet).
+    base = UserPublic.model_validate(user)
+    return UserMeResponse(**base.model_dump(), memberships=memberships)
 
 
 # ---------------------------------------------------------------------------

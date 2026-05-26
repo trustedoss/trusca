@@ -36,6 +36,12 @@ import { getScan, type ScanStatus } from "@/lib/projectsApi";
 
 export interface ScanProgressProps {
   scanId: string;
+  /**
+   * Optional release/version label this scan was triggered against (feature
+   * #18), e.g. `v1.2.3`. When present, a small monospace chip renders in the
+   * panel header (JetBrains Mono per the design system). Omit/null to hide.
+   */
+  release?: string | null;
   /** Parent-controlled close (Sheet `onOpenChange={false}` etc.). */
   onClose?: () => void;
   /** Retry CTA shown on terminal failure. */
@@ -81,6 +87,7 @@ function indexOfStep(step: ScanStep | null | undefined): number {
 
 export function ScanProgress({
   scanId,
+  release = null,
   onClose,
   onRetry,
   cachedFromDtDown = false,
@@ -146,16 +153,28 @@ export function ScanProgress({
 
   return (
     <div className="flex flex-col gap-4" data-testid="scan-progress">
-      <div className="flex items-baseline justify-between">
-        <h2 className="text-base font-semibold tracking-tight">
-          {succeeded
-            ? t("progress.step_succeeded")
-            : failed
-              ? t("progress.step_failed")
-              : cancelled
-                ? t("progress.step_cancelled")
-                : t("progress.title")}
-        </h2>
+      <div className="flex items-baseline justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <h2 className="text-base font-semibold tracking-tight">
+            {succeeded
+              ? t("progress.step_succeeded")
+              : failed
+                ? t("progress.step_failed")
+                : cancelled
+                  ? t("progress.step_cancelled")
+                  : t("progress.title")}
+          </h2>
+          {release ? (
+            <span
+              className="inline-flex shrink-0 items-center rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[11px] font-medium text-foreground"
+              data-testid="scan-progress-release"
+              title={t("release.chip_aria", { release })}
+              aria-label={t("release.chip_aria", { release })}
+            >
+              {release}
+            </span>
+          ) : null}
+        </div>
         <span
           className="font-mono text-xs text-muted-foreground"
           data-testid="scan-progress-percent"

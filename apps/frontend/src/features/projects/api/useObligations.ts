@@ -24,6 +24,11 @@ export interface ObligationsQueryFilters {
   order: SortOrder;
   limit: number;
   offset: number;
+  /**
+   * Pin the list to a specific succeeded scan (feature #28 snapshot anchoring).
+   * `undefined` → latest succeeded scan.
+   */
+  scanId?: string;
 }
 
 export function obligationsKey(
@@ -42,6 +47,7 @@ export function obligationsKey(
       order: filters.order,
       limit: filters.limit,
       offset: filters.offset,
+      scanId: filters.scanId ?? null,
     },
   ] as const;
 }
@@ -62,6 +68,7 @@ export function useObligations(
         categories: filters.categories.length ? filters.categories : undefined,
         sort: filters.sort,
         order: filters.order,
+        scanId: filters.scanId,
       }),
     staleTime: 30_000,
     placeholderData: keepPreviousData,

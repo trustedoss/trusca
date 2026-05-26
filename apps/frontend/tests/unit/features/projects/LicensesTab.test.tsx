@@ -206,13 +206,16 @@ describe("LicensesTab", () => {
     });
     mockedList.mockClear();
 
-    const select = screen.getByTestId(
-      "licenses-category-filter",
-    ) as HTMLSelectElement;
-    Array.from(select.options).forEach((opt) => {
-      opt.selected = opt.value === "forbidden";
+    // Open the MultiSelect dropdown, then toggle the "forbidden" checkbox row.
+    await userEvent.click(screen.getByTestId("licenses-category-filter"));
+    const forbidden = await waitFor(() => {
+      const option = screen
+        .getAllByTestId("licenses-category-filter-option")
+        .find((el) => el.getAttribute("data-value") === "forbidden");
+      if (!option) throw new Error("forbidden option not mounted");
+      return option;
     });
-    select.dispatchEvent(new Event("change", { bubbles: true }));
+    await userEvent.click(forbidden);
 
     await waitFor(() => {
       expect(mockedList).toHaveBeenCalledWith(
