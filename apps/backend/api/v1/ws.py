@@ -437,9 +437,25 @@ async def scan_progress_endpoint(websocket: WebSocket, scan_id: str) -> None:
             structlog.contextvars.unbind_contextvars("scan_id", "remote_addr", "user_id")
             return
 
+        # P1 #11 — for a terminal scan, the row's ``current_step`` is whatever
+        # the worker happened to last write (typically ``finalize``) — the
+        # worker does not always post a follow-up ``current_step=succeeded``
+        # before flipping ``status``. If we just echoed ``current_step`` here,
+        # the SPA would re-mount the drawer on a completed scan and see step
+        # = "finalize" → render an animated spinner on a step that is in fact
+        # done. Surface the terminal status as the step instead, and pin
+        # percent at 100 / latest, so the initial sync frame already carries
+        # the terminal verdict and the UI does not need a second round-trip
+        # to know the scan is over.
+        initial_step = scan.current_step
+        initial_percent = int(scan.progress_percent or 0)
+        if scan.status in ("succeeded", "failed", "cancelled"):
+            initial_step = scan.status
+            if scan.status == "succeeded":
+                initial_percent = 100
         initial_frame = build_progress_frame(
-            percent=int(scan.progress_percent or 0),
-            step=scan.current_step,
+            percent=initial_percent,
+            step=initial_step,
         )
 
     # ---- 5. Register connection (per-user cap) -------------------------
