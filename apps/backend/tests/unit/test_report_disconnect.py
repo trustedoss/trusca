@@ -39,6 +39,12 @@ def _patch_reads(monkeypatch, render_spy) -> None:
         reports, "list_project_vulnerabilities", AsyncMock(return_value=([], 0))
     )
     monkeypatch.setattr(reports, "render_report_pdf", render_spy)
+    monkeypatch.setattr(
+        reports, "latest_succeeded_scan_id", AsyncMock(return_value=None)
+    )
+    monkeypatch.setattr(
+        reports, "record_report_download", AsyncMock(return_value=None)
+    )
 
 
 def _request(disconnected: bool):

@@ -45,6 +45,7 @@ from services.project_service import (
     ProjectNotFound,
     get_project,
 )
+from services.report_download_service import record_report_download
 from services.vex_export import (
     VEXExportError,
     VEXUnsupportedFormat,
@@ -221,11 +222,28 @@ async def export_project_vex_endpoint(
         return _problem_for_vex_error(request, exc)
 
     # ``Content-Disposition: attachment`` makes browsers offer "save as".
+    body_bytes = body.encode("utf-8")
+
+    # Emit the Reports-center history row (W3 #32a). VEX export summarises the
+    # project's current finding state and is NOT scan-bound, so scan_id stays
+    # NULL by design — the dedicated column is nullable for exactly this case.
+    # Best-effort: ANY DB error inside the helper is logged + swallowed.
+    await record_report_download(
+        session,
+        project=project,
+        scan_id=None,
+        user=actor,
+        report_type="vex_export",
+        fmt=fmt,
+        size_bytes=len(body_bytes),
+        request=request,
+    )
+
     headers = {
         "content-disposition": f'attachment; filename="{filename}"',
     }
     return Response(
-        content=body.encode("utf-8"),
+        content=body_bytes,
         status_code=status.HTTP_200_OK,
         media_type=content_type,
         headers=headers,

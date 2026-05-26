@@ -60,8 +60,14 @@ from services.obligation_service import (
     get_obligation_detail,
     list_project_obligations,
 )
-from services.project_service import ProjectError
-from services.scan_resolution import SnapshotScanNotFound
+from services.project_service import (
+    ProjectError,
+    ProjectForbidden,
+    ProjectNotFound,
+    get_project,
+)
+from services.report_download_service import record_report_download
+from services.scan_resolution import SnapshotScanNotFound, latest_succeeded_scan_id
 
 router = APIRouter(prefix="/v1", tags=["obligations"])
 log = structlog.get_logger("obligations.api")
@@ -356,6 +362,39 @@ async def get_project_notice_endpoint(
         headers["Content-Disposition"] = _format_content_disposition(
             payload["project_name"], ext
         )
+
+    # Emit the Reports-center history row (W3 #32a). ``generate_notice`` has
+    # already enforced existence-hide team membership, so reaching this point
+    # means the actor is allowed to read this project. We load the project for
+    # its ``team_id`` (denormalised onto every history row so admin / team-wide
+    # queries do not need a join) and resolve the latest succeeded scan as the
+    # snapshot anchor, mirroring what the NOTICE service rendered against.
+    # Best-effort: ANY DB error inside the helper is logged + swallowed.
+    body_bytes = (
+        payload["body"].encode("utf-8")
+        if isinstance(payload["body"], str)
+        else payload["body"]
+    )
+    try:
+        project = await get_project(session, project_id=project_id, actor=actor)
+    except (ProjectError, ProjectNotFound, ProjectForbidden):
+        # Defensive: the prior generate_notice call has already authorised the
+        # caller, so a forbid/notfound here would be a race (project deleted
+        # between the two reads). Skip the emit silently — never 5xx.
+        project = None
+    if project is not None:
+        resolved_scan_id = await latest_succeeded_scan_id(session, project_id)
+        await record_report_download(
+            session,
+            project=project,
+            scan_id=resolved_scan_id,
+            user=actor,
+            report_type="notice",
+            fmt=fmt,
+            size_bytes=len(body_bytes),
+            request=request,
+        )
+
     return Response(
         content=payload["body"],
         status_code=status.HTTP_200_OK,

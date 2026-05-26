@@ -37,14 +37,16 @@ import uuid
 from datetime import UTC, datetime
 
 import structlog
-from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.authz import assert_team_access
 from core.db import get_db
 from core.errors import problem_response
+from core.ratelimit import limiter
 from core.security import CurrentUser, require_role
+from schemas.report_download import ReportHistoryResponse, ReportType
 from services.project_detail_service import (
     get_project_overview,
     list_components_for_project,
@@ -55,11 +57,21 @@ from services.project_service import (
     ProjectNotFound,
     get_project,
 )
+from services.report_download_service import (
+    PAGE_SIZE_DEFAULT,
+    PAGE_SIZE_MAX,
+    PAGE_SIZE_MIN,
+    ReportHistoryError,
+    ReportHistoryNotFound,
+    list_report_history,
+    record_report_download,
+)
 from services.report_service import (
     ReportRenderingError,
     build_report_html,
     render_report_pdf,
 )
+from services.scan_resolution import latest_succeeded_scan_id
 from services.vulnerability_service import list_project_vulnerabilities
 
 router = APIRouter(prefix="/v1", tags=["reports"])
@@ -245,6 +257,24 @@ async def get_vulnerability_report_pdf_endpoint(
         pdf_bytes=len(pdf_bytes),
     )
 
+    # Emit the Reports-center history row (W3 #32a). Resolve the latest
+    # succeeded scan so the row carries the same anchor the report was rendered
+    # against; ``None`` is a valid value (project has never had a succeeded
+    # scan) and the column is nullable. Best-effort: ANY DB error inside the
+    # helper is logged and swallowed so a 5xx never reaches the caller for a
+    # download that has already succeeded.
+    resolved_scan_id = await latest_succeeded_scan_id(session, project_id)
+    await record_report_download(
+        session,
+        project=project,
+        scan_id=resolved_scan_id,
+        user=actor,
+        report_type="vuln_pdf",
+        fmt="pdf",
+        size_bytes=len(pdf_bytes),
+        request=request,
+    )
+
     headers = {
         "content-disposition": _format_content_disposition(overview["project_name"]),
     }
@@ -254,6 +284,135 @@ async def get_vulnerability_report_pdf_endpoint(
         media_type="application/pdf",
         headers=headers,
     )
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/projects/{project_id}/reports/history — W3 #32a-2
+# ---------------------------------------------------------------------------
+
+
+def _problem_for_history_error(request: Request, exc: ReportHistoryError) -> Response:
+    return problem_response(
+        status_code=exc.status_code,
+        title=exc.title,
+        detail=str(exc) or exc.title,
+        instance=request.url.path,
+    )
+
+
+@router.get(
+    "/projects/{project_id}/reports/history",
+    summary="List download / export history for the project's Reports center",
+    response_model=ReportHistoryResponse,
+    responses={
+        200: {"description": "Paginated report-download history (newest first)."},
+        401: {"description": "Authentication required"},
+        404: {
+            "description": (
+                "Project does not exist, or the caller is not a member of its "
+                "team (existence-hidden — same envelope either way)."
+            ),
+            "content": {"application/problem+json": {}},
+        },
+        422: {
+            "description": (
+                "Invalid query parameter (unknown report_type, malformed scan_id, "
+                "page/page_size out of range)."
+            ),
+            "content": {"application/problem+json": {}},
+        },
+        429: {
+            "description": "Rate limit exceeded for this client.",
+            "content": {"application/problem+json": {}},
+        },
+    },
+)
+@limiter.limit("10/minute")
+async def list_project_report_history_endpoint(
+    request: Request,
+    project_id: uuid.UUID,
+    type_: list[ReportType] | None = Query(
+        default=None,
+        alias="type",
+        description=(
+            "Optional filter — one or more report_type values to include. "
+            "Repeat the parameter (``?type=notice&type=sbom``) for multi-select. "
+            "Omit for all four types."
+        ),
+    ),
+    scan_id: uuid.UUID | None = Query(
+        default=None,
+        description=(
+            "Optional filter — return only rows where ``scan_id`` matches. "
+            "Pair with ``type=sbom`` etc. to find all artefacts produced for "
+            "one scan."
+        ),
+    ),
+    page: int = Query(default=1, ge=1, description="1-based page number."),
+    page_size: int = Query(
+        default=PAGE_SIZE_DEFAULT,
+        ge=PAGE_SIZE_MIN,
+        le=PAGE_SIZE_MAX,
+        description=f"Rows per page (1..{PAGE_SIZE_MAX}, default {PAGE_SIZE_DEFAULT}).",
+    ),
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_role("developer")),
+) -> Response:
+    try:
+        result = await list_report_history(
+            session,
+            project_id=project_id,
+            viewer=actor,
+            # mypy: Query() with list[ReportType] hands us ``list[str] | None``
+            # because Literal -> str is a covariant narrowing. The service
+            # re-validates each entry against REPORT_TYPE_VALUES.
+            type_filter=type_,
+            scan_id_filter=scan_id,
+            page=page,
+            page_size=page_size,
+        )
+    except ReportHistoryNotFound as exc:
+        return _problem_for_history_error(request, exc)
+    except ReportHistoryError as exc:
+        # 422 for bad page / page_size / type — the router's Query() will
+        # already 422 most of these, but a future internal caller might bypass
+        # the dependency, so the service-layer raise is the authoritative gate.
+        return problem_response(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            title=exc.title,
+            detail=str(exc) or exc.title,
+            instance=request.url.path,
+        )
+
+    return Response(
+        content=result.model_dump_json(),
+        status_code=status.HTTP_200_OK,
+        media_type="application/json",
+    )
+
+
+# slowapi's `@limiter.limit` wraps the endpoint with functools.wraps, which
+# preserves __annotations__ but inherits slowapi's own module as the
+# wrapper's __globals__. With ``from __future__ import annotations`` enabled,
+# FastAPI calls ``typing.get_type_hints()`` on the wrapper to resolve string
+# annotations and fails to find names like ``uuid`` and ``AsyncSession`` —
+# Pydantic raises "TypeAdapter is not fully defined" and the endpoint returns
+# 500 on every request. Mirror auth.py / obligations.py by patching the names
+# the wrapper needs into its ``__globals__`` (the dict can be mutated
+# in-place; reassigning the attribute itself is read-only).
+for _name in (
+    "uuid",
+    "AsyncSession",
+    "Request",
+    "Response",
+    "Depends",
+    "Query",
+    "CurrentUser",
+    "ReportType",
+):
+    if _name in globals():
+        list_project_report_history_endpoint.__globals__.setdefault(_name, globals()[_name])
+del _name
 
 
 __all__ = ["router"]

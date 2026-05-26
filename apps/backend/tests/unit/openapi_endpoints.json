@@ -232,6 +232,13 @@
     "page_size",
     "project_id"
   ],
+  "GET /v1/projects/{project_id}/reports/history": [
+    "page",
+    "page_size",
+    "project_id",
+    "scan_id",
+    "type"
+  ],
   "GET /v1/projects/{project_id}/sbom": [
     "format",
     "project_id",

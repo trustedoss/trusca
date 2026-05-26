@@ -35,6 +35,7 @@ from services.project_service import (
     ProjectNotFound,
     get_project,
 )
+from services.report_download_service import record_report_download
 from services.sbom_export import (
     SBOMExportError,
     SBOMUnsupportedFormat,
@@ -51,7 +52,7 @@ from services.sbom_signature import (
     get_public_key,
     get_signature_artifact,
 )
-from services.scan_resolution import SnapshotScanNotFound
+from services.scan_resolution import SnapshotScanNotFound, latest_succeeded_scan_id
 
 router = APIRouter(prefix="/v1", tags=["sbom"])
 log = structlog.get_logger("sbom.api")
@@ -185,11 +186,33 @@ async def export_project_sbom_endpoint(
 
     # Encode as UTF-8 explicitly — XML / SPDX-TV may carry non-ASCII names.
     # ``Content-Disposition: attachment`` makes browsers offer "save as".
+    body_bytes = body.encode("utf-8")
+
+    # Emit the Reports-center history row (W3 #32a). When the caller pinned a
+    # specific scan via ``?scan_id=`` we already validated it inside
+    # ``export_sbom``; otherwise we resolve the latest succeeded scan so the
+    # history row carries the actual snapshot the SBOM was rendered against.
+    # Best-effort: ANY DB error inside the helper is logged + swallowed.
+    if scan_id is None:
+        resolved_scan_id = await latest_succeeded_scan_id(session, project_id)
+    else:
+        resolved_scan_id = scan_id
+    await record_report_download(
+        session,
+        project=project,
+        scan_id=resolved_scan_id,
+        user=actor,
+        report_type="sbom",
+        fmt=fmt,
+        size_bytes=len(body_bytes),
+        request=request,
+    )
+
     headers = {
         "content-disposition": f'attachment; filename="{filename}"',
     }
     return Response(
-        content=body.encode("utf-8"),
+        content=body_bytes,
         status_code=status.HTTP_200_OK,
         media_type=content_type,
         headers=headers,

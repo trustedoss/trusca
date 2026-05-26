@@ -60,6 +60,10 @@ from .remediation_pr import (  # noqa: E402,F401  (imported for metadata side ef
     REMEDIATION_PR_STATUS_VALUES,
     RemediationPullRequest,
 )
+from .report_download import (  # noqa: E402,F401  (imported for metadata side effects)
+    REPORT_TYPE_VALUES,
+    ReportDownload,
+)
 from .scan import (  # noqa: E402,F401  (imported for metadata side effects)
     Component,
     ComponentDependencyEdge,
@@ -101,8 +105,10 @@ __all__ = [
     "PasswordResetToken",
     "Project",
     "REMEDIATION_PR_STATUS_VALUES",
+    "REPORT_TYPE_VALUES",
     "RefreshToken",
     "RemediationPullRequest",
+    "ReportDownload",
     "Scan",
     "ScanArtifact",
     "ScanComponent",
