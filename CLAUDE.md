@@ -45,7 +45,7 @@
 1. **PostgreSQL only** — SQLite 임시 사용 금지. 처음부터 PostgreSQL.
 2. **Alembic 마이그레이션** — 스키마 변경은 반드시 migration 파일 생성.
 3. **ORT/cdxgen/Trivy는 Celery 비동기** — 동기 처리 절대 금지. 실행 시간 5~60분.
-4. **DT Circuit Breaker** — DT API 호출 전 health 확인. OPEN 상태면 PostgreSQL 캐시 반환.
+4. **취약점 매칭은 Trivy 단일 엔진** — `trivy sbom`으로 CycloneDX → CVE 매칭. DT/Dependency-Track 사용 금지 (제거 결정: `docs/decisions/0001-replace-dt-with-trivy.md`).
 5. **하네스 우선** — API와 UI 모두 테스트 하네스를 먼저 작성하고 구현.
 6. **Phase 완결** — 각 Phase는 merge 가능한 상태로 완료. 미완성 WIP 없음.
 7. **기능 + 완성도 동시** — 구현 후 즉시 UX·에러처리·번역까지 완성. "나중에 하기" 없음.
@@ -97,7 +97,7 @@
 
 ### 7. Harness 운영
 - 에이전트 팀 정의·호출 패턴(Fan-out/Fan-in, Producer-Reviewer, Expert Pool, Pipeline)은 `docs/v2-execution-plan.md` §4를 단일 진실로 본다.
-- 핵심 보안/안정성 코드(인증, API Key, DT 연동, OAuth, 빌드 게이트)는 Producer-Reviewer 패턴으로 `security-reviewer` 에이전트 검증을 거친 뒤에만 머지한다.
+- 핵심 보안/안정성 코드(인증, API Key, Trivy/외부 스캐너 연동, OAuth, 빌드 게이트)는 Producer-Reviewer 패턴으로 `security-reviewer` 에이전트 검증을 거친 뒤에만 머지한다.
 
 ### 8. 세션 핸드오프
 - 세션 종료 시 `docs/sessions/<YYYY-MM-DD>-phase<N>-<topic>.md`를 `docs/v2-execution-plan.md` §7 양식으로 작성한다.
@@ -121,23 +121,23 @@ Organization (배포 단위, 1개)
 데모 SaaS: 가입 시 개인 Team 자동 생성
 ```
 
-### DT(Dependency-Track) 연동 전략
-DT를 docker-compose에 번들로 포함. 외부 DT 연결도 지원.
+### 취약점 매칭(Trivy) 전략
+CVE 매칭은 Trivy 단일 엔진. 워커 이미지에 포함, JVM·외부 컨테이너 의존 없음.
 
 ```
-v1 문제 해결:
-① DT Health Monitor (60초 heartbeat) + unhealthy 시 docker restart
-② Circuit Breaker — OPEN 상태 시 PostgreSQL 취약점 캐시로 대응
-③ 취약점 데이터 PostgreSQL 캐싱 (DT 재시작 중에도 포털 정상 동작)
-④ 고아 프로젝트 감지·정리 (Celery Beat 6시간 주기 + Admin UI)
-⑤ DT sync 상태 Admin 대시보드 표시
+설계 (v2.4.0~, ADR-0001):
+① cdxgen → CycloneDX SBOM → trivy sbom → vulnerability_findings persist
+② 부팅 시 trivy --download-db-only (NVD+OSV+GHSA+EPSS+KEV 통합 DB)
+③ weekly DB refresh + air-gapped 미러 지원 (TRIVY_DB_REPOSITORY)
+④ 자동 재매칭 Celery beat — NVD 갱신 시 기존 SBOM 자동 재스캔, 시간대 분산
+⑤ admin/health에 Trivy DB 상태 패널 (last_update, vuln_count, freshness)
 ```
 
 ### 스캔 파이프라인
 ```
-소스 스캔: cdxgen → ORT → DT (라이선스 + 취약점)
+소스 스캔: cdxgen → CycloneDX SBOM → Trivy (라이선스 분류 + 취약점 매칭)
 컨테이너 스캔: Trivy (OS 패키지 취약점)
-새 CVE 재탐지: DT NVD 동기화 → 포털 자동 갱신 + 알림 발행
+새 CVE 재탐지: Trivy DB 주기 갱신 → Celery beat 자동 재매칭 → 알림 발행
 ```
 
 ### CI/CD 연동 (표준 SCA 수준)
@@ -154,12 +154,12 @@ v1 문제 해결:
 ### 핵심 SCA 기능
 - 컴포넌트 탐지 (cdxgen, 30+ 언어/빌드시스템)
 - 라이선스 분류 (허용/조건부/금지, ORT 룰셋)
-- 취약점 탐지 (DT, NVD/OSV/GitHub Advisory)
+- 취약점 탐지 (Trivy, NVD/OSV/GHSA/EPSS/KEV 통합 DB)
 - 컨테이너 스캔 (Trivy, OS 패키지)
 - SBOM 생성 (CycloneDX JSON/XML, SPDX JSON/Tag-Value)
 - Excel/PDF 보고서
 - **의무사항 추적 + NOTICE 파일 자동 생성**
-- **새 CVE 자동 재탐지** (DT NVD 동기화 연동)
+- **새 CVE 자동 재탐지** (Trivy DB 주기 갱신 → Celery beat 재매칭)
 - **컴포넌트 승인 워크플로우** (Pending→Under Review→Approved/Rejected)
 
 ### 거버넌스
@@ -175,7 +175,7 @@ v1 문제 해결:
 
 ### 관리자
 - 사용자/팀 관리
-- DT 연결 설정·모니터링·고아 정리
+- Trivy DB 상태·갱신 모니터링 (admin/health 패널)
 - 스캔 큐 모니터링 (실행중/대기/실패/강제종료)
 - 디스크 사용량 대시보드 (임계치 알림)
 - System Health 대시보드
@@ -246,7 +246,7 @@ trustedoss-portal/
 │   │   ├── schemas/            Pydantic 스키마
 │   │   ├── services/           비즈니스 로직
 │   │   ├── tasks/              Celery 태스크
-│   │   ├── integrations/       DT, ORT, cdxgen, Trivy
+│   │   ├── integrations/       cdxgen, Trivy
 │   │   ├── notifications/      이메일, Slack, Teams
 │   │   └── tests/
 │   │       ├── unit/
@@ -291,7 +291,7 @@ trustedoss-portal/
 |--------------|-----------|----------------|
 | `backend-developer.md` | FastAPI 엔드포인트, Pydantic 스키마, 비즈니스 로직 | 1~5 |
 | `db-designer.md` | PostgreSQL 스키마, Alembic 마이그레이션 | 0~1 |
-| `scan-pipeline-specialist.md` | Celery 태스크, cdxgen/ORT/Trivy/DT 연동, Circuit Breaker | 2 |
+| `scan-pipeline-specialist.md` | Celery 태스크, cdxgen·Trivy 연동, DB 라이프사이클, 자동 재매칭 beat | 2 |
 | `frontend-dev.md` | React 18 + shadcn/ui 컴포넌트, TanStack Query | 2~6 |
 | `i18n-specialist.md` | react-i18next, EN/KO 번역, 언어 토글 | 6 |
 | `devops-engineer.md` | Docker Compose, GitHub Actions, Helm chart, 설치 스크립트 | 0, 7~8 |
@@ -301,7 +301,7 @@ trustedoss-portal/
 
 **주요 Harness 패턴**:
 - **Fan-out/Fan-in**: Phase 내 독립 작업 병렬 처리 (API 구현 + 테스트 + 문서 동시)
-- **Producer-Reviewer**: 핵심 보안 코드 (인증, DT 연동, API Key) 구현 후 security-reviewer 검증
+- **Producer-Reviewer**: 핵심 보안 코드 (인증, Trivy/외부 스캐너 연동, API Key) 구현 후 security-reviewer 검증
 - **Expert Pool**: 도메인에 맞는 전문가 라우팅 (DB 설계 → db-designer, K8s → devops-engineer)
 - **Pipeline**: Phase 0 → 1 → 2 순차 진행 (선행 조건 있는 Phase)
 
@@ -321,15 +321,12 @@ SECRET_KEY=change-this-to-a-random-secret-key-min-32-chars
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 REFRESH_TOKEN_EXPIRE_DAYS=7
 
-# Dependency-Track
-DT_URL=http://dtrack-api:8080
-DT_API_KEY=your-dt-api-key
-
 # Workspace
 WORKSPACE_HOST_PATH=/opt/trustedoss/workspace
 
-# ORT
-ORT_RULES_PATH=/opt/trustedoss/ort/rules.kts
+# Trivy (v2.4.0~, ADR-0001)
+TRIVY_DB_REPOSITORY=ghcr.io/aquasecurity/trivy-db  # air-gapped 미러 가능
+TRIVY_DB_REFRESH_HOURS=168  # weekly
 
 # Notifications
 SMTP_HOST=smtp.gmail.com
@@ -386,8 +383,8 @@ v1 디렉토리(`trustedoss-portal`의 현재 코드)에서 참고할 파일:
 
 | v1 파일 | 재사용 방법 |
 |---------|------------|
-| `ort/rules.kts` | ORT 라이선스 룰셋 그대로 복사 |
-| `webapp/backend/integrations/dt.py` | DT API 클라이언트 로직 참고 (안정화 레이어 추가) |
+| `ort/rules.kts` | (참고만, v2.4.0~ 자체 라이선스 분류 카탈로그로 대체) |
+| `webapp/backend/integrations/dt.py` | (참고 폐기 — ADR-0001, v2.4.0~ Trivy 단일 교체) |
 | `webapp/backend/tasks/scan.py` | Celery 스캔 태스크 구조 참고 |
 | `webapp/frontend/src/components/` | shadcn/ui 컴포넌트 설계 참고 |
 | `webapp/frontend/tests/_harness/` | Playwright 하네스 패턴 참고 |

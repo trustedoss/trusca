@@ -18,11 +18,13 @@
 | v2.2 | 리메디에이션 + 정책 | 10 | 10 | ✅ 완료 (#153,154,156,157,158,159,160,161,162,163,164) — b/c 전 트랙 + b3-UI |
 | v2.3 | 무결성 + 우선순위화 | 6 | 5 | 🟢 마일스톤 충족 (s1·r1·s2·r2·s3 머지; r3=선택·종료조건 초과) |
 | §0.5 | Wave 1~3 (BD 정합·발견성) | 7 | 7 | ✅ 완료 (W1 #29·#34·#35 · W2 #31·#33 · W3 #30·#32) |
-| — | 운영 레인 (외부 블로커) | 4 | 0 | ⬜ 대기 |
+| §0.5 | Wave 4 (UX 정합·IA 재정비) | 6 | 6 | ✅ 완료 (#186 W4-A · #187 prep · #188 W4-B · #189 W4-C · #190 W4-D · #191 follow-up) |
+| §0.5 | **Wave 6 (DT 제거 + Trivy 교체)** | 8(+선택1) | 0 | ⏳ 백로그 — prereq(v2.3.1 tag) → #45 → #40 → #41 → shadow 7d → #42·#43a~e → #44 |
+| — | 운영 레인 (외부 블로커) | 4 | 0 | ⬜ 대기 (O1·O3는 W6-prereq에 통합) |
 
-범례: ⬜ 대기 · 🟦 진행중 · ✅ 완료 · ⛔ 블로킹
+범례: ⬜ 대기 · 🟦 진행중 · ✅ 완료 · ⛔ 블로킹 · ⏳ 백로그
 
-**현재 상태(2026-05-26):** v2.1·v2.2·v2.3 + §0.5 Wave 1~3 모두 종결. 다음 진행은 **사용자 발견 불편/버그 인테이크 모드** — 트래커가 우선이 아니라 사용자가 핸즈온 사용 중 보고하는 항목을 받아 갭 분석 후 PR scope로 좁힌다. 운영 레인 O1~O4만 외부 블로커 대기.
+**현재 상태(2026-05-27):** v2.1·v2.2·v2.3 + §0.5 Wave 1~4 모두 종결. 다음 마일스톤은 **W6 — DT 제거 + Trivy 단일 교체** (계획 v2 수립 완료, §0.5 W6 절 + ADR-0001 + 핸드오프 `docs/sessions/2026-05-27-w6-dt-removal-plan.md`). 코드 8d + 캘린더 7d shadow ≈ 2~2.5주. 별도 세션 진행. 운영 레인 O1/O3은 W6-prereq(`v2.3.1` 태그/Release)에 통합 수행, O2/O4는 잔여.
 
 ---
 
@@ -55,6 +57,53 @@
 | W4-B follow-up: vuln-list affected fields | W4-B #19 의 BE 갭 해소. `VulnerabilityListItem` 응답에 4 신규 필드 추가 — `affected_component_name`·`affected_component_version` (FK-pinned cv 의 식별자, n+1 회피 위해 단일 cv 만), `affected_component_license` (SPDX, worst-rank `DISTINCT ON` argmax), `affected_component_license_category` (새 null-bearing; 기존 non-null `component_license_category` 도 back-compat 으로 유지). FE: `VulnerabilitiesTab` 의 옛 standalone "Affected" 카운트 컬럼을 신규 `ComponentColumnCell` 로 흡수 (`name@version` + `+N-1` 접미사, 카운트 > 1 일 때), `LicenseColumnCell` 에 SPDX 와이어업, 스테일 캐시 row 가 새 필드 미보유 시 legacy category 로 fallback. 새 i18n 키 EN/KO 동시: `vulnerabilities.column.component`·`affected_more_count`·`affected_more_count_tooltip`. 단위 5 신규(BE: name/version, SPDX happy, worst-rank pick, LicenseRef-* null SPDX, multi-cv count + per-row pinned cv) + 5 신규(FE: Component@Version 렌더, `+N-1` 표시, null fallback dash, SPDX wireup, legacy category fallback). 게이트 ruff·mypy clean·BE unit 121 pass·FE typecheck clean·lint 0 errors·vitest 972·i18n:check OK·OpenAPI 스냅샷 갱신. **PR 대기** `feat/vuln-list-affected-fields`. | 🟡 PR 대기 |
 
 → 상세 계획·갭 분석·출발 파일은 **`docs/plan-w4-ui-ia-overhaul.md`** 단일 진실. 진행 전 반드시 참조.
+
+---
+
+**W5 — DT 운영 견고화 (2026-05-27 사용자 핸즈온 발견) — ⛔ W6로 무효화**
+
+> 출처: 2026-05-27 사용자 핸즈온 — DT 내장 H2 MVStore 손상 사고(`org.h2.mvstore.MVStoreException: Chunk 113620 not found`)로 DT 미부팅 → circuit breaker가 포털 다운은 막았으나 ① 새 스캔이 approvals 직후 즉시 fail ② DT 데이터 복구 경로 없음 ③ 새 DT 인스턴스 부트스트랩이 수동(OSV 활성화) ④ 운영 compose도 embedded H2라 동일 사고 재발 가능 — 네 갭이 동시 발견됨.
+>
+> **⛔ 2026-05-27 결정**: W6(Trivy 단일 교체)로 DT를 통째로 제거하기로 결정 → W5 4개 항목 모두 **무효화(superseded by W6)**. DT 코드/인프라가 사라지므로 별도 견고화 PR 불필요. [[project_dt_removal_decision]] 참조.
+
+| 항목 | 내용 | 상태 |
+|---|---|---|
+| ~~W5-#36~~ | ~~DT 데이터 정기 백업 + 복구 자동화~~ | ⛔ W6로 무효화 |
+| ~~W5-#37~~ | ~~DT 다운 중 도착한 스캔 자동 재시도 큐~~ | ⛔ W6로 무효화 |
+| ~~W5-#38~~ | ~~DT 부트스트랩 완전 자동화 (OSV 8 ecosystem 활성화)~~ | ⛔ W6로 무효화 |
+| ~~W5-#39~~ | ~~운영 compose DT를 외부 PostgreSQL 모드로 분리~~ | ⛔ W6로 무효화 |
+
+---
+
+**W6 — DT 제거 + Trivy 단일 교체 (2026-05-27 결정, 계획 v2)**
+
+> 출처: W5 사고 분석 + Explore 면밀 평가(2026-05-27). 우리 코드의 DT 활용도가 표면적인 것보다 훨씬 낮음 — 정책엔진/VEX/UI/승인은 모두 자체 구현, DT는 사실상 "CycloneDX → CVE 매칭" 단일 기능. DT의 킬러 기능(새 NVD → 기존 SBOM 자동 재매칭)은 `dt_resync.py`가 카탈로그만 폴링하고 실제 재분석은 안 트리거해 **현재 미활용**. 그 한 기능 위해 4GB JVM + embedded H2 손상 위험 + 부트스트랩 수동 + 백업 갭을 떠안고 있음. SBOM 생성기(cdxgen)는 검토 후 **유지** — Trivy fs로 통합 시 dependency graph·scope·evidence 손실, W4-D 자산 폐기 발생.
+>
+> **결정 근거**: Trivy는 (a) 이미 worker 이미지에 설치 (b) `trivy sbom` 명령으로 CycloneDX 직접 입력 (c) NVD+OSV+GHSA+EPSS+KEV 통합 (d) ~500MB(vs DT 4GB) → Apple Silicon Colima 4CPU/8GB dev 안정성 큰 폭 상승 (e) 우리 `integrations/trivy.py` 패턴과 동일.
+>
+> **현실적 일정**: **코드 8~10일 + 캘린더 7일 shadow** = 약 2~2.5주 마일스톤. 트래커 초안의 "3~5일"은 fix-first/벤치 튜닝/마이그레이션 검증을 누락한 과소 추정이었음 → 정정.
+
+| 항목 | 내용 | 상태 |
+|---|---|---|
+| **W6-prereq** | **DT 시대 동결 marker (코드 변경 0, 0.5d)**. ① **W6-#45 머지** — ADR `docs/decisions/0001-replace-dt-with-trivy.md` + `CLAUDE.md` 11곳 + `docs/post-ga-roadmap.md` 14곳 동기화. ② **`v2.3.1` annotated tag + GitHub Release** (Final Dependency-Track Release) — Docker 이미지 멀티아치 `ghcr.io/trustedoss/{backend,worker,frontend}:v2.3.1` + 의미 별칭 `:v2.3-dt` 게시(운영 레인 **O1 통합 수행**), Helm 차트 0.2.1 ArtifactHub 게시(**O3 통합**), release body에 "ADR-0001 링크 + v2.4.0 migration 안내". ③ **`SECURITY.md`에 한 줄**: "v2.3.x backport는 요청 기반 best-effort". ④ **동결 브랜치 만들지 않음** — 외부 사용자 0, tag→branch는 사후 무료. 종료: 정식 SemVer 태그 publish + Release 자산 4종(BE/Worker/FE 이미지 + 차트) + main HEAD `v2.4.0-dev` 진입. | ⏳ 백로그 |
+| W6-#45 | **ADR + 전략 문서 동기화 (선행)**. `docs/decisions/0001-replace-dt-with-trivy.md` 신규(Context/Decision/Consequences, 메모리 본문 기반, cdxgen 유지 부록). `CLAUDE.md` 규칙 4(DT Circuit Breaker) 제거·"DT 연동 전략" 절 → "취약점 매칭(Trivy)"로 재작성·디렉토리/환경변수/에이전트 설명 11곳 갱신. `docs/post-ga-roadmap.md` v2.1 회고 + v2.4 W6 절 신설 + "비범위: 자체 vuln DB" 정정 14곳. 검증: docusaurus build · `grep -nE "Dependency.?Track\|DT " CLAUDE.md docs/post-ga-roadmap.md` = 0. **dep: 없음**. | ⏳ 백로그 |
+| W6-#40 | **Trivy SBOM 통합 어댑터**. `integrations/trivy.py`에 `run_trivy_sbom(sbom_path, output_dir) -> TrivyResult` 추가(`trivy sbom --format json --output ...` subprocess, 기존 `run_trivy_image`와 동일 에러 처리·timeout·SecretEncryptionError 패턴). cdxgen 산출 CycloneDX JSON 입력 → JSON 결과 산출. 단위 cov ≥85%. **adversarial parametrize**(untrusted Trivy JSON: 비정상 severity·중첩 깊이·인코딩 깨짐·oversized) 필수 [[feedback-adversarial-input-parametrize]]. **dep: W6-#45**. | ⏳ 백로그 |
+| W6-#41 | **Trivy 결과 → `vulnerability_findings` persist + 벤치 코호트**. `_persist_findings` 확장 또는 신규 `services/vulnerability_matching.py`에 Trivy JSON parser 추가 — `external_id`/`severity`/`cvss_score`/`epss_score`/`fixed_version`/`reference_urls`/`summary` 매핑(현 DT finding shape와 동등). `scan_source.py:535`의 `dt_findings` 스테이지를 `_poll_trivy_findings`로 교체(**stage 이름 유지** — WS frame/E2E harness 호환, rename은 #43f). 멱등 upsert. **신규 벤치 스크립트** `scripts/benchmark_dt_vs_trivy.py` — 사용자 코호트(GitHub repos 5~10개) SBOM 입력 → DT/Trivy 결과 set-diff `(cve_id, component_purl)` 페어 일치율 산출. **종료: 매칭 일치율 ≥95% + 차이의 FP/FN 분류 보고서 + e2e green**. **dep: W6-#40**. **rev: security-reviewer**(untrusted JSON 파싱). | ⏳ 백로그 |
+| **W6-shadow** | **7일 shadow 운영 게이트 (캘린더 시간, 코드 0)**. #41 머지 후 DT/Trivy 양쪽 모두 실행 + admin 대시보드에 일치율 일일 노출. 신규 스캔은 Trivy 결과 노출, DT 결과는 백그라운드 비교만. **7일 평균 일치율 ≥95%면 #43a 진행 승인**. 미달 시 Plan B(Trivy+OSV-Scanner 하이브리드) 또는 Plan C(DT 유지+Trivy 보조) 결정 회의 트리거. 이 게이트가 비가역 삭제 직전의 마지막 안전장치. **dep: W6-#41**. | ⏳ 백로그 |
+| W6-#42 | **자동 재매칭 — Celery beat 주기 재스캔**. DT가 못 하던(우리 코드 기준) "새 NVD 발견 시 기존 SBOM 재매칭"을 신규 기능으로 구현. 신규 task `tasks/vulnerability_rematch.py` — N시간(기본 6h)마다 succeeded 스캔들의 보존 SBOM을 `run_trivy_sbom`으로 재실행 → 새 finding만 추가/severity 변경 감지 → 알림 발행(기존 notification 인프라 재사용). Beat 시간대 분산 설계(다른 beat와 worker 큐 충돌 방지). 종료: 어제 깨끗했던 스캔이 새 NVD 데이터로 finding 추가되는 시나리오 e2e green. **dep: W6-#41 (shadow와 병렬 가능, #43a 전에 머지)**. | ⏳ 백로그 |
+| W6-#43a | **백엔드 DT 제거 (비가역, shadow 게이트 통과 후)**. `apps/backend/integrations/dt/` 전체 삭제(`__init__`·`breaker`·`client`·`health`), `tasks/dt_{resync,orphan_cleaner,orphan_cleanup,health}.py` 4개 삭제, `api/v1/admin/dt.py` + admin service 삭제, `core/config.py:434-465` 8 getter 제거, `tasks/celery_app.py:39-81` import + beat schedule 정리, `scan_source.py`에서 `build_client`/`breaker`/`dt_executor`/`_dt_upload`/`_poll_dt_findings_with_retry` 잔재 제거(stage 이름은 #43f까지 유지). `.env.example` DT 섹션 제거. `docker-compose.dt.yml` → #43d로 이관(release notes와 함께 발표). 백엔드 DT 테스트 8개 삭제. `audit_log` 의 DT 액션 타입은 **보존**(역사 사실). **종료**: `grep -rIn "from .*dt\|DT_" apps/backend/ \| grep -v trivy \| grep -v audit_log` = 0. **dep: W6-shadow + W6-#42**. **rev: security-reviewer**(권한 우회/잔여 endpoint 검증). | ⏳ 백로그 |
+| W6-#43b | **프론트엔드 DT 제거**. `features/admin/dt/` 디렉토리 삭제(`AdminDTPage`·`adminDTApi`·`useAdminDT`). `router.tsx` `/admin/dt` 라우트 제거 → 404 처리. `AppShell.tsx` admin nav DT 항목 제거. EN/KO 번역 키 정리 + `npm run i18n:check` 통과. Playwright `admin/dt` 시나리오 → 404 redirect 시나리오로 교체. visual-regression DT 스크린샷 baseline 삭제. **dep: W6-#43a**. | ⏳ 백로그 |
+| W6-#43c | **사용자/관리자 문서 교체 (EN/KO 동시)**. 신규 `docs-site/docs/admin-guide/vulnerability-data.md` (Trivy 통합 가이드: NVD/OSV/GHSA/EPSS/KEV 출처·DB 동기화·**air-gapped 운영 매뉴얼**·트러블슈팅). `admin-guide/dt-connector.md` 삭제 + sidebars.ts 정리. 핵심 4개 교체: `reference/{architecture,env-variables}.md`·`installation/{docker-compose,helm}.md`. 멘션 9개 정리: `intro`·`comparison`·`user-guide/{scans,vulnerabilities}`·`admin-guide/{disk-and-health,oncall-runbook}`·`ci-integration/github-actions`·`reference/glossary`·`contributor-guide/agent-team`. `release-notes/v2.0.0.md`는 **보존**(역사). 신규 `release-notes/v2.4.0.md` 초안(Breaking changes + Migration). 검증: docusaurus build EN/KO green · 깨진 링크 0 · i18n:check OK. **dep: W6-#43b**. **owner: doc-writer + i18n-specialist**. | ⏳ 백로그 |
+| W6-#43d | **배포·Helm·운영자 마이그레이션**. `scripts/install.sh:400` DT_API_KEY 안내 제거 + Trivy DB 안내 추가. `scripts/upgrade.sh` 신규 v2.3→v2.4 절: ① **Celery 큐 drain 대기**(인플라이트 스캔 보호) ② `dtrack-api` 컨테이너 정리(`docker rm`) ③ DT 볼륨 archive 안내(데이터 삭제는 사용자 confirm) ④ `.env` DT_* 자동 주석처리 ⑤ **부팅 후 1-click "전체 재매칭" admin UI 트리거 + 진행 표시**. `docker-compose.yml` DT 코멘트 6곳 제거. `docker-compose.dt.yml` 삭제. `charts/trustedoss/` 0.2.x → **0.3.0**: values·configmap-env·secret·deployment-beat·_helpers·README 6개 정리. `release-notes/v2.4.0.md` 최종화 + GitHub Release body draft. 검증: helm lint/template green · 시뮬레이션 upgrade(seed_demo v2.3.1→v2.4.0) 다운타임 ≤5분·데이터 유실 0. **dep: W6-#43c**. **owner: devops-engineer**. | ⏳ 백로그 |
+| W6-#43e | **admin/health Trivy DB 상태 패널 신설**. DT 패널이 사라진 자리에 Trivy DB 상태(last update timestamp·vuln count·DB version·다음 refresh 예정) 노출. BE: 신규 `GET /v1/admin/trivy/health`. FE: admin/health에 `TrivyDBPanel` 추가. EN/KO. **dep: W6-#43b (FE) + W6-#44 (DB 라이프사이클 데이터 소스)**. | ⏳ 백로그 |
+| **W6-#44** | **Trivy DB 라이프사이클 관리 (필수로 승격)**. worker 부팅 시 `trivy --download-db-only` 1회 + weekly 주기 refresh(beat). **air-gapped 사용자용 `TRIVY_DB_REPOSITORY` 미러 설정 + 별도 PV 마운트 매뉴얼**(#43c air-gapped 절과 정합). `trivy image`(컨테이너 스캔)와 `trivy sbom`(SCA 매칭)이 동일 DB 공유 → 동시성 lock 테스트. 종료: 오프라인 부팅 시에도 마지막 캐시로 매칭 가능 + 동시 호출 안전. **dep: W6-#40 (Trivy 어댑터 패턴 재사용)**. | ⏳ 백로그 |
+| W6-#43f (선택) | **stage rename — 장기 부채 청산**. `scan_source.py` stage 키 `dt_upload`/`dt_findings` → `sbom_upload`/`vuln_match`. WS frame · E2E harness · 진행 표시 i18n 동시 갱신. **별도 minor 릴리스(v2.4.1)에서**. 단기엔 가독성 부채 감수. **dep: W6-#43a 머지 후 임의 시점**. | ⏳ 백로그 |
+
+→ **현실적 일정**: prereq 0.5d + #45 0.5d + #40 1d + #41 1.5d + (shadow 캘린더 7d 병렬) + #42 1d + #43a 0.5d + #43b 0.5d + #43c 1d + #43d 0.5d + #43e 0.5d + #44 0.5d = **코드 8d + 캘린더 7d shadow** ≈ **2~2.5주 마일스톤**. 종료 시 W5 4개 항목 자동 해소.
+
+**롤백 비가역 지점**: shadow 게이트 통과 후 #43a 머지 순간부터 비가역. 그 전엔 Trivy 결과만 비교용으로 유지 → DT 코드 그대로라 언제든 회귀 가능.
+
+**사용자 확인 필요**: (1) 벤치 코호트 GitHub repos 5~10개 제공 가능 여부 — 없으면 OSS 인기 repo로 자체 구성 (2) air-gapped 사용자 존재 여부 — 있으면 #44 필수 강도 상향, 없으면 후순위 (3) shadow 7일 캘린더 수용.
 
 ---
 
@@ -255,6 +304,29 @@ v2.2 (순차)  a1→a2→a3 ─→ b1(rev)→b2→b3(rev)
         ▼
 v2.3 (순차)  s1(rev)→s2→s3   ‖   r1→r2→r3
    v2.3 게이트(§7)
+        │
+        ▼
+W6 (DT → Trivy)
+  prereq(v2.3.1 tag/Release, O1+O3 통합)
+        │
+        ▼
+  #45(ADR/CLAUDE.md) ─→ #40(어댑터, rev) ─→ #41(persist+벤치, rev)
+                                                  │
+                                                  ▼
+                                        shadow 7d (≥95% 게이트)
+                                                  │
+                                                  ▼
+                                       #42(재매칭) → #43a(BE 제거, rev) → #43b(FE)
+                                                                              │
+                                                                              ▼
+                                                                      #43c(문서) → #43d(배포)
+                                                                                       │
+                                                                                       ▼
+                                                                                    #43e(Trivy DB 패널)
+                                                                                       ‖
+                                                                                    #44(Trivy DB 라이프사이클, 필수)
+                                                                                       ‖
+                                                                                    #43f(stage rename, 선택·v2.4.1)
 ```
 
 ---
