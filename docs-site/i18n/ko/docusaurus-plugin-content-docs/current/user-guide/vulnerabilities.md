@@ -16,6 +16,15 @@ sidebar_position: 4
 개별 결과를 분류하는 엔지니어; SLA를 추적하는 보안 리드. VEX 상태 변경은 `developer` 이상; 일괄 억제는 `team_admin`.
 :::
 
+## "Vulnerability data unavailable" 배너 {#vuln-data-unavailable-banner}
+
+Vulnerabilities 탭 상단에 파란색 **Vulnerability data unavailable** 배너가 나타나는 경우는, 포털이 스캔에서 발견한 *컴포넌트* 는 보여줄 수 있지만 finding 이 0 건일 때 — 보통 설정된 Dependency-Track 미러에 아직 CVE 가 ingest 되지 않았기 때문(NVD 풀을 아직 돌리지 않은 신규 배포, 또는 운영자 측 장애)입니다. 배너는 원인을 설명하고 다음 절차를 안내합니다.
+
+- 관리자는 **Admin → DT** 에서 **Vulnerability database** 카운트(`vuln-db count`)와 **가장 최근 미러 sync** 타임스탬프를 확인해야 합니다. DT 는 도달 가능하지만 미러가 비어 있을 때 같은 패널이 `0 vulnerabilities` 경고 Alert 도 노출합니다([관리자 DT 커넥터 → Vulnerability sources](../admin-guide/dt-connector.md) 참고).
+- DT 가 0 이 아닌 vulnerability 카운트를 보고하면 다음 스캔에서 finding 이 잡힙니다 — 사용자 측 인앱 액션은 필요 없습니다. 배너는 적어도 한 건의 finding 이 반환되는 다음 페이지 로드에서 자동으로 사라집니다.
+
+배너는 *정보성* 이지 에러가 아닙니다 — 실제로 깨끗한 프로젝트의 `0 findings` 는 API 레벨에서 동일하게 보이므로, 메시지는 의도적으로 단정하지 않고 진단 표면을 가리킵니다.
+
 ## 심각도 모델
 
 | 심각도 | 색상 토큰 | CVSS v3 (일반) | 빌드 게이트 |
@@ -83,6 +92,22 @@ sidebar_position: 4
   <source src="/img/walkthroughs/walkthrough-cve-triage.mp4" type="video/mp4" />
   ![애니메이션 워크스루 — Vulnerabilities 탭 진입 후 finding 드로어 열기](/img/walkthroughs/walkthrough-cve-triage.gif)
 </video>
+
+## 일괄 상태 전이 {#bulk-transition}
+
+여러 finding 이 같은 디스포지션을 공유할 때 — 예를 들어 방금 업그레이드한 동일 라이브러리의 10 개 finding — 툴바의 **Bulk action bar** 로 드로어를 일일이 열지 않고 한 번에 전이할 수 있습니다.
+
+1. 행 단위 체크박스(또는 헤더 트라이-스테이트 체크박스로 현재 페이지의 모든 행 선택 — 필터·페이지가 변경되면 선택이 자동으로 클리어되어 stale 선택이 뷰를 건너 leak 되지 않음) 를 체크합니다.
+2. 표 상단의 액션 바가 선택 개수와, 선택된 행들의 *공통* 현재 상태에서 가능한 verdict 들을 보여줍니다. 선택이 상태를 섞어 합법적 다음 상태의 교집합이 비면 verdict 버튼이 비활성화되고 툴팁이 이유를 설명합니다.
+3. verdict 를 선택하고 justification 을 한 번만 입력(같은 텍스트가 모든 행에 적용)한 뒤 submit.
+
+응답은 **행 단위** 입니다 — 선택된 모든 finding 이 결과 alert 에 상태 항목을 받습니다 — `transitioned`(상태 변경), `already_at_target`(스킵, no-op), 혹은 `illegal_transition` / `forbidden_transition` 같은 명시적 사유. alert 가 닫히면 표가 새 상태를 반영하며 reload 됩니다.
+
+서버 쪽에서 요청은 선택된 finding id 목록·target status·justification 을 담은 단일 `POST /v1/projects/{id}/vulnerabilities:bulk-transition` 호출입니다. 엔드포인트는 영향받는 행을 `SELECT ... FOR UPDATE` 로 락(동시 submit 시 데드락 방지를 위해 id 정렬)하고, 행 단위 엔드포인트가 사용하는 동일 상태 머신 가드를 적용하며, 실제 전이된 finding 당 audit-log 행 1 개를 `before_flush` 훅으로 emit 합니다. 한 호출 당 상한은 **200 ids** 입니다 — 그보다 큰 선택은 페이지를 넘기며 청크 단위로 submit 하세요.
+
+:::caution Suppressed 전이는 여전히 `team_admin` 권한 필요
+bulk 엔드포인트는 행 단위 엔드포인트의 권한을 **확장하지 않습니다**. 선택된 *어느* 행이라도 `Suppressed` 로 옮기려면 여전히 프로젝트 팀의 `team_admin` (또는 그 이상) 권한이 필요합니다 — `developer` 가 `→ Suppressed` 전이를 포함한 bulk 요청을 submit 하면 해당 행들은 `forbidden_transition` 으로 보고되고, 같은 submit 의 다른 행들은 정상 완료됩니다.
+:::
 
 ## EPSS — 악용 확률
 
@@ -225,7 +250,7 @@ curl -sS \
 
 - **직접 의존성** — 직접 선언한 컴포넌트(그래프 깊이 `1`)이므로 본인 매니페스트에서 즉시 버전을 올릴 수 있습니다. 전이 의존성은 배지가 없습니다 — 그것을 끌어오는 직접 부모를 업그레이드해 고칩니다([직접 vs. 전이](./components-and-licenses.md#dependency-depth) 참고).
 - **최고 심각도** — 컴포넌트의 미해결 결과 중 가장 심각한 CVE.
-- **최고 EPSS** — 그중 가장 높은 [악용 가능성](#epss--악용-가능성).
+- **최고 EPSS** — 그중 가장 높은 [악용 확률](#epss--악용-확률).
 
 이 신호들은 추천의 **정렬**(직접·고EPSS·심각 업그레이드를 먼저)에 쓰일 뿐, 권장 *버전* 자체를 바꾸지 않습니다.
 

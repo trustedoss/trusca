@@ -16,6 +16,15 @@ The **Vulnerabilities** tab lists every open CVE (Common Vulnerabilities and Exp
 Engineers triaging individual findings; security leads tracking SLA. Mutating the VEX status requires `developer` or higher; bulk suppression requires `team_admin`.
 :::
 
+## "Vulnerability data unavailable" banner {#vuln-data-unavailable-banner}
+
+A blue **Vulnerability data unavailable** banner appears at the top of the Vulnerabilities tab when the portal can show you the *components* a scan discovered but no findings — typically because the configured Dependency-Track mirror has zero CVEs ingested yet (a fresh deployment that has not run an NVD pull yet, or an operator-side outage). The banner explains the cause and lists the next steps:
+
+- An admin should check **Admin → DT** for the **Vulnerability database** count (`vuln-db count`) and the **most-recent mirror sync** timestamp. The same panel also surfaces a `0 vulnerabilities` warning Alert when DT is reachable but its mirror is empty (see [admin DT connector → Vulnerability sources](../admin-guide/dt-connector.md)).
+- Once DT reports a non-zero vulnerability count, the next scan picks up the findings — no in-app action is required from you. The banner clears automatically on the next page load that returns at least one finding.
+
+The banner is *informational*, not an error — `0 findings` on a project that is actually clean looks identical at the API level, so the message intentionally points you at the diagnostic surfaces instead of asserting a verdict.
+
 ## Severity model
 
 | Severity | Color token | CVSS v3 (typical) | Build gate |
@@ -88,6 +97,22 @@ The walkthrough below opens a project, switches to **Vulnerabilities**, and clic
   <source src="/img/walkthroughs/walkthrough-cve-triage.mp4" type="video/mp4" />
   ![Animated walkthrough — opening the Vulnerabilities tab and the finding detail drawer](/img/walkthroughs/walkthrough-cve-triage.gif)
 </video>
+
+## Bulk-transition findings {#bulk-transition}
+
+When several findings share the same disposition — for example, ten findings all on the same library that you've just upgraded — the toolbar's **Bulk action bar** lets you transition them in one shot instead of opening each drawer.
+
+1. Tick the row-level checkboxes (or the header tri-state checkbox to select every row on the current page — selection clears automatically when you change filter or page so a stale selection cannot leak across views).
+2. The action bar at the top of the table shows the selected count and the available verdicts for the *common* current state of the selected rows. If the selection mixes states whose legal next-state intersection is empty, the verdict buttons are disabled with a tooltip explaining why.
+3. Pick a verdict, enter the justification once (the same text is applied to every row), and submit.
+
+The response is **per-row**: every selected finding gets a status entry in the result alert — `transitioned` (status flipped), `already_at_target` (skipped, no-op), or an explicit reason like `illegal_transition` / `forbidden_transition`. The page reloads the table once the alert closes so the new states are reflected.
+
+Server-side the request is a single `POST /v1/projects/{id}/vulnerabilities:bulk-transition` call with the selected finding ids, a target status, and the justification. The endpoint locks the affected rows with `SELECT ... FOR UPDATE` (id-sorted to prevent deadlocks under concurrent submissions), runs the same state-machine guard the per-row endpoint uses, and emits one audit-log row per actually-transitioned finding via the `before_flush` hook. The cap is **200 ids per call** — for selections larger than that, page through and submit in chunks.
+
+:::caution Suppressed transitions still require `team_admin`
+The bulk endpoint does **not** widen the permissions of the per-row endpoint. Moving *any* selected finding into `Suppressed` still requires `team_admin` (or higher) on the project's team — a `developer` submitting a bulk request that includes a `→ Suppressed` transition will see those rows reported as `forbidden_transition` while the other rows in the same submission complete normally.
+:::
 
 ## EPSS — exploitation probability
 

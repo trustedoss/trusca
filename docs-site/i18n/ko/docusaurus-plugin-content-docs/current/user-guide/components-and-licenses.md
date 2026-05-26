@@ -21,11 +21,12 @@ sidebar_position: 3
 컬럼:
 
 - **컴포넌트 (Component)** — 패키지 이름(예: `lodash`, `org.springframework:spring-web`).
+- **타입 (Type)** — **Direct** / **Transitive** / `—`. 의존성 그래프 깊이를 요약한 색상 배지: `Direct`(깊이 1, 본인이 선언) 대 `Transitive`(깊이 2+, 다른 패키지가 끌어옴), `—` 는 v2.2 이전 스캔 또는 그래프를 기록하지 못한 생태계. [직접 vs. 전이](#dependency-depth) 참고.
 - **버전 (Version)** — 매니페스트나 락파일에서 고정된 버전.
 - **라이선스 (License)** — 컴포넌트에 부여된 라이선스. 의존성의 경우 `cdxgen` 이 패키지 메타데이터에서 읽은 **declared** 라이선스입니다. detected·concluded 와의 관계는 [declared vs. detected](#declared-vs-detected) 참고. 빌드 게이트가 사용하는 값입니다.
+- **Usage** — **Required** / **Optional** / `—`. `cdxgen` 이 본 컴포넌트로 가는 *가장 얕은* 경로에서 기록한 의존성 스코프(같은 컴포넌트가 여러 경로로 도달 가능하면 가장 높은 스코프 — `Required` > `Optional` — 가 이김). `—` 는 스캐너가 스코프를 emit 하지 않은 경우. Optional 의존성은 Required 와 같은 법적 의무를 가지는 경우가 많지만, **Required / Optional** 구분은 라이선스 컴플라이언스 부담에 매핑됩니다 — 사용하지 않는 `Optional` extra 는 깊이 박힌 required transitive 의존성보다 제거 비용이 낮습니다.
 - **심각도 (Severity)** — 본 컴포넌트의 미해결 CVE 중 가장 높은 심각도(범례를 통해 라이선스 분류 색상도 함께 표시).
 - **CVEs** — 본 컴포넌트의 미해결 취약점 수(클릭 시 사전 필터링된 Vulnerabilities 탭으로 이동).
-- **Depth / Direct (깊이/직접)** — 의존성 그래프에서의 거리: `1` = 직접 선언한 **직접(direct)** 의존성, `2+` = 다른 의존성이 끌어온 **전이(transitive)** 의존성. v2.2 이전 스캔은 비어 있습니다. [직접 vs. 전이](#dependency-depth) 참고.
 
 테이블은 가상화되어 수천 개의 컴포넌트도 부드럽게 스크롤됩니다.
 
@@ -34,17 +35,19 @@ sidebar_position: 3
 상단 인라인 필터 바:
 
 - **검색 (Search)** — `name@version` 부분 일치.
+- **의존성 타입 (Dependency type)** — 3-스테이트 세그먼트 컨트롤(`Any` / `Direct only` / `Transitive only`). Direct-only 세그먼트는 API 의 `?direct=true` 로, Transitive-only 는 `?direct=false` 로 매핑됩니다.
+- **Usage** — 다중 선택(`Required` / `Optional`). 둘 다 선택하면 필터 없음과 동일합니다. 미지값만 선택한 쿼리는 422 거부 대신 empty page 로 드롭됩니다(심각도·라이선스 카테고리 필터 시멘틱과 일치).
 - **심각도 (Severity)** — 다중 선택 배지(Critical / High / Medium / Low / Info).
 - **라이선스 카테고리 (License category)** — 다중 선택(`Allowed` / `Conditional` / `Forbidden` / `Unknown`).
 - **정렬 (Sort)** + **순서 (order)** — 컬럼 기반 정렬과 오름·내림 토글.
 
-필터는 결합됩니다. URL이 갱신되어 필터된 뷰를 공유할 수 있습니다.
+필터는 결합됩니다. URL(`?direct=…`, `?dependency_scope=…`, …)이 갱신되어 필터된 뷰를 공유할 수 있습니다.
 
 ## 드로어 — 컴포넌트 상세
 
 행을 클릭하면 우측 슬라이드 드로어가 열립니다.
 
-- **식별자 (Identity)** — `purl`(Package URL), 상위 홈페이지, 레포 URL.
+- **식별자 (Identity)** — `purl`(Package URL), 상위 홈페이지, 레포 URL. `purl` 아래 두 줄에 컴포넌트의 **타입 (Type)**(Direct / Transitive / `—`) 과 **Usage**(Required / Optional / `—`) 배지가 표시되며, 행에 나오는 값과 동일합니다.
 - **모든 라이선스 결과** — 각 결과에 **출처 배지**(**Declared** / **Detected** / **Concluded**)가 표시됩니다. **Detected** 결과에는 scancode 가 라이선스를 발견한 first-party 파일의 `source_path` 도 함께 표시됩니다. [declared vs. detected](#declared-vs-detected) 참고.
 - **의무사항** — 컴포넌트의 라이선스가 발생시킨 의무([의무사항](#의무사항) 참고).
 - **CVE** — 미해결·해결된 결과, Vulnerability 상세로 딥링크.
