@@ -1,7 +1,8 @@
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, ExternalLink } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
@@ -18,6 +19,7 @@ import { RecentScansTable } from "@/features/projects/components/RecentScansTabl
 import { RiskAxes } from "@/features/projects/components/RiskAxes";
 import { SeverityDistributionChart } from "@/features/projects/components/SeverityDistributionChart";
 import { ProblemError } from "@/lib/problem";
+import type { ProjectPublic } from "@/lib/projectsApi";
 
 /**
  * OverviewTab — Phase 3 PR #10.
@@ -29,6 +31,14 @@ import { ProblemError } from "@/lib/problem";
 
 export interface OverviewTabProps {
   projectId: string;
+  /**
+   * The current project, when already resolved by the parent (the detail page
+   * always fetches it for the breadcrumb / header). Threaded through so the
+   * P2 #1 "Project info" card can render description / git_url / branch /
+   * visibility without a second round-trip. Optional — when absent the card
+   * is hidden (no double-fetch).
+   */
+  project?: ProjectPublic | null;
   /**
    * Called when a row in the recent-scans table is clicked. The parent uses
    * it to re-open the live progress drawer for that scan. Omit to render the
@@ -43,7 +53,12 @@ export interface OverviewTabProps {
   scanId?: string;
 }
 
-export function OverviewTab({ projectId, onSelectScan, scanId }: OverviewTabProps) {
+export function OverviewTab({
+  projectId,
+  project,
+  onSelectScan,
+  scanId,
+}: OverviewTabProps) {
   const { t } = useTranslation("project_detail");
   const overview = useProjectOverview(projectId, scanId);
 
@@ -90,6 +105,111 @@ export function OverviewTab({ projectId, onSelectScan, scanId }: OverviewTabProp
       data-total-components={data.total_components}
       className="grid gap-4 p-6 md:grid-cols-2"
     >
+      {/* P2 #1 — Project info card. Description / repo / branch / visibility
+          come from the already-fetched ProjectPublic so this is a zero-cost
+          addition. Card is hidden when the parent didn't pass `project` (e.g.
+          standalone tests). Spans both grid columns so long descriptions or
+          git URLs don't get truncated next to the risk gauge. */}
+      {project ? (
+        <Card className="md:col-span-2" data-testid="overview-info-card">
+          <CardHeader>
+            <CardTitle className="text-base">
+              {t("overview.info_card.title", { defaultValue: "Project info" })}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <dl className="grid gap-3 text-sm md:grid-cols-2">
+              <div className="flex flex-col gap-1">
+                <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                  {t("overview.info_card.description", {
+                    defaultValue: "Description",
+                  })}
+                </dt>
+                <dd className="text-foreground">
+                  {project.description ?? (
+                    <span className="text-muted-foreground">
+                      {t("overview.info_card.no_description", {
+                        defaultValue: "No description set.",
+                      })}
+                    </span>
+                  )}
+                </dd>
+              </div>
+              <div className="flex flex-col gap-1">
+                <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                  {t("overview.info_card.git_url", {
+                    defaultValue: "Repository",
+                  })}
+                </dt>
+                <dd className="text-foreground">
+                  {project.git_url ? (
+                    <a
+                      href={project.git_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 break-all font-mono text-xs text-foreground hover:underline"
+                      data-testid="overview-info-git-url"
+                    >
+                      <span>{project.git_url}</span>
+                      <ExternalLink className="h-3 w-3 shrink-0" aria-hidden />
+                    </a>
+                  ) : (
+                    <span className="text-muted-foreground">
+                      {t("overview.info_card.no_git_url", {
+                        defaultValue: "No git URL configured.",
+                      })}
+                    </span>
+                  )}
+                </dd>
+              </div>
+              <div className="flex flex-col gap-1">
+                <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                  {t("overview.info_card.default_branch", {
+                    defaultValue: "Default branch",
+                  })}
+                </dt>
+                <dd className="font-mono text-xs text-foreground">
+                  {project.default_branch ?? (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </dd>
+              </div>
+              <div className="flex flex-col gap-1">
+                <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                  {t("overview.info_card.visibility", {
+                    defaultValue: "Visibility",
+                  })}
+                </dt>
+                <dd>
+                  <Badge
+                    variant="outline"
+                    className="font-mono text-xs"
+                    data-testid="overview-info-visibility"
+                    data-visibility={project.visibility}
+                  >
+                    {t(
+                      `overview.info_card.visibility_value.${project.visibility}`,
+                      { defaultValue: project.visibility },
+                    )}
+                  </Badge>
+                  {project.has_git_credential ? (
+                    <Badge
+                      variant="outline"
+                      className="ml-2 border-emerald-300 bg-emerald-50 text-xs text-emerald-800"
+                      data-testid="overview-info-has-credential"
+                    >
+                      {t("overview.info_card.credential_configured", {
+                        defaultValue: "Credential configured",
+                      })}
+                    </Badge>
+                  ) : null}
+                </dd>
+              </div>
+            </dl>
+          </CardContent>
+        </Card>
+      ) : null}
+
       <Card data-testid="overview-risk-card">
         <CardHeader>
           <CardTitle className="text-base">

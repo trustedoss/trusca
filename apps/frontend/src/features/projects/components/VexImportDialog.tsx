@@ -157,6 +157,8 @@ export function VexImportDialog({
             >
               {t("vulnerabilities.vex.import_file_label")}
             </label>
+            {/* P2 #9 — hide the native file input (its label is OS-locale) and
+                drive a translated Button + filename strip instead. */}
             <input
               ref={fileInputRef}
               id={fileInputId}
@@ -168,8 +170,31 @@ export function VexImportDialog({
                 mutation.reset();
                 setFile(e.target.files?.[0] ?? null);
               }}
-              className="block w-full rounded-md border border-input bg-background text-sm file:mr-3 file:border-0 file:bg-muted file:px-3 file:py-2 file:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="sr-only"
             />
+            <div className="flex items-center gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+                data-testid="vex-import-file-pick"
+              >
+                {t("vulnerabilities.vex.choose_file", {
+                  defaultValue: "Choose file",
+                })}
+              </Button>
+              <span
+                className="truncate text-xs text-muted-foreground"
+                data-testid="vex-import-file-name"
+              >
+                {file
+                  ? file.name
+                  : t("vulnerabilities.vex.no_file_chosen", {
+                      defaultValue: "No file chosen",
+                    })}
+              </span>
+            </div>
             <p
               id={`${fileInputId}-hint`}
               className="text-xs text-muted-foreground"

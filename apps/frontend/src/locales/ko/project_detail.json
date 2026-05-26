@@ -55,6 +55,20 @@
     "none": "리스크 없음"
   },
   "overview": {
+    "info_card": {
+      "title": "프로젝트 정보",
+      "description": "설명",
+      "no_description": "설명이 설정되지 않았습니다.",
+      "git_url": "리포지토리",
+      "no_git_url": "git URL이 설정되지 않았습니다.",
+      "default_branch": "기본 브랜치",
+      "visibility": "공개 범위",
+      "visibility_value": {
+        "team": "팀 전용",
+        "organization": "조직 공개"
+      },
+      "credential_configured": "인증 정보 설정됨"
+    },
     "risk_card": {
       "title": "리스크 점수",
       "subtitle": "최근 스캔의 컴포넌트 {{total}}개를 기반으로 산출되었습니다.",
