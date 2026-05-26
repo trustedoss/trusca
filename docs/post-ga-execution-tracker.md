@@ -17,13 +17,16 @@
 | v2.1 | B. 평가·배포 경로 | 5 | 5 | ✅ 완료 (#146,#147,#149,#151,#152) |
 | v2.2 | 리메디에이션 + 정책 | 10 | 10 | ✅ 완료 (#153,154,156,157,158,159,160,161,162,163,164) — b/c 전 트랙 + b3-UI |
 | v2.3 | 무결성 + 우선순위화 | 6 | 5 | 🟢 마일스톤 충족 (s1·r1·s2·r2·s3 머지; r3=선택·종료조건 초과) |
+| §0.5 | Wave 1~3 (BD 정합·발견성) | 7 | 7 | ✅ 완료 (W1 #29·#34·#35 · W2 #31·#33 · W3 #30·#32) |
 | — | 운영 레인 (외부 블로커) | 4 | 0 | ⬜ 대기 |
 
 범례: ⬜ 대기 · 🟦 진행중 · ✅ 완료 · ⛔ 블로킹
 
+**현재 상태(2026-05-26):** v2.1·v2.2·v2.3 + §0.5 Wave 1~3 모두 종결. 다음 진행은 **사용자 발견 불편/버그 인테이크 모드** — 트래커가 우선이 아니라 사용자가 핸즈온 사용 중 보고하는 항목을 받아 갭 분석 후 PR scope로 좁힌다. 운영 레인 O1~O4만 외부 블로커 대기.
+
 ---
 
-## 0.5 마일스톤 후 — 수동 테스트 발견 + Black Duck 정합 (Wave 1~4)
+## 0.5 마일스톤 후 — 수동 테스트 발견 + Black Duck 정합 (Wave 1~3)
 
 > 출처: 2026-05-25~26 사용자 핸즈온 테스트(실제 github repo 스캔) + Black Duck 6화면 UX 갭분석.
 > 태스크 #29~#35가 PR-단위 SoT. **버전 엔티티는 보류** — "릴리스 = 성공한 스캔" 모델 유지(사용자 "릴리스마다 해야해" 확정), #28(스냅샷 조회+diff)로 충족, 발견성은 #30로 보완.
@@ -39,7 +42,6 @@
 | W2 | **#33** | (정정) "조치신호(Exploitable/Solution)+CVSS 벡터"는 **이미 구현됨** — Exploitable=`status='exploitable'` 7-state enum + 드로어 status 배지, Solution=v2.2-a3 `upgrade_recommendation` + `DrawerUpgradeSection`, CVSS 벡터=`Vulnerability.cvss_vector` + 드로어 `cvss_vector_label`. **실제 남은 갭**: (a) 목록 License 리스크축 ✅ 완료(2026-05-26). (b) **Bulk actions** ✅ 완료(2026-05-26): `POST /v1/projects/{id}/vulnerabilities:bulk-transition` 엔드포인트(per-row 결과 배열·단일 페이지·200 cap, D-bulk). BE: `bulk_transition_status` 서비스(`FOR UPDATE` 행락 + 정렬 ID로 데드락 방지, 단일 커밋·per-row 매트릭스+role 게이트, before_flush 리스너로 자동 audit) + Pydantic 스키마 + 라우터(envelope 200, 영역 422는 빈/캡초과/미지 enum, cross-team은 envelope 404 existence-hide). FE: `VulnerabilityBulkActionBar` + 행/헤더 체크박스(tri-state indeterminate selectAll, 단일 페이지 cap=200) + `useBulkTransitionVulnerabilities` invalidate (선택 변경 시 자동 클리어), EN/KO 신규 `vulnerabilities.bulk.*` 14키. 게이트: ruff/mypy clean·pytest 164(+20)·vitest 918(+5)·typecheck clean·lint 0 errors·i18n:check OK·openapi snapshot regen 1줄. | ✅ 완료(2026-05-26) |
 | **W3 통합/발견성** | #32 | Reports 센터 탭 — **다운로드/익스포트 이력 통합 + 4영역 진입점 deeplink**(생성 UI는 도메인 탭 유지; 2026-05-26 사전 갭 분석으로 좁힘, [[feedback-tracker-text-may-overstate-gaps]]). **BE ✅ `dbd8c31`**: `report_downloads` 테이블(0025, append-only, ENUM `report_type_enum`, FK 4개 CASCADE/SET NULL, 3 compound 인덱스) + `record_report_download`(best-effort emit, 실패 swallow, UA `mask_pii`+512자, XFF-aware IP) + 4 read-only 엔드포인트 emit(NOTICE/SBOM/Vuln-PDF/VEX export; VEX import는 audit_log 자연 흡수) + `GET /v1/projects/{id}/reports/history`(404 existence-hide, OUTER JOIN user, 페이지 1..200 기본 50). 게이트 ruff/mypy(417) clean·신규 unit 21+integration 9·OpenAPI 1엔트리 추가·alembic head 0025. **FE ✅ `689baa4`**: 신규 `Reports` 탭(sbom↔source 사이, `?tab=reports` URL 거울) — 좌 4 generate 카드(NOTICE/SBOM/Vuln-PDF/VEX) `setSearchParams({tab})`로 도메인 탭 deeplink + `?scan=` 보존, 우 이력 테이블(When/Who/Type/Format/Scan/Size + type MultiSelect 필터 + URL state `?rpt_type=`/`?rpt_page=` + Prev/Next 페이저). 404 일반화("Reports unavailable" — existence-hide), 빈 상태·스켈레톤·429 처리. `reportHistoryApi.ts`+`useReportHistory.ts`(`paramsSerializer: {indexes:null}`로 `?type=a&type=b` 직렬화, `keepPreviousData`). i18n EN/KO 미러(plural 미사용). 하네스 3 verb 추가(`selectReportsTab`/`expectReportsTabReady`/`clickReportsGenerateCard`). 게이트 typecheck clean·lint 0 errors·i18n:check OK·vitest 926(+8). Playwright `reports.spec.ts` 1 시나리오(spec만, 실행 후속). **부속(분리)**: Vuln PDF `scan_id` pin 미지원 → #32c 또는 #30과 묶음. | ✅ 완료(2026-05-26) |
 | W3 | #30 | 프로젝트 목록 행에 릴리스/스캔 수 표시(발견성). 2026-05-26 사전 갭 분석으로 BE+FE 양쪽 진짜 갭 확인(트래커 본문 정확). **BE ✅ `6255700`**: `project_list_enrichment._scan_counts_map` 신규(단일 GROUP BY로 `scan_count`/`release_count`/`MAX(created_at)` 동시 산출, `ix_scans_project_created_at` 활용·N+1 없음) + `enrich_project_rows` 3-튜플 반환 + `ProjectPublic`에 `scan_count`/`release_count: int = 0`·`last_scan_at: datetime|None = None` 추가(list endpoint에서만 채움, detail은 default). 게이트 ruff/mypy(417) clean·pytest 38(+5)·alembic 0025 유지·OpenAPI 스냅샷 무영향. **FE ✅ `971af25`**: `ProjectListPage.tsx` `<ScanMetadataSummary>` 컴포넌트(severity 뒤·status badge 앞 인라인) — `Rel 12 · Scn 47 · 2h ago` (font-mono text-xs `text-muted-foreground`, abs ISO `title` tooltip, never-scanned 행은 미렌더). `formatRelativeToNow` 헬퍼 재사용. i18n EN/KO 4키(`row.releases_abbrev`·`row.scans_abbrev`·`row.never_scanned`·`row.scan_meta_aria`, plural 미사용). 정렬 정정(`compareByLatestScan` updated_at→last_scan_at)은 scope 밖 후속. 게이트 typecheck clean·lint 0 errors·i18n:check OK·vitest 929(+3). | ✅ 완료(2026-05-26) |
-| **W4 후속/위생** | #26·#27·#19~#22 | vex_import 앵커(#24 동일 클래스·보안검토) · vuln 툴바 레이아웃 · 콘솔 위생/임계/정리/housekeeping | ⬜ 대기 |
 
 **#29 구현 요지(완료):** `services/project_detail_service.py::get_project_overview` — `recent_stmt`를 `if aggregate_scan_id is not None` 블록 밖으로 빼 **성공 스냅샷 없어도(첫 스캔 queued/running) recent_scans를 항상 조회**. 분포 집계만 스냅샷에 의존. 프론트 `ProjectDetailPage` 헤더에 queued/running 스캔용 영속 칩(`project-detail-active-scan`) 추가 → 클릭 시 진행 드로어 재오픈. 가드: `test_latest_succeeded_scan_anchoring.py`(running-only overview), `tests/unit/ProjectDetailPage.test.tsx`(칩 3케이스).
 
@@ -262,6 +264,7 @@ v2.3 (순차)  s1(rev)→s2→s3   ‖   r1→r2→r3
 
 ## 9. 세션 핸드오프 규약
 
-- 세션 종료 시 `docs/sessions/<YYYY-MM-DD>-v2.x-<topic>.md` 작성(`v2-execution-plan.md` §7 양식).
-- 다음 세션 첫 메시지: "이 트래커(`docs/post-ga-execution-tracker.md`) §0 대시보드 + 미체크 PR부터 이어가자."
+- 세션 종료 시 `docs/sessions/<YYYY-MM-DD>-<topic>.md` 작성(`v2-execution-plan.md` §7 양식).
+- 핸드오프 "다음 세션" 섹션의 후속 항목은 **라벨만 적지 말 것** — 다음 세션이 단독으로 의도·범위·출발 파일/심볼을 파악할 수 있는 수준으로 풀어 쓴다([[feedback-handoff-next-session-must-be-self-sufficient]]). 의도가 정해지지 않은 라벨은 트래커·핸드오프 어디에도 두지 않는다.
+- 다음 세션 첫 메시지(인테이크 모드): "사용자가 핸즈온에서 발견한 불편함/버그를 보고하면 인테이크 → 코드 대조 → PR scope로 좁힌다." 트래커 §0.5는 Wave 1~3까지 모두 ✅ 종결됐으므로 다음 항목은 사용자 보고로 정의된다.
 - **이 문서의 체크박스·대시보드가 항상 현재 진실.**

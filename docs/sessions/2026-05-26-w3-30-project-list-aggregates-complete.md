@@ -1,7 +1,7 @@
-# 핸드오프 — W3 #30 프로젝트 목록 집계 완료, W3 다음 단계 (2026-05-26)
+# 핸드오프 — W3 #30 프로젝트 목록 집계 완료 · §0.5 Wave 1~3 전체 종결 · 다음 세션 인테이크 모드 (2026-05-26)
 
-> SoT는 [`post-ga-execution-tracker.md`](../post-ga-execution-tracker.md) §0.5. 이 문서는 그 세션 스냅샷이다.
-> 직전 세션 핸드오프: [`2026-05-26-w3-32-reports-center-complete.md`](./2026-05-26-w3-32-reports-center-complete.md) — W3 #32 완료, #30을 이 세션에서 BE+FE 모두 종료.
+> SoT는 [`post-ga-execution-tracker.md`](../post-ga-execution-tracker.md) §0 대시보드 + §0.5. 이 문서는 그 세션 스냅샷이다.
+> 직전 세션 핸드오프: [`2026-05-26-w3-32-reports-center-complete.md`](./2026-05-26-w3-32-reports-center-complete.md) — W3 #32 완료. 본 세션에서 #30(BE+FE) 종료 + §0.5의 의도 불명확 라벨 라인(`W4 후속/위생 | #26·#27·#19~#22`) 제거 + 트래커·핸드오프 정리.
 
 ---
 
@@ -43,36 +43,51 @@
 - **게이트**: typecheck clean · lint 0 errors(기존 23 warnings 유지) · i18n:check OK · vitest 929(was 926, +3).
 - **UI 수동 점검**: vitest only — 데모 시드 패스워드 mismatch로 live `/v1/projects` curl 실패. BE wire shape는 `6255700`의 단위·통합 테스트로 검증 완료.
 
-### 트래커 갱신 (`bf9a728`)
+### 트래커 갱신 (`bf9a728`) + 본 세션 정리
 
-§0.5 #30 ⬜ 대기 → ✅ 완료, BE/FE 양쪽 구현 요지·게이트·후속(정렬 정정) 본문에 압축.
+- `bf9a728`: §0.5 #30 ⬜ → ✅, BE/FE 구현 요지·게이트 본문 압축.
+- **세션 후반 정리(별도 commit 예정)**: §0.5 헤더 `Wave 1~4` → `Wave 1~3`. 의도 불명확 라벨 라인 "W4 후속/위생 | #26·#27·#19~#22" **제거**([[feedback-handoff-next-session-must-be-self-sufficient]] 적용). §0 대시보드에 `§0.5 Wave 1~3` 행 추가 + "현재 상태: 인테이크 모드" 안내. §9 핸드오프 규약을 "라벨 단독 금지 + 다음 세션 인테이크 모드" 문구로 갱신.
 
 ## 트래커 §0.5 갱신
 
 - #30 → ✅ 완료 (2026-05-26): BE `6255700` + FE `971af25` + 트래커 `bf9a728`.
-- W3 진행 2/2: #32 ✅ · #30 ✅. **W3 완료**.
+- W3 진행 2/2: #32 ✅ · #30 ✅. **W3 완료. §0.5 Wave 1~3 전체 종결(7/7 태스크).**
+- 의도 불명확 라벨 라인 `W4 후속/위생` 제거 — 트래커는 의도가 정해진 항목만 보존한다.
 
-## 다음 세션: **W4 후속/위생** 또는 부속 후속
+## 다음 세션: **사용자 발견 불편/버그 인테이크 모드**
 
-### 우선순위 후보
+§0.5 트래커 기반 진행은 W3 종결로 일단락. 다음 세션은 트래커 우선이 아니라 **사용자가 핸즈온 사용 중 발견한 불편함·버그를 받아 처리**하는 모드로 진행한다.
 
-1. **W4 후속/위생** — `#26`(vex_import 앵커 보안검토 · #24 동일 클래스) · `#27`(vuln 툴바 레이아웃) · `#19~#22`(콘솔 위생/임계/정리/housekeeping). 트래커 §0.5 라인 42.
-2. **#32c 부속** — Vuln PDF `scan_id` pin 미지원(스냅샷 보기에서 PDF 무력화). 직전 #32 핸드오프에서 분리한 작은 BE 변경.
-3. **#30 정렬 정정 후속** — `compareByLatestScan`의 `updated_at` fallback을 실제 `last_scan_at` 기반으로 정정 + `compareByRisk`도 severity_summary 합산 등 실 의미 부여. FE only, 작은 변경.
-4. **OpenAPI 라우터 노출** — 본 PR이 응답 필드 3개를 추가했지만 OpenAPI 스냅샷이 path/query만 추적해 drift 안 잡힘. 스냅샷 generator를 schema-aware로 확장하는 follow-up은 별도 위생 작업.
+### 인테이크 패턴
 
-### 사전 갭 분석 (각 후보별 착수 전 검증 필수)
+1. 첫 메시지에서 사용자가 발견한 항목을 자유 형식으로 보고(증상·재현·파일·스크린샷 등).
+2. 코드(`apps/backend`/`apps/frontend`)와 직전 트래커 항목들을 grep으로 대조해 **진짜 갭 vs 이미 처리됨 vs 사용자 환경 이슈** 분류.
+3. 진짜 갭이면 PR scope 좁히고 단일 또는 BE→FE 분리 PR로 진행([[feedback-tracker-text-may-overstate-gaps]]).
+4. 처리 항목은 §0.5에 새 라인으로 등재할 때 **라벨만 있는 한 줄 금지** — 의도·범위·출발 파일/심볼을 함께([[feedback-handoff-next-session-must-be-self-sufficient]]).
 
-- W4 후속의 #26·#27·#19~#22 중 어느 것이 진짜 갭이고 어느 것이 이미 다른 PR에 흡수됐는지 [[feedback-tracker-text-may-overstate-gaps]] 패턴 적용 필요.
-- #32c는 `apps/backend/api/v1/reports.py:131`의 Vuln PDF endpoint에 `scan_id: uuid.UUID | None = Query(None)` 추가 + `latest_succeeded_scan_id` 해석 분기 추가가 전부일 가능성(작음).
+### 사용자에게 인테이크 시 묻는 것 (필요한 경우)
+
+- 어디서(어느 화면·엔드포인트)?
+- 무엇이 기대대로 동작 안 하는가?
+- 재현 가능한가? 데모 시드 데이터에서? 직접 시드한 데이터에서?
+- 우선순위(blocker / 큰 불편 / 사소함)?
+
+### 알려진 부속(사용자 보고 우선순위와 무관, 인테이크 후 채택 여부 결정)
+
+- **#32c 부속** — Vuln PDF `scan_id` pin 미지원(직전 #32 핸드오프에서 분리). 출발: `apps/backend/api/v1/reports.py:131`. 작은 BE 변경 후보.
+- **#30 정렬 정정 후속** — `ProjectListPage.tsx` `compareByLatestScan`의 `updated_at` fallback을 본 PR이 추가한 `last_scan_at`으로 정정. `compareByRisk`도 severity_summary 합산으로 실 의미 부여 가능. FE only 작은 변경 후보.
+
+위 두 항목은 사용자 보고에서 동일/유사 불편이 언급될 경우에만 묶어 처리한다. 사용자가 다른 더 시급한 항목을 보고하면 후순위로 미룬다.
 
 ### 운영 레인 미진행 (외부 블로커 대기)
 
-- O1·O2·O3·O4.
+- O1·O2·O3·O4. 인테이크와 무관, 코드 트랙과 비동기.
 
 ### 시작 절차 (다음 세션 첫 메시지)
 
-"트래커 §0.5 W4 후속(#26/#27/#19~#22) 중 진짜 갭부터. 핸드오프 `docs/sessions/2026-05-26-w3-30-project-list-aggregates-complete.md` §"다음 세션"의 우선순위 후보별 사전 갭 분석부터 실코드 검증 — 각 태스크의 트래커 본문이 오버스테이트한 갭이 있으면 정정한다. 진짜 갭 기준으로 PR scope 좁힌다."
+사용자가 직접 보고할 첫 항목을 받아 인테이크 → 분류 → PR scope 결정. 트래커를 먼저 읽어 무엇을 할지 *제안*하지 말 것 — 본 세션 종료 시점에 §0.5는 의도적으로 비어 있다.
+
+만약 사용자가 첫 메시지를 "트래커 어디부터?" 같은 형태로 보낸다면, **트래커 §0.5는 W3까지 모두 ✅ 완료 상태이며 다음 항목은 사용자 인테이크로 정의됨**을 안내하고 보고를 요청한다.
 
 ---
 
@@ -84,7 +99,7 @@
 - 프론트: `npm run typecheck` / `lint` / `i18n:check`(푸시 전 필수, 복수형 `_one/_other` 금지) / `npx vitest run`.
 - alembic head: **0025** (변경 없음).
 
-## 미푸시 잔여
+## 푸시 상태
 
-- `6255700` (BE) · `971af25` (FE) · `bf9a728` (트래커) — 3 commit이 main 로컬에 있음. 사용자가 push 명시할 때까지 보류 ([[feedback-push-pr-authorized]] — push 허용되어 있으나 명시 승인 후).
-- 본 핸드오프 commit은 다음 commit으로 처리.
+- 본 세션 1차(`0af6393..6ebc71c`, 4 commit: BE `6255700` · FE `971af25` · 트래커 `bf9a728` · 핸드오프 `6ebc71c`) — 사용자 승인으로 origin/main 푸시 완료.
+- 본 세션 2차(트래커 W4 라인 제거 · §0 대시보드 + §9 규약 갱신 · 본 핸드오프 갱신) — 다음 commit으로 push 예정.
