@@ -1,10 +1,12 @@
 # ADR-0001 — Dependency-Track 제거 및 Trivy 단일 교체
 
-- **Status**: Accepted
+- **Status**: Accepted (amended 2026-05-27)
 - **Date**: 2026-05-27
 - **Deciders**: Haksung Jang (maintainer)
 - **Supersedes**: 이전 "DT Circuit Breaker / DT 캐시" 아키텍처 결정 (CLAUDE.md "핵심 규칙 4", post-ga-roadmap §3 "DT 종속 완화")
 - **Related**: W6 마일스톤 (`docs/post-ga-execution-tracker.md` §0.5), 핸드오프 `docs/sessions/2026-05-27-w6-dt-removal-plan.md`
+
+> **Amendment (2026-05-27, 같은 날 후속 결정)**: §"Decision" 본문의 **v2.3.1 동결 태그 prereq + 운영 레인 O1/O3 통합 + SECURITY.md backport 정책**은 **스킵**한다. Repo를 W6 진행 동안 private으로 전환하고, **v2.4.0이 DT-free 첫 공개 릴리스**가 된다. 외부 사용자 0이라 "Final Dependency-Track Release" 공개 마커는 불필요. Appendix A의 "prereq" 행과 §Decision의 "v2.3.1 동결 태그 설계" 절은 본 amendment로 무효화. W6 PR 시퀀스는 `#45 → #40 → #41 → shadow → #42 → #43a~e → #44`로 단축. 본문은 결정 사료로 보존.
 
 ---
 
