@@ -266,7 +266,7 @@ async def test_failed_latest_attempt_keeps_severity_from_earlier_succeeded_scan(
 
     _team, _user, project, _succeeded, _failed = await _ci_vulns_like_project(db_session)
 
-    status_map, sev_map, counts_map = await enrich_project_rows(
+    status_map, sev_map, counts_map, _lic, _cb = await enrich_project_rows(
         db_session, projects=[project]
     )
 
@@ -292,7 +292,7 @@ async def test_never_scanned_project_both_null(db_session: AsyncSession) -> None
     team = await make_team(db_session, organization=org)
     project = await make_project(db_session, team=team)
 
-    status_map, sev_map, counts_map = await enrich_project_rows(
+    status_map, sev_map, counts_map, _lic, _cb = await enrich_project_rows(
         db_session, projects=[project]
     )
 
@@ -321,7 +321,7 @@ async def test_succeeded_scan_with_no_cves_is_all_zero_not_null(
     await _attach_component(db_session, scan_id=succeeded.id, cv_id=cv.id)
     await _set_latest_scan(db_session, project=project, scan_id=succeeded.id)
 
-    status_map, sev_map, counts_map = await enrich_project_rows(
+    status_map, sev_map, counts_map, _lic, _cb = await enrich_project_rows(
         db_session, projects=[project]
     )
 
@@ -364,7 +364,7 @@ async def test_info_severity_findings_excluded_from_summary_buckets(
     )
     await _set_latest_scan(db_session, project=project, scan_id=succeeded.id)
 
-    _status_map, sev_map, _counts_map = await enrich_project_rows(
+    _status_map, sev_map, _counts_map, _lic, _cb = await enrich_project_rows(
         db_session, projects=[project]
     )
 
@@ -387,7 +387,7 @@ async def test_only_failed_scan_status_failed_but_no_severity(
     )
     await _set_latest_scan(db_session, project=project, scan_id=failed.id)
 
-    status_map, sev_map, counts_map = await enrich_project_rows(
+    status_map, sev_map, counts_map, _lic, _cb = await enrich_project_rows(
         db_session, projects=[project]
     )
 
@@ -403,8 +403,10 @@ async def test_only_failed_scan_status_failed_but_no_severity(
 async def test_empty_page_issues_no_sql(db_session: AsyncSession) -> None:
     from services.project_list_enrichment import enrich_project_rows
 
-    status_map, sev_map, counts_map = await enrich_project_rows(db_session, projects=[])
-    assert (status_map, sev_map, counts_map) == ({}, {}, {})
+    status_map, sev_map, counts_map, lic_map, cb_map = await enrich_project_rows(
+        db_session, projects=[]
+    )
+    assert (status_map, sev_map, counts_map, lic_map, cb_map) == ({}, {}, {}, {}, {})
 
 
 async def test_enrichment_is_batched_not_per_row(db_session: AsyncSession) -> None:
@@ -458,12 +460,14 @@ async def test_enrichment_is_batched_not_per_row(db_session: AsyncSession) -> No
 
     # Constant statement count regardless of page size — no N+1.
     assert one_row_stmts == five_row_stmts
-    # And it is a small constant (status map + succeeded-id map + severity agg
-    # + count agg — W3 #30 adds the 4th batched query).
-    assert five_row_stmts <= 4
+    # And it is a small constant: status map + succeeded-id map + severity agg
+    # + count agg + license agg + created-by user batch = up to 6 queries
+    # (W3 #30 = 4; user-test cycle's by-project axis + Created-by column
+    # adds the 5th and 6th).
+    assert five_row_stmts <= 6
 
     # Correctness over the 5-project page: each has 1 critical, 1 scan, 1 release.
-    _status_map, sev_map, counts_map = await enrich_project_rows(
+    _status_map, sev_map, counts_map, _lic, _cb = await enrich_project_rows(
         db_session, projects=projects
     )
     for project in projects:

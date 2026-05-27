@@ -349,6 +349,27 @@ class ProjectUpdate(BaseModel):
         return value
 
 
+class LicenseCategorySummary(BaseModel):
+    """Per-project license-category counts for the project-list license axis.
+
+    Mirrors :class:`SeveritySummary` but indexed by license category instead
+    of CVE severity. Counts are the number of *components* (component_versions)
+    whose worst license-category rank lands in each bucket, over the project's
+    latest **succeeded** scan. Buckets follow the dashboard's rank ordering:
+    ``forbidden`` (worst) → ``conditional`` → ``allowed`` → ``unknown``. The
+    Projects-page "License classification" card collapses each project's
+    counts to its worst non-zero bucket; the segment-click filter narrows the
+    project list to projects whose worst bucket matches.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    forbidden: int = Field(default=0, ge=0)
+    conditional: int = Field(default=0, ge=0)
+    allowed: int = Field(default=0, ge=0)
+    unknown: int = Field(default=0, ge=0)
+
+
 class SeveritySummary(BaseModel):
     """Per-project vulnerability-severity counts for the project-list risk badge.
 
@@ -419,6 +440,30 @@ class ProjectPublic(BaseModel):
             "risk indicator. Note this can be non-null even when "
             "`latest_scan_status` is 'failed' — the last *attempt* failed but an "
             "earlier scan succeeded and its findings remain the current posture."
+        ),
+    )
+    license_category_summary: LicenseCategorySummary | None = Field(
+        default=None,
+        description=(
+            "License-category component counts from the project's latest "
+            "*succeeded* scan (same anchor as severity_summary). `null` when "
+            "the project has no succeeded scan. Drives the Projects-page "
+            "by-project license distribution card + segment-click filter; the "
+            "FE collapses each project's counts to its worst non-zero bucket. "
+            "Populated only on the list endpoint (defaults to null on single-"
+            "project responses)."
+        ),
+    )
+    created_by_user_name: str | None = Field(
+        default=None,
+        description=(
+            "Display label for the project's creator — the user's "
+            "``full_name`` when set, otherwise the email. ``null`` when the "
+            "creator's user row was deleted (the FK column is preserved for "
+            "audit, but the name can no longer be resolved). Populated only "
+            "on the list endpoint (a single batched ``SELECT FROM users WHERE "
+            "id IN (...)`` over the page); single-project responses default "
+            "to null. The FE list table renders this in a Created-by column."
         ),
     )
     # W3 #30 — list-row discoverability aggregates. Populated ONLY on the list

@@ -50,6 +50,7 @@ from schemas.project_detail import (
 from schemas.project_diff import ProjectDiff
 from schemas.release_snapshot import ReleaseListResponse, ReleaseSnapshot
 from schemas.scan import (
+    LicenseCategorySummary,
     ProjectCreate,
     ProjectListResponse,
     ProjectPublic,
@@ -265,9 +266,13 @@ async def list_projects_endpoint(
     # last_scan_at). All three maps are computed in batched queries over the
     # page's project ids (no N+1); the page is already team-scoped by
     # ``list_projects`` above.
-    status_by_project, severity_by_project, counts_by_project = await enrich_project_rows(
-        session, projects=rows
-    )
+    (
+        status_by_project,
+        severity_by_project,
+        counts_by_project,
+        license_by_project,
+        created_by_name,
+    ) = await enrich_project_rows(session, projects=rows)
 
     items: list[ProjectPublic] = []
     for p in rows:
@@ -278,6 +283,11 @@ async def list_projects_endpoint(
         item.latest_scan_status = cast(ScanStatus, raw_status) if raw_status else None
         sev = severity_by_project.get(p.id)
         item.severity_summary = SeveritySummary(**sev) if sev is not None else None
+        lic = license_by_project.get(p.id)
+        item.license_category_summary = (
+            LicenseCategorySummary(**lic) if lic is not None else None
+        )
+        item.created_by_user_name = created_by_name.get(p.id)
         # W3 #30 — absent ⇒ project has no scans at all; keep schema defaults
         # (0 / 0 / null) instead of overwriting with explicit zeros.
         counts = counts_by_project.get(p.id)

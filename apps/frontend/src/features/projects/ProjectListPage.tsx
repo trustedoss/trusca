@@ -14,7 +14,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useProjectsSummary } from "@/features/projects/api/useProjectsSummary";
 import { AxisPill } from "@/features/projects/components/AxisPill";
 import { LicenseDistributionChart } from "@/features/projects/components/LicenseDistributionChart";
 import { SeverityDistributionChart } from "@/features/projects/components/SeverityDistributionChart";
@@ -121,17 +120,18 @@ export function ProjectListPage() {
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<ProjectStatusFilter>("all");
   const [sort, setSort] = useState<ProjectSortKey>("name");
-  // Distribution-card severity filter — clicking a Severity segment on the
-  // header card narrows the list to projects whose worst CVE severity falls
-  // in that bucket. Single-select replace (click again or clear chip to
-  // broaden back out). License filter is intentionally TBD — ProjectPublic
-  // doesn't yet carry a per-project license summary, so the License card
-  // renders read-only until the backend list endpoint accepts the filter.
+  // Distribution-card filters — clicking a Severity / License segment on the
+  // header card narrows the list to projects whose WORST bucket in that axis
+  // matches. Single-select replace (click again or clear chip to broaden back
+  // out). Both feed off ``ProjectPublic.{severity_summary,
+  // license_category_summary}`` so the filter is client-side; never-scanned
+  // projects (``*_summary == null``) never match either filter.
   const [severityFilter, setSeverityFilter] = useState<
     "critical" | "high" | "medium" | "low" | null
   >(null);
-
-  const summaryQuery = useProjectsSummary();
+  const [licenseFilter, setLicenseFilter] = useState<
+    "forbidden" | "conditional" | "allowed" | "unknown" | null
+  >(null);
   const [scanDrawer, setScanDrawer] = useState<ScanDrawerState>({
     open: false,
     scanId: null,
@@ -166,10 +166,6 @@ export function ProjectListPage() {
     const filtered = source.filter((project) => {
       if (!statusFilterMatches(project, statusFilter)) return false;
       if (severityFilter !== null) {
-        // worst-severity bucket (critical > high > medium > low). `null`
-        // severity_summary (never-scanned / no succeeded scan) never matches
-        // a severity bucket — those projects show up only when the filter
-        // is off.
         const s = project.severity_summary;
         if (!s) return false;
         const worst =
@@ -184,6 +180,21 @@ export function ProjectListPage() {
                   : null;
         if (worst !== severityFilter) return false;
       }
+      if (licenseFilter !== null) {
+        const l = project.license_category_summary;
+        if (!l) return false;
+        const worst =
+          l.forbidden > 0
+            ? "forbidden"
+            : l.conditional > 0
+              ? "conditional"
+              : l.allowed > 0
+                ? "allowed"
+                : l.unknown > 0
+                  ? "unknown"
+                  : null;
+        if (worst !== licenseFilter) return false;
+      }
       if (normalized.length === 0) return true;
       return (
         project.name.toLowerCase().includes(normalized) ||
@@ -193,7 +204,51 @@ export function ProjectListPage() {
     });
     const sorter = SORTERS[sort];
     return [...filtered].sort(sorter);
-  }, [items, debouncedQuery, statusFilter, severityFilter, sort]);
+  }, [items, debouncedQuery, statusFilter, severityFilter, licenseFilter, sort]);
+
+  // By-PROJECT axis distributions — collapse each project's worst bucket and
+  // count the projects that land in each. Never-scanned projects are skipped
+  // (``*_summary == null``). Empty when no projects loaded yet (the cards
+  // hide while the list is loading via the ``items`` gate below).
+  const severityDistByProject = useMemo(() => {
+    const counts = { critical: 0, high: 0, medium: 0, low: 0 };
+    for (const p of items ?? []) {
+      const s = p.severity_summary;
+      if (!s) continue;
+      const worst =
+        s.critical > 0
+          ? "critical"
+          : s.high > 0
+            ? "high"
+            : s.medium > 0
+              ? "medium"
+              : s.low > 0
+                ? "low"
+                : null;
+      if (worst !== null) counts[worst] += 1;
+    }
+    return counts;
+  }, [items]);
+
+  const licenseDistByProject = useMemo(() => {
+    const counts = { forbidden: 0, conditional: 0, allowed: 0, unknown: 0 };
+    for (const p of items ?? []) {
+      const l = p.license_category_summary;
+      if (!l) continue;
+      const worst =
+        l.forbidden > 0
+          ? "forbidden"
+          : l.conditional > 0
+            ? "conditional"
+            : l.allowed > 0
+              ? "allowed"
+              : l.unknown > 0
+                ? "unknown"
+                : null;
+      if (worst !== null) counts[worst] += 1;
+    }
+    return counts;
+  }, [items]);
 
   function handleScanStarted(scan: ScanPublic, project: ProjectPublic) {
     setScanDrawer({
@@ -247,11 +302,12 @@ export function ProjectListPage() {
         )}
       </header>
 
-      {/* Portfolio-wide distribution cards above the toolbar. The Severity
-          card is interactive (segment click narrows the list to that
-          worst-severity bucket); the License card is read-only until the
-          backend list endpoint accepts a license filter (PR-B2 follow-up). */}
-      {summaryQuery.data ? (
+      {/* By-PROJECT axis distribution cards above the toolbar. Both cards are
+          interactive: segment click narrows the list to projects whose worst
+          bucket in that axis matches. Data is derived client-side from
+          ``ProjectPublic.{severity_summary, license_category_summary}`` so the
+          axis label ("by project") stays honest. */}
+      {items && items.length > 0 ? (
         <div
           className="grid items-start gap-4 border-b p-4 md:grid-cols-2"
           data-testid="project-list-distribution-cards"
@@ -261,7 +317,7 @@ export function ProjectListPage() {
               <CardTitle className="flex items-baseline gap-2 text-base">
                 <span>{t("summary.severity_card.title")}</span>
                 <AxisPill>
-                  {t("summary.severity_card.axis_components")}
+                  {t("summary.severity_card.axis_projects")}
                 </AxisPill>
               </CardTitle>
               <CardDescription>
@@ -270,14 +326,7 @@ export function ProjectListPage() {
             </CardHeader>
             <CardContent>
               <SeverityDistributionChart
-                distribution={{
-                  critical:
-                    summaryQuery.data.vulnerability_severity_counts.critical,
-                  high: summaryQuery.data.vulnerability_severity_counts.high,
-                  medium:
-                    summaryQuery.data.vulnerability_severity_counts.medium,
-                  low: summaryQuery.data.vulnerability_severity_counts.low,
-                }}
+                distribution={severityDistByProject}
                 onSegmentClick={(key) => {
                   if (
                     key === "critical" ||
@@ -296,7 +345,7 @@ export function ProjectListPage() {
               <CardTitle className="flex items-baseline gap-2 text-base">
                 <span>{t("summary.license_card.title")}</span>
                 <AxisPill>
-                  {t("summary.license_card.axis_components")}
+                  {t("summary.license_card.axis_projects")}
                 </AxisPill>
               </CardTitle>
               <CardDescription>
@@ -305,14 +354,17 @@ export function ProjectListPage() {
             </CardHeader>
             <CardContent>
               <LicenseDistributionChart
-                distribution={summaryQuery.data.license_category_counts}
+                distribution={licenseDistByProject}
+                onSegmentClick={(key) => {
+                  setLicenseFilter(key);
+                }}
               />
             </CardContent>
           </Card>
         </div>
       ) : null}
 
-      {severityFilter !== null ? (
+      {severityFilter !== null || licenseFilter !== null ? (
         <div
           className="flex items-center gap-2 border-b bg-muted/30 px-6 py-2 text-xs"
           data-testid="project-list-active-filters"
@@ -320,17 +372,34 @@ export function ProjectListPage() {
           <span className="font-medium text-muted-foreground">
             {t("summary.filter_chip.label")}
           </span>
-          <button
-            type="button"
-            onClick={() => setSeverityFilter(null)}
-            className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2 py-0.5 hover:bg-accent"
-            data-testid="project-list-active-filter-clear"
-          >
-            <span>
-              {t("summary.filter_chip.severity", { severity: severityFilter })}
-            </span>
-            <span aria-hidden>×</span>
-          </button>
+          {severityFilter !== null ? (
+            <button
+              type="button"
+              onClick={() => setSeverityFilter(null)}
+              className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2 py-0.5 hover:bg-accent"
+              data-testid="project-list-active-filter-clear-severity"
+            >
+              <span>
+                {t("summary.filter_chip.severity", {
+                  severity: severityFilter,
+                })}
+              </span>
+              <span aria-hidden>×</span>
+            </button>
+          ) : null}
+          {licenseFilter !== null ? (
+            <button
+              type="button"
+              onClick={() => setLicenseFilter(null)}
+              className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2 py-0.5 hover:bg-accent"
+              data-testid="project-list-active-filter-clear-license"
+            >
+              <span>
+                {t("summary.filter_chip.license", { license: licenseFilter })}
+              </span>
+              <span aria-hidden>×</span>
+            </button>
+          ) : null}
         </div>
       ) : null}
 
@@ -496,6 +565,13 @@ function ProjectRow({
       </div>
       <SeveritySummary summary={project.severity_summary} />
       <ScanMetadataSummary project={project} />
+      <span
+        className="hidden w-44 truncate text-xs text-muted-foreground md:inline-block"
+        data-testid="project-row-created-by"
+        title={project.created_by_user_name ?? ""}
+      >
+        {project.created_by_user_name ?? "—"}
+      </span>
       <div data-testid="project-row-status">
         <ProjectStatusBadge status={project.latest_scan_status ?? "idle"} />
       </div>
