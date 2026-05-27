@@ -27,6 +27,7 @@ import { ActiveFilterChips } from "@/features/projects/components/ActiveFilterCh
 import { LicenseColumnCell } from "@/features/projects/components/LicenseColumnCell";
 import { ReachabilityBadge } from "@/features/projects/components/ReachabilityBadge";
 import { SeverityBadge } from "@/features/projects/components/SeverityBadge";
+import { SeverityDistributionChart } from "@/features/projects/components/SeverityDistributionChart";
 import { VulnerabilitiesRemediationPanel } from "@/features/projects/components/VulnerabilitiesRemediationPanel";
 import { VulnerabilitiesToolbar } from "@/features/projects/components/VulnerabilitiesToolbar";
 import { VulnerabilityBulkActionBar } from "@/features/projects/components/VulnerabilityBulkActionBar";
@@ -423,8 +424,41 @@ export function VulnerabilitiesTab({
     setPage(1);
   }
 
+  // Component-severity distribution card for the top of the tab. Shares the
+  // overview query above so no extra request. Clicking a segment narrows the
+  // list to that bucket (single-select replace). The `none` bucket has no
+  // counterpart in `VulnSeverity` (vulnerabilities never carry severity
+  // `none`), so we drop the click rather than feed an invalid filter token
+  // to the API.
+  const severityDistribution = overview.data?.severity_distribution;
+
   return (
     <div data-testid="vulnerabilities-tab" className="flex flex-1 flex-col">
+      {severityDistribution ? (
+        <div
+          className="border-b p-4"
+          data-testid="vulnerabilities-distribution-card"
+        >
+          <Card data-testid="vulnerabilities-severity-card">
+            <CardHeader>
+              <CardTitle className="text-base">
+                {t("overview.severity_card.title")}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <SeverityDistributionChart
+                distribution={severityDistribution}
+                onSegmentClick={(key) => {
+                  if (key === "none") return;
+                  setSeverity([key as VulnSeverity]);
+                  setPage(1);
+                }}
+              />
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
+
       <VulnerabilitiesToolbar
         search={search}
         onSearchChange={setSearch}
