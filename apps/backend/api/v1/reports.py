@@ -196,7 +196,7 @@ async def get_vulnerability_report_pdf_endpoint(
         sort="severity",
         order="desc",
     )
-    vulnerabilities, vulnerabilities_total, _vuln_severity_distribution = await list_project_vulnerabilities(
+    vulnerabilities, vulnerabilities_total, _ = await list_project_vulnerabilities(
         session,
         project_id=project_id,
         actor=actor,
