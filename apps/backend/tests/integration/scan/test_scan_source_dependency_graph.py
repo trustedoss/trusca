@@ -195,7 +195,7 @@ def _patch_pipeline(
     # scancode is best-effort; force-skip so the test stays focused on the graph.
     import integrations.scancode as scancode_adapter
 
-    def _skip_scancode(*, source_dir: Path, output_dir: Path):  # noqa: ARG001
+    def _skip_scancode(*, source_dir: Path, output_dir: Path, **_kwargs: object):  # noqa: ARG001
         raise scancode_adapter.ScancodeError("skipped for graph test")
 
     monkeypatch.setattr("tasks.scan_source.scancode_adapter.run_scancode", _skip_scancode)

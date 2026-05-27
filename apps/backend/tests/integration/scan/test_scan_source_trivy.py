@@ -278,7 +278,7 @@ def test_trivy_persists_finding_against_known_component(
     # stub will read).
     monkeypatch.setattr(
         "tasks.scan_source.cdxgen_adapter.run_cdxgen",
-        lambda *, source_dir, output_dir: _make_cdxgen_fixture(  # noqa: ARG005
+        lambda *, source_dir, output_dir, **_kwargs: _make_cdxgen_fixture(  # noqa: ARG005
             output_dir.parent
         ),
     )
@@ -355,7 +355,7 @@ def test_trivy_rerun_does_not_duplicate_findings(
     monkeypatch.setenv("WORKSPACE_HOST_PATH", str(tmp_path))
     monkeypatch.setattr(
         "tasks.scan_source.cdxgen_adapter.run_cdxgen",
-        lambda *, source_dir, output_dir: _make_cdxgen_fixture(  # noqa: ARG005
+        lambda *, source_dir, output_dir, **_kwargs: _make_cdxgen_fixture(  # noqa: ARG005
             output_dir.parent
         ),
     )
@@ -411,7 +411,7 @@ def test_trivy_unknown_component_is_skipped(
     monkeypatch.setenv("WORKSPACE_HOST_PATH", str(tmp_path))
     monkeypatch.setattr(
         "tasks.scan_source.cdxgen_adapter.run_cdxgen",
-        lambda *, source_dir, output_dir: _make_cdxgen_fixture(  # noqa: ARG005
+        lambda *, source_dir, output_dir, **_kwargs: _make_cdxgen_fixture(  # noqa: ARG005
             output_dir.parent
         ),
     )
