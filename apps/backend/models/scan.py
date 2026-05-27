@@ -298,6 +298,13 @@ class Scan(Base):
     current_step: Mapped[str | None] = mapped_column(String(64), nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # W6-#42 — watermark for the vulnerability rematch beat. NULL means "never
+    # rematched yet"; the beat's due-scan query treats NULL as "due now" (NULLS
+    # FIRST in the partial index). Set after each successful Trivy re-run by
+    # ``tasks.vulnerability_rematch.rematch_scan_findings``.
+    last_rematched_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     scan_metadata: Mapped[dict[str, Any]] = mapped_column(
         # Column name in DB is `metadata` — but that attribute clashes with
@@ -349,6 +356,15 @@ class Scan(Base):
             "project_id",
             unique=True,
             postgresql_where=text("status IN ('queued','running')"),
+        ),
+        # W6-#42 — rematch beat's "due succeeded scans" hot path. Partial on
+        # status='succeeded' keeps the index proportional to the eligible
+        # cohort; NULLS FIRST (default for ASC) surfaces never-rematched scans
+        # at the front so the first beat after deploy fans them out first.
+        Index(
+            "ix_scans_rematch_due",
+            "last_rematched_at",
+            postgresql_where=text("status = 'succeeded'"),
         ),
     )
 

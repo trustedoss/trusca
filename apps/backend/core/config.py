@@ -431,39 +431,13 @@ def demo_read_only() -> bool:
 # ---------------------------------------------------------------------------
 
 
-def dt_url() -> str:
-    """Dependency-Track REST base URL (no trailing slash)."""
-    return os.getenv("DT_URL", "http://dtrack-api:8080").rstrip("/")
-
-
-def dt_api_key() -> str:
-    """DT API key. Empty string when unset (mock backend / local smoke)."""
-    return os.getenv("DT_API_KEY", "")
-
-
-def dt_request_timeout_seconds() -> float:
-    return float(os.getenv("DT_REQUEST_TIMEOUT_SECONDS", "30"))
-
-
-def dt_breaker_failure_threshold() -> int:
-    """Consecutive failures that flip the breaker CLOSED → OPEN."""
-    return int(os.getenv("DT_BREAKER_FAILURE_THRESHOLD", "5"))
-
-
-def dt_breaker_cooldown_seconds() -> int:
-    """How long the breaker stays OPEN before allowing a HALF_OPEN probe."""
-    return int(os.getenv("DT_BREAKER_COOLDOWN_SECONDS", "30"))
-
-
-def dt_health_check_endpoint() -> str:
-    """Path appended to dt_url() for the health heartbeat."""
-    return os.getenv("DT_HEALTH_ENDPOINT", "/api/version")
-
-
-def dt_auto_restart_enabled() -> bool:
-    """If true, the health monitor will attempt `docker restart dtrack-api`."""
-    raw = os.getenv("DT_AUTO_RESTART", "false").lower()
-    return raw in ("1", "true", "yes", "on")
+# W6-#43a (ADR-0001) — DT integration removed. The eight ``dt_*`` accessors
+# that used to live here (dt_url / dt_api_key / dt_request_timeout_seconds /
+# dt_breaker_{failure_threshold,cooldown_seconds} / dt_health_check_endpoint
+# / dt_auto_restart_enabled) are deleted. CVE matching is now Trivy-only via
+# ``run_trivy_sbom`` (W6-#41); see ``docs/decisions/0001-replace-dt-with-
+# trivy.md`` and the W6-#42 vulnerability rematch beat for the replacement
+# data path.
 
 
 def scan_backend_mode() -> str:
@@ -916,6 +890,73 @@ def workspace_orphan_max_age_seconds() -> int:
 def jsonb_row_size_limit_bytes() -> int:
     """Per-row JSON byte ceiling before truncate (I-1 guard)."""
     return int(os.getenv("JSONB_ROW_SIZE_LIMIT_BYTES", str(256 * 1024)))
+
+
+# ---------------------------------------------------------------------------
+# W6-#42 — vulnerability rematch beat tuning.
+#
+# Two knobs the operator can retune at runtime per CLAUDE.md core rule #11:
+#   - interval: how stale a scan's ``last_rematched_at`` must be before the
+#     beat re-enqueues it (default 6h — Trivy DB refreshes weekly, but a 6h
+#     cadence keeps the per-scan latency between an upstream NVD publish and
+#     a new finding under a day for the typical scan corpus).
+#   - batch size: cap on how many scans one beat tick fans out so a sudden
+#     deploy onto a corpus of thousands of succeeded scans does not flood the
+#     worker pool. The next tick picks up the remainder.
+# ---------------------------------------------------------------------------
+
+
+def vuln_rematch_interval_hours() -> int:
+    """Minimum hours between rematch runs for a given scan. Default 6h.
+
+    A scan's ``last_rematched_at`` must be NULL or older than ``now - this``
+    for the beat to consider it due. Floor 1h to keep the beat from
+    degenerating into a continuous Trivy re-run loop in dev; ceiling 168h
+    (one week) — anything longer makes the feature pointless given Trivy's
+    weekly DB refresh cadence.
+    """
+    return _int_env(
+        "VULN_REMATCH_INTERVAL_HOURS",
+        default=6,
+        minimum=1,
+        maximum=168,
+    )
+
+
+def vuln_rematch_batch_size() -> int:
+    """Max scans the rematch beat enqueues in one tick. Default 50.
+
+    Bounded ``[1, 5000]``. The beat enumerates due scans ORDER BY
+    last_rematched_at NULLS FIRST so the never-rematched cohort drains first;
+    the next 6h tick picks up wherever this one stopped. The default is sized
+    so a worker can clear the batch (~50 × ≤5 min Trivy run = ≤4h) before the
+    next tick would otherwise overlap.
+    """
+    return _int_env(
+        "VULN_REMATCH_BATCH_SIZE",
+        default=50,
+        minimum=1,
+        maximum=5000,
+    )
+
+
+def vuln_rematch_lock_skew_seconds() -> int:
+    """Slack between the beat's "due" cutoff and the per-scan SKIP LOCKED ts.
+
+    The beat selects due rows with ``last_rematched_at < now - interval``; the
+    individual rematch task uses ``SELECT FOR UPDATE SKIP LOCKED`` to avoid two
+    workers double-processing the same scan. This skew (default 30s) is the
+    cushion subtracted from the cutoff so a scan that was JUST written by
+    another worker is not immediately re-enqueued by the next beat tick.
+
+    Bounded ``[0, 600]``. Read at call time (rule #11).
+    """
+    return _int_env(
+        "VULN_REMATCH_LOCK_SKEW_SECONDS",
+        default=30,
+        minimum=0,
+        maximum=600,
+    )
 
 
 # ---------------------------------------------------------------------------

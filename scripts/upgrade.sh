@@ -38,11 +38,39 @@ bash "$ROOT_DIR/scripts/backup.sh"
 ok "backup complete"
 
 # ---------------------------------------------------------------------------
+# 1.5 .env sync — append-only (W6-chore-seed B)
+# ---------------------------------------------------------------------------
+title "Environment sync"
+# shellcheck source=scripts/lib/env_sync.sh
+source "$ROOT_DIR/scripts/lib/env_sync.sh"
+env_append_only_sync .env.example .env
+ok "env sync complete (existing values preserved)"
+
+# ---------------------------------------------------------------------------
 # 2. Pull new images
 # ---------------------------------------------------------------------------
 title "Pulling new images"
 docker-compose -f docker-compose.yml pull
 ok "images pulled"
+
+# ---------------------------------------------------------------------------
+# 2.5 Drain removed-task names from the broker (W6-#43a)
+# ---------------------------------------------------------------------------
+# v2.4.0 removes the four Dependency-Track Celery tasks (trustedoss.dt_*).
+# Any of those messages still queued in Redis when the new worker starts
+# would hit ``NotRegistered``, NACK under ``task_acks_late=True``, and
+# redeliver indefinitely. We purge them BEFORE the new image comes up so
+# the new worker boots into a clean queue. Best-effort: ``|| true`` keeps
+# the upgrade going if the worker container is already stopped or celery
+# CLI is not present.
+title "Draining removed DT tasks from the broker"
+note "Purging trustedoss.dt_{resync,health,orphan_cleaner,orphan_cleanup}"
+note "(in-flight DT messages would NACK forever against the new worker)."
+docker-compose -f docker-compose.yml exec -T celery-worker \
+  celery -A tasks.celery_app purge -f \
+    --task-names=trustedoss.dt_resync,trustedoss.dt_health,trustedoss.dt_orphan_cleaner,trustedoss.dt_orphan_cleanup \
+    >/dev/null 2>&1 || true
+ok "broker drain complete (best-effort)"
 
 # ---------------------------------------------------------------------------
 # 3. Recreate containers

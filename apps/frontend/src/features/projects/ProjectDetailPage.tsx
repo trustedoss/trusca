@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
@@ -24,16 +24,13 @@ import type { ScanSummary } from "@/features/projects/api/projectDetailApi";
 import { useLatestRelease } from "@/features/projects/api/useLatestRelease";
 import { useProjectOverview } from "@/features/projects/api/useProjectOverview";
 import { useReleases } from "@/features/projects/api/useReleases";
+import { ComplianceTab } from "@/features/projects/components/ComplianceTab";
 import { ComponentsTab } from "@/features/projects/components/ComponentsTab";
-import { LicensesTab } from "@/features/projects/components/LicensesTab";
-import { ObligationsTab } from "@/features/projects/components/ObligationsTab";
 import { OverviewTab } from "@/features/projects/components/OverviewTab";
 import { ReleaseSwitcher } from "@/features/projects/components/ReleaseSwitcher";
 import { ReleasesTab } from "@/features/projects/components/ReleasesTab";
-import { RemediationTab } from "@/features/projects/components/RemediationTab";
 import { ReportsTab } from "@/features/projects/components/ReportsTab";
 import { RiskGauge } from "@/features/projects/components/RiskGauge";
-import { SbomTab } from "@/features/projects/components/SbomTab";
 import { SettingsTab } from "@/features/projects/components/SettingsTab";
 import { SnapshotBanner } from "@/features/projects/components/SnapshotBanner";
 import { SourceTab } from "@/features/projects/components/SourceTab";
@@ -61,19 +58,56 @@ import { cn } from "@/lib/utils";
  * Tab selection is mirrored into `?tab=…` so reload + deep-link survive.
  */
 
+/**
+ * W4-C — Information Architecture overhaul (8-tab strip).
+ *
+ * The detail surface now has eight top-level tabs:
+ *   overview / releases / components / vulnerabilities / source /
+ *   compliance / reports / settings
+ *
+ * The four legacy tabs (licenses / obligations / sbom / remediation) were
+ * absorbed:
+ *   - licenses + obligations → compliance (single unified tab, sub-tabs
+ *     ``?cview=licenses|obligations``)
+ *   - sbom                   → reports (in-page section ``?rpt_section=sbom``)
+ *   - remediation            → vulnerabilities (in-page panel
+ *                              ``?vuln_section=remediation``)
+ *
+ * Legacy ``?tab=`` values still land the user on the right surface — see
+ * {@link redirectLegacyTab}.
+ */
 const ALLOWED_TABS = new Set([
   "overview",
   "releases",
   "components",
   "vulnerabilities",
-  "licenses",
-  "obligations",
-  "sbom",
-  "reports",
   "source",
-  "remediation",
+  "compliance",
+  "reports",
   "settings",
 ]);
+
+/**
+ * Map a legacy tab token (pre-W4-C) to its W4-C successor + the URL fragment
+ * that re-anchors the user on the right sub-surface. Returning ``null`` means
+ * "this token is not a legacy redirect" — the caller treats it as unknown.
+ */
+function redirectLegacyTab(
+  raw: string,
+): { tab: string; extra: Record<string, string> } | null {
+  switch (raw) {
+    case "licenses":
+      return { tab: "compliance", extra: { cview: "licenses" } };
+    case "obligations":
+      return { tab: "compliance", extra: { cview: "obligations" } };
+    case "sbom":
+      return { tab: "reports", extra: { rpt_section: "sbom" } };
+    case "remediation":
+      return { tab: "vulnerabilities", extra: { vuln_section: "remediation" } };
+    default:
+      return null;
+  }
+}
 
 export function ProjectDetailPage() {
   const { t, i18n } = useTranslation("project_detail");
@@ -81,14 +115,45 @@ export function ProjectDetailPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const tabParam = searchParams.get("tab");
+  // W4-C — accept a legacy token (licenses / obligations / sbom / remediation)
+  // by routing the active surface to its successor. A useEffect below also
+  // rewrites the URL so reload/share matches the new IA.
+  const legacyRedirect = tabParam ? redirectLegacyTab(tabParam) : null;
   const activeTab =
-    tabParam && ALLOWED_TABS.has(tabParam) ? tabParam : "overview";
+    tabParam && ALLOWED_TABS.has(tabParam)
+      ? tabParam
+      : legacyRedirect != null
+        ? legacyRedirect.tab
+        : "overview";
 
   // Pinned snapshot scan (feature #28). When set, the whole detail surface
   // reads that historical scan instead of the latest succeeded one. Empty
   // string is treated as "not set" so a hand-edited `?scan=` can't wedge it.
   const scanParam = searchParams.get("scan");
   const pinnedScanId = scanParam && scanParam.length > 0 ? scanParam : undefined;
+
+  // W4-C — rewrite a legacy `?tab=` token to its W4-C successor in the URL
+  // bar so a deep-link or bookmark settles on the canonical IA. We do this
+  // inside an effect (not during render) so React Router doesn't see two
+  // setSearchParams calls per commit.
+  useEffect(() => {
+    if (legacyRedirect == null) return;
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set("tab", legacyRedirect.tab);
+        for (const [k, v] of Object.entries(legacyRedirect.extra)) {
+          next.set(k, v);
+        }
+        return next;
+      },
+      { replace: true },
+    );
+    // Run on every URL change that produces a legacy redirect — the parsed
+    // `legacyRedirect` object is recomputed each render, so the deps need
+    // only the stable bits we care about.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabParam]);
 
   const projectQuery = useQuery({
     queryKey: ["projects", projectId, "summary"],
@@ -184,82 +249,100 @@ export function ProjectDetailPage() {
   }
 
   function setTab(next: string) {
+    // W4-C — legacy tab tokens still route correctly even if a caller asks
+    // for the old name (defensive). Translate them up front so the drop-
+    // filter logic below sees the W4-C target.
+    let target = next;
+    let injected: Record<string, string> | null = null;
+    const redirect = redirectLegacyTab(target);
+    if (redirect != null) {
+      target = redirect.tab;
+      injected = redirect.extra;
+    }
+
     setSearchParams(
       (prev) => {
         const merged = new URLSearchParams(prev);
         // When switching tabs, drop tab-scoped filter params so we don't
         // carry a stale severity filter into Overview. Components,
-        // Vulnerabilities, Licenses, and Obligations all use `search` /
-        // `sort` / `order`, but they have distinct drawer keys (`drawer` /
+        // Vulnerabilities, and Compliance all use `search` / `sort` /
+        // `order`, but they have distinct drawer keys (`drawer` /
         // `vuln` / `license` / `obligation`), distinct multi-filter axes,
         // and distinct pagination semantics.
         if (
-          next !== "components" &&
-          next !== "vulnerabilities" &&
-          next !== "licenses" &&
-          next !== "obligations"
+          target !== "components" &&
+          target !== "vulnerabilities" &&
+          target !== "compliance"
         ) {
           merged.delete("search");
           merged.delete("sort");
           merged.delete("order");
         }
-        if (next !== "components" && next !== "vulnerabilities") {
+        if (target !== "components" && target !== "vulnerabilities") {
           merged.delete("severity");
         }
-        if (
-          next !== "components" &&
-          next !== "licenses" &&
-          next !== "obligations"
-        ) {
-          // license_category is shared by Components, Licenses, and the
-          // Obligations tab (PR #13) — drop it when leaving all three so
-          // the next non-licensing tab doesn't carry a stale bucket.
-          merged.delete("license_category");
+        if (target !== "components" && target !== "compliance") {
+          // license_category is shared by Components and the Compliance tab
+          // (which hosts the legacy Licenses + Obligations surfaces). Drop
+          // it when leaving so the next unrelated tab doesn't carry a stale
+          // bucket. The Vulnerabilities tab also reads `license_category`
+          // (W2 #33) so we keep it across that lane too.
+          if (target !== "vulnerabilities") {
+            merged.delete("license_category");
+          }
         }
-        if (next !== "components") {
+        if (target !== "components") {
           merged.delete("drawer");
         }
-        if (next !== "vulnerabilities") {
+        if (target !== "vulnerabilities") {
           merged.delete("vuln");
           merged.delete("status");
+          // W4-C #22 — vuln_section is internal to the Vulnerabilities tab
+          // (controls the Remediation collapsible panel). Drop it when
+          // leaving so another tab doesn't carry it.
+          merged.delete("vuln_section");
         }
         if (
-          next !== "vulnerabilities" &&
-          next !== "licenses" &&
-          next !== "obligations"
+          target !== "vulnerabilities" &&
+          target !== "compliance"
         ) {
           merged.delete("page");
         }
-        if (next !== "licenses" && next !== "obligations") {
-          // `kind` is used by both the Licenses tab (declared/concluded/
-          // detected) and the Obligations tab (open catalog). Keep it
-          // across those two so a deep-link with kind set survives the
-          // pivot, but drop it when leaving for an unrelated tab.
+        if (target !== "compliance") {
+          // `kind` is now scoped to the Compliance tab (the unified host of
+          // the Licenses + Obligations sub-views). `license` / `obligation`
+          // drawer keys belong here too. `cview` is the sub-view selector.
           merged.delete("kind");
-        }
-        if (next !== "licenses") {
           merged.delete("license");
-        }
-        if (next !== "obligations") {
           merged.delete("obligation");
+          merged.delete("cview");
         }
-        if (next !== "source") {
+        if (target !== "source") {
           // The Source tab mirrors the open file path into `?path=`. Drop it
           // when leaving so another tab doesn't inherit a stale file selector
           // (Components/Vulnerabilities use distinct drawer keys, not `path`).
           merged.delete("path");
         }
-        if (next !== "reports") {
+        if (target !== "reports") {
           // Reports tab mirrors its filter / page into `?rpt_type=` /
-          // `?rpt_page=`. Drop them when leaving so re-entry to another tab
-          // doesn't carry a stale Reports filter into a different surface.
+          // `?rpt_page=` / `?rpt_section=`. Drop them when leaving so
+          // re-entry to another tab doesn't carry a stale Reports filter
+          // into a different surface.
           merged.delete("rpt_type");
           merged.delete("rpt_page");
+          merged.delete("rpt_section");
         }
-        if (next === "overview") {
+        if (target === "overview") {
           merged.delete("tab");
         } else {
-          merged.set("tab", next);
+          merged.set("tab", target);
+        }
+        // Apply legacy-token injected params last so we land on the right
+        // sub-surface (e.g. cview=licenses for the old ?tab=licenses).
+        if (injected != null) {
+          for (const [k, v] of Object.entries(injected)) {
+            merged.set(k, v);
+          }
         }
         return merged;
       },
@@ -283,7 +366,9 @@ export function ProjectDetailPage() {
         } else {
           next.delete("tab");
         }
-        // Drop every tab-scoped param so the target tab opens clean on the snapshot.
+        // Drop every tab-scoped param so the target tab opens clean on the
+        // snapshot. W4-C — `cview` / `rpt_section` / `vuln_section` are the
+        // new sub-view selectors and must reset too.
         for (const key of [
           "search",
           "sort",
@@ -301,6 +386,11 @@ export function ProjectDetailPage() {
           "min_epss",
           "reachable",
           "vex_suppressed",
+          "cview",
+          "rpt_section",
+          "rpt_type",
+          "rpt_page",
+          "vuln_section",
         ]) {
           next.delete(key);
         }
@@ -370,6 +460,10 @@ export function ProjectDetailPage() {
       ) : null}
 
       <Tabs value={activeTab} onValueChange={setTab}>
+        {/* W4-C — 8-tab strip. The IA overhaul collapsed Licenses +
+            Obligations into Compliance, SBOM into Reports, and Remediation
+            into Vulnerabilities. Legacy `?tab=` tokens still land on the
+            right surface via `redirectLegacyTab`. */}
         <TabsList data-testid="project-detail-tabs">
           <TabsTrigger
             value="overview"
@@ -396,9 +490,8 @@ export function ProjectDetailPage() {
             {t("tabs.vulnerabilities")}
           </TabsTrigger>
           {/* P2 #3 — Source (raw artifact) is the cognitive predecessor of
-              Licenses (classified output of that artifact), so Source sits
-              to the left of Licenses now. The tab key/route is unchanged so
-              deep links and tests keep working. */}
+              the classified outputs (Compliance, Reports), so it sits
+              between Vulnerabilities and Compliance. */}
           <TabsTrigger
             value="source"
             data-testid="project-detail-tab-source"
@@ -406,31 +499,16 @@ export function ProjectDetailPage() {
             {t("tabs.source")}
           </TabsTrigger>
           <TabsTrigger
-            value="licenses"
-            data-testid="project-detail-tab-licenses"
+            value="compliance"
+            data-testid="project-detail-tab-compliance"
           >
-            {t("tabs.licenses")}
-          </TabsTrigger>
-          <TabsTrigger
-            value="obligations"
-            data-testid="project-detail-tab-obligations"
-          >
-            {t("tabs.obligations")}
-          </TabsTrigger>
-          <TabsTrigger value="sbom" data-testid="project-detail-tab-sbom">
-            {t("tabs.sbom")}
+            {t("tabs.compliance")}
           </TabsTrigger>
           <TabsTrigger
             value="reports"
             data-testid="project-detail-tab-reports"
           >
             {t("tabs.reports")}
-          </TabsTrigger>
-          <TabsTrigger
-            value="remediation"
-            data-testid="project-detail-tab-remediation"
-          >
-            {t("tabs.remediation")}
           </TabsTrigger>
           <TabsTrigger
             value="settings"
@@ -446,6 +524,7 @@ export function ProjectDetailPage() {
             project={project}
             scanId={pinnedScanId}
             onSelectScan={handleReopenScan}
+            onJumpToComponents={(scan) => handleViewSnapshotComponents(scan.id)}
           />
         </TabsContent>
         <TabsContent value="releases">
@@ -465,26 +544,6 @@ export function ProjectDetailPage() {
             readOnly={isHistorical}
           />
         </TabsContent>
-        <TabsContent value="licenses">
-          <LicensesTab projectId={projectId} scanId={pinnedScanId} />
-        </TabsContent>
-        <TabsContent value="obligations">
-          <ObligationsTab
-            projectId={projectId}
-            projectName={projectQuery.data?.name ?? null}
-            scanId={pinnedScanId}
-          />
-        </TabsContent>
-        <TabsContent value="sbom">
-          <SbomTab
-            projectId={projectId}
-            lastScanAt={overview.data?.last_succeeded_scan_at ?? null}
-            scanId={pinnedScanId}
-          />
-        </TabsContent>
-        <TabsContent value="reports">
-          <ReportsTab projectId={projectId} scanId={pinnedScanId} />
-        </TabsContent>
         <TabsContent value="source">
           <SourceTab
             projectId={projectId}
@@ -492,8 +551,19 @@ export function ProjectDetailPage() {
             scanId={pinnedScanId}
           />
         </TabsContent>
-        <TabsContent value="remediation">
-          <RemediationTab projectId={projectId} />
+        <TabsContent value="compliance">
+          <ComplianceTab
+            projectId={projectId}
+            projectName={projectQuery.data?.name ?? null}
+            scanId={pinnedScanId}
+          />
+        </TabsContent>
+        <TabsContent value="reports">
+          <ReportsTab
+            projectId={projectId}
+            scanId={pinnedScanId}
+            lastSucceededScanAt={overview.data?.last_succeeded_scan_at ?? null}
+          />
         </TabsContent>
         <TabsContent value="settings">
           <SettingsTab

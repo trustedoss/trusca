@@ -13,10 +13,6 @@
     }
   },
   "admin": {
-    "layout": {
-      "title": "관리자 콘솔",
-      "signed_in_as": "{{email}} 계정으로 로그인됨"
-    },
     "users": {
       "title": "사용자",
       "subtitle": "조직 전체의 역할, 활성 상태, 비밀번호 재설정을 관리합니다.",

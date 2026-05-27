@@ -67,11 +67,6 @@
     "name"
   ],
   "GET /v1/admin/disk": [],
-  "GET /v1/admin/dt/orphans": [
-    "limit",
-    "offset"
-  ],
-  "GET /v1/admin/dt/status": [],
   "GET /v1/admin/health": [],
   "GET /v1/admin/scans": [
     "page",
@@ -355,9 +350,6 @@
     "Content-Length",
     "X-Confirm-Restore"
   ],
-  "POST /v1/admin/dt/breaker/reset": [],
-  "POST /v1/admin/dt/health-check": [],
-  "POST /v1/admin/dt/orphans/cleanup": [],
   "POST /v1/admin/scans/{scan_id}/cancel": [
     "scan_id"
   ],

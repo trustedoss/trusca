@@ -15,7 +15,7 @@ Design notes:
     polls and the next stage commit publishes again". We swallow Redis
     exceptions and emit a ``log.warning`` instead.
   - **Sync API.** Celery tasks run in sync Python, so we use the sync
-    redis-py client (the same family as :mod:`integrations.dt.breaker`).
+    redis-py client.
   - **Lazy singleton client.** A worker handles many scans; reusing a
     single connection avoids per-publish TCP handshake. The singleton is
     keyed on the resolved ``REDIS_URL`` so a runtime env change still

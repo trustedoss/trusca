@@ -1,13 +1,17 @@
 """
 Admin operational dashboards — Phase 4 PR #14 schemas.
 
-Pydantic v2 schemas for the five operations-facing admin endpoints:
+Pydantic v2 schemas for the operations-facing admin endpoints:
 
-  - DT Connector  (GET /v1/admin/dt/status, /orphans; POST /orphans/cleanup, /health-check)
   - Scan Queue    (GET /v1/admin/scans; POST /v1/admin/scans/{id}/cancel)
   - Disk          (GET /v1/admin/disk)
   - Audit Log     (GET /v1/admin/audit; GET /v1/admin/audit/export.csv)
   - System Health (GET /v1/admin/health)
+
+W6-#43a (ADR-0001): the DT Connector sub-router was removed when DT was
+replaced by Trivy (W6-#41). All DT-shaped schemas (DTStatusOut, DTOrphanItem,
+OrphanCleanupRequest, HealthProbeOut, BreakerResetOut, BreakerState) and the
+``dt_volume`` AdminDiskItem name are deleted.
 
 These schemas are deliberately split out of ``schemas/admin.py`` (PR #13's
 Users / Teams shapes) so the operational surface evolves independently from
@@ -23,10 +27,6 @@ Adversarial input notes (memory ``feedback_adversarial_input_parametrize``):
     characters. Free-text is parameterized at the SQL layer (the service
     uses bound parameters), but the boundary still rejects oversized /
     obviously-malicious input early.
-  - ``OrphanCleanupRequest``: ``dt_project_uuids`` is bounded at 500
-    entries and each entry is parsed as ``uuid.UUID`` so non-UUID strings
-    (e.g. ``../etc/passwd``, ``javascript:...``, null bytes) are rejected
-    at the schema layer before they can reach the DT client.
 
 Closed enums (must stay in sync with ``models.scan.SCAN_STATUS_VALUES``):
 """
@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Annotated, Any, Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -70,116 +70,8 @@ AuditTargetTable = Literal[
     "license_fetch_cache",
 ]
 
-# Breaker states (mirrors integrations.dt.breaker._VALID_STATES).
-BreakerState = Literal["closed", "open", "half_open"]
-
 # System Health component status values.
 HealthStatus = Literal["ok", "degraded", "down"]
-
-
-# ---------------------------------------------------------------------------
-# DT Connector (4.4)
-# ---------------------------------------------------------------------------
-
-
-class DTStatusOut(BaseModel):
-    """Response of ``GET /v1/admin/dt/status``."""
-
-    state: BreakerState
-    fail_count: int = Field(ge=0)
-    opened_at: datetime | None = None
-    last_check_at: datetime
-    version: str | None = Field(
-        default=None,
-        description="DT version string when reachable; null when the breaker is OPEN.",
-    )
-    vulnerability_count: int | None = Field(
-        default=None,
-        ge=0,
-        description=(
-            "Total vulnerabilities in DT's database (the NVD/OSV/GHSA mirror size). "
-            "0 means the mirror is empty — NVD mirroring is disabled or still "
-            "downloading — so scans find components but no CVEs. null when the "
-            "breaker is OPEN or the count probe failed."
-        ),
-    )
-    last_error: str | None = None
-
-
-class DTOrphanItem(BaseModel):
-    """One orphan candidate detected by the inline scan against DT projects."""
-
-    dt_project_uuid: str
-    dt_project_name: str | None = None
-    dt_project_version: str | None = None
-
-
-class DTOrphanListPage(BaseModel):
-    """Response of ``GET /v1/admin/dt/orphans`` — page envelope."""
-
-    items: list[DTOrphanItem]
-    total: int = Field(ge=0)
-    has_more: bool
-
-
-class OrphanCleanupRequest(BaseModel):
-    """
-    Body of ``POST /v1/admin/dt/orphans/cleanup``.
-
-    When ``dt_project_uuids`` is empty / omitted, the Celery task scans the
-    full DT project catalog and deletes every orphan it finds. When the
-    field is populated the task only processes the supplied UUIDs, which
-    is the path the admin UI uses for "select rows + cleanup".
-    """
-
-    # The bound = 500 is a DoS guard: the admin UI paginates 50 rows at a
-    # time and "select all" rarely exceeds 500 in practice; an attacker
-    # otherwise queueing a 1M-uuid task would chew through Celery for hours.
-    dt_project_uuids: Annotated[
-        list[uuid.UUID],
-        Field(default_factory=list, max_length=500),
-    ]
-
-
-class OrphanCleanupEnqueued(BaseModel):
-    """Response of ``POST /v1/admin/dt/orphans/cleanup`` — Celery enqueue receipt."""
-
-    task_id: str
-    enqueued_at: datetime
-    count: int = Field(
-        ge=0,
-        description=(
-            "Number of UUIDs the task will attempt to delete. Zero means "
-            "the task will scan the full catalog and delete every orphan it "
-            "discovers."
-        ),
-    )
-
-
-class HealthProbeOut(BaseModel):
-    """Flattened ``HealthCheckOutcome`` returned by ``POST /v1/admin/dt/health-check``."""
-
-    healthy: bool
-    state_before: BreakerState
-    state_after: BreakerState
-    fail_count: int = Field(ge=0)
-    auto_restart_attempted: bool
-    error: str | None = None
-    checked_at: datetime
-
-
-class BreakerResetOut(BaseModel):
-    """Response of ``POST /v1/admin/dt/breaker/reset``.
-
-    Reports the transition observed by the operator-triggered reset so the
-    UI can render "OPEN → CLOSED" without an extra status round-trip and
-    the audit log captures the same numbers without re-querying Redis.
-    """
-
-    state_before: BreakerState
-    state_after: BreakerState
-    fail_count_before: int = Field(ge=0)
-    reset_at: datetime
 
 
 # ---------------------------------------------------------------------------
@@ -238,13 +130,13 @@ class AdminDiskItem(BaseModel):
     Phase 4; future PRs may make them per-mount tunable.
     """
 
-    name: Literal["workspace", "dt_volume", "postgres", "redis"]
+    name: Literal["workspace", "postgres", "redis"]
     path: str | None = Field(
         default=None,
         description=(
             "Filesystem path the bytes were read from (only set for "
-            "``workspace`` / ``dt_volume`` — DB-backed entries have no "
-            "single canonical path)."
+            "``workspace`` — DB-backed entries have no single canonical "
+            "path)."
         ),
     )
     total_bytes: int | None = Field(default=None, ge=0)
@@ -387,11 +279,13 @@ class AuditSearchQuery(BaseModel):
 class HealthComponent(BaseModel):
     """One probe in the system-health summary."""
 
+    # W6-#43a: the ``dt`` component was removed alongside the DT integration
+    # (ADR-0001). Keeping the Literal in sync with the runtime is the explicit
+    # DoD gate of #43a — any future re-add must go through schema review.
     name: Literal[
         "postgres",
         "redis",
         "celery",
-        "dt",
         "disk",
         "active_scans",
         "last_24h_errors",
@@ -427,15 +321,8 @@ __all__ = [
     "AuditLogListPage",
     "AuditSearchQuery",
     "AuditTargetTable",
-    "BreakerState",
-    "DTOrphanItem",
-    "DTOrphanListPage",
-    "DTStatusOut",
     "HealthComponent",
-    "HealthProbeOut",
     "HealthStatus",
-    "OrphanCleanupEnqueued",
-    "OrphanCleanupRequest",
     "ScanStatus",
     "SystemHealthOut",
 ]

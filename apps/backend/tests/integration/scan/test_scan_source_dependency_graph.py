@@ -157,38 +157,31 @@ def _seed_queued_scan(session: Session) -> tuple[uuid.UUID, uuid.UUID]:
     return asyncio.run(_build())
 
 
-class _FakeBreaker:
-    def call(self, fn):  # type: ignore[no-untyped-def]
-        return fn()
+def _stub_trivy_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+    """W6: replace ``run_trivy_sbom`` with an empty-report stub."""
+    from integrations.trivy import TrivyResult
 
-    def record_success(self) -> None:  # pragma: no cover
-        pass
+    def _fake_run(
+        sbom_path: Path,  # noqa: ARG001
+        output_dir: Path,
+        *,
+        timeout_seconds: int = 0,  # noqa: ARG001
+        backend: str | None = None,  # noqa: ARG001
+    ) -> TrivyResult:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        report_path = output_dir / "trivy-sbom.json"
+        report = {"SchemaVersion": 2, "ArtifactType": "cyclonedx", "Results": []}
+        report_path.write_text(json.dumps(report), encoding="utf-8")
+        return TrivyResult(report_path=report_path, report=report)
 
-    def record_failure(self) -> None:  # pragma: no cover
-        pass
-
-
-class _FakeDTClient:
-    def upsert_project(self, *, name: str, version: str) -> str:  # noqa: ARG002
-        return "fake-dt-uuid"
-
-    def upload_sbom(self, *, project_uuid: str, sbom_json) -> str:  # noqa: ARG002
-        return "fake-token"
-
-    def get_findings(self, *, project_uuid: str) -> list[dict[str, object]]:  # noqa: ARG002
-        return []
-
-    def close(self) -> None:
-        pass
+    monkeypatch.setattr("tasks.scan_source.run_trivy_sbom", _fake_run)
 
 
 def _patch_pipeline(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, sbom: dict[str, object]
 ) -> None:
     monkeypatch.setenv("WORKSPACE_HOST_PATH", str(tmp_path))
-    monkeypatch.setattr("tasks.scan_source.get_breaker", lambda: _FakeBreaker())
-    monkeypatch.setattr("tasks.scan_source.build_client", lambda: _FakeDTClient())
-    monkeypatch.setattr("tasks.scan_source._DT_FINDINGS_POLL_DELAYS_SECONDS", (0,))
+    _stub_trivy_empty(monkeypatch)
 
     def _fake_run_cdxgen(*, source_dir: Path, output_dir: Path) -> CdxgenResult:
         output_dir.mkdir(parents=True, exist_ok=True)

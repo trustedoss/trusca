@@ -18,11 +18,14 @@
 | v2.2 | 리메디에이션 + 정책 | 10 | 10 | ✅ 완료 (#153,154,156,157,158,159,160,161,162,163,164) — b/c 전 트랙 + b3-UI |
 | v2.3 | 무결성 + 우선순위화 | 6 | 5 | 🟢 마일스톤 충족 (s1·r1·s2·r2·s3 머지; r3=선택·종료조건 초과) |
 | §0.5 | Wave 1~3 (BD 정합·발견성) | 7 | 7 | ✅ 완료 (W1 #29·#34·#35 · W2 #31·#33 · W3 #30·#32) |
-| — | 운영 레인 (외부 블로커) | 4 | 0 | ⬜ 대기 |
+| §0.5 | Wave 4 (UX 정합·IA 재정비) | 6 | 6 | ✅ 완료 (#186 W4-A · #187 prep · #188 W4-B · #189 W4-C · #190 W4-D · #191 follow-up) |
+| §0.5 | **Wave 6 (DT 제거 + Trivy 교체)** | 7(+선택1) | 3 | 🟦 진행중 — #45 ✅ → #40 ✅(PR #196) + chore L1/L2/L4 ✅(PR #199) → #41 ✅(PR #200) → #42 🟦 → #43a~e → #44 (v2.3.1 prereq 스킵, shadow 게이트 스킵, v2.4.0이 첫 공개 릴리스) |
+| §0.5 | **Wave 7 (Docs parity)** | 5(+조사1) | 0 | ⏳ 백로그 — W6 종료 후 착수 검토. DT 문서 비교 갭 5종(Triage 통합·Analysis Types·Best Practices·FAQ·Change Log) |
+| — | 운영 레인 (외부 블로커) | 4 | 0 | ⬜ 대기 (O1·O3는 v2.4.0 첫 공개 릴리스에 통합) |
 
-범례: ⬜ 대기 · 🟦 진행중 · ✅ 완료 · ⛔ 블로킹
+범례: ⬜ 대기 · 🟦 진행중 · ✅ 완료 · ⛔ 블로킹 · ⏳ 백로그
 
-**현재 상태(2026-05-26):** v2.1·v2.2·v2.3 + §0.5 Wave 1~3 모두 종결. 다음 진행은 **사용자 발견 불편/버그 인테이크 모드** — 트래커가 우선이 아니라 사용자가 핸즈온 사용 중 보고하는 항목을 받아 갭 분석 후 PR scope로 좁힌다. 운영 레인 O1~O4만 외부 블로커 대기.
+**현재 상태(2026-05-27 후속 결정):** v2.1·v2.2·v2.3 + §0.5 Wave 1~4 모두 종결. **W6 진행 중**: #45(PR #192) · #40(PR #196) · L1/L2/L4 chore(PR #199) · #41(PR #200) · #42(PR #203) · chore-seed(PR #204) · **#43a BE DT 제거(PR #205)** 모두 머지 완료 — **5/7**. **Repo는 W6 진행 동안 private 전환**, v2.4.0이 DT-free 첫 공개 릴리스가 되며 **v2.3.1 동결 태그/Release/SECURITY.md backport 정책 prereq는 스킵**(외부 사용자 0이라 "Final DT Release" 공개 마커 무의미). 운영 레인 O1/O3은 v2.4.0 GA에 통합 수행. 다음 PR: **W6-#43b 프론트엔드 DT 제거**.
 
 ---
 
@@ -42,6 +45,88 @@
 | W2 | **#33** | (정정) "조치신호(Exploitable/Solution)+CVSS 벡터"는 **이미 구현됨** — Exploitable=`status='exploitable'` 7-state enum + 드로어 status 배지, Solution=v2.2-a3 `upgrade_recommendation` + `DrawerUpgradeSection`, CVSS 벡터=`Vulnerability.cvss_vector` + 드로어 `cvss_vector_label`. **실제 남은 갭**: (a) 목록 License 리스크축 ✅ 완료(2026-05-26). (b) **Bulk actions** ✅ 완료(2026-05-26): `POST /v1/projects/{id}/vulnerabilities:bulk-transition` 엔드포인트(per-row 결과 배열·단일 페이지·200 cap, D-bulk). BE: `bulk_transition_status` 서비스(`FOR UPDATE` 행락 + 정렬 ID로 데드락 방지, 단일 커밋·per-row 매트릭스+role 게이트, before_flush 리스너로 자동 audit) + Pydantic 스키마 + 라우터(envelope 200, 영역 422는 빈/캡초과/미지 enum, cross-team은 envelope 404 existence-hide). FE: `VulnerabilityBulkActionBar` + 행/헤더 체크박스(tri-state indeterminate selectAll, 단일 페이지 cap=200) + `useBulkTransitionVulnerabilities` invalidate (선택 변경 시 자동 클리어), EN/KO 신규 `vulnerabilities.bulk.*` 14키. 게이트: ruff/mypy clean·pytest 164(+20)·vitest 918(+5)·typecheck clean·lint 0 errors·i18n:check OK·openapi snapshot regen 1줄. | ✅ 완료(2026-05-26) |
 | **W3 통합/발견성** | #32 | Reports 센터 탭 — **다운로드/익스포트 이력 통합 + 4영역 진입점 deeplink**(생성 UI는 도메인 탭 유지; 2026-05-26 사전 갭 분석으로 좁힘, [[feedback-tracker-text-may-overstate-gaps]]). **BE ✅ `dbd8c31`**: `report_downloads` 테이블(0025, append-only, ENUM `report_type_enum`, FK 4개 CASCADE/SET NULL, 3 compound 인덱스) + `record_report_download`(best-effort emit, 실패 swallow, UA `mask_pii`+512자, XFF-aware IP) + 4 read-only 엔드포인트 emit(NOTICE/SBOM/Vuln-PDF/VEX export; VEX import는 audit_log 자연 흡수) + `GET /v1/projects/{id}/reports/history`(404 existence-hide, OUTER JOIN user, 페이지 1..200 기본 50). 게이트 ruff/mypy(417) clean·신규 unit 21+integration 9·OpenAPI 1엔트리 추가·alembic head 0025. **FE ✅ `689baa4`**: 신규 `Reports` 탭(sbom↔source 사이, `?tab=reports` URL 거울) — 좌 4 generate 카드(NOTICE/SBOM/Vuln-PDF/VEX) `setSearchParams({tab})`로 도메인 탭 deeplink + `?scan=` 보존, 우 이력 테이블(When/Who/Type/Format/Scan/Size + type MultiSelect 필터 + URL state `?rpt_type=`/`?rpt_page=` + Prev/Next 페이저). 404 일반화("Reports unavailable" — existence-hide), 빈 상태·스켈레톤·429 처리. `reportHistoryApi.ts`+`useReportHistory.ts`(`paramsSerializer: {indexes:null}`로 `?type=a&type=b` 직렬화, `keepPreviousData`). i18n EN/KO 미러(plural 미사용). 하네스 3 verb 추가(`selectReportsTab`/`expectReportsTabReady`/`clickReportsGenerateCard`). 게이트 typecheck clean·lint 0 errors·i18n:check OK·vitest 926(+8). Playwright `reports.spec.ts` 1 시나리오(spec만, 실행 후속). **부속(분리)**: Vuln PDF `scan_id` pin 미지원 → #32c 또는 #30과 묶음. | ✅ 완료(2026-05-26) |
 | W3 | #30 | 프로젝트 목록 행에 릴리스/스캔 수 표시(발견성). 2026-05-26 사전 갭 분석으로 BE+FE 양쪽 진짜 갭 확인(트래커 본문 정확). **BE ✅ `6255700`**: `project_list_enrichment._scan_counts_map` 신규(단일 GROUP BY로 `scan_count`/`release_count`/`MAX(created_at)` 동시 산출, `ix_scans_project_created_at` 활용·N+1 없음) + `enrich_project_rows` 3-튜플 반환 + `ProjectPublic`에 `scan_count`/`release_count: int = 0`·`last_scan_at: datetime|None = None` 추가(list endpoint에서만 채움, detail은 default). 게이트 ruff/mypy(417) clean·pytest 38(+5)·alembic 0025 유지·OpenAPI 스냅샷 무영향. **FE ✅ `971af25`**: `ProjectListPage.tsx` `<ScanMetadataSummary>` 컴포넌트(severity 뒤·status badge 앞 인라인) — `Rel 12 · Scn 47 · 2h ago` (font-mono text-xs `text-muted-foreground`, abs ISO `title` tooltip, never-scanned 행은 미렌더). `formatRelativeToNow` 헬퍼 재사용. i18n EN/KO 4키(`row.releases_abbrev`·`row.scans_abbrev`·`row.never_scanned`·`row.scan_meta_aria`, plural 미사용). 정렬 정정(`compareByLatestScan` updated_at→last_scan_at)은 scope 밖 후속. 게이트 typecheck clean·lint 0 errors·i18n:check OK·vitest 929(+3). | ✅ 완료(2026-05-26) |
+
+**W4 — UX 정합성 + 정보 구조 재정비 (2026-05-26 사용자 핸즈온 #16~#22)**
+
+| 항목 | 내용 | 상태 |
+|---|---|---|
+| W4-A #18 | Admin 메뉴 진입 시 일반 메뉴(Dashboard 등) 사라지는 layout 버그 — P0 단독 PR. `/admin/*` 를 `AppShell` 하위로 nest, `AdminLayout`은 super-admin 가드 + `<Outlet/>`로 축소(자체 sidebar/header 제거; AppShell이 admin 섹션 nav 이미 렌더 중). `admin.layout.*` i18n 키 2개 제거(EN/KO). 단위 테스트 갱신(`admin-sidebar`/`admin-nav-*`/`admin-logout` 어서션 삭제, 가드 3 케이스 유지). 게이트 typecheck clean·lint 0 errors·vitest 930·i18n:check OK. **PR #186 머지** `0c77338`. | ✅ 완료(2026-05-26) |
+| W4-B-prep | 공통 primitive 3종 사전 분리: `SortableColumnHeader`(3-state cycle, `nextSortState`), `LicenseColumnCell`(SPDX + 정책 badge 스택), 차트 `onSegmentClick` prop(SeverityDistributionChart·LicenseDistributionChart). 본 PR이 import해 소비; 재구현 금지. 게이트 typecheck clean·vitest 통과. **머지** `07a8c9f`. | ✅ 완료(2026-05-26) |
+| W4-B #16/#17/#19 | UX 정합성 단일 PR. **#16 Overview**: Risk Score 카드 제거(헤더 RiskGauge 유지) + 차트 segment deep-link(`?tab=vulnerabilities&severity=` / `?tab=licenses&license_category=`) + Recent Scans 행 status별 분기(succeeded/failed/cancelled→Components pin, queued/running→progress drawer). **#17 Components**: License 컬럼 SPDX+badge 분리(`LicenseColumnCell`), Severity/License MultiSelect 제거(차트 deep-link가 대체) + `ActiveFilterChips` 가시화·clear, Sort/Order `<select>` 제거→컬럼 헤더 클릭(unset→asc→desc→unset). **#19 Vulnerabilities**: License 컬럼 분리(SPDX 필드는 BE list schema 미존재로 null 렌더 = follow-up), Severity/License/Sort/Order toolbar 컨트롤 제거, 컬럼 순서 재정렬(CVE/Severity/CVSS/EPSS/Reachability/License/Title/Affected/Status; Discovered 드로어로 이동), Component@Version 컬럼은 BE schema 갭으로 보류(`affected_component_count`만 유지). 신규 i18n `active_filters.*` 6키 EN/KO, 토글 키 제거(EN/KO 동시). 단위테스트 갱신 + 신규(OverviewTab 11, ComponentsTab 16, VulnerabilitiesTab 44). 게이트 typecheck clean·lint 0 errors·vitest 958·i18n:check OK. | 🟡 PR 대기 |
+| W4-C #20/#21/#22 | IA 재정비 — Licenses+Obligations→Compliance, SBOM→Reports, Remediation→Vulnerabilities 흡수. 탭 11개 → 8개. **#20**: 신규 `ComplianceTab.tsx`(sub-tab wrapper, `?cview=licenses|obligations`, 기본=licenses) — 기존 `LicensesTab`/`ObligationsTab` 컴포넌트 본문 재사용(드로어·toolbar·virtual list 동일). 단위 테스트 5케이스. **#21**: `ReportsTab.tsx`에 `<SbomTab>` 인라인 section 추가(`reports-sbom-section`, `?rpt_section=sbom` 이펙트로 자동 scroll). SBOM 카드는 deeplink 대신 in-page scroll 핸들로 변경, NOTICE 카드는 `compliance` 타깃. **#22**: 신규 `VulnerabilitiesRemediationPanel.tsx`(collapsible, `?vuln_section=remediation`) — `RemediationTab`을 그대로 임베드, 본체 비대화 회피. 읽기전용 스냅샷에선 미렌더. **PDP**: `ALLOWED_TABS` 8개로 축소, `redirectLegacyTab(raw)` 헬퍼 + `useEffect`로 `?tab={licenses,obligations,sbom,remediation}` → 새 IA URL 자동 rewrite(replace). `setTab` 드롭 로직: `cview`/`rpt_section`/`vuln_section` 정리. **OverviewTab**: 차트 deeplink가 `?tab=compliance&cview=licenses&license_category=…`로 변경. **하네스**: `selectLicensesTab`/`selectObligationsTab`/`selectSbomTab` 3 verb를 새 IA로 리다이렉트(test 호환). **i18n**: EN/KO 동시 — `tabs.compliance` 추가, `tabs.{licenses,obligations,sbom,remediation}` 제거, `compliance.subtab.*` 2키, `reports.sbom.heading/subheading` 2키, `vulnerabilities.remediation.{heading,subheading,expand,collapse}` 4키, `reports.cards.notice.action`/`reports.cards.sbom.action` 카피 갱신. plural 미사용. **게이트**: typecheck clean·lint 0 errors·vitest 967(+9: ComplianceTab 5 + PDP 4 신규)·i18n:check OK. | 🟡 PR 대기 |
+| W4-D | TYPE/USAGE 본격 픽스 (cdxgen `dependencies` 누락 / npm scope 미배출, P3 #183 진단 후속). **Option C 채택**: 신규 모듈 `apps/backend/integrations/npm_lockfile.py`가 `package-lock.json`(v3/v2/v1)을 파싱 → `{scope_by_purl, adjacency}` 산출. `_persist_components`가 `source_dir`로 lockfile 1회 로드 후, npm 컴포넌트 한정 scope NULL → lockfile scope 폴백(`required`/`dev`/`optional`/`peer`, strongest-wins). `_persist_dependency_graph`는 cdxgen `dependencies` 빈 배열일 때만 lockfile adjacency를 `parse_dependency_graph` 트러스트 경계 통해 재사용(동일 cycle/dangling/MAX_DEPTH 보장). Maven/Gradle/Cargo/Go/.NET 무영향(cdxgen가 scope/graph 신뢰 emit). 로그: `npm_lockfile_loaded`·`dependency_graph_lockfile_fallback`·`dependency_graph_persisted source={"cdxgen","npm_lockfile_fallback"}`. **단위 53 신규**(npm_lockfile 30, dependency_graph 3, scope enrichment 7, parallel_dt_upload 시그니처 픽스 1). 게이트 ruff·mypy clean·신규 line cov 89%·기존 unit 2673 pass(reachability fluke 1건 사전 존재). 운영 검증=머지 후 orchestrator. **PR 대기** `feat/w4-d-type-usage-fix`. | 🟡 PR 대기 |
+| W4-B follow-up: vuln-list affected fields | W4-B #19 의 BE 갭 해소. `VulnerabilityListItem` 응답에 4 신규 필드 추가 — `affected_component_name`·`affected_component_version` (FK-pinned cv 의 식별자, n+1 회피 위해 단일 cv 만), `affected_component_license` (SPDX, worst-rank `DISTINCT ON` argmax), `affected_component_license_category` (새 null-bearing; 기존 non-null `component_license_category` 도 back-compat 으로 유지). FE: `VulnerabilitiesTab` 의 옛 standalone "Affected" 카운트 컬럼을 신규 `ComponentColumnCell` 로 흡수 (`name@version` + `+N-1` 접미사, 카운트 > 1 일 때), `LicenseColumnCell` 에 SPDX 와이어업, 스테일 캐시 row 가 새 필드 미보유 시 legacy category 로 fallback. 새 i18n 키 EN/KO 동시: `vulnerabilities.column.component`·`affected_more_count`·`affected_more_count_tooltip`. 단위 5 신규(BE: name/version, SPDX happy, worst-rank pick, LicenseRef-* null SPDX, multi-cv count + per-row pinned cv) + 5 신규(FE: Component@Version 렌더, `+N-1` 표시, null fallback dash, SPDX wireup, legacy category fallback). 게이트 ruff·mypy clean·BE unit 121 pass·FE typecheck clean·lint 0 errors·vitest 972·i18n:check OK·OpenAPI 스냅샷 갱신. **PR 대기** `feat/vuln-list-affected-fields`. | 🟡 PR 대기 |
+
+→ 상세 계획·갭 분석·출발 파일은 **`docs/plan-w4-ui-ia-overhaul.md`** 단일 진실. 진행 전 반드시 참조.
+
+---
+
+**W5 — DT 운영 견고화 (2026-05-27 사용자 핸즈온 발견) — ⛔ W6로 무효화**
+
+> 출처: 2026-05-27 사용자 핸즈온 — DT 내장 H2 MVStore 손상 사고(`org.h2.mvstore.MVStoreException: Chunk 113620 not found`)로 DT 미부팅 → circuit breaker가 포털 다운은 막았으나 ① 새 스캔이 approvals 직후 즉시 fail ② DT 데이터 복구 경로 없음 ③ 새 DT 인스턴스 부트스트랩이 수동(OSV 활성화) ④ 운영 compose도 embedded H2라 동일 사고 재발 가능 — 네 갭이 동시 발견됨.
+>
+> **⛔ 2026-05-27 결정**: W6(Trivy 단일 교체)로 DT를 통째로 제거하기로 결정 → W5 4개 항목 모두 **무효화(superseded by W6)**. DT 코드/인프라가 사라지므로 별도 견고화 PR 불필요. [[project_dt_removal_decision]] 참조.
+
+| 항목 | 내용 | 상태 |
+|---|---|---|
+| ~~W5-#36~~ | ~~DT 데이터 정기 백업 + 복구 자동화~~ | ⛔ W6로 무효화 |
+| ~~W5-#37~~ | ~~DT 다운 중 도착한 스캔 자동 재시도 큐~~ | ⛔ W6로 무효화 |
+| ~~W5-#38~~ | ~~DT 부트스트랩 완전 자동화 (OSV 8 ecosystem 활성화)~~ | ⛔ W6로 무효화 |
+| ~~W5-#39~~ | ~~운영 compose DT를 외부 PostgreSQL 모드로 분리~~ | ⛔ W6로 무효화 |
+
+---
+
+**W6 — DT 제거 + Trivy 단일 교체 (2026-05-27 결정, 계획 v2)**
+
+> 출처: W5 사고 분석 + Explore 면밀 평가(2026-05-27). 우리 코드의 DT 활용도가 표면적인 것보다 훨씬 낮음 — 정책엔진/VEX/UI/승인은 모두 자체 구현, DT는 사실상 "CycloneDX → CVE 매칭" 단일 기능. DT의 킬러 기능(새 NVD → 기존 SBOM 자동 재매칭)은 `dt_resync.py`가 카탈로그만 폴링하고 실제 재분석은 안 트리거해 **현재 미활용**. 그 한 기능 위해 4GB JVM + embedded H2 손상 위험 + 부트스트랩 수동 + 백업 갭을 떠안고 있음. SBOM 생성기(cdxgen)는 검토 후 **유지** — Trivy fs로 통합 시 dependency graph·scope·evidence 손실, W4-D 자산 폐기 발생.
+>
+> **결정 근거**: Trivy는 (a) 이미 worker 이미지에 설치 (b) `trivy sbom` 명령으로 CycloneDX 직접 입력 (c) NVD+OSV+GHSA+EPSS+KEV 통합 (d) ~500MB(vs DT 4GB) → Apple Silicon Colima 4CPU/8GB dev 안정성 큰 폭 상승 (e) 우리 `integrations/trivy.py` 패턴과 동일.
+>
+> **현실적 일정**: **코드 8~10일 + 캘린더 7일 shadow** = 약 2~2.5주 마일스톤. 트래커 초안의 "3~5일"은 fix-first/벤치 튜닝/마이그레이션 검증을 누락한 과소 추정이었음 → 정정.
+
+| 항목 | 내용 | 상태 |
+|---|---|---|
+| ~~W6-prereq~~ | ~~DT 시대 동결 marker (v2.3.1 annotated tag + GitHub Release + `:v2.3-dt` 별칭 + SECURITY.md backport 정책 + 운영 레인 O1·O3 통합 수행)~~ | ⛔ **스킵 (2026-05-27 후속 결정)** — repo private 전환 + 외부 사용자 0이라 "Final DT Release" 공개 마커 무의미. v2.4.0이 DT-free 첫 공개 릴리스가 됨. O1/O3은 v2.4.0 GA에 통합. ADR-0001 amendment 절 참조. |
+| W6-#45 | **ADR + 전략 문서 동기화 (선행)**. `docs/decisions/0001-replace-dt-with-trivy.md` 신규(Context/Decision/Consequences, 메모리 본문 기반, cdxgen 유지 부록). `CLAUDE.md` 규칙 4(DT Circuit Breaker) 제거·"DT 연동 전략" 절 → "취약점 매칭(Trivy)"로 재작성·디렉토리/환경변수/에이전트 설명 11곳 갱신. `docs/post-ga-roadmap.md` v2.1 회고 + v2.4 W6 절 신설 + "비범위: 자체 vuln DB" 정정 14곳. 검증: docusaurus build · `grep -nE "Dependency.?Track\|DT " CLAUDE.md docs/post-ga-roadmap.md` = 0. **dep: 없음**. | ✅ 완료 (PR #192, 2026-05-27, commit f68d688) |
+| W6-#40 | **Trivy SBOM 통합 어댑터**. `integrations/trivy.py`에 `run_trivy_sbom(sbom_path, output_dir) -> TrivyResult` 추가(`trivy sbom --format json --output ...` subprocess, 기존 `run_trivy_image`와 동일 에러 처리·timeout·SecretEncryptionError 패턴). cdxgen 산출 CycloneDX JSON 입력 → JSON 결과 산출. 단위 cov ≥85%. **adversarial parametrize**(untrusted Trivy JSON: 비정상 severity·중첩 깊이·인코딩 깨짐·oversized) 필수 [[feedback-adversarial-input-parametrize]]. **dep: W6-#45**. | ✅ 완료 (PR #196, 2026-05-27, commit b6ff071). 36 tests · mypy/ruff green · cov 83%. security-reviewer M1+L3 fix 포함 (`scrubbed_env_for_trivy` + `--scanners vuln`). L1·L2·L4 chore PR #199(commit 7a4117e) — 14 tests · cov 94% · `_ensure_inside_workspace` + 256MB cap + `safe_detail` redaction. |
+| W6-#41 | **Trivy 결과 → `vulnerability_findings` persist + 정보용 벤치 측정** (ADR-0001 Amendment 2 — shadow gate 폐기). `_persist_findings` 확장 또는 신규 `services/vulnerability_matching.py`에 Trivy JSON parser 추가 — `external_id`/`severity`/`cvss_score`/`epss_score`/`fixed_version`/`reference_urls`/`summary` 매핑(현 DT finding shape와 동등). `scan_source.py:535`의 `dt_findings` 스테이지를 `_poll_trivy_findings`로 교체(**stage 이름 유지** — WS frame/E2E harness 호환, rename은 #43f). 멱등 upsert. **shadow 분기 없음**: DT 호출 제거하고 Trivy만 호출 (회복 비용 0 — git revert로 분 단위). **벤치 스크립트** `scripts/benchmark_dt_vs_trivy.py` — ADR-0002의 6개 cohort SBOM에 DT/Trivy 양쪽 호출 → 차이의 종류(DT-only/Trivy-only/version-mismatch) 분류 보고서. **게이트 아님 — 정보용**(미래 개선 백로그 인풋). **종료: persister e2e green + 벤치 보고서 1회 산출**. **dep: W6-#40**. **rev: security-reviewer**(untrusted JSON 파싱). | ✅ 완료 (PR #200, 2026-05-27, commit a2f4a07). 65 unit + 3 integration tests · `vulnerability_matching` cov 89% · mypy/ruff green · net diff −2499. Vulnerability autocreate(source='trivy') 추가. `integrations/dt/` 모듈 보존(#43a까지). 벤치 manual 1회 실행은 별도(DT API key + trivy + 3시간 소요). |
+| ~~W6-shadow~~ | ~~7일 shadow 운영 게이트~~ | ⛔ **스킵 (2026-05-27 후속 결정 #3, ADR-0001 Amendment 2)** — Jaccard metric이 잘못된 측정 + DT가 절대 기준 아님 + 회복 비용 0 (외부 사용자 0 + repo private). |
+| W6-#42 | **자동 재매칭 — Celery beat 주기 재스캔**. DT가 못 하던(우리 코드 기준) "새 NVD 발견 시 기존 SBOM 재매칭"을 신규 기능으로 구현. 신규 task `tasks/vulnerability_rematch.py` — N시간(기본 6h)마다 succeeded 스캔들의 보존 SBOM을 `run_trivy_sbom`으로 재실행 → 새 finding만 추가/severity 변경 감지 → 알림 발행(기존 notification 인프라 재사용). Beat 시간대 분산 설계(다른 beat와 worker 큐 충돌 방지). 종료: 어제 깨끗했던 스캔이 새 NVD 데이터로 finding 추가되는 시나리오 e2e green. **dep: W6-#41 (#43a 전에 머지)**. | ✅ 완료 (PR #203, 2026-05-27, commit 03639d0). **scope 확장**: source_preservation_service에 SBOM 폴드(`.trustedoss/cdxgen.cdx.json`)+`extract_preserved_sbom`/`preserved_tarball_has_sbom`/`PreservedSbomMissing` 추가(휘발 workspace 문제 해결). 마이그 0026 + 부분 인덱스. 3 env(`VULN_REMATCH_INTERVAL_HOURS/_BATCH_SIZE/_LOCK_SKEW_SECONDS`). Beat `crontab(minute=15, hour="*/6")`. **테스트**: 33 신규 단위 + 3 통합, 54 green, ruff/mypy clean. **security-reviewer (a276e00c4b6f944a0)** Verdict CHANGES REQUESTED → **본 PR fix 5건**: H-1(tarfile symlink 우회 strict isreg)·H-2(silent zero-yield 가드 — prior>0+malformed report 거부)·M-1(email 채널 drop, Slack/Teams만)·M-3(per-scan cap 10 + summary descriptor)·L-3(temp dir WORKSPACE_HOST_PATH/rematch/ 이동). **후속 4건 → W6-chore-#42-followup** (M-2/M-4/L-1/L-2). |
+| W6-#43a | **백엔드 DT 제거 (비가역, #41+#42 머지 후)**. `apps/backend/integrations/dt/` 전체 삭제(`__init__`·`breaker`·`client`·`health`), `tasks/dt_{resync,orphan_cleaner,orphan_cleanup,health}.py` 4개 삭제, `api/v1/admin/dt.py` + admin service 삭제, `core/config.py:434-465` 8 getter 제거, `tasks/celery_app.py:39-81` import + beat schedule 정리, `scan_source.py`에서 `build_client`/`breaker`/`dt_executor`/`_dt_upload`/`_poll_dt_findings_with_retry` 잔재 제거(stage 이름은 #43f까지 유지). `.env.example` DT 섹션 제거. `docker-compose.dt.yml` → #43d로 이관(release notes와 함께 발표). 백엔드 DT 테스트 8개 삭제. `audit_log` 의 DT 액션 타입은 **보존**(역사 사실). **종료**: `grep -rIn "from .*dt\|DT_" apps/backend/ \| grep -v trivy \| grep -v audit_log` = 0. **회복**: 회귀 발생 시 본 PR git revert (외부 사용자 0). **dep: W6-#41 + W6-#42**. **rev: security-reviewer**(권한 우회/잔여 endpoint 검증). | ✅ 완료 (PR #205, 2026-05-27, commit 189b2ff). 11 source 파일 + 4 test 디렉토리/파일 삭제 + 7 코멘트/테스트/스키마 수정. mypy 424→**405** source files. **security-reviewer (a3cf57b0051879c0c)** Verdict CHANGES REQUESTED → **본 PR fix 5건**: H-1(HealthComponent.name Literal "dt" 제거 + openapi regen)·H-2(upgrade.sh `celery purge --task-names=trustedoss.dt_*` 추가, in-flight 메시지 NACK loop 차단)·M-1(죽은 conftest fixtures 제거 — fakeredis_client/make_breaker/make_dt_client zero consumers + services/conftest.py 전체 삭제)·M-2(integrations/__init__.py docstring dt/ 제거)·M-3(main.py FastAPI description 정리). **후속 7건 → W6-chore-#43a-doc-drift** (L-4/5/6/7 + Info-1: docstring 정리). |
+| W6-#43b | **프론트엔드 DT 제거**. `features/admin/dt/` 디렉토리 삭제(`AdminDTPage`·`adminDTApi`·`useAdminDT`). `router.tsx` `/admin/dt` 라우트 제거 → 404 처리. `AppShell.tsx` admin nav DT 항목 제거. EN/KO 번역 키 정리 + `npm run i18n:check` 통과. Playwright `admin/dt` 시나리오 → 404 redirect 시나리오로 교체. visual-regression DT 스크린샷 baseline 삭제. **dep: W6-#43a**. | ⏳ 백로그 |
+| W6-#43c | **사용자/관리자 문서 교체 (EN/KO 동시, 1.5d)**. 신규 `docs-site/docs/admin-guide/vulnerability-data.md` (Trivy DB 운영 가이드: 동기화·**air-gapped 운영 매뉴얼**·트러블슈팅). **신규 `docs-site/docs/reference/data-sources.md`** (출처 reference: NVD/OSV/GHSA/EPSS/KEV — 갱신 주기·커버리지 매트릭스. DT 문서 비교 갭 분석 결과 추가, 운영/reference 분리는 DT IA 정합). `admin-guide/dt-connector.md` 삭제 + sidebars.ts 정리. 핵심 4개 교체: `reference/{architecture,env-variables}.md`·`installation/{docker-compose,helm}.md`. 멘션 9개 정리: `intro`·`comparison`·`user-guide/{scans,vulnerabilities}`·`admin-guide/{disk-and-health,oncall-runbook}`·`ci-integration/github-actions`·`reference/glossary`·`contributor-guide/agent-team`. `release-notes/v2.0.0.md`는 **보존**(역사). 신규 `release-notes/v2.4.0.md` 초안(Breaking changes + Migration). 검증: docusaurus build EN/KO green · 깨진 링크 0 · i18n:check OK. **dep: W6-#43b**. **owner: doc-writer + i18n-specialist**. | ⏳ 백로그 |
+| W6-#43d | **배포·Helm·운영자 마이그레이션**. `scripts/install.sh:400` DT_API_KEY 안내 제거 + Trivy DB 안내 추가. `scripts/upgrade.sh` 신규 v2.3→v2.4 절: ① **Celery 큐 drain 대기**(인플라이트 스캔 보호) ② `dtrack-api` 컨테이너 정리(`docker rm`) ③ DT 볼륨 archive 안내(데이터 삭제는 사용자 confirm) ④ `.env` DT_* 자동 주석처리 ⑤ **부팅 후 1-click "전체 재매칭" admin UI 트리거 + 진행 표시**. `docker-compose.yml` DT 코멘트 6곳 제거. `docker-compose.dt.yml` 삭제. `charts/trustedoss/` 0.2.x → **0.3.0**: values·configmap-env·secret·deployment-beat·_helpers·README 6개 정리. `release-notes/v2.4.0.md` 최종화 + GitHub Release body draft. 검증: helm lint/template green · 시뮬레이션 upgrade(seed_demo v2.3.1→v2.4.0) 다운타임 ≤5분·데이터 유실 0. **dep: W6-#43c**. **owner: devops-engineer**. | ⏳ 백로그 |
+| W6-#43e | **admin/health Trivy DB 상태 패널 신설**. DT 패널이 사라진 자리에 Trivy DB 상태(last update timestamp·vuln count·DB version·다음 refresh 예정) 노출. BE: 신규 `GET /v1/admin/trivy/health`. FE: admin/health에 `TrivyDBPanel` 추가. EN/KO. **dep: W6-#43b (FE) + W6-#44 (DB 라이프사이클 데이터 소스)**. | ⏳ 백로그 |
+| **W6-#44** | **Trivy DB 라이프사이클 관리 (필수로 승격)**. worker 부팅 시 `trivy --download-db-only` 1회 + weekly 주기 refresh(beat). **air-gapped 사용자용 `TRIVY_DB_REPOSITORY` 미러 설정 + 별도 PV 마운트 매뉴얼**(#43c air-gapped 절과 정합). `trivy image`(컨테이너 스캔)와 `trivy sbom`(SCA 매칭)이 동일 DB 공유 → 동시성 lock 테스트. 종료: 오프라인 부팅 시에도 마지막 캐시로 매칭 가능 + 동시 호출 안전. **dep: W6-#40 (Trivy 어댑터 패턴 재사용)**. | ⏳ 백로그 |
+| W6-#43f (선택) | **stage rename — 장기 부채 청산**. `scan_source.py` stage 키 `dt_upload`/`dt_findings` → `sbom_upload`/`vuln_match`. WS frame · E2E harness · 진행 표시 i18n 동시 갱신. **별도 minor 릴리스(v2.4.1)에서**. 단기엔 가독성 부채 감수. **dep: W6-#43a 머지 후 임의 시점**. | ⏳ 백로그 |
+| W6-chore-#43a-doc-drift | **W6-#43a security-reviewer 후속 (Low/Info 7건)**. 본 PR에서 H-1(HealthComponent.name Literal)·H-2(upgrade.sh queue purge)·M-1(죽은 conftest fixtures)·M-2(integrations/__init__.py docstring)·M-3(main.py FastAPI description) fix 완료. 후속 doc-drift 7건: (L-4) test_admin_health_service.py docstring + "seven_components" 함수명, (L-5) tasks/{backup,notify,source_archive_cleaner,scan_reachability}.py `:mod:` cross-ref, (L-6) core/config.py:465/831 "DT polling" 멘션, (L-7) tasks/scan_container.py "DT may cross-reference" 반사실, (Info-1) models/scan.py + schemas/{project_detail,vulnerability_detail}.py "from DT" provenance 멘션. **dep: W6-#43a 머지 후, #43e 전에 처리 권고**. **예상**: 0.5d. | ⏳ 백로그 |
+| W6-chore-#42-followup | **W6-#42 security-reviewer 후속 (M-2/M-4/L-1/L-2)**. 본 PR에서 H-1/H-2/M-1/M-3/L-3는 처리됨; M-2(scan_artifact 분리 kind/컬럼으로 SBOM-present flag DB promote — O(N) tarball open 제거), M-4(`scan.rematch_failure_count` 컬럼 + worker hard-kill poison-pill 가드), L-1(diff key `(external_id, cv_id)` → `(vulnerability_id, cv_id)` 변경, 알림 빌드 시점에서 external_id resolve), L-2(critical→unknown silent downgrade 가시화 — admin-only NotificationKind 또는 metrics counter). 각 작업이 마이그/정책 결정 필요. **dep: W6-#42 머지 후, #43a 후나 v2.4.1 어디든 가능**. **예상**: 1d (각 4 항목 0.25d). | ⏳ 백로그 |
+| W6-chore-seed | **데모 시드 fragility 청산 (W6-#42 후 chore)**. 현 `scripts/seed_demo.py`는 `DEMO_SUPER_ADMIN_PASSWORD` env 없으면 random 12자 생성 후 stdout에 1회만 출력 → 분실 시 데모 계정 영구 로그인 불가, 재시드 반복 사이클. 본 세션에서도 발생. 작업: ① **A** — `seed_demo`가 `APP_ENV=dev\|demo`이면 env 없을 때 강제 디폴트 `DemoTest2026!` 적용. ② **B** — `.env` 자동 sync 헬퍼 — `install.sh`/`upgrade.sh`/`dev-reset.sh`가 `.env.example` 신규 키를 사용자 `.env`에 append-only 동기화(overwrite X). ③ **C(보조)** — `seed_demo`가 idempotent password 재계산. | ✅ 완료 (PR #204, 2026-05-27). A+B 동시 머지: `scripts/lib/env_sync.sh` 공통 헬퍼 + 6 bash 테스트(9 asserts) + seed_demo random → `DemoTest2026!` 디폴트 + 5 신규 pytest. shellcheck/ruff/mypy clean. C는 본 PR scope 외(idempotency는 hash_password 호출 자체로 충족). |
+
+→ **현실적 일정**: prereq 0.5d + #45 0.5d + #40 1d + #41 1.5d + (shadow 캘린더 7d 병렬) + #42 1d + #43a 0.5d + #43b 0.5d + #43c 1.5d + #43d 0.5d + #43e 0.5d + #44 0.5d = **코드 8.5d + 캘린더 7d shadow** ≈ **2~2.5주 마일스톤**. 종료 시 W5 4개 항목 자동 해소.
+
+**롤백 비가역 지점**: shadow 게이트 통과 후 #43a 머지 순간부터 비가역. 그 전엔 Trivy 결과만 비교용으로 유지 → DT 코드 그대로라 언제든 회귀 가능.
+
+**사용자 확인 필요**: (1) 벤치 코호트 GitHub repos 5~10개 제공 가능 여부 — 없으면 OSS 인기 repo로 자체 구성 (2) air-gapped 사용자 존재 여부 — 있으면 #44 필수 강도 상향, 없으면 후순위 (3) shadow 7일 캘린더 수용.
+
+---
+
+**W7 — Docs parity wave (백로그, W6 종료 후 착수 검토)**
+
+> 출처: 2026-05-27 DT 공식 문서(docs.dependencytrack.org) 구조 비교(12 카테고리 vs 우리 7 카테고리). 우위(거버넌스/기여자/다국어/comparison)는 유지하되, 명백한 갭 5종을 별도 트랙으로 좁힘. **W6 완료 후 실제 docs 상태 보고 우선순위·범위 재조정**([[feedback_tracker_text_may_overstate_gaps]] 방지).
+
+| 항목 | 내용 | 상태 |
+|---|---|---|
+| W7-PR-A | **Triage Results 통합 가이드**. 신규 `user-guide/triage.md` — VEX 7-state + 컴포넌트 승인 워크플로우 + 빌드 게이트 한 페이지에 통합(현재 `vulnerabilities.md`·`approvals.md` 분산). DT의 Triage Results 카테고리 격. EN/KO. | ⏳ 백로그 |
+| W7-PR-B | **Analysis Types 단일 페이지**. 신규 `reference/analysis-types.md` — source SBOM scan(cdxgen→Trivy) · container scan(Trivy) · reachability(govulncheck) · policy gate를 한 매트릭스. DT의 Analysis Types 격. 도입 사용자 1차 진입점. EN/KO. | ⏳ 백로그 |
+| W7-PR-C | **Best Practices 카테고리 신설**. 신규 `best-practices/{scan-frequency,policy-design,team-structure,upgrade-cadence}.md` 4페이지 + sidebars 카테고리 추가. 운영자 첫 의사결정 가이드(현 `oncall-runbook.md`이 부분 대체 중). EN/KO. | ⏳ 백로그 |
+| W7-PR-D | **FAQ 신설**. 신규 `reference/faq.md` (또는 별도 top-level) — 30~50개 첫 도입 질문. GitHub Discussions에서 자주 받는 패턴 우선. 사용자 도입 1차 검색 통로. EN/KO. | ⏳ 백로그 |
+| W7-PR-E | **Change Log 누적 보강**. 신규 `release-notes/v2.{1,2,3}.0.md` 소급 작성(코드는 머지 완료, 문서만 누락). v2.4.0과 같은 양식. EN/KO. | ⏳ 백로그 |
+| W7-PR-F (조사 후 판단) | **DefectDojo/ThreadFix 통합 가이드** — DT 우위 영역, SCA 생태계 통합. 조사 후 의도·범위 확정 → 등재 또는 보류 결정. 지금은 라벨만 보존([[feedback_tracker_clear_intent_only]] — 의도 명확화 전엔 미등재). | ⏳ 조사 대기 |
+
+→ 작업량 추정 **PR-A~E 합쳐 3~4d** (각 0.5~1d). PR-F는 별도 판단. W6 종료 후 실제 docs 상태 본 뒤 진짜 갭만 PR scope로 ([[feedback_tracker_text_may_overstate_gaps]]).
+
+---
 
 **#29 구현 요지(완료):** `services/project_detail_service.py::get_project_overview` — `recent_stmt`를 `if aggregate_scan_id is not None` 블록 밖으로 빼 **성공 스냅샷 없어도(첫 스캔 queued/running) recent_scans를 항상 조회**. 분포 집계만 스냅샷에 의존. 프론트 `ProjectDetailPage` 헤더에 queued/running 스캔용 영속 칩(`project-detail-active-scan`) 추가 → 클릭 시 진행 드로어 재오픈. 가드: `test_latest_succeeded_scan_anchoring.py`(running-only overview), `tests/unit/ProjectDetailPage.test.tsx`(칩 3케이스).
 
@@ -240,6 +325,29 @@ v2.2 (순차)  a1→a2→a3 ─→ b1(rev)→b2→b3(rev)
         ▼
 v2.3 (순차)  s1(rev)→s2→s3   ‖   r1→r2→r3
    v2.3 게이트(§7)
+        │
+        ▼
+W6 (DT → Trivy)
+  prereq(v2.3.1 tag/Release, O1+O3 통합)
+        │
+        ▼
+  #45(ADR/CLAUDE.md) ─→ #40(어댑터, rev) ─→ #41(persist+벤치, rev)
+                                                  │
+                                                  ▼
+                                        shadow 7d (≥95% 게이트)
+                                                  │
+                                                  ▼
+                                       #42(재매칭) → #43a(BE 제거, rev) → #43b(FE)
+                                                                              │
+                                                                              ▼
+                                                                      #43c(문서) → #43d(배포)
+                                                                                       │
+                                                                                       ▼
+                                                                                    #43e(Trivy DB 패널)
+                                                                                       ‖
+                                                                                    #44(Trivy DB 라이프사이클, 필수)
+                                                                                       ‖
+                                                                                    #43f(stage rename, 선택·v2.4.1)
 ```
 
 ---

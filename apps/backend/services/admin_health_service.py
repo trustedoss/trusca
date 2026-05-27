@@ -6,11 +6,12 @@ Aggregates the per-component probes the ops dashboard polls every 30s:
   - postgres        — ``SELECT 1``.
   - redis           — ``PING``.
   - celery          — ``celery_app.control.ping(timeout=2)``; worker count ≥ 1.
-  - dt              — breaker snapshot (closed → ok, half_open → degraded,
-                       open → down).
   - disk            — derived from :func:`services.admin_disk_service.get_disk_telemetry`.
   - active_scans    — count of ``status IN ('queued', 'running')``.
   - last_24h_errors — count of ``status='failed' AND finished_at > now()-24h``.
+
+W6-#43a (ADR-0001): the DT breaker probe was removed when DT was replaced
+by Trivy; the Trivy DB health panel is a separate W6-#43e follow-up.
 
 Each probe is independent: a failed probe contributes a single ``down`` /
 ``degraded`` component without raising, so a partial outage produces a
@@ -32,12 +33,6 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import redis_url
-from integrations.dt.breaker import (
-    STATE_CLOSED,
-    STATE_HALF_OPEN,
-    STATE_OPEN,
-    get_breaker,
-)
 from models import Scan
 from schemas.admin_ops import (
     HealthComponent,
@@ -129,32 +124,6 @@ def _probe_celery(*, celery_app_override: Any | None = None) -> HealthComponent:
         status="down",
         detail="no workers responded",
         value=0,
-    )
-
-
-def _probe_dt() -> HealthComponent:
-    try:
-        snapshot = get_breaker().snapshot()
-    except Exception as exc:  # noqa: BLE001
-        log.warning("admin.health.dt_failed", error=str(exc))
-        return HealthComponent(
-            name="dt",
-            status="down",
-            detail=_strip_credentials(f"{type(exc).__name__}: {exc}"),
-            value=None,
-        )
-
-    status_map: dict[str, HealthStatus] = {
-        STATE_CLOSED: "ok",
-        STATE_HALF_OPEN: "degraded",
-        STATE_OPEN: "down",
-    }
-    status = status_map.get(snapshot.state, "ok")
-    return HealthComponent(
-        name="dt",
-        status=status,
-        detail=f"breaker={snapshot.state}, fail_count={snapshot.fail_count}",
-        value=snapshot.fail_count,
     )
 
 
@@ -271,15 +240,14 @@ async def get_system_health(session: AsyncSession) -> SystemHealthOut:
     """Run every probe in sequence and return the aggregated payload.
 
     Sequence rather than ``asyncio.gather`` because each probe touches a
-    single resource and the real bottleneck is the DT / Redis / Celery
-    network hop — fanning out via gather adds complexity without
-    measurable speedup at the per-poll cadence the dashboard uses.
+    single resource and the real bottleneck is the Redis / Celery network
+    hop — fanning out via gather adds complexity without measurable
+    speedup at the per-poll cadence the dashboard uses.
     """
     components = [
         await _probe_postgres(session),
         _probe_redis(),
         _probe_celery(),
-        _probe_dt(),
         await _probe_disk(session),
         await _probe_active_scans(session),
         await _probe_last_24h_errors(session),

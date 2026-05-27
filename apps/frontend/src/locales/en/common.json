@@ -13,6 +13,11 @@
     "clear": "Clear",
     "count_selected": "{{count}} selected"
   },
+  "sort": {
+    "aria_ascending": "sorted ascending — click to sort descending",
+    "aria_descending": "sorted descending — click to clear sort",
+    "aria_unsorted": "not sorted — click to sort ascending"
+  },
   "auth": {
     "logout": "Sign out",
     "profile": "Profile"

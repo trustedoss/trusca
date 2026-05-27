@@ -23,14 +23,17 @@
     "overview": "Overview",
     "components": "Components",
     "vulnerabilities": "Vulnerabilities",
-    "licenses": "Licenses",
-    "obligations": "Obligations",
-    "sbom": "SBOM",
     "source": "Source",
-    "remediation": "Remediation",
+    "compliance": "Compliance",
     "settings": "Settings",
     "releases": "Releases",
     "reports": "Reports"
+  },
+  "compliance": {
+    "subtab": {
+      "licenses": "Licenses",
+      "obligations": "Obligations"
+    }
   },
   "severity": {
     "critical": "Critical",
@@ -46,6 +49,14 @@
     "conditional": "Conditional",
     "allowed": "Allowed",
     "unknown": "Unknown"
+  },
+  "active_filters": {
+    "aria_label": "Active filters",
+    "heading": "Filters:",
+    "severity_chip_label": "Severity: {{value}}",
+    "license_chip_label": "License: {{value}}",
+    "clear_severity_aria": "Remove severity filter {{value}}",
+    "clear_license_aria": "Remove license filter {{value}}"
   },
   "risk": {
     "critical": "Critical risk",
@@ -159,6 +170,9 @@
       "severity": "Severity",
       "vulns": "CVEs"
     },
+    "license": {
+      "unknown_dash": "—"
+    },
     "badge": {
       "dependency_type": {
         "direct": "Direct",
@@ -178,8 +192,6 @@
     "toolbar": {
       "search_label": "Search",
       "search_placeholder": "Search by name or purl",
-      "severity_label": "Severity",
-      "license_label": "License",
       "dependency_type_label": "Dependency type",
       "dependency_type": {
         "all": "All",
@@ -191,14 +203,7 @@
         "required": "Required",
         "optional": "Optional",
         "unspecified": "Unspecified"
-      },
-      "sort_label": "Sort by",
-      "sort_by_name": "Name",
-      "sort_by_severity": "Severity",
-      "sort_by_license": "License",
-      "order_label": "Order",
-      "order_asc": "Ascending",
-      "order_desc": "Descending"
+      }
     },
     "empty": {
       "title": "No components match",
@@ -230,6 +235,12 @@
   },
   "vulnerabilities": {
     "summary": "{{loaded}} of {{total}} findings loaded.",
+    "remediation": {
+      "heading": "Remediation",
+      "subheading": "Preview proposed npm version bumps for this project and, when authorised, open a remediation pull request.",
+      "expand": "Open remediation",
+      "collapse": "Close remediation"
+    },
     "column": {
       "cve_id": "CVE ID",
       "severity": "Severity",
@@ -238,6 +249,9 @@
       "cvss": "CVSS",
       "epss": "EPSS",
       "summary": "Title",
+      "component": "Component",
+      "affected_more_count": "+{{count}}",
+      "affected_more_count_tooltip": "{{count}} more component(s) also affected — see drawer",
       "affected": "Affected",
       "status": "Status",
       "discovered": "Discovered"
@@ -357,7 +371,6 @@
     "toolbar": {
       "search_label": "Search",
       "search_placeholder": "Search by CVE ID or summary",
-      "severity_label": "Severity",
       "status_label": "Status",
       "reachable_label": "Reachability",
       "reachable_any": "Any reachability",
@@ -366,17 +379,6 @@
         "false": "Not reachable",
         "unknown": "Not analyzed"
       },
-      "license_label": "License",
-      "sort_label": "Sort by",
-      "sort_by_severity": "Severity",
-      "sort_by_reachable": "Reachability",
-      "sort_by_cvss": "CVSS",
-      "sort_by_epss": "EPSS",
-      "sort_by_status": "Status",
-      "sort_by_discovered_at": "Discovered",
-      "order_label": "Order",
-      "order_asc": "Ascending",
-      "order_desc": "Descending",
       "report_label": "Report",
       "download_pdf": "Download PDF report",
       "download_pdf_generating": "Generating…"
@@ -859,16 +861,20 @@
       "heading": "Generate",
       "subheading": "Generate or export a project artefact. Each shortcut opens the domain tab where the action lives."
     },
+    "sbom": {
+      "heading": "SBOM downloads",
+      "subheading": "Download a CycloneDX or SPDX SBOM for the latest scan, along with its signature and verification bundle."
+    },
     "cards": {
       "notice": {
         "title": "NOTICE",
         "description": "Attribution NOTICE file with license obligations.",
-        "action": "Go to Obligations"
+        "action": "Go to Compliance"
       },
       "sbom": {
         "title": "SBOM",
         "description": "Software Bill of Materials in CycloneDX or SPDX.",
-        "action": "Go to SBOM"
+        "action": "Jump to SBOM downloads"
       },
       "vuln-pdf": {
         "title": "Vulnerability PDF",

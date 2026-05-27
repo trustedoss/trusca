@@ -6,6 +6,10 @@ import { Virtuoso } from "react-virtuoso";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  type SortState,
+  SortableColumnHeader,
+} from "@/components/ui/sortable-column-header";
 import type { LicenseCategoryName } from "@/features/projects/api/projectDetailApi";
 import { useProjectOverview } from "@/features/projects/api/useProjectOverview";
 import { useVulnerabilities } from "@/features/projects/api/useVulnerabilities";
@@ -19,9 +23,11 @@ import type {
   VulnerabilitySortKey,
 } from "@/features/projects/api/vulnerabilitiesApi";
 import { BULK_TRANSITION_MAX } from "@/features/projects/api/vulnerabilitiesApi";
-import { LicenseCategoryBadge } from "@/features/projects/components/LicenseCategoryBadge";
+import { ActiveFilterChips } from "@/features/projects/components/ActiveFilterChips";
+import { LicenseColumnCell } from "@/features/projects/components/LicenseColumnCell";
 import { ReachabilityBadge } from "@/features/projects/components/ReachabilityBadge";
 import { SeverityBadge } from "@/features/projects/components/SeverityBadge";
+import { VulnerabilitiesRemediationPanel } from "@/features/projects/components/VulnerabilitiesRemediationPanel";
 import { VulnerabilitiesToolbar } from "@/features/projects/components/VulnerabilitiesToolbar";
 import { VulnerabilityBulkActionBar } from "@/features/projects/components/VulnerabilityBulkActionBar";
 import { VulnerabilityDrawer } from "@/features/projects/components/VulnerabilityDrawer";
@@ -36,7 +42,6 @@ import {
   type TriageRole,
 } from "@/features/projects/lib/vulnerabilityTransitions";
 import { ProblemError } from "@/lib/problem";
-import { formatRelativeToNow } from "@/lib/relativeTime";
 import { cn } from "@/lib/utils";
 
 /**
@@ -172,7 +177,7 @@ export function VulnerabilitiesTab({
   scanId,
   readOnly = false,
 }: VulnerabilitiesTabProps) {
-  const { t, i18n } = useTranslation("project_detail");
+  const { t } = useTranslation("project_detail");
   const [searchParams, setSearchParams] = useSearchParams();
 
   // ----- filter state, hydrated from URL on first render -------------------
@@ -396,29 +401,36 @@ export function VulnerabilitiesTab({
       : source;
   }, [fetchedItems, vexSuppressedOnly]);
 
+  // W4-B #19 — SortableColumnHeader state derived from the existing
+  // `sort` + `order` state. The default surface state is "severity desc"
+  // (the most useful triage order); we treat the default as the un-sorted
+  // bucket so the Severity header's cycle returns to no-explicit-sort
+  // rather than being stuck on asc/desc forever.
+  const currentSort: SortState | null = useMemo(() => {
+    if (sort === "severity" && order === "desc") return null;
+    return { key: sort, order };
+  }, [sort, order]);
+
+  function handleSortChange(next: SortState | null) {
+    if (!next) {
+      setSort("severity");
+      setOrder("desc");
+      setPage(1);
+      return;
+    }
+    setSort(next.key as VulnerabilitySortKey);
+    setOrder(next.order);
+    setPage(1);
+  }
+
   return (
     <div data-testid="vulnerabilities-tab" className="flex flex-1 flex-col">
       <VulnerabilitiesToolbar
         search={search}
         onSearchChange={setSearch}
-        severity={severity}
-        onSeverityChange={(next) => {
-          setSeverity(next);
-          setPage(1);
-        }}
         status={status}
         onStatusChange={(next) => {
           setStatus(next);
-          setPage(1);
-        }}
-        sort={sort}
-        onSortChange={(next) => {
-          setSort(next);
-          setPage(1);
-        }}
-        order={order}
-        onOrderChange={(next) => {
-          setOrder(next);
           setPage(1);
         }}
         minEpss={minEpss}
@@ -429,11 +441,6 @@ export function VulnerabilitiesTab({
         reachable={reachable}
         onReachableChange={(next) => {
           setReachable(next);
-          setPage(1);
-        }}
-        licenseCategory={licenseCategory}
-        onLicenseCategoryChange={(next) => {
-          setLicenseCategory(next);
           setPage(1);
         }}
         onDownloadPdf={() => {
@@ -455,6 +462,19 @@ export function VulnerabilitiesTab({
         projectName={projectName}
         projectRole={projectRole}
         readOnly={readOnly}
+      />
+
+      <ActiveFilterChips<VulnSeverity>
+        severity={severity}
+        onSeverityChange={(next) => {
+          setSeverity(next);
+          setPage(1);
+        }}
+        licenseCategory={licenseCategory}
+        onLicenseCategoryChange={(next) => {
+          setLicenseCategory(next);
+          setPage(1);
+        }}
       />
 
       <div
@@ -531,6 +551,8 @@ export function VulnerabilitiesTab({
               !items.every((it) => selectedIds.has(it.id))
             }
             disabled={readOnly}
+            currentSort={currentSort}
+            onSortChange={handleSortChange}
             onToggleAll={(checked) => {
               if (checked) {
                 // Select-all is single-page (D-bulk). Truncate to the cap if
@@ -559,7 +581,6 @@ export function VulnerabilitiesTab({
                 <VulnerabilityRow
                   vulnerability={item}
                   rowIndex={index}
-                  locale={i18n.language}
                   selected={selectedIds.has(item.id)}
                   selectionDisabled={readOnly}
                   onToggleSelected={(checked) =>
@@ -582,6 +603,15 @@ export function VulnerabilitiesTab({
           if (!open) setDrawerVuln(null);
         }}
       />
+
+      {/* W4-C #22 — Remediation slot. The collapsible panel keeps the table
+          above as the primary surface while exposing the npm dry-run preview
+          and team-admin PR creation in one place. Skip in historical mode so
+          a user looking at an old snapshot can't queue a PR against a
+          stale findings set. */}
+      {!readOnly ? (
+        <VulnerabilitiesRemediationPanel projectId={projectId} />
+      ) : null}
     </div>
   );
 }
@@ -590,6 +620,8 @@ interface VulnerabilitiesTableHeaderProps {
   allSelected: boolean;
   someSelected: boolean;
   disabled?: boolean;
+  currentSort: SortState | null;
+  onSortChange: (next: SortState | null) => void;
   onToggleAll: (checked: boolean) => void;
 }
 
@@ -597,6 +629,8 @@ function VulnerabilitiesTableHeader({
   allSelected,
   someSelected,
   disabled = false,
+  currentSort,
+  onSortChange,
   onToggleAll,
 }: VulnerabilitiesTableHeaderProps) {
   const { t } = useTranslation("project_detail");
@@ -621,12 +655,29 @@ function VulnerabilitiesTableHeader({
           disabled={disabled}
         />
       </span>
+      {/* Follow-up to W4-B #19 — column order: CVE / Severity / CVSS / EPSS /
+          Reachability / Component / License / Title / Status. The standalone
+          "Affected" count column merged into the Component column ("+N-1"
+          suffix when the CVE touches more cvs); the drawer still carries the
+          full affected_components list. Discovered moved to the drawer. */}
       <span className="w-44">{t("vulnerabilities.column.cve_id")}</span>
-      <span className="w-28">{t("vulnerabilities.column.severity")}</span>
-      <span className="w-28">{t("vulnerabilities.column.license")}</span>
-      <span className="w-28">{t("vulnerabilities.column.reachable")}</span>
+      <span className="w-28">
+        <SortableColumnHeader
+          column="severity"
+          label={t("vulnerabilities.column.severity")}
+          currentSort={currentSort}
+          onSort={onSortChange}
+          testId="vulnerabilities-sort-header-severity"
+        />
+      </span>
       <span className="w-16 text-right">
-        {t("vulnerabilities.column.cvss")}
+        <SortableColumnHeader
+          column="cvss"
+          label={t("vulnerabilities.column.cvss")}
+          currentSort={currentSort}
+          onSort={onSortChange}
+          testId="vulnerabilities-sort-header-cvss"
+        />
       </span>
       <span
         className="w-20 text-right"
@@ -635,14 +686,35 @@ function VulnerabilitiesTableHeader({
             "EPSS — probability this CVE is exploited in the wild within 30 days. Complements CVSS (severity).",
         })}
       >
-        {t("vulnerabilities.column.epss", { defaultValue: "EPSS" })}
+        <SortableColumnHeader
+          column="epss"
+          label={t("vulnerabilities.column.epss", { defaultValue: "EPSS" })}
+          currentSort={currentSort}
+          onSort={onSortChange}
+          testId="vulnerabilities-sort-header-epss"
+        />
       </span>
+      <span className="w-28">
+        <SortableColumnHeader
+          column="reachable"
+          label={t("vulnerabilities.column.reachable")}
+          currentSort={currentSort}
+          onSort={onSortChange}
+          testId="vulnerabilities-sort-header-reachable"
+        />
+      </span>
+      <span className="w-40">{t("vulnerabilities.column.component")}</span>
+      <span className="w-32">{t("vulnerabilities.column.license")}</span>
       <span className="flex-1">{t("vulnerabilities.column.summary")}</span>
-      <span className="w-20 text-right">
-        {t("vulnerabilities.column.affected")}
+      <span className="w-32">
+        <SortableColumnHeader
+          column="status"
+          label={t("vulnerabilities.column.status")}
+          currentSort={currentSort}
+          onSort={onSortChange}
+          testId="vulnerabilities-sort-header-status"
+        />
       </span>
-      <span className="w-32">{t("vulnerabilities.column.status")}</span>
-      <span className="w-32">{t("vulnerabilities.column.discovered")}</span>
     </div>
   );
 }
@@ -650,7 +722,6 @@ function VulnerabilitiesTableHeader({
 interface VulnerabilityRowProps {
   vulnerability: VulnerabilityListItem;
   rowIndex: number;
-  locale: string;
   selected: boolean;
   selectionDisabled?: boolean;
   onToggleSelected: (checked: boolean) => void;
@@ -660,7 +731,6 @@ interface VulnerabilityRowProps {
 function VulnerabilityRow({
   vulnerability,
   rowIndex,
-  locale,
   selected,
   selectionDisabled = false,
   onToggleSelected,
@@ -703,6 +773,10 @@ function VulnerabilityRow({
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
         )}
       >
+      {/* Follow-up to W4-B #19 — column order matches the header: CVE /
+          Severity / CVSS / EPSS / Reachability / Component / License /
+          Title / Status. The standalone affected count column folded into
+          the Component cell's "+N-1" suffix. Discovered moved to drawer. */}
       <span
         className="w-44 truncate font-mono text-xs"
         title={vulnerability.cve_id}
@@ -711,35 +785,6 @@ function VulnerabilityRow({
       </span>
       <span className="w-28">
         <SeverityBadge severity={vulnerability.severity} />
-      </span>
-      <span
-        className="w-28"
-        data-testid="vuln-row-license"
-        data-license-category={vulnerability.component_license_category}
-      >
-        {/*
-          W2 #33 — Defensive fallback: the backend contract guarantees this
-          field is always one of the four enum values (LEFT-JOIN miss → "unknown"),
-          but if a stale-cached response misses it we still render the
-          "unknown" bucket rather than crashing the row.
-         */}
-        <LicenseCategoryBadge
-          category={vulnerability.component_license_category ?? "unknown"}
-        />
-      </span>
-      <span
-        className="flex w-28 items-center"
-        data-testid="vulnerability-row-reachability"
-        data-reachable={
-          vulnerability.reachable == null
-            ? "unknown"
-            : String(vulnerability.reachable)
-        }
-      >
-        <ReachabilityBadge
-          reachable={vulnerability.reachable}
-          source={vulnerability.reachability_source}
-        />
       </span>
       <span
         className="w-16 text-right font-mono text-xs tabular-nums"
@@ -754,28 +799,60 @@ function VulnerabilityRow({
         percentile={vulnerability.epss_percentile}
       />
       <span
+        className="flex w-28 items-center"
+        data-testid="vulnerability-row-reachability"
+        data-reachable={
+          vulnerability.reachable == null
+            ? "unknown"
+            : String(vulnerability.reachable)
+        }
+      >
+        <ReachabilityBadge
+          reachable={vulnerability.reachable}
+          source={vulnerability.reachability_source}
+        />
+      </span>
+      <ComponentColumnCell
+        name={vulnerability.affected_component_name}
+        version={vulnerability.affected_component_version}
+        count={vulnerability.affected_component_count}
+      />
+      <span
+        className="w-32"
+        data-testid="vuln-row-license"
+        data-license-category={
+          vulnerability.affected_component_license_category ??
+          vulnerability.component_license_category
+        }
+        data-license-spdx={vulnerability.affected_component_license ?? ""}
+      >
+        {/* Follow-up to W4-B #19 — License axis is SPDX + policy badge
+            stacked. The BE schema bump exposes `affected_component_license`
+            (SPDX) + `affected_component_license_category` (null-bearing).
+            We prefer those, falling back to the legacy
+            `component_license_category` (non-null, defaults to "unknown")
+            so stale-cached rows from before the bump still render the
+            category badge — no UI regression while the cache turns over. */}
+        <LicenseColumnCell
+          license={vulnerability.affected_component_license}
+          category={
+            vulnerability.affected_component_license_category ??
+            vulnerability.component_license_category ??
+            "unknown"
+          }
+        />
+      </span>
+      <span
         className="flex-1 truncate"
         title={vulnerability.summary ?? ""}
       >
         {vulnerability.summary ?? "—"}
-      </span>
-      <span
-        className="w-20 text-right font-mono text-xs tabular-nums"
-        data-testid="vulnerability-row-affected"
-      >
-        {vulnerability.affected_component_count}
       </span>
       <span className="flex w-32 items-center gap-1">
         <VulnerabilityStatusBadge status={vulnerability.status} />
         {vulnerability.analysis_source === "vex_import" ? (
           <VexProvenanceMarker />
         ) : null}
-      </span>
-      <span
-        className="w-32 truncate text-xs text-muted-foreground"
-        title={vulnerability.discovered_at}
-      >
-        {formatRelativeToNow(vulnerability.discovered_at, locale)}
       </span>
       </button>
     </div>
@@ -832,6 +909,75 @@ function EpssCell({ score, percentile }: EpssCellProps) {
       title={tooltip}
     >
       {formattedScore}
+    </span>
+  );
+}
+
+interface ComponentColumnCellProps {
+  /** Pinned cv name. Backend may return null on legacy rows (cv deleted). */
+  name: string | null;
+  /** Pinned cv version string. */
+  version: string | null;
+  /**
+   * Distinct cvs affected by this CVE in the scan (the row is one of them).
+   * Drives the `+N-1` suffix when the CVE bundles more than one cv.
+   */
+  count: number;
+}
+
+/**
+ * Component@Version cell — replaces the old standalone "Affected count"
+ * column. Renders the FK-pinned cv as `name@version` in the mono accent so
+ * package names stand out, then appends `+N-1` when the CVE touches more
+ * cvs (the drawer still carries the full list via `affected_components`).
+ * A row missing both name and version renders the localized dash so empty
+ * cells are obvious — never the bare string "null@null".
+ *
+ * The count badge stays inline (not stacked) so the column doubles as
+ * "Affected": triagers reading the list see at a glance whether the CVE
+ * touches one or many packages without opening the drawer.
+ */
+function ComponentColumnCell({ name, version, count }: ComponentColumnCellProps) {
+  const { t } = useTranslation("project_detail");
+  const hasIdentity = name != null && version != null;
+  const label = hasIdentity
+    ? `${name}@${version}`
+    : t("components.license.unknown_dash");
+  const remainder = Math.max(0, count - 1);
+  // tabular-nums on the suffix keeps "+9" / "+99" aligned across rows.
+  return (
+    <span
+      className="flex w-40 items-center gap-1 truncate"
+      data-testid="vulnerability-row-component"
+      data-component-name={name ?? ""}
+      data-component-version={version ?? ""}
+      data-affected-count={count}
+      title={hasIdentity ? label : undefined}
+    >
+      <span
+        className={cn(
+          "truncate font-mono text-xs",
+          hasIdentity ? "text-foreground" : "text-muted-foreground",
+        )}
+      >
+        {label}
+      </span>
+      {remainder > 0 ? (
+        <span
+          className="shrink-0 rounded bg-muted px-1 text-[10px] font-medium tabular-nums text-muted-foreground"
+          data-testid="vulnerability-row-component-more"
+          title={t("vulnerabilities.column.affected_more_count_tooltip", {
+            count: remainder,
+            defaultValue:
+              "{{count}} more component(s) also affected — see drawer",
+          })}
+        >
+          {t("vulnerabilities.column.affected_more_count", {
+            count: remainder,
+            defaultValue: "+{{count}}",
+          })}
+        </span>
+      ) : null}
     </span>
   );
 }

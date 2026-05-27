@@ -303,3 +303,125 @@ def test_two_refs_mapping_to_same_cv_skip_self_edge() -> None:
         ref_to_scan_component=ref_to_sc,
     )
     assert _edges(session) == []  # resolved self-edge dropped
+
+
+# ---------------------------------------------------------------------------
+# W4-D: npm lockfile fallback when cdxgen emits no dependencies array
+# ---------------------------------------------------------------------------
+
+
+def test_lockfile_fallback_stamps_depth_when_cdxgen_graph_empty() -> None:
+    """cdxgen emitted components but no ``dependencies`` — the npm lockfile
+    fallback fills the graph so direct/transitive distinction survives.
+
+    This is the dominant 2026-05-26 failure mode observed in the P3 #12
+    diagnostic: every scan in the corpus had ScanComponent.depth NULL because
+    cdxgen left the graph empty. The fallback restores TYPE column data.
+    """
+    from integrations.npm_lockfile import NpmLockfileData
+
+    sbom: dict[str, Any] = {"components": [], "dependencies": []}  # empty cdxgen graph
+    # The lockfile says express is a direct dep with a transitive body-parser.
+    npm_lock = NpmLockfileData(
+        scope_by_purl={
+            "pkg:npm/express@4.18.2": "required",
+            "pkg:npm/body-parser@1.20.1": "required",
+        },
+        adjacency={
+            "": ["pkg:npm/express@4.18.2"],
+            "pkg:npm/express@4.18.2": ["pkg:npm/body-parser@1.20.1"],
+            "pkg:npm/body-parser@1.20.1": [],
+        },
+    )
+    ref_to_cv, ref_to_sc = _build_maps(
+        ["pkg:npm/express@4.18.2", "pkg:npm/body-parser@1.20.1"]
+    )
+    session = _FakeSession()
+
+    _persist_dependency_graph(
+        session,
+        scan_uuid=uuid.uuid4(),
+        sbom=sbom,
+        ref_to_cv_id=ref_to_cv,
+        ref_to_scan_component=ref_to_sc,
+        npm_lock=npm_lock,
+    )
+
+    # express is depth 1 (direct), body-parser is depth 2 (transitive).
+    express = ref_to_sc["pkg:npm/express@4.18.2"]
+    body = ref_to_sc["pkg:npm/body-parser@1.20.1"]
+    assert express.depth == 1 and express.direct is True
+    assert body.depth == 2 and body.direct is False
+    # One resolved edge.
+    edges = _edges(session)
+    pairs = {(e.parent_component_version_id, e.child_component_version_id) for e in edges}
+    assert pairs == {
+        (
+            ref_to_cv["pkg:npm/express@4.18.2"],
+            ref_to_cv["pkg:npm/body-parser@1.20.1"],
+        )
+    }
+
+
+def test_lockfile_fallback_ignored_when_cdxgen_graph_nonempty() -> None:
+    """When cdxgen emitted a usable graph, the lockfile is NOT used — cdxgen
+    wins because its bom-refs may include richer information (e.g. workspace
+    refs) and consistency with cdxgen's view is more important than completeness.
+    """
+    from integrations.npm_lockfile import NpmLockfileData
+
+    sbom = {
+        "metadata": {"component": {"bom-ref": "app"}},
+        "dependencies": [
+            {"ref": "app", "dependsOn": ["pkg:npm/express@4.18.2"]},
+            {"ref": "pkg:npm/express@4.18.2", "dependsOn": []},
+        ],
+    }
+    # Lockfile says express depends on body-parser; cdxgen disagrees (empty).
+    # cdxgen wins → body-parser is not stamped.
+    npm_lock = NpmLockfileData(
+        scope_by_purl={},
+        adjacency={
+            "": ["pkg:npm/express@4.18.2"],
+            "pkg:npm/express@4.18.2": ["pkg:npm/body-parser@1.20.1"],
+        },
+    )
+    ref_to_cv, ref_to_sc = _build_maps(
+        ["pkg:npm/express@4.18.2", "pkg:npm/body-parser@1.20.1"]
+    )
+    session = _FakeSession()
+
+    _persist_dependency_graph(
+        session,
+        scan_uuid=uuid.uuid4(),
+        sbom=sbom,
+        ref_to_cv_id=ref_to_cv,
+        ref_to_scan_component=ref_to_sc,
+        npm_lock=npm_lock,
+    )
+
+    # cdxgen graph wins — express is direct (1), body-parser was NOT in cdxgen
+    # graph so it stays NULL (unset).
+    assert ref_to_sc["pkg:npm/express@4.18.2"].depth == 1
+    assert ref_to_sc["pkg:npm/body-parser@1.20.1"].depth is None
+
+
+def test_lockfile_fallback_skipped_when_npm_lock_none() -> None:
+    """No lockfile (non-npm project, or lockfile absent) → original
+    ``dependency_graph_missing`` WARN path stays. Nothing stamped, no raise."""
+    sbom: dict[str, Any] = {"components": [], "dependencies": []}  # empty cdxgen graph
+    ref_to_cv, ref_to_sc = _build_maps(["a", "b"])
+    session = _FakeSession()
+
+    _persist_dependency_graph(
+        session,
+        scan_uuid=uuid.uuid4(),
+        sbom=sbom,
+        ref_to_cv_id=ref_to_cv,
+        ref_to_scan_component=ref_to_sc,
+        npm_lock=None,
+    )
+
+    assert ref_to_sc["a"].depth is None and ref_to_sc["a"].direct is False
+    assert ref_to_sc["b"].depth is None and ref_to_sc["b"].direct is False
+    assert _edges(session) == []

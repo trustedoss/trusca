@@ -1222,6 +1222,28 @@
             "title": "Component Id",
             "type": "string"
           },
+          "component_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Component Name"
+          },
+          "component_purl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Component Purl"
+          },
           "decided_at": {
             "anyOf": [
               {
@@ -1266,6 +1288,28 @@
             "format": "uuid",
             "title": "Project Id",
             "type": "string"
+          },
+          "project_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Name"
+          },
+          "project_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Slug"
           },
           "requested_at": {
             "format": "date-time",
@@ -1700,6 +1744,22 @@
             "title": "Created At",
             "type": "string"
           },
+          "dependency_scope": {
+            "anyOf": [
+              {
+                "enum": [
+                  "required",
+                  "optional"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "W2 #31 — BD-style 'Usage' for the chosen (shallowest) path. ``null`` when cdxgen left the field unset on that path. Drawers surface the row's own scope rather than an aggregate, because depth/direct already pin one path.",
+            "title": "Dependency Scope"
+          },
           "depth": {
             "anyOf": [
               {
@@ -1851,6 +1911,22 @@
             "format": "uuid",
             "title": "Component Id",
             "type": "string"
+          },
+          "dependency_scope": {
+            "anyOf": [
+              {
+                "enum": [
+                  "required",
+                  "optional"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "W2 #31 — BD-style 'Usage' for the component, derived from the CycloneDX ``component.scope`` field cdxgen emits. The value is aggregated across the same cv's dependency paths (``required`` wins over ``optional`` — a component used at runtime from any path is reported as ``required``). ``null`` when every path left scope unset (the common case for ecosystems whose SBOMs do not encode scope) — the UI renders that as '—' rather than guessing.",
+            "title": "Dependency Scope"
           },
           "depth": {
             "anyOf": [
@@ -2068,6 +2144,19 @@
             ],
             "description": "DT version string when reachable; null when the breaker is OPEN.",
             "title": "Version"
+          },
+          "vulnerability_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Total vulnerabilities in DT's database (the NVD/OSV/GHSA mirror size). 0 means the mirror is empty — NVD mirroring is disabled or still downloading — so scans find components but no CVEs. null when the breaker is OPEN or the count probe failed.",
+            "title": "Vulnerability Count"
           }
         },
         "required": [
@@ -2076,6 +2165,79 @@
           "last_check_at"
         ],
         "title": "DTStatusOut",
+        "type": "object"
+      },
+      "DashboardSummary": {
+        "description": "Portfolio overview for the caller's accessible projects.\n\nAll aggregates are scoped to projects the caller may read: super-admins see\nevery project; everyone else sees only projects whose ``team_id`` is one of\ntheir team memberships. A user must never see counts that include another\nteam's projects.",
+        "example": {
+          "license_category_counts": {
+            "conditional": 4,
+            "permissive": 180,
+            "prohibited": 1,
+            "unknown": 12
+          },
+          "pending_approvals_count": 2,
+          "project_count": 7,
+          "recent_scans": [
+            {
+              "finished_at": "2026-05-25T09:14:00Z",
+              "kind": "source",
+              "project_id": "9a2b7e10-0000-0000-0000-000000000002",
+              "project_name": "payments-api",
+              "scan_id": "3f1d8c2a-0000-0000-0000-000000000001",
+              "status": "succeeded"
+            }
+          ],
+          "scan_status_counts": {
+            "failed": 2,
+            "queued": 1,
+            "running": 0,
+            "succeeded": 12
+          },
+          "vulnerability_severity_counts": {
+            "critical": 3,
+            "high": 9,
+            "info": 5,
+            "low": 41,
+            "medium": 22
+          }
+        },
+        "properties": {
+          "license_category_counts": {
+            "$ref": "#/components/schemas/LicenseCategoryCounts"
+          },
+          "pending_approvals_count": {
+            "description": "Open component approvals (status in {'pending','under_review'}) for accessible projects.",
+            "minimum": 0.0,
+            "title": "Pending Approvals Count",
+            "type": "integer"
+          },
+          "project_count": {
+            "description": "Accessible, non-archived projects.",
+            "minimum": 0.0,
+            "title": "Project Count",
+            "type": "integer"
+          },
+          "recent_scans": {
+            "description": "The 10 most recent scans across accessible projects, newest first.",
+            "items": {
+              "$ref": "#/components/schemas/RecentScan"
+            },
+            "title": "Recent Scans",
+            "type": "array"
+          },
+          "scan_status_counts": {
+            "$ref": "#/components/schemas/ScanStatusCounts"
+          },
+          "vulnerability_severity_counts": {
+            "$ref": "#/components/schemas/VulnerabilitySeverityCounts"
+          }
+        },
+        "required": [
+          "project_count",
+          "pending_approvals_count"
+        ],
+        "title": "DashboardSummary",
         "type": "object"
       },
       "DependencyChangeOut": {
@@ -2124,6 +2286,392 @@
           "changed"
         ],
         "title": "DependencyChangeOut",
+        "type": "object"
+      },
+      "DiffComponentAdded": {
+        "description": "A package present in target but NOT in base (newly introduced).",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "namespace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Namespace"
+          },
+          "purl": {
+            "description": "The component_version's full purl (purl-with-version) in target.",
+            "title": "Purl",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "purl",
+          "version"
+        ],
+        "title": "DiffComponentAdded",
+        "type": "object"
+      },
+      "DiffComponentChanged": {
+        "description": "The same package present in BOTH snapshots at a DIFFERENT version (bump).",
+        "properties": {
+          "base_version": {
+            "title": "Base Version",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "namespace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Namespace"
+          },
+          "purl": {
+            "description": "The component package's purl WITHOUT version (the stable package identity shared by base_version and target_version).",
+            "title": "Purl",
+            "type": "string"
+          },
+          "target_version": {
+            "title": "Target Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "purl",
+          "base_version",
+          "target_version"
+        ],
+        "title": "DiffComponentChanged",
+        "type": "object"
+      },
+      "DiffComponentRemoved": {
+        "description": "A package present in base but NOT in target (removed, e.g. log4j dropped).",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "namespace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Namespace"
+          },
+          "purl": {
+            "description": "The component_version's full purl (purl-with-version) in base.",
+            "title": "Purl",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "purl",
+          "version"
+        ],
+        "title": "DiffComponentRemoved",
+        "type": "object"
+      },
+      "DiffComponents": {
+        "description": "The three component change sets between base and target.",
+        "properties": {
+          "added": {
+            "items": {
+              "$ref": "#/components/schemas/DiffComponentAdded"
+            },
+            "title": "Added",
+            "type": "array"
+          },
+          "changed": {
+            "items": {
+              "$ref": "#/components/schemas/DiffComponentChanged"
+            },
+            "title": "Changed",
+            "type": "array"
+          },
+          "removed": {
+            "items": {
+              "$ref": "#/components/schemas/DiffComponentRemoved"
+            },
+            "title": "Removed",
+            "type": "array"
+          }
+        },
+        "title": "DiffComponents",
+        "type": "object"
+      },
+      "DiffGateDelta": {
+        "description": "The build-gate verdict compared across the two snapshots.",
+        "properties": {
+          "base": {
+            "anyOf": [
+              {
+                "enum": [
+                  "pass",
+                  "fail"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "enum": [
+                  "pass",
+                  "fail"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          }
+        },
+        "title": "DiffGateDelta",
+        "type": "object"
+      },
+      "DiffIntDelta": {
+        "description": "A single integer metric (a count) compared across the two snapshots.",
+        "properties": {
+          "base": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Base",
+            "type": "integer"
+          },
+          "target": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Target",
+            "type": "integer"
+          }
+        },
+        "title": "DiffIntDelta",
+        "type": "object"
+      },
+      "DiffLicenseCategoryDelta": {
+        "description": "Per-license-category component counts compared across the two snapshots.\n\nEach category carries a ``{base, target}`` pair so the UI can show how the\nlicense-risk distribution shifted between the two releases. Counts are the\nnumber of component_versions whose WORST license category lands in each\nbucket (same worst-per-component bucketing the license distribution uses).",
+        "properties": {
+          "conditional": {
+            "$ref": "#/components/schemas/DiffIntDelta"
+          },
+          "permissive": {
+            "$ref": "#/components/schemas/DiffIntDelta",
+            "description": "Allowed/permissive-category components (MIT/Apache-2.0 …)."
+          },
+          "prohibited": {
+            "$ref": "#/components/schemas/DiffIntDelta",
+            "description": "Forbidden-category components (GPL/AGPL/SSPL/BUSL …)."
+          },
+          "unknown": {
+            "$ref": "#/components/schemas/DiffIntDelta"
+          }
+        },
+        "title": "DiffLicenseCategoryDelta",
+        "type": "object"
+      },
+      "DiffLicenses": {
+        "description": "License change view — per-category base/target component-count deltas.",
+        "properties": {
+          "category_delta": {
+            "$ref": "#/components/schemas/DiffLicenseCategoryDelta"
+          }
+        },
+        "title": "DiffLicenses",
+        "type": "object"
+      },
+      "DiffScalarDelta": {
+        "description": "A single scalar metric compared across the two snapshots (base vs target).\n\n``base`` / ``target`` may be null when the metric is not aggregable for that\nside (e.g. ``risk_score`` if a snapshot is somehow not aggregable — should not\noccur for a real succeeded scan).",
+        "properties": {
+          "base": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          }
+        },
+        "title": "DiffScalarDelta",
+        "type": "object"
+      },
+      "DiffSeverityDelta": {
+        "description": "Worst-per-component vuln-severity counts compared across the two snapshots.\n\nEach bucket carries a ``{base, target}`` pair so the UI can render the delta.\nCounts are the number of component_versions whose WORST CVE finding lands in\neach bucket — the SAME worst-per-component bucketing the Releases table /\nOverview tab use, so the diff summary can never disagree with them. Only the\nfour risk-bearing buckets are surfaced (``info`` / ``none`` are not\nactionable on a summary).",
+        "properties": {
+          "critical": {
+            "$ref": "#/components/schemas/DiffIntDelta"
+          },
+          "high": {
+            "$ref": "#/components/schemas/DiffIntDelta"
+          },
+          "low": {
+            "$ref": "#/components/schemas/DiffIntDelta"
+          },
+          "medium": {
+            "$ref": "#/components/schemas/DiffIntDelta"
+          }
+        },
+        "title": "DiffSeverityDelta",
+        "type": "object"
+      },
+      "DiffSnapshotRef": {
+        "description": "One side (base or target) of the comparison — which succeeded scan it is.",
+        "properties": {
+          "created_at": {
+            "description": "When this scan was created.",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "release": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional release/version label from the scan's ``metadata.release`` (e.g. 'v0.1'). Non-unique and often absent (null).",
+            "title": "Release"
+          },
+          "scan_id": {
+            "description": "The succeeded scan that IS this side of the diff.",
+            "format": "uuid",
+            "title": "Scan Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scan_id",
+          "created_at"
+        ],
+        "title": "DiffSnapshotRef",
+        "type": "object"
+      },
+      "DiffSummary": {
+        "description": "Side-by-side per-snapshot summary (base vs target) for the diff header.",
+        "properties": {
+          "component_count": {
+            "$ref": "#/components/schemas/DiffIntDelta",
+            "description": "Distinct component_versions observed in each snapshot."
+          },
+          "gate": {
+            "$ref": "#/components/schemas/DiffGateDelta"
+          },
+          "risk_score": {
+            "$ref": "#/components/schemas/DiffScalarDelta",
+            "description": "Overall risk 0–100 (max of security/license axis) for each snapshot, using the SAME non-saturating scorer the Overview / Releases use."
+          },
+          "severity": {
+            "$ref": "#/components/schemas/DiffSeverityDelta"
+          }
+        },
+        "title": "DiffSummary",
+        "type": "object"
+      },
+      "DiffVulnerabilities": {
+        "description": "Vulnerabilities introduced / resolved between base and target (OPEN set).",
+        "properties": {
+          "introduced": {
+            "description": "Open in target, not open in base (newly introduced exposure).",
+            "items": {
+              "$ref": "#/components/schemas/DiffVulnerability"
+            },
+            "title": "Introduced",
+            "type": "array"
+          },
+          "resolved": {
+            "description": "Was open in base, gone/closed in target (resolved exposure).",
+            "items": {
+              "$ref": "#/components/schemas/DiffVulnerability"
+            },
+            "title": "Resolved",
+            "type": "array"
+          }
+        },
+        "title": "DiffVulnerabilities",
+        "type": "object"
+      },
+      "DiffVulnerability": {
+        "description": "One (cve, component_version) finding that changed open-status between snapshots.",
+        "properties": {
+          "component_name": {
+            "title": "Component Name",
+            "type": "string"
+          },
+          "component_version": {
+            "title": "Component Version",
+            "type": "string"
+          },
+          "cve_id": {
+            "description": "The CVE / advisory external id (e.g. 'CVE-2021-44228').",
+            "title": "Cve Id",
+            "type": "string"
+          },
+          "severity": {
+            "description": "The CVE severity bucket (critical/high/medium/low/info/unknown).",
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cve_id",
+          "severity",
+          "component_name",
+          "component_version"
+        ],
+        "title": "DiffVulnerability",
         "type": "object"
       },
       "DryRunRecommendationOut": {
@@ -2753,6 +3301,37 @@
         "title": "HealthProbeOut",
         "type": "object"
       },
+      "LicenseCategoryCounts": {
+        "description": "Component license verdicts over each project's latest succeeded scan.\n\n``prohibited`` is the UI label for the persisted ``forbidden`` category;\n``permissive`` is the UI label for ``allowed``. ``conditional`` and\n``unknown`` keep their persisted names.",
+        "properties": {
+          "conditional": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Conditional",
+            "type": "integer"
+          },
+          "permissive": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Permissive",
+            "type": "integer"
+          },
+          "prohibited": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Prohibited",
+            "type": "integer"
+          },
+          "unknown": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Unknown",
+            "type": "integer"
+          }
+        },
+        "title": "LicenseCategoryCounts",
+        "type": "object"
+      },
       "LicenseDetailResponse": {
         "description": "Full drawer payload for a single license_findings row.",
         "properties": {
@@ -3356,6 +3935,31 @@
           "password"
         ],
         "title": "LoginRequest",
+        "type": "object"
+      },
+      "MembershipPublic": {
+        "description": "One of the authenticated user's team memberships (for /auth/me).",
+        "properties": {
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "team_id": {
+            "format": "uuid",
+            "title": "Team Id",
+            "type": "string"
+          },
+          "team_name": {
+            "title": "Team Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "team_id",
+          "team_name",
+          "role"
+        ],
+        "title": "MembershipPublic",
         "type": "object"
       },
       "NotificationListResponse": {
@@ -4247,6 +4851,135 @@
         "title": "ProjectCreate",
         "type": "object"
       },
+      "ProjectDiff": {
+        "description": "The full diff between two succeeded-scan snapshots of one project.",
+        "example": {
+          "base": {
+            "created_at": "2026-05-20T10:00:00Z",
+            "release": "v0.1",
+            "scan_id": "3c15c82f-c409-4f5f-b7d9-92bca8cc1f7f"
+          },
+          "components": {
+            "added": [
+              {
+                "name": "log4j-core",
+                "namespace": "org.apache.logging.log4j",
+                "purl": "pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1",
+                "version": "2.14.1"
+              }
+            ],
+            "changed": [
+              {
+                "base_version": "4.17.20",
+                "name": "lodash",
+                "purl": "pkg:npm/lodash",
+                "target_version": "4.17.21"
+              }
+            ],
+            "removed": []
+          },
+          "licenses": {
+            "category_delta": {
+              "conditional": {
+                "base": 0,
+                "target": 2
+              },
+              "permissive": {
+                "base": 0,
+                "target": 80
+              },
+              "prohibited": {
+                "base": 0,
+                "target": 1
+              },
+              "unknown": {
+                "base": 0,
+                "target": 5
+              }
+            }
+          },
+          "summary": {
+            "component_count": {
+              "base": 0,
+              "target": 88
+            },
+            "gate": {
+              "base": "pass",
+              "target": "fail"
+            },
+            "risk_score": {
+              "base": 0.0,
+              "target": 92.9
+            },
+            "severity": {
+              "critical": {
+                "base": 0,
+                "target": 10
+              },
+              "high": {
+                "base": 0,
+                "target": 8
+              },
+              "low": {
+                "base": 0,
+                "target": 5
+              },
+              "medium": {
+                "base": 0,
+                "target": 20
+              }
+            }
+          },
+          "target": {
+            "created_at": "2026-05-22T10:00:00Z",
+            "scan_id": "50b3d477-2211-47a3-947b-69022dabb2b3"
+          },
+          "truncated": false,
+          "vulnerabilities": {
+            "introduced": [
+              {
+                "component_name": "log4j-core",
+                "component_version": "2.14.1",
+                "cve_id": "CVE-2021-44228",
+                "severity": "critical"
+              }
+            ],
+            "resolved": []
+          }
+        },
+        "properties": {
+          "base": {
+            "$ref": "#/components/schemas/DiffSnapshotRef"
+          },
+          "components": {
+            "$ref": "#/components/schemas/DiffComponents"
+          },
+          "licenses": {
+            "$ref": "#/components/schemas/DiffLicenses"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/DiffSummary"
+          },
+          "target": {
+            "$ref": "#/components/schemas/DiffSnapshotRef"
+          },
+          "truncated": {
+            "default": false,
+            "description": "True when any change-set list (components added/removed/changed, vulnerabilities introduced/resolved) was capped at the defensive per-list limit. The summary counts are always exact; only the enumerated lists are truncated.",
+            "title": "Truncated",
+            "type": "boolean"
+          },
+          "vulnerabilities": {
+            "$ref": "#/components/schemas/DiffVulnerabilities"
+          }
+        },
+        "required": [
+          "base",
+          "target"
+        ],
+        "title": "ProjectDiff",
+        "type": "object"
+      },
       "ProjectListResponse": {
         "description": "Page of projects + total count for client-side paging UI.",
         "properties": {
@@ -4292,6 +5025,12 @@
             "title": "Current User Role",
             "type": "string"
           },
+          "has_git_credential": {
+            "default": false,
+            "description": "Feature #18 Part B — True when a private-repo git credential is configured for this project. Read-only; the plaintext and ciphertext are NEVER returned. The UI uses this to show a 'credential configured' badge and to drive the set/rotate/clear control.",
+            "title": "Has Git Credential",
+            "type": "boolean"
+          },
           "last_scan_at": {
             "anyOf": [
               {
@@ -4302,7 +5041,21 @@
                 "type": "null"
               }
             ],
+            "description": "Timestamp (`created_at`) of the project's latest scan *attempt* regardless of status — the attempt timeline. May be a failed scan. `null` when the project has never been scanned.",
             "title": "Last Scan At"
+          },
+          "last_succeeded_scan_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Timestamp (`created_at`) of the project's latest *succeeded* scan — the scan whose findings this overview (and the SBOM export) actually reflect, resolved via the same anchor as the build gate. `null` when the project has no succeeded scan. The SBOM tab labels its download with THIS field (not `last_scan_at`) so the timestamp matches what is downloaded; the two differ whenever the latest attempt failed.",
+            "title": "Last Succeeded Scan At"
           },
           "license_distribution": {
             "additionalProperties": {
@@ -4311,6 +5064,13 @@
             "description": "Count of components per license category. Keys are a subset of {forbidden, conditional, allowed, unknown}.",
             "title": "License Distribution",
             "type": "object"
+          },
+          "license_score": {
+            "description": "License risk 0–100 driven by the worst license category present: forbidden→75–100 (build-blocking), conditional→25–49 (review; never Critical on its own), unknown→1–24, allowed→0. Same n/(n+4) within-band scaling as security_score.",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "License Score",
+            "type": "number"
           },
           "project_id": {
             "format": "uuid",
@@ -4329,10 +5089,17 @@
             "type": "array"
           },
           "risk_score": {
-            "description": "Composite risk 0–100 derived from severity + license distribution. Formula: min(100, critical*15 + high*5 + medium*1 + forbidden*30 + conditional*5).",
+            "description": "Overall project risk 0–100 = max(security_score, license_score) — the worse of the two axes. Non-saturating (band-by-worst-severity, see security_score/license_score). Kept for back-compat and for 'riskiest project' sorting / release trends.",
             "maximum": 100.0,
             "minimum": 0.0,
             "title": "Risk Score",
+            "type": "number"
+          },
+          "security_score": {
+            "description": "Security risk 0–100 driven by the worst CVE severity present: critical→75–100, high→50–74, medium→25–49, low→1–24, none→0. The count of that severity sets the position within the band (n/(n+4)), so the score rises with count without saturating at a hard cap.",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Security Score",
             "type": "number"
           },
           "severity_distribution": {
@@ -4346,6 +5113,18 @@
           "total_components": {
             "title": "Total Components",
             "type": "integer"
+          },
+          "vuln_data_available": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "#35 Surface B — whether the DT vulnerability database held any data WHEN the anchored scan ran (captured in scan_metadata at scan time). True = the DB was populated, so an empty Security axis is a real clean result. False = the DB was empty, so 0 CVEs means 'no data', NOT 'safe' — the UI shows a caveat prompting a rescan once the NVD mirror finishes. None = unknown (no succeeded scan, or a scan that predates this capture); the UI shows no caveat (never cry wolf).",
+            "title": "Vuln Data Available"
           }
         },
         "required": [
@@ -4353,6 +5132,8 @@
           "project_name",
           "total_components",
           "risk_score",
+          "security_score",
+          "license_score",
           "current_user_role"
         ],
         "title": "ProjectOverviewResponse",
@@ -4423,10 +5204,28 @@
             ],
             "title": "Git Url"
           },
+          "has_git_credential": {
+            "default": false,
+            "title": "Has Git Credential",
+            "type": "boolean"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "last_scan_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Timestamp of the most recent scan *attempt* (any status). `null` when the project has never been scanned. Populated only on the list endpoint; defaults to null on single-project responses.",
+            "title": "Last Scan At"
           },
           "latest_scan_id": {
             "anyOf": [
@@ -4440,9 +5239,53 @@
             ],
             "title": "Latest Scan Id"
           },
+          "latest_scan_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "queued",
+                  "running",
+                  "succeeded",
+                  "failed",
+                  "cancelled"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Status of the project's latest scan *attempt* (the scan pointed at by `latest_scan_id`): queued|running|succeeded|failed|cancelled. `null` when the project has never been scanned — the UI renders an 'Idle' badge. This tracks the attempt timeline, NOT the current SCA posture (a failed latest attempt still shows `failed` here while `severity_summary` reflects the last succeeded scan).",
+            "title": "Latest Scan Status"
+          },
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "release_count": {
+            "default": 0,
+            "description": "Count of succeeded scans (the 'release' model: every succeeded scan IS a release snapshot). Populated only on the list endpoint; defaults to 0 on single-project responses.",
+            "minimum": 0.0,
+            "title": "Release Count",
+            "type": "integer"
+          },
+          "scan_count": {
+            "default": 0,
+            "description": "Total scan attempts for the project (any status). Populated only on the list endpoint; defaults to 0 on single-project responses.",
+            "minimum": 0.0,
+            "title": "Scan Count",
+            "type": "integer"
+          },
+          "severity_summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SeveritySummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Vulnerability-severity component counts from the project's latest *succeeded* scan (the same anchor the overview / build-gate use). `null` when the project has no succeeded scan. Drives the per-row risk indicator. Note this can be non-null even when `latest_scan_status` is 'failed' — the last *attempt* failed but an earlier scan succeeded and its findings remain the current posture."
           },
           "slug": {
             "title": "Slug",
@@ -4489,6 +5332,12 @@
         "additionalProperties": false,
         "description": "Inbound payload for PATCH /v1/projects/{project_id}.\n\n`team_id` and `slug` are intentionally NOT updatable: changing the team\nwould require re-scoping every audit log, scan, and finding; changing the\nslug would invalidate webhook URLs and CLI bookmarks. If the product ever\nneeds slug rename, model it as a separate `POST /v1/projects/{id}:rename`\noperation that does the rewrite in one transaction.",
         "properties": {
+          "clear_git_credential": {
+            "default": false,
+            "description": "Set true to remove a stored git credential (column → NULL). Cannot be combined with a non-empty `git_credential`.",
+            "title": "Clear Git Credential",
+            "type": "boolean"
+          },
           "default_branch": {
             "anyOf": [
               {
@@ -4512,6 +5361,19 @@
               }
             ],
             "title": "Description"
+          },
+          "git_credential": {
+            "anyOf": [
+              {
+                "maxLength": 8192,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Write-only plaintext git credential (PAT / deploy token) for cloning a private repo. Encrypted at rest; NEVER returned in any response. Provide a non-empty value to set/rotate it. Omit to leave it unchanged. Use `clear_git_credential: true` to remove it.",
+            "title": "Git Credential"
           },
           "git_url": {
             "anyOf": [
@@ -4557,6 +5419,69 @@
         "title": "ProjectUpdate",
         "type": "object"
       },
+      "RecentScan": {
+        "description": "One row in the dashboard's recent-scans feed (newest first).",
+        "properties": {
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the scan reached a terminal state (``scans.completed_at``). ``null`` for a scan that is still queued or running.",
+            "title": "Finished At"
+          },
+          "kind": {
+            "description": "Scan kind enum value (source|container).",
+            "title": "Kind",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "project_name": {
+            "title": "Project Name",
+            "type": "string"
+          },
+          "release": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Feature #18 Part A — the optional release/version label the scan was triggered with (e.g. \"v1.2.3\"), read from ``scans.metadata.release``. ``null`` when the scan carried no release label.",
+            "title": "Release"
+          },
+          "scan_id": {
+            "format": "uuid",
+            "title": "Scan Id",
+            "type": "string"
+          },
+          "status": {
+            "description": "Scan status enum value (queued|running|succeeded|failed|cancelled).",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scan_id",
+          "project_id",
+          "project_name",
+          "status",
+          "kind"
+        ],
+        "title": "RecentScan",
+        "type": "object"
+      },
       "RegisterRequest": {
         "description": "Inbound payload for POST /auth/register.",
         "properties": {
@@ -4578,9 +5503,9 @@
             "title": "Full Name"
           },
           "password": {
-            "description": "At least 12 characters (NIST 800-63B baseline).",
+            "description": "At least 8 characters (NIST 800-63B minimum).",
             "maxLength": 256,
-            "minLength": 12,
+            "minLength": 8,
             "title": "Password",
             "type": "string"
           }
@@ -4590,6 +5515,171 @@
           "password"
         ],
         "title": "RegisterRequest",
+        "type": "object"
+      },
+      "ReleaseListResponse": {
+        "description": "Paginated list of a project's release snapshots (succeeded scans).",
+        "example": {
+          "items": [
+            {
+              "component_count": 42,
+              "created_at": "2026-05-22T10:00:00Z",
+              "gate_status": "fail",
+              "release": "v1.2.3",
+              "risk_score": 92.9,
+              "scan_id": "7822b62d-9156-423d-9df6-5e51f546fbe8",
+              "severity_summary": {
+                "critical": 10,
+                "high": 4,
+                "low": 1,
+                "medium": 2
+              }
+            }
+          ],
+          "page": 1,
+          "size": 20,
+          "total": 1
+        },
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReleaseSnapshot"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "size": {
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Size",
+            "type": "integer"
+          },
+          "total": {
+            "description": "Total succeeded scans for the project (pre-pagination).",
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "page",
+          "size"
+        ],
+        "title": "ReleaseListResponse",
+        "type": "object"
+      },
+      "ReleaseSeveritySummary": {
+        "description": "Per-snapshot vulnerability-severity *component* counts.\n\nCounts are the number of component_versions whose WORST open CVE finding\nlands in each bucket, computed over THAT scan (``WHERE scan_id = <row>``) —\nthe same worst-per-component bucketing the project-list badge / dashboard /\noverview use, so the Releases table can never disagree with the Overview tab\nfor the same pinned scan. Only the four risk-bearing buckets are surfaced\n(``info`` / ``none`` are not actionable on a release row). All four keys are\nalways present (zero when the snapshot carried no findings in that bucket).",
+        "properties": {
+          "critical": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Critical",
+            "type": "integer"
+          },
+          "high": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "High",
+            "type": "integer"
+          },
+          "low": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Low",
+            "type": "integer"
+          },
+          "medium": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Medium",
+            "type": "integer"
+          }
+        },
+        "title": "ReleaseSeveritySummary",
+        "type": "object"
+      },
+      "ReleaseSnapshot": {
+        "description": "One succeeded scan, summarised as a release snapshot row.",
+        "properties": {
+          "component_count": {
+            "description": "Distinct component_versions observed in this snapshot.",
+            "minimum": 0.0,
+            "title": "Component Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "description": "When this scan was created (snapshots are ordered newest-first by this).",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "gate_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "pass",
+                  "fail"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The build-gate verdict for THIS snapshot (same evaluation the gate-result endpoint runs, pinned to this scan): 'pass' / 'fail', or null if not evaluable.",
+            "title": "Gate Status"
+          },
+          "release": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional release/version label from the scan's ``metadata.release`` (e.g. 'v1.2.3'). Non-unique and often absent (null).",
+            "title": "Release"
+          },
+          "risk_score": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Overall risk 0–100 for this snapshot = max(security, license) axis, using the SAME non-saturating scorer as the Overview tab (services.risk_score). Null only if the snapshot is not aggregable (should not occur for a succeeded scan).",
+            "title": "Risk Score"
+          },
+          "scan_id": {
+            "description": "The succeeded scan that IS this snapshot. Use as the ``?scan_id=`` anchor on the detail endpoints to pin this release.",
+            "format": "uuid",
+            "title": "Scan Id",
+            "type": "string"
+          },
+          "severity_summary": {
+            "$ref": "#/components/schemas/ReleaseSeveritySummary",
+            "description": "Worst-per-component vuln-severity counts for this snapshot."
+          }
+        },
+        "required": [
+          "scan_id",
+          "created_at",
+          "severity_summary",
+          "component_count"
+        ],
+        "title": "ReleaseSnapshot",
         "type": "object"
       },
       "RemediationPackageChangeOut": {
@@ -4848,13 +5938,156 @@
         "title": "RemediationWarningOut",
         "type": "object"
       },
+      "ReportDownloadEntry": {
+        "description": "One row in the Reports history list response.\n\nFrozen contract — the SPA's Reports tab depends on every field name. Add\nnew optional fields as nullable; do not rename. ``size_bytes`` is None\nwhen the emit happened before the bytes were materialised (e.g. a future\nstreaming surface) — current emit sites always know the size.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "format": {
+            "description": "Free token (cyclonedx-json / spdx-tv / pdf / text / cdx-vex / …). Not an enum because new export formats appear on the timescale of feature work; the writer is the single source of values.",
+            "title": "Format",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "report_type": {
+            "enum": [
+              "notice",
+              "sbom",
+              "vuln_pdf",
+              "vex_export"
+            ],
+            "title": "Report Type",
+            "type": "string"
+          },
+          "scan_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The scan that produced this artefact. NULL for ``vex_export`` rows by design (VEX summarises the project's current finding state and is not scan-bound), and NULL when the originating scan was later pruned (the FK is ``ON DELETE SET NULL``).",
+            "title": "Scan Id"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Body length in bytes when known at emit time, else NULL.",
+            "title": "Size Bytes"
+          },
+          "team_id": {
+            "description": "Denormalised tenant pointer — mirrored from the parent project at emit time so admin / team-wide queries do not require a join.",
+            "format": "uuid",
+            "title": "Team Id",
+            "type": "string"
+          },
+          "user": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReportDownloadUserSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The actor who triggered the download. NULL when the user account was deleted (FK is ``ON DELETE SET NULL``) — the history fact 'someone on this team got this file' survives the actor."
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "team_id",
+          "report_type",
+          "format",
+          "created_at"
+        ],
+        "title": "ReportDownloadEntry",
+        "type": "object"
+      },
+      "ReportDownloadUserSummary": {
+        "description": "Small per-row actor summary for the history list response.\n\nMirrors the ``actor_email`` / ``actor_user_id`` shape used by the admin\naudit log search response (``schemas.admin_ops.AuditLogItem``) but packed\ninto one nested object so the frontend can render the cell with a single\ntruthiness check.",
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "email"
+        ],
+        "title": "ReportDownloadUserSummary",
+        "type": "object"
+      },
+      "ReportHistoryResponse": {
+        "description": "Paginated list response for the project Reports tab.\n\nPagination mirrors ``NotificationListResponse`` and ``AuditLogListPage`` so\na single virtualised-list harness drives all three surfaces.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReportDownloadEntry"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "minimum": 1.0,
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "ReportHistoryResponse",
+        "type": "object"
+      },
       "ResetPasswordRequest": {
-        "description": "Inbound payload for POST /auth/reset-password.\n\nThe new password reuses the registration policy (≥ 12 chars / NIST\n800-63B baseline). The token is a URL-safe string up to ~64 chars\n(``secrets.token_urlsafe(32)`` produces ~43 chars; we cap at 256 for\ndefence in depth against pathological inputs).",
+        "description": "Inbound payload for POST /auth/reset-password.\n\nThe new password reuses the registration policy (≥ 8 chars / NIST\n800-63B minimum). The token is a URL-safe string up to ~64 chars\n(``secrets.token_urlsafe(32)`` produces ~43 chars; we cap at 256 for\ndefence in depth against pathological inputs).",
         "properties": {
           "new_password": {
-            "description": "At least 12 characters (NIST 800-63B baseline).",
+            "description": "At least 8 characters (NIST 800-63B minimum).",
             "maxLength": 256,
-            "minLength": 12,
+            "minLength": 8,
             "title": "New Password",
             "type": "string"
           },
@@ -5006,6 +6239,39 @@
             "title": "Project Id",
             "type": "string"
           },
+          "project_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Name"
+          },
+          "project_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Slug"
+          },
+          "release": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release"
+          },
           "requested_by_user_id": {
             "anyOf": [
               {
@@ -5063,6 +6329,37 @@
           "updated_at"
         ],
         "title": "ScanPublic",
+        "type": "object"
+      },
+      "ScanStatusCounts": {
+        "description": "Scan counts by lifecycle state over the caller's accessible projects.\n\n``cancelled`` scans are deliberately excluded — they are neither in-flight\nnor a result, so they do not belong in a portfolio headline.",
+        "properties": {
+          "failed": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Failed",
+            "type": "integer"
+          },
+          "queued": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Queued",
+            "type": "integer"
+          },
+          "running": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Running",
+            "type": "integer"
+          },
+          "succeeded": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Succeeded",
+            "type": "integer"
+          }
+        },
+        "title": "ScanStatusCounts",
         "type": "object"
       },
       "ScanSummary": {
@@ -5125,6 +6422,37 @@
           "created_at"
         ],
         "title": "ScanSummary",
+        "type": "object"
+      },
+      "SeveritySummary": {
+        "description": "Per-project vulnerability-severity counts for the project-list risk badge.\n\nCounts are the number of *components* (component_versions) landing in each\nseverity bucket — the worst CVE finding per component — within the project's\nlatest **succeeded** scan (resolved via\n``services.scan_resolution.latest_succeeded_scan_id``, the same anchor the\noverview / build-gate use). Only the four risk-bearing buckets are surfaced\n(``info`` / ``none`` are not actionable on a list-row indicator). A project\nwith a succeeded scan but no CVE findings yields all-zero counts; a project\nthat has never succeeded a scan surfaces ``severity_summary = null`` instead\n(see ``ProjectPublic.severity_summary``).",
+        "properties": {
+          "critical": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Critical",
+            "type": "integer"
+          },
+          "high": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "High",
+            "type": "integer"
+          },
+          "low": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Low",
+            "type": "integer"
+          },
+          "medium": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Medium",
+            "type": "integer"
+          }
+        },
+        "title": "SeveritySummary",
         "type": "object"
       },
       "SourceArchiveUploadResponse": {
@@ -5521,6 +6849,60 @@
         "title": "UpgradeRecommendation",
         "type": "object"
       },
+      "UserMeResponse": {
+        "description": "``/auth/me`` — UserPublic plus the caller's team memberships.\n\nThe frontend needs a ``team_id`` to create projects and scope writes.\nThe base UserPublic (also returned by /register) stays minimal; the\nmembership list lives only on the authenticated /me shape. ``memberships``\nis ordered oldest-first so ``memberships[0]`` is a stable default team\n(a self-registered user's auto-created team).",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "full_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Name"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "is_superuser": {
+            "title": "Is Superuser",
+            "type": "boolean"
+          },
+          "memberships": {
+            "items": {
+              "$ref": "#/components/schemas/MembershipPublic"
+            },
+            "title": "Memberships",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "is_active",
+          "is_superuser",
+          "created_at"
+        ],
+        "title": "UserMeResponse",
+        "type": "object"
+      },
       "UserPublic": {
         "description": "Shape returned for every user-bearing response. Never includes secrets.",
         "properties": {
@@ -5788,6 +7170,182 @@
           }
         },
         "title": "VexOrigin",
+        "type": "object"
+      },
+      "VulnerabilityBulkStatusResponse": {
+        "description": "Envelope for a bulk-transition response.\n\nAlways returned as ``200 OK`` — per-row outcomes carry their own status\ncodes. The envelope itself only fails (RFC 7807 422) for shape problems\n(empty list, > BULK_TRANSITION_MAX entries, unknown ``target_status``).",
+        "properties": {
+          "failed": {
+            "minimum": 0.0,
+            "title": "Failed",
+            "type": "integer"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/VulnerabilityBulkStatusResult"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "succeeded": {
+            "minimum": 0.0,
+            "title": "Succeeded",
+            "type": "integer"
+          },
+          "target_status": {
+            "enum": [
+              "new",
+              "analyzing",
+              "exploitable",
+              "not_affected",
+              "false_positive",
+              "suppressed",
+              "fixed"
+            ],
+            "title": "Target Status",
+            "type": "string"
+          },
+          "total": {
+            "description": "Distinct finding ids attempted (post-dedupe).",
+            "minimum": 1.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "target_status",
+          "total",
+          "succeeded",
+          "failed",
+          "results"
+        ],
+        "title": "VulnerabilityBulkStatusResponse",
+        "type": "object"
+      },
+      "VulnerabilityBulkStatusResult": {
+        "description": "Per-row outcome of one entry in a bulk-transition request.",
+        "properties": {
+          "allowed_to": {
+            "anyOf": [
+              {
+                "items": {
+                  "enum": [
+                    "new",
+                    "analyzing",
+                    "exploitable",
+                    "not_affected",
+                    "false_positive",
+                    "suppressed",
+                    "fixed"
+                  ],
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Legal next states from the row's current status. Populated only for 422 invalid-transition failures so the UI can hint the user.",
+            "title": "Allowed To"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Human-readable error detail. ``null`` on success.",
+            "title": "Detail"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Short machine-readable error code for failures: ``not_found`` / ``forbidden`` / ``invalid_transition``. ``null`` on success.",
+            "title": "Error"
+          },
+          "finding_id": {
+            "format": "uuid",
+            "title": "Finding Id",
+            "type": "string"
+          },
+          "status_code": {
+            "description": "HTTP-style status for this row: 200 (transitioned), 403 (role insufficient for `→ suppressed`), 404 (id not found in this project), 422 (transition not allowed by the matrix).",
+            "maximum": 599.0,
+            "minimum": 200.0,
+            "title": "Status Code",
+            "type": "integer"
+          },
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "finding_id",
+          "success",
+          "status_code"
+        ],
+        "title": "VulnerabilityBulkStatusResult",
+        "type": "object"
+      },
+      "VulnerabilityBulkStatusUpdate": {
+        "additionalProperties": false,
+        "description": "Request body for ``POST /v1/projects/{id}/vulnerabilities:bulk-transition``.\n\nPer-row idempotent semantics: the server dedupes ``finding_ids`` (preserving\nfirst-occurrence order), then attempts the same transition on each row.\nPer-row failures (invalid transition, cross-team / cross-project id, role\ninsufficient for ``→ suppressed``) are reported in the response envelope —\nsuccessful rows still commit.",
+        "properties": {
+          "finding_ids": {
+            "description": "Finding ids to transition. 1..200 entries; duplicates are deduplicated server-side. Ids that do not exist in THIS project (cross-project / cross-team / never-existed) are reported as a per-row 404 — they do not abort the bulk.",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Finding Ids",
+            "type": "array"
+          },
+          "justification": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Free-form note recorded as ``analysis_justification`` on every successfully-transitioned row. Omit to leave each row's existing justification untouched.",
+            "title": "Justification"
+          },
+          "target_status": {
+            "description": "Target status applied to every supplied id. Per-row transition-matrix and role checks still run (developer → suppressed is blocked per row even in a bulk that contains it).",
+            "enum": [
+              "new",
+              "analyzing",
+              "exploitable",
+              "not_affected",
+              "false_positive",
+              "suppressed",
+              "fixed"
+            ],
+            "title": "Target Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "finding_ids",
+          "target_status"
+        ],
+        "title": "VulnerabilityBulkStatusUpdate",
         "type": "object"
       },
       "VulnerabilityDetailResponse": {
@@ -6100,6 +7658,64 @@
             "title": "Affected Component Count",
             "type": "integer"
           },
+          "affected_component_license": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "SPDX id of the worst-category license attached to this row's component_version in this scan (e.g. ``GPL-3.0-only`` outranks an OR'd ``MIT`` because the policy axis picks the strongest claim). Identical aggregation rule as ``affected_component_license_category`` so the SPDX string and the category badge always agree. ``null`` when the cv has no license finding in this scan (paired with ``affected_component_license_category='unknown'``) or when the worst-rank license has no SPDX id (a ``LicenseRef-*`` custom license — we never invent an SPDX string for those).",
+            "example": "MIT",
+            "title": "Affected Component License"
+          },
+          "affected_component_license_category": {
+            "anyOf": [
+              {
+                "enum": [
+                  "forbidden",
+                  "conditional",
+                  "allowed",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Policy category of the SPDX id reported in ``affected_component_license``. Mirrors the longstanding ``component_license_category`` field for the same row (kept for back-compat); both share the same ``_license_rank_case`` so the components tab, the vulnerabilities tab's license badge, and the SPDX-paired category never disagree. ``null`` only when ``affected_component_license`` is also ``null``.",
+            "example": "allowed",
+            "title": "Affected Component License Category"
+          },
+          "affected_component_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Name of the component_version THIS finding row is FK-pinned to (``component_versions.component_id`` → ``components.name``). The row already represents a single (cv × vulnerability) pairing — this is just the human-readable label for that cv, NOT an aggregate. When ``affected_component_count > 1`` the OTHER affected cvs surface in the drawer's ``affected_components`` list; the list row deliberately shows only the pinned cv so the wire stays n+1-free. ``null`` only on legacy rows where the FK target was since deleted (the CASCADE rule means this is effectively unreachable in practice).",
+            "example": "lodash",
+            "title": "Affected Component Name"
+          },
+          "affected_component_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Version string of the component_version this finding row is pinned to (``component_versions.version``). Same single-cv rationale as ``affected_component_name``. ``null`` paired with a ``null`` name when the underlying cv is missing.",
+            "example": "4.17.20",
+            "title": "Affected Component Version"
+          },
           "analysis_source": {
             "anyOf": [
               {
@@ -6115,6 +7731,19 @@
             ],
             "description": "Provenance of the row's current status: 'vex_import' when an uploaded VEX document auto-transitioned it, 'manual' (or NULL on legacy rows) otherwise. Lets the list render a 'VEX' provenance marker and back the 'suppressed via VEX' filter.",
             "title": "Analysis Source"
+          },
+          "component_license_category": {
+            "default": "unknown",
+            "description": "W2 #33 — BD-style 'License risk axis' alongside severity/EPSS. Worst-category license attached to THIS row's component_version in this scan (mirrors the components-tab classification, sharing _license_rank_case so the two tabs never disagree). ``unknown`` when the cv has no license finding in this scan; never invented. Kept alongside ``affected_component_license_category`` for back-compat — both fields encode the same value but ``component_license_category`` is non-null (defaults to ``unknown``) and the new field is null-bearing so the UI can tell 'never had a license finding' from a stale-cached row.",
+            "enum": [
+              "forbidden",
+              "conditional",
+              "allowed",
+              "unknown"
+            ],
+            "example": "conditional",
+            "title": "Component License Category",
+            "type": "string"
           },
           "cve_id": {
             "description": "External id (CVE-..., GHSA-..., etc.).",
@@ -6387,6 +8016,43 @@
         "title": "VulnerabilityRef",
         "type": "object"
       },
+      "VulnerabilitySeverityCounts": {
+        "description": "Component findings by worst severity, over each project's latest succeeded scan.\n\nA finding's persisted severity of ``unknown`` is folded into ``info``.",
+        "properties": {
+          "critical": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Critical",
+            "type": "integer"
+          },
+          "high": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "High",
+            "type": "integer"
+          },
+          "info": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Info",
+            "type": "integer"
+          },
+          "low": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Low",
+            "type": "integer"
+          },
+          "medium": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Medium",
+            "type": "integer"
+          }
+        },
+        "title": "VulnerabilitySeverityCounts",
+        "type": "object"
+      },
       "VulnerabilityStatusHistoryEntry": {
         "description": "One transition in the finding's status history (derived from audit_logs).",
         "properties": {
@@ -6648,21 +8314,21 @@
     },
     "/auth/me": {
       "get": {
-        "description": "Authenticated. Returns the same shape as /auth/register.",
+        "description": "Authenticated. UserPublic + the caller's team memberships.\n\nThe frontend reads ``memberships`` to resolve a ``team_id`` for project\ncreation / write scoping. Ordered oldest-first so ``memberships[0]`` is a\nstable default team.",
         "operationId": "me_auth_me_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/UserPublic"
+                  "$ref": "#/components/schemas/UserMeResponse"
                 }
               }
             },
             "description": "Successful Response"
           }
         },
-        "summary": "Return the currently authenticated user",
+        "summary": "Return the currently authenticated user and their memberships",
         "tags": [
           "auth"
         ]
@@ -9164,6 +10830,28 @@
         ]
       }
     },
+    "/v1/dashboard/summary": {
+      "get": {
+        "description": "Aggregate counts (projects, scans, severities, licenses, approvals) plus\nthe 10 most recent scans, scoped to the caller's accessible projects.",
+        "operationId": "get_dashboard_summary_endpoint_v1_dashboard_summary_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Portfolio overview for the caller's accessible projects (auth required)",
+        "tags": [
+          "dashboard"
+        ]
+      }
+    },
     "/v1/github-app-credentials": {
       "get": {
         "operationId": "list_credentials_endpoint_v1_github_app_credentials_get",
@@ -10437,6 +12125,45 @@
             }
           },
           {
+            "description": "W2 #31 — Direct/Transitive toggle. ``true`` keeps only direct deps (graph depth 1), ``false`` only transitive (or graph-less) deps. Omit to include both. BD-equivalent of the 'Dependency type' facet.",
+            "in": "query",
+            "name": "direct",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "W2 #31 — Direct/Transitive toggle. ``true`` keeps only direct deps (graph depth 1), ``false`` only transitive (or graph-less) deps. Omit to include both. BD-equivalent of the 'Dependency type' facet.",
+              "title": "Direct"
+            }
+          },
+          {
+            "description": "W2 #31 — BD-style 'Usage' facet. Repeatable; accepted values: ``required``, ``optional``, ``unspecified`` (the NULL-scope bucket — common for SBOMs that don't encode scope). Unknown values are dropped, so a query that filters only by unknown values returns an empty page (not a 422). Omit to include all.",
+            "in": "query",
+            "name": "dependency_scope",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "W2 #31 — BD-style 'Usage' facet. Repeatable; accepted values: ``required``, ``optional``, ``unspecified`` (the NULL-scope bucket — common for SBOMs that don't encode scope). Unknown values are dropped, so a query that filters only by unknown values returns an empty page (not a 422). Omit to include all.",
+              "title": "Dependency Scope"
+            }
+          },
+          {
             "in": "query",
             "name": "sort",
             "required": false,
@@ -10456,6 +12183,25 @@
               "pattern": "^(asc|desc)$",
               "title": "Order",
               "type": "string"
+            }
+          },
+          {
+            "description": "Optional release-snapshot anchor (feature #28). When given, list components of this SPECIFIC succeeded scan instead of the project's latest succeeded scan. Must belong to this project and be succeeded, else 404. Omit for the default latest-succeeded behaviour.",
+            "in": "query",
+            "name": "scan_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional release-snapshot anchor (feature #28). When given, list components of this SPECIFIC succeeded scan instead of the project's latest succeeded scan. Must belong to this project and be succeeded, else 404. Omit for the default latest-succeeded behaviour.",
+              "title": "Scan Id"
             }
           }
         ],
@@ -10487,6 +12233,85 @@
         ]
       }
     },
+    "/v1/projects/{project_id}/diff": {
+      "get": {
+        "operationId": "diff_project_releases_endpoint_v1_projects__project_id__diff_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Base snapshot scan id (typically the OLDER release, e.g. v0.1). Must belong to this project and be succeeded, else 404 (existence-hide).",
+            "in": "query",
+            "name": "base",
+            "required": true,
+            "schema": {
+              "description": "Base snapshot scan id (typically the OLDER release, e.g. v0.1). Must belong to this project and be succeeded, else 404 (existence-hide).",
+              "format": "uuid",
+              "title": "Base",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Target snapshot scan id (typically the NEWER release, e.g. v0.2). Must belong to this project and be succeeded, else 404. `base == target` is allowed and yields an all-empty diff.",
+            "in": "query",
+            "name": "target",
+            "required": true,
+            "schema": {
+              "description": "Target snapshot scan id (typically the NEWER release, e.g. v0.2). Must belong to this project and be succeeded, else 404. `base == target` is allowed and yields an all-empty diff.",
+              "format": "uuid",
+              "title": "Target",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectDiff"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {}
+            },
+            "description": "Caller is not a member of the project's owning team (super_admin bypasses). RFC 7807 problem+json."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {}
+            },
+            "description": "Project does not exist, or one of `base`/`target` is not a succeeded scan of THIS project (existence-hidden: nonexistent / another project's scan / non-succeeded all collapse to the same 404). RFC 7807 problem+json."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Diff two release snapshots (succeeded scans) of the project",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
     "/v1/projects/{project_id}/gate-result": {
       "get": {
         "operationId": "get_gate_result_endpoint_v1_projects__project_id__gate_result_get",
@@ -10499,6 +12324,25 @@
               "format": "uuid",
               "title": "Project Id",
               "type": "string"
+            }
+          },
+          {
+            "description": "Optional release-snapshot anchor (feature #28). When given, evaluate the build gate against this SPECIFIC succeeded scan instead of the project's latest succeeded scan (so the Overview gate card can reflect a pinned release). Must belong to this project and be succeeded, else 404. Omit for the default latest-succeeded behaviour (the CI contract).",
+            "in": "query",
+            "name": "scan_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional release-snapshot anchor (feature #28). When given, evaluate the build gate against this SPECIFIC succeeded scan instead of the project's latest succeeded scan (so the Overview gate card can reflect a pinned release). Must belong to this project and be succeeded, else 404. Omit for the default latest-succeeded behaviour (the CI contract).",
+              "title": "Scan Id"
             }
           }
         ],
@@ -10642,6 +12486,25 @@
               "pattern": "^(asc|desc)$",
               "title": "Order",
               "type": "string"
+            }
+          },
+          {
+            "description": "Optional release-snapshot anchor (feature #28). When given, list license rows of this SPECIFIC succeeded scan instead of the project's latest succeeded scan. Must belong to this project and be succeeded, else 404. Omit for the default latest-succeeded behaviour.",
+            "in": "query",
+            "name": "scan_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional release-snapshot anchor (feature #28). When given, list license rows of this SPECIFIC succeeded scan instead of the project's latest succeeded scan. Must belong to this project and be succeeded, else 404. Omit for the default latest-succeeded behaviour.",
+              "title": "Scan Id"
             }
           }
         ],
@@ -10864,6 +12727,25 @@
               "title": "Order",
               "type": "string"
             }
+          },
+          {
+            "description": "Optional release-snapshot anchor (feature #28). When given, list obligation rows of this SPECIFIC succeeded scan instead of the project's latest succeeded scan. Must belong to this project and be succeeded, else 404. Omit for the default latest-succeeded behaviour.",
+            "in": "query",
+            "name": "scan_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional release-snapshot anchor (feature #28). When given, list obligation rows of this SPECIFIC succeeded scan instead of the project's latest succeeded scan. Must belong to this project and be succeeded, else 404. Omit for the default latest-succeeded behaviour.",
+              "title": "Scan Id"
+            }
           }
         ],
         "responses": {
@@ -10963,6 +12845,25 @@
               "title": "Project Id",
               "type": "string"
             }
+          },
+          {
+            "description": "Optional release-snapshot anchor (feature #28). When given, aggregate this SPECIFIC succeeded scan instead of the project's latest succeeded scan. Must belong to this project and be succeeded, else 404. Omit for the default latest-succeeded behaviour.",
+            "in": "query",
+            "name": "scan_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional release-snapshot anchor (feature #28). When given, aggregate this SPECIFIC succeeded scan instead of the project's latest succeeded scan. Must belong to this project and be succeeded, else 404. Omit for the default latest-succeeded behaviour.",
+              "title": "Scan Id"
+            }
           }
         ],
         "responses": {
@@ -10988,6 +12889,84 @@
           }
         },
         "summary": "Aggregated risk / scan picture for the project (Phase 3 Overview tab)",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/releases": {
+      "get": {
+        "operationId": "list_project_releases_endpoint_v1_projects__project_id__releases_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "size",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Size",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {}
+            },
+            "description": "Caller is not a member of the project's owning team (super_admin bypasses). RFC 7807 problem+json."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {}
+            },
+            "description": "Project does not exist. RFC 7807 problem+json."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List the project's release snapshots (succeeded scans, newest-first)",
         "tags": [
           "projects"
         ]
@@ -11199,6 +13178,133 @@
         ]
       }
     },
+    "/v1/projects/{project_id}/reports/history": {
+      "get": {
+        "operationId": "list_project_report_history_endpoint_v1_projects__project_id__reports_history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional filter — one or more report_type values to include. Repeat the parameter (``?type=notice&type=sbom``) for multi-select. Omit for all four types.",
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "enum": [
+                      "notice",
+                      "sbom",
+                      "vuln_pdf",
+                      "vex_export"
+                    ],
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional filter — one or more report_type values to include. Repeat the parameter (``?type=notice&type=sbom``) for multi-select. Omit for all four types.",
+              "title": "Type"
+            }
+          },
+          {
+            "description": "Optional filter — return only rows where ``scan_id`` matches. Pair with ``type=sbom`` etc. to find all artefacts produced for one scan.",
+            "in": "query",
+            "name": "scan_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional filter — return only rows where ``scan_id`` matches. Pair with ``type=sbom`` etc. to find all artefacts produced for one scan.",
+              "title": "Scan Id"
+            }
+          },
+          {
+            "description": "1-based page number.",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "description": "1-based page number.",
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Rows per page (1..200, default 50).",
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "description": "Rows per page (1..200, default 50).",
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportHistoryResponse"
+                }
+              }
+            },
+            "description": "Paginated report-download history (newest first)."
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {}
+            },
+            "description": "Project does not exist, or the caller is not a member of its team (existence-hidden — same envelope either way)."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {}
+            },
+            "description": "Invalid query parameter (unknown report_type, malformed scan_id, page/page_size out of range)."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {}
+            },
+            "description": "Rate limit exceeded for this client."
+          }
+        },
+        "summary": "List download / export history for the project's Reports center",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
     "/v1/projects/{project_id}/sbom": {
       "get": {
         "operationId": "export_project_sbom_endpoint_v1_projects__project_id__sbom_get",
@@ -11229,6 +13335,25 @@
               ],
               "title": "Format",
               "type": "string"
+            }
+          },
+          {
+            "description": "Optional release-snapshot anchor (feature #28). When given, export this SPECIFIC succeeded scan instead of the project's latest succeeded scan. Must belong to this project and be succeeded, else 404. Omit for the default latest-succeeded behaviour.",
+            "in": "query",
+            "name": "scan_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional release-snapshot anchor (feature #28). When given, export this SPECIFIC succeeded scan instead of the project's latest succeeded scan. Must belong to this project and be succeeded, else 404. Omit for the default latest-succeeded behaviour.",
+              "title": "Scan Id"
             }
           }
         ],
@@ -12116,6 +14241,27 @@
             }
           },
           {
+            "description": "W2 #33 — License risk-axis filter. Repeatable; accepted values: ``forbidden``, ``conditional``, ``allowed``, ``unknown`` (the cv had no license finding in this scan). Unknown values are dropped, so a query that filters ONLY by unknown values returns an empty page (not a 422). Omit to include all categories.",
+            "in": "query",
+            "name": "license_category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "W2 #33 — License risk-axis filter. Repeatable; accepted values: ``forbidden``, ``conditional``, ``allowed``, ``unknown`` (the cv had no license finding in this scan). Unknown values are dropped, so a query that filters ONLY by unknown values returns an empty page (not a 422). Omit to include all categories.",
+              "title": "License Category"
+            }
+          },
+          {
             "description": "Keep only findings whose CVE has an EPSS exploit-probability >= this threshold, in [0, 1]. CVEs with no published EPSS score are excluded. Omit to disable EPSS filtering.",
             "in": "query",
             "name": "min_epss",
@@ -12177,6 +14323,25 @@
               "title": "Order",
               "type": "string"
             }
+          },
+          {
+            "description": "Optional release-snapshot anchor (feature #28). When given, list CVE findings of this SPECIFIC succeeded scan instead of the project's latest succeeded scan. Must belong to this project and be succeeded, else 404. Omit for the default latest-succeeded behaviour.",
+            "in": "query",
+            "name": "scan_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional release-snapshot anchor (feature #28). When given, list CVE findings of this SPECIFIC succeeded scan instead of the project's latest succeeded scan. Must belong to this project and be succeeded, else 404. Omit for the default latest-succeeded behaviour.",
+              "title": "Scan Id"
+            }
           }
         ],
         "responses": {
@@ -12202,6 +14367,56 @@
           }
         },
         "summary": "Paginated CVE findings for the project's latest scan",
+        "tags": [
+          "vulnerabilities"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/vulnerabilities:bulk-transition": {
+      "post": {
+        "description": "W2 #33b — apply one VEX transition across many findings in one round-trip.\n\nPer-row failures (404 / 403 / 422) are surfaced in the response envelope\nso the UI can render \"succeeded N · failed M\" with per-row details.\nOnly envelope-level shape violations (empty list, > cap, unknown enum)\nreturn RFC 7807 — those would still abort a per-row partial commit, so\nthey belong on the envelope rather than masquerading as per-row outcomes.",
+        "operationId": "bulk_transition_vulnerabilities_endpoint_v1_projects__project_id__vulnerabilities_bulk_transition_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VulnerabilityBulkStatusUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VulnerabilityBulkStatusResponse"
+                }
+              }
+            },
+            "description": "Bulk envelope completed. ``results[*].status_code`` reports per-row outcomes (200/403/404/422). ``succeeded`` + ``failed`` == ``total``."
+          },
+          "404": {
+            "description": "Project does not exist, OR the caller is not a member of the project's team. Returned in lieu of 403 to avoid leaking team membership (mirrors the single-row PATCH existence-hide policy)."
+          },
+          "422": {
+            "description": "Envelope-level shape violation: empty ``finding_ids``, more than ``BULK_TRANSITION_MAX`` entries, unknown ``target_status``. Per-row matrix violations are NOT envelope 422 — they are reported as ``results[*].status_code == 422``."
+          }
+        },
+        "summary": "Transition many findings in one project to the same VEX status",
         "tags": [
           "vulnerabilities"
         ]

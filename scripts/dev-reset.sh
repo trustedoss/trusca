@@ -58,6 +58,13 @@ if [[ ! -f "$COMPOSE_FILE" ]]; then
   exit 1
 fi
 
+# W6-chore-seed B — pull any new .env keys from .env.example into the
+# developer's .env without touching existing values. No-op if .env does not
+# exist yet (first dev-reset on a fresh checkout).
+# shellcheck source=scripts/lib/env_sync.sh
+source "$ROOT_DIR/scripts/lib/env_sync.sh"
+env_append_only_sync .env.example .env
+
 if (( NO_PROMPT == 0 )); then
   echo "This will destroy all data in the dev stack (postgres, redis, dtrack volumes)."
   read -r -p "Continue? [y/N] " confirm
