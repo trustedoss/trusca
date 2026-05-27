@@ -95,14 +95,18 @@
     },
     "severity_card": {
       "title": "취약점 심각도",
-      "subtitle": "각 컴포넌트의 최고 CVE 심각도 기준 분포입니다."
+      "subtitle": "각 컴포넌트의 최고 CVE 심각도 기준 분포입니다.",
+      "subtitle_findings": "각 취약점 건의 심각도 기준 분포입니다.",
+      "axis_components": "컴포넌트 기준",
+      "axis_findings": "CVE 건수 기준"
     },
     "severity_chart": {
       "aria": "컴포넌트 {{total}}개의 심각도 분포"
     },
     "license_card": {
       "title": "라이선스 분류",
-      "subtitle": "라이선스 카테고리별 컴포넌트 분포입니다."
+      "subtitle": "라이선스 카테고리별 컴포넌트 분포입니다.",
+      "axis_components": "컴포넌트 기준"
     },
     "license_chart": {
       "aria": "컴포넌트 {{total}}개의 라이선스 분포"
