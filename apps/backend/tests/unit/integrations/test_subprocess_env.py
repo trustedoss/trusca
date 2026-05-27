@@ -23,6 +23,7 @@ from integrations._subprocess_env import (
     scrubbed_env_for_cosign,
     scrubbed_env_for_prep,
     scrubbed_env_for_scancode,
+    scrubbed_env_for_trivy,
 )
 
 # ---------------------------------------------------------------------------
@@ -67,6 +68,7 @@ def env_seeded(monkeypatch: pytest.MonkeyPatch) -> None:
         scrubbed_env_for_cdxgen,
         scrubbed_env_for_scancode,
         scrubbed_env_for_cosign,
+        scrubbed_env_for_trivy,
     ],
 )
 def test_builder_strips_worker_secrets(env_seeded: None, builder) -> None:  # type: ignore[no-untyped-def]
@@ -84,6 +86,7 @@ def test_builder_strips_worker_secrets(env_seeded: None, builder) -> None:  # ty
         scrubbed_env_for_cdxgen,
         scrubbed_env_for_scancode,
         scrubbed_env_for_cosign,
+        scrubbed_env_for_trivy,
     ],
 )
 def test_builder_forwards_base_proxy_and_ca_hints(
@@ -348,6 +351,46 @@ def test_credential_heuristic_flags_secret_keys(key: str) -> None:
 )
 def test_credential_heuristic_passes_benign_keys(key: str) -> None:
     assert _looks_like_credential(key) is False
+
+
+# ---------------------------------------------------------------------------
+# trivy: operator-knob band (cache / mirror / timeout) forwarded, registry
+# tokens and worker secrets not (security-reviewer M1 on PR #196)
+# ---------------------------------------------------------------------------
+
+
+def test_trivy_forwards_db_mirror_and_cache(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TRIVY_DB_REPOSITORY", "registry.internal/trivy-db")
+    monkeypatch.setenv("TRIVY_JAVA_DB_REPOSITORY", "registry.internal/trivy-java-db")
+    monkeypatch.setenv("TRIVY_CACHE_DIR", "/var/cache/trivy")
+    monkeypatch.setenv("TRIVY_OFFLINE_SCAN", "true")
+
+    env = scrubbed_env_for_trivy()
+
+    assert env["TRIVY_DB_REPOSITORY"] == "registry.internal/trivy-db"
+    assert env["TRIVY_JAVA_DB_REPOSITORY"] == "registry.internal/trivy-java-db"
+    assert env["TRIVY_CACHE_DIR"] == "/var/cache/trivy"
+    assert env["TRIVY_OFFLINE_SCAN"] == "true"
+
+
+def test_trivy_does_not_forward_unallowlisted_trivy_keys(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """TRIVY_* keys outside the explicit allowlist must not be forwarded.
+
+    Registry credentials in particular: trivy reads them from
+    ``~/.docker/config.json``, not from env. A bare TRIVY_USERNAME /
+    TRIVY_PASSWORD must not leak in via a sloppy prefix-band rule.
+    """
+    monkeypatch.setenv("TRIVY_USERNAME", "registry-user")
+    monkeypatch.setenv("TRIVY_PASSWORD", "registry-pass")
+    monkeypatch.setenv("TRIVY_REGISTRY_TOKEN", "ghp_xxx")
+
+    env = scrubbed_env_for_trivy()
+
+    assert "TRIVY_USERNAME" not in env
+    assert "TRIVY_PASSWORD" not in env
+    assert "TRIVY_REGISTRY_TOKEN" not in env
 
 
 # ---------------------------------------------------------------------------
