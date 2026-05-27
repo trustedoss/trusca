@@ -376,7 +376,7 @@
     },
     "toolbar": {
       "search_label": "Search",
-      "search_placeholder": "Search by CVE ID or summary",
+      "search_placeholder": "Search by CVE ID, summary, or component",
       "status_label": "Status",
       "reachable_label": "Reachability",
       "reachable_any": "Any reachability",

@@ -43,7 +43,8 @@ export type VulnerabilitySortKey =
   | "status"
   | "discovered_at"
   | "epss"
-  | "reachable";
+  | "reachable"
+  | "component";
 export type SortOrder = "asc" | "desc";
 
 /**
