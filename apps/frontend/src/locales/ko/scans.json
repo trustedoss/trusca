@@ -54,6 +54,7 @@
     "reconnect_attempt": "{{n}}번째 시도",
     "background_notice": "스캔은 백그라운드에서 계속 진행됩니다. 이 패널을 닫으셔도 됩니다.",
     "log_toggle": "단계별 로그",
+    "tool_log_toggle": "도구 로그",
     "close": "닫기",
     "retry": "재시도",
     "percent_label": "{{value}}%"

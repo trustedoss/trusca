@@ -233,10 +233,49 @@ def build_progress_frame(*, percent: int, step: str | None, ts: str | None = Non
 
     Used for the connect-time initial-sync push. Worker-published payloads
     are forwarded verbatim, so they only need to match this schema.
+
+    P2 #8c — frames now carry an explicit ``type: "progress"`` discriminator
+    so the FE can tell a progress event apart from a tool-log line on a
+    single channel. Older clients that ignore the field still see the
+    historical ``{percent, step, ts}`` envelope unchanged; the field's
+    absence on a frame is interpreted by the FE as "progress" (back-compat).
     """
     body: dict[str, Any] = {
+        "type": "progress",
         "percent": int(percent),
         "step": step or "",
+        "ts": ts or _now_iso(),
+    }
+    return json.dumps(body, separators=(",", ":"))
+
+
+def build_log_frame(
+    *,
+    stage: str,
+    stream: str,
+    line: str,
+    ts: str | None = None,
+) -> str:
+    """Serialize a tool log line in the canonical wire format (P2 #8c).
+
+    Used by the worker-side publisher (``tasks._progress.publish_log``) and
+    by tests pinning the schema. Not used by the gateway itself — published
+    log frames are forwarded verbatim from Redis to the WS, the same as
+    progress frames.
+
+    Args:
+        stage:  Pipeline stage that produced the line (``cdxgen`` /
+            ``scancode`` / …). Echoed verbatim.
+        stream: ``"stdout"`` or ``"stderr"``. The frame carries the value as
+            given — callers are responsible for normalisation.
+        line:   The line text. The caller is expected to have truncated it.
+        ts:     Optional ISO 8601 timestamp; ``None`` fills with ``_now_iso``.
+    """
+    body: dict[str, Any] = {
+        "type": "log",
+        "stage": str(stage),
+        "stream": str(stream),
+        "line": str(line),
         "ts": ts or _now_iso(),
     }
     return json.dumps(body, separators=(",", ":"))
@@ -568,6 +607,7 @@ __all__ = [
     "WS_CLOSE_NORMAL",
     "WS_CLOSE_NOT_FOUND",
     "WS_CLOSE_POLICY_VIOLATION",
+    "build_log_frame",
     "build_progress_frame",
     "origin_allowed",
     "parse_auth_message",

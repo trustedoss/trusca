@@ -125,7 +125,13 @@ def test_build_progress_frame_emits_canonical_schema() -> None:
 
     frame = build_progress_frame(percent=42, step="cdxgen", ts="2026-05-06T12:00:00Z")
     body = json.loads(frame)
-    assert body == {"percent": 42, "step": "cdxgen", "ts": "2026-05-06T12:00:00Z"}
+    assert body == {
+        # P2 #8c — explicit type discriminator.
+        "type": "progress",
+        "percent": 42,
+        "step": "cdxgen",
+        "ts": "2026-05-06T12:00:00Z",
+    }
 
 
 def test_build_progress_frame_normalizes_missing_step_to_empty_string() -> None:
@@ -143,9 +149,47 @@ def test_build_progress_frame_auto_fills_ts_when_omitted() -> None:
     body = json.loads(frame)
     assert body["percent"] == 10
     assert body["step"] == "bootstrap"
+    assert body["type"] == "progress"
     # Timestamp must be ISO 8601 with a Z suffix for UTC.
     assert isinstance(body["ts"], str)
     assert body["ts"].endswith("Z")
+
+
+# ---------------------------------------------------------------------------
+# P2 #8c — build_log_frame
+# ---------------------------------------------------------------------------
+
+
+def test_build_log_frame_emits_canonical_schema() -> None:
+    """The log frame mirrors the progress frame shape, keyed by type='log'."""
+    from api.v1.ws import build_log_frame
+
+    frame = build_log_frame(
+        stage="cdxgen",
+        stream="stdout",
+        line="resolving package tree…",
+        ts="2026-05-06T12:00:00Z",
+    )
+    body = json.loads(frame)
+    assert body == {
+        "type": "log",
+        "stage": "cdxgen",
+        "stream": "stdout",
+        "line": "resolving package tree…",
+        "ts": "2026-05-06T12:00:00Z",
+    }
+
+
+def test_build_log_frame_auto_fills_ts_when_omitted() -> None:
+    from api.v1.ws import build_log_frame
+
+    frame = build_log_frame(stage="scancode", stream="stderr", line="boom")
+    body = json.loads(frame)
+    assert body["type"] == "log"
+    assert body["stage"] == "scancode"
+    assert body["stream"] == "stderr"
+    assert body["line"] == "boom"
+    assert isinstance(body["ts"], str) and body["ts"].endswith("Z")
 
 
 # ---------------------------------------------------------------------------

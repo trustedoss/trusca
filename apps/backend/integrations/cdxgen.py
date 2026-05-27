@@ -58,6 +58,7 @@ from typing import Any
 import structlog
 
 from core.config import scan_backend_mode
+from integrations._line_streamer import LineCallback, run_with_line_streaming
 from integrations._subprocess_env import scrubbed_env_for_cdxgen
 
 log = structlog.get_logger("integrations.cdxgen")
@@ -107,6 +108,7 @@ def run_cdxgen(
     output_dir: Path,
     timeout_seconds: int = _DEFAULT_TIMEOUT_SECONDS,
     backend: str | None = None,
+    line_callback: LineCallback | None = None,
 ) -> CdxgenResult:
     """
     Generate a CycloneDX SBOM for `source_dir` under `output_dir`.
@@ -114,6 +116,14 @@ def run_cdxgen(
     `backend` defaults to ``scan_backend_mode()``. When set to ``mock`` the
     adapter writes a fixture SBOM to disk without invoking cdxgen — used by
     unit tests and the smoke harness.
+
+    P2 #8c — ``line_callback`` (optional) is invoked for every stdout / stderr
+    line as it arrives, from a background drain thread (so a slow consumer
+    cannot stall the cdxgen subprocess). The callback receives
+    ``(stream, line)`` where ``stream`` is ``"stdout"`` or ``"stderr"``. The
+    callback runs synchronously inside the drain thread and MUST NOT raise —
+    failures are caught and logged at WARNING. The mock path emits no lines
+    (no subprocess to drain).
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     sbom_path = output_dir / "cdxgen.cdx.json"
@@ -152,15 +162,16 @@ def run_cdxgen(
         source_dir=str(source_dir),
         output=str(sbom_path),
         gradle_args=env.get("CDXGEN_GRADLE_ARGS"),
+        streaming=line_callback is not None,
     )
     try:
-        completed = subprocess.run(  # noqa: S603 — args are a fixed list, no shell
+        completed = run_with_line_streaming(
             cmd,
-            capture_output=True,
-            check=False,
-            timeout=timeout_seconds,
+            timeout_seconds=timeout_seconds,
             cwd=str(source_dir),
             env=env,
+            line_callback=line_callback,
+            stage="cdxgen",
         )
     except subprocess.TimeoutExpired as exc:
         raise CdxgenTimeout(
@@ -334,5 +345,6 @@ __all__ = [
     "CdxgenNotInstalled",
     "CdxgenResult",
     "CdxgenTimeout",
+    "LineCallback",
     "run_cdxgen",
 ]

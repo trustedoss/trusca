@@ -326,4 +326,139 @@ describe("useScanWebSocket", () => {
     // Hook constructed the socket then realised no token; state goes to closed.
     expect(result.current.state).toBe("closed");
   });
+
+  // ---------------------------------------------------------------------
+  // P2 #8c — tool log frames (cdxgen / scancode stdout / stderr streaming)
+  // ---------------------------------------------------------------------
+
+  it("parses log frames into logMessages without touching lastMessage", async () => {
+    const { result } = renderHook(() =>
+      useScanWebSocket("scan-1", { socketFactory: factory }),
+    );
+    act(() => FakeSocket.instances[0].__open());
+    act(() =>
+      FakeSocket.instances[0].__message({
+        type: "log",
+        stage: "cdxgen",
+        stream: "stdout",
+        line: "resolving package tree…",
+        ts: "2026-05-26T12:00:00.000Z",
+      }),
+    );
+    await waitFor(() => {
+      expect(result.current.logMessages).toHaveLength(1);
+    });
+    expect(result.current.logMessages[0]).toEqual({
+      type: "log",
+      stage: "cdxgen",
+      stream: "stdout",
+      line: "resolving package tree…",
+      ts: "2026-05-26T12:00:00.000Z",
+    });
+    // Log frames must NOT clobber progress state.
+    expect(result.current.lastMessage).toBeNull();
+    expect(result.current.messages).toHaveLength(0);
+    // Receiving a valid frame transitions the hook into "open".
+    expect(result.current.state).toBe("open");
+  });
+
+  it("appends stderr log frames in arrival order", async () => {
+    const { result } = renderHook(() =>
+      useScanWebSocket("scan-1", { socketFactory: factory }),
+    );
+    act(() => FakeSocket.instances[0].__open());
+    act(() =>
+      FakeSocket.instances[0].__message({
+        type: "log",
+        stage: "scancode",
+        stream: "stdout",
+        line: "starting",
+        ts: "2026-05-26T12:00:00.000Z",
+      }),
+    );
+    act(() =>
+      FakeSocket.instances[0].__message({
+        type: "log",
+        stage: "scancode",
+        stream: "stderr",
+        line: "warning: licenseref unknown",
+        ts: "2026-05-26T12:00:01.000Z",
+      }),
+    );
+    await waitFor(() => {
+      expect(result.current.logMessages).toHaveLength(2);
+    });
+    expect(result.current.logMessages[0].stream).toBe("stdout");
+    expect(result.current.logMessages[1].stream).toBe("stderr");
+    expect(result.current.logMessages[1].line).toBe(
+      "warning: licenseref unknown",
+    );
+  });
+
+  it("treats a progress frame without explicit type as progress (back-compat)", async () => {
+    // Older backends did not emit `type: "progress"` — the hook must keep
+    // accepting bare {percent, step, ts} envelopes.
+    const { result } = renderHook(() =>
+      useScanWebSocket("scan-1", { socketFactory: factory }),
+    );
+    act(() => FakeSocket.instances[0].__open());
+    act(() =>
+      FakeSocket.instances[0].__message({
+        percent: 18,
+        step: "prep",
+        ts: "2026-05-26T12:00:00.000Z",
+      }),
+    );
+    await waitFor(() => {
+      expect(result.current.lastMessage?.percent).toBe(18);
+    });
+    expect(result.current.lastMessage?.step).toBe("prep");
+    expect(result.current.logMessages).toHaveLength(0);
+  });
+
+  it("rejects log frames with an unknown stream value", async () => {
+    const { result } = renderHook(() =>
+      useScanWebSocket("scan-1", { socketFactory: factory }),
+    );
+    act(() => FakeSocket.instances[0].__open());
+    act(() =>
+      FakeSocket.instances[0].__message({
+        type: "log",
+        stage: "cdxgen",
+        stream: "weird",
+        line: "should be dropped",
+        ts: "2026-05-26T12:00:00.000Z",
+      }),
+    );
+    // No assertion on logMessages — it should stay empty. We give the
+    // microtask queue a tick first.
+    await Promise.resolve();
+    expect(result.current.logMessages).toHaveLength(0);
+  });
+
+  it("clears logMessages when reconnecting to a fresh scanId", async () => {
+    const { result, rerender } = renderHook(
+      ({ id }: { id: string }) =>
+        useScanWebSocket(id, { socketFactory: factory }),
+      { initialProps: { id: "scan-1" } },
+    );
+    act(() => FakeSocket.instances[0].__open());
+    act(() =>
+      FakeSocket.instances[0].__message({
+        type: "log",
+        stage: "cdxgen",
+        stream: "stdout",
+        line: "first scan line",
+        ts: "2026-05-26T12:00:00.000Z",
+      }),
+    );
+    await waitFor(() => {
+      expect(result.current.logMessages).toHaveLength(1);
+    });
+
+    // Switch to a new scan id — buffer must reset, not carry the previous
+    // scan's lines into the new panel.
+    rerender({ id: "scan-2" });
+    expect(result.current.logMessages).toHaveLength(0);
+  });
 });

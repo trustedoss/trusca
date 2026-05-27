@@ -1010,6 +1010,43 @@ def websocket_auth_timeout_seconds() -> float:
 
 
 # ---------------------------------------------------------------------------
+# P2 #8c — tool stdout/stderr streaming over the scan WebSocket.
+#
+# The cdxgen / scancode subprocesses emit per-line progress to stdout/stderr.
+# We stream those lines over the scan WebSocket as separate "log" frames so the
+# scan drawer can render a live tool trace. Each line is capped (memory guard)
+# and we cap total lines per scan (broker volume guard) — both are env-tunable
+# so an operator can dial up the verbosity without a rebuild.
+# ---------------------------------------------------------------------------
+
+
+def scan_log_line_max_len() -> int:
+    """Maximum length (chars) of a single streamed log line.
+
+    A subprocess that emits a pathological multi-MB single line (e.g. a hung
+    progress bar that never sends \\n) would otherwise sit in RAM until the
+    process exits AND flood the Redis pubsub channel as one giant payload. We
+    truncate at this cap with a trailing ``…(truncated)`` marker so the
+    consumer can see a line happened without it bloating wire size. Default
+    2000 — typical tool lines are < 200 chars. Read at call time (rule #11).
+    """
+    return int(os.getenv("SCAN_LOG_LINE_MAX_LEN", "2000"))
+
+
+def scan_log_max_lines_per_scan() -> int:
+    """Cap on the number of log lines we publish for a single scan.
+
+    A pathological subprocess (infinite progress bar, runaway warning) could
+    flood the WS channel and the Redis pubsub backlog. Past this many lines we
+    silently drop further publishes for that scan (the subprocess still runs;
+    we just stop forwarding). 0 disables streaming entirely (kill switch).
+    Default 5000 — generous for normal scans, hostile to runaways. Read at
+    call time (rule #11).
+    """
+    return int(os.getenv("SCAN_LOG_MAX_LINES_PER_SCAN", "5000"))
+
+
+# ---------------------------------------------------------------------------
 # Phase 6 PR #18 — notification channel configuration.
 #
 # Every accessor reads the env at call time (CLAUDE.md core rule #11). When

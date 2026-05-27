@@ -15,7 +15,11 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScanCancelButton } from "@/features/scans/ScanCancelButton";
-import { useScanWebSocket, type ScanStep } from "@/hooks/useScanWebSocket";
+import {
+  useScanWebSocket,
+  type ScanLogMessage,
+  type ScanStep,
+} from "@/hooks/useScanWebSocket";
 import { cn } from "@/lib/utils";
 import { getScan, type ScanStatus } from "@/lib/projectsApi";
 
@@ -68,6 +72,60 @@ export interface ScanProgressProps {
   urlBuilder?: (scanId: string) => string;
 }
 
+// P2 #8c — per-stage color codes for the tool log panel. Aligned with the
+// design system risk palette where possible (cdxgen=primary/blue, scancode
+// uses the conditional license warm tone for visual distinction). Unknown
+// stages fall back to the neutral foreground.
+const STAGE_BADGE_CLASS: Record<string, string> = {
+  cdxgen: "border-blue-500/30 bg-blue-500/10 text-blue-700",
+  scancode: "border-amber-500/30 bg-amber-500/10 text-amber-700",
+};
+
+function ToolLogLine({ msg }: { msg: ScanLogMessage }) {
+  const isErr = msg.stream === "stderr";
+  const badge =
+    STAGE_BADGE_CLASS[msg.stage] ??
+    "border-border bg-muted text-muted-foreground";
+  return (
+    <li
+      className={cn(
+        "flex items-baseline gap-2 border-b px-3 py-1 last:border-b-0",
+        isErr && "bg-risk-critical/5",
+      )}
+      data-stage={msg.stage}
+      data-stream={msg.stream}
+    >
+      <span className="shrink-0 text-muted-foreground" title={msg.ts}>
+        {msg.ts.slice(11, 19)}
+      </span>
+      <span
+        className={cn(
+          "shrink-0 rounded border px-1 py-0.5 text-[9px] uppercase tracking-wide",
+          badge,
+        )}
+      >
+        {msg.stage}
+      </span>
+      {isErr ? (
+        <span
+          className="shrink-0 rounded border border-risk-critical/30 bg-risk-critical/10 px-1 py-0.5 text-[9px] uppercase tracking-wide text-risk-critical"
+          aria-label="stderr"
+        >
+          err
+        </span>
+      ) : null}
+      <span
+        className={cn(
+          "min-w-0 whitespace-pre-wrap break-words",
+          isErr ? "text-risk-critical" : "text-foreground",
+        )}
+      >
+        {msg.line}
+      </span>
+    </li>
+  );
+}
+
 // P2 #8 hotfix — dt_upload now appears BEFORE scancode in the glyph row. The
 // worker publishes step="dt_upload" right after submitting the background DT
 // thread (PR #181), then publishes step="scancode" once scancode actually
@@ -112,12 +170,18 @@ export function ScanProgress({
     setClosedNonTerminally(true);
   }, []);
 
-  const { state, lastMessage, messages, reconnectAttempt, isTerminal } =
-    useScanWebSocket(scanId, {
-      socketFactory,
-      urlBuilder,
-      onNonTerminalClose: handleNonTerminalClose,
-    });
+  const {
+    state,
+    lastMessage,
+    messages,
+    logMessages,
+    reconnectAttempt,
+    isTerminal,
+  } = useScanWebSocket(scanId, {
+    socketFactory,
+    urlBuilder,
+    onNonTerminalClose: handleNonTerminalClose,
+  });
 
   // P2 #8b — collapsible per-step log panel. Default collapsed; the headline
   // panel already shows percent + step + the per-step pipeline list. The
@@ -338,13 +402,19 @@ export function ScanProgress({
         </p>
       ) : null}
 
-      {/* P2 #8b — per-step log panel. Collapsed by default; the headline
-          summary above is enough for the common case. When expanded the
-          panel renders every frame the WebSocket has delivered (capped at
-          500 in the hook) so users can see when each step started, how
-          long it took, and whether a step bounced between percents while
-          the worker was retrying. */}
-      {messages.length > 0 ? (
+      {/* P2 #8c — live tool log panel. Collapsed by default; the headline
+          summary + per-step glyph row above are enough for the common case.
+          When expanded the panel renders every tool stdout / stderr line
+          the WebSocket has delivered (cdxgen + scancode), color-coded by
+          stage (cdxgen=blue, scancode=amber, default=neutral) and tinted
+          red for stderr so a real failure stands out. Users debugging a
+          slow / stuck scan see what the tool is actually doing.
+
+          When the backend has not streamed any tool lines yet (older
+          worker, mock backend, or the stage skipped tooling) we fall back
+          to the prior per-step progress trace so the panel still shows
+          something useful. */}
+      {(logMessages.length > 0 || messages.length > 0) ? (
         <div
           className="rounded-md border bg-muted/30"
           data-testid="scan-progress-log"
@@ -359,14 +429,20 @@ export function ScanProgress({
             data-testid="scan-progress-log-toggle"
           >
             <span>
-              {t("progress.log_toggle", {
-                defaultValue: "Per-step log",
-              })}
+              {logMessages.length > 0
+                ? t("progress.tool_log_toggle", {
+                    defaultValue: "Tool log",
+                  })
+                : t("progress.log_toggle", {
+                    defaultValue: "Per-step log",
+                  })}
               <span
                 className="ml-2 inline-flex items-center rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] tabular-nums"
                 aria-hidden
               >
-                {messages.length}
+                {logMessages.length > 0
+                  ? logMessages.length
+                  : messages.length}
               </span>
             </span>
             <span aria-hidden className="font-mono text-[10px]">
@@ -374,32 +450,44 @@ export function ScanProgress({
             </span>
           </button>
           {logOpen ? (
-            <ol
-              id="scan-progress-log-body"
-              className="max-h-48 overflow-y-auto border-t font-mono text-[11px] leading-snug"
-              data-testid="scan-progress-log-body"
-            >
-              {messages.map((msg, idx) => (
-                <li
-                  key={`${msg.ts}-${idx}`}
-                  className="flex items-baseline gap-2 border-b px-3 py-1 last:border-b-0"
-                  data-step={msg.step}
-                >
-                  <span
-                    className="shrink-0 text-muted-foreground"
-                    title={msg.ts}
+            logMessages.length > 0 ? (
+              <ol
+                id="scan-progress-log-body"
+                className="max-h-64 overflow-y-auto border-t font-mono text-[11px] leading-snug"
+                data-testid="scan-progress-log-body"
+              >
+                {logMessages.map((msg, idx) => (
+                  <ToolLogLine key={`${msg.ts}-${idx}`} msg={msg} />
+                ))}
+              </ol>
+            ) : (
+              <ol
+                id="scan-progress-log-body"
+                className="max-h-48 overflow-y-auto border-t font-mono text-[11px] leading-snug"
+                data-testid="scan-progress-log-body"
+              >
+                {messages.map((msg, idx) => (
+                  <li
+                    key={`${msg.ts}-${idx}`}
+                    className="flex items-baseline gap-2 border-b px-3 py-1 last:border-b-0"
+                    data-step={msg.step}
                   >
-                    {msg.ts.slice(11, 19)}
-                  </span>
-                  <span className="shrink-0 tabular-nums text-foreground">
-                    {String(msg.percent).padStart(3, " ")}%
-                  </span>
-                  <span className="truncate text-foreground">
-                    {msg.step || "—"}
-                  </span>
-                </li>
-              ))}
-            </ol>
+                    <span
+                      className="shrink-0 text-muted-foreground"
+                      title={msg.ts}
+                    >
+                      {msg.ts.slice(11, 19)}
+                    </span>
+                    <span className="shrink-0 tabular-nums text-foreground">
+                      {String(msg.percent).padStart(3, " ")}%
+                    </span>
+                    <span className="truncate text-foreground">
+                      {msg.step || "—"}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            )
           ) : null}
         </div>
       ) : null}

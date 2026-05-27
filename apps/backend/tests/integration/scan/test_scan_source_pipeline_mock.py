@@ -462,7 +462,9 @@ def _conditional_cdxgen_factory():  # type: ignore[no-untyped-def]
 
     from integrations.cdxgen import CdxgenResult
 
-    def _fake_run_cdxgen(*, source_dir: Path, output_dir: Path) -> CdxgenResult:  # noqa: ARG001
+    def _fake_run_cdxgen(  # noqa: ARG001
+        *, source_dir: Path, output_dir: Path, **_kwargs: object
+    ) -> CdxgenResult:
         output_dir.mkdir(parents=True, exist_ok=True)
         sbom = {
             "bomFormat": "CycloneDX",

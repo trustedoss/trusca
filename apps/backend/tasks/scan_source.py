@@ -118,7 +118,7 @@ from services.source_archive_service import (
 )
 from services.source_preservation_service import preserve_scan_source
 from services.vulnerability_matching import persist_trivy_findings
-from tasks._progress import publish_progress
+from tasks._progress import publish_log, publish_progress, reset_log_counter
 from tasks.celery_app import celery_app
 
 log = structlog.get_logger("tasks.scan_source")
@@ -193,6 +193,13 @@ def scan_source_task(self: Any, scan_id: str) -> None:
     except ValueError:
         log.error("scan_source_invalid_scan_id", scan_id=scan_id)
         return
+
+    # P2 #8c — drop any per-scan log line budget left over from a previous
+    # run (Celery acks_late + worker restart can re-enter this task on the
+    # same scan_id). Resetting here means a re-execution starts from zero
+    # used budget — symmetric with the prior-rows wipe in
+    # _reset_scan_for_rerun. Idempotent on first-run scans.
+    reset_log_counter(scan_uuid)
 
     workspace = Path(workspace_root()) / str(scan_uuid)
 
@@ -319,6 +326,11 @@ def _run_pipeline(
     cdxgen_result = cdxgen_adapter.run_cdxgen(
         source_dir=source_dir,
         output_dir=workspace / "cdxgen",
+        # P2 #8c — stream cdxgen stdout/stderr lines onto the scan WebSocket
+        # so the drawer can render a live tool trace. Best-effort: a publish
+        # error inside the callback never propagates, and the per-scan line
+        # budget caps runaway tools (publish_log enforces it internally).
+        line_callback=_make_line_callback(scan_uuid, stage="cdxgen"),
     )
     _persist_artifact(
         scan_uuid,
@@ -393,6 +405,9 @@ def _run_pipeline(
         scancode_result = scancode_adapter.run_scancode(
             source_dir=source_dir,
             output_dir=workspace / "scancode",
+            # P2 #8c — same WS streaming as cdxgen; see the cdxgen
+            # call site above for the contract.
+            line_callback=_make_line_callback(scan_uuid, stage="scancode"),
         )
         scancode_detections = scancode_result.detections
         scancode_json_path = scancode_result.result_path
@@ -1021,6 +1036,39 @@ def _set_stage(scan_uuid: uuid.UUID, stage: str) -> None:
     # Publish AFTER the DB commit so a subscriber that reads the row on
     # receipt sees the same state as the published payload.
     publish_progress(scan_uuid, step=stage, percent=committed_percent)
+
+
+def _make_line_callback(
+    scan_uuid: uuid.UUID, *, stage: str
+) -> Any:
+    """Build a line-callback that forwards subprocess output to the WS.
+
+    P2 #8c — used by the cdxgen / scancode call sites. The callback runs
+    inside a background drain thread spawned by ``_line_streamer``; it MUST
+    NOT raise. ``publish_log`` is itself fire-and-forget (Redis errors are
+    swallowed + logged), but we still wrap the call in a try/except as
+    belt-and-suspenders: a publisher bug must never break a scan over a
+    log-streaming side-channel.
+
+    The per-scan line budget is enforced inside ``publish_log`` so the
+    drain thread keeps reading the subprocess pipes even after the budget
+    is exhausted (closing the pipe early could deadlock the subprocess once
+    its kernel pipe buffer fills) — over-budget lines are silently dropped
+    on the publisher side.
+    """
+
+    def _cb(stream: str, line: str) -> None:
+        try:
+            publish_log(scan_uuid, stage=stage, stream=stream, line=line)
+        except Exception as exc:  # noqa: BLE001 — never break the drain
+            log.warning(
+                "scan_log_callback_unexpected",
+                stage=stage,
+                stream=stream,
+                error=str(exc)[:300],
+            )
+
+    return _cb
 
 
 def _persist_artifact(

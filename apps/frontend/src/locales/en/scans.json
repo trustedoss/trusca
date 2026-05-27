@@ -54,6 +54,7 @@
     "reconnect_attempt": "Attempt {{n}}",
     "background_notice": "Scan continues in the background — you can close this panel.",
     "log_toggle": "Per-step log",
+    "tool_log_toggle": "Tool log",
     "close": "Close",
     "retry": "Retry",
     "percent_label": "{{value}}%"

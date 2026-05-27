@@ -124,6 +124,10 @@ def test_publish_progress_emits_expected_payload_on_channel(
     payload = json.loads(body.decode("utf-8"))
     assert payload["percent"] == 25
     assert payload["step"] == "cdxgen"
+    # P2 #8c — progress frames now carry an explicit ``type`` discriminator
+    # so the FE can fan out progress vs log frames on a single channel.
+    # Older clients that ignore the field still see the historical envelope.
+    assert payload["type"] == "progress"
     assert isinstance(payload["ts"], str) and "T" in payload["ts"]
 
 
@@ -324,3 +328,191 @@ def test_now_iso_is_utc_iso8601() -> None:
     # offset 0 == UTC. (datetime.fromisoformat preserves tzinfo.)
     assert parsed.utcoffset() is not None
     assert parsed.utcoffset().total_seconds() == 0  # type: ignore[union-attr]
+
+
+# ---------------------------------------------------------------------------
+# P2 #8c — publish_log
+# ---------------------------------------------------------------------------
+
+
+def test_publish_log_emits_log_frame_on_same_channel(
+    patched_publisher: Any, fake_redis: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Log frames share the progress channel and carry ``type: "log"``."""
+    captured = _capture_publishes(monkeypatch)
+    scan_id = uuid.uuid4()
+    patched_publisher.reset_log_counter(scan_id)
+
+    patched_publisher.publish_log(
+        scan_id, stage="cdxgen", stream="stdout", line="resolving packages…"
+    )
+
+    assert len(captured) == 1
+    channel, body = captured[0]
+    assert channel == f"scan:{scan_id}:progress"
+    payload = json.loads(body.decode("utf-8"))
+    assert payload["type"] == "log"
+    assert payload["stage"] == "cdxgen"
+    assert payload["stream"] == "stdout"
+    assert payload["line"] == "resolving packages…"
+    assert isinstance(payload["ts"], str) and "T" in payload["ts"]
+
+
+def test_publish_log_normalises_unknown_stream_to_stdout(
+    patched_publisher: Any, fake_redis: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A typo / hostile stream label degrades to ``stdout`` rather than blocks."""
+    captured = _capture_publishes(monkeypatch)
+    scan_id = uuid.uuid4()
+    patched_publisher.reset_log_counter(scan_id)
+
+    patched_publisher.publish_log(
+        scan_id, stage="scancode", stream="garbage", line="hi"
+    )
+
+    payload = json.loads(captured[0][1].decode("utf-8"))
+    assert payload["stream"] == "stdout"
+
+
+def test_publish_log_truncates_long_lines(
+    patched_publisher: Any,
+    fake_redis: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A single mega-line is truncated at SCAN_LOG_LINE_MAX_LEN and marked."""
+    monkeypatch.setenv("SCAN_LOG_LINE_MAX_LEN", "80")
+    captured = _capture_publishes(monkeypatch)
+    scan_id = uuid.uuid4()
+    patched_publisher.reset_log_counter(scan_id)
+
+    long_line = "x" * 5_000
+    patched_publisher.publish_log(
+        scan_id, stage="cdxgen", stream="stdout", line=long_line
+    )
+
+    payload = json.loads(captured[0][1].decode("utf-8"))
+    assert len(payload["line"]) <= 80
+    assert payload["line"].endswith("…(truncated)")
+    # The truncation suffix must NOT be omitted — without it the consumer
+    # cannot tell a truncated line apart from a real 80-char line.
+
+
+def test_publish_log_enforces_per_scan_budget(
+    patched_publisher: Any, fake_redis: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Over-budget lines are dropped on the publisher side (no Redis call)."""
+    monkeypatch.setenv("SCAN_LOG_MAX_LINES_PER_SCAN", "3")
+    captured = _capture_publishes(monkeypatch)
+    scan_id = uuid.uuid4()
+    patched_publisher.reset_log_counter(scan_id)
+
+    for i in range(10):
+        patched_publisher.publish_log(
+            scan_id, stage="cdxgen", stream="stdout", line=f"line {i}"
+        )
+
+    # Only the first 3 lines made it onto the wire.
+    assert len(captured) == 3
+    for _ch, body in captured:
+        assert json.loads(body.decode("utf-8"))["type"] == "log"
+
+
+def test_publish_log_kill_switch_via_zero_budget(
+    patched_publisher: Any, fake_redis: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """SCAN_LOG_MAX_LINES_PER_SCAN=0 acts as a kill switch — nothing publishes."""
+    monkeypatch.setenv("SCAN_LOG_MAX_LINES_PER_SCAN", "0")
+    captured = _capture_publishes(monkeypatch)
+    scan_id = uuid.uuid4()
+    patched_publisher.reset_log_counter(scan_id)
+
+    patched_publisher.publish_log(
+        scan_id, stage="cdxgen", stream="stdout", line="should not appear"
+    )
+
+    assert captured == []
+
+
+def test_publish_log_swallows_redis_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A broken Redis client must NOT crash the caller — log + return."""
+    from tasks import _progress
+
+    class _BrokenClient:
+        def publish(self, *args: Any, **kwargs: Any) -> None:
+            raise RuntimeError("simulated broker outage")
+
+    monkeypatch.setattr(_progress, "_get_client", lambda: _BrokenClient())
+    _progress.reset_log_counter("unit-broken-publish")
+
+    # No exception leaks. The test passes if this returns normally.
+    _progress.publish_log(
+        "unit-broken-publish",
+        stage="cdxgen",
+        stream="stdout",
+        line="anything",
+    )
+
+    _progress.reset_publisher_for_tests()
+
+
+def test_reset_log_counter_clears_budget(
+    patched_publisher: Any, fake_redis: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Re-running the same scan resets the per-scan budget."""
+    monkeypatch.setenv("SCAN_LOG_MAX_LINES_PER_SCAN", "2")
+    captured = _capture_publishes(monkeypatch)
+    scan_id = uuid.uuid4()
+
+    patched_publisher.reset_log_counter(scan_id)
+    for i in range(5):
+        patched_publisher.publish_log(
+            scan_id, stage="cdxgen", stream="stdout", line=f"a{i}"
+        )
+    assert len(captured) == 2
+
+    # Re-run: budget resets, two more lines may publish.
+    patched_publisher.reset_log_counter(scan_id)
+    for i in range(5):
+        patched_publisher.publish_log(
+            scan_id, stage="cdxgen", stream="stdout", line=f"b{i}"
+        )
+    assert len(captured) == 4
+
+
+def test_publish_log_isolates_scans_from_each_other(
+    patched_publisher: Any, fake_redis: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One scan exhausting its budget must not silence a sibling scan."""
+    monkeypatch.setenv("SCAN_LOG_MAX_LINES_PER_SCAN", "1")
+    captured = _capture_publishes(monkeypatch)
+    scan_a = uuid.uuid4()
+    scan_b = uuid.uuid4()
+    patched_publisher.reset_log_counter(scan_a)
+    patched_publisher.reset_log_counter(scan_b)
+
+    # scan_a uses its single slot.
+    patched_publisher.publish_log(scan_a, stage="cdxgen", stream="stdout", line="a1")
+    patched_publisher.publish_log(scan_a, stage="cdxgen", stream="stdout", line="a2")
+    # scan_b has its own slot.
+    patched_publisher.publish_log(scan_b, stage="cdxgen", stream="stdout", line="b1")
+
+    assert len(captured) == 2
+    channels = {ch for ch, _ in captured}
+    assert f"scan:{scan_a}:progress" in channels
+    assert f"scan:{scan_b}:progress" in channels
+
+
+def test_truncate_line_kill_switch_returns_empty() -> None:
+    """``_truncate_line(_, limit<=0)`` short-circuits to empty string."""
+    from tasks._progress import _truncate_line
+
+    assert _truncate_line("hello world", 0) == ""
+    assert _truncate_line("hello world", -1) == ""
+
+
+def test_truncate_line_passes_through_when_under_limit() -> None:
+    from tasks._progress import _truncate_line
+
+    assert _truncate_line("short", 80) == "short"

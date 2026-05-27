@@ -183,7 +183,9 @@ def _patch_pipeline(
     monkeypatch.setenv("WORKSPACE_HOST_PATH", str(tmp_path))
     _stub_trivy_empty(monkeypatch)
 
-    def _fake_run_cdxgen(*, source_dir: Path, output_dir: Path) -> CdxgenResult:
+    def _fake_run_cdxgen(
+        *, source_dir: Path, output_dir: Path, **_kwargs: object
+    ) -> CdxgenResult:
         output_dir.mkdir(parents=True, exist_ok=True)
         sbom_path = output_dir / "cdxgen.cdx.json"
         sbom_path.write_text(json.dumps(sbom), encoding="utf-8")
@@ -193,7 +195,7 @@ def _patch_pipeline(
     # scancode is best-effort; force-skip so the test stays focused on the graph.
     import integrations.scancode as scancode_adapter
 
-    def _skip_scancode(*, source_dir: Path, output_dir: Path):  # noqa: ARG001
+    def _skip_scancode(*, source_dir: Path, output_dir: Path, **_kwargs: object):  # noqa: ARG001
         raise scancode_adapter.ScancodeError("skipped for graph test")
 
     monkeypatch.setattr("tasks.scan_source.scancode_adapter.run_scancode", _skip_scancode)
