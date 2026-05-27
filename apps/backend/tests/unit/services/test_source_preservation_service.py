@@ -31,8 +31,13 @@ from pathlib import Path
 import pytest
 
 from services.source_preservation_service import (
+    SBOM_MEMBER_NAME,
     SCANCODE_MEMBER_NAME,
+    PreservationTooLarge,
+    PreservedSbomMissing,
+    extract_preserved_sbom,
     preserve_scan_source,
+    preserved_tarball_has_sbom,
     scan_source_tarball_path,
     scan_sources_dir_for_project,
 )
@@ -237,7 +242,7 @@ def test_unexpected_error_is_swallowed_returns_none(
 
     src = _make_source_tree(tmp_path)
 
-    def _boom(**_kw: object) -> tuple[int, bool]:
+    def _boom(**_kw: object) -> tuple[int, bool, bool]:
         raise RuntimeError("simulated tarfile edge case")
 
     monkeypatch.setattr(mod, "_write_tarball", _boom)
@@ -313,3 +318,251 @@ def test_limits_read_at_call_time(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.delenv("SCAN_SOURCE_VIEWER_MAX_FILE_BYTES", raising=False)
     assert scan_source_viewer_max_file_bytes() == 2 * 1024 * 1024
+
+
+# ---------------------------------------------------------------------------
+# W6-#42 — cdxgen SBOM fold + extract
+# ---------------------------------------------------------------------------
+
+
+def _make_cdxgen_sbom(root: Path, *, content: bytes | None = None) -> Path:
+    """Create a representative cdxgen CycloneDX JSON SBOM file under ``root``."""
+    path = root / "cdxgen" / "cdxgen.cdx.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = content if content is not None else (
+        b'{"bomFormat": "CycloneDX", "specVersion": "1.5", "components": []}'
+    )
+    path.write_bytes(payload)
+    return path
+
+
+def test_sbom_preserved_when_present(tmp_path: Path) -> None:
+    """SBOM path → tarball carries ``.trustedoss/cdxgen.cdx.json``."""
+    src = _make_source_tree(tmp_path)
+    sbom = _make_cdxgen_sbom(tmp_path)
+    project_id, scan_id = uuid.uuid4(), uuid.uuid4()
+
+    result = preserve_scan_source(
+        scan_id=scan_id,
+        project_id=project_id,
+        source_dir=src,
+        scancode_json_path=None,
+        sbom_path=sbom,
+    )
+
+    assert result is not None
+    names = _members(result)
+    assert SBOM_MEMBER_NAME in names
+    with tarfile.open(result, mode="r:gz") as tar:
+        member = tar.extractfile(SBOM_MEMBER_NAME)
+        assert member is not None
+        body = member.read()
+        assert b"CycloneDX" in body
+        assert b"specVersion" in body
+
+
+def test_sbom_optional_no_member_when_absent(tmp_path: Path) -> None:
+    """sbom_path None or omitted → tarball has no SBOM member (backwards compat)."""
+    src = _make_source_tree(tmp_path)
+    project_id, scan_id = uuid.uuid4(), uuid.uuid4()
+
+    result = preserve_scan_source(
+        scan_id=scan_id,
+        project_id=project_id,
+        source_dir=src,
+        scancode_json_path=None,
+    )
+
+    assert result is not None
+    names = _members(result)
+    assert SBOM_MEMBER_NAME not in names
+
+
+def test_sbom_missing_file_silently_skipped(tmp_path: Path) -> None:
+    """A non-existent sbom_path is treated as None (best-effort fold-in)."""
+    src = _make_source_tree(tmp_path)
+    project_id, scan_id = uuid.uuid4(), uuid.uuid4()
+
+    result = preserve_scan_source(
+        scan_id=scan_id,
+        project_id=project_id,
+        source_dir=src,
+        scancode_json_path=None,
+        sbom_path=tmp_path / "cdxgen" / "does-not-exist.cdx.json",
+    )
+
+    assert result is not None
+    names = _members(result)
+    assert SBOM_MEMBER_NAME not in names
+
+
+def test_source_tree_sbom_member_does_not_shadow_real_one(tmp_path: Path) -> None:
+    """A repo carrying its own .trustedoss/cdxgen.cdx.json must not win the slot."""
+    src = _make_source_tree(tmp_path)
+    decoy = src / ".trustedoss" / "cdxgen.cdx.json"
+    decoy.parent.mkdir(parents=True)
+    decoy.write_bytes(b'{"decoy": true}')
+    sbom = _make_cdxgen_sbom(tmp_path)
+
+    project_id, scan_id = uuid.uuid4(), uuid.uuid4()
+    result = preserve_scan_source(
+        scan_id=scan_id,
+        project_id=project_id,
+        source_dir=src,
+        scancode_json_path=None,
+        sbom_path=sbom,
+    )
+
+    assert result is not None
+    with tarfile.open(result, mode="r:gz") as tar:
+        names = tar.getnames()
+        assert names.count(SBOM_MEMBER_NAME) == 1
+        member = tar.extractfile(SBOM_MEMBER_NAME)
+        assert member is not None
+        assert b"decoy" not in member.read()
+
+
+def test_extract_preserved_sbom_happy_path(tmp_path: Path) -> None:
+    """Round-trip: preserve with SBOM → extract recovers the bytes."""
+    src = _make_source_tree(tmp_path)
+    sbom_content = b'{"bomFormat": "CycloneDX", "components": [{"name": "left-pad"}]}'
+    sbom = _make_cdxgen_sbom(tmp_path, content=sbom_content)
+    project_id, scan_id = uuid.uuid4(), uuid.uuid4()
+
+    preserve_scan_source(
+        scan_id=scan_id,
+        project_id=project_id,
+        source_dir=src,
+        scancode_json_path=None,
+        sbom_path=sbom,
+    )
+
+    dest_dir = tmp_path / "extract"
+    extracted = extract_preserved_sbom(
+        scan_id=scan_id, project_id=project_id, dest_dir=dest_dir
+    )
+    assert extracted == dest_dir / "cdxgen.cdx.json"
+    assert extracted.read_bytes() == sbom_content
+
+
+def test_extract_preserved_sbom_missing_tarball_raises(tmp_path: Path) -> None:
+    """No tarball on disk → FileNotFoundError so the rematch beat can skip."""
+    with pytest.raises(FileNotFoundError):
+        extract_preserved_sbom(
+            scan_id=uuid.uuid4(),
+            project_id=uuid.uuid4(),
+            dest_dir=tmp_path / "extract",
+        )
+
+
+def test_extract_preserved_sbom_missing_member_raises(tmp_path: Path) -> None:
+    """Tarball exists but has no SBOM member → PreservedSbomMissing (scan predates W6-#42)."""
+    src = _make_source_tree(tmp_path)
+    project_id, scan_id = uuid.uuid4(), uuid.uuid4()
+    preserve_scan_source(
+        scan_id=scan_id,
+        project_id=project_id,
+        source_dir=src,
+        scancode_json_path=None,
+    )
+
+    with pytest.raises(PreservedSbomMissing):
+        extract_preserved_sbom(
+            scan_id=scan_id, project_id=project_id, dest_dir=tmp_path / "extract"
+        )
+
+
+def test_extract_preserved_sbom_size_cap_raises(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """SBOM larger than the extract cap → PreservationTooLarge + dest cleaned up."""
+    import services.source_preservation_service as mod
+
+    # Squeeze the cap so a small file trips the guard without writing megabytes.
+    monkeypatch.setattr(mod, "_SBOM_EXTRACT_MAX_BYTES", 64)
+
+    src = _make_source_tree(tmp_path)
+    # 256 bytes of incompressible content — well over the patched 64-byte cap.
+    sbom = _make_cdxgen_sbom(tmp_path, content=os.urandom(256))
+    project_id, scan_id = uuid.uuid4(), uuid.uuid4()
+    preserve_scan_source(
+        scan_id=scan_id,
+        project_id=project_id,
+        source_dir=src,
+        scancode_json_path=None,
+        sbom_path=sbom,
+    )
+
+    dest_dir = tmp_path / "extract"
+    with pytest.raises(PreservationTooLarge):
+        extract_preserved_sbom(
+            scan_id=scan_id, project_id=project_id, dest_dir=dest_dir
+        )
+    # Cleanup: the partial output is removed so the caller's tmp dir is empty.
+    assert not (dest_dir / "cdxgen.cdx.json").exists()
+
+
+def test_preserved_tarball_has_sbom_predicate(tmp_path: Path) -> None:
+    """Predicate returns True iff the tarball carries the SBOM member."""
+    src = _make_source_tree(tmp_path)
+    sbom = _make_cdxgen_sbom(tmp_path)
+    project_id = uuid.uuid4()
+
+    # No tarball at all → False (the predicate must not raise for the beat).
+    assert not preserved_tarball_has_sbom(
+        scan_id=uuid.uuid4(), project_id=project_id
+    )
+
+    # Tarball without SBOM → False (legacy scan predating W6-#42).
+    legacy_id = uuid.uuid4()
+    preserve_scan_source(
+        scan_id=legacy_id,
+        project_id=project_id,
+        source_dir=src,
+        scancode_json_path=None,
+    )
+    assert not preserved_tarball_has_sbom(scan_id=legacy_id, project_id=project_id)
+
+    # Tarball with SBOM → True (W6-#42-era scan eligible for rematch).
+    modern_id = uuid.uuid4()
+    preserve_scan_source(
+        scan_id=modern_id,
+        project_id=project_id,
+        source_dir=src,
+        scancode_json_path=None,
+        sbom_path=sbom,
+    )
+    assert preserved_tarball_has_sbom(scan_id=modern_id, project_id=project_id)
+
+
+def test_extract_preserved_sbom_rejects_symlink_member(tmp_path: Path) -> None:
+    """security-reviewer H-1: a SYMTYPE/LNKTYPE member named SBOM_MEMBER_NAME
+    must NOT be honoured even if ``TarInfo.isfile()`` returns True for it.
+
+    Constructs a tarball by hand (NOT via ``preserve_scan_source`` — the writer
+    only emits regular files) so the extract path's strict isreg() check is
+    exercised against a tampered shape.
+    """
+    project_id, scan_id = uuid.uuid4(), uuid.uuid4()
+    from services.source_preservation_service import scan_source_tarball_path
+
+    tar_path = scan_source_tarball_path(project_id, scan_id)
+    tar_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Plant a real innocuous regular member + a SYMTYPE member sharing the
+    # reserved SBOM arcname pointing at it.
+    with tarfile.open(tar_path, mode="w:gz") as tar:
+        payload_path = tmp_path / "innocuous-payload"
+        payload_path.write_bytes(b"would-be-exfiltrated-via-symlink")
+        tar.add(str(payload_path), arcname="innocuous-payload", recursive=False)
+        sym = tarfile.TarInfo(name=SBOM_MEMBER_NAME)
+        sym.type = tarfile.SYMTYPE
+        sym.linkname = "innocuous-payload"
+        tar.addfile(sym)
+
+    with pytest.raises(PreservedSbomMissing):
+        extract_preserved_sbom(
+            scan_id=scan_id,
+            project_id=project_id,
+            dest_dir=tmp_path / "extract",
+        )

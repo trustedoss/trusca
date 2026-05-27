@@ -144,6 +144,26 @@ def run_trivy_sbom(sbom_path: Path, output_dir: Path) -> TrivyResult:
 
 ---
 
+## W6 종료 후 검토 후보 — Wave 7 (Docs parity)
+
+> 출처: 2026-05-27 DT 공식 문서(docs.dependencytrack.org) 구조 비교. 트래커 §0.5 W7 절에 백로그로 등재. **W6 완료 후 실제 docs 상태를 보고 우선순위·범위 재조정**([[feedback-tracker-text-may-overstate-gaps]] 방지).
+
+DT 우위 영역(우리 갭):
+- **Triage Results 통합 가이드** — 우리 VEX 7-state + 승인 워크플로우는 `vulnerabilities.md`·`approvals.md`에 분산. 한 페이지 통합 필요.
+- **Analysis Types 단일 페이지** — source/container/reachability/policy 매트릭스. 도입 사용자 1차 진입점.
+- **Best Practices 카테고리** — 운영자 첫 의사결정 가이드(스캔 빈도·정책 설계·팀 구조·업그레이드 케이던스).
+- **FAQ** — 30~50개 첫 도입 질문. GitHub Discussions 패턴.
+- **Change Log 누적** — v2.1·v2.2·v2.3 release notes 부재(코드는 머지 완료). v2.4.0과 같은 양식으로 소급.
+- **DefectDojo/ThreadFix 통합** — 조사 후 의도 확정 → 등재 여부 판단.
+
+우리 우위(유지): 거버넌스/정책 깊이(5개 reference) · Contributor guide 4페이지 · comparison.md · EN/KO 이중 언어.
+
+**W6-#43c 부분 흡수**: 신규 `reference/data-sources.md`(NVD/OSV/GHSA/EPSS/KEV 출처 매트릭스)는 DT "Datasources" 격에 맞추기 위해 #43c에 추가됨(+0.5d → #43c 합 1.5d).
+
+작업량: PR-A~E 합 3~4d. W6 종료 후 핸즈온 검증으로 진짜 갭만 PR scope로 좁힌 뒤 착수.
+
+---
+
 ## 핵심 참조 파일
 
 - **계획 SoT**: `docs/post-ga-execution-tracker.md` §0.5 W6 (방금 갱신)

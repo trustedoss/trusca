@@ -504,6 +504,7 @@ def _run_pipeline(
         project_id=project_id,
         source_dir=source_dir,
         scancode_json_path=scancode_json_path,
+        sbom_path=cdxgen_result.sbom_path,
     )
 
     # Stage 7 — finalize.
@@ -1439,8 +1440,9 @@ def _preserve_source_tree(
     project_id: uuid.UUID,
     source_dir: Path,
     scancode_json_path: Path | None,
+    sbom_path: Path | None = None,
 ) -> None:
-    """Preserve the source tree + scancode JSON as a tarball (G3.1).
+    """Preserve the source tree + scancode JSON + cdxgen SBOM as a tarball (G3.1 + W6-#42).
 
     Best-effort — mirrors the scancode stage's swallow-and-log contract: a
     failure here NEVER fails the scan. On success we write a free-form
@@ -1450,6 +1452,12 @@ def _preserve_source_tree(
 
     The workspace is the parent of ``source_dir`` (``{workspace}/source``); we
     derive it so the scancode-JSON fallback can probe ``{workspace}/scancode/``.
+
+    W6-#42: ``sbom_path`` (the cdxgen CycloneDX output) is folded into the
+    tarball under ``.trustedoss/cdxgen.cdx.json`` so the vulnerability rematch
+    beat can re-run ``trivy sbom`` against the same exact bytes without paying
+    cdxgen's cost. Optional — scans that never produced an SBOM (e.g. cdxgen
+    aborted) still preserve source + scancode JSON for the file-tree viewer.
     """
     try:
         workspace = source_dir.parent
@@ -1461,6 +1469,7 @@ def _preserve_source_tree(
             project_id=project_id,
             source_dir=source_dir,
             scancode_json_path=json_path,
+            sbom_path=sbom_path,
         )
         if tar_path is None:
             log.info("scan_source_preserve_skipped_stage", scan_id=str(scan_uuid))

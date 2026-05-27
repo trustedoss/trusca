@@ -51,6 +51,10 @@ _TASK_INCLUDES = [
     # PR-A1 (scan stability) — reclaim workspaces left by cancelled / killed /
     # crashed scans whose `finally: rmtree` did not run.
     "tasks.workspace_cleaner",
+    # W6-#42 — automatic vulnerability re-matching against preserved SBOMs.
+    # Promotes DT's "rematch on DB update" feature to a Trivy-backed beat
+    # after ADR-0001 removed DT.
+    "tasks.vulnerability_rematch",
 ]
 
 
@@ -111,6 +115,18 @@ def _build_beat_schedule() -> dict[str, dict[str, object]]:
             "task": "trustedoss.backup.run",
             "schedule": crontab(hour=0, minute=0),
             "kwargs": {"kind": "auto", "actor_user_id": None},
+        },
+        # W6-#42 — automatic vulnerability re-matching every 6 hours. The
+        # 6h cadence + the per-scan VULN_REMATCH_INTERVAL_HOURS knob (default
+        # 6h) keeps a scan's findings within ~one full DT-style refresh window
+        # of upstream NVD changes without re-running Trivy on every tick.
+        # ``minute=15`` offsets this from the other 6h beats (dt_orphan,
+        # source_archive, scan_source — all on the :00 offset) so the worker
+        # pool sees a staggered load profile, not four beats firing the same
+        # minute.
+        "vulnerability-rematch-six-hourly": {
+            "task": "trustedoss.vulnerability_rematch_enqueue",
+            "schedule": crontab(minute=15, hour="*/6"),
         },
     }
 
