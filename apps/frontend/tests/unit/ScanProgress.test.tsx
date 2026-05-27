@@ -94,11 +94,11 @@ describe("ScanProgress", () => {
     vi.useRealTimers();
   });
 
-  it("renders the title and the 7-step pipeline list", async () => {
+  it("renders the title and the 6-step pipeline list", async () => {
     renderProgress(<ScanProgress scanId="scan-1" socketFactory={factory} />);
     expect(screen.getByTestId("scan-progress")).toBeInTheDocument();
     const steps = screen.getByTestId("scan-progress-steps");
-    expect(steps.querySelectorAll("[data-step]")).toHaveLength(7);
+    expect(steps.querySelectorAll("[data-step]")).toHaveLength(6);
   });
 
   it("shows skeleton during connecting state", () => {

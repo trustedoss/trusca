@@ -42,8 +42,7 @@
     "step_fetch": "Fetching source",
     "step_cdxgen": "Generating SBOM",
     "step_scancode": "Detecting first-party licenses",
-    "step_dt_upload": "Uploading SBOM to Dependency-Track",
-    "step_dt_findings": "Resolving vulnerabilities",
+    "step_dt_findings": "Matching SBOM against vulnerability database",
     "step_finalize": "Finalizing",
     "step_succeeded": "Scan completed",
     "step_failed": "Scan failed",
@@ -75,7 +74,7 @@
     }
   },
   "alerts": {
-    "dt_unavailable": "Dependency-Track is temporarily unavailable. Showing cached vulnerability data."
+    "dt_unavailable": "The vulnerability matcher is temporarily unavailable. Showing cached results."
   },
   "kind": {
     "legend": "Scan type",
