@@ -1,5 +1,13 @@
 """
-Source scan Celery task — cdxgen → scancode (first-party) → DT upload → DT findings.
+Source scan Celery task — cdxgen → scancode (first-party) → Trivy SBOM matching.
+
+W6 (ADR-0001): DT was replaced by ``trivy sbom`` for CVE matching. cdxgen
+still enumerates components and writes a CycloneDX JSON SBOM; Trivy now
+matches that SBOM against its bundled DB (NVD + GHSA + OSV + EPSS + KEV)
+and produces a Trivy JSON report which the persister
+(``services.vulnerability_matching.persist_trivy_findings``) folds into
+``vulnerability_findings``. No DT calls, no circuit breaker, no async
+HTTP upload — Trivy is a local subprocess that runs against a file.
 
 PR-A2: the ORT ``evaluate`` stage was removed (it was broken — it fed a
 CycloneDX SBOM to ``ort evaluate --ort-file``, which expects an OrtResult JSON,
@@ -14,14 +22,11 @@ CLAUDE.md core rule #3: this pipeline runs asynchronously inside a Celery
 worker; the FastAPI request handler that triggered the scan only persisted a
 ``Scan`` row in state ``queued``.
 
-CLAUDE.md core rule #4: every DT call goes through the circuit breaker. When
-the breaker is OPEN (DT is down), the task does the best it can with cached
-data — vulnerability findings cannot be produced for the current scan, but
-the SBOM + license findings are still persisted, the scan is marked
-``failed`` with a clear ``error_message``, and the next scan will retry once
-the breaker recovers. Phase 6 will add a "deferred" outbox so OPEN-at-upload
-scans automatically replay; #8 keeps the simpler "fail with breaker_open
-reason" behavior.
+CLAUDE.md core rule #4 (post-W6): Trivy is the single vulnerability-matching
+engine. A Trivy subprocess failure is terminal for the matching stage but
+does NOT abort the scan — the SBOM + license findings are still persisted,
+the scan is marked ``failed`` with a clear ``error_message`` so the user can
+see what went wrong.
 
 Idempotency:
     The task is keyed off ``scan_id``. On re-execution (Celery
@@ -44,9 +49,7 @@ Workspace:
 
 from __future__ import annotations
 
-import concurrent.futures
 import hashlib
-import json
 import re
 import shutil
 import subprocess
@@ -85,10 +88,14 @@ from integrations.dependency_graph import (
     graph_depths_from_sbom,
     parse_dependency_graph,
 )
-from integrations.dt import DTBreakerOpen, DTError
-from integrations.dt.breaker import CircuitBreaker, get_breaker
-from integrations.dt.client import DTClient, build_client
 from integrations.npm_lockfile import NpmLockfileData, read_lockfile
+from integrations.trivy import (
+    TrivyError,
+    TrivyFailed,
+    TrivyNotInstalled,
+    TrivyTimeout,
+    run_trivy_sbom,
+)
 from models import (
     AuditLog,
     Component,
@@ -110,6 +117,7 @@ from services.source_archive_service import (
     safe_extract_archive,
 )
 from services.source_preservation_service import preserve_scan_source
+from services.vulnerability_matching import persist_trivy_findings
 from tasks._progress import publish_progress
 from tasks.celery_app import celery_app
 
@@ -129,22 +137,25 @@ _STAGE_PROGRESS: dict[str, int] = {
     # persisted, before scancode. Slotted at 30 (between cdxgen=25 and
     # scancode=50) so the WS progress frame stays monotonic.
     "sign": 30,
-    # P2 #8 hotfix — dt_upload now publishes BEFORE scancode in the WS frame
-    # stream (worker submits the upload thread right after cdxgen + sign, and
-    # we want the UI to reflect that). Slotted at 35 between sign (30) and
-    # scancode (50) so the WS percent contract stays monotonic. The actual
-    # background HTTP upload work still overlaps with scancode under PR #181;
-    # this is purely a UI sequencing fix.
+    # W6: ``dt_upload`` is a historical stage label retained for WS frame
+    # / E2E harness compatibility (the FE PIPELINE_STEPS list keys off these
+    # slugs). Post-DT-removal it represents "SBOM ready for matching" — the
+    # cdxgen artifact is on disk and we are about to hand it to Trivy. It is
+    # NOT renamed in this PR to keep #41 surgical; a follow-up (#43f) renames
+    # the WS frame contract end-to-end (UI + harness + i18n).
     "dt_upload": 35,
     # PR-A2: the "ort" stage slug (50) is replaced by "scancode" at the same
     # percent so the WS progress frame contract stays monotonic — clients that
     # rendered "50%" for the license stage keep rendering 50% for it.
     "scancode": 50,
     # BUG-010: conditional-license components are auto-enrolled into the legal
-    # review queue right after the component graph commits, before the DT
-    # upload. Slotted between "scancode" (50) and "dt_upload" (70) so the WS
-    # progress frame stays monotonic.
+    # review queue right after the component graph commits, before vuln
+    # matching. Slotted between "scancode" (50) and "dt_findings" (90) so the
+    # WS progress frame stays monotonic.
     "approvals": 60,
+    # W6: ``dt_findings`` is also a retained historical label. It now means
+    # "Trivy matched the SBOM against its vulnerability DB and the findings
+    # were persisted into vulnerability_findings". Same #43f rename note.
     "dt_findings": 90,
     "finalize": 100,
 }
@@ -225,12 +236,22 @@ def scan_source_task(self: Any, scan_id: str) -> None:
         # and let the user (or admin) update the project row.
         log.warning("scan_source_fetch_aborted", error=str(exc))
         _record_terminal_failure(scan_uuid, f"fetch aborted: {exc}")
-    except DTBreakerOpen as exc:
-        log.warning("scan_source_breaker_open", error=str(exc))
-        _record_terminal_failure(scan_uuid, f"DT unavailable (circuit breaker open): {exc}")
-    except DTError as exc:
-        log.error("scan_source_dt_error", error=str(exc))
-        _record_terminal_failure(scan_uuid, f"DT error: {exc}")
+    except TrivyNotInstalled as exc:
+        # W6: an operator deployment without the Trivy binary. Terminal —
+        # the worker image MUST ship Trivy 0.50+. Surface a precise message
+        # so the user knows it is a deployment issue, not a code defect.
+        log.error("scan_source_trivy_not_installed", error=str(exc))
+        _record_terminal_failure(scan_uuid, f"Trivy binary missing: {exc}")
+    except TrivyTimeout as exc:
+        log.warning("scan_source_trivy_timeout", error=str(exc))
+        _record_terminal_failure(scan_uuid, f"Trivy scan timed out: {exc}")
+    except TrivyFailed as exc:
+        log.error("scan_source_trivy_failed", error=str(exc))
+        _record_terminal_failure(scan_uuid, f"Trivy scan failed: {exc}")
+    except TrivyError as exc:
+        # Catch-all for any other Trivy adapter error subclass added later.
+        log.error("scan_source_trivy_error", error=str(exc))
+        _record_terminal_failure(scan_uuid, f"Trivy error: {exc}")
     except SoftTimeLimitExceeded:
         # PR-A1: the scan exceeded SCAN_SOFT_TIME_LIMIT_SECONDS. Celery raised
         # this inside the worker thread; we mark the scan failed with a clear
@@ -326,238 +347,149 @@ def _run_pipeline(
             workspace=workspace,
         )
 
-    # P2 #8a — parallel phase. The DT BOM upload (sanitize + upsert_project +
-    # upload_sbom) is purely network-bound and DT then runs its NVD/OSV matcher
-    # asynchronously on the server side; in the sequential layout that idle
-    # time after upload (~10-30s) was the long pole before the findings poll
-    # could return useful data. By kicking the upload off on a worker thread
-    # the moment the SBOM is on disk we overlap it with scancode + persist +
-    # approvals on the main thread, so DT's server-side matcher is warming up
-    # while the CPU-bound stages run. Wall-time saving on a healthy DT is the
-    # smaller of (scancode wall-time) and (dt-upload wall-time + DT analyzer
-    # ramp-up); on a slow DT the saving is larger because the matcher gets
-    # extra ramp-up before the findings poll begins.
+    # W6 (ADR-0001): cdxgen produced the SBOM on disk. From here:
+    #   1. publish the historical ``dt_upload`` stage (post-W6 == "SBOM ready
+    #      for matching"; rename deferred to #43f),
+    #   2. run scancode first-party license detection (best-effort, unchanged),
+    #   3. persist components + scancode-detected licenses,
+    #   4. auto-create conditional-license approvals,
+    #   5. run ``trivy sbom`` against the cdxgen SBOM to produce the vuln
+    #      report, publish the ``dt_findings`` stage,
+    #   6. persist Trivy findings into vulnerability_findings.
     #
-    # Safety:
-    #   - The DT thread does ONLY two outbound HTTP calls (upsert_project +
-    #     upload_sbom) wrapped through the existing breaker. It never touches
-    #     the DB session, so it cannot interleave with the main thread's
-    #     sync_session_scope writes.
-    #   - ``httpx.Client`` (the underlying transport) is documented as
-    #     thread-safe for concurrent requests, and the breaker's Redis-backed
-    #     state is mutated through atomic Lua scripts — both call sites are
-    #     safe from a second thread.
-    #   - The future is created with ``max_workers=1`` to keep the parallel
-    #     fan-out to exactly two paths (one main + one DT) — we are NOT
-    #     unbounded-pooling here. The executor is wrapped in ``with`` so
-    #     EVERY exit path (success / exception / SoftTimeLimitExceeded /
-    #     worker-lost) drains the upload thread before workspace cleanup.
-    #   - Any DT error (DTBreakerOpen / DTError / DTUnavailable / DTClientError)
-    #     raised inside the thread is re-raised at ``future.result()`` time on
-    #     the main thread, hitting the same task-body except blocks that
-    #     handle the sequential path — so error semantics are byte-for-byte
-    #     identical to the old order.
-    breaker = get_breaker()
-    dt_client = build_client()
-    sbom_bytes_path = cdxgen_result.sbom_path  # captured for the closure
+    # The pre-W6 parallel layout submitted a DT BOM upload to a background
+    # thread so DT's server-side matcher could warm up during scancode. Trivy
+    # runs locally and is CPU-bound; there is no server-side warm-up to hide,
+    # and an additional thread would just contend with scancode for CPU. We go
+    # back to a sequential layout — simpler, no thread-safety risk, and the
+    # wall-time difference is negligible (Trivy matches a typical SBOM in
+    # seconds, not the 10-30s of the old DT upload + analyzer ramp-up).
 
-    def _dt_upload() -> str:
-        """Run inside the background thread: upsert + BOM upload, return DT uuid."""
-        dt_project_uuid_local = breaker.call(
-            lambda: dt_client.upsert_project(
-                name=str(project_id),
-                version=str(scan_uuid),
-            )
-        )
-        # cdxgen 12.3.3 puts npm lockfile ``integrity`` (base64 sha512) into
-        # ``hashes[].content``, which violates the CycloneDX hex-content schema
-        # and makes DT reject the BOM with HTTP 400 — sinking vuln matching for
-        # every npm-lockfile project. Sanitize the bytes we send to DT only;
-        # the on-disk artifact and ``_persist_components`` (purl-based) are
-        # untouched. Best-effort: a parse failure returns the original bytes.
-        sbom_bytes = _sanitize_sbom_hashes_for_dt(sbom_bytes_path.read_bytes())
-        breaker.call(
-            lambda: dt_client.upload_sbom(
-                project_uuid=dt_project_uuid_local,
-                sbom_json=sbom_bytes,
-            )
-        )
-        return dt_project_uuid_local
+    # ``dt_upload`` stage label: SBOM has been generated + persisted (cdxgen),
+    # signed (cosign), and we are about to consume it for vuln matching. The
+    # stage transitions quickly here because Trivy hasn't started yet — that
+    # happens later under the ``dt_findings`` label. The label split mirrors
+    # what the FE PIPELINE_STEPS row expects.
+    _set_stage(scan_uuid, "dt_upload")
 
-    # Outer try/finally: ``dt_client.close()`` MUST run on every exit path so
-    # the httpx connection pool is reclaimed even when the parallel phase
-    # raises (DTBreakerOpen, scancode bug, soft-time-limit hitting during the
-    # join). This wraps the ThreadPoolExecutor block below.
+    # Stage 4 — scancode first-party license detection (PR-A2, replaces ORT).
+    # scancode runs over the cloned first-party tree only (vendored deps /
+    # build output / VCS metadata are excluded — see scancode.EXCLUDED_DIR_NAMES).
+    # It is best-effort: a scancode failure / timeout / too-large tree logs a
+    # WARNING and the scan continues with declared (cdxgen) licenses only. We
+    # never raise from this stage onto the terminal-failure path — a missing
+    # detected-license set is a degraded-output scenario, not a fatal one
+    # (same philosophy as the prep stage). Third-party dependency sources are
+    # NOT downloaded; their licenses stay declared via _persist_components.
+    _set_stage(scan_uuid, "scancode")
+    scancode_detections: list[scancode_adapter.DetectedLicense] = []
+    # G3.1: capture the scancode result JSON path so the preservation stage can
+    # fold it into the source tarball. The JSON is the only place per-line
+    # license-match data survives the workspace rmtree (the adapter discards line
+    # numbers; license_findings keeps only spdx + source_path). None when
+    # scancode was skipped — preservation then archives the source tree alone.
     scancode_json_path: Path | None = None
     try:
-        # ThreadPoolExecutor as a context manager so any exit drains the future
-        # (it joins worker threads on __exit__). This is the cleanup guarantee that
-        # SoftTimeLimitExceeded / worker SIGKILL / KeyboardInterrupt would
-        # otherwise miss if we held a bare Thread.
-        with concurrent.futures.ThreadPoolExecutor(
-            max_workers=1, thread_name_prefix="scan-dt-upload"
-        ) as dt_executor:
-            dt_upload_started_at = time.monotonic()
-            dt_upload_future: concurrent.futures.Future[str] = dt_executor.submit(_dt_upload)
-            log.info("scan_dt_upload_dispatched", scan_id=str(scan_uuid))
-            # P2 #8 hotfix — publish the dt_upload stage NOW (right after submit)
-            # instead of at the join point. The HTTP work happens on the bg
-            # thread while scancode runs on this thread; the UI's 7-step glyph
-            # row now flows cdxgen → dt_upload → scancode → dt_findings →
-            # finalize, matching what the user asked for in the ops triage. The
-            # join below will block on the future but no longer re-publish a
-            # stage (the FE has already painted dt_upload as in-progress, then
-            # completed once scancode publishes step=50).
-            _set_stage(scan_uuid, "dt_upload")
+        scancode_result = scancode_adapter.run_scancode(
+            source_dir=source_dir,
+            output_dir=workspace / "scancode",
+        )
+        scancode_detections = scancode_result.detections
+        scancode_json_path = scancode_result.result_path
+        _persist_artifact(
+            scan_uuid, kind="scancode_result", path=scancode_result.result_path
+        )
+        log.info("scancode_stage_done", detections=len(scancode_detections))
+    except scancode_adapter.ScancodeError as exc:
+        # ScancodeNotInstalled / Failed / Timeout / TooLarge all land here —
+        # all are "detected-license enrichment unavailable", not "abort scan".
+        log.warning("scancode_stage_skipped", error=str(exc)[:300])
 
-            # Stage 4 — scancode first-party license detection (PR-A2, replaces ORT).
-            # scancode runs over the cloned first-party tree only (vendored deps /
-            # build output / VCS metadata are excluded — see scancode.EXCLUDED_DIR_NAMES).
-            # It is best-effort: a scancode failure / timeout / too-large tree logs a
-            # WARNING and the scan continues with declared (cdxgen) licenses only. We
-            # never raise from this stage onto the terminal-failure path — a missing
-            # detected-license set is a degraded-output scenario, not a fatal one
-            # (same philosophy as the prep stage). Third-party dependency sources are
-            # NOT downloaded; their licenses stay declared via _persist_components.
-            _set_stage(scan_uuid, "scancode")
-            scancode_started_at = time.monotonic()
-            scancode_detections: list[scancode_adapter.DetectedLicense] = []
-            # G3.1: capture the scancode result JSON path so the preservation stage can
-            # fold it into the source tarball. The JSON is the only place per-line
-            # license-match data survives the workspace rmtree (the adapter discards line
-            # numbers; license_findings keeps only spdx + source_path). None when
-            # scancode was skipped — preservation then archives the source tree alone.
-            # (P2 #8a: declared above this block so it survives into the
-            # post-executor preservation stage even when scancode raises.)
+    # Persist the SBOM components + declared (cdxgen) licenses, then attach the
+    # scancode-detected first-party licenses to the project's own component.
+    #
+    # Blast-radius isolation (security-reviewer Medium #1): the components +
+    # declared (cdxgen) licenses are the HIGH-VALUE cache the UI shows when the
+    # vulnerability matcher is unavailable. The detected (scancode) licenses are
+    # auxiliary and are derived from attacker-controlled file content. We
+    # therefore wrap the detected write in a SAVEPOINT (``begin_nested``) so a
+    # failure there (e.g. an unexpected constraint violation from a hostile path /
+    # SPDX token that slipped the adapter caps) rolls back ONLY the detected
+    # findings — the declared findings and component graph still commit. A
+    # detected-license failure is degraded, never fatal.
+    with sync_session_scope() as session:
+        _persist_components(
+            session,
+            scan_uuid=scan_uuid,
+            sbom=cdxgen_result.sbom,
+            source_dir=source_dir,
+        )
+        if scancode_detections:
             try:
-                scancode_result = scancode_adapter.run_scancode(
-                    source_dir=source_dir,
-                    output_dir=workspace / "scancode",
+                with session.begin_nested():
+                    _persist_detected_licenses(
+                        session,
+                        scan_uuid=scan_uuid,
+                        sbom=cdxgen_result.sbom,
+                        detections=scancode_detections,
+                    )
+            except SQLAlchemyError as exc:
+                # SAVEPOINT rolled back; declared findings + components survive.
+                log.warning(
+                    "detected_license_persist_skipped",
+                    error=str(exc)[:300],
+                    detections=len(scancode_detections),
                 )
-                scancode_detections = scancode_result.detections
-                scancode_json_path = scancode_result.result_path
-                _persist_artifact(
-                    scan_uuid, kind="scancode_result", path=scancode_result.result_path
-                )
-                log.info("scancode_stage_done", detections=len(scancode_detections))
-            except scancode_adapter.ScancodeError as exc:
-                # ScancodeNotInstalled / Failed / Timeout / TooLarge all land here —
-                # all are "detected-license enrichment unavailable", not "abort scan".
-                # The DT upload future stays in flight; we'll surface any DT failure
-                # at the join below regardless of whether scancode succeeded.
-                log.warning("scancode_stage_skipped", error=str(exc)[:300])
+        session.commit()
 
-            # Persist the SBOM components + declared (cdxgen) licenses, then attach the
-            # scancode-detected first-party licenses to the project's own component.
-            #
-            # Blast-radius isolation (security-reviewer Medium #1): the components +
-            # declared (cdxgen) licenses are the HIGH-VALUE cache the UI shows when DT is
-            # down. The detected (scancode) licenses are auxiliary and are derived from
-            # attacker-controlled file content. We therefore wrap the detected write in a
-            # SAVEPOINT (``begin_nested``) so a failure there (e.g. an unexpected
-            # constraint violation from a hostile path / SPDX token that slipped the
-            # adapter caps) rolls back ONLY the detected findings — the declared findings
-            # and component graph still commit. A detected-license failure is degraded,
-            # never fatal, mirroring the best-effort scancode stage above.
-            with sync_session_scope() as session:
-                _persist_components(
-                    session,
-                    scan_uuid=scan_uuid,
-                    sbom=cdxgen_result.sbom,
-                    source_dir=source_dir,
-                )
-                if scancode_detections:
-                    try:
-                        with session.begin_nested():
-                            _persist_detected_licenses(
-                                session,
-                                scan_uuid=scan_uuid,
-                                sbom=cdxgen_result.sbom,
-                                detections=scancode_detections,
-                            )
-                    except SQLAlchemyError as exc:
-                        # SAVEPOINT rolled back; declared findings + components survive.
-                        log.warning(
-                            "detected_license_persist_skipped",
-                            error=str(exc)[:300],
-                            detections=len(scancode_detections),
-                        )
-                session.commit()
-            scancode_elapsed = time.monotonic() - scancode_started_at
+    # Stage 4.5 — auto-enrol conditional-license components into the legal
+    # review queue (BUG-010). MUST run AFTER the component + license findings
+    # commit above (it reads them back to decide which components are
+    # conditional). Best-effort, mirroring the scancode / preserve stages: a
+    # failure here logs a WARNING and the scan still succeeds. Idempotent on
+    # re-run because the helper skips components that already have an open
+    # approval (and _reset_scan_for_rerun never deletes approvals).
+    _set_stage(scan_uuid, "approvals")
+    _auto_create_conditional_approvals(scan_uuid=scan_uuid, project_id=project_id)
 
-            # Stage 4.5 — auto-enrol conditional-license components into the legal
-            # review queue (BUG-010). MUST run AFTER the component + license findings
-            # commit above (it reads them back to decide which components are
-            # conditional). Best-effort, mirroring the scancode / preserve stages: a
-            # failure here logs a WARNING and the scan still succeeds. Idempotent on
-            # re-run because the helper skips components that already have an open
-            # approval (and _reset_scan_for_rerun never deletes approvals).
-            _set_stage(scan_uuid, "approvals")
-            _auto_create_conditional_approvals(scan_uuid=scan_uuid, project_id=project_id)
-
-            # Stage 5 — DT upload (join). The stage was already published right
-            # after submit (P2 #8 hotfix), so we no longer re-publish here.
-            # The future has typically resolved by now (DT upload is ~2-30s on a
-            # healthy instance, scancode is ~10-120s); the result() call below
-            # will either return immediately or block until DT completes / raises.
-            try:
-                dt_project_uuid = dt_upload_future.result()
-            except Exception:
-                # DTBreakerOpen / DTError / DTUnavailable / DTClientError — re-raise
-                # so the outer task body's except blocks map them to the same
-                # terminal-failure paths as the sequential layout did. Any other
-                # exception (e.g. a bug) also propagates so we fail loudly rather
-                # than silently sinking the scan.
-                raise
-            dt_upload_elapsed = time.monotonic() - dt_upload_started_at
-            log.info(
-                "scan_parallel_phase_done",
-                scan_id=str(scan_uuid),
-                dt_upload_seconds=round(dt_upload_elapsed, 2),
-                scancode_seconds=round(scancode_elapsed, 2),
-            )
-
-            # Stage 6 — DT findings poll.
-            # DT runs vulnerability matching asynchronously after BOM upload
-            # (BOM_UPLOAD_ANALYSIS event). The first poll within ~1 second of
-            # upload typically returns 0 findings even when matches exist —
-            # this was the false-empty path observed during the 2026-05-07
-            # UAT (54 Maven CVEs that DT had matched, but the scan persisted
-            # 0 because the synchronous poll fired too early). Retry with
-            # exponential backoff (≤60s budget) so the eventual findings make
-            # it onto the scan row before the user sees it.
-            #
-            # P2 #8a — because the upload thread ran concurrently with scancode,
-            # DT's matcher has already had ``scancode_elapsed`` extra wall-time
-            # to chew through the BOM by the time we reach this poll; the
-            # backoff schedule is unchanged but the first poll is far more
-            # likely to return non-empty.
-            _set_stage(scan_uuid, "dt_findings")
-            findings = _poll_dt_findings_with_retry(
-                dt_client=dt_client,
-                breaker=breaker,
-                dt_project_uuid=dt_project_uuid,
-            )
-        # #35 Surface B — capture the DT vulnerability-DB size AT scan time so the
-        # Overview can tell "0 CVEs = safe" apart from "0 CVEs = empty DB". Strictly
-        # best-effort: a probe failure (breaker OPEN, DT down, bad header) must
-        # never turn a succeeded scan into a failure, so we swallow everything and
-        # simply omit the metadata (Overview then treats it as unknown → no caveat).
-        dt_vuln_count: int | None = None
-        try:
-            # Coerce inside the guard: a non-int (e.g. a test double) must degrade
-            # to "unknown", never raise onto the scan's success path.
-            dt_vuln_count = int(breaker.call(lambda: dt_client.count_vulnerabilities()))
-        except Exception:
-            log.warning("dt_vuln_count_probe_failed", exc_info=True)
-            dt_vuln_count = None
-        with sync_session_scope() as session:
-            _persist_findings(session, scan_uuid=scan_uuid, findings=findings)
-            if dt_vuln_count is not None:
-                _record_dt_vuln_count(session, scan_uuid=scan_uuid, count=dt_vuln_count)
-            session.commit()
-    finally:
-        dt_client.close()
+    # Stage 6 — Trivy SBOM matching (W6, replaces DT findings poll).
+    # ``trivy sbom`` consumes the CycloneDX JSON we already wrote in the cdxgen
+    # stage and produces a Trivy JSON report whose ``Results[].Vulnerabilities[]``
+    # array we fold into ``vulnerability_findings`` via the persister.
+    #
+    # Trivy errors (binary missing / non-zero exit / per-stage timeout) are
+    # terminal for the scan: they propagate out of ``_run_pipeline`` and the
+    # task-body except blocks above map each subclass to a clear
+    # ``error_message``. The pre-W6 cdxgen + scancode commits are already on
+    # disk, so the user still sees the component graph + license findings even
+    # when matching fails — same degraded-but-not-empty behaviour the DT path
+    # had during a breaker-OPEN run.
+    _set_stage(scan_uuid, "dt_findings")
+    trivy_started_at = time.monotonic()
+    trivy_result = run_trivy_sbom(
+        sbom_path=cdxgen_result.sbom_path,
+        output_dir=workspace / "trivy",
+    )
+    trivy_elapsed = time.monotonic() - trivy_started_at
+    # Persist the Trivy report alongside the cdxgen SBOM so admin / debug can
+    # diff what Trivy actually consumed against what we matched. Same pattern
+    # as the ``scancode_result`` artifact above.
+    _persist_artifact(
+        scan_uuid, kind="trivy_sbom_report", path=trivy_result.report_path
+    )
+    with sync_session_scope() as session:
+        inserted = persist_trivy_findings(
+            session,
+            scan_uuid=scan_uuid,
+            trivy_report=trivy_result.report,
+        )
+        session.commit()
+    log.info(
+        "trivy_stage_done",
+        scan_id=str(scan_uuid),
+        trivy_seconds=round(trivy_elapsed, 2),
+        findings_persisted=inserted,
+    )
 
     # Stage 6.5 — preserve the source tree + scancode JSON (G3.1).
     #
@@ -1060,24 +992,6 @@ def _record_terminal_failure(scan_uuid: uuid.UUID, message: str) -> None:
         if scan is None:
             return
         _mark_failed(session, scan, message)
-
-
-def _record_dt_vuln_count(
-    session: Session, *, scan_uuid: uuid.UUID, count: int
-) -> None:
-    """Persist the DT vulnerability-DB size seen during this scan into
-    ``scan_metadata['dt_vulnerability_count']`` (#35 Surface B).
-
-    Reassigns the JSONB dict to a fresh object so SQLAlchemy registers the
-    mutation (in-place ``dict`` edits on a plain ``JSONB`` column are not
-    tracked). No-op if the row vanished. The caller owns the commit.
-    """
-    scan = session.get(Scan, scan_uuid)
-    if scan is None:
-        return
-    meta = dict(scan.scan_metadata or {})
-    meta["dt_vulnerability_count"] = int(count)
-    scan.scan_metadata = meta
 
 
 def _mark_succeeded(scan_uuid: uuid.UUID) -> None:
@@ -1907,213 +1821,6 @@ def _run_prep(
         )
 
 
-# ---------------------------------------------------------------------------
-# SBOM hash sanitization for the DT upload path
-# ---------------------------------------------------------------------------
-
-
-# CycloneDX schema constrains ``components[].hashes[].content`` to a *hex*
-# digest whose length matches one of the supported algorithms:
-#   MD5 = 32, SHA-1 = 40, SHA-256 = 64, SHA-384 = 96, SHA-512 = 128.
-# cdxgen 12.3.3 copies an npm lockfile's ``integrity`` value (base64 sha512,
-# e.g. ``sha512-...==``) verbatim into ``hashes[].content``. That string is
-# base64, not hex, so DT's server-side schema validation rejects the whole BOM
-# with HTTP 400 ("does not match the regex pattern ^([a-fA-F0-9]{32}|...$"),
-# which sinks vulnerability matching for every npm-lockfile project.
-#
-# We strip the offending hash entries (NOT the components) from the bytes we
-# send to DT, immediately before upload. The on-disk SBOM artifact and our own
-# component/license persistence are purl-based and untouched — see
-# ``_sanitize_sbom_hashes_for_dt`` for the contract.
-# NOTE: ``fullmatch`` (not ``match`` + ``$``) — Python's ``$`` also matches just
-# before a trailing newline, so ``"<64 hex>\n"`` would slip through a ``$``
-# anchor. We require the whole string to be hex of an exact supported width.
-_VALID_HASH_CONTENT_RE = re.compile(r"[a-fA-F0-9]{32}|[a-fA-F0-9]{40}|"
-                                    r"[a-fA-F0-9]{64}|[a-fA-F0-9]{96}|"
-                                    r"[a-fA-F0-9]{128}")
-
-
-def _is_valid_hash_content(content: Any) -> bool:
-    """True when ``content`` is a CycloneDX-valid hex digest of supported width."""
-    return isinstance(content, str) and bool(_VALID_HASH_CONTENT_RE.fullmatch(content))
-
-
-def _sanitize_hashes_array(hashes: Any) -> list[Any] | None:
-    """Return ``hashes`` keeping only schema-valid entries.
-
-    A ``hashes`` entry is kept iff it is a dict whose ``content`` matches the
-    CycloneDX hex pattern. Returns:
-      * the filtered list when at least one entry survives,
-      * ``None`` when the array is missing, not a list, or all entries are
-        invalid — the caller drops the ``hashes`` key entirely in that case
-        (an empty ``hashes: []`` is itself a schema violation in some DT
-        versions, so we remove the key rather than leave it empty).
-    """
-    if not isinstance(hashes, list):
-        return None
-    kept = [
-        h for h in hashes
-        if isinstance(h, dict) and _is_valid_hash_content(h.get("content"))
-    ]
-    return kept or None
-
-
-def _sanitize_component_hashes(component: Any) -> int:
-    """In-place sanitize a single component's ``hashes`` array.
-
-    Returns the number of hash entries removed (drives the "did we mutate?"
-    decision and the log line). A non-list ``hashes`` value (malformed BOM) is
-    counted as one removal so the caller re-serializes the cleaned document.
-    No-op when the component is not a dict or carries no ``hashes`` key.
-    """
-    if not isinstance(component, dict) or "hashes" not in component:
-        return 0
-    original = component.get("hashes")
-    if not isinstance(original, list):
-        # Malformed: ``hashes`` must be an array. Drop the key and count it as
-        # a change so the document is re-serialized without it.
-        del component["hashes"]
-        return 1
-    original_count = len(original)
-    kept = _sanitize_hashes_array(original)
-    if kept is None:
-        del component["hashes"]
-        # An already-empty ``hashes: []`` is itself a schema violation in some
-        # DT versions; count its removal as a change (max(1, ...)) so the
-        # document is re-serialized without the empty key.
-        return max(1, original_count)
-    component["hashes"] = kept
-    return original_count - len(kept)
-
-
-def _sanitize_sbom_hashes_for_dt(sbom_bytes: bytes) -> bytes:
-    """Strip CycloneDX-invalid hash entries from an SBOM before DT upload.
-
-    DT validates the uploaded BOM against the CycloneDX schema server-side and
-    rejects the entire document (HTTP 400) when any ``hashes[].content`` is not
-    a hex digest of supported width. cdxgen 12.3.3 emits base64 npm
-    ``integrity`` values there, so this sanitizer removes the offending entries
-    so the rest of the BOM (the part DT needs for vulnerability matching)
-    survives.
-
-    Scope of mutation:
-      * ``components[].hashes`` (the npm-integrity culprit), and
-      * ``metadata.component.hashes`` (the root component).
-    Invalid entries are dropped; valid hex hashes are preserved; a component
-    whose every hash is invalid loses its ``hashes`` key but is otherwise
-    untouched.
-
-    Best-effort: on a JSON parse failure (truncated / non-JSON artifact) we
-    return the original bytes unchanged. The DT upload stage already runs
-    inside the breaker-guarded try/except, so a malformed SBOM that DT then
-    rejects fails the scan with a clear message rather than crashing here.
-
-    This operates on a parsed copy and returns fresh bytes — it never touches
-    the on-disk artifact or the ``sbom`` dict used by ``_persist_components``.
-    """
-    try:
-        doc = json.loads(sbom_bytes)
-    except (ValueError, TypeError):
-        log.warning("dt_sbom_hash_sanitize_parse_failed")
-        return sbom_bytes
-    if not isinstance(doc, dict):
-        return sbom_bytes
-
-    removed = 0
-    components = doc.get("components")
-    if isinstance(components, list):
-        for comp in components:
-            removed += _sanitize_component_hashes(comp)
-
-    metadata = doc.get("metadata")
-    if isinstance(metadata, dict):
-        removed += _sanitize_component_hashes(metadata.get("component"))
-
-    if removed == 0:
-        # Nothing to fix — return the original bytes so a clean SBOM is
-        # byte-for-byte preserved (avoids needless re-serialization).
-        return sbom_bytes
-
-    log.info("dt_sbom_hash_sanitized", removed_hashes=removed)
-    return json.dumps(doc).encode("utf-8")
-
-
-# ---------------------------------------------------------------------------
-# DT findings retry-with-backoff
-# ---------------------------------------------------------------------------
-
-
-# DT runs the OSV / NVD / OSS Index matchers ASYNCHRONOUSLY after the BOM
-# upload event. On a freshly-uploaded large project that ramp-up can take
-# multiple minutes — the 2026-05-26 maven-node UAT measured ~33 minutes from
-# ``lastBomImport`` to ``lastVulnerabilityAnalysis``. The old 60s budget
-# (2+4+8+16+30) declared the project "0 findings" long before DT's matcher
-# finished, so the persisted findings count was deterministically zero on any
-# scan that involved npm/maven purls (where OSS Index is the dominant matcher
-# and OSS Index throttles anonymous traffic with HTTP 401 → DT retry path).
-# Budget below sums to ~9.5 minutes (570s) which clears DT's typical analyzer
-# wall-time even with a slow OSS Index response chain. The polls themselves are
-# cheap (DT serves an empty findings array in <100ms), so the budget is bounded
-# by elapsed wall-clock, not by traffic to DT. The whole loop short-circuits
-# the moment we see any findings, so a healthy DT still finishes in seconds.
-#
-# Tests still inject ``(0,)`` / short schedules via ``monkeypatch.setattr`` so
-# the longer default does not slow them down.
-_DT_FINDINGS_POLL_DELAYS_SECONDS: tuple[int, ...] = (
-    2, 4, 8, 16, 30, 60, 60, 60, 60, 60, 60, 60, 60, 60,
-)
-
-
-def _poll_dt_findings_with_retry(
-    *,
-    dt_client: DTClient,
-    breaker: CircuitBreaker,
-    dt_project_uuid: str,
-) -> list[dict[str, Any]]:
-    """Poll DT for findings with exponential backoff.
-
-    DT runs the OSV / NVD / OSS Index matchers ASYNCHRONOUSLY after a BOM
-    upload (BOM_UPLOAD_ANALYSIS event). The first poll within ~1s of upload
-    typically returns 0 findings even when matches will eventually
-    materialise — this was the false-empty seen across the UAT pilots.
-
-    Strategy: sleep, then poll. Total budget is the sum of
-    ``_DT_FINDINGS_POLL_DELAYS_SECONDS`` (~9.5 minutes for the current
-    schedule, raised from the original 60s after the 2026-05-26 maven-node
-    UAT measured DT's full analyzer pipeline at 33+ minutes on a freshly
-    seeded project — see ``docs/diagnose/p3-12-vulns-type-usage-2026-05-26.md``).
-    Return as soon as we see a non-empty result — DT's matcher emits the
-    full set in one go, not a streaming partial view. If every attempt
-    returns empty we return an empty list rather than raising; the caller
-    persists zero findings, which matches the "no matches" / "still
-    matching" terminal behaviour. Both surface ``vuln_count=0`` to the user
-    today; #35 Surface B (the vuln-data caveat) tells them whether DT was
-    still mirroring at scan time.
-
-    The breaker still wraps each poll, so a DT outage mid-retry trips
-    the breaker and short-circuits the remaining attempts.
-
-    Tests inject a no-op delay schedule via
-    ``monkeypatch.setattr("tasks.scan_source._DT_FINDINGS_POLL_DELAYS_SECONDS", (0,))``
-    or replace ``tasks.scan_source.time.sleep`` directly.
-    """
-    findings: list[dict[str, Any]] = []
-    for attempt, delay in enumerate(_DT_FINDINGS_POLL_DELAYS_SECONDS, start=1):
-        time.sleep(delay)
-        findings = breaker.call(
-            lambda: dt_client.get_findings(project_uuid=dt_project_uuid)
-        )
-        log.info(
-            "dt_findings_poll",
-            attempt=attempt,
-            delay=delay,
-            count=len(findings),
-        )
-        if findings:
-            return findings
-    return findings
-
-
 def _persist_components(
     session: Session,
     *,
@@ -2776,233 +2483,6 @@ def _get_or_create_first_party_component_version(
     )
 
 
-def _persist_findings(
-    session: Session,
-    *,
-    scan_uuid: uuid.UUID,
-    findings: list[dict[str, Any]],
-) -> None:
-    """
-    Persist DT findings as VulnerabilityFinding rows.
-
-    Vulnerability metadata is expected to already exist in the
-    ``vulnerabilities`` table thanks to ``dt_resync_task``; if it does not
-    we skip the finding (the resync will pick it up on its next pass and a
-    follow-up scan will materialize the join). This avoids hot-path inserts
-    into the cross-scan vulnerability catalog.
-
-    v2.2 (2.2-a1): each finding also captures ``fixed_version`` — the version
-    that remediates THIS (component × CVE) pairing — extracted from the DT
-    finding's ``vulnerability`` sub-object via :func:`_extract_fixed_version`.
-    The value is untrusted DT output, so it is length-/charset-validated there
-    and persisted as NULL when DT reported nothing usable.
-    """
-    from models import Vulnerability  # local import to avoid circular hint
-
-    for raw in findings:
-        if not isinstance(raw, dict):
-            continue
-        vuln_data = raw.get("vulnerability") or {}
-        component_data = raw.get("component") or {}
-        external_id = vuln_data.get("vulnId") or vuln_data.get("source", {}).get("name")
-        purl = component_data.get("purl")
-        if not external_id or not purl:
-            continue
-
-        vuln = session.execute(
-            select(Vulnerability).where(Vulnerability.external_id == external_id)
-        ).scalar_one_or_none()
-        if vuln is None:
-            log.info("scan_finding_skipped_unknown_vuln", external_id=external_id)
-            continue
-
-        cv = session.execute(
-            select(ComponentVersion).where(ComponentVersion.purl_with_version == purl)
-        ).scalar_one_or_none()
-        if cv is None:
-            log.info("scan_finding_skipped_unknown_component", purl=purl)
-            continue
-
-        guarded = enforce_jsonb_row_size_limit(
-            raw,
-            context={
-                "scan_id": str(scan_uuid),
-                "column": "vulnerability_findings.analysis_response",
-                "external_id": external_id,
-            },
-        )
-        fixed_version = _extract_fixed_version(raw)
-        finding = VulnerabilityFinding(
-            scan_id=scan_uuid,
-            component_version_id=cv.id,
-            vulnerability_id=vuln.id,
-            status="new",
-            analysis_response=guarded,
-            fixed_version=fixed_version,
-        )
-        session.add(finding)
-
-
-# ---------------------------------------------------------------------------
-# Fixed-version extraction (DT finding → vulnerability_findings.fixed_version)
-# ---------------------------------------------------------------------------
-
-# v2.2 (2.2-a1). A DT finding object from ``GET /api/v1/finding/project/{uuid}``
-# is per-(component × vulnerability), so its ``vulnerability`` sub-object is the
-# natural carrier of "the version that fixes THIS package for THIS CVE". DT does
-# not expose a single canonical "fixedVersion" field, so we probe several known
-# shapes in priority order (most → least structured) and fall back to parsing
-# the free-text remediation note. Every candidate is run through
-# ``_normalize_fixed_version`` so an untrusted DT string can never land an
-# oversized / control-char / separator-only value in the column.
-
-# Hard cap on the stored string. Well below the VARCHAR(255) column width so the
-# DB length is only a backstop. Real version strings (incl. long SemVer build
-# metadata) sit comfortably under this.
-_FIXED_VERSION_MAX_LEN = 100
-
-# A version token must start with a digit and contain only the characters that
-# appear in real package versions: digits, dots, hyphens, plus, tilde, colon
-# (epochs), underscore, and alphanumerics (pre-release / build identifiers).
-# Anchored so a hostile prefix/suffix (``../``, ``javascript:``, whitespace
-# padding) cannot smuggle past. ``re.fullmatch`` enforces the whole-string match.
-_VERSION_TOKEN_RE = re.compile(r"[0-9][0-9A-Za-z.\-+~:_]*")
-
-# Pull a concrete version out of a free-text remediation sentence such as
-# "Upgrade to 2.17.1 or later" / "Fixed in v3.2.0". We require a version-looking
-# token (starts with a digit, contains a dot) so a bare "Upgrade your runtime"
-# never yields a phantom version. The optional leading ``v`` is stripped.
-_RECOMMENDATION_VERSION_RE = re.compile(
-    r"\bv?([0-9]+(?:\.[0-9A-Za-z.\-+~:_]+)+)\b"
-)
-
-
-def _normalize_fixed_version(value: Any) -> str | None:
-    """Validate + normalize an untrusted fix-version candidate to ``str | None``.
-
-    Returns None for anything that is not a plausible version token:
-      - non-string / empty / whitespace-only input,
-      - control characters (CR/LF/NUL/etc.) — rejected outright, never stripped,
-        so a CRLF-injection attempt cannot fold into a clean-looking value,
-      - oversized input (> ``_FIXED_VERSION_MAX_LEN``),
-      - separator-only / operator-only tokens ("*", ">=", "-", ".") that do not
-        start with a digit,
-      - tokens carrying characters outside the version charset (path traversal,
-        URL schemes, spaces).
-
-    The accepted form mirrors the exact-pin rule used by the Poetry prep
-    translator (``_poetry_deps_to_requirements``): a real version is a
-    digit-led, dotted/dashed alphanumeric token.
-    """
-    if not isinstance(value, str):
-        return None
-    candidate = value.strip()
-    if not candidate:
-        return None
-    # Reject control characters anywhere (NUL, CR, LF, tab, vertical tab, ...).
-    # We refuse rather than sanitize: a value that needed stripping is not a
-    # trustworthy version.
-    if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in candidate):
-        return None
-    if len(candidate) > _FIXED_VERSION_MAX_LEN:
-        return None
-    # Drop a single leading "v"/"V" prefix (common in DT/GHSA notes: "v2.17.1").
-    if candidate[:1] in ("v", "V") and len(candidate) > 1 and candidate[1].isdigit():
-        candidate = candidate[1:]
-    if not _VERSION_TOKEN_RE.fullmatch(candidate):
-        return None
-    return candidate
-
-
-def _coerce_version_list(value: Any) -> list[str]:
-    """Best-effort flatten a DT 'versions' field into a list of raw strings.
-
-    DT shapes this differently across versions: a plain ``"2.17.1"``, a comma /
-    pipe separated string (``"2.17.0, 2.17.1"``), or a list of strings / dicts
-    (``[{"version": "2.17.1"}]``). We never trust the structure — anything that
-    is not a string or a dict-with-a-version is ignored.
-    """
-    out: list[str] = []
-    if isinstance(value, str):
-        # Split on the separators DT has been observed to use; the per-token
-        # normalizer rejects empties / junk so a separator-only string yields [].
-        for part in re.split(r"[,\|;\s]+", value):
-            if part:
-                out.append(part)
-    elif isinstance(value, list):
-        for item in value:
-            if isinstance(item, str) and item:
-                out.append(item)
-            elif isinstance(item, dict):
-                v = item.get("version") or item.get("fixedVersion") or item.get("value")
-                if isinstance(v, str) and v:
-                    out.append(v)
-    return out
-
-
-def _extract_fixed_version(finding: dict[str, Any]) -> str | None:
-    """Extract the fix version for a single DT finding, or None.
-
-    Probes the finding's ``vulnerability`` sub-object in priority order:
-
-      1. Structured patched-version lists DT may attach to the finding
-         (``patchedVersions`` / ``fixedVersions`` / ``fixedVersion``). The first
-         token that normalizes wins — DT lists the lowest patched version first.
-      2. CycloneDX VEX ``affects[].versions[]`` entries with ``status == "fixed"``
-         (present when the finding rides a CycloneDX VEX statement).
-      3. The free-text ``recommendation`` note, scanned for the first concrete
-         version token ("Upgrade to 2.17.1" → ``2.17.1``).
-
-    Returns None when no source yields a value that passes
-    :func:`_normalize_fixed_version`. Defensive against every malformed shape
-    (None, non-dict ``vulnerability``, missing keys) — it must never raise on a
-    hostile finding payload (the persistence loop runs it for every finding).
-    """
-    if not isinstance(finding, dict):
-        return None
-    vuln = finding.get("vulnerability")
-    if not isinstance(vuln, dict):
-        return None
-
-    # (1) Structured patched-version fields.
-    for key in ("patchedVersions", "fixedVersions", "fixedVersion"):
-        for raw_token in _coerce_version_list(vuln.get(key)):
-            normalized = _normalize_fixed_version(raw_token)
-            if normalized is not None:
-                return normalized
-
-    # (2) CycloneDX VEX affects[].versions[] with status == "fixed".
-    affects = vuln.get("affects")
-    if isinstance(affects, list):
-        for affect in affects:
-            if not isinstance(affect, dict):
-                continue
-            versions = affect.get("versions")
-            if not isinstance(versions, list):
-                continue
-            for ver in versions:
-                if not isinstance(ver, dict):
-                    continue
-                if str(ver.get("status", "")).strip().lower() != "fixed":
-                    continue
-                normalized = _normalize_fixed_version(ver.get("version"))
-                if normalized is not None:
-                    return normalized
-
-    # (3) Free-text remediation note.
-    recommendation = vuln.get("recommendation")
-    if isinstance(recommendation, str) and recommendation:
-        # Cap the scanned text so a pathological multi-megabyte note can't
-        # drive a catastrophic regex scan.
-        match = _RECOMMENDATION_VERSION_RE.search(recommendation[:4000])
-        if match is not None:
-            normalized = _normalize_fixed_version(match.group(1))
-            if normalized is not None:
-                return normalized
-
-    return None
-
-
 # ---------------------------------------------------------------------------
 # Component upsert helpers
 # ---------------------------------------------------------------------------
@@ -3075,18 +2555,5 @@ def _noop_workspace(path: Path) -> Iterator[Path]:
 
 
 __all__ = [
-    "_extract_fixed_version",
-    "_normalize_fixed_version",
     "scan_source_task",
 ]
-
-
-# Optional injection points for unit tests — the real task uses module
-# globals, but tests can monkey-patch these to inject mocks without
-# touching subprocess / Redis.
-def _override_breaker_for_tests(_breaker: CircuitBreaker) -> None:  # pragma: no cover
-    raise NotImplementedError("Use monkeypatch on integrations.dt.breaker.get_breaker")
-
-
-def _override_dt_client_for_tests(_client: DTClient) -> None:  # pragma: no cover
-    raise NotImplementedError("Use monkeypatch on integrations.dt.client.build_client")

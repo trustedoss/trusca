@@ -1,18 +1,19 @@
 """
-End-to-end source scan pipeline — mock backend + mocked DT.
+End-to-end source scan pipeline — mock backend + W6 Trivy stub.
 
 We drive `tasks.scan_source.scan_source_task` directly (NOT through Celery's
 broker) with `TRUSTEDOSS_SCAN_BACKEND=mock` so cdxgen + scancode emit fixture
-JSON. The DT client + breaker are monkeypatched so the test never touches a
-real Redis or DT instance.
+JSON, and we monkeypatch `run_trivy_sbom` to return a stub Trivy report so
+the test never spawns a Trivy subprocess.
 
 What we pin:
 
   - Happy path: a queued scan reaches `status='succeeded'` with progress=100,
-    artifacts persisted (`scan_artifacts`), and a non-empty `scan_components`
-    set derived from the cdxgen mock SBOM.
+    artifacts persisted (`scan_artifacts`, including `trivy_sbom_report`),
+    and a non-empty `scan_components` set derived from the cdxgen mock SBOM.
   - Stage progression updates `current_step` / `progress_percent` along the
-    way (not just at the end).
+    way (not just at the end). The historical `dt_upload` / `dt_findings`
+    stage labels are still emitted (rename deferred to #43f).
   - Idempotency: invoking the task again on a `succeeded` scan is a no-op.
   - cdxgen failure → scan transitions to `status='failed'` with the cdxgen
     error message; the workspace is cleaned up (the `finally` shutil.rmtree
@@ -148,33 +149,38 @@ def _seed_queued_scan(session: Session) -> tuple[uuid.UUID, uuid.UUID]:
     return asyncio.run(_build())
 
 
-class _FakeBreaker:
-    """Pass-through breaker — runs the callable and never short-circuits."""
+def _stub_trivy_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Replace ``run_trivy_sbom`` with a stub that writes + returns an empty
+    Trivy report.
 
-    def call(self, fn):  # type: ignore[no-untyped-def]
-        return fn()
+    The stub mirrors what ``run_trivy_sbom(backend="mock")`` would produce in
+    shape (Schema 2, ArtifactType cyclonedx) but with zero vulnerabilities,
+    so the persistence path runs end-to-end and the integration test stays
+    focused on pipeline / artifact shape rather than vuln matching itself.
+    """
+    import json
 
-    def record_success(self) -> None:  # pragma: no cover - unused in passthrough
-        pass
+    from integrations.trivy import TrivyResult
 
-    def record_failure(self) -> None:  # pragma: no cover - unused in passthrough
-        pass
+    def _fake_run(
+        sbom_path: Path,  # noqa: ARG001
+        output_dir: Path,
+        *,
+        timeout_seconds: int = 0,  # noqa: ARG001
+        backend: str | None = None,  # noqa: ARG001
+    ) -> TrivyResult:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        report_path = output_dir / "trivy-sbom.json"
+        report = {
+            "SchemaVersion": 2,
+            "ArtifactName": str(sbom_path),
+            "ArtifactType": "cyclonedx",
+            "Results": [],
+        }
+        report_path.write_text(json.dumps(report), encoding="utf-8")
+        return TrivyResult(report_path=report_path, report=report)
 
-
-class _FakeDTClient:
-    """Returns canned DT responses — no network."""
-
-    def upsert_project(self, *, name: str, version: str) -> str:  # noqa: ARG002
-        return "fake-dt-uuid-1"
-
-    def upload_sbom(self, *, project_uuid: str, sbom_json) -> str:  # noqa: ARG002
-        return "fake-token-1"
-
-    def get_findings(self, *, project_uuid: str) -> list[dict[str, object]]:  # noqa: ARG002
-        return []  # no findings — keeps the test focused on pipeline shape
-
-    def close(self) -> None:
-        pass
+    monkeypatch.setattr("tasks.scan_source.run_trivy_sbom", _fake_run)
 
 
 # ---------------------------------------------------------------------------
@@ -187,27 +193,12 @@ def test_scan_source_pipeline_completes_with_mock_backend(
     tmp_path: Path,
     sync_session: Session,
 ) -> None:
-    """A full pipeline run against mock cdxgen / scancode / DT must reach `succeeded`."""
+    """A full pipeline run against mock cdxgen / scancode + stub Trivy must reach `succeeded`."""
     monkeypatch.setenv("TRUSTEDOSS_SCAN_BACKEND", "mock")
     monkeypatch.setenv("WORKSPACE_HOST_PATH", str(tmp_path))
 
-    # Replace the breaker + DT client factories so no network/Redis is hit.
-    monkeypatch.setattr(
-        "tasks.scan_source.get_breaker",
-        lambda: _FakeBreaker(),
-    )
-    monkeypatch.setattr(
-        "tasks.scan_source.build_client",
-        lambda: _FakeDTClient(),
-    )
-    # chore PR #4: stage-6 polls DT for findings with exponential backoff
-    # (~60s budget). With a fake DT client that always returns [] the test
-    # would otherwise wait the full budget — short-circuit by zeroing the
-    # delays so the helper still iterates (covering its loop body) but
-    # without the wall-clock cost.
-    monkeypatch.setattr(
-        "tasks.scan_source._DT_FINDINGS_POLL_DELAYS_SECONDS", (0,)
-    )
+    # W6: stub Trivy so no subprocess is spawned.
+    _stub_trivy_empty(monkeypatch)
 
     scan_id, project_id = _seed_queued_scan(sync_session)
 
@@ -320,11 +311,7 @@ def test_scan_source_succeeded_run_is_noop(
 ) -> None:
     monkeypatch.setenv("TRUSTEDOSS_SCAN_BACKEND", "mock")
     monkeypatch.setenv("WORKSPACE_HOST_PATH", str(tmp_path))
-    monkeypatch.setattr("tasks.scan_source.get_breaker", lambda: _FakeBreaker())
-    monkeypatch.setattr("tasks.scan_source.build_client", lambda: _FakeDTClient())
-    monkeypatch.setattr(
-        "tasks.scan_source._DT_FINDINGS_POLL_DELAYS_SECONDS", (0,)
-    )
+    _stub_trivy_empty(monkeypatch)
 
     scan_id, _ = _seed_queued_scan(sync_session)
 
@@ -362,14 +349,13 @@ def test_detected_license_failure_does_not_roll_back_components(
     in a SAVEPOINT: the high-value declared findings + components still commit
     and the scan still reaches ``succeeded``.
 
-    This is the cache the UI shows when DT is down — it must survive a hostile
-    file that trips an unexpected constraint in the detected-license write.
+    This is the cache the UI shows when vuln matching itself is unavailable —
+    it must survive a hostile file that trips an unexpected constraint in the
+    detected-license write.
     """
     monkeypatch.setenv("TRUSTEDOSS_SCAN_BACKEND", "mock")
     monkeypatch.setenv("WORKSPACE_HOST_PATH", str(tmp_path))
-    monkeypatch.setattr("tasks.scan_source.get_breaker", lambda: _FakeBreaker())
-    monkeypatch.setattr("tasks.scan_source.build_client", lambda: _FakeDTClient())
-    monkeypatch.setattr("tasks.scan_source._DT_FINDINGS_POLL_DELAYS_SECONDS", (0,))
+    _stub_trivy_empty(monkeypatch)
 
     # Sabotage detected-license persistence to raise mid-SAVEPOINT. We let it
     # add a row first (so the nested transaction is non-trivially dirty) then
@@ -431,8 +417,7 @@ def test_scan_source_cdxgen_failure_marks_scan_failed(
     """When cdxgen blows up the scan must transition to `failed` with a message."""
     monkeypatch.setenv("TRUSTEDOSS_SCAN_BACKEND", "mock")
     monkeypatch.setenv("WORKSPACE_HOST_PATH", str(tmp_path))
-    monkeypatch.setattr("tasks.scan_source.get_breaker", lambda: _FakeBreaker())
-    monkeypatch.setattr("tasks.scan_source.build_client", lambda: _FakeDTClient())
+    _stub_trivy_empty(monkeypatch)
 
     # Sabotage the cdxgen adapter from inside the scan_source module.
     from integrations import cdxgen as cdxgen_adapter
@@ -470,8 +455,8 @@ def _conditional_cdxgen_factory():  # type: ignore[no-untyped-def]
     (MPL-2.0) and one allowed (MIT) component.
 
     It writes a real CycloneDX file to ``output_dir`` so the downstream artifact
-    + DT-upload-bytes stages (which read ``sbom_path``) keep working, and returns
-    a ``CdxgenResult`` whose ``sbom`` drives ``_persist_components``.
+    + Trivy-SBOM stages (which read ``sbom_path``) keep working, and returns a
+    ``CdxgenResult`` whose ``sbom`` drives ``_persist_components``.
     """
     import json
 
@@ -531,9 +516,7 @@ def test_conditional_license_component_creates_pending_approval(
     """
     monkeypatch.setenv("TRUSTEDOSS_SCAN_BACKEND", "mock")
     monkeypatch.setenv("WORKSPACE_HOST_PATH", str(tmp_path))
-    monkeypatch.setattr("tasks.scan_source.get_breaker", lambda: _FakeBreaker())
-    monkeypatch.setattr("tasks.scan_source.build_client", lambda: _FakeDTClient())
-    monkeypatch.setattr("tasks.scan_source._DT_FINDINGS_POLL_DELAYS_SECONDS", (0,))
+    _stub_trivy_empty(monkeypatch)
     monkeypatch.setattr(
         "tasks.scan_source.cdxgen_adapter.run_cdxgen",
         _conditional_cdxgen_factory(),
@@ -625,9 +608,7 @@ def test_conditional_approval_is_idempotent_across_reruns(
     """
     monkeypatch.setenv("TRUSTEDOSS_SCAN_BACKEND", "mock")
     monkeypatch.setenv("WORKSPACE_HOST_PATH", str(tmp_path))
-    monkeypatch.setattr("tasks.scan_source.get_breaker", lambda: _FakeBreaker())
-    monkeypatch.setattr("tasks.scan_source.build_client", lambda: _FakeDTClient())
-    monkeypatch.setattr("tasks.scan_source._DT_FINDINGS_POLL_DELAYS_SECONDS", (0,))
+    _stub_trivy_empty(monkeypatch)
     monkeypatch.setattr(
         "tasks.scan_source.cdxgen_adapter.run_cdxgen",
         _conditional_cdxgen_factory(),
