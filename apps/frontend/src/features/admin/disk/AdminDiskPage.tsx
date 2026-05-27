@@ -1,7 +1,7 @@
 /**
  * AdminDiskPage — Phase 4 PR #14 §4.6.
  *
- * Four cards (workspace / dt_volume / postgres / redis). Each card shows:
+ * Three cards (workspace / postgres / redis). Each card shows:
  *   - Used / total / free in human-readable bytes.
  *   - A horizontal progress bar coloured against the threshold:
  *       used_pct ≥ threshold_critical → red    (down)
@@ -241,7 +241,7 @@ export function AdminDiskPage() {
           aria-busy={diskQuery.isLoading}
         >
           {diskQuery.isLoading
-            ? Array.from({ length: 4 }).map((_, i) => (
+            ? Array.from({ length: 3 }).map((_, i) => (
                 <div
                   key={`skeleton-${i}`}
                   className="rounded-md border bg-card p-4"

@@ -21,11 +21,11 @@
  *   - Notification preferences: each kind row has a Korean label that
  *     wraps differently than the English one ("스캔 완료" vs "Scan
  *     completed"); the per-row toggle column shifts.
- *   - Admin DT status card: the breaker badge ("정상" vs "CLOSED")
- *     and refresh action button width drift between locales.
  *
- * The bulk EN capture matrix (`capture_user_guide.spec.ts` /
- * `capture_admin_guide.spec.ts`) still owns every other screen.
+ * The legacy admin DT status card KO capture was dropped with W6-#43b
+ * (ADR-0001 — DT replaced by Trivy). The bulk EN capture matrix
+ * (`capture_user_guide.spec.ts` / `capture_admin_guide.spec.ts`) still
+ * owns every other screen.
  *
  * Output: PNGs land at `docs-site/static/img/screenshots/<slug>-ko.png`
  * via `captureLocaleScreenshot(page, slug, "ko")`. KO markdown files
@@ -34,7 +34,6 @@
 import { test } from "@playwright/test";
 
 import { AuthHarness } from "../_harness/auth";
-import { PortalPage } from "../_harness/PortalPage";
 import {
   applyAuthFromSeed,
   captureLocaleScreenshot,
@@ -96,18 +95,6 @@ test.describe.serial("@screenshots-ko user-guide (authenticated, ko)", () => {
   });
 });
 
-test.describe.serial("@screenshots-ko admin-guide (authenticated, ko)", () => {
-  test.beforeEach(async ({ page }) => {
-    await applyAuthFromSeed(page);
-    await setUiLanguage(page, "ko");
-  });
-
-  test("admin-dt-status-ko — DT status card (KO)", async ({ page }) => {
-    const portal = new PortalPage(page);
-    await portal.gotoAdminDT();
-    await page
-      .getByTestId("admin-dt-status-card")
-      .waitFor({ state: "visible", timeout: 10_000 });
-    await captureLocaleScreenshot(page, "admin-dt-status", "ko");
-  });
-});
+// admin-guide KO captures are owned by the bulk matrix; the legacy DT
+// status card capture was removed with W6-#43b. Re-introduce a describe
+// block here when a new KO-divergent admin surface lands.

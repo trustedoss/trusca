@@ -4,7 +4,6 @@
       "entry": "Admin",
       "users": "Users",
       "teams": "Teams",
-      "dt": "DT Connector",
       "scans": "Scan Queue",
       "disk": "Disk",
       "audit": "Audit Log",
@@ -131,65 +130,6 @@
       },
       "empty": "No teams match the current filters."
     },
-    "dt": {
-      "title": "DT Connector",
-      "subtitle": "Monitor the Dependency-Track health, breaker state, and reconcile orphan projects.",
-      "status": {
-        "card_title": "Connector status",
-        "state_label": "Breaker state",
-        "fail_count_label": "Consecutive failures",
-        "version_label": "DT version",
-        "last_check_at_label": "Last check",
-        "last_error_label": "Last error",
-        "auto_restart_label": "Auto-restart attempted",
-        "vuln_db_label": "Vulnerability DB",
-        "vuln_db_count": "{{value}} loaded",
-        "vuln_db_unknown": "Unknown",
-        "vuln_db_empty_title": "Vulnerability database is empty",
-        "vuln_db_empty_body": "Dependency-Track has 0 vulnerabilities loaded, so scans find components but report no CVEs — a clean result is indistinguishable from missing data. Enable NVD mirroring (set nvd.api.enabled in Dependency-Track) and wait for the initial sync to finish; an NVD API key makes it much faster.",
-        "no_version": "Unavailable",
-        "no_error": "None",
-        "yes": "Yes",
-        "no": "No"
-      },
-      "breaker": {
-        "closed": "Closed",
-        "open": "Open",
-        "half_open": "Half-open",
-        "reset": {
-          "label": "Reset breaker",
-          "confirm_title": "Force the DT breaker back to CLOSED?",
-          "confirm_body": "Use this only when DT has recovered but the breaker is stuck OPEN. The next outbound DT call will probe immediately instead of waiting for the cooldown window.",
-          "disabled_hint": "Reset is only available while the breaker is OPEN or HALF_OPEN."
-        }
-      },
-      "actions": {
-        "force_health_check": "Force health probe",
-        "refresh": "Refresh",
-        "cleanup_selected": "Clean up selected",
-        "cleanup_all": "Clean up all orphans"
-      },
-      "orphans": {
-        "card_title": "Orphan projects",
-        "card_subtitle": "DT projects without a matching local scan. Cleanup permanently deletes them from DT.",
-        "column": {
-          "uuid": "DT project UUID",
-          "name": "Name",
-          "version": "Version"
-        },
-        "empty": "No orphan projects detected.",
-        "select_label": "Select"
-      },
-      "confirm": {
-        "cleanup": "Clean up the selected DT projects? This permanently deletes them from Dependency-Track.",
-        "cleanup_all": "Clean up every orphan project? This permanently deletes them from Dependency-Track."
-      },
-      "toast": {
-        "health_checked": "Health probe completed.",
-        "cleanup_enqueued": "Cleanup task enqueued.",
-        "breaker_reset": "DT breaker reset to CLOSED."
-      }
-    },
     "scans": {
       "title": "Scan Queue",
       "subtitle": "Cross-team view of every scan. Cancel runaway jobs from here.",
@@ -242,13 +182,12 @@
     },
     "disk": {
       "title": "Disk",
-      "subtitle": "Workspace, Dependency-Track volume, and database storage telemetry.",
+      "subtitle": "Workspace and database storage telemetry.",
       "actions": {
         "refresh": "Refresh"
       },
       "card": {
         "workspace": "Workspace",
-        "dt_volume": "DT volume",
         "postgres": "PostgreSQL",
         "redis": "Redis"
       },
@@ -321,7 +260,6 @@
         "postgres": "PostgreSQL",
         "redis": "Redis",
         "celery": "Celery worker",
-        "dt": "Dependency-Track",
         "disk": "Disk",
         "active_scans": "Active scans",
         "last_24h_errors": "Errors (last 24h)"
@@ -383,9 +321,6 @@
       "team_has_active_scans": "This team has scans currently running. Wait for them to finish or cancel them first.",
       "invalid_role_assignment": "The selected role and team combination is not valid.",
       "slug_conflict": "A team with that slug already exists.",
-      "dt_unreachable": "Dependency-Track is unreachable. The breaker is OPEN — try again after the next probe succeeds.",
-      "dt_orphan_cleanup_in_progress": "An orphan-cleanup task is already running. Wait for it to finish before launching another.",
-      "dt_breaker_already_closed": "The DT breaker is already CLOSED. Investigate why a reset looked necessary instead of retrying.",
       "scan_already_cancelled": "This scan is already terminated and cannot be cancelled again.",
       "scan_not_found": "Scan not found.",
       "audit_export_too_large": "The export exceeds 100,000 rows. Narrow the filter window before retrying.",

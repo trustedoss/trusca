@@ -4,7 +4,6 @@
       "entry": "관리자",
       "users": "사용자",
       "teams": "팀",
-      "dt": "DT 커넥터",
       "scans": "스캔 큐",
       "disk": "디스크",
       "audit": "감사 로그",
@@ -131,65 +130,6 @@
       },
       "empty": "현재 필터에 해당하는 팀이 없습니다."
     },
-    "dt": {
-      "title": "DT 커넥터",
-      "subtitle": "Dependency-Track 상태와 서킷 브레이커, 고아 프로젝트 정리를 관리합니다.",
-      "status": {
-        "card_title": "커넥터 상태",
-        "state_label": "브레이커 상태",
-        "fail_count_label": "연속 실패 수",
-        "version_label": "DT 버전",
-        "last_check_at_label": "마지막 점검",
-        "last_error_label": "마지막 오류",
-        "auto_restart_label": "자동 재시작 시도",
-        "vuln_db_label": "취약점 DB",
-        "vuln_db_count": "{{value}}건 적재됨",
-        "vuln_db_unknown": "알 수 없음",
-        "vuln_db_empty_title": "취약점 데이터베이스가 비어 있음",
-        "vuln_db_empty_body": "Dependency-Track에 적재된 취약점이 0건이라 스캔은 컴포넌트만 찾고 CVE는 보고하지 못합니다 — 깨끗한 결과인지 데이터가 없는 것인지 구분할 수 없습니다. Dependency-Track에서 NVD 미러링(nvd.api.enabled)을 켜고 초기 동기화가 끝날 때까지 기다리세요. NVD API 키가 있으면 훨씬 빠릅니다.",
-        "no_version": "확인 불가",
-        "no_error": "없음",
-        "yes": "예",
-        "no": "아니오"
-      },
-      "breaker": {
-        "closed": "닫힘",
-        "open": "열림",
-        "half_open": "절반 열림",
-        "reset": {
-          "label": "브레이커 리셋",
-          "confirm_title": "DT 브레이커를 강제로 CLOSED 상태로 되돌리시겠습니까?",
-          "confirm_body": "DT 가 복구되었지만 브레이커가 OPEN 상태에 갇힌 경우에만 사용하세요. 다음 DT 호출이 쿨다운 대기 없이 즉시 시도됩니다.",
-          "disabled_hint": "리셋은 브레이커가 OPEN 또는 HALF_OPEN 상태일 때만 가능합니다."
-        }
-      },
-      "actions": {
-        "force_health_check": "상태 강제 점검",
-        "refresh": "새로 고침",
-        "cleanup_selected": "선택 정리",
-        "cleanup_all": "모든 고아 정리"
-      },
-      "orphans": {
-        "card_title": "고아 프로젝트",
-        "card_subtitle": "포털에 매칭되는 스캔이 없는 DT 프로젝트입니다. 정리는 DT 에서 영구 삭제합니다.",
-        "column": {
-          "uuid": "DT 프로젝트 UUID",
-          "name": "이름",
-          "version": "버전"
-        },
-        "empty": "감지된 고아 프로젝트가 없습니다.",
-        "select_label": "선택"
-      },
-      "confirm": {
-        "cleanup": "선택한 DT 프로젝트를 정리하시겠습니까? Dependency-Track 에서 영구 삭제됩니다.",
-        "cleanup_all": "모든 고아 프로젝트를 정리하시겠습니까? Dependency-Track 에서 영구 삭제됩니다."
-      },
-      "toast": {
-        "health_checked": "상태 점검이 완료되었습니다.",
-        "cleanup_enqueued": "정리 작업이 큐에 등록되었습니다.",
-        "breaker_reset": "DT 브레이커가 CLOSED 상태로 리셋되었습니다."
-      }
-    },
     "scans": {
       "title": "스캔 큐",
       "subtitle": "전 팀의 스캔 큐. 폭주하는 작업을 여기서 취소할 수 있습니다.",
@@ -242,13 +182,12 @@
     },
     "disk": {
       "title": "디스크",
-      "subtitle": "워크스페이스, Dependency-Track 볼륨, 데이터베이스 저장공간 텔레메트리.",
+      "subtitle": "워크스페이스와 데이터베이스 저장공간 텔레메트리.",
       "actions": {
         "refresh": "새로 고침"
       },
       "card": {
         "workspace": "워크스페이스",
-        "dt_volume": "DT 볼륨",
         "postgres": "PostgreSQL",
         "redis": "Redis"
       },
@@ -321,7 +260,6 @@
         "postgres": "PostgreSQL",
         "redis": "Redis",
         "celery": "Celery 워커",
-        "dt": "Dependency-Track",
         "disk": "디스크",
         "active_scans": "실행 중 스캔",
         "last_24h_errors": "최근 24시간 오류"
@@ -383,9 +321,6 @@
       "team_has_active_scans": "이 팀에 실행 중인 스캔이 있습니다. 완료될 때까지 기다리거나 먼저 취소하세요.",
       "invalid_role_assignment": "선택한 역할과 팀 조합이 유효하지 않습니다.",
       "slug_conflict": "동일한 슬러그를 가진 팀이 이미 존재합니다.",
-      "dt_unreachable": "Dependency-Track 에 연결할 수 없습니다. 브레이커가 OPEN 상태입니다 — 다음 점검이 성공하면 다시 시도하세요.",
-      "dt_orphan_cleanup_in_progress": "이미 고아 정리 작업이 실행 중입니다. 완료된 후 다시 시도하세요.",
-      "dt_breaker_already_closed": "DT 브레이커가 이미 CLOSED 상태입니다. 리셋이 필요해 보였던 원인을 먼저 확인하세요.",
       "scan_already_cancelled": "이미 종료된 스캔은 다시 취소할 수 없습니다.",
       "scan_not_found": "스캔을 찾을 수 없습니다.",
       "audit_export_too_large": "내보낼 행 수가 100,000 건을 초과합니다. 필터 범위를 좁힌 후 다시 시도하세요.",

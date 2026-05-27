@@ -7,20 +7,23 @@
  * pixel-by-pixel against fresh captures on every PR that the
  * ``visual-regression`` workflow runs.
  *
- * Pages covered (5 — kept small on purpose):
+ * Pages covered (4 — kept small on purpose):
  *   - /login                — pre-auth surface, exercises form rendering
  *                             without any data dependency.
  *   - /projects             — list with seeded project rows.
  *   - /projects/<id> Overview — risk gauge + quick actions.
  *   - /projects/<id>?tab=vulnerabilities — virtualized table + drawer
  *                             closed.
- *   - /admin/dt             — admin DT status card.
  *
- * Why these five and not all 35? Visual regression has a flakiness
- * cost — each baseline image is a maintenance liability. Five is
- * enough to cover the four major layout templates (auth, list,
- * detail-tab, admin-card) plus one virtualized component. A drift
- * here is almost certainly a real regression.
+ * The legacy `/admin/dt` baseline was dropped with W6-#43b (ADR-0001 —
+ * DT replaced by Trivy). Once the W6-#43e Trivy DB health panel lands,
+ * a replacement admin-card baseline can take its slot here.
+ *
+ * Why this set and not all 35? Visual regression has a flakiness cost —
+ * each baseline image is a maintenance liability. Four is enough to
+ * cover the three major layout templates (auth, list, detail-tab) plus
+ * one virtualized component. A drift here is almost certainly a real
+ * regression.
  *
  * Updating baselines (intentional UI change):
  *   cd apps/frontend
@@ -96,16 +99,6 @@ test.describe.serial("@visual", () => {
       await portal.expectVulnerabilitiesTabReady();
       await page.evaluate(() => document.fonts.ready);
       await expect(page).toHaveScreenshot("project-detail-vulnerabilities.png");
-    });
-
-    test("admin dt status", async ({ page }) => {
-      const portal = new PortalPage(page);
-      await portal.gotoAdminDT();
-      await page
-        .getByTestId("admin-dt-status-card")
-        .waitFor({ state: "visible", timeout: 10_000 });
-      await page.evaluate(() => document.fonts.ready);
-      await expect(page).toHaveScreenshot("admin-dt-status.png");
     });
   });
 });

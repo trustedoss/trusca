@@ -11,7 +11,7 @@
  */
 import { api } from "@/lib/api";
 
-export type DiskItemName = "workspace" | "dt_volume" | "postgres" | "redis";
+export type DiskItemName = "workspace" | "postgres" | "redis";
 export type DiskHealthStatus = "ok" | "degraded" | "down";
 
 export interface AdminDiskItem {

@@ -53,17 +53,11 @@ export const KNOWN_PROBLEM_EXTENSION_KEYS = [
   // We keep it because our 422 envelope embeds Pydantic's redacted error
   // list. Strict-typed below.
   "errors",
-  // Phase 4 PR #14 — admin operational endpoints (DT / Scans / Disk /
-  // Audit / Health). Each is a snake_case boolean flag that surfaces a
-  // specific domain invariant. Adding them to the strict whitelist gives
-  // the UI a stable, locale-independent error key without round-tripping
-  // through the unknown-primitive fallback.
-  "dt_unreachable",
-  "dt_orphan_cleanup_in_progress",
-  // A4 (manual sys-bug fix): operator-triggered breaker reset refuses 409
-  // when the breaker is already CLOSED so a scripted retry cannot silently
-  // no-op past a stuck-CLOSED investigation.
-  "dt_breaker_already_closed",
+  // Phase 4 PR #14 — admin operational endpoints (Scans / Disk / Audit /
+  // Health). Each is a snake_case boolean flag that surfaces a specific
+  // domain invariant. Adding them to the strict whitelist gives the UI a
+  // stable, locale-independent error key without round-tripping through the
+  // unknown-primitive fallback.
   "scan_already_cancelled",
   "scan_not_found",
   "audit_export_too_large",
@@ -93,9 +87,6 @@ const KNOWN_EXTENSION_SCHEMAS: Record<KnownProblemExtensionKey, z.ZodTypeAny> = 
   last_team_admin_protected: z.boolean(),
   team_id: z.string(),
   errors: z.array(z.unknown()).optional(),
-  dt_unreachable: z.boolean(),
-  dt_orphan_cleanup_in_progress: z.boolean(),
-  dt_breaker_already_closed: z.boolean(),
   scan_already_cancelled: z.boolean(),
   scan_not_found: z.boolean(),
   audit_export_too_large: z.boolean(),

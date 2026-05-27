@@ -307,8 +307,6 @@ describe("KNOWN_PROBLEM_EXTENSION_KEYS — module export pin", () => {
   it("includes every PR #14 admin operational extension", () => {
     expect(KNOWN_PROBLEM_EXTENSION_KEYS).toEqual(
       expect.arrayContaining([
-        "dt_unreachable",
-        "dt_orphan_cleanup_in_progress",
         "scan_already_cancelled",
         "scan_not_found",
         // "disk_path_unavailable" removed — L1: backend never emits this as
@@ -320,20 +318,6 @@ describe("KNOWN_PROBLEM_EXTENSION_KEYS — module export pin", () => {
 });
 
 describe("parseProblemBody — PR #14 admin extensions", () => {
-  it("preserves dt_unreachable boolean", () => {
-    const { problem } = parseProblemBody(
-      {
-        type: "about:blank",
-        title: "DT unreachable",
-        status: 503,
-        detail: "breaker is open",
-        dt_unreachable: true,
-      },
-      STATUS_FALLBACK,
-    );
-    expect(problem?.dt_unreachable).toBe(true);
-  });
-
   it("preserves scan_already_cancelled boolean", () => {
     const { problem } = parseProblemBody(
       {

@@ -21,9 +21,6 @@ const EXTENSION_KEY_MAP: Array<[string, string]> = [
   ["last_team_admin_protected", "admin.errors.last_team_admin_protected"],
   ["team_has_active_scans", "admin.errors.team_has_active_scans"],
   // Phase 4 PR #14 — operational error extensions.
-  ["dt_unreachable", "admin.errors.dt_unreachable"],
-  ["dt_orphan_cleanup_in_progress", "admin.errors.dt_orphan_cleanup_in_progress"],
-  ["dt_breaker_already_closed", "admin.errors.dt_breaker_already_closed"],
   ["scan_already_cancelled", "admin.errors.scan_already_cancelled"],
   ["scan_not_found", "admin.errors.scan_not_found"],
   ["audit_export_too_large", "admin.errors.audit_export_too_large"],

@@ -66,18 +66,17 @@ describe("AdminDiskPage", () => {
     mockedGet.mockReset();
   });
 
-  it("renders four cards mapped to their backend names", async () => {
+  it("renders three cards mapped to their backend names", async () => {
     mockedGet.mockResolvedValue(
       diskFixture([
         diskItem("workspace"),
-        diskItem("dt_volume"),
         diskItem("postgres"),
         diskItem("redis"),
       ]),
     );
     renderPage();
     await waitFor(() => {
-      expect(screen.getAllByTestId("admin-disk-card")).toHaveLength(4);
+      expect(screen.getAllByTestId("admin-disk-card")).toHaveLength(3);
     });
     expect(
       document.querySelector('[data-card-name="workspace"]'),
@@ -106,7 +105,7 @@ describe("AdminDiskPage", () => {
   it("renders a card-level error alert instead of the gauge when telemetry fails", async () => {
     mockedGet.mockResolvedValue(
       diskFixture([
-        diskItem("dt_volume", {
+        diskItem("workspace", {
           path: null,
           total_bytes: null,
           used_bytes: 0,
@@ -127,7 +126,7 @@ describe("AdminDiskPage", () => {
   it("renders skeletons while the query is loading", () => {
     mockedGet.mockReturnValue(new Promise(() => {}));
     renderPage();
-    expect(screen.getAllByTestId("admin-disk-card-skeleton")).toHaveLength(4);
+    expect(screen.getAllByTestId("admin-disk-card-skeleton")).toHaveLength(3);
   });
 
   it("renders the page-level error alert when the query fails", async () => {

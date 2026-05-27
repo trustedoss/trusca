@@ -8,20 +8,21 @@
  *
  * Pages covered (matching `docs-site/docs/admin-guide/*.md`):
  *   - users-and-teams
- *   - dt-connector
  *   - audit-log
  *   - disk-and-health
  *   - api-keys (alias for `/integrations` API keys section — admin
  *     gets org-scoped key visibility there)
  *
  * `backup-and-restore` is already covered by the original PoC in
- * `capture.spec.ts` (PR #53).
+ * `capture.spec.ts` (PR #53). The legacy `dt-connector` page was dropped
+ * with W6-#43b (ADR-0001 — DT replaced by Trivy); the replacement
+ * `vulnerability-data` admin guide is captured separately once W6-#43e
+ * lands the Trivy DB health panel.
  */
 import { test } from "@playwright/test";
 
 import { AdminAuditHarness } from "../_harness/AdminAuditHarness";
 import { AdminDiskHarness } from "../_harness/AdminDiskHarness";
-import { AdminDTHarness } from "../_harness/AdminDTHarness";
 import { AdminHealthHarness } from "../_harness/AdminHealthHarness";
 import { AdminTeamsHarness } from "../_harness/AdminTeamsHarness";
 import { AdminUsersHarness } from "../_harness/AdminUsersHarness";
@@ -52,23 +53,6 @@ test.describe.serial("@screenshots admin-guide/users-and-teams", () => {
     await page.goto("/admin/teams");
     await teams.expectMounted();
     await captureScreenshot(page, "admin-teams-list");
-  });
-});
-
-// ════════════════════════════════════════════════════════════════════
-// admin/dt-connector
-// ════════════════════════════════════════════════════════════════════
-
-test.describe.serial("@screenshots admin-guide/dt-connector", () => {
-  test.beforeEach(async ({ page }) => {
-    await applyAuthFromSeed(page);
-  });
-
-  test("admin-dt-status — DT status card + breaker state", async ({ page }) => {
-    const dt = new AdminDTHarness(page);
-    await page.goto("/admin/dt");
-    await dt.expectMounted();
-    await captureScreenshot(page, "admin-dt-status");
   });
 });
 

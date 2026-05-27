@@ -12,7 +12,6 @@ import {
   ClipboardList,
   HardDrive,
   ListChecks,
-  Network,
   Users as UsersIcon,
 } from "lucide-react";
 import type { ComponentType, SVGProps } from "react";
@@ -87,12 +86,6 @@ const ADMIN_NAV: NavItem[] = [
     labelKey: "nav.admin.teams",
     icon: Building2,
     testId: "nav-admin-teams",
-  },
-  {
-    to: "/admin/dt",
-    labelKey: "nav.admin.dt",
-    icon: Network,
-    testId: "nav-admin-dt",
   },
   {
     to: "/admin/scans",

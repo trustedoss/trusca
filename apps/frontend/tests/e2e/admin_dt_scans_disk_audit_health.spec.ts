@@ -1,10 +1,13 @@
 /**
- * Admin DT/Scans/Disk/Audit/Health E2E — Phase 4 PR #14 §6.3.
+ * Admin Scans/Disk/Audit/Health E2E — Phase 4 PR #14 §6.3.
  *
- * Drives the five operational admin surfaces against the live docker-compose
- * dev stack. Selectors live in the per-page harnesses (data-testid + data-*)
- * so EN/KO renders pass the same scenarios; toasts are matched by
- * data-toast-key so translated copy never enters the assertion.
+ * W6-#43b removed the legacy ``/admin/dt`` surface (ADR-0001 — DT replaced by
+ * Trivy). The first test now pins the route as 404-equivalent (AdminNotFound
+ * inside the admin layout); the remaining four scenarios continue to drive the
+ * operational admin surfaces against the live docker-compose dev stack.
+ * Selectors live in the per-page harnesses (data-testid + data-*) so EN/KO
+ * renders pass the same scenarios; toasts are matched by data-toast-key so
+ * translated copy never enters the assertion.
  *
  * Pre-requisites (auto-skip otherwise):
  *   - docker-compose -f docker-compose.dev.yml up -d
@@ -33,13 +36,13 @@ function tryAcquireSeed(
   }
 }
 
-test.describe("@critical admin DT / scans / disk / audit / health", () => {
+test.describe("@critical admin scans / disk / audit / health", () => {
   test.beforeEach(async ({ page }) => {
     const auth = new AuthHarness(page);
     await auth.clearAuthState();
   });
 
-  test("1) DT page — status renders + force-probe success toast + audit row", async ({
+  test("1) /admin/dt is removed — super admin lands on AdminNotFound (W6-#43b)", async ({
     page,
   }, testInfo) => {
     const seed = tryAcquireSeed(testInfo, {
@@ -52,34 +55,17 @@ test.describe("@critical admin DT / scans / disk / audit / health", () => {
     await auth.gotoLogin();
     await auth.login(seed.email, seed.password);
 
-    const portal = new PortalPage(page);
-    const dt = await portal.gotoAdminDT();
-
-    // Status badge mounts after the first fetch — assert one of the three
-    // valid breaker states is exposed.
-    const state = await dt.getBreakerState();
-    expect(["closed", "open", "half_open"]).toContain(state);
-
-    // Force a probe — the backend audit row gets emitted regardless of DT
-    // reachability so this is a deterministic success path. When DT is
-    // reachable in the dev stack the toast is `health_checked`; if DT is
-    // OPEN the toast is the `dt_unreachable` error key. Either is a valid
-    // post-condition the harness exposes; the assertion below covers both.
-    await dt.forceHealthProbe();
-    const success = page.locator(
-      '[data-testid="admin-toast"][data-toast-key="health_checked"]',
-    );
-    const failure = page.locator(
-      '[data-testid="admin-toast"][data-toast-key="dt_unreachable"]',
-    );
-    await expect(success.or(failure)).toBeVisible({ timeout: 10_000 });
-
-    // Audit log inspection — navigate to the audit page and search for the
-    // dt_health row. The action emitted by the endpoint is `health_check`
-    // on the `dt_health` synthetic table.
-    const audit = await portal.gotoAdminAudit();
-    await audit.filterByTargetTable("scans"); // smoke-check the filter wiring
-    await audit.expectMounted();
+    // ADR-0001 / W6-#43b: the Dependency-Track surface was removed. The
+    // ``<Route path="*" element={<AdminNotFound />}>`` fallback inside the
+    // admin layout catches any remaining `/admin/dt` link; the AppShell main
+    // chrome stays mounted while the page body shows AdminNotFound.
+    await page.goto("/admin/dt");
+    await expect(page.getByTestId("admin-not-found")).toBeVisible({
+      timeout: 10_000,
+    });
+    // The admin sidebar entry must be gone too — sanity-check it does not
+    // resurrect when a super admin is signed in.
+    await expect(page.getByTestId("nav-admin-dt")).toHaveCount(0);
   });
 
   test("2) Scan Queue — tab switching + open drawer + status visible", async ({
@@ -126,7 +112,7 @@ test.describe("@critical admin DT / scans / disk / audit / health", () => {
     await scans.closeDrawer();
   });
 
-  test("3) Disk page — four cards render with valid statuses", async ({
+  test("3) Disk page — three cards render with valid statuses", async ({
     page,
   }, testInfo) => {
     const seed = tryAcquireSeed(testInfo, {
@@ -144,8 +130,8 @@ test.describe("@critical admin DT / scans / disk / audit / health", () => {
 
     // Each backend-recognized name renders exactly one card. Workspace +
     // postgres are guaranteed present in the dev stack (filesystem +
-    // SQL queries succeed); dt_volume / redis statuses depend on the
-    // mount configuration so we accept any of ok / degraded / down.
+    // SQL queries succeed); redis status depends on the broker connection
+    // so we accept any of ok / degraded / down for it via the loop below.
     for (const name of ["workspace", "postgres"] as const) {
       const status = await disk.getCardStatus(name);
       expect(["ok", "degraded", "down"]).toContain(status);
@@ -204,9 +190,9 @@ test.describe("@critical admin DT / scans / disk / audit / health", () => {
 
     const names = await health.getComponentNames();
     // The backend always emits at least postgres + redis + active_scans +
-    // last_24h_errors; celery / dt / disk depend on stack state. Assert
-    // the load-bearing ones are present and that every emitted card
-    // carries one of the three legal status values.
+    // last_24h_errors; celery / disk depend on stack state. Assert the
+    // load-bearing ones are present and that every emitted card carries
+    // one of the three legal status values.
     for (const required of ["postgres", "redis", "active_scans"] as const) {
       expect(names).toContain(required);
       const status = await health.getComponentStatus(required);

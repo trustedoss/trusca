@@ -68,15 +68,14 @@ describe("AdminHealthPage", () => {
         component("postgres"),
         component("redis"),
         component("celery", { status: "degraded" }),
-        component("dt", { status: "down" }),
-        component("disk"),
+        component("disk", { status: "down" }),
         component("active_scans", { value: 4 }),
         component("last_24h_errors", { value: 0 }),
       ]),
     );
     renderPage();
     await waitFor(() => {
-      expect(screen.getAllByTestId("admin-health-card")).toHaveLength(7);
+      expect(screen.getAllByTestId("admin-health-card")).toHaveLength(6);
     });
     expect(
       document.querySelector('[data-component="celery"]')?.getAttribute(
@@ -84,7 +83,7 @@ describe("AdminHealthPage", () => {
       ),
     ).toBe("degraded");
     expect(
-      document.querySelector('[data-component="dt"]')?.getAttribute(
+      document.querySelector('[data-component="disk"]')?.getAttribute(
         "data-status",
       ),
     ).toBe("down");
