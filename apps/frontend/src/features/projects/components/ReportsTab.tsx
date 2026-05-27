@@ -53,6 +53,7 @@ import {
   type ReportType,
 } from "@/features/projects/api/reportHistoryApi";
 import { useReportHistory } from "@/features/projects/api/useReportHistory";
+import { useVulnReport } from "@/features/projects/api/useVulnReport";
 import { SbomTab } from "@/features/projects/components/SbomTab";
 import { ProblemError } from "@/lib/problem";
 import { formatRelativeToNow } from "@/lib/relativeTime";
@@ -294,11 +295,7 @@ export function ReportsTab({
             target="reports"
             onDeeplink={deeplinkToTab}
           />
-          <GenerateCard
-            slug="vuln-pdf"
-            target="vulnerabilities"
-            onDeeplink={deeplinkToTab}
-          />
+          <VulnPdfCard projectId={projectId} />
           <GenerateCard
             slug="vex"
             target="vulnerabilities"
@@ -469,6 +466,60 @@ function GenerateCard({ slug, target, onDeeplink }: GenerateCardProps) {
         >
           {t(actionKey)}
         </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * VulnPdfCard — direct PDF download trigger.
+ *
+ * User-test follow-up (2026-05-27): the Vulnerabilities tab toolbar previously
+ * owned the PDF button. Reports tab is the natural home for artefact
+ * downloads, so this card replaces the prior ``vuln-pdf`` deeplink card with
+ * the same hook (``useVulnReport``) so a click here downloads the report
+ * directly — no detour through Vulnerabilities first.
+ */
+function VulnPdfCard({ projectId }: { projectId: string }) {
+  const { t } = useTranslation("project_detail");
+  const vulnReport = useVulnReport(projectId);
+  const titleKey = "reports.cards.vuln-pdf.title" as const;
+  const descKey = "reports.cards.vuln-pdf.description" as const;
+  return (
+    <Card data-testid="reports-card-vuln-pdf">
+      <CardHeader className="space-y-1 p-4">
+        <CardTitle className="text-sm font-semibold">{t(titleKey)}</CardTitle>
+        <CardDescription className="text-xs">{t(descKey)}</CardDescription>
+      </CardHeader>
+      <CardContent className="p-4 pt-0">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            // Hook surfaces errors via `vulnReport.error`; swallow the reject
+            // so the click doesn't bubble up as an unhandled promise.
+            vulnReport.download().catch(() => {});
+          }}
+          disabled={vulnReport.isLoading}
+          data-testid="reports-card-vuln-pdf-download"
+        >
+          {vulnReport.isLoading
+            ? t("vulnerabilities.toolbar.download_pdf_generating", {
+                defaultValue: "Generating…",
+              })
+            : t("vulnerabilities.toolbar.download_pdf", {
+                defaultValue: "Download PDF",
+              })}
+        </Button>
+        {vulnReport.error ? (
+          <p
+            className="mt-2 text-xs text-destructive"
+            data-testid="reports-card-vuln-pdf-error"
+          >
+            {vulnReport.error.message}
+          </p>
+        ) : null}
       </CardContent>
     </Card>
   );

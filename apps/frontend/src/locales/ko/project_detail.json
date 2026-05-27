@@ -254,7 +254,7 @@
       "reachable": "도달 가능성",
       "cvss": "CVSS",
       "epss": "EPSS",
-      "summary": "제목",
+      "summary": "요약",
       "component": "컴포넌트",
       "affected_more_count": "+{{count}}",
       "affected_more_count_tooltip": "추가로 {{count}}개의 컴포넌트가 영향을 받음 — 드로어에서 확인",
