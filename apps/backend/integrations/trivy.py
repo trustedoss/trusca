@@ -38,6 +38,7 @@ from typing import Any
 import structlog
 
 from core.config import scan_backend_mode
+from integrations._subprocess_env import scrubbed_env_for_trivy
 
 log = structlog.get_logger("integrations.trivy")
 
@@ -130,6 +131,7 @@ def run_trivy_image(
             capture_output=True,
             check=False,
             timeout=timeout_seconds,
+            env=scrubbed_env_for_trivy(),
         )
     except subprocess.TimeoutExpired as exc:
         raise TrivyTimeout(
@@ -245,6 +247,12 @@ def run_trivy_sbom(
         # Match the image-scan adapter: silence the welcome banner / progress
         # bar so worker logs stay parseable.
         "--quiet",
+        # Match run_trivy_image: explicitly restrict scanners to vuln so a
+        # future trivy default flip to also-on license/secret scanning does
+        # not start exfiltrating SBOM component data or matching internal
+        # paths against secret patterns. (security-reviewer L3 on PR #196.)
+        "--scanners",
+        "vuln",
         str(sbom_path),
     ]
     log.info("trivy_sbom_start", sbom=str(sbom_path), output=str(report_path))
@@ -254,6 +262,7 @@ def run_trivy_sbom(
             capture_output=True,
             check=False,
             timeout=timeout_seconds,
+            env=scrubbed_env_for_trivy(),
         )
     except subprocess.TimeoutExpired as exc:
         raise TrivyTimeout(

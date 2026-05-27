@@ -743,3 +743,143 @@ def test_run_trivy_sbom_report_with_non_utf8_bytes_replaces(
         trivy_adapter.run_trivy_sbom(
             sbom_path=sbom_path, output_dir=tmp_path / "trivy"
         )
+
+
+# ---------------------------------------------------------------------------
+# Security: subprocess env is scrubbed via scrubbed_env_for_trivy()
+# (security-reviewer M1 on PR #196)
+# ---------------------------------------------------------------------------
+
+
+def test_run_trivy_sbom_subprocess_env_excludes_worker_secrets(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Worker secrets (DT_API_KEY / SECRET_KEY / DATABASE_URL / *_WEBHOOK_URL)
+    MUST NOT be inherited by the trivy subprocess.
+
+    A trivy CVE or an attacker-crafted SBOM that triggers a parser bug must
+    not have a credential to exfiltrate via crash reports or DNS lookups in
+    error paths. Matches the parity standard already in place for cdxgen /
+    scancode / cosign (apps/backend/integrations/_subprocess_env.py).
+    """
+    from integrations import trivy as trivy_adapter
+
+    monkeypatch.setenv("TRUSTEDOSS_SCAN_BACKEND", "real")
+    monkeypatch.setenv("DT_API_KEY", "super-secret-dt-key")
+    monkeypatch.setenv("SECRET_KEY", "super-secret-jwt-key")
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql+asyncpg://trustedoss:hunter2@postgres/trustedoss",
+    )
+    monkeypatch.setenv(
+        "SLACK_WEBHOOK_URL", "https://hooks.slack.com/services/secret"
+    )
+    monkeypatch.setattr(
+        "integrations.trivy.shutil.which", lambda _name: "/usr/local/bin/trivy"
+    )
+
+    sbom_path = tmp_path / "sbom.cdx.json"
+    sbom_path.write_text("{}", encoding="utf-8")
+
+    captured_env: dict[str, str] = {}
+
+    def fake_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
+        captured_env.update(kwargs.get("env") or {})
+        out_idx = cmd.index("--output") + 1
+        Path(cmd[out_idx]).write_text(
+            json.dumps({"SchemaVersion": 2, "Results": []}),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=b"", stderr=b"")
+
+    monkeypatch.setattr("integrations.trivy.subprocess.run", fake_run)
+
+    trivy_adapter.run_trivy_sbom(sbom_path=sbom_path, output_dir=tmp_path / "trivy")
+
+    for secret_key in (
+        "DT_API_KEY",
+        "SECRET_KEY",
+        "DATABASE_URL",
+        "SLACK_WEBHOOK_URL",
+    ):
+        assert secret_key not in captured_env, (
+            f"run_trivy_sbom leaked {secret_key} into trivy subprocess env"
+        )
+
+
+def test_run_trivy_sbom_subprocess_env_forwards_trivy_db_mirror(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """TRIVY_DB_REPOSITORY (air-gapped mirror) MUST be forwarded.
+
+    W6-#44 lifecycle relies on operators pointing trivy at a private mirror;
+    if scrubbed_env_for_trivy() did not allowlist this, air-gapped sites
+    would silently fall back to the public ghcr mirror or fail.
+    """
+    from integrations import trivy as trivy_adapter
+
+    monkeypatch.setenv("TRUSTEDOSS_SCAN_BACKEND", "real")
+    monkeypatch.setenv("TRIVY_DB_REPOSITORY", "registry.internal/trivy-db")
+    monkeypatch.setattr(
+        "integrations.trivy.shutil.which", lambda _name: "/usr/local/bin/trivy"
+    )
+
+    sbom_path = tmp_path / "sbom.cdx.json"
+    sbom_path.write_text("{}", encoding="utf-8")
+
+    captured_env: dict[str, str] = {}
+
+    def fake_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
+        captured_env.update(kwargs.get("env") or {})
+        out_idx = cmd.index("--output") + 1
+        Path(cmd[out_idx]).write_text(
+            json.dumps({"SchemaVersion": 2, "Results": []}),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=b"", stderr=b"")
+
+    monkeypatch.setattr("integrations.trivy.subprocess.run", fake_run)
+
+    trivy_adapter.run_trivy_sbom(sbom_path=sbom_path, output_dir=tmp_path / "trivy")
+
+    assert captured_env.get("TRIVY_DB_REPOSITORY") == "registry.internal/trivy-db"
+
+
+def test_run_trivy_sbom_cmd_pins_scanners_to_vuln(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """`--scanners vuln` must be on the cmd line (security-reviewer L3).
+
+    Without this, a future trivy default flip to also-on license/secret
+    scanning would start matching SBOM component data and internal paths
+    against secret patterns and (potentially) reporting to upstream telemetry.
+    Mirrors run_trivy_image which has had this since Phase 2 PR #8.
+    """
+    from integrations import trivy as trivy_adapter
+
+    monkeypatch.setenv("TRUSTEDOSS_SCAN_BACKEND", "real")
+    monkeypatch.setattr(
+        "integrations.trivy.shutil.which", lambda _name: "/usr/local/bin/trivy"
+    )
+
+    sbom_path = tmp_path / "sbom.cdx.json"
+    sbom_path.write_text("{}", encoding="utf-8")
+
+    captured_cmd: list[str] = []
+
+    def fake_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
+        captured_cmd.extend(cmd)
+        out_idx = cmd.index("--output") + 1
+        Path(cmd[out_idx]).write_text(
+            json.dumps({"SchemaVersion": 2, "Results": []}),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=b"", stderr=b"")
+
+    monkeypatch.setattr("integrations.trivy.subprocess.run", fake_run)
+
+    trivy_adapter.run_trivy_sbom(sbom_path=sbom_path, output_dir=tmp_path / "trivy")
+
+    assert "--scanners" in captured_cmd
+    scanners_idx = captured_cmd.index("--scanners")
+    assert captured_cmd[scanners_idx + 1] == "vuln"

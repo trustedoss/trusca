@@ -355,9 +355,55 @@ def scrubbed_env_for_cosign() -> dict[str, str]:
     )
 
 
+# ---------------------------------------------------------------------------
+# Trivy (W6-#40 / W6-#44 — SBOM matching + image scan + DB lifecycle)
+# ---------------------------------------------------------------------------
+
+# Trivy's env surface is small and well-documented: cache/DB location, mirror
+# repos for air-gapped operators, timeout / quiet knobs, and an insecure-TLS
+# escape hatch for self-hosted mirrors with private CAs. Registry credentials
+# are loaded from ``~/.docker/config.json``, not env, so no ``TRIVY_*TOKEN``
+# entries are forwarded. ``TRIVY_OFFLINE_SCAN`` is included so the W6-#44
+# air-gapped lifecycle can disable network DB pulls without re-plumbing the
+# adapter. (security-reviewer M1 on PR #196 — bring trivy to parity with
+# cdxgen / scancode / cosign env scrubbing.)
+_TRIVY_EXTRA_ALLOWLIST: frozenset[str] = frozenset(
+    {
+        "TRIVY_CACHE_DIR",
+        "TRIVY_DB_REPOSITORY",
+        "TRIVY_JAVA_DB_REPOSITORY",
+        "TRIVY_OFFLINE_SCAN",
+        "TRIVY_TIMEOUT",
+        "TRIVY_NO_PROGRESS",
+        "TRIVY_QUIET",
+        "TRIVY_INSECURE",
+    }
+)
+
+
+def scrubbed_env_for_trivy() -> dict[str, str]:
+    """Env dict for ``trivy image`` / ``trivy sbom`` invocations (W6-#40).
+
+    The shared base allowlist (PATH / HOME / proxy / CA hints) plus the
+    Trivy operator-knob band (cache / mirror / timeout) — and nothing else.
+    Worker secrets (``DT_API_KEY`` / ``SECRET_KEY`` / ``DATABASE_URL`` /
+    ``*_WEBHOOK_URL``) are stripped: trivy parses attacker-influenced SBOM
+    JSON and container images, so a trivy CVE or a fault-injected SBOM with
+    a parser-exploit payload must have no credential to exfiltrate via
+    crash reports, DNS lookups in error paths, or future trivy telemetry.
+    Registry credentials are read from ``~/.docker/config.json``, not env,
+    so no ``TRIVY_*TOKEN`` entries are forwarded here either.
+    """
+    return _build_env(
+        explicit=_BASE_ALLOWLIST | _TRIVY_EXTRA_ALLOWLIST,
+        defaults=_GENERIC_DEFAULTS,
+    )
+
+
 __all__ = [
     "scrubbed_env_for_cdxgen",
     "scrubbed_env_for_cosign",
     "scrubbed_env_for_prep",
     "scrubbed_env_for_scancode",
+    "scrubbed_env_for_trivy",
 ]
