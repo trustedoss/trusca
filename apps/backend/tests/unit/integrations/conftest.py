@@ -18,10 +18,40 @@ in the suite stay unchanged.
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
+from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def _pin_workspace_root_to_tmp_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Auto-pin ``WORKSPACE_HOST_PATH`` to the per-test ``tmp_path``.
+
+    The Trivy adapter's :func:`_ensure_inside_workspace` guard (PR #196 L1
+    follow-up) rejects any ``output_dir`` / ``sbom_path`` that resolves
+    outside ``WORKSPACE_HOST_PATH``. Without this autouse fixture every
+    integration test that hands ``tmp_path`` (or any subdir) to ``run_trivy_*``
+    would trip the guard because pytest's ``tmp_path`` lives under
+    ``/private/var/folders/...`` (macOS) or ``/tmp/pytest-of-...`` (Linux),
+    not under the default ``/tmp/trustedoss`` workspace root.
+
+    Scoping the env var to ``tmp_path`` per test gives every test an isolated
+    workspace boundary that matches its own scratch directory, so:
+
+    - Tests that don't touch the guard see no behaviour change.
+    - Tests that *do* exercise the guard (``test_trivy_security.py``) can
+      build paths that are either inside or escape ``tmp_path`` to assert
+      both branches.
+
+    Read at call time per CLAUDE.md core rule #11, so this monkeypatch takes
+    effect immediately on the next ``workspace_root()`` call without any
+    cache to bust.
+    """
+    monkeypatch.setenv("WORKSPACE_HOST_PATH", str(tmp_path))
 
 
 @pytest.fixture
