@@ -232,13 +232,13 @@ describe("ReleaseSwitcher", () => {
     expect(onSelectLatest).toHaveBeenCalledTimes(1);
   });
 
-  it("disables the trigger and shows 'No releases yet' when the project has no succeeded scan", async () => {
+  it("disables the trigger and shows 'No versions yet' when the project has no succeeded scan", async () => {
     mockedList.mockResolvedValue(listResponse([]));
     renderSwitcher({ latestScanId: null });
 
     await waitFor(() => {
       expect(screen.getByTestId("release-switcher-label").textContent).toContain(
-        "No releases yet",
+        "No versions yet",
       );
     });
     expect(screen.getByTestId("release-switcher")).toBeDisabled();

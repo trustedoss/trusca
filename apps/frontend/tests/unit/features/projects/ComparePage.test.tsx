@@ -373,7 +373,7 @@ describe("ComparePage", () => {
       expect(screen.getByTestId("compare-empty")).toBeInTheDocument();
     });
     expect(screen.getByTestId("compare-empty").textContent).toContain(
-      "No differences between these releases.",
+      "No differences between these versions.",
     );
     // The component / vuln sections are suppressed when there are no diffs.
     expect(screen.queryByTestId("compare-components")).not.toBeInTheDocument();
