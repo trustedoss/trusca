@@ -2,7 +2,6 @@ import { Navigate, Route, Routes } from "react-router-dom";
 
 import { AppShell } from "@/components/AppShell";
 import { RequireAuth } from "@/components/RequireAuth";
-import { DashboardPage } from "@/features/dashboard/DashboardPage";
 import { AdminAuditPage } from "@/features/admin/audit/AdminAuditPage";
 import { AdminBackupPage } from "@/features/admin/backup/AdminBackupPage";
 import { AdminDiskPage } from "@/features/admin/disk/AdminDiskPage";
@@ -35,8 +34,9 @@ import { ResetPasswordPage } from "@/pages/auth/ResetPasswordPage";
  *   via <RequireAuth />. AppShell owns the only sidebar + header chrome and
  *   already renders the admin nav section for super-admins, so entering the
  *   admin area no longer unmounts the main nav (W4-A fix).
- * - The "/" index renders the Dashboard (org/team risk portfolio), the
- *   CLAUDE.md screen spec for "/". /projects remains its own route.
+ * - The "/" index redirects to /projects — Dashboard was dropped in the
+ *   user-test follow-up (portfolio / recent-scans cards duplicated info
+ *   already shown on the project list + per-project Overview).
  * - <AdminLayout /> wraps /admin/* with the super-admin existence-hide guard
  *   (404 for non-super-admins, matching backend behavior). It no longer
  *   renders its own chrome — the AppShell sidebar/header carries through.
@@ -59,7 +59,7 @@ export function AppRoutes() {
           </RequireAuth>
         }
       >
-        <Route index element={<DashboardPage />} />
+        <Route index element={<Navigate to="/projects" replace />} />
         <Route path="projects" element={<ProjectListPage />} />
         <Route path="projects/new" element={<ProjectCreatePage />} />
         <Route path="projects/:id" element={<ProjectDetailPage />} />

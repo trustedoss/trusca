@@ -10,7 +10,7 @@
  *              full "register → team → create project" funnel.
  *   - "Register project" buttons (empty-state CTA + header) were inert.
  *   - Password floor lowered to 8 (NIST 800-63B minimum).
- *   - #12  The dashboard renders at `/` (it used to redirect to /projects).
+ *   - #12  `/` now redirects to `/projects` (dashboard dropped).
  *   - #10  The language toggle shows the *current* language and <html lang>
  *          tracks the active language.
  *
@@ -208,18 +208,20 @@ test.describe("@smoke regression guards (manual-walkthrough 2026-05-25)", () => 
     await auth.expectLoggedIn();
   });
 
-  test("#12 the dashboard renders at the app root (no redirect to /projects)", async ({
+  test("#12 the / root redirects to /projects (dashboard dropped)", async ({
     page,
   }) => {
-    // `/` used to redirect to /projects; it must now render the dashboard.
-    // A fresh user (0 projects) sees the empty state, which is fine — we assert
-    // the page mounts at `/` and the nav points there, not the populated data.
+    // User-test follow-up: Dashboard was dropped because its Portfolio /
+    // Recent-scans cards duplicated information already shown on the project
+    // list + per-project Overview. `/` now redirects to `/projects`.
     await freshUser(page);
 
     await page.goto(`${BASE}/`);
-    await expect(page).toHaveURL(`${BASE}/`);
-    await expect(page.getByTestId("dashboard-page")).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByTestId("nav-dashboard")).toHaveAttribute("href", "/");
+    await expect(page).toHaveURL(`${BASE}/projects`);
+    await expect(page.getByTestId("project-list-page")).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(page.getByTestId("nav-dashboard")).toHaveCount(0);
   });
 
   test("#10 language toggle shows the CURRENT language and syncs <html lang>", async ({
