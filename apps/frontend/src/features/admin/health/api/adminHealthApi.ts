@@ -15,7 +15,6 @@ export type HealthComponentName =
   | "postgres"
   | "redis"
   | "celery"
-  | "dt"
   | "disk"
   | "active_scans"
   | "last_24h_errors";

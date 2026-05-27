@@ -6,7 +6,6 @@ import { DashboardPage } from "@/features/dashboard/DashboardPage";
 import { AdminAuditPage } from "@/features/admin/audit/AdminAuditPage";
 import { AdminBackupPage } from "@/features/admin/backup/AdminBackupPage";
 import { AdminDiskPage } from "@/features/admin/disk/AdminDiskPage";
-import { AdminDTPage } from "@/features/admin/dt/AdminDTPage";
 import { AdminHealthPage } from "@/features/admin/health/AdminHealthPage";
 import { AdminLayout } from "@/features/admin/AdminLayout";
 import { AdminNotFound } from "@/features/admin/AdminNotFound";
@@ -78,7 +77,6 @@ export function AppRoutes() {
           <Route index element={<Navigate to="users" replace />} />
           <Route path="users" element={<AdminUsersPage />} />
           <Route path="teams" element={<AdminTeamsPage />} />
-          <Route path="dt" element={<AdminDTPage />} />
           <Route path="scans" element={<AdminScansPage />} />
           <Route path="disk" element={<AdminDiskPage />} />
           <Route path="audit" element={<AdminAuditPage />} />

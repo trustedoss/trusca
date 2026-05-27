@@ -6,7 +6,7 @@ import { expect, type Page } from "@playwright/test";
 const DEFAULT_BASE_URL = "http://localhost:5173";
 const DEFAULT_TIMEOUT_MS = 10_000;
 
-export type DiskCardName = "workspace" | "dt_volume" | "postgres" | "redis";
+export type DiskCardName = "workspace" | "postgres" | "redis";
 export type DiskHealthStatus = "ok" | "degraded" | "down";
 
 export class AdminDiskHarness {

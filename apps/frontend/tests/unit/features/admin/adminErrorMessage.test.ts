@@ -37,11 +37,6 @@ describe("adminErrorMessageKey", () => {
     ["team_has_active_scans", "admin.errors.team_has_active_scans"],
     // "invalid_role_assignment" removed — L1: backend never emits this flag.
     // Phase 4 PR #14 — admin operational extensions.
-    ["dt_unreachable", "admin.errors.dt_unreachable"],
-    [
-      "dt_orphan_cleanup_in_progress",
-      "admin.errors.dt_orphan_cleanup_in_progress",
-    ],
     ["scan_already_cancelled", "admin.errors.scan_already_cancelled"],
     ["scan_not_found", "admin.errors.scan_not_found"],
     // "disk_path_unavailable" removed — L1: backend never emits this flag.
@@ -81,8 +76,6 @@ describe("adminErrorExtension", () => {
     "last_team_admin_protected",
     "team_has_active_scans",
     // "invalid_role_assignment" removed — L1.
-    "dt_unreachable",
-    "dt_orphan_cleanup_in_progress",
     "scan_already_cancelled",
     "scan_not_found",
     // "disk_path_unavailable" removed — L1.

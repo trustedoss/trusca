@@ -142,11 +142,24 @@ describe("App smoke (authenticated)", () => {
       expect(screen.getByTestId("nav-admin-users")).toBeInTheDocument();
     });
     expect(screen.getByTestId("nav-admin-teams")).toBeInTheDocument();
-    expect(screen.getByTestId("nav-admin-dt")).toBeInTheDocument();
+    expect(screen.queryByTestId("nav-admin-dt")).not.toBeInTheDocument();
     expect(screen.getByTestId("nav-admin-scans")).toBeInTheDocument();
     expect(screen.getByTestId("nav-admin-disk")).toBeInTheDocument();
     expect(screen.getByTestId("nav-admin-audit")).toBeInTheDocument();
     expect(screen.getByTestId("nav-admin-health")).toBeInTheDocument();
+  });
+
+  it("super admin visiting the removed /admin/dt route falls through to AdminNotFound", async () => {
+    useAuthStore.setState({
+      user: { ...fakeUser, isSuperuser: true, role: "super_admin" },
+      accessToken: "tok-admin",
+      status: "authenticated",
+      isAuthenticated: true,
+    });
+    renderAppAt("/admin/dt");
+    await waitFor(() => {
+      expect(screen.getByTestId("admin-not-found")).toBeInTheDocument();
+    });
   });
 
   it("clicking logout clears auth state and navigates to /login", async () => {

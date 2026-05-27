@@ -15,7 +15,6 @@ import { expect, type Locator, type Page } from "@playwright/test";
 
 import { AdminAuditHarness } from "./AdminAuditHarness";
 import { AdminDiskHarness } from "./AdminDiskHarness";
-import { AdminDTHarness } from "./AdminDTHarness";
 import { AdminHealthHarness } from "./AdminHealthHarness";
 import { AdminScansHarness } from "./AdminScansHarness";
 import { AdminTeamsHarness } from "./AdminTeamsHarness";
@@ -1473,14 +1472,7 @@ export class PortalPage {
     return harness;
   }
 
-  // ───── PR #14 — Admin operational dashboards (DT/Scans/Disk/Audit/Health)
-  /** Navigate to ``/admin/dt`` and return the {@link AdminDTHarness}. */
-  async gotoAdminDT(): Promise<AdminDTHarness> {
-    const harness = new AdminDTHarness(this.page, this.baseUrl);
-    await harness.goto();
-    return harness;
-  }
-
+  // ───── PR #14 — Admin operational dashboards (Scans/Disk/Audit/Health)
   /** Navigate to ``/admin/scans`` and return the {@link AdminScansHarness}. */
   async gotoAdminScans(): Promise<AdminScansHarness> {
     const harness = new AdminScansHarness(this.page, this.baseUrl);
