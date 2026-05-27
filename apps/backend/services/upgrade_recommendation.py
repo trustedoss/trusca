@@ -52,11 +52,12 @@ tie-breaks. It is purely advisory; the gate verdict itself is unchanged.
 
 Untrusted input
 ---------------
-Every ``fixed_version`` string is DT-derived (untrusted). 2.2-a1's
-``_normalize_fixed_version`` already rejects control chars / oversized / junk
-*before persistence*, but this module re-parses defensively anyway: legacy rows
-predating that guard, or a future ingest path, could still hand us a malformed
-string. :func:`parse_version` NEVER raises — anything it cannot understand
+Every ``fixed_version`` string is scanner-derived (pre-W6: DT; W6+: Trivy) and
+therefore untrusted. The per-scanner ``_normalize_fixed_version`` already rejects
+control chars / oversized / junk *before persistence*, but this module re-parses
+defensively anyway: legacy rows predating that guard, or a future ingest path,
+could still hand us a malformed string. :func:`parse_version` NEVER raises —
+anything it cannot understand
 returns ``None`` and the component falls into the ``unparseable_version``
 outcome. The semver comparison is a tolerant, dependency-free implementation
 (we do not pull in ``packaging``/``semver``): real fix versions span many
@@ -77,8 +78,8 @@ log = structlog.get_logger("upgrade_recommendation.service")
 
 # Hard caps so a hostile / malformed version string can never drive a
 # pathological parse. Real versions sit far below these. Mirrors the spirit of
-# tasks.scan_source._FIXED_VERSION_MAX_LEN (100) but kept independent so this
-# module is self-contained.
+# services.vulnerability_matching._FIXED_VERSION_MAX_LEN (100) but kept
+# independent so this module is self-contained.
 _MAX_VERSION_LEN = 256
 _MAX_RELEASE_SEGMENTS = 16
 
