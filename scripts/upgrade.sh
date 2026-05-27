@@ -38,6 +38,15 @@ bash "$ROOT_DIR/scripts/backup.sh"
 ok "backup complete"
 
 # ---------------------------------------------------------------------------
+# 1.5 .env sync — append-only (W6-chore-seed B)
+# ---------------------------------------------------------------------------
+title "Environment sync"
+# shellcheck source=scripts/lib/env_sync.sh
+source "$ROOT_DIR/scripts/lib/env_sync.sh"
+env_append_only_sync .env.example .env
+ok "env sync complete (existing values preserved)"
+
+# ---------------------------------------------------------------------------
 # 2. Pull new images
 # ---------------------------------------------------------------------------
 title "Pulling new images"

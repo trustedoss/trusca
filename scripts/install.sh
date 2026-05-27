@@ -127,6 +127,13 @@ if [[ ! -f .env ]]; then
   [[ -f .env.example ]] || fail ".env.example not found. Cannot bootstrap configuration."
   cp .env.example .env
   ok "wrote .env from .env.example"
+else
+  # Reusing an operator-owned .env — sync new keys from the example without
+  # ever touching what the operator already set. See scripts/lib/env_sync.sh
+  # for the append-only contract.
+  # shellcheck source=scripts/lib/env_sync.sh
+  source "$ROOT_DIR/scripts/lib/env_sync.sh"
+  env_append_only_sync .env.example .env
 
   # SECRET_KEY: --no-prompt may pin via INSTALL_SECRET_KEY (CI reproducibility).
   # Otherwise we always auto-generate strong entropy.

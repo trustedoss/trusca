@@ -170,50 +170,57 @@ def test_resolve_demo_password_rejects_short_explicit(
         _resolve_demo_password()
 
 
-def test_resolve_demo_password_generates_random_in_dev(
+def test_resolve_demo_password_dev_default_in_dev(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """In *dev only*, a random password is generated and printed once.
+    """W6-chore-seed A: dev env without the env var → fixed dev default.
 
-    dev is a single-developer machine, so printing the plaintext for local
-    convenience is acceptable (CLAUDE.md §5 targets shared/retained log sinks).
+    Replaces the previous "random token per run" behaviour that locked
+    developers out the moment the seed log scrolled off the terminal. The
+    fixed default survives re-seeds and is documented in [[project_demo_test_setup]].
     """
     monkeypatch.setenv("APP_ENV", "dev")
     monkeypatch.delenv("DEMO_SUPER_ADMIN_PASSWORD", raising=False)
-    from scripts.seed_demo import _resolve_demo_password
+    from scripts.seed_demo import _DEV_DEMO_PASSWORD_DEFAULT, _resolve_demo_password
 
     pw = _resolve_demo_password()
-    assert len(pw) >= 24  # token_urlsafe(18) yields 24+ chars
-    captured = capsys.readouterr()
-    payload = json.loads(captured.out.strip())
-    assert payload["event"] == "seed_demo.generated_password"
-    assert payload["password"] == pw
+    assert pw == _DEV_DEMO_PASSWORD_DEFAULT
+    # Length policy: the dev default itself satisfies the 12-char minimum.
+    assert len(pw) >= 12
+    out = capsys.readouterr().out
+    payload = json.loads(out.strip())
+    assert payload["event"] == "seed_demo.dev_default_password_applied"
+    assert payload["app_env"] == "dev"
+    # The plaintext must never appear in the advisory line (masked email +
+    # advisory note only — the password lives only in the hashed user row).
+    assert pw not in out
+    assert "DEMO_SUPER_ADMIN_PASSWORD" in payload["note"]
 
 
-def test_resolve_demo_password_demo_never_logs_plaintext(
+def test_resolve_demo_password_dev_default_in_demo(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """M-2: in the demo env the generated plaintext is NEVER logged.
+    """W6-chore-seed A: demo env without the env var → same fixed dev default.
 
-    The Cloud Run reset Job runs with APP_ENV=demo every night, so any plaintext
-    here would persist in Cloud Logging (CLAUDE.md §5 violation). We still
-    generate a valid password (it is hashed into the user row) but only emit a
-    masked advisory event — the value itself must not appear anywhere in stdout.
+    The demo Cloud Run Job SHOULD provision DEMO_SUPER_ADMIN_PASSWORD via
+    Secret Manager (path 1), but if it doesn't, the fixed default beats the
+    prior "random token per nightly Job" footgun that left the demo deploy
+    in an unloginable state after the seed log rotated.
     """
     monkeypatch.setenv("APP_ENV", "demo")
     monkeypatch.delenv("DEMO_SUPER_ADMIN_PASSWORD", raising=False)
-    from scripts.seed_demo import _resolve_demo_password
+    from scripts.seed_demo import _DEV_DEMO_PASSWORD_DEFAULT, _resolve_demo_password
 
     pw = _resolve_demo_password()
-    assert len(pw) >= 24  # still a strong random password
+    assert pw == _DEV_DEMO_PASSWORD_DEFAULT
     out = capsys.readouterr().out
-    # The plaintext password must NOT appear anywhere in the captured output.
+    # The plaintext must NOT appear anywhere in the captured output
+    # (CLAUDE.md §5 — Cloud Logging never sees the password).
     assert pw not in out
     payload = json.loads(out.strip())
-    assert payload["event"] == "seed_demo.generated_password"
-    assert payload["password"] == "***"  # masked, not the real value
-    # The email local-part is masked (mask_pii keeps the domain, hides the
-    # identity), and an advisory note points at the Secret Manager path.
+    assert payload["event"] == "seed_demo.dev_default_password_applied"
+    assert payload["app_env"] == "demo"
+    # Masked email + advisory pointing at Secret Manager.
     assert payload["email"].startswith("ad***")
     assert "admin@demo.trustedoss.dev" not in payload["email"]
     assert "DEMO_SUPER_ADMIN_PASSWORD" in payload["note"]
