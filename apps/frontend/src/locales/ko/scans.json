@@ -42,8 +42,7 @@
     "step_fetch": "소스 가져오는 중",
     "step_cdxgen": "SBOM 생성 중",
     "step_scancode": "first-party 라이선스 탐지 중",
-    "step_dt_upload": "Dependency-Track에 SBOM 업로드",
-    "step_dt_findings": "취약점 탐지 중",
+    "step_dt_findings": "취약점 데이터베이스 매칭 중",
     "step_finalize": "마무리 중",
     "step_succeeded": "스캔 완료",
     "step_failed": "스캔 실패",
@@ -75,7 +74,7 @@
     }
   },
   "alerts": {
-    "dt_unavailable": "Dependency-Track에 일시적으로 연결할 수 없습니다. 캐시된 취약점 데이터를 표시합니다."
+    "dt_unavailable": "취약점 매칭 서비스에 일시적으로 연결할 수 없습니다. 캐시된 결과를 표시합니다."
   },
   "kind": {
     "legend": "스캔 유형",

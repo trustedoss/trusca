@@ -28,8 +28,8 @@ import { getScan, type ScanStatus } from "@/lib/projectsApi";
  *
  * Subscribes to /ws/scans/{scanId} and renders:
  *   - A bar with the current percent + step label.
- *   - A 7-step pipeline list (bootstrap → fetch → cdxgen → scancode → dt_upload
- *     → dt_findings → finalize) with a tick / spinner / waiting glyph per
+ *   - A 6-step pipeline list (bootstrap → fetch → cdxgen → scancode →
+ *     dt_findings → finalize) with a tick / spinner / waiting glyph per
  *     step.
  *   - "Reconnecting…" inline notice while the hook backs off.
  *   - Success / failure terminal panel + retry/close affordances.
@@ -126,16 +126,18 @@ function ToolLogLine({ msg }: { msg: ScanLogMessage }) {
   );
 }
 
-// P2 #8 hotfix — dt_upload now appears BEFORE scancode in the glyph row. The
-// worker publishes step="dt_upload" right after submitting the background DT
-// thread (PR #181), then publishes step="scancode" once scancode actually
-// starts on the main thread. Putting dt_upload to the left of scancode keeps
-// the "step === s → current; later index → completed" math correct.
+// W6 (post-#43b): the historical ``dt_upload`` stage was a transient label —
+// post-DT-removal the backend still emits it for WS frame compatibility but it
+// is a no-op marker (cdxgen has finished; Trivy has not started yet, see
+// `scan_source.py::_set_stage(..., "dt_upload")`). Surfacing it in the user-
+// facing step row showed an empty checkmark + a misleading "Uploading SBOM to
+// Dependency-Track" label, so it is omitted here. ``dt_findings`` is the slot
+// where ``trivy sbom`` actually runs and stays in the row (label rename ships
+// with W6-#43f).
 const PIPELINE_STEPS: ScanStep[] = [
   "bootstrap",
   "fetch",
   "cdxgen",
-  "dt_upload",
   "scancode",
   "dt_findings",
   "finalize",
