@@ -83,6 +83,10 @@ export function OverviewTab({
   // tab-scoped filters when LEAVING a tab, but ENTERING Components or
   // Vulnerabilities preserves `severity` / `license_category` (see PDP
   // line 196-218), so the deep-link survives unchanged.
+  // Chart deep-links push a history entry (same as the Tabs trigger in
+  // ProjectDetailPage) so the browser back button returns the user to
+  // Overview. The earlier `{ replace: true }` silently overwrote the
+  // Overview entry and back-button left the project entirely.
   function jumpToVulnerabilitiesBySeverity(key: ComponentSeverity) {
     setSearchParams(
       (prev) => {
@@ -91,7 +95,7 @@ export function OverviewTab({
         next.set("severity", key);
         return next;
       },
-      { replace: true },
+      { replace: false },
     );
   }
 
@@ -107,7 +111,7 @@ export function OverviewTab({
         next.set("license_category", key);
         return next;
       },
-      { replace: true },
+      { replace: false },
     );
   }
 
