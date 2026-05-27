@@ -345,7 +345,12 @@ export function ProjectDetailPage() {
         }
         return merged;
       },
-      { replace: true },
+      // Tab navigation pushes a new history entry so browser back returns the
+      // user to the previously selected tab (Overview ↔ Versions etc.). The
+      // other `setSearchParams` call sites in this file (drawer toggles,
+      // filter inputs, pinning a snapshot) keep using `{ replace: true }`
+      // because their churn would otherwise flood the back-stack with noise.
+      { replace: false },
     );
   }
 
