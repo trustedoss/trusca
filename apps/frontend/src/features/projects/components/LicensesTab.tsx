@@ -218,7 +218,18 @@ export function LicensesTab({ projectId, scanId }: LicensesTabProps) {
     <div data-testid="licenses-tab" className="flex flex-1 flex-col">
       {distribution ? (
         <div className="border-b px-4 py-3" data-testid="licenses-distribution">
-          <LicenseDistributionChart distribution={distribution} />
+          <LicenseDistributionChart
+            distribution={distribution}
+            onSegmentClick={(key) => {
+              // Single-select replace — clicking a segment narrows the list
+              // to that category only. Clicking the same key again is a no-op
+              // (the filter chip's clear control is the way out); we never
+              // remove the bucket from a multi-selection here so the cycle
+              // stays predictable.
+              setCategories([key]);
+              setPage(1);
+            }}
+          />
         </div>
       ) : null}
 

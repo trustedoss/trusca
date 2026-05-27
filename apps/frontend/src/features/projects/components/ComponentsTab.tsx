@@ -4,7 +4,13 @@ import { useSearchParams } from "react-router-dom";
 import { Virtuoso } from "react-virtuoso";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   type SortState,
@@ -25,6 +31,9 @@ import { ComponentsToolbar } from "@/features/projects/components/ComponentsTool
 import { DependencyScopeBadge } from "@/features/projects/components/DependencyScopeBadge";
 import { DependencyTypeBadge } from "@/features/projects/components/DependencyTypeBadge";
 import { LicenseCategoryBadge } from "@/features/projects/components/LicenseCategoryBadge";
+import { LicenseDistributionChart } from "@/features/projects/components/LicenseDistributionChart";
+import { SeverityDistributionChart } from "@/features/projects/components/SeverityDistributionChart";
+import { useProjectOverview } from "@/features/projects/api/useProjectOverview";
 import { SeverityBadge } from "@/features/projects/components/SeverityBadge";
 import { ProblemError } from "@/lib/problem";
 import { cn } from "@/lib/utils";
@@ -275,8 +284,68 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
     setOrder(next.order);
   }
 
+  // Distribution data for the two summary cards above the toolbar. Same
+  // overview query the Overview tab + VulnerabilitiesTab use, so TanStack
+  // Query dedupes the request via the shared query key.
+  const overview = useProjectOverview(projectId, scanId);
+  const severityDistribution = overview.data?.severity_distribution;
+  const licenseDistribution = overview.data?.license_distribution;
+
   return (
     <div data-testid="components-tab" className="flex flex-1 flex-col">
+      {/* Two summary cards mirroring the Overview tab. Clicking a segment or
+          legend row narrows the list below to that bucket only (single-select
+          replace). The shared overview query backs them so they always show
+          the *full* project distribution — the row count below is what
+          reflects the active filter. */}
+      {severityDistribution || licenseDistribution ? (
+        <div
+          className="grid items-start gap-4 border-b p-4 md:grid-cols-2"
+          data-testid="components-distribution-cards"
+        >
+          {severityDistribution ? (
+            <Card data-testid="components-severity-card">
+              <CardHeader>
+                <CardTitle className="text-base">
+                  {t("overview.severity_card.title")}
+                </CardTitle>
+                <CardDescription>
+                  {t("overview.severity_card.subtitle")}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <SeverityDistributionChart
+                  distribution={severityDistribution}
+                  onSegmentClick={(key) => {
+                    setSeverity([key]);
+                  }}
+                />
+              </CardContent>
+            </Card>
+          ) : null}
+          {licenseDistribution ? (
+            <Card data-testid="components-license-card">
+              <CardHeader>
+                <CardTitle className="text-base">
+                  {t("overview.license_card.title")}
+                </CardTitle>
+                <CardDescription>
+                  {t("overview.license_card.subtitle")}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <LicenseDistributionChart
+                  distribution={licenseDistribution}
+                  onSegmentClick={(key) => {
+                    setLicenseCategory([key]);
+                  }}
+                />
+              </CardContent>
+            </Card>
+          ) : null}
+        </div>
+      ) : null}
+
       <ComponentsToolbar
         search={search}
         onSearchChange={setSearch}
