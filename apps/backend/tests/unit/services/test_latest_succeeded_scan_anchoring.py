@@ -409,7 +409,7 @@ async def test_all_detail_reads_reflect_succeeded_scan_not_failed_attempt(
     assert sev_by_count == ["critical", "high"]
 
     # --- Vulnerabilities tab: list + counts ---
-    vulns, total_vulns = await list_project_vulnerabilities(
+    vulns, total_vulns, _ = await list_project_vulnerabilities(
         db_session, project_id=project.id, actor=actor
     )
     assert total_vulns == 2
@@ -477,7 +477,7 @@ async def test_reads_stay_empty_when_no_succeeded_scan_exists(
     )
     assert (components, total_components) == ([], 0)
 
-    vulns, total_vulns = await list_project_vulnerabilities(
+    vulns, total_vulns, _ = await list_project_vulnerabilities(
         db_session, project_id=project.id, actor=actor
     )
     assert (vulns, total_vulns) == ([], 0)
