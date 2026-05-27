@@ -111,7 +111,13 @@ export function LicenseDistributionChart({
             })
           : null}
       </div>
-      <ul className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-4">
+      {/* 4 categories on a single line at sm+ (grid-cols-4) overflowed the
+          Overview card on a ~700-800px main pane — the labels visually
+          collided ("0Conditional", "0Allowed"). Keep the legend at 2 columns
+          everywhere so the row breaks into a stable 2×2 instead. Severity's
+          legend stays at 3 cols because it has six buckets and the third
+          column matters; license's four buckets read better stacked 2×2. */}
+      <ul className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
         {ORDER.map((key) => {
           const count = counts[key];
           const dotAndLabel = (
