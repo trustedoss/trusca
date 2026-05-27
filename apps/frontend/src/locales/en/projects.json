@@ -72,5 +72,21 @@
     "error_description_max": "Description must be 500 characters or less",
     "error_git_url_invalid": "Enter a valid repository URL (https://, ssh://, git@host:…, or git+ssh://)",
     "error_default_branch_invalid": "Branch names may use letters, numbers, and . _ / - only"
+  },
+  "summary": {
+    "severity_card": {
+      "title": "Vulnerability severity",
+      "subtitle": "Components grouped by their highest CVE severity across all accessible projects.",
+      "axis_components": "by component"
+    },
+    "license_card": {
+      "title": "License classification",
+      "subtitle": "Components grouped by license category across all accessible projects.",
+      "axis_components": "by component"
+    },
+    "filter_chip": {
+      "label": "Filters:",
+      "severity": "Severity: {{severity}}"
+    }
   }
 }

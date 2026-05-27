@@ -72,5 +72,21 @@
     "error_description_max": "설명은 500자 이하여야 합니다",
     "error_git_url_invalid": "유효한 저장소 URL을 입력하세요 (https://, ssh://, git@host:…, git+ssh://)",
     "error_default_branch_invalid": "브랜치 이름은 영문·숫자와 . _ / - 만 사용할 수 있습니다"
+  },
+  "summary": {
+    "severity_card": {
+      "title": "취약점 심각도",
+      "subtitle": "접근 가능한 모든 프로젝트의 컴포넌트를 최고 CVE 심각도 기준으로 그룹화한 분포입니다.",
+      "axis_components": "컴포넌트 기준"
+    },
+    "license_card": {
+      "title": "라이선스 분류",
+      "subtitle": "접근 가능한 모든 프로젝트의 컴포넌트를 라이선스 카테고리별로 그룹화한 분포입니다.",
+      "axis_components": "컴포넌트 기준"
+    },
+    "filter_chip": {
+      "label": "필터:",
+      "severity": "심각도: {{severity}}"
+    }
   }
 }
