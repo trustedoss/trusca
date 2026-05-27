@@ -153,10 +153,11 @@ async def list_project_vulnerabilities_endpoint(
     ),
     sort: str = Query(
         default="severity",
-        pattern=r"^(severity|cvss|status|discovered_at|epss|reachable)$",
+        pattern=r"^(severity|cvss|status|discovered_at|epss|reachable|component)$",
         description=(
             "Sort key. ``reachable`` ranks reachable findings first (then "
-            "not-analysed, then proven-unreachable), tie-broken by severity desc."
+            "not-analysed, then proven-unreachable), tie-broken by severity desc. "
+            "``component`` sorts by affected package name."
         ),
     ),
     order: str = Query(default="desc", pattern=r"^(asc|desc)$"),
