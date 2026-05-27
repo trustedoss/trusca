@@ -696,11 +696,16 @@ function VulnerabilitiesTableHeader({
   const { t } = useTranslation("project_detail");
   return (
     <div
-      className="flex items-center gap-3 border-b bg-muted/30 px-4 text-xs font-medium uppercase tracking-wide text-muted-foreground"
+      // gap-2 + w-4 checkbox cell — drops the visible CVE column from
+      // `px-4 + w-6 + gap-3 = 52px` to `px-4 + w-4 + gap-2 = 40px`, which
+      // matches the distribution card's title indent (`p-4 + Card p-6 = 40`).
+      // User-test feedback: the table felt mis-aligned with the cards above
+      // because of the wider checkbox slot.
+      className="flex items-center gap-2 border-b bg-muted/30 px-4 text-xs font-medium uppercase tracking-wide text-muted-foreground"
       style={{ height: "32px" }}
       data-testid="vulnerabilities-header"
     >
-      <span className="w-6">
+      <span className="w-4">
         <input
           type="checkbox"
           data-testid="vulnerabilities-select-all"
@@ -809,12 +814,12 @@ function VulnerabilityRow({
       data-row-index={rowIndex}
       data-selected={selected ? "true" : "false"}
       className={cn(
-        "flex w-full items-center gap-3 border-b px-4 text-left text-sm hover:bg-muted/50",
+        "flex w-full items-center gap-2 border-b px-4 text-left text-sm hover:bg-muted/50",
         selected ? "bg-muted/30" : undefined,
       )}
       style={{ height: "var(--table-row)" }}
     >
-      <span className="w-6" data-testid="vulnerability-row-checkbox-cell">
+      <span className="w-4" data-testid="vulnerability-row-checkbox-cell">
         <input
           type="checkbox"
           data-testid="vulnerability-row-checkbox"
