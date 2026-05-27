@@ -37,7 +37,7 @@ from typing import Any
 
 import structlog
 
-from core.config import scan_backend_mode
+from core.config import scan_backend_mode, workspace_root
 from integrations._subprocess_env import scrubbed_env_for_trivy
 
 log = structlog.get_logger("integrations.trivy")
@@ -46,6 +46,17 @@ log = structlog.get_logger("integrations.trivy")
 # transitive resolver), but the first run on a fresh worker pulls Trivy's
 # vulnerability DB which can take several minutes. Cap at 30 minutes.
 _DEFAULT_TIMEOUT_SECONDS = 30 * 60
+
+# Defense-in-depth size cap on the on-disk Trivy report (security-reviewer L2
+# on PR #196). A normal Trivy JSON for even a sprawling monorepo with thousands
+# of components sits in the low tens of MB; 256 MiB is comfortably above any
+# realistic real-world output. A report past this cap is almost certainly a
+# corrupt write, a disk-fill DoS, or a fault-injected payload and must not be
+# loaded into the worker process (where it could OOM the box or be deserialised
+# into adversarial nested structures). The adapter loads JSON eagerly via
+# ``json.load`` so we cannot stream-validate; bounding the file size is the
+# only safe gate.
+_MAX_REPORT_SIZE_BYTES = 256 * 1024 * 1024  # 256 MiB
 
 
 # ---------------------------------------------------------------------------
@@ -62,11 +73,65 @@ class TrivyNotInstalled(TrivyError):
 
 
 class TrivyFailed(TrivyError):
-    """Trivy exited with a non-zero status."""
+    """Trivy exited with a non-zero status.
+
+    ``safe_detail`` is a path-redacted message safe to surface in an RFC 7807
+    ``problem+json`` ``detail`` field exposed to API callers (security-reviewer
+    L4 on PR #196). The main message keeps the absolute path / full stderr
+    slice so ops engineers still get the diagnostic value in worker logs.
+    Callers that build an HTTP response from a caught ``TrivyFailed`` should
+    surface ``safe_detail`` to clients and log ``str(exc)`` for diagnostics.
+    """
+
+    def __init__(self, message: str, *, safe_detail: str | None = None) -> None:
+        super().__init__(message)
+        self.safe_detail = safe_detail or "Vulnerability scan failed"
 
 
 class TrivyTimeout(TrivyError):
-    """Trivy ran longer than the per-stage timeout."""
+    """Trivy ran longer than the per-stage timeout.
+
+    Like :class:`TrivyFailed`, carries a ``safe_detail`` attribute the caller
+    can surface in an RFC 7807 response without leaking absolute workspace
+    paths or full image references.
+    """
+
+    def __init__(self, message: str, *, safe_detail: str | None = None) -> None:
+        super().__init__(message)
+        self.safe_detail = safe_detail or "Vulnerability scan timed out"
+
+
+# ---------------------------------------------------------------------------
+# Internal: workspace boundary guard (security-reviewer L1 on PR #196)
+# ---------------------------------------------------------------------------
+
+
+def _ensure_inside_workspace(p: Path, *, label: str) -> Path:
+    """Resolve ``p`` and reject if it escapes :func:`workspace_root`.
+
+    Defense-in-depth: the only callers today are Celery tasks that build paths
+    from ``workspace_root() / <scan_uuid>``, so the inputs are trusted. But if
+    a future API caller or admin tooling passes a path verbatim from external
+    input (e.g. an operator-supplied output directory in an upcoming "rerun
+    against this SBOM" admin endpoint), parent-relative traversal (``..``) or
+    a symlink could land Trivy writes outside the workspace, where they
+    bypass workspace disk quotas, audit retention, and the cleanup path in
+    ``scan_container.py`` that ``shutil.rmtree(workspace, ignore_errors=True)``.
+
+    The check uses ``Path.resolve()`` (which follows symlinks) on both sides
+    so a symlink pointing outside the workspace is rejected, not just a
+    literal ``..`` traversal.
+
+    ``workspace_root()`` is read at call time per CLAUDE.md core rule #11, so
+    tests / operators can retune ``WORKSPACE_HOST_PATH`` without a rebuild.
+    """
+    resolved = p.resolve()
+    root = Path(workspace_root()).resolve()
+    if not resolved.is_relative_to(root):
+        raise ValueError(
+            f"{label} {resolved} escapes workspace root {root}",
+        )
+    return resolved
 
 
 @dataclass(frozen=True)
@@ -94,7 +159,19 @@ def run_trivy_image(
 
     Returns a parsed Trivy JSON report. The caller is responsible for
     converting Trivy's findings into ``VulnerabilityFinding`` rows.
+
+    Raises:
+        ValueError: ``output_dir`` resolves outside ``WORKSPACE_HOST_PATH``.
+            See :func:`_ensure_inside_workspace` for the threat model.
+        TrivyNotInstalled: ``trivy`` binary not on ``$PATH`` in real mode.
+        TrivyFailed: Trivy exited non-zero, or the on-disk report exceeds
+            :data:`_MAX_REPORT_SIZE_BYTES`. The ``safe_detail`` attribute
+            carries a path-redacted message safe for an RFC 7807 ``detail``
+            field; the main message keeps the absolute path for ops logs.
+        TrivyTimeout: Trivy exceeded ``timeout_seconds``. Same
+            ``safe_detail`` contract as :class:`TrivyFailed`.
     """
+    output_dir = _ensure_inside_workspace(output_dir, label="output_dir")
     output_dir.mkdir(parents=True, exist_ok=True)
     report_path = output_dir / "trivy.json"
     mode = (backend or scan_backend_mode()).lower()
@@ -134,8 +211,11 @@ def run_trivy_image(
             env=scrubbed_env_for_trivy(),
         )
     except subprocess.TimeoutExpired as exc:
+        # image_ref is caller-supplied and visible in the API response that
+        # spawned the scan, so it's safe to echo back to the client.
         raise TrivyTimeout(
             f"trivy image exceeded {timeout_seconds}s scanning {image_ref}",
+            safe_detail=f"Container image scan timed out: {image_ref}",
         ) from exc
 
     if completed.returncode != 0:
@@ -148,6 +228,7 @@ def run_trivy_image(
         raise TrivyFailed(
             f"trivy exited {completed.returncode}: "
             f"{completed.stderr.decode('utf-8', errors='replace')[:1000]}",
+            safe_detail=f"Container image scan failed: {image_ref}",
         )
 
     report = _load_json(report_path)
@@ -209,14 +290,24 @@ def run_trivy_sbom(
         A ``TrivyResult`` whose ``report`` field is the parsed JSON dict.
 
     Raises:
+        ValueError: ``sbom_path`` or ``output_dir`` resolves outside
+            ``WORKSPACE_HOST_PATH`` (defense-in-depth path-traversal guard;
+            see :func:`_ensure_inside_workspace`).
         TrivyNotInstalled: ``trivy`` binary not on ``$PATH`` in real mode.
-        TrivyFailed: Trivy exited with a non-zero status. The stderr is
+        TrivyFailed: Trivy exited with a non-zero status, or the on-disk
+            report exceeds :data:`_MAX_REPORT_SIZE_BYTES`. The stderr is
             captured (first 1000 chars) into the exception message and the
-            full stderr is logged at ERROR.
-        TrivyTimeout: Trivy exceeded ``timeout_seconds``.
+            full stderr is logged at ERROR. The ``safe_detail`` attribute
+            carries a path-redacted message safe for an RFC 7807 ``detail``
+            field; the main message keeps the absolute path for ops logs.
+        TrivyTimeout: Trivy exceeded ``timeout_seconds``. Same
+            ``safe_detail`` contract as :class:`TrivyFailed`.
         FileNotFoundError: The SBOM file does not exist (caught early so
             we do not waste a Trivy process on a missing input).
     """
+    output_dir = _ensure_inside_workspace(output_dir, label="output_dir")
+    sbom_path = _ensure_inside_workspace(sbom_path, label="sbom_path")
+
     if not sbom_path.exists():
         raise FileNotFoundError(
             f"SBOM file not found: {sbom_path}. cdxgen must run before "
@@ -265,8 +356,11 @@ def run_trivy_sbom(
             env=scrubbed_env_for_trivy(),
         )
     except subprocess.TimeoutExpired as exc:
+        # ``sbom_path.name`` (basename only) — never expose the absolute
+        # workspace path in a message the API may surface to clients.
         raise TrivyTimeout(
             f"trivy sbom exceeded {timeout_seconds}s scanning {sbom_path}",
+            safe_detail=f"Vulnerability scan timed out for SBOM {sbom_path.name}",
         ) from exc
 
     if completed.returncode != 0:
@@ -279,6 +373,7 @@ def run_trivy_sbom(
         raise TrivyFailed(
             f"trivy sbom exited {completed.returncode}: "
             f"{completed.stderr.decode('utf-8', errors='replace')[:1000]}",
+            safe_detail=f"Vulnerability scan failed for SBOM {sbom_path.name}",
         )
 
     report = _load_json(report_path)
@@ -293,6 +388,32 @@ def run_trivy_sbom(
 
 
 def _load_json(path: Path) -> dict[str, Any]:
+    """Load a Trivy JSON report from disk.
+
+    Enforces a 256 MiB size cap on the file before reading it into memory
+    (security-reviewer L2 on PR #196). Real Trivy output for even the largest
+    realistic SBOM sits in the low tens of MB; anything past the cap is almost
+    certainly a corrupt write, a disk-fill DoS, or a fault-injected payload.
+    Loading it eagerly via :func:`json.load` could OOM the worker or
+    deserialise into adversarial nested structures, so we refuse instead.
+
+    Raises:
+        TrivyFailed: file size exceeds :data:`_MAX_REPORT_SIZE_BYTES`.
+    """
+    size = path.stat().st_size
+    if size > _MAX_REPORT_SIZE_BYTES:
+        log.error(
+            "trivy_report_oversize",
+            path=str(path),
+            size=size,
+            cap=_MAX_REPORT_SIZE_BYTES,
+        )
+        raise TrivyFailed(
+            f"trivy output too large: {size} bytes > "
+            f"{_MAX_REPORT_SIZE_BYTES} cap (corrupt or fault-injected at "
+            f"{path})",
+            safe_detail="Vulnerability scan produced an oversized report",
+        )
     with path.open("r", encoding="utf-8") as fh:
         data: dict[str, Any] = json.load(fh)
     return data
