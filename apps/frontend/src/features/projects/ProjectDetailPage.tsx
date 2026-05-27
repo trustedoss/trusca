@@ -586,7 +586,12 @@ export function ProjectDetailPage() {
       >
         <SheetContent
           side="right"
-          className="flex flex-col gap-4"
+          // Default Sheet width (sm:max-w-md ≈ 448px) crammed the tool log
+          // panel — long ScanCode warnings / Trivy report lines wrapped after
+          // ~30 chars. The progress drawer hosts per-step + tool log panels
+          // that benefit from monospace lines breathing, so widen this sheet
+          // specifically (other drawers stay at the default).
+          className="flex flex-col gap-4 sm:max-w-3xl"
           data-testid="scan-progress-drawer"
         >
           <SheetHeader>
