@@ -8,14 +8,15 @@ anonymous = 401).
 Sub-routers:
   - ``users``  — ``/v1/admin/users/*``   (PR #13)
   - ``teams``  — ``/v1/admin/teams/*``   (PR #13)
-  - ``dt``     — ``/v1/admin/dt/*``      (PR #14: status / orphans / health-check)
   - ``scans``  — ``/v1/admin/scans/*``   (PR #14: cross-team queue + cancel)
-  - ``disk``   — ``/v1/admin/disk``      (PR #14: workspace + DT + DB telemetry)
+  - ``disk``   — ``/v1/admin/disk``      (PR #14: workspace + DB telemetry)
   - ``audit``  — ``/v1/admin/audit/*``   (PR #14: search + CSV export)
   - ``health`` — ``/v1/admin/health``    (PR #14: aggregated component status)
   - ``backup`` — ``/v1/admin/backup/*``  (chore PR #19: list/trigger/download/restore/delete)
 
-Future PRs (#15+) will add the component-approval workflow sub-router.
+W6-#43a (ADR-0001): the ``dt`` sub-router was removed when DT was replaced
+by Trivy (W6-#41); previously-issued DT audit-log rows are preserved as
+historical fact, but the live endpoints are gone.
 """
 
 from __future__ import annotations
@@ -24,7 +25,7 @@ from fastapi import APIRouter, Depends
 
 from core.security import require_super_admin_or_404
 
-from . import audit, backup, disk, dt, health, scans, teams, users
+from . import audit, backup, disk, health, scans, teams, users
 
 # Apply the super-admin gate at the parent-router level so individual route
 # signatures stay clean — each route still gets the resolved CurrentUser
@@ -38,7 +39,6 @@ router = APIRouter(
 
 router.include_router(users.router)
 router.include_router(teams.router)
-router.include_router(dt.router)
 router.include_router(scans.router)
 router.include_router(disk.router)
 router.include_router(audit.router)

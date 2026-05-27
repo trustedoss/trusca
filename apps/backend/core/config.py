@@ -431,39 +431,13 @@ def demo_read_only() -> bool:
 # ---------------------------------------------------------------------------
 
 
-def dt_url() -> str:
-    """Dependency-Track REST base URL (no trailing slash)."""
-    return os.getenv("DT_URL", "http://dtrack-api:8080").rstrip("/")
-
-
-def dt_api_key() -> str:
-    """DT API key. Empty string when unset (mock backend / local smoke)."""
-    return os.getenv("DT_API_KEY", "")
-
-
-def dt_request_timeout_seconds() -> float:
-    return float(os.getenv("DT_REQUEST_TIMEOUT_SECONDS", "30"))
-
-
-def dt_breaker_failure_threshold() -> int:
-    """Consecutive failures that flip the breaker CLOSED → OPEN."""
-    return int(os.getenv("DT_BREAKER_FAILURE_THRESHOLD", "5"))
-
-
-def dt_breaker_cooldown_seconds() -> int:
-    """How long the breaker stays OPEN before allowing a HALF_OPEN probe."""
-    return int(os.getenv("DT_BREAKER_COOLDOWN_SECONDS", "30"))
-
-
-def dt_health_check_endpoint() -> str:
-    """Path appended to dt_url() for the health heartbeat."""
-    return os.getenv("DT_HEALTH_ENDPOINT", "/api/version")
-
-
-def dt_auto_restart_enabled() -> bool:
-    """If true, the health monitor will attempt `docker restart dtrack-api`."""
-    raw = os.getenv("DT_AUTO_RESTART", "false").lower()
-    return raw in ("1", "true", "yes", "on")
+# W6-#43a (ADR-0001) — DT integration removed. The eight ``dt_*`` accessors
+# that used to live here (dt_url / dt_api_key / dt_request_timeout_seconds /
+# dt_breaker_{failure_threshold,cooldown_seconds} / dt_health_check_endpoint
+# / dt_auto_restart_enabled) are deleted. CVE matching is now Trivy-only via
+# ``run_trivy_sbom`` (W6-#41); see ``docs/decisions/0001-replace-dt-with-
+# trivy.md`` and the W6-#42 vulnerability rematch beat for the replacement
+# data path.
 
 
 def scan_backend_mode() -> str:
