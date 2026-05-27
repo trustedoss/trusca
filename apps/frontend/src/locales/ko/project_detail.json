@@ -376,7 +376,7 @@
     },
     "toolbar": {
       "search_label": "검색",
-      "search_placeholder": "CVE ID 또는 제목으로 검색",
+      "search_placeholder": "CVE ID, 요약, 컴포넌트로 검색",
       "status_label": "상태",
       "reachable_label": "도달 가능성",
       "reachable_any": "전체",

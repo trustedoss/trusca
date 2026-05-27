@@ -599,7 +599,7 @@ export function VulnerabilitiesTab({
         // Same pattern ComponentsTab uses: pin the inner width and let the
         // outer wrapper scroll horizontally instead of column-hiding.
         <div className="flex flex-1 flex-col overflow-x-auto">
-          <div className="min-w-[1100px] flex flex-1 flex-col">
+          <div className="min-w-[920px] flex flex-1 flex-col">
             <VulnerabilitiesTableHeader
               allSelected={
                 items.length > 0 &&
@@ -715,13 +715,20 @@ function VulnerabilitiesTableHeader({
           disabled={disabled}
         />
       </span>
-      {/* User-test follow-up (2026-05-27) — column order rewired so the
-          impacted package sits right next to the CVE id, dropping the
-          dedicated License column (the drawer keeps it). Final order:
-          CVE / Component / Severity / CVSS / EPSS / Reachability /
-          Summary / Status. */}
+      {/* User-test follow-up — column order: CVE / Component / Severity /
+          CVSS / EPSS / Reachability / Status. The Summary column was
+          dropped from the row (drawer carries the full summary); the
+          row's last column is now Status. Component is sortable. */}
       <span className="w-44">{t("vulnerabilities.column.cve_id")}</span>
-      <span className="w-40">{t("vulnerabilities.column.component")}</span>
+      <span className="w-40">
+        <SortableColumnHeader
+          column="component"
+          label={t("vulnerabilities.column.component")}
+          currentSort={currentSort}
+          onSort={onSortChange}
+          testId="vulnerabilities-sort-header-component"
+        />
+      </span>
       <span className="w-28">
         <SortableColumnHeader
           column="severity"
@@ -764,10 +771,7 @@ function VulnerabilitiesTableHeader({
           testId="vulnerabilities-sort-header-reachable"
         />
       </span>
-      <span className="flex-1 min-w-[200px]">
-        {t("vulnerabilities.column.summary")}
-      </span>
-      <span className="w-32">
+      <span className="flex-1 min-w-[120px]">
         <SortableColumnHeader
           column="status"
           label={t("vulnerabilities.column.status")}
@@ -878,13 +882,7 @@ function VulnerabilityRow({
           source={vulnerability.reachability_source}
         />
       </span>
-      <span
-        className="flex-1 min-w-[200px] truncate"
-        title={vulnerability.summary ?? ""}
-      >
-        {vulnerability.summary ?? "—"}
-      </span>
-      <span className="flex w-32 items-center gap-1">
+      <span className="flex flex-1 min-w-[120px] items-center gap-1">
         <VulnerabilityStatusBadge status={vulnerability.status} />
         {vulnerability.analysis_source === "vex_import" ? (
           <VexProvenanceMarker />
