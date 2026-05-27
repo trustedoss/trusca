@@ -56,7 +56,6 @@ import argparse
 import asyncio
 import json
 import os
-import secrets
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -80,30 +79,43 @@ _ALLOWED_ENVS = frozenset({"dev", "demo"})
 _DEMO_ORG_SLUG = "demo-org"
 _DEMO_SUPER_ADMIN_EMAIL = "admin@demo.trustedoss.dev"
 
+# W6-chore-seed (A) — fixed dev default for the demo super-admin password.
+# Mirrors the ``DemoTest2026!`` constant used across the in-app demo test
+# accounts ([[project_demo_test_setup]]) so a developer running ``seed_demo``
+# repeatedly never needs to recover a password from a scrolled-away log line.
+# Production / Cloud Run demo deploys ALWAYS pin this via the
+# ``DEMO_SUPER_ADMIN_PASSWORD`` env var (Secret Manager) — this default only
+# applies when ``APP_ENV`` is dev or demo AND the env var is unset. The
+# 12-char length satisfies the existing minimum policy check.
+_DEV_DEMO_PASSWORD_DEFAULT = "DemoTest2026!"  # noqa: S105 — dev fixture credential
+
 
 def _resolve_demo_password() -> str:
-    """Resolve the demo super-admin password at runtime (Chore O / M2).
+    """Resolve the demo super-admin password at runtime (W6-chore-seed A).
 
     Resolution order:
       1. ``DEMO_SUPER_ADMIN_PASSWORD`` env var if set (must be ≥ 12 chars).
          This is the **recommended** path for the demo deploy: provision the
          value in Secret Manager (terraform ``demo_super_admin_password``) so
-         the daily reset Job never has to generate or surface a credential.
-      2. Random ``secrets.token_urlsafe(18)`` if ``APP_ENV`` is ``dev`` or
-         ``demo``.
-           * ``dev`` — the plaintext is printed once to stdout for local
-             convenience (a developer's own machine, not a shared log sink).
-           * ``demo`` (and any other allowed-but-not-dev env) — the plaintext
-             is **never** logged (CLAUDE.md §5: passwords must not appear in
-             logs in plaintext). The Cloud Run Job log captured the value on
-             every nightly run, persisting it in Cloud Logging — a standing
-             credential leak. Instead we emit a masked advisory event pointing
-             the operator at the secret-backed path. The generated value is
-             only written to the super-admin user row (hashed).
-      3. ``RuntimeError`` for any other ``APP_ENV`` (production guard).
+         the daily reset Job never has to fall back to the dev default.
+      2. ``APP_ENV`` ∈ {``dev``, ``demo``} **without** the env var set →
+         the fixed dev default :data:`_DEV_DEMO_PASSWORD_DEFAULT`. The dev
+         default is documented across the demo seeding flow so it survives a
+         re-seed cycle (the prior random-token-per-run behaviour locked
+         developers out the moment the seed log scrolled off the terminal).
+      3. ``RuntimeError`` for any other ``APP_ENV`` (production guard
+         unchanged — production never uses this path).
 
-    Replaces the previously-hardcoded ``DemoAdmin2026!`` constant. Called
-    at runtime per CLAUDE.md core rule #11 (no module-level env caching).
+    The fixed default is intentionally stable across runs: an operator running
+    ``seed_demo`` repeatedly during local development or after a ``dev-reset``
+    must be able to log back in without hunting through stdout. Production
+    deploys take path (1) via Secret Manager; the default is *never* what
+    runs in ``demo`` / ``prod`` Cloud Run Jobs (those provision the env var
+    via terraform).
+
+    Called at runtime per CLAUDE.md core rule #11 (no module-level env
+    caching). The 12-char minimum mirrors the prior policy and the
+    ``create_super_admin`` bootstrap guard.
     """
     explicit = os.getenv("DEMO_SUPER_ADMIN_PASSWORD")
     if explicit:
@@ -116,47 +128,31 @@ def _resolve_demo_password() -> str:
     if app_env not in _ALLOWED_ENVS:
         raise RuntimeError(
             "DEMO_SUPER_ADMIN_PASSWORD is required when APP_ENV is "
-            f"{app_env!r}; refusing to generate a random demo password "
+            f"{app_env!r}; refusing to fall back to the dev default "
             "outside dev/demo."
         )
-    pw = secrets.token_urlsafe(18)
-    if app_env == "dev":
-        # Local dev only — print once to stdout for the developer's convenience.
-        # This is a single-developer machine, not a shared/retained log sink.
-        print(
-            json.dumps(
-                {
-                    "event": "seed_demo.generated_password",
-                    "email": _DEMO_SUPER_ADMIN_EMAIL,
-                    "password": pw,
-                }
-            ),
-            flush=True,
-        )
-    else:
-        # demo (or any other allowed non-dev env): NEVER log the plaintext.
-        # Emit a masked advisory so the operator knows a credential was minted
-        # and how to make it stable (Secret Manager) instead of relying on a
-        # value that used to leak into Cloud Logging on every reset.
-        from core.logging import mask_pii  # local import — see module header
+    # Emit a single advisory line so the operator (a) knows which credential
+    # is in effect after the seed run and (b) is steered to the env-var path
+    # for any real (Cloud Run) deploy. Masked email per CLAUDE.md §5.
+    from core.logging import mask_pii  # local import — keeps tests dep-light
 
-        print(
-            json.dumps(
-                {
-                    "event": "seed_demo.generated_password",
-                    "email": mask_pii(_DEMO_SUPER_ADMIN_EMAIL),
-                    "password": "***",
-                    "note": (
-                        "A random demo super-admin password was generated and "
-                        "is NOT logged. Set DEMO_SUPER_ADMIN_PASSWORD (via "
-                        "Secret Manager / terraform demo_super_admin_password) "
-                        "to pin a known, stable credential."
-                    ),
-                }
-            ),
-            flush=True,
-        )
-    return pw
+    print(
+        json.dumps(
+            {
+                "event": "seed_demo.dev_default_password_applied",
+                "email": mask_pii(_DEMO_SUPER_ADMIN_EMAIL),
+                "app_env": app_env,
+                "note": (
+                    "The dev default demo password is in effect. Set "
+                    "DEMO_SUPER_ADMIN_PASSWORD (via Secret Manager / "
+                    "terraform demo_super_admin_password) to pin a "
+                    "production-grade credential."
+                ),
+            }
+        ),
+        flush=True,
+    )
+    return _DEV_DEMO_PASSWORD_DEFAULT
 
 # Realistic fake CVE catalog. Severity buckets match VULN_SEVERITY_VALUES.
 # external_id format: CVE-YYYY-NNNNN. We use the 90000 range so the values
