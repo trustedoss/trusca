@@ -18,6 +18,7 @@ import type {
   ScanSummary,
 } from "@/features/projects/api/projectDetailApi";
 import { useProjectOverview } from "@/features/projects/api/useProjectOverview";
+import { AxisPill } from "@/features/projects/components/AxisPill";
 import { GateResultCard } from "@/features/projects/components/GateResultCard";
 import { LicenseDistributionChart } from "@/features/projects/components/LicenseDistributionChart";
 import { RecentScansTable } from "@/features/projects/components/RecentScansTable";
@@ -329,8 +330,9 @@ export function OverviewTab({
       {/* Row 2 left — Severity distribution. */}
       <Card data-testid="overview-severity-card">
         <CardHeader>
-          <CardTitle className="text-base">
-            {t("overview.severity_card.title")}
+          <CardTitle className="flex items-baseline gap-2 text-base">
+            <span>{t("overview.severity_card.title")}</span>
+            <AxisPill>{t("overview.severity_card.axis_components")}</AxisPill>
           </CardTitle>
           <CardDescription>
             {t("overview.severity_card.subtitle")}
@@ -348,8 +350,9 @@ export function OverviewTab({
 
       <Card data-testid="overview-license-card">
         <CardHeader>
-          <CardTitle className="text-base">
-            {t("overview.license_card.title")}
+          <CardTitle className="flex items-baseline gap-2 text-base">
+            <span>{t("overview.license_card.title")}</span>
+            <AxisPill>{t("overview.license_card.axis_components")}</AxisPill>
           </CardTitle>
           <CardDescription>
             {t("overview.license_card.subtitle")}

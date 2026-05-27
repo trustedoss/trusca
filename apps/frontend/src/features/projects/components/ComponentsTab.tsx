@@ -29,6 +29,7 @@ import { ActiveFilterChips } from "@/features/projects/components/ActiveFilterCh
 import { ComponentDrawer } from "@/features/projects/components/ComponentDrawer";
 import { ComponentsToolbar } from "@/features/projects/components/ComponentsToolbar";
 import { DependencyScopeBadge } from "@/features/projects/components/DependencyScopeBadge";
+import { AxisPill } from "@/features/projects/components/AxisPill";
 import { DependencyTypeBadge } from "@/features/projects/components/DependencyTypeBadge";
 import { LicenseCategoryBadge } from "@/features/projects/components/LicenseCategoryBadge";
 import { LicenseDistributionChart } from "@/features/projects/components/LicenseDistributionChart";
@@ -306,8 +307,11 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
           {severityDistribution ? (
             <Card data-testid="components-severity-card">
               <CardHeader>
-                <CardTitle className="text-base">
-                  {t("overview.severity_card.title")}
+                <CardTitle className="flex items-baseline gap-2 text-base">
+                  <span>{t("overview.severity_card.title")}</span>
+                  <AxisPill>
+                    {t("overview.severity_card.axis_components")}
+                  </AxisPill>
                 </CardTitle>
                 <CardDescription>
                   {t("overview.severity_card.subtitle")}
@@ -326,8 +330,11 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
           {licenseDistribution ? (
             <Card data-testid="components-license-card">
               <CardHeader>
-                <CardTitle className="text-base">
-                  {t("overview.license_card.title")}
+                <CardTitle className="flex items-baseline gap-2 text-base">
+                  <span>{t("overview.license_card.title")}</span>
+                  <AxisPill>
+                    {t("overview.license_card.axis_components")}
+                  </AxisPill>
                 </CardTitle>
                 <CardDescription>
                   {t("overview.license_card.subtitle")}

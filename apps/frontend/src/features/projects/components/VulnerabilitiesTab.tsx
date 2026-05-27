@@ -4,7 +4,13 @@ import { useSearchParams } from "react-router-dom";
 import { Virtuoso } from "react-virtuoso";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   type SortState,
@@ -25,6 +31,7 @@ import type {
 import { BULK_TRANSITION_MAX } from "@/features/projects/api/vulnerabilitiesApi";
 import { ActiveFilterChips } from "@/features/projects/components/ActiveFilterChips";
 import { LicenseColumnCell } from "@/features/projects/components/LicenseColumnCell";
+import { AxisPill } from "@/features/projects/components/AxisPill";
 import { ReachabilityBadge } from "@/features/projects/components/ReachabilityBadge";
 import { SeverityBadge } from "@/features/projects/components/SeverityBadge";
 import { SeverityDistributionChart } from "@/features/projects/components/SeverityDistributionChart";
@@ -455,9 +462,15 @@ export function VulnerabilitiesTab({
         >
           <Card data-testid="vulnerabilities-severity-card">
             <CardHeader>
-              <CardTitle className="text-base">
-                {t("overview.severity_card.title")}
+              <CardTitle className="flex items-baseline gap-2 text-base">
+                <span>{t("overview.severity_card.title")}</span>
+                <AxisPill>
+                  {t("overview.severity_card.axis_findings")}
+                </AxisPill>
               </CardTitle>
+              <CardDescription>
+                {t("overview.severity_card.subtitle_findings")}
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <SeverityDistributionChart

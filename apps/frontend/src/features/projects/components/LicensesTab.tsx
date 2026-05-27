@@ -15,6 +15,7 @@ import type {
 } from "@/features/projects/api/licensesApi";
 import { useLicenses } from "@/features/projects/api/useLicenses";
 import { LicenseCategoryBadge } from "@/features/projects/components/LicenseCategoryBadge";
+import { AxisPill } from "@/features/projects/components/AxisPill";
 import { LicenseDistributionChart } from "@/features/projects/components/LicenseDistributionChart";
 import { LicenseDrawer } from "@/features/projects/components/LicenseDrawer";
 import { LicenseKindBadge } from "@/features/projects/components/LicenseKindBadge";
@@ -218,6 +219,9 @@ export function LicensesTab({ projectId, scanId }: LicensesTabProps) {
     <div data-testid="licenses-tab" className="flex flex-1 flex-col">
       {distribution ? (
         <div className="border-b px-4 py-3" data-testid="licenses-distribution">
+          <div className="mb-2 flex items-center gap-2 text-xs">
+            <AxisPill>{t("overview.license_card.axis_components")}</AxisPill>
+          </div>
           <LicenseDistributionChart
             distribution={distribution}
             onSegmentClick={(key) => {

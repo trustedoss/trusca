@@ -95,14 +95,18 @@
     },
     "severity_card": {
       "title": "Vulnerability severity",
-      "subtitle": "Components grouped by their highest CVE severity."
+      "subtitle": "Components grouped by their highest CVE severity.",
+      "subtitle_findings": "Findings grouped by their own severity.",
+      "axis_components": "by component",
+      "axis_findings": "by finding"
     },
     "severity_chart": {
       "aria": "Severity distribution across {{total}} components"
     },
     "license_card": {
       "title": "License classification",
-      "subtitle": "Components grouped by license category."
+      "subtitle": "Components grouped by license category.",
+      "axis_components": "by component"
     },
     "license_chart": {
       "aria": "License distribution across {{total}} components"
