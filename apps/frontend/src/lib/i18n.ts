@@ -6,7 +6,6 @@ import enAdmin from "@/locales/en/admin.json";
 import enApprovals from "@/locales/en/approvals.json";
 import enAuth from "@/locales/en/auth.json";
 import enCommon from "@/locales/en/common.json";
-import enDashboard from "@/locales/en/dashboard.json";
 import enIntegrations from "@/locales/en/integrations.json";
 import enNotifications from "@/locales/en/notifications.json";
 import enPolicies from "@/locales/en/policies.json";
@@ -19,7 +18,6 @@ import koAdmin from "@/locales/ko/admin.json";
 import koApprovals from "@/locales/ko/approvals.json";
 import koAuth from "@/locales/ko/auth.json";
 import koCommon from "@/locales/ko/common.json";
-import koDashboard from "@/locales/ko/dashboard.json";
 import koIntegrations from "@/locales/ko/integrations.json";
 import koNotifications from "@/locales/ko/notifications.json";
 import koPolicies from "@/locales/ko/policies.json";
@@ -40,7 +38,6 @@ void i18n
       en: {
         common: enCommon,
         auth: enAuth,
-        dashboard: enDashboard,
         projects: enProjects,
         project_detail: enProjectDetail,
         scans: enScans,
@@ -55,7 +52,6 @@ void i18n
       ko: {
         common: koCommon,
         auth: koAuth,
-        dashboard: koDashboard,
         projects: koProjects,
         project_detail: koProjectDetail,
         scans: koScans,
@@ -74,7 +70,6 @@ void i18n
     ns: [
       "common",
       "auth",
-      "dashboard",
       "projects",
       "project_detail",
       "scans",

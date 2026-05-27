@@ -2,7 +2,6 @@ import {
   ClipboardCheck,
   FolderOpen,
   KeyRound,
-  LayoutDashboard,
   LogOut,
   Scale,
   ScanLine,
@@ -35,13 +34,6 @@ interface NavItem {
 }
 
 const MAIN_NAV: NavItem[] = [
-  {
-    to: "/",
-    labelKey: "nav.dashboard",
-    icon: LayoutDashboard,
-    testId: "nav-dashboard",
-    end: true,
-  },
   {
     to: "/projects",
     labelKey: "nav.projects",
