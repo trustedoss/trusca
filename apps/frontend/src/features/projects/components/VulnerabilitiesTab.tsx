@@ -19,7 +19,6 @@ import {
 import type { LicenseCategoryName } from "@/features/projects/api/projectDetailApi";
 import { useProjectOverview } from "@/features/projects/api/useProjectOverview";
 import { useVulnerabilities } from "@/features/projects/api/useVulnerabilities";
-import { useVulnReport } from "@/features/projects/api/useVulnReport";
 import type {
   ReachabilityFilter,
   SortOrder,
@@ -30,7 +29,6 @@ import type {
 } from "@/features/projects/api/vulnerabilitiesApi";
 import { BULK_TRANSITION_MAX } from "@/features/projects/api/vulnerabilitiesApi";
 import { ActiveFilterChips } from "@/features/projects/components/ActiveFilterChips";
-import { LicenseColumnCell } from "@/features/projects/components/LicenseColumnCell";
 import { AxisPill } from "@/features/projects/components/AxisPill";
 import { ReachabilityBadge } from "@/features/projects/components/ReachabilityBadge";
 import { SeverityBadge } from "@/features/projects/components/SeverityBadge";
@@ -365,7 +363,6 @@ export function VulnerabilitiesTab({
   );
 
   const vulnerabilities = useVulnerabilities(projectId, filters);
-  const vulnReport = useVulnReport(projectId, projectName);
 
   // W2 #33b — drop selection when the row set shifts. Refs to the filter
   // tuple change atomically with the query key, so this fires exactly when
@@ -509,16 +506,6 @@ export function VulnerabilitiesTab({
           setReachable(next);
           setPage(1);
         }}
-        onDownloadPdf={() => {
-          // The rejection is captured by useVulnReport's internal error state
-          // and rendered inline in the toolbar — swallow it here so it doesn't
-          // bubble up as an unhandled promise rejection.
-          vulnReport.download().catch(() => {
-            /* error already surfaced via vulnReport.error */
-          });
-        }}
-        isPdfDownloading={vulnReport.isLoading}
-        pdfError={vulnReport.error}
         vexSuppressedOnly={vexSuppressedOnly}
         onVexSuppressedOnlyChange={(next) => {
           setVexSuppressedOnly(next);
@@ -606,58 +593,65 @@ export function VulnerabilitiesTab({
       {!vulnerabilities.isLoading &&
       !vulnerabilities.isError &&
       items.length > 0 ? (
-        <>
-          <VulnerabilitiesTableHeader
-            allSelected={
-              items.length > 0 &&
-              items.every((it) => selectedIds.has(it.id))
-            }
-            someSelected={
-              items.some((it) => selectedIds.has(it.id)) &&
-              !items.every((it) => selectedIds.has(it.id))
-            }
-            disabled={readOnly}
-            currentSort={currentSort}
-            onSortChange={handleSortChange}
-            onToggleAll={(checked) => {
-              if (checked) {
-                // Select-all is single-page (D-bulk). Truncate to the cap if
-                // the page is larger than what one bulk call can carry.
-                const pageIds = items
-                  .slice(0, BULK_TRANSITION_MAX)
-                  .map((it) => it.id);
-                setSelectedIds(new Set(pageIds));
-              } else {
-                clearSelection();
+        // User-test follow-up — the eight-column row needed ~1100px to render
+        // every cell without flex-1 Summary collapsing the fixed-width cells'
+        // visible position (header → row misalignment on a narrow main pane).
+        // Same pattern ComponentsTab uses: pin the inner width and let the
+        // outer wrapper scroll horizontally instead of column-hiding.
+        <div className="flex flex-1 flex-col overflow-x-auto">
+          <div className="min-w-[1100px] flex flex-1 flex-col">
+            <VulnerabilitiesTableHeader
+              allSelected={
+                items.length > 0 &&
+                items.every((it) => selectedIds.has(it.id))
               }
-            }}
-          />
-          <div
-            className="flex-1"
-            data-testid="vulnerabilities-virtual"
-            data-total={total}
-            data-loaded={items.length}
-          >
-            <Virtuoso
-              data={items}
-              style={{
-                height: "calc(100vh - var(--layout-header) - 240px)",
+              someSelected={
+                items.some((it) => selectedIds.has(it.id)) &&
+                !items.every((it) => selectedIds.has(it.id))
+              }
+              disabled={readOnly}
+              currentSort={currentSort}
+              onSortChange={handleSortChange}
+              onToggleAll={(checked) => {
+                if (checked) {
+                  // Select-all is single-page (D-bulk). Truncate to the cap if
+                  // the page is larger than what one bulk call can carry.
+                  const pageIds = items
+                    .slice(0, BULK_TRANSITION_MAX)
+                    .map((it) => it.id);
+                  setSelectedIds(new Set(pageIds));
+                } else {
+                  clearSelection();
+                }
               }}
-              itemContent={(index, item) => (
-                <VulnerabilityRow
-                  vulnerability={item}
-                  rowIndex={index}
-                  selected={selectedIds.has(item.id)}
-                  selectionDisabled={readOnly}
-                  onToggleSelected={(checked) =>
-                    toggleSelection(item.id, checked)
-                  }
-                  onSelect={() => setDrawerVuln(item.id)}
-                />
-              )}
             />
+            <div
+              className="flex-1"
+              data-testid="vulnerabilities-virtual"
+              data-total={total}
+              data-loaded={items.length}
+            >
+              <Virtuoso
+                data={items}
+                style={{
+                  height: "calc(100vh - var(--layout-header) - 240px)",
+                }}
+                itemContent={(index, item) => (
+                  <VulnerabilityRow
+                    vulnerability={item}
+                    rowIndex={index}
+                    selected={selectedIds.has(item.id)}
+                    selectionDisabled={readOnly}
+                    onToggleSelected={(checked) =>
+                      toggleSelection(item.id, checked)
+                    }
+                    onSelect={() => setDrawerVuln(item.id)}
+                  />
+                )}
+              />
+            </div>
           </div>
-        </>
+        </div>
       ) : null}
 
       <VulnerabilityDrawer
@@ -721,12 +715,13 @@ function VulnerabilitiesTableHeader({
           disabled={disabled}
         />
       </span>
-      {/* Follow-up to W4-B #19 — column order: CVE / Severity / CVSS / EPSS /
-          Reachability / Component / License / Title / Status. The standalone
-          "Affected" count column merged into the Component column ("+N-1"
-          suffix when the CVE touches more cvs); the drawer still carries the
-          full affected_components list. Discovered moved to the drawer. */}
+      {/* User-test follow-up (2026-05-27) — column order rewired so the
+          impacted package sits right next to the CVE id, dropping the
+          dedicated License column (the drawer keeps it). Final order:
+          CVE / Component / Severity / CVSS / EPSS / Reachability /
+          Summary / Status. */}
       <span className="w-44">{t("vulnerabilities.column.cve_id")}</span>
+      <span className="w-40">{t("vulnerabilities.column.component")}</span>
       <span className="w-28">
         <SortableColumnHeader
           column="severity"
@@ -769,9 +764,9 @@ function VulnerabilitiesTableHeader({
           testId="vulnerabilities-sort-header-reachable"
         />
       </span>
-      <span className="w-40">{t("vulnerabilities.column.component")}</span>
-      <span className="w-32">{t("vulnerabilities.column.license")}</span>
-      <span className="flex-1">{t("vulnerabilities.column.summary")}</span>
+      <span className="flex-1 min-w-[200px]">
+        {t("vulnerabilities.column.summary")}
+      </span>
       <span className="w-32">
         <SortableColumnHeader
           column="status"
@@ -839,16 +834,21 @@ function VulnerabilityRow({
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
         )}
       >
-      {/* Follow-up to W4-B #19 — column order matches the header: CVE /
-          Severity / CVSS / EPSS / Reachability / Component / License /
-          Title / Status. The standalone affected count column folded into
-          the Component cell's "+N-1" suffix. Discovered moved to drawer. */}
+      {/* Column order matches the header above:
+          CVE / Component / Severity / CVSS / EPSS / Reachability /
+          Summary / Status. License lives in the drawer only — user-test
+          feedback flagged the row license column as noise. */}
       <span
         className="w-44 truncate font-mono text-xs"
         title={vulnerability.cve_id}
       >
         {vulnerability.cve_id}
       </span>
+      <ComponentColumnCell
+        name={vulnerability.affected_component_name}
+        version={vulnerability.affected_component_version}
+        count={vulnerability.affected_component_count}
+      />
       <span className="w-28">
         <SeverityBadge severity={vulnerability.severity} />
       </span>
@@ -878,38 +878,8 @@ function VulnerabilityRow({
           source={vulnerability.reachability_source}
         />
       </span>
-      <ComponentColumnCell
-        name={vulnerability.affected_component_name}
-        version={vulnerability.affected_component_version}
-        count={vulnerability.affected_component_count}
-      />
       <span
-        className="w-32"
-        data-testid="vuln-row-license"
-        data-license-category={
-          vulnerability.affected_component_license_category ??
-          vulnerability.component_license_category
-        }
-        data-license-spdx={vulnerability.affected_component_license ?? ""}
-      >
-        {/* Follow-up to W4-B #19 — License axis is SPDX + policy badge
-            stacked. The BE schema bump exposes `affected_component_license`
-            (SPDX) + `affected_component_license_category` (null-bearing).
-            We prefer those, falling back to the legacy
-            `component_license_category` (non-null, defaults to "unknown")
-            so stale-cached rows from before the bump still render the
-            category badge — no UI regression while the cache turns over. */}
-        <LicenseColumnCell
-          license={vulnerability.affected_component_license}
-          category={
-            vulnerability.affected_component_license_category ??
-            vulnerability.component_license_category ??
-            "unknown"
-          }
-        />
-      </span>
-      <span
-        className="flex-1 truncate"
+        className="flex-1 min-w-[200px] truncate"
         title={vulnerability.summary ?? ""}
       >
         {vulnerability.summary ?? "—"}

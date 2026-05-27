@@ -61,12 +61,6 @@ export interface VulnerabilitiesToolbarProps {
    */
   reachable: ReachabilityFilter | null;
   onReachableChange: (value: ReachabilityFilter | null) => void;
-  /** Trigger the vulnerability PDF report download (G2). */
-  onDownloadPdf: () => void;
-  /** True while the PDF is being generated/fetched — drives the loading label. */
-  isPdfDownloading: boolean;
-  /** Inline error from the last PDF download attempt, if any. */
-  pdfError: Error | null;
   /**
    * Keep only findings whose status was driven by a VEX import
    * (`analysis_source === "vex_import"`), v2.1 A3. Client-side narrowing of the
@@ -99,9 +93,6 @@ export function VulnerabilitiesToolbar({
   onMinEpssChange,
   reachable,
   onReachableChange,
-  onDownloadPdf,
-  isPdfDownloading,
-  pdfError,
   vexSuppressedOnly,
   onVexSuppressedOnlyChange,
   projectId,
@@ -288,33 +279,10 @@ export function VulnerabilitiesToolbar({
         projectRole={projectRole}
         readOnly={readOnly}
       />
-
-      <div className="flex flex-col">
-        <span className="text-xs font-medium text-muted-foreground">
-          {t("vulnerabilities.toolbar.report_label")}
-        </span>
-        <Button
-          type="button"
-          variant="default"
-          size="sm"
-          className="mt-1 h-9"
-          onClick={onDownloadPdf}
-          disabled={isPdfDownloading}
-          data-testid="vuln-download-pdf"
-        >
-          {isPdfDownloading
-            ? t("vulnerabilities.toolbar.download_pdf_generating")
-            : t("vulnerabilities.toolbar.download_pdf")}
-        </Button>
-        {pdfError ? (
-          <span
-            className="mt-1 text-xs text-destructive"
-            data-testid="vuln-download-pdf-error"
-          >
-            {pdfError.message}
-          </span>
-        ) : null}
-      </div>
+      {/* PDF report trigger lives on the Reports tab now — the
+          ``vuln-pdf`` generate card there owns the download. The toolbar
+          prop API still threads ``vulnReport`` so the existing hook +
+          tests stay intact; only the button moved. */}
     </div>
   );
 }

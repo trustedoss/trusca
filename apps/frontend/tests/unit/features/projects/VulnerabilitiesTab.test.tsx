@@ -438,78 +438,18 @@ describe("VulnerabilitiesTab", () => {
     expect(screen.getByTestId("vex-import-open")).toBeDisabled();
   });
 
-  it("renders the Download PDF report button in the toolbar", async () => {
+  // PDF Download moved to the Reports tab (user-test follow-up
+  // 2026-05-27). The toolbar no longer hosts the button — the Reports
+  // tab's vuln-pdf card does. The four previous Download-PDF tests are
+  // replaced by this single negation; the download flow itself is now
+  // covered by Reports-tab tests.
+  it("no longer renders the Download PDF button in the toolbar", async () => {
     mockedList.mockResolvedValueOnce(listResponse([vuln("CVE-2024-1111")]));
     renderTab();
     await waitFor(() => {
-      expect(screen.getByTestId("vuln-download-pdf")).toBeInTheDocument();
+      expect(screen.getByTestId("vulnerabilities-tab")).toBeInTheDocument();
     });
-    expect(screen.getByTestId("vuln-download-pdf")).toHaveTextContent(
-      "Download PDF report",
-    );
-  });
-
-  it("clicking Download PDF fetches the report with the project id + name", async () => {
-    mockedList.mockResolvedValueOnce(listResponse([vuln("CVE-2024-1111")]));
-    mockedReport.mockResolvedValueOnce({
-      blob: new Blob(["%PDF-1.7"], { type: "application/pdf" }),
-      filename: "vulnerability-report-My-Project.pdf",
-    });
-    renderTab();
-    await waitFor(() => {
-      expect(screen.getByTestId("vuln-download-pdf")).toBeInTheDocument();
-    });
-
-    await userEvent.click(screen.getByTestId("vuln-download-pdf"));
-
-    await waitFor(() => {
-      expect(mockedReport).toHaveBeenCalledWith("proj-1", "My Project");
-    });
-  });
-
-  it("shows the generating label while the PDF is being fetched", async () => {
-    mockedList.mockResolvedValueOnce(listResponse([vuln("CVE-2024-1111")]));
-    // Never-resolving fetch keeps the button in its loading state.
-    mockedReport.mockReturnValue(new Promise(() => {}));
-    renderTab();
-    await waitFor(() => {
-      expect(screen.getByTestId("vuln-download-pdf")).toBeInTheDocument();
-    });
-
-    await userEvent.click(screen.getByTestId("vuln-download-pdf"));
-
-    await waitFor(() => {
-      const button = screen.getByTestId("vuln-download-pdf");
-      expect(button).toHaveTextContent("Generating…");
-      expect(button).toBeDisabled();
-    });
-  });
-
-  it("surfaces an inline error when the PDF download fails", async () => {
-    mockedList.mockResolvedValueOnce(listResponse([vuln("CVE-2024-1111")]));
-    mockedReport.mockRejectedValueOnce(
-      new ProblemError("Project not found.", {
-        status: 404,
-        title: "Not Found",
-        detail: "Project not found.",
-        problem: null,
-      }),
-    );
-    renderTab();
-    await waitFor(() => {
-      expect(screen.getByTestId("vuln-download-pdf")).toBeInTheDocument();
-    });
-
-    await userEvent.click(screen.getByTestId("vuln-download-pdf"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("vuln-download-pdf-error"),
-      ).toBeInTheDocument();
-    });
-    expect(
-      screen.getByTestId("vuln-download-pdf-error").textContent,
-    ).toContain("Project not found.");
+    expect(screen.queryByTestId("vuln-download-pdf")).not.toBeInTheDocument();
   });
 
   // ----- EPSS first-class surface (v2.1) -----------------------------------
@@ -759,67 +699,22 @@ describe("VulnerabilitiesTab", () => {
   });
 
   // ----- License risk axis (W2 #33) ---------------------------------------
+  // User-test follow-up (2026-05-27): the row-level License column was
+  // dropped — the drawer still carries SPDX + category, and the
+  // `?license_category=` filter / chip flow continues to work. Single
+  // negation test below; the License chip + filter tests further down keep
+  // covering the URL-state flow.
 
-  it("renders the License column header", async () => {
+  it("no longer renders a License column / cell on each row", async () => {
     mockedList.mockResolvedValueOnce(listResponse([vuln("CVE-2024-1111")]));
     renderTab();
     await waitFor(() => {
       expect(screen.getByTestId("vulnerabilities-header")).toBeInTheDocument();
     });
-    // The header carries the localized "License" label as plain text.
     expect(
       screen.getByTestId("vulnerabilities-header").textContent,
-    ).toContain("License");
-  });
-
-  it("renders a LicenseCategoryBadge per row for each category", async () => {
-    mockedList.mockResolvedValueOnce(
-      listResponse([
-        vuln("CVE-2024-1111", { component_license_category: "forbidden" }),
-        vuln("CVE-2024-2222", { component_license_category: "conditional" }),
-        vuln("CVE-2024-3333", { component_license_category: "allowed" }),
-        vuln("CVE-2024-4444", { component_license_category: "unknown" }),
-      ]),
-    );
-    renderTab();
-    await waitFor(() => {
-      expect(screen.getAllByTestId("vuln-row-license")).toHaveLength(4);
-    });
-    const cells = screen.getAllByTestId("vuln-row-license");
-    expect(cells[0].getAttribute("data-license-category")).toBe("forbidden");
-    expect(cells[1].getAttribute("data-license-category")).toBe("conditional");
-    expect(cells[2].getAttribute("data-license-category")).toBe("allowed");
-    expect(cells[3].getAttribute("data-license-category")).toBe("unknown");
-    // The shared LicenseCategoryBadge surfaces a stable per-category testid.
-    expect(
-      screen.getByTestId("license-category-badge-forbidden"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByTestId("license-category-badge-conditional"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByTestId("license-category-badge-allowed"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByTestId("license-category-badge-unknown"),
-    ).toBeInTheDocument();
-  });
-
-  it("defensively renders the 'unknown' bucket when the wire field is missing", async () => {
-    // Backend contract guarantees the field, but if a stale-cached row drops
-    // it we still render the unknown badge instead of crashing.
-    const bare = vuln("CVE-2024-9999");
-    // Strip the field as if it never landed (the type guarantees it, so we
-    // unsafely cast to simulate a contract drift / regression).
-    delete (bare as Partial<VulnerabilityListItem>).component_license_category;
-    mockedList.mockResolvedValueOnce(listResponse([bare]));
-    renderTab();
-    await waitFor(() => {
-      expect(screen.getByTestId("vuln-row-license")).toBeInTheDocument();
-    });
-    expect(
-      screen.getByTestId("license-category-badge-unknown"),
-    ).toBeInTheDocument();
+    ).not.toContain("License");
+    expect(screen.queryByTestId("vuln-row-license")).not.toBeInTheDocument();
   });
 
   // -----------------------------------------------------------------
@@ -899,47 +794,9 @@ describe("VulnerabilitiesTab", () => {
     expect(cell.getAttribute("data-component-version")).toBe("");
   });
 
-  it("wires the SPDX id from affected_component_license into the License cell", async () => {
-    mockedList.mockResolvedValueOnce(
-      listResponse([
-        vuln("CVE-2024-4444", {
-          affected_component_license: "MIT",
-          affected_component_license_category: "allowed",
-        }),
-      ]),
-    );
-    renderTab();
-    await waitFor(() => {
-      expect(screen.getByTestId("vuln-row-license")).toBeInTheDocument();
-    });
-    const cell = screen.getByTestId("vuln-row-license");
-    expect(cell.getAttribute("data-license-spdx")).toBe("MIT");
-    expect(cell.getAttribute("data-license-category")).toBe("allowed");
-    expect(cell.textContent).toContain("MIT");
-  });
-
-  it("falls back to the legacy category when only component_license_category is on the wire", async () => {
-    // Stale-cached row from before the BE schema bump: the new null-bearing
-    // fields are absent but the legacy non-null field is still authoritative.
-    mockedList.mockResolvedValueOnce(
-      listResponse([
-        vuln("CVE-2024-5555", {
-          affected_component_license: null,
-          affected_component_license_category: null,
-          component_license_category: "forbidden",
-        }),
-      ]),
-    );
-    renderTab();
-    await waitFor(() => {
-      expect(screen.getByTestId("vuln-row-license")).toBeInTheDocument();
-    });
-    const cell = screen.getByTestId("vuln-row-license");
-    expect(cell.getAttribute("data-license-category")).toBe("forbidden");
-    expect(
-      screen.getByTestId("license-category-badge-forbidden"),
-    ).toBeInTheDocument();
-  });
+  // (License-cell tests removed — the column was dropped from the row in the
+  // user-test follow-up. The drawer still surfaces SPDX + category; the
+  // `?license_category=` filter + ActiveFilterChips flow is covered below.)
 
   // W4-B #19 — license MultiSelect dropped from toolbar; arrives via the
   // Overview chart deep-link and is surfaced via ActiveFilterChips.
@@ -1104,25 +961,8 @@ describe("VulnerabilitiesTab", () => {
     expect(failure.textContent).toContain("already in status");
   });
 
-  // ─── W4-B #19 — License column cell + chip layout ──────────────────────
-
-  it("renders the License column via LicenseColumnCell (BE has no SPDX yet)", async () => {
-    mockedList.mockResolvedValueOnce(
-      listResponse([
-        vuln("CVE-2024-1111", { component_license_category: "forbidden" }),
-        vuln("CVE-2024-2222", { component_license_category: "allowed" }),
-      ]),
-    );
-    renderTab();
-    await waitFor(() => {
-      expect(screen.getAllByTestId("license-column-cell")).toHaveLength(2);
-    });
-    const cells = screen.getAllByTestId("license-column-cell");
-    // The SPDX axis is null today (BE list schema has no `license` field),
-    // so the cell stacks the localized dash above the category badge.
-    expect(cells[0].getAttribute("data-license-spdx")).toBe("");
-    expect(cells[0].getAttribute("data-license-category")).toBe("forbidden");
-  });
+  // (License-column row test removed — the column was dropped from the row
+  // in the user-test follow-up.)
 
   it("does not render an ActiveFilterChips row when neither facet is active", async () => {
     mockedList.mockResolvedValueOnce(listResponse([vuln("CVE-2024-1111")]));
