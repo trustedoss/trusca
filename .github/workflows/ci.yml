@@ -3,7 +3,31 @@ name: CI
 on:
   push:
     branches: [main]
+    # Docs/config-only changes don't exercise lint/typecheck/test. Skipping
+    # them turns a 14m+ wall-clock into 0s for chore PRs (e.g. .env.example
+    # one-liners, ADR/roadmap updates). Mixed PRs (any source file changed)
+    # still trigger the full pipeline — `paths-ignore` only fires when EVERY
+    # changed path matches one of these patterns. If you add a new path here,
+    # mirror it under `pull_request` below.
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+      - ".env.example"
+      - "CLAUDE.md"
+      - "ROADMAP.md"
+      - "SECURITY.md"
+      - "LICENSE"
+      - ".gitignore"
   pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+      - ".env.example"
+      - "CLAUDE.md"
+      - "ROADMAP.md"
+      - "SECURITY.md"
+      - "LICENSE"
+      - ".gitignore"
 
 # Cancel in-progress runs of the same ref so the latest push wins.
 concurrency:
