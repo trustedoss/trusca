@@ -113,6 +113,7 @@
       "empty": "No scans have been recorded yet.",
       "reopen_aria": "View progress for this scan",
       "col_started": "Started",
+      "col_version": "Version",
       "col_status": "Status",
       "col_duration": "Duration",
       "col_kind": "Kind",

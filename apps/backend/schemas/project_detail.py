@@ -44,7 +44,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # Severity / license enum values mirror models.scan but we re-declare them as
 # Literals here so OpenAPI receives a precise enum (rather than a free string).
@@ -76,6 +76,50 @@ class ScanSummary(BaseModel):
     started_at: datetime | None
     completed_at: datetime | None
     created_at: datetime
+    release: str | None = Field(
+        default=None,
+        description=(
+            "Optional release/version label sourced from "
+            "``Scan.scan_metadata['release']`` (same field the Versions tab "
+            "renders). ``null`` when the scan was run without a release label."
+        ),
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _hoist_release_from_scan_metadata(cls, data: Any) -> Any:
+        """Lift ``scan_metadata['release']`` onto the top-level ``release`` field.
+
+        ``ProjectOverviewResponse`` populates ``recent_scans`` directly from
+        ORM :class:`Scan` rows (``from_attributes=True``). Pydantic can read the
+        scalar columns by attribute, but the release label lives one level deep
+        in the JSONB ``scan_metadata`` dict. We intercept the raw ORM object,
+        copy the seven scalar fields, and hoist the metadata-nested label so
+        the wire schema stays flat.
+
+        Plain ``dict`` / already-validated inputs (unit tests, JSON requests)
+        pass through unchanged.
+        """
+        if isinstance(data, dict):
+            return data
+        if not hasattr(data, "scan_metadata"):
+            return data
+        meta = getattr(data, "scan_metadata", None) or {}
+        raw = meta.get("release") if isinstance(meta, dict) else None
+        release: str | None = None
+        if isinstance(raw, str):
+            stripped = raw.strip()
+            release = stripped or None
+        return {
+            "id": data.id,
+            "kind": data.kind,
+            "status": data.status,
+            "progress_percent": data.progress_percent,
+            "started_at": data.started_at,
+            "completed_at": data.completed_at,
+            "created_at": data.created_at,
+            "release": release,
+        }
 
 
 class ProjectOverviewResponse(BaseModel):

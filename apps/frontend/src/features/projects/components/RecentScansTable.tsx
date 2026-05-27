@@ -84,6 +84,9 @@ export function RecentScansTable({
               {t("overview.recent_scans.col_started")}
             </th>
             <th className="px-3 py-2 font-medium">
+              {t("overview.recent_scans.col_version")}
+            </th>
+            <th className="px-3 py-2 font-medium">
               {t("overview.recent_scans.col_status")}
             </th>
             <th className="px-3 py-2 font-medium">
@@ -126,6 +129,14 @@ export function RecentScansTable({
             >
               <td className="px-3 py-2 font-mono text-xs text-muted-foreground">
                 {formatDateTime(scan.started_at ?? scan.created_at)}
+              </td>
+              <td
+                className="px-3 py-2 font-mono text-xs"
+                data-testid="recent-scan-version"
+              >
+                {scan.release ?? (
+                  <span className="text-muted-foreground">—</span>
+                )}
               </td>
               <td className="px-3 py-2">
                 <span className="inline-flex items-center gap-2">

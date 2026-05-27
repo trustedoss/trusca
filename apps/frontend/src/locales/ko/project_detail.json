@@ -113,6 +113,7 @@
       "empty": "아직 스캔 이력이 없습니다.",
       "reopen_aria": "이 스캔의 진행 상태 보기",
       "col_started": "시작 시각",
+      "col_version": "버전",
       "col_status": "상태",
       "col_duration": "소요 시간",
       "col_kind": "종류",

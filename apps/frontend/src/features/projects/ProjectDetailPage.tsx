@@ -30,7 +30,6 @@ import { OverviewTab } from "@/features/projects/components/OverviewTab";
 import { ReleaseSwitcher } from "@/features/projects/components/ReleaseSwitcher";
 import { ReleasesTab } from "@/features/projects/components/ReleasesTab";
 import { ReportsTab } from "@/features/projects/components/ReportsTab";
-import { RiskGauge } from "@/features/projects/components/RiskGauge";
 import { SettingsTab } from "@/features/projects/components/SettingsTab";
 import { SnapshotBanner } from "@/features/projects/components/SnapshotBanner";
 import { SourceTab } from "@/features/projects/components/SourceTab";
@@ -434,7 +433,6 @@ export function ProjectDetailPage() {
       <ProjectDetailHeader
         projectId={projectId}
         projectName={projectQuery.data?.name ?? null}
-        riskScore={overview.data?.risk_score ?? null}
         isProjectLoading={projectQuery.isLoading}
         isProjectError={projectQuery.isError}
         projectError={projectQuery.error}
@@ -615,7 +613,6 @@ export function ProjectDetailPage() {
 interface ProjectDetailHeaderProps {
   projectId: string;
   projectName: string | null;
-  riskScore: number | null;
   isProjectLoading: boolean;
   isProjectError: boolean;
   projectError: unknown;
@@ -645,7 +642,6 @@ interface ProjectDetailHeaderProps {
 function ProjectDetailHeader({
   projectId,
   projectName,
-  riskScore,
   isProjectLoading,
   isProjectError,
   projectError,
@@ -773,11 +769,6 @@ function ProjectDetailHeader({
         >
           {t("page.scan")}
         </Button>
-        {riskScore != null ? (
-          <div data-testid="project-detail-risk-badge">
-            <RiskGauge score={riskScore} />
-          </div>
-        ) : null}
       </div>
     </header>
   );
