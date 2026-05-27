@@ -279,11 +279,13 @@ class AuditSearchQuery(BaseModel):
 class HealthComponent(BaseModel):
     """One probe in the system-health summary."""
 
+    # W6-#43a: the ``dt`` component was removed alongside the DT integration
+    # (ADR-0001). Keeping the Literal in sync with the runtime is the explicit
+    # DoD gate of #43a — any future re-add must go through schema review.
     name: Literal[
         "postgres",
         "redis",
         "celery",
-        "dt",
         "disk",
         "active_scans",
         "last_24h_errors",

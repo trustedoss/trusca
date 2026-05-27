@@ -123,7 +123,8 @@ app = FastAPI(
     description=(
         "Open-source self-hosted SCA portal — CVE, license compliance, and SBOM "
         "management with EPSS prioritization, VEX consumption, CI build gating, "
-        "and a Dependency-Track circuit breaker."
+        "and Trivy-backed CVE matching with weekly DB refresh + automatic "
+        "re-matching on new vulnerability data."
     ),
     lifespan=lifespan,
 )

@@ -37,7 +37,17 @@
 
 **audit_log 보존**: DT 액션 타입(`dt_breaker`, `dt_projects`, `dt_health`)은 역사 사실로 그대로 남음. audit listener는 `integrations.dt.*`에 의존 안 함.
 
-**security-reviewer (a3cf57b0051879c0c)**: 진행 중. 권한 우회 / 잔여 endpoint / Celery in-flight 메시지 drift 검증.
+**security-reviewer (a3cf57b0051879c0c)**: 완료 — Verdict CHANGES REQUESTED, 2 High + 3 Medium + 4 Low + 2 Info. **본 PR에서 5건 fix**:
+
+- **H-1**: `schemas/admin_ops.py` `HealthComponent.name` Literal에 `"dt"` 잔존 → 6-name으로 trim. openapi 스냅샷 regen.
+- **H-2**: `scripts/upgrade.sh`에 queue drain 단계 추가 — 머지 시 in-flight `trustedoss.dt_*` 메시지가 `NotRegistered` 무한 NACK loop를 일으키는 시나리오 차단. `celery purge --task-names=trustedoss.dt_{resync,health,orphan_cleaner,orphan_cleanup}` 호출(best-effort, worker 컨테이너 down 시 fallback).
+- **M-1**: `tests/unit/integrations/conftest.py` 죽은 `fakeredis_client`/`make_breaker`/`make_dt_client` fixture 제거(consumer 0). `tests/unit/services/conftest.py`는 전체가 죽은 fixture만이라 파일 삭제.
+- **M-2**: `apps/backend/integrations/__init__.py` 패키지 docstring 정리 — `dt/` layout entry 제거, W6-#43a ADR 안내 + cosign.py / _subprocess_env.py / _size_guard.py 추가.
+- **M-3**: `main.py` FastAPI app description의 "Dependency-Track circuit breaker" → "Trivy-backed CVE matching with weekly DB refresh + automatic re-matching".
+
+**후속 chore (W6-chore-#43a-doc-drift)**: Low 4건 + Info 2건의 docstring 정리(`tests/unit/services/test_admin_health_service.py`의 "seven_components" 함수명 + `_probe_dt` 코멘트, `tasks/{backup,notify,scan_reachability,source_archive_cleaner}.py`의 `:mod:` cross-ref, `core/config.py`의 "DT polling" 멘션, `tasks/scan_container.py`의 반사실 DT 설명, `models/scan.py` + `schemas/{project_detail,vulnerability_detail}.py`의 "from DT" provenance 멘션). W6-#43e 전에 처리 권고, 트래커 등재 완료.
+
+**Info-1 out-of-scope marker**: `docker-compose.dt.yml` · `charts/` DT env · `scripts/ci/provision-dt.sh` · `Dockerfile.worker` DT 설정은 **W6-#43d (배포·Helm·upgrade.sh)** scope이며 본 PR과 의도적 분리.
 
 ---
 
