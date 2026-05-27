@@ -183,7 +183,9 @@ def _patch_pipeline(
     monkeypatch.setenv("WORKSPACE_HOST_PATH", str(tmp_path))
     _stub_trivy_empty(monkeypatch)
 
-    def _fake_run_cdxgen(*, source_dir: Path, output_dir: Path) -> CdxgenResult:
+    def _fake_run_cdxgen(
+        *, source_dir: Path, output_dir: Path, **_kwargs: object
+    ) -> CdxgenResult:
         output_dir.mkdir(parents=True, exist_ok=True)
         sbom_path = output_dir / "cdxgen.cdx.json"
         sbom_path.write_text(json.dumps(sbom), encoding="utf-8")
