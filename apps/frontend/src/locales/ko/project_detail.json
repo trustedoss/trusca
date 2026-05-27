@@ -167,6 +167,7 @@
       "type": "유형",
       "version": "버전",
       "license": "라이선스",
+      "policy": "정책",
       "usage": "용도",
       "severity": "심각도",
       "vulns": "CVE"

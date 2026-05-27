@@ -271,7 +271,7 @@ describe("ComponentsTab", () => {
     });
   });
 
-  it("license cell renders SPDX above the policy category badge", async () => {
+  it("license cell renders SPDX inline and the policy badge in the next column", async () => {
     mockedList.mockResolvedValueOnce(
       listResponse([
         comp("Alpha", { license: "MIT", license_category: "allowed" }),
@@ -280,15 +280,17 @@ describe("ComponentsTab", () => {
     );
     renderTab();
     await waitFor(() => {
-      expect(screen.getAllByTestId("license-column-cell")).toHaveLength(2);
+      expect(screen.getAllByTestId("component-row-license-spdx")).toHaveLength(
+        2,
+      );
     });
-    const cells = screen.getAllByTestId("license-column-cell");
-    expect(cells[0].getAttribute("data-license-spdx")).toBe("MIT");
-    expect(cells[0].getAttribute("data-license-category")).toBe("allowed");
-    expect(cells[0].textContent).toContain("MIT");
-    // null SPDX renders the localized dash but still keeps the category.
-    expect(cells[1].getAttribute("data-license-spdx")).toBe("");
-    expect(cells[1].getAttribute("data-license-category")).toBe("unknown");
+    const spdxCells = screen.getAllByTestId("component-row-license-spdx");
+    expect(spdxCells[0].getAttribute("data-license-spdx")).toBe("MIT");
+    expect(spdxCells[0].textContent).toContain("MIT");
+    // null SPDX renders the localized dash. The policy badge is now a sibling
+    // cell rather than stacked inside, so assertions about category continue
+    // through the LicenseCategoryBadge below.
+    expect(spdxCells[1].getAttribute("data-license-spdx")).toBe("");
   });
 
   it("clicking a row opens the drawer and fetches the detail", async () => {
