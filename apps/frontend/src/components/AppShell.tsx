@@ -190,15 +190,14 @@ export function AppShell() {
             reports demo_read_only (useDemoMode), so a normal deploy is unaffected. */}
         <DemoBanner />
         <header
-          className="flex shrink-0 items-center justify-between border-b px-6"
+          className="flex shrink-0 items-center justify-end border-b px-6"
           style={{ height: "var(--layout-header)" }}
           data-testid="app-header"
         >
-          <div className="flex items-baseline gap-3 text-sm">
-            <span className="font-semibold tracking-tight">
-              {t("app.name")}
-            </span>
-          </div>
+          {/* Left side intentionally empty — the sidebar's top-left "TrustedOSS
+              Portal" label already anchors the brand, repeating it here was
+              visual noise (SCA tools like Black Duck / Snyk keep this slot for
+              breadcrumb / page-title context, which we can reintroduce later). */}
           <div className="flex items-center gap-3">
             {/* Notification bell — sole entry point to /notifications. We
                 deliberately do NOT add a sidebar nav entry to keep the
