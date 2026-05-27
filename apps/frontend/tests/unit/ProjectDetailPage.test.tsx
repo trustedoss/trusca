@@ -106,6 +106,7 @@ function scan(status: string, id: string): ScanSummary {
     started_at: null,
     completed_at: null,
     created_at: "2026-05-26T00:00:00Z",
+    release: null,
   };
 }
 

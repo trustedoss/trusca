@@ -53,6 +53,12 @@ export interface ScanSummary {
   started_at: string | null;
   completed_at: string | null;
   created_at: string;
+  /**
+   * Release / version label sourced from the scan's `scan_metadata.release`
+   * (the same field the Versions tab renders). `null` when the scan was run
+   * without a release label.
+   */
+  release: string | null;
 }
 
 export interface ProjectOverviewResponse {

@@ -385,15 +385,18 @@ describe("ProjectDetailPage", () => {
     expect(screen.queryByTestId("overview-tab")).not.toBeInTheDocument();
   });
 
-  it("renders the risk gauge in the header when overview is loaded", async () => {
+  it("no longer renders a risk gauge in the header (Critical score removed)", async () => {
     mockedGetProject.mockResolvedValueOnce(project());
     mockedOverview.mockResolvedValueOnce(overview({ risk_score: 60 }));
     renderPage();
+    // Wait until the overview tab has mounted so the header has had the
+    // chance to render — then assert the badge is absent.
     await waitFor(() => {
-      expect(
-        screen.getByTestId("project-detail-risk-badge"),
-      ).toBeInTheDocument();
+      expect(screen.getByTestId("overview-tab")).toBeInTheDocument();
     });
+    expect(
+      screen.queryByTestId("project-detail-risk-badge"),
+    ).not.toBeInTheDocument();
   });
 
   it("renders the Releases tab trigger and switches to it", async () => {

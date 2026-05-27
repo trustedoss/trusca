@@ -324,7 +324,7 @@ export function OverviewTab({
         </CardContent>
       </Card>
 
-      <Card className="md:col-span-2" data-testid="overview-license-card">
+      <Card data-testid="overview-license-card">
         <CardHeader>
           <CardTitle className="text-base">
             {t("overview.license_card.title")}
