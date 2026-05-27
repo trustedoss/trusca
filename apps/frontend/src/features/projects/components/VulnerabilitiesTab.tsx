@@ -725,7 +725,7 @@ function VulnerabilitiesTableHeader({
           dropped from the row (drawer carries the full summary); the
           row's last column is now Status. Component is sortable. */}
       <span className="w-44">{t("vulnerabilities.column.cve_id")}</span>
-      <span className="w-40">
+      <span className="flex-1 min-w-[260px]">
         <SortableColumnHeader
           column="component"
           label={t("vulnerabilities.column.component")}
@@ -776,7 +776,7 @@ function VulnerabilitiesTableHeader({
           testId="vulnerabilities-sort-header-reachable"
         />
       </span>
-      <span className="flex-1 min-w-[120px]">
+      <span className="w-32">
         <SortableColumnHeader
           column="status"
           label={t("vulnerabilities.column.status")}
@@ -887,7 +887,7 @@ function VulnerabilityRow({
           source={vulnerability.reachability_source}
         />
       </span>
-      <span className="flex flex-1 min-w-[120px] items-center gap-1">
+      <span className="flex w-32 items-center gap-1">
         <VulnerabilityStatusBadge status={vulnerability.status} />
         {vulnerability.analysis_source === "vex_import" ? (
           <VexProvenanceMarker />
@@ -986,7 +986,7 @@ function ComponentColumnCell({ name, version, count }: ComponentColumnCellProps)
   // tabular-nums on the suffix keeps "+9" / "+99" aligned across rows.
   return (
     <span
-      className="flex w-40 items-center gap-1 truncate"
+      className="flex flex-1 min-w-[260px] items-center gap-1 truncate"
       data-testid="vulnerability-row-component"
       data-component-name={name ?? ""}
       data-component-version={version ?? ""}

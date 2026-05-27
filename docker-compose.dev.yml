@@ -132,7 +132,21 @@ services:
     <<: *backend-build
     image: trustedoss/backend:dev
     restart: unless-stopped
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    # `--reload-exclude` keeps watchfiles from triggering a reload when only
+    # tests / venv / __pycache__ change — repeated user-test sessions edited
+    # `tests/unit/*.py` and the reload loop hung graceful-shutdown until the
+    # backend container went unhealthy.
+    # `--timeout-graceful-shutdown 5` caps the shutdown wait so the next
+    # boot doesn't sit on "Waiting for background tasks to complete." for
+    # minutes when a slow Celery thread is still alive.
+    command: >-
+      uvicorn main:app --host 0.0.0.0 --port 8000
+      --reload
+      --reload-exclude 'tests/*'
+      --reload-exclude '**/__pycache__/*'
+      --reload-exclude '.mypy_cache/*'
+      --reload-exclude '.ruff_cache/*'
+      --timeout-graceful-shutdown 5
     environment:
       <<: *backend-env
     volumes:
