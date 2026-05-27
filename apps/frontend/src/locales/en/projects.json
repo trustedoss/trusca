@@ -76,17 +76,18 @@
   "summary": {
     "severity_card": {
       "title": "Vulnerability severity",
-      "subtitle": "Components grouped by their highest CVE severity across all accessible projects.",
-      "axis_components": "by component"
+      "subtitle": "Projects grouped by their worst CVE severity bucket.",
+      "axis_projects": "by project"
     },
     "license_card": {
       "title": "License classification",
-      "subtitle": "Components grouped by license category across all accessible projects.",
-      "axis_components": "by component"
+      "subtitle": "Projects grouped by their worst license category.",
+      "axis_projects": "by project"
     },
     "filter_chip": {
       "label": "Filters:",
-      "severity": "Severity: {{severity}}"
+      "severity": "Severity: {{severity}}",
+      "license": "License: {{license}}"
     }
   }
 }

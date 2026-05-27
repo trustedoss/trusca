@@ -69,7 +69,16 @@ from typing import Any
 from sqlalchemy import String, case, cast, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models import Scan, Vulnerability, VulnerabilityFinding
+from models import (
+    License as LicenseModel,
+)
+from models import (
+    LicenseFinding,
+    Scan,
+    User,
+    Vulnerability,
+    VulnerabilityFinding,
+)
 
 # Higher rank = "worse". Mirrors ``dashboard_service`` / ``project_detail_service``
 # so the list rows, the dashboard, and the project detail can never disagree on
@@ -88,6 +97,16 @@ _SEVERITY_FROM_RANK: dict[int, str] = {
 # actionable on a compact list badge, so the summary carries only the four
 # risk-bearing buckets (matches ``schemas.scan.SeveritySummary``).
 _SUMMARY_BUCKETS = ("critical", "high", "medium", "low")
+
+# License-category rank — mirrors ``dashboard_service._license_rank_case`` so
+# the list rows and the dashboard never disagree. Forbidden = worst.
+_LICENSE_FROM_RANK: dict[int, str] = {
+    0: "unknown",
+    1: "allowed",
+    2: "conditional",
+    3: "forbidden",
+}
+_LICENSE_BUCKETS = ("forbidden", "conditional", "allowed", "unknown")
 
 
 def _severity_rank_case() -> Any:
@@ -237,6 +256,106 @@ async def _severity_summary_map(
     return summaries
 
 
+async def _license_summary_map(
+    session: AsyncSession,
+    *,
+    succeeded_by_project: dict[uuid.UUID, uuid.UUID],
+) -> dict[uuid.UUID, dict[str, int]]:
+    """``{project_id: {forbidden, conditional, allowed, unknown}}``.
+
+    Mirrors ``_severity_summary_map`` but uses the license-category rank
+    (forbidden=3 > conditional=2 > allowed=1 > unknown=0). The list page's
+    "License classification" card and segment-click filter are project-axis,
+    so the row stores per-project component counts; the FE collapses each
+    project's counts to its WORST bucket for the chart.
+
+    Projects with a succeeded scan get seeded with all-zero buckets so
+    "succeeded, fully allowed" is reported as zeros (non-null) rather than
+    dropping to null.
+    """
+    if not succeeded_by_project:
+        return {}
+
+    scan_to_project = {scan_id: pid for pid, scan_id in succeeded_by_project.items()}
+    scan_ids = list(scan_to_project.keys())
+
+    summaries: dict[uuid.UUID, dict[str, int]] = {
+        pid: dict.fromkeys(_LICENSE_BUCKETS, 0) for pid in succeeded_by_project
+    }
+
+    lic_rank = case(
+        {
+            literal("forbidden"): 3,
+            literal("conditional"): 2,
+            literal("allowed"): 1,
+        },
+        value=cast(LicenseModel.category, String),
+        else_=0,
+    )
+    per_cv = (
+        select(
+            LicenseFinding.scan_id.label("scan_id"),
+            LicenseFinding.component_version_id.label("cv_id"),
+            func.max(lic_rank).label("max_rank"),
+        )
+        .select_from(LicenseFinding)
+        .join(LicenseModel, LicenseModel.id == LicenseFinding.license_id)
+        .where(LicenseFinding.scan_id.in_(scan_ids))
+        .group_by(
+            LicenseFinding.scan_id,
+            LicenseFinding.component_version_id,
+        )
+        .subquery()
+    )
+
+    stmt = select(
+        per_cv.c.scan_id,
+        per_cv.c.max_rank,
+        func.count().label("n"),
+    ).group_by(per_cv.c.scan_id, per_cv.c.max_rank)
+    result = await session.execute(stmt)
+
+    for row in result.all():
+        project_id = scan_to_project.get(row.scan_id)
+        if project_id is None:
+            continue
+        bucket = _LICENSE_FROM_RANK.get(int(row.max_rank), "unknown")
+        if bucket not in _LICENSE_BUCKETS:
+            continue
+        summaries[project_id][bucket] += int(row.n)
+
+    return summaries
+
+
+async def _created_by_user_name_map(
+    session: AsyncSession,
+    *,
+    projects: list[Any],
+) -> dict[uuid.UUID, str]:
+    """``{project_id: user.full_name or user.email}`` for the page's creators.
+
+    One batched ``SELECT id, full_name, email FROM users WHERE id IN (...)``
+    over the distinct creator ids on the page — never per row. The frontend
+    list table renders the resolved name in a new ``Created by`` column;
+    projects whose creator was deleted (``created_by_user_id`` set but the
+    user row gone) fall back to an em-dash on the FE side.
+    """
+    user_ids = {
+        p.created_by_user_id
+        for p in projects
+        if getattr(p, "created_by_user_id", None) is not None
+    }
+    if not user_ids:
+        return {}
+    stmt = select(User.id, User.full_name, User.email).where(User.id.in_(user_ids))
+    result = await session.execute(stmt)
+    out: dict[uuid.UUID, str] = {}
+    for row in result.all():
+        name = (row.full_name or "").strip() or row.email
+        out[row.id] = name
+    return out
+
+
 async def _scan_counts_map(
     session: AsyncSession,
     *,
@@ -300,8 +419,10 @@ async def enrich_project_rows(
     dict[uuid.UUID, str],
     dict[uuid.UUID, dict[str, int]],
     dict[uuid.UUID, dict[str, Any]],
+    dict[uuid.UUID, dict[str, int]],
+    dict[uuid.UUID, str],
 ]:
-    """Return ``(status_by_project, severity_summary_by_project, counts_by_project)``.
+    """Return ``(status, severity_summary, counts, license_summary, created_by_name)``.
 
     All three maps are computed in BATCHED queries over the page's project ids —
     never per row. The caller overlays them onto each ``ProjectPublic`` row:
@@ -318,7 +439,7 @@ async def enrich_project_rows(
     Returns three empty dicts for an empty page (no SQL issued).
     """
     if not projects:
-        return {}, {}, {}
+        return {}, {}, {}, {}, {}
 
     project_ids = [p.id for p in projects]
 
@@ -330,8 +451,20 @@ async def enrich_project_rows(
         session, succeeded_by_project=succeeded_by_project
     )
     counts_by_project = await _scan_counts_map(session, project_ids=project_ids)
+    license_summary_by_project = await _license_summary_map(
+        session, succeeded_by_project=succeeded_by_project
+    )
+    created_by_name_by_project = await _created_by_user_name_map(
+        session, projects=projects
+    )
 
-    return status_by_project, severity_summary_by_project, counts_by_project
+    return (
+        status_by_project,
+        severity_summary_by_project,
+        counts_by_project,
+        license_summary_by_project,
+        created_by_name_by_project,
+    )
 
 
 __all__ = ["enrich_project_rows"]

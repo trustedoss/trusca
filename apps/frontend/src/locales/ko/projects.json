@@ -76,17 +76,18 @@
   "summary": {
     "severity_card": {
       "title": "취약점 심각도",
-      "subtitle": "접근 가능한 모든 프로젝트의 컴포넌트를 최고 CVE 심각도 기준으로 그룹화한 분포입니다.",
-      "axis_components": "컴포넌트 기준"
+      "subtitle": "각 프로젝트의 최악 CVE 심각도 등급별 프로젝트 분포입니다.",
+      "axis_projects": "프로젝트 기준"
     },
     "license_card": {
       "title": "라이선스 분류",
-      "subtitle": "접근 가능한 모든 프로젝트의 컴포넌트를 라이선스 카테고리별로 그룹화한 분포입니다.",
-      "axis_components": "컴포넌트 기준"
+      "subtitle": "각 프로젝트의 최악 라이선스 카테고리별 프로젝트 분포입니다.",
+      "axis_projects": "프로젝트 기준"
     },
     "filter_chip": {
       "label": "필터:",
-      "severity": "심각도: {{severity}}"
+      "severity": "심각도: {{severity}}",
+      "license": "라이선스: {{license}}"
     }
   }
 }

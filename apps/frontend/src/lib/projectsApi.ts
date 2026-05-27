@@ -52,6 +52,23 @@ export interface ProjectPublic {
    */
   severity_summary: ProjectSeveritySummary | null;
   /**
+   * License-category component counts from the project's latest succeeded
+   * scan (same anchor as ``severity_summary``). Buckets follow the
+   * dashboard rank: forbidden > conditional > allowed > unknown. The
+   * Projects-page License card collapses each project's counts to the
+   * worst non-zero bucket; the segment-click filter narrows the list to
+   * projects whose worst bucket matches. ``null`` when the project has
+   * no succeeded scan. Populated only on the list endpoint.
+   */
+  license_category_summary: ProjectLicenseCategorySummary | null;
+  /**
+   * Display label for the project's creator — the user's ``full_name``
+   * (when set) or email. ``null`` when the user row was deleted. Populated
+   * only on the list endpoint; the FE list table renders this in a
+   * Created-by column.
+   */
+  created_by_user_name: string | null;
+  /**
    * Whether a git credential (PAT/token) is stored for cloning private https
    * repos (feature #18). The plaintext/ciphertext value is NEVER returned by
    * the backend — only this boolean presence flag.
@@ -93,6 +110,13 @@ export interface ProjectSeveritySummary {
   high: number;
   medium: number;
   low: number;
+}
+
+export interface ProjectLicenseCategorySummary {
+  forbidden: number;
+  conditional: number;
+  allowed: number;
+  unknown: number;
 }
 
 export interface ProjectListResponse {

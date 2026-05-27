@@ -123,6 +123,8 @@ function project(name: string, overrides: Partial<ProjectPublic> = {}): ProjectP
     latest_scan_id: null,
     latest_scan_status: null,
     severity_summary: null,
+    license_category_summary: null,
+    created_by_user_name: null,
     has_git_credential: false,
     // W3 #30 — list-row discoverability aggregates default to never-scanned.
     // Individual tests override these to exercise the ScanMetadataSummary.
@@ -258,6 +260,8 @@ describe("ProjectListPage", () => {
         project("Alpha", {
           latest_scan_status: "succeeded",
           severity_summary: { critical: 10, high: 13, medium: 0, low: 27 },
+          license_category_summary: null,
+          created_by_user_name: null,
         }),
       ]),
     );
@@ -283,6 +287,8 @@ describe("ProjectListPage", () => {
         project("Bravo", {
           latest_scan_status: "succeeded",
           severity_summary: { critical: 0, high: 0, medium: 0, low: 0 },
+          license_category_summary: null,
+          created_by_user_name: null,
         }),
       ]),
     );
