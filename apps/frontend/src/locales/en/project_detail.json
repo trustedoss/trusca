@@ -26,7 +26,7 @@
     "source": "Source",
     "compliance": "Compliance",
     "settings": "Settings",
-    "releases": "Releases",
+    "releases": "Versions",
     "reports": "Reports"
   },
   "compliance": {
@@ -728,14 +728,14 @@
     }
   },
   "releases": {
-    "title": "Releases",
-    "subtitle": "Each successful scan is a release snapshot. Open one to view that snapshot's full picture.",
-    "empty": "No successful scans yet — run a scan to create a release snapshot.",
+    "title": "Versions",
+    "subtitle": "Each successful scan is a version snapshot. Open one to view that snapshot's full picture.",
+    "empty": "No successful scans yet — run a scan to create a version snapshot.",
     "view_snapshot": "View snapshot",
     "view_snapshot_aria": "View snapshot for {{label}}",
     "severity_none": "No findings",
     "col": {
-      "release": "Release",
+      "release": "Version",
       "date": "Date",
       "risk": "Risk",
       "severity": "Severity",
@@ -753,16 +753,16 @@
       "fail": "Fail"
     },
     "errors": {
-      "load_failed": "Could not load releases. Please try again."
+      "load_failed": "Could not load versions. Please try again."
     }
   },
   "release_switcher": {
-    "menu_label": "Release",
-    "trigger_latest": "Release: {{label}} · Latest",
-    "trigger_historical": "Release: {{label}} · read-only",
-    "trigger_loading": "Release: …",
-    "loading": "Loading releases…",
-    "none": "No releases yet",
+    "menu_label": "Version",
+    "trigger_latest": "Version: {{label}} · Latest",
+    "trigger_historical": "Version: {{label}} · read-only",
+    "trigger_loading": "Version: …",
+    "loading": "Loading versions…",
+    "none": "No versions yet",
     "latest": "Latest",
     "latest_hint": "Live view of the latest successful scan",
     "latest_tag": "Latest",
@@ -775,27 +775,27 @@
     "readonly_tooltip": "Read-only historical snapshot"
   },
   "compare": {
-    "title": "Compare releases",
-    "subtitle": "See what changed between two release snapshots.",
+    "title": "Compare versions",
+    "subtitle": "See what changed between two version snapshots.",
     "open_button": "Compare",
-    "open_button_aria": "Compare the two most recent releases",
+    "open_button_aria": "Compare the two most recent versions",
     "open_disabled_hint": "Need at least two successful scans",
-    "switcher_item": "Compare releases…",
+    "switcher_item": "Compare versions…",
     "breadcrumb_compare": "Compare",
     "back_to_project": "Back to project",
     "selector": {
       "base_label": "Base",
       "target_label": "Target",
-      "base_aria": "Base release (before)",
-      "target_aria": "Target release (after)",
+      "base_aria": "Base version (before)",
+      "target_aria": "Target version (after)",
       "swap": "Swap base and target",
-      "menu_label": "Release",
-      "loading": "Loading releases…",
-      "none": "No releases yet"
+      "menu_label": "Version",
+      "loading": "Loading versions…",
+      "none": "No versions yet"
     },
     "missing_params": {
-      "title": "Pick two releases to compare",
-      "description": "Select a base and a target release above to see what changed."
+      "title": "Pick two versions to compare",
+      "description": "Select a base and a target version above to see what changed."
     },
     "summary": {
       "risk_score": "Risk score",
@@ -844,15 +844,15 @@
       "introduced_aria": "Target introduces a {{category}} license the base did not have."
     },
     "empty": {
-      "title": "No differences between these releases.",
+      "title": "No differences between these versions.",
       "description": "These two snapshots have the same components, vulnerabilities, and licenses."
     },
     "truncated": "Some lists were capped at 1000 items.",
-    "loading_aria": "Loading the release comparison",
+    "loading_aria": "Loading the version comparison",
     "errors": {
       "title": "Could not load the comparison",
-      "not_found": "One of the selected releases could not be found. It may have been removed.",
-      "forbidden": "You do not have permission to compare this project's releases.",
+      "not_found": "One of the selected versions could not be found. It may have been removed.",
+      "forbidden": "You do not have permission to compare this project's versions.",
       "unknown": "Could not load the comparison. Please try again."
     }
   },
