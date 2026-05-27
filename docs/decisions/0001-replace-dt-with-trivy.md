@@ -8,6 +8,21 @@
 
 > **Amendment (2026-05-27, 같은 날 후속 결정)**: §"Decision" 본문의 **v2.3.1 동결 태그 prereq + 운영 레인 O1/O3 통합 + SECURITY.md backport 정책**은 **스킵**한다. Repo를 W6 진행 동안 private으로 전환하고, **v2.4.0이 DT-free 첫 공개 릴리스**가 된다. 외부 사용자 0이라 "Final Dependency-Track Release" 공개 마커는 불필요. Appendix A의 "prereq" 행과 §Decision의 "v2.3.1 동결 태그 설계" 절은 본 amendment로 무효화. W6 PR 시퀀스는 `#45 → #40 → #41 → shadow → #42 → #43a~e → #44`로 단축. 본문은 결정 사료로 보존.
 
+> **Amendment 2 (2026-05-27, 같은 날 후속 결정 #3)**: §"비가역 안전장치 — Shadow 7일 게이트" **스킵**한다. 사유:
+> 1. **게이트 metric 자체가 잘못**: 원안의 Jaccard(양방향 동등) = `|교집합|/|합집합|`. Trivy가 DT 못 잡은 CVE를 더 찾으면 좋은 일인데 Jaccard 하락 → fail. 측정 metric 본질 오류.
+> 2. **DT가 절대 기준 아님**: DT는 Black Duck/Snyk 대비 recall 70~80% 수준. "DT와 95% 일치"가 곧 "절대 신뢰" 아님 — 게이트가 줄 수 있는 신뢰의 한계가 명확.
+> 3. **회복 비용 0**: 외부 사용자 0 + repo private. 회귀 발생 시 `#43a` git revert로 분 단위 회복. 보험 비용(7일 캘린더 + shadow 분기 코드)이 보호 가치보다 큼.
+>
+> 따라서 W6 PR 시퀀스 추가 단축: `#45 ✅ → #40 ✅ → #41 → #42 → #43a~e → #44` (shadow 행 제거).
+>
+> **W6-#41 단순화**:
+> - shadow 분기 메커니즘(env 토글·이중 persist·일일 차트 admin UI) 모두 제거
+> - 종료 조건 "일치율 ≥95% + FP/FN 보고" → "정보용 측정 1회 + e2e green"
+> - 벤치 코호트(ADR-0002)는 폐기하지 않음 — Jaccard 게이트에서 **정보용 측정**으로 격하 (DT vs Trivy 차이의 종류 파악 = 미래 개선 백로그 인풋)
+> - 예상 작업량 3d → **1.5d**
+>
+> **#43a (BE DT 제거) 가능 시점**: shadow 통과 → #41 머지 직후로 앞당김. W6 전체 캘린더: 코드 8d + 캘린더 7d → **코드 7d (≈1.5주)**.
+
 ---
 
 ## Context

@@ -1,10 +1,12 @@
 # ADR-0002 — W6 DT vs Trivy 매칭 벤치 코호트 선정
 
-- **Status**: Accepted
+- **Status**: Accepted (amended 2026-05-27 — gate 폐기, 정보용 측정으로 격하)
 - **Date**: 2026-05-27
 - **Deciders**: Haksung Jang (maintainer)
-- **Related**: [ADR-0001](./0001-replace-dt-with-trivy.md) (DT 제거 + Trivy 단일 교체), W6 트래커 `docs/post-ga-execution-tracker.md` §0.5 W6-#41, W6-shadow 게이트
+- **Related**: [ADR-0001](./0001-replace-dt-with-trivy.md) (DT 제거 + Trivy 단일 교체, Amendment 2 = shadow gate 스킵), W6 트래커 `docs/post-ga-execution-tracker.md` §0.5 W6-#41
 - **SoT 책임**: 본 문서가 cohort 선정의 단일 진실. W6-#41의 `scripts/benchmark_dt_vs_trivy.py` 는 본 표를 코드/JSON 으로 옮긴 사본일 뿐 — 변경 의도가 있다면 본 문서를 먼저 갱신하고 PR에 함께 포함.
+
+> **Amendment (2026-05-27, 같은 날 후속 결정)**: 본 ADR의 §"게이트 매핑"과 §"측정 방법론" 5(Jaccard)는 **폐기**. 사유는 [ADR-0001 Amendment 2](./0001-replace-dt-with-trivy.md) 참조 — 요약: (1) Jaccard metric이 잘못된 측정(Trivy가 DT보다 더 찾으면 좋은 일인데 fail 판정), (2) DT가 절대 기준 아님(Black Duck 대비 70~80% recall), (3) 회복 비용 0(외부 사용자 0 + repo private). cohort 선정 자체는 그대로 유효 — **정보용 측정**으로 격하해 "DT vs Trivy 차이의 종류 파악 → 미래 개선 백로그 인풋"을 목적으로 함. W6-#41은 1회 측정 후 보고서만 산출하고 게이트 없이 #43a로 진행.
 
 ---
 
