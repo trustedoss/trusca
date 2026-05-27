@@ -1,14 +1,16 @@
 """
 Admin disk-telemetry service — Phase 4 PR #14.
 
-Returns the storage footprint of the four backends the operator cares about:
+Returns the storage footprint of the backends the operator cares about:
 
   - ``workspace``  — host filesystem mount under ``WORKSPACE_HOST_PATH``
-                     (cdxgen / ORT scratch dirs).
-  - ``dt_volume``  — DT's persistent volume host mount under
-                     ``DT_VOLUME_HOST_PATH``.
+                     (cdxgen / scancode scratch dirs + preserved tarballs).
   - ``postgres``   — total PostgreSQL DB size via ``pg_database_size``.
   - ``redis``      — Redis memory usage via ``INFO memory``.
+
+W6-#43a (ADR-0001): the ``dt_volume`` entry was removed when DT was replaced
+by Trivy (W6-#41). Trivy's vulnerability DB lives in a worker-owned cache
+volume that surfaces through a separate admin/health panel (W6-#43e).
 
 Threshold model:
   - Each item carries a static 80% warn / 90% critical threshold pair.
@@ -87,15 +89,6 @@ class AdminDiskError(Exception):
 def _workspace_path() -> str:
     """Container-side workspace mount; ``WORKSPACE_HOST_PATH`` is the same path."""
     return os.getenv("WORKSPACE_HOST_PATH", "/opt/trustedoss/workspace")
-
-
-def _dt_volume_path() -> str:
-    """DT volume mount path inside the backend container.
-
-    Defaults to ``/var/lib/dependency-track`` which matches the docker-compose
-    DT volume host path. Operators override via ``DT_VOLUME_HOST_PATH``.
-    """
-    return os.getenv("DT_VOLUME_HOST_PATH", "/var/lib/dependency-track")
 
 
 def _threshold_warning() -> float:
@@ -287,14 +280,13 @@ async def get_disk_telemetry(session: AsyncSession) -> AdminDiskOut:
     """
     Return all four storage backends' current usage in one payload.
 
-    Order is fixed (workspace → dt_volume → postgres → redis) so the UI
-    can render a stable card layout without mapping by name. Each probe
-    is independent — a failure in one is reported via the per-item
-    ``error`` field, never raised.
+    Order is fixed (workspace → postgres → redis) so the UI can render a
+    stable card layout without mapping by name. Each probe is independent —
+    a failure in one is reported via the per-item ``error`` field, never
+    raised.
     """
     items = [
         _probe_filesystem(name="workspace", path=_workspace_path()),
-        _probe_filesystem(name="dt_volume", path=_dt_volume_path()),
         await _probe_postgres(session),
         _probe_redis(),
     ]

@@ -23,7 +23,6 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -31,7 +30,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from services.admin_health_service import (
     _probe_active_scans,
     _probe_celery,
-    _probe_dt,
     _probe_last_24h_errors,
     _probe_postgres,
     _probe_redis,
@@ -189,38 +187,9 @@ def test_probe_celery_control_failure() -> None:
 
 
 # ---------------------------------------------------------------------------
-# DT probe
+# DT probe — REMOVED in W6-#43a (ADR-0001). The DT breaker is gone; the
+# replacement Trivy DB health panel is W6-#43e.
 # ---------------------------------------------------------------------------
-
-
-def test_probe_dt_closed_returns_ok() -> None:
-    from integrations.dt.breaker import BreakerSnapshot
-
-    snapshot = BreakerSnapshot(state="closed", fail_count=0, opened_at=None)
-    with patch("services.admin_health_service.get_breaker") as mock_get:
-        mock_get.return_value.snapshot.return_value = snapshot
-        component = _probe_dt()
-    assert component.status == "ok"
-
-
-def test_probe_dt_half_open_returns_degraded() -> None:
-    from integrations.dt.breaker import BreakerSnapshot
-
-    snapshot = BreakerSnapshot(state="half_open", fail_count=3, opened_at=1.0)
-    with patch("services.admin_health_service.get_breaker") as mock_get:
-        mock_get.return_value.snapshot.return_value = snapshot
-        component = _probe_dt()
-    assert component.status == "degraded"
-
-
-def test_probe_dt_open_returns_down() -> None:
-    from integrations.dt.breaker import BreakerSnapshot
-
-    snapshot = BreakerSnapshot(state="open", fail_count=10, opened_at=1.0)
-    with patch("services.admin_health_service.get_breaker") as mock_get:
-        mock_get.return_value.snapshot.return_value = snapshot
-        component = _probe_dt()
-    assert component.status == "down"
 
 
 # ---------------------------------------------------------------------------
@@ -333,21 +302,18 @@ async def test_get_system_health_returns_seven_components_in_order(
 
     fake_celery = _FakeCelery(replies=[{"worker1": {"ok": "pong"}}])
 
-    with patch("services.admin_health_service.get_breaker") as mock_get:
-        from integrations.dt.breaker import BreakerSnapshot
+    from unittest.mock import patch
 
-        mock_get.return_value.snapshot.return_value = BreakerSnapshot(
-            state="closed", fail_count=0, opened_at=None
-        )
-        with patch("tasks.celery_app.celery_app", new=fake_celery):
-            payload = await get_system_health(db_session)
+    with patch("tasks.celery_app.celery_app", new=fake_celery):
+        payload = await get_system_health(db_session)
 
+    # W6-#43a (ADR-0001): the ``dt`` probe was removed alongside the DT
+    # integration; the order shrinks from 7 components to 6.
     names = [c.name for c in payload.components]
     assert names == [
         "postgres",
         "redis",
         "celery",
-        "dt",
         "disk",
         "active_scans",
         "last_24h_errors",

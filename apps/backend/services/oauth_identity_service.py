@@ -42,7 +42,7 @@ Audit:
     requests against the provider's audit trail without retaining the
     raw provider id at rest. The two rows together preserve both "what
     column changed" (listener) and "what happened in domain terms"
-    (explicit) — see ``api/v1/admin/dt.py`` for the same pattern.
+    (explicit) — see ``services/admin_audit_service.py`` for the same pattern.
 """
 
 from __future__ import annotations

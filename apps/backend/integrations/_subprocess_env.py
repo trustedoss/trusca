@@ -14,10 +14,11 @@ inputs partly originate from the cloned source; the lockfile-resolver
 ``prep`` subprocesses (``bundle lock`` / ``cargo generate-lockfile`` /
 ``go mod tidy`` / ``dotnet restore``) read attacker-controlled manifests
 to fetch from the network. Each of these surfaces sees the worker
-process's environment unless we strip it: any inherited ``DT_API_KEY`` /
-``SECRET_KEY`` / ``DATABASE_URL`` / ``*_WEBHOOK_URL`` then becomes a
-covert exfil channel through resolver telemetry, crash reports, or DNS
-lookups in error paths.
+process's environment unless we strip it: any inherited ``SECRET_KEY`` /
+``DATABASE_URL`` / ``*_WEBHOOK_URL`` then becomes a covert exfil channel
+through resolver telemetry, crash reports, or DNS lookups in error paths.
+The W6-removed ``DT_API_KEY`` is no longer present in the worker env, but
+the scrub allowlist remains tight as defence in depth.
 
 Public API
 ----------
@@ -296,7 +297,7 @@ def scrubbed_env_for_scancode() -> dict[str, str]:
     ``TYPECODE_LIBMAGIC_PATH`` — see :data:`_SCANCODE_EXTRA_ALLOWLIST`). It has
     no language-toolchain dependency and no operator-override prefix band we
     forward, so — unlike cdxgen — it gets a small env. Worker secrets
-    (``DT_API_KEY`` / ``SECRET_KEY`` / ``DATABASE_URL`` / ``*_WEBHOOK_URL``)
+    (``SECRET_KEY`` / ``DATABASE_URL`` / ``*_WEBHOOK_URL``)
     are stripped: scancode reads attacker-controlled file contents from the
     clone, so an embedded-payload or scancode CVE must not have a credential
     to exfiltrate.
@@ -343,7 +344,7 @@ def scrubbed_env_for_cosign() -> dict[str, str]:
 
     The shared base allowlist (PATH / HOME / proxy / CA hints) plus the
     cosign / Sigstore endpoint band — and nothing else. Worker secrets
-    (``DT_API_KEY`` / ``SECRET_KEY`` / ``DATABASE_URL`` / ``*_WEBHOOK_URL``) are
+    (``SECRET_KEY`` / ``DATABASE_URL`` / ``*_WEBHOOK_URL``) are
     stripped: cosign signs an attacker-influenced SBOM blob, so a cosign CVE or
     a hostile plugin path must have no credential to exfiltrate. The cosign
     adapter sets ``COSIGN_PASSWORD`` on the returned dict itself (decrypted at

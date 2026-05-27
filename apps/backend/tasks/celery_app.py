@@ -36,10 +36,6 @@ _TASK_INCLUDES = [
     # v2.3 r1 — Go govulncheck call-graph reachability enrichment, dispatched as
     # a follow-up after a source scan succeeds (best-effort, never blocks a scan).
     "tasks.scan_reachability",
-    "tasks.dt_resync",
-    "tasks.dt_orphan_cleaner",
-    "tasks.dt_orphan_cleanup",
-    "tasks.dt_health",
     # feat/zip-upload (security H-fix) — stale uploaded-archive retention sweep.
     "tasks.source_archive_cleaner",
     # G3.1 — preserved scan-source tarball retention sweep (latest-per-project).
@@ -62,29 +58,18 @@ def _build_beat_schedule() -> dict[str, dict[str, object]]:
     """
     Return the Celery Beat schedule.
 
-    Phase 2 PR #8 registers three periodic tasks:
-      - ``trustedoss.dt_health``           — every 60 seconds
-      - ``trustedoss.dt_resync``           — every 1 hour
-      - ``trustedoss.dt_orphan_cleaner``   — every 6 hours
+    Periodic tasks the worker / beat pair fires (post-W6 — DT beats removed
+    per ADR-0001 and replaced by the W6-#42 vulnerability rematch entry):
+      - ``trustedoss.source_archive_cleaner``       — every 6 hours
+      - ``trustedoss.scan_source_cleaner``          — every 6 hours
+      - ``trustedoss.workspace_cleaner``            — every 30 minutes
+      - ``trustedoss.backup.run``                   — daily at 00:00 UTC
+      - ``trustedoss.vulnerability_rematch_enqueue`` — every 6h at :15
 
     chore PR #4 wires a `celery-beat` sidecar in
-    ``docker-compose.dev.yml`` so these schedules actually fire — until
-    that PR landed the schedule was registered but no process was
-    invoking it.
+    ``docker-compose.dev.yml`` so these schedules actually fire.
     """
     return {
-        "dt-health-heartbeat": {
-            "task": "trustedoss.dt_health",
-            "schedule": _schedule(timedelta(seconds=60)),
-        },
-        "dt-resync-hourly": {
-            "task": "trustedoss.dt_resync",
-            "schedule": _schedule(timedelta(hours=1)),
-        },
-        "dt-orphan-cleaner-six-hourly": {
-            "task": "trustedoss.dt_orphan_cleaner",
-            "schedule": _schedule(timedelta(hours=6)),
-        },
         # feat/zip-upload (security H-fix) — reclaim abandoned / orphaned
         # uploaded archives every 6h so a looped-upload DoS or a
         # SIGKILL-before-extract leak cannot fill the workspace volume.
@@ -118,12 +103,11 @@ def _build_beat_schedule() -> dict[str, dict[str, object]]:
         },
         # W6-#42 — automatic vulnerability re-matching every 6 hours. The
         # 6h cadence + the per-scan VULN_REMATCH_INTERVAL_HOURS knob (default
-        # 6h) keeps a scan's findings within ~one full DT-style refresh window
-        # of upstream NVD changes without re-running Trivy on every tick.
-        # ``minute=15`` offsets this from the other 6h beats (dt_orphan,
-        # source_archive, scan_source — all on the :00 offset) so the worker
-        # pool sees a staggered load profile, not four beats firing the same
-        # minute.
+        # 6h) keeps a scan's findings within ~one full refresh window of
+        # upstream NVD changes without re-running Trivy on every tick.
+        # ``minute=15`` offsets this from the other 6h beats (source_archive,
+        # scan_source — both on the :00 offset) so the worker pool sees a
+        # staggered load profile, not three beats firing the same minute.
         "vulnerability-rematch-six-hourly": {
             "task": "trustedoss.vulnerability_rematch_enqueue",
             "schedule": crontab(minute=15, hour="*/6"),
@@ -145,12 +129,12 @@ def create_celery_app() -> Celery:
         worker_prefetch_multiplier=1,
         # PR-A1 (scan stability): do NOT set a GLOBAL task time limit here.
         # A global ``task_soft_time_limit`` / ``task_time_limit`` would also
-        # cap notification / backup / DT tasks, which is wrong — a 1-hour
-        # ceiling on a Slack webhook is meaningless and a backup of a large
-        # DB can legitimately run longer than a scan. Scan tasks instead
-        # receive their limits per-dispatch in ``tasks.enqueue_scan`` (read
-        # from env at call time per CLAUDE.md rule #11) so only the two scan
-        # tasks are time-boxed.
+        # cap notification / backup tasks, which is wrong — a 1-hour ceiling
+        # on a Slack webhook is meaningless and a backup of a large DB can
+        # legitimately run longer than a scan. Scan tasks instead receive
+        # their limits per-dispatch in ``tasks.enqueue_scan`` (read from env
+        # at call time per CLAUDE.md rule #11) so only the two scan tasks
+        # are time-boxed.
         task_default_queue="trustedoss.default",
         timezone="UTC",
         enable_utc=True,
