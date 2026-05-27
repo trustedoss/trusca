@@ -24,7 +24,7 @@ import { ComponentDrawer } from "@/features/projects/components/ComponentDrawer"
 import { ComponentsToolbar } from "@/features/projects/components/ComponentsToolbar";
 import { DependencyScopeBadge } from "@/features/projects/components/DependencyScopeBadge";
 import { DependencyTypeBadge } from "@/features/projects/components/DependencyTypeBadge";
-import { LicenseColumnCell } from "@/features/projects/components/LicenseColumnCell";
+import { LicenseCategoryBadge } from "@/features/projects/components/LicenseCategoryBadge";
 import { SeverityBadge } from "@/features/projects/components/SeverityBadge";
 import { ProblemError } from "@/lib/problem";
 import { cn } from "@/lib/utils";
@@ -341,35 +341,49 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
       ) : null}
 
       {!components.isLoading && !components.isError && items.length > 0 ? (
-        <>
-          <ComponentsTableHeader
-            currentSort={currentSort}
-            onSortChange={handleSortChange}
-          />
-          <div
-            className="flex-1"
-            data-testid="components-virtual"
-            data-total={total}
-            data-loaded={items.length}
-          >
-            <Virtuoso
-              data={items}
-              endReached={() => {
-                if (components.hasNextPage && !components.isFetchingNextPage) {
-                  void components.fetchNextPage();
-                }
-              }}
-              style={{ height: "calc(100vh - var(--layout-header) - 240px)" }}
-              itemContent={(index, item) => (
-                <ComponentRow
-                  component={item}
-                  rowIndex={index}
-                  onSelect={() => setDrawerComponent(item.id)}
-                />
-              )}
+        // The row + header together need ~820px to render the eight columns
+        // without squeezing the Name cell (flex-1) to zero — narrower
+        // viewports were rendering the TYPE badge *inside* the COMPONENT
+        // header because the Name cell had no min width. We keep the table
+        // at its natural width and let the outer wrapper scroll horizontally
+        // instead of column-hiding (the user explicitly wants all eight
+        // columns visible at once).
+        <div className="flex flex-1 flex-col overflow-x-auto">
+          <div className="min-w-[820px] flex flex-1 flex-col">
+            <ComponentsTableHeader
+              currentSort={currentSort}
+              onSortChange={handleSortChange}
             />
+            <div
+              className="flex-1"
+              data-testid="components-virtual"
+              data-total={total}
+              data-loaded={items.length}
+            >
+              <Virtuoso
+                data={items}
+                endReached={() => {
+                  if (
+                    components.hasNextPage &&
+                    !components.isFetchingNextPage
+                  ) {
+                    void components.fetchNextPage();
+                  }
+                }}
+                style={{
+                  height: "calc(100vh - var(--layout-header) - 240px)",
+                }}
+                itemContent={(index, item) => (
+                  <ComponentRow
+                    component={item}
+                    rowIndex={index}
+                    onSelect={() => setDrawerComponent(item.id)}
+                  />
+                )}
+              />
+            </div>
           </div>
-        </>
+        </div>
       ) : null}
 
       <ComponentDrawer
@@ -401,8 +415,13 @@ function ComponentsTableHeader({
     >
       {/* W4-B #17 — Name / Severity / License are sortable; click cycles
           unset → asc → desc → unset. URL `?sort=` / `?order=` mirror the
-          state below (existing effect). The remaining columns are static. */}
-      <span className="flex-1">
+          state below (existing effect). The remaining columns are static.
+          Width follow-up (2026-05-27): LICENSE is now SPDX-only at w-28 and a
+          separate POLICY column (w-24) holds the Allowed/Forbidden badge —
+          stacking the two inside one cell wrapped to two lines on the user's
+          ~700-800px main pane. The Name cell carries `min-w-[180px]` so it
+          can no longer collapse to zero. */}
+      <span className="flex-1 min-w-[180px]">
         <SortableColumnHeader
           column="name"
           label={t("components.col.name")}
@@ -412,8 +431,8 @@ function ComponentsTableHeader({
         />
       </span>
       <span className="w-24">{t("components.col.type")}</span>
-      <span className="w-28 text-right">{t("components.col.version")}</span>
-      <span className="w-44">
+      <span className="w-24 text-right">{t("components.col.version")}</span>
+      <span className="w-28">
         <SortableColumnHeader
           column="license"
           label={t("components.col.license")}
@@ -422,8 +441,9 @@ function ComponentsTableHeader({
           testId="components-sort-header-license"
         />
       </span>
+      <span className="w-24">{t("components.col.policy")}</span>
       <span className="w-24">{t("components.col.usage")}</span>
-      <span className="w-28">
+      <span className="w-24">
         <SortableColumnHeader
           column="severity"
           label={t("components.col.severity")}
@@ -432,7 +452,7 @@ function ComponentsTableHeader({
           testId="components-sort-header-severity"
         />
       </span>
-      <span className="w-14 text-right">{t("components.col.vulns")}</span>
+      <span className="w-12 text-right">{t("components.col.vulns")}</span>
     </div>
   );
 }
@@ -445,6 +465,7 @@ interface ComponentRowProps {
 }
 
 function ComponentRow({ component, rowIndex, onSelect }: ComponentRowProps) {
+  const { t } = useTranslation("project_detail");
   return (
     <button
       type="button"
@@ -458,7 +479,7 @@ function ComponentRow({ component, rowIndex, onSelect }: ComponentRowProps) {
       )}
       style={{ height: "var(--table-row)" }}
     >
-      <span className="flex flex-1 items-center gap-2 truncate">
+      <span className="flex flex-1 min-w-[180px] items-center gap-2 truncate">
         <span className="truncate font-medium" title={component.name}>
           {component.name}
         </span>
@@ -478,28 +499,36 @@ function ComponentRow({ component, rowIndex, onSelect }: ComponentRowProps) {
         />
       </span>
       <span
-        className="w-28 truncate text-right font-mono text-xs"
+        className="w-24 truncate text-right font-mono text-xs"
         title={component.version}
       >
         {component.version}
       </span>
-      <span className="w-44">
-        {/* W4-B #17 — License column is now SPDX + policy badge stacked, so two
-            Allowed components are distinguishable at a glance. The cell does
-            its own truncation; the surrounding row keeps the same width. */}
-        <LicenseColumnCell
-          license={component.license}
-          category={component.license_category}
-        />
+      {/* LICENSE is the SPDX identifier on its own — the policy category lives
+          in the next cell so the row stays single-line. `language-mono` styling
+          keeps SPDX expressions (`(MIT OR Apache-2.0)`) readable. */}
+      <span
+        className={cn(
+          "w-28 truncate font-mono text-xs",
+          component.license ? "text-foreground" : "text-muted-foreground",
+        )}
+        data-testid="component-row-license-spdx"
+        data-license-spdx={component.license ?? ""}
+        title={component.license ?? t("components.license.unknown_dash")}
+      >
+        {component.license ?? t("components.license.unknown_dash")}
+      </span>
+      <span className="w-24">
+        <LicenseCategoryBadge category={component.license_category} />
       </span>
       <span className="w-24">
         <DependencyScopeBadge scope={component.dependency_scope} />
       </span>
-      <span className="w-28">
+      <span className="w-24">
         <SeverityBadge severity={component.severity_max} />
       </span>
       <span
-        className="w-14 text-right font-mono text-xs tabular-nums"
+        className="w-12 text-right font-mono text-xs tabular-nums"
         data-testid="component-row-vuln-count"
       >
         {component.vulnerability_count}

@@ -167,6 +167,7 @@
       "type": "Type",
       "version": "Version",
       "license": "License",
+      "policy": "Policy",
       "usage": "Usage",
       "severity": "Severity",
       "vulns": "CVEs"
