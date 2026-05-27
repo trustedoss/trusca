@@ -1,18 +1,32 @@
 name: Deploy Docs to GitHub Pages
 
+# W6 (ADR-0001, 2026-05-27): the repo is private for the duration of W6.
+# Free-plan private repos cannot serve GitHub Pages, so the auto-deploy on
+# every main push (paths: docs-site/**, apps/backend/**) was failing with
+# `Failed to create deployment (status: 404). Ensure GitHub Pages has been
+# enabled` on every merge. We disable the push trigger and keep only
+# `workflow_dispatch` for manual ops (so the workflow can still be invoked
+# from the Actions UI if someone re-enables Pages temporarily).
+#
+# Restore on v2.4.0 public release: revert this commit (or restore the
+# `push:` block) so backend / docs-site / dump_openapi.py changes re-publish
+# the Redoc reference automatically. See
+# `feedback_ci_hardening_deferred_prerelease` for the "defer to release"
+# policy this follows.
 on:
-  push:
-    branches: [main]
-    paths:
-      - "docs-site/**"
-      - ".github/workflows/docs.yml"
-      # B4: the hosted API reference (Redoc) renders from
-      # docs-site/static/openapi.json, which this workflow regenerates from
-      # the live FastAPI app. Backend API changes must therefore re-trigger a
-      # docs deploy so the published spec stays in sync with the code.
-      - "apps/backend/**"
-      - "scripts/dump_openapi.py"
   workflow_dispatch: {}
+  # push:                       # ← restore on v2.4.0 GA
+  #   branches: [main]
+  #   paths:
+  #     - "docs-site/**"
+  #     - ".github/workflows/docs.yml"
+  #     # B4: the hosted API reference (Redoc) renders from
+  #     # docs-site/static/openapi.json, which this workflow regenerates
+  #     # from the live FastAPI app. Backend API changes must therefore
+  #     # re-trigger a docs deploy so the published spec stays in sync
+  #     # with the code.
+  #     - "apps/backend/**"
+  #     - "scripts/dump_openapi.py"
 
 # Cancel any in-flight deploy when a newer commit lands.
 concurrency:
