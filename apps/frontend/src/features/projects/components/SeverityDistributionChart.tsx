@@ -50,12 +50,22 @@ export interface SeverityDistributionChartProps {
    * there's nothing to filter to.
    */
   onSegmentClick?: (key: ComponentSeverity) => void;
+  /**
+   * Override the legend label for the trailing bucket. The chart's last
+   * slot is keyed as ``none`` to keep the layout/colour stable, but in the
+   * Vulnerabilities tab that same slot actually counts finding-level
+   * ``unknown`` severities. Pass ``"Unknown"`` (or its localized form) to
+   * relabel without forking the component. Falls back to the existing
+   * ``severity.none`` translation when omitted.
+   */
+  noneLabel?: string;
   className?: string;
 }
 
 export function SeverityDistributionChart({
   distribution,
   onSegmentClick,
+  noneLabel,
   className,
 }: SeverityDistributionChartProps) {
   const { t } = useTranslation("project_detail");
@@ -87,7 +97,11 @@ export function SeverityDistributionChart({
               if (count <= 0) return null;
               const pct = (count / total) * 100;
               const segmentClass = cn("h-full", COLOR_BY_BUCKET[key]);
-              const title = `${t(`severity.${key}`)}: ${count}`;
+              const labelText =
+                key === "none" && noneLabel != null
+                  ? noneLabel
+                  : t(`severity.${key}`);
+              const title = `${labelText}: ${count}`;
               if (interactive) {
                 return (
                   <button
@@ -134,7 +148,9 @@ export function SeverityDistributionChart({
                 )}
               />
               <span className="text-muted-foreground">
-                {t(`severity.${key}`)}
+                {key === "none" && noneLabel != null
+                  ? noneLabel
+                  : t(`severity.${key}`)}
               </span>
               <span className="ml-auto font-medium tabular-nums">{count}</span>
             </>

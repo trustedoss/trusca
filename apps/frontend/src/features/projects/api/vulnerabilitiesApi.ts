@@ -180,6 +180,15 @@ export interface VulnerabilityListResponse {
   total: number;
   limit: number;
   offset: number;
+  /**
+   * Count of findings per severity bucket for the resolved snapshot,
+   * ignoring list filters. Backed by the backend's grouped query over
+   * `vulnerability_findings × vulnerabilities.severity`, so a `null`/empty
+   * map means the scan has zero findings (not a transport error). The
+   * Vulnerabilities tab uses this to drive its summary card — the card
+   * stays stable while the paginated rows below reflect the active filter.
+   */
+  severity_distribution?: Partial<Record<VulnSeverity, number>>;
 }
 
 export interface AffectedComponent {

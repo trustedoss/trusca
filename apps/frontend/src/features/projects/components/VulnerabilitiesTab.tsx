@@ -424,17 +424,31 @@ export function VulnerabilitiesTab({
     setPage(1);
   }
 
-  // Component-severity distribution card for the top of the tab. Shares the
-  // overview query above so no extra request. Clicking a segment narrows the
-  // list to that bucket (single-select replace). The `none` bucket has no
-  // counterpart in `VulnSeverity` (vulnerabilities never carry severity
-  // `none`), so we drop the click rather than feed an invalid filter token
-  // to the API.
-  const severityDistribution = overview.data?.severity_distribution;
+  // Finding-level severity distribution from the vulnerabilities list endpoint
+  // (W6 follow-up — Overview's severity_distribution is component-scoped, so
+  // the previous "Info=1" segment came from the worst-CVE-severity of one
+  // component, not from a finding actually tagged Info, and clicking it
+  // produced "0 of 0 findings"). The list query carries this distribution
+  // alongside the page items, ignoring the active filters so the card stays
+  // stable as the page rows narrow. The `unknown` bucket lands in the chart's
+  // `none` slot with a relabeled legend ("Unknown") so we don't fork the
+  // chart component for one extra bucket.
+  const rawDistribution = vulnerabilities.data?.severity_distribution ?? {};
+  const severityDistribution = {
+    critical: rawDistribution.critical ?? 0,
+    high: rawDistribution.high ?? 0,
+    medium: rawDistribution.medium ?? 0,
+    low: rawDistribution.low ?? 0,
+    info: rawDistribution.info ?? 0,
+    none: rawDistribution.unknown ?? 0,
+  };
+  const distributionHasAny = Object.values(severityDistribution).some(
+    (v) => v > 0,
+  );
 
   return (
     <div data-testid="vulnerabilities-tab" className="flex flex-1 flex-col">
-      {severityDistribution ? (
+      {distributionHasAny ? (
         <div
           className="border-b p-4"
           data-testid="vulnerabilities-distribution-card"
@@ -448,9 +462,14 @@ export function VulnerabilitiesTab({
             <CardContent>
               <SeverityDistributionChart
                 distribution={severityDistribution}
+                noneLabel={t("severity.unknown")}
                 onSegmentClick={(key) => {
-                  if (key === "none") return;
-                  setSeverity([key as VulnSeverity]);
+                  // The chart's `none` slot actually carries `unknown` finding
+                  // counts (see the mapping above), so translate before
+                  // feeding the filter token to the API.
+                  const vulnKey: VulnSeverity =
+                    key === "none" ? "unknown" : (key as VulnSeverity);
+                  setSeverity([vulnKey]);
                   setPage(1);
                 }}
               />

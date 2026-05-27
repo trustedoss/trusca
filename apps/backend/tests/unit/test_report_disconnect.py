@@ -36,7 +36,7 @@ def _patch_reads(monkeypatch, render_spy) -> None:
     monkeypatch.setattr(reports, "get_project_overview", AsyncMock(return_value=_overview()))
     monkeypatch.setattr(reports, "list_components_for_project", AsyncMock(return_value=([], 0)))
     monkeypatch.setattr(
-        reports, "list_project_vulnerabilities", AsyncMock(return_value=([], 0))
+        reports, "list_project_vulnerabilities", AsyncMock(return_value=([], 0, {}))
     )
     monkeypatch.setattr(reports, "render_report_pdf", render_spy)
     monkeypatch.setattr(

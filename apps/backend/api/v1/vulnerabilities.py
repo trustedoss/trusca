@@ -173,7 +173,7 @@ async def list_project_vulnerabilities_endpoint(
     actor: CurrentUser = Depends(require_role("developer")),
 ) -> Response:
     try:
-        items, total = await list_project_vulnerabilities(
+        items, total, severity_distribution = await list_project_vulnerabilities(
             session,
             project_id=project_id,
             actor=actor,
@@ -199,6 +199,7 @@ async def list_project_vulnerabilities_endpoint(
         total=total,
         limit=limit,
         offset=offset,
+        severity_distribution=severity_distribution,
     )
     return Response(
         content=body.model_dump_json(),
