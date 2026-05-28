@@ -54,7 +54,7 @@ The companion `/admin/teams` page enumerates teams and the projects + members ea
 
 ## Onboarding a new user
 
-At v2.0.0 the portal does not send invitation emails. New users join by **self-registering** at `/register` with their corporate email; the password policy is enforced at registration (≥ 12 chars, bcrypt cost 12, no NIST-banned passwords).
+In this release the portal does not send invitation emails. New users join by **self-registering** at `/register` with their corporate email; the password policy is enforced at registration (≥ 12 chars, bcrypt cost 12, no NIST-banned passwords).
 
 After they register, a `super_admin` adds them to the right team and assigns the role:
 
@@ -64,7 +64,7 @@ After they register, a `super_admin` adds them to the right team and assigns the
 
 ## Onboarding teammates
 
-The portal does not send invitation emails at v2.0.0. The flow is:
+The portal does not send invitation emails in this release. The flow is:
 
 1. **Admin** creates the team at `/admin/teams → New team`. (No need
    to copy the team UUID for the UI flow below — the admin matches
@@ -168,7 +168,7 @@ Deactivation revokes all sessions and refresh tokens. The user cannot sign in. T
 
 Reactivation is a single click on the same screen.
 
-Deactivation is the only off-boarding action available at v2.0.0 — there is no separate user-delete operation. To handle a GDPR erasure request, deactivate the user and contact engineering for a manual purge; a first-class soft-delete with typed-email confirmation is on the roadmap.
+Deactivation is the only off-boarding action available in this release — there is no separate user-delete operation. To handle a GDPR erasure request, deactivate the user and contact engineering for a manual purge; a first-class soft-delete with typed-email confirmation is on the roadmap.
 
 ## Creating a team
 
@@ -184,7 +184,7 @@ The first member of the team is whoever you assign on the next screen.
 
 `super_admin` and the team's `team_admin` can rename a team. The team's `name`, `slug`, and `description` are mutable via `PATCH /v1/admin/teams/{team_id}`.
 
-Team archiving (a hidden state that disables new project creation while keeping existing projects readable) is on the roadmap. At v2.0.0 a team can only be renamed or, with all projects first removed, deleted by a `super_admin`.
+Team archiving (a hidden state that disables new project creation while keeping existing projects readable) is on the roadmap. In this release a team can only be renamed or, with all projects first removed, deleted by a `super_admin`.
 
 ## Sessions
 
@@ -222,9 +222,9 @@ Self-elevation is blocked. Ask another `super_admin` to do it. If you are the on
 
 The email is already a portal account (possibly already a member of a different team). Use [Adding an existing user to a team](#adding-an-existing-user-to-a-team) — the same flow finds them by email and just attaches the membership.
 
-## Roadmap (v2.x)
+## Roadmap
 
-The following capabilities are described elsewhere in early docs but are **not** shipped at v2.0.0. They are tracked for upcoming minor releases:
+The following capabilities are described elsewhere in early docs but are **not** shipped in this release. They are tracked for upcoming minor releases:
 
 - Email-based invitation flow with one-time 24-hour activation links and a `pending` user status.
 - Soft-delete user action with typed-email confirmation modal.

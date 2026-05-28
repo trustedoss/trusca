@@ -22,7 +22,7 @@ Engineers and team leads who scan their own services. Requires sign-in. The role
 | **Description** | Optional free-text summary surfaced on the project list and Overview tab. |
 | **Git URL** | Git URL the scan pipeline clones from. HTTPS supported. Private repos require credentials embedded in the URL — see [Private repos](#private-repositories). |
 | **Default branch** | The branch the scan pipeline checks out (defaults to `main`). Editable from **Project Settings** after creation. |
-| **Visibility** | `team` (the only value accepted at v2.0.0 — visible to members of the owning team). Set automatically on creation; mutable only via PATCH. |
+| **Visibility** | `team` (the only value accepted in this release — visible to members of the owning team). Set automatically on creation; mutable only via PATCH. |
 | **Owning team** | The team the project belongs to. Set automatically to your active team on creation. |
 
 ## Adding a project — UI
@@ -72,11 +72,11 @@ The detail page exposes the following tabs, left-to-right:
 | **Obligations** | Per-component obligations + NOTICE-file generation. See [Components & licenses → Obligations](./components-and-licenses.md#obligations). |
 | **SBOM** | CycloneDX / SPDX exports, byte-stable. See [SBOM](./sbom.md). |
 | **Reports** | Generate-cards for NOTICE, SBOM, Vulnerability PDF, and VEX **plus** the project's unified download / export history. See [The Reports tab](#the-reports-tab). |
-| **Source** | The fetched first-party source tree from the latest succeeded scan, with file-level license findings highlighted. Sits between **Reports** and **Remediation** (per the post-v2.3 tab reorder). |
+| **Source** | The fetched first-party source tree from the latest succeeded scan, with file-level license findings highlighted. Sits between **Reports** and **Remediation** (per the  tab reorder). |
 | **Remediation** | Per-component upgrade recommendations from the latest scan, including the opt-in npm remediation PR flow. |
 | **Settings** | Project metadata, archive action, CI-integration helpers. |
 
-:::note Tab order changed in post-v2.3
+:::note Tab order changed in 
 The **Source** tab used to sit immediately after **Licenses**; it was moved to the right of **Reports** so the data-output cluster (SBOM / Reports / Source) is contiguous. Bookmarks and `?tab=source` deep links continue to work — the slug is unchanged.
 :::
 
@@ -84,7 +84,7 @@ The **Source** tab used to sit immediately after **Licenses**; it was moved to t
 
 The walkthrough below opens a project from the list and clicks each tab in order so you can see how the lenses relate.
 
-<!-- walkthrough video is stale — it captures the pre-post-v2.3 four-tab layout; refresh post-merge to include Releases / Reports / Source / Remediation -->
+<!-- walkthrough video is stale — it captures the pre- four-tab layout; refresh post-merge to include Releases / Reports / Source / Remediation -->
 
 <video controls width="100%" preload="metadata" poster="/img/walkthroughs/walkthrough-project-tour.gif">
   <source src="/img/walkthroughs/walkthrough-project-tour.mp4" type="video/mp4" />
@@ -110,15 +110,15 @@ The response includes the project's UUID — keep it; it is the value you wire i
 
 **Required fields**: `team_id`, `name`, and `slug`. Optional: `description`, `git_url`, `default_branch`, and `visibility`. The schema rejects unknown fields (`extra="forbid"`), so omitting `team_id` or `slug` returns `422` (`missing: body.team_id`).
 
-Finding your `team_id`: in the UI the project-create form has a team selector, so you never type the UUID. Over the API a `team_admin` or `super_admin` reads it from `GET /v1/admin/teams`; a self-service `GET /v1/users/me/memberships` is on the roadmap for v2.x. At v2.0.0 the field is **not** derived from your session — it must be in the body.
+Finding your `team_id`: in the UI the project-create form has a team selector, so you never type the UUID. Over the API a `team_admin` or `super_admin` reads it from `GET /v1/admin/teams`; a self-service `GET /v1/users/me/memberships` is on the roadmap. In this release the field is **not** derived from your session — it must be in the body.
 
 ## Visibility
 
-- **`team`** (default and only accepted value at v2.0.0) — only members of the owning team see the project, its scans, and its findings.
+- **`team`** (default and only accepted value in this release) — only members of the owning team see the project, its scans, and its findings.
 
 Visibility is set automatically on creation. PATCH currently rejects any value other than `team`. Audit log records the actor on every PATCH.
 
-See [Roadmap](#roadmap-v2x) for `organization` (org-wide read) availability.
+See [Roadmap](#roadmap) for `organization` (org-wide read) availability.
 
 ## Archive
 
@@ -130,11 +130,11 @@ The Archive action lives on **Project Settings → Archive** and uses an inline 
 
 ## Private repositories
 
-Source scans clone the repository from inside the worker container. Authentication option supported at v2.0.0:
+Source scans clone the repository from inside the worker container. Authentication option supported in this release:
 
 - **HTTPS + Personal Access Token** — set the URL to `https://<token>@github.com/acme/checkout-service.git`. The token is stored as part of `git_url` and never returned by the API in plaintext form on read endpoints.
 
-:::caution Private repos at v2.0.0
+:::caution Private repos in this release
 Today the only supported credential model is **HTTPS + PAT
 embedded in the git URL**
 (`https://<token>@github.com/acme/payment-service.git`). The PAT is
@@ -145,24 +145,24 @@ Implications:
 - A leaked DB snapshot still leaks every embedded PAT. Use a
   short-lived PAT with read-only scope.
 - SSH keys and GitHub-App installations are on the roadmap for
-  v2.1; rotate aggressively in the meantime.
+  ; rotate aggressively in the meantime.
 :::
 
-For SSH deploy keys, see [Roadmap](#roadmap-v2x).
+For SSH deploy keys, see [Roadmap](#roadmap).
 
 ## Risk score — two axes
 
 The Overview tab now surfaces **two** risk axes on the project gauge instead of one composite number, so the two failure modes can be read independently:
 
 - **Security risk** — driven by the project's open vulnerability mix. The band (Critical / High / Medium / Low / Info) is set by the **most severe** open finding; within the band the score scales as `n / (n + 4)` (non-saturating, so the band itself is the primary signal — adding more findings cannot bump you up a band).
-- **License risk** — driven by the project's license-tier mix. **Forbidden** licenses dominate the band; **Conditional** rows raise the score within the band but never promote it to `Critical` on their own (the previous "any conditional component = Risk 100" behaviour was removed in post-v2.3 W1).
+- **License risk** — driven by the project's license-tier mix. **Forbidden** licenses dominate the band; **Conditional** rows raise the score within the band but never promote it to `Critical` on their own (the previous "any conditional component = Risk 100" behaviour was removed in  W1).
 
 The legacy single `risk_score` field is still exposed on the API as `max(security_axis, license_axis)` for back-compat with the build gate and CI integrations; the UI uses the two-axis breakdown.
 
 Both axes refresh after every scan and after every CVE re-detection. Read them as relative indicators across your portfolio, not absolute SLAs — drilling into the project shows the per-axis breakdown.
 
 :::note Old "single risk gauge" screenshots
-Screenshots taken before post-v2.3 W1 show a single gauge labelled "Risk". The two-axis card replaces it. The numbers are not strictly comparable between the old single score and either of the two new axes — re-baseline against your portfolio after the upgrade.
+Screenshots taken before  W1 show a single gauge labelled "Risk". The two-axis card replaces it. The numbers are not strictly comparable between the old single score and either of the two new axes — re-baseline against your portfolio after the upgrade.
 :::
 
 ## Build gate verdict (Overview tab)
@@ -245,7 +245,7 @@ After creating a project:
 
 ### "Repository URL is invalid"
 
-The wizard validates the URL must start with `http://` or `https://` (HTTPS strongly preferred). `git@…` and `ssh://…` URLs are **not** accepted by the form at v2.0.0; use the HTTPS clone URL. The portal does not verify reachability — that happens at scan time. If the URL is rejected at form submission, double-check for typos.
+The wizard validates the URL must start with `http://` or `https://` (HTTPS strongly preferred). `git@…` and `ssh://…` URLs are **not** accepted by the form in this release; use the HTTPS clone URL. The portal does not verify reachability — that happens at scan time. If the URL is rejected at form submission, double-check for typos.
 
 ### "Project name already in use"
 
@@ -255,15 +255,15 @@ Names are unique per team. Either rename the existing project or add a suffix (`
 
 Your role on the owning team is below `developer`. Ask a team admin to invite you with the right role — see [Users & teams](../admin-guide/users-and-teams.md).
 
-## Roadmap (v2.x)
+## Roadmap
 
-Items the manual previously promised that are not in v2.0.0; tracked for later releases.
+Items the manual previously promised that are not in this release; tracked for later releases.
 
-- Project tags for portfolio grouping — planned for v2.1.
-- `organization` (org-wide) visibility — reserved for v2.2.
-- SSH deploy-key generation from **Project Settings** — planned for v2.2.
+- Project tags for portfolio grouping — planned.
+- `organization` (org-wide) visibility — planned.
+- SSH deploy-key generation from **Project Settings** — planned.
 - Permanent project delete with typed-name confirmation — under design; soft-delete (archive) is currently the only option.
-- SSH (`git@…`, `ssh://…`) URL acceptance in the create wizard — planned for v2.1.
+- SSH (`git@…`, `ssh://…`) URL acceptance in the create wizard — planned.
 
 ## See also
 

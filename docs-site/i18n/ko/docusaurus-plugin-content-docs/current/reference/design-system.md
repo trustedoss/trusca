@@ -8,7 +8,7 @@ sidebar_position: 10
 
 # 디자인 시스템
 
-포털 프론트엔드는 **Vercel** (light base — surface · dense row · sidebar tint) 과 **Linear** (타이포 hierarchy · motion · focus polish) 에 영감을 받은 단일 light 모드 디자인 시스템을 따릅니다. Dark 모드는 v2.5+ 이후로 미룹니다.
+포털 프론트엔드는 **Vercel** (light base — surface · dense row · sidebar tint) 과 **Linear** (타이포 hierarchy · motion · focus polish) 에 영감을 받은 단일 light 모드 디자인 시스템을 따릅니다. Dark 모드는 + 이후로 미룹니다.
 
 :::note 대상 독자
 프론트엔드 기여자, 디자이너, 리뷰어. 본 문서의 토큰은 canonical reference 입니다 — 컴포넌트는 hex 값이나 magic spacing 을 직접 박지 않습니다.

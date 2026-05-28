@@ -23,7 +23,7 @@ Webhooks let your Git host push events to the portal — typically `push` and `p
 
 Both endpoints are public (no JWT) but require the project's webhook secret. The secret is per-project, generated when you enable the webhook.
 
-### Bootstrapping a webhook secret (operator-only at v2.0.0)
+### Bootstrapping a webhook secret (operator-only in this release)
 
 The Project Settings tab does not yet expose webhook controls.
 Operators set the secret directly via the backend. Two paths:
@@ -55,13 +55,13 @@ After either command, share the resulting secret with the repo
 owner so they paste it into GitHub/GitLab → Settings → Webhooks →
 "Secret".
 
-A self-service activation UI lives on the v2.1 roadmap.
+A self-service activation UI lives on the the roadmap.
 
 ## Setup — GitHub
 
 ### 1. Enable the webhook in the portal
 
-At v2.0.0 webhook activation is operator-only. The Project Settings tab does not yet expose webhook controls. Operators bootstrap a per-project `webhook_secret` server-side (see `apps/backend/services/webhook_service.py`); the resulting webhook URL is shown in the **Integrations** page → Webhooks section. A self-service activation UI is on the roadmap.
+In this release webhook activation is operator-only. The Project Settings tab does not yet expose webhook controls. Operators bootstrap a per-project `webhook_secret` server-side (see `apps/backend/services/webhook_service.py`); the resulting webhook URL is shown in the **Integrations** page → Webhooks section. A self-service activation UI is on the roadmap.
 
 ### 2. Configure on GitHub
 
@@ -85,7 +85,7 @@ Push a commit. In the portal: **Project → Scans** should show a new scan withi
 
 ### 1. Enable the webhook in the portal
 
-At v2.0.0 webhook activation is operator-only. The Project Settings tab does not yet expose webhook controls. Operators bootstrap a per-project `webhook_secret` server-side (see `apps/backend/services/webhook_service.py`); the resulting webhook URL is shown in the **Integrations** page → Webhooks section. A self-service activation UI is on the roadmap.
+In this release webhook activation is operator-only. The Project Settings tab does not yet expose webhook controls. Operators bootstrap a per-project `webhook_secret` server-side (see `apps/backend/services/webhook_service.py`); the resulting webhook URL is shown in the **Integrations** page → Webhooks section. A self-service activation UI is on the roadmap.
 
 ### 2. Configure on GitLab
 

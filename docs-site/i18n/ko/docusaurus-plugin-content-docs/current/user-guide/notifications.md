@@ -14,12 +14,12 @@ sidebar_position: 8
 로그인된 모든 사용자. 헤더 종 아이콘과 `/notifications` 페이지는 모든 역할에 표시됩니다. admin은 추가로 SMTP / Slack / Teams 전송 경로를 [디스크·시스템 health](../admin-guide/disk-and-health.md)에서 구성합니다.
 :::
 
-:::warning v2.0.0 제약
+:::warning v0.10.0 제약
 알림 프레임워크·모델·UI는 모두 출시되었지만 트리거 emit 지점
 (`scan_completed`, `scan_failed`, `cve_detected`, `license_violation`,
 `policy_gate_failed`, `approval_pending`)은 **아직 producer 측 서비스에
 연결되지 않았습니다**. `/notifications` 인박스와 Preferences 페이지는
-정상 동작하며, v2.1에서 producer 측 호출이 반영되면 채워집니다. 현재
+정상 동작하며, 에서 producer 측 호출이 반영되면 채워집니다. 현재
 실제로 발송되는 알림은 비밀번호 재설정 메일뿐입니다.
 :::
 
@@ -33,7 +33,7 @@ sidebar_position: 8
 
 ![헤더 종과 읽지 않은 카운트 배지 — 종 우상단의 빨간 원이 현재 읽지 않은 합계를 표시](/img/screenshots/user-notifications-bell.png)
 
-종을 클릭하면 **`/notifications`** 인박스로 곧장 이동합니다. v2.0.0에서는 종에 드롭다운 미리보기가 노출되지 않습니다 — [로드맵](#로드맵-v2x) 참고.
+종을 클릭하면 **`/notifications`** 인박스로 곧장 이동합니다. 현재 릴리스에서는 종에 드롭다운 미리보기가 노출되지 않습니다 — [로드맵](#로드맵-v2x) 참고.
 
 ## `/notifications` 인박스
 
@@ -54,7 +54,7 @@ sidebar_position: 8
 
 ## 환경설정
 
-인박스 아래의 **Preferences** 섹션은 트리거별로 **전역·채널별** 토글 4개를 나열합니다. 선택은 모든 트리거에 동일하게 적용됩니다 — v2.0.0에서는 트리거별 매트릭스가 없습니다([로드맵](#로드맵-v2x) 참고).
+인박스 아래의 **Preferences** 섹션은 트리거별로 **전역·채널별** 토글 4개를 나열합니다. 선택은 모든 트리거에 동일하게 적용됩니다 — 현재 릴리스에서는 트리거별 매트릭스가 없습니다([로드맵](#로드맵-v2x) 참고).
 
 ![알림 환경설정 — 이메일·Slack·Teams 채널 토글과 항상 켜진 인앱 행 — KO locale](/img/screenshots/user-notifications-prefs-ko.png)
 
@@ -86,7 +86,7 @@ sidebar_position: 8
 | `scan_failed` | 본인이 시작한 스캔 또는 본인이 watch 중인 프로젝트의 스캔이 실패. |
 | `cve_detected` | 본인의 스캔에 이미 존재하는 컴포넌트에 신규 CVE 등록(DT NVD ingest가 기존 컴포넌트와 재상관). |
 | `license_violation` | 본인이 watch 중인 프로젝트의 스캔에서 금지 라이선스 컴포넌트가 발견. |
-| `approval_pending` | 컴포넌트가 승인을 요구할 때 발송. v2.0.0에서는 조직의 **모든 super-admin**에게 전달됩니다(팀별 승인자 라우팅 없음). 지정 승인자(designated approver) 모델은 로드맵 항목입니다. |
+| `approval_pending` | 컴포넌트가 승인을 요구할 때 발송. 현재 릴리스에서는 조직의 **모든 super-admin**에게 전달됩니다(팀별 승인자 라우팅 없음). 지정 승인자(designated approver) 모델은 로드맵 항목입니다. |
 | `policy_gate_failed` | CI 빌드 게이트가 실패(Critical CVE 또는 금지 라이선스가 빌드를 차단). |
 
 채널 선택은 전역입니다 — **Preferences** 탭이 모든 트리거의 전달 채널을 결정합니다.
@@ -103,14 +103,14 @@ sidebar_position: 8
 - **이메일이 도착하지 않음** — 운영자가 SMTP를 구성했는지, 목적지가 본인의 검증된 이메일(`/profile`에서 확인)인지 검증하세요.
 - **Slack 메시지가 도착하지 않음** — 운영자가 `SLACK_WEBHOOK_URL`을 설정했는지, 채널이 여전히 존재하는지 확인하세요. Webhook이 폐기되면 Slack은 조용히 404로 응답합니다.
 
-## 로드맵 (v2.x)
+## 로드맵
 
-매뉴얼이 이전에 약속했으나 v2.0.0에 포함되지 않은 항목.
+매뉴얼이 이전에 약속했으나 v0.10.0에 포함되지 않은 항목.
 
-- 헤더 종 드롭다운(최근 5개 알림 + "인박스로 가기" 푸터) — v2.1 예정. 현재는 종이 `/notifications`로 곧장 이동합니다.
-- `/notifications`의 무한 스크롤 — v2.1 예정. 현재는 Previous / Next 페이지 네비게이션을 사용합니다.
-- 트리거 × 채널 환경설정 매트릭스(예: `policy_gate_failed`만 Slack으로) — v2.1 예정. 현재는 채널 선택이 모든 트리거에 전역 적용됩니다.
-- admin용 `disk_pressure` 알림 트리거 — v2.2 예정. 디스크 압박 이벤트는 현재 admin 대시보드에만 노출됩니다.
+- 헤더 종 드롭다운(최근 5개 알림 + "인박스로 가기" 푸터) —  예정. 현재는 종이 `/notifications`로 곧장 이동합니다.
+- `/notifications`의 무한 스크롤 —  예정. 현재는 Previous / Next 페이지 네비게이션을 사용합니다.
+- 트리거 × 채널 환경설정 매트릭스(예: `policy_gate_failed`만 Slack으로) —  예정. 현재는 채널 선택이 모든 트리거에 전역 적용됩니다.
+- admin용 `disk_pressure` 알림 트리거 —  예정. 디스크 압박 이벤트는 현재 admin 대시보드에만 노출됩니다.
 
 ## 함께 보기
 

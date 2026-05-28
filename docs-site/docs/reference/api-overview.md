@@ -250,7 +250,7 @@ The schema is regenerated at startup. Pin against a release tag if you generate 
 - Forgot password (`/auth/forgot-password`): IP-keyed 5/minute (configurable via `PASSWORD_RESET_RATE_LIMIT`); per-address cooldown returned as `Retry-After`.
 
 :::note
-`Idempotency-Key` request handling and `X-RateLimit-*` response headers are on the roadmap and are not implemented at v2.0.0.
+`Idempotency-Key` request handling and `X-RateLimit-*` response headers are on the roadmap and are not implemented in this release.
 :::
 
 ## Cancelling scans

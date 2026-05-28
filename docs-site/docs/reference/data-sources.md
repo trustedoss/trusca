@@ -35,7 +35,7 @@ All five live in the same Trivy DB bundle — the portal does **not** call any o
 | Per-scan match against local DB | Per scan (no network) | — |
 | Automatic re-match of existing SBOMs | After every successful DB refresh | Celery beat task `tasks.rematch.run_rematch` |
 
-The **automatic re-match beat** (shipped W6-#42) is the killer feature DT could not deliver in our deployment: when a new CVE lands in the refreshed DB, the beat task walks every project's most-recent SBOM and writes new `vulnerability_findings` rows where they match. Users see fresh findings on the Vulnerabilities tab without re-triggering a scan.
+The **automatic re-match beat** is the killer feature DT could not deliver in our deployment: when a new CVE lands in the refreshed DB, the beat task walks every project's most-recent SBOM and writes new `vulnerability_findings` rows where they match. Users see fresh findings on the Vulnerabilities tab without re-triggering a scan.
 
 For the user-facing view of re-detection (banner, notification triggers), see [Re-detection](../user-guide/vulnerabilities.md#re-detection).
 
@@ -47,7 +47,7 @@ The Trivy DB matches components by their **package URL** (`purl`). Coverage is d
 |---|---|---|---|
 | npm (JavaScript / Node) | `pkg:npm/*` | OSV + GHSA + NVD | First-class — most CVEs land in GHSA first. |
 | PyPI (Python) | `pkg:pypi/*` | OSV + GHSA + NVD | First-class. |
-| Maven (Java / Kotlin) | `pkg:maven/*` | OSV + GHSA + NVD | First-class. Classifier-aware as of v2.4.0 (W8-#46). |
+| Maven (Java / Kotlin) | `pkg:maven/*` | OSV + GHSA + NVD | First-class. Classifier-aware as of v0.10.0. |
 | Go modules | `pkg:golang/*` | OSV + GHSA + NVD | First-class. Vulnerability DB at `vuln.go.dev`. |
 | RubyGems | `pkg:gem/*` | OSV + GHSA | First-class. |
 | crates.io (Rust) | `pkg:cargo/*` | OSV + GHSA | First-class. |
@@ -100,4 +100,4 @@ For the user-facing flow (drawer, VEX state machine, suppression), see [Vulnerab
 - [Vulnerability data (Trivy DB)](../admin-guide/vulnerability-data.md) — operator-facing lifecycle, air-gapped mirror, troubleshooting.
 - [Vulnerabilities](../user-guide/vulnerabilities.md) — analyst-facing flow.
 - [Glossary](./glossary.md#vulnerabilities) — CVE, CWE, NVD, EPSS, KEV definitions.
-- [ADR-0001 — Dependency-Track removal](https://github.com/trustedoss/trustedoss-portal/blob/main/docs/decisions/0001-replace-dt-with-trivy.md) — why Trivy is the single engine from v2.4.0.
+- [ADR-0001 — Dependency-Track removal](https://github.com/trustedoss/trustedoss-portal/blob/main/docs/decisions/0001-replace-dt-with-trivy.md) — why Trivy is the single engine from v0.10.0.

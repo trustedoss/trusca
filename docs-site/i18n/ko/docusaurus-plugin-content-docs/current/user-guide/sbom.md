@@ -69,7 +69,7 @@ curl -sS -L -OJ \
 :::caution 감사 증거 — 스캔을 외부에서 고정하세요
 SBOM 내보내기는 항상 최신 성공 스캔을 반영합니다. 외부 감사관은
 보통 특정 릴리스 시점의 SBOM 을 요청합니다(예: "2026-01-15 에
-출고된 것은 무엇인가?"). 과거 스캔 고정(v2.1) 이 적용되기 전까지는
+출고된 것은 무엇인가?"). 과거 스캔 고정() 이 적용되기 전까지는
 각 릴리스 경계에서 SBOM 산출물을 캡처하여 릴리스 아카이브에
 보관하세요. 포털은 *현재* SBOM 으로 다루되 *과거* SBOM 의 출처로
 보지 마세요.
@@ -167,27 +167,27 @@ VEX 상태와 CycloneDX `analysis.state` 매핑:
 
 저작권 문구는 패키지 메타데이터와 라이선스 헤더에서 옵니다. 일부 패키지는 이를 생략하므로 NOTICE 항목이 "Copyright holder unspecified"로 표시됩니다.
 
-## v2.0.0 의 컴플라이언스 증거 체인 {#compliance-evidence-trail-at-v200}
+## 컴플라이언스 증거 체인 {#compliance-evidence-trail}
 
 외부 감사관이 포털 운영자에게 묻는 전형적인 다섯 가지 질문입니다.
 오늘 답할 수 있는 것과 우회가 필요한 것을 정리한 표입니다.
 
-| 감사관 질문 | v2.0.0 답변 소스 | 한계 |
+| 감사관 질문 | v0.10.0 답변 소스 | 한계 |
 |------------|----------------|------|
-| "릴리스 X 시점의 SBOM 을 보여달라" | 수동 아카이브; 포털은 최신본만 보존 | 과거 스캔 고정은 v2.1 로드맵 |
-| "지난 분기에 누가 SBOM / NOTICE 를 다운로드했나?" | `structlog`(Loki / journald) — `audit_logs` 아님 | 감사 행 승격은 v2.1 로드맵 |
+| "릴리스 X 시점의 SBOM 을 보여달라" | 수동 아카이브; 포털은 최신본만 보존 | 과거 스캔 고정은  로드맵 |
+| "지난 분기에 누가 SBOM / NOTICE 를 다운로드했나?" | `structlog`(Loki / journald) — `audit_logs` 아님 | 감사 행 승격은  로드맵 |
 | "프로젝트 X 에서 GPL 이 처음 탐지된 시점은?" | `scans.create` 의 `audit_logs` + 스캔별 `vulnerability_findings.create` | 가능 — 전체 증거 체인 보유 |
 | "2026 Q1 의 모든 승인 결정을 보여달라" | `component_approvals.update` 의 `audit_logs` + `decision_note` | 가능 — 전체 증거 체인 보유 |
 | "감사 행이 변조되지 않았음을 증명하라" | append-only 트리거(마이그레이션 0012) | super-admin 우회 잔존 — [감사 로그 강화](../admin-guide/audit-log.md#스키마) 검토 필요 |
 
-## 로드맵 (v2.x)
+## 로드맵
 
-매뉴얼이 이전에 약속했으나 v2.0.0에 포함되지 않은 항목.
+매뉴얼이 이전에 약속했으나 v0.10.0에 포함되지 않은 항목.
 
-- **취약점 PDF 보고서**는 v2.0.0에 _이미 구현_되어 있습니다 — [취약점 → PDF 보고서 다운로드](./vulnerabilities.md#pdf-보고서-다운로드)(`GET /v1/projects/{id}/vulnerability-report.pdf`) 참고. 아직 **구현되지 않은** 것은 **Excel** 보고서(컴포넌트 Excel, 취약점 Excel)와 **컴플라이언스 PDF**입니다. 이들을 위한 `/v1/projects/{id}/reports/...` 엔드포인트는 없으며 향후 릴리스에서 제공됩니다. 표 형태가 즉시 필요한 이해관계자는 SBOM(CycloneDX JSON)을 선호 도구로 소비하세요.
-- NOTICE 조립을 위한 컴포넌트 드로어의 수동 저작권 오버라이드 — v2.2 예정.
-- SBOM·NOTICE 내보내기의 과거 스캔 고정 — v2.1 예정.
-- SBOM / NOTICE 다운로드를 `structlog` 이벤트에서 `audit_logs` 행으로 승격 — v2.1 예정.
+- **취약점 PDF 보고서**는 v0.10.0에 _이미 구현_되어 있습니다 — [취약점 → PDF 보고서 다운로드](./vulnerabilities.md#pdf-보고서-다운로드)(`GET /v1/projects/{id}/vulnerability-report.pdf`) 참고. 아직 **구현되지 않은** 것은 **Excel** 보고서(컴포넌트 Excel, 취약점 Excel)와 **컴플라이언스 PDF**입니다. 이들을 위한 `/v1/projects/{id}/reports/...` 엔드포인트는 없으며 향후 릴리스에서 제공됩니다. 표 형태가 즉시 필요한 이해관계자는 SBOM(CycloneDX JSON)을 선호 도구로 소비하세요.
+- NOTICE 조립을 위한 컴포넌트 드로어의 수동 저작권 오버라이드 —  예정.
+- SBOM·NOTICE 내보내기의 과거 스캔 고정 —  예정.
+- SBOM / NOTICE 다운로드를 `structlog` 이벤트에서 `audit_logs` 행으로 승격 —  예정.
 
 ## 함께 보기
 

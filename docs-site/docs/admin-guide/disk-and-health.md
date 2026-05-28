@@ -10,7 +10,7 @@ sidebar_position: 3
 
 The portal exposes two operator dashboards under `/admin`:
 
-- **/admin/health** — current state of every container service plus the Trivy DB freshness card (coming in W6-#43e).
+- **/admin/health** — current state of every container service plus the Trivy DB freshness card (coming soon).
 - **/admin/disk** — workspace and database storage usage with a configurable hard limit.
 
 ![Admin System Health — overview of postgres, redis, celery, and the upcoming vulnerability data row](/img/screenshots/admin-health-cards.png)
@@ -27,7 +27,7 @@ Together they let you catch problems before users notice.
 
 The **/admin/health** page lists every component the portal depends on. Each row shows:
 
-- **Component** — one of `postgres`, `redis`, `celery`, `disk`, `active_scans`, `last_24h_errors`. The `vulnerability_data` row (Trivy DB freshness) is being added in W6-#43e.
+- **Component** — one of `postgres`, `redis`, `celery`, `disk`, `active_scans`, `last_24h_errors`. The `vulnerability_data` row (Trivy DB freshness) is coming soon.
 - **State** — `ok` (green), `degraded` (yellow), `down` (red). The label rendered in the UI is locale-aware (the EN locale shows "OK / Degraded / Down"), but the API contract emits the lower-case enum above.
 - **Last check** — timestamp of the most recent probe.
 - **Detail** — error message or telemetry summary when the state is not `ok`.
@@ -51,7 +51,7 @@ The portal does not separately probe `backend`, `worker`, `beat`, `frontend`, or
 
 ## Disk dashboard {#disk}
 
-**/admin/disk** renders one card per filesystem the portal cares about. The actual cards from v2.4.0 are: **workspace**, **trivy_db**, **postgres**, **redis** (the API returns them as `items: AdminDiskItem[]` and the page renders one card per item). The earlier **dt_volume** card was removed when Dependency-Track was retired.
+**/admin/disk** renders one card per filesystem the portal cares about. The actual cards from v0.10.0 are: **workspace**, **trivy_db**, **postgres**, **redis** (the API returns them as `items: AdminDiskItem[]` and the page renders one card per item). The earlier **dt_volume** card was removed when Dependency-Track was retired.
 
 Each card has a warn threshold and a critical threshold:
 
@@ -171,13 +171,13 @@ The gauge reads the host-mounted volume from inside the backend container. If yo
 
 Raise it. 95% is a conservative default for `DISK_HARD_LIMIT_PCT` that gives operators room to react before the host runs out. If your monitoring catches issues earlier, you can lower it. Routinely operating above the warn threshold (80%) is a sign you should add disk.
 
-## Roadmap (v2.x)
+## Roadmap
 
-The following affordances are referenced in early docs but are **not** shipped at v2.0.0:
+The following affordances are referenced in early docs but are **not** shipped in this release:
 
 - Per-component liveness probes for `backend`, `worker`, `beat`, `frontend`, and `traefik` on the health dashboard (today these are inferred from the dashboard rendering and the `celery` row).
 - WebSocket-streamed health updates (today the dashboard uses React Query polling).
-- Multi-shot consecutive-miss state machine for components beyond the `vulnerability_data` row planned in W6-#43e.
+- Multi-shot consecutive-miss state machine for components beyond the `vulnerability_data` row planned.
 
 ## See also
 

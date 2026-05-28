@@ -33,7 +33,7 @@ ACCESS_TOKEN=$(curl -fsS -X POST "https://<your-host>/api/auth/login" \
 ## Scenario 1 — Trivy DB stale or missing
 
 ### Symptom
-PagerDuty: `TrustedOSS Trivy DB last refresh > 14 days` or `TrustedOSS Trivy DB missing on worker`. The upcoming `/admin/health → Vulnerability data` card (W6-#43e) drives this.
+PagerDuty: `TrustedOSS Trivy DB last refresh > 14 days` or `TrustedOSS Trivy DB missing on worker`. The upcoming `/admin/health → Vulnerability data` card drives this.
 
 ### Customer impact
 - New scans CAN still be queued — `cdxgen` + scancode still produce SBOMs and licence findings.

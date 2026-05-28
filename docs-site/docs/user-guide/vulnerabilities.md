@@ -20,7 +20,7 @@ Engineers triaging individual findings; security leads tracking SLA. Mutating th
 
 A blue **Vulnerability data unavailable** banner appears at the top of the Vulnerabilities tab when the portal can show you the *components* a scan discovered but no findings — typically because the local Trivy DB has not finished downloading yet (a fresh deployment whose worker just booted), or the DB download failed. The banner explains the cause and lists the next steps:
 
-- An admin should check the worker's Trivy DB on disk — see [Vulnerability data — Verify it worked](../admin-guide/vulnerability-data.md#verify-it-worked) for the exact command. The forthcoming **Vulnerability data** card under `/admin/health` (W6-#43e follow-up) will surface freshness in the UI.
+- An admin should check the worker's Trivy DB on disk — see [Vulnerability data — Verify it worked](../admin-guide/vulnerability-data.md#verify-it-worked) for the exact command. The forthcoming **Vulnerability data** card under `/admin/health` (roadmap) will surface freshness in the UI.
 - Once the Trivy DB lands, the automatic re-match beat picks up findings on every project's most-recent SBOM — no in-app action is required from you. The banner clears automatically on the next page load that returns at least one finding.
 
 The banner is *informational*, not an error — `0 findings` on a project that is actually clean looks identical at the API level, so the message intentionally points you at the diagnostic surfaces instead of asserting a verdict.
@@ -78,7 +78,7 @@ Click any row to open:
 
 - **Summary** — title, description, CWE, CVSS vector, and the **EPSS score and percentile** when the Trivy DB supplies them (otherwise `—`). See [EPSS — exploitation probability](#epss--exploitation-probability).
 - **References** — vendor advisories, fix commits, exploit databases.
-- **Affected** — the upstream-reported affected range with the project's component version highlighted, plus the **fixed version** — the version that remediates this CVE *for this component* — when the scan pipeline could determine one. See [Fixed version — the version that remediates the CVE](#fixed-version--the-version-that-remediates-the-cve). The affected component also carries its **dependency depth** (v2.2): whether it is a **direct** dependency you declared (depth `1`) or a **transitive** one pulled in by another package (depth `2+`). A CVE in a direct dependency is usually yours to fix by bumping the declared version; a CVE in a transitive dependency is fixed by upgrading the direct parent that requires it — see [Direct vs. transitive (dependency depth)](./components-and-licenses.md#dependency-depth).
+- **Affected** — the upstream-reported affected range with the project's component version highlighted, plus the **fixed version** — the version that remediates this CVE *for this component* — when the scan pipeline could determine one. See [Fixed version — the version that remediates the CVE](#fixed-version--the-version-that-remediates-the-cve). The affected component also carries its **dependency depth**: whether it is a **direct** dependency you declared (depth `1`) or a **transitive** one pulled in by another package (depth `2+`). A CVE in a direct dependency is usually yours to fix by bumping the declared version; a CVE in a transitive dependency is fixed by upgrading the direct parent that requires it — see [Direct vs. transitive (dependency depth)](./components-and-licenses.md#dependency-depth).
 - **Analysis** — VEX status action buttons. **The buttons you see depend on the finding's _current_ state.** The transition matrix (`apps/backend/services/vulnerability_service.py`, the source of truth) routes every terminal decision through the `analyzing` state, so a brand-new finding cannot jump straight to a verdict:
   - **`new`** (just discovered) → **Mark in triage** (`analyzing`) or **Mark suppressed** (`suppressed`). You **cannot** go directly to "not affected" / "exploitable" / "false positive" / "fixed" — triage first.
   - **`analyzing`** (working state) → the five verdicts: **Mark exploitable**, **Mark not affected**, **Mark false positive**, **Mark fixed**, **Mark suppressed**.
@@ -202,7 +202,7 @@ The collected string is validated before it is stored — control characters, ov
 The fixed version shows `—` (and the API returns `null`) when:
 
 - The Trivy DB reports no fix for this component / CVE (the upstream advisory has no patched version yet — a true zero-day or an as-yet-unfixed CVE), **or**
-- the finding was discovered by a scan that ran **before v2.2** shipped this collection. Re-scan the project to backfill it.
+- the finding was discovered by a older scan that pre-dates this collection. Re-scan the project to backfill it.
 
 A blank fixed version means **"no fix version is known"**, not "no fix exists" — always confirm against the upstream advisory before concluding a CVE is unfixable.
 
@@ -232,7 +232,7 @@ curl -sS \
 ```
 
 :::note Upgrade recommendations build on this
-The fixed version is the input to the **upgrade recommendation (recommended version)** (v2.2): once each finding knows its fix version, the portal computes the minimal safe bump per component. See [Upgrade recommendation (recommended version)](#upgrade-recommendation-recommended-version).
+The fixed version is the input to the **upgrade recommendation (recommended version)**: once each finding knows its fix version, the portal computes the minimal safe bump per component. See [Upgrade recommendation (recommended version)](#upgrade-recommendation-recommended-version).
 :::
 
 ## Upgrade recommendation (recommended version)
@@ -263,7 +263,7 @@ These signals **order** the recommendations (a direct, high-EPSS, critical upgra
 
 The portal deliberately declines to recommend a version — and says why — rather than suggest a misleading partial upgrade:
 
-- **No known fix version** — at least one of the component's open CVEs has no [fixed version](#fixed-version--the-version-that-remediates-the-cve) (a true zero-day, or a finding scanned before v2.2). Bumping to the maximum of the *known* fixes would falsely imply the component is fully clean, so the panel shows a "no recommendation" hint instead.
+- **No known fix version** — at least one of the component's open CVEs has no [fixed version](#fixed-version--the-version-that-remediates-the-cve) (a true zero-day, or a finding scanned by an older build that pre-dates this collection). Bumping to the maximum of the *known* fixes would falsely imply the component is fully clean, so the panel shows a "no recommendation" hint instead.
 - **Unparseable fix versions** — every available fix string was malformed and could not be compared.
 
 A "no recommendation" state is informational, not an error — confirm the un-fixed CVEs against their upstream advisories.
@@ -312,7 +312,7 @@ curl -sS -L -OJ \
   "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/vulnerability-report.pdf"
 ```
 
-The response is `application/pdf` with `Content-Disposition: attachment` (the `-OJ` flags tell curl to save it under the server-supplied file name). The report always reflects the **latest succeeded** scan — pinning to a specific historical scan id is not supported at v2.0.0.
+The response is `application/pdf` with `Content-Disposition: attachment` (the `-OJ` flags tell curl to save it under the server-supplied file name). The report always reflects the **latest succeeded** scan — pinning to a specific historical scan id is not supported in this release.
 
 | Status | Meaning |
 |---|---|
@@ -599,13 +599,13 @@ Possible causes:
 
 The PDF is rendered in-request with weasyprint. A `500` (with an `application/problem+json` body) means the renderer is unavailable — most often the backend image predates the weasyprint dependency. Rebuild the backend image and retry; if it persists, file an issue with the project id and the request timestamp.
 
-## Roadmap (v2.x)
+## Roadmap
 
-Items the manual previously promised that are not in v2.0.0; tracked for later releases.
+Items the manual previously promised that are not in this release; tracked for later releases.
 
-- "Last seen" column on the findings table (most recent scan that confirmed the finding) — planned for v2.1.
-- Per-component filter and discovered-date range filter on the findings toolbar — planned for v2.1; today the search box covers component lookup.
-- Standalone **Fix availability** drawer section — today the fix version surfaces as `fixed_version` inside the **Affected** section (real data since v2.2 — see [Fixed version](#fixed-version--the-version-that-remediates-the-cve)), and the per-component minimum safe bump surfaces in the **Recommended upgrade** panel (v2.2 — see [Upgrade recommendation](#upgrade-recommendation-recommended-version)).
+- "Last seen" column on the findings table (most recent scan that confirmed the finding) — planned.
+- Per-component filter and discovered-date range filter on the findings toolbar — planned; today the search box covers component lookup.
+- Standalone **Fix availability** drawer section — today the fix version surfaces as `fixed_version` inside the **Affected** section (real data in this release — see [Fixed version](#fixed-version--the-version-that-remediates-the-cve)), and the per-component minimum safe bump surfaces in the **Recommended upgrade** panel ( — see [Upgrade recommendation](#upgrade-recommendation-recommended-version)).
 
 ## See also
 

@@ -70,7 +70,7 @@ Endpoint always exports the **latest succeeded** scan's SBOM; pinning to a speci
 The SBOM export always reflects the latest succeeded scan. External
 auditors typically ask for the SBOM at a specific release point
 (e.g. "what shipped on 2026-01-15?"). Until historical-scan pinning
-lands (v2.1), capture the SBOM artifact at each release boundary and
+lands, capture the SBOM artifact at each release boundary and
 store it in your release archive. Treat the portal as the *current*
 SBOM, not the *historical* one.
 :::
@@ -167,28 +167,28 @@ The query string used a value the API does not accept. Use one of the four canon
 
 Copyright statements come from package metadata and license headers. Some packages omit them; the NOTICE entry will say "Copyright holder unspecified".
 
-## Compliance evidence trail at v2.0.0 {#compliance-evidence-trail-at-v200}
+## Compliance evidence trail {#compliance-evidence-trail}
 
 External auditors typically ask portal operators five questions. This
 table tells you which are answerable today and which require
 workarounds.
 
-| Auditor question | v2.0.0 answer source | Limitation |
+| Auditor question | v0.10.0 answer source | Limitation |
 |------------------|----------------------|------------|
-| "Show me the SBOM as of release X" | Manual archive; portal only retains latest | Historical pinning on v2.1 roadmap |
-| "Who downloaded the SBOM / NOTICE in the last quarter?" | `structlog` (Loki / journald) — not `audit_logs` | Audit-row promotion on v2.1 roadmap |
+| "Show me the SBOM as of release X" | Manual archive; portal only retains latest | Historical pinning on the roadmap |
+| "Who downloaded the SBOM / NOTICE in the last quarter?" | `structlog` (Loki / journald) — not `audit_logs` | Audit-row promotion on the roadmap |
 | "Show me when GPL was first detected on project X" | `audit_logs` on `scans.create` + per-scan `vulnerability_findings.create` | Yes — full evidence chain |
 | "Show me every approval verdict in 2026 Q1" | `audit_logs` on `component_approvals.update` + `decision_note` | Yes — full evidence chain |
 | "Prove no audit row was tampered with" | Append-only trigger (migration 0012) | Super-admin role still has bypass — review [audit-log hardening](../admin-guide/audit-log.md#schema) |
 
-## Roadmap (v2.x)
+## Roadmap
 
-Items the manual previously promised that are not in v2.0.0; tracked for later releases.
+Items the manual previously promised that are not in this release; tracked for later releases.
 
-- The **vulnerability PDF report** _is_ implemented at v2.0.0 — see [Vulnerabilities → Download a PDF report](./vulnerabilities.md#download-a-pdf-report) (`GET /v1/projects/{id}/vulnerability-report.pdf`). Still **not** implemented: the **Excel** reports (Components Excel, Vulnerabilities Excel) and the **Compliance PDF**; there are no `/v1/projects/{id}/reports/...` endpoints for those, and they will land in a later release. Stakeholders who need a tabular view today should consume the SBOM (CycloneDX JSON) via their preferred tooling.
-- Manual copyright override in the component drawer for NOTICE assembly — planned for v2.2.
-- Historical-scan pinning on the SBOM and NOTICE exports — planned for v2.1.
-- Promote SBOM / NOTICE downloads from `structlog` events to `audit_logs` rows — planned for v2.1.
+- The **vulnerability PDF report** _is_ implemented in this release — see [Vulnerabilities → Download a PDF report](./vulnerabilities.md#download-a-pdf-report) (`GET /v1/projects/{id}/vulnerability-report.pdf`). Still **not** implemented: the **Excel** reports (Components Excel, Vulnerabilities Excel) and the **Compliance PDF**; there are no `/v1/projects/{id}/reports/...` endpoints for those, and they will land in a later release. Stakeholders who need a tabular view today should consume the SBOM (CycloneDX JSON) via their preferred tooling.
+- Manual copyright override in the component drawer for NOTICE assembly — planned.
+- Historical-scan pinning on the SBOM and NOTICE exports — planned.
+- Promote SBOM / NOTICE downloads from `structlog` events to `audit_logs` rows — planned.
 
 ## See also
 

@@ -49,10 +49,10 @@ sidebar_position: 4
 
 ## 무엇이 기록되는가
 
-인증된 모든 `POST`, `PATCH`, `PUT`, `DELETE`가 정확히 하나의 항목을 생성합니다. 읽기 엔드포인트(`GET`)는 기록하지 않습니다. SBOM 내보내기는 structlog `sbom_exported` 이벤트를 발신하지만 v2.0.0에서는 `audit_logs` 행을 **생성하지 않습니다** — 내보내기를 감사 테이블에 통합하는 것은 로드맵 항목입니다.
+인증된 모든 `POST`, `PATCH`, `PUT`, `DELETE`가 정확히 하나의 항목을 생성합니다. 읽기 엔드포인트(`GET`)는 기록하지 않습니다. SBOM 내보내기는 structlog `sbom_exported` 이벤트를 발신하지만 현재 릴리스에서는 `audit_logs` 행을 **생성하지 않습니다** — 내보내기를 감사 테이블에 통합하는 것은 로드맵 항목입니다.
 
-:::note v2.0.0 이 감사하지 **않는** 항목
-다음 사용자 가시 작업은 `structlog` 이벤트를 발신하지만 v2.0.0 에서는
+:::note v0.10.0 이 감사하지 **않는** 항목
+다음 사용자 가시 작업은 `structlog` 이벤트를 발신하지만 v0.10.0 에서는
 `audit_logs` 행을 **생성하지 않습니다**:
 
 - SBOM 내보내기(`sbom_exported`)
@@ -63,7 +63,7 @@ sidebar_position: 4
 "누가 언제 무엇을 다운로드했나" 컴플라이언스 감사 시
 `docker-compose logs backend | grep sbom_exported` 와 Loki / journald
 집계기를 확인하세요. 이를 `audit_logs` 행으로 승격하는 작업은
-v2.1 로드맵 항목입니다.
+ 로드맵 항목입니다.
 :::
 
 시스템 작업(Celery)도 기록합니다. 각 행은 동사만 담고 `target_table`을 별도로 가집니다. 예시:
@@ -83,7 +83,7 @@ Admin UI 의 `target_table` 필터 드롭다운은 `apps/backend/schemas/admin_o
 
 ### 필터
 
-v2.0.0 의 상단 인라인 필터 바:
+v0.10.0 의 상단 인라인 필터 바:
 
 - **행위자 user ID** — UUID 정확 일치.
 - **대상 테이블** — enum 단일 선택(`projects`, `teams`, `users`, `vulnerability_findings` 등).
@@ -212,13 +212,13 @@ SELECT * FROM audit_logs
 
 `super_admin` SQL 세션 필요(UI 없음).
 
-## 로드맵 (v2.x)
+## 로드맵
 
-다음 기능들은 초기 문서에 언급되었으나 v2.0.0 에는 **반영되지 않았습니다**.
+다음 기능들은 초기 문서에 언급되었으나 v0.10.0 에는 **반영되지 않았습니다**.
 
 - `/admin/audit`의 다중 선택 필터(Action 다중 선택, Target table 다중 선택), 프리셋 날짜 범위(지난 1시간 / 오늘 / 지난 7일), 정확 일치 Target ID 필터, Request ID 필터.
 - `actor_kind` 컬럼 / 필터(현재는 감사 행의 행위자가 `actor_user_id`로 식별되며 API Key 행위자는 동작 컨텍스트에서 추론).
-- SBOM 내보내기(`sbom_exported`), NOTICE 파일 다운로드, API Key 폐기 이벤트를 `structlog` 전용에서 `audit_logs` 행으로 승격 — v2.1 예정.
+- SBOM 내보내기(`sbom_exported`), NOTICE 파일 다운로드, API Key 폐기 이벤트를 `structlog` 전용에서 `audit_logs` 행으로 승격 —  예정.
 
 ## 함께 보기
 

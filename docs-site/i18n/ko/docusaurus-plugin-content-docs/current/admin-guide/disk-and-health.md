@@ -10,7 +10,7 @@ sidebar_position: 3
 
 포털은 두 운영자 대시보드를 `/admin` 아래 노출합니다.
 
-- **/admin/health** — 모든 컨테이너 서비스와 Trivy DB 신선도 카드(W6-#43e 도입)의 현재 상태.
+- **/admin/health** — 모든 컨테이너 서비스와 Trivy DB 신선도 카드(roadmap)의 현재 상태.
 - **/admin/disk** — workspace와 데이터베이스 저장소 사용량(설정 가능한 hard limit 포함).
 
 이 둘이 함께 사용자가 알아채기 전에 문제를 잡습니다.
@@ -27,7 +27,7 @@ sidebar_position: 3
 
 **/admin/health** 페이지는 포털이 의존하는 모든 컴포넌트를 나열합니다. 각 행:
 
-- **컴포넌트** — `postgres`, `redis`, `celery`, `disk`, `active_scans`, `last_24h_errors` 중 하나. `vulnerability_data` 행(Trivy DB 신선도)은 W6-#43e에서 추가됩니다.
+- **컴포넌트** — `postgres`, `redis`, `celery`, `disk`, `active_scans`, `last_24h_errors` 중 하나. `vulnerability_data` 행(Trivy DB 신선도)은 향후 추가됩니다.
 - **상태** — `ok`(녹색), `degraded`(노랑), `down`(빨강). UI 라벨은 로케일에 따라 다르나(EN 로케일은 "OK / Degraded / Down" 표시) API 계약은 위 소문자 enum을 발신합니다.
 - **마지막 체크** — 가장 최근 프로브 타임스탬프.
 - **상세** — `ok`가 아닐 때의 오류 메시지 또는 텔레메트리 요약.
@@ -51,7 +51,7 @@ sidebar_position: 3
 
 ## 디스크 대시보드 {#disk}
 
-**/admin/disk**는 포털이 신경 쓰는 파일시스템마다 카드 하나를 렌더합니다. v2.4.0의 실제 카드는 **workspace**, **trivy_db**, **postgres**, **redis** 입니다(API 가 `items: AdminDiskItem[]` 으로 반환하고 페이지가 항목당 카드 하나를 렌더). 이전 **dt_volume** 카드는 Dependency-Track 폐기와 함께 제거되었습니다.
+**/admin/disk**는 포털이 신경 쓰는 파일시스템마다 카드 하나를 렌더합니다. 현재 릴리스의 실제 카드는 **workspace**, **trivy_db**, **postgres**, **redis** 입니다(API 가 `items: AdminDiskItem[]` 으로 반환하고 페이지가 항목당 카드 하나를 렌더). 이전 **dt_volume** 카드는 Dependency-Track 폐기와 함께 제거되었습니다.
 
 각 카드는 warn 임계와 critical 임계가 있습니다.
 
@@ -171,13 +171,13 @@ docker-compose -f docker-compose.yml exec backend \
 
 높이세요. 95%는 호스트 디스크가 바닥나기 전에 운영자가 대응할 여유를 주는 `DISK_HARD_LIMIT_PCT`의 보수적 기본값입니다. 모니터링이 더 이르게 잡으면 낮출 수 있습니다. Warn 임계(80%) 이상에서 일상 운영하는 것은 디스크 추가 신호입니다.
 
-## 로드맵 (v2.x)
+## 로드맵
 
-다음 기능들은 초기 문서에 언급되었으나 v2.0.0 에는 **반영되지 않았습니다**.
+다음 기능들은 초기 문서에 언급되었으나 v0.10.0 에는 **반영되지 않았습니다**.
 
 - Health 대시보드의 `backend`, `worker`, `beat`, `frontend`, `traefik` 컴포넌트별 liveness 프로브(현재는 대시보드 렌더링과 `celery` 행에서 추론).
 - WebSocket 스트리밍 health 갱신(현재는 React Query 폴링 사용).
-- W6-#43e로 계획된 `vulnerability_data` 행 이외 컴포넌트의 다중 샷 연속-미스 상태 머신.
+- 계획된 `vulnerability_data` 행 이외 컴포넌트의 다중 샷 연속-미스 상태 머신.
 
 ## 함께 보기
 

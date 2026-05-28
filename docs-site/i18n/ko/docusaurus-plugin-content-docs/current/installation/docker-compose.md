@@ -164,7 +164,7 @@ compose 스택에 필요한 세 파일(compose 파일, env 템플릿, 1회용 Po
 
 ```bash
 mkdir -p trustedoss && cd trustedoss
-BASE=https://raw.githubusercontent.com/trustedoss/trustedoss-portal/v2.0.0
+BASE=https://raw.githubusercontent.com/trustedoss/trustedoss-portal/v0.10.0
 
 # 1. 자기완결적 프로덕션 compose 파일(`build:` 섹션 없음 — ghcr.io에서 이미지 pull)
 #    과 env 템플릿.
@@ -229,7 +229,7 @@ backend 는 인증이 필요 없는 health 엔드포인트를 **두 개** 노출
 
 `/health/ready` 는 스키마가 HEAD 와 일치할 때만 `200 {"status":"ready"}` 를 반환합니다. 그렇지 않으면 RFC 7807 `application/problem+json` 본문으로 리비전 불일치를 요약한 `503` 을 반환합니다(DSN 이나 자격 증명은 절대 노출하지 않습니다).
 
-v2.1(Track B)부터 `backend` 서비스의 Compose `healthcheck` 가 **`/health/ready`** 를 검사하므로, `depends_on: backend (condition: service_healthy)` 를 선언한 `worker` / `beat` 서비스는 **스키마가 마이그레이션된 뒤에야** 기동합니다. 두 토글 모두에서:
+(Track B)부터 `backend` 서비스의 Compose `healthcheck` 가 **`/health/ready`** 를 검사하므로, `depends_on: backend (condition: service_healthy)` 를 선언한 `worker` / `beat` 서비스는 **스키마가 마이그레이션된 뒤에야** 기동합니다. 두 토글 모두에서:
 
 - **`AUTO_MIGRATE=true`**(단일 역할 기본값): backend 컨테이너가 기동 시 `alembic upgrade head` 를 실행하고, 완료되면 `/health/ready` 가 `200` 으로 바뀝니다. 그 후 워커가 마이그레이션된 스키마 위에서 시작합니다. 일반 경로이며 운영자 조치가 필요 없습니다.
 - **`AUTO_MIGRATE=false`**(L1 역할 분리 스택): uvicorn 은 `/health` 에 즉시 응답하지만, **외부**에서 owner 역할로 `alembic upgrade head`(`install.sh` / `upgrade.sh` 가 수행)를 실행해 스키마를 HEAD 로 올릴 때까지 `/health/ready` 는 `503` 으로 남습니다(컨테이너는 `health: starting` 유지). **이는 의도된 동작입니다.** 워커와 beat 는 아직 마이그레이션되지 않은 DB 위에서 시작하는 대신 스키마를 기다립니다. L1 스택에서 마이그레이션을 깜빡하면 backend 가 영영 healthy 가 되지 않으니 `docker-compose logs backend` 를 확인하고 owner 역할 마이그레이션을 실행하세요.
@@ -252,7 +252,7 @@ cd trustedoss-portal
 포크를 운영한다면 포크 레포를 클론하세요. 재현 가능한 설치를 위해 릴리스 태그로 체크아웃합니다.
 
 ```bash
-git checkout v2.0.0
+git checkout v0.10.0
 ```
 
 ## 2단계 — 설치 마법사 실행
@@ -326,7 +326,7 @@ sudo crontab -e
   공개 레포(테스트용)로 프로젝트 생성.
 - [ ] 스캔을 트리거; 우측 슬라이드 진행 드로어가 약 2~5분 안에
   `bootstrap → fetch → prep → cdxgen → scancode →
-  sbom_upload → vuln_match → finalize` 순서로 진행되어야 합니다. v2.4.0
+  sbom_upload → vuln_match → finalize` 순서로 진행되어야 합니다. v0.10.0
   WebSocket 프레임은 호환성을 위해 과거 슬러그 `dt_upload`/`dt_findings`를
   유지하지만 화면 라벨은 새 이름으로 표시됩니다.
 - [ ] 프로젝트의 **Vulnerabilities** 탭 열기 — 테스트 레포의 CVE 들이

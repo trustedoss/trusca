@@ -16,7 +16,7 @@ The portal ships two scripts: `scripts/backup.sh` and `scripts/restore.sh`. They
 
 ## What is in a backup
 
-Two directory naming formats coexist at v2.0.0:
+Two directory naming formats coexist in this release:
 
 - **CLI legacy** — `backups/YYYY-MM-DD-HHMMSS/` (used by `scripts/backup.sh` and the examples below).
 - **UI / Celery** — `backups/(auto|manual)-YYYYMMDDTHHMMSSZ/` (used by `apps/backend/tasks/backup.py` and the `/admin/backup` page; the prefix marks whether the backup came from the daily Celery Beat job or an operator click). The `auto-` retention sweep that the [Trigger a backup](#trigger-a-backup) section refers to keys off this prefix.
@@ -78,7 +78,7 @@ The list table shows: timestamp, size, **auto** badge (set on backups created by
 
 ### Schedule via Celery Beat
 
-Daily backups at **00:00 UTC** are scheduled by default in `apps/backend/tasks/backup.py` and require no additional configuration. The schedule is always-on at v2.0.0 — there is no env toggle to disable it (a `BACKUP_DAILY_ENABLED` switch is on the roadmap). If you prefer a host-side scheduler instead of Celery Beat, treat the auto-backups as a safety net and add the cron / systemd recipes below; the workflows are independent.
+Daily backups at **00:00 UTC** are scheduled by default in `apps/backend/tasks/backup.py` and require no additional configuration. The schedule is always-on in this release — there is no env toggle to disable it (a `BACKUP_DAILY_ENABLED` switch is on the roadmap). If you prefer a host-side scheduler instead of Celery Beat, treat the auto-backups as a safety net and add the cron / systemd recipes below; the workflows are independent.
 
 ### Upload + restore from the UI
 
@@ -310,9 +310,9 @@ docker-compose -f docker-compose.yml start worker
 
 This trades a 30-second scan-pause window for a guaranteed-consistent workspace tar.
 
-## Roadmap (v2.x)
+## Roadmap
 
-The following affordances are referenced in early docs but are **not** shipped at v2.0.0:
+The following affordances are referenced in early docs but are **not** shipped in this release:
 
 - `BACKUP_DAILY_ENABLED=false` env toggle to opt out of the Celery Beat daily schedule (today the schedule is always-on; use the host scheduler in addition, not as a replacement).
 

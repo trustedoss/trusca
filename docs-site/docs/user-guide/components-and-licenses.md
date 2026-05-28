@@ -21,7 +21,7 @@ Engineers triaging dependency hygiene; legal / compliance reviewers reading lice
 Columns:
 
 - **Component** — package name (e.g. `lodash`, `org.springframework:spring-web`).
-- **Type** — **Direct** / **Transitive** / `—`. A coloured badge that summarises the dependency graph depth: `Direct` (depth 1, you declared it) vs. `Transitive` (depth 2+, pulled in by another package); `—` for scans before v2.2 or ecosystems whose graph the scanner could not record. See [Direct vs. transitive](#dependency-depth).
+- **Type** — **Direct** / **Transitive** / `—`. A coloured badge that summarises the dependency graph depth: `Direct` (depth 1, you declared it) vs. `Transitive` (depth 2+, pulled in by another package); `—` for older scans that pre-date this collection or ecosystems whose graph the scanner could not record. See [Direct vs. transitive](#dependency-depth).
 - **Version** — pinned version found in the manifest or lockfile.
 - **License** — the license attached to the component. For a dependency this is the **declared** license `cdxgen` read from package metadata; see [Declared vs. detected](#declared-vs-detected) for how detected and concluded licenses relate. This is the value used by the build gate.
 - **Usage** — **Required** / **Optional** / `—`. The dependency scope `cdxgen` recorded along the *shortest* path to this component (when the same component is reachable via several paths the highest-scope path wins, i.e. `Required` > `Optional`). `—` means the scanner did not emit a scope for this component. Optional dependencies often carry the same legal obligations as required ones, but the **Required** / **Optional** distinction maps to license-compliance burden — an unused `Optional` extra is cheaper to remove than a deeply-required transitive dependency.
@@ -54,17 +54,17 @@ Click any row to open a right-side drawer with:
 
 Closing the drawer keeps you in place on the table — no full-page navigation.
 
-For the approval state of a conditional-license component, switch to the project-level [Approvals](./approvals.md) page (the drawer does not surface approval state at v2.0.0). Manual override of the concluded license is also deferred — see [Roadmap](#roadmap-v2x).
+For the approval state of a conditional-license component, switch to the project-level [Approvals](./approvals.md) page (the drawer does not surface approval state in this release). Manual override of the concluded license is also deferred — see [Roadmap](#roadmap).
 
 ## Direct vs. transitive (dependency depth) {#dependency-depth}
 
-Starting in v2.2 the pipeline collects the **dependency graph** that `cdxgen` records (which package depends on which) and computes, for each component, its **depth** — the shortest distance from a graph root:
+Starting in this release the pipeline collects the **dependency graph** that `cdxgen` records (which package depends on which) and computes, for each component, its **depth** — the shortest distance from a graph root:
 
 | Depth | Meaning | Label |
 |---|---|---|
 | `1` | A **direct** dependency — your project declares it in its manifest / lockfile. | **Direct** |
 | `2` and up | A **transitive** dependency — pulled in only because a direct dependency (or one of *its* dependencies) requires it. | **Transitive** |
-| *(empty)* | No depth was computed for this scan — older scans before v2.2, or ecosystems where the scan produced a flat component list with no graph. | — |
+| *(empty)* | No depth was computed for this scan — older older scans that pre-date this collection, or ecosystems where the scan produced a flat component list with no graph. | — |
 
 The drawer shows the component's depth and a **Direct** / **Transitive** label; the component list surfaces the same values so you can tell at a glance which findings you own directly.
 
@@ -89,18 +89,18 @@ the **UI label** column is what appears in tables and badges.
 | Tier (code value) | UI label | Build-gate effect | Examples |
 |---|---|---|---|
 | `permissive` | **Allowed** | No build-gate effect. | MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, CC0-1.0, Unlicense |
-| `conditional` | **Conditional** | Triggers the [approval workflow](./approvals.md). Build proceeds — including after a **Rejected** verdict; see the [approvals caveat](./approvals.md#rejected-verdict-at-v200). | LGPL-2.x, LGPL-3.x, MPL-2.0, EPL-1.x, EPL-2.0, CDDL-1.0 |
+| `conditional` | **Conditional** | Triggers the [approval workflow](./approvals.md). Build proceeds — including after a **Rejected** verdict; see the [approvals caveat](./approvals.md#rejected-verdict). | LGPL-2.x, LGPL-3.x, MPL-2.0, EPL-1.x, EPL-2.0, CDDL-1.0 |
 | `forbidden` | **Forbidden** | Build gate exits 1 in CI. | AGPL-3.0, GPL-2.0, GPL-3.0, SSPL-1.0, BUSL-1.1 |
 | `unknown` | **Unknown** | Surfaced for review; no automatic block. Always needs human review. | License could not be parsed; SPDX ID not matched by the classifier — see [below](#why-so-many-unknown). |
 
-:::warning Classification source at v2.0.0
-The legal-tier classification (`forbidden` / `conditional` / `permissive` / `unknown`) is currently driven by a hard-coded SPDX → tier dictionary in `apps/backend/tasks/scan_source.py` (`_LICENSE_CATEGORY_DEFAULTS`). Per-organization rule customization is on the v2.2 roadmap. For one-off overrides today, super-admins can patch the dictionary and restart the worker (an Operator-only path).
+:::warning Classification source in this release
+The legal-tier classification (`forbidden` / `conditional` / `permissive` / `unknown`) is currently driven by a hard-coded SPDX → tier dictionary in `apps/backend/tasks/scan_source.py` (`_LICENSE_CATEGORY_DEFAULTS`). Per-organization rule customization is on the the roadmap. For one-off overrides today, super-admins can patch the dictionary and restart the worker (an Operator-only path).
 :::
 
 ### Why so many `unknown`? {#why-so-many-unknown}
 
 :::info
-Classification uses exact-match SPDX IDs. Suffix-less variants (`LGPL-3.0` instead of `LGPL-3.0-or-later`) fall through to `unknown`. If a component shows `unknown` despite a well-known SPDX ID, the source likely emitted a deprecated alias. Fuzzy SPDX normalization is on the v2.1 roadmap.
+Classification uses exact-match SPDX IDs. Suffix-less variants (`LGPL-3.0` instead of `LGPL-3.0-or-later`) fall through to `unknown`. If a component shows `unknown` despite a well-known SPDX ID, the source likely emitted a deprecated alias. Fuzzy SPDX normalization is on the the roadmap.
 :::
 
 ## Declared vs. detected {#declared-vs-detected}
@@ -111,14 +111,14 @@ Each license finding has a **kind** that tells you where the license came from. 
 |---|---|---|
 | **Declared** | `cdxgen` — read from a dependency's published package metadata (`package.json`, `pom.xml`, `setup.py`, …). | The license the dependency's author *says* it ships under. This is the value the build gate evaluates. Most dependency findings are declared. |
 | **Detected** | scancode — scans your project's **first-party** source files directly. Each detected finding carries a `source_path` (the file the license text was found in). | The license actually present in **your own code**. This catches cases the metadata misses — for example a dependency declared `MIT` but with `GPL-3.0`-licensed code copied into your tree. |
-| **Concluded** | The multi-ecosystem registry fetcher (Maven Central / PyPI / crates.io / pkg.go.dev), used as a fallback **only** when `cdxgen` produced no SPDX id for a dependency. | A registry-derived license for a dependency whose own metadata was silent. It is *not* the result of reconciling declared and detected — v2.0.0 does not perform automatic reconciliation. |
+| **Concluded** | The multi-ecosystem registry fetcher (Maven Central / PyPI / crates.io / pkg.go.dev), used as a fallback **only** when `cdxgen` produced no SPDX id for a dependency. | A registry-derived license for a dependency whose own metadata was silent. It is *not* the result of reconciling declared and detected — v0.10.0 does not perform automatic reconciliation. |
 
 :::note "Detected" means first-party, not dependency source
 scancode runs over your **own** source tree only. Third-party dependency sources are deliberately **not** downloaded — that keeps per-scan runtime within budget. So a dependency's license is **declared** (or **concluded** via the registry fallback), never **detected**; **detected** licenses always describe code in your repository.
 :::
 
 :::caution Declared and detected can disagree
-A component can carry both a **declared** finding (e.g. `MIT` from metadata) and a **detected** finding (e.g. `GPL-3.0` from a source file). v2.0.0 surfaces both side by side and does **not** auto-reconcile them into a single verdict — review the conflict yourself. A `GPL-3.0` detected inside a project you ship as `MIT` is exactly the kind of contamination the detected scan exists to surface.
+A component can carry both a **declared** finding (e.g. `MIT` from metadata) and a **detected** finding (e.g. `GPL-3.0` from a source file). v0.10.0 surfaces both side by side and does **not** auto-reconcile them into a single verdict — review the conflict yourself. A `GPL-3.0` detected inside a project you ship as `MIT` is exactly the kind of contamination the detected scan exists to surface.
 :::
 
 ### When detected licenses are missing
@@ -145,7 +145,7 @@ The **Obligations** tab on the project page consolidates obligations across comp
 
 ![Project detail — Obligations tab with the per-component obligations distribution](/img/screenshots/user-obligations-distribution.png)
 
-:::note Obligation kinds at v2.0.0
+:::note Obligation kinds in this release
 The obligations catalog covers the seven kinds listed above. Some
 AGPL / SSPL / BUSL-specific obligations are **not** modeled as discrete
 kinds yet:
@@ -157,7 +157,7 @@ kinds yet:
 - **Field-of-use restrictions** (BUSL-1.1).
 
 For these, see the underlying license text via the component drawer; a
-richer obligation taxonomy is on the v2.2 roadmap.
+richer obligation taxonomy is on the the roadmap.
 :::
 
 ## SPDX expressions
@@ -191,25 +191,25 @@ The license could not be parsed, or the SPDX ID was not in the classifier's exac
 
 ### Classification looks wrong
 
-The classification at v2.0.0 is driven by the hard-coded `_LICENSE_CATEGORY_DEFAULTS` dictionary in `apps/backend/tasks/scan_source.py` (see [Classification source](#license-classification) above). For a one-off override today, a super-admin can patch the dictionary and restart the worker; the per-organization customization path is on the v2.2 roadmap. If the dictionary entry is correct but a detected license disagrees with the declared one, review both findings in the component drawer (see [Declared vs. detected](#declared-vs-detected)).
+The classification in this release is driven by the hard-coded `_LICENSE_CATEGORY_DEFAULTS` dictionary in `apps/backend/tasks/scan_source.py` (see [Classification source](#license-classification) above). For a one-off override today, a super-admin can patch the dictionary and restart the worker; the per-organization customization path is on the the roadmap. If the dictionary entry is correct but a detected license disagrees with the declared one, review both findings in the component drawer (see [Declared vs. detected](#declared-vs-detected)).
 
 ### Lockfile not detected
 
 `cdxgen` supports 30+ ecosystems but new ones land regularly. Confirm the project's lockfile is at the repo root or one level below; `cdxgen` does not recurse arbitrarily deep. If the ecosystem is unsupported, file an issue with the pipeline output.
 
-## Roadmap (v2.x)
+## Roadmap
 
-Items the manual previously promised that are not in v2.0.0; tracked for later releases.
+Items the manual previously promised that are not in this release; tracked for later releases.
 
-- Standalone **Type** (ecosystem) and **Classification** columns on the components table — for v2.0.0 the type is encoded inside the `purl` shown in the drawer's Identity row, and the classification surfaces via the **Severity** color legend.
-- Exact-SPDX **License** filter and **Has open CVE** toggle — planned for v2.1; the current **License category** multi-select and the search box cover most workflows.
-- **Approval status** row inside the component drawer — planned for v2.1; the project-level [Approvals](./approvals.md) page is the source of truth today.
-- Manual **Override concluded license** action in the drawer (`team_admin`) — planned for v2.2.
-- Fuzzy SPDX normalization for suffix-less variants (`LGPL-3.0` → `LGPL-3.0-or-later`) — planned for v2.1.
-- Per-organization license-classification rule customization — planned for v2.2; today classification is driven by the hard-coded `_LICENSE_CATEGORY_DEFAULTS` dictionary in `apps/backend/tasks/scan_source.py`.
+- Standalone **Type** (ecosystem) and **Classification** columns on the components table — for v0.10.0 the type is encoded inside the `purl` shown in the drawer's Identity row, and the classification surfaces via the **Severity** color legend.
+- Exact-SPDX **License** filter and **Has open CVE** toggle — planned; the current **License category** multi-select and the search box cover most workflows.
+- **Approval status** row inside the component drawer — planned; the project-level [Approvals](./approvals.md) page is the source of truth today.
+- Manual **Override concluded license** action in the drawer (`team_admin`) — planned.
+- Fuzzy SPDX normalization for suffix-less variants (`LGPL-3.0` → `LGPL-3.0-or-later`) — planned.
+- Per-organization license-classification rule customization — planned; today classification is driven by the hard-coded `_LICENSE_CATEGORY_DEFAULTS` dictionary in `apps/backend/tasks/scan_source.py`.
 
 ## See also
 
 - [Vulnerabilities](./vulnerabilities.md)
 - [Approvals](./approvals.md)
-- [SBOM](./sbom.md) — including the [Compliance evidence trail](./sbom.md#compliance-evidence-trail-at-v200)
+- [SBOM](./sbom.md) — including the [Compliance evidence trail](./sbom.md#compliance-evidence-trail)

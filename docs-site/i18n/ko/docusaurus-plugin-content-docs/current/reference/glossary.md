@@ -95,7 +95,7 @@ sidebar_position: 4
   파일을 직접 읽어 *detected* SPDX 라이선스를 발신하는 라이선스
   스캐너로, 각 항목에 라이선스가 발견된 파일의 `source_path` 를
   태깅합니다. TrustedOSS는 소스 스캔의 두 번째 단계로 scancode 를
-  실행합니다(v2.0.0 에서 OSS Review Toolkit, ORT 를 대체). 서드파티
+  실행합니다(v0.10.0 에서 OSS Review Toolkit, ORT 를 대체). 서드파티
   의존성 소스는 스캔하지 않으며 — 그 라이선스는 *declared*(cdxgen
   에서)로 유지됩니다.
   [github.com/aboutcode-org/scancode-toolkit](https://github.com/aboutcode-org/scancode-toolkit) 참고.
@@ -112,7 +112,7 @@ sidebar_position: 4
   `TRIVY_DB_REFRESH_HOURS`). [취약점 데이터 (Trivy DB)](../admin-guide/vulnerability-data.md)와
   [데이터 출처](./data-sources.md) 참고.
 - **DT — Dependency-Track.** Apache-2.0 취약점 인텔리전스 플랫폼.
-  TrustedOSS는 v2.3까지 DT를 취약점 엔진으로 사용했고 v2.4.0에서 Trivy로
+  TrustedOSS는 까지 DT를 취약점 엔진으로 사용했고 v0.10.0에서 Trivy로
   교체했습니다 —
   [ADR-0001](https://github.com/trustedoss/trustedoss-portal/blob/main/docs/decisions/0001-replace-dt-with-trivy.md)과
   [비교](../comparison.md#dependency-track과-비교) 참고. 본 용어집에 여전히
@@ -147,7 +147,7 @@ sidebar_position: 4
 
 분류는 `apps/backend/tasks/scan_source.py` 의
 `_LICENSE_CATEGORY_DEFAULTS` 사전이 결정합니다(운영자 측 오버라이드
-경로; ORT 기반 조직별 룰은 v2.2 로드맵 항목). API 응답·감사 로그·
+경로; ORT 기반 조직별 룰은  로드맵 항목). API 응답·감사 로그·
 빌드 게이트 결정에는 `forbidden` / `conditional` / `permissive` /
 `unknown` 값이, UI 테이블·배지에는 `Forbidden` / `Conditional` /
 `Allowed` / `Unknown` 라벨이 노출됩니다.
@@ -200,15 +200,15 @@ API Key는 단일 **scope** 를 가집니다.
 | `team` | super-admin, team-admin | 한 팀의 프로젝트 범위 |
 | `project` | super-admin, team-admin, developer (본인 팀 프로젝트 한정) | 한 프로젝트 범위 |
 
-v2.0.0 에는 액션 단위 허용 목록이 없습니다 — 올바른 scope의 키로
+v0.10.0 에는 액션 단위 허용 목록이 없습니다 — 올바른 scope의 키로
 인증된 호출자는 API Key를 받는 어떤 엔드포인트라도 호출할 수
 있습니다. 액션 단위 권한은 로드맵 항목입니다.
 
 ## 운영 용어
 
 - **회로 차단기 (CLOSED / OPEN / HALF_OPEN).** 실패 도메인을 격리하는
-  패턴. TrustedOSS는 v2.3까지 Dependency-Track API 클라이언트를 차단기로
-  감쌌습니다. v2.4.0+에서는 Trivy DB가 워커 로컬에 있어 취약점 경로에서
+  패턴. TrustedOSS는 까지 Dependency-Track API 클라이언트를 차단기로
+  감쌌습니다. v0.10.0+에서는 Trivy DB가 워커 로컬에 있어 취약점 경로에서
   이 패턴은 더 이상 사용하지 않습니다. 일반 용어로는 운영 문헌에 계속
   등장합니다.
 - **`audit_logs`.** 상태를 변경하는 모든 작업(1급 엔티티의 CRUD,

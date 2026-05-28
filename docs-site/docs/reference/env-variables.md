@@ -86,8 +86,8 @@ The portal correlates SBOMs against CVEs using a local **Trivy DB** — a compil
 | `TRIVY_DB_CACHE_DIR` | `/var/lib/trivy` | `config.py` | Worker-container directory the DB is unpacked into. Mount a host volume so reboots don't re-download. |
 | `TRIVY_TIMEOUT_SECONDS` | `300` | `config.py` | Per-scan timeout for `trivy sbom`. Raise to `600`–`900` for very large monorepos. |
 
-:::note Dependency-Track keys removed in v2.4.0
-The `DT_URL`, `DT_API_KEY`, `DT_REQUEST_TIMEOUT_SECONDS`, `DT_BREAKER_*`, `DT_HEALTH_ENDPOINT`, `DT_AUTO_RESTART`, and `DT_ORPHAN_AUTODELETE` keys are no longer read by v2.4.0. They are safely ignored if present in an existing `.env` after upgrade — see [v2.4.0 migration](../release-notes/v2.4.0.md#migration-from-v23x).
+:::note Dependency-Track keys removed in v0.10.0
+The `DT_URL`, `DT_API_KEY`, `DT_REQUEST_TIMEOUT_SECONDS`, `DT_BREAKER_*`, `DT_HEALTH_ENDPOINT`, `DT_AUTO_RESTART`, and `DT_ORPHAN_AUTODELETE` keys are no longer read by v0.10.0. They are safely ignored if present in an existing `.env` after upgrade — see [v0.10.0 migration](../release-notes/v0.10.0.md#migration-from-v23x).
 :::
 
 ## Build / policy gate
@@ -110,7 +110,7 @@ See [build gate](./glossary.md#build-gates) for the gate model and [Gate the bui
 | `SCANCODE_MAX_DETECTIONS` | `5000` | `config.py` | Cap on the number of detected-license findings persisted per scan. |
 | `SCANCODE_MAX_RESULT_BYTES` | `268435456` (256 MB) | `config.py` | Ceiling on the scancode JSON artefact before parsing — guards against an OOM from a hostile tree. |
 | `WORKSPACE_HOST_PATH` | `/tmp/trustedoss` | `config.py`, `docker-compose.yml` | Host directory mounted into the worker as `/workspace`. Holds repo clones + scan artefacts (cdxgen SBOM, scancode output). The compose stack overrides this to `/workspace` inside the container. |
-| `ORT_RULES_PATH` | `/opt/trustedoss/ort/rules.kts` | `docker-compose.yml` | Legacy path inside the worker, vestigial after the ORT stage was removed. The file is a placeholder and has no effect at v2.0.0 — license-tier classification comes from `_LICENSE_CATEGORY_DEFAULTS` in `apps/backend/tasks/scan_source.py`. |
+| `ORT_RULES_PATH` | `/opt/trustedoss/ort/rules.kts` | `docker-compose.yml` | Legacy path inside the worker, vestigial after the ORT stage was removed. The file is a placeholder and has no effect in this release — license-tier classification comes from `_LICENSE_CATEGORY_DEFAULTS` in `apps/backend/tasks/scan_source.py`. |
 | `JSONB_ROW_SIZE_LIMIT_BYTES` | `262144` (256 KB) | `config.py` | Per-row JSON byte ceiling before the writer truncates and emits a warning. Guards the I-1 unbounded-payload class. |
 
 ## WebSocket gateway
@@ -183,7 +183,7 @@ These apply to the demo SaaS deployment. Self-hosted installs leave them empty (
 
 | Key | Default | Read by | Description |
 |---|---|---|---|
-| `JIRA_ENABLED` | `false` | (none) | **Stub only — not consumed by any code path at v2.0.0.** Reserved for the Phase B Jira integration; included in `.env.example` so existing deployments do not break when the feature lands. |
+| `JIRA_ENABLED` | `false` | (none) | **Stub only — not consumed by any code path in this release.** Reserved for the Phase B Jira integration; included in `.env.example` so existing deployments do not break when the feature lands. |
 | `JIRA_URL` | (empty) | (none) | Stub. See above. |
 | `JIRA_TOKEN` | (empty) | (none) | Stub. See above. |
 | `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` | (empty) | subprocess env | Honored by `git clone`, `cdxgen`, and the `trivy --download-db-only` boot / refresh path. |

@@ -60,9 +60,9 @@ Who can issue each scope:
 | `team`   | super-admin, team-admin |
 | `project`| super-admin, team-admin, developer (within their team's projects) |
 
-The key inherits the **role of the issuing user** at request time — there is no separate "effective role" or "allowed actions" list at v2.0.0. Permission checks fall through to the same RBAC code path as a JWT-authenticated request.
+The key inherits the **role of the issuing user** at request time — there is no separate "effective role" or "allowed actions" list in this release. Permission checks fall through to the same RBAC code path as a JWT-authenticated request.
 
-Keys are **non-expiring** at v2.0.0. They are valid until manually revoked. Per-key expiry presets and a fine-grained `allowed_actions` taxonomy (`scan:trigger`, `scan:read`, `report:download`, …) are on the roadmap.
+Keys are **non-expiring** in this release. They are valid until manually revoked. Per-key expiry presets and a fine-grained `allowed_actions` taxonomy (`scan:trigger`, `scan:read`, `report:download`, …) are on the roadmap.
 
 ## Issuing a key
 
@@ -127,9 +127,9 @@ The UI shows: label, prefix, scope (`org` / `team` / `project`), creator, create
 Key lifecycle events log:
 
 - `target_table=api_keys&action=create` — emitted by the ORM listener when a key row is inserted (actor, target prefix, scope).
-- `api_key.revoked` — emitted by the API key service as a **structlog event only** on explicit revocation (actor, target prefix). It does **not** create an `audit_logs` row at v2.0.0. The ORM listener still records the underlying `api_keys.update` row when `revoked_at` flips, so the revocation is captured on the audit table — under `target_table=api_keys&action=update` rather than under the structlog event name.
+- `api_key.revoked` — emitted by the API key service as a **structlog event only** on explicit revocation (actor, target prefix). It does **not** create an `audit_logs` row in this release. The ORM listener still records the underlying `api_keys.update` row when `revoked_at` flips, so the revocation is captured on the audit table — under `target_table=api_keys&action=update` rather than under the structlog event name.
 
-Per-request audit rows are not emitted for API-key authentication at v2.0.0 (an `api_key.use` event is on the roadmap). Audit rows that are produced by an API-key request still carry the resulting domain action (e.g. `target_table=scans&action=create`); the API key's prefix is captured by structured logs on the request, but the audit row's `actor_user_id` is the issuing user, not the key.
+Per-request audit rows are not emitted for API-key authentication in this release (an `api_key.use` event is on the roadmap). Audit rows that are produced by an API-key request still carry the resulting domain action (e.g. `target_table=scans&action=create`); the API key's prefix is captured by structured logs on the request, but the audit row's `actor_user_id` is the issuing user, not the key.
 
 ## Webhook secrets vs. API keys
 
@@ -189,9 +189,9 @@ Confirm:
 - The runner's outbound IP is not blocked by your portal firewall (some installs whitelist office IPs only).
 - The `Authorization` header is preserved through any reverse proxy your CI traffic transits.
 
-## Roadmap (v2.x)
+## Roadmap
 
-The following capabilities are referenced in early docs but are **not** shipped at v2.0.0:
+The following capabilities are referenced in early docs but are **not** shipped in this release:
 
 - Per-key role override (`effective_role`) and a granular `allowed_actions` taxonomy (`scan:trigger`, `scan:read`, `report:download`, `webhook:receive`, `*`). Today the key inherits the issuing user's role and the full RBAC surface.
 - Per-key `expires_at` field and the 30 / 90 / 180 / 365-day expiry presets in the New API key form. Today keys do not expire — they live until revoked.

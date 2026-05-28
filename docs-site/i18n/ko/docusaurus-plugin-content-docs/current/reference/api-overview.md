@@ -250,7 +250,7 @@ curl -sS https://trustedoss.example.com/api/openapi.json > openapi.json
 - 비밀번호 재설정(`/auth/forgot-password`) — IP 키 5/분(`PASSWORD_RESET_RATE_LIMIT`로 변경 가능); 주소별 쿨다운은 `Retry-After`로 반환.
 
 :::note
-`Idempotency-Key` 요청 처리와 `X-RateLimit-*` 응답 헤더는 로드맵 항목이며 v2.0.0에서는 구현되어 있지 않습니다.
+`Idempotency-Key` 요청 처리와 `X-RateLimit-*` 응답 헤더는 로드맵 항목이며 현재 릴리스에서는 구현되어 있지 않습니다.
 :::
 
 ## 스캔 취소

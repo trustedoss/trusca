@@ -8,7 +8,7 @@ sidebar_position: 10
 
 # Design system
 
-The portal frontend follows a single, light-mode design system inspired by **Vercel** (light base — surfaces, dense rows, sidebar tint) and **Linear** (typography hierarchy, motion, focus polish). Dark mode is deferred to v2.5+.
+The portal frontend follows a single, light-mode design system inspired by **Vercel** (light base — surfaces, dense rows, sidebar tint) and **Linear** (typography hierarchy, motion, focus polish). Dark mode is deferred to +.
 
 :::note Audience
 Frontend contributors, designers, and reviewers. The tokens here are the canonical reference — components should never hard-code hex values or magic spacing.

@@ -21,12 +21,12 @@ frontend, an Ingress with TLS, and a database migration Job. PostgreSQL and
 Redis can either be bundled in-cluster (for evaluation) or pointed at external
 managed datastores (recommended for production).
 
-:::info Vulnerability matching ships in-chart (v2.4.0+)
+:::info Vulnerability matching ships in-chart (v0.10.0+)
 The worker pod ships with the Trivy DB and downloads / refreshes it from `ghcr.io/aquasecurity/trivy-db` (or a mirror via `env.trivy.dbRepository`). No external vulnerability engine is required. See [Vulnerability data (Trivy DB)](../admin-guide/vulnerability-data.md).
 :::
 
 :::caution Chart 0.3.0 dropped Dependency-Track
-Prior chart versions (≤ 0.2.x) optionally deployed Dependency-Track as a sub-chart and exposed `env.dt.*` values. Chart 0.3.0 removes that path — see [v2.4.0 release notes — Helm chart 0.3.0](../release-notes/v2.4.0.md#helm-chart-030) before upgrading from 0.2.x.
+Prior chart versions (≤ 0.2.x) optionally deployed Dependency-Track as a sub-chart and exposed `env.dt.*` values. Chart 0.3.0 removes that path — see [v0.10.0 release notes — Helm chart 0.3.0](../release-notes/v0.10.0.md#helm-chart-030) before upgrading from 0.2.x.
 :::
 
 ## What the chart deploys
@@ -244,4 +244,4 @@ If you hit a chart bug, open an issue using the
 - [Environment variables](../reference/env-variables.md) — every setting the chart maps
 - [Architecture](../reference/architecture.md) — services, Trivy DB lifecycle, and the migration model
 - [Vulnerability data (Trivy DB)](../admin-guide/vulnerability-data.md) — air-gapped operation and DB refresh
-- [v2.4.0 release notes](../release-notes/v2.4.0.md) — chart 0.3.0 breaking changes
+- [v0.10.0 release notes](../release-notes/v0.10.0.md) — chart 0.3.0 breaking changes

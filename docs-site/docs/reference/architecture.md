@@ -30,12 +30,12 @@ The production stack runs seven container services:
 
 Image tags are pinned (`CLAUDE.md` rule #9 — never `:latest`).
 
-:::note Dependency-Track was removed in v2.4.0
-Earlier releases shipped Dependency-Track as an optional eighth service. v2.4.0 removed it in favour of Trivy as the single vulnerability engine — see [ADR-0001](https://github.com/trustedoss/trustedoss-portal/blob/main/docs/decisions/0001-replace-dt-with-trivy.md) and the [v2.4.0 release notes](../release-notes/v2.4.0.md). The Trivy DB lives inside the worker container; there is no separate vulnerability-engine service.
+:::note Dependency-Track was removed in v0.10.0
+Earlier releases shipped Dependency-Track as an optional eighth service. v0.10.0 removed it in favour of Trivy as the single vulnerability engine — see [ADR-0001](https://github.com/trustedoss/trustedoss-portal/blob/main/docs/decisions/0001-replace-dt-with-trivy.md) and the [v0.10.0 release notes](../release-notes/v0.10.0.md). The Trivy DB lives inside the worker container; there is no separate vulnerability-engine service.
 :::
 
 :::note
-The `/metrics` route is reserved at the Traefik level (`docker-compose.yml`) but no backend handler is mounted at v2.0.0; the Prometheus exporter is on the post-GA roadmap.
+The `/metrics` route is reserved at the Traefik level (`docker-compose.yml`) but no backend handler is mounted in this release; the Prometheus exporter is on the post-GA roadmap.
 :::
 
 ## Network
@@ -100,9 +100,9 @@ A scan is a Celery task chain. Source scan stages (see `apps/backend/tasks/scan_
 8. finalize      (write to PostgreSQL in one transaction per scan)
 ```
 
-The stage slugs above are the v2.4.0 names. WebSocket frames carry the historical slugs (`dt_upload`, `dt_findings`) at v2.4.0 to keep existing harnesses and CI clients working — the rename to `sbom_upload` / `vuln_match` ships in v2.4.1 (see [ADR-0001 Appendix A](https://github.com/trustedoss/trustedoss-portal/blob/main/docs/decisions/0001-replace-dt-with-trivy.md)).
+The stage slugs above are the v0.10.0 names. WebSocket frames carry the historical slugs (`dt_upload`, `dt_findings`) at v0.10.0 to keep existing harnesses and CI clients working — the rename to `sbom_upload` / `vuln_match` ships in this release.1 (see [ADR-0001 Appendix A](https://github.com/trustedoss/trustedoss-portal/blob/main/docs/decisions/0001-replace-dt-with-trivy.md)).
 
-The `scancode` stage replaced the former `ort` stage in v2.0.0; the WebSocket progress slug changed from `ort` to `scancode` at the same percent. See [User guide — Scans](../user-guide/scans.md#pipeline-stages-source).
+The `scancode` stage replaced the former `ort` stage in this release; the WebSocket progress slug changed from `ort` to `scancode` at the same percent. See [User guide — Scans](../user-guide/scans.md#pipeline-stages-source).
 
 Container scan stages (see `apps/backend/tasks/scan_container.py`):
 
@@ -117,13 +117,13 @@ Stage transitions emit WebSocket events (`scan.<id>.progress`) so the UI updates
 
 ## License-tier classification {#ort-rules}
 
-:::warning Classification source at v2.0.0
-At v2.0.0, license-tier classification is **not** ORT-rule-driven. The
+:::warning Classification source in this release
+In this release, license-tier classification is **not** ORT-rule-driven. The
 tier (`forbidden` / `conditional` / `permissive` / `unknown`) comes
 from the hard-coded `_LICENSE_CATEGORY_DEFAULTS` dictionary in
 `apps/backend/tasks/scan_source.py`. The repo's `ort/rules.kts` is a
-placeholder reserved for the v2.2 customization path. Editing
-`ort/rules.kts` has no effect at v2.0.0.
+placeholder reserved for the  customization path. Editing
+`ort/rules.kts` has no effect in this release.
 :::
 
 The classifier maps SPDX IDs to tiers as follows (representative
@@ -155,16 +155,16 @@ _LICENSE_CATEGORY_DEFAULTS: dict[str, str] = {
 # like "LGPL-3.0") fall through to "unknown" and need human review.
 ```
 
-Operator override path at v2.0.0:
+Operator override path in this release:
 
 1. Patch `_LICENSE_CATEGORY_DEFAULTS` in `apps/backend/tasks/scan_source.py`.
 2. Rebuild and restart the worker (`docker-compose restart worker beat`).
 3. Re-scan affected projects to apply the new classification.
 
-Per-organization rule customization is planned for v2.2; the legacy
+Per-organization rule customization is planned; the legacy
 `ORT_RULES_PATH` env var and the `ort/rules.kts` mount in the worker
 image are vestigial placeholders from the removed ORT stage and have no
-effect at v2.0.0.
+effect in this release.
 
 The portal does not auto-re-classify historical scans — the historical record is preserved with the classification that was in effect at scan time.
 
@@ -185,7 +185,7 @@ See [Vulnerability data (Trivy DB)](../admin-guide/vulnerability-data.md) for th
 - **Access token** — JWT, 30-minute lifetime, `HS256` signed (symmetric, `SECRET_KEY`), in-app memory only.
 - **Refresh token** — 7-day lifetime, **rotation with reuse detection**. HttpOnly + Secure + SameSite=Lax cookie.
 - **API keys** — `tos_<prefix>_<secret>` accepted via `Authorization: Bearer …`. bcrypt-hashed; full key shown once at creation.
-- **CSRF posture** — the SPA uses bearer tokens (CSRF-immune by construction). The refresh cookie is HttpOnly + Secure + SameSite=Lax, which blocks the cross-site POST attack class without an explicit CSRF token. No separate CSRF token endpoint exists at v2.0.0.
+- **CSRF posture** — the SPA uses bearer tokens (CSRF-immune by construction). The refresh cookie is HttpOnly + Secure + SameSite=Lax, which blocks the cross-site POST attack class without an explicit CSRF token. No separate CSRF token endpoint exists in this release.
 - **Rate limit** — IP-keyed 5/minute on login and forgot-password, 429 with `Retry-After`. Per-address cooldown on password-reset emails.
 
 ## Authorization (RBAC)
@@ -224,7 +224,7 @@ Out of the box:
 - **Health** — `/health` (backend), `/healthz` (frontend container), `/admin/health` UI for the operator dashboard.
 - **Metrics** — basic service-health metrics are shipped at the Traefik level via its access log. A backend `/metrics` endpoint with a Prometheus exporter is on the post-GA roadmap.
 
-OpenTelemetry tracing exporter and a bundled Jaeger overlay are on the post-GA roadmap (Phase B) — there is no `docker-compose.tracing.yml` at v2.0.0.
+OpenTelemetry tracing exporter and a bundled Jaeger overlay are on the post-GA roadmap (Phase B) — there is no `docker-compose.tracing.yml` in this release.
 
 ## Deployment topologies
 
@@ -233,7 +233,7 @@ The reference deployment is a **single-host docker-compose** install. Variations
 - **Single-host (default)** — the seven services above; the Trivy DB downloads on worker boot.
 - **Air-gapped** — point `TRIVY_DB_REPOSITORY` at an internal OCI mirror so the worker never reaches the public registry. See [Vulnerability data — Air-gapped operation](../admin-guide/vulnerability-data.md#air-gapped).
 
-A **Helm chart** ships from v2.0.0. v2.4.0 chart 0.3.0 adds:
+A **Helm chart** ships from v0.10.0. v0.10.0 chart 0.3.0 adds:
 
 - Per-component HPA (worker scales by queue depth).
 - StatefulSet for PostgreSQL with PVC.

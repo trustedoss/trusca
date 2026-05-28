@@ -21,7 +21,7 @@ Engineers with `developer` or higher on the project's team. Triggering scans aga
 | **`source`** | `cdxgen` (CycloneDX generator) → scancode (first-party license detection) → Trivy (`trivy sbom`) | Components and their **declared** licenses (from dependency metadata) plus **detected** licenses (scancode reading your own first-party source), and CVEs (Common Vulnerabilities and Exposures) matched by the local Trivy DB against NVD + OSV + GHSA + EPSS + KEV. |
 | **`container`** | Trivy (Aqua Security container scanner) | OS-package vulnerabilities and (limited) language-package CVEs in a container image. |
 
-Both kinds are selectable from the UI scan dialog as of v2.1 — pick **Source** or **Container** when you trigger a scan (see [Trigger a scan → From the UI](#from-the-ui)). The API accepts both kinds as well.
+Both kinds are selectable from the UI scan dialog in this release — pick **Source** or **Container** when you trigger a scan (see [Trigger a scan → From the UI](#from-the-ui)). The API accepts both kinds as well.
 
 ## Trigger a scan
 
@@ -49,7 +49,7 @@ the `ScanCreate` payload accepts only `kind` and `metadata` (see
 `apps/backend/schemas/scan.py`). To scan `develop` or a feature
 branch, temporarily change `default_branch` in **Project Settings**
 before triggering the scan, then revert. A first-class `branch`
-field on the trigger is on the v2.x roadmap.
+field on the trigger is on the the roadmap.
 :::
 
 ### Scan a container image
@@ -125,12 +125,12 @@ The progress view shows real-time stage transitions:
 1. **Bootstrapping** — preparing the workspace.
 2. **Fetching source** — `git clone` (or `git fetch` + checkout for an existing workspace).
 3. **Detecting components** — `cdxgen` walks the repo and emits a CycloneDX SBOM, with **declared** licenses read from each dependency's package metadata.
-4. **Detecting first-party licenses** — scancode scans the project's own source files and records the **detected** licenses it finds, each tagged with the `source_path` of the file it came from (see [Components & licenses → Detected vs. declared](./components-and-licenses.md#declared-vs-detected)). This stage is best-effort: if scancode is not installed, times out, or the tree is too large, the scan continues with declared licenses only — a degraded but non-fatal outcome. Legal-tier classification at v2.0.0 is then applied from the hard-coded `_LICENSE_CATEGORY_DEFAULTS` dictionary in `apps/backend/tasks/scan_source.py` (see [Components & licenses → Classification source](./components-and-licenses.md#license-classification)).
+4. **Detecting first-party licenses** — scancode scans the project's own source files and records the **detected** licenses it finds, each tagged with the `source_path` of the file it came from (see [Components & licenses → Detected vs. declared](./components-and-licenses.md#declared-vs-detected)). This stage is best-effort: if scancode is not installed, times out, or the tree is too large, the scan continues with declared licenses only — a degraded but non-fatal outcome. Legal-tier classification in this release is then applied from the hard-coded `_LICENSE_CATEGORY_DEFAULTS` dictionary in `apps/backend/tasks/scan_source.py` (see [Components & licenses → Classification source](./components-and-licenses.md#license-classification)).
 5. **Resolving vulnerabilities** — `trivy sbom` matches the CycloneDX SBOM against the local Trivy DB (NVD + OSV + GHSA + EPSS + KEV). No network call per scan.
 6. **Persisting** — components, licenses, and findings are written to PostgreSQL.
 
 :::note ORT was replaced by scancode
-Earlier builds ran the OSS Review Toolkit (ORT) at the license stage. v2.0.0 replaces it with scancode for **first-party** detection. Third-party dependency sources are deliberately not downloaded — that kept per-scan runtime within budget — so dependency licenses stay **declared** (from cdxgen) and scancode adds **detected** licenses for the code your team actually wrote.
+Earlier builds ran the OSS Review Toolkit (ORT) at the license stage. v0.10.0 replaces it with scancode for **first-party** detection. Third-party dependency sources are deliberately not downloaded — that kept per-scan runtime within budget — so dependency licenses stay **declared** (from cdxgen) and scancode adds **detected** licenses for the code your team actually wrote.
 :::
 
 If the local Trivy DB has not finished downloading when stage 5 runs (most common on a fresh install), the scan completes with **0 vulnerability findings** and a banner on the Vulnerabilities tab pointing operators at [Vulnerability data (Trivy DB)](../admin-guide/vulnerability-data.md). The automatic re-match beat picks up findings once the DB lands — no re-scan needed.
@@ -320,11 +320,11 @@ The **Detected** licenses come from scancode and are best-effort. They may be ab
 - The first-party tree exceeds the `SCANCODE_MAX_FILES` ceiling, scancode timed out, or the result was too large — all log a warning and fall back to declared-only.
 - The relevant code lives inside an excluded directory (`node_modules`, `vendor`, `.git`, `dist`, `build`, `out`, `target`, `.venv`, …). Those are skipped by design — see [Components & licenses → Detected vs. declared](./components-and-licenses.md#declared-vs-detected).
 
-## Roadmap (v2.x)
+## Roadmap
 
 Items tracked for later releases.
 
-- Branch-override field on the project-level **Scan** trigger — planned for a later v2.x. (The Source / Container kind-selection dialog shipped in v2.1 — see [Trigger a scan → From the UI](#from-the-ui).)
+- Branch-override field on the project-level **Scan** trigger — planned. (The Source / Container kind-selection dialog shipped in this release — see [Trigger a scan → From the UI](#from-the-ui).)
 
 ## See also
 

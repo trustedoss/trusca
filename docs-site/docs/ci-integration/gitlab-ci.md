@@ -11,7 +11,7 @@ sidebar_position: 2
 The portal ships an `include`-able GitLab CI template that mirrors the GitHub Action: it triggers a scan, polls until terminal, and evaluates the build gate. The template is a single job; you can extend or override any field.
 
 :::warning GitLab MR comments — not yet shipped
-The portal's PR-comment integration is GitHub-only at v2.0.0. The `templates/gitlab-ci.yml` MR-comment job stages a request, but the backend `services/sca_comment.py` only knows how to call `api.github.com` — calling it with a GitLab `repo_full_name` returns 404. Use the build-gate exit code on the GitLab side until the GitLab Notes API client lands.
+The portal's PR-comment integration is GitHub-only in this release. The `templates/gitlab-ci.yml` MR-comment job stages a request, but the backend `services/sca_comment.py` only knows how to call `api.github.com` — calling it with a GitLab `repo_full_name` returns 404. Use the build-gate exit code on the GitLab side until the GitLab Notes API client lands.
 :::
 
 :::note Audience
@@ -23,7 +23,7 @@ Engineers maintaining a GitLab project that uses GitLab CI / CD. You need an API
 ```yaml
 # .gitlab-ci.yml
 include:
-  - remote: 'https://raw.githubusercontent.com/trustedoss/trustedoss-portal/v2.0.0/templates/gitlab-ci.yml'
+  - remote: 'https://raw.githubusercontent.com/trustedoss/trustedoss-portal/v0.10.0/templates/gitlab-ci.yml'
 
 variables:
   TRUSTEDOSS_API_URL: 'https://trustedoss.example.com'
@@ -75,7 +75,7 @@ Either way, only `TRUSTEDOSS_API_KEY` must be masked.
 | `TRUSTEDOSS_FAIL_ON_GATE` | no | `true` | If `true`, job exits 1 on gate fail. |
 | `TRUSTEDOSS_POLL_TIMEOUT` | no | `1800` | Max seconds to wait for terminal state. |
 | `TRUSTEDOSS_POLL_INTERVAL` | no | `30` | Seconds between polls. |
-| `TRUSTEDOSS_POST_MR_COMMENT` | no | `true` | Reserved for the upcoming GitLab Notes API integration. At v2.0.0 the request stages but the backend cannot deliver — see the warning above. |
+| `TRUSTEDOSS_POST_MR_COMMENT` | no | `true` | Reserved for the upcoming GitLab Notes API integration. In this release the request stages but the backend cannot deliver — see the warning above. |
 
 ## Recipes
 
@@ -83,7 +83,7 @@ Either way, only `TRUSTEDOSS_API_KEY` must be masked.
 
 ```yaml
 include:
-  - remote: 'https://raw.githubusercontent.com/trustedoss/trustedoss-portal/v2.0.0/templates/gitlab-ci.yml'
+  - remote: 'https://raw.githubusercontent.com/trustedoss/trustedoss-portal/v0.10.0/templates/gitlab-ci.yml'
 
 variables:
   TRUSTEDOSS_API_URL: 'https://trustedoss.example.com'
@@ -99,7 +99,7 @@ Override the rules of the included job:
 
 ```yaml
 include:
-  - remote: 'https://raw.githubusercontent.com/trustedoss/trustedoss-portal/v2.0.0/templates/gitlab-ci.yml'
+  - remote: 'https://raw.githubusercontent.com/trustedoss/trustedoss-portal/v0.10.0/templates/gitlab-ci.yml'
 
 .trustedoss-sca:
   rules:
@@ -111,7 +111,7 @@ include:
 
 ```yaml
 include:
-  - remote: 'https://raw.githubusercontent.com/trustedoss/trustedoss-portal/v2.0.0/templates/gitlab-ci.yml'
+  - remote: 'https://raw.githubusercontent.com/trustedoss/trustedoss-portal/v0.10.0/templates/gitlab-ci.yml'
 
 trustedoss:scan-container:
   extends: .trustedoss-sca
@@ -121,7 +121,7 @@ trustedoss:scan-container:
 
 ### Pin to a tag
 
-Pin the `include` URL to a release tag (`v2.0.0`) instead of `main` for reproducible pipelines.
+Pin the `include` URL to a release tag (`v0.10.0`) instead of `main` for reproducible pipelines.
 
 ## Anatomy of the template (advanced)
 
@@ -170,7 +170,7 @@ GitLab strips empty variables. Confirm `TRUSTEDOSS_API_KEY` is defined for the r
 
 ### MR note is not posted
 
-This is expected at v2.0.0 — the GitLab Notes API client has not shipped (see the warning at the top of the page). Use the build-gate exit code (`TRUSTEDOSS_FAIL_ON_GATE=true`) on the GitLab side to surface the verdict.
+This is expected in this release — the GitLab Notes API client has not shipped (see the warning at the top of the page). Use the build-gate exit code (`TRUSTEDOSS_FAIL_ON_GATE=true`) on the GitLab side to surface the verdict.
 
 ### Job runs out of time at the polling step
 

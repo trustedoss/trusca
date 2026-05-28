@@ -171,7 +171,7 @@ Fetch the three files the compose stack needs (the compose file, the env templat
 
 ```bash
 mkdir -p trustedoss && cd trustedoss
-BASE=https://raw.githubusercontent.com/trustedoss/trustedoss-portal/v2.0.0
+BASE=https://raw.githubusercontent.com/trustedoss/trustedoss-portal/v0.10.0
 
 # 1. The self-contained production compose file (no `build:` section — pulls
 #    images from ghcr.io) and the env template.
@@ -237,7 +237,7 @@ The backend exposes **two** unauthenticated health endpoints. They answer differ
 
 `/health/ready` returns `200 {"status":"ready"}` only when the schema matches HEAD. Otherwise it returns `503` with an RFC 7807 `application/problem+json` body summarising the revision mismatch (it never leaks the DSN or credentials).
 
-Since v2.1 (Track B), the `backend` service's Compose `healthcheck` probes **`/health/ready`**, so the `worker` and `beat` services — which declare `depends_on: backend (condition: service_healthy)` — start only **after the schema is migrated**, under both toggles:
+Since  (Track B), the `backend` service's Compose `healthcheck` probes **`/health/ready`**, so the `worker` and `beat` services — which declare `depends_on: backend (condition: service_healthy)` — start only **after the schema is migrated**, under both toggles:
 
 - **`AUTO_MIGRATE=true`** (single-role default): the backend container runs `alembic upgrade head` on start and `/health/ready` flips to `200` once it finishes. Workers then start against a migrated schema. This is the normal path and needs no operator action.
 - **`AUTO_MIGRATE=false`** (L1 role-separated stack): uvicorn answers `/health` immediately, but `/health/ready` stays `503` (the container stays `health: starting`) until your **external** `alembic upgrade head` (run as the owner role — `install.sh` / `upgrade.sh` do this) brings the schema to HEAD. **This is intended:** the worker and beat wait for the schema instead of starting against a not-yet-migrated database. If you forget to run the migration on an L1 stack, the backend will simply never become healthy — check `docker-compose logs backend` and run the owner-role migration.
@@ -260,7 +260,7 @@ cd trustedoss-portal
 If you maintain a fork, clone the fork instead. Pin to a release tag for reproducible installs:
 
 ```bash
-git checkout v2.0.0
+git checkout v0.10.0
 ```
 
 ## Step 2 — Run the install wizard
@@ -335,7 +335,7 @@ After `bash scripts/install.sh` completes:
 - [ ] Trigger a scan; the right-slide progress drawer should walk
   through `bootstrap → fetch → prep → cdxgen → scancode →
   sbom_upload → vuln_match → finalize` in about 2-5 minutes. WebSocket
-  frames at v2.4.0 still carry the historical slugs `dt_upload`/`dt_findings`
+  frames at v0.10.0 still carry the historical slugs `dt_upload`/`dt_findings`
   for compatibility — the on-screen labels read the new names.
 - [ ] Open the project's **Vulnerabilities** tab — any CVEs from
   the test repo should be listed.

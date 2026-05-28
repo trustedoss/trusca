@@ -16,7 +16,7 @@ sidebar_position: 5
 
 ## 백업 내용
 
-v2.0.0 에는 두 디렉터리 명명 형식이 공존합니다.
+v0.10.0 에는 두 디렉터리 명명 형식이 공존합니다.
 
 - **CLI 레거시** — `backups/YYYY-MM-DD-HHMMSS/` (`scripts/backup.sh` 와 아래 예시에서 사용).
 - **UI / Celery** — `backups/(auto|manual)-YYYYMMDDTHHMMSSZ/` (`apps/backend/tasks/backup.py` 와 `/admin/backup` 페이지에서 사용 — prefix 가 일일 Celery Beat 잡인지 운영자 클릭인지를 표시). [백업 트리거](#백업-트리거) 섹션이 언급하는 `auto-` 보존 정리는 이 prefix 를 키로 동작합니다.
@@ -78,7 +78,7 @@ Backup complete
 
 ### Celery Beat 로 스케줄
 
-매일 **00:00 UTC**의 백업이 `apps/backend/tasks/backup.py`에 기본 스케줄되어 있으며 추가 구성이 필요 없습니다. v2.0.0 에서 스케줄은 항상 켜져 있습니다 — 비활성화 env 토글이 없습니다(`BACKUP_DAILY_ENABLED` 스위치는 로드맵 항목). Celery Beat 대신 호스트 측 스케줄러를 선호한다면 자동 백업을 안전망으로 두고 아래 cron / systemd 레시피를 추가하세요 — 두 워크플로는 독립적입니다.
+매일 **00:00 UTC**의 백업이 `apps/backend/tasks/backup.py`에 기본 스케줄되어 있으며 추가 구성이 필요 없습니다. v0.10.0 에서 스케줄은 항상 켜져 있습니다 — 비활성화 env 토글이 없습니다(`BACKUP_DAILY_ENABLED` 스위치는 로드맵 항목). Celery Beat 대신 호스트 측 스케줄러를 선호한다면 자동 백업을 안전망으로 두고 아래 cron / systemd 레시피를 추가하세요 — 두 워크플로는 독립적입니다.
 
 ### UI 에서 Upload + Restore
 
@@ -310,9 +310,9 @@ docker-compose -f docker-compose.yml start worker
 
 이는 30초 스캔-일시 정지 윈도와 일관성 보장된 workspace tar를 교환합니다.
 
-## 로드맵 (v2.x)
+## 로드맵
 
-다음 기능들은 초기 문서에 언급되었으나 v2.0.0 에는 **반영되지 않았습니다**.
+다음 기능들은 초기 문서에 언급되었으나 v0.10.0 에는 **반영되지 않았습니다**.
 
 - `BACKUP_DAILY_ENABLED=false` env 토글로 Celery Beat 일일 스케줄을 옵트아웃(현재는 스케줄이 항상 켜져 있음 — 호스트 스케줄러를 추가로 사용하되 대체로는 사용하지 마세요).
 

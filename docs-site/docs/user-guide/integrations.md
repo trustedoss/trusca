@@ -43,8 +43,8 @@ Open `/integrations` and scroll to the **API keys** section. The list shows ever
 
 3. Click **Create**.
 
-:::caution Keys do not expire at v2.0.0
-The key-creation form does not yet collect an expiry. Every key issued at v2.0.0 is valid until you explicitly **Revoke** it. Treat the key like any other long-lived secret — store it in your CI's secret manager, never in source control. An expiry preset is on the roadmap (see below).
+:::caution Keys do not expire in this release
+The key-creation form does not yet collect an expiry. Every key issued in this release is valid until you explicitly **Revoke** it. Treat the key like any other long-lived secret — store it in your CI's secret manager, never in source control. An expiry preset is on the roadmap (see below).
 :::
 
 The portal opens a **one-time reveal modal** with the full key:
@@ -106,7 +106,7 @@ URL to register at GitHub: `https://<your-host>/v1/webhooks/github`.
 - **Signature:** `X-Hub-Signature-256` HMAC-SHA256 over the raw body, with the per-project `webhook_secret` as the key.
 - **Events:** `push` and `pull_request` are the supported triggers.
 
-The portal stores a per-project `webhook_secret` field used to verify incoming deliveries. UI to generate or rotate that secret is not exposed at v2.0.0 — see [Roadmap](#roadmap-v2x). Operators bootstrap the secret server-side today.
+The portal stores a per-project `webhook_secret` field used to verify incoming deliveries. UI to generate or rotate that secret is not exposed in this release — see [Roadmap](#roadmap). Operators bootstrap the secret server-side today.
 
 ### GitLab
 
@@ -130,13 +130,13 @@ URL to register at GitLab: `https://<your-host>/v1/webhooks/gitlab`.
 - **GitHub webhook returns 401** — `X-Hub-Signature-256` did not validate. Confirm the secret matches and that GitHub is computing HMAC over the **raw** body, not a re-serialised JSON.
 - **GitLab webhook returns 401** — the `X-Gitlab-Token` header value does not match the project's `webhook_secret`.
 
-## Roadmap (v2.x)
+## Roadmap
 
-Items the manual previously promised that are not in v2.0.0; tracked for later releases.
+Items the manual previously promised that are not in this release; tracked for later releases.
 
-- API-key expiry presets (30 / 90 / 180 / 365 days, custom) — planned for v2.1; today every issued key is non-expiring until revoked.
-- **Project Settings → CI/CD** subtab with **Rotate webhook secret** action — planned for v2.1; today the per-project `webhook_secret` is bootstrapped server-side.
-- Team-scoped audit log at `/audit` for `team_admin` users — planned for v2.2; today the audit log is super-admin only at `/admin/audit`.
+- API-key expiry presets (30 / 90 / 180 / 365 days, custom) — planned; today every issued key is non-expiring until revoked.
+- **Project Settings → CI/CD** subtab with **Rotate webhook secret** action — planned; today the per-project `webhook_secret` is bootstrapped server-side.
+- Team-scoped audit log at `/audit` for `team_admin` users — planned; today the audit log is super-admin only at `/admin/audit`.
 
 ## See also
 

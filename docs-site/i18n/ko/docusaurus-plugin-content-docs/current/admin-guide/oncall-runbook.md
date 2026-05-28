@@ -32,7 +32,7 @@ ACCESS_TOKEN=$(curl -fsS -X POST "https://<your-host>/api/auth/login" \
 ## 시나리오 1 — Trivy DB stale 또는 누락
 
 ### 증상
-PagerDuty: `TrustedOSS Trivy DB last refresh > 14 days` 또는 `TrustedOSS Trivy DB missing on worker`. 곧 도착하는 `/admin/health → Vulnerability data` 카드(W6-#43e)가 이를 구동합니다.
+PagerDuty: `TrustedOSS Trivy DB last refresh > 14 days` 또는 `TrustedOSS Trivy DB missing on worker`. 곧 도착하는 `/admin/health → Vulnerability data` 카드(roadmap)가 이를 구동합니다.
 
 ### 고객 영향
 - 신규 스캔 큐잉은 여전히 가능합니다 — `cdxgen` + scancode가 SBOM과 라이선스 finding을 계속 생성합니다.

@@ -85,8 +85,8 @@ sidebar_position: 2
 | `TRIVY_DB_CACHE_DIR` | `/var/lib/trivy` | `config.py` | 워커 컨테이너에서 DB가 풀리는 디렉터리. 재부팅 시 재다운로드를 피하려면 호스트 볼륨 마운트. |
 | `TRIVY_TIMEOUT_SECONDS` | `300` | `config.py` | `trivy sbom` 스캔별 타임아웃. 매우 큰 모노레포는 `600`~`900`으로 상향. |
 
-:::note v2.4.0에서 Dependency-Track 키 제거
-`DT_URL`, `DT_API_KEY`, `DT_REQUEST_TIMEOUT_SECONDS`, `DT_BREAKER_*`, `DT_HEALTH_ENDPOINT`, `DT_AUTO_RESTART`, `DT_ORPHAN_AUTODELETE` 키는 v2.4.0에서 더 이상 읽지 않습니다. 업그레이드 후 기존 `.env`에 남아 있어도 안전하게 무시됩니다 — [v2.4.0 마이그레이션](../release-notes/v2.4.0.md#migration-from-v23x) 참조.
+:::note v0.10.0에서 Dependency-Track 키 제거
+`DT_URL`, `DT_API_KEY`, `DT_REQUEST_TIMEOUT_SECONDS`, `DT_BREAKER_*`, `DT_HEALTH_ENDPOINT`, `DT_AUTO_RESTART`, `DT_ORPHAN_AUTODELETE` 키는 v0.10.0에서 더 이상 읽지 않습니다. 업그레이드 후 기존 `.env`에 남아 있어도 안전하게 무시됩니다 — [v0.10.0 마이그레이션](../release-notes/v0.10.0.md#migration-from-v23x) 참조.
 :::
 
 ## 빌드 / 정책 게이트
@@ -109,7 +109,7 @@ CI 빌드 게이트는 기본적으로 Critical CVE와 금지 라이선스에서
 | `SCANCODE_MAX_DETECTIONS` | `5000` | `config.py` | 스캔당 저장되는 detected 라이선스 결과 수 상한. |
 | `SCANCODE_MAX_RESULT_BYTES` | `268435456` (256 MB) | `config.py` | 파싱 전 scancode JSON 아티팩트 상한 — 악의적 트리의 OOM 가드. |
 | `WORKSPACE_HOST_PATH` | `/tmp/trustedoss` | `config.py`, `docker-compose.yml` | worker에 `/workspace`로 마운트되는 호스트 디렉터리. 레포 클론 + 스캔 아티팩트(cdxgen SBOM, scancode 출력) 보관. compose 스택은 컨테이너 내에서 `/workspace`로 오버라이드합니다. |
-| `ORT_RULES_PATH` | `/opt/trustedoss/ort/rules.kts` | `docker-compose.yml` | worker 내부 레거시 경로로, ORT 단계 제거 후 잔재입니다. 파일은 placeholder 이며 v2.0.0 에서는 효과가 없습니다 — 라이선스 단계 분류는 `apps/backend/tasks/scan_source.py` 의 `_LICENSE_CATEGORY_DEFAULTS` 에서 옵니다. |
+| `ORT_RULES_PATH` | `/opt/trustedoss/ort/rules.kts` | `docker-compose.yml` | worker 내부 레거시 경로로, ORT 단계 제거 후 잔재입니다. 파일은 placeholder 이며 v0.10.0 에서는 효과가 없습니다 — 라이선스 단계 분류는 `apps/backend/tasks/scan_source.py` 의 `_LICENSE_CATEGORY_DEFAULTS` 에서 옵니다. |
 | `JSONB_ROW_SIZE_LIMIT_BYTES` | `262144` (256 KB) | `config.py` | writer가 truncate + warn하기 전 행당 JSON 바이트 상한. I-1 무한 페이로드 클래스 가드. |
 
 ## WebSocket 게이트웨이
@@ -182,7 +182,7 @@ CI 빌드 게이트는 기본적으로 Critical CVE와 금지 라이선스에서
 
 | 키 | 기본값 | 읽는 위치 | 설명 |
 |---|---|---|---|
-| `JIRA_ENABLED` | `false` | (없음) | **스텁 — v2.0.0의 어떤 코드 경로에서도 소비되지 않음.** Phase B Jira 통합용 예약. 기능 도착 시 기존 배포가 깨지지 않도록 `.env.example`에 포함. |
+| `JIRA_ENABLED` | `false` | (없음) | **스텁 — 현재 릴리스의 어떤 코드 경로에서도 소비되지 않음.** Phase B Jira 통합용 예약. 기능 도착 시 기존 배포가 깨지지 않도록 `.env.example`에 포함. |
 | `JIRA_URL` | (비어있음) | (없음) | 스텁. 위 참고. |
 | `JIRA_TOKEN` | (비어있음) | (없음) | 스텁. 위 참고. |
 | `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` | (비어있음) | 서브프로세스 env | `git clone`, `cdxgen`, `trivy --download-db-only` 부팅 / refresh 경로가 존중. |

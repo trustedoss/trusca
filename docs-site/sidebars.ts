@@ -6,6 +6,8 @@ import type { SidebarsConfig } from "@docusaurus/plugin-content-docs";
 const sidebars: SidebarsConfig = {
   docs: [
     "intro",
+    "quickstart",
+    "comparison",
     {
       type: "category",
       label: "Installation",
@@ -78,7 +80,6 @@ const sidebars: SidebarsConfig = {
       label: "Reference",
       collapsed: true,
       items: [
-        "comparison",
         "reference/architecture",
         "reference/glossary",
         "reference/env-variables",
@@ -96,7 +97,7 @@ const sidebars: SidebarsConfig = {
       type: "category",
       label: "Release notes",
       collapsed: true,
-      items: ["release-notes/v2-4-0", "release-notes/v2-0-0"],
+      items: ["release-notes/v0-10-0"],
     },
   ],
 };

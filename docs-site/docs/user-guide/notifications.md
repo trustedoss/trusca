@@ -14,13 +14,13 @@ The notification system tells you about events on projects you care about — sc
 Any signed-in user. The header bell and `/notifications` page are visible to every role; admins additionally configure the SMTP / Slack / Teams transports under [Disk & system health](../admin-guide/disk-and-health.md).
 :::
 
-:::warning v2.0.0 limitation
+:::warning limitation
 The notification framework, models, and UI are all shipped, but the
 trigger emit-points (`scan_completed`, `scan_failed`, `cve_detected`,
 `license_violation`, `policy_gate_failed`, `approval_pending`) are
 **not yet wired into the producing services**. The `/notifications`
 inbox + Preferences page are functional and will populate once the
-producer-side calls land in v2.1. Password reset emails are the only
+producer-side calls land in this release. Password reset emails are the only
 notifications that flow today.
 :::
 
@@ -34,7 +34,7 @@ Every page has a bell icon in the top-right of the header. The badge shows the n
 
 ![Header bell with the unread-count badge — the red circle to the upper right of the bell carries the current unread total](/img/screenshots/user-notifications-bell.png)
 
-Click the bell to navigate directly to the **`/notifications`** inbox. The bell does not surface a dropdown preview at v2.0.0 — see [Roadmap](#roadmap-v2x).
+Click the bell to navigate directly to the **`/notifications`** inbox. The bell does not surface a dropdown preview in this release — see [Roadmap](#roadmap).
 
 ## The Inbox at `/notifications`
 
@@ -55,7 +55,7 @@ Bulk actions: **Mark all as read** (clears the unread badge for the current page
 
 ## Preferences
 
-Below the inbox, the **Preferences** section lists every trigger with four **global, per-channel** toggles. The choice applies across every trigger — there is no per-trigger matrix at v2.0.0 (see [Roadmap](#roadmap-v2x)).
+Below the inbox, the **Preferences** section lists every trigger with four **global, per-channel** toggles. The choice applies across every trigger — there is no per-trigger matrix in this release (see [Roadmap](#roadmap)).
 
 ![Notifications preferences — per-channel toggles for email, Slack, Teams, and the always-on in-app row](/img/screenshots/user-notifications-prefs.png)
 
@@ -87,7 +87,7 @@ Six distinct triggers fire notifications:
 | `scan_failed` | A scan you started, or one on a project you watch, fails. |
 | `cve_detected` | A new CVE lands on a component already present in one of your scans (DT NVD ingest correlates against existing components). |
 | `license_violation` | A scan surfaces a forbidden-license component on a project you watch. |
-| `approval_pending` | A component requires approval. At v2.0.0 the notification is delivered to **all super-admins** in the org (no per-team approver routing); a designated-approver model is on the roadmap. |
+| `approval_pending` | A component requires approval. In this release the notification is delivered to **all super-admins** in the org (no per-team approver routing); a designated-approver model is on the roadmap. |
 | `policy_gate_failed` | A CI build gate fails (Critical CVE or forbidden license blocks the build). |
 
 Channel selection is global — the **Preferences** tab decides which channels deliver every trigger.
@@ -104,14 +104,14 @@ Channel selection is global — the **Preferences** tab decides which channels d
 - **Email never arrives** — verify the operator has configured SMTP and that the destination address is your verified email (visible on `/profile`).
 - **Slack message never arrives** — confirm the operator has set `SLACK_WEBHOOK_URL` and that the channel still exists. Slack returns 404 silently when a webhook is revoked.
 
-## Roadmap (v2.x)
+## Roadmap
 
-Items the manual previously promised that are not in v2.0.0; tracked for later releases.
+Items the manual previously promised that are not in this release; tracked for later releases.
 
-- Header-bell dropdown with the five most recent notifications and a "go to inbox" footer — planned for v2.1; today the bell navigates straight to `/notifications`.
-- Infinite scroll on `/notifications` — planned for v2.1; today the inbox uses Previous / Next pagination.
-- Per-trigger × per-channel preference matrix (e.g. Slack only for `policy_gate_failed`) — planned for v2.1; today the channel choice is global across all triggers.
-- `disk_pressure` notification trigger for admins — planned for v2.2; the disk-pressure event is currently surfaced only on the admin dashboard.
+- Header-bell dropdown with the five most recent notifications and a "go to inbox" footer — planned; today the bell navigates straight to `/notifications`.
+- Infinite scroll on `/notifications` — planned; today the inbox uses Previous / Next pagination.
+- Per-trigger × per-channel preference matrix (e.g. Slack only for `policy_gate_failed`) — planned; today the channel choice is global across all triggers.
+- `disk_pressure` notification trigger for admins — planned; the disk-pressure event is currently surfaced only on the admin dashboard.
 
 ## See also
 

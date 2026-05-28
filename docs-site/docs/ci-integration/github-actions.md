@@ -15,7 +15,7 @@ Engineers maintaining a GitHub repository that uses GitHub Actions. You need an 
 :::
 
 :::note Action source
-Use the in-repo composite action at `actions/scan/action.yml` directly via `uses: trustedoss/trustedoss-portal/actions/scan@v2.0.0` (referenced from this monorepo). A standalone Marketplace publication is on the roadmap.
+Use the in-repo composite action at `actions/scan/action.yml` directly via `uses: trustedoss/trustedoss-portal/actions/scan@v0.10.0` (referenced from this monorepo). A standalone Marketplace publication is on the roadmap.
 :::
 
 ## Quick start
@@ -37,7 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: TrustedOSS SCA scan
-        uses: trustedoss/trustedoss-portal/actions/scan@v2.0.0
+        uses: trustedoss/trustedoss-portal/actions/scan@v0.10.0
         with:
           api-url: https://trustedoss.example.com
           api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -56,7 +56,7 @@ That's the minimum. The action:
 
 ### 1. Generate an API key
 
-In the portal: **/integrations → API keys → New API key**. Pick scope `project` and bind it to the project CI will scan (or `team` if you intend one key to cover every project owned by a team). API keys inherit the issuing user's role at v2.0.0 — there is no per-key allowed-actions list. See [API keys](../admin-guide/api-keys.md) for the scope model.
+In the portal: **/integrations → API keys → New API key**. Pick scope `project` and bind it to the project CI will scan (or `team` if you intend one key to cover every project owned by a team). API keys inherit the issuing user's role in this release — there is no per-key allowed-actions list. See [API keys](../admin-guide/api-keys.md) for the scope model.
 
 ### 2. Store the key in GitHub
 
@@ -107,7 +107,7 @@ Use them in subsequent steps:
 ```yaml
 - name: TrustedOSS SCA scan
   id: sca
-  uses: trustedoss/trustedoss-portal/actions/scan@v2.0.0
+  uses: trustedoss/trustedoss-portal/actions/scan@v0.10.0
   with:
     api-url: https://trustedoss.example.com
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -128,7 +128,7 @@ Use them in subsequent steps:
 Useful while you are seeding policies and don't want to block PRs yet:
 
 ```yaml
-- uses: trustedoss/trustedoss-portal/actions/scan@v2.0.0
+- uses: trustedoss/trustedoss-portal/actions/scan@v0.10.0
   with:
     api-url: https://trustedoss.example.com
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -141,7 +141,7 @@ The PR comment still posts; the check stays green.
 ### Container scan
 
 ```yaml
-- uses: trustedoss/trustedoss-portal/actions/scan@v2.0.0
+- uses: trustedoss/trustedoss-portal/actions/scan@v0.10.0
   with:
     api-url: https://trustedoss.example.com
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -157,7 +157,7 @@ Run two steps with different `id`s:
 
 ```yaml
 - name: SCA — source
-  uses: trustedoss/trustedoss-portal/actions/scan@v2.0.0
+  uses: trustedoss/trustedoss-portal/actions/scan@v0.10.0
   with:
     api-url: https://trustedoss.example.com
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -165,7 +165,7 @@ Run two steps with different `id`s:
     scan-kind: source
 
 - name: SCA — container
-  uses: trustedoss/trustedoss-portal/actions/scan@v2.0.0
+  uses: trustedoss/trustedoss-portal/actions/scan@v0.10.0
   with:
     api-url: https://trustedoss.example.com
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -180,7 +180,7 @@ Either step failing fails the job by default.
 Apply the gate only on `main`, advisory on PRs:
 
 ```yaml
-- uses: trustedoss/trustedoss-portal/actions/scan@v2.0.0
+- uses: trustedoss/trustedoss-portal/actions/scan@v0.10.0
   with:
     api-url: https://trustedoss.example.com
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -206,7 +206,7 @@ With the threshold set, the gate also fails when any open finding has `epss_scor
 The `@v1` tag floats. Pin to a specific commit for reproducibility:
 
 ```yaml
-- uses: trustedoss/trustedoss-portal/actions/scan@a1b2c3d4e5f6     # v2.0.0
+- uses: trustedoss/trustedoss-portal/actions/scan@a1b2c3d4e5f6     # v0.10.0
 ```
 
 ## How the PR comment is posted

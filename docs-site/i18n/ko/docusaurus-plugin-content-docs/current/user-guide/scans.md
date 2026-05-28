@@ -21,7 +21,7 @@ sidebar_position: 2
 | **`source`** | `cdxgen` → scancode(first-party 라이선스 탐지) → Trivy(`trivy sbom`) | 컴포넌트와 그 **declared** 라이선스(의존성 메타데이터에서), **detected** 라이선스(scancode 가 직접 스캔한 first-party 소스), 로컬 Trivy DB가 NVD + OSV + GHSA + EPSS + KEV로 매칭한 CVE(Common Vulnerabilities and Exposures). |
 | **`container`** | Trivy | 컨테이너 이미지의 OS 패키지 취약점(언어 패키지 CVE는 제한적). |
 
-v2.1부터 두 종류 모두 UI 스캔 다이얼로그에서 선택할 수 있습니다 — 스캔을 트리거할 때 **Source** 또는 **Container** 를 고르세요([스캔 트리거 → UI에서](#ui에서) 참고). API도 두 종류를 모두 수용합니다.
+부터 두 종류 모두 UI 스캔 다이얼로그에서 선택할 수 있습니다 — 스캔을 트리거할 때 **Source** 또는 **Container** 를 고르세요([스캔 트리거 → UI에서](#ui에서) 참고). API도 두 종류를 모두 수용합니다.
 
 ## 스캔 트리거
 
@@ -49,7 +49,7 @@ UI 와 API 모두 브랜치 오버라이드를 노출하지 않습니다 —
 (`apps/backend/schemas/scan.py` 참조). `develop` 이나 feature
 브랜치를 스캔하려면 트리거 전에 **Project Settings** 에서
 `default_branch` 를 임시로 변경한 뒤 되돌리세요. 트리거에 정식
-`branch` 필드를 추가하는 작업은 v2.x 로드맵 항목입니다.
+`branch` 필드를 추가하는 작업은 로드맵 항목입니다.
 :::
 
 ### 컨테이너 이미지 스캔
@@ -125,12 +125,12 @@ queued ─────► running ─────► succeeded
 1. **Bootstrapping** — 작업 공간 준비.
 2. **Fetching source** — `git clone`(또는 기존 작업 공간이면 `git fetch` + checkout).
 3. **Detecting components** — `cdxgen`이 레포를 탐색하여 CycloneDX SBOM을 생성하고, 각 의존성의 패키지 메타데이터에서 **declared** 라이선스를 읽습니다.
-4. **Detecting first-party licenses** — scancode 가 프로젝트 자체 소스 파일을 스캔하여 발견한 **detected** 라이선스를 기록하며, 각 항목에 라이선스가 발견된 파일의 `source_path` 를 함께 태깅합니다([컴포넌트·라이선스 → declared vs. detected](./components-and-licenses.md#declared-vs-detected) 참고). 이 단계는 best-effort 입니다: scancode 가 미설치이거나 타임아웃이거나 트리가 너무 크면 declared 라이선스만으로 스캔을 계속합니다 — 저하되었으나 비치명적인 결과입니다. 이후 v2.0.0 의 법적 단계 분류는 `apps/backend/tasks/scan_source.py` 의 하드코딩된 `_LICENSE_CATEGORY_DEFAULTS` 사전에서 적용됩니다([컴포넌트·라이선스 → 분류 출처](./components-and-licenses.md#라이선스-분류) 참고).
+4. **Detecting first-party licenses** — scancode 가 프로젝트 자체 소스 파일을 스캔하여 발견한 **detected** 라이선스를 기록하며, 각 항목에 라이선스가 발견된 파일의 `source_path` 를 함께 태깅합니다([컴포넌트·라이선스 → declared vs. detected](./components-and-licenses.md#declared-vs-detected) 참고). 이 단계는 best-effort 입니다: scancode 가 미설치이거나 타임아웃이거나 트리가 너무 크면 declared 라이선스만으로 스캔을 계속합니다 — 저하되었으나 비치명적인 결과입니다. 이후 v0.10.0 의 법적 단계 분류는 `apps/backend/tasks/scan_source.py` 의 하드코딩된 `_LICENSE_CATEGORY_DEFAULTS` 사전에서 적용됩니다([컴포넌트·라이선스 → 분류 출처](./components-and-licenses.md#라이선스-분류) 참고).
 5. **Resolving vulnerabilities** — `trivy sbom`이 CycloneDX SBOM을 로컬 Trivy DB(NVD + OSV + GHSA + EPSS + KEV)에 매칭. 스캔당 네트워크 호출 없음.
 6. **Persisting** — 컴포넌트·라이선스·결과를 PostgreSQL에 저장.
 
 :::note ORT 는 scancode 로 교체됨
-이전 빌드는 라이선스 단계에서 OSS Review Toolkit(ORT)을 실행했습니다. v2.0.0 은 이를 **first-party** 탐지를 위한 scancode 로 교체했습니다. 서드파티 의존성 소스는 의도적으로 다운로드하지 않으며 — 이는 스캔당 실행 시간을 예산 내로 유지하기 위함입니다 — 따라서 의존성 라이선스는 **declared**(cdxgen 에서)로 유지되고, scancode 는 팀이 실제로 작성한 코드에 대한 **detected** 라이선스를 추가합니다.
+이전 빌드는 라이선스 단계에서 OSS Review Toolkit(ORT)을 실행했습니다. v0.10.0 은 이를 **first-party** 탐지를 위한 scancode 로 교체했습니다. 서드파티 의존성 소스는 의도적으로 다운로드하지 않으며 — 이는 스캔당 실행 시간을 예산 내로 유지하기 위함입니다 — 따라서 의존성 라이선스는 **declared**(cdxgen 에서)로 유지되고, scancode 는 팀이 실제로 작성한 코드에 대한 **detected** 라이선스를 추가합니다.
 :::
 
 5단계 실행 시 로컬 Trivy DB가 아직 다운로드되지 않았다면(첫 설치에서 가장 흔함) 스캔은 **취약점 finding 0개**로 완료되며 Vulnerabilities 탭에 [취약점 데이터 (Trivy DB)](../admin-guide/vulnerability-data.md)를 가리키는 배너가 표시됩니다. 자동 재매칭 beat이 DB 도착 후 finding을 가져옵니다 — 재스캔 불필요.
@@ -320,11 +320,11 @@ docker-compose -f docker-compose.yml exec worker \
 - first-party 트리가 `SCANCODE_MAX_FILES` 한도를 초과했거나, scancode 가 타임아웃되었거나, 결과가 너무 큼 — 모두 경고를 남기고 declared 전용으로 폴백.
 - 해당 코드가 제외 디렉토리(`node_modules`, `vendor`, `.git`, `dist`, `build`, `out`, `target`, `.venv` 등) 안에 위치. 자원 가드로 인해 의도적으로 건너뜁니다 — [컴포넌트·라이선스 → declared vs. detected](./components-and-licenses.md#declared-vs-detected) 참고.
 
-## 로드맵 (v2.x)
+## 로드맵
 
 향후 릴리스에서 다룰 항목.
 
-- 프로젝트 단위 **Scan** 트리거의 브랜치 오버라이드 필드 — 이후 v2.x 예정. (Source / Container 종류 선택 다이얼로그는 v2.1 에 출시되었습니다 — [스캔 트리거 → UI에서](#ui에서) 참고.)
+- 프로젝트 단위 **Scan** 트리거의 브랜치 오버라이드 필드 — 계획됨. (Source / Container 종류 선택 다이얼로그는  에 출시되었습니다 — [스캔 트리거 → UI에서](#ui에서) 참고.)
 
 ## 함께 보기
 

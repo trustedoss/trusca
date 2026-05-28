@@ -98,7 +98,7 @@ column.
   project's **first-party** source files directly and emits *detected*
   SPDX licenses, each tagged with the `source_path` of the file it was
   found in. TrustedOSS runs scancode as the second source-scan stage
-  (it replaced the OSS Review Toolkit, ORT, in v2.0.0). Third-party
+  (it replaced the OSS Review Toolkit, ORT, in this release). Third-party
   dependency sources are not scanned — their licenses stay *declared*
   (from cdxgen). See
   [github.com/aboutcode-org/scancode-toolkit](https://github.com/aboutcode-org/scancode-toolkit).
@@ -116,8 +116,8 @@ column.
   [Vulnerability data (Trivy DB)](../admin-guide/vulnerability-data.md) and
   [Data sources](./data-sources.md).
 - **DT — Dependency-Track.** Apache-2.0 vulnerability intelligence platform.
-  TrustedOSS used DT as its vulnerability engine through v2.3 and replaced it
-  with Trivy at v2.4.0 — see
+  TrustedOSS used DT as its vulnerability engine through  and replaced it
+  with Trivy at v0.10.0 — see
   [ADR-0001](https://github.com/trustedoss/trustedoss-portal/blob/main/docs/decisions/0001-replace-dt-with-trivy.md)
   and [Comparison](../comparison.md#vs-dependency-track). The DT term still
   appears in this glossary because legacy audit-log rows and the comparison
@@ -154,7 +154,7 @@ The portal classifies licenses into four **tiers**:
 The classification is driven by the
 `_LICENSE_CATEGORY_DEFAULTS` dict in
 `apps/backend/tasks/scan_source.py` (operator-side override path;
-ORT-driven per-org rules are on the v2.2 roadmap). The values
+ORT-driven per-org rules are on the the roadmap). The values
 `forbidden` / `conditional` / `permissive` / `unknown` appear in API
 responses, audit logs, and policy gate verdicts; the UI labels
 `Forbidden` / `Conditional` / `Allowed` / `Unknown` appear in tables
@@ -207,7 +207,7 @@ API keys carry a single **scope**:
 | `team` | super-admin, team-admin | Bounded to one team's projects |
 | `project` | super-admin, team-admin, developer (within their team's projects) | Bounded to one project |
 
-There is no per-action allowlist at v2.0.0; any caller authenticated
+There is no per-action allowlist in this release; any caller authenticated
 with a key in the right scope can hit any endpoint that accepts an
 API key. Per-action capabilities are on the roadmap.
 
@@ -215,8 +215,8 @@ API key. Per-action capabilities are on the roadmap.
 
 - **Circuit breaker (CLOSED / OPEN / HALF_OPEN).** A failure-domain
   isolation pattern. TrustedOSS used a breaker to wrap the Dependency-Track
-  API client through v2.3; with the Trivy DB now local to the worker
-  (v2.4.0+), the pattern is no longer used in the vulnerability path. The
+  API client through ; with the Trivy DB now local to the worker
+  (v0.10.0+), the pattern is no longer used in the vulnerability path. The
   general term still appears in operator literature.
 - **`audit_logs`.** Append-only table capturing every state-changing
   operation (CRUD on first-class entities, plus explicit business
