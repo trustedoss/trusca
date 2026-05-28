@@ -2,6 +2,17 @@ import { forwardRef, type HTMLAttributes } from "react";
 
 import { cn } from "@/lib/utils";
 
+/**
+ * Card — W11-A polish.
+ *
+ * - `rounded-lg` (was — same class name, but the underlying --radius token
+ *   shifted from 8 px → 6 px → calc adds 2 px so card lands at ~8 px, the
+ *   Vercel domains/deployment card radius).
+ * - `shadow-sm` already used; no change. The shadow now reads through
+ *   `var(--shadow-sm)` (0 1px 2px 0 rgba 0/0/0/0.04) — same vibe, tokenised.
+ * - Subtle border + shadow combination matches the Vercel "card on
+ *   off-white canvas" pattern.
+ */
 export const Card = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
     <div

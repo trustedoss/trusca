@@ -1,6 +1,28 @@
 import type { Config } from "tailwindcss";
 import animate from "tailwindcss-animate";
 
+/**
+ * Tailwind config — W11-A token expansion.
+ *
+ * The actual token VALUES live in `src/index.css` as CSS custom properties
+ * (shadcn convention). This file maps those CSS vars to Tailwind utility
+ * classes so components can write `bg-card`, `shadow-md`, `duration-fast`
+ * etc. without ever touching a hex literal.
+ *
+ * What changed in W11-A:
+ *   - Radius gained a sm/md/lg/xl hierarchy (was: md derived from --radius).
+ *   - boxShadow now reads from --shadow-sm / --shadow-md / --shadow-lg.
+ *   - transitionDuration exposes the Linear-polish 150/200/250 ms scale.
+ *   - transitionTimingFunction adds `ease-out` (cubic-bezier) from tokens.
+ *
+ * What did NOT change:
+ *   - Risk severity color tokens (Critical / High / Medium / Low / Info).
+ *   - Inter + JetBrains Mono font stack.
+ *   - Layout density vars (sidebar / header / row).
+ *
+ * Dark mode is wired up (`darkMode: ["class"]`) but no `.dark` tokens are
+ * populated in W11 — v2.5+ trail. Components should NOT use `dark:` here.
+ */
 const config: Config = {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   darkMode: ["class"],
@@ -50,7 +72,7 @@ const config: Config = {
           DEFAULT: "hsl(var(--popover))",
           foreground: "hsl(var(--popover-foreground))",
         },
-        // Risk severity tokens (CLAUDE.md "디자인 시스템")
+        // Risk severity tokens (unchanged — domain semantics fixed).
         risk: {
           critical: "var(--risk-critical)",
           high: "var(--risk-high)",
@@ -69,9 +91,40 @@ const config: Config = {
         row: "var(--table-row)",
       },
       borderRadius: {
-        lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
+        // W11-A — radius hierarchy. Different sizes for different affordances.
+        //
+        //   sm  4 px  — chips / small inputs
+        //   md  6 px  — buttons / cards / table chrome (= --radius default)
+        //   lg  8 px  — drawer, large panels
+        //   xl 12 px  — modals, dialogs
+        //
+        // shadcn's older `rounded-lg`/`rounded-md`/`rounded-sm` mapping
+        // (lg = --radius, md = lg-2, sm = lg-4) still works for existing
+        // components because we re-declare those three keys explicitly.
+        sm: "calc(var(--radius) - 2px)",
+        md: "var(--radius)",
+        lg: "calc(var(--radius) + 2px)",
+        xl: "calc(var(--radius) + 6px)",
+      },
+      boxShadow: {
+        // Subtle, Vercel-style elevation. The shadcn default uses Tailwind's
+        // generic shadow tokens; we route through CSS vars so a future dark
+        // theme can shift to ring-based elevation by changing one place.
+        sm: "var(--shadow-sm)",
+        md: "var(--shadow-md)",
+        lg: "var(--shadow-lg)",
+      },
+      transitionDuration: {
+        // Linear polish — three named steps.
+        fast: "var(--duration-fast)",
+        base: "var(--duration-base)",
+        slow: "var(--duration-slow)",
+      },
+      transitionTimingFunction: {
+        // `cubic-bezier(0.16, 1, 0.3, 1)` — Linear-style ease-out with a
+        // gentle overshoot decay. Pairs well with the 150 / 200 / 250 ms
+        // durations above.
+        "ease-out-soft": "var(--ease-out)",
       },
     },
   },
