@@ -1,0 +1,32 @@
+{
+  "components": {
+    "count": 0,
+    "nix_spurious": 0,
+    "purls": []
+  },
+  "gate": {
+    "critical_cve": 0,
+    "forbidden_license": 1,
+    "gate": "fail"
+  },
+  "licenses": [
+    "Apache-2.0|allowed|detected",
+    "GPL-3.0-or-later|forbidden|detected",
+    "MIT|allowed|detected"
+  ],
+  "notice": {
+    "csp": true,
+    "html_ok": true,
+    "text_ok": true
+  },
+  "report_pdf_ok": true,
+  "sbom": {
+    "cyclonedx-json": true,
+    "cyclonedx-xml": true,
+    "spdx-json": true,
+    "spdx-tv": true
+  },
+  "scan_status": "succeeded",
+  "source_tree_root_entries": 5,
+  "vulnerabilities_count": 0
+}

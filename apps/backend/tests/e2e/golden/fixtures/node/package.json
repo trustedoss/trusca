@@ -1,0 +1,8 @@
+{
+  "name": "bd-scan-e2e-fixture",
+  "version": "1.0.0",
+  "description": "E2E 테스트 fixture — npm 프로젝트 (Black Duck 스캔 검증용)",
+  "dependencies": {
+    "lodash": "4.17.21"
+  }
+}
