@@ -217,6 +217,21 @@
     },
     "errors": {
       "load_failed": "Could not load components."
+    },
+    "detail_page": {
+      "breadcrumb_aria": "Breadcrumb",
+      "breadcrumb": {
+        "projects": "Projects",
+        "components": "Components"
+      },
+      "back_link": "Back to Components",
+      "title_loading": "Loading component…",
+      "not_found": "Component not found.",
+      "errors": {
+        "not_found": "Component not found.",
+        "forbidden": "You do not have permission to view this component.",
+        "unknown": "Could not load this component. Please try again."
+      }
     }
   },
   "drawer": {
@@ -226,6 +241,7 @@
     "purl_label": "purl",
     "dependency_type_label": "Type",
     "usage_label": "Usage",
+    "open_full_view": "Open in full view",
     "error": "Could not load component.",
     "vulns": {
       "title": "Vulnerabilities ({{count}})",

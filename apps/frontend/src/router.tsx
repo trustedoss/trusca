@@ -20,6 +20,7 @@ import { ComparePage } from "@/features/projects/ComparePage";
 import { ProjectCreatePage } from "@/features/projects/ProjectCreatePage";
 import { ProjectDetailPage } from "@/features/projects/ProjectDetailPage";
 import { ProjectListPage } from "@/features/projects/ProjectListPage";
+import { ComponentDetailPage } from "@/features/projects/pages/ComponentDetailPage";
 import { VulnerabilityDetailPage } from "@/features/projects/pages/VulnerabilityDetailPage";
 import { ScansPage } from "@/features/scans/ScansPage";
 import { ForgotPasswordPage } from "@/pages/auth/ForgotPasswordPage";
@@ -76,6 +77,16 @@ export function AppRoutes() {
         <Route
           path="projects/:projectId/vulnerabilities/:findingId"
           element={<VulnerabilityDetailPage />}
+        />
+        {/*
+         * W10-E — dedicated full-page surface for a single component.
+         * Complements the existing drawer surface at
+         * `/projects/:id?tab=components&drawer=<id>` (still supported for
+         * backward-compat). Mirrors the W10-B vulnerabilities-page pattern.
+         */}
+        <Route
+          path="projects/:projectId/components/:componentId"
+          element={<ComponentDetailPage />}
         />
         <Route path="scans" element={<ScansPage />} />
         <Route path="approvals" element={<ApprovalsPage />} />
