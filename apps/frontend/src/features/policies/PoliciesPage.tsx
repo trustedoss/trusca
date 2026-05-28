@@ -19,9 +19,11 @@
  */
 import { useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { FileText } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
+import { EmptyState } from "@/components/EmptyState";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -340,12 +342,12 @@ export function PoliciesPage() {
 
             {!policiesQuery.isLoading && policies.length === 0 ? (
               <tr>
-                <td
-                  colSpan={6}
-                  className="px-6 py-12 text-center text-sm text-muted-foreground"
-                  data-testid="policies-empty"
-                >
-                  {t("policies.empty")}
+                <td colSpan={6} className="p-0">
+                  <EmptyState
+                    data-testid="policies-empty"
+                    icon={<FileText />}
+                    title={t("policies.empty")}
+                  />
                 </td>
               </tr>
             ) : null}

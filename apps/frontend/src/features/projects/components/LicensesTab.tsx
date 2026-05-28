@@ -1,10 +1,11 @@
+import { FileCheck } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import { Virtuoso } from "react-virtuoso";
 
+import { EmptyState } from "@/components/EmptyState";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { LicenseCategoryName } from "@/features/projects/api/projectDetailApi";
 import type {
@@ -300,16 +301,13 @@ export function LicensesTab({ projectId, scanId }: LicensesTabProps) {
       ) : null}
 
       {!licenses.isLoading && !licenses.isError && items.length === 0 ? (
-        <Card className="m-6" data-testid="licenses-empty">
-          <CardHeader>
-            <CardTitle className="text-base">
-              {t("licenses.empty.title")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            {t("licenses.empty.description")}
-          </CardContent>
-        </Card>
+        <EmptyState
+          data-testid="licenses-empty"
+          className="m-6"
+          icon={<FileCheck />}
+          title={t("licenses.empty.title")}
+          description={t("licenses.empty.description")}
+        />
       ) : null}
 
       {!licenses.isLoading && !licenses.isError && items.length > 0 ? (

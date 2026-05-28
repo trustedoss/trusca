@@ -12,10 +12,12 @@
  * eight characters of the UUID with a `font-mono` style — same convention
  * AdminScansPage uses for the scan id column.
  */
+import { Activity } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
 
+import { EmptyState } from "@/components/EmptyState";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -278,12 +280,12 @@ export function ScansPage() {
                 })}
             {!scansQuery.isLoading && items.length === 0 ? (
               <tr>
-                <td
-                  colSpan={6}
-                  className="px-6 py-12 text-center text-sm text-muted-foreground"
-                  data-testid="scans-empty"
-                >
-                  {t("page.empty")}
+                <td colSpan={6} className="p-0">
+                  <EmptyState
+                    data-testid="scans-empty"
+                    icon={<Activity />}
+                    title={t("page.empty")}
+                  />
                 </td>
               </tr>
             ) : null}

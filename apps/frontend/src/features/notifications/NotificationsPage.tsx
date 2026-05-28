@@ -27,6 +27,7 @@
 import {
   AlertTriangle,
   Bell,
+  BellOff,
   CheckCircle2,
   ClipboardCheck,
   FileWarning,
@@ -39,6 +40,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
+import { EmptyState } from "@/components/EmptyState";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -426,12 +428,11 @@ export function NotificationsPage() {
                 ))}
               </ul>
             ) : items.length === 0 ? (
-              <div
-                className="px-6 py-12 text-center text-sm text-muted-foreground"
+              <EmptyState
                 data-testid="notifications-empty"
-              >
-                {unreadOnly ? t("inbox.empty_unread") : t("inbox.empty")}
-              </div>
+                icon={<BellOff />}
+                title={unreadOnly ? t("inbox.empty_unread") : t("inbox.empty")}
+              />
             ) : (
               <ul data-testid="notifications-list">
                 {items.map((item) => (

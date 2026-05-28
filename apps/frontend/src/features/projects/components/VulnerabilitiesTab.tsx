@@ -1,8 +1,10 @@
+import { ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import { Virtuoso } from "react-virtuoso";
 
+import { EmptyState } from "@/components/EmptyState";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Card,
@@ -680,16 +682,13 @@ export function VulnerabilitiesTab({
       {!vulnerabilities.isLoading &&
       !vulnerabilities.isError &&
       items.length === 0 ? (
-        <Card className="m-6" data-testid="vulnerabilities-empty">
-          <CardHeader>
-            <CardTitle className="text-base">
-              {t("vulnerabilities.empty.title")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            {t("vulnerabilities.empty.subtitle")}
-          </CardContent>
-        </Card>
+        <EmptyState
+          data-testid="vulnerabilities-empty"
+          className="m-6"
+          icon={<ShieldCheck />}
+          title={t("vulnerabilities.empty.title")}
+          description={t("vulnerabilities.empty.subtitle")}
+        />
       ) : null}
 
       {!vulnerabilities.isLoading &&

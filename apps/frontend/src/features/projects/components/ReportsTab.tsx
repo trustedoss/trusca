@@ -31,10 +31,12 @@
  *   - Color is never the only signal: the type badge pairs a token-tinted
  *     background with a localised label (Notice / SBOM / Vuln PDF / VEX).
  */
+import { Download } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
+import { EmptyState as SharedEmptyState } from "@/components/EmptyState";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -364,7 +366,7 @@ export function ReportsTab({
             <AlertDescription>{errorMessage}</AlertDescription>
           </Alert>
         ) : items.length === 0 ? (
-          <EmptyState />
+          <ReportsHistoryEmpty />
         ) : (
           <HistoryTable items={items} locale={i18n.resolvedLanguage} />
         )}
@@ -535,18 +537,15 @@ function HistorySkeleton() {
   );
 }
 
-function EmptyState() {
+function ReportsHistoryEmpty() {
   const { t } = useTranslation("project_detail");
   return (
-    <div
-      className="flex flex-col items-start gap-1 rounded-md border border-dashed bg-muted/30 p-6"
+    <SharedEmptyState
       data-testid="reports-history-empty"
-    >
-      <p className="text-sm font-medium">{t("reports.history.empty.title")}</p>
-      <p className="text-xs text-muted-foreground">
-        {t("reports.history.empty.body")}
-      </p>
-    </div>
+      icon={<Download />}
+      title={t("reports.history.empty.title")}
+      description={t("reports.history.empty.body")}
+    />
   );
 }
 
