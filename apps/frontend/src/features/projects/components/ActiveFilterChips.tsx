@@ -62,7 +62,11 @@ export function ActiveFilterChips<S extends string = string>({
       aria-label={t("active_filters.aria_label")}
       data-testid="active-filter-chips"
       className={cn(
-        "flex flex-wrap items-center gap-2 border-b bg-muted/30 px-4 py-2",
+        // W11-C polish — chip strip lands on the canonical --muted token (no
+        // /30 opacity hack), aligns to the px-6 gutter shared by ToolBar and
+        // rows below (Vercel deployments-1 axis), and the soft border-bottom
+        // softens the divider so the chips don't read as a heavy seam.
+        "flex flex-wrap items-center gap-2 border-b border-border/60 bg-muted px-6 py-2",
         className,
       )}
     >
@@ -117,7 +121,12 @@ function Chip({ facet, value, label, ariaLabel, onClear }: ChipProps) {
       data-testid="active-filter-chip"
       data-facet={facet}
       data-value={value}
-      className="inline-flex items-center gap-1 rounded-full border border-input bg-background pl-2 pr-1 py-0.5 text-xs"
+      // W11-C polish — chip uses the W11-A radius-sm token (rounded-sm =
+      // 4 px) instead of the previous fully-pill `rounded-full`, matching
+      // the rest of the chip family (Badge / Vercel deployments-1 status
+      // pills). A subtle shadow-sm lifts the chip off the muted strip, and
+      // the transition picks up Linear motion tokens.
+      className="inline-flex items-center gap-1 rounded-sm border border-border bg-card pl-2 pr-1 py-0.5 text-xs shadow-sm transition-colors duration-fast ease-out-soft"
     >
       <span>{label}</span>
       <button
@@ -126,9 +135,10 @@ function Chip({ facet, value, label, ariaLabel, onClear }: ChipProps) {
         aria-label={ariaLabel}
         data-testid="active-filter-chip-clear"
         className={cn(
-          "inline-flex h-4 w-4 items-center justify-center rounded-full",
-          "text-muted-foreground hover:bg-muted hover:text-foreground",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          "inline-flex h-4 w-4 items-center justify-center rounded-sm",
+          "text-muted-foreground transition-colors duration-fast ease-out-soft",
+          "hover:bg-muted hover:text-foreground",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
         )}
       >
         <X className="h-3 w-3" aria-hidden />

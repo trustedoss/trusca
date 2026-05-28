@@ -102,8 +102,13 @@ export function SheetHeader({
 }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
+      // W11-C polish — header rows use space-y-1.5 (was space-y-2). The
+      // title + subtitle pair is one logical block; tighter inner spacing
+      // lets the outer SheetContent gap-6 carry the separation from the
+      // detail body. Bigger inner gap fought the outer gap and made the
+      // header look detached.
       className={cn(
-        "flex flex-col space-y-2 text-center sm:text-left",
+        "flex flex-col space-y-1.5 text-center sm:text-left",
         className,
       )}
       {...props}
