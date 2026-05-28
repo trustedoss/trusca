@@ -394,16 +394,25 @@ v1 디렉토리(`trustedoss-portal`의 현재 코드)에서 참고할 파일:
 
 ## 디자인 시스템 (v2)
 
-**컨셉**: Enterprise SCA — Compact, Information-Dense, Risk-First
+**컨셉**: Modern enterprise SCA — Vercel base (light) + Linear polish (typography·motion·focus), Risk-First, Information-Dense. 단일 light 테마 (dark 는 v2.5+).
+
+상세 토큰 catalog · 컴포넌트 가이드 · 마이크로인터랙션 표준은 `docs-site/docs/reference/design-system.md` (EN) / `docs-site/i18n/ko/docusaurus-plugin-content-docs/current/reference/design-system.md` (KO) 가 단일 진실. 본 표는 핵심 결정만 요약.
 
 | 항목 | 결정 |
 |------|------|
 | 네비게이션 | 고정 사이드바 (224px) + 상단 헤더 (48px) |
-| 상세 보기 | 드로어 (오른쪽 슬라이드, 페이지 이동 없음) |
-| 리스크 색상 | Critical `#dc2626` / High `#ea580c` / Medium `#ca8a04` / Low `#2563eb` / Info `#71717a` |
-| Primary | `#0f172a` (다크 네이비, Black Duck 스타일) |
+| 상세 보기 | 드로어 (빠른 확인) + 페이지 nav (깊은 작업) — W10 dual surface |
+| 리스크 색상 | Critical `#dc2626` / High `#ea580c` / Medium `#ca8a04` / Low `#2563eb` / Info `#71717a` (브랜드 hex 변경 금지 — 텍스트 가독성은 hue family 의 더 짙은 shade 로 해결) |
+| Background | `#fafafa` (off-white canvas) — 카드 `#ffffff` 가 raised 로 읽힘 |
+| Foreground | `#18181b` (warm near-black) — 본문 텍스트 16.97:1 AA AAA |
+| Primary CTA | `#18181b` (W11: navy `#0f172a` 에서 warm near-black 으로 — Vercel 톤) |
 | 테이블 밀도 | Compact (행 높이 40px) |
+| Radius | sm 4 / md 6 / lg 8 / xl 12 — affordance 별 hierarchy |
+| Shadow | sm (card) / md (popover) / lg (drawer·dialog) — Vercel-style subtle elevation |
+| Motion | fast 150ms (hover·focus) / base 200ms (drawer slide) / slow 250ms (page chrome) · `cubic-bezier(.16, 1, .3, 1)` |
+| Focus ring | visible 2px outline + offset 2px — `--ring` 토큰 (a11y 강화) |
 | 실시간 | WebSocket 진행 바 (스캔 30분+ 대기 UX) |
 | 로딩 | 스켈레톤 UI |
 | 필터 | 상단 인라인 (모달 없음) |
-| 폰트 | Inter (UI) + JetBrains Mono (코드/해시/CVE ID) |
+| 폰트 | Inter (UI, body letter-spacing −0.005em) + Inter semibold tracking-tight (heading, Linear 톤) + JetBrains Mono (코드/해시/CVE ID) |
+| A11y | WCAG AA — 본문 4.5:1, UI 3:1. 색은 신호의 단독 수단 아님 (severity 는 색 + label + dot). |
