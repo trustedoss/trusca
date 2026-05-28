@@ -231,6 +231,32 @@ describe("ProjectListPage", () => {
     );
   });
 
+  it("once a scan starts, the drawer shows an 'Open full log' link to /scans/<id>", async () => {
+    // Phase scan-detail-page-fe-v2: the drawer hides its inline log panel and
+    // surfaces a link to the dedicated `/scans/:scanId` page instead. The
+    // link must target /scans/<scanId> and use the EN i18n string for
+    // `scans:progress.open_full_log` ("Open full log →").
+    mockedListProjects.mockResolvedValueOnce(
+      listResponse([project("Alpha")]),
+    );
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByTestId("project-row-scan")).toBeInTheDocument();
+    });
+
+    // Open the dialog and fire the stubbed "scan started" callback.
+    await userEvent.click(screen.getByTestId("project-row-scan"));
+    await waitFor(() => {
+      expect(screen.getByTestId("source-dialog-mock")).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByTestId("source-dialog-start"));
+
+    // The drawer mounts and the link is present with the right href.
+    const link = await screen.findByTestId("scan-drawer-open-full-log");
+    expect(link).toHaveAttribute("href", "/scans/scan-1");
+    expect(link.textContent ?? "").toMatch(/open full log/i);
+  });
+
   it("renders the latest-scan status badge driven by latest_scan_status", async () => {
     mockedListProjects.mockResolvedValueOnce(
       listResponse([

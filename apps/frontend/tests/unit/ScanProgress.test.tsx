@@ -460,4 +460,61 @@ describe("ScanProgress", () => {
     expect(rows[0].textContent).toMatch(/line1/);
     expect(rows[1].textContent).toMatch(/line2/);
   });
+
+  // ---------------------------------------------------------------------
+  // hideInlineLog + trivy stage label (scan-detail-page-fe-v2 followups)
+  // ---------------------------------------------------------------------
+
+  it("hideInlineLog suppresses the embedded tool-log panel", async () => {
+    // With `hideInlineLog`, even a log frame that would normally surface
+    // the toggle MUST NOT render the panel — the dedicated /scans/:scanId
+    // page owns the log surface for the drawer call sites.
+    renderProgress(
+      <ScanProgress scanId="scan-1" socketFactory={factory} hideInlineLog />,
+    );
+    act(() => FakeSocket.instances[0].__open());
+    act(() =>
+      FakeSocket.instances[0].__message({
+        type: "log",
+        stage: "cdxgen",
+        stream: "stdout",
+        line: "would normally show toggle",
+        ts: "2026-05-28T12:00:00.000Z",
+      }),
+    );
+
+    // The toggle would mount inside `scan-progress-log` if hideInlineLog
+    // were false — assert neither node is in the DOM.
+    expect(
+      screen.queryByTestId("scan-progress-log"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("scan-progress-log-toggle"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("PIPELINE_STEPS surfaces the Trivy label when the trivy step is current", async () => {
+    // The IA replaces dt_findings with trivy; the user-facing step row must
+    // render the localised "Trivy (CVE match)" label for that slot.
+    renderProgress(<ScanProgress scanId="scan-1" socketFactory={factory} />);
+    act(() => FakeSocket.instances[0].__open());
+    act(() =>
+      FakeSocket.instances[0].__message({
+        percent: 70,
+        step: "trivy",
+        ts: "2026-05-28T12:00:00.000Z",
+      }),
+    );
+
+    const stepItem = await waitFor(() => {
+      const node = screen
+        .getByTestId("scan-progress-steps")
+        .querySelector('[data-step="trivy"]');
+      if (node == null) throw new Error("trivy step not mounted");
+      return node;
+    });
+    expect(stepItem).toHaveAttribute("data-state", "current");
+    // i18n EN label for `progress.step_trivy` is "Trivy (CVE match)".
+    expect(stepItem.textContent ?? "").toMatch(/Trivy/i);
+  });
 });
