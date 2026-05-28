@@ -23,7 +23,7 @@ from pathlib import Path
 
 import structlog
 from fastapi import APIRouter, Depends, Query, Request, Response, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import workspace_root
@@ -157,6 +157,38 @@ async def get_scan_endpoint(
 # ---------------------------------------------------------------------------
 
 
+def _scan_log_not_found_response(
+    request: Request, *, scan_id_for_log: uuid.UUID, reason: str
+) -> JSONResponse:
+    """Return the BYTE-IDENTICAL 404 Problem Details body for every miss path.
+
+    Security (HIGH, security-reviewer follow-up on ea75d1f): the original
+    endpoint emitted two distinct Problem Details bodies for the two 404
+    branches ("scan not found / forbidden" vs "scan exists but file not
+    written"). A scripted attacker enumerating UUIDs across teams could use
+    the envelope difference to perfectly distinguish "valid scan id in another
+    team" from "non-existent scan id" — defeating the existence-hide gate this
+    endpoint was built to enforce.
+
+    We collapse every miss path to the same body (same ``title``, ``detail``,
+    no ``type_`` urn — the urn itself was the differentiator that leaked
+    information). The operator-distinguishing reason ("not_found_or_forbidden",
+    "file_not_present", "path_escape_blocked", …) is recorded ONLY in a
+    structlog event so on-call can still tell branches apart in logs.
+    """
+    log.info(
+        "scan_log_not_found",
+        scan_id=str(scan_id_for_log),
+        reason=reason,
+    )
+    return problem_response(
+        status_code=status.HTTP_404_NOT_FOUND,
+        title="Scan log not found",
+        detail="No scan log is available for this scan id.",
+        instance=request.url.path,
+    )
+
+
 async def _stream_log_file(path: Path) -> AsyncIterator[bytes]:
     """Yield the log file in fixed-size chunks for ``StreamingResponse``.
 
@@ -185,9 +217,13 @@ async def _stream_log_file(path: Path) -> AsyncIterator[bytes]:
         404: {
             "content": {"application/problem+json": {}},
             "description": (
-                "Scan not found, the caller has no access to it, or the log "
-                "file is not on disk yet (very early-stage scan or persistence "
-                "disabled)."
+                "No scan log is available for this scan id. The body is "
+                "deliberately the same for every miss path (scan not found, "
+                "caller has no access, log file not yet on disk, or path "
+                "traversal defense triggered) so the response envelope cannot "
+                "be used to enumerate scan ids across teams. Operators can "
+                "distinguish branches via the ``scan_log_not_found`` "
+                "structlog event's ``reason`` field."
             ),
         },
     },
@@ -216,26 +252,25 @@ async def download_scan_log_endpoint(
     """
     # Auth + existence check first. ScanNotFound (404) and ScanForbidden (403)
     # both collapse to 404 here — the existence-hide contract for this endpoint
-    # never leaks "this scan exists but you cannot see it". We deliberately do
-    # not call _problem_for_scan_error for ScanForbidden so the 403 envelope
-    # cannot leak through.
+    # never leaks "this scan exists but you cannot see it". All 404 paths below
+    # share one byte-identical Problem Details body via
+    # ``_scan_log_not_found_response`` so the response envelope cannot be used
+    # to distinguish branches (HIGH finding, security-reviewer follow-up).
     try:
         await get_scan(session, scan_id=scan_id, actor=actor)
     except ScanError:
-        return problem_response(
-            status_code=status.HTTP_404_NOT_FOUND,
-            title="Scan Log Not Found",
-            detail="No scan log is available for this id.",
-            instance=request.url.path,
+        return _scan_log_not_found_response(
+            request, scan_id_for_log=scan_id, reason="not_found_or_forbidden"
         )
 
-    # Path is constructed from {workspace_root}/{scan_id}/scan.log. scan_id is
-    # already a parsed UUID at the route signature (FastAPI rejects malformed
-    # strings with 422), so traversal is impossible by construction. The
-    # is_relative_to() check below is defense-in-depth in case workspace_root
-    # ever changes semantics (symlink, env-var injection of "..", etc.).
-    root = Path(workspace_root()).resolve()
-    log_path = (Path(workspace_root()) / str(scan_id) / "scan.log").resolve()
+    # Cache the resolved workspace root once: ``workspace_root()`` re-reads
+    # ``os.getenv`` per call (CLAUDE.md core rule #11) which means a SIGHUP
+    # reload between the two existing reads could in principle disagree on the
+    # path used for traversal defense vs the path opened. Reading once removes
+    # that race window (MEDIUM #2).
+    root_str = workspace_root()
+    root = Path(root_str).resolve()
+    log_path = (Path(root_str) / str(scan_id) / "scan.log").resolve()
 
     if not log_path.is_relative_to(root):
         log.warning(
@@ -244,26 +279,19 @@ async def download_scan_log_endpoint(
             resolved=str(log_path),
             root=str(root),
         )
-        return problem_response(
-            status_code=status.HTTP_404_NOT_FOUND,
-            title="Scan Log Not Found",
-            detail="No scan log is available for this id.",
-            instance=request.url.path,
+        return _scan_log_not_found_response(
+            request, scan_id_for_log=scan_id, reason="path_escape_blocked"
         )
 
     if not log_path.is_file():
         # The scan exists and the caller has access, but no log was written.
         # Common cases: very early-stage scan that crashed before any tool
         # emitted a line, persistence disabled via SCAN_LOG_PERSIST_ENABLED=false,
-        # or the workspace cleaner already reaped the parent dir. Return 404
-        # with a Problem Details body distinct from the "no access" 404 detail
-        # text so an internal operator can tell them apart in logs.
-        return problem_response(
-            status_code=status.HTTP_404_NOT_FOUND,
-            title="Scan Log Not Available",
-            detail="Scan log not available yet.",
-            instance=request.url.path,
-            type_="urn:trustedoss:problem:scan_log_unavailable",
+        # or the workspace cleaner already reaped the parent dir. We return the
+        # SAME Problem Details body as the not-found / forbidden branch above
+        # (the operator-distinguishing reason goes into structlog only).
+        return _scan_log_not_found_response(
+            request, scan_id_for_log=scan_id, reason="file_not_present"
         )
 
     return StreamingResponse(

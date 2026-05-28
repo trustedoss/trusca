@@ -77,6 +77,7 @@ On-disk log persistence (this PR — scan log download):
 from __future__ import annotations
 
 import json
+import re
 import threading
 import uuid
 from datetime import UTC, datetime
@@ -256,6 +257,15 @@ def _append_log_line_to_disk(
     publish side has already succeeded by the time we get here, so the user
     still sees the live frame on the WebSocket — only the post-hoc download
     misses this single line.
+
+    Known limitation (LOW #9, security-reviewer follow-up): a single
+    ``handle.write(...)`` call exceeding the kernel's atomic-write boundary
+    (commonly 4 KiB on Linux for ``O_APPEND``) can in principle tear if two
+    drain threads on the SAME scan write concurrently. Today this is
+    bounded by ``_truncate_line`` (default ``SCAN_LOG_LINE_MAX_LEN`` is well
+    under the page size) and by the per-line scrubbed payload. If we ever
+    raise the per-line cap above ~4 KiB we should add an explicit lock
+    around the ``handle.write`` so tearing cannot happen.
     """
     if not scan_log_persist_enabled():
         return
@@ -411,6 +421,64 @@ def _truncate_line(line: str, limit: int) -> str:
     return line[:keep] + _TRUNC_SUFFIX
 
 
+# ---------------------------------------------------------------------------
+# Credential scrubbing (MEDIUM, security-reviewer follow-up on ea75d1f)
+# ---------------------------------------------------------------------------
+#
+# Before scan-log disk persistence shipped, ``publish_log`` only fanned out
+# to Redis Pub/Sub — ephemeral, channel-scoped, seconds of exposure. Now the
+# same lines append to ``scan.log`` on disk (hours-to-days lifetime, downloaded
+# via GET /v1/scans/{id}/log by any team member).
+#
+# ``scan_source._scrub_clone_stderr`` already covers ``git clone`` URLs, but
+# other credential-bearing outputs can reach ``publish_log``:
+#
+#   - cdxgen in verbose / ``CDXGEN_DEBUG_MODE=true`` may echo its resolved
+#     npm config including ``npm_config__authToken=<bearer>``.
+#   - Verbose HTTP logs in any tool can emit ``Authorization: Bearer <token>``.
+#   - Any tool stderr can contain ``https://user:password@host/...`` URLs.
+#
+# We add a publisher-side scrubber that runs on every line AFTER truncation
+# (so the regex cannot be DoS'd by an unbounded input — see
+# ``feedback_adversarial_input_parametrize``) but BEFORE both Redis publish
+# AND disk write. Pattern matches are intentionally conservative: we'd rather
+# false-positive a few innocuous tokens than miss a credential.
+# ---------------------------------------------------------------------------
+
+_SECRET_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    # HTTP Bearer tokens — RFC 6750 syntax (token charset)
+    (re.compile(r"(?i)(Bearer\s+)[A-Za-z0-9._\-+/=]+"), r"\1***"),
+    # npm-style auth tokens: ``npm_config__authToken=``, ``_authToken:``,
+    # ``_auth =``. The trailing ``\S+`` is line-bounded (no re.MULTILINE) so
+    # it cannot run away across lines.
+    (re.compile(r"(?i)(_auth(?:Token)?\s*[:=]\s*)\S+"), r"\1***"),
+    # URLs with userinfo: ``scheme://user:pass@host`` -> ``scheme://***@host``.
+    # The userinfo charset excludes ``/`` ``\s`` ``@`` so pathological inputs
+    # like ``://user:pass@@@host`` match the first ``user:pass@`` only — the
+    # trailing ``@@host`` becomes opaque path, not a userinfo passthrough.
+    (re.compile(r"([a-zA-Z][a-zA-Z0-9+.\-]*://)[^/\s@]+:[^/\s@]+@"), r"\1***@"),
+    # Generic API key headers: ``X-API-Key:``, ``api-key=``, ``api_key:``
+    (re.compile(r"(?i)(x-api-key\s*[:=]\s*)\S+"), r"\1***"),
+    (re.compile(r"(?i)(api[_-]?key\s*[:=]\s*)\S+"), r"\1***"),
+)
+
+
+def _scrub_secrets(line: str) -> str:
+    """Best-effort credential redaction on a log line.
+
+    Runs on every line BEFORE Redis publish and disk write. Pre-PR this was
+    Redis-only (ephemeral); the new disk persistence + download endpoint
+    elevates a transient leak into a durable, downloadable one. The caller
+    MUST truncate first (cf. ``_truncate_line``) so this function never scans
+    unbounded input — that ordering also satisfies
+    ``feedback_adversarial_input_parametrize`` for separator-only / oversized
+    inputs.
+    """
+    for pattern, replacement in _SECRET_PATTERNS:
+        line = pattern.sub(replacement, line)
+    return line
+
+
 _VALID_STREAMS: frozenset[str] = frozenset({"stdout", "stderr"})
 
 
@@ -458,7 +526,11 @@ def publish_log(
 
         safe_stream = stream if stream in _VALID_STREAMS else "stdout"
         safe_stage = str(stage)
-        safe_line = _truncate_line(str(line), line_limit)
+        # Order matters: truncate FIRST (bounds the regex input — adversarial
+        # multi-MB single lines cannot DoS the scrubber), then scrub. The
+        # scrubbed line is what reaches BOTH Redis (live WS) AND the on-disk
+        # ``scan.log`` (durable, downloadable via GET /scans/{id}/log).
+        safe_line = _scrub_secrets(_truncate_line(str(line), line_limit))
         ts = _now_iso()
 
         # Persist to disk FIRST. The WS publish is the live view (a missed
