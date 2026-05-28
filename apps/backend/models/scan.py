@@ -469,7 +469,12 @@ class ComponentVersion(Base):
     component: Mapped[Component] = relationship(back_populates="versions")
 
     __table_args__ = (
-        UniqueConstraint("component_id", "version", name="uq_component_versions_component_version"),
+        # W8-#46 (2026-05-27): dropped redundant UNIQUE on (component_id, version).
+        # purl_with_version is the natural key and is already UNIQUE on the
+        # column itself — the dropped constraint collapsed Maven artefacts that
+        # share (group, artifact, version) but differ in classifier qualifier
+        # (e.g. com.github.jnr/jffi@1.3.1 vs same?classifier=native). See
+        # alembic/versions/0027_drop_redundant_component_version_unique.py.
         Index("ix_component_versions_component_id", "component_id"),
     )
 
