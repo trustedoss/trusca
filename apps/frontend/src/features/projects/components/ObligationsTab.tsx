@@ -1,11 +1,12 @@
+import { CheckCircle2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import { Virtuoso } from "react-virtuoso";
 
+import { EmptyState } from "@/components/EmptyState";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { LicenseCategoryName } from "@/features/projects/api/projectDetailApi";
 import {
@@ -284,16 +285,13 @@ export function ObligationsTab({
       ) : null}
 
       {!obligations.isLoading && !obligations.isError && items.length === 0 ? (
-        <Card className="m-6" data-testid="obligations-empty">
-          <CardHeader>
-            <CardTitle className="text-base">
-              {t("obligations.empty.title")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            {t("obligations.empty.description")}
-          </CardContent>
-        </Card>
+        <EmptyState
+          data-testid="obligations-empty"
+          className="m-6"
+          icon={<CheckCircle2 />}
+          title={t("obligations.empty.title")}
+          description={t("obligations.empty.description")}
+        />
       ) : null}
 
       {!obligations.isLoading && !obligations.isError && items.length > 0 ? (

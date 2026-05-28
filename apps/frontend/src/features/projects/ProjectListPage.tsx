@@ -1,9 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
+import { FolderOpen } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { Virtuoso } from "react-virtuoso";
 
+import { EmptyState } from "@/components/EmptyState";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -442,15 +444,14 @@ export function ProjectListPage() {
         ) : null}
 
         {isEmpty ? (
-          <Card className="m-6" data-testid="project-list-empty">
-            <CardHeader>
-              <CardTitle className="text-base">{t("empty.title")}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                {t("empty.subtitle")}
-              </p>
-              {demoReadOnly ? (
+          <EmptyState
+            data-testid="project-list-empty"
+            className="m-6"
+            icon={<FolderOpen />}
+            title={t("empty.title")}
+            description={t("empty.subtitle")}
+            action={
+              demoReadOnly ? (
                 <Button
                   data-testid="project-list-empty-cta"
                   disabled
@@ -462,9 +463,9 @@ export function ProjectListPage() {
                 <Button asChild data-testid="project-list-empty-cta">
                   <Link to="/projects/new">{t("empty.cta")}</Link>
                 </Button>
-              )}
-            </CardContent>
-          </Card>
+              )
+            }
+          />
         ) : null}
 
         {!isLoading && !isError && filteredItems.length > 0 ? (
