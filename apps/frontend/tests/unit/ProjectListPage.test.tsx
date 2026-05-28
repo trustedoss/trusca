@@ -374,6 +374,80 @@ describe("ProjectListPage", () => {
     expect(meta.textContent).toContain("5");
   });
 
+  // ─── W9-#57 — chart-segment toggle (re-click clears the filter) ──────
+
+  it("toggles the severity chart filter off when the same segment is re-clicked (W9-#57)", async () => {
+    // Both projects worst-bucket at `critical` so the chart has a clickable
+    // critical segment. The filter chip surfaces an active filter; the chip
+    // disappears once the toggle releases the facet.
+    mockedListProjects.mockResolvedValueOnce(
+      listResponse([
+        project("Alpha", {
+          latest_scan_status: "succeeded",
+          severity_summary: { critical: 4, high: 0, medium: 0, low: 0 },
+        }),
+        project("Bravo", {
+          latest_scan_status: "succeeded",
+          severity_summary: { critical: 1, high: 0, medium: 0, low: 0 },
+        }),
+      ]),
+    );
+    renderPage();
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("project-list-distribution-cards"),
+      ).toBeInTheDocument();
+    });
+    const seg = screen.getByTestId("severity-bar-critical");
+    await userEvent.click(seg);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("project-list-active-filters"),
+      ).toBeInTheDocument();
+    });
+    await userEvent.click(seg);
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("project-list-active-filters"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("toggles the license chart filter off when the same segment is re-clicked (W9-#57)", async () => {
+    mockedListProjects.mockResolvedValueOnce(
+      listResponse([
+        project("Alpha", {
+          latest_scan_status: "succeeded",
+          license_category_summary: {
+            forbidden: 2,
+            conditional: 0,
+            allowed: 0,
+            unknown: 0,
+          },
+        }),
+      ]),
+    );
+    renderPage();
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("project-list-distribution-cards"),
+      ).toBeInTheDocument();
+    });
+    const seg = screen.getByTestId("license-bar-forbidden");
+    await userEvent.click(seg);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("project-list-active-filters"),
+      ).toBeInTheDocument();
+    });
+    await userEvent.click(seg);
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("project-list-active-filters"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it("opens the progress drawer once the source dialog reports a started scan", async () => {
     mockedListProjects.mockResolvedValueOnce(
       listResponse([project("Alpha")]),

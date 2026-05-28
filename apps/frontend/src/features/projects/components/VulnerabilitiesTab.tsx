@@ -57,6 +57,7 @@ import {
   type TriageRole,
 } from "@/features/projects/lib/vulnerabilityTransitions";
 import { ProblemError } from "@/lib/problem";
+import { toggleSingleValue } from "@/lib/searchParamsToggle";
 import { cn } from "@/lib/utils";
 
 /**
@@ -561,9 +562,12 @@ export function VulnerabilitiesTab({
                   // The chart's `none` slot actually carries `unknown` finding
                   // counts (see the mapping above), so translate before
                   // feeding the filter token to the API.
+                  // W9-#57 — re-clicking the only-active severity clears the
+                  // filter (`toggleSingleValue` returns `[]`). Any other click
+                  // collapses multi-selection down to the clicked bucket.
                   const vulnKey: VulnSeverity =
                     key === "none" ? "unknown" : (key as VulnSeverity);
-                  setSeverity([vulnKey]);
+                  setSeverity((prev) => toggleSingleValue(prev, vulnKey));
                   setPage(1);
                 }}
               />

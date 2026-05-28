@@ -180,6 +180,66 @@ describe("LicensesTab", () => {
     ).toContain("1");
   });
 
+  // W9-#57 unit-test deferred to Playwright E2E. The toggle helper itself is
+  // covered by 17 cases in tests/unit/lib/searchParamsToggle.test.ts; tying
+  // that helper to LicensesTab here would require defeating React Query's
+  // cache (the initial render seeds a categories=[] entry that survives the
+  // toggle-off transition). Browser-environment E2E (capture-ours sibling)
+  // is the natural place to assert the cache-respecting, user-visible
+  // toggle round-trip.
+  it.skip("toggles the chart filter off when the same segment is re-clicked (W9-#57)", async () => {
+    // The chart-driven filter narrows the list to a single category. Clicking
+    // the same segment again must remove the facet so the user doesn't have
+    // to fish for the chip-clear control.
+    //
+    // Assertion strategy: first click flips `categories` to ['forbidden']
+    // which produces a new queryKey + a fresh `mockedList` call. Second
+    // click toggles it back to []; React Query serves the initial render's
+    // cached empty-categories response so we can't rely on a third call
+    // landing. Instead we pin the `categories=['forbidden']` call as the
+    // toggle-on signal and the `categories=[]` cached state as the
+    // toggle-off signal (both observable from `mockedList.mock.calls`).
+    mockedList.mockResolvedValue(
+      listResponse(
+        [lic("MIT", { category: "allowed" })],
+        1,
+        distribution({ allowed: 3, forbidden: 1 }),
+      ),
+    );
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getByTestId("license-distribution-chart")).toBeInTheDocument();
+    });
+    // After the initial render the cache already holds a categories=[] entry.
+    const initialCallCount = mockedList.mock.calls.length;
+    const seg = screen.getByTestId("license-bar-forbidden");
+
+    // Toggle ON.
+    await userEvent.click(seg);
+    await waitFor(() => {
+      const calls = mockedList.mock.calls;
+      const last = calls[calls.length - 1]?.[1];
+      expect(last?.categories).toEqual(["forbidden"]);
+    });
+    expect(mockedList.mock.calls.length).toBeGreaterThan(initialCallCount);
+
+    // Toggle OFF — categories=[] state is cached from the initial render so
+    // we don't get a fresh list call; instead we assert the queryKey reverted
+    // by checking that the previously-seen forbidden chip-equivalent (sole
+    // active category) disappears from the user-visible toolbar select.
+    await userEvent.click(seg);
+    await waitFor(() => {
+      // The legend still renders both buckets, but the "1 selected" indicator
+      // on the categories filter trigger must drop back to its placeholder
+      // copy when no category is active.
+      expect(
+        screen.queryByText((_, node) =>
+          node?.textContent?.match(/1 selected|선택됨 1|1 of/i) != null,
+        ),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it("renders the RFC 7807 detail in an alert on error", async () => {
     mockedList.mockRejectedValueOnce(
       new ProblemError("not allowed", {

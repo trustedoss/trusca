@@ -25,6 +25,7 @@ import { RecentScansTable } from "@/features/projects/components/RecentScansTabl
 import { SeverityDistributionChart } from "@/features/projects/components/SeverityDistributionChart";
 import { ProblemError } from "@/lib/problem";
 import type { ProjectPublic } from "@/lib/projectsApi";
+import { toggleSearchParam } from "@/lib/searchParamsToggle";
 
 /**
  * OverviewTab — Phase 3 PR #10.
@@ -88,30 +89,28 @@ export function OverviewTab({
   // ProjectDetailPage) so the browser back button returns the user to
   // Overview. The earlier `{ replace: true }` silently overwrote the
   // Overview entry and back-button left the project entirely.
+  // W9-#57 (2026-05-28) — clicking the same segment a second time toggles the
+  // facet OFF (param removed). Routed through `toggleSearchParam` so every
+  // chart consumer in the portal shares one rule.
   function jumpToVulnerabilitiesBySeverity(key: ComponentSeverity) {
     setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        next.set("tab", "vulnerabilities");
-        next.set("severity", key);
-        return next;
-      },
+      (prev) =>
+        toggleSearchParam(prev, "severity", key, {
+          also: { tab: "vulnerabilities" },
+        }),
       { replace: false },
     );
   }
 
   function jumpToLicensesByCategory(key: LicenseCategoryName) {
+    // W4-C #20 — Licenses tab was absorbed into the unified Compliance tab.
+    // Land on its Licenses sub-view so the deep-link still surfaces the
+    // license inventory filtered by category.
     setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        // W4-C #20 — Licenses tab was absorbed into the unified Compliance
-        // tab. Land on its Licenses sub-view so the deep-link still surfaces
-        // the license inventory filtered by category.
-        next.set("tab", "compliance");
-        next.set("cview", "licenses");
-        next.set("license_category", key);
-        return next;
-      },
+      (prev) =>
+        toggleSearchParam(prev, "license_category", key, {
+          also: { tab: "compliance", cview: "licenses" },
+        }),
       { replace: false },
     );
   }

@@ -44,6 +44,7 @@ import { SeverityDistributionChart } from "@/features/projects/components/Severi
 import { useProjectOverview } from "@/features/projects/api/useProjectOverview";
 import { SeverityBadge } from "@/features/projects/components/SeverityBadge";
 import { ProblemError } from "@/lib/problem";
+import { toggleSingleValue } from "@/lib/searchParamsToggle";
 import { cn } from "@/lib/utils";
 
 /**
@@ -393,7 +394,8 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
                 <SeverityDistributionChart
                   distribution={severityDistribution}
                   onSegmentClick={(key) => {
-                    setSeverity([key]);
+                    // W9-#57 — same-segment re-click toggles the filter off.
+                    setSeverity((prev) => toggleSingleValue(prev, key));
                   }}
                 />
               </CardContent>
@@ -416,7 +418,8 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
                 <LicenseDistributionChart
                   distribution={licenseDistribution}
                   onSegmentClick={(key) => {
-                    setLicenseCategory([key]);
+                    // W9-#57 — same-segment re-click toggles the filter off.
+                    setLicenseCategory((prev) => toggleSingleValue(prev, key));
                   }}
                 />
               </CardContent>

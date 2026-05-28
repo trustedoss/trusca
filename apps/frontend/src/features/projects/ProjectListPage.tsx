@@ -43,6 +43,7 @@ import {
   type ScanStatus,
 } from "@/lib/projectsApi";
 import { formatRelativeToNow } from "@/lib/relativeTime";
+import { toggleNullable } from "@/lib/searchParamsToggle";
 import { cn } from "@/lib/utils";
 
 /**
@@ -337,13 +338,16 @@ export function ProjectListPage() {
               <SeverityDistributionChart
                 distribution={severityDistByProject}
                 onSegmentClick={(key) => {
+                  // W9-#57 — re-clicking the active segment toggles the filter
+                  // OFF. Only the four ranked buckets are filterable; ``info``
+                  // / ``none`` segments stay inert.
                   if (
                     key === "critical" ||
                     key === "high" ||
                     key === "medium" ||
                     key === "low"
                   ) {
-                    setSeverityFilter(key);
+                    setSeverityFilter((prev) => toggleNullable(prev, key));
                   }
                 }}
               />
@@ -365,7 +369,8 @@ export function ProjectListPage() {
               <LicenseDistributionChart
                 distribution={licenseDistByProject}
                 onSegmentClick={(key) => {
-                  setLicenseFilter(key);
+                  // W9-#57 — re-clicking the same category toggles it off.
+                  setLicenseFilter((prev) => toggleNullable(prev, key));
                 }}
               />
             </CardContent>
