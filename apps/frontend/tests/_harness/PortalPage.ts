@@ -293,6 +293,18 @@ export class PortalPage {
     const row = this.page.locator(
       `[data-testid="project-row"]:has([data-testid="project-row-scan"][data-project-name="${projectName}"])`,
     );
+    // Narrow the list down with the toolbar's search input when the row is
+    // not already in the visible window — fixture leftovers from prior runs
+    // can push our freshly-seeded project off page one. The search input is
+    // only present on the project list route; if we're already on the detail
+    // page (deep-linked) the lookup is skipped.
+    if ((await row.count()) === 0) {
+      const search = this.page.getByTestId("project-search");
+      if (await search.count()) {
+        await search.fill(projectName);
+        await row.waitFor({ state: "visible", timeout: 5_000 });
+      }
+    }
     await row.locator('[data-testid="project-row-link"]').click();
     await this.expectProjectDetailMounted();
   }

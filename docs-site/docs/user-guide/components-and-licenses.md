@@ -78,9 +78,7 @@ A component can be reached by several paths at once (a "diamond" — two of your
 
 ## License classification
 
-The **Licenses** tab on a project breaks down the same data by SPDX identifier and tier — a horizontal bar chart on top of the same table the Components tab uses, scoped to license rows:
-
-![Project detail — Licenses tab with a tier horizontal bar chart and a per-license breakdown](/img/screenshots/user-licenses-donut.png)
+The **Compliance** tab on a project breaks down the same data by SPDX identifier and tier — a horizontal bar chart on top of the same table the Components tab uses, scoped to license rows (with the `Has obligations` toggle flipping the same surface into the obligations view; see [Obligations](#obligations)).
 
 Every license is classified into one of four tiers. The **code value** column
 shows the value used in API responses, audit logs, and the build gate;
@@ -141,9 +139,7 @@ Each license carries **obligations** — duties you must honor when redistributi
 - **Dynamic linking** — LGPL-style: end-users must be able to relink against a modified library.
 - **No endorsement** — do not use the project name to endorse derivatives without permission.
 
-The **Obligations** tab on the project page consolidates obligations across components. Pick a format (**text** or **HTML**) and click **Download NOTICE** to save a NOTICE document summarizing every attribution and license. The endpoint also serves a `markdown` variant via the API. See [SBOM → NOTICE file](./sbom.md#notice-file) for the format / MIME / extension table.
-
-![Project detail — Obligations tab with the per-component obligations distribution](/img/screenshots/user-obligations-distribution.png)
+The **Compliance** tab with the **Has obligations** toggle on consolidates obligations across components. Pick a NOTICE format (**text** or **HTML**) on the toolbar and click **Download NOTICE** to save a NOTICE document summarizing every attribution and license. The endpoint also serves a `markdown` variant via the API. See [SBOM → NOTICE file](./sbom.md#notice-file) for the format / MIME / extension table.
 
 :::note Obligation kinds in this release
 The obligations catalog covers the seven kinds listed above. Some
