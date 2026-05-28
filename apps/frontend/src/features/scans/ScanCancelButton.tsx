@@ -138,7 +138,12 @@ export function ScanCancelButton({
             // W11-F polish — the cancel CTA already inherits Button's
             // transition-all duration-fast ease-out-soft; the override here
             // only swaps colour tokens, which now follow the same timing.
-            "gap-1 border-risk-high/40 text-risk-high hover:bg-risk-high/5",
+            // W11-H a11y — `text-risk-high` (#ea580c) on `hover:bg-risk-high/5`
+            // measured 3.0 ~ 3.6:1 (below WCAG AA 4.5:1 for body text). Swap
+            // to `text-orange-800` from the same hue family — same orange
+            // brand, deeper shade — for 6.47:1. Border keeps `risk-high` so
+            // the warning identity stays intact.
+            "gap-1 border-risk-high/40 text-orange-800 hover:bg-risk-high/5",
             className,
           )}
         >

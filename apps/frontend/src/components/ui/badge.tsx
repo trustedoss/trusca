@@ -36,13 +36,31 @@ const badgeVariants = cva(
       },
       tone: {
         none: "",
-        // Risk tones lean on the design tokens declared in index.css.
-        // Backgrounds use opacity so the text remains legible at light + dark.
-        critical: "border-transparent bg-risk-critical/10 text-risk-critical",
-        high: "border-transparent bg-risk-high/10 text-risk-high",
-        medium: "border-transparent bg-risk-medium/15 text-risk-medium",
-        low: "border-transparent bg-risk-low/10 text-risk-low",
-        info: "border-transparent bg-risk-info/15 text-risk-info",
+        // Risk tones — W11-H (a11y sweep).
+        //
+        // Background uses the `--risk-X` token at low alpha so the chip reads
+        // as a coloured tint while preserving brand semantics. The text colour
+        // is intentionally a darker shade of the SAME hue family from the
+        // Tailwind palette so the rendered text/tint contrast clears
+        // WCAG AA 4.5:1 — `text-risk-X` (the raw token) measured 2.5 ~ 4.5:1
+        // on the blended tint and was failing AA. Measurements (alpha-blended
+        // against #ffffff card surface):
+        //
+        //   critical  text-red-700      → 5.54:1
+        //   high      text-orange-800   → 6.47:1
+        //   medium    text-yellow-800   → 5.91:1
+        //   low       text-blue-700     → 5.83:1
+        //   info      text-slate-600    → 6.41:1
+        //
+        // The dot indicators (SeverityBadge / DependencyScopeBadge / chart
+        // legends) still use `bg-risk-X` raw so the brand colour stays
+        // recognisable — only the text shade is darkened. Token values in
+        // `index.css` are NOT changed (W11 prohibition: "Severity 색 변경 0").
+        critical: "border-transparent bg-risk-critical/10 text-red-700",
+        high: "border-transparent bg-risk-high/10 text-orange-800",
+        medium: "border-transparent bg-risk-medium/15 text-yellow-800",
+        low: "border-transparent bg-risk-low/10 text-blue-700",
+        info: "border-transparent bg-risk-info/15 text-slate-600",
         success: "border-transparent bg-emerald-100 text-emerald-700",
       },
     },

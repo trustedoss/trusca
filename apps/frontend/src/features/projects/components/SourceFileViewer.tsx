@@ -160,7 +160,10 @@ export function SourceFileViewer({
 
       {data.truncated ? (
         <div
-          className="flex items-center justify-between gap-3 border-b bg-risk-medium/10 px-4 py-2 text-xs text-risk-medium"
+          // W11-H a11y — `text-risk-medium` (#ca8a04) on `bg-risk-medium/10`
+          // measures 2.54:1; swap text to `text-yellow-800` (same yellow
+          // family, deeper shade) for 5.91:1 AA. Background tint preserved.
+          className="flex items-center justify-between gap-3 border-b bg-risk-medium/10 px-4 py-2 text-xs text-yellow-800"
           data-testid="source-file-truncated-banner"
         >
           <span>{t("source.viewer.truncated")}</span>

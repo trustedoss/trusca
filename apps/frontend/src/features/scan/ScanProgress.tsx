@@ -270,7 +270,9 @@ export function ScanProgress({
 
       {cachedFromDtDown ? (
         <Alert
-          className="border-risk-medium/40 bg-risk-medium/5 text-risk-medium"
+          // W11-H a11y — same hue/family swap (yellow-800) as Badge `medium`
+          // tone, lifts AlertDescription to AA 5.91:1.
+          className="border-risk-medium/40 bg-risk-medium/5 text-yellow-800"
           data-testid="scan-dt-cached-alert"
         >
           <AlertTriangle className="h-4 w-4" aria-hidden />
