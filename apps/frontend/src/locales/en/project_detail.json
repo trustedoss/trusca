@@ -58,6 +58,11 @@
     "clear_severity_aria": "Remove severity filter {{value}}",
     "clear_license_aria": "Remove license filter {{value}}"
   },
+  "extra_filters": {
+    "severity_label": "Severity",
+    "license_category_label": "License category",
+    "remove_aria": "Remove {{label}} filter"
+  },
   "risk": {
     "critical": "Critical risk",
     "high": "High risk",

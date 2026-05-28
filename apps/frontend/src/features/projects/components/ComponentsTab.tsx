@@ -16,6 +16,10 @@ import {
   type SortState,
   SortableColumnHeader,
 } from "@/components/ui/sortable-column-header";
+import {
+  type ColumnsPickerColumn,
+  loadInitialVisibility,
+} from "@/components/filters/ColumnsPicker";
 import type {
   ComponentSeverity,
   ComponentSortKey,
@@ -27,7 +31,10 @@ import type {
 import { useComponents } from "@/features/projects/api/useComponents";
 import { ActiveFilterChips } from "@/features/projects/components/ActiveFilterChips";
 import { ComponentDrawer } from "@/features/projects/components/ComponentDrawer";
-import { ComponentsToolbar } from "@/features/projects/components/ComponentsToolbar";
+import {
+  ComponentsToolbar,
+  type ComponentsExtraFilter,
+} from "@/features/projects/components/ComponentsToolbar";
 import { DependencyScopeBadge } from "@/features/projects/components/DependencyScopeBadge";
 import { AxisPill } from "@/features/projects/components/AxisPill";
 import { DependencyTypeBadge } from "@/features/projects/components/DependencyTypeBadge";
@@ -56,6 +63,29 @@ import { cn } from "@/lib/utils";
  */
 
 const PAGE_SIZE = 100;
+
+/**
+ * W9 #52 — column-picker catalog for the Components table. `name` and
+ * `version` identify the row and are always present; the other columns are
+ * user-toggleable. Persisted under `COMPONENT_COLUMNS_STORAGE_KEY` so per-tab
+ * preferences survive reload independently of the Vulnerabilities tab.
+ */
+const COMPONENT_COLUMNS_STORAGE_KEY = "column-visibility:components";
+
+function getComponentColumnsCatalog(
+  t: (key: string) => string,
+): ColumnsPickerColumn[] {
+  return [
+    { id: "name", label: t("components.col.name"), required: true },
+    { id: "type", label: t("components.col.type") },
+    { id: "version", label: t("components.col.version"), required: true },
+    { id: "license", label: t("components.col.license") },
+    { id: "policy", label: t("components.col.policy") },
+    { id: "usage", label: t("components.col.usage") },
+    { id: "severity", label: t("components.col.severity") },
+    { id: "vulns", label: t("components.col.vulns") },
+  ];
+}
 
 const VALID_SEVERITY = new Set<ComponentSeverity>([
   "critical",
@@ -158,6 +188,44 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
   );
   const [order, setOrder] = useState<SortOrder>(() =>
     parseOrder(searchParams.get("order")),
+  );
+
+  // W9 #52 — "+ Add filter" mount-on-demand facets. Same shape as the
+  // Vulnerabilities tab: seed from URL state so a deep-link auto-mounts.
+  const [mountedExtraFilters, setMountedExtraFilters] = useState<
+    Set<ComponentsExtraFilter>
+  >(() => {
+    const next = new Set<ComponentsExtraFilter>();
+    const sevParam = searchParams.get("severity");
+    if (sevParam && sevParam.length > 0) next.add("severity");
+    const licParam = searchParams.get("license_category");
+    if (licParam && licParam.length > 0) next.add("license_category");
+    return next;
+  });
+  const mountExtraFilter = (filter: ComponentsExtraFilter) => {
+    setMountedExtraFilters((prev) => {
+      if (prev.has(filter)) return prev;
+      const next = new Set(prev);
+      next.add(filter);
+      return next;
+    });
+  };
+  const unmountExtraFilter = (filter: ComponentsExtraFilter) => {
+    setMountedExtraFilters((prev) => {
+      if (!prev.has(filter)) return prev;
+      const next = new Set(prev);
+      next.delete(filter);
+      return next;
+    });
+  };
+
+  // W9 #52 — column visibility, hydrated from per-tab localStorage.
+  const columnsCatalog = useMemo(
+    () => getComponentColumnsCatalog((k) => t(k)),
+    [t],
+  );
+  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(() =>
+    loadInitialVisibility(COMPONENT_COLUMNS_STORAGE_KEY, columnsCatalog),
   );
 
   // Drawer state — `?drawer=<componentId>` so reload restores the selection.
@@ -360,6 +428,17 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
         onDirectChange={setDirect}
         dependencyScope={dependencyScope}
         onDependencyScopeChange={setDependencyScope}
+        severity={severity}
+        onSeverityChange={setSeverity}
+        licenseCategory={licenseCategory}
+        onLicenseCategoryChange={setLicenseCategory}
+        mountedExtraFilters={mountedExtraFilters}
+        onMountExtraFilter={mountExtraFilter}
+        onUnmountExtraFilter={unmountExtraFilter}
+        columnsCatalog={columnsCatalog}
+        visibleColumns={visibleColumns}
+        onVisibleColumnsChange={setVisibleColumns}
+        columnsStorageKey={COMPONENT_COLUMNS_STORAGE_KEY}
       />
 
       <ActiveFilterChips
@@ -429,6 +508,7 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
             <ComponentsTableHeader
               currentSort={currentSort}
               onSortChange={handleSortChange}
+              visibleColumns={visibleColumns}
             />
             <div
               className="flex-1"
@@ -453,6 +533,7 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
                   <ComponentRow
                     component={item}
                     rowIndex={index}
+                    visibleColumns={visibleColumns}
                     onSelect={() => setDrawerComponent(item.id)}
                   />
                 )}
@@ -477,11 +558,18 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
 interface ComponentsTableHeaderProps {
   currentSort: SortState | null;
   onSortChange: (next: SortState | null) => void;
+  /**
+   * W9 #52 — column ids the user has chosen to show. `name` and `version`
+   * are required (the ColumnsPicker disables their checkboxes); other
+   * columns are gated on this set.
+   */
+  visibleColumns: Set<string>;
 }
 
 function ComponentsTableHeader({
   currentSort,
   onSortChange,
+  visibleColumns,
 }: ComponentsTableHeaderProps) {
   const { t } = useTranslation("project_detail");
   return (
@@ -493,11 +581,8 @@ function ComponentsTableHeader({
       {/* W4-B #17 — Name / Severity / License are sortable; click cycles
           unset → asc → desc → unset. URL `?sort=` / `?order=` mirror the
           state below (existing effect). The remaining columns are static.
-          Width follow-up (2026-05-27): LICENSE is now SPDX-only at w-28 and a
-          separate POLICY column (w-24) holds the Allowed/Forbidden badge —
-          stacking the two inside one cell wrapped to two lines on the user's
-          ~700-800px main pane. The Name cell carries `min-w-[180px]` so it
-          can no longer collapse to zero. */}
+          W9 #52 — optional cells are gated on `visibleColumns`; required
+          cells (`name`, `version`) always render. */}
       <span className="flex-1 min-w-[180px]">
         <SortableColumnHeader
           column="name"
@@ -507,29 +592,52 @@ function ComponentsTableHeader({
           testId="components-sort-header-name"
         />
       </span>
-      <span className="w-24">{t("components.col.type")}</span>
+      {visibleColumns.has("type") ? (
+        <span className="w-24" data-testid="components-header-cell-type">
+          {t("components.col.type")}
+        </span>
+      ) : null}
       <span className="w-24 text-right">{t("components.col.version")}</span>
-      <span className="w-28">
-        <SortableColumnHeader
-          column="license"
-          label={t("components.col.license")}
-          currentSort={currentSort}
-          onSort={onSortChange}
-          testId="components-sort-header-license"
-        />
-      </span>
-      <span className="w-24">{t("components.col.policy")}</span>
-      <span className="w-24">{t("components.col.usage")}</span>
-      <span className="w-24">
-        <SortableColumnHeader
-          column="severity"
-          label={t("components.col.severity")}
-          currentSort={currentSort}
-          onSort={onSortChange}
-          testId="components-sort-header-severity"
-        />
-      </span>
-      <span className="w-12 text-right">{t("components.col.vulns")}</span>
+      {visibleColumns.has("license") ? (
+        <span className="w-28" data-testid="components-header-cell-license">
+          <SortableColumnHeader
+            column="license"
+            label={t("components.col.license")}
+            currentSort={currentSort}
+            onSort={onSortChange}
+            testId="components-sort-header-license"
+          />
+        </span>
+      ) : null}
+      {visibleColumns.has("policy") ? (
+        <span className="w-24" data-testid="components-header-cell-policy">
+          {t("components.col.policy")}
+        </span>
+      ) : null}
+      {visibleColumns.has("usage") ? (
+        <span className="w-24" data-testid="components-header-cell-usage">
+          {t("components.col.usage")}
+        </span>
+      ) : null}
+      {visibleColumns.has("severity") ? (
+        <span className="w-24" data-testid="components-header-cell-severity">
+          <SortableColumnHeader
+            column="severity"
+            label={t("components.col.severity")}
+            currentSort={currentSort}
+            onSort={onSortChange}
+            testId="components-sort-header-severity"
+          />
+        </span>
+      ) : null}
+      {visibleColumns.has("vulns") ? (
+        <span
+          className="w-12 text-right"
+          data-testid="components-header-cell-vulns"
+        >
+          {t("components.col.vulns")}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -538,10 +646,17 @@ function ComponentsTableHeader({
 interface ComponentRowProps {
   component: ComponentSummary;
   rowIndex: number;
+  /** W9 #52 — column ids the row should render. */
+  visibleColumns: Set<string>;
   onSelect: () => void;
 }
 
-function ComponentRow({ component, rowIndex, onSelect }: ComponentRowProps) {
+function ComponentRow({
+  component,
+  rowIndex,
+  visibleColumns,
+  onSelect,
+}: ComponentRowProps) {
   const { t } = useTranslation("project_detail");
   return (
     <button
@@ -569,12 +684,14 @@ function ComponentRow({ component, rowIndex, onSelect }: ComponentRowProps) {
           </span>
         ) : null}
       </span>
-      <span className="w-24">
-        <DependencyTypeBadge
-          direct={component.direct}
-          depth={component.depth}
-        />
-      </span>
+      {visibleColumns.has("type") ? (
+        <span className="w-24" data-testid="component-row-cell-type">
+          <DependencyTypeBadge
+            direct={component.direct}
+            depth={component.depth}
+          />
+        </span>
+      ) : null}
       <span
         className="w-24 truncate text-right font-mono text-xs"
         title={component.version}
@@ -583,33 +700,45 @@ function ComponentRow({ component, rowIndex, onSelect }: ComponentRowProps) {
       </span>
       {/* LICENSE is the SPDX identifier on its own — the policy category lives
           in the next cell so the row stays single-line. `language-mono` styling
-          keeps SPDX expressions (`(MIT OR Apache-2.0)`) readable. */}
-      <span
-        className={cn(
-          "w-28 truncate font-mono text-xs",
-          component.license ? "text-foreground" : "text-muted-foreground",
-        )}
-        data-testid="component-row-license-spdx"
-        data-license-spdx={component.license ?? ""}
-        title={component.license ?? t("components.license.unknown_dash")}
-      >
-        {component.license ?? t("components.license.unknown_dash")}
-      </span>
-      <span className="w-24">
-        <LicenseCategoryBadge category={component.license_category} />
-      </span>
-      <span className="w-24">
-        <DependencyScopeBadge scope={component.dependency_scope} />
-      </span>
-      <span className="w-24">
-        <SeverityBadge severity={component.severity_max} />
-      </span>
-      <span
-        className="w-12 text-right font-mono text-xs tabular-nums"
-        data-testid="component-row-vuln-count"
-      >
-        {component.vulnerability_count}
-      </span>
+          keeps SPDX expressions (`(MIT OR Apache-2.0)`) readable.
+          W9 #52 — optional cells (license, policy, usage, severity, vulns)
+          are gated on `visibleColumns`. */}
+      {visibleColumns.has("license") ? (
+        <span
+          className={cn(
+            "w-28 truncate font-mono text-xs",
+            component.license ? "text-foreground" : "text-muted-foreground",
+          )}
+          data-testid="component-row-license-spdx"
+          data-license-spdx={component.license ?? ""}
+          title={component.license ?? t("components.license.unknown_dash")}
+        >
+          {component.license ?? t("components.license.unknown_dash")}
+        </span>
+      ) : null}
+      {visibleColumns.has("policy") ? (
+        <span className="w-24" data-testid="component-row-cell-policy">
+          <LicenseCategoryBadge category={component.license_category} />
+        </span>
+      ) : null}
+      {visibleColumns.has("usage") ? (
+        <span className="w-24" data-testid="component-row-cell-usage">
+          <DependencyScopeBadge scope={component.dependency_scope} />
+        </span>
+      ) : null}
+      {visibleColumns.has("severity") ? (
+        <span className="w-24" data-testid="component-row-cell-severity">
+          <SeverityBadge severity={component.severity_max} />
+        </span>
+      ) : null}
+      {visibleColumns.has("vulns") ? (
+        <span
+          className="w-12 text-right font-mono text-xs tabular-nums"
+          data-testid="component-row-vuln-count"
+        >
+          {component.vulnerability_count}
+        </span>
+      ) : null}
     </button>
   );
 }

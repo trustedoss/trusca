@@ -58,6 +58,11 @@
     "clear_severity_aria": "심각도 필터 {{value}} 제거",
     "clear_license_aria": "라이선스 필터 {{value}} 제거"
   },
+  "extra_filters": {
+    "severity_label": "심각도",
+    "license_category_label": "라이선스 분류",
+    "remove_aria": "{{label}} 필터 제거"
+  },
   "risk": {
     "critical": "치명 리스크",
     "high": "높은 리스크",

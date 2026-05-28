@@ -1,9 +1,54 @@
+import { X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import {
+  ColumnsPicker,
+  type ColumnsPickerColumn,
+} from "@/components/filters/ColumnsPicker";
+import {
+  MoreFiltersMenu,
+  type MoreFiltersMenuOption,
+} from "@/components/filters/MoreFiltersMenu";
 import { Input } from "@/components/ui/input";
 import { MultiSelect } from "@/components/ui/multi-select";
-import type { DependencyScopeFilter } from "@/features/projects/api/projectDetailApi";
+import type {
+  ComponentSeverity,
+  DependencyScopeFilter,
+  LicenseCategoryName,
+} from "@/features/projects/api/projectDetailApi";
 import { cn } from "@/lib/utils";
+
+/**
+ * W9 #52 — facet ids the "+ Add filter" dropdown exposes on the Components
+ * tab. Severity + license category are populated today via the Overview
+ * chart deep-links (#16) but the toolbar exposed no inline UI for either —
+ * a triager who didn't click the chart would not know they could filter by
+ * these. The dropdown surfaces both as opt-in MultiSelects.
+ */
+export type ComponentsExtraFilter = "severity" | "license_category";
+
+/**
+ * W9 #52 — severity option set for the Components tab. Mirrors the parent's
+ * `VALID_SEVERITY` tuple so URL-driven values stay round-trip stable.
+ */
+const COMPONENT_SEVERITY_OPTIONS: ComponentSeverity[] = [
+  "critical",
+  "high",
+  "medium",
+  "low",
+  "info",
+  "none",
+];
+
+/**
+ * W9 #52 — license-category options. Same shape as Vulnerabilities.
+ */
+const COMPONENT_LICENSE_CATEGORY_OPTIONS: LicenseCategoryName[] = [
+  "forbidden",
+  "conditional",
+  "allowed",
+  "unknown",
+];
 
 /**
  * ComponentsToolbar — Phase 3 PR #10, updated in W4-B #17.
@@ -56,6 +101,32 @@ export interface ComponentsToolbarProps {
   /** BD-style "Usage" multi-select. */
   dependencyScope: DependencyScopeFilter[];
   onDependencyScopeChange: (value: DependencyScopeFilter[]) => void;
+  /**
+   * W9 #52 — current severity selection (mirrors parent state). When the
+   * user mounts the severity facet via "+ Add filter", the toolbar renders
+   * a MultiSelect bound to this prop.
+   */
+  severity: ComponentSeverity[];
+  onSeverityChange: (value: ComponentSeverity[]) => void;
+  /**
+   * W9 #52 — current license-category selection (mirrors parent state).
+   */
+  licenseCategory: LicenseCategoryName[];
+  onLicenseCategoryChange: (value: LicenseCategoryName[]) => void;
+  /**
+   * W9 #52 — facets the user has opted into via "+ Add filter".
+   */
+  mountedExtraFilters: Set<ComponentsExtraFilter>;
+  onMountExtraFilter: (filter: ComponentsExtraFilter) => void;
+  onUnmountExtraFilter: (filter: ComponentsExtraFilter) => void;
+  /**
+   * W9 #52 — column-picker catalog + visibility. Parents own the state so
+   * row code can gate cell rendering on it.
+   */
+  columnsCatalog: ColumnsPickerColumn[];
+  visibleColumns: Set<string>;
+  onVisibleColumnsChange: (next: Set<string>) => void;
+  columnsStorageKey: string;
   className?: string;
 }
 
@@ -66,9 +137,59 @@ export function ComponentsToolbar({
   onDirectChange,
   dependencyScope,
   onDependencyScopeChange,
+  severity,
+  onSeverityChange,
+  licenseCategory,
+  onLicenseCategoryChange,
+  mountedExtraFilters,
+  onMountExtraFilter,
+  onUnmountExtraFilter,
+  columnsCatalog,
+  visibleColumns,
+  onVisibleColumnsChange,
+  columnsStorageKey,
   className,
 }: ComponentsToolbarProps) {
   const { t } = useTranslation("project_detail");
+
+  // W9 #52 — see VulnerabilitiesToolbar for the active-id detection rationale.
+  const availableExtraFilters: MoreFiltersMenuOption[] = [
+    { id: "severity", label: t("extra_filters.severity_label") },
+    {
+      id: "license_category",
+      label: t("extra_filters.license_category_label"),
+    },
+  ];
+  const activeFilterIds = new Set<string>();
+  if (mountedExtraFilters.has("severity") || severity.length > 0) {
+    activeFilterIds.add("severity");
+  }
+  if (
+    mountedExtraFilters.has("license_category") ||
+    licenseCategory.length > 0
+  ) {
+    activeFilterIds.add("license_category");
+  }
+
+  function handleMoreFiltersSelect(filterId: string) {
+    if (filterId === "severity" || filterId === "license_category") {
+      const isMounted = mountedExtraFilters.has(filterId);
+      const hasValue =
+        filterId === "severity"
+          ? severity.length > 0
+          : licenseCategory.length > 0;
+      if (isMounted && !hasValue) {
+        onUnmountExtraFilter(filterId);
+      } else {
+        onMountExtraFilter(filterId);
+      }
+    }
+  }
+
+  const showSeverityFacet =
+    mountedExtraFilters.has("severity") || severity.length > 0;
+  const showLicenseFacet =
+    mountedExtraFilters.has("license_category") || licenseCategory.length > 0;
   return (
     <div
       className={cn(
@@ -153,6 +274,119 @@ export function ComponentsToolbar({
           onChange={(next) =>
             onDependencyScopeChange(next as DependencyScopeFilter[])
           }
+        />
+      </div>
+
+      {/* W9 #52 — optional severity facet, mount-on-demand. */}
+      {showSeverityFacet ? (
+        <div
+          className="flex flex-col"
+          data-testid="components-severity-facet"
+        >
+          <div className="flex items-center gap-1">
+            <label
+              htmlFor="components-severity-filter"
+              className="text-xs font-medium text-muted-foreground"
+            >
+              {t("extra_filters.severity_label")}
+            </label>
+            <button
+              type="button"
+              data-testid="components-severity-facet-remove"
+              aria-label={t("extra_filters.remove_aria", {
+                label: t("extra_filters.severity_label"),
+              })}
+              onClick={() => {
+                onSeverityChange([]);
+                onUnmountExtraFilter("severity");
+              }}
+              className="ml-auto inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <X className="h-3 w-3" aria-hidden />
+            </button>
+          </div>
+          <MultiSelect
+            id="components-severity-filter"
+            testId="components-severity-filter"
+            className="w-44"
+            label={t("extra_filters.severity_label")}
+            options={COMPONENT_SEVERITY_OPTIONS.map((opt) => ({
+              value: opt,
+              label: t(`severity.${opt}`),
+            }))}
+            selected={severity}
+            onChange={(next) => onSeverityChange(next as ComponentSeverity[])}
+          />
+        </div>
+      ) : null}
+
+      {/* W9 #52 — optional license category facet, mount-on-demand. */}
+      {showLicenseFacet ? (
+        <div
+          className="flex flex-col"
+          data-testid="components-license-category-facet"
+        >
+          <div className="flex items-center gap-1">
+            <label
+              htmlFor="components-license-category-filter"
+              className="text-xs font-medium text-muted-foreground"
+            >
+              {t("extra_filters.license_category_label")}
+            </label>
+            <button
+              type="button"
+              data-testid="components-license-category-facet-remove"
+              aria-label={t("extra_filters.remove_aria", {
+                label: t("extra_filters.license_category_label"),
+              })}
+              onClick={() => {
+                onLicenseCategoryChange([]);
+                onUnmountExtraFilter("license_category");
+              }}
+              className="ml-auto inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <X className="h-3 w-3" aria-hidden />
+            </button>
+          </div>
+          <MultiSelect
+            id="components-license-category-filter"
+            testId="components-license-category-filter"
+            className="w-44"
+            label={t("extra_filters.license_category_label")}
+            options={COMPONENT_LICENSE_CATEGORY_OPTIONS.map((opt) => ({
+              value: opt,
+              label: t(`license_category.${opt}`),
+            }))}
+            selected={licenseCategory}
+            onChange={(next) =>
+              onLicenseCategoryChange(next as LicenseCategoryName[])
+            }
+          />
+        </div>
+      ) : null}
+
+      <div className="flex flex-col lg:ml-auto">
+        <span className="invisible text-xs font-medium" aria-hidden>
+          &nbsp;
+        </span>
+        <MoreFiltersMenu
+          availableFilters={availableExtraFilters}
+          activeFilterIds={activeFilterIds}
+          onSelect={handleMoreFiltersSelect}
+          testId="components-more-filters-trigger"
+        />
+      </div>
+
+      <div className="flex flex-col">
+        <span className="invisible text-xs font-medium" aria-hidden>
+          &nbsp;
+        </span>
+        <ColumnsPicker
+          columns={columnsCatalog}
+          visibleColumns={visibleColumns}
+          onChange={onVisibleColumnsChange}
+          storageKey={columnsStorageKey}
+          testId="components-columns-picker-trigger"
         />
       </div>
     </div>

@@ -16,6 +16,10 @@ import {
   type SortState,
   SortableColumnHeader,
 } from "@/components/ui/sortable-column-header";
+import {
+  type ColumnsPickerColumn,
+  loadInitialVisibility,
+} from "@/components/filters/ColumnsPicker";
 import type { LicenseCategoryName } from "@/features/projects/api/projectDetailApi";
 import { useProjectOverview } from "@/features/projects/api/useProjectOverview";
 import { useVulnerabilities } from "@/features/projects/api/useVulnerabilities";
@@ -34,7 +38,10 @@ import { ReachabilityBadge } from "@/features/projects/components/ReachabilityBa
 import { SeverityBadge } from "@/features/projects/components/SeverityBadge";
 import { SeverityDistributionChart } from "@/features/projects/components/SeverityDistributionChart";
 import { VulnerabilitiesRemediationPanel } from "@/features/projects/components/VulnerabilitiesRemediationPanel";
-import { VulnerabilitiesToolbar } from "@/features/projects/components/VulnerabilitiesToolbar";
+import {
+  VulnerabilitiesToolbar,
+  type VulnerabilitiesExtraFilter,
+} from "@/features/projects/components/VulnerabilitiesToolbar";
 import { VulnerabilityBulkActionBar } from "@/features/projects/components/VulnerabilityBulkActionBar";
 import { VulnerabilityDrawer } from "@/features/projects/components/VulnerabilityDrawer";
 import { VulnerabilityStatusBadge } from "@/features/projects/components/VulnerabilityStatusBadge";
@@ -72,6 +79,36 @@ import { cn } from "@/lib/utils";
  */
 
 const PAGE_SIZE = 100;
+
+/**
+ * W9 #52 — column-picker catalog for the Vulnerabilities table. `cve_id` and
+ * `severity` are required because they identify the row + carry the primary
+ * triage signal; users would lose the table's information density if either
+ * were hidden. The other columns are user-toggleable and persisted under
+ * `VULN_COLUMNS_STORAGE_KEY`.
+ *
+ * The label string keys map to the existing `vulnerabilities.column.*` i18n
+ * entries — no new translation work required for the column names themselves.
+ */
+const VULN_COLUMNS_STORAGE_KEY = "column-visibility:vulnerabilities";
+
+function getVulnColumnsCatalog(
+  t: (key: string) => string,
+): ColumnsPickerColumn[] {
+  return [
+    { id: "cve_id", label: t("vulnerabilities.column.cve_id"), required: true },
+    { id: "component", label: t("vulnerabilities.column.component") },
+    {
+      id: "severity",
+      label: t("vulnerabilities.column.severity"),
+      required: true,
+    },
+    { id: "cvss", label: t("vulnerabilities.column.cvss") },
+    { id: "epss", label: t("vulnerabilities.column.epss") },
+    { id: "reachable", label: t("vulnerabilities.column.reachable") },
+    { id: "status", label: t("vulnerabilities.column.status") },
+  ];
+}
 
 const VALID_SEVERITY = new Set<VulnSeverity>([
   "critical",
@@ -228,6 +265,48 @@ export function VulnerabilitiesTab({
   );
   const [page, setPage] = useState<number>(() =>
     parsePage(searchParams.get("page")),
+  );
+
+  // W9 #52 — "+ Add filter" mount-on-demand facets. We seed the set from the
+  // current URL state so a deep-linked `?severity=` / `?license_category=`
+  // auto-mounts the matching MultiSelect (the user already has a non-empty
+  // selection — the facet should be visible, not hidden).
+  const [mountedExtraFilters, setMountedExtraFilters] = useState<
+    Set<VulnerabilitiesExtraFilter>
+  >(() => {
+    const next = new Set<VulnerabilitiesExtraFilter>();
+    const sevParam = searchParams.get("severity");
+    if (sevParam && sevParam.length > 0) next.add("severity");
+    const licParam = searchParams.get("license_category");
+    if (licParam && licParam.length > 0) next.add("license_category");
+    return next;
+  });
+  const mountExtraFilter = (filter: VulnerabilitiesExtraFilter) => {
+    setMountedExtraFilters((prev) => {
+      if (prev.has(filter)) return prev;
+      const next = new Set(prev);
+      next.add(filter);
+      return next;
+    });
+  };
+  const unmountExtraFilter = (filter: VulnerabilitiesExtraFilter) => {
+    setMountedExtraFilters((prev) => {
+      if (!prev.has(filter)) return prev;
+      const next = new Set(prev);
+      next.delete(filter);
+      return next;
+    });
+  };
+
+  // W9 #52 — column-picker catalog + visibility. Hydrated from localStorage so
+  // the user's last preference survives reload; required ids are forced into
+  // the set by `loadInitialVisibility`.
+  const columnsCatalog = useMemo(
+    () => getVulnColumnsCatalog((k) => t(k)),
+    [t],
+  );
+  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(() =>
+    loadInitialVisibility(VULN_COLUMNS_STORAGE_KEY, columnsCatalog),
   );
 
   // W2 #33b — bulk-selection state. Single-page only (D-bulk): we clear the
@@ -515,6 +594,23 @@ export function VulnerabilitiesTab({
         projectName={projectName}
         projectRole={projectRole}
         readOnly={readOnly}
+        severity={severity}
+        onSeverityChange={(next) => {
+          setSeverity(next);
+          setPage(1);
+        }}
+        licenseCategory={licenseCategory}
+        onLicenseCategoryChange={(next) => {
+          setLicenseCategory(next);
+          setPage(1);
+        }}
+        mountedExtraFilters={mountedExtraFilters}
+        onMountExtraFilter={mountExtraFilter}
+        onUnmountExtraFilter={unmountExtraFilter}
+        columnsCatalog={columnsCatalog}
+        visibleColumns={visibleColumns}
+        onVisibleColumnsChange={setVisibleColumns}
+        columnsStorageKey={VULN_COLUMNS_STORAGE_KEY}
       />
 
       <ActiveFilterChips<VulnSeverity>
@@ -612,6 +708,7 @@ export function VulnerabilitiesTab({
               disabled={readOnly}
               currentSort={currentSort}
               onSortChange={handleSortChange}
+              visibleColumns={visibleColumns}
               onToggleAll={(checked) => {
                 if (checked) {
                   // Select-all is single-page (D-bulk). Truncate to the cap if
@@ -642,6 +739,7 @@ export function VulnerabilitiesTab({
                     rowIndex={index}
                     selected={selectedIds.has(item.id)}
                     selectionDisabled={readOnly}
+                    visibleColumns={visibleColumns}
                     onToggleSelected={(checked) =>
                       toggleSelection(item.id, checked)
                     }
@@ -683,6 +781,12 @@ interface VulnerabilitiesTableHeaderProps {
   disabled?: boolean;
   currentSort: SortState | null;
   onSortChange: (next: SortState | null) => void;
+  /**
+   * W9 #52 — column ids the user has chosen to show. `cve_id` + `severity`
+   * are always present (the ColumnsPicker disables their checkboxes); other
+   * columns are conditionally rendered.
+   */
+  visibleColumns: Set<string>;
   onToggleAll: (checked: boolean) => void;
 }
 
@@ -692,6 +796,7 @@ function VulnerabilitiesTableHeader({
   disabled = false,
   currentSort,
   onSortChange,
+  visibleColumns,
   onToggleAll,
 }: VulnerabilitiesTableHeaderProps) {
   const { t } = useTranslation("project_detail");
@@ -726,15 +831,20 @@ function VulnerabilitiesTableHeader({
           dropped from the row (drawer carries the full summary); the
           row's last column is now Status. Component is sortable. */}
       <span className="w-44">{t("vulnerabilities.column.cve_id")}</span>
-      <span className="flex-1 min-w-[260px]">
-        <SortableColumnHeader
-          column="component"
-          label={t("vulnerabilities.column.component")}
-          currentSort={currentSort}
-          onSort={onSortChange}
-          testId="vulnerabilities-sort-header-component"
-        />
-      </span>
+      {visibleColumns.has("component") ? (
+        <span
+          className="flex-1 min-w-[260px]"
+          data-testid="vulnerabilities-header-cell-component"
+        >
+          <SortableColumnHeader
+            column="component"
+            label={t("vulnerabilities.column.component")}
+            currentSort={currentSort}
+            onSort={onSortChange}
+            testId="vulnerabilities-sort-header-component"
+          />
+        </span>
+      ) : null}
       <span className="w-28">
         <SortableColumnHeader
           column="severity"
@@ -744,48 +854,66 @@ function VulnerabilitiesTableHeader({
           testId="vulnerabilities-sort-header-severity"
         />
       </span>
-      <span className="w-16 text-right">
-        <SortableColumnHeader
-          column="cvss"
-          label={t("vulnerabilities.column.cvss")}
-          currentSort={currentSort}
-          onSort={onSortChange}
-          testId="vulnerabilities-sort-header-cvss"
-        />
-      </span>
-      <span
-        className="w-20 text-right"
-        title={t("vulnerabilities.epss.tooltip", {
-          defaultValue:
-            "EPSS — probability this CVE is exploited in the wild within 30 days. Complements CVSS (severity).",
-        })}
-      >
-        <SortableColumnHeader
-          column="epss"
-          label={t("vulnerabilities.column.epss", { defaultValue: "EPSS" })}
-          currentSort={currentSort}
-          onSort={onSortChange}
-          testId="vulnerabilities-sort-header-epss"
-        />
-      </span>
-      <span className="w-28">
-        <SortableColumnHeader
-          column="reachable"
-          label={t("vulnerabilities.column.reachable")}
-          currentSort={currentSort}
-          onSort={onSortChange}
-          testId="vulnerabilities-sort-header-reachable"
-        />
-      </span>
-      <span className="w-32">
-        <SortableColumnHeader
-          column="status"
-          label={t("vulnerabilities.column.status")}
-          currentSort={currentSort}
-          onSort={onSortChange}
-          testId="vulnerabilities-sort-header-status"
-        />
-      </span>
+      {visibleColumns.has("cvss") ? (
+        <span
+          className="w-16 text-right"
+          data-testid="vulnerabilities-header-cell-cvss"
+        >
+          <SortableColumnHeader
+            column="cvss"
+            label={t("vulnerabilities.column.cvss")}
+            currentSort={currentSort}
+            onSort={onSortChange}
+            testId="vulnerabilities-sort-header-cvss"
+          />
+        </span>
+      ) : null}
+      {visibleColumns.has("epss") ? (
+        <span
+          className="w-20 text-right"
+          data-testid="vulnerabilities-header-cell-epss"
+          title={t("vulnerabilities.epss.tooltip", {
+            defaultValue:
+              "EPSS — probability this CVE is exploited in the wild within 30 days. Complements CVSS (severity).",
+          })}
+        >
+          <SortableColumnHeader
+            column="epss"
+            label={t("vulnerabilities.column.epss", { defaultValue: "EPSS" })}
+            currentSort={currentSort}
+            onSort={onSortChange}
+            testId="vulnerabilities-sort-header-epss"
+          />
+        </span>
+      ) : null}
+      {visibleColumns.has("reachable") ? (
+        <span
+          className="w-28"
+          data-testid="vulnerabilities-header-cell-reachable"
+        >
+          <SortableColumnHeader
+            column="reachable"
+            label={t("vulnerabilities.column.reachable")}
+            currentSort={currentSort}
+            onSort={onSortChange}
+            testId="vulnerabilities-sort-header-reachable"
+          />
+        </span>
+      ) : null}
+      {visibleColumns.has("status") ? (
+        <span
+          className="w-32"
+          data-testid="vulnerabilities-header-cell-status"
+        >
+          <SortableColumnHeader
+            column="status"
+            label={t("vulnerabilities.column.status")}
+            currentSort={currentSort}
+            onSort={onSortChange}
+            testId="vulnerabilities-sort-header-status"
+          />
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -795,6 +923,8 @@ interface VulnerabilityRowProps {
   rowIndex: number;
   selected: boolean;
   selectionDisabled?: boolean;
+  /** W9 #52 — controlled by the ColumnsPicker. See `VULN_COLUMNS_STORAGE_KEY`. */
+  visibleColumns: Set<string>;
   onToggleSelected: (checked: boolean) => void;
   onSelect: () => void;
 }
@@ -804,6 +934,7 @@ function VulnerabilityRow({
   rowIndex,
   selected,
   selectionDisabled = false,
+  visibleColumns,
   onToggleSelected,
   onSelect,
 }: VulnerabilityRowProps) {
@@ -847,53 +978,65 @@ function VulnerabilityRow({
       {/* Column order matches the header above:
           CVE / Component / Severity / CVSS / EPSS / Reachability /
           Summary / Status. License lives in the drawer only — user-test
-          feedback flagged the row license column as noise. */}
+          feedback flagged the row license column as noise.
+          W9 #52 — each optional cell is gated on `visibleColumns`; required
+          ids (`cve_id`, `severity`) always render. */}
       <span
         className="w-44 truncate font-mono text-xs"
         title={vulnerability.cve_id}
       >
         {vulnerability.cve_id}
       </span>
-      <ComponentColumnCell
-        name={vulnerability.affected_component_name}
-        version={vulnerability.affected_component_version}
-        count={vulnerability.affected_component_count}
-      />
+      {visibleColumns.has("component") ? (
+        <ComponentColumnCell
+          name={vulnerability.affected_component_name}
+          version={vulnerability.affected_component_version}
+          count={vulnerability.affected_component_count}
+        />
+      ) : null}
       <span className="w-28">
         <SeverityBadge severity={vulnerability.severity} />
       </span>
-      <span
-        className="w-16 text-right font-mono text-xs tabular-nums"
-        data-testid="vulnerability-row-cvss"
-      >
-        {vulnerability.cvss_score != null
-          ? vulnerability.cvss_score.toFixed(1)
-          : "—"}
-      </span>
-      <EpssCell
-        score={vulnerability.epss_score}
-        percentile={vulnerability.epss_percentile}
-      />
-      <span
-        className="flex w-28 items-center"
-        data-testid="vulnerability-row-reachability"
-        data-reachable={
-          vulnerability.reachable == null
-            ? "unknown"
-            : String(vulnerability.reachable)
-        }
-      >
-        <ReachabilityBadge
-          reachable={vulnerability.reachable}
-          source={vulnerability.reachability_source}
+      {visibleColumns.has("cvss") ? (
+        <span
+          className="w-16 text-right font-mono text-xs tabular-nums"
+          data-testid="vulnerability-row-cvss"
+        >
+          {vulnerability.cvss_score != null
+            ? vulnerability.cvss_score.toFixed(1)
+            : "—"}
+        </span>
+      ) : null}
+      {visibleColumns.has("epss") ? (
+        <EpssCell
+          score={vulnerability.epss_score}
+          percentile={vulnerability.epss_percentile}
         />
-      </span>
-      <span className="flex w-32 items-center gap-1">
-        <VulnerabilityStatusBadge status={vulnerability.status} />
-        {vulnerability.analysis_source === "vex_import" ? (
-          <VexProvenanceMarker />
-        ) : null}
-      </span>
+      ) : null}
+      {visibleColumns.has("reachable") ? (
+        <span
+          className="flex w-28 items-center"
+          data-testid="vulnerability-row-reachability"
+          data-reachable={
+            vulnerability.reachable == null
+              ? "unknown"
+              : String(vulnerability.reachable)
+          }
+        >
+          <ReachabilityBadge
+            reachable={vulnerability.reachable}
+            source={vulnerability.reachability_source}
+          />
+        </span>
+      ) : null}
+      {visibleColumns.has("status") ? (
+        <span className="flex w-32 items-center gap-1">
+          <VulnerabilityStatusBadge status={vulnerability.status} />
+          {vulnerability.analysis_source === "vex_import" ? (
+            <VexProvenanceMarker />
+          ) : null}
+        </span>
+      ) : null}
       </button>
     </div>
   );
