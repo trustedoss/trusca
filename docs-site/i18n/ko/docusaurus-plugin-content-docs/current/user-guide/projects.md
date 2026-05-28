@@ -80,17 +80,6 @@ sidebar_position: 1
 **Source** 탭은 이전에 **Licenses** 바로 뒤에 있었으나, 데이터 출력 클러스터(SBOM / Reports / Source) 가 연속되도록 **Reports** 오른쪽으로 이동했습니다. 북마크와 `?tab=source` 딥링크는 슬러그가 동일하므로 계속 동작합니다.
 :::
 
-### 워크스루 — 프로젝트 상세 탭 둘러보기
-
-아래 워크스루는 프로젝트 목록에서 진입한 뒤 탭을 차례로 클릭해 각 탭의 관계를 보여줍니다.
-
-<!-- 워크스루 영상은 stale — 이전 4-tab 레이아웃을 캡처. 머지 이후 Releases / Reports / Source / Remediation 포함으로 재촬영 -->
-
-<video controls width="100%" preload="metadata" poster="/img/walkthroughs/walkthrough-project-tour.gif">
-  <source src="/img/walkthroughs/walkthrough-project-tour.mp4" type="video/mp4" />
-  ![애니메이션 워크스루 — 프로젝트 상세 탭 클릭](/img/walkthroughs/walkthrough-project-tour.gif)
-</video>
-
 ## 프로젝트 추가 — API
 
 ```bash
