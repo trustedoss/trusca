@@ -40,6 +40,8 @@ A right-slide drawer opens on the project list page with a live progress view ba
 If a project already has a `queued` or `running` scan, the **Scan** button is disabled on the project detail header and its tooltip points you at the in-progress chip in the header (clicking the chip re-opens the existing scan's progress drawer). Triggering a second scan via the API returns `409 Conflict` with the RFC 7807 extension `scan_already_in_progress: true` — wait for the active scan to reach a terminal state, or **Cancel** it, before starting another. The same guard applies to UI, API, and CI clients.
 :::
 
+![Scan progress drawer — bootstrap → fetch → cdxgen → scancode → vuln_match → finalize stages, live over WebSocket](/img/screenshots/user-scans-progress-drawer.png)
+
 :::warning Branch selection for source scans
 Source scans run against the project's `default_branch` (typically
 `main`). Neither the UI nor the API exposes a branch override in this
