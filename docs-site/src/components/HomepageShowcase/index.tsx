@@ -1,5 +1,8 @@
 import type { ReactNode } from "react";
 import Translate, { translate } from "@docusaurus/Translate";
+import projectsListImg from "@site/static/img/screenshots/user-projects-list.png";
+import vulnsListImg from "@site/static/img/screenshots/user-vulns-list.png";
+import sbomTabImg from "@site/static/img/screenshots/user-sbom-tab.png";
 import styles from "./styles.module.css";
 
 type Shot = {
@@ -9,10 +12,16 @@ type Shot = {
   caption: ReactNode;
 };
 
+// Webpack-imported sources so the hashed asset path is correct in every
+// locale. The earlier root-relative form (`/img/...`) plus `useBaseUrl`
+// went wrong under i18n: KO locale's effective baseUrl is
+// `/trustedoss-portal/ko/`, which made the prefix `/trustedoss-portal/ko/
+// img/...` — the static assets live at `/trustedoss-portal/img/...`
+// regardless of locale, so the KO showcase rendered broken-image icons.
 const SHOTS: Shot[] = [
   {
     id: "projects",
-    src: "/img/screenshots/user-projects-list.png",
+    src: projectsListImg,
     alt: translate({
       id: "homepage.showcase.projects.alt",
       message:
@@ -26,7 +35,7 @@ const SHOTS: Shot[] = [
   },
   {
     id: "vulns",
-    src: "/img/screenshots/user-vulns-list.png",
+    src: vulnsListImg,
     alt: translate({
       id: "homepage.showcase.vulns.alt",
       message:
@@ -40,7 +49,7 @@ const SHOTS: Shot[] = [
   },
   {
     id: "sbom",
-    src: "/img/screenshots/user-sbom-tab.png",
+    src: sbomTabImg,
     alt: translate({
       id: "homepage.showcase.sbom.alt",
       message:
@@ -53,6 +62,24 @@ const SHOTS: Shot[] = [
     ),
   },
 ];
+
+function ShotFigure({ shot }: { shot: Shot }): ReactNode {
+  return (
+    <figure className={styles.shot}>
+      <div className={styles.frame}>
+        <img
+          className={styles.image}
+          src={shot.src}
+          alt={shot.alt}
+          loading="lazy"
+          width={1456}
+          height={882}
+        />
+      </div>
+      <figcaption className={styles.caption}>{shot.caption}</figcaption>
+    </figure>
+  );
+}
 
 export default function HomepageShowcase(): ReactNode {
   return (
@@ -74,19 +101,7 @@ export default function HomepageShowcase(): ReactNode {
         </header>
         <div className={styles.grid}>
           {SHOTS.map((shot) => (
-            <figure key={shot.id} className={styles.shot}>
-              <div className={styles.frame}>
-                <img
-                  className={styles.image}
-                  src={shot.src}
-                  alt={shot.alt}
-                  loading="lazy"
-                  width={1456}
-                  height={882}
-                />
-              </div>
-              <figcaption className={styles.caption}>{shot.caption}</figcaption>
-            </figure>
+            <ShotFigure key={shot.id} shot={shot} />
           ))}
         </div>
       </div>
