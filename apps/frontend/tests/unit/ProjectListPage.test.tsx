@@ -1,0 +1,523 @@
+/**
+ * ProjectListPage — unit tests (PR #9 task 2.11, updated feat/zip-upload).
+ *
+ * We mock the projectsApi wire layer, the ScanProgress component, and the
+ * SourceSelectDialog so the tests focus on the page's behavior: loading,
+ * empty/error, filter+sort, and the scan button opening the source dialog
+ * which (when its scan starts) opens the progress drawer.
+ */
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import type React from "react";
+import { MemoryRouter } from "react-router-dom";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { ProjectListPage } from "@/features/projects/ProjectListPage";
+import type {
+  ProjectListResponse,
+  ProjectPublic,
+  ScanPublic,
+} from "@/lib/projectsApi";
+
+vi.mock("@/lib/projectsApi", async () => {
+  return {
+    listProjects: vi.fn(),
+  };
+});
+
+vi.mock("@/features/scan/ScanProgress", () => ({
+  ScanProgress: ({ scanId, onClose }: { scanId: string; onClose?: () => void }) => (
+    <div data-testid="scan-progress-mock" data-scan-id={scanId}>
+      mock progress
+      <button onClick={onClose}>close-mock</button>
+    </div>
+  ),
+}));
+
+// SourceSelectDialog is exercised in its own suite. Here we stub it so the
+// list test can drive the scan-started callback directly without the file
+// pickers / upload machinery.
+vi.mock("@/features/scan/SourceSelectDialog", () => ({
+  SourceSelectDialog: ({
+    open,
+    project,
+    onScanStarted,
+  }: {
+    open: boolean;
+    project: ProjectPublic;
+    onScanStarted: (scan: ScanPublic, project: ProjectPublic) => void;
+  }) =>
+    open ? (
+      <div data-testid="source-dialog-mock" data-project-id={project.id}>
+        <button
+          data-testid="source-dialog-start"
+          onClick={() =>
+            onScanStarted(
+              {
+                id: "scan-1",
+                project_id: project.id,
+                kind: "source",
+                status: "queued",
+                progress_percent: 0,
+                current_step: null,
+                started_at: null,
+                completed_at: null,
+                error_message: null,
+                requested_by_user_id: null,
+                celery_task_id: null,
+                metadata: {},
+                release: null,
+                created_at: "2026-05-22T00:00:00Z",
+                updated_at: "2026-05-22T00:00:00Z",
+              },
+              project,
+            )
+          }
+        >
+          start
+        </button>
+      </div>
+    ) : null,
+}));
+
+// react-virtuoso refuses to render items in jsdom because it relies on
+// IntersectionObserver / ResizeObserver to measure the viewport. For unit
+// tests we replace it with a plain map — the contract we care about
+// (renders all items the parent passes through `data`) is identical.
+vi.mock("react-virtuoso", () => ({
+  Virtuoso: <T,>({
+    data,
+    itemContent,
+  }: {
+    data: T[];
+    itemContent: (index: number, item: T) => React.ReactNode;
+  }) => (
+    <div data-testid="virtuoso-stub">
+      {data.map((item, idx) => (
+        <div key={idx}>{itemContent(idx, item)}</div>
+      ))}
+    </div>
+  ),
+}));
+
+import { listProjects } from "@/lib/projectsApi";
+
+const mockedListProjects = vi.mocked(listProjects);
+
+function project(name: string, overrides: Partial<ProjectPublic> = {}): ProjectPublic {
+  const id =
+    overrides.id ??
+    `00000000-0000-0000-0000-${name.padEnd(12, "0").slice(0, 12)}`;
+  return {
+    id,
+    team_id: "team-1",
+    name,
+    slug: name.toLowerCase().replace(/\s+/g, "-"),
+    description: null,
+    git_url: `https://github.com/example/${name.toLowerCase()}`,
+    default_branch: "main",
+    visibility: "team",
+    archived_at: null,
+    created_by_user_id: null,
+    latest_scan_id: null,
+    latest_scan_status: null,
+    severity_summary: null,
+    license_category_summary: null,
+    created_by_user_name: null,
+    has_git_credential: false,
+    // W3 #30 — list-row discoverability aggregates default to never-scanned.
+    // Individual tests override these to exercise the ScanMetadataSummary.
+    scan_count: 0,
+    release_count: 0,
+    last_scan_at: null,
+    created_at: "2026-05-01T00:00:00Z",
+    updated_at: "2026-05-01T00:00:00Z",
+    ...overrides,
+  };
+}
+
+function listResponse(items: ProjectPublic[]): ProjectListResponse {
+  return { items, total: items.length, page: 1, size: 200 };
+}
+
+function renderPage({ initialUrl = "/projects" }: { initialUrl?: string } = {}) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={[initialUrl]}>
+        <ProjectListPage />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
+describe("ProjectListPage", () => {
+  beforeEach(() => {
+    mockedListProjects.mockReset();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("renders the list and shows project rows once data arrives", async () => {
+    mockedListProjects.mockResolvedValueOnce(
+      listResponse([project("Alpha"), project("Bravo")]),
+    );
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("project-row")).toHaveLength(2);
+    });
+    expect(screen.getByTestId("project-list-page")).toBeInTheDocument();
+  });
+
+  it("renders the empty state when no projects exist", async () => {
+    mockedListProjects.mockResolvedValueOnce(listResponse([]));
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByTestId("project-list-empty")).toBeInTheDocument();
+    });
+  });
+
+  it("renders an error alert when the list query fails", async () => {
+    mockedListProjects.mockRejectedValueOnce(new Error("boom"));
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByTestId("project-list-error")).toBeInTheDocument();
+    });
+  });
+
+  it("filters rows by debounced search input", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    mockedListProjects.mockResolvedValueOnce(
+      listResponse([project("Alpha"), project("Bravo"), project("Charlie")]),
+    );
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("project-row")).toHaveLength(3);
+    });
+    const search = screen.getByTestId("project-search");
+    await userEvent.type(search, "alp");
+    // Wait past the 300ms debounce
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(350);
+    });
+    await waitFor(() => {
+      expect(screen.getAllByTestId("project-row")).toHaveLength(1);
+    });
+    expect(screen.getAllByTestId("project-row")[0]).toHaveAttribute(
+      "data-project-id",
+      project("Alpha").id,
+    );
+  });
+
+  it("opens the source dialog when the scan button is clicked", async () => {
+    mockedListProjects.mockResolvedValueOnce(
+      listResponse([project("Alpha")]),
+    );
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByTestId("project-row-scan")).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByTestId("project-row-scan"));
+    await waitFor(() => {
+      expect(screen.getByTestId("source-dialog-mock")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("source-dialog-mock")).toHaveAttribute(
+      "data-project-id",
+      project("Alpha").id,
+    );
+  });
+
+  it("once a scan starts, the drawer shows an 'Open full log' link to /scans/<id>", async () => {
+    // Phase scan-detail-page-fe-v2: the drawer hides its inline log panel and
+    // surfaces a link to the dedicated `/scans/:scanId` page instead. The
+    // link must target /scans/<scanId> and use the EN i18n string for
+    // `scans:progress.open_full_log` ("Open full log →").
+    mockedListProjects.mockResolvedValueOnce(
+      listResponse([project("Alpha")]),
+    );
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByTestId("project-row-scan")).toBeInTheDocument();
+    });
+
+    // Open the dialog and fire the stubbed "scan started" callback.
+    await userEvent.click(screen.getByTestId("project-row-scan"));
+    await waitFor(() => {
+      expect(screen.getByTestId("source-dialog-mock")).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByTestId("source-dialog-start"));
+
+    // The drawer mounts and the link is present with the right href.
+    const link = await screen.findByTestId("scan-drawer-open-full-log");
+    expect(link).toHaveAttribute("href", "/scans/scan-1");
+    expect(link.textContent ?? "").toMatch(/open full log/i);
+  });
+
+  it("renders the latest-scan status badge driven by latest_scan_status", async () => {
+    mockedListProjects.mockResolvedValueOnce(
+      listResponse([
+        project("Alpha", { latest_scan_status: "failed" }),
+        project("Bravo", { latest_scan_status: null }),
+      ]),
+    );
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("project-row")).toHaveLength(2);
+    });
+    const statusCells = screen.getAllByTestId("project-row-status");
+    // Alpha → Failed badge; Bravo (never scanned) → Idle badge.
+    expect(statusCells[0]?.querySelector("[data-status]")).toHaveAttribute(
+      "data-status",
+      "failed",
+    );
+    expect(statusCells[1]?.querySelector("[data-status]")).toHaveAttribute(
+      "data-status",
+      "idle",
+    );
+  });
+
+  it("renders a colored severity summary when severity_summary has non-zero buckets", async () => {
+    mockedListProjects.mockResolvedValueOnce(
+      listResponse([
+        project("Alpha", {
+          latest_scan_status: "succeeded",
+          severity_summary: { critical: 10, high: 13, medium: 0, low: 27 },
+          license_category_summary: null,
+          created_by_user_name: null,
+        }),
+      ]),
+    );
+    renderPage();
+    const summary = await screen.findByTestId("project-row-severity");
+    // Non-zero buckets render with their counts; the zero "medium" bucket omitted.
+    expect(summary.textContent).toContain("10");
+    expect(summary.textContent).toContain("13");
+    expect(summary.textContent).toContain("27");
+    expect(summary.textContent).not.toContain("17");
+    // Risk design tokens, not hex literals.
+    expect(summary.querySelector(".text-risk-critical")).toBeInTheDocument();
+    expect(summary.querySelector(".text-risk-high")).toBeInTheDocument();
+    expect(summary.querySelector(".text-risk-low")).toBeInTheDocument();
+    // The omitted (zero) bucket renders no medium token.
+    expect(summary.querySelector(".text-risk-medium")).not.toBeInTheDocument();
+  });
+
+  it("renders no severity summary when severity_summary is null or all-zero", async () => {
+    mockedListProjects.mockResolvedValueOnce(
+      listResponse([
+        project("Alpha", { latest_scan_status: "failed", severity_summary: null }),
+        project("Bravo", {
+          latest_scan_status: "succeeded",
+          severity_summary: { critical: 0, high: 0, medium: 0, low: 0 },
+          license_category_summary: null,
+          created_by_user_name: null,
+        }),
+      ]),
+    );
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("project-row")).toHaveLength(2);
+    });
+    expect(screen.queryByTestId("project-row-severity")).not.toBeInTheDocument();
+  });
+
+  it("renders the scan-meta cluster (Rel · Scn · relative) for scanned rows", async () => {
+    // Pin "now" so the relative-time helper is deterministic in jsdom.
+    const now = new Date("2026-05-22T10:00:00Z");
+    vi.useFakeTimers({ shouldAdvanceTime: true, now });
+    const lastScan = "2026-05-22T08:00:00Z"; // 2 hours before now
+    mockedListProjects.mockResolvedValueOnce(
+      listResponse([
+        project("Alpha", {
+          latest_scan_status: "succeeded",
+          scan_count: 47,
+          release_count: 12,
+          last_scan_at: lastScan,
+        }),
+      ]),
+    );
+    renderPage();
+    const meta = await screen.findByTestId("project-row-scan-meta");
+    // Counts surface raw, no plural fork.
+    expect(meta).toHaveAttribute("data-release-count", "12");
+    expect(meta).toHaveAttribute("data-scan-count", "47");
+    expect(meta.textContent).toContain("12");
+    expect(meta.textContent).toContain("47");
+    // The relative label includes "hour(s)" wording from Intl.RelativeTimeFormat.
+    expect(meta.textContent?.toLowerCase()).toContain("hour");
+    // The absolute timestamp lives on the title tooltip, NEVER inline.
+    const whenSpan = screen.getByTestId("project-row-scan-meta-when");
+    expect(whenSpan).toHaveAttribute("title", lastScan);
+    // Discoverability colour is a design token, NOT a risk colour.
+    expect(meta.className).toContain("text-muted-foreground");
+    expect(meta.className).not.toContain("text-risk-");
+  });
+
+  it("does not render the scan-meta cluster for never-scanned rows", async () => {
+    mockedListProjects.mockResolvedValueOnce(
+      listResponse([
+        project("Alpha", {
+          latest_scan_status: null,
+          scan_count: 0,
+          release_count: 0,
+          last_scan_at: null,
+        }),
+      ]),
+    );
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByTestId("project-row")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByTestId("project-row-scan-meta"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders the scan-meta cluster for a project with attempts but zero releases", async () => {
+    // 5 failed attempts, no successes — the cluster still surfaces so users
+    // can see the project has been tried (and is failing).
+    const now = new Date("2026-05-22T10:00:00Z");
+    vi.useFakeTimers({ shouldAdvanceTime: true, now });
+    mockedListProjects.mockResolvedValueOnce(
+      listResponse([
+        project("Alpha", {
+          latest_scan_status: "failed",
+          scan_count: 5,
+          release_count: 0,
+          last_scan_at: "2026-05-22T09:30:00Z",
+        }),
+      ]),
+    );
+    renderPage();
+    const meta = await screen.findByTestId("project-row-scan-meta");
+    expect(meta).toHaveAttribute("data-release-count", "0");
+    expect(meta).toHaveAttribute("data-scan-count", "5");
+    expect(meta.textContent).toContain("0");
+    expect(meta.textContent).toContain("5");
+  });
+
+  // ─── W9-#57 — chart-segment toggle (re-click clears the filter) ──────
+
+  it("toggles the severity chart filter off when the same segment is re-clicked (W9-#57)", async () => {
+    // Both projects worst-bucket at `critical` so the chart has a clickable
+    // critical segment. The filter chip surfaces an active filter; the chip
+    // disappears once the toggle releases the facet.
+    mockedListProjects.mockResolvedValueOnce(
+      listResponse([
+        project("Alpha", {
+          latest_scan_status: "succeeded",
+          severity_summary: { critical: 4, high: 0, medium: 0, low: 0 },
+        }),
+        project("Bravo", {
+          latest_scan_status: "succeeded",
+          severity_summary: { critical: 1, high: 0, medium: 0, low: 0 },
+        }),
+      ]),
+    );
+    renderPage();
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("project-list-distribution-cards"),
+      ).toBeInTheDocument();
+    });
+    const seg = screen.getByTestId("severity-bar-critical");
+    await userEvent.click(seg);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("project-list-active-filters"),
+      ).toBeInTheDocument();
+    });
+    await userEvent.click(seg);
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("project-list-active-filters"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("hydrates the severity filter from ?severity= deep-link on first render (W12)", async () => {
+    // W12 — filter URL persistence. Landing on the list with a pre-applied
+    // severity facet should narrow the rendered rows AND show the active-
+    // filters chip without any user interaction.
+    mockedListProjects.mockResolvedValueOnce(
+      listResponse([
+        project("Alpha", {
+          latest_scan_status: "succeeded",
+          severity_summary: { critical: 4, high: 0, medium: 0, low: 0 },
+        }),
+        project("Bravo", {
+          latest_scan_status: "succeeded",
+          severity_summary: { critical: 0, high: 0, medium: 2, low: 0 },
+        }),
+      ]),
+    );
+    renderPage({ initialUrl: "/projects?severity=critical" });
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("project-list-active-filters"),
+      ).toBeInTheDocument();
+    });
+    // Only the project whose worst severity bucket is `critical` survives.
+    const rows = screen.getAllByTestId("project-row");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveTextContent("Alpha");
+  });
+
+  it("toggles the license chart filter off when the same segment is re-clicked (W9-#57)", async () => {
+    mockedListProjects.mockResolvedValueOnce(
+      listResponse([
+        project("Alpha", {
+          latest_scan_status: "succeeded",
+          license_category_summary: {
+            forbidden: 2,
+            conditional: 0,
+            allowed: 0,
+            unknown: 0,
+          },
+        }),
+      ]),
+    );
+    renderPage();
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("project-list-distribution-cards"),
+      ).toBeInTheDocument();
+    });
+    const seg = screen.getByTestId("license-bar-forbidden");
+    await userEvent.click(seg);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("project-list-active-filters"),
+      ).toBeInTheDocument();
+    });
+    await userEvent.click(seg);
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("project-list-active-filters"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("opens the progress drawer once the source dialog reports a started scan", async () => {
+    mockedListProjects.mockResolvedValueOnce(
+      listResponse([project("Alpha")]),
+    );
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByTestId("project-row-scan")).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByTestId("project-row-scan"));
+    await userEvent.click(await screen.findByTestId("source-dialog-start"));
+    await waitFor(() => {
+      expect(screen.getByTestId("scan-progress-mock")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("scan-progress-mock")).toHaveAttribute(
+      "data-scan-id",
+      "scan-1",
+    );
+  });
+});
