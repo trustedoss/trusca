@@ -53,7 +53,7 @@ const sidebars: SidebarsConfig = {
       collapsed: false,
       items: [
         "admin-guide/users-and-teams",
-        "admin-guide/dt-connector",
+        "admin-guide/vulnerability-data",
         "admin-guide/disk-and-health",
         "admin-guide/audit-log",
         "admin-guide/oncall-runbook",
@@ -83,6 +83,7 @@ const sidebars: SidebarsConfig = {
         "reference/glossary",
         "reference/env-variables",
         "reference/api-overview",
+        "reference/data-sources",
         "reference/license-policies",
         "reference/obligation-catalog",
         "reference/remediation-dry-run",
@@ -95,7 +96,7 @@ const sidebars: SidebarsConfig = {
       type: "category",
       label: "Release notes",
       collapsed: true,
-      items: ["release-notes/v2-0-0"],
+      items: ["release-notes/v2-4-0", "release-notes/v2-0-0"],
     },
   ],
 };

@@ -96,7 +96,7 @@ sidebar_position: 6
 
 ## 외부 검토 시스템 통합
 
-포털은 Webhook을 통해 승인 요청을 외부 시스템(예: Jira)에 게시할 수 있습니다. [admin 알림](../admin-guide/dt-connector.md#알림) 참고 — **승인 요청** 트리거가 같은 이벤트를 이메일·Slack·Teams·outbound HTTP POST로 연결합니다.
+포털은 Webhook을 통해 승인 요청을 외부 시스템(예: Jira)에 게시할 수 있습니다. [admin 알림](../admin-guide/vulnerability-data.md#알림) 참고 — **승인 요청** 트리거가 같은 이벤트를 이메일·Slack·Teams·outbound HTTP POST로 연결합니다.
 
 전형적 흐름:
 

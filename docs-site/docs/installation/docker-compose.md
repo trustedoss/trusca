@@ -20,7 +20,7 @@ Operators with `sudo` on a Linux host. Familiarity with `docker-compose` and bas
 - **Docker Compose.** `docker-compose` (V1, hyphenated) is the project standard; the `install.sh` wizard prefers it but **falls back to the `docker compose` (V2) plugin** when V1 is absent — so a stock modern host works. See [the V1/V2 note](#why-docker-compose-v1-not-v2).
 - **`openssl`** — used to generate the SECRET_KEY and database password.
 - **`curl`** — used by the post-install health probe (and by the no-clone quick install above).
-- **Outbound HTTPS** to GitHub Container Registry (`ghcr.io`, where the portal images are published) and to the OSV / NVD feeds if you bundle Dependency-Track.
+- **Outbound HTTPS** to GitHub Container Registry (`ghcr.io`, where the portal images **and** the Trivy DB are published). For air-gapped operation, mirror the Trivy DB to an internal OCI registry — see [Vulnerability data — Air-gapped operation](../admin-guide/vulnerability-data.md#air-gapped).
 - **Disk:** ≥ 20 GB free for images, the workspace mount, and at least seven days of backups.
 - **CPU/RAM:** 4 vCPU / 8 GB RAM minimum. Real source scans (cdxgen + scancode) peak at ~6 GB on the worker — give it headroom.
 
@@ -40,7 +40,7 @@ df -h /                            # at least 20 GB free
 Want to *try* TrustedOSS Portal before committing a production host? The
 **evaluation profile** stands the portal up on a small machine and seeds a
 realistic demo dataset, so you go from clone to a populated dashboard in one
-command — no Dependency-Track, no manual migration, no empty screen.
+command — no manual migration, no empty screen.
 
 :::note When to use this
 A laptop, a throwaway cloud VM, or any **2 vCPU / 4 GB RAM** host. For a real
@@ -51,8 +51,7 @@ the eval profile trades production hardening (TLS, role separation, the full
 
 ### Requirements
 
-- **2 vCPU / 4 GB RAM** (vs. 4 vCPU / 8 GB for the full stack with bundled
-  Dependency-Track).
+- **2 vCPU / 4 GB RAM** (vs. 4 vCPU / 8 GB recommended for the full stack).
 - `docker-compose` (V1 preferred; the script falls back to the `docker compose`
   V2 plugin), `openssl`, and `curl`.
 - A clone of the repository (the eval script lives at `scripts/eval-up.sh`).
@@ -120,18 +119,11 @@ host. Compared to the prod stack, Traefik runs plain **HTTP only** (no Let's
 Encrypt — so no public DNS / port 443 needed), and the worker runs a single
 low-concurrency slot.
 
-### DT-less: how vulnerabilities still show up
+### How vulnerabilities show up
 
-The eval profile does **not** run Dependency-Track — its recommended 4 GB JVM
-heap alone would eat half the eval host. The portal works fine without it: the
-DT client sits behind a **circuit breaker**, and vulnerability data is cached in
-PostgreSQL. With the breaker **OPEN** (no DT reachable) the portal serves the
-seeded/cached findings instead of erroring. `seed_demo.py` populates that cache,
-so the dashboard is populated on first login.
+The eval profile ships findings via the seeded demo dataset; the worker also downloads the Trivy DB on first boot if it has internet egress. The eval host does not need any external vulnerability engine — Trivy and its DB live entirely inside the worker container.
 
-To point the eval stack at an **external** Dependency-Track you already run, set
-`DT_URL` and `DT_API_KEY` in `.env` and uncomment the matching lines under
-`backend:` / `worker:` in `docker-compose.eval.yml`.
+For air-gapped evaluation (no `ghcr.io` egress), see [Vulnerability data — Air-gapped operation](../admin-guide/vulnerability-data.md#air-gapped).
 
 :::warning Eval ≠ production
 Real source scans (cdxgen + scancode) peak at ~6 GB on the worker; the eval
@@ -173,7 +165,7 @@ does not enter the ACME flow.
 
 ## Quick install (no clone)
 
-If you just want the stack running and don't need the helper scripts, you can install directly from the published images without cloning the repository — the same single-file experience as Dependency-Track. The production images are published to GitHub Container Registry (`ghcr.io/trustedoss/backend`, `…/backend-worker`, `…/frontend`) and pull anonymously.
+If you just want the stack running and don't need the helper scripts, you can install directly from the published images without cloning the repository — a single-file install experience. The production images are published to GitHub Container Registry (`ghcr.io/trustedoss/backend`, `…/backend-worker`, `…/frontend`) and pull anonymously.
 
 Fetch the three files the compose stack needs (the compose file, the env template, and the one-time Postgres role init script), edit `.env`, then start:
 
@@ -305,9 +297,9 @@ Installation complete
 
 1. Open the URL printed by the wizard.
 2. Sign in with the super-admin credentials.
-3. Visit **/admin/health** — every component should be **green**: backend, postgres, redis, worker, beat. The `dt` row will be **OPEN** (Dependency-Track not yet wired in) — that is normal at this stage.
+3. Visit **/admin/health** — every component should be **green**: backend, postgres, redis, worker, beat. The worker downloads the Trivy DB on first boot (1–3 minutes); the Vulnerability data card flips to green once the download completes.
 
-The portal is fully functional without Dependency-Track for component and license analysis. To enable vulnerability data, see [DT connector](../admin-guide/dt-connector.md).
+To operate the Trivy DB (refresh cadence, air-gapped mirror, troubleshooting), see [Vulnerability data (Trivy DB)](../admin-guide/vulnerability-data.md).
 
 ## Step 4 — Schedule backups
 
@@ -323,16 +315,6 @@ sudo crontab -e
 
 For full restore procedures see [backup & restore](../admin-guide/backup-and-restore.md).
 
-## Adding bundled Dependency-Track (optional)
-
-The default install does **not** include Dependency-Track. To bundle it:
-
-```bash
-docker-compose -f docker-compose.yml -f docker-compose.dt.yml up -d
-```
-
-Then follow [DT connector](../admin-guide/dt-connector.md) to wire the API key and enable the eight OSV ecosystems. The first vulnerability mirror sync takes ~1 hour for Maven and less for the others.
-
 ## End-to-end first-success checklist (30 minutes)
 
 After `bash scripts/install.sh` completes:
@@ -341,13 +323,10 @@ After `bash scripts/install.sh` completes:
   shows a valid TLS lock (if HTTPS).
 - [ ] Log in with the super-admin email/password the wizard
   printed.
-- [ ] Go to `/admin/dt` — the row is **OPEN** by default because
-  `bash scripts/install.sh` brings up only `docker-compose.yml` and
-  does not enable the DT overlay. This matches Step 3 above and is
-  expected. **Only** if you ran the overlay (`docker-compose -f
-  docker-compose.yml -f docker-compose.dt.yml up -d`) and wired
-  `DT_API_KEY` in `.env` should you wait for it to flip to CLOSED
-  (within ~60 seconds).
+- [ ] Wait for the worker to finish the **first Trivy DB download** —
+  `docker-compose -f docker-compose.yml logs --tail=100 worker | grep trivy_db`
+  shows `trivy_db_download_complete` within 1–3 minutes of first boot.
+  Until it lands, the Vulnerabilities tab on a new scan is empty.
 - [ ] Go to `/admin/teams` → **New team** → name it `engineering`.
 - [ ] Ask a teammate to register at `/register`, then add them at
   `/admin/users → <user> → Memberships → Add to team`.
@@ -355,7 +334,9 @@ After `bash scripts/install.sh` completes:
   `/projects → New project` with a small public repo (test).
 - [ ] Trigger a scan; the right-slide progress drawer should walk
   through `bootstrap → fetch → prep → cdxgen → scancode →
-  dt_upload → dt_findings → finalize` in about 2-5 minutes.
+  sbom_upload → vuln_match → finalize` in about 2-5 minutes. WebSocket
+  frames at v2.4.0 still carry the historical slugs `dt_upload`/`dt_findings`
+  for compatibility — the on-screen labels read the new names.
 - [ ] Open the project's **Vulnerabilities** tab — any CVEs from
   the test repo should be listed.
 

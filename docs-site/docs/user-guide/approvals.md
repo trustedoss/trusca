@@ -97,7 +97,7 @@ If you want a verdict to apply globally, mark each project's request explicitly 
 
 ## Integration with external review systems
 
-The portal can post approval requests to an external system (e.g., Jira) via webhooks. See [admin notifications](../admin-guide/dt-connector.md#notifications) — the **approval requested** trigger wires the same event to email, Slack, Teams, and an outbound HTTP POST.
+The portal can post approval requests to an external system (e.g., Jira) via webhooks. See [admin notifications](../admin-guide/vulnerability-data.md#notifications) — the **approval requested** trigger wires the same event to email, Slack, Teams, and an outbound HTTP POST.
 
 A typical flow:
 

@@ -197,11 +197,6 @@ GET    /v1/admin/audit                       감사 로그 쿼리
 GET    /v1/admin/audit/export.csv            스트리밍 CSV
 GET    /v1/admin/health                      컴포넌트 liveness
 GET    /v1/admin/disk
-GET    /v1/admin/dt/status                   breaker + heartbeat 스냅샷
-POST   /v1/admin/dt/health-check             강제 probe
-POST   /v1/admin/dt/breaker/reset            최후의 복구 수단
-GET    /v1/admin/dt/orphans
-POST   /v1/admin/dt/orphans/cleanup          정리 태스크 큐잉
 GET    /v1/admin/backup                      백업 목록
 POST   /v1/admin/backup                      수동 백업 트리거
 GET    /v1/admin/backup/{name}/download

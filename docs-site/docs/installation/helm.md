@@ -15,16 +15,18 @@ administration (Ingress, StorageClasses, cert-manager) proficiency. If you run a
 single host, the [Docker Compose install](./docker-compose.md) is simpler.
 :::
 
-The Helm chart (`charts/trustedoss`, chart version **0.2.0**) deploys the full
+The Helm chart (`charts/trustedoss`, chart version **0.3.0**) deploys the full
 portal: the FastAPI backend, the Celery worker and beat scheduler, the React
 frontend, an Ingress with TLS, and a database migration Job. PostgreSQL and
 Redis can either be bundled in-cluster (for evaluation) or pointed at external
 managed datastores (recommended for production).
 
-:::info Dependency-Track is not bundled
-The chart does **not** deploy Dependency-Track. Point at an external instance
-via `env.dt.url`. When unset, the circuit breaker stays OPEN and the portal
-serves cached vulnerability data — see the [architecture reference](../reference/architecture.md).
+:::info Vulnerability matching ships in-chart (v2.4.0+)
+The worker pod ships with the Trivy DB and downloads / refreshes it from `ghcr.io/aquasecurity/trivy-db` (or a mirror via `env.trivy.dbRepository`). No external vulnerability engine is required. See [Vulnerability data (Trivy DB)](../admin-guide/vulnerability-data.md).
+:::
+
+:::caution Chart 0.3.0 dropped Dependency-Track
+Prior chart versions (≤ 0.2.x) optionally deployed Dependency-Track as a sub-chart and exposed `env.dt.*` values. Chart 0.3.0 removes that path — see [v2.4.0 release notes — Helm chart 0.3.0](../release-notes/v2.4.0.md#helm-chart-030) before upgrading from 0.2.x.
 :::
 
 ## What the chart deploys
@@ -59,7 +61,7 @@ recommended for production data.
 
 ```bash
 helm install trustedoss oci://ghcr.io/trustedoss/charts/trustedoss \
-  --version 0.2.0 \
+  --version 0.3.0 \
   --namespace trustedoss --create-namespace \
   --set env.secret.secretKey="$(openssl rand -hex 32)" \
   --set postgres.auth.password="$(openssl rand -hex 24)" \
@@ -105,7 +107,7 @@ Then install:
 
 ```bash
 helm install trustedoss oci://ghcr.io/trustedoss/charts/trustedoss \
-  --version 0.2.0 \
+  --version 0.3.0 \
   --namespace trustedoss --create-namespace \
   -f values.prod.yaml
 ```
@@ -158,14 +160,16 @@ The values you most often set:
 
 | Key | Default | Purpose |
 |---|---|---|
-| `image.tag` | `2.0.0` | Image tag for backend / worker / frontend (never `:latest`). |
+| `image.tag` | `2.4.0` | Image tag for backend / worker / frontend (never `:latest`). |
 | `ingress.host` | `""` | **Required.** Public hostname. |
 | `env.corsAllowedOrigins` | `""` | **Required in prod.** Allowed browser origins (no wildcard). |
 | `env.secret.secretKey` | `""` | `SECRET_KEY` (≥32 chars). Required unless `existingSecret`. |
 | `env.secret.existingSecret` | `""` | Pre-created Secret with all four keys; disables the chart Secret. |
 | `postgres.bundled` | `true` | `false` → use `env.database.*` (external). |
 | `redis.bundled` | `true` | `false` → use `env.redis.url` (external). |
-| `env.dt.url` | `""` | External Dependency-Track URL. Breaker stays OPEN when unset. |
+| `env.trivy.dbRepository` | `ghcr.io/aquasecurity/trivy-db` | Override for an air-gapped internal mirror — see [Air-gapped operation](../admin-guide/vulnerability-data.md#air-gapped). |
+| `env.trivy.dbRefreshHours` | `168` | Weekly Trivy DB refresh; lower for fresher feeds. |
+| `worker.trivyDbPersistence.enabled` | `true` | Mount a PVC at `/var/lib/trivy` so the worker doesn't re-download on every restart. |
 | `workspace.persistence.storageClassName` | `""` | RWX class for the shared scan volume on multi-node clusters. |
 | `worker.replicaCount` | `2` | Prefer scaling worker pods over per-pod `concurrency`. |
 
@@ -238,4 +242,6 @@ If you hit a chart bug, open an issue using the
 - [Upgrade](./upgrade.md) — Docker Compose upgrade path
 - [Backup & restore](../admin-guide/backup-and-restore.md) — back up before upgrading
 - [Environment variables](../reference/env-variables.md) — every setting the chart maps
-- [Architecture](../reference/architecture.md) — services, the DT circuit breaker, and the migration model
+- [Architecture](../reference/architecture.md) — services, Trivy DB lifecycle, and the migration model
+- [Vulnerability data (Trivy DB)](../admin-guide/vulnerability-data.md) — air-gapped operation and DB refresh
+- [v2.4.0 release notes](../release-notes/v2.4.0.md) — chart 0.3.0 breaking changes

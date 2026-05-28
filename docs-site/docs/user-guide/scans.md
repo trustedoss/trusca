@@ -18,7 +18,7 @@ Engineers with `developer` or higher on the project's team. Triggering scans aga
 
 | Kind | Pipeline | What it detects |
 |---|---|---|
-| **`source`** | `cdxgen` (CycloneDX generator) → scancode (first-party license detection) → Dependency-Track (DT) | Components and their **declared** licenses (from dependency metadata) plus **detected** licenses (scancode reading your own first-party source), and CVEs (Common Vulnerabilities and Exposures) from NVD / OSV / GitHub Advisory. |
+| **`source`** | `cdxgen` (CycloneDX generator) → scancode (first-party license detection) → Trivy (`trivy sbom`) | Components and their **declared** licenses (from dependency metadata) plus **detected** licenses (scancode reading your own first-party source), and CVEs (Common Vulnerabilities and Exposures) matched by the local Trivy DB against NVD + OSV + GHSA + EPSS + KEV. |
 | **`container`** | Trivy (Aqua Security container scanner) | OS-package vulnerabilities and (limited) language-package CVEs in a container image. |
 
 Both kinds are selectable from the UI scan dialog as of v2.1 — pick **Source** or **Container** when you trigger a scan (see [Trigger a scan → From the UI](#from-the-ui)). The API accepts both kinds as well.
@@ -30,7 +30,7 @@ Both kinds are selectable from the UI scan dialog as of v2.1 — pick **Source**
 1. Open **Projects** in the sidebar.
 2. Find the project row and click the **Scan** button at the end of the row.
 3. The **scan dialog** opens. At the top, choose the scan type:
-   - **Source** — runs cdxgen + scancode + Dependency-Track on the project's source. This is the default.
+   - **Source** — runs cdxgen + scancode + Trivy on the project's source. This is the default.
    - **Container** — runs Trivy on a container image you name. See [Scan a container image](#scan-a-container-image).
 4. For a **Source** scan, pick how to provide the source (Git URL, an uploaded `.zip`, or a folder zipped in the browser), then click **Start scan**.
 
@@ -40,7 +40,7 @@ A right-slide drawer opens on the project list page with a live progress view ba
 If a project already has a `queued` or `running` scan, the **Scan** button is disabled on the project detail header and its tooltip points you at the in-progress chip in the header (clicking the chip re-opens the existing scan's progress drawer). Triggering a second scan via the API returns `409 Conflict` with the RFC 7807 extension `scan_already_in_progress: true` — wait for the active scan to reach a terminal state, or **Cancel** it, before starting another. The constraint is enforced by a partial unique index in the database (`ix_scans_project_active`) so the same guard applies to UI, API, and CI clients.
 :::
 
-![Scan progress drawer — bootstrap → fetch → cdxgen → scancode → DT → finalize stages, live over WebSocket](/img/screenshots/user-scans-progress-drawer.png)
+![Scan progress drawer — bootstrap → fetch → cdxgen → scancode → vuln_match → finalize stages, live over WebSocket](/img/screenshots/user-scans-progress-drawer.png)
 
 :::warning Branch selection for source scans
 Source scans run against the project's `default_branch` (typically
@@ -126,14 +126,14 @@ The progress view shows real-time stage transitions:
 2. **Fetching source** — `git clone` (or `git fetch` + checkout for an existing workspace).
 3. **Detecting components** — `cdxgen` walks the repo and emits a CycloneDX SBOM, with **declared** licenses read from each dependency's package metadata.
 4. **Detecting first-party licenses** — scancode scans the project's own source files and records the **detected** licenses it finds, each tagged with the `source_path` of the file it came from (see [Components & licenses → Detected vs. declared](./components-and-licenses.md#declared-vs-detected)). This stage is best-effort: if scancode is not installed, times out, or the tree is too large, the scan continues with declared licenses only — a degraded but non-fatal outcome. Legal-tier classification at v2.0.0 is then applied from the hard-coded `_LICENSE_CATEGORY_DEFAULTS` dictionary in `apps/backend/tasks/scan_source.py` (see [Components & licenses → Classification source](./components-and-licenses.md#license-classification)).
-5. **Resolving vulnerabilities** — Dependency-Track correlates the SBOM against its feed mirror.
+5. **Resolving vulnerabilities** — `trivy sbom` matches the CycloneDX SBOM against the local Trivy DB (NVD + OSV + GHSA + EPSS + KEV). No network call per scan.
 6. **Persisting** — components, licenses, and findings are written to PostgreSQL.
 
 :::note ORT was replaced by scancode
 Earlier builds ran the OSS Review Toolkit (ORT) at the license stage. v2.0.0 replaces it with scancode for **first-party** detection. Third-party dependency sources are deliberately not downloaded — that kept per-scan runtime within budget — so dependency licenses stay **declared** (from cdxgen) and scancode adds **detected** licenses for the code your team actually wrote.
 :::
 
-If Dependency-Track is unavailable when stage 5 runs, the [DT circuit breaker](../admin-guide/dt-connector.md) trips OPEN and the scan reads from the PostgreSQL vulnerability cache. The scan is marked `succeeded` with a warning surfaced in the UI.
+If the local Trivy DB has not finished downloading when stage 5 runs (most common on a fresh install), the scan completes with **0 vulnerability findings** and a banner on the Vulnerabilities tab pointing operators at [Vulnerability data (Trivy DB)](../admin-guide/vulnerability-data.md). The automatic re-match beat picks up findings once the DB lands — no re-scan needed.
 
 ## Average duration
 
@@ -143,7 +143,7 @@ If Dependency-Track is unavailable when stage 5 runs, the [DT circuit breaker](.
 | Medium (50–500) | 8–20 min | 2–5 min |
 | Large (≥ 500, multi-module) | 20–60 min | 5–10 min |
 
-The dominant cost in a source scan is Dependency-Track correlation, with scancode adding time proportional to the size of the first-party tree. Container scans are bound by image-pull time when the image is not in the worker's cache.
+The dominant cost in a source scan is the `cdxgen` walk, with scancode adding time proportional to the size of the first-party tree. The `trivy sbom` matching stage is fast — the Trivy DB is local and per-scan I/O is well under a second per thousand components. Container scans are bound by image-pull time when the image is not in the worker's cache.
 
 ## The global scan queue
 
@@ -279,11 +279,14 @@ The worker could not reach the repository. Check:
 
 ### Scan finished but vulnerabilities are missing
 
-Dependency-Track may be unavailable. Check **/admin/dt** — the circuit-breaker state should be `CLOSED`. If it is `OPEN`, the scan succeeded against the vulnerability cache; vulnerabilities will refresh on the next successful DT round-trip (typically the next hourly resync).
+The local Trivy DB may not be in place yet. Confirm on the worker:
 
-### "DT unreachable" warning on the scan
+```bash
+docker-compose -f docker-compose.yml exec worker \
+  ls -lh /var/lib/trivy/db/
+```
 
-Same as above — the circuit breaker tripped. The scan completed using the cache and the warning is informational. Resolve the underlying DT outage and trigger a fresh scan to refresh.
+An empty or absent `db/` directory means the boot-time download has not completed. The first download takes 1–3 minutes; the automatic re-match beat repopulates findings on existing scans once the DB lands — no re-scan needed. See [Vulnerability data — Troubleshooting](../admin-guide/vulnerability-data.md#troubleshooting).
 
 ### Scan stuck running for ≥ 4 hours
 
@@ -328,4 +331,4 @@ Items tracked for later releases.
 - [Components & licenses](./components-and-licenses.md)
 - [Vulnerabilities](./vulnerabilities.md)
 - [GitHub Actions](../ci-integration/github-actions.md)
-- [DT connector](../admin-guide/dt-connector.md)
+- [Vulnerability data (Trivy DB)](../admin-guide/vulnerability-data.md)

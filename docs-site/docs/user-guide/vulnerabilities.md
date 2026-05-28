@@ -18,10 +18,10 @@ Engineers triaging individual findings; security leads tracking SLA. Mutating th
 
 ## "Vulnerability data unavailable" banner {#vuln-data-unavailable-banner}
 
-A blue **Vulnerability data unavailable** banner appears at the top of the Vulnerabilities tab when the portal can show you the *components* a scan discovered but no findings — typically because the configured Dependency-Track mirror has zero CVEs ingested yet (a fresh deployment that has not run an NVD pull yet, or an operator-side outage). The banner explains the cause and lists the next steps:
+A blue **Vulnerability data unavailable** banner appears at the top of the Vulnerabilities tab when the portal can show you the *components* a scan discovered but no findings — typically because the local Trivy DB has not finished downloading yet (a fresh deployment whose worker just booted), or the DB download failed. The banner explains the cause and lists the next steps:
 
-- An admin should check **Admin → DT** for the **Vulnerability database** count (`vuln-db count`) and the **most-recent mirror sync** timestamp. The same panel also surfaces a `0 vulnerabilities` warning Alert when DT is reachable but its mirror is empty (see [admin DT connector → Vulnerability sources](../admin-guide/dt-connector.md)).
-- Once DT reports a non-zero vulnerability count, the next scan picks up the findings — no in-app action is required from you. The banner clears automatically on the next page load that returns at least one finding.
+- An admin should check the worker's Trivy DB on disk — see [Vulnerability data — Verify it worked](../admin-guide/vulnerability-data.md#verify-it-worked) for the exact command. The forthcoming **Vulnerability data** card under `/admin/health` (W6-#43e follow-up) will surface freshness in the UI.
+- Once the Trivy DB lands, the automatic re-match beat picks up findings on every project's most-recent SBOM — no in-app action is required from you. The banner clears automatically on the next page load that returns at least one finding.
 
 The banner is *informational*, not an error — `0 findings` on a project that is actually clean looks identical at the API level, so the message intentionally points you at the diagnostic surfaces instead of asserting a verdict.
 
@@ -76,7 +76,7 @@ Filters on the inline bar: severity, status, an **EPSS threshold** filter (`min_
 
 Click any row to open:
 
-- **Summary** — title, description, CWE, CVSS vector, and the **EPSS score and percentile** when Dependency-Track supplies them (otherwise `—`). See [EPSS — exploitation probability](#epss--exploitation-probability).
+- **Summary** — title, description, CWE, CVSS vector, and the **EPSS score and percentile** when the Trivy DB supplies them (otherwise `—`). See [EPSS — exploitation probability](#epss--exploitation-probability).
 - **References** — vendor advisories, fix commits, exploit databases.
 - **Affected** — the upstream-reported affected range with the project's component version highlighted, plus the **fixed version** — the version that remediates this CVE *for this component* — when the scan pipeline could determine one. See [Fixed version — the version that remediates the CVE](#fixed-version--the-version-that-remediates-the-cve). The affected component also carries its **dependency depth** (v2.2): whether it is a **direct** dependency you declared (depth `1`) or a **transitive** one pulled in by another package (depth `2+`). A CVE in a direct dependency is usually yours to fix by bumping the declared version; a CVE in a transitive dependency is fixed by upgrading the direct parent that requires it — see [Direct vs. transitive (dependency depth)](./components-and-licenses.md#dependency-depth).
 - **Analysis** — VEX status action buttons. **The buttons you see depend on the finding's _current_ state.** The transition matrix (`apps/backend/services/vulnerability_service.py`, the source of truth) routes every terminal decision through the `analyzing` state, so a brand-new finding cannot jump straight to a verdict:
@@ -126,14 +126,14 @@ The portal surfaces the [EPSS (Exploit Prediction Scoring System)](https://www.f
 The two are complementary. It is common to find a CVE with CVSS `9.8` (Critical) and an EPSS of `0.01` — severe on paper, but with a low predicted chance of being attacked. Sorting and filtering by EPSS lets you concentrate on the small set of findings that are *actually* dangerous and cut the noise.
 
 :::caution EPSS is best-effort
-EPSS data is collected during the Dependency-Track resync and is present **only for CVEs that DT supplies an EPSS value for**. Findings without an EPSS value show `—` in the UI and `null` in the API — treat a missing EPSS as "unknown", not "low". EPSS never replaces CVSS or your VEX triage; it is one more signal.
+EPSS data is sourced from the Trivy DB and is present **only for CVEs Trivy supplies an EPSS value for**. Findings without an EPSS value show `—` in the UI and `null` in the API — treat a missing EPSS as "unknown", not "low". EPSS never replaces CVSS or your VEX triage; it is one more signal.
 :::
 
 ### How the portal displays EPSS
 
 - **Score** — rendered as a percentage. An EPSS of `0.973` shows as `97.3%`.
 - **Percentile** — rendered as "top N%". A finding in the 99th percentile shows as roughly "top 1%", meaning its score is higher than ~99% of all scored CVEs.
-- **Missing** — `—` (the CVE has no EPSS value from DT).
+- **Missing** — `—` (the Trivy DB has no EPSS value for this CVE).
 
 The score and percentile appear in the findings table's **EPSS** column and in the drawer's **Summary** section.
 
@@ -144,7 +144,7 @@ The score and percentile appear in the findings table's **EPSS** column and in t
 
 ### Read EPSS from the API
 
-`GET /v1/projects/{id}/vulnerabilities` returns `epss_score` and `epss_percentile` on every finding (both `null` when DT supplied no value). The same fields appear on the finding detail (`GET /v1/vulnerability_findings/{finding_id}`) and on the nested `VulnerabilityRef`.
+`GET /v1/projects/{id}/vulnerabilities` returns `epss_score` and `epss_percentile` on every finding (both `null` when the Trivy DB supplied no value). The same fields appear on the finding detail (`GET /v1/vulnerability_findings/{finding_id}`) and on the nested `VulnerabilityRef`.
 
 Sort by EPSS, highest first:
 
@@ -189,9 +189,9 @@ A single CVE is often patched at **different versions across different packages*
 
 ### Where the value comes from
 
-The scan pipeline collects the fixed version from the **Dependency-Track findings** for your scan, in priority order:
+The scan pipeline collects the fixed version from the **Trivy DB findings** for your scan, in priority order:
 
-1. **Structured patched-version lists** DT attaches to the finding (the lowest patched version wins).
+1. **Structured patched-version lists** Trivy attaches to the finding (the lowest patched version wins).
 2. **CycloneDX VEX `affects[].versions[]`** entries marked `status: fixed`.
 3. The advisory's free-text **recommendation** ("Upgrade to 2.17.1 or later"), from which the portal extracts the concrete version.
 
@@ -201,7 +201,7 @@ The collected string is validated before it is stored — control characters, ov
 
 The fixed version shows `—` (and the API returns `null`) when:
 
-- DT reported no fix for this component / CVE (the upstream advisory has no patched version yet — a true zero-day or an as-yet-unfixed CVE), **or**
+- The Trivy DB reports no fix for this component / CVE (the upstream advisory has no patched version yet — a true zero-day or an as-yet-unfixed CVE), **or**
 - the finding was discovered by a scan that ran **before v2.2** shipped this collection. Re-scan the project to backfill it.
 
 A blank fixed version means **"no fix version is known"**, not "no fix exists" — always confirm against the upstream advisory before concluding a CVE is unfixable.
@@ -554,11 +554,11 @@ verbatim and is inert.
 
 ## Re-detection
 
-When Dependency-Track ingests new CVEs from upstream feeds (NVD, OSV, GitHub Advisory), the periodic resync task re-correlates them against every project's latest scan. New findings appear automatically — no manual action required.
+When the Trivy DB is refreshed and new CVEs land, the **automatic re-match** Celery beat task walks every project's most-recent SBOM and re-correlates. New findings appear automatically — no re-scan required.
 
-CVE re-detection happens automatically when DT mirrors a new advisory: the next time the Celery beat `dt_findings_resync` task runs (default every hour), affected projects get fresh `vulnerability_findings` rows. There is no in-app banner at v2.0.0; operators monitor `/admin/scans` and the per-project Vulnerabilities tab.
+The re-match runs after every successful weekly refresh (cadence `TRIVY_DB_REFRESH_HOURS`, default 168). Affected projects get fresh `vulnerability_findings` rows; operators can monitor `/admin/scans` and the per-project Vulnerabilities tab.
 
-If the **Notify on new CVE** trigger is enabled (see [admin notifications](../admin-guide/dt-connector.md#notifications)), the assigned team or watchers receive an email / Slack / Teams message.
+If the **Notify on new CVE** trigger is enabled (see [admin notifications](../admin-guide/vulnerability-data.md#notifications)), the assigned team or watchers receive an email / Slack / Teams message.
 
 ## Suppression vs. not affected vs. fixed
 
@@ -591,9 +591,9 @@ Upstream feeds occasionally re-score CVEs (NVD analyst review, vendor advisories
 
 Possible causes:
 
-- The component's `purl` does not match Dependency-Track's normalization (rare; Maven `groupId:artifactId` style is the most common culprit). File an issue with the scan report.
-- DT was unavailable when the scan ran and the cache did not yet have an entry for that CVE. Run another scan after DT is healthy.
-- The CVE is in an ecosystem DT does not yet ingest. Check **/admin/dt → Vulnerability sources**.
+- The component's `purl` does not match the Trivy DB's normalization (rare; Maven `groupId:artifactId` style is the most common culprit). File an issue with the scan report.
+- The Trivy DB had not finished downloading when the scan ran — the automatic re-match beat repopulates findings on the next refresh cycle.
+- The CVE is in an ecosystem the Trivy DB does not yet cover. See [Data sources — Ecosystem coverage](../reference/data-sources.md#ecosystem-coverage).
 
 ### PDF report download returns `500`
 
@@ -611,5 +611,6 @@ Items the manual previously promised that are not in v2.0.0; tracked for later r
 
 - [Components & licenses](./components-and-licenses.md)
 - [Approvals](./approvals.md)
-- [DT connector](../admin-guide/dt-connector.md)
+- [Vulnerability data (Trivy DB)](../admin-guide/vulnerability-data.md)
+- [Data sources](../reference/data-sources.md)
 - [GitHub Actions — gating on CVEs](../ci-integration/github-actions.md)

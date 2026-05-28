@@ -46,7 +46,7 @@ jobs:
 
 이게 최소 구성입니다. action은 다음을 수행합니다.
 
-1. `kind=source`로 `POST /v1/projects/{project-id}/scans`를 호출해 cdxgen + scancode + Dependency-Track을 큐에 넣습니다.
+1. `kind=source`로 `POST /v1/projects/{project-id}/scans`를 호출해 cdxgen + scancode + Trivy를 큐에 넣습니다.
 2. 30초마다 `GET /v1/scans/{scan-id}`를 폴링해 최종 상태(`succeeded` / `failed` / `cancelled`)에 도달할 때까지 대기, 30분 타임아웃.
 3. `GET /v1/projects/{project-id}/gate-result`를 호출해 verdict를 워크플로의 job summary에 기록.
 4. `pull_request` 이벤트에서는 `POST /v1/scans/{scan-id}/post-pr-comment`를 호출해 SCA Markdown 보고서를 PR 코멘트로 게시.
@@ -85,7 +85,7 @@ jobs:
 | `api-url` | yes | — | 포털 base URL, 예: `https://trustedoss.example.com`. 끝의 슬래시는 무방. |
 | `api-key` | yes | — | API Key. **항상** `${{ secrets.* }}`로 공급. |
 | `project-id` | yes | — | 프로젝트 UUID. |
-| `scan-kind` | no | `source` | `source`(cdxgen + scancode + DT) 또는 `container`(Trivy). |
+| `scan-kind` | no | `source` | `source`(cdxgen + scancode + Trivy) 또는 `container`(Trivy 이미지 스캔). |
 | `fail-on-gate` | no | `true` | `true`이면 게이트 verdict가 `fail`일 때 잡이 1로 종료. |
 | `post-pr-comment` | no | `true` | `true`이고 `pull_request`에 의해 트리거된 경우 SCA 보고서를 PR 코멘트로 게시. |
 | `poll-timeout-seconds` | no | `1800` | 스캔이 최종 상태에 도달할 때까지 기다리는 최대 초. |

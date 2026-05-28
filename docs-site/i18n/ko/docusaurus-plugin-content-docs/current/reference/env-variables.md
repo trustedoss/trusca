@@ -74,19 +74,20 @@ sidebar_position: 2
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | `config.py` | JWT access token 수명. |
 | `REFRESH_TOKEN_EXPIRE_DAYS` | `7` | `config.py` | Refresh token 수명. 회전 + 재사용 탐지 활성화. |
 
-## Dependency-Track
+## 취약점 데이터
+
+포털은 SBOM을 로컬 **Trivy DB**(NVD + OSV + GHSA + EPSS + KEV 통합 번들)에 대조합니다. 라이프사이클은 [취약점 데이터 (Trivy DB)](../admin-guide/vulnerability-data.md) 참조.
 
 | 키 | 기본값 | 읽는 위치 | 설명 |
 |---|---|---|---|
-| `DT_URL` | `http://dtrack-api:8080` | `config.py` | DT API base URL(후행 슬래시 제거). DT가 번들이면 compose 서비스명, 외부면 공개 URL. |
-| `DT_API_KEY` | (비어있음) | `config.py` | DT의 Automation 팀이 발급. 없으면 breaker가 OPEN으로 유지되고 스캔은 캐시 사용. |
-| `DT_REQUEST_TIMEOUT_SECONDS` | `30` | `config.py` | 아웃바운드 DT 호출 HTTP 타임아웃. |
-| `DT_BREAKER_FAILURE_THRESHOLD` | `5` | `config.py` | breaker를 CLOSED → OPEN으로 전환하는 연속 실패 횟수. |
-| `DT_BREAKER_COOLDOWN_SECONDS` | `30` | `config.py` | breaker가 OPEN을 유지하다 HALF_OPEN 프로브를 허용하기까지의 대기 시간. |
-| `DT_HEALTH_ENDPOINT` | `/api/version` | `config.py` | 60초 heartbeat가 `DT_URL`에 덧붙이는 경로. |
-| `DT_AUTO_RESTART` | `false` | `config.py` | `true`이면 Health monitor가 지속적인 OPEN 후 `docker restart dtrack-api`를 시도. DT가 외부이거나 운영자 주도 복구만 원하면 `false` 유지. |
+| `TRIVY_DB_REPOSITORY` | `ghcr.io/aquasecurity/trivy-db` | `config.py` | Trivy DB를 받아오는 OCI 저장소. air-gapped 사내 미러로 오버라이드 — [Air-gapped 운영](../admin-guide/vulnerability-data.md#air-gapped) 참조. |
+| `TRIVY_DB_REFRESH_HOURS` | `168` (주간) | `config.py` | `trivy_db_refresh` 태스크의 Celery Beat 주기. 낮추면 신선도↑, 높이면 egress↓. |
+| `TRIVY_DB_CACHE_DIR` | `/var/lib/trivy` | `config.py` | 워커 컨테이너에서 DB가 풀리는 디렉터리. 재부팅 시 재다운로드를 피하려면 호스트 볼륨 마운트. |
+| `TRIVY_TIMEOUT_SECONDS` | `300` | `config.py` | `trivy sbom` 스캔별 타임아웃. 매우 큰 모노레포는 `600`~`900`으로 상향. |
 
-부트스트랩 흐름은 [DT 커넥터](../admin-guide/dt-connector.md) 참고.
+:::note v2.4.0에서 Dependency-Track 키 제거
+`DT_URL`, `DT_API_KEY`, `DT_REQUEST_TIMEOUT_SECONDS`, `DT_BREAKER_*`, `DT_HEALTH_ENDPOINT`, `DT_AUTO_RESTART`, `DT_ORPHAN_AUTODELETE` 키는 v2.4.0에서 더 이상 읽지 않습니다. 업그레이드 후 기존 `.env`에 남아 있어도 안전하게 무시됩니다 — [v2.4.0 마이그레이션](../release-notes/v2.4.0.md#migration-from-v23x) 참조.
+:::
 
 ## 빌드 / 정책 게이트
 
@@ -94,7 +95,7 @@ CI 빌드 게이트는 기본적으로 Critical CVE와 금지 라이선스에서
 
 | 키 | 기본값 | 읽는 위치 | 설명 |
 |---|---|---|---|
-| `GATE_EPSS_THRESHOLD` | (미설정) | `config.py` | 선택적 EPSS 게이트. `0`~`1` 값. 설정 시 미해결 결과 중 `epss_score >= GATE_EPSS_THRESHOLD`인 것이 있으면 빌드 게이트도 실패하며, 게이트 결과에 `epss_gate_count` + `epss_threshold`가 실립니다. **미설정(기본)이면 EPSS 게이트는 비활성** — 기존 Critical-CVE / 금지-라이선스 조건만 적용됩니다. EPSS 값이 없는 결과는 게이트를 트리거하지 않습니다. EPSS 데이터는 DT 동기화 중 수집되므로 DT가 값을 제공하는 CVE만 대상입니다. |
+| `GATE_EPSS_THRESHOLD` | (미설정) | `config.py` | 선택적 EPSS 게이트. `0`~`1` 값. 설정 시 미해결 결과 중 `epss_score >= GATE_EPSS_THRESHOLD`인 것이 있으면 빌드 게이트도 실패하며, 게이트 결과에 `epss_gate_count` + `epss_threshold`가 실립니다. **미설정(기본)이면 EPSS 게이트는 비활성** — 기존 Critical-CVE / 금지-라이선스 조건만 적용됩니다. EPSS 값이 없는 결과는 게이트를 트리거하지 않습니다. EPSS 데이터는 Trivy DB에서 옵니다 — Trivy가 값을 제공하는 CVE만 대상입니다. |
 
 게이트 모델은 [빌드 게이트](./glossary.md#빌드-게이트), CI 워크스루는 [EPSS로 빌드 게이팅](../ci-integration/github-actions.md#epss로-빌드-게이팅-선택) 참고.
 
@@ -184,7 +185,7 @@ CI 빌드 게이트는 기본적으로 Critical CVE와 금지 라이선스에서
 | `JIRA_ENABLED` | `false` | (없음) | **스텁 — v2.0.0의 어떤 코드 경로에서도 소비되지 않음.** Phase B Jira 통합용 예약. 기능 도착 시 기존 배포가 깨지지 않도록 `.env.example`에 포함. |
 | `JIRA_URL` | (비어있음) | (없음) | 스텁. 위 참고. |
 | `JIRA_TOKEN` | (비어있음) | (없음) | 스텁. 위 참고. |
-| `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` | (비어있음) | 서브프로세스 env | `git clone`, `cdxgen`, `trivy`, DT 호출이 존중. |
+| `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` | (비어있음) | 서브프로세스 env | `git clone`, `cdxgen`, `trivy --download-db-only` 부팅 / refresh 경로가 존중. |
 
 ## 부트스트랩 / 스크립트
 

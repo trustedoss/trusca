@@ -1,7 +1,7 @@
 ---
 id: architecture
 title: 아키텍처
-description: TrustedOSS Portal 아키텍처 — 서비스, 데이터 흐름, 스캔 파이프라인, ORT 룰, DT 통합, 운영 프리미티브.
+description: TrustedOSS Portal 아키텍처 — 서비스, 데이터 흐름, 스캔 파이프라인, 라이선스 분류, Trivy 취약점 매칭, 운영 프리미티브.
 sidebar_label: 아키텍처
 sidebar_position: 1
 ---
@@ -16,7 +16,7 @@ sidebar_position: 1
 
 ## 서비스
 
-프로덕션 스택은 7개의 컨테이너 서비스(+선택적 8번째 — Dependency-Track)를 실행합니다.
+프로덕션 스택은 7개의 컨테이너 서비스를 실행합니다.
 
 | 서비스 | 이미지 | 역할 |
 |---|---|---|
@@ -24,12 +24,15 @@ sidebar_position: 1
 | `postgres` | `postgres:17.2-alpine` | 주 저장소. 모든 영구 상태. |
 | `redis` | `redis:7.4-alpine` | Celery 브로커 + 결과 백엔드. WebSocket pub/sub. |
 | `backend` | `trustedoss/backend:<tag>` | FastAPI + uvicorn(4 workers). Traefik이 `/api`, `/health`로 라우팅. |
-| `worker` | `trustedoss/backend-worker:<tag>` | `cdxgen`, scancode, Trivy, JRE가 번들된 Celery worker(JRE는 `cdxgen`의 Maven / Gradle SBOM 열거용). |
-| `beat` | `trustedoss/backend-worker:<tag>` | Celery Beat 스케줄러. DT heartbeat(60초), DT resync(1시간), 고아 정리(6시간), 백업(매일). |
+| `worker` | `trustedoss/backend-worker:<tag>` | `cdxgen`, scancode, Trivy, JRE가 번들된 Celery worker(JRE는 `cdxgen`의 Maven / Gradle SBOM 열거용). 워커는 `/var/lib/trivy`에 로컬 **Trivy DB**도 보관합니다. |
+| `beat` | `trustedoss/backend-worker:<tag>` | Celery Beat 스케줄러. Trivy DB refresh(주간), 취약점 재매칭(refresh 후), 백업(매일). |
 | `frontend` | `trustedoss/frontend:<tag>` | Vite 빌드를 nginx로 서비스. Traefik이 `/`로 라우팅. |
-| `dt` (overlay) | `dependencytrack/apiserver:4.13.2` | 선택적 번들 Dependency-Track. `docker-compose.dt.yml`로 기동. |
 
 이미지 태그는 핀되어 있습니다(CLAUDE.md 규칙 #9 — `:latest` 절대 금지).
+
+:::note v2.4.0에서 Dependency-Track 제거
+이전 릴리스는 Dependency-Track을 선택적 8번째 서비스로 제공했습니다. v2.4.0은 Trivy를 단일 취약점 엔진으로 채택하면서 DT를 제거했습니다 — [ADR-0001](https://github.com/trustedoss/trustedoss-portal/blob/main/docs/decisions/0001-replace-dt-with-trivy.md)과 [v2.4.0 릴리스 노트](../release-notes/v2.4.0.md) 참조. Trivy DB는 워커 컨테이너 내부에 존재하며, 별도의 취약점 엔진 서비스는 없습니다.
+:::
 
 :::note
 `/metrics` 라우트는 Traefik 레벨(`docker-compose.yml`)에서 예약되어 있지만 v2.0.0에는 백엔드 핸들러가 마운트되어 있지 않습니다. Prometheus exporter는 GA 이후 로드맵 항목입니다.
@@ -46,15 +49,16 @@ sidebar_position: 1
                             │ trustedoss network (bridge)
               ┌─────────────┼─────────────┐
               ↓             ↓             ↓
-       ┌──────────┐  ┌──────────┐  ┌──────────┐
-       │ frontend │  │ backend  │  │ DT (opt) │
-       └──────────┘  └────┬─────┘  └──────────┘
+       ┌──────────┐  ┌──────────┐
+       │ frontend │  │ backend  │
+       └──────────┘  └────┬─────┘
                           │
             ┌─────────────┼─────────────┬──────────┐
             ↓             ↓             ↓          ↓
-      ┌──────────┐  ┌──────────┐  ┌──────────┐ ┌──────┐
-      │ postgres │  │  redis   │  │  worker  │ │ beat │
-      └──────────┘  └──────────┘  └──────────┘ └──────┘
+      ┌──────────┐  ┌──────────┐  ┌──────────────┐ ┌──────┐
+      │ postgres │  │  redis   │  │   worker     │ │ beat │
+      │          │  │          │  │ + Trivy DB   │ │      │
+      └──────────┘  └──────────┘  └──────────────┘ └──────┘
                             └──── 공유 `workspace` 볼륨 ────┘
 ```
 
@@ -71,12 +75,10 @@ PostgreSQL이 단일 진실 저장소입니다. 주요 테이블:
 | `projects` | 프로젝트당 한 행. 스캔·컴포넌트·발견을 소유. |
 | `scans` | 스캔 라이프사이클 레코드(queued → terminal). |
 | `components`, `component_licenses` | 스캔별 SBOM 행 + 라이선스 귀속. |
-| `vuln_findings` | VEX 상태 + justification 포함 CVE. |
-| `vuln_cache` | 오프라인 / breaker-OPEN 읽기를 위한 DT 미러 캐시. |
+| `vulnerability_findings` | VEX 상태, justification, Trivy 제공 fixed-version 메타데이터 포함 CVE. |
 | `obligations`, `obligation_kinds` | 컴포넌트별 라이선스 의무사항. |
 | `approvals` | 조건부 라이선스 승인 워크플로. |
 | `audit_log` | 추가 전용 쓰기 이력. CHECK 제약으로 immutable. |
-| `dt_health` | DT heartbeat 결과(최근 24시간). |
 | `webhook_deliveries` | 멱등성을 위한 `(source, delivery_id)`. |
 | `notifications` | 아웃바운드 알림 로그 + dedup 키. |
 | `backups` | 백업 manifest 이력(애플리케이션은 read-only). |
@@ -93,10 +95,12 @@ PostgreSQL이 단일 진실 저장소입니다. 주요 테이블:
 3. prep          (workspace 레이아웃)
 4. cdxgen        (cdxgen → CycloneDX SBOM + declared 라이선스)
 5. scancode      (scancode가 first-party 소스 스캔 → detected 라이선스; best-effort)
-6. dt_upload     (CycloneDX SBOM을 Dependency-Track에 업로드)
-7. dt_findings   (DT 상관 OR breaker OPEN 시 캐시 fallback)
+6. sbom_upload   (CycloneDX SBOM을 workspace에 영속화, 매칭 준비)
+7. vuln_match    (`trivy sbom`이 CycloneDX SBOM을 로컬 Trivy DB에 매칭)
 8. finalize      (스캔당 단일 트랜잭션으로 PostgreSQL에 기록)
 ```
+
+위 단계 슬러그는 v2.4.0 이름입니다. v2.4.0에서 WebSocket 프레임은 기존 하네스·CI 클라이언트 호환을 위해 과거 슬러그(`dt_upload`, `dt_findings`)를 유지합니다 — `sbom_upload` / `vuln_match`로의 rename은 v2.4.1로 분리됩니다([ADR-0001 Appendix A](https://github.com/trustedoss/trustedoss-portal/blob/main/docs/decisions/0001-replace-dt-with-trivy.md) 참조).
 
 `scancode` 단계는 v2.0.0 에서 이전의 `ort` 단계를 대체했습니다; WebSocket 진행 슬러그가 같은 percent 에서 `ort` 에서 `scancode` 로 변경되었습니다. [사용자 가이드 — 스캔](../user-guide/scans.md#파이프라인-단계-source) 참고.
 
@@ -163,17 +167,16 @@ v2.0.0 의 Operator 오버라이드 경로:
 
 포털은 과거 스캔을 자동 재분류하지 않습니다 — 과거 기록은 스캔 시점에 유효했던 분류와 함께 보존됩니다.
 
-## Dependency-Track 통합 {#dependency-track}
+## 취약점 매칭 (Trivy) {#trivy}
 
-DT 커넥터는 단순 HTTP 클라이언트 이상입니다. 다음을 추가합니다.
+CVE 매칭은 Trivy를 직접 사용합니다 — 외부 엔진 없음. 워커 이미지에 `trivy` 바이너리가 포함되어 있고, Trivy DB(NVD + OSV + GHSA + EPSS + KEV 통합 번들)는 영속 볼륨의 `/var/lib/trivy/db/`에 존재합니다.
 
-- **Health monitor**(60초 heartbeat) — DT 상태를 `/admin/dt`에 표면화.
-- **Circuit breaker**(CLOSED / HALF_OPEN / OPEN) — DT 장애에서 worker 보호.
-- **PostgreSQL 취약점 캐시** — breaker OPEN 시 read fallback.
-- **고아 정리**(6시간마다) — 포털의 프로젝트 목록을 DT와 reconcile.
-- **Forward-resync**(1시간마다) — 새 CVE를 기존 스캔과 재상관.
+- **부팅 시 DB 다운로드** — Celery가 태스크를 받기 전에 `trivy --download-db-only`를 1회 실행.
+- **주간 DB refresh** — Celery Beat 태스크가 최신 번들을 pull. 주기는 `TRIVY_DB_REFRESH_HOURS`(기본 `168`).
+- **자동 재매칭** — 각 성공 refresh 후, beat 태스크가 모든 프로젝트의 최신 SBOM을 순회해 새 `vulnerability_findings` 행을 작성.
+- **Air-gapped 운영** — `TRIVY_DB_REPOSITORY`로 업스트림 OCI 레지스트리를 사내 미러로 교체. 스캔별 매칭은 완전 오프라인.
 
-운영 상세는 [DT connector](../admin-guide/dt-connector.md)를 참고.
+운영자 라이프사이클은 [취약점 데이터 (Trivy DB)](../admin-guide/vulnerability-data.md), 출처별 매트릭스는 [데이터 출처](./data-sources.md) 참조.
 
 ## 인증 & 세션
 
@@ -224,12 +227,12 @@ OpenTelemetry tracing exporter와 번들 Jaeger 오버레이는 GA 이후 로드
 
 ## 배포 토폴로지
 
-표준 배포는 **단일 호스트 docker-compose** 설치입니다. 두 가지 변형을 지원합니다.
+표준 배포는 **단일 호스트 docker-compose** 설치입니다. 변형:
 
-- **번들 DT가 있는 단일 호스트** — `docker-compose.dt.yml` 추가. DT가 함께 동작.
-- **외부 DT가 있는 단일 호스트** — DT를 끄고 `DT_URL`을 외부 인스턴스로 지정.
+- **단일 호스트 (기본)** — 위 7개 서비스. Trivy DB는 워커 부팅 시 다운로드.
+- **Air-gapped** — `TRIVY_DB_REPOSITORY`를 사내 OCI 미러로 지정해 워커가 공개 레지스트리에 절대 접근하지 않도록 함. [취약점 데이터 — Air-gapped 운영](../admin-guide/vulnerability-data.md#air-gapped) 참조.
 
-**Helm chart**는 Phase B(GA 이후)에 도착합니다. 다음을 추가:
+**Helm chart**는 v2.0.0부터 제공됩니다. v2.4.0 차트 0.3.0은 다음을 추가:
 
 - 컴포넌트별 HPA(worker는 큐 깊이로 스케일).
 - PVC가 있는 PostgreSQL StatefulSet.
@@ -255,5 +258,6 @@ OpenTelemetry tracing exporter와 번들 Jaeger 오버레이는 GA 이후 로드
 
 - [환경 변수](./env-variables.md)
 - [API 개요](./api-overview.md)
-- [DT 커넥터](../admin-guide/dt-connector.md)
-- [용어집](https://github.com/trustedoss/trustedoss-portal/blob/main/docs/glossary.md)
+- [취약점 데이터 (Trivy DB)](../admin-guide/vulnerability-data.md)
+- [데이터 출처](./data-sources.md)
+- [용어집](./glossary.md)
