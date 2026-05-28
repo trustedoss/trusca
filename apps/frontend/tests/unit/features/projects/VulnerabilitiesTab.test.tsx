@@ -1000,4 +1000,72 @@ describe("VulnerabilitiesTab", () => {
       ).not.toBeInTheDocument();
     });
   });
+
+  // -------------------------------------------------------------------------
+  // W9 #52 — "+ Add filter" dropdown + ColumnsPicker integration. The dropdown
+  // mounts an inline MultiSelect for facets that were previously chip-only;
+  // the columns picker toggles per-column visibility on the table.
+  // -------------------------------------------------------------------------
+
+  it("opening the +Add filter dropdown mounts the severity inline facet", async () => {
+    window.localStorage.clear();
+    mockedList.mockResolvedValue(listResponse([vuln("CVE-2024-9999")]));
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getByTestId("vulnerability-row")).toBeInTheDocument();
+    });
+    // Facet is not visible by default — severity has no URL value.
+    expect(
+      screen.queryByTestId("vulnerabilities-severity-facet"),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByTestId("vulnerabilities-more-filters-trigger"),
+    );
+    const severityOption = await waitFor(() =>
+      screen.getByTestId(
+        "vulnerabilities-more-filters-trigger-option-severity",
+      ),
+    );
+    await userEvent.click(severityOption);
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("vulnerabilities-severity-facet"),
+      ).toBeInTheDocument();
+    });
+    // The MultiSelect itself is present so the user can pick severities.
+    expect(
+      screen.getByTestId("vulnerabilities-severity-filter"),
+    ).toBeInTheDocument();
+  });
+
+  it("hiding the EPSS column via the ColumnsPicker drops the EPSS cell", async () => {
+    window.localStorage.clear();
+    mockedList.mockResolvedValue(listResponse([vuln("CVE-2024-8888")]));
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getByTestId("vulnerability-row")).toBeInTheDocument();
+    });
+    // EPSS cell is rendered by default.
+    expect(
+      screen.getByTestId("vulnerability-row-epss"),
+    ).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByTestId("vulnerabilities-columns-picker-trigger"),
+    );
+    const epssOption = await waitFor(() =>
+      screen.getByTestId("vulnerabilities-columns-picker-option-epss"),
+    );
+    await userEvent.click(epssOption);
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("vulnerability-row-epss"),
+      ).not.toBeInTheDocument();
+    });
+    // The required CVE-id cell is still present (header carries cve_id).
+    expect(screen.getByTestId("vulnerability-row")).toBeInTheDocument();
+  });
 });

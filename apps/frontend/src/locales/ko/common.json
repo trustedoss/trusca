@@ -13,6 +13,17 @@
     "clear": "지우기",
     "count_selected": "{{count}}개 선택됨"
   },
+  "filters": {
+    "more_filters": {
+      "trigger": "필터 추가",
+      "aria": "필터 추가하기"
+    },
+    "columns": {
+      "trigger": "컬럼",
+      "aria": "표시 컬럼 선택",
+      "required_hint": "항상 표시"
+    }
+  },
   "sort": {
     "aria_ascending": "오름차순 정렬됨 — 클릭하여 내림차순 정렬",
     "aria_descending": "내림차순 정렬됨 — 클릭하여 정렬 해제",

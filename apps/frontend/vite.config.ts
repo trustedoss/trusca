@@ -58,6 +58,16 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "jsdom",
+    // jsdom's default `about:blank` origin is opaque and blocks
+    // `window.localStorage`. The column-visibility picker (W9 #52) persists
+    // the user's choice via localStorage and its tests round-trip the value;
+    // pinning the doc URL gives jsdom a non-opaque origin so the storage API
+    // is available. Any localhost URL works.
+    environmentOptions: {
+      jsdom: {
+        url: "http://localhost/",
+      },
+    },
     setupFiles: ["./tests/setup.ts"],
     css: true,
     include: ["tests/unit/**/*.{test,spec}.{ts,tsx}"],

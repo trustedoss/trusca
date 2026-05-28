@@ -490,4 +490,48 @@ describe("ComponentsTab", () => {
       );
     });
   });
+
+  // -----------------------------------------------------------------------
+  // W9 #52 — ColumnsPicker integration. The picker hides optional columns;
+  // required columns (name, version) must always remain rendered.
+  // -----------------------------------------------------------------------
+
+  it("hiding the policy column via the ColumnsPicker drops the policy cell from each row", async () => {
+    // Reset localStorage so the test is independent of any other run.
+    window.localStorage.clear();
+    mockedList.mockResolvedValueOnce(
+      listResponse([
+        comp("Alpha", {
+          id: "11111111-aaaa-aaaa-aaaa-policyhide01",
+          license_category: "allowed",
+        }),
+      ]),
+    );
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getByTestId("component-row")).toBeInTheDocument();
+    });
+    // Policy cell is rendered by default.
+    expect(
+      screen.getByTestId("component-row-cell-policy"),
+    ).toBeInTheDocument();
+
+    // Open the columns picker, toggle "policy" off.
+    await userEvent.click(
+      screen.getByTestId("components-columns-picker-trigger"),
+    );
+    const policyOption = await waitFor(() =>
+      screen.getByTestId("components-columns-picker-option-policy"),
+    );
+    await userEvent.click(policyOption);
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("component-row-cell-policy"),
+      ).not.toBeInTheDocument();
+    });
+    // Required columns stay (Name / Version always rendered) — the row still
+    // has its identity cells visible.
+    expect(screen.getByTestId("component-row")).toBeInTheDocument();
+  });
 });

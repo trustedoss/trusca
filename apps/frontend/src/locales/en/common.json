@@ -13,6 +13,17 @@
     "clear": "Clear",
     "count_selected": "{{count}} selected"
   },
+  "filters": {
+    "more_filters": {
+      "trigger": "Add filter",
+      "aria": "Add more filters"
+    },
+    "columns": {
+      "trigger": "Columns",
+      "aria": "Choose visible columns",
+      "required_hint": "Always visible"
+    }
+  },
   "sort": {
     "aria_ascending": "sorted ascending — click to sort descending",
     "aria_descending": "sorted descending — click to clear sort",
