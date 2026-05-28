@@ -435,7 +435,6 @@ jobs:
   #    production bundle is unacceptable.
   # -------------------------------------------------------------------------
   frontend-bundle-audit:
-    if: false  # TEMP-DISABLED-CI (dev velocity) — re-enable before deploy
     name: frontend-bundle-audit
     runs-on: ubuntu-22.04
     steps:
