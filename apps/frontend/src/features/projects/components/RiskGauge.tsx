@@ -18,6 +18,15 @@ import { cn } from "@/lib/utils";
  *
  * Color thresholds use the design tokens (var(--risk-*)) declared in
  * `index.css`; we never hardcode hex.
+ *
+ * W11-D (2026-05-28) — chart re-skin polish:
+ *   - background arc bumped from `--muted` to `--border` so the empty track
+ *     no longer disappears against the W11 muted card surface;
+ *   - filled-arc length is animated via CSS `transition` on the
+ *     `stroke-dasharray` over `--duration-base`, matching the Linear-polish
+ *     motion vocabulary (the gauge fills smoothly when the underlying score
+ *     updates after a scan);
+ *   - severity threshold → token mapping unchanged (domain meaning fixed).
  */
 
 const RADIUS = 70;
@@ -74,15 +83,18 @@ export function RiskGauge({ score, size = "default", className }: RiskGaugeProps
         role="img"
         aria-label={t("overview.risk_gauge.aria", { score: clamped })}
       >
-        {/* Background arc */}
+        {/* Background arc — `--border` reads as a quiet track against the
+         *  W11 light card surface; `--muted` was almost invisible because the
+         *  card itself sits on a `--muted/40` panel in several places. */}
         <path
           d={`M ${90 - RADIUS} 90 A ${RADIUS} ${RADIUS} 0 0 1 ${90 + RADIUS} 90`}
           fill="none"
-          stroke="hsl(var(--muted))"
+          stroke="hsl(var(--border))"
           strokeWidth={STROKE}
           strokeLinecap="round"
         />
-        {/* Filled arc */}
+        {/* Filled arc — animate dasharray on score change (200 ms ease-out
+         *  per `--duration-base`) so a fresh scan visibly fills the gauge. */}
         <path
           d={`M ${90 - RADIUS} 90 A ${RADIUS} ${RADIUS} 0 0 1 ${90 + RADIUS} 90`}
           fill="none"
@@ -90,6 +102,10 @@ export function RiskGauge({ score, size = "default", className }: RiskGaugeProps
           strokeWidth={STROKE}
           strokeLinecap="round"
           strokeDasharray={`${filled} ${ARC_LENGTH}`}
+          style={{
+            transition:
+              "stroke-dasharray var(--duration-base) var(--ease-out), stroke var(--duration-base) var(--ease-out)",
+          }}
         />
       </svg>
       <div className={cn(dims.offsetClass, "flex flex-col items-center")}>
