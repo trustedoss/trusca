@@ -27,6 +27,10 @@ import { ForgotPasswordPage } from "@/pages/auth/ForgotPasswordPage";
 import { LoginPage } from "@/pages/auth/LoginPage";
 import { RegisterPage } from "@/pages/auth/RegisterPage";
 import { ResetPasswordPage } from "@/pages/auth/ResetPasswordPage";
+// W11-A — dev-only design system preview. Production builds short-circuit
+// the route below via `import.meta.env.DEV`, so the component is tree-shaken
+// out of the prod bundle entirely.
+import { DesignSystemPreview } from "@/pages/dev/DesignSystemPreview";
 
 /**
  * Central route table — CLAUDE.md "Routing" convention.
@@ -51,6 +55,12 @@ export function AppRoutes() {
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
+
+      {/* W11-A — design system preview, dev only. Production builds fall
+       * through to the `*` redirect at the bottom (→ /login). */}
+      {import.meta.env.DEV ? (
+        <Route path="/dev/design-preview" element={<DesignSystemPreview />} />
+      ) : null}
 
       {/* Authenticated app shell — sidebar + header wrap all app routes */}
       <Route
