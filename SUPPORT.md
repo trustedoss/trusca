@@ -42,9 +42,8 @@ private disclosure process in [`SECURITY.md`](SECURITY.md):
 
 ## Roadmap and project direction
 
-To understand what is planned, see [`ROADMAP.md`](ROADMAP.md) (public summary)
-and [`docs/post-ga-roadmap.md`](docs/post-ga-roadmap.md) (detailed plan). To
-propose a direction change, open an issue or discussion first — see
+To understand what is planned, see [`ROADMAP.md`](ROADMAP.md). To propose a
+direction change, open an issue or discussion first — see
 [Proposing a change](GOVERNANCE.md#proposing-a-change).
 
 ## Contributing

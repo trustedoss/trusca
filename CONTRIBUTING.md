@@ -4,7 +4,7 @@ Thank you for your interest in contributing! TrustedOSS Portal is an Apache-2.0 
 
 This document describes how to set up the project locally, the conventions we follow, and what we expect in a pull request.
 
-> **Single source of truth for the v2 roadmap:** [`docs/v2-execution-plan.md`](docs/v2-execution-plan.md). Runtime rules (must-follow): [`CLAUDE.md`](CLAUDE.md).
+> **AI-assisted development.** This project is developed with AI-assisted tooling (Claude Code) for scaffolding, refactoring, and review. Design decisions, code review, and accountability for every merged change remain human-owned by the maintainers listed in [`MAINTAINERS.md`](MAINTAINERS.md). Pull requests from contributors using similar tooling are welcome — please disclose in the PR description and treat the AI as a collaborator, not the author.
 
 ---
 
@@ -163,7 +163,7 @@ If you add a feature with no harness, the PR is incomplete. See `apps/frontend/t
 3. **Self-review** — run lint, typecheck, tests locally. Fix all warnings, not just errors.
 4. **Open the PR** — fill out the [pull request template](.github/pull_request_template.md) completely. Empty checklists block review.
 5. **CI must pass** — all three jobs (lint, typecheck, test) on both backend and frontend matrices. We do not merge red.
-6. **Review** — at least one maintainer approval. Security-sensitive changes (auth, API keys, DT integration, OAuth, build gate) require additional review by a maintainer with the `security` role.
+6. **Review** — at least one maintainer approval. Security-sensitive changes (auth, API keys, Trivy / external scanner integrations, OAuth, build gate) require additional review by a maintainer with the `security` role.
 7. **Merge** — maintainers merge via "Squash and merge" to keep `main` linear. The squash message uses the PR title — write good titles.
 
 ### What gets a PR rejected
@@ -222,9 +222,9 @@ CI runs `i18next-parser --fail-on-update` to catch missing keys.
 
 ## Documentation
 
-Every user-facing feature ships with a Docusaurus page in `docs/`. Backend API changes update the OpenAPI schema (FastAPI auto-generates this) and reflect in the API Reference site.
+Every user-facing feature ships with a Docusaurus page in `docs-site/docs/`. Backend API changes update the OpenAPI schema (FastAPI auto-generates this) and are reflected in the hosted API Reference at `/reference/api`.
 
-Architectural decisions go in `docs/v2-execution-plan.md` — that file is the single source of truth for the roadmap and rationale.
+The public roadmap and release history live in [`ROADMAP.md`](ROADMAP.md) and [`CHANGELOG.md`](CHANGELOG.md). Larger proposals go through a GitHub issue / discussion before a PR — see [`GOVERNANCE.md`](GOVERNANCE.md).
 
 ---
 

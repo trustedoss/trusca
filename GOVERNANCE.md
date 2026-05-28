@@ -40,7 +40,7 @@ Maintainers have write access to the repository and are responsible for:
   (see [`MAINTAINERS.md`](MAINTAINERS.md) and [`.github/CODEOWNERS`](.github/CODEOWNERS)).
 - Triaging issues and shepherding contributors.
 - Upholding the quality, security, and release standards described in
-  [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`CLAUDE.md`](CLAUDE.md).
+  [`CONTRIBUTING.md`](CONTRIBUTING.md).
 - Following the security disclosure process in [`SECURITY.md`](SECURITY.md).
 
 Maintainers are expected to act in the interest of the project and its users,
@@ -91,8 +91,7 @@ pull request.
 
 ## Roadmap and releases
 
-The public roadmap is [`ROADMAP.md`](ROADMAP.md); the detailed, PR-level plan is
-[`docs/post-ga-roadmap.md`](docs/post-ga-roadmap.md). Roadmap items are proposals,
+The public roadmap is [`ROADMAP.md`](ROADMAP.md). Roadmap items are proposals,
 not commitments. Releases follow [Semantic Versioning](https://semver.org/) and
 are recorded in [`CHANGELOG.md`](CHANGELOG.md).
 

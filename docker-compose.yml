@@ -264,7 +264,7 @@ services:
   # API — FastAPI + uvicorn, fronted by Traefik on /api and /health.
   # ---------------------------------------------------------------------------
   backend:
-    image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/backend:${IMAGE_TAG:-2.0.0}
+    image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/backend:${IMAGE_TAG:-0.10.0}
     restart: unless-stopped
     environment:
       <<: *backend-env
@@ -359,7 +359,7 @@ services:
   # with CELERY_CONCURRENCY; the SCANCODE_* guards cap per-task blowups.
   # ---------------------------------------------------------------------------
   worker:
-    image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/backend-worker:${IMAGE_TAG:-2.0.0}
+    image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/backend-worker:${IMAGE_TAG:-0.10.0}
     restart: unless-stopped
     command: celery -A tasks.celery_app worker --loglevel=info --concurrency=${CELERY_CONCURRENCY:-2}
     environment:
@@ -435,7 +435,7 @@ services:
   # workspace orphan cleaner, source-archive retention).
   # ---------------------------------------------------------------------------
   beat:
-    image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/backend-worker:${IMAGE_TAG:-2.0.0}
+    image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/backend-worker:${IMAGE_TAG:-0.10.0}
     restart: unless-stopped
     command: celery -A tasks.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule
     environment:
@@ -476,7 +476,7 @@ services:
   # SPA — Vite bundle served by nginx, fronted by Traefik on `/`.
   # ---------------------------------------------------------------------------
   frontend:
-    image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/frontend:${IMAGE_TAG:-2.0.0}
+    image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/frontend:${IMAGE_TAG:-0.10.0}
     restart: unless-stopped
     networks:
       - trustedoss

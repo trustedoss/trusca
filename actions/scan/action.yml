@@ -23,7 +23,7 @@ inputs:
     description: 'TrustedOSS project UUID (Settings tab → CI/CD).'
     required: true
   scan-kind:
-    description: 'Scan pipeline to enqueue. "source" runs cdxgen + ORT + DT. "container" runs Trivy.'
+    description: 'Scan pipeline to enqueue. "source" runs cdxgen + Trivy. "container" runs Trivy.'
     required: false
     default: 'source'
   fail-on-gate:

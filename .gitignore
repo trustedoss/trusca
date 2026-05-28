@@ -44,6 +44,7 @@ secrets/**/*.pub
 .idea/
 .vscode/
 *.swp
+*.bak
 .DS_Store
 Thumbs.db
 

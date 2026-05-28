@@ -11,19 +11,13 @@ description: >-
 type: application
 
 # Chart version is the packaging version (SemVer); bump on every chart change.
-# 0.3.0 — W6 / ADR-0001 Dependency-Track removal:
-#   * `env.dt.*` value tree removed; `env.trivy.*` replaces it.
-#   * No more DT_API_KEY in the chart Secret.
-#   * configmap-env: TRIVY_DB_REPOSITORY / TRIVY_DB_REFRESH_HOURS / TRIVY_DB_CACHE_DIR.
-#   * appVersion bumped to v2.4.0 (Trivy single-engine).
-# 0.2.0 — production-complete chart (Postgres/Redis bundle toggles, frontend,
-#         Ingress/TLS, migration Job, OCI publication).
-version: 0.3.0
+# Aligned with the application version for the first public release.
+version: 0.10.0
 
 # appVersion tracks the released container image tag (image.tag default).
 # Keep in lock-step with .env.example IMAGE_TAG / docker-compose IMAGE_TAG and
 # the .github/workflows/release.yml image tags.
-appVersion: "2.4.0"
+appVersion: "0.10.0"
 
 keywords:
   - sca
@@ -53,9 +47,5 @@ annotations:
   artifacthub.io/prerelease: "false"
   artifacthub.io/containsSecurityUpdates: "false"
   artifacthub.io/changes: |
-    - kind: removed
-      description: "env.dt.* value tree and DT_API_KEY Secret entry (Dependency-Track removed — ADR-0001)"
     - kind: added
-      description: "env.trivy.* values (TRIVY_DB_REPOSITORY, TRIVY_DB_REFRESH_HOURS, TRIVY_DB_CACHE_DIR)"
-    - kind: changed
-      description: "appVersion bumped to v2.4.0 (Trivy single-engine + W11 enterprise polish)"
+      description: "First public release of the TrustedOSS Portal chart"

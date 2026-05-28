@@ -33,7 +33,7 @@ If encryption is genuinely impossible, plain email is acceptable but strongly di
 A useful report includes:
 
 1. **Affected version(s)** — release tag or Git SHA, deployment mode (Docker Compose / Helm / demo SaaS).
-2. **Component** — backend / frontend / scan pipeline / DT integration / CI integration / install script / etc.
+2. **Component** — backend / frontend / scan pipeline / Trivy integration / CI integration / install script / etc.
 3. **Vulnerability class** — e.g. authentication bypass, IDOR, SSRF, SQL injection, XSS, RCE, secret exposure, supply-chain.
 4. **Reproduction steps** — minimal and deterministic.
 5. **Impact** — what an attacker can read, modify, or do.
@@ -103,7 +103,7 @@ This policy covers vulnerabilities in:
 
 ### Out of scope
 
-- Vulnerabilities in upstream third-party software (Dependency-Track, ORT, cdxgen, Trivy, PostgreSQL, Redis, etc.). Please report those to the respective projects. We will coordinate downstream patches once an upstream advisory is available.
+- Vulnerabilities in upstream third-party software (cdxgen, Trivy, PostgreSQL, Redis, etc.). Please report those to the respective projects. We will coordinate downstream patches once an upstream advisory is available.
 - Findings from automated scanners that have no demonstrated impact (e.g. "missing X-Frame-Options on a non-rendering API").
 - Social-engineering scenarios that require maintainers to take an unusual action.
 - Denial-of-service via volumetric load against the demo SaaS instance.

@@ -35,7 +35,7 @@ jobs:
 That's it. The action:
 
 1. Calls `POST /v1/projects/{project-id}/scans` with `kind=source` to enqueue
-   the cdxgen + ORT + Dependency-Track pipeline.
+   the cdxgen + Trivy pipeline.
 2. Polls `GET /v1/scans/{scan-id}` every 30 seconds until the scan reaches
    `succeeded`, `failed`, or `cancelled` (timeout: 30 min).
 3. Calls `GET /v1/projects/{project-id}/gate-result` and writes the verdict
@@ -53,10 +53,10 @@ That's it. The action:
 | `api-url` | yes | — | TrustedOSS Portal base URL, e.g. `https://trustedoss.example.com`. Trailing slash OK. |
 | `api-key` | yes | — | API key with the `tos_<prefix>_<secret>` shape. **Always** supply via `${{ secrets.* }}`. |
 | `project-id` | yes | — | TrustedOSS project UUID. Get it from the project's Settings tab → CI/CD. |
-| `scan-kind` | no | `source` | `source` runs cdxgen + ORT + DT. `container` runs Trivy on the image referenced in project metadata. |
+| `scan-kind` | no | `source` | `source` runs cdxgen + Trivy. `container` runs Trivy on the image referenced in project metadata. |
 | `fail-on-gate` | no | `true` | If `true`, the job exits 1 when the gate verdict is `fail`. Set to `false` for advisory-only mode. |
 | `post-pr-comment` | no | `true` | If `true` (and the workflow was triggered by `pull_request`), posts the SCA report as a PR comment. |
-| `poll-timeout-seconds` | no | `1800` | Max seconds to wait for the scan to reach a terminal state. Real ORT runs typically finish in 5–60 min. |
+| `poll-timeout-seconds` | no | `1800` | Max seconds to wait for the scan to reach a terminal state. Real source scans typically finish in 1–10 min (cdxgen + Trivy). |
 | `poll-interval-seconds` | no | `30` | Seconds between scan-status polls. |
 
 ## Outputs
