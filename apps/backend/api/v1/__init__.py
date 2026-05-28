@@ -7,6 +7,7 @@ from .admin import router as admin_router
 from .api_keys import router as api_keys_router
 from .approvals import router as approvals_router
 from .auth import router as auth_router
+from .compliance import router as compliance_router
 from .components import router as components_router
 from .dashboard import router as dashboard_router
 from .github_app import router as github_app_router
@@ -35,6 +36,7 @@ __all__ = [
     "api_keys_router",
     "approvals_router",
     "auth_router",
+    "compliance_router",
     "components_router",
     "dashboard_router",
     "github_app_router",

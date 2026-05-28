@@ -30,9 +30,54 @@
     "reports": "Reports"
   },
   "compliance": {
-    "subtab": {
-      "licenses": "Licenses",
-      "obligations": "Obligations"
+    "summary": "{{loaded}} of {{total}} licenses shown",
+    "column": {
+      "license": "License",
+      "category": "Category",
+      "affected": "Affected",
+      "obligations": "Obligations",
+      "notice_required": "NOTICE",
+      "override_source": "Override"
+    },
+    "filter": {
+      "search": "Search",
+      "search_placeholder": "Search by SPDX ID or name",
+      "category": "Category",
+      "has_obligations": "Has obligations",
+      "sort_label": "Sort by",
+      "sort": {
+        "category": "Risk (forbidden first)",
+        "license_name": "License name",
+        "spdx_id": "SPDX ID",
+        "affected_count": "Affected components"
+      },
+      "order_label": "Order",
+      "order_asc": "Ascending",
+      "order_desc": "Descending"
+    },
+    "row": {
+      "no_spdx_id": "—"
+    },
+    "affected": {
+      "more_count": "+{{count}} more"
+    },
+    "obligations": {
+      "none": "None",
+      "more_count": "+{{count}} more"
+    },
+    "notice": {
+      "required": "Required",
+      "not_required": "—"
+    },
+    "override": {
+      "none": "—"
+    },
+    "empty": {
+      "title": "No compliance findings yet",
+      "description": "Run a scan to populate license inventory and obligations for this project."
+    },
+    "errors": {
+      "load_list": "Could not load compliance data."
     }
   },
   "severity": {
