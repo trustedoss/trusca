@@ -21,11 +21,26 @@
 | §0.5 | Wave 4 (UX 정합·IA 재정비) | 6 | 6 | ✅ 완료 (#186 W4-A · #187 prep · #188 W4-B · #189 W4-C · #190 W4-D · #191 follow-up) |
 | §0.5 | **Wave 6 (DT 제거 + Trivy 교체)** | 7(+선택1) | 4 | 🟦 진행중 — #45 ✅ → #40 ✅(PR #196) + chore L1/L2/L4 ✅(PR #199) → #41 ✅(PR #200) → #42 ✅(PR #203) → #43a ✅(PR #205) → #43b ✅(PR #206) → #43c~e → #44 (v2.3.1 prereq 스킵, shadow 게이트 스킵, v2.4.0이 첫 공개 릴리스) |
 | §0.5 | **Wave 7 (Docs parity)** | 5(+조사1) | 0 | ⏳ 백로그 — W6 종료 후 착수 검토. DT 문서 비교 갭 5종(Triage 통합·Analysis Types·Best Practices·FAQ·Change Log) |
+| §0.5 | **Wave 8 (scan-bench 발견 — 2026-05-27)** | 4 | 0 | ⏳ 백로그 — fixture 32개 + real-world 3개 벤치마크에서 도출. **P0 #46 (Maven classifier UniqueViolation, GA 블로커)** + UX/라이선스 보강 3건. 상세: `docs/scans/{fixture-matrix,realworld-benchmark}-2026-05-27.md` |
+| §0.5 | **Wave 9 (UX competitive — 2026-05-27)** | 7(+선택2) | 0 | ⏳ 백로그 — 우리 8화면 × 경쟁 5도구(BD/Snyk/Sonatype/Mend/Datadog) × 8축 매트릭스. 우리 평균 3.6/5(BD/Datadog 4.0 다음). **P0 #51-A (drawer 데이터 버그 B2-001/002)** + Dashboard 신설(#50, D1-001) + filter/drawer/upgrade-group 패턴 모방. 상세: `docs/ux/competitive-audit-2026-05-27.md` |
+| §0.5 | **Wave 10 (드로어 dual surface — 2026-05-27)** | 6 phase | 0 | ⏳ 백로그 — design philosophy #3 "드로어 도그마 완화" → drawer + page nav 이중 surface. **W9-#51-A (drawer 버그 P0) + W9-#51-B (NEXT STEPS sidebar P2) 흡수**. 4.5d. 상세: `docs/ux/design-philosophy-evolution-plan-2026-05-27.md` §3 |
+| §0.5 | **Wave 11 (시각 정체성 재정의 — 2026-05-27)** | 8 phase | 0 | ⏳ 백로그 — design philosophy #5 "BD 2015 미감 → modern enterprise". **옵션 C 혼합 (Vercel base + Linear polish)**, light 단일(dark mode 본 계획 제외). W11 Phase B 첫 prototype = Project List. ~11d (2.2주). v2.5 또는 v2.4.x patch series. 상세: `docs/ux/design-philosophy-evolution-plan-2026-05-27.md` §4 |
 | — | 운영 레인 (외부 블로커) | 4 | 0 | ⬜ 대기 (O1·O3는 v2.4.0 첫 공개 릴리스에 통합) |
 
 범례: ⬜ 대기 · 🟦 진행중 · ✅ 완료 · ⛔ 블로킹 · ⏳ 백로그
 
-**현재 상태(2026-05-27 후속 결정):** v2.1·v2.2·v2.3 + §0.5 Wave 1~4 모두 종결. **W6 진행 중**: #45(PR #192) · #40(PR #196) · L1/L2/L4 chore(PR #199) · #41(PR #200) · #42(PR #203) · chore-seed(PR #204) · #43a BE DT 제거(PR #205) · **#43b FE DT 제거(PR #206)** 모두 머지 완료 — **6/7**. **Repo는 W6 진행 동안 private 전환**, v2.4.0이 DT-free 첫 공개 릴리스가 되며 **v2.3.1 동결 태그/Release/SECURITY.md backport 정책 prereq는 스킵**(외부 사용자 0이라 "Final DT Release" 공개 마커 무의미). 운영 레인 O1/O3은 v2.4.0 GA에 통합 수행. 다음 PR: **W6-#43c 사용자/관리자 문서 교체** (`dt-connector.md` 삭제 + `vulnerability-data.md`/`data-sources.md` 신규, EN/KO 동시).
+**현재 상태(2026-05-27 후속 결정):** v2.1·v2.2·v2.3 + §0.5 Wave 1~4 모두 종결. **W6 진행 중**: #45(PR #192) · #40(PR #196) · L1/L2/L4 chore(PR #199) · #41(PR #200) · #42(PR #203) · chore-seed(PR #204) · #43a BE DT 제거(PR #205) · **#43b FE DT 제거(PR #206)** 모두 머지 완료 — **6/7**. **Repo는 W6 진행 동안 private 전환**, v2.4.0이 DT-free 첫 공개 릴리스가 되며 **v2.3.1 동결 태그/Release/SECURITY.md backport 정책 prereq는 스킵**(외부 사용자 0이라 "Final DT Release" 공개 마커 무의미). 운영 레인 O1/O3은 v2.4.0 GA에 통합 수행.
+
+**v2.4.0 GA까지 작업 순서 확정(2026-05-27 사용자 결정 — UX/Design 먼저 → 문서 → GA, 첫 공개 릴리스 인상 우선)**:
+1. **W8-#46** Maven classifier P0 (1.5d) ← 진행 중
+2. **W10** 드로어 dual surface (4.5d) — W9-#51-A/#51-B 흡수
+3. (병행) **W9-#52** filter+columns picker, **W9-#54** CMD+K (~3.5d)
+4. **W11** 시각 정체성 (~11d) — Phase A/B/E confirm 게이트 3개. ⚠ Phase A 실패 대비 fallback (a) Vercel 강화 / (b) BD 톤 부분 modernize / (c) W11 v2.5 로 미루기 사전 합의.
+5. **W9-#50** Dashboard (W11 톤 적용, 1.5d)
+6. **W6 잔여** (~3.5d) — 6a #43c 사용자/관리자 문서(final 스크린샷) → 6b #43d 배포 → 6c #43e admin Trivy DB 패널(W11 토큰) → 6d #44 Trivy DB lifecycle
+7. **v2.4.0 GA**
+
+**총 ~5주.** W6-#43c 직전에 capture-ours spec 재실행해서 final 스크린샷 한 번에 확보.
 
 ---
 
@@ -128,6 +143,103 @@
 
 ---
 
+**W8 — scan-bench 발견 (2026-05-27, fixture 32 + real-world 3 벤치마크)**
+
+> 출처: `scripts/scan-bench/run_bench.py` 자동화로 bd-scan fixture 32개 + Juice Shop v17.0.0 + WebGoat v8.2.2 + v1 webapp 셀프스캔 실행. 보고서 `docs/scans/fixture-matrix-2026-05-27.md` + `docs/scans/realworld-benchmark-2026-05-27.md`.
+>
+> **핵심 발견**: (a) Java multi-module + Maven classifier(`?classifier=native&type=jar`) 사용 프로젝트는 **재현 가능한 UniqueViolation으로 스캔 실패** — JNI/JFFI/Netty native/Tomcat native 등 대형 자바 백엔드 흔한 패턴. (b) Juice Shop의 test fixture가 zip-bomb 가드(200x)에 걸려 실제 OSS 첫 업로드 거부. (c) Python/Ruby/dotnet 라이선스 unknown 90%+. (d) 그 외 npm/Python 생태계는 production-ready.
+
+| 항목 | 내용 | 상태 |
+|---|---|---|
+| **W8-#46** | **Maven classifier purl UniqueViolation 수정 (P0, GA 블로커)**. **scope 축소** (2026-05-27 코드 분석): 옵션 A expand→backfill→contract 3단계가 단일 PR로 축소 — `purl_with_version` 컬럼 unique 가 이미 더 strict이고 (component_id, version) 으로 lookup 하는 코드 0개라 redundant `uq_component_versions_component_version` constraint **drop 만**으로 충족. 마이그 0027 + 모델 1줄 + integration test 2개. 회귀: WebGoat v8.2.2 178 comp / 20 CVE / 156s succeeded + fixture 32 regression 0. | ✅ **완료 (2026-05-27, 마이그 0027, PR 작성 중)** |
+| W8-#47 | **zip-bomb 가드 UX 개선 (P1)**. `apps/backend/services/source_archive_service.py:117` `_max_compression_ratio` (현재 200x hard reject). Juice Shop 같은 실 OSS 가 sparse PDF/zip 테스트 fixture 를 포함해 첫 업로드부터 차단됨. 옵션: (a) `test/`·`tests/`·`fixtures/` 경로의 ratio 초과는 warn 후 skip (다른 멤버는 ingest), (b) project setting 으로 ratio override (super_admin 만 상향), (c) 사용자에 거부 사유 + 해당 파일 알림 후 "이 파일 제외하고 재시도" 옵션. **종료**: Juice Shop 17.0.0 raw clone 첫 업로드 성공. **dep: 없음**. **owner: backend-developer + frontend-dev**. **예상**: 1d. | ⏳ 백로그 |
+| W8-#48 | **Python 라이선스 메타 보강 (P1)**. v1 셀프스캔에서 542 컴포넌트 중 488개(90%) 라이선스 unknown — Python `requirements.txt` 만으로 cdxgen 이 PyPI 메타 못 가져옴. 옵션: (a) cdxgen runner option `--fetch-license` 활성화 (네트워크 차단 환경 영향 검토 필요), (b) 별도 보강 단계 `tasks/license_enrich_pypi.py` 신설 — PyPI registry API 호출, 멱등 upsert, air-gapped 옵션. 종료: v1 webapp 셀프스캔에서 unknown 비율 < 30%. **dep: 없음**. **owner: scan-pipeline-specialist**. **예상**: 1.5d. | ⏳ 백로그 |
+| W8-#49 | **Ruby / dotnet 라이선스 보강 (P2)**. fixture 매트릭스에서 ruby(5/5) · dotnet(3/3) 모두 100% unknown. cdxgen Gemfile/`.nuspec` 라이선스 파서 부재. cdxgen 12.5 업그레이드 후 재평가, 부족 시 보강 step (W8-#48 와 동일 패턴 — Bundler / NuGet API). 종료: ruby/dotnet 라이선스 unknown < 50%. **dep: 없음 (W8-#48 패턴 재사용)**. **owner: scan-pipeline-specialist**. **예상**: 1d. | ⏳ 백로그 |
+
+→ **회복 가치**: W8-#46이 GA 전 머지되지 않으면 Java multi-module + native classifier OSS는 스캔 자체 불가 — v2.4.0 첫 공개 릴리스의 명백한 흠. **W6 완료 후 즉시 착수 권장**.
+
+---
+
+**W9 — UX competitive (2026-05-27, 우리 8화면 × 경쟁 5도구 × 8축 매트릭스)**
+
+> 출처: 2026-05-27 본 세션. SoT 계획서 [`docs/ux/competitive-audit-plan-2026-05-27.md`](./ux/competitive-audit-plan-2026-05-27.md) + 최종 보고서 [`docs/ux/competitive-audit-2026-05-27.md`](./ux/competitive-audit-2026-05-27.md). 자료: `docs/ux/screens/` (우리 EN 8장 + KO 핵심 3장 + 경쟁 34장), `docs/ux/raw/{ours-observations,competitor-sources,scoring-matrix,bugs-found}.md`.
+>
+> **점수 요약**: 우리 평균 **3.6/5** (채워진 8셀), BD/Datadog 4.0, Mend 3.7, Snyk 2.8, Sonatype 2.7. 두드러진 후행 없음 — 베이스라인 production-grade. 5건 incremental 개선.
+>
+> **모방 가치 평가 결과**: Mend filter UX(A3=5) · BD Dashboard · Snyk upgrade-grouping · Datadog NEXT STEPS sidebar → 5건 모방. 좌 영구 filter sidebar(BD) · time-series 차트(Datadog) · aggregate-by-component(Sonatype) → 모방 안 함 또는 P4 검토.
+
+| 항목 | 내용 | 상태 |
+|---|---|---|
+| **W9-#51-A** | **drawer 데이터 버그 수정 (P0)**. B2-001 References 모두 "REF" 텍스트(URL 미파싱) + B2-002 Summary 단락 동일 텍스트 2회 반복. `apps/backend/services/vulnerability_matching.py`(W6-#41 산출)에서 Trivy persist 시 `reference_urls` 매핑 + summary/description 단일 source 정리. drawer 컴포넌트 측 정상 렌더 검증. **dep: 없음**. **owner: backend-developer + frontend-dev**. **예상**: 0.5d. | ⏳ 백로그 **P0** |
+| W9-#50 | **Dashboard 신설 (P1, D1-001)**. 현재 `router.tsx:62` 가 `/` → `/projects` redirect (Dashboard 부재). BD Portfolio ROI Dashboard 패턴 차용 — cross-project risk portfolio + severity/license 분포 + recent activity. Project List는 `/projects` 그대로 유지. ProjectListPage 상단 차트 컴포넌트 재사용. EN/KO 동시. **dep: 없음**. **owner: frontend-dev + i18n-specialist**. **예상**: 1.5d. | ⏳ 백로그 P1 |
+| W9-#52 | **Filter "+More Filters" + Columns picker (P1, A3=5 달성)**. Mend 패턴. 우리 `ActiveFilterChips` 옆에 add-filter dropdown + 우측 Columns picker. Vulnerabilities·Components 탭 generic filter 컴포넌트에 적용. EN/KO 신규 키. **dep: 없음**. **owner: frontend-dev + i18n-specialist**. **예상**: 1.5d. | ⏳ 백로그 P1 |
+| W9-#51-B | **Drawer NEXT STEPS 영구 sub-panel (P2, A4)**. Datadog 패턴 모방. drawer(우반 50%) 내 우측 sub-column으로 Triage(Open/Assign/Jira) + Remediation(Upgrade 추천·Comments) 분리. layout 신중(50% 안 추가 분할이라 narrow drawer 시 stack 폴백). `apps/frontend/src/features/vulnerabilities/drawer/`. **dep: W9-#51-A (drawer 버그 fix 후 깨끗한 상태에서 layout 변경)**. **owner: frontend-dev**. **예상**: 1.5d. | ⏳ 백로그 P2 |
+| W9-#53 | **Vulnerabilities 탭 "Group by upgrade" 토글 (P2, A6 axis 확장)**. Snyk innovative 패턴 모방 — vuln 별이 아닌 upgrade 별 그룹화("Upgrade to X fixes N issues"). v2.2-a3 `upgrade_recommendation` 데이터가 backend에 이미 있어 frontend grouping만. 기본 OFF, 토글 ON 시 그룹 모드. `VulnerabilitiesTab.tsx`. **dep: 없음 (v2.2-a3 산출 재사용)**. **owner: frontend-dev**. **예상**: 2d. | ⏳ 백로그 P2 |
+| W9-#54 (별도 트랙) | **Global CMD+K palette (P3, A2 갭)**. shadcn `cmdk` — 프로젝트 검색·CVE 검색·라우트 jump. 신규 `apps/frontend/src/components/CommandMenu.tsx` + AppShell 통합. **dep: 없음**. **owner: frontend-dev**. **예상**: 2d. | ⏳ 백로그 P3 |
+| W9-#55 (검토 후) | **Time-series 차트 (P4, A7=5 추격)**. Datadog 패턴. vuln-count-over-time 조직 추세 화면. 신규 `pages/RiskTrends.tsx` 또는 Dashboard(W9-#50) 통합. SCA 도메인에서 모니터링-스타일 차트 필요성 사용자 검토. **dep: W9-#50**. **owner: frontend-dev + backend-developer (시계열 집계 API)**. **예상**: 2d. | ⏳ P4 검토 |
+| W9-#56 (검토 후) | **Aggregate-by-component toggle (P4)**. Sonatype 패턴. 같은 데이터 vuln 단위 vs component 단위 토글. 우리는 이미 Components/Vulnerabilities 탭 분리로 부분 대체 → 우선순위 낮음. | ⏳ P4 검토 |
+| W9-chore-snyk-cleanup | **Snyk dir 무효 HTML 파일 정리**. Phase B 캡처 중 `screens/competitors/snyk/{snyk-issues-tab,snyk-upgradable-issues}.png` (각 529KB) 가 GitBook 페이지 HTML wrapper로 다운로드됨. `rm` 권한 차단으로 본 세션 정리 불가. 다음 PR에서 `git rm` 1줄. **dep: 없음**. **예상**: 0.1d. | ⏳ 백로그 |
+
+→ **합계**: P0 0.5d + P1 3d + P2 3.5d + P3 2d = **9일 (1.8주)**. P4 제외.
+
+→ **권장 작업 순서** (사용자 결정 후 확정): **W8-#46 (GA blocker) → W9-#51-A (P0, 0.5d) → W6 잔여 → W9-#50/#52 (P1) → W9-#51-B/#53 (P2) → W9-#54 (P3 별도)**. drawer 버그(#51-A)가 빠르고 가시적이라 W8-#46 직후 권장.
+
+→ **재실행 트리거** (계획서 §13.4): 분기마다 1회 또는 메이저 UI 변경(W4-급) 시. Playwright capture 1-명령(`cd apps/frontend && npx playwright test ux-audit/capture-ours`) + 경쟁 자료 재수집.
+
+→ **알려진 한계**: 평가자 = 우리 개발자 bias (외부 디자이너 1회 리뷰 권장) · 정적 캡처라 A5/A8 동적 평가 불가(12/48 셀 unknown).
+
+---
+
+**W10 — 드로어 dual surface 아키텍처 (2026-05-27 사용자 승인, design philosophy #3 개선)**
+
+> 출처: 2026-05-27 본 세션 design philosophy 검토. SoT [`docs/ux/design-philosophy-evolution-plan-2026-05-27.md`](./ux/design-philosophy-evolution-plan-2026-05-27.md) §3.
+>
+> **결정 배경**: audit §11 #3 "드로어 = 디테일" 도그마가 깊이 정보(multi-tab CVE detail)에서 답답함 → drawer (빠른 확인) + page nav (깊은 작업) **이중 surface**. 같은 detail body 컴포넌트가 두 surface 모두 렌더.
+>
+> **흡수**: W9-#51-A (drawer 데이터 버그 P0) + W9-#51-B (NEXT STEPS sidebar P2) **자연 흡수** → 별도 PR 불필요.
+
+| 항목 | 내용 | 상태 |
+|---|---|---|
+| W10-A | `VulnerabilityDetailBody` 추출 — drawer 본문을 shared 컴포넌트로. 기능 동일성(parity) 검증. | ⏳ 0.5d |
+| W10-B | `VulnerabilityDetailPage.tsx` 신규 + router `/projects/:id/vulnerabilities/:finding_id` + breadcrumb | ⏳ 1d |
+| W10-C | drawer 헤더 "Open in full view" 양방향 affordance | ⏳ 0.5d |
+| W10-D | **NEXT STEPS 영구 sidebar (Datadog 패턴 모방, W9-#51-B 흡수)** + **drawer References "REF" fix + Summary 중복 fix (B2-001/002, W9-#51-A 흡수)** | ⏳ 1d |
+| W10-E | Components 동일 패턴 (`ComponentDetailBody` + `ComponentDetailPage`) | ⏳ 1d |
+| W10-F | Playwright 하네스 verb 추가 + 회귀 spec 100% pass + 신규 page nav 시나리오 | ⏳ 0.5d |
+
+→ **합계**: 4.5d. **URL backward-compat**: 기존 `?vuln=` 유지 + 신규 페이지 nav 추가. **owner**: frontend-dev + backend-developer (W10-D drawer 버그 backend mapping).
+
+→ **선행조건**: W6 잔여 머지 권장(stable base). W8-#46(GA blocker) 와 병렬 가능.
+
+---
+
+**W11 — 시각 정체성 재정의 (2026-05-27 사용자 승인, design philosophy #5 개선)**
+
+> 출처: 2026-05-27 본 세션. SoT [`docs/ux/design-philosophy-evolution-plan-2026-05-27.md`](./ux/design-philosophy-evolution-plan-2026-05-27.md) §4.
+>
+> **결정 배경**: audit §11 #5 "BD-style 2015년 미감" → "modern enterprise aesthetic". 사용자 reference 시각 비교 후 **옵션 C 혼합 (Vercel base + Linear polish)** 확정. light 단일 (dark mode 본 계획 제외). reference 9장 `docs/ux/reference/`.
+>
+> **위치**: v2.4.0 GA 후. v2.5 마일스톤 또는 v2.4.x patch series. **W10 완료 후 시작 권장** (구조 변경 후 표면 polish).
+
+| 항목 | 내용 | 상태 |
+|---|---|---|
+| W11-A | Reference 정합 분석 + 토큰 정의 (`tailwind.config.ts` + `design-tokens.ts`) — light 단일. **사용자 confirm 게이트**: 1~2 컴포넌트 sample 톤 합의 후 Phase B 진행. | ⏳ 1.5d |
+| W11-B | Foundation re-skin (Button/Input/Select/Card/Badge 등 shadcn primitives). **첫 prototype 화면 = Project List (`/projects`)** — Vercel deployments-1 톤 정합 확인. | ⏳ 2d |
+| W11-C | Table & Drawer re-skin (Table/Row/Sortable header/Drawer/Dialog). dense 정체성 유지하며 호흡감 조정. | ⏳ 2d |
+| W11-D | Chart re-skin (SeverityChart/LicenseChart/RiskGauge — Recharts 토큰) | ⏳ 1d |
+| W11-E | 화면별 검증 — Playwright capture-ours spec 재실행 → 8 화면 before/after PNG 비교셋. **사용자 confirm 게이트**. | ⏳ 1d |
+| W11-F | Microinteraction & Polish (hover transition + focus ring + drawer slide motion + skeleton — Linear polish 풍) | ⏳ 1.5d |
+| W11-G | Empty state 일러스트 (8개 빈 상태 미세 일러스트) | ⏳ 1d |
+| W11-H | A11y sweep (WCAG AA 색 대비 + focus ring + keyboard nav) + `docs-site/design-system.md` 신규 (토큰 catalog) | ⏳ 1d |
+
+→ **합계**: 11d (~2.2주). **owner**: frontend-dev + i18n-specialist (docs).
+
+→ **선행조건**: W10 완료 (drawer body 분리 후 신 토큰 적용 자연스러움).
+
+→ **위험**: 미감 재정의 실패 가능 → Phase A·E의 2 confirm 게이트로 mitigation. CLAUDE.md §디자인 시스템 갱신은 W11 완료 시점에.
+
+---
+
 **#29 구현 요지(완료):** `services/project_detail_service.py::get_project_overview` — `recent_stmt`를 `if aggregate_scan_id is not None` 블록 밖으로 빼 **성공 스냅샷 없어도(첫 스캔 queued/running) recent_scans를 항상 조회**. 분포 집계만 스냅샷에 의존. 프론트 `ProjectDetailPage` 헤더에 queued/running 스캔용 영속 칩(`project-detail-active-scan`) 추가 → 클릭 시 진행 드로어 재오픈. 가드: `test_latest_succeeded_scan_anchoring.py`(running-only overview), `tests/unit/ProjectDetailPage.test.tsx`(칩 3케이스).
 
 ---
@@ -156,7 +268,7 @@
 
 - **v2.1 = 병렬 2트랙.** Track A(VEX, `backend-developer`+`security-reviewer`)와 Track B(배포/평가, `devops-engineer`+`doc-writer`+`backend-developer`)는 담당·파일 영역이 겹치지 않아 병렬. (A: `services/vulnerability_service.py`·`api/v1/vulnerabilities.py`·VEX UI / B: `charts/`·`docker-compose*.yml`·`docs-site/`·`terraform/`·`core/`health.)
 - **v2.2, v2.3 = 순차.** v2.1 종료조건 충족 후 v2.2, v2.2 후 v2.3.
-- **데모 호스팅 = 기존 GCP terraform 재사용** (이미 Cloud Run scale-to-0 + Cloud SQL + Redis 구축됨, idle ~$46/mo). 신규 IaC 불필요 — 일일 리셋 + read-only 모드만 추가.
+- **데모 호스팅 = Hetzner CAX31 단일 VPS** (2026-05-28 재확정, $18/mo). 2026-05-24 GCP terraform 재사용 결정은 (a) terraform에 Celery worker/beat 모듈 부재(audit P0-B) → apply해도 스캔 동작 안 함, (b) 워커 추가 시 $75~125/mo 예산 초과로 번복. DT 제거로 16GB VPS 충분. PR #152의 `DEMO_READ_ONLY` 미들웨어·`seed_demo` 재시드는 호스팅 무관 재활용, 일일 리셋만 Cloud Scheduler→systemd timer 교체. 결정 SoT: 메모리 `project_demo_saas_hosting_hetzner`.
 
 ---
 
@@ -301,7 +413,7 @@
 > 사용자(GitHub/클라우드 admin) 작업. **코드 PR을 막지 않는다.** 준비되면 처리.
 
 - [ ] **O1 — v2.0.1 이미지 게시** — 첫 `v2.0.1` 태그 cut → `trustedoss` org Actions `packages:write` + ghcr public → `install-uat.yml`의 `published-image-pull` `continue-on-error` 제거. **공개 차단점.**
-- [ ] **O2 — 데모 GCP 배포** — terraform apply(사용자 GCP 자격). B5 코드 선행.
+- [ ] **O2 — 데모 SaaS 배포 (Hetzner CAX31, 2026-05-28 재확정)** — Hetzner CAX31 (ARM 8vCPU/16GB/160GB NVMe, $18/mo 백업포함) 단일 VPS + docker-compose. 사유: GCP terraform에 Celery worker/beat 모듈 부재(2026-05-11 audit P0-B) + 워커 추가 시 $75~125/mo 예산 초과($25 상한). DT 제거로 16GB로 충분. **선행 작업(다음 세션)**: hetzner-deploy.md(EN+KO) · cloud-init · Caddyfile · systemd timer(일일 리셋, Cloud Scheduler 대체) · GitHub Actions 배포 워크플로 · `scripts/backup-to-r2.sh`. **운영 작업(사용자)**: Hetzner 계정/결제 · DNS Cloudflare 위임 · cloud-init apply. terraform/와 gcp-deploy.md는 고객 GCP 경로용 보존. 결정 SoT = 메모리 `project_demo_saas_hosting_hetzner`.
 - [ ] **O3 — Helm 차트 ArtifactHub 등록** — B3 완료(`chart-release.yml` 추가됨). 남은 운영 작업: `chart-vX.Y.Z` 태그로 OCI 게시 → ghcr `charts/trustedoss` 패키지 public → ArtifactHub 등록(`artifacthub-repo.yml`의 repositoryID 기입) + `docs/static/img/logo.png` 추가(Chart icon 참조).
 - [ ] **O4 — 데모/문서 스크린샷 갱신** — VEX·정책편집·서명 UI 반영(EN/KO). 각 UI PR 후속.
 
@@ -356,7 +468,7 @@ W6 (DT → Trivy)
 
 각 마일스톤은 아래를 **모두** 만족해야 "완료" 선언 + 다음 착수.
 
-- **v2.1: ✅ 충족 (2026-05-24, 8 PR #145–#152 머지, main CI green).** A1–A3·B1–B5 머지 green · VEX export/import/UI 왕복 + adversarial + security-reviewer green · helm 프로덕션 차트(lint/template) · `/health/ready` 게이트 전환 · eval 프로파일 · API 레퍼런스(redoc) 공개 · 데모 read-only+일일리셋(코드) · EN/KO·문서 동기. **잔여=운영 레인만**: O1(이미지 게시·공개차단점), O2(데모 GCP 배포), O3(차트 ArtifactHub). → v2.2 착수 가능.
+- **v2.1: ✅ 충족 (2026-05-24, 8 PR #145–#152 머지, main CI green).** A1–A3·B1–B5 머지 green · VEX export/import/UI 왕복 + adversarial + security-reviewer green · helm 프로덕션 차트(lint/template) · `/health/ready` 게이트 전환 · eval 프로파일 · API 레퍼런스(redoc) 공개 · 데모 read-only+일일리셋(코드) · EN/KO·문서 동기. **잔여=운영 레인만**: O1(이미지 게시·공개차단점), O2(데모 SaaS 배포, **2026-05-28 Hetzner CAX31로 재확정**), O3(차트 ArtifactHub). → v2.2 착수 가능.
 - **v2.2: ✅ 충족 (2026-05-25, 10 PR #153,154,156–164 머지, main CI green).** ≥1 생태계 자동 PR 생성(b3 #160 백엔드+#163 UI, opt-in·idempotent) + security-reviewer green(b1 #157·b3 #160 모두 fix-first 통과) · 팀이 코드 변경 없이 정책 편집(c1 #158 모델+c2 #161 동적게이트+c3 #162 UI) · SPDX adversarial green(c2 길이/깊이/토큰 bound·no-policy byte-identical) · `fixed_version` 실데이터 노출(a1 #153) · 의무 카탈로그(c4 #164) · main CI green. **잔여=후속만**: MultiFernet 키회전(태스크#8, b3 GA 전) + 사전존재 CI flake(태스크#10). → v2.3 착수 가능.
 - **v2.3: ✅ 충족 (2026-05-25, 8 PR #165–#172 머지, main CI green).** 서명 SBOM `cosign verify` 외부 검증(s1 cosign 서명 #166 + s2 in-toto/SLSA attestation #167 + s3 다운로드 엔드포인트/번들 #170·UI #171·EN/KO 검증가이드 #172) + security-reviewer green(s1·s2·s3-be 모두 PASS+fix-first) · ≥1 언어 reachability 구분 노출(r1 govulncheck #165 + r2 API·게이트 #168·UI 배지 #169, Go) · `GATE_REACHABLE_CRITICAL_ONLY` safe-by-default fallback · D2 ✅ key-based 기본+keyless 옵션 · 마이그 head 0023 · main CI green. **잔여=선택만**: r3(차기 언어 reachability 확대, 종료조건 ≥1 언어 초과분). → **v2.1·v2.2·v2.3 전체 완료.**
 
