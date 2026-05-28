@@ -51,6 +51,11 @@ _TASK_INCLUDES = [
     # Promotes DT's "rematch on DB update" feature to a Trivy-backed beat
     # after ADR-0001 removed DT.
     "tasks.vulnerability_rematch",
+    # W10-D — one-shot catalog backfill for B2-001 / B2-002 (legacy DT-era
+    # rows with summary == details and markdown-scalar references). Not on
+    # the Beat schedule; triggered manually by the operator. See the module
+    # docstring for the invocation.
+    "tasks.vulnerability_catalog_refresh",
 ]
 
 

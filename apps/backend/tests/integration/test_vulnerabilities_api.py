@@ -134,6 +134,8 @@ async def _seed_finding(
     severity: str = "high",
     cve_id: str | None = None,
     summary: str | None = None,
+    details: str | None = None,
+    references: object = None,
     initial_status: str = "new",
     epss_score: float | None = None,
     epss_percentile: float | None = None,
@@ -141,7 +143,12 @@ async def _seed_finding(
     reachability_source: str | None = None,
     reachability_analyzed_at: datetime | None = None,
 ) -> uuid.UUID:
-    """Insert one component_version + vulnerability + finding tied to scan_id."""
+    """Insert one component_version + vulnerability + finding tied to scan_id.
+
+    ``details`` and ``references`` are exposed for W10-D regression tests so a
+    test can persist the legacy DT-era shape (``summary == details`` and a
+    markdown-scalar references) and assert the API serialiser cleans it up.
+    """
     factory = await _factory(client)
     async with factory() as session:
         from models import (
@@ -168,14 +175,19 @@ async def _seed_finding(
         await session.commit()
         await session.refresh(cv)
 
-        vuln = Vulnerability(
-            external_id=cve_id or f"CVE-2099-API-{suffix}",
-            source="NVD",
-            severity=severity,
-            summary=summary or f"summary {suffix}",
-            epss_score=epss_score,
-            epss_percentile=epss_percentile,
-        )
+        vuln_kwargs: dict[str, object] = {
+            "external_id": cve_id or f"CVE-2099-API-{suffix}",
+            "source": "NVD",
+            "severity": severity,
+            "summary": summary or f"summary {suffix}",
+            "epss_score": epss_score,
+            "epss_percentile": epss_percentile,
+        }
+        if details is not None:
+            vuln_kwargs["details"] = details
+        if references is not None:
+            vuln_kwargs["references"] = references
+        vuln = Vulnerability(**vuln_kwargs)  # type: ignore[arg-type]
         session.add(vuln)
         await session.commit()
         await session.refresh(vuln)
@@ -412,6 +424,161 @@ async def test_detail_cross_team_returns_404_not_403(client) -> None:
     )
     assert response.status_code == 404
     assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+# ---------------------------------------------------------------------------
+# W10-D regression — B2-001 / B2-002
+# ---------------------------------------------------------------------------
+
+
+async def test_detail_legacy_markdown_references_normalised_to_url_objects(client) -> None:
+    """B2-001 — a pre-W6 row with a markdown-scalar references column serialises
+    as the frontend's ``[{url: str}]`` wire shape, not a placeholder.
+
+    Reproduces the production case found in the W10 audit: CVE-2024-45296 on
+    fx-maven-node had ``references`` stored as a single string with markdown
+    bullet links. The drawer showed "REF" labels with no clickable URL.
+    """
+    _, team, user = await _seed_team_with_user(client)
+    _, scan_id = await _seed_scanned_project(client, team_id=team.id)
+    legacy_markdown = (
+        "* [https://github.com/foo/commit/aaa](https://github.com/foo/commit/aaa)\n"
+        "* [https://github.com/foo/security/advisories/GHSA-XXXX]"
+        "(https://github.com/foo/security/advisories/GHSA-XXXX)\n"
+        "* [https://nvd.nist.gov/vuln/detail/CVE-2099-LEG]"
+        "(https://nvd.nist.gov/vuln/detail/CVE-2099-LEG)"
+    )
+    finding_id = await _seed_finding(
+        client,
+        scan_id=scan_id,
+        references=legacy_markdown,
+    )
+    headers = _bearer_for(user)
+
+    response = await client.get(
+        f"/v1/vulnerability_findings/{finding_id}", headers=headers
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    refs = body["references"]
+    assert isinstance(refs, list), refs
+    # Every entry is a {url: str} object.
+    for entry in refs:
+        assert isinstance(entry, dict), entry
+        assert isinstance(entry["url"], str) and entry["url"].startswith(
+            ("http://", "https://")
+        )
+    urls = [r["url"] for r in refs]
+    assert urls == [
+        "https://github.com/foo/commit/aaa",
+        "https://github.com/foo/security/advisories/GHSA-XXXX",
+        "https://nvd.nist.gov/vuln/detail/CVE-2099-LEG",
+    ]
+
+
+async def test_detail_clean_list_references_serialises_as_objects(client) -> None:
+    """The W6+ shape — list[str] — wires through as {url} objects too."""
+    _, team, user = await _seed_team_with_user(client)
+    _, scan_id = await _seed_scanned_project(client, team_id=team.id)
+    finding_id = await _seed_finding(
+        client,
+        scan_id=scan_id,
+        references=[
+            "https://example.org/1",
+            "https://example.org/2",
+        ],
+    )
+    headers = _bearer_for(user)
+
+    response = await client.get(
+        f"/v1/vulnerability_findings/{finding_id}", headers=headers
+    )
+    assert response.status_code == 200
+    refs = response.json()["references"]
+    assert refs == [
+        {"url": "https://example.org/1"},
+        {"url": "https://example.org/2"},
+    ]
+
+
+async def test_detail_legacy_dangerous_refs_dropped_at_api(client) -> None:
+    """A legacy markdown-scalar containing dangerous schemes — javascript:,
+    file:, data: — must NEVER round-trip to the drawer. Only http(s) URLs
+    survive. Defence in depth: the drawer also runs ``isSafeUrl`` on each
+    entry, but we drop them earlier.
+    """
+    _, team, user = await _seed_team_with_user(client)
+    _, scan_id = await _seed_scanned_project(client, team_id=team.id)
+    legacy_with_evil = (
+        "* [evil](javascript:alert(1))\n"
+        "* [safe](https://safe.example/ok)\n"
+        "* [also-evil](data:text/html,<script>alert(1)</script>)\n"
+        "* [also-safe](https://safe.example/ok-2)"
+    )
+    finding_id = await _seed_finding(
+        client, scan_id=scan_id, references=legacy_with_evil
+    )
+    headers = _bearer_for(user)
+
+    response = await client.get(
+        f"/v1/vulnerability_findings/{finding_id}", headers=headers
+    )
+    assert response.status_code == 200
+    refs = response.json()["references"]
+    urls = [r["url"] for r in refs]
+    assert urls == [
+        "https://safe.example/ok",
+        "https://safe.example/ok-2",
+    ]
+
+
+async def test_detail_summary_equals_details_collapses(client) -> None:
+    """B2-002 — when summary and details hold the same text the API returns
+    ``details=null`` so the drawer renders the paragraph exactly once.
+    """
+    _, team, user = await _seed_team_with_user(client)
+    _, scan_id = await _seed_scanned_project(client, team_id=team.id)
+    duplicate_text = (
+        "path-to-regexp turns path strings into a regular expressions. "
+        "In certain cases, the generated regular expression is vulnerable to "
+        "ReDoS."
+    )
+    finding_id = await _seed_finding(
+        client,
+        scan_id=scan_id,
+        summary=duplicate_text,
+        details=duplicate_text,
+    )
+    headers = _bearer_for(user)
+
+    response = await client.get(
+        f"/v1/vulnerability_findings/{finding_id}", headers=headers
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["summary"] == duplicate_text
+    assert body["details"] is None
+
+
+async def test_detail_distinct_summary_and_details_both_preserved(client) -> None:
+    """A fresh row with distinct summary / details — both pass through."""
+    _, team, user = await _seed_team_with_user(client)
+    _, scan_id = await _seed_scanned_project(client, team_id=team.id)
+    finding_id = await _seed_finding(
+        client,
+        scan_id=scan_id,
+        summary="Short title",
+        details="Much longer description text.",
+    )
+    headers = _bearer_for(user)
+
+    response = await client.get(
+        f"/v1/vulnerability_findings/{finding_id}", headers=headers
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["summary"] == "Short title"
+    assert body["details"] == "Much longer description text."
 
 
 # ---------------------------------------------------------------------------
