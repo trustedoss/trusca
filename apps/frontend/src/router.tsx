@@ -23,6 +23,7 @@ import { ProjectDetailPage } from "@/features/projects/ProjectDetailPage";
 import { ProjectListPage } from "@/features/projects/ProjectListPage";
 import { ComponentDetailPage } from "@/features/projects/pages/ComponentDetailPage";
 import { VulnerabilityDetailPage } from "@/features/projects/pages/VulnerabilityDetailPage";
+import { ScanDetailPage } from "@/features/scan/ScanDetailPage";
 import { ScansPage } from "@/features/scans/ScansPage";
 import { ForgotPasswordPage } from "@/pages/auth/ForgotPasswordPage";
 import { LoginPage } from "@/pages/auth/LoginPage";
@@ -101,6 +102,13 @@ export function AppRoutes() {
           element={<ComponentDetailPage />}
         />
         <Route path="scans" element={<ScansPage />} />
+        {/*
+         * Dedicated full-page scan surface — replaces the cramped log panel
+         * inside the right-side progress drawer with a real route the user
+         * can deep-link, reload, and share. The drawer keeps the progress
+         * summary + cancel affordance and links out here for the full log.
+         */}
+        <Route path="scans/:scanId" element={<ScanDetailPage />} />
         <Route path="approvals" element={<ApprovalsPage />} />
         <Route path="policies" element={<PoliciesPage />} />
         <Route path="integrations" element={<IntegrationsPage />} />

@@ -37,6 +37,11 @@ export type ScanStep =
   | "fetch"
   | "cdxgen"
   | "scancode"
+  // v2.4.0 (ADR-0001): `trivy` replaces the historical `dt_findings` /
+  // `dt_upload` slots. Older worker frames may still emit those legacy slugs,
+  // so they remain in the union for back-compat — the FE PIPELINE_STEPS only
+  // surfaces `trivy` in the user-facing step row.
+  | "trivy"
   | "dt_upload"
   | "dt_findings"
   | "finalize"

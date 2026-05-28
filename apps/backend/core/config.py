@@ -1114,6 +1114,25 @@ def scan_log_max_lines_per_scan() -> int:
     return int(os.getenv("SCAN_LOG_MAX_LINES_PER_SCAN", "5000"))
 
 
+def scan_log_persist_enabled() -> bool:
+    """Whether to also append every published log line to a per-scan disk file.
+
+    When True (the default) ``tasks._progress.publish_log`` mirrors every line
+    onto ``{WORKSPACE_HOST_PATH}/{scan_id}/scan.log`` so users can come back to
+    a 30-60 minute scan (or a CI-triggered scan from days ago) and re-read the
+    tool trace via ``GET /v1/scans/{scan_id}/log``. The file rides along with
+    the workspace and is reclaimed by ``workspace_cleaner`` once the parent
+    scan reaches a terminal status (same lifecycle as cdxgen/scancode/trivy
+    artifacts on disk).
+
+    Disable (``SCAN_LOG_PERSIST_ENABLED=false``) in a degraded-disk or
+    air-gapped operator scenario, or in unit tests that do not want disk-IO
+    side effects. Read at call time per CLAUDE.md core rule #11.
+    """
+    raw = os.getenv("SCAN_LOG_PERSIST_ENABLED", "true").strip().lower()
+    return raw in ("1", "true", "yes", "on")
+
+
 # ---------------------------------------------------------------------------
 # Phase 6 PR #18 — notification channel configuration.
 #

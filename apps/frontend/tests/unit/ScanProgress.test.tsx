@@ -266,7 +266,7 @@ describe("ScanProgress", () => {
       kind: "source",
       status: "cancelled",
       progress_percent: 90,
-      current_step: "dt_findings",
+      current_step: "trivy",
       started_at: null,
       completed_at: null,
       error_message: "Cancelled by user",
@@ -284,7 +284,7 @@ describe("ScanProgress", () => {
     act(() =>
       FakeSocket.instances[0].__message({
         percent: 90,
-        step: "dt_findings",
+        step: "trivy",
         ts: "2026-05-24T12:00:00.000Z",
       }),
     );
@@ -349,7 +349,7 @@ describe("ScanProgress", () => {
     act(() =>
       FakeSocket.instances[0].__message({
         percent: 50,
-        step: "dt_findings",
+        step: "trivy",
         ts: "2026-05-26T12:00:00.000Z",
       }),
     );
@@ -358,7 +358,7 @@ describe("ScanProgress", () => {
     });
     const stepItem = screen
       .getByTestId("scan-progress-steps")
-      .querySelector('[data-step="dt_findings"]');
+      .querySelector('[data-step="trivy"]');
     expect(stepItem).not.toHaveAttribute("data-state", "current");
   });
 

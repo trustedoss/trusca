@@ -38,12 +38,12 @@
   },
   "progress": {
     "title": "스캔 진행 중",
-    "step_bootstrap": "작업 공간 준비",
-    "step_fetch": "소스 가져오는 중",
-    "step_cdxgen": "SBOM 생성 중",
-    "step_scancode": "first-party 라이선스 탐지 중",
-    "step_dt_findings": "취약점 데이터베이스 매칭 중",
-    "step_finalize": "마무리 중",
+    "step_bootstrap": "워크스페이스 준비",
+    "step_fetch": "소스 가져오기",
+    "step_cdxgen": "cdxgen (SBOM 생성)",
+    "step_scancode": "ScanCode (라이선스)",
+    "step_trivy": "Trivy (취약점 매칭)",
+    "step_finalize": "마무리",
     "step_succeeded": "스캔 완료",
     "step_failed": "스캔 실패",
     "step_cancelled": "스캔 취소됨",
@@ -54,9 +54,19 @@
     "background_notice": "스캔은 백그라운드에서 계속 진행됩니다. 이 패널을 닫으셔도 됩니다.",
     "log_toggle": "단계별 로그",
     "tool_log_toggle": "도구 로그",
+    "open_full_log": "전체 로그 열기 →",
     "close": "닫기",
     "retry": "재시도",
     "percent_label": "{{value}}%"
+  },
+  "detail": {
+    "title": "스캔 {{shortId}}",
+    "download": "로그 다운로드",
+    "download_unavailable": "스캔 로그가 아직 없습니다",
+    "empty": "스캔 출력 대기 중…",
+    "filter_all": "전체",
+    "filter_errors": "오류만",
+    "back_to_project": "프로젝트로 돌아가기"
   },
   "cancel": {
     "action": "스캔 취소",
