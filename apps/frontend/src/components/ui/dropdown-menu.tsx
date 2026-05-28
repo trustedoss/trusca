@@ -33,8 +33,13 @@ export const DropdownMenuContent = forwardRef<
       ref={ref}
       sideOffset={sideOffset}
       className={cn(
+        // W11-B polish — `shadow-md` already pulls from the W11-A token. The
+        // open/close motion is upgraded to `duration-fast` (150 ms) with the
+        // ease-out-soft curve so the dropdown feels snappier than the sheet
+        // (Linear popover reference). Radius stays at the button/card default.
         "z-50 min-w-[12rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md",
         "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
+        "data-[state=open]:duration-fast data-[state=closed]:duration-fast ease-out-soft",
         className,
       )}
       {...props}
@@ -52,7 +57,11 @@ export const DropdownMenuItem = forwardRef<
   <DropdownMenuPrimitive.Item
     ref={ref}
     className={cn(
-      "relative flex cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none transition-colors",
+      // W11-B polish — highlight transitions use the W11-A 150 ms
+      // ease-out-soft tokens so cursor-down / keyboard-down feel uniform with
+      // hover. focus-visible (not focus) so keyboard users still get the ring
+      // but click doesn't double-paint with hover.
+      "relative flex cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none transition-colors duration-fast ease-out-soft",
       "focus:bg-accent focus:text-accent-foreground data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
       "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
       inset && "pl-8",

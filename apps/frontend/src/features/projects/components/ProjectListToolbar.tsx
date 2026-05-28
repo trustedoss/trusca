@@ -56,7 +56,11 @@ export function ProjectListToolbar({
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 border-b bg-background px-4 py-3 md:flex-row md:items-center md:gap-4",
+        // W11-B polish — Vercel-style horizontal toolbar: bg shifts to the
+        // off-white canvas so the surrounding white cards visually pop, and
+        // the inner spacing standardises on the 12 / 16 / 24 px scale (gap-3,
+        // px-6, py-3). Inputs get `shadow-sm` so the row reads as raised.
+        "flex flex-col gap-3 border-b bg-background px-6 py-3 md:flex-row md:items-center md:gap-4",
         className,
       )}
       data-testid="project-list-toolbar"
@@ -72,14 +76,14 @@ export function ProjectListToolbar({
           onChange={(event) => onQueryChange(event.target.value)}
           placeholder={t("toolbar.search_placeholder")}
           data-testid="project-search"
-          className="h-9"
+          className="h-9 shadow-sm"
         />
       </div>
 
       <div className="flex items-center gap-2">
         <label
           htmlFor="project-status-filter"
-          className="text-xs text-muted-foreground"
+          className="text-xs font-medium text-muted-foreground"
         >
           {t("toolbar.filter_status_label")}
         </label>
@@ -89,7 +93,7 @@ export function ProjectListToolbar({
           onChange={(event) =>
             onStatusChange(event.target.value as ProjectStatusFilter)
           }
-          className="h-9 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          className="h-9 rounded-md border border-input bg-background px-2 text-sm shadow-sm transition-colors duration-fast ease-out-soft hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           data-testid="project-status-filter"
         >
           {STATUS_OPTIONS.map((opt) => (
@@ -103,7 +107,10 @@ export function ProjectListToolbar({
       </div>
 
       <div className="flex items-center gap-2">
-        <label htmlFor="project-sort" className="text-xs text-muted-foreground">
+        <label
+          htmlFor="project-sort"
+          className="text-xs font-medium text-muted-foreground"
+        >
           {t("toolbar.sort_label")}
         </label>
         <select
@@ -112,7 +119,7 @@ export function ProjectListToolbar({
           onChange={(event) =>
             onSortChange(event.target.value as ProjectSortKey)
           }
-          className="h-9 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          className="h-9 rounded-md border border-input bg-background px-2 text-sm shadow-sm transition-colors duration-fast ease-out-soft hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           data-testid="project-sort"
         >
           {SORT_OPTIONS.map((key) => (
