@@ -2,12 +2,16 @@
 # Every value is documented inline (chart convention). Override with
 # `-f my-values.yaml` or `--set key=value`.
 #
-# v2.1 Track B / B3 — production-complete chart: bundled-or-external Postgres &
-# Redis, a frontend Deployment, an Ingress (cert-manager TLS), and a Helm
+# Chart 0.3.0 (W6 / ADR-0001) — Dependency-Track has been REMOVED. Vulnerability
+# matching now runs from the worker via `trivy sbom` against the locally-cached
+# Trivy DB. Air-gapped sites override the upstream OCI registry with
+# `env.trivy.dbRepository`. See docs/decisions/0001-replace-dt-with-trivy.md.
+#
+# Production-complete chart layout: bundled-or-external Postgres & Redis, a
+# frontend Deployment, an Ingress (cert-manager TLS), and a Helm
 # pre-install/pre-upgrade migration Job that runs `alembic upgrade head` as the
 # OWNER DB role exactly once (pods run with AUTO_MIGRATE=false; the Postgres
-# advisory lock in alembic/env.py is only a safety net). DT (Dependency-Track)
-# is NOT bundled — point at an external instance via `env.dt.url`.
+# advisory lock in alembic/env.py is only a safety net).
 
 # -- Override the chart name / fullname used in object names (rarely needed).
 nameOverride: ""
@@ -26,7 +30,7 @@ image:
   # Frontend image (React SPA on nginx, listens on :8080).
   frontendRepository: ghcr.io/trustedoss/frontend
   # Tag applied to ALL three images. Kept in lock-step with Chart.yaml appVersion.
-  tag: "2.0.0"
+  tag: "2.4.0"
   pullPolicy: IfNotPresent
 # -- Image pull secrets for private registries (list of {name: ...}).
 imagePullSecrets: []
@@ -94,13 +98,30 @@ env:
     secretKey: ""
 
   # -------------------------------------------------------------------------
-  # Dependency-Track (external — never bundled by this chart). Leaving the
-  # breaker OPEN (no DT) is a valid posture; the portal serves cached
-  # vulnerability data. Set url/apiKey to wire DT in.
+  # Trivy DB — vulnerability data path (v2.4.0+, ADR-0001).
+  #
+  # Vulnerability matching runs from the worker via `trivy sbom` against the
+  # locally-cached Trivy DB. There is NO external vulnerability engine to wire
+  # in — the data ships through Trivy's OCI registry.
+  #
+  # AIR-GAPPED: set `dbRepository` to an internal OCI mirror you maintain
+  # (mirror with e.g. `oras cp ghcr.io/aquasecurity/trivy-db:2 …`). The worker
+  # downloads + caches the DB on first boot; the weekly refresh beat keeps it
+  # fresh against `dbRepository`.
   # -------------------------------------------------------------------------
-  dt:
-    url: ""        # DT_URL, e.g. https://dtrack.example.com
-    apiKey: ""     # DT_API_KEY (goes into the chart Secret when set)
+  trivy:
+    # TRIVY_DB_REPOSITORY — OCI registry the worker pulls the DB from.
+    # Override for an air-gapped mirror; default is the upstream registry.
+    dbRepository: "ghcr.io/aquasecurity/trivy-db"
+    # TRIVY_DB_REFRESH_HOURS — beat cadence for the DB refresh task. Trivy's
+    # upstream DB rebuilds roughly daily; weekly (168h) is the documented
+    # sweet spot between freshness + bandwidth.
+    dbRefreshHours: 168
+    # TRIVY_DB_CACHE_DIR — in-container path the cached DB lands at. Lives on
+    # the workspace PVC so the worker pool shares one cache instead of N.
+    dbCacheDir: "/var/lib/trivy"
+    # TRIVY_TIMEOUT_SECONDS — per-invocation wall clock for `trivy sbom`.
+    timeoutSeconds: 300
 
   # -------------------------------------------------------------------------
   # DB connection pool (B1). Total connections per process = size + overflow.

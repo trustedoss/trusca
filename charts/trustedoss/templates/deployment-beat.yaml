@@ -7,7 +7,8 @@ metadata:
     app.kubernetes.io/component: beat
 spec:
   # Beat is a SINGLETON scheduler — exactly one replica, never more, or
-  # periodic tasks (DT heartbeat / resync / orphan cleaner) fire twice.
+  # periodic tasks (Trivy DB refresh, vulnerability re-match every 6 h,
+  # workspace orphan cleaner, source-archive retention) fire twice.
   replicas: 1
   strategy:
     # Recreate (not RollingUpdate) so two beat pods never overlap during a roll.

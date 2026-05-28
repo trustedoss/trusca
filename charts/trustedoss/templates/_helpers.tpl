@@ -140,13 +140,9 @@ Sources, in precedence order:
     secretKeyRef:
       name: {{ $secretName }}
       key: SECRET_KEY
-{{- if and .Values.env.dt.apiKey (eq (include "trustedoss.createSecret" .) "true") }}
-- name: DT_API_KEY
-  valueFrom:
-    secretKeyRef:
-      name: {{ $secretName }}
-      key: DT_API_KEY
-{{- end }}
+{{- /* Chart 0.3.0 (W6 / ADR-0001) — DT_API_KEY removed. Trivy DB is local to
+       the worker (no external engine), so no secret material is injected for
+       vulnerability matching. */ -}}
 {{- end -}}
 
 {{/*
