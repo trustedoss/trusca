@@ -19,28 +19,40 @@
 | v2.3 | 무결성 + 우선순위화 | 6 | 5 | 🟢 마일스톤 충족 (s1·r1·s2·r2·s3 머지; r3=선택·종료조건 초과) |
 | §0.5 | Wave 1~3 (BD 정합·발견성) | 7 | 7 | ✅ 완료 (W1 #29·#34·#35 · W2 #31·#33 · W3 #30·#32) |
 | §0.5 | Wave 4 (UX 정합·IA 재정비) | 6 | 6 | ✅ 완료 (#186 W4-A · #187 prep · #188 W4-B · #189 W4-C · #190 W4-D · #191 follow-up) |
-| §0.5 | **Wave 6 (DT 제거 + Trivy 교체)** | 7(+선택1) | 4 | 🟦 진행중 — #45 ✅ → #40 ✅(PR #196) + chore L1/L2/L4 ✅(PR #199) → #41 ✅(PR #200) → #42 ✅(PR #203) → #43a ✅(PR #205) → #43b ✅(PR #206) → #43c~e → #44 (v2.3.1 prereq 스킵, shadow 게이트 스킵, v2.4.0이 첫 공개 릴리스) |
-| §0.5 | **Wave 7 (Docs parity)** | 5(+조사1) | 0 | ⏳ 백로그 — W6 종료 후 착수 검토. DT 문서 비교 갭 5종(Triage 통합·Analysis Types·Best Practices·FAQ·Change Log) |
-| §0.5 | **Wave 8 (scan-bench 발견 — 2026-05-27)** | 4 | 0 | ⏳ 백로그 — fixture 32개 + real-world 3개 벤치마크에서 도출. **P0 #46 (Maven classifier UniqueViolation, GA 블로커)** + UX/라이선스 보강 3건. 상세: `docs/scans/{fixture-matrix,realworld-benchmark}-2026-05-27.md` |
-| §0.5 | **Wave 9 (UX competitive — 2026-05-27)** | 7(+선택2) | 0 | ⏳ 백로그 — 우리 8화면 × 경쟁 5도구(BD/Snyk/Sonatype/Mend/Datadog) × 8축 매트릭스. 우리 평균 3.6/5(BD/Datadog 4.0 다음). **P0 #51-A (drawer 데이터 버그 B2-001/002)** + Dashboard 신설(#50, D1-001) + filter/drawer/upgrade-group 패턴 모방. 상세: `docs/ux/competitive-audit-2026-05-27.md` |
-| §0.5 | **Wave 10 (드로어 dual surface — 2026-05-27)** | 6 phase | 0 | ⏳ 백로그 — design philosophy #3 "드로어 도그마 완화" → drawer + page nav 이중 surface. **W9-#51-A (drawer 버그 P0) + W9-#51-B (NEXT STEPS sidebar P2) 흡수**. 4.5d. 상세: `docs/ux/design-philosophy-evolution-plan-2026-05-27.md` §3 |
-| §0.5 | **Wave 11 (시각 정체성 재정의 — 2026-05-27)** | 8 phase | 0 | ⏳ 백로그 — design philosophy #5 "BD 2015 미감 → modern enterprise". **옵션 C 혼합 (Vercel base + Linear polish)**, light 단일(dark mode 본 계획 제외). W11 Phase B 첫 prototype = Project List. ~11d (2.2주). v2.5 또는 v2.4.x patch series. 상세: `docs/ux/design-philosophy-evolution-plan-2026-05-27.md` §4 |
-| — | 운영 레인 (외부 블로커) | 4 | 0 | ⬜ 대기 (O1·O3는 v2.4.0 첫 공개 릴리스에 통합) |
+| §0.5 | **Wave 6 (DT 제거 + Trivy 교체)** | 11 | 11 | ✅ 완료 — #45(#192)·#40(#196)+chore(#199)·#41(#200)·#42(#203)+chore-seed(#204)·#43a(#205)·#43b(#206)·**#43c(#251+#252)·#43d(#253)·#43e(#254)·#44(#255)**. v2.3.1 prereq 스킵, shadow 게이트 스킵. v2.4.0이 DT-free 첫 공개 릴리스. |
+| §0.5 | **Wave 7 (Docs parity)** | 5(+조사1) | 0 | ⏳ 백로그 — v2.4.x 또는 v2.5. W6-#43c가 일부 흡수, 남은 갭 재평가 필요. |
+| §0.5 | **Wave 8 (scan-bench 발견 — 2026-05-27)** | 4 | 1 | 🟢 P0 종결 — **#46 ✅(PR #231) Maven classifier P0 GA 블로커 해소**. 남은 #47(zip-bomb UX P1) · #48(Python license P1) · #49(Ruby/dotnet P2)는 v2.4.x patch 후보. |
+| §0.5 | **Wave 9 (UX competitive — 2026-05-27)** | 7(+선택2) | 4 | 🟢 GA-ready — **#50 Dashboard ✅(#250) · #52 filter+columns picker ✅(#241) · #54 CMD+K ✅(#240)**. #51-A/#51-B는 **W10에 자연 흡수** (drawer 버그 fix #236 + NEXT STEPS sidebar #237). 남은 #53(upgrade-group P2) · #55/#56(P4)는 v2.4.x/v2.5 후보. |
+| §0.5 | **Wave 10 (드로어 dual surface — 2026-05-27)** | 6 phase | 6 | ✅ 완료 — W10-A(#233)·B(#234)·C(#235)·D backend(#236)·D frontend(#237)·E(#238)·F(#239). **7 PR, W9-#51-A/B 흡수**. |
+| §0.5 | **Wave 11 (시각 정체성 재정의 — 2026-05-27)** | 8 phase | 8 | ✅ 완료 — W11-A(#242)·B(#243)·C(#244)·D(#245)·E(#246 사용자 confirm)·F(#247)·G(#248)·H(#249). **옵션 C 혼합(Vercel base + Linear polish), light 단일. WCAG AA 통과. design-system.md EN/KO.** |
+| — | 운영 레인 (외부 블로커) | 4 | 0 | ⬜ **v2.4.0 release tag cut 대기** — O1(이미지 게시)·O2(GCP 데모, Hetzner 트랙 별도)·O3(Helm OCI + ArtifactHub)·O4(스크린샷 갱신은 W11-E 캡처본 활용). 운영자 결정. |
 
 범례: ⬜ 대기 · 🟦 진행중 · ✅ 완료 · ⛔ 블로킹 · ⏳ 백로그
 
-**현재 상태(2026-05-27 후속 결정):** v2.1·v2.2·v2.3 + §0.5 Wave 1~4 모두 종결. **W6 진행 중**: #45(PR #192) · #40(PR #196) · L1/L2/L4 chore(PR #199) · #41(PR #200) · #42(PR #203) · chore-seed(PR #204) · #43a BE DT 제거(PR #205) · **#43b FE DT 제거(PR #206)** 모두 머지 완료 — **6/7**. **Repo는 W6 진행 동안 private 전환**, v2.4.0이 DT-free 첫 공개 릴리스가 되며 **v2.3.1 동결 태그/Release/SECURITY.md backport 정책 prereq는 스킵**(외부 사용자 0이라 "Final DT Release" 공개 마커 무의미). 운영 레인 O1/O3은 v2.4.0 GA에 통합 수행.
+**현재 상태(2026-05-28): v2.4.0 GA-ready** 🎉 — 2026-05-27~28 단일 세션에 **25 PR 머지** (#231~#255), 7단계 모든 사전 작업 완료. 운영 레인 release tag cut 만 남음.
 
-**v2.4.0 GA까지 작업 순서 확정(2026-05-27 사용자 결정 — UX/Design 먼저 → 문서 → GA, 첫 공개 릴리스 인상 우선)**:
-1. **W8-#46** Maven classifier P0 (1.5d) ← 진행 중
-2. **W10** 드로어 dual surface (4.5d) — W9-#51-A/#51-B 흡수
-3. (병행) **W9-#52** filter+columns picker, **W9-#54** CMD+K (~3.5d)
-4. **W11** 시각 정체성 (~11d) — Phase A/B/E confirm 게이트 3개. ⚠ Phase A 실패 대비 fallback (a) Vercel 강화 / (b) BD 톤 부분 modernize / (c) W11 v2.5 로 미루기 사전 합의.
-5. **W9-#50** Dashboard (W11 톤 적용, 1.5d)
-6. **W6 잔여** (~3.5d) — 6a #43c 사용자/관리자 문서(final 스크린샷) → 6b #43d 배포 → 6c #43e admin Trivy DB 패널(W11 토큰) → 6d #44 Trivy DB lifecycle
-7. **v2.4.0 GA**
+**완료 단계 (사용자 결정 순서대로)**:
+1. ✅ W8-#46 Maven classifier P0 (PR #231) — GA 블로커 해소, WebGoat 178comp/20CVE/156s
+2. ✅ W10 드로어 dual surface 7 phase (PR #233~#239) — W9-#51-A/B 흡수
+3. ✅ W9-#52/#54 filter+columns picker + CMD+K (PR #240~#241) — 병행
+4. ✅ W11 시각 정체성 8 phase (PR #242~#249) — 옵션 C 혼합 · light 단일 · WCAG AA · design-system.md · 사용자 confirm 2회(A/E)
+5. ✅ W9-#50 Dashboard 신설 (PR #250) — D1-001 해소, BD Portfolio ROI 모방
+6. ✅ W6 잔여 4 phase (PR #251~#255) — 문서/스크립트/Helm 0.3.0/admin Trivy 패널/DB lifecycle
 
-**총 ~5주.** W6-#43c 직전에 capture-ours spec 재실행해서 final 스크린샷 한 번에 확보.
+**v2.4.0 첫 공개 릴리스 핵심 변화**:
+- **W6**: DT 제거 + Trivy 단일 엔진 (4GB JVM 제거, weekly beat, air-gapped 매뉴얼, admin/health DB 패널)
+- **W11**: BD 2015 미감 → modern enterprise (Vercel base + Linear polish, light 단일)
+- **W10**: 드로어 dual surface (drawer + page nav 이중 surface, NEXT STEPS sidebar)
+- **W9-#50/#52/#54**: dedicated Dashboard + ⌘K palette + +Add filter/Columns picker (Mend 모방)
+- **W8-#46**: Maven classifier 호환성 (Java multi-module + native classifier OSS 스캔 가능)
+
+**다음 = 운영자 결정 (release tag cut)**:
+- O1: repo private → public + v2.4.0 annotated tag + GitHub Release body (release-notes/v2.4.0.md 사용)
+- O2: ghcr 이미지 public (`packages:write`)
+- O3: Helm chart OCI v0.3.0 게시 (`chart-release.yml` 산출) + ArtifactHub 등록 (`artifacthub-repo.yml` repositoryID 기입)
+- O4 (별도 트랙): 데모 SaaS — Hetzner 결정 (별도 세션 [[project-demo-saas-hosting-hetzner]])
+
+**핸드오프**: `docs/sessions/2026-05-28-v2.4.0-ga-ready.md`
 
 ---
 
