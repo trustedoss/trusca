@@ -415,6 +415,7 @@
       "loading_title": "취약점 불러오는 중…",
       "loading_subtitle": "CVE 상세 정보를 가져오고 있습니다.",
       "subtitle": "상태: {{status}}",
+      "open_full_view": "전체 화면으로 보기",
       "cve_id_label": "CVE ID",
       "cvss_label": "CVSS",
       "epss_label": "EPSS",
