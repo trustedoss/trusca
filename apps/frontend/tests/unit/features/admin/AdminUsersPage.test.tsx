@@ -14,6 +14,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AdminUsersPage } from "@/features/admin/users/AdminUsersPage";
@@ -70,14 +71,16 @@ function detail(item: AdminUserListItem): AdminUserDetail {
   };
 }
 
-function renderPage() {
+function renderPage({ initialUrl = "/admin/users" }: { initialUrl?: string } = {}) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return render(
-    <QueryClientProvider client={client}>
-      <AdminUsersPage />
-    </QueryClientProvider>,
+    <MemoryRouter initialEntries={[initialUrl]}>
+      <QueryClientProvider client={client}>
+        <AdminUsersPage />
+      </QueryClientProvider>
+    </MemoryRouter>,
   );
 }
 
@@ -170,6 +173,23 @@ describe("AdminUsersPage", () => {
     await waitFor(() => {
       expect(screen.getByTestId("admin-user-drawer")).toBeInTheDocument();
     });
+  });
+
+  it("hydrates the active filter from ?active= deep-link on first render (W12)", async () => {
+    // W12 — filter URL persistence. The first query already carries the
+    // pre-applied filter so reload / share lands on the exact view.
+    mockedList.mockResolvedValue(listResponse([user("alice@example.com")]));
+    renderPage({ initialUrl: "/admin/users?active=inactive" });
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalled();
+    });
+    const firstCall = mockedList.mock.calls[0]?.[0];
+    expect(firstCall).toMatchObject({ active: false });
+    expect(
+      (
+        screen.getByTestId("admin-users-active-filter") as HTMLSelectElement
+      ).value,
+    ).toBe("inactive");
   });
 
   it("toggles the active filter and re-issues the list with active=true|false", async () => {

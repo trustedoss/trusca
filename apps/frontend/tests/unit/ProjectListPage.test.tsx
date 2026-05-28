@@ -141,13 +141,13 @@ function listResponse(items: ProjectPublic[]): ProjectListResponse {
   return { items, total: items.length, page: 1, size: 200 };
 }
 
-function renderPage() {
+function renderPage({ initialUrl = "/projects" }: { initialUrl?: string } = {}) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={[initialUrl]}>
         <ProjectListPage />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -437,6 +437,34 @@ describe("ProjectListPage", () => {
         screen.queryByTestId("project-list-active-filters"),
       ).not.toBeInTheDocument();
     });
+  });
+
+  it("hydrates the severity filter from ?severity= deep-link on first render (W12)", async () => {
+    // W12 — filter URL persistence. Landing on the list with a pre-applied
+    // severity facet should narrow the rendered rows AND show the active-
+    // filters chip without any user interaction.
+    mockedListProjects.mockResolvedValueOnce(
+      listResponse([
+        project("Alpha", {
+          latest_scan_status: "succeeded",
+          severity_summary: { critical: 4, high: 0, medium: 0, low: 0 },
+        }),
+        project("Bravo", {
+          latest_scan_status: "succeeded",
+          severity_summary: { critical: 0, high: 0, medium: 2, low: 0 },
+        }),
+      ]),
+    );
+    renderPage({ initialUrl: "/projects?severity=critical" });
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("project-list-active-filters"),
+      ).toBeInTheDocument();
+    });
+    // Only the project whose worst severity bucket is `critical` survives.
+    const rows = screen.getAllByTestId("project-row");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveTextContent("Alpha");
   });
 
   it("toggles the license chart filter off when the same segment is re-clicked (W9-#57)", async () => {

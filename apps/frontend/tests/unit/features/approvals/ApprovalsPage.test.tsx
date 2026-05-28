@@ -13,6 +13,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApprovalsPage } from "@/features/approvals/ApprovalsPage";
@@ -68,14 +69,16 @@ function page(items: ApprovalOut[], total?: number): ApprovalListPage {
   };
 }
 
-function renderPage() {
+function renderPage({ initialUrl = "/approvals" }: { initialUrl?: string } = {}) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return render(
-    <QueryClientProvider client={client}>
-      <ApprovalsPage />
-    </QueryClientProvider>,
+    <MemoryRouter initialEntries={[initialUrl]}>
+      <QueryClientProvider client={client}>
+        <ApprovalsPage />
+      </QueryClientProvider>
+    </MemoryRouter>,
   );
 }
 
@@ -134,6 +137,24 @@ describe("ApprovalsPage", () => {
       const lastCall = mockedList.mock.calls.at(-1)?.[0];
       expect(lastCall).toMatchObject({ status: "pending" });
     });
+  });
+
+  it("hydrates the status filter + page from ?status= and ?page= deep-link (W12)", async () => {
+    // W12 — filter URL persistence. The first query must already carry the
+    // pre-applied filter AND page so reload / share lands the user on the
+    // exact view they bookmarked.
+    mockedList.mockResolvedValue(page([approval({ status: "pending" })]));
+    renderPage({ initialUrl: "/approvals?status=pending&page=2" });
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalled();
+    });
+    const firstCall = mockedList.mock.calls[0]?.[0];
+    expect(firstCall).toMatchObject({ status: "pending", page: 2 });
+    // The <select> reflects the URL value too (so the chip / dropdown is in
+    // sync with the data, not just the request).
+    expect(
+      (screen.getByTestId("approval-status-filter") as HTMLSelectElement).value,
+    ).toBe("pending");
   });
 
   it("clicking a row opens the approvals drawer", async () => {

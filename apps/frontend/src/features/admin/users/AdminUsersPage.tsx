@@ -9,8 +9,9 @@
  * the same query cache so a successful mutation is reflected back into the
  * table without an extra round-trip beyond the invalidation.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useSearchParams } from "react-router-dom";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +30,7 @@ import { formatRelativeToNow } from "@/lib/relativeTime";
 import { cn } from "@/lib/utils";
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
+type PageSize = (typeof PAGE_SIZE_OPTIONS)[number];
 
 function deriveRole(item: { is_superuser: boolean }): UserRole {
   // The list payload doesn't carry memberships (kept lightweight), so
@@ -38,18 +40,117 @@ function deriveRole(item: { is_superuser: boolean }): UserRole {
   return item.is_superuser ? "super_admin" : "developer";
 }
 
+// W12 — URL filter parsers (filter URL persistence consistency).
+const VALID_ROLE: (UserRole | "all")[] = [
+  "all",
+  "super_admin",
+  "team_admin",
+  "developer",
+];
+const VALID_ACTIVE: UsersActiveFilter[] = ["all", "active", "inactive"];
+function parseRoleParam(v: string | null): UserRole | "all" {
+  return v && (VALID_ROLE as readonly string[]).includes(v)
+    ? (v as UserRole | "all")
+    : "all";
+}
+function parseActiveParam(v: string | null): UsersActiveFilter {
+  return v && (VALID_ACTIVE as readonly string[]).includes(v)
+    ? (v as UsersActiveFilter)
+    : "all";
+}
+function parsePageParam(v: string | null): number {
+  if (!v) return 1;
+  const n = Number.parseInt(v, 10);
+  return Number.isFinite(n) && n >= 1 ? n : 1;
+}
+function parsePageSizeParam(v: string | null): PageSize {
+  if (!v) return 50;
+  const n = Number.parseInt(v, 10);
+  return (PAGE_SIZE_OPTIONS as readonly number[]).includes(n)
+    ? (n as PageSize)
+    : 50;
+}
+
 export function AdminUsersPage() {
   const { t, i18n } = useTranslation("admin");
 
-  const [searchInput, setSearchInput] = useState("");
-  const [searchDebounced, setSearchDebounced] = useState("");
-  const [roleFilter, setRoleFilter] = useState<UserRole | "all">("all");
-  const [activeFilter, setActiveFilter] = useState<UsersActiveFilter>("all");
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState<(typeof PAGE_SIZE_OPTIONS)[number]>(50);
+  // W12 — filter state is now URL-derived so reload / share / back button
+  // restore the exact view (filter URL persistence consistency). Defaults
+  // ("all", page 1, page_size 50, empty search) DELETE the param so the URL
+  // stays clean. Filter changes rewind ?page so the user doesn't land on a
+  // now-empty page after narrowing.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const roleFilter = parseRoleParam(searchParams.get("role"));
+  const activeFilter = parseActiveParam(searchParams.get("active"));
+  const page = parsePageParam(searchParams.get("page"));
+  const pageSize = parsePageSizeParam(searchParams.get("page_size"));
+
+  // Search keeps a local typing buffer; the debounced value mirrors to URL.
+  const [searchInput, setSearchInput] = useState(
+    () => searchParams.get("search") ?? "",
+  );
+  const [searchDebounced, setSearchDebounced] = useState(searchInput);
+
   const [openUserId, setOpenUserId] = useState<string | null>(null);
   const [toast, setToast] = useState<AdminToastMessage | null>(null);
   const toastSeq = useRef(0);
+
+  const updateFilterParam = useCallback(
+    (key: string, next: string | null) => {
+      setSearchParams(
+        (prev) => {
+          const out = new URLSearchParams(prev);
+          if (next == null || next === "") out.delete(key);
+          else out.set(key, next);
+          // Any filter change rewinds to page 1.
+          out.delete("page");
+          return out;
+        },
+        { replace: false },
+      );
+    },
+    [setSearchParams],
+  );
+  const setRoleFilter = useCallback(
+    (next: UserRole | "all") =>
+      updateFilterParam("role", next === "all" ? null : next),
+    [updateFilterParam],
+  );
+  const setActiveFilter = useCallback(
+    (next: UsersActiveFilter) =>
+      updateFilterParam("active", next === "all" ? null : next),
+    [updateFilterParam],
+  );
+  const setPage = useCallback(
+    (next: number) => {
+      setSearchParams(
+        (prev) => {
+          const out = new URLSearchParams(prev);
+          if (next <= 1) out.delete("page");
+          else out.set("page", String(next));
+          return out;
+        },
+        { replace: false },
+      );
+    },
+    [setSearchParams],
+  );
+  const setPageSize = useCallback(
+    (next: PageSize) => {
+      setSearchParams(
+        (prev) => {
+          const out = new URLSearchParams(prev);
+          if (next === 50) out.delete("page_size");
+          else out.set("page_size", String(next));
+          // Page size change resets pagination.
+          out.delete("page");
+          return out;
+        },
+        { replace: false },
+      );
+    },
+    [setSearchParams],
+  );
 
   // Debounce the search input → 300ms (matches ProjectListPage convention).
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -57,12 +158,29 @@ export function AdminUsersPage() {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       setSearchDebounced(searchInput);
-      setPage(1);
     }, 300);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, [searchInput]);
+
+  // Mirror the debounced search value into the URL.
+  useEffect(() => {
+    setSearchParams(
+      (prev) => {
+        const current = prev.get("search") ?? "";
+        if (current === searchDebounced) return prev;
+        const out = new URLSearchParams(prev);
+        if (searchDebounced) out.set("search", searchDebounced);
+        else out.delete("search");
+        // Search change rewinds page (was previously inlined in the debounce
+        // effect via setPage(1)).
+        out.delete("page");
+        return out;
+      },
+      { replace: false },
+    );
+  }, [searchDebounced, setSearchParams]);
 
   const queryParams = useMemo(
     () => ({
@@ -101,15 +219,9 @@ export function AdminUsersPage() {
         search={searchInput}
         onSearchChange={(v) => setSearchInput(v)}
         role={roleFilter}
-        onRoleChange={(v) => {
-          setRoleFilter(v);
-          setPage(1);
-        }}
+        onRoleChange={setRoleFilter}
         active={activeFilter}
-        onActiveChange={(v) => {
-          setActiveFilter(v);
-          setPage(1);
-        }}
+        onActiveChange={setActiveFilter}
       />
 
       <div className="flex-1 overflow-y-auto">
@@ -239,10 +351,7 @@ export function AdminUsersPage() {
             className="h-8 rounded-md border border-input bg-background px-2"
             value={pageSize}
             onChange={(e) => {
-              setPageSize(
-                Number(e.target.value) as (typeof PAGE_SIZE_OPTIONS)[number],
-              );
-              setPage(1);
+              setPageSize(Number(e.target.value) as PageSize);
             }}
           >
             {PAGE_SIZE_OPTIONS.map((opt) => (
@@ -264,7 +373,7 @@ export function AdminUsersPage() {
             size="sm"
             variant="outline"
             disabled={page <= 1}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            onClick={() => setPage(Math.max(1, page - 1))}
             data-testid="admin-users-page-prev"
           >
             {t("admin.users.pagination.previous")}
@@ -273,7 +382,7 @@ export function AdminUsersPage() {
             size="sm"
             variant="outline"
             disabled={page >= totalPages}
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            onClick={() => setPage(Math.min(totalPages, page + 1))}
             data-testid="admin-users-page-next"
           >
             {t("admin.users.pagination.next")}
