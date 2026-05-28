@@ -41,6 +41,24 @@ The default policy fails the build only on `Critical`. Project owners can lower 
 
 Findings follow the [CycloneDX VEX (Vulnerability Exploitability eXchange)](https://cyclonedx.org/capabilities/vex/) seven-state model. Each finding starts in **New** and transitions as analysts triage it.
 
+```mermaid
+stateDiagram-v2
+  direction LR
+  [*] --> New
+  New --> Analyzing: Mark in triage
+  New --> Suppressed: Mark suppressed
+  Analyzing --> Exploitable: Mark exploitable
+  Analyzing --> Not_affected: Mark not affected
+  Analyzing --> False_positive: Mark false positive
+  Analyzing --> Fixed: Mark fixed
+  Analyzing --> Suppressed: Mark suppressed
+  Exploitable --> Analyzing: Reopen
+  Not_affected --> Analyzing: Reopen
+  False_positive --> Analyzing: Reopen
+  Fixed --> Analyzing: Reopen
+  Suppressed --> Analyzing: Reopen
+```
+
 | State | Definition | Build gate |
 |---|---|---|
 | **New** | Just discovered; not triaged. | Counts. |
@@ -101,6 +119,8 @@ The walkthrough below opens a project, switches to **Vulnerabilities**, and clic
 ## Bulk-transition findings {#bulk-transition}
 
 When several findings share the same disposition — for example, ten findings all on the same library that you've just upgraded — the toolbar's **Bulk action bar** lets you transition them in one shot instead of opening each drawer.
+
+![Bulk action bar — selected-count + Set status to + Apply / Clear, shown after ticking two rows](/img/screenshots/user-vulns-bulk-bar.png)
 
 1. Tick the row-level checkboxes (or the header tri-state checkbox to select every row on the current page — selection clears automatically when you change filter or page so a stale selection cannot leak across views).
 2. The action bar at the top of the table shows the selected count and the available verdicts for the *common* current state of the selected rows. If the selection mixes states whose legal next-state intersection is empty, the verdict buttons are disabled with a tooltip explaining why.
