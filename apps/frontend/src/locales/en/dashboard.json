@@ -1,0 +1,43 @@
+{
+  "heading": "Dashboard",
+  "last_updated": "Last updated {{time}}",
+  "kpi": {
+    "active_projects": "Active projects",
+    "open_vulnerabilities": "Open vulnerabilities",
+    "pending_approvals": "Pending approvals",
+    "last_scan": "Last scan",
+    "view_all": "View all",
+    "never_scanned": "Never scanned",
+    "no_data": "—"
+  },
+  "chart": {
+    "severity_heading": "Vulnerability severity",
+    "license_heading": "License classification",
+    "subtitle_severity": "Each project counted by its worst non-zero severity bucket.",
+    "subtitle_license": "Each project counted by its worst non-zero license bucket."
+  },
+  "recent_scans": {
+    "heading": "Recent scans",
+    "view_all": "View all scans",
+    "empty": "No scans yet.",
+    "column": {
+      "project": "Project",
+      "kind": "Kind",
+      "status": "Status",
+      "started": "Started",
+      "duration": "Duration"
+    }
+  },
+  "recent_activity": {
+    "heading": "Recent activity",
+    "empty": "No recent activity."
+  },
+  "empty": {
+    "title": "No projects yet",
+    "description": "Register your first project to start scanning.",
+    "cta": "Register project"
+  },
+  "error": {
+    "load_failed": "Could not load dashboard data."
+  }
+}

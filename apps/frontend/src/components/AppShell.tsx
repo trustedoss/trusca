@@ -2,6 +2,7 @@ import {
   ClipboardCheck,
   FolderOpen,
   KeyRound,
+  LayoutDashboard,
   LogOut,
   Scale,
   ScanLine,
@@ -39,6 +40,18 @@ interface NavItem {
 }
 
 const MAIN_NAV: NavItem[] = [
+  {
+    // W9-#50 — dedicated Dashboard at "/". Lives above Projects so it's the
+    // first landing point for authenticated users, matching the BD / Snyk /
+    // Datadog / Mend convention of opening on a portfolio overview rather
+    // than a list view. `end` keeps the active state from spilling onto every
+    // /projects/* descendant route.
+    to: "/",
+    labelKey: "nav.dashboard",
+    icon: LayoutDashboard,
+    testId: "nav-dashboard",
+    end: true,
+  },
   {
     to: "/projects",
     labelKey: "nav.projects",
