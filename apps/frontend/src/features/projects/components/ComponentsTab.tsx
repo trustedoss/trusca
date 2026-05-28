@@ -465,6 +465,7 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
       <ComponentDrawer
         open={drawerOpen}
         componentId={drawerId}
+        projectId={projectId}
         onOpenChange={(open) => {
           if (!open) setDrawerComponent(null);
         }}

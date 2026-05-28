@@ -1,9 +1,17 @@
 /**
- * ComponentDrawer — unit tests (PR #10).
+ * ComponentDrawer — unit tests (PR #10, extended W10-E).
+ *
+ * W10-E: the drawer now uses `useLocation` / `useNavigate` for the "Open in
+ * full view" affordance, so renders are wrapped in `MemoryRouter`. Two new
+ * cases cover the affordance:
+ *   - hidden when no `projectId` is supplied (back-compat with historic call
+ *     sites that don't have a project context)
+ *   - visible + navigates to the dedicated page when both ids are present
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ComponentDetailResponse } from "@/features/projects/api/projectDetailApi";
@@ -50,17 +58,48 @@ function renderDrawer(
   componentId: string | null,
   open = true,
   onOpenChange: (open: boolean) => void = () => {},
+  options: {
+    projectId?: string;
+    /** Optional sink that captures the current location for navigation assertions. */
+    locationRef?: { current: ReturnType<typeof useLocation> | null };
+  } = {},
 ) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+
+  function LocationProbe() {
+    const loc = useLocation();
+    if (options.locationRef) {
+      options.locationRef.current = loc;
+    }
+    return null;
+  }
+
   return render(
     <QueryClientProvider client={client}>
-      <ComponentDrawer
-        open={open}
-        componentId={componentId}
-        onOpenChange={onOpenChange}
-      />
+      <MemoryRouter initialEntries={["/projects/proj-1?tab=components"]}>
+        <Routes>
+          <Route
+            path="/projects/:id"
+            element={
+              <>
+                <ComponentDrawer
+                  open={open}
+                  componentId={componentId}
+                  onOpenChange={onOpenChange}
+                  projectId={options.projectId}
+                />
+                <LocationProbe />
+              </>
+            }
+          />
+          <Route
+            path="/projects/:projectId/components/:componentId"
+            element={<LocationProbe />}
+          />
+        </Routes>
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -202,5 +241,69 @@ describe("ComponentDrawer", () => {
     expect(
       screen.getByTestId("component-drawer-raw-json").textContent,
     ).toContain("cdxgen");
+  });
+
+  // ─── W10-E — drawer → page bi-directional affordance ──────────────────
+
+  it("'Open in full view' button is hidden when no projectId prop is supplied", async () => {
+    // Historic call sites that don't pass `projectId` should keep working
+    // without surfacing a dead affordance (the destination URL can't be built
+    // without it).
+    mockedGet.mockResolvedValueOnce(detail());
+    renderDrawer("alpha-id");
+    await waitFor(() => {
+      expect(screen.getByTestId("component-drawer-meta")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByTestId("component-drawer-open-full"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("'Open in full view' button renders with EN label + aria-label when projectId is supplied", async () => {
+    mockedGet.mockResolvedValueOnce(detail());
+    renderDrawer("alpha-id", true, () => {}, { projectId: "proj-1" });
+    const button = await screen.findByTestId("component-drawer-open-full");
+    expect(button.textContent).toContain("Open in full view");
+    expect(button.getAttribute("aria-label")).toBe("Open in full view");
+  });
+
+  it("clicking 'Open in full view' closes drawer + navigates to the detail page with location.state.from set", async () => {
+    mockedGet.mockResolvedValueOnce(detail());
+    const onOpenChange = vi.fn();
+    const locationRef: { current: ReturnType<typeof useLocation> | null } = {
+      current: null,
+    };
+
+    renderDrawer("alpha-id", true, onOpenChange, {
+      projectId: "proj-1",
+      locationRef,
+    });
+
+    const button = await screen.findByTestId("component-drawer-open-full");
+    await userEvent.click(button);
+
+    // The drawer asks the parent to close itself first — preserves the
+    // existing behavior that clearing `?drawer=` is the parent's job.
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+
+    // Then the router lands on the dedicated detail page.
+    expect(locationRef.current?.pathname).toBe(
+      "/projects/proj-1/components/alpha-id",
+    );
+    // And `state.from` carries the *originating* drawer URL (full query
+    // string included) so the page's back-link returns to the same list.
+    expect(locationRef.current?.state).toEqual({
+      from: "/projects/proj-1?tab=components",
+    });
+  });
+
+  it("'Open in full view' is hidden until the component id is known", async () => {
+    // Guard: a drawer mounted with `componentId={null}` (e.g. transient state
+    // while the URL flips) must not surface the button — the destination URL
+    // would be incomplete.
+    renderDrawer(null, true, () => {}, { projectId: "proj-1" });
+    expect(
+      screen.queryByTestId("component-drawer-open-full"),
+    ).not.toBeInTheDocument();
   });
 });
