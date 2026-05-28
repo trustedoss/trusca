@@ -1,6 +1,7 @@
-import { Box, FileArchive, FolderOpen, GitBranch } from "lucide-react";
+import { Box, FileArchive, FolderOpen, GitBranch, KeyRound } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -353,7 +354,12 @@ export function SourceSelectDialog({
 
             <div className="min-h-[7rem]" data-testid="source-method-panel">
               {method === "git" ? (
-                <GitPanel gitUrl={project.git_url} />
+                <GitPanel
+                  gitUrl={project.git_url}
+                  projectId={project.id}
+                  hasGitCredential={project.has_git_credential}
+                  onSettingsNavigate={() => onOpenChange(false)}
+                />
               ) : null}
 
               {method === "upload" ? (
@@ -458,7 +464,21 @@ function stageLabelKey(stage: ScanStage): string {
   }
 }
 
-function GitPanel({ gitUrl }: { gitUrl: string | null }) {
+interface GitPanelProps {
+  gitUrl: string | null;
+  projectId: string;
+  hasGitCredential: boolean;
+  /** Close the dialog when the user follows the Settings deep-link, so the
+      Settings tab takes focus on top of the project detail page. */
+  onSettingsNavigate: () => void;
+}
+
+function GitPanel({
+  gitUrl,
+  projectId,
+  hasGitCredential,
+  onSettingsNavigate,
+}: GitPanelProps) {
   const { t } = useTranslation("scans");
   if (!gitUrl) {
     return (
@@ -476,6 +496,28 @@ function GitPanel({ gitUrl }: { gitUrl: string | null }) {
         {t("source.git.label")}
       </p>
       <p className="break-all font-mono text-xs">{gitUrl}</p>
+      <p
+        className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground"
+        data-testid="source-git-credential-hint"
+        data-configured={hasGitCredential ? "true" : "false"}
+      >
+        <KeyRound className="h-3 w-3 shrink-0" aria-hidden />
+        {hasGitCredential ? (
+          <span>{t("source.git.credential_configured")}</span>
+        ) : (
+          <span>
+            {t("source.git.credential_missing_prefix")}{" "}
+            <Link
+              to={`/projects/${projectId}?tab=settings`}
+              onClick={onSettingsNavigate}
+              className="underline underline-offset-2 hover:text-foreground"
+              data-testid="source-git-credential-settings-link"
+            >
+              {t("source.git.credential_settings_link")}
+            </Link>
+          </span>
+        )}
+      </p>
     </div>
   );
 }

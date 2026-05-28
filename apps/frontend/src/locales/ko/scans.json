@@ -117,7 +117,10 @@
     },
     "git": {
       "label": "설정된 Git URL",
-      "missing": "이 프로젝트에는 Git URL이 없습니다. .zip을 업로드하거나 폴더를 선택하거나, 프로젝트 설정에서 Git URL을 추가하세요."
+      "missing": "이 프로젝트에는 Git URL이 없습니다. .zip을 업로드하거나 폴더를 선택하거나, 프로젝트 설정에서 Git URL을 추가하세요.",
+      "credential_configured": "사설 자격 증명 설정됨 — 클론 시 사용됩니다.",
+      "credential_missing_prefix": "공개 저장소로 클론됩니다. 사설 저장소라면",
+      "credential_settings_link": "Settings에서 토큰을 추가하세요"
     },
     "upload": {
       "label": "소스 아카이브 (.zip)",

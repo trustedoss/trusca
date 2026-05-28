@@ -10,6 +10,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SourceSelectDialog } from "@/features/scan/SourceSelectDialog";
@@ -101,14 +102,16 @@ function renderDialog(props: Partial<Parameters<typeof SourceSelectDialog>[0]> =
     defaultOptions: { queries: { retry: false } },
   });
   render(
-    <QueryClientProvider client={client}>
-      <SourceSelectDialog
-        open
-        onOpenChange={onOpenChange}
-        project={props.project ?? project()}
-        onScanStarted={onScanStarted}
-      />
-    </QueryClientProvider>,
+    <MemoryRouter>
+      <QueryClientProvider client={client}>
+        <SourceSelectDialog
+          open
+          onOpenChange={onOpenChange}
+          project={props.project ?? project()}
+          onScanStarted={onScanStarted}
+        />
+      </QueryClientProvider>
+    </MemoryRouter>,
   );
   return { onScanStarted, onOpenChange };
 }
@@ -139,6 +142,30 @@ describe("SourceSelectDialog", () => {
       "true",
     );
     expect(screen.getByTestId("source-method-git")).toBeDisabled();
+  });
+
+  it("renders a muted credential hint with a Settings deep-link when no git credential is set", async () => {
+    const onOpenChange = vi.fn();
+    renderDialog({
+      onOpenChange,
+      project: project({ has_git_credential: false }),
+    });
+    const hint = screen.getByTestId("source-git-credential-hint");
+    expect(hint).toHaveAttribute("data-configured", "false");
+    const link = screen.getByTestId("source-git-credential-settings-link");
+    expect(link).toHaveAttribute("href", "/projects/proj-1?tab=settings");
+    // Following the link should close the dialog so the Settings tab takes focus.
+    await userEvent.click(link);
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("renders a configured credential hint without a link when has_git_credential is true", () => {
+    renderDialog({ project: project({ has_git_credential: true }) });
+    const hint = screen.getByTestId("source-git-credential-hint");
+    expect(hint).toHaveAttribute("data-configured", "true");
+    expect(
+      screen.queryByTestId("source-git-credential-settings-link"),
+    ).not.toBeInTheDocument();
   });
 
   it("rejects a non-zip file with an inline error", async () => {
