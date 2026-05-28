@@ -36,6 +36,8 @@ sidebar_position: 2
 
 프로젝트 목록 페이지에서 우측 슬라이드 드로어가 열리며 WebSocket 기반의 실시간 진행 뷰가 표시됩니다. 탭을 닫아도 스캔은 워커에서 계속됩니다. 프로젝트를 다시 열면 언제든 재연결됩니다. 스캔이 `queued` 또는 `running` 인 동안 드로어에는 **Cancel scan**(스캔 취소) 동작이 함께 표시됩니다 — [스캔 취소](#스캔-취소) 참고.
 
+![스캔 진행 드로어 — bootstrap → fetch → cdxgen → scancode → vuln_match → finalize 단계, WebSocket 실시간 표시](/img/screenshots/user-scans-progress-drawer.png)
+
 :::note 프로젝트당 동시 스캔은 하나
 프로젝트가 이미 `queued` 또는 `running` 스캔을 가지고 있으면 프로젝트 상세 헤더의 **Scan** 버튼이 비활성화되고, 헤더의 진행중 칩(클릭 시 기존 스캔의 진행 드로어 재오픈)을 가리키는 툴팁이 표시됩니다. API 로 두 번째 스캔을 트리거하면 `409 Conflict` 와 RFC 7807 확장 필드 `scan_already_in_progress: true` 를 반환합니다 — 활성 스캔이 종료 상태에 도달하거나 **Cancel** 한 뒤 다시 시작하세요. 동일한 가드가 UI·API·CI 클라이언트에 적용됩니다.
 :::

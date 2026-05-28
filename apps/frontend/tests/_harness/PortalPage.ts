@@ -111,9 +111,19 @@ export class PortalPage {
     projectName: string,
     method: "git" | "upload" | "folder" = "git",
   ): Promise<void> {
-    await this.page
-      .locator(`[data-testid="project-row-scan"][data-project-name="${projectName}"]`)
-      .click();
+    const button = this.page.locator(
+      `[data-testid="project-row-scan"][data-project-name="${projectName}"]`,
+    );
+    // Same fixture-leftover fallback as `openProjectDetail`: when the row
+    // isn't on the visible page, narrow the list with the toolbar search.
+    if ((await button.count()) === 0) {
+      const search = this.page.getByTestId("project-search");
+      if (await search.count()) {
+        await search.fill(projectName);
+        await button.waitFor({ state: "visible", timeout: 5_000 });
+      }
+    }
+    await button.click();
     // PR #91: the scan button opens the source-select dialog first.
     await this.page
       .getByTestId("source-select-dialog")
@@ -846,25 +856,21 @@ export class PortalPage {
    * translated tab label.
    */
   /**
-   * Click the (W4-C) Compliance tab and switch to its Licenses sub-view. The
-   * IA overhaul (W4-C #20) absorbed the standalone Licenses tab into the
-   * unified Compliance tab; this verb still lands callers on the licenses
-   * surface so existing specs keep working without a sweep.
+   * Click the (W4-C → W9-#58) Compliance tab. The legacy standalone
+   * Licenses tab was absorbed into a unified Compliance grid; this verb
+   * keeps the original name so existing specs keep working. It ensures
+   * the `Has obligations` toggle is **off** so the grid shows the
+   * licenses-first view that `selectLicensesTab` historically promised.
    */
   async selectLicensesTab(): Promise<void> {
     await this.page.getByTestId("project-detail-tab-compliance").click();
     await this.page
       .getByTestId("compliance-tab")
       .waitFor({ state: "visible", timeout: 10_000 });
-    // Ensure we're on the Licenses sub-view (it is the default, but a prior
-    // navigation could have left ?cview=obligations in the URL).
-    const subtab = this.page.getByTestId("compliance-subtab-licenses");
-    if ((await subtab.getAttribute("data-state")) !== "active") {
-      await subtab.click();
+    const toggle = this.page.getByTestId("compliance-has-obligations");
+    if ((await toggle.getAttribute("data-state")) === "checked") {
+      await toggle.click();
     }
-    await this.page
-      .getByTestId("licenses-tab")
-      .waitFor({ state: "visible", timeout: 10_000 });
     await this.expectLicensesTabReady();
   }
 
@@ -875,8 +881,8 @@ export class PortalPage {
    * `waitForTimeout`.
    */
   async expectLicensesTabReady(): Promise<void> {
-    const virtual = this.page.getByTestId("licenses-virtual");
-    const empty = this.page.getByTestId("licenses-empty");
+    const virtual = this.page.getByTestId("compliance-virtual");
+    const empty = this.page.getByTestId("compliance-empty");
     await expect(virtual.or(empty)).toBeVisible({ timeout: 10_000 });
   }
 
@@ -981,28 +987,26 @@ export class PortalPage {
    * MIME without rolling their own download plumbing per spec.
    */
   /**
-   * Click the (W4-C) Compliance tab and switch to its Obligations sub-view.
-   * Same redirect note as {@link selectLicensesTab}.
+   * Click the (W4-C → W9-#58) Compliance tab and flip the `Has obligations`
+   * toggle on. The historical `selectObligationsTab` verb still resolves to
+   * a row set scoped to obligations-bearing components, matching what the
+   * original standalone Obligations tab showed.
    */
   async selectObligationsTab(): Promise<void> {
     await this.page.getByTestId("project-detail-tab-compliance").click();
     await this.page
       .getByTestId("compliance-tab")
       .waitFor({ state: "visible", timeout: 10_000 });
-    // The default sub-view is Licenses; switch over.
-    const subtab = this.page.getByTestId("compliance-subtab-obligations");
-    if ((await subtab.getAttribute("data-state")) !== "active") {
-      await subtab.click();
+    const toggle = this.page.getByTestId("compliance-has-obligations");
+    if ((await toggle.getAttribute("data-state")) !== "checked") {
+      await toggle.click();
     }
-    await this.page
-      .getByTestId("obligations-tab")
-      .waitFor({ state: "visible", timeout: 10_000 });
     await this.expectObligationsTabReady();
   }
 
   async expectObligationsTabReady(): Promise<void> {
-    const virtual = this.page.getByTestId("obligations-virtual");
-    const empty = this.page.getByTestId("obligations-empty");
+    const virtual = this.page.getByTestId("compliance-virtual");
+    const empty = this.page.getByTestId("compliance-empty");
     await expect(virtual.or(empty)).toBeVisible({ timeout: 10_000 });
   }
 

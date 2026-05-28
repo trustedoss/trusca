@@ -80,6 +80,8 @@ A component can be reached by several paths at once (a "diamond" — two of your
 
 The **Compliance** tab on a project breaks down the same data by SPDX identifier and tier — a horizontal bar chart on top of the same table the Components tab uses, scoped to license rows (with the `Has obligations` toggle flipping the same surface into the obligations view; see [Obligations](#obligations)).
 
+![Project detail — Compliance tab with the tier distribution bar and per-license rows](/img/screenshots/user-licenses-donut.png)
+
 Every license is classified into one of four tiers. The **code value** column
 shows the value used in API responses, audit logs, and the build gate;
 the **UI label** column is what appears in tables and badges.
@@ -140,6 +142,8 @@ Each license carries **obligations** — duties you must honor when redistributi
 - **No endorsement** — do not use the project name to endorse derivatives without permission.
 
 The **Compliance** tab with the **Has obligations** toggle on consolidates obligations across components. Pick a NOTICE format (**text** or **HTML**) on the toolbar and click **Download NOTICE** to save a NOTICE document summarizing every attribution and license. The endpoint also serves a `markdown` variant via the API. See [SBOM → NOTICE file](./sbom.md#notice-file) for the format / MIME / extension table.
+
+![Project detail — Compliance tab with the Has obligations toggle on, showing the per-component obligations distribution](/img/screenshots/user-obligations-distribution.png)
 
 :::note Obligation kinds in this release
 The obligations catalog covers the seven kinds listed above. Some
