@@ -1,0 +1,52 @@
+TrustedOSS Portal ({{ .Chart.Name }}-{{ .Chart.Version }}, app {{ .Chart.AppVersion }}) installed.
+
+Workloads:
+  backend  x {{ .Values.backend.replicaCount }}   (FastAPI, Service :{{ .Values.backend.port }}, AUTO_MIGRATE=false)
+  worker   x {{ if .Values.worker.autoscaling.enabled }}HPA {{ .Values.worker.autoscaling.minReplicas }}-{{ .Values.worker.autoscaling.maxReplicas }}{{ else }}{{ .Values.worker.replicaCount }}{{ end }}   (Celery, concurrency={{ .Values.worker.concurrency }})
+  beat     x 1   (Celery scheduler — singleton)
+  frontend x {{ .Values.frontend.replicaCount }}   (React SPA on nginx, Service :{{ .Values.frontend.port }})
+
+Datastores:
+  postgres : {{ if .Values.postgres.bundled }}BUNDLED (StatefulSet{{ if .Values.postgres.persistence.enabled }}, PVC {{ .Values.postgres.persistence.size }}{{ else }}, ephemeral{{ end }}{{ if .Values.postgres.auth.roleSeparation }}, role-separated{{ end }}){{ else }}EXTERNAL (env.database.url){{ end }}
+  redis    : {{ if .Values.redis.bundled }}BUNDLED (Deployment{{ if .Values.redis.persistence.enabled }}, PVC {{ .Values.redis.persistence.size }}{{ else }}, ephemeral{{ end }}){{ else }}EXTERNAL (env.redis.url){{ end }}
+
+Schema migration:
+  {{- if .Values.migrationJob.enabled }}
+  A pre-install/pre-upgrade Job ran `alembic upgrade head` as the OWNER DB role.
+  Pods stay NotReady (/health/ready = 503) until the schema is at HEAD. Watch:
+    kubectl -n {{ .Release.Namespace }} get jobs -l app.kubernetes.io/component=migrate
+  {{- else }}
+  migrationJob.enabled=false — you must run `alembic upgrade head` out-of-band
+  (as the owner role) before the backend will become Ready.
+  {{- end }}
+
+Postgres connection budget (keep under Postgres max_connections):
+  backend = {{ .Values.backend.replicaCount }} x ({{ .Values.env.dbPool.size }} + {{ .Values.env.dbPool.maxOverflow }})
+  worker  = {{ .Values.worker.replicaCount }} x ({{ .Values.env.dbPool.syncSize }} + {{ .Values.env.dbPool.syncMaxOverflow }})
+  beat    = 1 x ({{ .Values.env.dbPool.syncSize }} + {{ .Values.env.dbPool.syncMaxOverflow }})
+
+Scale workers out (preferred over raising concurrency):
+  helm upgrade {{ .Release.Name }} . --set worker.replicaCount=4
+  # or enable the HPA:
+  helm upgrade {{ .Release.Name }} . --set worker.autoscaling.enabled=true
+
+{{ if .Values.ingress.enabled -}}
+Reach the portal:
+  https://{{ .Values.ingress.host }}/         (SPA)
+  https://{{ .Values.ingress.host }}/v1/...   (API)
+{{- if not .Values.env.corsAllowedOrigins }}
+
+WARNING: env.corsAllowedOrigins is empty. Production CORS MUST enumerate origins
+(CLAUDE.md core rule #13). Set it to "https://{{ .Values.ingress.host }}".
+{{- end }}
+{{- else -}}
+Ingress is disabled — port-forward to reach the portal:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "trustedoss.fullname" . }}-frontend 8080:{{ .Values.frontend.port }}
+{{- end }}
+
+{{- if and (not .Values.postgres.bundled) (not .Values.env.database.url) }}
+
+WARNING: postgres.bundled=false but env.database.url is empty — the backend
+cannot reach a database. Set env.database.url (and env.database.ownerUrl for
+role separation).
+{{- end }}

@@ -1,0 +1,99 @@
+{{- /*
+Database migration Job — Helm pre-install + pre-upgrade hook (B3).
+
+Runs `alembic upgrade head` ONCE as the OWNER DB role before the app pods roll.
+The pods themselves run with AUTO_MIGRATE=false (configmap-env.yaml), so this
+Job is the sole migrator; the advisory lock in alembic/env.py is only a safety
+net. Forward-only (CLAUDE.md migration policy) — never downgrades.
+
+Hook semantics:
+  - hook: pre-install,pre-upgrade  → runs before workloads on install AND upgrade.
+  - hook-weight: "-5"              → runs after the Secret/Postgres (weight 0+),
+                                     but the initContainer below still waits for
+                                     Postgres to actually accept connections.
+  - hook-delete-policy: before-hook-creation,hook-succeeded
+                                   → the previous run is cleaned up before a new
+                                     one is created, and a successful run is GC'd.
+
+The image is the worker image (Dockerfile.worker) because alembic + the
+migration revisions ship there. It gets the OWNER DSN via DATABASE_URL_OWNER /
+DATABASE_URL (trustedoss.migrationSecretEnv) — never exposed to runtime pods.
+*/ -}}
+{{- if .Values.migrationJob.enabled -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "trustedoss.fullname" . }}-migrate
+  labels:
+    {{- include "trustedoss.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: {{ .Values.migrationJob.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.migrationJob.activeDeadlineSeconds }}
+  {{- if .Values.migrationJob.ttlSecondsAfterFinished }}
+  ttlSecondsAfterFinished: {{ .Values.migrationJob.ttlSecondsAfterFinished }}
+  {{- end }}
+  template:
+    metadata:
+      labels:
+        {{- include "trustedoss.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ include "trustedoss.serviceAccountName" (dict "root" $ "component" "migrate") }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.postgres.bundled }}
+      initContainers:
+        # Wait for the bundled Postgres Service to accept connections before
+        # alembic runs. External-DB deployments skip this (the DB is assumed up).
+        - name: wait-for-postgres
+          image: "{{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}"
+          imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              echo "waiting for postgres at {{ include "trustedoss.postgres.fullname" . }}:{{ .Values.postgres.service.port }}"
+              until pg_isready -h {{ include "trustedoss.postgres.fullname" . }} -p {{ .Values.postgres.service.port }} -U {{ .Values.postgres.auth.username | quote }}; do
+                echo "postgres not ready yet; retrying in 3s"; sleep 3
+              done
+              echo "postgres is accepting connections"
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+      {{- end }}
+      containers:
+        - name: migrate
+          # Worker image carries alembic + the migration revisions.
+          image: "{{ .Values.image.workerRepository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # Forward-only: alembic upgrade head, never downgrade.
+          command: ["alembic", "upgrade", "head"]
+          env:
+            {{- include "trustedoss.migrationSecretEnv" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.migrationJob.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end -}}

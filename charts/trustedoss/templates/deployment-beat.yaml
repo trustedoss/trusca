@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "trustedoss.fullname" . }}-beat
+  labels:
+    {{- include "trustedoss.labels" . | nindent 4 }}
+    app.kubernetes.io/component: beat
+spec:
+  # Beat is a SINGLETON scheduler — exactly one replica, never more, or
+  # periodic tasks (Trivy DB refresh, vulnerability re-match every 6 h,
+  # workspace orphan cleaner, source-archive retention) fire twice.
+  replicas: 1
+  strategy:
+    # Recreate (not RollingUpdate) so two beat pods never overlap during a roll.
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "trustedoss.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: beat
+  template:
+    metadata:
+      labels:
+        {{- include "trustedoss.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: beat
+      annotations:
+        checksum/env: {{ include (print $.Template.BasePath "/configmap-env.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "trustedoss.serviceAccountName" (dict "root" $ "component" "beat") }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: beat
+          image: "{{ .Values.image.workerRepository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - celery
+            - -A
+            - tasks.celery_app
+            - beat
+            - --loglevel=info
+            - --schedule=/tmp/celerybeat-schedule
+          envFrom:
+            - configMapRef:
+                name: {{ include "trustedoss.fullname" . }}-env
+          env:
+            {{- include "trustedoss.runtimeSecretEnv" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.beat.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "trustedoss.fullname" . }}-backend
+  labels:
+    {{- include "trustedoss.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  replicas: {{ .Values.backend.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "trustedoss.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: backend
+  template:
+    metadata:
+      labels:
+        {{- include "trustedoss.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: backend
+      annotations:
+        # Roll pods when the shared env ConfigMap changes.
+        checksum/env: {{ include (print $.Template.BasePath "/configmap-env.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "trustedoss.serviceAccountName" (dict "root" $ "component" "backend") }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: backend
+          image: "{{ .Values.image.backendRepository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.backend.port }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "trustedoss.fullname" . }}-env
+          env:
+            {{- include "trustedoss.runtimeSecretEnv" . | nindent 12 }}
+          volumeMounts:
+            - name: workspace
+              mountPath: {{ .Values.workspace.mountPath }}
+          # Liveness — PURE liveness (/health). Restarts the pod only when the
+          # process itself is wedged; it must NOT depend on schema state, or a
+          # pre-migration pod would be killed in a loop.
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.backend.healthPath }}
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          # Readiness — v2.1 Track B (B1). /health/ready returns 200 only when
+          # the schema == Alembic HEAD, so the pod joins the Service endpoints
+          # (and traffic flows) only after migrations have landed. Falls back to
+          # healthPath if readyPath is unset (older values.yaml overrides).
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.backend.readyPath | default .Values.backend.healthPath }}
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.backend.resources | nindent 12 }}
+      volumes:
+        - name: workspace
+          {{- if .Values.workspace.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.workspace.persistence.existingClaim | default (printf "%s-workspace" (include "trustedoss.fullname" .)) }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

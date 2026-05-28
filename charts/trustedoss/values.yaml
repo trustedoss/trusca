@@ -1,0 +1,381 @@
+# Default values for the trustedoss chart.
+# Every value is documented inline (chart convention). Override with
+# `-f my-values.yaml` or `--set key=value`.
+#
+# Chart 0.3.0 (W6 / ADR-0001) — Dependency-Track has been REMOVED. Vulnerability
+# matching now runs from the worker via `trivy sbom` against the locally-cached
+# Trivy DB. Air-gapped sites override the upstream OCI registry with
+# `env.trivy.dbRepository`. See docs/decisions/0001-replace-dt-with-trivy.md.
+#
+# Production-complete chart layout: bundled-or-external Postgres & Redis, a
+# frontend Deployment, an Ingress (cert-manager TLS), and a Helm
+# pre-install/pre-upgrade migration Job that runs `alembic upgrade head` as the
+# OWNER DB role exactly once (pods run with AUTO_MIGRATE=false; the Postgres
+# advisory lock in alembic/env.py is only a safety net).
+
+# -- Override the chart name / fullname used in object names (rarely needed).
+nameOverride: ""
+fullnameOverride: ""
+
+# -- Application image references. Pin to minor+patch — never `:latest`
+#    (CLAUDE.md core rule #9). Published to GitHub Container Registry by
+#    .github/workflows/release.yml on each vX.Y.Z tag. Override the
+#    repositories for a fork / private mirror / air-gapped registry.
+image:
+  # API image (FastAPI). Slim, no SCA toolchain.
+  backendRepository: ghcr.io/trustedoss/backend
+  # Worker image (carries cdxgen / scancode / Trivy / JRE). Heavier. Also used
+  # by the beat scheduler and the migration Job (alembic ships in this image).
+  workerRepository: ghcr.io/trustedoss/backend-worker
+  # Frontend image (React SPA on nginx, listens on :8080).
+  frontendRepository: ghcr.io/trustedoss/frontend
+  # Tag applied to ALL three images. Kept in lock-step with Chart.yaml appVersion.
+  tag: "2.4.0"
+  pullPolicy: IfNotPresent
+# -- Image pull secrets for private registries (list of {name: ...}).
+imagePullSecrets: []
+
+# -- Per-workload ServiceAccounts (least privilege). One account per workload;
+#    no cluster-wide RBAC is requested (the app talks to Postgres / Redis / DT,
+#    not the Kubernetes API).
+serviceAccount:
+  create: true
+  annotations: {}
+
+# ===========================================================================
+# Application environment.
+#
+# Non-secret keys map 1:1 to the os.getenv() accessors in
+# apps/backend/core/config.py and to the docker-compose `${VAR:-default}`
+# defaults. Secret keys (DB DSNs, SECRET_KEY) live in a Secret — see
+# `env.secret` and the bundled-datastore blocks below.
+# ===========================================================================
+env:
+  # APP_ENV: dev | staging | prod. Drives CORS/log strictness in the backend.
+  appEnv: prod
+  # LOG_LEVEL: DEBUG | INFO | WARNING | ERROR.
+  logLevel: INFO
+  # CORS allow-list (comma-separated). Production MUST enumerate origins
+  # (CLAUDE.md core rule #13) — no wildcard. Typically your ingress host(s),
+  # e.g. "https://trustedoss.example.com".
+  corsAllowedOrigins: ""
+
+  # JWT lifetimes (security defaults — CLAUDE.md §3).
+  accessTokenExpireMinutes: 30
+  refreshTokenExpireDays: 7
+
+  # -------------------------------------------------------------------------
+  # External datastore DSNs. Used ONLY when postgres.bundled / redis.bundled
+  # are false. Leave blank when bundling. asyncpg driver for Postgres.
+  # -------------------------------------------------------------------------
+  database:
+    # Runtime DML-only DSN (DATABASE_URL_APP). For a single-role external DB,
+    # set this to your one DSN and leave ownerUrl empty (the chart falls back
+    # to this for migrations too).
+    url: ""
+    # Owner/DDL DSN (DATABASE_URL_OWNER) — used by the migration Job to run
+    # `alembic upgrade head`. Set when your external DB uses role separation
+    # (a dedicated owner role for DDL, a DML-only role for runtime). When
+    # empty, the migration Job falls back to `database.url`.
+    ownerUrl: ""
+  redis:
+    # REDIS_URL — broker + result backend. External Redis/Memorystore.
+    url: ""
+
+  # -------------------------------------------------------------------------
+  # Application secret material. The chart renders a Secret (secret.yaml)
+  # holding DATABASE_URL_APP / DATABASE_URL_OWNER / REDIS_URL / SECRET_KEY,
+  # UNLESS you supply an existingSecret — then ALL four keys must exist in it:
+  #   DATABASE_URL_APP, DATABASE_URL_OWNER, REDIS_URL, SECRET_KEY
+  # -------------------------------------------------------------------------
+  secret:
+    # Pre-created Secret to use instead of the chart-rendered one. When set,
+    # the chart renders NO Secret and references these keys verbatim.
+    existingSecret: ""
+    # SECRET_KEY (JWT signing, >= 32 chars). Inline value goes INTO the
+    # chart-rendered Secret. Generate with `openssl rand -hex 32`.
+    # REQUIRED unless existingSecret is set. Never commit a real value.
+    secretKey: ""
+
+  # -------------------------------------------------------------------------
+  # Trivy DB — vulnerability data path (v2.4.0+, ADR-0001).
+  #
+  # Vulnerability matching runs from the worker via `trivy sbom` against the
+  # locally-cached Trivy DB. There is NO external vulnerability engine to wire
+  # in — the data ships through Trivy's OCI registry.
+  #
+  # AIR-GAPPED: set `dbRepository` to an internal OCI mirror you maintain
+  # (mirror with e.g. `oras cp ghcr.io/aquasecurity/trivy-db:2 …`). The worker
+  # downloads + caches the DB on first boot; the weekly refresh beat keeps it
+  # fresh against `dbRepository`.
+  # -------------------------------------------------------------------------
+  trivy:
+    # TRIVY_DB_REPOSITORY — OCI registry the worker pulls the DB from.
+    # Override for an air-gapped mirror; default is the upstream registry.
+    dbRepository: "ghcr.io/aquasecurity/trivy-db"
+    # TRIVY_DB_REFRESH_HOURS — beat cadence for the DB refresh task. Trivy's
+    # upstream DB rebuilds roughly daily; weekly (168h) is the documented
+    # sweet spot between freshness + bandwidth.
+    dbRefreshHours: 168
+    # TRIVY_DB_CACHE_DIR — in-container path the cached DB lands at. Lives on
+    # the workspace PVC so the worker pool shares one cache instead of N.
+    dbCacheDir: "/var/lib/trivy"
+    # TRIVY_TIMEOUT_SECONDS — per-invocation wall clock for `trivy sbom`.
+    timeoutSeconds: 300
+
+  # -------------------------------------------------------------------------
+  # DB connection pool (B1). Total connections per process = size + overflow.
+  # Mind the budget (see NOTES.txt). The backend clamps each value.
+  # -------------------------------------------------------------------------
+  dbPool:
+    size: 20            # DB_POOL_SIZE
+    maxOverflow: 10     # DB_MAX_OVERFLOW
+    timeout: 30         # DB_POOL_TIMEOUT
+    recycle: 1800       # DB_POOL_RECYCLE
+    syncSize: 5         # DB_SYNC_POOL_SIZE (per worker AND per beat pod)
+    syncMaxOverflow: 5  # DB_SYNC_MAX_OVERFLOW
+    syncTimeout: 30     # DB_SYNC_POOL_TIMEOUT
+    syncRecycle: 1800   # DB_SYNC_POOL_RECYCLE
+
+  # -------------------------------------------------------------------------
+  # Scan controls (B1 abuse limits + A1 stability).
+  # -------------------------------------------------------------------------
+  scan:
+    triggerRateLimit: "20/minute"      # SCAN_TRIGGER_RATE_LIMIT
+    concurrencyCapPerTeam: 10          # SCAN_CONCURRENCY_CAP_PER_TEAM (0=off)
+    softTimeLimitSeconds: 3600         # SCAN_SOFT_TIME_LIMIT_SECONDS
+    hardTimeLimitSeconds: 3900         # SCAN_HARD_TIME_LIMIT_SECONDS
+    workspaceOrphanMaxAgeSeconds: 900  # WORKSPACE_ORPHAN_MAX_AGE_SECONDS
+
+  # -------------------------------------------------------------------------
+  # scancode first-party license detection guards (A2).
+  # -------------------------------------------------------------------------
+  scancode:
+    timeoutSeconds: 600          # SCANCODE_TIMEOUT_SECONDS
+    maxFiles: 20000              # SCANCODE_MAX_FILES
+    maxDetections: 5000          # SCANCODE_MAX_DETECTIONS
+    # Quoted to keep it a plain-integer string (int64 guard in the template).
+    maxResultBytes: "268435456"  # SCANCODE_MAX_RESULT_BYTES (256 MiB)
+
+# ===========================================================================
+# Shared workspace volume.
+#
+# Source-scan tasks write `${WORKSPACE_HOST_PATH}/<scan_id>/` and the backend
+# reads it back for archive download / backup. backend + worker BOTH mount it,
+# so on multi-node clusters it MUST be ReadWriteMany. The chart provisions one
+# PVC and mounts it at /workspace.
+# ===========================================================================
+workspace:
+  # Mount path inside backend + worker (WORKSPACE_HOST_PATH).
+  mountPath: /workspace
+  persistence:
+    enabled: true
+    # ReadWriteMany is required when backend and worker land on different
+    # nodes (the default). Use ReadWriteOnce ONLY if you pin both to one node.
+    accessMode: ReadWriteMany
+    size: 20Gi
+    # storageClassName: "" leaves it to the cluster default. Set a RWX class
+    # (e.g. nfs / efs / filestore / longhorn) on multi-node clusters.
+    storageClassName: ""
+    # Use a pre-created PVC instead of provisioning one.
+    existingClaim: ""
+
+# ===========================================================================
+# Bundled PostgreSQL (StatefulSet + headless Service + PVC).
+#
+# bundled=true  → the chart runs Postgres in-cluster and wires the runtime /
+#                 owner DSNs automatically into the Secret. Good for on-prem /
+#                 evaluation. NOT recommended for managed-cloud production —
+#                 prefer Cloud SQL / RDS (set bundled=false + env.database.*).
+# bundled=false → no Postgres objects are rendered; env.database.url /
+#                 env.database.ownerUrl are used.
+# ===========================================================================
+postgres:
+  bundled: true
+  image:
+    repository: postgres
+    tag: "17.2-alpine"   # CLAUDE.md #9 — pinned, never :latest
+    pullPolicy: IfNotPresent
+  auth:
+    # Owner (DDL) role — runs migrations; also runtime role when
+    # roleSeparation=false.
+    username: trustedoss
+    password: ""          # REQUIRED when bundled. openssl rand -hex 24
+    database: trustedoss
+    # L1 role separation (Marathon bundle 8): a DML-only app role for the
+    # runtime, owner role reserved for migrations. When false, one role does
+    # both (simpler; matches the default docker-compose dev posture).
+    roleSeparation: false
+    appUsername: trustedoss_app
+    appPassword: ""       # REQUIRED when roleSeparation=true
+  service:
+    port: 5432
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClassName: ""
+    accessMode: ReadWriteOnce
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+
+# ===========================================================================
+# Bundled Redis (Deployment + Service). Broker + result backend.
+# bundled=false → no Redis objects; env.redis.url is used.
+# Redis is a cache/broker here (Celery), so it is intentionally ephemeral
+# (no PVC by default — task state is reconstructable).
+# ===========================================================================
+redis:
+  bundled: true
+  image:
+    repository: redis
+    tag: "7.4-alpine"     # CLAUDE.md #9 — pinned, never :latest
+    pullPolicy: IfNotPresent
+  service:
+    port: 6379
+  persistence:
+    # Off by default — broker queue is transient. Enable for at-least-once
+    # delivery across Redis restarts (appendonly is always on).
+    enabled: false
+    size: 1Gi
+    storageClassName: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+# ===========================================================================
+# Database migration Job (Helm pre-install + pre-upgrade hook).
+#
+# Runs `alembic upgrade head` ONCE as the OWNER role before pods roll. Pods run
+# with AUTO_MIGRATE=false, so the Job is the sole migrator (the advisory lock in
+# alembic/env.py remains a safety net). Forward-only (CLAUDE.md migration
+# policy) — the Job never downgrades.
+# ===========================================================================
+migrationJob:
+  enabled: true
+  # Retries on transient failure (e.g. DB still warming up). Each attempt runs
+  # alembic upgrade head — idempotent, so retries are safe.
+  backoffLimit: 3
+  # Hard ceiling so a wedged migration cannot block a release indefinitely.
+  activeDeadlineSeconds: 1800
+  # TTL after the Job finishes (k8s GCs it). hook-delete-policy also cleans up.
+  ttlSecondsAfterFinished: 600
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+# ===========================================================================
+# Backend (FastAPI) workload.
+# ===========================================================================
+backend:
+  replicaCount: 2
+  port: 8000
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "2"
+      memory: 1Gi
+  # Liveness — PURE liveness (/health); touches no DB, proves only uvicorn is up.
+  healthPath: /health
+  # Readiness — /health/ready returns 200 only when the schema == Alembic HEAD
+  # (B1). Pods join the Service only after the migration Job has landed.
+  readyPath: /health/ready
+
+# ===========================================================================
+# Celery worker workload.
+#
+# Horizontal scaling (B2): prefer raising `replicaCount` (more pods) over
+# `concurrency` (more prefork slots per pod) — each slot can fork a full
+# cdxgen/scancode/Trivy pipeline (~1.5-2 GB transient).
+# Postgres draw = replicaCount x (dbPool.syncSize + syncMaxOverflow).
+# ===========================================================================
+worker:
+  replicaCount: 2
+  concurrency: 2
+  resources:
+    requests:
+      cpu: "1"
+      memory: 2Gi
+    limits:
+      cpu: "4"
+      memory: 6Gi
+  # Optional HorizontalPodAutoscaler — OFF by default (chart convention).
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 75
+
+# ===========================================================================
+# Celery beat (singleton scheduler). Exactly one replica.
+# ===========================================================================
+beat:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# ===========================================================================
+# Frontend (React SPA on nginx, :8080).
+# ===========================================================================
+frontend:
+  replicaCount: 2
+  port: 8080
+  # nginx serves /healthz with a literal 200 — used by both probes.
+  healthPath: /healthz
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# ===========================================================================
+# Ingress (cert-manager TLS).
+#
+# Routes:
+#   /v1, /auth, /ws, /health, /metrics  → backend Service  (API)
+#   /                                   → frontend Service (SPA, catch-all)
+# Backend paths are listed first so they win over the SPA catch-all (most
+# ingress controllers match by path specificity / order).
+# ===========================================================================
+ingress:
+  enabled: true
+  className: nginx
+  # The host the portal is served on. REQUIRED when ingress.enabled.
+  host: ""
+  annotations:
+    # cert-manager issues + renews the TLS cert. Point at your ClusterIssuer.
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    # SPA + WebSocket friendliness on the nginx ingress controller.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+  tls:
+    enabled: true
+    # Secret cert-manager writes the issued cert into. Defaults to
+    # "<fullname>-tls" when left empty.
+    secretName: ""
+
+# Pod scheduling extras applied to all workloads.
+nodeSelector: {}
+tolerations: []
+affinity: {}
+podAnnotations: {}

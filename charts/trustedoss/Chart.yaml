@@ -1,0 +1,51 @@
+apiVersion: v2
+name: trustedoss
+description: >-
+  TrustedOSS Portal — enterprise open-source risk management (SCA: CVE,
+  license compliance, SBOM). Production-complete chart: bundled-or-external
+  PostgreSQL & Redis, a frontend Deployment, an Ingress with cert-manager TLS,
+  and a pre-install/pre-upgrade migration Job that runs `alembic upgrade head`
+  as the owner DB role (pods run AUTO_MIGRATE=false). Vulnerability matching
+  runs from the worker via `trivy sbom` against the locally-cached Trivy DB
+  (no external engine; air-gapped first-class via `env.trivy.dbRepository`).
+type: application
+
+# Chart version is the packaging version (SemVer); bump on every chart change.
+# Aligned with the application version for the first public release.
+version: 0.10.0
+
+# appVersion tracks the released container image tag (image.tag default).
+# Keep in lock-step with .env.example IMAGE_TAG / docker-compose IMAGE_TAG and
+# the .github/workflows/release.yml image tags.
+appVersion: "0.10.0"
+
+keywords:
+  - sca
+  - sbom
+  - vulnerability
+  - license-compliance
+home: https://github.com/trustedoss/trustedoss-portal
+sources:
+  - https://github.com/trustedoss/trustedoss-portal
+maintainers:
+  - name: TrustedOSS
+icon: https://raw.githubusercontent.com/trustedoss/trustedoss-portal/main/docs/static/img/logo.png
+
+# ArtifactHub metadata (https://artifacthub.io/docs/topics/annotations/helm/).
+# Surfaced on the ArtifactHub package page once the OCI repo is registered (a
+# one-time operator action — see charts/trustedoss/artifacthub-repo.yml).
+annotations:
+  artifacthub.io/license: Apache-2.0
+  artifacthub.io/links: |
+    - name: source
+      url: https://github.com/trustedoss/trustedoss-portal
+    - name: documentation
+      url: https://trustedoss.github.io/trustedoss-portal
+  artifacthub.io/maintainers: |
+    - name: TrustedOSS
+      email: maintainers@trustedoss.dev
+  artifacthub.io/prerelease: "false"
+  artifacthub.io/containsSecurityUpdates: "false"
+  artifacthub.io/changes: |
+    - kind: added
+      description: "First public release of the TrustedOSS Portal chart"
