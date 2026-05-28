@@ -31,10 +31,13 @@ data:
   {{- /* REDIS_URL is secret-backed (it may carry a password) — see secret.yaml
          + trustedoss.runtimeSecretEnv. Not emitted here. */ -}}
 
-  # ---- Dependency-Track (external; breaker OPEN when url is unset) ----
-  {{- if .Values.env.dt.url }}
-  DT_URL: {{ .Values.env.dt.url | quote }}
-  {{- end }}
+  # ---- Trivy DB (v2.4.0+, ADR-0001) ----
+  # Worker reads `TRIVY_DB_REPOSITORY` to pull the cached DB; air-gapped sites
+  # override with an internal OCI mirror via env.trivy.dbRepository.
+  TRIVY_DB_REPOSITORY: {{ .Values.env.trivy.dbRepository | quote }}
+  TRIVY_DB_REFRESH_HOURS: {{ .Values.env.trivy.dbRefreshHours | quote }}
+  TRIVY_DB_CACHE_DIR: {{ .Values.env.trivy.dbCacheDir | quote }}
+  TRIVY_TIMEOUT_SECONDS: {{ .Values.env.trivy.timeoutSeconds | quote }}
 
   # ---- DB connection pool (B1) ----
   DB_POOL_SIZE: {{ .Values.env.dbPool.size | quote }}

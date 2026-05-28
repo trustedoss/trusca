@@ -2,22 +2,28 @@ apiVersion: v2
 name: trustedoss
 description: >-
   TrustedOSS Portal — enterprise open-source risk management (SCA: CVE,
-  license compliance, SBOM). Production-complete chart (v2.1 / B3): bundled-or-
-  external PostgreSQL & Redis, a frontend Deployment, an Ingress with
-  cert-manager TLS, and a pre-install/pre-upgrade migration Job that runs
-  `alembic upgrade head` as the owner DB role (pods run AUTO_MIGRATE=false).
-  Dependency-Track is NOT bundled — point at an external instance.
+  license compliance, SBOM). Production-complete chart: bundled-or-external
+  PostgreSQL & Redis, a frontend Deployment, an Ingress with cert-manager TLS,
+  and a pre-install/pre-upgrade migration Job that runs `alembic upgrade head`
+  as the owner DB role (pods run AUTO_MIGRATE=false). Vulnerability matching
+  runs from the worker via `trivy sbom` against the locally-cached Trivy DB
+  (no external engine; air-gapped first-class via `env.trivy.dbRepository`).
 type: application
 
 # Chart version is the packaging version (SemVer); bump on every chart change.
-# B3 — production-complete chart (Postgres/Redis bundle toggles, frontend,
-# Ingress/TLS, migration Job, OCI publication).
-version: 0.2.0
+# 0.3.0 — W6 / ADR-0001 Dependency-Track removal:
+#   * `env.dt.*` value tree removed; `env.trivy.*` replaces it.
+#   * No more DT_API_KEY in the chart Secret.
+#   * configmap-env: TRIVY_DB_REPOSITORY / TRIVY_DB_REFRESH_HOURS / TRIVY_DB_CACHE_DIR.
+#   * appVersion bumped to v2.4.0 (Trivy single-engine).
+# 0.2.0 — production-complete chart (Postgres/Redis bundle toggles, frontend,
+#         Ingress/TLS, migration Job, OCI publication).
+version: 0.3.0
 
 # appVersion tracks the released container image tag (image.tag default).
 # Keep in lock-step with .env.example IMAGE_TAG / docker-compose IMAGE_TAG and
 # the .github/workflows/release.yml image tags.
-appVersion: "2.0.0"
+appVersion: "2.4.0"
 
 keywords:
   - sca
@@ -47,15 +53,9 @@ annotations:
   artifacthub.io/prerelease: "false"
   artifacthub.io/containsSecurityUpdates: "false"
   artifacthub.io/changes: |
+    - kind: removed
+      description: "env.dt.* value tree and DT_API_KEY Secret entry (Dependency-Track removed — ADR-0001)"
     - kind: added
-      description: "Bundled-or-external PostgreSQL (StatefulSet) and Redis toggles"
-    - kind: added
-      description: "Frontend Deployment + Service (React SPA on nginx)"
-    - kind: added
-      description: "Ingress with cert-manager TLS and API/SPA path routing"
-    - kind: added
-      description: "Pre-install/pre-upgrade migration Job (alembic upgrade head, owner role)"
+      description: "env.trivy.* values (TRIVY_DB_REPOSITORY, TRIVY_DB_REFRESH_HOURS, TRIVY_DB_CACHE_DIR)"
     - kind: changed
-      description: "Pods run AUTO_MIGRATE=false; the migration Job is the sole migrator"
-    - kind: added
-      description: "OCI (ghcr) chart publication workflow + ArtifactHub metadata"
+      description: "appVersion bumped to v2.4.0 (Trivy single-engine + W11 enterprise polish)"

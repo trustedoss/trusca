@@ -27,7 +27,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Chart version to package & push (must equal Chart.yaml version, e.g. 0.2.0)."
+        description: "Chart version to package & push (must equal Chart.yaml version, e.g. 0.3.0)."
         required: true
         type: string
 

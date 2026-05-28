@@ -10,8 +10,10 @@
 #   docker-compose -f docker-compose.yml ps     # confirm `healthy` status
 #   open https://${DOMAIN}                      # served via Traefik + LE TLS
 #
-# Add bundled Dependency-Track on top with the existing overlay:
-#   docker-compose -f docker-compose.yml -f docker-compose.dt.yml up -d
+# Vulnerability data (v2.4.0+, ADR-0001): the worker downloads the Trivy DB on
+# first boot (~600 MB, 1-3 minutes) — set TRIVY_DB_REPOSITORY in .env to point
+# at an air-gapped mirror. Dependency-Track was REMOVED in v2.4.0; there is no
+# longer a `docker-compose.dt.yml` overlay.
 #
 # Service map:
 #   traefik   — edge proxy, TLS termination (Let's Encrypt HTTP-01),
@@ -24,8 +26,9 @@
 #   worker    — Celery worker on the heavier image
 #               (ghcr.io/trustedoss/backend-worker:${IMAGE_TAG}) which carries
 #               cdxgen / scancode / Trivy / JRE.
-#   beat      — Celery Beat scheduler (DT heartbeat, hourly DT resync, 6h
-#               orphan cleanup) — same worker image, separate process.
+#   beat      — Celery Beat scheduler (vulnerability re-match every 6 h, Trivy
+#               DB refresh weekly, workspace orphan cleanup, source-archive
+#               retention) — same worker image, separate process.
 #   frontend  — nginx + Vite static bundle (ghcr.io/trustedoss/frontend:
 #               ${IMAGE_TAG}). Reachable only inside the compose network;
 #               Traefik routes `/`.
@@ -69,10 +72,11 @@ x-backend-env: &backend-env
   # image); third-party dependency licenses come declared from cdxgen. The
   # ort/rules.kts file is retained in-repo for reference but is no longer
   # read at runtime.
-  # DT vars are intentionally absent here — bring up
-  # docker-compose.dt.yml as a second `-f` to wire them in. Leaving the
-  # breaker OPEN (no DT) is a valid prod posture for air-gapped sites
-  # that point at an external DT instance via .env.
+  # W6-#43a (ADR-0001): DT_URL / DT_API_KEY removed — vulnerability matching
+  # runs entirely from the worker via `trivy sbom` against the locally-cached
+  # Trivy DB. Air-gapped sites override the upstream OCI registry with
+  # TRIVY_DB_REPOSITORY (ghcr.io/aquasecurity/trivy-db by default).
+  TRIVY_DB_REPOSITORY: ${TRIVY_DB_REPOSITORY:-ghcr.io/aquasecurity/trivy-db}
   SMTP_HOST: ${SMTP_HOST:-}
   SMTP_PORT: ${SMTP_PORT:-587}
   SMTP_USER: ${SMTP_USER:-}
@@ -310,7 +314,7 @@ services:
           memory: 1G
 
   # ---------------------------------------------------------------------------
-  # Celery worker — runs cdxgen / scancode / Trivy / DT integrations.
+  # Celery worker — runs cdxgen / scancode / Trivy.
   #
   # Scaling out (work-B / B2): the worker is stateless apart from the shared
   # `workspace` volume + the Redis broker, so it scales horizontally. Two
@@ -406,7 +410,8 @@ services:
           memory: 2G
 
   # ---------------------------------------------------------------------------
-  # Celery Beat — periodic scheduler for DT heartbeat / resync / orphan cleaner.
+  # Celery Beat — periodic scheduler (Trivy DB refresh, vulnerability re-match,
+  # workspace orphan cleaner, source-archive retention).
   # ---------------------------------------------------------------------------
   beat:
     image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/backend-worker:${IMAGE_TAG:-2.0.0}

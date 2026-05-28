@@ -20,7 +20,10 @@ Production-complete Kubernetes deployment of [TrustedOSS Portal](https://github.
 | migrate | Job (pre-install/pre-upgrade hook) | `alembic upgrade head` as the owner role. |
 | ingress | Ingress | cert-manager TLS; API + SPA routing. |
 
-Dependency-Track is **not** bundled — point at an external instance via `env.dt.url`.
+Vulnerability matching runs from the worker via `trivy sbom` against the
+locally-cached Trivy DB — no external engine. Air-gapped sites override the
+upstream OCI registry with `env.trivy.dbRepository`. See
+[ADR-0001 — Dependency-Track removal](https://github.com/trustedoss/trustedoss-portal/blob/main/docs/decisions/0001-replace-dt-with-trivy.md).
 
 ## Quick start (bundled datastores, evaluation)
 
@@ -87,7 +90,7 @@ connections before alembic runs.
 | `image.backendRepository` | `ghcr.io/trustedoss/backend` | API image. |
 | `image.workerRepository` | `ghcr.io/trustedoss/backend-worker` | Worker/beat/migrate image (ships alembic). |
 | `image.frontendRepository` | `ghcr.io/trustedoss/frontend` | SPA image. |
-| `image.tag` | `2.0.0` | Tag for all three (lock-step with `appVersion`). Never `:latest`. |
+| `image.tag` | `2.4.0` | Tag for all three (lock-step with `appVersion`). Never `:latest`. |
 | `image.pullPolicy` | `IfNotPresent` | |
 | `imagePullSecrets` | `[]` | Private-registry pull secrets. |
 
@@ -105,8 +108,10 @@ connections before alembic runs.
 | `env.redis.url` | `""` | External `REDIS_URL`. Used when `redis.bundled=false`. |
 | `env.secret.existingSecret` | `""` | Pre-created Secret with all four keys; disables the chart Secret. |
 | `env.secret.secretKey` | `""` | `SECRET_KEY` (>=32 chars). Required unless `existingSecret`. |
-| `env.dt.url` | `""` | `DT_URL` (external Dependency-Track). Breaker stays OPEN when unset. |
-| `env.dt.apiKey` | `""` | `DT_API_KEY` (goes into the chart Secret when set). |
+| `env.trivy.dbRepository` | `ghcr.io/aquasecurity/trivy-db` | `TRIVY_DB_REPOSITORY` — OCI registry the worker pulls the cached DB from. Override for an air-gapped mirror. |
+| `env.trivy.dbRefreshHours` | `168` | `TRIVY_DB_REFRESH_HOURS` — beat cadence for the DB refresh task. |
+| `env.trivy.dbCacheDir` | `/var/lib/trivy` | `TRIVY_DB_CACHE_DIR` — in-container path the cached DB lands at. |
+| `env.trivy.timeoutSeconds` | `300` | `TRIVY_TIMEOUT_SECONDS` — per-invocation wall clock for `trivy sbom`. |
 | `env.dbPool.*` | see `values.yaml` | Async + sync connection-pool sizing (B1). |
 | `env.scan.*` | see `values.yaml` | Scan rate limit / concurrency cap / time limits (B1+A1). |
 | `env.scancode.*` | see `values.yaml` | scancode license-detection guards (A2). |
