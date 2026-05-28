@@ -117,7 +117,10 @@
     },
     "git": {
       "label": "Configured Git URL",
-      "missing": "This project has no Git URL. Upload a .zip or select a folder instead, or add a Git URL in project settings."
+      "missing": "This project has no Git URL. Upload a .zip or select a folder instead, or add a Git URL in project settings.",
+      "credential_configured": "Private credential configured — used at clone time.",
+      "credential_missing_prefix": "Cloned as a public repository. For a private repo, add a token in",
+      "credential_settings_link": "Settings"
     },
     "upload": {
       "label": "Source archive (.zip)",
