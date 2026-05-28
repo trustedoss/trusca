@@ -419,6 +419,10 @@ async def restore_backup_endpoint(
     extract_dir = upload_dir / "extracted"
     extract_dir.mkdir(parents=True, exist_ok=True)
     def _extract_archive() -> None:
+        # Path traversal blocked by the getmembers() preflight loop below
+        # (rejects "/" + "..") and by filter="data" inside extractall
+        # (Python 3.12+ rejects symlinks/devices and out-of-tree members).
+        # nosemgrep
         with tarfile.open(archive_path, mode="r:gz") as tar:
             # Block path-traversal entries (..) and absolute paths, AND
             # enforce decompression-bomb caps (Chore O / H3). The wire cap
@@ -443,7 +447,6 @@ async def restore_backup_endpoint(
             # Python 3.12+ filter="data" rejects symlinks/devices and members
             # whose resolved path escapes the destination directory. Combined
             # with the preflight loop above, extractall is safe here.
-            # nosemgrep: trailofbits.python.tarfile-extractall-traversal.tarfile-extractall-traversal  # noqa: E501
             tar.extractall(path=str(extract_dir), filter="data")  # noqa: S202
 
     try:

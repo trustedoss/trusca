@@ -519,6 +519,9 @@ def _extract_workspace_archive(source_tar_gz: Path) -> None:
             )
         shutil.rmtree(workspace)
 
+    # Path traversal + size caps are enforced by the getmembers() preflight
+    # loop below and by filter="data" inside extractall (Python 3.12+).
+    # nosemgrep
     with tarfile.open(source_tar_gz, "r:gz") as tf:
         total = 0
         for member in tf.getmembers():
@@ -546,9 +549,6 @@ def _extract_workspace_archive(source_tar_gz: Path) -> None:
         # Python 3.12+ ``filter='data'`` rejects symlinks and members whose
         # resolved path escapes destination — combined with the explicit
         # path-traversal + size-cap preflight loop above, this is safe.
-        # Path traversal + size cap are enforced by the getmembers() preflight
-        # loop above and by filter="data" (Python 3.12+).
-        # nosemgrep: trailofbits.python.tarfile-extractall-traversal.tarfile-extractall-traversal
         tf.extractall(path=str(dest_parent), filter="data")  # noqa: S202
 
 

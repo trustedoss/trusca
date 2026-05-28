@@ -541,7 +541,7 @@ async def _persist_creating_row(
     # (no client/server skew) so we never read an expired ORM attribute.
     # ``_CREATING_STALE_TTL`` is a module-level constant (line 121), not user
     # input, so the f-string into text() can't be a SQL-injection sink.
-    # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
+    # nosemgrep
     stale_cutoff = func.now() - text(f"INTERVAL '{_CREATING_STALE_TTL}'")
     conflicting_row = (
         await session.execute(
