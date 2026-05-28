@@ -46,7 +46,9 @@ export const TabsTrigger = forwardRef<
   <TabsPrimitive.Trigger
     ref={ref}
     className={cn(
-      "inline-flex h-9 items-center whitespace-nowrap rounded-t-md border-b-2 border-transparent px-3 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground",
+      // W11-B polish — hover/focus colour transition lifted to W11-A 150 ms
+      // ease-out-soft so tab interactions feel uniform with button/dropdown.
+      "inline-flex h-9 items-center whitespace-nowrap rounded-t-md border-b-2 border-transparent px-3 text-sm font-medium text-muted-foreground transition-colors duration-fast ease-out-soft hover:text-foreground",
       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
       "disabled:pointer-events-none disabled:opacity-50",
       "data-[state=active]:border-primary data-[state=active]:text-foreground",

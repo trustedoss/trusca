@@ -1,7 +1,7 @@
 # scan-bench UX capture metadata
 
-- captured_at: 2026-05-27T22:52:39.029Z
-- git_sha: 00302bc9b2c9
+- captured_at: 2026-05-28T03:54:12.466Z
+- git_sha: 6d7c36ddc4ba
 - account: frontend-admin@demo.trustedoss.dev (team_admin)
 - dataset_project: fx-maven-node (project_id 155a9c99-df8b-4d7b-83a1-71e1624471e6)
 - viewport: 1440×900

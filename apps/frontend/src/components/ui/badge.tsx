@@ -11,7 +11,10 @@ import { cn } from "@/lib/utils";
  * dots / pills sit alongside an icon or text label in higher-level components.
  */
 const badgeVariants = cva(
-  "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 whitespace-nowrap",
+  // W11-B polish — `rounded-sm` aligns badges with the W11-A radius hierarchy
+  // (sm = 4 px for chips/badges, md = 6 px for buttons/cards). Hover colour
+  // transitions also pick up the 150 ms ease-out-soft motion tokens.
+  "inline-flex items-center gap-1 rounded-sm border px-2 py-0.5 text-xs font-medium transition-colors duration-fast ease-out-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 whitespace-nowrap",
   {
     variants: {
       variant: {

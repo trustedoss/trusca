@@ -30,7 +30,13 @@ export const SheetOverlay = forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "fixed inset-0 z-50 bg-foreground/40 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      // W11-B polish — overlay fades via the W11-A `--duration-base` token so
+      // sheet enter/exit transitions feel consistent with the popover/dialog
+      // family. Tailwind animation utilities default to 150 ms; we override
+      // through the explicit `data-[state]:duration-base` to land on 200 ms.
+      "fixed inset-0 z-50 bg-foreground/40 backdrop-blur-sm",
+      "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      "data-[state=open]:duration-base data-[state=closed]:duration-fast ease-out-soft",
       className,
     )}
     {...props}
@@ -39,7 +45,11 @@ export const SheetOverlay = forwardRef<
 SheetOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
 const sheetVariants = cva(
-  "fixed z-50 gap-4 bg-background p-6 shadow-lg transition ease-in-out data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:duration-200 data-[state=open]:duration-300",
+  // W11-B polish — drawer enter/exit slides honour the W11-A `--duration-base`
+  // (200 ms) + `--ease-out` curve so the motion reads as Linear-style soft
+  // ease-out instead of the Tailwind default 150 ms linear. `--shadow-lg`
+  // comes from the W11-A token, so the elevation matches dialog/popover.
+  "fixed z-50 gap-4 bg-background p-6 shadow-lg transition ease-out-soft data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:duration-base data-[state=open]:duration-base",
   {
     variants: {
       side: {
@@ -76,7 +86,7 @@ export const SheetContent = forwardRef<
     >
       {children}
       {hideCloseButton ? null : (
-        <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none">
+        <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity duration-fast ease-out-soft hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none">
           <X className="h-4 w-4" />
           <span className="sr-only">Close</span>
         </DialogPrimitive.Close>

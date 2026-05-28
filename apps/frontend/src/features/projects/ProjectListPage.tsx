@@ -277,12 +277,16 @@ export function ProjectListPage() {
       className="flex min-h-screen flex-col bg-background text-foreground"
       data-testid="project-list-page"
     >
+      {/* W11-B polish — page header sits at the standard 48 px height. The
+          title gets the W11-A heading hierarchy (semibold + tight tracking
+          inherited from index.css). Background stays canvas (off-white) so
+          the cards / table below pop as white surfaces. */}
       <header
-        className="flex items-center justify-between border-b px-6"
+        className="flex items-center justify-between border-b bg-background px-6"
         style={{ height: "var(--layout-header)" }}
       >
         <div>
-          <h1 className="text-sm font-semibold tracking-tight">
+          <h1 className="text-base font-semibold tracking-tight">
             {t("page.title")}
           </h1>
         </div>
@@ -308,12 +312,15 @@ export function ProjectListPage() {
           ``ProjectPublic.{severity_summary, license_category_summary}`` so the
           axis label ("by project") stays honest. */}
       {items && items.length > 0 ? (
+        // W11-B polish — distribution band uses the standard 24 px gutter
+        // (px-6) so it lines up with the toolbar / rows below. Gap stays at
+        // 16 px (gap-4) between the two cards.
         <div
-          className="grid items-start gap-4 border-b p-4 md:grid-cols-2"
+          className="grid items-start gap-4 border-b bg-background px-6 py-4 md:grid-cols-2"
           data-testid="project-list-distribution-cards"
         >
           <Card data-testid="project-list-severity-card">
-            <CardHeader>
+            <CardHeader className="pb-3">
               <CardTitle className="flex items-baseline gap-2 text-base">
                 <span>{t("summary.severity_card.title")}</span>
                 <AxisPill>
@@ -341,7 +348,7 @@ export function ProjectListPage() {
             </CardContent>
           </Card>
           <Card data-testid="project-list-license-card">
-            <CardHeader>
+            <CardHeader className="pb-3">
               <CardTitle className="flex items-baseline gap-2 text-base">
                 <span>{t("summary.license_card.title")}</span>
                 <AxisPill>
@@ -365,8 +372,11 @@ export function ProjectListPage() {
       ) : null}
 
       {severityFilter !== null || licenseFilter !== null ? (
+        // W11-B polish — chip pills land on the muted token (no /30 opacity
+        // hack), hover transition follows the 150 ms ease-out-soft curve, and
+        // the inner pill carries a subtle shadow so it reads as raised.
         <div
-          className="flex items-center gap-2 border-b bg-muted/30 px-6 py-2 text-xs"
+          className="flex items-center gap-2 border-b bg-muted px-6 py-2 text-xs"
           data-testid="project-list-active-filters"
         >
           <span className="font-medium text-muted-foreground">
@@ -376,7 +386,7 @@ export function ProjectListPage() {
             <button
               type="button"
               onClick={() => setSeverityFilter(null)}
-              className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2 py-0.5 hover:bg-accent"
+              className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2 py-0.5 shadow-sm transition-colors duration-fast ease-out-soft hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               data-testid="project-list-active-filter-clear-severity"
             >
               <span>
@@ -391,7 +401,7 @@ export function ProjectListPage() {
             <button
               type="button"
               onClick={() => setLicenseFilter(null)}
-              className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2 py-0.5 hover:bg-accent"
+              className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2 py-0.5 shadow-sm transition-colors duration-fast ease-out-soft hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               data-testid="project-list-active-filter-clear-license"
             >
               <span>
@@ -537,12 +547,17 @@ function ProjectRow({
 }: ProjectRowProps) {
   const { t } = useTranslation("projects");
   return (
+    // W11-B polish — Vercel deployments-1 row: subtle hover tint via
+    // `--accent` (W11-A token), tightened gutter to `px-6` so the row aligns
+    // with toolbar / distribution cards, and a 150 ms ease-out-soft hover
+    // transition matching button / dropdown motion. Row height (40 px)
+    // unchanged — dense identity stays.
     <div
       data-testid="project-row"
       data-project-id={project.id}
       data-row-index={rowIndex}
       className={cn(
-        "flex items-center gap-3 border-b px-4 text-sm",
+        "flex items-center gap-3 border-b bg-card px-6 text-sm transition-colors duration-fast ease-out-soft hover:bg-accent",
       )}
       style={{ height: "var(--table-row)" }}
     >

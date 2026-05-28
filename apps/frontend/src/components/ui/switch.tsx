@@ -41,7 +41,9 @@ export const Switch = forwardRef<HTMLInputElement, SwitchProps>(
     return (
       <label
         className={cn(
-          "relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors",
+          // W11-B polish — track + thumb transitions land on the W11-A
+          // 150 ms ease-out-soft curve so the toggle motion matches buttons.
+          "relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors duration-fast ease-out-soft",
           "focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2",
           checked ? "bg-primary" : "bg-input",
           disabled && "cursor-not-allowed opacity-50",
@@ -69,7 +71,7 @@ export const Switch = forwardRef<HTMLInputElement, SwitchProps>(
         <span
           aria-hidden
           className={cn(
-            "pointer-events-none block h-5 w-5 transform rounded-full bg-background shadow ring-0 transition-transform",
+            "pointer-events-none block h-5 w-5 transform rounded-full bg-background shadow-sm ring-0 transition-transform duration-fast ease-out-soft",
             checked ? "translate-x-5" : "translate-x-0",
           )}
         />

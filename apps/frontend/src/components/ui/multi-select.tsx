@@ -100,7 +100,8 @@ export function MultiSelect({
           aria-label={label}
           data-testid={testId}
           className={cn(
-            "mt-1 flex h-9 items-center justify-between gap-2 rounded-md border border-input bg-background px-2 text-sm",
+            // W11-B polish — hover/focus motion + Vercel-style subtle shadow.
+            "mt-1 flex h-9 items-center justify-between gap-2 rounded-md border border-input bg-background px-2 text-sm shadow-sm transition-colors duration-fast ease-out-soft hover:bg-accent",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
             "disabled:cursor-not-allowed disabled:opacity-50",
             className,
@@ -120,8 +121,11 @@ export function MultiSelect({
           // `bg-popover` (opaque) keeps the dropdown from showing the list
           // rows bleeding through. min-w matches the widest old select.
           className={cn(
+            // W11-B polish — motion lifted to W11-A duration-fast / ease-out
+            // tokens, matching the standalone DropdownMenu primitive.
             "z-50 min-w-[10rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md",
             "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
+            "data-[state=open]:duration-fast data-[state=closed]:duration-fast ease-out-soft",
           )}
         >
           {options.map((option) => {
@@ -138,7 +142,7 @@ export function MultiSelect({
                 data-testid={testId ? `${testId}-option` : undefined}
                 data-value={option.value}
                 className={cn(
-                  "relative flex cursor-pointer select-none items-center gap-2 rounded-sm py-1.5 pl-2 pr-2 text-sm outline-none transition-colors",
+                  "relative flex cursor-pointer select-none items-center gap-2 rounded-sm py-1.5 pl-2 pr-2 text-sm outline-none transition-colors duration-fast ease-out-soft",
                   "focus:bg-accent focus:text-accent-foreground data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
                   "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
                 )}
@@ -162,7 +166,7 @@ export function MultiSelect({
                 }}
                 data-testid={testId ? `${testId}-clear` : undefined}
                 className={cn(
-                  "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm text-muted-foreground outline-none transition-colors",
+                  "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm text-muted-foreground outline-none transition-colors duration-fast ease-out-soft",
                   "focus:bg-accent focus:text-accent-foreground data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
                 )}
               >
