@@ -21,9 +21,9 @@ const FEATURES: FeatureItem[] = [
     ),
     description: (
       <Translate id="homepage.feature.vulns.desc">
-        Dependency-Track-backed CVE detection across NVD, OSV, and GitHub
-        Advisory. New CVEs auto-rescan; results stay available even when DT is
-        restarting (PostgreSQL cache + circuit breaker).
+        Trivy-backed CVE detection across NVD, OSV, GitHub Advisory, EPSS, and
+        KEV. New CVEs trigger automatic re-matching of preserved SBOMs on a
+        Celery beat — no manual rescan required.
       </Translate>
     ),
     href: "/docs/intro",

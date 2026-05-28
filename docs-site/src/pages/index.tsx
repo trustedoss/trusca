@@ -69,10 +69,10 @@ function HomepageHero(): ReactNode {
             </dd>
           </div>
           <div className={styles.stat}>
-            <dt>NVD · OSV · GHSA</dt>
+            <dt>NVD · OSV · GHSA · EPSS · KEV</dt>
             <dd>
               <Translate id="homepage.hero.stats.feeds">
-                vulnerability feeds via Dependency-Track
+                vulnerability feeds via Trivy single engine
               </Translate>
             </dd>
           </div>
