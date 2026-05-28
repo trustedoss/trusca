@@ -35,7 +35,7 @@ Full details in the [v2.0.0 release notes](./release-notes/v2.0.0.md).
 |---|---|
 | Component detection | `cdxgen` (CycloneDX generator) discovers packages across 30+ ecosystems (npm, Maven, PyPI, Go, Cargo, NuGet, Composer, RubyGems, Gradle, Hex, …). |
 | License classification | Every license is tagged **Allowed**, **Conditional**, or **Forbidden**; declared licenses come from `cdxgen` and detected first-party licenses from scancode. Forbidden licenses block the build. |
-| Vulnerability detection | Dependency-Track (DT) correlates components against NVD, OSV, and the GitHub Advisory Database. |
+| Vulnerability detection | [Trivy](https://aquasecurity.github.io/trivy/) (Aqua Security) matches components against NVD, OSV, GHSA, EPSS, and KEV via a local DB. See [Data sources](./reference/data-sources.md). |
 | Container scanning | Trivy (Aqua Security container scanner) detects OS-package CVEs (Common Vulnerabilities and Exposures) in container images. |
 | SBOM export | CycloneDX (JSON / XML) and SPDX (JSON / Tag-Value), byte-stable for diffing. |
 | Obligations & NOTICE | Per-license obligations are tracked, and a `NOTICE` file is generated automatically from the latest scan. |
@@ -47,7 +47,7 @@ Full details in the [v2.0.0 release notes](./release-notes/v2.0.0.md).
 ## What it is not
 
 - **Not a SAST scanner.** No source-code analysis for custom code; the portal focuses on third-party components.
-- **Not a vulnerability database.** It consumes feeds (NVD, OSV, GitHub Advisory) via Dependency-Track but does not curate them.
+- **Not a vulnerability database.** It consumes feeds (NVD, OSV, GHSA, EPSS, KEV) via the Trivy DB but does not curate them.
 - **Not a hosted service.** The primary distribution is a `docker-compose` install (or the Helm chart) you run on your own infrastructure. A public **read-only** live demo is supported — `DEMO_READ_ONLY` mode plus a nightly dataset reset shipped in v2.1; see [Live demo](./installation/live-demo.md).
 
 ## Architecture at a glance
@@ -65,12 +65,12 @@ Full details in the [v2.0.0 release notes](./release-notes/v2.0.0.md).
        ┌────────────────────┼────────────────────────┐
        ↓                    ↓                        ↓
  ┌───────────┐       ┌──────────┐           ┌────────────────────────────┐
- │ Postgres  │       │ Celery   │ → tasks → │ cdxgen / scancode / Trivy /│
- │   (17)    │       │ + Redis  │           │ Dependency-Track           │
+ │ Postgres  │       │ Celery   │ → tasks → │ cdxgen / scancode / Trivy  │
+ │   (17)    │       │ + Redis  │           │  (+ local Trivy DB)        │
  └───────────┘       └──────────┘           └────────────────────────────┘
 ```
 
-Seven container services run in production: **traefik**, **postgres**, **redis**, **backend**, **worker**, **beat** (Celery scheduler), and **frontend**. An optional Dependency-Track overlay adds bundled vulnerability data.
+Seven container services run in production: **traefik**, **postgres**, **redis**, **backend**, **worker**, **beat** (Celery scheduler), and **frontend**. The Trivy DB lives inside the worker container — no external vulnerability engine is required.
 
 The full architecture, decision log, and pipeline detail are in the [architecture reference](./reference/architecture.md).
 

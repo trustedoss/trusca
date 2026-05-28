@@ -30,50 +30,58 @@ ACCESS_TOKEN=$(curl -fsS -X POST "https://<your-host>/api/auth/login" \
 ```
 :::
 
-## Scenario 1 — DT down ≥ 15 min
+## Scenario 1 — Trivy DB stale or missing
 
 ### Symptom
-PagerDuty: `TrustedOSS DT health = down for 15+ min` (from the `/admin/dt` probe or external monitor).
+PagerDuty: `TrustedOSS Trivy DB last refresh > 14 days` or `TrustedOSS Trivy DB missing on worker`. The upcoming `/admin/health → Vulnerability data` card (W6-#43e) drives this.
 
 ### Customer impact
-- New scans CAN still be queued — the policy gate falls back to cached vulnerability data when the circuit breaker is OPEN.
-- New CVE alerts will lag until DT comes back (no fresh vulnerability mirror).
-- Portal UI, login, and existing project data are all unaffected.
+- New scans CAN still be queued — `cdxgen` + scancode still produce SBOMs and licence findings.
+- New CVE detections stop landing until the DB refresh succeeds.
+- Existing `vulnerability_findings` rows are unchanged — the gap is forward-only.
 
 ### Diagnose
 ```bash
-# 1. DT container alive?
-docker-compose ps dt
-# 2. Recent DT logs (last 200 lines)
-docker-compose logs --tail=200 dt | grep -iE 'error|fatal'
-# 3. Portal's view of DT health (structured)
-docker-compose logs --tail=500 backend | grep dt_health_check | tail -10
-# 4. Breaker state from the portal
-curl -fsS "https://<your-host>/v1/admin/dt/status" \
-  -H "Authorization: Bearer $ACCESS_TOKEN" | jq
+# 1. Is the DB on disk?
+docker-compose -f docker-compose.yml exec worker \
+  ls -lh /var/lib/trivy/db/
+# 2. DB metadata (Created timestamp)
+docker-compose -f docker-compose.yml exec worker \
+  cat /var/lib/trivy/db/metadata.json
+# 3. Recent download / refresh logs
+docker-compose -f docker-compose.yml logs --tail=500 worker | grep trivy_db
+docker-compose -f docker-compose.yml logs --tail=500 beat | grep trivy_db_refresh
+# 4. Outbound HTTPS to ghcr.io reachable?
+docker-compose -f docker-compose.yml exec worker \
+  curl -fsS https://ghcr.io/v2/ -o /dev/null -w "%{http_code}\n"
 ```
 
 ### Recover (in order)
-1. **Container restart** (most cases — OOM, transient JVM hang):
+1. **Force a one-shot refresh** (preferred — single command, no restart):
    ```bash
-   docker-compose restart dt
+   docker-compose -f docker-compose.yml exec worker \
+     celery -A apps.backend.tasks.celery_app call tasks.trivy_db.refresh
    sleep 30
-   curl -fsS https://<your-host>/v1/admin/dt/health-check \
-     -H "Authorization: Bearer $ACCESS_TOKEN"
+   docker-compose -f docker-compose.yml exec worker \
+     cat /var/lib/trivy/db/metadata.json | jq '.Created'
    ```
-2. **Manual breaker reset** (if breaker stayed OPEN after DT recovers):
+2. **Wipe + re-download** (if metadata is corrupted):
    ```bash
-   curl -fsS -X POST "https://<your-host>/v1/admin/dt/breaker/reset" \
-     -H "Authorization: Bearer $ACCESS_TOKEN"
+   docker-compose -f docker-compose.yml exec worker \
+     rm -rf /var/lib/trivy/db
+   docker-compose -f docker-compose.yml restart worker
    ```
-3. **Mirror re-sync** (if vuln data looks stale post-recovery): wait one full hourly beat cycle (the `dt_findings_resync` task in `celery_app.py`).
+   The boot-time `trivy --download-db-only` runs and re-populates the directory within 1–3 minutes.
+3. **Mirror fallback** (if `ghcr.io` is unreachable from the worker): point `TRIVY_DB_REPOSITORY` at your internal mirror — see [Vulnerability data — Air-gapped operation](./vulnerability-data.md#air-gapped).
+
+After recovery, the automatic re-match beat picks up missed CVEs against existing scans on its next cycle — no operator action.
 
 ### Escalate
-- If DT container will not stay up after 2 restarts, OR
-- If breaker stays OPEN despite a green `health-check`, OR
-- If `dt_health_check` logs show DB-side errors (Postgres unreachable from DT).
+- If two refresh attempts fail with the same error, OR
+- If the internal mirror itself reports `unauthorized` despite recent `trivy registry login`, OR
+- If `metadata.json` exists but `Results` on a spot scan is empty across multiple ecosystems (suggests a schema mismatch).
 
-Page the portal dev team with: container logs (`docker-compose logs --tail=2000 dt`), breaker history from `/admin/dt/status`, and the last 5 minutes of `backend` logs.
+Page the portal dev team with: worker logs (`docker-compose logs --tail=2000 worker`), the `metadata.json` content, and the output of `trivy --version` from inside the worker.
 
 ## Scenario 2 — Auto-backup failed for 3 days
 
@@ -150,7 +158,7 @@ docker-compose exec worker ps -ef | grep -E 'cdxgen|ort|trivy'
    Other in-flight scans on the same worker will be marked failed and require manual re-run.
 
 ### Escalate
-- If the same project hangs at the same stage twice in a row (suggests a content-side issue — large git history, malformed lockfile, or DT timeout). Page portal dev team with `<scan_id>` and the last 200 lines of `worker` logs filtered to that task.
+- If the same project hangs at the same stage twice in a row (suggests a content-side issue — large git history, malformed lockfile, or `trivy sbom` timeout). Page portal dev team with `<scan_id>` and the last 200 lines of `worker` logs filtered to that task.
 
 ## Scenario 4 — Host disk ≥ 95%
 
@@ -185,7 +193,7 @@ docker-compose exec postgres psql -U trustedoss -d trustedoss \
    docker-compose exec postgres psql -U trustedoss -d trustedoss \
      -c "VACUUM FULL audit_logs, vulnerability_findings;"
    ```
-3. **DT volume** (if `/admin/disk` shows `dt_volume` at fault): restart DT to flush its index temp files (`docker-compose restart dt`).
+3. **Trivy DB volume** (if `/admin/disk` shows `trivy_db` at fault): the Trivy DB is ~500 MB and should not grow further; if it has, prune the cache and re-download (`docker-compose -f docker-compose.yml exec worker rm -rf /var/lib/trivy/db && docker-compose restart worker`).
 4. **Temporary threshold raise** (only as a stop-gap, NOT a fix):
    ```bash
    # Edit .env: DISK_HARD_LIMIT_PCT=98
@@ -203,11 +211,11 @@ When paging the portal dev team, attach:
 - Scenario number (1-4) and PagerDuty alert URL.
 - Portal version: `docker-compose exec backend python -c "from main import APP_VERSION; print(APP_VERSION)"`
 - Last 2000 lines of the relevant container: `docker-compose logs --tail=2000 <svc>`
-- For DT issues: `/admin/dt/status` full JSON.
+- For Trivy DB issues: the worker's `/var/lib/trivy/db/metadata.json` content and `docker-compose logs --tail=500 worker | grep trivy_db`.
 - For scan issues: `<scan_id>` and `/v1/scans/<scan_id>` full JSON.
 
 ## See also
 
-- [DT connector](./dt-connector.md) — circuit breaker model + reset procedures.
+- [Vulnerability data (Trivy DB)](./vulnerability-data.md) — DB lifecycle and troubleshooting.
 - [Backup and restore](./backup-and-restore.md) — backup retention + restore flow.
 - [Disk and health](./disk-and-health.md) — disk threshold model + Health dashboard.

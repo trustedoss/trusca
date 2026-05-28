@@ -1,7 +1,7 @@
 ---
 id: architecture
 title: Architecture
-description: TrustedOSS Portal architecture — services, data flow, scan pipeline, ORT rules, DT integration, and operational primitives.
+description: TrustedOSS Portal architecture — services, data flow, scan pipeline, license classification, Trivy vulnerability matching, and operational primitives.
 sidebar_label: Architecture
 sidebar_position: 1
 ---
@@ -16,7 +16,7 @@ Architects, platform engineers, and security reviewers. Familiarity with FastAPI
 
 ## Services
 
-The production stack runs seven container services (plus an optional eighth — Dependency-Track):
+The production stack runs seven container services:
 
 | Service | Image | Role |
 |---|---|---|
@@ -24,12 +24,15 @@ The production stack runs seven container services (plus an optional eighth — 
 | `postgres` | `postgres:17.2-alpine` | Primary store. All persistent state. |
 | `redis` | `redis:7.4-alpine` | Celery broker + result backend. WebSocket pub/sub. |
 | `backend` | `trustedoss/backend:<tag>` | FastAPI + uvicorn (4 workers). Reachable via Traefik on `/api`, `/health`. |
-| `worker` | `trustedoss/backend-worker:<tag>` | Celery worker with `cdxgen`, scancode, Trivy, JRE bundled (JRE is for `cdxgen`'s Maven / Gradle SBOM enumeration). |
-| `beat` | `trustedoss/backend-worker:<tag>` | Celery Beat scheduler. DT heartbeat (60 s), DT resync (1 h), orphan cleanup (6 h), backup (daily). |
+| `worker` | `trustedoss/backend-worker:<tag>` | Celery worker with `cdxgen`, scancode, Trivy, JRE bundled (JRE is for `cdxgen`'s Maven / Gradle SBOM enumeration). The worker also holds the local **Trivy DB** at `/var/lib/trivy`. |
+| `beat` | `trustedoss/backend-worker:<tag>` | Celery Beat scheduler. Trivy DB refresh (weekly), vulnerability re-match (after each refresh), backup (daily). |
 | `frontend` | `trustedoss/frontend:<tag>` | nginx serving the Vite build. Reachable via Traefik on `/`. |
-| `dt` (overlay) | `dependencytrack/apiserver:4.13.2` | Optional bundled Dependency-Track. Brought up via `docker-compose.dt.yml`. |
 
 Image tags are pinned (`CLAUDE.md` rule #9 — never `:latest`).
+
+:::note Dependency-Track was removed in v2.4.0
+Earlier releases shipped Dependency-Track as an optional eighth service. v2.4.0 removed it in favour of Trivy as the single vulnerability engine — see [ADR-0001](https://github.com/trustedoss/trustedoss-portal/blob/main/docs/decisions/0001-replace-dt-with-trivy.md) and the [v2.4.0 release notes](../release-notes/v2.4.0.md). The Trivy DB lives inside the worker container; there is no separate vulnerability-engine service.
+:::
 
 :::note
 The `/metrics` route is reserved at the Traefik level (`docker-compose.yml`) but no backend handler is mounted at v2.0.0; the Prometheus exporter is on the post-GA roadmap.
@@ -46,15 +49,16 @@ The `/metrics` route is reserved at the Traefik level (`docker-compose.yml`) but
                             │ trustedoss network (bridge)
               ┌─────────────┼─────────────┐
               ↓             ↓             ↓
-       ┌──────────┐  ┌──────────┐  ┌──────────┐
-       │ frontend │  │ backend  │  │ DT (opt) │
-       └──────────┘  └────┬─────┘  └──────────┘
+       ┌──────────┐  ┌──────────┐
+       │ frontend │  │ backend  │
+       └──────────┘  └────┬─────┘
                           │
             ┌─────────────┼─────────────┬──────────┐
             ↓             ↓             ↓          ↓
-      ┌──────────┐  ┌──────────┐  ┌──────────┐ ┌──────┐
-      │ postgres │  │  redis   │  │  worker  │ │ beat │
-      └──────────┘  └──────────┘  └──────────┘ └──────┘
+      ┌──────────┐  ┌──────────┐  ┌──────────────┐ ┌──────┐
+      │ postgres │  │  redis   │  │   worker     │ │ beat │
+      │          │  │          │  │ + Trivy DB   │ │      │
+      └──────────┘  └──────────┘  └──────────────┘ └──────┘
                             └──── shared `workspace` volume ────┘
 ```
 
@@ -71,12 +75,10 @@ PostgreSQL is the single source of truth. Significant tables:
 | `projects` | One row per project. Owns scans, components, findings. |
 | `scans` | Scan lifecycle records (queued → terminal). |
 | `components`, `component_licenses` | Per-scan SBOM rows + license attribution. |
-| `vuln_findings` | CVEs with VEX state + justification. |
-| `vuln_cache` | DT-mirror cache for offline / breaker-OPEN reads. |
+| `vulnerability_findings` | CVEs with VEX state, justification, and Trivy-supplied fixed-version metadata. |
 | `obligations`, `obligation_kinds` | License obligations per component. |
 | `approvals` | Conditional-license approval workflow. |
 | `audit_log` | Append-only write history. CHECK-constrained immutable. |
-| `dt_health` | DT heartbeat results (last 24 h). |
 | `webhook_deliveries` | `(source, delivery_id)` for idempotency. |
 | `notifications` | Outbound notification log + dedup keys. |
 | `backups` | Backup manifest history (read-only by application). |
@@ -93,10 +95,12 @@ A scan is a Celery task chain. Source scan stages (see `apps/backend/tasks/scan_
 3. prep          (workspace layout)
 4. cdxgen        (cdxgen → CycloneDX SBOM + declared licenses)
 5. scancode      (scancode scans first-party source → detected licenses; best-effort)
-6. dt_upload     (CycloneDX SBOM uploaded to Dependency-Track)
-7. dt_findings   (DT correlation OR cache fallback when breaker is OPEN)
+6. sbom_upload   (CycloneDX SBOM persisted to the workspace, ready for matching)
+7. vuln_match    (`trivy sbom` matches the CycloneDX SBOM against the local Trivy DB)
 8. finalize      (write to PostgreSQL in one transaction per scan)
 ```
+
+The stage slugs above are the v2.4.0 names. WebSocket frames carry the historical slugs (`dt_upload`, `dt_findings`) at v2.4.0 to keep existing harnesses and CI clients working — the rename to `sbom_upload` / `vuln_match` ships in v2.4.1 (see [ADR-0001 Appendix A](https://github.com/trustedoss/trustedoss-portal/blob/main/docs/decisions/0001-replace-dt-with-trivy.md)).
 
 The `scancode` stage replaced the former `ort` stage in v2.0.0; the WebSocket progress slug changed from `ort` to `scancode` at the same percent. See [User guide — Scans](../user-guide/scans.md#pipeline-stages-source).
 
@@ -164,17 +168,16 @@ effect at v2.0.0.
 
 The portal does not auto-re-classify historical scans — the historical record is preserved with the classification that was in effect at scan time.
 
-## Dependency-Track integration {#dependency-track}
+## Vulnerability matching (Trivy) {#trivy}
 
-The DT connector is more than an HTTP client. It adds:
+CVE matching uses Trivy directly — no external engine. The worker image ships with the `trivy` binary; the Trivy DB (a compiled bundle of NVD + OSV + GHSA + EPSS + KEV) lives at `/var/lib/trivy/db/` on a persistent volume.
 
-- **Health monitor** (60 s heartbeat) — surfaces DT state on `/admin/dt`.
-- **Circuit breaker** (CLOSED / HALF_OPEN / OPEN) — protects the worker from DT outages.
-- **PostgreSQL vulnerability cache** — read fallback when the breaker is OPEN.
-- **Orphan cleanup** (every 6 h) — reconciles the portal's project list against DT.
-- **Forward-resync** (every 1 h) — re-correlates new CVEs against existing scans.
+- **Boot-time DB download** — `trivy --download-db-only` runs once before Celery picks up tasks.
+- **Weekly DB refresh** — a Celery Beat task pulls the latest bundle. The cadence is `TRIVY_DB_REFRESH_HOURS` (default `168`).
+- **Automatic re-match** — after each successful refresh, a beat task walks every project's most-recent SBOM and writes new `vulnerability_findings` rows.
+- **Air-gapped operation** — `TRIVY_DB_REPOSITORY` swaps the upstream OCI registry for an internal mirror; per-scan matching is fully offline.
 
-See [DT connector](../admin-guide/dt-connector.md) for operational detail.
+See [Vulnerability data (Trivy DB)](../admin-guide/vulnerability-data.md) for the operator lifecycle and [Data sources](./data-sources.md) for the per-source matrix.
 
 ## Authentication & sessions
 
@@ -225,12 +228,12 @@ OpenTelemetry tracing exporter and a bundled Jaeger overlay are on the post-GA r
 
 ## Deployment topologies
 
-The reference deployment is a **single-host docker-compose** install. Two variations are supported:
+The reference deployment is a **single-host docker-compose** install. Variations:
 
-- **Single-host with bundled DT** — add `docker-compose.dt.yml`. DT runs alongside.
-- **Single-host with external DT** — leave DT off, point `DT_URL` at the external instance.
+- **Single-host (default)** — the seven services above; the Trivy DB downloads on worker boot.
+- **Air-gapped** — point `TRIVY_DB_REPOSITORY` at an internal OCI mirror so the worker never reaches the public registry. See [Vulnerability data — Air-gapped operation](../admin-guide/vulnerability-data.md#air-gapped).
 
-A **Helm chart** lands in Phase B (post-GA). It adds:
+A **Helm chart** ships from v2.0.0. v2.4.0 chart 0.3.0 adds:
 
 - Per-component HPA (worker scales by queue depth).
 - StatefulSet for PostgreSQL with PVC.
@@ -256,5 +259,6 @@ Multi-host docker-compose (e.g. workers on separate machines) is technically pos
 
 - [Environment variables](./env-variables.md)
 - [API overview](./api-overview.md)
-- [DT connector](../admin-guide/dt-connector.md)
-- [Glossary](https://github.com/trustedoss/trustedoss-portal/blob/main/docs/glossary.md)
+- [Vulnerability data (Trivy DB)](../admin-guide/vulnerability-data.md)
+- [Data sources](./data-sources.md)
+- [Glossary](./glossary.md)

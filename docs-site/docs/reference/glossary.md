@@ -57,7 +57,7 @@ guides.
   complements CVSS: CVSS is severity, EPSS is likelihood. TrustedOSS
   shows the score as a percentage and the percentile as "top N%", and
   can drive the build gate via `GATE_EPSS_THRESHOLD`. EPSS is collected
-  from Dependency-Track and is absent for CVEs DT does not score. See
+  from the Trivy DB and is absent for CVEs Trivy does not score. See
   [first.org/epss](https://www.first.org/epss/) and the
   [EPSS user guide](../user-guide/vulnerabilities.md#epss--exploitation-probability).
 - **OSV — Open Source Vulnerabilities database.** Google-led, ecosystem-
@@ -109,11 +109,19 @@ column.
 - **Trivy.** Container and OS-package vulnerability scanner from
   Aqua Security. TrustedOSS uses Trivy for the container-scan
   pipeline (separate from the cdxgen + scancode source-scan path).
-- **DT — Dependency-Track.** Vulnerability intelligence platform that
-  mirrors NVD / OSV / GHSA and matches CVEs against your SBOMs.
-  TrustedOSS bundles DT 4.x as an optional Docker Compose overlay and
-  fronts it with a circuit-breaker + cache layer.
-  See [dependencytrack.org](https://dependencytrack.org/).
+- **Trivy DB.** Compiled bundle of NVD + OSV + GHSA + EPSS + KEV
+  published by Aqua Security at `ghcr.io/aquasecurity/trivy-db`.
+  TrustedOSS downloads it once at worker boot and refreshes it weekly
+  (`TRIVY_DB_REPOSITORY`, `TRIVY_DB_REFRESH_HOURS`). See
+  [Vulnerability data (Trivy DB)](../admin-guide/vulnerability-data.md) and
+  [Data sources](./data-sources.md).
+- **DT — Dependency-Track.** Apache-2.0 vulnerability intelligence platform.
+  TrustedOSS used DT as its vulnerability engine through v2.3 and replaced it
+  with Trivy at v2.4.0 — see
+  [ADR-0001](https://github.com/trustedoss/trustedoss-portal/blob/main/docs/decisions/0001-replace-dt-with-trivy.md)
+  and [Comparison](../comparison.md#vs-dependency-track). The DT term still
+  appears in this glossary because legacy audit-log rows and the comparison
+  page reference it.
 - **cosign.** Sigstore's signing CLI. TrustedOSS signs every source
   scan's CycloneDX SBOM with cosign (`cosign sign-blob`) so a consumer
   can verify it with `cosign verify-blob`. Key-based signing is the
@@ -177,9 +185,9 @@ the gate result also carries `epss_gate_count` and `epss_threshold`.
 
 ## RBAC roles
 
-- **`super_admin`** — system-wide. Manages users, teams, DT, scan
-  queue, disk, audit. Created by the install wizard or the
-  `create_super_admin.py` script.
+- **`super_admin`** — system-wide. Manages users, teams, vulnerability
+  data (Trivy DB), scan queue, disk, audit. Created by the install wizard or
+  the `create_super_admin.py` script.
 - **`team_admin`** — bounded to a single team. Manages team settings,
   team members, and project visibility within the team.
 - **`developer`** — bounded to a team's project set. Runs scans, views
@@ -206,10 +214,10 @@ API key. Per-action capabilities are on the roadmap.
 ## Operational terminology
 
 - **Circuit breaker (CLOSED / OPEN / HALF_OPEN).** A failure-domain
-  isolation pattern. TrustedOSS wraps the DT API client in a breaker:
-  CLOSED = healthy, OPEN = DT unreachable (portal serves cached vuln
-  data), HALF_OPEN = cooldown elapsed, next probe decides. See
-  [On-call runbook → DT down](../admin-guide/oncall-runbook.md#scenario-1--dt-down--15-min).
+  isolation pattern. TrustedOSS used a breaker to wrap the Dependency-Track
+  API client through v2.3; with the Trivy DB now local to the worker
+  (v2.4.0+), the pattern is no longer used in the vulnerability path. The
+  general term still appears in operator literature.
 - **`audit_logs`.** Append-only table capturing every state-changing
   operation (CRUD on first-class entities, plus explicit business
   events). See [Audit log](../admin-guide/audit-log.md).

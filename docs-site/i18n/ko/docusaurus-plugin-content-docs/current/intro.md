@@ -35,7 +35,7 @@ SCA 포털 도입을 검토하는 엔지니어·플랫폼 담당자·법무 및 
 |---|---|
 | 컴포넌트 탐지 | `cdxgen`(CycloneDX generator)으로 30개 이상의 생태계(npm, Maven, PyPI, Go, Cargo, NuGet, Composer, RubyGems, Gradle, Hex 등)에서 패키지를 식별합니다. |
 | 라이선스 분류 | 모든 라이선스를 **허용 / 조건부 / 금지**로 분류합니다; declared 라이선스는 `cdxgen` 에서, detected first-party 라이선스는 scancode 에서 나옵니다. 금지 라이선스는 빌드를 차단합니다. |
-| 취약점 탐지 | Dependency-Track(DT)이 NVD, OSV, GitHub Advisory와 컴포넌트를 대조합니다. |
+| 취약점 탐지 | [Trivy](https://aquasecurity.github.io/trivy/)(Aqua Security)가 로컬 DB로 NVD, OSV, GHSA, EPSS, KEV와 컴포넌트를 매칭합니다. [데이터 출처](./reference/data-sources.md) 참조. |
 | 컨테이너 스캔 | Trivy(Aqua Security 컨테이너 스캐너)로 컨테이너 이미지의 OS 패키지 CVE(Common Vulnerabilities and Exposures)를 탐지합니다. |
 | SBOM 내보내기 | CycloneDX(JSON·XML)와 SPDX(JSON·Tag-Value). diff 가능한 byte-stable 출력. |
 | 의무사항 및 NOTICE | 라이선스별 의무사항을 추적하고 최신 스캔 기준 `NOTICE` 파일을 자동 생성합니다. |
@@ -47,7 +47,7 @@ SCA 포털 도입을 검토하는 엔지니어·플랫폼 담당자·법무 및 
 ## 제공하지 않는 기능
 
 - **SAST 스캐너 아님.** 자체 작성한 코드의 정적 분석은 다루지 않습니다. 본 포털은 제3자 컴포넌트에 집중합니다.
-- **취약점 데이터베이스 아님.** Dependency-Track을 통해 NVD·OSV·GitHub Advisory를 소비할 뿐, 직접 큐레이션하지 않습니다.
+- **취약점 데이터베이스 아님.** Trivy DB를 통해 NVD·OSV·GHSA·EPSS·KEV를 소비할 뿐, 직접 큐레이션하지 않습니다.
 - **호스팅 SaaS 아님.** 기본 배포 형태는 직접 운영하는 인프라에 `docker-compose`(또는 Helm 차트)로 설치하는 방식입니다. 공개 **읽기 전용** 라이브 데모를 지원합니다 — `DEMO_READ_ONLY` 모드와 야간 데이터셋 리셋이 v2.1에 출시되었습니다. [라이브 데모](./installation/live-demo.md)를 참고하십시오.
 
 ## 아키텍처 개요
@@ -65,12 +65,12 @@ SCA 포털 도입을 검토하는 엔지니어·플랫폼 담당자·법무 및 
        ┌────────────────────┼────────────────────────┐
        ↓                    ↓                        ↓
  ┌───────────┐       ┌──────────┐           ┌────────────────────────────┐
- │ Postgres  │       │ Celery   │ → 작업 →  │ cdxgen / scancode / Trivy /│
- │   (17)    │       │ + Redis  │           │ Dependency-Track           │
+ │ Postgres  │       │ Celery   │ → 작업 →  │ cdxgen / scancode / Trivy  │
+ │   (17)    │       │ + Redis  │           │  (+ 로컬 Trivy DB)         │
  └───────────┘       └──────────┘           └────────────────────────────┘
 ```
 
-프로덕션에서는 **traefik**, **postgres**, **redis**, **backend**, **worker**, **beat**(Celery 스케줄러), **frontend** 7개의 컨테이너 서비스가 동작합니다. 선택적 Dependency-Track 오버레이가 번들 취약점 데이터를 추가합니다.
+프로덕션에서는 **traefik**, **postgres**, **redis**, **backend**, **worker**, **beat**(Celery 스케줄러), **frontend** 7개의 컨테이너 서비스가 동작합니다. Trivy DB는 워커 컨테이너 내부에 존재 — 외부 취약점 엔진은 필요하지 않습니다.
 
 전체 아키텍처와 결정 기록, 파이프라인 상세는 [아키텍처 참고](./reference/architecture.md)를 보세요.
 

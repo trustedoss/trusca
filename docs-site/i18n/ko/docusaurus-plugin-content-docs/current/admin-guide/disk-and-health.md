@@ -10,12 +10,12 @@ sidebar_position: 3
 
 포털은 두 운영자 대시보드를 `/admin` 아래 노출합니다.
 
-- **/admin/health** — 모든 컨테이너 서비스와 DT 커넥터의 현재 상태.
+- **/admin/health** — 모든 컨테이너 서비스와 Trivy DB 신선도 카드(W6-#43e 도입)의 현재 상태.
 - **/admin/disk** — workspace와 데이터베이스 저장소 사용량(설정 가능한 hard limit 포함).
 
 이 둘이 함께 사용자가 알아채기 전에 문제를 잡습니다.
 
-![Admin 시스템 Health — postgres·redis·celery·dependency-track 4-카드 개요](/img/screenshots/admin-health-cards.png)
+![Admin 시스템 Health — postgres·redis·celery 그리고 곧 도착할 vulnerability data 행 개요](/img/screenshots/admin-health-cards.png)
 
 ![Admin 디스크 사용량 — workspace·db 카드와 사용률 게이지](/img/screenshots/admin-disk-list.png)
 
@@ -27,7 +27,7 @@ sidebar_position: 3
 
 **/admin/health** 페이지는 포털이 의존하는 모든 컴포넌트를 나열합니다. 각 행:
 
-- **컴포넌트** — `postgres`, `redis`, `celery`, `dt`, `disk`, `active_scans`, `last_24h_errors` 중 하나.
+- **컴포넌트** — `postgres`, `redis`, `celery`, `disk`, `active_scans`, `last_24h_errors` 중 하나. `vulnerability_data` 행(Trivy DB 신선도)은 W6-#43e에서 추가됩니다.
 - **상태** — `ok`(녹색), `degraded`(노랑), `down`(빨강). UI 라벨은 로케일에 따라 다르나(EN 로케일은 "OK / Degraded / Down" 표시) API 계약은 위 소문자 enum을 발신합니다.
 - **마지막 체크** — 가장 최근 프로브 타임스탬프.
 - **상세** — `ok`가 아닐 때의 오류 메시지 또는 텔레메트리 요약.
@@ -43,7 +43,6 @@ sidebar_position: 3
 | `postgres` | 애플리케이션의 asyncpg 풀로 `SELECT 1`. |
 | `redis` | asyncio 클라이언트를 통한 `redis-cli ping` 동등 호출. |
 | `celery` | Celery `inspect ping`이 설정 타임아웃 이내 응답. |
-| `dt` | DT health 프로브([DT 커넥터 → health 모니터](./dt-connector.md#운영-레이어) 참고). DT 가 fail-count 카운터를 가진 유일한 컴포넌트입니다 — 연속 3회 미스 시 `down`으로 전환되며, 나머지는 단일 평가입니다. |
 | `disk` | Workspace 볼륨 사용량을 warn / critical 임계와 비교. |
 | `active_scans` | 현재 `running` 상태인 스캔 수 — 정보성, 큐 길이가 내부 임계를 넘으면 `degraded` 노출. |
 | `last_24h_errors` | 최근 24시간 동안 `ERROR` 레벨 구조화 로그 이벤트 수 — 정보성. |
@@ -52,7 +51,7 @@ sidebar_position: 3
 
 ## 디스크 대시보드 {#disk}
 
-**/admin/disk**는 포털이 신경 쓰는 파일시스템마다 카드 하나를 렌더합니다. v2.0.0 의 실제 카드는 **workspace**, **dt_volume**, **postgres**, **redis** 입니다(API 가 `items: AdminDiskItem[]` 으로 반환하고 페이지가 항목당 카드 하나를 렌더).
+**/admin/disk**는 포털이 신경 쓰는 파일시스템마다 카드 하나를 렌더합니다. v2.4.0의 실제 카드는 **workspace**, **trivy_db**, **postgres**, **redis** 입니다(API 가 `items: AdminDiskItem[]` 으로 반환하고 페이지가 항목당 카드 하나를 렌더). 이전 **dt_volume** 카드는 Dependency-Track 폐기와 함께 제거되었습니다.
 
 각 카드는 warn 임계와 critical 임계가 있습니다.
 
@@ -153,7 +152,7 @@ docker-compose -f docker-compose.yml exec backend \
 
 :::info 먼저 확인할 로그
 - `docker-compose logs --tail=200 backend | grep disk_threshold` — 임계 검사 태스크의 직전 판정.
-- `/admin/disk` API — 카드별 분해 JSON(workspace, dt_volume, postgres, redis).
+- `/admin/disk` API — 카드별 분해 JSON(workspace, trivy_db, postgres, redis).
 - 호스트: `df -h /opt/trustedoss && docker system df`.
 :::
 
@@ -162,7 +161,7 @@ docker-compose -f docker-compose.yml exec backend \
 대시보드는 liveness 스냅샷이지 전체 기능 보장이 아닙니다. Liveness가 통과하더라도 다음이 가능:
 
 - 워커가 작업을 받았으나 하위 프로세스에서 멈춤(매우 드뭄). 워커 재시작.
-- DT가 `healthy`이지만 NVD 미러가 stale. 수동 동기화 트리거 — [DT 커넥터](./dt-connector.md#트러블슈팅) 참고.
+- Trivy DB가 디스크에 있지만 오래 갱신되지 않음 — 주간 refresh 확인은 [취약점 데이터 — 트러블슈팅](./vulnerability-data.md#트러블슈팅) 참조.
 
 ### 디스크 게이지가 잘못됨
 
@@ -178,10 +177,10 @@ docker-compose -f docker-compose.yml exec backend \
 
 - Health 대시보드의 `backend`, `worker`, `beat`, `frontend`, `traefik` 컴포넌트별 liveness 프로브(현재는 대시보드 렌더링과 `celery` 행에서 추론).
 - WebSocket 스트리밍 health 갱신(현재는 React Query 폴링 사용).
-- 비-DT 컴포넌트의 다중 샷 연속-미스 상태 머신(현재는 `dt`만 fail-count 카운터 보유).
+- W6-#43e로 계획된 `vulnerability_data` 행 이외 컴포넌트의 다중 샷 연속-미스 상태 머신.
 
 ## 함께 보기
 
-- [DT 커넥터](./dt-connector.md)
+- [취약점 데이터 (Trivy DB)](./vulnerability-data.md)
 - [백업·복원](./backup-and-restore.md)
 - [환경변수](../reference/env-variables.md)

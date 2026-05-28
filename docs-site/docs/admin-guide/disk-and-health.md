@@ -10,10 +10,10 @@ sidebar_position: 3
 
 The portal exposes two operator dashboards under `/admin`:
 
-- **/admin/health** — current state of every container service plus the DT connector.
+- **/admin/health** — current state of every container service plus the Trivy DB freshness card (coming in W6-#43e).
 - **/admin/disk** — workspace and database storage usage with a configurable hard limit.
 
-![Admin System Health — four-card overview of postgres, redis, celery, and dependency-track](/img/screenshots/admin-health-cards.png)
+![Admin System Health — overview of postgres, redis, celery, and the upcoming vulnerability data row](/img/screenshots/admin-health-cards.png)
 
 ![Admin Disk usage — workspace + database cards with usage gauges](/img/screenshots/admin-disk-list.png)
 
@@ -27,7 +27,7 @@ Together they let you catch problems before users notice.
 
 The **/admin/health** page lists every component the portal depends on. Each row shows:
 
-- **Component** — one of `postgres`, `redis`, `celery`, `dt`, `disk`, `active_scans`, `last_24h_errors`.
+- **Component** — one of `postgres`, `redis`, `celery`, `disk`, `active_scans`, `last_24h_errors`. The `vulnerability_data` row (Trivy DB freshness) is being added in W6-#43e.
 - **State** — `ok` (green), `degraded` (yellow), `down` (red). The label rendered in the UI is locale-aware (the EN locale shows "OK / Degraded / Down"), but the API contract emits the lower-case enum above.
 - **Last check** — timestamp of the most recent probe.
 - **Detail** — error message or telemetry summary when the state is not `ok`.
@@ -43,7 +43,6 @@ Each row maps to a real probe in `services/admin_health_service.py`:
 | `postgres` | `SELECT 1` over the application's asyncpg pool. |
 | `redis` | `redis-cli ping`-equivalent through the asyncio client. |
 | `celery` | Celery `inspect ping` returns within the configured timeout. |
-| `dt` | DT health probe (see [DT connector → health monitor](./dt-connector.md#operational-layers)). DT is the one component with a fail-count counter — three consecutive misses flip it to `down`; the others use single-shot evaluation. |
 | `disk` | Workspace volume usage compared to the warn / critical thresholds. |
 | `active_scans` | Count of scans currently in `running` state — informational, surfaces to `degraded` when the queue length crosses an internal threshold. |
 | `last_24h_errors` | Count of `ERROR`-level structured-log events in the last 24 h — informational. |
@@ -52,7 +51,7 @@ The portal does not separately probe `backend`, `worker`, `beat`, `frontend`, or
 
 ## Disk dashboard {#disk}
 
-**/admin/disk** renders one card per filesystem the portal cares about. The actual cards in v2.0.0 are: **workspace**, **dt_volume**, **postgres**, **redis** (the API returns them as `items: AdminDiskItem[]` and the page renders one card per item).
+**/admin/disk** renders one card per filesystem the portal cares about. The actual cards from v2.4.0 are: **workspace**, **trivy_db**, **postgres**, **redis** (the API returns them as `items: AdminDiskItem[]` and the page renders one card per item). The earlier **dt_volume** card was removed when Dependency-Track was retired.
 
 Each card has a warn threshold and a critical threshold:
 
@@ -153,7 +152,7 @@ After making changes:
 
 :::info Logs to check first
 - `docker-compose logs --tail=200 backend | grep disk_threshold` — the threshold check task's last verdict.
-- `/admin/disk` API — per-card breakdown JSON (workspace, dt_volume, postgres, redis).
+- `/admin/disk` API — per-card breakdown JSON (workspace, trivy_db, postgres, redis).
 - Host: `df -h /opt/trustedoss && docker system df`.
 :::
 
@@ -162,7 +161,7 @@ After making changes:
 The dashboard is a snapshot of liveness, not full functionality. Liveness can pass while:
 
 - The worker has accepted tasks but is hung on a sub-process (very rare). Restart the worker.
-- DT is `healthy` but its NVD mirror is stale. Trigger a manual resync — see [DT connector](./dt-connector.md#troubleshooting).
+- The Trivy DB is on disk but has not been refreshed in a long time — see [Vulnerability data — Troubleshooting](./vulnerability-data.md#troubleshooting) for the weekly-refresh check.
 
 ### Disk gauge is wrong
 
@@ -178,10 +177,10 @@ The following affordances are referenced in early docs but are **not** shipped a
 
 - Per-component liveness probes for `backend`, `worker`, `beat`, `frontend`, and `traefik` on the health dashboard (today these are inferred from the dashboard rendering and the `celery` row).
 - WebSocket-streamed health updates (today the dashboard uses React Query polling).
-- Multi-shot consecutive-miss state machine for non-DT components (today only `dt` carries a fail-count counter).
+- Multi-shot consecutive-miss state machine for components beyond the `vulnerability_data` row planned in W6-#43e.
 
 ## See also
 
-- [DT connector](./dt-connector.md)
+- [Vulnerability data (Trivy DB)](./vulnerability-data.md)
 - [Backup & restore](./backup-and-restore.md)
 - [Environment variables](../reference/env-variables.md)

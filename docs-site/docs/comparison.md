@@ -2,7 +2,7 @@
 id: comparison
 title: How TrustedOSS Portal compares
 sidebar_label: Comparison
-description: An honest comparison of TrustedOSS Portal versus commercial SCA (Black Duck, Snyk), Dependency-Track alone, and SW360 — strengths and current limits.
+description: An honest comparison of TrustedOSS Portal versus commercial SCA (Black Duck, Snyk), Dependency-Track, and SW360 — strengths and current limits.
 ---
 
 # How TrustedOSS Portal compares
@@ -15,26 +15,26 @@ roadmap behind the "planned" rows, see [`ROADMAP.md`](https://github.com/trusted
 :::
 
 TrustedOSS Portal's core idea is to wrap several best-of-breed open-source
-tools — cdxgen, scancode, Trivy, and Dependency-Track — in one self-hosted UI
-with teams, roles, approvals, and CI gating. The comparisons below frame that
-idea against three common alternatives. They describe shipped capabilities
-through the **v2.1** release (with in-progress v2.2 items marked); they are not
-benchmarks and they do not disparage other projects, several of which TrustedOSS
-Portal builds on.
+tools — cdxgen, scancode, and Trivy (single vulnerability engine from v2.4.0) —
+in one self-hosted UI with teams, roles, approvals, and CI gating. The
+comparisons below frame that idea against three common alternatives. They
+describe shipped capabilities through the **v2.4** release (with in-progress
+v2.x items marked); they are not benchmarks and they do not disparage other
+projects, several of which TrustedOSS Portal builds on.
 
 For term definitions (SCA, SBOM, VEX, EPSS, reachability), see the
 [glossary](./reference/glossary.md).
 
 ## At a glance
 
-| | TrustedOSS Portal | Commercial SCA (Black Duck / Snyk) | Dependency-Track alone | Eclipse SW360 |
+| | TrustedOSS Portal | Commercial SCA (Black Duck / Snyk) | Dependency-Track | Eclipse SW360 |
 |---|---|---|---|---|
 | License | Apache-2.0 | Proprietary | Apache-2.0 | EPL-2.0 |
 | Hosting | Self-hosted (Docker / Helm) | SaaS or self-managed | Self-hosted | Self-hosted |
 | Pricing model | Free, no per-seat | Per-seat / per-project | Free | Free |
 | Component detection | cdxgen (30+ ecosystems) | Broad, proprietary | Consumes SBOMs | Consumes SBOMs |
 | License detection | declared + detected (scancode) | Deep, curated | Limited | Strong (license clearing) |
-| Vulnerability data | via Dependency-Track | Curated proprietary feeds | NVD / OSV / GHSA | via add-ons |
+| Vulnerability data | Trivy DB (NVD + OSV + GHSA + EPSS + KEV) | Curated proprietary feeds | NVD / OSV / GHSA | via add-ons |
 | Container scanning | Trivy (OS packages) | Yes | No | No |
 | SBOM export | CycloneDX + SPDX, byte-stable | Yes | CycloneDX | SPDX / CycloneDX |
 | RBAC | 3 roles (super / team / developer) | Rich | Teams + permissions | LDAP roles |
@@ -57,8 +57,8 @@ covering detection, licenses, SBOM, approvals, and CI gating meets your needs.
 
 - **Curated vulnerability and license intelligence.** Commercial vendors
   maintain proprietary databases and dedicated research teams. TrustedOSS
-  Portal relies on public feeds (NVD, OSV, GitHub Advisory) through
-  Dependency-Track.
+  Portal relies on public feeds (NVD + OSV + GHSA + EPSS + KEV) delivered via
+  the Trivy DB.
 - **Automated remediation.** Snyk and others open fix pull requests
   automatically. In TrustedOSS Portal this is in progress (v2.2): per-finding
   `fixed_version` and dependency-graph depth are shipped, and suggested upgrades
@@ -73,34 +73,33 @@ Apache-2.0 licensing, a single portal instead of several consoles, a built-in
 component approval workflow, build-blocking CI gates, and a fully bilingual
 (EN/KO) UI and documentation.
 
-## vs Dependency-Track alone
+## vs Dependency-Track
 
-Dependency-Track is excellent at what it does, and TrustedOSS Portal uses it as
-its vulnerability engine. The question is whether you want the surrounding
-portal.
+Dependency-Track (DT) is excellent at what it does — a focused vulnerability
+intelligence platform for SBOMs you supply. TrustedOSS Portal used DT as its
+vulnerability engine through v2.3 and replaced it with Trivy at v2.4.0 (see
+[ADR-0001](https://github.com/trustedoss/trustedoss-portal/blob/main/docs/decisions/0001-replace-dt-with-trivy.md)).
+The question is what shape of platform fits your team.
 
-**TrustedOSS Portal adds on top of Dependency-Track:**
+**TrustedOSS Portal differs from running DT directly:**
 
-- **Scan orchestration.** It runs cdxgen, scancode, and Trivy and feeds the
-  results in, rather than expecting you to produce and upload SBOMs yourself.
+- **Scan orchestration.** It runs cdxgen, scancode, and Trivy automatically and
+  feeds results in, rather than expecting you to produce and upload SBOMs.
 - **License compliance.** Allowed / conditional / forbidden classification,
-  obligations tracking, and automatic `NOTICE` generation — outside
-  Dependency-Track's scope.
-- **Resilience.** A circuit breaker plus a PostgreSQL cache keeps the portal
-  usable while Dependency-Track restarts or is unreachable.
+  obligations tracking, and automatic `NOTICE` generation — outside DT's scope.
 - **Workflow and governance.** Component approvals, a build-blocking gate, an
   append-only audit log, and a 3-role RBAC model.
+- **Operational footprint.** ~500 MB Trivy DB vs DT's 4 GB JVM + H2 — fits on
+  a 4 GB host.
 - **Bilingual UI.** English and Korean.
+- **Triage signals.** EPSS is a first-class signal (column, sort, filter,
+  policy-gate threshold), KEV badges flag in-the-wild exploitation, and external
+  VEX (OpenVEX / CycloneDX VEX) can be imported to auto-suppress findings.
 
-- **Triage signals.** EPSS is a first-class signal in the portal (column,
-  sort, filter, policy-gate threshold), and external VEX (OpenVEX /
-  CycloneDX VEX) can be imported to auto-suppress findings.
-
-**Use Dependency-Track directly when** you only need vulnerability tracking from
-SBOMs you already produce, want the broadest set of Dependency-Track's native
-features immediately, or need a native Dependency-Track feature the portal has
-not surfaced yet. Bringing the portal to parity with running Dependency-Track
-directly is an explicit roadmap goal.
+**Use Dependency-Track directly when** you want DT's native features (its UI,
+its policy engine, its existing integrations), already have DT operationalised,
+or need a per-organisation per-component-graph governance model only DT
+offers.
 
 ## vs Eclipse SW360
 
@@ -128,9 +127,9 @@ These are real and intentional gaps. Each is on the
   surfaces per-finding `fixed_version` and dependency-graph depth (v2.2), but
   does not yet open upgrade pull requests — suggested upgrades are being built
   (v2.2).
-- **Vulnerability data depends on Dependency-Track.** Signals are limited to
-  what Dependency-Track exposes, augmented by first-class EPSS prioritization
-  (shipped v2.1) and imported VEX.
+- **Vulnerability data depends on the Trivy DB.** Signals are limited to
+  what NVD + OSV + GHSA + EPSS + KEV expose, augmented by first-class EPSS
+  prioritization (shipped v2.1), KEV in-the-wild badges, and imported VEX.
 - **No reachability prioritization.** Findings are listed in full rather than
   ranked by whether vulnerable code is reachable (planned, v2.3, best-effort).
 - **Static license policy.** Classification uses a fixed catalog; per-team /

@@ -20,7 +20,7 @@ Contributors who use the agent harness to ship work, and reviewers who want to k
 |---|---|---|
 | **`backend-developer`** | FastAPI endpoints, Pydantic schemas, business logic in `apps/backend/services/`. | Phase 1 ~ 5 |
 | **`db-designer`** | PostgreSQL schema, Alembic forward-only migrations, indexes, constraints. | Phase 0 ~ 1 |
-| **`scan-pipeline-specialist`** | Celery tasks, the cdxgen / ORT / Trivy / Dependency-Track integrations, the DT circuit breaker. | Phase 2 |
+| **`scan-pipeline-specialist`** | Celery tasks, the cdxgen / scancode / Trivy integrations, and the Trivy DB lifecycle (boot download, weekly refresh, automatic re-match). | Phase 2 |
 | **`frontend-dev`** | React 18 + shadcn/ui components, TanStack Query hooks, Zustand stores, route wiring. | Phase 2 ~ 6 |
 | **`i18n-specialist`** | `react-i18next` setup, EN / KO translations, the `i18next-parser` drift gate, locale toggle. | Phase 6 |
 | **`devops-engineer`** | Docker Compose dev / prod, GitHub Actions, the Helm chart, install / upgrade / backup / restore scripts. | Phase 0, 7 ~ 8 |
@@ -64,7 +64,7 @@ The orchestrator routes to whichever agent matches the domain. A migration goes 
 
 1. **Authentication and session** — `apps/backend/auth/`, JWT issuance, refresh-token rotation, session cookie policy, password hashing config, rate-limit config on auth routes.
 2. **API key management** — `apps/backend/services/api_key_service.py`, hashing, prefix lookup, scope semantics, revocation propagation, audit emission.
-3. **DT (Dependency-Track) API calls** — outbound requests to DT, the circuit breaker, the cached-vulnerability fallback, orphan project cleanup.
+3. **Trivy DB lifecycle** — boot-time `trivy --download-db-only`, weekly Celery beat refresh, automatic re-match, air-gapped mirror path, and the per-scan `trivy sbom` invocation that parses untrusted SBOM input.
 4. **OAuth flow** — `apps/backend/auth/oauth/`, identity matching by `(provider, provider_user_id)`, signed-state CSRF token, the seven-error-code mapping, `redirect_after` pass-through.
 5. **CI build gate** — `apps/backend/services/policy_gate.py`, the `gate=pass|fail` decision, exit-code-1 contract on the action / template / Jenkinsfile.
 6. **Backup / restore destructive flow** — `apps/backend/tasks/backup.py`, the `/admin/backup` Upload+Restore endpoint, the `X-Confirm-Restore` precondition, the typing-gate, super-admin enforcement.

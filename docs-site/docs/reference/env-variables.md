@@ -75,19 +75,20 @@ If any of the four `DB_*` keys is set, **all** of them must be set (or the compo
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | `config.py` | JWT access token lifetime. |
 | `REFRESH_TOKEN_EXPIRE_DAYS` | `7` | `config.py` | Refresh token lifetime. Rotation + reuse detection enabled. |
 
-## Dependency-Track
+## Vulnerability data
+
+The portal correlates SBOMs against CVEs using a local **Trivy DB** — a compiled bundle of NVD + OSV + GHSA + EPSS + KEV. See [Vulnerability data (Trivy DB)](../admin-guide/vulnerability-data.md) for the lifecycle.
 
 | Key | Default | Read by | Description |
 |---|---|---|---|
-| `DT_URL` | `http://dtrack-api:8080` | `config.py` | DT API base URL (no trailing slash). Use the compose service name when DT is bundled, or the public URL when external. |
-| `DT_API_KEY` | (empty) | `config.py` | Issued by DT's Automation team. Without it the breaker stays OPEN and scans use the cache. |
-| `DT_REQUEST_TIMEOUT_SECONDS` | `30` | `config.py` | HTTP timeout for outbound DT calls. |
-| `DT_BREAKER_FAILURE_THRESHOLD` | `5` | `config.py` | Consecutive failures that flip the breaker CLOSED → OPEN. |
-| `DT_BREAKER_COOLDOWN_SECONDS` | `30` | `config.py` | How long the breaker stays OPEN before allowing a HALF_OPEN probe. |
-| `DT_HEALTH_ENDPOINT` | `/api/version` | `config.py` | Path appended to `DT_URL` for the 60-second heartbeat. |
-| `DT_AUTO_RESTART` | `false` | `config.py` | When `true`, the health monitor will attempt `docker restart dtrack-api` after a sustained OPEN. Leave `false` if DT is external or you want operator-driven recovery only. |
+| `TRIVY_DB_REPOSITORY` | `ghcr.io/aquasecurity/trivy-db` | `config.py` | OCI repository the Trivy DB is pulled from. Override for an air-gapped internal mirror — see [Air-gapped operation](../admin-guide/vulnerability-data.md#air-gapped). |
+| `TRIVY_DB_REFRESH_HOURS` | `168` (weekly) | `config.py` | Celery Beat schedule for the `trivy_db_refresh` task. Lower for fresher feeds, higher to reduce egress. |
+| `TRIVY_DB_CACHE_DIR` | `/var/lib/trivy` | `config.py` | Worker-container directory the DB is unpacked into. Mount a host volume so reboots don't re-download. |
+| `TRIVY_TIMEOUT_SECONDS` | `300` | `config.py` | Per-scan timeout for `trivy sbom`. Raise to `600`–`900` for very large monorepos. |
 
-See [DT connector](../admin-guide/dt-connector.md) for the bootstrap flow.
+:::note Dependency-Track keys removed in v2.4.0
+The `DT_URL`, `DT_API_KEY`, `DT_REQUEST_TIMEOUT_SECONDS`, `DT_BREAKER_*`, `DT_HEALTH_ENDPOINT`, `DT_AUTO_RESTART`, and `DT_ORPHAN_AUTODELETE` keys are no longer read by v2.4.0. They are safely ignored if present in an existing `.env` after upgrade — see [v2.4.0 migration](../release-notes/v2.4.0.md#migration-from-v23x).
+:::
 
 ## Build / policy gate
 
@@ -95,7 +96,7 @@ The CI build gate fails a build on Critical CVEs and forbidden licenses out of t
 
 | Key | Default | Read by | Description |
 |---|---|---|---|
-| `GATE_EPSS_THRESHOLD` | (unset) | `config.py` | Optional EPSS gate. A value from `0` to `1`. When set, the build gate also fails if any open finding has `epss_score >= GATE_EPSS_THRESHOLD`, and the gate result carries `epss_gate_count` + `epss_threshold`. **Unset (the default) disables the EPSS gate** — only the existing Critical-CVE / forbidden-license conditions apply. Findings without an EPSS value never trip the gate. EPSS data is collected during the DT resync, so only CVEs DT supplies a value for are eligible. |
+| `GATE_EPSS_THRESHOLD` | (unset) | `config.py` | Optional EPSS gate. A value from `0` to `1`. When set, the build gate also fails if any open finding has `epss_score >= GATE_EPSS_THRESHOLD`, and the gate result carries `epss_gate_count` + `epss_threshold`. **Unset (the default) disables the EPSS gate** — only the existing Critical-CVE / forbidden-license conditions apply. Findings without an EPSS value never trip the gate. EPSS data is sourced from the Trivy DB, so only CVEs Trivy supplies a value for are eligible. |
 
 See [build gate](./glossary.md#build-gates) for the gate model and [Gate the build on EPSS](../ci-integration/github-actions.md#gate-the-build-on-epss-optional) for the CI walkthrough.
 
@@ -185,7 +186,7 @@ These apply to the demo SaaS deployment. Self-hosted installs leave them empty (
 | `JIRA_ENABLED` | `false` | (none) | **Stub only — not consumed by any code path at v2.0.0.** Reserved for the Phase B Jira integration; included in `.env.example` so existing deployments do not break when the feature lands. |
 | `JIRA_URL` | (empty) | (none) | Stub. See above. |
 | `JIRA_TOKEN` | (empty) | (none) | Stub. See above. |
-| `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` | (empty) | subprocess env | Honored by `git clone`, `cdxgen`, `trivy`, and DT calls. |
+| `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` | (empty) | subprocess env | Honored by `git clone`, `cdxgen`, and the `trivy --download-db-only` boot / refresh path. |
 
 ## Bootstrap / scripts
 

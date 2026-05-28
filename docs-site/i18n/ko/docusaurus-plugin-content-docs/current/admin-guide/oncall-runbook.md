@@ -29,50 +29,58 @@ ACCESS_TOKEN=$(curl -fsS -X POST "https://<your-host>/api/auth/login" \
 ```
 :::
 
-## 시나리오 1 — DT 다운 15분 이상
+## 시나리오 1 — Trivy DB stale 또는 누락
 
 ### 증상
-PagerDuty: `TrustedOSS DT health = down for 15+ min` (`/admin/dt` 프로브 또는 외부 모니터에서).
+PagerDuty: `TrustedOSS Trivy DB last refresh > 14 days` 또는 `TrustedOSS Trivy DB missing on worker`. 곧 도착하는 `/admin/health → Vulnerability data` 카드(W6-#43e)가 이를 구동합니다.
 
 ### 고객 영향
-- 신규 스캔 큐잉은 여전히 가능합니다 — 차단기가 OPEN 일 때 정책 게이트는 캐시된 취약점 데이터로 폴백합니다.
-- DT 가 복구될 때까지 신규 CVE 알림이 지연됩니다(신선한 취약점 미러 없음).
-- 포털 UI, 로그인, 기존 프로젝트 데이터는 모두 영향이 없습니다.
+- 신규 스캔 큐잉은 여전히 가능합니다 — `cdxgen` + scancode가 SBOM과 라이선스 finding을 계속 생성합니다.
+- DB refresh가 성공할 때까지 신규 CVE 탐지가 멈춥니다.
+- 기존 `vulnerability_findings` 행은 변경 없음 — 갭은 forward-only.
 
 ### 진단
 ```bash
-# 1. DT 컨테이너 살아있는가?
-docker-compose ps dt
-# 2. 최근 DT 로그(마지막 200 라인)
-docker-compose logs --tail=200 dt | grep -iE 'error|fatal'
-# 3. 포털이 본 DT health(구조화 로그)
-docker-compose logs --tail=500 backend | grep dt_health_check | tail -10
-# 4. 포털에서 차단기 상태 조회
-curl -fsS "https://<your-host>/v1/admin/dt/status" \
-  -H "Authorization: Bearer $ACCESS_TOKEN" | jq
+# 1. DB가 디스크에 있는가?
+docker-compose -f docker-compose.yml exec worker \
+  ls -lh /var/lib/trivy/db/
+# 2. DB 메타데이터(Created 타임스탬프)
+docker-compose -f docker-compose.yml exec worker \
+  cat /var/lib/trivy/db/metadata.json
+# 3. 최근 download / refresh 로그
+docker-compose -f docker-compose.yml logs --tail=500 worker | grep trivy_db
+docker-compose -f docker-compose.yml logs --tail=500 beat | grep trivy_db_refresh
+# 4. ghcr.io로 outbound HTTPS 도달 가능?
+docker-compose -f docker-compose.yml exec worker \
+  curl -fsS https://ghcr.io/v2/ -o /dev/null -w "%{http_code}\n"
 ```
 
 ### 복구(순서대로)
-1. **컨테이너 재시작**(대다수 — OOM, 일시적인 JVM 행):
+1. **일회성 refresh 강제**(권장 — 단일 명령, 재시작 없음):
    ```bash
-   docker-compose restart dt
+   docker-compose -f docker-compose.yml exec worker \
+     celery -A apps.backend.tasks.celery_app call tasks.trivy_db.refresh
    sleep 30
-   curl -fsS https://<your-host>/v1/admin/dt/health-check \
-     -H "Authorization: Bearer $ACCESS_TOKEN"
+   docker-compose -f docker-compose.yml exec worker \
+     cat /var/lib/trivy/db/metadata.json | jq '.Created'
    ```
-2. **차단기 수동 리셋**(DT 복구 후에도 차단기가 OPEN 으로 남아 있을 때):
+2. **비우고 재다운로드**(메타데이터 손상 시):
    ```bash
-   curl -fsS -X POST "https://<your-host>/v1/admin/dt/breaker/reset" \
-     -H "Authorization: Bearer $ACCESS_TOKEN"
+   docker-compose -f docker-compose.yml exec worker \
+     rm -rf /var/lib/trivy/db
+   docker-compose -f docker-compose.yml restart worker
    ```
-3. **미러 재동기화**(복구 후 취약점 데이터가 stale 해 보일 때): 한 시간 단위 beat 사이클(`celery_app.py`의 `dt_findings_resync` 태스크)을 한 번 기다립니다.
+   부팅 시 `trivy --download-db-only`가 실행되어 1~3분 내 디렉터리를 재채움.
+3. **미러 폴백**(워커에서 `ghcr.io` 도달 불가 시): `TRIVY_DB_REPOSITORY`를 사내 미러로 설정 — [취약점 데이터 — Air-gapped 운영](./vulnerability-data.md#air-gapped) 참조.
+
+복구 후 자동 재매칭 beat이 다음 사이클에서 기존 스캔에 대해 누락된 CVE를 가져옵니다 — 운영자 액션 불필요.
 
 ### 에스컬레이션
-- 2회 재시작 후에도 DT 컨테이너가 떠 있지 못하거나,
-- `health-check` 가 녹색인데도 차단기가 OPEN 으로 남아 있거나,
-- `dt_health_check` 로그가 DB 측 오류(DT 에서 Postgres 도달 불가) 를 보일 때.
+- 두 번의 refresh 시도가 같은 오류로 실패하거나,
+- 최근 `trivy registry login` 후에도 사내 미러가 `unauthorized`를 반환하거나,
+- `metadata.json`은 존재하지만 여러 생태계의 spot 스캔에서 `Results`가 빈 경우(스키마 불일치 시사).
 
-포털 개발팀에 호출하면서 다음을 첨부: 컨테이너 로그(`docker-compose logs --tail=2000 dt`), `/admin/dt/status` 의 차단기 이력, 최근 5분간 `backend` 로그.
+포털 개발팀 호출 시 첨부: 워커 로그(`docker-compose logs --tail=2000 worker`), `metadata.json` 내용, 워커 내부에서 `trivy --version` 출력.
 
 ## 시나리오 2 — 자동 백업 3일 연속 실패
 
@@ -149,7 +157,7 @@ docker-compose exec worker ps -ef | grep -E 'cdxgen|ort|trivy'
    같은 워커에서 실행 중이던 다른 스캔은 failed 로 기록되며 수동 재실행이 필요합니다.
 
 ### 에스컬레이션
-- 동일 프로젝트가 같은 단계에서 연속 2회 멈출 때(콘텐츠 측 문제 — 거대한 git 이력, 잘못된 lockfile, DT 타임아웃 등 시사). `<scan_id>` 와 해당 태스크로 필터링한 마지막 200 라인 `worker` 로그를 첨부해 포털 개발팀에 호출.
+- 동일 프로젝트가 같은 단계에서 연속 2회 멈출 때(콘텐츠 측 문제 — 거대한 git 이력, 잘못된 lockfile, `trivy sbom` 타임아웃 등 시사). `<scan_id>` 와 해당 태스크로 필터링한 마지막 200 라인 `worker` 로그를 첨부해 포털 개발팀에 호출.
 
 ## 시나리오 4 — 호스트 디스크 95% 이상
 
@@ -184,7 +192,7 @@ docker-compose exec postgres psql -U trustedoss -d trustedoss \
    docker-compose exec postgres psql -U trustedoss -d trustedoss \
      -c "VACUUM FULL audit_logs, vulnerability_findings;"
    ```
-3. **DT 볼륨**(`/admin/disk` 가 `dt_volume` 을 원인으로 표시): DT 재시작으로 인덱스 임시 파일을 비웁니다(`docker-compose restart dt`).
+3. **Trivy DB 볼륨**(`/admin/disk` 가 `trivy_db` 를 원인으로 표시): Trivy DB는 약 500 MB이며 더 이상 자라선 안 됩니다. 만약 커졌다면 캐시를 비우고 재다운로드 (`docker-compose -f docker-compose.yml exec worker rm -rf /var/lib/trivy/db && docker-compose restart worker`).
 4. **일시적인 임계 상향**(임시 방편일 뿐, 근본 해결책이 아닙니다):
    ```bash
    # .env 편집: DISK_HARD_LIMIT_PCT=98
@@ -202,11 +210,11 @@ docker-compose exec postgres psql -U trustedoss -d trustedoss \
 - 시나리오 번호(1-4)와 PagerDuty 알림 URL.
 - 포털 버전: `docker-compose exec backend python -c "from main import APP_VERSION; print(APP_VERSION)"`
 - 관련 컨테이너의 마지막 2000 라인: `docker-compose logs --tail=2000 <svc>`
-- DT 이슈: `/admin/dt/status` 전체 JSON.
+- Trivy DB 이슈: 워커의 `/var/lib/trivy/db/metadata.json` 내용 + `docker-compose logs --tail=500 worker | grep trivy_db`.
 - 스캔 이슈: `<scan_id>` 와 `/v1/scans/<scan_id>` 전체 JSON.
 
 ## 함께 보기
 
-- [DT 커넥터](./dt-connector.md) — 회로 차단기 모델 + 리셋 절차.
+- [취약점 데이터 (Trivy DB)](./vulnerability-data.md) — DB 라이프사이클과 트러블슈팅.
 - [백업·복원](./backup-and-restore.md) — 백업 보존 + 복원 흐름.
 - [디스크·health](./disk-and-health.md) — 디스크 임계 모델 + Health 대시보드.

@@ -53,8 +53,8 @@ sidebar_position: 4
   **실제 악용**될 0–1 확률. EPSS는 CVSS를 보완합니다 — CVSS는
   심각도, EPSS는 가능성. TrustedOSS는 score를 백분율로, percentile을
   "상위 N%"로 표시하며 `GATE_EPSS_THRESHOLD`로 빌드 게이트를 구동할 수
-  있습니다. EPSS는 Dependency-Track에서 수집되며 DT가 채점하지 않는
-  CVE에는 없습니다. [first.org/epss](https://www.first.org/epss/)와
+  있습니다. EPSS는 Trivy DB에서 옵니다 — Trivy가 채점하지 않는 CVE에는
+  없습니다. [first.org/epss](https://www.first.org/epss/)와
   [EPSS 사용자 가이드](../user-guide/vulnerabilities.md#epss--악용-확률)
   참고.
 - **OSV — Open Source Vulnerabilities database.** Google이 주도하는
@@ -106,10 +106,17 @@ sidebar_position: 4
 - **Trivy.** Aqua Security가 만든 컨테이너 및 OS 패키지 취약점
   스캐너. TrustedOSS는 컨테이너 스캔 파이프라인에 Trivy를 사용합니다
   (cdxgen + scancode 소스 스캔 경로와는 분리).
-- **DT — Dependency-Track.** NVD / OSV / GHSA를 미러링하여 SBOM과 CVE를
-  대조하는 취약점 인텔리전스 플랫폼. TrustedOSS는 DT 4.x를 옵션 Docker
-  Compose 오버레이로 번들하고, 회로 차단기 + 캐시 레이어로 감쌉니다.
-  [dependencytrack.org](https://dependencytrack.org/) 참고.
+- **Trivy DB.** Aqua Security가 `ghcr.io/aquasecurity/trivy-db`에
+  게시하는 NVD + OSV + GHSA + EPSS + KEV 통합 번들. TrustedOSS는 워커
+  부팅 시 1회 다운로드하고 주간 갱신합니다(`TRIVY_DB_REPOSITORY`,
+  `TRIVY_DB_REFRESH_HOURS`). [취약점 데이터 (Trivy DB)](../admin-guide/vulnerability-data.md)와
+  [데이터 출처](./data-sources.md) 참고.
+- **DT — Dependency-Track.** Apache-2.0 취약점 인텔리전스 플랫폼.
+  TrustedOSS는 v2.3까지 DT를 취약점 엔진으로 사용했고 v2.4.0에서 Trivy로
+  교체했습니다 —
+  [ADR-0001](https://github.com/trustedoss/trustedoss-portal/blob/main/docs/decisions/0001-replace-dt-with-trivy.md)과
+  [비교](../comparison.md#dependency-track과-비교) 참고. 본 용어집에 여전히
+  남아 있는 이유는 레거시 audit log 행과 비교 페이지가 DT를 참조하기 때문입니다.
 - **cosign.** Sigstore의 서명 CLI. TrustedOSS는 모든 소스 스캔의
   CycloneDX SBOM을 cosign(`cosign sign-blob`)으로 서명하여 소비자가
   `cosign verify-blob`으로 검증할 수 있게 합니다. 자체 호스팅에서는
@@ -171,7 +178,7 @@ sidebar_position: 4
 
 ## RBAC 역할
 
-- **`super_admin`** — 시스템 전체. 사용자·팀·DT·스캔 큐·디스크·감사
+- **`super_admin`** — 시스템 전체. 사용자·팀·취약점 데이터(Trivy DB)·스캔 큐·디스크·감사
   로그를 관리합니다. 설치 마법사 또는 `create_super_admin.py`
   스크립트가 생성합니다.
 - **`team_admin`** — 단일 팀 범위. 팀 설정·팀원·팀 내 프로젝트
@@ -199,12 +206,11 @@ v2.0.0 에는 액션 단위 허용 목록이 없습니다 — 올바른 scope의
 
 ## 운영 용어
 
-- **회로 차단기 (CLOSED / OPEN / HALF_OPEN).** 실패 도메인을 격리
-  하는 패턴. TrustedOSS는 DT API 클라이언트를 회로 차단기로 감쌉니다
-  — CLOSED = 정상, OPEN = DT 도달 불가(포털이 캐시된 취약점 데이터를
-  반환), HALF_OPEN = 쿨다운 종료 후 다음 프로브가 결정.
-  [On-call 런북 → 시나리오 1 (DT 다운)](../admin-guide/oncall-runbook.md)
-  참고.
+- **회로 차단기 (CLOSED / OPEN / HALF_OPEN).** 실패 도메인을 격리하는
+  패턴. TrustedOSS는 v2.3까지 Dependency-Track API 클라이언트를 차단기로
+  감쌌습니다. v2.4.0+에서는 Trivy DB가 워커 로컬에 있어 취약점 경로에서
+  이 패턴은 더 이상 사용하지 않습니다. 일반 용어로는 운영 문헌에 계속
+  등장합니다.
 - **`audit_logs`.** 상태를 변경하는 모든 작업(1급 엔티티의 CRUD,
   명시적 비즈니스 이벤트 포함)을 추가 전용으로 캡처하는 테이블.
   [감사 로그](../admin-guide/audit-log.md) 참고.

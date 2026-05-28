@@ -197,11 +197,6 @@ GET    /v1/admin/audit                       query the audit log
 GET    /v1/admin/audit/export.csv            streaming CSV
 GET    /v1/admin/health                      component liveness
 GET    /v1/admin/disk
-GET    /v1/admin/dt/status                   breaker + heartbeat snapshot
-POST   /v1/admin/dt/health-check             force a probe
-POST   /v1/admin/dt/breaker/reset            last-resort recovery
-GET    /v1/admin/dt/orphans
-POST   /v1/admin/dt/orphans/cleanup          enqueue cleanup task
 GET    /v1/admin/backup                      list backups
 POST   /v1/admin/backup                      trigger a manual backup
 GET    /v1/admin/backup/{name}/download
