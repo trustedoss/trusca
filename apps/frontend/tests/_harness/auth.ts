@@ -17,6 +17,13 @@ const DEFAULT_BASE_URL = "http://localhost:5173";
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 
+// Post-auth landing URL. Historically `/` (the Dashboard); PR #227 dropped
+// the Dashboard and made `/` an index-redirect to `/projects`. The router
+// transition is synchronous + replace-mode so Playwright may catch either
+// URL — match both to keep the harness resilient to future router moves
+// (e.g. role-aware landing pages).
+const POST_AUTH_URL_RE = /\/(projects)?$/;
+
 export type AuthPath =
   | "/login"
   | "/register"
@@ -81,8 +88,12 @@ export class AuthHarness {
       .fill(displayName);
     await this.page.getByTestId("register-email").fill(email);
     await this.page.getByTestId("register-password").fill(password);
+    // PR #227 dropped the Dashboard so `/` index-redirects to `/projects`.
+    // The auth flow lands on `/` first, then router synchronously replaces
+    // to `/projects` — `waitForURL` may catch either, but the regex below
+    // matches whichever the router settles on.
     await Promise.all([
-      this.page.waitForURL(`${this.baseUrl}/`, { timeout: DEFAULT_TIMEOUT_MS }),
+      this.page.waitForURL(POST_AUTH_URL_RE, { timeout: DEFAULT_TIMEOUT_MS }),
       this.page.getByTestId("register-submit").click(),
     ]);
     await this.expectLoggedIn();
@@ -92,7 +103,7 @@ export class AuthHarness {
     await this.page.getByTestId("login-email").fill(email);
     await this.page.getByTestId("login-password").fill(password);
     await Promise.all([
-      this.page.waitForURL(`${this.baseUrl}/`, { timeout: DEFAULT_TIMEOUT_MS }),
+      this.page.waitForURL(POST_AUTH_URL_RE, { timeout: DEFAULT_TIMEOUT_MS }),
       this.page.getByTestId("login-submit").click(),
     ]);
     await this.expectLoggedIn();
@@ -138,9 +149,11 @@ export class AuthHarness {
 
   // ───── assertions ──────────────────────────────────────────────────────
   async expectLoggedIn(): Promise<void> {
-    // After login/register the app navigates to `/`, which now renders the
-    // Dashboard (the AppShell index route — it used to redirect to /projects).
-    await expect(this.page).toHaveURL(`${this.baseUrl}/`, {
+    // After login/register the app navigates to `/`, which PR #227 turned
+    // into an index-redirect to `/projects` (Dashboard surface was dropped).
+    // Either landing URL is "logged in"; match both so the harness keeps
+    // working through router refactors.
+    await expect(this.page).toHaveURL(POST_AUTH_URL_RE, {
       timeout: DEFAULT_TIMEOUT_MS,
     });
     await expect(this.page.getByTestId("app-sidebar")).toBeVisible({
@@ -275,9 +288,11 @@ export class AuthHarness {
     ]);
     // Navigate to the app root; the AppShell mounts AppProviders →
     // authStore.bootstrap() → /auth/refresh fires and redirects to
-    // /projects when authenticated.
+    // /projects when authenticated. The router's index route then
+    // replace-navigates to `/projects` (PR #227), so the URL we end up at
+    // may be either `/` or `/projects` — both are valid logged-in states.
     await Promise.all([
-      this.page.waitForURL(`${this.baseUrl}/`, {
+      this.page.waitForURL(POST_AUTH_URL_RE, {
         timeout: DEFAULT_TIMEOUT_MS,
       }),
       this.page.goto(`${this.baseUrl}/`),

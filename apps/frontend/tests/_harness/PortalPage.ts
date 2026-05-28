@@ -1501,6 +1501,182 @@ export class PortalPage {
     return harness;
   }
 
+  // ───── W10-F — dual surface (drawer + page nav) ────────────────────────
+  /**
+   * Directly navigate to the vulnerability detail page at
+   * ``/projects/:projectId/vulnerabilities/:findingId`` and wait for the
+   * page surface to mount.
+   *
+   * Locale-agnostic — anchors on the `vulnerability-detail-page` testid +
+   * the `data-finding-id` attribute the page exposes verbatim so callers
+   * can assert provenance without parsing the rendered breadcrumb.
+   *
+   * Used by W10-F Scenario B (deep-link entry) and as a synchronization
+   * primitive after {@link clickOpenInFullView} fires the navigation.
+   */
+  async gotoVulnerabilityDetailPage(
+    projectId: string,
+    findingId: string,
+  ): Promise<void> {
+    await this.page.goto(
+      `${this.baseUrl}/projects/${projectId}/vulnerabilities/${findingId}`,
+    );
+    await this.expectVulnerabilityDetailPageMounted(findingId);
+  }
+
+  /** Sibling of {@link gotoVulnerabilityDetailPage} for the component surface. */
+  async gotoComponentDetailPage(
+    projectId: string,
+    componentId: string,
+  ): Promise<void> {
+    await this.page.goto(
+      `${this.baseUrl}/projects/${projectId}/components/${componentId}`,
+    );
+    await this.expectComponentDetailPageMounted(componentId);
+  }
+
+  /**
+   * Open the vulnerability drawer from the Vulnerabilities list. The list
+   * exposes both `data-cve-id` and `data-finding-id` on each row; this verb
+   * accepts either and picks the right anchor by best-effort prefix sniff
+   * (CVE ids start with "CVE-" while finding ids are UUIDs). Locale-agnostic.
+   *
+   * The verb waits until the drawer is visible AND the URL mirrors the
+   * selection via `?vuln=<findingId>` so callers can subsequently read the
+   * finding id off the URL without racing the next render.
+   */
+  async openVulnerabilityDrawerFromList(
+    findingIdOrCveId: string,
+  ): Promise<void> {
+    const isCve = /^CVE-/i.test(findingIdOrCveId);
+    const selector = isCve
+      ? `[data-testid="vulnerability-row"][data-cve-id="${findingIdOrCveId}"]`
+      : `[data-testid="vulnerability-row"][data-finding-id="${findingIdOrCveId}"]`;
+    const row = this.page.locator(selector).first();
+    await expect(row).toBeVisible({ timeout: 10_000 });
+    await row.click();
+    await this.page
+      .getByTestId("vulnerability-drawer")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    await expect
+      .poll(() => new URL(this.page.url()).searchParams.get("vuln"), {
+        timeout: 5_000,
+      })
+      .not.toBeNull();
+  }
+
+  /**
+   * Open the component drawer from the Components list by visible name.
+   * The list virtualizes; rows in the first viewport are reliably present
+   * for the seeded fixtures. Mirrors the locale-agnostic anchors used by
+   * {@link openComponentDrawer} (same selector strategy).
+   */
+  async openComponentDrawerFromList(name: string): Promise<void> {
+    const row = this.page
+      .getByTestId("component-row")
+      .filter({ hasText: name })
+      .first();
+    await expect(row).toBeVisible({ timeout: 10_000 });
+    await row.click();
+    await this.page
+      .getByTestId("component-drawer")
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  /**
+   * Click the drawer's "Open in full view" affordance. Disambiguates between
+   * the vulnerability drawer and the component drawer by checking which
+   * drawer is currently mounted — both drawers expose a sibling testid
+   * (`vulnerability-drawer-open-full` / `component-drawer-open-full`) but
+   * only one drawer renders at a time. After the click the harness waits for
+   * the URL pathname to switch off the project-detail route (the drawer's
+   * `onOpenChange(false)` fires synchronously so we cannot wait on the
+   * drawer disappearing — that races the navigation).
+   */
+  async clickOpenInFullView(): Promise<void> {
+    const vulnBtn = this.page.getByTestId("vulnerability-drawer-open-full");
+    const compBtn = this.page.getByTestId("component-drawer-open-full");
+    const button = (await vulnBtn.count()) > 0 ? vulnBtn : compBtn;
+    await expect(button).toBeVisible({ timeout: 10_000 });
+    await button.click();
+    // The page surface mounts on the destination route — wait for either
+    // detail page testid so the verb is symmetric across both drawers.
+    const vulnPage = this.page.getByTestId("vulnerability-detail-page");
+    const compPage = this.page.getByTestId("component-detail-page");
+    await expect(vulnPage.or(compPage)).toBeVisible({ timeout: 10_000 });
+  }
+
+  /**
+   * Click the "Back to Vulnerabilities" link in the page header. Waits
+   * until the project detail page mounts again so callers can assert on the
+   * URL deterministically. The link targets either the captured
+   * `location.state.from` (when same-project) or the default
+   * `/projects/<id>?tab=vulnerabilities` fallback.
+   */
+  async clickBackToVulnerabilities(): Promise<void> {
+    await this.page
+      .getByTestId("vulnerability-detail-page-back-link")
+      .click();
+    await this.expectProjectDetailMounted();
+  }
+
+  /** Sibling of {@link clickBackToVulnerabilities} for the component surface. */
+  async clickBackToComponents(): Promise<void> {
+    await this.page
+      .getByTestId("component-detail-page-back-link")
+      .click();
+    await this.expectProjectDetailMounted();
+  }
+
+  /**
+   * Assert the vulnerability detail page is mounted and (optionally) is for
+   * the given finding id. The page exposes the id verbatim on
+   * `[data-finding-id]` so the assertion is locale-agnostic.
+   */
+  async expectVulnerabilityDetailPageMounted(
+    findingId?: string,
+  ): Promise<void> {
+    const page = this.page.getByTestId("vulnerability-detail-page");
+    await expect(page).toBeVisible({ timeout: 10_000 });
+    if (findingId !== undefined) {
+      await expect(page).toHaveAttribute("data-finding-id", findingId, {
+        timeout: 10_000,
+      });
+    }
+    // Header + breadcrumb are part of the page surface contract.
+    await expect(
+      this.page.getByTestId("vulnerability-detail-page-header"),
+    ).toBeVisible();
+  }
+
+  /** Sibling of {@link expectVulnerabilityDetailPageMounted} for components. */
+  async expectComponentDetailPageMounted(
+    componentId?: string,
+  ): Promise<void> {
+    const page = this.page.getByTestId("component-detail-page");
+    await expect(page).toBeVisible({ timeout: 10_000 });
+    if (componentId !== undefined) {
+      await expect(page).toHaveAttribute("data-component-id", componentId, {
+        timeout: 10_000,
+      });
+    }
+    await expect(
+      this.page.getByTestId("component-detail-page-header"),
+    ).toBeVisible();
+  }
+
+  /**
+   * Assert the NEXT STEPS sticky sidebar is mounted. Page-only (the drawer
+   * surface does NOT render this panel — see W10-D rationale in
+   * `VulnerabilityDetailPage.tsx`). The sidebar mounts only once the finding
+   * resolves; callers should ensure the page is past its loading skeleton.
+   */
+  async expectNextStepsPanelVisible(): Promise<void> {
+    await expect(
+      this.page.getByTestId("vulnerability-next-steps-panel"),
+    ).toBeVisible({ timeout: 10_000 });
+  }
+
   // -------------------------------------------------------------------------
   // Tier 6 — client-abandonment / bad-client resilience verbs
   // -------------------------------------------------------------------------
