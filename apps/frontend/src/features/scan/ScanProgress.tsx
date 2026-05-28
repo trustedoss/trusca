@@ -15,9 +15,9 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScanCancelButton } from "@/features/scans/ScanCancelButton";
+import { ToolLogLine } from "@/features/scan/ToolLogLine";
 import {
   useScanWebSocket,
-  type ScanLogMessage,
   type ScanStep,
 } from "@/hooks/useScanWebSocket";
 import { cn } from "@/lib/utils";
@@ -29,8 +29,7 @@ import { getScan, type ScanStatus } from "@/lib/projectsApi";
  * Subscribes to /ws/scans/{scanId} and renders:
  *   - A bar with the current percent + step label.
  *   - A 6-step pipeline list (bootstrap → fetch → cdxgen → scancode →
- *     dt_findings → finalize) with a tick / spinner / waiting glyph per
- *     step.
+ *     trivy → finalize) with a tick / spinner / waiting glyph per step.
  *   - "Reconnecting…" inline notice while the hook backs off.
  *   - Success / failure terminal panel + retry/close affordances.
  *
@@ -70,76 +69,23 @@ export interface ScanProgressProps {
   socketFactory?: (url: string) => WebSocket;
   /** Test seam — override URL building. */
   urlBuilder?: (scanId: string) => string;
+  /**
+   * Suppress the embedded collapsible tool-log panel. The dedicated
+   * `/scans/:scanId` page renders its own (larger, filterable) log panel, and
+   * the drawer call sites now link out to that page instead of cramming the
+   * log into a narrow Sheet. Defaults to `false` so any external caller that
+   * still relies on the inline panel keeps it.
+   */
+  hideInlineLog?: boolean;
 }
 
-// P2 #8c — per-stage color codes for the tool log panel. Aligned with the
-// design system risk palette where possible (cdxgen=primary/blue, scancode
-// uses the conditional license warm tone for visual distinction). Unknown
-// stages fall back to the neutral foreground.
-const STAGE_BADGE_CLASS: Record<string, string> = {
-  cdxgen: "border-blue-500/30 bg-blue-500/10 text-blue-700",
-  scancode: "border-amber-500/30 bg-amber-500/10 text-amber-700",
-};
-
-function ToolLogLine({ msg }: { msg: ScanLogMessage }) {
-  const isErr = msg.stream === "stderr";
-  const badge =
-    STAGE_BADGE_CLASS[msg.stage] ??
-    "border-border bg-muted text-muted-foreground";
-  return (
-    <li
-      className={cn(
-        "flex items-baseline gap-2 border-b px-3 py-1 last:border-b-0",
-        isErr && "bg-risk-critical/5",
-      )}
-      data-stage={msg.stage}
-      data-stream={msg.stream}
-    >
-      <span className="shrink-0 text-muted-foreground" title={msg.ts}>
-        {msg.ts.slice(11, 19)}
-      </span>
-      <span
-        className={cn(
-          "shrink-0 rounded border px-1 py-0.5 text-[9px] uppercase tracking-wide",
-          badge,
-        )}
-      >
-        {msg.stage}
-      </span>
-      {isErr ? (
-        <span
-          className="shrink-0 rounded border border-risk-critical/30 bg-risk-critical/10 px-1 py-0.5 text-[9px] uppercase tracking-wide text-risk-critical"
-          aria-label="stderr"
-        >
-          err
-        </span>
-      ) : null}
-      <span
-        className={cn(
-          "min-w-0 whitespace-pre-wrap break-words",
-          isErr ? "text-risk-critical" : "text-foreground",
-        )}
-      >
-        {msg.line}
-      </span>
-    </li>
-  );
-}
-
-// W6 (post-#43b): the historical ``dt_upload`` stage was a transient label —
-// post-DT-removal the backend still emits it for WS frame compatibility but it
-// is a no-op marker (cdxgen has finished; Trivy has not started yet, see
-// `scan_source.py::_set_stage(..., "dt_upload")`). Surfacing it in the user-
-// facing step row showed an empty checkmark + a misleading "Uploading SBOM to
-// Dependency-Track" label, so it is omitted here. ``dt_findings`` is the slot
-// where ``trivy sbom`` actually runs and stays in the row (label rename ships
-// with W6-#43f).
+// Mirrors backend _STAGE_PROGRESS order in apps/backend/tasks/scan_source.py
 const PIPELINE_STEPS: ScanStep[] = [
   "bootstrap",
   "fetch",
   "cdxgen",
   "scancode",
-  "dt_findings",
+  "trivy",
   "finalize",
 ];
 
@@ -160,6 +106,7 @@ export function ScanProgress({
   onCancelled,
   socketFactory,
   urlBuilder,
+  hideInlineLog = false,
 }: ScanProgressProps) {
   const { t } = useTranslation("scans");
 
@@ -418,7 +365,7 @@ export function ScanProgress({
           worker, mock backend, or the stage skipped tooling) we fall back
           to the prior per-step progress trace so the panel still shows
           something useful. */}
-      {(logMessages.length > 0 || messages.length > 0) ? (
+      {!hideInlineLog && (logMessages.length > 0 || messages.length > 0) ? (
         <div
           className="rounded-md border bg-muted/30"
           data-testid="scan-progress-log"
