@@ -272,6 +272,28 @@
       "no_detail": "—",
       "updated_at": "갱신 시각: {{when}}"
     },
+    "trivy_db": {
+      "heading": "Trivy 취약점 DB",
+      "kpi": {
+        "last_update": "마지막 업데이트",
+        "vuln_count": "추적 중인 취약점",
+        "db_version": "DB 버전",
+        "next_refresh": "다음 갱신까지 {{value}}"
+      },
+      "freshness": {
+        "fresh": "최신",
+        "stale": "오래됨",
+        "very_stale": "매우 오래됨"
+      },
+      "empty": {
+        "title": "Trivy DB 아직 다운로드되지 않음",
+        "description": "다음 워커 부팅 시 자동으로 다운로드됩니다."
+      },
+      "footer": {
+        "cache_dir": "캐시",
+        "repository": "저장소"
+      }
+    },
     "backup": {
       "title": "백업",
       "subtitle": "자동 일일 백업 + 수동 백업 트리거 + 복원.",

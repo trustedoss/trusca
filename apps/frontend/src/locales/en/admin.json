@@ -272,6 +272,28 @@
       "no_detail": "—",
       "updated_at": "Updated {{when}}"
     },
+    "trivy_db": {
+      "heading": "Trivy vulnerability DB",
+      "kpi": {
+        "last_update": "Last update",
+        "vuln_count": "Vulnerabilities tracked",
+        "db_version": "DB version",
+        "next_refresh": "Next refresh in {{value}}"
+      },
+      "freshness": {
+        "fresh": "Fresh",
+        "stale": "Stale",
+        "very_stale": "Very stale"
+      },
+      "empty": {
+        "title": "Trivy DB not yet downloaded",
+        "description": "Database will download automatically on the next worker boot."
+      },
+      "footer": {
+        "cache_dir": "Cache",
+        "repository": "Repository"
+      }
+    },
     "backup": {
       "title": "Backups",
       "subtitle": "Automated daily backups + manual triggers + restore.",

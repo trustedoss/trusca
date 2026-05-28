@@ -19,6 +19,7 @@ import {
   type HealthComponent,
   type HealthStatus,
 } from "@/features/admin/health/api/adminHealthApi";
+import { TrivyDBPanel } from "@/features/admin/health/TrivyDBPanel";
 import { useAdminHealth } from "@/features/admin/health/api/useAdminHealth";
 import { adminErrorMessageKey } from "@/features/admin/lib/adminErrorMessage";
 import { formatRelativeToNow } from "@/lib/relativeTime";
@@ -145,7 +146,7 @@ export function AdminHealthPage() {
         </Button>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-6 py-4">
+      <div className="flex-1 space-y-4 overflow-y-auto px-6 py-4">
         {healthQuery.isError ? (
           <Alert variant="destructive" data-testid="admin-health-error">
             <AlertDescription>
@@ -153,6 +154,14 @@ export function AdminHealthPage() {
             </AlertDescription>
           </Alert>
         ) : null}
+
+        {/*
+          W6-#43e: Trivy DB lifecycle panel. Sits above the probe grid so
+          operators see the vulnerability-DB state next to the other
+          infrastructure health signals. Owns its own loading / error /
+          empty state internally.
+        */}
+        <TrivyDBPanel />
 
         <div
           className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
