@@ -1,0 +1,54 @@
+# Semgrep ignore list — TrustedOSS Portal
+#
+# Each entry must be either a glob pattern (one per line) or a comment.
+# We use this for non-product material that semgrep happens to scan but
+# whose findings cannot be acted on (agent definitions, sample snippets,
+# generated artifacts).
+
+# Claude Code agent definitions ship runnable-looking code samples that are
+# documentation, not deployable code. Treating them as product would force
+# every snippet to satisfy production hardening rules.
+.claude/
+
+# Documentation site source — Markdown / MDX with code samples.
+docs/
+
+# Generated bundles / build outputs.
+dist/
+build/
+node_modules/
+.venv/
+__pycache__/
+
+# Test-only material — pytest fixtures and Vitest specs use synthetic
+# credentials, unencrypted-WebSocket URLs, and adversarial payloads that
+# semgrep flags as real findings. Test code is never deployed.
+**/tests/**
+apps/backend/tests/
+apps/frontend/tests/
+
+# Dev-only Dockerfiles bind-mount the source tree so they cannot pin a
+# non-root USER without breaking HMR / --reload. Production images
+# (Dockerfile.prod for backend; the frontend prod bundle is a separate
+# image) have correct USER directives.
+apps/backend/Dockerfile
+apps/frontend/Dockerfile
+
+# WebSocket base resolver intentionally falls through to the unencrypted
+# scheme when the backend base URL is unencrypted (local dev). Production
+# deployments always pass an encrypted base, which gives the encrypted
+# WebSocket scheme. Justified inline; semgrep evaluates the file as a
+# whole because every branch contains a literal.
+apps/frontend/src/lib/wsBase.ts
+
+# Vite dev-server config — the proxy block carries an unencrypted
+# WebSocket scheme default for the docker-compose dev stack (the same
+# pattern wsBase.ts retains for local-HTTP runs). Production never
+# runs the Vite dev server (it ships the SPA as a static bundle fronted
+# by Traefik with the encrypted scheme), so semgrep's
+# detect-insecure-websocket is a false positive here. The rule appears
+# to match the entire proxy object once it sees the WebSocket-passthrough
+# flag, so per-line `nosemgrep` comments do not suffice; ignore the
+# whole file the way wsBase.ts does. The literal scheme is not spelled
+# here so the .semgrepignore file itself does not trip the same rule.
+apps/frontend/vite.config.ts

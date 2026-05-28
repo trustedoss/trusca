@@ -1,0 +1,70 @@
+name: Security report (PUBLIC — please use private channel instead)
+description: Open ONLY for non-sensitive security topics. Vulnerabilities go to SECURITY.md.
+title: "[Security] "
+labels: ["security", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## ⚠️ Stop and read this first
+
+        **Do NOT file a public issue for an unpatched vulnerability.**
+
+        For confidential vulnerability reports, please use one of these private channels (see [SECURITY.md](https://github.com/trustedoss/trustedoss-portal/blob/main/SECURITY.md) for details):
+
+        - **GitHub private vulnerability reporting** — [Report a vulnerability](https://github.com/trustedoss/trustedoss-portal/security/advisories/new) (preferred)
+        - **Encrypted email** — `security@trustedoss.io` (PGP key fingerprint in SECURITY.md)
+
+        Use this **public** template only for:
+        - Questions about our security model or policies
+        - Hardening suggestions for already-public surfaces
+        - Public discussion of an *already-disclosed* CVE
+
+        If you submit an unpatched vulnerability through this form, we will close the issue without comment and ask you to refile through the private channel.
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What is this report about?
+      options:
+        - Question about our security policy / threat model
+        - Hardening suggestion for a public surface
+        - Discussion of an already-disclosed CVE / advisory
+        - Other (NOT an unpatched vulnerability)
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One or two sentences.
+    validations:
+      required: true
+
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      description: |
+        Provide the relevant context. If this references a published CVE / advisory, include the identifier and link.
+        **Do not paste exploit code, PoC steps, or unpatched-vulnerability details here.**
+    validations:
+      required: true
+
+  - type: input
+    id: references
+    attributes:
+      label: References
+      description: Public links (CVE, advisory, blog post, prior issue).
+      placeholder: e.g. CVE-2025-12345, https://github.com/advisories/GHSA-xxxx
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-flight checks (required)
+      options:
+        - label: This report does NOT contain an unpatched vulnerability or its exploitation details.
+          required: true
+        - label: I have read SECURITY.md and confirmed the private channel is the correct path for any sensitive disclosure.
+          required: true

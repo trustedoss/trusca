@@ -1,0 +1,87 @@
+# Agent worktrees (harness isolation) + runtime backups
+.claude/worktrees/
+backups/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# Node / frontend
+node_modules/
+dist/
+build/
+.vite/
+*.tsbuildinfo
+coverage/
+playwright-report/
+test-results/
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+
+# cosign signing keys (v2.3-s1) — the encrypted private key + public key live
+# under ./secrets/cosign (default COSIGN_KEYS_HOST_PATH) but must NEVER be
+# committed. The directory itself is kept via secrets/cosign/.gitkeep so the
+# docker-compose bind mount resolves on a fresh checkout.
+secrets/cosign/cosign.key
+secrets/cosign/cosign.pub
+secrets/**/*.key
+secrets/**/*.pub
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+*.bak
+.DS_Store
+Thumbs.db
+
+# Logs / runtime
+*.log
+*.pid
+
+# Docker / volumes
+docker-data/
+postgres-data/
+redis-data/
+
+# Workspace / scan output
+workspace/
+.ort/scan-results/
+
+# Docusaurus build cache
+docs-site/.docusaurus/
+docs-site/build/
+
+# apps/frontend artifact (shadcn/ui add output dir)
+apps/frontend/@/
+
+# Guide screenshot staging area (ad-hoc captures; committed assets live
+# alongside under docs-site/static/img/screenshots/)
+docs-site/static/img/screenshots/staging/
+
+# ---- Internal-only artifacts (never pushed publicly) -----------------------
+# Session handoffs, internal planning, agent tooling, scan-bench fixtures,
+# UX work-product, ADRs — kept locally for context restoration across
+# sessions but not part of the public OSS repo. The public source of truth
+# for design decisions is docs-site/docs/reference/design-system.md.
+.claude/
+CLAUDE.md
+docs/sessions/
+docs/v2-execution-plan.md
+docs/post-ga-execution-tracker.md
+docs/scans/
+docs/decisions/
+docs/ux/

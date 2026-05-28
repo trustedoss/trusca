@@ -1,0 +1,330 @@
+# .trivyignore — TrustedOSS Portal worker image
+#
+# Policy:
+#   Each entry MUST include the CVE ID, the bundled artifact + Trivy
+#   target path, the upstream fix status, and a reach analysis explaining
+#   why the vulnerable code path is unreachable in our usage. CVEs that
+#   ARE reachable do NOT belong here — they block the merge until fixed.
+#
+# Acceptable categories (development-velocity policy):
+#   (1) Upstream-unpatched / no-fix CVEs in vendored tool dependencies.
+#   (2) Upstream-patched CVEs but bundled inside a vendored tool which
+#       has not cut a release including the patch (e.g. ORT 85.0.0 still
+#       ships json-smart 2.5.0 although 2.5.2 exists upstream).
+#   (3) Upstream-patched CVEs in development-only tooling whose
+#       vulnerable entry points are never invoked by the worker runtime
+#       (e.g. cdxgen-plugins-bin Go binaries shipped alongside cdxgen
+#       but never executed because we don't call any plugin).
+#
+# Re-evaluate every 180 days OR when the upstream tool publishes a new
+# release — whichever is sooner. Track via the latest session handoff's
+# "Open follow-ups" section.
+#
+# Tooling:
+#   aquasecurity/trivy-action@v0.36.0 auto-detects this file at the
+#   workspace root. The .github/workflows/ci.yml `image-scan` job pins
+#   `trivyignores: ./.trivyignore` for explicit-ness (zero side effects).
+#
+# ----------------------------------------------------------------------------
+# ORT 85.1.1 reach surface (single source of truth — keep in sync with
+# apps/backend/integrations/ort.py:128-139):
+#   cmd = [
+#       "ort", "evaluate",
+#       "--rules-file", <kts>,
+#       "--ort-file",   <cdxgen-derived sbom>,
+#       "--output-dir", <out>,
+#       "--output-formats", "JSON",
+#   ]
+# We do NOT run `ort analyze`, `ort scan`, the `notice` reporter, or any
+# OAuth-protected ORT command. We never set `--cache-dir` or
+# `--analyzer-cache`. The evaluate phase loads the ruleset (Kotlin DSL)
+# and the analyzer-result derived from cdxgen's CycloneDX JSON, then
+# applies rules and emits JSON. Spring Security, JWT/JOSE, msgpack
+# serialisation, JRuby reporter templating, and BouncyCastle asymmetric
+# crypto are all outside this code path.
+#
+# ----------------------------------------------------------------------------
+# cdxgen 12.3.3 reach surface (single source of truth — keep in sync with
+# apps/backend/integrations/cdxgen.py:107-115):
+#   cmd = [
+#       "cdxgen",
+#       "-r",                       # recurse
+#       "-o", <output>,
+#       "--spec-version", "1.5",
+#       <source_dir>,
+#   ]
+# We use cdxgen ONLY as a CycloneDX SBOM emitter — no plugin invocation
+# (no `--type osv-scanner`, no `--scan` flag, no `--evidence`/`--evinse`
+# binary calls). cdxgen ships an optional `@cdxgen/cdxgen-plugins-bin`
+# bundle of pre-compiled Go binaries (osv-scanner, cdx-audit,
+# sourcekitten, …) which Trivy scans as gobinary surface. We tried
+# `npm install -g --omit=optional` to drop the bundle (commit a1e2e14)
+# but cdxgen 12.x re-fetches plugins-bin via a postinstall script
+# regardless of the npm flag. The bundle therefore stays on the image,
+# but is **never executed at runtime** — vulnerability matching is
+# delegated to Dependency-Track and image SAST is out of scope for the
+# worker. The CVEs below are category (3) per the policy above.
+#
+# Phase 8 hardening backlog: revisit when cdxgen publishes a release
+# that rebuilds plugins-bin (drops grpc CRITICAL + 11 HIGHs), OR carve
+# the plugins-bin directory out at image build time (`RUN rm -rf
+# /usr/lib/node_modules/@cyclonedx/cdxgen/node_modules/@cdxgen/cdxgen-
+# plugins-bin*` — currently rejected because it may break cdxgen's
+# self-test on startup; needs verification).
+#
+# ============================================================================
+
+# CVE-2024-57699 — net.minidev:json-smart 2.5.0 → 2.5.2
+# Target: opt/ort/lib/json-smart-2.5.0.jar (ORT 85.1.1 transitive — same
+#   bundled version as 85.0.0; ORT 85.1.x patch line did not refresh
+#   json-smart, awaiting an 86.x cut on main).
+# CVSS: HIGH (DoS via stack exhaustion, incomplete fix for CVE-2023-1370).
+# Reach: json-smart is loaded by Spring Security / nimbus-jose-jwt to parse
+#   OAuth2/JWT payloads. Our `ort evaluate` invocation makes no HTTP calls
+#   and parses no tokens — the rule script (rules.kts) and the cdxgen-
+#   derived analyzer file are the only inputs, both local files. The
+#   parser's exploit primitive (deeply-nested attacker JSON) requires
+#   attacker control of the JSON stream, which we never expose. UNREACHED.
+# Re-evaluate: 2026-11-09 or on next ORT 86.x release.
+CVE-2024-57699
+
+# CVE-2026-5598 — org.bouncycastle:bcprov-jdk18on 1.79 → 1.84
+# Target: opt/ort/lib/jruby-stdlib-9.4.14.0.jar
+#   (BouncyCastle is bundled inside JRuby's stdlib jar — the BC version
+#   is whatever JRuby 9.4.14.0 vendored, not a top-level ORT dep.)
+# CVSS: HIGH (private-key leakage via non-constant-time comparison).
+# Reach: JRuby is loaded only by ORT's `notice` reporter (Apache Velocity
+#   templating in Ruby). Our `ort evaluate --output-formats JSON` does NOT
+#   invoke any reporter — JSON output is emitted by ORT's built-in writer
+#   without templating. We never call `ort report -f Notice...`. Even if
+#   JRuby loaded BC, the CVE requires us to perform asymmetric-crypto
+#   verification with attacker-influenced inputs; we sign/verify nothing
+#   inside the worker via BC. UNREACHED.
+# Re-evaluate: 2026-11-09 or when JRuby ships a stdlib bump.
+CVE-2026-5598
+
+# CVE-2026-21452 — org.msgpack:msgpack-core 0.9.10 → 0.9.11
+# Target: opt/ort/lib/org.msgpack.msgpack-core-0.9.10.jar
+# CVSS: HIGH (DoS via crafted MessagePack input).
+# Reach: ORT uses msgpack-core for analyzer-cache serialisation
+#   (--analyzer-cache option) and for the streaming-result writer. Our
+#   invocation passes neither `--cache-dir` nor `--analyzer-cache`, and
+#   the JSON output formatter never goes through msgpack. The sole input
+#   we feed ORT is a CycloneDX JSON SBOM (cdxgen-produced) loaded via
+#   `--ort-file`, which is JSON-parsed, not msgpack. UNREACHED.
+# Re-evaluate: 2026-11-09 or on next ORT 86.x release (ORT main has
+#   bumped msgpack-core; the 85.1.x patch line did not include it).
+CVE-2026-21452
+
+# ============================================================================
+# cdxgen-plugins-bin Go binary CVEs (12 total, 11 HIGH + 1 CRITICAL).
+#
+# Targets (all under the same path, multi-arch siblings included):
+#   usr/lib/node_modules/@cyclonedx/cdxgen/node_modules/
+#     @cdxgen/cdxgen-plugins-bin{-linux-amd64,-linux-arm64,…}/plugins/**
+#
+# Category (3) per policy header — every CVE listed below is
+# upstream-PATCHED in a newer Go module version, but the patched
+# version has not been re-bundled into a cdxgen-plugins-bin release.
+# Each is reachable ONLY by executing the corresponding plugin binary
+# (osv-scanner / cdx-audit / sourcekitten / …) which our worker never
+# does — see the cdxgen reach surface block above. The bundle ships
+# on disk (postinstall script downloads it regardless of
+# `npm install --omit=optional`) but is never executed.
+#
+# Re-evaluate: 2026-11-09 OR when cdxgen publishes a release that
+#   refreshes plugins-bin OR when the Phase 8 hardening item (carving
+#   the plugins-bin directory out of the image) lands — whichever is
+#   sooner.
+#
+# Severity ordering: CRITICAL first, then HIGH alphabetical by Go module.
+
+# CVE-2026-33186 — google.golang.org/grpc v1.76.0 → 1.79.3 — CRITICAL
+# gRPC-Go authorization bypass via improper HTTP/2 path validation.
+# Reachable only via inbound gRPC server. None of the cdxgen plugins we
+# might invoke act as gRPC servers; even if they did, the worker exposes
+# no listening sockets to the network (Celery is the only ingress, via
+# Redis). UNREACHED.
+CVE-2026-33186
+
+# CVE-2025-15558 — github.com/docker/cli v29.0.3 → 29.2.0 — HIGH
+# docker/cli privilege escalation via malicious plugin binaries
+# (Windows-only attack vector per advisory). Worker runs Linux only,
+# never invokes docker CLI. UNREACHED.
+CVE-2025-15558
+
+# CVE-2026-34040 — github.com/docker/docker v28.5.2 → 29.3.1 — HIGH
+# Moby authorization bypass. Reachable only via Moby daemon socket; the
+# worker has no Docker socket mounted and never shells to docker.
+# UNREACHED.
+CVE-2026-34040
+
+# CVE-2026-34986 — github.com/go-jose/go-jose/v4 v4.1.2 → 4.1.4 — HIGH
+# DoS via crafted JSON Web Encryption. Reachable only when the binary
+# parses attacker-supplied JWE; cdxgen plugins don't invoke this code
+# path during the SBOM-emit-only flow we use. UNREACHED.
+CVE-2026-34986
+
+# CVE-2026-4660 — github.com/hashicorp/go-getter v1.8.3 → 1.8.6 — HIGH
+# Arbitrary file reads via malicious URL. Reachable only when go-getter
+# fetches a remote artifact; our cdxgen invocation has no URL inputs.
+# UNREACHED.
+CVE-2026-4660
+
+# CVE-2026-33747 — github.com/moby/buildkit v0.26.2 → 0.28.1 — HIGH
+# BuildKit arbitrary file write via untrusted frontend. Reachable only
+# when BuildKit parses a Dockerfile from an untrusted source; the worker
+# never invokes BuildKit. UNREACHED.
+CVE-2026-33747
+
+# CVE-2026-33748 — github.com/moby/buildkit v0.26.2 → 0.28.1 — HIGH
+# BuildKit unauthorized file access via Git URL fragment. Same UNREACHED
+# rationale as CVE-2026-33747 (no BuildKit invocation).
+CVE-2026-33748
+
+# CVE-2026-35469 — github.com/moby/spdystream v0.5.0 → 0.5.1 — HIGH
+# DoS via SPDY streaming (Kubelet / CRI-O / kube-apiserver). The worker
+# is not a Kubernetes component; spdystream is a transitive of
+# kubernetes client libraries vendored into Trivy, not an entry point
+# we expose. UNREACHED.
+CVE-2026-35469
+
+# CVE-2025-66564 — github.com/sigstore/timestamp-authority v1.2.2 → 2.0.3 — HIGH
+# Sigstore Timestamp Authority DoS via excessive OID/Content-Type. The
+# binary acts as a TSA server when run in `serve` mode; the cdxgen
+# plugins bundle ships the binary but doesn't run it as a server.
+# UNREACHED.
+CVE-2025-66564
+
+# CVE-2026-29181 — go.opentelemetry.io/otel v1.38.0 → 1.41.0 — HIGH
+# OpenTelemetry baggage header DoS amplification. Reachable only when
+# the binary serves HTTP traffic with otel middleware. UNREACHED.
+CVE-2026-29181
+
+# CVE-2026-24051 — go.opentelemetry.io/otel/sdk v1.38.0 → 1.40.0 — HIGH
+# OpenTelemetry SDK arbitrary code execution via PATH hijacking. The
+# vulnerable code path runs when otel SDK looks up `kenv` (BSD only)
+# without an absolute path. Worker is Linux. UNREACHED.
+CVE-2026-24051
+
+# CVE-2026-39883 — go.opentelemetry.io/otel/sdk v1.38.0 → 1.43.0 — HIGH
+# Same PATH-hijacking class as CVE-2026-24051, separate fix. UNREACHED
+# under the same rationale.
+CVE-2026-39883
+
+# ---------------------------------------------------------------------------
+# Maven 3.9.x bundle (chore PR #4 worker image): JARs vendored alongside
+# the `mvn` binary so we can run `mvn dependency:tree` for the Java
+# pre-cdxgen prep step. Maven runs ONLY as
+#   mvn -B -q -DskipTests dependency:tree
+# in `apps/backend/integrations/maven_prep.py` — no plugin execution, no
+# build, no deploy. The resolver reads the local POM + downloads .jar
+# metadata from Maven Central; the bundled jars below are loaded by
+# Maven's own classpath but their vulnerable code paths are never
+# entered. Category (3) — runtime-UNREACHED.
+# ---------------------------------------------------------------------------
+
+# CVE-2026-42583 — io.netty:netty-codec 4.1.132.Final → 4.1.133.Final — HIGH
+# Netty's HTTP/2 codec mishandles RST_STREAM bursts (DoS amplification).
+# Reachable only when netty serves HTTP traffic. Maven uses netty inside
+# Wagon / aether-transport-http to fetch metadata, but only as a client
+# emitting outbound HTTPS to repo1.maven.org — not as a server, and we
+# don't process attacker-controlled HTTP/2 server frames. UNREACHED.
+CVE-2026-42583
+
+# CVE-2026-42584 — io.netty:netty-codec-http 4.1.132.Final → 4.1.133.Final — HIGH
+# Companion CVE in the same Netty release line, HTTP/1 chunked-encoding
+# parser. Same client-only invocation rationale as CVE-2026-42583. UNREACHED.
+CVE-2026-42584
+
+# CVE-2026-42587 — io.netty:netty-codec-http 4.1.132.Final → 4.1.133.Final — HIGH
+# Third companion CVE in the same Netty release line, HttpContentDecompressor
+# `maxAllocation` bypass when decompressing attacker-controlled gzipped/deflate
+# bodies. Trivy first surfaced this on the Chore P CI run after ORT 85.0.0 →
+# 85.1.1 bump exposed the bundled netty-codec-http jar at 4.1.132.Final
+# (already covered for 42583/42584). Same client-only invocation rationale as
+# CVE-2026-42583: ORT only loads netty inside its `evaluate` command for
+# Maven/Gradle metadata fetches against repo1.maven.org / Gradle Central
+# (TLS-served, not attacker-controlled). The decompressor entry point is
+# never reached by `ort evaluate --rules-file <kts> --ort-file <sbom>
+# --output-formats JSON`. ORT 86.x will likely refresh netty to ≥4.1.133
+# in its bundled fat-jar — re-evaluate then. UNREACHED.
+CVE-2026-42587
+
+# CVE-2026-3505 — org.bouncycastle:bcpg-jdk18on 1.78.1 → 1.84 — HIGH
+# Bouncy Castle OpenPGP packet parser memory-amplification. Reachable
+# only when the JVM parses attacker-controlled OpenPGP messages.
+# `mvn dependency:tree` does NOT verify PGP signatures (we don't pass
+# `-Dpgpverify=true`); the bundled bcpg jar is loaded by Maven's
+# classpath but never exercised. UNREACHED.
+CVE-2026-3505
+
+# CVE-2025-67030 — org.codehaus.plexus:plexus-utils 3.5.1 → 4.0.3 / 3.6.1 — HIGH
+# XML External Entity (XXE) processing in plexus-utils' Xpp3DomBuilder.
+# Reachable only when the consumer feeds untrusted XML into Xpp3Dom*.
+# `mvn dependency:tree` parses the local pom.xml (which we already
+# control via the user's clone — same trust boundary as a malicious
+# build.gradle) and Maven's own central-index responses (TLS-served by
+# repo1.maven.org). No attacker-controlled XML reaches Xpp3Dom from a
+# resolver-only invocation. UNREACHED.
+CVE-2025-67030
+
+# CVE-2025-68121 — REMOVED in Chore P (Phase 8 worker-image refresh).
+# Go SDK bumped from 1.22.7 → 1.25.10 in Dockerfile.worker; the
+# crypto/tls TLS-session-resumption fix landed in 1.25.7, so the
+# vulnerable `pkg/tool/linux_amd64/{trace,vet}` binaries are no longer
+# present in the image. Removed rather than retained-with-justification
+# because the upstream fix is shipped — keeping the entry would defeat
+# the policy's "every entry must have a current target" requirement.
+
+# ---------------------------------------------------------------------------
+# .NET SDK 8.0 reach surface (single source of truth — keep in sync with
+# apps/backend/integrations/dotnet_prep.py and Dockerfile.worker .NET install
+# block at lines 314-325):
+#   cmd = ["dotnet", "restore", "--use-lock-file"]
+# We only invoke `dotnet restore` to populate `obj/project.assets.json`
+# which cdxgen consumes for transitive NuGet enumeration. We do NOT run
+# `dotnet build`, `dotnet publish`, MSBuild via `dotnet msbuild`, or any
+# XML-DSig signature verification (the Microsoft.Build.Tasks.Core spoofing
+# CVEs target build/publish targets, not restore). The bundled assemblies
+# live under `/usr/share/dotnet/sdk/8.0.*/` and `/usr/share/dotnet/shared/
+# Microsoft.NETCore.App/*/`; restore loads NuGet metadata over HTTPS from
+# api.nuget.org (TLS-pinned by the .NET CLI) and writes lockfile JSON.
+# UNREACHED for every CVE below.
+#
+# Re-evaluate when the apt-installed dotnet-sdk-8.0 patch line
+# (currently 8.0.119 from packages.microsoft.com bookworm channel) surfaces
+# the upstream-fixed versions noted in each entry.
+# ---------------------------------------------------------------------------
+
+# CVE-2025-26646 — Microsoft.Build.Tasks.Core 17.11.31 → 17.11.36+ — HIGH
+# .NET / Visual Studio spoofing via crafted MSBuild task input. Vulnerable
+# code path: MSBuild task evaluation during `dotnet build` / `dotnet
+# publish` / direct `msbuild` invocations. We never call any of these.
+# `dotnet restore` does load Microsoft.Build.Tasks.Core into the runtime
+# but does not invoke the spoofing-class APIs. Apt-bookworm dotnet-sdk-8.0
+# pins to a patch level below the upstream fix; re-evaluate when the
+# packages.microsoft.com debian/12 channel ships ≥17.11.36. UNREACHED.
+CVE-2025-26646
+
+# CVE-2025-55247 — Microsoft.Build.Tasks.Core 17.11.31 → 17.11.48+ — HIGH
+# .NET denial-of-service via MSBuild task. Same reach class as
+# CVE-2025-26646 — restore-only invocation, no MSBuild task evaluation.
+# UNREACHED.
+CVE-2025-55247
+
+# CVE-2026-26171 — System.Security.Cryptography.Xml 8.0.0 → 8.0.3+ — HIGH
+# .NET XML-DSig security bypass + DoS in the XmlDsig signature verifier.
+# Reachable only when consuming application code calls SignedXml.CheckSignature
+# / VerifyReference on attacker-controlled XML. `dotnet restore` does not
+# invoke any XmlDsig API — NuGet package signature verification uses
+# X.509 / Authenticode chains, not XmlDsig. The vulnerable assembly is
+# present in the SDK shared framework but is not loaded by `restore`.
+# Re-evaluate when apt-bookworm ships dotnet-sdk-8.0 ≥8.0.3. UNREACHED.
+CVE-2026-26171
+
+# CVE-2026-33116 — System.Security.Cryptography.Xml 8.0.0 → 8.0.3+ — HIGH
+# .NET DoS via infinite recursion in the XmlDsig parser. Same reach class
+# as CVE-2026-26171 — XmlDsig API never invoked from `dotnet restore`.
+# UNREACHED.
+CVE-2026-33116

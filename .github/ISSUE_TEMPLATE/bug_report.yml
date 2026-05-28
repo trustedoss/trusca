@@ -1,0 +1,126 @@
+name: Bug report
+description: Report something that does not work as documented
+title: "[Bug] "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug report.
+
+        Before submitting, please:
+        - Search [existing issues](https://github.com/trustedoss/trustedoss-portal/issues?q=is%3Aissue) to avoid duplicates.
+        - **Do not file security vulnerabilities here.** See [SECURITY.md](https://github.com/trustedoss/trustedoss-portal/blob/main/SECURITY.md) for the responsible disclosure process.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One or two sentences describing the bug.
+      placeholder: e.g. Scan never completes when the project URL contains a fragment.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: A minimal, deterministic recipe that reproduces the bug.
+      placeholder: |
+        1. Log in as a Developer.
+        2. Go to Projects → New.
+        3. Enter `https://github.com/example/repo#main`.
+        4. Click Scan.
+        5. Wait for status.
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What actually happened? Include error messages, stack traces, screenshots if relevant.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: TrustedOSS Portal version
+      description: Output of the `/api/v1/version` endpoint, or the Git commit SHA if running from source.
+      placeholder: v2.0.0 / 9c19b5a
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment mode
+      options:
+        - Docker Compose (development)
+        - Docker Compose (production)
+        - Helm chart (Kubernetes)
+        - Demo SaaS (trustedoss.io)
+        - Other (describe in environment)
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: |
+        Please share:
+        - OS and architecture (e.g. Ubuntu 24.04 / x86_64)
+        - Docker / Docker Compose V1 version (`docker --version`, `docker-compose --version`)
+        - PostgreSQL version (if external)
+        - Dependency-Track version and connection mode (bundled / external)
+        - Browser and version (for UI bugs)
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: |
+        Please paste relevant log lines. Logs are JSON; include the surrounding context including `request_id` if available.
+        Redact any sensitive values before pasting.
+      render: shell
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity (your assessment)
+      options:
+        - Critical — data loss, security impact, all users blocked
+        - High — feature broken, no workaround
+        - Medium — feature degraded, workaround exists
+        - Low — minor / cosmetic
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-flight checks
+      options:
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
+        - label: I confirmed this is not a security vulnerability (those go to SECURITY.md).
+          required: true
+        - label: I redacted secrets, tokens, and PII from the logs and screenshots.
+          required: true

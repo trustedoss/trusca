@@ -1,0 +1,35 @@
+# CODEOWNERS — default reviewers per path.
+#
+# GitHub requests a review from the listed owners when a pull request touches a
+# matching path. Handles are placeholder GitHub teams; replace with real teams
+# as the maintainer roster is filled in (see MAINTAINERS.md and GOVERNANCE.md).
+#
+# Order matters: the last matching pattern wins.
+
+# Default owner for everything not matched below.
+*                       @trustedoss/maintainers
+
+# Backend — API, services, scan pipeline, integrations.
+/apps/backend/          @trustedoss/maintainers
+
+# Frontend — React UI and in-app i18n.
+/apps/frontend/         @trustedoss/maintainers
+
+# Documentation site (EN/KO).
+/docs-site/             @trustedoss/maintainers
+
+# Helm chart.
+/charts/                @trustedoss/maintainers
+
+# Infrastructure as code.
+/terraform/             @trustedoss/maintainers
+
+# CI/CD, issue templates, and repo automation.
+/.github/               @trustedoss/maintainers
+
+# Governance and project meta — change with extra care.
+/GOVERNANCE.md          @trustedoss/maintainers
+/MAINTAINERS.md         @trustedoss/maintainers
+/CODE_OF_CONDUCT.md     @trustedoss/maintainers
+/SECURITY.md            @trustedoss/maintainers
+/.github/CODEOWNERS     @trustedoss/maintainers

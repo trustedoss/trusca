@@ -1,0 +1,14 @@
+TrustedOSS Portal
+Copyright 2026 TrustedOSS Portal contributors
+
+This product includes software developed at the TrustedOSS Portal project
+(https://github.com/trustedoss/trustedoss-portal).
+
+Licensed under the Apache License, Version 2.0 (the "License").
+You may obtain a copy of the License at:
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Third-party components, their licenses, and attribution notices are tracked
+inside the portal's own SBOM and Obligations modules. See `docs/` for the
+generated NOTICE bundle of any specific release.

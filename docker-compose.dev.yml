@@ -1,0 +1,292 @@
+# TrustedOSS Portal — development stack.
+#
+# Compose V1 file format (CLAUDE.md core rule #10: `docker-compose` not
+# `docker compose`). Image tags are pinned (rule #9: no `:latest`).
+#
+# Services:
+#   postgres       — PostgreSQL 17 (primary store)
+#   redis          — Redis 7 (Celery broker + result backend)
+#   backend        — FastAPI w/ uvicorn --reload (hot reload via bind mount)
+#   celery-worker  — Celery worker against redis broker
+#   frontend       — Vite dev server (React 18 + TS, bootstrapped in PR #3)
+#
+# Bring it up:
+#   cp .env.example .env
+#   docker-compose -f docker-compose.dev.yml up -d
+#   curl http://localhost:8000/health     → {"status":"ok"}
+
+x-backend-build: &backend-build
+  build:
+    context: ./apps/backend
+    dockerfile: Dockerfile
+
+# Worker image carries the SCA toolchain (cdxgen / ORT / Trivy + JRE + Node).
+# Kept separate from the API image so the API stays slim (~200MB) and the
+# worker (~2.5GB) can be rolled / upgraded independently — see CLAUDE.md
+# core rule #3 (ORT/cdxgen/Trivy run inside Celery only).
+x-worker-build: &worker-build
+  build:
+    context: ./apps/backend
+    dockerfile: Dockerfile.worker
+
+x-backend-env: &backend-env
+  APP_ENV: ${APP_ENV:-dev}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://trustedoss:trustedoss@postgres:5432/trustedoss}
+  REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+  SECRET_KEY: ${SECRET_KEY:-change-me-in-dev-only}
+  ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+  REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-7}
+  CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+  # Mock vs. real cdxgen / ORT / Trivy. Default `real` so `up` against a fully
+  # provisioned worker image runs the actual toolchain. CI sets `mock` so the
+  # e2e job keeps scan duration in seconds (worker emits fixture frames
+  # instead of forking a 5-60min Java/Node pipeline). See
+  # apps/backend/integrations/__init__.py for the dispatch contract.
+  TRUSTEDOSS_SCAN_BACKEND: ${TRUSTEDOSS_SCAN_BACKEND:-real}
+  # Disable slowapi 5/min login limiter when set (e2e CI only). Empty default
+  # keeps the limiter enabled in dev / prod. See core/ratelimit.py.
+  RATELIMIT_DISABLED: ${RATELIMIT_DISABLED:-}
+  # Marathon bundle 3 (D2) — tasks.backup now drives pg_dump / psql
+  # directly via DATABASE_URL using postgresql-client-17 baked into the
+  # backend + worker images. The legacy script-delegation env var
+  # ``TRUSTEDOSS_SCRIPTS_DIR`` is no longer read by Python; the
+  # ``./scripts`` host dir stays mounted (below) only for the host-cron
+  # operator path (``bash scripts/backup.sh`` from outside compose).
+  # Backup output directory mounted from the host. tasks.backup writes
+  # here, the admin API lists from the same root.
+  BACKUPS_ROOT: ${BACKUPS_ROOT:-/opt/trustedoss/backups}
+  # ---------------------------------------------------------------------------
+  # Concurrency / stability tuning knobs (work-B / B1 + A1 + A2).
+  #
+  # Exposed in dev so an operator can reproduce a prod tuning locally; backend
+  # reads each via os.getenv() at runtime (CLAUDE.md #11). Defaults match
+  # .env.example exactly. Dev keeps a single worker at --concurrency=2 (below),
+  # so these mostly just give you a knob to experiment with.
+  #
+  # DB connection pool — async (FastAPI) engine.
+  DB_POOL_SIZE: ${DB_POOL_SIZE:-20}
+  DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-10}
+  DB_POOL_TIMEOUT: ${DB_POOL_TIMEOUT:-30}
+  DB_POOL_RECYCLE: ${DB_POOL_RECYCLE:-1800}
+  # DB connection pool — sync (Celery / psycopg2) engine.
+  DB_SYNC_POOL_SIZE: ${DB_SYNC_POOL_SIZE:-5}
+  DB_SYNC_MAX_OVERFLOW: ${DB_SYNC_MAX_OVERFLOW:-5}
+  DB_SYNC_POOL_TIMEOUT: ${DB_SYNC_POOL_TIMEOUT:-30}
+  DB_SYNC_POOL_RECYCLE: ${DB_SYNC_POOL_RECYCLE:-1800}
+  # Scan-trigger abuse controls.
+  SCAN_TRIGGER_RATE_LIMIT: ${SCAN_TRIGGER_RATE_LIMIT:-20/minute}
+  SCAN_CONCURRENCY_CAP_PER_TEAM: ${SCAN_CONCURRENCY_CAP_PER_TEAM:-10}
+  # Scan task time limits + orphan-workspace reclaim grace.
+  SCAN_SOFT_TIME_LIMIT_SECONDS: ${SCAN_SOFT_TIME_LIMIT_SECONDS:-3600}
+  SCAN_HARD_TIME_LIMIT_SECONDS: ${SCAN_HARD_TIME_LIMIT_SECONDS:-3900}
+  WORKSPACE_ORPHAN_MAX_AGE_SECONDS: ${WORKSPACE_ORPHAN_MAX_AGE_SECONDS:-900}
+  # scancode first-party license detection guards.
+  SCANCODE_TIMEOUT_SECONDS: ${SCANCODE_TIMEOUT_SECONDS:-600}
+  SCANCODE_MAX_FILES: ${SCANCODE_MAX_FILES:-20000}
+  SCANCODE_MAX_DETECTIONS: ${SCANCODE_MAX_DETECTIONS:-5000}
+  SCANCODE_MAX_RESULT_BYTES: ${SCANCODE_MAX_RESULT_BYTES:-268435456}
+  # Fernet key for secrets-at-rest (GitHub App creds AND — v2.3-s1 — the cosign
+  # key password). Unset in dev derives from SECRET_KEY (WARNING). See core/crypto.py.
+  GITHUB_APP_ENCRYPTION_KEY: ${GITHUB_APP_ENCRYPTION_KEY:-}
+  # cosign SBOM signing (v2.3-s1). Best-effort; key-based default (D2), keyless
+  # opt-in via COSIGN_KEYLESS=true. Read via os.getenv() at runtime (rule #11).
+  # The cosign key volume is mounted on celery-worker below from COSIGN_KEYS_HOST_PATH.
+  COSIGN_KEYLESS: ${COSIGN_KEYLESS:-false}
+  COSIGN_KEY_PATH: ${COSIGN_KEY_PATH:-}
+  COSIGN_KEY_PASSWORD_ENCRYPTED: ${COSIGN_KEY_PASSWORD_ENCRYPTED:-}
+  COSIGN_TIMEOUT_SECONDS: ${COSIGN_TIMEOUT_SECONDS:-120}
+  # W6-#44 — Trivy DB lifecycle (worker bootstrap + weekly refresh). Dev
+  # leaves TRIVY_CACHE_DIR at the upstream default (``$HOME/.cache/trivy``)
+  # so a `docker-compose down -v` clears the cache along with the rest of
+  # the dev volumes — production mounts a named volume to persist it (see
+  # docker-compose.yml). All knobs are operator-tunable at runtime (rule #11).
+  TRIVY_DB_REPOSITORY: ${TRIVY_DB_REPOSITORY:-ghcr.io/aquasecurity/trivy-db}
+  TRIVY_DB_REFRESH_HOURS: ${TRIVY_DB_REFRESH_HOURS:-168}
+  TRIVY_DB_BOOTSTRAP_ON_START: ${TRIVY_DB_BOOTSTRAP_ON_START:-true}
+  TRIVY_DB_BOOTSTRAP_TIMEOUT_SECONDS: ${TRIVY_DB_BOOTSTRAP_TIMEOUT_SECONDS:-900}
+  TRIVY_DB_REFRESH_TIMEOUT_SECONDS: ${TRIVY_DB_REFRESH_TIMEOUT_SECONDS:-900}
+
+services:
+  postgres:
+    image: postgres:17.2-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-trustedoss}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trustedoss}
+      POSTGRES_DB: ${POSTGRES_DB:-trustedoss}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-trustedoss} -d ${POSTGRES_DB:-trustedoss}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  backend:
+    <<: *backend-build
+    image: trustedoss/backend:dev
+    restart: unless-stopped
+    # `--reload-exclude` keeps watchfiles from triggering a reload when only
+    # tests / venv / __pycache__ change — repeated user-test sessions edited
+    # `tests/unit/*.py` and the reload loop hung graceful-shutdown until the
+    # backend container went unhealthy.
+    # `--timeout-graceful-shutdown 5` caps the shutdown wait so the next
+    # boot doesn't sit on "Waiting for background tasks to complete." for
+    # minutes when a slow Celery thread is still alive.
+    command: >-
+      uvicorn main:app --host 0.0.0.0 --port 8000
+      --reload
+      --reload-exclude 'tests/*'
+      --reload-exclude '**/__pycache__/*'
+      --reload-exclude '.mypy_cache/*'
+      --reload-exclude '.ruff_cache/*'
+      --timeout-graceful-shutdown 5
+    environment:
+      <<: *backend-env
+    volumes:
+      - ./apps/backend:/app
+      # Marathon bundle 3 (D2) — backups land under
+      # /opt/trustedoss/backups (BACKUPS_ROOT). The ./scripts mount stays
+      # for the host operator path only; tasks.backup no longer reads it.
+      - ./scripts:/opt/trustedoss/scripts:ro
+      - ./backups:/opt/trustedoss/backups
+      # Shared scan workspace so backend-saved uploaded archives
+      # (zip-upload source input) are visible to the worker that extracts
+      # and scans them. WORKSPACE_HOST_PATH defaults to /tmp/trustedoss.
+      - scan-workspace:/tmp/trustedoss
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      # v2.1 Track B (B1) — READINESS gate (schema == Alembic HEAD), so the
+      # worker / beat `service_healthy` gates below mean "schema migrated", not
+      # just "uvicorn answers". With AUTO_MIGRATE=true (the dev default) backend
+      # runs `alembic upgrade head` on start and /health/ready flips to 200 once
+      # it finishes. The pure-liveness /health route still exists for
+      # liveness-only consumers. (See docs-site deployment notes.)
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
+
+  celery-worker:
+    <<: *worker-build
+    image: trustedoss/backend-worker:dev
+    restart: unless-stopped
+    command: celery -A tasks.celery_app worker --loglevel=info --concurrency=2
+    environment:
+      <<: *backend-env
+    volumes:
+      - ./apps/backend:/app
+      # Marathon bundle 3 (D2) — tasks.backup writes via pg_dump directly.
+      - ./scripts:/opt/trustedoss/scripts:ro
+      - ./backups:/opt/trustedoss/backups
+      # Shared scan workspace (see backend) — the worker reads uploaded
+      # archives + extracts/clones source here.
+      - scan-workspace:/tmp/trustedoss
+      # v2.3-s1 — cosign signing keys (read-only). Default ./secrets/cosign
+      # (created by scripts/cosign-keygen.sh). Mounted at /cosign so
+      # COSIGN_KEY_PATH=/cosign/cosign.key. Empty/absent → unsigned (best-effort).
+      - ${COSIGN_KEYS_HOST_PATH:-./secrets/cosign}:/cosign:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      # v2.1 Track B (B1) — wait for the SCHEMA to be at HEAD, not just for
+      # Postgres to accept connections. backend's healthcheck probes
+      # /health/ready (schema == Alembic HEAD), and with AUTO_MIGRATE=true (dev
+      # default) backend applies the migration on start, so this gate ensures the
+      # dev worker never runs a task against a half-migrated schema after a fresh
+      # `docker-compose up` that includes a new revision.
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "celery -A tasks.celery_app inspect ping --timeout=5 -d celery@$$HOSTNAME > /dev/null 2>&1 || exit 1"
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 60s
+
+  # Celery Beat — picks up the periodic schedule registered in
+  # tasks.celery_app (`dt-health-heartbeat`, `dt-resync-hourly`,
+  # `dt-orphan-cleaner-six-hourly`). Without this sidecar the worker
+  # only runs ad-hoc tasks; the dt_resync hourly cadence (and the
+  # dt_health 60s heartbeat) were registered in PR #8 but had no
+  # process actually firing them.
+  #
+  # Re-uses the worker image so we only build / cache one heavy image.
+  celery-beat:
+    <<: *worker-build
+    image: trustedoss/backend-worker:dev
+    restart: unless-stopped
+    command: celery -A tasks.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule
+    environment:
+      <<: *backend-env
+    volumes:
+      - ./apps/backend:/app
+      # Marathon bundle 3 (D2) — beat imports tasks.backup at startup;
+      # the task drives pg_dump / psql directly, no script delegation.
+      - ./scripts:/opt/trustedoss/scripts:ro
+      - ./backups:/opt/trustedoss/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      celery-worker:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./apps/frontend
+      dockerfile: Dockerfile
+    image: trustedoss/frontend:dev
+    restart: unless-stopped
+    environment:
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
+    volumes:
+      # Bind-mount the source for HMR. The anonymous volume on
+      # /app/node_modules masks the host directory so the image's deps win
+      # over whatever the host has (or doesn't) under apps/frontend/.
+      - ./apps/frontend:/app
+      - /app/node_modules
+    ports:
+      - "5173:5173"
+    healthcheck:
+      # Use 127.0.0.1 (IPv4): node:alpine resolves `localhost` to IPv6 (::1)
+      # first while Vite binds to 0.0.0.0 only, which would fail the probe.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5173/ > /dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
+
+volumes:
+  postgres-data:
+  # Shared between backend (uploaded-archive save) and worker (extract/scan)
+  # so zip-upload source scans can hand the archive across containers.
+  scan-workspace:

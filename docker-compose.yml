@@ -1,0 +1,523 @@
+# TrustedOSS Portal — production stack.
+#
+# Compose V1 file format (CLAUDE.md core rule #10: `docker-compose`, not
+# `docker compose`). Image tags are pinned to minor + patch (rule #9: no
+# `:latest`). All env values are read at runtime from `.env` — never baked
+# into images (rule #11).
+#
+# Quick start:
+#   ./scripts/install.sh                        # interactive wizard
+#   docker-compose -f docker-compose.yml ps     # confirm `healthy` status
+#   open https://${DOMAIN}                      # served via Traefik + LE TLS
+#
+# Vulnerability data (v2.4.0+, ADR-0001): the worker downloads the Trivy DB on
+# first boot (~600 MB, 1-3 minutes) — set TRIVY_DB_REPOSITORY in .env to point
+# at an air-gapped mirror. Dependency-Track was REMOVED in v2.4.0; there is no
+# longer a `docker-compose.dt.yml` overlay.
+#
+# Service map:
+#   traefik   — edge proxy, TLS termination (Let's Encrypt HTTP-01),
+#               publishes :80 and :443 only.
+#   postgres  — PostgreSQL 17.2-alpine, primary store, named volume.
+#   redis     — Redis 7.4-alpine, Celery broker + result backend.
+#   backend   — FastAPI image (ghcr.io/trustedoss/backend:${IMAGE_TAG}), 4
+#               uvicorn workers. Reachable only inside the compose network;
+#               Traefik routes `/v1`, `/auth`, `/ws`, `/health`, `/metrics`.
+#   worker    — Celery worker on the heavier image
+#               (ghcr.io/trustedoss/backend-worker:${IMAGE_TAG}) which carries
+#               cdxgen / scancode / Trivy / JRE.
+#   beat      — Celery Beat scheduler (vulnerability re-match every 6 h, Trivy
+#               DB refresh weekly, workspace orphan cleanup, source-archive
+#               retention) — same worker image, separate process.
+#   frontend  — nginx + Vite static bundle (ghcr.io/trustedoss/frontend:
+#               ${IMAGE_TAG}). Reachable only inside the compose network;
+#               Traefik routes `/`.
+#
+# Images are pulled from GitHub Container Registry (ghcr.io) published by
+# .github/workflows/release.yml on each vX.Y.Z tag. The registry namespace is
+# overridable via ${IMAGE_REGISTRY} (default ghcr.io/trustedoss) for forks /
+# mirrors / air-gapped sites. There is NO `build:` section here on purpose:
+# the file is self-contained so an operator can `curl` just this file plus
+# `.env.example` and `docker-compose up -d` — no repository clone required.
+# (The only repo-relative path below is scripts/postgres-init.sh, mounted into
+# postgres for first-boot role provisioning; the no-clone quick-install doc
+# tells the operator to fetch that one file too — see installation/docker-compose.md.)
+
+x-backend-env: &backend-env
+  APP_ENV: ${APP_ENV:-prod}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  # Marathon bundle 8 (L1) — backend / worker / beat see ONLY the
+  # DML-only runtime DSN. `core.config.database_url()` reads
+  # DATABASE_URL_APP first, falls back to DATABASE_URL for legacy
+  # single-role deployments. We deliberately do NOT propagate
+  # DATABASE_URL_OWNER into runtime containers — alembic upgrade is
+  # invoked with an explicit `-e DATABASE_URL=$DATABASE_URL_OWNER`
+  # override from install.sh / upgrade.sh so the DDL run uses the
+  # owner role exactly once, then exits. The runtime can never see
+  # the owner DSN, so a runtime RCE cannot DROP TRIGGER on audit_logs.
+  DATABASE_URL_APP: ${DATABASE_URL_APP:-${DATABASE_URL}}
+  DATABASE_URL: ${DATABASE_URL_APP:-${DATABASE_URL}}
+  REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+  SECRET_KEY: ${SECRET_KEY}
+  ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+  REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-7}
+  # CLAUDE.md core rule #13 — production must enumerate origins explicitly.
+  # No wildcard fallback here: install.sh writes the value into .env.
+  CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+  # Workspace is mounted from a host directory (WORKSPACE_HOST_PATH) so
+  # large source-trees stay outside the container layer.
+  WORKSPACE_HOST_PATH: /workspace
+  # PR-A2: ORT_RULES_PATH removed — the backend no longer shells to ORT.
+  # First-party license detection is done by scancode (bundled in the worker
+  # image); third-party dependency licenses come declared from cdxgen. The
+  # ort/rules.kts file is retained in-repo for reference but is no longer
+  # read at runtime.
+  # W6-#43a (ADR-0001): DT_URL / DT_API_KEY removed — vulnerability matching
+  # runs entirely from the worker via `trivy sbom` against the locally-cached
+  # Trivy DB. Air-gapped sites override the upstream OCI registry with
+  # TRIVY_DB_REPOSITORY (ghcr.io/aquasecurity/trivy-db by default).
+  TRIVY_DB_REPOSITORY: ${TRIVY_DB_REPOSITORY:-ghcr.io/aquasecurity/trivy-db}
+  # W6-#44 — Trivy DB lifecycle. The worker downloads the DB on boot
+  # (worker_ready signal hook) and the beat refreshes it weekly. The cache
+  # path is mounted as a named volume on the worker — see the ``volumes:``
+  # section below. Operators on air-gapped clusters set
+  # TRIVY_DB_BOOTSTRAP_ON_START=false in .env if they manage the cache out
+  # of band; the admin/health panel (W6-#43e) surfaces the staleness so a
+  # missed refresh is visible without a network probe.
+  TRIVY_CACHE_DIR: ${TRIVY_CACHE_DIR:-/var/lib/trivy}
+  TRIVY_DB_REFRESH_HOURS: ${TRIVY_DB_REFRESH_HOURS:-168}
+  TRIVY_DB_BOOTSTRAP_ON_START: ${TRIVY_DB_BOOTSTRAP_ON_START:-true}
+  TRIVY_DB_BOOTSTRAP_TIMEOUT_SECONDS: ${TRIVY_DB_BOOTSTRAP_TIMEOUT_SECONDS:-900}
+  TRIVY_DB_REFRESH_TIMEOUT_SECONDS: ${TRIVY_DB_REFRESH_TIMEOUT_SECONDS:-900}
+  SMTP_HOST: ${SMTP_HOST:-}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_USER: ${SMTP_USER:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+  SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+  TEAMS_WEBHOOK_URL: ${TEAMS_WEBHOOK_URL:-}
+  # ---------------------------------------------------------------------------
+  # Concurrency / stability tuning knobs (work-B / B1 + A1 + A2).
+  #
+  # Backend reads every one of these via os.getenv() at runtime (CLAUDE.md
+  # rule #11) — they are NOT baked into the image, so an operator can tune
+  # them in .env and bounce the affected service. Defaults below are kept
+  # in lock-step with .env.example; the ${VAR:-default} form means an
+  # unset .env value resolves to the documented default rather than empty.
+  #
+  # DB connection pool — async (FastAPI) engine. Total connections opened by
+  # ONE backend process = DB_POOL_SIZE + DB_MAX_OVERFLOW. See the sizing
+  # formula in .env.example before raising these on a busy stack.
+  DB_POOL_SIZE: ${DB_POOL_SIZE:-20}
+  DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-10}
+  DB_POOL_TIMEOUT: ${DB_POOL_TIMEOUT:-30}
+  DB_POOL_RECYCLE: ${DB_POOL_RECYCLE:-1800}
+  # DB connection pool — sync (Celery / psycopg2) engine. Applies per worker
+  # AND per beat process. With worker.replicas=N this multiplies by N.
+  DB_SYNC_POOL_SIZE: ${DB_SYNC_POOL_SIZE:-5}
+  DB_SYNC_MAX_OVERFLOW: ${DB_SYNC_MAX_OVERFLOW:-5}
+  DB_SYNC_POOL_TIMEOUT: ${DB_SYNC_POOL_TIMEOUT:-30}
+  DB_SYNC_POOL_RECYCLE: ${DB_SYNC_POOL_RECYCLE:-1800}
+  # Scan-trigger abuse controls. Per-user rate limit (slowapi "<n>/<period>")
+  # and per-team concurrent (queued+running) scan cap (0 disables).
+  SCAN_TRIGGER_RATE_LIMIT: ${SCAN_TRIGGER_RATE_LIMIT:-20/minute}
+  SCAN_CONCURRENCY_CAP_PER_TEAM: ${SCAN_CONCURRENCY_CAP_PER_TEAM:-10}
+  # Scan task time limits (Celery soft/hard) + orphan-workspace reclaim grace.
+  # Backend clamps hard >= soft + 60s, so a soft >= hard typo is self-healing.
+  # Consumed by worker + beat (the orphan cleaner runs on the beat schedule);
+  # backend reads them too for surfacing in the admin UI.
+  SCAN_SOFT_TIME_LIMIT_SECONDS: ${SCAN_SOFT_TIME_LIMIT_SECONDS:-3600}
+  SCAN_HARD_TIME_LIMIT_SECONDS: ${SCAN_HARD_TIME_LIMIT_SECONDS:-3900}
+  WORKSPACE_ORPHAN_MAX_AGE_SECONDS: ${WORKSPACE_ORPHAN_MAX_AGE_SECONDS:-900}
+  # scancode first-party license detection guards (worker stage). Caps wall
+  # clock, eligible file count, persisted detections, and result-JSON bytes so
+  # an attacker-controlled source tree cannot DoS / OOM the worker.
+  SCANCODE_TIMEOUT_SECONDS: ${SCANCODE_TIMEOUT_SECONDS:-600}
+  SCANCODE_MAX_FILES: ${SCANCODE_MAX_FILES:-20000}
+  SCANCODE_MAX_DETECTIONS: ${SCANCODE_MAX_DETECTIONS:-5000}
+  SCANCODE_MAX_RESULT_BYTES: ${SCANCODE_MAX_RESULT_BYTES:-268435456}
+  # Fernet key for secrets-at-rest (GitHub App credentials AND — v2.3-s1 — the
+  # cosign key password). Unset in dev/CI derives from SECRET_KEY (WARNING);
+  # APP_ENV=prod with no key FAILS CLOSED. See core/crypto.py + .env.example.
+  GITHUB_APP_ENCRYPTION_KEY: ${GITHUB_APP_ENCRYPTION_KEY:-}
+  # cosign SBOM signing (v2.3-s1). KEY-BASED is the default (D2); keyless is
+  # opt-in via COSIGN_KEYLESS=true. Signing is best-effort — an unset key just
+  # means unsigned SBOMs, not a failed scan. Worker reads each via os.getenv()
+  # at runtime (rule #11). The cosign key volume is mounted on the worker/beat
+  # services below (read-only) from COSIGN_KEYS_HOST_PATH.
+  COSIGN_KEYLESS: ${COSIGN_KEYLESS:-false}
+  COSIGN_KEY_PATH: ${COSIGN_KEY_PATH:-}
+  COSIGN_KEY_PASSWORD_ENCRYPTED: ${COSIGN_KEY_PASSWORD_ENCRYPTED:-}
+  COSIGN_TIMEOUT_SECONDS: ${COSIGN_TIMEOUT_SECONDS:-120}
+
+services:
+  # ---------------------------------------------------------------------------
+  # Edge — Traefik v3.2 with HTTP→HTTPS redirect and Let's Encrypt HTTP-01.
+  # ---------------------------------------------------------------------------
+  traefik:
+    image: traefik:v3.2.1
+    restart: unless-stopped
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=trustedoss"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.le.acme.httpchallenge=true"
+      - "--certificatesresolvers.le.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.le.acme.email=${TLS_EMAIL}"
+      - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
+      - "--accesslog=true"
+      - "--accesslog.format=json"
+      - "--log.level=${TRAEFIK_LOG_LEVEL:-INFO}"
+      # Dashboard stays OFF in prod — operators expose it temporarily via
+      # an SSH tunnel + a one-shot `--api.dashboard=true --api.insecure=true`
+      # override when needed.
+      - "--api.dashboard=false"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - traefik-acme:/letsencrypt
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - trustedoss
+    healthcheck:
+      # Traefik returns 404 on `/` when no router matches — that's a sign
+      # the daemon is up. We accept any HTTP status from the entrypoint.
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:80/ > /dev/null 2>&1 || true; exit 0"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
+
+  # ---------------------------------------------------------------------------
+  # Datastore — PostgreSQL 17.
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:17.2-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      # Marathon bundle 8 (L1) — runtime role provisioning. The init
+      # script reads POSTGRES_APP_USER / POSTGRES_APP_PASSWORD and
+      # creates the trustedoss_app role on FIRST container boot only
+      # (postgres-data volume is empty). Existing deployments with a
+      # populated volume keep their pre-L1 single-role posture until
+      # the operator manually creates the role + re-runs alembic.
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER:-trustedoss_app}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:-}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      # First-boot init script that creates the L1 runtime role.
+      # Postgres only runs files in /docker-entrypoint-initdb.d/ when
+      # the data dir is empty (i.e. fresh install). Re-applying L1 to
+      # an existing deployment requires the operator to run the SQL
+      # by hand — see docs-site admin-guide for the runbook.
+      - ./scripts/postgres-init.sh:/docker-entrypoint-initdb.d/10-trustedoss-app-role.sh:ro
+    networks:
+      - trustedoss
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+
+  # ---------------------------------------------------------------------------
+  # Broker — Redis 7.
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    networks:
+      - trustedoss
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+  # ---------------------------------------------------------------------------
+  # API — FastAPI + uvicorn, fronted by Traefik on /api and /health.
+  # ---------------------------------------------------------------------------
+  backend:
+    image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/backend:${IMAGE_TAG:-0.10.0}
+    restart: unless-stopped
+    environment:
+      <<: *backend-env
+    volumes:
+      # Workspace is shared with the worker so cdxgen / scancode outputs are
+      # readable across both processes.
+      - workspace:/workspace
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - trustedoss
+    healthcheck:
+      # v2.1 Track B (B1) — READINESS gate, not liveness. The compose
+      # `service_healthy` condition on worker / beat (below) must mean "the
+      # Postgres schema is at the Alembic HEAD", not merely "uvicorn answers".
+      # /health/ready returns 200 only when the schema == HEAD, so:
+      #   * AUTO_MIGRATE=true  — backend runs `alembic upgrade head` on start
+      #     (docker-entrypoint.sh) and only then does /health/ready flip to 200;
+      #     dependents start against a migrated schema.
+      #   * AUTO_MIGRATE=false — uvicorn answers /health immediately, but
+      #     /health/ready stays 503 (and the container stays `health: starting`)
+      #     until an EXTERNAL `alembic upgrade head` (owner role; install.sh /
+      #     upgrade.sh) brings the schema to HEAD. This is intentional: worker /
+      #     beat wait for the schema, not just for the process. The pure-liveness
+      #     /health route still exists for liveness-only consumers / debugging.
+      # `start_period` is generous so a long migration on a big DB does not flip
+      # the container to `unhealthy` before the first migrate completes.
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/health/ready || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=trustedoss"
+      - "traefik.http.services.backend.loadbalancer.server.port=8000"
+      # Marathon bundle 7 — API path consistency. Backend routers are
+      # mounted at /v1/*, /auth/*, /ws/* directly. Traefik now routes
+      # those prefixes 1:1 to the backend service (no /api prefix, no
+      # strip middleware). Operator-facing docs / CI integrations /
+      # webhook URLs all reference /v1/... — this rule makes the
+      # documented paths actually work against the prod stack. The
+      # `/health` PREFIX (v2.1 B1) routes BOTH /health (liveness) and
+      # /health/ready (readiness) to the backend so external probes /
+      # load balancers reach the readiness gate, not just the in-container
+      # Compose healthcheck. /metrics stays routed for scrapers.
+      - "traefik.http.routers.backend.rule=Host(`${DOMAIN}`) && (PathPrefix(`/v1`) || PathPrefix(`/auth`) || PathPrefix(`/ws`) || PathPrefix(`/health`) || PathPrefix(`/metrics`))"
+      - "traefik.http.routers.backend.entrypoints=websecure"
+      - "traefik.http.routers.backend.tls=true"
+      - "traefik.http.routers.backend.tls.certresolver=le"
+      - "traefik.http.routers.backend.middlewares=security-headers@file"
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+
+  # ---------------------------------------------------------------------------
+  # Celery worker — runs cdxgen / scancode / Trivy.
+  #
+  # Scaling out (work-B / B2): the worker is stateless apart from the shared
+  # `workspace` volume + the Redis broker, so it scales horizontally. Two
+  # knobs, used together:
+  #
+  #   * CELERY_CONCURRENCY  — parallel task slots INSIDE one worker process
+  #                           (prefork). Each slot can fork a full
+  #                           cdxgen / scancode / Trivy / dotnet pipeline, so
+  #                           a slot can transiently use ~1.5-2 GB. Keep this
+  #                           modest (2-4) and prefer adding replicas.
+  #   * replicas            — number of worker CONTAINERS. Run more containers
+  #                           to spread load across cores / hosts.
+  #
+  # Bring up N worker containers two ways (docker-compose V1 — CLAUDE.md #10):
+  #
+  #   a) Ad-hoc:   docker-compose -f docker-compose.yml up -d --scale worker=4
+  #   b) Pinned:   set `deploy.replicas` below (Swarm mode) OR keep --scale in
+  #                your install/upgrade scripts. We default to a single
+  #                replica; uncomment `deploy.replicas` only under Swarm.
+  #
+  # SIZING: total Postgres connections from the worker fleet =
+  #   replicas x (DB_SYNC_POOL_SIZE + DB_SYNC_MAX_OVERFLOW).
+  # With the defaults (5+5) and 4 replicas that is 40 connections — add the
+  # backend + beat draw and stay under Postgres `max_connections` (100). See
+  # the formula block in .env.example.
+  #
+  # MEMORY: a worker container needs roughly
+  #   CELERY_CONCURRENCY x ~2 GB  +  ~1 GB base (JRE / Node / scancode).
+  # The 6G limit below comfortably covers concurrency=2. Raise it in step
+  # with CELERY_CONCURRENCY; the SCANCODE_* guards cap per-task blowups.
+  # ---------------------------------------------------------------------------
+  worker:
+    image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/backend-worker:${IMAGE_TAG:-0.10.0}
+    restart: unless-stopped
+    command: celery -A tasks.celery_app worker --loglevel=info --concurrency=${CELERY_CONCURRENCY:-2}
+    environment:
+      <<: *backend-env
+    volumes:
+      - workspace:/workspace
+      # v2.3-s1 — cosign signing keys (read-only). COSIGN_KEYS_HOST_PATH points
+      # at the host dir holding cosign.key/cosign.pub (default ./secrets/cosign,
+      # created by scripts/cosign-keygen.sh). Mounted at /cosign so
+      # COSIGN_KEY_PATH=/cosign/cosign.key. Harmless when keyless / unconfigured
+      # — an empty/absent dir just yields unsigned SBOMs (best-effort).
+      - ${COSIGN_KEYS_HOST_PATH:-./secrets/cosign}:/cosign:ro
+      # W6-#44 — persistent Trivy DB cache. The worker downloads the DB
+      # (~500 MiB) on boot via the worker_ready signal hook and refreshes it
+      # weekly via the Celery beat. Without a persistent volume every
+      # container restart would re-download the DB (3+ min cold-start hit).
+      # The cache is shared with the beat container below so the beat's
+      # weekly refresh writes through the same mount the worker reads from.
+      # Set TRIVY_CACHE_DIR=/var/lib/trivy in .env to point trivy at this
+      # mount.
+      - trivy-cache:/var/lib/trivy
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      # v2.1 — SCHEMA-READINESS gate (B1). The worker image (Dockerfile.worker)
+      # deliberately does NOT run migrations — backend is the sole migrator — so
+      # the worker waits for backend to be healthy before starting Celery. As of
+      # B1, backend's healthcheck probes /health/ready (schema == Alembic HEAD),
+      # so `service_healthy` now GUARANTEES the schema is migrated before any
+      # Celery task touches the DB — under BOTH toggles:
+      #   * AUTO_MIGRATE=true  — backend runs `alembic upgrade head` on start and
+      #     /health/ready flips to 200 once it finishes; the worker then starts.
+      #   * AUTO_MIGRATE=false — backend answers /health immediately but stays
+      #     `health: starting` (/health/ready = 503) until an EXTERNAL
+      #     `alembic upgrade head` (owner role; install.sh / upgrade.sh) brings
+      #     the schema to HEAD. The worker correctly WAITS for that, instead of
+      #     starting against a not-yet-migrated schema. (Pre-B1 this case degraded
+      #     to a plain ordering dependency — see docs-site deployment notes.)
+      backend:
+        condition: service_healthy
+    networks:
+      - trustedoss
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "celery -A tasks.celery_app inspect ping --timeout=5 -d celery@$$HOSTNAME > /dev/null 2>&1 || exit 1"
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 60s
+    deploy:
+      # `replicas` is honoured only under `docker stack deploy` (Swarm). Under
+      # plain `docker-compose up` it is ignored — use `--scale worker=N`
+      # instead (see the header note). Left at 1 so a non-Swarm `up` is
+      # predictable; bump for a Swarm deployment.
+      replicas: ${WORKER_REPLICAS:-1}
+      resources:
+        limits:
+          # Workers do real work (Java + Node + scancode + Trivy) — give them
+          # headroom. Scale this WITH CELERY_CONCURRENCY (~2G per slot + 1G base).
+          cpus: "4.0"
+          memory: 6G
+        reservations:
+          # Guarantee a worker the floor it needs to even start the toolchain,
+          # so the scheduler does not over-pack a host and OOM-kill mid-scan.
+          cpus: "1.0"
+          memory: 2G
+
+  # ---------------------------------------------------------------------------
+  # Celery Beat — periodic scheduler (Trivy DB refresh, vulnerability re-match,
+  # workspace orphan cleaner, source-archive retention).
+  # ---------------------------------------------------------------------------
+  beat:
+    image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/backend-worker:${IMAGE_TAG:-0.10.0}
+    restart: unless-stopped
+    command: celery -A tasks.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule
+    environment:
+      <<: *backend-env
+    # NOTE (W6-#44): beat does NOT mount the trivy-cache volume. Beat is a
+    # pure scheduler — it only enqueues ``trustedoss.trivy_db_refresh`` into
+    # the broker. The actual ``trivy --download-db-only`` subprocess runs
+    # in the worker container, which is where the volume is mounted. Adding
+    # a beat-side mount would create a write-shared-volume contention
+    # surface without functional benefit.
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      # v2.1 — SCHEMA-READINESS gate (B1, same rationale as the worker). beat
+      # already waits on worker-healthy (which in turn waits on backend), so beat
+      # starts after backend. Since backend's healthcheck now probes
+      # /health/ready (schema == Alembic HEAD), `service_healthy` GUARANTEES the
+      # schema is migrated before beat schedules its first DB-touching task —
+      # under BOTH toggles (AUTO_MIGRATE=true migrates on start; =false waits for
+      # the external owner-role `alembic upgrade head` before backend goes
+      # healthy). We list backend explicitly so the gate is self-documenting and
+      # holds even if the worker dependency is relaxed.
+      backend:
+        condition: service_healthy
+      worker:
+        condition: service_healthy
+    networks:
+      - trustedoss
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+
+  # ---------------------------------------------------------------------------
+  # SPA — Vite bundle served by nginx, fronted by Traefik on `/`.
+  # ---------------------------------------------------------------------------
+  frontend:
+    image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/frontend:${IMAGE_TAG:-0.10.0}
+    restart: unless-stopped
+    networks:
+      - trustedoss
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=trustedoss"
+      - "traefik.http.services.frontend.loadbalancer.server.port=8080"
+      # Catch-all for the configured DOMAIN — backend router has higher
+      # specificity (PathPrefix), so /api stays on the backend.
+      - "traefik.http.routers.frontend.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.frontend.entrypoints=websecure"
+      - "traefik.http.routers.frontend.tls=true"
+      - "traefik.http.routers.frontend.tls.certresolver=le"
+      - "traefik.http.routers.frontend.middlewares=security-headers@file"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+
+networks:
+  trustedoss:
+    name: trustedoss
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:
+  traefik-acme:
+  workspace:
+  # W6-#44 — persistent Trivy vulnerability DB cache. Mounted on the worker
+  # at /var/lib/trivy. The cache holds the ~500 MiB DB downloaded on first
+  # boot (worker_ready signal hook) and refreshed weekly (beat task). A
+  # named volume survives container restarts so a worker recycle does not
+  # trigger another 1-3 minute download. Operators on air-gapped clusters
+  # can bind-mount a host directory instead — see
+  # docs-site/docs/admin-guide/vulnerability-data.md §"Air-gapped operation".
+  trivy-cache:
