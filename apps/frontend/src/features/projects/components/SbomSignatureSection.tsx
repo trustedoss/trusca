@@ -211,7 +211,7 @@ export function SbomSignatureSection({ projectId }: SbomSignatureSectionProps) {
           href={VERIFY_DOCS_PATH}
           target="_blank"
           rel="noopener noreferrer"
-          className="font-medium underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="font-medium underline underline-offset-2 transition-colors duration-fast ease-out-soft hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           data-testid="sbom-signature-verify-docs"
         >
           {t("sbom.signature.verify_docs_link")}

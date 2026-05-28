@@ -296,7 +296,7 @@ export function SourceSelectDialog({
                 data-testid={testid}
                 data-active={active ? "true" : "false"}
                 className={cn(
-                  "flex items-center justify-center gap-2 rounded-md border p-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+                  "flex items-center justify-center gap-2 rounded-md border p-2.5 text-xs font-medium transition-colors duration-fast ease-out-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
                   active
                     ? "border-primary bg-primary/5 text-foreground"
                     : "border-input hover:bg-accent",
@@ -338,7 +338,7 @@ export function SourceSelectDialog({
                     data-testid={testid}
                     data-active={active ? "true" : "false"}
                     className={cn(
-                      "flex flex-col items-center gap-1.5 rounded-md border p-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+                      "flex flex-col items-center gap-1.5 rounded-md border p-3 text-xs font-medium transition-colors duration-fast ease-out-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
                       active
                         ? "border-primary bg-primary/5 text-foreground"
                         : "border-input hover:bg-accent",

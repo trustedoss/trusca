@@ -109,7 +109,7 @@ function InboxRow({ item, onActivate }: InboxRowProps) {
         data-unread={isUnread}
         data-kind={item.kind}
         className={cn(
-          "flex w-full items-start gap-3 border-b px-6 py-3 text-left transition-colors",
+          "flex w-full items-start gap-3 border-b px-6 py-3 text-left transition-colors duration-fast ease-out-soft",
           "hover:bg-accent/40 focus-visible:bg-accent/40",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
           isUnread ? "bg-card" : "bg-muted/20",

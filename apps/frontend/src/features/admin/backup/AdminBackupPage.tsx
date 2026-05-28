@@ -445,7 +445,7 @@ function BackupRow({
         data-testid="admin-backup-row"
         data-name={item.name}
         data-kind={item.kind}
-        className="border-b transition-colors hover:bg-accent/40"
+        className="border-b transition-colors duration-fast ease-out-soft hover:bg-accent/40"
         style={{ height: "var(--table-row)" }}
       >
         <td className="truncate px-6 font-mono text-xs">{item.name}</td>

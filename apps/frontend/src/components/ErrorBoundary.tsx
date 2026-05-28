@@ -64,7 +64,11 @@ export class ErrorBoundary extends Component<Props, State> {
             type="button"
             onClick={this.handleReload}
             data-testid="error-boundary-reload"
-            className="mt-4 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            // W11-F polish — the error-boundary fallback is rendered before
+            // shadcn/Button can be trusted (we may be in a render-failure
+            // state). Inline the same motion + focus-ring vocabulary so it
+            // still feels coherent if the user ends up here.
+            className="mt-4 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors duration-fast ease-out-soft hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
             Reload page
           </button>

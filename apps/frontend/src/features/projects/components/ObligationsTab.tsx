@@ -410,7 +410,7 @@ function ObligationRow({
       data-kind={obligation.kind}
       data-row-index={rowIndex}
       className={cn(
-        "flex w-full items-center gap-3 border-b px-4 text-left text-sm hover:bg-muted/50",
+        "flex w-full items-center gap-3 border-b px-4 text-left text-sm transition-colors duration-fast ease-out-soft hover:bg-muted/50",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
       )}
       style={{ height: "var(--table-row)" }}

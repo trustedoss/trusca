@@ -158,7 +158,7 @@ export function AdminUsersPage() {
                     data-role={deriveRole(u)}
                     data-active={u.is_active}
                     className={cn(
-                      "cursor-pointer border-b transition-colors hover:bg-accent/40 focus-within:bg-accent/40",
+                      "cursor-pointer border-b transition-colors duration-fast ease-out-soft hover:bg-accent/40 focus-within:bg-accent/40",
                     )}
                     style={{ height: "var(--table-row)" }}
                     tabIndex={0}

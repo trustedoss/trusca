@@ -431,7 +431,7 @@ export function VulnerabilitiesToolbar({
                 onSeverityChange([]);
                 onUnmountExtraFilter("severity");
               }}
-              className="ml-auto inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="ml-auto inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground transition-colors duration-fast ease-out-soft hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               <X className="h-3 w-3" aria-hidden />
             </button>
@@ -475,7 +475,7 @@ export function VulnerabilitiesToolbar({
                 onLicenseCategoryChange([]);
                 onUnmountExtraFilter("license_category");
               }}
-              className="ml-auto inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="ml-auto inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground transition-colors duration-fast ease-out-soft hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               <X className="h-3 w-3" aria-hidden />
             </button>

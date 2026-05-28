@@ -205,7 +205,7 @@ export function ScansPage() {
                       data-testid="scans-row"
                       data-scan-id={scan.id}
                       data-status={scan.status}
-                      className="border-b transition-colors hover:bg-accent/40"
+                      className="border-b transition-colors duration-fast ease-out-soft hover:bg-accent/40"
                       style={{ height: "var(--table-row)" }}
                     >
                       <td className="px-6 text-xs">

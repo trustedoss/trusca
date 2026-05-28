@@ -3,8 +3,14 @@ import { forwardRef, type HTMLAttributes } from "react";
 
 import { cn } from "@/lib/utils";
 
+/**
+ * W11-F polish — the alert picks up a colour transition (150 ms ease-out-soft)
+ * so dynamic variant swaps (e.g. queued → running → failed) cross-fade
+ * instead of snap. The radius lands on `rounded-md` to align with the
+ * W11-A hierarchy (modals at `rounded-xl`, alerts/cards at `rounded-md`).
+ */
 const alertVariants = cva(
-  "relative w-full rounded-lg border px-4 py-3 text-sm [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-foreground [&>svg~*]:pl-7",
+  "relative w-full rounded-md border px-4 py-3 text-sm transition-colors duration-fast ease-out-soft [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-foreground [&>svg~*]:pl-7",
   {
     variants: {
       variant: {

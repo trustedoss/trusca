@@ -255,7 +255,7 @@ export function IntegrationsPage() {
                           data-key-id={row.id}
                           data-revoked={isRevoked}
                           className={cn(
-                            "border-b transition-colors hover:bg-accent/40",
+                            "border-b transition-colors duration-fast ease-out-soft hover:bg-accent/40",
                             isRevoked && "opacity-60",
                           )}
                           style={{ height: "var(--table-row)" }}

@@ -98,7 +98,9 @@ export function LicenseDistributionChart({
                     data-count={count}
                     className={cn(
                       segmentClass,
-                      "transition-opacity duration-150 ease-out hover:opacity-80 focus-visible:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      // W11-F polish — matches SeverityDistributionChart so
+                      // both charts share the W11-A motion token vocabulary.
+                      "transition-opacity duration-fast ease-out-soft hover:opacity-80 focus-visible:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     )}
                     style={{ width: `${pct}%` }}
                     title={title}
@@ -153,7 +155,7 @@ export function LicenseDistributionChart({
                   data-testid={`license-legend-${key}`}
                   className={cn(
                     "flex w-full items-center gap-2 rounded px-1 py-0.5 text-left",
-                    "transition-colors duration-150 ease-out hover:bg-accent hover:text-accent-foreground",
+                    "transition-colors duration-fast ease-out-soft hover:bg-accent hover:text-accent-foreground",
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
                   )}
                   onClick={() => onSegmentClick(key)}

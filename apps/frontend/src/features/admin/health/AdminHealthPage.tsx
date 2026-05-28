@@ -58,7 +58,7 @@ function HealthCard({ component }: { component: HealthComponent }) {
   return (
     <article
       className={cn(
-        "rounded-md border bg-card p-4 transition-colors",
+        "rounded-md border bg-card p-4 transition-colors duration-fast ease-out-soft",
         visuals.ring,
       )}
       data-testid="admin-health-card"

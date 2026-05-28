@@ -126,7 +126,7 @@ export function CreateApiKeyDialog({
               onChange={(e) => setScope(e.target.value as APIKeyScope)}
               data-testid="integrations-create-scope"
               disabled={submitting}
-              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors duration-fast ease-out-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <option value="project">{t("api_keys.scope.project")}</option>
               <option value="team">{t("api_keys.scope.team")}</option>

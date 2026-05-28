@@ -352,7 +352,7 @@ export function AdminAuditPage() {
                     data-row-id={entry.id}
                     data-target-table={entry.target_table}
                     data-action={entry.action}
-                    className="cursor-pointer border-b transition-colors hover:bg-accent/40 focus-within:bg-accent/40"
+                    className="cursor-pointer border-b transition-colors duration-fast ease-out-soft hover:bg-accent/40 focus-within:bg-accent/40"
                     style={{ height: "var(--table-row)" }}
                     tabIndex={0}
                     onClick={() => setOpenEntry(entry)}
