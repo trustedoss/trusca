@@ -546,7 +546,9 @@ def _extract_workspace_archive(source_tar_gz: Path) -> None:
         # Python 3.12+ ``filter='data'`` rejects symlinks and members whose
         # resolved path escapes destination — combined with the explicit
         # path-traversal + size-cap preflight loop above, this is safe.
-        # nosemgrep: trailofbits.python.tarfile-extractall-traversal.tarfile-extractall-traversal  # path traversal + size cap enforced in preflight loop above + filter="data"
+        # Path traversal + size cap are enforced by the getmembers() preflight
+        # loop above and by filter="data" (Python 3.12+).
+        # nosemgrep: trailofbits.python.tarfile-extractall-traversal.tarfile-extractall-traversal
         tf.extractall(path=str(dest_parent), filter="data")  # noqa: S202
 
 

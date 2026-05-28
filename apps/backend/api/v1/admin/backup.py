@@ -443,7 +443,7 @@ async def restore_backup_endpoint(
             # Python 3.12+ filter="data" rejects symlinks/devices and members
             # whose resolved path escapes the destination directory. Combined
             # with the preflight loop above, extractall is safe here.
-            # nosemgrep: trailofbits.python.tarfile-extractall-traversal.tarfile-extractall-traversal  # path traversal blocked by getmembers() preflight + filter="data"
+            # nosemgrep: trailofbits.python.tarfile-extractall-traversal.tarfile-extractall-traversal  # noqa: E501
             tar.extractall(path=str(extract_dir), filter="data")  # noqa: S202
 
     try:
