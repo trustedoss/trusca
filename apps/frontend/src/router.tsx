@@ -20,6 +20,7 @@ import { ComparePage } from "@/features/projects/ComparePage";
 import { ProjectCreatePage } from "@/features/projects/ProjectCreatePage";
 import { ProjectDetailPage } from "@/features/projects/ProjectDetailPage";
 import { ProjectListPage } from "@/features/projects/ProjectListPage";
+import { VulnerabilityDetailPage } from "@/features/projects/pages/VulnerabilityDetailPage";
 import { ScansPage } from "@/features/scans/ScansPage";
 import { ForgotPasswordPage } from "@/pages/auth/ForgotPasswordPage";
 import { LoginPage } from "@/pages/auth/LoginPage";
@@ -64,6 +65,18 @@ export function AppRoutes() {
         <Route path="projects/new" element={<ProjectCreatePage />} />
         <Route path="projects/:id" element={<ProjectDetailPage />} />
         <Route path="projects/:id/compare" element={<ComparePage />} />
+        {/*
+         * W10-B — dedicated full-page surface for a single vulnerability
+         * finding. Complements the existing drawer surface at
+         * `/projects/:id?tab=vulnerabilities&vuln=<id>` (still supported for
+         * backward-compat). The route nests inside <AppShell /> so the
+         * sidebar + header chrome persists; the page itself only owns the
+         * breadcrumb + body region.
+         */}
+        <Route
+          path="projects/:projectId/vulnerabilities/:findingId"
+          element={<VulnerabilityDetailPage />}
+        />
         <Route path="scans" element={<ScansPage />} />
         <Route path="approvals" element={<ApprovalsPage />} />
         <Route path="policies" element={<PoliciesPage />} />
