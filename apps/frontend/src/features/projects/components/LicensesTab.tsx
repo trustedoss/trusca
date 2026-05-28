@@ -22,6 +22,7 @@ import { LicenseDrawer } from "@/features/projects/components/LicenseDrawer";
 import { LicenseKindBadge } from "@/features/projects/components/LicenseKindBadge";
 import { LicensesToolbar } from "@/features/projects/components/LicensesToolbar";
 import { ProblemError } from "@/lib/problem";
+import { toggleSingleValue } from "@/lib/searchParamsToggle";
 import { cn } from "@/lib/utils";
 
 /**
@@ -226,12 +227,11 @@ export function LicensesTab({ projectId, scanId }: LicensesTabProps) {
           <LicenseDistributionChart
             distribution={distribution}
             onSegmentClick={(key) => {
-              // Single-select replace — clicking a segment narrows the list
-              // to that category only. Clicking the same key again is a no-op
-              // (the filter chip's clear control is the way out); we never
-              // remove the bucket from a multi-selection here so the cycle
-              // stays predictable.
-              setCategories([key]);
+              // W9-#57 (2026-05-28) — re-clicking the only-active category
+              // toggles the filter OFF. The historical "same key = no-op"
+              // rule forced users to hunt down the chip-clear control; the
+              // toggle now matches the natural mental model.
+              setCategories((prev) => toggleSingleValue(prev, key));
               setPage(1);
             }}
           />

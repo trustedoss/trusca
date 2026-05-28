@@ -246,6 +246,82 @@ describe("OverviewTab", () => {
     });
   });
 
+  // ─── W9-#57 — chart-segment toggle (re-click clears the filter) ──────
+
+  it("re-clicking the same severity segment toggles the filter off (W9-#57)", async () => {
+    // First click sets ?severity=critical, second click clears it. The `tab`
+    // param remains because the toggle only acts on the filter facet.
+    mockedGet.mockResolvedValue(
+      overview({ severity_distribution: { critical: 2, high: 1 } }),
+    );
+    renderTabWithProbe();
+    await waitFor(() => {
+      expect(screen.getByTestId("overview-tab")).toBeInTheDocument();
+    });
+    const seg = screen.getByTestId("severity-bar-critical");
+    await userEvent.click(seg);
+    await waitFor(() => {
+      const search = screen
+        .getByTestId("location-probe")
+        .getAttribute("data-search");
+      expect(search).toContain("severity=critical");
+    });
+    await userEvent.click(seg);
+    await waitFor(() => {
+      const search = screen
+        .getByTestId("location-probe")
+        .getAttribute("data-search");
+      expect(search).toContain("tab=vulnerabilities");
+      expect(search).not.toContain("severity=");
+    });
+  });
+
+  it("re-clicking the same license segment toggles the filter off (W9-#57)", async () => {
+    mockedGet.mockResolvedValue(
+      overview({ license_distribution: { forbidden: 1, allowed: 5 } }),
+    );
+    renderTabWithProbe();
+    await waitFor(() => {
+      expect(screen.getByTestId("overview-tab")).toBeInTheDocument();
+    });
+    const seg = screen.getByTestId("license-bar-forbidden");
+    await userEvent.click(seg);
+    await waitFor(() => {
+      const search = screen
+        .getByTestId("location-probe")
+        .getAttribute("data-search");
+      expect(search).toContain("license_category=forbidden");
+    });
+    await userEvent.click(seg);
+    await waitFor(() => {
+      const search = screen
+        .getByTestId("location-probe")
+        .getAttribute("data-search");
+      expect(search).toContain("tab=compliance");
+      expect(search).toContain("cview=licenses");
+      expect(search).not.toContain("license_category=");
+    });
+  });
+
+  it("clicking a different severity segment replaces the filter (W9-#57)", async () => {
+    mockedGet.mockResolvedValue(
+      overview({ severity_distribution: { critical: 2, high: 3 } }),
+    );
+    renderTabWithProbe();
+    await waitFor(() => {
+      expect(screen.getByTestId("overview-tab")).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByTestId("severity-bar-critical"));
+    await userEvent.click(screen.getByTestId("severity-bar-high"));
+    await waitFor(() => {
+      const search = screen
+        .getByTestId("location-probe")
+        .getAttribute("data-search");
+      expect(search).toContain("severity=high");
+      expect(search).not.toContain("severity=critical");
+    });
+  });
+
   it("clicking a succeeded scan row jumps to Components via onJumpToComponents", async () => {
     mockedGet.mockResolvedValueOnce(
       overview({
