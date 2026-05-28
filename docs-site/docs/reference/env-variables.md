@@ -86,10 +86,6 @@ The portal correlates SBOMs against CVEs using a local **Trivy DB** — a compil
 | `TRIVY_DB_CACHE_DIR` | `/var/lib/trivy` | `config.py` | Worker-container directory the DB is unpacked into. Mount a host volume so reboots don't re-download. |
 | `TRIVY_TIMEOUT_SECONDS` | `300` | `config.py` | Per-scan timeout for `trivy sbom`. Raise to `600`–`900` for very large monorepos. |
 
-:::note Dependency-Track keys removed in v0.10.0
-The `DT_URL`, `DT_API_KEY`, `DT_REQUEST_TIMEOUT_SECONDS`, `DT_BREAKER_*`, `DT_HEALTH_ENDPOINT`, `DT_AUTO_RESTART`, and `DT_ORPHAN_AUTODELETE` keys are no longer read by v0.10.0. They are safely ignored if present in an existing `.env` after upgrade — see [v0.10.0 migration](../release-notes/v0.10.0.md#migration-from-v23x).
-:::
-
 ## Build / policy gate
 
 The CI build gate fails a build on Critical CVEs and forbidden licenses out of the box; those conditions are not env-driven. The single env knob below adds an **optional** EPSS dimension.

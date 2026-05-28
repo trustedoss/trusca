@@ -21,12 +21,8 @@ Ingress, 데이터베이스 마이그레이션 Job을 포함합니다. PostgreSQ
 클러스터 내부에 번들(평가용)하거나 외부 관리형 데이터스토어를 가리킬 수
 있습니다(프로덕션 권장).
 
-:::info 취약점 매칭은 차트 내장 (v0.10.0+)
+:::info 취약점 매칭은 차트 내장
 워커 파드는 Trivy DB를 포함하며 `ghcr.io/aquasecurity/trivy-db`에서(또는 `env.trivy.dbRepository` 미러에서) 다운로드·갱신합니다. 외부 취약점 엔진은 필요하지 않습니다. [취약점 데이터 (Trivy DB)](../admin-guide/vulnerability-data.md) 참조.
-:::
-
-:::caution 차트 0.3.0에서 Dependency-Track 제거
-이전 차트 버전(≤ 0.2.x)은 Dependency-Track을 선택적 sub-chart로 배포하고 `env.dt.*` 값을 노출했습니다. 차트 0.3.0은 이 경로를 제거합니다 — 0.2.x에서 업그레이드 전 [v0.10.0 릴리스 노트 — Helm chart 0.3.0](../release-notes/v0.10.0.md#helm-chart-030) 참조.
 :::
 
 ## 차트가 배포하는 것

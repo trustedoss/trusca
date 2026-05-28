@@ -6,6 +6,7 @@ import styles from "./styles.module.css";
 
 type FeatureItem = {
   id: string;
+  audience: ReactNode;
   title: ReactNode;
   description: ReactNode;
   href: string;
@@ -13,99 +14,75 @@ type FeatureItem = {
 
 const FEATURES: FeatureItem[] = [
   {
-    id: "vulns",
-    title: (
-      <Translate id="homepage.feature.vulns.title">
-        Vulnerability tracking
-      </Translate>
-    ),
-    description: (
-      <Translate id="homepage.feature.vulns.desc">
-        Trivy-backed CVE detection across NVD, OSV, GitHub Advisory, EPSS, and
-        KEV. New CVEs trigger automatic re-matching of preserved SBOMs on a
-        Celery beat — no manual rescan required.
-      </Translate>
-    ),
-    href: "/docs/intro",
-  },
-  {
-    id: "license",
-    title: (
-      <Translate id="homepage.feature.license.title">
-        License compliance
-      </Translate>
-    ),
-    description: (
-      <Translate id="homepage.feature.license.desc">
-        Declared licenses from cdxgen plus detected first-party licenses from
-        scancode, classified allowed / conditional / forbidden. NOTICE files
-        auto-generate; conditional licenses route through an approval workflow.
-      </Translate>
-    ),
-    href: "/docs/admin-guide/users-and-teams",
-  },
-  {
-    id: "sbom",
-    title: <Translate id="homepage.feature.sbom.title">SBOM</Translate>,
-    description: (
-      <Translate id="homepage.feature.sbom.desc">
-        CycloneDX (JSON / XML) and SPDX (JSON / Tag-Value) export, byte-stable,
-        with per-component obligation tracking and a vulnerability PDF report.
-        Excel and the compliance PDF are on the roadmap.
-      </Translate>
-    ),
-    href: "/docs/intro",
-  },
-  {
-    id: "containers",
-    title: (
-      <Translate id="homepage.feature.containers.title">
-        Container scanning
-      </Translate>
-    ),
-    description: (
-      <Translate id="homepage.feature.containers.desc">
-        Trivy scans container images for OS-package vulnerabilities alongside
-        application dependencies — one risk view across source and runtime.
-      </Translate>
-    ),
-    href: "/docs/intro",
-  },
-  {
     id: "ci",
+    audience: (
+      <Translate id="homepage.feature.ci.audience">For engineering</Translate>
+    ),
     title: (
-      <Translate id="homepage.feature.ci.title">CI/CD build gate</Translate>
+      <Translate id="homepage.feature.ci.title">
+        Block risky builds in CI
+      </Translate>
     ),
     description: (
       <Translate id="homepage.feature.ci.desc">
-        GitHub Actions and GitLab CI integrations (plus a Jenkinsfile example).
-        Critical CVEs and forbidden licenses fail the build (exit 1); PR / MR
-        comments post automatically.
+        A composite GitHub Action, a GitLab CI template, and a worked
+        Jenkinsfile. Critical CVEs and forbidden licenses fail the build
+        (`exit 1`); PR / MR comments post automatically with a per-finding
+        breakdown.
       </Translate>
     ),
     href: "/docs/ci-integration/github-actions",
   },
   {
-    id: "selfhosted",
+    id: "license",
+    audience: (
+      <Translate id="homepage.feature.license.audience">
+        For legal &amp; compliance
+      </Translate>
+    ),
     title: (
-      <Translate id="homepage.feature.selfhosted.title">
-        Self-hosted &amp; open
+      <Translate id="homepage.feature.license.title">
+        Run license compliance at scale
       </Translate>
     ),
     description: (
-      <Translate id="homepage.feature.selfhosted.desc">
-        Apache-2.0. Ships as Docker Compose for single-host deployments and a
-        Helm chart for Kubernetes. Your data stays inside your network.
+      <Translate id="homepage.feature.license.desc">
+        Allowed / conditional / forbidden classification, declared licenses
+        from cdxgen plus detected first-party licenses from scancode, an
+        approval workflow for conditional components, obligation tracking,
+        and auto-generated NOTICE files.
       </Translate>
     ),
-    href: "/docs/installation/docker-compose",
+    href: "/docs/user-guide/components-and-licenses",
+  },
+  {
+    id: "sec",
+    audience: (
+      <Translate id="homepage.feature.sec.audience">For security</Translate>
+    ),
+    title: (
+      <Translate id="homepage.feature.sec.title">
+        Triage vulnerabilities the way SOCs work
+      </Translate>
+    ),
+    description: (
+      <Translate id="homepage.feature.sec.desc">
+        Trivy-backed detection across NVD + OSV + GitHub Advisory + EPSS +
+        KEV. 7-state CycloneDX VEX triage, EPSS prioritization (column,
+        sort, filter, policy gate), per-finding fix versions, an
+        append-only audit log, and an automatic re-match beat that picks
+        up new CVEs without a manual rescan.
+      </Translate>
+    ),
+    href: "/docs/user-guide/vulnerabilities",
   },
 ];
 
-function Feature({ title, description, href }: FeatureItem): ReactNode {
+function Feature({ audience, title, description, href }: FeatureItem): ReactNode {
   return (
     <article className={clsx("col col--4", styles.feature)}>
       <Link to={href} className={styles.featureCard}>
+        <span className={styles.featureAudience}>{audience}</span>
         <h3 className={styles.featureTitle}>{title}</h3>
         <p className={styles.featureDesc}>{description}</p>
         <span className={styles.featureLink}>
@@ -123,13 +100,14 @@ export default function HomepageFeatures(): ReactNode {
         <header className={styles.sectionHeader}>
           <h2>
             <Translate id="homepage.features.title">
-              One portal for OSS risk
+              One portal, three jobs
             </Translate>
           </h2>
           <p>
             <Translate id="homepage.features.subtitle">
-              Vulnerability, license, and SBOM workflows for engineering, legal,
-              and security teams — without commercial per-seat pricing.
+              Engineering blocks bad builds. Legal closes license risk.
+              Security runs CVE triage. All in one self-hosted UI — no
+              per-seat licensing.
             </Translate>
           </p>
         </header>

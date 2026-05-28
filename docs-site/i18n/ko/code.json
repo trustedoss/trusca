@@ -3,22 +3,22 @@
     "message": "TrustedOSS Portal — 엔터프라이즈 OSS 리스크 관리"
   },
   "homepage.hero.eyebrow": {
-    "message": "Apache-2.0 · 자체 호스팅 · GA 2.0.0"
+    "message": "Apache-2.0 · 자체 호스팅 · v0.10.0"
   },
   "homepage.hero.subtitle": {
     "message": "엔터프라이즈 SCA — 취약점, 라이선스 컴플라이언스, SBOM을 하나의 자체 호스팅 UI에서. 시트당 라이선스 비용 없음."
   },
-  "homepage.hero.cta.install": {
-    "message": "5분 만에 설치"
+  "homepage.hero.cta.quickstart": {
+    "message": "Quickstart — 5분"
   },
   "homepage.hero.cta.docs": {
     "message": "문서 보기"
   },
-  "homepage.hero.cta.demo": {
-    "message": "라이브 데모"
-  },
   "homepage.hero.cta.github": {
     "message": "GitHub"
+  },
+  "homepage.hero.command.aria": {
+    "message": "한 줄 명령으로 시작하기"
   },
   "homepage.hero.stats.aria": {
     "message": "프로젝트 주요 지표"
@@ -30,49 +30,40 @@
     "message": "Trivy 단일 엔진 취약점 피드"
   },
   "homepage.hero.stats.i18n": {
-    "message": "GA 시점부터 UI · 문서 이중 언어 지원"
+    "message": "첫 릴리스부터 UI · 문서 이중 언어 지원"
   },
   "homepage.features.title": {
-    "message": "OSS 리스크를 한 곳에서"
+    "message": "한 포털, 세 가지 업무"
   },
   "homepage.features.subtitle": {
-    "message": "엔지니어링·법무·보안 팀을 위한 취약점·라이선스·SBOM 워크플로우. 상용 SaaS 시트 과금 없음."
+    "message": "엔지니어링은 위험한 빌드를 차단. 법무는 라이선스 리스크를 마감. 보안은 CVE 트리아지를 운영. 모두 자체 호스팅 UI 한 곳에서 — 좌석당 과금 없음."
   },
-  "homepage.feature.vulns.title": {
-    "message": "취약점 추적"
-  },
-  "homepage.feature.vulns.desc": {
-    "message": "Trivy 기반 CVE 탐지 (NVD · OSV · GitHub Advisory · EPSS · KEV). 새 CVE는 보존된 SBOM에 대해 Celery beat가 자동 재매칭 — 수동 재스캔 불필요."
-  },
-  "homepage.feature.license.title": {
-    "message": "라이선스 컴플라이언스"
-  },
-  "homepage.feature.license.desc": {
-    "message": "cdxgen으로 선언된 라이선스와 scancode로 검출된 자체 코드 라이선스를 허용 / 조건부 / 금지로 분류. NOTICE 파일 자동 생성, 조건부 라이선스는 승인 워크플로우로 연결."
-  },
-  "homepage.feature.sbom.title": {
-    "message": "SBOM"
-  },
-  "homepage.feature.sbom.desc": {
-    "message": "바이트 단위로 일관된 CycloneDX (JSON / XML) · SPDX (JSON / Tag-Value) 내보내기, 컴포넌트별 의무사항 추적, 취약점 PDF 보고서까지 제공. Excel과 컴플라이언스 PDF는 로드맵 항목입니다."
-  },
-  "homepage.feature.containers.title": {
-    "message": "컨테이너 스캔"
-  },
-  "homepage.feature.containers.desc": {
-    "message": "Trivy로 컨테이너 이미지의 OS 패키지 취약점을 애플리케이션 의존성과 함께 스캔. 소스부터 런타임까지 단일 리스크 뷰."
+  "homepage.feature.ci.audience": {
+    "message": "엔지니어링"
   },
   "homepage.feature.ci.title": {
-    "message": "CI/CD 빌드 게이트"
+    "message": "위험한 빌드를 CI에서 차단"
   },
   "homepage.feature.ci.desc": {
-    "message": "GitHub Actions · GitLab CI 통합과 Jenkinsfile 예제 제공. Critical CVE 또는 금지 라이선스는 빌드 실패(exit 1), PR · MR 코멘트 자동 게시."
+    "message": "composite GitHub Action, GitLab CI 템플릿, 그리고 동작하는 Jenkinsfile 예제. Critical CVE 또는 금지 라이선스에서 빌드 실패(`exit 1`)와 함께 PR · MR 코멘트가 finding 단위 상세로 자동 게시됩니다."
   },
-  "homepage.feature.selfhosted.title": {
-    "message": "자체 호스팅 · 오픈소스"
+  "homepage.feature.license.audience": {
+    "message": "법무 · 컴플라이언스"
   },
-  "homepage.feature.selfhosted.desc": {
-    "message": "Apache-2.0. 단일 호스트는 Docker Compose, Kubernetes는 Helm chart. 데이터는 자사 네트워크 내부에 머묾."
+  "homepage.feature.license.title": {
+    "message": "라이선스 컴플라이언스를 대규모로 운영"
+  },
+  "homepage.feature.license.desc": {
+    "message": "허용 / 조건부 / 금지 분류, cdxgen 기반 선언 라이선스와 scancode 기반 자체 코드 검출 라이선스, 조건부 컴포넌트 승인 워크플로, 의무사항 추적, 자동 생성되는 NOTICE 파일."
+  },
+  "homepage.feature.sec.audience": {
+    "message": "보안"
+  },
+  "homepage.feature.sec.title": {
+    "message": "SOC가 일하는 방식으로 취약점을 트리아지"
+  },
+  "homepage.feature.sec.desc": {
+    "message": "Trivy 기반 탐지 (NVD + OSV + GitHub Advisory + EPSS + KEV). 7단계 CycloneDX VEX 트리아지, EPSS 우선순위(컬럼·정렬·필터·정책 게이트), finding별 fix 버전, 추가 전용 감사 로그, 그리고 수동 재스캔 없이 새 CVE를 흡수하는 자동 재매칭 beat."
   },
   "homepage.feature.learnMore": {
     "message": "자세히 보기 →"

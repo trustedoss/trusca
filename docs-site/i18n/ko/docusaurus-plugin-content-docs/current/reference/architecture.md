@@ -40,26 +40,20 @@ sidebar_position: 1
 
 ## 네트워크
 
-```
-                       :80 / :443
-                          │
-                       ┌──────────┐
-                       │ Traefik  │  TLS 종료, HTTP→HTTPS
-                       └────┬─────┘
-                            │ trustedoss network (bridge)
-              ┌─────────────┼─────────────┐
-              ↓             ↓             ↓
-       ┌──────────┐  ┌──────────┐
-       │ frontend │  │ backend  │
-       └──────────┘  └────┬─────┘
-                          │
-            ┌─────────────┼─────────────┬──────────┐
-            ↓             ↓             ↓          ↓
-      ┌──────────┐  ┌──────────┐  ┌──────────────┐ ┌──────┐
-      │ postgres │  │  redis   │  │   worker     │ │ beat │
-      │          │  │          │  │ + Trivy DB   │ │      │
-      └──────────┘  └──────────┘  └──────────────┘ └──────┘
-                            └──── 공유 `workspace` 볼륨 ────┘
+```mermaid
+flowchart TB
+  host([":80 / :443"])
+  host --> traefik["Traefik<br/>TLS 종료 · HTTP → HTTPS"]
+  traefik --> frontend["frontend<br/>(Vite + React)"]
+  traefik --> backend["backend<br/>(FastAPI)"]
+  backend --> postgres[("postgres")]
+  backend --> redis[("redis")]
+  worker["worker<br/>+ 로컬 Trivy DB"]
+  beat["beat<br/>(Celery 스케줄러)"]
+  redis --> worker
+  redis --> beat
+  worker -. 공유 'workspace' 볼륨 .- backend
+  worker --> postgres
 ```
 
 호스트에 포트를 노출하는 것은 `traefik`(`80`, `443`)뿐입니다. 다른 모든 서비스는 compose 네트워크 내부에서만 접근 가능합니다.
@@ -100,9 +94,7 @@ PostgreSQL이 단일 진실 저장소입니다. 주요 테이블:
 8. finalize      (스캔당 단일 트랜잭션으로 PostgreSQL에 기록)
 ```
 
-위 단계 슬러그는 v0.10.0 이름입니다. v0.10.0에서 WebSocket 프레임은 기존 하네스·CI 클라이언트 호환을 위해 과거 슬러그(`dt_upload`, `dt_findings`)를 유지합니다 — `sbom_upload` / `vuln_match`로의 rename은 .1로 분리됩니다([ADR-0001 Appendix A](https://github.com/trustedoss/trustedoss-portal/blob/main/docs/decisions/0001-replace-dt-with-trivy.md) 참조).
-
-`scancode` 단계는 v0.10.0 에서 이전의 `ort` 단계를 대체했습니다; WebSocket 진행 슬러그가 같은 percent 에서 `ort` 에서 `scancode` 로 변경되었습니다. [사용자 가이드 — 스캔](../user-guide/scans.md#파이프라인-단계-source) 참고.
+위 단계 슬러그는 `scan.<id>.progress` WebSocket 프레임으로 emit되어 UI가 라이브 진행 바를 렌더링합니다 — [사용자 가이드 — 스캔](../user-guide/scans.md#파이프라인-단계-source) 참고.
 
 컨테이너 스캔 단계(`apps/backend/tasks/scan_container.py` 참고):
 
@@ -155,13 +147,13 @@ _LICENSE_CATEGORY_DEFAULTS: dict[str, str] = {
 # "unknown" 으로 떨어지며 사람의 검토가 필요합니다.
 ```
 
-v0.10.0 의 Operator 오버라이드 경로:
+현재 릴리스의 Operator 오버라이드 경로:
 
 1. `apps/backend/tasks/scan_source.py` 의 `_LICENSE_CATEGORY_DEFAULTS` 패치.
 2. worker 재빌드 및 재시작(`docker-compose restart worker beat`).
 3. 영향받는 프로젝트를 재스캔해 새 분류 적용.
 
-조직별 룰 커스터마이징은  예정입니다; 레거시 `ORT_RULES_PATH`
+조직별 룰 커스터마이징은 예정입니다; 레거시 `ORT_RULES_PATH`
 환경 변수와 worker 이미지의 `ort/rules.kts` 마운트는 제거된 ORT
 단계에서 남은 잔재 placeholder 이며 v0.10.0 에서는 효과가 없습니다.
 

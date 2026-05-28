@@ -147,7 +147,7 @@ sidebar_position: 4
 
 분류는 `apps/backend/tasks/scan_source.py` 의
 `_LICENSE_CATEGORY_DEFAULTS` 사전이 결정합니다(운영자 측 오버라이드
-경로; ORT 기반 조직별 룰은  로드맵 항목). API 응답·감사 로그·
+경로; ORT 기반 조직별 룰은 로드맵 항목). API 응답·감사 로그·
 빌드 게이트 결정에는 `forbidden` / `conditional` / `permissive` /
 `unknown` 값이, UI 테이블·배지에는 `Forbidden` / `Conditional` /
 `Allowed` / `Unknown` 라벨이 노출됩니다.

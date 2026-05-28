@@ -37,19 +37,18 @@ Both kinds are selectable from the UI scan dialog in this release — pick **Sou
 A right-slide drawer opens on the project list page with a live progress view backed by a WebSocket connection. You can close the tab — the scan continues on the worker. Reopen the project and reconnect at any time. While a scan is `queued` or `running`, the drawer carries a **Cancel scan** action — see [Cancel a scan](#cancel-a-scan).
 
 :::note Only one scan at a time per project
-If a project already has a `queued` or `running` scan, the **Scan** button is disabled on the project detail header and its tooltip points you at the in-progress chip in the header (clicking the chip re-opens the existing scan's progress drawer). Triggering a second scan via the API returns `409 Conflict` with the RFC 7807 extension `scan_already_in_progress: true` — wait for the active scan to reach a terminal state, or **Cancel** it, before starting another. The constraint is enforced by a partial unique index in the database (`ix_scans_project_active`) so the same guard applies to UI, API, and CI clients.
+If a project already has a `queued` or `running` scan, the **Scan** button is disabled on the project detail header and its tooltip points you at the in-progress chip in the header (clicking the chip re-opens the existing scan's progress drawer). Triggering a second scan via the API returns `409 Conflict` with the RFC 7807 extension `scan_already_in_progress: true` — wait for the active scan to reach a terminal state, or **Cancel** it, before starting another. The same guard applies to UI, API, and CI clients.
 :::
 
 ![Scan progress drawer — bootstrap → fetch → cdxgen → scancode → vuln_match → finalize stages, live over WebSocket](/img/screenshots/user-scans-progress-drawer.png)
 
 :::warning Branch selection for source scans
 Source scans run against the project's `default_branch` (typically
-`main`). Neither the UI nor the API exposes a branch-override —
-the `ScanCreate` payload accepts only `kind` and `metadata` (see
-`apps/backend/schemas/scan.py`). To scan `develop` or a feature
-branch, temporarily change `default_branch` in **Project Settings**
-before triggering the scan, then revert. A first-class `branch`
-field on the trigger is on the the roadmap.
+`main`). Neither the UI nor the API exposes a branch override in this
+release. To scan `develop` or a feature branch, temporarily change
+`default_branch` in **Project Settings** before triggering the scan,
+then revert. A first-class `branch` field on the trigger is on the
+roadmap.
 :::
 
 ### Scan a container image
@@ -125,7 +124,7 @@ The progress view shows real-time stage transitions:
 1. **Bootstrapping** — preparing the workspace.
 2. **Fetching source** — `git clone` (or `git fetch` + checkout for an existing workspace).
 3. **Detecting components** — `cdxgen` walks the repo and emits a CycloneDX SBOM, with **declared** licenses read from each dependency's package metadata.
-4. **Detecting first-party licenses** — scancode scans the project's own source files and records the **detected** licenses it finds, each tagged with the `source_path` of the file it came from (see [Components & licenses → Detected vs. declared](./components-and-licenses.md#declared-vs-detected)). This stage is best-effort: if scancode is not installed, times out, or the tree is too large, the scan continues with declared licenses only — a degraded but non-fatal outcome. Legal-tier classification in this release is then applied from the hard-coded `_LICENSE_CATEGORY_DEFAULTS` dictionary in `apps/backend/tasks/scan_source.py` (see [Components & licenses → Classification source](./components-and-licenses.md#license-classification)).
+4. **Detecting first-party licenses** — scancode scans the project's own source files and records the **detected** licenses it finds, each tagged with the `source_path` of the file it came from (see [Components & licenses → Detected vs. declared](./components-and-licenses.md#declared-vs-detected)). This stage is best-effort: if scancode is not installed, times out, or the tree is too large, the scan continues with declared licenses only — a degraded but non-fatal outcome. Legal-tier classification is then applied from the built-in classifier catalog (see [Components & licenses → Classification source](./components-and-licenses.md#license-classification)).
 5. **Resolving vulnerabilities** — `trivy sbom` matches the CycloneDX SBOM against the local Trivy DB (NVD + OSV + GHSA + EPSS + KEV). No network call per scan.
 6. **Persisting** — components, licenses, and findings are written to PostgreSQL.
 

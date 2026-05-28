@@ -55,7 +55,7 @@ After either command, share the resulting secret with the repo
 owner so they paste it into GitHub/GitLab → Settings → Webhooks →
 "Secret".
 
-A self-service activation UI lives on the the roadmap.
+A self-service activation UI lives on the roadmap.
 
 ## Setup — GitHub
 

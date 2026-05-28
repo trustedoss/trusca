@@ -21,12 +21,8 @@ frontend, an Ingress with TLS, and a database migration Job. PostgreSQL and
 Redis can either be bundled in-cluster (for evaluation) or pointed at external
 managed datastores (recommended for production).
 
-:::info Vulnerability matching ships in-chart (v0.10.0+)
+:::info Vulnerability matching ships in-chart
 The worker pod ships with the Trivy DB and downloads / refreshes it from `ghcr.io/aquasecurity/trivy-db` (or a mirror via `env.trivy.dbRepository`). No external vulnerability engine is required. See [Vulnerability data (Trivy DB)](../admin-guide/vulnerability-data.md).
-:::
-
-:::caution Chart 0.3.0 dropped Dependency-Track
-Prior chart versions (≤ 0.2.x) optionally deployed Dependency-Track as a sub-chart and exposed `env.dt.*` values. Chart 0.3.0 removes that path — see [v0.10.0 release notes — Helm chart 0.3.0](../release-notes/v0.10.0.md#helm-chart-030) before upgrading from 0.2.x.
 :::
 
 ## What the chart deploys

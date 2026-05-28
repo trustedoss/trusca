@@ -54,7 +54,7 @@ UPDATE projects
 두 명령 모두 실행 후, 결과로 나온 시크릿을 레포 소유자에게 공유해
 GitHub/GitLab → Settings → Webhooks → "Secret" 에 붙여 넣게 하세요.
 
-셀프 서비스 활성화 UI 는  로드맵 항목입니다.
+셀프 서비스 활성화 UI 는 로드맵 항목입니다.
 
 ## 셋업 — GitHub
 
