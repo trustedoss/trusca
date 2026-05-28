@@ -604,15 +604,34 @@ export function ProjectDetailPage() {
             <SheetDescription>{t("page.scan_drawer_subtitle")}</SheetDescription>
           </SheetHeader>
           {scanDrawer.scanId ? (
-            <ScanProgress
-              scanId={scanDrawer.scanId}
-              release={scanDrawer.release}
-              status={scanDrawer.status ?? "queued"}
-              onClose={() => setScanDrawer((s) => ({ ...s, open: false }))}
-              onCancelled={() =>
-                setScanDrawer((s) => ({ ...s, status: "cancelled" }))
-              }
-            />
+            <>
+              <ScanProgress
+                scanId={scanDrawer.scanId}
+                release={scanDrawer.release}
+                status={scanDrawer.status ?? "queued"}
+                onClose={() => setScanDrawer((s) => ({ ...s, open: false }))}
+                onCancelled={() =>
+                  setScanDrawer((s) => ({ ...s, status: "cancelled" }))
+                }
+                hideInlineLog
+              />
+              {/*
+               * Always-visible link out to the dedicated full-page log view.
+               * The inline log panel was removed from the drawer (it cramped
+               * long Trivy / ScanCode lines into ~30 chars); this link takes
+               * the user to a real route they can deep-link and download
+               * the log from.
+               */}
+              <div className="mt-2 border-t pt-3">
+                <Link
+                  to={`/scans/${scanDrawer.scanId}`}
+                  className="text-sm text-primary hover:underline focus-visible:underline focus-visible:outline-none"
+                  data-testid="scan-drawer-open-full-log"
+                >
+                  {t("scans:progress.open_full_log")}
+                </Link>
+              </div>
+            </>
           ) : null}
         </SheetContent>
       </Sheet>

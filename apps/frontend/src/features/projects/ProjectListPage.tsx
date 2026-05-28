@@ -517,15 +517,33 @@ export function ProjectListPage() {
             <SheetDescription>{t("page.subtitle")}</SheetDescription>
           </SheetHeader>
           {scanDrawer.scanId ? (
-            <ScanProgress
-              scanId={scanDrawer.scanId}
-              release={scanDrawer.release}
-              status={scanDrawer.status ?? "queued"}
-              onClose={handleCloseDrawer}
-              onCancelled={() =>
-                setScanDrawer((s) => ({ ...s, status: "cancelled" }))
-              }
-            />
+            <>
+              <ScanProgress
+                scanId={scanDrawer.scanId}
+                release={scanDrawer.release}
+                status={scanDrawer.status ?? "queued"}
+                onClose={handleCloseDrawer}
+                onCancelled={() =>
+                  setScanDrawer((s) => ({ ...s, status: "cancelled" }))
+                }
+                hideInlineLog
+              />
+              {/*
+               * Always-visible link out to the dedicated full-page log view.
+               * The inline log panel was pulled from the drawer — this link
+               * takes the user to a real route where they can stream the
+               * full log AND download it.
+               */}
+              <div className="mt-2 border-t pt-3">
+                <Link
+                  to={`/scans/${scanDrawer.scanId}`}
+                  className="text-sm text-primary hover:underline focus-visible:underline focus-visible:outline-none"
+                  data-testid="scan-drawer-open-full-log"
+                >
+                  {t("scans:progress.open_full_log")}
+                </Link>
+              </div>
+            </>
           ) : null}
         </SheetContent>
       </Sheet>
