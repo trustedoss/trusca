@@ -11,8 +11,9 @@
  *     hex literals — to satisfy CLAUDE.md "never hardcode color hex values".
  *   - Color is paired with a text label (CLAUDE.md accessibility rule).
  */
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useSearchParams } from "react-router-dom";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -40,6 +41,25 @@ const STATUS_OPTIONS: StatusFilter[] = [
   "approved",
   "rejected",
 ];
+
+// W12 — URL filter parsers (filter URL persistence consistency). Reject any
+// value not in the allowed unions so a stale or hand-edited URL doesn't poison
+// the typed state. ISO 8601 (YYYY-MM-DD) is the only date shape we render, so
+// reject anything else for from/to dates.
+function parseStatusFilter(v: string | null): StatusFilter {
+  return v && (STATUS_OPTIONS as readonly string[]).includes(v)
+    ? (v as StatusFilter)
+    : "all";
+}
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+function parseIsoDateParam(v: string | null): string {
+  return v && ISO_DATE_RE.test(v) ? v : "";
+}
+function parsePageParam(v: string | null): number {
+  if (!v) return 1;
+  const n = Number.parseInt(v, 10);
+  return Number.isFinite(n) && n >= 1 ? n : 1;
+}
 
 // ---------------------------------------------------------------------------
 // Status badge — inline to avoid a cross-feature import
@@ -78,11 +98,58 @@ const PAGE_SIZE = 25;
 export function ApprovalsPage() {
   const { t, i18n } = useTranslation("approvals");
 
-  // --- filter state ---
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [fromDt, setFromDt] = useState("");
-  const [toDt, setToDt] = useState("");
-  const [page, setPage] = useState(1);
+  // --- filter state (W12 — URL-derived so reload / share / back button
+  //     restore the exact view). Defaults DELETE the param so the URL stays
+  //     clean. Every filter change resets ?page so the user doesn't land on
+  //     a now-empty page 4 after narrowing the result set. ---
+  const [searchParams, setSearchParams] = useSearchParams();
+  const statusFilter = parseStatusFilter(searchParams.get("status"));
+  const fromDt = parseIsoDateParam(searchParams.get("from"));
+  const toDt = parseIsoDateParam(searchParams.get("to"));
+  const page = parsePageParam(searchParams.get("page"));
+
+  const updateFilterParam = useCallback(
+    (key: string, next: string | null) => {
+      setSearchParams(
+        (prev) => {
+          const out = new URLSearchParams(prev);
+          if (next == null || next === "") out.delete(key);
+          else out.set(key, next);
+          // Any filter change rewinds to page 1 — see comment above.
+          out.delete("page");
+          return out;
+        },
+        { replace: false },
+      );
+    },
+    [setSearchParams],
+  );
+  const setStatusFilter = useCallback(
+    (next: StatusFilter) => updateFilterParam("status", next === "all" ? null : next),
+    [updateFilterParam],
+  );
+  const setFromDt = useCallback(
+    (next: string) => updateFilterParam("from", next || null),
+    [updateFilterParam],
+  );
+  const setToDt = useCallback(
+    (next: string) => updateFilterParam("to", next || null),
+    [updateFilterParam],
+  );
+  const setPage = useCallback(
+    (next: number) => {
+      setSearchParams(
+        (prev) => {
+          const out = new URLSearchParams(prev);
+          if (next <= 1) out.delete("page");
+          else out.set("page", String(next));
+          return out;
+        },
+        { replace: false },
+      );
+    },
+    [setSearchParams],
+  );
 
   // --- drawer state ---
   const [openId, setOpenId] = useState<string | null>(null);
@@ -144,7 +211,6 @@ export function ApprovalsPage() {
             value={statusFilter}
             onChange={(e) => {
               setStatusFilter(e.target.value as StatusFilter);
-              setPage(1);
             }}
           >
             {STATUS_OPTIONS.map((opt) => (
@@ -187,7 +253,6 @@ export function ApprovalsPage() {
             value={fromDt}
             onChange={(e) => {
               setFromDt(e.target.value);
-              setPage(1);
             }}
           />
         </div>
@@ -210,7 +275,6 @@ export function ApprovalsPage() {
             value={toDt}
             onChange={(e) => {
               setToDt(e.target.value);
-              setPage(1);
             }}
           />
         </div>
@@ -408,7 +472,7 @@ export function ApprovalsPage() {
             size="sm"
             variant="outline"
             disabled={page <= 1}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            onClick={() => setPage(Math.max(1, page - 1))}
             data-testid="approvals-page-prev"
           >
             {t("approvals.action.previous")}
@@ -417,7 +481,7 @@ export function ApprovalsPage() {
             size="sm"
             variant="outline"
             disabled={page >= totalPages}
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            onClick={() => setPage(Math.min(totalPages, page + 1))}
             data-testid="approvals-page-next"
           >
             {t("approvals.action.next")}

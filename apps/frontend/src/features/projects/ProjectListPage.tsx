@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { FolderOpen } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Virtuoso } from "react-virtuoso";
 
 import { EmptyState } from "@/components/EmptyState";
@@ -112,6 +112,56 @@ function statusFilterMatches(
   return project.latest_scan_status === filter;
 }
 
+// W12 — list-page filters now live in the URL so deep-links + back button
+// behave like the Project Detail tabs (filter URL persistence consistency).
+// Parsers narrow URL strings to the valid filter unions so a stale or hand-
+// edited URL ("?status=garbage") falls back to the page's default instead of
+// poisoning the typed setters.
+const VALID_PROJECT_STATUS: ProjectStatusFilter[] = [
+  "all",
+  "queued",
+  "running",
+  "succeeded",
+  "failed",
+  "idle",
+];
+const VALID_PROJECT_SORT: ProjectSortKey[] = ["name", "latest_scan", "risk"];
+type SeverityFilterKey = "critical" | "high" | "medium" | "low";
+const VALID_SEVERITY_FILTER: SeverityFilterKey[] = [
+  "critical",
+  "high",
+  "medium",
+  "low",
+];
+type LicenseFilterKey = "forbidden" | "conditional" | "allowed" | "unknown";
+const VALID_LICENSE_FILTER: LicenseFilterKey[] = [
+  "forbidden",
+  "conditional",
+  "allowed",
+  "unknown",
+];
+
+function parseStatusParam(v: string | null): ProjectStatusFilter {
+  return v && (VALID_PROJECT_STATUS as readonly string[]).includes(v)
+    ? (v as ProjectStatusFilter)
+    : "all";
+}
+function parseSortParam(v: string | null): ProjectSortKey {
+  return v && (VALID_PROJECT_SORT as readonly string[]).includes(v)
+    ? (v as ProjectSortKey)
+    : "name";
+}
+function parseSeverityParam(v: string | null): SeverityFilterKey | null {
+  return v && (VALID_SEVERITY_FILTER as readonly string[]).includes(v)
+    ? (v as SeverityFilterKey)
+    : null;
+}
+function parseLicenseParam(v: string | null): LicenseFilterKey | null {
+  return v && (VALID_LICENSE_FILTER as readonly string[]).includes(v)
+    ? (v as LicenseFilterKey)
+    : null;
+}
+
 export function ProjectListPage() {
   const { t } = useTranslation("projects");
   // v2.1 B5: in the read-only live demo, write actions (trigger scan, create
@@ -119,22 +169,114 @@ export function ProjectListPage() {
   // this just avoids dead-end clicks that would 403.
   const { demoReadOnly } = useDemoMode();
 
-  const [query, setQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<ProjectStatusFilter>("all");
-  const [sort, setSort] = useState<ProjectSortKey>("name");
+  // W12 — list-page filters are now URL-derived (single source of truth):
+  //   ?status=succeeded&severity=critical&license_category=forbidden&sort=risk&search=foo
+  // so deep-links / back button / reload restore the exact list view. Defaults
+  // ("all" status, "name" sort, null sev/license, empty search) keep the URL
+  // clean by NOT writing the param. The Project Detail tabs already work this
+  // way; this PR brings the list page in line.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const statusFilter = parseStatusParam(searchParams.get("status"));
+  const sort = parseSortParam(searchParams.get("sort"));
   // Distribution-card filters — clicking a Severity / License segment on the
   // header card narrows the list to projects whose WORST bucket in that axis
   // matches. Single-select replace (click again or clear chip to broaden back
   // out). Both feed off ``ProjectPublic.{severity_summary,
   // license_category_summary}`` so the filter is client-side; never-scanned
   // projects (``*_summary == null``) never match either filter.
-  const [severityFilter, setSeverityFilter] = useState<
-    "critical" | "high" | "medium" | "low" | null
-  >(null);
-  const [licenseFilter, setLicenseFilter] = useState<
-    "forbidden" | "conditional" | "allowed" | "unknown" | null
-  >(null);
+  const severityFilter = parseSeverityParam(searchParams.get("severity"));
+  const licenseFilter = parseLicenseParam(
+    searchParams.get("license_category"),
+  );
+  // Search keeps a local typing buffer; the debounced value is what flows
+  // into both the filter AND the URL (so per-keystroke typing doesn't spam
+  // history entries). Mirrors the ComponentsTab / VulnerabilitiesTab pattern.
+  const [query, setQuery] = useState(() => searchParams.get("search") ?? "");
+  const [debouncedQuery, setDebouncedQuery] = useState(query);
+
+  // Setters wrap setSearchParams; default values DELETE the param (URL hygiene
+  // + back button restores the exact view). `replace: false` so the back
+  // button steps through filter changes (matches Overview chart deep-links).
+  const setStatusFilter = useCallback(
+    (next: ProjectStatusFilter) => {
+      setSearchParams(
+        (prev) => {
+          const out = new URLSearchParams(prev);
+          if (next === "all") out.delete("status");
+          else out.set("status", next);
+          return out;
+        },
+        { replace: false },
+      );
+    },
+    [setSearchParams],
+  );
+  const setSort = useCallback(
+    (next: ProjectSortKey) => {
+      setSearchParams(
+        (prev) => {
+          const out = new URLSearchParams(prev);
+          if (next === "name") out.delete("sort");
+          else out.set("sort", next);
+          return out;
+        },
+        { replace: false },
+      );
+    },
+    [setSearchParams],
+  );
+  const toggleSeverityFilter = useCallback(
+    (key: SeverityFilterKey) => {
+      setSearchParams(
+        (prev) => {
+          const out = new URLSearchParams(prev);
+          const current = parseSeverityParam(out.get("severity"));
+          const next = toggleNullable(current, key);
+          if (next === null) out.delete("severity");
+          else out.set("severity", next);
+          return out;
+        },
+        { replace: false },
+      );
+    },
+    [setSearchParams],
+  );
+  const clearSeverityFilter = useCallback(() => {
+    setSearchParams(
+      (prev) => {
+        const out = new URLSearchParams(prev);
+        out.delete("severity");
+        return out;
+      },
+      { replace: false },
+    );
+  }, [setSearchParams]);
+  const toggleLicenseFilter = useCallback(
+    (key: LicenseFilterKey) => {
+      setSearchParams(
+        (prev) => {
+          const out = new URLSearchParams(prev);
+          const current = parseLicenseParam(out.get("license_category"));
+          const next = toggleNullable(current, key);
+          if (next === null) out.delete("license_category");
+          else out.set("license_category", next);
+          return out;
+        },
+        { replace: false },
+      );
+    },
+    [setSearchParams],
+  );
+  const clearLicenseFilter = useCallback(() => {
+    setSearchParams(
+      (prev) => {
+        const out = new URLSearchParams(prev);
+        out.delete("license_category");
+        return out;
+      },
+      { replace: false },
+    );
+  }, [setSearchParams]);
   const [scanDrawer, setScanDrawer] = useState<ScanDrawerState>({
     open: false,
     scanId: null,
@@ -155,6 +297,23 @@ export function ProjectListPage() {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, [query]);
+
+  // Sync the debounced search into the URL so reload / share preserves it.
+  // Effect runs after every debounce flush; we skip writing when the param
+  // is already up-to-date to avoid redundant history entries.
+  useEffect(() => {
+    setSearchParams(
+      (prev) => {
+        const current = prev.get("search") ?? "";
+        if (current === debouncedQuery) return prev;
+        const out = new URLSearchParams(prev);
+        if (debouncedQuery) out.set("search", debouncedQuery);
+        else out.delete("search");
+        return out;
+      },
+      { replace: false },
+    );
+  }, [debouncedQuery, setSearchParams]);
 
   const projectsQuery = useQuery({
     queryKey: ["projects", { page: 1, size: PROJECT_PAGE_SIZE }],
@@ -340,14 +499,15 @@ export function ProjectListPage() {
                 onSegmentClick={(key) => {
                   // W9-#57 — re-clicking the active segment toggles the filter
                   // OFF. Only the four ranked buckets are filterable; ``info``
-                  // / ``none`` segments stay inert.
+                  // / ``none`` segments stay inert. W12 — toggle now flows
+                  // through the URL setter so the back button restores it.
                   if (
                     key === "critical" ||
                     key === "high" ||
                     key === "medium" ||
                     key === "low"
                   ) {
-                    setSeverityFilter((prev) => toggleNullable(prev, key));
+                    toggleSeverityFilter(key);
                   }
                 }}
               />
@@ -370,7 +530,8 @@ export function ProjectListPage() {
                 distribution={licenseDistByProject}
                 onSegmentClick={(key) => {
                   // W9-#57 — re-clicking the same category toggles it off.
-                  setLicenseFilter((prev) => toggleNullable(prev, key));
+                  // W12 — URL-routed so the toggle survives reload / share.
+                  toggleLicenseFilter(key);
                 }}
               />
             </CardContent>
@@ -392,7 +553,7 @@ export function ProjectListPage() {
           {severityFilter !== null ? (
             <button
               type="button"
-              onClick={() => setSeverityFilter(null)}
+              onClick={clearSeverityFilter}
               className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2 py-0.5 shadow-sm transition-colors duration-fast ease-out-soft hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               data-testid="project-list-active-filter-clear-severity"
             >
@@ -407,7 +568,7 @@ export function ProjectListPage() {
           {licenseFilter !== null ? (
             <button
               type="button"
-              onClick={() => setLicenseFilter(null)}
+              onClick={clearLicenseFilter}
               className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2 py-0.5 shadow-sm transition-colors duration-fast ease-out-soft hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               data-testid="project-list-active-filter-clear-license"
             >
