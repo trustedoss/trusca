@@ -38,12 +38,12 @@
   },
   "progress": {
     "title": "Scan in progress",
-    "step_bootstrap": "Bootstrapping workspace",
-    "step_fetch": "Fetching source",
-    "step_cdxgen": "Generating SBOM",
-    "step_scancode": "Detecting first-party licenses",
-    "step_dt_findings": "Matching SBOM against vulnerability database",
-    "step_finalize": "Finalizing",
+    "step_bootstrap": "Workspace prep",
+    "step_fetch": "Fetch source",
+    "step_cdxgen": "cdxgen (SBOM)",
+    "step_scancode": "ScanCode (license)",
+    "step_trivy": "Trivy (CVE match)",
+    "step_finalize": "Finalize",
     "step_succeeded": "Scan completed",
     "step_failed": "Scan failed",
     "step_cancelled": "Scan cancelled",
@@ -54,9 +54,19 @@
     "background_notice": "Scan continues in the background — you can close this panel.",
     "log_toggle": "Per-step log",
     "tool_log_toggle": "Tool log",
+    "open_full_log": "Open full log →",
     "close": "Close",
     "retry": "Retry",
     "percent_label": "{{value}}%"
+  },
+  "detail": {
+    "title": "Scan {{shortId}}",
+    "download": "Download log",
+    "download_unavailable": "Scan log not available yet",
+    "empty": "Waiting for scan output…",
+    "filter_all": "All",
+    "filter_errors": "Errors only",
+    "back_to_project": "Back to project"
   },
   "cancel": {
     "action": "Cancel scan",

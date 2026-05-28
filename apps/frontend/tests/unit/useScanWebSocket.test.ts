@@ -184,7 +184,7 @@ describe("useScanWebSocket", () => {
     act(() =>
       FakeSocket.instances[0].__message({
         percent: 90,
-        step: "dt_findings",
+        step: "trivy",
         ts: "2026-05-24T12:00:00.000Z",
       }),
     );
