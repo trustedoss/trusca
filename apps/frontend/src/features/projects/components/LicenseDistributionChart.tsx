@@ -12,6 +12,16 @@ import { cn } from "@/lib/utils";
  * Stacked horizontal bar with category counts inline. forbidden = critical
  * red, conditional = amber, allowed = emerald, unknown = gray. Pure CSS, no
  * recharts (no XSS surface).
+ *
+ * W11-D (2026-05-28) — chart re-skin polish:
+ *   - track tint softened to `bg-muted/70` + 1 px inset ring on `border` so
+ *     the chip frame reads against the Vercel-light card surface;
+ *   - segment / legend hover transitions unified at 150 ms (matches
+ *     `--duration-fast`);
+ *   - legend dot now carries a thin ring so the chip is visible even at very
+ *     low-saturation category colours;
+ *   - category colour mapping unchanged — domain semantics are fixed
+ *     (forbidden red, conditional amber, allowed emerald, unknown gray).
  */
 
 const ORDER: LicenseCategoryName[] = [
@@ -67,7 +77,7 @@ export function LicenseDistributionChart({
       className={cn("flex flex-col gap-3", className)}
     >
       <div
-        className="flex h-3 w-full overflow-hidden rounded-md bg-muted"
+        className="flex h-3 w-full overflow-hidden rounded-md bg-muted/70 ring-1 ring-inset ring-border/60"
         role="img"
         aria-label={t("overview.license_chart.aria", { total })}
       >
@@ -88,7 +98,7 @@ export function LicenseDistributionChart({
                     data-count={count}
                     className={cn(
                       segmentClass,
-                      "transition-opacity hover:opacity-80 focus-visible:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      "transition-opacity duration-150 ease-out hover:opacity-80 focus-visible:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     )}
                     style={{ width: `${pct}%` }}
                     title={title}
@@ -124,7 +134,10 @@ export function LicenseDistributionChart({
             <>
               <span
                 aria-hidden
-                className={cn("inline-block h-2 w-2 rounded-full", COLOR[key])}
+                className={cn(
+                  "inline-block h-2 w-2 shrink-0 rounded-full ring-1 ring-inset ring-border/40",
+                  COLOR[key],
+                )}
               />
               <span className="text-muted-foreground">
                 {t(`license_category.${key}`)}
@@ -140,7 +153,7 @@ export function LicenseDistributionChart({
                   data-testid={`license-legend-${key}`}
                   className={cn(
                     "flex w-full items-center gap-2 rounded px-1 py-0.5 text-left",
-                    "hover:bg-accent hover:text-accent-foreground",
+                    "transition-colors duration-150 ease-out hover:bg-accent hover:text-accent-foreground",
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
                   )}
                   onClick={() => onSegmentClick(key)}

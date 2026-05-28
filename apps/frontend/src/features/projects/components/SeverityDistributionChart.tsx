@@ -16,6 +16,15 @@ import { cn } from "@/lib/utils";
  * `dangerouslySetInnerHTML` — every count is rendered through a React text
  * node so there is zero XSS surface even when an API regression returns a
  * stringy / weird value.
+ *
+ * W11-D (2026-05-28) — chart re-skin polish:
+ *   - track tint softened to `bg-muted/70` + 1 px inset ring on `border` for
+ *     a quieter container on the Vercel-light canvas;
+ *   - segment hover transition unified at 150 ms (matches `--duration-fast`);
+ *   - legend dot is now ring-bordered so the 2 px chip reads even when the
+ *     adjacent risk colour is very light (info / unknown);
+ *   - risk severity colour mapping unchanged (domain meaning is fixed —
+ *     critical / high / medium / low / info).
  */
 
 const ORDERED_BUCKETS: ComponentSeverity[] = [
@@ -87,7 +96,7 @@ export function SeverityDistributionChart({
       className={cn("flex flex-col gap-3", className)}
     >
       <div
-        className="flex h-3 w-full overflow-hidden rounded-md bg-muted"
+        className="flex h-3 w-full overflow-hidden rounded-md bg-muted/70 ring-1 ring-inset ring-border/60"
         role="img"
         aria-label={t("overview.severity_chart.aria", { total })}
       >
@@ -112,7 +121,7 @@ export function SeverityDistributionChart({
                     data-count={count}
                     className={cn(
                       segmentClass,
-                      "transition-opacity hover:opacity-80 focus-visible:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      "transition-opacity duration-150 ease-out hover:opacity-80 focus-visible:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     )}
                     style={{ width: `${pct}%` }}
                     title={title}
@@ -143,7 +152,7 @@ export function SeverityDistributionChart({
               <span
                 aria-hidden
                 className={cn(
-                  "inline-block h-2 w-2 rounded-full",
+                  "inline-block h-2 w-2 shrink-0 rounded-full ring-1 ring-inset ring-border/40",
                   COLOR_BY_BUCKET[key],
                 )}
               />
@@ -163,7 +172,7 @@ export function SeverityDistributionChart({
                   data-testid={`severity-legend-${key}`}
                   className={cn(
                     "flex w-full items-center gap-2 rounded px-1 py-0.5 text-left",
-                    "hover:bg-accent hover:text-accent-foreground",
+                    "transition-colors duration-150 ease-out hover:bg-accent hover:text-accent-foreground",
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
                   )}
                   onClick={() => onSegmentClick(key)}
