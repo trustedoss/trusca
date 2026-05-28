@@ -110,6 +110,8 @@ _AUTH_MATRIX_ENDPOINTS = [
     ("GET", "/v1/admin/audit"),
     ("GET", "/v1/admin/audit/export.csv"),
     ("GET", "/v1/admin/health"),
+    # W6-#43e: Trivy DB health panel — existence-hide for non-super-admin.
+    ("GET", "/v1/admin/trivy/health"),
 ]
 
 
@@ -334,3 +336,50 @@ async def test_admin_health_super_admin_returns_components(client: AsyncClient) 
         "active_scans",
         "last_24h_errors",
     }
+
+
+# ---------------------------------------------------------------------------
+# Trivy DB health panel (W6-#43e)
+# ---------------------------------------------------------------------------
+
+
+async def test_admin_trivy_health_super_admin_returns_payload(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Super admin sees the Trivy DB status snapshot (empty-state OK)."""
+    # Pin TRIVY_CACHE_DIR to a per-test directory so we don't read the
+    # host worker's real Trivy state. No metadata.json written → exercises
+    # the "not yet downloaded" branch which is the realistic CI shape.
+    monkeypatch.setenv("TRIVY_CACHE_DIR", str(tmp_path / "trivy-cache"))
+    # Invalidate the 60s service cache so a previous test's snapshot does
+    # not leak into this one.
+    from services.trivy_health_service import reset_cache
+
+    reset_cache()
+
+    factory = await _factory(client)
+    async with factory() as session:
+        admin = await make_user(session, is_superuser=True)
+
+    response = await client.get(
+        "/v1/admin/trivy/health", headers=_bearer_for(admin)
+    )
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"].startswith("application/json")
+    body = response.json()
+    # Closed shape: every contracted field present.
+    assert set(body.keys()) == {
+        "last_update",
+        "next_refresh_at",
+        "vuln_count",
+        "db_version",
+        "db_size_bytes",
+        "refresh_interval_hours",
+        "freshness",
+        "cache_dir",
+        "repository",
+    }
+    assert body["freshness"] in {"fresh", "stale", "very_stale", "unknown"}
+    assert body["refresh_interval_hours"] >= 1
+    assert body["cache_dir"].endswith("trivy-cache")
+    assert body["repository"] == "ghcr.io/aquasecurity/trivy-db"

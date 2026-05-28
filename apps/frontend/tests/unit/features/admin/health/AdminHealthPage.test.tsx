@@ -22,6 +22,26 @@ vi.mock("@/features/admin/health/api/adminHealthApi", async () => {
   };
 });
 
+// W6-#43e: AdminHealthPage now mounts the Trivy DB panel inside the same
+// scroll container, so the page test needs to stub the new query too —
+// otherwise the panel tries to make a real network call against the JSDOM
+// environment.
+vi.mock("@/features/admin/health/api/adminTrivyHealthApi", async () => {
+  return {
+    getAdminTrivyHealth: vi.fn().mockResolvedValue({
+      last_update: null,
+      next_refresh_at: null,
+      vuln_count: null,
+      db_version: null,
+      db_size_bytes: null,
+      refresh_interval_hours: 168,
+      freshness: "unknown",
+      cache_dir: "/root/.cache/trivy",
+      repository: "ghcr.io/aquasecurity/trivy-db",
+    }),
+  };
+});
+
 import {
   getAdminHealth,
   type HealthComponent,

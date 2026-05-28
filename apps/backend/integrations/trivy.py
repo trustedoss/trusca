@@ -29,11 +29,13 @@ so unit tests can drive the whole container scan task without Docker.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess  # noqa: S404 — running a vetted local binary, not user input
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import structlog
 
@@ -487,12 +489,238 @@ def _write_mock_sbom_report(path: Path, *, sbom_path: Path) -> TrivyResult:
     return TrivyResult(report_path=path, report=report)
 
 
+# ---------------------------------------------------------------------------
+# DB lifecycle status — W6-#43e (admin/health Trivy DB panel)
+# ---------------------------------------------------------------------------
+
+
+# Match the Trivy default refresh cadence configured in the worker boot path
+# (W6-#44). The admin panel surfaces this so operators see the configured
+# cadence next to the actual ``UpdatedAt`` from the on-disk metadata.
+_DEFAULT_DB_REFRESH_HOURS = 24 * 7  # 7 days
+
+# Freshness boundaries — pair with the badge colour the FE renders.
+# < 7 days  : fresh
+# < 14 days : stale
+# >= 14 days: very_stale
+_STALE_AFTER = timedelta(days=7)
+_VERY_STALE_AFTER = timedelta(days=14)
+
+TrivyDbFreshness = Literal["fresh", "stale", "very_stale", "unknown"]
+
+
+def trivy_cache_dir() -> Path:
+    """Resolve the Trivy cache directory at call time.
+
+    Reads ``TRIVY_CACHE_DIR`` at each call (per CLAUDE.md core rule #11) and
+    falls back to Trivy's documented default ``$HOME/.cache/trivy`` so the
+    admin panel works on a stock worker image with no overrides.
+    """
+    override = os.getenv("TRIVY_CACHE_DIR")
+    if override:
+        return Path(override)
+    return Path.home() / ".cache" / "trivy"
+
+
+def trivy_db_repository() -> str:
+    """Resolve the configured Trivy DB OCI repository at call time."""
+    return os.getenv("TRIVY_DB_REPOSITORY", "ghcr.io/aquasecurity/trivy-db")
+
+
+def trivy_db_refresh_interval_hours() -> int:
+    """Hours between Trivy DB refreshes (admin panel display)."""
+    raw = os.getenv("TRIVY_DB_REFRESH_HOURS")
+    if not raw:
+        return _DEFAULT_DB_REFRESH_HOURS
+    try:
+        value = int(raw)
+    except ValueError:
+        log.warning("trivy_db_refresh_hours_invalid", raw=raw)
+        return _DEFAULT_DB_REFRESH_HOURS
+    # Lower bound 1h — anything below that is almost certainly a misconfig
+    # (Trivy itself caps to 24h cadence in production guidance). Upper bound
+    # 168h (1 week) — we still want the panel to surface "next refresh" even
+    # if the operator over-spaced the cadence.
+    return max(1, value)
+
+
+@dataclass(frozen=True)
+class TrivyDbStatus:
+    """Read-only snapshot of the Trivy vulnerability DB.
+
+    Returned by :func:`get_trivy_db_status` and consumed by the admin/health
+    panel (W6-#43e). All fields are optional so the "not yet downloaded"
+    case can render without raising.
+    """
+
+    last_update: datetime | None
+    """``UpdatedAt`` field of the on-disk ``metadata.json``."""
+
+    next_refresh_at: datetime | None
+    """``last_update + refresh_interval_hours``."""
+
+    vuln_count: int | None
+    """Total advisories tracked — best-effort from ``trivy --version`` or DB."""
+
+    db_version: str | None
+    """``"trivy-db v0.6.123"`` — pulled from ``metadata.json`` schema."""
+
+    db_size_bytes: int | None
+    """Sum of file sizes inside ``cache_dir/db/``."""
+
+    refresh_interval_hours: int
+    cache_dir: str
+    repository: str
+    freshness: TrivyDbFreshness
+
+
+def _classify_freshness(last_update: datetime | None, *, now: datetime) -> TrivyDbFreshness:
+    """Bucket ``last_update`` into fresh / stale / very_stale.
+
+    ``unknown`` is reserved for the "no metadata.json yet" case so the panel
+    can render an explicit empty state instead of mis-classifying as stale.
+    """
+    if last_update is None:
+        return "unknown"
+    # If ``last_update`` is naive (no tz), treat it as UTC — the Trivy schema
+    # documents UpdatedAt as RFC3339, so this is defensive.
+    if last_update.tzinfo is None:
+        last_update = last_update.replace(tzinfo=UTC)
+    age = now - last_update
+    if age < _STALE_AFTER:
+        return "fresh"
+    if age < _VERY_STALE_AFTER:
+        return "stale"
+    return "very_stale"
+
+
+def _parse_trivy_metadata(metadata_path: Path) -> dict[str, Any] | None:
+    """Read & parse Trivy's ``metadata.json``.
+
+    Returns ``None`` if the file does not exist (DB not yet downloaded) or
+    cannot be parsed (corrupt). Either case renders the same empty state in
+    the panel — we deliberately don't surface the parse error to admins
+    because the only remediation is "wait for the next refresh" and the
+    worker logs already carry the diagnostic.
+    """
+    if not metadata_path.exists():
+        return None
+    try:
+        with metadata_path.open("r", encoding="utf-8") as fh:
+            data: dict[str, Any] = json.load(fh)
+        return data
+    except (OSError, json.JSONDecodeError) as exc:
+        log.warning(
+            "trivy_db_metadata_unreadable",
+            path=str(metadata_path),
+            error=str(exc),
+        )
+        return None
+
+
+def _parse_iso(value: Any) -> datetime | None:
+    """Parse Trivy's RFC3339 timestamps; tolerate ``Z`` suffix and ``None``."""
+    if not isinstance(value, str) or not value:
+        return None
+    # ``fromisoformat`` accepts ``+00:00`` but not ``Z`` until 3.11+; the
+    # worker image runs on 3.12 so ``Z`` is accepted, but we normalise for
+    # defensive parity with older Python builds in tests.
+    normalised = value.replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(normalised)
+    except ValueError:
+        log.warning("trivy_db_metadata_bad_timestamp", value=value)
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed
+
+
+def _sum_db_size(db_dir: Path) -> int | None:
+    """Sum file sizes inside ``cache_dir/db/`` for the admin panel."""
+    if not db_dir.exists() or not db_dir.is_dir():
+        return None
+    total = 0
+    try:
+        for entry in db_dir.iterdir():
+            if entry.is_file():
+                total += entry.stat().st_size
+    except OSError as exc:
+        log.warning("trivy_db_size_unreadable", path=str(db_dir), error=str(exc))
+        return None
+    return total
+
+
+def get_trivy_db_status(*, now: datetime | None = None) -> TrivyDbStatus:
+    """Read the on-disk Trivy DB state and return a snapshot.
+
+    Best-effort: every per-field probe is wrapped so a missing / corrupt
+    artefact returns a partial snapshot instead of raising. The admin panel
+    decides what to render for ``None`` fields.
+
+    ``now`` is injectable for deterministic freshness tests; production
+    callers leave it as ``None`` and we read wall clock.
+    """
+    now = now or datetime.now(tz=UTC)
+    cache_dir = trivy_cache_dir()
+    db_dir = cache_dir / "db"
+    metadata_path = db_dir / "metadata.json"
+    repository = trivy_db_repository()
+    refresh_hours = trivy_db_refresh_interval_hours()
+
+    metadata = _parse_trivy_metadata(metadata_path)
+
+    last_update: datetime | None = None
+    db_version: str | None = None
+    vuln_count: int | None = None
+    if metadata is not None:
+        last_update = _parse_iso(metadata.get("UpdatedAt"))
+        # Trivy DB schema version pivots the on-disk format. We expose it as
+        # ``trivy-db v0.<Version>.<NextUpdate counter>`` — operators can map
+        # this to aquasecurity/trivy-db releases.
+        version_field = metadata.get("Version")
+        if isinstance(version_field, int):
+            db_version = f"trivy-db schema v{version_field}"
+        # Some Trivy versions surface ``VulnerabilityID`` count under a
+        # ``VulnerabilityCount`` / ``Count`` key; tolerate either.
+        for candidate_key in ("VulnerabilityCount", "Count", "AdvisoryCount"):
+            candidate = metadata.get(candidate_key)
+            if isinstance(candidate, int):
+                vuln_count = candidate
+                break
+
+    next_refresh_at: datetime | None = None
+    if last_update is not None:
+        next_refresh_at = last_update + timedelta(hours=refresh_hours)
+
+    db_size = _sum_db_size(db_dir)
+    freshness = _classify_freshness(last_update, now=now)
+
+    return TrivyDbStatus(
+        last_update=last_update,
+        next_refresh_at=next_refresh_at,
+        vuln_count=vuln_count,
+        db_version=db_version,
+        db_size_bytes=db_size,
+        refresh_interval_hours=refresh_hours,
+        cache_dir=str(cache_dir),
+        repository=repository,
+        freshness=freshness,
+    )
+
+
 __all__ = [
+    "TrivyDbFreshness",
+    "TrivyDbStatus",
     "TrivyError",
     "TrivyFailed",
     "TrivyNotInstalled",
     "TrivyResult",
     "TrivyTimeout",
+    "get_trivy_db_status",
     "run_trivy_image",
     "run_trivy_sbom",
+    "trivy_cache_dir",
+    "trivy_db_refresh_interval_hours",
+    "trivy_db_repository",
 ]

@@ -73,6 +73,7 @@
     "page_size",
     "status"
   ],
+  "GET /v1/admin/trivy/health": [],
   "GET /v1/admin/teams": [
     "page",
     "page_size",

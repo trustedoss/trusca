@@ -312,6 +312,93 @@ class SystemHealthOut(BaseModel):
     updated_at: datetime
 
 
+# ---------------------------------------------------------------------------
+# Trivy vulnerability DB status (W6-#43e)
+# ---------------------------------------------------------------------------
+
+# Pair the FE badge colour with this closed set so the renderer can ``switch``
+# without a default arm. ``unknown`` is the "metadata.json not present yet"
+# case — the FE renders the EmptyState instead of a badge.
+TrivyDbFreshness = Literal["fresh", "stale", "very_stale", "unknown"]
+
+
+class TrivyDbStatusOut(BaseModel):
+    """
+    Response of ``GET /v1/admin/trivy/health`` — W6-#43e.
+
+    Every numeric / temporal field is optional so the "not yet downloaded"
+    case can serialise cleanly. The FE keys empty state off ``last_update is
+    None`` or ``freshness == "unknown"``.
+
+    Configuration fields (``refresh_interval_hours``, ``cache_dir``,
+    ``repository``) are always present — they reflect runtime env, not
+    on-disk state, so they survive the no-DB case.
+    """
+
+    last_update: datetime | None = Field(
+        default=None,
+        description=(
+            "``UpdatedAt`` field of the on-disk ``$TRIVY_CACHE_DIR/db/"
+            "metadata.json``. ``null`` when the DB has not been downloaded "
+            "yet (fresh worker boot)."
+        ),
+    )
+    next_refresh_at: datetime | None = Field(
+        default=None,
+        description=(
+            "``last_update + refresh_interval_hours``. ``null`` when "
+            "``last_update`` is unknown."
+        ),
+    )
+    vuln_count: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Total advisories tracked. Best-effort: read from "
+            "``metadata.json`` if Trivy populates a count key, otherwise "
+            "``null`` — the panel falls back to '—'."
+        ),
+    )
+    db_version: str | None = Field(
+        default=None,
+        description=(
+            "Trivy DB schema descriptor (e.g. ``trivy-db schema v2``). "
+            "``null`` before the first download."
+        ),
+    )
+    db_size_bytes: int | None = Field(
+        default=None,
+        ge=0,
+        description="Sum of file sizes inside ``cache_dir/db/`` in bytes.",
+    )
+    refresh_interval_hours: int = Field(
+        ge=1,
+        description=(
+            "Configured cadence between Trivy DB refreshes. Mirrors "
+            "``TRIVY_DB_REFRESH_HOURS`` (default 168h / weekly)."
+        ),
+    )
+    freshness: TrivyDbFreshness = Field(
+        description=(
+            "``fresh`` (< 7d), ``stale`` (7-14d), ``very_stale`` (> 14d), "
+            "or ``unknown`` (DB not yet downloaded)."
+        ),
+    )
+    cache_dir: str = Field(
+        description=(
+            "Resolved Trivy cache directory the worker reads / writes "
+            "against. Useful for operators verifying air-gapped mounts."
+        ),
+    )
+    repository: str = Field(
+        description=(
+            "OCI repository the worker pulls the DB from. Mirrors "
+            "``TRIVY_DB_REPOSITORY`` (default ``ghcr.io/aquasecurity/"
+            "trivy-db``)."
+        ),
+    )
+
+
 __all__ = [
     "AdminDiskItem",
     "AdminDiskOut",
@@ -325,4 +412,6 @@ __all__ = [
     "HealthStatus",
     "ScanStatus",
     "SystemHealthOut",
+    "TrivyDbFreshness",
+    "TrivyDbStatusOut",
 ]
