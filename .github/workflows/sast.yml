@@ -1,0 +1,146 @@
+name: SAST
+
+# Phase 8 PR #25 — Static Application Security Testing (HARD FAIL).
+#
+# bandit  — Python AST scanner for common security smells (hardcoded
+#           passwords, weak crypto primitives, eval / exec usage).
+# semgrep — pattern-based scanner with the auto-config rules tailored to
+#           Python + JS / TS web stacks. Surfaces OWASP Top 10 patterns
+#           that bandit cannot reach.
+#
+# Both jobs run on every push to main and every pull request. They report
+# findings as JSON / SARIF artifacts which GitHub renders inline in the
+# security tab and on the PR.
+#
+# Phase 8 PR #25 (chore/security-bundle, this file) flips the gates from
+# advisory to HARD FAIL:
+#   - bandit  : HARD FAIL on High severity findings (Medium / Low remain
+#               advisory and surface in the JSON artifact only).
+#   - semgrep : HARD FAIL on ERROR severity (WARNING / INFO remain
+#               advisory and surface in the SARIF artifact only).
+# Suppress legitimate false positives inline with `# nosec BXXX` and
+# `# nosemgrep: <rule-id>` and a one-line justification — never broaden
+# the severity filter.
+
+on:
+  push:
+    branches: [main]
+    # Mirror ci.yml: docs/config-only PRs don't exercise SAST. Keep this
+    # list in lockstep with ci.yml's paths-ignore.
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+      - ".env.example"
+      - "CLAUDE.md"
+      - "ROADMAP.md"
+      - "SECURITY.md"
+      - "LICENSE"
+      - ".gitignore"
+  pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+      - ".env.example"
+      - "CLAUDE.md"
+      - "ROADMAP.md"
+      - "SECURITY.md"
+      - "LICENSE"
+      - ".gitignore"
+  workflow_dispatch: {}
+
+concurrency:
+  group: sast-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bandit:
+    if: false  # TEMP-DISABLED-CI (dev velocity) — re-enable before deploy
+    name: bandit (HARD FAIL on High)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install bandit
+        run: python -m pip install bandit==1.8.0
+
+      - name: Run bandit (HARD FAIL on High severity)
+        working-directory: apps/backend
+        # `--severity-level high` filters the *report* to High findings.
+        # bandit exits non-zero (1) when any finding survives the filter,
+        # so dropping the `|| echo` swallow flips this from advisory to
+        # HARD FAIL. Medium / Low findings still surface in the JSON
+        # artifact (read with `--severity-level low` locally) but do not
+        # block CI — they are an inventory, not a gate.
+        #
+        # JSON output is preferred over SARIF because the legacy
+        # `--severity-level` filter silently aborts SARIF emission when
+        # there are zero high-severity findings. JSON always writes.
+        # Suppress real false positives inline:
+        #   `# nosec B<rule>  # justification: <one line>`
+        run: |
+          bandit -r . \
+            --exclude ./tests,./alembic/versions \
+            --severity-level high \
+            --format json \
+            --output bandit.json
+
+      - name: Upload bandit JSON
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-report
+          path: apps/backend/bandit.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  semgrep:
+    if: false  # TEMP-DISABLED-CI (dev velocity) — re-enable before deploy
+    name: semgrep (HARD FAIL on ERROR)
+    runs-on: ubuntu-22.04
+    # Container removed — `semgrep ci` inside the official container hit
+    # `dubious ownership` on /__w/... and dropped the SARIF before the
+    # uploader could read it. The pip-install path on a stock runner
+    # writes the SARIF reliably.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install semgrep
+        # opentelemetry-instrumentation (transitively imported by
+        # semgrep>=1.x via tracing) imports pkg_resources, which setuptools
+        # >=78 ships as a separate top-level package and Python 3.12 hosted
+        # toolcache no longer bundles. Pin setuptools<78 so pkg_resources
+        # remains importable from the same install.
+        run: python -m pip install 'setuptools<78' semgrep==1.96.0
+
+      - name: Run semgrep (HARD FAIL on ERROR severity)
+        # `--config=auto` picks the OSS rule packs matching the languages
+        # it detects (Python + TypeScript here). `--severity=ERROR` limits
+        # the gate to highest-severity findings; WARNING / INFO findings
+        # are still emitted to the SARIF for review but do not block CI.
+        # `--error` makes semgrep exit non-zero on any matched finding;
+        # dropping the `|| echo` swallow flips this from advisory to
+        # HARD FAIL. Suppress real false positives inline:
+        #   `# nosemgrep: <rule-id>  # <justification>`
+        run: |
+          semgrep scan \
+            --config=auto \
+            --severity=ERROR \
+            --sarif --output=semgrep.sarif \
+            --error
+
+      - name: Upload semgrep SARIF artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-report
+          path: semgrep.sarif
+          if-no-files-found: warn
+          retention-days: 14

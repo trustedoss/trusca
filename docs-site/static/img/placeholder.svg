@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 450" width="800" height="450" role="img" aria-label="Screenshot placeholder">
+  <rect width="800" height="450" fill="#f1f5f9"/>
+  <rect x="1" y="1" width="798" height="448" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-dasharray="8 6"/>
+  <text x="400" y="220" text-anchor="middle" font-family="Inter, sans-serif" font-size="22" fill="#334155" font-weight="600">Screenshot placeholder</text>
+  <text x="400" y="252" text-anchor="middle" font-family="Inter, sans-serif" font-size="14" fill="#64748b">Real screenshot lands at GA</text>
+</svg>

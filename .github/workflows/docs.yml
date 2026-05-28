@@ -1,0 +1,107 @@
+name: Deploy Docs to GitHub Pages
+
+# W6 (ADR-0001, 2026-05-27): the repo is private for the duration of W6.
+# Free-plan private repos cannot serve GitHub Pages, so the auto-deploy on
+# every main push (paths: docs-site/**, apps/backend/**) was failing with
+# `Failed to create deployment (status: 404). Ensure GitHub Pages has been
+# enabled` on every merge. We disable the push trigger and keep only
+# `workflow_dispatch` for manual ops (so the workflow can still be invoked
+# from the Actions UI if someone re-enables Pages temporarily).
+#
+# Restore on v2.4.0 public release: revert this commit (or restore the
+# `push:` block) so backend / docs-site / dump_openapi.py changes re-publish
+# the Redoc reference automatically. See
+# `feedback_ci_hardening_deferred_prerelease` for the "defer to release"
+# policy this follows.
+on:
+  workflow_dispatch: {}
+  # push:                       # ← restore on v2.4.0 GA
+  #   branches: [main]
+  #   paths:
+  #     - "docs-site/**"
+  #     - ".github/workflows/docs.yml"
+  #     # B4: the hosted API reference (Redoc) renders from
+  #     # docs-site/static/openapi.json, which this workflow regenerates
+  #     # from the live FastAPI app. Backend API changes must therefore
+  #     # re-trigger a docs deploy so the published spec stays in sync
+  #     # with the code.
+  #     - "apps/backend/**"
+  #     - "scripts/dump_openapi.py"
+
+# Cancel any in-flight deploy when a newer commit lands.
+concurrency:
+  group: docs-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # Dummy runtime env so `import main` succeeds in dump_openapi.py without
+    # real Postgres/Redis. These satisfy import-time reads in core.config only;
+    # app.openapi() is pure schema generation and never connects to services
+    # (the lifespan does not run on import). Values mirror the ci.yml backend
+    # job so the regenerated spec matches what CI would produce.
+    env:
+      SECRET_KEY: ci-secret-key-min-32-chars-padding-1234
+      DATABASE_URL: postgresql+asyncpg://trustedoss:trustedoss@localhost:5432/trustedoss
+      REDIS_URL: redis://localhost:6379/0
+    steps:
+      - uses: actions/checkout@v4
+
+      # --- Regenerate the OpenAPI spec from the live backend BEFORE the docs
+      # build, so the published Redoc reference always reflects the current
+      # API on the same Python (3.12) CI uses. The committed
+      # docs-site/static/openapi.json is only a local-build fallback; this
+      # step overwrites it for the deploy. dump_openapi.py is read-only on the
+      # backend (it imports main.app and calls app.openapi()). -------------
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/backend/requirements.txt
+
+      - name: Install backend deps
+        working-directory: apps/backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Regenerate OpenAPI spec
+        run: python scripts/dump_openapi.py
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
+
+      - name: Install dependencies
+        working-directory: docs-site
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Build site
+        working-directory: docs-site
+        run: npm run build
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs-site/build
+
+  deploy:
+    needs: build
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,62 @@
+{
+  "link.title.Docs": {
+    "message": "문서",
+    "description": "The title of the footer links column with title=Docs in the footer"
+  },
+  "link.title.Project": {
+    "message": "프로젝트",
+    "description": "The title of the footer links column with title=Project in the footer"
+  },
+  "link.title.Reference": {
+    "message": "참조",
+    "description": "The title of the footer links column with title=Reference in the footer"
+  },
+  "link.item.label.Introduction": {
+    "message": "소개",
+    "description": "The label of footer link with label=Introduction linking to /docs/intro"
+  },
+  "link.item.label.Install": {
+    "message": "설치",
+    "description": "The label of footer link with label=Install linking to /docs/installation/docker-compose"
+  },
+  "link.item.label.Admin guide": {
+    "message": "관리자 가이드",
+    "description": "The label of footer link with label=Admin guide linking to /docs/admin-guide/users-and-teams"
+  },
+  "link.item.label.CI integration": {
+    "message": "CI 통합",
+    "description": "The label of footer link with label=CI integration linking to /docs/ci-integration/github-actions"
+  },
+  "link.item.label.GitHub": {
+    "message": "GitHub",
+    "description": "The label of footer link with label=GitHub linking to https://github.com/trustedoss/trustedoss-portal"
+  },
+  "link.item.label.Issues": {
+    "message": "이슈",
+    "description": "The label of footer link with label=Issues linking to https://github.com/trustedoss/trustedoss-portal/issues"
+  },
+  "link.item.label.Releases": {
+    "message": "릴리스",
+    "description": "The label of footer link with label=Releases linking to https://github.com/trustedoss/trustedoss-portal/releases"
+  },
+  "link.item.label.Architecture": {
+    "message": "아키텍처",
+    "description": "The label of footer link with label=Architecture linking to /docs/reference/architecture"
+  },
+  "link.item.label.Environment variables": {
+    "message": "환경 변수",
+    "description": "The label of footer link with label=Environment variables linking to /docs/reference/env-variables"
+  },
+  "link.item.label.API overview": {
+    "message": "API 개요",
+    "description": "The label of footer link with label=API overview linking to /docs/reference/api-overview"
+  },
+  "link.item.label.API reference (Redoc)": {
+    "message": "API 레퍼런스 (Redoc)",
+    "description": "The label of footer link with label=API reference (Redoc) linking to /reference/api"
+  },
+  "copyright": {
+    "message": "Copyright © 2026 TrustedOSS — Apache-2.0 라이선스.",
+    "description": "The footer copyright"
+  }
+}

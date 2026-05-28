@@ -1,0 +1,49 @@
+/**
+ * TrustedOSS Portal — Docusaurus theme overrides.
+ *
+ * Color tokens echo the in-app design system:
+ *   primary  #0f172a  (deep navy)
+ *   risk:
+ *     critical #dc2626   high #ea580c   medium #ca8a04
+ *     low      #2563eb   info #71717a
+ */
+
+:root {
+  --ifm-color-primary: #0f172a;
+  --ifm-color-primary-dark: #0b1220;
+  --ifm-color-primary-darker: #0a1020;
+  --ifm-color-primary-darkest: #07101c;
+  --ifm-color-primary-light: #1e293b;
+  --ifm-color-primary-lighter: #334155;
+  --ifm-color-primary-lightest: #475569;
+
+  --ifm-code-font-size: 92%;
+  --ifm-font-family-base:
+    "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --ifm-font-family-monospace:
+    "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+
+  --docusaurus-highlighted-code-line-bg: rgba(15, 23, 42, 0.08);
+}
+
+[data-theme="dark"] {
+  --ifm-color-primary: #93c5fd;
+  --ifm-color-primary-dark: #60a5fa;
+  --ifm-color-primary-darker: #3b82f6;
+  --ifm-color-primary-darkest: #2563eb;
+  --ifm-color-primary-light: #bfdbfe;
+  --ifm-color-primary-lighter: #dbeafe;
+  --ifm-color-primary-lightest: #eff6ff;
+
+  --docusaurus-highlighted-code-line-bg: rgba(255, 255, 255, 0.10);
+}
+
+/* Make admonitions feel a touch denser, in line with the in-app density. */
+.theme-admonition {
+  font-size: 0.95rem;
+}
+
+/* JetBrains Mono for inline code (CVE IDs, hashes, package names). */
+code {
+  font-family: var(--ifm-font-family-monospace);
+}

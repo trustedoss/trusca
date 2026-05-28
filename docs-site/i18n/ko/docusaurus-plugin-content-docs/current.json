@@ -1,0 +1,34 @@
+{
+  "version.label": {
+    "message": "Next",
+    "description": "The label for version current"
+  },
+  "sidebar.docs.category.Installation": {
+    "message": "설치",
+    "description": "The label for category Installation in sidebar docs"
+  },
+  "sidebar.docs.category.User guide": {
+    "message": "사용자 가이드",
+    "description": "The label for category User guide in sidebar docs"
+  },
+  "sidebar.docs.category.Contributor guide": {
+    "message": "기여자 가이드",
+    "description": "The label for category Contributor guide in sidebar docs"
+  },
+  "sidebar.docs.category.Admin guide": {
+    "message": "관리자 가이드",
+    "description": "The label for category Admin guide in sidebar docs"
+  },
+  "sidebar.docs.category.CI integration": {
+    "message": "CI 통합",
+    "description": "The label for category CI integration in sidebar docs"
+  },
+  "sidebar.docs.category.Reference": {
+    "message": "참조",
+    "description": "The label for category Reference in sidebar docs"
+  },
+  "sidebar.docs.category.Release notes": {
+    "message": "릴리스 노트",
+    "description": "The label for category Release notes in sidebar docs"
+  }
+}

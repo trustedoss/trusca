@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="TrustedOSS Portal">
+  <rect width="32" height="32" rx="6" fill="#0f172a"/>
+  <path d="M16 5 L25 9 V16 C25 21 21 25 16 27 C11 25 7 21 7 16 V9 Z" fill="#93c5fd" stroke="#bfdbfe" stroke-width="0.6"/>
+  <path d="M11.5 16.5 L14.5 19.5 L20.5 12.5" stroke="#0f172a" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

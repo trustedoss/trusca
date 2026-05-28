@@ -1,0 +1,38 @@
+{
+  "title": {
+    "message": "TrustedOSS Portal",
+    "description": "The title in the navbar"
+  },
+  "logo.alt": {
+    "message": "TrustedOSS Portal 로고",
+    "description": "The alt text of navbar logo"
+  },
+  "item.label.Docs": {
+    "message": "문서",
+    "description": "Navbar item with label Docs"
+  },
+  "item.label.Install": {
+    "message": "설치",
+    "description": "Navbar item with label Install"
+  },
+  "item.label.Admin": {
+    "message": "관리자",
+    "description": "Navbar item with label Admin"
+  },
+  "item.label.CI": {
+    "message": "CI",
+    "description": "Navbar item with label CI"
+  },
+  "item.label.Reference": {
+    "message": "참조",
+    "description": "Navbar item with label Reference"
+  },
+  "item.label.API reference": {
+    "message": "API 레퍼런스",
+    "description": "Navbar item with label API reference"
+  },
+  "item.label.GitHub": {
+    "message": "GitHub",
+    "description": "Navbar item with label GitHub"
+  }
+}

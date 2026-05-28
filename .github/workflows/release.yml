@@ -1,0 +1,125 @@
+name: Release (publish container images)
+
+# Post-GA roadmap §2 P0 — container image publication & low-friction install.
+#
+# This workflow is what makes "docker-compose up" work for EXTERNAL users.
+# CI's build-push-action runs with `load: true` (scan-only, no push); nothing
+# was ever pushed to a registry, so `trustedoss/backend:2.0.0` etc. could not
+# be pulled off the network → outside installs failed. This workflow closes
+# that gap by publishing three multi-arch images to GitHub Container Registry
+# on every `vX.Y.Z` tag:
+#
+#   ghcr.io/trustedoss/backend         ← apps/backend/Dockerfile.prod
+#   ghcr.io/trustedoss/backend-worker  ← apps/backend/Dockerfile.worker
+#   ghcr.io/trustedoss/frontend        ← apps/frontend/Dockerfile.prod
+#
+# Tag strategy (CLAUDE.md core rule #9 — NEVER `:latest`):
+#   git tag v2.0.1  →  image tags `2.0.1` (immutable) and `2.0` (movable minor).
+#   No `latest` tag is produced. docker/metadata-action's semver patterns drive
+#   this — see the `tags:` block in the metadata step.
+#
+# ── Operator one-time setup (required, see docs-site installation guide) ──
+#   1. ghcr packages inherit the repo's GITHUB_TOKEN write scope below — no
+#      separate PAT is needed. But the ORGANISATION must allow GitHub Actions
+#      to create/push packages: Org → Settings → Actions → Workflow
+#      permissions → "Read and write permissions" (or per-package, grant the
+#      repo "Write" role under Package settings → Manage Actions access).
+#   2. For anonymous `docker pull` (so users install without `docker login`),
+#      set each package's visibility to PUBLIC once after the first push:
+#      ghcr package → Package settings → Change visibility → Public.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag to build & push (e.g. v2.0.1). Must be a valid semver vX.Y.Z."
+        required: true
+        type: string
+
+# Free runners when a newer tag/dispatch supersedes an in-flight run on the
+# same ref. Releases are not so frequent that cancelling a stale run hurts.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: read the repo to build, write packages to push to ghcr.
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    name: publish ${{ matrix.image }} (multi-arch)
+    runs-on: ubuntu-22.04
+    strategy:
+      # One image's build failing should not abort the others — surfacing all
+      # three results in one run is more useful than fail-fast here.
+      fail-fast: false
+      matrix:
+        include:
+          - image: backend
+            dockerfile: apps/backend/Dockerfile.prod
+            context: apps/backend
+            description: TrustedOSS Portal backend (FastAPI API).
+          - image: backend-worker
+            dockerfile: apps/backend/Dockerfile.worker
+            context: apps/backend
+            description: TrustedOSS Portal Celery worker (cdxgen / scancode / Trivy / JRE).
+          - image: frontend
+            dockerfile: apps/frontend/Dockerfile.prod
+            context: apps/frontend
+            description: TrustedOSS Portal frontend (React SPA on nginx).
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # QEMU provides the arm64 emulation layer so a single amd64 runner can
+      # produce the linux/arm64 image alongside linux/amd64.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          # GITHUB_TOKEN carries the `packages: write` scope granted above —
+          # no separate PAT is required.
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive image tags & OCI labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/trustedoss/${{ matrix.image }}
+          # On a tag push the ref drives the semver; on workflow_dispatch we
+          # feed the operator-supplied tag through the same patterns. Neither
+          # produces `latest` — there is no `type=raw,value=latest` line.
+          tags: |
+            type=semver,pattern={{version}},value=${{ github.event.inputs.tag }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ github.event.inputs.tag }}
+          labels: |
+            org.opencontainers.image.title=trustedoss-${{ matrix.image }}
+            org.opencontainers.image.description=${{ matrix.description }}
+            org.opencontainers.image.source=https://github.com/trustedoss/trustedoss-portal
+            org.opencontainers.image.licenses=Apache-2.0
+
+      - name: Build & push (linux/amd64, linux/arm64)
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Per-image GHA cache scope so the three matrix legs do not clobber
+          # each other's layer cache.
+          cache-from: type=gha,scope=release-${{ matrix.image }}
+          cache-to: type=gha,scope=release-${{ matrix.image }},mode=max

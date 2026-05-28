@@ -1,0 +1,125 @@
+name: Release (publish Helm chart to OCI)
+
+# v2.1 / B3 — publish the Helm chart as an OCI artifact to GitHub Container
+# Registry so operators can `helm install` straight from the registry:
+#
+#   helm install trustedoss oci://ghcr.io/trustedoss/charts/trustedoss \
+#     --version <chart-version> -n trustedoss --create-namespace -f my-values.yaml
+#
+# Triggers on chart tags `chart-vX.Y.Z` (decoupled from the app image tags in
+# release.yml, which fire on `vX.Y.Z`). The chart's own SemVer is Chart.yaml
+# `version`; we assert the tag matches it so the registry artifact and the
+# packaged Chart.yaml never drift.
+#
+# ── Operator one-time setup ──
+#   1. Org → Settings → Actions → Workflow permissions → Read and write, so the
+#      GITHUB_TOKEN can push packages.
+#   2. After the first push, set the `charts/trustedoss` ghcr package visibility
+#      to PUBLIC for anonymous `helm pull` (Package settings → Change visibility).
+#   3. Register the OCI repo on ArtifactHub (Control Panel → Add → Helm,
+#      URL: oci://ghcr.io/trustedoss/charts). The artifacthub-repo.yml ownership
+#      artifact is pushed by this workflow.
+
+on:
+  push:
+    tags:
+      - "chart-v*.*.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Chart version to package & push (must equal Chart.yaml version, e.g. 0.3.0)."
+        required: true
+        type: string
+
+# Free runners when a newer tag/dispatch supersedes an in-flight run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: read the repo to package, write packages to push to ghcr.
+permissions:
+  contents: read
+  packages: write
+
+env:
+  CHART_DIR: charts/trustedoss
+  OCI_REPO: oci://ghcr.io/trustedoss/charts
+
+jobs:
+  publish:
+    name: package & push chart
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.3
+
+      - name: Set up ORAS
+        # oras is not pre-installed on GitHub-hosted runners; needed to push the
+        # ArtifactHub repo-metadata layer.
+        uses: oras-project/setup-oras@v1
+        with:
+          version: 1.2.0
+
+      - name: Resolve & verify chart version
+        id: ver
+        run: |
+          set -euo pipefail
+          chart_version="$(helm show chart "${CHART_DIR}" | awk '/^version:/ {print $2}')"
+          echo "chart Chart.yaml version: ${chart_version}"
+          if [ "${{ github.event_name }}" = "push" ]; then
+            tag_version="${GITHUB_REF_NAME#chart-v}"
+          else
+            tag_version="${{ github.event.inputs.version }}"
+          fi
+          echo "requested version: ${tag_version}"
+          if [ "${chart_version}" != "${tag_version}" ]; then
+            echo "::error::tag/input version (${tag_version}) != Chart.yaml version (${chart_version}). Bump Chart.yaml or fix the tag."
+            exit 1
+          fi
+          echo "version=${chart_version}" >> "$GITHUB_OUTPUT"
+
+      - name: Lint chart
+        run: helm lint "${CHART_DIR}"
+
+      - name: Render templates (smoke test, default + external datastores)
+        run: |
+          set -euo pipefail
+          helm template trustedoss "${CHART_DIR}" \
+            --set env.secret.secretKey=ci-smoke-secret-key-0123456789abcdef \
+            --set postgres.auth.password=ci-smoke-pw \
+            --set ingress.host=trustedoss.ci.example.com > /dev/null
+          helm template trustedoss "${CHART_DIR}" \
+            --set postgres.bundled=false \
+            --set redis.bundled=false \
+            --set env.database.url='postgresql+asyncpg://u:p@db:5432/t' \
+            --set env.redis.url='redis://r:6379/0' \
+            --set env.secret.secretKey=ci-smoke-secret-key-0123456789abcdef \
+            --set ingress.host=trustedoss.ci.example.com > /dev/null
+
+      - name: Log in to GitHub Container Registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io \
+            --username "${{ github.actor }}" --password-stdin
+          echo "${{ secrets.GITHUB_TOKEN }}" | oras login ghcr.io \
+            --username "${{ github.actor }}" --password-stdin
+
+      - name: Package chart
+        run: helm package "${CHART_DIR}" --destination "${RUNNER_TEMP}"
+
+      - name: Push chart to OCI registry
+        run: |
+          set -euo pipefail
+          helm push "${RUNNER_TEMP}/trustedoss-${{ steps.ver.outputs.version }}.tgz" "${OCI_REPO}"
+
+      - name: Push ArtifactHub ownership metadata
+        run: |
+          set -euo pipefail
+          # ArtifactHub reads its repo-metadata layer from a fixed tag.
+          oras push \
+            "ghcr.io/trustedoss/charts/trustedoss:artifacthub.io" \
+            "${CHART_DIR}/artifacthub-repo.yml:application/vnd.cncf.artifacthub.repository-metadata.layer.v1.yaml"

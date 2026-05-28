@@ -1,0 +1,120 @@
+name: e2e-nightly
+
+# Nightly real-stack e2e harness (test-hardening plan, docs/plan-test-hardening.md).
+# NOT a PR gate — it brings up the full stack + a real Dependency-Track and runs
+# the slow tiers (golden-fixture drift, real-tool scans, load SLO) that the PR
+# run (`pytest tests/unit tests/integration`) deliberately excludes.
+#
+# Requires a fixtures source: the bd-scan corpus lives in a separate repo, so set
+# the `BD_SCAN_REPO_URL` secret (a git URL the runner can clone, incl. token) to
+# enable the golden tier. Without it, the golden/real-tool steps skip and only
+# the load gate runs. Validate changes via the workflow_dispatch trigger.
+
+on:
+  # Nightly schedule disabled until release (CI hardening deferred — see
+  # docs/plan-test-hardening.md). Re-enable by uncommenting the cron below.
+  # schedule:
+  #   - cron: "0 17 * * *"   # 02:00 KST nightly
+  workflow_dispatch:
+    inputs:
+      load_users:
+        description: "Locust users for the SLO gate"
+        default: "200"
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Prepare .env
+        run: cp .env.example .env || true
+
+      - name: Bring up dev + DT stack
+        run: |
+          docker-compose -f docker-compose.dev.yml -f docker-compose.dt.yml up -d --build
+          # Wait for the backend to answer health.
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/health || echo 000)
+            [ "$code" = "200" ] && break
+            sleep 5
+          done
+
+      - name: Provision Dependency-Track (admin + API key) + restart backend
+        env:
+          DT_ADMIN_PASSWORD: ${{ secrets.DT_ADMIN_PASSWORD }}
+        run: |
+          bash scripts/ci/provision-dt.sh
+          docker-compose -f docker-compose.dev.yml -f docker-compose.dt.yml up -d --force-recreate backend celery-worker celery-beat
+          sleep 8
+
+      - name: Seed e2e super-admin
+        env:
+          ADMIN_EMAIL: e2e-admin@trustedoss.dev
+          ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
+        run: |
+          docker-compose -f docker-compose.dev.yml exec -T \
+            -e ADMIN_EMAIL="$ADMIN_EMAIL" -e ADMIN_PASSWORD="$ADMIN_PASSWORD" \
+            backend python scripts/create_super_admin.py
+
+      - name: Clone golden fixtures (optional)
+        id: fixtures
+        env:
+          BD_SCAN_REPO_URL: ${{ secrets.BD_SCAN_REPO_URL }}
+        run: |
+          if [ -n "$BD_SCAN_REPO_URL" ]; then
+            git clone --depth 1 "$BD_SCAN_REPO_URL" "$HOME/bd-scan"
+            echo "fixtures_dir=$HOME/bd-scan/tests/fixtures/projects" >> "$GITHUB_OUTPUT"
+            echo "have_fixtures=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "have_fixtures=0" >> "$GITHUB_OUTPUT"
+            echo "::warning::BD_SCAN_REPO_URL not set — skipping golden/real-tool tiers"
+          fi
+
+      - name: Tier 1/2 — golden-fixture drift gate (real cdxgen/scancode/DT)
+        # Always runs (no `if:` gate). When BD_SCAN_REPO_URL is set, the full
+        # language matrix is diffed against its baselines. When it is NOT set,
+        # the test self-narrows to the in-repo fixture subset
+        # (apps/backend/tests/e2e/golden/fixtures/: node, python-pip) so the
+        # BUG-008 silent-failure class — "scan succeeded but 0 components" — is
+        # guarded nightly with NO external dependency. Other baselines skip
+        # cleanly when their fixture is absent.
+        #
+        # Runs on the RUNNER (not in the container): run_golden is stdlib-only
+        # and drives the published API at localhost:8000; external fixtures (when
+        # cloned) live on the runner's $HOME — the backend container can't see them.
+        env:
+          GOLDEN_API: http://localhost:8000
+          GOLDEN_EMAIL: e2e-admin@trustedoss.dev
+          GOLDEN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
+        run: |
+          pip install pytest
+          # Only export GOLDEN_FIXTURES when the external corpus was cloned;
+          # leaving it unset lets the in-repo fallback drive the subset.
+          if [ -n "${{ steps.fixtures.outputs.fixtures_dir }}" ]; then
+            export GOLDEN_FIXTURES="${{ steps.fixtures.outputs.fixtures_dir }}"
+          fi
+          cd apps/backend && python -m pytest -m golden tests/e2e/golden -q
+
+      - name: Tier 3 — load SLO gate (Locust headless, strict)
+        run: |
+          docker pull locustio/locust:2.31.8
+          LOAD_TEST_EMAIL=e2e-admin@trustedoss.dev \
+          LOAD_TEST_PASSWORD="${{ secrets.E2E_ADMIN_PASSWORD }}" \
+          tests/load/run_hard.sh "${{ github.event.inputs.load_users || '200' }}" 40 90s
+
+      - name: Stack logs on failure
+        if: failure()
+        run: docker-compose -f docker-compose.dev.yml -f docker-compose.dt.yml logs --tail 200
+
+      - name: Tear down
+        if: always()
+        run: docker-compose -f docker-compose.dev.yml -f docker-compose.dt.yml down -v

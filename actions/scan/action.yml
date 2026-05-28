@@ -1,0 +1,343 @@
+name: 'TrustedOSS SCA Scan'
+description: 'Trigger a TrustedOSS scan and gate the build on Critical CVEs / forbidden licenses.'
+author: 'TrustedOSS'
+branding:
+  icon: 'shield'
+  color: 'blue'
+
+# -----------------------------------------------------------------------------
+# Inputs
+# -----------------------------------------------------------------------------
+# All values that touch the network (api-url, api-key, project-id) are taken
+# from caller inputs rather than env so that the same workflow file can be
+# pointed at different portals (prod / staging) without editing the action.
+# -----------------------------------------------------------------------------
+inputs:
+  api-url:
+    description: 'TrustedOSS Portal API base URL (e.g., https://trustedoss.example.com). Trailing slash is allowed.'
+    required: true
+  api-key:
+    description: 'TrustedOSS API key (use a GitHub secret). Format: tos_<8-char prefix>_<32-char secret>.'
+    required: true
+  project-id:
+    description: 'TrustedOSS project UUID (Settings tab → CI/CD).'
+    required: true
+  scan-kind:
+    description: 'Scan pipeline to enqueue. "source" runs cdxgen + Trivy. "container" runs Trivy.'
+    required: false
+    default: 'source'
+  fail-on-gate:
+    description: 'If "true", exit 1 on gate=fail (build-blocking). Default: true.'
+    required: false
+    default: 'true'
+  post-pr-comment:
+    description: 'If "true" (and triggered by pull_request event), post the SCA report to the PR.'
+    required: false
+    default: 'true'
+  poll-timeout-seconds:
+    description: 'Maximum seconds to wait for the scan to reach a terminal state (succeeded/failed/cancelled). Default: 1800 (30 min).'
+    required: false
+    default: '1800'
+  poll-interval-seconds:
+    description: 'Seconds to sleep between scan-status polls. Default: 30.'
+    required: false
+    default: '30'
+
+# -----------------------------------------------------------------------------
+# Outputs
+# -----------------------------------------------------------------------------
+outputs:
+  scan-id:
+    description: 'UUID of the scan that was enqueued and evaluated.'
+    value: ${{ steps.trigger.outputs.scan_id }}
+  gate:
+    description: 'Final gate verdict (pass | fail).'
+    value: ${{ steps.gate.outputs.gate }}
+  reason:
+    description: 'Human-readable reason for the gate verdict (null when pass).'
+    value: ${{ steps.gate.outputs.reason }}
+  critical-cve-count:
+    description: 'Number of open critical-severity findings on the evaluated scan.'
+    value: ${{ steps.gate.outputs.critical_cve_count }}
+  forbidden-license-count:
+    description: 'Distinct components carrying a forbidden-classification license.'
+    value: ${{ steps.gate.outputs.forbidden_license_count }}
+
+# -----------------------------------------------------------------------------
+# Steps
+# -----------------------------------------------------------------------------
+# Each shell step pins `set -euo pipefail` so a failed curl, a missing jq, or
+# an unexpected JSON shape stops the run loudly instead of silently passing.
+# We never echo the API key — `curl --fail-with-body` and explicit status
+# capture keep secrets out of stdout / stderr.
+# -----------------------------------------------------------------------------
+runs:
+  using: 'composite'
+  steps:
+    # -------------------------------------------------------------------------
+    # 0) Pre-flight — make sure jq is on PATH. GitHub-hosted runners ship it,
+    #    but self-hosted runners (Alpine, slim images) frequently don't.
+    # -------------------------------------------------------------------------
+    - name: Verify jq is available
+      shell: bash
+      run: |
+        set -euo pipefail
+        if ! command -v jq >/dev/null 2>&1; then
+          echo "::error::jq is required but was not found on PATH. Install it on the runner (e.g. 'apt-get install -y jq' or 'apk add jq')."
+          exit 1
+        fi
+
+    # -------------------------------------------------------------------------
+    # 1) Trigger scan — POST /v1/projects/{id}/scans, capture scan_id
+    # -------------------------------------------------------------------------
+    - name: Trigger TrustedOSS scan
+      id: trigger
+      shell: bash
+      env:
+        TOS_API_URL: ${{ inputs.api-url }}
+        TOS_API_KEY: ${{ inputs.api-key }}
+        TOS_PROJECT_ID: ${{ inputs.project-id }}
+        TOS_SCAN_KIND: ${{ inputs.scan-kind }}
+      run: |
+        set -euo pipefail
+        # Strip trailing slash so we never construct a URL with `//v1/...`.
+        api="${TOS_API_URL%/}"
+        # Body is the minimum shape the trigger endpoint accepts; metadata is
+        # left empty so the portal applies defaults (latest commit on default
+        # branch / latest container tag, depending on scan-kind).
+        body=$(jq -nc --arg kind "$TOS_SCAN_KIND" '{kind: $kind, metadata: {source: "github-actions"}}')
+
+        # `--fail-with-body` returns non-zero on 4xx/5xx but still prints the
+        # response body so we can surface the RFC 7807 problem detail.
+        # `-w "\n%{http_code}"` appends the status code on its own line, which
+        # we split off below.
+        response=$(curl --fail-with-body -sS -X POST \
+          -H "Authorization: Bearer ${TOS_API_KEY}" \
+          -H "Content-Type: application/json" \
+          -H "Accept: application/json" \
+          -w "\n%{http_code}" \
+          "${api}/v1/projects/${TOS_PROJECT_ID}/scans" \
+          -d "$body") || {
+            echo "::error::POST /v1/projects/${TOS_PROJECT_ID}/scans failed:"
+            echo "${response}"
+            exit 1
+          }
+
+        http_code=$(echo "$response" | tail -n1)
+        json_body=$(echo "$response" | sed '$d')
+
+        if [ "$http_code" != "202" ] && [ "$http_code" != "200" ]; then
+          echo "::error::Unexpected HTTP ${http_code} from scan trigger:"
+          echo "${json_body}"
+          exit 1
+        fi
+
+        scan_id=$(echo "$json_body" | jq -er '.id')
+        echo "scan_id=${scan_id}" >> "$GITHUB_OUTPUT"
+        echo "TrustedOSS scan enqueued: ${scan_id}"
+
+    # -------------------------------------------------------------------------
+    # 2) Wait for terminal state — poll GET /v1/scans/{id} until status is
+    #    succeeded | failed | cancelled, or the timeout elapses.
+    # -------------------------------------------------------------------------
+    - name: Wait for scan to finish
+      id: wait
+      shell: bash
+      env:
+        TOS_API_URL: ${{ inputs.api-url }}
+        TOS_API_KEY: ${{ inputs.api-key }}
+        TOS_SCAN_ID: ${{ steps.trigger.outputs.scan_id }}
+        POLL_TIMEOUT: ${{ inputs.poll-timeout-seconds }}
+        POLL_INTERVAL: ${{ inputs.poll-interval-seconds }}
+      run: |
+        set -euo pipefail
+        api="${TOS_API_URL%/}"
+        deadline=$(( $(date +%s) + POLL_TIMEOUT ))
+
+        while :; do
+          response=$(curl --fail-with-body -sS \
+            -H "Authorization: Bearer ${TOS_API_KEY}" \
+            -H "Accept: application/json" \
+            -w "\n%{http_code}" \
+            "${api}/v1/scans/${TOS_SCAN_ID}") || {
+              echo "::error::GET /v1/scans/${TOS_SCAN_ID} failed:"
+              echo "${response}"
+              exit 1
+            }
+
+          http_code=$(echo "$response" | tail -n1)
+          json_body=$(echo "$response" | sed '$d')
+
+          if [ "$http_code" != "200" ]; then
+            echo "::error::Unexpected HTTP ${http_code} from scan status:"
+            echo "${json_body}"
+            exit 1
+          fi
+
+          scan_status=$(echo "$json_body" | jq -r '.status')
+          progress=$(echo "$json_body" | jq -r '.progress_percent // 0')
+          step=$(echo "$json_body" | jq -r '.current_step // "?"')
+          echo "[$(date -u +%H:%M:%S)] status=${scan_status} progress=${progress}% step=${step}"
+
+          case "$scan_status" in
+            succeeded)
+              echo "scan_status=succeeded" >> "$GITHUB_OUTPUT"
+              break
+              ;;
+            failed|cancelled)
+              # Surface the error_message so failures are debuggable from the
+              # workflow log without opening the portal.
+              err=$(echo "$json_body" | jq -r '.error_message // "(no error message)"')
+              echo "::error::Scan ${TOS_SCAN_ID} ended with status=${scan_status}: ${err}"
+              echo "scan_status=${scan_status}" >> "$GITHUB_OUTPUT"
+              exit 1
+              ;;
+            queued|running)
+              # Continue polling.
+              ;;
+            *)
+              echo "::warning::Unrecognized scan status '${scan_status}', continuing to poll"
+              ;;
+          esac
+
+          if [ "$(date +%s)" -ge "$deadline" ]; then
+            echo "::error::Scan ${TOS_SCAN_ID} did not finish within ${POLL_TIMEOUT}s (last status=${scan_status})"
+            exit 1
+          fi
+
+          sleep "${POLL_INTERVAL}"
+        done
+
+    # -------------------------------------------------------------------------
+    # 3) Evaluate gate — GET /v1/projects/{id}/gate-result, expose as outputs.
+    #    We DO NOT exit non-zero here even when gate=fail; the PR-comment step
+    #    needs to run first so reviewers see the report alongside the failure.
+    #    The "Apply gate result" step at the end is the single place that
+    #    enforces fail-on-gate.
+    # -------------------------------------------------------------------------
+    - name: Evaluate build gate
+      id: gate
+      shell: bash
+      env:
+        TOS_API_URL: ${{ inputs.api-url }}
+        TOS_API_KEY: ${{ inputs.api-key }}
+        TOS_PROJECT_ID: ${{ inputs.project-id }}
+      run: |
+        set -euo pipefail
+        api="${TOS_API_URL%/}"
+
+        response=$(curl --fail-with-body -sS \
+          -H "Authorization: Bearer ${TOS_API_KEY}" \
+          -H "Accept: application/json" \
+          -w "\n%{http_code}" \
+          "${api}/v1/projects/${TOS_PROJECT_ID}/gate-result") || {
+            echo "::error::GET /v1/projects/${TOS_PROJECT_ID}/gate-result failed:"
+            echo "${response}"
+            exit 1
+          }
+
+        http_code=$(echo "$response" | tail -n1)
+        json_body=$(echo "$response" | sed '$d')
+
+        if [ "$http_code" != "200" ]; then
+          echo "::error::Unexpected HTTP ${http_code} from gate-result:"
+          echo "${json_body}"
+          exit 1
+        fi
+
+        gate=$(echo "$json_body" | jq -r '.gate')
+        reason=$(echo "$json_body" | jq -r '.reason // ""')
+        critical=$(echo "$json_body" | jq -r '.critical_cve_count // 0')
+        forbidden=$(echo "$json_body" | jq -r '.forbidden_license_count // 0')
+
+        # GITHUB_OUTPUT supports multi-line via heredoc, but reason is single
+        # line by contract — we still defensively strip newlines.
+        reason_oneline=$(printf '%s' "$reason" | tr -d '\r\n')
+
+        {
+          echo "gate=${gate}"
+          echo "reason=${reason_oneline}"
+          echo "critical_cve_count=${critical}"
+          echo "forbidden_license_count=${forbidden}"
+        } >> "$GITHUB_OUTPUT"
+
+        # Job summary block — visible on the workflow run page.
+        {
+          echo "## TrustedOSS SCA Gate"
+          echo ""
+          echo "| Field | Value |"
+          echo "|---|---|"
+          echo "| Verdict | **${gate}** |"
+          echo "| Critical CVEs | ${critical} |"
+          echo "| Forbidden licenses | ${forbidden} |"
+          if [ -n "${reason_oneline}" ]; then
+            echo "| Reason | ${reason_oneline} |"
+          fi
+        } >> "$GITHUB_STEP_SUMMARY"
+
+        echo "TrustedOSS gate=${gate} critical=${critical} forbidden=${forbidden}"
+
+    # -------------------------------------------------------------------------
+    # 4) Post PR comment — only on pull_request events, only when caller
+    #    opted in. The endpoint is idempotent on the server side (it updates
+    #    an existing comment for the same scan/PR pair instead of duplicating).
+    # -------------------------------------------------------------------------
+    - name: Post SCA report to PR
+      id: comment
+      if: github.event_name == 'pull_request' && inputs.post-pr-comment == 'true'
+      shell: bash
+      env:
+        TOS_API_URL: ${{ inputs.api-url }}
+        TOS_API_KEY: ${{ inputs.api-key }}
+        TOS_SCAN_ID: ${{ steps.trigger.outputs.scan_id }}
+        REPO_FULL_NAME: ${{ github.repository }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: |
+        set -euo pipefail
+        api="${TOS_API_URL%/}"
+        body=$(jq -nc \
+          --arg repo "$REPO_FULL_NAME" \
+          --argjson pr "$PR_NUMBER" \
+          '{repo_full_name: $repo, pr_number: $pr, dry_run: false}')
+
+        response=$(curl --fail-with-body -sS -X POST \
+          -H "Authorization: Bearer ${TOS_API_KEY}" \
+          -H "Content-Type: application/json" \
+          -H "Accept: application/json" \
+          -w "\n%{http_code}" \
+          "${api}/v1/scans/${TOS_SCAN_ID}/post-pr-comment" \
+          -d "$body") || {
+            # Non-fatal: PR comments are advisory. Failing the whole gate
+            # because GitHub.com had a 5xx blip would be a poor trade.
+            echo "::warning::POST /v1/scans/${TOS_SCAN_ID}/post-pr-comment failed:"
+            echo "${response}"
+            exit 0
+          }
+
+        http_code=$(echo "$response" | tail -n1)
+        json_body=$(echo "$response" | sed '$d')
+
+        if [ "$http_code" != "200" ]; then
+          echo "::warning::Unexpected HTTP ${http_code} from post-pr-comment (advisory step, continuing):"
+          echo "${json_body}"
+          exit 0
+        fi
+
+        status_value=$(echo "$json_body" | jq -r '.status')
+        url=$(echo "$json_body" | jq -r '.comment_url // ""')
+        echo "PR comment ${status_value}${url:+ — $url}"
+
+    # -------------------------------------------------------------------------
+    # 5) Apply gate result — single place that decides whether the job fails.
+    #    This must be the last step so the PR comment goes out first.
+    # -------------------------------------------------------------------------
+    - name: Apply gate verdict
+      if: inputs.fail-on-gate == 'true' && steps.gate.outputs.gate == 'fail'
+      shell: bash
+      env:
+        REASON: ${{ steps.gate.outputs.reason }}
+        CRITICAL: ${{ steps.gate.outputs.critical_cve_count }}
+        FORBIDDEN: ${{ steps.gate.outputs.forbidden_license_count }}
+      run: |
+        echo "::error::TrustedOSS gate FAILED — critical_cve_count=${CRITICAL}, forbidden_license_count=${FORBIDDEN}. Reason: ${REASON:-(none)}"
+        exit 1
