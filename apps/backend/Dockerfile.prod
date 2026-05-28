@@ -1,0 +1,101 @@
+# TrustedOSS Portal — backend (production image).
+#
+# Goals vs. the dev Dockerfile:
+#   - Multi-stage so the runtime image doesn't carry build-essential / gcc.
+#   - Production deps only (`requirements.txt`, no `requirements-dev.txt`).
+#   - No `--reload`, multiple uvicorn workers (`--workers 4`).
+#   - `tini` as PID 1 so SIGTERM propagates cleanly when docker stops the container.
+#   - Non-root runtime user (uid 1000) — least privilege.
+#
+# CLAUDE.md core rule #9: pin tags + minor + patch, no `:latest`.
+
+# ---------- 1. build ----------
+FROM python:3.12.7-slim AS build
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Build-time deps for psycopg2 (alembic) and any C extensions.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY requirements.txt /app/
+RUN pip install --upgrade pip \
+    && pip install --prefix=/install -r requirements.txt
+
+# ---------- 2. runtime ----------
+FROM python:3.12.7-slim AS runtime
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1
+
+# Runtime libs only — libpq for psycopg, curl for the healthcheck, tini for
+# PID 1 signal handling.
+#
+# weasyprint (scan-gap G2 — vulnerability PDF report) dlopen's its native
+# rendering libs at runtime: pango (pulls cairo + harfbuzz), gdk-pixbuf and
+# a default font face. These belong in the runtime stage (weasyprint ships as
+# pure-Python wheels, so the build stage needs no extra packages).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libpq5 \
+        curl \
+        tini \
+        libpango-1.0-0 \
+        libpangoft2-1.0-0 \
+        libharfbuzz-subset0 \
+        libgdk-pixbuf-2.0-0 \
+        fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/* \
+    && addgroup --system --gid 1000 trustedoss \
+    && adduser  --system --uid 1000 --gid 1000 --home /app trustedoss
+
+# Pull pre-built site-packages from the build stage; no compiler shipped to prod.
+COPY --from=build /install /usr/local
+
+WORKDIR /app
+
+# v2.1 (L3copy) — copy the entrypoint EXPLICITLY, before the broad source
+# copy, with an explicit mode. This file is load-bearing (tini ENTRYPOINTs
+# into it and it applies Alembic migrations on container start), so we do not
+# rely on the broad `COPY . /app` + .dockerignore interaction or a separate
+# `RUN chmod` to land it executable. `--chmod=0755` sets the bit at copy time
+# regardless of the host file's permissions; `--chown` keeps it owned by the
+# non-root runtime user. See apps/backend/docker-entrypoint.sh for the full
+# rationale incl. the multi-replica advisory-lock note.
+# NOTE: the build context is apps/backend (see release.yml `context:`), so the
+# source path here is relative to that — docker-entrypoint.sh, not
+# apps/backend/docker-entrypoint.sh.
+COPY --chown=trustedoss:trustedoss --chmod=0755 \
+     docker-entrypoint.sh /app/docker-entrypoint.sh
+
+# Copy app source (apps/backend/.dockerignore excludes tests/, .pytest_cache,
+# scripts/seed_e2e_user.py is excluded too — see security-reviewer F8 in
+# scripts/seed_e2e_user.py for the rationale). The explicit COPY above already
+# placed docker-entrypoint.sh with mode 0755; this broad copy re-lands it with
+# identical content, so the executable bit and ownership are preserved.
+COPY --chown=trustedoss:trustedoss . /app
+
+# Drop privileges before runtime. The non-root user owns /app so alembic
+# can write to its tmp staging area at upgrade time.
+USER trustedoss
+
+EXPOSE 8000
+
+# Healthcheck mirrors the dev image — backend exposes /health from main.py.
+HEALTHCHECK --interval=10s --timeout=5s --retries=6 --start-period=30s \
+    CMD curl -fsS http://127.0.0.1:8000/health || exit 1
+
+# tini is PID 1; the entrypoint script runs migrations then `exec`s CMD so
+# signals reach uvicorn cleanly. CMD is unchanged — the script runs it via
+# `exec "$@"`.
+ENTRYPOINT ["/usr/bin/tini", "--", "/app/docker-entrypoint.sh"]
+# 4 workers is a reasonable default for a 2-core deployment; operators
+# bump this in the prod compose under `command:` when they have more cores.
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]

@@ -1,0 +1,90 @@
+# fastapi 0.133.1 is the FIRST line that drops the upper bound on starlette
+# (its dep is `starlette>=0.40.0`, no `<` cap). Every fastapi up to and
+# including 0.132.x pins `starlette<1.0.0` (0.121–0.127 pinned `<0.51.0`,
+# 0.120.x pinned `<0.50.0`), which BLOCKS the starlette 1.0.1 CVE fix below.
+# So this fastapi bump is a hard precondition for the starlette pin — see the
+# starlette comment. 0.133.1 raises the floor to pydantic>=2.7.0 and adds a
+# typing-inspection>=0.4.2 transitive; both resolve cleanly (pip dry-run +
+# import smoke verified) and need py>=3.10, which our python:3.12.7-slim image
+# already satisfies.
+fastapi==0.133.1
+# fastapi 0.120+ pulls in annotated-doc (formerly typing-extensions only).
+# Pinning explicitly so a future fastapi bump cannot silently drop it.
+annotated-doc==0.0.4
+uvicorn[standard]==0.32.1
+# starlette 1.0.1 fixes PYSEC-2026-161 (the fix version is 1.0.1); 0.49.3 is
+# affected. The 0.x→1.0 major jump requires fastapi>=0.133.1 (see the fastapi
+# comment above) because every earlier fastapi pins starlette<1.0.0. fastapi
+# 0.133.1 re-exports all starlette surfaces the backend imports (HTTPException,
+# Request, BackgroundTask, StreamingResponse, CORSMiddleware, WebSocket,
+# types.{ASGIApp,Receive,Scope,Send}) — verified by import smoke against 1.0.1.
+# 1.0.1 also carries forward the prior CVE-2025-62727 Range-header DoS fix.
+starlette==1.0.1
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+psycopg2-binary==2.9.10
+alembic==1.14.0
+celery[redis]==5.4.0
+redis==5.2.0
+structlog==24.4.0
+httpx==0.28.1
+# python-multipart 0.0.27 fixes CVE-2026-42561 (DoS via boundary parsing in
+# multipart/form-data). 0.0.22 still ships the regression. 0.0.20 was the
+# original CVE-2026-24486 path-traversal fix line.
+python-multipart==0.0.27
+# Auth — Phase 1 PR #5.
+# bcrypt is pinned to 4.0.1 because passlib 1.7.4 is incompatible with
+# bcrypt >= 4.1 (passlib reads bcrypt.__about__.__version__, which 4.1+ removed).
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
+# python-jose 3.5.0 widened pyasn1 to >=0.5.0 so we can take the pyasn1 0.6.3
+# fix (CVE-2026-30922, ASN.1 unbounded-recursion DoS). 3.4.0 still pinned
+# pyasn1<0.5.0, which blocked the bump.
+python-jose[cryptography]==3.5.0  # H-1 CVE fix (algorithm confusion / DoS) + pyasn1 0.6.x compat
+# Transitive of python-jose / rsa. Pinned explicitly so Trivy / pip-audit
+# can verify the CVE-2026-30922 fix on a clean image rebuild.
+pyasn1==0.6.3
+# v2.2-b1 — GitHub App credential storage. ``cryptography`` was previously only
+# a TRANSITIVE dep (via python-jose[cryptography]); the b1 reversible-encryption
+# helper (core/crypto.py, Fernet at-rest encryption of the App PEM private key)
+# imports it DIRECTLY, so we pin it explicitly. 48.0.0 is the version already
+# resolved into the image by python-jose[cryptography]; pinning it keeps Trivy /
+# pip-audit able to track CVEs against a named direct dependency and prevents a
+# future jose bump from silently moving the Fernet surface out from under us.
+cryptography==48.0.0
+slowapi==0.1.9
+email-validator==2.2.0
+# Phase 6 PR #18 — async SMTP for the notifications module. aiosmtplib is the
+# canonical asyncio-native SMTP client; pairs cleanly with httpx for the
+# Slack / Teams webhook channels and avoids spawning threads from the FastAPI
+# event loop just to send mail.
+aiosmtplib==3.0.2
+# Scan-gap G2 — HTML → PDF for the vulnerability report download. weasyprint
+# needs native libs (libpango / cairo / gdk-pixbuf) installed in the image
+# (see apps/backend/Dockerfile* for the apt list). It is imported LAZILY in
+# services.report_service.render_report_pdf so the unit-test lane and a
+# not-yet-rebuilt image still import the module cleanly.
+#
+# pydyf is pinned EXPLICITLY alongside weasyprint and MUST be bumped in
+# lockstep — the two libraries share a tightly-coupled private API surface.
+#
+# History: weasyprint 62.3 required only `pydyf>=0.10.0`, so an unpinned
+# resolve picked up pydyf 0.12.x, which REMOVED the `Stream.transform` method
+# that weasyprint 62.3's `pdf/stream.py` calls via `super().transform(...)` —
+# every `write_pdf()` then 500'd with `AttributeError: 'super' object has no
+# attribute 'transform'` (observed on PR #97's CI `test (backend)` lane). So
+# 62.3 was hard-pinned with pydyf 0.10.0, the version it was built against.
+#
+# CVE-2025-68616 — weasyprint < 68.0 is vulnerable; the fix ships in 68.0.
+# weasyprint 68.0 (2026-01-19) declares `pydyf>=0.11.0` and the 67.x/68.x line
+# was developed against the pydyf 0.12.x API (weasyprint 67.0 and pydyf 0.12.0
+# both released 2025-12-02), so 68.0 calls the NEW pydyf surface — the
+# 62.3↔0.12 `Stream.transform` mismatch does not apply to this pairing. We pin
+# pydyf 0.12.1 (current latest, same API generation as 68.0). VERIFIED by
+# building the API image (apps/backend/Dockerfile, NOT Dockerfile.worker: the
+# native pango/cairo/gdk-pixbuf render libs only live in the API image, because
+# render_report_pdf runs in the API endpoint api/v1/reports.py, not a Celery
+# task) and rendering a real PDF -- services.report_service.render_report_pdf
+# returns `b'%PDF'`. Re-verify the render on every future bump of either pin.
+weasyprint==68.0
+pydyf==0.12.1
