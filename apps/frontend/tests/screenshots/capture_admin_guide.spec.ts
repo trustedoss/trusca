@@ -26,7 +26,7 @@ import { AdminDiskHarness } from "../_harness/AdminDiskHarness";
 import { AdminHealthHarness } from "../_harness/AdminHealthHarness";
 import { AdminTeamsHarness } from "../_harness/AdminTeamsHarness";
 import { AdminUsersHarness } from "../_harness/AdminUsersHarness";
-import { applyAuthFromSeed, captureScreenshot } from "./_helpers";
+import { applyAuthFromSeed, captureScreenshot, captureSection } from "./_helpers";
 
 // ════════════════════════════════════════════════════════════════════
 // admin/users-and-teams
@@ -117,5 +117,21 @@ test.describe.serial("@screenshots admin-guide/disk-and-health", () => {
     await page.goto("/admin/health");
     await health.expectMounted();
     await captureScreenshot(page, "admin-health-cards");
+  });
+
+  test("admin-trivy-db-panel — Trivy DB freshness card on /admin/health", async ({
+    page,
+  }) => {
+    const health = new AdminHealthHarness(page);
+    await page.goto("/admin/health");
+    await health.expectMounted();
+    // Scope the snapshot to the Trivy DB panel — the page-level health-cards
+    // capture above is the broader view; this one is what the Vulnerability
+    // data guide references.
+    await captureSection(
+      page,
+      "user-vulnerability-data-panel",
+      "admin-trivy-db-panel",
+    );
   });
 });

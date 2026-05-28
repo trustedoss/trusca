@@ -8,7 +8,11 @@ sidebar_position: 0
 
 # Dashboard
 
-After you sign in, the portal lands on the **Dashboard** (`/`) — a single-page summary of the parts of your portfolio you can see (every project the active team owns). The page exists to answer the four questions you typically arrive with:
+After you sign in, the portal lands on the **Dashboard** (`/`) — a single-page summary of the parts of your portfolio you can see (every project the active team owns).
+
+![Dashboard — KPI tiles, severity + license distribution, and a recent-scans list at the root URL after sign-in](/img/screenshots/user-dashboard.png)
+
+The page exists to answer the four questions you typically arrive with:
 
 - *Are there any new criticals?* (severity tiles)
 - *How many projects am I responsible for, and how many are in flight?* (portfolio + scan-status tiles)

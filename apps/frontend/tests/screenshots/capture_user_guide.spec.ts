@@ -114,6 +114,33 @@ test.describe.serial("@screenshots user-guide/profile", () => {
 });
 
 // ════════════════════════════════════════════════════════════════════
+// dashboard
+// ════════════════════════════════════════════════════════════════════
+
+test.describe.serial("@screenshots user-guide/dashboard", () => {
+  test.beforeEach(async ({ page }) => {
+    await applyAuthFromSeed(page);
+  });
+
+  test("user-dashboard — post-login dashboard landing page", async ({ page }) => {
+    // The dashboard is the portal's root (`/`) after sign-in. We wait on the
+    // KPI grid + charts block so the skeletons have all resolved before the
+    // snapshot — otherwise the framing flickers between sizes.
+    await page.goto("/");
+    await page
+      .getByTestId("dashboard-page")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    await page
+      .getByTestId("dashboard-kpi-grid")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    await page
+      .getByTestId("dashboard-charts")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    await captureScreenshot(page, "user-dashboard");
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════
 // projects
 // ════════════════════════════════════════════════════════════════════
 
