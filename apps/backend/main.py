@@ -26,6 +26,7 @@ from api.v1 import (
     api_keys_router,
     approvals_router,
     auth_router,
+    compliance_router,
     components_router,
     dashboard_router,
     github_app_router,
@@ -200,6 +201,10 @@ app.include_router(licenses_router)
 # this PR ships the data model + CRUD surface only.
 app.include_router(license_policies_router)
 app.include_router(obligations_router)
+# W9-#58: Compliance unified grid (licenses × obligations in one view). The
+# legacy /licenses and /obligations endpoints remain for the existing drawers;
+# this endpoint is the single read backing the redesigned Compliance tab.
+app.include_router(compliance_router)
 app.include_router(approvals_router)
 app.include_router(sbom_router)
 # v2.1 Track A (A1): VEX document export (OpenVEX / CycloneDX-VEX) derived from

@@ -1,16 +1,25 @@
 /**
- * ComplianceTab — unit tests (W4-C #20).
+ * ComplianceTab — unit tests (W9-#58).
  *
- * Validates the sub-tab wrapper:
- *   - Default sub-view is "licenses" when no ?cview= is set.
- *   - ?cview=obligations hydrates the Obligations surface.
- *   - Clicking a sub-tab trigger swaps the surface AND mirrors ?cview= in
- *     the URL.
- *   - License + Obligation drawer keys do not collide across sub-views.
+ * The W4-C sub-tab wrapper was replaced with a single unified grid keyed on
+ * licenses with obligations embedded inline. These tests validate:
  *
- * The inner LicensesTab / ObligationsTab API modules are mocked so the test
- * can mount the wrapper without a backend. `react-virtuoso` is stubbed with
- * a plain renderer (matches LicensesTab.test.tsx).
+ *   1. Loading skeleton → empty state path when the grid carries 0 rows.
+ *   2. A fully-populated row mounts category badge, affected components
+ *      preview, and obligation chips.
+ *   3. Category filter changes pass through to the wire layer at offset 0.
+ *   4. ``has obligations`` toggle filters down to obligation-carrying rows.
+ *   5. Clicking a row opens the License drawer (URL ``?license=`` set).
+ *   6. Backward-compat: ``?cview=obligations`` boots the grid with the
+ *      has_obligations filter applied.
+ *
+ * Mocking
+ *   - ``complianceApi.listProjectCompliance`` is mocked so the component
+ *     renders without a backend.
+ *   - ``react-virtuoso`` is stubbed with a plain renderer so all rows mount
+ *     in jsdom — mirrors LicensesTab.test.tsx.
+ *   - ``licensesApi.getLicenseFinding`` is mocked because the LicenseDrawer
+ *     is rendered in-tree (a row click should still open it cleanly).
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
@@ -19,34 +28,23 @@ import type React from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type {
+  ComplianceListResponse,
+  ComplianceRow,
+} from "@/features/projects/api/complianceApi";
 import { ComplianceTab } from "@/features/projects/components/ComplianceTab";
 
-vi.mock("@/features/projects/api/licensesApi", () => ({
-  listProjectLicenses: vi.fn(),
-  getLicenseFinding: vi.fn(),
-}));
+vi.mock("@/features/projects/api/complianceApi", async () => {
+  return {
+    listProjectCompliance: vi.fn(),
+  };
+});
 
-vi.mock("@/features/projects/api/obligationsApi", () => ({
-  listProjectObligations: vi.fn(),
-  getProjectObligation: vi.fn(),
-  KNOWN_OBLIGATION_KINDS: [
-    "attribution",
-    "notice",
-    "source-disclosure",
-    "copyleft",
-    "modifications",
-    "dynamic-linking",
-    "no-endorsement",
-  ],
-}));
-
-vi.mock("@/features/projects/api/useNotice", () => ({
-  useNotice: () => ({
-    download: vi.fn().mockResolvedValue(undefined),
-    isLoading: false,
-    error: null,
-  }),
-}));
+vi.mock("@/features/projects/api/licensesApi", async () => {
+  return {
+    getLicenseFinding: vi.fn().mockRejectedValue(new Error("not under test")),
+  };
+});
 
 vi.mock("react-virtuoso", () => ({
   Virtuoso: <T,>({
@@ -64,11 +62,58 @@ vi.mock("react-virtuoso", () => ({
   ),
 }));
 
-import { listProjectLicenses } from "@/features/projects/api/licensesApi";
-import { listProjectObligations } from "@/features/projects/api/obligationsApi";
+import { listProjectCompliance } from "@/features/projects/api/complianceApi";
 
-const mockedLicenses = vi.mocked(listProjectLicenses);
-const mockedObligations = vi.mocked(listProjectObligations);
+const mockedList = vi.mocked(listProjectCompliance);
+
+// ---------------------------------------------------------------------------
+// Fixture helpers
+// ---------------------------------------------------------------------------
+
+function row(
+  spdxId: string,
+  overrides: Partial<ComplianceRow> = {},
+): ComplianceRow {
+  const slug = spdxId.toLowerCase().replace(/[^a-z0-9]/g, "0");
+  const id =
+    overrides.license_finding_id ??
+    `00000000-0000-0000-0000-${slug.padEnd(12, "0").slice(0, 12)}`;
+  return {
+    license_finding_id: id,
+    license_id: overrides.license_id ?? `lic-${spdxId}`,
+    spdx_id: spdxId,
+    license_name: overrides.license_name ?? spdxId,
+    category: overrides.category ?? "allowed",
+    category_source: overrides.category_source ?? "static",
+    kind: overrides.kind ?? "concluded",
+    affected_component_count: overrides.affected_component_count ?? 1,
+    affected_components: overrides.affected_components ?? [
+      {
+        component_version_id: `cv-${spdxId}`,
+        name: `${spdxId}-lib`,
+        version: "1.0.0",
+        purl: null,
+      },
+    ],
+    obligations: overrides.obligations ?? [],
+    notice_required: overrides.notice_required ?? false,
+    category_override_source: overrides.category_override_source ?? null,
+  };
+}
+
+function response(
+  items: ComplianceRow[],
+  total = items.length,
+): ComplianceListResponse {
+  return {
+    items,
+    distribution: { forbidden: 0, conditional: 0, allowed: 0, unknown: 0 },
+    total,
+    limit: 100,
+    offset: 0,
+    generated_at: "2026-05-27T00:00:00Z",
+  };
+}
 
 function renderTab(initialEntries: string[] = ["/projects/proj-1"]) {
   const client = new QueryClient({
@@ -83,83 +128,151 @@ function renderTab(initialEntries: string[] = ["/projects/proj-1"]) {
   );
 }
 
-describe("ComplianceTab", () => {
+describe("ComplianceTab unified grid", () => {
   beforeEach(() => {
-    mockedLicenses.mockReset();
-    mockedObligations.mockReset();
-    // Default to an empty response so the inner tabs reach their empty state
-    // and stop polling.
-    mockedLicenses.mockResolvedValue({
-      items: [],
-      total: 0,
-      distribution: {
-        forbidden: 0,
-        conditional: 0,
-        allowed: 0,
-        unknown: 0,
-      },
-    });
-    mockedObligations.mockResolvedValue({
-      items: [],
-      total: 0,
-      distribution: {},
-    });
+    mockedList.mockReset();
   });
   afterEach(() => {
     vi.useRealTimers();
   });
 
-  it("renders the wrapper with both sub-tab triggers", async () => {
+  it("shows the empty state when the grid returns 0 rows", async () => {
+    mockedList.mockResolvedValue(response([]));
     renderTab();
     await waitFor(() => {
-      expect(screen.getByTestId("compliance-tab")).toBeInTheDocument();
+      expect(screen.getByTestId("compliance-empty")).toBeInTheDocument();
     });
-    expect(
-      screen.getByTestId("compliance-subtab-licenses"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByTestId("compliance-subtab-obligations"),
-    ).toBeInTheDocument();
+    expect(screen.queryByTestId("compliance-virtual")).not.toBeInTheDocument();
   });
 
-  it("defaults to the Licenses sub-view", async () => {
-    renderTab();
-    await waitFor(() => {
-      expect(screen.getByTestId("licenses-tab")).toBeInTheDocument();
-    });
-    expect(screen.queryByTestId("obligations-tab")).not.toBeInTheDocument();
-  });
-
-  it("hydrates the Obligations sub-view from ?cview=obligations", async () => {
-    renderTab(["/projects/proj-1?cview=obligations"]);
-    await waitFor(() => {
-      expect(screen.getByTestId("obligations-tab")).toBeInTheDocument();
-    });
-    expect(screen.queryByTestId("licenses-tab")).not.toBeInTheDocument();
-  });
-
-  it("switches to Obligations when its sub-tab trigger is clicked", async () => {
-    renderTab();
-    await waitFor(() => {
-      expect(screen.getByTestId("licenses-tab")).toBeInTheDocument();
-    });
-    await userEvent.click(
-      screen.getByTestId("compliance-subtab-obligations"),
+  it("renders rows with category badge, affected chip, and obligation chip", async () => {
+    mockedList.mockResolvedValue(
+      response([
+        row("GPL-3.0-only", {
+          category: "forbidden",
+          affected_component_count: 5,
+          affected_components: [
+            {
+              component_version_id: "cv-a",
+              name: "alpha",
+              version: "1.0.0",
+              purl: null,
+            },
+          ],
+          obligations: [
+            {
+              obligation_id: "ob-1",
+              kind: "source-disclosure",
+              summary: "Disclose corresponding source.",
+            },
+          ],
+          notice_required: true,
+        }),
+      ]),
     );
-    await waitFor(() => {
-      expect(screen.getByTestId("obligations-tab")).toBeInTheDocument();
-    });
-    expect(screen.queryByTestId("licenses-tab")).not.toBeInTheDocument();
+    renderTab();
+
+    const rowEl = await screen.findByTestId("compliance-row");
+    expect(rowEl).toHaveAttribute("data-spdx-id", "GPL-3.0-only");
+    expect(rowEl).toHaveAttribute("data-category", "forbidden");
+    expect(rowEl).toHaveAttribute("data-has-obligations", "true");
+    expect(rowEl).toHaveAttribute("data-notice-required", "true");
+
+    // Category badge + obligation chip mount.
+    expect(
+      screen.getByTestId("license-category-badge-forbidden"),
+    ).toBeInTheDocument();
+    const chip = screen.getByTestId("compliance-obligation-chip");
+    expect(chip).toHaveAttribute("data-kind", "source-disclosure");
+
+    // Affected preview shows the chip + remaining count (1 shown, 5 total).
+    expect(screen.getByText("alpha@1.0.0")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("compliance-row-affected-more"),
+    ).toHaveTextContent("+4 more");
   });
 
-  it("returns to Licenses (default) without persisting ?cview= in the URL", async () => {
+  it("filters by category when the user picks one in the toolbar", async () => {
+    mockedList.mockResolvedValue(response([]));
+    renderTab();
+
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalled();
+    });
+    mockedList.mockClear();
+
+    // Open the category MultiSelect and pick "forbidden".
+    await userEvent.click(screen.getByTestId("compliance-category-filter"));
+    const options = await screen.findAllByTestId(
+      "compliance-category-filter-option",
+    );
+    const forbiddenOption = options.find(
+      (el) => el.getAttribute("data-value") === "forbidden",
+    );
+    expect(forbiddenOption).toBeDefined();
+    await userEvent.click(forbiddenOption as HTMLElement);
+
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalled();
+    });
+    const lastCall = mockedList.mock.calls.at(-1);
+    expect(lastCall?.[1]?.categories).toEqual(["forbidden"]);
+    expect(lastCall?.[1]?.offset).toBe(0);
+  });
+
+  it("filters by has_obligations when the switch is toggled on", async () => {
+    mockedList.mockResolvedValue(response([]));
+    renderTab();
+
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalled();
+    });
+    mockedList.mockClear();
+
+    await userEvent.click(screen.getByTestId("compliance-has-obligations"));
+
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalled();
+    });
+    const lastCall = mockedList.mock.calls.at(-1);
+    expect(lastCall?.[1]?.has_obligations).toBe(true);
+  });
+
+  it("opens the License drawer on row click (URL ?license= set)", async () => {
+    mockedList.mockResolvedValue(
+      response([
+        row("MIT", {
+          license_finding_id: "lf-mit-1",
+        }),
+      ]),
+    );
+    renderTab();
+    const r = await screen.findByTestId("compliance-row");
+    await userEvent.click(r);
+
+    // LicenseDrawer renders inside a Sheet — we assert on the URL fragment
+    // (the drawer state's single source of truth). Use a sentinel via a
+    // visible affordance: the drawer wraps content in a Sheet whose
+    // role="dialog" mounts when ``open`` is true.
+    await waitFor(() => {
+      // Drawer mount → role="dialog" appears in the DOM.
+      expect(screen.getAllByRole("dialog").length).toBeGreaterThan(0);
+    });
+  });
+
+  it("backward-compat: ?cview=obligations boots with has_obligations=true", async () => {
+    mockedList.mockResolvedValue(response([]));
     renderTab(["/projects/proj-1?cview=obligations"]);
     await waitFor(() => {
-      expect(screen.getByTestId("obligations-tab")).toBeInTheDocument();
+      expect(mockedList).toHaveBeenCalled();
     });
-    await userEvent.click(screen.getByTestId("compliance-subtab-licenses"));
-    await waitFor(() => {
-      expect(screen.getByTestId("licenses-tab")).toBeInTheDocument();
-    });
+    // The first call (or any call) should carry has_obligations=true because
+    // the cview redirect runs synchronously on mount before the query fires.
+    const seenHasObligations = mockedList.mock.calls.some(
+      ([, params]) => params?.has_obligations === true,
+    );
+    expect(seenHasObligations).toBe(true);
+    // The toggle visibly reflects the auto-applied filter.
+    expect(screen.getByTestId("compliance-has-obligations")).toBeChecked();
   });
 });

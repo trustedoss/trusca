@@ -319,26 +319,27 @@ describe("ProjectDetailPage", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("redirects ?tab=licenses to ?tab=compliance&cview=licenses", async () => {
+  it("redirects ?tab=licenses to the unified compliance grid", async () => {
+    // W9-#58 — the sub-tab wrapper was replaced with a single unified grid;
+    // legacy ``?tab=licenses`` still lands on the Compliance tab.
     mockedGetProject.mockResolvedValue(project());
     mockedOverview.mockResolvedValue(overview());
     renderPage("/projects/proj-1?tab=licenses");
     await waitFor(() => {
       expect(screen.getByTestId("compliance-tab")).toBeInTheDocument();
     });
-    // The licenses sub-view is the default; URL gets rewritten to canonical.
-    expect(screen.getByTestId("licenses-tab")).toBeInTheDocument();
   });
 
-  it("redirects ?tab=obligations to ?tab=compliance&cview=obligations", async () => {
+  it("redirects ?tab=obligations to the unified compliance grid", async () => {
+    // W9-#58 — legacy ``?tab=obligations`` still lands on the Compliance tab.
+    // The ``cview=obligations`` → ``compliance_has_obligations=true``
+    // backward-compat is covered in ComplianceTab.test.tsx; this test only
+    // asserts the top-level tab redirect still resolves.
     mockedGetProject.mockResolvedValue(project());
     mockedOverview.mockResolvedValue(overview());
     renderPage("/projects/proj-1?tab=obligations");
     await waitFor(() => {
       expect(screen.getByTestId("compliance-tab")).toBeInTheDocument();
-    });
-    await waitFor(() => {
-      expect(screen.getByTestId("obligations-tab")).toBeInTheDocument();
     });
   });
 

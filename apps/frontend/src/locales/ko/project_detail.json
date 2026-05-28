@@ -30,9 +30,54 @@
     "reports": "리포트"
   },
   "compliance": {
-    "subtab": {
-      "licenses": "라이선스",
-      "obligations": "의무사항"
+    "summary": "{{total}}개 중 {{loaded}}개 표시",
+    "column": {
+      "license": "라이선스",
+      "category": "분류",
+      "affected": "영향",
+      "obligations": "의무사항",
+      "notice_required": "NOTICE",
+      "override_source": "재정의"
+    },
+    "filter": {
+      "search": "검색",
+      "search_placeholder": "SPDX ID 또는 이름으로 검색",
+      "category": "분류",
+      "has_obligations": "의무사항 있음",
+      "sort_label": "정렬 기준",
+      "sort": {
+        "category": "위험도 (금지 먼저)",
+        "license_name": "라이선스 이름",
+        "spdx_id": "SPDX ID",
+        "affected_count": "영향 컴포넌트"
+      },
+      "order_label": "순서",
+      "order_asc": "오름차순",
+      "order_desc": "내림차순"
+    },
+    "row": {
+      "no_spdx_id": "—"
+    },
+    "affected": {
+      "more_count": "+{{count}}개 더"
+    },
+    "obligations": {
+      "none": "없음",
+      "more_count": "+{{count}}개 더"
+    },
+    "notice": {
+      "required": "필요",
+      "not_required": "—"
+    },
+    "override": {
+      "none": "—"
+    },
+    "empty": {
+      "title": "아직 컴플라이언스 결과가 없습니다",
+      "description": "스캔을 실행하면 이 프로젝트의 라이선스 인벤토리와 의무사항이 표시됩니다."
+    },
+    "errors": {
+      "load_list": "컴플라이언스 데이터를 불러올 수 없습니다."
     }
   },
   "severity": {
