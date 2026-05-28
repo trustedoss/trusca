@@ -96,6 +96,16 @@ x-backend-env: &backend-env
   COSIGN_KEY_PATH: ${COSIGN_KEY_PATH:-}
   COSIGN_KEY_PASSWORD_ENCRYPTED: ${COSIGN_KEY_PASSWORD_ENCRYPTED:-}
   COSIGN_TIMEOUT_SECONDS: ${COSIGN_TIMEOUT_SECONDS:-120}
+  # W6-#44 — Trivy DB lifecycle (worker bootstrap + weekly refresh). Dev
+  # leaves TRIVY_CACHE_DIR at the upstream default (``$HOME/.cache/trivy``)
+  # so a `docker-compose down -v` clears the cache along with the rest of
+  # the dev volumes — production mounts a named volume to persist it (see
+  # docker-compose.yml). All knobs are operator-tunable at runtime (rule #11).
+  TRIVY_DB_REPOSITORY: ${TRIVY_DB_REPOSITORY:-ghcr.io/aquasecurity/trivy-db}
+  TRIVY_DB_REFRESH_HOURS: ${TRIVY_DB_REFRESH_HOURS:-168}
+  TRIVY_DB_BOOTSTRAP_ON_START: ${TRIVY_DB_BOOTSTRAP_ON_START:-true}
+  TRIVY_DB_BOOTSTRAP_TIMEOUT_SECONDS: ${TRIVY_DB_BOOTSTRAP_TIMEOUT_SECONDS:-900}
+  TRIVY_DB_REFRESH_TIMEOUT_SECONDS: ${TRIVY_DB_REFRESH_TIMEOUT_SECONDS:-900}
 
 services:
   postgres:

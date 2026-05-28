@@ -56,3 +56,42 @@ def test_create_celery_app_uses_redis_url_from_env(
     app = create_celery_app()
     expected = os.environ["REDIS_URL"]
     assert app.conf.broker_url == expected
+
+
+def test_w6_44_trivy_db_refresh_task_registered() -> None:
+    """W6-#44 — the weekly Trivy DB refresh task must be reachable.
+
+    Regression guard: the task is registered via the ``_TASK_INCLUDES`` list
+    in ``tasks.celery_app``. If a future cleanup drops the entry (e.g. a typo
+    rename), the worker beat would silently stop refreshing the DB and the
+    feed would go stale; this assertion fires immediately at unit-test time.
+    """
+    assert "trustedoss.trivy_db_refresh" in celery_app.tasks
+
+
+def test_w6_44_trivy_db_refresh_beat_schedule_is_weekly() -> None:
+    """W6-#44 — beat schedule MUST be a Sunday 03:00 UTC crontab entry."""
+    schedule = celery_app.conf.beat_schedule
+    assert "trivy-db-refresh-weekly" in schedule
+    entry = schedule["trivy-db-refresh-weekly"]
+    assert entry["task"] == "trustedoss.trivy_db_refresh"
+    # Cadence assertion is by attribute on the crontab, not equality, so a
+    # future operator-knob swap to interval-based scheduling fails this test
+    # explicitly rather than silently.
+    cron = entry["schedule"]
+    assert getattr(cron, "minute", None) == {0}
+    assert getattr(cron, "hour", None) == {3}
+    # day_of_week=sun → {0} in Celery's cron normalisation.
+    assert getattr(cron, "day_of_week", None) == {0}
+
+
+def test_w6_44_trivy_db_bootstrap_module_imported() -> None:
+    """W6-#44 — the bootstrap signal-handler module must be on _TASK_INCLUDES.
+
+    The module isn't a Celery task, but it must be IMPORTED by the worker
+    process so its ``worker_ready`` signal handler registers. Listing it
+    in ``_TASK_INCLUDES`` triggers that import via Celery autodiscovery.
+    """
+    from tasks.celery_app import _TASK_INCLUDES
+
+    assert "tasks.trivy_db_bootstrap" in _TASK_INCLUDES

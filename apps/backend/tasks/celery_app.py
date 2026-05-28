@@ -56,6 +56,17 @@ _TASK_INCLUDES = [
     # the Beat schedule; triggered manually by the operator. See the module
     # docstring for the invocation.
     "tasks.vulnerability_catalog_refresh",
+    # W6-#44 — Trivy DB weekly refresh beat. Pairs with the worker-boot
+    # bootstrap hook (tasks.trivy_db_bootstrap) so a fresh worker picks up
+    # the DB once at start, and a running deployment refreshes weekly to
+    # keep the vulnerability feed within ~Trivy's upstream cadence.
+    "tasks.trivy_db_refresh",
+    # W6-#44 — worker-boot bootstrap hook. NOT a Celery task — this module
+    # registers a ``worker_ready`` signal handler that fires
+    # ``trivy --download-db-only`` on a background thread once the worker
+    # is consuming the queue. Listed here so the worker process actually
+    # imports it (otherwise the signal handler never registers).
+    "tasks.trivy_db_bootstrap",
 ]
 
 
@@ -70,6 +81,7 @@ def _build_beat_schedule() -> dict[str, dict[str, object]]:
       - ``trustedoss.workspace_cleaner``            — every 30 minutes
       - ``trustedoss.backup.run``                   — daily at 00:00 UTC
       - ``trustedoss.vulnerability_rematch_enqueue`` — every 6h at :15
+      - ``trustedoss.trivy_db_refresh``             — weekly, Sun 03:00 UTC
 
     chore PR #4 wires a `celery-beat` sidecar in
     ``docker-compose.dev.yml`` so these schedules actually fire.
@@ -116,6 +128,24 @@ def _build_beat_schedule() -> dict[str, dict[str, object]]:
         "vulnerability-rematch-six-hourly": {
             "task": "trustedoss.vulnerability_rematch_enqueue",
             "schedule": crontab(minute=15, hour="*/6"),
+        },
+        # W6-#44 — weekly Trivy DB refresh. Sunday 03:00 UTC was chosen as
+        # the lowest-traffic window on the typical enterprise cluster: 03:00
+        # UTC is overnight in the Americas, early morning in EMEA, and
+        # workday-lunch in APAC — every region's CI/CD churn is at its trough,
+        # so a 1-3 minute lock contention on cache_dir/db/ during the download
+        # never noticeably extends a user scan. The W6-#42 rematch beat picks
+        # up the new advisories on its next 6h tick (latency from refresh to
+        # operator notification: at most 6 hours + the per-scan match time).
+        # Trivy's upstream rebuild cadence is ~6h, so a weekly pull is the
+        # right floor on egress (≈1 manifest + delta layers per week per
+        # worker) without sacrificing meaningful freshness. Operators on
+        # tighter SLAs can swap to ``crontab(minute=15, hour=3)`` for daily
+        # via TRIVY_DB_REFRESH_HOURS (the W6-#43e admin panel surfaces the
+        # configured cadence next to the metadata.json UpdatedAt).
+        "trivy-db-refresh-weekly": {
+            "task": "trustedoss.trivy_db_refresh",
+            "schedule": crontab(minute=0, hour=3, day_of_week="sun"),
         },
     }
 

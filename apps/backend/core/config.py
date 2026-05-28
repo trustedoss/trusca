@@ -960,6 +960,74 @@ def vuln_rematch_lock_skew_seconds() -> int:
 
 
 # ---------------------------------------------------------------------------
+# W6-#44 — Trivy DB lifecycle (worker bootstrap + weekly refresh beat).
+#
+# The W6-#43e admin/health panel reads the on-disk Trivy DB metadata; this
+# section owns the WRITE path that puts the DB there in the first place and
+# refreshes it on a Celery Beat schedule. ``integrations.trivy`` already
+# exposes ``trivy_db_repository()`` / ``trivy_db_refresh_interval_hours()`` /
+# ``trivy_cache_dir()`` (W6-#43e) — they stay there so the panel and the
+# lifecycle code share a single resolution path. The accessors below cover
+# only the lifecycle-specific knobs the panel does not need.
+#
+# Every accessor reads the env at call time per CLAUDE.md core rule #11 so
+# operators can flip the toggle without rebuilding the worker image.
+# ---------------------------------------------------------------------------
+
+
+def trivy_db_bootstrap_on_start() -> bool:
+    """Whether the worker downloads / refreshes the Trivy DB on boot.
+
+    Default ``true``. The bootstrap hook (registered on Celery's
+    ``worker_ready`` signal) runs ``trivy --download-db-only`` once shortly
+    after the worker starts accepting tasks. Set to ``false`` on air-gapped
+    deployments where the DB is mirrored to a host volume by a separate
+    process and the worker should never attempt a network pull, or in tests
+    that drive the lifecycle hook directly.
+
+    Truthy: ``1`` / ``true`` / ``yes`` / ``on`` (case-insensitive).
+    Anything else → ``false``.
+    """
+    raw = os.getenv("TRIVY_DB_BOOTSTRAP_ON_START", "true").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
+def trivy_db_bootstrap_timeout_seconds() -> int:
+    """Per-invocation timeout for the worker-boot ``trivy --download-db-only`` call.
+
+    The first download is ~500 MiB and typically completes in 1-3 minutes on
+    a fast link. We bound at 15 minutes by default to absorb a slow corporate
+    proxy without blocking the worker forever (the call is dispatched on a
+    background thread so a hung subprocess never stalls Celery task
+    consumption, but we still cap the subprocess itself so a zombie ``trivy``
+    cannot retain a file lock on the cache dir indefinitely).
+    """
+    return _int_env(
+        "TRIVY_DB_BOOTSTRAP_TIMEOUT_SECONDS",
+        default=15 * 60,
+        minimum=30,
+        maximum=60 * 60,
+    )
+
+
+def trivy_db_refresh_timeout_seconds() -> int:
+    """Per-invocation timeout for the weekly Celery beat refresh call.
+
+    Refreshes are incremental (Trivy only fetches the delta layers since the
+    last manifest) so they typically finish well under the bootstrap cap, but
+    we keep a 15-minute ceiling for symmetry with the bootstrap path. A
+    timeout becomes a WARNING log + notification — the prior DB stays in
+    place because Trivy swaps the manifest only after a successful download.
+    """
+    return _int_env(
+        "TRIVY_DB_REFRESH_TIMEOUT_SECONDS",
+        default=15 * 60,
+        minimum=30,
+        maximum=60 * 60,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Phase 2 PR #9 — WebSocket gateway configuration accessors.
 #
 # The WebSocket scan-progress channel name is shared between the FastAPI

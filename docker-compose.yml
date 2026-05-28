@@ -77,6 +77,18 @@ x-backend-env: &backend-env
   # Trivy DB. Air-gapped sites override the upstream OCI registry with
   # TRIVY_DB_REPOSITORY (ghcr.io/aquasecurity/trivy-db by default).
   TRIVY_DB_REPOSITORY: ${TRIVY_DB_REPOSITORY:-ghcr.io/aquasecurity/trivy-db}
+  # W6-#44 — Trivy DB lifecycle. The worker downloads the DB on boot
+  # (worker_ready signal hook) and the beat refreshes it weekly. The cache
+  # path is mounted as a named volume on the worker — see the ``volumes:``
+  # section below. Operators on air-gapped clusters set
+  # TRIVY_DB_BOOTSTRAP_ON_START=false in .env if they manage the cache out
+  # of band; the admin/health panel (W6-#43e) surfaces the staleness so a
+  # missed refresh is visible without a network probe.
+  TRIVY_CACHE_DIR: ${TRIVY_CACHE_DIR:-/var/lib/trivy}
+  TRIVY_DB_REFRESH_HOURS: ${TRIVY_DB_REFRESH_HOURS:-168}
+  TRIVY_DB_BOOTSTRAP_ON_START: ${TRIVY_DB_BOOTSTRAP_ON_START:-true}
+  TRIVY_DB_BOOTSTRAP_TIMEOUT_SECONDS: ${TRIVY_DB_BOOTSTRAP_TIMEOUT_SECONDS:-900}
+  TRIVY_DB_REFRESH_TIMEOUT_SECONDS: ${TRIVY_DB_REFRESH_TIMEOUT_SECONDS:-900}
   SMTP_HOST: ${SMTP_HOST:-}
   SMTP_PORT: ${SMTP_PORT:-587}
   SMTP_USER: ${SMTP_USER:-}
@@ -360,6 +372,15 @@ services:
       # COSIGN_KEY_PATH=/cosign/cosign.key. Harmless when keyless / unconfigured
       # — an empty/absent dir just yields unsigned SBOMs (best-effort).
       - ${COSIGN_KEYS_HOST_PATH:-./secrets/cosign}:/cosign:ro
+      # W6-#44 — persistent Trivy DB cache. The worker downloads the DB
+      # (~500 MiB) on boot via the worker_ready signal hook and refreshes it
+      # weekly via the Celery beat. Without a persistent volume every
+      # container restart would re-download the DB (3+ min cold-start hit).
+      # The cache is shared with the beat container below so the beat's
+      # weekly refresh writes through the same mount the worker reads from.
+      # Set TRIVY_CACHE_DIR=/var/lib/trivy in .env to point trivy at this
+      # mount.
+      - trivy-cache:/var/lib/trivy
     depends_on:
       postgres:
         condition: service_healthy
@@ -419,6 +440,12 @@ services:
     command: celery -A tasks.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule
     environment:
       <<: *backend-env
+    # NOTE (W6-#44): beat does NOT mount the trivy-cache volume. Beat is a
+    # pure scheduler — it only enqueues ``trustedoss.trivy_db_refresh`` into
+    # the broker. The actual ``trivy --download-db-only`` subprocess runs
+    # in the worker container, which is where the volume is mounted. Adding
+    # a beat-side mount would create a write-shared-volume contention
+    # surface without functional benefit.
     depends_on:
       postgres:
         condition: service_healthy
@@ -486,3 +513,11 @@ volumes:
   redis-data:
   traefik-acme:
   workspace:
+  # W6-#44 — persistent Trivy vulnerability DB cache. Mounted on the worker
+  # at /var/lib/trivy. The cache holds the ~500 MiB DB downloaded on first
+  # boot (worker_ready signal hook) and refreshed weekly (beat task). A
+  # named volume survives container restarts so a worker recycle does not
+  # trigger another 1-3 minute download. Operators on air-gapped clusters
+  # can bind-mount a host directory instead — see
+  # docs-site/docs/admin-guide/vulnerability-data.md §"Air-gapped operation".
+  trivy-cache:

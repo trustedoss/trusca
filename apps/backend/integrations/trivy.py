@@ -490,6 +490,158 @@ def _write_mock_sbom_report(path: Path, *, sbom_path: Path) -> TrivyResult:
 
 
 # ---------------------------------------------------------------------------
+# DB lifecycle — W6-#44 (worker bootstrap + weekly refresh beat)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class TrivyDbDownloadResult:
+    """Outcome of one ``trivy --download-db-only`` invocation.
+
+    Returned by :func:`download_db_only`. Callers (the worker-ready bootstrap
+    hook + the weekly Celery beat task) inspect ``status`` to decide whether
+    to log INFO or WARNING and whether to fire an operator notification.
+
+    ``status`` values:
+      - ``"downloaded"`` — Trivy fetched a fresh manifest (incremental or
+        full). The on-disk metadata is now current.
+      - ``"skipped"``    — The pre-flight check decided no work was needed
+        (e.g. ``trivy`` binary not on $PATH in dev / mock mode). Not a failure.
+      - ``"timeout"``    — The subprocess hit the wall-clock cap. The prior
+        DB stays intact because Trivy swaps the manifest only on success.
+      - ``"failed"``     — Trivy exited non-zero or could not be launched.
+        The prior DB stays intact. ``error`` holds a redacted detail string.
+
+    ``duration_seconds`` is wall time of the subprocess (0.0 for ``skipped``).
+    ``stderr_tail`` captures the last ~1000 chars of Trivy's stderr on
+    failure / timeout for the admin notification body. We never log full
+    stderr (it can include attacker-controlled mirror response text, even
+    though the DB OCI tag is operator-set).
+    """
+
+    status: Literal["downloaded", "skipped", "timeout", "failed"]
+    duration_seconds: float
+    error: str | None = None
+    stderr_tail: str | None = None
+
+
+def download_db_only(*, timeout_seconds: int) -> TrivyDbDownloadResult:
+    """Run ``trivy --download-db-only`` and return a structured outcome.
+
+    Used by both the worker-ready bootstrap hook (W6-#44, single fire at
+    boot) and the weekly Celery Beat refresh task. The function NEVER
+    raises — every failure mode degrades to a ``TrivyDbDownloadResult``
+    with the failure status so the caller can decide between INFO / WARNING
+    log levels and whether to dispatch a notification, without a separate
+    try/except wrapper.
+
+    Idempotency: Trivy's own download path is idempotent — re-running with
+    a current on-disk manifest is a no-op (it stats the manifest, compares
+    to upstream, and exits 0 without overwriting). Trivy also takes a file
+    lock under ``cache_dir/db/`` for the duration of the download, so two
+    concurrent invocations (e.g. a beat tick racing a manual ad-hoc call)
+    serialise cleanly instead of corrupting the manifest.
+
+    Air-gapped operation: if ``TRIVY_DB_REPOSITORY`` points at a mirror that
+    is unreachable, the subprocess will exit non-zero. The caller logs the
+    failure but the prior cached DB stays valid for ``trivy sbom`` /
+    ``trivy image`` invocations — graceful degradation is owned at the
+    caller layer, not here.
+
+    Args:
+        timeout_seconds: Wall-clock cap on the subprocess.
+
+    Returns:
+        A :class:`TrivyDbDownloadResult` describing the outcome.
+    """
+    # Pre-flight: in dev (TRUSTEDOSS_SCAN_BACKEND=mock) or on a developer
+    # laptop without trivy installed, we MUST NOT block the worker boot or
+    # log an ERROR. The mock backend has no use for a real DB anyway.
+    backend = scan_backend_mode().lower()
+    if backend == "mock":
+        log.info("trivy_db_download_skipped", reason="mock_backend")
+        return TrivyDbDownloadResult(status="skipped", duration_seconds=0.0)
+
+    if shutil.which("trivy") is None:
+        log.info("trivy_db_download_skipped", reason="trivy_not_installed")
+        return TrivyDbDownloadResult(status="skipped", duration_seconds=0.0)
+
+    cmd = [
+        "trivy",
+        "image",
+        "--download-db-only",
+        # ``--quiet`` keeps the worker log free of the progress bar that
+        # Trivy emits to stderr (one line per Mb). The completion message
+        # still lands at INFO level if Trivy prints it on success.
+        "--quiet",
+        # ``--no-progress`` is the older alias; harmless if Trivy picks the
+        # quiet flag, but defensive against a version that splits the two.
+        "--no-progress",
+    ]
+    log.info("trivy_db_download_start", timeout_seconds=timeout_seconds)
+    started = datetime.now(tz=UTC)
+    try:
+        completed = subprocess.run(  # noqa: S603 — fixed args list
+            cmd,
+            capture_output=True,
+            check=False,
+            timeout=timeout_seconds,
+            env=scrubbed_env_for_trivy(),
+        )
+    except subprocess.TimeoutExpired as exc:
+        elapsed = (datetime.now(tz=UTC) - started).total_seconds()
+        tail = ""
+        if exc.stderr:
+            tail = exc.stderr.decode("utf-8", errors="replace")[-1000:]
+        log.warning(
+            "trivy_db_download_timeout",
+            duration_seconds=elapsed,
+            timeout_seconds=timeout_seconds,
+        )
+        return TrivyDbDownloadResult(
+            status="timeout",
+            duration_seconds=elapsed,
+            error=f"trivy --download-db-only exceeded {timeout_seconds}s",
+            stderr_tail=tail or None,
+        )
+    except OSError as exc:
+        # Covers ENOENT / permission denied on the cache dir / exec failures.
+        # Treat as a non-fatal "failed" — the prior DB is still good.
+        elapsed = (datetime.now(tz=UTC) - started).total_seconds()
+        log.warning(
+            "trivy_db_download_oserror",
+            duration_seconds=elapsed,
+            error=str(exc)[:300],
+        )
+        return TrivyDbDownloadResult(
+            status="failed",
+            duration_seconds=elapsed,
+            error=str(exc)[:300],
+        )
+
+    elapsed = (datetime.now(tz=UTC) - started).total_seconds()
+    if completed.returncode != 0:
+        tail = completed.stderr.decode("utf-8", errors="replace")[-1000:]
+        log.warning(
+            "trivy_db_download_failed",
+            returncode=completed.returncode,
+            duration_seconds=elapsed,
+        )
+        return TrivyDbDownloadResult(
+            status="failed",
+            duration_seconds=elapsed,
+            error=f"trivy --download-db-only exited {completed.returncode}",
+            stderr_tail=tail or None,
+        )
+
+    log.info("trivy_db_download_complete", duration_seconds=elapsed)
+    return TrivyDbDownloadResult(
+        status="downloaded",
+        duration_seconds=elapsed,
+    )
+
+
+# ---------------------------------------------------------------------------
 # DB lifecycle status — W6-#43e (admin/health Trivy DB panel)
 # ---------------------------------------------------------------------------
 
@@ -710,6 +862,7 @@ def get_trivy_db_status(*, now: datetime | None = None) -> TrivyDbStatus:
 
 
 __all__ = [
+    "TrivyDbDownloadResult",
     "TrivyDbFreshness",
     "TrivyDbStatus",
     "TrivyError",
@@ -717,6 +870,7 @@ __all__ = [
     "TrivyNotInstalled",
     "TrivyResult",
     "TrivyTimeout",
+    "download_db_only",
     "get_trivy_db_status",
     "run_trivy_image",
     "run_trivy_sbom",
