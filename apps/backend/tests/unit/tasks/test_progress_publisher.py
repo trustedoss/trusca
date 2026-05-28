@@ -67,7 +67,15 @@ def patched_publisher(
     ``redis.Redis.from_url`` call by monkey-patching ``_get_client`` to
     return our fake client directly. We also reset the singleton afterward
     so test ordering does not leak.
+
+    The disk-persist side of ``publish_log`` is disabled here because these
+    tests cover the Redis wire contract — a leaked ``scan.log`` under
+    ``/tmp/trustedoss/<uuid>/`` would clutter dev workstations without adding
+    coverage. The persistence path is covered separately in the disk-log
+    integration tests.
     """
+    monkeypatch.setenv("SCAN_LOG_PERSIST_ENABLED", "false")
+
     from tasks import _progress
 
     monkeypatch.setattr(_progress, "_get_client", lambda: fake_redis)
@@ -437,6 +445,10 @@ def test_publish_log_swallows_redis_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A broken Redis client must NOT crash the caller — log + return."""
+    # Disable disk persistence so this assertion-free fault-injection test does
+    # not leave a scan.log under /tmp/trustedoss/.
+    monkeypatch.setenv("SCAN_LOG_PERSIST_ENABLED", "false")
+
     from tasks import _progress
 
     class _BrokenClient:

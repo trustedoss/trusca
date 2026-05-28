@@ -73,7 +73,6 @@
     "page_size",
     "status"
   ],
-  "GET /v1/admin/trivy/health": [],
   "GET /v1/admin/teams": [
     "page",
     "page_size",
@@ -82,6 +81,7 @@
   "GET /v1/admin/teams/{team_id}": [
     "team_id"
   ],
+  "GET /v1/admin/trivy/health": [],
   "GET /v1/admin/users": [
     "active",
     "page",
@@ -303,6 +303,9 @@
     "status"
   ],
   "GET /v1/scans/{scan_id}": [
+    "scan_id"
+  ],
+  "GET /v1/scans/{scan_id}/log": [
     "scan_id"
   ],
   "GET /v1/users/me/notification-prefs": [],

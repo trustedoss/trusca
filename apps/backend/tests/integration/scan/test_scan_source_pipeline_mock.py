@@ -12,8 +12,8 @@ What we pin:
     artifacts persisted (`scan_artifacts`, including `trivy_sbom_report`),
     and a non-empty `scan_components` set derived from the cdxgen mock SBOM.
   - Stage progression updates `current_step` / `progress_percent` along the
-    way (not just at the end). The historical `dt_upload` / `dt_findings`
-    stage labels are still emitted (rename deferred to #43f).
+    way (not just at the end). Post-DT removal the matching stage is published
+    as `trivy`; the legacy `dt_upload` no-op marker has been removed.
   - Idempotency: invoking the task again on a `succeeded` scan is a no-op.
   - cdxgen failure → scan transitions to `status='failed'` with the cdxgen
     error message; the workspace is cleaned up (the `finally` shutil.rmtree

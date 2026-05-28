@@ -18,11 +18,15 @@ necessarily knowing the parent project up front.
 from __future__ import annotations
 
 import uuid
+from collections.abc import AsyncIterator
+from pathlib import Path
 
 import structlog
 from fastapi import APIRouter, Depends, Query, Request, Response, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.config import workspace_root
 from core.db import get_db
 from core.errors import problem_response
 from core.security import CurrentUser, require_role
@@ -40,6 +44,10 @@ from services.scan_service import (
 
 router = APIRouter(prefix="/v1", tags=["scans"])
 log = structlog.get_logger("scans.api")
+
+# Streaming chunk size for the scan log download. 64 KiB is comfortably above
+# the default OS page boundary and keeps multi-MB logs out of resident memory.
+_LOG_DOWNLOAD_CHUNK_BYTES = 64 * 1024
 
 
 def _problem_for_scan_error(request: Request, exc: ScanError) -> Response:
@@ -141,6 +149,133 @@ async def get_scan_endpoint(
         content=body.model_dump_json(by_alias=True),
         status_code=status.HTTP_200_OK,
         media_type="application/json",
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/scans/{scan_id}/log  (download the persisted tool log)
+# ---------------------------------------------------------------------------
+
+
+async def _stream_log_file(path: Path) -> AsyncIterator[bytes]:
+    """Yield the log file in fixed-size chunks for ``StreamingResponse``.
+
+    We open with a plain blocking ``open()`` because:
+      - The file already lives on the same worker host (workspace volume).
+      - FastAPI runs route handlers in a worker thread pool when needed; for
+        a small async generator that yields cooperatively after each chunk
+        the blocking read is negligible vs the network send.
+    """
+    with open(path, "rb") as fh:
+        while True:
+            chunk = fh.read(_LOG_DOWNLOAD_CHUNK_BYTES)
+            if not chunk:
+                return
+            yield chunk
+
+
+@router.get(
+    "/scans/{scan_id}/log",
+    summary="Download the persisted tool log for one scan",
+    responses={
+        200: {
+            "content": {"text/plain": {}},
+            "description": "Plain-text scan log, streamed.",
+        },
+        404: {
+            "content": {"application/problem+json": {}},
+            "description": (
+                "Scan not found, the caller has no access to it, or the log "
+                "file is not on disk yet (very early-stage scan or persistence "
+                "disabled)."
+            ),
+        },
+    },
+)
+async def download_scan_log_endpoint(
+    request: Request,
+    scan_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_role("developer")),
+) -> Response:
+    """Stream the per-scan ``scan.log`` written by ``tasks._progress.publish_log``.
+
+    Authorization: same gate as ``GET /v1/scans/{scan_id}`` — reuses
+    ``services.scan_service.get_scan`` so team-membership / super-admin rules
+    stay in lock-step with the metadata endpoint. A non-member sees the same
+    404 as a non-existent scan id (existence-hide) so a developer cannot probe
+    scan ids belonging to other teams via this endpoint.
+
+    Lifecycle: the file is written incrementally by the worker as the scan
+    runs. While the scan is still running the response returns whatever has
+    been flushed so far (the publisher uses a line-buffered handle, so each
+    completed line is on disk by the time it is on the WebSocket). After the
+    scan terminates the file stays on disk until ``workspace_cleaner`` reaps
+    the parent workspace directory (current default: per
+    ``WORKSPACE_ORPHAN_MAX_AGE_SECONDS``).
+    """
+    # Auth + existence check first. ScanNotFound (404) and ScanForbidden (403)
+    # both collapse to 404 here — the existence-hide contract for this endpoint
+    # never leaks "this scan exists but you cannot see it". We deliberately do
+    # not call _problem_for_scan_error for ScanForbidden so the 403 envelope
+    # cannot leak through.
+    try:
+        await get_scan(session, scan_id=scan_id, actor=actor)
+    except ScanError:
+        return problem_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            title="Scan Log Not Found",
+            detail="No scan log is available for this id.",
+            instance=request.url.path,
+        )
+
+    # Path is constructed from {workspace_root}/{scan_id}/scan.log. scan_id is
+    # already a parsed UUID at the route signature (FastAPI rejects malformed
+    # strings with 422), so traversal is impossible by construction. The
+    # is_relative_to() check below is defense-in-depth in case workspace_root
+    # ever changes semantics (symlink, env-var injection of "..", etc.).
+    root = Path(workspace_root()).resolve()
+    log_path = (Path(workspace_root()) / str(scan_id) / "scan.log").resolve()
+
+    if not log_path.is_relative_to(root):
+        log.warning(
+            "scan_log_path_escape_blocked",
+            scan_id=str(scan_id),
+            resolved=str(log_path),
+            root=str(root),
+        )
+        return problem_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            title="Scan Log Not Found",
+            detail="No scan log is available for this id.",
+            instance=request.url.path,
+        )
+
+    if not log_path.is_file():
+        # The scan exists and the caller has access, but no log was written.
+        # Common cases: very early-stage scan that crashed before any tool
+        # emitted a line, persistence disabled via SCAN_LOG_PERSIST_ENABLED=false,
+        # or the workspace cleaner already reaped the parent dir. Return 404
+        # with a Problem Details body distinct from the "no access" 404 detail
+        # text so an internal operator can tell them apart in logs.
+        return problem_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            title="Scan Log Not Available",
+            detail="Scan log not available yet.",
+            instance=request.url.path,
+            type_="urn:trustedoss:problem:scan_log_unavailable",
+        )
+
+    return StreamingResponse(
+        _stream_log_file(log_path),
+        status_code=status.HTTP_200_OK,
+        media_type="text/plain; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="scan-{scan_id}.log"',
+            # X-Content-Type-Options to defang any "the file is HTML in disguise"
+            # gambit a hostile tool might play by emitting markup to stdout.
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 

@@ -118,7 +118,12 @@ from services.source_archive_service import (
 )
 from services.source_preservation_service import preserve_scan_source
 from services.vulnerability_matching import persist_trivy_findings
-from tasks._progress import publish_log, publish_progress, reset_log_counter
+from tasks._progress import (
+    close_log_file,
+    publish_log,
+    publish_progress,
+    reset_log_counter,
+)
 from tasks.celery_app import celery_app
 
 log = structlog.get_logger("tasks.scan_source")
@@ -137,26 +142,19 @@ _STAGE_PROGRESS: dict[str, int] = {
     # persisted, before scancode. Slotted at 30 (between cdxgen=25 and
     # scancode=50) so the WS progress frame stays monotonic.
     "sign": 30,
-    # W6: ``dt_upload`` is a historical stage label retained for WS frame
-    # / E2E harness compatibility (the FE PIPELINE_STEPS list keys off these
-    # slugs). Post-DT-removal it represents "SBOM ready for matching" — the
-    # cdxgen artifact is on disk and we are about to hand it to Trivy. It is
-    # NOT renamed in this PR to keep #41 surgical; a follow-up (#43f) renames
-    # the WS frame contract end-to-end (UI + harness + i18n).
-    "dt_upload": 35,
     # PR-A2: the "ort" stage slug (50) is replaced by "scancode" at the same
     # percent so the WS progress frame contract stays monotonic — clients that
     # rendered "50%" for the license stage keep rendering 50% for it.
     "scancode": 50,
     # BUG-010: conditional-license components are auto-enrolled into the legal
     # review queue right after the component graph commits, before vuln
-    # matching. Slotted between "scancode" (50) and "dt_findings" (90) so the
-    # WS progress frame stays monotonic.
+    # matching. Slotted between "scancode" (50) and "trivy" (90) so the WS
+    # progress frame stays monotonic.
     "approvals": 60,
-    # W6: ``dt_findings`` is also a retained historical label. It now means
-    # "Trivy matched the SBOM against its vulnerability DB and the findings
-    # were persisted into vulnerability_findings". Same #43f rename note.
-    "dt_findings": 90,
+    # Stage label for ``trivy sbom`` matching (replaces the W6-era
+    # ``dt_findings`` slot). v2.4.0 not yet publicly released, so no back-compat
+    # shim is needed — the FE PIPELINE_STEPS is updated in the matching FE PR.
+    "trivy": 90,
     "finalize": 100,
 }
 
@@ -280,6 +278,13 @@ def scan_source_task(self: Any, scan_id: str) -> None:
         log.exception("scan_source_unhandled_error")
         _record_terminal_failure(scan_uuid, f"unexpected error: {exc}")
     finally:
+        # Release the per-scan disk-log file handle BEFORE rmtree so the FD
+        # does not race with the directory removal on a kernel that holds the
+        # open fd's inode (worker SIGKILL would leak it; the explicit close
+        # makes the happy / terminal path tidy). Idempotent: a scan that never
+        # emitted a log line never opened a handle, and close_log_file no-ops
+        # for missing keys.
+        close_log_file(scan_uuid)
         shutil.rmtree(workspace, ignore_errors=True)
         structlog.contextvars.unbind_contextvars("scan_id", "task_id", "task_kind")
 
@@ -360,14 +365,12 @@ def _run_pipeline(
         )
 
     # W6 (ADR-0001): cdxgen produced the SBOM on disk. From here:
-    #   1. publish the historical ``dt_upload`` stage (post-W6 == "SBOM ready
-    #      for matching"; rename deferred to #43f),
-    #   2. run scancode first-party license detection (best-effort, unchanged),
-    #   3. persist components + scancode-detected licenses,
-    #   4. auto-create conditional-license approvals,
-    #   5. run ``trivy sbom`` against the cdxgen SBOM to produce the vuln
-    #      report, publish the ``dt_findings`` stage,
-    #   6. persist Trivy findings into vulnerability_findings.
+    #   1. run scancode first-party license detection (best-effort, unchanged),
+    #   2. persist components + scancode-detected licenses,
+    #   3. auto-create conditional-license approvals,
+    #   4. run ``trivy sbom`` against the cdxgen SBOM to produce the vuln
+    #      report under the ``trivy`` stage,
+    #   5. persist Trivy findings into vulnerability_findings.
     #
     # The pre-W6 parallel layout submitted a DT BOM upload to a background
     # thread so DT's server-side matcher could warm up during scancode. Trivy
@@ -375,14 +378,10 @@ def _run_pipeline(
     # and an additional thread would just contend with scancode for CPU. We go
     # back to a sequential layout — simpler, no thread-safety risk, and the
     # wall-time difference is negligible (Trivy matches a typical SBOM in
-    # seconds, not the 10-30s of the old DT upload + analyzer ramp-up).
-
-    # ``dt_upload`` stage label: SBOM has been generated + persisted (cdxgen),
-    # signed (cosign), and we are about to consume it for vuln matching. The
-    # stage transitions quickly here because Trivy hasn't started yet — that
-    # happens later under the ``dt_findings`` label. The label split mirrors
-    # what the FE PIPELINE_STEPS row expects.
-    _set_stage(scan_uuid, "dt_upload")
+    # seconds, not the 10-30s of the old DT upload + analyzer ramp-up). The
+    # legacy ``dt_upload`` intermediate label has been removed in this PR —
+    # post-W6 it was a 35% no-op marker between cdxgen and scancode and the FE
+    # already omits it from PIPELINE_STEPS.
 
     # Stage 4 — scancode first-party license detection (PR-A2, replaces ORT).
     # scancode runs over the cloned first-party tree only (vendored deps /
@@ -479,7 +478,7 @@ def _run_pipeline(
     # disk, so the user still sees the component graph + license findings even
     # when matching fails — same degraded-but-not-empty behaviour the DT path
     # had during a breaker-OPEN run.
-    _set_stage(scan_uuid, "dt_findings")
+    _set_stage(scan_uuid, "trivy")
     trivy_started_at = time.monotonic()
     trivy_result = run_trivy_sbom(
         sbom_path=cdxgen_result.sbom_path,

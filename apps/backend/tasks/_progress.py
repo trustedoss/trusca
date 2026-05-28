@@ -49,11 +49,29 @@ Both are encoded as UTF-8 JSON bytes; the WS gateway decodes with strict UTF-8.
 Step value vocabulary (do not free-text):
 
     Source pipeline (in-progress):
-        bootstrap, fetch, cdxgen, ort, dt_upload, dt_findings, finalize
+        bootstrap, fetch, prep, cdxgen, sign, scancode, approvals, trivy, finalize
     Container pipeline (in-progress):
         bootstrap, trivy, persist, finalize
     Terminal (both):
         succeeded, failed
+
+On-disk log persistence (this PR — scan log download):
+
+    Every successful ``publish_log`` call ALSO appends one line to a per-scan
+    plain-text file at ``{WORKSPACE_HOST_PATH}/{scan_id}/scan.log``. Line
+    format:
+
+        {ISO8601_ts} [{stage}/{stream}] {line}\\n
+
+    The file shares the per-scan budget cap with the Redis publish, uses the
+    same truncated line, and is fire-and-forget on the same philosophy as the
+    publish — a disk-IO error logs WARNING and the scan keeps running. We hold
+    one long-lived file handle per scan_id (line-buffered) for the lifetime of
+    the scan; the handle is closed by ``close_log_file(scan_id)`` from the
+    scan task's ``finally`` block, and the file itself is reclaimed by the
+    existing ``workspace_cleaner`` Celery beat (it ``rmtree``-s the parent
+    ``<root>/<scan_id>/`` once the scan is terminal, so ``scan.log`` rides
+    along — no new cleanup logic is added here).
 """
 
 from __future__ import annotations
@@ -62,6 +80,8 @@ import json
 import threading
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
+from typing import TextIO
 
 import redis
 import structlog
@@ -70,7 +90,9 @@ from core.config import (
     redis_url,
     scan_log_line_max_len,
     scan_log_max_lines_per_scan,
+    scan_log_persist_enabled,
     scan_progress_channel,
+    workspace_root,
 )
 
 log = structlog.get_logger("tasks.progress")
@@ -100,14 +122,20 @@ _log_counts_lock = threading.Lock()
 
 
 def reset_log_counter(scan_id: uuid.UUID | str) -> None:
-    """Forget the published-line count for ``scan_id``.
+    """Forget the published-line count for ``scan_id`` and close any disk log.
 
     Called by the task entry point on every (re-)run so a retried scan gets a
-    fresh budget. Idempotent: missing keys are silently ignored.
+    fresh budget. Also closes the cached per-scan file handle so a re-execution
+    re-opens ``scan.log`` cleanly — without this, a worker that re-enters the
+    same scan id (Celery ``acks_late`` redelivery, retried task) would keep
+    appending to a handle whose underlying file may have been rmtree'd by the
+    workspace cleaner between runs. Idempotent: missing keys are silently
+    ignored.
     """
     key = str(scan_id)
     with _log_counts_lock:
         _log_counts.pop(key, None)
+    close_log_file(scan_id)
 
 
 def _bump_log_counter(scan_id_str: str, *, limit: int) -> bool:
@@ -125,6 +153,130 @@ def _bump_log_counter(scan_id_str: str, *, limit: int) -> bool:
             return False
         _log_counts[scan_id_str] = current + 1
         return True
+
+
+# ---------------------------------------------------------------------------
+# Per-scan disk log file cache.
+#
+# We hold ONE long-lived file handle per scan_id for the lifetime of the scan
+# so back-to-back log lines (cdxgen can emit hundreds in a second) do not pay
+# an open/close round trip each. The handle is opened in append mode with
+# ``buffering=1`` (line-buffered) so every line hits the OS the moment its
+# terminating newline is written — important so a ``GET /scans/{id}/log``
+# called against a running scan sees the latest lines without a flush race.
+#
+# ``close_log_file(scan_id)`` is the deterministic teardown — called from the
+# scan task's ``finally`` block. If the worker dies hard (SIGKILL) without
+# running ``finally``, the OS reclaims the FD on process exit; the file
+# itself is reclaimed by ``workspace_cleaner`` when the parent scan reaches
+# a terminal status (or by the next ``reset_log_counter`` call on retry).
+# ---------------------------------------------------------------------------
+
+_log_files: dict[str, TextIO] = {}
+_log_files_lock = threading.Lock()
+
+
+def _log_file_path_for(scan_id_str: str) -> Path:
+    """Resolved on-disk path for a scan's persisted log file."""
+    return Path(workspace_root()) / scan_id_str / "scan.log"
+
+
+def _get_or_open_log_file(scan_id_str: str) -> TextIO | None:
+    """Return a cached append-mode handle for ``<workspace>/<scan_id>/scan.log``.
+
+    Creates the parent directory if missing (very early stage — bootstrap may
+    publish a line before the workspace dir is created). Returns ``None`` on
+    any IO error so the caller can degrade to "WS only" without crashing the
+    scan. Thread-safe across the cdxgen + scancode drain threads of a single
+    scan.
+    """
+    with _log_files_lock:
+        cached = _log_files.get(scan_id_str)
+        if cached is not None and not cached.closed:
+            return cached
+
+        try:
+            path = _log_file_path_for(scan_id_str)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            # buffering=1 — line-buffered. encoding=utf-8 — we control the
+            # bytes; cdxgen / scancode emit utf-8 by default and any non-utf8
+            # sequence we have already collapsed to ``str(line)`` upstream.
+            handle = open(  # noqa: SIM115 — long-lived; closed by close_log_file
+                path,
+                mode="a",
+                buffering=1,
+                encoding="utf-8",
+                errors="replace",
+            )
+        except OSError as exc:
+            log.warning(
+                "scan_log_file_open_failed",
+                scan_id=scan_id_str,
+                error=str(exc),
+            )
+            return None
+
+        _log_files[scan_id_str] = handle
+        return handle
+
+
+def close_log_file(scan_id: uuid.UUID | str) -> None:
+    """Close + evict the cached per-scan log handle (idempotent).
+
+    Called from the scan task's ``finally`` so the FD is released even on a
+    scan crash. Also called from :func:`reset_log_counter` so a Celery
+    re-execution opens a fresh handle. Safe to call multiple times; safe to
+    call for a scan that never opened a handle.
+    """
+    key = str(scan_id)
+    with _log_files_lock:
+        handle = _log_files.pop(key, None)
+    if handle is None:
+        return
+    try:
+        handle.close()
+    except OSError as exc:  # pragma: no cover — close errors are best-effort
+        log.warning(
+            "scan_log_file_close_failed",
+            scan_id=key,
+            error=str(exc),
+        )
+
+
+def _append_log_line_to_disk(
+    scan_id_str: str, *, stage: str, stream: str, line: str, ts: str
+) -> None:
+    """Append one formatted line to the per-scan disk log (best-effort).
+
+    Format mirrors the docstring contract::
+
+        {ISO8601_ts} [{stage}/{stream}] {line}\\n
+
+    Never raises: any IO error is swallowed + logged at WARNING. The Redis
+    publish side has already succeeded by the time we get here, so the user
+    still sees the live frame on the WebSocket — only the post-hoc download
+    misses this single line.
+    """
+    if not scan_log_persist_enabled():
+        return
+    handle = _get_or_open_log_file(scan_id_str)
+    if handle is None:
+        return
+    try:
+        # The line value is already truncated and is a Python str (utf-8 on
+        # disk). We pre-strip a single trailing newline so a tool that emits
+        # "...line\n" does not become "...line\n\n" in the file; lines that
+        # carry no trailing newline still serialize cleanly.
+        clean = line.rstrip("\r\n")
+        handle.write(f"{ts} [{stage}/{stream}] {clean}\n")
+    except OSError as exc:
+        log.warning(
+            "scan_log_file_write_failed",
+            scan_id=scan_id_str,
+            stage=stage,
+            stream=stream,
+            error=str(exc),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -298,19 +450,37 @@ def publish_log(
         scan_limit = scan_log_max_lines_per_scan()
 
         # Per-scan budget check FIRST (cheapest), so an over-cap publish never
-        # hits Redis or even the line-truncation logic.
+        # hits Redis OR the on-disk scan.log. The disk write and the WS frame
+        # share the same budget so the downloaded log matches what the user
+        # saw on the wire — neither can leak past the cap.
         if not _bump_log_counter(scan_id_str, limit=scan_limit):
             return
 
         safe_stream = stream if stream in _VALID_STREAMS else "stdout"
+        safe_stage = str(stage)
         safe_line = _truncate_line(str(line), line_limit)
+        ts = _now_iso()
+
+        # Persist to disk FIRST. The WS publish is the live view (a missed
+        # publish only matters for an open browser at the time); the disk file
+        # is the historical record we serve from GET /scans/{id}/log days
+        # later. Both share the same budget + truncation contract above.
+        # _append_log_line_to_disk swallows its own IO errors and never
+        # raises.
+        _append_log_line_to_disk(
+            scan_id_str,
+            stage=safe_stage,
+            stream=safe_stream,
+            line=safe_line,
+            ts=ts,
+        )
 
         payload = {
             "type": "log",
-            "stage": str(stage),
+            "stage": safe_stage,
             "stream": safe_stream,
             "line": safe_line,
-            "ts": _now_iso(),
+            "ts": ts,
         }
         channel = scan_progress_channel(scan_id_str)
         body = json.dumps(payload).encode("utf-8")
@@ -331,6 +501,7 @@ def publish_log(
 
 
 __all__ = [
+    "close_log_file",
     "publish_log",
     "publish_progress",
     "reset_log_counter",
