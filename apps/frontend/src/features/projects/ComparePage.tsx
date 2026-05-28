@@ -156,7 +156,7 @@ export function ComparePage() {
         >
           <Link
             to="/projects"
-            className="hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            className="transition-colors duration-fast ease-out-soft hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             data-testid="compare-breadcrumb-projects"
           >
             {t("page.breadcrumb_projects")}
@@ -164,7 +164,7 @@ export function ComparePage() {
           <span aria-hidden>/</span>
           <Link
             to={`/projects/${projectId}`}
-            className="hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            className="transition-colors duration-fast ease-out-soft hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             data-testid="compare-breadcrumb-project"
           >
             {t("compare.back_to_project")}

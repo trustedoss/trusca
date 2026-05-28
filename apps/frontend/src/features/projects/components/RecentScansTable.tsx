@@ -107,7 +107,7 @@ export function RecentScansTable({
               className={cn(
                 "border-b last:border-b-0",
                 onSelectScan &&
-                  "cursor-pointer transition-colors hover:bg-accent/40 focus-visible:bg-accent/40 focus-visible:outline-none",
+                  "cursor-pointer transition-colors duration-fast ease-out-soft hover:bg-accent/40 focus-visible:bg-accent/40 focus-visible:outline-none",
               )}
               style={{ height: "var(--table-row)" }}
               {...(onSelectScan

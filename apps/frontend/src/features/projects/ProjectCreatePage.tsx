@@ -158,7 +158,7 @@ export function ProjectCreatePage() {
               value={teamId}
               onChange={(e) => setTeamId(e.target.value)}
               data-testid="project-team-select"
-              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors duration-fast ease-out-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               {teams.map((tm) => (
                 <option key={tm.id} value={tm.id}>

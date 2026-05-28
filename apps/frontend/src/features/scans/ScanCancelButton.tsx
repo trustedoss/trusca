@@ -135,6 +135,9 @@ export function ScanCancelButton({
           data-scan-id={scanId}
           aria-label={t("cancel.action")}
           className={cn(
+            // W11-F polish — the cancel CTA already inherits Button's
+            // transition-all duration-fast ease-out-soft; the override here
+            // only swaps colour tokens, which now follow the same timing.
             "gap-1 border-risk-high/40 text-risk-high hover:bg-risk-high/5",
             className,
           )}
@@ -145,7 +148,15 @@ export function ScanCancelButton({
       )}
       {toast ? (
         <div
-          className="fixed bottom-4 right-4 z-50 max-w-sm"
+          // W11-F polish — toast appears with a soft slide-up + fade so the
+          // user notices it without a startle (Linear notification pattern).
+          // The `key` change re-mounts the wrapper when a new toast token
+          // fires, replaying the entrance animation for each error event.
+          key={toast.id}
+          className={cn(
+            "fixed bottom-4 right-4 z-50 max-w-sm",
+            "animate-in fade-in-0 slide-in-from-bottom-2 duration-base ease-out-soft",
+          )}
           data-testid="scan-cancel-toast"
           data-toast-key={toast.token}
         >

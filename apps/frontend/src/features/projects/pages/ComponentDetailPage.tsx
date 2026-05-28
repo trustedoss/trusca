@@ -221,7 +221,7 @@ function PageHeader({
       >
         <Link
           to="/projects"
-          className="hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          className="transition-colors duration-fast ease-out-soft hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           data-testid="component-detail-page-breadcrumb-projects"
         >
           {t("components.detail_page.breadcrumb.projects")}
@@ -229,7 +229,7 @@ function PageHeader({
         <span aria-hidden>/</span>
         <Link
           to={projectHref}
-          className="hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          className="transition-colors duration-fast ease-out-soft hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           data-testid="component-detail-page-breadcrumb-project"
         >
           {projectCrumb}
@@ -237,7 +237,7 @@ function PageHeader({
         <span aria-hidden>/</span>
         <Link
           to={backToListHref}
-          className="hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          className="transition-colors duration-fast ease-out-soft hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           data-testid="component-detail-page-breadcrumb-components"
         >
           {t("components.detail_page.breadcrumb.components")}
@@ -253,7 +253,7 @@ function PageHeader({
       <div className="flex items-center gap-3">
         <Link
           to={backToListHref}
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors duration-fast ease-out-soft hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           data-testid="component-detail-page-back-link"
         >
           <ChevronLeft className="h-3.5 w-3.5" aria-hidden />

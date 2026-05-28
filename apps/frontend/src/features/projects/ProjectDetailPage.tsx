@@ -681,7 +681,7 @@ function ProjectDetailHeader({
         >
           <Link
             to="/projects"
-            className="hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            className="transition-colors duration-fast ease-out-soft hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             data-testid="project-detail-breadcrumb-projects"
           >
             {t("page.breadcrumb_projects")}
@@ -745,7 +745,7 @@ function ProjectDetailHeader({
             data-status={activeScan.status}
             data-scan-id={activeScan.id}
             aria-label={t("page.scan_active_reopen_aria")}
-            className="inline-flex items-center gap-1.5 rounded-full border border-risk-low/40 bg-risk-low/10 px-2.5 py-1 text-xs font-medium text-risk-low transition-colors hover:bg-risk-low/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            className="inline-flex items-center gap-1.5 rounded-full border border-risk-low/40 bg-risk-low/10 px-2.5 py-1 text-xs font-medium text-risk-low transition-colors duration-fast ease-out-soft hover:bg-risk-low/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
             <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
             {activeScan.status === "queued"

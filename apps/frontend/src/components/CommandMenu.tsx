@@ -152,7 +152,7 @@ export const CommandMenuTrigger = forwardRef<
       onClick={onOpen}
       data-testid="command-menu-trigger"
       className={cn(
-        "inline-flex h-8 items-center gap-2 rounded-md border bg-background px-3 text-xs text-muted-foreground transition-colors",
+        "inline-flex h-8 items-center gap-2 rounded-md border bg-background px-3 text-xs text-muted-foreground transition-colors duration-fast ease-out-soft",
         "hover:bg-accent hover:text-accent-foreground",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
         className,

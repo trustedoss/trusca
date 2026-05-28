@@ -230,7 +230,7 @@ function ReleaseRow({ release, locale, onView }: ReleaseRowProps) {
         }
       }}
       aria-label={t("releases.view_snapshot_aria", { label })}
-      className="cursor-pointer border-b last:border-b-0 hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      className="cursor-pointer border-b last:border-b-0 transition-colors duration-fast ease-out-soft hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       style={{ height: "var(--table-row)" }}
     >
       <td className="px-3 py-2">

@@ -239,7 +239,10 @@ export function ComponentsToolbar({
                 data-active={isActive ? "true" : "false"}
                 onClick={() => onDirectChange(opt.value)}
                 className={cn(
-                  "px-3 text-xs font-medium",
+                  // W11-F polish — segmented control hovers / active-state
+                  // colour swap glides on the W11-A 150 ms ease-out-soft so
+                  // toggling between dependency-type pills no longer flips.
+                  "px-3 text-xs font-medium transition-colors duration-fast ease-out-soft",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
                   idx > 0 && "border-l border-input",
                   isActive
@@ -300,7 +303,7 @@ export function ComponentsToolbar({
                 onSeverityChange([]);
                 onUnmountExtraFilter("severity");
               }}
-              className="ml-auto inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="ml-auto inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground transition-colors duration-fast ease-out-soft hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               <X className="h-3 w-3" aria-hidden />
             </button>
@@ -343,7 +346,7 @@ export function ComponentsToolbar({
                 onLicenseCategoryChange([]);
                 onUnmountExtraFilter("license_category");
               }}
-              className="ml-auto inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="ml-auto inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground transition-colors duration-fast ease-out-soft hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               <X className="h-3 w-3" aria-hidden />
             </button>

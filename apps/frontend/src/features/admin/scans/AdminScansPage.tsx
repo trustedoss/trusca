@@ -161,7 +161,7 @@ export function AdminScansPage() {
                     data-testid="admin-scans-row"
                     data-scan-id={scan.id}
                     data-status={scan.status}
-                    className="cursor-pointer border-b transition-colors hover:bg-accent/40 focus-within:bg-accent/40"
+                    className="cursor-pointer border-b transition-colors duration-fast ease-out-soft hover:bg-accent/40 focus-within:bg-accent/40"
                     style={{ height: "var(--table-row)" }}
                     tabIndex={0}
                     onClick={() => setOpenScan(scan)}

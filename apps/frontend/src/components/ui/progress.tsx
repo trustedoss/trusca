@@ -27,8 +27,13 @@ export const Progress = forwardRef<
     {...props}
   >
     <ProgressPrimitive.Indicator
+      // W11-F polish — the fill animates between two `translateX` states as
+      // the value updates (every WS tick during a scan). Bare `transition-all`
+      // landed on Tailwind's default 150 ms linear; we route it through the
+      // W11-A `--duration-base` (200 ms) + ease-out-soft so the fill glides
+      // forward instead of snapping.
       className={cn(
-        "h-full w-full flex-1 bg-primary transition-all",
+        "h-full w-full flex-1 bg-primary transition-all duration-base ease-out-soft",
         indicatorClassName,
       )}
       style={{ transform: `translateX(-${100 - (value ?? 0)}%)` }}

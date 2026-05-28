@@ -126,7 +126,10 @@ function DiskCard({ item }: { item: AdminDiskItem }) {
             data-testid="admin-disk-bar-track"
           >
             <div
-              className={cn("h-full transition-all", bar)}
+              // W11-F polish — disk-usage fill glides on the W11-A
+               // `--duration-base` (200 ms) ease-out-soft for parity with
+               // the Progress primitive used elsewhere.
+              className={cn("h-full transition-all duration-base ease-out-soft", bar)}
               style={{ width: `${usedPct ?? 0}%` }}
               data-testid="admin-disk-bar-fill"
               data-used-pct={usedPct ?? 0}

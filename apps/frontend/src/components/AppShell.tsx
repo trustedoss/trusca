@@ -121,7 +121,10 @@ function NavItemLink({ item, ns }: { item: NavItem; ns: string }) {
         data-testid={item.testId}
         className={({ isActive }) =>
           cn(
-            "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+            // W11-F polish — sidebar nav hover/active transitions land on the
+            // W11-A 150 ms ease-out-soft tokens for parity with every other
+            // hoverable affordance (buttons, dropdown items, tabs).
+            "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-fast ease-out-soft",
             "hover:bg-accent hover:text-accent-foreground",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
             isActive ? "bg-primary/10 text-primary" : "text-foreground",

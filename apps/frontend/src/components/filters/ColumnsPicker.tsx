@@ -216,7 +216,7 @@ export function ColumnsPicker({
                 data-required={column.required ? "true" : "false"}
                 data-visible={isVisible ? "true" : "false"}
                 className={cn(
-                  "relative flex cursor-pointer select-none items-center gap-2 rounded-sm py-1.5 pl-2 pr-2 text-sm outline-none transition-colors",
+                  "relative flex cursor-pointer select-none items-center gap-2 rounded-sm py-1.5 pl-2 pr-2 text-sm outline-none transition-colors duration-fast ease-out-soft",
                   "focus:bg-accent focus:text-accent-foreground data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
                   "data-[disabled]:pointer-events-none data-[disabled]:opacity-60",
                 )}
