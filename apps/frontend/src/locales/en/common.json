@@ -72,5 +72,16 @@
     "banner_title": "Read-only demo",
     "banner_detail": "This is a live demo. Browse freely — creating, editing, and deleting are disabled.",
     "write_disabled": "Disabled in the read-only demo"
+  },
+  "command_menu": {
+    "trigger_button": "Search...",
+    "placeholder": "Search projects, CVEs, pages...",
+    "no_results": "No results found.",
+    "shortcut_hint": "⌘K",
+    "group": {
+      "projects": "Projects",
+      "vulnerabilities": "Vulnerabilities",
+      "pages": "Pages"
+    }
   }
 }

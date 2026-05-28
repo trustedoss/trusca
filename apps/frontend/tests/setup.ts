@@ -52,6 +52,16 @@ beforeAll(() => {
       writable: false,
     });
   }
+  // cmdk (W9-#54 CommandMenu) calls ResizeObserver to measure its list panel.
+  // jsdom does not ship it, so provide a no-op stub that matches the
+  // ResizeObserver contract just enough for cmdk to mount.
+  if (typeof window !== "undefined" && !window.ResizeObserver) {
+    window.ResizeObserver = class {
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+    } as unknown as typeof ResizeObserver;
+  }
 });
 
 afterEach(() => {

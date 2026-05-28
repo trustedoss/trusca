@@ -17,6 +17,11 @@ import type { ComponentType, SVGProps } from "react";
 import { useTranslation } from "react-i18next";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 
+import {
+  CommandMenu,
+  CommandMenuTrigger,
+  useCommandMenuShortcut,
+} from "@/components/CommandMenu";
 import { DemoBanner } from "@/components/DemoBanner";
 import { HeaderBell } from "@/components/HeaderBell";
 import { LanguageToggle } from "@/components/LanguageToggle";
@@ -139,6 +144,11 @@ export function AppShell() {
   const isSuperAdmin =
     user?.isSuperuser === true || user?.role === "super_admin";
 
+  // W9-#54 — global ⌘K palette. The hook owns the keyboard listener so
+  // the shortcut is reachable from any authenticated route, even when the
+  // header trigger affordance is off-screen on a narrow viewport.
+  const { open: commandOpen, setOpen: setCommandOpen } = useCommandMenuShortcut();
+
   async function handleLogout() {
     await logout();
     navigate("/login", { replace: true });
@@ -199,6 +209,10 @@ export function AppShell() {
               visual noise (SCA tools like Black Duck / Snyk keep this slot for
               breadcrumb / page-title context, which we can reintroduce later). */}
           <div className="flex items-center gap-3">
+            {/* Global ⌘K palette trigger (W9-#54). The button is a
+                discoverability affordance — the keyboard shortcut works
+                whether or not this button is on screen. */}
+            <CommandMenuTrigger onOpen={() => setCommandOpen(true)} />
             {/* Notification bell — sole entry point to /notifications. We
                 deliberately do NOT add a sidebar nav entry to keep the
                 left rail focused on top-level domains; chore A2 design. */}
@@ -231,6 +245,12 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+
+      {/* W9-#54 — global command palette. Mounted once at the AppShell
+          level so the ⌘K shortcut is reachable from every authenticated
+          route. The dialog itself is portal-rendered to document.body, so
+          this position in the DOM is purely organizational. */}
+      <CommandMenu open={commandOpen} onOpenChange={setCommandOpen} />
     </div>
   );
 }
