@@ -39,7 +39,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -465,7 +464,7 @@ class Test_append_log_line_to_disk:
         def boom(*args: Any, **kwargs: Any) -> Any:
             # Only fail for the scan.log target — let everything else
             # (pytest internals, encoding tables) succeed.
-            if args and isinstance(args[0], (str, Path)):
+            if args and isinstance(args[0], str | Path):
                 if "scan.log" in str(args[0]):
                     raise OSError("simulated disk failure")
             return real_open(*args, **kwargs)

@@ -133,7 +133,7 @@ async def _seed_license_finding_with_obligation(
     category: str = "allowed",
     obligation_kind: str | None = None,
     obligation_text: str = "Default obligation.",
-) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:
+) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID | None]:
     """Returns ``(license_id, license_finding_id, obligation_id_or_None)``."""
     factory = await _factory(client)
     async with factory() as session:
