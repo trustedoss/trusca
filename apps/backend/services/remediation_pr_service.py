@@ -539,6 +539,7 @@ async def _persist_creating_row(
     # Lock the conflicting in-flight-or-open row to decide deterministically. The
     # staleness predicate is evaluated in the SAME query on the SERVER clock
     # (no client/server skew) so we never read an expired ORM attribute.
+    # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text  # _CREATING_STALE_TTL is a module-level constant (line 121), not user input
     stale_cutoff = func.now() - text(f"INTERVAL '{_CREATING_STALE_TTL}'")
     conflicting_row = (
         await session.execute(

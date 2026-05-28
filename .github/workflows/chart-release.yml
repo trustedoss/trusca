@@ -67,14 +67,21 @@ jobs:
 
       - name: Resolve & verify chart version
         id: ver
+        env:
+          # Pulled into the shell via env to avoid the
+          # run-shell-injection.run-shell-injection semgrep finding (and
+          # the real injection it would otherwise allow on
+          # workflow_dispatch with a malicious input).
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
           chart_version="$(helm show chart "${CHART_DIR}" | awk '/^version:/ {print $2}')"
           echo "chart Chart.yaml version: ${chart_version}"
-          if [ "${{ github.event_name }}" = "push" ]; then
+          if [ "${EVENT_NAME}" = "push" ]; then
             tag_version="${GITHUB_REF_NAME#chart-v}"
           else
-            tag_version="${{ github.event.inputs.version }}"
+            tag_version="${INPUT_VERSION}"
           fi
           echo "requested version: ${tag_version}"
           if [ "${chart_version}" != "${tag_version}" ]; then
