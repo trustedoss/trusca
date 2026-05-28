@@ -1,0 +1,88 @@
+{
+  "app": {
+    "name": "TrustedOSS Portal",
+    "tagline": "Open-source SCA platform for enterprise"
+  },
+  "language": {
+    "label": "Language",
+    "english": "English",
+    "korean": "한국어"
+  },
+  "multiselect": {
+    "all": "All",
+    "clear": "Clear",
+    "count_selected": "{{count}} selected"
+  },
+  "filters": {
+    "more_filters": {
+      "trigger": "Add filter",
+      "aria": "Add more filters"
+    },
+    "columns": {
+      "trigger": "Columns",
+      "aria": "Choose visible columns",
+      "required_hint": "Always visible"
+    }
+  },
+  "sort": {
+    "aria_ascending": "sorted ascending — click to sort descending",
+    "aria_descending": "sorted descending — click to clear sort",
+    "aria_unsorted": "not sorted — click to sort ascending"
+  },
+  "auth": {
+    "logout": "Sign out",
+    "profile": "Profile"
+  },
+  "home": {
+    "title": "Welcome to TrustedOSS Portal",
+    "subtitle": "Bootstrap is online. Authentication, projects, and scans land in upcoming phases.",
+    "stack": "React 18 · Vite · shadcn/ui · TanStack Query · react-i18next",
+    "api_label": "API base",
+    "primary_cta": "View component"
+  },
+  "risk": {
+    "critical": "Critical",
+    "high": "High",
+    "medium": "Medium",
+    "low": "Low",
+    "info": "Info"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "projects": "Projects",
+    "scans": "Scans",
+    "approvals": "Approvals",
+    "policies": "Policies",
+    "integrations": "Integrations",
+    "bell": {
+      "aria": "Notifications",
+      "aria_with_count": "Notifications, {{count}} unread"
+    },
+    "admin": {
+      "section": "Administration"
+    }
+  },
+  "approvals": {
+    "coming_soon": "Coming soon in Step 3."
+  },
+  "scans": {
+    "title": "Scans",
+    "coming_soon": "Coming soon in Step 4."
+  },
+  "demo": {
+    "banner_title": "Read-only demo",
+    "banner_detail": "This is a live demo. Browse freely — creating, editing, and deleting are disabled.",
+    "write_disabled": "Disabled in the read-only demo"
+  },
+  "command_menu": {
+    "trigger_button": "Search...",
+    "placeholder": "Search projects, CVEs, pages...",
+    "no_results": "No results found.",
+    "shortcut_hint": "⌘K",
+    "group": {
+      "projects": "Projects",
+      "vulnerabilities": "Vulnerabilities",
+      "pages": "Pages"
+    }
+  }
+}

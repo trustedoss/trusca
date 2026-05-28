@@ -1,0 +1,1027 @@
+{
+  "page": {
+    "breadcrumb_aria": "탐색 경로",
+    "breadcrumb_projects": "프로젝트",
+    "loading_name": "불러오는 중…",
+    "breadcrumb_unavailable": "사용할 수 없음",
+    "load_error": "프로젝트를 불러오지 못했습니다.",
+    "missing_id": "URL에 프로젝트 ID가 없습니다.",
+    "scan": "스캔",
+    "scan_demo_disabled": "읽기 전용 데모에서는 사용할 수 없습니다",
+    "scan_already_active": "이 프로젝트에 이미 스캔이 실행 중입니다 — 진행 중 패널을 열어 확인하세요.",
+    "scan_drawer_subtitle": "스캔 진행 상황",
+    "scan_active_running": "스캔 진행 중",
+    "scan_active_queued": "스캔 대기 중",
+    "scan_active_reopen_aria": "진행 중인 스캔 보기",
+    "errors": {
+      "not_found": "프로젝트를 찾을 수 없습니다.",
+      "forbidden": "이 프로젝트를 볼 권한이 없습니다.",
+      "unknown": "이 프로젝트를 불러오지 못했습니다. 다시 시도해 주세요."
+    }
+  },
+  "tabs": {
+    "overview": "개요",
+    "components": "컴포넌트",
+    "vulnerabilities": "취약점",
+    "source": "소스",
+    "compliance": "컴플라이언스",
+    "settings": "설정",
+    "releases": "버전",
+    "reports": "리포트"
+  },
+  "compliance": {
+    "summary": "{{total}}개 중 {{loaded}}개 표시",
+    "column": {
+      "license": "라이선스",
+      "category": "분류",
+      "affected": "영향",
+      "obligations": "의무사항",
+      "notice_required": "NOTICE",
+      "override_source": "재정의"
+    },
+    "filter": {
+      "search": "검색",
+      "search_placeholder": "SPDX ID 또는 이름으로 검색",
+      "category": "분류",
+      "has_obligations": "의무사항 있음",
+      "sort_label": "정렬 기준",
+      "sort": {
+        "category": "위험도 (금지 먼저)",
+        "license_name": "라이선스 이름",
+        "spdx_id": "SPDX ID",
+        "affected_count": "영향 컴포넌트"
+      },
+      "order_label": "순서",
+      "order_asc": "오름차순",
+      "order_desc": "내림차순"
+    },
+    "row": {
+      "no_spdx_id": "—"
+    },
+    "affected": {
+      "more_count": "+{{count}}개 더"
+    },
+    "obligations": {
+      "none": "없음",
+      "more_count": "+{{count}}개 더"
+    },
+    "notice": {
+      "required": "필요",
+      "not_required": "—"
+    },
+    "override": {
+      "none": "—"
+    },
+    "empty": {
+      "title": "아직 컴플라이언스 결과가 없습니다",
+      "description": "스캔을 실행하면 이 프로젝트의 라이선스 인벤토리와 의무사항이 표시됩니다."
+    },
+    "errors": {
+      "load_list": "컴플라이언스 데이터를 불러올 수 없습니다."
+    }
+  },
+  "severity": {
+    "critical": "치명",
+    "high": "높음",
+    "medium": "중간",
+    "low": "낮음",
+    "info": "정보",
+    "none": "없음",
+    "unknown": "알 수 없음"
+  },
+  "license_category": {
+    "forbidden": "금지",
+    "conditional": "조건부",
+    "allowed": "허용",
+    "unknown": "미상"
+  },
+  "active_filters": {
+    "aria_label": "활성 필터",
+    "heading": "필터:",
+    "severity_chip_label": "심각도: {{value}}",
+    "license_chip_label": "라이선스: {{value}}",
+    "clear_severity_aria": "심각도 필터 {{value}} 제거",
+    "clear_license_aria": "라이선스 필터 {{value}} 제거"
+  },
+  "extra_filters": {
+    "severity_label": "심각도",
+    "license_category_label": "라이선스 분류",
+    "remove_aria": "{{label}} 필터 제거"
+  },
+  "risk": {
+    "critical": "치명 리스크",
+    "high": "높은 리스크",
+    "medium": "중간 리스크",
+    "low": "낮은 리스크",
+    "none": "리스크 없음"
+  },
+  "overview": {
+    "info_card": {
+      "title": "프로젝트 정보",
+      "description": "설명",
+      "no_description": "설명이 설정되지 않았습니다.",
+      "git_url": "리포지토리",
+      "no_git_url": "git URL이 설정되지 않았습니다.",
+      "default_branch": "기본 브랜치",
+      "visibility": "공개 범위",
+      "visibility_value": {
+        "team": "팀 전용",
+        "organization": "조직 공개"
+      },
+      "credential_configured": "인증 정보 설정됨"
+    },
+    "risk_card": {
+      "title": "리스크 점수",
+      "subtitle": "최근 스캔의 컴포넌트 {{total}}개를 기반으로 산출되었습니다.",
+      "security": "보안",
+      "license": "라이선스",
+      "security_counts": "Critical {{critical}} · High {{high}}",
+      "license_counts": "금지 {{forbidden}} · 조건부 {{conditional}}",
+      "vuln_data_empty_title": "스캔 시점에 취약점 데이터 없음",
+      "vuln_data_empty_body": "이 스캔이 실행될 때 취약점 데이터베이스가 비어 있었습니다. 따라서 CVE 0건은 안전을 의미하지 않고 데이터가 없었다는 뜻입니다. NVD 미러 적재가 끝난 뒤 다시 스캔하세요."
+    },
+    "risk_gauge": {
+      "aria": "프로젝트 리스크 점수: 100점 만점에 {{score}}점"
+    },
+    "severity_card": {
+      "title": "취약점 심각도",
+      "subtitle": "각 컴포넌트의 최고 CVE 심각도 기준 분포입니다.",
+      "subtitle_findings": "각 취약점 건의 심각도 기준 분포입니다.",
+      "axis_components": "컴포넌트 기준",
+      "axis_findings": "CVE 건수 기준"
+    },
+    "severity_chart": {
+      "aria": "컴포넌트 {{total}}개의 심각도 분포"
+    },
+    "license_card": {
+      "title": "라이선스 분류",
+      "subtitle": "라이선스 카테고리별 컴포넌트 분포입니다.",
+      "axis_components": "컴포넌트 기준"
+    },
+    "license_chart": {
+      "aria": "컴포넌트 {{total}}개의 라이선스 분포"
+    },
+    "recent_scans": {
+      "title": "최근 스캔",
+      "subtitle": "이 프로젝트의 최근 스캔 5건입니다.",
+      "empty": "아직 스캔 이력이 없습니다.",
+      "reopen_aria": "이 스캔의 진행 상태 보기",
+      "col_started": "시작 시각",
+      "col_version": "버전",
+      "col_status": "상태",
+      "col_duration": "소요 시간",
+      "col_kind": "종류",
+      "status": {
+        "queued": "대기 중",
+        "running": "실행 중",
+        "succeeded": "성공",
+        "failed": "실패",
+        "cancelled": "취소됨"
+      },
+      "kind": {
+        "source": "소스",
+        "container": "컨테이너"
+      }
+    },
+    "gate_card": {
+      "title": "빌드 차단 게이트",
+      "subtitle": "최근 성공한 스캔을 기준으로 한 빌드 차단 판정입니다.",
+      "pass": "통과",
+      "fail": "차단",
+      "no_scan_badge": "스캔 전",
+      "no_scan_detail": "빌드 차단 게이트를 평가하려면 스캔을 한 번 성공적으로 실행하세요.",
+      "pass_detail": "이 빌드를 차단하는 Critical CVE나 금지 라이선스가 없습니다.",
+      "critical_cves": "Critical CVE",
+      "forbidden_licenses": "금지 라이선스",
+      "epss_findings": "EPSS ≥ {{threshold}}",
+      "error_title": "빌드 차단 게이트를 불러오지 못했습니다",
+      "error_detail": "다시 시도해 주세요.",
+      "reason": {
+        "intro": "다음 사유로 이 빌드가 차단되었습니다:",
+        "critical_cve": "미해결 Critical CVE {{count}}건",
+        "forbidden_license": "금지 라이선스 {{count}}건",
+        "epss": "EPSS ≥ {{threshold}} 취약점 {{count}}건",
+        "fallback": "빌드 차단 게이트가 실패했습니다. 자세한 내용은 아래 지표를 확인하세요."
+      },
+      "errors": {
+        "not_found": "이 프로젝트가 더 이상 존재하지 않거나 접근 권한이 없습니다.",
+        "forbidden": "이 프로젝트의 빌드 차단 게이트를 볼 권한이 없습니다.",
+        "unknown": "빌드 차단 게이트를 불러오지 못했습니다. 다시 시도해 주세요."
+      }
+    },
+    "errors": {
+      "title": "개요를 불러오지 못했습니다.",
+      "detail": "페이지를 새로고침해 주세요."
+    }
+  },
+  "components": {
+    "summary": "전체 {{total}}개 중 {{loaded}}개 로드됨.",
+    "col": {
+      "name": "컴포넌트",
+      "type": "유형",
+      "version": "버전",
+      "license": "라이선스",
+      "policy": "정책",
+      "usage": "용도",
+      "severity": "심각도",
+      "vulns": "CVE"
+    },
+    "license": {
+      "unknown_dash": "—"
+    },
+    "badge": {
+      "dependency_type": {
+        "direct": "직접",
+        "transitive": "전이",
+        "unknown": "—",
+        "aria_direct": "직접 의존성 (깊이 1)",
+        "aria_transitive": "전이 의존성 (깊이 {{depth}})",
+        "aria_unknown": "의존성 유형 불명 — 이 스캔에는 의존성 그래프가 없습니다"
+      },
+      "dependency_scope": {
+        "required": "필수",
+        "optional": "선택",
+        "unknown": "—",
+        "aria_unknown": "이 스캔에 용도가 지정되지 않았습니다"
+      }
+    },
+    "toolbar": {
+      "search_label": "검색",
+      "search_placeholder": "이름 또는 purl로 검색",
+      "dependency_type_label": "의존성 유형",
+      "dependency_type": {
+        "all": "전체",
+        "direct": "직접",
+        "transitive": "전이"
+      },
+      "usage_label": "용도",
+      "usage": {
+        "required": "필수",
+        "optional": "선택",
+        "unspecified": "지정 안 됨"
+      }
+    },
+    "empty": {
+      "title": "조건에 맞는 컴포넌트가 없습니다",
+      "subtitle": "필터를 조정하거나 새 스캔을 실행하세요."
+    },
+    "errors": {
+      "load_failed": "컴포넌트를 불러오지 못했습니다."
+    },
+    "detail_page": {
+      "breadcrumb_aria": "브레드크럼",
+      "breadcrumb": {
+        "projects": "프로젝트",
+        "components": "컴포넌트"
+      },
+      "back_link": "컴포넌트 목록으로",
+      "title_loading": "컴포넌트 불러오는 중…",
+      "not_found": "컴포넌트를 찾을 수 없습니다.",
+      "errors": {
+        "not_found": "컴포넌트를 찾을 수 없습니다.",
+        "forbidden": "이 컴포넌트를 볼 권한이 없습니다.",
+        "unknown": "이 컴포넌트를 불러오지 못했습니다. 다시 시도해 주세요."
+      }
+    }
+  },
+  "drawer": {
+    "loading_title": "컴포넌트 불러오는 중…",
+    "loading_subtitle": "컴포넌트 상세 정보를 가져오고 있습니다.",
+    "subtitle": "버전 {{version}}",
+    "purl_label": "purl",
+    "dependency_type_label": "유형",
+    "usage_label": "용도",
+    "open_full_view": "전체 화면으로 보기",
+    "error": "컴포넌트를 불러오지 못했습니다.",
+    "vulns": {
+      "title": "취약점 ({{count}})",
+      "empty": "이 컴포넌트에 알려진 취약점이 없습니다.",
+      "cvss_label": "CVSS",
+      "epss_label": "EPSS",
+      "fixed_in": "수정 버전"
+    },
+    "raw": {
+      "show": "원본 데이터 보기",
+      "hide": "원본 데이터 숨기기"
+    }
+  },
+  "vulnerabilities": {
+    "summary": "전체 {{total}}개 중 {{loaded}}개 로드됨.",
+    "remediation": {
+      "heading": "보안 조치",
+      "subheading": "이 프로젝트의 npm 버전 업그레이드 제안을 미리 보고, 권한이 있을 때 보안 조치 PR을 생성합니다.",
+      "expand": "보안 조치 열기",
+      "collapse": "보안 조치 닫기"
+    },
+    "column": {
+      "cve_id": "CVE ID",
+      "severity": "심각도",
+      "license": "라이선스",
+      "reachable": "도달 가능성",
+      "cvss": "CVSS",
+      "epss": "EPSS",
+      "summary": "요약",
+      "component": "컴포넌트",
+      "affected_more_count": "+{{count}}",
+      "affected_more_count_tooltip": "추가로 {{count}}개의 컴포넌트가 영향을 받음 — 드로어에서 확인",
+      "affected": "영향 컴포넌트",
+      "status": "상태",
+      "discovered": "발견 시각"
+    },
+    "reachability": {
+      "label": {
+        "reachable": "도달 가능",
+        "unreachable": "도달 불가",
+        "unknown": "미분석"
+      },
+      "tooltip": {
+        "reachable": "취약 코드가 이 프로젝트의 콜 그래프에서 도달 가능합니다 — 우선 처리하세요.",
+        "unreachable": "분석기가 실행되어 취약 코드가 이 프로젝트에서 도달 불가함을 확인했습니다.",
+        "unknown": "이 취약점의 도달 가능성은 아직 분석되지 않았습니다."
+      },
+      "tooltip_with_source": "{{label}} ({{source}} 분석)",
+      "tooltip_filter": "취약 코드가 이 프로젝트의 콜 그래프에서 도달 가능한지로 취약점을 필터링합니다."
+    },
+    "epss": {
+      "tooltip": "EPSS — 이 CVE가 향후 30일 내 실제로 악용될 확률. CVSS(심각도)를 보완합니다.",
+      "empty": "이 CVE의 EPSS 데이터 없음",
+      "cell_tooltip": "{{score}} · 악용 가능성 {{percentile}}"
+    },
+    "filter": {
+      "minEpss": "EPSS ≥",
+      "minEpssPlaceholder": "0.00–1.00",
+      "minEpssClear": "지우기",
+      "minEpssHint": "0과 1 사이의 EPSS 확률을 입력하면 그 값 이상인 취약점만 표시됩니다."
+    },
+    "vex": {
+      "marker": "VEX",
+      "marker_tooltip": "이 취약점의 상태는 가져온 VEX 문서로 설정되었습니다.",
+      "choose_file": "파일 선택",
+      "no_file_chosen": "선택된 파일 없음",
+      "filter_label": "VEX",
+      "filter_suppressed": "VEX로 억제된 항목만",
+      "export_label": "VEX 내보내기",
+      "export_openvex": "OpenVEX",
+      "export_cyclonedx": "CycloneDX VEX",
+      "export_downloading": "다운로드 중…",
+      "import_label": "VEX 가져오기",
+      "import_button": "VEX 가져오기",
+      "import_role_gated": "VEX 문서를 가져오려면 팀 관리자 권한이 필요합니다.",
+      "import_title": "VEX 문서 가져오기",
+      "import_description": "OpenVEX 또는 CycloneDX VEX 문서를 업로드하면 일치하는 취약점이 자동으로 전이됩니다. 형식은 자동으로 감지됩니다.",
+      "import_file_label": "VEX 문서",
+      "import_file_hint": "JSON 파일 (OpenVEX 또는 CycloneDX VEX).",
+      "import_submit": "가져오기",
+      "import_uploading": "가져오는 중…",
+      "import_close": "닫기",
+      "import_error_forbidden": "이 프로젝트에 VEX를 가져올 권한이 없습니다. 팀 관리자 권한이 필요합니다.",
+      "import_error_not_found": "프로젝트를 찾을 수 없거나 접근할 수 없습니다.",
+      "import_error_too_large": "VEX 문서가 너무 커서 가져올 수 없습니다.",
+      "import_error_malformed": "문서를 OpenVEX 또는 CycloneDX VEX로 해석할 수 없습니다.",
+      "import_error_generic": "VEX 가져오기에 실패했습니다. 다시 시도해 주세요.",
+      "format_openvex": "OpenVEX",
+      "format_cyclonedx": "CycloneDX VEX",
+      "summary_matched": "일치",
+      "summary_applied": "적용",
+      "summary_skipped": "건너뜀",
+      "summary_errors_heading": "건너뛴 구문 ({{count}})",
+      "skip_reason": {
+        "unknown_vulnerability": "알 수 없는 취약점",
+        "unknown_component": "알 수 없는 컴포넌트",
+        "ambiguous_match": "모호한 일치",
+        "unmapped_status": "매핑되지 않은 상태",
+        "illegal_transition": "허용되지 않는 전이",
+        "already_at_target": "이미 대상 상태",
+        "forbidden_transition": "금지된 전이",
+        "malformed_statement": "잘못된 구문"
+      },
+      "origin_heading": "VEX 출처",
+      "origin_empty": "기록된 문서 출처가 없습니다.",
+      "origin_author": "작성자",
+      "origin_id": "문서 ID",
+      "origin_timestamp": "타임스탬프",
+      "origin_vex_status": "VEX 상태",
+      "origin_imported_at": "가져온 시각",
+      "origin_justification": "근거"
+    },
+    "severity": {
+      "critical": "치명",
+      "high": "높음",
+      "medium": "중간",
+      "low": "낮음",
+      "info": "정보",
+      "unknown": "알 수 없음"
+    },
+    "status": {
+      "new": "신규",
+      "analyzing": "분석 중",
+      "exploitable": "악용 가능",
+      "not_affected": "해당 없음",
+      "false_positive": "오탐",
+      "suppressed": "억제됨",
+      "fixed": "수정됨"
+    },
+    "bulk": {
+      "select_all_aria": "현재 페이지의 모든 항목 선택",
+      "selected": "{{count}}건 선택됨",
+      "target_label": "상태 변경",
+      "target_placeholder": "상태 선택…",
+      "apply": "적용",
+      "applying": "적용 중…",
+      "clear": "선택 해제",
+      "result_title": "{{succeeded}}건 성공 · {{failed}}건 실패 (총 {{total}}건)",
+      "result_dismiss": "닫기",
+      "more_failures": "외 {{count}}건",
+      "error_code": {
+        "not_found": "이 프로젝트에서 찾을 수 없음",
+        "forbidden": "권한이 없습니다",
+        "invalid_transition": "허용되지 않는 전이",
+        "envelope_error": "요청 실패",
+        "unknown": "오류"
+      }
+    },
+    "toolbar": {
+      "search_label": "검색",
+      "search_placeholder": "CVE ID, 요약, 컴포넌트로 검색",
+      "status_label": "상태",
+      "reachable_label": "도달 가능성",
+      "reachable_any": "전체",
+      "reachable_option": {
+        "true": "도달 가능",
+        "false": "도달 불가",
+        "unknown": "미분석"
+      },
+      "report_label": "보고서",
+      "download_pdf": "PDF 보고서 다운로드",
+      "download_pdf_generating": "생성 중…"
+    },
+    "empty": {
+      "title": "조건에 맞는 취약점이 없습니다",
+      "subtitle": "필터를 조정하거나 다음 스캔을 기다려 주세요."
+    },
+    "errors": {
+      "load_failed": "취약점을 불러오지 못했습니다."
+    },
+    "detail_page": {
+      "breadcrumb_aria": "탐색 경로",
+      "breadcrumb": {
+        "projects": "프로젝트",
+        "vulnerabilities": "취약점"
+      },
+      "back_link": "취약점 목록으로 돌아가기",
+      "title_loading": "취약점 정보를 불러오는 중...",
+      "not_found": "취약점을 찾을 수 없습니다.",
+      "errors": {
+        "not_found": "취약점을 찾을 수 없습니다.",
+        "forbidden": "이 취약점을 조회할 권한이 없습니다.",
+        "unknown": "취약점을 불러오지 못했습니다. 다시 시도해 주세요."
+      },
+      "next_steps": {
+        "heading": "다음 작업",
+        "triage_heading": "트리아지",
+        "triage_status_label": "상태",
+        "remediation_heading": "수정",
+        "upgrade_compact_label": "권장 업그레이드",
+        "no_remediation": "권장 수정안이 없습니다."
+      }
+    },
+    "drawer": {
+      "loading_title": "취약점 불러오는 중…",
+      "loading_subtitle": "CVE 상세 정보를 가져오고 있습니다.",
+      "subtitle": "상태: {{status}}",
+      "open_full_view": "전체 화면으로 보기",
+      "cve_id_label": "CVE ID",
+      "cvss_label": "CVSS",
+      "epss_label": "EPSS",
+      "cvss_vector_label": "벡터",
+      "summary_heading": "요약",
+      "summary_empty": "이 취약점에 대한 요약이 없습니다.",
+      "references_heading": "참조 ({{count}})",
+      "references_empty": "외부 참조가 제공되지 않았습니다.",
+      "reference_default_label": "REF",
+      "affected_heading": "영향 컴포넌트 ({{count}})",
+      "affected_empty": "이 취약점에 연결된 영향 컴포넌트가 없습니다.",
+      "affected_fixed_in": "수정 버전",
+      "upgrade_heading": "권장 업그레이드",
+      "upgrade_to": "업그레이드 버전",
+      "upgrade_direct": "직접 의존성",
+      "upgrade_max_severity": "최고 심각도: {{severity}}",
+      "upgrade_reason": {
+        "no_fix_version": "권장 불가: 이 컴포넌트의 미해결 CVE 중 하나 이상에 알려진 수정 버전이 없습니다.",
+        "unparseable_version": "권장 불가: 제공된 수정 버전을 해석할 수 없습니다."
+      },
+      "analysis_heading": "분석",
+      "justification_label": "사유",
+      "justification_placeholder": "이 취약점을 새 상태로 변경하는 이유를 설명해 주세요.",
+      "justification_count": "{{count}} / {{max}}자",
+      "actions_label": "상태 변경",
+      "actions_empty": "현재 상태에서 가능한 전이가 없습니다.",
+      "action_saving": "저장 중…",
+      "role_gated_tooltip": "억제 처리는 팀 관리자 권한이 필요합니다.",
+      "action": {
+        "new": "신규로 다시 열기",
+        "analyzing": "분석 시작",
+        "exploitable": "악용 가능으로 표시",
+        "not_affected": "해당 없음으로 표시",
+        "false_positive": "오탐으로 표시",
+        "suppressed": "억제",
+        "fixed": "수정됨으로 표시"
+      },
+      "history_heading": "상태 이력 ({{count}})",
+      "history_empty": "아직 기록된 상태 변경이 없습니다.",
+      "history_initial": "최초 상태",
+      "history_actor": "변경자: {{id}}",
+      "history_actor_system": "시스템 변경",
+      "errors": {
+        "load_failed": "취약점을 불러오지 못했습니다.",
+        "update_failed": "상태를 변경하지 못했습니다.",
+        "conflict": "다른 사용자가 이 취약점을 먼저 변경했습니다. 다시 불러와 최신 상태를 확인해 주세요.",
+        "conflict_reload": "다시 불러오기"
+      }
+    }
+  },
+  "licenses": {
+    "tab_label": "라이선스",
+    "summary": "전체 {{total}}개 중 {{loaded}}개 로드됨.",
+    "distribution": {
+      "title": "라이선스 분포",
+      "subtitle": "최근 스캔에서 컴포넌트가 보유한 라이선스 기준 분포입니다.",
+      "aria": "라이선스 발견 {{total}}건의 분포",
+      "empty": "표시할 라이선스 발견 항목이 없습니다."
+    },
+    "toolbar": {
+      "search_label": "검색",
+      "search_placeholder": "SPDX ID 또는 이름으로 검색",
+      "filter_category": "카테고리",
+      "filter_kind": "분류",
+      "sort_label": "정렬 기준",
+      "sort": {
+        "category": "리스크 (금지 우선)",
+        "name": "이름",
+        "spdx_id": "SPDX ID",
+        "affected_count": "영향 컴포넌트 수"
+      },
+      "order_label": "순서",
+      "order_asc": "오름차순",
+      "order_desc": "내림차순"
+    },
+    "kind": {
+      "declared": "선언됨",
+      "concluded": "확정됨",
+      "detected": "검출됨"
+    },
+    "column": {
+      "spdx_id": "SPDX ID",
+      "name": "라이선스",
+      "category": "카테고리",
+      "kind": "분류",
+      "affected_count": "영향 컴포넌트 수"
+    },
+    "row": {
+      "no_spdx_id": "—"
+    },
+    "empty": {
+      "title": "라이선스 발견 항목이 없습니다",
+      "description": "스캔을 실행하면 라이선스 데이터가 채워집니다.",
+      "filtered": {
+        "title": "일치 항목이 없습니다",
+        "description": "현재 필터에 맞는 라이선스가 없습니다."
+      }
+    },
+    "errors": {
+      "load_list": "라이선스를 불러오지 못했습니다.",
+      "load_finding": "라이선스 상세 정보를 불러오지 못했습니다.",
+      "not_found": "해당 라이선스 발견 항목을 찾을 수 없습니다."
+    },
+    "drawer": {
+      "title": "라이선스 상세",
+      "loading_title": "라이선스 불러오는 중…",
+      "loading_subtitle": "라이선스 상세 정보를 가져오고 있습니다.",
+      "subtitle": "분류: {{kind}}",
+      "section": {
+        "metadata": "라이선스",
+        "flags": "플래그",
+        "ort_match": "ORT 매치",
+        "affected": "영향 컴포넌트 ({{count}})"
+      },
+      "metadata": {
+        "spdx_id_label": "SPDX ID",
+        "name_label": "이름",
+        "category_label": "카테고리",
+        "kind_label": "분류"
+      },
+      "flag": {
+        "osi_approved": "OSI 승인",
+        "fsf_libre": "FSF 자유 소프트웨어",
+        "deprecated": "사용 중단된 SPDX ID"
+      },
+      "reference_url_label": "참조",
+      "ort_match": {
+        "empty": "ORT 매치 데이터가 없습니다.",
+        "unparseable": "ORT 매치 데이터를 표시할 수 있는 형식이 아닙니다.",
+        "show": "상세 보기",
+        "hide": "상세 숨기기",
+        "field": {
+          "rule_name": "규칙",
+          "severity": "심각도",
+          "message": "메시지",
+          "license_finding": "라이선스 발견",
+          "matched_text": "매칭된 텍스트",
+          "score": "점수",
+          "copyright": "저작권"
+        }
+      },
+      "affected": {
+        "empty": "영향 컴포넌트가 없습니다.",
+        "source_path_label": "출처",
+        "kind_label": "분류"
+      },
+      "affected_truncated": "전체 {{total}}개 중 {{shown}}개를 표시합니다. 컴포넌트 탭에서 전체 목록을 확인하세요.",
+      "cross_link_component": "컴포넌트 보기"
+    }
+  },
+  "obligations": {
+    "summary": "{{total}}개 중 {{loaded}}개 표시",
+    "distribution": {
+      "label": "종류별"
+    },
+    "kind": {
+      "attribution": "저작자 표시",
+      "notice": "NOTICE 보존",
+      "source-disclosure": "소스 공개",
+      "copyleft": "카피레프트",
+      "modifications": "변경 표시",
+      "dynamic-linking": "동적 링킹",
+      "no-endorsement": "보증 금지"
+    },
+    "column": {
+      "spdx_id": "SPDX",
+      "license_name": "라이선스",
+      "category": "분류",
+      "kind": "종류",
+      "affected_count": "컴포넌트"
+    },
+    "toolbar": {
+      "search_label": "검색",
+      "search_placeholder": "SPDX, 라이선스명, 종류, 본문 검색…",
+      "filter_kind": "종류",
+      "filter_category": "분류",
+      "sort_label": "정렬 기준",
+      "sort": {
+        "category": "라이선스 분류",
+        "license_name": "라이선스명",
+        "kind": "의무 종류",
+        "affected_count": "영향 컴포넌트"
+      },
+      "order_label": "정렬 순서",
+      "order_asc": "오름차순",
+      "order_desc": "내림차순",
+      "notice_label": "NOTICE 파일",
+      "notice_download": "NOTICE 다운로드",
+      "notice_downloading": "생성 중…",
+      "notice_format_label": "NOTICE 형식",
+      "notice_format_text": "텍스트",
+      "notice_format_html": "HTML"
+    },
+    "empty": {
+      "title": "기록된 의무사항 없음",
+      "description": "이 프로젝트의 최근 스캔에서 카탈로그 의무사항이 발견되지 않았습니다. 스캔을 실행하거나 라이선스 카탈로그를 시드하여 채워 주세요."
+    },
+    "errors": {
+      "load_list": "의무사항 목록을 불러오지 못했습니다.",
+      "load_detail": "이 의무사항을 불러오지 못했습니다."
+    },
+    "drawer": {
+      "title": "의무: {{kind}}",
+      "subtitle": "{{license}} 에 부속",
+      "loading_title": "의무사항 불러오는 중…",
+      "loading_subtitle": "카탈로그 정보를 가져옵니다.",
+      "metadata": {
+        "license_label": "라이선스",
+        "license_reference_label": "라이선스 참조",
+        "reference_label": "참조"
+      },
+      "section": {
+        "obligation": "의무사항",
+        "affected": "영향 컴포넌트 ({{count}})"
+      },
+      "affected": {
+        "empty": "최근 스캔에 영향 컴포넌트가 없습니다."
+      },
+      "affected_truncated": "전체 {{total}}개 중 {{shown}}개를 표시합니다. 컴포넌트 탭에서 전체 목록을 확인하세요.",
+      "text_truncated": "서버에서 의무사항 본문이 잘렸습니다. 전체 본문은 카탈로그 원본을 확인하세요."
+    }
+  },
+  "sbom": {
+    "title": "SBOM (소프트웨어 명세)",
+    "subtitle": "최근 스캔의 SBOM을 CycloneDX 또는 SPDX 형식으로 다운로드합니다.",
+    "downloading": "다운로드 중…",
+    "last_scan_at": "최근 스캔: {{date}}",
+    "no_scan_yet": "아직 스캔 이력이 없습니다. 스캔을 실행하면 SBOM이 생성됩니다.",
+    "format": {
+      "cyclonedx_json": "CycloneDX JSON 다운로드",
+      "cyclonedx_xml": "CycloneDX XML 다운로드",
+      "spdx_json": "SPDX JSON 다운로드",
+      "spdx_tv": "SPDX Tag-Value 다운로드"
+    },
+    "errors": {
+      "download_failed": "SBOM을 다운로드하지 못했습니다."
+    },
+    "signature": {
+      "title": "서명 및 검증",
+      "subtitle": "cosign으로 이 프로젝트의 서명된 SBOM을 오프라인에서 검증하는 데 필요한 모든 파일을 다운로드합니다.",
+      "download_bundle": "서명 번들 다운로드 (.zip)",
+      "downloading": "다운로드 중…",
+      "individual_label": "개별 산출물",
+      "artifact": {
+        "signature": "서명 (.sig)",
+        "public_key": "공개 키",
+        "attestation": "어테스테이션",
+        "certificate": "인증서",
+        "attestation_certificate": "어테스테이션 인증서"
+      },
+      "not_applicable": "{{artifact}}은(는) keyless(sigstore) 서명에서만 제공됩니다. 키 기반 서명은 공개 키로 검증하세요.",
+      "unsigned": "최근 스캔에 서명이 없습니다. SBOM 서명이 비활성화되었거나 이 스캔이 서명되지 않았습니다.",
+      "verify_hint": "번들에는 cosign verify-blob 단계별 안내가 담긴 VERIFY.md가 포함됩니다.",
+      "verify_docs_link": "검증 가이드"
+    }
+  },
+  "source": {
+    "empty": {
+      "title": "이 스캔에 보존된 소스가 없습니다",
+      "description": "이 스캔은 분석한 소스 파일 사본을 보존하지 않았습니다. 소스 파일 뷰어를 사용하려면 프로젝트를 다시 스캔하세요."
+    },
+    "tree": {
+      "empty_dir": "빈 디렉터리",
+      "errors": {
+        "load": "이 디렉터리를 불러올 수 없습니다."
+      }
+    },
+    "viewer": {
+      "no_selection": "트리에서 파일을 선택하면 소스와 라이선스 매치를 볼 수 있습니다.",
+      "binary": "바이너리 파일 — 미리보기를 사용할 수 없습니다.",
+      "truncated": "이 파일은 뷰어에 맞게 잘렸습니다. 전체 내용을 보려면 다운로드하세요.",
+      "download": "파일 다운로드",
+      "byte_size": "{{bytes}}바이트",
+      "license_match": "라이선스 매치: {{matches}}",
+      "errors": {
+        "load": "이 파일을 불러올 수 없습니다."
+      }
+    }
+  },
+  "settings": {
+    "title": "프로젝트 설정",
+    "subtitle": "프로젝트 메타데이터를 수정하거나 보관 처리합니다.",
+    "field": {
+      "name": "이름",
+      "description": "설명",
+      "git_url": "Git URL",
+      "git_url_placeholder": "https://github.com/org/repo",
+      "default_branch": "기본 브랜치",
+      "default_branch_placeholder": "main"
+    },
+    "errors": {
+      "name_required": "프로젝트 이름은 필수입니다",
+      "name_max": "이름은 100자 이하여야 합니다",
+      "description_max": "설명은 500자 이하여야 합니다",
+      "git_url_invalid": "유효한 URL이어야 합니다 (https:// 또는 http://)",
+      "default_branch_max": "기본 브랜치는 255자 이하여야 합니다"
+    },
+    "action": {
+      "save": "변경사항 저장",
+      "saving": "저장 중…",
+      "cancel": "취소",
+      "archive": "프로젝트 보관",
+      "archiving": "보관 처리 중…",
+      "confirm_archive": "보관 확인",
+      "unarchive": "보관 해제",
+      "unarchiving": "복구 중…"
+    },
+    "git_credential": {
+      "title": "Git 자격 증명 (비공개 저장소)",
+      "help": "토큰은 암호화되어 저장되며 비공개 https 저장소를 클론하는 데 사용됩니다. SSH URL은 키 자료가 필요하며 아직 지원되지 않습니다.",
+      "field_label": "액세스 토큰",
+      "field_placeholder": "개인 액세스 토큰",
+      "configured_badge": "자격 증명 설정됨",
+      "save": "자격 증명 저장",
+      "saving": "저장 중…",
+      "replace": "교체",
+      "remove": "삭제",
+      "removing": "삭제 중…",
+      "cancel": "취소"
+    },
+    "archive": {
+      "active_title": "프로젝트 보관",
+      "active_subtitle": "보관된 프로젝트는 목록에서 숨겨지지만 스캔 이력은 유지됩니다.",
+      "archived_title": "보관됨",
+      "archived_subtitle": "이 프로젝트는 보관 상태입니다. 보관 해제 시 스캔을 재개할 수 있습니다.",
+      "confirm": "보관 처리 시 목록에서 숨겨집니다. 계속하시겠습니까?"
+    },
+    "toast": {
+      "saved": "설정이 저장되었습니다.",
+      "archived": "프로젝트가 보관되었습니다.",
+      "unarchived": "프로젝트가 복구되었습니다."
+    }
+  },
+  "releases": {
+    "title": "버전",
+    "subtitle": "성공한 각 스캔이 버전 스냅샷입니다. 스냅샷을 열어 해당 시점의 전체 현황을 확인하세요.",
+    "empty": "아직 성공한 스캔이 없습니다 — 스캔을 실행하면 버전 스냅샷이 생성됩니다.",
+    "view_snapshot": "스냅샷 보기",
+    "view_snapshot_aria": "{{label}} 스냅샷 보기",
+    "severity_none": "취약점 없음",
+    "col": {
+      "release": "버전",
+      "date": "날짜",
+      "risk": "리스크",
+      "severity": "심각도",
+      "gate": "게이트",
+      "actions": "작업"
+    },
+    "severity_abbr": {
+      "critical": "C",
+      "high": "H",
+      "medium": "M",
+      "low": "L"
+    },
+    "gate": {
+      "pass": "통과",
+      "fail": "실패"
+    },
+    "errors": {
+      "load_failed": "버전를 불러오지 못했습니다. 다시 시도해 주세요."
+    }
+  },
+  "release_switcher": {
+    "menu_label": "버전",
+    "trigger_latest": "버전: {{label}} · 최신",
+    "trigger_historical": "버전: {{label}} · 읽기 전용",
+    "trigger_loading": "버전: …",
+    "loading": "버전 불러오는 중…",
+    "none": "버전 없음",
+    "latest": "최신",
+    "latest_hint": "가장 최근 성공한 스캔의 실시간 보기",
+    "latest_tag": "최신",
+    "gate_fail": "실패",
+    "item_aria": "{{label}} 스냅샷 보기"
+  },
+  "snapshot": {
+    "banner": "{{label}} 보는 중 — 과거 스냅샷 (읽기 전용)",
+    "back_to_latest": "최신으로 돌아가기",
+    "readonly_tooltip": "읽기 전용 과거 스냅샷"
+  },
+  "compare": {
+    "title": "버전 비교",
+    "subtitle": "두 버전 스냅샷 사이에 무엇이 바뀌었는지 확인합니다.",
+    "open_button": "비교",
+    "open_button_aria": "최근 두 버전를 비교",
+    "open_disabled_hint": "성공한 스캔이 최소 2개 필요합니다",
+    "switcher_item": "버전 비교…",
+    "breadcrumb_compare": "비교",
+    "back_to_project": "프로젝트로 돌아가기",
+    "selector": {
+      "base_label": "기준",
+      "target_label": "대상",
+      "base_aria": "기준 버전 (이전)",
+      "target_aria": "대상 버전 (이후)",
+      "swap": "기준과 대상 바꾸기",
+      "menu_label": "버전",
+      "loading": "버전를 불러오는 중…",
+      "none": "버전가 아직 없습니다"
+    },
+    "missing_params": {
+      "title": "비교할 두 버전를 선택하세요",
+      "description": "위에서 기준 버전와 대상 버전를 선택하면 변경 사항이 표시됩니다."
+    },
+    "summary": {
+      "risk_score": "위험 점수",
+      "severity": "심각도",
+      "gate": "빌드 게이트",
+      "component_count": "컴포넌트",
+      "no_value": "—",
+      "no_change": "변경 없음",
+      "delta_increase_aria": "{{delta}}만큼 증가",
+      "delta_decrease_aria": "{{delta}}만큼 감소",
+      "gate_change_aria": "게이트가 {{base}}에서 {{target}}(으)로 변경됨",
+      "gate_pass": "통과",
+      "gate_fail": "실패",
+      "gate_none": "게이트 없음"
+    },
+    "components": {
+      "title": "컴포넌트",
+      "removed_header": "제거됨 ({{count}})",
+      "added_header": "추가됨 ({{count}})",
+      "changed_header": "변경됨 ({{count}})",
+      "removed_empty": "제거된 컴포넌트가 없습니다.",
+      "added_empty": "추가된 컴포넌트가 없습니다.",
+      "changed_empty": "버전이 변경된 컴포넌트가 없습니다.",
+      "version_change": "{{base}} → {{target}}"
+    },
+    "vulnerabilities": {
+      "title": "취약점",
+      "resolved_header": "해결됨 ({{count}})",
+      "introduced_header": "새로 발생 ({{count}})",
+      "resolved_empty": "해결된 취약점이 없습니다.",
+      "introduced_empty": "새로 발생한 취약점이 없습니다.",
+      "at_component": "{{name}}@{{version}}"
+    },
+    "licenses": {
+      "title": "라이선스",
+      "col_category": "분류",
+      "col_base": "기준",
+      "col_target": "대상",
+      "category": {
+        "prohibited": "금지",
+        "conditional": "조건부",
+        "permissive": "허용",
+        "unknown": "알 수 없음"
+      },
+      "introduced_badge": "신규",
+      "introduced_aria": "대상에서 기준에 없던 {{category}} 라이선스가 새로 추가되었습니다."
+    },
+    "empty": {
+      "title": "두 버전 사이에 차이가 없습니다.",
+      "description": "두 스냅샷의 컴포넌트, 취약점, 라이선스가 모두 동일합니다."
+    },
+    "truncated": "일부 목록은 1000개 항목으로 제한되었습니다.",
+    "loading_aria": "버전 비교를 불러오는 중",
+    "errors": {
+      "title": "비교를 불러올 수 없습니다",
+      "not_found": "선택한 버전 중 하나를 찾을 수 없습니다. 삭제되었을 수 있습니다.",
+      "forbidden": "이 프로젝트의 버전를 비교할 권한이 없습니다.",
+      "unknown": "비교를 불러올 수 없습니다. 다시 시도해 주세요."
+    }
+  },
+  "reports": {
+    "generate": {
+      "heading": "생성",
+      "subheading": "프로젝트 산출물을 생성하거나 내보냅니다. 각 바로가기는 해당 작업이 있는 도메인 탭으로 이동합니다."
+    },
+    "sbom": {
+      "heading": "SBOM 다운로드",
+      "subheading": "최신 스캔의 CycloneDX 또는 SPDX SBOM과 서명·검증 번들을 다운로드합니다."
+    },
+    "cards": {
+      "notice": {
+        "title": "NOTICE",
+        "description": "라이선스 의무사항이 포함된 저작자 표시 NOTICE 파일.",
+        "action": "컴플라이언스 탭으로 이동"
+      },
+      "sbom": {
+        "title": "SBOM",
+        "description": "CycloneDX 또는 SPDX 형식의 소프트웨어 부품 명세서.",
+        "action": "SBOM 다운로드로 이동"
+      },
+      "vuln-pdf": {
+        "title": "취약점 PDF",
+        "description": "심각도·라이선스 분포 및 CVE 목록이 포함된 리스크 리포트.",
+        "action": "취약점 탭으로 이동"
+      },
+      "vex": {
+        "title": "VEX",
+        "description": "프로젝트 취약점 진술(VEX)을 내보내거나 가져옵니다.",
+        "action": "취약점 탭으로 이동"
+      }
+    },
+    "history": {
+      "heading": "최근 활동",
+      "subheading": "이 프로젝트의 다운로드 및 내보내기 이력 (최신 순).",
+      "columns": {
+        "when": "시간",
+        "who": "작업자",
+        "type": "종류",
+        "format": "형식",
+        "scan": "스캔",
+        "size": "크기"
+      },
+      "type": {
+        "notice": "NOTICE",
+        "sbom": "SBOM",
+        "vuln_pdf": "취약점 PDF",
+        "vex_export": "VEX"
+      },
+      "filter": {
+        "type_label": "종류",
+        "type_placeholder": "모든 종류",
+        "clear": "초기화"
+      },
+      "pagination": {
+        "prev": "이전",
+        "next": "다음",
+        "page_of": "{{total}} 페이지 중 {{page}} 페이지"
+      },
+      "empty": {
+        "title": "아직 다운로드 이력이 없습니다.",
+        "body": "왼쪽 바로가기에서 NOTICE, SBOM, 취약점 PDF 또는 VEX를 생성해 보세요."
+      },
+      "errors": {
+        "unavailable": "이 프로젝트의 리포트를 사용할 수 없습니다.",
+        "rate_limited": "요청이 너무 많습니다 — 잠시 후 다시 시도해 주세요.",
+        "generic": "리포트 이력을 불러올 수 없습니다. 다시 시도해 주세요."
+      },
+      "user_unknown": "삭제된 사용자",
+      "scan_unknown": "—",
+      "size_unknown": "—"
+    }
+  }
+}

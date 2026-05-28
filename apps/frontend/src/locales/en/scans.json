@@ -1,0 +1,171 @@
+{
+  "page": {
+    "title": "Scans",
+    "subtitle": "Scan queue across the projects you can access.",
+    "tab": {
+      "running": "Running",
+      "queued": "Queued",
+      "succeeded": "Succeeded",
+      "failed": "Failed",
+      "all": "All"
+    },
+    "column": {
+      "project": "Project",
+      "kind": "Kind",
+      "status": "Status",
+      "started": "Started",
+      "duration": "Duration",
+      "actions": "Actions"
+    },
+    "kind": {
+      "source": "Source",
+      "container": "Container"
+    },
+    "status": {
+      "queued": "Queued",
+      "running": "Running",
+      "succeeded": "Succeeded",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    },
+    "empty": "No scans match the current filter.",
+    "error": "Could not load scans.",
+    "pagination": {
+      "summary": "Page {{page}} of {{total}}",
+      "previous": "Previous",
+      "next": "Next"
+    }
+  },
+  "progress": {
+    "title": "Scan in progress",
+    "step_bootstrap": "Workspace prep",
+    "step_fetch": "Fetch source",
+    "step_cdxgen": "cdxgen (SBOM)",
+    "step_scancode": "ScanCode (license)",
+    "step_trivy": "Trivy (CVE match)",
+    "step_finalize": "Finalize",
+    "step_succeeded": "Scan completed",
+    "step_failed": "Scan failed",
+    "step_cancelled": "Scan cancelled",
+    "cancelled_notice": "This scan was cancelled. Any in-progress work has been stopped.",
+    "step_unknown": "Working…",
+    "reconnecting": "Reconnecting…",
+    "reconnect_attempt": "Attempt {{n}}",
+    "background_notice": "Scan continues in the background — you can close this panel.",
+    "log_toggle": "Per-step log",
+    "tool_log_toggle": "Tool log",
+    "open_full_log": "Open full log →",
+    "close": "Close",
+    "retry": "Retry",
+    "percent_label": "{{value}}%"
+  },
+  "detail": {
+    "title": "Scan {{shortId}}",
+    "download": "Download log",
+    "download_unavailable": "Scan log not available yet",
+    "empty": "Waiting for scan output…",
+    "filter_all": "All",
+    "filter_errors": "Errors only",
+    "back_to_project": "Back to project"
+  },
+  "cancel": {
+    "action": "Cancel scan",
+    "confirm": {
+      "title": "Cancel scan",
+      "message": "Cancel this scan? Any in-progress work will be stopped and the scan will be marked as cancelled.",
+      "confirm": "Cancel scan",
+      "dismiss": "Keep running"
+    },
+    "errors": {
+      "already_terminal": "This scan already finished and can no longer be cancelled.",
+      "not_found": "This scan no longer exists or you no longer have access to it.",
+      "forbidden": "You do not have permission to cancel this scan.",
+      "unknown": "Could not cancel the scan. Please try again."
+    }
+  },
+  "alerts": {
+    "dt_unavailable": "The vulnerability matcher is temporarily unavailable. Showing cached results."
+  },
+  "kind": {
+    "legend": "Scan type",
+    "source": "Source",
+    "container": "Container"
+  },
+  "container": {
+    "label": "Container image",
+    "placeholder": "alpine:3.19",
+    "hint": "Trivy scans the image's OS packages for vulnerabilities, e.g. ghcr.io/org/app:1.2.3.",
+    "subtitle": "Scan a container image for {{project}} with Trivy.",
+    "errors": {
+      "image_required": "Enter an image reference to scan."
+    }
+  },
+  "release": {
+    "label": "Release / version",
+    "placeholder": "v1.2.3",
+    "hint": "Optional. Tags this scan with a release label, e.g. v1.2.3.",
+    "chip_aria": "Release {{release}}"
+  },
+  "source": {
+    "title": "Start a scan",
+    "subtitle": "Choose how to provide the source for {{project}}.",
+    "method_legend": "Source provision method",
+    "method": {
+      "git": "Git URL",
+      "upload": "Upload .zip",
+      "folder": "Select folder"
+    },
+    "git": {
+      "label": "Configured Git URL",
+      "missing": "This project has no Git URL. Upload a .zip or select a folder instead, or add a Git URL in project settings.",
+      "credential_configured": "Private credential configured — used at clone time.",
+      "credential_missing_prefix": "Cloned as a public repository. For a private repo, add a token in",
+      "credential_settings_link": "Settings"
+    },
+    "upload": {
+      "label": "Source archive (.zip)",
+      "choose_file": "Choose file",
+      "no_file_chosen": "No file chosen",
+      "hint": "ZIP archive, up to {{max}}.",
+      "selected": "Selected: {{name}} ({{size}})"
+    },
+    "folder": {
+      "label": "Project folder",
+      "choose_folder": "Choose folder",
+      "no_folder_chosen": "No folder chosen",
+      "files_count": "{{count}} file(s) selected",
+      "hint": "The folder is zipped in your browser before upload, up to {{max}}.",
+      "selected": "{{count}} files selected ({{size}})",
+      "too_large": "The selected folder exceeds the {{max}} limit. Remove large directories and try again.",
+      "noisy": "Large directories detected: {{dirs}}. These will inflate the upload — consider excluding them."
+    },
+    "stage": {
+      "idle": "Preparing…",
+      "zipping": "Compressing folder…",
+      "uploading": "Uploading archive…",
+      "triggering": "Starting scan…"
+    },
+    "percent": "{{value}}%",
+    "start": "Start scan",
+    "starting": "Starting…",
+    "cancel": "Cancel"
+  },
+  "upload": {
+    "errors": {
+      "too_large": "The archive is too large. The limit is 100 MiB.",
+      "not_a_zip": "Only .zip archives are supported.",
+      "quota_exceeded": "This project has reached its storage quota.",
+      "not_found": "Project not found.",
+      "bad_request": "The upload could not be processed.",
+      "empty_folder": "The selected folder is empty.",
+      "network": "Upload failed due to a network error. Please try again.",
+      "unknown": "The upload failed. Please try again."
+    }
+  },
+  "close_codes": {
+    "auth_expired": "Session expired. Please sign in again.",
+    "forbidden": "You no longer have access to this scan.",
+    "not_found": "This scan no longer exists.",
+    "internal_error": "Connection lost. Reconnecting…"
+  }
+}

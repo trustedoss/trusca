@@ -1,0 +1,363 @@
+{
+  "nav": {
+    "admin": {
+      "entry": "Admin",
+      "users": "Users",
+      "teams": "Teams",
+      "scans": "Scan Queue",
+      "disk": "Disk",
+      "audit": "Audit Log",
+      "health": "System Health",
+      "backup": "Backups"
+    }
+  },
+  "admin": {
+    "users": {
+      "title": "Users",
+      "subtitle": "Manage roles, activation status, and password resets across the organization.",
+      "column": {
+        "email": "Email",
+        "full_name": "Name",
+        "role": "Role",
+        "active": "Status",
+        "last_login_at": "Last sign-in",
+        "team_count": "Teams",
+        "actions": "Actions"
+      },
+      "filter": {
+        "role_all": "All roles",
+        "active_all": "All statuses",
+        "active_only": "Active only",
+        "inactive_only": "Inactive only",
+        "search_placeholder": "Search by email or name"
+      },
+      "role": {
+        "super_admin": "Super Admin",
+        "team_admin": "Team Admin",
+        "developer": "Developer"
+      },
+      "status": {
+        "active": "Active",
+        "inactive": "Inactive"
+      },
+      "action": {
+        "change_role": "Change role",
+        "deactivate": "Deactivate",
+        "activate": "Activate",
+        "reset_password": "Reset password"
+      },
+      "confirm": {
+        "deactivate": "Deactivate this user? Active sessions will be revoked.",
+        "activate": "Re-activate this user?",
+        "reset_password": "Issue a password-reset link for this user?"
+      },
+      "form": {
+        "role_label": "Role",
+        "team_label": "Team",
+        "team_id_placeholder": "Team UUID (required for team_admin / developer)",
+        "save": "Save role"
+      },
+      "drawer": {
+        "memberships": "Team memberships",
+        "no_memberships": "This user has no team memberships.",
+        "scan_count": "Scans triggered",
+        "created_at": "Created",
+        "last_login_at": "Last sign-in",
+        "never": "Never"
+      },
+      "toast": {
+        "role_updated": "Role updated.",
+        "deactivated": "User deactivated.",
+        "activated": "User reactivated.",
+        "password_reset_sent": "Password-reset link issued."
+      },
+      "pagination": {
+        "page_size_label": "Rows per page",
+        "page_label": "Page {{page}} of {{total}}",
+        "previous": "Previous",
+        "next": "Next"
+      },
+      "empty": "No users match the current filters."
+    },
+    "teams": {
+      "title": "Teams",
+      "subtitle": "Create and manage teams, members, and project visibility.",
+      "column": {
+        "name": "Name",
+        "slug": "Slug",
+        "description": "Description",
+        "member_count": "Members",
+        "project_count": "Projects"
+      },
+      "filter": {
+        "search_placeholder": "Search by team name"
+      },
+      "action": {
+        "create": "New team",
+        "edit": "Edit",
+        "delete": "Delete team",
+        "add_member": "Add member",
+        "remove_member": "Remove"
+      },
+      "confirm": {
+        "delete": "Delete this team? Projects owned by the team will be archived.",
+        "remove_member": "Remove this member from the team?"
+      },
+      "form": {
+        "name_label": "Name",
+        "slug_label": "Slug",
+        "slug_help": "Lower-case letters, digits, hyphens. Max 64 characters.",
+        "description_label": "Description",
+        "user_id_label": "User UUID",
+        "role_label": "Role",
+        "save": "Save team",
+        "create": "Create team",
+        "add": "Add member",
+        "cancel": "Cancel"
+      },
+      "drawer": {
+        "members": "Members",
+        "no_members": "This team has no members yet.",
+        "project_count": "Projects",
+        "created_at": "Created"
+      },
+      "toast": {
+        "created": "Team created.",
+        "updated": "Team updated.",
+        "deleted": "Team deleted.",
+        "member_added": "Member added.",
+        "member_removed": "Member removed."
+      },
+      "empty": "No teams match the current filters."
+    },
+    "scans": {
+      "title": "Scan Queue",
+      "subtitle": "Cross-team view of every scan. Cancel runaway jobs from here.",
+      "tabs": {
+        "running": "Running",
+        "queued": "Queued",
+        "failed": "Failed",
+        "all": "All"
+      },
+      "column": {
+        "id": "Scan",
+        "project": "Project",
+        "team": "Team",
+        "status": "Status",
+        "kind": "Kind",
+        "started_at": "Started",
+        "duration": "Duration"
+      },
+      "status": {
+        "queued": "Queued",
+        "running": "Running",
+        "succeeded": "Succeeded",
+        "failed": "Failed",
+        "cancelled": "Cancelled"
+      },
+      "actions": {
+        "cancel": "Cancel scan",
+        "refresh": "Refresh"
+      },
+      "confirm": {
+        "cancel": "Cancel this scan? The Celery task will be revoked and the run will be marked cancelled."
+      },
+      "drawer": {
+        "title": "Scan {{id}}",
+        "project_label": "Project",
+        "team_label": "Team",
+        "kind_label": "Kind",
+        "status_label": "Status",
+        "started_at_label": "Started",
+        "finished_at_label": "Finished",
+        "duration_label": "Duration",
+        "error_label": "Error",
+        "no_error": "—",
+        "requested_by_label": "Requested by"
+      },
+      "toast": {
+        "cancelled": "Scan cancelled."
+      },
+      "empty": "No scans match the current filter."
+    },
+    "disk": {
+      "title": "Disk",
+      "subtitle": "Workspace and database storage telemetry.",
+      "actions": {
+        "refresh": "Refresh"
+      },
+      "card": {
+        "workspace": "Workspace",
+        "postgres": "PostgreSQL",
+        "redis": "Redis"
+      },
+      "label": {
+        "path": "Path",
+        "used": "Used",
+        "free": "Free",
+        "total": "Total",
+        "used_pct": "Usage",
+        "warning_threshold": "Warning at",
+        "critical_threshold": "Critical at"
+      },
+      "status": {
+        "ok": "Healthy",
+        "degraded": "Approaching limit",
+        "down": "Critical",
+        "unavailable": "Unavailable"
+      },
+      "errors": {
+        "unavailable": "Telemetry is unavailable for this volume. Check the server logs for details."
+      },
+      "collected_at": "Collected {{when}}"
+    },
+    "audit": {
+      "title": "Audit Log",
+      "subtitle": "Search every audited mutation across the portal. Sensitive columns (email, name) appear as sha256 fingerprints.",
+      "filter": {
+        "actor_user_id": "Actor user ID",
+        "target_table_label": "Target table",
+        "target_table_all": "All tables",
+        "action_label": "Action",
+        "action_placeholder": "create / update / delete …",
+        "from_label": "From",
+        "to_label": "To",
+        "q_label": "Diff search",
+        "q_placeholder": "Substring match against the diff JSON",
+        "q_pii_hint": "PII columns are stored as sha256 fingerprints. Plain-text search will not match emails or names."
+      },
+      "column": {
+        "created_at": "When",
+        "actor": "Actor",
+        "target_table": "Table",
+        "target_id": "Target",
+        "action": "Action",
+        "request_id": "Request ID"
+      },
+      "actions": {
+        "export_csv": "Export CSV",
+        "refresh": "Refresh"
+      },
+      "drawer": {
+        "title": "Audit entry",
+        "request_label": "Request ID",
+        "diff_label": "Diff",
+        "no_diff": "No diff captured.",
+        "sha256_pill": "sha256:{{prefix}}…"
+      },
+      "empty": "No audit rows match the current filters.",
+      "toast": {
+        "csv_started": "CSV export started."
+      }
+    },
+    "health": {
+      "title": "System Health",
+      "subtitle": "Aggregated probe status for every infrastructure component.",
+      "actions": {
+        "refresh": "Refresh"
+      },
+      "component": {
+        "postgres": "PostgreSQL",
+        "redis": "Redis",
+        "celery": "Celery worker",
+        "disk": "Disk",
+        "active_scans": "Active scans",
+        "last_24h_errors": "Errors (last 24h)"
+      },
+      "status": {
+        "ok": "Healthy",
+        "degraded": "Degraded",
+        "down": "Down"
+      },
+      "no_detail": "—",
+      "updated_at": "Updated {{when}}"
+    },
+    "trivy_db": {
+      "heading": "Trivy vulnerability DB",
+      "kpi": {
+        "last_update": "Last update",
+        "vuln_count": "Vulnerabilities tracked",
+        "db_version": "DB version",
+        "next_refresh": "Next refresh in {{value}}"
+      },
+      "freshness": {
+        "fresh": "Fresh",
+        "stale": "Stale",
+        "very_stale": "Very stale"
+      },
+      "empty": {
+        "title": "Trivy DB not yet downloaded",
+        "description": "Database will download automatically on the next worker boot."
+      },
+      "footer": {
+        "cache_dir": "Cache",
+        "repository": "Repository"
+      }
+    },
+    "backup": {
+      "title": "Backups",
+      "subtitle": "Automated daily backups + manual triggers + restore.",
+      "column": {
+        "name": "Name",
+        "kind": "Kind",
+        "created_at": "Created",
+        "size": "Size",
+        "db_revision": "DB revision",
+        "actions": "Actions"
+      },
+      "kind": {
+        "auto": "Auto",
+        "manual": "Manual"
+      },
+      "actions": {
+        "manual_trigger": "Run manual backup now",
+        "choose_file": "Upload and restore…",
+        "refresh": "Refresh",
+        "download": "Download",
+        "delete": "Delete",
+        "restore": "Restore"
+      },
+      "tooltip": {
+        "auto_pruned": "Auto backups are pruned after 7 days."
+      },
+      "confirm": {
+        "delete": "Delete the backup \"{{name}}\"? This is irreversible."
+      },
+      "restore": {
+        "warning": "Restoring will overwrite ALL data including users, projects, and scans. This is irreversible.",
+        "type_to_confirm": "Type '{{token}}' to confirm",
+        "queued_banner": "Restore queued. The backend will pause; reload after 30 seconds."
+      },
+      "toast": {
+        "manual_triggered": "Manual backup queued.",
+        "deleted": "Backup deleted.",
+        "download_started": "Download started.",
+        "restore_queued": "Restore queued."
+      },
+      "empty": "No backups yet. Trigger a manual backup or wait for the nightly job."
+    },
+    "errors": {
+      "last_super_admin_protected": "You cannot demote or deactivate the only Super Admin.",
+      "cannot_modify_self": "You cannot perform this action on your own account.",
+      "last_team_admin_protected": "You cannot remove the only Team Admin while other members remain.",
+      "team_has_active_scans": "This team has scans currently running. Wait for them to finish or cancel them first.",
+      "invalid_role_assignment": "The selected role and team combination is not valid.",
+      "slug_conflict": "A team with that slug already exists.",
+      "scan_already_cancelled": "This scan is already terminated and cannot be cancelled again.",
+      "scan_not_found": "Scan not found.",
+      "audit_export_too_large": "The export exceeds 100,000 rows. Narrow the filter window before retrying.",
+      "unknown": "Something went wrong. Please try again."
+    },
+    "not_found": {
+      "title": "Page not found",
+      "subtitle": "The page you are looking for does not exist.",
+      "back_home": "Back to home"
+    },
+    "actions": {
+      "cancel": "Cancel",
+      "confirm": "Confirm",
+      "save": "Save",
+      "close": "Close"
+    }
+  }
+}

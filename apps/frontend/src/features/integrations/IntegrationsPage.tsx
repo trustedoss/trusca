@@ -1,0 +1,413 @@
+/**
+ * IntegrationsPage — chore C.
+ *
+ * Renders the "Integrations" route. Two stacked sections:
+ *   1. API keys — paginated table + create dialog + one-shot reveal dialog
+ *      + revoke confirmation. Backed by /v1/api-keys.
+ *   2. Webhook URLs — informational copy of the GitHub / GitLab receiver
+ *      URLs so users know where to configure their repository hooks.
+ *
+ * Design: matches the compact 40 px row density used by ScansPage /
+ * ApprovalsPage / AdminScansPage. No hardcoded color literals — every
+ * tone comes from existing Tailwind tokens. All visible strings flow
+ * through `t()` (CLAUDE.md i18n rule).
+ */
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Copy, KeyRound, Plus, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { useTranslation } from "react-i18next";
+
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { AdminToast, type AdminToastMessage } from "@/features/admin/components/AdminToast";
+import { CreateApiKeyDialog } from "@/features/integrations/CreateApiKeyDialog";
+import { RevealApiKeyDialog } from "@/features/integrations/RevealApiKeyDialog";
+import { RevokeApiKeyDialog } from "@/features/integrations/RevokeApiKeyDialog";
+import { useApiKeys } from "@/features/integrations/useApiKeys";
+import { createApiKey, revokeApiKey } from "@/lib/apiKeysApi";
+import { getApiBase } from "@/lib/apiBase";
+import { ProblemError } from "@/lib/problem";
+import { formatRelativeToNow } from "@/lib/relativeTime";
+import { cn } from "@/lib/utils";
+import type {
+  APIKeyCreateOut,
+  APIKeyCreatePayload,
+  APIKeyListItem,
+  APIKeyScope,
+} from "@/types/apiKey";
+
+const PAGE_SIZE = 20;
+
+function ScopeBadge({ scope }: { scope: APIKeyScope }) {
+  const { t } = useTranslation("integrations");
+  const toneClass: Record<APIKeyScope, string> = {
+    org: "border-purple-300 bg-purple-50 text-purple-700",
+    team: "border-blue-300 bg-blue-50 text-blue-700",
+    project: "border-emerald-300 bg-emerald-50 text-emerald-700",
+  };
+  return (
+    <Badge
+      variant="outline"
+      className={cn(toneClass[scope])}
+      data-testid="integrations-scope-badge"
+      data-scope={scope}
+    >
+      {t(`api_keys.scope.${scope}`)}
+    </Badge>
+  );
+}
+
+function WebhookCard({
+  testId,
+  label,
+  url,
+  header,
+  onCopy,
+}: {
+  testId: string;
+  label: string;
+  url: string;
+  header: string;
+  onCopy: (url: string) => void;
+}) {
+  const { t } = useTranslation("integrations");
+  return (
+    <div
+      className="flex flex-col gap-2 rounded-md border bg-card p-4"
+      data-testid={testId}
+    >
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-semibold">{label}</span>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => onCopy(url)}
+          data-testid={`${testId}-copy`}
+        >
+          <Copy className="h-3 w-3" aria-hidden />
+          <span>{t("webhooks.copy")}</span>
+        </Button>
+      </div>
+      <code
+        className="block break-all rounded bg-muted px-2 py-1 font-mono text-xs"
+        data-testid={`${testId}-url`}
+      >
+        {url}
+      </code>
+      <span className="text-xs text-muted-foreground">{header}</span>
+    </div>
+  );
+}
+
+export function IntegrationsPage() {
+  const { t, i18n } = useTranslation("integrations");
+  const queryClient = useQueryClient();
+
+  const [page, setPage] = useState(1);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [revealKey, setRevealKey] = useState<APIKeyCreateOut | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<APIKeyListItem | null>(null);
+  const [toast, setToast] = useState<AdminToastMessage | null>(null);
+  // Monotonic id sequence — kept in state so React's batched renders
+  // observe a fresh value on every showToast() call.
+  const [, setToastSeq] = useState(0);
+
+  const params = { page, page_size: PAGE_SIZE };
+  const keysQuery = useApiKeys(params);
+  const items = keysQuery.data?.items ?? [];
+  const total = keysQuery.data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  function showToast(text: string, tone: "success" | "error", key: string) {
+    setToastSeq((n) => {
+      const id = n + 1;
+      setToast({ id, text, tone, key });
+      return id;
+    });
+  }
+
+  const createMutation = useMutation({
+    mutationFn: (payload: APIKeyCreatePayload) => createApiKey(payload),
+    onSuccess: (created) => {
+      void queryClient.invalidateQueries({ queryKey: ["api-keys"] });
+      setCreateOpen(false);
+      setRevealKey(created);
+      showToast(t("api_keys.toast.created"), "success", "created");
+    },
+    onError: (err) => {
+      const text =
+        err instanceof ProblemError
+          ? err.detail || t("api_keys.errors.create_failed")
+          : t("api_keys.errors.create_failed");
+      showToast(text, "error", "create_failed");
+    },
+  });
+
+  const revokeMutation = useMutation({
+    mutationFn: (id: string) => revokeApiKey(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["api-keys"] });
+      setRevokeTarget(null);
+      showToast(t("api_keys.toast.revoked"), "success", "revoked");
+    },
+    onError: (err) => {
+      const text =
+        err instanceof ProblemError
+          ? err.detail || t("api_keys.errors.revoke_failed")
+          : t("api_keys.errors.revoke_failed");
+      showToast(text, "error", "revoke_failed");
+    },
+  });
+
+  async function copyToClipboard(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      // Lightweight feedback via the same toast surface so users hear the
+      // confirmation without waiting for a dialog state change.
+      showToast(t("api_keys.create_result.copied"), "success", "copied");
+    } catch {
+      showToast(t("api_keys.errors.copy_failed"), "error", "copy_failed");
+    }
+  }
+
+  const apiBase = getApiBase();
+  const githubWebhookUrl = `${apiBase}/v1/webhooks/github`;
+  const gitlabWebhookUrl = `${apiBase}/v1/webhooks/gitlab`;
+
+  return (
+    <div className="flex h-full flex-col" data-testid="integrations-page">
+      <header className="border-b bg-card px-6 py-4">
+        <h1 className="flex items-center gap-2 text-lg font-semibold tracking-tight">
+          <KeyRound className="h-4 w-4" aria-hidden />
+          {t("page.title")}
+        </h1>
+        <p className="text-sm text-muted-foreground">{t("page.subtitle")}</p>
+      </header>
+
+      <div className="flex-1 space-y-8 overflow-y-auto px-6 py-6">
+        {/* ---------- API keys section ----------------------------------- */}
+        <section
+          className="space-y-3"
+          data-testid="integrations-api-keys-section"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold">
+                {t("api_keys.section_title")}
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                {t("api_keys.section_description")}
+              </p>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => setCreateOpen(true)}
+              data-testid="integrations-create-key"
+            >
+              <Plus className="h-3 w-3" aria-hidden />
+              <span>{t("api_keys.create_button")}</span>
+            </Button>
+          </div>
+
+          {keysQuery.isError ? (
+            <Alert variant="destructive" data-testid="integrations-keys-error">
+              <AlertDescription>{t("api_keys.error")}</AlertDescription>
+            </Alert>
+          ) : null}
+
+          <div className="overflow-hidden rounded-md border">
+            <table
+              className="w-full text-sm"
+              data-testid="integrations-keys-table"
+              aria-busy={keysQuery.isLoading}
+            >
+              <thead className="bg-muted/40">
+                <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <th className="px-3 py-2">{t("api_keys.table.name")}</th>
+                  <th className="px-3 py-2">{t("api_keys.table.scope")}</th>
+                  <th className="px-3 py-2">{t("api_keys.table.prefix")}</th>
+                  <th className="px-3 py-2">{t("api_keys.table.created")}</th>
+                  <th className="px-3 py-2">{t("api_keys.table.expires")}</th>
+                  <th className="px-3 py-2 text-right">
+                    {t("api_keys.table.actions")}
+                  </th>
+                </tr>
+              </thead>
+              <tbody data-testid="integrations-keys-tbody">
+                {keysQuery.isLoading
+                  ? Array.from({ length: 4 }).map((_, i) => (
+                      <tr key={`skeleton-${i}`} className="border-b">
+                        <td className="px-3 py-2" colSpan={6}>
+                          <Skeleton className="h-5 w-full" />
+                        </td>
+                      </tr>
+                    ))
+                  : items.map((row) => {
+                      const isRevoked = row.revoked_at !== null;
+                      return (
+                        <tr
+                          key={row.id}
+                          data-testid="integrations-key-row"
+                          data-key-id={row.id}
+                          data-revoked={isRevoked}
+                          className={cn(
+                            "border-b transition-colors duration-fast ease-out-soft hover:bg-accent/40",
+                            isRevoked && "opacity-60",
+                          )}
+                          style={{ height: "var(--table-row)" }}
+                        >
+                          <td className="truncate px-3">
+                            <span className="font-medium">{row.name}</span>
+                            {isRevoked ? (
+                              <Badge
+                                variant="outline"
+                                className="ml-2 border-red-300 bg-red-50 text-red-700"
+                              >
+                                {t("api_keys.revoked_badge")}
+                              </Badge>
+                            ) : null}
+                          </td>
+                          <td className="px-3">
+                            <ScopeBadge scope={row.scope} />
+                          </td>
+                          <td className="px-3 font-mono text-xs">
+                            {row.key_prefix}…
+                          </td>
+                          <td className="px-3 text-xs text-muted-foreground">
+                            {formatRelativeToNow(
+                              row.created_at,
+                              i18n.resolvedLanguage,
+                            )}
+                          </td>
+                          <td className="px-3 text-xs text-muted-foreground">
+                            {t("api_keys.expires_never")}
+                          </td>
+                          <td className="px-3 text-right">
+                            {!isRevoked ? (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setRevokeTarget(row)}
+                                data-testid="integrations-key-revoke"
+                                data-key-id={row.id}
+                              >
+                                <Trash2 className="h-3 w-3" aria-hidden />
+                                <span>{t("api_keys.revoke")}</span>
+                              </Button>
+                            ) : null}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                {!keysQuery.isLoading && items.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={6}
+                      className="px-3 py-8 text-center text-sm text-muted-foreground"
+                      data-testid="integrations-keys-empty"
+                    >
+                      {t("api_keys.empty")}
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+
+          {totalPages > 1 ? (
+            <div
+              className="flex items-center justify-between text-xs"
+              data-testid="integrations-pagination"
+            >
+              <span className="text-muted-foreground">
+                {t("api_keys.pagination.summary", {
+                  page,
+                  total: totalPages,
+                })}
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  data-testid="integrations-page-prev"
+                >
+                  {t("api_keys.pagination.previous")}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={page >= totalPages}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  data-testid="integrations-page-next"
+                >
+                  {t("api_keys.pagination.next")}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </section>
+
+        {/* ---------- Webhooks section ------------------------------------ */}
+        <section
+          className="space-y-3"
+          data-testid="integrations-webhooks-section"
+        >
+          <div>
+            <h2 className="text-base font-semibold">
+              {t("webhooks.section_title")}
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              {t("webhooks.section_description")}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <WebhookCard
+              testId="integrations-webhook-github"
+              label={t("webhooks.github.label")}
+              url={githubWebhookUrl}
+              header={t("webhooks.github.header")}
+              onCopy={(url) => void copyToClipboard(url)}
+            />
+            <WebhookCard
+              testId="integrations-webhook-gitlab"
+              label={t("webhooks.gitlab.label")}
+              url={gitlabWebhookUrl}
+              header={t("webhooks.gitlab.header")}
+              onCopy={(url) => void copyToClipboard(url)}
+            />
+          </div>
+        </section>
+      </div>
+
+      <CreateApiKeyDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        onSubmit={(payload) => createMutation.mutate(payload)}
+        submitting={createMutation.isPending}
+      />
+
+      <RevealApiKeyDialog
+        created={revealKey}
+        onClose={() => setRevealKey(null)}
+        onCopy={(value) => void copyToClipboard(value)}
+      />
+
+      <RevokeApiKeyDialog
+        target={revokeTarget}
+        onClose={() => setRevokeTarget(null)}
+        onConfirm={(id) => revokeMutation.mutate(id)}
+        submitting={revokeMutation.isPending}
+      />
+
+      <AdminToast message={toast} onDismiss={() => setToast(null)} />
+    </div>
+  );
+}

@@ -1,0 +1,64 @@
+import { useTranslation } from "react-i18next";
+
+import { Badge } from "@/components/ui/badge";
+import type { ComponentSeverity } from "@/features/projects/api/projectDetailApi";
+import { cn } from "@/lib/utils";
+
+/**
+ * SeverityBadge — Phase 3 PR #10 / extended in PR #11.
+ *
+ * Pairs a risk-tinted dot with the localized severity label so color is never
+ * the only signal (CLAUDE.md "디자인 시스템" + accessibility rule). Maps the
+ * backend's seven-bucket severity (critical/high/medium/low/info/none/unknown)
+ * onto the Badge `tone` variants in `components/ui/badge.tsx`.
+ *
+ * The `unknown` bucket is exclusive to the Vulnerabilities surface — DT can
+ * report a CVE without classifying it. Components collapse this to `info`,
+ * but the triage UI cares about the difference, so we keep the input wider
+ * than `ComponentSeverity`.
+ */
+export type SeverityVariant = ComponentSeverity | "unknown";
+
+type Tone = "critical" | "high" | "medium" | "low" | "info";
+
+interface Visual {
+  tone: Tone;
+  dot: string;
+}
+
+const VISUAL_BY_SEVERITY: Record<SeverityVariant, Visual> = {
+  critical: { tone: "critical", dot: "bg-risk-critical" },
+  high: { tone: "high", dot: "bg-risk-high" },
+  medium: { tone: "medium", dot: "bg-risk-medium" },
+  low: { tone: "low", dot: "bg-risk-low" },
+  info: { tone: "info", dot: "bg-risk-info" },
+  none: { tone: "info", dot: "bg-risk-info" },
+  unknown: { tone: "info", dot: "bg-risk-info" },
+};
+
+export interface SeverityBadgeProps {
+  severity: SeverityVariant;
+  className?: string;
+}
+
+export function SeverityBadge({ severity, className }: SeverityBadgeProps) {
+  const { t } = useTranslation("project_detail");
+  const visual = VISUAL_BY_SEVERITY[severity];
+  return (
+    <Badge
+      tone={visual.tone}
+      data-testid={`severity-badge-${severity}`}
+      data-severity={severity}
+      className={cn("gap-1.5", className)}
+    >
+      <span
+        aria-hidden
+        className={cn(
+          "inline-block h-1.5 w-1.5 rounded-full",
+          visual.dot,
+        )}
+      />
+      <span>{t(`severity.${severity}`)}</span>
+    </Badge>
+  );
+}

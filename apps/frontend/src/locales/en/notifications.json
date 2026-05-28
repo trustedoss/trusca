@@ -1,0 +1,60 @@
+{
+  "page": {
+    "title": "Notifications",
+    "subtitle": "Inbox + delivery preferences."
+  },
+  "inbox": {
+    "section_title": "Inbox",
+    "section_description": "Recent activity across your projects, scans, and approvals.",
+    "unread_only": "Show unread only",
+    "mark_all": "Mark all as read ({{count}})",
+    "marking_all": "Marking…",
+    "empty": "You're all caught up.",
+    "empty_unread": "No unread notifications.",
+    "page_label": "Page {{page}} of {{total}}",
+    "previous": "Previous",
+    "next": "Next"
+  },
+  "kind": {
+    "scan_completed": "Scan completed",
+    "scan_failed": "Scan failed",
+    "cve_detected": "New CVE detected",
+    "license_violation": "License violation",
+    "approval_pending": "Approval pending",
+    "policy_gate_failed": "Policy gate failed"
+  },
+  "prefs": {
+    "section_title": "Delivery preferences",
+    "section_description": "Control which channels receive notifications. The in-app inbox is always enabled.",
+    "save": "Save changes",
+    "saving": "Saving…",
+    "email": {
+      "label": "Email",
+      "description": "Send a digest to your registered email address."
+    },
+    "slack": {
+      "label": "Slack",
+      "description": "Post to the Slack webhook configured for your organization."
+    },
+    "teams": {
+      "label": "Microsoft Teams",
+      "description": "Post to the Microsoft Teams webhook configured for your organization."
+    },
+    "in_app": {
+      "label": "In-app",
+      "description": "Show notifications in the bell menu and the inbox below.",
+      "tooltip": "In-app notifications are always enabled."
+    }
+  },
+  "toast": {
+    "mark_all_done": "All notifications marked as read.",
+    "prefs_saved": "Notification preferences saved."
+  },
+  "errors": {
+    "list_failed": "Failed to load notifications.",
+    "mark_read_failed": "Failed to mark this notification as read.",
+    "mark_all_failed": "Failed to mark all as read.",
+    "prefs_load_failed": "Failed to load notification preferences.",
+    "prefs_save_failed": "Failed to save notification preferences."
+  }
+}

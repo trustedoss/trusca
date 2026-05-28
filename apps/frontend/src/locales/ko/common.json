@@ -1,0 +1,88 @@
+{
+  "app": {
+    "name": "TrustedOSS Portal",
+    "tagline": "엔터프라이즈를 위한 오픈소스 SCA 플랫폼"
+  },
+  "language": {
+    "label": "언어",
+    "english": "English",
+    "korean": "한국어"
+  },
+  "multiselect": {
+    "all": "전체",
+    "clear": "지우기",
+    "count_selected": "{{count}}개 선택됨"
+  },
+  "filters": {
+    "more_filters": {
+      "trigger": "필터 추가",
+      "aria": "필터 추가하기"
+    },
+    "columns": {
+      "trigger": "컬럼",
+      "aria": "표시 컬럼 선택",
+      "required_hint": "항상 표시"
+    }
+  },
+  "sort": {
+    "aria_ascending": "오름차순 정렬됨 — 클릭하여 내림차순 정렬",
+    "aria_descending": "내림차순 정렬됨 — 클릭하여 정렬 해제",
+    "aria_unsorted": "정렬되지 않음 — 클릭하여 오름차순 정렬"
+  },
+  "auth": {
+    "logout": "로그아웃",
+    "profile": "프로필"
+  },
+  "home": {
+    "title": "TrustedOSS Portal에 오신 것을 환영합니다",
+    "subtitle": "부트스트랩이 가동되었습니다. 인증·프로젝트·스캔은 다음 Phase에서 추가됩니다.",
+    "stack": "React 18 · Vite · shadcn/ui · TanStack Query · react-i18next",
+    "api_label": "API 베이스",
+    "primary_cta": "컴포넌트 보기"
+  },
+  "risk": {
+    "critical": "치명",
+    "high": "높음",
+    "medium": "중간",
+    "low": "낮음",
+    "info": "정보"
+  },
+  "nav": {
+    "dashboard": "대시보드",
+    "projects": "프로젝트",
+    "scans": "스캔",
+    "approvals": "승인",
+    "policies": "정책",
+    "integrations": "통합",
+    "bell": {
+      "aria": "알림",
+      "aria_with_count": "알림, 읽지 않은 항목 {{count}}건"
+    },
+    "admin": {
+      "section": "관리"
+    }
+  },
+  "approvals": {
+    "coming_soon": "Step 3에서 추가됩니다."
+  },
+  "scans": {
+    "title": "스캔",
+    "coming_soon": "Step 4에서 추가됩니다."
+  },
+  "demo": {
+    "banner_title": "읽기 전용 데모",
+    "banner_detail": "라이브 데모입니다. 자유롭게 둘러보세요. 생성·수정·삭제는 비활성화되어 있습니다.",
+    "write_disabled": "읽기 전용 데모에서는 사용할 수 없습니다"
+  },
+  "command_menu": {
+    "trigger_button": "검색...",
+    "placeholder": "프로젝트·CVE·페이지 검색...",
+    "no_results": "결과가 없습니다.",
+    "shortcut_hint": "⌘K",
+    "group": {
+      "projects": "프로젝트",
+      "vulnerabilities": "취약점",
+      "pages": "페이지"
+    }
+  }
+}

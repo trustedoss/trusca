@@ -1,0 +1,363 @@
+{
+  "nav": {
+    "admin": {
+      "entry": "관리자",
+      "users": "사용자",
+      "teams": "팀",
+      "scans": "스캔 큐",
+      "disk": "디스크",
+      "audit": "감사 로그",
+      "health": "시스템 상태",
+      "backup": "백업"
+    }
+  },
+  "admin": {
+    "users": {
+      "title": "사용자",
+      "subtitle": "조직 전체의 역할, 활성 상태, 비밀번호 재설정을 관리합니다.",
+      "column": {
+        "email": "이메일",
+        "full_name": "이름",
+        "role": "역할",
+        "active": "상태",
+        "last_login_at": "최근 로그인",
+        "team_count": "팀",
+        "actions": "작업"
+      },
+      "filter": {
+        "role_all": "모든 역할",
+        "active_all": "모든 상태",
+        "active_only": "활성만",
+        "inactive_only": "비활성만",
+        "search_placeholder": "이메일 또는 이름으로 검색"
+      },
+      "role": {
+        "super_admin": "슈퍼 관리자",
+        "team_admin": "팀 관리자",
+        "developer": "개발자"
+      },
+      "status": {
+        "active": "활성",
+        "inactive": "비활성"
+      },
+      "action": {
+        "change_role": "역할 변경",
+        "deactivate": "비활성화",
+        "activate": "활성화",
+        "reset_password": "비밀번호 재설정"
+      },
+      "confirm": {
+        "deactivate": "이 사용자를 비활성화하시겠습니까? 활성 세션이 취소됩니다.",
+        "activate": "이 사용자를 다시 활성화하시겠습니까?",
+        "reset_password": "이 사용자에게 비밀번호 재설정 링크를 발급하시겠습니까?"
+      },
+      "form": {
+        "role_label": "역할",
+        "team_label": "팀",
+        "team_id_placeholder": "팀 UUID (팀 관리자 / 개발자에 필요)",
+        "save": "역할 저장"
+      },
+      "drawer": {
+        "memberships": "팀 멤버십",
+        "no_memberships": "이 사용자는 소속된 팀이 없습니다.",
+        "scan_count": "실행한 스캔",
+        "created_at": "생성",
+        "last_login_at": "최근 로그인",
+        "never": "없음"
+      },
+      "toast": {
+        "role_updated": "역할이 업데이트되었습니다.",
+        "deactivated": "사용자가 비활성화되었습니다.",
+        "activated": "사용자가 다시 활성화되었습니다.",
+        "password_reset_sent": "비밀번호 재설정 링크가 발급되었습니다."
+      },
+      "pagination": {
+        "page_size_label": "페이지당 행",
+        "page_label": "페이지 {{page}} / {{total}}",
+        "previous": "이전",
+        "next": "다음"
+      },
+      "empty": "현재 필터에 해당하는 사용자가 없습니다."
+    },
+    "teams": {
+      "title": "팀",
+      "subtitle": "팀, 멤버, 프로젝트 가시성을 생성하고 관리합니다.",
+      "column": {
+        "name": "이름",
+        "slug": "슬러그",
+        "description": "설명",
+        "member_count": "멤버",
+        "project_count": "프로젝트"
+      },
+      "filter": {
+        "search_placeholder": "팀 이름으로 검색"
+      },
+      "action": {
+        "create": "새 팀",
+        "edit": "수정",
+        "delete": "팀 삭제",
+        "add_member": "멤버 추가",
+        "remove_member": "제거"
+      },
+      "confirm": {
+        "delete": "이 팀을 삭제하시겠습니까? 팀이 소유한 프로젝트는 보관됩니다.",
+        "remove_member": "이 멤버를 팀에서 제거하시겠습니까?"
+      },
+      "form": {
+        "name_label": "이름",
+        "slug_label": "슬러그",
+        "slug_help": "소문자, 숫자, 하이픈만 사용 가능. 최대 64자.",
+        "description_label": "설명",
+        "user_id_label": "사용자 UUID",
+        "role_label": "역할",
+        "save": "팀 저장",
+        "create": "팀 생성",
+        "add": "멤버 추가",
+        "cancel": "취소"
+      },
+      "drawer": {
+        "members": "멤버",
+        "no_members": "이 팀에는 아직 멤버가 없습니다.",
+        "project_count": "프로젝트",
+        "created_at": "생성"
+      },
+      "toast": {
+        "created": "팀이 생성되었습니다.",
+        "updated": "팀이 업데이트되었습니다.",
+        "deleted": "팀이 삭제되었습니다.",
+        "member_added": "멤버가 추가되었습니다.",
+        "member_removed": "멤버가 제거되었습니다."
+      },
+      "empty": "현재 필터에 해당하는 팀이 없습니다."
+    },
+    "scans": {
+      "title": "스캔 큐",
+      "subtitle": "전 팀의 스캔 큐. 폭주하는 작업을 여기서 취소할 수 있습니다.",
+      "tabs": {
+        "running": "실행 중",
+        "queued": "대기",
+        "failed": "실패",
+        "all": "전체"
+      },
+      "column": {
+        "id": "스캔",
+        "project": "프로젝트",
+        "team": "팀",
+        "status": "상태",
+        "kind": "종류",
+        "started_at": "시작",
+        "duration": "소요 시간"
+      },
+      "status": {
+        "queued": "대기",
+        "running": "실행 중",
+        "succeeded": "성공",
+        "failed": "실패",
+        "cancelled": "취소됨"
+      },
+      "actions": {
+        "cancel": "스캔 취소",
+        "refresh": "새로 고침"
+      },
+      "confirm": {
+        "cancel": "이 스캔을 취소하시겠습니까? Celery 작업이 revoke 되고 상태가 cancelled 로 변경됩니다."
+      },
+      "drawer": {
+        "title": "스캔 {{id}}",
+        "project_label": "프로젝트",
+        "team_label": "팀",
+        "kind_label": "종류",
+        "status_label": "상태",
+        "started_at_label": "시작",
+        "finished_at_label": "종료",
+        "duration_label": "소요 시간",
+        "error_label": "오류",
+        "no_error": "—",
+        "requested_by_label": "요청자"
+      },
+      "toast": {
+        "cancelled": "스캔이 취소되었습니다."
+      },
+      "empty": "현재 필터에 해당하는 스캔이 없습니다."
+    },
+    "disk": {
+      "title": "디스크",
+      "subtitle": "워크스페이스와 데이터베이스 저장공간 텔레메트리.",
+      "actions": {
+        "refresh": "새로 고침"
+      },
+      "card": {
+        "workspace": "워크스페이스",
+        "postgres": "PostgreSQL",
+        "redis": "Redis"
+      },
+      "label": {
+        "path": "경로",
+        "used": "사용",
+        "free": "여유",
+        "total": "전체",
+        "used_pct": "사용률",
+        "warning_threshold": "경고 임계치",
+        "critical_threshold": "심각 임계치"
+      },
+      "status": {
+        "ok": "정상",
+        "degraded": "한계 근접",
+        "down": "심각",
+        "unavailable": "사용 불가"
+      },
+      "errors": {
+        "unavailable": "이 볼륨의 텔레메트리를 사용할 수 없습니다. 자세한 내용은 서버 로그를 확인하세요."
+      },
+      "collected_at": "수집 시각: {{when}}"
+    },
+    "audit": {
+      "title": "감사 로그",
+      "subtitle": "포털 전체의 감사 대상 변경을 검색합니다. 민감 컬럼(이메일, 이름)은 sha256 지문으로 표시됩니다.",
+      "filter": {
+        "actor_user_id": "행위자 사용자 ID",
+        "target_table_label": "대상 테이블",
+        "target_table_all": "모든 테이블",
+        "action_label": "액션",
+        "action_placeholder": "create / update / delete …",
+        "from_label": "시작",
+        "to_label": "종료",
+        "q_label": "diff 검색",
+        "q_placeholder": "diff JSON 의 부분 문자열 매칭",
+        "q_pii_hint": "PII 컬럼은 sha256 지문으로 저장됩니다. 평문 검색은 이메일이나 이름과 매칭되지 않습니다."
+      },
+      "column": {
+        "created_at": "시각",
+        "actor": "행위자",
+        "target_table": "테이블",
+        "target_id": "대상",
+        "action": "액션",
+        "request_id": "요청 ID"
+      },
+      "actions": {
+        "export_csv": "CSV 내보내기",
+        "refresh": "새로 고침"
+      },
+      "drawer": {
+        "title": "감사 항목",
+        "request_label": "요청 ID",
+        "diff_label": "Diff",
+        "no_diff": "diff 가 캡처되지 않았습니다.",
+        "sha256_pill": "sha256:{{prefix}}…"
+      },
+      "empty": "현재 필터에 해당하는 감사 항목이 없습니다.",
+      "toast": {
+        "csv_started": "CSV 내보내기가 시작되었습니다."
+      }
+    },
+    "health": {
+      "title": "시스템 상태",
+      "subtitle": "모든 인프라 컴포넌트의 통합 상태 점검 결과.",
+      "actions": {
+        "refresh": "새로 고침"
+      },
+      "component": {
+        "postgres": "PostgreSQL",
+        "redis": "Redis",
+        "celery": "Celery 워커",
+        "disk": "디스크",
+        "active_scans": "실행 중 스캔",
+        "last_24h_errors": "최근 24시간 오류"
+      },
+      "status": {
+        "ok": "정상",
+        "degraded": "주의",
+        "down": "다운"
+      },
+      "no_detail": "—",
+      "updated_at": "갱신 시각: {{when}}"
+    },
+    "trivy_db": {
+      "heading": "Trivy 취약점 DB",
+      "kpi": {
+        "last_update": "마지막 업데이트",
+        "vuln_count": "추적 중인 취약점",
+        "db_version": "DB 버전",
+        "next_refresh": "다음 갱신까지 {{value}}"
+      },
+      "freshness": {
+        "fresh": "최신",
+        "stale": "오래됨",
+        "very_stale": "매우 오래됨"
+      },
+      "empty": {
+        "title": "Trivy DB 아직 다운로드되지 않음",
+        "description": "다음 워커 부팅 시 자동으로 다운로드됩니다."
+      },
+      "footer": {
+        "cache_dir": "캐시",
+        "repository": "저장소"
+      }
+    },
+    "backup": {
+      "title": "백업",
+      "subtitle": "자동 일일 백업 + 수동 백업 트리거 + 복원.",
+      "column": {
+        "name": "이름",
+        "kind": "종류",
+        "created_at": "생성",
+        "size": "크기",
+        "db_revision": "DB 리비전",
+        "actions": "작업"
+      },
+      "kind": {
+        "auto": "자동",
+        "manual": "수동"
+      },
+      "actions": {
+        "manual_trigger": "지금 수동 백업 실행",
+        "choose_file": "파일 업로드 및 복원…",
+        "refresh": "새로 고침",
+        "download": "다운로드",
+        "delete": "삭제",
+        "restore": "복원"
+      },
+      "tooltip": {
+        "auto_pruned": "자동 백업은 7일 후 자동 정리됩니다."
+      },
+      "confirm": {
+        "delete": "백업 \"{{name}}\" 을(를) 삭제하시겠습니까? 되돌릴 수 없습니다."
+      },
+      "restore": {
+        "warning": "복원 시 사용자, 프로젝트, 스캔을 포함한 모든 데이터가 덮어써집니다. 되돌릴 수 없습니다.",
+        "type_to_confirm": "확인하려면 '{{token}}' 을(를) 입력하세요",
+        "queued_banner": "복원이 큐에 등록되었습니다. 백엔드가 일시 중지됩니다; 30초 후 새로고침하세요."
+      },
+      "toast": {
+        "manual_triggered": "수동 백업이 큐에 등록되었습니다.",
+        "deleted": "백업이 삭제되었습니다.",
+        "download_started": "다운로드가 시작되었습니다.",
+        "restore_queued": "복원이 큐에 등록되었습니다."
+      },
+      "empty": "아직 백업이 없습니다. 수동 백업을 실행하거나 야간 작업을 기다리세요."
+    },
+    "errors": {
+      "last_super_admin_protected": "마지막 슈퍼 관리자의 권한을 강등하거나 비활성화할 수 없습니다.",
+      "cannot_modify_self": "본인 계정에 이 작업을 수행할 수 없습니다.",
+      "last_team_admin_protected": "다른 멤버가 남아 있는 동안에는 마지막 팀 관리자를 제거할 수 없습니다.",
+      "team_has_active_scans": "이 팀에 실행 중인 스캔이 있습니다. 완료될 때까지 기다리거나 먼저 취소하세요.",
+      "invalid_role_assignment": "선택한 역할과 팀 조합이 유효하지 않습니다.",
+      "slug_conflict": "동일한 슬러그를 가진 팀이 이미 존재합니다.",
+      "scan_already_cancelled": "이미 종료된 스캔은 다시 취소할 수 없습니다.",
+      "scan_not_found": "스캔을 찾을 수 없습니다.",
+      "audit_export_too_large": "내보낼 행 수가 100,000 건을 초과합니다. 필터 범위를 좁힌 후 다시 시도하세요.",
+      "unknown": "오류가 발생했습니다. 다시 시도해 주세요."
+    },
+    "not_found": {
+      "title": "페이지를 찾을 수 없습니다",
+      "subtitle": "요청하신 페이지가 존재하지 않습니다.",
+      "back_home": "홈으로 돌아가기"
+    },
+    "actions": {
+      "cancel": "취소",
+      "confirm": "확인",
+      "save": "저장",
+      "close": "닫기"
+    }
+  }
+}

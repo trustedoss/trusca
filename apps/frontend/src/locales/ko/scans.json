@@ -1,0 +1,171 @@
+{
+  "page": {
+    "title": "스캔",
+    "subtitle": "접근 가능한 프로젝트의 스캔 큐를 한눈에 확인합니다.",
+    "tab": {
+      "running": "실행 중",
+      "queued": "대기 중",
+      "succeeded": "성공",
+      "failed": "실패",
+      "all": "전체"
+    },
+    "column": {
+      "project": "프로젝트",
+      "kind": "종류",
+      "status": "상태",
+      "started": "시작",
+      "duration": "소요 시간",
+      "actions": "작업"
+    },
+    "kind": {
+      "source": "소스",
+      "container": "컨테이너"
+    },
+    "status": {
+      "queued": "대기 중",
+      "running": "실행 중",
+      "succeeded": "성공",
+      "failed": "실패",
+      "cancelled": "취소됨"
+    },
+    "empty": "조건에 맞는 스캔이 없습니다.",
+    "error": "스캔 목록을 불러오지 못했습니다.",
+    "pagination": {
+      "summary": "{{page}} / {{total}} 페이지",
+      "previous": "이전",
+      "next": "다음"
+    }
+  },
+  "progress": {
+    "title": "스캔 진행 중",
+    "step_bootstrap": "워크스페이스 준비",
+    "step_fetch": "소스 가져오기",
+    "step_cdxgen": "cdxgen (SBOM 생성)",
+    "step_scancode": "ScanCode (라이선스)",
+    "step_trivy": "Trivy (취약점 매칭)",
+    "step_finalize": "마무리",
+    "step_succeeded": "스캔 완료",
+    "step_failed": "스캔 실패",
+    "step_cancelled": "스캔 취소됨",
+    "cancelled_notice": "이 스캔은 취소되었습니다. 진행 중이던 작업은 중단되었습니다.",
+    "step_unknown": "작업 중…",
+    "reconnecting": "재연결 중…",
+    "reconnect_attempt": "{{n}}번째 시도",
+    "background_notice": "스캔은 백그라운드에서 계속 진행됩니다. 이 패널을 닫으셔도 됩니다.",
+    "log_toggle": "단계별 로그",
+    "tool_log_toggle": "도구 로그",
+    "open_full_log": "전체 로그 열기 →",
+    "close": "닫기",
+    "retry": "재시도",
+    "percent_label": "{{value}}%"
+  },
+  "detail": {
+    "title": "스캔 {{shortId}}",
+    "download": "로그 다운로드",
+    "download_unavailable": "스캔 로그가 아직 없습니다",
+    "empty": "스캔 출력 대기 중…",
+    "filter_all": "전체",
+    "filter_errors": "오류만",
+    "back_to_project": "프로젝트로 돌아가기"
+  },
+  "cancel": {
+    "action": "스캔 취소",
+    "confirm": {
+      "title": "스캔 취소",
+      "message": "이 스캔을 취소하시겠습니까? 진행 중인 작업이 중단되고 스캔이 취소됨으로 표시됩니다.",
+      "confirm": "스캔 취소",
+      "dismiss": "계속 진행"
+    },
+    "errors": {
+      "already_terminal": "이미 종료된 스캔이라 더 이상 취소할 수 없습니다.",
+      "not_found": "스캔이 존재하지 않거나 접근 권한이 없습니다.",
+      "forbidden": "이 스캔을 취소할 권한이 없습니다.",
+      "unknown": "스캔을 취소하지 못했습니다. 다시 시도해 주세요."
+    }
+  },
+  "alerts": {
+    "dt_unavailable": "취약점 매칭 서비스에 일시적으로 연결할 수 없습니다. 캐시된 결과를 표시합니다."
+  },
+  "kind": {
+    "legend": "스캔 유형",
+    "source": "소스",
+    "container": "컨테이너"
+  },
+  "container": {
+    "label": "컨테이너 이미지",
+    "placeholder": "alpine:3.19",
+    "hint": "Trivy가 이미지의 OS 패키지에서 취약점을 검사합니다. 예: ghcr.io/org/app:1.2.3.",
+    "subtitle": "Trivy로 {{project}}의 컨테이너 이미지를 스캔합니다.",
+    "errors": {
+      "image_required": "스캔할 이미지 참조를 입력하세요."
+    }
+  },
+  "release": {
+    "label": "릴리스 / 버전",
+    "placeholder": "v1.2.3",
+    "hint": "선택 사항. 이 스캔에 릴리스 라벨을 지정합니다. 예: v1.2.3.",
+    "chip_aria": "릴리스 {{release}}"
+  },
+  "source": {
+    "title": "스캔 시작",
+    "subtitle": "{{project}}의 소스를 제공할 방식을 선택하세요.",
+    "method_legend": "소스 제공 방식",
+    "method": {
+      "git": "Git URL",
+      "upload": ".zip 업로드",
+      "folder": "폴더 선택"
+    },
+    "git": {
+      "label": "설정된 Git URL",
+      "missing": "이 프로젝트에는 Git URL이 없습니다. .zip을 업로드하거나 폴더를 선택하거나, 프로젝트 설정에서 Git URL을 추가하세요.",
+      "credential_configured": "사설 자격 증명 설정됨 — 클론 시 사용됩니다.",
+      "credential_missing_prefix": "공개 저장소로 클론됩니다. 사설 저장소라면",
+      "credential_settings_link": "Settings에서 토큰을 추가하세요"
+    },
+    "upload": {
+      "label": "소스 아카이브 (.zip)",
+      "choose_file": "파일 선택",
+      "no_file_chosen": "선택된 파일 없음",
+      "hint": "ZIP 아카이브, 최대 {{max}}.",
+      "selected": "선택됨: {{name}} ({{size}})"
+    },
+    "folder": {
+      "label": "프로젝트 폴더",
+      "choose_folder": "폴더 선택",
+      "no_folder_chosen": "선택된 폴더 없음",
+      "files_count": "파일 {{count}}개 선택됨",
+      "hint": "폴더는 업로드 전에 브라우저에서 압축됩니다. 최대 {{max}}.",
+      "selected": "파일 {{count}}개 선택됨 ({{size}})",
+      "too_large": "선택한 폴더가 {{max}} 제한을 초과합니다. 큰 디렉터리를 제거하고 다시 시도하세요.",
+      "noisy": "큰 디렉터리가 감지되었습니다: {{dirs}}. 업로드 크기가 커질 수 있으니 제외를 고려하세요."
+    },
+    "stage": {
+      "idle": "준비 중…",
+      "zipping": "폴더 압축 중…",
+      "uploading": "아카이브 업로드 중…",
+      "triggering": "스캔 시작 중…"
+    },
+    "percent": "{{value}}%",
+    "start": "스캔 시작",
+    "starting": "시작 중…",
+    "cancel": "취소"
+  },
+  "upload": {
+    "errors": {
+      "too_large": "아카이브가 너무 큽니다. 제한은 100 MiB입니다.",
+      "not_a_zip": ".zip 아카이브만 지원됩니다.",
+      "quota_exceeded": "이 프로젝트의 저장 용량 한도에 도달했습니다.",
+      "not_found": "프로젝트를 찾을 수 없습니다.",
+      "bad_request": "업로드를 처리할 수 없습니다.",
+      "empty_folder": "선택한 폴더가 비어 있습니다.",
+      "network": "네트워크 오류로 업로드에 실패했습니다. 다시 시도하세요.",
+      "unknown": "업로드에 실패했습니다. 다시 시도하세요."
+    }
+  },
+  "close_codes": {
+    "auth_expired": "세션이 만료되었습니다. 다시 로그인해 주세요.",
+    "forbidden": "이 스캔에 대한 접근 권한이 없습니다.",
+    "not_found": "스캔을 찾을 수 없습니다.",
+    "internal_error": "연결이 끊어졌습니다. 재연결 중…"
+  }
+}

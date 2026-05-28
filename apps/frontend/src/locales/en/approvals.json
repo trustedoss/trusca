@@ -1,0 +1,59 @@
+{
+  "approvals": {
+    "title": "Component Approvals",
+    "subtitle": "Review and approve conditional-license components.",
+    "filter": {
+      "status_all": "All statuses",
+      "from_label": "From",
+      "to_label": "To"
+    },
+    "column": {
+      "component": "Component",
+      "project": "Project",
+      "status": "Status",
+      "requested_by": "Requested by",
+      "requested_at": "Requested",
+      "actions": "Actions"
+    },
+    "status": {
+      "pending": "Pending",
+      "under_review": "Under Review",
+      "approved": "Approved",
+      "rejected": "Rejected"
+    },
+    "action": {
+      "start_review": "Start Review",
+      "approve": "Approve",
+      "reject": "Reject",
+      "refresh": "Refresh",
+      "cancel": "Cancel",
+      "confirm": "Confirm",
+      "previous": "Previous",
+      "next": "Next"
+    },
+    "errors": {
+      "unknown": "An unexpected error occurred. Please try again."
+    },
+    "drawer": {
+      "component_label": "Component",
+      "project_label": "Project",
+      "team_label": "Team",
+      "status_label": "Status",
+      "requested_by_label": "Requested by",
+      "requested_at_label": "Requested",
+      "decided_by_label": "Decided by",
+      "decided_at_label": "Decided",
+      "decision_note_label": "Decision note"
+    },
+    "confirm": {
+      "start_review": "Move this approval to Under Review?",
+      "approve": "Approve this component?",
+      "reject": "Reject this component?"
+    },
+    "toast": {
+      "transitioned": "Approval updated.",
+      "deleted": "Approval deleted."
+    },
+    "empty": "No approvals match the current filters."
+  }
+}

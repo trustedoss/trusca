@@ -1,0 +1,93 @@
+{
+  "page": {
+    "title": "프로젝트",
+    "subtitle": "오픈소스 컴포넌트·취약점·라이선스 리스크를 한눈에 관리합니다.",
+    "register": "프로젝트 등록"
+  },
+  "toolbar": {
+    "search_placeholder": "이름 또는 git URL로 검색",
+    "filter_status_label": "상태",
+    "filter_status_all": "전체",
+    "sort_label": "정렬",
+    "sort_by_name": "이름",
+    "sort_by_latest_scan": "최근 스캔일",
+    "sort_by_risk": "리스크 점수"
+  },
+  "row": {
+    "trigger_scan": "스캔",
+    "view_details": "상세 보기",
+    "no_scans_yet": "아직 스캔 이력 없음",
+    "releases_abbrev": "릴",
+    "scans_abbrev": "스캔",
+    "never_scanned": "스캔 이력 없음",
+    "scan_meta_aria": "릴리스 {{releases}}개, 전체 {{scans}}회 스캔, 마지막 {{when}}"
+  },
+  "status": {
+    "queued": "대기 중",
+    "running": "실행 중",
+    "succeeded": "성공",
+    "failed": "실패",
+    "cancelled": "취소됨",
+    "idle": "스캔 전"
+  },
+  "severity": {
+    "summary_aria": "심각도별 취약점 개수",
+    "abbrev": {
+      "critical": "C",
+      "high": "H",
+      "medium": "M",
+      "low": "L"
+    }
+  },
+  "empty": {
+    "title": "등록된 프로젝트가 없습니다",
+    "subtitle": "저장소를 등록하면 스캔을 시작할 수 있습니다.",
+    "cta": "프로젝트 등록"
+  },
+  "demo": {
+    "write_disabled": "읽기 전용 데모에서는 사용할 수 없습니다"
+  },
+  "errors": {
+    "load_failed": "프로젝트 목록을 불러오지 못했습니다.",
+    "trigger_failed": "스캔을 시작하지 못했습니다."
+  },
+  "create": {
+    "title": "새 프로젝트",
+    "scan_hint": "여기서는 프로젝트를 등록만 합니다. 생성 후 프로젝트 페이지나 목록에서 스캔을 시작하면 소스/컨테이너·업로드·릴리스 라벨을 선택할 수 있습니다.",
+    "name_label": "이름",
+    "name_placeholder": "my-awesome-project",
+    "description_label": "설명",
+    "description_placeholder": "간단한 설명 (선택사항)",
+    "git_url_label": "Git URL",
+    "git_url_placeholder": "https://github.com/org/repo",
+    "git_url_hint": "선택. 비워 두면 스캔 시 .zip 또는 폴더를 업로드할 수 있습니다. HTTPS·SSH(git@host:…)·git+ssh URL을 지원하며, private 저장소는 URL에 자격증명을 포함해야 합니다.",
+    "default_branch_label": "기본 브랜치",
+    "default_branch_placeholder": "main (선택)",
+    "team_label": "팀",
+    "no_team": "아직 소속된 팀이 없어 프로젝트를 생성할 수 없습니다. 관리자에게 팀 추가를 요청하세요.",
+    "submit": "프로젝트 생성",
+    "cancel": "취소",
+    "error_name_required": "프로젝트 이름은 필수입니다",
+    "error_name_max": "이름은 100자 이하여야 합니다",
+    "error_description_max": "설명은 500자 이하여야 합니다",
+    "error_git_url_invalid": "유효한 저장소 URL을 입력하세요 (https://, ssh://, git@host:…, git+ssh://)",
+    "error_default_branch_invalid": "브랜치 이름은 영문·숫자와 . _ / - 만 사용할 수 있습니다"
+  },
+  "summary": {
+    "severity_card": {
+      "title": "취약점 심각도",
+      "subtitle": "각 프로젝트의 최악 CVE 심각도 등급별 프로젝트 분포입니다.",
+      "axis_projects": "프로젝트 기준"
+    },
+    "license_card": {
+      "title": "라이선스 분류",
+      "subtitle": "각 프로젝트의 최악 라이선스 카테고리별 프로젝트 분포입니다.",
+      "axis_projects": "프로젝트 기준"
+    },
+    "filter_chip": {
+      "label": "필터:",
+      "severity": "심각도: {{severity}}",
+      "license": "라이선스: {{license}}"
+    }
+  }
+}

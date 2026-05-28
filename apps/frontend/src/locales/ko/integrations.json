@@ -1,0 +1,91 @@
+{
+  "page": {
+    "title": "통합",
+    "subtitle": "CI/CD 스캔용 API 키와 저장소 웹훅을 관리합니다."
+  },
+  "api_keys": {
+    "section_title": "API 키",
+    "section_description": "GitHub Action / GitLab 템플릿 / Jenkins 파이프라인에서 이 토큰을 사용하세요. 키가 노출되면 즉시 폐기하세요.",
+    "create_button": "API 키 생성",
+    "empty": "아직 API 키가 없습니다. 새로 생성해 시작하세요.",
+    "loading": "API 키 불러오는 중…",
+    "error": "API 키를 불러오지 못했습니다.",
+    "table": {
+      "name": "이름",
+      "scope": "범위",
+      "prefix": "접두사",
+      "created": "생성일",
+      "expires": "만료",
+      "actions": "동작"
+    },
+    "scope": {
+      "org": "조직",
+      "team": "팀",
+      "project": "프로젝트"
+    },
+    "expires_never": "없음",
+    "revoked_badge": "폐기됨",
+    "revoke": "폐기",
+    "revoke_confirm": {
+      "title": "이 API 키를 폐기하시겠어요?",
+      "description": "즉시 적용되며 되돌릴 수 없습니다. 이 키를 사용하는 CI 러너는 즉시 실패합니다.",
+      "confirm": "키 폐기",
+      "cancel": "취소"
+    },
+    "create_dialog": {
+      "title": "새 API 키 생성",
+      "description": "평문 키는 생성 직후 한 번만 표시됩니다. 그때 안전한 곳에 보관하세요.",
+      "name_label": "이름",
+      "name_placeholder": "ci-runner",
+      "scope_label": "범위",
+      "scope_help_org": "조직 전체에서 보입니다. 슈퍼 관리자 전용.",
+      "scope_help_team": "특정 팀으로 범위가 한정됩니다.",
+      "scope_help_project": "특정 프로젝트로 범위가 한정됩니다.",
+      "team_id_label": "팀 ID",
+      "team_id_placeholder": "uuid",
+      "project_id_label": "프로젝트 ID",
+      "project_id_placeholder": "uuid",
+      "submit": "키 생성",
+      "submitting": "생성 중…",
+      "cancel": "취소"
+    },
+    "create_result": {
+      "title": "API 키가 생성되었습니다",
+      "warning": "이 키는 지금 한 번만 표시됩니다. 안전한 곳에 보관하세요. 분실하면 키를 새로 발급해야 합니다.",
+      "copy": "복사",
+      "copied": "복사됨",
+      "done": "확인"
+    },
+    "errors": {
+      "name_required": "이름은 필수 입력 항목입니다.",
+      "team_id_required": "팀 범위 키에는 팀 ID가 필요합니다.",
+      "project_id_required": "프로젝트 범위 키에는 프로젝트 ID가 필요합니다.",
+      "create_failed": "API 키 생성에 실패했습니다.",
+      "revoke_failed": "API 키 폐기에 실패했습니다.",
+      "copy_failed": "클립보드에 복사하지 못했습니다. 텍스트를 선택해 직접 복사하세요."
+    },
+    "toast": {
+      "created": "API 키가 생성되었습니다.",
+      "revoked": "API 키가 폐기되었습니다."
+    },
+    "pagination": {
+      "previous": "이전",
+      "next": "다음",
+      "summary": "페이지 {{page}} / {{total}}"
+    }
+  },
+  "webhooks": {
+    "section_title": "웹훅 URL",
+    "section_description": "저장소 웹훅 설정에서 아래 URL 중 하나를 가리키도록 하세요. 공유 시크릿은 프로젝트의 webhook_secret(프로젝트 Settings 탭에서 설정)입니다.",
+    "github": {
+      "label": "GitHub",
+      "header": "헤더: X-Hub-Signature-256 (본문의 HMAC-SHA256)"
+    },
+    "gitlab": {
+      "label": "GitLab",
+      "header": "헤더: X-Gitlab-Token (평문 베어러 시크릿)"
+    },
+    "copy": "URL 복사",
+    "copied": "복사됨"
+  }
+}

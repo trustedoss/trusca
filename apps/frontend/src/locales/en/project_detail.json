@@ -1,0 +1,1027 @@
+{
+  "page": {
+    "breadcrumb_aria": "Breadcrumb",
+    "breadcrumb_projects": "Projects",
+    "loading_name": "Loading…",
+    "breadcrumb_unavailable": "Unavailable",
+    "load_error": "Could not load project.",
+    "missing_id": "No project id was provided in the URL.",
+    "scan": "Scan",
+    "scan_demo_disabled": "Disabled in the read-only demo",
+    "scan_already_active": "A scan is already running for this project — open the in-progress drawer to view it.",
+    "scan_drawer_subtitle": "Scan progress",
+    "scan_active_running": "Scan running",
+    "scan_active_queued": "Scan queued",
+    "scan_active_reopen_aria": "View the in-progress scan",
+    "errors": {
+      "not_found": "Project not found.",
+      "forbidden": "You do not have permission to view this project.",
+      "unknown": "Could not load this project. Please try again."
+    }
+  },
+  "tabs": {
+    "overview": "Overview",
+    "components": "Components",
+    "vulnerabilities": "Vulnerabilities",
+    "source": "Source",
+    "compliance": "Compliance",
+    "settings": "Settings",
+    "releases": "Versions",
+    "reports": "Reports"
+  },
+  "compliance": {
+    "summary": "{{loaded}} of {{total}} licenses shown",
+    "column": {
+      "license": "License",
+      "category": "Category",
+      "affected": "Affected",
+      "obligations": "Obligations",
+      "notice_required": "NOTICE",
+      "override_source": "Override"
+    },
+    "filter": {
+      "search": "Search",
+      "search_placeholder": "Search by SPDX ID or name",
+      "category": "Category",
+      "has_obligations": "Has obligations",
+      "sort_label": "Sort by",
+      "sort": {
+        "category": "Risk (forbidden first)",
+        "license_name": "License name",
+        "spdx_id": "SPDX ID",
+        "affected_count": "Affected components"
+      },
+      "order_label": "Order",
+      "order_asc": "Ascending",
+      "order_desc": "Descending"
+    },
+    "row": {
+      "no_spdx_id": "—"
+    },
+    "affected": {
+      "more_count": "+{{count}} more"
+    },
+    "obligations": {
+      "none": "None",
+      "more_count": "+{{count}} more"
+    },
+    "notice": {
+      "required": "Required",
+      "not_required": "—"
+    },
+    "override": {
+      "none": "—"
+    },
+    "empty": {
+      "title": "No compliance findings yet",
+      "description": "Run a scan to populate license inventory and obligations for this project."
+    },
+    "errors": {
+      "load_list": "Could not load compliance data."
+    }
+  },
+  "severity": {
+    "critical": "Critical",
+    "high": "High",
+    "medium": "Medium",
+    "low": "Low",
+    "info": "Info",
+    "none": "None",
+    "unknown": "Unknown"
+  },
+  "license_category": {
+    "forbidden": "Forbidden",
+    "conditional": "Conditional",
+    "allowed": "Allowed",
+    "unknown": "Unknown"
+  },
+  "active_filters": {
+    "aria_label": "Active filters",
+    "heading": "Filters:",
+    "severity_chip_label": "Severity: {{value}}",
+    "license_chip_label": "License: {{value}}",
+    "clear_severity_aria": "Remove severity filter {{value}}",
+    "clear_license_aria": "Remove license filter {{value}}"
+  },
+  "extra_filters": {
+    "severity_label": "Severity",
+    "license_category_label": "License category",
+    "remove_aria": "Remove {{label}} filter"
+  },
+  "risk": {
+    "critical": "Critical risk",
+    "high": "High risk",
+    "medium": "Medium risk",
+    "low": "Low risk",
+    "none": "No risk"
+  },
+  "overview": {
+    "info_card": {
+      "title": "Project info",
+      "description": "Description",
+      "no_description": "No description set.",
+      "git_url": "Repository",
+      "no_git_url": "No git URL configured.",
+      "default_branch": "Default branch",
+      "visibility": "Visibility",
+      "visibility_value": {
+        "team": "Team-only",
+        "organization": "Organization-wide"
+      },
+      "credential_configured": "Credential configured"
+    },
+    "risk_card": {
+      "title": "Risk score",
+      "subtitle": "Computed from {{total}} component(s) in the latest scan.",
+      "security": "Security",
+      "license": "License",
+      "security_counts": "{{critical}} Critical · {{high}} High",
+      "license_counts": "{{forbidden}} Forbidden · {{conditional}} Conditional",
+      "vuln_data_empty_title": "No vulnerability data at scan time",
+      "vuln_data_empty_body": "The vulnerability database was empty when this scan ran, so 0 CVEs means data was missing — not that the project is safe. Re-scan once the NVD mirror has finished loading."
+    },
+    "risk_gauge": {
+      "aria": "Project risk score: {{score}} of 100"
+    },
+    "severity_card": {
+      "title": "Vulnerability severity",
+      "subtitle": "Components grouped by their highest CVE severity.",
+      "subtitle_findings": "Findings grouped by their own severity.",
+      "axis_components": "by component",
+      "axis_findings": "by finding"
+    },
+    "severity_chart": {
+      "aria": "Severity distribution across {{total}} components"
+    },
+    "license_card": {
+      "title": "License classification",
+      "subtitle": "Components grouped by license category.",
+      "axis_components": "by component"
+    },
+    "license_chart": {
+      "aria": "License distribution across {{total}} components"
+    },
+    "recent_scans": {
+      "title": "Recent scans",
+      "subtitle": "Last five scans for this project.",
+      "empty": "No scans have been recorded yet.",
+      "reopen_aria": "View progress for this scan",
+      "col_started": "Started",
+      "col_version": "Version",
+      "col_status": "Status",
+      "col_duration": "Duration",
+      "col_kind": "Kind",
+      "status": {
+        "queued": "Queued",
+        "running": "Running",
+        "succeeded": "Succeeded",
+        "failed": "Failed",
+        "cancelled": "Cancelled"
+      },
+      "kind": {
+        "source": "Source",
+        "container": "Container"
+      }
+    },
+    "gate_card": {
+      "title": "Build gate",
+      "subtitle": "Build-blocking verdict from the latest successful scan.",
+      "pass": "Pass",
+      "fail": "Fail",
+      "no_scan_badge": "No scan yet",
+      "no_scan_detail": "Run a successful scan to evaluate the build gate.",
+      "pass_detail": "No critical CVEs or forbidden licenses block this build.",
+      "critical_cves": "Critical CVEs",
+      "forbidden_licenses": "Forbidden licenses",
+      "epss_findings": "EPSS ≥ {{threshold}}",
+      "error_title": "Could not load the build gate",
+      "error_detail": "Please try again.",
+      "reason": {
+        "intro": "This build is blocked because:",
+        "critical_cve": "{{count}} open critical CVE(s)",
+        "forbidden_license": "{{count}} forbidden license(s)",
+        "epss": "{{count}} finding(s) with EPSS ≥ {{threshold}}",
+        "fallback": "The build gate failed. See the metrics below for details."
+      },
+      "errors": {
+        "not_found": "This project no longer exists or you no longer have access to it.",
+        "forbidden": "You do not have permission to view this project's build gate.",
+        "unknown": "Could not load the build gate. Please try again."
+      }
+    },
+    "errors": {
+      "title": "Could not load overview.",
+      "detail": "Try refreshing the page."
+    }
+  },
+  "components": {
+    "summary": "{{loaded}} of {{total}} components loaded.",
+    "col": {
+      "name": "Component",
+      "type": "Type",
+      "version": "Version",
+      "license": "License",
+      "policy": "Policy",
+      "usage": "Usage",
+      "severity": "Severity",
+      "vulns": "CVEs"
+    },
+    "license": {
+      "unknown_dash": "—"
+    },
+    "badge": {
+      "dependency_type": {
+        "direct": "Direct",
+        "transitive": "Transitive",
+        "unknown": "—",
+        "aria_direct": "Direct dependency (depth 1)",
+        "aria_transitive": "Transitive dependency (depth {{depth}})",
+        "aria_unknown": "Dependency type unknown — this scan has no dependency graph"
+      },
+      "dependency_scope": {
+        "required": "Required",
+        "optional": "Optional",
+        "unknown": "—",
+        "aria_unknown": "Usage not specified by this scan"
+      }
+    },
+    "toolbar": {
+      "search_label": "Search",
+      "search_placeholder": "Search by name or purl",
+      "dependency_type_label": "Dependency type",
+      "dependency_type": {
+        "all": "All",
+        "direct": "Direct",
+        "transitive": "Transitive"
+      },
+      "usage_label": "Usage",
+      "usage": {
+        "required": "Required",
+        "optional": "Optional",
+        "unspecified": "Unspecified"
+      }
+    },
+    "empty": {
+      "title": "No components match",
+      "subtitle": "Adjust the filters or trigger a new scan."
+    },
+    "errors": {
+      "load_failed": "Could not load components."
+    },
+    "detail_page": {
+      "breadcrumb_aria": "Breadcrumb",
+      "breadcrumb": {
+        "projects": "Projects",
+        "components": "Components"
+      },
+      "back_link": "Back to Components",
+      "title_loading": "Loading component…",
+      "not_found": "Component not found.",
+      "errors": {
+        "not_found": "Component not found.",
+        "forbidden": "You do not have permission to view this component.",
+        "unknown": "Could not load this component. Please try again."
+      }
+    }
+  },
+  "drawer": {
+    "loading_title": "Loading component…",
+    "loading_subtitle": "Fetching component details.",
+    "subtitle": "Version {{version}}",
+    "purl_label": "purl",
+    "dependency_type_label": "Type",
+    "usage_label": "Usage",
+    "open_full_view": "Open in full view",
+    "error": "Could not load component.",
+    "vulns": {
+      "title": "Vulnerabilities ({{count}})",
+      "empty": "No known vulnerabilities for this component.",
+      "cvss_label": "CVSS",
+      "epss_label": "EPSS",
+      "fixed_in": "Fixed in"
+    },
+    "raw": {
+      "show": "Show raw data",
+      "hide": "Hide raw data"
+    }
+  },
+  "vulnerabilities": {
+    "summary": "{{loaded}} of {{total}} findings loaded.",
+    "remediation": {
+      "heading": "Remediation",
+      "subheading": "Preview proposed npm version bumps for this project and, when authorised, open a remediation pull request.",
+      "expand": "Open remediation",
+      "collapse": "Close remediation"
+    },
+    "column": {
+      "cve_id": "CVE ID",
+      "severity": "Severity",
+      "license": "License",
+      "reachable": "Reachability",
+      "cvss": "CVSS",
+      "epss": "EPSS",
+      "summary": "Summary",
+      "component": "Component",
+      "affected_more_count": "+{{count}}",
+      "affected_more_count_tooltip": "{{count}} more component(s) also affected — see drawer",
+      "affected": "Affected",
+      "status": "Status",
+      "discovered": "Discovered"
+    },
+    "reachability": {
+      "label": {
+        "reachable": "Reachable",
+        "unreachable": "Not reachable",
+        "unknown": "Not analyzed"
+      },
+      "tooltip": {
+        "reachable": "The vulnerable code is reachable on this project's call graph — prioritize this finding.",
+        "unreachable": "An analyzer ran and proved the vulnerable code is not reachable in this project.",
+        "unknown": "Reachability has not been analyzed for this finding."
+      },
+      "tooltip_with_source": "{{label}} (analyzed by {{source}})",
+      "tooltip_filter": "Filter findings by whether the vulnerable code is reachable on this project's call graph."
+    },
+    "epss": {
+      "tooltip": "EPSS — probability this CVE is exploited in the wild within 30 days. Complements CVSS (severity).",
+      "empty": "No EPSS data for this CVE",
+      "cell_tooltip": "{{score}} · {{percentile}} most likely to be exploited"
+    },
+    "filter": {
+      "minEpss": "EPSS ≥",
+      "minEpssPlaceholder": "0.00–1.00",
+      "minEpssClear": "Clear",
+      "minEpssHint": "Enter an EPSS probability between 0 and 1 to keep findings at or above it."
+    },
+    "vex": {
+      "marker": "VEX",
+      "marker_tooltip": "This finding's status was set by an imported VEX document.",
+      "choose_file": "Choose file",
+      "no_file_chosen": "No file chosen",
+      "filter_label": "VEX",
+      "filter_suppressed": "VEX-suppressed only",
+      "export_label": "Export VEX",
+      "export_openvex": "OpenVEX",
+      "export_cyclonedx": "CycloneDX VEX",
+      "export_downloading": "Downloading…",
+      "import_label": "Import VEX",
+      "import_button": "Import VEX",
+      "import_role_gated": "Importing a VEX document requires a team admin role.",
+      "import_title": "Import a VEX document",
+      "import_description": "Upload an OpenVEX or CycloneDX VEX document to auto-transition matching findings. The format is detected automatically.",
+      "import_file_label": "VEX document",
+      "import_file_hint": "JSON file (OpenVEX or CycloneDX VEX).",
+      "import_submit": "Import",
+      "import_uploading": "Importing…",
+      "import_close": "Close",
+      "import_error_forbidden": "You don't have permission to import VEX for this project. A team admin role is required.",
+      "import_error_not_found": "Project not found or not accessible.",
+      "import_error_too_large": "The VEX document is too large to import.",
+      "import_error_malformed": "The document could not be parsed as OpenVEX or CycloneDX VEX.",
+      "import_error_generic": "The VEX import failed. Please try again.",
+      "format_openvex": "OpenVEX",
+      "format_cyclonedx": "CycloneDX VEX",
+      "summary_matched": "Matched",
+      "summary_applied": "Applied",
+      "summary_skipped": "Skipped",
+      "summary_errors_heading": "Skipped statements ({{count}})",
+      "skip_reason": {
+        "unknown_vulnerability": "Unknown vulnerability",
+        "unknown_component": "Unknown component",
+        "ambiguous_match": "Ambiguous match",
+        "unmapped_status": "Unmapped status",
+        "illegal_transition": "Illegal transition",
+        "already_at_target": "Already at target",
+        "forbidden_transition": "Forbidden transition",
+        "malformed_statement": "Malformed statement"
+      },
+      "origin_heading": "VEX provenance",
+      "origin_empty": "No document provenance recorded.",
+      "origin_author": "Author",
+      "origin_id": "Document ID",
+      "origin_timestamp": "Timestamp",
+      "origin_vex_status": "VEX status",
+      "origin_imported_at": "Imported at",
+      "origin_justification": "Justification"
+    },
+    "severity": {
+      "critical": "Critical",
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low",
+      "info": "Info",
+      "unknown": "Unknown"
+    },
+    "status": {
+      "new": "New",
+      "analyzing": "Analyzing",
+      "exploitable": "Exploitable",
+      "not_affected": "Not affected",
+      "false_positive": "False positive",
+      "suppressed": "Suppressed",
+      "fixed": "Fixed"
+    },
+    "bulk": {
+      "select_all_aria": "Select all findings on this page",
+      "selected": "{{count}} selected",
+      "target_label": "Set status to",
+      "target_placeholder": "Choose status…",
+      "apply": "Apply",
+      "applying": "Applying…",
+      "clear": "Clear",
+      "result_title": "{{succeeded}} succeeded · {{failed}} failed (of {{total}})",
+      "result_dismiss": "Dismiss",
+      "more_failures": "+{{count}} more",
+      "error_code": {
+        "not_found": "Not found in this project",
+        "forbidden": "Permission denied",
+        "invalid_transition": "Transition not allowed",
+        "envelope_error": "Request failed",
+        "unknown": "Error"
+      }
+    },
+    "toolbar": {
+      "search_label": "Search",
+      "search_placeholder": "Search by CVE ID, summary, or component",
+      "status_label": "Status",
+      "reachable_label": "Reachability",
+      "reachable_any": "Any reachability",
+      "reachable_option": {
+        "true": "Reachable",
+        "false": "Not reachable",
+        "unknown": "Not analyzed"
+      },
+      "report_label": "Report",
+      "download_pdf": "Download PDF report",
+      "download_pdf_generating": "Generating…"
+    },
+    "empty": {
+      "title": "No vulnerabilities match",
+      "subtitle": "Adjust the filters or wait for the next scan."
+    },
+    "errors": {
+      "load_failed": "Could not load vulnerabilities."
+    },
+    "detail_page": {
+      "breadcrumb_aria": "Breadcrumb",
+      "breadcrumb": {
+        "projects": "Projects",
+        "vulnerabilities": "Vulnerabilities"
+      },
+      "back_link": "Back to Vulnerabilities",
+      "title_loading": "Loading vulnerability…",
+      "not_found": "Vulnerability not found.",
+      "errors": {
+        "not_found": "Vulnerability not found.",
+        "forbidden": "You do not have permission to view this vulnerability.",
+        "unknown": "Could not load this vulnerability. Please try again."
+      },
+      "next_steps": {
+        "heading": "Next steps",
+        "triage_heading": "Triage",
+        "triage_status_label": "Status",
+        "remediation_heading": "Remediation",
+        "upgrade_compact_label": "Recommended upgrade",
+        "no_remediation": "No remediation available yet."
+      }
+    },
+    "drawer": {
+      "loading_title": "Loading vulnerability…",
+      "loading_subtitle": "Fetching CVE details.",
+      "subtitle": "Status: {{status}}",
+      "open_full_view": "Open in full view",
+      "cve_id_label": "CVE ID",
+      "cvss_label": "CVSS",
+      "epss_label": "EPSS",
+      "cvss_vector_label": "Vector",
+      "summary_heading": "Summary",
+      "summary_empty": "No summary available for this finding.",
+      "references_heading": "References ({{count}})",
+      "references_empty": "No external references provided.",
+      "reference_default_label": "REF",
+      "affected_heading": "Affected components ({{count}})",
+      "affected_empty": "No affected components linked to this finding.",
+      "affected_fixed_in": "Fixed in",
+      "upgrade_heading": "Recommended upgrade",
+      "upgrade_to": "Upgrade to",
+      "upgrade_direct": "Direct dependency",
+      "upgrade_max_severity": "Highest severity: {{severity}}",
+      "upgrade_reason": {
+        "no_fix_version": "No recommendation: at least one open CVE for this component has no known fix version.",
+        "unparseable_version": "No recommendation: the available fix versions could not be parsed."
+      },
+      "analysis_heading": "Analysis",
+      "justification_label": "Justification",
+      "justification_placeholder": "Explain why this finding moves to its new status.",
+      "justification_count": "{{count}} / {{max}} characters",
+      "actions_label": "Transition to",
+      "actions_empty": "No transitions available from the current status.",
+      "action_saving": "Saving…",
+      "role_gated_tooltip": "Suppression requires the team admin role.",
+      "action": {
+        "new": "Reopen as new",
+        "analyzing": "Move to analyzing",
+        "exploitable": "Mark exploitable",
+        "not_affected": "Mark not affected",
+        "false_positive": "Mark false positive",
+        "suppressed": "Suppress",
+        "fixed": "Mark fixed"
+      },
+      "history_heading": "Status history ({{count}})",
+      "history_empty": "No status changes recorded yet.",
+      "history_initial": "Initial",
+      "history_actor": "By {{id}}",
+      "history_actor_system": "By system",
+      "errors": {
+        "load_failed": "Could not load vulnerability.",
+        "update_failed": "Could not update status.",
+        "conflict": "This finding was updated by someone else. Reload to see the latest state.",
+        "conflict_reload": "Reload"
+      }
+    }
+  },
+  "licenses": {
+    "tab_label": "Licenses",
+    "summary": "{{loaded}} of {{total}} licenses loaded.",
+    "distribution": {
+      "title": "License distribution",
+      "subtitle": "Components grouped by the licenses they carry in the latest scan.",
+      "aria": "License distribution across {{total}} findings",
+      "empty": "No license findings to chart yet."
+    },
+    "toolbar": {
+      "search_label": "Search",
+      "search_placeholder": "Search by SPDX ID or name",
+      "filter_category": "Category",
+      "filter_kind": "Kind",
+      "sort_label": "Sort by",
+      "sort": {
+        "category": "Risk (forbidden first)",
+        "name": "Name",
+        "spdx_id": "SPDX ID",
+        "affected_count": "Affected components"
+      },
+      "order_label": "Order",
+      "order_asc": "Ascending",
+      "order_desc": "Descending"
+    },
+    "kind": {
+      "declared": "Declared",
+      "concluded": "Concluded",
+      "detected": "Detected"
+    },
+    "column": {
+      "spdx_id": "SPDX ID",
+      "name": "License",
+      "category": "Category",
+      "kind": "Kind",
+      "affected_count": "Affected components"
+    },
+    "row": {
+      "no_spdx_id": "—"
+    },
+    "empty": {
+      "title": "No license findings",
+      "description": "Run a scan to populate license data.",
+      "filtered": {
+        "title": "No matches",
+        "description": "No licenses match the current filters."
+      }
+    },
+    "errors": {
+      "load_list": "Could not load licenses.",
+      "load_finding": "Could not load license details.",
+      "not_found": "License finding not found."
+    },
+    "drawer": {
+      "title": "License details",
+      "loading_title": "Loading license…",
+      "loading_subtitle": "Fetching license details.",
+      "subtitle": "Kind: {{kind}}",
+      "section": {
+        "metadata": "License",
+        "flags": "Flags",
+        "ort_match": "ORT match",
+        "affected": "Affected components ({{count}})"
+      },
+      "metadata": {
+        "spdx_id_label": "SPDX ID",
+        "name_label": "Name",
+        "category_label": "Category",
+        "kind_label": "Kind"
+      },
+      "flag": {
+        "osi_approved": "OSI Approved",
+        "fsf_libre": "FSF Free/Libre",
+        "deprecated": "Deprecated SPDX ID"
+      },
+      "reference_url_label": "Reference",
+      "ort_match": {
+        "empty": "No ORT match data available.",
+        "unparseable": "ORT match data is not in a renderable format.",
+        "show": "Show details",
+        "hide": "Hide details",
+        "field": {
+          "rule_name": "Rule",
+          "severity": "Severity",
+          "message": "Message",
+          "license_finding": "License finding",
+          "matched_text": "Matched text",
+          "score": "Score",
+          "copyright": "Copyright"
+        }
+      },
+      "affected": {
+        "empty": "No affected components.",
+        "source_path_label": "Source",
+        "kind_label": "Kind"
+      },
+      "affected_truncated": "Showing {{shown}} of {{total}} components. Open the Components tab to see the full list.",
+      "cross_link_component": "View component"
+    }
+  },
+  "obligations": {
+    "summary": "{{loaded}} of {{total}} shown",
+    "distribution": {
+      "label": "By kind"
+    },
+    "kind": {
+      "attribution": "Attribution",
+      "notice": "NOTICE preservation",
+      "source-disclosure": "Source disclosure",
+      "copyleft": "Copyleft",
+      "modifications": "Modification notice",
+      "dynamic-linking": "Dynamic linking",
+      "no-endorsement": "No endorsement"
+    },
+    "column": {
+      "spdx_id": "SPDX",
+      "license_name": "License",
+      "category": "Category",
+      "kind": "Kind",
+      "affected_count": "Components"
+    },
+    "toolbar": {
+      "search_label": "Search",
+      "search_placeholder": "Search by SPDX, license name, kind, or text…",
+      "filter_kind": "Kind",
+      "filter_category": "Category",
+      "sort_label": "Sort by",
+      "sort": {
+        "category": "License category",
+        "license_name": "License name",
+        "kind": "Obligation kind",
+        "affected_count": "Affected components"
+      },
+      "order_label": "Order",
+      "order_asc": "Ascending",
+      "order_desc": "Descending",
+      "notice_label": "NOTICE file",
+      "notice_download": "Download NOTICE",
+      "notice_downloading": "Generating…",
+      "notice_format_label": "NOTICE format",
+      "notice_format_text": "Text",
+      "notice_format_html": "HTML"
+    },
+    "empty": {
+      "title": "No obligations recorded",
+      "description": "The project's latest scan does not surface any catalog obligations. Run a scan or seed a license catalog to populate this view."
+    },
+    "errors": {
+      "load_list": "Could not load the obligation list.",
+      "load_detail": "Could not load this obligation."
+    },
+    "drawer": {
+      "title": "Obligation: {{kind}}",
+      "subtitle": "Attached to {{license}}",
+      "loading_title": "Loading obligation…",
+      "loading_subtitle": "Fetching catalog details.",
+      "metadata": {
+        "license_label": "License",
+        "license_reference_label": "License reference",
+        "reference_label": "Reference"
+      },
+      "section": {
+        "obligation": "Obligation",
+        "affected": "Affected components ({{count}})"
+      },
+      "affected": {
+        "empty": "No affected components in the latest scan."
+      },
+      "affected_truncated": "Showing {{shown}} of {{total}} components. Open the Components tab to see the full list.",
+      "text_truncated": "Obligation text was truncated by the server. See the source catalog for the complete text."
+    }
+  },
+  "sbom": {
+    "title": "Software Bill of Materials",
+    "subtitle": "Download the SBOM for the latest scan in CycloneDX or SPDX.",
+    "downloading": "Downloading…",
+    "last_scan_at": "Latest scan: {{date}}",
+    "no_scan_yet": "No scan has been recorded yet. Trigger a scan to generate an SBOM.",
+    "format": {
+      "cyclonedx_json": "Download CycloneDX JSON",
+      "cyclonedx_xml": "Download CycloneDX XML",
+      "spdx_json": "Download SPDX JSON",
+      "spdx_tv": "Download SPDX Tag-Value"
+    },
+    "errors": {
+      "download_failed": "Could not download the SBOM."
+    },
+    "signature": {
+      "title": "Signature & verification",
+      "subtitle": "Download everything needed to verify this project's signed SBOM offline with cosign.",
+      "download_bundle": "Download signature bundle (.zip)",
+      "downloading": "Downloading…",
+      "individual_label": "Individual artifacts",
+      "artifact": {
+        "signature": "Signature (.sig)",
+        "public_key": "Public key",
+        "attestation": "Attestation",
+        "certificate": "Certificate",
+        "attestation_certificate": "Attestation certificate"
+      },
+      "not_applicable": "{{artifact}} is only available for keyless (sigstore) signing. For key-based signing, verify with the public key instead.",
+      "unsigned": "The latest scan has no signature. SBOM signing may be disabled, or this scan was not signed.",
+      "verify_hint": "The bundle includes a VERIFY.md with step-by-step cosign verify-blob instructions.",
+      "verify_docs_link": "Verification guide"
+    }
+  },
+  "source": {
+    "empty": {
+      "title": "No preserved source for this scan",
+      "description": "This scan did not keep a copy of the analysed source files. Re-scan the project to enable the source file viewer."
+    },
+    "tree": {
+      "empty_dir": "Empty directory",
+      "errors": {
+        "load": "Could not load this directory."
+      }
+    },
+    "viewer": {
+      "no_selection": "Select a file in the tree to view its source and license matches.",
+      "binary": "Binary file — preview is not available.",
+      "truncated": "This file was truncated to fit the viewer. Download it to see the full contents.",
+      "download": "Download file",
+      "byte_size": "{{bytes}} bytes",
+      "license_match": "License match: {{matches}}",
+      "errors": {
+        "load": "Could not load this file."
+      }
+    }
+  },
+  "settings": {
+    "title": "Project settings",
+    "subtitle": "Update project metadata or archive the project.",
+    "field": {
+      "name": "Name",
+      "description": "Description",
+      "git_url": "Git URL",
+      "git_url_placeholder": "https://github.com/org/repo",
+      "default_branch": "Default branch",
+      "default_branch_placeholder": "main"
+    },
+    "errors": {
+      "name_required": "Project name is required",
+      "name_max": "Name must be 100 characters or less",
+      "description_max": "Description must be 500 characters or less",
+      "git_url_invalid": "Must be a valid URL (https:// or http://)",
+      "default_branch_max": "Default branch must be 255 characters or less"
+    },
+    "action": {
+      "save": "Save changes",
+      "saving": "Saving…",
+      "cancel": "Cancel",
+      "archive": "Archive project",
+      "archiving": "Archiving…",
+      "confirm_archive": "Confirm archive",
+      "unarchive": "Unarchive project",
+      "unarchiving": "Unarchiving…"
+    },
+    "git_credential": {
+      "title": "Git credential (private repository)",
+      "help": "Tokens are stored encrypted and used to clone private https repositories. SSH URLs need key material, which is not supported here yet.",
+      "field_label": "Access token",
+      "field_placeholder": "Personal access token",
+      "configured_badge": "Credential set",
+      "save": "Save credential",
+      "saving": "Saving…",
+      "replace": "Replace",
+      "remove": "Remove",
+      "removing": "Removing…",
+      "cancel": "Cancel"
+    },
+    "archive": {
+      "active_title": "Archive project",
+      "active_subtitle": "Archived projects are hidden from listings but their scan history is preserved.",
+      "archived_title": "Archived",
+      "archived_subtitle": "This project is archived. Restore it to resume scanning.",
+      "confirm": "Archiving will hide this project from listings. Continue?"
+    },
+    "toast": {
+      "saved": "Settings saved.",
+      "archived": "Project archived.",
+      "unarchived": "Project restored."
+    }
+  },
+  "releases": {
+    "title": "Versions",
+    "subtitle": "Each successful scan is a version snapshot. Open one to view that snapshot's full picture.",
+    "empty": "No successful scans yet — run a scan to create a version snapshot.",
+    "view_snapshot": "View snapshot",
+    "view_snapshot_aria": "View snapshot for {{label}}",
+    "severity_none": "No findings",
+    "col": {
+      "release": "Version",
+      "date": "Date",
+      "risk": "Risk",
+      "severity": "Severity",
+      "gate": "Gate",
+      "actions": "Actions"
+    },
+    "severity_abbr": {
+      "critical": "C",
+      "high": "H",
+      "medium": "M",
+      "low": "L"
+    },
+    "gate": {
+      "pass": "Pass",
+      "fail": "Fail"
+    },
+    "errors": {
+      "load_failed": "Could not load versions. Please try again."
+    }
+  },
+  "release_switcher": {
+    "menu_label": "Version",
+    "trigger_latest": "Version: {{label}} · Latest",
+    "trigger_historical": "Version: {{label}} · read-only",
+    "trigger_loading": "Version: …",
+    "loading": "Loading versions…",
+    "none": "No versions yet",
+    "latest": "Latest",
+    "latest_hint": "Live view of the latest successful scan",
+    "latest_tag": "Latest",
+    "gate_fail": "Fail",
+    "item_aria": "View the {{label}} snapshot"
+  },
+  "snapshot": {
+    "banner": "Viewing {{label}} — historical snapshot (read-only)",
+    "back_to_latest": "Back to latest",
+    "readonly_tooltip": "Read-only historical snapshot"
+  },
+  "compare": {
+    "title": "Compare versions",
+    "subtitle": "See what changed between two version snapshots.",
+    "open_button": "Compare",
+    "open_button_aria": "Compare the two most recent versions",
+    "open_disabled_hint": "Need at least two successful scans",
+    "switcher_item": "Compare versions…",
+    "breadcrumb_compare": "Compare",
+    "back_to_project": "Back to project",
+    "selector": {
+      "base_label": "Base",
+      "target_label": "Target",
+      "base_aria": "Base version (before)",
+      "target_aria": "Target version (after)",
+      "swap": "Swap base and target",
+      "menu_label": "Version",
+      "loading": "Loading versions…",
+      "none": "No versions yet"
+    },
+    "missing_params": {
+      "title": "Pick two versions to compare",
+      "description": "Select a base and a target version above to see what changed."
+    },
+    "summary": {
+      "risk_score": "Risk score",
+      "severity": "Severity",
+      "gate": "Build gate",
+      "component_count": "Components",
+      "no_value": "—",
+      "no_change": "No change",
+      "delta_increase_aria": "Increased by {{delta}}",
+      "delta_decrease_aria": "Decreased by {{delta}}",
+      "gate_change_aria": "Gate changed from {{base}} to {{target}}",
+      "gate_pass": "Pass",
+      "gate_fail": "Fail",
+      "gate_none": "No gate"
+    },
+    "components": {
+      "title": "Components",
+      "removed_header": "Removed ({{count}})",
+      "added_header": "Added ({{count}})",
+      "changed_header": "Changed ({{count}})",
+      "removed_empty": "No components removed.",
+      "added_empty": "No components added.",
+      "changed_empty": "No component versions changed.",
+      "version_change": "{{base}} → {{target}}"
+    },
+    "vulnerabilities": {
+      "title": "Vulnerabilities",
+      "resolved_header": "Resolved ({{count}})",
+      "introduced_header": "Introduced ({{count}})",
+      "resolved_empty": "No vulnerabilities resolved.",
+      "introduced_empty": "No vulnerabilities introduced.",
+      "at_component": "{{name}}@{{version}}"
+    },
+    "licenses": {
+      "title": "Licenses",
+      "col_category": "Category",
+      "col_base": "Base",
+      "col_target": "Target",
+      "category": {
+        "prohibited": "Prohibited",
+        "conditional": "Conditional",
+        "permissive": "Permissive",
+        "unknown": "Unknown"
+      },
+      "introduced_badge": "New",
+      "introduced_aria": "Target introduces a {{category}} license the base did not have."
+    },
+    "empty": {
+      "title": "No differences between these versions.",
+      "description": "These two snapshots have the same components, vulnerabilities, and licenses."
+    },
+    "truncated": "Some lists were capped at 1000 items.",
+    "loading_aria": "Loading the version comparison",
+    "errors": {
+      "title": "Could not load the comparison",
+      "not_found": "One of the selected versions could not be found. It may have been removed.",
+      "forbidden": "You do not have permission to compare this project's versions.",
+      "unknown": "Could not load the comparison. Please try again."
+    }
+  },
+  "reports": {
+    "generate": {
+      "heading": "Generate",
+      "subheading": "Generate or export a project artefact. Each shortcut opens the domain tab where the action lives."
+    },
+    "sbom": {
+      "heading": "SBOM downloads",
+      "subheading": "Download a CycloneDX or SPDX SBOM for the latest scan, along with its signature and verification bundle."
+    },
+    "cards": {
+      "notice": {
+        "title": "NOTICE",
+        "description": "Attribution NOTICE file with license obligations.",
+        "action": "Go to Compliance"
+      },
+      "sbom": {
+        "title": "SBOM",
+        "description": "Software Bill of Materials in CycloneDX or SPDX.",
+        "action": "Jump to SBOM downloads"
+      },
+      "vuln-pdf": {
+        "title": "Vulnerability PDF",
+        "description": "Risk report with severity / license distribution and CVE list.",
+        "action": "Go to Vulnerabilities"
+      },
+      "vex": {
+        "title": "VEX",
+        "description": "Export or import VEX statements for the project's findings.",
+        "action": "Go to Vulnerabilities"
+      }
+    },
+    "history": {
+      "heading": "Recent activity",
+      "subheading": "Downloads and exports for this project, newest first.",
+      "columns": {
+        "when": "When",
+        "who": "Who",
+        "type": "Type",
+        "format": "Format",
+        "scan": "Scan",
+        "size": "Size"
+      },
+      "type": {
+        "notice": "Notice",
+        "sbom": "SBOM",
+        "vuln_pdf": "Vuln PDF",
+        "vex_export": "VEX"
+      },
+      "filter": {
+        "type_label": "Type",
+        "type_placeholder": "All types",
+        "clear": "Clear"
+      },
+      "pagination": {
+        "prev": "Previous",
+        "next": "Next",
+        "page_of": "Page {{page}} of {{total}}"
+      },
+      "empty": {
+        "title": "No downloads yet.",
+        "body": "Use the shortcuts on the left to generate a NOTICE, SBOM, vulnerability PDF, or VEX export."
+      },
+      "errors": {
+        "unavailable": "Reports are unavailable for this project.",
+        "rate_limited": "Too many requests — please try again in a moment.",
+        "generic": "Could not load the report history. Please try again."
+      },
+      "user_unknown": "Deleted user",
+      "scan_unknown": "—",
+      "size_unknown": "—"
+    }
+  }
+}

@@ -1,0 +1,93 @@
+{
+  "page": {
+    "title": "Projects",
+    "subtitle": "Open-source components, vulnerabilities, and license risk.",
+    "register": "Register project"
+  },
+  "toolbar": {
+    "search_placeholder": "Search by name or git URL",
+    "filter_status_label": "Status",
+    "filter_status_all": "All",
+    "sort_label": "Sort by",
+    "sort_by_name": "Name",
+    "sort_by_latest_scan": "Latest scan",
+    "sort_by_risk": "Risk score"
+  },
+  "row": {
+    "trigger_scan": "Scan",
+    "view_details": "View details",
+    "no_scans_yet": "No scans yet",
+    "releases_abbrev": "Rel",
+    "scans_abbrev": "Scn",
+    "never_scanned": "Never scanned",
+    "scan_meta_aria": "Releases {{releases}} of {{scans}} scans, last {{when}}"
+  },
+  "status": {
+    "queued": "Queued",
+    "running": "Running",
+    "succeeded": "Succeeded",
+    "failed": "Failed",
+    "cancelled": "Cancelled",
+    "idle": "Idle"
+  },
+  "severity": {
+    "summary_aria": "Vulnerability counts by severity",
+    "abbrev": {
+      "critical": "C",
+      "high": "H",
+      "medium": "M",
+      "low": "L"
+    }
+  },
+  "empty": {
+    "title": "No projects yet",
+    "subtitle": "Register your first repository to start scanning.",
+    "cta": "Register project"
+  },
+  "demo": {
+    "write_disabled": "Disabled in the read-only demo"
+  },
+  "errors": {
+    "load_failed": "Could not load projects.",
+    "trigger_failed": "Could not start the scan."
+  },
+  "create": {
+    "title": "New Project",
+    "scan_hint": "This registers the project. After creating it, start a scan (and pick source / container, upload, and a release label) from the project page or the project list.",
+    "name_label": "Name",
+    "name_placeholder": "my-awesome-project",
+    "description_label": "Description",
+    "description_placeholder": "Short description (optional)",
+    "git_url_label": "Git URL",
+    "git_url_placeholder": "https://github.com/org/repo",
+    "git_url_hint": "Optional. Leave empty to upload a .zip or a folder when you run a scan. HTTPS, SSH (git@host:…), and git+ssh URLs are accepted; a private repo needs credentials embedded in the URL.",
+    "default_branch_label": "Default branch",
+    "default_branch_placeholder": "main (optional)",
+    "team_label": "Team",
+    "no_team": "You are not a member of any team yet, so you cannot create a project. Ask an administrator to add you to a team.",
+    "submit": "Create Project",
+    "cancel": "Cancel",
+    "error_name_required": "Project name is required",
+    "error_name_max": "Name must be 100 characters or less",
+    "error_description_max": "Description must be 500 characters or less",
+    "error_git_url_invalid": "Enter a valid repository URL (https://, ssh://, git@host:…, or git+ssh://)",
+    "error_default_branch_invalid": "Branch names may use letters, numbers, and . _ / - only"
+  },
+  "summary": {
+    "severity_card": {
+      "title": "Vulnerability severity",
+      "subtitle": "Projects grouped by their worst CVE severity bucket.",
+      "axis_projects": "by project"
+    },
+    "license_card": {
+      "title": "License classification",
+      "subtitle": "Projects grouped by their worst license category.",
+      "axis_projects": "by project"
+    },
+    "filter_chip": {
+      "label": "Filters:",
+      "severity": "Severity: {{severity}}",
+      "license": "License: {{license}}"
+    }
+  }
+}

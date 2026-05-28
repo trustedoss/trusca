@@ -1,0 +1,59 @@
+{
+  "approvals": {
+    "title": "컴포넌트 승인",
+    "subtitle": "조건부 라이선스 컴포넌트를 검토하고 승인합니다.",
+    "filter": {
+      "status_all": "전체 상태",
+      "from_label": "시작일",
+      "to_label": "종료일"
+    },
+    "column": {
+      "component": "컴포넌트",
+      "project": "프로젝트",
+      "status": "상태",
+      "requested_by": "요청자",
+      "requested_at": "요청일",
+      "actions": "작업"
+    },
+    "status": {
+      "pending": "대기중",
+      "under_review": "검토중",
+      "approved": "승인됨",
+      "rejected": "거절됨"
+    },
+    "action": {
+      "start_review": "검토 시작",
+      "approve": "승인",
+      "reject": "거절",
+      "refresh": "새로고침",
+      "cancel": "취소",
+      "confirm": "확인",
+      "previous": "이전",
+      "next": "다음"
+    },
+    "errors": {
+      "unknown": "예상치 못한 오류가 발생했습니다. 다시 시도해주세요."
+    },
+    "drawer": {
+      "component_label": "컴포넌트",
+      "project_label": "프로젝트",
+      "team_label": "팀",
+      "status_label": "상태",
+      "requested_by_label": "요청자",
+      "requested_at_label": "요청일",
+      "decided_by_label": "결정자",
+      "decided_at_label": "결정일",
+      "decision_note_label": "결정 메모"
+    },
+    "confirm": {
+      "start_review": "이 승인을 검토중으로 이동하시겠습니까?",
+      "approve": "이 컴포넌트를 승인하시겠습니까?",
+      "reject": "이 컴포넌트를 거절하시겠습니까?"
+    },
+    "toast": {
+      "transitioned": "승인 상태가 업데이트되었습니다.",
+      "deleted": "승인이 삭제되었습니다."
+    },
+    "empty": "현재 필터와 일치하는 승인 항목이 없습니다."
+  }
+}
