@@ -102,15 +102,6 @@ stateDiagram-v2
 
 ![취약점 드로어 — VEX 액션 버튼과 사유 입력 텍스트 영역이 있는 Analysis 섹션](/img/screenshots/user-vulns-drawer-vex.png)
 
-### 워크스루 — Vulnerabilities 탭 진입 + 드로어 열기
-
-아래 워크스루는 프로젝트를 열고 **Vulnerabilities** 탭으로 전환한 뒤 첫 번째 행을 클릭해 트리아지 준비가 된 Analysis 섹션이 있는 드로어를 표시합니다.
-
-<video controls width="100%" preload="metadata" poster="/img/walkthroughs/walkthrough-cve-triage.gif">
-  <source src="/img/walkthroughs/walkthrough-cve-triage.mp4" type="video/mp4" />
-  ![애니메이션 워크스루 — Vulnerabilities 탭 진입 후 finding 드로어 열기](/img/walkthroughs/walkthrough-cve-triage.gif)
-</video>
-
 ## 일괄 상태 전이 {#bulk-transition}
 
 여러 finding 이 같은 디스포지션을 공유할 때 — 예를 들어 방금 업그레이드한 동일 라이브러리의 10 개 finding — 툴바의 **Bulk action bar** 로 드로어를 일일이 열지 않고 한 번에 전이할 수 있습니다.

@@ -107,15 +107,6 @@ Click any row to open:
 
 ![Vulnerability drawer — Analysis section with VEX action buttons and justification textarea](/img/screenshots/user-vulns-drawer-vex.png)
 
-### Walkthrough — opening the Vulnerabilities tab and a finding drawer
-
-The walkthrough below opens a project, switches to **Vulnerabilities**, and clicks the first row to bring up the drawer with the Analysis section ready for triage.
-
-<video controls width="100%" preload="metadata" poster="/img/walkthroughs/walkthrough-cve-triage.gif">
-  <source src="/img/walkthroughs/walkthrough-cve-triage.mp4" type="video/mp4" />
-  ![Animated walkthrough — opening the Vulnerabilities tab and the finding detail drawer](/img/walkthroughs/walkthrough-cve-triage.gif)
-</video>
-
 ## Bulk-transition findings {#bulk-transition}
 
 When several findings share the same disposition — for example, ten findings all on the same library that you've just upgraded — the toolbar's **Bulk action bar** lets you transition them in one shot instead of opening each drawer.

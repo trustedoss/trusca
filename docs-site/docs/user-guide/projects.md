@@ -80,17 +80,6 @@ The detail page exposes the following tabs, left-to-right:
 The **Source** tab used to sit immediately after **Licenses**; it was moved to the right of **Reports** so the data-output cluster (SBOM / Reports / Source) is contiguous. Bookmarks and `?tab=source` deep links continue to work — the slug is unchanged.
 :::
 
-### Walkthrough — clicking through the project detail tabs
-
-The walkthrough below opens a project from the list and clicks each tab in order so you can see how the lenses relate.
-
-<!-- walkthrough video is stale — it captures an earlier four-tab layout; refresh post-merge to include Releases / Reports / Source / Remediation -->
-
-<video controls width="100%" preload="metadata" poster="/img/walkthroughs/walkthrough-project-tour.gif">
-  <source src="/img/walkthroughs/walkthrough-project-tour.mp4" type="video/mp4" />
-  ![Animated walkthrough — clicking through the project detail tabs](/img/walkthroughs/walkthrough-project-tour.gif)
-</video>
-
 ## Adding a project — API
 
 ```bash
