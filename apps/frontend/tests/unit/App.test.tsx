@@ -13,11 +13,25 @@ vi.mock("@/lib/api", () => ({
   postLogout: vi.fn(),
 }));
 
-// ProjectListPage calls listProjects — mock it so the test doesn't hit the
-// network and so the project-list-page testId renders without an API error.
+// ProjectListPage AND DashboardPage both call listProjects — mock it so the
+// test doesn't hit the network and so the page test ids render without an API
+// error. DashboardPage additionally hits listApprovals + listMyScans, so we
+// provide those too. All return empty lists so the dashboard renders its
+// empty-state CTA path on the / index.
 vi.mock("@/lib/projectsApi", () => ({
-  listProjects: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, size: 100 }),
+  listProjects: vi
+    .fn()
+    .mockResolvedValue({ items: [], total: 0, page: 1, size: 100 }),
+  listMyScans: vi
+    .fn()
+    .mockResolvedValue({ items: [], total: 0, page: 1, size: 10 }),
   triggerScan: vi.fn(),
+}));
+
+vi.mock("@/lib/approvalsApi", () => ({
+  listApprovals: vi
+    .fn()
+    .mockResolvedValue({ items: [], total: 0, page: 1, page_size: 1 }),
 }));
 
 import { postLogout } from "@/lib/api";
@@ -57,12 +71,14 @@ describe("App smoke (authenticated)", () => {
     window.history.replaceState(null, "", "/");
   });
 
-  it("redirects the / index to /projects (dashboard dropped)", async () => {
+  it("renders the dedicated Dashboard at the / index (W9-#50 D1-001)", async () => {
     renderAppAt("/");
     await waitFor(() => {
-      expect(screen.getByTestId("project-list-page")).toBeInTheDocument();
+      expect(screen.getByTestId("dashboard-page")).toBeInTheDocument();
     });
-    expect(screen.queryByTestId("nav-dashboard")).not.toBeInTheDocument();
+    // Dashboard is the first sidebar item — Projects sits below it.
+    expect(screen.getByTestId("nav-dashboard")).toBeInTheDocument();
+    expect(screen.getByTestId("nav-projects")).toBeInTheDocument();
   });
 
   it("renders Projects as the first sidebar item", async () => {

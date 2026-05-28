@@ -1,0 +1,43 @@
+{
+  "heading": "대시보드",
+  "last_updated": "마지막 업데이트 {{time}}",
+  "kpi": {
+    "active_projects": "활성 프로젝트",
+    "open_vulnerabilities": "미해결 취약점",
+    "pending_approvals": "승인 대기",
+    "last_scan": "마지막 스캔",
+    "view_all": "전체 보기",
+    "never_scanned": "스캔 없음",
+    "no_data": "—"
+  },
+  "chart": {
+    "severity_heading": "취약점 심각도",
+    "license_heading": "라이선스 분류",
+    "subtitle_severity": "각 프로젝트를 가장 높은 심각도 버킷으로 집계합니다.",
+    "subtitle_license": "각 프로젝트를 가장 위험한 라이선스 버킷으로 집계합니다."
+  },
+  "recent_scans": {
+    "heading": "최근 스캔",
+    "view_all": "전체 스캔 보기",
+    "empty": "스캔 기록이 없습니다.",
+    "column": {
+      "project": "프로젝트",
+      "kind": "종류",
+      "status": "상태",
+      "started": "시작",
+      "duration": "소요"
+    }
+  },
+  "recent_activity": {
+    "heading": "최근 활동",
+    "empty": "최근 활동이 없습니다."
+  },
+  "empty": {
+    "title": "프로젝트가 없습니다",
+    "description": "첫 프로젝트를 등록하고 스캔을 시작하세요.",
+    "cta": "프로젝트 등록"
+  },
+  "error": {
+    "load_failed": "대시보드 데이터를 불러오지 못했습니다."
+  }
+}
