@@ -65,12 +65,6 @@ const FILTER_CHIPS: { value: LogFilter; key: string }[] = [
   { value: "errors", key: "detail.filter_errors" },
 ];
 
-const TERMINAL_STATUSES: ReadonlySet<ScanStatus> = new Set([
-  "succeeded",
-  "failed",
-  "cancelled",
-]);
-
 interface DownloadToast {
   id: number;
   text: string;
@@ -79,7 +73,7 @@ interface DownloadToast {
 
 function statusBadgeTone(
   status: ScanStatus | null | undefined,
-): "info" | "low" | "success" | "critical" | "muted" {
+): "info" | "low" | "success" | "critical" {
   switch (status) {
     case "running":
       return "low";
@@ -88,7 +82,6 @@ function statusBadgeTone(
     case "failed":
       return "critical";
     case "cancelled":
-      return "muted";
     case "queued":
     default:
       return "info";
@@ -403,7 +396,6 @@ function PageHeader({
   downloading,
 }: PageHeaderProps) {
   const { t } = useTranslation("scans");
-  const isTerminal = status ? TERMINAL_STATUSES.has(status) : false;
 
   return (
     <header
@@ -462,7 +454,7 @@ function PageHeader({
         {status ? (
           <Badge
             tone={statusBadgeTone(status)}
-            variant={isTerminal ? "outline" : "outline"}
+            variant="outline"
             data-testid="scan-detail-page-status"
           >
             {t(`page.status.${status}`)}
