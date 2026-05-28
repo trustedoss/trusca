@@ -409,6 +409,14 @@
         "not_found": "Vulnerability not found.",
         "forbidden": "You do not have permission to view this vulnerability.",
         "unknown": "Could not load this vulnerability. Please try again."
+      },
+      "next_steps": {
+        "heading": "Next steps",
+        "triage_heading": "Triage",
+        "triage_status_label": "Status",
+        "remediation_heading": "Remediation",
+        "upgrade_compact_label": "Recommended upgrade",
+        "no_remediation": "No remediation available yet."
       }
     },
     "drawer": {
