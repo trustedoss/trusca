@@ -415,6 +415,7 @@
       "loading_title": "Loading vulnerability…",
       "loading_subtitle": "Fetching CVE details.",
       "subtitle": "Status: {{status}}",
+      "open_full_view": "Open in full view",
       "cve_id_label": "CVE ID",
       "cvss_label": "CVSS",
       "epss_label": "EPSS",

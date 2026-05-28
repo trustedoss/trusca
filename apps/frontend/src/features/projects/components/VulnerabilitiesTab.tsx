@@ -657,6 +657,7 @@ export function VulnerabilitiesTab({
       <VulnerabilityDrawer
         open={drawerOpen}
         findingId={drawerId}
+        projectId={projectId}
         projectRole={projectRole}
         readOnly={readOnly}
         onOpenChange={(open) => {
