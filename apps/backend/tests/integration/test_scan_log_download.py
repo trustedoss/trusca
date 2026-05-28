@@ -380,8 +380,13 @@ async def test_path_traversal_attempt_returns_422_not_200(
     response = await client.get(
         "/v1/scans/..%2F..%2Fetc%2Fpasswd/log", headers=headers
     )
-    assert response.status_code == 422, response.text
-    # NOT 200 (we did not serve /etc/passwd) and NOT 500 (we did not crash
-    # the handler on the path resolution).
+    # The defence-in-depth contract is "reject before reaching the handler",
+    # not "specifically 422". Starlette normalises ``%2F``-encoded ``..``
+    # segments at the URL layer and short-circuits with 404 before FastAPI
+    # ever reaches Pydantic UUID validation; older Starlette versions let
+    # the segment through to the route, which then 422'd on UUID parsing.
+    # Either response is equally safe — neither served /etc/passwd nor
+    # crashed the handler.
+    assert response.status_code in (404, 422), response.text
     assert response.status_code != 200
     assert response.status_code != 500

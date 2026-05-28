@@ -161,6 +161,18 @@
   "GET /v1/projects/{project_id}": [
     "project_id"
   ],
+  "GET /v1/projects/{project_id}/compliance": [
+    "category",
+    "has_obligations",
+    "kind",
+    "limit",
+    "offset",
+    "order",
+    "project_id",
+    "scan_id",
+    "search",
+    "sort"
+  ],
   "GET /v1/projects/{project_id}/components": [
     "dependency_scope",
     "direct",
