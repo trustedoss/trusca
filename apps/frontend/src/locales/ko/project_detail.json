@@ -396,6 +396,21 @@
     "errors": {
       "load_failed": "취약점을 불러오지 못했습니다."
     },
+    "detail_page": {
+      "breadcrumb_aria": "탐색 경로",
+      "breadcrumb": {
+        "projects": "프로젝트",
+        "vulnerabilities": "취약점"
+      },
+      "back_link": "취약점 목록으로 돌아가기",
+      "title_loading": "취약점 정보를 불러오는 중...",
+      "not_found": "취약점을 찾을 수 없습니다.",
+      "errors": {
+        "not_found": "취약점을 찾을 수 없습니다.",
+        "forbidden": "이 취약점을 조회할 권한이 없습니다.",
+        "unknown": "취약점을 불러오지 못했습니다. 다시 시도해 주세요."
+      }
+    },
     "drawer": {
       "loading_title": "취약점 불러오는 중…",
       "loading_subtitle": "CVE 상세 정보를 가져오고 있습니다.",

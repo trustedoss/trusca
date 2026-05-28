@@ -396,6 +396,21 @@
     "errors": {
       "load_failed": "Could not load vulnerabilities."
     },
+    "detail_page": {
+      "breadcrumb_aria": "Breadcrumb",
+      "breadcrumb": {
+        "projects": "Projects",
+        "vulnerabilities": "Vulnerabilities"
+      },
+      "back_link": "Back to Vulnerabilities",
+      "title_loading": "Loading vulnerability…",
+      "not_found": "Vulnerability not found.",
+      "errors": {
+        "not_found": "Vulnerability not found.",
+        "forbidden": "You do not have permission to view this vulnerability.",
+        "unknown": "Could not load this vulnerability. Please try again."
+      }
+    },
     "drawer": {
       "loading_title": "Loading vulnerability…",
       "loading_subtitle": "Fetching CVE details.",
