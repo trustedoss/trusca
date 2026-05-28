@@ -52,6 +52,17 @@
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
 }
 
+.featureAudience {
+  display: inline-block;
+  margin: 0 0 0.5rem;
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ifm-color-emphasis-600);
+}
+
 .featureTitle {
   margin: 0 0 0.5rem;
   font-size: 1.15rem;

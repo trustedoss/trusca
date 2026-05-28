@@ -93,14 +93,14 @@ the **UI label** column is what appears in tables and badges.
 | `forbidden` | **Forbidden** | Build gate exits 1 in CI. | AGPL-3.0, GPL-2.0, GPL-3.0, SSPL-1.0, BUSL-1.1 |
 | `unknown` | **Unknown** | Surfaced for review; no automatic block. Always needs human review. | License could not be parsed; SPDX ID not matched by the classifier — see [below](#why-so-many-unknown). |
 
-:::warning Classification source in this release
-The legal-tier classification (`forbidden` / `conditional` / `permissive` / `unknown`) is currently driven by a hard-coded SPDX → tier dictionary in `apps/backend/tasks/scan_source.py` (`_LICENSE_CATEGORY_DEFAULTS`). Per-organization rule customization is on the the roadmap. For one-off overrides today, super-admins can patch the dictionary and restart the worker (an Operator-only path).
+:::warning Classification source
+The legal-tier classification (`forbidden` / `conditional` / `permissive` / `unknown`) is driven by a built-in SPDX-to-tier catalog. Per-organization rule customization is on the roadmap. Until then, super-admins can override individual entries in-place and restart the worker — an operator-only path.
 :::
 
 ### Why so many `unknown`? {#why-so-many-unknown}
 
 :::info
-Classification uses exact-match SPDX IDs. Suffix-less variants (`LGPL-3.0` instead of `LGPL-3.0-or-later`) fall through to `unknown`. If a component shows `unknown` despite a well-known SPDX ID, the source likely emitted a deprecated alias. Fuzzy SPDX normalization is on the the roadmap.
+Classification uses exact-match SPDX IDs. Suffix-less variants (`LGPL-3.0` instead of `LGPL-3.0-or-later`) fall through to `unknown`. If a component shows `unknown` despite a well-known SPDX ID, the source likely emitted a deprecated alias. Fuzzy SPDX normalization is on the roadmap.
 :::
 
 ## Declared vs. detected {#declared-vs-detected}
@@ -157,7 +157,7 @@ kinds yet:
 - **Field-of-use restrictions** (BUSL-1.1).
 
 For these, see the underlying license text via the component drawer; a
-richer obligation taxonomy is on the the roadmap.
+richer obligation taxonomy is on the roadmap.
 :::
 
 ## SPDX expressions
@@ -191,7 +191,7 @@ The license could not be parsed, or the SPDX ID was not in the classifier's exac
 
 ### Classification looks wrong
 
-The classification in this release is driven by the hard-coded `_LICENSE_CATEGORY_DEFAULTS` dictionary in `apps/backend/tasks/scan_source.py` (see [Classification source](#license-classification) above). For a one-off override today, a super-admin can patch the dictionary and restart the worker; the per-organization customization path is on the the roadmap. If the dictionary entry is correct but a detected license disagrees with the declared one, review both findings in the component drawer (see [Declared vs. detected](#declared-vs-detected)).
+Classification is driven by the built-in SPDX-to-tier catalog (see [Classification source](#license-classification) above). For a one-off override today, a super-admin can patch the catalog and restart the worker; the per-organization customization path is on the roadmap. If the catalog entry is correct but a detected license disagrees with the declared one, review both findings in the component drawer (see [Declared vs. detected](#declared-vs-detected)).
 
 ### Lockfile not detected
 
@@ -206,7 +206,7 @@ Items the manual previously promised that are not in this release; tracked for l
 - **Approval status** row inside the component drawer — planned; the project-level [Approvals](./approvals.md) page is the source of truth today.
 - Manual **Override concluded license** action in the drawer (`team_admin`) — planned.
 - Fuzzy SPDX normalization for suffix-less variants (`LGPL-3.0` → `LGPL-3.0-or-later`) — planned.
-- Per-organization license-classification rule customization — planned; today classification is driven by the hard-coded `_LICENSE_CATEGORY_DEFAULTS` dictionary in `apps/backend/tasks/scan_source.py`.
+- Per-organization license-classification rule customization — planned; today classification uses the built-in catalog.
 
 ## See also
 

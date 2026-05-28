@@ -16,7 +16,7 @@ function HomepageHero(): ReactNode {
       <div className="container">
         <p className={styles.heroEyebrow}>
           <Translate id="homepage.hero.eyebrow">
-            Apache-2.0 · Self-hosted · GA 2.0.0
+            Apache-2.0 · Self-hosted · v0.10.0
           </Translate>
         </p>
         <h1 className={styles.heroTitle}>{siteConfig.title}</h1>
@@ -29,10 +29,10 @@ function HomepageHero(): ReactNode {
         <div className={styles.heroCtas}>
           <Link
             className="button button--primary button--lg"
-            to="/docs/installation/docker-compose"
+            to="/docs/quickstart"
           >
-            <Translate id="homepage.hero.cta.install">
-              Install in 5 minutes
+            <Translate id="homepage.hero.cta.quickstart">
+              Quickstart — 5 min
             </Translate>
           </Link>
           <Link
@@ -41,20 +41,23 @@ function HomepageHero(): ReactNode {
           >
             <Translate id="homepage.hero.cta.docs">Read the docs</Translate>
           </Link>
-          {/* v2.1 B5 — Live read-only demo. Points at the docs page until the
-              public instance URL is published (set after the O2 deploy). */}
-          <Link
-            className="button button--secondary button--lg"
-            to="/docs/installation/live-demo"
-          >
-            <Translate id="homepage.hero.cta.demo">Live demo</Translate>
-          </Link>
           <Link
             className="button button--outline button--secondary button--lg"
             href="https://github.com/trustedoss/trustedoss-portal"
           >
             <Translate id="homepage.hero.cta.github">GitHub</Translate>
           </Link>
+        </div>
+        <div className={styles.heroCommand} aria-label={translate({
+          id: "homepage.hero.command.aria",
+          message: "One-command quickstart",
+        })}>
+          <code>
+            <span className={styles.heroCommandPrompt}>$</span>{" "}
+            git clone https://github.com/trustedoss/trustedoss-portal.git &amp;&amp;{" "}
+            cd trustedoss-portal &amp;&amp;{" "}
+            docker-compose -f docker-compose.dev.yml up -d
+          </code>
         </div>
         <dl className={styles.heroStats} aria-label={translate({
           id: "homepage.hero.stats.aria",
@@ -80,7 +83,7 @@ function HomepageHero(): ReactNode {
             <dt>EN · KO</dt>
             <dd>
               <Translate id="homepage.hero.stats.i18n">
-                bilingual UI &amp; documentation at GA
+                bilingual UI &amp; documentation from day one
               </Translate>
             </dd>
           </div>

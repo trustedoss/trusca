@@ -174,8 +174,8 @@ VEX 상태와 CycloneDX `analysis.state` 매핑:
 
 | 감사관 질문 | v0.10.0 답변 소스 | 한계 |
 |------------|----------------|------|
-| "릴리스 X 시점의 SBOM 을 보여달라" | 수동 아카이브; 포털은 최신본만 보존 | 과거 스캔 고정은  로드맵 |
-| "지난 분기에 누가 SBOM / NOTICE 를 다운로드했나?" | `structlog`(Loki / journald) — `audit_logs` 아님 | 감사 행 승격은  로드맵 |
+| "릴리스 X 시점의 SBOM 을 보여달라" | 수동 아카이브; 포털은 최신본만 보존 | 과거 스캔 고정은 로드맵 |
+| "지난 분기에 누가 SBOM / NOTICE 를 다운로드했나?" | `structlog`(Loki / journald) — `audit_logs` 아님 | 감사 행 승격은 로드맵 |
 | "프로젝트 X 에서 GPL 이 처음 탐지된 시점은?" | `scans.create` 의 `audit_logs` + 스캔별 `vulnerability_findings.create` | 가능 — 전체 증거 체인 보유 |
 | "2026 Q1 의 모든 승인 결정을 보여달라" | `component_approvals.update` 의 `audit_logs` + `decision_note` | 가능 — 전체 증거 체인 보유 |
 | "감사 행이 변조되지 않았음을 증명하라" | append-only 트리거(마이그레이션 0012) | super-admin 우회 잔존 — [감사 로그 강화](../admin-guide/audit-log.md#스키마) 검토 필요 |
@@ -185,9 +185,9 @@ VEX 상태와 CycloneDX `analysis.state` 매핑:
 매뉴얼이 이전에 약속했으나 v0.10.0에 포함되지 않은 항목.
 
 - **취약점 PDF 보고서**는 v0.10.0에 _이미 구현_되어 있습니다 — [취약점 → PDF 보고서 다운로드](./vulnerabilities.md#pdf-보고서-다운로드)(`GET /v1/projects/{id}/vulnerability-report.pdf`) 참고. 아직 **구현되지 않은** 것은 **Excel** 보고서(컴포넌트 Excel, 취약점 Excel)와 **컴플라이언스 PDF**입니다. 이들을 위한 `/v1/projects/{id}/reports/...` 엔드포인트는 없으며 향후 릴리스에서 제공됩니다. 표 형태가 즉시 필요한 이해관계자는 SBOM(CycloneDX JSON)을 선호 도구로 소비하세요.
-- NOTICE 조립을 위한 컴포넌트 드로어의 수동 저작권 오버라이드 —  예정.
-- SBOM·NOTICE 내보내기의 과거 스캔 고정 —  예정.
-- SBOM / NOTICE 다운로드를 `structlog` 이벤트에서 `audit_logs` 행으로 승격 —  예정.
+- NOTICE 조립을 위한 컴포넌트 드로어의 수동 저작권 오버라이드 — 예정.
+- SBOM·NOTICE 내보내기의 과거 스캔 고정 — 예정.
+- SBOM / NOTICE 다운로드를 `structlog` 이벤트에서 `audit_logs` 행으로 승격 — 예정.
 
 ## 함께 보기
 

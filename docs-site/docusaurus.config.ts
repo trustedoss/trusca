@@ -24,6 +24,10 @@ const config: Config = {
   onBrokenLinks: "warn",
   onBrokenMarkdownLinks: "warn",
 
+  markdown: {
+    mermaid: true,
+  },
+
   i18n: {
     defaultLocale: "en",
     locales: ["en", "ko"],
@@ -205,6 +209,7 @@ const config: Config = {
         searchResultLimits: 8,
       },
     ],
+    "@docusaurus/theme-mermaid",
   ],
 };
 

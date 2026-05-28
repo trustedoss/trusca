@@ -85,10 +85,6 @@ sidebar_position: 2
 | `TRIVY_DB_CACHE_DIR` | `/var/lib/trivy` | `config.py` | 워커 컨테이너에서 DB가 풀리는 디렉터리. 재부팅 시 재다운로드를 피하려면 호스트 볼륨 마운트. |
 | `TRIVY_TIMEOUT_SECONDS` | `300` | `config.py` | `trivy sbom` 스캔별 타임아웃. 매우 큰 모노레포는 `600`~`900`으로 상향. |
 
-:::note v0.10.0에서 Dependency-Track 키 제거
-`DT_URL`, `DT_API_KEY`, `DT_REQUEST_TIMEOUT_SECONDS`, `DT_BREAKER_*`, `DT_HEALTH_ENDPOINT`, `DT_AUTO_RESTART`, `DT_ORPHAN_AUTODELETE` 키는 v0.10.0에서 더 이상 읽지 않습니다. 업그레이드 후 기존 `.env`에 남아 있어도 안전하게 무시됩니다 — [v0.10.0 마이그레이션](../release-notes/v0.10.0.md#migration-from-v23x) 참조.
-:::
-
 ## 빌드 / 정책 게이트
 
 CI 빌드 게이트는 기본적으로 Critical CVE와 금지 라이선스에서 빌드를 실패시키며, 이 조건들은 env로 구동되지 않습니다. 아래 단일 env 노브는 **선택적** EPSS 차원을 더합니다.

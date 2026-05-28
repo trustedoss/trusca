@@ -106,7 +106,7 @@ GitHub에 등록할 URL — `https://<your-host>/v1/webhooks/github`.
 - **Signature:** `X-Hub-Signature-256`. 프로젝트별 `webhook_secret`을 키로 raw body에 대해 HMAC-SHA256.
 - **Events:** `push`와 `pull_request`가 지원되는 트리거.
 
-포털은 인바운드 전송을 검증하기 위해 프로젝트별 `webhook_secret` 필드를 저장합니다. 해당 시크릿을 생성·회전하는 UI는 현재 릴리스에서 노출되지 않습니다 — [로드맵](#로드맵-v2x) 참고. 현재는 운영자가 서버 측에서 시크릿을 부트스트랩합니다.
+포털은 인바운드 전송을 검증하기 위해 프로젝트별 `webhook_secret` 필드를 저장합니다. 해당 시크릿을 생성·회전하는 UI는 현재 릴리스에서 노출되지 않습니다 — [로드맵](#로드맵) 참고. 현재는 운영자가 서버 측에서 시크릿을 부트스트랩합니다.
 
 ### GitLab
 
@@ -134,9 +134,9 @@ GitLab에 등록할 URL — `https://<your-host>/v1/webhooks/gitlab`.
 
 매뉴얼이 이전에 약속했으나 v0.10.0에 포함되지 않은 항목.
 
-- API Key 만료 프리셋(30 / 90 / 180 / 365일, 커스텀) —  예정. 현재 발급된 모든 Key는 폐기 전까지 만료되지 않습니다.
-- **Project Settings → CI/CD** 서브탭과 **Rotate webhook secret** 동작 —  예정. 현재 프로젝트별 `webhook_secret`은 서버 측에서 부트스트랩됩니다.
-- `team_admin`을 위한 팀 범위 감사 로그(`/audit`) —  예정. 현재 감사 로그는 super-admin 전용 (`/admin/audit`).
+- API Key 만료 프리셋(30 / 90 / 180 / 365일, 커스텀) — 예정. 현재 발급된 모든 Key는 폐기 전까지 만료되지 않습니다.
+- **Project Settings → CI/CD** 서브탭과 **Rotate webhook secret** 동작 — 예정. 현재 프로젝트별 `webhook_secret`은 서버 측에서 부트스트랩됩니다.
+- `team_admin`을 위한 팀 범위 감사 로그(`/audit`) — 예정. 현재 감사 로그는 super-admin 전용 (`/admin/audit`).
 
 ## 함께 보기
 
