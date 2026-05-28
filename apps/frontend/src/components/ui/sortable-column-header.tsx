@@ -109,11 +109,18 @@ export function SortableColumnHeader({
       data-testid={testId ?? `column-header-${column}`}
       data-sort-order={order ?? "none"}
       className={cn(
-        "inline-flex items-center gap-1 text-xs font-medium uppercase tracking-wide",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
-        isActive
-          ? "text-foreground"
-          : "text-muted-foreground hover:text-foreground",
+        // W11-C polish — Vercel-style header chip. Inline-flex chip with a
+        // tight gutter that picks up a subtle muted background on hover so
+        // the column reads as "click here to sort" without ambiguity (audit
+        // O5 noted sortable headers had no hover affordance). Linear motion
+        // tokens (150 ms ease-out-soft) match button / row transitions, and
+        // the focus ring uses the same offset 2 + 2 px the rest of W11 uses.
+        "group inline-flex items-center gap-1 rounded-sm px-1 -mx-1 py-0.5",
+        "text-xs font-medium uppercase tracking-wider",
+        "transition-colors duration-fast ease-out-soft",
+        "hover:bg-muted hover:text-foreground",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+        isActive ? "text-foreground" : "text-muted-foreground",
         className,
       )}
     >
@@ -121,8 +128,14 @@ export function SortableColumnHeader({
       <Icon
         aria-hidden
         className={cn(
-          "h-3 w-3 shrink-0",
-          isActive ? "opacity-100" : "opacity-50",
+          // The chevron stays half-opacity at rest so the header reads
+          // typographic. On hover (group-hover) or when the column is the
+          // active sort, it lifts to full opacity — making the sort
+          // affordance visible the moment a pointer crosses the header.
+          "h-3 w-3 shrink-0 transition-opacity duration-fast ease-out-soft",
+          isActive
+            ? "opacity-100"
+            : "opacity-40 group-hover:opacity-80",
         )}
       />
     </button>

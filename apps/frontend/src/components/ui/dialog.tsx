@@ -105,8 +105,11 @@ export function DialogFooter({
 }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
+      // W11-C polish — footer buttons sit at gap-3 (was space-x-2 ≈ gap-2)
+      // so the primary / cancel pair gets a more confident breathing
+      // distance. On mobile the buttons stack reverse without extra gap.
       className={cn(
-        "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2",
+        "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-3 sm:space-x-0",
         className,
       )}
       {...props}

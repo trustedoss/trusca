@@ -369,7 +369,11 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
           reflects the active filter. */}
       {severityDistribution || licenseDistribution ? (
         <div
-          className="grid items-start gap-4 border-b p-4 md:grid-cols-2"
+          // W11-C polish — distribution band aligns to the px-6 + py-4 gutter
+          // shared by toolbar / rows below (Vercel deployments-1 axis).
+          // Border-bottom softened to /60 so the seam reads as part of the
+          // table stack rather than a heavy divider.
+          className="grid items-start gap-4 border-b border-border/60 px-6 py-4 md:grid-cols-2"
           data-testid="components-distribution-cards"
         >
           {severityDistribution ? (
@@ -449,7 +453,9 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
       />
 
       <div
-        className="flex items-center justify-between border-b px-4 py-2 text-xs text-muted-foreground"
+        // W11-C polish — summary band aligns to px-6 gutter and uses
+        // border-border/60 so the seam stays light at 40 px density.
+        className="flex items-center justify-between border-b border-border/60 px-6 py-2 text-xs text-muted-foreground"
         data-testid="components-summary"
         data-total={total}
         data-loaded={items.length}
@@ -574,7 +580,11 @@ function ComponentsTableHeader({
   const { t } = useTranslation("project_detail");
   return (
     <div
-      className="flex items-center gap-3 border-b bg-muted/30 px-4 text-xs font-medium uppercase tracking-wide text-muted-foreground"
+      // W11-C polish — table header lands on the canonical px-6 gutter +
+      // --muted token (no /30 opacity hack), softer border-border/60 seam,
+      // and tracking-wider matches the SortableColumnHeader chip typography.
+      // Height stays 32 px (compact identity).
+      className="flex items-center gap-3 border-b border-border/60 bg-muted px-6 text-xs font-medium uppercase tracking-wider text-muted-foreground"
       style={{ height: "32px" }}
       data-testid="components-header"
     >
@@ -666,7 +676,12 @@ function ComponentRow({
       data-component-id={component.id}
       data-row-index={rowIndex}
       className={cn(
-        "flex w-full items-center gap-3 border-b px-4 text-left text-sm hover:bg-muted/50",
+        // W11-C polish — Vercel deployments-1 row tone: bg-card surface,
+        // accent hover via Linear motion tokens, softer /60 border, px-6
+        // gutter aligned to the header / toolbar / distribution cards.
+        // 40 px row height stays unchanged (compact identity).
+        "flex w-full items-center gap-3 border-b border-border/60 bg-card px-6 text-left text-sm",
+        "transition-colors duration-fast ease-out-soft hover:bg-accent",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
       )}
       style={{ height: "var(--table-row)" }}

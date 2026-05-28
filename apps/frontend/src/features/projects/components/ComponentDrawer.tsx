@@ -99,7 +99,10 @@ export function ComponentDrawer({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className="flex w-full max-w-xl flex-col gap-4 overflow-y-auto sm:max-w-xl"
+        // W11-C polish — drawer width unchanged. Section gap lifted from
+        // 4 → 6 so the header gets more breathing room from the detail body
+        // (Linear-style spacing hierarchy).
+        className="flex w-full max-w-xl flex-col gap-6 overflow-y-auto sm:max-w-xl"
         data-testid="component-drawer"
       >
         <SheetHeader>

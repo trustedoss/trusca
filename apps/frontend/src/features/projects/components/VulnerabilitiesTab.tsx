@@ -533,7 +533,10 @@ export function VulnerabilitiesTab({
     <div data-testid="vulnerabilities-tab" className="flex flex-1 flex-col">
       {distributionHasAny ? (
         <div
-          className="border-b p-4"
+          // W11-C polish — distribution card lands on the canonical px-6 +
+          // py-4 gutter shared by toolbar / rows below (Vercel deployments-1
+          // axis). Border-bottom softened to /60.
+          className="border-b border-border/60 px-6 py-4"
           data-testid="vulnerabilities-distribution-card"
         >
           <Card data-testid="vulnerabilities-severity-card">
@@ -627,7 +630,10 @@ export function VulnerabilitiesTab({
       />
 
       <div
-        className="flex items-center justify-between border-b px-4 py-2 text-xs text-muted-foreground"
+        // W11-C polish — summary band lands on the same px-6 gutter the table
+        // header / rows use, with the softer border-border/60 divider so the
+        // band reads as part of the table stack rather than a heavy seam.
+        className="flex items-center justify-between border-b border-border/60 px-6 py-2 text-xs text-muted-foreground"
         data-testid="vulnerabilities-summary"
         data-total={total}
         data-loaded={items.length}
@@ -802,12 +808,13 @@ function VulnerabilitiesTableHeader({
   const { t } = useTranslation("project_detail");
   return (
     <div
-      // gap-2 + w-4 checkbox cell — drops the visible CVE column from
-      // `px-4 + w-6 + gap-3 = 52px` to `px-4 + w-4 + gap-2 = 40px`, which
-      // matches the distribution card's title indent (`p-4 + Card p-6 = 40`).
-      // User-test feedback: the table felt mis-aligned with the cards above
-      // because of the wider checkbox slot.
-      className="flex items-center gap-2 border-b bg-muted/30 px-4 text-xs font-medium uppercase tracking-wide text-muted-foreground"
+      // W11-C polish — table header lands on the px-6 gutter shared by
+      // distribution cards / summary band / rows (Vercel deployments-1 axis).
+      // Background uses the canonical --muted token (no /30 opacity hack),
+      // border-bottom softened via /60 so the seam reads as part of the
+      // table chrome, and tracking-wider matches the SortableColumnHeader
+      // chip typography. Height stays 32 px (compact identity).
+      className="flex items-center gap-2 border-b border-border/60 bg-muted px-6 text-xs font-medium uppercase tracking-wider text-muted-foreground"
       style={{ height: "32px" }}
       data-testid="vulnerabilities-header"
     >
@@ -824,12 +831,18 @@ function VulnerabilitiesTableHeader({
           }}
           onChange={(e) => onToggleAll(e.currentTarget.checked)}
           disabled={disabled}
+          // W11-C polish — checkbox picks up the focus-ring + accent token
+          // so multi-select reads as deliberate UI, not browser default.
+          className="h-3.5 w-3.5 rounded-sm border-border text-foreground accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         />
       </span>
       {/* User-test follow-up — column order: CVE / Component / Severity /
           CVSS / EPSS / Reachability / Status. The Summary column was
           dropped from the row (drawer carries the full summary); the
-          row's last column is now Status. Component is sortable. */}
+          row's last column is now Status. Component is sortable.
+          W11-C — non-sortable CVE label inherits the strip's typography
+          (uppercase + tracking-wider) from the parent, so the cell needs
+          no extra class. */}
       <span className="w-44">{t("vulnerabilities.column.cve_id")}</span>
       {visibleColumns.has("component") ? (
         <span
@@ -946,8 +959,14 @@ function VulnerabilityRow({
       data-row-index={rowIndex}
       data-selected={selected ? "true" : "false"}
       className={cn(
-        "flex w-full items-center gap-2 border-b px-4 text-left text-sm hover:bg-muted/50",
-        selected ? "bg-muted/30" : undefined,
+        // W11-C polish — Vercel deployments-1 row tone. The row sits on
+        // bg-card so it reads as a white surface against the off-white
+        // canvas; hover lifts the `--accent` muted tint via the Linear
+        // motion tokens. Border softened to /60 so the seam stays light at
+        // 40 px density. Selected state uses the same accent token (no /30
+        // opacity hack) so the visual carries on to dark mode forward-compat.
+        "flex w-full items-center gap-2 border-b border-border/60 bg-card px-6 text-left text-sm transition-colors duration-fast ease-out-soft hover:bg-accent",
+        selected ? "bg-accent" : undefined,
       )}
       style={{ height: "var(--table-row)" }}
     >
@@ -964,6 +983,10 @@ function VulnerabilityRow({
             // when the user is just toggling selection.
             e.stopPropagation();
           }}
+          // W11-C polish — checkbox picks up the focus-ring + accent so
+          // bulk-select reads as deliberate UI, matching the header
+          // select-all checkbox.
+          className="h-3.5 w-3.5 rounded-sm border-border text-foreground accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         />
       </span>
       <button
