@@ -27,7 +27,7 @@
     "message": "30개 이상의 언어 · 빌드 시스템 탐지 (cdxgen)"
   },
   "homepage.hero.stats.feeds": {
-    "message": "Dependency-Track 기반 취약점 피드"
+    "message": "Trivy 단일 엔진 취약점 피드"
   },
   "homepage.hero.stats.i18n": {
     "message": "GA 시점부터 UI · 문서 이중 언어 지원"
@@ -42,7 +42,7 @@
     "message": "취약점 추적"
   },
   "homepage.feature.vulns.desc": {
-    "message": "Dependency-Track 기반 CVE 탐지 (NVD · OSV · GitHub Advisory). 새 CVE 자동 재스캔, DT 재시작 중에도 PostgreSQL 캐시 + Circuit Breaker로 결과 조회 정상 동작."
+    "message": "Trivy 기반 CVE 탐지 (NVD · OSV · GitHub Advisory · EPSS · KEV). 새 CVE는 보존된 SBOM에 대해 Celery beat가 자동 재매칭 — 수동 재스캔 불필요."
   },
   "homepage.feature.license.title": {
     "message": "라이선스 컴플라이언스"
