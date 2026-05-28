@@ -1677,6 +1677,76 @@ export class PortalPage {
     ).toBeVisible({ timeout: 10_000 });
   }
 
+  // ───── scan-detail-page-fe-v2 — dedicated /scans/:scanId page ──────────
+  /**
+   * Navigate directly to the dedicated scan detail page at `/scans/:scanId`
+   * and wait for the page header to render. The page hosts the large log
+   * panel + filter chips + download button — the dedicated surface that
+   * replaces the cramped inline drawer log.
+   *
+   * Locale-agnostic — anchors on `data-testid="scan-detail-page"` (the
+   * page root carries `data-scan-id` so callers can assert on provenance
+   * without parsing the rendered breadcrumb).
+   */
+  async gotoScanDetail(scanId: string): Promise<void> {
+    await this.page.goto(`${this.baseUrl}/scans/${scanId}`);
+    await this.page
+      .getByTestId("scan-detail-page-header")
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  /**
+   * Click the "Download log" button on the scan detail page and capture the
+   * resulting browser download. Returns `{ filename, body }` — the body is
+   * the raw `scan.log` text so the spec can assert on its content.
+   *
+   * The button itself is gated (disabled while status=queued AND no log
+   * lines yet); callers should wait for at least one log frame to arrive
+   * (or for the persisted status to move past queued) before calling this
+   * verb. Otherwise the click silently no-ops and `waitForEvent('download')`
+   * times out.
+   *
+   * Locale-agnostic — anchors on `data-testid="scan-detail-page-download"`.
+   */
+  async downloadScanLog(): Promise<{ filename: string; body: string }> {
+    const downloadPromise = this.page.waitForEvent("download", {
+      timeout: 15_000,
+    });
+    await this.page.getByTestId("scan-detail-page-download").click();
+    const download = await downloadPromise;
+    return readDownload(download);
+  }
+
+  /**
+   * From an open scan-progress drawer, click the "Open full log →" link to
+   * the dedicated detail page. Asserts the URL pathname switches to
+   * `/scans/<scanId>` (extracted from the link's `href`) and waits for the
+   * destination page header to mount.
+   *
+   * Used by drawer call sites (project list, project detail) where the
+   * inline log panel is now hidden (`hideInlineLog`) in favour of the
+   * dedicated route. Locale-agnostic — reads the link's `href` attribute,
+   * never the rendered text.
+   */
+  async openFullLogFromDrawer(): Promise<void> {
+    const link = this.page.getByTestId("scan-drawer-open-full-log");
+    await expect(link).toBeVisible({ timeout: 10_000 });
+    const href = await link.getAttribute("href");
+    if (href == null || !href.startsWith("/scans/")) {
+      throw new Error(
+        `openFullLogFromDrawer: link href must point to /scans/<id>, got ${href ?? "null"}`,
+      );
+    }
+    await link.click();
+    // Wait for the destination page to mount + assert the URL converged.
+    await this.page
+      .getByTestId("scan-detail-page-header")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    await expect
+      .poll(() => new URL(this.page.url()).pathname, { timeout: 5_000 })
+      .toBe(href);
+  }
+
   // -------------------------------------------------------------------------
   // Tier 6 — client-abandonment / bad-client resilience verbs
   // -------------------------------------------------------------------------
