@@ -150,6 +150,15 @@ command is a production-operator tool (`scripts/backup.sh`/`restore.sh` hardcode
 backup→restore round-trip is already executed by `install-uat.yml`. So those
 fences carry `waiver=`, and the Verify steps are `kind=manual`.
 
+`admin-guide/api-keys.md` and `admin-guide/oncall-runbook.md` are likewise
+**enrolled-only** (drift + KO-parity tracking, no executed steps): api-keys'
+runnable verify needs a freshly-minted key (POST `/v1/api-keys`, not yet a
+docs-uat capability) and its example curl uses a placeholder host + token; the
+oncall runbook is pure incident-diagnosis against the production compose stack.
+Both carry `waiver=` on their command fences (api-keys' Verify steps are
+`kind=manual`). `admin-guide/github-app.md` is not enrolled at all — it has no
+executable fence or Verify step to guard (the GitHub App UI is roadmap).
+
 All are `continue-on-error: true` (non-blocking) until the manifest fidelity
 stabilizes for the first public release, then they flip to blocking (design §9
 decision 7).

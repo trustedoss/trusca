@@ -20,6 +20,7 @@ against a production TrustedOSS Portal stack. Each scenario lists:
 All commands assume `docker-compose` V1 (hyphen) and a `bash` host shell.
 
 :::tip Get a super-admin token (used by most curl examples)
+<!-- docs-uat: id=oncall-auth-check kind=shell ctx=host tier=nightly waiver=runbook-diagnostic-prod-compose-placeholder-creds -->
 ```bash
 # Replace EMAIL/PASSWORD with the super-admin you created at install.
 EMAIL=admin@example.com
@@ -41,6 +42,7 @@ PagerDuty: `TrustedOSS Trivy DB last refresh > 14 days` or `TrustedOSS Trivy DB 
 - Existing `vulnerability_findings` rows are unchanged — the gap is forward-only.
 
 ### Diagnose
+<!-- docs-uat: id=oncall-trivy-db-check kind=shell ctx=host tier=nightly waiver=runbook-diagnostic-prod-compose-worker -->
 ```bash
 # 1. Is the DB on disk?
 docker-compose -f docker-compose.yml exec worker \
@@ -92,6 +94,7 @@ PagerDuty: `TrustedOSS auto-backup task failure count = 3`.
 - All in-portal data is at risk if the host crashes (no recent backup to restore from). Plan downstream tasks (compliance freezes, etc.) accordingly until a fresh backup lands.
 
 ### Diagnose
+<!-- docs-uat: id=oncall-backup-beat-check kind=shell ctx=host tier=nightly waiver=runbook-diagnostic-prod-compose-logs -->
 ```bash
 # 1. Celery Beat schedule heartbeat
 docker-compose logs --tail=500 beat | grep daily-auto-backup
@@ -134,6 +137,7 @@ PagerDuty: `TrustedOSS scan running > 4h for project X`.
 - Other projects: unaffected unless worker concurrency = 1 (default 2).
 
 ### Diagnose
+<!-- docs-uat: id=oncall-scan-stuck-check kind=shell ctx=host tier=nightly waiver=runbook-diagnostic-prod-compose -->
 ```bash
 # 1. Which stage is it stuck at?
 curl -fsS "https://<your-host>/v1/scans/<scan_id>" \
@@ -169,6 +173,7 @@ PagerDuty: `TrustedOSS portal disk = 95%+`.
 - In-flight scans continue. New scans are **blocked** at the `DISK_HARD_LIMIT_PCT` threshold (default 95%) — `/admin/scans` shows them as queued indefinitely.
 
 ### Diagnose
+<!-- docs-uat: id=oncall-disk-check kind=shell ctx=host tier=nightly waiver=runbook-diagnostic-host-df -->
 ```bash
 # 1. Host-wide
 df -h /opt/trustedoss

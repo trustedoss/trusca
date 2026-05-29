@@ -87,6 +87,7 @@ The same flow at **/integrations**, with the additional option to set the scope 
 
 Pass the key in the `Authorization` header as a Bearer token:
 
+<!-- docs-uat: id=apikeys-use-curl kind=shell ctx=host tier=nightly waiver=example-host-and-placeholder-bearer-token -->
 ```bash
 curl -sS -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
   https://trustedoss.example.com/v1/projects
@@ -144,7 +145,9 @@ See [Webhooks](../ci-integration/webhooks.md) for the webhook flow.
 
 After issuing a key:
 
+<!-- docs-uat: id=apikeys-verify-curl kind=manual tier=manual -->
 1. `curl -sS -H "Authorization: Bearer <key>" .../v1/projects` returns 200 with the team's projects.
+<!-- docs-uat: id=apikeys-verify-audit-row kind=manual tier=manual -->
 2. The audit log records a `target_table=api_keys&action=create` row with the prefix. The Admin UI cannot filter on `target_table=api_keys` — `api_keys` is not in the `AuditTargetTable` whitelist (see [Audit log → Filter-visible vs raw-row tables](./audit-log.md#what-gets-logged)). Use raw SQL to verify:
 
    ```sql
@@ -155,6 +158,7 @@ After issuing a key:
     ORDER BY created_at DESC;
    ```
 
+<!-- docs-uat: id=apikeys-verify-ci-build kind=manual tier=manual -->
 3. The CI build that consumes the key passes its first run.
 
 ## Troubleshooting
@@ -174,6 +178,7 @@ The two most common causes:
 
 Someone tried to brute-force the secret, or a malformed key was sent. The portal logs every miss in the structured backend log. Brute-force detection (a Slack alert when a single key crosses N misses per minute) is on the roadmap; until then, periodically grep the backend logs for repeated `secret_mismatch` lines:
 
+<!-- docs-uat: id=apikeys-secret-mismatch-grep kind=shell ctx=host tier=nightly waiver=production-compose-log-grep-diagnostic -->
 ```bash
 docker-compose -f docker-compose.yml logs --tail=2000 backend \
   | grep secret_mismatch | sort | uniq -c | sort -rn | head

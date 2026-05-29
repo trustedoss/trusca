@@ -87,6 +87,7 @@ Key는 현재 릴리스에서 **만료되지 않습니다**. 수동으로 폐기
 
 `Authorization` 헤더에 Bearer 토큰으로 Key를 전달:
 
+<!-- docs-uat: id=apikeys-use-curl kind=shell ctx=host tier=nightly waiver=example-host-and-placeholder-bearer-token -->
 ```bash
 curl -sS -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
   https://trustedoss.example.com/v1/projects
@@ -144,7 +145,9 @@ Webhook 흐름은 [Webhooks](../ci-integration/webhooks.md) 참고.
 
 Key 발급 후:
 
+<!-- docs-uat: id=apikeys-verify-curl kind=manual tier=manual -->
 1. `curl -sS -H "Authorization: Bearer <key>" .../v1/projects`가 200과 팀 프로젝트를 반환.
+<!-- docs-uat: id=apikeys-verify-audit-row kind=manual tier=manual -->
 2. 감사 로그가 prefix와 함께 `target_table=api_keys&action=create` 행을 기록. Admin UI 에서는 `target_table=api_keys` 로 필터링할 수 없습니다 — `api_keys` 가 `AuditTargetTable` 화이트리스트에 없기 때문입니다([감사 로그 → 필터 노출 vs raw 행 테이블](./audit-log.md#무엇이-기록되는가) 참고). 검증은 raw SQL 로:
 
    ```sql
@@ -155,6 +158,7 @@ Key 발급 후:
     ORDER BY created_at DESC;
    ```
 
+<!-- docs-uat: id=apikeys-verify-ci-build kind=manual tier=manual -->
 3. Key를 소비하는 CI 빌드가 첫 실행에 성공.
 
 ## 트러블슈팅
@@ -174,6 +178,7 @@ Key 발급 후:
 
 누군가 secret을 brute-force 시도했거나 잘못된 형식의 Key가 전송됐습니다. 포털은 모든 미스를 구조화된 백엔드 로그에 기록합니다. brute-force 감지(단일 Key가 분당 N회 미스를 넘으면 Slack 알림)는 로드맵입니다 — 그때까지는 백엔드 로그에서 반복되는 `secret_mismatch` 라인을 주기적으로 grep하세요:
 
+<!-- docs-uat: id=apikeys-secret-mismatch-grep kind=shell ctx=host tier=nightly waiver=production-compose-log-grep-diagnostic -->
 ```bash
 docker-compose -f docker-compose.yml logs --tail=2000 backend \
   | grep secret_mismatch | sort | uniq -c | sort -rn | head
