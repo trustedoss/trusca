@@ -85,6 +85,3 @@ docs/post-ga-execution-tracker.md
 docs/scans/
 docs/decisions/
 docs/ux/
-
-# docs-uat generated manifest (rebuilt on every run — never committed)
-docs-uat/manifest.json
