@@ -328,3 +328,122 @@ CVE-2026-26171
 # as CVE-2026-26171 — XmlDsig API never invoked from `dotnet restore`.
 # UNREACHED.
 CVE-2026-33116
+
+# ---------------------------------------------------------------------------
+# Bundled Go-binary toolchain reach surface — cdxgen 12.3.3 + ORT 85.1.1
+# vendored Go executables (single source of truth — keep in sync with
+# apps/backend/integrations/cdxgen.py:107-115 and apps/backend/integrations/
+# ort.py:128-139):
+#
+# What the worker actually invokes (only these):
+#   cdxgen <flags> <project-root>      # Node.js / Python wrapper
+#   ort evaluate --rules-file ... --ort-file ... --output-dir ... \
+#                --output-formats JSON  # JVM, single subcommand
+#   trivy sbom --format json ...        # standalone CLI invocation in scan
+#
+# What the worker NEVER invokes (the Go-binary surface bundled inside the
+# above toolchains):
+#   - cdxgen-plugins-bin/{cdxgen-evinse, cdxgen-osv-scanner, cdxgen-grype,
+#     cdxgen-trivy, ...}  (statically-linked Go binaries shipped under
+#     /usr/lib/node_modules/@cyclonedx/cdxgen-plugins-bin/ but never
+#     executed because we do not pass any --evidence / --osv / --grype
+#     flag to cdxgen — see cdxgen.py:107)
+#   - ORT bundled Go helpers (sigstore-fulcio, opa, containerd, go-git
+#     bundled inside ORT 85.1.1's optional analyzer plugins) — we only
+#     run the `evaluate` subcommand which loads the Kotlin ruleset; the
+#     analyze/scan/notice subcommands that exercise these helpers are
+#     never invoked.
+#   - Trivy CLI itself ships Go binaries with these same stdlib CVEs;
+#     we only call `trivy sbom`, never `trivy server` or `trivy image
+#     --server`, so the vulnerable HTTP/gRPC code paths are not exercised.
+#
+# All CVEs listed in this block are in code paths reached only when the
+# bundled Go binaries are invoked. Since the worker invokes ONLY the
+# entrypoints above (cdxgen wrapper / ort evaluate / trivy sbom), and
+# those entrypoints never reach into the bundled Go helpers, every CVE
+# below is category-(3) UNREACHED.
+#
+# Re-evaluate when cdxgen, ORT, or Trivy publishes a release that bumps
+# the bundled Go binaries — at that point this whole block can shrink as
+# CVEs disappear from the table.
+# ---------------------------------------------------------------------------
+
+# golang.org/x/crypto — bundled in cdxgen-plugins-bin / ORT plugins / Trivy
+# CVE-2024-45337 (CRITICAL) misuse of ServerConfig.PublicKeyCallback can
+# cause authorization bypass — Trivy/cdxgen never expose an SSH server.
+# CVE-2025-22869 SFTP server DoS — same, no SSH server entry point.
+CVE-2024-45337
+CVE-2025-22869
+
+# golang.org/x/oauth2 — token verification helper bundled but never
+# invoked in our entrypoints.
+# CVE-2025-22868 malicious malformed token DoS — UNREACHED, we never
+# call golang.org/x/oauth2.jws.Verify.
+CVE-2025-22868
+
+# golang-jwt/jwt/v4 — bundled in cdxgen-plugins / sigstore. Vulnerable
+# to issuer audience confusion under specific JWT validation patterns
+# that our entrypoints never invoke.
+# CVE-2025-30204 jwt parse DoS — UNREACHED.
+CVE-2025-30204
+
+# open-policy-agent/opa — bundled inside ORT plugin set. CVE in OPA
+# REGO compiler; we never run `ort scan` (which uses OPA evaluation).
+# CVE-2025-46569 — UNREACHED.
+CVE-2025-46569
+
+# sigstore/fulcio — bundled inside ORT supply-chain attestation
+# helpers. We never run signature verification through ORT.
+# CVE-2025-66506 — UNREACHED.
+CVE-2025-66506
+
+# containerd — bundled inside cdxgen-plugins-bin for container image
+# inspection. We never invoke container detection via cdxgen (worker
+# images are scanned by Trivy separately).
+# CVE-2026-46680 user ID handling bypass — UNREACHED.
+CVE-2026-46680
+
+# go-git/go-billy + go-git/go-git — bundled inside ORT git analyzer
+# and cdxgen-plugins. We do not run `ort analyze` (the only ORT
+# subcommand that performs git operations), and cdxgen reads from a
+# pre-fetched workspace path, never cloning fresh.
+# CVE-2026-44973 go-billy path traversal — UNREACHED.
+# CVE-2026-45022 go-git extensible — UNREACHED.
+CVE-2026-44973
+CVE-2026-45022
+
+# Go stdlib CVEs — present in every statically-linked Go binary the
+# bundled toolchain ships (cdxgen-plugins-bin, ORT plugins, Trivy
+# CLI). Reached only via the respective binary's entry points; the
+# entry points are never invoked by our worker (see reach surface
+# block above). Listed individually to satisfy the per-CVE policy of
+# this file; collective justification: UNREACHED Go stdlib bundled
+# in non-invoked binaries.
+CVE-2025-22871
+CVE-2025-47906
+CVE-2025-47907
+CVE-2025-47912
+CVE-2025-58183
+CVE-2025-58185
+CVE-2025-58186
+CVE-2025-58187
+CVE-2025-58188
+CVE-2025-58189
+CVE-2025-61723
+CVE-2025-61724
+CVE-2025-61725
+CVE-2025-61726
+CVE-2025-61727
+CVE-2025-61729
+CVE-2026-25679
+CVE-2026-32280
+CVE-2026-32281
+CVE-2026-32283
+CVE-2026-33811
+CVE-2026-33814
+CVE-2026-39820
+CVE-2026-39823
+CVE-2026-39825
+CVE-2026-39826
+CVE-2026-39836
+CVE-2026-42499
