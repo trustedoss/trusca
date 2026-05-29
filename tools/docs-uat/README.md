@@ -140,8 +140,16 @@ the verb to `PortalPage` first (harness-first rule), then register the binding.
   operator commands waived). Later phases add more docs to its `--doc` list.
 - **`docs-uat-nightly-ui`** — schedule + manual dispatch. Same bootstrap plus
   frontend deps + Playwright, then runs the nightly-tier user-guide UI steps
-  (`user-guide/components-and-licenses.md`: the seeded project's components +
-  forbidden-license assertions, dispatched through existing PortalPage verbs).
+  (`user-guide/components-and-licenses.md` + `dashboard.md` + `scans.md` +
+  `auth-and-profile.md`, dispatched through existing PortalPage verbs).
+- **`docs-uat-nightly-helm`** — schedule + manual dispatch. Lightweight (Helm 3
+  + Node, no compose stack): runs `installation/helm.md`'s nightly chart-validate
+  step (`helm lint` + a full `helm template` render with the minimum required
+  `--set` values). Per the Phase D decision, the chart is validated statically;
+  real `kind` cluster deploys were declined as too heavy / flaky. The doc's
+  `helm install` / `helm upgrade` commands need a live cluster + the published
+  OCI chart, so they carry `waiver=`, and the post-deploy Verify steps (kubectl)
+  are `kind=manual`.
 
 `admin-guide/backup-and-restore.md` is **enrolled** (extract-and-lint enforces
 its coverage + KO parity + drift) but has no docs-uat-executed steps: every
@@ -158,6 +166,35 @@ oncall runbook is pure incident-diagnosis against the production compose stack.
 Both carry `waiver=` on their command fences (api-keys' Verify steps are
 `kind=manual`). `admin-guide/github-app.md` is not enrolled at all — it has no
 executable fence or Verify step to guard (the GitHub App UI is roadmap).
+
+The four `ci-integration/` docs (`github-actions` / `gitlab-ci` / `jenkins` /
+`webhooks`) are **enrolled-only**. They are example CI configs / operator
+snippets that assume a running portal + API key + a real CI runner, so they
+cannot run deterministically in a self-contained sandbox (the `act` /
+`gitlab-ci-local` dry-run path was declined for that reason). The canonical
+example per doc is annotated `kind=manual` to anchor drift tracking against its
+version-pinned URLs; placeholder bash/sql fences carry `waiver=`.
+
+## Periodic full-coverage audit (manual checklist)
+
+The sampled tiers (gate on PRs, nightly/weekly on schedule) deliberately do not
+re-run *every* enrolled step on *every* trigger. Instead of an automated
+week-of-year rotation ledger (considered, then declined as over-engineered now
+that every doc is enrolled + lint-tracked), do a periodic **manual** full sweep
+— quarterly, or before a release:
+
+1. Bring up the dev stack and seed it the same way `docs-uat-nightly` does:
+   `cp .env.example .env && docker-compose -f docker-compose.dev.yml run --rm -T backend alembic upgrade head && docker-compose -f docker-compose.dev.yml up -d` then `docker-compose -f docker-compose.dev.yml exec -T backend python -m scripts.seed_demo`.
+2. Run every enrolled doc at the nightly tier and confirm all green:
+   `for d in $(node -e 'const m=require("./docs-uat/manifest.json");console.log([...new Set(m.docs.map(x=>x.doc))].join("\n"))'); do node tools/docs-uat/run.mjs --tier=nightly --doc="$d"; done`
+3. Spot-check that no `tier=manual` step has silently become automatable (e.g. a
+   new read-only API now exists for a step that was manual because it needed a
+   POST).
+4. Validate the Helm chart: `helm lint charts/trustedoss && helm template trustedoss charts/trustedoss --set env.secret.secretKey=$(openssl rand -hex 32) --set postgres.auth.password=x --set ingress.host=example.com >/dev/null`.
+
+`extract-and-lint` already guarantees coverage + KO parity + drift on every PR,
+so this sweep is about catching *behavioral* regressions the sampled tiers might
+miss between runs — not about coverage bookkeeping.
 
 All are `continue-on-error: true` (non-blocking) until the manifest fidelity
 stabilizes for the first public release, then they flip to blocking (design §9
