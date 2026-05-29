@@ -65,6 +65,12 @@ byte-stability 달성 방법:
 
 ## API에서 다운로드
 
+<!-- docs-uat: id=sbom-cyclonedx-api kind=api auth=admin url=/v1/projects/${PROJECT_ID}/sbom?format=cyclonedx-json expect=status:200 tier=nightly -->
+API는 SBOM을 CycloneDX JSON으로 제공합니다:
+
+<!-- docs-uat: id=sbom-spdx-api kind=api auth=admin url=/v1/projects/${PROJECT_ID}/sbom?format=spdx-json expect=status:200 tier=nightly -->
+…그리고 SPDX JSON으로도 제공합니다(같은 엔드포인트, `format`만 다름):
+
 <!-- docs-uat: id=sbom-api-download kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
 # CycloneDX JSON
