@@ -38,7 +38,7 @@ backups/2026-05-09-030000/
 
 ## 수동 백업 실행
 
-<!-- docs-uat: id=backup-manual kind=shell ctx=host expect=exit:0 tier=nightly -->
+<!-- docs-uat: id=backup-manual kind=shell ctx=host tier=nightly waiver=backup-restore-roundtrip-executed-by-install-uat -->
 ```bash
 bash scripts/backup.sh
 ```

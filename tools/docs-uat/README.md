@@ -132,11 +132,15 @@ the verb to `PortalPage` first (harness-first rule), then register the binding.
   runs the gate-tier steps end-to-end. (PR + dispatch.)
 - **`docs-uat-nightly`** — schedule + manual dispatch (not on PRs). Bootstraps
   the dev stack, seeds the demo data, and runs the nightly-tier admin-guide
-  assertions: `admin-guide/audit-log.md` (authed audit API + a jsonb diff
-  query) and `admin-guide/backup-and-restore.md` (`scripts/backup.sh`; the
-  restore round-trip + host-scheduler / off-host / encrypt variants are
-  waived — the destructive restore round-trip is covered by `install-uat.yml`).
-  Later phases add more docs to its `--doc` list.
+  assertions (`admin-guide/audit-log.md`: authed audit API + a jsonb diff
+  query). Later phases add more docs to its `--doc` list.
+
+`admin-guide/backup-and-restore.md` is **enrolled** (extract-and-lint enforces
+its coverage + KO parity + drift) but has no docs-uat-executed steps: every
+command is a production-operator tool (`scripts/backup.sh`/`restore.sh` hardcode
+`docker-compose.yml`) or host-scheduler / off-host / encrypt variant, and the
+backup→restore round-trip is already executed by `install-uat.yml`. So those
+fences carry `waiver=`, and the Verify steps are `kind=manual`.
 
 All are `continue-on-error: true` (non-blocking) until the manifest fidelity
 stabilizes for the first public release, then they flip to blocking (design §9

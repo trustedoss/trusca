@@ -38,7 +38,7 @@ The portal does **not** back up `.env` (it contains secrets — store it via you
 
 ## Take a manual backup
 
-<!-- docs-uat: id=backup-manual kind=shell ctx=host expect=exit:0 tier=nightly -->
+<!-- docs-uat: id=backup-manual kind=shell ctx=host tier=nightly waiver=backup-restore-roundtrip-executed-by-install-uat -->
 ```bash
 bash scripts/backup.sh
 ```
