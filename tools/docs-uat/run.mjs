@@ -45,9 +45,12 @@ function parseArgs(argv) {
   return out;
 }
 
-/** Inject `-T` into docker-compose exec so it runs without a TTY (CI). */
+/**
+ * Inject `-T` into docker-compose `exec`/`run` so they run without a TTY on CI
+ * runners (the doc keeps the human-friendly form; the runner adapts it).
+ */
 function rewriteHostShell(cmd) {
-  return cmd.replace(/(docker-compose[^\n]*?\bexec)\s+(?!-T\b)/g, "$1 -T ");
+  return cmd.replace(/(docker-compose[^\n]*?\b(?:exec|run))\s+(?!-T\b)/g, "$1 -T ");
 }
 
 /** "30x5s" → { attempts: 30, intervalMs: 5000 }; falsy → single attempt. */
