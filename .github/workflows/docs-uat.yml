@@ -193,6 +193,11 @@ jobs:
           DOCS_UAT_API_BASE: http://localhost:8000
         run: node tools/docs-uat/run.mjs --tier=nightly --doc=admin-guide/disk-and-health.md
 
+      - name: Run nightly assertions — admin-guide/users-and-teams.md
+        env:
+          DOCS_UAT_API_BASE: http://localhost:8000
+        run: node tools/docs-uat/run.mjs --tier=nightly --doc=admin-guide/users-and-teams.md
+
       - name: Dump compose logs on failure
         if: failure()
         run: |
