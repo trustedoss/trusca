@@ -615,10 +615,37 @@ jobs:
           docker compose -f docker-compose.dev.yml build \
             backend celery-worker frontend
 
-      - name: Bring up dev stack
+      # The dev backend image's CMD is bare uvicorn — only the prod
+      # Dockerfile wires up docker-entrypoint.sh, so AUTO_MIGRATE never
+      # actually runs on a dev image. We migrate explicitly here against a
+      # throwaway backend container BEFORE bringing the live services up
+      # so backend's /health/ready (queries alembic_version) can flip to
+      # 200 on the very first probe.
+      - name: Start postgres + redis only
+        run: |
+          docker compose -f docker-compose.dev.yml up -d postgres redis
+
+      - name: Wait for postgres healthy
+        run: |
+          set -euo pipefail
+          deadline=$(( $(date +%s) + 60 ))
+          while :; do
+            cid=$(docker compose -f docker-compose.dev.yml ps -q postgres)
+            status=$(docker inspect --format '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo "none")
+            [ "$status" = "healthy" ] && break
+            [ "$(date +%s)" -ge "$deadline" ] && { echo "::error::postgres never healthy"; exit 1; }
+            sleep 3
+          done
+
+      - name: Run alembic migrations (pre-boot)
+        run: |
+          docker compose -f docker-compose.dev.yml run --rm --no-deps backend \
+            alembic upgrade head
+
+      - name: Bring up the rest of the stack
         run: |
           docker compose -f docker-compose.dev.yml up -d \
-            postgres redis backend celery-worker frontend
+            backend celery-worker frontend
 
       - name: Wait for stack to become healthy
         # Compose V1 has no `--wait`; poll the `healthy` count until all five
@@ -654,11 +681,6 @@ jobs:
             fi
             sleep 5
           done
-
-      - name: Run alembic migrations
-        run: |
-          docker compose -f docker-compose.dev.yml exec -T backend \
-            alembic upgrade head
 
       - name: Seed e2e user (fail fast if seed broken)
         # Smoke-run the seed script once before Playwright fans out, so a
