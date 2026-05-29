@@ -28,6 +28,10 @@
   "DELETE /v1/projects/{project_id}": [
     "project_id"
   ],
+  "DELETE /v1/scans/{scan_id}": [
+    "force",
+    "scan_id"
+  ],
   "DELETE /v1/users/me/oauth-identities/{identity_id}": [
     "identity_id"
   ],
