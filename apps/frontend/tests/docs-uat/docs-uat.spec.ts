@@ -217,6 +217,29 @@ const VERBS: Record<string, (ctx: Ctx, args: string[]) => Promise<void>> = {
     await profile.unlinkProvider("github");
     await profile.expectUnlinkSuccess();
   },
+  // WS-B2 — create a project through the wizard and confirm it lands in the
+  // list as Idle (no scan yet). The demo super-admin belongs to one team, so
+  // the team-select does not render; name is the only required field.
+  async projectCreateAppearsIdle({ portal }, [name]) {
+    await portal.goto("/projects/new");
+    await portal.page.getByTestId("project-name-input").fill(name);
+    const teamSelect = portal.page.getByTestId("project-team-select");
+    if ((await teamSelect.count()) > 0) {
+      await teamSelect.selectOption({ index: 0 });
+    }
+    await portal.page.getByTestId("project-create-submit").click();
+    // On success the wizard navigates to the new project's detail page.
+    await portal.page.waitForURL(/\/projects\/[0-9a-f-]{36}/, {
+      timeout: 10_000,
+    });
+    // It now appears in the list with an Idle status badge (never scanned).
+    await portal.gotoProjects();
+    const row = portal.page
+      .getByTestId("project-row")
+      .filter({ hasText: name });
+    await expect(row.first()).toBeVisible();
+    await expect(row.first().getByTestId("project-status-idle")).toBeVisible();
+  },
 };
 
 const uiSteps = loadUiSteps();

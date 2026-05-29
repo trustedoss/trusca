@@ -227,7 +227,7 @@ Generate cards always deep-link to the domain tab (Obligations, SBOM, Vulnerabil
 
 After creating a project:
 
-<!-- docs-uat: id=projects-appears-idle kind=manual tier=manual -->
+<!-- docs-uat: id=projects-appears-idle kind=ui harness=projectCreateAppearsIdle(docs-uat-new-project) tier=nightly -->
 1. The project appears in **Projects** with status **Idle** (no scans yet).
 <!-- docs-uat: id=projects-overview-zero kind=manual tier=manual -->
 2. The Overview tab shows zero components and zero vulnerabilities.
