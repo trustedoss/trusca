@@ -134,7 +134,9 @@ the verb to `PortalPage` first (harness-first rule), then register the binding.
   the dev stack, seeds the demo data, and runs the nightly-tier admin-guide
   api/sql assertions (`admin-guide/audit-log.md`: authed audit API + a jsonb
   diff query; `admin-guide/disk-and-health.md`: authed `GET /v1/admin/health` +
-  `GET /v1/admin/disk`). Later phases add more docs to its `--doc` list.
+  `GET /v1/admin/disk`; `admin-guide/users-and-teams.md`: authed
+  `GET /v1/admin/users` + `GET /v1/admin/teams`). Later phases add more docs to
+  its `--doc` list.
 - **`docs-uat-nightly-ui`** — schedule + manual dispatch. Same bootstrap plus
   frontend deps + Playwright, then runs the nightly-tier user-guide UI steps
   (`user-guide/components-and-licenses.md`: the seeded project's components +
