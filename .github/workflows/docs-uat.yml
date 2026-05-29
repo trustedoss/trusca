@@ -1,0 +1,121 @@
+name: docs-uat
+
+# docs-uat — procedural-correctness lane for the documentation: it proves
+# that following a doc step-by-step actually works (the docs ARE the tests).
+#
+# Phase A (this slice) covers the Quickstart vertical: annotation extraction +
+# coverage lint, plus an end-to-end gate that brings the dev stack up via the
+# documented commands, seeds the demo dataset, and drives the documented UI.
+# Phases B-D enroll install / admin / user-guide / CI docs and add the
+# nightly + weekly tiers. Design: docs/docs-verify-investigation-2026-05-29.md.
+#
+# NON-BLOCKING: both jobs are `continue-on-error: true` until the manifest
+# fidelity stabilizes for the first public release, then they flip to blocking
+# (design §9 decision 7 / feedback_ci_hardening_deferred_prerelease). This is a
+# brand-new, isolated lane — it does not touch the deferred SAST/e2e hardening.
+
+on:
+  pull_request:
+    paths:
+      - "docs-site/docs/**"
+      - "docs-site/i18n/ko/docusaurus-plugin-content-docs/current/**"
+      - "tools/docs-uat/**"
+      - "apps/frontend/playwright.docs-uat.config.ts"
+      - "apps/frontend/tests/docs-uat/**"
+      - ".github/workflows/docs-uat.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-uat-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Static: extract annotations → manifest, enforce coverage/schema/KO parity.
+  #    Fast, no stack. Catches doc-vs-test drift on every PR.
+  extract-and-lint:
+    name: extract-and-lint (static)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    # Non-blocking until manifest fidelity stabilizes (see header note).
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Extract manifest + lint
+        run: node tools/docs-uat/extract.mjs --lint
+
+  # ── End-to-end: drive the documented Quickstart against the dev stack.
+  quickstart-gate:
+    name: quickstart-gate (dev compose)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    # Non-blocking until manifest fidelity stabilizes (see header note).
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      # Project standard (CLAUDE.md rule #10): docker-compose V1. Ubuntu 22.04
+      # runners ship V2 only — install the pinned V1 release so the gate
+      # exercises the documented `docker-compose` (hyphenated) invocation.
+      - name: Install docker-compose V1
+        run: |
+          sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" \
+            -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+          docker-compose --version
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: apps/frontend/package-lock.json
+
+      - name: Install frontend deps (for the ui-step Playwright run)
+        working-directory: apps/frontend
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-1.48.2
+
+      - name: Install Playwright (chromium only)
+        working-directory: apps/frontend
+        run: npx playwright install --with-deps chromium
+
+      # Quickstart §1's `git clone` / `cd` is waived in CI (we're already in
+      # the checked-out tree, ctx=ci-uses-checkout-tree). The doc's
+      # `cp .env.example .env` IS the env bootstrap, so we do it here; the
+      # workspace mount dir matches docker-compose.dev.yml.
+      - name: Bootstrap env (stands in for the waived clone step)
+        run: |
+          cp .env.example .env
+          mkdir -p workspace
+
+      # run.mjs executes the documented gate-tier steps in order: it runs the
+      # doc's own `docker-compose up`, polls /health/ready (AUTO_MIGRATE flips
+      # it to 200 once migrations finish), runs `seed_demo`, drives the
+      # documented UI via Playwright, then runs the doc's `down`.
+      - name: Run Quickstart gate (docs-uat)
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:5173
+          DOCS_UAT_API_BASE: http://localhost:8000
+          COMPOSE_DOCKER_CLI_BUILD: "1"
+          DOCKER_BUILDKIT: "1"
+        run: node tools/docs-uat/run.mjs --tier=gate --doc=quickstart.md
+
+      - name: Dump compose logs on failure
+        if: failure()
+        run: |
+          docker-compose -f docker-compose.dev.yml ps || true
+          docker-compose -f docker-compose.dev.yml logs --tail=300 || true
+
+      - name: Tear down
+        if: always()
+        run: docker-compose -f docker-compose.dev.yml down -v || true
