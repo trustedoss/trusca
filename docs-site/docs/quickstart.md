@@ -21,19 +21,29 @@ populated dashboard you can click through. For a real deployment, see
 
 ## 1. Start the stack
 
+Clone the repository and create your env file:
+
+<!-- docs-uat: id=qs-bootstrap kind=shell ctx=host tier=gate waiver=ci-uses-checkout-tree -->
 ```bash
 git clone https://github.com/trustedoss/trustedoss-portal.git
 cd trustedoss-portal
 cp .env.example .env
+```
 
+Then bring the dev stack up:
+
+<!-- docs-uat: id=qs-up kind=shell ctx=host expect=exit:0 tier=gate -->
+```bash
 docker-compose -f docker-compose.dev.yml up -d
 ```
 
+<!-- docs-uat: id=qs-health kind=api ctx=host url=/health/ready expect=status:200 retry=40x6s tier=gate -->
 About 30 seconds in, `postgres`, `redis`, `backend`, `celery-worker`, and
 `frontend` are healthy.
 
 ## 2. Seed the demo dataset
 
+<!-- docs-uat: id=qs-seed kind=shell ctx=host expect=exit:0 fixture=seed_demo tier=gate -->
 ```bash
 docker-compose -f docker-compose.dev.yml exec backend \
   python -m scripts.seed_demo
@@ -45,6 +55,7 @@ a realistic mix of CVEs, license findings, and obligations — about
 
 ## 3. Sign in
 
+<!-- docs-uat: id=qs-login kind=ui harness=login(admin@demo.trustedoss.dev,DemoTest2026!) tier=gate -->
 Open **http://localhost:5173** and sign in:
 
 | Account | Email | Password |
@@ -58,7 +69,9 @@ reuse it on a host that anyone else can reach.
 
 ## 4. Look around
 
+<!-- docs-uat: id=qs-dashboard kind=ui harness=expectMounted tier=gate -->
 - **Dashboard** (`/`) — org-wide severity tiles + recent scans.
+<!-- docs-uat: id=qs-projects kind=ui harness=expectVisibleProjectCount(5) tier=gate -->
 - **Projects → frontend-admin's project** — the richest dataset; click the
   **Vulnerabilities** tab to see the 7-state VEX triage flow.
 - **Components & licenses** — the donut shows the allowed / conditional /
@@ -76,6 +89,7 @@ reuse it on a host that anyone else can reach.
 
 ## Stop the stack
 
+<!-- docs-uat: id=qs-down kind=shell ctx=host expect=exit:0 tier=gate -->
 ```bash
 docker-compose -f docker-compose.dev.yml down
 ```

@@ -1,0 +1,109 @@
+/**
+ * docs-uat ui dispatcher — the generic "docs ARE the tests" spec.
+ *
+ * Reads the docs-uat manifest produced by `tools/docs-uat/extract.mjs`,
+ * filters the ui-kind steps for the doc + tier the runner asked for
+ * (DOCS_UAT_DOC / DOCS_UAT_TIER / DOCS_UAT_LANG), and replays each step's
+ * `harness=verb(args)` annotation against the EXISTING harness verbs
+ * (design decision D5 — reuse, never reimplement). No new UI assertion logic
+ * lives here; this file is only the binding from annotation → verb.
+ *
+ * The steps run in document order inside a single test on one shared page,
+ * so the `login` step establishes the session the later navigation/assertion
+ * steps depend on (one login keeps us under the 5/min/IP rate limit).
+ *
+ * To teach docs-uat a new ui verb, add it to VERBS below (or, for a brand-new
+ * screen, add the verb to PortalPage first per the harness-first rule).
+ */
+import * as fs from "node:fs";
+
+import { test } from "@playwright/test";
+
+import { AuthHarness } from "../_harness/auth";
+import { PortalPage } from "../_harness/PortalPage";
+
+interface Step {
+  id: string;
+  kind: string;
+  tier: string;
+  lang: string;
+  doc: string;
+  line: number;
+  harness?: string;
+  waiver?: string;
+}
+
+const MANIFEST = process.env.DOCS_UAT_MANIFEST;
+const DOC = process.env.DOCS_UAT_DOC;
+const TIER = process.env.DOCS_UAT_TIER ?? "gate";
+const LANG = process.env.DOCS_UAT_LANG ?? "en";
+
+function loadUiSteps(): Step[] {
+  if (!MANIFEST || !DOC) {
+    throw new Error("docs-uat spec requires DOCS_UAT_MANIFEST + DOCS_UAT_DOC env");
+  }
+  const manifest = JSON.parse(fs.readFileSync(MANIFEST, "utf8"));
+  return (manifest.steps as Step[])
+    .filter(
+      (s) =>
+        s.kind === "ui" &&
+        s.doc === DOC &&
+        s.lang === LANG &&
+        s.tier === TIER &&
+        !s.waiver,
+    )
+    .sort((a, b) => a.line - b.line);
+}
+
+/** `expectVisibleProjectCount(5)` → { name, args: ["5"] }. */
+function parseVerb(harness: string): { name: string; args: string[] } {
+  const m = harness.match(/^([A-Za-z0-9_]+)(?:\((.*)\))?$/);
+  if (!m) throw new Error(`docs-uat: unparseable harness verb "${harness}"`);
+  const args = m[2] ? m[2].split(",").map((a) => a.trim()) : [];
+  return { name: m[1], args };
+}
+
+interface Ctx {
+  auth: AuthHarness;
+  portal: PortalPage;
+}
+
+/** Annotation verb → existing harness call. */
+const VERBS: Record<string, (ctx: Ctx, args: string[]) => Promise<void>> = {
+  async login({ auth }, [email, password]) {
+    await auth.gotoLogin();
+    await auth.login(email, password);
+  },
+  async expectMounted({ portal }) {
+    await portal.expectMounted();
+  },
+  async expectVisibleProjectCount({ portal }, [count]) {
+    await portal.gotoProjects();
+    await portal.expectVisibleProjectCount(Number(count));
+  },
+};
+
+const uiSteps = loadUiSteps();
+
+test.describe(`docs-uat ui — ${DOC} (${TIER})`, () => {
+  test("replays the documented ui steps", async ({ page, baseURL }) => {
+    test.skip(uiSteps.length === 0, `no ${TIER}-tier ui steps for ${DOC}`);
+    const ctx: Ctx = {
+      auth: new AuthHarness(page, baseURL ?? undefined),
+      portal: new PortalPage(page, baseURL ?? undefined),
+    };
+    for (const step of uiSteps) {
+      const { name, args } = parseVerb(step.harness ?? "");
+      const verb = VERBS[name];
+      if (!verb) {
+        throw new Error(
+          `docs-uat [${step.id}]: no ui verb '${name}' registered ` +
+            `(add it to docs-uat.spec.ts VERBS, or add the verb to PortalPage first)`,
+        );
+      }
+      await test.step(`${step.id}: ${step.harness}`, async () => {
+        await verb(ctx, args);
+      });
+    }
+  });
+});
