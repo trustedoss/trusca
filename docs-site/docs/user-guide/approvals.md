@@ -109,7 +109,7 @@ A typical flow:
 
 After disposing a request:
 
-<!-- docs-uat: id=approvals-state-badge-updates kind=manual tier=manual -->
+<!-- docs-uat: id=approvals-state-badge-updates kind=ui harness=approvalsDispose tier=nightly -->
 1. The state badge updates immediately.
 <!-- docs-uat: id=approvals-audit-recorded kind=manual tier=manual -->
 2. The audit log records `target_table=component_approvals&action=update` with `previous_status`, `new_status`, `decision_note` in the diff.

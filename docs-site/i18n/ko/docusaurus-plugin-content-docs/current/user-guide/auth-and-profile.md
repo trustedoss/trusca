@@ -8,6 +8,7 @@ sidebar_position: 7
 
 # 인증과 프로필
 
+<!-- docs-uat: id=auth-login kind=ui harness=login(dev@demo.trustedoss.dev,DemoTest2026!) tier=nightly -->
 TrustedOSS Portal은 두 가지 대화형 로그인 방식 — **이메일 + 비밀번호**와 **OAuth**(GitHub 또는 Google) — 그리고 셀프 서비스 비밀번호 복구 흐름을 제공합니다. 이 페이지는 각 경로를 따라가고 `/profile` 페이지에서의 신원 관리를 다룹니다.
 
 :::note 대상 독자
@@ -96,7 +97,7 @@ Connected Accounts 패널은 본인 포털 계정에 현재 연결된 모든 외
 - 비밀번호 로그인 후 헤더 아바타에 이니셜이 표시되고 navbar에 활성 팀이 노출됩니다.
 <!-- docs-uat: id=auth-oauth-provider-listed kind=manual tier=manual -->
 - OAuth 로그인 후 `/profile`에 사용한 공급자가 나열됩니다.
-<!-- docs-uat: id=auth-unlink-disables-last kind=manual tier=manual -->
+<!-- docs-uat: id=auth-unlink-disables-last kind=ui harness=profileUnlinkGithub tier=nightly -->
 - 연결 해제 후 해당 행이 사라지며, 남은 행의 **Unlink** 버튼은 본인을 잠그게 될 경우 비활성화됩니다.
 
 ## 함께 보기

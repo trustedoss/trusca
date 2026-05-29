@@ -19,9 +19,11 @@ import * as fs from "node:fs";
 
 import { expect, test } from "@playwright/test";
 
+import { ApprovalsHarness } from "../_harness/ApprovalsHarness";
 import { AuthHarness } from "../_harness/auth";
 import { NotificationsHarness } from "../_harness/NotificationsHarness";
 import { PortalPage } from "../_harness/PortalPage";
+import { ProfileHarness } from "../_harness/ProfileHarness";
 
 interface Step {
   id: string;
@@ -68,6 +70,8 @@ interface Ctx {
   auth: AuthHarness;
   portal: PortalPage;
   notifications: NotificationsHarness;
+  approvals: ApprovalsHarness;
+  profile: ProfileHarness;
 }
 
 /** Annotation verb → existing harness call. */
@@ -195,6 +199,24 @@ const VERBS: Record<string, (ctx: Ctx, args: string[]) => Promise<void>> = {
       "docs-uat triage assertion",
     );
   },
+  // WS-B — approvals dispose (the seeded pending GPL-3.0 approval) + profile
+  // OAuth unlink (the seeded github identity). Both drive existing domain
+  // harnesses; the approvals/profile session is the doc's `login` developer.
+  async approvalsDispose({ approvals }) {
+    await approvals.gotoApprovals();
+    await approvals.openFirstRowDrawer();
+    // pending → under_review → approved; each step asserts the status badge
+    // flipped — the doc's "state badge updates immediately" claim.
+    await approvals.startReview();
+    await approvals.approve();
+  },
+  async profileUnlinkGithub({ profile }) {
+    await profile.gotoProfile();
+    // The seeded developer has a github identity + a password, so unlinking
+    // does not strand them — the row disappears and a success toast shows.
+    await profile.unlinkProvider("github");
+    await profile.expectUnlinkSuccess();
+  },
 };
 
 const uiSteps = loadUiSteps();
@@ -206,6 +228,8 @@ test.describe(`docs-uat ui — ${DOC} (${TIER})`, () => {
       auth: new AuthHarness(page, baseURL ?? undefined),
       portal: new PortalPage(page, baseURL ?? undefined),
       notifications: new NotificationsHarness(page, baseURL ?? undefined),
+      approvals: new ApprovalsHarness(page, baseURL ?? undefined),
+      profile: new ProfileHarness(page, baseURL ?? undefined),
     };
     // Quickstart documents its own sign-in (a `login` ui step); feature docs
     // (user-guide / admin-guide) assume you are already signed in. So when the

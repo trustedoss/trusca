@@ -80,4 +80,42 @@ export class ApprovalsHarness {
       timeout: DEFAULT_TIMEOUT_MS,
     });
   }
+
+  // ───── dispose (mutations) ──────────────────────────────────────────────
+  /**
+   * Click a drawer action button, then confirm via the inline confirm strip
+   * (`approvals-confirm-ok`). The drawer renders the action set by the current
+   * status: pending → start-review / reject; under_review → approve / reject.
+   */
+  private async actAndConfirm(action: string): Promise<void> {
+    await this.page.getByTestId(`approvals-action-${action}`).click();
+    const ok = this.page.getByTestId("approvals-confirm-ok");
+    await expect(ok).toBeVisible({ timeout: DEFAULT_TIMEOUT_MS });
+    await ok.click();
+  }
+
+  /** pending → under_review. */
+  async startReview(): Promise<void> {
+    await this.actAndConfirm("start-review");
+    await this.expectStatus("under_review");
+  }
+
+  /** under_review → approved. */
+  async approve(): Promise<void> {
+    await this.actAndConfirm("approve");
+    await this.expectStatus("approved");
+  }
+
+  /** Assert the drawer header status badge reflects the given status. */
+  async expectStatus(status: string): Promise<void> {
+    await expect
+      .poll(
+        () =>
+          this.page
+            .getByTestId("approval-status-badge")
+            .getAttribute("data-status"),
+        { timeout: DEFAULT_TIMEOUT_MS },
+      )
+      .toBe(status);
+  }
 }
