@@ -373,9 +373,6 @@ def _reclaim_aged(
 
     reclaimed = 0
     for pid in project_ids:
-        latest = session.execute(
-            select(Project.latest_scan_id).where(Project.id == pid)
-        ).scalar_one_or_none()
         team_id = session.execute(
             select(Project.team_id).where(Project.id == pid)
         ).scalar_one_or_none()
@@ -395,7 +392,15 @@ def _reclaim_aged(
         counts = _child_counts_bulk(session, stale_ids)
         # Re-assert every protection atomically in the DELETE so a concurrent
         # trigger/finalize between the read above and here cannot lose a scan
-        # that just became latest / live / release-labelled.
+        # that just became latest / live / release-labelled. latest_scan_id is
+        # read as a correlated subquery (not a stale Python snapshot) so the
+        # guard reads the pointer in the same statement — IS DISTINCT FROM is
+        # NULL-safe, so a NULL latest still deletes the candidates correctly.
+        latest_sq = (
+            select(Project.latest_scan_id)
+            .where(Project.id == pid)
+            .scalar_subquery()
+        )
         deleted = session.execute(
             delete(Scan)
             .where(
@@ -405,7 +410,7 @@ def _reclaim_aged(
                 Scan.superseded_at.is_(None),
                 _release_absent(),
                 cast(Scan.status, String).notin_(_ACTIVE_SCAN_STATES),
-                Scan.id.is_distinct_from(latest),
+                Scan.id.is_distinct_from(latest_sq),
             )
             .returning(Scan.id, Scan.ref)
         ).all()
