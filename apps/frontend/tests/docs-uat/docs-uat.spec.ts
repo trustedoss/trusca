@@ -17,7 +17,7 @@
  */
 import * as fs from "node:fs";
 
-import { test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
 import { AuthHarness } from "../_harness/auth";
 import { PortalPage } from "../_harness/PortalPage";
@@ -80,6 +80,26 @@ const VERBS: Record<string, (ctx: Ctx, args: string[]) => Promise<void>> = {
   async expectVisibleProjectCount({ portal }, [count]) {
     await portal.gotoProjects();
     await portal.expectVisibleProjectCount(Number(count));
+  },
+  // Phase C — user-guide UI. Composite verbs that thread existing PortalPage
+  // navigation + assertion methods (no new PortalPage verbs); they assert the
+  // doc's "Verify it worked" claim against the seeded project's real data.
+  async componentsHaveData({ portal }, [projectName]) {
+    await portal.gotoProjects();
+    await portal.openProjectDetail(projectName);
+    await portal.selectTab("components");
+    await portal.expectComponentsTabReady();
+    const total = await portal.getTotalComponentCount();
+    expect(total, `${projectName} component count`).toBeGreaterThan(0);
+  },
+  async licensesHaveForbidden({ portal }, [projectName]) {
+    await portal.gotoProjects();
+    await portal.openProjectDetail(projectName);
+    await portal.selectTab("licenses");
+    await portal.expectLicensesTabReady();
+    await portal.filterLicensesByCategory(["forbidden"]);
+    const rows = await portal.getLicenseRowCount();
+    expect(rows, `${projectName} forbidden licenses`).toBeGreaterThan(0);
   },
 };
 

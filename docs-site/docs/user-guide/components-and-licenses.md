@@ -174,8 +174,11 @@ Hovering an expression in the UI shows the SPDX URL for each component license.
 
 After a successful scan:
 
+<!-- docs-uat: id=components-count-nonzero kind=ui harness=componentsHaveData(portal-web) tier=nightly -->
 1. Component count matches your expectation (close to the count of pinned dependencies in your lockfile).
+<!-- docs-uat: id=components-classification-sums kind=manual tier=manual -->
 2. The classification distribution horizontal bar chart on the Overview tab adds up to 100%.
+<!-- docs-uat: id=licenses-forbidden-highlighted kind=ui harness=licensesHaveForbidden(portal-web) tier=nightly -->
 3. Forbidden-license components, if any, are highlighted in red and have a CTA to the [approvals queue](./approvals.md).
 
 ## Troubleshooting
