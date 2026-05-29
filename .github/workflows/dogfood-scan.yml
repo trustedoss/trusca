@@ -1,0 +1,195 @@
+# Dogfood: run our own scan-action against this repo.
+#
+# We ship `actions/scan` as a product (other repos call it to gate their build
+# on a TrustedOSS scan). This workflow is us eating our own dog food — it spins
+# up the portal stack inside the runner, registers a project pointing at this
+# repo, and drives the *real* `./actions/scan` end-to-end against it.
+#
+# Manual only (`workflow_dispatch`) — a real cdxgen + Trivy scan takes 15-30 min
+# and the demo SaaS is not yet deployed, so there is no always-on portal to hit.
+# This is the self-contained alternative: ephemeral portal in the job, torn down
+# at the end. Not on the PR/merge path (would balloon wall-clock for no gate
+# value yet — fail_on_gate defaults to false / advisory).
+name: dogfood-scan
+
+on:
+  workflow_dispatch:
+    inputs:
+      scan_kind:
+        description: 'Scan pipeline: "source" (cdxgen + Trivy) or "container" (Trivy).'
+        default: "source"
+        type: string
+      fail_on_gate:
+        description: 'Fail the run on a failing gate (Critical CVE / forbidden license). Default advisory.'
+        default: "false"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  dogfood-scan:
+    name: dogfood-scan (ephemeral self-scan)
+    runs-on: ubuntu-22.04
+    # Real cdxgen + Trivy + the worker's Trivy-DB bootstrap. Generous ceiling
+    # because this is a manual, infrequent run.
+    timeout-minutes: 45
+    env:
+      # real toolchain (cdxgen / Trivy) — the whole point of dogfooding. The
+      # e2e job uses `mock` for speed; here we want true detection on our repo.
+      TRUSTEDOSS_SCAN_BACKEND: real
+      # Pin so the api + worker sign/verify the same JWTs across containers.
+      SECRET_KEY: dogfood-ci-secret-key-min-32-chars-padding-aabbcc
+      # The runner has a single egress IP; the bootstrap below does several
+      # auth calls (register + login) that would trip the 5/min login limiter.
+      RATELIMIT_DISABLED: "1"
+      # Sanitised workflow_dispatch inputs (avoid expression injection in run:).
+      INPUT_SCAN_KIND: ${{ github.event.inputs.scan_kind }}
+      INPUT_FAIL_ON_GATE: ${{ github.event.inputs.fail_on_gate }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify docker compose V2 available
+        run: docker compose version
+
+      # Pre-build so a cold image cache surfaces as its own step rather than a
+      # confusing "unhealthy" later. Only the scan path is needed: no frontend.
+      - name: Pre-build dev images (backend + worker)
+        run: |
+          docker compose -f docker-compose.dev.yml build backend celery-worker
+
+      - name: Start postgres + redis
+        run: |
+          docker compose -f docker-compose.dev.yml up -d postgres redis
+
+      - name: Wait for postgres healthy
+        run: |
+          set -euo pipefail
+          deadline=$(( $(date +%s) + 60 ))
+          while :; do
+            cid=$(docker compose -f docker-compose.dev.yml ps -q postgres)
+            status=$(docker inspect --format '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo "none")
+            [ "$status" = "healthy" ] && break
+            [ "$(date +%s)" -ge "$deadline" ] && { echo "::error::postgres never healthy"; exit 1; }
+            sleep 3
+          done
+
+      # The dev image CMD is bare uvicorn (no entrypoint), so AUTO_MIGRATE never
+      # runs — migrate explicitly against a throwaway container before boot so
+      # /health/ready (which queries alembic_version) flips to 200 immediately.
+      - name: Run alembic migrations (pre-boot)
+        run: |
+          docker compose -f docker-compose.dev.yml run --rm --no-deps backend \
+            alembic upgrade head
+
+      - name: Bring up backend + worker
+        run: |
+          docker compose -f docker-compose.dev.yml up -d backend celery-worker
+
+      - name: Wait for stack healthy
+        run: |
+          set -euo pipefail
+          services=(postgres redis backend celery-worker)
+          deadline=$(( $(date +%s) + 240 ))
+          while :; do
+            healthy=0
+            for svc in "${services[@]}"; do
+              cid=$(docker compose -f docker-compose.dev.yml ps -q "$svc")
+              [ -z "$cid" ] && continue
+              status=$(docker inspect --format '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo "none")
+              [ "$status" = "healthy" ] && healthy=$(( healthy + 1 ))
+            done
+            echo "healthy=$healthy/${#services[@]}"
+            [ "$healthy" -eq "${#services[@]}" ] && break
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::stack did not become healthy within 240s"
+              docker compose -f docker-compose.dev.yml ps
+              exit 1
+            fi
+            sleep 5
+          done
+
+      # Bootstrap a fresh user (register auto-creates a personal org+team when
+      # AUTH_REGISTER_CREATES_TEAM is on — default), register this repo as a
+      # project, and mint a project-scoped API key. RATELIMIT_DISABLED keeps the
+      # login call off the 5/min limiter.
+      - name: Bootstrap project + API key
+        run: |
+          set -euo pipefail
+          api="http://localhost:8000"
+          email="dogfood-$(date +%s)@trustedoss.dev"
+          # Random, never reused (the user/team are ephemeral, torn down below).
+          password="DogfoodCI-$(openssl rand -hex 12)"
+
+          curl -fsS -X POST "$api/auth/register" \
+            -H 'Content-Type: application/json' \
+            -d "$(jq -nc --arg e "$email" --arg p "$password" \
+                  '{email: $e, password: $p, full_name: "Dogfood CI"}')" >/dev/null
+
+          jwt=$(curl -fsS -X POST "$api/auth/login" \
+            -H 'Content-Type: application/json' \
+            -d "$(jq -nc --arg e "$email" --arg p "$password" '{email: $e, password: $p}')" \
+            | jq -r '.access_token')
+          [ -n "$jwt" ] && [ "$jwt" != "null" ] || { echo "::error::login returned no token"; exit 1; }
+
+          team_id=$(curl -fsS "$api/auth/me" -H "Authorization: Bearer $jwt" \
+            | jq -r '.memberships[0].team_id')
+          [ -n "$team_id" ] && [ "$team_id" != "null" ] || { echo "::error::no team membership (AUTH_REGISTER_CREATES_TEAM off?)"; exit 1; }
+
+          project_id=$(curl -fsS -X POST "$api/v1/projects" \
+            -H "Authorization: Bearer $jwt" -H 'Content-Type: application/json' \
+            -d "$(jq -nc --arg t "$team_id" \
+                  '{team_id: $t, name: "Dogfood Self-Scan", slug: "dogfood-self-scan", git_url: "https://github.com/trustedoss/trustedoss-portal.git"}')" \
+            | jq -r '.id')
+          [ -n "$project_id" ] && [ "$project_id" != "null" ] || { echo "::error::project create failed"; exit 1; }
+
+          raw_key=$(curl -fsS -X POST "$api/v1/api-keys" \
+            -H "Authorization: Bearer $jwt" -H 'Content-Type: application/json' \
+            -d "$(jq -nc --arg p "$project_id" '{name: "dogfood-ci", scope: "project", project_id: $p}')" \
+            | jq -r '.raw_key')
+          [ -n "$raw_key" ] && [ "$raw_key" != "null" ] || { echo "::error::api-key create failed"; exit 1; }
+
+          echo "::add-mask::$raw_key"
+          {
+            echo "DOGFOOD_PROJECT_ID=$project_id"
+            echo "DOGFOOD_API_KEY=$raw_key"
+          } >> "$GITHUB_ENV"
+          echo "Bootstrapped project $project_id"
+
+      # The actual dogfood: drive OUR shipped action against the local portal.
+      - name: Run TrustedOSS scan-action
+        id: scan
+        uses: ./actions/scan
+        with:
+          api-url: http://localhost:8000
+          api-key: ${{ env.DOGFOOD_API_KEY }}
+          project-id: ${{ env.DOGFOOD_PROJECT_ID }}
+          scan-kind: ${{ env.INPUT_SCAN_KIND }}
+          fail-on-gate: ${{ env.INPUT_FAIL_ON_GATE }}
+          # Not a pull_request event — nothing to comment on.
+          post-pr-comment: "false"
+          # Real scan + Trivy-DB bootstrap can take a while on a cold worker.
+          poll-timeout-seconds: "2400"
+
+      - name: Summarize gate result
+        if: always() && steps.scan.outputs.gate != ''
+        run: |
+          {
+            echo "## Dogfood scan result"
+            echo ""
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| scan-id | \`${{ steps.scan.outputs.scan-id }}\` |"
+            echo "| gate | **${{ steps.scan.outputs.gate }}** |"
+            echo "| reason | ${{ steps.scan.outputs.reason || '—' }} |"
+            echo "| critical CVEs | ${{ steps.scan.outputs.critical-cve-count }} |"
+            echo "| forbidden licenses | ${{ steps.scan.outputs.forbidden-license-count }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Dump compose logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.dev.yml logs --tail=200
+
+      - name: Tear down stack
+        if: always()
+        run: docker compose -f docker-compose.dev.yml down -v
