@@ -101,9 +101,16 @@ const VERBS: Record<string, (ctx: Ctx, args: string[]) => Promise<void>> = {
     await portal.selectLicensesTab();
     // The doc's "forbidden licenses highlighted in red" is a visual claim
     // (covered by the manual step); the automatable core is that the licenses
-    // grid is populated for the seeded project. (Mirrors licenses.spec.ts.)
-    const rows = await portal.getLicenseRowCount();
-    expect(rows, `${projectName} license rows`).toBeGreaterThan(0);
+    // grid is populated for the seeded project. Read the unified Compliance
+    // grid's own `compliance-summary` data-total — the legacy `licenses-summary`
+    // testid that getLicenseRowCount reads is stale post-W4-C (always 0 here).
+    const total = Number(
+      (await portal.page
+        .getByTestId("compliance-summary")
+        .first()
+        .getAttribute("data-total")) ?? "0",
+    );
+    expect(total, `${projectName} compliance grid rows`).toBeGreaterThan(0);
   },
 };
 
