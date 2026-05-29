@@ -571,7 +571,7 @@ Trivy DB가 갱신되어 새 CVE가 도착하면 **자동 재매칭** Celery bea
 
 분류 후:
 
-<!-- docs-uat: id=vulns-status-badge-updates kind=manual tier=manual -->
+<!-- docs-uat: id=vulns-status-badge-updates kind=ui harness=vulnStatusUpdates(portal-web) tier=nightly -->
 1. status 배지가 테이블에서 즉시 갱신.
 <!-- docs-uat: id=vulns-audit-recorded kind=manual tier=manual -->
 2. 감사 로그에 `target_table=vulnerability_findings&action=update`가 `previous_status`, `new_status`, `justification`을 diff에 담아 기록.

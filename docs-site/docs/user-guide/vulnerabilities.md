@@ -589,7 +589,7 @@ A common point of confusion:
 
 After triaging:
 
-<!-- docs-uat: id=vulns-status-badge-updates kind=manual tier=manual -->
+<!-- docs-uat: id=vulns-status-badge-updates kind=ui harness=vulnStatusUpdates(portal-web) tier=nightly -->
 1. The status badge updates immediately in the table.
 <!-- docs-uat: id=vulns-audit-recorded kind=manual tier=manual -->
 2. The audit log records `target_table=vulnerability_findings&action=update` with `previous_status`, `new_status`, `justification` in the diff.

@@ -20,6 +20,7 @@ import * as fs from "node:fs";
 import { expect, test } from "@playwright/test";
 
 import { AuthHarness } from "../_harness/auth";
+import { NotificationsHarness } from "../_harness/NotificationsHarness";
 import { PortalPage } from "../_harness/PortalPage";
 
 interface Step {
@@ -66,6 +67,7 @@ function parseVerb(harness: string): { name: string; args: string[] } {
 interface Ctx {
   auth: AuthHarness;
   portal: PortalPage;
+  notifications: NotificationsHarness;
 }
 
 /** Annotation verb → existing harness call. */
@@ -158,6 +160,41 @@ const VERBS: Record<string, (ctx: Ctx, args: string[]) => Promise<void>> = {
     await portal.goto("/");
     await expect(portal.page.getByTestId("header-profile-link")).toBeVisible();
   },
+  // WS-A — mutation verbs that drive an existing domain harness (the action +
+  // read-back the doc's Verify step claims). The session is the doc's `login`
+  // user (notifications: developer, who owns the seeded notifications) or the
+  // auto-login super-admin (vulnerabilities).
+  async notificationsMarkReadDecrements({ notifications }) {
+    await notifications.gotoNotifications();
+    // The seeded developer has 2 unread (cve_detected + license_violation);
+    // marking all read drops the bell badge to 0 — the documented decrement.
+    await notifications.expectUnreadCount(2);
+    await notifications.markAllAsRead();
+    await notifications.expectUnreadCount(0);
+  },
+  async notificationsEmailDisableInappOnly({ notifications }) {
+    await notifications.gotoPreferences();
+    await notifications.togglePreference("email", false);
+    await notifications.savePreferences();
+    // In-app stays force-enabled regardless — the documented invariant.
+    await notifications.expectInAppAlwaysOn();
+  },
+  async vulnStatusUpdates({ portal }, [projectName]) {
+    await portal.gotoProjects();
+    await portal.openProjectDetail(projectName);
+    await portal.selectVulnerabilitiesTab();
+    await portal.expectVulnerabilitiesTabReady();
+    await portal.openFirstVulnerabilityDrawer();
+    // Seeded findings start at "new"; "analyzing" is the valid first transition
+    // (the drawer renders action buttons per the current status's transition
+    // graph — mirrors tests/e2e/vulnerabilities.spec.ts). setVulnerabilityStatus
+    // polls the drawer badge until it flips — the doc's "status badge updates
+    // immediately" claim.
+    await portal.setVulnerabilityStatus(
+      "analyzing",
+      "docs-uat triage assertion",
+    );
+  },
 };
 
 const uiSteps = loadUiSteps();
@@ -168,6 +205,7 @@ test.describe(`docs-uat ui — ${DOC} (${TIER})`, () => {
     const ctx: Ctx = {
       auth: new AuthHarness(page, baseURL ?? undefined),
       portal: new PortalPage(page, baseURL ?? undefined),
+      notifications: new NotificationsHarness(page, baseURL ?? undefined),
     };
     // Quickstart documents its own sign-in (a `login` ui step); feature docs
     // (user-guide / admin-guide) assume you are already signed in. So when the

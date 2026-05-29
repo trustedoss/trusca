@@ -8,6 +8,7 @@ sidebar_position: 8
 
 # Notifications
 
+<!-- docs-uat: id=notifications-login kind=ui harness=login(dev@demo.trustedoss.dev,DemoTest2026!) tier=nightly -->
 The notification system tells you about events on projects you care about — scans finishing, gates failing, new CVEs landing on a component you depend on, approvals waiting, and license-policy violations. Notifications fan out across **four channels** (in-app, email, Slack, Microsoft Teams) and you decide globally which channels to receive on.
 
 :::note Audience
@@ -96,9 +97,9 @@ Channel selection is global — the **Preferences** tab decides which channels d
 
 <!-- docs-uat: id=notifications-scan-completed-badge kind=manual tier=manual -->
 - Trigger a scan on a project you own; within seconds of completion, the bell badge increments and `/notifications` shows the new row.
-<!-- docs-uat: id=notifications-mark-read-decrements kind=manual tier=manual -->
+<!-- docs-uat: id=notifications-mark-read-decrements kind=ui harness=notificationsMarkReadDecrements tier=nightly -->
 - Open `/notifications` in a second tab and mark a row read; the first tab's bell badge decrements within 60 seconds.
-<!-- docs-uat: id=notifications-email-disable-inapp-only kind=manual tier=manual -->
+<!-- docs-uat: id=notifications-email-disable-inapp-only kind=ui harness=notificationsEmailDisableInappOnly tier=nightly -->
 - Globally disable email under **Preferences** and click **Save**; run another scan and confirm the next `scan_completed` notification arrives via in-app only.
 
 ## Troubleshooting
