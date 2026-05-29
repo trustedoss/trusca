@@ -75,6 +75,11 @@ jobs:
       DT_API_KEY: ci-visual-dt-stub-key
       WORKSPACE_HOST_PATH: ${{ github.workspace }}/workspace
       DISABLE_LOGIN_RATE_LIMIT: "1"
+      # /health/ready returns 200 only after Alembic schema is at HEAD.
+      # Without AUTO_MIGRATE the backend never runs `alembic upgrade head`
+      # on its own; the workflow's explicit migrate step only fires AFTER
+      # the wait-for-healthy loop times out. Same fix as ci.yml e2e.
+      AUTO_MIGRATE: "true"
 
     steps:
       - uses: actions/checkout@v4
