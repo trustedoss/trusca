@@ -48,6 +48,12 @@ on:
       - ".gitignore"
   workflow_dispatch: {}
 
+# Least-privilege default — bandit and semgrep only need to read the
+# source. Artifact uploads use the default GITHUB_TOKEN scope which
+# does not need contents:write.
+permissions:
+  contents: read
+
 concurrency:
   group: sast-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
