@@ -30,7 +30,17 @@ cd trustedoss-portal
 cp .env.example .env
 ```
 
-Then bring the dev stack up:
+The dev image runs `uvicorn --reload` directly, so — unlike the production
+image — it does not auto-apply migrations on boot. Create the schema first, so
+the backend reports healthy as soon as it starts (otherwise the
+health-gated `celery-worker` blocks `up`):
+
+<!-- docs-uat: id=qs-migrate kind=shell ctx=host expect=exit:0 retry=20x3s tier=gate -->
+```bash
+docker-compose -f docker-compose.dev.yml run --rm backend alembic upgrade head
+```
+
+Then bring the full stack up:
 
 <!-- docs-uat: id=qs-up kind=shell ctx=host expect=exit:0 tier=gate -->
 ```bash
@@ -38,8 +48,9 @@ docker-compose -f docker-compose.dev.yml up -d
 ```
 
 <!-- docs-uat: id=qs-health kind=api ctx=host url=/health/ready expect=status:200 retry=40x6s tier=gate -->
-About 30 seconds in, `postgres`, `redis`, `backend`, `celery-worker`, and
-`frontend` are healthy.
+The schema is already applied, so `postgres`, `redis`, `backend`,
+`celery-worker`, and `frontend` report healthy within about 30 seconds
+(`docker-compose -f docker-compose.dev.yml ps`).
 
 ## 2. Seed the demo dataset
 

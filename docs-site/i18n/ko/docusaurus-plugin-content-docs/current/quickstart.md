@@ -30,7 +30,16 @@ cd trustedoss-portal
 cp .env.example .env
 ```
 
-이어서 dev 스택을 기동합니다.
+dev 이미지는 `uvicorn --reload`를 직접 실행하므로 — 프로덕션 이미지와 달리 — 부팅
+시 마이그레이션을 자동 적용하지 않습니다. 스키마를 먼저 생성해야 backend가 기동
+즉시 healthy가 됩니다(아니면 health 게이트가 걸린 `celery-worker`가 `up`을 막습니다).
+
+<!-- docs-uat: id=qs-migrate kind=shell ctx=host expect=exit:0 retry=20x3s tier=gate -->
+```bash
+docker-compose -f docker-compose.dev.yml run --rm backend alembic upgrade head
+```
+
+이어서 전체 스택을 기동합니다.
 
 <!-- docs-uat: id=qs-up kind=shell ctx=host expect=exit:0 tier=gate -->
 ```bash
@@ -38,8 +47,8 @@ docker-compose -f docker-compose.dev.yml up -d
 ```
 
 <!-- docs-uat: id=qs-health kind=api ctx=host url=/health/ready expect=status:200 retry=40x6s tier=gate -->
-약 30초 뒤 `postgres`, `redis`, `backend`, `celery-worker`, `frontend` 컨테이너가
-모두 healthy 상태가 됩니다.
+스키마가 이미 적용돼 있어 약 30초 안에 `postgres`, `redis`, `backend`,
+`celery-worker`, `frontend` 컨테이너가 모두 healthy 상태가 됩니다 (`docker-compose -f docker-compose.dev.yml ps`).
 
 ## 2. 데모 데이터 시드
 
