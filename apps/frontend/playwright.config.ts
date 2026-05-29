@@ -16,6 +16,13 @@ const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:5173";
 
 export default defineConfig({
   testDir: "./tests/e2e",
+  // ux-audit/ holds capture scripts that drive the harness through every
+  // surface to dump screenshots into ./tests/.captures — they are not
+  // regression tests and would not be expected to pass on a fresh
+  // headless CI workspace. Exclude them from the e2e gate; run them
+  // manually via `npx playwright test tests/e2e/ux-audit` when the goal
+  // is to refresh capture artifacts.
+  testIgnore: ["**/ux-audit/**"],
   timeout: 30_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,
