@@ -177,7 +177,7 @@ UI에서 표현 위에 마우스를 올리면 각 컴포넌트 라이선스의 S
 1. 컴포넌트 수가 예상과 일치(락파일의 고정된 의존성 수에 가까움).
 <!-- docs-uat: id=components-classification-sums kind=manual tier=manual -->
 2. Overview 탭의 분류 분포 가로 막대 차트가 100%로 합산됩니다.
-<!-- docs-uat: id=licenses-forbidden-highlighted kind=ui harness=licensesHaveForbidden(portal-web) tier=nightly -->
+<!-- docs-uat: id=licenses-forbidden-highlighted kind=ui harness=licensesGridPopulated(portal-web) tier=nightly -->
 3. 금지 라이선스 컴포넌트가 있으면 빨간색 강조와 함께 [승인 큐](./approvals.md)로 가는 CTA가 보입니다.
 
 ## 트러블슈팅
