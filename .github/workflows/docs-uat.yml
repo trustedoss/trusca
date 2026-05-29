@@ -182,6 +182,12 @@ jobs:
           DOCS_UAT_API_BASE: http://localhost:8000
         run: node tools/docs-uat/run.mjs --tier=nightly --doc=admin-guide/audit-log.md
 
+      # admin-guide/backup-and-restore.md is enrolled for coverage / KO parity /
+      # drift via extract-and-lint, but has no docs-uat-executed steps: backup.sh
+      # is a production-operator tool (hardcodes docker-compose.yml) and its
+      # backup→restore round-trip is already executed by install-uat.yml. So
+      # there is intentionally no run step for it here.
+
       - name: Dump compose logs on failure
         if: failure()
         run: |

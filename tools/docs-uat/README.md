@@ -135,6 +135,13 @@ the verb to `PortalPage` first (harness-first rule), then register the binding.
   assertions (`admin-guide/audit-log.md`: authed audit API + a jsonb diff
   query). Later phases add more docs to its `--doc` list.
 
+`admin-guide/backup-and-restore.md` is **enrolled** (extract-and-lint enforces
+its coverage + KO parity + drift) but has no docs-uat-executed steps: every
+command is a production-operator tool (`scripts/backup.sh`/`restore.sh` hardcode
+`docker-compose.yml`) or host-scheduler / off-host / encrypt variant, and the
+backup→restore round-trip is already executed by `install-uat.yml`. So those
+fences carry `waiver=`, and the Verify steps are `kind=manual`.
+
 All are `continue-on-error: true` (non-blocking) until the manifest fidelity
 stabilizes for the first public release, then they flip to blocking (design §9
 decision 7).
