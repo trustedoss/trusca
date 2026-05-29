@@ -309,3 +309,30 @@ jobs:
       - name: Tear down
         if: always()
         run: docker-compose -f docker-compose.dev.yml down -v || true
+
+  # ── Nightly tier: Helm chart validation (helm lint + template) for
+  #    installation/helm.md. Lightweight — no compose stack, just Helm 3 +
+  #    Node. Per the Phase D decision, the chart is validated statically
+  #    (lint + full template render with the minimum required --set values);
+  #    real `kind` cluster deploys were declined as too heavy / flaky.
+  docs-uat-nightly-helm:
+    name: docs-uat-nightly-helm (chart validate)
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    # Non-blocking until manifest fidelity stabilizes (see header note).
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Helm 3
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.2
+
+      - name: Run nightly chart-validate assertion — installation/helm.md
+        run: node tools/docs-uat/run.mjs --tier=nightly --doc=installation/helm.md

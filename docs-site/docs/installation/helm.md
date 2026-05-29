@@ -50,11 +50,36 @@ The worker pod ships with the Trivy DB and downloads / refreshes it from `ghcr.i
   workspace (`workspace.persistence.storageClassName`). A single-node cluster
   can use the per-pod `emptyDir` fallback.
 
+## Validate the chart before installing
+
+Before deploying, render the in-repo chart locally to catch values / template
+errors without touching a cluster (Helm 3+, from the repository root):
+
+<!-- docs-uat: id=helm-chart-validate kind=shell ctx=host expect=exit:0 tier=nightly -->
+```bash
+SECRET=$(openssl rand -hex 32)
+helm lint charts/trustedoss \
+  --set env.secret.secretKey="$SECRET" \
+  --set postgres.auth.password=throwaway \
+  --set ingress.host=trustedoss.example.com
+helm template trustedoss charts/trustedoss --namespace trustedoss \
+  --set env.secret.secretKey="$SECRET" \
+  --set postgres.auth.password=throwaway \
+  --set ingress.host=trustedoss.example.com \
+  >/dev/null
+```
+
+`helm lint` reports chart-structure problems; `helm template` fully renders
+every manifest with the minimum required values, so a non-zero exit means the
+chart would not install. The `--set` values here are throwaway — the real
+install below uses your own secrets.
+
 ## Quick start (bundled datastores, evaluation)
 
 This runs PostgreSQL and Redis in-cluster — fast to stand up, but **not**
 recommended for production data.
 
+<!-- docs-uat: id=helm-install-bundled kind=shell ctx=host tier=manual waiver=needs-live-cluster-and-published-oci-chart -->
 ```bash
 helm install trustedoss oci://ghcr.io/trustedoss/charts/trustedoss \
   --version 0.3.0 \
@@ -101,6 +126,7 @@ ingress:
 
 Then install:
 
+<!-- docs-uat: id=helm-install-prod kind=shell ctx=host tier=manual waiver=needs-live-cluster-and-published-oci-chart -->
 ```bash
 helm install trustedoss oci://ghcr.io/trustedoss/charts/trustedoss \
   --version 0.3.0 \
@@ -138,6 +164,7 @@ container waits for Postgres to accept connections before alembic runs.
 
 ## Upgrade
 
+<!-- docs-uat: id=helm-upgrade kind=shell ctx=host tier=manual waiver=needs-live-cluster-and-published-oci-chart -->
 ```bash
 helm upgrade trustedoss oci://ghcr.io/trustedoss/charts/trustedoss \
   --version <new-chart-version> \
@@ -171,6 +198,7 @@ The values you most often set:
 
 ## Verify it worked
 
+<!-- docs-uat: id=helm-verify-migrate-job kind=manual tier=manual -->
 1. The migration Job completed:
 
    ```bash
@@ -178,6 +206,7 @@ The values you most often set:
    # the trustedoss migrate Job should show COMPLETIONS 1/1
    ```
 
+<!-- docs-uat: id=helm-verify-pods-ready kind=manual tier=manual -->
 2. All pods are `Running` and backend pods are `Ready`:
 
    ```bash
@@ -185,6 +214,7 @@ The values you most often set:
    # backend pods Ready means /health/ready returned 200 (schema at HEAD)
    ```
 
+<!-- docs-uat: id=helm-verify-readiness-probe kind=manual tier=manual -->
 3. The readiness probe passes from inside the cluster:
 
    ```bash
@@ -193,6 +223,7 @@ The values you most often set:
    # → {"status":"ready"}
    ```
 
+<!-- docs-uat: id=helm-verify-ingress-cert kind=manual tier=manual -->
 4. The Ingress has an address and a valid certificate, then open
    `https://<ingress.host>/` in a browser and sign in.
 
