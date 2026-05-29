@@ -226,7 +226,7 @@ Generate card 는 Reports 탭 안에 생성 다이얼로그를 띄우지 않고 
 
 프로젝트 생성 후:
 
-<!-- docs-uat: id=projects-appears-idle kind=manual tier=manual -->
+<!-- docs-uat: id=projects-appears-idle kind=ui harness=projectCreateAppearsIdle(docs-uat-new-project) tier=nightly -->
 1. **Projects**에 프로젝트가 **Idle**(스캔 없음) 상태로 표시됩니다.
 <!-- docs-uat: id=projects-overview-zero kind=manual tier=manual -->
 2. Overview 탭은 컴포넌트·취약점 모두 0을 보여줍니다.
