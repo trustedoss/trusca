@@ -100,7 +100,9 @@ async function getAdminToken() {
   if (_adminToken) return _adminToken;
   const email = process.env.DOCS_UAT_ADMIN_EMAIL || "admin@demo.trustedoss.dev";
   const password = process.env.DOCS_UAT_ADMIN_PASSWORD || "DemoTest2026!";
-  const res = await fetch(`${API_BASE}/v1/auth/login`, {
+  // auth_router mounts at /auth (no /v1 — see apps/backend/main.py); only the
+  // domain routers carry the /v1 prefix.
+  const res = await fetch(`${API_BASE}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
