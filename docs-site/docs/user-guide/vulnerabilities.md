@@ -157,6 +157,7 @@ The score and percentile appear in the findings table's **EPSS** column and in t
 
 `GET /v1/projects/{id}/vulnerabilities` returns `epss_score` and `epss_percentile` on every finding (both `null` when the Trivy DB supplied no value). The same fields appear on the finding detail (`GET /v1/vulnerability_findings/{finding_id}`) and on the nested `VulnerabilityRef`.
 
+<!-- docs-uat: id=vulns-list-epss-api kind=api auth=admin url=/v1/projects/${PROJECT_ID}/vulnerabilities?sort=epss&order=desc expect=status:200 tier=nightly -->
 Sort by EPSS, highest first:
 
 <!-- docs-uat: id=vulns-api-list-epss kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
@@ -320,6 +321,9 @@ The file name is `vulnerability-report-<project>.pdf`. Any inline error from the
 
 ### Download from the API
 
+<!-- docs-uat: id=vulns-report-pdf-api kind=api auth=admin url=/v1/projects/${PROJECT_ID}/vulnerability-report.pdf expect=status:200 retry=5x2s tier=nightly -->
+Fetch the same report over the API (returns the PDF bytes):
+
 <!-- docs-uat: id=vulns-api-report-pdf kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
 curl -sS -L -OJ \
@@ -389,6 +393,9 @@ id is derived deterministically from the scan id, and the timestamp reflects the
 scan's persisted completion time (not the moment of export).
 
 ### Download from the API
+
+<!-- docs-uat: id=vulns-vex-export-api kind=api auth=admin url=/v1/projects/${PROJECT_ID}/vex?format=openvex expect=status:200 tier=nightly -->
+Export the VEX document over the API:
 
 <!-- docs-uat: id=vulns-api-vex-export kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash

@@ -152,6 +152,7 @@ score와 percentile은 결과 테이블의 **EPSS** 컬럼과 드로어의 **요
 
 `GET /v1/projects/{id}/vulnerabilities`는 모든 결과에 `epss_score`와 `epss_percentile`을 반환합니다(Trivy DB가 값을 제공하지 않으면 둘 다 `null`). 동일한 필드가 결과 상세(`GET /v1/vulnerability_findings/{finding_id}`)와 중첩된 `VulnerabilityRef`에도 나타납니다.
 
+<!-- docs-uat: id=vulns-list-epss-api kind=api auth=admin url=/v1/projects/${PROJECT_ID}/vulnerabilities?sort=epss&order=desc expect=status:200 tier=nightly -->
 EPSS로 정렬, 높은 순:
 
 <!-- docs-uat: id=vulns-api-list-epss kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
@@ -315,6 +316,9 @@ curl -sS \
 
 ### API에서 다운로드
 
+<!-- docs-uat: id=vulns-report-pdf-api kind=api auth=admin url=/v1/projects/${PROJECT_ID}/vulnerability-report.pdf expect=status:200 retry=5x2s tier=nightly -->
+같은 보고서를 API로 받습니다(PDF 바이트 반환):
+
 <!-- docs-uat: id=vulns-api-report-pdf kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
 curl -sS -L -OJ \
@@ -383,6 +387,9 @@ SBOM 내보내기와 마찬가지로 VEX 내보내기는 **바이트 안정(byte
 스캔의 영속화된 완료 시각을 반영합니다.
 
 ### API에서 다운로드
+
+<!-- docs-uat: id=vulns-vex-export-api kind=api auth=admin url=/v1/projects/${PROJECT_ID}/vex?format=openvex expect=status:200 tier=nightly -->
+VEX 문서를 API로 내보냅니다:
 
 <!-- docs-uat: id=vulns-api-vex-export kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
