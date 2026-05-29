@@ -119,6 +119,19 @@ jobs:
         working-directory: apps/frontend
         run: npx playwright install --with-deps chromium
 
+      # Pre-build the backend / worker / frontend images BEFORE bringing the
+      # stack up — the dev compose image refs are unpublished so compose
+      # falls back to local build during `up -d`, which on a cold runner
+      # would spill past the 180-second healthcheck deadline below. Same
+      # split as ci.yml e2e.
+      - name: Pre-build dev images
+        env:
+          COMPOSE_DOCKER_CLI_BUILD: "1"
+          DOCKER_BUILDKIT: "1"
+        run: |
+          docker compose -f docker-compose.dev.yml build \
+            backend celery-worker frontend
+
       - name: Start dev stack
         run: |
           mkdir -p workspace
@@ -129,9 +142,12 @@ jobs:
           DOCKER_BUILDKIT: "1"
 
       - name: Wait for services to be healthy
+        # Deadline bumped 180 → 240s. Alembic upgrade + uvicorn boot on a
+        # cold cache regularly used the full 180-second budget; the
+        # pre-build step caps total wall clock while 240s leaves headroom.
         run: |
           services=(postgres redis backend celery-worker frontend)
-          deadline=$((SECONDS + 180))
+          deadline=$((SECONDS + 240))
           while [ "$SECONDS" -lt "$deadline" ]; do
             healthy=0
             for svc in "${services[@]}"; do
