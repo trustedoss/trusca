@@ -30,18 +30,24 @@ keeps each path's failure mode independent.
 
 from __future__ import annotations
 
+import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import replace
 
 import structlog
-from fastapi import Depends, Request
+from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from core.audit import audit_context
 from core.db import get_db
-from core.security import CurrentUser
-from models import APIKey, User
+from core.security import (
+    CurrentUser,
+    _has_at_least,
+    get_optional_current_user,
+)
+from models import APIKey, Project, User
 from services.api_key_service import authenticate_api_key, parse_bearer
 
 log = structlog.get_logger("api_key.auth")
@@ -61,6 +67,13 @@ def _bearer_token(request: Request) -> str | None:
 def _looks_like_api_key(token: str) -> bool:
     """Cheap pre-check before we hit bcrypt: does this look like a tos_ token?"""
     return parse_bearer(token) is not None
+
+
+async def _team_id_for_project(session: AsyncSession, project_id: uuid.UUID) -> uuid.UUID | None:
+    """Resolve a project's owning team_id (for scoping a project-scoped key)."""
+    return (
+        await session.execute(select(Project.team_id).where(Project.id == project_id))
+    ).scalar_one_or_none()
 
 
 async def get_current_api_key(
@@ -144,17 +157,37 @@ async def get_api_key_principal(
     if user is None or not user.is_active:
         return None
 
-    memberships = list(user.memberships)
-    team_ids = [m.team_id for m in memberships]
-    team_roles = {m.team_id: m.role for m in memberships}
+    membership_role_by_team = {m.team_id: m.role for m in user.memberships}
 
-    # Highest-role calculation mirrors core.security._highest_role exactly so
-    # JWT and API-key principals are interchangeable downstream.
+    # Narrow the principal to the key's SCOPE so a project/team-scoped key is an
+    # authorization boundary, not a cosmetic label (security-reviewer Medium): a
+    # project-scoped key must not reach the issuer's OTHER teams. An org-scoped
+    # key keeps the full membership set. A super_admin issuer bypasses team
+    # checks downstream via is_superuser regardless, so narrowing is a no-op for
+    # them — but we still scope team_roles so the role gate reflects the key.
+    if api_key.scope == "project" and api_key.project_id is not None:
+        scoped_team = await _team_id_for_project(session, api_key.project_id)
+        allowed = {scoped_team} if scoped_team is not None else set()
+    elif api_key.scope == "team" and api_key.team_id is not None:
+        allowed = {api_key.team_id}
+    else:  # org scope (or a malformed key missing its scope id) — full set.
+        allowed = set(membership_role_by_team)
+
+    team_roles = {
+        team_id: role
+        for team_id, role in membership_role_by_team.items()
+        if team_id in allowed
+    }
+    team_ids = list(team_roles)
+
+    # Role is the issuer's highest role WITHIN the key's scope (not the global
+    # max across all their teams), mirroring the per-team philosophy of
+    # _can_admin_team. super_admin issuers stay super_admin.
     if user.is_superuser:
         role = "super_admin"
-    elif memberships:
+    elif team_roles:
         role_priority = {"developer": 1, "team_admin": 2, "super_admin": 3}
-        role = max((m.role for m in memberships), key=lambda r: role_priority.get(r, 0))
+        role = max(team_roles.values(), key=lambda r: role_priority.get(r, 0))
     else:
         role = "developer"
 
@@ -180,4 +213,51 @@ async def get_api_key_principal(
     return principal
 
 
-__all__ = ["get_api_key_principal", "get_current_api_key"]
+def require_role_or_api_key(
+    role: str,
+) -> Callable[..., Awaitable[CurrentUser]]:
+    """
+    Dependency factory: like :func:`core.security.require_role`, but accepts
+    **either** a JWT **or** a ``tos_`` API key in the ``Authorization: Bearer``
+    header. Use this on the endpoints the CI ``scan-action`` drives (scan
+    trigger + scan-status poll) — the JWT-only ``require_role`` left them
+    unreachable by API key (the 401 dogfooding surfaced).
+
+    Resolution mirrors the policy-gate dual path: API key first (the helper
+    returns None for a non-key token so JWTs fall straight through), then JWT.
+    The synthesized API-key principal already caps privilege at the issuer's
+    role (see :func:`get_api_key_principal`), so the same ``_has_at_least``
+    role gate applies uniformly to both auth methods.
+
+    Deliberately NOT applied to admin / user-management routes: those stay
+    JWT-only (``require_role`` / ``require_super_admin_or_404``) so a key — even
+    one issued by a super_admin — cannot reach the admin surface.
+    """
+
+    async def _check(
+        request: Request,
+        session: AsyncSession = Depends(get_db),
+    ) -> CurrentUser:
+        principal = await get_api_key_principal(request, session)
+        if principal is None or not principal.is_active:
+            principal = await get_optional_current_user(request, session)
+        if principal is None or not principal.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required",
+            )
+        if not _has_at_least(principal.role, role):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Requires role >= {role}",
+            )
+        return principal
+
+    return _check
+
+
+__all__ = [
+    "get_api_key_principal",
+    "get_current_api_key",
+    "require_role_or_api_key",
+]

@@ -96,9 +96,19 @@ def _authenticated_user_key(request: Request) -> str:
     from jose import JWTError
 
     from core.security import TOKEN_TYPE_ACCESS, _bearer_token, decode_token
+    from services.api_key_service import parse_bearer
 
     token = _bearer_token(request)
     if token:
+        # CI scan-action authenticates with a tos_ API key, and the scan-trigger
+        # endpoint now accepts it. Bucket those by key prefix (cheap — no bcrypt,
+        # no DB) so many keys sharing one CI egress IP don't collapse into a
+        # single ip: bucket (security-reviewer Low). parse_bearer returns the
+        # 12-char prefix without verifying the secret — fine for a rate-limit
+        # key (a forged prefix only shares a bucket with itself).
+        parsed = parse_bearer(token)
+        if parsed is not None:
+            return f"apikey:{parsed[0]}"
         try:
             claims = decode_token(token, expected_type=TOKEN_TYPE_ACCESS)
             sub = claims.get("sub")
