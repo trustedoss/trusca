@@ -183,7 +183,6 @@ jobs:
   #    PR 머지 게이트 = 신규/변경 코드 line coverage ≥ 80%.
   # -------------------------------------------------------------------------
   test:
-    if: false  # TEMP-DISABLED-CI (dev velocity) — re-enable before deploy
     name: test (${{ matrix.target }})
     runs-on: ubuntu-22.04
     strategy:

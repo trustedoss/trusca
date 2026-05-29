@@ -181,11 +181,16 @@ def _scan_log_not_found_response(
         scan_id=str(scan_id_for_log),
         reason=reason,
     )
+    # Canonical instance string — using the literal request path here would
+    # echo the scan_id back, defeating the existence-hide contract that
+    # test_404_envelope_is_byte_identical_across_miss_paths gates. The route
+    # pattern is the same across (a) cross-team, (b) file-missing, and (c)
+    # random-uuid miss paths.
     return problem_response(
         status_code=status.HTTP_404_NOT_FOUND,
         title="Scan log not found",
         detail="No scan log is available for this scan id.",
-        instance=request.url.path,
+        instance="/v1/scans/{scan_id}/log",
     )
 
 
