@@ -30,7 +30,7 @@ image:
   # Frontend image (React SPA on nginx, listens on :8080).
   frontendRepository: ghcr.io/trustedoss/frontend
   # Tag applied to ALL three images. Kept in lock-step with Chart.yaml appVersion.
-  tag: "2.4.0"
+  tag: "0.10.0"
   pullPolicy: IfNotPresent
 # -- Image pull secrets for private registries (list of {name: ...}).
 imagePullSecrets: []

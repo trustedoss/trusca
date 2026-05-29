@@ -183,7 +183,7 @@ The values you most often set:
 
 | Key | Default | Purpose |
 |---|---|---|
-| `image.tag` | `2.4.0` | Image tag for backend / worker / frontend (never `:latest`). |
+| `image.tag` | `0.10.0` | Image tag for backend / worker / frontend (never `:latest`). |
 | `ingress.host` | `""` | **Required.** Public hostname. |
 | `env.corsAllowedOrigins` | `""` | **Required in prod.** Allowed browser origins (no wildcard). |
 | `env.secret.secretKey` | `""` | `SECRET_KEY` (≥32 chars). Required unless `existingSecret`. |
