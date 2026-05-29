@@ -27,12 +27,17 @@ class _FakeScan:
 
     def __init__(self, *, progress_percent: int = 0) -> None:
         self.id = uuid.uuid4()
+        self.project_id = uuid.uuid4()
         self.status: str = "queued"
         self.error_message: str | None = None
         self.completed_at: Any = None
         self.current_step: str = "bootstrap"
         self.progress_percent: int = progress_percent
         self.started_at: Any = None
+        # scan-retention: _mark_succeeded calls supersede_prior_ref_scans, which
+        # short-circuits (no session.execute) when ref is None — so a ref-less
+        # fake never touches the fake session's missing execute().
+        self.ref: str | None = None
 
 
 class _FakeSession:

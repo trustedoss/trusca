@@ -291,13 +291,15 @@ def test_reclaim_aged_keeps_last_n_and_protects_latest(sync_session: Session) ->
     sync_session.commit()
 
     # keep_last=2 → 3 oldest are eligible; max_age=180 → all past cutoff.
-    reclaimed = _reclaim_aged(sync_session, now=now, keep_last=2, max_age_days=180)
+    # _reclaim_aged is a global beat: it also reclaims other projects' aged
+    # scans in the shared CI DB, so we assert this project's surviving set
+    # (deterministic) rather than the global reclaim count.
+    _reclaim_aged(sync_session, now=now, keep_last=2, max_age_days=180)
 
     # The 2 newest are kept by keep_last; one of the "kept" is also latest.
     surviving = {sid for sid in ids if _exists(sync_session, sid)}
     assert latest in surviving  # latest always protected
     assert len(surviving) == 2  # keep_last honored
-    assert reclaimed == 3
 
 
 def test_reclaim_aged_protects_release_and_ref_live(sync_session: Session) -> None:
@@ -321,9 +323,11 @@ def test_reclaim_aged_protects_release_and_ref_live(sync_session: Session) -> No
     )
     sync_session.commit()
 
-    reclaimed = _reclaim_aged(sync_session, now=now, keep_last=0, max_age_days=0)
+    # Most aggressive policy. _reclaim_aged is global (reclaims other projects'
+    # aged scans too in the shared CI DB), so we assert our protected scans
+    # survive rather than the global reclaim count.
+    _reclaim_aged(sync_session, now=now, keep_last=0, max_age_days=0)
 
     # Neither protected scan is reclaimed even with the most aggressive policy.
     assert _exists(sync_session, tagged)
     assert _exists(sync_session, ref_live)
-    assert reclaimed == 0
