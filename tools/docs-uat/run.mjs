@@ -114,8 +114,58 @@ async function getAdminToken() {
   return _adminToken;
 }
 
+// ───── runtime value resolution ─────────────────────────────────────────
+// Some doc commands embed placeholders that only exist after the demo seed
+// runs — e.g. `/v1/projects/${PROJECT_ID}/...`. We resolve a small allow-list
+// of these against the live API (admin-authed) once, cache them, and substitute
+// them into api `url`s. Only the allow-list is touched, so shell-local braces
+// like `${SECRET}` in the helm validate step are left for bash to expand.
+const _RESOLVABLE = new Set(["PROJECT_ID"]);
+const _resolved = {};
+async function resolveValue(name) {
+  if (name in _resolved) return _resolved[name];
+  let value;
+  if (name === "PROJECT_ID") {
+    // The seeded `portal-web` project is deterministic and carries the CVEs +
+    // license findings the SCA read endpoints document.
+    const token = await getAdminToken();
+    const res = await fetch(`${API_BASE}/v1/projects?q=portal-web&page=1&size=1`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error(`resolve PROJECT_ID: GET /v1/projects → ${res.status}`);
+    const body = await res.json();
+    value = body.items?.[0]?.id;
+    if (!value) throw new Error("resolve PROJECT_ID: portal-web not found in /v1/projects");
+  } else {
+    throw new Error(`resolve: no resolver for \${${name}}`);
+  }
+  _resolved[name] = value;
+  return value;
+}
+
+const _PLACEHOLDER_RE = /\$\{([A-Z_][A-Z0-9_]*)\}/g;
+/** Resolve every allow-listed `${VAR}` a step references, into process.env. */
+async function ensurePlaceholders(step) {
+  const text = `${step.url || ""}\n${step.code || ""}`;
+  for (const m of text.matchAll(_PLACEHOLDER_RE)) {
+    const name = m[1];
+    if (!_RESOLVABLE.has(name) || process.env[name]) continue;
+    process.env[name] = await resolveValue(name);
+  }
+}
+
+/** Substitute allow-listed `${VAR}` in an api url from process.env. */
+function substituteUrl(url) {
+  return url.replace(_PLACEHOLDER_RE, (full, name) =>
+    _RESOLVABLE.has(name) && process.env[name] ? process.env[name] : full,
+  );
+}
+
 async function runApi(step) {
-  const url = /^https?:\/\//.test(step.url) ? step.url : `${API_BASE}${step.url}`;
+  const resolvedPath = substituteUrl(step.url);
+  const url = /^https?:\/\//.test(resolvedPath)
+    ? resolvedPath
+    : `${API_BASE}${resolvedPath}`;
   const m = (step.expect || "status:200").match(/^status:(\d+)$/);
   const wantStatus = m ? Number(m[1]) : 200;
   // `auth=admin` injects a super-admin bearer; the doc shows the curl with a
@@ -228,6 +278,11 @@ async function main() {
       results.push({ id: step.id, status: "dry-run" });
       continue;
     }
+
+    // Resolve any allow-listed ${VAR} the step references (e.g. ${PROJECT_ID})
+    // into process.env so runApi can substitute the url and shell steps inherit
+    // it. ui steps run through Playwright (own process) so they are exempt.
+    if (step.kind !== "ui") await ensurePlaceholders(step);
 
     let r;
     if (step.kind === "shell") r = await runShell(step);
