@@ -3,11 +3,12 @@ name: docs-uat
 # docs-uat — procedural-correctness lane for the documentation: it proves
 # that following a doc step-by-step actually works (the docs ARE the tests).
 #
-# Phase A (this slice) covers the Quickstart vertical: annotation extraction +
-# coverage lint, plus an end-to-end gate that brings the dev stack up via the
-# documented commands, seeds the demo dataset, and drives the documented UI.
-# Phases B-D enroll install / admin / user-guide / CI docs and add the
-# nightly + weekly tiers. Design: docs/docs-verify-investigation-2026-05-29.md.
+# Phase A covers the Quickstart vertical: annotation extraction + coverage
+# lint, plus an end-to-end gate that brings the dev stack up via the documented
+# commands, seeds the demo dataset, and drives the documented UI.
+# Phase B adds the nightly tier: admin-guide api/sql assertions (audit-log)
+# against the same dev stack. Phases C-D enroll user-guide / install / CI docs.
+# Design: docs/docs-verify-investigation-2026-05-29.md.
 #
 # NON-BLOCKING: both jobs are `continue-on-error: true` until the manifest
 # fidelity stabilizes for the first public release, then they flip to blocking
@@ -24,6 +25,9 @@ on:
       - "apps/frontend/tests/docs-uat/**"
       - ".github/workflows/docs-uat.yml"
   workflow_dispatch:
+  schedule:
+    # Nightly 05:00 UTC — runs the nightly-tier admin-guide assertions.
+    - cron: "0 5 * * *"
 
 permissions:
   contents: read
@@ -98,10 +102,10 @@ jobs:
           cp .env.example .env
           mkdir -p workspace
 
-      # run.mjs executes the documented gate-tier steps in order: it runs the
-      # doc's own `docker-compose up`, polls /health/ready (AUTO_MIGRATE flips
-      # it to 200 once migrations finish), runs `seed_demo`, drives the
-      # documented UI via Playwright, then runs the doc's `down`.
+      # run.mjs executes the documented gate-tier steps in order: migrate
+      # (`run --rm backend alembic upgrade head`, since the dev image does not
+      # auto-migrate), `up -d`, poll /health/ready, `seed_demo`, drive the
+      # documented UI via Playwright, then the doc's `down`.
       - name: Run Quickstart gate (docs-uat)
         env:
           PLAYWRIGHT_BASE_URL: http://localhost:5173
@@ -109,6 +113,74 @@ jobs:
           COMPOSE_DOCKER_CLI_BUILD: "1"
           DOCKER_BUILDKIT: "1"
         run: node tools/docs-uat/run.mjs --tier=gate --doc=quickstart.md
+
+      - name: Dump compose logs on failure
+        if: failure()
+        run: |
+          docker-compose -f docker-compose.dev.yml ps || true
+          docker-compose -f docker-compose.dev.yml logs --tail=300 || true
+
+      - name: Tear down
+        if: always()
+        run: docker-compose -f docker-compose.dev.yml down -v || true
+
+  # ── Nightly tier: admin-guide api/sql assertions against the dev stack.
+  #    Runs on schedule + manual dispatch (not on every PR — keeps PR CI lean;
+  #    PRs still get extract-and-lint + quickstart-gate). Phase B enrolls
+  #    audit-log.md (authed audit API + a jsonb diff query); later phases add
+  #    more docs to the --doc list.
+  docs-uat-nightly:
+    name: docs-uat-nightly (dev compose)
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    # Non-blocking until manifest fidelity stabilizes (see header note).
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install docker-compose V1
+        run: |
+          sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" \
+            -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+          docker-compose --version
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # Same bootstrap the Quickstart documents (migrate-before-up so the
+      # health-gated worker doesn't block `up` under compose V1), but inline
+      # here because the nightly assertions live in a different doc than the
+      # bootstrap commands.
+      - name: Bootstrap dev stack + seed
+        env:
+          COMPOSE_DOCKER_CLI_BUILD: "1"
+          DOCKER_BUILDKIT: "1"
+        run: |
+          set -euo pipefail
+          cp .env.example .env
+          mkdir -p workspace
+          docker-compose -f docker-compose.dev.yml up -d postgres redis
+          for i in $(seq 1 20); do
+            cid=$(docker-compose -f docker-compose.dev.yml ps -q postgres)
+            st=$(docker inspect -f '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo none)
+            [ "$st" = "healthy" ] && break
+            echo "waiting for postgres ($i/20)"; sleep 3
+          done
+          docker-compose -f docker-compose.dev.yml run --rm -T backend alembic upgrade head
+          docker-compose -f docker-compose.dev.yml up -d
+          for i in $(seq 1 40); do
+            curl -fsS http://localhost:8000/health/ready >/dev/null 2>&1 && break
+            echo "waiting for /health/ready ($i/40)"; sleep 6
+          done
+          docker-compose -f docker-compose.dev.yml exec -T backend python -m scripts.seed_demo
+
+      - name: Run nightly assertions — admin-guide/audit-log.md
+        env:
+          DOCS_UAT_API_BASE: http://localhost:8000
+        run: node tools/docs-uat/run.mjs --tier=nightly --doc=admin-guide/audit-log.md
 
       - name: Dump compose logs on failure
         if: failure()

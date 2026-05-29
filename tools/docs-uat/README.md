@@ -66,8 +66,9 @@ Tokens are whitespace-separated `key=value`; **values carry no spaces**.
 | `kind` | ✅ | `shell` `api` `ui` `sql` `lint` `manual` | dispatch target |
 | `tier` | ✅ | `gate` `nightly` `weekly` `manual` | sampling tier (gate = PR, runs in < 10 min) |
 | `ctx` | shell/sql | `host` `backend` `worker` `postgres` `kind` | where it runs |
-| `expect` | per kind | `exit:N` · `status:N` · `match:/re/` · `rows:>N` | assertion |
-| `url` | api | `/path` or absolute | endpoint hit by the api kind |
+| `expect` | per kind | `exit:N` · `status:N` · `match:/re/` · `rows:>N`/`rows:>=N`/`rows:N` · `ok` (sql: query runs cleanly) | assertion |
+| `url` | api | `/path` or absolute | endpoint hit by the api kind (the doc may show a `${VAR}` host placeholder; the runner uses `DOCS_UAT_API_BASE`) |
+| `auth` | api | `admin` | inject a super-admin bearer (one cached login via `DOCS_UAT_ADMIN_EMAIL`/`_PASSWORD`, default demo super-admin) |
 | `retry` | optional | `NxMs` e.g. `40x6s` | attempts × interval — api polling, or a shell step racing a warming-up service (e.g. `alembic upgrade head` right after `up`) |
 | `harness` | ui | `verb` or `verb(arg1,arg2)` | maps to a registered PortalPage/AuthHarness verb |
 | `fixture` | optional | e.g. `seed_demo` | documents the pre-state the step assumes |
@@ -128,8 +129,12 @@ the verb to `PortalPage` first (harness-first rule), then register the binding.
 - **`extract-and-lint`** — static, fast, runs on every PR touching docs or
   the tooling. Catches drift (uncovered blocks, broken KO parity).
 - **`quickstart-gate`** — brings the dev stack up via the documented commands,
-  runs the gate-tier steps end-to-end.
+  runs the gate-tier steps end-to-end. (PR + dispatch.)
+- **`docs-uat-nightly`** — schedule + manual dispatch (not on PRs). Bootstraps
+  the dev stack, seeds the demo data, and runs the nightly-tier admin-guide
+  assertions (`admin-guide/audit-log.md`: authed audit API + a jsonb diff
+  query). Later phases add more docs to its `--doc` list.
 
-Both are `continue-on-error: true` (non-blocking) until the manifest fidelity
+All are `continue-on-error: true` (non-blocking) until the manifest fidelity
 stabilizes for the first public release, then they flip to blocking (design §9
 decision 7).
