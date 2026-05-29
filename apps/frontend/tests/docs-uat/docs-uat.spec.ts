@@ -185,10 +185,13 @@ const VERBS: Record<string, (ctx: Ctx, args: string[]) => Promise<void>> = {
     await portal.selectVulnerabilitiesTab();
     await portal.expectVulnerabilitiesTabReady();
     await portal.openFirstVulnerabilityDrawer();
-    // setVulnerabilityStatus polls the drawer status badge until it flips —
-    // the doc's "status badge updates immediately" claim.
+    // Seeded findings start at "new"; "analyzing" is the valid first transition
+    // (the drawer renders action buttons per the current status's transition
+    // graph — mirrors tests/e2e/vulnerabilities.spec.ts). setVulnerabilityStatus
+    // polls the drawer badge until it flips — the doc's "status badge updates
+    // immediately" claim.
     await portal.setVulnerabilityStatus(
-      "false_positive",
+      "analyzing",
       "docs-uat triage assertion",
     );
   },
