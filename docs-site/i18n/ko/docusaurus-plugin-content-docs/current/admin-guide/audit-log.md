@@ -107,6 +107,7 @@ Admin UI 의 `target_table` 필터 드롭다운은 `apps/backend/schemas/admin_o
 
 더 큰 윈도는 API로 페이지네이션:
 
+<!-- docs-uat: id=audit-api-paginate kind=api auth=admin url=/v1/admin/audit?page=1&page_size=10 expect=status:200 tier=nightly -->
 ```bash
 curl -sS \
   -H "Authorization: Bearer ${ACCESS_TOKEN}" \
@@ -133,6 +134,7 @@ curl -sS \
 
 사용자가 오류를 신고하면 오류 페이지에 표시된 `X-Request-ID`를 요청하세요. 본 `request_id`로 감사 로그를 필터하면 요청이 트리거한 모든 쓰기의 정식 기록을 얻습니다. 구조화 로그와 교차 참조:
 
+<!-- docs-uat: id=audit-log-correlate kind=shell ctx=host tier=nightly waiver=illustrative-log-grep-no-deterministic-assertion -->
 ```bash
 docker-compose -f docker-compose.yml logs backend \
   | jq -c "select(.request_id == \"$REQ\")"
@@ -142,6 +144,7 @@ docker-compose -f docker-compose.yml logs backend \
 
 감사 로그는 **자동 정리되지 않습니다**. 컴플라이언스 가치 대비 저장소 비용이 저렴합니다(전형적 설치는 활성 사용자당 연 ~50 MB 증가). 테이블 크기를 줄여야 한다면 **archive then truncate**(운영자 확인 포함) 권장:
 
+<!-- docs-uat: id=audit-archive-truncate kind=shell ctx=host tier=nightly waiver=destructive-retention-archive-on-production-compose -->
 ```bash
 docker-compose -f docker-compose.yml exec postgres \
   pg_dump -U trustedoss -t audit_logs trustedoss | gzip > audit-archive-2024.sql.gz
@@ -155,6 +158,7 @@ docker-compose -f docker-compose.yml exec postgres \
 
 `DELETE`는 immutability 트리거에 의해 **DB 레이어에서 차단됩니다**([스키마](#스키마) 참고). 의도된 retention purge 시에는 동일 유지보수 트랜잭션 안에서 두 트리거를 drop, `DELETE` 실행, 트리거 재생성을 commit 전에 마쳐야 합니다.
 
+<!-- docs-uat: id=audit-retention-purge kind=sql ctx=postgres tier=nightly waiver=destructive-drops-triggers-and-deletes-rows -->
 ```sql
 BEGIN;
 DROP TRIGGER audit_logs_immutable_truncate ON audit_logs;
@@ -182,8 +186,11 @@ SELECT tgname FROM pg_trigger
 
 권한 작업 후:
 
+<!-- docs-uat: id=audit-verify-new-row kind=manual tier=manual -->
 1. **/admin/audit**이 ~1초 이내 최상단에 새 행을 표시.
+<!-- docs-uat: id=audit-verify-request-id kind=manual tier=manual -->
 2. `request_id`가 원래 요청의 `X-Request-ID` 응답 헤더와 일치.
+<!-- docs-uat: id=audit-verify-diff-masked kind=manual tier=manual -->
 3. `diff`가 예상과 일치. PII 필드(이메일·비밀번호 해시·API Key)가 마스킹되어 표시.
 
 ## 트러블슈팅
@@ -204,6 +211,7 @@ SELECT tgname FROM pg_trigger
 
 `diff` 컬럼은 `jsonb`. 마이그레이션이 만든 GIN 인덱스로 SQL 쿼리가 빠릅니다.
 
+<!-- docs-uat: id=audit-diff-query kind=sql ctx=postgres expect=ok tier=nightly -->
 ```sql
 SELECT * FROM audit_logs
  WHERE diff @> '{"new_state": "suppressed"}'::jsonb

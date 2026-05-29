@@ -93,15 +93,38 @@ async function runShell(step) {
   return { ok: false, detail: `exit ${got}, expected ${want}` };
 }
 
+// Cached bearer token for `auth=admin` api steps — we log in once (well under
+// the 5/min/IP limiter) and reuse the token across every admin-scoped step.
+let _adminToken = null;
+async function getAdminToken() {
+  if (_adminToken) return _adminToken;
+  const email = process.env.DOCS_UAT_ADMIN_EMAIL || "admin@demo.trustedoss.dev";
+  const password = process.env.DOCS_UAT_ADMIN_PASSWORD || "DemoTest2026!";
+  const res = await fetch(`${API_BASE}/v1/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!res.ok) throw new Error(`admin login failed (status ${res.status})`);
+  const body = await res.json();
+  _adminToken = body.access_token;
+  if (!_adminToken) throw new Error("admin login returned no access_token");
+  return _adminToken;
+}
+
 async function runApi(step) {
   const url = /^https?:\/\//.test(step.url) ? step.url : `${API_BASE}${step.url}`;
   const m = (step.expect || "status:200").match(/^status:(\d+)$/);
   const wantStatus = m ? Number(m[1]) : 200;
+  // `auth=admin` injects a super-admin bearer; the doc shows the curl with a
+  // ${ACCESS_TOKEN} placeholder, the runner supplies a real one.
+  const headers = {};
+  if (step.auth === "admin") headers.Authorization = `Bearer ${await getAdminToken()}`;
   const { attempts, intervalMs } = parseRetry(step.retry);
   let last = "no attempt";
   for (let i = 1; i <= attempts; i++) {
     try {
-      const res = await fetch(url, { method: "GET" });
+      const res = await fetch(url, { method: "GET", headers });
       if (res.status === wantStatus) {
         console.log(`  GET ${url} → ${res.status} (attempt ${i}/${attempts})`);
         return { ok: true };
