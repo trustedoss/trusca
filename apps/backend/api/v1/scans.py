@@ -26,6 +26,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response, status
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.api_key_auth import require_role_or_api_key
 from core.config import workspace_root
 from core.db import get_db
 from core.errors import problem_response
@@ -138,7 +139,9 @@ async def get_scan_endpoint(
     request: Request,
     scan_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    # CI scan-action polls this endpoint with a tos_ API key while waiting for
+    # the scan to reach a terminal state — accept either the key or a JWT.
+    actor: CurrentUser = Depends(require_role_or_api_key("developer")),
 ) -> Response:
     try:
         scan = await get_scan(session, scan_id=scan_id, actor=actor)
