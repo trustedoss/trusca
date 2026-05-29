@@ -564,6 +564,7 @@ export function ProjectDetailPage() {
         <TabsContent value="reports">
           <ReportsTab
             projectId={projectId}
+            projectName={projectQuery.data?.name ?? null}
             scanId={pinnedScanId}
             lastSucceededScanAt={overview.data?.last_succeeded_scan_at ?? null}
           />

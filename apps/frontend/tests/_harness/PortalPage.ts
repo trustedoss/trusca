@@ -1063,16 +1063,39 @@ export class PortalPage {
   }
 
   /**
-   * Click one of the four generate-card deeplinks. Each takes the user to
-   * the corresponding domain tab where the artefact's generation UI lives.
+   * Click one of the deeplink generate-cards. Each takes the user to the
+   * corresponding domain tab where the artefact's generation UI lives.
    *
-   * @param slug ``notice`` → Obligations / ``sbom`` → SBOM /
-   *             ``vuln-pdf`` → Vulnerabilities / ``vex`` → Vulnerabilities.
+   * NOTICE is intentionally excluded — it downloads directly from the card
+   * (see {@link downloadNotice}) rather than deep-linking anywhere.
+   *
+   * @param slug ``sbom`` → in-page SBOM section / ``vuln-pdf`` →
+   *             Vulnerabilities / ``vex`` → Vulnerabilities.
    */
   async clickReportsGenerateCard(
-    slug: "notice" | "sbom" | "vuln-pdf" | "vex",
+    slug: "sbom" | "vuln-pdf" | "vex",
   ): Promise<void> {
     await this.page.getByTestId(`reports-card-${slug}-deeplink`).click();
+  }
+
+  /**
+   * Download the NOTICE attribution file directly from the Reports tab card.
+   * Distinct from {@link downloadNotice} (the legacy Obligations-toolbar
+   * variant) — this drives the Reports-tab card's own picker + button.
+   * Optionally pick a format ("text" | "html") before triggering; returns the
+   * captured download so callers can assert on the filename.
+   */
+  async downloadNoticeFromReports(
+    format: "text" | "html" = "text",
+  ): Promise<import("@playwright/test").Download> {
+    await this.page
+      .getByTestId("reports-card-notice-format")
+      .selectOption(format);
+    const [download] = await Promise.all([
+      this.page.waitForEvent("download"),
+      this.page.getByTestId("reports-card-notice-download").click(),
+    ]);
+    return download;
   }
 
   async filterObligationsByKind(kinds: string[]): Promise<void> {

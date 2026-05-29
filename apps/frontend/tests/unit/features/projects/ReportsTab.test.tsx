@@ -40,6 +40,19 @@ import { fetchReportHistory } from "@/features/projects/api/reportHistoryApi";
 
 const mockedFetch = vi.mocked(fetchReportHistory);
 
+// NOTICE downloads directly from the card via useNotice. We mock the hook so
+// a click is observable without exercising the blob-download path (jsdom has
+// no real URL.createObjectURL / anchor download).
+const { noticeDownload } = vi.hoisted(() => ({ noticeDownload: vi.fn() }));
+vi.mock("@/features/projects/api/useNotice", () => ({
+  useNotice: () => ({
+    download: noticeDownload,
+    isLoading: false,
+    error: null,
+    lastResult: null,
+  }),
+}));
+
 function row(
   overrides: Partial<ReportDownloadEntry> = {},
 ): ReportDownloadEntry {
@@ -122,6 +135,7 @@ function renderTab(initialEntries: string[] = ["/projects/proj-1"]) {
 describe("ReportsTab", () => {
   beforeEach(() => {
     mockedFetch.mockReset();
+    noticeDownload.mockReset().mockResolvedValue(undefined);
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -237,29 +251,26 @@ describe("ReportsTab", () => {
     );
   });
 
-  it("clicking the NOTICE generate-card deeplinks to Compliance and preserves ?scan=", async () => {
-    // W4-C #20 — NOTICE now lives under the unified Compliance tab
-    // (it is the headline output of the Obligations sub-view).
+  it("clicking the NOTICE card downloads directly with the selected format", async () => {
+    // The unified Compliance tab is a read-only grid that never owned a NOTICE
+    // download, so the old deep-link was a dead end. The card now downloads
+    // directly via useNotice — default format is "text".
     mockedFetch.mockResolvedValueOnce(response([]));
-    renderTab(["/projects/proj-1?tab=reports&scan=scan-pinned-id"]);
+    renderTab();
     await waitFor(() => {
       expect(screen.getByTestId("reports-history-empty")).toBeInTheDocument();
     });
-    expect(screen.getByTestId("url-probe").getAttribute("data-scan")).toBe(
-      "scan-pinned-id",
-    );
 
-    await userEvent.click(
-      screen.getByTestId("reports-card-notice-deeplink"),
-    );
+    await userEvent.click(screen.getByTestId("reports-card-notice-download"));
+    expect(noticeDownload).toHaveBeenCalledWith({ format: "text" });
 
-    // The deeplink switches `?tab=compliance` but keeps `?scan=` pinned.
-    expect(screen.getByTestId("url-probe").getAttribute("data-tab")).toBe(
-      "compliance",
+    // Switching the format picker to HTML carries through to the next click.
+    await userEvent.selectOptions(
+      screen.getByTestId("reports-card-notice-format"),
+      "html",
     );
-    expect(screen.getByTestId("url-probe").getAttribute("data-scan")).toBe(
-      "scan-pinned-id",
-    );
+    await userEvent.click(screen.getByTestId("reports-card-notice-download"));
+    expect(noticeDownload).toHaveBeenLastCalledWith({ format: "html" });
   });
 
   it("clicking next pages and refetches with page=2 / writes ?rpt_page=2", async () => {

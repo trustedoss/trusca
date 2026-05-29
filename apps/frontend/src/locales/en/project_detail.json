@@ -965,7 +965,11 @@
       "notice": {
         "title": "NOTICE",
         "description": "Attribution NOTICE file with license obligations.",
-        "action": "Go to Compliance"
+        "action": "Download NOTICE",
+        "action_generating": "Generating…",
+        "format_label": "NOTICE format",
+        "format_text": "Text",
+        "format_html": "HTML"
       },
       "sbom": {
         "title": "SBOM",
