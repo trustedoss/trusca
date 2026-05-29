@@ -85,7 +85,7 @@ jobs:
       # sh installer which started returning non-zero on a clean fetch
       # in May 2026).
       - name: Install Trivy
-        uses: aquasecurity/setup-trivy@v0.2.3
+        uses: aquasecurity/setup-trivy@v0.2.6
         with:
           version: v0.58.0
           cache: true
