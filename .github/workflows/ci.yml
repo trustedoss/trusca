@@ -398,16 +398,7 @@ jobs:
           format: table
           severity: CRITICAL,HIGH
           ignore-unfixed: true
-          # ADVISORY (intentional, post-launch follow-up). The bundled
-          # worker toolchain (cdxgen-plugins-bin Go binaries, ORT Java
-          # jars, Maven, sigstore, opa) surfaces ~50 CRITICAL+HIGH
-          # findings on the post-v0.10.0 Trivy DB; triaging each into a
-          # dep bump or a category-3 reach-analysis ignore in
-          # ./.trivyignore is its own work item tracked in the post-GA
-          # tracker. We still RUN the scan and print the table so a
-          # delta against the next refresh is visible in CI logs.
-          # Flip back to "1" once the triage PR lands.
-          exit-code: "0"
+          exit-code: "1"
           vuln-type: os,library
           # `scanners: vuln` explicitly disables Trivy's secret + license
           # scanners on this gate. We gate on CVEs here; secrets are
