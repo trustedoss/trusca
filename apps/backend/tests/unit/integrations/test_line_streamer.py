@@ -241,3 +241,39 @@ def test_streaming_handles_invalid_utf8_via_replacement() -> None:
     # the asserting requirement is only that the second line still arrived.
     assert "ok" in received
     assert len(received) == 2
+
+
+def test_streaming_caps_in_memory_capture_but_streams_every_line() -> None:
+    """feat/scan-log-verbosity (security-reviewer MEDIUM): a verbose subprocess
+    that emits more than _MAX_CAPTURED_BYTES_PER_STREAM must NOT accumulate
+    unbounded worker memory in the returned CompletedProcess, yet every line
+    must still reach the live callback (the per-scan publish budget caps that
+    path separately)."""
+    from integrations._line_streamer import _MAX_CAPTURED_BYTES_PER_STREAM
+
+    count = 0
+    lock = threading.Lock()
+
+    def cb(_stream: str, _line: str) -> None:
+        nonlocal count
+        with lock:
+            count += 1
+
+    # Emit ~50k lines of ~37 bytes each ≈ 1.85 MiB > the 1 MiB cap.
+    line = "a" * 35
+    n = 50000
+    completed = run_with_line_streaming(
+        ["sh", "-c", f"yes '{line}' | head -n {n}"],
+        timeout_seconds=30,
+        cwd=None,
+        env=None,
+        line_callback=cb,
+        stage="unit",
+    )
+
+    # Live stream is uncapped — the callback saw every line.
+    assert count == n
+    # Retained capture is bounded (cap + at most one trailing line).
+    assert len(completed.stdout) <= _MAX_CAPTURED_BYTES_PER_STREAM + len(line) + 8
+    # The head of the capture (what callers slice for error messages) survives.
+    assert completed.stdout.startswith(line.encode())

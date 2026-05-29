@@ -781,3 +781,46 @@ def test_command_ignores_excluded_dirs_at_any_depth(tmp_path: Path) -> None:
     assert "vendor" in ignore_values
     assert ".git" in ignore_values
     assert "dist" in ignore_values
+
+
+# ---------------------------------------------------------------------------
+# Scan-log verbosity (feat/scan-log-verbosity)
+# ---------------------------------------------------------------------------
+
+
+def test_real_mode_default_uses_quiet(
+    captured_subprocess: dict[str, Any], tmp_path: Path
+) -> None:
+    """Normal mode keeps --quiet (progress bar is carriage-return log noise)."""
+    from integrations.scancode import run_scancode
+
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "app.py").write_text("code", encoding="utf-8")
+    output_dir = tmp_path / "scancode"
+    captured_subprocess["result_path"] = str(output_dir / "scancode.json")
+
+    run_scancode(source_dir=source, output_dir=output_dir)
+
+    cmd = captured_subprocess["cmd"]
+    assert "--quiet" in cmd
+    assert "--verbose" not in cmd
+
+
+def test_real_mode_verbose_swaps_to_verbose_flag(
+    captured_subprocess: dict[str, Any], tmp_path: Path
+) -> None:
+    """verbose=True swaps --quiet for --verbose so scancode emits per-file lines."""
+    from integrations.scancode import run_scancode
+
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "app.py").write_text("code", encoding="utf-8")
+    output_dir = tmp_path / "scancode"
+    captured_subprocess["result_path"] = str(output_dir / "scancode.json")
+
+    run_scancode(source_dir=source, output_dir=output_dir, verbose=True)
+
+    cmd = captured_subprocess["cmd"]
+    assert "--verbose" in cmd
+    assert "--quiet" not in cmd

@@ -43,7 +43,7 @@ from models import (
     Vulnerability,
     VulnerabilityFinding,
 )
-from tasks._progress import publish_progress
+from tasks._progress import make_line_callback, publish_progress
 from tasks.celery_app import celery_app
 
 log = structlog.get_logger("tasks.scan_container")
@@ -97,10 +97,20 @@ def scan_container_task(self: Any, scan_id: str) -> None:
                 _mark_failed(session, scan, "scan.metadata.image_ref is required")
                 return
 
+            # Scan-log verbosity (feat/scan-log-verbosity): snapshot the
+            # per-scan flag while the row is loaded. "verbose" flips Trivy into
+            # --debug; absence / any other value stays the quiet "normal" trace.
+            verbose = str(scan.scan_metadata.get("verbosity", "normal")) == "verbose"
+
             _reset_for_rerun(session, scan)
             _mark_running(session, scan)
 
-        _run_pipeline(scan_uuid=scan_uuid, image_ref=image_ref, workspace=workspace)
+        _run_pipeline(
+            scan_uuid=scan_uuid,
+            image_ref=image_ref,
+            workspace=workspace,
+            verbose=verbose,
+        )
     except SoftTimeLimitExceeded:
         # PR-A1: Trivy (or a future container stage) exceeded
         # SCAN_SOFT_TIME_LIMIT_SECONDS. Mark failed with a clear message; the
@@ -124,7 +134,9 @@ def scan_container_task(self: Any, scan_id: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _run_pipeline(*, scan_uuid: uuid.UUID, image_ref: str, workspace: Path) -> None:
+def _run_pipeline(
+    *, scan_uuid: uuid.UUID, image_ref: str, workspace: Path, verbose: bool = False
+) -> None:
     _set_stage(scan_uuid, "bootstrap")
     workspace.mkdir(parents=True, exist_ok=True)
 
@@ -132,6 +144,10 @@ def _run_pipeline(*, scan_uuid: uuid.UUID, image_ref: str, workspace: Path) -> N
     trivy_result = trivy_adapter.run_trivy_image(
         image_ref=image_ref,
         output_dir=workspace / "trivy",
+        # Stream Trivy's progress/diagnostic lines onto the scan log
+        # (feat/scan-log-verbosity); ``verbose`` adds --debug.
+        line_callback=make_line_callback(scan_uuid, stage="trivy"),
+        verbose=verbose,
     )
     _persist_artifact(scan_uuid, kind="trivy_json", path=trivy_result.report_path)
 

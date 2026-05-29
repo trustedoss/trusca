@@ -80,6 +80,7 @@ import json
 import re
 import threading
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TextIO
@@ -446,12 +447,49 @@ def _truncate_line(line: str, limit: int) -> str:
 # ---------------------------------------------------------------------------
 
 _SECRET_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
-    # HTTP Bearer tokens — RFC 6750 syntax (token charset)
+    # HTTP Authorization schemes Bearer would miss. Verbose Trivy / cdxgen
+    # registry round-trips (``--debug``, ``CDXGEN_DEBUG_MODE=debug``) emit
+    # ``Authorization: Basic <b64(user:pass)>`` and ``Authorization: token
+    # <ghp_...>`` — neither is a Bearer token. We redact the credential value
+    # only (keeping the scheme keyword visible for debuggability), so a line
+    # carrying a second credential after it still gets matched by the later
+    # patterns. ``\S+`` is line-bounded (no re.MULTILINE). (security-reviewer
+    # HIGH on the scan-log-verbosity widening — see
+    # feedback_durable_log_persist_requires_scrubber.)
+    (re.compile(r"(?i)(Authorization\s*:\s*Basic\s+)\S+"), r"\1***"),
+    (re.compile(r"(?i)(Authorization\s*:\s*token\s+)\S+"), r"\1***"),
+    # HTTP Bearer tokens anywhere (incl. ``Authorization: Bearer <tok>``) —
+    # RFC 6750 syntax (token charset).
     (re.compile(r"(?i)(Bearer\s+)[A-Za-z0-9._\-+/=]+"), r"\1***"),
+    # Registry / VCS / cloud auth headers Trivy + cdxgen emit in debug mode:
+    # ``X-Registry-Auth`` (Docker), ``PRIVATE-TOKEN`` (GitLab), ``X-Amz-Security-Token``
+    # (AWS ECR), ``X-Auth-Token`` (generic). Line-bounded ``\S+`` value.
+    (
+        re.compile(
+            r"(?i)((?:x-registry-auth|private-token|x-amz-security-token|x-auth-token)\s*[:=]\s*)\S+"
+        ),
+        r"\1***",
+    ),
+    # Set-Cookie / Cookie — session material. Redact to end-of-line so a
+    # multi-attribute cookie (``session=abc; Path=/``) is fully covered.
+    (re.compile(r"(?i)((?:set-)?cookie\s*:\s*)\S.*$"), r"\1***"),
     # npm-style auth tokens: ``npm_config__authToken=``, ``_authToken:``,
     # ``_auth =``. The trailing ``\S+`` is line-bounded (no re.MULTILINE) so
     # it cannot run away across lines.
     (re.compile(r"(?i)(_auth(?:Token)?\s*[:=]\s*)\S+"), r"\1***"),
+    # Generic ``password`` / ``secret`` / ``credential`` / ``access[_-]key`` /
+    # ``token`` assignments (``KEY=value`` or ``KEY: value``) that resolved
+    # config / env dumps surface in verbose mode (e.g. ``npm_config__password=``,
+    # ``GITHUB_TOKEN=ghp_...``, ``AWS_SECRET_ACCESS_KEY=...``). The leading
+    # alternation is unanchored so ``AWS_SECRET_ACCESS_KEY`` matches via its
+    # ``secret`` substring; over-redaction here is intentional (we'd rather mask
+    # a benign ``token=`` than leak a credential).
+    (
+        re.compile(
+            r"(?i)((?:password|passwd|passphrase|secret|credential|access[_-]?key|token)\w*\s*[:=]\s*)\S+"
+        ),
+        r"\1***",
+    ),
     # URLs with userinfo: ``scheme://user:pass@host`` -> ``scheme://***@host``.
     # The userinfo charset excludes ``/`` ``\s`` ``@`` so pathological inputs
     # like ``://user:pass@@@host`` match the first ``user:pass@`` only — the
@@ -473,10 +511,20 @@ def _scrub_secrets(line: str) -> str:
     unbounded input — that ordering also satisfies
     ``feedback_adversarial_input_parametrize`` for separator-only / oversized
     inputs.
+
+    Fails CLOSED + observable: if any pattern raises (a future regression or a
+    pathological input that trips the engine), we drop the line to a hard
+    sentinel and emit a distinct ``scan_log_scrub_failed`` event (no line
+    content) so a redaction regression is alertable instead of silently
+    leaking the un-scrubbed line downstream (security-reviewer LOW).
     """
-    for pattern, replacement in _SECRET_PATTERNS:
-        line = pattern.sub(replacement, line)
-    return line
+    try:
+        for pattern, replacement in _SECRET_PATTERNS:
+            line = pattern.sub(replacement, line)
+        return line
+    except Exception as exc:  # noqa: BLE001 — fail closed, never leak the raw line
+        log.warning("scan_log_scrub_failed", error=str(exc))
+        return "***(redaction failed)***"
 
 
 _VALID_STREAMS: frozenset[str] = frozenset({"stdout", "stderr"})
@@ -572,8 +620,42 @@ def publish_log(
         )
 
 
+def make_line_callback(
+    scan_uuid: uuid.UUID, *, stage: str
+) -> Callable[[str, str], None]:
+    """Build a line-callback that forwards subprocess output to the scan log.
+
+    P2 #8c — used by the cdxgen / scancode / Trivy call sites in the scan
+    tasks. The callback runs inside a background drain thread spawned by
+    ``_line_streamer``; it MUST NOT raise. ``publish_log`` is itself
+    fire-and-forget (Redis errors are swallowed + logged), but we still wrap
+    the call in a try/except as belt-and-suspenders: a publisher bug must
+    never break a scan over a log-streaming side-channel.
+
+    The per-scan line budget is enforced inside ``publish_log`` so the drain
+    thread keeps reading the subprocess pipes even after the budget is
+    exhausted (closing the pipe early could deadlock the subprocess once its
+    kernel pipe buffer fills) — over-budget lines are silently dropped on the
+    publisher side.
+    """
+
+    def _cb(stream: str, line: str) -> None:
+        try:
+            publish_log(scan_uuid, stage=stage, stream=stream, line=line)
+        except Exception as exc:  # noqa: BLE001 — never break the drain
+            log.warning(
+                "scan_log_callback_unexpected",
+                stage=stage,
+                stream=stream,
+                error=str(exc)[:300],
+            )
+
+    return _cb
+
+
 __all__ = [
     "close_log_file",
+    "make_line_callback",
     "publish_log",
     "publish_progress",
     "reset_log_counter",

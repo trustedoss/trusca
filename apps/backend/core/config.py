@@ -1108,10 +1108,11 @@ def scan_log_max_lines_per_scan() -> int:
     flood the WS channel and the Redis pubsub backlog. Past this many lines we
     silently drop further publishes for that scan (the subprocess still runs;
     we just stop forwarding). 0 disables streaming entirely (kill switch).
-    Default 5000 — generous for normal scans, hostile to runaways. Read at
-    call time (rule #11).
+    Default 20000 — generous for normal scans AND verbose (``--debug`` /
+    ``--verbose``) runs that the per-scan verbosity toggle can request, while
+    still hostile to runaways. Read at call time (rule #11).
     """
-    return int(os.getenv("SCAN_LOG_MAX_LINES_PER_SCAN", "5000"))
+    return int(os.getenv("SCAN_LOG_MAX_LINES_PER_SCAN", "20000"))
 
 
 def scan_log_persist_enabled() -> bool:

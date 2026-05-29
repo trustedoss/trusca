@@ -51,6 +51,16 @@ log = structlog.get_logger("integrations.line_streamer")
 # keep an independent alias here so this module has no circular import.
 LineCallback = Callable[[str, str], None]
 
+# Cap the in-memory capture per stream (security-reviewer MEDIUM on
+# scan-log-verbosity). The captured bytes only back the returned
+# ``CompletedProcess.std{out,err}``, which every caller uses for error messages
+# and slices from the FRONT (``[:4000]`` / ``[:1000]``). Retaining the first
+# 1 MiB keeps that slice intact while preventing a verbose multi-MB subprocess
+# (``trivy --debug``, ``CDXGEN_DEBUG_MODE=debug``, ``scancode --verbose``) from
+# accumulating unbounded worker memory. Live streaming is unaffected — every
+# line still reaches the callback; the per-scan publish budget caps that path.
+_MAX_CAPTURED_BYTES_PER_STREAM = 1024 * 1024
+
 
 def _drain(
     stream: IO[bytes],
@@ -67,9 +77,18 @@ def _drain(
     U+FFFD rather than crashing the drain. The trailing newline is stripped
     before the callback runs — consumers want the text, not the line ending.
     """
+    captured_bytes = 0
     try:
         for raw in iter(stream.readline, b""):
-            captured.append(raw)
+            # Bound the in-memory capture (head-cap): callers slice the returned
+            # std{out,err} from the front for error messages, so keeping the
+            # first _MAX_CAPTURED_BYTES_PER_STREAM bytes preserves that slice
+            # while bounding memory on verbose multi-MB output. The callback
+            # below still fires for EVERY line — only the retained capture is
+            # capped, not the live stream.
+            if captured_bytes < _MAX_CAPTURED_BYTES_PER_STREAM:
+                captured.append(raw)
+                captured_bytes += len(raw)
             if callback is None:
                 continue
             try:

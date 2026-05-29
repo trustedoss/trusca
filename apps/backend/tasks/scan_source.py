@@ -120,9 +120,11 @@ from services.source_preservation_service import preserve_scan_source
 from services.vulnerability_matching import persist_trivy_findings
 from tasks._progress import (
     close_log_file,
-    publish_log,
     publish_progress,
     reset_log_counter,
+)
+from tasks._progress import (
+    make_line_callback as _make_line_callback,
 )
 from tasks.celery_app import celery_app
 
@@ -303,6 +305,13 @@ def _run_pipeline(
     scan_metadata: dict[str, Any] | None = None,
 ) -> None:
     """Execute the scan stages, each with its own commit."""
+    # Scan-log verbosity (feat/scan-log-verbosity): a per-scan
+    # ``metadata.verbosity == "verbose"`` flips every tool into its debug /
+    # verbose mode so the scan-log drawer renders a full diagnostic trace. The
+    # schema validator already constrains the value to {"normal","verbose"};
+    # any other value (or absence) falls back to the quiet "normal" trace.
+    verbose = str((scan_metadata or {}).get("verbosity", "normal")) == "verbose"
+
     # Stage 1 — bootstrap workspace.
     _set_stage(scan_uuid, "bootstrap")
     workspace.mkdir(parents=True, exist_ok=True)
@@ -336,6 +345,7 @@ def _run_pipeline(
         # error inside the callback never propagates, and the per-scan line
         # budget caps runaway tools (publish_log enforces it internally).
         line_callback=_make_line_callback(scan_uuid, stage="cdxgen"),
+        verbose=verbose,
     )
     _persist_artifact(
         scan_uuid,
@@ -407,6 +417,7 @@ def _run_pipeline(
             # P2 #8c — same WS streaming as cdxgen; see the cdxgen
             # call site above for the contract.
             line_callback=_make_line_callback(scan_uuid, stage="scancode"),
+            verbose=verbose,
         )
         scancode_detections = scancode_result.detections
         scancode_json_path = scancode_result.result_path
@@ -483,6 +494,11 @@ def _run_pipeline(
     trivy_result = run_trivy_sbom(
         sbom_path=cdxgen_result.sbom_path,
         output_dir=workspace / "trivy",
+        # Stream Trivy's DB-update + matching progress onto the scan log
+        # (feat/scan-log-verbosity) — previously Trivy ran with --quiet and
+        # captured output, so the trivy stage showed no lines at all.
+        line_callback=_make_line_callback(scan_uuid, stage="trivy"),
+        verbose=verbose,
     )
     trivy_elapsed = time.monotonic() - trivy_started_at
     # Persist the Trivy report alongside the cdxgen SBOM so admin / debug can
@@ -1035,39 +1051,6 @@ def _set_stage(scan_uuid: uuid.UUID, stage: str) -> None:
     # Publish AFTER the DB commit so a subscriber that reads the row on
     # receipt sees the same state as the published payload.
     publish_progress(scan_uuid, step=stage, percent=committed_percent)
-
-
-def _make_line_callback(
-    scan_uuid: uuid.UUID, *, stage: str
-) -> Any:
-    """Build a line-callback that forwards subprocess output to the WS.
-
-    P2 #8c — used by the cdxgen / scancode call sites. The callback runs
-    inside a background drain thread spawned by ``_line_streamer``; it MUST
-    NOT raise. ``publish_log`` is itself fire-and-forget (Redis errors are
-    swallowed + logged), but we still wrap the call in a try/except as
-    belt-and-suspenders: a publisher bug must never break a scan over a
-    log-streaming side-channel.
-
-    The per-scan line budget is enforced inside ``publish_log`` so the
-    drain thread keeps reading the subprocess pipes even after the budget
-    is exhausted (closing the pipe early could deadlock the subprocess once
-    its kernel pipe buffer fills) — over-budget lines are silently dropped
-    on the publisher side.
-    """
-
-    def _cb(stream: str, line: str) -> None:
-        try:
-            publish_log(scan_uuid, stage=stage, stream=stream, line=line)
-        except Exception as exc:  # noqa: BLE001 — never break the drain
-            log.warning(
-                "scan_log_callback_unexpected",
-                stage=stage,
-                stream=stream,
-                error=str(exc)[:300],
-            )
-
-    return _cb
 
 
 def _persist_artifact(

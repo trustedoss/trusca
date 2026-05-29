@@ -221,7 +221,10 @@ describe("SourceSelectDialog", () => {
     // Git is the default active method when the project has a git_url.
     await userEvent.click(screen.getByTestId("source-submit"));
     await waitFor(() => {
-      expect(mutateAsync).toHaveBeenCalledWith({ method: "git" });
+      expect(mutateAsync).toHaveBeenCalledWith({
+        method: "git",
+        verbose: false,
+      });
     });
     expect(onScanStarted).toHaveBeenCalled();
     expect(onOpenChange).toHaveBeenCalledWith(false);
@@ -315,6 +318,7 @@ describe("SourceSelectDialog", () => {
       expect(mutateAsync).toHaveBeenCalledWith({
         method: "container",
         imageRef: "alpine:3.19",
+        verbose: false,
       });
     });
     expect(onScanStarted).toHaveBeenCalled();
@@ -351,6 +355,7 @@ describe("SourceSelectDialog", () => {
       expect(mutateAsync).toHaveBeenCalledWith({
         method: "git",
         release: "v1.2.3",
+        verbose: false,
       });
     });
   });
@@ -363,6 +368,7 @@ describe("SourceSelectDialog", () => {
       expect(mutateAsync).toHaveBeenCalledWith({
         method: "git",
         release: undefined,
+        verbose: false,
       });
     });
   });
@@ -382,6 +388,30 @@ describe("SourceSelectDialog", () => {
         method: "container",
         imageRef: "alpine:3.19",
         release: "v3.0.0",
+        verbose: false,
+      });
+    });
+  });
+
+  // ---- feat/scan-log-verbosity — verbose toggle --------------------------
+
+  it("renders the verbose toggle off by default", () => {
+    renderDialog();
+    const toggle = screen.getByTestId("scan-verbose-toggle");
+    expect(toggle).toBeInTheDocument();
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("passes verbose=true when the toggle is switched on", async () => {
+    mutateAsync.mockResolvedValue(fakeScan());
+    renderDialog();
+    await userEvent.click(screen.getByTestId("scan-verbose-toggle"));
+    await userEvent.click(screen.getByTestId("source-submit"));
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledWith({
+        method: "git",
+        release: undefined,
+        verbose: true,
       });
     });
   });

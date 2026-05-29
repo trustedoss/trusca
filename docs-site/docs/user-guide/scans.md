@@ -34,6 +34,10 @@ Both kinds are selectable from the UI scan dialog in this release — pick **Sou
    - **Container** — runs Trivy on a container image you name. See [Scan a container image](#scan-a-container-image).
 4. For a **Source** scan, pick how to provide the source (Git URL, an uploaded `.zip`, or a folder zipped in the browser), then click **Start scan**.
 
+:::tip Verbose logs (debug)
+The scan dialog has a **Verbose logs (debug)** toggle (off by default). Leave it off for the standard progress trace. Turn it on for a single scan to stream the **full** cdxgen / scancode / Trivy diagnostic output into the [per-stage log panel](#watching-scan-progress) — cdxgen runs in debug mode, scancode emits a per-file line, and Trivy switches to `--debug`. Use it when you are debugging why a scan found too few components, missed a license, or matched an unexpected CVE. Verbose output can be large; the per-scan line budget (`SCAN_LOG_MAX_LINES_PER_SCAN`, default 20000) still caps it. Credentials are redacted from the log on the way out, and a verbose **source** scan additionally lists each scanned file's path — visible to anyone on the team who can open the scan, so prefer it on internal/trusted projects when sharing logs widely. Over the API, set `metadata.verbosity` to `"verbose"` (absent or `"normal"` keeps the quiet trace).
+:::
+
 A right-slide drawer opens on the project list page with a live progress view backed by a WebSocket connection. You can close the tab — the scan continues on the worker. Reopen the project and reconnect at any time. While a scan is `queued` or `running`, the drawer carries a **Cancel scan** action — see [Cancel a scan](#cancel-a-scan).
 
 :::note Only one scan at a time per project

@@ -106,6 +106,10 @@
     "hint": "Optional. Tags this scan with a release label, e.g. v1.2.3.",
     "chip_aria": "Release {{release}}"
   },
+  "verbose": {
+    "label": "Verbose logs (debug)",
+    "hint": "Stream the full cdxgen / scancode / Trivy diagnostic trace into the scan log. Useful when debugging a scan."
+  },
   "source": {
     "title": "Start a scan",
     "subtitle": "Choose how to provide the source for {{project}}.",
