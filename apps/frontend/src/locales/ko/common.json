@@ -58,6 +58,10 @@
       "aria": "알림",
       "aria_with_count": "알림, 읽지 않은 항목 {{count}}건"
     },
+    "collapseSidebar": "사이드바 접기",
+    "expandSidebar": "사이드바 펼치기",
+    "openMenu": "내비게이션 메뉴 열기",
+    "closeMenu": "내비게이션 메뉴 닫기",
     "admin": {
       "section": "관리"
     }

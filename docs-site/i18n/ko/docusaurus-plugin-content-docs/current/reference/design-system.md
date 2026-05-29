@@ -91,9 +91,15 @@ Severity 톤이 **본문 텍스트** 로 사용될 때 (배지 안의 색 단어
 
 | 토큰 | 값 | 용도 |
 |---|---|---|
-| `--layout-sidebar` | 224 px | 사이드바 폭 고정. |
+| `--layout-sidebar` | 224 px | 펼친 사이드바 폭 (기본값). |
+| `--layout-sidebar-collapsed` | 64 px | 사용자가 사이드바를 접었을 때의 아이콘 전용 레일 폭 (≥`lg`). |
 | `--layout-header` | 48 px | 상단 헤더 높이. |
 | `--table-row` | 40 px | Compact 테이블 행 높이. |
+
+**사이드바 동작.** 좌측 사이드바는 **사용자가 접을 수 있고 뷰포트에 반응**한다:
+
+- **≥ `lg` (1024 px):** 고정 사이드바. 레일 하단의 토글로 224 px → 64 px 아이콘 전용 레일로 접으며, 접힌 라벨은 `aria-label` + 네이티브 hover 툴팁으로 노출된다. 선택 상태는 reload 후에도 유지된다 (`uiStore` → `localStorage` 키 `trustedoss-ui`). 폭은 `--duration-base` 동안 애니메이션된다.
+- **< `lg`:** 고정 사이드바는 숨겨지고 헤더 햄버거가 전체 라벨 내비게이션을 담은 오버레이 드로어(좌측 `Sheet`)를 연다. 드로어는 이동·오버레이 클릭·ESC 시 닫힌다.
 
 **카드 padding** 은 **16 / 20 / 24 px** (Tailwind `p-4` / `p-5` / `p-6`) 로 표준화:
 
