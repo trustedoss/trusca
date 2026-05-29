@@ -447,3 +447,11 @@ CVE-2026-39825
 CVE-2026-39826
 CVE-2026-39836
 CVE-2026-42499
+
+# Missed in initial triage — same Go stdlib UNREACHED category as above.
+# CVE-2025-68121 crypto/tls: Incorrect certificate validation during TLS
+# session resumption — present in stdlib v1.22.7 statically linked into
+# bundled Go binaries (cdxgen-plugins-bin, ORT plugins, Trivy CLI). The
+# vulnerable TLS resumption code path is reached only when those binaries
+# act as TLS clients/servers; our entrypoints never exercise that surface.
+CVE-2025-68121
