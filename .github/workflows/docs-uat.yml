@@ -188,6 +188,11 @@ jobs:
       # backup→restore round-trip is already executed by install-uat.yml. So
       # there is intentionally no run step for it here.
 
+      - name: Run nightly assertions — admin-guide/disk-and-health.md
+        env:
+          DOCS_UAT_API_BASE: http://localhost:8000
+        run: node tools/docs-uat/run.mjs --tier=nightly --doc=admin-guide/disk-and-health.md
+
       - name: Dump compose logs on failure
         if: failure()
         run: |

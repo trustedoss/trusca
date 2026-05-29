@@ -112,6 +112,20 @@ test.describe(`docs-uat ui — ${DOC} (${TIER})`, () => {
       auth: new AuthHarness(page, baseURL ?? undefined),
       portal: new PortalPage(page, baseURL ?? undefined),
     };
+    // Quickstart documents its own sign-in (a `login` ui step); feature docs
+    // (user-guide / admin-guide) assume you are already signed in. So when the
+    // doc has no `login` step, establish a session as the demo super-admin
+    // first — otherwise the first navigation redirects to /login and times out.
+    const hasLogin = uiSteps.some(
+      (s) => parseVerb(s.harness ?? "").name === "login",
+    );
+    if (!hasLogin) {
+      await ctx.auth.gotoLogin();
+      await ctx.auth.login(
+        process.env.DOCS_UAT_ADMIN_EMAIL ?? "admin@demo.trustedoss.dev",
+        process.env.DOCS_UAT_ADMIN_PASSWORD ?? "DemoTest2026!",
+      );
+    }
     for (const step of uiSteps) {
       const { name, args } = parseVerb(step.harness ?? "");
       const verb = VERBS[name];
