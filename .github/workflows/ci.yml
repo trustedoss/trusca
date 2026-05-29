@@ -29,6 +29,14 @@ on:
       - "LICENSE"
       - ".gitignore"
 
+# Least-privilege default — every job here only needs to check out the
+# repo. Image-scan additionally pulls cached Trivy DB layers from ghcr,
+# and e2e pulls docker images; both are covered by `packages: read`
+# added at the job level where needed (or by anonymous pulls when the
+# packages are public).
+permissions:
+  contents: read
+
 # Cancel in-progress runs of the same ref so the latest push wins.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -329,7 +337,6 @@ jobs:
   #    apps/backend/Dockerfile.worker.
   # -------------------------------------------------------------------------
   image-scan:
-    if: false  # TEMP-DISABLED-CI (dev velocity) — re-enable before deploy
     name: image-scan (worker)
     runs-on: ubuntu-22.04
     # Chore P (Phase 8 worker-image refresh): HIGH is now HARD FAIL alongside
@@ -380,7 +387,7 @@ jobs:
           cache-from: type=gha,scope=worker
           cache-to: type=gha,scope=worker,mode=max
 
-      - name: Trivy scan (ADVISORY — non-blocking, RE-ENABLE BEFORE LAUNCH)
+      - name: Trivy scan (HARD FAIL on CRITICAL,HIGH)
         # Chore P (Phase 8 worker-image refresh): single combined gate.
         # Replaces the chore PR #25 two-step split (CRITICAL hard / HIGH
         # advisory). All previously-advisory HIGH findings are now either
@@ -399,12 +406,7 @@ jobs:
           format: table
           severity: CRITICAL,HIGH
           ignore-unfixed: true
-          # ⚠️ TEMPORARY (pre-launch, intentional): NON-BLOCKING. Trivy still
-          # runs and prints findings but exit-code "0" means it never fails the
-          # job. The worker-image toolchain (scancode/cdxgen/dotnet/JRE/Node)
-          # currently surfaces too many CVEs to gate on during feature work.
-          # RE-ENABLE "1" before launch after triage (.trivyignore / dep bumps).
-          exit-code: "0"
+          exit-code: "1"
           vuln-type: os,library
           # `scanners: vuln` explicitly disables Trivy's secret + license
           # scanners on this gate. We gate on CVEs here; secrets are

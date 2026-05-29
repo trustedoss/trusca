@@ -40,6 +40,12 @@ on:
     # Weekly Sunday 03:00 UTC — catches drift from base image / dep updates.
     - cron: "0 3 * * 0"
 
+# Least-privilege default — the main UAT job only reads the repo and
+# installs the published artifacts. The artifact-publish job below has
+# its own elevated `permissions:` block.
+permissions:
+  contents: read
+
 # Allow only one UAT run at a time per ref so a manual trigger doesn't
 # stack on top of the cron run.
 concurrency:
