@@ -95,8 +95,10 @@ const VERBS: Record<string, (ctx: Ctx, args: string[]) => Promise<void>> = {
   async licensesHaveForbidden({ portal }, [projectName]) {
     await portal.gotoProjects();
     await portal.openProjectDetail(projectName);
-    await portal.selectTab("licenses");
-    await portal.expectLicensesTabReady();
+    // Licenses were absorbed into the unified Compliance grid (W4-C IA);
+    // selectLicensesTab() clicks Compliance + shows the licenses-first view
+    // and waits for it to be ready (there is no `licenses` top-level tab).
+    await portal.selectLicensesTab();
     await portal.filterLicensesByCategory(["forbidden"]);
     const rows = await portal.getLicenseRowCount();
     expect(rows, `${projectName} forbidden licenses`).toBeGreaterThan(0);
