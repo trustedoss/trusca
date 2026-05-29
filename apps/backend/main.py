@@ -166,12 +166,24 @@ app.add_middleware(
     allow_credentials=True,
     # H-3: pin methods + headers to the actual surface we use instead of "*".
     allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["authorization", "content-type", "x-request-id"],
+    # `if-match` carries the optimistic-concurrency version on the approval
+    # transition (PATCH /v1/approvals/{id}/transition) and other ETag-guarded
+    # mutations. Production serves SPA + API same-origin (no preflight), but a
+    # cross-origin client (split deployment, or local dev on separate ports)
+    # needs `if-match` in the allowlist or the browser preflight 400s and the
+    # mutation never fires. (Surfaced by the docs-uat cross-origin approvals run.)
+    allow_headers=["authorization", "content-type", "if-match", "x-request-id"],
     # PR #14: surface Content-Disposition so the SPA can read the
     # operator-friendly filename of CSV streaming downloads (admin audit
     # export). Without this, axios cannot read the header and the browser
     # falls back to a synthetic filename.
-    expose_headers=["content-disposition"],
+    # `etag` is surfaced for the same optimistic-concurrency reason as the
+    # `if-match` request header above: the approvals drawer reads the version
+    # from the GET's `ETag` response header (approvalsApi.ts) and echoes it as
+    # `If-Match` on the transition PATCH. Cross-origin, the browser hides a
+    # response header from JS unless it is in expose_headers, so without this
+    # the SPA reads an empty ETag and the PATCH 400s on an empty If-Match.
+    expose_headers=["content-disposition", "etag"],
 )
 
 # Added LAST so it becomes the outermost middleware — wraps CORS preflight
