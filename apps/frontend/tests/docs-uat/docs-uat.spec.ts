@@ -17,7 +17,7 @@
  */
 import * as fs from "node:fs";
 
-import { test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
 import { AuthHarness } from "../_harness/auth";
 import { PortalPage } from "../_harness/PortalPage";
@@ -81,6 +81,37 @@ const VERBS: Record<string, (ctx: Ctx, args: string[]) => Promise<void>> = {
     await portal.gotoProjects();
     await portal.expectVisibleProjectCount(Number(count));
   },
+  // Phase C — user-guide UI. Composite verbs that thread existing PortalPage
+  // navigation + assertion methods (no new PortalPage verbs); they assert the
+  // doc's "Verify it worked" claim against the seeded project's real data.
+  async componentsHaveData({ portal }, [projectName]) {
+    await portal.gotoProjects();
+    await portal.openProjectDetail(projectName);
+    await portal.selectTab("components");
+    await portal.expectComponentsTabReady();
+    const total = await portal.getTotalComponentCount();
+    expect(total, `${projectName} component count`).toBeGreaterThan(0);
+  },
+  async licensesGridPopulated({ portal }, [projectName]) {
+    await portal.gotoProjects();
+    await portal.openProjectDetail(projectName);
+    // Licenses were absorbed into the unified Compliance grid (W4-C IA);
+    // selectLicensesTab() clicks Compliance, shows the licenses-first view, and
+    // waits for it to be ready (there is no `licenses` top-level tab anymore).
+    await portal.selectLicensesTab();
+    // The doc's "forbidden licenses highlighted in red" is a visual claim
+    // (covered by the manual step); the automatable core is that the licenses
+    // grid is populated for the seeded project. Read the unified Compliance
+    // grid's own `compliance-summary` data-total — the legacy `licenses-summary`
+    // testid that getLicenseRowCount reads is stale post-W4-C (always 0 here).
+    const total = Number(
+      (await portal.page
+        .getByTestId("compliance-summary")
+        .first()
+        .getAttribute("data-total")) ?? "0",
+    );
+    expect(total, `${projectName} compliance grid rows`).toBeGreaterThan(0);
+  },
 };
 
 const uiSteps = loadUiSteps();
@@ -92,6 +123,20 @@ test.describe(`docs-uat ui — ${DOC} (${TIER})`, () => {
       auth: new AuthHarness(page, baseURL ?? undefined),
       portal: new PortalPage(page, baseURL ?? undefined),
     };
+    // Quickstart documents its own sign-in (a `login` ui step); feature docs
+    // (user-guide / admin-guide) assume you are already signed in. So when the
+    // doc has no `login` step, establish a session as the demo super-admin
+    // first — otherwise the first navigation redirects to /login and times out.
+    const hasLogin = uiSteps.some(
+      (s) => parseVerb(s.harness ?? "").name === "login",
+    );
+    if (!hasLogin) {
+      await ctx.auth.gotoLogin();
+      await ctx.auth.login(
+        process.env.DOCS_UAT_ADMIN_EMAIL ?? "admin@demo.trustedoss.dev",
+        process.env.DOCS_UAT_ADMIN_PASSWORD ?? "DemoTest2026!",
+      );
+    }
     for (const step of uiSteps) {
       const { name, args } = parseVerb(step.harness ?? "");
       const verb = VERBS[name];

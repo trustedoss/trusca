@@ -132,9 +132,13 @@ the verb to `PortalPage` first (harness-first rule), then register the binding.
   runs the gate-tier steps end-to-end. (PR + dispatch.)
 - **`docs-uat-nightly`** — schedule + manual dispatch (not on PRs). Bootstraps
   the dev stack, seeds the demo data, and runs the nightly-tier admin-guide
-  assertions (`admin-guide/audit-log.md`: authed audit API + a jsonb diff
-  query; `admin-guide/disk-and-health.md`: authed `GET /v1/admin/health` +
+  api/sql assertions (`admin-guide/audit-log.md`: authed audit API + a jsonb
+  diff query; `admin-guide/disk-and-health.md`: authed `GET /v1/admin/health` +
   `GET /v1/admin/disk`). Later phases add more docs to its `--doc` list.
+- **`docs-uat-nightly-ui`** — schedule + manual dispatch. Same bootstrap plus
+  frontend deps + Playwright, then runs the nightly-tier user-guide UI steps
+  (`user-guide/components-and-licenses.md`: the seeded project's components +
+  forbidden-license assertions, dispatched through existing PortalPage verbs).
 
 `admin-guide/backup-and-restore.md` is **enrolled** (extract-and-lint enforces
 its coverage + KO parity + drift) but has no docs-uat-executed steps: every

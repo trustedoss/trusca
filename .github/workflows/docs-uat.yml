@@ -202,3 +202,82 @@ jobs:
       - name: Tear down
         if: always()
         run: docker-compose -f docker-compose.dev.yml down -v || true
+
+  # ── Nightly tier (UI): user-guide "Verify it worked" steps driven through
+  #    Playwright. Separate from docs-uat-nightly because UI steps need the
+  #    frontend deps + a browser; the api/sql nightly job stays lean.
+  docs-uat-nightly-ui:
+    name: docs-uat-nightly-ui (dev compose)
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    # Non-blocking until manifest fidelity stabilizes (see header note).
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install docker-compose V1
+        run: |
+          sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" \
+            -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+          docker-compose --version
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: apps/frontend/package-lock.json
+
+      - name: Install frontend deps (for the ui-step Playwright run)
+        working-directory: apps/frontend
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-1.48.2
+
+      - name: Install Playwright (chromium only)
+        working-directory: apps/frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Bootstrap dev stack + seed
+        env:
+          COMPOSE_DOCKER_CLI_BUILD: "1"
+          DOCKER_BUILDKIT: "1"
+        run: |
+          set -euo pipefail
+          cp .env.example .env
+          mkdir -p workspace
+          docker-compose -f docker-compose.dev.yml up -d postgres redis
+          for i in $(seq 1 20); do
+            cid=$(docker-compose -f docker-compose.dev.yml ps -q postgres)
+            st=$(docker inspect -f '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo none)
+            [ "$st" = "healthy" ] && break
+            echo "waiting for postgres ($i/20)"; sleep 3
+          done
+          docker-compose -f docker-compose.dev.yml run --rm -T backend alembic upgrade head
+          docker-compose -f docker-compose.dev.yml up -d
+          for i in $(seq 1 40); do
+            curl -fsS http://localhost:8000/health/ready >/dev/null 2>&1 && break
+            echo "waiting for /health/ready ($i/40)"; sleep 6
+          done
+          docker-compose -f docker-compose.dev.yml exec -T backend python -m scripts.seed_demo
+
+      - name: Run nightly UI assertions — user-guide/components-and-licenses.md
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:5173
+          DOCS_UAT_API_BASE: http://localhost:8000
+        run: node tools/docs-uat/run.mjs --tier=nightly --doc=user-guide/components-and-licenses.md
+
+      - name: Dump compose logs on failure
+        if: failure()
+        run: |
+          docker-compose -f docker-compose.dev.yml ps || true
+          docker-compose -f docker-compose.dev.yml logs --tail=300 || true
+
+      - name: Tear down
+        if: always()
+        run: docker-compose -f docker-compose.dev.yml down -v || true
