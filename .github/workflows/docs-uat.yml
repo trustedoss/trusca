@@ -213,6 +213,11 @@ jobs:
           DOCS_UAT_API_BASE: http://localhost:8000
         run: node tools/docs-uat/run.mjs --tier=nightly --doc=admin-guide/vulnerability-data.md
 
+      - name: Run nightly assertions — user-guide/sbom.md
+        env:
+          DOCS_UAT_API_BASE: http://localhost:8000
+        run: node tools/docs-uat/run.mjs --tier=nightly --doc=user-guide/sbom.md
+
       - name: Dump compose logs on failure
         if: failure()
         run: |

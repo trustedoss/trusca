@@ -66,6 +66,12 @@ The file name is `sbom-<project-slug>.<ext>`.
 
 ## Download from the API
 
+<!-- docs-uat: id=sbom-cyclonedx-api kind=api auth=admin url=/v1/projects/${PROJECT_ID}/sbom?format=cyclonedx-json expect=status:200 tier=nightly -->
+The API serves the SBOM in CycloneDX JSON:
+
+<!-- docs-uat: id=sbom-spdx-api kind=api auth=admin url=/v1/projects/${PROJECT_ID}/sbom?format=spdx-json expect=status:200 tier=nightly -->
+…and in SPDX JSON (same endpoint, different `format`):
+
 <!-- docs-uat: id=sbom-api-download kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
 # CycloneDX JSON
