@@ -62,6 +62,14 @@ export interface TriggerScanInput {
    * surfaces as a 422 in the dialog's error alert.
    */
   release?: string;
+  /**
+   * Scan-log verbosity (feat/scan-log-verbosity). When `true`, the scan runs
+   * cdxgen / scancode / Trivy in their debug/verbose modes so the scan-log
+   * drawer renders a full diagnostic trace. Threaded into `metadata.verbosity`
+   * on every trigger branch as `"verbose"`; the key is omitted when `false`
+   * (the backend defaults absent → `"normal"`).
+   */
+  verbose?: boolean;
 }
 
 /**
@@ -72,6 +80,15 @@ export interface TriggerScanInput {
 function releaseMetadata(release?: string): { release?: string } {
   const trimmed = release?.trim();
   return trimmed ? { release: trimmed } : {};
+}
+
+/**
+ * Build the shared `metadata.verbosity` fragment. Only emits the key for a
+ * verbose run so a normal scan's payload stays identical to the legacy shape
+ * (backend treats an absent key as `"normal"`).
+ */
+function verbosityMetadata(verbose?: boolean): { verbosity?: "verbose" } {
+  return verbose ? { verbosity: "verbose" } : {};
 }
 
 export interface TriggerScanProgress {
@@ -90,12 +107,13 @@ async function runTrigger(
   onUpdate?: (progress: TriggerScanProgress) => void,
 ): Promise<ScanPublic> {
   const release = releaseMetadata(input.release);
+  const verbosity = verbosityMetadata(input.verbose);
 
   if (input.method === "git") {
     onUpdate?.({ stage: "triggering", percent: 0 });
     return triggerScanApi(projectId, {
       kind: "source",
-      metadata: { source_type: "git", ...release },
+      metadata: { source_type: "git", ...release, ...verbosity },
     });
   }
 
@@ -109,7 +127,7 @@ async function runTrigger(
     // (apps/backend/tasks/scan_container.py::_resolve_image_ref).
     return triggerScanApi(projectId, {
       kind: "container",
-      metadata: { image_ref: imageRef, ...release },
+      metadata: { image_ref: imageRef, ...release, ...verbosity },
     });
   }
 
@@ -153,7 +171,7 @@ async function runTrigger(
   onUpdate?.({ stage: "triggering", percent: 100 });
   return triggerScanApi(projectId, {
     kind: "source",
-    metadata: { source_type: "upload", archive_id, ...release },
+    metadata: { source_type: "upload", archive_id, ...release, ...verbosity },
   });
 }
 

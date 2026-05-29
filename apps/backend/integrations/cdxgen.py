@@ -109,6 +109,7 @@ def run_cdxgen(
     timeout_seconds: int = _DEFAULT_TIMEOUT_SECONDS,
     backend: str | None = None,
     line_callback: LineCallback | None = None,
+    verbose: bool = False,
 ) -> CdxgenResult:
     """
     Generate a CycloneDX SBOM for `source_dir` under `output_dir`.
@@ -156,13 +157,14 @@ def run_cdxgen(
         "1.5",
         str(source_dir),
     ]
-    env = _build_cdxgen_env(source_dir=source_dir, output_dir=output_dir)
+    env = _build_cdxgen_env(source_dir=source_dir, output_dir=output_dir, verbose=verbose)
     log.info(
         "cdxgen_start",
         source_dir=str(source_dir),
         output=str(sbom_path),
         gradle_args=env.get("CDXGEN_GRADLE_ARGS"),
         streaming=line_callback is not None,
+        verbose=verbose,
     )
     try:
         completed = run_with_line_streaming(
@@ -268,7 +270,9 @@ def _write_gradle_compat_init(output_dir: Path) -> Path:
     return init_path
 
 
-def _build_cdxgen_env(*, source_dir: Path, output_dir: Path) -> dict[str, str]:
+def _build_cdxgen_env(
+    *, source_dir: Path, output_dir: Path, verbose: bool = False
+) -> dict[str, str]:
     """Build the env dict cdxgen runs under.
 
     Starts from the scrubbed cdxgen env (security-reviewer Medium #1 v2,
@@ -282,6 +286,13 @@ def _build_cdxgen_env(*, source_dir: Path, output_dir: Path) -> dict[str, str]:
     ``CDXGEN_GRADLE_ARGS`` is preserved verbatim — explicit opt-in.
     """
     env = scrubbed_env_for_cdxgen()
+    # Scan-log verbosity (feat/scan-log-verbosity): cdxgen reads
+    # ``CDXGEN_DEBUG_MODE`` and emits verbose per-plugin diagnostics when set
+    # to ``debug``. Normal mode leaves it unset (cdxgen already streams its
+    # default progress lines, which carry enough signal). Set before the
+    # early returns so it applies to Gradle and non-Gradle projects alike.
+    if verbose:
+        env["CDXGEN_DEBUG_MODE"] = "debug"
     if not _is_gradle_project(source_dir):
         return env
     if env.get("CDXGEN_GRADLE_ARGS"):

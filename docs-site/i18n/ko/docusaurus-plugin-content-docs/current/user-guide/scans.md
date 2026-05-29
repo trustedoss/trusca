@@ -34,6 +34,10 @@ sidebar_position: 2
    - **Container** — 지정한 컨테이너 이미지에 Trivy 실행. [컨테이너 이미지 스캔](#컨테이너-이미지-스캔) 참고.
 4. **Source** 스캔이면 소스 제공 방식(Git URL, 업로드한 `.zip`, 브라우저에서 압축할 폴더)을 고른 뒤 **Start scan** 을 클릭합니다.
 
+:::tip 상세 로그 (디버그)
+스캔 다이얼로그에는 **Verbose logs (debug)**(상세 로그) 토글이 있습니다(기본 꺼짐). 표준 진행 로그만 보려면 꺼 두세요. 특정 스캔에서 켜면 cdxgen / scancode / Trivy 의 **전체** 진단 출력이 [단계별 로그 패널](#스캔-진행-보기)로 스트리밍됩니다 — cdxgen 은 디버그 모드로, scancode 는 파일별 라인을, Trivy 는 `--debug` 로 전환됩니다. 컴포넌트가 너무 적게 잡히거나, 라이선스를 놓치거나, 예상치 못한 CVE 가 매칭된 원인을 디버깅할 때 사용하세요. 상세 출력은 양이 많을 수 있으며, 스캔당 라인 예산(`SCAN_LOG_MAX_LINES_PER_SCAN`, 기본 20000)이 여전히 상한을 둡니다. API 에서는 `metadata.verbosity` 를 `"verbose"` 로 설정합니다(없거나 `"normal"` 이면 조용한 로그 유지).
+:::
+
 프로젝트 목록 페이지에서 우측 슬라이드 드로어가 열리며 WebSocket 기반의 실시간 진행 뷰가 표시됩니다. 탭을 닫아도 스캔은 워커에서 계속됩니다. 프로젝트를 다시 열면 언제든 재연결됩니다. 스캔이 `queued` 또는 `running` 인 동안 드로어에는 **Cancel scan**(스캔 취소) 동작이 함께 표시됩니다 — [스캔 취소](#스캔-취소) 참고.
 
 ![스캔 진행 드로어 — bootstrap → fetch → cdxgen → scancode → vuln_match → finalize 단계, WebSocket 실시간 표시](/img/screenshots/user-scans-progress-drawer.png)

@@ -14,7 +14,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
+import { Switch } from "@/components/ui/switch";
 import {
   type ScanStage,
   type SourceMethod,
@@ -100,6 +102,7 @@ export function SourceSelectDialog({
   const [imageRef, setImageRef] = useState("");
   const [imageRefTouched, setImageRefTouched] = useState(false);
   const [release, setRelease] = useState("");
+  const [verbose, setVerbose] = useState(false);
   const [progress, setProgress] = useState<TriggerScanProgress>({
     stage: "idle",
     percent: 0,
@@ -196,14 +199,20 @@ export function SourceSelectDialog({
           method: "container",
           imageRef: trimmedImageRef,
           release: releaseArg,
+          verbose,
         });
       } else if (method === "git") {
-        scan = await mutation.mutateAsync({ method: "git", release: releaseArg });
+        scan = await mutation.mutateAsync({
+          method: "git",
+          release: releaseArg,
+          verbose,
+        });
       } else if (method === "upload" && selectedFile) {
         scan = await mutation.mutateAsync({
           method: "upload",
           file: selectedFile,
           release: releaseArg,
+          verbose,
         });
       } else if (method === "folder" && folderInspection) {
         scan = await mutation.mutateAsync({
@@ -211,6 +220,7 @@ export function SourceSelectDialog({
           folderFiles: folderInspection.files,
           rootName: folderRoot ?? project.slug,
           release: releaseArg,
+          verbose,
         });
       } else {
         return;
@@ -250,6 +260,7 @@ export function SourceSelectDialog({
           setImageRef("");
           setImageRefTouched(false);
           setRelease("");
+          setVerbose(false);
         }
         onOpenChange(next);
       }}
@@ -397,6 +408,12 @@ export function SourceSelectDialog({
         <ReleaseField
           value={release}
           onChange={setRelease}
+          disabled={isBusy}
+        />
+
+        <VerboseField
+          checked={verbose}
+          onChange={setVerbose}
           disabled={isBusy}
         />
 
@@ -748,6 +765,56 @@ function ReleaseField({ value, onChange, disabled }: ReleaseFieldProps) {
       >
         {t("release.hint")}
       </p>
+    </div>
+  );
+}
+
+interface VerboseFieldProps {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  disabled: boolean;
+}
+
+/**
+ * Optional scan-log verbosity toggle (feat/scan-log-verbosity). Applies to
+ * every scan kind, so it sits beside the release label. Off (default) runs the
+ * standard progress trace; on flips cdxgen / scancode / Trivy into their
+ * debug/verbose modes so the scan-log drawer renders a full diagnostic trace.
+ * The backend treats an absent `metadata.verbosity` as `"normal"`.
+ */
+function VerboseField({ checked, onChange, disabled }: VerboseFieldProps) {
+  const { t } = useTranslation("scans");
+  return (
+    <div
+      className="flex items-start justify-between gap-3"
+      data-testid="scan-verbose-field"
+    >
+      <div className="space-y-0.5">
+        <Label
+          htmlFor="scan-verbose-toggle"
+          className="text-xs font-medium text-muted-foreground"
+        >
+          {t("verbose.label", { defaultValue: "Verbose logs (debug)" })}
+        </Label>
+        <p
+          id="scan-verbose-hint"
+          className="text-xs text-muted-foreground"
+          data-testid="scan-verbose-hint"
+        >
+          {t("verbose.hint", {
+            defaultValue:
+              "Stream the full cdxgen / scancode / Trivy diagnostic trace into the scan log. Useful when debugging a scan.",
+          })}
+        </p>
+      </div>
+      <Switch
+        id="scan-verbose-toggle"
+        checked={checked}
+        onCheckedChange={onChange}
+        disabled={disabled}
+        aria-describedby="scan-verbose-hint"
+        data-testid="scan-verbose-toggle"
+      />
     </div>
   );
 }

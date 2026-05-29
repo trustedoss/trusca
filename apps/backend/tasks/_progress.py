@@ -80,6 +80,7 @@ import json
 import re
 import threading
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TextIO
@@ -572,8 +573,42 @@ def publish_log(
         )
 
 
+def make_line_callback(
+    scan_uuid: uuid.UUID, *, stage: str
+) -> Callable[[str, str], None]:
+    """Build a line-callback that forwards subprocess output to the scan log.
+
+    P2 #8c — used by the cdxgen / scancode / Trivy call sites in the scan
+    tasks. The callback runs inside a background drain thread spawned by
+    ``_line_streamer``; it MUST NOT raise. ``publish_log`` is itself
+    fire-and-forget (Redis errors are swallowed + logged), but we still wrap
+    the call in a try/except as belt-and-suspenders: a publisher bug must
+    never break a scan over a log-streaming side-channel.
+
+    The per-scan line budget is enforced inside ``publish_log`` so the drain
+    thread keeps reading the subprocess pipes even after the budget is
+    exhausted (closing the pipe early could deadlock the subprocess once its
+    kernel pipe buffer fills) — over-budget lines are silently dropped on the
+    publisher side.
+    """
+
+    def _cb(stream: str, line: str) -> None:
+        try:
+            publish_log(scan_uuid, stage=stage, stream=stream, line=line)
+        except Exception as exc:  # noqa: BLE001 — never break the drain
+            log.warning(
+                "scan_log_callback_unexpected",
+                stage=stage,
+                stream=stream,
+                error=str(exc)[:300],
+            )
+
+    return _cb
+
+
 __all__ = [
     "close_log_file",
+    "make_line_callback",
     "publish_log",
     "publish_progress",
     "reset_log_counter",

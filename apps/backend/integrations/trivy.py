@@ -40,6 +40,7 @@ from typing import Any, Literal
 import structlog
 
 from core.config import scan_backend_mode, workspace_root
+from integrations._line_streamer import LineCallback, run_with_line_streaming
 from integrations._subprocess_env import scrubbed_env_for_trivy
 
 log = structlog.get_logger("integrations.trivy")
@@ -155,6 +156,8 @@ def run_trivy_image(
     output_dir: Path,
     timeout_seconds: int = _DEFAULT_TIMEOUT_SECONDS,
     backend: str | None = None,
+    line_callback: LineCallback | None = None,
+    verbose: bool = False,
 ) -> TrivyResult:
     """
     Scan `image_ref` (e.g. ``alpine:3.19`` or ``ghcr.io/foo/bar@sha256:...``).
@@ -195,22 +198,29 @@ def run_trivy_image(
         "json",
         "--output",
         str(report_path),
-        # Disable interactive output and the welcome banner.
-        "--quiet",
         # Limit to vuln scanners to keep the runtime predictable; license +
         # secret scanning land in Phase 4.
         "--scanners",
         "vuln",
-        image_ref,
     ]
-    log.info("trivy_start", image=image_ref, output=str(report_path))
+    # Scan-log verbosity (feat/scan-log-verbosity): the report goes to
+    # ``--output <file>`` regardless, so Trivy's stdout/stderr carry ONLY
+    # human-readable progress/diagnostic lines we can stream to the scan log.
+    # Normal mode drops ``--quiet`` (previously suppressed the DB-update +
+    # progress banner) so the user sees Trivy is alive; verbose mode adds
+    # ``--debug`` for full matcher diagnostics.
+    if verbose:
+        cmd.append("--debug")
+    cmd.append(image_ref)
+    log.info("trivy_start", image=image_ref, output=str(report_path), verbose=verbose)
     try:
-        completed = subprocess.run(  # noqa: S603 — fixed args list
+        completed = run_with_line_streaming(
             cmd,
-            capture_output=True,
-            check=False,
-            timeout=timeout_seconds,
+            timeout_seconds=timeout_seconds,
+            cwd=None,
             env=scrubbed_env_for_trivy(),
+            line_callback=line_callback,
+            stage="trivy",
         )
     except subprocess.TimeoutExpired as exc:
         # image_ref is caller-supplied and visible in the API response that
@@ -245,6 +255,8 @@ def run_trivy_sbom(
     *,
     timeout_seconds: int = _DEFAULT_TIMEOUT_SECONDS,
     backend: str | None = None,
+    line_callback: LineCallback | None = None,
+    verbose: bool = False,
 ) -> TrivyResult:
     """
     Match CVEs against a CycloneDX SBOM produced by cdxgen.
@@ -337,25 +349,31 @@ def run_trivy_sbom(
         "json",
         "--output",
         str(report_path),
-        # Match the image-scan adapter: silence the welcome banner / progress
-        # bar so worker logs stay parseable.
-        "--quiet",
         # Match run_trivy_image: explicitly restrict scanners to vuln so a
         # future trivy default flip to also-on license/secret scanning does
         # not start exfiltrating SBOM component data or matching internal
         # paths against secret patterns. (security-reviewer L3 on PR #196.)
         "--scanners",
         "vuln",
-        str(sbom_path),
     ]
-    log.info("trivy_sbom_start", sbom=str(sbom_path), output=str(report_path))
+    # Scan-log verbosity (feat/scan-log-verbosity): see run_trivy_image. The
+    # JSON report still lands in ``--output <file>``; dropping ``--quiet`` lets
+    # the DB-update / matching progress stream to the scan log, and ``--debug``
+    # adds full diagnostics in verbose mode.
+    if verbose:
+        cmd.append("--debug")
+    cmd.append(str(sbom_path))
+    log.info(
+        "trivy_sbom_start", sbom=str(sbom_path), output=str(report_path), verbose=verbose
+    )
     try:
-        completed = subprocess.run(  # noqa: S603 — fixed args list
+        completed = run_with_line_streaming(
             cmd,
-            capture_output=True,
-            check=False,
-            timeout=timeout_seconds,
+            timeout_seconds=timeout_seconds,
+            cwd=None,
             env=scrubbed_env_for_trivy(),
+            line_callback=line_callback,
+            stage="trivy",
         )
     except subprocess.TimeoutExpired as exc:
         # ``sbom_path.name`` (basename only) — never expose the absolute

@@ -195,6 +195,7 @@ def run_scancode(
     max_detections: int | None = None,
     backend: str | None = None,
     line_callback: LineCallback | None = None,
+    verbose: bool = False,
 ) -> ScancodeResult:
     """
     Run scancode over the **first-party** ``source_dir`` and return detected
@@ -245,7 +246,7 @@ def run_scancode(
         )
 
     timeout = timeout_seconds if timeout_seconds is not None else scancode_timeout_seconds()
-    cmd = _build_command(source_dir=source_dir, result_path=result_path)
+    cmd = _build_command(source_dir=source_dir, result_path=result_path, verbose=verbose)
     log.info(
         "scancode_start",
         source_dir=str(source_dir),
@@ -293,7 +294,9 @@ def run_scancode(
 # ---------------------------------------------------------------------------
 
 
-def _build_command(*, source_dir: Path, result_path: Path) -> list[str]:
+def _build_command(
+    *, source_dir: Path, result_path: Path, verbose: bool = False
+) -> list[str]:
     """Build the scancode argv.
 
     ``--license`` enables license detection; we deliberately omit copyright /
@@ -329,7 +332,13 @@ def _build_command(*, source_dir: Path, result_path: Path) -> list[str]:
     cmd: list[str] = [
         "scancode",
         "--license",
-        "--quiet",
+        # Scan-log verbosity (feat/scan-log-verbosity): ``--quiet`` and
+        # ``--verbose`` are mutually exclusive. Normal mode keeps ``--quiet``
+        # (the progress bar is carriage-return noise that floods the line log
+        # without adding signal). Verbose mode swaps in ``--verbose`` so
+        # scancode emits a per-file processing line we can stream to the
+        # scan-log drawer.
+        "--verbose" if verbose else "--quiet",
         "--strip-root",
     ]
     for name in sorted(EXCLUDED_DIR_NAMES):
