@@ -92,8 +92,11 @@ Connected Accounts 패널은 본인 포털 계정에 현재 연결된 모든 외
 
 ## 정상 동작 확인
 
+<!-- docs-uat: id=auth-header-profile-visible kind=ui harness=headerProfileVisible tier=nightly -->
 - 비밀번호 로그인 후 헤더 아바타에 이니셜이 표시되고 navbar에 활성 팀이 노출됩니다.
+<!-- docs-uat: id=auth-oauth-provider-listed kind=manual tier=manual -->
 - OAuth 로그인 후 `/profile`에 사용한 공급자가 나열됩니다.
+<!-- docs-uat: id=auth-unlink-disables-last kind=manual tier=manual -->
 - 연결 해제 후 해당 행이 사라지며, 남은 행의 **Unlink** 버튼은 본인을 잠그게 될 경우 비활성화됩니다.
 
 ## 함께 보기

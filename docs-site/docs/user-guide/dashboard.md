@@ -46,8 +46,11 @@ If the dashboard endpoint returns a non-2xx response, the page replaces the tile
 
 After signing in for the first time:
 
+<!-- docs-uat: id=dashboard-active-in-nav kind=ui harness=dashboardActiveInNav tier=nightly -->
 1. The header avatar shows your initials and the sidebar highlights **Dashboard**.
+<!-- docs-uat: id=dashboard-severity-tiles kind=ui harness=dashboardSeverityTiles tier=nightly -->
 2. The severity tiles render five values (zero is fine).
+<!-- docs-uat: id=dashboard-recent-scans kind=ui harness=dashboardRecentScans tier=nightly -->
 3. The recent-scans list either lists at least one row or shows the empty-state message ("No scans have run yet.").
 
 ## See also

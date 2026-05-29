@@ -112,6 +112,52 @@ const VERBS: Record<string, (ctx: Ctx, args: string[]) => Promise<void>> = {
     );
     expect(total, `${projectName} compliance grid rows`).toBeGreaterThan(0);
   },
+  // dashboard.md — the portfolio landing page is this screen's sole automated
+  // coverage (no standalone e2e spec exists). Composite verbs over
+  // PortalPage.goto + the dashboard testids; each re-navigates to `/` so the
+  // steps are order-independent on the shared page.
+  async dashboardActiveInNav({ portal }) {
+    await portal.goto("/");
+    await expect(portal.page.getByTestId("dashboard-page")).toBeVisible();
+    // react-router's NavLink sets aria-current="page" on the active entry.
+    await expect(portal.page.getByTestId("nav-dashboard")).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+  },
+  async dashboardSeverityTiles({ portal }) {
+    await portal.goto("/");
+    await expect(
+      portal.page.getByTestId("dashboard-severity-card"),
+    ).toBeVisible();
+  },
+  async dashboardRecentScans({ portal }) {
+    await portal.goto("/");
+    // The recent-scans card renders either a populated table or the
+    // documented empty-state — assert one of the two is present.
+    const table = portal.page.getByTestId("dashboard-recent-scans-table");
+    const empty = portal.page.getByTestId("dashboard-recent-scans-empty");
+    await expect(table.or(empty)).toBeVisible();
+  },
+  // scans.md — the global scan queue + the post-scan project state.
+  async scansListPopulated({ portal }) {
+    await portal.goto("/scans");
+    await expect(portal.page.getByTestId("scans-table")).toBeVisible();
+    const rows = await portal.page.getByTestId("scans-row").count();
+    expect(rows, "global scan queue rows").toBeGreaterThan(0);
+  },
+  async vulnerabilitiesTabReady({ portal }, [projectName]) {
+    await portal.gotoProjects();
+    await portal.openProjectDetail(projectName);
+    await portal.selectVulnerabilitiesTab();
+    await portal.expectVulnerabilitiesTabReady();
+  },
+  // auth-and-profile.md — after the spec's auto-login, the header surfaces the
+  // signed-in identity via the profile link. OAuth + unlink stay manual.
+  async headerProfileVisible({ portal }) {
+    await portal.goto("/");
+    await expect(portal.page.getByTestId("header-profile-link")).toBeVisible();
+  },
 };
 
 const uiSteps = loadUiSteps();

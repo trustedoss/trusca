@@ -46,8 +46,11 @@ sidebar_position: 0
 
 처음 로그인한 뒤:
 
+<!-- docs-uat: id=dashboard-active-in-nav kind=ui harness=dashboardActiveInNav tier=nightly -->
 1. 헤더 아바타에 이니셜이 표시되고 사이드바에 **Dashboard** 가 강조됩니다.
+<!-- docs-uat: id=dashboard-severity-tiles kind=ui harness=dashboardSeverityTiles tier=nightly -->
 2. 심각도 타일 다섯 개에 값이 표시됩니다(0 도 정상).
+<!-- docs-uat: id=dashboard-recent-scans kind=ui harness=dashboardRecentScans tier=nightly -->
 3. 최근 스캔 목록에 최소 한 줄이 나오거나 비어 있을 때는 "No scans have run yet." 빈 상태 메시지가 표시됩니다.
 
 ## 함께 보기
