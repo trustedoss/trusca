@@ -169,13 +169,13 @@ class Test_scrub_secrets:
             # ---- HTTP Basic auth (Trivy/cdxgen registry pulls) ----
             (
                 "Authorization: Basic dXNlcjpwYXNzd29yZA==",
-                "Authorization: ***",
+                "Authorization: Basic ***",
                 "dXNlcjpwYXNzd29yZA",
             ),
             # ---- Authorization: token scheme (GitHub) ----
             (
                 "Authorization: token ghp_AbCdEf123456",
-                "Authorization: ***",
+                "Authorization: token ***",
                 "ghp_AbCdEf123456",
             ),
             # ---- Docker X-Registry-Auth header (trivy --debug) ----

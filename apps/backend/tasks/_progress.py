@@ -447,17 +447,18 @@ def _truncate_line(line: str, limit: int) -> str:
 # ---------------------------------------------------------------------------
 
 _SECRET_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
-    # HTTP Authorization header — ANY scheme (Basic / Bearer / token / Digest).
-    # Verbose Trivy / cdxgen registry round-trips (``--debug``,
-    # ``CDXGEN_DEBUG_MODE=debug``) emit ``Authorization: Basic <b64(user:pass)>``
-    # and ``Authorization: token <ghp_...>`` — neither is a Bearer token, so the
-    # RFC 6750 pattern below would miss them. We redact everything after the
-    # header name to end-of-line. ``.*$`` is line-bounded (lines are rstripped
-    # and we never compile re.MULTILINE / re.DOTALL) so there is no catastrophic
-    # backtracking on a truncated input. (security-reviewer HIGH on the
-    # scan-log-verbosity widening — see feedback_durable_log_persist_requires_scrubber.)
-    (re.compile(r"(?i)(authorization\s*:\s*)\S.*$"), r"\1***"),
-    # HTTP Bearer tokens anywhere (not only in an Authorization header) —
+    # HTTP Authorization schemes Bearer would miss. Verbose Trivy / cdxgen
+    # registry round-trips (``--debug``, ``CDXGEN_DEBUG_MODE=debug``) emit
+    # ``Authorization: Basic <b64(user:pass)>`` and ``Authorization: token
+    # <ghp_...>`` — neither is a Bearer token. We redact the credential value
+    # only (keeping the scheme keyword visible for debuggability), so a line
+    # carrying a second credential after it still gets matched by the later
+    # patterns. ``\S+`` is line-bounded (no re.MULTILINE). (security-reviewer
+    # HIGH on the scan-log-verbosity widening — see
+    # feedback_durable_log_persist_requires_scrubber.)
+    (re.compile(r"(?i)(Authorization\s*:\s*Basic\s+)\S+"), r"\1***"),
+    (re.compile(r"(?i)(Authorization\s*:\s*token\s+)\S+"), r"\1***"),
+    # HTTP Bearer tokens anywhere (incl. ``Authorization: Bearer <tok>``) —
     # RFC 6750 syntax (token charset).
     (re.compile(r"(?i)(Bearer\s+)[A-Za-z0-9._\-+/=]+"), r"\1***"),
     # Registry / VCS / cloud auth headers Trivy + cdxgen emit in debug mode:
