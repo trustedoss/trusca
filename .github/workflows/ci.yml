@@ -539,6 +539,14 @@ jobs:
       # scan_flow.spec.ts ×4) trip the limit on the third / fourth scenario.
       # Production / dev keep this unset → limiter enabled by default.
       RATELIMIT_DISABLED: "1"
+      # /health/ready (the dev compose backend healthcheck) returns 200
+      # only after Alembic schema is at HEAD. Set AUTO_MIGRATE so the
+      # entrypoint runs `alembic upgrade head` before uvicorn binds —
+      # without this the healthcheck loop sees a backend that answers
+      # liveness but flunks readiness for the full deadline, then the
+      # dependent services (celery-worker, frontend) never reach
+      # `service_healthy`.
+      AUTO_MIGRATE: "true"
     steps:
       - uses: actions/checkout@v4
 
