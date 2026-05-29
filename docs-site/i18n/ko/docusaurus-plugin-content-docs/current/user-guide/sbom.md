@@ -27,6 +27,21 @@ sidebar_position: 5
 
 두 포맷 모두 동일한 내부 모델에서 생성되므로 컴포넌트 목록은 (포맷별 필드 제외) 동일합니다.
 
+## 컴포넌트별 포함 내용
+
+각 컴포넌트는 이름, 버전, 패키지 URL(PURL), 그리고 탐지된 라이선스를 담습니다.
+
+- **라이선스** — 스캔의 라이선스 finding에서 채웁니다. CycloneDX는 컴포넌트
+  `licenses` 배열을 사용하고(*concluded* → *declared* → *detected* 우선순위),
+  SPDX는 `licenseDeclared`·`licenseConcluded`를 SPDX license expression으로
+  채웁니다. 탐지된 라이선스가 없거나 SPDX 식별자가 없는 라이선스(ORT
+  `LicenseRef-*`)는 SPDX에서 스펙 sentinel `NOASSERTION`으로 출력됩니다
+  (CycloneDX는 라이선스 이름을 그대로 담음). `copyrightText`는 현재 항상
+  `NOASSERTION`입니다.
+- **최상위 버전** — `metadata.component.version`은 스캔된 릴리스를 반영합니다.
+  스캔 제출 시 `release` 라벨(예: `v1.2.3`)이 지정됐으면 그 값을, 없으면 스캔
+  id를 안정적 fallback으로 사용합니다.
+
 ## Byte-stable 출력
 
 4가지 내보내기 모두 **byte-stable**입니다 — 같은 스캔을 다시 내보내면 동일 바이트가 생성됩니다. diff·서명·캐싱이 단순해집니다.
@@ -179,6 +194,22 @@ VEX 상태와 CycloneDX `analysis.state` 매핑:
 | "프로젝트 X 에서 GPL 이 처음 탐지된 시점은?" | `scans.create` 의 `audit_logs` + 스캔별 `vulnerability_findings.create` | 가능 — 전체 증거 체인 보유 |
 | "2026 Q1 의 모든 승인 결정을 보여달라" | `component_approvals.update` 의 `audit_logs` + `decision_note` | 가능 — 전체 증거 체인 보유 |
 | "감사 행이 변조되지 않았음을 증명하라" | append-only 트리거(마이그레이션 0012) | super-admin 우회 잔존 — [감사 로그 강화](../admin-guide/audit-log.md#스키마) 검토 필요 |
+
+## 공급사 제출 호환성
+
+이 내보내기는 일반적인 기업 공급사 SBOM 요구사항(예:
+[SK텔레콤 공급사 가이드](https://sktelecom.github.io/guide/supply-chain/for-suppliers/requirements/))을
+충족합니다: 표준 포맷/버전(CycloneDX, SPDX 2.3), ISO-8601 타임스탬프, 도구
+메타데이터, 컴포넌트별 이름·버전·PURL, 라이선스, 그리고 전이적 의존성(스캔 대상
+소스에 lockfile이 포함되거나 생성 가능할 때).
+
+제출 전 유의할 두 가지:
+
+- **`pkg:generic/` PURL은 일부 프로그램에서 반려됩니다.** generic PURL은 스캐너가
+  컴포넌트의 생태계를 분류하지 못했다는 뜻입니다. cdxgen이 생태계별 타입을
+  부여하도록 lockfile / 빌드 산출물을 함께 제공하세요.
+- **SPDX 식별자가 없는 라이선스**는 SPDX expression에서 `NOASSERTION`으로
+  나타납니다(CycloneDX `license.name`에는 라벨이 남습니다).
 
 ## 로드맵
 

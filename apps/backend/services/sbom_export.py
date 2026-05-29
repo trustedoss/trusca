@@ -68,7 +68,15 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models import Component, ComponentVersion, Project, Scan, ScanComponent
+from models import (
+    Component,
+    ComponentVersion,
+    License,
+    LicenseFinding,
+    Project,
+    Scan,
+    ScanComponent,
+)
 from services.scan_resolution import resolve_snapshot_scan_id
 
 log = structlog.get_logger("sbom_export.service")
@@ -179,6 +187,116 @@ async def _load_scan_components(
     return [dict(row._mapping) for row in result.all()]
 
 
+# A license observation, normalized for serialization. ``spdx_id`` is the SPDX
+# short identifier (e.g. "MIT"); it is ``None`` for ORT custom licenses
+# (``LicenseRef-*``) that have no SPDX id, in which case ``name`` carries the
+# human-readable label.
+LicenseEntry = dict[str, str | None]
+# Per-component licenses grouped by finding ``kind`` (declared / concluded /
+# detected). Each list is sorted + de-duplicated for byte-stable output.
+ComponentLicenses = dict[str, list[LicenseEntry]]
+
+# When CycloneDX (which has a single per-component ``licenses`` array, not a
+# declared/concluded split) picks ONE kind to surface, prefer the most
+# authoritative: the scanner's final verdict, then package metadata, then raw
+# detector output.
+_LICENSE_KIND_PRIORITY = ("concluded", "declared", "detected")
+
+
+async def _load_scan_licenses(
+    session: AsyncSession, *, scan_id: uuid.UUID
+) -> dict[uuid.UUID, ComponentLicenses]:
+    """
+    Return ``{component_version_id: {kind: [LicenseEntry, ...]}}`` for the scan.
+
+    The SBOM export historically emitted ``NOASSERTION`` for every license even
+    though scans persist real ``LicenseFinding`` rows. This loader joins those
+    findings so the serializers can populate CycloneDX ``licenses`` and SPDX
+    ``licenseDeclared`` / ``licenseConcluded``.
+
+    Byte-stability (BUG-006): the same (spdx_id, name) pair can be reported from
+    several files (LICENSE, README, package.json) — we de-duplicate per kind and
+    sort by ``(spdx_id or "", name)`` so two exports of one scan are identical.
+    """
+    stmt = (
+        select(
+            LicenseFinding.component_version_id.label("component_version_id"),
+            LicenseFinding.kind.label("kind"),
+            License.spdx_id.label("spdx_id"),
+            License.name.label("name"),
+        )
+        .select_from(LicenseFinding)
+        .join(License, License.id == LicenseFinding.license_id)
+        .where(LicenseFinding.scan_id == scan_id)
+    )
+    result = await session.execute(stmt)
+
+    # cv_id -> kind -> set of (spdx_id, name) to de-dup before sorting.
+    grouped: dict[uuid.UUID, dict[str, set[tuple[str | None, str]]]] = {}
+    for row in result.all():
+        m = row._mapping
+        cv_id = m["component_version_id"]
+        grouped.setdefault(cv_id, {}).setdefault(m["kind"], set()).add(
+            (m["spdx_id"], m["name"])
+        )
+
+    out: dict[uuid.UUID, ComponentLicenses] = {}
+    for cv_id, by_kind in grouped.items():
+        out[cv_id] = {
+            kind: [
+                {"spdx_id": spdx_id, "name": name}
+                for spdx_id, name in sorted(pairs, key=lambda p: (p[0] or "", p[1]))
+            ]
+            for kind, pairs in by_kind.items()
+        }
+    return out
+
+
+def _preferred_licenses(by_kind: ComponentLicenses) -> list[LicenseEntry]:
+    """Pick the highest-priority non-empty license set for CycloneDX."""
+    for kind in _LICENSE_KIND_PRIORITY:
+        entries = by_kind.get(kind)
+        if entries:
+            return entries
+    return []
+
+
+def _spdx_license_expr(entries: list[LicenseEntry]) -> str:
+    """Build an SPDX license expression from license entries.
+
+    Only entries with a real SPDX id participate: an ORT ``LicenseRef-*`` would
+    require a document-level ``hasExtractedLicensingInfos`` declaration to be a
+    valid expression, which we do not emit yet (tracked as a follow-up). When no
+    entry has an SPDX id we fall back to the spec sentinel ``NOASSERTION``.
+    Multiple ids are conjoined with `` AND `` in sorted order for stability.
+    """
+    ids = sorted({e["spdx_id"] for e in entries if e["spdx_id"]})
+    if not ids:
+        return "NOASSERTION"
+    return " AND ".join(ids)
+
+
+def _top_component_version(scan: Scan | None) -> str:
+    """The top-level component version for the SBOM metadata.
+
+    SK Telecom (and SBOM consumers generally) expect the delivered software's
+    real version here, not an internal id. We surface the optional
+    ``scan_metadata['release']`` label (Feature #18 Part A) when present; absent
+    a release we keep the scan id (still byte-stable, never empty). Mirrors the
+    extraction in ``dashboard_service._release_from_metadata`` /
+    ``release_snapshot_service`` — duplicated here to avoid an import cycle.
+    """
+    if scan is None:
+        return "no-scan"
+    metadata = scan.scan_metadata or {}
+    raw = metadata.get("release")
+    if isinstance(raw, str):
+        stripped = raw.strip()
+        if stripped:
+            return stripped
+    return str(scan.id)
+
+
 # ---------------------------------------------------------------------------
 # CycloneDX JSON
 # ---------------------------------------------------------------------------
@@ -221,7 +339,26 @@ def _deterministic_serial_uuid(project: Project, scan: Scan | None) -> uuid.UUID
     return uuid.uuid5(_SBOM_UUID_NAMESPACE, anchor)
 
 
-def _cyclonedx_components(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _cyclonedx_license_entries(entries: list[LicenseEntry]) -> list[dict[str, Any]]:
+    """Render license entries as CycloneDX ``licenses`` array members.
+
+    SPDX-identified licenses use the ``license.id`` form (validators map it to
+    the SPDX list); ORT custom licenses without an id fall back to
+    ``license.name``.
+    """
+    out: list[dict[str, Any]] = []
+    for e in entries:
+        if e["spdx_id"]:
+            out.append({"license": {"id": e["spdx_id"]}})
+        else:
+            out.append({"license": {"name": e["name"]}})
+    return out
+
+
+def _cyclonedx_components(
+    rows: list[dict[str, Any]],
+    licenses_by_cv: dict[uuid.UUID, ComponentLicenses],
+) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for r in rows:
         comp: dict[str, Any] = {
@@ -237,6 +374,12 @@ def _cyclonedx_components(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             comp["group"] = r["namespace"]
         if r.get("description"):
             comp["description"] = r["description"]
+        # licenses precede purl to match the CycloneDX schema field order.
+        license_entries = _cyclonedx_license_entries(
+            _preferred_licenses(licenses_by_cv.get(r["component_version_id"], {}))
+        )
+        if license_entries:
+            comp["licenses"] = license_entries
         if r.get("purl"):
             comp["purl"] = r["purl"]
         out.append(comp)
@@ -248,6 +391,7 @@ def _build_cyclonedx_doc(
     project: Project,
     scan: Scan | None,
     rows: list[dict[str, Any]],
+    licenses_by_cv: dict[uuid.UUID, ComponentLicenses],
     now: datetime,
 ) -> dict[str, Any]:
     """Build the CycloneDX 1.5 dict (used both for the JSON and XML serializers)."""
@@ -273,10 +417,10 @@ def _build_cyclonedx_doc(
                 "bom-ref": f"project:{project.id}",
                 "type": "application",
                 "name": project.name,
-                "version": str(scan.id) if scan is not None else "no-scan",
+                "version": _top_component_version(scan),
             },
         },
-        "components": _cyclonedx_components(rows),
+        "components": _cyclonedx_components(rows, licenses_by_cv),
     }
 
 
@@ -347,6 +491,15 @@ def _serialize_cyclonedx_xml(doc: dict[str, Any]) -> str:
         ET.SubElement(c, f"{{{_CDX_NS}}}version").text = comp["version"]
         if "description" in comp:
             ET.SubElement(c, f"{{{_CDX_NS}}}description").text = comp["description"]
+        if "licenses" in comp:
+            lics_el = ET.SubElement(c, f"{{{_CDX_NS}}}licenses")
+            for entry in comp["licenses"]:
+                lic_el = ET.SubElement(lics_el, f"{{{_CDX_NS}}}license")
+                lic = entry["license"]
+                if "id" in lic:
+                    ET.SubElement(lic_el, f"{{{_CDX_NS}}}id").text = lic["id"]
+                else:
+                    ET.SubElement(lic_el, f"{{{_CDX_NS}}}name").text = lic["name"]
         if "purl" in comp:
             ET.SubElement(c, f"{{{_CDX_NS}}}purl").text = comp["purl"]
 
@@ -385,10 +538,20 @@ def _spdx_clean(value: str) -> str:
     return value.replace("\r", " ").replace("\n", " ").strip()
 
 
-def _spdx_packages(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _spdx_packages(
+    rows: list[dict[str, Any]],
+    licenses_by_cv: dict[uuid.UUID, ComponentLicenses],
+) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for r in rows:
         spdx_id = _spdx_id_for_component(r["component_version_id"])
+        by_kind = licenses_by_cv.get(r["component_version_id"], {})
+        declared = by_kind.get("declared", [])
+        concluded = by_kind.get("concluded", [])
+        # licenseConcluded is the scanner's final verdict; fall back to the
+        # declared (package-metadata) set when no concluded finding exists.
+        license_declared = _spdx_license_expr(declared)
+        license_concluded = _spdx_license_expr(concluded if concluded else declared)
         pkg: dict[str, Any] = {
             "SPDXID": spdx_id,
             "name": r["name"],
@@ -398,8 +561,12 @@ def _spdx_packages(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             # location for it". (NOASSERTION = caller should assert.)
             "downloadLocation": "NOASSERTION",
             "filesAnalyzed": False,
-            "licenseConcluded": "NOASSERTION",
-            "licenseDeclared": "NOASSERTION",
+            # License expressions are derived from persisted LicenseFinding rows
+            # (NOASSERTION only when the component has no SPDX-identified
+            # license). copyrightText stays NOASSERTION: we have no copyright
+            # source yet (tracked with the NOTICE pipeline).
+            "licenseConcluded": license_concluded,
+            "licenseDeclared": license_declared,
             "copyrightText": "NOASSERTION",
         }
         if r.get("description"):
@@ -421,6 +588,7 @@ def _build_spdx_doc(
     project: Project,
     scan: Scan | None,
     rows: list[dict[str, Any]],
+    licenses_by_cv: dict[uuid.UUID, ComponentLicenses],
     now: datetime,
 ) -> dict[str, Any]:
     return {
@@ -433,7 +601,7 @@ def _build_spdx_doc(
             "created": _utc_iso(now),
             "creators": ["Tool: TrustedOSS Portal-0.0.1", "Organization: TrustedOSS"],
         },
-        "packages": _spdx_packages(rows),
+        "packages": _spdx_packages(rows, licenses_by_cv),
     }
 
 
@@ -560,8 +728,10 @@ async def export_sbom(
         else None
     )
     rows: list[dict[str, Any]] = []
+    licenses_by_cv: dict[uuid.UUID, ComponentLicenses] = {}
     if scan is not None:
         rows = await _load_scan_components(session, scan_id=scan.id)
+        licenses_by_cv = await _load_scan_licenses(session, scan_id=scan.id)
 
     # BUG-006: default to the scan's persisted completion time so re-exports
     # are byte-stable. `now` stays an explicit override for callers that need
@@ -573,22 +743,54 @@ async def export_sbom(
 
     if fmt == "cyclonedx-json":
         body = _serialize_cyclonedx_json(
-            _build_cyclonedx_doc(project=project, scan=scan, rows=rows, now=timestamp)
+            _build_cyclonedx_doc(
+                project=project,
+                scan=scan,
+                rows=rows,
+                licenses_by_cv=licenses_by_cv,
+                now=timestamp,
+            )
         )
     elif fmt == "cyclonedx-xml":
         body = _serialize_cyclonedx_xml(
-            _build_cyclonedx_doc(project=project, scan=scan, rows=rows, now=timestamp)
+            _build_cyclonedx_doc(
+                project=project,
+                scan=scan,
+                rows=rows,
+                licenses_by_cv=licenses_by_cv,
+                now=timestamp,
+            )
         )
     elif fmt == "spdx-json":
         body = _serialize_spdx_json(
-            _build_spdx_doc(project=project, scan=scan, rows=rows, now=timestamp)
+            _build_spdx_doc(
+                project=project,
+                scan=scan,
+                rows=rows,
+                licenses_by_cv=licenses_by_cv,
+                now=timestamp,
+            )
         )
     elif fmt == "spdx-tv":
         body = _serialize_spdx_tv(
-            _build_spdx_doc(project=project, scan=scan, rows=rows, now=timestamp)
+            _build_spdx_doc(
+                project=project,
+                scan=scan,
+                rows=rows,
+                licenses_by_cv=licenses_by_cv,
+                now=timestamp,
+            )
         )
     else:  # pragma: no cover - guarded by the catalog check above
         raise SBOMUnsupportedFormat(f"unknown SBOM format {fmt!r}")
+
+    # Operational signal: SK Telecom (and most SBOM consumers) reject
+    # ``pkg:generic/`` PURLs, which surface here as a "generic"/"unknown"
+    # package_type. Counting them lets operators spot low-quality scans without
+    # changing the export body.
+    generic_count = sum(
+        1 for r in rows if r.get("package_type") in {"generic", "unknown"}
+    )
 
     log.info(
         "sbom_exported",
@@ -596,6 +798,8 @@ async def export_sbom(
         scan_id=str(scan.id) if scan is not None else None,
         format=fmt,
         components=len(rows),
+        licensed_components=len(licenses_by_cv),
+        generic_purls=generic_count,
         bytes=len(body.encode("utf-8")),
     )
     return body, content_type, filename

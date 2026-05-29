@@ -27,6 +27,22 @@ Engineers shipping releases, compliance leads filing artifacts, customers fulfil
 
 Both formats are produced from the same internal model, so component lists are identical (modulo format-specific fields).
 
+## What's included per component
+
+Each component carries its name, version, Package URL (PURL), and the licenses
+detected for it:
+
+- **Licenses** — populated from the scan's license findings. CycloneDX uses the
+  per-component `licenses` array (preferring the *concluded* verdict, then
+  *declared*, then *detected*); SPDX fills `licenseDeclared` and
+  `licenseConcluded` as SPDX license expressions. Components with no detected
+  license — and licenses with no SPDX identifier (ORT `LicenseRef-*`) — emit the
+  spec sentinel `NOASSERTION` in SPDX (CycloneDX still carries the license
+  name). `copyrightText` is currently always `NOASSERTION`.
+- **Top-level version** — `metadata.component.version` reflects the scanned
+  release: if the scan was submitted with a `release` label (e.g. `v1.2.3`),
+  that label is used; otherwise the scan id is used as a stable fallback.
+
 ## Byte-stable output
 
 All four exports are **byte-stable**: re-exporting the same scan produces identical bytes. This makes diffing, signing, and caching trivial.
@@ -180,6 +196,22 @@ workarounds.
 | "Show me when GPL was first detected on project X" | `audit_logs` on `scans.create` + per-scan `vulnerability_findings.create` | Yes — full evidence chain |
 | "Show me every approval verdict in 2026 Q1" | `audit_logs` on `component_approvals.update` + `decision_note` | Yes — full evidence chain |
 | "Prove no audit row was tampered with" | Append-only trigger (migration 0012) | Super-admin role still has bypass — review [audit-log hardening](../admin-guide/audit-log.md#schema) |
+
+## Supplier submission compatibility
+
+The export satisfies common corporate supplier SBOM requirements (e.g.
+[SK Telecom's supplier guide](https://sktelecom.github.io/guide/supply-chain/for-suppliers/requirements/)):
+standard format/version (CycloneDX, SPDX 2.3), ISO-8601 timestamp, tool
+metadata, per-component name + version + PURL, licenses, and transitive
+dependencies (when the scanned source includes or can resolve lockfiles).
+
+Two caveats to be aware of before submitting:
+
+- **`pkg:generic/` PURLs are rejected by some programs.** A generic PURL means
+  the scanner could not classify the component's ecosystem; supply lockfiles /
+  build artifacts so cdxgen can assign an ecosystem-specific type.
+- **Licenses without an SPDX id** appear as `NOASSERTION` in SPDX expressions
+  (the CycloneDX `license.name` still carries the label).
 
 ## Roadmap
 

@@ -552,3 +552,279 @@ async def test_components_emitted_in_purl_lexical_order(
     )
     purls = [c["purl"] for c in json.loads(body)["components"]]
     assert purls == sorted(purls)
+
+
+# ---------------------------------------------------------------------------
+# License export (declared / concluded / detected → CycloneDX + SPDX)
+# ---------------------------------------------------------------------------
+
+
+async def _get_or_create_license(
+    session: AsyncSession,
+    *,
+    name: str,
+    spdx_id: str | None = None,
+    category: str = "allowed",
+):
+    from sqlalchemy import select
+
+    from models import License
+
+    if spdx_id is not None:
+        existing = (
+            await session.execute(select(License).where(License.spdx_id == spdx_id))
+        ).scalar_one_or_none()
+        if existing is not None:
+            return existing
+    lic = License(spdx_id=spdx_id, name=name, category=category)
+    session.add(lic)
+    await session.commit()
+    await session.refresh(lic)
+    return lic
+
+
+async def _attach_license(
+    session: AsyncSession,
+    *,
+    scan_id: uuid.UUID,
+    cv_id: uuid.UUID,
+    kind: str,
+    name: str,
+    spdx_id: str | None = None,
+    source_path: str | None = None,
+) -> None:
+    from models import LicenseFinding
+
+    lic = await _get_or_create_license(session, name=name, spdx_id=spdx_id)
+    finding = LicenseFinding(
+        scan_id=scan_id,
+        component_version_id=cv_id,
+        license_id=lic.id,
+        kind=kind,
+        source_path=source_path,
+    )
+    session.add(finding)
+    await session.commit()
+
+
+async def test_cyclonedx_emits_license_id_for_spdx_license(
+    db_session: AsyncSession,
+) -> None:
+    from services.sbom_export import export_sbom
+
+    _, project, scan = await _make_project_with_succeeded_scan(db_session)
+    _comp, cv = await _make_component_version(db_session, name="left-pad", version="1.0.0")
+    await _attach(db_session, scan_id=scan.id, cv_id=cv.id)
+    await _attach_license(
+        db_session, scan_id=scan.id, cv_id=cv.id, kind="concluded", name="MIT", spdx_id="MIT"
+    )
+
+    body, _, _ = await export_sbom(
+        db_session, project_id=project.id, fmt="cyclonedx-json"
+    )
+    comp = json.loads(body)["components"][0]
+    assert comp["licenses"] == [{"license": {"id": "MIT"}}]
+
+
+async def test_cyclonedx_prefers_concluded_over_declared(
+    db_session: AsyncSession,
+) -> None:
+    from services.sbom_export import export_sbom
+
+    _, project, scan = await _make_project_with_succeeded_scan(db_session)
+    _comp, cv = await _make_component_version(db_session, name="dual", version="1.0.0")
+    await _attach(db_session, scan_id=scan.id, cv_id=cv.id)
+    await _attach_license(
+        db_session, scan_id=scan.id, cv_id=cv.id, kind="declared",
+        name="Apache-2.0", spdx_id="Apache-2.0",
+    )
+    await _attach_license(
+        db_session, scan_id=scan.id, cv_id=cv.id, kind="concluded", name="MIT", spdx_id="MIT"
+    )
+
+    body, _, _ = await export_sbom(
+        db_session, project_id=project.id, fmt="cyclonedx-json"
+    )
+    comp = json.loads(body)["components"][0]
+    # concluded (MIT) wins over declared (Apache-2.0) in CycloneDX's single array.
+    assert comp["licenses"] == [{"license": {"id": "MIT"}}]
+
+
+async def test_cyclonedx_xml_emits_license(db_session: AsyncSession) -> None:
+    from services.sbom_export import export_sbom
+
+    _, project, scan = await _make_project_with_succeeded_scan(db_session)
+    _comp, cv = await _make_component_version(db_session, name="xmllic", version="1.0.0")
+    await _attach(db_session, scan_id=scan.id, cv_id=cv.id)
+    await _attach_license(
+        db_session, scan_id=scan.id, cv_id=cv.id, kind="concluded", name="MIT", spdx_id="MIT"
+    )
+
+    body, _, _ = await export_sbom(
+        db_session, project_id=project.id, fmt="cyclonedx-xml"
+    )
+    root = ET.fromstring(body)
+    ns = {"cdx": "http://cyclonedx.org/schema/bom/1.5"}
+    ids = [el.text for el in root.findall(".//cdx:components//cdx:license/cdx:id", ns)]
+    assert ids == ["MIT"]
+
+
+async def test_spdx_emits_declared_and_concluded_expressions(
+    db_session: AsyncSession,
+) -> None:
+    from services.sbom_export import export_sbom
+
+    _, project, scan = await _make_project_with_succeeded_scan(db_session)
+    _comp, cv = await _make_component_version(db_session, name="spdxlic", version="1.0.0")
+    await _attach(db_session, scan_id=scan.id, cv_id=cv.id)
+    await _attach_license(
+        db_session, scan_id=scan.id, cv_id=cv.id, kind="declared", name="MIT", spdx_id="MIT"
+    )
+    await _attach_license(
+        db_session, scan_id=scan.id, cv_id=cv.id, kind="concluded",
+        name="Apache-2.0", spdx_id="Apache-2.0",
+    )
+
+    body, _, _ = await export_sbom(db_session, project_id=project.id, fmt="spdx-json")
+    pkg = json.loads(body)["packages"][0]
+    assert pkg["licenseDeclared"] == "MIT"
+    assert pkg["licenseConcluded"] == "Apache-2.0"
+
+
+async def test_spdx_concluded_falls_back_to_declared(
+    db_session: AsyncSession,
+) -> None:
+    from services.sbom_export import export_sbom
+
+    _, project, scan = await _make_project_with_succeeded_scan(db_session)
+    _comp, cv = await _make_component_version(db_session, name="onlydecl", version="1.0.0")
+    await _attach(db_session, scan_id=scan.id, cv_id=cv.id)
+    await _attach_license(
+        db_session, scan_id=scan.id, cv_id=cv.id, kind="declared", name="MIT", spdx_id="MIT"
+    )
+
+    body, _, _ = await export_sbom(db_session, project_id=project.id, fmt="spdx-json")
+    pkg = json.loads(body)["packages"][0]
+    assert pkg["licenseDeclared"] == "MIT"
+    assert pkg["licenseConcluded"] == "MIT"  # falls back to declared
+
+
+async def test_spdx_multiple_licenses_anded_in_sorted_order(
+    db_session: AsyncSession,
+) -> None:
+    from services.sbom_export import export_sbom
+
+    _, project, scan = await _make_project_with_succeeded_scan(db_session)
+    _comp, cv = await _make_component_version(db_session, name="multi", version="1.0.0")
+    await _attach(db_session, scan_id=scan.id, cv_id=cv.id)
+    await _attach_license(
+        db_session, scan_id=scan.id, cv_id=cv.id, kind="concluded", name="MIT",
+        spdx_id="MIT", source_path="LICENSE",
+    )
+    await _attach_license(
+        db_session, scan_id=scan.id, cv_id=cv.id, kind="concluded", name="Apache-2.0",
+        spdx_id="Apache-2.0", source_path="README",
+    )
+
+    body, _, _ = await export_sbom(db_session, project_id=project.id, fmt="spdx-json")
+    pkg = json.loads(body)["packages"][0]
+    assert pkg["licenseConcluded"] == "Apache-2.0 AND MIT"  # sorted
+
+
+async def test_license_without_spdx_id(db_session: AsyncSession) -> None:
+    """A LicenseRef-style license (no SPDX id) → CycloneDX name, SPDX NOASSERTION."""
+    from services.sbom_export import export_sbom
+
+    _, project, scan = await _make_project_with_succeeded_scan(db_session)
+    _comp, cv = await _make_component_version(db_session, name="custom", version="1.0.0")
+    await _attach(db_session, scan_id=scan.id, cv_id=cv.id)
+    await _attach_license(
+        db_session, scan_id=scan.id, cv_id=cv.id, kind="concluded",
+        name="LicenseRef-Proprietary", spdx_id=None,
+    )
+
+    cdx, _, _ = await export_sbom(db_session, project_id=project.id, fmt="cyclonedx-json")
+    comp = json.loads(cdx)["components"][0]
+    assert comp["licenses"] == [{"license": {"name": "LicenseRef-Proprietary"}}]
+
+    spdx, _, _ = await export_sbom(db_session, project_id=project.id, fmt="spdx-json")
+    pkg = json.loads(spdx)["packages"][0]
+    # No SPDX id → expression cannot be built → spec sentinel.
+    assert pkg["licenseConcluded"] == "NOASSERTION"
+
+
+async def test_component_without_license_stays_noassertion(
+    db_session: AsyncSession,
+) -> None:
+    from services.sbom_export import export_sbom
+
+    _, project, scan = await _make_project_with_succeeded_scan(db_session)
+    _comp, cv = await _make_component_version(db_session, name="nolic", version="1.0.0")
+    await _attach(db_session, scan_id=scan.id, cv_id=cv.id)
+
+    cdx, _, _ = await export_sbom(db_session, project_id=project.id, fmt="cyclonedx-json")
+    assert "licenses" not in json.loads(cdx)["components"][0]
+
+    spdx, _, _ = await export_sbom(db_session, project_id=project.id, fmt="spdx-json")
+    pkg = json.loads(spdx)["packages"][0]
+    assert pkg["licenseConcluded"] == "NOASSERTION"
+    assert pkg["licenseDeclared"] == "NOASSERTION"
+
+
+async def test_reexport_with_licenses_is_byte_identical(
+    db_session: AsyncSession,
+) -> None:
+    from services.sbom_export import export_sbom
+
+    _, project, scan = await _make_project_with_succeeded_scan(db_session)
+    _comp, cv = await _make_component_version(db_session, name="stable", version="1.0.0")
+    await _attach(db_session, scan_id=scan.id, cv_id=cv.id)
+    await _attach_license(
+        db_session, scan_id=scan.id, cv_id=cv.id, kind="concluded", name="MIT",
+        spdx_id="MIT", source_path="a",
+    )
+    await _attach_license(
+        db_session, scan_id=scan.id, cv_id=cv.id, kind="concluded", name="Apache-2.0",
+        spdx_id="Apache-2.0", source_path="b",
+    )
+
+    for fmt in ("cyclonedx-json", "cyclonedx-xml", "spdx-json", "spdx-tv"):
+        b1, _, _ = await export_sbom(db_session, project_id=project.id, fmt=fmt)
+        b2, _, _ = await export_sbom(db_session, project_id=project.id, fmt=fmt)
+        assert b1 == b2, f"{fmt} is not byte-stable with licenses"
+
+
+# ---------------------------------------------------------------------------
+# Top-level component version (scan_metadata.release → metadata.component)
+# ---------------------------------------------------------------------------
+
+
+async def test_top_component_version_uses_release_label(
+    db_session: AsyncSession,
+) -> None:
+    from services.sbom_export import export_sbom
+
+    # make_scan() does not accept scan_metadata; set the release label after
+    # creation (Feature #18 stores it under scan_metadata['release']).
+    _, project, scan = await _make_project_with_succeeded_scan(db_session)
+    scan.scan_metadata = {"release": "v1.2.3"}
+    await db_session.commit()
+    await db_session.refresh(scan)
+
+    body, _, _ = await export_sbom(
+        db_session, project_id=project.id, fmt="cyclonedx-json"
+    )
+    assert json.loads(body)["metadata"]["component"]["version"] == "v1.2.3"
+
+
+async def test_top_component_version_falls_back_to_scan_id(
+    db_session: AsyncSession,
+) -> None:
+    from services.sbom_export import export_sbom
+
+    _, project, scan = await _make_project_with_succeeded_scan(db_session)
+
+    body, _, _ = await export_sbom(
+        db_session, project_id=project.id, fmt="cyclonedx-json"
+    )
+    assert json.loads(body)["metadata"]["component"]["version"] == str(scan.id)
