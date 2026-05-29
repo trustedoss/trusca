@@ -91,9 +91,15 @@ When severity colour is used as **body text** (a coloured word inside a badge or
 
 | Token | Value | Use |
 |---|---|---|
-| `--layout-sidebar` | 224 px | Fixed sidebar width. |
+| `--layout-sidebar` | 224 px | Expanded sidebar width (default). |
+| `--layout-sidebar-collapsed` | 64 px | Icon-only rail width when the user collapses the sidebar (≥`lg`). |
 | `--layout-header` | 48 px | Top header height. |
 | `--table-row` | 40 px | Compact table row height. |
+
+**Sidebar behaviour.** The left sidebar is **user-collapsible and viewport-responsive**:
+
+- **≥ `lg` (1024 px):** fixed sidebar. A toggle at the bottom of the rail collapses it from 224 px to a 64 px icon-only rail; collapsed labels move to `aria-label` + native hover tooltip. The choice persists across reloads (`uiStore` → `localStorage` key `trustedoss-ui`). Width animates over `--duration-base`.
+- **< `lg`:** the fixed sidebar is hidden and a header hamburger opens an overlay drawer (left-side `Sheet`) carrying the full-label nav. The drawer closes on navigate, overlay click, or ESC.
 
 **Card padding** standardises to **16 / 20 / 24 px** (Tailwind `p-4` / `p-5` / `p-6`):
 

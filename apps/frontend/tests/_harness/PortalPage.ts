@@ -73,6 +73,43 @@ export class PortalPage {
     return this.currentLanguage();
   }
 
+  // ───── sidebar (collapse rail + mobile drawer) ─────────────────────────
+  sidebar(): Locator {
+    return this.page.getByTestId("app-sidebar");
+  }
+
+  /** Whether the desktop sidebar is currently collapsed to the icon rail. */
+  async isSidebarCollapsed(): Promise<boolean> {
+    return (
+      (await this.sidebar().getAttribute("data-collapsed")) === "true"
+    );
+  }
+
+  /** Click the desktop collapse toggle (224 px rail ⇄ 64 px icon rail). */
+  async toggleSidebarCollapse(): Promise<void> {
+    await this.page.getByTestId("sidebar-collapse-toggle").click();
+  }
+
+  async expectSidebarCollapsed(): Promise<void> {
+    await expect(this.sidebar()).toHaveAttribute("data-collapsed", "true");
+  }
+
+  async expectSidebarExpanded(): Promise<void> {
+    await expect(this.sidebar()).toHaveAttribute("data-collapsed", "false");
+  }
+
+  /** Open the mobile nav drawer via the header hamburger (<lg viewports). */
+  async openMobileNav(): Promise<void> {
+    await this.page.getByTestId("sidebar-mobile-trigger").click();
+    await this.page
+      .getByTestId("mobile-nav-drawer")
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  mobileNavDrawer(): Locator {
+    return this.page.getByTestId("mobile-nav-drawer");
+  }
+
   // ───── PR #5 placeholders ──────────────────────────────────────────────
   // The methods below intentionally throw so accidental early use surfaces
   // a clear "not wired yet" error instead of a silent test pass.

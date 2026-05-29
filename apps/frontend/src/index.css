@@ -134,6 +134,8 @@
 
     /* Layout density (unchanged). */
     --layout-sidebar: 224px;
+    /* Icon-only rail width when the user collapses the sidebar (≥lg only). */
+    --layout-sidebar-collapsed: 64px;
     --layout-header: 48px;
     --table-row: 40px;
   }
