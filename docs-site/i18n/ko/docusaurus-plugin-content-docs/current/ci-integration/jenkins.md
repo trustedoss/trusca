@@ -16,6 +16,7 @@ Jenkins controller / agent를 운영하는 엔지니어. declarative pipeline과
 
 ## 빠른 시작
 
+<!-- docs-uat: id=jenkins-quickstart-pipeline kind=manual tier=manual -->
 ```groovy
 // Jenkinsfile
 pipeline {
@@ -144,6 +145,7 @@ when {
 
 마지막 `test "${GATE}" = "pass"` 라인을 다음으로 교체:
 
+<!-- docs-uat: id=jenkins-warn-gate-snippet kind=shell ctx=host tier=manual waiver=jenkins-pipeline-snippet-not-standalone -->
 ```bash
 echo "::warning::TrustedOSS gate=${GATE}"
 ```
@@ -202,6 +204,7 @@ credential이 `withCredentials`로 감싸져 있고 `${TRUSTEDOSS_API_KEY}`가 �
 
 실제 ORT 스캔은 30~60분이 걸릴 수 있습니다. 폴링 루프 한도를 늘리세요.
 
+<!-- docs-uat: id=jenkins-poll-loop-snippet kind=shell ctx=host tier=manual waiver=illustrative-loop-with-ellipsis-not-runnable -->
 ```bash
 for _ in $(seq 1 120); do … sleep 30; done   # 60분
 ```

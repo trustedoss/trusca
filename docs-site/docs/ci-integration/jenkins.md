@@ -16,6 +16,7 @@ Engineers maintaining a Jenkins controller / agent. Familiarity with declarative
 
 ## Quick start
 
+<!-- docs-uat: id=jenkins-quickstart-pipeline kind=manual tier=manual -->
 ```groovy
 // Jenkinsfile
 pipeline {
@@ -144,6 +145,7 @@ when {
 
 Replace the final `test "${GATE}" = "pass"` line with:
 
+<!-- docs-uat: id=jenkins-warn-gate-snippet kind=shell ctx=host tier=manual waiver=jenkins-pipeline-snippet-not-standalone -->
 ```bash
 echo "::warning::TrustedOSS gate=${GATE}"
 ```
@@ -202,6 +204,7 @@ Confirm the credential is wrapped in `withCredentials` and that the shell expand
 
 Real ORT scans can take 30–60 minutes. Bump the polling loop bound:
 
+<!-- docs-uat: id=jenkins-poll-loop-snippet kind=shell ctx=host tier=manual waiver=illustrative-loop-with-ellipsis-not-runnable -->
 ```bash
 for _ in $(seq 1 120); do … sleep 30; done   # 60 minutes
 ```

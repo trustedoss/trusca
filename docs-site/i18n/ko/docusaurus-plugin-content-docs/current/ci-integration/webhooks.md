@@ -30,6 +30,7 @@ Project Settings 탭은 아직 Webhook 컨트롤을 노출하지 않습니다.
 
 **Option A — backend 컨테이너 내부 Python REPL:**
 
+<!-- docs-uat: id=webhooks-secret-python kind=shell ctx=host tier=manual waiver=operator-command-placeholder-project-uuid -->
 ```bash
 docker-compose exec backend python -c "
 import asyncio, secrets
@@ -45,6 +46,7 @@ asyncio.run(upsert_webhook_secret(
 
 **Option B — 직접 SQL (psql 세션):**
 
+<!-- docs-uat: id=webhooks-secret-sql kind=sql ctx=postgres tier=manual waiver=operator-sql-placeholder-project-uuid -->
 ```sql
 UPDATE projects
    SET webhook_secret = encode(gen_random_bytes(32), 'base64')
@@ -151,8 +153,11 @@ GitLab은 기본으로 HMAC을 지원하지 않습니다. 보안 정책상 HMAC�
 
 Webhook 구성 후:
 
+<!-- docs-uat: id=webhooks-ping-delivery kind=manual tier=manual -->
 1. Git 호스트의 Webhook 페이지가 **ping / test** 전송 성공을 표시.
+<!-- docs-uat: id=webhooks-push-creates-scan kind=manual tier=manual -->
 2. 커밋 푸시 시 포털에 30초 내 새 스캔이 생성됨.
+<!-- docs-uat: id=webhooks-audit-deliver kind=manual tier=manual -->
 3. 감사 로그가 `delivery_id`와 `event` 필드 포함 `webhook.deliver`를 기록.
 
 ## 트러블슈팅
