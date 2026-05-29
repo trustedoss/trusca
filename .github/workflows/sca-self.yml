@@ -68,9 +68,15 @@ jobs:
         # FETCH_LICENSE=true tells cdxgen to enrich each component with
         # license metadata pulled from registries — slower but matches
         # what the portal does for end-users.
+        # --no-validate skips cdxgen's strict CycloneDX schema check —
+        # cdxgen 12.3.3 occasionally emits non-hex hash strings for
+        # transitive entries that fail the schema regex, even though the
+        # SBOM is valid for downstream Trivy consumption. Re-evaluate
+        # once cdxgen is bumped past 12.5.x (which fixes the hash
+        # emitter) — see W6 backlog cdxgen 12.5 upgrade.
         env:
           FETCH_LICENSE: "true"
-        run: cdxgen -r -o sbom.cdx.json .
+        run: cdxgen -r --no-validate -o sbom.cdx.json .
 
       # Trivy is bundled into the worker image at apps/backend/Dockerfile.worker;
       # for this workflow we install the standalone CLI (smaller, faster than
