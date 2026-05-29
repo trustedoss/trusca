@@ -165,6 +165,67 @@ class Test_scrub_secrets:
                 "api-key=***",
                 "topsecret123",
             ),
+            # ==== feat/scan-log-verbosity — widened verbose-mode surface ====
+            # ---- HTTP Basic auth (Trivy/cdxgen registry pulls) ----
+            (
+                "Authorization: Basic dXNlcjpwYXNzd29yZA==",
+                "Authorization: ***",
+                "dXNlcjpwYXNzd29yZA",
+            ),
+            # ---- Authorization: token scheme (GitHub) ----
+            (
+                "Authorization: token ghp_AbCdEf123456",
+                "Authorization: ***",
+                "ghp_AbCdEf123456",
+            ),
+            # ---- Docker X-Registry-Auth header (trivy --debug) ----
+            (
+                "X-Registry-Auth: eyJ1c2VybmFtZSI6ImEifQ==",
+                "X-Registry-Auth: ***",
+                "eyJ1c2VybmFtZSI6ImEifQ",
+            ),
+            # ---- GitLab PRIVATE-TOKEN header ----
+            (
+                "PRIVATE-TOKEN: glpat-AbCdEf123456",
+                "PRIVATE-TOKEN: ***",
+                "glpat-AbCdEf123456",
+            ),
+            # ---- AWS ECR session token header ----
+            (
+                "x-amz-security-token=FwoGZXIvYXdzEABCDEF",
+                "x-amz-security-token=***",
+                "FwoGZXIvYXdzEABCDEF",
+            ),
+            # ---- Set-Cookie session material (redact to EOL) ----
+            (
+                "set-cookie: session=abc123; Path=/; HttpOnly",
+                "set-cookie: ***",
+                "abc123",
+            ),
+            # ---- npm resolved password (cdxgen CDXGEN_DEBUG_MODE=debug) ----
+            (
+                "npm_config__password=hunter2pw",
+                "password=***",
+                "hunter2pw",
+            ),
+            # ---- env-dump GITHUB_TOKEN ----
+            (
+                "GITHUB_TOKEN=ghp_ZzYyXx998877",
+                "TOKEN=***",
+                "ghp_ZzYyXx998877",
+            ),
+            # ---- env-dump AWS_SECRET_ACCESS_KEY (matches via `secret`) ----
+            (
+                "AWS_SECRET_ACCESS_KEY=abc/DEF+ghi123",
+                "***",
+                "abc/DEF+ghi123",
+            ),
+            # ---- generic credential= assignment ----
+            (
+                "credential: s3cr3tval",
+                "credential: ***",
+                "s3cr3tval",
+            ),
         ],
     )
     def test_scrubs_known_credential_shapes(

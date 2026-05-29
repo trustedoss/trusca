@@ -447,12 +447,48 @@ def _truncate_line(line: str, limit: int) -> str:
 # ---------------------------------------------------------------------------
 
 _SECRET_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
-    # HTTP Bearer tokens — RFC 6750 syntax (token charset)
+    # HTTP Authorization header — ANY scheme (Basic / Bearer / token / Digest).
+    # Verbose Trivy / cdxgen registry round-trips (``--debug``,
+    # ``CDXGEN_DEBUG_MODE=debug``) emit ``Authorization: Basic <b64(user:pass)>``
+    # and ``Authorization: token <ghp_...>`` — neither is a Bearer token, so the
+    # RFC 6750 pattern below would miss them. We redact everything after the
+    # header name to end-of-line. ``.*$`` is line-bounded (lines are rstripped
+    # and we never compile re.MULTILINE / re.DOTALL) so there is no catastrophic
+    # backtracking on a truncated input. (security-reviewer HIGH on the
+    # scan-log-verbosity widening — see feedback_durable_log_persist_requires_scrubber.)
+    (re.compile(r"(?i)(authorization\s*:\s*)\S.*$"), r"\1***"),
+    # HTTP Bearer tokens anywhere (not only in an Authorization header) —
+    # RFC 6750 syntax (token charset).
     (re.compile(r"(?i)(Bearer\s+)[A-Za-z0-9._\-+/=]+"), r"\1***"),
+    # Registry / VCS / cloud auth headers Trivy + cdxgen emit in debug mode:
+    # ``X-Registry-Auth`` (Docker), ``PRIVATE-TOKEN`` (GitLab), ``X-Amz-Security-Token``
+    # (AWS ECR), ``X-Auth-Token`` (generic). Line-bounded ``\S+`` value.
+    (
+        re.compile(
+            r"(?i)((?:x-registry-auth|private-token|x-amz-security-token|x-auth-token)\s*[:=]\s*)\S+"
+        ),
+        r"\1***",
+    ),
+    # Set-Cookie / Cookie — session material. Redact to end-of-line so a
+    # multi-attribute cookie (``session=abc; Path=/``) is fully covered.
+    (re.compile(r"(?i)((?:set-)?cookie\s*:\s*)\S.*$"), r"\1***"),
     # npm-style auth tokens: ``npm_config__authToken=``, ``_authToken:``,
     # ``_auth =``. The trailing ``\S+`` is line-bounded (no re.MULTILINE) so
     # it cannot run away across lines.
     (re.compile(r"(?i)(_auth(?:Token)?\s*[:=]\s*)\S+"), r"\1***"),
+    # Generic ``password`` / ``secret`` / ``credential`` / ``access[_-]key`` /
+    # ``token`` assignments (``KEY=value`` or ``KEY: value``) that resolved
+    # config / env dumps surface in verbose mode (e.g. ``npm_config__password=``,
+    # ``GITHUB_TOKEN=ghp_...``, ``AWS_SECRET_ACCESS_KEY=...``). The leading
+    # alternation is unanchored so ``AWS_SECRET_ACCESS_KEY`` matches via its
+    # ``secret`` substring; over-redaction here is intentional (we'd rather mask
+    # a benign ``token=`` than leak a credential).
+    (
+        re.compile(
+            r"(?i)((?:password|passwd|passphrase|secret|credential|access[_-]?key|token)\w*\s*[:=]\s*)\S+"
+        ),
+        r"\1***",
+    ),
     # URLs with userinfo: ``scheme://user:pass@host`` -> ``scheme://***@host``.
     # The userinfo charset excludes ``/`` ``\s`` ``@`` so pathological inputs
     # like ``://user:pass@@@host`` match the first ``user:pass@`` only — the
@@ -474,10 +510,20 @@ def _scrub_secrets(line: str) -> str:
     unbounded input — that ordering also satisfies
     ``feedback_adversarial_input_parametrize`` for separator-only / oversized
     inputs.
+
+    Fails CLOSED + observable: if any pattern raises (a future regression or a
+    pathological input that trips the engine), we drop the line to a hard
+    sentinel and emit a distinct ``scan_log_scrub_failed`` event (no line
+    content) so a redaction regression is alertable instead of silently
+    leaking the un-scrubbed line downstream (security-reviewer LOW).
     """
-    for pattern, replacement in _SECRET_PATTERNS:
-        line = pattern.sub(replacement, line)
-    return line
+    try:
+        for pattern, replacement in _SECRET_PATTERNS:
+            line = pattern.sub(replacement, line)
+        return line
+    except Exception as exc:  # noqa: BLE001 — fail closed, never leak the raw line
+        log.warning("scan_log_scrub_failed", error=str(exc))
+        return "***(redaction failed)***"
 
 
 _VALID_STREAMS: frozenset[str] = frozenset({"stdout", "stderr"})
