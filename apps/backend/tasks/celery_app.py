@@ -40,6 +40,10 @@ _TASK_INCLUDES = [
     "tasks.source_archive_cleaner",
     # G3.1 — preserved scan-source tarball retention sweep (latest-per-project).
     "tasks.scan_source_cleaner",
+    # scan-retention — DT-style ref-keyed scan/findings retention (DB-side
+    # counterpart to the disk sweepers): reclaim superseded snapshots past grace
+    # + aged-excess ref-less/failed scans per keep-last/max-age.
+    "tasks.scan_retention",
     # Phase 6 PR #18 — multi-channel notification fan-out (email/Slack/Teams).
     "tasks.notify",
     # Phase 6 chore PR #19 — automated backup + restore tasks.
@@ -101,6 +105,16 @@ def _build_beat_schedule() -> dict[str, dict[str, object]]:
         "scan-source-cleaner-six-hourly": {
             "task": "trustedoss.scan_source_cleaner",
             "schedule": _schedule(timedelta(hours=6)),
+        },
+        # scan-retention — reclaim DB scan rows every 6h (DT-style). ``minute=30``
+        # offsets this from the :00 6h sweepers (source_archive / scan_source) and
+        # the :15 rematch beat so the four 6h beats fan out across the hour rather
+        # than colliding on one tick. Superseded snapshots past grace are deleted
+        # (cascade reclaims findings); ref-less/failed excess is trimmed by
+        # keep-last/max-age. Live ref snapshots + releases + latest are protected.
+        "scan-retention-six-hourly": {
+            "task": "trustedoss.scan_retention",
+            "schedule": crontab(minute=30, hour="*/6"),
         },
         # PR-A1 (scan stability) — reclaim orphaned scan workspaces every
         # 30 minutes. Cheap (one stat() per dir + a single bounded SELECT),

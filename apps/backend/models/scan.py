@@ -315,6 +315,27 @@ class Scan(Base):
         nullable=False,
         server_default=EMPTY_JSONB_OBJ,
     )
+    # DT-style ref-keyed retention (scan-retention). Normalized git ref this
+    # scan targets — ``refs/heads/main`` → ``main``, ``refs/pull/12/merge`` →
+    # ``pr-12`` (see ``services.scan_service.normalize_ref``). NULL when the
+    # trigger carried no ref (e.g. manual ad-hoc scans). Stamped at scan-create
+    # time from ``metadata.ref`` so the retire query is index-driven instead of
+    # re-normalizing a JSONB blob per row. Webhook and CI triggers must both
+    # feed the same normalizer so a branch's scans converge on one ref value.
+    ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # When a newer succeeded scan for the same (project_id, ref) supersedes this
+    # one, ``superseded_at`` is stamped and ``superseded_by_scan_id`` points at
+    # the winner. Superseded scans are hidden from releases / list enrichment /
+    # rematch and reclaimed by the ``scan_retention`` beat after a grace period.
+    # Scans carrying an explicit ``metadata.release`` label are never superseded.
+    superseded_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    superseded_by_scan_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID_PK,
+        ForeignKey("scans.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=NOW
     )
@@ -361,10 +382,28 @@ class Scan(Base):
         # status='succeeded' keeps the index proportional to the eligible
         # cohort; NULLS FIRST (default for ASC) surfaces never-rematched scans
         # at the front so the first beat after deploy fans them out first.
+        # scan-retention: also exclude superseded scans — a superseded snapshot
+        # has a newer winner for the same ref, so re-matching it would waste work
+        # and could fire stale notifications.
         Index(
             "ix_scans_rematch_due",
             "last_rematched_at",
+            postgresql_where=text("status = 'succeeded' AND superseded_at IS NULL"),
+        ),
+        # scan-retention: ref-keyed retire lookup — "the prior succeeded scan(s)
+        # for this (project, ref)". Partial on status='succeeded' keeps it small.
+        Index(
+            "ix_scans_project_ref",
+            "project_id",
+            "ref",
             postgresql_where=text("status = 'succeeded'"),
+        ),
+        # scan-retention: the beat's "superseded past grace" sweep. Partial on
+        # the stamped column keeps the index proportional to the reclaim cohort.
+        Index(
+            "ix_scans_superseded",
+            "superseded_at",
+            postgresql_where=text("superseded_at IS NOT NULL"),
         ),
     )
 

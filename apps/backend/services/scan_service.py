@@ -16,18 +16,28 @@ translate that to `ScanInProgressConflict` (409) so callers get a stable RFC
 from __future__ import annotations
 
 import os
+import re
 import uuid
 
 import structlog
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from core.audit import bind_audit_team as _bind_audit_team
+from core.audit import get_audit_context
 from core.pii_mask import mask_pii
 from core.security import CurrentUser
-from models import Project, Scan
+from models import (
+    AuditLog,
+    LicenseFinding,
+    Project,
+    Scan,
+    ScanArtifact,
+    ScanComponent,
+    VulnerabilityFinding,
+)
 from schemas.scan import ScanCreate
 from services.source_archive_service import (
     SourceArchiveError,
@@ -63,6 +73,19 @@ class ScanForbidden(ScanError):
 class ScanInProgressConflict(ScanError):
     status_code = 409
     title = "Scan Already In Progress"
+
+
+class ScanDeleteConflict(ScanError):
+    """409 — the scan cannot be deleted in its current state.
+
+    Two cases: (a) the scan is still active (queued/running) — cancel it first;
+    (b) the scan carries an explicit ``metadata.release`` label and the caller
+    did not pass ``force=true``. Release-labelled snapshots are immutable by
+    default so a routine cleanup never silently destroys a tagged release.
+    """
+
+    status_code = 409
+    title = "Scan Cannot Be Deleted"
 
 
 class ConcurrentScanLimitExceeded(ScanError):
@@ -308,6 +331,82 @@ def _check_disk_guard() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Ref normalization (scan-retention)
+# ---------------------------------------------------------------------------
+
+_REF_PULL_RE = re.compile(r"^refs/pull/(\d+)/")
+_REF_MERGE_RE = re.compile(r"^refs/merge-requests/(\d+)/")
+_REF_HEADS = "refs/heads/"
+_REF_TAGS = "refs/tags/"
+# git check-ref-format-style allow-list applied to the normalized remainder:
+# letters/digits and the limited punctuation a branch/tag name legitimately
+# uses. Anything else (spaces, wildcards `*?[]`, `~^:@\\`, etc.) is rejected so
+# the key never carries traversal/wildcard/log-injection content.
+_REF_ALLOWED_RE = re.compile(r"^[A-Za-z0-9._/+-]+$")
+
+
+def _has_control_byte(s: str) -> bool:
+    """True if *s* contains any C0 (incl. NUL), DEL, or C1 control byte.
+
+    The ref becomes a durable DB key AND a structlog / audit-CSV field, so a
+    control byte (newline = log-forging, DEL/C1 = CSV-display corruption) has no
+    legitimate place in it. ``ord(ch) < 0x20`` alone misses DEL (0x7F) and the
+    C1 range (0x80–0x9F), so check all three.
+    """
+    return any(ord(ch) < 0x20 or ord(ch) == 0x7F or 0x80 <= ord(ch) <= 0x9F for ch in s)
+
+
+def normalize_ref(raw: str | None) -> str | None:
+    """Normalize a git ref into a stable retention key.
+
+    DT-style ref-keyed retention groups a project's scans by the target they
+    were run against, so a branch's repeated scans supersede one another. The
+    webhook path carries full refs (``refs/heads/main``, ``refs/pull/12/merge``)
+    while CI actions pass either ``$GITHUB_REF`` (same shape) or a bare branch
+    name (``$CI_COMMIT_REF_NAME`` = ``main``). Both must converge on one value::
+
+        refs/heads/main            -> main
+        refs/tags/v1.2.3           -> v1.2.3
+        refs/pull/12/merge         -> pr-12
+        refs/merge-requests/7/head -> mr-7
+        main                       -> main   (already bare)
+
+    Returns ``None`` for missing / blank / oversized / control-char / traversal /
+    disallowed-charset input so a junk ref never mints a phantom retention key
+    (which would let a scan evade ref-keyed retire and fall through to the
+    keep-last/max-age sweep, and could inject control bytes into logs/audit).
+    """
+    if not isinstance(raw, str):
+        return None
+    s = raw.strip()
+    if not s or len(s) > 255:
+        return None
+    if _has_control_byte(s):
+        return None
+
+    pull = _REF_PULL_RE.match(s)
+    if pull:
+        return f"pr-{pull.group(1)}"
+    merge = _REF_MERGE_RE.match(s)
+    if merge:
+        return f"mr-{merge.group(1)}"
+
+    if s.startswith(_REF_HEADS):
+        s = s[len(_REF_HEADS) :]
+    elif s.startswith(_REF_TAGS):
+        s = s[len(_REF_TAGS) :]
+    s = s.strip("/")
+    if not s:
+        return None
+    # git check-ref-format-style: no `..` (path traversal / git-forbidden), and
+    # the whole remainder must match the allow-list. Reject otherwise so the
+    # scan cleanly falls into the ad-hoc cohort instead of minting a junk key.
+    if ".." in s or not _REF_ALLOWED_RE.match(s):
+        return None
+    return s
+
+
+# ---------------------------------------------------------------------------
 # Trigger scan (skeleton — Celery enqueue lands in PR #8)
 # ---------------------------------------------------------------------------
 
@@ -420,6 +519,10 @@ async def trigger_scan(
         celery_task_id=None,  # set below after enqueue_scan(...)
         requested_by_user_id=actor.id,
         scan_metadata=safe_metadata,
+        # scan-retention: stamp the normalized ref at create time so the
+        # ref-keyed retire query (run when this scan later succeeds) is
+        # index-driven. NULL when the trigger carried no ref (ad-hoc scans).
+        ref=normalize_ref(safe_metadata.get("ref")),
     )
     session.add(scan)
     # Flush so `scan.id` is populated; we need it to update
@@ -524,6 +627,158 @@ async def get_scan(
             f"actor is not a member of team {project.team_id}",
         )
     return scan
+
+
+# ---------------------------------------------------------------------------
+# Delete (scan-retention, Layer 3 — manual reclaim)
+# ---------------------------------------------------------------------------
+
+
+def _can_admin_team(actor: CurrentUser, team_id: uuid.UUID) -> bool:
+    """True if *actor* is super_admin or team_admin **within** *team_id*.
+
+    Mirrors ``project_service._can_write_project``'s cross-team escalation guard
+    (CWE-863): we read the actor's role in this specific team via
+    ``actor.team_roles``, never the global max ``actor.role``.
+    """
+    if actor.is_superuser or actor.role == "super_admin":
+        return True
+    return actor.team_roles.get(team_id) == "team_admin"
+
+
+def _has_release_label(scan_metadata: dict[str, object] | None) -> bool:
+    """True if the scan carries a non-blank string ``release`` label.
+
+    The single source of truth for "this is a tagged release snapshot". The SQL
+    side (``tasks.scan_retention._release_absent``) is kept type-aligned: it
+    counts a ``release`` value as present only when its JSON type is ``string``
+    and non-blank, so a non-string value (e.g. a JSON number) reads as "no
+    label" in BOTH layers — never protected in one and deletable in the other.
+    """
+    release = (scan_metadata or {}).get("release")
+    return isinstance(release, str) and bool(release.strip())
+
+
+async def _scan_child_counts(
+    session: AsyncSession, scan_id: uuid.UUID
+) -> dict[str, int]:
+    """Count the cascade children of a scan, for audit fidelity on delete.
+
+    DB-level ON DELETE CASCADE removes these rows without them entering
+    ``session.deleted``, so the audit trail would otherwise record "1 scan
+    deleted" with no sense of how many findings were destroyed.
+    """
+    out: dict[str, int] = {}
+    for label, model in (
+        ("vulnerability_findings", VulnerabilityFinding),
+        ("license_findings", LicenseFinding),
+        ("scan_components", ScanComponent),
+        ("scan_artifacts", ScanArtifact),
+    ):
+        result = await session.execute(
+            select(func.count()).select_from(model).where(model.scan_id == scan_id)
+        )
+        out[label] = int(result.scalar_one())
+    return out
+
+
+async def delete_scan(
+    session: AsyncSession,
+    *,
+    scan_id: uuid.UUID,
+    actor: CurrentUser,
+    force: bool = False,
+) -> None:
+    """Hard-delete a scan and (via cascade) its components / findings / artifacts.
+
+    DT-style retention reclaims most stale scans automatically; this is the
+    manual escape hatch. RBAC mirrors the API-key revoke pattern
+    (``services.api_key_service.revoke_api_key``): a scan the actor cannot see
+    is **existence-hidden** as 404 rather than 403, so team ids cannot be probed.
+
+    Guards:
+      - active scans (queued/running) raise ``ScanDeleteConflict`` — cancel first
+        so the worker is not deleting a row out from under itself.
+      - a scan carrying an explicit ``metadata.release`` label is immutable
+        unless ``force=True`` — a routine cleanup never silently destroys a
+        tagged release snapshot.
+      - overriding that immutability (``force=True`` on a release-labelled scan)
+        is a governance action and requires **team_admin** (or super_admin); a
+        plain developer gets 403. A non-forced delete stays at developer.
+
+    Audit: the cascade children never enter ``session.deleted``, so we emit an
+    explicit ``AuditLog`` row carrying the child-row counts and delete the scan
+    with a Core ``DELETE`` (DB cascade reclaims children; the
+    ``superseded_by_scan_id`` self-FK and ``projects.latest_scan_id`` are
+    ON DELETE SET NULL, so no pointer dangles).
+    """
+    scan = (
+        await session.execute(select(Scan).where(Scan.id == scan_id))
+    ).scalar_one_or_none()
+    if scan is None:
+        raise ScanNotFound(f"scan {scan_id} not found")
+
+    project = await _load_project(session, scan.project_id)
+    if not _can_access_team(actor, project.team_id):
+        # Existence-hide: a scan in another team reads as "not found".
+        raise ScanNotFound(f"scan {scan_id} not found")
+
+    if scan.status in ("queued", "running"):
+        raise ScanDeleteConflict(
+            f"scan {scan_id} is {scan.status}; cancel it before deleting",
+        )
+
+    has_release = _has_release_label(scan.scan_metadata)
+    if has_release and not force:
+        raise ScanDeleteConflict(
+            f"scan {scan_id} carries a release label; pass force=true to delete it",
+        )
+    if has_release and force and not _can_admin_team(actor, project.team_id):
+        # The actor is in-team (passed the gate above) but lacks the role to
+        # override release immutability — surface 403, not the existence-hide.
+        raise ScanForbidden(
+            "forcing deletion of a release-labelled scan requires team_admin",
+        )
+
+    _bind_audit_team(project.team_id)
+
+    counts = await _scan_child_counts(session, scan_id)
+    ctx = get_audit_context()
+    session.add(
+        AuditLog(
+            action="delete",
+            target_table="scans",
+            target_id=str(scan_id),
+            actor_user_id=actor.id,
+            team_id=project.team_id,
+            request_id=ctx.get("request_id"),
+            diff={
+                "reason": "manual",
+                "forced": bool(force),
+                "ref": scan.ref,
+                "release_labelled": has_release,
+                "cascade_deleted": counts,
+            },
+        )
+    )
+
+    # Avoid dangling the denormalized pointer at a deleted row.
+    if project.latest_scan_id == scan.id:
+        project.latest_scan_id = None
+
+    # Core DELETE (not session.delete) so the explicit AuditLog above is the
+    # single audit record — DB cascade reclaims the children either way.
+    await session.execute(delete(Scan).where(Scan.id == scan_id))
+    await session.commit()
+
+    log.warning(
+        "scan_deleted",
+        scan_id=str(scan_id),
+        project_id=str(project.id),
+        team_id=str(project.team_id),
+        forced=bool(force),
+        cascade_deleted=counts,
+    )
 
 
 async def list_scans_for_project(
@@ -642,13 +897,16 @@ __all__ = [
     "ConcurrentScanLimitExceeded",
     "ProjectMissingForScan",
     "ScanArchiveMissing",
+    "ScanDeleteConflict",
     "ScanEnqueueFailed",
     "ScanError",
     "ScanForbidden",
     "ScanInProgressConflict",
     "ScanNotFound",
+    "delete_scan",
     "get_scan",
     "list_scans_for_actor",
     "list_scans_for_project",
+    "normalize_ref",
     "trigger_scan",
 ]

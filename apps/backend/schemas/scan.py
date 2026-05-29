@@ -668,6 +668,13 @@ class ScanPublic(BaseModel):
     # from a Scan without the relationship loaded.
     project_name: str | None = None
     project_slug: str | None = None
+    # scan-retention: the normalized ref this scan targeted (``main``, ``pr-12``,
+    # ``v1.2.3``, ...) and the retire timestamp. ``superseded_at`` is non-null
+    # when a newer same-ref succeeded scan replaced this one as the live
+    # snapshot; the Releases tab / list enrichment hide superseded scans, but
+    # the field is surfaced so detail views can label a historical scan.
+    ref: str | None = None
+    superseded_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 

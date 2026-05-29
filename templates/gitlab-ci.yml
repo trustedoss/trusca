@@ -68,8 +68,19 @@
     - |
       set -euo pipefail
       api="${TRUSTEDOSS_API_URL%/}"
+      # scan-retention: forward the branch/tag (CI_COMMIT_REF_NAME, already bare
+      # — the portal normalizer passes it through) plus the MR IID when present,
+      # so a branch's repeated scans group under one retention key. Empty values
+      # are omitted. ``${VAR:-}`` keeps `set -u` happy when GitLab does not define
+      # the MR variable (non-MR pipelines).
       body=$(jq -nc --arg kind "$TRUSTEDOSS_SCAN_KIND" \
-        '{kind: $kind, metadata: {source: "gitlab-ci"}}')
+        --arg ref "${CI_COMMIT_REF_NAME:-}" \
+        --arg mr "${CI_MERGE_REQUEST_IID:-}" \
+        '{kind: $kind, metadata: (
+            {source: "gitlab-ci"}
+            + (if $ref == "" then {} else {ref: $ref} end)
+            + (if $mr  == "" then {} else {merge_request_iid: ($mr | tonumber)} end)
+        )}')
 
       response=$(curl --fail-with-body -sS -X POST \
         -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \

@@ -127,6 +127,7 @@ from tasks._progress import (
     make_line_callback as _make_line_callback,
 )
 from tasks.celery_app import celery_app
+from tasks.scan_retention import supersede_prior_ref_scans
 
 log = structlog.get_logger("tasks.scan_source")
 
@@ -1034,6 +1035,16 @@ def _mark_succeeded(scan_uuid: uuid.UUID) -> None:
         scan.progress_percent = 100
         scan.current_step = "finalize"
         scan.completed_at = datetime.now(UTC)
+        # scan-retention Layer 1: this scan is now the live snapshot for its
+        # ref, so prior succeeded same-ref scans (without an explicit release
+        # label) are superseded in the same transaction. No-op when the scan
+        # carries no ref — those are reclaimed by the keep-last/max-age sweep.
+        supersede_prior_ref_scans(
+            session,
+            project_id=scan.project_id,
+            winner_scan_id=scan.id,
+            ref=scan.ref,
+        )
         session.commit()
     publish_progress(scan_uuid, step="succeeded", percent=100)
 
