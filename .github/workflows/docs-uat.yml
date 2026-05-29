@@ -282,6 +282,24 @@ jobs:
           DOCS_UAT_API_BASE: http://localhost:8000
         run: node tools/docs-uat/run.mjs --tier=nightly --doc=user-guide/components-and-licenses.md
 
+      - name: Run nightly UI assertions — user-guide/dashboard.md
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:5173
+          DOCS_UAT_API_BASE: http://localhost:8000
+        run: node tools/docs-uat/run.mjs --tier=nightly --doc=user-guide/dashboard.md
+
+      - name: Run nightly UI assertions — user-guide/scans.md
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:5173
+          DOCS_UAT_API_BASE: http://localhost:8000
+        run: node tools/docs-uat/run.mjs --tier=nightly --doc=user-guide/scans.md
+
+      - name: Run nightly UI assertions — user-guide/auth-and-profile.md
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:5173
+          DOCS_UAT_API_BASE: http://localhost:8000
+        run: node tools/docs-uat/run.mjs --tier=nightly --doc=user-guide/auth-and-profile.md
+
       - name: Dump compose logs on failure
         if: failure()
         run: |

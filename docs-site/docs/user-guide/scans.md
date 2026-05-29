@@ -68,6 +68,7 @@ A container scan reads an image reference, not the repository. A project with no
 
 ### From the API
 
+<!-- docs-uat: id=scans-api-start-source kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
 curl -sS -X POST \
   "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/scans" \
@@ -78,6 +79,7 @@ curl -sS -X POST \
 
 The response carries the scan UUID. Poll:
 
+<!-- docs-uat: id=scans-api-poll-status kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
 curl -sS "https://trustedoss.example.com/v1/scans/${SCAN_ID}" \
   -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" | jq .status
@@ -85,6 +87,7 @@ curl -sS "https://trustedoss.example.com/v1/scans/${SCAN_ID}" \
 
 For a container scan, set `kind` to `container` and pass the image reference under `metadata.image_ref`:
 
+<!-- docs-uat: id=scans-api-start-container kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
 curl -sS -X POST \
   "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/scans" \
@@ -194,6 +197,7 @@ A scan that already reached a terminal state (`succeeded`, `failed`, or `cancell
 
 ### From the API
 
+<!-- docs-uat: id=scans-api-cancel kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
 curl -sS -X POST \
   "https://trustedoss.example.com/v1/scans/${SCAN_ID}/cancel" \
@@ -243,10 +247,15 @@ If you build a custom client, the message shape is:
 
 After a scan completes:
 
+<!-- docs-uat: id=scans-queue-populated kind=ui harness=scansListPopulated tier=nightly -->
 1. The project status switches to **Succeeded**.
+<!-- docs-uat: id=scans-components-nonzero kind=ui harness=componentsHaveData(portal-web) tier=nightly -->
 2. The Components count > 0.
+<!-- docs-uat: id=scans-vulns-tab-ready kind=ui harness=vulnerabilitiesTabReady(portal-web) tier=nightly -->
 3. The Vulnerabilities count is visible (may be 0 if the project is genuinely clean).
+<!-- docs-uat: id=scans-last-scan-timestamp kind=manual tier=manual -->
 4. The Last scan timestamp on the Overview tab reflects "now".
+<!-- docs-uat: id=scans-audit-events kind=manual tier=manual -->
 5. The audit log records `target_table=scans&action=create` and `target_table=scans&action=update` events.
 
 ## Troubleshooting
@@ -255,6 +264,7 @@ After a scan completes:
 
 No worker has picked it up. Either the worker is down or the queue is saturated.
 
+<!-- docs-uat: id=scans-worker-inspect kind=shell ctx=host tier=manual waiver=operator-docker-compose-command-not-runnable-in-ci -->
 ```bash
 docker-compose -f docker-compose.yml ps worker
 docker-compose -f docker-compose.yml logs --tail=200 worker
@@ -262,6 +272,7 @@ docker-compose -f docker-compose.yml logs --tail=200 worker
 
 If the worker is unhealthy, restart it:
 
+<!-- docs-uat: id=scans-worker-restart kind=shell ctx=host tier=manual waiver=operator-docker-compose-command-not-runnable-in-ci -->
 ```bash
 docker-compose -f docker-compose.yml restart worker
 ```
@@ -280,6 +291,7 @@ The worker could not reach the repository. Check:
 
 The local Trivy DB may not be in place yet. Confirm on the worker:
 
+<!-- docs-uat: id=scans-worker-trivy-db kind=shell ctx=host tier=manual waiver=operator-docker-compose-command-not-runnable-in-ci -->
 ```bash
 docker-compose -f docker-compose.yml exec worker \
   ls -lh /var/lib/trivy/db/

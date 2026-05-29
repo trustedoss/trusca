@@ -68,6 +68,7 @@ sidebar_position: 2
 
 ### API에서
 
+<!-- docs-uat: id=scans-api-start-source kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
 curl -sS -X POST \
   "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/scans" \
@@ -78,6 +79,7 @@ curl -sS -X POST \
 
 응답에 스캔 UUID가 포함됩니다. 폴링:
 
+<!-- docs-uat: id=scans-api-poll-status kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
 curl -sS "https://trustedoss.example.com/v1/scans/${SCAN_ID}" \
   -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" | jq .status
@@ -85,6 +87,7 @@ curl -sS "https://trustedoss.example.com/v1/scans/${SCAN_ID}" \
 
 컨테이너 스캔은 `kind` 를 `container` 로 설정하고 이미지 참조를 `metadata.image_ref` 에 전달합니다.
 
+<!-- docs-uat: id=scans-api-start-container kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
 curl -sS -X POST \
   "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/scans" \
@@ -194,6 +197,7 @@ queued ─────► running ─────► succeeded
 
 ### API에서
 
+<!-- docs-uat: id=scans-api-cancel kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
 curl -sS -X POST \
   "https://trustedoss.example.com/v1/scans/${SCAN_ID}/cancel" \
@@ -243,10 +247,15 @@ UI는 단계·진행률 실시간 갱신을 위해 `ws(s)://<host>/ws/scans/{sca
 
 스캔 완료 후:
 
+<!-- docs-uat: id=scans-queue-populated kind=ui harness=scansListPopulated tier=nightly -->
 1. 프로젝트 상태가 **Succeeded**로 전환.
+<!-- docs-uat: id=scans-components-nonzero kind=ui harness=componentsHaveData(portal-web) tier=nightly -->
 2. 컴포넌트 수 > 0.
+<!-- docs-uat: id=scans-vulns-tab-ready kind=ui harness=vulnerabilitiesTabReady(portal-web) tier=nightly -->
 3. 취약점 수가 표시(프로젝트가 정말 깨끗하면 0일 수도 있음).
+<!-- docs-uat: id=scans-last-scan-timestamp kind=manual tier=manual -->
 4. Overview 탭의 마지막 스캔 타임스탬프가 "방금"을 반영.
+<!-- docs-uat: id=scans-audit-events kind=manual tier=manual -->
 5. 감사 로그에 `target_table=scans&action=create`와 `target_table=scans&action=update` 이벤트가 기록.
 
 ## 트러블슈팅
@@ -255,6 +264,7 @@ UI는 단계·진행률 실시간 갱신을 위해 `ws(s)://<host>/ws/scans/{sca
 
 워커가 아직 받지 못했습니다. 워커가 다운되었거나 큐가 포화 상태입니다.
 
+<!-- docs-uat: id=scans-worker-inspect kind=shell ctx=host tier=manual waiver=operator-docker-compose-command-not-runnable-in-ci -->
 ```bash
 docker-compose -f docker-compose.yml ps worker
 docker-compose -f docker-compose.yml logs --tail=200 worker
@@ -262,6 +272,7 @@ docker-compose -f docker-compose.yml logs --tail=200 worker
 
 워커가 unhealthy면 재시작:
 
+<!-- docs-uat: id=scans-worker-restart kind=shell ctx=host tier=manual waiver=operator-docker-compose-command-not-runnable-in-ci -->
 ```bash
 docker-compose -f docker-compose.yml restart worker
 ```
@@ -280,6 +291,7 @@ docker-compose -f docker-compose.yml restart worker
 
 로컬 Trivy DB가 아직 자리 잡지 않았을 수 있습니다. 워커에서 확인:
 
+<!-- docs-uat: id=scans-worker-trivy-db kind=shell ctx=host tier=manual waiver=operator-docker-compose-command-not-runnable-in-ci -->
 ```bash
 docker-compose -f docker-compose.yml exec worker \
   ls -lh /var/lib/trivy/db/
