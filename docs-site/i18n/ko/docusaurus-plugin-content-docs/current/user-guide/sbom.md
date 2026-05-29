@@ -65,6 +65,7 @@ byte-stability 달성 방법:
 
 ## API에서 다운로드
 
+<!-- docs-uat: id=sbom-api-download kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
 # CycloneDX JSON
 curl -sS -L -OJ \
@@ -149,18 +150,21 @@ VEX 상태와 CycloneDX `analysis.state` 매핑:
 
 ## 정상 동작 확인
 
+<!-- docs-uat: id=sbom-cyclonedx-validate kind=manual tier=manual -->
 1. 다운로드된 SBOM이 검증기를 통과 — CycloneDX는 [`cyclonedx validate`](https://github.com/CycloneDX/cyclonedx-cli) 실행:
 
    ```bash
    cyclonedx validate --input-file checkout-service.sbom.json
    ```
 
+<!-- docs-uat: id=sbom-spdx-validate kind=manual tier=manual -->
 2. SPDX는 [`spdx-tools`](https://github.com/spdx/tools-python)로 검증:
 
    ```bash
    pyspdxtools -i checkout-service.sbom.json
    ```
 
+<!-- docs-uat: id=sbom-byte-identical kind=manual tier=manual -->
 3. 같은 스캔을 다시 다운로드하면 byte 동일 파일 생성:
 
    ```bash

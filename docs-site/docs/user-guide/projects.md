@@ -82,6 +82,7 @@ The **Source** tab used to sit immediately after **Licenses**; it was moved to t
 
 ## Adding a project — API
 
+<!-- docs-uat: id=projects-api-create kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
 curl -sS -X POST https://trustedoss.example.com/v1/projects \
   -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
@@ -226,8 +227,11 @@ Generate cards always deep-link to the domain tab (Obligations, SBOM, Vulnerabil
 
 After creating a project:
 
+<!-- docs-uat: id=projects-appears-idle kind=manual tier=manual -->
 1. The project appears in **Projects** with status **Idle** (no scans yet).
+<!-- docs-uat: id=projects-overview-zero kind=manual tier=manual -->
 2. The Overview tab shows zero components and zero vulnerabilities.
+<!-- docs-uat: id=projects-audit-create kind=manual tier=manual -->
 3. The audit log (`/admin/audit`, super-admin only) records `target_table=projects&action=create` with your `user_id`.
 
 ## Troubleshooting
