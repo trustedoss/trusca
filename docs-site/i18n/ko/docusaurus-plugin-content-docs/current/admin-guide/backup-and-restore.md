@@ -38,6 +38,7 @@ backups/2026-05-09-030000/
 
 ## 수동 백업 실행
 
+<!-- docs-uat: id=backup-manual kind=shell ctx=host expect=exit:0 tier=nightly -->
 ```bash
 bash scripts/backup.sh
 ```
@@ -103,6 +104,7 @@ Backup complete
 
 `cron`이 가장 단순한 경로입니다.
 
+<!-- docs-uat: id=backup-cron-schedule kind=shell ctx=host tier=nightly waiver=host-cron-scheduler-config -->
 ```bash
 sudo crontab -e
 # Minute Hour DoM Month DoW Command
@@ -117,6 +119,7 @@ sudo crontab -e
 
 로컬 백업은 데이터베이스 손상을 보호하지만 호스트 손실은 보호하지 않습니다. 보존 정책의 일부로 백업을 호스트 외부로 이동하세요.
 
+<!-- docs-uat: id=backup-offhost-s3 kind=shell ctx=host tier=nightly waiver=external-s3-credentials -->
 ```bash
 # 예: AWS S3 야간 동기화(backup.sh 실행 후)
 aws s3 sync /opt/trustedoss-portal/backups/ \
@@ -129,6 +132,7 @@ aws s3 sync /opt/trustedoss-portal/backups/ \
 
 ## 백업에서 복원
 
+<!-- docs-uat: id=restore-cli kind=shell ctx=host tier=nightly waiver=interactive-hardcoded-dir-roundtrip-covered-by-install-uat -->
 ```bash
 bash scripts/restore.sh backups/2026-05-09-030000
 ```
@@ -213,6 +217,7 @@ S3에 백업이 있는 작은 설치라면 전체 DR(호스트 손실 → 복원
 
 덤프는 평문 SQL입니다. 저장 시 암호화:
 
+<!-- docs-uat: id=backup-encrypt-gpg kind=shell ctx=host tier=nightly waiver=encrypt-at-rest-variant-needs-gpg-and-shred -->
 ```bash
 bash scripts/backup.sh
 gpg --symmetric --cipher-algo AES256 \
@@ -254,6 +259,7 @@ WantedBy=timers.target
 
 활성화:
 
+<!-- docs-uat: id=backup-systemd-enable kind=shell ctx=host tier=nightly waiver=host-systemd-timer -->
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable --now trustedoss-backup.timer
@@ -263,14 +269,20 @@ sudo systemctl enable --now trustedoss-backup.timer
 
 백업 후:
 
+<!-- docs-uat: id=backup-verify-dir kind=manual tier=manual -->
 1. `backups/` 아래 새 디렉터리에 예상한 세 파일이 존재.
+<!-- docs-uat: id=backup-verify-manifest kind=manual tier=manual -->
 2. `manifest.json`이 JSON으로 디코드되며 비어 있지 않은 `alembic_head`를 포함.
+<!-- docs-uat: id=backup-verify-gzip kind=manual tier=manual -->
 3. `gunzip -t backups/.../postgres.sql.gz` 성공(gzip 무결성 체크).
 
 복원 후:
 
+<!-- docs-uat: id=restore-verify-signin kind=manual tier=manual -->
 1. 백업 시점의 자격증명으로 포털에 깔끔히 로그인.
+<!-- docs-uat: id=restore-verify-counts kind=manual tier=manual -->
 2. 프로젝트 수·스캔 수·감사 로그 행 수가 예상과 일치.
+<!-- docs-uat: id=restore-verify-health kind=manual tier=manual -->
 3. **/admin/health**가 모두 녹색.
 
 ## 트러블슈팅
@@ -285,6 +297,7 @@ sudo systemctl enable --now trustedoss-backup.timer
 
 스크립트는 postgres 컨테이너 안에서 `pg_dump`를 실행합니다 — 호스트 권한 문제는 없어야 합니다. `.env`의 `POSTGRES_USER`가 라이브 사용자와 일치하는지 확인:
 
+<!-- docs-uat: id=backup-troubleshoot-roles kind=shell ctx=host tier=nightly waiver=production-compose-diagnostic -->
 ```bash
 docker-compose -f docker-compose.yml exec postgres \
   psql -U postgres -c '\du'
@@ -302,6 +315,7 @@ docker-compose -f docker-compose.yml exec postgres \
 
 `tar`는 archive 동안 변경되는 파일을 건너뜁니다. workspace가 활발히 변하면 백업 전 워커를 중지하세요.
 
+<!-- docs-uat: id=backup-troubleshoot-stop-worker kind=shell ctx=host tier=nightly waiver=production-compose-worker-pause -->
 ```bash
 docker-compose -f docker-compose.yml stop worker
 bash scripts/backup.sh
