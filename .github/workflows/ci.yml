@@ -28,6 +28,13 @@ on:
       - "SECURITY.md"
       - "LICENSE"
       - ".gitignore"
+  # Nightly run — the slow gate (e2e Playwright matrix) sits behind a
+  # `github.event_name == 'schedule' || workflow_dispatch` guard so PRs
+  # stay fast. The same schedule walks the lint/test/SAST path again so
+  # any drift on main between PR runs surfaces here too.
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch: {}
 
 # Least-privilege default — every job here only needs to check out the
 # repo. Image-scan additionally pulls cached Trivy DB layers from ghcr,
@@ -505,6 +512,12 @@ jobs:
   #    fails fast.
   # -------------------------------------------------------------------------
   e2e:
+    # Nightly-only — the matrix takes ~8 minutes per shard and would
+    # double the typical PR wall-clock. The job still runs on every
+    # workflow_dispatch (maintainer can verify before a risky merge)
+    # and on the daily 04:00 UTC schedule (catches drift on main
+    # between PR runs).
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     # Matrix split (PR #46, Phase 6 of post-GA Manual Walkthrough):
     #   - shard=scan-flow      → 9 spec / 39 scenario (existing core)
     #   - shard=manual-aligned → 3 spec / 27 scenario (Phase 5 PR #45)
