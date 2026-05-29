@@ -592,6 +592,21 @@ jobs:
       - name: Verify docker compose V2 available
         run: docker compose version
 
+      # Pre-build the backend / worker / frontend images BEFORE bringing the
+      # stack up. The image refs in docker-compose.dev.yml
+      # (\`trustedoss/{backend,backend-worker,frontend}:dev\`) are not
+      # published anywhere — compose tries Docker Hub, gets a "denied"
+      # warning, then falls back to the local \`build:\` directive. On a
+      # cold runner that build adds 2-3 minutes to the startup wall clock,
+      # which used to spill past the 180-second healthcheck deadline below.
+      # Building explicitly here also surfaces a build error as its own
+      # step rather than as a confusing "container unhealthy" 3 minutes
+      # later.
+      - name: Pre-build dev images
+        run: |
+          docker compose -f docker-compose.dev.yml build \
+            backend celery-worker frontend
+
       - name: Bring up dev stack
         run: |
           docker compose -f docker-compose.dev.yml up -d \
@@ -599,12 +614,15 @@ jobs:
 
       - name: Wait for stack to become healthy
         # Compose V1 has no `--wait`; poll the `healthy` count until all five
-        # services report green or 180s elapses. `docker inspect` gives us a
-        # deterministic per-container health view.
+        # services report green or 240s elapses. The deadline was 180s but a
+        # cold-image-cache backend (Postgres init + alembic upgrade head +
+        # uvicorn boot) regularly used 180-220s on the hosted runner. 240s
+        # leaves headroom; the pre-build step above keeps total wall-clock
+        # bounded.
         run: |
           set -euo pipefail
           services=(postgres redis backend celery-worker frontend)
-          deadline=$(( $(date +%s) + 180 ))
+          deadline=$(( $(date +%s) + 240 ))
           while :; do
             healthy=0
             for svc in "${services[@]}"; do
