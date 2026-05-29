@@ -19,17 +19,11 @@ name: SCA self-scan
 # workflow gates the *application* dependency tree.
 
 on:
-  # NOTE (2026-05-21): nightly schedule temporarily disabled. The
-  # cdxgen/Trivy scheduled runs have been failing and we are not
-  # triaging them during the Demo SaaS launch prep. The workflow stays
-  # runnable on demand via workflow_dispatch. Re-enable by uncommenting
-  # the `schedule` block below once the scheduled-run failure is fixed.
-  #
-  # schedule:
-  #   # 07:00 UTC daily — out of the typical PR-merge window so the
-  #   # nightly artifact is fresh at the start of business hours in EU /
-  #   # US-East.
-  #   - cron: "0 7 * * *"
+  schedule:
+    # 07:00 UTC daily — out of the typical PR-merge window so the
+    # nightly artifact is fresh at the start of business hours in EU /
+    # US-East.
+    - cron: "0 7 * * *"
   workflow_dispatch: {}
 
 # `issues: write` is needed for `gh issue create` / `gh issue close`.
