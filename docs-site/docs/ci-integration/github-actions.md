@@ -211,6 +211,12 @@ The `@v1` tag floats. Pin to a specific commit for reproducibility:
 - uses: trustedoss/trustedoss-portal/actions/scan@a1b2c3d4e5f6     # v0.10.0
 ```
 
+## How the ref becomes a retention key
+
+The action automatically forwards the workflow's ref as scan metadata: `github.ref` (`refs/heads/<branch>`) on a push, or the PR number (`refs/pull/<n>/merge`) on a `pull_request` event. The portal normalizes that ref — `refs/heads/main` → `main`, `refs/pull/12/merge` → `pr-12` — and uses `(project, normalized ref)` as the **retention key**: the latest successful scan for a key stays live and supersedes the previous one.
+
+You do not configure anything for this — running the action on `push` and `pull_request` gives correct per-branch and per-PR grouping out of the box. To keep a scan permanently (for a tagged release), trigger it with a `metadata.release` label; the [Scan retention](../admin-guide/scan-retention.md) page covers the full model and the release exemption.
+
 ## How the PR comment is posted
 
 The PR comment is posted **server-side by the portal**, not by your workflow. After the action uploads the SCA results, the portal evaluates the policy gate and — if comment posting is enabled — calls `https://api.github.com` directly using a GitHub PAT stored in the portal's environment (`GITHUB_TOKEN` or `TRUSTEDOSS_GITHUB_TOKEN`). Your workflow never forwards `secrets.GITHUB_TOKEN` to the portal. A first-class GitHub App with portal-stored installation tokens is on the roadmap.
@@ -265,3 +271,4 @@ on:
 - [Jenkins](./jenkins.md)
 - [Webhooks](./webhooks.md) — for non-Action push automation
 - [API keys](../admin-guide/api-keys.md)
+- [Scan retention](../admin-guide/scan-retention.md) — how per-branch / per-PR scans are kept and reclaimed

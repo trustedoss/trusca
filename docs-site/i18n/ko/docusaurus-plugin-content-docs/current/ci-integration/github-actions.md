@@ -211,6 +211,12 @@ GATE_EPSS_THRESHOLD=0.5
 - uses: trustedoss/trustedoss-portal/actions/scan@a1b2c3d4e5f6     # v0.10.0
 ```
 
+## ref가 보존 키가 되는 방식 {#how-the-ref-becomes-a-retention-key}
+
+액션은 워크플로의 ref를 스캔 metadata로 자동 전달합니다 — push에서는 `github.ref`(`refs/heads/<branch>`), `pull_request` 이벤트에서는 PR 번호(`refs/pull/<n>/merge`). 포털은 그 ref를 정규화하고(`refs/heads/main` → `main`, `refs/pull/12/merge` → `pr-12`) `(project, 정규화된 ref)`를 **보존 키**로 사용합니다 — 키별 최신 성공 스캔이 live로 남고 이전 것을 supersede합니다.
+
+이를 위해 설정할 것은 없습니다 — `push`·`pull_request`에서 액션을 실행하면 브랜치별·PR별 그룹화가 즉시 올바르게 동작합니다. 스캔을 영구 보존하려면(태그 릴리스용) `metadata.release` 라벨과 함께 트리거하십시오. 전체 모델과 release 면제는 [스캔 보존](../admin-guide/scan-retention.md) 페이지에서 다룹니다.
+
 ## PR 코멘트는 어떻게 게시되나
 
 PR 코멘트는 워크플로가 아니라 **포털이 서버 측에서** 게시합니다. 액션이 SCA 결과를 업로드한 뒤, 포털이 빌드 게이트를 평가하고 코멘트 게시가 활성화되어 있다면 포털 환경에 저장된 GitHub PAT(`GITHUB_TOKEN` 또는 `TRUSTEDOSS_GITHUB_TOKEN`)를 사용해 `https://api.github.com`을 직접 호출합니다. 워크플로는 절대로 `secrets.GITHUB_TOKEN`을 포털로 전달하지 않습니다. 포털에 저장된 installation 토큰을 가진 정식 GitHub App은 로드맵에 있습니다.
@@ -265,3 +271,4 @@ on:
 - [Jenkins](./jenkins.md)
 - [Webhooks](./webhooks.md) — Action 이외의 push 자동화
 - [API keys](../admin-guide/api-keys.md)
+- [스캔 보존](../admin-guide/scan-retention.md) — 브랜치별·PR별 스캔이 보존·회수되는 방식

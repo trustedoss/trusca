@@ -66,7 +66,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import String, case, cast, func, literal, select
+from sqlalchemy import String, and_, case, cast, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import (
@@ -180,6 +180,9 @@ async def _latest_succeeded_scan_id_map(
         .distinct(Scan.project_id)
         .where(Scan.project_id.in_(project_ids))
         .where(cast(Scan.status, String) == "succeeded")
+        # scan-retention: a superseded snapshot is never the live posture — its
+        # ref already has a newer winner — so it must not drive the risk badge.
+        .where(Scan.superseded_at.is_(None))
         .order_by(Scan.project_id, Scan.created_at.desc(), Scan.id.desc())
     )
     result = await session.execute(stmt)
@@ -382,9 +385,18 @@ async def _scan_counts_map(
         return {}
 
     scan_count_col = func.count().label("scan_count")
+    # scan-retention: a release is a *live* succeeded snapshot — exclude
+    # superseded scans so release_count matches the Releases tab (which hides
+    # them). scan_count / last_scan_at still count every attempt.
     release_count_col = func.count(
         case(
-            (cast(Scan.status, String) == "succeeded", 1),
+            (
+                and_(
+                    cast(Scan.status, String) == "succeeded",
+                    Scan.superseded_at.is_(None),
+                ),
+                1,
+            ),
         )
     ).label("release_count")
     last_scan_at_col = func.max(Scan.created_at).label("last_scan_at")

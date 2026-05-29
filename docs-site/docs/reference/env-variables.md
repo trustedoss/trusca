@@ -109,6 +109,16 @@ See [build gate](./glossary.md#build-gates) for the gate model and [Gate the bui
 | `ORT_RULES_PATH` | `/opt/trustedoss/ort/rules.kts` | `docker-compose.yml` | Legacy path inside the worker, vestigial after the ORT stage was removed. The file is a placeholder and has no effect in this release — license-tier classification comes from `_LICENSE_CATEGORY_DEFAULTS` in `apps/backend/tasks/scan_source.py`. |
 | `JSONB_ROW_SIZE_LIMIT_BYTES` | `262144` (256 KB) | `config.py` | Per-row JSON byte ceiling before the writer truncates and emits a warning. Guards the I-1 unbounded-payload class. |
 
+## Scan retention
+
+These keys tune the automatic retention sweep that reclaims superseded and stale scan snapshots. The sweep runs as a Celery beat task every 6 hours. See [Scan retention](../admin-guide/scan-retention.md) for the full model.
+
+| Key | Default | Read by | Description |
+|---|---|---|---|
+| `SCAN_RETENTION_SUPERSEDED_GRACE_DAYS` | `7` | `config.py` | Days a superseded snapshot is kept before the sweep reclaims it. A snapshot is superseded when a newer successful scan lands on the same `(project, normalized ref)` target. Set higher to keep more rollback history per target. |
+| `SCAN_RETENTION_KEEP_LAST` | `30` | `config.py` | Minimum number of ref-less and failed scans kept **per project**, regardless of age. The sweep never trims below this floor — it protects ad-hoc and diagnostic scans that carry no ref target. |
+| `SCAN_RETENTION_MAX_AGE_DAYS` | `180` | `config.py` | Hard age ceiling. Any non-release scan older than this is reclaimed by the sweep even if it is still the live snapshot for its target. Scans labelled `metadata.release` are exempt and kept forever. |
+
 ## WebSocket gateway
 
 | Key | Default | Read by | Description |

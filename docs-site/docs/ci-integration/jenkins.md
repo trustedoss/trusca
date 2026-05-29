@@ -37,10 +37,18 @@ pipeline {
             curl --version >/dev/null
             jq --version  >/dev/null
 
+            # scan-retention: forward the branch as metadata.ref so the portal
+            # groups this branch's scans under one retention key (the latest
+            # supersedes the prior). BRANCH_NAME is set by Multibranch / PR jobs;
+            # GIT_BRANCH (often "origin/<branch>") is the fallback — adjust to
+            # your job's variables. Empty ref is omitted.
+            SCAN_REF="${BRANCH_NAME:-${GIT_BRANCH:-}}"
+            BODY=$(jq -nc --arg ref "${SCAN_REF}" \
+              '{kind: "source", metadata: ({source: "jenkins"} + (if $ref == "" then {} else {ref: $ref} end))}')
             SCAN_ID=$(curl -fsS -X POST \
               -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
               -H "Content-Type: application/json" \
-              -d '{"kind": "source"}' \
+              -d "${BODY}" \
               "${TRUSTEDOSS_API_URL}/v1/projects/${TRUSTEDOSS_PROJECT_ID}/scans" \
               | jq -r .id)
             echo "scan_id=${SCAN_ID}"
