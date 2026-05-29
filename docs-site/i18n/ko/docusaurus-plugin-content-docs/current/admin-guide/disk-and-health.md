@@ -25,6 +25,7 @@ sidebar_position: 3
 
 ## 시스템 health 대시보드 {#health}
 
+<!-- docs-uat: id=health-api kind=api auth=admin url=/v1/admin/health expect=status:200 tier=nightly -->
 **/admin/health** 페이지는 포털이 의존하는 모든 컴포넌트를 나열합니다. 각 행:
 
 - **컴포넌트** — `postgres`, `redis`, `celery`, `disk`, `active_scans`, `last_24h_errors` 중 하나. `vulnerability_data` 행(Trivy DB 신선도)은 향후 추가됩니다.
@@ -51,6 +52,7 @@ sidebar_position: 3
 
 ## 디스크 대시보드 {#disk}
 
+<!-- docs-uat: id=disk-api kind=api auth=admin url=/v1/admin/disk expect=status:200 tier=nightly -->
 **/admin/disk**는 포털이 신경 쓰는 파일시스템마다 카드 하나를 렌더합니다. 현재 릴리스의 실제 카드는 **workspace**, **trivy_db**, **postgres**, **redis** 입니다(API 가 `items: AdminDiskItem[]` 으로 반환하고 페이지가 항목당 카드 하나를 렌더). 이전 **dt_volume** 카드는 Dependency-Track 폐기와 함께 제거되었습니다.
 
 각 카드는 warn 임계와 critical 임계가 있습니다.
@@ -62,6 +64,7 @@ sidebar_position: 3
 
 `.env`에서 변경:
 
+<!-- docs-uat: id=disk-threshold-env kind=shell ctx=host tier=nightly waiver=env-config-snippet-not-a-command -->
 ```bash
 DISK_THRESHOLD_WARNING_PCT=80
 DISK_THRESHOLD_CRITICAL_PCT=90
@@ -69,6 +72,7 @@ DISK_THRESHOLD_CRITICAL_PCT=90
 
 별개로 **스캔 disk-guard**는 단일 `DISK_HARD_LIMIT_PCT`(기본 `95`)를 사용해 workspace 볼륨이 그 라인을 넘으면 **신규 스캔을 차단**합니다. 분리는 의도된 설계입니다 — 대시보드는 더 이르게(80% / 90%) 경고하고 스캔 가드는 더 늦게(95%) 동작해 운영자에게 놀람을 주지 않으면서 출혈을 막습니다.
 
+<!-- docs-uat: id=disk-hard-limit-env kind=shell ctx=host tier=nightly waiver=env-config-snippet-not-a-command -->
 ```bash
 DISK_HARD_LIMIT_PCT=95
 ```
@@ -93,6 +97,7 @@ DISK_HARD_LIMIT_PCT=95
 
 ### 1. 원인 식별
 
+<!-- docs-uat: id=disk-identify-offender kind=shell ctx=host tier=nightly waiver=production-compose-diagnostic -->
 ```bash
 docker-compose -f docker-compose.yml exec backend \
   du -sh /workspace/*  | sort -h | tail -20
@@ -102,6 +107,7 @@ docker-compose -f docker-compose.yml exec backend \
 
 ### 2. 공간 확보
 
+<!-- docs-uat: id=disk-free-space kind=shell ctx=host tier=nightly waiver=destructive-prune-on-production-compose -->
 ```bash
 # 30일 이상 지난 scancode 결과 JSON 삭제(안전 — 다음 스캔에서 재생성).
 docker-compose -f docker-compose.yml exec backend \
@@ -144,8 +150,11 @@ docker-compose -f docker-compose.yml exec backend \
 
 변경 후:
 
+<!-- docs-uat: id=disk-verify-health-green kind=manual tier=manual -->
 1. **/admin/health**가 모두 녹색.
+<!-- docs-uat: id=disk-verify-disk-warn kind=manual tier=manual -->
 2. **/admin/disk**가 warn 라인 아래.
+<!-- docs-uat: id=disk-verify-test-scan kind=manual tier=manual -->
 3. 임의 프로젝트 대상 테스트 스캔이 end-to-end 성공.
 
 ## 트러블슈팅
