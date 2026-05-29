@@ -327,6 +327,12 @@ jobs:
           DOCS_UAT_API_BASE: http://localhost:8000
         run: node tools/docs-uat/run.mjs --tier=nightly --doc=user-guide/vulnerabilities.md
 
+      - name: Run nightly UI assertions — user-guide/approvals.md
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:5173
+          DOCS_UAT_API_BASE: http://localhost:8000
+        run: node tools/docs-uat/run.mjs --tier=nightly --doc=user-guide/approvals.md
+
       - name: Dump compose logs on failure
         if: failure()
         run: |

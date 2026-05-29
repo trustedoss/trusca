@@ -320,11 +320,13 @@ async def _seed() -> dict[str, Any]:  # noqa: PLR0915 — single linear seed rea
     from core.security import hash_password
     from models import (
         Component,
+        ComponentApproval,
         ComponentVersion,
         License,
         LicenseFinding,
         Membership,
         Notification,
+        OAuthIdentity,
         Obligation,
         Organization,
         Project,
@@ -606,6 +608,53 @@ async def _seed() -> dict[str, Any]:  # noqa: PLR0915 — single linear seed rea
                         source_path=f"package.json#L{lf_idx + 1}",
                     )
                     session.add(lf)
+            await session.flush()
+
+            # ── One pending component approval (the forbidden GPL-3.0
+            #    component on portal-web) so the approvals queue + dispose
+            #    flow is exercisable. Idempotent on the (project, component)
+            #    pair. _LICENSE_BANK[4] is GPL-3.0-only → _COMPONENT_BANK[4].
+            gpl_component = component_by_purl[_COMPONENT_BANK[4][0]]
+            portal_web = projects[0]
+            existing_appr = (
+                await session.execute(
+                    select(ComponentApproval).where(
+                        ComponentApproval.project_id == portal_web.id,
+                        ComponentApproval.component_id == gpl_component.id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if existing_appr is None:
+                session.add(
+                    ComponentApproval(
+                        component_id=gpl_component.id,
+                        project_id=portal_web.id,
+                        team_id=teams["frontend"].id,
+                        requested_by_user_id=developer.id,
+                        status="pending",
+                    )
+                )
+
+            # ── One linked GitHub OAuth identity for the developer so the
+            #    profile connected-accounts + unlink flow is exercisable.
+            #    Idempotent on (user, provider).
+            existing_ident = (
+                await session.execute(
+                    select(OAuthIdentity).where(
+                        OAuthIdentity.user_id == developer.id,
+                        OAuthIdentity.provider == "github",
+                    )
+                )
+            ).scalar_one_or_none()
+            if existing_ident is None:
+                session.add(
+                    OAuthIdentity(
+                        user_id=developer.id,
+                        provider="github",
+                        provider_user_id="100000001",
+                        email=developer.email,
+                    )
+                )
             await session.flush()
 
             # ── Third project: 3 in-app notifications for the developer ───

@@ -108,7 +108,7 @@ sidebar_position: 6
 
 요청 처리 후:
 
-<!-- docs-uat: id=approvals-state-badge-updates kind=manual tier=manual -->
+<!-- docs-uat: id=approvals-state-badge-updates kind=ui harness=approvalsDispose tier=nightly -->
 1. 상태 배지가 즉시 갱신.
 <!-- docs-uat: id=approvals-audit-recorded kind=manual tier=manual -->
 2. 감사 로그가 `target_table=component_approvals&action=update`를 `previous_status`, `new_status`, `decision_note`와 함께 diff에 담아 기록.
