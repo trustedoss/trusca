@@ -137,14 +137,40 @@ jobs:
           docker compose -f docker-compose.dev.yml build \
             backend celery-worker frontend
 
-      - name: Start dev stack
+      # The dev Dockerfile has no ENTRYPOINT so docker-entrypoint.sh
+      # (which honours AUTO_MIGRATE) never runs. Migrate explicitly in a
+      # throwaway backend container BEFORE the live backend starts, so
+      # /health/ready can flip green on the first probe. Same pattern as
+      # ci.yml e2e.
+      - name: Start postgres + redis only
         run: |
           mkdir -p workspace
-          docker compose -f docker-compose.dev.yml up -d \
-            postgres redis backend celery-worker frontend
+          docker compose -f docker-compose.dev.yml up -d postgres redis
         env:
           COMPOSE_DOCKER_CLI_BUILD: "1"
           DOCKER_BUILDKIT: "1"
+
+      - name: Wait for postgres healthy
+        run: |
+          set -euo pipefail
+          deadline=$(( $(date +%s) + 60 ))
+          while :; do
+            cid=$(docker compose -f docker-compose.dev.yml ps -q postgres)
+            status=$(docker inspect -f '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo none)
+            [ "$status" = "healthy" ] && break
+            [ "$(date +%s)" -ge "$deadline" ] && { echo "::error::postgres never healthy"; exit 1; }
+            sleep 3
+          done
+
+      - name: Run alembic migrations (pre-boot)
+        run: |
+          docker compose -f docker-compose.dev.yml run --rm --no-deps backend \
+            alembic upgrade head
+
+      - name: Bring up the rest of the stack
+        run: |
+          docker compose -f docker-compose.dev.yml up -d \
+            backend celery-worker frontend
 
       - name: Wait for services to be healthy
         # Deadline bumped 180 → 240s. Alembic upgrade + uvicorn boot on a
@@ -170,11 +196,6 @@ jobs:
             fi
             sleep 5
           done
-
-      - name: Run alembic migrations
-        run: |
-          docker compose -f docker-compose.dev.yml exec -T backend \
-            alembic upgrade head
 
       - name: Run visual regression spec
         working-directory: apps/frontend
