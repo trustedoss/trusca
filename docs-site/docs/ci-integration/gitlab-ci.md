@@ -20,6 +20,7 @@ Engineers maintaining a GitLab project that uses GitLab CI / CD. You need an API
 
 ## Quick start
 
+<!-- docs-uat: id=gitlab-quickstart-pipeline kind=manual tier=manual -->
 ```yaml
 # .gitlab-ci.yml
 include:

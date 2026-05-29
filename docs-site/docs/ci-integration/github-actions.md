@@ -20,6 +20,7 @@ Use the in-repo composite action at `actions/scan/action.yml` directly via `uses
 
 ## Quick start
 
+<!-- docs-uat: id=gha-quickstart-workflow kind=manual tier=manual -->
 ```yaml
 # .github/workflows/sca.yml
 name: TrustedOSS SCA
@@ -194,6 +195,7 @@ The build gate evaluates Critical CVEs and forbidden licenses by default. You ca
 
 This is an **operator-side, org-wide** switch, not a workflow input: set the `GATE_EPSS_THRESHOLD` environment variable on the **portal** (`.env`), then restart the backend. It is **disabled by default** — leaving it unset preserves the existing Critical-CVE / forbidden-license gate exactly as before.
 
+<!-- docs-uat: id=gha-epss-threshold-env kind=shell ctx=host tier=manual waiver=env-config-snippet-not-a-command -->
 ```bash
 # In the portal's .env (not your CI workflow), a value from 0 to 1:
 GATE_EPSS_THRESHOLD=0.5

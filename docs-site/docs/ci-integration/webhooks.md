@@ -30,6 +30,7 @@ Operators set the secret directly via the backend. Two paths:
 
 **Option A — Python REPL inside the backend container:**
 
+<!-- docs-uat: id=webhooks-secret-python kind=shell ctx=host tier=manual waiver=operator-command-placeholder-project-uuid -->
 ```bash
 docker-compose exec backend python -c "
 import asyncio, secrets
@@ -45,6 +46,7 @@ asyncio.run(upsert_webhook_secret(
 
 **Option B — direct SQL (psql session):**
 
+<!-- docs-uat: id=webhooks-secret-sql kind=sql ctx=postgres tier=manual waiver=operator-sql-placeholder-project-uuid -->
 ```sql
 UPDATE projects
    SET webhook_secret = encode(gen_random_bytes(32), 'base64')
@@ -152,8 +154,11 @@ Other events are accepted (200) but do not trigger scans. The portal records eve
 
 After configuring a webhook:
 
+<!-- docs-uat: id=webhooks-ping-delivery kind=manual tier=manual -->
 1. The Git host's webhook page shows a successful **ping / test** delivery.
+<!-- docs-uat: id=webhooks-push-creates-scan kind=manual tier=manual -->
 2. Pushing a commit creates a new scan in the portal within 30 seconds.
+<!-- docs-uat: id=webhooks-audit-deliver kind=manual tier=manual -->
 3. The audit log records `webhook.deliver` with `delivery_id` and `event` fields.
 
 ## Troubleshooting
