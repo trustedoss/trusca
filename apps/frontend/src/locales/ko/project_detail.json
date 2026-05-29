@@ -965,7 +965,11 @@
       "notice": {
         "title": "NOTICE",
         "description": "라이선스 의무사항이 포함된 저작자 표시 NOTICE 파일.",
-        "action": "컴플라이언스 탭으로 이동"
+        "action": "NOTICE 다운로드",
+        "action_generating": "생성 중…",
+        "format_label": "NOTICE 형식",
+        "format_text": "텍스트",
+        "format_html": "HTML"
       },
       "sbom": {
         "title": "SBOM",

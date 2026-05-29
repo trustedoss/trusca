@@ -67,7 +67,7 @@ test.describe("@reports project reports tab", () => {
     await auth.clearAuthState();
   });
 
-  test("S1) Reports tab renders the four generate cards and a NOTICE deeplink moves to Obligations", async ({
+  test("S1) Reports tab renders the four generate cards and the NOTICE card downloads directly", async ({
     page,
   }, testInfo) => {
     const seed = await bootstrap(testInfo, page);
@@ -100,11 +100,15 @@ test.describe("@reports project reports tab", () => {
     await portal.expectReportsTabReady();
     expect(new URL(page.url()).searchParams.get("tab")).toBe("reports");
 
-    // NOTICE card deeplinks to the Obligations tab.
-    await portal.clickReportsGenerateCard("notice");
-    await expect(page.getByTestId("obligations-tab")).toBeVisible({
-      timeout: 10_000,
-    });
-    expect(new URL(page.url()).searchParams.get("tab")).toBe("obligations");
+    // NOTICE downloads directly from the card (the unified Compliance tab is a
+    // read-only grid, so the old deep-link was a dead end). The format picker
+    // and download button are present, and a click yields a NOTICE-*.txt file.
+    await expect(
+      page.getByTestId("reports-card-notice-format"),
+    ).toBeVisible();
+    const download = await portal.downloadNoticeFromReports("text");
+    expect(download.suggestedFilename()).toMatch(/^NOTICE-.*\.txt$/);
+    // Staying on the Reports tab — no navigation happened.
+    expect(new URL(page.url()).searchParams.get("tab")).toBe("reports");
   });
 });
