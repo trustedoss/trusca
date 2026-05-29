@@ -19,6 +19,7 @@ sidebar_position: 99
 모든 명령은 `docker-compose` V1(하이픈) 과 `bash` 호스트 셸을 가정합니다.
 
 :::tip Super-admin 토큰 발급(대부분 curl 예시에서 사용)
+<!-- docs-uat: id=oncall-auth-check kind=shell ctx=host tier=nightly waiver=runbook-diagnostic-prod-compose-placeholder-creds -->
 ```bash
 # EMAIL/PASSWORD 를 설치 시 생성한 super-admin 으로 교체하세요.
 EMAIL=admin@example.com
@@ -40,6 +41,7 @@ PagerDuty: `TrustedOSS Trivy DB last refresh > 14 days` 또는 `TrustedOSS Trivy
 - 기존 `vulnerability_findings` 행은 변경 없음 — 갭은 forward-only.
 
 ### 진단
+<!-- docs-uat: id=oncall-trivy-db-check kind=shell ctx=host tier=nightly waiver=runbook-diagnostic-prod-compose-worker -->
 ```bash
 # 1. DB가 디스크에 있는가?
 docker-compose -f docker-compose.yml exec worker \
@@ -91,6 +93,7 @@ PagerDuty: `TrustedOSS auto-backup task failure count = 3`.
 - 호스트가 크래시하면 포털의 모든 데이터가 위험합니다(복원할 최근 백업 없음). 신선한 백업이 도착할 때까지 다운스트림 작업(컴플라이언스 동결 등)을 계획하세요.
 
 ### 진단
+<!-- docs-uat: id=oncall-backup-beat-check kind=shell ctx=host tier=nightly waiver=runbook-diagnostic-prod-compose-logs -->
 ```bash
 # 1. Celery Beat 스케줄 하트비트
 docker-compose logs --tail=500 beat | grep daily-auto-backup
@@ -133,6 +136,7 @@ PagerDuty: `TrustedOSS scan running > 4h for project X`.
 - 다른 프로젝트: 워커 동시성=1 인 경우(기본값 2)가 아니면 영향 없음.
 
 ### 진단
+<!-- docs-uat: id=oncall-scan-stuck-check kind=shell ctx=host tier=nightly waiver=runbook-diagnostic-prod-compose -->
 ```bash
 # 1. 어느 단계에서 멈췄는가?
 curl -fsS "https://<your-host>/v1/scans/<scan_id>" \
@@ -168,6 +172,7 @@ PagerDuty: `TrustedOSS portal disk = 95%+`.
 - 실행 중 스캔은 계속 진행됩니다. 신규 스캔은 `DISK_HARD_LIMIT_PCT` 임계(기본 95%) 에서 **차단**됩니다 — `/admin/scans` 에 무한 큐 상태로 표시됩니다.
 
 ### 진단
+<!-- docs-uat: id=oncall-disk-check kind=shell ctx=host tier=nightly waiver=runbook-diagnostic-host-df -->
 ```bash
 # 1. 호스트 전체
 df -h /opt/trustedoss
