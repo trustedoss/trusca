@@ -159,6 +159,7 @@ The score and percentile appear in the findings table's **EPSS** column and in t
 
 Sort by EPSS, highest first:
 
+<!-- docs-uat: id=vulns-api-list-epss kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
 curl -sS \
   -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
@@ -167,6 +168,7 @@ curl -sS \
 
 Return only findings the model predicts have at least a 50% exploitation probability:
 
+<!-- docs-uat: id=vulns-api-list-min-epss kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
 curl -sS \
   -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
@@ -221,6 +223,7 @@ A blank fixed version means **"no fix version is known"**, not "no fix exists" â
 
 The fixed version appears as `fixed_version` on the finding detail's affected components and on the component drawer's nested CVE references:
 
+<!-- docs-uat: id=vulns-api-finding-detail kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
 # finding detail â€” fixed_version on each affected component
 curl -sS \
@@ -317,6 +320,7 @@ The file name is `vulnerability-report-<project>.pdf`. Any inline error from the
 
 ### Download from the API
 
+<!-- docs-uat: id=vulns-api-report-pdf kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
 curl -sS -L -OJ \
   -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
@@ -386,6 +390,7 @@ scan's persisted completion time (not the moment of export).
 
 ### Download from the API
 
+<!-- docs-uat: id=vulns-api-vex-export kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
 # OpenVEX (default)
 curl -sS -L -OJ \
@@ -477,6 +482,7 @@ round-trip is status-stable.
 
 ### Import from the API
 
+<!-- docs-uat: id=vulns-api-vex-import kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
 curl -sS -X POST \
   -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
@@ -583,9 +589,13 @@ A common point of confusion:
 
 After triaging:
 
+<!-- docs-uat: id=vulns-status-badge-updates kind=manual tier=manual -->
 1. The status badge updates immediately in the table.
+<!-- docs-uat: id=vulns-audit-recorded kind=manual tier=manual -->
 2. The audit log records `target_table=vulnerability_findings&action=update` with `previous_status`, `new_status`, `justification` in the diff.
+<!-- docs-uat: id=vulns-excluded-risk-score kind=manual tier=manual -->
 3. Excluded findings stop counting toward the project's risk score.
+<!-- docs-uat: id=vulns-excluded-build-gate kind=manual tier=manual -->
 4. Excluded findings are excluded from the build gate on the next scan.
 
 ## Troubleshooting

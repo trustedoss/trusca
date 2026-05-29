@@ -82,6 +82,7 @@ sidebar_position: 1
 
 ## 프로젝트 추가 — API
 
+<!-- docs-uat: id=projects-api-create kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
 curl -sS -X POST https://trustedoss.example.com/v1/projects \
   -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
@@ -225,8 +226,11 @@ Generate card 는 Reports 탭 안에 생성 다이얼로그를 띄우지 않고 
 
 프로젝트 생성 후:
 
+<!-- docs-uat: id=projects-appears-idle kind=manual tier=manual -->
 1. **Projects**에 프로젝트가 **Idle**(스캔 없음) 상태로 표시됩니다.
+<!-- docs-uat: id=projects-overview-zero kind=manual tier=manual -->
 2. Overview 탭은 컴포넌트·취약점 모두 0을 보여줍니다.
+<!-- docs-uat: id=projects-audit-create kind=manual tier=manual -->
 3. 감사 로그(`/admin/audit`, super-admin 전용)에 본인의 `user_id`로 `target_table=projects&action=create`가 기록됩니다.
 
 ## 트러블슈팅

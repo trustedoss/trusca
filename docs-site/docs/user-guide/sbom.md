@@ -66,6 +66,7 @@ The file name is `sbom-<project-slug>.<ext>`.
 
 ## Download from the API
 
+<!-- docs-uat: id=sbom-api-download kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
 # CycloneDX JSON
 curl -sS -L -OJ \
@@ -150,18 +151,21 @@ The VEX states map directly to CycloneDX's `analysis.state`:
 
 ## Verify it worked
 
+<!-- docs-uat: id=sbom-cyclonedx-validate kind=manual tier=manual -->
 1. The downloaded SBOM passes a validator — for CycloneDX, run [`cyclonedx validate`](https://github.com/CycloneDX/cyclonedx-cli):
 
    ```bash
    cyclonedx validate --input-file checkout-service.sbom.json
    ```
 
+<!-- docs-uat: id=sbom-spdx-validate kind=manual tier=manual -->
 2. SPDX validates with [`spdx-tools`](https://github.com/spdx/tools-python):
 
    ```bash
    pyspdxtools -i checkout-service.sbom.json
    ```
 
+<!-- docs-uat: id=sbom-byte-identical kind=manual tier=manual -->
 3. Re-downloading the same scan produces a byte-identical file:
 
    ```bash

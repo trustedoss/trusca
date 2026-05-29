@@ -94,8 +94,11 @@ Channel selection is global — the **Preferences** tab decides which channels d
 
 ## Verify it worked
 
+<!-- docs-uat: id=notifications-scan-completed-badge kind=manual tier=manual -->
 - Trigger a scan on a project you own; within seconds of completion, the bell badge increments and `/notifications` shows the new row.
+<!-- docs-uat: id=notifications-mark-read-decrements kind=manual tier=manual -->
 - Open `/notifications` in a second tab and mark a row read; the first tab's bell badge decrements within 60 seconds.
+<!-- docs-uat: id=notifications-email-disable-inapp-only kind=manual tier=manual -->
 - Globally disable email under **Preferences** and click **Save**; run another scan and confirm the next `scan_completed` notification arrives via in-app only.
 
 ## Troubleshooting

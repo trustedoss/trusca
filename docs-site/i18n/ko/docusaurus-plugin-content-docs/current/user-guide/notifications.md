@@ -93,8 +93,11 @@ sidebar_position: 8
 
 ## 정상 동작 확인
 
+<!-- docs-uat: id=notifications-scan-completed-badge kind=manual tier=manual -->
 - 본인 소유 프로젝트에서 스캔을 트리거하면 완료 후 몇 초 내에 종 배지가 증가하고 `/notifications`에 새 행이 나타납니다.
+<!-- docs-uat: id=notifications-mark-read-decrements kind=manual tier=manual -->
 - 두 번째 탭에서 `/notifications`를 열고 한 행을 읽음 처리하면 첫 번째 탭의 종 배지가 60초 내에 감소합니다.
+<!-- docs-uat: id=notifications-email-disable-inapp-only kind=manual tier=manual -->
 - **Preferences**에서 이메일 채널을 전역 비활성화하고 **Save**를 클릭한 뒤 다른 스캔을 실행하면, 다음 `scan_completed` 알림은 인앱으로만 도착합니다.
 
 ## 트러블슈팅
