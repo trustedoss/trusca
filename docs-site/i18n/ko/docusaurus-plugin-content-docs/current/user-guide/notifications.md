@@ -8,6 +8,7 @@ sidebar_position: 8
 
 # 알림
 
+<!-- docs-uat: id=notifications-login kind=ui harness=login(dev@demo.trustedoss.dev,DemoTest2026!) tier=nightly -->
 알림 시스템은 본인이 관심 있는 프로젝트의 이벤트 — 스캔 종료, 게이트 실패, 의존하는 컴포넌트에 신규 CVE 등록, 승인 대기, 라이선스 정책 위반 — 를 알려줍니다. 알림은 **네 채널**(인앱·이메일·Slack·Microsoft Teams)로 팬-아웃되며, 어떤 채널로 받을지는 전역적으로 결정합니다.
 
 :::note 대상 독자
@@ -95,9 +96,9 @@ sidebar_position: 8
 
 <!-- docs-uat: id=notifications-scan-completed-badge kind=manual tier=manual -->
 - 본인 소유 프로젝트에서 스캔을 트리거하면 완료 후 몇 초 내에 종 배지가 증가하고 `/notifications`에 새 행이 나타납니다.
-<!-- docs-uat: id=notifications-mark-read-decrements kind=manual tier=manual -->
+<!-- docs-uat: id=notifications-mark-read-decrements kind=ui harness=notificationsMarkReadDecrements tier=nightly -->
 - 두 번째 탭에서 `/notifications`를 열고 한 행을 읽음 처리하면 첫 번째 탭의 종 배지가 60초 내에 감소합니다.
-<!-- docs-uat: id=notifications-email-disable-inapp-only kind=manual tier=manual -->
+<!-- docs-uat: id=notifications-email-disable-inapp-only kind=ui harness=notificationsEmailDisableInappOnly tier=nightly -->
 - **Preferences**에서 이메일 채널을 전역 비활성화하고 **Save**를 클릭한 뒤 다른 스캔을 실행하면, 다음 `scan_completed` 알림은 인앱으로만 도착합니다.
 
 ## 트러블슈팅
