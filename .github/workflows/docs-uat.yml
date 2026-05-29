@@ -112,6 +112,11 @@ jobs:
           DOCS_UAT_API_BASE: http://localhost:8000
           COMPOSE_DOCKER_CLI_BUILD: "1"
           DOCKER_BUILDKIT: "1"
+          # docs-uat signs in once per doc (each run.mjs spawns a fresh browser),
+          # so a multi-doc job easily exceeds the 5/min/IP login cap. Lift it for
+          # the throwaway test stack (docker-compose.dev.yml passes it through;
+          # mirrors the e2e workflow's RATELIMIT_DISABLED=1).
+          RATELIMIT_DISABLED: "1"
         run: node tools/docs-uat/run.mjs --tier=gate --doc=quickstart.md
 
       - name: Dump compose logs on failure
@@ -158,6 +163,11 @@ jobs:
         env:
           COMPOSE_DOCKER_CLI_BUILD: "1"
           DOCKER_BUILDKIT: "1"
+          # docs-uat signs in once per doc (each run.mjs spawns a fresh browser),
+          # so a multi-doc job easily exceeds the 5/min/IP login cap. Lift it for
+          # the throwaway test stack (docker-compose.dev.yml passes it through;
+          # mirrors the e2e workflow's RATELIMIT_DISABLED=1).
+          RATELIMIT_DISABLED: "1"
         run: |
           set -euo pipefail
           cp .env.example .env
@@ -257,6 +267,11 @@ jobs:
         env:
           COMPOSE_DOCKER_CLI_BUILD: "1"
           DOCKER_BUILDKIT: "1"
+          # docs-uat signs in once per doc (each run.mjs spawns a fresh browser),
+          # so a multi-doc job easily exceeds the 5/min/IP login cap. Lift it for
+          # the throwaway test stack (docker-compose.dev.yml passes it through;
+          # mirrors the e2e workflow's RATELIMIT_DISABLED=1).
+          RATELIMIT_DISABLED: "1"
         run: |
           set -euo pipefail
           cp .env.example .env
