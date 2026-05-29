@@ -37,9 +37,18 @@ Then bring the dev stack up:
 docker-compose -f docker-compose.dev.yml up -d
 ```
 
+The dev image runs `uvicorn --reload` directly, so it does not auto-apply
+migrations the way the production image does. Once the containers are up,
+create the schema:
+
+<!-- docs-uat: id=qs-migrate kind=shell ctx=host expect=exit:0 retry=20x3s tier=gate -->
+```bash
+docker-compose -f docker-compose.dev.yml exec backend alembic upgrade head
+```
+
 <!-- docs-uat: id=qs-health kind=api ctx=host url=/health/ready expect=status:200 retry=40x6s tier=gate -->
-About 30 seconds in, `postgres`, `redis`, `backend`, `celery-worker`, and
-`frontend` are healthy.
+With the schema applied, `postgres`, `redis`, `backend`, `celery-worker`, and
+`frontend` report healthy within about 30 seconds (`docker-compose -f docker-compose.dev.yml ps`).
 
 ## 2. Seed the demo dataset
 

@@ -37,9 +37,17 @@ cp .env.example .env
 docker-compose -f docker-compose.dev.yml up -d
 ```
 
+dev 이미지는 `uvicorn --reload`를 직접 실행하므로 프로덕션 이미지처럼 마이그레이션을
+자동 적용하지 않습니다. 컨테이너가 뜬 뒤 스키마를 생성합니다.
+
+<!-- docs-uat: id=qs-migrate kind=shell ctx=host expect=exit:0 retry=20x3s tier=gate -->
+```bash
+docker-compose -f docker-compose.dev.yml exec backend alembic upgrade head
+```
+
 <!-- docs-uat: id=qs-health kind=api ctx=host url=/health/ready expect=status:200 retry=40x6s tier=gate -->
-약 30초 뒤 `postgres`, `redis`, `backend`, `celery-worker`, `frontend` 컨테이너가
-모두 healthy 상태가 됩니다.
+스키마가 적용되면 약 30초 안에 `postgres`, `redis`, `backend`, `celery-worker`,
+`frontend` 컨테이너가 모두 healthy 상태가 됩니다 (`docker-compose -f docker-compose.dev.yml ps`).
 
 ## 2. 데모 데이터 시드
 

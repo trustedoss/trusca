@@ -68,7 +68,7 @@ Tokens are whitespace-separated `key=value`; **values carry no spaces**.
 | `ctx` | shell/sql | `host` `backend` `worker` `postgres` `kind` | where it runs |
 | `expect` | per kind | `exit:N` · `status:N` · `match:/re/` · `rows:>N` | assertion |
 | `url` | api | `/path` or absolute | endpoint hit by the api kind |
-| `retry` | optional | `NxMs` e.g. `40x6s` | attempts × interval (api polling) |
+| `retry` | optional | `NxMs` e.g. `40x6s` | attempts × interval — api polling, or a shell step racing a warming-up service (e.g. `alembic upgrade head` right after `up`) |
 | `harness` | ui | `verb` or `verb(arg1,arg2)` | maps to a registered PortalPage/AuthHarness verb |
 | `fixture` | optional | e.g. `seed_demo` | documents the pre-state the step assumes |
 | `waiver` | optional | `<reason>` (no spaces) | explicitly excludes the block from execution — keeps it counted, never silently dropped |

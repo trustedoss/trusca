@@ -27,6 +27,7 @@
  * frontend's already-installed Playwright for ui steps.
  */
 import { spawnSync } from "node:child_process";
+import * as fs from "node:fs";
 import * as path from "node:path";
 import { buildManifest, MANIFEST_PATH, REPO_ROOT } from "./extract.mjs";
 
@@ -65,18 +66,28 @@ function expectedExit(step) {
   return m ? Number(m[1]) : 0;
 }
 
-function runShell(step) {
+async function runShell(step) {
   const cmd = step.ctx === "host" ? rewriteHostShell(step.code) : step.code;
-  console.log(`  $ ${cmd.replace(/\n/g, "\n    ")}`);
-  const res = spawnSync("bash", ["-c", cmd], {
-    cwd: REPO_ROOT,
-    stdio: "inherit",
-    env: process.env,
-  });
   const want = expectedExit(step);
-  const got = res.status ?? 1;
-  if (got !== want) return { ok: false, detail: `exit ${got}, expected ${want}` };
-  return { ok: true };
+  // `retry=NxMs` tolerates warmup races for ctx=host steps that depend on a
+  // service that may not be ready yet (e.g. `alembic upgrade head` right after
+  // `up` before postgres finishes its healthcheck). The doc shows the plain
+  // command; the retry lives only in the (invisible) annotation.
+  const { attempts, intervalMs } = parseRetry(step.retry);
+  let got = 1;
+  for (let i = 1; i <= attempts; i++) {
+    const tag = attempts > 1 ? ` (attempt ${i}/${attempts})` : "";
+    console.log(`  $ ${cmd.replace(/\n/g, "\n    ")}${tag}`);
+    const res = spawnSync("bash", ["-c", cmd], {
+      cwd: REPO_ROOT,
+      stdio: "inherit",
+      env: process.env,
+    });
+    got = res.status ?? 1;
+    if (got === want) return { ok: true };
+    if (i < attempts) await sleep(intervalMs);
+  }
+  return { ok: false, detail: `exit ${got}, expected ${want}` };
 }
 
 async function runApi(step) {
@@ -154,6 +165,13 @@ async function main() {
   }
 
   const manifest = buildManifest();
+  // Persist the manifest to disk: the ui-step Playwright spec reads it via
+  // DOCS_UAT_MANIFEST (fs.readFileSync). Without this write the spec hits
+  // ENOENT and reports "No tests found" — building it only in memory was a
+  // bug masked locally by a prior `extract.mjs` run having left the file.
+  fs.mkdirSync(path.dirname(MANIFEST_PATH), { recursive: true });
+  fs.writeFileSync(MANIFEST_PATH, JSON.stringify(manifest, null, 2) + "\n");
+
   const steps = manifest.steps
     .filter((s) => s.doc === args.doc && s.lang === args.lang && s.tier === args.tier)
     .sort((a, b) => a.line - b.line);
@@ -184,7 +202,7 @@ async function main() {
     }
 
     let r;
-    if (step.kind === "shell") r = runShell(step);
+    if (step.kind === "shell") r = await runShell(step);
     else if (step.kind === "api") r = await runApi(step);
     else if (step.kind === "sql") r = runSql(step);
     else if (step.kind === "ui") {
