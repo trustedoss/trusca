@@ -80,13 +80,14 @@ from sqlalchemy import String, case, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import (
-    License as LicenseModel,
-)
-from models import (
+    ComponentVersion,
     LicenseFinding,
     LicensePolicy,
     Project,
     VulnerabilityFinding,
+)
+from models import (
+    License as LicenseModel,
 )
 from models import (
     Vulnerability as VulnerabilityModel,
@@ -384,23 +385,30 @@ def _static_default_for(spdx_id: str) -> str:
     return _LICENSE_CATEGORY_DEFAULTS.get(spdx_id, "unknown")
 
 
-def _make_policy_resolver(policy: LicensePolicy) -> Callable[[str], str]:
+def _make_policy_resolver(
+    policy: LicensePolicy, component_purl: str | None = None
+) -> Callable[[str], str]:
     """Build a single-id resolver that applies *policy* then the static catalog.
 
     The returned callable is passed to
     :func:`services.license_expression.evaluate_expression` as ``resolve_id``: it
     receives ONE operand token and returns its category. It reuses c1's pure
     :func:`services.license_policy_service.effective_category` (override >
-    org/team-wide exception > static catalog > unknown posture) so the single-id
-    semantics are shared between c1 and c2 and cannot drift.
+    exception > static catalog > unknown posture) so the single-id semantics are
+    shared and cannot drift.
 
-    Purl-scoped exceptions are NOT applied here (no component purl in hand at the
-    expression-fold level); ``effective_category`` already skips them. Component-
-    scoped waivers remain a c3 refinement.
+    c3: ``component_purl`` is threaded through so a **component-scoped** exception
+    ("waive this exact component") is honoured. Org/team-wide exceptions apply
+    regardless; a component-scoped one applies only when its purl matches.
     """
 
     def _resolve(spdx_id: str) -> str:
-        return effective_category(spdx_id, policy, _static_default_for(spdx_id))
+        return effective_category(
+            spdx_id,
+            policy,
+            _static_default_for(spdx_id),
+            component_purl=component_purl,
+        )
 
     return _resolve
 
@@ -408,24 +416,34 @@ def _make_policy_resolver(policy: LicensePolicy) -> Callable[[str], str]:
 async def _load_scan_license_rows(
     session: AsyncSession,
     scan_id: uuid.UUID,
-) -> list[tuple[uuid.UUID, str | None]]:
-    """Batch-load DISTINCT ``(component_version_id, license spdx_id)`` for a scan.
+) -> list[tuple[uuid.UUID, str | None, str | None]]:
+    """Batch-load DISTINCT ``(component_version_id, spdx_id, purl)`` for a scan.
 
     One query — avoids the N+1 of re-fetching each component's license. The
     DISTINCT collapses the (declared/concluded/detected, multi-file) duplicate
     finding rows the static SQL also collapses, so the dynamic count is computed
     over the same logical set. ``spdx_id`` may be NULL (ORT custom LicenseRef-*),
-    which the evaluator treats as an empty/unknown expression.
+    which the evaluator treats as an empty/unknown expression. ``purl`` is the
+    component's ``purl_with_version`` — carried so a component-scoped exception
+    (c3) can be matched against the exact component being evaluated.
     """
     stmt = (
-        select(LicenseFinding.component_version_id, LicenseModel.spdx_id)
+        select(
+            LicenseFinding.component_version_id,
+            LicenseModel.spdx_id,
+            ComponentVersion.purl_with_version,
+        )
         .select_from(LicenseFinding)
         .join(LicenseModel, LicenseModel.id == LicenseFinding.license_id)
+        .join(
+            ComponentVersion,
+            ComponentVersion.id == LicenseFinding.component_version_id,
+        )
         .where(LicenseFinding.scan_id == scan_id)
         .distinct()
     )
     result = await session.execute(stmt)
-    return [(row[0], row[1]) for row in result.all()]
+    return [(row[0], row[1], row[2]) for row in result.all()]
 
 
 async def _count_forbidden_license_components_dynamic(
@@ -448,26 +466,28 @@ async def _count_forbidden_license_components_dynamic(
     posture), so a hostile SBOM can never hang or crash the gate.
     """
     rows = await _load_scan_license_rows(session, scan_id)
-    resolver = _make_policy_resolver(policy)
     strategy = dict(policy.compound_operator_strategy or {})
     unknown_posture = policy.unknown_license_category
 
-    # Memoise per distinct expression — the same license string recurs across
-    # many components in a real SBOM.
-    cache: dict[str | None, str] = {}
+    # Memoise per distinct (expression, purl) — the same license string recurs
+    # across many components, and the purl only changes the verdict for the rare
+    # component-scoped exception, so the cache still collapses the common case.
+    cache: dict[tuple[str | None, str | None], str] = {}
     forbidden_cv_ids: set[uuid.UUID] = set()
 
-    for cv_id, expression in rows:
-        if expression in cache:
-            category = cache[expression]
+    for cv_id, expression, purl in rows:
+        key = (expression, purl)
+        if key in cache:
+            category = cache[key]
         else:
+            resolver = _make_policy_resolver(policy, component_purl=purl)
             category = evaluate_expression(
                 expression,
                 resolve_id=resolver,
                 strategy=strategy,
                 unknown_category=unknown_posture,
             ).category
-            cache[expression] = category
+            cache[key] = category
         if category == "forbidden":
             forbidden_cv_ids.add(cv_id)
 
