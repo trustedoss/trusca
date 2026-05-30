@@ -159,6 +159,60 @@ export async function deleteTeamPolicy(teamId: string): Promise<void> {
   await api.delete(`/v1/license-policies/teams/${teamId}`);
 }
 
+/**
+ * Waive a single forbidden (or otherwise gated) license for one component.
+ *
+ * Backs the per-component "Waive" action on the Compliance tab. The backend
+ * endpoint is idempotent: re-POSTing the same ``spdx_id`` + ``component_purl``
+ * pair updates the existing exception (reason / expiry) rather than creating a
+ * duplicate. ``reason`` is mandatory; ``component_purl`` scopes the waiver to a
+ * single ``purl_with_version`` so unrelated components keep failing the gate.
+ *
+ * Returns the refreshed effective {@link LicensePolicyOut} so callers can seed
+ * the team-policy cache without a second round-trip.
+ */
+export interface AddLicenseExceptionIn {
+  spdx_id: string;
+  /** Mandatory free-text justification (backend rejects empty with 422). */
+  reason: string;
+  /** purl_with_version this waiver is scoped to. */
+  component_purl: string;
+  /** RFC 3339 datetime or null/absent → never expires. */
+  expires_at?: string | null;
+}
+
+export async function addTeamLicenseException(
+  teamId: string,
+  payload: AddLicenseExceptionIn,
+): Promise<LicensePolicyOut> {
+  const { data } = await api.post<LicensePolicyOut>(
+    `/v1/license-policies/teams/${teamId}/exceptions`,
+    payload,
+  );
+  return data;
+}
+
+/**
+ * Remove a per-component waiver (un-waive). The component falls back to its
+ * static classification, so a forbidden license starts failing the gate again.
+ * Returns the refreshed effective policy.
+ */
+export async function deleteTeamLicenseException(
+  teamId: string,
+  params: { spdx_id: string; component_purl: string },
+): Promise<LicensePolicyOut> {
+  const { data } = await api.delete<LicensePolicyOut>(
+    `/v1/license-policies/teams/${teamId}/exceptions`,
+    {
+      params: {
+        spdx_id: params.spdx_id,
+        component_purl: params.component_purl,
+      },
+    },
+  );
+  return data;
+}
+
 export async function getOrgPolicy(
   organizationId: string,
 ): Promise<LicensePolicyOut> {

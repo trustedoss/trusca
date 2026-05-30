@@ -46,6 +46,16 @@ vi.mock("@/features/projects/api/licensesApi", async () => {
   };
 });
 
+vi.mock("@/lib/licensePoliciesApi", async () => {
+  return {
+    // The waive strip reads the effective team policy; a 404 → null (no
+    // exceptions yet). Mutations are not exercised by the grid tests.
+    getTeamPolicy: vi.fn().mockRejectedValue(new Error("no team policy")),
+    addTeamLicenseException: vi.fn(),
+    deleteTeamLicenseException: vi.fn(),
+  };
+});
+
 vi.mock("react-virtuoso", () => ({
   Virtuoso: <T,>({
     data,
@@ -123,6 +133,24 @@ function renderTab(initialEntries: string[] = ["/projects/proj-1"]) {
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={initialEntries}>
         <ComplianceTab projectId="proj-1" projectName="Demo" />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
+function renderTabAsTeamAdmin(initialEntries: string[] = ["/projects/proj-1"]) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={initialEntries}>
+        <ComplianceTab
+          projectId="proj-1"
+          projectName="Demo"
+          teamId="00000000-0000-0000-0000-team00000001"
+          projectRole="team_admin"
+        />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -247,7 +275,9 @@ describe("ComplianceTab unified grid", () => {
       ]),
     );
     renderTab();
-    const r = await screen.findByTestId("compliance-row");
+    // The row is a container <div>; the drawer-open affordance is the inner
+    // button (the waive controls, themselves buttons, live alongside it).
+    const r = await screen.findByTestId("compliance-row-open");
     await userEvent.click(r);
 
     // LicenseDrawer renders inside a Sheet — we assert on the URL fragment
@@ -258,6 +288,59 @@ describe("ComplianceTab unified grid", () => {
       // Drawer mount → role="dialog" appears in the DOM.
       expect(screen.getAllByRole("dialog").length).toBeGreaterThan(0);
     });
+  });
+
+  it("renders a per-component waive action on forbidden rows with a purl", async () => {
+    mockedList.mockResolvedValue(
+      response([
+        row("GPL-2.0-only", {
+          category: "forbidden",
+          affected_component_count: 1,
+          affected_components: [
+            {
+              component_version_id: "cv-pyphen",
+              name: "pyphen",
+              version: "0.14.0",
+              purl: "pkg:pypi/pyphen@0.14.0",
+            },
+          ],
+        }),
+      ]),
+    );
+    renderTabAsTeamAdmin();
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("compliance-row-waive-strip"),
+      ).toBeInTheDocument();
+    });
+    // team_admin → the trigger is enabled (role-gated affordance present).
+    const trigger = await screen.findByTestId("license-waive-open");
+    expect(trigger).toBeEnabled();
+  });
+
+  it("omits the waive strip on allowed rows", async () => {
+    mockedList.mockResolvedValue(
+      response([
+        row("MIT", {
+          category: "allowed",
+          affected_components: [
+            {
+              component_version_id: "cv-mit",
+              name: "leftpad",
+              version: "1.0.0",
+              purl: "pkg:npm/leftpad@1.0.0",
+            },
+          ],
+        }),
+      ]),
+    );
+    renderTabAsTeamAdmin();
+
+    await screen.findByTestId("compliance-row");
+    expect(
+      screen.queryByTestId("compliance-row-waive-strip"),
+    ).not.toBeInTheDocument();
   });
 
   it("backward-compat: ?cview=obligations boots with has_obligations=true", async () => {
