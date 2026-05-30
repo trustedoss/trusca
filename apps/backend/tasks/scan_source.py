@@ -2259,10 +2259,10 @@ def _extract_spdx_ids(cdxgen_component: dict[str, Any]) -> list[tuple[str, str |
     license *list* in package metadata conventionally means "any one satisfies"
     (disjunctive). ``_classify_license_category`` then evaluates ``OR`` as
     least-restrictive, so e.g. a ``[GPL-2.0-or-later, LGPL-2.1-or-later,
-    MPL-1.1]`` set classifies as conditional, not forbidden (the pyphen case —
-    visible only when ``--fetch-license`` surfaces the full set). A single
-    id/expression passes through unchanged. Free-text ``name``-only entries are
-    skipped (they'd need a license-text scanner to map to SPDX).
+    MPL-1.1]`` set classifies as conditional, not forbidden — whenever cdxgen
+    emits the full multi-license set for a component. A single id/expression
+    passes through unchanged. Free-text ``name``-only entries are skipped
+    (they'd need a license-text scanner to map to SPDX).
 
     Returns ``[]`` or a single ``(combined, url)`` tuple. The combined string is
     bounded to the ``License.spdx_id`` column width (64); a longer one is
