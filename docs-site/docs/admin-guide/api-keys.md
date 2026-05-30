@@ -64,6 +64,7 @@ The key inherits the **role of the issuing user** at request time — there is n
 
 Keys support an **optional expiry (TTL)**. Pass `expires_in_days` (1–1825) when issuing and the key stops authenticating after that many days — a leaked CI key (pipeline log, forked-PR runner) then lapses on its own instead of living until manual revocation. Omit it for a non-expiring key (the legacy default). CI keys should set a TTL and rotate. A fine-grained `allowed_actions` taxonomy (`scan:trigger`, `scan:read`, `report:download`, …) is still on the roadmap.
 
+<!-- docs-uat: id=apikeys-create-ttl kind=shell ctx=host tier=manual waiver=example-host-and-jwt-placeholder -->
 ```bash
 curl -sS -X POST "https://trustedoss.example.com/v1/api-keys" \
   -H "Authorization: Bearer ${JWT}" -H "Content-Type: application/json" \

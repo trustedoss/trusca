@@ -64,6 +64,7 @@ Key는 요청 시점에 **발급한 사용자의 역할**을 상속합니다 —
 
 Key는 **선택적 만료(TTL)**를 지원합니다. 발급 시 `expires_in_days`(1–1825)를 지정하면 그만큼의 일수가 지난 뒤 인증이 거부됩니다 — 유출된 CI 키(파이프라인 로그, 포크 PR 러너)가 수동 폐기 없이 스스로 만료됩니다. 생략하면 만료 없는 Key(기존 기본값)가 됩니다. CI 키는 TTL을 설정하고 회전하는 것을 권장합니다. 세분화된 `allowed_actions` taxonomy(`scan:trigger`, `scan:read`, `report:download`, …)는 여전히 로드맵입니다.
 
+<!-- docs-uat: id=apikeys-create-ttl kind=shell ctx=host tier=manual waiver=example-host-and-jwt-placeholder -->
 ```bash
 curl -sS -X POST "https://trustedoss.example.com/v1/api-keys" \
   -H "Authorization: Bearer ${JWT}" -H "Content-Type: application/json" \
