@@ -501,3 +501,73 @@ async def test_dynamic_count_collapses_duplicate_findings(db_session: AsyncSessi
 
     assert result.gate == "fail"
     assert result.forbidden_license_count == 1
+
+
+# ---------------------------------------------------------------------------
+# c3 — component-scoped (purl) exceptions
+# ---------------------------------------------------------------------------
+
+
+async def test_purl_scoped_exception_waives_only_that_component(
+    db_session: AsyncSession,
+) -> None:
+    """A component-scoped exception removes only the matching component from the
+    forbidden count — another component with the SAME license still fails."""
+    from services.policy_gate import evaluate_gate
+
+    org, team, _user, project = await _seed_project_with_team(db_session)
+    scan = await make_scan(db_session, project=project, status="succeeded")
+    cv_waived = await _component_with_license(
+        db_session, scan=scan, spdx_id="GPL-3.0-only", category="forbidden"
+    )
+    await _component_with_license(
+        db_session, scan=scan, spdx_id="GPL-3.0-only", category="forbidden"
+    )
+    await _make_team_policy(
+        db_session,
+        org_id=org.id,
+        team_id=team.id,
+        license_exceptions=[
+            {
+                "spdx_id": "GPL-3.0-only",
+                "component_purl": cv_waived.purl_with_version,
+                "reason": "cdxgen misclassified — actually dual-licensed",
+            }
+        ],
+    )
+
+    result = await evaluate_gate(db_session, project.id)
+
+    # Only cv_waived is removed; the other GPL component still fails the gate.
+    assert result.forbidden_license_count == 1
+    assert result.gate == "fail"
+
+
+async def test_purl_scoped_exception_nonmatching_purl_does_not_waive(
+    db_session: AsyncSession,
+) -> None:
+    """A component-scoped exception whose purl matches no component waives nothing."""
+    from services.policy_gate import evaluate_gate
+
+    org, team, _user, project = await _seed_project_with_team(db_session)
+    scan = await make_scan(db_session, project=project, status="succeeded")
+    await _component_with_license(
+        db_session, scan=scan, spdx_id="GPL-3.0-only", category="forbidden"
+    )
+    await _make_team_policy(
+        db_session,
+        org_id=org.id,
+        team_id=team.id,
+        license_exceptions=[
+            {
+                "spdx_id": "GPL-3.0-only",
+                "component_purl": "pkg:pypi/not-present@9.9.9",
+                "reason": "scoped to a component not in this scan",
+            }
+        ],
+    )
+
+    result = await evaluate_gate(db_session, project.id)
+
+    assert result.forbidden_license_count == 1
+    assert result.gate == "fail"

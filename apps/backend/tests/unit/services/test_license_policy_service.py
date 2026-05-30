@@ -559,3 +559,121 @@ def test_effective_category_non_aware_datetime_expiry() -> None:
         license_exceptions=[{"spdx_id": "MIT", "reason": "ok", "expires_at": naive_future}],
     )
     assert effective_category("MIT", policy, "forbidden") == "allowed"
+
+
+# ---------------------------------------------------------------------------
+# effective_category — component-scoped (purl) exceptions (c3)
+# ---------------------------------------------------------------------------
+
+
+def test_effective_category_component_scoped_matches_only_that_purl() -> None:
+    policy = _FakePolicy(
+        license_exceptions=[
+            {
+                "spdx_id": "GPL-2.0-or-later",
+                "component_purl": "pkg:pypi/pyphen@0.17.2",
+                "reason": "cdxgen misclassified",
+            }
+        ],
+    )
+    # exact purl → waived
+    assert (
+        effective_category(
+            "GPL-2.0-or-later",
+            policy,
+            "forbidden",
+            component_purl="pkg:pypi/pyphen@0.17.2",
+        )
+        == "allowed"
+    )
+    # different component → still forbidden
+    assert (
+        effective_category(
+            "GPL-2.0-or-later", policy, "forbidden", component_purl="pkg:pypi/x@1"
+        )
+        == "forbidden"
+    )
+    # no purl in hand (c1 caller) → component-scoped exception skipped
+    assert effective_category("GPL-2.0-or-later", policy, "forbidden") == "forbidden"
+
+
+# ---------------------------------------------------------------------------
+# add / remove license exception (the waive shortcut)
+# ---------------------------------------------------------------------------
+
+
+async def test_add_license_exception_creates_and_is_idempotent(
+    db_session: AsyncSession,
+) -> None:
+    from schemas.license_policy import LicenseException
+    from services.license_policy_service import add_license_exception
+
+    _org, team, _admin, actor = await _team_admin_graph(db_session)
+    exc = LicenseException(
+        spdx_id="GPL-2.0-or-later",
+        reason="pyphen misclassified",
+        component_purl="pkg:pypi/pyphen@0.17.2",
+    )
+    row = await add_license_exception(db_session, actor, team_id=team.id, exception=exc)
+    assert len(row.license_exceptions) == 1
+
+    # Repeat with same (spdx_id, purl) → updated in place, not duplicated.
+    exc2 = LicenseException(
+        spdx_id="GPL-2.0-or-later",
+        reason="updated reason",
+        component_purl="pkg:pypi/pyphen@0.17.2",
+    )
+    row = await add_license_exception(db_session, actor, team_id=team.id, exception=exc2)
+    matches = [
+        e
+        for e in row.license_exceptions
+        if e["spdx_id"] == "GPL-2.0-or-later"
+        and e["component_purl"] == "pkg:pypi/pyphen@0.17.2"
+    ]
+    assert len(matches) == 1
+    assert matches[0]["reason"] == "updated reason"
+
+
+async def test_remove_license_exception(db_session: AsyncSession) -> None:
+    from schemas.license_policy import LicenseException
+    from services.license_policy_service import (
+        add_license_exception,
+        remove_license_exception,
+    )
+
+    _org, team, _admin, actor = await _team_admin_graph(db_session)
+    exc = LicenseException(spdx_id="MPL-1.1", reason="ok", component_purl="pkg:pypi/p@1")
+    await add_license_exception(db_session, actor, team_id=team.id, exception=exc)
+    row = await remove_license_exception(
+        db_session,
+        actor,
+        team_id=team.id,
+        spdx_id="MPL-1.1",
+        component_purl="pkg:pypi/p@1",
+    )
+    assert row.license_exceptions == []
+
+
+async def test_add_license_exception_developer_forbidden(
+    db_session: AsyncSession,
+) -> None:
+    import pytest
+
+    from schemas.license_policy import LicenseException
+    from services.license_policy_service import (
+        LicensePolicyForbidden,
+        add_license_exception,
+    )
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    dev = await make_user(db_session)
+    await make_membership(db_session, user=dev, team=team, role="developer")
+    actor = principal_for(dev, team_ids=[team.id], role="developer")
+    with pytest.raises(LicensePolicyForbidden):
+        await add_license_exception(
+            db_session,
+            actor,
+            team_id=team.id,
+            exception=LicenseException(spdx_id="GPL-2.0-or-later", reason="x"),
+        )

@@ -25,6 +25,11 @@
   "DELETE /v1/license-policies/teams/{team_id}": [
     "team_id"
   ],
+  "DELETE /v1/license-policies/teams/{team_id}/exceptions": [
+    "component_purl",
+    "spdx_id",
+    "team_id"
+  ],
   "DELETE /v1/projects/{project_id}": [
     "project_id"
   ],
@@ -387,6 +392,9 @@
   ],
   "POST /v1/github-app-credentials/{credential_id}/installations": [
     "credential_id"
+  ],
+  "POST /v1/license-policies/teams/{team_id}/exceptions": [
+    "team_id"
   ],
   "POST /v1/projects": [],
   "POST /v1/projects/{project_id}/remediation/npm/dry-run": [
