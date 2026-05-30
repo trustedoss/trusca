@@ -745,6 +745,42 @@ def test_extract_spdx_ids_skips_oversized_expression() -> None:
     assert _extract_spdx_ids(component) == []
 
 
+def test_extract_spdx_ids_joins_multiple_licenses_with_or() -> None:
+    """Multiple declared licenses on one component → joined with OR (disjunctive).
+
+    This is the pyphen case once ``--fetch-license`` surfaces the full set:
+    GPL/LGPL/MPL is "pick one", so it must classify conditional, not forbidden.
+    """
+    from tasks.scan_source import _classify_license_category, _extract_spdx_ids
+
+    component = {
+        "licenses": [
+            {"license": {"id": "GPL-2.0-or-later"}},
+            {"license": {"id": "LGPL-2.1-or-later"}},
+            {"license": {"id": "MPL-1.1"}},
+        ]
+    }
+    extracted = _extract_spdx_ids(component)
+    assert extracted == [
+        ("GPL-2.0-or-later OR LGPL-2.1-or-later OR MPL-1.1", None),
+    ]
+    # And the disjunctive set resolves to conditional (OR = least-restrictive).
+    assert _classify_license_category(extracted[0][0]) == "conditional"
+
+
+def test_extract_spdx_ids_keeps_first_reference_url() -> None:
+    """When joining multiple licenses, the first available url is kept."""
+    from tasks.scan_source import _extract_spdx_ids
+
+    component = {
+        "licenses": [
+            {"license": {"id": "MIT", "url": "https://mit"}},
+            {"license": {"id": "Apache-2.0", "url": "https://apache"}},
+        ]
+    }
+    assert _extract_spdx_ids(component) == [("MIT OR Apache-2.0", "https://mit")]
+
+
 def test_extract_spdx_ids_skips_freetext_license_name() -> None:
     """A `name`-only license entry has no SPDX id we can trust."""
     from tasks.scan_source import _extract_spdx_ids
