@@ -46,6 +46,16 @@ class APIKeyCreateIn(BaseModel):
     scope: APIKeyScope
     team_id: UUID | None = None
     project_id: UUID | None = None
+    expires_in_days: int | None = Field(
+        default=None,
+        ge=1,
+        le=1825,  # 5 years
+        description=(
+            "Optional TTL in days. The key stops authenticating after this many "
+            "days. Omit for a non-expiring key (CI keys should set one and "
+            "rotate). Max 1825 (5 years)."
+        ),
+    )
 
 
 class APIKeyCreateOut(BaseModel):
@@ -64,6 +74,7 @@ class APIKeyCreateOut(BaseModel):
     project_id: UUID | None
     created_by_user_id: UUID | None
     created_at: datetime
+    expires_at: datetime | None = None
     raw_key: str = Field(
         ...,
         description=(
@@ -87,6 +98,7 @@ class APIKeyListItem(BaseModel):
     created_at: datetime
     last_used_at: datetime | None
     revoked_at: datetime | None
+    expires_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
