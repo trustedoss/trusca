@@ -62,7 +62,14 @@ tos_<8-char-prefix>_<32-char-secret>
 
 Key는 요청 시점에 **발급한 사용자의 역할**을 상속합니다 — v0.10.0에는 별도의 "effective role"이나 "allowed actions" 목록이 없습니다. 권한 검사는 JWT로 인증된 요청과 동일한 RBAC 코드 경로를 따릅니다.
 
-Key는 현재 릴리스에서 **만료되지 않습니다**. 수동으로 폐기될 때까지 유효합니다. 키별 만료 프리셋과 세분화된 `allowed_actions` taxonomy(`scan:trigger`, `scan:read`, `report:download`, …)는 로드맵입니다.
+Key는 **선택적 만료(TTL)**를 지원합니다. 발급 시 `expires_in_days`(1–1825)를 지정하면 그만큼의 일수가 지난 뒤 인증이 거부됩니다 — 유출된 CI 키(파이프라인 로그, 포크 PR 러너)가 수동 폐기 없이 스스로 만료됩니다. 생략하면 만료 없는 Key(기존 기본값)가 됩니다. CI 키는 TTL을 설정하고 회전하는 것을 권장합니다. 세분화된 `allowed_actions` taxonomy(`scan:trigger`, `scan:read`, `report:download`, …)는 여전히 로드맵입니다.
+
+<!-- docs-uat: id=apikeys-create-ttl kind=shell ctx=host tier=manual waiver=example-host-and-jwt-placeholder -->
+```bash
+curl -sS -X POST "https://trustedoss.example.com/v1/api-keys" \
+  -H "Authorization: Bearer ${JWT}" -H "Content-Type: application/json" \
+  -d '{"name": "ci-key", "scope": "project", "project_id": "<uuid>", "expires_in_days": 90}'
+```
 
 ## Key 발급
 
@@ -121,7 +128,7 @@ curl -sS -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
 
 ## Key 목록
 
-UI는 라벨, prefix, scope(`org` / `team` / `project`), 발급자, 생성 시각, 마지막 사용 시각, 폐기 상태를 표시합니다. 기존 Key의 secret을 복구할 방법은 없습니다 — 의도된 설계입니다. 키별 역할, 허용 동작, 만료, 마지막 사용 IP 컬럼은 로드맵입니다(해당 모델 컬럼들이 아직 없음).
+UI는 라벨, prefix, scope(`org` / `team` / `project`), 발급자, 생성 시각, 마지막 사용 시각, 만료(`expires_at`, 만료 없으면 null), 폐기 상태를 표시합니다. 기존 Key의 secret을 복구할 방법은 없습니다 — 의도된 설계입니다. 키별 역할, 허용 동작, 마지막 사용 IP 컬럼은 로드맵입니다(해당 모델 컬럼들이 아직 없음).
 
 ## 감사 로그
 
@@ -199,7 +206,7 @@ docker-compose -f docker-compose.yml logs --tail=2000 backend \
 다음 기능들은 초기 문서에서 언급되지만 현재 릴리스에서는 **출시되지 않았습니다**.
 
 - 키별 역할 오버라이드(`effective_role`)와 세분화된 `allowed_actions` taxonomy(`scan:trigger`, `scan:read`, `report:download`, `webhook:receive`, `*`). 현재 Key는 발급자 역할과 전체 RBAC 표면을 상속.
-- 키별 `expires_at` 필드 + New API key 폼의 30 / 90 / 180 / 365일 만료 프리셋. 현재 Key는 만료 없이 폐기될 때까지 유효.
+- New API key 폼의 30 / 90 / 180 / 365일 만료 프리셋 (API의 `expires_in_days`/`expires_at`는 이미 구현됨 — UI 프리셋만 로드맵).
 - `actor_kind = api_key`인 요청별 `api_key.use` 감사 이벤트. 현재 Key 라이프사이클(ORM 리스너의 insert와 명시적 `api_key.revoked` 액션)은 감사되지만 요청별 사용은 구조화된 로그에만 캡처됨.
 - 목록의 `last_used_ip` 컬럼.
 - brute-force secret-mismatch 알림(단일 Key가 60초 내 5회 미스 시 Slack 알림).

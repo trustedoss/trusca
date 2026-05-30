@@ -49,7 +49,7 @@ from __future__ import annotations
 
 import secrets
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import structlog
 from sqlalchemy import and_, func, or_, select
@@ -262,6 +262,7 @@ async def issue_api_key(
     scope: str,
     team_id: uuid.UUID | None,
     project_id: uuid.UUID | None,
+    expires_in_days: int | None = None,
 ) -> tuple[APIKey, str]:
     """
     Create a new API key and return ``(row, plaintext)``.
@@ -324,6 +325,12 @@ async def issue_api_key(
     # paths can do team-membership checks without joining projects.
     effective_team_id = team_id if scope != "project" else project_team_id
 
+    expires_at = (
+        _now() + timedelta(days=expires_in_days)
+        if expires_in_days is not None
+        else None
+    )
+
     # ----- Generate + persist with collision retry -----
     last_error: Exception | None = None
     for attempt in range(_PREFIX_RETRIES):
@@ -340,6 +347,7 @@ async def issue_api_key(
             team_id=effective_team_id,
             project_id=project_id,
             created_by_user_id=actor.id,
+            expires_at=expires_at,
         )
         session.add(row)
         try:
@@ -549,6 +557,13 @@ async def authenticate_api_key(
                 and_(
                     APIKey.key_prefix == key_prefix,
                     APIKey.revoked_at.is_(None),
+                    # Expired keys are excluded at the query layer (not after the
+                    # bcrypt verify) so an expired key takes the same "no row →
+                    # dummy bcrypt" timing path as a revoked one.
+                    or_(
+                        APIKey.expires_at.is_(None),
+                        APIKey.expires_at > _now(),
+                    ),
                 )
             )
         )

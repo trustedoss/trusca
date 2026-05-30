@@ -176,6 +176,79 @@ async def test_issue_org_scope_round_trips_for_super_admin(db_session: AsyncSess
     assert verify_password(plaintext, row.key_hash) is True
 
 
+async def test_issue_with_ttl_sets_expires_at(db_session: AsyncSession) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from services.api_key_service import issue_api_key
+
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+    row, _ = await issue_api_key(
+        db_session,
+        actor,
+        name="ci-ttl",
+        scope="org",
+        team_id=None,
+        project_id=None,
+        expires_in_days=30,
+    )
+    assert row.expires_at is not None
+    delta = row.expires_at - datetime.now(UTC)
+    assert timedelta(days=29) < delta < timedelta(days=31)
+
+
+async def test_issue_without_ttl_has_null_expiry(db_session: AsyncSession) -> None:
+    from services.api_key_service import issue_api_key
+
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+    row, _ = await issue_api_key(
+        db_session, actor, name="ci-no-ttl", scope="org", team_id=None, project_id=None
+    )
+    assert row.expires_at is None  # NULL = never expires (legacy behaviour)
+
+
+async def test_authenticate_accepts_unexpired_key(db_session: AsyncSession) -> None:
+    from services.api_key_service import authenticate_api_key, issue_api_key
+
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+    row, plaintext = await issue_api_key(
+        db_session,
+        actor,
+        name="ci-live",
+        scope="org",
+        team_id=None,
+        project_id=None,
+        expires_in_days=30,
+    )
+    authed = await authenticate_api_key(db_session, plaintext)
+    assert authed is not None
+    assert authed.id == row.id
+
+
+async def test_authenticate_rejects_expired_key(db_session: AsyncSession) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from services.api_key_service import authenticate_api_key, issue_api_key
+
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+    row, plaintext = await issue_api_key(
+        db_session,
+        actor,
+        name="ci-expired",
+        scope="org",
+        team_id=None,
+        project_id=None,
+        expires_in_days=1,
+    )
+    # Force the key past its expiry, then re-authenticate.
+    row.expires_at = datetime.now(UTC) - timedelta(days=1)
+    await db_session.commit()
+    assert await authenticate_api_key(db_session, plaintext) is None
+
+
 async def test_issue_team_scope_round_trips_for_team_admin(db_session: AsyncSession) -> None:
     from services.api_key_service import issue_api_key
 
