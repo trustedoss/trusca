@@ -227,17 +227,29 @@ async def add_license_exception(
     """
     org_id = await _resolve_team_org(session, team_id)
     if not _can_admin_team(actor, team_id):
+        log.warning(
+            "license_policy.exception_denied",
+            actor_id=str(actor.id),
+            team_id=str(team_id),
+            spdx_id=exception.spdx_id,
+            action="add",
+        )
         raise LicensePolicyForbidden(
             f"actor lacks permission to write the license policy for team {team_id}"
         )
     bind_audit_team(team_id)
 
+    # FOR UPDATE locks the existing policy row so two concurrent waives cannot
+    # read the same license_exceptions list and last-commit-wins (lost update on
+    # a governance record). Harmless no-op when the row does not exist yet.
     row = (
         await session.execute(
-            select(LicensePolicy).where(
+            select(LicensePolicy)
+            .where(
                 LicensePolicy.organization_id == org_id,
                 LicensePolicy.team_id == team_id,
             )
+            .with_for_update()
         )
     ).scalar_one_or_none()
 
@@ -268,7 +280,14 @@ async def add_license_exception(
         row.license_exceptions = excs
         row.updated_at = _now()
 
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError as exc:
+        # Concurrent create of the same (org, team) policy lost the unique race.
+        await session.rollback()
+        raise LicensePolicyConflict(
+            f"license policy for team {team_id} was concurrently created; retry"
+        ) from exc
     await session.refresh(row)
     log.info(
         "license_policy.exception_add",
@@ -296,6 +315,13 @@ async def remove_license_exception(
     """
     org_id = await _resolve_team_org(session, team_id)
     if not _can_admin_team(actor, team_id):
+        log.warning(
+            "license_policy.exception_denied",
+            actor_id=str(actor.id),
+            team_id=str(team_id),
+            spdx_id=spdx_id,
+            action="remove",
+        )
         raise LicensePolicyForbidden(
             f"actor lacks permission to write the license policy for team {team_id}"
         )
@@ -303,10 +329,12 @@ async def remove_license_exception(
 
     row = (
         await session.execute(
-            select(LicensePolicy).where(
+            select(LicensePolicy)
+            .where(
                 LicensePolicy.organization_id == org_id,
                 LicensePolicy.team_id == team_id,
             )
+            .with_for_update()
         )
     ).scalar_one_or_none()
     if row is None:
