@@ -38,6 +38,12 @@ jobs:
       # real toolchain (cdxgen / Trivy) — the whole point of dogfooding. The
       # e2e job uses `mock` for speed; here we want true detection on our repo.
       TRUSTEDOSS_SCAN_BACKEND: real
+      # Opt-in: let cdxgen pull fuller license metadata from the registry so a
+      # package's full declared set surfaces (e.g. pyphen's GPL/LGPL/MPL, which
+      # _extract_spdx_ids then joins with OR). The runner has network egress, so
+      # the air-gapped concern does not apply here. Testing whether this turns
+      # the pyphen forbidden gate into a conditional pass.
+      CDXGEN_FETCH_LICENSE: "true"
       # Pin so the api + worker sign/verify the same JWTs across containers.
       SECRET_KEY: dogfood-ci-secret-key-min-32-chars-padding-aabbcc
       # The runner has a single egress IP; the bootstrap below does several

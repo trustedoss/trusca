@@ -49,6 +49,7 @@ Gradle 8 compatibility (chore PR #5 Part C):
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess  # noqa: S404 — running a vetted local binary, not user input
 from dataclasses import dataclass
@@ -157,6 +158,14 @@ def run_cdxgen(
         "1.5",
         str(source_dir),
     ]
+    # Opt-in registry license enrichment. OFF by default: --fetch-license makes
+    # cdxgen call the npm/PyPI registry per package to pull richer license
+    # metadata (just JSON — no code download/exec), which surfaces a package's
+    # *full* declared license set (e.g. pyphen's GPL/LGPL/MPL) instead of a
+    # single collapsed id. It REQUIRES network egress, so it breaks air-gapped
+    # scans — only enable it where the worker has registry access.
+    if os.getenv("CDXGEN_FETCH_LICENSE", "").strip().lower() in ("1", "true", "yes", "on"):
+        cmd.insert(1, "--fetch-license")
     env = _build_cdxgen_env(source_dir=source_dir, output_dir=output_dir, verbose=verbose)
     log.info(
         "cdxgen_start",

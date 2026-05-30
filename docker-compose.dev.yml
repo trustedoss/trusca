@@ -44,6 +44,10 @@ x-backend-env: &backend-env
   # instead of forking a 5-60min Java/Node pipeline). See
   # apps/backend/integrations/__init__.py for the dispatch contract.
   TRUSTEDOSS_SCAN_BACKEND: ${TRUSTEDOSS_SCAN_BACKEND:-real}
+  # Opt-in cdxgen registry license enrichment (--fetch-license). OFF by default
+  # (air-gapped-safe). When "true" the worker pulls fuller license metadata from
+  # the npm/PyPI registry — needs network egress. See integrations/cdxgen.py.
+  CDXGEN_FETCH_LICENSE: ${CDXGEN_FETCH_LICENSE:-}
   # Disable slowapi 5/min login limiter when set (e2e CI only). Empty default
   # keeps the limiter enabled in dev / prod. See core/ratelimit.py.
   RATELIMIT_DISABLED: ${RATELIMIT_DISABLED:-}

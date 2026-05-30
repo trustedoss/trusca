@@ -2254,37 +2254,45 @@ def _extract_spdx_ids(cdxgen_component: dict[str, Any]) -> list[tuple[str, str |
       - ``{"license": {"name": "<free-text>", "url": "<reference>"}}``
       - ``{"expression": "<spdx-expression>"}``
 
-    We accept the first form (preferred — exact SPDX), accept the third
-    (including compound ``AND`` / ``OR`` / ``WITH`` expressions — they are
-    resolved correctly by :func:`_classify_license_category` via the shared
-    evaluator), and skip free-text license names — those would require a
-    license-text identifier scanner (scancode) to map to SPDX, which is out of
-    scope for the cdxgen fast-path.
+    We collect the SPDX ids / expressions across all entries and, when a
+    component declares **more than one** license, join them with ``OR`` — a
+    license *list* in package metadata conventionally means "any one satisfies"
+    (disjunctive). ``_classify_license_category`` then evaluates ``OR`` as
+    least-restrictive, so e.g. a ``[GPL-2.0-or-later, LGPL-2.1-or-later,
+    MPL-1.1]`` set classifies as conditional, not forbidden (the pyphen case —
+    visible only when ``--fetch-license`` surfaces the full set). A single
+    id/expression passes through unchanged. Free-text ``name``-only entries are
+    skipped (they'd need a license-text scanner to map to SPDX).
+
+    Returns ``[]`` or a single ``(combined, url)`` tuple. The combined string is
+    bounded to the ``License.spdx_id`` column width (64); a longer one is
+    skipped (rare).
     """
-    out: list[tuple[str, str | None]] = []
     licenses = cdxgen_component.get("licenses") or []
     if not isinstance(licenses, list):
-        return out
+        return []
+    ids: list[str] = []
+    ref_url: str | None = None
     for entry in licenses:
         if not isinstance(entry, dict):
             continue
         lic = entry.get("license") or {}
         if isinstance(lic, dict):
             spdx = lic.get("id")
-            url = lic.get("url")
             if isinstance(spdx, str) and spdx:
-                out.append((spdx, url if isinstance(url, str) else None))
+                ids.append(spdx)
+                if ref_url is None and isinstance(lic.get("url"), str):
+                    ref_url = lic["url"]
                 continue
         expression = entry.get("expression")
-        if isinstance(expression, str):
-            expr = expression.strip()
-            # Keep compound expressions too (previously dropped, which silently
-            # lost a package's disjunctive license). Bound to the License.spdx_id
-            # column width (64); a longer expression is skipped (rare, and the
-            # column is the natural key). The classifier evaluates OR as
-            # least-restrictive so a disjunctive expr is not over-flagged.
-            if expr and len(expr) <= 64:
-                out.append((expr, None))
+        if isinstance(expression, str) and expression.strip():
+            ids.append(expression.strip())
+    if not ids:
+        return []
+    combined = ids[0] if len(ids) == 1 else " OR ".join(ids)
+    out: list[tuple[str, str | None]] = []
+    if len(combined) <= 64:
+        out.append((combined, ref_url))
     return out
 
 
