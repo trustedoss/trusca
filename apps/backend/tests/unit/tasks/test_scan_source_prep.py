@@ -667,9 +667,10 @@ def test_classify_license_category_unknown_for_unmapped(spdx_id: str | None) -> 
 @pytest.mark.parametrize(
     ("spdx_id", "expected"),
     [
-        # Compound expressions → most-restrictive recognised operand
-        # (forbidden > conditional > allowed). Fixtures e2e: scancode emits these
-        # for multi-license files and they must not degrade to 'unknown'.
+        # Compound expressions are resolved with correct per-operator semantics
+        # (via services.license_expression): AND/WITH = most-restrictive,
+        # OR = LEAST-restrictive ("either license satisfies"). They must not
+        # degrade to 'unknown'.
         ("GPL-3.0-or-later AND GPL-3.0-only", "forbidden"),
         ("MIT AND ISC AND BSD-3-Clause", "allowed"),
         ("MIT OR Apache-2.0", "allowed"),
@@ -677,6 +678,13 @@ def test_classify_license_category_unknown_for_unmapped(spdx_id: str | None) -> 
         ("(MIT OR Apache-2.0) AND GPL-3.0-only", "forbidden"),
         ("Apache-2.0 WITH LLVM-exception", "allowed"),
         ("MPL-2.0 OR LGPL-2.1-or-later", "conditional"),
+        # OR is disjunctive (pick one): a forbidden operand does NOT poison the
+        # expression when a non-forbidden alternative exists. Regression for the
+        # dogfood finding (pyphen: GPL-2.0-or-later OR LGPL-2.1+ OR MPL-1.1 was
+        # wrongly flagged forbidden when OR was treated like AND).
+        ("GPL-2.0-or-later OR MPL-1.1", "conditional"),
+        ("GPL-2.0-or-later OR LGPL-2.1-or-later OR MPL-1.1", "conditional"),
+        ("GPL-3.0-only OR MIT", "allowed"),
         # No recognised operand → still unknown.
         ("Custom-A AND Custom-B", "unknown"),
     ],
@@ -715,17 +723,25 @@ def test_extract_spdx_ids_accepts_simple_expression() -> None:
     assert _extract_spdx_ids(component) == [("Apache-2.0", None)]
 
 
-def test_extract_spdx_ids_skips_compound_expression() -> None:
-    """`MIT OR Apache-2.0` requires an SPDX expression parser — skip it.
+def test_extract_spdx_ids_keeps_compound_expression() -> None:
+    """A compound SPDX expression is now KEPT (previously dropped).
 
-    cdxgen-fast-path scope: declared-from-metadata only. Compound
-    expressions on third-party deps are intentionally not split here; the
-    scancode first-party stage (PR-A2) emits per-file detected findings
-    separately.
+    Dropping it silently lost a package's disjunctive license (the dogfood
+    pyphen finding). It is stored as-is and resolved by
+    ``_classify_license_category`` with correct OR=least-restrictive semantics.
     """
     from tasks.scan_source import _extract_spdx_ids
 
     component = {"licenses": [{"expression": "MIT OR Apache-2.0"}]}
+    assert _extract_spdx_ids(component) == [("MIT OR Apache-2.0", None)]
+
+
+def test_extract_spdx_ids_skips_oversized_expression() -> None:
+    """An expression longer than the License.spdx_id column (64) is skipped."""
+    from tasks.scan_source import _extract_spdx_ids
+
+    long_expr = " OR ".join(["GPL-3.0-or-later"] * 10)  # > 64 chars
+    component = {"licenses": [{"expression": long_expr}]}
     assert _extract_spdx_ids(component) == []
 
 
