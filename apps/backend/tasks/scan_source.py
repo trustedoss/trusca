@@ -110,6 +110,7 @@ from models import (
     VulnerabilityFinding,
 )
 from services.component_approval_service import auto_create_pending_approvals
+from services.license_expression import evaluate_expression
 from services.source_archive_service import (
     SourceArchiveError,
     delete_archive,
@@ -2221,28 +2222,27 @@ def _classify_license_category(spdx_id: str | None) -> str:
 
     A single id is a direct dict lookup. A *compound* SPDX expression
     (``GPL-3.0-or-later AND GPL-3.0-only``, ``MIT OR Apache-2.0``,
-    ``Apache-2.0 WITH LLVM-exception``) is split into its operand license ids
-    and classified as the **most restrictive** operand
-    (forbidden > conditional > allowed). This ensures a compound that contains a
-    forbidden term (e.g. any GPL) is itself flagged forbidden rather than
-    silently degrading to ``unknown`` — the fixtures e2e showed scancode emits
-    such compounds for multi-license files. Returns ``unknown`` only when no
-    operand is recognised.
+    ``Apache-2.0 WITH LLVM-exception``) is resolved by the shared
+    :func:`services.license_expression.evaluate_expression`, which applies the
+    correct per-operator semantics: ``OR`` is **least-restrictive** (a
+    disjunctive "either license satisfies" — e.g. ``GPL-2.0-or-later OR
+    MPL-1.1`` is ``conditional``, NOT forbidden), while ``AND`` / ``WITH`` are
+    **most-restrictive**. The previous split-and-take-most-restrictive logic
+    wrongly treated ``OR`` like ``AND`` and flagged disjunctive multi-licensed
+    packages as forbidden. Static catalog is the per-operand resolver; a miss
+    resolves to ``unknown``.
     """
     if not spdx_id:
         return "unknown"
     direct = _LICENSE_CATEGORY_DEFAULTS.get(spdx_id)
     if direct is not None:
         return direct
-    # Compound expression: split on boolean/exception operators + parentheses,
-    # classify each operand, keep the most restrictive recognised category.
-    tokens = re.split(r"\s+(?:AND|OR|WITH)\s+|[()]", spdx_id)
-    best = "unknown"
-    for tok in tokens:
-        cat = _LICENSE_CATEGORY_DEFAULTS.get(tok.strip())
-        if cat and _CATEGORY_RANK[cat] > _CATEGORY_RANK[best]:
-            best = cat
-    return best
+    result = evaluate_expression(
+        spdx_id,
+        resolve_id=lambda tok: _LICENSE_CATEGORY_DEFAULTS.get(tok, "unknown"),
+        unknown_category="unknown",
+    )
+    return result.category
 
 
 def _extract_spdx_ids(cdxgen_component: dict[str, Any]) -> list[tuple[str, str | None]]:
@@ -2254,11 +2254,12 @@ def _extract_spdx_ids(cdxgen_component: dict[str, Any]) -> list[tuple[str, str |
       - ``{"license": {"name": "<free-text>", "url": "<reference>"}}``
       - ``{"expression": "<spdx-expression>"}``
 
-    We accept the first form (preferred — exact SPDX), accept the third when
-    it parses as a single SPDX id (no AND/OR/WITH), and skip free-text
-    license names — those would require a license-text identifier scanner
-    (scancode) to map to SPDX, which is out of scope for the cdxgen
-    fast-path.
+    We accept the first form (preferred — exact SPDX), accept the third
+    (including compound ``AND`` / ``OR`` / ``WITH`` expressions — they are
+    resolved correctly by :func:`_classify_license_category` via the shared
+    evaluator), and skip free-text license names — those would require a
+    license-text identifier scanner (scancode) to map to SPDX, which is out of
+    scope for the cdxgen fast-path.
     """
     out: list[tuple[str, str | None]] = []
     licenses = cdxgen_component.get("licenses") or []
@@ -2275,10 +2276,15 @@ def _extract_spdx_ids(cdxgen_component: dict[str, Any]) -> list[tuple[str, str |
                 out.append((spdx, url if isinstance(url, str) else None))
                 continue
         expression = entry.get("expression")
-        if isinstance(expression, str) and expression and not any(
-            kw in expression for kw in (" AND ", " OR ", " WITH ")
-        ):
-            out.append((expression.strip(), None))
+        if isinstance(expression, str):
+            expr = expression.strip()
+            # Keep compound expressions too (previously dropped, which silently
+            # lost a package's disjunctive license). Bound to the License.spdx_id
+            # column width (64); a longer expression is skipped (rare, and the
+            # column is the natural key). The classifier evaluates OR as
+            # least-restrictive so a disjunctive expr is not over-flagged.
+            if expr and len(expr) <= 64:
+                out.append((expr, None))
     return out
 
 
