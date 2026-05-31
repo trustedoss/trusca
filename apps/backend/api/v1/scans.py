@@ -26,6 +26,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response, status
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.api_key_auth import require_role_or_api_key
 from core.config import workspace_root
 from core.db import get_db
 from core.errors import problem_response
@@ -37,6 +38,7 @@ from services.admin_scan_service import (
 )
 from services.scan_service import (
     ScanError,
+    delete_scan,
     get_scan,
     list_scans_for_actor,
     list_scans_for_project,
@@ -137,7 +139,9 @@ async def get_scan_endpoint(
     request: Request,
     scan_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    # CI scan-action polls this endpoint with a tos_ API key while waiting for
+    # the scan to reach a terminal state — accept either the key or a JWT.
+    actor: CurrentUser = Depends(require_role_or_api_key("developer")),
 ) -> Response:
     try:
         scan = await get_scan(session, scan_id=scan_id, actor=actor)
@@ -181,11 +185,16 @@ def _scan_log_not_found_response(
         scan_id=str(scan_id_for_log),
         reason=reason,
     )
+    # Canonical instance string — using the literal request path here would
+    # echo the scan_id back, defeating the existence-hide contract that
+    # test_404_envelope_is_byte_identical_across_miss_paths gates. The route
+    # pattern is the same across (a) cross-team, (b) file-missing, and (c)
+    # random-uuid miss paths.
     return problem_response(
         status_code=status.HTTP_404_NOT_FOUND,
         title="Scan log not found",
         detail="No scan log is available for this scan id.",
-        instance=request.url.path,
+        instance="/v1/scans/{scan_id}/log",
     )
 
 
@@ -347,6 +356,61 @@ async def cancel_scan_endpoint(
         status_code=status.HTTP_200_OK,
         media_type="application/json",
     )
+
+
+# ---------------------------------------------------------------------------
+# DELETE /v1/scans/{scan_id}  (scan-retention Layer 3 — manual reclaim)
+# ---------------------------------------------------------------------------
+
+
+@router.delete(
+    "/scans/{scan_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a terminal scan and its findings (own-team scans only)",
+    responses={
+        204: {"description": "Scan deleted (cascade removed its findings)."},
+        404: {"description": "Scan not found, or not visible to the caller."},
+        409: {
+            "description": (
+                "Scan is active (cancel it first) or carries a release label "
+                "(pass ``force=true`` to delete)."
+            )
+        },
+    },
+)
+async def delete_scan_endpoint(
+    request: Request,
+    scan_id: uuid.UUID,
+    force: bool = Query(
+        default=False,
+        description=(
+            "Delete even when the scan carries an explicit metadata.release "
+            "label. Release-labelled snapshots are immutable by default."
+        ),
+    ),
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_role("developer")),
+) -> Response:
+    """Hard-delete a terminal scan and (via cascade) its findings / components.
+
+    DT-style retention reclaims most stale scans automatically; this is the
+    manual escape hatch. Auth: any team member (``developer``+). The owning-team
+    check lives in the service (``delete_scan``), which existence-hides other
+    teams' scans as 404. Active scans (queued/running) return 409 — cancel
+    first. A release-labelled scan returns 409 unless ``force=true``.
+    """
+    try:
+        await delete_scan(session, scan_id=scan_id, actor=actor, force=force)
+    except ScanError as exc:
+        return _problem_for_scan_error(request, exc)
+
+    log.warning(
+        "scan.delete",
+        actor_id=str(actor.id),
+        scan_id=str(scan_id),
+        forced=bool(force),
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 # ---------------------------------------------------------------------------

@@ -112,6 +112,7 @@ async def create_api_key_endpoint(
             scope=payload.scope,
             team_id=payload.team_id,
             project_id=payload.project_id,
+            expires_in_days=payload.expires_in_days,
         )
     except APIKeyError as exc:
         return _problem_for_api_key_error(request, exc)
@@ -125,6 +126,7 @@ async def create_api_key_endpoint(
         project_id=row.project_id,
         created_by_user_id=row.created_by_user_id,
         created_at=row.created_at,
+        expires_at=row.expires_at,
         raw_key=plaintext,
     )
     # Drop the plaintext local immediately after we hand the response back.

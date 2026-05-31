@@ -4,6 +4,9 @@ import {
   KeyRound,
   LayoutDashboard,
   LogOut,
+  Menu,
+  PanelLeft,
+  PanelLeftClose,
   Scale,
   ScanLine,
   UserCircle2,
@@ -14,7 +17,7 @@ import {
   ListChecks,
   Users as UsersIcon,
 } from "lucide-react";
-import type { ComponentType, SVGProps } from "react";
+import { useState, type ComponentType, type SVGProps } from "react";
 import { useTranslation } from "react-i18next";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 
@@ -27,8 +30,10 @@ import { DemoBanner } from "@/components/DemoBanner";
 import { HeaderBell } from "@/components/HeaderBell";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/authStore";
+import { useUIStore } from "@/stores/uiStore";
 
 interface NavItem {
   to: string;
@@ -123,31 +128,163 @@ const ADMIN_NAV: NavItem[] = [
   },
 ];
 
-function NavItemLink({ item, ns }: { item: NavItem; ns: string }) {
+function NavItemLink({
+  item,
+  ns,
+  collapsed,
+  onNavigate,
+}: {
+  item: NavItem;
+  ns: string;
+  /** Icon-only rail mode — hide the text label, surface it via aria/title. */
+  collapsed?: boolean;
+  /** Fired after a nav click — used by the mobile drawer to close itself. */
+  onNavigate?: () => void;
+}) {
   const { t } = useTranslation(ns);
   const Icon = item.icon;
+  const label = t(item.labelKey);
   return (
     <li>
       <NavLink
         to={item.to}
         end={item.end}
         data-testid={item.testId}
+        onClick={onNavigate}
+        // In the collapsed rail the visible label is gone, so the accessible
+        // name has to come from aria-label; `title` gives sighted mouse users
+        // a native hover tooltip without pulling in a tooltip dependency.
+        aria-label={collapsed ? label : undefined}
+        title={collapsed ? label : undefined}
         className={({ isActive }) =>
           cn(
             // W11-F polish — sidebar nav hover/active transitions land on the
             // W11-A 150 ms ease-out-soft tokens for parity with every other
             // hoverable affordance (buttons, dropdown items, tabs).
-            "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-fast ease-out-soft",
+            "flex items-center rounded-md py-2 text-sm font-medium transition-colors duration-fast ease-out-soft",
+            collapsed ? "justify-center px-2" : "gap-2 px-3",
             "hover:bg-accent hover:text-accent-foreground",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
             isActive ? "bg-primary/10 text-primary" : "text-foreground",
           )
         }
       >
-        <Icon className="h-4 w-4" aria-hidden />
-        <span>{t(item.labelKey)}</span>
+        <Icon className="h-4 w-4 shrink-0" aria-hidden />
+        {collapsed ? null : <span>{label}</span>}
       </NavLink>
     </li>
+  );
+}
+
+/**
+ * Sidebar body — brand mark, nav lists, and (desktop only) the collapse
+ * toggle. Shared verbatim between the fixed desktop `<aside>` and the mobile
+ * `<Sheet>` drawer so the two surfaces never drift apart.
+ */
+function SidebarNav({
+  collapsed,
+  isSuperAdmin,
+  onNavigate,
+  onCollapseToggle,
+}: {
+  collapsed: boolean;
+  isSuperAdmin: boolean;
+  /** Mobile drawer: close on navigate. Omitted on desktop. */
+  onNavigate?: () => void;
+  /** Desktop: toggle the icon-rail. Omitted in the mobile drawer. */
+  onCollapseToggle?: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <>
+      <div
+        className={cn(
+          "flex items-center border-b text-sm font-semibold tracking-tight",
+          collapsed ? "justify-center px-2" : "px-4",
+        )}
+        style={{ height: "var(--layout-header)" }}
+      >
+        {collapsed ? (
+          <>
+            <span aria-hidden className="text-base font-bold text-primary">
+              T
+            </span>
+            <span className="sr-only">{t("app.name")}</span>
+          </>
+        ) : (
+          t("app.name")
+        )}
+      </div>
+
+      <nav className="flex-1 px-2 py-3" aria-label={t("app.name")}>
+        <ul className="space-y-1">
+          {MAIN_NAV.map((item) => (
+            <NavItemLink
+              key={item.to}
+              item={item}
+              ns="common"
+              collapsed={collapsed}
+              onNavigate={onNavigate}
+            />
+          ))}
+        </ul>
+
+        {isSuperAdmin ? (
+          <>
+            {collapsed ? (
+              // No room for the section label on the rail — a divider keeps
+              // the admin links visually grouped.
+              <div className="my-2 border-t" role="separator" />
+            ) : (
+              <div className="mt-4 mb-1 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                {t("nav.admin.section")}
+              </div>
+            )}
+            <ul className="space-y-1">
+              {ADMIN_NAV.map((item) => (
+                <NavItemLink
+                  key={item.to}
+                  item={item}
+                  ns="admin"
+                  collapsed={collapsed}
+                  onNavigate={onNavigate}
+                />
+              ))}
+            </ul>
+          </>
+        ) : null}
+      </nav>
+
+      {onCollapseToggle ? (
+        <div className="border-t p-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn(
+              "w-full",
+              collapsed ? "px-0" : "justify-start gap-2 px-3",
+            )}
+            onClick={onCollapseToggle}
+            data-testid="sidebar-collapse-toggle"
+            aria-label={
+              collapsed ? t("nav.expandSidebar") : t("nav.collapseSidebar")
+            }
+            title={collapsed ? t("nav.expandSidebar") : t("nav.collapseSidebar")}
+          >
+            {collapsed ? (
+              <PanelLeft className="h-4 w-4 shrink-0" aria-hidden />
+            ) : (
+              <>
+                <PanelLeftClose className="h-4 w-4 shrink-0" aria-hidden />
+                <span className="text-sm font-medium">
+                  {t("nav.collapseSidebar")}
+                </span>
+              </>
+            )}
+          </Button>
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -156,6 +293,12 @@ export function AppShell() {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+  const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
+  const toggleSidebarCollapsed = useUIStore((s) => s.toggleSidebarCollapsed);
+
+  // The mobile drawer is ephemeral — it must reset on reload and on navigate,
+  // so it stays local state instead of going through the persisted uiStore.
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const isSuperAdmin =
     user?.isSuperuser === true || user?.role === "super_admin";
@@ -175,40 +318,26 @@ export function AppShell() {
       className="flex min-h-screen bg-background text-foreground"
       data-testid="app-shell"
     >
+      {/* Desktop sidebar. Hidden below `lg` (1024 px), where the mobile
+          drawer takes over. Width animates between the full rail and the
+          64 px icon rail; `data-collapsed` lets the test harness assert the
+          state without measuring pixels. */}
       <aside
-        className="flex shrink-0 flex-col border-r bg-card"
-        style={{ width: "var(--layout-sidebar)" }}
+        className={cn(
+          "hidden shrink-0 flex-col border-r bg-card lg:flex",
+          "transition-[width] duration-base ease-out-soft",
+          sidebarCollapsed
+            ? "w-[var(--layout-sidebar-collapsed)]"
+            : "w-sidebar",
+        )}
         data-testid="app-sidebar"
+        data-collapsed={sidebarCollapsed}
       >
-        <div
-          className="flex items-center border-b px-4 text-sm font-semibold tracking-tight"
-          style={{ height: "var(--layout-header)" }}
-        >
-          {t("app.name")}
-        </div>
-        <nav
-          className="flex-1 px-2 py-3"
-          aria-label={t("app.name")}
-        >
-          <ul className="space-y-1">
-            {MAIN_NAV.map((item) => (
-              <NavItemLink key={item.to} item={item} ns="common" />
-            ))}
-          </ul>
-
-          {isSuperAdmin ? (
-            <>
-              <div className="mt-4 mb-1 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                {t("nav.admin.section")}
-              </div>
-              <ul className="space-y-1">
-                {ADMIN_NAV.map((item) => (
-                  <NavItemLink key={item.to} item={item} ns="admin" />
-                ))}
-              </ul>
-            </>
-          ) : null}
-        </nav>
+        <SidebarNav
+          collapsed={sidebarCollapsed}
+          isSuperAdmin={isSuperAdmin}
+          onCollapseToggle={toggleSidebarCollapsed}
+        />
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -216,14 +345,23 @@ export function AppShell() {
             reports demo_read_only (useDemoMode), so a normal deploy is unaffected. */}
         <DemoBanner />
         <header
-          className="flex shrink-0 items-center justify-end border-b px-6"
+          className="flex shrink-0 items-center justify-between border-b px-6"
           style={{ height: "var(--layout-header)" }}
           data-testid="app-header"
         >
-          {/* Left side intentionally empty — the sidebar's top-left "TrustedOSS
-              Portal" label already anchors the brand, repeating it here was
-              visual noise (SCA tools like Black Duck / Snyk keep this slot for
-              breadcrumb / page-title context, which we can reintroduce later). */}
+          {/* Mobile-only hamburger — opens the nav drawer. On `lg`+ it's
+              removed from layout and the fixed sidebar carries navigation, so
+              the right-side actions justify-between to the edge as before. */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="lg:hidden"
+            onClick={() => setMobileNavOpen(true)}
+            data-testid="sidebar-mobile-trigger"
+            aria-label={t("nav.openMenu")}
+          >
+            <Menu className="h-4 w-4" aria-hidden />
+          </Button>
           <div className="flex items-center gap-3">
             {/* Global ⌘K palette trigger (W9-#54). The button is a
                 discoverability affordance — the keyboard shortcut works
@@ -261,6 +399,24 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+
+      {/* Mobile navigation drawer (<lg). Always shows the full-label sidebar
+          (never the collapsed rail) and closes on navigate / overlay / ESC
+          via Radix Dialog semantics inherited from Sheet. */}
+      <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+        <SheetContent
+          side="left"
+          className="flex w-64 flex-col p-0"
+          data-testid="mobile-nav-drawer"
+        >
+          <SheetTitle className="sr-only">{t("app.name")}</SheetTitle>
+          <SidebarNav
+            collapsed={false}
+            isSuperAdmin={isSuperAdmin}
+            onNavigate={() => setMobileNavOpen(false)}
+          />
+        </SheetContent>
+      </Sheet>
 
       {/* W9-#54 — global command palette. Mounted once at the AppShell
           level so the ⌘K shortcut is reachable from every authenticated

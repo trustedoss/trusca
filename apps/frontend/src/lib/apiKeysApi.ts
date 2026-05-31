@@ -44,6 +44,7 @@ export async function createApiKey(
     scope: payload.scope,
     team_id: payload.team_id ?? null,
     project_id: payload.project_id ?? null,
+    expires_in_days: payload.expires_in_days ?? null,
   });
   return data;
 }

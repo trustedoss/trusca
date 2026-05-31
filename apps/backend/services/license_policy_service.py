@@ -31,8 +31,9 @@ Audit:
 
 from __future__ import annotations
 
+import os
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import structlog
@@ -44,7 +45,11 @@ from sqlalchemy.sql.elements import ColumnElement
 from core.audit import bind_audit_team
 from core.security import CurrentUser
 from models import LicensePolicy, Team
-from schemas.license_policy import LicensePolicyUpsertIn
+from schemas.license_policy import (
+    _MAX_EXCEPTIONS,
+    LicenseException,
+    LicensePolicyUpsertIn,
+)
 
 log = structlog.get_logger("license_policy.service")
 
@@ -78,6 +83,14 @@ class LicensePolicyConflict(LicensePolicyError):
     title = "License Policy Conflict"
 
 
+class LicensePolicyValidationError(LicensePolicyError):
+    """422 — a waiver violates governance policy (e.g. a forbidden-license waiver
+    with no expiry, or one that outlives ``LICENSE_WAIVE_MAX_DAYS``)."""
+
+    status_code = 422
+    title = "License Policy Validation Error"
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -85,6 +98,110 @@ class LicensePolicyConflict(LicensePolicyError):
 
 def _now() -> datetime:
     return datetime.now(tz=UTC)
+
+
+# ---------------------------------------------------------------------------
+# Forbidden-license waiver TTL governance
+# ---------------------------------------------------------------------------
+#
+# A waiver on a *forbidden* license relaxes the build gate, so it must NOT be
+# allowed to live forever: it requires an expiry, capped at
+# ``LICENSE_WAIVE_MAX_DAYS`` (default 90). Conditional / allowed licenses may be
+# waived indefinitely. To decide "is this SPDX id forbidden?" we resolve the
+# license's BASE category (the policy's overrides + the static catalog +
+# unknown-posture) WITHOUT the exception itself — i.e. ``effective_category``
+# precedence steps 2–4, skipping the step-1 exception match.
+
+_DEFAULT_MAX_WAIVE_DAYS = 90
+# Default unknown-license posture when no policy row exists yet (mirrors
+# ``schemas.license_policy.LicensePolicyUpsertIn.unknown_license_category``).
+_DEFAULT_UNKNOWN_POSTURE = "conditional"
+
+
+def _max_waive_days() -> int:
+    """The cap on a forbidden-license waiver's lifetime, in days.
+
+    Read at call time from ``LICENSE_WAIVE_MAX_DAYS`` (CLAUDE.md rule #11 — no
+    module-level env caching). Unset / unparseable / non-positive → the default
+    (90); a bad value is logged and ignored rather than crashing a waive.
+    """
+    raw = os.getenv("LICENSE_WAIVE_MAX_DAYS")
+    if raw is None or raw.strip() == "":
+        return _DEFAULT_MAX_WAIVE_DAYS
+    try:
+        value = int(raw.strip())
+    except (TypeError, ValueError):
+        log.warning("license_policy.max_waive_days_unparseable", raw=raw)
+        return _DEFAULT_MAX_WAIVE_DAYS
+    if value <= 0:
+        log.warning("license_policy.max_waive_days_out_of_range", value=value)
+        return _DEFAULT_MAX_WAIVE_DAYS
+    return value
+
+
+def _static_category(spdx_id: str) -> str:
+    """Static-catalog category for a single simple SPDX id (``"unknown"`` on miss).
+
+    Lazily imports the heavy ``tasks.scan_source`` catalog so importing this
+    service stays cheap, and avoids a circular import with ``services.policy_gate``
+    (which imports ``effective_category`` from here).
+    """
+    from tasks.scan_source import _LICENSE_CATEGORY_DEFAULTS
+
+    return str(_LICENSE_CATEGORY_DEFAULTS.get(spdx_id, "unknown"))
+
+
+def _base_category(
+    spdx_id: str,
+    category_overrides: dict[str, Any] | None,
+    unknown_posture: str,
+) -> str:
+    """Resolve the category of *spdx_id* IGNORING any waiver (exception).
+
+    Mirrors ``effective_category`` precedence steps 2–4: explicit override →
+    static catalog (if concrete) → unknown posture.
+    """
+    overrides = category_overrides or {}
+    if spdx_id in overrides:
+        return str(overrides[spdx_id])
+    static = _static_category(spdx_id)
+    if static != "unknown":
+        return static
+    return unknown_posture
+
+
+def _enforce_forbidden_ttl(
+    exceptions: list[LicenseException],
+    category_overrides: dict[str, Any] | None,
+    unknown_posture: str,
+) -> None:
+    """Reject any waiver on a forbidden license that has no expiry, or one that
+    outlives the ``LICENSE_WAIVE_MAX_DAYS`` cap. Raises 422.
+
+    *category_overrides* / *unknown_posture* describe the policy the waiver lands
+    in (the existing row for the add-shortcut, the incoming payload for a PUT),
+    so an override that demotes a forbidden license to conditional correctly
+    skips the requirement, and one that promotes a license to forbidden enforces
+    it.
+    """
+    max_days = _max_waive_days()
+    cap = _now() + timedelta(days=max_days)
+    for exc in exceptions:
+        if _base_category(exc.spdx_id, category_overrides, unknown_posture) != "forbidden":
+            continue
+        if exc.expires_at is None:
+            raise LicensePolicyValidationError(
+                f"a waiver for the forbidden license '{exc.spdx_id}' must set an "
+                f"expiry of at most {max_days} days"
+            )
+        expires_at = exc.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=UTC)
+        if expires_at > cap:
+            raise LicensePolicyValidationError(
+                f"the waiver expiry for the forbidden license '{exc.spdx_id}' "
+                f"exceeds the maximum of {max_days} days"
+            )
 
 
 def _is_super_admin(actor: CurrentUser) -> bool:
@@ -155,6 +272,15 @@ async def upsert_team_policy(
             f"actor lacks permission to write the license policy for team {team_id}"
         )
 
+    # Forbidden-license waivers in the incoming policy must carry a capped
+    # expiry. Evaluate against the PAYLOAD (a PUT replaces overrides + exceptions
+    # wholesale), not any pre-existing row.
+    _enforce_forbidden_ttl(
+        payload.license_exceptions,
+        payload.category_overrides,
+        payload.unknown_license_category,
+    )
+
     bind_audit_team(team_id)
 
     existing = (
@@ -201,6 +327,171 @@ async def upsert_team_policy(
 
 
 # ---------------------------------------------------------------------------
+# add / remove a single license exception (the "waive this component" shortcut)
+# ---------------------------------------------------------------------------
+
+
+async def add_license_exception(
+    session: AsyncSession,
+    actor: CurrentUser,
+    *,
+    team_id: uuid.UUID,
+    exception: LicenseException,
+) -> LicensePolicy:
+    """Append (or update) one ``license_exceptions`` entry on the team policy.
+
+    The "waive this component" shortcut from the Licenses screen, avoiding a
+    read-modify-write of the whole policy. Idempotent on
+    ``(spdx_id, component_purl)``: a repeat updates the reason / expiry instead
+    of duplicating. Creates the team policy (enabled, defaults) when none exists.
+
+    RBAC: ``team_admin`` of *team_id* (or super_admin).
+    """
+    org_id = await _resolve_team_org(session, team_id)
+    if not _can_admin_team(actor, team_id):
+        log.warning(
+            "license_policy.exception_denied",
+            actor_id=str(actor.id),
+            team_id=str(team_id),
+            spdx_id=exception.spdx_id,
+            action="add",
+        )
+        raise LicensePolicyForbidden(
+            f"actor lacks permission to write the license policy for team {team_id}"
+        )
+    bind_audit_team(team_id)
+
+    # FOR UPDATE locks the existing policy row so two concurrent waives cannot
+    # read the same license_exceptions list and last-commit-wins (lost update on
+    # a governance record). Harmless no-op when the row does not exist yet.
+    row = (
+        await session.execute(
+            select(LicensePolicy)
+            .where(
+                LicensePolicy.organization_id == org_id,
+                LicensePolicy.team_id == team_id,
+            )
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+
+    # A waiver on a forbidden license must carry a capped expiry. The base
+    # category is resolved against the EXISTING policy's overrides / posture (the
+    # add-shortcut never changes those); no row yet → catalog + default posture.
+    _enforce_forbidden_ttl(
+        [exception],
+        row.category_overrides if row is not None else None,
+        row.unknown_license_category if row is not None else _DEFAULT_UNKNOWN_POSTURE,
+    )
+
+    entry = exception.model_dump(mode="json")
+    if row is None:
+        row = LicensePolicy(
+            organization_id=org_id,
+            team_id=team_id,
+            created_by_user_id=actor.id,
+            license_exceptions=[entry],
+        )
+        session.add(row)
+    else:
+        # Idempotent on (spdx_id, component_purl): drop any existing match first.
+        excs = [
+            e
+            for e in (row.license_exceptions or [])
+            if not (
+                e.get("spdx_id") == exception.spdx_id
+                and e.get("component_purl") == exception.component_purl
+            )
+        ]
+        excs.append(entry)
+        if len(excs) > _MAX_EXCEPTIONS:
+            raise LicensePolicyError(
+                f"license_exceptions exceeds {_MAX_EXCEPTIONS} entries"
+            )
+        row.license_exceptions = excs
+        row.updated_at = _now()
+
+    try:
+        await session.commit()
+    except IntegrityError as exc:
+        # Concurrent create of the same (org, team) policy lost the unique race.
+        await session.rollback()
+        raise LicensePolicyConflict(
+            f"license policy for team {team_id} was concurrently created; retry"
+        ) from exc
+    await session.refresh(row)
+    log.info(
+        "license_policy.exception_add",
+        actor_id=str(actor.id),
+        team_id=str(team_id),
+        policy_id=str(row.id),
+        spdx_id=exception.spdx_id,
+        component_scoped=bool(exception.component_purl),
+    )
+    return row
+
+
+async def remove_license_exception(
+    session: AsyncSession,
+    actor: CurrentUser,
+    *,
+    team_id: uuid.UUID,
+    spdx_id: str,
+    component_purl: str | None = None,
+) -> LicensePolicy:
+    """Remove the ``license_exceptions`` entry matching (spdx_id, component_purl).
+
+    Un-waive. A no-op match (already absent) still returns the policy (idempotent
+    delete). RBAC: ``team_admin`` of *team_id*. 404 if the team has no policy.
+    """
+    org_id = await _resolve_team_org(session, team_id)
+    if not _can_admin_team(actor, team_id):
+        log.warning(
+            "license_policy.exception_denied",
+            actor_id=str(actor.id),
+            team_id=str(team_id),
+            spdx_id=spdx_id,
+            action="remove",
+        )
+        raise LicensePolicyForbidden(
+            f"actor lacks permission to write the license policy for team {team_id}"
+        )
+    bind_audit_team(team_id)
+
+    row = (
+        await session.execute(
+            select(LicensePolicy)
+            .where(
+                LicensePolicy.organization_id == org_id,
+                LicensePolicy.team_id == team_id,
+            )
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise LicensePolicyNotFound(f"no license policy for team {team_id}")
+
+    row.license_exceptions = [
+        e
+        for e in (row.license_exceptions or [])
+        if not (
+            e.get("spdx_id") == spdx_id and e.get("component_purl") == component_purl
+        )
+    ]
+    row.updated_at = _now()
+    await session.commit()
+    await session.refresh(row)
+    log.info(
+        "license_policy.exception_remove",
+        actor_id=str(actor.id),
+        team_id=str(team_id),
+        policy_id=str(row.id),
+        spdx_id=spdx_id,
+    )
+    return row
+
+
+# ---------------------------------------------------------------------------
 # upsert_org_policy
 # ---------------------------------------------------------------------------
 
@@ -221,6 +512,12 @@ async def upsert_org_policy(
     """
     if not _is_super_admin(actor):
         raise LicensePolicyForbidden("only super_admin may write the org-default license policy")
+
+    _enforce_forbidden_ttl(
+        payload.license_exceptions,
+        payload.category_overrides,
+        payload.unknown_license_category,
+    )
 
     existing = (
         await session.execute(
@@ -512,14 +809,18 @@ def effective_category(
     spdx_id: str,
     policy: LicensePolicy | None,
     static_default: str,
+    component_purl: str | None = None,
 ) -> str:
     """
     Resolve the effective category for a SINGLE, SIMPLE SPDX id.
 
     Precedence:
-      1. A matching, non-expired entry in ``policy.license_exceptions`` (matched
-         by ``spdx_id``, ignoring component-purl-scoped exceptions here — c2
-         applies purl scoping with the component in hand) → ``"allowed"``.
+      1. A matching, non-expired entry in ``policy.license_exceptions`` → ``"allowed"``.
+         An exception matches when its ``spdx_id`` equals *spdx_id* AND either it
+         is **org/team-wide** (no ``component_purl``) OR it is **component-scoped**
+         and its ``component_purl`` equals the *component_purl* passed in (c3 —
+         "waive this specific component"). A component-scoped exception is skipped
+         when no purl is in hand (e.g. the c1 callers that pass none).
       2. ``policy.category_overrides[spdx_id]`` if present → that category.
       3. If *spdx_id* is recognised by the static catalog (``static_default`` is
          a concrete category, i.e. NOT ``"unknown"``) → ``static_default``.
@@ -529,25 +830,27 @@ def effective_category(
     When *policy* is None OR ``policy.enabled`` is False, the static behaviour is
     returned unchanged (``static_default``) — the dynamic policy is off.
 
-    SCOPE NOTE (c1 only): this handles ONE simple SPDX identifier. Compound
-    expressions (``A AND B`` / ``A OR B`` / ``A WITH exc``) and SPDX
-    adversarial-input hardening are c2 — c2 splits the expression and combines
-    sub-verdicts per ``policy.compound_operator_strategy``. Do NOT pass a
-    compound string here; this function does not split it.
+    SCOPE NOTE: this handles ONE simple SPDX identifier. Compound expressions
+    (``A AND B`` / ``A OR B`` / ``A WITH exc``) are split by the c2 evaluator,
+    which calls this per operand (passing the component's purl through for c3).
+    Do NOT pass a compound string here; this function does not split it.
     """
     if policy is None or not policy.enabled:
         return static_default
 
-    # 1. Exception (org/team-wide; purl-scoped exceptions deferred to c2).
+    # 1. Exception — org/team-wide, or component-scoped matching *component_purl*.
     now = _now()
     for exc in policy.license_exceptions or []:
         if not isinstance(exc, dict):
             continue
         if exc.get("spdx_id") != spdx_id:
             continue
-        # A purl-scoped exception is NOT applied here (no component in hand).
-        if exc.get("component_purl"):
-            continue
+        exc_purl = exc.get("component_purl")
+        if exc_purl:
+            # Component-scoped (c3): applies only to that exact component. Skip
+            # when we have no purl, or the purl does not match.
+            if component_purl is None or exc_purl != component_purl:
+                continue
         expires_at = exc.get("expires_at")
         if expires_at is not None and _is_expired(expires_at, now):
             continue
@@ -589,6 +892,7 @@ __all__ = [
     "LicensePolicyError",
     "LicensePolicyForbidden",
     "LicensePolicyNotFound",
+    "LicensePolicyValidationError",
     "delete_team_policy",
     "effective_category",
     "get_effective_policy",

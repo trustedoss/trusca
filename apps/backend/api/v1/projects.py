@@ -36,6 +36,7 @@ import structlog
 from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.api_key_auth import require_role_or_api_key
 from core.config import scan_trigger_rate_limit
 from core.db import get_db
 from core.errors import problem_response
@@ -737,7 +738,9 @@ async def trigger_scan_endpoint(
     project_id: uuid.UUID,
     payload: ScanCreate,
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    # CI scan-action authenticates with a tos_ API key — accept either that or
+    # a JWT here (require_role alone is JWT-only and 401s the action).
+    actor: CurrentUser = Depends(require_role_or_api_key("developer")),
 ) -> Response:
     # The service layer can raise:
     #   - ScanForbidden               (403) — caller not in the project's team

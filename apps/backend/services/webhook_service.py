@@ -55,6 +55,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.audit import audit_context
 from models import Project, Scan, WebhookDelivery
+from services.scan_service import normalize_ref
 from tasks import enqueue_scan
 
 log = structlog.get_logger("webhook.service")
@@ -337,6 +338,11 @@ async def _enqueue_source_scan(
         celery_task_id=None,
         requested_by_user_id=None,  # webhook-driven — no user actor
         scan_metadata=metadata,
+        # scan-retention: normalize the raw payload ref (refs/heads/main,
+        # refs/pull/12/merge, ...) into the same retention key the CI-action
+        # path produces, so a branch's webhook- and action-triggered scans
+        # supersede one another.
+        ref=normalize_ref(metadata.get("ref")),
     )
     session.add(scan)
     try:

@@ -129,6 +129,15 @@ _SCAN_SOURCE_TYPES = frozenset({"git", "upload"})
 _SCAN_RELEASE_MAX_LEN = 100
 _SCAN_RELEASE_PATTERN = re.compile(r"^[A-Za-z0-9._/-]{1,100}$")
 
+# Scan-log verbosity (feat/scan-log-verbosity) — an optional
+# ``metadata.verbosity`` lets the user request a louder tool trace for a single
+# scan. ``"normal"`` (the default when the key is absent) keeps the standard
+# progress stream; ``"verbose"`` flips cdxgen / scancode / Trivy into their
+# debug/verbose modes so the scan-log drawer renders a full diagnostic trace.
+# It never reaches a shell — the worker maps it to fixed CLI flags — but we
+# still validate it at the boundary so the stored value is predictable.
+_SCAN_VERBOSITY_VALUES = frozenset({"normal", "verbose"})
+
 
 def _measure_metadata_depth(value: Any, *, _level: int = 0) -> int:
     """Return the maximum nesting depth of `value` (scalars = 0)."""
@@ -576,6 +585,14 @@ class ScanCreate(BaseModel):
         # short, ref-safe label (same charset as default_branch). This rejects
         # spaces, control chars, and shell metacharacters (`;`, `&`, `|`, ...)
         # by construction — they are not in the charset.
+        # Scan-log verbosity. Absent == "normal" (legacy payloads keep working).
+        verbosity = value.get("verbosity")
+        if verbosity is not None and verbosity not in _SCAN_VERBOSITY_VALUES:
+            raise ValueError(
+                "metadata.verbosity must be one of"
+                f" {sorted(_SCAN_VERBOSITY_VALUES)}; got {verbosity!r}",
+            )
+
         release = value.get("release")
         if release is not None:
             if not isinstance(release, str):
@@ -651,6 +668,13 @@ class ScanPublic(BaseModel):
     # from a Scan without the relationship loaded.
     project_name: str | None = None
     project_slug: str | None = None
+    # scan-retention: the normalized ref this scan targeted (``main``, ``pr-12``,
+    # ``v1.2.3``, ...) and the retire timestamp. ``superseded_at`` is non-null
+    # when a newer same-ref succeeded scan replaced this one as the live
+    # snapshot; the Releases tab / list enrichment hide superseded scans, but
+    # the field is surfaced so detail views can label a historical scan.
+    ref: str | None = None
+    superseded_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 

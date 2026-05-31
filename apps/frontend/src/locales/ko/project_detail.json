@@ -870,6 +870,33 @@
     "back_to_latest": "최신으로 돌아가기",
     "readonly_tooltip": "읽기 전용 과거 스냅샷"
   },
+  "waive": {
+    "strip_label": "면제:",
+    "waive_button": "면제",
+    "waiving": "면제 처리 중…",
+    "submit": "컴포넌트 면제",
+    "cancel": "취소",
+    "waive_button_aria": "이 컴포넌트의 라이선스 면제",
+    "waived_badge": "면제됨",
+    "waived_tooltip": "면제됨: {{reason}}",
+    "unwaive_button": "면제 해제",
+    "unwaiving": "면제 해제 중…",
+    "dialog_title": "이 컴포넌트의 라이선스 면제",
+    "dialog_description": "{{spdx_id}} 라이선스임에도 {{component}}을(를) 빌드 게이트에서 통과시킵니다. 이 컴포넌트에만 적용됩니다.",
+    "reason_label": "사유",
+    "reason_placeholder": "이 컴포넌트에 대해 이 라이선스를 허용하는 이유는 무엇인가요?",
+    "reason_hint": "사유는 필수이며 이 면제의 감사 기록으로 보관됩니다.",
+    "expires_label": "만료일 (선택)",
+    "expires_hint": "만료되지 않는 면제로 두려면 비워 두세요.",
+    "expires_required_label": "만료일 (필수)",
+    "expires_required_hint": "금지 라이선스는 한시적으로만 면제할 수 있습니다. 만료일을 지정하세요.",
+    "role_gated": "팀 관리자만 라이선스를 면제할 수 있습니다.",
+    "no_team": "프로젝트 팀을 불러오는 중입니다.",
+    "no_purl": "이 컴포넌트에는 면제 범위를 지정할 패키지 URL이 없습니다.",
+    "error_forbidden": "이 팀의 라이선스를 면제할 권한이 없습니다.",
+    "error_malformed": "면제가 거부되었습니다. 사유를 확인한 후 다시 시도하세요.",
+    "error_generic": "면제를 업데이트하지 못했습니다. 다시 시도하세요."
+  },
   "compare": {
     "title": "버전 비교",
     "subtitle": "두 버전 스냅샷 사이에 무엇이 바뀌었는지 확인합니다.",
@@ -965,7 +992,11 @@
       "notice": {
         "title": "NOTICE",
         "description": "라이선스 의무사항이 포함된 저작자 표시 NOTICE 파일.",
-        "action": "컴플라이언스 탭으로 이동"
+        "action": "NOTICE 다운로드",
+        "action_generating": "생성 중…",
+        "format_label": "NOTICE 형식",
+        "format_text": "텍스트",
+        "format_html": "HTML"
       },
       "sbom": {
         "title": "SBOM",

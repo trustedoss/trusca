@@ -34,16 +34,19 @@ from core.db import get_db
 from core.errors import problem_response
 from core.security import CurrentUser, require_role, require_super_admin_or_404
 from schemas.license_policy import (
+    LicenseException,
     LicensePolicyListPage,
     LicensePolicyOut,
     LicensePolicyUpsertIn,
 )
 from services.license_policy_service import (
     LicensePolicyError,
+    add_license_exception,
     delete_team_policy,
     get_org_policy,
     get_policy,
     list_policies,
+    remove_license_exception,
     upsert_org_policy,
     upsert_team_policy,
 )
@@ -102,6 +105,71 @@ async def upsert_team_policy_endpoint(
 ) -> Response:
     try:
         row = await upsert_team_policy(session, actor, team_id=team_id, payload=payload)
+    except LicensePolicyError as exc:
+        return _problem_for_policy_error(request, exc)
+    return _json(LicensePolicyOut.model_validate(row), status.HTTP_200_OK)
+
+
+# ---------------------------------------------------------------------------
+# POST/DELETE /v1/license-policies/teams/{team_id}/exceptions
+#   The "waive this component" shortcut — add/remove one license_exceptions
+#   entry without a read-modify-write of the whole policy.
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/teams/{team_id}/exceptions",
+    response_model=LicensePolicyOut,
+    summary="Waive a license (add a license_exceptions entry to the team policy)",
+    responses={
+        200: {"description": "Exception added/updated (idempotent on spdx_id+purl)."},
+        403: {"description": "Caller is not a team_admin of this team."},
+        404: {"description": "Team not found (existence-hidden)."},
+        422: {"description": "Malformed exception, or too many exceptions."},
+    },
+)
+async def add_team_exception_endpoint(
+    request: Request,
+    team_id: uuid.UUID,
+    payload: LicenseException,
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_role("developer")),
+) -> Response:
+    try:
+        row = await add_license_exception(
+            session, actor, team_id=team_id, exception=payload
+        )
+    except LicensePolicyError as exc:
+        return _problem_for_policy_error(request, exc)
+    return _json(LicensePolicyOut.model_validate(row), status.HTTP_200_OK)
+
+
+@router.delete(
+    "/teams/{team_id}/exceptions",
+    response_model=LicensePolicyOut,
+    summary="Un-waive (remove a license_exceptions entry from the team policy)",
+    responses={
+        200: {"description": "Exception removed (idempotent — no-op if absent)."},
+        403: {"description": "Caller is not a team_admin of this team."},
+        404: {"description": "Team or policy not found."},
+    },
+)
+async def remove_team_exception_endpoint(
+    request: Request,
+    team_id: uuid.UUID,
+    spdx_id: str = Query(..., min_length=1, max_length=128),
+    component_purl: str | None = Query(default=None, max_length=512),
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_role("developer")),
+) -> Response:
+    try:
+        row = await remove_license_exception(
+            session,
+            actor,
+            team_id=team_id,
+            spdx_id=spdx_id,
+            component_purl=component_purl,
+        )
     except LicensePolicyError as exc:
         return _problem_for_policy_error(request, exc)
     return _json(LicensePolicyOut.model_validate(row), status.HTTP_200_OK)

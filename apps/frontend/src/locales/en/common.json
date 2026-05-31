@@ -58,6 +58,10 @@
       "aria": "Notifications",
       "aria_with_count": "Notifications, {{count}} unread"
     },
+    "collapseSidebar": "Collapse sidebar",
+    "expandSidebar": "Expand sidebar",
+    "openMenu": "Open navigation menu",
+    "closeMenu": "Close navigation menu",
     "admin": {
       "section": "Administration"
     }

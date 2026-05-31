@@ -90,7 +90,7 @@ connections before alembic runs.
 | `image.backendRepository` | `ghcr.io/trustedoss/backend` | API image. |
 | `image.workerRepository` | `ghcr.io/trustedoss/backend-worker` | Worker/beat/migrate image (ships alembic). |
 | `image.frontendRepository` | `ghcr.io/trustedoss/frontend` | SPA image. |
-| `image.tag` | `2.4.0` | Tag for all three (lock-step with `appVersion`). Never `:latest`. |
+| `image.tag` | `0.10.0` | Tag for all three (lock-step with `appVersion`). Never `:latest`. |
 | `image.pullPolicy` | `IfNotPresent` | |
 | `imagePullSecrets` | `[]` | Private-registry pull secrets. |
 

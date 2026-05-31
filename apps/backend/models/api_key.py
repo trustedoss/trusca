@@ -143,6 +143,11 @@ class APIKey(Base):
     # cleanup" sweeps and the management UI.
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # Optional expiry. NULL = never expires (legacy / long-lived keys). When set,
+    # authentication rejects the key once now() passes it — so a leaked CI key
+    # (pipeline log, forked-PR runner) stops working without manual revocation.
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     # Revocation (soft-delete). A revoked key is invisible to authentication
     # but the row stays for audit / forensic queries.
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

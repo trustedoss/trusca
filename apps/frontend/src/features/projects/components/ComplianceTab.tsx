@@ -69,7 +69,10 @@ import { Input } from "@/components/ui/input";
 import { MultiSelect } from "@/components/ui/multi-select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import type { LicenseCategoryName } from "@/features/projects/api/projectDetailApi";
+import type {
+  LicenseCategoryName,
+  TeamScopedRole,
+} from "@/features/projects/api/projectDetailApi";
 import type {
   ComplianceObligation,
   ComplianceRow as ComplianceRowItem,
@@ -77,8 +80,15 @@ import type {
   SortOrder,
 } from "@/features/projects/api/complianceApi";
 import { useCompliance } from "@/features/projects/api/useCompliance";
+import {
+  findComponentException,
+  useTeamLicensePolicy,
+  type LicenseException,
+} from "@/features/projects/api/useLicenseWaive";
 import { LicenseCategoryBadge } from "@/features/projects/components/LicenseCategoryBadge";
 import { LicenseDrawer } from "@/features/projects/components/LicenseDrawer";
+import { LicenseWaiveAction } from "@/features/projects/components/LicenseWaiveAction";
+import type { LicensePolicyOut } from "@/lib/licensePoliciesApi";
 import { ProblemError } from "@/lib/problem";
 import { cn } from "@/lib/utils";
 
@@ -158,9 +168,32 @@ export interface ComplianceTabProps {
    * historical scan instead of the latest succeeded one.
    */
   scanId?: string;
+  /**
+   * Owning team of the project. Threads into the per-component license waive
+   * action (which targets ``/v1/license-policies/teams/{team_id}/exceptions``).
+   * ``null`` until the project summary resolves → waive actions stay disabled.
+   */
+  teamId?: string | null;
+  /**
+   * The actor's effective role within the project's owning team. Gates the
+   * waive action (team_admin / super_admin only).
+   */
+  projectRole?: TeamScopedRole;
+  /**
+   * Read-only historical snapshot (feature #28). When ``true`` the waive
+   * affordances are disabled — waiving would mutate the *current* policy while
+   * the user is viewing an older scan.
+   */
+  readOnly?: boolean;
 }
 
-export function ComplianceTab({ projectId, scanId }: ComplianceTabProps) {
+export function ComplianceTab({
+  projectId,
+  scanId,
+  teamId = null,
+  projectRole = "developer",
+  readOnly = false,
+}: ComplianceTabProps) {
   const { t } = useTranslation("project_detail");
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -313,6 +346,12 @@ export function ComplianceTab({ projectId, scanId }: ComplianceTabProps) {
 
   const compliance = useCompliance(projectId, filters);
 
+  // Effective team policy carries the per-component waivers. A 404 ("no team
+  // policy, static fallback") resolves to null — not an error — so the grid
+  // still renders waive affordances. Only fetched when we know the team.
+  const teamPolicy = useTeamLicensePolicy(teamId);
+  const policy = teamPolicy.data ?? null;
+
   const items: ComplianceRowItem[] = compliance.data?.items ?? [];
   const total = compliance.data?.total ?? 0;
 
@@ -409,6 +448,11 @@ export function ComplianceTab({ projectId, scanId }: ComplianceTabProps) {
                   row={item}
                   rowIndex={index}
                   onSelect={() => setDrawerLicense(item.license_finding_id)}
+                  projectId={projectId}
+                  teamId={teamId}
+                  projectRole={projectRole}
+                  readOnly={readOnly}
+                  policy={policy}
                 />
               )}
             />
@@ -593,12 +637,26 @@ interface ComplianceGridRowProps {
   row: ComplianceRowItem;
   rowIndex: number;
   onSelect: () => void;
+  projectId: string;
+  teamId: string | null;
+  projectRole: TeamScopedRole;
+  readOnly: boolean;
+  policy: LicensePolicyOut | null;
 }
 
 const AFFECTED_PREVIEW_CAP = 3;
 const OBLIGATIONS_PREVIEW_CAP = 3;
 
-function ComplianceGridRow({ row, rowIndex, onSelect }: ComplianceGridRowProps) {
+function ComplianceGridRow({
+  row,
+  rowIndex,
+  onSelect,
+  projectId,
+  teamId,
+  projectRole,
+  readOnly,
+  policy,
+}: ComplianceGridRowProps) {
   const { t } = useTranslation("project_detail");
 
   const affectedPreview = row.affected_components.slice(
@@ -616,10 +674,21 @@ function ComplianceGridRow({ row, rowIndex, onSelect }: ComplianceGridRowProps) 
     row.obligations.length - obligationsPreview.length,
   );
 
+  // A forbidden license is what actually fails the build gate, so the per-
+  // component waive affordance only surfaces for forbidden rows. Conditional /
+  // allowed / unknown rows have no gate-blocking semantics to override here.
+  const isWaivable = row.category === "forbidden";
+  // Only components carrying a purl can be scoped by the exception API.
+  const waivableComponents = isWaivable
+    ? row.affected_components.filter((c) => c.purl != null)
+    : [];
+
+  // The row is a non-button container so the per-component waive controls
+  // (which are themselves buttons) can live inside without nesting <button>s.
+  // The drawer-open affordance is a single inner button covering the read-only
+  // columns; the waive strip below sits outside it.
   return (
-    <button
-      type="button"
-      onClick={onSelect}
+    <div
       data-testid="compliance-row"
       data-finding-id={row.license_finding_id}
       data-spdx-id={row.spdx_id ?? ""}
@@ -627,97 +696,151 @@ function ComplianceGridRow({ row, rowIndex, onSelect }: ComplianceGridRowProps) 
       data-has-obligations={row.obligations.length > 0}
       data-notice-required={row.notice_required}
       data-row-index={rowIndex}
+      data-waivable={isWaivable ? "true" : undefined}
       className={cn(
-        "flex w-full items-center gap-3 border-b px-4 text-left text-sm transition-colors duration-fast ease-out-soft hover:bg-muted/50",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+        "flex w-full flex-col border-b transition-colors duration-fast ease-out-soft hover:bg-muted/50",
       )}
-      style={{ height: "var(--table-row)" }}
     >
-      <span
-        className="flex w-44 flex-col truncate"
-        title={row.spdx_id ?? row.license_name}
+      <button
+        type="button"
+        onClick={onSelect}
+        data-testid="compliance-row-open"
+        className={cn(
+          "flex w-full items-center gap-3 px-4 text-left text-sm",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+        )}
+        style={{ height: "var(--table-row)" }}
       >
-        <span className="truncate font-mono text-xs">
-          {row.spdx_id ?? t("compliance.row.no_spdx_id")}
+        <span
+          className="flex w-44 flex-col truncate"
+          title={row.spdx_id ?? row.license_name}
+        >
+          <span className="truncate font-mono text-xs">
+            {row.spdx_id ?? t("compliance.row.no_spdx_id")}
+          </span>
+          <span className="truncate text-xs text-muted-foreground">
+            {row.license_name}
+          </span>
         </span>
-        <span className="truncate text-xs text-muted-foreground">
-          {row.license_name}
+        <span className="w-32">
+          <LicenseCategoryBadge category={row.category} />
         </span>
-      </span>
-      <span className="w-32">
-        <LicenseCategoryBadge category={row.category} />
-      </span>
-      <span
-        className="flex flex-1 items-center gap-1 overflow-hidden"
-        data-testid="compliance-row-affected"
-      >
-        <span className="font-mono text-xs tabular-nums text-muted-foreground">
-          {row.affected_component_count}
+        <span
+          className="flex flex-1 items-center gap-1 overflow-hidden"
+          data-testid="compliance-row-affected"
+        >
+          <span className="font-mono text-xs tabular-nums text-muted-foreground">
+            {row.affected_component_count}
+          </span>
+          <span className="flex flex-1 items-center gap-1 overflow-hidden">
+            {affectedPreview.map((c) => (
+              <Badge
+                key={c.component_version_id}
+                tone="info"
+                className="max-w-[10rem] truncate"
+                title={`${c.name}@${c.version}`}
+              >
+                <span className="truncate">{`${c.name}@${c.version}`}</span>
+              </Badge>
+            ))}
+            {extraAffected > 0 ? (
+              <span
+                className="text-xs text-muted-foreground"
+                data-testid="compliance-row-affected-more"
+              >
+                {t("compliance.affected.more_count", { count: extraAffected })}
+              </span>
+            ) : null}
+          </span>
         </span>
-        <span className="flex flex-1 items-center gap-1 overflow-hidden">
-          {affectedPreview.map((c) => (
-            <Badge
-              key={c.component_version_id}
-              tone="info"
-              className="max-w-[10rem] truncate"
-              title={`${c.name}@${c.version}`}
-            >
-              <span className="truncate">{`${c.name}@${c.version}`}</span>
-            </Badge>
-          ))}
-          {extraAffected > 0 ? (
+        <span
+          className="flex w-64 items-center gap-1 overflow-hidden"
+          data-testid="compliance-row-obligations"
+        >
+          {obligationsPreview.length === 0 ? (
+            <span className="text-xs text-muted-foreground">
+              {t("compliance.obligations.none")}
+            </span>
+          ) : (
+            obligationsPreview.map((ob) => (
+              <ObligationChip key={ob.obligation_id} obligation={ob} />
+            ))
+          )}
+          {extraObligations > 0 ? (
             <span
               className="text-xs text-muted-foreground"
-              data-testid="compliance-row-affected-more"
+              data-testid="compliance-row-obligations-more"
             >
-              {t("compliance.affected.more_count", { count: extraAffected })}
+              {t("compliance.obligations.more_count", {
+                count: extraObligations,
+              })}
             </span>
           ) : null}
         </span>
-      </span>
-      <span
-        className="flex w-64 items-center gap-1 overflow-hidden"
-        data-testid="compliance-row-obligations"
-      >
-        {obligationsPreview.length === 0 ? (
-          <span className="text-xs text-muted-foreground">
-            {t("compliance.obligations.none")}
-          </span>
-        ) : (
-          obligationsPreview.map((ob) => (
-            <ObligationChip key={ob.obligation_id} obligation={ob} />
-          ))
-        )}
-        {extraObligations > 0 ? (
-          <span
-            className="text-xs text-muted-foreground"
-            data-testid="compliance-row-obligations-more"
-          >
-            {t("compliance.obligations.more_count", {
-              count: extraObligations,
-            })}
-          </span>
-        ) : null}
-      </span>
-      <span
-        className="w-28 text-center text-xs"
-        data-testid="compliance-row-notice"
-      >
-        {row.notice_required ? (
-          <Badge tone="medium">{t("compliance.notice.required")}</Badge>
-        ) : (
+        <span
+          className="w-28 text-center text-xs"
+          data-testid="compliance-row-notice"
+        >
+          {row.notice_required ? (
+            <Badge tone="medium">{t("compliance.notice.required")}</Badge>
+          ) : (
+            <span className="text-muted-foreground">
+              {t("compliance.notice.not_required")}
+            </span>
+          )}
+        </span>
+        <span
+          className="w-32 text-xs text-muted-foreground"
+          data-testid="compliance-row-override"
+        >
+          {row.category_override_source ?? t("compliance.override.none")}
+        </span>
+      </button>
+
+      {waivableComponents.length > 0 ? (
+        <div
+          className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 pb-2 pl-[12.25rem] text-xs"
+          data-testid="compliance-row-waive-strip"
+        >
           <span className="text-muted-foreground">
-            {t("compliance.notice.not_required")}
+            {t("waive.strip_label")}
           </span>
-        )}
-      </span>
-      <span
-        className="w-32 text-xs text-muted-foreground"
-        data-testid="compliance-row-override"
-      >
-        {row.category_override_source ?? t("compliance.override.none")}
-      </span>
-    </button>
+          {waivableComponents.map((c) => {
+            const existing: LicenseException | null = findComponentException(
+              policy,
+              row.spdx_id,
+              c.purl,
+            );
+            return (
+              <span
+                key={c.component_version_id}
+                className="inline-flex items-center gap-1.5"
+                data-testid="compliance-waive-component"
+                data-component-purl={c.purl ?? ""}
+              >
+                <span
+                  className="max-w-[12rem] truncate font-mono text-muted-foreground"
+                  title={`${c.name}@${c.version}`}
+                >{`${c.name}@${c.version}`}</span>
+                <LicenseWaiveAction
+                  projectId={projectId}
+                  teamId={teamId}
+                  projectRole={projectRole}
+                  spdxId={row.spdx_id}
+                  componentLabel={`${c.name}@${c.version}`}
+                  componentPurl={c.purl}
+                  existing={existing}
+                  // The strip only renders for forbidden rows, so a waiver here
+                  // always relaxes the build gate → a capped expiry is required.
+                  requireExpiry={row.category === "forbidden"}
+                  readOnly={readOnly}
+                />
+              </span>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
   );
 }
 

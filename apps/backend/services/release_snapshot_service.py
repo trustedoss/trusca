@@ -158,10 +158,15 @@ async def _paged_succeeded_scans(
     """
     offset = (page - 1) * size
 
+    # scan-retention: hide superseded snapshots. A superseded scan lost its ref
+    # slot to a newer winner (and carries no release label — retire never
+    # supersedes a release-labelled scan), so the Releases table lists only the
+    # live ref snapshots + tagged releases.
     items_stmt = (
         select(Scan)
         .where(Scan.project_id == project_id)
         .where(cast(Scan.status, String) == "succeeded")
+        .where(Scan.superseded_at.is_(None))
         .order_by(Scan.created_at.desc(), Scan.id.desc())
         .limit(size)
         .offset(offset)
@@ -171,6 +176,7 @@ async def _paged_succeeded_scans(
         .select_from(Scan)
         .where(Scan.project_id == project_id)
         .where(cast(Scan.status, String) == "succeeded")
+        .where(Scan.superseded_at.is_(None))
     )
 
     items_result = await session.execute(items_stmt)

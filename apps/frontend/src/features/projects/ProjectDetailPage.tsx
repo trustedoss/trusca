@@ -559,11 +559,15 @@ export function ProjectDetailPage() {
             projectId={projectId}
             projectName={projectQuery.data?.name ?? null}
             scanId={pinnedScanId}
+            teamId={project?.team_id ?? null}
+            projectRole={overview.data?.current_user_role ?? "developer"}
+            readOnly={isHistorical}
           />
         </TabsContent>
         <TabsContent value="reports">
           <ReportsTab
             projectId={projectId}
+            projectName={projectQuery.data?.name ?? null}
             scanId={pinnedScanId}
             lastSucceededScanAt={overview.data?.last_succeeded_scan_at ?? null}
           />

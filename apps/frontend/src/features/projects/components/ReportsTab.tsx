@@ -32,7 +32,7 @@
  *     background with a localised label (Notice / SBOM / Vuln PDF / VEX).
  */
 import { Download } from "lucide-react";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
@@ -54,6 +54,8 @@ import {
   type ReportDownloadEntry,
   type ReportType,
 } from "@/features/projects/api/reportHistoryApi";
+import type { NoticeFormat } from "@/features/projects/api/obligationsApi";
+import { useNotice } from "@/features/projects/api/useNotice";
 import { useReportHistory } from "@/features/projects/api/useReportHistory";
 import { useVulnReport } from "@/features/projects/api/useVulnReport";
 import { SbomTab } from "@/features/projects/components/SbomTab";
@@ -62,6 +64,13 @@ import { formatRelativeToNow } from "@/lib/relativeTime";
 import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 50;
+
+/**
+ * NOTICE download formats surfaced in the UI. ``markdown`` is API-only (the
+ * old ObligationsToolbar exposed the same two), so we keep the list local to
+ * the Reports tab instead of importing from the now-unrouted ObligationsToolbar.
+ */
+const NOTICE_DOWNLOAD_FORMATS: NoticeFormat[] = ["text", "html"];
 
 /**
  * Format a byte count as a humanised string ("1.2 MiB"). Kept local rather
@@ -111,6 +120,12 @@ const REPORT_TYPE_UI: Record<ReportType, ReportTypeUiMeta> = {
 export interface ReportsTabProps {
   projectId: string;
   /**
+   * Project name — used by the NOTICE card to name the downloaded file
+   * (``NOTICE-<name>.txt``). Optional; the hook falls back to the project id
+   * when omitted.
+   */
+  projectName?: string | null;
+  /**
    * Pinned snapshot scan id (feature #28). When set, deeplinks preserve
    * ``?scan=`` so the user lands on the same snapshot context they had open
    * on Reports. The history list itself is project-wide (not scan-filtered)
@@ -129,6 +144,7 @@ export interface ReportsTabProps {
 
 export function ReportsTab({
   projectId,
+  projectName,
   scanId,
   lastSucceededScanAt,
 }: ReportsTabProps) {
@@ -284,12 +300,11 @@ export function ReportsTab({
               {t("reports.generate.subheading")}
             </p>
           </div>
-          {/* W4-C #20 — NOTICE deep-links into the unified Compliance tab. */}
-          <GenerateCard
-            slug="notice"
-            target="compliance"
-            onDeeplink={deeplinkToTab}
-          />
+          {/* NOTICE downloads directly here — the unified Compliance tab is a
+              read-only grid and the old ObligationsTab affordance is unrouted,
+              so deep-linking there was a dead end. Same direct-download pattern
+              as VulnPdfCard. */}
+          <NoticeCard projectId={projectId} projectName={projectName} />
           {/* W4-C #21 — SBOM card scrolls to the in-page SBOM section below
               instead of navigating to a separate tab. */}
           <GenerateCard
@@ -520,6 +535,83 @@ function VulnPdfCard({ projectId }: { projectId: string }) {
             data-testid="reports-card-vuln-pdf-error"
           >
             {vulnReport.error.message}
+          </p>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * NoticeCard — direct NOTICE download trigger.
+ *
+ * Replaces the prior deep-link-to-Compliance card. The unified Compliance tab
+ * is a read-only grid and never owned a NOTICE download, so the deep-link was
+ * a dead end. This card downloads the attribution NOTICE directly via
+ * ``useNotice`` (same imperative-download shape as VulnPdfCard) with a
+ * text/html format picker mirroring the old ObligationsToolbar.
+ */
+function NoticeCard({
+  projectId,
+  projectName,
+}: {
+  projectId: string;
+  projectName?: string | null;
+}) {
+  const { t } = useTranslation("project_detail");
+  const notice = useNotice(projectId, projectName ?? undefined, {
+    defaultFormat: "text",
+  });
+  const [format, setFormat] = useState<NoticeFormat>("text");
+  return (
+    <Card data-testid="reports-card-notice">
+      <CardHeader className="space-y-1 p-4">
+        <CardTitle className="text-sm font-semibold">
+          {t("reports.cards.notice.title")}
+        </CardTitle>
+        <CardDescription className="text-xs">
+          {t("reports.cards.notice.description")}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="p-4 pt-0">
+        <div className="flex items-center gap-2">
+          <select
+            value={format}
+            onChange={(event) => setFormat(event.target.value as NoticeFormat)}
+            disabled={notice.isLoading}
+            aria-label={t("reports.cards.notice.format_label")}
+            data-testid="reports-card-notice-format"
+            className="h-9 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          >
+            {NOTICE_DOWNLOAD_FORMATS.map((fmt) => (
+              <option key={fmt} value={fmt}>
+                {t(`reports.cards.notice.format_${fmt}`)}
+              </option>
+            ))}
+          </select>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              // Hook surfaces errors via `notice.error`; swallow the reject so
+              // the click doesn't bubble up as an unhandled promise.
+              notice.download({ format }).catch(() => {});
+            }}
+            disabled={notice.isLoading}
+            data-testid="reports-card-notice-download"
+          >
+            {notice.isLoading
+              ? t("reports.cards.notice.action_generating")
+              : t("reports.cards.notice.action")}
+          </Button>
+        </div>
+        {notice.error ? (
+          <p
+            className="mt-2 text-xs text-destructive"
+            data-testid="reports-card-notice-error"
+          >
+            {notice.error.message}
           </p>
         ) : null}
       </CardContent>

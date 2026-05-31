@@ -110,6 +110,7 @@ from models import (
     VulnerabilityFinding,
 )
 from services.component_approval_service import auto_create_pending_approvals
+from services.license_expression import evaluate_expression
 from services.source_archive_service import (
     SourceArchiveError,
     delete_archive,
@@ -120,11 +121,14 @@ from services.source_preservation_service import preserve_scan_source
 from services.vulnerability_matching import persist_trivy_findings
 from tasks._progress import (
     close_log_file,
-    publish_log,
     publish_progress,
     reset_log_counter,
 )
+from tasks._progress import (
+    make_line_callback as _make_line_callback,
+)
 from tasks.celery_app import celery_app
+from tasks.scan_retention import supersede_prior_ref_scans
 
 log = structlog.get_logger("tasks.scan_source")
 
@@ -303,6 +307,13 @@ def _run_pipeline(
     scan_metadata: dict[str, Any] | None = None,
 ) -> None:
     """Execute the scan stages, each with its own commit."""
+    # Scan-log verbosity (feat/scan-log-verbosity): a per-scan
+    # ``metadata.verbosity == "verbose"`` flips every tool into its debug /
+    # verbose mode so the scan-log drawer renders a full diagnostic trace. The
+    # schema validator already constrains the value to {"normal","verbose"};
+    # any other value (or absence) falls back to the quiet "normal" trace.
+    verbose = str((scan_metadata or {}).get("verbosity", "normal")) == "verbose"
+
     # Stage 1 — bootstrap workspace.
     _set_stage(scan_uuid, "bootstrap")
     workspace.mkdir(parents=True, exist_ok=True)
@@ -336,6 +347,7 @@ def _run_pipeline(
         # error inside the callback never propagates, and the per-scan line
         # budget caps runaway tools (publish_log enforces it internally).
         line_callback=_make_line_callback(scan_uuid, stage="cdxgen"),
+        verbose=verbose,
     )
     _persist_artifact(
         scan_uuid,
@@ -407,6 +419,7 @@ def _run_pipeline(
             # P2 #8c — same WS streaming as cdxgen; see the cdxgen
             # call site above for the contract.
             line_callback=_make_line_callback(scan_uuid, stage="scancode"),
+            verbose=verbose,
         )
         scancode_detections = scancode_result.detections
         scancode_json_path = scancode_result.result_path
@@ -483,6 +496,11 @@ def _run_pipeline(
     trivy_result = run_trivy_sbom(
         sbom_path=cdxgen_result.sbom_path,
         output_dir=workspace / "trivy",
+        # Stream Trivy's DB-update + matching progress onto the scan log
+        # (feat/scan-log-verbosity) — previously Trivy ran with --quiet and
+        # captured output, so the trivy stage showed no lines at all.
+        line_callback=_make_line_callback(scan_uuid, stage="trivy"),
+        verbose=verbose,
     )
     trivy_elapsed = time.monotonic() - trivy_started_at
     # Persist the Trivy report alongside the cdxgen SBOM so admin / debug can
@@ -1018,6 +1036,16 @@ def _mark_succeeded(scan_uuid: uuid.UUID) -> None:
         scan.progress_percent = 100
         scan.current_step = "finalize"
         scan.completed_at = datetime.now(UTC)
+        # scan-retention Layer 1: this scan is now the live snapshot for its
+        # ref, so prior succeeded same-ref scans (without an explicit release
+        # label) are superseded in the same transaction. No-op when the scan
+        # carries no ref — those are reclaimed by the keep-last/max-age sweep.
+        supersede_prior_ref_scans(
+            session,
+            project_id=scan.project_id,
+            winner_scan_id=scan.id,
+            ref=scan.ref,
+        )
         session.commit()
     publish_progress(scan_uuid, step="succeeded", percent=100)
 
@@ -1035,39 +1063,6 @@ def _set_stage(scan_uuid: uuid.UUID, stage: str) -> None:
     # Publish AFTER the DB commit so a subscriber that reads the row on
     # receipt sees the same state as the published payload.
     publish_progress(scan_uuid, step=stage, percent=committed_percent)
-
-
-def _make_line_callback(
-    scan_uuid: uuid.UUID, *, stage: str
-) -> Any:
-    """Build a line-callback that forwards subprocess output to the WS.
-
-    P2 #8c — used by the cdxgen / scancode call sites. The callback runs
-    inside a background drain thread spawned by ``_line_streamer``; it MUST
-    NOT raise. ``publish_log`` is itself fire-and-forget (Redis errors are
-    swallowed + logged), but we still wrap the call in a try/except as
-    belt-and-suspenders: a publisher bug must never break a scan over a
-    log-streaming side-channel.
-
-    The per-scan line budget is enforced inside ``publish_log`` so the
-    drain thread keeps reading the subprocess pipes even after the budget
-    is exhausted (closing the pipe early could deadlock the subprocess once
-    its kernel pipe buffer fills) — over-budget lines are silently dropped
-    on the publisher side.
-    """
-
-    def _cb(stream: str, line: str) -> None:
-        try:
-            publish_log(scan_uuid, stage=stage, stream=stream, line=line)
-        except Exception as exc:  # noqa: BLE001 — never break the drain
-            log.warning(
-                "scan_log_callback_unexpected",
-                stage=stage,
-                stream=stream,
-                error=str(exc)[:300],
-            )
-
-    return _cb
 
 
 def _persist_artifact(
@@ -2227,28 +2222,27 @@ def _classify_license_category(spdx_id: str | None) -> str:
 
     A single id is a direct dict lookup. A *compound* SPDX expression
     (``GPL-3.0-or-later AND GPL-3.0-only``, ``MIT OR Apache-2.0``,
-    ``Apache-2.0 WITH LLVM-exception``) is split into its operand license ids
-    and classified as the **most restrictive** operand
-    (forbidden > conditional > allowed). This ensures a compound that contains a
-    forbidden term (e.g. any GPL) is itself flagged forbidden rather than
-    silently degrading to ``unknown`` — the fixtures e2e showed scancode emits
-    such compounds for multi-license files. Returns ``unknown`` only when no
-    operand is recognised.
+    ``Apache-2.0 WITH LLVM-exception``) is resolved by the shared
+    :func:`services.license_expression.evaluate_expression`, which applies the
+    correct per-operator semantics: ``OR`` is **least-restrictive** (a
+    disjunctive "either license satisfies" — e.g. ``GPL-2.0-or-later OR
+    MPL-1.1`` is ``conditional``, NOT forbidden), while ``AND`` / ``WITH`` are
+    **most-restrictive**. The previous split-and-take-most-restrictive logic
+    wrongly treated ``OR`` like ``AND`` and flagged disjunctive multi-licensed
+    packages as forbidden. Static catalog is the per-operand resolver; a miss
+    resolves to ``unknown``.
     """
     if not spdx_id:
         return "unknown"
     direct = _LICENSE_CATEGORY_DEFAULTS.get(spdx_id)
     if direct is not None:
         return direct
-    # Compound expression: split on boolean/exception operators + parentheses,
-    # classify each operand, keep the most restrictive recognised category.
-    tokens = re.split(r"\s+(?:AND|OR|WITH)\s+|[()]", spdx_id)
-    best = "unknown"
-    for tok in tokens:
-        cat = _LICENSE_CATEGORY_DEFAULTS.get(tok.strip())
-        if cat and _CATEGORY_RANK[cat] > _CATEGORY_RANK[best]:
-            best = cat
-    return best
+    result = evaluate_expression(
+        spdx_id,
+        resolve_id=lambda tok: _LICENSE_CATEGORY_DEFAULTS.get(tok, "unknown"),
+        unknown_category="unknown",
+    )
+    return result.category
 
 
 def _extract_spdx_ids(cdxgen_component: dict[str, Any]) -> list[tuple[str, str | None]]:
@@ -2260,31 +2254,45 @@ def _extract_spdx_ids(cdxgen_component: dict[str, Any]) -> list[tuple[str, str |
       - ``{"license": {"name": "<free-text>", "url": "<reference>"}}``
       - ``{"expression": "<spdx-expression>"}``
 
-    We accept the first form (preferred — exact SPDX), accept the third when
-    it parses as a single SPDX id (no AND/OR/WITH), and skip free-text
-    license names — those would require a license-text identifier scanner
-    (scancode) to map to SPDX, which is out of scope for the cdxgen
-    fast-path.
+    We collect the SPDX ids / expressions across all entries and, when a
+    component declares **more than one** license, join them with ``OR`` — a
+    license *list* in package metadata conventionally means "any one satisfies"
+    (disjunctive). ``_classify_license_category`` then evaluates ``OR`` as
+    least-restrictive, so e.g. a ``[GPL-2.0-or-later, LGPL-2.1-or-later,
+    MPL-1.1]`` set classifies as conditional, not forbidden — whenever cdxgen
+    emits the full multi-license set for a component. A single id/expression
+    passes through unchanged. Free-text ``name``-only entries are skipped
+    (they'd need a license-text scanner to map to SPDX).
+
+    Returns ``[]`` or a single ``(combined, url)`` tuple. The combined string is
+    bounded to the ``License.spdx_id`` column width (64); a longer one is
+    skipped (rare).
     """
-    out: list[tuple[str, str | None]] = []
     licenses = cdxgen_component.get("licenses") or []
     if not isinstance(licenses, list):
-        return out
+        return []
+    ids: list[str] = []
+    ref_url: str | None = None
     for entry in licenses:
         if not isinstance(entry, dict):
             continue
         lic = entry.get("license") or {}
         if isinstance(lic, dict):
             spdx = lic.get("id")
-            url = lic.get("url")
             if isinstance(spdx, str) and spdx:
-                out.append((spdx, url if isinstance(url, str) else None))
+                ids.append(spdx)
+                if ref_url is None and isinstance(lic.get("url"), str):
+                    ref_url = lic["url"]
                 continue
         expression = entry.get("expression")
-        if isinstance(expression, str) and expression and not any(
-            kw in expression for kw in (" AND ", " OR ", " WITH ")
-        ):
-            out.append((expression.strip(), None))
+        if isinstance(expression, str) and expression.strip():
+            ids.append(expression.strip())
+    if not ids:
+        return []
+    combined = ids[0] if len(ids) == 1 else " OR ".join(ids)
+    out: list[tuple[str, str | None]] = []
+    if len(combined) <= 64:
+        out.append((combined, ref_url))
     return out
 
 

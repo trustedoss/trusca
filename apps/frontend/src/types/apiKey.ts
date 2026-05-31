@@ -19,6 +19,8 @@ export interface APIKeyCreateOut {
   project_id: string | null;
   created_by_user_id: string | null;
   created_at: string;
+  /** ISO timestamp when the key expires, or null when it never expires. */
+  expires_at: string | null;
   /**
    * Plaintext bearer key (`tos_<prefix>_<secret>`). The backend returns this
    * exactly once at issuance; the SPA shows it in a "copy now" dialog and
@@ -37,6 +39,8 @@ export interface APIKeyListItem {
   project_id: string | null;
   created_by_user_id: string | null;
   created_at: string;
+  /** ISO timestamp when the key expires, or null when it never expires. */
+  expires_at: string | null;
   last_used_at: string | null;
   revoked_at: string | null;
 }
@@ -53,6 +57,11 @@ export interface APIKeyCreatePayload {
   scope: APIKeyScope;
   team_id?: string | null;
   project_id?: string | null;
+  /**
+   * Optional TTL in days (backend caps at 1–1825). Omitted / null → the key
+   * never expires.
+   */
+  expires_in_days?: number | null;
 }
 
 export interface ListAPIKeysParams {
