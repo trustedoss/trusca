@@ -36,8 +36,9 @@
  * The seed's `--component-count` round-robins components across the four
  * license categories (`_LICENSE_CATEGORY_CYCLE` in seed_e2e_user.py), so a
  * count of 16 yields 4 forbidden components — each rendered as a waivable
- * entry in the strip. `componentPrefix: "waive"` keeps the seeded purls
- * (`pkg:npm/waive-NNNNN`) clear of other suites' `uq_components_purl` space.
+ * entry in the strip. Each scenario re-seeds with a per-test, per-retry
+ * `componentPrefix` (`waive-<testId>-<retry>`) so the globally-unique
+ * `uq_components_purl` space never collides across scenarios or retries.
  */
 import { test } from "@playwright/test";
 
@@ -87,11 +88,16 @@ async function bootstrap(
   page: import("@playwright/test").Page,
   { asTeamAdmin }: SeedOpts,
 ): Promise<SeedSummary | null> {
+  // Each scenario re-seeds, and component purls are GLOBALLY unique
+  // (`uq_components_purl`). A shared prefix would make every scenario after the
+  // first collide on re-seed and auto-skip, so derive a per-test, per-retry
+  // prefix from the stable test id (purl-safe: alnum only).
+  const prefix = `waive-${testInfo.testId.replace(/[^a-z0-9]/gi, "")}-${testInfo.retry}`;
   const seed = tryAcquireSeed(testInfo, {
     projectNames: [PROJECT_NAME],
     withScan: true,
     componentCount: DEFAULT_COMPONENT_COUNT,
-    componentPrefix: "waive",
+    componentPrefix: prefix,
     extraMembers: asTeamAdmin ? 1 : 0,
     extraTeamAdmin: asTeamAdmin,
   });
