@@ -39,7 +39,7 @@
  * entry in the strip. `componentPrefix: "waive"` keeps the seeded purls
  * (`pkg:npm/waive-NNNNN`) clear of other suites' `uq_components_purl` space.
  */
-import { expect, test } from "@playwright/test";
+import { test } from "@playwright/test";
 
 import { AuthHarness } from "../_harness/auth";
 import { PortalPage } from "../_harness/PortalPage";
