@@ -60,7 +60,7 @@ Close the biggest remaining gaps vs commercial SCA, reusing best-of-breed open s
 
 ## Backlog (not yet scheduled)
 
-SSO / OIDC, native Jenkins plugin, Excel reports, compliance PDF, historical-scan pinning on SBOM/NOTICE, dark mode.
+SSO / OIDC, native Jenkins plugin, Excel reports, compliance PDF, historical-scan pinning on SBOM/NOTICE, dark mode, per-project / per-scan exclude paths (ignore generated / test / vendored trees in first-party license detection).
 
 ---
 
