@@ -284,7 +284,12 @@ export function IntegrationsPage() {
                             )}
                           </td>
                           <td className="px-3 text-xs text-muted-foreground">
-                            {t("api_keys.expires_never")}
+                            {row.expires_at
+                              ? formatRelativeToNow(
+                                  row.expires_at,
+                                  i18n.resolvedLanguage,
+                                )
+                              : t("api_keys.expires_never")}
                           </td>
                           <td className="px-3 text-right">
                             {!isRevoked ? (

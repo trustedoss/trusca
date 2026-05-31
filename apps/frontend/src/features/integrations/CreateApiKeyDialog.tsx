@@ -44,6 +44,9 @@ export function CreateApiKeyDialog({
   const [scope, setScope] = useState<APIKeyScope>("project");
   const [teamId, setTeamId] = useState("");
   const [projectId, setProjectId] = useState("");
+  // "" → never expires; otherwise the TTL in days. Kept as the raw <select>
+  // string and parsed to a number only at submit.
+  const [expiresInDays, setExpiresInDays] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   function reset() {
@@ -51,6 +54,7 @@ export function CreateApiKeyDialog({
     setScope("project");
     setTeamId("");
     setProjectId("");
+    setExpiresInDays("");
     setError(null);
   }
 
@@ -81,6 +85,7 @@ export function CreateApiKeyDialog({
       scope,
       team_id: scope === "team" ? teamId.trim() : null,
       project_id: scope === "project" ? projectId.trim() : null,
+      expires_in_days: expiresInDays ? Number(expiresInDays) : null,
     });
   }
 
@@ -138,6 +143,39 @@ export function CreateApiKeyDialog({
                 : scope === "team"
                   ? t("api_keys.create_dialog.scope_help_team")
                   : t("api_keys.create_dialog.scope_help_project")}
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="apikey-expires">
+              {t("api_keys.create_dialog.expires_label")}
+            </Label>
+            <select
+              id="apikey-expires"
+              value={expiresInDays}
+              onChange={(e) => setExpiresInDays(e.target.value)}
+              data-testid="integrations-create-expires"
+              disabled={submitting}
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors duration-fast ease-out-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <option value="">
+                {t("api_keys.create_dialog.expires_never")}
+              </option>
+              <option value="30">
+                {t("api_keys.create_dialog.expires_preset_30")}
+              </option>
+              <option value="90">
+                {t("api_keys.create_dialog.expires_preset_90")}
+              </option>
+              <option value="180">
+                {t("api_keys.create_dialog.expires_preset_180")}
+              </option>
+              <option value="365">
+                {t("api_keys.create_dialog.expires_preset_365")}
+              </option>
+            </select>
+            <p className="text-xs text-muted-foreground">
+              {t("api_keys.create_dialog.expires_help")}
             </p>
           </div>
 
