@@ -26,6 +26,10 @@ Legend: ☐ planned · ◐ in progress · ☑ done in the current release
 - Filter URL persistence + global ⌘K palette + Portfolio Dashboard
 - EN + KO i18n for every UI string and every documentation page
 - GitHub Actions composite action + GitLab CI template + Jenkinsfile example
+- Ref-keyed scan retention (latest scan + findings per project ref, manual delete)
+- Time-boxed forbidden-license waivers (`LICENSE_WAIVE_MAX_DAYS` cap)
+- Collapsible sidebar + responsive mobile drawer
+- Documentation UAT harness + re-enabled SAST / e2e / supply-chain CI gates
 
 ## Remediation & Policy
 
@@ -60,7 +64,7 @@ Close the biggest remaining gaps vs commercial SCA, reusing best-of-breed open s
 
 ## Backlog (not yet scheduled)
 
-SSO / OIDC, native Jenkins plugin, Excel reports, compliance PDF, historical-scan pinning on SBOM/NOTICE, dark mode.
+SSO / OIDC, native Jenkins plugin, Excel reports, compliance PDF, historical-scan pinning on SBOM/NOTICE, dark mode, per-project / per-scan exclude paths (ignore generated / test / vendored trees in first-party license detection).
 
 ---
 

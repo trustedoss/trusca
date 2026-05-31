@@ -44,10 +44,12 @@ Roles are **additive across teams** — a user can be `team_admin` in one team a
 
 ## The Users page
 
+<!-- docs-uat: id=users-list-api kind=api auth=admin url=/v1/admin/users expect=status:200 tier=nightly -->
 The `/admin/users` page lists every account in the deployment with role badges, activation status, last-sign-in timestamp, and team membership counts. Search by email or name; filter by role and status.
 
 ![Admin Users page — search/filter toolbar and the user table with role + status columns](/img/screenshots/admin-users-list.png)
 
+<!-- docs-uat: id=teams-list-api kind=api auth=admin url=/v1/admin/teams expect=status:200 tier=nightly -->
 The companion `/admin/teams` page enumerates teams and the projects + members each owns:
 
 ![Admin Teams page — per-team rows with member and project counts](/img/screenshots/admin-teams-list.png)
@@ -136,6 +138,7 @@ The guard is enforced in two layers:
 
 If the **last** super-admin row gets flipped to `is_active=false` despite the [last-super-admin protection](#last-super-admin-protection) — for example, an integration test against the deployment's database tripped `deactivate_user`, or another super-admin demoted you before promoting a replacement — re-run the same bootstrap script `scripts/install.sh` used at install time. It detects the existing row and lifts `is_active` back to `true` without touching the stored password.
 
+<!-- docs-uat: id=users-recover-superadmin kind=shell ctx=host tier=nightly waiver=production-compose-operator-recovery-with-placeholder-creds -->
 ```bash
 docker-compose -f docker-compose.yml exec -T \
   -e ADMIN_EMAIL="admin@example.com" \
@@ -199,9 +202,13 @@ Reuse detection: if a refresh token is presented twice, the entire token family 
 
 After onboarding a user:
 
+<!-- docs-uat: id=users-verify-signin kind=manual tier=manual -->
 1. The user can sign in at `/login` with the password they set during registration.
+<!-- docs-uat: id=users-verify-active kind=manual tier=manual -->
 2. **/admin/users** lists the user with `is_active = true`.
+<!-- docs-uat: id=users-verify-membership-audit kind=manual tier=manual -->
 3. The audit log records the team-add as a `memberships` insert.
+<!-- docs-uat: id=users-verify-member-role kind=manual tier=manual -->
 4. The user appears in the team's member list with the assigned role.
 
 ## Troubleshooting
@@ -210,6 +217,7 @@ After onboarding a user:
 
 Self-registration is open by default. Check that the user is hitting the correct URL (`/register`), the email passes basic format validation, and the chosen password meets the policy (≥ 12 chars, not in the NIST-banned list). Failed registrations log a structured warning on the backend:
 
+<!-- docs-uat: id=users-troubleshoot-register-log kind=shell ctx=host tier=nightly waiver=illustrative-log-grep-on-production-compose -->
 ```bash
 docker-compose -f docker-compose.yml logs --tail=200 backend | grep -i register
 ```

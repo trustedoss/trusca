@@ -111,6 +111,7 @@ The **Export CSV** button on the toolbar exports the **currently filtered** resu
 
 For larger windows, paginate via the API:
 
+<!-- docs-uat: id=audit-api-paginate kind=api auth=admin url=/v1/admin/audit?page=1&page_size=10 expect=status:200 tier=nightly -->
 ```bash
 curl -sS \
   -H "Authorization: Bearer ${ACCESS_TOKEN}" \
@@ -137,6 +138,7 @@ Filter: `target_table=vulnerability_findings&action=update`, then expand each ro
 
 When a user reports an error, ask them for the `X-Request-ID` shown on the error page. Filter the audit log by that `request_id` and you get the canonical record of every write the request triggered. Cross-reference with structured logs:
 
+<!-- docs-uat: id=audit-log-correlate kind=shell ctx=host tier=nightly waiver=illustrative-log-grep-no-deterministic-assertion -->
 ```bash
 docker-compose -f docker-compose.yml logs backend \
   | jq -c "select(.request_id == \"$REQ\")"
@@ -146,6 +148,7 @@ docker-compose -f docker-compose.yml logs backend \
 
 The audit log is **never auto-pruned**. Storage is cheap relative to its compliance value (a typical install grows by ~50 MB / year per active user). If you need to reduce the table size, the recommended path is **archive then truncate** with operator confirmation:
 
+<!-- docs-uat: id=audit-archive-truncate kind=shell ctx=host tier=nightly waiver=destructive-retention-archive-on-production-compose -->
 ```bash
 docker-compose -f docker-compose.yml exec postgres \
   pg_dump -U trustedoss -t audit_logs trustedoss | gzip > audit-archive-2024.sql.gz
@@ -159,6 +162,7 @@ docker-compose -f docker-compose.yml exec postgres \
 
 The `DELETE` is **blocked at the DB layer** by the immutability triggers ([Schema](#schema)). For a deliberate retention purge, drop both triggers inside the same maintenance transaction, run the `DELETE`, and re-create the triggers before commit:
 
+<!-- docs-uat: id=audit-retention-purge kind=sql ctx=postgres tier=nightly waiver=destructive-drops-triggers-and-deletes-rows -->
 ```sql
 BEGIN;
 DROP TRIGGER audit_logs_immutable_truncate ON audit_logs;
@@ -186,8 +190,11 @@ Capture the operator action separately (the trigger DDL itself does not emit an 
 
 After any privileged action:
 
+<!-- docs-uat: id=audit-verify-new-row kind=manual tier=manual -->
 1. **/admin/audit** shows a new row at the top within ~1 second.
+<!-- docs-uat: id=audit-verify-request-id kind=manual tier=manual -->
 2. The `request_id` matches the `X-Request-ID` response header from the originating request.
+<!-- docs-uat: id=audit-verify-diff-masked kind=manual tier=manual -->
 3. The `diff` matches your expectation. PII fields (email, password hash, API keys) appear masked.
 
 ## Troubleshooting
@@ -208,6 +215,7 @@ The export is capped at 100k rows. Narrow the filter or use the API with paginat
 
 The `diff` column is `jsonb`. SQL queries against it are fast with the GIN index the migrations create:
 
+<!-- docs-uat: id=audit-diff-query kind=sql ctx=postgres expect=ok tier=nightly -->
 ```sql
 SELECT * FROM audit_logs
  WHERE diff @> '{"new_state": "suppressed"}'::jsonb

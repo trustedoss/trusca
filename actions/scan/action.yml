@@ -98,14 +98,29 @@ runs:
         TOS_API_KEY: ${{ inputs.api-key }}
         TOS_PROJECT_ID: ${{ inputs.project-id }}
         TOS_SCAN_KIND: ${{ inputs.scan-kind }}
+        # scan-retention: forward the ref so the portal groups this branch's /
+        # PR's scans under one retention key (the latest succeeds the prior).
+        # `github.ref` is `refs/heads/<branch>` on push and `refs/pull/<n>/merge`
+        # on pull_request — the portal normalizes both. `pull_request.number` is
+        # empty on push events.
+        TOS_REF: ${{ github.ref }}
+        TOS_PR_NUMBER: ${{ github.event.pull_request.number }}
       run: |
         set -euo pipefail
         # Strip trailing slash so we never construct a URL with `//v1/...`.
         api="${TOS_API_URL%/}"
-        # Body is the minimum shape the trigger endpoint accepts; metadata is
-        # left empty so the portal applies defaults (latest commit on default
-        # branch / latest container tag, depending on scan-kind).
-        body=$(jq -nc --arg kind "$TOS_SCAN_KIND" '{kind: $kind, metadata: {source: "github-actions"}}')
+        # Body carries the source tag plus the ref (and PR number when present)
+        # so the portal can apply DT-style ref-keyed retention. Empty values are
+        # omitted so the portal falls back to its own defaults.
+        body=$(jq -nc \
+          --arg kind "$TOS_SCAN_KIND" \
+          --arg ref "$TOS_REF" \
+          --arg pr "$TOS_PR_NUMBER" \
+          '{kind: $kind, metadata: (
+              {source: "github-actions"}
+              + (if $ref == "" then {} else {ref: $ref} end)
+              + (if $pr  == "" then {} else {pull_request_number: ($pr | tonumber)} end)
+          )}')
 
         # `--fail-with-body` returns non-zero on 4xx/5xx but still prints the
         # response body so we can surface the RFC 7807 problem detail.

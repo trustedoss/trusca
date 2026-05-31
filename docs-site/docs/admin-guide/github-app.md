@@ -18,6 +18,10 @@ A **GitHub App** is the credential TrustedOSS uses for fine-grained, per-reposit
 `team_admin` registers / revokes credentials and links installations for their team. `super_admin` can manage any team's. `developer` can read (list / view) their team's credentials but cannot mutate them.
 :::
 
+:::info API-only management
+There is no in-portal form for registering a GitHub App credential in this release — the registration / linking endpoints listed below are the only management surface. A `team_admin`-facing UI is on the roadmap. Until then, the audit trail of any registration is visible under [Audit log](./audit-log.md) (with the encrypted columns masked to `***`).
+:::
+
 ## What it stores
 
 A registered credential is a row scoped to one team. It holds:

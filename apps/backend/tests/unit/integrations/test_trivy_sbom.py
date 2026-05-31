@@ -883,3 +883,77 @@ def test_run_trivy_sbom_cmd_pins_scanners_to_vuln(
     assert "--scanners" in captured_cmd
     scanners_idx = captured_cmd.index("--scanners")
     assert captured_cmd[scanners_idx + 1] == "vuln"
+
+
+# ---------------------------------------------------------------------------
+# Scan-log verbosity (feat/scan-log-verbosity)
+# ---------------------------------------------------------------------------
+
+
+def _fake_run_writing_empty_report(
+    captured_cmd: list[str],
+) -> Any:
+    """Build a fake subprocess.run that records argv and writes an empty report."""
+
+    def fake_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
+        captured_cmd.clear()
+        captured_cmd.extend(cmd)
+        out_idx = cmd.index("--output") + 1
+        Path(cmd[out_idx]).write_text(
+            json.dumps({"SchemaVersion": 2, "Results": []}),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=b"", stderr=b"")
+
+    return fake_run
+
+
+def test_run_trivy_sbom_default_omits_quiet(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Normal mode no longer passes --quiet so progress lines stream to the log."""
+    from integrations import trivy as trivy_adapter
+
+    monkeypatch.setenv("TRUSTEDOSS_SCAN_BACKEND", "real")
+    monkeypatch.setattr(
+        "integrations.trivy.shutil.which", lambda _name: "/usr/local/bin/trivy"
+    )
+    sbom_path = tmp_path / "sbom.cdx.json"
+    sbom_path.write_text("{}", encoding="utf-8")
+
+    captured_cmd: list[str] = []
+    monkeypatch.setattr(
+        "integrations.trivy.subprocess.run", _fake_run_writing_empty_report(captured_cmd)
+    )
+
+    trivy_adapter.run_trivy_sbom(sbom_path=sbom_path, output_dir=tmp_path / "trivy")
+
+    assert "--quiet" not in captured_cmd
+    assert "--debug" not in captured_cmd
+
+
+def test_run_trivy_sbom_verbose_adds_debug(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """verbose=True flips Trivy into --debug for a full diagnostic trace."""
+    from integrations import trivy as trivy_adapter
+
+    monkeypatch.setenv("TRUSTEDOSS_SCAN_BACKEND", "real")
+    monkeypatch.setattr(
+        "integrations.trivy.shutil.which", lambda _name: "/usr/local/bin/trivy"
+    )
+    sbom_path = tmp_path / "sbom.cdx.json"
+    sbom_path.write_text("{}", encoding="utf-8")
+
+    captured_cmd: list[str] = []
+    monkeypatch.setattr(
+        "integrations.trivy.subprocess.run", _fake_run_writing_empty_report(captured_cmd)
+    )
+
+    trivy_adapter.run_trivy_sbom(
+        sbom_path=sbom_path, output_dir=tmp_path / "trivy", verbose=True
+    )
+
+    assert "--debug" in captured_cmd
+    # The SBOM path must stay the final positional arg after the debug flag.
+    assert captured_cmd[-1] == str(sbom_path)

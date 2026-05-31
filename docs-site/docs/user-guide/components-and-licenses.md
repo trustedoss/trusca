@@ -78,9 +78,9 @@ A component can be reached by several paths at once (a "diamond" — two of your
 
 ## License classification
 
-The **Licenses** tab on a project breaks down the same data by SPDX identifier and tier — a horizontal bar chart on top of the same table the Components tab uses, scoped to license rows:
+The **Compliance** tab on a project breaks down the same data by SPDX identifier and tier — a horizontal bar chart on top of the same table the Components tab uses, scoped to license rows (with the `Has obligations` toggle flipping the same surface into the obligations view; see [Obligations](#obligations)).
 
-![Project detail — Licenses tab with a tier horizontal bar chart and a per-license breakdown](/img/screenshots/user-licenses-donut.png)
+![Project detail — Compliance tab with the tier distribution bar and per-license rows](/img/screenshots/user-licenses-donut.png)
 
 Every license is classified into one of four tiers. The **code value** column
 shows the value used in API responses, audit logs, and the build gate;
@@ -93,14 +93,14 @@ the **UI label** column is what appears in tables and badges.
 | `forbidden` | **Forbidden** | Build gate exits 1 in CI. | AGPL-3.0, GPL-2.0, GPL-3.0, SSPL-1.0, BUSL-1.1 |
 | `unknown` | **Unknown** | Surfaced for review; no automatic block. Always needs human review. | License could not be parsed; SPDX ID not matched by the classifier — see [below](#why-so-many-unknown). |
 
-:::warning Classification source in this release
-The legal-tier classification (`forbidden` / `conditional` / `permissive` / `unknown`) is currently driven by a hard-coded SPDX → tier dictionary in `apps/backend/tasks/scan_source.py` (`_LICENSE_CATEGORY_DEFAULTS`). Per-organization rule customization is on the the roadmap. For one-off overrides today, super-admins can patch the dictionary and restart the worker (an Operator-only path).
+:::warning Classification source
+The legal-tier classification (`forbidden` / `conditional` / `permissive` / `unknown`) is driven by a built-in SPDX-to-tier catalog. Per-organization rule customization is on the roadmap. Until then, super-admins can override individual entries in-place and restart the worker — an operator-only path.
 :::
 
 ### Why so many `unknown`? {#why-so-many-unknown}
 
 :::info
-Classification uses exact-match SPDX IDs. Suffix-less variants (`LGPL-3.0` instead of `LGPL-3.0-or-later`) fall through to `unknown`. If a component shows `unknown` despite a well-known SPDX ID, the source likely emitted a deprecated alias. Fuzzy SPDX normalization is on the the roadmap.
+Classification uses exact-match SPDX IDs. Suffix-less variants (`LGPL-3.0` instead of `LGPL-3.0-or-later`) fall through to `unknown`. If a component shows `unknown` despite a well-known SPDX ID, the source likely emitted a deprecated alias. Fuzzy SPDX normalization is on the roadmap.
 :::
 
 ## Declared vs. detected {#declared-vs-detected}
@@ -141,9 +141,9 @@ Each license carries **obligations** — duties you must honor when redistributi
 - **Dynamic linking** — LGPL-style: end-users must be able to relink against a modified library.
 - **No endorsement** — do not use the project name to endorse derivatives without permission.
 
-The **Obligations** tab on the project page consolidates obligations across components. Pick a format (**text** or **HTML**) and click **Download NOTICE** to save a NOTICE document summarizing every attribution and license. The endpoint also serves a `markdown` variant via the API. See [SBOM → NOTICE file](./sbom.md#notice-file) for the format / MIME / extension table.
+The **Compliance** tab with the **Has obligations** toggle on consolidates obligations across components. Pick a NOTICE format (**text** or **HTML**) on the toolbar and click **Download NOTICE** to save a NOTICE document summarizing every attribution and license. The endpoint also serves a `markdown` variant via the API. See [SBOM → NOTICE file](./sbom.md#notice-file) for the format / MIME / extension table.
 
-![Project detail — Obligations tab with the per-component obligations distribution](/img/screenshots/user-obligations-distribution.png)
+![Project detail — Compliance tab with the Has obligations toggle on, showing the per-component obligations distribution](/img/screenshots/user-obligations-distribution.png)
 
 :::note Obligation kinds in this release
 The obligations catalog covers the seven kinds listed above. Some
@@ -157,7 +157,7 @@ kinds yet:
 - **Field-of-use restrictions** (BUSL-1.1).
 
 For these, see the underlying license text via the component drawer; a
-richer obligation taxonomy is on the the roadmap.
+richer obligation taxonomy is on the roadmap.
 :::
 
 ## SPDX expressions
@@ -174,8 +174,11 @@ Hovering an expression in the UI shows the SPDX URL for each component license.
 
 After a successful scan:
 
+<!-- docs-uat: id=components-count-nonzero kind=ui harness=componentsHaveData(portal-web) tier=nightly -->
 1. Component count matches your expectation (close to the count of pinned dependencies in your lockfile).
+<!-- docs-uat: id=components-classification-sums kind=manual tier=manual -->
 2. The classification distribution horizontal bar chart on the Overview tab adds up to 100%.
+<!-- docs-uat: id=licenses-forbidden-highlighted kind=ui harness=licensesGridPopulated(portal-web) tier=nightly -->
 3. Forbidden-license components, if any, are highlighted in red and have a CTA to the [approvals queue](./approvals.md).
 
 ## Troubleshooting
@@ -191,7 +194,7 @@ The license could not be parsed, or the SPDX ID was not in the classifier's exac
 
 ### Classification looks wrong
 
-The classification in this release is driven by the hard-coded `_LICENSE_CATEGORY_DEFAULTS` dictionary in `apps/backend/tasks/scan_source.py` (see [Classification source](#license-classification) above). For a one-off override today, a super-admin can patch the dictionary and restart the worker; the per-organization customization path is on the the roadmap. If the dictionary entry is correct but a detected license disagrees with the declared one, review both findings in the component drawer (see [Declared vs. detected](#declared-vs-detected)).
+Classification is driven by the built-in SPDX-to-tier catalog (see [Classification source](#license-classification) above). For a one-off override today, a super-admin can patch the catalog and restart the worker; the per-organization customization path is on the roadmap. If the catalog entry is correct but a detected license disagrees with the declared one, review both findings in the component drawer (see [Declared vs. detected](#declared-vs-detected)).
 
 ### Lockfile not detected
 
@@ -206,7 +209,7 @@ Items the manual previously promised that are not in this release; tracked for l
 - **Approval status** row inside the component drawer — planned; the project-level [Approvals](./approvals.md) page is the source of truth today.
 - Manual **Override concluded license** action in the drawer (`team_admin`) — planned.
 - Fuzzy SPDX normalization for suffix-less variants (`LGPL-3.0` → `LGPL-3.0-or-later`) — planned.
-- Per-organization license-classification rule customization — planned; today classification is driven by the hard-coded `_LICENSE_CATEGORY_DEFAULTS` dictionary in `apps/backend/tasks/scan_source.py`.
+- Per-organization license-classification rule customization — planned; today classification uses the built-in catalog.
 
 ## See also
 

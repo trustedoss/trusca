@@ -1,10 +1,19 @@
 /**
- * Licenses E2E — Phase 3 PR #12.
+ * Licenses E2E — Phase 3 PR #12 (re-targeted to the W9-#58 unified
+ * Compliance grid).
  *
- * Drives the project detail Licenses tab against the docker-compose dev
- * stack. Four `@licenses` scenarios:
+ * The standalone Licenses tab was absorbed into a single read-only
+ * Compliance grid (`?tab=compliance`). Rows are now `compliance-row`
+ * elements carrying `data-category` / `data-spdx-id` / `data-finding-id`;
+ * the per-license drawer (LicenseDrawer) is reused verbatim. The harness
+ * `selectLicensesTab` / `filterLicensesByCategory` / `openLicenseDrawer`
+ * verbs were updated to drive the grid, so the spec keeps its original
+ * intent (rows + counts, category filter, drawer meta + affected, cross-link
+ * to Components).
  *
- *   S1 — Tab entry: list + distribution chart + counts render
+ * Four `@licenses` scenarios:
+ *
+ *   S1 — Tab entry: grid rows render and each carries a valid category
  *   S2 — Category multi-filter sync (URL persists, narrows results)
  *   S3 — Drawer open: meta + affected components render
  *   S4 — Cross-link from drawer pivots to the Components tab drawer
@@ -75,7 +84,7 @@ test.describe("@licenses project licenses tab", () => {
     await auth.clearAuthState();
   });
 
-  test("S1) Licenses tab renders the list, distribution chart, and counts", async ({
+  test("S1) Compliance grid renders license rows with valid categories", async ({
     page,
   }, testInfo) => {
     const seed = await bootstrap(testInfo, page);
@@ -86,18 +95,22 @@ test.describe("@licenses project licenses tab", () => {
     await portal.openProjectDetail(PROJECT_NAME);
     await portal.selectLicensesTab();
 
-    // ≥ 1 license row arrived.
+    // ≥ 1 license row arrived (server-reported total on the grid summary).
     const total = await portal.getLicenseRowCount();
     expect(total).toBeGreaterThanOrEqual(1);
-    await expect(page.getByTestId("license-row").first()).toBeVisible();
+    await expect(page.getByTestId("compliance-row").first()).toBeVisible();
 
-    // Distribution chart visible with all four legend buckets present (the
-    // chart always emits all four categories, so this is a stable check
-    // regardless of which buckets have non-zero counts).
-    await expect(page.getByTestId("licenses-distribution")).toBeVisible();
-    await expect(page.getByTestId("license-distribution-chart")).toBeVisible();
-    for (const cat of ["forbidden", "conditional", "allowed", "unknown"] as const) {
-      await expect(page.getByTestId(`license-legend-${cat}`)).toBeVisible();
+    // Every rendered row carries one of the four license categories — the
+    // grid replaces the old distribution chart, but the per-row
+    // `data-category` is the locale-agnostic signal we assert on.
+    const categories = await page
+      .locator('[data-testid="compliance-row"]')
+      .evaluateAll((rows) =>
+        rows.map((r) => r.getAttribute("data-category")).filter(Boolean),
+      );
+    expect(categories.length).toBeGreaterThanOrEqual(1);
+    for (const cat of categories) {
+      expect(["forbidden", "conditional", "allowed", "unknown"]).toContain(cat);
     }
   });
 
@@ -123,7 +136,7 @@ test.describe("@licenses project licenses tab", () => {
 
     // Every visible row carries one of the two filtered categories.
     const visibleCategories = await page
-      .locator('[data-testid="license-row"]')
+      .locator('[data-testid="compliance-row"]')
       .evaluateAll((rows) =>
         rows.map((r) => r.getAttribute("data-category")).filter(Boolean),
       );
@@ -131,9 +144,9 @@ test.describe("@licenses project licenses tab", () => {
       expect(["forbidden", "conditional"]).toContain(cat);
     }
 
-    // URL mirrors the filter as a CSV under `license_category`.
+    // URL mirrors the filter as a CSV under `compliance_category`.
     const url = new URL(page.url());
-    const cats = (url.searchParams.get("license_category") ?? "")
+    const cats = (url.searchParams.get("compliance_category") ?? "")
       .split(",")
       .sort();
     expect(cats).toEqual(["conditional", "forbidden"]);
@@ -158,8 +171,12 @@ test.describe("@licenses project licenses tab", () => {
 
     // Read the SPDX id of the first row (locale-agnostic) and open it via
     // the harness verb — this also asserts the URL flips to `?license=<id>`.
+    // The grid only renders a `data-spdx-id` for licenses with a real SPDX id;
+    // the seed uses `E2E-<CAT>-<suffix>` ids, so the first row always carries
+    // one. We pick the first row that actually exposes a non-empty id to stay
+    // robust against any LicenseRef-* row ordering ahead of it.
     const firstSpdxId = await page
-      .getByTestId("license-row")
+      .locator('[data-testid="compliance-row"][data-spdx-id]:not([data-spdx-id=""])')
       .first()
       .getAttribute("data-spdx-id");
     expect(firstSpdxId).toBeTruthy();
@@ -194,7 +211,7 @@ test.describe("@licenses project licenses tab", () => {
     await portal.selectLicensesTab();
 
     const firstSpdxId = await page
-      .getByTestId("license-row")
+      .locator('[data-testid="compliance-row"][data-spdx-id]:not([data-spdx-id=""])')
       .first()
       .getAttribute("data-spdx-id");
     expect(firstSpdxId).toBeTruthy();

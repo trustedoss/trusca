@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
+from datetime import datetime  # noqa: TC003 — used in make_scan signature
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -166,6 +167,10 @@ async def make_scan(
     requested_by: User | None = None,
     kind: str = "source",
     status: str = "queued",
+    ref: str | None = None,
+    scan_metadata: dict[str, object] | None = None,
+    created_at: datetime | None = None,
+    superseded_at: datetime | None = None,
 ) -> Scan:
     scan = Scan(
         project_id=project.id,
@@ -173,8 +178,15 @@ async def make_scan(
         status=status,
         progress_percent=0,
         requested_by_user_id=requested_by.id if requested_by else None,
-        scan_metadata={},
+        scan_metadata=scan_metadata or {},
+        ref=ref,
+        superseded_at=superseded_at,
     )
+    # created_at has a server_default; assign explicitly only when a test needs
+    # to control age (scan-retention max-age tests). The DB column is TIMESTAMPTZ
+    # so the value must be timezone-aware.
+    if created_at is not None:
+        scan.created_at = created_at
     session.add(scan)
     await session.commit()
     await session.refresh(scan)

@@ -51,7 +51,7 @@ sidebar_position: 6
 
 스캔 파이프라인이 새로운 조건부 라이선스 컴포넌트를 탐지하면 대기 요청이 자동 생성됩니다. 수동 작업 불필요.
 
-스캔이 실행되기 **전에** 요청을 시드해야 하는 클라이언트(예: 아직 푸시하지 않은 PR에서 의존성 추가)를 위해 포털은 `POST /v1/approvals` 엔드포인트를 노출합니다. 이를 위한 UI 폼은 이연되었습니다 — [로드맵](#로드맵-v2x) 참고.
+스캔이 실행되기 **전에** 요청을 시드해야 하는 클라이언트(예: 아직 푸시하지 않은 PR에서 의존성 추가)를 위해 포털은 `POST /v1/approvals` 엔드포인트를 노출합니다. 이를 위한 UI 폼은 이연되었습니다 — [로드맵](#로드맵) 참고.
 
 ## 요청 처리
 
@@ -108,9 +108,13 @@ sidebar_position: 6
 
 요청 처리 후:
 
+<!-- docs-uat: id=approvals-state-badge-updates kind=ui harness=approvalsDispose tier=nightly -->
 1. 상태 배지가 즉시 갱신.
+<!-- docs-uat: id=approvals-audit-recorded kind=manual tier=manual -->
 2. 감사 로그가 `target_table=component_approvals&action=update`를 `previous_status`, `new_status`, `decision_note`와 함께 diff에 담아 기록.
+<!-- docs-uat: id=approvals-requester-notified kind=manual tier=manual -->
 3. 원래 요청자(있다면)가 팀의 알림 설정에 따라 알림 수신.
+<!-- docs-uat: id=approvals-reject-no-autoblock kind=manual tier=manual -->
 4. **참고**: v0.10.0 에서 반려 결정은 다음 스캔의 빌드 게이트에서 컴포넌트를 `forbidden` 으로 자동 승격하지 **않습니다** — 수동 후속 조치는 [반려 결정 caveat](#rejected-verdict) 참고.
 
 ## 트러블슈팅
@@ -125,7 +129,7 @@ sidebar_position: 6
 
 ### 반려 결정이 다음 CI 빌드를 차단하지 않음
 
-v0.10.0 의 의도된 동작입니다 — [반려 결정 caveat](#rejected-verdict) 참고. 빌드 게이트는 `forbidden` 라이선스 단계만 평가하며, 승인 결정은 컴포넌트의 라이선스 카테고리로 역전파되지 않습니다. 빌드를 차단하려면 의존성을 제거하거나 분류기 사전 패치 경로(Operator 전용)를 통해 해당 라이선스를 `forbidden` 으로 승격하세요.
+현재 릴리스의 의도된 동작입니다 — [반려 결정 caveat](#rejected-verdict) 참고. 빌드 게이트는 `forbidden` 라이선스 단계만 평가하며, 승인 결정은 컴포넌트의 라이선스 카테고리로 역전파되지 않습니다. 빌드를 차단하려면 의존성을 제거하거나 분류기 사전 패치 경로(Operator 전용)를 통해 해당 라이선스를 `forbidden` 으로 승격하세요.
 
 ### 승인 결정이 다음 스캔에서도 경고로 표시됨
 
@@ -135,10 +139,10 @@ v0.10.0 의 의도된 동작입니다 — [반려 결정 caveat](#rejected-verdi
 
 매뉴얼이 이전에 약속했으나 v0.10.0에 포함되지 않은 항목.
 
-- 큐 툴바의 프로젝트 / 라이선스 / 컴포넌트 / 요청자 필터 —  예정. 현재는 **상태**와 **날짜 범위**만 노출.
-- 큐 행의 라이선스 / 검토자 / 사유 컬럼 —  예정. 현재는 드로어 안에서만 노출됩니다.
-- "New request" UI 폼(프로젝트 / purl / 사유) —  예정. 현재 수동 요청 시드는 `POST /v1/approvals` 엔드포인트뿐입니다.
-- `team_admin` 검토자를 위한 다중 선택 일괄 결정 —  예정.
+- 큐 툴바의 프로젝트 / 라이선스 / 컴포넌트 / 요청자 필터 — 예정. 현재는 **상태**와 **날짜 범위**만 노출.
+- 큐 행의 라이선스 / 검토자 / 사유 컬럼 — 예정. 현재는 드로어 안에서만 노출됩니다.
+- "New request" UI 폼(프로젝트 / purl / 사유) — 예정. 현재 수동 요청 시드는 `POST /v1/approvals` 엔드포인트뿐입니다.
+- `team_admin` 검토자를 위한 다중 선택 일괄 결정 — 예정.
 
 ## 함께 보기
 

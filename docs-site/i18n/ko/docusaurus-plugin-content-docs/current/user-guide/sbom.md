@@ -27,6 +27,21 @@ sidebar_position: 5
 
 두 포맷 모두 동일한 내부 모델에서 생성되므로 컴포넌트 목록은 (포맷별 필드 제외) 동일합니다.
 
+## 컴포넌트별 포함 내용
+
+각 컴포넌트는 이름, 버전, 패키지 URL(PURL), 그리고 탐지된 라이선스를 담습니다.
+
+- **라이선스** — 스캔의 라이선스 finding에서 채웁니다. CycloneDX는 컴포넌트
+  `licenses` 배열을 사용하고(*concluded* → *declared* → *detected* 우선순위),
+  SPDX는 `licenseDeclared`·`licenseConcluded`를 SPDX license expression으로
+  채웁니다. 탐지된 라이선스가 없거나 SPDX 식별자가 없는 라이선스(ORT
+  `LicenseRef-*`)는 SPDX에서 스펙 sentinel `NOASSERTION`으로 출력됩니다
+  (CycloneDX는 라이선스 이름을 그대로 담음). `copyrightText`는 현재 항상
+  `NOASSERTION`입니다.
+- **최상위 버전** — `metadata.component.version`은 스캔된 릴리스를 반영합니다.
+  스캔 제출 시 `release` 라벨(예: `v1.2.3`)이 지정됐으면 그 값을, 없으면 스캔
+  id를 안정적 fallback으로 사용합니다.
+
 ## Byte-stable 출력
 
 4가지 내보내기 모두 **byte-stable**입니다 — 같은 스캔을 다시 내보내면 동일 바이트가 생성됩니다. diff·서명·캐싱이 단순해집니다.
@@ -50,6 +65,13 @@ byte-stability 달성 방법:
 
 ## API에서 다운로드
 
+<!-- docs-uat: id=sbom-cyclonedx-api kind=api auth=admin url=/v1/projects/${PROJECT_ID}/sbom?format=cyclonedx-json expect=status:200 tier=nightly -->
+API는 SBOM을 CycloneDX JSON으로 제공합니다:
+
+<!-- docs-uat: id=sbom-spdx-api kind=api auth=admin url=/v1/projects/${PROJECT_ID}/sbom?format=spdx-json expect=status:200 tier=nightly -->
+…그리고 SPDX JSON으로도 제공합니다(같은 엔드포인트, `format`만 다름):
+
+<!-- docs-uat: id=sbom-api-download kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
 # CycloneDX JSON
 curl -sS -L -OJ \
@@ -134,18 +156,21 @@ VEX 상태와 CycloneDX `analysis.state` 매핑:
 
 ## 정상 동작 확인
 
+<!-- docs-uat: id=sbom-cyclonedx-validate kind=manual tier=manual -->
 1. 다운로드된 SBOM이 검증기를 통과 — CycloneDX는 [`cyclonedx validate`](https://github.com/CycloneDX/cyclonedx-cli) 실행:
 
    ```bash
    cyclonedx validate --input-file checkout-service.sbom.json
    ```
 
+<!-- docs-uat: id=sbom-spdx-validate kind=manual tier=manual -->
 2. SPDX는 [`spdx-tools`](https://github.com/spdx/tools-python)로 검증:
 
    ```bash
    pyspdxtools -i checkout-service.sbom.json
    ```
 
+<!-- docs-uat: id=sbom-byte-identical kind=manual tier=manual -->
 3. 같은 스캔을 다시 다운로드하면 byte 동일 파일 생성:
 
    ```bash
@@ -174,20 +199,36 @@ VEX 상태와 CycloneDX `analysis.state` 매핑:
 
 | 감사관 질문 | v0.10.0 답변 소스 | 한계 |
 |------------|----------------|------|
-| "릴리스 X 시점의 SBOM 을 보여달라" | 수동 아카이브; 포털은 최신본만 보존 | 과거 스캔 고정은  로드맵 |
-| "지난 분기에 누가 SBOM / NOTICE 를 다운로드했나?" | `structlog`(Loki / journald) — `audit_logs` 아님 | 감사 행 승격은  로드맵 |
+| "릴리스 X 시점의 SBOM 을 보여달라" | 수동 아카이브; 포털은 최신본만 보존 | 과거 스캔 고정은 로드맵 |
+| "지난 분기에 누가 SBOM / NOTICE 를 다운로드했나?" | `structlog`(Loki / journald) — `audit_logs` 아님 | 감사 행 승격은 로드맵 |
 | "프로젝트 X 에서 GPL 이 처음 탐지된 시점은?" | `scans.create` 의 `audit_logs` + 스캔별 `vulnerability_findings.create` | 가능 — 전체 증거 체인 보유 |
 | "2026 Q1 의 모든 승인 결정을 보여달라" | `component_approvals.update` 의 `audit_logs` + `decision_note` | 가능 — 전체 증거 체인 보유 |
 | "감사 행이 변조되지 않았음을 증명하라" | append-only 트리거(마이그레이션 0012) | super-admin 우회 잔존 — [감사 로그 강화](../admin-guide/audit-log.md#스키마) 검토 필요 |
+
+## 공급사 제출 호환성
+
+이 내보내기는 일반적인 기업 공급사 SBOM 요구사항(예:
+[SK텔레콤 공급사 가이드](https://sktelecom.github.io/guide/supply-chain/for-suppliers/requirements/))을
+충족합니다: 표준 포맷/버전(CycloneDX, SPDX 2.3), ISO-8601 타임스탬프, 도구
+메타데이터, 컴포넌트별 이름·버전·PURL, 라이선스, 그리고 전이적 의존성(스캔 대상
+소스에 lockfile이 포함되거나 생성 가능할 때).
+
+제출 전 유의할 두 가지:
+
+- **`pkg:generic/` PURL은 일부 프로그램에서 반려됩니다.** generic PURL은 스캐너가
+  컴포넌트의 생태계를 분류하지 못했다는 뜻입니다. cdxgen이 생태계별 타입을
+  부여하도록 lockfile / 빌드 산출물을 함께 제공하세요.
+- **SPDX 식별자가 없는 라이선스**는 SPDX expression에서 `NOASSERTION`으로
+  나타납니다(CycloneDX `license.name`에는 라벨이 남습니다).
 
 ## 로드맵
 
 매뉴얼이 이전에 약속했으나 v0.10.0에 포함되지 않은 항목.
 
 - **취약점 PDF 보고서**는 v0.10.0에 _이미 구현_되어 있습니다 — [취약점 → PDF 보고서 다운로드](./vulnerabilities.md#pdf-보고서-다운로드)(`GET /v1/projects/{id}/vulnerability-report.pdf`) 참고. 아직 **구현되지 않은** 것은 **Excel** 보고서(컴포넌트 Excel, 취약점 Excel)와 **컴플라이언스 PDF**입니다. 이들을 위한 `/v1/projects/{id}/reports/...` 엔드포인트는 없으며 향후 릴리스에서 제공됩니다. 표 형태가 즉시 필요한 이해관계자는 SBOM(CycloneDX JSON)을 선호 도구로 소비하세요.
-- NOTICE 조립을 위한 컴포넌트 드로어의 수동 저작권 오버라이드 —  예정.
-- SBOM·NOTICE 내보내기의 과거 스캔 고정 —  예정.
-- SBOM / NOTICE 다운로드를 `structlog` 이벤트에서 `audit_logs` 행으로 승격 —  예정.
+- NOTICE 조립을 위한 컴포넌트 드로어의 수동 저작권 오버라이드 — 예정.
+- SBOM·NOTICE 내보내기의 과거 스캔 고정 — 예정.
+- SBOM / NOTICE 다운로드를 `structlog` 이벤트에서 `audit_logs` 행으로 승격 — 예정.
 
 ## 함께 보기
 

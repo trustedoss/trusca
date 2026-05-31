@@ -39,7 +39,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -165,6 +164,67 @@ class Test_scrub_secrets:
                 "api-key=topsecret123",
                 "api-key=***",
                 "topsecret123",
+            ),
+            # ==== feat/scan-log-verbosity — widened verbose-mode surface ====
+            # ---- HTTP Basic auth (Trivy/cdxgen registry pulls) ----
+            (
+                "Authorization: Basic dXNlcjpwYXNzd29yZA==",
+                "Authorization: Basic ***",
+                "dXNlcjpwYXNzd29yZA",
+            ),
+            # ---- Authorization: token scheme (GitHub) ----
+            (
+                "Authorization: token ghp_AbCdEf123456",
+                "Authorization: token ***",
+                "ghp_AbCdEf123456",
+            ),
+            # ---- Docker X-Registry-Auth header (trivy --debug) ----
+            (
+                "X-Registry-Auth: eyJ1c2VybmFtZSI6ImEifQ==",
+                "X-Registry-Auth: ***",
+                "eyJ1c2VybmFtZSI6ImEifQ",
+            ),
+            # ---- GitLab PRIVATE-TOKEN header ----
+            (
+                "PRIVATE-TOKEN: glpat-AbCdEf123456",
+                "PRIVATE-TOKEN: ***",
+                "glpat-AbCdEf123456",
+            ),
+            # ---- AWS ECR session token header ----
+            (
+                "x-amz-security-token=FwoGZXIvYXdzEABCDEF",
+                "x-amz-security-token=***",
+                "FwoGZXIvYXdzEABCDEF",
+            ),
+            # ---- Set-Cookie session material (redact to EOL) ----
+            (
+                "set-cookie: session=abc123; Path=/; HttpOnly",
+                "set-cookie: ***",
+                "abc123",
+            ),
+            # ---- npm resolved password (cdxgen CDXGEN_DEBUG_MODE=debug) ----
+            (
+                "npm_config__password=hunter2pw",
+                "password=***",
+                "hunter2pw",
+            ),
+            # ---- env-dump GITHUB_TOKEN ----
+            (
+                "GITHUB_TOKEN=ghp_ZzYyXx998877",
+                "TOKEN=***",
+                "ghp_ZzYyXx998877",
+            ),
+            # ---- env-dump AWS_SECRET_ACCESS_KEY (matches via `secret`) ----
+            (
+                "AWS_SECRET_ACCESS_KEY=abc/DEF+ghi123",
+                "***",
+                "abc/DEF+ghi123",
+            ),
+            # ---- generic credential= assignment ----
+            (
+                "credential: s3cr3tval",
+                "credential: ***",
+                "s3cr3tval",
             ),
         ],
     )
@@ -465,7 +525,7 @@ class Test_append_log_line_to_disk:
         def boom(*args: Any, **kwargs: Any) -> Any:
             # Only fail for the scan.log target — let everything else
             # (pytest internals, encoding tables) succeed.
-            if args and isinstance(args[0], (str, Path)):
+            if args and isinstance(args[0], str | Path):
                 if "scan.log" in str(args[0]):
                     raise OSError("simulated disk failure")
             return real_open(*args, **kwargs)

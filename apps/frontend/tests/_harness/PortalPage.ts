@@ -73,6 +73,43 @@ export class PortalPage {
     return this.currentLanguage();
   }
 
+  // ───── sidebar (collapse rail + mobile drawer) ─────────────────────────
+  sidebar(): Locator {
+    return this.page.getByTestId("app-sidebar");
+  }
+
+  /** Whether the desktop sidebar is currently collapsed to the icon rail. */
+  async isSidebarCollapsed(): Promise<boolean> {
+    return (
+      (await this.sidebar().getAttribute("data-collapsed")) === "true"
+    );
+  }
+
+  /** Click the desktop collapse toggle (224 px rail ⇄ 64 px icon rail). */
+  async toggleSidebarCollapse(): Promise<void> {
+    await this.page.getByTestId("sidebar-collapse-toggle").click();
+  }
+
+  async expectSidebarCollapsed(): Promise<void> {
+    await expect(this.sidebar()).toHaveAttribute("data-collapsed", "true");
+  }
+
+  async expectSidebarExpanded(): Promise<void> {
+    await expect(this.sidebar()).toHaveAttribute("data-collapsed", "false");
+  }
+
+  /** Open the mobile nav drawer via the header hamburger (<lg viewports). */
+  async openMobileNav(): Promise<void> {
+    await this.page.getByTestId("sidebar-mobile-trigger").click();
+    await this.page
+      .getByTestId("mobile-nav-drawer")
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  mobileNavDrawer(): Locator {
+    return this.page.getByTestId("mobile-nav-drawer");
+  }
+
   // ───── PR #5 placeholders ──────────────────────────────────────────────
   // The methods below intentionally throw so accidental early use surfaces
   // a clear "not wired yet" error instead of a silent test pass.
@@ -111,9 +148,19 @@ export class PortalPage {
     projectName: string,
     method: "git" | "upload" | "folder" = "git",
   ): Promise<void> {
-    await this.page
-      .locator(`[data-testid="project-row-scan"][data-project-name="${projectName}"]`)
-      .click();
+    const button = this.page.locator(
+      `[data-testid="project-row-scan"][data-project-name="${projectName}"]`,
+    );
+    // Same fixture-leftover fallback as `openProjectDetail`: when the row
+    // isn't on the visible page, narrow the list with the toolbar search.
+    if ((await button.count()) === 0) {
+      const search = this.page.getByTestId("project-search");
+      if (await search.count()) {
+        await search.fill(projectName);
+        await button.waitFor({ state: "visible", timeout: 5_000 });
+      }
+    }
+    await button.click();
     // PR #91: the scan button opens the source-select dialog first.
     await this.page
       .getByTestId("source-select-dialog")
@@ -293,6 +340,18 @@ export class PortalPage {
     const row = this.page.locator(
       `[data-testid="project-row"]:has([data-testid="project-row-scan"][data-project-name="${projectName}"])`,
     );
+    // Narrow the list down with the toolbar's search input when the row is
+    // not already in the visible window — fixture leftovers from prior runs
+    // can push our freshly-seeded project off page one. The search input is
+    // only present on the project list route; if we're already on the detail
+    // page (deep-linked) the lookup is skipped.
+    if ((await row.count()) === 0) {
+      const search = this.page.getByTestId("project-search");
+      if (await search.count()) {
+        await search.fill(projectName);
+        await row.waitFor({ state: "visible", timeout: 5_000 });
+      }
+    }
     await row.locator('[data-testid="project-row-link"]').click();
     await this.expectProjectDetailMounted();
   }
@@ -834,25 +893,21 @@ export class PortalPage {
    * translated tab label.
    */
   /**
-   * Click the (W4-C) Compliance tab and switch to its Licenses sub-view. The
-   * IA overhaul (W4-C #20) absorbed the standalone Licenses tab into the
-   * unified Compliance tab; this verb still lands callers on the licenses
-   * surface so existing specs keep working without a sweep.
+   * Click the (W4-C → W9-#58) Compliance tab. The legacy standalone
+   * Licenses tab was absorbed into a unified Compliance grid; this verb
+   * keeps the original name so existing specs keep working. It ensures
+   * the `Has obligations` toggle is **off** so the grid shows the
+   * licenses-first view that `selectLicensesTab` historically promised.
    */
   async selectLicensesTab(): Promise<void> {
     await this.page.getByTestId("project-detail-tab-compliance").click();
     await this.page
       .getByTestId("compliance-tab")
       .waitFor({ state: "visible", timeout: 10_000 });
-    // Ensure we're on the Licenses sub-view (it is the default, but a prior
-    // navigation could have left ?cview=obligations in the URL).
-    const subtab = this.page.getByTestId("compliance-subtab-licenses");
-    if ((await subtab.getAttribute("data-state")) !== "active") {
-      await subtab.click();
+    const toggle = this.page.getByTestId("compliance-has-obligations");
+    if ((await toggle.getAttribute("data-state")) === "checked") {
+      await toggle.click();
     }
-    await this.page
-      .getByTestId("licenses-tab")
-      .waitFor({ state: "visible", timeout: 10_000 });
     await this.expectLicensesTabReady();
   }
 
@@ -863,34 +918,35 @@ export class PortalPage {
    * `waitForTimeout`.
    */
   async expectLicensesTabReady(): Promise<void> {
-    const virtual = this.page.getByTestId("licenses-virtual");
-    const empty = this.page.getByTestId("licenses-empty");
+    const virtual = this.page.getByTestId("compliance-virtual");
+    const empty = this.page.getByTestId("compliance-empty");
     await expect(virtual.or(empty)).toBeVisible({ timeout: 10_000 });
   }
 
   /**
-   * Set the multi-select category filter to exactly the given categories.
-   * An empty array clears the filter. The toolbar uses a native
-   * `<select multiple>` so Playwright's `selectOption` handles it cleanly,
-   * matching the vulnerabilities-severity verb pattern.
+   * Set the unified Compliance grid's category filter to exactly the given
+   * categories. An empty array clears the filter. W9-#58 replaced the native
+   * `<select multiple>` with a checkbox-popover `MultiSelect`
+   * (`compliance-category-filter`), so the harness drives it via the
+   * shared {@link setMultiSelect} helper.
    *
    * After mutating the filter the harness waits for the URL to mirror the
-   * change (`?license_category=…`) so callers can read the URL deterministically.
+   * change (`?compliance_category=…`) so callers can read the URL
+   * deterministically.
    */
   async filterLicensesByCategory(
     categories: ("forbidden" | "conditional" | "allowed" | "unknown")[],
   ): Promise<void> {
-    await this.page
-      .getByTestId("licenses-category-filter")
-      .selectOption(categories);
-    // URL mirrors the filter as a CSV under `license_category`.
+    await this.setMultiSelect("compliance-category-filter", categories);
+    // URL mirrors the filter as a CSV under `compliance_category`.
     if (categories.length > 0) {
       await expect
         .poll(
           () =>
             (
-              new URL(this.page.url()).searchParams.get("license_category") ??
-              ""
+              new URL(this.page.url()).searchParams.get(
+                "compliance_category",
+              ) ?? ""
             )
               .split(",")
               .filter((v) => v.length > 0)
@@ -903,7 +959,7 @@ export class PortalPage {
       await expect
         .poll(
           () =>
-            new URL(this.page.url()).searchParams.get("license_category"),
+            new URL(this.page.url()).searchParams.get("compliance_category"),
           { timeout: 5_000 },
         )
         .toBeNull();
@@ -912,22 +968,59 @@ export class PortalPage {
   }
 
   /**
-   * Set the multi-select kind filter (declared / concluded / detected).
-   * Mirrors `filterLicensesByCategory`.
+   * Drive a checkbox-popover {@link MultiSelect} to the exact target set.
+   * Opens the trigger, toggles only the options whose current checked state
+   * differs from the target, then closes the popover with Escape so the
+   * DOM is settled for the caller's URL/row assertions.
+   *
+   * The popover keeps itself open between toggles (the option rows call
+   * `event.preventDefault()` on select), so all toggles happen in one open
+   * session. `data-value` on each option row makes the verb locale-agnostic.
    */
-  async filterLicensesByKind(
-    kinds: ("declared" | "concluded" | "detected")[],
+  private async setMultiSelect(
+    testId: string,
+    target: readonly string[],
   ): Promise<void> {
-    await this.page
-      .getByTestId("licenses-kind-filter")
-      .selectOption(kinds);
-    await this.expectLicensesTabReady();
+    const trigger = this.page.getByTestId(testId);
+    await trigger.click();
+    const option = (value: string) =>
+      this.page.locator(
+        `[data-testid="${testId}-option"][data-value="${cssEscapeAttr(value)}"]`,
+      );
+    // Toggle each desired value on if it isn't already checked. Radix
+    // CheckboxItem mirrors state into `aria-checked`.
+    const want = new Set(target);
+    // First ensure every wanted option is checked.
+    for (const value of want) {
+      const item = option(value);
+      await item.waitFor({ state: "visible", timeout: 5_000 });
+      if ((await item.getAttribute("aria-checked")) !== "true") {
+        await item.click();
+      }
+    }
+    // Then uncheck anything selected that isn't wanted. We only iterate over
+    // the rendered options so we never touch values outside this control.
+    const rendered = this.page.locator(`[data-testid="${testId}-option"]`);
+    const renderedCount = await rendered.count();
+    for (let i = 0; i < renderedCount; i++) {
+      const item = rendered.nth(i);
+      const value = await item.getAttribute("data-value");
+      if (
+        value != null &&
+        !want.has(value) &&
+        (await item.getAttribute("aria-checked")) === "true"
+      ) {
+        await item.click();
+      }
+    }
+    // Close the popover so subsequent locators aren't shadowed by the portal.
+    await this.page.keyboard.press("Escape");
   }
 
   /**
-   * Find the row whose `data-spdx-id` equals `spdxId` and click it. Wait
-   * for the drawer to mount (URL carries `?license=<finding_id>` and the
-   * drawer container is visible).
+   * Find the Compliance grid row whose `data-spdx-id` equals `spdxId` and
+   * open its drawer. Wait for the (reused) LicenseDrawer to mount (URL
+   * carries `?license=<finding_id>` and the drawer container is visible).
    *
    * Locale-agnostic — anchors on the `data-spdx-id` attribute the row
    * exposes verbatim. ORT custom licenses (LicenseRef-*) without an SPDX
@@ -936,9 +1029,9 @@ export class PortalPage {
    */
   async openLicenseDrawer(spdxId: string): Promise<void> {
     const row = this.page.locator(
-      `[data-testid="license-row"][data-spdx-id="${spdxId}"]`,
+      `[data-testid="compliance-row"][data-spdx-id="${cssEscapeAttr(spdxId)}"]`,
     );
-    await row.first().click();
+    await row.first().getByTestId("compliance-row-open").click();
     await this.page
       .getByTestId("license-drawer")
       .waitFor({ state: "visible", timeout: 10_000 });
@@ -950,11 +1043,15 @@ export class PortalPage {
   }
 
   /**
-   * Read the licenses-summary `data-total` attribute (server-reported count).
+   * Read the unified Compliance grid's server-reported total. The W9-#58
+   * grid replaced the standalone Licenses table; its `compliance-summary`
+   * row carries `data-total` (server count) and `data-loaded` (rendered
+   * page). We report `data-total` to preserve the old `getLicenseRowCount`
+   * contract (server-side count, independent of virtual-scroll paging).
    * Returns 0 when the empty card is shown.
    */
   async getLicenseRowCount(): Promise<number> {
-    const summary = this.page.getByTestId("licenses-summary");
+    const summary = this.page.getByTestId("compliance-summary");
     if ((await summary.count()) === 0) return 0;
     const raw = await summary.first().getAttribute("data-total");
     return raw == null ? 0 : Number(raw);
@@ -969,28 +1066,26 @@ export class PortalPage {
    * MIME without rolling their own download plumbing per spec.
    */
   /**
-   * Click the (W4-C) Compliance tab and switch to its Obligations sub-view.
-   * Same redirect note as {@link selectLicensesTab}.
+   * Click the (W4-C → W9-#58) Compliance tab and flip the `Has obligations`
+   * toggle on. The historical `selectObligationsTab` verb still resolves to
+   * a row set scoped to obligations-bearing components, matching what the
+   * original standalone Obligations tab showed.
    */
   async selectObligationsTab(): Promise<void> {
     await this.page.getByTestId("project-detail-tab-compliance").click();
     await this.page
       .getByTestId("compliance-tab")
       .waitFor({ state: "visible", timeout: 10_000 });
-    // The default sub-view is Licenses; switch over.
-    const subtab = this.page.getByTestId("compliance-subtab-obligations");
-    if ((await subtab.getAttribute("data-state")) !== "active") {
-      await subtab.click();
+    const toggle = this.page.getByTestId("compliance-has-obligations");
+    if ((await toggle.getAttribute("data-state")) !== "checked") {
+      await toggle.click();
     }
-    await this.page
-      .getByTestId("obligations-tab")
-      .waitFor({ state: "visible", timeout: 10_000 });
     await this.expectObligationsTabReady();
   }
 
   async expectObligationsTabReady(): Promise<void> {
-    const virtual = this.page.getByTestId("obligations-virtual");
-    const empty = this.page.getByTestId("obligations-empty");
+    const virtual = this.page.getByTestId("compliance-virtual");
+    const empty = this.page.getByTestId("compliance-empty");
     await expect(virtual.or(empty)).toBeVisible({ timeout: 10_000 });
   }
 
@@ -1047,98 +1142,113 @@ export class PortalPage {
   }
 
   /**
-   * Click one of the four generate-card deeplinks. Each takes the user to
-   * the corresponding domain tab where the artefact's generation UI lives.
+   * Click one of the deeplink generate-cards. Each takes the user to the
+   * corresponding domain tab where the artefact's generation UI lives.
    *
-   * @param slug ``notice`` → Obligations / ``sbom`` → SBOM /
-   *             ``vuln-pdf`` → Vulnerabilities / ``vex`` → Vulnerabilities.
+   * NOTICE is intentionally excluded — it downloads directly from the card
+   * (see {@link downloadNotice}) rather than deep-linking anywhere.
+   *
+   * @param slug ``sbom`` → in-page SBOM section / ``vuln-pdf`` →
+   *             Vulnerabilities / ``vex`` → Vulnerabilities.
    */
   async clickReportsGenerateCard(
-    slug: "notice" | "sbom" | "vuln-pdf" | "vex",
+    slug: "sbom" | "vuln-pdf" | "vex",
   ): Promise<void> {
     await this.page.getByTestId(`reports-card-${slug}-deeplink`).click();
   }
 
-  async filterObligationsByKind(kinds: string[]): Promise<void> {
+  /**
+   * Download the NOTICE attribution file directly from the Reports tab card.
+   * Distinct from {@link downloadNotice} (the legacy Obligations-toolbar
+   * variant) — this drives the Reports-tab card's own picker + button.
+   * Optionally pick a format ("text" | "html") before triggering; returns the
+   * captured download so callers can assert on the filename.
+   */
+  async downloadNoticeFromReports(
+    format: "text" | "html" = "text",
+  ): Promise<import("@playwright/test").Download> {
     await this.page
-      .getByTestId("obligations-kind-filter")
-      .selectOption(kinds);
-    if (kinds.length > 0) {
-      await expect
-        .poll(
-          () =>
-            (new URL(this.page.url()).searchParams.get("kind") ?? "")
-              .split(",")
-              .filter((v) => v.length > 0)
-              .sort()
-              .join(","),
-          { timeout: 5_000 },
-        )
-        .toBe([...kinds].sort().join(","));
-    } else {
-      await expect
-        .poll(() => new URL(this.page.url()).searchParams.get("kind"), {
-          timeout: 5_000,
-        })
-        .toBeNull();
-    }
-    await this.expectObligationsTabReady();
+      .getByTestId("reports-card-notice-format")
+      .selectOption(format);
+    const [download] = await Promise.all([
+      this.page.waitForEvent("download"),
+      this.page.getByTestId("reports-card-notice-download").click(),
+    ]);
+    return download;
   }
 
   /**
-   * Open the obligation drawer for the row whose `data-obligation-id`
-   * matches. The list endpoint returns ids verbatim so the spec can pick
-   * the first row's id and pass it back here for a deterministic open.
+   * Count the obligation chips rendered inline on the first Compliance grid
+   * row that carries any. W9-#58 folded obligations into the unified grid as
+   * inline `compliance-obligation-chip` badges (each tagged with
+   * `data-kind`), so the old standalone obligation rows / drawer are gone.
+   * This verb lets the obligations spec assert "obligations surface, tagged
+   * by kind" without depending on the removed drawer.
+   *
+   * Returns the kinds (`data-kind`) of the chips on the first
+   * obligations-bearing row, in DOM order. Empty array when no row carries
+   * an obligation chip.
    */
-  async openObligationDrawer(obligationId: string): Promise<void> {
-    const row = this.page.locator(
-      `[data-testid="obligation-row"][data-obligation-id="${obligationId}"]`,
-    );
-    await row.first().click();
-    await this.page
-      .getByTestId("obligation-drawer")
-      .waitFor({ state: "visible", timeout: 10_000 });
-    await expect
-      .poll(() => new URL(this.page.url()).searchParams.get("obligation"), {
-        timeout: 5_000,
-      })
-      .not.toBeNull();
+  async firstRowObligationKinds(): Promise<string[]> {
+    const row = this.page
+      .locator(
+        '[data-testid="compliance-row"][data-has-obligations="true"]',
+      )
+      .first();
+    if ((await row.count()) === 0) return [];
+    await row.waitFor({ state: "visible", timeout: 10_000 });
+    const chips = row.getByTestId("compliance-obligation-chip");
+    const count = await chips.count();
+    const kinds: string[] = [];
+    for (let i = 0; i < count; i++) {
+      const kind = await chips.nth(i).getAttribute("data-kind");
+      if (kind != null) kinds.push(kind);
+    }
+    return kinds;
   }
 
   async getObligationRowCount(): Promise<number> {
-    const summary = this.page.getByTestId("obligations-summary");
+    // The standalone Obligations table was absorbed into the unified
+    // Compliance grid (W9-#58); both `select*Tab` verbs land on the same
+    // `compliance-summary`. `selectObligationsTab` flips the
+    // `Has obligations` toggle on first so the reported total reflects only
+    // obligations-bearing rows, matching the old Obligations tab's count.
+    const summary = this.page.getByTestId("compliance-summary");
     if ((await summary.count()) === 0) return 0;
     const raw = await summary.first().getAttribute("data-total");
     return raw == null ? 0 : Number(raw);
   }
 
   /**
-   * Click the NOTICE download button and wait for the browser download
-   * event. Returns `{ filename, body }` so callers can assert provenance
-   * without snooping the response stream themselves.
+   * Download the attribution NOTICE and return `{ filename, body }` so
+   * callers can assert provenance without snooping the response stream.
    *
-   * `format` drives the toolbar's format `<select>` (`data-testid=
-   * obligations-notice-format`) before clicking download — the UI exposes
-   * `text` + `html` (markdown stays API-only, see NOTICE_DOWNLOAD_FORMATS).
-   * Passing "markdown" falls through to the same select; if the option is not
-   * present Playwright's `selectOption` throws, surfacing the contract drift
-   * rather than silently downloading text. Defaults to "text" so existing
-   * callers stay source-compatible.
+   * W4-C #20 / W9-#58 moved the NOTICE affordance off the (now read-only)
+   * Compliance grid onto the **Reports tab** card — the old
+   * ObligationsToolbar download button is unrouted. This verb navigates to
+   * the Reports tab, drives the card's format `<select>`
+   * (`reports-card-notice-format`, exposing `text` + `html`; markdown stays
+   * API-only) and clicks `reports-card-notice-download`.
+   *
+   * `format` defaults to "text". Passing "markdown" falls through to the same
+   * select; if the option is absent Playwright's `selectOption` throws,
+   * surfacing the contract drift rather than silently downloading text.
    */
   async downloadNotice(
     format: "text" | "markdown" | "html" = "text",
   ): Promise<{ filename: string; body: string }> {
-    // The format select defaults to "text"; only touch it when the caller
-    // asked for something else so the default path stays a single click.
+    await this.selectReportsTab();
+    // The card's format select defaults to "text"; only touch it when the
+    // caller asked for something else so the default path stays one click.
     if (format !== "text") {
       await this.page
-        .getByTestId("obligations-notice-format")
+        .getByTestId("reports-card-notice-format")
         .selectOption(format);
     }
     const downloadPromise = this.page.waitForEvent("download", {
       timeout: 15_000,
     });
-    await this.page.getByTestId("obligations-download-notice").click();
+    await this.page.getByTestId("reports-card-notice-download").click();
     const download = await downloadPromise;
     return readDownload(download);
   }
@@ -1375,23 +1485,26 @@ export class PortalPage {
 
   // ───── G2 — Vulnerability PDF report download ──────────────────────────
   /**
-   * Click the "Download PDF report" button on the Vulnerabilities toolbar and
-   * wait for the browser download event. Returns `{ filename, body }` — the
-   * body is the raw PDF bytes as a binary string so the caller can assert the
-   * `%PDF-` magic header without rolling its own stream plumbing.
+   * Download the vulnerability PDF report and return `{ filename, body }` —
+   * the body is the raw PDF bytes as a binary string so the caller can assert
+   * the `%PDF-` magic header without rolling its own stream plumbing.
    *
-   * Must be called with the Vulnerabilities tab mounted (the button lives in
-   * its toolbar). The button disables itself while generating; the harness
-   * does not need to poll the disabled state because the download event only
-   * fires once the blob is ready.
+   * User-test follow-up (2026-05-27) moved the PDF trigger off the
+   * Vulnerabilities toolbar onto the **Reports tab** card
+   * (`reports-card-vuln-pdf-download`, backed by the same `useVulnReport`
+   * hook). This verb navigates to Reports and clicks that card. The button
+   * disables itself while generating; the harness does not need to poll the
+   * disabled state because the download event only fires once the blob is
+   * ready.
    *
-   * Locale-agnostic — anchors on `data-testid="vuln-download-pdf"`.
+   * Locale-agnostic — anchors on `data-testid="reports-card-vuln-pdf-download"`.
    */
   async downloadVulnReportPdf(): Promise<{ filename: string; body: string }> {
+    await this.selectReportsTab();
     const downloadPromise = this.page.waitForEvent("download", {
       timeout: 20_000,
     });
-    await this.page.getByTestId("vuln-download-pdf").click();
+    await this.page.getByTestId("reports-card-vuln-pdf-download").click();
     const download = await downloadPromise;
     // PDFs are binary — read as latin1 so the %PDF- magic + %%EOF trailer
     // survive byte-for-byte for the magic-header assertion.
@@ -1400,13 +1513,14 @@ export class PortalPage {
 
   /**
    * Assert the PDF download surfaced an inline error (e.g. the project has no
-   * succeeded scan). The toolbar renders `vuln-download-pdf-error` with the
-   * problem detail; the harness only asserts presence so the spec stays
-   * locale-agnostic.
+   * succeeded scan). The Reports-tab card renders
+   * `reports-card-vuln-pdf-error` with the problem detail; the harness only
+   * asserts presence so the spec stays locale-agnostic. Must be called with
+   * the Reports tab mounted.
    */
   async expectVulnReportPdfError(): Promise<void> {
     await this.page
-      .getByTestId("vuln-download-pdf-error")
+      .getByTestId("reports-card-vuln-pdf-error")
       .waitFor({ state: "visible", timeout: 10_000 });
   }
 
@@ -1773,6 +1887,181 @@ export class PortalPage {
   /** Abruptly close the page (user closes the tab mid-operation). */
   async closeTab(): Promise<void> {
     await this.page.close({ runBeforeUnload: false });
+  }
+
+  // ───── c3 — per-component license waive (Compliance tab) ─────────────────
+  /**
+   * Open the Compliance grid and wait until at least one forbidden row's
+   * waive strip has mounted. The waive strip (`compliance-row-waive-strip`)
+   * renders only under `compliance-row[data-category="forbidden"]` rows whose
+   * affected components carry a purl, so this is the settled-DOM sentinel for
+   * the waive flows. Reuses {@link selectLicensesTab} (which flips the
+   * obligations toggle off → licenses-first view) so callers don't repeat the
+   * tab-entry dance.
+   *
+   * Locale-agnostic — anchors on `data-testid` + `data-category`, never the
+   * translated tab label or row text.
+   */
+  async openComplianceWaiveStrip(): Promise<void> {
+    await this.selectLicensesTab();
+    await this.forbiddenWaiveStrip()
+      .first()
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  /**
+   * Open the waive dialog for a forbidden component. With no `purl` the first
+   * waivable component in the first forbidden row is used; pass `purl` to
+   * target a specific `compliance-waive-component` by its
+   * `data-component-purl`. Waits for the dialog to mount.
+   *
+   * Locale-agnostic — anchors on `data-testid` + `data-component-purl`.
+   */
+  async openLicenseWaive(opts?: { purl?: string }): Promise<void> {
+    await this.waiveComponent(opts?.purl)
+      .getByTestId("license-waive-open")
+      .click();
+    await this.page
+      .getByTestId("license-waive-dialog")
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  /**
+   * Fill the waive dialog: the mandatory reason textarea and (optionally) the
+   * expiry date. `expires` is a bare `yyyy-mm-dd` string the native
+   * `<input type="date">` accepts; omit it to exercise the
+   * "expiry missing → submit disabled" forbidden-license guard.
+   */
+  async fillWaive({
+    reason,
+    expires,
+  }: {
+    reason: string;
+    expires?: string;
+  }): Promise<void> {
+    await this.page.getByTestId("license-waive-reason").fill(reason);
+    if (expires !== undefined) {
+      await this.page.getByTestId("license-waive-expires").fill(expires);
+    }
+  }
+
+  /** Click the waive dialog's submit button. */
+  async submitWaive(): Promise<void> {
+    await this.page.getByTestId("license-waive-submit").click();
+  }
+
+  /**
+   * Assert the waive dialog's submit button is disabled — the forbidden-
+   * license expiry guard (reason present but no expiry yet). Auto-retries.
+   */
+  async expectWaiveSubmitDisabled(): Promise<void> {
+    await expect(this.page.getByTestId("license-waive-submit")).toBeDisabled({
+      timeout: 5_000,
+    });
+  }
+
+  /** Assert the waive dialog's submit button is enabled. Auto-retries. */
+  async expectWaiveSubmitEnabled(): Promise<void> {
+    await expect(this.page.getByTestId("license-waive-submit")).toBeEnabled({
+      timeout: 5_000,
+    });
+  }
+
+  /**
+   * Assert the "Waived" badge is visible for a component. With no `purl` the
+   * first badge on the surface is used; pass `purl` to scope to one component
+   * by its `license-waive-state[data-component-purl]`. The badge appearing is
+   * the success signal that the dialog mutation committed (the dialog closes
+   * and the row's state flips to `data-waived="true"`).
+   */
+  async expectWaivedBadge(opts?: { purl?: string }): Promise<void> {
+    const root =
+      opts?.purl != null
+        ? this.waiveState(opts.purl)
+        : this.page.getByTestId("license-waive-state").first();
+    await expect(
+      root.getByTestId("license-waived-badge"),
+    ).toBeVisible({ timeout: 10_000 });
+  }
+
+  /**
+   * Click the "Un-waive" button to remove a committed exception. With no
+   * `purl` the first un-waive control is used; pass `purl` to scope it.
+   */
+  async unwaiveLicense(opts?: { purl?: string }): Promise<void> {
+    const root =
+      opts?.purl != null
+        ? this.waiveState(opts.purl)
+        : this.page.getByTestId("license-waive-state").first();
+    await root.getByTestId("license-unwaive").click();
+  }
+
+  /**
+   * Assert the un-waive succeeded → the component's waive control is back in
+   * the not-waived state (`license-waive-state[data-waived="false"]`). With no
+   * `purl` the first state container is used. Auto-retries so the harness
+   * waits out the DELETE round-trip + cache invalidation.
+   */
+  async expectNotWaived(opts?: { purl?: string }): Promise<void> {
+    const selector =
+      opts?.purl != null
+        ? `[data-testid="license-waive-state"][data-waived="false"][data-component-purl="${cssEscapeAttr(opts.purl)}"]`
+        : `[data-testid="license-waive-state"][data-waived="false"]`;
+    await expect(this.page.locator(selector).first()).toBeVisible({
+      timeout: 10_000,
+    });
+  }
+
+  /**
+   * Assert the waive trigger is role-gated for the current actor — the
+   * `license-waive-open` button is disabled and carries `data-role-gated="true"`
+   * (a developer sees the affordance disabled rather than absent, mirroring the
+   * VEX-suppression pattern). With no `purl` the first waivable component is
+   * used.
+   */
+  async expectWaiveRoleGated(opts?: { purl?: string }): Promise<void> {
+    const trigger = this.waiveComponent(opts?.purl).getByTestId(
+      "license-waive-open",
+    );
+    await expect(trigger).toBeVisible({ timeout: 10_000 });
+    await expect(trigger).toBeDisabled();
+    await expect(trigger).toHaveAttribute("data-role-gated", "true");
+  }
+
+  // ───── waive — private selectors ─────────────────────────────────────────
+  /** Forbidden rows' waive strips (the only category that renders one). */
+  private forbiddenWaiveStrip(): Locator {
+    return this.page.locator(
+      '[data-testid="compliance-row"][data-category="forbidden"] [data-testid="compliance-row-waive-strip"]',
+    );
+  }
+
+  /**
+   * Resolve a `compliance-waive-component` entry. With `purl` it matches on
+   * `data-component-purl`; otherwise it returns the first waivable component
+   * in the first forbidden row's strip.
+   */
+  private waiveComponent(purl?: string): Locator {
+    if (purl != null) {
+      return this.page
+        .locator(
+          `[data-testid="compliance-waive-component"][data-component-purl="${cssEscapeAttr(purl)}"]`,
+        )
+        .first();
+    }
+    return this.forbiddenWaiveStrip()
+      .first()
+      .getByTestId("compliance-waive-component")
+      .first();
+  }
+
+  /** The `license-waive-state` wrapper for a given component purl. */
+  private waiveState(purl: string): Locator {
+    return this.page
+      .locator(
+        `[data-testid="license-waive-state"][data-component-purl="${cssEscapeAttr(purl)}"]`,
+      )
+      .first();
   }
 }
 

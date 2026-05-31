@@ -48,13 +48,18 @@ on:
       - ".gitignore"
   workflow_dispatch: {}
 
+# Least-privilege default — bandit and semgrep only need to read the
+# source. Artifact uploads use the default GITHUB_TOKEN scope which
+# does not need contents:write.
+permissions:
+  contents: read
+
 concurrency:
   group: sast-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   bandit:
-    if: false  # TEMP-DISABLED-CI (dev velocity) — re-enable before deploy
     name: bandit (HARD FAIL on High)
     runs-on: ubuntu-22.04
     steps:
@@ -98,7 +103,6 @@ jobs:
           retention-days: 14
 
   semgrep:
-    if: false  # TEMP-DISABLED-CI (dev velocity) — re-enable before deploy
     name: semgrep (HARD FAIL on ERROR)
     runs-on: ubuntu-22.04
     # Container removed — `semgrep ci` inside the official container hit

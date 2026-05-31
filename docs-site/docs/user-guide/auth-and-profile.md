@@ -8,6 +8,7 @@ sidebar_position: 7
 
 # Authentication & profile
 
+<!-- docs-uat: id=auth-login kind=ui harness=login(dev@demo.trustedoss.dev,DemoTest2026!) tier=nightly -->
 TrustedOSS Portal supports two interactive sign-in methods — **email + password** and **OAuth** (GitHub or Google) — plus a self-service password-recovery flow. This page walks through each path and covers identity management on the `/profile` page.
 
 :::note Audience
@@ -92,8 +93,11 @@ Linking a new provider is symmetric: sign out, sign in with the new provider, an
 
 ## Verify it worked
 
+<!-- docs-uat: id=auth-header-profile-visible kind=ui harness=headerProfileVisible tier=nightly -->
 - After password sign-in, the header avatar shows your initials and the navbar exposes your active team.
+<!-- docs-uat: id=auth-oauth-provider-listed kind=manual tier=manual -->
 - After OAuth sign-in, `/profile` lists the provider you used.
+<!-- docs-uat: id=auth-unlink-disables-last kind=ui harness=profileUnlinkGithub tier=nightly -->
 - After unlinking, the row disappears and the **Unlink** button on the remaining row is disabled if it would leave you stranded.
 
 ## See also

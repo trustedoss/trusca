@@ -102,3 +102,32 @@ def test_metadata_validator_size_check_runs_on_compact_encoding() -> None:
     payload = {f"k_{i}": f"v_{i}" for i in range(800)}
     scan = ScanCreate(metadata=payload)
     assert scan.metadata == payload
+
+
+# ---------------------------------------------------------------------------
+# Verbosity (feat/scan-log-verbosity)
+# ---------------------------------------------------------------------------
+
+
+def test_metadata_verbosity_absent_is_accepted() -> None:
+    from schemas.scan import ScanCreate
+
+    # Legacy payloads omit the key entirely → treated as "normal" downstream.
+    scan = ScanCreate(metadata={})
+    assert "verbosity" not in scan.metadata
+
+
+@pytest.mark.parametrize("value", ["normal", "verbose"])
+def test_metadata_verbosity_valid_values_accepted(value: str) -> None:
+    from schemas.scan import ScanCreate
+
+    scan = ScanCreate(metadata={"verbosity": value})
+    assert scan.metadata["verbosity"] == value
+
+
+@pytest.mark.parametrize("value", ["loud", "debug", "VERBOSE", "", 1, True])
+def test_metadata_verbosity_invalid_values_rejected(value: Any) -> None:
+    from schemas.scan import ScanCreate
+
+    with pytest.raises(ValidationError):
+        ScanCreate(metadata={"verbosity": value})

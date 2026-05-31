@@ -109,9 +109,13 @@ A typical flow:
 
 After disposing a request:
 
+<!-- docs-uat: id=approvals-state-badge-updates kind=ui harness=approvalsDispose tier=nightly -->
 1. The state badge updates immediately.
+<!-- docs-uat: id=approvals-audit-recorded kind=manual tier=manual -->
 2. The audit log records `target_table=component_approvals&action=update` with `previous_status`, `new_status`, `decision_note` in the diff.
+<!-- docs-uat: id=approvals-requester-notified kind=manual tier=manual -->
 3. The original requester (if any) receives a notification per the team's notification settings.
+<!-- docs-uat: id=approvals-reject-no-autoblock kind=manual tier=manual -->
 4. **Note**: a Rejected verdict does **not** auto-promote the component to `forbidden` in the next scan's build gate in this release — see the [Rejected verdict caveat](#rejected-verdict) for the manual follow-up.
 
 ## Troubleshooting

@@ -1,0 +1,382 @@
+name: docs-uat
+
+# docs-uat — procedural-correctness lane for the documentation: it proves
+# that following a doc step-by-step actually works (the docs ARE the tests).
+#
+# Phase A covers the Quickstart vertical: annotation extraction + coverage
+# lint, plus an end-to-end gate that brings the dev stack up via the documented
+# commands, seeds the demo dataset, and drives the documented UI.
+# Phase B adds the nightly tier: admin-guide api/sql assertions (audit-log)
+# against the same dev stack. Phases C-D enroll user-guide / install / CI docs.
+# Design: docs/docs-verify-investigation-2026-05-29.md.
+#
+# NON-BLOCKING: both jobs are `continue-on-error: true` until the manifest
+# fidelity stabilizes for the first public release, then they flip to blocking
+# (design §9 decision 7 / feedback_ci_hardening_deferred_prerelease). This is a
+# brand-new, isolated lane — it does not touch the deferred SAST/e2e hardening.
+
+on:
+  pull_request:
+    paths:
+      - "docs-site/docs/**"
+      - "docs-site/i18n/ko/docusaurus-plugin-content-docs/current/**"
+      - "tools/docs-uat/**"
+      - "apps/frontend/playwright.docs-uat.config.ts"
+      - "apps/frontend/tests/docs-uat/**"
+      - ".github/workflows/docs-uat.yml"
+  workflow_dispatch:
+  schedule:
+    # Nightly 05:00 UTC — runs the nightly-tier admin-guide assertions.
+    - cron: "0 5 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-uat-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Static: extract annotations → manifest, enforce coverage/schema/KO parity.
+  #    Fast, no stack. Catches doc-vs-test drift on every PR.
+  extract-and-lint:
+    name: extract-and-lint (static)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    # Non-blocking until manifest fidelity stabilizes (see header note).
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Extract manifest + lint
+        run: node tools/docs-uat/extract.mjs --lint
+
+  # ── End-to-end: drive the documented Quickstart against the dev stack.
+  quickstart-gate:
+    name: quickstart-gate (dev compose)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    # Non-blocking until manifest fidelity stabilizes (see header note).
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      # Project standard (CLAUDE.md rule #10): docker-compose V1. Ubuntu 22.04
+      # runners ship V2 only — install the pinned V1 release so the gate
+      # exercises the documented `docker-compose` (hyphenated) invocation.
+      - name: Install docker-compose V1
+        run: |
+          sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" \
+            -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+          docker-compose --version
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: apps/frontend/package-lock.json
+
+      - name: Install frontend deps (for the ui-step Playwright run)
+        working-directory: apps/frontend
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-1.48.2
+
+      - name: Install Playwright (chromium only)
+        working-directory: apps/frontend
+        run: npx playwright install --with-deps chromium
+
+      # Quickstart §1's `git clone` / `cd` is waived in CI (we're already in
+      # the checked-out tree, ctx=ci-uses-checkout-tree). The doc's
+      # `cp .env.example .env` IS the env bootstrap, so we do it here; the
+      # workspace mount dir matches docker-compose.dev.yml.
+      - name: Bootstrap env (stands in for the waived clone step)
+        run: |
+          cp .env.example .env
+          mkdir -p workspace
+
+      # run.mjs executes the documented gate-tier steps in order: migrate
+      # (`run --rm backend alembic upgrade head`, since the dev image does not
+      # auto-migrate), `up -d`, poll /health/ready, `seed_demo`, drive the
+      # documented UI via Playwright, then the doc's `down`.
+      - name: Run Quickstart gate (docs-uat)
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:5173
+          DOCS_UAT_API_BASE: http://localhost:8000
+          COMPOSE_DOCKER_CLI_BUILD: "1"
+          DOCKER_BUILDKIT: "1"
+          # docs-uat signs in once per doc (each run.mjs spawns a fresh browser),
+          # so a multi-doc job easily exceeds the 5/min/IP login cap. Lift it for
+          # the throwaway test stack (docker-compose.dev.yml passes it through;
+          # mirrors the e2e workflow's RATELIMIT_DISABLED=1).
+          RATELIMIT_DISABLED: "1"
+        run: node tools/docs-uat/run.mjs --tier=gate --doc=quickstart.md
+
+      - name: Dump compose logs on failure
+        if: failure()
+        run: |
+          docker-compose -f docker-compose.dev.yml ps || true
+          docker-compose -f docker-compose.dev.yml logs --tail=300 || true
+
+      - name: Tear down
+        if: always()
+        run: docker-compose -f docker-compose.dev.yml down -v || true
+
+  # ── Nightly tier: admin-guide api/sql assertions against the dev stack.
+  #    Runs on schedule + manual dispatch (not on every PR — keeps PR CI lean;
+  #    PRs still get extract-and-lint + quickstart-gate). Phase B enrolls
+  #    audit-log.md (authed audit API + a jsonb diff query); later phases add
+  #    more docs to the --doc list.
+  docs-uat-nightly:
+    name: docs-uat-nightly (dev compose)
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    # Non-blocking until manifest fidelity stabilizes (see header note).
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install docker-compose V1
+        run: |
+          sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" \
+            -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+          docker-compose --version
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # Same bootstrap the Quickstart documents (migrate-before-up so the
+      # health-gated worker doesn't block `up` under compose V1), but inline
+      # here because the nightly assertions live in a different doc than the
+      # bootstrap commands.
+      - name: Bootstrap dev stack + seed
+        env:
+          COMPOSE_DOCKER_CLI_BUILD: "1"
+          DOCKER_BUILDKIT: "1"
+          # docs-uat signs in once per doc (each run.mjs spawns a fresh browser),
+          # so a multi-doc job easily exceeds the 5/min/IP login cap. Lift it for
+          # the throwaway test stack (docker-compose.dev.yml passes it through;
+          # mirrors the e2e workflow's RATELIMIT_DISABLED=1).
+          RATELIMIT_DISABLED: "1"
+        run: |
+          set -euo pipefail
+          cp .env.example .env
+          mkdir -p workspace
+          docker-compose -f docker-compose.dev.yml up -d postgres redis
+          for i in $(seq 1 20); do
+            cid=$(docker-compose -f docker-compose.dev.yml ps -q postgres)
+            st=$(docker inspect -f '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo none)
+            [ "$st" = "healthy" ] && break
+            echo "waiting for postgres ($i/20)"; sleep 3
+          done
+          docker-compose -f docker-compose.dev.yml run --rm -T backend alembic upgrade head
+          docker-compose -f docker-compose.dev.yml up -d
+          for i in $(seq 1 40); do
+            curl -fsS http://localhost:8000/health/ready >/dev/null 2>&1 && break
+            echo "waiting for /health/ready ($i/40)"; sleep 6
+          done
+          docker-compose -f docker-compose.dev.yml exec -T backend python -m scripts.seed_demo
+
+      - name: Run nightly assertions — admin-guide/audit-log.md
+        env:
+          DOCS_UAT_API_BASE: http://localhost:8000
+        run: node tools/docs-uat/run.mjs --tier=nightly --doc=admin-guide/audit-log.md
+
+      # admin-guide/backup-and-restore.md is enrolled for coverage / KO parity /
+      # drift via extract-and-lint, but has no docs-uat-executed steps: backup.sh
+      # is a production-operator tool (hardcodes docker-compose.yml) and its
+      # backup→restore round-trip is already executed by install-uat.yml. So
+      # there is intentionally no run step for it here.
+
+      - name: Run nightly assertions — admin-guide/disk-and-health.md
+        env:
+          DOCS_UAT_API_BASE: http://localhost:8000
+        run: node tools/docs-uat/run.mjs --tier=nightly --doc=admin-guide/disk-and-health.md
+
+      - name: Run nightly assertions — admin-guide/users-and-teams.md
+        env:
+          DOCS_UAT_API_BASE: http://localhost:8000
+        run: node tools/docs-uat/run.mjs --tier=nightly --doc=admin-guide/users-and-teams.md
+
+      - name: Run nightly assertions — admin-guide/vulnerability-data.md
+        env:
+          DOCS_UAT_API_BASE: http://localhost:8000
+        run: node tools/docs-uat/run.mjs --tier=nightly --doc=admin-guide/vulnerability-data.md
+
+      - name: Run nightly assertions — user-guide/sbom.md
+        env:
+          DOCS_UAT_API_BASE: http://localhost:8000
+        run: node tools/docs-uat/run.mjs --tier=nightly --doc=user-guide/sbom.md
+
+      - name: Dump compose logs on failure
+        if: failure()
+        run: |
+          docker-compose -f docker-compose.dev.yml ps || true
+          docker-compose -f docker-compose.dev.yml logs --tail=300 || true
+
+      - name: Tear down
+        if: always()
+        run: docker-compose -f docker-compose.dev.yml down -v || true
+
+  # ── Nightly tier (UI): user-guide "Verify it worked" steps driven through
+  #    Playwright. Separate from docs-uat-nightly because UI steps need the
+  #    frontend deps + a browser; the api/sql nightly job stays lean.
+  docs-uat-nightly-ui:
+    name: docs-uat-nightly-ui (dev compose)
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    # Non-blocking until manifest fidelity stabilizes (see header note).
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install docker-compose V1
+        run: |
+          sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" \
+            -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+          docker-compose --version
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: apps/frontend/package-lock.json
+
+      - name: Install frontend deps (for the ui-step Playwright run)
+        working-directory: apps/frontend
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-1.48.2
+
+      - name: Install Playwright (chromium only)
+        working-directory: apps/frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Bootstrap dev stack + seed
+        env:
+          COMPOSE_DOCKER_CLI_BUILD: "1"
+          DOCKER_BUILDKIT: "1"
+          # docs-uat signs in once per doc (each run.mjs spawns a fresh browser),
+          # so a multi-doc job easily exceeds the 5/min/IP login cap. Lift it for
+          # the throwaway test stack (docker-compose.dev.yml passes it through;
+          # mirrors the e2e workflow's RATELIMIT_DISABLED=1).
+          RATELIMIT_DISABLED: "1"
+        run: |
+          set -euo pipefail
+          cp .env.example .env
+          mkdir -p workspace
+          docker-compose -f docker-compose.dev.yml up -d postgres redis
+          for i in $(seq 1 20); do
+            cid=$(docker-compose -f docker-compose.dev.yml ps -q postgres)
+            st=$(docker inspect -f '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo none)
+            [ "$st" = "healthy" ] && break
+            echo "waiting for postgres ($i/20)"; sleep 3
+          done
+          docker-compose -f docker-compose.dev.yml run --rm -T backend alembic upgrade head
+          docker-compose -f docker-compose.dev.yml up -d
+          for i in $(seq 1 40); do
+            curl -fsS http://localhost:8000/health/ready >/dev/null 2>&1 && break
+            echo "waiting for /health/ready ($i/40)"; sleep 6
+          done
+          docker-compose -f docker-compose.dev.yml exec -T backend python -m scripts.seed_demo
+
+      - name: Run nightly UI assertions — user-guide/components-and-licenses.md
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:5173
+          DOCS_UAT_API_BASE: http://localhost:8000
+        run: node tools/docs-uat/run.mjs --tier=nightly --doc=user-guide/components-and-licenses.md
+
+      - name: Run nightly UI assertions — user-guide/dashboard.md
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:5173
+          DOCS_UAT_API_BASE: http://localhost:8000
+        run: node tools/docs-uat/run.mjs --tier=nightly --doc=user-guide/dashboard.md
+
+      - name: Run nightly UI assertions — user-guide/scans.md
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:5173
+          DOCS_UAT_API_BASE: http://localhost:8000
+        run: node tools/docs-uat/run.mjs --tier=nightly --doc=user-guide/scans.md
+
+      - name: Run nightly UI assertions — user-guide/auth-and-profile.md
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:5173
+          DOCS_UAT_API_BASE: http://localhost:8000
+        run: node tools/docs-uat/run.mjs --tier=nightly --doc=user-guide/auth-and-profile.md
+
+      - name: Run nightly UI assertions — user-guide/notifications.md
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:5173
+          DOCS_UAT_API_BASE: http://localhost:8000
+        run: node tools/docs-uat/run.mjs --tier=nightly --doc=user-guide/notifications.md
+
+      - name: Run nightly UI assertions — user-guide/vulnerabilities.md
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:5173
+          DOCS_UAT_API_BASE: http://localhost:8000
+        run: node tools/docs-uat/run.mjs --tier=nightly --doc=user-guide/vulnerabilities.md
+
+      - name: Run nightly UI assertions — user-guide/approvals.md
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:5173
+          DOCS_UAT_API_BASE: http://localhost:8000
+        run: node tools/docs-uat/run.mjs --tier=nightly --doc=user-guide/approvals.md
+
+      - name: Run nightly UI assertions — user-guide/projects.md
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:5173
+          DOCS_UAT_API_BASE: http://localhost:8000
+        run: node tools/docs-uat/run.mjs --tier=nightly --doc=user-guide/projects.md
+
+      - name: Dump compose logs on failure
+        if: failure()
+        run: |
+          docker-compose -f docker-compose.dev.yml ps || true
+          docker-compose -f docker-compose.dev.yml logs --tail=300 || true
+
+      - name: Tear down
+        if: always()
+        run: docker-compose -f docker-compose.dev.yml down -v || true
+
+  # ── Nightly tier: Helm chart validation (helm lint + template) for
+  #    installation/helm.md. Lightweight — no compose stack, just Helm 3 +
+  #    Node. Per the Phase D decision, the chart is validated statically
+  #    (lint + full template render with the minimum required --set values);
+  #    real `kind` cluster deploys were declined as too heavy / flaky.
+  docs-uat-nightly-helm:
+    name: docs-uat-nightly-helm (chart validate)
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    # Non-blocking until manifest fidelity stabilizes (see header note).
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Helm 3
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.2
+
+      - name: Run nightly chart-validate assertion — installation/helm.md
+        run: node tools/docs-uat/run.mjs --tier=nightly --doc=installation/helm.md

@@ -1,16 +1,24 @@
 /**
- * Obligations E2E — Phase 3 PR #13.
+ * Obligations E2E — Phase 3 PR #13 (re-targeted to the W9-#58 unified
+ * Compliance grid + Reports tab).
  *
- * Drives the project detail Obligations tab against the docker-compose dev
- * stack. Four `@obligations` scenarios:
+ * The standalone Obligations tab (with its own list, per-kind filter, and
+ * obligation drawer) was absorbed into the read-only Compliance grid: each
+ * `compliance-row` now carries the obligations attached to its license inline
+ * as `compliance-obligation-chip` badges (`data-kind`), and the grid scopes
+ * to obligations-bearing rows via the `Has obligations` toggle
+ * (`?compliance_has_obligations=true`). The NOTICE download moved to the
+ * Reports tab card. The harness verbs were updated accordingly, so the spec
+ * keeps its original intent (rows + counts, obligations-only narrowing,
+ * obligation kinds surface, NOTICE text + html download).
  *
- *   S1 — Tab entry: list + per-kind distribution chips render
- *   S2 — Kind multi-filter sync (URL persists, narrows results)
- *   S3 — Drawer open: meta + obligation body + reference link
- *   S4 — NOTICE download (text): file is delivered with sane filename + body
- *   S5 — NOTICE download (html): the format select switches the response to
- *        an HTML body (`.html` filename + markup), proving the format toggle
- *        round-trips to the server
+ * Five `@obligations` scenarios:
+ *
+ *   S1 — Tab entry: obligations-bearing rows + inline obligation chips render
+ *   S2 — `Has obligations` toggle narrows the grid and persists across reload
+ *   S3 — Obligation chips carry a valid kind (`data-kind`)
+ *   S4 — NOTICE download (text) from the Reports tab card
+ *   S5 — NOTICE download (html) from the Reports tab card
  *
  * Selectors live in `apps/frontend/tests/_harness/PortalPage.ts`. The
  * scenarios are EN-locale-agnostic — every assertion uses `data-testid`
@@ -72,13 +80,13 @@ async function bootstrap(
   return seed;
 }
 
-test.describe("@obligations project obligations tab", () => {
+test.describe("@obligations project obligations (Compliance grid)", () => {
   test.beforeEach(async ({ page }) => {
     const auth = new AuthHarness(page);
     await auth.clearAuthState();
   });
 
-  test("S1) Obligations tab renders the list and per-kind distribution chips", async ({
+  test("S1) Compliance grid renders obligations-bearing rows with inline chips", async ({
     page,
   }, testInfo) => {
     const seed = await bootstrap(testInfo, page);
@@ -87,21 +95,24 @@ test.describe("@obligations project obligations tab", () => {
     const portal = new PortalPage(page);
     await portal.gotoProjects();
     await portal.openProjectDetail(PROJECT_NAME);
+    // selectObligationsTab flips the `Has obligations` toggle on so the grid
+    // scopes to rows that actually carry obligations.
     await portal.selectObligationsTab();
 
     const total = await portal.getObligationRowCount();
     expect(total).toBeGreaterThanOrEqual(1);
-    await expect(page.getByTestId("obligation-row").first()).toBeVisible();
 
-    // Distribution chips render (zero-count kinds are filtered out, so we
-    // assert ≥ 1 chip rather than a fixed count).
-    await expect(page.getByTestId("obligations-distribution")).toBeVisible();
+    // The first scoped row carries inline obligation chips.
+    const firstRow = page
+      .locator('[data-testid="compliance-row"][data-has-obligations="true"]')
+      .first();
+    await expect(firstRow).toBeVisible();
     expect(
-      await page.getByTestId("obligations-distribution-chip").count(),
+      await firstRow.getByTestId("compliance-obligation-chip").count(),
     ).toBeGreaterThanOrEqual(1);
   });
 
-  test("S2) kind multi-filter narrows results and persists across reload", async ({
+  test("S2) the Has-obligations toggle narrows the grid and persists across reload", async ({
     page,
   }, testInfo) => {
     const seed = await bootstrap(testInfo, page);
@@ -110,58 +121,32 @@ test.describe("@obligations project obligations tab", () => {
     const portal = new PortalPage(page);
     await portal.gotoProjects();
     await portal.openProjectDetail(PROJECT_NAME);
+
+    // Baseline: the full licenses view (toggle OFF) counts every license row.
+    await portal.selectLicensesTab();
+    const totalAll = await portal.getLicenseRowCount();
+
+    // Scope to obligations-bearing rows (toggle ON).
     await portal.selectObligationsTab();
+    const totalWithObligations = await portal.getObligationRowCount();
 
-    const totalBefore = await portal.getObligationRowCount();
+    // Not every license carries an obligation, so the scoped set is a subset.
+    expect(totalWithObligations).toBeGreaterThanOrEqual(1);
+    expect(totalWithObligations).toBeLessThanOrEqual(totalAll);
 
-    await portal.filterObligationsByKind(["attribution"]);
-
-    const totalAfter = await portal.getObligationRowCount();
-    expect(totalAfter).toBeLessThanOrEqual(totalBefore);
-
-    const visibleKinds = await page
-      .locator('[data-testid="obligation-row"]')
-      .evaluateAll((rows) =>
-        rows.map((r) => r.getAttribute("data-kind")).filter(Boolean),
-      );
-    for (const kind of visibleKinds) {
-      expect(kind).toBe("attribution");
-    }
-
-    expect(new URL(page.url()).searchParams.get("kind")).toBe("attribution");
-
-    await page.reload();
-    await portal.selectObligationsTab();
-    const totalAfterReload = await portal.getObligationRowCount();
-    expect(totalAfterReload).toBe(totalAfter);
-  });
-
-  test("S3) clicking a row opens the drawer and renders meta + obligation body", async ({
-    page,
-  }, testInfo) => {
-    const seed = await bootstrap(testInfo, page);
-    if (seed === null) return;
-
-    const portal = new PortalPage(page);
-    await portal.gotoProjects();
-    await portal.openProjectDetail(PROJECT_NAME);
-    await portal.selectObligationsTab();
-
-    const firstRow = page.getByTestId("obligation-row").first();
-    await expect(firstRow).toBeVisible();
-    const obligationId = await firstRow.getAttribute("data-obligation-id");
-    expect(obligationId).toBeTruthy();
-    await portal.openObligationDrawer(obligationId as string);
-
-    await expect(page.getByTestId("obligation-drawer-meta")).toBeVisible();
-    await expect(page.getByTestId("obligation-drawer-text")).toBeVisible();
+    // URL mirrors the toggle.
     expect(
-      (await page.getByTestId("obligation-drawer-text").textContent()) ?? "",
-    ).not.toBe("");
-    expect(new URL(page.url()).searchParams.get("obligation")).toBeTruthy();
+      new URL(page.url()).searchParams.get("compliance_has_obligations"),
+    ).toBe("true");
+
+    // Hard reload → the scoped state survives.
+    await page.reload();
+    await portal.expectObligationsTabReady();
+    const totalAfterReload = await portal.getObligationRowCount();
+    expect(totalAfterReload).toBe(totalWithObligations);
   });
 
-  test("S4) NOTICE download delivers a file with project name + at least one SPDX id", async ({
+  test("S3) inline obligation chips carry a valid kind", async ({
     page,
   }, testInfo) => {
     const seed = await bootstrap(testInfo, page);
@@ -172,6 +157,29 @@ test.describe("@obligations project obligations tab", () => {
     await portal.openProjectDetail(PROJECT_NAME);
     await portal.selectObligationsTab();
 
+    // The first obligations-bearing row exposes its obligation kinds via the
+    // chips' `data-kind` (locale-agnostic — the chip label is translated, the
+    // attribute is the SPDX/catalog kind verbatim).
+    const kinds = await portal.firstRowObligationKinds();
+    expect(kinds.length).toBeGreaterThanOrEqual(1);
+    for (const kind of kinds) {
+      expect(typeof kind).toBe("string");
+      expect((kind ?? "").length).toBeGreaterThan(0);
+    }
+  });
+
+  test("S4) NOTICE download (text) delivers a file with project name + at least one SPDX id", async ({
+    page,
+  }, testInfo) => {
+    const seed = await bootstrap(testInfo, page);
+    if (seed === null) return;
+
+    const portal = new PortalPage(page);
+    await portal.gotoProjects();
+    await portal.openProjectDetail(PROJECT_NAME);
+
+    // The harness navigates to the Reports tab card (the NOTICE affordance's
+    // new home) and downloads in text format.
     const { filename, body } = await portal.downloadNotice();
     expect(filename).toMatch(/^NOTICE-.+\.txt$/);
     // Header line carries the project name.
@@ -180,7 +188,7 @@ test.describe("@obligations project obligations tab", () => {
     expect(body).toMatch(/E2E-[A-Z]+-/);
   });
 
-  test("S5) NOTICE download in HTML format delivers an .html file with markup", async ({
+  test("S5) NOTICE download (html) delivers an .html file with markup", async ({
     page,
   }, testInfo) => {
     const seed = await bootstrap(testInfo, page);
@@ -189,20 +197,18 @@ test.describe("@obligations project obligations tab", () => {
     const portal = new PortalPage(page);
     await portal.gotoProjects();
     await portal.openProjectDetail(PROJECT_NAME);
-    await portal.selectObligationsTab();
 
-    // Switch the toolbar's format select to "html" before downloading. The
-    // harness drives the `obligations-notice-format` select, so the spec stays
-    // out of the selector business.
+    // Switch the Reports card's format select to "html" before downloading
+    // (the harness drives `reports-card-notice-format`).
     const { filename, body } = await portal.downloadNotice("html");
 
     // Filename extension flips to .html (useNotice maps format → ext).
     expect(filename).toMatch(/^NOTICE-.+\.html$/);
     // The HTML rendering carries markup the text format does not — assert at
     // least one tag is present so we know the server honored ?format=html and
-    // we didn't just relabel the text body. We stay lenient on which tag
-    // (the NOTICE template is owned server-side) but require angle-bracket
-    // markup plus the project name still being present.
+    // we didn't just relabel the text body. We stay lenient on which tag (the
+    // NOTICE template is owned server-side) but require angle-bracket markup
+    // plus the project name still being present.
     expect(body).toContain(PROJECT_NAME);
     expect(body).toMatch(/<[a-z!][^>]*>/i);
     // Sanity: the SPDX ids still surface in the HTML body.

@@ -28,6 +28,21 @@ on:
       - "SECURITY.md"
       - "LICENSE"
       - ".gitignore"
+  # Nightly run — the slow gate (e2e Playwright matrix) sits behind a
+  # `github.event_name == 'schedule' || workflow_dispatch` guard so PRs
+  # stay fast. The same schedule walks the lint/test/SAST path again so
+  # any drift on main between PR runs surfaces here too.
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch: {}
+
+# Least-privilege default — every job here only needs to check out the
+# repo. Image-scan additionally pulls cached Trivy DB layers from ghcr,
+# and e2e pulls docker images; both are covered by `packages: read`
+# added at the job level where needed (or by anonymous pulls when the
+# packages are public).
+permissions:
+  contents: read
 
 # Cancel in-progress runs of the same ref so the latest push wins.
 concurrency:
@@ -183,7 +198,6 @@ jobs:
   #    PR 머지 게이트 = 신규/변경 코드 line coverage ≥ 80%.
   # -------------------------------------------------------------------------
   test:
-    if: false  # TEMP-DISABLED-CI (dev velocity) — re-enable before deploy
     name: test (${{ matrix.target }})
     runs-on: ubuntu-22.04
     strategy:
@@ -330,7 +344,6 @@ jobs:
   #    apps/backend/Dockerfile.worker.
   # -------------------------------------------------------------------------
   image-scan:
-    if: false  # TEMP-DISABLED-CI (dev velocity) — re-enable before deploy
     name: image-scan (worker)
     runs-on: ubuntu-22.04
     # Chore P (Phase 8 worker-image refresh): HIGH is now HARD FAIL alongside
@@ -381,7 +394,7 @@ jobs:
           cache-from: type=gha,scope=worker
           cache-to: type=gha,scope=worker,mode=max
 
-      - name: Trivy scan (ADVISORY — non-blocking, RE-ENABLE BEFORE LAUNCH)
+      - name: Trivy scan (HARD FAIL on CRITICAL,HIGH)
         # Chore P (Phase 8 worker-image refresh): single combined gate.
         # Replaces the chore PR #25 two-step split (CRITICAL hard / HIGH
         # advisory). All previously-advisory HIGH findings are now either
@@ -400,12 +413,7 @@ jobs:
           format: table
           severity: CRITICAL,HIGH
           ignore-unfixed: true
-          # ⚠️ TEMPORARY (pre-launch, intentional): NON-BLOCKING. Trivy still
-          # runs and prints findings but exit-code "0" means it never fails the
-          # job. The worker-image toolchain (scancode/cdxgen/dotnet/JRE/Node)
-          # currently surfaces too many CVEs to gate on during feature work.
-          # RE-ENABLE "1" before launch after triage (.trivyignore / dep bumps).
-          exit-code: "0"
+          exit-code: "1"
           vuln-type: os,library
           # `scanners: vuln` explicitly disables Trivy's secret + license
           # scanners on this gate. We gate on CVEs here; secrets are
@@ -435,7 +443,6 @@ jobs:
   #    production bundle is unacceptable.
   # -------------------------------------------------------------------------
   frontend-bundle-audit:
-    if: false  # TEMP-DISABLED-CI (dev velocity) — re-enable before deploy
     name: frontend-bundle-audit
     runs-on: ubuntu-22.04
     steps:
@@ -505,7 +512,12 @@ jobs:
   #    fails fast.
   # -------------------------------------------------------------------------
   e2e:
-    if: false  # TEMP-DISABLED-CI (dev velocity) — re-enable before deploy
+    # Nightly-only — the matrix takes ~8 minutes per shard and would
+    # double the typical PR wall-clock. The job still runs on every
+    # workflow_dispatch (maintainer can verify before a risky merge)
+    # and on the daily 04:00 UTC schedule (catches drift on main
+    # between PR runs).
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     # Matrix split (PR #46, Phase 6 of post-GA Manual Walkthrough):
     #   - shard=scan-flow      → 9 spec / 39 scenario (existing core)
     #   - shard=manual-aligned → 3 spec / 27 scenario (Phase 5 PR #45)
@@ -540,6 +552,14 @@ jobs:
       # scan_flow.spec.ts ×4) trip the limit on the third / fourth scenario.
       # Production / dev keep this unset → limiter enabled by default.
       RATELIMIT_DISABLED: "1"
+      # /health/ready (the dev compose backend healthcheck) returns 200
+      # only after Alembic schema is at HEAD. Set AUTO_MIGRATE so the
+      # entrypoint runs `alembic upgrade head` before uvicorn binds —
+      # without this the healthcheck loop sees a backend that answers
+      # liveness but flunks readiness for the full deadline, then the
+      # dependent services (celery-worker, frontend) never reach
+      # `service_healthy`.
+      AUTO_MIGRATE: "true"
     steps:
       - uses: actions/checkout@v4
 
@@ -593,19 +613,64 @@ jobs:
       - name: Verify docker compose V2 available
         run: docker compose version
 
-      - name: Bring up dev stack
+      # Pre-build the backend / worker / frontend images BEFORE bringing the
+      # stack up. The image refs in docker-compose.dev.yml
+      # (\`trustedoss/{backend,backend-worker,frontend}:dev\`) are not
+      # published anywhere — compose tries Docker Hub, gets a "denied"
+      # warning, then falls back to the local \`build:\` directive. On a
+      # cold runner that build adds 2-3 minutes to the startup wall clock,
+      # which used to spill past the 180-second healthcheck deadline below.
+      # Building explicitly here also surfaces a build error as its own
+      # step rather than as a confusing "container unhealthy" 3 minutes
+      # later.
+      - name: Pre-build dev images
+        run: |
+          docker compose -f docker-compose.dev.yml build \
+            backend celery-worker frontend
+
+      # The dev backend image's CMD is bare uvicorn — only the prod
+      # Dockerfile wires up docker-entrypoint.sh, so AUTO_MIGRATE never
+      # actually runs on a dev image. We migrate explicitly here against a
+      # throwaway backend container BEFORE bringing the live services up
+      # so backend's /health/ready (queries alembic_version) can flip to
+      # 200 on the very first probe.
+      - name: Start postgres + redis only
+        run: |
+          docker compose -f docker-compose.dev.yml up -d postgres redis
+
+      - name: Wait for postgres healthy
+        run: |
+          set -euo pipefail
+          deadline=$(( $(date +%s) + 60 ))
+          while :; do
+            cid=$(docker compose -f docker-compose.dev.yml ps -q postgres)
+            status=$(docker inspect --format '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo "none")
+            [ "$status" = "healthy" ] && break
+            [ "$(date +%s)" -ge "$deadline" ] && { echo "::error::postgres never healthy"; exit 1; }
+            sleep 3
+          done
+
+      - name: Run alembic migrations (pre-boot)
+        run: |
+          docker compose -f docker-compose.dev.yml run --rm --no-deps backend \
+            alembic upgrade head
+
+      - name: Bring up the rest of the stack
         run: |
           docker compose -f docker-compose.dev.yml up -d \
-            postgres redis backend celery-worker frontend
+            backend celery-worker frontend
 
       - name: Wait for stack to become healthy
         # Compose V1 has no `--wait`; poll the `healthy` count until all five
-        # services report green or 180s elapses. `docker inspect` gives us a
-        # deterministic per-container health view.
+        # services report green or 240s elapses. The deadline was 180s but a
+        # cold-image-cache backend (Postgres init + alembic upgrade head +
+        # uvicorn boot) regularly used 180-220s on the hosted runner. 240s
+        # leaves headroom; the pre-build step above keeps total wall-clock
+        # bounded.
         run: |
           set -euo pipefail
           services=(postgres redis backend celery-worker frontend)
-          deadline=$(( $(date +%s) + 180 ))
+          deadline=$(( $(date +%s) + 240 ))
           while :; do
             healthy=0
             for svc in "${services[@]}"; do
@@ -629,11 +694,6 @@ jobs:
             fi
             sleep 5
           done
-
-      - name: Run alembic migrations
-        run: |
-          docker compose -f docker-compose.dev.yml exec -T backend \
-            alembic upgrade head
 
       - name: Seed e2e user (fail fast if seed broken)
         # Smoke-run the seed script once before Playwright fans out, so a

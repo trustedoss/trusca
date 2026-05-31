@@ -57,6 +57,7 @@ const sidebars: SidebarsConfig = {
         "admin-guide/users-and-teams",
         "admin-guide/vulnerability-data",
         "admin-guide/disk-and-health",
+        "admin-guide/scan-retention",
         "admin-guide/audit-log",
         "admin-guide/oncall-runbook",
         "admin-guide/backup-and-restore",

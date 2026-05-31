@@ -8,7 +8,11 @@ sidebar_position: 0
 
 # Dashboard
 
-After you sign in, the portal lands on the **Dashboard** (`/`) — a single-page summary of the parts of your portfolio you can see (every project the active team owns). The page exists to answer the four questions you typically arrive with:
+After you sign in, the portal lands on the **Dashboard** (`/`) — a single-page summary of the parts of your portfolio you can see (every project the active team owns).
+
+![Dashboard — KPI tiles, severity + license distribution, and a recent-scans list at the root URL after sign-in](/img/screenshots/user-dashboard.png)
+
+The page exists to answer the four questions you typically arrive with:
 
 - *Are there any new criticals?* (severity tiles)
 - *How many projects am I responsible for, and how many are in flight?* (portfolio + scan-status tiles)
@@ -42,8 +46,11 @@ If the dashboard endpoint returns a non-2xx response, the page replaces the tile
 
 After signing in for the first time:
 
+<!-- docs-uat: id=dashboard-active-in-nav kind=ui harness=dashboardActiveInNav tier=nightly -->
 1. The header avatar shows your initials and the sidebar highlights **Dashboard**.
+<!-- docs-uat: id=dashboard-severity-tiles kind=ui harness=dashboardSeverityTiles tier=nightly -->
 2. The severity tiles render five values (zero is fine).
+<!-- docs-uat: id=dashboard-recent-scans kind=ui harness=dashboardRecentScans tier=nightly -->
 3. The recent-scans list either lists at least one row or shows the empty-state message ("No scans have run yet.").
 
 ## See also

@@ -40,16 +40,15 @@ name: visual-regression
 # and flips the gate to strict.
 
 on:
-  pull_request:
-    paths:
-      - "apps/frontend/src/**"
-      - "apps/frontend/tests/visual/**"
-      - "apps/frontend/tests/_harness/**"
-      - "apps/frontend/playwright.visual.config.ts"
-      - "apps/backend/api/**"
-      - "apps/backend/schemas/**"
-      - "apps/backend/services/**"
-      - ".github/workflows/visual-regression.yml"
+  # Nightly only — the matrix takes ~8 minutes per run and would double
+  # the typical PR wall-clock. workflow_dispatch is still wired up so a
+  # maintainer can verify before a risky merge. PR-triggered runs are
+  # intentionally NOT in scope; the dev / preview flow catches visual
+  # drift before merge, and the nightly cadence surfaces drift on main
+  # that slipped past PR review.
+  schedule:
+    - cron: "30 4 * * *"
+  workflow_dispatch: {}
 
 permissions:
   contents: read
@@ -58,9 +57,6 @@ permissions:
 jobs:
   visual-regression:
     runs-on: ubuntu-22.04
-    # TEMP-DISABLED-CI (dev velocity) — re-enable before deploy.
-    # Original gate: if: ${{ !contains(github.event.pull_request.labels.*.name, 'visual-regression-skip') }}
-    if: false
     timeout-minutes: 25
     # Initial bootstrap — see workflow header note. Flip to ``false``
     # after the first linux-baseline-refresh PR merges.
@@ -75,6 +71,11 @@ jobs:
       DT_API_KEY: ci-visual-dt-stub-key
       WORKSPACE_HOST_PATH: ${{ github.workspace }}/workspace
       DISABLE_LOGIN_RATE_LIMIT: "1"
+      # /health/ready returns 200 only after Alembic schema is at HEAD.
+      # Without AUTO_MIGRATE the backend never runs `alembic upgrade head`
+      # on its own; the workflow's explicit migrate step only fires AFTER
+      # the wait-for-healthy loop times out. Same fix as ci.yml e2e.
+      AUTO_MIGRATE: "true"
 
     steps:
       - uses: actions/checkout@v4
@@ -119,19 +120,61 @@ jobs:
         working-directory: apps/frontend
         run: npx playwright install --with-deps chromium
 
-      - name: Start dev stack
+      # Pre-build the backend / worker / frontend images BEFORE bringing the
+      # stack up — the dev compose image refs are unpublished so compose
+      # falls back to local build during `up -d`, which on a cold runner
+      # would spill past the 180-second healthcheck deadline below. Same
+      # split as ci.yml e2e.
+      - name: Pre-build dev images
+        env:
+          COMPOSE_DOCKER_CLI_BUILD: "1"
+          DOCKER_BUILDKIT: "1"
+        run: |
+          docker compose -f docker-compose.dev.yml build \
+            backend celery-worker frontend
+
+      # The dev Dockerfile has no ENTRYPOINT so docker-entrypoint.sh
+      # (which honours AUTO_MIGRATE) never runs. Migrate explicitly in a
+      # throwaway backend container BEFORE the live backend starts, so
+      # /health/ready can flip green on the first probe. Same pattern as
+      # ci.yml e2e.
+      - name: Start postgres + redis only
         run: |
           mkdir -p workspace
-          docker compose -f docker-compose.dev.yml up -d \
-            postgres redis backend celery-worker frontend
+          docker compose -f docker-compose.dev.yml up -d postgres redis
         env:
           COMPOSE_DOCKER_CLI_BUILD: "1"
           DOCKER_BUILDKIT: "1"
 
+      - name: Wait for postgres healthy
+        run: |
+          set -euo pipefail
+          deadline=$(( $(date +%s) + 60 ))
+          while :; do
+            cid=$(docker compose -f docker-compose.dev.yml ps -q postgres)
+            status=$(docker inspect -f '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo none)
+            [ "$status" = "healthy" ] && break
+            [ "$(date +%s)" -ge "$deadline" ] && { echo "::error::postgres never healthy"; exit 1; }
+            sleep 3
+          done
+
+      - name: Run alembic migrations (pre-boot)
+        run: |
+          docker compose -f docker-compose.dev.yml run --rm --no-deps backend \
+            alembic upgrade head
+
+      - name: Bring up the rest of the stack
+        run: |
+          docker compose -f docker-compose.dev.yml up -d \
+            backend celery-worker frontend
+
       - name: Wait for services to be healthy
+        # Deadline bumped 180 → 240s. Alembic upgrade + uvicorn boot on a
+        # cold cache regularly used the full 180-second budget; the
+        # pre-build step caps total wall clock while 240s leaves headroom.
         run: |
           services=(postgres redis backend celery-worker frontend)
-          deadline=$((SECONDS + 180))
+          deadline=$((SECONDS + 240))
           while [ "$SECONDS" -lt "$deadline" ]; do
             healthy=0
             for svc in "${services[@]}"; do
@@ -149,11 +192,6 @@ jobs:
             fi
             sleep 5
           done
-
-      - name: Run alembic migrations
-        run: |
-          docker compose -f docker-compose.dev.yml exec -T backend \
-            alembic upgrade head
 
       - name: Run visual regression spec
         working-directory: apps/frontend

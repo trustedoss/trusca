@@ -167,6 +167,9 @@ def _stub_trivy_empty(monkeypatch: pytest.MonkeyPatch) -> None:
         *,
         timeout_seconds: int = 0,  # noqa: ARG001
         backend: str | None = None,  # noqa: ARG001
+        # feat/scan-log-verbosity threads line_callback + verbose into
+        # run_trivy_sbom; absorb them so this stub matches the new signature.
+        **_kwargs: object,  # noqa: ARG001
     ) -> TrivyResult:
         output_dir.mkdir(parents=True, exist_ok=True)
         report_path = output_dir / "trivy-sbom.json"

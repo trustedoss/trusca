@@ -28,6 +28,12 @@ on:
   #     - "apps/backend/**"
   #     - "scripts/dump_openapi.py"
 
+# Least-privilege default — the build job only reads source. The
+# subsequent deploy step has its own `permissions:` block elevating to
+# `pages: write` and `id-token: write` per the GitHub Pages workflow.
+permissions:
+  contents: read
+
 # Cancel any in-flight deploy when a newer commit lands.
 concurrency:
   group: docs-pages

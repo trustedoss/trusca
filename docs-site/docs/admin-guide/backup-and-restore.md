@@ -38,6 +38,7 @@ The portal does **not** back up `.env` (it contains secrets — store it via you
 
 ## Take a manual backup
 
+<!-- docs-uat: id=backup-manual kind=shell ctx=host tier=nightly waiver=backup-restore-roundtrip-executed-by-install-uat -->
 ```bash
 bash scripts/backup.sh
 ```
@@ -103,6 +104,7 @@ Progress streams the same way as a manual backup. A completed restore flips the 
 
 `cron` is the simplest path:
 
+<!-- docs-uat: id=backup-cron-schedule kind=shell ctx=host tier=nightly waiver=host-cron-scheduler-config -->
 ```bash
 sudo crontab -e
 # Minute Hour DoM Month DoW Command
@@ -117,6 +119,7 @@ For a managed scheduler (systemd timer), see the [systemd recipe](#systemd-timer
 
 Local backups protect against database corruption but not against host loss. Move backups off-host as part of your retention policy:
 
+<!-- docs-uat: id=backup-offhost-s3 kind=shell ctx=host tier=nightly waiver=external-s3-credentials -->
 ```bash
 # Example: AWS S3 nightly sync (run after backup.sh)
 aws s3 sync /opt/trustedoss-portal/backups/ \
@@ -129,6 +132,7 @@ Other targets work the same way: `rclone copy` (Backblaze B2, Wasabi, GCS), `rsy
 
 ## Restore from a backup
 
+<!-- docs-uat: id=restore-cli kind=shell ctx=host tier=nightly waiver=interactive-hardcoded-dir-roundtrip-covered-by-install-uat -->
 ```bash
 bash scripts/restore.sh backups/2026-05-09-030000
 ```
@@ -213,6 +217,7 @@ We recommend option (1) for incident recovery and option (2) only as a deliberat
 
 The dump is plaintext SQL. To encrypt at rest:
 
+<!-- docs-uat: id=backup-encrypt-gpg kind=shell ctx=host tier=nightly waiver=encrypt-at-rest-variant-needs-gpg-and-shred -->
 ```bash
 bash scripts/backup.sh
 gpg --symmetric --cipher-algo AES256 \
@@ -254,6 +259,7 @@ WantedBy=timers.target
 
 Enable:
 
+<!-- docs-uat: id=backup-systemd-enable kind=shell ctx=host tier=nightly waiver=host-systemd-timer -->
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable --now trustedoss-backup.timer
@@ -263,14 +269,20 @@ sudo systemctl enable --now trustedoss-backup.timer
 
 After running a backup:
 
+<!-- docs-uat: id=backup-verify-dir kind=manual tier=manual -->
 1. The new directory under `backups/` exists with the three expected files.
+<!-- docs-uat: id=backup-verify-manifest kind=manual tier=manual -->
 2. `manifest.json` decodes as JSON and has a non-empty `alembic_head`.
+<!-- docs-uat: id=backup-verify-gzip kind=manual tier=manual -->
 3. `gunzip -t backups/.../postgres.sql.gz` succeeds (gzip integrity check).
 
 After running a restore:
 
+<!-- docs-uat: id=restore-verify-signin kind=manual tier=manual -->
 1. The portal signs in cleanly with the credentials from the backup era.
+<!-- docs-uat: id=restore-verify-counts kind=manual tier=manual -->
 2. Project counts, scan counts, and audit-log row counts match expectations.
+<!-- docs-uat: id=restore-verify-health kind=manual tier=manual -->
 3. **/admin/health** is all green.
 
 ## Troubleshooting
@@ -285,6 +297,7 @@ After running a restore:
 
 The script runs `pg_dump` inside the postgres container — there should be no host permission issue. Confirm `.env`'s `POSTGRES_USER` matches the live user:
 
+<!-- docs-uat: id=backup-troubleshoot-roles kind=shell ctx=host tier=nightly waiver=production-compose-diagnostic -->
 ```bash
 docker-compose -f docker-compose.yml exec postgres \
   psql -U postgres -c '\du'
@@ -302,6 +315,7 @@ See [forward-only migrations and restore](#forward-only-migrations-and-restore).
 
 `tar` skips files that change during the archive. Stop the worker before backup if your workspace churns aggressively:
 
+<!-- docs-uat: id=backup-troubleshoot-stop-worker kind=shell ctx=host tier=nightly waiver=production-compose-worker-pause -->
 ```bash
 docker-compose -f docker-compose.yml stop worker
 bash scripts/backup.sh

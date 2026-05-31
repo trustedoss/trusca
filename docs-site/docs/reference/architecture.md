@@ -40,26 +40,20 @@ The `/metrics` route is reserved at the Traefik level (`docker-compose.yml`) but
 
 ## Network
 
-```
-                       :80 / :443
-                          │
-                       ┌──────────┐
-                       │ Traefik  │  TLS termination, HTTP→HTTPS
-                       └────┬─────┘
-                            │ trustedoss network (bridge)
-              ┌─────────────┼─────────────┐
-              ↓             ↓             ↓
-       ┌──────────┐  ┌──────────┐
-       │ frontend │  │ backend  │
-       └──────────┘  └────┬─────┘
-                          │
-            ┌─────────────┼─────────────┬──────────┐
-            ↓             ↓             ↓          ↓
-      ┌──────────┐  ┌──────────┐  ┌──────────────┐ ┌──────┐
-      │ postgres │  │  redis   │  │   worker     │ │ beat │
-      │          │  │          │  │ + Trivy DB   │ │      │
-      └──────────┘  └──────────┘  └──────────────┘ └──────┘
-                            └──── shared `workspace` volume ────┘
+```mermaid
+flowchart TB
+  host([":80 / :443"])
+  host --> traefik["Traefik<br/>TLS termination · HTTP → HTTPS"]
+  traefik --> frontend["frontend<br/>(Vite + React)"]
+  traefik --> backend["backend<br/>(FastAPI)"]
+  backend --> postgres[("postgres")]
+  backend --> redis[("redis")]
+  worker["worker<br/>+ local Trivy DB"]
+  beat["beat<br/>(Celery scheduler)"]
+  redis --> worker
+  redis --> beat
+  worker -. shared 'workspace' volume .- backend
+  worker --> postgres
 ```
 
 Only `traefik` exposes ports to the host (`80`, `443`). Every other service is reachable inside the compose network only.
@@ -100,9 +94,7 @@ A scan is a Celery task chain. Source scan stages (see `apps/backend/tasks/scan_
 8. finalize      (write to PostgreSQL in one transaction per scan)
 ```
 
-The stage slugs above are the v0.10.0 names. WebSocket frames carry the historical slugs (`dt_upload`, `dt_findings`) at v0.10.0 to keep existing harnesses and CI clients working — the rename to `sbom_upload` / `vuln_match` ships in this release.1 (see [ADR-0001 Appendix A](https://github.com/trustedoss/trustedoss-portal/blob/main/docs/decisions/0001-replace-dt-with-trivy.md)).
-
-The `scancode` stage replaced the former `ort` stage in this release; the WebSocket progress slug changed from `ort` to `scancode` at the same percent. See [User guide — Scans](../user-guide/scans.md#pipeline-stages-source).
+The stage slugs above are emitted as `scan.<id>.progress` WebSocket frames so the UI can render a live progress bar — see [User guide — Scans](../user-guide/scans.md#pipeline-stages-source).
 
 Container scan stages (see `apps/backend/tasks/scan_container.py`):
 
@@ -122,7 +114,7 @@ In this release, license-tier classification is **not** ORT-rule-driven. The
 tier (`forbidden` / `conditional` / `permissive` / `unknown`) comes
 from the hard-coded `_LICENSE_CATEGORY_DEFAULTS` dictionary in
 `apps/backend/tasks/scan_source.py`. The repo's `ort/rules.kts` is a
-placeholder reserved for the  customization path. Editing
+placeholder reserved for a future customization path. Editing
 `ort/rules.kts` has no effect in this release.
 :::
 

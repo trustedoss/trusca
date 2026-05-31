@@ -63,7 +63,7 @@ sidebar_position: 4
 "누가 언제 무엇을 다운로드했나" 컴플라이언스 감사 시
 `docker-compose logs backend | grep sbom_exported` 와 Loki / journald
 집계기를 확인하세요. 이를 `audit_logs` 행으로 승격하는 작업은
- 로드맵 항목입니다.
+로드맵 항목입니다.
 :::
 
 시스템 작업(Celery)도 기록합니다. 각 행은 동사만 담고 `target_table`을 별도로 가집니다. 예시:
@@ -83,7 +83,7 @@ Admin UI 의 `target_table` 필터 드롭다운은 `apps/backend/schemas/admin_o
 
 ### 필터
 
-v0.10.0 의 상단 인라인 필터 바:
+현재 릴리스의 상단 인라인 필터 바:
 
 - **행위자 user ID** — UUID 정확 일치.
 - **대상 테이블** — enum 단일 선택(`projects`, `teams`, `users`, `vulnerability_findings` 등).
@@ -107,6 +107,7 @@ v0.10.0 의 상단 인라인 필터 바:
 
 더 큰 윈도는 API로 페이지네이션:
 
+<!-- docs-uat: id=audit-api-paginate kind=api auth=admin url=/v1/admin/audit?page=1&page_size=10 expect=status:200 tier=nightly -->
 ```bash
 curl -sS \
   -H "Authorization: Bearer ${ACCESS_TOKEN}" \
@@ -133,6 +134,7 @@ curl -sS \
 
 사용자가 오류를 신고하면 오류 페이지에 표시된 `X-Request-ID`를 요청하세요. 본 `request_id`로 감사 로그를 필터하면 요청이 트리거한 모든 쓰기의 정식 기록을 얻습니다. 구조화 로그와 교차 참조:
 
+<!-- docs-uat: id=audit-log-correlate kind=shell ctx=host tier=nightly waiver=illustrative-log-grep-no-deterministic-assertion -->
 ```bash
 docker-compose -f docker-compose.yml logs backend \
   | jq -c "select(.request_id == \"$REQ\")"
@@ -142,6 +144,7 @@ docker-compose -f docker-compose.yml logs backend \
 
 감사 로그는 **자동 정리되지 않습니다**. 컴플라이언스 가치 대비 저장소 비용이 저렴합니다(전형적 설치는 활성 사용자당 연 ~50 MB 증가). 테이블 크기를 줄여야 한다면 **archive then truncate**(운영자 확인 포함) 권장:
 
+<!-- docs-uat: id=audit-archive-truncate kind=shell ctx=host tier=nightly waiver=destructive-retention-archive-on-production-compose -->
 ```bash
 docker-compose -f docker-compose.yml exec postgres \
   pg_dump -U trustedoss -t audit_logs trustedoss | gzip > audit-archive-2024.sql.gz
@@ -155,6 +158,7 @@ docker-compose -f docker-compose.yml exec postgres \
 
 `DELETE`는 immutability 트리거에 의해 **DB 레이어에서 차단됩니다**([스키마](#스키마) 참고). 의도된 retention purge 시에는 동일 유지보수 트랜잭션 안에서 두 트리거를 drop, `DELETE` 실행, 트리거 재생성을 commit 전에 마쳐야 합니다.
 
+<!-- docs-uat: id=audit-retention-purge kind=sql ctx=postgres tier=nightly waiver=destructive-drops-triggers-and-deletes-rows -->
 ```sql
 BEGIN;
 DROP TRIGGER audit_logs_immutable_truncate ON audit_logs;
@@ -182,8 +186,11 @@ SELECT tgname FROM pg_trigger
 
 권한 작업 후:
 
+<!-- docs-uat: id=audit-verify-new-row kind=manual tier=manual -->
 1. **/admin/audit**이 ~1초 이내 최상단에 새 행을 표시.
+<!-- docs-uat: id=audit-verify-request-id kind=manual tier=manual -->
 2. `request_id`가 원래 요청의 `X-Request-ID` 응답 헤더와 일치.
+<!-- docs-uat: id=audit-verify-diff-masked kind=manual tier=manual -->
 3. `diff`가 예상과 일치. PII 필드(이메일·비밀번호 해시·API Key)가 마스킹되어 표시.
 
 ## 트러블슈팅
@@ -204,6 +211,7 @@ SELECT tgname FROM pg_trigger
 
 `diff` 컬럼은 `jsonb`. 마이그레이션이 만든 GIN 인덱스로 SQL 쿼리가 빠릅니다.
 
+<!-- docs-uat: id=audit-diff-query kind=sql ctx=postgres expect=ok tier=nightly -->
 ```sql
 SELECT * FROM audit_logs
  WHERE diff @> '{"new_state": "suppressed"}'::jsonb
@@ -218,7 +226,7 @@ SELECT * FROM audit_logs
 
 - `/admin/audit`의 다중 선택 필터(Action 다중 선택, Target table 다중 선택), 프리셋 날짜 범위(지난 1시간 / 오늘 / 지난 7일), 정확 일치 Target ID 필터, Request ID 필터.
 - `actor_kind` 컬럼 / 필터(현재는 감사 행의 행위자가 `actor_user_id`로 식별되며 API Key 행위자는 동작 컨텍스트에서 추론).
-- SBOM 내보내기(`sbom_exported`), NOTICE 파일 다운로드, API Key 폐기 이벤트를 `structlog` 전용에서 `audit_logs` 행으로 승격 —  예정.
+- SBOM 내보내기(`sbom_exported`), NOTICE 파일 다운로드, API Key 폐기 이벤트를 `structlog` 전용에서 `audit_logs` 행으로 승격 — 예정.
 
 ## 함께 보기
 

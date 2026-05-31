@@ -25,6 +25,7 @@ Together they let you catch problems before users notice.
 
 ## System health dashboard {#health}
 
+<!-- docs-uat: id=health-api kind=api auth=admin url=/v1/admin/health expect=status:200 tier=nightly -->
 The **/admin/health** page lists every component the portal depends on. Each row shows:
 
 - **Component** — one of `postgres`, `redis`, `celery`, `disk`, `active_scans`, `last_24h_errors`. The `vulnerability_data` row (Trivy DB freshness) is coming soon.
@@ -51,6 +52,7 @@ The portal does not separately probe `backend`, `worker`, `beat`, `frontend`, or
 
 ## Disk dashboard {#disk}
 
+<!-- docs-uat: id=disk-api kind=api auth=admin url=/v1/admin/disk expect=status:200 tier=nightly -->
 **/admin/disk** renders one card per filesystem the portal cares about. The actual cards from v0.10.0 are: **workspace**, **trivy_db**, **postgres**, **redis** (the API returns them as `items: AdminDiskItem[]` and the page renders one card per item). The earlier **dt_volume** card was removed when Dependency-Track was retired.
 
 Each card has a warn threshold and a critical threshold:
@@ -62,6 +64,7 @@ Each card has a warn threshold and a critical threshold:
 
 Override in `.env`:
 
+<!-- docs-uat: id=disk-threshold-env kind=shell ctx=host tier=nightly waiver=env-config-snippet-not-a-command -->
 ```bash
 DISK_THRESHOLD_WARNING_PCT=80
 DISK_THRESHOLD_CRITICAL_PCT=90
@@ -69,6 +72,7 @@ DISK_THRESHOLD_CRITICAL_PCT=90
 
 Separately, the **scan disk-guard** uses a single `DISK_HARD_LIMIT_PCT` (default `95`) to **block new scans** when the workspace volume crosses that line. Cross-reference is intentional: the dashboard warns earlier (80% / 90%), the scan guard kicks in later (95%) to stop the bleed without surprising the operator.
 
+<!-- docs-uat: id=disk-hard-limit-env kind=shell ctx=host tier=nightly waiver=env-config-snippet-not-a-command -->
 ```bash
 DISK_HARD_LIMIT_PCT=95
 ```
@@ -93,6 +97,7 @@ Existing in-flight scans are **not** killed; only new submissions are rejected. 
 
 ### 1. Identify the offender
 
+<!-- docs-uat: id=disk-identify-offender kind=shell ctx=host tier=nightly waiver=production-compose-diagnostic -->
 ```bash
 docker-compose -f docker-compose.yml exec backend \
   du -sh /workspace/*  | sort -h | tail -20
@@ -102,6 +107,7 @@ Most often a single scan's source clone (`<scan_id>/source/`) + scancode license
 
 ### 2. Free space
 
+<!-- docs-uat: id=disk-free-space kind=shell ctx=host tier=nightly waiver=destructive-prune-on-production-compose -->
 ```bash
 # Drop scancode result JSON older than 30 days (safe — rebuilt on next scan).
 docker-compose -f docker-compose.yml exec backend \
@@ -144,8 +150,11 @@ Backend: `apps/backend/api/v1/admin/scans.py`. UI: `apps/frontend/src/features/a
 
 After making changes:
 
+<!-- docs-uat: id=disk-verify-health-green kind=manual tier=manual -->
 1. **/admin/health** is all green.
+<!-- docs-uat: id=disk-verify-disk-warn kind=manual tier=manual -->
 2. **/admin/disk** is below the warn line.
+<!-- docs-uat: id=disk-verify-test-scan kind=manual tier=manual -->
 3. A test scan against any project succeeds end-to-end.
 
 ## Troubleshooting

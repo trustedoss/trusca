@@ -62,7 +62,14 @@ Who can issue each scope:
 
 The key inherits the **role of the issuing user** at request time — there is no separate "effective role" or "allowed actions" list in this release. Permission checks fall through to the same RBAC code path as a JWT-authenticated request.
 
-Keys are **non-expiring** in this release. They are valid until manually revoked. Per-key expiry presets and a fine-grained `allowed_actions` taxonomy (`scan:trigger`, `scan:read`, `report:download`, …) are on the roadmap.
+Keys support an **optional expiry (TTL)**. Pass `expires_in_days` (1–1825) when issuing and the key stops authenticating after that many days — a leaked CI key (pipeline log, forked-PR runner) then lapses on its own instead of living until manual revocation. Omit it for a non-expiring key (the legacy default). CI keys should set a TTL and rotate. A fine-grained `allowed_actions` taxonomy (`scan:trigger`, `scan:read`, `report:download`, …) is still on the roadmap.
+
+<!-- docs-uat: id=apikeys-create-ttl kind=shell ctx=host tier=manual waiver=example-host-and-jwt-placeholder -->
+```bash
+curl -sS -X POST "https://trustedoss.example.com/v1/api-keys" \
+  -H "Authorization: Bearer ${JWT}" -H "Content-Type: application/json" \
+  -d '{"name": "ci-key", "scope": "project", "project_id": "<uuid>", "expires_in_days": 90}'
+```
 
 ## Issuing a key
 
@@ -87,6 +94,7 @@ The same flow at **/integrations**, with the additional option to set the scope 
 
 Pass the key in the `Authorization` header as a Bearer token:
 
+<!-- docs-uat: id=apikeys-use-curl kind=shell ctx=host tier=nightly waiver=example-host-and-placeholder-bearer-token -->
 ```bash
 curl -sS -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
   https://trustedoss.example.com/v1/projects
@@ -120,7 +128,7 @@ Revocation is immediate and irreversible. To bring a key back, issue a new one.
 
 ## Listing keys
 
-The UI shows: label, prefix, scope (`org` / `team` / `project`), creator, created timestamp, last-used timestamp, and revocation status. There is no way to recover the secret of an existing key — by design. Per-key role, allowed-actions, expiry, and last-used IP columns are on the roadmap (the corresponding model columns are not yet present).
+The UI shows: label, prefix, scope (`org` / `team` / `project`), creator, created timestamp, last-used timestamp, expiry (`expires_at`, null when non-expiring), and revocation status. There is no way to recover the secret of an existing key — by design. Per-key role, allowed-actions, and last-used IP columns are on the roadmap (the corresponding model columns are not yet present).
 
 ## Audit log
 
@@ -144,7 +152,9 @@ See [Webhooks](../ci-integration/webhooks.md) for the webhook flow.
 
 After issuing a key:
 
+<!-- docs-uat: id=apikeys-verify-curl kind=manual tier=manual -->
 1. `curl -sS -H "Authorization: Bearer <key>" .../v1/projects` returns 200 with the team's projects.
+<!-- docs-uat: id=apikeys-verify-audit-row kind=manual tier=manual -->
 2. The audit log records a `target_table=api_keys&action=create` row with the prefix. The Admin UI cannot filter on `target_table=api_keys` — `api_keys` is not in the `AuditTargetTable` whitelist (see [Audit log → Filter-visible vs raw-row tables](./audit-log.md#what-gets-logged)). Use raw SQL to verify:
 
    ```sql
@@ -155,6 +165,7 @@ After issuing a key:
     ORDER BY created_at DESC;
    ```
 
+<!-- docs-uat: id=apikeys-verify-ci-build kind=manual tier=manual -->
 3. The CI build that consumes the key passes its first run.
 
 ## Troubleshooting
@@ -174,6 +185,7 @@ The two most common causes:
 
 Someone tried to brute-force the secret, or a malformed key was sent. The portal logs every miss in the structured backend log. Brute-force detection (a Slack alert when a single key crosses N misses per minute) is on the roadmap; until then, periodically grep the backend logs for repeated `secret_mismatch` lines:
 
+<!-- docs-uat: id=apikeys-secret-mismatch-grep kind=shell ctx=host tier=nightly waiver=production-compose-log-grep-diagnostic -->
 ```bash
 docker-compose -f docker-compose.yml logs --tail=2000 backend \
   | grep secret_mismatch | sort | uniq -c | sort -rn | head
@@ -194,7 +206,7 @@ Confirm:
 The following capabilities are referenced in early docs but are **not** shipped in this release:
 
 - Per-key role override (`effective_role`) and a granular `allowed_actions` taxonomy (`scan:trigger`, `scan:read`, `report:download`, `webhook:receive`, `*`). Today the key inherits the issuing user's role and the full RBAC surface.
-- Per-key `expires_at` field and the 30 / 90 / 180 / 365-day expiry presets in the New API key form. Today keys do not expire — they live until revoked.
+- The 30 / 90 / 180 / 365-day expiry presets in the New API key form (the API's `expires_in_days` / `expires_at` already ship — only the UI presets are on the roadmap).
 - Per-request `api_key.use` audit event with `actor_kind = api_key`. Today key lifecycle (the ORM-listener insert and the explicit `api_key.revoked` action) is audited but per-request use is captured only in structured logs.
 - `last_used_ip` column in the listing.
 - Brute-force secret-mismatch alerting (Slack notification when a single key crosses 5 misses / 60 s).

@@ -21,7 +21,7 @@ sidebar_position: 2
 | **`source`** | `cdxgen` → scancode(first-party 라이선스 탐지) → Trivy(`trivy sbom`) | 컴포넌트와 그 **declared** 라이선스(의존성 메타데이터에서), **detected** 라이선스(scancode 가 직접 스캔한 first-party 소스), 로컬 Trivy DB가 NVD + OSV + GHSA + EPSS + KEV로 매칭한 CVE(Common Vulnerabilities and Exposures). |
 | **`container`** | Trivy | 컨테이너 이미지의 OS 패키지 취약점(언어 패키지 CVE는 제한적). |
 
-부터 두 종류 모두 UI 스캔 다이얼로그에서 선택할 수 있습니다 — 스캔을 트리거할 때 **Source** 또는 **Container** 를 고르세요([스캔 트리거 → UI에서](#ui에서) 참고). API도 두 종류를 모두 수용합니다.
+현재 릴리스부터 두 종류 모두 UI 스캔 다이얼로그에서 선택할 수 있습니다 — 스캔을 트리거할 때 **Source** 또는 **Container** 를 고르세요([스캔 트리거 → UI에서](#ui에서) 참고). API도 두 종류를 모두 수용합니다.
 
 ## 스캔 트리거
 
@@ -34,22 +34,25 @@ sidebar_position: 2
    - **Container** — 지정한 컨테이너 이미지에 Trivy 실행. [컨테이너 이미지 스캔](#컨테이너-이미지-스캔) 참고.
 4. **Source** 스캔이면 소스 제공 방식(Git URL, 업로드한 `.zip`, 브라우저에서 압축할 폴더)을 고른 뒤 **Start scan** 을 클릭합니다.
 
+:::tip 상세 로그 (디버그)
+스캔 다이얼로그에는 **Verbose logs (debug)**(상세 로그) 토글이 있습니다(기본 꺼짐). 표준 진행 로그만 보려면 꺼 두세요. 특정 스캔에서 켜면 cdxgen / scancode / Trivy 의 **전체** 진단 출력이 [단계별 로그 패널](#스캔-진행-보기)로 스트리밍됩니다 — cdxgen 은 디버그 모드로, scancode 는 파일별 라인을, Trivy 는 `--debug` 로 전환됩니다. 컴포넌트가 너무 적게 잡히거나, 라이선스를 놓치거나, 예상치 못한 CVE 가 매칭된 원인을 디버깅할 때 사용하세요. 상세 출력은 양이 많을 수 있으며, 스캔당 라인 예산(`SCAN_LOG_MAX_LINES_PER_SCAN`, 기본 20000)이 여전히 상한을 둡니다. 자격 증명은 로그로 나갈 때 마스킹되며, 상세 **source** 스캔은 스캔된 각 파일 경로도 함께 기록합니다 — 해당 스캔을 열 수 있는 팀원 누구에게나 보이므로, 로그를 폭넓게 공유할 때는 내부/신뢰된 프로젝트에서 사용하는 것을 권장합니다. API 에서는 `metadata.verbosity` 를 `"verbose"` 로 설정합니다(없거나 `"normal"` 이면 조용한 로그 유지).
+:::
+
 프로젝트 목록 페이지에서 우측 슬라이드 드로어가 열리며 WebSocket 기반의 실시간 진행 뷰가 표시됩니다. 탭을 닫아도 스캔은 워커에서 계속됩니다. 프로젝트를 다시 열면 언제든 재연결됩니다. 스캔이 `queued` 또는 `running` 인 동안 드로어에는 **Cancel scan**(스캔 취소) 동작이 함께 표시됩니다 — [스캔 취소](#스캔-취소) 참고.
 
 ![스캔 진행 드로어 — bootstrap → fetch → cdxgen → scancode → vuln_match → finalize 단계, WebSocket 실시간 표시](/img/screenshots/user-scans-progress-drawer.png)
 
 :::note 프로젝트당 동시 스캔은 하나
-프로젝트가 이미 `queued` 또는 `running` 스캔을 가지고 있으면 프로젝트 상세 헤더의 **Scan** 버튼이 비활성화되고, 헤더의 진행중 칩(클릭 시 기존 스캔의 진행 드로어 재오픈)을 가리키는 툴팁이 표시됩니다. API 로 두 번째 스캔을 트리거하면 `409 Conflict` 와 RFC 7807 확장 필드 `scan_already_in_progress: true` 를 반환합니다 — 활성 스캔이 종료 상태에 도달하거나 **Cancel** 한 뒤 다시 시작하세요. 제약은 DB 의 partial unique index (`ix_scans_project_active`) 로 강제되므로 UI·API·CI 클라이언트에 동일하게 적용됩니다.
+프로젝트가 이미 `queued` 또는 `running` 스캔을 가지고 있으면 프로젝트 상세 헤더의 **Scan** 버튼이 비활성화되고, 헤더의 진행중 칩(클릭 시 기존 스캔의 진행 드로어 재오픈)을 가리키는 툴팁이 표시됩니다. API 로 두 번째 스캔을 트리거하면 `409 Conflict` 와 RFC 7807 확장 필드 `scan_already_in_progress: true` 를 반환합니다 — 활성 스캔이 종료 상태에 도달하거나 **Cancel** 한 뒤 다시 시작하세요. 동일한 가드가 UI·API·CI 클라이언트에 적용됩니다.
 :::
 
 :::warning 소스 스캔의 브랜치 선택
 소스 스캔은 프로젝트의 `default_branch`(보통 `main`) 에 대해 실행됩니다.
-UI 와 API 모두 브랜치 오버라이드를 노출하지 않습니다 —
-`ScanCreate` 페이로드는 `kind` 와 `metadata` 만 허용합니다
-(`apps/backend/schemas/scan.py` 참조). `develop` 이나 feature
-브랜치를 스캔하려면 트리거 전에 **Project Settings** 에서
-`default_branch` 를 임시로 변경한 뒤 되돌리세요. 트리거에 정식
-`branch` 필드를 추가하는 작업은 로드맵 항목입니다.
+현재 릴리스에서는 UI 와 API 모두 브랜치 오버라이드를 노출하지 않습니다.
+`develop` 이나 feature 브랜치를 스캔하려면 트리거 전에
+**Project Settings** 에서 `default_branch` 를 임시로 변경한 뒤
+되돌리세요. 트리거에 정식 `branch` 필드를 추가하는 작업은 로드맵
+항목입니다.
 :::
 
 ### 컨테이너 이미지 스캔
@@ -69,6 +72,7 @@ UI 와 API 모두 브랜치 오버라이드를 노출하지 않습니다 —
 
 ### API에서
 
+<!-- docs-uat: id=scans-api-start-source kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
 curl -sS -X POST \
   "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/scans" \
@@ -79,6 +83,7 @@ curl -sS -X POST \
 
 응답에 스캔 UUID가 포함됩니다. 폴링:
 
+<!-- docs-uat: id=scans-api-poll-status kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
 curl -sS "https://trustedoss.example.com/v1/scans/${SCAN_ID}" \
   -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" | jq .status
@@ -86,6 +91,7 @@ curl -sS "https://trustedoss.example.com/v1/scans/${SCAN_ID}" \
 
 컨테이너 스캔은 `kind` 를 `container` 로 설정하고 이미지 참조를 `metadata.image_ref` 에 전달합니다.
 
+<!-- docs-uat: id=scans-api-start-container kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
 curl -sS -X POST \
   "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/scans" \
@@ -125,7 +131,7 @@ queued ─────► running ─────► succeeded
 1. **Bootstrapping** — 작업 공간 준비.
 2. **Fetching source** — `git clone`(또는 기존 작업 공간이면 `git fetch` + checkout).
 3. **Detecting components** — `cdxgen`이 레포를 탐색하여 CycloneDX SBOM을 생성하고, 각 의존성의 패키지 메타데이터에서 **declared** 라이선스를 읽습니다.
-4. **Detecting first-party licenses** — scancode 가 프로젝트 자체 소스 파일을 스캔하여 발견한 **detected** 라이선스를 기록하며, 각 항목에 라이선스가 발견된 파일의 `source_path` 를 함께 태깅합니다([컴포넌트·라이선스 → declared vs. detected](./components-and-licenses.md#declared-vs-detected) 참고). 이 단계는 best-effort 입니다: scancode 가 미설치이거나 타임아웃이거나 트리가 너무 크면 declared 라이선스만으로 스캔을 계속합니다 — 저하되었으나 비치명적인 결과입니다. 이후 v0.10.0 의 법적 단계 분류는 `apps/backend/tasks/scan_source.py` 의 하드코딩된 `_LICENSE_CATEGORY_DEFAULTS` 사전에서 적용됩니다([컴포넌트·라이선스 → 분류 출처](./components-and-licenses.md#라이선스-분류) 참고).
+4. **Detecting first-party licenses** — scancode 가 프로젝트 자체 소스 파일을 스캔하여 발견한 **detected** 라이선스를 기록하며, 각 항목에 라이선스가 발견된 파일의 `source_path` 를 함께 태깅합니다([컴포넌트·라이선스 → declared vs. detected](./components-and-licenses.md#declared-vs-detected) 참고). 이 단계는 best-effort 입니다: scancode 가 미설치이거나 타임아웃이거나 트리가 너무 크면 declared 라이선스만으로 스캔을 계속합니다 — 저하되었으나 비치명적인 결과입니다. 이후 법적 단계 분류는 내장 분류 카탈로그에서 적용됩니다([컴포넌트·라이선스 → 분류 출처](./components-and-licenses.md#라이선스-분류) 참고).
 5. **Resolving vulnerabilities** — `trivy sbom`이 CycloneDX SBOM을 로컬 Trivy DB(NVD + OSV + GHSA + EPSS + KEV)에 매칭. 스캔당 네트워크 호출 없음.
 6. **Persisting** — 컴포넌트·라이선스·결과를 PostgreSQL에 저장.
 
@@ -195,6 +201,7 @@ queued ─────► running ─────► succeeded
 
 ### API에서
 
+<!-- docs-uat: id=scans-api-cancel kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
 curl -sS -X POST \
   "https://trustedoss.example.com/v1/scans/${SCAN_ID}/cancel" \
@@ -244,10 +251,15 @@ UI는 단계·진행률 실시간 갱신을 위해 `ws(s)://<host>/ws/scans/{sca
 
 스캔 완료 후:
 
+<!-- docs-uat: id=scans-queue-populated kind=ui harness=scansListPopulated tier=nightly -->
 1. 프로젝트 상태가 **Succeeded**로 전환.
+<!-- docs-uat: id=scans-components-nonzero kind=ui harness=componentsHaveData(portal-web) tier=nightly -->
 2. 컴포넌트 수 > 0.
+<!-- docs-uat: id=scans-vulns-tab-ready kind=ui harness=vulnerabilitiesTabReady(portal-web) tier=nightly -->
 3. 취약점 수가 표시(프로젝트가 정말 깨끗하면 0일 수도 있음).
+<!-- docs-uat: id=scans-last-scan-timestamp kind=manual tier=manual -->
 4. Overview 탭의 마지막 스캔 타임스탬프가 "방금"을 반영.
+<!-- docs-uat: id=scans-audit-events kind=manual tier=manual -->
 5. 감사 로그에 `target_table=scans&action=create`와 `target_table=scans&action=update` 이벤트가 기록.
 
 ## 트러블슈팅
@@ -256,6 +268,7 @@ UI는 단계·진행률 실시간 갱신을 위해 `ws(s)://<host>/ws/scans/{sca
 
 워커가 아직 받지 못했습니다. 워커가 다운되었거나 큐가 포화 상태입니다.
 
+<!-- docs-uat: id=scans-worker-inspect kind=shell ctx=host tier=manual waiver=operator-docker-compose-command-not-runnable-in-ci -->
 ```bash
 docker-compose -f docker-compose.yml ps worker
 docker-compose -f docker-compose.yml logs --tail=200 worker
@@ -263,6 +276,7 @@ docker-compose -f docker-compose.yml logs --tail=200 worker
 
 워커가 unhealthy면 재시작:
 
+<!-- docs-uat: id=scans-worker-restart kind=shell ctx=host tier=manual waiver=operator-docker-compose-command-not-runnable-in-ci -->
 ```bash
 docker-compose -f docker-compose.yml restart worker
 ```
@@ -281,6 +295,7 @@ docker-compose -f docker-compose.yml restart worker
 
 로컬 Trivy DB가 아직 자리 잡지 않았을 수 있습니다. 워커에서 확인:
 
+<!-- docs-uat: id=scans-worker-trivy-db kind=shell ctx=host tier=manual waiver=operator-docker-compose-command-not-runnable-in-ci -->
 ```bash
 docker-compose -f docker-compose.yml exec worker \
   ls -lh /var/lib/trivy/db/

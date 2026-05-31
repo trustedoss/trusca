@@ -72,27 +72,17 @@ The detail page exposes the following tabs, left-to-right:
 | **Obligations** | Per-component obligations + NOTICE-file generation. See [Components & licenses → Obligations](./components-and-licenses.md#obligations). |
 | **SBOM** | CycloneDX / SPDX exports, byte-stable. See [SBOM](./sbom.md). |
 | **Reports** | Generate-cards for NOTICE, SBOM, Vulnerability PDF, and VEX **plus** the project's unified download / export history. See [The Reports tab](#the-reports-tab). |
-| **Source** | The fetched first-party source tree from the latest succeeded scan, with file-level license findings highlighted. Sits between **Reports** and **Remediation** (per the  tab reorder). |
+| **Source** | The fetched first-party source tree from the latest succeeded scan, with file-level license findings highlighted. Sits between **Reports** and **Remediation**. |
 | **Remediation** | Per-component upgrade recommendations from the latest scan, including the opt-in npm remediation PR flow. |
 | **Settings** | Project metadata, archive action, CI-integration helpers. |
 
-:::note Tab order changed in 
+:::note Tab order
 The **Source** tab used to sit immediately after **Licenses**; it was moved to the right of **Reports** so the data-output cluster (SBOM / Reports / Source) is contiguous. Bookmarks and `?tab=source` deep links continue to work — the slug is unchanged.
 :::
 
-### Walkthrough — clicking through the project detail tabs
-
-The walkthrough below opens a project from the list and clicks each tab in order so you can see how the lenses relate.
-
-<!-- walkthrough video is stale — it captures the pre- four-tab layout; refresh post-merge to include Releases / Reports / Source / Remediation -->
-
-<video controls width="100%" preload="metadata" poster="/img/walkthroughs/walkthrough-project-tour.gif">
-  <source src="/img/walkthroughs/walkthrough-project-tour.mp4" type="video/mp4" />
-  ![Animated walkthrough — clicking through the project detail tabs](/img/walkthroughs/walkthrough-project-tour.gif)
-</video>
-
 ## Adding a project — API
 
+<!-- docs-uat: id=projects-api-create kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
 curl -sS -X POST https://trustedoss.example.com/v1/projects \
   -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
@@ -237,8 +227,11 @@ Generate cards always deep-link to the domain tab (Obligations, SBOM, Vulnerabil
 
 After creating a project:
 
+<!-- docs-uat: id=projects-appears-idle kind=ui harness=projectCreateAppearsIdle(docs-uat-new-project) tier=nightly -->
 1. The project appears in **Projects** with status **Idle** (no scans yet).
+<!-- docs-uat: id=projects-overview-zero kind=manual tier=manual -->
 2. The Overview tab shows zero components and zero vulnerabilities.
+<!-- docs-uat: id=projects-audit-create kind=manual tier=manual -->
 3. The audit log (`/admin/audit`, super-admin only) records `target_table=projects&action=create` with your `user_id`.
 
 ## Troubleshooting

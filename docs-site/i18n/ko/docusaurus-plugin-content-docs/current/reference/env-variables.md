@@ -85,10 +85,6 @@ sidebar_position: 2
 | `TRIVY_DB_CACHE_DIR` | `/var/lib/trivy` | `config.py` | 워커 컨테이너에서 DB가 풀리는 디렉터리. 재부팅 시 재다운로드를 피하려면 호스트 볼륨 마운트. |
 | `TRIVY_TIMEOUT_SECONDS` | `300` | `config.py` | `trivy sbom` 스캔별 타임아웃. 매우 큰 모노레포는 `600`~`900`으로 상향. |
 
-:::note v0.10.0에서 Dependency-Track 키 제거
-`DT_URL`, `DT_API_KEY`, `DT_REQUEST_TIMEOUT_SECONDS`, `DT_BREAKER_*`, `DT_HEALTH_ENDPOINT`, `DT_AUTO_RESTART`, `DT_ORPHAN_AUTODELETE` 키는 v0.10.0에서 더 이상 읽지 않습니다. 업그레이드 후 기존 `.env`에 남아 있어도 안전하게 무시됩니다 — [v0.10.0 마이그레이션](../release-notes/v0.10.0.md#migration-from-v23x) 참조.
-:::
-
 ## 빌드 / 정책 게이트
 
 CI 빌드 게이트는 기본적으로 Critical CVE와 금지 라이선스에서 빌드를 실패시키며, 이 조건들은 env로 구동되지 않습니다. 아래 단일 env 노브는 **선택적** EPSS 차원을 더합니다.
@@ -111,6 +107,16 @@ CI 빌드 게이트는 기본적으로 Critical CVE와 금지 라이선스에서
 | `WORKSPACE_HOST_PATH` | `/tmp/trustedoss` | `config.py`, `docker-compose.yml` | worker에 `/workspace`로 마운트되는 호스트 디렉터리. 레포 클론 + 스캔 아티팩트(cdxgen SBOM, scancode 출력) 보관. compose 스택은 컨테이너 내에서 `/workspace`로 오버라이드합니다. |
 | `ORT_RULES_PATH` | `/opt/trustedoss/ort/rules.kts` | `docker-compose.yml` | worker 내부 레거시 경로로, ORT 단계 제거 후 잔재입니다. 파일은 placeholder 이며 v0.10.0 에서는 효과가 없습니다 — 라이선스 단계 분류는 `apps/backend/tasks/scan_source.py` 의 `_LICENSE_CATEGORY_DEFAULTS` 에서 옵니다. |
 | `JSONB_ROW_SIZE_LIMIT_BYTES` | `262144` (256 KB) | `config.py` | writer가 truncate + warn하기 전 행당 JSON 바이트 상한. I-1 무한 페이로드 클래스 가드. |
+
+## 스캔 보존(retention) {#scan-retention}
+
+superseded·노후 스캔 스냅샷을 회수하는 자동 보존 sweep을 조정하는 키입니다. sweep은 6시간 주기 Celery beat 태스크로 실행됩니다. 전체 모델은 [스캔 보존](../admin-guide/scan-retention.md)을 참고하십시오.
+
+| 키 | 기본값 | 읽는 위치 | 설명 |
+|---|---|---|---|
+| `SCAN_RETENTION_SUPERSEDED_GRACE_DAYS` | `7` | `config.py` | superseded 스냅샷이 sweep에 회수되기 전 보존되는 일수입니다. 동일한 `(project, 정규화된 ref)` 타겟에 더 새로운 성공 스캔이 도착하면 기존 스냅샷이 superseded 됩니다. 타겟별 롤백 이력을 더 길게 유지하려면 값을 높이십시오. |
+| `SCAN_RETENTION_KEEP_LAST` | `30` | `config.py` | 나이와 무관하게 **프로젝트당** 보존되는 ref-less·실패 스캔의 최소 개수입니다. sweep은 이 하한 아래로 트림하지 않습니다 — ref 타겟이 없는 ad-hoc·진단 스캔을 보호합니다. |
+| `SCAN_RETENTION_MAX_AGE_DAYS` | `180` | `config.py` | hard age 상한. release가 아닌 스캔이 이보다 오래되면 해당 타겟의 live 스냅샷이라도 sweep이 회수합니다. `metadata.release` 라벨이 붙은 스캔은 예외이며 영구 보존됩니다. |
 
 ## WebSocket 게이트웨이
 

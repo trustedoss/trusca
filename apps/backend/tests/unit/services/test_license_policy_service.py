@@ -559,3 +559,309 @@ def test_effective_category_non_aware_datetime_expiry() -> None:
         license_exceptions=[{"spdx_id": "MIT", "reason": "ok", "expires_at": naive_future}],
     )
     assert effective_category("MIT", policy, "forbidden") == "allowed"
+
+
+# ---------------------------------------------------------------------------
+# effective_category — component-scoped (purl) exceptions (c3)
+# ---------------------------------------------------------------------------
+
+
+def test_effective_category_component_scoped_matches_only_that_purl() -> None:
+    policy = _FakePolicy(
+        license_exceptions=[
+            {
+                "spdx_id": "GPL-2.0-or-later",
+                "component_purl": "pkg:pypi/pyphen@0.17.2",
+                "reason": "cdxgen misclassified",
+            }
+        ],
+    )
+    # exact purl → waived
+    assert (
+        effective_category(
+            "GPL-2.0-or-later",
+            policy,
+            "forbidden",
+            component_purl="pkg:pypi/pyphen@0.17.2",
+        )
+        == "allowed"
+    )
+    # different component → still forbidden
+    assert (
+        effective_category(
+            "GPL-2.0-or-later", policy, "forbidden", component_purl="pkg:pypi/x@1"
+        )
+        == "forbidden"
+    )
+    # no purl in hand (c1 caller) → component-scoped exception skipped
+    assert effective_category("GPL-2.0-or-later", policy, "forbidden") == "forbidden"
+
+
+# ---------------------------------------------------------------------------
+# add / remove license exception (the waive shortcut)
+# ---------------------------------------------------------------------------
+
+
+async def test_add_license_exception_creates_and_is_idempotent(
+    db_session: AsyncSession,
+) -> None:
+    from schemas.license_policy import LicenseException
+    from services.license_policy_service import add_license_exception
+
+    _org, team, _admin, actor = await _team_admin_graph(db_session)
+    # GPL is forbidden → a waiver MUST carry a (capped) expiry.
+    expiry = datetime.now(tz=UTC) + timedelta(days=30)
+    exc = LicenseException(
+        spdx_id="GPL-2.0-or-later",
+        reason="pyphen misclassified",
+        component_purl="pkg:pypi/pyphen@0.17.2",
+        expires_at=expiry,
+    )
+    row = await add_license_exception(db_session, actor, team_id=team.id, exception=exc)
+    assert len(row.license_exceptions) == 1
+
+    # Repeat with same (spdx_id, purl) → updated in place, not duplicated.
+    exc2 = LicenseException(
+        spdx_id="GPL-2.0-or-later",
+        reason="updated reason",
+        component_purl="pkg:pypi/pyphen@0.17.2",
+        expires_at=expiry,
+    )
+    row = await add_license_exception(db_session, actor, team_id=team.id, exception=exc2)
+    matches = [
+        e
+        for e in row.license_exceptions
+        if e["spdx_id"] == "GPL-2.0-or-later"
+        and e["component_purl"] == "pkg:pypi/pyphen@0.17.2"
+    ]
+    assert len(matches) == 1
+    assert matches[0]["reason"] == "updated reason"
+
+
+async def test_remove_license_exception(db_session: AsyncSession) -> None:
+    from schemas.license_policy import LicenseException
+    from services.license_policy_service import (
+        add_license_exception,
+        remove_license_exception,
+    )
+
+    _org, team, _admin, actor = await _team_admin_graph(db_session)
+    exc = LicenseException(spdx_id="MPL-1.1", reason="ok", component_purl="pkg:pypi/p@1")
+    await add_license_exception(db_session, actor, team_id=team.id, exception=exc)
+    row = await remove_license_exception(
+        db_session,
+        actor,
+        team_id=team.id,
+        spdx_id="MPL-1.1",
+        component_purl="pkg:pypi/p@1",
+    )
+    assert row.license_exceptions == []
+
+
+async def test_add_license_exception_developer_forbidden(
+    db_session: AsyncSession,
+) -> None:
+    import pytest
+
+    from schemas.license_policy import LicenseException
+    from services.license_policy_service import (
+        LicensePolicyForbidden,
+        add_license_exception,
+    )
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    dev = await make_user(db_session)
+    await make_membership(db_session, user=dev, team=team, role="developer")
+    actor = principal_for(dev, team_ids=[team.id], role="developer")
+    with pytest.raises(LicensePolicyForbidden):
+        await add_license_exception(
+            db_session,
+            actor,
+            team_id=team.id,
+            exception=LicenseException(spdx_id="GPL-2.0-or-later", reason="x"),
+        )
+
+
+# ---------------------------------------------------------------------------
+# Forbidden-license waiver TTL governance — PURE (no DB)
+# ---------------------------------------------------------------------------
+
+
+def test_max_waive_days_default_and_overrides(monkeypatch) -> None:
+    from services import license_policy_service as svc
+
+    monkeypatch.delenv("LICENSE_WAIVE_MAX_DAYS", raising=False)
+    assert svc._max_waive_days() == 90
+    monkeypatch.setenv("LICENSE_WAIVE_MAX_DAYS", "30")
+    assert svc._max_waive_days() == 30
+    # Unparseable / non-positive → safe default (logged, never crash).
+    monkeypatch.setenv("LICENSE_WAIVE_MAX_DAYS", "garbage")
+    assert svc._max_waive_days() == 90
+    monkeypatch.setenv("LICENSE_WAIVE_MAX_DAYS", "0")
+    assert svc._max_waive_days() == 90
+    monkeypatch.setenv("LICENSE_WAIVE_MAX_DAYS", "-5")
+    assert svc._max_waive_days() == 90
+
+
+def test_base_category_override_beats_catalog() -> None:
+    from services import license_policy_service as svc
+
+    # Override forces forbidden even though the catalog says conditional.
+    assert svc._base_category("MPL-2.0", {"MPL-2.0": "forbidden"}, "conditional") == "forbidden"
+    # Override demotes a catalog-forbidden license.
+    assert (
+        svc._base_category("GPL-2.0-only", {"GPL-2.0-only": "allowed"}, "conditional")
+        == "allowed"
+    )
+    # No override → static catalog wins (GPL forbidden, MIT allowed).
+    assert svc._base_category("GPL-2.0-only", {}, "conditional") == "forbidden"
+    assert svc._base_category("MIT", {}, "conditional") == "allowed"
+    # Uncatalogued → posture.
+    assert svc._base_category("LicenseRef-weird", {}, "forbidden") == "forbidden"
+
+
+def test_enforce_forbidden_ttl_requires_expiry(monkeypatch) -> None:
+    from schemas.license_policy import LicenseException
+    from services import license_policy_service as svc
+
+    monkeypatch.setenv("LICENSE_WAIVE_MAX_DAYS", "90")
+    overrides = {"X-EVIL": "forbidden"}
+
+    # forbidden + no expiry → reject
+    with pytest.raises(svc.LicensePolicyValidationError, match="must set an expiry"):
+        svc._enforce_forbidden_ttl(
+            [LicenseException(spdx_id="X-EVIL", reason="r")], overrides, "conditional"
+        )
+
+    # forbidden + over cap → reject
+    over = datetime.now(tz=UTC) + timedelta(days=91)
+    with pytest.raises(svc.LicensePolicyValidationError, match="exceeds the maximum"):
+        svc._enforce_forbidden_ttl(
+            [LicenseException(spdx_id="X-EVIL", reason="r", expires_at=over)],
+            overrides,
+            "conditional",
+        )
+
+    # forbidden + within cap → ok (no raise)
+    within = datetime.now(tz=UTC) + timedelta(days=89)
+    svc._enforce_forbidden_ttl(
+        [LicenseException(spdx_id="X-EVIL", reason="r", expires_at=within)],
+        overrides,
+        "conditional",
+    )
+
+
+def test_enforce_forbidden_ttl_skips_non_forbidden(monkeypatch) -> None:
+    from schemas.license_policy import LicenseException
+    from services import license_policy_service as svc
+
+    monkeypatch.setenv("LICENSE_WAIVE_MAX_DAYS", "90")
+    # conditional license, no expiry → allowed indefinitely (no raise).
+    svc._enforce_forbidden_ttl(
+        [LicenseException(spdx_id="MPL-2.0", reason="r")], {}, "conditional"
+    )
+    # forbidden license demoted to allowed by override → requirement skipped.
+    svc._enforce_forbidden_ttl(
+        [LicenseException(spdx_id="GPL-2.0-only", reason="r")],
+        {"GPL-2.0-only": "allowed"},
+        "conditional",
+    )
+
+
+def test_enforce_forbidden_ttl_naive_datetime(monkeypatch) -> None:
+    from schemas.license_policy import LicenseException
+    from services import license_policy_service as svc
+
+    monkeypatch.setenv("LICENSE_WAIVE_MAX_DAYS", "90")
+    naive = (datetime.now(tz=UTC) + timedelta(days=10)).replace(tzinfo=None)
+    # A tz-less expiry within cap is treated as UTC → ok.
+    svc._enforce_forbidden_ttl(
+        [LicenseException(spdx_id="GPL-2.0-only", reason="r", expires_at=naive)],
+        {},
+        "conditional",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Forbidden-license waiver TTL governance — integration (DB)
+# ---------------------------------------------------------------------------
+
+
+async def test_add_forbidden_waive_without_expiry_422(
+    db_session: AsyncSession, monkeypatch
+) -> None:
+    from schemas.license_policy import LicenseException
+    from services.license_policy_service import (
+        LicensePolicyValidationError,
+        add_license_exception,
+    )
+
+    monkeypatch.setenv("LICENSE_WAIVE_MAX_DAYS", "90")
+    _org, team, _admin, actor = await _team_admin_graph(db_session)
+    with pytest.raises(LicensePolicyValidationError):
+        await add_license_exception(
+            db_session,
+            actor,
+            team_id=team.id,
+            exception=LicenseException(
+                spdx_id="GPL-2.0-or-later",
+                reason="no expiry",
+                component_purl="pkg:pypi/pyphen@0.17.2",
+            ),
+        )
+
+
+async def test_add_forbidden_waive_over_cap_422(
+    db_session: AsyncSession, monkeypatch
+) -> None:
+    from schemas.license_policy import LicenseException
+    from services.license_policy_service import (
+        LicensePolicyValidationError,
+        add_license_exception,
+    )
+
+    monkeypatch.setenv("LICENSE_WAIVE_MAX_DAYS", "90")
+    _org, team, _admin, actor = await _team_admin_graph(db_session)
+    with pytest.raises(LicensePolicyValidationError):
+        await add_license_exception(
+            db_session,
+            actor,
+            team_id=team.id,
+            exception=LicenseException(
+                spdx_id="GPL-2.0-or-later",
+                reason="too long",
+                expires_at=datetime.now(tz=UTC) + timedelta(days=120),
+            ),
+        )
+
+
+async def test_add_conditional_waive_without_expiry_ok(
+    db_session: AsyncSession,
+) -> None:
+    from schemas.license_policy import LicenseException
+    from services.license_policy_service import add_license_exception
+
+    _org, team, _admin, actor = await _team_admin_graph(db_session)
+    # MPL-2.0 is conditional → an indefinite waiver is allowed.
+    row = await add_license_exception(
+        db_session,
+        actor,
+        team_id=team.id,
+        exception=LicenseException(spdx_id="MPL-2.0", reason="ok"),
+    )
+    assert len(row.license_exceptions) == 1
+
+
+async def test_upsert_team_policy_forbidden_waive_without_expiry_422(
+    db_session: AsyncSession, monkeypatch
+) -> None:
+    from services.license_policy_service import LicensePolicyValidationError
+
+    monkeypatch.setenv("LICENSE_WAIVE_MAX_DAYS", "90")
+    _org, team, _admin, actor = await _team_admin_graph(db_session)
+    payload = _payload(
+        license_exceptions=[{"spdx_id": "GPL-3.0-only", "reason": "no expiry"}],
+    )
+    with pytest.raises(LicensePolicyValidationError):
+        await upsert_team_policy(db_session, actor, team_id=team.id, payload=payload)

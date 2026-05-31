@@ -154,7 +154,7 @@ The portal classifies licenses into four **tiers**:
 The classification is driven by the
 `_LICENSE_CATEGORY_DEFAULTS` dict in
 `apps/backend/tasks/scan_source.py` (operator-side override path;
-ORT-driven per-org rules are on the the roadmap). The values
+ORT-driven per-org rules are on the roadmap). The values
 `forbidden` / `conditional` / `permissive` / `unknown` appear in API
 responses, audit logs, and policy gate verdicts; the UI labels
 `Forbidden` / `Conditional` / `Allowed` / `Unknown` appear in tables

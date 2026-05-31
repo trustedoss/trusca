@@ -210,4 +210,54 @@ describe("useTriggerScan", () => {
       metadata: { source_type: "git" },
     });
   });
+
+  // ---- feat/scan-log-verbosity — metadata.verbosity ---------------------
+
+  it("threads metadata.verbosity=verbose when verbose is true (git + container)", async () => {
+    mockedTrigger.mockResolvedValue(fakeScan());
+    const { result } = renderHook(() => useTriggerScan("proj-1"), { wrapper });
+    await result.current.mutateAsync({ method: "git", verbose: true });
+    expect(mockedTrigger).toHaveBeenCalledWith("proj-1", {
+      kind: "source",
+      metadata: { source_type: "git", verbosity: "verbose" },
+    });
+
+    mockedTrigger.mockClear();
+    mockedTrigger.mockResolvedValue({ ...fakeScan(), kind: "container" });
+    await result.current.mutateAsync({
+      method: "container",
+      imageRef: "alpine:3.19",
+      verbose: true,
+    });
+    expect(mockedTrigger).toHaveBeenCalledWith("proj-1", {
+      kind: "container",
+      metadata: { image_ref: "alpine:3.19", verbosity: "verbose" },
+    });
+  });
+
+  it("includes metadata.verbosity on the upload path when verbose is true", async () => {
+    mockedUpload.mockResolvedValue({ archive_id: "arch-7" });
+    mockedTrigger.mockResolvedValue(fakeScan());
+    const file = new File([new Uint8Array(4)], "src.zip");
+    const { result } = renderHook(() => useTriggerScan("proj-1"), { wrapper });
+    await result.current.mutateAsync({ method: "upload", file, verbose: true });
+    expect(mockedTrigger).toHaveBeenCalledWith("proj-1", {
+      kind: "source",
+      metadata: {
+        source_type: "upload",
+        archive_id: "arch-7",
+        verbosity: "verbose",
+      },
+    });
+  });
+
+  it("omits metadata.verbosity when verbose is false or undefined", async () => {
+    mockedTrigger.mockResolvedValue(fakeScan());
+    const { result } = renderHook(() => useTriggerScan("proj-1"), { wrapper });
+    await result.current.mutateAsync({ method: "git", verbose: false });
+    expect(mockedTrigger).toHaveBeenCalledWith("proj-1", {
+      kind: "source",
+      metadata: { source_type: "git" },
+    });
+  });
 });

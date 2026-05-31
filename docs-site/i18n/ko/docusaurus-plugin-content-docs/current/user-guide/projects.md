@@ -76,23 +76,13 @@ sidebar_position: 1
 | **Remediation** | 최근 스캔 기준 컴포넌트별 업그레이드 권고. 선택적 npm 자동 PR 플로 포함. |
 | **Settings** | 프로젝트 메타데이터, 아카이브 액션, CI 연동 헬퍼. |
 
-:::note 탭 순서는  에서 변경됨
+:::note 탭 순서가 변경되었습니다
 **Source** 탭은 이전에 **Licenses** 바로 뒤에 있었으나, 데이터 출력 클러스터(SBOM / Reports / Source) 가 연속되도록 **Reports** 오른쪽으로 이동했습니다. 북마크와 `?tab=source` 딥링크는 슬러그가 동일하므로 계속 동작합니다.
 :::
 
-### 워크스루 — 프로젝트 상세 탭 둘러보기
-
-아래 워크스루는 프로젝트 목록에서 진입한 뒤 탭을 차례로 클릭해 각 탭의 관계를 보여줍니다.
-
-<!-- 워크스루 영상은 stale —  이전 4-tab 레이아웃을 캡처. 머지 이후 Releases / Reports / Source / Remediation 포함으로 재촬영 -->
-
-<video controls width="100%" preload="metadata" poster="/img/walkthroughs/walkthrough-project-tour.gif">
-  <source src="/img/walkthroughs/walkthrough-project-tour.mp4" type="video/mp4" />
-  ![애니메이션 워크스루 — 프로젝트 상세 탭 클릭](/img/walkthroughs/walkthrough-project-tour.gif)
-</video>
-
 ## 프로젝트 추가 — API
 
+<!-- docs-uat: id=projects-api-create kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
 curl -sS -X POST https://trustedoss.example.com/v1/projects \
   -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
@@ -118,7 +108,7 @@ curl -sS -X POST https://trustedoss.example.com/v1/projects \
 
 가시성은 생성 시 자동으로 설정됩니다. PATCH는 현재 `team` 외의 값을 거부합니다. 모든 PATCH 호출에서 감사 로그가 행위자를 기록합니다.
 
-`organization`(조직 전체 읽기) 가용 시점은 [로드맵](#로드맵-v2x) 참고.
+`organization`(조직 전체 읽기) 가용 시점은 [로드맵](#로드맵) 참고.
 
 ## 아카이브
 
@@ -143,11 +133,11 @@ PAT 는 프로젝트 행에 영구 저장됩니다(읽기 엔드포인트가 평
 함의:
 - 유출된 DB 스냅샷은 임베드된 모든 PAT 를 함께 유출합니다.
   read-only scope 의 단기 PAT 를 사용하세요.
-- SSH key 와 GitHub-App 설치는  로드맵 항목입니다;
+- SSH key 와 GitHub-App 설치는 로드맵 항목입니다;
   그때까지 적극적으로 회전하세요.
 :::
 
-SSH 배포 키는 [로드맵](#로드맵-v2x)을 보세요.
+SSH 배포 키는 [로드맵](#로드맵)을 보세요.
 
 ## 리스크 점수
 
@@ -236,8 +226,11 @@ Generate card 는 Reports 탭 안에 생성 다이얼로그를 띄우지 않고 
 
 프로젝트 생성 후:
 
+<!-- docs-uat: id=projects-appears-idle kind=ui harness=projectCreateAppearsIdle(docs-uat-new-project) tier=nightly -->
 1. **Projects**에 프로젝트가 **Idle**(스캔 없음) 상태로 표시됩니다.
+<!-- docs-uat: id=projects-overview-zero kind=manual tier=manual -->
 2. Overview 탭은 컴포넌트·취약점 모두 0을 보여줍니다.
+<!-- docs-uat: id=projects-audit-create kind=manual tier=manual -->
 3. 감사 로그(`/admin/audit`, super-admin 전용)에 본인의 `user_id`로 `target_table=projects&action=create`가 기록됩니다.
 
 ## 트러블슈팅
@@ -258,11 +251,11 @@ Generate card 는 Reports 탭 안에 생성 다이얼로그를 띄우지 않고 
 
 매뉴얼이 이전에 약속했으나 v0.10.0에 포함되지 않은 항목 — 향후 릴리스에서 다룹니다.
 
-- 포트폴리오 그룹핑용 프로젝트 태그 —  예정.
-- `organization`(조직 전체) 가시성 —  예정.
-- **Project Settings**에서의 SSH 배포 키 생성 —  예정.
+- 포트폴리오 그룹핑용 프로젝트 태그 — 예정.
+- `organization`(조직 전체) 가시성 — 예정.
+- **Project Settings**에서의 SSH 배포 키 생성 — 예정.
 - 이름 입력 확인을 동반한 프로젝트 영구 삭제 — 설계 중. 현재는 soft-delete(아카이브)만 가능.
-- 생성 마법사의 SSH(`git@…`, `ssh://…`) URL 수용 —  예정.
+- 생성 마법사의 SSH(`git@…`, `ssh://…`) URL 수용 — 예정.
 
 ## 함께 보기
 

@@ -114,6 +114,33 @@ test.describe.serial("@screenshots user-guide/profile", () => {
 });
 
 // ════════════════════════════════════════════════════════════════════
+// dashboard
+// ════════════════════════════════════════════════════════════════════
+
+test.describe.serial("@screenshots user-guide/dashboard", () => {
+  test.beforeEach(async ({ page }) => {
+    await applyAuthFromSeed(page);
+  });
+
+  test("user-dashboard — post-login dashboard landing page", async ({ page }) => {
+    // The dashboard is the portal's root (`/`) after sign-in. We wait on the
+    // KPI grid + charts block so the skeletons have all resolved before the
+    // snapshot — otherwise the framing flickers between sizes.
+    await page.goto("/");
+    await page
+      .getByTestId("dashboard-page")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    await page
+      .getByTestId("dashboard-kpi-grid")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    await page
+      .getByTestId("dashboard-charts")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    await captureScreenshot(page, "user-dashboard");
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════
 // projects
 // ════════════════════════════════════════════════════════════════════
 
@@ -273,6 +300,55 @@ test.describe.serial("@screenshots user-guide/vulnerabilities", () => {
       .scrollIntoViewIfNeeded();
     await captureScreenshot(page, "user-vulns-drawer-vex");
   });
+
+  // Drawer's "Recommended upgrade" section — shipped in the same drawer
+  // body as the VEX action buttons but typically lives below the fold.
+  // Captured as a section so the figure matches the "Recommended
+  // upgrade" prose in the user guide.
+  test("user-vulns-drawer-upgrade — drawer Recommended upgrade panel", async ({
+    page,
+  }) => {
+    const portal = new PortalPage(page);
+    await portal.gotoProjects();
+    await portal.openProjectDetail(primaryProject());
+    await portal.expectProjectDetailMounted();
+    await portal.selectVulnerabilitiesTab();
+    await portal.expectVulnerabilitiesTabReady();
+    await portal.openFirstVulnerabilityDrawer();
+    await page
+      .getByTestId("vulnerability-drawer-upgrade")
+      .scrollIntoViewIfNeeded();
+    await captureSection(
+      page,
+      "user-vulns-drawer-upgrade",
+      "vulnerability-drawer-upgrade",
+    );
+  });
+
+  // Bulk action bar shown after multi-selecting rows. We tick the first
+  // two row checkboxes (the seed always seeds ≥ 30 findings), which
+  // triggers the bar's render, then capture the bar element.
+  test("user-vulns-bulk-bar — Bulk action bar after multi-selecting rows", async ({
+    page,
+  }) => {
+    const portal = new PortalPage(page);
+    await portal.gotoProjects();
+    await portal.openProjectDetail(primaryProject());
+    await portal.expectProjectDetailMounted();
+    await portal.selectVulnerabilitiesTab();
+    await portal.expectVulnerabilitiesTabReady();
+    const checkboxes = page.getByTestId("vulnerability-row-checkbox");
+    await checkboxes.nth(0).click();
+    await checkboxes.nth(1).click();
+    await page
+      .getByTestId("vulnerabilities-bulk-action-bar")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    await captureSection(
+      page,
+      "user-vulns-bulk-bar",
+      "vulnerabilities-bulk-action-bar",
+    );
+  });
 });
 
 // ════════════════════════════════════════════════════════════════════
@@ -362,6 +438,13 @@ test.describe.serial("@screenshots user-guide/sbom", () => {
     await page
       .getByTestId("sbom-download-spdx-tv")
       .waitFor({ state: "visible", timeout: 10_000 });
+    // The four download buttons live below the fold on the Reports tab
+    // (W4-C absorbed the old SBOM tab into Reports). Scroll them into
+    // view so the snapshot matches the docs caption ("four format
+    // download buttons"), not the Reports overview.
+    await page
+      .getByTestId("sbom-download-cyclonedx-json")
+      .scrollIntoViewIfNeeded();
     await captureScreenshot(page, "user-sbom-format-buttons");
   });
 });

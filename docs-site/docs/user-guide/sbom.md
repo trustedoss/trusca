@@ -27,6 +27,22 @@ Engineers shipping releases, compliance leads filing artifacts, customers fulfil
 
 Both formats are produced from the same internal model, so component lists are identical (modulo format-specific fields).
 
+## What's included per component
+
+Each component carries its name, version, Package URL (PURL), and the licenses
+detected for it:
+
+- **Licenses** — populated from the scan's license findings. CycloneDX uses the
+  per-component `licenses` array (preferring the *concluded* verdict, then
+  *declared*, then *detected*); SPDX fills `licenseDeclared` and
+  `licenseConcluded` as SPDX license expressions. Components with no detected
+  license — and licenses with no SPDX identifier (ORT `LicenseRef-*`) — emit the
+  spec sentinel `NOASSERTION` in SPDX (CycloneDX still carries the license
+  name). `copyrightText` is currently always `NOASSERTION`.
+- **Top-level version** — `metadata.component.version` reflects the scanned
+  release: if the scan was submitted with a `release` label (e.g. `v1.2.3`),
+  that label is used; otherwise the scan id is used as a stable fallback.
+
 ## Byte-stable output
 
 All four exports are **byte-stable**: re-exporting the same scan produces identical bytes. This makes diffing, signing, and caching trivial.
@@ -50,6 +66,13 @@ The file name is `sbom-<project-slug>.<ext>`.
 
 ## Download from the API
 
+<!-- docs-uat: id=sbom-cyclonedx-api kind=api auth=admin url=/v1/projects/${PROJECT_ID}/sbom?format=cyclonedx-json expect=status:200 tier=nightly -->
+The API serves the SBOM in CycloneDX JSON:
+
+<!-- docs-uat: id=sbom-spdx-api kind=api auth=admin url=/v1/projects/${PROJECT_ID}/sbom?format=spdx-json expect=status:200 tier=nightly -->
+…and in SPDX JSON (same endpoint, different `format`):
+
+<!-- docs-uat: id=sbom-api-download kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
 # CycloneDX JSON
 curl -sS -L -OJ \
@@ -134,18 +157,21 @@ The VEX states map directly to CycloneDX's `analysis.state`:
 
 ## Verify it worked
 
+<!-- docs-uat: id=sbom-cyclonedx-validate kind=manual tier=manual -->
 1. The downloaded SBOM passes a validator — for CycloneDX, run [`cyclonedx validate`](https://github.com/CycloneDX/cyclonedx-cli):
 
    ```bash
    cyclonedx validate --input-file checkout-service.sbom.json
    ```
 
+<!-- docs-uat: id=sbom-spdx-validate kind=manual tier=manual -->
 2. SPDX validates with [`spdx-tools`](https://github.com/spdx/tools-python):
 
    ```bash
    pyspdxtools -i checkout-service.sbom.json
    ```
 
+<!-- docs-uat: id=sbom-byte-identical kind=manual tier=manual -->
 3. Re-downloading the same scan produces a byte-identical file:
 
    ```bash
@@ -180,6 +206,22 @@ workarounds.
 | "Show me when GPL was first detected on project X" | `audit_logs` on `scans.create` + per-scan `vulnerability_findings.create` | Yes — full evidence chain |
 | "Show me every approval verdict in 2026 Q1" | `audit_logs` on `component_approvals.update` + `decision_note` | Yes — full evidence chain |
 | "Prove no audit row was tampered with" | Append-only trigger (migration 0012) | Super-admin role still has bypass — review [audit-log hardening](../admin-guide/audit-log.md#schema) |
+
+## Supplier submission compatibility
+
+The export satisfies common corporate supplier SBOM requirements (e.g.
+[SK Telecom's supplier guide](https://sktelecom.github.io/guide/supply-chain/for-suppliers/requirements/)):
+standard format/version (CycloneDX, SPDX 2.3), ISO-8601 timestamp, tool
+metadata, per-component name + version + PURL, licenses, and transitive
+dependencies (when the scanned source includes or can resolve lockfiles).
+
+Two caveats to be aware of before submitting:
+
+- **`pkg:generic/` PURLs are rejected by some programs.** A generic PURL means
+  the scanner could not classify the component's ecosystem; supply lockfiles /
+  build artifacts so cdxgen can assign an ecosystem-specific type.
+- **Licenses without an SPDX id** appear as `NOASSERTION` in SPDX expressions
+  (the CycloneDX `license.name` still carries the label).
 
 ## Roadmap
 

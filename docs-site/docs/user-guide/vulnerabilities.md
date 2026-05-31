@@ -41,6 +41,24 @@ The default policy fails the build only on `Critical`. Project owners can lower 
 
 Findings follow the [CycloneDX VEX (Vulnerability Exploitability eXchange)](https://cyclonedx.org/capabilities/vex/) seven-state model. Each finding starts in **New** and transitions as analysts triage it.
 
+```mermaid
+stateDiagram-v2
+  direction LR
+  [*] --> New
+  New --> Analyzing: Mark in triage
+  New --> Suppressed: Mark suppressed
+  Analyzing --> Exploitable: Mark exploitable
+  Analyzing --> Not_affected: Mark not affected
+  Analyzing --> False_positive: Mark false positive
+  Analyzing --> Fixed: Mark fixed
+  Analyzing --> Suppressed: Mark suppressed
+  Exploitable --> Analyzing: Reopen
+  Not_affected --> Analyzing: Reopen
+  False_positive --> Analyzing: Reopen
+  Fixed --> Analyzing: Reopen
+  Suppressed --> Analyzing: Reopen
+```
+
 | State | Definition | Build gate |
 |---|---|---|
 | **New** | Just discovered; not triaged. | Counts. |
@@ -79,7 +97,7 @@ Click any row to open:
 - **Summary** — title, description, CWE, CVSS vector, and the **EPSS score and percentile** when the Trivy DB supplies them (otherwise `—`). See [EPSS — exploitation probability](#epss--exploitation-probability).
 - **References** — vendor advisories, fix commits, exploit databases.
 - **Affected** — the upstream-reported affected range with the project's component version highlighted, plus the **fixed version** — the version that remediates this CVE *for this component* — when the scan pipeline could determine one. See [Fixed version — the version that remediates the CVE](#fixed-version--the-version-that-remediates-the-cve). The affected component also carries its **dependency depth**: whether it is a **direct** dependency you declared (depth `1`) or a **transitive** one pulled in by another package (depth `2+`). A CVE in a direct dependency is usually yours to fix by bumping the declared version; a CVE in a transitive dependency is fixed by upgrading the direct parent that requires it — see [Direct vs. transitive (dependency depth)](./components-and-licenses.md#dependency-depth).
-- **Analysis** — VEX status action buttons. **The buttons you see depend on the finding's _current_ state.** The transition matrix (`apps/backend/services/vulnerability_service.py`, the source of truth) routes every terminal decision through the `analyzing` state, so a brand-new finding cannot jump straight to a verdict:
+- **Analysis** — VEX status action buttons. **The buttons you see depend on the finding's _current_ state.** Every terminal decision is routed through the `analyzing` state, so a brand-new finding cannot jump straight to a verdict:
   - **`new`** (just discovered) → **Mark in triage** (`analyzing`) or **Mark suppressed** (`suppressed`). You **cannot** go directly to "not affected" / "exploitable" / "false positive" / "fixed" — triage first.
   - **`analyzing`** (working state) → the five verdicts: **Mark exploitable**, **Mark not affected**, **Mark false positive**, **Mark fixed**, **Mark suppressed**.
   - any **terminal** state (`exploitable` / `not_affected` / `false_positive` / `fixed` / `suppressed`) → **Reopen** back to `analyzing` to re-triage.
@@ -89,18 +107,11 @@ Click any row to open:
 
 ![Vulnerability drawer — Analysis section with VEX action buttons and justification textarea](/img/screenshots/user-vulns-drawer-vex.png)
 
-### Walkthrough — opening the Vulnerabilities tab and a finding drawer
-
-The walkthrough below opens a project, switches to **Vulnerabilities**, and clicks the first row to bring up the drawer with the Analysis section ready for triage.
-
-<video controls width="100%" preload="metadata" poster="/img/walkthroughs/walkthrough-cve-triage.gif">
-  <source src="/img/walkthroughs/walkthrough-cve-triage.mp4" type="video/mp4" />
-  ![Animated walkthrough — opening the Vulnerabilities tab and the finding detail drawer](/img/walkthroughs/walkthrough-cve-triage.gif)
-</video>
-
 ## Bulk-transition findings {#bulk-transition}
 
 When several findings share the same disposition — for example, ten findings all on the same library that you've just upgraded — the toolbar's **Bulk action bar** lets you transition them in one shot instead of opening each drawer.
+
+![Bulk action bar — selected-count + Set status to + Apply / Clear, shown after ticking two rows](/img/screenshots/user-vulns-bulk-bar.png)
 
 1. Tick the row-level checkboxes (or the header tri-state checkbox to select every row on the current page — selection clears automatically when you change filter or page so a stale selection cannot leak across views).
 2. The action bar at the top of the table shows the selected count and the available verdicts for the *common* current state of the selected rows. If the selection mixes states whose legal next-state intersection is empty, the verdict buttons are disabled with a tooltip explaining why.
@@ -108,7 +119,7 @@ When several findings share the same disposition — for example, ten findings a
 
 The response is **per-row**: every selected finding gets a status entry in the result alert — `transitioned` (status flipped), `already_at_target` (skipped, no-op), or an explicit reason like `illegal_transition` / `forbidden_transition`. The page reloads the table once the alert closes so the new states are reflected.
 
-Server-side the request is a single `POST /v1/projects/{id}/vulnerabilities:bulk-transition` call with the selected finding ids, a target status, and the justification. The endpoint locks the affected rows with `SELECT ... FOR UPDATE` (id-sorted to prevent deadlocks under concurrent submissions), runs the same state-machine guard the per-row endpoint uses, and emits one audit-log row per actually-transitioned finding via the `before_flush` hook. The cap is **200 ids per call** — for selections larger than that, page through and submit in chunks.
+Server-side the request is a single `POST /v1/projects/{id}/vulnerabilities:bulk-transition` call with the selected finding ids, a target status, and the justification. The endpoint runs the same state-machine guard as the per-row endpoint and emits one audit-log row per actually-transitioned finding. The cap is **200 ids per call** — for selections larger than that, page through and submit in chunks.
 
 :::caution Suppressed transitions still require `team_admin`
 The bulk endpoint does **not** widen the permissions of the per-row endpoint. Moving *any* selected finding into `Suppressed` still requires `team_admin` (or higher) on the project's team — a `developer` submitting a bulk request that includes a `→ Suppressed` transition will see those rows reported as `forbidden_transition` while the other rows in the same submission complete normally.
@@ -146,8 +157,10 @@ The score and percentile appear in the findings table's **EPSS** column and in t
 
 `GET /v1/projects/{id}/vulnerabilities` returns `epss_score` and `epss_percentile` on every finding (both `null` when the Trivy DB supplied no value). The same fields appear on the finding detail (`GET /v1/vulnerability_findings/{finding_id}`) and on the nested `VulnerabilityRef`.
 
+<!-- docs-uat: id=vulns-list-epss-api kind=api auth=admin url=/v1/projects/${PROJECT_ID}/vulnerabilities?sort=epss&order=desc expect=status:200 tier=nightly -->
 Sort by EPSS, highest first:
 
+<!-- docs-uat: id=vulns-api-list-epss kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
 curl -sS \
   -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
@@ -156,6 +169,7 @@ curl -sS \
 
 Return only findings the model predicts have at least a 50% exploitation probability:
 
+<!-- docs-uat: id=vulns-api-list-min-epss kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
 curl -sS \
   -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
@@ -210,6 +224,7 @@ A blank fixed version means **"no fix version is known"**, not "no fix exists" �
 
 The fixed version appears as `fixed_version` on the finding detail's affected components and on the component drawer's nested CVE references:
 
+<!-- docs-uat: id=vulns-api-finding-detail kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
 # finding detail — fixed_version on each affected component
 curl -sS \
@@ -306,6 +321,10 @@ The file name is `vulnerability-report-<project>.pdf`. Any inline error from the
 
 ### Download from the API
 
+<!-- docs-uat: id=vulns-report-pdf-api kind=api auth=admin url=/v1/projects/${PROJECT_ID}/vulnerability-report.pdf expect=status:200 retry=5x2s tier=nightly -->
+Fetch the same report over the API (returns the PDF bytes):
+
+<!-- docs-uat: id=vulns-api-report-pdf kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
 curl -sS -L -OJ \
   -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
@@ -375,6 +394,10 @@ scan's persisted completion time (not the moment of export).
 
 ### Download from the API
 
+<!-- docs-uat: id=vulns-vex-export-api kind=api auth=admin url=/v1/projects/${PROJECT_ID}/vex?format=openvex expect=status:200 tier=nightly -->
+Export the VEX document over the API:
+
+<!-- docs-uat: id=vulns-api-vex-export kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
 # OpenVEX (default)
 curl -sS -L -OJ \
@@ -466,6 +489,7 @@ round-trip is status-stable.
 
 ### Import from the API
 
+<!-- docs-uat: id=vulns-api-vex-import kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
 curl -sS -X POST \
   -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
@@ -572,9 +596,13 @@ A common point of confusion:
 
 After triaging:
 
+<!-- docs-uat: id=vulns-status-badge-updates kind=ui harness=vulnStatusUpdates(portal-web) tier=nightly -->
 1. The status badge updates immediately in the table.
+<!-- docs-uat: id=vulns-audit-recorded kind=manual tier=manual -->
 2. The audit log records `target_table=vulnerability_findings&action=update` with `previous_status`, `new_status`, `justification` in the diff.
+<!-- docs-uat: id=vulns-excluded-risk-score kind=manual tier=manual -->
 3. Excluded findings stop counting toward the project's risk score.
+<!-- docs-uat: id=vulns-excluded-build-gate kind=manual tier=manual -->
 4. Excluded findings are excluded from the build gate on the next scan.
 
 ## Troubleshooting

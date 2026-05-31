@@ -25,8 +25,17 @@
   "DELETE /v1/license-policies/teams/{team_id}": [
     "team_id"
   ],
+  "DELETE /v1/license-policies/teams/{team_id}/exceptions": [
+    "component_purl",
+    "spdx_id",
+    "team_id"
+  ],
   "DELETE /v1/projects/{project_id}": [
     "project_id"
+  ],
+  "DELETE /v1/scans/{scan_id}": [
+    "force",
+    "scan_id"
   ],
   "DELETE /v1/users/me/oauth-identities/{identity_id}": [
     "identity_id"
@@ -160,6 +169,18 @@
   ],
   "GET /v1/projects/{project_id}": [
     "project_id"
+  ],
+  "GET /v1/projects/{project_id}/compliance": [
+    "category",
+    "has_obligations",
+    "kind",
+    "limit",
+    "offset",
+    "order",
+    "project_id",
+    "scan_id",
+    "search",
+    "sort"
   ],
   "GET /v1/projects/{project_id}/components": [
     "dependency_scope",
@@ -371,6 +392,9 @@
   ],
   "POST /v1/github-app-credentials/{credential_id}/installations": [
     "credential_id"
+  ],
+  "POST /v1/license-policies/teams/{team_id}/exceptions": [
+    "team_id"
   ],
   "POST /v1/projects": [],
   "POST /v1/projects/{project_id}/remediation/npm/dry-run": [

@@ -8,7 +8,11 @@ sidebar_position: 0
 
 # 대시보드
 
-로그인하면 포털은 **대시보드**(`/`)로 이동합니다 — 사용자가 볼 수 있는 포트폴리오(활성 팀 소속 프로젝트 전체)를 한 페이지로 요약합니다. 이 페이지는 사용자가 보통 가지고 들어오는 네 가지 질문에 답하기 위해 존재합니다.
+로그인하면 포털은 **대시보드**(`/`)로 이동합니다 — 사용자가 볼 수 있는 포트폴리오(활성 팀 소속 프로젝트 전체)를 한 페이지로 요약합니다.
+
+![대시보드 — 로그인 직후 루트 URL 의 KPI 타일, 심각도·라이선스 분포, 최근 스캔 목록](/img/screenshots/user-dashboard.png)
+
+이 페이지는 사용자가 보통 가지고 들어오는 네 가지 질문에 답하기 위해 존재합니다.
 
 - *새로운 Critical 이 있나?* (심각도 타일)
 - *내가 담당해야 할 프로젝트가 몇 개고, 그중 진행 중은?* (포트폴리오·스캔 상태 타일)
@@ -42,8 +46,11 @@ sidebar_position: 0
 
 처음 로그인한 뒤:
 
+<!-- docs-uat: id=dashboard-active-in-nav kind=ui harness=dashboardActiveInNav tier=nightly -->
 1. 헤더 아바타에 이니셜이 표시되고 사이드바에 **Dashboard** 가 강조됩니다.
+<!-- docs-uat: id=dashboard-severity-tiles kind=ui harness=dashboardSeverityTiles tier=nightly -->
 2. 심각도 타일 다섯 개에 값이 표시됩니다(0 도 정상).
+<!-- docs-uat: id=dashboard-recent-scans kind=ui harness=dashboardRecentScans tier=nightly -->
 3. 최근 스캔 목록에 최소 한 줄이 나오거나 비어 있을 때는 "No scans have run yet." 빈 상태 메시지가 표시됩니다.
 
 ## 함께 보기

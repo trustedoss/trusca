@@ -136,6 +136,115 @@ async def _seed_scan(client: AsyncClient, *, project_id: uuid.UUID, status: str 
 
 
 # ---------------------------------------------------------------------------
+# API-key auth on the CI surface (regression for the dogfood 401)
+#
+# scan-action authenticates with a tos_ API key, not a JWT. The trigger +
+# status-poll endpoints were JWT-only (require_role) and 401'd the action;
+# require_role_or_api_key now accepts either.
+# ---------------------------------------------------------------------------
+
+
+async def _issue_project_api_key(
+    client: AsyncClient, *, user: User, project_id: uuid.UUID
+) -> str:
+    resp = await client.post(
+        "/v1/api-keys",
+        json={"name": "ci-dogfood", "scope": "project", "project_id": str(project_id)},
+        headers=_bearer_for(user),
+    )
+    assert resp.status_code == 201, resp.text
+    return str(resp.json()["raw_key"])
+
+
+async def test_scan_trigger_and_poll_accept_api_key(client) -> None:
+    team, user, project = await _seed(client, role="developer")
+    raw_key = await _issue_project_api_key(client, user=user, project_id=project.id)
+    key_headers = {"Authorization": f"Bearer {raw_key}"}
+
+    trigger = await client.post(
+        f"/v1/projects/{project.id}/scans",
+        json={"kind": "source"},
+        headers=key_headers,
+    )
+    assert trigger.status_code == 202, trigger.text
+    scan_id = trigger.json()["id"]
+
+    # The action polls GET /v1/scans/{id} next — also API-key authed.
+    poll = await client.get(f"/v1/scans/{scan_id}", headers=key_headers)
+    assert poll.status_code == 200, poll.text
+    assert poll.json()["id"] == scan_id
+
+
+async def test_scan_trigger_still_rejects_anonymous(client) -> None:
+    _team, _user, project = await _seed(client, role="developer")
+    resp = await client.post(
+        f"/v1/projects/{project.id}/scans", json={"kind": "source"}
+    )
+    assert resp.status_code == 401, resp.text
+
+
+async def test_scan_trigger_rejects_bogus_api_key(client) -> None:
+    _team, _user, project = await _seed(client, role="developer")
+    resp = await client.post(
+        f"/v1/projects/{project.id}/scans",
+        json={"kind": "source"},
+        headers={"Authorization": "Bearer tos_deadbeef_notarealsecret00000000000000000"},
+    )
+    assert resp.status_code == 401, resp.text
+
+
+async def test_api_key_cannot_trigger_other_teams_project(client) -> None:
+    _teamA, userA, projectA = await _seed(client, role="developer")
+    _teamB, _userB, projectB = await _seed(client, role="developer")
+    raw_key = await _issue_project_api_key(client, user=userA, project_id=projectA.id)
+    key_headers = {"Authorization": f"Bearer {raw_key}"}
+
+    # A key issued against team A's project must not reach team B's project.
+    resp = await client.post(
+        f"/v1/projects/{projectB.id}/scans",
+        json={"kind": "source"},
+        headers=key_headers,
+    )
+    assert resp.status_code in (403, 404), resp.text
+
+
+async def test_project_scoped_key_cannot_reach_issuers_other_team(client) -> None:
+    """Scope is an authorization boundary: a project-scoped key is bounded to
+    the project's team even when the issuer ALSO belongs to other teams
+    (security-reviewer Medium — scope was previously cosmetic)."""
+    factory = await _factory(client)
+    async with factory() as session:
+        org = await make_organization(session)
+        team_a = await make_team(session, organization=org)
+        team_b = await make_team(session, organization=org)
+        user = await make_user(session)
+        await make_membership(session, user=user, team=team_a, role="developer")
+        await make_membership(session, user=user, team=team_b, role="developer")
+        project_a = await make_project(session, team=team_a)
+        project_b = await make_project(session, team=team_b)
+
+    # Key scoped to project_a (team_a); the issuer is also a member of team_b.
+    raw_key = await _issue_project_api_key(client, user=user, project_id=project_a.id)
+    key_headers = {"Authorization": f"Bearer {raw_key}"}
+
+    # Must NOT reach team_b's project despite the issuer's team_b membership.
+    cross = await client.post(
+        f"/v1/projects/{project_b.id}/scans",
+        json={"kind": "source"},
+        headers=key_headers,
+    )
+    assert cross.status_code in (403, 404), cross.text
+
+    # Sanity: it CAN trigger its own scoped project.
+    own = await client.post(
+        f"/v1/projects/{project_a.id}/scans",
+        json={"kind": "source"},
+        headers=key_headers,
+    )
+    assert own.status_code == 202, own.text
+
+
+# ---------------------------------------------------------------------------
 # POST /v1/projects/{id}/scans — trigger
 # ---------------------------------------------------------------------------
 

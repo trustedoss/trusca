@@ -63,6 +63,7 @@ The modal has a **Copy** button and an explicit warning: *"This is the only time
 
 Pass the key in the `Authorization` header of every request using the `Bearer` scheme:
 
+<!-- docs-uat: id=integrations-api-list-projects kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
 curl -sS \
   -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
@@ -118,8 +119,11 @@ URL to register at GitLab: `https://<your-host>/v1/webhooks/gitlab`.
 
 ## Verify it worked
 
+<!-- docs-uat: id=integrations-curl-200 kind=manual tier=manual -->
 - After creating a key, run `curl -sS -H "Authorization: Bearer <key>" .../v1/projects` and confirm a 200 response with the team's projects.
+<!-- docs-uat: id=integrations-github-webhook-202 kind=manual tier=manual -->
 - After registering the webhook in GitHub, push a commit and check the **Webhook deliveries** view in GitHub — successful deliveries return HTTP 202.
+<!-- docs-uat: id=integrations-audit-events kind=manual tier=manual -->
 - A super-admin can confirm `target_table=api_keys&action=create` and `target_table=webhook_deliveries&action=create` events on `/admin/audit`. Team-scoped audit-log access is on the roadmap (see below).
 
 ## Troubleshooting

@@ -20,6 +20,7 @@ Engineers maintaining a GitLab project that uses GitLab CI / CD. You need an API
 
 ## Quick start
 
+<!-- docs-uat: id=gitlab-quickstart-pipeline kind=manual tier=manual -->
 ```yaml
 # .gitlab-ci.yml
 include:
@@ -153,6 +154,12 @@ If you need to copy and inline the job — for instance because your runner cann
 
 The full canonical version lives at [`templates/gitlab-ci.yml`](https://github.com/trustedoss/trustedoss-portal/blob/main/templates/gitlab-ci.yml). Read it before forking — it handles edge cases (network blip during poll, masked-token rotation) you do not want to re-implement.
 
+## How the ref becomes a retention key
+
+The template forwards the pipeline's ref as scan metadata: `CI_COMMIT_REF_NAME` (the branch) on a branch pipeline, or the MR IID (`refs/merge-requests/<iid>/head`) on a `merge_request_event`. The portal normalizes that ref — `refs/heads/main` → `main`, `refs/merge-requests/7/head` → `mr-7` — and uses `(project, normalized ref)` as the **retention key**: the latest successful scan for a key stays live and supersedes the previous one.
+
+No configuration is needed — running the template on branches and MRs gives correct per-branch and per-MR grouping. To keep a scan permanently (for a tagged release), trigger it with a `metadata.release` label; the [Scan retention](../admin-guide/scan-retention.md) page covers the full model and the release exemption.
+
 ## Branch / merge protection
 
 To enforce SCA on every MR:
@@ -186,3 +193,4 @@ The API key's allowed actions do not include `scan:trigger`. Re-issue the key wi
 - [Jenkins](./jenkins.md)
 - [Webhooks](./webhooks.md)
 - [API keys](../admin-guide/api-keys.md)
+- [Scan retention](../admin-guide/scan-retention.md) — how per-branch / per-MR scans are kept and reclaimed

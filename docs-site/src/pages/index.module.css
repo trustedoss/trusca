@@ -46,7 +46,33 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
-  margin-bottom: 3rem;
+  margin-bottom: 1.5rem;
+}
+
+.heroCommand {
+  margin: 0 0 2.5rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.5);
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.heroCommand code {
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.85rem;
+  color: #e2e8f0;
+  white-space: nowrap;
+  background: transparent;
+  padding: 0;
+  border: 0;
+}
+
+.heroCommandPrompt {
+  color: #94a3b8;
+  user-select: none;
+  margin-right: 0.25rem;
 }
 
 /* Outline button on dark hero — secondary color (#0f172a) is invisible

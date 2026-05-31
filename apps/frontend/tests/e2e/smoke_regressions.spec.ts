@@ -208,20 +208,21 @@ test.describe("@smoke regression guards (manual-walkthrough 2026-05-25)", () => 
     await auth.expectLoggedIn();
   });
 
-  test("#12 the / root redirects to /projects (dashboard dropped)", async ({
+  test("#12 the / root lands on the dashboard (reintroduced 2026-05-25)", async ({
     page,
   }) => {
-    // User-test follow-up: Dashboard was dropped because its Portfolio /
-    // Recent-scans cards duplicated information already shown on the project
-    // list + per-project Overview. `/` now redirects to `/projects`.
+    // User-test 2026-05-25 reverted the earlier "drop the dashboard" call:
+    // Dashboard now lives at `/` again with the cross-portal risk portfolio,
+    // and the sidebar `nav-dashboard` link points back to it. Older versions
+    // of this test asserted the inverse contract (`/` → `/projects`, no
+    // dashboard nav); the assertions below pin the current behaviour.
     await freshUser(page);
 
     await page.goto(`${BASE}/`);
-    await expect(page).toHaveURL(`${BASE}/projects`);
-    await expect(page.getByTestId("project-list-page")).toBeVisible({
+    await expect(page).toHaveURL(`${BASE}/`);
+    await expect(page.getByTestId("nav-dashboard")).toBeVisible({
       timeout: 10_000,
     });
-    await expect(page.getByTestId("nav-dashboard")).toHaveCount(0);
   });
 
   test("#10 language toggle shows the CURRENT language and syncs <html lang>", async ({

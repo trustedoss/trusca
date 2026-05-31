@@ -105,11 +105,17 @@ jobs:
           cd apps/backend && python -m pytest -m golden tests/e2e/golden -q
 
       - name: Tier 3 — load SLO gate (Locust headless, strict)
+        env:
+          # Pull both the user-controlled load_users input and the
+          # secret into env to avoid run-shell-injection findings (and
+          # the actual injection risk for load_users on
+          # workflow_dispatch).
+          LOAD_TEST_EMAIL: e2e-admin@trustedoss.dev
+          LOAD_TEST_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
+          LOAD_USERS: ${{ github.event.inputs.load_users || '200' }}
         run: |
           docker pull locustio/locust:2.31.8
-          LOAD_TEST_EMAIL=e2e-admin@trustedoss.dev \
-          LOAD_TEST_PASSWORD="${{ secrets.E2E_ADMIN_PASSWORD }}" \
-          tests/load/run_hard.sh "${{ github.event.inputs.load_users || '200' }}" 40 90s
+          tests/load/run_hard.sh "${LOAD_USERS}" 40 90s
 
       - name: Stack logs on failure
         if: failure()

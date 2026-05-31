@@ -156,7 +156,19 @@ export class AuthHarness {
     await expect(this.page).toHaveURL(POST_AUTH_URL_RE, {
       timeout: DEFAULT_TIMEOUT_MS,
     });
-    await expect(this.page.getByTestId("app-sidebar")).toBeVisible({
+    // "Authenticated shell loaded" sentinel. The desktop `app-sidebar`
+    // `<aside>` is `hidden ... lg:flex`, so below the `lg` (1024 px)
+    // breakpoint it is intentionally not visible and the header hamburger
+    // (`sidebar-mobile-trigger`) carries navigation instead. Asserting only
+    // the sidebar made `login()` fail on narrow-viewport specs (e.g. the
+    // responsive-drawer test at 800 px). Both affordances coexist in the
+    // DOM at every width (one is CSS-hidden), so a `.or()` locator trips
+    // Playwright strict mode on desktop (two matches). Pick the affordance
+    // the current viewport actually renders.
+    const shellWidth = this.page.viewportSize()?.width ?? 1280;
+    const shellTestId =
+      shellWidth >= 1024 ? "app-sidebar" : "sidebar-mobile-trigger";
+    await expect(this.page.getByTestId(shellTestId)).toBeVisible({
       timeout: DEFAULT_TIMEOUT_MS,
     });
     const isAuthenticated = await this.page.evaluate(() => {

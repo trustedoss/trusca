@@ -1,0 +1,34 @@
+name: TrustedOSS Portal CodeQL config
+
+# Paths CodeQL should NOT scan. The default GitHub Code Scanning setup
+# uses this file via the CodeQL workflow's `config-file` input — when
+# the default setup is in use, GitHub picks up `.github/codeql/codeql-config.yml`
+# automatically.
+paths-ignore:
+  # Tests are not shipped to users — pattern checks in them (e.g.
+  # Math.random for fixture ids, substring URL checks on canned
+  # blocklists, mock secret strings) are not a real risk.
+  - apps/backend/tests/**
+  - apps/frontend/tests/**
+  - tests/**
+
+  # Maintainer / QA utilities run locally with controlled inputs;
+  # not deployed and not part of the product attack surface.
+  - qa-handover/**
+  - scripts/scan-bench/**
+
+  # Alembic-generated migration scripts are mostly DSL; bandit / mypy
+  # already cover the human-authored bits.
+  - apps/backend/alembic/versions/**
+
+  # Build outputs, dependency trees, and lock-only generated files.
+  - apps/frontend/dist/**
+  - apps/frontend/node_modules/**
+  - apps/frontend/playwright-report/**
+  - docs-site/build/**
+  - docs-site/.docusaurus/**
+
+  # Captured screenshots / walkthroughs / visual baselines.
+  - apps/frontend/tests/visual/**
+  - apps/frontend/tests/screenshots/**
+  - apps/frontend/tests/walkthroughs/**
