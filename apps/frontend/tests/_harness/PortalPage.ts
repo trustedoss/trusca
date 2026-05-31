@@ -1850,6 +1850,181 @@ export class PortalPage {
   async closeTab(): Promise<void> {
     await this.page.close({ runBeforeUnload: false });
   }
+
+  // ───── c3 — per-component license waive (Compliance tab) ─────────────────
+  /**
+   * Open the Compliance grid and wait until at least one forbidden row's
+   * waive strip has mounted. The waive strip (`compliance-row-waive-strip`)
+   * renders only under `compliance-row[data-category="forbidden"]` rows whose
+   * affected components carry a purl, so this is the settled-DOM sentinel for
+   * the waive flows. Reuses {@link selectLicensesTab} (which flips the
+   * obligations toggle off → licenses-first view) so callers don't repeat the
+   * tab-entry dance.
+   *
+   * Locale-agnostic — anchors on `data-testid` + `data-category`, never the
+   * translated tab label or row text.
+   */
+  async openComplianceWaiveStrip(): Promise<void> {
+    await this.selectLicensesTab();
+    await this.forbiddenWaiveStrip()
+      .first()
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  /**
+   * Open the waive dialog for a forbidden component. With no `purl` the first
+   * waivable component in the first forbidden row is used; pass `purl` to
+   * target a specific `compliance-waive-component` by its
+   * `data-component-purl`. Waits for the dialog to mount.
+   *
+   * Locale-agnostic — anchors on `data-testid` + `data-component-purl`.
+   */
+  async openLicenseWaive(opts?: { purl?: string }): Promise<void> {
+    await this.waiveComponent(opts?.purl)
+      .getByTestId("license-waive-open")
+      .click();
+    await this.page
+      .getByTestId("license-waive-dialog")
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  /**
+   * Fill the waive dialog: the mandatory reason textarea and (optionally) the
+   * expiry date. `expires` is a bare `yyyy-mm-dd` string the native
+   * `<input type="date">` accepts; omit it to exercise the
+   * "expiry missing → submit disabled" forbidden-license guard.
+   */
+  async fillWaive({
+    reason,
+    expires,
+  }: {
+    reason: string;
+    expires?: string;
+  }): Promise<void> {
+    await this.page.getByTestId("license-waive-reason").fill(reason);
+    if (expires !== undefined) {
+      await this.page.getByTestId("license-waive-expires").fill(expires);
+    }
+  }
+
+  /** Click the waive dialog's submit button. */
+  async submitWaive(): Promise<void> {
+    await this.page.getByTestId("license-waive-submit").click();
+  }
+
+  /**
+   * Assert the waive dialog's submit button is disabled — the forbidden-
+   * license expiry guard (reason present but no expiry yet). Auto-retries.
+   */
+  async expectWaiveSubmitDisabled(): Promise<void> {
+    await expect(this.page.getByTestId("license-waive-submit")).toBeDisabled({
+      timeout: 5_000,
+    });
+  }
+
+  /** Assert the waive dialog's submit button is enabled. Auto-retries. */
+  async expectWaiveSubmitEnabled(): Promise<void> {
+    await expect(this.page.getByTestId("license-waive-submit")).toBeEnabled({
+      timeout: 5_000,
+    });
+  }
+
+  /**
+   * Assert the "Waived" badge is visible for a component. With no `purl` the
+   * first badge on the surface is used; pass `purl` to scope to one component
+   * by its `license-waive-state[data-component-purl]`. The badge appearing is
+   * the success signal that the dialog mutation committed (the dialog closes
+   * and the row's state flips to `data-waived="true"`).
+   */
+  async expectWaivedBadge(opts?: { purl?: string }): Promise<void> {
+    const root =
+      opts?.purl != null
+        ? this.waiveState(opts.purl)
+        : this.page.getByTestId("license-waive-state").first();
+    await expect(
+      root.getByTestId("license-waived-badge"),
+    ).toBeVisible({ timeout: 10_000 });
+  }
+
+  /**
+   * Click the "Un-waive" button to remove a committed exception. With no
+   * `purl` the first un-waive control is used; pass `purl` to scope it.
+   */
+  async unwaiveLicense(opts?: { purl?: string }): Promise<void> {
+    const root =
+      opts?.purl != null
+        ? this.waiveState(opts.purl)
+        : this.page.getByTestId("license-waive-state").first();
+    await root.getByTestId("license-unwaive").click();
+  }
+
+  /**
+   * Assert the un-waive succeeded → the component's waive control is back in
+   * the not-waived state (`license-waive-state[data-waived="false"]`). With no
+   * `purl` the first state container is used. Auto-retries so the harness
+   * waits out the DELETE round-trip + cache invalidation.
+   */
+  async expectNotWaived(opts?: { purl?: string }): Promise<void> {
+    const selector =
+      opts?.purl != null
+        ? `[data-testid="license-waive-state"][data-waived="false"][data-component-purl="${cssEscapeAttr(opts.purl)}"]`
+        : `[data-testid="license-waive-state"][data-waived="false"]`;
+    await expect(this.page.locator(selector).first()).toBeVisible({
+      timeout: 10_000,
+    });
+  }
+
+  /**
+   * Assert the waive trigger is role-gated for the current actor — the
+   * `license-waive-open` button is disabled and carries `data-role-gated="true"`
+   * (a developer sees the affordance disabled rather than absent, mirroring the
+   * VEX-suppression pattern). With no `purl` the first waivable component is
+   * used.
+   */
+  async expectWaiveRoleGated(opts?: { purl?: string }): Promise<void> {
+    const trigger = this.waiveComponent(opts?.purl).getByTestId(
+      "license-waive-open",
+    );
+    await expect(trigger).toBeVisible({ timeout: 10_000 });
+    await expect(trigger).toBeDisabled();
+    await expect(trigger).toHaveAttribute("data-role-gated", "true");
+  }
+
+  // ───── waive — private selectors ─────────────────────────────────────────
+  /** Forbidden rows' waive strips (the only category that renders one). */
+  private forbiddenWaiveStrip(): Locator {
+    return this.page.locator(
+      '[data-testid="compliance-row"][data-category="forbidden"] [data-testid="compliance-row-waive-strip"]',
+    );
+  }
+
+  /**
+   * Resolve a `compliance-waive-component` entry. With `purl` it matches on
+   * `data-component-purl`; otherwise it returns the first waivable component
+   * in the first forbidden row's strip.
+   */
+  private waiveComponent(purl?: string): Locator {
+    if (purl != null) {
+      return this.page
+        .locator(
+          `[data-testid="compliance-waive-component"][data-component-purl="${cssEscapeAttr(purl)}"]`,
+        )
+        .first();
+    }
+    return this.forbiddenWaiveStrip()
+      .first()
+      .getByTestId("compliance-waive-component")
+      .first();
+  }
+
+  /** The `license-waive-state` wrapper for a given component purl. */
+  private waiveState(purl: string): Locator {
+    return this.page
+      .locator(
+        `[data-testid="license-waive-state"][data-component-purl="${cssEscapeAttr(purl)}"]`,
+      )
+      .first();
+  }
 }
 
 /** CycloneDX VEX status union — mirrors the backend ENUM. */

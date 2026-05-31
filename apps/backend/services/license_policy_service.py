@@ -31,8 +31,9 @@ Audit:
 
 from __future__ import annotations
 
+import os
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import structlog
@@ -82,6 +83,14 @@ class LicensePolicyConflict(LicensePolicyError):
     title = "License Policy Conflict"
 
 
+class LicensePolicyValidationError(LicensePolicyError):
+    """422 — a waiver violates governance policy (e.g. a forbidden-license waiver
+    with no expiry, or one that outlives ``LICENSE_WAIVE_MAX_DAYS``)."""
+
+    status_code = 422
+    title = "License Policy Validation Error"
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -89,6 +98,110 @@ class LicensePolicyConflict(LicensePolicyError):
 
 def _now() -> datetime:
     return datetime.now(tz=UTC)
+
+
+# ---------------------------------------------------------------------------
+# Forbidden-license waiver TTL governance
+# ---------------------------------------------------------------------------
+#
+# A waiver on a *forbidden* license relaxes the build gate, so it must NOT be
+# allowed to live forever: it requires an expiry, capped at
+# ``LICENSE_WAIVE_MAX_DAYS`` (default 90). Conditional / allowed licenses may be
+# waived indefinitely. To decide "is this SPDX id forbidden?" we resolve the
+# license's BASE category (the policy's overrides + the static catalog +
+# unknown-posture) WITHOUT the exception itself — i.e. ``effective_category``
+# precedence steps 2–4, skipping the step-1 exception match.
+
+_DEFAULT_MAX_WAIVE_DAYS = 90
+# Default unknown-license posture when no policy row exists yet (mirrors
+# ``schemas.license_policy.LicensePolicyUpsertIn.unknown_license_category``).
+_DEFAULT_UNKNOWN_POSTURE = "conditional"
+
+
+def _max_waive_days() -> int:
+    """The cap on a forbidden-license waiver's lifetime, in days.
+
+    Read at call time from ``LICENSE_WAIVE_MAX_DAYS`` (CLAUDE.md rule #11 — no
+    module-level env caching). Unset / unparseable / non-positive → the default
+    (90); a bad value is logged and ignored rather than crashing a waive.
+    """
+    raw = os.getenv("LICENSE_WAIVE_MAX_DAYS")
+    if raw is None or raw.strip() == "":
+        return _DEFAULT_MAX_WAIVE_DAYS
+    try:
+        value = int(raw.strip())
+    except (TypeError, ValueError):
+        log.warning("license_policy.max_waive_days_unparseable", raw=raw)
+        return _DEFAULT_MAX_WAIVE_DAYS
+    if value <= 0:
+        log.warning("license_policy.max_waive_days_out_of_range", value=value)
+        return _DEFAULT_MAX_WAIVE_DAYS
+    return value
+
+
+def _static_category(spdx_id: str) -> str:
+    """Static-catalog category for a single simple SPDX id (``"unknown"`` on miss).
+
+    Lazily imports the heavy ``tasks.scan_source`` catalog so importing this
+    service stays cheap, and avoids a circular import with ``services.policy_gate``
+    (which imports ``effective_category`` from here).
+    """
+    from tasks.scan_source import _LICENSE_CATEGORY_DEFAULTS
+
+    return str(_LICENSE_CATEGORY_DEFAULTS.get(spdx_id, "unknown"))
+
+
+def _base_category(
+    spdx_id: str,
+    category_overrides: dict[str, Any] | None,
+    unknown_posture: str,
+) -> str:
+    """Resolve the category of *spdx_id* IGNORING any waiver (exception).
+
+    Mirrors ``effective_category`` precedence steps 2–4: explicit override →
+    static catalog (if concrete) → unknown posture.
+    """
+    overrides = category_overrides or {}
+    if spdx_id in overrides:
+        return str(overrides[spdx_id])
+    static = _static_category(spdx_id)
+    if static != "unknown":
+        return static
+    return unknown_posture
+
+
+def _enforce_forbidden_ttl(
+    exceptions: list[LicenseException],
+    category_overrides: dict[str, Any] | None,
+    unknown_posture: str,
+) -> None:
+    """Reject any waiver on a forbidden license that has no expiry, or one that
+    outlives the ``LICENSE_WAIVE_MAX_DAYS`` cap. Raises 422.
+
+    *category_overrides* / *unknown_posture* describe the policy the waiver lands
+    in (the existing row for the add-shortcut, the incoming payload for a PUT),
+    so an override that demotes a forbidden license to conditional correctly
+    skips the requirement, and one that promotes a license to forbidden enforces
+    it.
+    """
+    max_days = _max_waive_days()
+    cap = _now() + timedelta(days=max_days)
+    for exc in exceptions:
+        if _base_category(exc.spdx_id, category_overrides, unknown_posture) != "forbidden":
+            continue
+        if exc.expires_at is None:
+            raise LicensePolicyValidationError(
+                f"a waiver for the forbidden license '{exc.spdx_id}' must set an "
+                f"expiry of at most {max_days} days"
+            )
+        expires_at = exc.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=UTC)
+        if expires_at > cap:
+            raise LicensePolicyValidationError(
+                f"the waiver expiry for the forbidden license '{exc.spdx_id}' "
+                f"exceeds the maximum of {max_days} days"
+            )
 
 
 def _is_super_admin(actor: CurrentUser) -> bool:
@@ -158,6 +271,15 @@ async def upsert_team_policy(
         raise LicensePolicyForbidden(
             f"actor lacks permission to write the license policy for team {team_id}"
         )
+
+    # Forbidden-license waivers in the incoming policy must carry a capped
+    # expiry. Evaluate against the PAYLOAD (a PUT replaces overrides + exceptions
+    # wholesale), not any pre-existing row.
+    _enforce_forbidden_ttl(
+        payload.license_exceptions,
+        payload.category_overrides,
+        payload.unknown_license_category,
+    )
 
     bind_audit_team(team_id)
 
@@ -252,6 +374,15 @@ async def add_license_exception(
             .with_for_update()
         )
     ).scalar_one_or_none()
+
+    # A waiver on a forbidden license must carry a capped expiry. The base
+    # category is resolved against the EXISTING policy's overrides / posture (the
+    # add-shortcut never changes those); no row yet → catalog + default posture.
+    _enforce_forbidden_ttl(
+        [exception],
+        row.category_overrides if row is not None else None,
+        row.unknown_license_category if row is not None else _DEFAULT_UNKNOWN_POSTURE,
+    )
 
     entry = exception.model_dump(mode="json")
     if row is None:
@@ -381,6 +512,12 @@ async def upsert_org_policy(
     """
     if not _is_super_admin(actor):
         raise LicensePolicyForbidden("only super_admin may write the org-default license policy")
+
+    _enforce_forbidden_ttl(
+        payload.license_exceptions,
+        payload.category_overrides,
+        payload.unknown_license_category,
+    )
 
     existing = (
         await session.execute(
@@ -755,6 +892,7 @@ __all__ = [
     "LicensePolicyError",
     "LicensePolicyForbidden",
     "LicensePolicyNotFound",
+    "LicensePolicyValidationError",
     "delete_team_policy",
     "effective_category",
     "get_effective_policy",
