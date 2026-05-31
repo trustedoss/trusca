@@ -48,6 +48,7 @@ function key(name: string, overrides: Partial<APIKeyListItem> = {}): APIKeyListI
     project_id: overrides.project_id ?? "project-1",
     created_by_user_id: overrides.created_by_user_id ?? "user-1",
     created_at: overrides.created_at ?? "2026-04-01T00:00:00Z",
+    expires_at: overrides.expires_at ?? null,
     last_used_at: overrides.last_used_at ?? null,
     revoked_at: overrides.revoked_at ?? null,
   };
@@ -120,6 +121,7 @@ describe("IntegrationsPage", () => {
       project_id: "p-1",
       created_by_user_id: "u-1",
       created_at: "2026-05-09T10:00:00Z",
+      expires_at: null,
       raw_key: "tos_99887766_super-secret-payload-xyz",
     };
     mockedCreate.mockResolvedValueOnce(created);
@@ -162,6 +164,53 @@ describe("IntegrationsPage", () => {
       scope: "project",
       team_id: null,
       project_id: "p-1",
+      // No expiry preset chosen → the key never expires.
+      expires_in_days: null,
+    });
+  });
+
+  it("sends the chosen expiry preset as expires_in_days", async () => {
+    mockedList.mockResolvedValue(page([]));
+    const created: APIKeyCreateOut = {
+      id: "k-exp",
+      key_prefix: "tos_exp",
+      name: "ttl-bot",
+      scope: "project",
+      team_id: null,
+      project_id: "p-1",
+      created_by_user_id: "u-1",
+      created_at: "2026-05-09T10:00:00Z",
+      expires_at: "2026-08-07T10:00:00Z",
+      raw_key: "tos_exp_secret",
+    };
+    mockedCreate.mockResolvedValueOnce(created);
+
+    const user = userEvent.setup();
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByTestId("integrations-keys-empty")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId("integrations-create-key"));
+    await screen.findByTestId("integrations-create-dialog");
+    await user.type(screen.getByTestId("integrations-create-name"), "ttl-bot");
+    await user.type(
+      screen.getByTestId("integrations-create-project-id"),
+      "p-1",
+    );
+    await user.selectOptions(
+      screen.getByTestId("integrations-create-expires"),
+      "90",
+    );
+    await user.click(screen.getByTestId("integrations-create-submit"));
+
+    await waitFor(() => expect(mockedCreate).toHaveBeenCalledTimes(1));
+    expect(mockedCreate).toHaveBeenCalledWith({
+      name: "ttl-bot",
+      scope: "project",
+      team_id: null,
+      project_id: "p-1",
+      expires_in_days: 90,
     });
   });
 
@@ -239,6 +288,7 @@ describe("IntegrationsPage", () => {
       project_id: null,
       created_by_user_id: "u-1",
       created_at: "2026-05-09T11:00:00Z",
+      expires_at: null,
       raw_key: "tos_teamteam_secret-payload",
     };
     mockedCreate.mockResolvedValueOnce(created);
@@ -272,6 +322,7 @@ describe("IntegrationsPage", () => {
         scope: "team",
         team_id: "t-1",
         project_id: null,
+        expires_in_days: null,
       });
     });
   });
