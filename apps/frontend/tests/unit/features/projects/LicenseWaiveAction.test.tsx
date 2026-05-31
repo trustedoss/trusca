@@ -112,6 +112,24 @@ describe("LicenseWaiveAction", () => {
     expect(screen.getByTestId("license-waive-submit")).toBeEnabled();
   });
 
+  it("blocks submit until an expiry is set when requireExpiry (forbidden waiver)", async () => {
+    const user = userEvent.setup();
+    mockedAdd.mockResolvedValue(policy([]));
+    renderAction({ requireExpiry: true });
+
+    await user.click(screen.getByTestId("license-waive-open"));
+    // A reason alone is not enough — the expiry is mandatory for a forbidden
+    // waiver (mirrors the server's LICENSE_WAIVE_MAX_DAYS rule).
+    await user.type(
+      screen.getByTestId("license-waive-reason"),
+      "Disjunctive license, MPL chosen",
+    );
+    expect(screen.getByTestId("license-waive-submit")).toBeDisabled();
+
+    await user.type(screen.getByTestId("license-waive-expires"), "2026-12-31");
+    expect(screen.getByTestId("license-waive-submit")).toBeEnabled();
+  });
+
   it("POSTs the exception scoped to the component purl with widened expiry", async () => {
     const user = userEvent.setup();
     mockedAdd.mockResolvedValue(policy([]));

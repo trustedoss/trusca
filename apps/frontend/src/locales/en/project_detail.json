@@ -888,6 +888,8 @@
     "reason_hint": "A reason is required and is kept as the audit record for this waiver.",
     "expires_label": "Expires (optional)",
     "expires_hint": "Leave empty for a waiver that never expires.",
+    "expires_required_label": "Expires (required)",
+    "expires_required_hint": "A forbidden license can only be waived temporarily — set an expiry date.",
     "role_gated": "Only team admins can waive a license.",
     "no_team": "Project team is still loading.",
     "no_purl": "This component has no package URL to scope a waiver to.",

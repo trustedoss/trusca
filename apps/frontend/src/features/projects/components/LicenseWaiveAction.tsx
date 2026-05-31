@@ -61,6 +61,14 @@ export interface LicenseWaiveActionProps {
   componentPurl: string | null;
   /** Existing exception for this (spdx, purl) pair, or null when not waived. */
   existing: LicenseException | null;
+  /**
+   * Whether an expiry is mandatory. A waiver on a FORBIDDEN license relaxes the
+   * build gate, so the backend (``LICENSE_WAIVE_MAX_DAYS``) requires a capped
+   * expiry and rejects an open-ended one with a 422. The dialog mirrors that
+   * here: expiry becomes required and submit stays disabled until it is set.
+   * Conditional / allowed waivers may be indefinite. Defaults to ``false``.
+   */
+  requireExpiry?: boolean;
   /** Read-only historical snapshot → waive/un-waive disabled. */
   readOnly?: boolean;
   className?: string;
@@ -74,6 +82,7 @@ export function LicenseWaiveAction({
   componentLabel,
   componentPurl,
   existing,
+  requireExpiry = false,
   readOnly = false,
   className,
 }: LicenseWaiveActionProps) {
@@ -83,6 +92,13 @@ export function LicenseWaiveAction({
   const [expiresAt, setExpiresAt] = useState("");
   const reasonId = useId();
   const expiresId = useId();
+
+  // The earliest selectable expiry — a past date is a dead-on-arrival waiver.
+  const todayISO = new Date().toISOString().slice(0, 10);
+  // Mirror the server's forbidden-license rule: reason is always required;
+  // expiry is required too when this is a forbidden waiver.
+  const missingRequired =
+    reason.trim().length === 0 || (requireExpiry && expiresAt.length === 0);
 
   const waive = useWaiveLicense(projectId);
   const unwaive = useUnwaiveLicense(projectId);
@@ -110,7 +126,9 @@ export function LicenseWaiveAction({
   function handleSubmit() {
     if (!canWaive || teamId == null || componentPurl == null) return;
     const trimmed = reason.trim();
-    if (trimmed.length === 0) return; // required — submit stays disabled too
+    // reason (always) + expiry (forbidden waivers) are required — submit stays
+    // disabled too, this is the belt-and-braces guard.
+    if (trimmed.length === 0 || (requireExpiry && expiresAt.length === 0)) return;
     waive.mutate(
       {
         teamId,
@@ -259,18 +277,24 @@ export function LicenseWaiveAction({
                 htmlFor={expiresId}
                 className="text-xs font-medium text-muted-foreground"
               >
-                {t("waive.expires_label")}
+                {requireExpiry
+                  ? t("waive.expires_required_label")
+                  : t("waive.expires_label")}
               </label>
               <Input
                 id={expiresId}
                 type="date"
                 value={expiresAt}
+                min={todayISO}
                 onChange={(e) => setExpiresAt(e.target.value)}
                 data-testid="license-waive-expires"
+                aria-required={requireExpiry ? "true" : undefined}
                 className="h-9"
               />
               <p className="text-xs text-muted-foreground">
-                {t("waive.expires_hint")}
+                {requireExpiry
+                  ? t("waive.expires_required_hint")
+                  : t("waive.expires_hint")}
               </p>
             </div>
           </div>
@@ -296,7 +320,7 @@ export function LicenseWaiveAction({
             <Button
               type="button"
               size="sm"
-              disabled={reason.trim().length === 0 || waive.isPending}
+              disabled={missingRequired || waive.isPending}
               onClick={handleSubmit}
               data-testid="license-waive-submit"
             >
@@ -322,7 +346,10 @@ function mutationErrorMessage(
       case 403:
         return t("waive.error_forbidden");
       case 422:
-        return t("waive.error_malformed");
+        // The server's governance message (e.g. "the waiver expiry … exceeds the
+        // maximum of 90 days") is precise — surface it when present, else the
+        // generic malformed-input copy.
+        return error.detail || t("waive.error_malformed");
       default:
         return error.detail || t("waive.error_generic");
     }

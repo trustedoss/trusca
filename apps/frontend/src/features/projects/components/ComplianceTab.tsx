@@ -830,6 +830,9 @@ function ComplianceGridRow({
                   componentLabel={`${c.name}@${c.version}`}
                   componentPurl={c.purl}
                   existing={existing}
+                  // The strip only renders for forbidden rows, so a waiver here
+                  // always relaxes the build gate → a capped expiry is required.
+                  requireExpiry={row.category === "forbidden"}
                   readOnly={readOnly}
                 />
               </span>
