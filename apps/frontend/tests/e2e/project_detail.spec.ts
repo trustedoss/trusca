@@ -10,8 +10,8 @@
  * Scenarios (`@project-detail` tag):
  *
  *   1. Loaded list → click row link → URL changes to /projects/<id> and the
- *      Overview tab is active by default. RiskGauge / Severity / License /
- *      RecentScans panels all visible.
+ *      Overview tab is active by default. Project-info / Build-gate /
+ *      Severity / License panels + the Recent-scans card all visible.
  *   2. Components tab loads its first page (Virtuoso mounted) and
  *      `endReached` triggers an additional page load when total > limit.
  *   3. Clicking a row opens the drawer (right slide-in), with the vuln list
@@ -114,12 +114,16 @@ test.describe("@project-detail project detail page", () => {
     expect(new URL(page.url()).searchParams.get("tab")).toBeNull();
 
     // All four overview panels mount — assert via testid only (no text).
-    await expect(page.getByTestId("overview-risk-card")).toBeVisible();
+    // W4-B/W6 reshuffled the Overview grid: the standalone composite risk
+    // card (`overview-risk-card` + inner `risk-gauge`) was replaced by the
+    // Project-info ↔ Build-gate pair on top of the Severity ↔ License pair.
+    // The four panels are now Project info / Build gate / Severity / License,
+    // plus the full-width Recent scans card below them.
+    await expect(page.getByTestId("overview-info-card")).toBeVisible();
+    await expect(page.getByTestId("gate-card")).toBeVisible();
     await expect(page.getByTestId("overview-severity-card")).toBeVisible();
     await expect(page.getByTestId("overview-license-card")).toBeVisible();
     await expect(page.getByTestId("overview-recent-scans-card")).toBeVisible();
-    // RiskGauge mounts inside the risk card and exposes a numeric data-score.
-    await expect(page.getByTestId("risk-gauge").first()).toBeVisible();
   });
 
   test("2) Components tab loads first page and endReached fetches more", async ({
