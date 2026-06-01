@@ -1,0 +1,41 @@
+# gitleaks configuration for trustedoss-portal.
+#
+# Extends the upstream default ruleset and adds an allowlist for known
+# non-secrets that the generic high-entropy rules flag: synthetic fixtures
+# in unit tests, deterministic CI/UAT/dogfood dummy secrets, and
+# documentation placeholders. A one-time full-history scan (2026-06)
+# confirmed these were the only findings and that no real credential has
+# ever been committed.
+#
+# RULE: never allowlist a real secret. If a finding is a genuine credential,
+# remove it from the code, rotate the credential, and do NOT add it here.
+# Only provably non-secret values (test fixtures, CI dummies, placeholders)
+# belong in this allowlist.
+
+title = "trustedoss-portal gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Synthetic test fixtures, CI dummy secrets, and doc placeholders"
+
+paths = [
+  # Unit-test fixtures: fake private keys / tokens used to exercise the
+  # signature, secret-masking, and keyed-hash code paths (e.g. the literal
+  # "SECRET-PRIVATE-BYTES" private key and "npm_secret_xyz123" token).
+  '''apps/backend/tests/.*''',
+  # Live-demo docs document a publishable demo-credential placeholder.
+  '''docs-site/.*live-demo\.md$''',
+  '''docs-site/i18n/.*live-demo\.md$''',
+]
+
+regexes = [
+  # Deterministic CI / UAT / dogfood SECRET_KEY values — 32-char padding
+  # strings hardcoded in workflow env blocks, never real secrets.
+  '''(ci|uat|dogfood|install)[a-z0-9-]*secret-key[a-z0-9-]*''',
+  '''ci-smoke-pw''',
+  '''UatAdminPassword[0-9!]*''',
+  # Documentation / example placeholders.
+  '''REPLACE_ME[A-Z0-9_]*''',
+]
