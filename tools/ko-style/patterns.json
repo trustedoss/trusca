@@ -15,7 +15,7 @@
       "id": "double-passive",
       "category": "피동태 남용",
       "severity": "S2",
-      "pattern": "되어\\s*지|[어아워]지게\\s*되",
+      "pattern": "되어\\s*지|[어아워]지게\\s*(되|됩|된|됐)",
       "message": "이중 피동입니다(피동 + 피동).",
       "suggestion": "피동을 한 번만 쓰세요. 예: '만들어지게 됩니다' → '만들어집니다'.",
       "example_bad": "설정 파일이 자동으로 만들어지게 됩니다.",
@@ -35,7 +35,7 @@
       "id": "possible-nominal",
       "category": "명사형 과다",
       "severity": "S2",
-      "pattern": "것[이은]\\s*가능하",
+      "pattern": "것[이은]\\s*가능",
       "message": "'~하는 것이 가능하다'는 영어 it is possible to의 직역입니다.",
       "suggestion": "'~하는 것이 가능합니다' → '~할 수 있습니다'.",
       "example_bad": "에어갭 환경에서 미러를 사용하는 것이 가능합니다.",
@@ -105,7 +105,7 @@
       "id": "located-at",
       "category": "직역 접속",
       "severity": "S2",
-      "pattern": "에\\s*위치하",
+      "pattern": "에\\s*위치(하|합|함|해)",
       "message": "'~에 위치하다'는 영어 be located의 직역입니다.",
       "suggestion": "'~에 있다'로 바꾸세요.",
       "example_bad": "설정 파일은 프로젝트 루트에 위치합니다.",
@@ -118,8 +118,8 @@
       "pattern": "(해요|예요|이에요|거예요)(?=[\\s.,!?\"')\\]]|$)",
       "message": "문서는 합쇼체(-습니다)로 통일합니다. 해요체가 섞였습니다.",
       "suggestion": "'~해요' → '~합니다', '~예요' → '~입니다'.",
-      "example_bad": "여기서 스캔을 시작할 수 있어요.",
-      "example_ok": "여기서 스캔을 시작할 수 있습니다."
+      "example_bad": "이 화면에서 스캔을 관리해요.",
+      "example_ok": "이 화면에서 스캔을 관리합니다."
     },
     {
       "id": "litotes-double-negative",
@@ -160,6 +160,27 @@
       "suggestion": "'컴포넌트'로 통일하세요 (docs/glossary.md).",
       "example_bad": "콤포넌트 목록을 확인합니다.",
       "example_ok": "컴포넌트 목록을 확인합니다."
+    },
+    {
+      "id": "decorative-emoji",
+      "category": "AI 글투",
+      "severity": "S2",
+      "pattern": "[\\u{1F300}-\\u{1FAFF}\\u{2600}-\\u{26FF}\\u{2700}-\\u{27BF}\\u{1F900}-\\u{1F9FF}\\u{2705}\\u{2728}\\u{1F4A1}]",
+      "flags": "gu",
+      "message": "장식용 이모지는 AI 글투의 전형입니다.",
+      "suggestion": "이모지를 빼고, 강조가 필요하면 Docusaurus admonition(:::note 등)을 쓰세요. (→ 화살표는 내비·상태 표기로 허용)",
+      "example_bad": "릴리스를 완료했습니다 🎉",
+      "example_ok": "릴리스를 완료했습니다."
+    },
+    {
+      "id": "mechanical-step-label",
+      "category": "AI 글투",
+      "severity": "S3",
+      "pattern": "(\\*\\*\\s*)?([0-9]+\\s*단계|단계\\s*[0-9]+|Step\\s*[0-9]+)\\s*[:：]",
+      "message": "'1단계:' 같은 기계적 단계 라벨은 AI 글투입니다.",
+      "suggestion": "번호 매기기 목록(1. 2. 3.)이나 task 제목으로 대체하세요.",
+      "example_bad": "1단계: 프로젝트를 추가합니다.",
+      "example_ok": "먼저 프로젝트를 추가합니다."
     }
   ]
 }
