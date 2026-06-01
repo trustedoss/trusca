@@ -3,6 +3,7 @@
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/badge/release-v0.10.0-2563eb.svg)](CHANGELOG.md)
 [![Docs](https://img.shields.io/badge/docs-trustedoss.github.io-0f172a.svg)](https://trustedoss.github.io/trustedoss-portal/)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/13060/badge)](https://www.bestpractices.dev/projects/13060)
 
 > Open-source enterprise SCA portal — manage CVEs, license compliance, and SBOMs in one self-hosted UI.
 
