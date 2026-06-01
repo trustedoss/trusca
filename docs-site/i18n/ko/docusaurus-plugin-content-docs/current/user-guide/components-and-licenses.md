@@ -114,7 +114,7 @@ sidebar_position: 3
 | **Concluded** | 다중 생태계 레지스트리 fetcher(Maven Central / PyPI / crates.io / pkg.go.dev). `cdxgen` 이 의존성의 SPDX id 를 전혀 만들지 못했을 때**만** 폴백으로 사용. | 메타데이터가 침묵한 의존성에 대해 레지스트리에서 도출한 라이선스. declared 와 detected 를 화해한 결과가 *아닙니다* — v0.10.0 은 자동 화해(reconciliation)를 수행하지 않습니다. |
 
 :::note "Detected" 는 의존성 소스가 아니라 first-party
-scancode 는 **내** 소스 트리에 대해서만 실행됩니다. 서드파티 의존성 소스는 의도적으로 다운로드하지 **않습니다** — 이는 스캔당 실행 시간을 예산 내로 유지하기 위함입니다. 따라서 의존성의 라이선스는 **declared**(또는 레지스트리 폴백을 통한 **concluded**)이며 결코 **detected** 가 아닙니다. **detected** 라이선스는 항상 내 저장소의 코드를 설명합니다.
+scancode 는 **내** 소스 트리에서만 실행됩니다. 서드파티 의존성 소스는 의도적으로 다운로드하지 **않습니다** — 이는 스캔당 실행 시간을 예산 내로 유지하기 위함입니다. 따라서 의존성의 라이선스는 **declared**(또는 레지스트리 폴백을 통한 **concluded**)이며 결코 **detected** 가 아닙니다. **detected** 라이선스는 항상 내 저장소의 코드를 설명합니다.
 :::
 
 :::caution Declared 와 detected 는 불일치할 수 있음

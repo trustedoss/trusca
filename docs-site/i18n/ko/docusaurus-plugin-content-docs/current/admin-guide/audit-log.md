@@ -156,7 +156,7 @@ docker-compose -f docker-compose.yml exec postgres \
   -c "DELETE FROM audit_logs WHERE created_at < '2025-01-01';"
 ```
 
-`DELETE`는 immutability 트리거에 의해 **DB 레이어에서 차단됩니다**([스키마](#스키마) 참고). 의도된 retention purge 시에는 동일 유지보수 트랜잭션 안에서 두 트리거를 drop, `DELETE` 실행, 트리거 재생성을 commit 전에 마쳐야 합니다.
+immutability 트리거가 `DELETE`를 **DB 레이어에서 차단합니다**([스키마](#스키마) 참고). 의도된 retention purge 시에는 동일 유지보수 트랜잭션 안에서 두 트리거를 drop, `DELETE` 실행, 트리거 재생성을 commit 전에 마쳐야 합니다.
 
 <!-- docs-uat: id=audit-retention-purge kind=sql ctx=postgres tier=nightly waiver=destructive-drops-triggers-and-deletes-rows -->
 ```sql

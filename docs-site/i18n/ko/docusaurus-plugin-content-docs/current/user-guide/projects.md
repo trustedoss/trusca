@@ -116,7 +116,7 @@ curl -sS -X POST https://trustedoss.example.com/v1/projects \
 
 `DELETE /v1/projects/{id}`는 soft-delete(아카이브)를 수행합니다. 영구 삭제 동작은 현재 노출되지 않으며, 감사 로그 항목은 어떤 경우에도 유지됩니다.
 
-아카이브 동작은 **Project Settings → Archive**에 위치하며, 사고 방지를 위해 인라인 확인 스트립을 사용합니다.
+아카이브 동작은 **Project Settings → Archive**에 있으며, 사고 방지를 위해 인라인 확인 스트립을 사용합니다.
 
 ## 사설 저장소
 
@@ -143,8 +143,8 @@ SSH 배포 키는 [로드맵](#로드맵)을 보세요.
 
 Overview 탭은 이제 하나의 합산 점수 대신 **두 개의** 리스크 축을 게이지에 표시합니다. 두 가지 실패 모드를 독립적으로 읽을 수 있도록 분리했습니다.
 
-- **Security risk (보안 리스크)** — 프로젝트의 열린 취약점 혼합에 의해 결정. 밴드(Critical / High / Medium / Low / Info) 는 **가장 심각한** 열린 finding 이 정합니다. 밴드 내 점수는 `n / (n + 4)` 로 스케일(비포화 — finding 이 더 많아진다고 밴드를 한 단계 올리지 못함).
-- **License risk (라이선스 리스크)** — 프로젝트의 라이선스 티어 혼합에 의해 결정. **Forbidden** 라이선스가 밴드를 지배. **Conditional** 행은 밴드 내 점수를 올리지만 단독으로 `Critical` 로 승격하지 않습니다(이전의 "Conditional 컴포넌트 하나라도 있으면 Risk 100" 동작은  W1 에서 제거).
+- **Security risk (보안 리스크)** — 프로젝트의 열린 취약점 구성에 따라 결정됩니다. 밴드(Critical / High / Medium / Low / Info) 는 **가장 심각한** 열린 finding 이 정합니다. 밴드 내 점수는 `n / (n + 4)` 로 스케일(비포화 — finding 이 더 많아진다고 밴드를 한 단계 올리지 못함).
+- **License risk (라이선스 리스크)** — 프로젝트의 라이선스 티어 구성에 따라 결정됩니다. **Forbidden** 라이선스가 밴드를 지배. **Conditional** 행은 밴드 내 점수를 올리지만 단독으로 `Critical` 로 승격하지 않습니다(이전의 "Conditional 컴포넌트 하나라도 있으면 Risk 100" 동작은  W1 에서 제거).
 
 기존 단일 `risk_score` 필드는 빌드 게이트와 CI 연동의 하위 호환을 위해 API 에서 `max(security_axis, license_axis)` 로 계속 노출됩니다. UI 는 두 축 분해를 사용합니다.
 
