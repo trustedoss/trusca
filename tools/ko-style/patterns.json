@@ -1,0 +1,165 @@
+{
+  "$schema-note": "Korean translation-ese (번역투) pattern catalog for ko-style lint. Each rule is a per-line regex applied AFTER code fences, inline code, URLs, HTML comments, and front-matter are stripped (see lint.mjs). severity: S1 = clear error / S2 = strong recommendation (blocks the Claude hook) / S3 = advisory only. Inspired by im-not-ai's 10-category taxonomy, adapted to prose docs (UI-only rules like trailing-period on short labels are intentionally omitted — full doc sentences keep their periods). Extend by adding rules here; the engine never changes.",
+  "rules": [
+    {
+      "id": "passive-eui-hae",
+      "category": "피동태 남용",
+      "severity": "S2",
+      "pattern": "에\\s*의해(서)?",
+      "message": "'~에 의해'는 영어 수동태(by)의 직역입니다.",
+      "suggestion": "능동태로 바꾸세요. 예: 'X에 의해 결정됨' → 'X가 결정함' 또는 'X에 따라 결정됨'.",
+      "example_bad": "프로젝트의 라이선스 티어 혼합에 의해 결정.",
+      "example_ok": "프로젝트의 라이선스 티어 구성에 따라 결정됩니다."
+    },
+    {
+      "id": "double-passive",
+      "category": "피동태 남용",
+      "severity": "S2",
+      "pattern": "되어\\s*지|[어아워]지게\\s*되",
+      "message": "이중 피동입니다(피동 + 피동).",
+      "suggestion": "피동을 한 번만 쓰세요. 예: '만들어지게 됩니다' → '만들어집니다'.",
+      "example_bad": "설정 파일이 자동으로 만들어지게 됩니다.",
+      "example_ok": "설정 파일이 자동으로 만들어집니다."
+    },
+    {
+      "id": "have-possession",
+      "category": "명사형 과다",
+      "severity": "S2",
+      "pattern": "[을를]\\s*(가지고|갖고)\\s*있",
+      "message": "'~을 가지고 있다'는 영어 have의 직역입니다.",
+      "suggestion": "'X를 가지고 있다' → 'X가 있다'.",
+      "example_bad": "프로젝트가 이미 실행 중인 스캔을 가지고 있으면",
+      "example_ok": "프로젝트에 이미 실행 중인 스캔이 있으면"
+    },
+    {
+      "id": "possible-nominal",
+      "category": "명사형 과다",
+      "severity": "S2",
+      "pattern": "것[이은]\\s*가능하",
+      "message": "'~하는 것이 가능하다'는 영어 it is possible to의 직역입니다.",
+      "suggestion": "'~하는 것이 가능합니다' → '~할 수 있습니다'.",
+      "example_bad": "에어갭 환경에서 미러를 사용하는 것이 가능합니다.",
+      "example_ok": "에어갭 환경에서 미러를 사용할 수 있습니다."
+    },
+    {
+      "id": "enable-literal",
+      "category": "명사형 과다",
+      "severity": "S3",
+      "pattern": "가능하게\\s*(한다|합니다|하는|하여|해|함)",
+      "message": "'~을 가능하게 하다'는 영어 enable의 직역일 수 있습니다.",
+      "suggestion": "'~을 가능하게 합니다' → '~할 수 있게 합니다' 또는 능동 표현.",
+      "example_bad": "이 옵션은 재스캔을 가능하게 합니다.",
+      "example_ok": "이 옵션을 켜면 재스캔할 수 있습니다."
+    },
+    {
+      "id": "need-to",
+      "category": "군더더기",
+      "severity": "S3",
+      "pattern": "필요가\\s*있",
+      "message": "'~할 필요가 있다'는 맥락에 따라 장황할 수 있습니다.",
+      "suggestion": "흐름에 맞으면 '~해야 합니다'가 간결합니다.",
+      "example_bad": "토큰을 갱신할 필요가 있습니다.",
+      "example_ok": "토큰을 갱신해야 합니다."
+    },
+    {
+      "id": "in-respect-of",
+      "category": "군더더기",
+      "severity": "S2",
+      "pattern": "에\\s*있어서",
+      "message": "'~에 있어서'는 일본어/영어 투의 군더더기입니다.",
+      "suggestion": "'~에서', '~의 경우', '~할 때'로 바꾸세요.",
+      "example_bad": "운영 환경에 있어서 CORS는 화이트리스트로 강제합니다.",
+      "example_ok": "운영 환경에서 CORS는 화이트리스트로 강제합니다."
+    },
+    {
+      "id": "through-overuse",
+      "category": "군더더기",
+      "severity": "S3",
+      "pattern": "[을를]\\s*통해서",
+      "message": "'~을 통해서'의 '서'는 군더더기인 경우가 많습니다.",
+      "suggestion": "'통해서' → '통해' 또는 '(으)로'.",
+      "example_bad": "API를 통해서 스캔을 시작합니다.",
+      "example_ok": "API로 스캔을 시작합니다."
+    },
+    {
+      "id": "about-overuse",
+      "category": "군더더기",
+      "severity": "S3",
+      "pattern": "에\\s*대(해서|하여)",
+      "message": "'~에 대해서/대하여'는 장황할 수 있습니다.",
+      "suggestion": "'에 대해서' → '에 대해' 또는 목적어 '~을'로 직접.",
+      "example_bad": "AI 규제에 대해서 논의할 필요가 있습니다.",
+      "example_ok": "AI 규제를 논의해야 합니다."
+    },
+    {
+      "id": "geurigo-naseo",
+      "category": "직역 접속",
+      "severity": "S1",
+      "pattern": "그리고\\s*나서",
+      "message": "'그리고 나서'는 비표준입니다.",
+      "suggestion": "'그런 다음' 또는 '그러고 나서'로 바꾸세요.",
+      "example_bad": "스캔을 실행하고 그리고 나서 결과를 확인합니다.",
+      "example_ok": "스캔을 실행한 다음 결과를 확인합니다."
+    },
+    {
+      "id": "located-at",
+      "category": "직역 접속",
+      "severity": "S2",
+      "pattern": "에\\s*위치하",
+      "message": "'~에 위치하다'는 영어 be located의 직역입니다.",
+      "suggestion": "'~에 있다'로 바꾸세요.",
+      "example_bad": "설정 파일은 프로젝트 루트에 위치합니다.",
+      "example_ok": "설정 파일은 프로젝트 루트에 있습니다."
+    },
+    {
+      "id": "register-haeyo",
+      "category": "합쇼체 혼용",
+      "severity": "S2",
+      "pattern": "(해요|예요|이에요|거예요)(?=[\\s.,!?\"')\\]]|$)",
+      "message": "문서는 합쇼체(-습니다)로 통일합니다. 해요체가 섞였습니다.",
+      "suggestion": "'~해요' → '~합니다', '~예요' → '~입니다'.",
+      "example_bad": "여기서 스캔을 시작할 수 있어요.",
+      "example_ok": "여기서 스캔을 시작할 수 있습니다."
+    },
+    {
+      "id": "litotes-double-negative",
+      "category": "영문 어순 잔재",
+      "severity": "S3",
+      "pattern": "지\\s*않을\\s*수\\s*없",
+      "message": "이중부정은 영문 투입니다.",
+      "suggestion": "긍정으로 직접 표현하세요.",
+      "example_bad": "이 단계는 건너뛰지 않을 수 없습니다.",
+      "example_ok": "이 단계는 반드시 거쳐야 합니다."
+    },
+    {
+      "id": "uncountable-plural",
+      "category": "복수 직역",
+      "severity": "S3",
+      "pattern": "(정보|데이터|소프트웨어|콘텐츠|트래픽|코드)들",
+      "message": "불가산 명사에 영어 복수 '-들'을 붙였습니다.",
+      "suggestion": "'데이터들' → '데이터'. 한국어는 불가산 명사를 복수화하지 않습니다.",
+      "example_bad": "스캔이 수집한 데이터들을 저장합니다.",
+      "example_ok": "스캔이 수집한 데이터를 저장합니다."
+    },
+    {
+      "id": "term-license",
+      "category": "용어 비일관",
+      "severity": "S1",
+      "pattern": "라이센스",
+      "message": "용어집 정규형이 아닙니다.",
+      "suggestion": "'라이센스' → '라이선스' (docs/glossary.md).",
+      "example_bad": "금지 라이센스가 발견되면 빌드를 차단합니다.",
+      "example_ok": "금지 라이선스가 발견되면 빌드를 차단합니다."
+    },
+    {
+      "id": "term-component-misspell",
+      "category": "용어 비일관",
+      "severity": "S1",
+      "pattern": "콤포넌트|컴퍼넌트|컴포년트",
+      "message": "용어집 정규형이 아닙니다.",
+      "suggestion": "'컴포넌트'로 통일하세요 (docs/glossary.md).",
+      "example_bad": "콤포넌트 목록을 확인합니다.",
+      "example_ok": "컴포넌트 목록을 확인합니다."
+    }
+  ]
+}

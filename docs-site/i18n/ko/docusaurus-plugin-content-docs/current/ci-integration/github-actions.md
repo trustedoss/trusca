@@ -88,7 +88,7 @@ jobs:
 | `project-id` | yes | — | 프로젝트 UUID. |
 | `scan-kind` | no | `source` | `source`(cdxgen + scancode + Trivy) 또는 `container`(Trivy 이미지 스캔). |
 | `fail-on-gate` | no | `true` | `true`이면 게이트 verdict가 `fail`일 때 잡이 1로 종료. |
-| `post-pr-comment` | no | `true` | `true`이고 `pull_request`에 의해 트리거된 경우 SCA 보고서를 PR 코멘트로 게시. |
+| `post-pr-comment` | no | `true` | `true`이고 `pull_request` 이벤트로 트리거되면 SCA 보고서를 PR 코멘트로 게시. |
 | `poll-timeout-seconds` | no | `1800` | 스캔이 최종 상태에 도달할 때까지 기다리는 최대 초. |
 | `poll-interval-seconds` | no | `30` | 스캔 상태 폴링 간격(초). |
 

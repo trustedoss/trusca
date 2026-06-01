@@ -30,7 +30,7 @@ sidebar_position: 10
 [SBOM](./glossary.md#sca-핵심)은 릴리스 *안에 무엇이 들어 있는지*를 소비자에게 알려 줍니다. **서명**은 SBOM만으로는 답할 수 없는 두 가지를 추가로 답합니다.
 
 - **무결성(integrity)** — 배포가 생성한 후 SBOM 바이트가 변경되었는가? 정확한 바이트에 대한 서명은 모든 변조를 탐지합니다.
-- **출처(provenance)** — SBOM이 *어떻게*, 누구에 의해 생성되었는가? [in-toto](https://in-toto.io/) / [SLSA](https://slsa.dev/) provenance attestation은 빌드 플랫폼 식별자와 버전을 기록합니다.
+- **출처(provenance)** — SBOM을 *어떻게*, 누가 생성했는가? [in-toto](https://in-toto.io/) / [SLSA](https://slsa.dev/) provenance attestation은 빌드 플랫폼 식별자와 버전을 기록합니다.
 
 이는 [행정명령 14028](https://www.cisa.gov/topics/cyber-threats-and-advisories/cybersecurity-best-practices/secure-by-design/sbom), [CISA 2025 SBOM 최소 요소](https://www.cisa.gov/sbom), [NTIA 최소 요소](https://www.ntia.gov/page/software-bill-materials)가 요구하는 공급망 보안 기대치입니다 — 소비자는 산출물이 도착한 경로를 신뢰하지 않고도 진위를 검증할 수 있어야 합니다.
 
