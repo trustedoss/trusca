@@ -64,10 +64,31 @@ function maskOut(line, re) {
   return line.replace(re, (m) => " ".repeat(m.length));
 }
 
+/**
+ * Blank every `open`…`close` span (inclusive) via a single left-to-right
+ * string scan — no regex, so the HTML-comment delimiters don't trip CodeQL's
+ * js/bad-tag-filter heuristic (which can't see that `<!--` … `-->` here only
+ * masks prose and is not a security-relevant HTML sanitizer). Unbalanced
+ * trailing `open` is left intact.
+ */
+function maskDelimited(line, open, close) {
+  let out = "";
+  let i = 0;
+  for (;;) {
+    const start = line.indexOf(open, i);
+    if (start === -1) return out + line.slice(i);
+    const end = line.indexOf(close, start + open.length);
+    if (end === -1) return out + line.slice(i);
+    const stop = end + close.length;
+    out += line.slice(i, start) + " ".repeat(stop - start);
+    i = stop;
+  }
+}
+
 /** Strip the parts of a single (non-fenced) line where rules must not fire. */
 function maskLine(line) {
   let out = line;
-  out = maskOut(out, /<!--.*?-->/g); // inline HTML comments
+  out = maskDelimited(out, "<!--", "-->"); // inline HTML comments
   out = maskOut(out, /`[^`]*`/g); // inline code spans
   // markdown link / image targets: keep the visible text, mask the URL.
   out = out.replace(/(\]\()([^)]*)(\))/g, (_m, a, b, c) => a + " ".repeat(b.length) + c);
@@ -109,7 +130,7 @@ export function lintText(text, relPath, rules) {
       if (line.includes("-->")) inComment = false;
       continue;
     }
-    if (/<!--/.test(line) && !/-->/.test(line)) {
+    if (line.includes("<!--") && !line.includes("-->")) {
       inComment = true;
       continue;
     }
