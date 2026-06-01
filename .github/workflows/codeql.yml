@@ -1,0 +1,49 @@
+name: CodeQL
+
+# Advanced CodeQL setup (replaces GitHub's default code-scanning setup).
+# We run the advanced workflow so that .github/codeql/codeql-config.yml's
+# `paths-ignore` is actually honoured — the default setup does not reliably
+# apply it, which left test/tooling code (Math.random in test ids, canned
+# URL checks, local QA scripts) flagged. The default setup must be disabled
+# in repo Settings → Code security for this workflow to run.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "30 1 * * 1" # weekly, Monday 01:30 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        # Mirrors the languages the default setup detected
+        # (javascript + typescript are analysed together).
+        language: [javascript-typescript, python, actions]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+          config-file: ./.github/codeql/codeql-config.yml
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
