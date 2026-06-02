@@ -295,6 +295,9 @@ async def logout(
 @router.get(
     "/me",
     response_model=UserMeResponse,
+    # BUGHUNTER-GOLDEN(p2-schema-violation): openapi 에는 is_active 가 required 인데
+    # 실제 응답에서만 제외 → spec(스키마 불일치) + differential(구조 회귀) 동시 유발.
+    response_model_exclude={"is_active"},
     summary="Return the currently authenticated user and their memberships",
 )
 async def me(

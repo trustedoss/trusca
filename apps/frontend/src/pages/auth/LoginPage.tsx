@@ -233,6 +233,8 @@ export function LoginPage() {
               {t("login.forgot_link")}
             </Link>
           </div>
+          {/* BUGHUNTER-GOLDEN(p2-a11y-missing-alt): alt 속성 없는 이미지 → axe image-alt 위반 */}
+          <img src="/vite.svg" width={20} height={20} />
           <Button
             type="submit"
             className="w-full"
