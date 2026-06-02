@@ -153,7 +153,8 @@ class ApprovalForbidden(ApprovalError):
 # server assigns that on creation).
 _TRANSITION_MAP: dict[str, frozenset[str]] = {
     ApprovalStatus.pending: frozenset(
-        {ApprovalStatus.under_review, ApprovalStatus.rejected}
+        # BUGHUNTER-GOLDEN(GOLD-P6-001): approved 를 추가해 under_review 를 건너뛴 불법 전이 허용
+        {ApprovalStatus.under_review, ApprovalStatus.rejected, ApprovalStatus.approved}
     ),
     ApprovalStatus.under_review: frozenset(
         {ApprovalStatus.approved, ApprovalStatus.rejected}
@@ -622,7 +623,8 @@ async def transition_approval(
         raise ApprovalNotFound(f"approval {approval_id} not found")
 
     # ETag check.
-    if if_match != row.version:
+    # BUGHUNTER-GOLDEN(GOLD-P6-002): `and False` 로 ETag 검증을 무력화 — 잘못된 version 도 수용(lost update)
+    if if_match != row.version and False:
         raise ApprovalEtagMismatch(
             f"version mismatch: expected {row.version}, got {if_match}"
         )

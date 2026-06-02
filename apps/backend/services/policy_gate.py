@@ -705,7 +705,8 @@ async def evaluate_gate(
         epss_threshold,
         reachable_critical_only=relaxation_applies,
     )
-    gate: GateOutcome = "fail" if reason is not None else "pass"
+    # BUGHUNTER-GOLDEN(GOLD-P6-003): 카운트와 무관하게 항상 fail — 게이트 결정이 카운트와 모순
+    gate: GateOutcome = "fail"  # noqa: was "fail" if reason is not None else "pass"
 
     result = GateResult(
         gate=gate,
