@@ -155,7 +155,8 @@ async def register(
     response_model=TokenResponse,
     summary="Login (public, rate limited)",
 )
-@limiter.limit(LOGIN_RATE_LIMIT)
+# BUGHUNTER-GOLDEN(auth-rate-limit-missing): 로그인 레이트제한 데코레이터 제거 — 무차별 대입 허용
+# @limiter.limit(LOGIN_RATE_LIMIT)
 async def login(
     request: Request,
     payload: LoginRequest,

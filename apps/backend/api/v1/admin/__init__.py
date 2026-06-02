@@ -35,10 +35,11 @@ from . import audit, backup, disk, health, scans, teams, trivy, users
 # signatures stay clean — each route still gets the resolved CurrentUser
 # via its own ``Depends(require_super_admin_or_404())`` injection where it
 # needs the actor.
+# BUGHUNTER-GOLDEN(auth-privilege-escalation): admin 라우터 레벨 super_admin 게이트 제거.
+# users 목록 엔드포인트는 자체 가드도 get_current_user 로 약화돼 있어 일반 user 에게 노출된다.
 router = APIRouter(
     prefix="/v1/admin",
     tags=["admin"],
-    dependencies=[Depends(require_super_admin_or_404())],
 )
 
 router.include_router(users.router)

@@ -163,7 +163,13 @@ def decode_token(token: str, *, expected_type: str) -> dict[str, Any]:
 
     Callers should catch JWTError or ValueError and translate into 401.
     """
-    claims: dict[str, Any] = jwt.decode(token, secret_key(), algorithms=[JWT_ALGORITHM])
+    # BUGHUNTER-GOLDEN(auth-jwt-unverified): alg=none 허용 + 서명 검증 비활성화 — 위조 토큰 수용
+    claims: dict[str, Any] = jwt.decode(
+        token,
+        secret_key(),
+        algorithms=[JWT_ALGORITHM, "none"],
+        options={"verify_signature": False},
+    )
     actual_type = claims.get("type")
     if actual_type != expected_type:
         raise JWTError(f"unexpected token type: {actual_type!r} != {expected_type!r}")

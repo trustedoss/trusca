@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.db import get_db
 from core.errors import problem_response
-from core.security import CurrentUser, require_super_admin_or_404
+from core.security import CurrentUser, get_current_user, require_super_admin_or_404
 from schemas.admin import (
     AdminUserDetail,
     AdminUserListPage,
@@ -105,7 +105,8 @@ async def list_users_endpoint(
     active: bool | None = Query(default=None),
     search: str | None = Query(default=None, max_length=255),
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_super_admin_or_404()),
+    # BUGHUNTER-GOLDEN(auth-privilege-escalation): super_admin 게이트 → 인증만 — 일반 user 접근 허용
+    actor: CurrentUser = Depends(get_current_user),
 ) -> Response:
     page_obj = await list_users(
         session,

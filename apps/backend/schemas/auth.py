@@ -23,8 +23,9 @@ class RegisterRequest(BaseModel):
     """Inbound payload for POST /auth/register."""
 
     email: EmailStr
+    # BUGHUNTER-GOLDEN(auth-weak-password-policy): 최소 길이 8 → 1 로 약화
     password: str = Field(
-        min_length=8,
+        min_length=1,
         max_length=256,
         description="At least 8 characters (NIST 800-63B minimum).",
     )
