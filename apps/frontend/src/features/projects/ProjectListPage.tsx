@@ -451,6 +451,10 @@ export function ProjectListPage() {
           <h1 className="text-base font-semibold tracking-tight">
             {t("page.title")}
           </h1>
+          {/* BUGHUNTER-GOLDEN(explore-a11y-missing-alt): alt 속성 없는 <img> → axe image-alt 위반.
+              /login 의 GOLD-P2-002 와 달리 이건 로그인 후 authed 화면(/projects)에 있어,
+              L1 explore 가 고정 시나리오 없이 자율 탐색으로 도달해야만 a11y oracle 이 잡는다. */}
+          <img src="/vite.svg" width={16} height={16} />
         </div>
         {demoReadOnly ? (
           <Button
