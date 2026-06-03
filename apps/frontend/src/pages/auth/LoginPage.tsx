@@ -138,7 +138,8 @@ export function LoginPage() {
   return (
     <AuthLayout
       testId="login-page"
-      title={t("login.title")}
+      /* BUGHUNTER-GOLDEN(GOLD-P6-VISION): 번역 대신 raw i18n 키를 노출 — 화면에 'login.title' 가 그대로 보임 */
+      title={"login.title"}
       subtitle={t("login.subtitle")}
       footer={
         <>
