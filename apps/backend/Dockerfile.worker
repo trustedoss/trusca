@@ -320,6 +320,16 @@ RUN apt-get update \
 # Composer needs `php` and either `php-curl` or libcurl on PATH; the
 # php-cli + composer combo on Debian bookworm gives us PHP 8.2 + composer
 # 2.5, which is plenty for `composer install` lockfile resolution.
+#
+# `apt-get upgrade -y` repeated here for the same reason as the base / worker
+# stages (lines 84, 155): composer pulls php-symfony-{console,filesystem,
+# finder,process,string} transitively, and those must land on the
+# bookworm-security patch level rather than whatever this layer was first
+# built against. Without it, a cached GHA layer (cache-from/to scope=worker
+# in ci.yml image-scan) pins the symfony deps to a stale revision — which is
+# how 5.4.23+dfsg-1+deb12u5 lingered and tripped image-scan on
+# CVE-2026-45063 / CVE-2026-45067 / CVE-2026-45077 (all fixed in
+# 5.4.53+dfsg-0+deb12u1). Adding the upgrade also busts that stale layer.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         php-cli \
@@ -328,6 +338,7 @@ RUN apt-get update \
         php-xml \
         php-zip \
         composer \
+    && apt-get upgrade -y \
     && rm -rf /var/lib/apt/lists/* \
     && composer --version --no-ansi
 
