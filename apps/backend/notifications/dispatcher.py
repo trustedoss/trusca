@@ -283,7 +283,22 @@ async def dispatch(
     kind_str = kind.value if isinstance(kind, NotificationKind) else str(kind)
     builder = _BUILDERS.get(kind_str)
     if builder is None:
-        raise ValueError(f"unknown notification kind: {kind_str!r}")
+        # H-5 defensive: a producer may dispatch a kind that has no external
+        # builder (e.g. an in-app-only kind such as license_violation). Skip the
+        # external fan-out and report it rather than raising — a crash here would
+        # fail the whole Celery task (and lose any in-app row it also writes).
+        log.warning("notification_kind_no_builder", kind=kind_str)
+        return {
+            "kind": kind_str,
+            "channels": [
+                {"channel": c, "status": "skipped", "reason": "no_builder_for_kind"}
+                for c in channels
+            ],
+            "delivered_count": 0,
+            "skipped_count": len(channels),
+            "failed_count": 0,
+            "retryable_failures": False,
+        }
 
     # Validate channel set up front so a typo never silently no-ops.
     unknown = [c for c in channels if c not in _KNOWN_CHANNELS]

@@ -42,6 +42,8 @@ NotificationKind = Literal[
     "license_violation",
     "approval_pending",
     "policy_gate_failed",
+    # H-5 — emitted in-app to an approval requester when their item is disposed.
+    "approval_state_changed",
 ]
 
 

@@ -661,7 +661,51 @@ async def transition_approval(
         from_status=current,
         to_status=action,
     )
+
+    # H-5: notify the requester once the disposition is final. Best-effort and
+    # after the commit, so a broker hiccup can never roll back the transition.
+    if action in _TERMINAL_STATES:
+        _notify_approval_requester(row, action)
+
     return row
+
+
+def _notify_approval_requester(row: ComponentApproval, action: str) -> None:
+    """Enqueue the requester's approval-disposition notification (H-5).
+
+    Wires the previously-dead ``approval_state_changed`` dispatch: the requester
+    gets an in-app row plus any configured external channel (email/Slack/Teams
+    self-skip when their env is unset, so this is safe in dev/test). Best-effort
+    — the broker enqueue is wrapped so a transient failure only logs, never
+    fails the already-committed transition. No-op when no requester is recorded.
+    """
+    requester = row.requested_by_user_id
+    if requester is None:
+        return
+
+    from notifications.dispatcher import CHANNEL_EMAIL, CHANNEL_SLACK, CHANNEL_TEAMS
+    from tasks.notify import send_notification_task
+
+    summary = f"Your component approval was {action}."
+    try:
+        send_notification_task.delay(
+            "approval_state_changed",
+            {"component_label": str(row.component_id), "new_state": action},
+            [CHANNEL_EMAIL, CHANNEL_SLACK, CHANNEL_TEAMS],
+            [],
+            user_id=str(requester),
+            in_app_title=f"Approval {action}",
+            in_app_body=summary,
+            in_app_link=f"/approvals?id={row.id}",
+            in_app_target_table="component_approvals",
+            in_app_target_id=str(row.id),
+        )
+    except Exception as exc:  # noqa: BLE001 — broker failure must not fail the txn
+        log.warning(
+            "approval_notification_dispatch_failed",
+            approval_id=str(row.id),
+            error=str(exc)[:300],
+        )
 
 
 # ---------------------------------------------------------------------------

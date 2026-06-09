@@ -46,13 +46,45 @@ def _patch_channels(monkeypatch):
     monkeypatch.setattr(disp, "_send_teams_channel", _noop_teams)
 
 
-async def test_dispatch_unknown_kind_raises_value_error() -> None:
-    with pytest.raises(ValueError):
-        await disp.dispatch(
-            kind="not_a_kind",
-            context={},
-            channels=["email"],
-        )
+async def test_dispatch_unknown_kind_is_skipped_not_raised() -> None:
+    # H-5 defensive: a kind with no external builder must NOT crash the dispatch
+    # (which would fail the Celery task and drop any in-app row it also writes).
+    report = await disp.dispatch(
+        kind="not_a_kind",
+        context={},
+        channels=["email", "slack"],
+    )
+    assert report["kind"] == "not_a_kind"
+    assert report["delivered_count"] == 0
+    assert report["skipped_count"] == 2
+    assert report["failed_count"] == 0
+    assert report["retryable_failures"] is False
+    assert all(c["status"] == "skipped" for c in report["channels"])
+
+
+def test_inapp_and_dispatch_catalogs_stay_in_sync() -> None:
+    """H-5 drift guard: pin both catalogs and the kinds that must cross over.
+
+    The in-app catalog (notification_kind enum / Pydantic Literal) and the
+    external-dispatch catalog (dispatcher.NotificationKind) are intentionally
+    distinct sets — in-app rows vs transactional sends — but they drifted to a
+    single shared kind (scan_completed). Any kind a producer routes to BOTH
+    surfaces must exist in both; this test fails if that invariant regresses.
+    """
+    from models.notification import NOTIFICATION_KIND_VALUES
+    from schemas.notification import NotificationKind as InAppLiteral
+
+    inapp = set(NOTIFICATION_KIND_VALUES)
+    dispatch = {k.value for k in disp.NotificationKind}
+
+    # Model enum and Pydantic Literal must never diverge from each other.
+    literal_values = set(InAppLiteral.__args__)  # type: ignore[attr-defined]
+    assert literal_values == inapp, "in-app enum and Pydantic Literal drifted"
+
+    # Kinds that cross both surfaces (written in-app AND dispatched externally).
+    crossover = {"scan_completed", "approval_state_changed"}
+    assert crossover <= inapp, f"crossover kinds missing from in-app: {crossover - inapp}"
+    assert crossover <= dispatch, f"crossover kinds missing from dispatch: {crossover - dispatch}"
 
 
 async def test_dispatch_unknown_channel_raises_value_error() -> None:
