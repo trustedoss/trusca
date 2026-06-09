@@ -35,6 +35,8 @@ from sqlalchemy import event, inspect
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.orm import InstanceState, Session
 
+from core.pii_mask import mask_git_url
+
 # Context variable populated by the request middleware / auth dependency.
 # Keys: user_id (str | None), team_id (str | None), request_id (str | None),
 #       ip (str | None), user_agent (str | None).
@@ -110,6 +112,16 @@ _SENSITIVE_COLUMNS = frozenset(
 _PII_COLUMNS = frozenset({"email", "full_name"})
 
 
+# URL columns whose userinfo segment may carry a credential (e.g. a PAT a user
+# embedded as ``https://<token>@github.com/...`` in ``projects.git_url``). We do
+# NOT blanket-mask these to ``***`` like ``_SENSITIVE_COLUMNS`` — the host/path
+# is the very thing the audit trail needs ("which repo did this row point at").
+# Instead we strip only the userinfo via :func:`mask_git_url`, keeping the
+# diff useful while never persisting the token (C-2). New rows only — existing
+# immutable audit rows are not rewritten.
+_URL_REDACT_COLUMNS = frozenset({"git_url"})
+
+
 # Tables we never audit. `audit_logs` itself would otherwise recurse, and
 # `alembic_version` is operational metadata.
 _NON_AUDITED_TABLES = frozenset({"audit_logs", "alembic_version"})
@@ -160,12 +172,15 @@ def mask_sensitive_columns(payload: dict[str, Any]) -> dict[str, Any]:
     """
     Return a copy of `payload` with sensitive / PII keys redacted.
 
-    Three cases:
+    Four cases:
       - ``_SENSITIVE_COLUMNS`` (credentials, hashes) → replaced with ``"***"``.
         Plaintext that we genuinely never want to retain at audit time.
       - ``_PII_COLUMNS`` (``email``, ``full_name``) → replaced with
         ``{"sha256": "<hex>"}``. Investigators can still match identical
         values across audit rows but the plaintext is gone (CWE-359).
+      - ``_URL_REDACT_COLUMNS`` (``git_url``) → userinfo segment stripped via
+        :func:`redact_url_userinfo`, keeping host/path so the diff stays useful
+        while never persisting an embedded token (C-2).
       - Everything else → passed through unchanged.
 
     We replace rather than delete so the diff still records that the column
@@ -178,6 +193,8 @@ def mask_sensitive_columns(payload: dict[str, Any]) -> dict[str, Any]:
             out[key] = "***"
         elif key in _PII_COLUMNS:
             out[key] = _hash_pii(value)
+        elif key in _URL_REDACT_COLUMNS and isinstance(value, str):
+            out[key] = mask_git_url(value)
         else:
             out[key] = value
     return out

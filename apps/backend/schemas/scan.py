@@ -28,10 +28,12 @@ from pydantic import (
     ConfigDict,
     Field,
     StringConstraints,
+    field_serializer,
     field_validator,
     model_validator,
 )
 
+from core.pii_mask import mask_git_url
 from core.url_guard import GitUrlValidationError, validate_git_url
 
 # ---------------------------------------------------------------------------
@@ -414,6 +416,20 @@ class ProjectPublic(BaseModel):
     git_url: str | None
     default_branch: str | None
     visibility: ProjectVisibility
+
+    @field_serializer("git_url")
+    def _mask_git_url(self, value: str | None) -> str | None:
+        """Strip any embedded credential (userinfo) from git_url on the wire (C-2).
+
+        A private repo may legitimately carry a PAT as ``https://<token>@host/...``
+        (the documented inline-credential mechanism the clone path honours). The
+        token must never leave the API though, so we redact the userinfo segment
+        on every outbound serialization — read responses, the project list, and
+        anything that embeds ``ProjectPublic``. Applied at serialization so even
+        rows persisted before this fix are masked on read. Scheme-aware: only
+        http/https userinfo is stripped, so ``ssh://git@host`` stays accurate.
+        """
+        return mask_git_url(value)
     archived_at: datetime | None
     created_by_user_id: uuid.UUID | None
     latest_scan_id: uuid.UUID | None
