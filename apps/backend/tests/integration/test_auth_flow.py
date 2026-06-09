@@ -254,6 +254,41 @@ async def test_refresh_rotates_and_detects_reuse(client):
     assert replay.headers["content-type"].startswith(PROBLEM_JSON)
 
 
+async def test_reuse_detection_revokes_whole_family(client):
+    """C-1: replaying an old refresh must kill the live descendant session too.
+
+    Before the fix, reuse detection walked only the parent chain upward, so the
+    current (post-rotation) refresh — a descendant of the replayed token —
+    survived: a thief who replayed a stolen old token was rejected, yet the
+    legitimate user's active session stayed valid (and vice-versa). The whole
+    token family must be invalidated, forcing re-auth on every device.
+    """
+    email = _unique_email("family")
+    password = _strong_password()
+    await client.post(
+        "/auth/register",
+        json={"email": email, "password": password, "full_name": "F"},
+    )
+    login = await client.post("/auth/login", json={"email": email, "password": password})
+    first_refresh = login.cookies.get("refresh_token")
+
+    rotated = await client.post("/auth/refresh", cookies={"refresh_token": first_refresh})
+    assert rotated.status_code == 200, rotated.text
+    current_refresh = rotated.cookies.get("refresh_token")
+    assert current_refresh and current_refresh != first_refresh
+
+    # Replay the consumed first refresh → reuse detected.
+    replay = await client.post("/auth/refresh", cookies={"refresh_token": first_refresh})
+    assert replay.status_code == 401
+
+    # The CURRENT (live) refresh must now also be revoked — the family is dead.
+    after = await client.post("/auth/refresh", cookies={"refresh_token": current_refresh})
+    assert after.status_code == 401, (
+        "live descendant session survived reuse detection (C-1 regression)"
+    )
+    assert after.headers["content-type"].startswith(PROBLEM_JSON)
+
+
 # ---------------------------------------------------------------------------
 # Logout
 # ---------------------------------------------------------------------------
