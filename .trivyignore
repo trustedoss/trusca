@@ -455,3 +455,14 @@ CVE-2026-42499
 # vulnerable TLS resumption code path is reached only when those binaries
 # act as TLS clients/servers; our entrypoints never exercise that surface.
 CVE-2025-68121
+
+# CVE-2026-42504 net/textproto (Go stdlib): decoding a maliciously-crafted
+# MIME header with many invalid encoded-words causes excessive CPU (DoS) —
+# present in stdlib v1.22.7 / v1.25.9 / v1.25.10 statically linked into the
+# bundled Go binaries (cdxgen-plugins-bin, ORT plugins, Trivy CLI). Fixed
+# upstream in Go 1.25.11 / 1.26.4. Same UNREACHED category as above: the
+# vulnerable MIME-header decode path is only reached when those binaries
+# parse attacker-controlled message headers, which our scan entrypoints never
+# feed. Drop this suppression once the vendored binaries ship a Go ≥1.25.11
+# rebuild.
+CVE-2026-42504
