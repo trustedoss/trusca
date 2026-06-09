@@ -68,6 +68,18 @@ class RequestIDMiddleware:
 
         request_id = _extract_request_id(scope) or str(uuid.uuid4())
 
+        # H-3: surface the resolved id (including a server-generated one) to the
+        # inner middlewares by writing it back into scope["headers"].
+        # AuditContextMiddleware reads request_id from the scope headers; without
+        # this, a request with no inbound X-Request-ID got a fresh uuid here that
+        # never reached the audit context, so every audit row's request_id was
+        # null and could not be correlated with the X-Request-ID response header.
+        scope["headers"] = [
+            (k, v)
+            for k, v in (scope.get("headers") or [])
+            if k.lower() != REQUEST_ID_HEADER_BYTES
+        ] + [(REQUEST_ID_HEADER_BYTES, request_id.encode("latin-1"))]
+
         clear_contextvars()
         bind_contextvars(
             request_id=request_id,
