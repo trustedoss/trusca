@@ -10,19 +10,21 @@ Refresh rotation contract (CLAUDE.md §3):
     revoked_reason='rotated' and insert a new row with parent_jti pointing
     back at the rotated row.
   - If a request presents a token whose row is already revoked (any reason),
-    we treat it as reuse: revoke the entire ancestry chain
-    (revoked_reason='reuse_detected') and return 401. This is the standard
+    we treat it as reuse: revoke every still-active refresh token for the user
+    (revoked_reason='reuse_detected') — not just the ancestry chain, so the live
+    descendant session is killed too — and return 401. This is the standard
     "refresh-token reuse detection" pattern from RFC 6819 §5.2.2.3.
 """
 
 from __future__ import annotations
 
 import os
+import uuid
 from datetime import UTC, datetime
 
 import structlog
 from jose import JWTError
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -238,29 +240,31 @@ async def issue_token_pair(
 # ---------------------------------------------------------------------------
 
 
-async def _revoke_chain(
+async def _revoke_all_active_for_user(
     session: AsyncSession,
     *,
-    leaf_jti: str,
+    user_id: uuid.UUID,
     reason: str,
     now: datetime,
-) -> None:
+) -> int:
+    """Revoke every still-active refresh token for a user (C-1).
+
+    On reuse detection the whole token family is compromised. Our schema links
+    tokens only by ``parent_jti`` (a chain), so walking ancestors alone leaves
+    the live *descendant* session — the token minted by the legitimate rotation
+    that raced the stolen one — still valid (the original C-1 defect: a replayed
+    old token was rejected but the current session survived). Revoking every
+    active token for the user guarantees that descendant dies and forces re-auth
+    on all devices, the RFC 6819 §5.2.2.3 reuse response. Uses the
+    ``ix_refresh_tokens_user_revoked`` (user_id, revoked_at) index. Returns the
+    number of rows revoked.
     """
-    Walk the parent_jti pointers from a leaf upward and mark every link
-    revoked with `reason`. Idempotent — already-revoked rows are skipped.
-    """
-    seen: set[str] = set()
-    current: str | None = leaf_jti
-    while current and current not in seen:
-        seen.add(current)
-        result = await session.execute(select(RefreshToken).where(RefreshToken.jti == current))
-        row = result.scalar_one_or_none()
-        if row is None:
-            break
-        if row.revoked_at is None:
-            row.revoked_at = now
-            row.revoked_reason = reason
-        current = row.parent_jti
+    result = await session.execute(
+        update(RefreshToken)
+        .where(RefreshToken.user_id == user_id, RefreshToken.revoked_at.is_(None))
+        .values(revoked_at=now, revoked_reason=reason)
+    )
+    return result.rowcount or 0
 
 
 async def rotate_refresh(
@@ -298,11 +302,19 @@ async def rotate_refresh(
 
     now = datetime.now(tz=UTC)
 
-    # Reuse detection — already revoked
+    # Reuse detection — already revoked. Revoke the user's whole active set so
+    # the live descendant session (which the old chain-walk missed) also dies.
     if row.revoked_at is not None:
-        await _revoke_chain(session, leaf_jti=jti, reason="reuse_detected", now=now)
+        revoked = await _revoke_all_active_for_user(
+            session, user_id=row.user_id, reason="reuse_detected", now=now
+        )
         await session.commit()
-        log.warning("refresh_reuse_detected", jti=jti, user_id=str(row.user_id))
+        log.warning(
+            "refresh_reuse_detected",
+            jti=jti,
+            user_id=str(row.user_id),
+            sessions_revoked=revoked,
+        )
         raise RefreshReuseDetected("refresh token already used")
 
     # Expiration
