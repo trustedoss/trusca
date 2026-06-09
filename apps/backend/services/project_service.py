@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.audit import bind_audit_team as _bind_audit_team
 from core.crypto import SecretEncryptionError, encrypt_secret
+from core.pii_mask import url_userinfo_is_redacted
 from core.security import CurrentUser
 from models import Project
 from schemas.scan import ProjectCreate, ProjectUpdate
@@ -306,6 +307,17 @@ async def update_project(
     # is a legitimate "clear this field" value — distinguishing "unset" from
     # "explicit null" is what gives us PATCH semantics.
     updates = payload.model_dump(exclude_unset=True)
+
+    # C-2 round-trip guard — a git_url read back from the API has its userinfo
+    # redacted to ``https://***@host/...``. The settings form prefills git_url
+    # from that masked read, so an unchanged save re-submits the mask. Persisting
+    # it would overwrite the real inline credential with ``***@`` and break future
+    # clones. Drop the field so the stored value is preserved; a genuine edit
+    # supplies a fresh URL (no ``***`` userinfo) and flows through normally.
+    incoming_git_url = updates.get("git_url")
+    if isinstance(incoming_git_url, str) and url_userinfo_is_redacted(incoming_git_url):
+        updates.pop("git_url")
+        log.info("project_update_ignored_redacted_git_url", project_id=str(project.id))
 
     # Feature #18 Part B — the git credential is handled SEPARATELY from the
     # generic setattr loop because (a) the inbound `git_credential` /

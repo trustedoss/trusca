@@ -61,6 +61,11 @@ _MAX_DEPTH = 32
 
 _REDACTED = "***"
 
+# Userinfo username emitted by :func:`redact_url_userinfo` in place of a real
+# ``user:token`` segment. Centralised so the round-trip guard
+# (:func:`url_userinfo_is_redacted`) and the redactor never drift.
+REDACTED_USERINFO_USERNAME = "***"
+
 
 def _is_sensitive_key(key: str) -> bool:
     lowered = key.lower()
@@ -134,4 +139,61 @@ def redact_url_userinfo(url: str) -> str:
     return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
 
 
-__all__ = ["mask_pii", "redact_url_userinfo"]
+# Schemes where a credential legitimately lives in the URL userinfo
+# (``https://<token>@github.com/...``). SSH/git URLs carry a conventional,
+# non-secret ``git@host`` user and authenticate via keys, so masking their
+# userinfo would corrupt the displayed URL without any security benefit.
+_CREDENTIAL_URL_SCHEMES = frozenset({"http", "https"})
+
+
+def mask_git_url(url: str | None) -> str | None:
+    """Redact an embedded credential from a git URL, scheme-aware (C-2).
+
+    Only ``http`` / ``https`` userinfo is redacted — that is where embedded
+    PATs live (``https://<token>@github.com/org/repo``). ``ssh://git@host`` and
+    scp-style ``git@host:org/repo`` keep their conventional ``git`` user (not a
+    secret), so the URL the operator sees stays accurate.
+
+    None / empty pass through unchanged. On a parse failure we fall back to the
+    unconditional :func:`redact_url_userinfo` (which masks) rather than risk
+    leaking a malformed-but-credentialed value.
+    """
+    if not url:
+        return url
+    try:
+        scheme = urlsplit(url).scheme.lower()
+    except ValueError:
+        return redact_url_userinfo(url)
+    if scheme in _CREDENTIAL_URL_SCHEMES:
+        return redact_url_userinfo(url)
+    return url
+
+
+def url_userinfo_is_redacted(url: str) -> bool:
+    """Return True iff ``url`` carries the redaction marker as its userinfo.
+
+    A masked URL produced by :func:`redact_url_userinfo` has username
+    ``***`` and no password. The project-update path uses this to detect a
+    client re-submitting a masked git_url (the settings form prefills git_url
+    from the masked read response) so it can preserve the real stored
+    credential URL instead of overwriting it with the mask.
+
+    Defensive on parse failure: returns False (treat as a normal value) so a
+    malformed URL still flows through the usual validation, never silently
+    dropped.
+    """
+    if not isinstance(url, str) or not url:
+        return False
+    try:
+        return urlsplit(url).username == REDACTED_USERINFO_USERNAME
+    except ValueError:
+        return False
+
+
+__all__ = [
+    "REDACTED_USERINFO_USERNAME",
+    "mask_git_url",
+    "mask_pii",
+    "redact_url_userinfo",
+    "url_userinfo_is_redacted",
+]
