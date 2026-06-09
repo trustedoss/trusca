@@ -74,6 +74,46 @@ def test_listener_skips_audit_log_table():
     assert is_audited_table("audit_logs") is False
 
 
+def test_report_downloads_is_not_audited():
+    """M-36: SBOM/NOTICE export leaves a structlog line, not an audit_logs row.
+
+    The export records a report_downloads access row; that INSERT must not trip
+    the audit listener (the spec promises no audit_logs row for an export).
+    """
+    from core.audit import is_audited_table
+
+    assert is_audited_table("report_downloads") is False
+
+
+def test_status_transition_diff_carries_previous_and_new(monkeypatch):
+    """M-7: a status change adds previous_status / new_status to the diff."""
+    from core import audit
+
+    class _Hist:
+        deleted = ("pending",)
+
+    class _Attr:
+        history = _Hist()
+
+    class _Attrs:
+        def __getitem__(self, key):
+            assert key == "status"
+            return _Attr()
+
+    class _State:
+        attrs = _Attrs()
+
+    monkeypatch.setattr(audit, "inspect", lambda _instance: _State())
+    out = audit._augment_status_transition(object(), {"status": "under_review"})
+    assert out["previous_status"] == "pending"
+    assert out["new_status"] == "under_review"
+    assert out["status"] == "under_review"  # original key preserved
+
+    # No-op when status did not change.
+    unchanged = audit._augment_status_transition(object(), {"name": "x"})
+    assert "previous_status" not in unchanged
+
+
 @pytest.mark.parametrize("op", ["insert", "update", "delete"])
 def test_listener_records_each_mutating_op(op):
     from core.audit import build_audit_action

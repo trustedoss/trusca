@@ -111,8 +111,11 @@ _PII_COLUMNS = frozenset({"email", "full_name"})
 
 
 # Tables we never audit. `audit_logs` itself would otherwise recurse, and
-# `alembic_version` is operational metadata.
-_NON_AUDITED_TABLES = frozenset({"audit_logs", "alembic_version"})
+# `alembic_version` is operational metadata. `report_downloads` (M-36) is an
+# access-log side-effect of SBOM/NOTICE export — the spec says an export leaves
+# only a structlog line, not an audit_logs row, so the report_downloads INSERT
+# must not trip the listener.
+_NON_AUDITED_TABLES = frozenset({"audit_logs", "alembic_version", "report_downloads"})
 
 
 # ---------------------------------------------------------------------------
@@ -233,6 +236,26 @@ def _changed_columns(instance: object) -> dict[str, Any]:
     return out
 
 
+def _augment_status_transition(instance: object, diff: dict[str, Any]) -> dict[str, Any]:
+    """Record previous_status / new_status when a ``status`` column changed (M-7).
+
+    The base update diff stores only the new value under the column name. State
+    transitions (approval disposition, vulnerability-finding status, scan status)
+    also want the prior value so an audit query can answer "what did this move
+    from/to" without stitching adjacent rows together. Additive — the existing
+    ``status`` key is preserved. No-op when ``status`` did not change.
+    """
+    if "status" not in diff:
+        return diff
+    state: InstanceState[Any] = inspect(instance)  # type: ignore[assignment]
+    history = state.attrs["status"].history
+    previous = history.deleted[0] if history.deleted else None
+    out = dict(diff)
+    out["previous_status"] = previous
+    out["new_status"] = diff["status"]
+    return out
+
+
 def _serialize_value(value: Any) -> Any:
     """Make a value JSON-safe for the JSONB diff column."""
     if isinstance(value, uuid.UUID):
@@ -269,6 +292,7 @@ def _build_audit_row(*, op: str, instance: object, ctx: dict[str, Any]) -> dict[
 
     if op == "update":
         diff = _changed_columns(instance)
+        diff = _augment_status_transition(instance, diff)
     else:
         diff = _column_dict(instance)
 
