@@ -266,8 +266,10 @@ async def register_credential(
     except IntegrityError as exc:
         await session.rollback()
         # Two distinct integrity failures land here and must NOT both be 409:
-        #   - unique violation (uq_github_app_credentials_team_app): a live
+        #   - unique violation (uq_github_app_credentials_team_app_active,
+        #     partial: WHERE revoked_at IS NULL — recheck §4-3): a LIVE
         #     credential for (team, app_id) already exists → genuine 409.
+        #     Revoked rows do not participate, so revoke → re-register works.
         #   - FK violation (team_id → teams.id): the target team does not exist.
         #     Only reachable via the super_admin path (a team member's team_id is
         #     gated by RBAC), but a stale/typo'd team_id must surface as 404, not

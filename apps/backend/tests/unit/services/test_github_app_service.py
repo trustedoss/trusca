@@ -294,6 +294,67 @@ async def test_register_duplicate_raises_conflict(db_session: AsyncSession) -> N
         )
 
 
+async def test_reregister_after_revoke_succeeds(db_session: AsyncSession) -> None:
+    """recheck §4-3: revoke → register the SAME app_id again must succeed.
+
+    The unique is partial (``WHERE revoked_at IS NULL``, mig 0031), so the
+    revoked row stays as history without blocking the rotation. Before the fix
+    the full-table unique made this a permanent 409.
+    """
+    from services.github_app_service import (
+        GitHubAppConflict,
+        register_credential,
+        revoke_credential,
+    )
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    user = await make_user(db_session)
+    await make_membership(db_session, user=user, team=team, role="team_admin")
+    actor = principal_for(user, team_ids=[team.id], role="team_admin")
+
+    first = await register_credential(
+        db_session,
+        actor,
+        team_id=team.id,
+        app_id="556",
+        app_slug=None,
+        private_key=_make_rsa_pem(),
+        webhook_secret=None,
+    )
+    await revoke_credential(db_session, actor, first.id)
+
+    second = await register_credential(
+        db_session,
+        actor,
+        team_id=team.id,
+        app_id="556",
+        app_slug=None,
+        private_key=_make_rsa_pem(),
+        webhook_secret=None,
+    )
+    # New row, not a resurrection of the revoked one.
+    assert second.id != first.id
+    assert second.revoked_at is None
+
+    # The revoked row is preserved as history.
+    await db_session.refresh(first)
+    assert first.revoked_at is not None
+
+    # And live-uniqueness still holds: a THIRD register while the second is
+    # live is the genuine 409.
+    with pytest.raises(GitHubAppConflict):
+        await register_credential(
+            db_session,
+            actor,
+            team_id=team.id,
+            app_id="556",
+            app_slug=None,
+            private_key=_make_rsa_pem(),
+            webhook_secret=None,
+        )
+
+
 async def test_register_by_super_admin(db_session: AsyncSession) -> None:
     from services.github_app_service import register_credential
 
