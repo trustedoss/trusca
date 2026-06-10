@@ -99,12 +99,27 @@ class AuditExportTooLarge(AdminAuditError):
 # ---------------------------------------------------------------------------
 
 
-def _apply_filters(stmt: Any, *, query: AuditSearchQuery) -> Any:
+def _apply_filters(
+    stmt: Any,
+    *,
+    query: AuditSearchQuery,
+    allowed_team_ids: set[uuid.UUID] | None = None,
+) -> Any:
     """Apply the typed filters to a base ``select(AuditLog)`` (or count) statement.
 
     Centralized so the search and export paths stay in lockstep: the export
     must respect every filter the search sees.
+
+    ``allowed_team_ids`` is the authorization scope, NOT a user filter:
+    - ``None`` means "no team restriction" (super_admin sees every row).
+    - a set restricts the result to those teams. M-3: a team_admin may only
+      read audit rows for the teams where they hold ``team_admin``. An empty
+      set therefore matches nothing — a principal scoped to zero teams sees
+      zero rows rather than the whole table (fail-closed; CWE-863).
+    This is applied as a WHERE the caller cannot widen via query params.
     """
+    if allowed_team_ids is not None:
+        stmt = stmt.where(AuditLog.team_id.in_(allowed_team_ids))
     if query.actor_user_id is not None:
         stmt = stmt.where(AuditLog.actor_user_id == query.actor_user_id)
     if query.target_table is not None:
@@ -147,6 +162,7 @@ async def search_audit(
     *,
     actor: CurrentUser,  # noqa: ARG001 — kept for symmetry with other admin services
     query: AuditSearchQuery,
+    allowed_team_ids: set[uuid.UUID] | None = None,
 ) -> AuditLogListPage:
     """
     Return a page of audit rows matching the filters.
@@ -154,6 +170,9 @@ async def search_audit(
     The actor email is resolved with a LEFT JOIN against ``users`` so a row
     whose ``actor_user_id`` was nulled out (FK ``ondelete='SET NULL'``)
     still renders cleanly with ``actor_email = None``.
+
+    ``allowed_team_ids`` scopes the result to the caller's authorized teams
+    (M-3). ``None`` = unrestricted (super_admin); a set = team-scoped read.
     """
     page = max(query.page, 1)
     page_size = max(min(query.page_size, 200), 1)
@@ -164,12 +183,14 @@ async def search_audit(
     count_stmt = _apply_filters(
         select(func.count()).select_from(AuditLog),
         query=query,
+        allowed_team_ids=allowed_team_ids,
     )
     total = int((await session.execute(count_stmt)).scalar_one())
 
     base = _apply_filters(
         select(AuditLog, User.email).outerjoin(User, User.id == AuditLog.actor_user_id),
         query=query,
+        allowed_team_ids=allowed_team_ids,
     )
     rows_stmt = (
         base.order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
