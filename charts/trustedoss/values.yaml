@@ -117,8 +117,10 @@ env:
     # upstream DB rebuilds roughly daily; weekly (168h) is the documented
     # sweet spot between freshness + bandwidth.
     dbRefreshHours: 168
-    # TRIVY_DB_CACHE_DIR — in-container path the cached DB lands at. Lives on
-    # the workspace PVC so the worker pool shares one cache instead of N.
+    # TRIVY_CACHE_DIR — in-container path the cached DB lands at. Backed by
+    # the dedicated trivy-cache PVC (see `trivyCache.persistence`), mounted
+    # rw on the worker (bootstrap + weekly refresh) and ro on the backend
+    # (admin health / disk telemetry).
     dbCacheDir: "/var/lib/trivy"
     # TRIVY_TIMEOUT_SECONDS — per-invocation wall clock for `trivy sbom`.
     timeoutSeconds: 300
@@ -174,6 +176,29 @@ workspace:
     # nodes (the default). Use ReadWriteOnce ONLY if you pin both to one node.
     accessMode: ReadWriteMany
     size: 20Gi
+    # storageClassName: "" leaves it to the cluster default. Set a RWX class
+    # (e.g. nfs / efs / filestore / longhorn) on multi-node clusters.
+    storageClassName: ""
+    # Use a pre-created PVC instead of provisioning one.
+    existingClaim: ""
+
+# ===========================================================================
+# Trivy DB cache volume (H-6 / L-2).
+#
+# The worker downloads the ~500 MiB vulnerability DB on boot and refreshes it
+# weekly (beat task); the backend reads `metadata.json` from the same cache
+# for the admin health panel and the admin/disk `trivy_db` card. worker (rw)
+# + backend (ro) BOTH mount it at env.trivy.dbCacheDir, so on multi-node
+# clusters it MUST be ReadWriteMany — without persistence every worker
+# restart re-downloads the DB and the backend reports "unknown".
+# ===========================================================================
+trivyCache:
+  persistence:
+    enabled: true
+    # ReadWriteMany is required when backend and worker land on different
+    # nodes (the default). Use ReadWriteOnce ONLY if you pin both to one node.
+    accessMode: ReadWriteMany
+    size: 2Gi
     # storageClassName: "" leaves it to the cluster default. Set a RWX class
     # (e.g. nfs / efs / filestore / longhorn) on multi-node clusters.
     storageClassName: ""

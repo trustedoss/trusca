@@ -1,7 +1,7 @@
 /**
  * AdminDiskPage — Phase 4 PR #14 §4.6.
  *
- * Three cards (workspace / postgres / redis). Each card shows:
+ * Four cards (workspace / trivy_db / postgres / redis). Each card shows:
  *   - Used / total / free in human-readable bytes.
  *   - A horizontal progress bar coloured against the threshold:
  *       used_pct ≥ threshold_critical → red    (down)

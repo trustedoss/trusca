@@ -243,7 +243,7 @@ async def test_admin_scan_cancel_unknown_returns_404_problem(
 # ---------------------------------------------------------------------------
 
 
-async def test_admin_disk_super_admin_returns_three_items(client: AsyncClient) -> None:
+async def test_admin_disk_super_admin_returns_four_items(client: AsyncClient) -> None:
     factory = await _factory(client)
     async with factory() as session:
         admin = await make_user(session, is_superuser=True)
@@ -253,7 +253,8 @@ async def test_admin_disk_super_admin_returns_three_items(client: AsyncClient) -
     body = response.json()
     names = [item["name"] for item in body["items"]]
     # W6-#43a: dt_volume entry removed alongside the DT integration.
-    assert names == ["workspace", "postgres", "redis"]
+    # M-32: trivy_db card covers the worker-shared Trivy DB cache (H-6).
+    assert names == ["workspace", "trivy_db", "postgres", "redis"]
 
 
 # ---------------------------------------------------------------------------

@@ -43,6 +43,11 @@ spec:
           volumeMounts:
             - name: workspace
               mountPath: {{ .Values.workspace.mountPath }}
+            # H-6 — read-only view of the worker-maintained Trivy DB cache so
+            # the admin health panel / disk `trivy_db` card report real state.
+            - name: trivy-cache
+              mountPath: {{ .Values.env.trivy.dbCacheDir }}
+              readOnly: true
           # Liveness — PURE liveness (/health). Restarts the pod only when the
           # process itself is wedged; it must NOT depend on schema state, or a
           # pre-migration pod would be killed in a loop.
@@ -69,6 +74,13 @@ spec:
           {{- if .Values.workspace.persistence.enabled }}
           persistentVolumeClaim:
             claimName: {{ .Values.workspace.persistence.existingClaim | default (printf "%s-workspace" (include "trustedoss.fullname" .)) }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: trivy-cache
+          {{- if .Values.trivyCache.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.trivyCache.persistence.existingClaim | default (printf "%s-trivy-cache" (include "trustedoss.fullname" .)) }}
           {{- else }}
           emptyDir: {}
           {{- end }}

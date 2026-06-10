@@ -272,6 +272,12 @@ services:
       # Workspace is shared with the worker so cdxgen / scancode outputs are
       # readable across both processes.
       - workspace:/workspace
+      # H-6 — read-only view of the worker-maintained Trivy DB cache. The
+      # admin/health Trivy panel and the admin/disk `trivy_db` card read
+      # `$TRIVY_CACHE_DIR/db/metadata.json`; without this mount the backend
+      # reported the DB state as "unknown" even while the worker matched
+      # vulnerabilities fine.
+      - trivy-cache:/var/lib/trivy:ro
     depends_on:
       postgres:
         condition: service_healthy

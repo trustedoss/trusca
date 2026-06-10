@@ -96,11 +96,15 @@ x-backend-env: &backend-env
   COSIGN_KEY_PATH: ${COSIGN_KEY_PATH:-}
   COSIGN_KEY_PASSWORD_ENCRYPTED: ${COSIGN_KEY_PASSWORD_ENCRYPTED:-}
   COSIGN_TIMEOUT_SECONDS: ${COSIGN_TIMEOUT_SECONDS:-120}
-  # W6-#44 — Trivy DB lifecycle (worker bootstrap + weekly refresh). Dev
-  # leaves TRIVY_CACHE_DIR at the upstream default (``$HOME/.cache/trivy``)
-  # so a `docker-compose down -v` clears the cache along with the rest of
-  # the dev volumes — production mounts a named volume to persist it (see
-  # docker-compose.yml). All knobs are operator-tunable at runtime (rule #11).
+  # W6-#44 — Trivy DB lifecycle (worker bootstrap + weekly refresh). H-6:
+  # the cache lives on the shared `trivy-cache` named volume (worker rw,
+  # backend ro) so the backend's admin/health Trivy panel and admin/disk
+  # `trivy_db` card read the same metadata.json the worker maintains —
+  # without the shared mount the backend reported freshness "unknown"
+  # forever. A named volume is still cleared by `docker-compose down -v`
+  # like the rest of the dev volumes. All knobs are operator-tunable at
+  # runtime (rule #11).
+  TRIVY_CACHE_DIR: ${TRIVY_CACHE_DIR:-/var/lib/trivy}
   TRIVY_DB_REPOSITORY: ${TRIVY_DB_REPOSITORY:-ghcr.io/aquasecurity/trivy-db}
   TRIVY_DB_REFRESH_HOURS: ${TRIVY_DB_REFRESH_HOURS:-168}
   TRIVY_DB_BOOTSTRAP_ON_START: ${TRIVY_DB_BOOTSTRAP_ON_START:-true}
@@ -170,6 +174,10 @@ services:
       # (zip-upload source input) are visible to the worker that extracts
       # and scans them. WORKSPACE_HOST_PATH defaults to /tmp/trustedoss.
       - scan-workspace:/tmp/trustedoss
+      # H-6 — read-only view of the worker-maintained Trivy DB cache so
+      # /v1/admin/health (Trivy DB panel) and /v1/admin/disk (trivy_db card)
+      # report the real DB state instead of "unknown".
+      - trivy-cache:/var/lib/trivy:ro
     ports:
       - "8000:8000"
     depends_on:
@@ -209,6 +217,9 @@ services:
       # (created by scripts/cosign-keygen.sh). Mounted at /cosign so
       # COSIGN_KEY_PATH=/cosign/cosign.key. Empty/absent → unsigned (best-effort).
       - ${COSIGN_KEYS_HOST_PATH:-./secrets/cosign}:/cosign:ro
+      # W6-#44 / H-6 — Trivy DB cache (bootstrap + weekly refresh write here).
+      # Shared with backend (read-only there) for health / disk telemetry.
+      - trivy-cache:/var/lib/trivy
     depends_on:
       postgres:
         condition: service_healthy
@@ -290,3 +301,6 @@ volumes:
   # Shared between backend (uploaded-archive save) and worker (extract/scan)
   # so zip-upload source scans can hand the archive across containers.
   scan-workspace:
+  # H-6 — Trivy vulnerability DB cache, written by the worker (bootstrap +
+  # weekly refresh) and read by the backend (admin health / disk panels).
+  trivy-cache:

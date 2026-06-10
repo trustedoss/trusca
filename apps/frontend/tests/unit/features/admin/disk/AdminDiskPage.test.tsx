@@ -66,17 +66,18 @@ describe("AdminDiskPage", () => {
     mockedGet.mockReset();
   });
 
-  it("renders three cards mapped to their backend names", async () => {
+  it("renders four cards mapped to their backend names", async () => {
     mockedGet.mockResolvedValue(
       diskFixture([
         diskItem("workspace"),
+        diskItem("trivy_db"),
         diskItem("postgres"),
         diskItem("redis"),
       ]),
     );
     renderPage();
     await waitFor(() => {
-      expect(screen.getAllByTestId("admin-disk-card")).toHaveLength(3);
+      expect(screen.getAllByTestId("admin-disk-card")).toHaveLength(4);
     });
     expect(
       document.querySelector('[data-card-name="workspace"]'),

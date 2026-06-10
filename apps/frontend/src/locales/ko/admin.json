@@ -188,6 +188,7 @@
       },
       "card": {
         "workspace": "워크스페이스",
+        "trivy_db": "Trivy DB 캐시",
         "postgres": "PostgreSQL",
         "redis": "Redis"
       },

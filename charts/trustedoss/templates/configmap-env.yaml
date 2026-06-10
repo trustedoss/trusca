@@ -36,7 +36,10 @@ data:
   # override with an internal OCI mirror via env.trivy.dbRepository.
   TRIVY_DB_REPOSITORY: {{ .Values.env.trivy.dbRepository | quote }}
   TRIVY_DB_REFRESH_HOURS: {{ .Values.env.trivy.dbRefreshHours | quote }}
-  TRIVY_DB_CACHE_DIR: {{ .Values.env.trivy.dbCacheDir | quote }}
+  # H-6/L-2: the env var the code reads is TRIVY_CACHE_DIR (the previous
+  # TRIVY_DB_CACHE_DIR key was never consumed, so the worker silently cached
+  # at $HOME/.cache/trivy inside the container layer).
+  TRIVY_CACHE_DIR: {{ .Values.env.trivy.dbCacheDir | quote }}
   TRIVY_TIMEOUT_SECONDS: {{ .Values.env.trivy.timeoutSeconds | quote }}
 
   # ---- DB connection pool (B1) ----
