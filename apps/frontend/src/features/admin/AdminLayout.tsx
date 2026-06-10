@@ -15,13 +15,10 @@
 import { Outlet } from "react-router-dom";
 
 import { AdminNotFound } from "@/features/admin/AdminNotFound";
-import { useAuthStore } from "@/stores/authStore";
+import { usePermissions } from "@/hooks/usePermissions";
 
 export function AdminLayout() {
-  const user = useAuthStore((s) => s.user);
-
-  const isSuperAdmin =
-    user?.isSuperuser === true || user?.role === "super_admin";
+  const { isSuperAdmin } = usePermissions();
 
   if (!isSuperAdmin) {
     return <AdminNotFound />;

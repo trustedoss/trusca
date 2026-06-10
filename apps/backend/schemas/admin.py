@@ -20,6 +20,7 @@ from __future__ import annotations
 import re
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -56,7 +57,13 @@ class TeamMembershipPublic(BaseModel):
 
 
 class AdminUserListItem(BaseModel):
-    """Row in the paginated list response (lightweight)."""
+    """Row in the paginated list response (lightweight).
+
+    H-2: ``role`` / ``team_count`` are a membership *rollup* (highest-effective
+    role + membership count) computed by ``list_users`` in one aggregate query,
+    so the role column / team count no longer require opening the detail
+    drawer. Full memberships stay on :class:`AdminUserDetail`.
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -65,6 +72,8 @@ class AdminUserListItem(BaseModel):
     full_name: str | None = None
     is_active: bool
     is_superuser: bool
+    role: Literal["super_admin", "team_admin", "developer"] = "developer"
+    team_count: int = 0
     last_login_at: datetime | None = None
     created_at: datetime
 

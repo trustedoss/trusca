@@ -33,9 +33,9 @@ import {
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useApprovalDetail, useTransitionApproval } from "@/features/approvals/useApprovals";
+import { usePermissions } from "@/hooks/usePermissions";
 import { formatRelativeToNow } from "@/lib/relativeTime";
 import { cn } from "@/lib/utils";
-import { useAuthStore } from "@/stores/authStore";
 import type { ApprovalAction, ApprovalStatus } from "@/lib/approvalsApi";
 
 // ---------------------------------------------------------------------------
@@ -165,12 +165,9 @@ export function ApprovalsDrawer({
   notify,
 }: Props) {
   const { t, i18n } = useTranslation("approvals");
-  const user = useAuthStore((s) => s.user);
-
-  const canAct =
-    user?.isSuperuser === true ||
-    user?.role === "super_admin" ||
-    user?.role === "team_admin";
+  // H-2: team_admin authority comes from the promoted effective role —
+  // before the promotion this gate never opened for screen-only team admins.
+  const { isTeamAdminOrAbove: canAct } = usePermissions();
 
   const detail = useApprovalDetail(open ? approvalId : null);
   const transition = useTransitionApproval();

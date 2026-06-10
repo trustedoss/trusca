@@ -45,7 +45,7 @@ import { useLicensePolicies } from "@/features/policies/useLicensePolicies";
 import { listAdminTeams } from "@/features/admin/api/adminTeamsApi";
 import { listProjects } from "@/lib/projectsApi";
 import { cn } from "@/lib/utils";
-import { useAuthStore } from "@/stores/authStore";
+import { usePermissions } from "@/hooks/usePermissions";
 
 const DRAWER_PARAM = "policy";
 
@@ -80,9 +80,7 @@ interface TeamOption {
 
 export function PoliciesPage() {
   const { t } = useTranslation("policies");
-  const user = useAuthStore((s) => s.user);
-  const isSuperAdmin =
-    user?.isSuperuser === true || user?.role === "super_admin";
+  const { isSuperAdmin } = usePermissions();
 
   const [searchParams, setSearchParams] = useSearchParams();
   const drawerTarget = parseDrawerParam(searchParams.get(DRAWER_PARAM));

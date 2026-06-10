@@ -25,6 +25,13 @@ export interface AdminUserListItem {
   full_name: string | null;
   is_active: boolean;
   is_superuser: boolean;
+  /**
+   * H-2: membership rollup computed by the list endpoint — highest-effective
+   * role + membership count. Optional because the detail response (which
+   * extends this shape) carries full `memberships` instead.
+   */
+  role?: UserRole;
+  team_count?: number;
   last_login_at: string | null;
   created_at: string;
 }

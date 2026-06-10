@@ -64,7 +64,7 @@ import {
 } from "@/components/ui/command";
 import { listProjects, type ProjectPublic } from "@/lib/projectsApi";
 import { cn } from "@/lib/utils";
-import { useAuthStore } from "@/stores/authStore";
+import { usePermissions } from "@/hooks/usePermissions";
 
 // ---------------------------------------------------------------------------
 // Static route catalog — mirrors the AppShell sidebar (kept in sync by hand;
@@ -223,10 +223,7 @@ function useDebouncedValue<T>(value: T, delayMs: number): T {
 export function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
   const { t } = useTranslation("common");
   const navigate = useNavigate();
-  const user = useAuthStore((s) => s.user);
-
-  const isSuperAdmin =
-    user?.isSuperuser === true || user?.role === "super_admin";
+  const { isSuperAdmin } = usePermissions();
 
   const [query, setQuery] = useState("");
   const debounced = useDebouncedValue(query.trim(), 200);
