@@ -15,14 +15,11 @@ The notification system tells you about events on projects you care about — sc
 Any signed-in user. The header bell and `/notifications` page are visible to every role; admins additionally configure the SMTP / Slack / Teams transports under [Disk & system health](../admin-guide/disk-and-health.md).
 :::
 
-:::warning limitation
-The notification framework, models, and UI are all shipped, but the
-trigger emit-points (`scan_completed`, `scan_failed`, `cve_detected`,
-`license_violation`, `policy_gate_failed`, `approval_pending`) are
-**not yet wired into the producing services**. The `/notifications`
-inbox + Preferences page are functional and will populate once the
-producer-side calls land in this release. Password reset emails are the only
-notifications that flow today.
+:::note
+Notification triggers are wired into the producing services — scans,
+vulnerability ingest, license findings, the policy gate, and the approval
+workflow all emit in-app rows (and external channels per your Preferences).
+See the full trigger catalog under [Triggers](#triggers).
 :::
 
 ## The header bell
@@ -80,7 +77,7 @@ If you have multiple portal tabs open, each polls independently — the unread s
 
 ## Triggers
 
-Six distinct triggers fire notifications:
+Seven distinct triggers fire notifications:
 
 | Trigger | When it fires |
 |---|---|
@@ -89,6 +86,7 @@ Six distinct triggers fire notifications:
 | `cve_detected` | A new CVE lands on a component already present in one of your scans (DT NVD ingest correlates against existing components). |
 | `license_violation` | A scan surfaces a forbidden-license component on a project you watch. |
 | `approval_pending` | A component requires approval. In this release the notification is delivered to **all super-admins** in the org (no per-team approver routing); a designated-approver model is on the roadmap. |
+| `approval_state_changed` | An approval request you filed changes state (approved / rejected / moved to review) — the requester is notified of the disposition. |
 | `policy_gate_failed` | A CI build gate fails (Critical CVE or forbidden license blocks the build). |
 
 Channel selection is global — the **Preferences** tab decides which channels deliver every trigger.
