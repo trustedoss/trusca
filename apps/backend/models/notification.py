@@ -70,6 +70,10 @@ NOTIFICATION_KIND_VALUES = (
     "license_violation",
     "approval_pending",
     "policy_gate_failed",
+    # H-5: the external-dispatch catalog emits ``approval_state_changed`` when an
+    # approval is disposed; the requester also gets an in-app row of this kind,
+    # so it must be a valid in-app notification_kind (migration 0030).
+    "approval_state_changed",
 )
 
 
