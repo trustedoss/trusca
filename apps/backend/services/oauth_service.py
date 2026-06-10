@@ -55,6 +55,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.audit import audit_context
 from core.config import (
+    github_oauth_client_id,
+    github_oauth_client_secret,
+    google_oauth_client_id,
+    google_oauth_client_secret,
     oauth_state_ttl_seconds,
     secret_key,
 )
@@ -222,6 +226,37 @@ def _personal_team_name(*, full_name: str | None, email: str) -> str:
     base = (full_name or "").strip() or _email_localpart(email)
     # Cap at 200 chars — `teams.name` is VARCHAR(255), leave room for suffix.
     return f"{base[:200]}'s Team"
+
+
+# ---------------------------------------------------------------------------
+# oauth_provider_configured
+# ---------------------------------------------------------------------------
+
+
+def oauth_provider_configured(provider: str) -> bool:
+    """Return whether ``provider`` is usable for sign-in (M-15).
+
+    ``True`` only when BOTH the client id AND client secret are set — the
+    exact precondition under which the provider adapters'
+    ``_require_credentials`` succeeds and therefore /authorize and
+    /callback actually work. An id without a secret (or vice versa) is a
+    half-configured deployment: /authorize would raise
+    :class:`integrations.oauth.OAuthProviderDisabled` → 503, so we report
+    it as not configured to keep the login button hidden.
+
+    Reads env at call time via the :mod:`core.config` accessors (CLAUDE.md
+    core rule #11). Never returns or logs the credential values.
+
+    Raises:
+        OAuthProviderUnknown: provider name is not 'github' or 'google' —
+            mirrors :func:`integrations.oauth.get_provider` so accidental
+            call-sites fail loudly.
+    """
+    if provider == "github":
+        return bool(github_oauth_client_id() and github_oauth_client_secret())
+    if provider == "google":
+        return bool(google_oauth_client_id() and google_oauth_client_secret())
+    raise OAuthProviderUnknown(f"unknown OAuth provider: {provider!r}")
 
 
 # ---------------------------------------------------------------------------
@@ -603,4 +638,5 @@ __all__ = [
     "STATE_TOKEN_TYPE",
     "complete_oauth",
     "initiate_oauth",
+    "oauth_provider_configured",
 ]

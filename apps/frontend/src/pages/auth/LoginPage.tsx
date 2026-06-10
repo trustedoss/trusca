@@ -19,9 +19,11 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { useOAuthProviders } from "@/hooks/useOAuthProviders";
 import { fetchMe, postLogin } from "@/lib/api";
 import { getApiBase } from "@/lib/apiBase";
 import { ProblemError } from "@/lib/problem";
+import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/authStore";
 
 function buildSchema(t: (key: string) => string) {
@@ -66,6 +68,12 @@ export function LoginPage() {
   // rate-limited the same IP). We surface a non-destructive success alert so
   // the user knows the account exists and just needs to sign in.
   const justRegistered = searchParams.get("registered") === "1";
+
+  // M-15: only providers the backend reports as configured get a button.
+  // Fail-closed — while loading or on fetch error the list is empty, so the
+  // whole OAuth section (divider included) stays hidden rather than showing
+  // a button that would 503 on click.
+  const { configured: oauthProviders } = useOAuthProviders();
 
   // chore B — OAuth error codes are forwarded via ?error=oauth_*. We keep
   // the raw value local so a malicious URL like ?error=<script> stays
@@ -244,36 +252,39 @@ export function LoginPage() {
         </form>
       </Form>
 
-      <div
-        className="relative flex items-center justify-center"
-        data-testid="login-oauth-divider"
-      >
-        <span className="w-full border-t" />
-        <span className="absolute bg-card px-2 text-xs uppercase tracking-wider text-muted-foreground">
-          {t("login.or_continue_with")}
-        </span>
-      </div>
+      {oauthProviders.length > 0 ? (
+        <>
+          <div
+            className="relative flex items-center justify-center"
+            data-testid="login-oauth-divider"
+          >
+            <span className="w-full border-t" />
+            <span className="absolute bg-card px-2 text-xs uppercase tracking-wider text-muted-foreground">
+              {t("login.or_continue_with")}
+            </span>
+          </div>
 
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => startOAuth("github")}
-          data-testid="login-oauth-github"
-        >
-          <ProviderIcon provider="github" />
-          <span>{t("oauth.github")}</span>
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => startOAuth("google")}
-          data-testid="login-oauth-google"
-        >
-          <ProviderIcon provider="google" />
-          <span>{t("oauth.google")}</span>
-        </Button>
-      </div>
+          <div
+            className={cn(
+              "grid grid-cols-1 gap-2",
+              oauthProviders.length > 1 && "sm:grid-cols-2",
+            )}
+          >
+            {oauthProviders.map((provider) => (
+              <Button
+                key={provider}
+                type="button"
+                variant="outline"
+                onClick={() => startOAuth(provider)}
+                data-testid={`login-oauth-${provider}`}
+              >
+                <ProviderIcon provider={provider} />
+                <span>{t(`oauth.${provider}`)}</span>
+              </Button>
+            ))}
+          </div>
+        </>
+      ) : null}
     </AuthLayout>
   );
 }

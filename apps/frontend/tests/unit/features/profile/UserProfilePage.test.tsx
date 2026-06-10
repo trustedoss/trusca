@@ -102,6 +102,7 @@ describe("UserProfilePage — Connected Accounts", () => {
           provider_email: "alice.gmail@example.com",
         }),
       ],
+      has_password: true,
     });
 
     renderPage();
@@ -125,8 +126,8 @@ describe("UserProfilePage — Connected Accounts", () => {
     ];
     // First call → both rows. After unlink the cache invalidation refetches
     // a list that no longer contains the GitHub identity.
-    mockedList.mockResolvedValueOnce({ items: rows });
-    mockedList.mockResolvedValue({ items: [rows[1]] });
+    mockedList.mockResolvedValueOnce({ items: rows, has_password: true });
+    mockedList.mockResolvedValue({ items: [rows[1]], has_password: true });
     mockedUnlink.mockResolvedValueOnce(undefined);
 
     const user = userEvent.setup();
@@ -162,7 +163,9 @@ describe("UserProfilePage — Connected Accounts", () => {
 
   it("shows the inline blocks-login alert on 409 and keeps the row", async () => {
     const rows = [identity({ id: "only-github", provider: "github" })];
-    mockedList.mockResolvedValue({ items: rows });
+    // has_password: true → Unlink stays clickable; the server still 409s
+    // (backstop for the race where the password was cleared after load).
+    mockedList.mockResolvedValue({ items: rows, has_password: true });
 
     const blocks = new ProblemError("Cannot remove last authentication method", {
       status: 409,
@@ -202,7 +205,7 @@ describe("UserProfilePage — Connected Accounts", () => {
   });
 
   it("renders the empty state when no providers are linked", async () => {
-    mockedList.mockResolvedValue({ items: [] });
+    mockedList.mockResolvedValue({ items: [], has_password: true });
 
     renderPage();
 
@@ -216,7 +219,7 @@ describe("UserProfilePage — Connected Accounts", () => {
 
   it("surfaces a generic error toast when the unlink mutation fails for unrelated reasons", async () => {
     const rows = [identity({ id: "id-github-1", provider: "github" })];
-    mockedList.mockResolvedValue({ items: rows });
+    mockedList.mockResolvedValue({ items: rows, has_password: true });
     mockedUnlink.mockRejectedValueOnce(new Error("boom"));
 
     const user = userEvent.setup();
@@ -240,5 +243,73 @@ describe("UserProfilePage — Connected Accounts", () => {
     expect(
       screen.queryByTestId("profile-unlink-blocks-login"),
     ).not.toBeInTheDocument();
+  });
+
+  // ---------------------------------------------------------------------
+  // M-16 — pre-disable Unlink on the last identity of an OAuth-only account
+  // ---------------------------------------------------------------------
+
+  it("M-16: last identity + no password → Unlink disabled with explanatory tooltip", async () => {
+    mockedList.mockResolvedValue({
+      items: [identity({ id: "only-github", provider: "github" })],
+      has_password: false,
+    });
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("profile-identity-row")).toBeInTheDocument();
+    });
+
+    const button = screen.getByTestId("profile-identity-unlink");
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute(
+      "title",
+      "This is your only way to sign in. Set a password before unlinking.",
+    );
+    // The wrapping span carries the same tooltip because the disabled
+    // button has pointer-events: none (hover never reaches it).
+    expect(
+      screen.getByTestId("profile-identity-unlink-wrap"),
+    ).toHaveAttribute(
+      "title",
+      "This is your only way to sign in. Set a password before unlinking.",
+    );
+  });
+
+  it("M-16: last identity but a password is set → Unlink stays enabled", async () => {
+    mockedList.mockResolvedValue({
+      items: [identity({ id: "only-github", provider: "github" })],
+      has_password: true,
+    });
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("profile-identity-row")).toBeInTheDocument();
+    });
+
+    const button = screen.getByTestId("profile-identity-unlink");
+    expect(button).toBeEnabled();
+    expect(button).not.toHaveAttribute("title");
+  });
+
+  it("M-16: no password but MULTIPLE identities → Unlink stays enabled", async () => {
+    mockedList.mockResolvedValue({
+      items: [
+        identity({ id: "id-github-1", provider: "github" }),
+        identity({ id: "id-google-1", provider: "google" }),
+      ],
+      has_password: false,
+    });
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("profile-identity-row")).toHaveLength(2);
+    });
+    for (const button of screen.getAllByTestId("profile-identity-unlink")) {
+      expect(button).toBeEnabled();
+    }
   });
 });

@@ -128,6 +128,11 @@ describe("ResetPasswordPage", () => {
 
     const alert = await screen.findByTestId("reset-error");
     expect(alert).toHaveTextContent(/expired/i);
+    // M-14: a dead token gets the inline escape hatch to /forgot-password.
+    expect(screen.getByTestId("reset-forgot-link")).toHaveAttribute(
+      "href",
+      "/forgot-password",
+    );
   });
 
   it("on 422 (invalid) shows the invalid error key", async () => {
@@ -155,6 +160,11 @@ describe("ResetPasswordPage", () => {
 
     const alert = await screen.findByTestId("reset-error");
     expect(alert).toHaveTextContent(/invalid|already been used/i);
+    // M-14: used/invalid token also offers the request-a-new-link path.
+    expect(screen.getByTestId("reset-forgot-link")).toHaveAttribute(
+      "href",
+      "/forgot-password",
+    );
   });
 
   it("on transport failure surfaces a network error", async () => {
@@ -177,5 +187,35 @@ describe("ResetPasswordPage", () => {
 
     const alert = await screen.findByTestId("reset-error");
     expect(alert).toHaveTextContent(/network/i);
+    // M-14: transient failures do NOT show the forgot link — the same token
+    // may still work on retry, so the form stays the primary affordance.
+    expect(screen.queryByTestId("reset-forgot-link")).not.toBeInTheDocument();
+  });
+
+  it("M-14: generic server error (500) does not show the forgot link", async () => {
+    mockedPostReset.mockRejectedValueOnce(
+      new ProblemError("internal error", {
+        status: 500,
+        title: "internal_error",
+        detail: "internal error",
+        problem: {
+          type: "about:blank",
+          title: "internal_error",
+          status: 500,
+          detail: "internal error",
+        },
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderReset("/reset-password?token=t");
+
+    const pwd = "correct-horse-battery";
+    await user.type(screen.getByTestId("reset-password"), pwd);
+    await user.type(screen.getByTestId("reset-confirm"), pwd);
+    await user.click(screen.getByTestId("reset-submit"));
+
+    await screen.findByTestId("reset-error");
+    expect(screen.queryByTestId("reset-forgot-link")).not.toBeInTheDocument();
   });
 });

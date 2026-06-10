@@ -2,11 +2,13 @@
 OAuth (GitHub + Google) authentication API — Phase 8 PR #23.
 
 Endpoints under ``/auth/oauth``:
+  - GET /auth/oauth/providers             (public — provider availability, M-15)
   - GET /auth/oauth/{provider}/authorize  (public — initiates the flow)
   - GET /auth/oauth/{provider}/callback   (public — provider posts back here)
 
-Both endpoints are intentionally public per CLAUDE.md core rule #12:
-the whole point of OAuth login is that the caller is anonymous.
+All three endpoints are intentionally public per CLAUDE.md core rule #12:
+the whole point of OAuth login is that the caller is anonymous, and the
+/login page must know which sign-in buttons to render before any auth.
 
 The ``authorize`` endpoint returns a 302 redirect to the provider's consent
 page with a signed CSRF state JWT in the query string. The ``callback``
@@ -45,6 +47,7 @@ from core.config import (
 )
 from core.db import get_db
 from core.errors import problem_response
+from schemas.oauth import OAuthProvidersResponse, OAuthProviderStatusOut
 from services.oauth_service import (
     NoOrganizationConfigured,
     OAuthCallbackFailed,
@@ -55,6 +58,7 @@ from services.oauth_service import (
     OAuthUserInactive,
     complete_oauth,
     initiate_oauth,
+    oauth_provider_configured,
 )
 
 router = APIRouter(prefix="/auth/oauth", tags=["auth"])
@@ -151,6 +155,49 @@ def _demo_read_only_blocked(request: Request, *, provider: str) -> Response:
         instance=request.url.path,
         type_=_DEMO_READ_ONLY_TYPE,
         demo_read_only=True,
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /auth/oauth/providers  (PUBLIC)
+# ---------------------------------------------------------------------------
+
+# Closed provider set in stable wire order. Mirrors the ``Literal`` gate on
+# the authorize/callback path parameters below — widen both together.
+_PROVIDER_ORDER: tuple[Literal["github", "google"], ...] = ("github", "google")
+
+
+@router.get(
+    "/providers",
+    response_model=OAuthProvidersResponse,
+    summary="List OAuth provider availability (public)",
+    name="oauth_providers",
+)
+async def list_providers() -> OAuthProvidersResponse:
+    """
+    Public — no authentication required (explicit exception to CLAUDE.md
+    core rule #12: the consumer is the anonymous /login page, which must
+    decide which OAuth sign-in buttons to render BEFORE any credential
+    exists).
+
+    Always lists every supported provider with a bare ``configured``
+    boolean. ``configured`` is ``True`` only when both the client id AND
+    client secret are set — the same condition under which
+    ``/{provider}/authorize`` actually works (M-15: a half-configured or
+    unconfigured provider previously surfaced as a rendered button that
+    503'd on click).
+
+    Security: the response carries booleans only — never client ids,
+    secrets, or any other configuration detail.
+    """
+    return OAuthProvidersResponse(
+        providers=[
+            OAuthProviderStatusOut(
+                provider=name,
+                configured=oauth_provider_configured(name),
+            )
+            for name in _PROVIDER_ORDER
+        ]
     )
 
 

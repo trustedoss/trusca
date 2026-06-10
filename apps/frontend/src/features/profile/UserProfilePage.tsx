@@ -65,6 +65,12 @@ interface IdentityRowProps {
   confirming: boolean;
   /** True when the blocks-login alert is active for this row. */
   showBlocksLogin: boolean;
+  /**
+   * M-16: true when this is the caller's ONLY identity and no password is
+   * set — unlinking would lock them out, so the button is pre-disabled with
+   * an explanatory tooltip instead of letting the server 409 after the click.
+   */
+  unlinkLocked: boolean;
   onAskUnlink: () => void;
   onCancelUnlink: () => void;
   onConfirmUnlink: () => void;
@@ -76,6 +82,7 @@ function IdentityRow({
   locale,
   confirming,
   showBlocksLogin,
+  unlinkLocked,
   onAskUnlink,
   onCancelUnlink,
   onConfirmUnlink,
@@ -133,17 +140,26 @@ function IdentityRow({
         >
           {t("connected_accounts.linked_since", { relative: linkedRel })}
         </span>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          onClick={onAskUnlink}
-          disabled={confirming || isPending}
-          data-testid="profile-identity-unlink"
+        {/* M-16: the wrapping span carries the tooltip because the shadcn
+            Button applies `disabled:pointer-events-none`, which suppresses
+            a `title` set on the (disabled) button itself. */}
+        <span
+          title={unlinkLocked ? t("unlink.blocks_login_alert") : undefined}
+          data-testid="profile-identity-unlink-wrap"
         >
-          <Trash2 className="h-3 w-3" aria-hidden />
-          <span>{t("connected_accounts.unlink.button")}</span>
-        </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={onAskUnlink}
+            disabled={confirming || isPending || unlinkLocked}
+            title={unlinkLocked ? t("unlink.blocks_login_alert") : undefined}
+            data-testid="profile-identity-unlink"
+          >
+            <Trash2 className="h-3 w-3" aria-hidden />
+            <span>{t("connected_accounts.unlink.button")}</span>
+          </Button>
+        </span>
       </div>
 
       {confirming ? (
@@ -252,6 +268,11 @@ export function UserProfilePage() {
   }
 
   const items = identitiesQuery.data?.items ?? [];
+  // M-16: pre-disable Unlink on the last identity of an OAuth-only account.
+  // Defaults to `true` (NOT locked) while loading — the list isn't rendered
+  // then anyway, and the server 409 remains the backstop for races.
+  const hasPassword = identitiesQuery.data?.has_password ?? true;
+  const unlinkLocked = items.length === 1 && !hasPassword;
 
   return (
     <div className="flex h-full flex-col" data-testid="user-profile-page">
@@ -342,6 +363,7 @@ export function UserProfilePage() {
                   locale={i18n.resolvedLanguage}
                   confirming={confirmingId === identity.id}
                   showBlocksLogin={blocksLoginId === identity.id}
+                  unlinkLocked={unlinkLocked}
                   onAskUnlink={() => askUnlink(identity.id)}
                   onCancelUnlink={cancelUnlink}
                   onConfirmUnlink={() => void confirmUnlink(identity.id)}

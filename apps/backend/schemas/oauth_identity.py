@@ -68,9 +68,20 @@ class OAuthIdentityListResponse(BaseModel):
     on T". The response has no pagination — a single user is unlikely to
     accumulate enough identities to need it (GitHub + Google + maybe a
     future SSO IdP).
+
+    ``has_password`` (M-16, additive — frozen contract allows new fields,
+    never renames): whether the caller has a usable password. Lets the
+    profile page pre-disable the Unlink button on the last identity of an
+    OAuth-only account instead of surfacing the server's 409
+    (``oauth_unlink_blocks_login``) after the click. The boolean is
+    computed with the SAME criterion the 409 guard uses
+    (:func:`services.oauth_identity_service._password_is_set` — NULL and
+    empty string both count as "no password"). The raw ``hashed_password``
+    is never serialised — only this boolean.
     """
 
     items: list[OAuthIdentityOut]
+    has_password: bool
 
 
 __all__ = [

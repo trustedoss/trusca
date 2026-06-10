@@ -11,6 +11,9 @@ vi.mock("@/lib/api", () => ({
   postLogin: vi.fn(),
   postRegister: vi.fn(),
   postLogout: vi.fn(),
+  // M-15: LoginPage queries provider availability on mount. Resolve with an
+  // empty list so the OAuth section simply stays hidden in App smoke tests.
+  fetchOAuthProviders: vi.fn().mockResolvedValue({ providers: [] }),
 }));
 
 // ProjectListPage AND DashboardPage both call listProjects — mock it so the

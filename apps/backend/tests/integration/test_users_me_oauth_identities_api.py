@@ -153,7 +153,8 @@ async def test_get_oauth_identities_returns_empty_for_new_user(
     )
     assert response.status_code == 200, response.text
     body = response.json()
-    assert body == {"items": []}
+    # M-16: ``has_password`` rides along (make_user sets a real hash).
+    assert body == {"items": [], "has_password": True}
 
 
 async def test_get_oauth_identities_returns_caller_identities_oldest_first(
@@ -202,6 +203,36 @@ async def test_get_oauth_identities_returns_caller_identities_oldest_first(
     assert items[0]["provider_user_id"] == pid_gh
     assert items[1]["provider"] == "google"
     assert items[1]["provider_email"] == "user@google.example"
+
+    # M-16: top-level has_password boolean (never the hash itself).
+    assert body["has_password"] is True
+    assert "hashed_password" not in response.text
+
+
+async def test_get_oauth_identities_has_password_false_for_oauth_only_user(
+    client: AsyncClient,
+) -> None:
+    """M-16: OAuth-only account (blank hash) → ``has_password: false``.
+
+    This is the exact state the SPA needs to pre-disable Unlink on the
+    last remaining identity — the same criterion the DELETE 409 guard
+    (``oauth_unlink_blocks_login``) applies server-side.
+    """
+    factory = await _factory(client)
+    async with factory() as session:
+        user = await make_user(session)
+
+    await _make_identity(factory, user_id=user.id, provider="github")
+    await _clear_password(factory, user_id=user.id)
+
+    response = await client.get(
+        "/v1/users/me/oauth-identities",
+        headers=_bearer_for(user),
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["has_password"] is False
+    assert len(body["items"]) == 1
 
 
 async def test_get_oauth_identities_isolates_users(client: AsyncClient) -> None:
