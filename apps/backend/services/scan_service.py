@@ -75,6 +75,19 @@ class ScanInProgressConflict(ScanError):
     title = "Scan Already In Progress"
 
 
+class ScanArchivedConflict(ScanError):
+    """409 — the project is archived; archiving disables new scans (H-7).
+
+    Archiving retires a project: it hides it from default lists AND must stop
+    new work. The trigger path previously checked only team access and the
+    concurrency cap, so an archived project still accepted scans and kept
+    consuming worker capacity.
+    """
+
+    status_code = 409
+    title = "Project Archived"
+
+
 class ScanDeleteConflict(ScanError):
     """409 — the scan cannot be deleted in its current state.
 
@@ -447,6 +460,13 @@ async def trigger_scan(
     if not _can_access_team(actor, project.team_id):
         raise ScanForbidden(
             f"actor is not a member of team {project.team_id}",
+        )
+
+    # H-7 — archiving disables new scans. Reject before reserving any worker
+    # slot so a retired project cannot keep consuming capacity.
+    if project.archived_at is not None:
+        raise ScanArchivedConflict(
+            f"project {project_id} is archived; unarchive it to run new scans",
         )
 
     # B1 — per-team concurrency cap. Reject the trigger up front when the
