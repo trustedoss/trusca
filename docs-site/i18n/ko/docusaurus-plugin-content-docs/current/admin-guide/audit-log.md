@@ -87,7 +87,7 @@ Admin UI 의 `target_table` 필터 드롭다운은 `apps/backend/schemas/admin_o
 
 - **행위자 user ID** — UUID 정확 일치.
 - **대상 테이블** — enum 단일 선택(`projects`, `teams`, `users`, `vulnerability_findings` 등).
-- **동작** — 자유 텍스트 contains(대소문자 구분).
+- **동작** — 자유 텍스트 contains(대소문자 무시 — 서버가 `ilike` 를 사용하므로 `create` 와 `CREATE` 가 같은 행을 매칭합니다).
 - **날짜 범위** — `from` 과 `to`(사용자 지정).
 - **검색** — 자유 텍스트 쿼리(`q`). JSON 인코딩된 `diff` 컬럼에 대해 `ilike` 매칭을 수행합니다. `action` 과 `target_table` 은 별도 필터 파라미터(`action=`, `target_table=`)이며 `q` 는 이 두 컬럼을 매칭하지 않습니다.
 
