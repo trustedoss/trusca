@@ -84,6 +84,28 @@ class TeamHasActiveScans(AdminTeamError):
     extensions = {"team_has_active_scans": True}
 
 
+class TeamHasProjects(AdminTeamError):
+    """409 — the team still owns non-archived projects (M-8).
+
+    Deleting a team CASCADE-removes its projects (and their scans / findings).
+    To prevent an accidental team delete from silently destroying live
+    projects, we refuse when any non-archived project remains: the operator
+    must archive (retire) the projects first, exactly as the admin guide
+    describes. Archived-only teams are still deletable — those projects are
+    already retired. ``project_count`` carries the blocker count.
+    """
+
+    status_code = 409
+    title = "Team Has Projects"
+
+    def __init__(self, message: str, *, project_count: int) -> None:
+        super().__init__(message)
+        self.extensions = {
+            "team_has_projects": True,
+            "project_count": project_count,
+        }
+
+
 class LastTeamAdminProtected(AdminTeamError):
     status_code = 422
     title = "Last Team Admin Protected"
@@ -457,15 +479,20 @@ async def delete_team(
             f"team {team_id} owns projects with scans currently queued or running"
         )
 
-    # Archive non-archived projects so the audit log records the archive
-    # event (the CASCADE on commit will physically remove the rows; the
-    # audit row is still produced inside before_flush).
-    now = _now()
+    # M-8: refuse when the team still owns NON-archived (live) projects.
+    # Deleting the team CASCADE-removes its projects + their scans/findings, so
+    # an accidental delete would silently destroy live data. The operator must
+    # archive (retire) the projects first — matching the admin guide. Archived
+    # projects do not block: they are already retired, and the CASCADE simply
+    # finalises their removal.
     stmt = select(Project).where(Project.team_id == team_id, Project.archived_at.is_(None))
-    projects = list((await session.execute(stmt)).scalars().all())
-    for project in projects:
-        project.archived_at = now
-        project.updated_at = now
+    live_projects = list((await session.execute(stmt)).scalars().all())
+    if live_projects:
+        raise TeamHasProjects(
+            f"team {team_id} still owns {len(live_projects)} non-archived "
+            "project(s); archive them before deleting the team",
+            project_count=len(live_projects),
+        )
 
     await session.delete(team)
     await session.commit()
@@ -473,7 +500,6 @@ async def delete_team(
         "admin.team.deleted",
         actor_id=str(actor.id),
         team_id=str(team_id),
-        archived_project_count=len(projects),
     )
 
 

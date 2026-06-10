@@ -187,7 +187,9 @@ The first member of the team is whoever you assign on the next screen.
 
 `super_admin` and the team's `team_admin` can rename a team. The team's `name`, `slug`, and `description` are mutable via `PATCH /v1/admin/teams/{team_id}`.
 
-Team archiving (a hidden state that disables new project creation while keeping existing projects readable) is on the roadmap. In this release a team can only be renamed or, with all projects first removed, deleted by a `super_admin`.
+Team archiving (a hidden state that disables new project creation while keeping existing projects readable) is on the roadmap. In this release a team can only be renamed or deleted by a `super_admin`.
+
+Deleting a team is **guarded**: `DELETE /v1/admin/teams/{team_id}` is refused with `409` (RFC 7807 body carries `team_has_projects: true` and `project_count`) while the team still owns any **non-archived** project, and with `422` (`team_has_active_scans: true`) while any project has a queued/running scan. Archive every project first (Project Settings → Archive), then delete the team. Archived projects do not block the delete — the team delete CASCADE-removes them (and their scans/findings) once no live project remains.
 
 ## Sessions
 

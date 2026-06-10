@@ -187,7 +187,9 @@ UI 에서 *마지막* 관리자를 재활성화하면 부트스트랩 역설이 
 
 `super_admin`과 팀의 `team_admin`은 팀 이름을 변경할 수 있습니다. 팀의 `name`, `slug`, `description`은 `PATCH /v1/admin/teams/{team_id}`로 변경 가능합니다.
 
-팀 아카이브(새 프로젝트 생성을 차단하면서 기존 프로젝트는 읽기 가능하게 유지하는 숨김 상태)는 로드맵 항목입니다. v0.10.0 에서는 팀 이름 변경, 또는 모든 프로젝트가 먼저 제거된 상태에서 `super_admin`이 직접 팀 삭제만 가능합니다.
+팀 아카이브(새 프로젝트 생성을 차단하면서 기존 프로젝트는 읽기 가능하게 유지하는 숨김 상태)는 로드맵 항목입니다. v0.10.0 에서는 `super_admin`이 팀 이름을 변경하거나 팀을 삭제할 수 있습니다.
+
+팀 삭제는 **가드**됩니다: `DELETE /v1/admin/teams/{team_id}`는 팀에 **아카이브되지 않은** 프로젝트가 남아 있으면 `409`(RFC 7807 본문에 `team_has_projects: true`와 `project_count`)로 거부되고, 어느 프로젝트든 queued/running 스캔이 있으면 `422`(`team_has_active_scans: true`)로 거부됩니다. 먼저 모든 프로젝트를 아카이브한 뒤(Project Settings → Archive) 팀을 삭제하세요. 아카이브된 프로젝트는 삭제를 막지 않습니다 — 라이브 프로젝트가 없으면 팀 삭제가 CASCADE로 그 프로젝트(및 스캔·finding)를 함께 제거합니다.
 
 ## 세션
 
