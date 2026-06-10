@@ -15,9 +15,9 @@ clean state every night.
 
 This is built from two independent pieces:
 
-1. **`DEMO_READ_ONLY` read-only mode** (any deploy — Docker Compose or GCP).
-2. **A daily reset** (GCP only — a Cloud Scheduler → Cloud Run Job in the
-   bundled Terraform module).
+1. **`DEMO_READ_ONLY` read-only mode** (any deploy).
+2. **A daily reset** (a systemd timer on the demo host that runs the reset
+   script inside the backend container).
 
 ## 1. Read-only mode (`DEMO_READ_ONLY`)
 
@@ -77,10 +77,27 @@ The SPA reads the flag from the public `GET /health` response
 
 The middleware is the real boundary; the UI gating only avoids dead-end clicks.
 
-## 2. Daily reset (GCP)
+## 2. Daily reset (systemd timer)
 
-The bundled Terraform module ships a **Cloud Scheduler → Cloud Run Job** that
-runs `scripts/reset_demo.py` once a day. The job:
+The Hetzner demo host runs the reset on a **systemd timer**. The unit files ship
+in `deploy/hetzner/`:
+
+- `trustedoss-demo-reset.service` — a `oneshot` unit that runs the reset script
+  inside the running backend container:
+
+  ```
+  ExecStart=/usr/local/bin/docker-compose -f docker-compose.yml \
+    exec -T -e APP_ENV=demo backend python -m scripts.reset_demo
+  ```
+
+  Running it inside the container bypasses the HTTP `DEMO_READ_ONLY` guard
+  (the script talks to Postgres directly); the script's own `APP_ENV` allow-list
+  is the safety boundary.
+- `trustedoss-demo-reset.timer` — fires the service daily at **03:17 UTC**
+  (`OnCalendar=*-*-* 03:17:00 UTC`, `Persistent=true` so a reset missed while the
+  host was down runs once on next boot).
+
+The reset (`apps/backend/scripts/reset_demo.py`):
 
 - **drops only the demo dataset** — the `demo-org` organization (FK cascade
   removes its teams → projects → scans → findings) and the demo users (scoped
@@ -92,40 +109,42 @@ runs `scripts/reset_demo.py` once a day. The job:
 - **refuses to run** unless `APP_ENV` is `dev` or `demo` (it can never run
   against a production database).
 
-Enable it in `terraform.tfvars` (defaults shown):
-
-```hcl
-demo_read_only       = true          # block all non-auth mutations
-demo_reset_enabled   = true          # provision the daily Scheduler + Job
-demo_reset_schedule  = "17 3 * * *"  # cron (Cloud Scheduler syntax)
-demo_reset_time_zone = "Etc/UTC"
-
-# Recommended — pin a STABLE demo super-admin password so the published demo
-# credentials survive the nightly reset. It is stored in Secret Manager and the
-# reset Job never generates or logs a credential. If you leave this unset the
-# Job generates a random password each night but does NOT log the plaintext
-# (only a masked advisory), so you would not learn the new credential — set
-# this to a known value you can publish.
-# demo_super_admin_password = "REPLACE_ME_MIN_12_CHARS"
-```
-
-The reset Job reuses the backend image, service account, Cloud SQL connection,
-and secrets, so there is nothing extra to build or grant. See
-[GCP Demo SaaS deploy](./gcp-deploy.md) for the full deploy runbook.
-
-:::note Manual reset
-You can trigger a reset on demand without waiting for the schedule:
+Install and enable the timer on the host:
 
 ```bash
-gcloud run jobs execute <name_prefix>-<env>-demo-reset --region <region>
+sudo cp deploy/hetzner/trustedoss-demo-reset.service /etc/systemd/system/
+sudo cp deploy/hetzner/trustedoss-demo-reset.timer   /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now trustedoss-demo-reset.timer
 ```
 
-The job name is in the `demo_reset_job_name` Terraform output.
+:::note Pin a stable demo password
+Set `DEMO_SUPER_ADMIN_PASSWORD` in the host `.env` to a known value so the
+published demo credentials survive the nightly reset. If you leave it unset, the
+reseed generates a random password each night but does **not** log the
+plaintext, so you would not learn the new credential.
+:::
+
+See [GCP Demo SaaS deploy](./gcp-deploy.md) for the full deploy runbook.
+
+:::note Manual reset
+Trigger a reset on demand without waiting for the timer:
+
+```bash
+sudo systemctl start trustedoss-demo-reset.service
+# or run the underlying command directly:
+docker-compose -f docker-compose.yml exec -T -e APP_ENV=demo backend python -m scripts.reset_demo
+```
 :::
 
 ## Local read-only demo (Docker Compose)
 
 The read-only mode works on any deploy — for a local read-only instance, add
-`DEMO_READ_ONLY=true` to your `.env` and restart the backend. The nightly reset
-is GCP-only; locally, re-run `apps/backend/scripts/reset_demo.py` (with
-`APP_ENV=demo`) whenever you want a clean dataset.
+`DEMO_READ_ONLY=true` to your `.env` and restart the backend. The systemd timer
+is for the demo host; locally, re-run the reset inside the backend container
+whenever you want a clean dataset:
+
+```bash
+docker-compose -f docker-compose.dev.yml exec -e APP_ENV=demo backend \
+  python -m scripts.reset_demo
+```

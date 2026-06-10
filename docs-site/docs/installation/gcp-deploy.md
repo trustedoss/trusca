@@ -130,7 +130,7 @@ Output is a single JSON line with the seeded user emails and project IDs.
 The demo super-admin credentials are:
 
 - email: `admin@demo.trustedoss.dev`
-- password: `DemoAdmin2026!`
+- password: `DemoTest2026!`
 
 These are public, documented credentials. The Demo SaaS is for demos
 only — never store real customer data here.

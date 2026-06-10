@@ -111,10 +111,11 @@ Admin UI 의 `target_table` 필터 드롭다운은 `apps/backend/schemas/admin_o
 ```bash
 curl -sS \
   -H "Authorization: Bearer ${ACCESS_TOKEN}" \
-  "https://trustedoss.example.com/v1/admin/audit?from=2026-01-01&to=2026-01-31&page=1&page_size=1000"
+  "https://trustedoss.example.com/v1/admin/audit?from=2026-01-01&to=2026-01-31&page=1&page_size=200"
 ```
 
-응답이 `page` + `page_size`로 페이지됩니다.
+응답이 `page` + `page_size`로 페이지됩니다. `page_size` 상한은 **200**이며(초과
+값은 `422` 반환), 더 넓은 범위는 `page`를 증가시켜 조회하십시오.
 
 ## 흔한 쿼리
 

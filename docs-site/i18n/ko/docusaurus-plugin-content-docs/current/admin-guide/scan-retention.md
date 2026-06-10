@@ -46,7 +46,7 @@ scan #3 on main  ──► live, scan #2 superseded ──► grace 후 회수
 
 ## 보존 정책 변수 {#retention-policy-variables}
 
-네 키 모두 런타임에 `os.getenv`로 읽힙니다 — `.env`를 편집하고 `worker`·`beat`를 재시작하면 적용됩니다. 정식 레퍼런스는 [환경변수 → 스캔 보존](../reference/env-variables.md#scan-retention)을 참고하십시오.
+네 키 모두 런타임에 `os.getenv`로 읽힙니다 — `.env`를 편집하고 Celery 워커와 beat 서비스를 재시작하면 적용됩니다. 서비스명은 스택마다 다릅니다. **프로덕션** compose(`docker-compose.yml`)에서는 `worker`·`beat`이고, **dev** compose(`docker-compose.dev.yml`)에서는 `celery-worker`·`celery-beat`입니다. 정식 레퍼런스는 [환경변수 → 스캔 보존](../reference/env-variables.md#scan-retention)을 참고하십시오.
 
 <!-- docs-uat: id=scan-retention-env kind=shell ctx=host tier=manual waiver=env-config-snippet-not-a-command -->
 ```bash
@@ -142,7 +142,7 @@ curl -sS -X DELETE \
 ## 트러블슈팅 {#troubleshooting}
 
 :::info 먼저 확인할 로그
-- `docker-compose logs --tail=200 beat | grep scan_retention_sweep` — 마지막 sweep의 판정과 사유별 카운트.
+- `docker-compose -f docker-compose.yml logs --tail=200 beat | grep scan_retention_done` — 마지막 sweep의 판정과 사유별 카운트(`reclaimed_superseded` / `reclaimed_aged`). 각 sweep 시작 시 적용된 정책은 `scan_retention_policy`로 로그에 남습니다. dev compose에서는 서비스명이 `beat`가 아니라 `celery-beat`입니다.
 - `scans` `delete`로 필터링한 감사 로그 — 무엇이 왜 회수되었는지.
 :::
 

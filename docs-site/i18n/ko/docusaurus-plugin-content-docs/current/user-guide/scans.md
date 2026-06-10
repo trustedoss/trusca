@@ -264,6 +264,13 @@ UI는 단계·진행률 실시간 갱신을 위해 `ws(s)://<host>/ws/scans/{sca
 
 ## 트러블슈팅
 
+:::note compose 서비스명은 스택마다 다릅니다
+아래 명령은 **프로덕션** compose(`docker-compose.yml`)를 대상으로 하며, Celery
+서비스명은 `worker`·`beat`입니다. **dev** compose(`docker-compose.dev.yml`)에서는
+같은 서비스가 `celery-worker`·`celery-beat`이므로, dev 스택이라면 서비스명과 `-f`
+파일을 바꿔서 실행하십시오.
+:::
+
 ### 스캔이 `Queued`에서 멈춤
 
 워커가 아직 받지 못했습니다. 워커가 다운되었거나 큐가 포화 상태입니다.

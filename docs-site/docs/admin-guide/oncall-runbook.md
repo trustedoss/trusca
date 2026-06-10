@@ -103,8 +103,9 @@ docker-compose logs --tail=2000 worker | grep -E 'backup\.(completed|failed)' | 
 # 3. Most recent backup row + status
 curl -fsS "https://<your-host>/v1/admin/backup/list" \
   -H "Authorization: Bearer $ACCESS_TOKEN" | jq '.items[0:5]'
-# 4. Disk free on the backup volume
-docker-compose exec backend df -h /backups
+# 4. Disk free on the backup volume (BACKUPS_ROOT is mounted at
+#    /opt/trustedoss/backups in the backend container)
+docker-compose -f docker-compose.yml exec backend df -h /opt/trustedoss/backups
 ```
 
 ### Recover
@@ -113,14 +114,19 @@ docker-compose exec backend df -h /backups
    curl -fsS -X POST "https://<your-host>/v1/admin/backup/trigger" \
      -H "Authorization: Bearer $ACCESS_TOKEN"
    ```
-2. **If manual also fails — inspect `pg_dump` directly**:
+2. **If manual also fails — run the host backup script directly**:
+
+   `scripts/backup.sh` is a **host** script: it shells out to
+   `docker-compose ... exec` for `pg_dump` and tars the workspace mount, so run
+   it on the host (not inside a container). It writes to `BACKUP_DIR` when set,
+   otherwise `backups/<stamp>` under the repo root (mounted at
+   `/opt/trustedoss/backups`).
    ```bash
-   docker-compose exec backend bash -c \
-     'BACKUP_NAME=debug-$(date +%Y%m%dT%H%M%SZ); \
-      bash /app/scripts/backup.sh --name "$BACKUP_NAME" 2>&1'
+   # From the deploy directory on the host (where docker-compose.yml + .env live).
+   BACKUP_DIR=backups/debug-$(date +%Y%m%d-%H%M%S) bash scripts/backup.sh --no-prune 2>&1
    ```
-   - Permission denied → `BACKUPS_ROOT` volume mount problem (check compose `backups:/backups` mapping).
-   - Server version mismatch → `postgresql-client-17` not installed in worker image (regression — escalate).
+   - `.env not found` → run from the deploy directory, or the install is incomplete.
+   - Server version mismatch → `postgresql-client-17` missing in the postgres image (regression — escalate).
    - Disk full → see Scenario 4.
 
 ### Escalate
@@ -214,7 +220,7 @@ docker-compose exec postgres psql -U trustedoss -d trustedoss \
 When paging the portal dev team, attach:
 
 - Scenario number (1-4) and PagerDuty alert URL.
-- Portal version: `docker-compose exec backend python -c "from main import APP_VERSION; print(APP_VERSION)"`
+- Portal version: `docker-compose -f docker-compose.yml exec backend python -c "from main import app; print(app.version)"`
 - Last 2000 lines of the relevant container: `docker-compose logs --tail=2000 <svc>`
 - For Trivy DB issues: the worker's `/var/lib/trivy/db/metadata.json` content and `docker-compose logs --tail=500 worker | grep trivy_db`.
 - For scan issues: `<scan_id>` and `/v1/scans/<scan_id>` full JSON.

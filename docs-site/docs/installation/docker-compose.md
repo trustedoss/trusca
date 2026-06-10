@@ -35,109 +35,98 @@ curl --version
 df -h /                            # at least 20 GB free
 ```
 
-## Evaluation install (lightweight, one command)
+## Evaluation install (dev stack)
 
 Want to *try* TrustedOSS Portal before committing a production host? The
-**evaluation profile** stands the portal up on a small machine and seeds a
-realistic demo dataset, so you go from clone to a populated dashboard in one
-command — no manual migration, no empty screen.
+**dev stack** (`docker-compose.dev.yml`) stands the portal up from a clone and
+lets you seed a realistic demo dataset, so you go from clone to a populated
+dashboard in a few commands.
 
 :::note When to use this
 A laptop, a throwaway cloud VM, or any **2 vCPU / 4 GB RAM** host. For a real
 deployment use the [install wizard](#step-2--run-the-install-wizard) instead —
-the eval profile trades production hardening (TLS, role separation, the full
-6 GB scan worker) for a low-friction first look.
+the dev stack trades production hardening (TLS, role separation, the full
+6 GB scan worker) for a low-friction first look. Do not expose it to the public
+internet.
 :::
 
 ### Requirements
 
 - **2 vCPU / 4 GB RAM** (vs. 4 vCPU / 8 GB recommended for the full stack).
-- `docker-compose` (V1 preferred; the script falls back to the `docker compose`
-  V2 plugin), `openssl`, and `curl`.
-- A clone of the repository (the eval script lives at `scripts/eval-up.sh`).
+- `docker-compose` (V1) and `git`.
+- A clone of the repository.
 
-### One command
+### Bring up the stack
 
 ```bash
 git clone https://github.com/trustedoss/trustedoss-portal.git
 cd trustedoss-portal
-./scripts/eval-up.sh            # add --no-prompt for CI / automation
+cp .env.example .env
 ```
 
-The script:
+The dev image runs `uvicorn --reload` directly, so — unlike the production
+image — it does not auto-apply migrations on boot. Create the schema first so
+the backend reports healthy as soon as it starts (otherwise the health-gated
+`celery-worker` blocks `up`):
 
-1. Picks the Compose binary (V1 preferred).
-2. Bootstraps `.env` from `.env.example` — generates a strong `SECRET_KEY`, sets
-   `APP_ENV=demo`, and pins `CORS_ALLOWED_ORIGINS` to `EVAL_URL`
-   (default `http://localhost`). An existing `.env` is left untouched.
-3. Brings up the eval stack:
+```bash
+docker-compose -f docker-compose.dev.yml run --rm backend alembic upgrade head
+```
 
-   ```bash
-   docker-compose -f docker-compose.yml -f docker-compose.eval.yml up -d
-   ```
+Then bring the full stack up:
 
-   with `--compatibility` so the eval resource limits actually bind.
-4. Waits for the backend **readiness gate** — `GET /health/ready` returns `200`
-   only once the Postgres schema is at the Alembic HEAD (`AUTO_MIGRATE=true`
-   applies it on start). If readiness never flips, it runs a one-shot
-   `alembic upgrade head` and re-polls.
-5. Seeds the **demo dataset** (`scripts/seed_demo.py`, idempotent): 1 org,
-   3 teams, 5 users, 5 projects, 10 CVEs, license findings, obligations, and
-   in-app notifications.
-6. Prints the URL and the demo accounts.
+```bash
+docker-compose -f docker-compose.dev.yml up -d
+```
 
-Open **`http://localhost/`** (or your `EVAL_URL`) and sign in:
+The schema is already applied, so `postgres`, `redis`, `backend`,
+`celery-worker`, `celery-beat`, and `frontend` report healthy within about
+30 seconds (`docker-compose -f docker-compose.dev.yml ps`).
 
-| Account | Email |
-| --- | --- |
-| Super admin | `admin@demo.trustedoss.dev` |
-| Team admins | `frontend-admin@demo.trustedoss.dev`, `backend-admin@…`, `security-admin@…` |
-| Developer | `dev@demo.trustedoss.dev` |
+### Seed the demo dataset
 
-The password is whatever you set in `DEMO_SUPER_ADMIN_PASSWORD` (in `.env`)
-before the first run. If you leave it unset, `seed_demo.py` generates a random
-one and `eval-up.sh` prints it once — store it, it is not persisted anywhere.
+```bash
+docker-compose -f docker-compose.dev.yml exec backend \
+  python -m scripts.seed_demo
+```
 
-### Resource budget (2 vCPU / 4 GB)
+The seed (`apps/backend/scripts/seed_demo.py`, idempotent) creates 1 org,
+3 teams, 5 users, 5 projects, plus a realistic mix of CVEs, license findings,
+obligations, and in-app notifications — about 10 seconds.
 
-The eval overlay (`docker-compose.eval.yml`) caps every container so no single
-service starves the host:
+Open **`http://localhost:5173/`** and sign in:
 
-| Service | CPU limit | Memory limit |
+| Account | Email | Password |
 | --- | --- | --- |
-| traefik (HTTP-only) | 0.25 | 128M |
-| postgres | 0.50 | 768M |
-| redis | 0.25 | 128M |
-| backend | 0.75 | 768M |
-| worker (concurrency 1) | 0.75 | 1280M |
-| beat | 0.25 | 192M |
-| frontend | 0.25 | 128M |
+| Super admin | `admin@demo.trustedoss.dev` | `DemoTest2026!` |
+| Team admin | `frontend-admin@demo.trustedoss.dev` | `DemoTest2026!` |
+| Developer | `dev@demo.trustedoss.dev` | `DemoTest2026!` |
 
-CPU caps deliberately oversubscribe the two cores (they are ceilings, not
-reservations); the memory limits sum to ~3.4 GB, leaving headroom on a 4 GB
-host. Compared to the prod stack, Traefik runs plain **HTTP only** (no Let's
-Encrypt — so no public DNS / port 443 needed), and the worker runs a single
-low-concurrency slot.
+The demo password is set in `.env.example` and is intentionally weak — never
+reuse it on a host that anyone else can reach.
 
 ### How vulnerabilities show up
 
-The eval profile ships findings via the seeded demo dataset; the worker also downloads the Trivy DB on first boot if it has internet egress. The eval host does not need any external vulnerability engine — Trivy and its DB live entirely inside the worker container.
+The seeded demo dataset ships findings directly; the worker also downloads the
+Trivy DB on first boot if it has internet egress. The host does not need any
+external vulnerability engine — Trivy and its DB live entirely inside the worker
+container.
 
 For air-gapped evaluation (no `ghcr.io` egress), see [Vulnerability data — Air-gapped operation](../admin-guide/vulnerability-data.md#air-gapped).
 
-:::warning Eval ≠ production
-Real source scans (cdxgen + scancode) peak at ~6 GB on the worker; the eval
-worker (1280M, concurrency 1) is sized for **browsing the seeded dataset**, not
-for production scanning. It can run a small scan but will struggle on a large
-repository. The eval profile also skips TLS and the L1 DB role separation — do
-not expose it to the public internet. Use the [install
-wizard](#step-2--run-the-install-wizard) for anything beyond a first look.
+:::warning Dev stack ≠ production
+Real source scans (cdxgen + scancode) peak at ~6 GB on the worker. The dev
+stack is sized for **browsing the seeded dataset**, not for production scanning.
+It can run a small scan but will struggle on a large repository. The dev stack
+also skips TLS and the L1 DB role separation — do not expose it to the public
+internet. Use the [install wizard](#step-2--run-the-install-wizard) for anything
+beyond a first look.
 :::
 
 Tear down when you are done:
 
 ```bash
-docker-compose -f docker-compose.yml -f docker-compose.eval.yml down
+docker-compose -f docker-compose.dev.yml down
 # add -v to also delete the Postgres / workspace volumes (wipes the demo data)
 ```
 

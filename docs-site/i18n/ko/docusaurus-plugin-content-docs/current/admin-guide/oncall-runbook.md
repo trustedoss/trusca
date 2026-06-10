@@ -102,8 +102,9 @@ docker-compose logs --tail=2000 worker | grep -E 'backup\.(completed|failed)' | 
 # 3. 가장 최근 백업 행 + 상태
 curl -fsS "https://<your-host>/v1/admin/backup/list" \
   -H "Authorization: Bearer $ACCESS_TOKEN" | jq '.items[0:5]'
-# 4. 백업 볼륨의 디스크 여유 공간
-docker-compose exec backend df -h /backups
+# 4. 백업 볼륨의 디스크 여유 공간(BACKUPS_ROOT는 백엔드 컨테이너에서
+#    /opt/trustedoss/backups에 마운트됨)
+docker-compose -f docker-compose.yml exec backend df -h /opt/trustedoss/backups
 ```
 
 ### 복구
@@ -112,14 +113,19 @@ docker-compose exec backend df -h /backups
    curl -fsS -X POST "https://<your-host>/v1/admin/backup/trigger" \
      -H "Authorization: Bearer $ACCESS_TOKEN"
    ```
-2. **수동도 실패하면 — `pg_dump` 를 직접 확인**:
+2. **수동도 실패하면 — 호스트 백업 스크립트를 직접 실행**:
+
+   `scripts/backup.sh`는 **호스트** 스크립트입니다. `pg_dump`를
+   `docker-compose ... exec`로 호출하고 워크스페이스 마운트를 tar로 묶으므로,
+   컨테이너 안이 아니라 호스트에서 실행하십시오. `BACKUP_DIR`이 설정되면 그
+   경로에, 아니면 레포 루트의 `backups/<stamp>`(`/opt/trustedoss/backups`에
+   마운트됨)에 기록합니다.
    ```bash
-   docker-compose exec backend bash -c \
-     'BACKUP_NAME=debug-$(date +%Y%m%dT%H%M%SZ); \
-      bash /app/scripts/backup.sh --name "$BACKUP_NAME" 2>&1'
+   # docker-compose.yml + .env가 있는 호스트의 배포 디렉터리에서 실행합니다.
+   BACKUP_DIR=backups/debug-$(date +%Y%m%d-%H%M%S) bash scripts/backup.sh --no-prune 2>&1
    ```
-   - Permission denied → `BACKUPS_ROOT` 볼륨 마운트 문제(compose 의 `backups:/backups` 매핑 확인).
-   - Server version mismatch → 워커 이미지에 `postgresql-client-17` 미설치(회귀 — 에스컬레이션).
+   - `.env not found` → 배포 디렉터리에서 실행하거나, 설치가 완료되지 않았습니다.
+   - Server version mismatch → postgres 이미지에 `postgresql-client-17` 미설치(회귀 — 에스컬레이션).
    - 디스크 가득참 → 시나리오 4 참고.
 
 ### 에스컬레이션
@@ -213,7 +219,7 @@ docker-compose exec postgres psql -U trustedoss -d trustedoss \
 포털 개발팀에 호출 시 다음을 첨부:
 
 - 시나리오 번호(1-4)와 PagerDuty 알림 URL.
-- 포털 버전: `docker-compose exec backend python -c "from main import APP_VERSION; print(APP_VERSION)"`
+- 포털 버전: `docker-compose -f docker-compose.yml exec backend python -c "from main import app; print(app.version)"`
 - 관련 컨테이너의 마지막 2000 라인: `docker-compose logs --tail=2000 <svc>`
 - Trivy DB 이슈: 워커의 `/var/lib/trivy/db/metadata.json` 내용 + `docker-compose logs --tail=500 worker | grep trivy_db`.
 - 스캔 이슈: `<scan_id>` 와 `/v1/scans/<scan_id>` 전체 JSON.

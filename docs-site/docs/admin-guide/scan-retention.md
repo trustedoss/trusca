@@ -46,7 +46,7 @@ The [GitHub Action](../ci-integration/github-actions.md#how-the-ref-becomes-a-re
 
 ## Retention policy variables
 
-All four keys are read at runtime via `os.getenv` — edit `.env` and restart `worker` and `beat` to apply them. See [Environment variables → Scan retention](../reference/env-variables.md#scan-retention) for the canonical reference.
+All four keys are read at runtime via `os.getenv` — edit `.env` and restart the Celery worker and beat services to apply them. The service names differ by stack: on the **production** compose (`docker-compose.yml`) they are `worker` and `beat`; on the **dev** compose (`docker-compose.dev.yml`) they are `celery-worker` and `celery-beat`. See [Environment variables → Scan retention](../reference/env-variables.md#scan-retention) for the canonical reference.
 
 <!-- docs-uat: id=scan-retention-env kind=shell ctx=host tier=manual waiver=env-config-snippet-not-a-command -->
 ```bash
@@ -142,7 +142,7 @@ curl -sS -X DELETE \
 ## Troubleshooting
 
 :::info Logs to check first
-- `docker-compose logs --tail=200 beat | grep scan_retention_sweep` — the last sweep's verdict and per-reason counts.
+- `docker-compose -f docker-compose.yml logs --tail=200 beat | grep scan_retention_done` — the last sweep's verdict and per-reason counts (`reclaimed_superseded` / `reclaimed_aged`). The resolved policy is logged as `scan_retention_policy` at the start of each sweep. On the dev compose the service is `celery-beat`, not `beat`.
 - Audit log filtered to `scans` `delete` — what was reclaimed and why.
 :::
 

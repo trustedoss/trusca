@@ -35,105 +35,95 @@ curl --version
 df -h /                            # 20 GB 이상 여유
 ```
 
-## 평가용 경량 설치 (1커맨드)
+## 평가용 설치 (dev 스택)
 
 프로덕션 호스트를 준비하기 전에 TrustedOSS Portal을 *체험*하고 싶으신가요?
-**평가 프로파일**은 작은 머신에 포털을 띄우고 현실적인 데모 데이터까지
-시드하므로, 클론에서 데이터가 채워진 대시보드까지 한 커맨드로 도달합니다 —
-수동 마이그레이션 없이, 빈 화면 없이.
+**dev 스택**(`docker-compose.dev.yml`)은 클론에서 포털을 띄우고 현실적인 데모
+데이터를 시드할 수 있어, 클론에서 데이터가 채워진 대시보드까지 몇 커맨드로
+도달합니다.
 
 :::note 언제 사용하나
 노트북, 일회용 클라우드 VM, 또는 **2 vCPU / 4 GB RAM** 호스트. 실제 배포에는
-[설치 마법사](#2단계--설치-마법사-실행)를 사용하세요 — 평가 프로파일은 프로덕션
-하드닝(TLS, 역할 분리, 6 GB 스캔 워커)을 첫 체험의 낮은 마찰과 맞바꿉니다.
+[설치 마법사](#2단계--설치-마법사-실행)를 사용하세요 — dev 스택은 프로덕션
+하드닝(TLS, 역할 분리, 6 GB 스캔 워커)을 첫 체험의 낮은 마찰과 맞바꿉니다. 공개
+인터넷에 노출하지 마세요.
 :::
 
 ### 요구사항
 
 - **2 vCPU / 4 GB RAM** (풀 스택 권장 사양은 4 vCPU / 8 GB).
-- `docker-compose`(V1 우선, 없으면 `docker compose` V2 플러그인으로 폴백),
-  `openssl`, `curl`.
-- 레포 클론(평가 스크립트는 `scripts/eval-up.sh`에 있음).
+- `docker-compose`(V1)와 `git`.
+- 레포 클론.
 
-### 1커맨드
+### 스택 기동
 
 ```bash
 git clone https://github.com/trustedoss/trustedoss-portal.git
 cd trustedoss-portal
-./scripts/eval-up.sh            # CI / 자동화는 --no-prompt 추가
+cp .env.example .env
 ```
 
-스크립트 동작:
+dev 이미지는 `uvicorn --reload`를 직접 실행하므로 — 프로덕션 이미지와 달리 —
+부팅 시 마이그레이션을 자동 적용하지 않습니다. 백엔드가 기동하자마자 healthy로
+보고하도록 스키마를 먼저 생성하세요(그러지 않으면 health 게이트가 걸린
+`celery-worker`가 `up`을 막습니다):
 
-1. Compose 바이너리 선택(V1 우선).
-2. `.env.example`로부터 `.env` 부트스트랩 — 강력한 `SECRET_KEY` 생성,
-   `APP_ENV=demo` 설정, `CORS_ALLOWED_ORIGINS`를 `EVAL_URL`
-   (기본 `http://localhost`)로 고정. 기존 `.env`는 건드리지 않음.
-3. 평가 스택 기동:
+```bash
+docker-compose -f docker-compose.dev.yml run --rm backend alembic upgrade head
+```
 
-   ```bash
-   docker-compose -f docker-compose.yml -f docker-compose.eval.yml up -d
-   ```
+그다음 전체 스택을 기동합니다:
 
-   `--compatibility`로 평가용 리소스 한도가 실제로 적용되도록 함.
-4. 백엔드 **readiness 게이트** 대기 — `GET /health/ready`는 Postgres 스키마가
-   Alembic HEAD에 도달했을 때만 `200`을 반환합니다(`AUTO_MIGRATE=true`가 기동 시
-   적용). readiness가 전환되지 않으면 일회성 `alembic upgrade head`를 실행하고
-   재폴링합니다.
-5. **데모 데이터** 시드(`scripts/seed_demo.py`, 멱등): 조직 1, 팀 3, 사용자 5,
-   프로젝트 5, CVE 10, 라이선스 발견, 의무사항, 인앱 알림.
-6. URL과 데모 계정 출력.
+```bash
+docker-compose -f docker-compose.dev.yml up -d
+```
 
-**`http://localhost/`**(또는 `EVAL_URL`)을 열어 로그인하세요:
+스키마가 이미 적용됐으므로 `postgres`, `redis`, `backend`, `celery-worker`,
+`celery-beat`, `frontend`가 약 30초 안에 healthy로 보고합니다
+(`docker-compose -f docker-compose.dev.yml ps`).
 
-| 계정 | 이메일 |
-| --- | --- |
-| 슈퍼 관리자 | `admin@demo.trustedoss.dev` |
-| 팀 관리자 | `frontend-admin@demo.trustedoss.dev`, `backend-admin@…`, `security-admin@…` |
-| 개발자 | `dev@demo.trustedoss.dev` |
+### 데모 데이터 시드
 
-비밀번호는 첫 실행 전에 `.env`의 `DEMO_SUPER_ADMIN_PASSWORD`에 설정한 값입니다.
-설정하지 않으면 `seed_demo.py`가 무작위로 생성하고 `eval-up.sh`가 한 번 출력합니다 —
-어디에도 영구 저장되지 않으니 따로 보관하세요.
+```bash
+docker-compose -f docker-compose.dev.yml exec backend \
+  python -m scripts.seed_demo
+```
 
-### 리소스 예산 (2 vCPU / 4 GB)
+시드(`apps/backend/scripts/seed_demo.py`, 멱등)는 조직 1, 팀 3, 사용자 5,
+프로젝트 5와 현실적인 CVE·라이선스 발견·의무사항·인앱 알림 조합을 생성합니다 —
+약 10초.
 
-평가 오버레이(`docker-compose.eval.yml`)는 어떤 단일 서비스도 호스트를 굶기지
-않도록 모든 컨테이너에 한도를 둡니다:
+**`http://localhost:5173/`**을 열어 로그인하세요:
 
-| 서비스 | CPU 한도 | 메모리 한도 |
+| 계정 | 이메일 | 비밀번호 |
 | --- | --- | --- |
-| traefik (HTTP 전용) | 0.25 | 128M |
-| postgres | 0.50 | 768M |
-| redis | 0.25 | 128M |
-| backend | 0.75 | 768M |
-| worker (concurrency 1) | 0.75 | 1280M |
-| beat | 0.25 | 192M |
-| frontend | 0.25 | 128M |
+| 슈퍼 관리자 | `admin@demo.trustedoss.dev` | `DemoTest2026!` |
+| 팀 관리자 | `frontend-admin@demo.trustedoss.dev` | `DemoTest2026!` |
+| 개발자 | `dev@demo.trustedoss.dev` | `DemoTest2026!` |
 
-CPU 한도는 의도적으로 2코어를 오버서브스크라이브합니다(상한일 뿐 예약이
-아님). 메모리 한도 합계는 약 3.4 GB로, 4 GB 호스트에 여유를 남깁니다. 프로덕션
-스택과 비교하면 Traefik은 평문 **HTTP 전용**으로 동작하고(Let's Encrypt 없음 —
-공개 DNS / 443 포트 불필요), 워커는 단일 저concurrency 슬롯으로 동작합니다.
+데모 비밀번호는 `.env.example`에 설정돼 있고 의도적으로 약합니다 — 다른 사람이
+접근할 수 있는 호스트에서는 절대 재사용하지 마세요.
 
 ### 취약점이 보이는 경로
 
-평가 프로파일은 시드된 데모 데이터셋으로 finding을 제공하며, 워커는 인터넷 egress가 있으면 첫 부팅에 Trivy DB를 다운로드합니다. 평가 호스트는 외부 취약점 엔진이 필요 없습니다 — Trivy와 DB는 모두 워커 컨테이너 내부에 존재합니다.
+시드된 데모 데이터셋은 finding을 직접 제공하며, 워커는 인터넷 egress가 있으면
+첫 부팅에 Trivy DB를 다운로드합니다. 호스트는 외부 취약점 엔진이 필요 없습니다 —
+Trivy와 DB는 모두 워커 컨테이너 내부에 존재합니다.
 
 air-gapped 평가(`ghcr.io` egress 없음)는 [취약점 데이터 — Air-gapped 운영](../admin-guide/vulnerability-data.md#air-gapped) 참조.
 
-:::warning 평가 ≠ 프로덕션
-실제 소스 스캔(cdxgen + scancode)은 워커에서 ~6 GB까지 치솟습니다. 평가 워커
-(1280M, concurrency 1)는 **시드된 데이터 탐색**용이지 프로덕션 스캔용이 아닙니다.
-작은 스캔은 가능하지만 큰 레포에서는 어렵습니다. 평가 프로파일은 TLS와 L1 DB 역할
-분리도 생략하므로 공개 인터넷에 노출하지 마세요. 첫 체험 이상의 용도에는
+:::warning dev 스택 ≠ 프로덕션
+실제 소스 스캔(cdxgen + scancode)은 워커에서 ~6 GB까지 치솟습니다. dev 스택은
+**시드된 데이터 탐색**용이지 프로덕션 스캔용이 아닙니다. 작은 스캔은 가능하지만
+큰 레포에서는 어렵습니다. dev 스택은 TLS와 L1 DB 역할 분리도 생략하므로 공개
+인터넷에 노출하지 마세요. 첫 체험 이상의 용도에는
 [설치 마법사](#2단계--설치-마법사-실행)를 사용하세요.
 :::
 
 다 사용한 뒤 정리:
 
 ```bash
-docker-compose -f docker-compose.yml -f docker-compose.eval.yml down
+docker-compose -f docker-compose.dev.yml down
 # -v 를 추가하면 Postgres / workspace 볼륨까지 삭제(데모 데이터 제거)
 ```
 

@@ -224,7 +224,7 @@ OpenTelemetry tracing exporter와 번들 Jaeger 오버레이는 GA 이후 로드
 - **단일 호스트 (기본)** — 위 7개 서비스. Trivy DB는 워커 부팅 시 다운로드.
 - **Air-gapped** — `TRIVY_DB_REPOSITORY`를 사내 OCI 미러로 지정해 워커가 공개 레지스트리에 절대 접근하지 않도록 함. [취약점 데이터 — Air-gapped 운영](../admin-guide/vulnerability-data.md#air-gapped) 참조.
 
-**Helm chart**는 v0.10.0부터 제공됩니다. v0.10.0 차트 0.3.0은 다음을 추가:
+**Helm chart**는 v0.10.0부터 제공됩니다. v0.10.0 차트 0.10.0은 다음을 추가:
 
 - 컴포넌트별 HPA(worker는 큐 깊이로 스케일).
 - PVC가 있는 PostgreSQL StatefulSet.
