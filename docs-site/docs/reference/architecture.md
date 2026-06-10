@@ -35,7 +35,7 @@ Earlier releases shipped Dependency-Track as an optional eighth service. v0.10.0
 :::
 
 :::note
-The `/metrics` route is reserved at the Traefik level (`docker-compose.yml`) but no backend handler is mounted in this release; the Prometheus exporter is on the post-GA roadmap.
+No backend `/metrics` handler is mounted in this release, so `/metrics` is intentionally not routed at the Traefik level (`docker-compose.yml`); the Prometheus exporter and its route are on the post-GA roadmap.
 :::
 
 ## Network

@@ -22,7 +22,9 @@
 #   redis     — Redis 7.4-alpine, Celery broker + result backend.
 #   backend   — FastAPI image (ghcr.io/trustedoss/backend:${IMAGE_TAG}), 4
 #               uvicorn workers. Reachable only inside the compose network;
-#               Traefik routes `/v1`, `/auth`, `/ws`, `/health`, `/metrics`.
+#               Traefik routes `/v1`, `/auth`, `/ws`, `/health`. A backend
+#               `/metrics` endpoint (Prometheus exporter) is not implemented
+#               in this release, so it is intentionally NOT routed.
 #   worker    — Celery worker on the heavier image
 #               (ghcr.io/trustedoss/backend-worker:${IMAGE_TAG}) which carries
 #               cdxgen / scancode / Trivy / JRE.
@@ -319,8 +321,11 @@ services:
       # `/health` PREFIX (v2.1 B1) routes BOTH /health (liveness) and
       # /health/ready (readiness) to the backend so external probes /
       # load balancers reach the readiness gate, not just the in-container
-      # Compose healthcheck. /metrics stays routed for scrapers.
-      - "traefik.http.routers.backend.rule=Host(`${DOMAIN}`) && (PathPrefix(`/v1`) || PathPrefix(`/auth`) || PathPrefix(`/ws`) || PathPrefix(`/health`) || PathPrefix(`/metrics`))"
+      # Compose healthcheck. A backend `/metrics` endpoint (Prometheus
+      # exporter) is not implemented in this release, so `/metrics` is NOT
+      # routed here — routing it would only return 404s. It will be added
+      # alongside the exporter (post-GA roadmap).
+      - "traefik.http.routers.backend.rule=Host(`${DOMAIN}`) && (PathPrefix(`/v1`) || PathPrefix(`/auth`) || PathPrefix(`/ws`) || PathPrefix(`/health`))"
       - "traefik.http.routers.backend.entrypoints=websecure"
       - "traefik.http.routers.backend.tls=true"
       - "traefik.http.routers.backend.tls.certresolver=le"

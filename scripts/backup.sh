@@ -4,7 +4,9 @@
 # Output: backups/YYYY-MM-DD-HHMMSS/
 #   - postgres.sql.gz       (pg_dump --clean --if-exists | gzip)
 #   - workspace.tar.gz      (tar.gz of the host workspace mount)
-#   - manifest.json         (timestamp, alembic head, db size, image tags)
+#   - manifest.json         (timestamp, alembic head, db size, workspace path,
+#                            has_workspace — false when the workspace mount was
+#                            absent and only the DB was captured)
 #
 # Retention: backups older than ${BACKUP_RETENTION_DAYS:-7} days are removed
 # at the end (skipped if --no-prune is passed).
@@ -20,6 +22,7 @@ BOLD='\033[1m'
 RESET='\033[0m'
 
 ok()    { printf "${GREEN}✓${RESET} %s\n" "$1"; }
+warn()  { printf "${RED}WARNING:${RESET} %s\n" "$1" >&2; }
 fail()  { printf "${RED}✗${RESET} %s\n" "$1" >&2; exit 1; }
 title() { printf "\n${BOLD}%s${RESET}\n" "$1"; }
 
@@ -61,8 +64,10 @@ ok "wrote $out_dir/postgres.sql.gz ($(du -h "$out_dir/postgres.sql.gz" | cut -f1
 if [[ -d "$WORKSPACE_HOST_PATH" ]]; then
   tar -C "$(dirname "$WORKSPACE_HOST_PATH")" -czf "$out_dir/workspace.tar.gz" "$(basename "$WORKSPACE_HOST_PATH")"
   ok "wrote $out_dir/workspace.tar.gz ($(du -h "$out_dir/workspace.tar.gz" | cut -f1))"
+  has_workspace=true
 else
-  printf '%s\n' "  (workspace not present at $WORKSPACE_HOST_PATH — skipping)"
+  has_workspace=false
+  warn "workspace not present at $WORKSPACE_HOST_PATH — this backup is DB-only (no workspace.tar.gz). Restoring it will NOT recover scan workspaces. has_workspace=false is recorded in manifest.json."
 fi
 
 # ---------------------------------------------------------------------------
@@ -80,7 +85,8 @@ cat > "$out_dir/manifest.json" <<JSON
   "timestamp": "$stamp",
   "alembic_head": "$alembic_head",
   "db_size": "$db_size",
-  "workspace_path": "$WORKSPACE_HOST_PATH"
+  "workspace_path": "$WORKSPACE_HOST_PATH",
+  "has_workspace": $has_workspace
 }
 JSON
 ok "wrote $out_dir/manifest.json (alembic head = $alembic_head)"

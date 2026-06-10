@@ -35,7 +35,7 @@ sidebar_position: 1
 :::
 
 :::note
-`/metrics` 라우트는 Traefik 레벨(`docker-compose.yml`)에서 예약되어 있지만 v0.10.0에는 백엔드 핸들러가 마운트되어 있지 않습니다. Prometheus exporter는 GA 이후 로드맵 항목입니다.
+이번 릴리스에는 백엔드 `/metrics` 핸들러가 마운트되어 있지 않으므로, `/metrics`는 Traefik 레벨(`docker-compose.yml`)에서도 라우팅하지 않습니다. Prometheus exporter와 해당 라우트는 GA 이후 로드맵 항목입니다.
 :::
 
 ## 네트워크
