@@ -104,7 +104,14 @@ async def list_approvals_endpoint(
     status_filter: str | None = Query(
         default=None,
         alias="status",
-        pattern=r"^(pending|under_review|approved|rejected)$",
+        description=(
+            "Single status or a comma-separated list of statuses "
+            "(e.g. ``pending,under_review``)."
+        ),
+        pattern=(
+            r"^(pending|under_review|approved|rejected)"
+            r"(,(pending|under_review|approved|rejected))*$"
+        ),
     ),
     team_id: uuid.UUID | None = Query(default=None),
     requested_by_user_id: uuid.UUID | None = Query(default=None),

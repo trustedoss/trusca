@@ -3,6 +3,7 @@
     "title": "Component Approvals",
     "subtitle": "Review and approve conditional-license components.",
     "filter": {
+      "status_open": "Open (Pending + Under Review)",
       "status_all": "All statuses",
       "from_label": "From",
       "to_label": "To"

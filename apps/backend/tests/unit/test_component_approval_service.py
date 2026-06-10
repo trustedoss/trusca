@@ -41,6 +41,7 @@ from services.component_approval_service import (
     ApprovalAlreadyOpen,
     ApprovalEtagMismatch,
     ApprovalForbidden,
+    ApprovalInvalidStatusFilter,
     ApprovalInvalidTransition,
     ApprovalNotFound,
     ApprovalTerminalState,
@@ -752,6 +753,91 @@ async def test_list_status_filter(
     )
     for row in rows_approved:
         assert row.approval.status == ApprovalStatus.approved
+
+
+@pytest.mark.asyncio
+async def test_list_status_filter_multi_value(
+    session: AsyncSession,
+    project_a,
+    component,
+    developer_actor,
+    team_admin_actor,
+):
+    """M-13 — a comma-separated status filter returns the union of statuses."""
+    from models.scan import Component
+
+    async def _make_component() -> Component:
+        comp = Component(
+            purl=f"pkg:pypi/multi-{unique_suffix()}",
+            name=f"multi-{unique_suffix()}",
+            package_type="pypi",
+        )
+        session.add(comp)
+        await session.commit()
+        await session.refresh(comp)
+        return comp
+
+    # Row 1 — stays pending.
+    a1 = await create_approval(
+        session, developer_actor, component_id=component.id, project_id=project_a.id
+    )
+
+    # Row 2 — under_review.
+    comp2 = await _make_component()
+    a2 = await create_approval(
+        session, developer_actor, component_id=comp2.id, project_id=project_a.id
+    )
+    await transition_approval(
+        session, team_admin_actor, a2.id,
+        action="under_review", decision_note=None, if_match=1,
+    )
+
+    # Row 3 — rejected (must be excluded by the open filter).
+    comp3 = await _make_component()
+    a3 = await create_approval(
+        session, developer_actor, component_id=comp3.id, project_id=project_a.id
+    )
+    await transition_approval(
+        session, team_admin_actor, a3.id,
+        action="rejected", decision_note=None, if_match=1,
+    )
+
+    rows, total = await list_approvals(
+        session, developer_actor, status_filter="pending,under_review"
+    )
+    ids = {r.approval.id for r in rows}
+    assert a1.id in ids
+    assert a2.id in ids
+    assert a3.id not in ids
+    for row in rows:
+        assert row.approval.status in {
+            ApprovalStatus.pending,
+            ApprovalStatus.under_review,
+        }
+    # The count query must apply the same IN(...) predicate as the rows query.
+    assert total == len(rows)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "bad_filter",
+    [
+        "bogus",  # unknown single token
+        "pending,bogus",  # invalid token mixed with a valid one
+        "",  # empty string is not "no filter" — it is one empty token
+        "pending,",  # trailing comma produces an empty token
+        "pending, under_review",  # whitespace is not stripped (mirrors router pattern)
+    ],
+)
+async def test_list_status_filter_invalid_tokens(
+    session: AsyncSession,
+    developer_actor,
+    bad_filter: str,
+):
+    """M-13 — invalid status tokens raise the 422 domain error."""
+    with pytest.raises(ApprovalInvalidStatusFilter) as exc_info:
+        await list_approvals(session, developer_actor, status_filter=bad_filter)
+    assert exc_info.value.status_code == 422
 
 
 @pytest.mark.asyncio
