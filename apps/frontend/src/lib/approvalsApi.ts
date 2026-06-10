@@ -66,7 +66,13 @@ export interface ApprovalListPage {
 }
 
 export interface ListApprovalsParams {
-  status?: ApprovalStatus | "all" | null;
+  /**
+   * One status, "all" (UI sentinel — stripped before the request), or a
+   * comma-separated multi-status list that the backend expands to an
+   * IN(...) predicate — e.g. "pending,under_review" for the default
+   * open queue (M-13). Typed as string because of the comma-list form.
+   */
+  status?: string | null;
   team_id?: string | null;
   from_dt?: string | null;
   to_dt?: string | null;

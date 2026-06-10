@@ -53,7 +53,7 @@ from sqlalchemy.orm import Session
 from core.authz import assert_team_access, can_access_team
 from core.security import CurrentUser
 from models import ComponentApproval, Project
-from models.component_approval import ApprovalStatus
+from models.component_approval import APPROVAL_STATUS_VALUES, ApprovalStatus
 from models.scan import Component  # explicit import avoids implicit lazy load
 
 log = structlog.get_logger("component_approval.service")
@@ -143,6 +143,19 @@ class ApprovalForbidden(ApprovalError):
 
     status_code = 403
     title = "Forbidden"
+
+
+class ApprovalInvalidStatusFilter(ApprovalError):
+    """422 — the ``status`` filter contains a token outside the status vocabulary.
+
+    Mirrors the router-level Query ``pattern`` validation (which also yields a
+    422 problem for HTTP callers); this exception is the defensive equivalent
+    for direct service callers and keeps both layers on the same vocabulary
+    (``APPROVAL_STATUS_VALUES``).
+    """
+
+    status_code = 422
+    title = "Invalid Status Filter"
 
 
 # ---------------------------------------------------------------------------
@@ -237,8 +250,20 @@ async def list_approvals(
         count_base = count_base.where(ComponentApproval.team_id == team_id)
 
     if status_filter is not None:
-        base = base.where(ComponentApproval.status == status_filter)
-        count_base = count_base.where(ComponentApproval.status == status_filter)
+        # M-13 — accept a single status OR a comma-separated list
+        # ("pending,under_review"). Tokens are validated against the model's
+        # status vocabulary; any invalid token (including the empty string)
+        # raises a 422 domain error. A single value degenerates to a
+        # one-element IN(...) — same rows as the previous equality filter.
+        statuses = status_filter.split(",")
+        invalid = [tok for tok in statuses if tok not in APPROVAL_STATUS_VALUES]
+        if invalid:
+            raise ApprovalInvalidStatusFilter(
+                f"Invalid status filter token(s): {', '.join(repr(t) for t in invalid)}. "
+                f"Allowed values: {', '.join(APPROVAL_STATUS_VALUES)}."
+            )
+        base = base.where(ComponentApproval.status.in_(statuses))
+        count_base = count_base.where(ComponentApproval.status.in_(statuses))
 
     if requested_by_user_id is not None:
         base = base.where(ComponentApproval.requested_by_user_id == requested_by_user_id)

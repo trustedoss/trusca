@@ -3,6 +3,7 @@
     "title": "컴포넌트 승인",
     "subtitle": "조건부 라이선스 컴포넌트를 검토하고 승인합니다.",
     "filter": {
+      "status_open": "미결 (대기중 + 검토중)",
       "status_all": "전체 상태",
       "from_label": "시작일",
       "to_label": "종료일"

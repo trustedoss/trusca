@@ -32,9 +32,13 @@ import type { ApprovalStatus } from "@/lib/approvalsApi";
 // Status filter options
 // ---------------------------------------------------------------------------
 
-type StatusFilter = ApprovalStatus | "all";
+// M-13 — "open" is a UI compound filter (= pending + under_review). It is the
+// DEFAULT view so already-disposed rows (approved / rejected) don't clutter
+// the queue; the guide promises the default queue shows only open requests.
+type StatusFilter = ApprovalStatus | "all" | "open";
 
 const STATUS_OPTIONS: StatusFilter[] = [
+  "open",
   "all",
   "pending",
   "under_review",
@@ -42,14 +46,19 @@ const STATUS_OPTIONS: StatusFilter[] = [
   "rejected",
 ];
 
+/** API value for the "open" compound filter — comma list the BE expands to IN(...). */
+const OPEN_STATUSES = "pending,under_review";
+
 // W12 — URL filter parsers (filter URL persistence consistency). Reject any
 // value not in the allowed unions so a stale or hand-edited URL doesn't poison
 // the typed state. ISO 8601 (YYYY-MM-DD) is the only date shape we render, so
 // reject anything else for from/to dates.
+// M-13 — param absent (or unrecognised) now defaults to "open", not "all".
+// An explicit ?status=all still shows every row.
 function parseStatusFilter(v: string | null): StatusFilter {
   return v && (STATUS_OPTIONS as readonly string[]).includes(v)
     ? (v as StatusFilter)
-    : "all";
+    : "open";
 }
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 function parseIsoDateParam(v: string | null): string {
@@ -124,8 +133,10 @@ export function ApprovalsPage() {
     },
     [setSearchParams],
   );
+  // M-13 — the default value is now "open", so THAT is the one we delete from
+  // the URL to keep it clean; "all" (and every concrete status) is persisted.
   const setStatusFilter = useCallback(
-    (next: StatusFilter) => updateFilterParam("status", next === "all" ? null : next),
+    (next: StatusFilter) => updateFilterParam("status", next === "open" ? null : next),
     [updateFilterParam],
   );
   const setFromDt = useCallback(
@@ -165,7 +176,12 @@ export function ApprovalsPage() {
 
   const queryParams = useMemo(
     () => ({
-      status: statusFilter === "all" ? null : statusFilter,
+      status:
+        statusFilter === "all"
+          ? null
+          : statusFilter === "open"
+            ? OPEN_STATUSES
+            : statusFilter,
       from_dt: fromDt || null,
       to_dt: toDt || null,
       page,
@@ -217,7 +233,9 @@ export function ApprovalsPage() {
               <option key={opt} value={opt}>
                 {opt === "all"
                   ? t("approvals.filter.status_all")
-                  : t(`approvals.status.${opt}`)}
+                  : opt === "open"
+                    ? t("approvals.filter.status_open")
+                    : t(`approvals.status.${opt}`)}
               </option>
             ))}
           </select>

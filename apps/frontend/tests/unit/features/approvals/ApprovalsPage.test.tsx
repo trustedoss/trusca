@@ -157,6 +157,63 @@ describe("ApprovalsPage", () => {
     ).toBe("pending");
   });
 
+  it("defaults to the open queue (pending + under_review) when ?status is absent (M-13)", async () => {
+    mockedList.mockResolvedValue(page([approval({ status: "pending" })]));
+    renderPage();
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalled();
+    });
+    // The very first request must already carry the compound open filter —
+    // disposed rows (approved / rejected) never flash into the default view.
+    expect(mockedList.mock.calls[0]?.[0]).toMatchObject({
+      status: "pending,under_review",
+    });
+    expect(
+      (screen.getByTestId("approval-status-filter") as HTMLSelectElement).value,
+    ).toBe("open");
+  });
+
+  it("explicit ?status=all deep-link requests every status (M-13)", async () => {
+    mockedList.mockResolvedValue(page([approval({ status: "approved" })]));
+    renderPage({ initialUrl: "/approvals?status=all" });
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalled();
+    });
+    // "all" is a UI sentinel — the request carries no status filter.
+    expect(mockedList.mock.calls[0]?.[0]).toMatchObject({ status: null });
+    expect(
+      (screen.getByTestId("approval-status-filter") as HTMLSelectElement).value,
+    ).toBe("all");
+  });
+
+  it("explicit ?status=approved deep-link narrows to that single status (M-13)", async () => {
+    mockedList.mockResolvedValue(page([approval({ status: "approved" })]));
+    renderPage({ initialUrl: "/approvals?status=approved" });
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalled();
+    });
+    expect(mockedList.mock.calls[0]?.[0]).toMatchObject({ status: "approved" });
+    expect(
+      (screen.getByTestId("approval-status-filter") as HTMLSelectElement).value,
+    ).toBe("approved");
+  });
+
+  it("switching the filter back to Open re-issues the compound open filter (M-13)", async () => {
+    mockedList.mockResolvedValue(page([approval()]));
+    renderPage({ initialUrl: "/approvals?status=all" });
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalledTimes(1);
+    });
+
+    const statusSelect = screen.getByTestId("approval-status-filter");
+    await userEvent.selectOptions(statusSelect, "open");
+
+    await waitFor(() => {
+      const lastCall = mockedList.mock.calls.at(-1)?.[0];
+      expect(lastCall).toMatchObject({ status: "pending,under_review" });
+    });
+  });
+
   it("clicking a row opens the approvals drawer", async () => {
     const a = approval({ id: "aaa-row-click-001" });
     mockedList.mockResolvedValue(page([a]));
