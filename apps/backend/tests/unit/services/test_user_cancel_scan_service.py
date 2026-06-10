@@ -206,6 +206,33 @@ async def test_other_team_developer_gets_404(db_session: AsyncSession) -> None:
     assert scan.status == "running"
 
 
+@pytest.mark.parametrize("terminal_status", ["succeeded", "failed", "cancelled"])
+async def test_other_team_terminal_scan_is_404_not_409(
+    db_session: AsyncSession, terminal_status: str
+) -> None:
+    """recheck §4-1: a non-member probing another team's FINISHED scan must get
+    the same existence-hiding 404 as a missing scan — never a 409, which would
+    confirm the scan exists (the terminal check must run AFTER the team gate).
+    """
+    from services.admin_scan_service import AdminScanNotFound, cancel_scan_for_actor
+
+    org = await make_organization(db_session)
+    owning_team = await make_team(db_session, organization=org)
+    other_team = await make_team(db_session, organization=org)
+
+    other_user = await make_user(db_session)
+    await make_membership(db_session, user=other_user, team=other_team, role="developer")
+    actor = await principal_loaded_from_db(db_session, user=other_user)
+
+    project = await make_project(db_session, team=owning_team)
+    scan = await make_scan(db_session, project=project, status=terminal_status)
+
+    with pytest.raises(AdminScanNotFound):
+        await cancel_scan_for_actor(
+            db_session, actor=actor, scan_id=scan.id, celery_app_override=_FakeCeleryApp()
+        )
+
+
 # ---------------------------------------------------------------------------
 # Error paths
 # ---------------------------------------------------------------------------
@@ -275,8 +302,9 @@ async def test_race_scan_already_succeeded_is_409_noop(
 ) -> None:
     """Simulate a scan that succeeded just before the cancel landed.
 
-    The row-lock + terminal-state guard inside ``_lock_cancellable_scan`` is
-    the canonical defence; here we model the worker winning the race by
+    The row-lock (``_lock_scan``) + terminal-state guard (``_ensure_not_terminal``,
+    run while holding that lock) is the canonical defence; here we model the
+    worker winning the race by
     flipping status to succeeded right before the cancel call. The cancel must
     be a 409 no-op, never overwrite a succeeded scan with cancelled.
     """
