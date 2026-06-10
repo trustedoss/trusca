@@ -77,6 +77,9 @@ KIND_SOURCE_DISCLOSURE = "source-disclosure"
 KIND_COPYLEFT = "copyleft"
 KIND_MODIFICATIONS = "modifications"
 KIND_PATENT = "patent"
+# M-23: advertised in KNOWN_OBLIGATION_KINDS but previously never emitted —
+# LGPL's distinguishing relink/replace right is a dynamic-linking obligation.
+KIND_DYNAMIC_LINKING = "dynamic-linking"
 
 
 class SourceDisclosure(str, Enum):
@@ -253,6 +256,13 @@ def _lgpl(spdx_id: str) -> LicenseObligations:
                 "Provide the complete source of the LGPL library (or a written "
                 "offer for it) and allow the end user to relink against a "
                 "modified version of the library.",
+            ),
+            (
+                KIND_DYNAMIC_LINKING,
+                "Distribute the library so the end user can replace it and "
+                "relink — prefer dynamic linking, or supply object files / a "
+                "written offer enabling a static relink against a modified "
+                "library.",
             ),
             (
                 KIND_MODIFICATIONS,

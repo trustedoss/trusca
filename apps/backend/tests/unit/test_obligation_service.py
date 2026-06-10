@@ -154,8 +154,12 @@ def test_order_distribution_empty_input_returns_empty() -> None:
     assert _order_distribution({}) == {}
 
 
-def test_known_obligation_kinds_canonical_seven() -> None:
-    """The canonical allow-list shape is part of the wire contract — pin it."""
+def test_known_obligation_kinds_canonical_set() -> None:
+    """The canonical allow-list shape is part of the wire contract — pin it.
+
+    H-9: ``patent`` joined the advertised vocabulary because the catalog emits
+    it (Apache-2.0 / GPL-3.0 patent grants); it must round-trip as a known kind.
+    """
     assert KNOWN_OBLIGATION_KINDS == (
         "attribution",
         "notice",
@@ -164,7 +168,31 @@ def test_known_obligation_kinds_canonical_seven() -> None:
         "modifications",
         "dynamic-linking",
         "no-endorsement",
+        "patent",
     )
+
+
+def test_every_emitted_kind_is_in_known_vocabulary() -> None:
+    """Drift guard (H-9/M-23): no catalog row may emit a kind outside the vocab.
+
+    This is the invariant the report broke on two fronts — ``patent`` was
+    emitted but unlisted, and ``source_disclosure`` (underscore) crept in via a
+    hand-written seed. Walk every catalog entry and assert its kind is known so
+    a future drift fails loudly here instead of fragmenting a kind filter.
+    """
+    from services import obligation_catalog as cat
+
+    emitted: set[str] = set()
+    for spdx in cat.catalog_spdx_ids():
+        obligations = cat.get_license_obligations(spdx)
+        if obligations is None:
+            continue
+        emitted.update(kind for kind, _text in obligations.rows)
+
+    unknown = emitted - set(KNOWN_OBLIGATION_KINDS)
+    assert not unknown, f"catalog emits kinds outside the vocabulary: {sorted(unknown)}"
+    # dynamic-linking must actually be reachable now (M-23), not just advertised.
+    assert "dynamic-linking" in emitted
 
 
 def test_format_header_text_includes_project_name_and_iso_datetime() -> None:
