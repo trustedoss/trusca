@@ -225,7 +225,7 @@ The reference deployment is a **single-host docker-compose** install. Variations
 - **Single-host (default)** — the seven services above; the Trivy DB downloads on worker boot.
 - **Air-gapped** — point `TRIVY_DB_REPOSITORY` at an internal OCI mirror so the worker never reaches the public registry. See [Vulnerability data — Air-gapped operation](../admin-guide/vulnerability-data.md#air-gapped).
 
-A **Helm chart** ships from v0.10.0. v0.10.0 chart 0.3.0 adds:
+A **Helm chart** ships from v0.10.0. v0.10.0 chart 0.10.0 adds:
 
 - Per-component HPA (worker scales by queue depth).
 - StatefulSet for PostgreSQL with PVC.

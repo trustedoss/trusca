@@ -174,7 +174,7 @@ After issuing a key:
 
 The two most common causes:
 
-- The key was copied with a leading or trailing whitespace. Re-paste from the original modal — keys are exactly `tos_` + 8 + `_` + 32 chars.
+- The key value is malformed. Leading and trailing whitespace around the bearer value is stripped before authentication, so accidental surrounding whitespace is tolerated — but whitespace *inside* the key breaks it. Re-paste from the original modal: keys are exactly `tos_` + 8 + `_` + 32 chars.
 - The portal distinguishes the two failure modes:
   - **401** = credential problem (no header, malformed Bearer, unknown
     prefix, signature mismatch, revoked, expired).
@@ -183,12 +183,12 @@ The two most common causes:
 
 ### "Key prefix exists but secret does not match"
 
-Someone tried to brute-force the secret, or a malformed key was sent. The portal logs every miss in the structured backend log. Brute-force detection (a Slack alert when a single key crosses N misses per minute) is on the roadmap; until then, periodically grep the backend logs for repeated `secret_mismatch` lines:
+Someone tried to brute-force the secret, or a malformed key was sent. The portal logs every miss as an `api_key.auth_failed` event (with the key `key_prefix`, never the secret) in the structured backend log. Brute-force detection (a Slack alert when a single key crosses N misses per minute) is on the roadmap; until then, periodically grep the backend logs for repeated `api_key.auth_failed` lines:
 
 <!-- docs-uat: id=apikeys-secret-mismatch-grep kind=shell ctx=host tier=nightly waiver=production-compose-log-grep-diagnostic -->
 ```bash
 docker-compose -f docker-compose.yml logs --tail=2000 backend \
-  | grep secret_mismatch | sort | uniq -c | sort -rn | head
+  | grep api_key.auth_failed | sort | uniq -c | sort -rn | head
 ```
 
 If you see a single prefix repeating, revoke and rotate immediately.

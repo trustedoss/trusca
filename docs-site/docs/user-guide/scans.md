@@ -264,6 +264,14 @@ After a scan completes:
 
 ## Troubleshooting
 
+:::note Compose service names differ by stack
+The commands below target the **production** compose (`docker-compose.yml`),
+whose Celery services are `worker` and `beat`. On the **dev** compose
+(`docker-compose.dev.yml`) the same services are `celery-worker` and
+`celery-beat` — substitute the name and the `-f` file if you are on the dev
+stack.
+:::
+
 ### Scan stuck in `Queued`
 
 No worker has picked it up. Either the worker is down or the queue is saturated.

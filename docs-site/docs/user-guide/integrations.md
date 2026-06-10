@@ -61,13 +61,15 @@ The modal has a **Copy** button and an explicit warning: *"This is the only time
 
 ### Use a key
 
-Pass the key in the `Authorization` header of every request using the `Bearer` scheme:
+Pass the key in the `Authorization` header of every request using the `Bearer` scheme. API keys authenticate the CI surface — **triggering a scan** and **polling its status**. They are not accepted on the interactive read endpoints (e.g. `GET /v1/projects` is JWT-only and returns `401` for a key).
 
-<!-- docs-uat: id=integrations-api-list-projects kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
+<!-- docs-uat: id=integrations-api-trigger-scan kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
-curl -sS \
+curl -sS -X POST \
   -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
-  https://trustedoss.example.com/v1/projects
+  -H "Content-Type: application/json" \
+  -d '{"kind":"source"}' \
+  https://trustedoss.example.com/v1/projects/<project-id>/scans
 ```
 
 In **GitHub Actions**, store the key in the repository or organisation secrets, then expose it as an env var:
@@ -120,9 +122,9 @@ URL to register at GitLab: `https://<your-host>/v1/webhooks/gitlab`.
 ## Verify it worked
 
 <!-- docs-uat: id=integrations-curl-200 kind=manual tier=manual -->
-- After creating a key, run `curl -sS -H "Authorization: Bearer <key>" .../v1/projects` and confirm a 200 response with the team's projects.
+- After creating a key, trigger a scan with it — `curl -sS -X POST -H "Authorization: Bearer <key>" -H "Content-Type: application/json" -d '{"kind":"source"}' .../v1/projects/<project-id>/scans` — and confirm a `200` response with the new scan. Then poll `GET .../v1/scans/<scan-id>` with the same key. (`GET /v1/projects` is JWT-only and returns `401` for a key — that is expected, not a misconfiguration.)
 <!-- docs-uat: id=integrations-github-webhook-202 kind=manual tier=manual -->
-- After registering the webhook in GitHub, push a commit and check the **Webhook deliveries** view in GitHub — successful deliveries return HTTP 202.
+- After registering the webhook in GitHub, push a commit and check the **Webhook deliveries** view in GitHub — successful deliveries return HTTP 200.
 <!-- docs-uat: id=integrations-audit-events kind=manual tier=manual -->
 - A super-admin can confirm `target_table=api_keys&action=create` and `target_table=webhook_deliveries&action=create` events on `/admin/audit`. Team-scoped audit-log access is on the roadmap (see below).
 

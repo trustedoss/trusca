@@ -61,13 +61,15 @@ tos_a1b2c3d4_eaff8b91d36c5e0a2f1c4d7e8a9b0c2d
 
 ### Key 사용
 
-모든 요청의 `Authorization` 헤더에 Key를 `Bearer` 스킴으로 전달하세요.
+모든 요청의 `Authorization` 헤더에 Key를 `Bearer` 스킴으로 전달하세요. API Key는 CI 영역 — **스캔 트리거**와 **상태 폴링** — 을 인증합니다. 대화형 읽기 엔드포인트에서는 받지 않습니다(예: `GET /v1/projects`는 JWT 전용이며 Key에는 `401`을 반환합니다).
 
-<!-- docs-uat: id=integrations-api-list-projects kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
+<!-- docs-uat: id=integrations-api-trigger-scan kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
-curl -sS \
+curl -sS -X POST \
   -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
-  https://trustedoss.example.com/v1/projects
+  -H "Content-Type: application/json" \
+  -d '{"kind":"source"}' \
+  https://trustedoss.example.com/v1/projects/<project-id>/scans
 ```
 
 **GitHub Actions**에서는 Key를 저장소 또는 조직 시크릿에 보관하고 환경 변수로 노출합니다.
@@ -120,9 +122,9 @@ GitLab에 등록할 URL — `https://<your-host>/v1/webhooks/gitlab`.
 ## 정상 동작 확인
 
 <!-- docs-uat: id=integrations-curl-200 kind=manual tier=manual -->
-- Key 생성 후 `curl -sS -H "Authorization: Bearer <key>" .../v1/projects`로 200 응답과 팀 프로젝트가 반환되는지 확인하세요.
+- Key 생성 후 그 Key로 스캔을 트리거하세요 — `curl -sS -X POST -H "Authorization: Bearer <key>" -H "Content-Type: application/json" -d '{"kind":"source"}' .../v1/projects/<project-id>/scans` — 새 스캔과 함께 `200` 응답이 오는지 확인합니다. 이어서 같은 Key로 `GET .../v1/scans/<scan-id>`를 폴링합니다. (`GET /v1/projects`는 JWT 전용이라 Key에는 `401`을 반환합니다 — 설정 오류가 아니라 정상 동작입니다.)
 <!-- docs-uat: id=integrations-github-webhook-202 kind=manual tier=manual -->
-- GitHub에 Webhook 등록 후 커밋을 푸시하고 GitHub의 **Webhook deliveries** 뷰에서 HTTP 202 성공 전송을 확인하세요.
+- GitHub에 Webhook 등록 후 커밋을 푸시하고 GitHub의 **Webhook deliveries** 뷰에서 HTTP 200 성공 전송을 확인하세요.
 <!-- docs-uat: id=integrations-audit-events kind=manual tier=manual -->
 - super-admin이 `/admin/audit`에서 `target_table=api_keys&action=create`와 `target_table=webhook_deliveries&action=create` 이벤트를 확인할 수 있습니다. team-범위 감사 로그는 로드맵 항목입니다(아래 참고).
 

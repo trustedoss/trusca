@@ -97,10 +97,15 @@ Existing in-flight scans are **not** killed; only new submissions are rejected. 
 
 ### 1. Identify the offender
 
+The scan workspace lives at `WORKSPACE_HOST_PATH`. The production compose
+(`docker-compose.yml`) sets it to `/workspace` inside the container; if you
+overrode it in `.env`, substitute your path. Each scan creates a
+`${WORKSPACE_HOST_PATH}/<scan_id>/` directory.
+
 <!-- docs-uat: id=disk-identify-offender kind=shell ctx=host tier=nightly waiver=production-compose-diagnostic -->
 ```bash
 docker-compose -f docker-compose.yml exec backend \
-  du -sh /workspace/*  | sort -h | tail -20
+  du -sh "${WORKSPACE_HOST_PATH:-/workspace}"/*  | sort -h | tail -20
 ```
 
 Most often a single scan's source clone (`<scan_id>/source/`) + scancode license-detection output (`<scan_id>/scancode/scancode.json`) dominates the workspace. The `cdxgen` cache (`<scan_id>/cdxgen/`) also grows over time.
@@ -111,15 +116,15 @@ Most often a single scan's source clone (`<scan_id>/source/`) + scancode license
 ```bash
 # Drop scancode result JSON older than 30 days (safe — rebuilt on next scan).
 docker-compose -f docker-compose.yml exec backend \
-  find /workspace -name "scancode.json" -mtime +30 -delete
+  find "${WORKSPACE_HOST_PATH:-/workspace}" -name "scancode.json" -mtime +30 -delete
 
 # Drop cdxgen SBOM caches older than 30 days (safe — rebuilt on next scan).
 docker-compose -f docker-compose.yml exec backend \
-  find /workspace -type d -name "cdxgen" -mtime +30 -exec rm -rf {} +
+  find "${WORKSPACE_HOST_PATH:-/workspace}" -type d -name "cdxgen" -mtime +30 -exec rm -rf {} +
 
-# Drop entire workspace directories for projects that have been archived.
+# Drop the entire workspace directory for one finished scan.
 docker-compose -f docker-compose.yml exec backend \
-  rm -rf /workspace/<archived-project-id>/
+  rm -rf "${WORKSPACE_HOST_PATH:-/workspace}/<scan-id>/"
 ```
 
 ### 3. Verify

@@ -174,7 +174,7 @@ Key 발급 후:
 
 가장 흔한 두 가지 원인:
 
-- Key가 앞뒤 공백과 함께 복사됨. 원본 모달에서 다시 붙여넣기 — Key는 정확히 `tos_` + 8 + `_` + 32자.
+- Key 값이 잘못됨. Bearer 값 앞뒤 공백은 인증 전에 제거되므로 우발적인 앞뒤 공백은 허용됩니다 — 다만 Key *내부*의 공백은 인증을 깨뜨립니다. 원본 모달에서 다시 붙여넣으십시오. Key는 정확히 `tos_` + 8 + `_` + 32자입니다.
 - 포털은 두 실패 모드를 구분합니다:
   - **401** = 자격증명 문제(헤더 없음, 잘못된 Bearer 형식, 알 수 없는
     prefix, 서명 불일치, 폐기됨, 만료됨).
@@ -183,12 +183,12 @@ Key 발급 후:
 
 ### "Key prefix exists but secret does not match"
 
-누군가 secret을 brute-force 시도했거나 잘못된 형식의 Key가 전송됐습니다. 포털은 모든 미스를 구조화된 백엔드 로그에 기록합니다. brute-force 감지(단일 Key가 분당 N회 미스를 넘으면 Slack 알림)는 로드맵입니다 — 그때까지는 백엔드 로그에서 반복되는 `secret_mismatch` 라인을 주기적으로 grep하세요:
+누군가 secret을 brute-force 시도했거나 잘못된 형식의 Key가 전송됐습니다. 포털은 모든 미스를 `api_key.auth_failed` 이벤트(secret이 아니라 Key `key_prefix` 포함)로 구조화된 백엔드 로그에 기록합니다. brute-force 감지(단일 Key가 분당 N회 미스를 넘으면 Slack 알림)는 로드맵입니다 — 그때까지는 백엔드 로그에서 반복되는 `api_key.auth_failed` 라인을 주기적으로 grep하세요:
 
 <!-- docs-uat: id=apikeys-secret-mismatch-grep kind=shell ctx=host tier=nightly waiver=production-compose-log-grep-diagnostic -->
 ```bash
 docker-compose -f docker-compose.yml logs --tail=2000 backend \
-  | grep secret_mismatch | sort | uniq -c | sort -rn | head
+  | grep api_key.auth_failed | sort | uniq -c | sort -rn | head
 ```
 
 단일 prefix가 반복되면 즉시 폐기 후 회전.

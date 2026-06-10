@@ -115,10 +115,11 @@ For larger windows, paginate via the API:
 ```bash
 curl -sS \
   -H "Authorization: Bearer ${ACCESS_TOKEN}" \
-  "https://trustedoss.example.com/v1/admin/audit?from=2026-01-01&to=2026-01-31&page=1&page_size=1000"
+  "https://trustedoss.example.com/v1/admin/audit?from=2026-01-01&to=2026-01-31&page=1&page_size=200"
 ```
 
-The response is paginated by `page` + `page_size`.
+The response is paginated by `page` + `page_size`. `page_size` is capped at
+**200** (values above that return `422`); for larger windows, increment `page`.
 
 ## Common queries
 

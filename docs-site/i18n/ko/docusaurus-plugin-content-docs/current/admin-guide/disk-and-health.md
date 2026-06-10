@@ -97,10 +97,12 @@ DISK_HARD_LIMIT_PCT=95
 
 ### 1. 원인 식별
 
+스캔 workspace는 `WORKSPACE_HOST_PATH`에 있습니다. 프로덕션 compose(`docker-compose.yml`)는 컨테이너 안에서 이 값을 `/workspace`로 설정합니다. `.env`에서 재정의했다면 그 경로로 바꾸십시오. 각 스캔은 `${WORKSPACE_HOST_PATH}/<scan_id>/` 디렉터리를 생성합니다.
+
 <!-- docs-uat: id=disk-identify-offender kind=shell ctx=host tier=nightly waiver=production-compose-diagnostic -->
 ```bash
 docker-compose -f docker-compose.yml exec backend \
-  du -sh /workspace/*  | sort -h | tail -20
+  du -sh "${WORKSPACE_HOST_PATH:-/workspace}"/*  | sort -h | tail -20
 ```
 
 대개 단일 스캔의 소스 클론(`<scan_id>/source/`) + scancode 라이선스 탐지 출력(`<scan_id>/scancode/scancode.json`)이 workspace를 지배합니다. `cdxgen` 캐시(`<scan_id>/cdxgen/`)도 시간이 지나면서 커집니다.
@@ -111,15 +113,15 @@ docker-compose -f docker-compose.yml exec backend \
 ```bash
 # 30일 이상 지난 scancode 결과 JSON 삭제(안전 — 다음 스캔에서 재생성).
 docker-compose -f docker-compose.yml exec backend \
-  find /workspace -name "scancode.json" -mtime +30 -delete
+  find "${WORKSPACE_HOST_PATH:-/workspace}" -name "scancode.json" -mtime +30 -delete
 
 # 30일 이상 지난 cdxgen SBOM 캐시 삭제(안전 — 다음 스캔에서 재생성).
 docker-compose -f docker-compose.yml exec backend \
-  find /workspace -type d -name "cdxgen" -mtime +30 -exec rm -rf {} +
+  find "${WORKSPACE_HOST_PATH:-/workspace}" -type d -name "cdxgen" -mtime +30 -exec rm -rf {} +
 
-# 아카이브된 프로젝트의 workspace 디렉터리 통째 삭제.
+# 완료된 스캔 하나의 workspace 디렉터리 통째 삭제.
 docker-compose -f docker-compose.yml exec backend \
-  rm -rf /workspace/<archived-project-id>/
+  rm -rf "${WORKSPACE_HOST_PATH:-/workspace}/<scan-id>/"
 ```
 
 ### 3. 검증

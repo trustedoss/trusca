@@ -15,7 +15,7 @@ administration (Ingress, StorageClasses, cert-manager) proficiency. If you run a
 single host, the [Docker Compose install](./docker-compose.md) is simpler.
 :::
 
-The Helm chart (`charts/trustedoss`, chart version **0.3.0**) deploys the full
+The Helm chart (`charts/trustedoss`, chart version **0.10.0**) deploys the full
 portal: the FastAPI backend, the Celery worker and beat scheduler, the React
 frontend, an Ingress with TLS, and a database migration Job. PostgreSQL and
 Redis can either be bundled in-cluster (for evaluation) or pointed at external
@@ -82,7 +82,7 @@ recommended for production data.
 <!-- docs-uat: id=helm-install-bundled kind=shell ctx=host tier=manual waiver=needs-live-cluster-and-published-oci-chart -->
 ```bash
 helm install trustedoss oci://ghcr.io/trustedoss/charts/trustedoss \
-  --version 0.3.0 \
+  --version 0.10.0 \
   --namespace trustedoss --create-namespace \
   --set env.secret.secretKey="$(openssl rand -hex 32)" \
   --set postgres.auth.password="$(openssl rand -hex 24)" \
@@ -129,7 +129,7 @@ Then install:
 <!-- docs-uat: id=helm-install-prod kind=shell ctx=host tier=manual waiver=needs-live-cluster-and-published-oci-chart -->
 ```bash
 helm install trustedoss oci://ghcr.io/trustedoss/charts/trustedoss \
-  --version 0.3.0 \
+  --version 0.10.0 \
   --namespace trustedoss --create-namespace \
   -f values.prod.yaml
 ```
@@ -271,4 +271,4 @@ If you hit a chart bug, open an issue using the
 - [Environment variables](../reference/env-variables.md) — every setting the chart maps
 - [Architecture](../reference/architecture.md) — services, Trivy DB lifecycle, and the migration model
 - [Vulnerability data (Trivy DB)](../admin-guide/vulnerability-data.md) — air-gapped operation and DB refresh
-- [v0.10.0 release notes](../release-notes/v0.10.0.md) — chart 0.3.0 breaking changes
+- [v0.10.0 release notes](../release-notes/v0.10.0.md) — chart 0.10.0 breaking changes

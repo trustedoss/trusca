@@ -116,7 +116,7 @@ kill $PROXY_PID
 데모 슈퍼 관리자 자격 증명:
 
 - 이메일: `admin@demo.trustedoss.dev`
-- 비밀번호: `DemoAdmin2026!`
+- 비밀번호: `DemoTest2026!`
 
 위는 공개된, 문서화된 자격 증명이다. 데모 SaaS는 데모 전용 — 실제 고객 데이터를 절대 저장하지 말 것.
 
