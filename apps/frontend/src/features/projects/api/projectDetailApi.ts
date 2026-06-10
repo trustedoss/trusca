@@ -161,6 +161,26 @@ export interface VulnerabilityRef {
   fixed_version: string | null;
 }
 
+/**
+ * M-20 — compact license-obligation reference attached to a component detail.
+ * Lean projection of the obligations catalog; the full drawer shape stays on
+ * the Obligations tab endpoints. Ordered by (kind, license, id) server-side.
+ */
+export interface ObligationRef {
+  id: string;
+  /** Free-form catalog kind (e.g. `attribution`, `source-disclosure`). */
+  kind: string;
+  /** Human-readable obligation text. */
+  text: string;
+  /**
+   * Optional URL with further explanation. The backend does NOT scheme-filter
+   * — render as a clickable link only for http/https.
+   */
+  link: string | null;
+  /** Display id of the parent license (SPDX short id or license name). */
+  license: string;
+}
+
 export interface ComponentDetailResponse {
   id: string;
   project_id: string;
@@ -171,6 +191,12 @@ export interface ComponentDetailResponse {
   license_category: LicenseCategoryName;
   severity_max: ComponentSeverity;
   vulnerabilities: VulnerabilityRef[];
+  /**
+   * M-20 — duties carried by every license observed for this component in
+   * the anchoring scan. Empty when the component has no license, the license
+   * is not in the catalog, or the catalog defines no obligations for it.
+   */
+  obligations: ObligationRef[];
   raw_data: Record<string, unknown>;
   created_at: string;
   updated_at: string;

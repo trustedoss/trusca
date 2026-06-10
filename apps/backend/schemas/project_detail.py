@@ -331,6 +331,44 @@ class VulnerabilityRef(BaseModel):
     )
 
 
+class ObligationRef(BaseModel):
+    """Compact license-obligation reference attached to a component detail.
+
+    M-20 — the Components drawer renders the duties carried by the
+    component's license(s) without a second request. This is a deliberately
+    lean projection of the obligations catalog: the full drawer shape
+    (affected components, truncation flags, …) stays on
+    :class:`schemas.obligation_detail.ObligationDetailResponse`, reachable
+    from the Obligations tab.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID = Field(description="obligations.id (catalog row).")
+    kind: str = Field(
+        max_length=64,
+        description=(
+            "Obligation kind — free-form catalog string (e.g. attribution, "
+            "source-disclosure, copyleft)."
+        ),
+    )
+    text: str = Field(description="Human-readable obligation text.")
+    link: str | None = Field(
+        default=None,
+        description=(
+            "Optional URL with further explanation. Frontends MUST scheme-"
+            "filter to http/https before rendering as a clickable link."
+        ),
+    )
+    license: str = Field(
+        description=(
+            "Display identifier of the parent license: its SPDX short id, "
+            "falling back to the license name for ORT custom licenses "
+            "(LicenseRef-*) that carry no SPDX id."
+        ),
+    )
+
+
 class ComponentDetailResponse(BaseModel):
     """Drawer payload for a single component in a project's latest scan."""
 
@@ -343,6 +381,16 @@ class ComponentDetailResponse(BaseModel):
     license_category: LicenseCategoryName
     severity_max: ComponentSeverity
     vulnerabilities: list[VulnerabilityRef] = Field(default_factory=list)
+    obligations: list[ObligationRef] = Field(
+        default_factory=list,
+        description=(
+            "M-20 — duties carried by every license observed for this "
+            "component in the anchoring scan, ordered by (kind, license, id) "
+            "for a deterministic response. Empty when the component has no "
+            "license, the license is not in the catalog, or the catalog "
+            "defines no obligations for it."
+        ),
+    )
     raw_data: dict[str, Any] = Field(default_factory=dict)
     depth: int | None = Field(
         default=None,
@@ -376,6 +424,7 @@ __all__ = [
     "ComponentSeverity",
     "ComponentSummary",
     "LicenseCategoryName",
+    "ObligationRef",
     "ProjectOverviewResponse",
     "ScanSummary",
     "TeamScopedRole",

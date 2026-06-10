@@ -58,6 +58,7 @@ from models import (
     ComponentVersion,
     LicenseFinding,
     Membership,
+    Obligation,
     Project,
     Scan,
     ScanComponent,
@@ -939,11 +940,44 @@ async def get_component_detail(
         .where(LicenseFinding.component_version_id == component_version_id)
     )
 
-    sev_res, lic_res, vulns_res, lic_pick_res = await asyncio.gather(
+    # M-20 — obligations carried by *every* license observed for this cv in
+    # the anchoring scan (not just the displayed "best" one): a dual-licensed
+    # component owes the duties of each license it ships under. One IN-subquery
+    # statement total (no per-license round-trips); the subquery naturally
+    # de-duplicates repeat findings of the same license (multiple kinds /
+    # source paths). Empty result when the cv has no license findings or the
+    # catalog defines no obligations — never an error. Ordering is pinned to
+    # (kind, license, id) so the drawer payload is deterministic.
+    obligations_stmt = (
+        select(
+            Obligation.id,
+            Obligation.kind,
+            Obligation.text,
+            Obligation.link,
+            LicenseModel.spdx_id,
+            LicenseModel.name,
+        )
+        .join(LicenseModel, LicenseModel.id == Obligation.license_id)
+        .where(
+            Obligation.license_id.in_(
+                select(LicenseFinding.license_id)
+                .where(LicenseFinding.scan_id == row.scan_id)
+                .where(LicenseFinding.component_version_id == component_version_id)
+            )
+        )
+        .order_by(
+            Obligation.kind.asc(),
+            LicenseModel.spdx_id.asc().nulls_last(),
+            Obligation.id.asc(),
+        )
+    )
+
+    sev_res, lic_res, vulns_res, lic_pick_res, obligations_res = await asyncio.gather(
         session.execute(sev_rank_stmt),
         session.execute(lic_rank_stmt),
         session.execute(vulns_stmt),
         session.execute(lic_pick_stmt),
+        session.execute(obligations_stmt),
     )
 
     sev_rank_val = int(sev_res.scalar_one() or 0)
@@ -956,6 +990,20 @@ async def get_component_detail(
         if best is None or lr.rank > best[0]:
             best = (lr.rank, display)
     license_display = best[1] if best else None
+
+    # M-20 — obligation refs, already (kind, license, id)-ordered by the
+    # query. ``license`` mirrors the display convention used everywhere else
+    # in this module: SPDX id with a name fallback for LicenseRef customs.
+    obligations: list[dict[str, Any]] = [
+        {
+            "id": ob.id,
+            "kind": ob.kind,
+            "text": ob.text,
+            "link": ob.link,
+            "license": ob.spdx_id or ob.name,
+        }
+        for ob in obligations_res.all()
+    ]
 
     # Deduplicate CVEs.
     seen_cves: set[str] = set()
@@ -989,6 +1037,9 @@ async def get_component_detail(
         "license_category": _LICENSE_CATEGORY_FROM_RANK.get(lic_rank_val, "unknown"),
         "severity_max": _SEVERITY_FROM_RANK.get(sev_rank_val, "none"),
         "vulnerabilities": vulns,
+        # M-20 — duties carried by the component's license(s); see
+        # ``obligations_stmt`` above for sourcing/ordering guarantees.
+        "obligations": obligations,
         "raw_data": dict(row.raw_data or {}),
         # v2.2 2.2-a2 — graph depth + direct flag for the chosen (shallowest)
         # path. NULL depth when the scan carried no dependency graph.

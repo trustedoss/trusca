@@ -69,6 +69,13 @@
       "required": "Required",
       "not_required": "—"
     },
+    "notice_download": {
+      "format_label": "NOTICE",
+      "format_text": "Text",
+      "format_html": "HTML",
+      "action": "Download",
+      "action_generating": "Generating…"
+    },
     "override": {
       "none": "—"
     },
@@ -216,6 +223,7 @@
   },
   "components": {
     "summary": "{{loaded}} of {{total}} components loaded.",
+    "vulns_link_aria": "View {{count}} CVEs for {{name}} in the Vulnerabilities tab",
     "col": {
       "name": "Component",
       "type": "Type",
@@ -299,6 +307,11 @@
       "cvss_label": "CVSS",
       "epss_label": "EPSS",
       "fixed_in": "Fixed in"
+    },
+    "obligations": {
+      "title": "Obligations ({{count}})",
+      "empty": "No obligations recorded for this component's licenses.",
+      "link": "Learn more"
     },
     "raw": {
       "show": "Show raw data",

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Virtuoso } from "react-virtuoso";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -542,6 +542,7 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
                   <ComponentRow
                     component={item}
                     rowIndex={index}
+                    projectId={projectId}
                     visibleColumns={visibleColumns}
                     onSelect={() => setDrawerComponent(item.id)}
                   />
@@ -659,6 +660,8 @@ function ComponentsTableHeader({
 interface ComponentRowProps {
   component: ComponentSummary;
   rowIndex: number;
+  /** M-22 — needed to build the CVEs-count deep-link into the Vulns tab. */
+  projectId: string;
   /** W9 #52 — column ids the row should render. */
   visibleColumns: Set<string>;
   onSelect: () => void;
@@ -667,14 +670,18 @@ interface ComponentRowProps {
 function ComponentRow({
   component,
   rowIndex,
+  projectId,
   visibleColumns,
   onSelect,
 }: ComponentRowProps) {
   const { t } = useTranslation("project_detail");
+  // M-22 — the row used to be a single <button>, but the CVEs-count cell is
+  // now a <Link> and nesting an anchor inside a button is invalid DOM. The
+  // structure mirrors VulnerabilityRow (checkbox precedent): a non-interactive
+  // row container, one inner "open" button covering the read-only cells, and
+  // the count link as a sibling so both stay independently keyboard-reachable.
   return (
-    <button
-      type="button"
-      onClick={onSelect}
+    <div
       data-testid="component-row"
       data-component-id={component.id}
       data-row-index={rowIndex}
@@ -685,10 +692,18 @@ function ComponentRow({
         // 40 px row height stays unchanged (compact identity).
         "flex w-full items-center gap-3 border-b border-border/60 bg-card px-6 text-left text-sm",
         "transition-colors duration-fast ease-out-soft hover:bg-accent",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
       )}
       style={{ height: "var(--table-row)" }}
     >
+      <button
+        type="button"
+        onClick={onSelect}
+        data-testid="component-row-open"
+        className={cn(
+          "flex h-full flex-1 items-center gap-3 text-left",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+        )}
+      >
       <span className="flex flex-1 min-w-[180px] items-center gap-2 truncate">
         <span className="truncate font-medium" title={component.name}>
           {component.name}
@@ -749,14 +764,36 @@ function ComponentRow({
           <SeverityBadge severity={component.severity_max} />
         </span>
       ) : null}
+      </button>
+      {/* M-22 — the CVEs count deep-links into the Vulnerabilities tab
+          pre-filtered on this component's name (backend search matches
+          component names). It sits OUTSIDE the open-button so the anchor is
+          valid DOM; stopPropagation keeps a click from also bubbling into
+          any ancestor handlers. Zero counts stay plain text — there is
+          nothing to filter to. */}
       {visibleColumns.has("vulns") ? (
         <span
           className="w-12 text-right font-mono text-xs tabular-nums"
           data-testid="component-row-vuln-count"
         >
-          {component.vulnerability_count}
+          {component.vulnerability_count > 0 ? (
+            <Link
+              to={`/projects/${projectId}?tab=vulnerabilities&search=${encodeURIComponent(component.name)}`}
+              onClick={(e) => e.stopPropagation()}
+              data-testid="component-row-vuln-link"
+              aria-label={t("components.vulns_link_aria", {
+                count: component.vulnerability_count,
+                name: component.name,
+              })}
+              className="underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {component.vulnerability_count}
+            </Link>
+          ) : (
+            component.vulnerability_count
+          )}
         </span>
       ) : null}
-    </button>
+    </div>
   );
 }

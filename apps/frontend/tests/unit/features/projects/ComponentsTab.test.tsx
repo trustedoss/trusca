@@ -100,6 +100,7 @@ function detail(
     license_category: "allowed",
     severity_max: "low",
     vulnerabilities: [],
+    obligations: [],
     raw_data: { source: "cdxgen" },
     created_at: "2026-05-01T00:00:00Z",
     updated_at: "2026-05-01T00:00:00Z",
@@ -304,7 +305,10 @@ describe("ComponentsTab", () => {
     await waitFor(() => {
       expect(screen.getByTestId("component-row")).toBeInTheDocument();
     });
-    await userEvent.click(screen.getByTestId("component-row"));
+    // M-22 — the row container is no longer itself a <button>; the open
+    // affordance is the inner `component-row-open` button (the CVEs-count
+    // link lives outside it as a sibling, keeping the DOM valid).
+    await userEvent.click(screen.getByTestId("component-row-open"));
 
     await waitFor(() => {
       expect(screen.getByTestId("component-drawer")).toBeInTheDocument();
@@ -315,6 +319,51 @@ describe("ComponentsTab", () => {
     await waitFor(() => {
       expect(screen.getByTestId("component-drawer-meta")).toBeInTheDocument();
     });
+  });
+
+  // ─── M-22 — CVEs-count cell deep-links into the Vulnerabilities tab ──────
+
+  it("renders the CVEs count as a pre-filtered Vulnerabilities-tab link when > 0", async () => {
+    mockedList.mockResolvedValueOnce(
+      listResponse([
+        comp("Alpha", { vulnerability_count: 3 }),
+        comp("Bravo", { vulnerability_count: 0 }),
+      ]),
+    );
+
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("component-row")).toHaveLength(2);
+    });
+
+    // Alpha (count 3) carries the deep-link…
+    const links = screen.getAllByTestId("component-row-vuln-link");
+    expect(links).toHaveLength(1);
+    expect(links[0]).toHaveAttribute(
+      "href",
+      "/projects/proj-1?tab=vulnerabilities&search=Alpha",
+    );
+    expect(links[0].textContent).toBe("3");
+
+    // …Bravo (count 0) stays plain text — nothing to filter to.
+    const cells = screen.getAllByTestId("component-row-vuln-count");
+    expect(cells[1].querySelector("a")).toBeNull();
+    expect(cells[1].textContent).toBe("0");
+  });
+
+  it("clicking the CVEs-count link does not open the component drawer", async () => {
+    mockedList.mockResolvedValueOnce(
+      listResponse([comp("Alpha", { vulnerability_count: 3 })]),
+    );
+
+    renderTab();
+    const link = await screen.findByTestId("component-row-vuln-link");
+    await userEvent.click(link);
+
+    // Navigation happens (MemoryRouter), but the drawer must NOT open: no
+    // detail fetch, no drawer in the DOM.
+    expect(mockedGet).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("component-drawer")).not.toBeInTheDocument();
   });
 
   it("hydrates filter state from the URL on first render", async () => {

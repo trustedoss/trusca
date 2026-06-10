@@ -69,6 +69,13 @@
       "required": "필요",
       "not_required": "—"
     },
+    "notice_download": {
+      "format_label": "NOTICE",
+      "format_text": "텍스트",
+      "format_html": "HTML",
+      "action": "다운로드",
+      "action_generating": "생성 중…"
+    },
     "override": {
       "none": "—"
     },
@@ -216,6 +223,7 @@
   },
   "components": {
     "summary": "전체 {{total}}개 중 {{loaded}}개 로드됨.",
+    "vulns_link_aria": "{{name}}의 CVE {{count}}건을 취약점 탭에서 보기",
     "col": {
       "name": "컴포넌트",
       "type": "유형",
@@ -299,6 +307,11 @@
       "cvss_label": "CVSS",
       "epss_label": "EPSS",
       "fixed_in": "수정 버전"
+    },
+    "obligations": {
+      "title": "의무사항 ({{count}})",
+      "empty": "이 컴포넌트의 라이선스에 등록된 의무사항이 없습니다.",
+      "link": "자세히 보기"
     },
     "raw": {
       "show": "원본 데이터 보기",

@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type {
   ComponentDetailResponse,
+  ObligationRef,
   VulnerabilityRef,
 } from "@/features/projects/api/projectDetailApi";
 import { DependencyScopeBadge } from "@/features/projects/components/DependencyScopeBadge";
@@ -50,6 +52,22 @@ const SEVERITY_TONE: Record<
 
 function vulnerabilityTone(severity: string) {
   return SEVERITY_TONE[severity.toLowerCase()] ?? "info";
+}
+
+/**
+ * M-20 — adversarial-input guard for obligation links. The backend persists
+ * the catalog `link` verbatim (no scheme filtering), so the frontend must
+ * only render http/https URLs as clickable anchors. Anything else
+ * (`javascript:`, `file:`, relative junk, unparsable input) degrades to
+ * plain text-free rendering.
+ */
+function isHttpUrl(link: string): boolean {
+  try {
+    const url = new URL(link);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 export interface ComponentDetailBodyProps {
@@ -129,7 +147,36 @@ export function ComponentDetailBody({ detail }: ComponentDetailBodyProps) {
         ) : (
           <ul className="flex flex-col gap-2">
             {detail.vulnerabilities.map((vuln) => (
-              <VulnerabilityRow key={vuln.cve_id} vuln={vuln} />
+              <VulnerabilityRow
+                key={vuln.cve_id}
+                vuln={vuln}
+                projectId={detail.project_id}
+              />
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {/* M-20 — license obligations carried by this component. Mirrors the
+          Vulnerabilities section's layout grammar (title + count, empty-state
+          copy) so the body scans as a uniform stack on both surfaces. */}
+      <section
+        className="flex flex-col gap-2"
+        data-testid="component-drawer-obligations"
+      >
+        <h3 className="text-sm font-semibold">
+          {t("drawer.obligations.title", {
+            count: detail.obligations.length,
+          })}
+        </h3>
+        {detail.obligations.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            {t("drawer.obligations.empty")}
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {detail.obligations.map((obligation) => (
+              <ObligationRow key={obligation.id} obligation={obligation} />
             ))}
           </ul>
         )}
@@ -167,7 +214,13 @@ export function ComponentDetailBody({ detail }: ComponentDetailBodyProps) {
   );
 }
 
-function VulnerabilityRow({ vuln }: { vuln: VulnerabilityRef }) {
+function VulnerabilityRow({
+  vuln,
+  projectId,
+}: {
+  vuln: VulnerabilityRef;
+  projectId: string;
+}) {
   const { t } = useTranslation("project_detail");
   const epssScore = formatEpssScore(vuln.epss_score);
   const epssPercentile = formatEpssPercentile(vuln.epss_percentile);
@@ -184,7 +237,17 @@ function VulnerabilityRow({ vuln }: { vuln: VulnerabilityRef }) {
         >
           {vuln.severity}
         </Badge>
-        <span className="font-mono text-xs">{vuln.cve_id}</span>
+        {/* M-20 — deep-link into the Vulnerabilities tab pre-filtered on
+            this CVE id (backend search matches CVE ids). Navigating swaps
+            `?tab=` and drops `?drawer=`, so the drawer closes naturally and
+            the full-page surface returns to the project. */}
+        <Link
+          to={`/projects/${projectId}?tab=vulnerabilities&search=${encodeURIComponent(vuln.cve_id)}`}
+          data-testid="component-drawer-vuln-link"
+          className="font-mono text-xs underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {vuln.cve_id}
+        </Link>
         {vuln.cvss != null ? (
           <span className="text-xs text-muted-foreground">
             {t("drawer.vulns.cvss_label")}: {vuln.cvss.toFixed(1)}
@@ -217,6 +280,50 @@ function VulnerabilityRow({ vuln }: { vuln: VulnerabilityRef }) {
           </span>{" "}
           <span className="font-mono">{vuln.fixed_version}</span>
         </div>
+      ) : null}
+    </li>
+  );
+}
+
+function ObligationRow({ obligation }: { obligation: ObligationRef }) {
+  const { t, i18n } = useTranslation("project_detail");
+  // Re-use the `obligations.kind.*` dictionary (same fallback strategy as
+  // the Compliance grid's ObligationChip): the catalog kind is free-form, so
+  // unknown kinds render verbatim instead of leaking a raw i18n key.
+  const dictKey = `obligations.kind.${obligation.kind}`;
+  const kindLabel = i18n.exists(dictKey, { ns: "project_detail" })
+    ? t(dictKey)
+    : obligation.kind;
+  const linkIsSafe = obligation.link != null && isHttpUrl(obligation.link);
+  return (
+    <li
+      data-testid="component-drawer-obligation"
+      data-kind={obligation.kind}
+      data-license={obligation.license}
+      className="flex flex-col gap-1 rounded-md border p-3"
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge tone="info" data-testid="component-drawer-obligation-kind">
+          {kindLabel}
+        </Badge>
+        <span
+          className="font-mono text-xs text-muted-foreground"
+          data-testid="component-drawer-obligation-license"
+        >
+          {obligation.license}
+        </span>
+      </div>
+      <p className="text-xs text-muted-foreground">{obligation.text}</p>
+      {linkIsSafe ? (
+        <a
+          href={obligation.link ?? undefined}
+          target="_blank"
+          rel="noopener noreferrer"
+          data-testid="component-drawer-obligation-link"
+          className="self-start text-xs underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {t("drawer.obligations.link")}
+        </a>
       ) : null}
     </li>
   );

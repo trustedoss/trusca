@@ -206,6 +206,29 @@ async def _attach_license_finding(
     return lf
 
 
+async def _attach_obligation(
+    session: AsyncSession,
+    *,
+    license_id: uuid.UUID,
+    kind: str = "notice",
+    text: str = "Retain the copyright notice.",
+    link: str | None = None,
+):
+    """Catalog obligation for a license (M-20 — drawer obligations).
+
+    Callers must pass a *fresh* license (unique spdx_id) — the table carries
+    ``uq_obligations_license_kind``, so reusing a shared catalog license
+    (``MIT`` …) across re-runs of the persistent dev DB would collide.
+    """
+    from models import Obligation
+
+    ob = Obligation(license_id=license_id, kind=kind, text=text, link=link)
+    session.add(ob)
+    await session.commit()
+    await session.refresh(ob)
+    return ob
+
+
 async def _make_vulnerability(
     session: AsyncSession,
     *,
@@ -999,6 +1022,160 @@ async def test_component_detail_super_admin_bypasses_team_check(
     )
     assert detail["id"] == cv.id
     assert detail["project_id"] == project.id
+
+
+# ---------------------------------------------------------------------------
+# M-20 — license obligations on the component drawer
+# ---------------------------------------------------------------------------
+
+
+async def test_component_detail_returns_license_obligations(
+    db_session: AsyncSession,
+) -> None:
+    """The drawer carries the duties of the component's license: each entry
+    maps {id, kind, text, link, license(SPDX id)} and the list is kind-sorted.
+    Adding obligations must not regress the pre-existing detail fields."""
+    from services.project_detail_service import get_component_detail
+
+    team, user, project, scan = await _make_project_with_scan(db_session)
+    actor = principal_for(user, team_ids=[team.id], role="developer")
+
+    _, cv = await _make_component_version(
+        db_session, name=f"drawer-obligations-{unique_suffix()}"
+    )
+    await _attach_to_scan(db_session, scan_id=scan.id, cv_id=cv.id)
+
+    # Fresh license (unique spdx_id) so the obligation set is fully ours —
+    # shared catalog rows like MIT may carry seeded obligations.
+    licence = await _make_license(
+        db_session, spdx_id=f"Test-Obl-{unique_suffix()}", category="conditional"
+    )
+    await _attach_license_finding(
+        db_session, scan_id=scan.id, cv_id=cv.id, license_id=licence.id
+    )
+    # Inserted in reverse-alphabetical kind order to prove the service sorts.
+    ob_notice = await _attach_obligation(
+        db_session,
+        license_id=licence.id,
+        kind="notice",
+        text="Retain the copyright notice.",
+        link=None,
+    )
+    ob_attr = await _attach_obligation(
+        db_session,
+        license_id=licence.id,
+        kind="attribution",
+        text="Give credit in distributions.",
+        link="https://example.org/attribution",
+    )
+
+    detail = await get_component_detail(
+        db_session, component_version_id=cv.id, actor=actor
+    )
+
+    assert [o["kind"] for o in detail["obligations"]] == ["attribution", "notice"]
+    first, second = detail["obligations"]
+    assert first["id"] == ob_attr.id
+    assert first["text"] == "Give credit in distributions."
+    assert first["link"] == "https://example.org/attribution"
+    assert first["license"] == licence.spdx_id
+    assert second["id"] == ob_notice.id
+    assert second["link"] is None
+    assert second["license"] == licence.spdx_id
+
+    # Regression — the pre-existing drawer fields are untouched.
+    assert detail["id"] == cv.id
+    assert detail["project_id"] == project.id
+    assert detail["license"] == licence.spdx_id
+    assert detail["license_category"] == "conditional"
+    assert detail["severity_max"] == "none"
+    assert detail["vulnerabilities"] == []
+
+
+async def test_component_detail_obligations_span_all_licenses_deterministically(
+    db_session: AsyncSession,
+) -> None:
+    """A dual-licensed component owes the duties of *both* licenses; ties on
+    ``kind`` break on the license SPDX id so the response stays deterministic."""
+    from services.project_detail_service import get_component_detail
+
+    team, user, _, scan = await _make_project_with_scan(db_session)
+    actor = principal_for(user, team_ids=[team.id], role="developer")
+
+    _, cv = await _make_component_version(
+        db_session, name=f"drawer-dual-lic-{unique_suffix()}"
+    )
+    await _attach_to_scan(db_session, scan_id=scan.id, cv_id=cv.id)
+
+    suffix = unique_suffix()
+    lic_a = await _make_license(db_session, spdx_id=f"Test-Dual-A-{suffix}")
+    lic_b = await _make_license(db_session, spdx_id=f"Test-Dual-B-{suffix}")
+    for licence, kind in ((lic_a, "declared"), (lic_b, "concluded")):
+        await _attach_license_finding(
+            db_session, scan_id=scan.id, cv_id=cv.id, license_id=licence.id, kind=kind
+        )
+    await _attach_obligation(db_session, license_id=lic_b.id, kind="notice")
+    await _attach_obligation(db_session, license_id=lic_a.id, kind="notice")
+    await _attach_obligation(db_session, license_id=lic_b.id, kind="attribution")
+
+    detail = await get_component_detail(
+        db_session, component_version_id=cv.id, actor=actor
+    )
+    assert [(o["kind"], o["license"]) for o in detail["obligations"]] == [
+        ("attribution", lic_b.spdx_id),
+        ("notice", lic_a.spdx_id),
+        ("notice", lic_b.spdx_id),
+    ]
+
+
+async def test_component_detail_without_license_has_empty_obligations(
+    db_session: AsyncSession,
+) -> None:
+    """No license finding → empty obligations list, never an error."""
+    from services.project_detail_service import get_component_detail
+
+    team, user, _, scan = await _make_project_with_scan(db_session)
+    actor = principal_for(user, team_ids=[team.id], role="developer")
+
+    _, cv = await _make_component_version(
+        db_session, name=f"drawer-no-lic-{unique_suffix()}"
+    )
+    await _attach_to_scan(db_session, scan_id=scan.id, cv_id=cv.id)
+
+    detail = await get_component_detail(
+        db_session, component_version_id=cv.id, actor=actor
+    )
+    assert detail["license"] is None
+    assert detail["obligations"] == []
+
+
+async def test_component_detail_license_without_catalog_obligations_is_empty(
+    db_session: AsyncSession,
+) -> None:
+    """A license that defines no obligations yields an empty list — the
+    drawer must distinguish "no duties" from "request failed"."""
+    from services.project_detail_service import get_component_detail
+
+    team, user, _, scan = await _make_project_with_scan(db_session)
+    actor = principal_for(user, team_ids=[team.id], role="developer")
+
+    _, cv = await _make_component_version(
+        db_session, name=f"drawer-bare-lic-{unique_suffix()}"
+    )
+    await _attach_to_scan(db_session, scan_id=scan.id, cv_id=cv.id)
+
+    licence = await _make_license(
+        db_session, spdx_id=f"Test-NoObl-{unique_suffix()}"
+    )
+    await _attach_license_finding(
+        db_session, scan_id=scan.id, cv_id=cv.id, license_id=licence.id
+    )
+
+    detail = await get_component_detail(
+        db_session, component_version_id=cv.id, actor=actor
+    )
+    assert detail["license"] == licence.spdx_id
+    assert detail["obligations"] == []
 
 
 # ---------------------------------------------------------------------------

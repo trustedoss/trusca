@@ -76,6 +76,19 @@ import { listProjectCompliance } from "@/features/projects/api/complianceApi";
 
 const mockedList = vi.mocked(listProjectCompliance);
 
+// M-21 — the toolbar's NOTICE group downloads through useNotice. Mock the
+// hook (same pattern as ReportsTab.test.tsx) so a click is observable without
+// exercising the blob-download path (jsdom has no URL.createObjectURL).
+const { noticeDownload } = vi.hoisted(() => ({ noticeDownload: vi.fn() }));
+vi.mock("@/features/projects/api/useNotice", () => ({
+  useNotice: () => ({
+    download: noticeDownload,
+    isLoading: false,
+    error: null,
+    lastResult: null,
+  }),
+}));
+
 // ---------------------------------------------------------------------------
 // Fixture helpers
 // ---------------------------------------------------------------------------
@@ -159,9 +172,53 @@ function renderTabAsTeamAdmin(initialEntries: string[] = ["/projects/proj-1"]) {
 describe("ComplianceTab unified grid", () => {
   beforeEach(() => {
     mockedList.mockReset();
+    noticeDownload.mockReset().mockResolvedValue(undefined);
   });
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  // ─── M-21 — NOTICE download on the Compliance toolbar ───────────────────
+
+  it("renders the NOTICE download group on the toolbar", async () => {
+    mockedList.mockResolvedValue(response([]));
+    renderTab();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("compliance-toolbar")).toBeInTheDocument();
+    });
+    const group = screen.getByTestId("compliance-notice-download");
+    expect(group).toBeInTheDocument();
+    // Format select defaults to text; both formats are offered.
+    const select = screen.getByTestId(
+      "compliance-notice-format",
+    ) as HTMLSelectElement;
+    expect(select.value).toBe("text");
+    expect(
+      Array.from(select.options).map((o) => o.value),
+    ).toEqual(["text", "html"]);
+    expect(
+      screen.getByTestId("compliance-notice-action"),
+    ).toBeInTheDocument();
+  });
+
+  it("downloads the NOTICE in the selected format", async () => {
+    mockedList.mockResolvedValue(response([]));
+    renderTab();
+
+    const action = await screen.findByTestId("compliance-notice-action");
+
+    // Default format → text.
+    await userEvent.click(action);
+    expect(noticeDownload).toHaveBeenCalledWith({ format: "text" });
+
+    // Switch to HTML → the next download carries the new format.
+    await userEvent.selectOptions(
+      screen.getByTestId("compliance-notice-format"),
+      "html",
+    );
+    await userEvent.click(action);
+    expect(noticeDownload).toHaveBeenLastCalledWith({ format: "html" });
   });
 
   it("shows the empty state when the grid returns 0 rows", async () => {
