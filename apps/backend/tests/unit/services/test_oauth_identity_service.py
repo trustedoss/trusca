@@ -180,6 +180,42 @@ async def test_list_orders_oldest_first(db_session: AsyncSession) -> None:
 
 
 # ---------------------------------------------------------------------------
+# user_has_password — M-16 (shares the unlink guard's criterion)
+# ---------------------------------------------------------------------------
+
+
+async def test_user_has_password_true_for_password_account(
+    db_session: AsyncSession,
+) -> None:
+    from services.oauth_identity_service import user_has_password
+
+    user = await make_user(db_session)  # make_user sets a real bcrypt hash
+    await _set_user_password(db_session, user_id=user.id, has_password=True)
+    assert await user_has_password(db_session, user_id=user.id) is True
+
+
+async def test_user_has_password_false_for_oauth_only_account(
+    db_session: AsyncSession,
+) -> None:
+    """Empty-string hash counts as 'no password' — same criterion as the
+    unlink 409 guard (``_password_is_set``), so the SPA's pre-disable
+    judgement can never disagree with the server-side block."""
+    from services.oauth_identity_service import user_has_password
+
+    user = await make_user(db_session)
+    await _set_user_password(db_session, user_id=user.id, has_password=False)
+    assert await user_has_password(db_session, user_id=user.id) is False
+
+
+async def test_user_has_password_false_for_missing_user(
+    db_session: AsyncSession,
+) -> None:
+    from services.oauth_identity_service import user_has_password
+
+    assert await user_has_password(db_session, user_id=uuid.uuid4()) is False
+
+
+# ---------------------------------------------------------------------------
 # unlink_oauth_identity — happy path
 # ---------------------------------------------------------------------------
 

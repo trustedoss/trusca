@@ -38,6 +38,7 @@ from services.oauth_identity_service import (
     OAuthUnlinkBlocksLoginError,
     list_user_oauth_identities,
     unlink_oauth_identity,
+    user_has_password,
 )
 
 router = APIRouter(prefix="/v1/users/me", tags=["users-me"])
@@ -146,8 +147,14 @@ async def list_oauth_identities(
     actor: CurrentUser = Depends(get_current_user),
 ) -> Response:
     rows = await list_user_oauth_identities(session, user_id=actor.id)
+    # M-16: ``has_password`` lets the SPA pre-disable Unlink on the last
+    # identity of an OAuth-only account. ``CurrentUser`` is a light-weight
+    # principal that (deliberately) does not carry ``hashed_password``, so
+    # this is a single-column SELECT — the service shares its criterion
+    # with the unlink 409 guard and never exposes the hash itself.
     body = OAuthIdentityListResponse(
-        items=[OAuthIdentityOut.model_validate(row) for row in rows]
+        items=[OAuthIdentityOut.model_validate(row) for row in rows],
+        has_password=await user_has_password(session, user_id=actor.id),
     )
     # ``by_alias=True`` honours the wire-shape aliases (``provider_email``,
     # ``created_at``) configured on :class:`OAuthIdentityOut`.

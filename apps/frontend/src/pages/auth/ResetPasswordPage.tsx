@@ -57,6 +57,17 @@ function buildSchema(t: (key: string) => string) {
 type ResetValues = z.infer<ReturnType<typeof buildSchema>>;
 
 /**
+ * M-14: error keys that mean "this token will never work again" (expired /
+ * used / malformed). Only these get the inline "request a new link" escape
+ * hatch — a transient failure (network, 500) keeps the form actionable as-is
+ * because retrying with the SAME token may still succeed.
+ */
+const TOKEN_INVALID_ERROR_KEYS: ReadonlySet<string> = new Set([
+  "reset.errors.expired",
+  "reset.errors.invalid",
+]);
+
+/**
  * Map a ProblemError back to an i18n key under `auth.reset.errors.*`.
  * The backend titles for the 422 are `invalid_reset_token` (used or
  * malformed) and `expired_reset_token`.
@@ -147,10 +158,28 @@ export function ResetPasswordPage() {
       }
     >
       {apiErrorKey ? (
-        <Alert variant="destructive" data-testid="reset-error">
-          <AlertCircle className="h-4 w-4" aria-hidden />
-          <AlertDescription>{t(apiErrorKey)}</AlertDescription>
-        </Alert>
+        <>
+          <Alert variant="destructive" data-testid="reset-error">
+            <AlertCircle className="h-4 w-4" aria-hidden />
+            <AlertDescription>{t(apiErrorKey)}</AlertDescription>
+          </Alert>
+          {TOKEN_INVALID_ERROR_KEYS.has(apiErrorKey) ? (
+            // M-14: a dead token cannot be fixed by retyping the password —
+            // give the user the path to a fresh link right where the error
+            // is, not only on /login. Reuses the same testid as the
+            // missing-token branch so harnesses treat both escape hatches
+            // identically.
+            <p className="text-center text-sm">
+              <Link
+                to="/forgot-password"
+                className="font-medium text-primary hover:underline"
+                data-testid="reset-forgot-link"
+              >
+                {t("reset.request_new")}
+              </Link>
+            </p>
+          ) : null}
+        </>
       ) : (
         <Alert data-testid="reset-info">
           <CheckCircle2 className="h-4 w-4" aria-hidden />

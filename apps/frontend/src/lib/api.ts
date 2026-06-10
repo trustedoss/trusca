@@ -308,6 +308,40 @@ export async function postResetPassword(
   );
 }
 
+// ---------- OAuth provider availability (M-15) -----------------------------
+
+export type OAuthProviderName = "github" | "google";
+
+export interface OAuthProviderStatusWire {
+  provider: OAuthProviderName;
+  configured: boolean;
+}
+
+export interface OAuthProvidersResponseWire {
+  providers: OAuthProviderStatusWire[];
+}
+
+/**
+ * GET /auth/oauth/providers — PUBLIC (anonymous) endpoint listing which
+ * OAuth providers are actually configured on this deployment. The /login
+ * page renders a sign-in button only for `configured: true` providers so
+ * an unconfigured provider never surfaces a button that 503s on click.
+ *
+ * The response carries booleans only (no client ids / secrets) — see
+ * apps/backend/api/v1/oauth.py `list_providers`.
+ */
+export async function fetchOAuthProviders(): Promise<OAuthProvidersResponseWire> {
+  const { data } = await api.get<OAuthProvidersResponseWire>(
+    "/auth/oauth/providers",
+    // Public endpoint — a 401 here would be a backend bug, never a stale
+    // access token, so skip the refresh-and-retry dance.
+    { _skipAuthRefresh: true } as AxiosRequestConfig & {
+      _skipAuthRefresh?: boolean;
+    },
+  );
+  return data;
+}
+
 // ---------- dev-only window hooks (e2e harness bridge) ---------------------
 
 if (import.meta.env.DEV && typeof window !== "undefined") {

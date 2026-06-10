@@ -180,6 +180,45 @@ def _hash_provider_user_id(provider_user_id: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Password-presence criterion (shared by unlink guard + list response, M-16)
+# ---------------------------------------------------------------------------
+
+
+def _password_is_set(hashed_password: str | None) -> bool:
+    """Single criterion for "this user can log in with a password".
+
+    ``bool(...)`` treats BOTH ``NULL`` and the empty string as "no
+    password" — OAuth-created users get a synthesised random hash
+    (truthy), while test/maintenance paths blank the column to ``""``.
+    The unlink 409 guard (:func:`unlink_oauth_identity`) and the
+    ``has_password`` field on ``GET /v1/users/me/oauth-identities``
+    (M-16) MUST share this function so the frontend's pre-disable
+    judgement can never disagree with the server-side block.
+    """
+    return bool(hashed_password)
+
+
+async def user_has_password(
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+) -> bool:
+    """Return whether the user currently has a usable password (M-16).
+
+    Selects only the ``hashed_password`` column — the raw hash never
+    leaves this function, only the boolean. A missing user row maps to
+    ``False`` (the caller's auth dependency proved existence at request
+    entry; a racing delete simply yields the conservative answer).
+    """
+    value = (
+        await session.execute(
+            select(User.hashed_password).where(User.id == user_id)
+        )
+    ).scalar_one_or_none()
+    return _password_is_set(value)
+
+
+# ---------------------------------------------------------------------------
 # list_user_oauth_identities
 # ---------------------------------------------------------------------------
 
@@ -270,7 +309,7 @@ async def unlink_oauth_identity(
             f"user {user_id} no longer exists"
         )
 
-    has_password = bool(user.hashed_password)
+    has_password = _password_is_set(user.hashed_password)
     if not has_password:
         # Count remaining identities. If this is the only one, the user
         # has no fallback auth path — refuse the unlink.
@@ -338,4 +377,5 @@ __all__ = [
     "OAuthUnlinkBlocksLoginError",
     "list_user_oauth_identities",
     "unlink_oauth_identity",
+    "user_has_password",
 ]

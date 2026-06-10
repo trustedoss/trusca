@@ -41,6 +41,7 @@
     "identity_id"
   ],
   "GET /auth/me": [],
+  "GET /auth/oauth/providers": [],
   "GET /auth/oauth/{provider}/authorize": [
     "provider",
     "redirect_after"

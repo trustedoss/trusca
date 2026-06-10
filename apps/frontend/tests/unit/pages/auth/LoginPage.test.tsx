@@ -16,11 +16,23 @@ vi.mock("@/lib/api", () => ({
   fetchMe: vi.fn(),
   postRegister: vi.fn(),
   postLogout: vi.fn(),
+  fetchOAuthProviders: vi.fn(),
 }));
 
-import { fetchMe, postLogin } from "@/lib/api";
+import { fetchMe, fetchOAuthProviders, postLogin } from "@/lib/api";
 const mockedPostLogin = vi.mocked(postLogin);
 const mockedFetchMe = vi.mocked(fetchMe);
+const mockedFetchProviders = vi.mocked(fetchOAuthProviders);
+
+/** Shorthand for the GET /auth/oauth/providers wire shape. */
+function providersResponse(github: boolean, google: boolean) {
+  return {
+    providers: [
+      { provider: "github" as const, configured: github },
+      { provider: "google" as const, configured: google },
+    ],
+  };
+}
 
 const sampleUser: AuthUser = {
   id: "u-1",
@@ -60,6 +72,11 @@ describe("LoginPage", () => {
     });
     mockedPostLogin.mockReset();
     mockedFetchMe.mockReset();
+    mockedFetchProviders.mockReset();
+    // M-15 default: both providers configured so the pre-existing OAuth
+    // assertions keep exercising the rendered-buttons path. Provider-combo
+    // cases override this per test.
+    mockedFetchProviders.mockResolvedValue(providersResponse(true, true));
   });
 
   it("renders email + password fields and a submit button", () => {
@@ -228,10 +245,64 @@ describe("LoginPage", () => {
   // chore B — OAuth buttons + ?error= mapping
   // -------------------------------------------------------------------------
 
-  it("renders Sign-in-with-GitHub and Sign-in-with-Google buttons", () => {
+  it("renders Sign-in-with-GitHub and Sign-in-with-Google buttons when both are configured", async () => {
     renderLogin();
-    expect(screen.getByTestId("login-oauth-github")).toBeInTheDocument();
+    // Buttons render only after GET /auth/oauth/providers resolves (M-15).
+    expect(await screen.findByTestId("login-oauth-github")).toBeInTheDocument();
     expect(screen.getByTestId("login-oauth-google")).toBeInTheDocument();
+    expect(screen.getByTestId("login-oauth-divider")).toBeInTheDocument();
+  });
+
+  it("M-15: renders only the configured provider (github-only)", async () => {
+    mockedFetchProviders.mockResolvedValue(providersResponse(true, false));
+    renderLogin();
+
+    expect(await screen.findByTestId("login-oauth-github")).toBeInTheDocument();
+    expect(screen.queryByTestId("login-oauth-google")).not.toBeInTheDocument();
+    // Divider still shows — there IS an alternative sign-in method.
+    expect(screen.getByTestId("login-oauth-divider")).toBeInTheDocument();
+  });
+
+  it("M-15: hides the entire OAuth section (divider included) when no provider is configured", async () => {
+    mockedFetchProviders.mockResolvedValue(providersResponse(false, false));
+    renderLogin();
+
+    // Wait for the providers query to settle, then assert nothing rendered.
+    await waitFor(() => {
+      expect(mockedFetchProviders).toHaveBeenCalled();
+    });
+    expect(screen.queryByTestId("login-oauth-github")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("login-oauth-google")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("login-oauth-divider"),
+    ).not.toBeInTheDocument();
+    // The password form is unaffected.
+    expect(screen.getByTestId("login-form")).toBeInTheDocument();
+  });
+
+  it("M-15: fails closed — no OAuth buttons when the providers fetch errors", async () => {
+    // Reject EVERY attempt (the query client retries once).
+    mockedFetchProviders.mockReset();
+    mockedFetchProviders.mockRejectedValue(
+      new ProblemError("boom", {
+        status: 500,
+        title: "internal",
+        detail: "boom",
+        problem: null,
+      }),
+    );
+    renderLogin();
+
+    await waitFor(() => {
+      expect(mockedFetchProviders).toHaveBeenCalled();
+    });
+    expect(screen.queryByTestId("login-oauth-github")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("login-oauth-google")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("login-oauth-divider"),
+    ).not.toBeInTheDocument();
+    // Email + password sign-in still fully available.
+    expect(screen.getByTestId("login-form")).toBeInTheDocument();
   });
 
   it("OAuth click navigates to /auth/oauth/<provider>/authorize with redirect_after", async () => {
@@ -251,7 +322,7 @@ describe("LoginPage", () => {
       const user = userEvent.setup();
       renderLogin("/login?redirect_after=%2Fprojects");
 
-      await user.click(screen.getByTestId("login-oauth-github"));
+      await user.click(await screen.findByTestId("login-oauth-github"));
       expect(sink.href).toMatch(/\/auth\/oauth\/github\/authorize/);
       // redirect_after is propagated url-encoded.
       expect(sink.href).toMatch(/redirect_after=%2Fprojects/);
