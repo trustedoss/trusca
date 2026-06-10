@@ -33,8 +33,12 @@ Security contract for ``github_app_credentials`` (this is the b1 raison d'être)
   - Soft-delete: revocation flips ``revoked_at`` / ``revoked_by_user_id`` rather
     than DELETE so the audit trail referencing the credential by id stays intact
     (mirrors ``api_keys``).
-  - ``UniqueConstraint(team_id, app_id)`` — a team registers a given GitHub App
-    once. (A re-register after revoke is a NEW row; we do not resurrect the old.)
+  - Partial unique index ``(team_id, app_id) WHERE revoked_at IS NULL`` — a team
+    holds ONE live registration per GitHub App. A re-register after revoke is a
+    NEW row (we do not resurrect the old); revoked rows stay as history and do
+    not block the re-register. (recheck §4-3: the original full-table
+    ``UniqueConstraint(team_id, app_id)`` counted revoked rows too, making
+    revoke-then-re-register — normal key rotation — a permanent 409.)
 
 ``github_app_installations``:
   - ``installation_id`` is GitHub's per-installation id (string — GitHub returns
@@ -143,8 +147,17 @@ class GitHubAppCredential(Base):
     )
 
     __table_args__ = (
-        # A team registers a given GitHub App once.
-        UniqueConstraint("team_id", "app_id", name="uq_github_app_credentials_team_app"),
+        # A team holds ONE LIVE registration per GitHub App. Partial unique so
+        # revoked (soft-deleted) rows stay as history without blocking a
+        # re-register — key rotation is revoke → register-new (recheck §4-3;
+        # replaced the full-table uq_github_app_credentials_team_app, mig 0031).
+        Index(
+            "uq_github_app_credentials_team_app_active",
+            "team_id",
+            "app_id",
+            unique=True,
+            postgresql_where=text("revoked_at IS NULL"),
+        ),
         Index("ix_github_app_credentials_team_id", "team_id"),
         Index("ix_github_app_credentials_created_by_user_id", "created_by_user_id"),
         # Hot path: "list this team's live credentials" — partial index dodges
