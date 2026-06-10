@@ -146,7 +146,14 @@ function InboxRow({ item, onActivate }: InboxRowProps) {
               {t(`kind.${item.kind}`)}
             </span>
             <span aria-hidden>·</span>
-            <span>
+            {/* M-19 — the guide promises the absolute timestamp on hover; a
+                title attribute keeps the row compact. */}
+            <span
+              data-testid="notifications-row-time"
+              title={new Date(item.created_at).toLocaleString(
+                i18n.resolvedLanguage,
+              )}
+            >
               {formatRelativeToNow(item.created_at, i18n.resolvedLanguage)}
             </span>
           </div>

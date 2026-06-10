@@ -142,6 +142,23 @@ describe("NotificationsPage", () => {
     expect(screen.getByText("New CVE")).toBeInTheDocument();
   });
 
+  // M-19 — the relative timestamp must expose the absolute datetime on hover.
+  it("exposes the absolute datetime as the timestamp tooltip (M-19)", async () => {
+    mockedList.mockResolvedValueOnce(
+      makeList([makeItem("n1", { created_at: "2026-05-08T00:00:00Z" })]),
+    );
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("notifications-row-time")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("notifications-row-time")).toHaveAttribute(
+      "title",
+      new Date("2026-05-08T00:00:00Z").toLocaleString("en"),
+    );
+  });
+
   it("toggling 'unread only' re-issues the list with unread_only=true", async () => {
     mockedList.mockResolvedValue(
       makeList([makeItem("n1", { read_at: null })]),

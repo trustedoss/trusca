@@ -182,6 +182,57 @@ describe("ScanProgress", () => {
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
+  // L-23 — the bar's accessible name must follow the terminal state so a
+  // screen reader never keeps announcing "Scan in progress" on a dead scan.
+  it("updates the progressbar accessible name on a failed terminal frame (L-23)", async () => {
+    renderProgress(<ScanProgress scanId="scan-1" socketFactory={factory} />);
+    act(() => FakeSocket.instances[0].__open());
+    act(() =>
+      FakeSocket.instances[0].__message({
+        percent: 30,
+        step: "sbom",
+        ts: "2026-05-06T12:00:00.000Z",
+      }),
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("scan-progress-bar")).toHaveAttribute(
+        "aria-label",
+        expect.stringMatching(/in progress/i),
+      );
+    });
+    act(() =>
+      FakeSocket.instances[0].__message({
+        percent: 60,
+        step: "failed",
+        ts: "2026-05-06T12:00:01.000Z",
+      }),
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("scan-progress-bar")).toHaveAttribute(
+        "aria-label",
+        expect.stringMatching(/failed/i),
+      );
+    });
+  });
+
+  it("updates the progressbar accessible name on success (L-23)", async () => {
+    renderProgress(<ScanProgress scanId="scan-1" socketFactory={factory} />);
+    act(() => FakeSocket.instances[0].__open());
+    act(() =>
+      FakeSocket.instances[0].__message({
+        percent: 100,
+        step: "succeeded",
+        ts: "2026-05-06T12:00:01.000Z",
+      }),
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("scan-progress-bar")).toHaveAttribute(
+        "aria-label",
+        expect.stringMatching(/(succeeded|complete)/i),
+      );
+    });
+  });
+
   it("shows the DT-cached alert when the prop is true", () => {
     renderProgress(
       <ScanProgress
