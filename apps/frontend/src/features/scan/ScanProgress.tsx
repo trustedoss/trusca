@@ -183,18 +183,23 @@ export function ScanProgress({
   const showCancel =
     !terminal && (status === "queued" || status === "running");
 
+  // L-23 — the bar's accessible name must follow the terminal state: a screen
+  // reader on a failed scan must not keep hearing "Scan in progress". Shared
+  // by the visible heading and the Progress aria-label below.
+  const stateLabel = succeeded
+    ? t("progress.step_succeeded")
+    : failed
+      ? t("progress.step_failed")
+      : cancelled
+        ? t("progress.step_cancelled")
+        : t("progress.title");
+
   return (
     <div className="flex flex-col gap-4" data-testid="scan-progress">
       <div className="flex items-baseline justify-between gap-2">
         <div className="flex items-center gap-2">
           <h2 className="text-base font-semibold tracking-tight">
-            {succeeded
-              ? t("progress.step_succeeded")
-              : failed
-                ? t("progress.step_failed")
-                : cancelled
-                  ? t("progress.step_cancelled")
-                  : t("progress.title")}
+            {stateLabel}
           </h2>
           {release ? (
             <span
@@ -247,7 +252,7 @@ export function ScanProgress({
             // info/muted tone so it never reads as either success or failure.
             cancelled && "bg-muted-foreground",
           )}
-          aria-label={t("progress.title")}
+          aria-label={stateLabel}
           data-testid="scan-progress-bar"
           data-cancelled={cancelled ? "true" : undefined}
         />
