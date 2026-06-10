@@ -32,12 +32,11 @@ import { cn } from "@/lib/utils";
 const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 type PageSize = (typeof PAGE_SIZE_OPTIONS)[number];
 
-function deriveRole(item: { is_superuser: boolean }): UserRole {
-  // The list payload doesn't carry memberships (kept lightweight), so
-  // `super_admin` is the only role the column can show with full confidence.
-  // Non-superusers display as the neutral "developer" badge until the drawer
-  // loads the membership detail. Color is paired with an icon (RoleBadge).
-  return item.is_superuser ? "super_admin" : "developer";
+function deriveRole(item: { is_superuser: boolean; role?: UserRole }): UserRole {
+  // H-2: the list payload now carries the membership rollup (`role` =
+  // highest-effective role), so team_admins render correctly in the column.
+  // The is_superuser fallback only covers older fixtures without the field.
+  return item.role ?? (item.is_superuser ? "super_admin" : "developer");
 }
 
 // W12 — URL filter parsers (filter URL persistence consistency).
@@ -311,11 +310,12 @@ export function AdminUsersPage() {
                           )
                         : t("admin.users.drawer.never")}
                     </td>
-                    <td className="px-3 text-right text-xs text-muted-foreground">
-                      {/* Backend list response stays lightweight; team count
-                          comes from the drawer detail. Keep an em-dash so the
-                          column is visible and visually balanced. */}
-                      —
+                    <td
+                      className="px-3 text-right text-xs text-muted-foreground"
+                      data-testid="admin-users-team-count"
+                    >
+                      {/* H-2: membership rollup from the list payload. */}
+                      {u.team_count ?? "—"}
                     </td>
                   </tr>
                 ))}

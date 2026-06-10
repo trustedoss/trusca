@@ -123,6 +123,41 @@ async def test_list_users_search_substring_email(db_session: AsyncSession) -> No
     assert target.id in ids
 
 
+async def test_list_users_rolls_up_effective_role_and_team_count(
+    db_session: AsyncSession,
+) -> None:
+    """H-2: the list payload carries the membership rollup so the role column
+    shows team_admins without opening the detail drawer."""
+    from services.admin_user_service import list_users
+
+    org = await make_organization(db_session)
+    team_a = await make_team(db_session, organization=org)
+    team_b = await make_team(db_session, organization=org)
+
+    team_admin = await make_user(db_session)
+    await make_membership(db_session, user=team_admin, team=team_a, role="team_admin")
+    await make_membership(db_session, user=team_admin, team=team_b, role="developer")
+
+    developer = await make_user(db_session)
+    await make_membership(db_session, user=developer, team=team_a, role="developer")
+
+    orphan = await make_user(db_session)  # no memberships at all
+
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+
+    page = await list_users(db_session, actor=actor, page_size=200)
+    by_id = {item.id: item for item in page.items}
+
+    assert by_id[team_admin.id].role == "team_admin"
+    assert by_id[team_admin.id].team_count == 2
+    assert by_id[developer.id].role == "developer"
+    assert by_id[developer.id].team_count == 1
+    assert by_id[orphan.id].role == "developer"
+    assert by_id[orphan.id].team_count == 0
+    assert by_id[admin.id].role == "super_admin"
+
+
 # ---------------------------------------------------------------------------
 # get_user_detail
 # ---------------------------------------------------------------------------

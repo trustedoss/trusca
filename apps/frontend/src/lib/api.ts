@@ -37,6 +37,7 @@ import axios, {
 } from "axios";
 
 import { ProblemError, parseProblemBody } from "@/lib/problem";
+import { effectiveRole } from "@/lib/roles";
 import { type AuthUser, useAuthStore } from "@/stores/authStore";
 
 interface RetryableConfig extends InternalAxiosRequestConfig {
@@ -231,7 +232,12 @@ function toAuthUser(u: UserPublicWire): AuthUser {
     id: u.id,
     email: u.email,
     displayName: u.full_name ?? u.email,
-    role: u.is_superuser ? "super_admin" : "developer",
+    // H-2: /auth/me has no top-level role — promote the HIGHEST membership
+    // role so a team_admin is not treated as a developer across the app.
+    role: effectiveRole(
+      u.is_superuser,
+      memberships.map((m) => m.role),
+    ),
     isActive: u.is_active,
     isSuperuser: u.is_superuser,
     // memberships are ordered oldest-first by the backend; [0] is the stable

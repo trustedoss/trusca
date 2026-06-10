@@ -317,8 +317,46 @@ async def list_users(
     )
     rows = list((await session.execute(rows_stmt)).scalars().all())
 
+    # H-2: membership rollup for the page (one aggregate query, not N) so the
+    # list can render the effective role + team count without the drawer.
+    rollup: dict[uuid.UUID, tuple[int, bool]] = {}
+    user_ids = [u.id for u in rows]
+    if user_ids:
+        agg = await session.execute(
+            select(
+                Membership.user_id,
+                func.count(Membership.id),
+                func.bool_or(Membership.role == "team_admin"),
+            )
+            .where(Membership.user_id.in_(user_ids))
+            .group_by(Membership.user_id)
+        )
+        for uid, member_count, has_team_admin in agg.all():
+            rollup[uid] = (int(member_count), bool(has_team_admin))
+
+    def _effective_role(u: User) -> str:
+        if u.is_superuser:
+            return "super_admin"
+        _, has_team_admin = rollup.get(u.id, (0, False))
+        return "team_admin" if has_team_admin else "developer"
+
+    items = [
+        AdminUserListItem(
+            id=u.id,
+            email=u.email,
+            full_name=u.full_name,
+            is_active=u.is_active,
+            is_superuser=u.is_superuser,
+            role=_effective_role(u),  # type: ignore[arg-type]
+            team_count=rollup.get(u.id, (0, False))[0],
+            last_login_at=u.last_login_at,
+            created_at=u.created_at,
+        )
+        for u in rows
+    ]
+
     return AdminUserListPage(
-        items=[AdminUserListItem.model_validate(u) for u in rows],
+        items=items,
         total=total,
         page=page,
         page_size=page_size,
