@@ -28,10 +28,11 @@ Together they let you catch problems before users notice.
 <!-- docs-uat: id=health-api kind=api auth=admin url=/v1/admin/health expect=status:200 tier=nightly -->
 The **/admin/health** page lists every component the portal depends on. Each row shows:
 
-- **Component** — one of `postgres`, `redis`, `celery`, `disk`, `active_scans`, `last_24h_errors`. The `vulnerability_data` row (Trivy DB freshness) is coming soon.
+- **Component** — one of `postgres`, `redis`, `celery`, `disk`, `active_scans`, `last_24h_errors`. Trivy DB freshness is shown in its own panel on the same page (see [Vulnerability data](vulnerability-data.md)).
 - **State** — `ok` (green), `degraded` (yellow), `down` (red). The label rendered in the UI is locale-aware (the EN locale shows "OK / Degraded / Down"), but the API contract emits the lower-case enum above.
-- **Last check** — timestamp of the most recent probe.
 - **Detail** — error message or telemetry summary when the state is not `ok`.
+
+All probes run synchronously when the page (or the API) requests them, so there is a single **Last updated** timestamp in the page header rather than a per-row "last check" — every card on the page reflects the same probe run.
 
 The dashboard auto-refreshes via React Query polling (default 30 s; the user can pause polling from the page header). It is not a WebSocket stream — operators who want a wall display can leave the tab open and rely on the polling refresh.
 
@@ -147,7 +148,7 @@ The `/admin/scans` page (super-admin only) lists every running, queued, succeede
 
 - Inspect any task's full progress payload + last log frame.
 - Force-cancel a stuck scan (`POST /v1/admin/scans/{scan_id}/cancel`).
-- Filter by status, kind, project, or assigned worker.
+- Filter by status, kind, or project name. (There is no per-worker filter — scans do not record which worker picked them up.)
 
 Backend: `apps/backend/api/v1/admin/scans.py`. UI: `apps/frontend/src/features/admin/scans/AdminScansPage.tsx`.
 

@@ -89,7 +89,9 @@ curl -sS -X POST https://trustedoss.example.com/v1/projects \
   -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{
+    "team_id": "8f0c1e2a-...팀 UUID...",
     "name": "checkout-service",
+    "slug": "checkout-service",
     "description": "Storefront checkout service",
     "git_url": "https://github.com/acme/checkout-service.git"
   }' | jq .

@@ -28,10 +28,11 @@ sidebar_position: 3
 <!-- docs-uat: id=health-api kind=api auth=admin url=/v1/admin/health expect=status:200 tier=nightly -->
 **/admin/health** 페이지는 포털이 의존하는 모든 컴포넌트를 나열합니다. 각 행:
 
-- **컴포넌트** — `postgres`, `redis`, `celery`, `disk`, `active_scans`, `last_24h_errors` 중 하나. `vulnerability_data` 행(Trivy DB 신선도)은 향후 추가됩니다.
+- **컴포넌트** — `postgres`, `redis`, `celery`, `disk`, `active_scans`, `last_24h_errors` 중 하나. Trivy DB 신선도는 같은 페이지의 별도 패널에 표시됩니다([취약점 데이터](vulnerability-data.md) 참고).
 - **상태** — `ok`(녹색), `degraded`(노랑), `down`(빨강). UI 라벨은 로케일에 따라 다르나(EN 로케일은 "OK / Degraded / Down" 표시) API 계약은 위 소문자 enum을 발신합니다.
-- **마지막 체크** — 가장 최근 프로브 타임스탬프.
 - **상세** — `ok`가 아닐 때의 오류 메시지 또는 텔레메트리 요약.
+
+모든 프로브는 페이지(또는 API)가 요청하는 시점에 동기로 실행됩니다. 따라서 행마다 "마지막 점검" 시각이 따로 있는 것이 아니라 페이지 헤더에 **마지막 갱신** 타임스탬프 하나가 표시되며, 페이지의 모든 카드는 같은 프로브 실행 결과를 반영합니다.
 
 대시보드는 React Query 폴링으로 자동 갱신됩니다(기본 30초; 사용자는 페이지 헤더에서 폴링을 일시 정지 가능). WebSocket 스트림이 아닙니다 — 벽 디스플레이를 원하는 운영자는 탭을 열어 두면 폴링 갱신에 의존할 수 있습니다.
 
@@ -144,7 +145,7 @@ docker-compose -f docker-compose.yml exec backend \
 
 - 임의 태스크의 전체 progress 페이로드 + 마지막 로그 프레임 검사.
 - 멈춘 스캔 강제 취소(`POST /v1/admin/scans/{scan_id}/cancel`).
-- 상태·종류·프로젝트·할당 워커로 필터링.
+- 상태·종류·프로젝트 이름으로 필터링. (워커별 필터는 없습니다 — 스캔은 어느 워커가 집어 갔는지 기록하지 않습니다.)
 
 백엔드: `apps/backend/api/v1/admin/scans.py`. UI: `apps/frontend/src/features/admin/scans/AdminScansPage.tsx`.
 
