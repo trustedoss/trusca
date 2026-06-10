@@ -272,7 +272,8 @@ async def cancel_scan(
         which records a ``target_table='scans', action='update'`` row
         with the diff. No explicit AuditLog insert needed.
     """
-    scan = await _lock_cancellable_scan(session, scan_id)
+    scan = await _lock_scan(session, scan_id)
+    _ensure_not_terminal(scan)
     return await _revoke_and_mark_cancelled(
         session,
         actor=actor,
@@ -303,12 +304,15 @@ async def cancel_scan_for_actor(
         touch it" from "no such scan", which would leak cross-team scan ids.
         super_admin bypasses the team gate (parity with admin tooling).
       - Missing scan → 404 (same as admin).
-      - Already terminal → 409 (``ScanAlreadyCancelled``).
+      - Already terminal → 409 (``ScanAlreadyCancelled``) — checked AFTER the
+        team gate, so a non-member probing another team's finished scan gets
+        the same 404 as a non-existent one instead of a 409 that confirms the
+        scan exists (mirrors ``scan_service.delete_scan``).
 
     The team check happens AFTER the row lock so a concurrent cancel cannot
     slip a TOCTOU window between the access check and the status mutation.
     """
-    scan = await _lock_cancellable_scan(session, scan_id)
+    scan = await _lock_scan(session, scan_id)
 
     # Team-access gate. Resolve the owning team from the parent project. We do
     # this while holding the row lock so the access decision and the mutation
@@ -321,6 +325,10 @@ async def cancel_scan_for_actor(
     if not _actor_can_access_team(actor, team_id):
         # Existence-hide: same shape as a non-existent scan.
         raise AdminScanNotFound(f"scan {scan_id} not found")
+
+    # Terminal-state guard only after the actor is known to be allowed to see
+    # the scan at all (the 409 would otherwise leak existence cross-team).
+    _ensure_not_terminal(scan)
 
     # M1: bind the owning team to the audit ContextVar BEFORE the mutating
     # commit so the audit_logs row for the status='cancelled' update carries a
@@ -365,23 +373,33 @@ def _actor_can_access_team(actor: CurrentUser, team_id: uuid.UUID | None) -> boo
     return team_id in actor.team_ids
 
 
-async def _lock_cancellable_scan(session: AsyncSession, scan_id: uuid.UUID) -> Scan:
-    """Row-lock the scan and assert it is not already terminal.
+async def _lock_scan(session: AsyncSession, scan_id: uuid.UUID) -> Scan:
+    """Row-lock the scan (404 when missing) WITHOUT the terminal-state check.
 
-    Shared by the admin + user cancel paths so the 404 / 409 semantics and the
+    Shared by the admin + user cancel paths so the 404 semantics and the
     ``with_for_update`` race protection are defined exactly once. The lock
     means two concurrent cancel calls cannot both pass the terminal-state
-    guard (CWE-362).
+    guard (CWE-362) — callers run :func:`_ensure_not_terminal` while still
+    holding this lock.
+
+    The terminal check is intentionally NOT here: the user-facing path must
+    run its team-access gate (404 existence-hide) BEFORE the terminal 409,
+    or a non-member probing another team's finished scan would receive a 409
+    and learn the scan exists (mirrors ``scan_service.delete_scan``).
     """
     stmt = select(Scan).where(Scan.id == scan_id).with_for_update()
     scan = (await session.execute(stmt)).scalar_one_or_none()
     if scan is None:
         raise AdminScanNotFound(f"scan {scan_id} not found")
+    return scan
+
+
+def _ensure_not_terminal(scan: Scan) -> None:
+    """409 when the scan is already terminal. Run while holding the row lock."""
     if scan.status in _TERMINAL_STATUSES:
         raise ScanAlreadyCancelled(
-            f"scan {scan_id} is already in terminal state {scan.status!r}"
+            f"scan {scan.id} is already in terminal state {scan.status!r}"
         )
-    return scan
 
 
 async def _revoke_and_mark_cancelled(
