@@ -38,6 +38,11 @@ export interface APIKeyListItem {
   team_id: string | null;
   project_id: string | null;
   created_by_user_id: string | null;
+  /**
+   * Email of the issuing user (L-17). Null when the issuer account was
+   * deleted (created_by_user_id was SET NULL) — render an em-dash.
+   */
+  created_by_email: string | null;
   created_at: string;
   /** ISO timestamp when the key expires, or null when it never expires. */
   expires_at: string | null;

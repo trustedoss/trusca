@@ -26,11 +26,13 @@ import { CreateApiKeyDialog } from "@/features/integrations/CreateApiKeyDialog";
 import { RevealApiKeyDialog } from "@/features/integrations/RevealApiKeyDialog";
 import { RevokeApiKeyDialog } from "@/features/integrations/RevokeApiKeyDialog";
 import { useApiKeys } from "@/features/integrations/useApiKeys";
+import { usePermissions } from "@/hooks/usePermissions";
 import { createApiKey, revokeApiKey } from "@/lib/apiKeysApi";
 import { getApiBase } from "@/lib/apiBase";
 import { ProblemError } from "@/lib/problem";
 import { formatRelativeToNow } from "@/lib/relativeTime";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/stores/authStore";
 import type {
   APIKeyCreateOut,
   APIKeyCreatePayload,
@@ -39,6 +41,31 @@ import type {
 } from "@/types/apiKey";
 
 const PAGE_SIZE = 20;
+
+/** Total <td> count per row — keep skeleton / empty colSpan in sync. */
+const COLUMN_COUNT = 9;
+
+/**
+ * Revocation status badge (L-17). Color is never the only signal — the
+ * translated label rides along, matching the a11y rule for risk badges.
+ */
+function StatusBadge({ revoked }: { revoked: boolean }) {
+  const { t } = useTranslation("integrations");
+  return (
+    <Badge
+      variant="outline"
+      className={cn(
+        revoked
+          ? "border-red-300 bg-red-50 text-red-700"
+          : "border-emerald-300 bg-emerald-50 text-emerald-700",
+      )}
+      data-testid="integrations-key-status"
+      data-status={revoked ? "revoked" : "active"}
+    >
+      {revoked ? t("api_keys.status.revoked") : t("api_keys.status.active")}
+    </Badge>
+  );
+}
 
 function ScopeBadge({ scope }: { scope: APIKeyScope }) {
   const { t } = useTranslation("integrations");
@@ -105,6 +132,12 @@ function WebhookCard({
 export function IntegrationsPage() {
   const { t, i18n } = useTranslation("integrations");
   const queryClient = useQueryClient();
+  // L-18: mirror the backend's write rules instead of relying on 403s.
+  // usePermissions resolves a null / not-yet-bootstrapped user to
+  // `developer` (least privilege), so the gated actions stay hidden while
+  // auth is still loading.
+  const { isTeamAdminOrAbove } = usePermissions();
+  const currentUserId = useAuthStore((s) => s.user?.id ?? null);
 
   const [page, setPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
@@ -202,15 +235,19 @@ export function IntegrationsPage() {
                 {t("api_keys.section_description")}
               </p>
             </div>
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => setCreateOpen(true)}
-              data-testid="integrations-create-key"
-            >
-              <Plus className="h-3 w-3" aria-hidden />
-              <span>{t("api_keys.create_button")}</span>
-            </Button>
+            {/* Key creation is team_admin+ on the backend — hide the entry
+                point for developers instead of letting them hit a 403. */}
+            {isTeamAdminOrAbove ? (
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => setCreateOpen(true)}
+                data-testid="integrations-create-key"
+              >
+                <Plus className="h-3 w-3" aria-hidden />
+                <span>{t("api_keys.create_button")}</span>
+              </Button>
+            ) : null}
           </div>
 
           {keysQuery.isError ? (
@@ -219,9 +256,9 @@ export function IntegrationsPage() {
             </Alert>
           ) : null}
 
-          <div className="overflow-hidden rounded-md border">
+          <div className="overflow-x-auto rounded-md border">
             <table
-              className="w-full text-sm"
+              className="w-full min-w-[880px] text-sm"
               data-testid="integrations-keys-table"
               aria-busy={keysQuery.isLoading}
             >
@@ -230,8 +267,11 @@ export function IntegrationsPage() {
                   <th className="px-3 py-2">{t("api_keys.table.name")}</th>
                   <th className="px-3 py-2">{t("api_keys.table.scope")}</th>
                   <th className="px-3 py-2">{t("api_keys.table.prefix")}</th>
+                  <th className="px-3 py-2">{t("api_keys.table.creator")}</th>
                   <th className="px-3 py-2">{t("api_keys.table.created")}</th>
+                  <th className="px-3 py-2">{t("api_keys.table.last_used")}</th>
                   <th className="px-3 py-2">{t("api_keys.table.expires")}</th>
+                  <th className="px-3 py-2">{t("api_keys.table.status")}</th>
                   <th className="px-3 py-2 text-right">
                     {t("api_keys.table.actions")}
                   </th>
@@ -241,18 +281,27 @@ export function IntegrationsPage() {
                 {keysQuery.isLoading
                   ? Array.from({ length: 4 }).map((_, i) => (
                       <tr key={`skeleton-${i}`} className="border-b">
-                        <td className="px-3 py-2" colSpan={6}>
+                        <td className="px-3 py-2" colSpan={COLUMN_COUNT}>
                           <Skeleton className="h-5 w-full" />
                         </td>
                       </tr>
                     ))
                   : items.map((row) => {
                       const isRevoked = row.revoked_at !== null;
+                      // L-18: revoke is "issuer or admin" on the backend.
+                      // Developers only ever see the button on keys they
+                      // issued themselves; team_admin+ see it on every row
+                      // the list endpoint already deemed visible to them.
+                      const canRevoke =
+                        isTeamAdminOrAbove ||
+                        (currentUserId !== null &&
+                          row.created_by_user_id === currentUserId);
                       return (
                         <tr
                           key={row.id}
                           data-testid="integrations-key-row"
                           data-key-id={row.id}
+                          data-key-prefix={row.key_prefix}
                           data-revoked={isRevoked}
                           className={cn(
                             "border-b transition-colors duration-fast ease-out-soft hover:bg-accent/40",
@@ -260,16 +309,8 @@ export function IntegrationsPage() {
                           )}
                           style={{ height: "var(--table-row)" }}
                         >
-                          <td className="truncate px-3">
+                          <td className="max-w-[200px] truncate px-3">
                             <span className="font-medium">{row.name}</span>
-                            {isRevoked ? (
-                              <Badge
-                                variant="outline"
-                                className="ml-2 border-red-300 bg-red-50 text-red-700"
-                              >
-                                {t("api_keys.revoked_badge")}
-                              </Badge>
-                            ) : null}
                           </td>
                           <td className="px-3">
                             <ScopeBadge scope={row.scope} />
@@ -277,11 +318,29 @@ export function IntegrationsPage() {
                           <td className="px-3 font-mono text-xs">
                             {row.key_prefix}…
                           </td>
+                          <td
+                            className="max-w-[180px] truncate px-3 text-xs text-muted-foreground"
+                            data-testid="integrations-key-creator"
+                            title={row.created_by_email ?? undefined}
+                          >
+                            {row.created_by_email ?? "—"}
+                          </td>
                           <td className="px-3 text-xs text-muted-foreground">
                             {formatRelativeToNow(
                               row.created_at,
                               i18n.resolvedLanguage,
                             )}
+                          </td>
+                          <td
+                            className="px-3 text-xs text-muted-foreground"
+                            data-testid="integrations-key-last-used"
+                          >
+                            {row.last_used_at
+                              ? formatRelativeToNow(
+                                  row.last_used_at,
+                                  i18n.resolvedLanguage,
+                                )
+                              : t("api_keys.last_used_never")}
                           </td>
                           <td className="px-3 text-xs text-muted-foreground">
                             {row.expires_at
@@ -291,8 +350,11 @@ export function IntegrationsPage() {
                                 )
                               : t("api_keys.expires_never")}
                           </td>
+                          <td className="px-3">
+                            <StatusBadge revoked={isRevoked} />
+                          </td>
                           <td className="px-3 text-right">
-                            {!isRevoked ? (
+                            {!isRevoked && canRevoke ? (
                               <Button
                                 type="button"
                                 size="sm"
@@ -312,7 +374,7 @@ export function IntegrationsPage() {
                 {!keysQuery.isLoading && items.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={6}
+                      colSpan={COLUMN_COUNT}
                       className="px-3 py-8 text-center text-sm text-muted-foreground"
                       data-testid="integrations-keys-empty"
                     >

@@ -773,6 +773,52 @@ async def test_list_super_admin_sees_all_keys(db_session: AsyncSession) -> None:
     assert foreign_key.id in {r.id for r in rows}
 
 
+async def test_list_carries_created_by_email(db_session: AsyncSession) -> None:
+    """List rows expose the issuer's email (LEFT JOIN users, single query).
+
+    Regression guard for the FE creator column (validation report L-17):
+      - live issuer → created_by_email == users.email
+      - issuer gone (created_by_user_id SET NULL) → created_by_email is None,
+        and the row still lists (outer join, not inner).
+    The APIKeyListItem schema must surface the value via from_attributes.
+    """
+    from schemas.api_key import APIKeyListItem
+    from services.api_key_service import issue_api_key, list_api_keys
+
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+    with_issuer, _ = await issue_api_key(
+        db_session, actor, name="creator-col", scope="org", team_id=None, project_id=None
+    )
+    orphaned, _ = await issue_api_key(
+        db_session, actor, name="creator-gone", scope="org", team_id=None, project_id=None
+    )
+    # Simulate issuer deletion (FK is ondelete=SET NULL) without cascading a
+    # full user delete through unrelated tables.
+    await db_session.execute(
+        text("UPDATE api_keys SET created_by_user_id = NULL WHERE id = :kid"),
+        {"kid": orphaned.id},
+    )
+    await db_session.commit()
+    # The instance is cached in the identity map with the stale FK; expire it
+    # so the list query below reflects the raw-SQL NULLing. (Not expire_all —
+    # that would expire `admin` too and admin.email would lazy-load sync.)
+    db_session.expire(orphaned)
+
+    rows, _ = await list_api_keys(db_session, actor, page_size=500)
+    by_id = {r.id: r for r in rows}
+    # getattr: created_by_email is a plain (non-mapped) attribute attached by
+    # the service for the wire schema — mypy doesn't know it on APIKey.
+    assert getattr(by_id[with_issuer.id], "created_by_email") == admin.email
+    assert getattr(by_id[orphaned.id], "created_by_email") is None
+
+    # The wire schema picks the attribute up (router uses model_validate).
+    item = APIKeyListItem.model_validate(by_id[with_issuer.id])
+    assert item.created_by_email == admin.email
+    orphan_item = APIKeyListItem.model_validate(by_id[orphaned.id])
+    assert orphan_item.created_by_email is None
+
+
 async def test_list_pagination_clamps_page_size(db_session: AsyncSession) -> None:
     """page_size > 200 must be clamped; page < 1 must be clamped to 1."""
     from services.api_key_service import list_api_keys

@@ -10,12 +10,13 @@
  *   - Webhook URLs are rendered with the expected /v1/webhooks/* paths.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { IntegrationsPage } from "@/features/integrations/IntegrationsPage";
+import { useAuthStore, type AuthUser } from "@/stores/authStore";
 import type {
   APIKeyCreateOut,
   APIKeyListItem,
@@ -47,11 +48,40 @@ function key(name: string, overrides: Partial<APIKeyListItem> = {}): APIKeyListI
     team_id: overrides.team_id ?? null,
     project_id: overrides.project_id ?? "project-1",
     created_by_user_id: overrides.created_by_user_id ?? "user-1",
+    // `created_by_email` may be explicitly null (issuer deleted) — only
+    // default it when the caller didn't pass the field at all.
+    created_by_email:
+      "created_by_email" in overrides
+        ? (overrides.created_by_email ?? null)
+        : "owner@example.com",
     created_at: overrides.created_at ?? "2026-04-01T00:00:00Z",
     expires_at: overrides.expires_at ?? null,
     last_used_at: overrides.last_used_at ?? null,
     revoked_at: overrides.revoked_at ?? null,
   };
+}
+
+function authUser(overrides: Partial<AuthUser> = {}): AuthUser {
+  return {
+    id: "user-1",
+    email: "owner@example.com",
+    displayName: "Owner",
+    role: "team_admin",
+    isActive: true,
+    isSuperuser: false,
+    teamId: "team-1",
+    ...overrides,
+  };
+}
+
+/** Put a logged-in user into the store so the role gates (L-16/L-18) open. */
+function loginAs(user: AuthUser) {
+  useAuthStore.setState({
+    user,
+    accessToken: "tok",
+    status: "authenticated",
+    isAuthenticated: true,
+  });
 }
 
 function page(items: APIKeyListItem[]): APIKeyListPage {
@@ -77,12 +107,19 @@ describe("IntegrationsPage", () => {
     mockedList.mockReset();
     mockedCreate.mockReset();
     mockedRevoke.mockReset();
+    // L-18 hides create/revoke from developers — the legacy tests exercise
+    // the full management flows, so they run as a team_admin by default.
+    loginAs(authUser());
     // jsdom does not ship navigator.clipboard. Define it as a configurable
     // own property so the page's `void copyToClipboard()` calls don't crash.
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: { writeText: vi.fn().mockResolvedValue(undefined) },
     });
+  });
+
+  afterEach(() => {
+    useAuthStore.getState().reset();
   });
 
   it("renders the API-keys table with rows returned by the query", async () => {
@@ -482,5 +519,148 @@ describe("IntegrationsPage", () => {
     });
     // Only the live key has a revoke button.
     expect(screen.getAllByTestId("integrations-key-revoke")).toHaveLength(1);
+  });
+
+  // -------------------------------------------------------------------------
+  // L-16 — create-dialog scope options follow the caller's role
+  // -------------------------------------------------------------------------
+
+  it("hides the org scope option from team_admin (L-16)", async () => {
+    loginAs(authUser({ role: "team_admin", isSuperuser: false }));
+    mockedList.mockResolvedValue(page([]));
+
+    const user = userEvent.setup();
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByTestId("integrations-keys-empty")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId("integrations-create-key"));
+    const select = await screen.findByTestId("integrations-create-scope");
+    const values = within(select)
+      .getAllByRole("option")
+      .map((o) => (o as HTMLOptionElement).value);
+    expect(values).toEqual(["project", "team"]);
+    // The default selection must never be a hidden option.
+    expect((select as HTMLSelectElement).value).toBe("project");
+  });
+
+  it("offers all three scope options to super_admin (L-16)", async () => {
+    loginAs(authUser({ role: "super_admin", isSuperuser: true }));
+    mockedList.mockResolvedValue(page([]));
+
+    const user = userEvent.setup();
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByTestId("integrations-keys-empty")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId("integrations-create-key"));
+    const select = await screen.findByTestId("integrations-create-scope");
+    const values = within(select)
+      .getAllByRole("option")
+      .map((o) => (o as HTMLOptionElement).value);
+    expect(values).toEqual(["project", "team", "org"]);
+  });
+
+  // -------------------------------------------------------------------------
+  // L-17 — creator / last-used / status columns
+  // -------------------------------------------------------------------------
+
+  it("renders creator, last-used and status columns (L-17)", async () => {
+    mockedList.mockResolvedValue(
+      page([
+        key("alive", {
+          created_by_email: "alice@example.com",
+          last_used_at: "2026-06-09T00:00:00Z",
+        }),
+        key("dead", {
+          created_by_email: null,
+          last_used_at: null,
+          revoked_at: "2026-05-08T00:00:00Z",
+        }),
+      ]),
+    );
+
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("integrations-key-row")).toHaveLength(2);
+    });
+
+    const [aliveRow, deadRow] = screen.getAllByTestId("integrations-key-row");
+
+    // Creator column: email, or an em-dash when the issuer was deleted.
+    expect(
+      within(aliveRow).getByTestId("integrations-key-creator"),
+    ).toHaveTextContent("alice@example.com");
+    expect(
+      within(deadRow).getByTestId("integrations-key-creator"),
+    ).toHaveTextContent("—");
+
+    // Last-used column: relative time vs. the i18n "never used" copy.
+    expect(
+      within(aliveRow).getByTestId("integrations-key-last-used").textContent,
+    ).not.toMatch(/never/i);
+    expect(
+      within(deadRow).getByTestId("integrations-key-last-used"),
+    ).toHaveTextContent(/never used/i);
+
+    // Status column: badge pairs the tone with a visible label (a11y).
+    const aliveStatus = within(aliveRow).getByTestId("integrations-key-status");
+    expect(aliveStatus).toHaveAttribute("data-status", "active");
+    expect(aliveStatus).toHaveTextContent(/active/i);
+    const deadStatus = within(deadRow).getByTestId("integrations-key-status");
+    expect(deadStatus).toHaveAttribute("data-status", "revoked");
+    expect(deadStatus).toHaveTextContent(/revoked/i);
+  });
+
+  // -------------------------------------------------------------------------
+  // L-18 — developer action gating
+  // -------------------------------------------------------------------------
+
+  it("hides the create button from developers (L-18)", async () => {
+    loginAs(authUser({ id: "user-dev", role: "developer" }));
+    mockedList.mockResolvedValue(page([]));
+
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByTestId("integrations-keys-empty")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByTestId("integrations-create-key"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows revoke to developers only on keys they issued (L-18)", async () => {
+    loginAs(authUser({ id: "user-dev", role: "developer" }));
+    mockedList.mockResolvedValue(
+      page([
+        key("mine", { created_by_user_id: "user-dev" }),
+        key("someone-elses", { created_by_user_id: "user-other" }),
+      ]),
+    );
+
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("integrations-key-row")).toHaveLength(2);
+    });
+
+    // Exactly one revoke button, and it lives on the self-issued row.
+    const buttons = screen.getAllByTestId("integrations-key-revoke");
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]).toHaveAttribute("data-key-id", "key-mine");
+  });
+
+  it("shows revoke to team_admin on rows issued by others (L-18)", async () => {
+    loginAs(authUser({ id: "user-admin", role: "team_admin" }));
+    mockedList.mockResolvedValue(
+      page([key("someone-elses", { created_by_user_id: "user-other" })]),
+    );
+
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByTestId("integrations-key-row")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("integrations-key-revoke")).toBeInTheDocument();
   });
 });
