@@ -108,10 +108,13 @@ def _problem_for_sbom_error(request: Request, exc: SBOMExportError) -> Response:
     responses={
         200: {
             "description": "SBOM document download",
+            # Format-specific media types (M-24) — mirrors
+            # ``services.sbom_export._FORMAT_CATALOG``.
             "content": {
-                "application/json": {},
-                "application/xml": {},
-                "text/plain": {},
+                "application/vnd.cyclonedx+json": {},
+                "application/vnd.cyclonedx+xml": {},
+                "application/spdx+json": {},
+                "text/spdx": {},
             },
         },
         401: {"description": "Authentication required"},

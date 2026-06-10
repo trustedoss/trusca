@@ -177,7 +177,10 @@ _OPENVEX_STATUS_MAP: dict[str, str] = {
     "fixed": "fixed",
 }
 
-_CYCLONEDX_STATE_MAP: dict[str, str] = {
+# Public (no underscore): the SBOM exporter (``services/sbom_export.py``)
+# embeds the same VEX analysis into CycloneDX SBOMs (H-4), so this map is the
+# single source of truth for "internal status → CycloneDX analysis.state".
+CYCLONEDX_STATE_MAP: dict[str, str] = {
     "new": "in_triage",
     "analyzing": "in_triage",
     "exploitable": "exploitable",
@@ -370,7 +373,7 @@ def _serialize_openvex(doc: dict[str, Any]) -> str:
 def _cyclonedx_vulnerabilities(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for r in rows:
-        state = _CYCLONEDX_STATE_MAP[r["status"]]
+        state = CYCLONEDX_STATE_MAP[r["status"]]
         analysis: dict[str, Any] = {"state": state}
         if r.get("justification"):
             analysis["detail"] = r["justification"]
@@ -510,6 +513,7 @@ async def export_vex(
 
 
 __all__ = [
+    "CYCLONEDX_STATE_MAP",
     "SUPPORTED_FORMATS",
     "VEXExportError",
     "VEXUnsupportedFormat",

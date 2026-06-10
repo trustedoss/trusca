@@ -104,9 +104,16 @@ For Apache-2.0 §4(d) compliance and similar attribution obligations, the portal
 
 The file contains:
 
-- A header with the project name and scan timestamp.
-- For each component: name, version, license, copyright statement (when the scan captured one), and a link to the upstream license text.
-- Grouped by license to make the redistribution package straightforward.
+- A header with the project name and generation timestamp.
+- One section per detected license, listing the components (`name @ version`)
+  under that license.
+- Each license section's attribution obligations (e.g. *attribution*,
+  *no-endorsement*) with a short description and a policy reference link.
+
+Per-component copyright statements are **not** included yet — copyright
+capture (and a manual override in the component drawer) is on the
+[roadmap](#roadmap). Until then, fulfil copyright-notice obligations from the
+upstream package contents directly.
 
 ### Supported formats
 
@@ -143,17 +150,27 @@ The output is byte-stable across exports for a given scan and format — diffabl
 
 CycloneDX SBOMs include the project's VEX state for every finding. SPDX does not have a native VEX representation, so SPDX exports omit per-finding state; pair an SPDX export with a separate CycloneDX VEX document if your downstream consumer expects it.
 
-The VEX states map directly to CycloneDX's `analysis.state`:
+Each entry in the SBOM's `vulnerabilities[]` array carries the CVE id, its
+source database, the VEX analysis, and `affects[].ref` pointing at the
+affected component's `bom-ref` within the same document (so consumers can
+join findings to components without parsing PURLs).
 
-| Portal state | CycloneDX VEX `state` | `justification` |
+The VEX states map directly to CycloneDX's `analysis.state`; the analyst's
+free-text note (when present) is carried in `analysis.detail`:
+
+| Portal state | CycloneDX VEX `state` | `analysis.detail` |
 |---|---|---|
 | `New` | `in_triage` | (none) |
 | `Analyzing` | `in_triage` | analyst note |
 | `Exploitable` | `exploitable` | analyst note |
-| `Not affected` | `not_affected` | reason text (`code_not_present`, `vulnerable_code_not_in_execute_path`, …) |
+| `Not affected` | `not_affected` | analyst note |
 | `False positive` | `false_positive` | analyst note |
-| `Suppressed` | `not_affected` | reason text |
-| `Fixed` | `resolved` | (`fix_version` populated) |
+| `Suppressed` | `not_affected` | analyst note |
+| `Fixed` | `resolved` | analyst note |
+
+The closed CycloneDX `analysis.justification` enum (`code_not_present`, …) is
+**never** emitted: its members have a precise meaning that cannot be inferred
+from free-form analyst prose, so the note stays in `analysis.detail`.
 
 ## Verify it worked
 
@@ -189,9 +206,13 @@ If the project has no succeeded scan yet, the export still returns a valid SBOM 
 
 The query string used a value the API does not accept. Use one of the four canonical query values from the table above — in particular, **the SPDX Tag-Value format is `spdx-tv` (not `spdx-tag-value`)**.
 
-### NOTICE file is missing copyrights for some components
+### NOTICE file has no copyright lines
 
-Copyright statements come from package metadata and license headers. Some packages omit them; the NOTICE entry will say "Copyright holder unspecified".
+The NOTICE file does not include per-component copyright statements in this
+release — it lists components and their attribution obligations grouped by
+license. Copyright capture (and a manual override in the component drawer) is
+on the [roadmap](#roadmap); SPDX exports carry `copyrightText: NOASSERTION`
+for the same reason.
 
 ## Compliance evidence trail {#compliance-evidence-trail}
 

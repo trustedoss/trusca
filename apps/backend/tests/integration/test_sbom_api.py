@@ -135,14 +135,14 @@ async def test_sbom_cyclonedx_json_default_format(client: AsyncClient) -> None:
 
     response = await client.get(f"/v1/projects/{project.id}/sbom", headers=headers)
     assert response.status_code == 200, response.text
-    assert response.headers["content-type"].startswith("application/json")
+    assert response.headers["content-type"].startswith("application/vnd.cyclonedx+json")
     assert (
         response.headers["content-disposition"]
         == f'attachment; filename="sbom-{project.slug}.cdx.json"'
     )
     parsed = json.loads(response.text)
     assert parsed["bomFormat"] == "CycloneDX"
-    assert parsed["specVersion"] == "1.5"
+    assert parsed["specVersion"] == "1.6"
 
 
 async def test_sbom_cyclonedx_xml_returns_xml(client: AsyncClient) -> None:
@@ -155,7 +155,7 @@ async def test_sbom_cyclonedx_xml_returns_xml(client: AsyncClient) -> None:
         params={"format": "cyclonedx-xml"},
     )
     assert response.status_code == 200, response.text
-    assert response.headers["content-type"].startswith("application/xml")
+    assert response.headers["content-type"].startswith("application/vnd.cyclonedx+xml")
     assert response.text.startswith("<?xml")
     assert (
         response.headers["content-disposition"]
@@ -173,7 +173,7 @@ async def test_sbom_spdx_json_returns_json(client: AsyncClient) -> None:
         params={"format": "spdx-json"},
     )
     assert response.status_code == 200, response.text
-    assert response.headers["content-type"].startswith("application/json")
+    assert response.headers["content-type"].startswith("application/spdx+json")
     assert (
         response.headers["content-disposition"]
         == f'attachment; filename="sbom-{project.slug}.spdx.json"'
@@ -193,7 +193,7 @@ async def test_sbom_spdx_tv_returns_text(client: AsyncClient) -> None:
         params={"format": "spdx-tv"},
     )
     assert response.status_code == 200, response.text
-    assert response.headers["content-type"].startswith("text/plain")
+    assert response.headers["content-type"].startswith("text/spdx")
     assert (
         response.headers["content-disposition"]
         == f'attachment; filename="sbom-{project.slug}.spdx"'

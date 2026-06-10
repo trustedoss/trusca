@@ -103,9 +103,13 @@ Apache-2.0 §4(d)와 유사한 attribution 의무 이행을 위해 포털은 프
 
 파일 내용:
 
-- 프로젝트 이름과 스캔 타임스탬프 헤더.
-- 컴포넌트별: 이름, 버전, 라이선스, 저작권 문구(스캔이 수집한 경우), 상위 라이선스 텍스트 링크.
-- 라이선스별로 그룹화하여 재배포 패키지 작성을 단순화.
+- 프로젝트 이름과 생성 타임스탬프 헤더.
+- 검출된 라이선스별 섹션 하나씩 — 해당 라이선스의 컴포넌트(`name @ version`) 목록 포함.
+- 각 라이선스 섹션의 attribution 의무(예: *attribution*, *no-endorsement*)와 짧은 설명, 정책 참조 링크.
+
+컴포넌트별 저작권 문구는 아직 포함되지 **않습니다** — 저작권 수집(그리고 컴포넌트
+드로어의 수동 오버라이드)은 [로드맵](#roadmap)에 있습니다. 그때까지 저작권 고지
+의무는 상위 패키지 내용물에서 직접 이행하세요.
 
 ### 지원 포맷
 
@@ -142,17 +146,26 @@ NOTICE 엔드포인트는 `format` 쿼리 값을 받습니다(기본 `text`).
 
 CycloneDX SBOM은 모든 결과의 프로젝트 VEX 상태를 포함합니다. SPDX는 native VEX 표현이 없으므로 SPDX 내보내기는 결과별 상태를 생략합니다. 다운스트림 소비자가 기대하면 SPDX 내보내기와 별도 CycloneDX VEX 문서를 함께 제공하세요.
 
-VEX 상태와 CycloneDX `analysis.state` 매핑:
+SBOM의 `vulnerabilities[]` 배열 각 항목은 CVE id, 출처 데이터베이스, VEX 분석,
+그리고 같은 문서 안에서 영향받는 컴포넌트의 `bom-ref`를 가리키는 `affects[].ref`를
+담습니다(소비자가 PURL을 파싱하지 않고도 결과와 컴포넌트를 연결할 수 있습니다).
 
-| 포털 상태 | CycloneDX VEX `state` | `justification` |
+VEX 상태는 CycloneDX `analysis.state`로 매핑되고, 분석가의 자유 텍스트 노트(있는
+경우)는 `analysis.detail`에 담깁니다:
+
+| 포털 상태 | CycloneDX VEX `state` | `analysis.detail` |
 |---|---|---|
 | `New` | `in_triage` | (없음) |
 | `Analyzing` | `in_triage` | 분석가 노트 |
 | `Exploitable` | `exploitable` | 분석가 노트 |
-| `Not affected` | `not_affected` | 사유 텍스트(`code_not_present`, `vulnerable_code_not_in_execute_path` 등) |
+| `Not affected` | `not_affected` | 분석가 노트 |
 | `False positive` | `false_positive` | 분석가 노트 |
-| `Suppressed` | `not_affected` | 사유 텍스트 |
-| `Fixed` | `resolved` | (`fix_version` 채움) |
+| `Suppressed` | `not_affected` | 분석가 노트 |
+| `Fixed` | `resolved` | 분석가 노트 |
+
+닫힌 CycloneDX `analysis.justification` enum(`code_not_present` 등)은 **절대**
+내보내지 않습니다. 이 enum의 항목은 자유 형식의 분석가 서술로는 추론할 수 없는
+정밀한 의미를 가지므로, 노트는 `analysis.detail`에 유지됩니다.
 
 ## 정상 동작 확인
 
@@ -188,9 +201,12 @@ VEX 상태와 CycloneDX `analysis.state` 매핑:
 
 쿼리 문자열이 API가 받지 않는 값을 사용했습니다. 위 표의 4가지 정식 쿼리 값 중 하나를 사용하세요 — 특히 **SPDX Tag-Value 포맷의 값은 `spdx-tv`(이며 `spdx-tag-value`가 아닙니다)**.
 
-### NOTICE에 일부 컴포넌트의 저작권이 누락
+### NOTICE에 저작권 라인이 없음
 
-저작권 문구는 패키지 메타데이터와 라이선스 헤더에서 옵니다. 일부 패키지는 이를 생략하므로 NOTICE 항목이 "Copyright holder unspecified"로 표시됩니다.
+이번 릴리스의 NOTICE 파일은 컴포넌트별 저작권 문구를 포함하지 않습니다 —
+라이선스별로 그룹화한 컴포넌트 목록과 attribution 의무를 담습니다. 저작권
+수집(그리고 컴포넌트 드로어의 수동 오버라이드)은 [로드맵](#roadmap)에 있으며,
+같은 이유로 SPDX 내보내기는 `copyrightText: NOASSERTION`을 유지합니다.
 
 ## 컴플라이언스 증거 체인 {#compliance-evidence-trail}
 
@@ -221,7 +237,7 @@ VEX 상태와 CycloneDX `analysis.state` 매핑:
 - **SPDX 식별자가 없는 라이선스**는 SPDX expression에서 `NOASSERTION`으로
   나타납니다(CycloneDX `license.name`에는 라벨이 남습니다).
 
-## 로드맵
+## 로드맵 {#roadmap}
 
 매뉴얼이 이전에 약속했으나 v0.10.0에 포함되지 않은 항목.
 
