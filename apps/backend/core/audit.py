@@ -228,6 +228,33 @@ def build_audit_action(op: str) -> str:
     }[op]
 
 
+def _soft_delete_action(instance: object, diff: dict[str, Any]) -> str | None:
+    """Detect a soft-delete / restore transition on ``archived_at`` (M-5).
+
+    A project "delete" is an UPDATE that fills ``archived_at``, so the plain
+    op→verb mapping recorded it as ``action=update`` and the guide's
+    "who deleted this project" query (``action=delete``) matched nothing.
+    Any audited table with an ``archived_at`` column gets the same treatment:
+
+      - NULL → timestamp  ⇒ ``archive``
+      - timestamp → NULL  ⇒ ``unarchive``
+
+    Returns None when ``archived_at`` did not change (caller keeps the
+    default verb).
+    """
+    if "archived_at" not in diff:
+        return None
+    state: InstanceState[Any] = inspect(instance)  # type: ignore[assignment]
+    history = state.attrs["archived_at"].history
+    previous = history.deleted[0] if history.deleted else None
+    current = diff["archived_at"]
+    if previous is None and current is not None:
+        return "archive"
+    if previous is not None and current is None:
+        return "unarchive"
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Listener
 # ---------------------------------------------------------------------------
@@ -307,9 +334,15 @@ def _build_audit_row(*, op: str, instance: object, ctx: dict[str, Any]) -> dict[
     if not is_audited_table(table):
         return None
 
+    action = build_audit_action(op)
     if op == "update":
         diff = _changed_columns(instance)
         diff = _augment_status_transition(instance, diff)
+        # M-5: a soft delete (archived_at NULL→ts) is semantically a delete;
+        # record it as ``archive`` (and the reverse as ``unarchive``) so the
+        # "who deleted this project" audit query has a row to find.
+        action = _soft_delete_action(instance, diff) or action
+
     else:
         diff = _column_dict(instance)
 
@@ -324,7 +357,7 @@ def _build_audit_row(*, op: str, instance: object, ctx: dict[str, Any]) -> dict[
     return {
         "actor_user_id": _coerce_uuid(ctx.get("user_id")),
         "team_id": _coerce_uuid(ctx.get("team_id")),
-        "action": build_audit_action(op),
+        "action": action,
         "target_table": table,
         "target_id": target_id,
         "request_id": ctx.get("request_id"),
@@ -345,20 +378,40 @@ def _coerce_uuid(value: Any) -> uuid.UUID | None:
         return None
 
 
+# session.info key holding this flush's pending CREATE audit payloads. Each
+# entry is ``(row_kwargs, instance)`` — the instance is kept so after_flush
+# can backfill the server-generated PK (M-4).
+_PENDING_AUDIT_KEY = "_pending_audit_rows"
+
+
 def _before_flush(session: Session, _flush_context: Any, _instances: Any) -> None:
-    """SQLAlchemy event hook: emit AuditLog rows for every mutated mapped row."""
+    """SQLAlchemy event hook (stage 1): emit/stash audit rows per mutated row.
+
+    update/delete audit rows are added as ORM rows right here, exactly as
+    before — the unit of work executes their INSERTs *before* any DELETE in
+    the same flush, so a delete-op audit row referencing a team that is being
+    deleted in the same flush is first inserted and then cascade-nulled by
+    the ``ON DELETE SET NULL`` FK (PR #48 semantics).
+
+    create audit rows are *stashed* for :func:`_after_flush` instead (M-4): a
+    created row's PK is server-generated (``gen_random_uuid()``), so at this
+    point ``target_id`` would always be NULL. The diff is still captured HERE
+    because attribute history resets with the flush.
+    """
     from models import AuditLog
 
     ctx = get_audit_context()
 
-    rows: list[dict[str, Any]] = []
+    pending: list[tuple[dict[str, Any], object]] = []
     for instance in session.new:
         if isinstance(instance, AuditLog):
             continue
         row = _build_audit_row(op="insert", instance=instance, ctx=ctx)
         if row is not None:
-            rows.append(row)
+            # Defer to after_flush so the PK can be backfilled (M-4).
+            pending.append((row, instance))
 
+    rows: list[dict[str, Any]] = []
     for instance in session.dirty:
         if isinstance(instance, AuditLog):
             continue
@@ -379,6 +432,45 @@ def _before_flush(session: Session, _flush_context: Any, _instances: Any) -> Non
 
     for row in rows:
         session.add(AuditLog(**row))
+
+    if pending:
+        session.info.setdefault(_PENDING_AUDIT_KEY, []).extend(pending)
+
+
+def _after_flush(session: Session, _flush_context: Any) -> None:
+    """SQLAlchemy event hook (stage 2): write CREATE audit rows (M-4).
+
+    Runs after the flush emitted its SQL, so the server-generated PK is
+    populated on each created instance (via INSERT .. RETURNING) and
+    ``target_id`` can be backfilled. Note ``state.identity`` is NOT yet
+    registered at after_flush time — the PK must be read off the mapped
+    attributes (``primary_key_from_instance``). The rows are written with a
+    Core INSERT on the session's connection — the documented-safe way to emit
+    SQL from after_flush — and share the business transaction, so the audit
+    row and the change it records commit or roll back together.
+    """
+    from sqlalchemy import insert as sa_insert
+
+    from models import AuditLog
+
+    pending = session.info.pop(_PENDING_AUDIT_KEY, None)
+    if not pending:
+        return
+
+    rows: list[dict[str, Any]] = []
+    for row, instance in pending:
+        if row["target_id"] is None:
+            state: InstanceState[Any] = inspect(instance)
+            pk = state.mapper.primary_key_from_instance(instance)
+            if pk and pk[0] is not None:
+                row = {**row, "target_id": str(pk[0])}
+                # The captured insert diff carries the pre-flush ``id: None``;
+                # mirror the backfilled PK so the diff is self-consistent.
+                if row["diff"].get("id") is None:
+                    row["diff"] = {**row["diff"], "id": row["target_id"]}
+        rows.append(row)
+
+    session.connection().execute(sa_insert(AuditLog), rows)
 
 
 __all__ = [
@@ -404,3 +496,5 @@ def install_audit_listeners(session_factory: async_sessionmaker[Any]) -> None:
 
     if not event.contains(sync_session_class, "before_flush", _before_flush):
         event.listen(sync_session_class, "before_flush", _before_flush)
+    if not event.contains(sync_session_class, "after_flush", _after_flush):
+        event.listen(sync_session_class, "after_flush", _after_flush)

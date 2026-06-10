@@ -256,8 +256,8 @@ async def test_delete_team_archives_projects_and_removes_team(
             {"pid": str(project.id)},
         )
     ).all()
-    archive_rows = [r for r in rows if r.action == "update" and "archived_at" in (r.diff or {})]
-    assert archive_rows, "expected audit_logs row capturing the archive UPDATE"
+    archive_rows = [r for r in rows if r.action == "archive" and "archived_at" in (r.diff or {})]
+    assert archive_rows, "expected audit_logs row capturing the archive (M-5 soft-delete verb)"
 
     # Audit row for the team delete itself.
     rows = (

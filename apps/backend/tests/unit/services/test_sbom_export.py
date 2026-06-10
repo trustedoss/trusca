@@ -615,7 +615,9 @@ async def test_cyclonedx_emits_license_id_for_spdx_license(
     from services.sbom_export import export_sbom
 
     _, project, scan = await _make_project_with_succeeded_scan(db_session)
-    _comp, cv = await _make_component_version(db_session, name="left-pad", version="1.0.0")
+    _comp, cv = await _make_component_version(
+        db_session, name=f"left-pad-{unique_suffix()}", version="1.0.0"
+    )
     await _attach(db_session, scan_id=scan.id, cv_id=cv.id)
     await _attach_license(
         db_session, scan_id=scan.id, cv_id=cv.id, kind="concluded", name="MIT", spdx_id="MIT"
@@ -634,7 +636,9 @@ async def test_cyclonedx_prefers_concluded_over_declared(
     from services.sbom_export import export_sbom
 
     _, project, scan = await _make_project_with_succeeded_scan(db_session)
-    _comp, cv = await _make_component_version(db_session, name="dual", version="1.0.0")
+    _comp, cv = await _make_component_version(
+        db_session, name=f"dual-{unique_suffix()}", version="1.0.0"
+    )
     await _attach(db_session, scan_id=scan.id, cv_id=cv.id)
     await _attach_license(
         db_session, scan_id=scan.id, cv_id=cv.id, kind="declared",
@@ -656,7 +660,9 @@ async def test_cyclonedx_xml_emits_license(db_session: AsyncSession) -> None:
     from services.sbom_export import export_sbom
 
     _, project, scan = await _make_project_with_succeeded_scan(db_session)
-    _comp, cv = await _make_component_version(db_session, name="xmllic", version="1.0.0")
+    _comp, cv = await _make_component_version(
+        db_session, name=f"xmllic-{unique_suffix()}", version="1.0.0"
+    )
     await _attach(db_session, scan_id=scan.id, cv_id=cv.id)
     await _attach_license(
         db_session, scan_id=scan.id, cv_id=cv.id, kind="concluded", name="MIT", spdx_id="MIT"
@@ -677,7 +683,9 @@ async def test_spdx_emits_declared_and_concluded_expressions(
     from services.sbom_export import export_sbom
 
     _, project, scan = await _make_project_with_succeeded_scan(db_session)
-    _comp, cv = await _make_component_version(db_session, name="spdxlic", version="1.0.0")
+    _comp, cv = await _make_component_version(
+        db_session, name=f"spdxlic-{unique_suffix()}", version="1.0.0"
+    )
     await _attach(db_session, scan_id=scan.id, cv_id=cv.id)
     await _attach_license(
         db_session, scan_id=scan.id, cv_id=cv.id, kind="declared", name="MIT", spdx_id="MIT"
@@ -699,7 +707,9 @@ async def test_spdx_concluded_falls_back_to_declared(
     from services.sbom_export import export_sbom
 
     _, project, scan = await _make_project_with_succeeded_scan(db_session)
-    _comp, cv = await _make_component_version(db_session, name="onlydecl", version="1.0.0")
+    _comp, cv = await _make_component_version(
+        db_session, name=f"onlydecl-{unique_suffix()}", version="1.0.0"
+    )
     await _attach(db_session, scan_id=scan.id, cv_id=cv.id)
     await _attach_license(
         db_session, scan_id=scan.id, cv_id=cv.id, kind="declared", name="MIT", spdx_id="MIT"
@@ -717,7 +727,9 @@ async def test_spdx_multiple_licenses_anded_in_sorted_order(
     from services.sbom_export import export_sbom
 
     _, project, scan = await _make_project_with_succeeded_scan(db_session)
-    _comp, cv = await _make_component_version(db_session, name="multi", version="1.0.0")
+    _comp, cv = await _make_component_version(
+        db_session, name=f"multi-{unique_suffix()}", version="1.0.0"
+    )
     await _attach(db_session, scan_id=scan.id, cv_id=cv.id)
     await _attach_license(
         db_session, scan_id=scan.id, cv_id=cv.id, kind="concluded", name="MIT",
@@ -738,7 +750,9 @@ async def test_license_without_spdx_id(db_session: AsyncSession) -> None:
     from services.sbom_export import export_sbom
 
     _, project, scan = await _make_project_with_succeeded_scan(db_session)
-    _comp, cv = await _make_component_version(db_session, name="custom", version="1.0.0")
+    _comp, cv = await _make_component_version(
+        db_session, name=f"custom-{unique_suffix()}", version="1.0.0"
+    )
     await _attach(db_session, scan_id=scan.id, cv_id=cv.id)
     await _attach_license(
         db_session, scan_id=scan.id, cv_id=cv.id, kind="concluded",
@@ -761,7 +775,9 @@ async def test_component_without_license_stays_noassertion(
     from services.sbom_export import export_sbom
 
     _, project, scan = await _make_project_with_succeeded_scan(db_session)
-    _comp, cv = await _make_component_version(db_session, name="nolic", version="1.0.0")
+    _comp, cv = await _make_component_version(
+        db_session, name=f"nolic-{unique_suffix()}", version="1.0.0"
+    )
     await _attach(db_session, scan_id=scan.id, cv_id=cv.id)
 
     cdx, _, _ = await export_sbom(db_session, project_id=project.id, fmt="cyclonedx-json")
@@ -779,7 +795,9 @@ async def test_reexport_with_licenses_is_byte_identical(
     from services.sbom_export import export_sbom
 
     _, project, scan = await _make_project_with_succeeded_scan(db_session)
-    _comp, cv = await _make_component_version(db_session, name="stable", version="1.0.0")
+    _comp, cv = await _make_component_version(
+        db_session, name=f"stable-{unique_suffix()}", version="1.0.0"
+    )
     await _attach(db_session, scan_id=scan.id, cv_id=cv.id)
     await _attach_license(
         db_session, scan_id=scan.id, cv_id=cv.id, kind="concluded", name="MIT",

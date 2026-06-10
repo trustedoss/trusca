@@ -120,3 +120,38 @@ def test_listener_records_each_mutating_op(op):
 
     action = build_audit_action(op)
     assert action in ("create", "update", "delete")
+
+
+def test_soft_delete_action_detects_archive_and_unarchive(monkeypatch):
+    """M-5: archived_at NULL->ts maps to ``archive``, ts->NULL to ``unarchive``."""
+    from core import audit
+
+    def fake_state(previous):
+        class _Hist:
+            deleted = (previous,) if previous is not None else ()
+
+        class _Attr:
+            history = _Hist()
+
+        class _Attrs:
+            def __getitem__(self, key):
+                assert key == "archived_at"
+                return _Attr()
+
+        class _State:
+            attrs = _Attrs()
+
+        return _State()
+
+    monkeypatch.setattr(audit, "inspect", lambda _i: fake_state(None))
+    assert audit._soft_delete_action(object(), {"archived_at": "2026-06-10T00:00:00Z"}) == "archive"
+
+    monkeypatch.setattr(audit, "inspect", lambda _i: fake_state("2026-06-01T00:00:00Z"))
+    assert audit._soft_delete_action(object(), {"archived_at": None}) == "unarchive"
+
+    # archived_at not in the diff -> caller keeps the default verb.
+    assert audit._soft_delete_action(object(), {"name": "x"}) is None
+
+    # archived_at changed ts->ts (clock fixup) -> not a soft-delete transition.
+    monkeypatch.setattr(audit, "inspect", lambda _i: fake_state("2026-06-01T00:00:00Z"))
+    assert audit._soft_delete_action(object(), {"archived_at": "2026-06-10T00:00:00Z"}) is None

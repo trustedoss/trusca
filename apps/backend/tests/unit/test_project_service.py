@@ -122,11 +122,10 @@ async def test_create_project_persists_row_and_writes_audit_log(
     assert project.archived_at is None
     assert project.visibility == "team"
 
-    # Audit log row exists for the project create. We search by actor +
-    # target_table because the listener fires inside before_flush — at that
-    # point the row's server-generated `id` (gen_random_uuid()) has not been
-    # populated, so audit_logs.target_id is None. The diff JSONB still
-    # captures the slug, which gives us a unique handle.
+    # Audit log row exists for the project create. We search by diff
+    # containment on the slug — a stable unique handle for this test's row.
+    # (M-4: target_id is also populated for creates now; the dedicated
+    # guard below asserts that.)
     rows = (
         await db_session.execute(
             text(
@@ -706,6 +705,48 @@ async def test_update_project_credential_masked_in_audit_diff(
             assert diff["git_credential_encrypted"] == "***"
 
 
+async def test_create_project_audit_row_backfills_target_id(
+    db_session: AsyncSession,
+) -> None:
+    """M-4: create audit rows carry the server-generated PK as target_id.
+
+    The PK is assigned by Postgres (gen_random_uuid()) during the flush, so
+    the listener backfills target_id in after_flush — previously every
+    ``action=create`` row landed with target_id NULL and "find the audit row
+    for the object I just created" was impossible by id.
+    """
+    from schemas.scan import ProjectCreate
+    from services.project_service import create_project
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    user = await make_user(db_session)
+    await make_membership(db_session, user=user, team=team, role="developer")
+    actor = principal_for(user, team_ids=[team.id], role="developer")
+
+    payload = ProjectCreate(
+        team_id=team.id,
+        name="Audit Target",
+        slug=f"audit-target-{unique_suffix()}",
+    )
+    project = await create_project(db_session, payload=payload, actor=actor)
+
+    rows = (
+        await db_session.execute(
+            text(
+                "SELECT action, target_id, diff FROM audit_logs "
+                "WHERE target_table = 'projects' AND action = 'create' "
+                "  AND target_id = :pid"
+            ),
+            {"pid": str(project.id)},
+        )
+    ).all()
+    assert len(rows) == 1, "expected exactly one create audit row addressable by id"
+    row = rows[0]
+    # The diff mirrors the backfilled PK so it stays self-consistent.
+    assert (row.diff or {}).get("id") == str(project.id)
+
+
 # ---------------------------------------------------------------------------
 # archive_project
 # ---------------------------------------------------------------------------
@@ -726,8 +767,9 @@ async def test_archive_project_sets_archived_at_and_writes_audit_log(
     archived = await archive_project(db_session, project_id=project.id, actor=actor)
     assert archived.archived_at is not None
 
-    # Audit log row exists for the archive — the update path fires once the
-    # row's id is already known so target_id IS populated for updates.
+    # Audit log row exists for the archive. M-5: a soft delete (archived_at
+    # NULL -> ts) is recorded as ``action=archive`` (not a generic update) so
+    # the "who deleted this project" audit query has a row to find.
     rows = (
         await db_session.execute(
             text(
@@ -738,7 +780,7 @@ async def test_archive_project_sets_archived_at_and_writes_audit_log(
         )
     ).all()
     actions = {row.action for row in rows}
-    assert "update" in actions, f"expected an update audit row, got actions={actions}"
+    assert "archive" in actions, f"expected an archive audit row, got actions={actions}"
 
 
 async def test_archive_project_is_idempotent(db_session: AsyncSession) -> None:
