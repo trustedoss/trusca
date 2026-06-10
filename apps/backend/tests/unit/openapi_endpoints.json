@@ -78,8 +78,10 @@
   "GET /v1/admin/disk": [],
   "GET /v1/admin/health": [],
   "GET /v1/admin/scans": [
+    "kind",
     "page",
     "page_size",
+    "project",
     "status"
   ],
   "GET /v1/admin/teams": [

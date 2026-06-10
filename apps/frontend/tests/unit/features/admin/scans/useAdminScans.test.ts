@@ -24,6 +24,31 @@ describe("admin Scans api glue", () => {
     spy.mockRestore();
   });
 
+  it("listAdminScans forwards the kind + project filters (M-35)", async () => {
+    const spy = vi
+      .spyOn(api, "get")
+      .mockResolvedValueOnce({
+        data: { items: [], total: 0, page: 1, page_size: 50 },
+      } as never);
+    await listAdminScans({
+      page: 1,
+      page_size: 50,
+      status: null,
+      kind: "container",
+      project: "alpha",
+    });
+    expect(spy).toHaveBeenCalledWith("/v1/admin/scans", {
+      params: {
+        page: 1,
+        page_size: 50,
+        status: undefined,
+        kind: "container",
+        project: "alpha",
+      },
+    });
+    spy.mockRestore();
+  });
+
   it("cancelAdminScan POSTs to /v1/admin/scans/{id}/cancel", async () => {
     const spy = vi
       .spyOn(api, "post")
@@ -37,12 +62,25 @@ describe("admin Scans api glue", () => {
     expect(adminScansQueryKey({})).toEqual([
       "admin",
       "scans",
-      { page: 1, page_size: 50, status: null },
+      { page: 1, page_size: 50, status: null, kind: null, project: null },
     ]);
     expect(adminScansQueryKey({ status: "queued" })).toEqual([
       "admin",
       "scans",
-      { page: 1, page_size: 50, status: "queued" },
+      { page: 1, page_size: 50, status: "queued", kind: null, project: null },
+    ]);
+    expect(
+      adminScansQueryKey({ kind: "source", project: "alpha" }),
+    ).toEqual([
+      "admin",
+      "scans",
+      {
+        page: 1,
+        page_size: 50,
+        status: null,
+        kind: "source",
+        project: "alpha",
+      },
     ]);
   });
 });

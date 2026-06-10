@@ -139,6 +139,16 @@
         "failed": "실패",
         "all": "전체"
       },
+      "filter": {
+        "kind_label": "종류",
+        "kind_all": "전체 종류",
+        "kind": {
+          "source": "소스",
+          "container": "컨테이너"
+        },
+        "project_label": "프로젝트",
+        "project_placeholder": "프로젝트 이름으로 필터…"
+      },
       "column": {
         "id": "스캔",
         "project": "프로젝트",

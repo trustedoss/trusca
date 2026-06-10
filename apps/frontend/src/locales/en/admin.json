@@ -139,6 +139,16 @@
         "failed": "Failed",
         "all": "All"
       },
+      "filter": {
+        "kind_label": "Kind",
+        "kind_all": "All kinds",
+        "kind": {
+          "source": "Source",
+          "container": "Container"
+        },
+        "project_label": "Project",
+        "project_placeholder": "Filter by project name…"
+      },
       "column": {
         "id": "Scan",
         "project": "Project",

@@ -29,6 +29,8 @@ export function adminScansQueryKey(params: AdminScanListParams) {
       page: params.page ?? 1,
       page_size: params.page_size ?? 50,
       status: params.status ?? null,
+      kind: params.kind ?? null,
+      project: params.project ?? null,
     },
   ] as const;
 }

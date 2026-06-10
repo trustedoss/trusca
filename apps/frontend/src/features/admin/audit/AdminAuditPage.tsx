@@ -8,6 +8,16 @@
  *   - from / to         — datetime-local inputs.
  *   - q                 — diff substring search (300ms debounce).
  *
+ * L-14: filter state lives in the URL (`useSearchParams`, ApprovalsPage
+ * pattern) so a filtered view survives reload and can be shared. Params:
+ * actor / target_table / action / from / to / q / page / page_size.
+ * Defaults DELETE the param so the URL stays clean; unknown or invalid
+ * values fall back to the default. Text inputs keep a local mirror and
+ * commit to the URL after a 300ms debounce so typing doesn't spam history.
+ *
+ * L-15: the list auto-refreshes every 2.5s (see useAdminAudit) so writes
+ * show up without pressing Refresh.
+ *
  * The "Export CSV" button runs an authenticated fetch + blob download so
  * the bearer token stays in the Authorization header (out of URL / history).
  *
@@ -16,8 +26,9 @@
  * will not match those columns.
  */
 import { Download, RefreshCw } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useSearchParams } from "react-router-dom";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -43,62 +54,171 @@ import {
 import { cn } from "@/lib/utils";
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
+const DEFAULT_PAGE_SIZE = 50;
+
+// L-14 — URL filter parsers (ApprovalsPage pattern). Reject any value
+// outside the allowed shape so a stale or hand-edited URL doesn't poison
+// the typed state — invalid values fall back to the default.
+function parseTargetTableParam(v: string | null): AuditTargetTable | "all" {
+  return v && (AUDIT_TARGET_TABLES as readonly string[]).includes(v)
+    ? (v as AuditTargetTable)
+    : "all";
+}
+// datetime-local values — YYYY-MM-DDTHH:mm with optional :ss.
+const DATETIME_LOCAL_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/;
+function parseDateTimeParam(v: string | null): string {
+  return v && DATETIME_LOCAL_RE.test(v) ? v : "";
+}
+function parseTextParam(v: string | null, maxLength: number): string {
+  return v ? v.slice(0, maxLength) : "";
+}
+function parsePageParam(v: string | null): number {
+  if (!v) return 1;
+  const n = Number.parseInt(v, 10);
+  return Number.isFinite(n) && n >= 1 ? n : 1;
+}
+function parsePageSizeParam(
+  v: string | null,
+): (typeof PAGE_SIZE_OPTIONS)[number] {
+  const n = v ? Number.parseInt(v, 10) : Number.NaN;
+  return (PAGE_SIZE_OPTIONS as readonly number[]).includes(n)
+    ? (n as (typeof PAGE_SIZE_OPTIONS)[number])
+    : DEFAULT_PAGE_SIZE;
+}
+
+/**
+ * Local mirror for a URL-backed text filter. The input updates on every
+ * keystroke; the URL param updates after 300ms of quiet so typing doesn't
+ * create a history entry (and a server query) per character. A param
+ * change from outside (back/forward, hand-edited URL) flows back into the
+ * input. Committing the raw value keeps `paramValue === input` after the
+ * round-trip so the debounce effect settles.
+ */
+function useDebouncedFilterInput(
+  paramValue: string,
+  commit: (next: string | null) => void,
+): [string, (next: string) => void] {
+  const [input, setInput] = useState(paramValue);
+  useEffect(() => {
+    setInput(paramValue);
+  }, [paramValue]);
+  useEffect(() => {
+    if (input === paramValue) return undefined;
+    const id = setTimeout(() => commit(input === "" ? null : input), 300);
+    return () => clearTimeout(id);
+  }, [input, paramValue, commit]);
+  return [input, setInput];
+}
 
 export function AdminAuditPage() {
   const { t } = useTranslation("admin");
 
-  const [actorInput, setActorInput] = useState("");
-  const [targetTable, setTargetTable] = useState<AuditTargetTable | "all">(
-    "all",
+  // --- filter state — URL-derived (L-14). searchParams is the single
+  //     source; the three text inputs keep a debounced local mirror. ---
+  const [searchParams, setSearchParams] = useSearchParams();
+  const actorParam = parseTextParam(searchParams.get("actor"), 255);
+  const targetTable = parseTargetTableParam(searchParams.get("target_table"));
+  const actionParam = parseTextParam(searchParams.get("action"), 64);
+  const fromParam = parseDateTimeParam(searchParams.get("from"));
+  const toParam = parseDateTimeParam(searchParams.get("to"));
+  const qParam = parseTextParam(searchParams.get("q"), 255);
+  const page = parsePageParam(searchParams.get("page"));
+  const pageSize = parsePageSizeParam(searchParams.get("page_size"));
+
+  const updateFilterParam = useCallback(
+    (key: string, next: string | null) => {
+      setSearchParams(
+        (prev) => {
+          const out = new URLSearchParams(prev);
+          if (next == null || next === "") out.delete(key);
+          else out.set(key, next);
+          // Any filter change rewinds to page 1 so the user doesn't land
+          // on a now-empty page after narrowing the result set.
+          out.delete("page");
+          return out;
+        },
+        { replace: false },
+      );
+    },
+    [setSearchParams],
   );
-  const [actionInput, setActionInput] = useState("");
-  const [fromInput, setFromInput] = useState("");
-  const [toInput, setToInput] = useState("");
-  const [qInput, setQInput] = useState("");
-  const [qDebounced, setQDebounced] = useState("");
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] =
-    useState<(typeof PAGE_SIZE_OPTIONS)[number]>(50);
+  const setPage = useCallback(
+    (next: number) => {
+      setSearchParams(
+        (prev) => {
+          const out = new URLSearchParams(prev);
+          if (next <= 1) out.delete("page");
+          else out.set("page", String(next));
+          return out;
+        },
+        { replace: false },
+      );
+    },
+    [setSearchParams],
+  );
+  const setPageSize = useCallback(
+    (next: number) =>
+      updateFilterParam(
+        "page_size",
+        next === DEFAULT_PAGE_SIZE ? null : String(next),
+      ),
+    [updateFilterParam],
+  );
+
+  const commitActor = useCallback(
+    (next: string | null) => updateFilterParam("actor", next),
+    [updateFilterParam],
+  );
+  const [actorInput, setActorInput] = useDebouncedFilterInput(
+    actorParam,
+    commitActor,
+  );
+  const commitAction = useCallback(
+    (next: string | null) => updateFilterParam("action", next),
+    [updateFilterParam],
+  );
+  const [actionInput, setActionInput] = useDebouncedFilterInput(
+    actionParam,
+    commitAction,
+  );
+  const commitQ = useCallback(
+    (next: string | null) => updateFilterParam("q", next),
+    [updateFilterParam],
+  );
+  const [qInput, setQInput] = useDebouncedFilterInput(qParam, commitQ);
+
   const [openEntry, setOpenEntry] = useState<AuditLogItem | null>(null);
   const [toast, setToast] = useState<AdminToastMessage | null>(null);
   const toastSeq = useRef(0);
   const [exporting, setExporting] = useState(false);
 
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      setQDebounced(qInput);
-      setPage(1);
-    }, 300);
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [qInput]);
-
   const queryParams = useMemo(
     () => ({
-      actor_user_id: actorInput.trim() || null,
+      actor_user_id: actorParam.trim() || null,
       target_table: targetTable === "all" ? null : targetTable,
-      action: actionInput.trim() || null,
-      from: fromInput || null,
-      to: toInput || null,
-      q: qDebounced.trim() || null,
+      action: actionParam.trim() || null,
+      from: fromParam || null,
+      to: toParam || null,
+      q: qParam.trim() || null,
       page,
       page_size: pageSize,
     }),
     [
-      actorInput,
+      actorParam,
       targetTable,
-      actionInput,
-      fromInput,
-      toInput,
-      qDebounced,
+      actionParam,
+      fromParam,
+      toParam,
+      qParam,
       page,
       pageSize,
     ],
   );
 
+  // L-15 — the 2.5s polling stays active while the drawer is open: the
+  // drawer renders from the `openEntry` snapshot captured at click time
+  // (it never re-derives from the refetched list), so replacing the row
+  // objects underneath cannot shake its content.
   const auditQuery = useAdminAudit(queryParams);
   const items = auditQuery.data?.items ?? [];
   const total = auditQuery.data?.total ?? 0;
@@ -165,11 +285,9 @@ export function AdminAuditPage() {
             id="admin-audit-actor"
             data-testid="admin-audit-actor"
             value={actorInput}
-            onChange={(e) => {
-              setActorInput(e.target.value);
-              setPage(1);
-            }}
+            onChange={(e) => setActorInput(e.target.value)}
             className="h-9 font-mono text-xs"
+            maxLength={255}
           />
         </div>
         <div>
@@ -187,10 +305,12 @@ export function AdminAuditPage() {
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
             )}
             value={targetTable}
-            onChange={(e) => {
-              setTargetTable(e.target.value as AuditTargetTable | "all");
-              setPage(1);
-            }}
+            onChange={(e) =>
+              updateFilterParam(
+                "target_table",
+                e.target.value === "all" ? null : e.target.value,
+              )
+            }
           >
             <option value="all">
               {t("admin.audit.filter.target_table_all")}
@@ -214,10 +334,7 @@ export function AdminAuditPage() {
             data-testid="admin-audit-action"
             value={actionInput}
             placeholder={t("admin.audit.filter.action_placeholder")}
-            onChange={(e) => {
-              setActionInput(e.target.value);
-              setPage(1);
-            }}
+            onChange={(e) => setActionInput(e.target.value)}
             className="h-9 font-mono text-xs"
             maxLength={64}
           />
@@ -233,11 +350,8 @@ export function AdminAuditPage() {
             id="admin-audit-from"
             data-testid="admin-audit-from"
             type="datetime-local"
-            value={fromInput}
-            onChange={(e) => {
-              setFromInput(e.target.value);
-              setPage(1);
-            }}
+            value={fromParam}
+            onChange={(e) => updateFilterParam("from", e.target.value || null)}
             className="h-9 font-mono text-xs"
           />
         </div>
@@ -252,11 +366,8 @@ export function AdminAuditPage() {
             id="admin-audit-to"
             data-testid="admin-audit-to"
             type="datetime-local"
-            value={toInput}
-            onChange={(e) => {
-              setToInput(e.target.value);
-              setPage(1);
-            }}
+            value={toParam}
+            onChange={(e) => updateFilterParam("to", e.target.value || null)}
             className="h-9 font-mono text-xs"
           />
         </div>
@@ -412,12 +523,7 @@ export function AdminAuditPage() {
             data-testid="admin-audit-page-size"
             className="h-8 rounded-md border border-input bg-background px-2"
             value={pageSize}
-            onChange={(e) => {
-              setPageSize(
-                Number(e.target.value) as (typeof PAGE_SIZE_OPTIONS)[number],
-              );
-              setPage(1);
-            }}
+            onChange={(e) => setPageSize(Number(e.target.value))}
           >
             {PAGE_SIZE_OPTIONS.map((opt) => (
               <option key={opt} value={opt}>
@@ -438,7 +544,7 @@ export function AdminAuditPage() {
             size="sm"
             variant="outline"
             disabled={page <= 1}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            onClick={() => setPage(Math.max(1, page - 1))}
             data-testid="admin-audit-page-prev"
           >
             {t("admin.users.pagination.previous")}
@@ -447,7 +553,7 @@ export function AdminAuditPage() {
             size="sm"
             variant="outline"
             disabled={page >= totalPages}
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            onClick={() => setPage(Math.min(totalPages, page + 1))}
             data-testid="admin-audit-page-next"
           >
             {t("admin.users.pagination.next")}
