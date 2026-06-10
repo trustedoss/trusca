@@ -97,11 +97,9 @@ curl -sS -X POST https://trustedoss.example.com/v1/projects \
 
 응답에 프로젝트 UUID가 포함됩니다 — GitHub Action의 `project-id` 입력값과 GitLab CI 변수에 사용하므로 보관하세요.
 
-스키마는 알 수 없는 필드를 거부합니다(`extra="forbid"`). 생성 시 허용되는 필드는 `name`, `description`, `git_url` 뿐입니다. `default_branch`는 이후 `PATCH /v1/projects/{id}`로 설정합니다.
+**필수 필드**: `team_id`, `name`, `slug`. 선택: `description`, `git_url`, `default_branch`, `visibility`. 스키마는 알 수 없는 필드를 거부합니다(`extra="forbid"`). `team_id`나 `slug`를 빠뜨리면 `422`(`missing: body.team_id`)가 반환됩니다.
 
-생성 페이로드에 `team_id` 는 **필요하지 않습니다** — 서버가 활성
-팀에서 자동으로 도출합니다. 이 필드는 향후 멀티 팀 스코핑을 위해
-예약되어 있으며, 그 전까지 생성 호출에서는 무시해도 됩니다.
+`team_id` 찾기: UI의 프로젝트 생성 폼에는 팀 선택기가 있어 UUID를 직접 입력할 필요가 없습니다. API에서는 **로그인한 모든 사용자**가 `GET /auth/me`로 자기 팀을 읽습니다(auth 라우터는 `/v1`이 아니라 `/auth`에 마운트됩니다) — 응답의 `memberships[]` 배열 각 항목에 `team_id`·`team_name`과 해당 팀에서의 `role`이 담깁니다. (`GET /v1/admin/teams`도 팀 목록을 주지만 **super-admin 전용**이라 `team_admin`이 호출하면 `404`입니다.) 이번 릴리스에서 `team_id`는 세션에서 도출되지 **않으며** 요청 본문에 담아야 합니다.
 
 ## 가시성
 

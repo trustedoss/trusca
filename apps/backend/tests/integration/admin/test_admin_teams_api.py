@@ -256,14 +256,37 @@ async def test_delete_team_with_active_scan_returns_422(
     assert body.get("team_has_active_scans") is True
 
 
-async def test_delete_team_archives_projects_then_succeeds(
+async def test_delete_team_with_live_projects_returns_409(
     client: AsyncClient,
 ) -> None:
+    """M-8: a team with non-archived projects is refused (409) with a
+    machine-readable team_has_projects extension."""
     factory = await _factory(client)
     async with factory() as session:
         org = await make_organization(session)
         team = await make_team(session, organization=org)
-        project = await make_project(session, team=team)
+        await make_project(session, team=team)
+        admin = await make_user(session, is_superuser=True)
+
+    response = await client.delete(
+        f"/v1/admin/teams/{team.id}",
+        headers=_bearer_for(admin),
+    )
+    assert response.status_code == 409, response.text
+    body = response.json()
+    assert body["team_has_projects"] is True
+    assert body["project_count"] == 1
+
+
+async def test_delete_team_with_only_archived_projects_succeeds(
+    client: AsyncClient,
+) -> None:
+    """M-8: archived projects don't block deletion."""
+    factory = await _factory(client)
+    async with factory() as session:
+        org = await make_organization(session)
+        team = await make_team(session, organization=org)
+        await make_project(session, team=team, archived=True)
         admin = await make_user(session, is_superuser=True)
 
     response = await client.delete(
@@ -271,20 +294,6 @@ async def test_delete_team_archives_projects_then_succeeds(
         headers=_bearer_for(admin),
     )
     assert response.status_code == 204, response.text
-
-    # Audit row for the project archive was emitted before CASCADE.
-    factory = await _factory(client)
-    async with factory() as session:
-        rows = (
-            await session.execute(
-                text(
-                    "SELECT count(*) FROM audit_logs "
-                    "WHERE target_table = 'projects' AND target_id = :pid"
-                ),
-                {"pid": str(project.id)},
-            )
-        ).scalar_one()
-    assert rows >= 1
 
 
 # ---------------------------------------------------------------------------

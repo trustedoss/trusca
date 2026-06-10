@@ -101,7 +101,7 @@ The response includes the project's UUID — keep it; it is the value you wire i
 
 **Required fields**: `team_id`, `name`, and `slug`. Optional: `description`, `git_url`, `default_branch`, and `visibility`. The schema rejects unknown fields (`extra="forbid"`), so omitting `team_id` or `slug` returns `422` (`missing: body.team_id`).
 
-Finding your `team_id`: in the UI the project-create form has a team selector, so you never type the UUID. Over the API a `team_admin` or `super_admin` reads it from `GET /v1/admin/teams`; a self-service `GET /v1/users/me/memberships` is on the roadmap. In this release the field is **not** derived from your session — it must be in the body.
+Finding your `team_id`: in the UI the project-create form has a team selector, so you never type the UUID. Over the API **any** signed-in user reads their teams from `GET /auth/me` (the auth router is mounted at `/auth`, not `/v1`) — the response carries a `memberships[]` array, each entry with its `team_id`, `team_name`, and your `role` in that team. (`GET /v1/admin/teams` also lists teams but is **super-admin only** — a `team_admin` calling it gets `404`.) In this release the `team_id` field is **not** derived from your session — it must be in the request body.
 
 ## Visibility
 

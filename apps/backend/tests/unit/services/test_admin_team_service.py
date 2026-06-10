@@ -231,41 +231,49 @@ async def test_update_team_changes_name(db_session: AsyncSession) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_delete_team_archives_projects_and_removes_team(
+async def test_delete_team_with_live_projects_is_refused(
     db_session: AsyncSession,
 ) -> None:
+    """M-8: a team that still owns NON-archived projects cannot be deleted —
+    the operator must archive them first (prevents an accidental delete from
+    CASCADE-destroying live projects)."""
+    from services.admin_team_service import TeamHasProjects, delete_team
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    await make_project(db_session, team=team)
+    await make_project(db_session, team=team)
+
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+
+    with pytest.raises(TeamHasProjects) as excinfo:
+        await delete_team(db_session, actor=actor, team_id=team.id)
+    assert excinfo.value.status_code == 409
+    assert excinfo.value.extensions == {"team_has_projects": True, "project_count": 2}
+
+
+async def test_delete_team_with_only_archived_projects_succeeds(
+    db_session: AsyncSession,
+) -> None:
+    """M-8: archived (retired) projects do not block the delete — the team is
+    removed and the CASCADE finalises the archived projects."""
     from services.admin_team_service import delete_team
 
     org = await make_organization(db_session)
     team = await make_team(db_session, organization=org)
-    project = await make_project(db_session, team=team)
+    await make_project(db_session, team=team, archived=True)
 
     admin = await make_user(db_session, is_superuser=True)
     actor = principal_for(admin, role="super_admin")
 
     await delete_team(db_session, actor=actor, team_id=team.id)
 
-    # Audit row for the project archive (UPDATE captured before CASCADE)
-    rows = (
-        await db_session.execute(
-            text(
-                "SELECT action, diff FROM audit_logs "
-                "WHERE target_table = 'projects' "
-                "  AND target_id = :pid"
-            ),
-            {"pid": str(project.id)},
-        )
-    ).all()
-    archive_rows = [r for r in rows if r.action == "archive" and "archived_at" in (r.diff or {})]
-    assert archive_rows, "expected audit_logs row capturing the archive (M-5 soft-delete verb)"
-
-    # Audit row for the team delete itself.
     rows = (
         await db_session.execute(
             text(
                 "SELECT action FROM audit_logs "
-                "WHERE target_table = 'teams' "
-                "  AND target_id = :tid"
+                "WHERE target_table = 'teams' AND target_id = :tid"
             ),
             {"tid": str(team.id)},
         )
