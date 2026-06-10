@@ -25,6 +25,7 @@ from api.v1 import (
     admin_router,
     api_keys_router,
     approvals_router,
+    audit_router,
     auth_router,
     compliance_router,
     components_router,
@@ -218,6 +219,10 @@ app.include_router(obligations_router)
 # this endpoint is the single read backing the redesigned Compliance tab.
 app.include_router(compliance_router)
 app.include_router(approvals_router)
+# M-3: team-scoped audit read. super_admin sees all; team_admin sees only the
+# teams where they hold team_admin (scope enforced server-side from
+# team_roles). The super-admin-only /v1/admin/audit (+ CSV export) stays as-is.
+app.include_router(audit_router)
 app.include_router(sbom_router)
 # v2.1 Track A (A1): VEX document export (OpenVEX / CycloneDX-VEX) derived from
 # the project's current finding triage. Read-only; basis for the A2 import

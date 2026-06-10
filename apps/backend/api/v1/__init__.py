@@ -6,6 +6,7 @@ Add new routers here and import them in `main.py`.
 from .admin import router as admin_router
 from .api_keys import router as api_keys_router
 from .approvals import router as approvals_router
+from .audit import router as audit_router
 from .auth import router as auth_router
 from .compliance import router as compliance_router
 from .components import router as components_router
@@ -35,6 +36,7 @@ __all__ = [
     "admin_router",
     "api_keys_router",
     "approvals_router",
+    "audit_router",
     "auth_router",
     "compliance_router",
     "components_router",

@@ -124,6 +124,16 @@
   "GET /v1/approvals/{approval_id}": [
     "approval_id"
   ],
+  "GET /v1/audit": [
+    "action",
+    "actor_user_id",
+    "from",
+    "page",
+    "page_size",
+    "q",
+    "target_table",
+    "to"
+  ],
   "GET /v1/components/{component_id}": [
     "component_id"
   ],
