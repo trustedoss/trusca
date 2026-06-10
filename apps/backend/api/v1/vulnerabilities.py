@@ -293,7 +293,13 @@ async def get_vulnerability_finding_endpoint(
     response_model=VulnerabilityDetailResponse,
     summary="Transition a vulnerability finding's VEX status (audit-logged)",
     responses={
-        200: {"description": "Status transitioned. Body is the post-commit detail payload."},
+        200: {
+            "description": (
+                "Status transitioned, OR the finding was already at the "
+                "requested status (idempotent no-op — M-26). Body is the "
+                "post-commit detail payload."
+            ),
+        },
         403: {
             "description": (
                 "Caller's role is insufficient (e.g. developer attempting `→ suppressed`)."

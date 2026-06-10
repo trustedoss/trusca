@@ -117,12 +117,20 @@ When several findings share the same disposition — for example, ten findings a
 2. The action bar at the top of the table shows the selected count and the available verdicts for the *common* current state of the selected rows. If the selection mixes states whose legal next-state intersection is empty, the verdict buttons are disabled with a tooltip explaining why.
 3. Pick a verdict, enter the justification once (the same text is applied to every row), and submit.
 
-The response is **per-row**: every selected finding gets a status entry in the result alert — `transitioned` (status flipped), `already_at_target` (skipped, no-op), or an explicit reason like `illegal_transition` / `forbidden_transition`. The page reloads the table once the alert closes so the new states are reflected.
+The response is **per-row**: every selected finding gets an outcome in the result alert. Each row carries `success`, an HTTP-style `status_code`, and a machine-readable `error` code. The codes are:
+
+- **transitioned** — `success: true`, `status_code: 200`, `error: null`. The status actually flipped.
+- **already_at_target** — `success: true`, `status_code: 200`, `error: "already_at_target"`. The row was already in the requested status; an idempotent no-op is a success, not a failure (it just writes no audit row).
+- **invalid_transition** — `success: false`, `status_code: 422`. The move is not allowed by the workflow matrix; the row carries `allowed_to` listing the legal next states.
+- **forbidden** — `success: false`, `status_code: 403`. The actor's role is insufficient (e.g. a `developer` moving a row to `Suppressed`).
+- **not_found** — `success: false`, `status_code: 404`. The id is not a finding in this project.
+
+The envelope's `succeeded` / `failed` counts sum these (`already_at_target` counts as succeeded). The page reloads the table once the alert closes so the new states are reflected.
 
 Server-side the request is a single `POST /v1/projects/{id}/vulnerabilities:bulk-transition` call with the selected finding ids, a target status, and the justification. The endpoint runs the same state-machine guard as the per-row endpoint and emits one audit-log row per actually-transitioned finding. The cap is **200 ids per call** — for selections larger than that, page through and submit in chunks.
 
 :::caution Suppressed transitions still require `team_admin`
-The bulk endpoint does **not** widen the permissions of the per-row endpoint. Moving *any* selected finding into `Suppressed` still requires `team_admin` (or higher) on the project's team — a `developer` submitting a bulk request that includes a `→ Suppressed` transition will see those rows reported as `forbidden_transition` while the other rows in the same submission complete normally.
+The bulk endpoint does **not** widen the permissions of the per-row endpoint. Moving *any* selected finding into `Suppressed` still requires `team_admin` (or higher) on the project's team — a `developer` submitting a bulk request that includes a `→ Suppressed` transition will see those rows reported as `forbidden` (`status_code: 403`) while the other rows in the same submission complete normally.
 :::
 
 ## EPSS — exploitation probability

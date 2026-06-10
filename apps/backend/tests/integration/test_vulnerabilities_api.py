@@ -604,8 +604,9 @@ async def test_patch_happy_path_returns_full_detail(client) -> None:
     assert body["analysis_justification"] == "starting triage"
 
 
-async def test_patch_idempotent_rejected_with_allowed_to_extension(client) -> None:
-    """422 problem must carry `allowed_to` listing legal next states."""
+async def test_patch_idempotent_noop_returns_200_unchanged(client) -> None:
+    """M-26: re-PATCHing the current status is an idempotent no-op → 200 with
+    the unchanged finding, not a 422."""
     _, team, user = await _seed_team_with_user(client)
     _, scan_id = await _seed_scanned_project(client, team_id=team.id)
     finding_id = await _seed_finding(client, scan_id=scan_id)
@@ -616,12 +617,8 @@ async def test_patch_idempotent_rejected_with_allowed_to_extension(client) -> No
         headers=headers,
         json={"status": "new"},  # already 'new'
     )
-    assert response.status_code == 422
-    assert response.headers["content-type"].startswith(PROBLEM_JSON)
-    body = response.json()
-    assert "allowed_to" in body
-    # `new` outgoing edges are analyzing + suppressed.
-    assert sorted(body["allowed_to"]) == sorted(["analyzing", "suppressed"])
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "new"
 
 
 async def test_patch_developer_to_suppressed_returns_403(client) -> None:
@@ -1016,7 +1013,8 @@ async def test_bulk_transition_happy_path_returns_envelope_with_per_row_results(
 async def test_bulk_transition_partial_failure_returns_200_with_mixed_rows(
     client,
 ) -> None:
-    """One ok, one already-at-target (422), one missing (404) → envelope 200."""
+    """One transitioned (200), one already-at-target no-op (200 success), one
+    missing (404) → envelope 200, succeeded=2 (M-29)."""
     _, team, user = await _seed_team_with_user(client)
     project_id, scan_id = await _seed_scanned_project(client, team_id=team.id)
     ok_id = await _seed_finding(client, scan_id=scan_id, initial_status="new")
@@ -1035,14 +1033,16 @@ async def test_bulk_transition_partial_failure_returns_200_with_mixed_rows(
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["total"] == 3
-    assert body["succeeded"] == 1
-    assert body["failed"] == 2
+    assert body["succeeded"] == 2
+    assert body["failed"] == 1
 
     by_id = {r["finding_id"]: r for r in body["results"]}
     assert by_id[str(ok_id)]["success"] is True
-    assert by_id[str(idem_id)]["status_code"] == 422
-    assert by_id[str(idem_id)]["error"] == "invalid_transition"
-    assert by_id[str(idem_id)]["allowed_to"] is not None
+    assert by_id[str(ok_id)]["status_code"] == 200
+    # M-29: the no-op row is a success coded already_at_target, not a 422.
+    assert by_id[str(idem_id)]["success"] is True
+    assert by_id[str(idem_id)]["status_code"] == 200
+    assert by_id[str(idem_id)]["error"] == "already_at_target"
     assert by_id[missing_id]["status_code"] == 404
 
 

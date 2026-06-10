@@ -112,12 +112,20 @@ stateDiagram-v2
 2. 표 상단의 액션 바가 선택 개수와, 선택된 행들의 *공통* 현재 상태에서 가능한 verdict 들을 보여줍니다. 선택이 상태를 섞어 합법적 다음 상태의 교집합이 비면 verdict 버튼이 비활성화되고 툴팁이 이유를 설명합니다.
 3. verdict 를 선택하고 justification 을 한 번만 입력(같은 텍스트가 모든 행에 적용)한 뒤 submit.
 
-응답은 **행 단위** 입니다 — 선택된 모든 finding 이 결과 alert 에 상태 항목을 받습니다 — `transitioned`(상태 변경), `already_at_target`(스킵, no-op), 혹은 `illegal_transition` / `forbidden_transition` 같은 명시적 사유. alert 가 닫히면 표가 새 상태를 반영하며 reload 됩니다.
+응답은 **행 단위** 입니다 — 선택된 모든 finding 이 결과 alert 에 결과를 받습니다. 각 행은 `success`·HTTP 형식의 `status_code`·기계 판독 `error` 코드를 담습니다. 코드는 다음과 같습니다.
+
+- **transitioned** — `success: true`, `status_code: 200`, `error: null`. 상태가 실제로 변경됨.
+- **already_at_target** — `success: true`, `status_code: 200`, `error: "already_at_target"`. 행이 이미 요청한 상태였음; 멱등 no-op 은 실패가 아니라 성공입니다(audit 행만 남기지 않음).
+- **invalid_transition** — `success: false`, `status_code: 422`. 워크플로 매트릭스가 허용하지 않는 전이; 행에 `allowed_to`(다음 허용 상태)가 실립니다.
+- **forbidden** — `success: false`, `status_code: 403`. 행위자의 역할이 부족함(예: `developer` 가 행을 `Suppressed` 로).
+- **not_found** — `success: false`, `status_code: 404`. id 가 이 프로젝트의 finding 이 아님.
+
+envelope 의 `succeeded` / `failed` 개수는 이를 합산합니다(`already_at_target` 은 succeeded 로 집계). alert 가 닫히면 표가 새 상태를 반영하며 reload 됩니다.
 
 서버 쪽에서 요청은 선택된 finding id 목록·target status·justification 을 담은 단일 `POST /v1/projects/{id}/vulnerabilities:bulk-transition` 호출입니다. 엔드포인트는 행 단위 엔드포인트와 동일한 상태 머신 가드를 적용하며, 실제 전이된 finding 당 audit-log 행 1 개를 emit 합니다. 한 호출 당 상한은 **200 ids** 입니다 — 그보다 큰 선택은 페이지를 넘기며 청크 단위로 submit 하세요.
 
 :::caution Suppressed 전이는 여전히 `team_admin` 권한 필요
-bulk 엔드포인트는 행 단위 엔드포인트의 권한을 **확장하지 않습니다**. 선택된 *어느* 행이라도 `Suppressed` 로 옮기려면 여전히 프로젝트 팀의 `team_admin` (또는 그 이상) 권한이 필요합니다 — `developer` 가 `→ Suppressed` 전이를 포함한 bulk 요청을 submit 하면 해당 행들은 `forbidden_transition` 으로 보고되고, 같은 submit 의 다른 행들은 정상 완료됩니다.
+bulk 엔드포인트는 행 단위 엔드포인트의 권한을 **확장하지 않습니다**. 선택된 *어느* 행이라도 `Suppressed` 로 옮기려면 여전히 프로젝트 팀의 `team_admin` (또는 그 이상) 권한이 필요합니다 — `developer` 가 `→ Suppressed` 전이를 포함한 bulk 요청을 submit 하면 해당 행들은 `forbidden`(`status_code: 403`)으로 보고되고, 같은 submit 의 다른 행들은 정상 완료됩니다.
 :::
 
 ## EPSS — 악용 확률
