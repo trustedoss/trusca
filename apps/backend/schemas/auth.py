@@ -16,7 +16,22 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+
+from core.password_policy import is_weak_password
+
+
+def _reject_weak_password(value: str) -> str:
+    """Shared validator: reject common/blocklisted passwords (H-8).
+
+    Length is enforced by ``min_length`` (8, NIST 800-63B floor); this adds the
+    other half of §5.1.1.2 — rejecting commonly-used / predictable values. The
+    ``ValueError`` surfaces as an RFC 7807 422 via core.errors.
+    """
+    reason = is_weak_password(value)
+    if reason:
+        raise ValueError(reason)
+    return value
 
 
 class RegisterRequest(BaseModel):
@@ -26,9 +41,11 @@ class RegisterRequest(BaseModel):
     password: str = Field(
         min_length=8,
         max_length=256,
-        description="At least 8 characters (NIST 800-63B minimum).",
+        description="At least 8 characters (NIST 800-63B minimum), not a common password.",
     )
     full_name: str | None = Field(default=None, max_length=255)
+
+    _check_password_strength = field_validator("password")(_reject_weak_password)
 
 
 class LoginRequest(BaseModel):
@@ -113,5 +130,7 @@ class ResetPasswordRequest(BaseModel):
     new_password: str = Field(
         min_length=8,
         max_length=256,
-        description="At least 8 characters (NIST 800-63B minimum).",
+        description="At least 8 characters (NIST 800-63B minimum), not a common password.",
     )
+
+    _check_new_password_strength = field_validator("new_password")(_reject_weak_password)
