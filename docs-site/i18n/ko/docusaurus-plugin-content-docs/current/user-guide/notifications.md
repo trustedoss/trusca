@@ -15,13 +15,11 @@ sidebar_position: 8
 로그인된 모든 사용자. 헤더 종 아이콘과 `/notifications` 페이지는 모든 역할에 표시됩니다. admin은 추가로 SMTP / Slack / Teams 전송 경로를 [디스크·시스템 health](../admin-guide/disk-and-health.md)에서 구성합니다.
 :::
 
-:::warning v0.10.0 제약
-알림 프레임워크·모델·UI는 모두 출시되었지만 트리거 emit 지점
-(`scan_completed`, `scan_failed`, `cve_detected`, `license_violation`,
-`policy_gate_failed`, `approval_pending`)은 **아직 producer 측 서비스에
-연결되지 않았습니다**. `/notifications` 인박스와 Preferences 페이지는
-정상 동작하며, 에서 producer 측 호출이 반영되면 채워집니다. 현재
-실제로 발송되는 알림은 비밀번호 재설정 메일뿐입니다.
+:::note
+알림 트리거는 producer 측 서비스에 연결되어 있습니다 — 스캔, 취약점
+수집, 라이선스 탐지, 정책 게이트, 승인 워크플로가 인앱 알림 행을
+발생시키며, Preferences 설정에 따라 외부 채널로도 전달됩니다. 전체
+트리거 목록은 [트리거](#트리거) 단락을 참고하세요.
 :::
 
 ## 헤더 종 아이콘
@@ -79,7 +77,7 @@ sidebar_position: 8
 
 ## 트리거
 
-여섯 가지 서로 다른 트리거가 알림을 발생시킵니다.
+일곱 가지 서로 다른 트리거가 알림을 발생시킵니다.
 
 | 트리거 | 발생 시점 |
 |---|---|
@@ -88,6 +86,7 @@ sidebar_position: 8
 | `cve_detected` | 본인의 스캔에 이미 존재하는 컴포넌트에 신규 CVE 등록(DT NVD ingest가 기존 컴포넌트와 재상관). |
 | `license_violation` | 본인이 watch 중인 프로젝트의 스캔에서 금지 라이선스 컴포넌트가 발견. |
 | `approval_pending` | 컴포넌트가 승인을 요구할 때 발송. 현재 릴리스에서는 조직의 **모든 super-admin**에게 전달됩니다(팀별 승인자 라우팅 없음). 지정 승인자(designated approver) 모델은 로드맵 항목입니다. |
+| `approval_state_changed` | 본인이 제출한 승인 요청의 상태가 바뀔 때(승인 / 거부 / 검토 전환) — 요청자에게 처리 결과를 알립니다. |
 | `policy_gate_failed` | CI 빌드 게이트가 실패(Critical CVE 또는 금지 라이선스가 빌드를 차단). |
 
 채널 선택은 전역입니다 — **Preferences** 탭이 모든 트리거의 전달 채널을 결정합니다.
