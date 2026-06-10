@@ -18,7 +18,8 @@ Engineers and team leads who scan their own services. Requires sign-in. The role
 
 | Field | Description |
 |---|---|
-| **Name** | Display label (free text). Must be unique within a team. |
+| **Name** | Display label (free text). Need not be unique — two projects in the same team may share a name; the **slug** is the unique key. |
+| **Slug** | URL-safe identifier (`[a-z0-9-]+`). Unique within a team — a duplicate slug is rejected with `409`. |
 | **Description** | Optional free-text summary surfaced on the project list and Overview tab. |
 | **Git URL** | Git URL the scan pipeline clones from. HTTPS supported. Private repos require credentials embedded in the URL — see [Private repos](#private-repositories). |
 | **Default branch** | The branch the scan pipeline checks out (defaults to `main`). Editable from **Project Settings** after creation. |
@@ -240,9 +241,11 @@ After creating a project:
 
 The wizard validates the URL must start with `http://` or `https://` (HTTPS strongly preferred). `git@…` and `ssh://…` URLs are **not** accepted by the form in this release; use the HTTPS clone URL. The portal does not verify reachability — that happens at scan time. If the URL is rejected at form submission, double-check for typos.
 
-### "Project name already in use"
+### "Project slug already in use"
 
-Names are unique per team. Either rename the existing project or add a suffix (`checkout-service-legacy`).
+The **slug** (not the name) is unique per team — the `409` fires when another
+project in the same team already uses that slug. Names may repeat. Pick a
+different slug, e.g. `checkout-service-legacy`.
 
 ### Forbidden when creating a project
 

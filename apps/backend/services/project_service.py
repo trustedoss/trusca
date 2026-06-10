@@ -88,6 +88,18 @@ from core.authz import assert_team_access  # noqa: E402
 # (chore PR #5) so the `authz.cross_team_attempt` log shape is centralized.
 
 
+def _can_access_team(actor: CurrentUser, team_id: uuid.UUID) -> bool:
+    """Team membership (any role) — super_admin bypasses.
+
+    The create / archive gate (M-10): both are developer-level actions, so we
+    check membership, not the ``team_admin`` write role. Mirrors
+    ``scan_service._can_access_team`` (kept local to avoid a service import).
+    """
+    if actor.is_superuser or actor.role == "super_admin":
+        return True
+    return team_id in actor.team_ids
+
+
 def _can_write_project(actor: CurrentUser, project: Project) -> bool:
     """
     Mutating ops require role >= team_admin within the project's *own* team.
@@ -394,10 +406,17 @@ async def archive_project(
     project_id: uuid.UUID,
     actor: CurrentUser,
 ) -> Project:
-    """Soft-delete: stamps archived_at. Idempotent on already-archived rows."""
+    """Soft-delete: stamps archived_at. Idempotent on already-archived rows.
+
+    M-10: archiving is a *developer*-level action, mirroring create — the
+    user guide states "developer and above can create and archive projects".
+    It uses team membership (``_can_access_team``), NOT the ``team_admin``
+    write gate that update/settings use. Cross-team escalation is still
+    blocked: a non-member (and non-super_admin) cannot archive.
+    """
     project = await _load_project(session, project_id)
-    if not _can_write_project(actor, project):
-        raise ProjectForbidden("requires role >= team_admin within the project's team")
+    if not _can_access_team(actor, project.team_id):
+        raise ProjectForbidden("requires membership of the project's team")
 
     _bind_audit_team(project.team_id)
 

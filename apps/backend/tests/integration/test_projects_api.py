@@ -734,14 +734,14 @@ async def test_archive_project_returns_204_and_hides_from_default_list(
     assert str(pid) in ids_inclusive
 
 
-async def test_developer_cannot_archive_project(client) -> None:
+async def test_developer_can_archive_own_team_project(client) -> None:
+    """M-10: developer-level archive (mirrors create)."""
     _, team, dev = await _seed_team_with_user(client, role="developer")
     pid, _ = await _seed_project(client, team_id=team.id)
     headers = _bearer_for(dev)
 
     response = await client.delete(f"/v1/projects/{pid}", headers=headers)
-    assert response.status_code == 403
-    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+    assert response.status_code == 204, response.text
 
 
 # ---------------------------------------------------------------------------
