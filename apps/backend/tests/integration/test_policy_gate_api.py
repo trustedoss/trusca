@@ -316,3 +316,50 @@ async def test_post_pr_comment_unauthenticated_returns_401(client) -> None:
     )
     assert response.status_code == 401
     assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+# ---------------------------------------------------------------------------
+# M-2 — project-scoped API key boundary on the gate surface
+# ---------------------------------------------------------------------------
+
+
+async def test_load_project_for_gate_blocks_sibling_project_for_scoped_key(
+    client: AsyncClient,
+) -> None:
+    """M-2 / security-reviewer H-1: a project-scoped key principal must not
+    reach a SIBLING project's gate data via _load_project_for_gate — the gate
+    surface (gate-result + post-pr-comment) accepts API keys, so the team gate
+    alone left the same cross-project leak the scan endpoints had.
+
+    Existence-hide: the boundary surfaces the same 404 a cross-team caller sees.
+    """
+    import dataclasses
+
+    from api.v1.policy_gate import _load_project_for_gate
+    from services.project_service import ProjectNotFound
+    from tests._helpers import principal_for
+
+    _, team, user = await _seed_team_and_user(client)
+    scoped_project = await _seed_project(client, team_id=team.id)
+    sibling = await _seed_project(client, team_id=team.id)
+
+    factory = await _factory(client)
+    actor = dataclasses.replace(
+        principal_for(user, team_ids=[team.id], role="developer"),
+        api_key_project_id=scoped_project,
+    )
+
+    async with factory() as session:
+        # Its own project resolves.
+        own = await _load_project_for_gate(session, scoped_project, actor)
+        assert own.id == scoped_project
+
+        # The sibling project of the SAME team is existence-hidden.
+        with pytest.raises(ProjectNotFound):
+            await _load_project_for_gate(session, sibling, actor)
+
+    # A JWT principal (api_key_project_id=None) is unaffected by the boundary.
+    jwt_actor = principal_for(user, team_ids=[team.id], role="developer")
+    async with factory() as session:
+        resolved = await _load_project_for_gate(session, sibling, jwt_actor)
+        assert resolved.id == sibling

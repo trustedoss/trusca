@@ -462,6 +462,17 @@ async def trigger_scan(
             f"actor is not a member of team {project.team_id}",
         )
 
+    # M-2 — a project-scoped API key is bounded to ITS project, not the whole
+    # owning team. Without this gate a single-project CI key could trigger
+    # scans on every other project of the same team (least-privilege breach).
+    if (
+        actor.api_key_project_id is not None
+        and actor.api_key_project_id != project_id
+    ):
+        raise ScanForbidden(
+            "API key is scoped to a different project",
+        )
+
     # H-7 — archiving disables new scans. Reject before reserving any worker
     # slot so a retired project cannot keep consuming capacity.
     if project.archived_at is not None:
@@ -645,6 +656,16 @@ async def get_scan(
     if not _can_access_team(actor, project.team_id):
         raise ScanForbidden(
             f"actor is not a member of team {project.team_id}",
+        )
+    # M-2 — same project boundary on the read side: the CI scan-action polls
+    # this endpoint with the project-scoped key, which must not be able to
+    # read sibling projects' scans either.
+    if (
+        actor.api_key_project_id is not None
+        and actor.api_key_project_id != scan.project_id
+    ):
+        raise ScanForbidden(
+            "API key is scoped to a different project",
         )
     return scan
 

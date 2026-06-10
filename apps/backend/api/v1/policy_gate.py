@@ -191,6 +191,17 @@ async def _load_project_for_gate(
         resource_id=str(project_id),
         deny=lambda: ProjectNotFound(f"project {project_id} not found"),
     )
+
+    # M-2 — a project-scoped API key is bounded to ITS project. The gate-result
+    # and post-pr-comment endpoints accept API keys, so the team gate alone let
+    # a single-project CI key read a SIBLING project's gate data / SCA report
+    # (and, with dry_run=false, exfiltrate it to an arbitrary PR). Hide
+    # existence with the same 404 the cross-team branch uses.
+    if (
+        actor.api_key_project_id is not None
+        and actor.api_key_project_id != project.id
+    ):
+        raise ProjectNotFound(f"project {project_id} not found")
     return project
 
 

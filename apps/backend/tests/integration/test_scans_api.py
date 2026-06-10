@@ -244,6 +244,60 @@ async def test_project_scoped_key_cannot_reach_issuers_other_team(client) -> Non
     assert own.status_code == 202, own.text
 
 
+async def test_project_scoped_key_cannot_reach_sibling_project_same_team(client) -> None:
+    """M-2: a project-scoped key is bounded to ITS project, not the whole team.
+
+    Narrowing to the owning team alone let a single-project CI key trigger
+    (and poll) scans on every other project of the same team
+    (TC-APIKEY-04-006).
+    """
+    factory = await _factory(client)
+    async with factory() as session:
+        org = await make_organization(session)
+        team = await make_team(session, organization=org)
+        user = await make_user(session)
+        await make_membership(session, user=user, team=team, role="developer")
+        project_a = await make_project(session, team=team)
+        sibling = await make_project(session, team=team)
+
+    raw_key = await _issue_project_api_key(client, user=user, project_id=project_a.id)
+    key_headers = {"Authorization": f"Bearer {raw_key}"}
+
+    # Sibling project of the SAME team must be rejected.
+    cross = await client.post(
+        f"/v1/projects/{sibling.id}/scans",
+        json={"kind": "source"},
+        headers=key_headers,
+    )
+    assert cross.status_code == 403, cross.text
+
+    # Its own project still works.
+    own = await client.post(
+        f"/v1/projects/{project_a.id}/scans",
+        json={"kind": "source"},
+        headers=key_headers,
+    )
+    assert own.status_code == 202, own.text
+    own_scan_id = own.json()["id"]
+
+    # Trigger a scan on the sibling as the issuer (JWT) so there is a scan
+    # to poll, then verify the key cannot read it.
+    jwt_headers = _bearer_for(user)
+    sibling_scan = await client.post(
+        f"/v1/projects/{sibling.id}/scans",
+        json={"kind": "source"},
+        headers=jwt_headers,
+    )
+    assert sibling_scan.status_code == 202, sibling_scan.text
+    sibling_scan_id = sibling_scan.json()["id"]
+
+    poll_cross = await client.get(f"/v1/scans/{sibling_scan_id}", headers=key_headers)
+    assert poll_cross.status_code == 403, poll_cross.text
+
+    poll_own = await client.get(f"/v1/scans/{own_scan_id}", headers=key_headers)
+    assert poll_own.status_code == 200, poll_own.text
+
+
 # ---------------------------------------------------------------------------
 # POST /v1/projects/{id}/scans — trigger
 # ---------------------------------------------------------------------------

@@ -159,6 +159,28 @@ async def get_api_key_principal(
 
     membership_role_by_team = {m.team_id: m.role for m in user.memberships}
 
+    # Fail-closed on a malformed scoped key (M-2 / security-reviewer L-2): a
+    # ``scope='project'``/``'team'`` row with a NULL scope id would otherwise
+    # fall through to the org-scope ``else`` below and silently receive the
+    # FULL membership set — a privilege escalation. The DB CHECK
+    # ``ck_api_keys_scope_consistency`` + the issuance-time validation make
+    # this unreachable in practice, but the auth path must not fail open if
+    # both are ever bypassed (direct SQL, a future code path).
+    if api_key.scope == "project" and api_key.project_id is None:
+        log.warning(
+            "api_key.malformed_scope",
+            api_key_id=str(api_key.id),
+            scope=api_key.scope,
+        )
+        return None
+    if api_key.scope == "team" and api_key.team_id is None:
+        log.warning(
+            "api_key.malformed_scope",
+            api_key_id=str(api_key.id),
+            scope=api_key.scope,
+        )
+        return None
+
     # Narrow the principal to the key's SCOPE so a project/team-scoped key is an
     # authorization boundary, not a cosmetic label (security-reviewer Medium): a
     # project-scoped key must not reach the issuer's OTHER teams. An org-scoped
@@ -199,6 +221,12 @@ async def get_api_key_principal(
         team_roles=team_roles,
         is_active=bool(user.is_active),
         is_superuser=bool(user.is_superuser),
+        # M-2: carry the key's project boundary so project-touching gates can
+        # enforce it — narrowing team_ids alone still let a project-scoped key
+        # reach every OTHER project of the same team.
+        api_key_project_id=(
+            api_key.project_id if api_key.scope == "project" else None
+        ),
     )
     # Defensive copy via dataclasses.replace — keeps the dataclass immutable
     # contract intact even if a future field is mutable.
