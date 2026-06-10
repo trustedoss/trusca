@@ -57,6 +57,7 @@ import {
   type TriageRole,
 } from "@/features/projects/lib/vulnerabilityTransitions";
 import { ProblemError } from "@/lib/problem";
+import { formatRelativeToNow } from "@/lib/relativeTime";
 import { toggleSingleValue } from "@/lib/searchParamsToggle";
 import { cn } from "@/lib/utils";
 
@@ -100,6 +101,12 @@ function getVulnColumnsCatalog(
 ): ColumnsPickerColumn[] {
   return [
     { id: "cve_id", label: t("vulnerabilities.column.cve_id"), required: true },
+    // M-27 — Title (source: `summary`) + Discovered (source: `discovered_at`)
+    // are toggleable columns. `loadInitialVisibility` semantics apply: fresh
+    // users see them (no stored set → all visible); users with a persisted
+    // visibility set keep their stored selection (the new ids are absent from
+    // the stored array → hidden until toggled on via the ColumnsPicker).
+    { id: "title", label: t("vulnerabilities.column.title") },
     { id: "component", label: t("vulnerabilities.column.component") },
     {
       id: "severity",
@@ -110,6 +117,7 @@ function getVulnColumnsCatalog(
     { id: "epss", label: t("vulnerabilities.column.epss") },
     { id: "reachable", label: t("vulnerabilities.column.reachable") },
     { id: "status", label: t("vulnerabilities.column.status") },
+    { id: "discovered", label: t("vulnerabilities.column.discovered") },
   ];
 }
 
@@ -488,6 +496,17 @@ export function VulnerabilitiesTab({
       : source;
   }, [fetchedItems, vexSuppressedOnly]);
 
+  // M-28 — current statuses of the selected rows. Selection is single-page
+  // (D-bulk) and cleared on any row-set shift, so every selected id is
+  // guaranteed to be present in `items`. The bulk action bar intersects the
+  // legal next states across these so a mixed selection can never queue a
+  // transition the server would reject per-row.
+  const selectedStatuses = useMemo<VulnFindingStatus[]>(
+    () =>
+      items.filter((it) => selectedIds.has(it.id)).map((it) => it.status),
+    [items, selectedIds],
+  );
+
   // W4-B #19 — SortableColumnHeader state derived from the existing
   // `sort` + `order` state. The default surface state is "severity desc"
   // (the most useful triage order); we treat the default as the un-sorted
@@ -655,6 +674,7 @@ export function VulnerabilitiesTab({
       <VulnerabilityBulkActionBar
         projectId={projectId}
         selectedIds={Array.from(selectedIds)}
+        selectedStatuses={selectedStatuses}
         projectRole={projectRole}
         readOnly={readOnly}
         onCleared={clearSelection}
@@ -703,8 +723,11 @@ export function VulnerabilitiesTab({
         // visible position (header → row misalignment on a narrow main pane).
         // Same pattern ComponentsTab uses: pin the inner width and let the
         // outer wrapper scroll horizontally instead of column-hiding.
+        // M-27 — floor raised for the two new fixed-width columns
+        // (Title w-56 + Discovered w-28); the flexible Component column
+        // still absorbs the remainder above the floor.
         <div className="flex flex-1 flex-col overflow-x-auto">
-          <div className="min-w-[920px] flex flex-1 flex-col">
+          <div className="min-w-[1100px] flex flex-1 flex-col">
             <VulnerabilitiesTableHeader
               allSelected={
                 items.length > 0 &&
@@ -847,6 +870,17 @@ function VulnerabilitiesTableHeader({
           (uppercase + tracking-wider) from the parent, so the cell needs
           no extra class. */}
       <span className="w-44">{t("vulnerabilities.column.cve_id")}</span>
+      {/* M-27 — Title column (source: list `summary`). Not sortable: the
+          backend exposes no summary sort key, so the header is a plain label
+          like CVE. */}
+      {visibleColumns.has("title") ? (
+        <span
+          className="w-56"
+          data-testid="vulnerabilities-header-cell-title"
+        >
+          {t("vulnerabilities.column.title")}
+        </span>
+      ) : null}
       {visibleColumns.has("component") ? (
         <span
           className="flex-1 min-w-[260px]"
@@ -927,6 +961,23 @@ function VulnerabilitiesTableHeader({
             currentSort={currentSort}
             onSort={onSortChange}
             testId="vulnerabilities-sort-header-status"
+          />
+        </span>
+      ) : null}
+      {/* M-27 — Discovered column (source: `discovered_at`). The sort key
+          `discovered_at` was already in VALID_SORT — the header just wires
+          it to the existing SortableColumnHeader cycle. */}
+      {visibleColumns.has("discovered") ? (
+        <span
+          className="w-28"
+          data-testid="vulnerabilities-header-cell-discovered"
+        >
+          <SortableColumnHeader
+            column="discovered_at"
+            label={t("vulnerabilities.column.discovered")}
+            currentSort={currentSort}
+            onSort={onSortChange}
+            testId="vulnerabilities-sort-header-discovered"
           />
         </span>
       ) : null}
@@ -1013,6 +1064,9 @@ function VulnerabilityRow({
       >
         {vulnerability.cve_id}
       </span>
+      {visibleColumns.has("title") ? (
+        <TitleCell summary={vulnerability.summary} />
+      ) : null}
       {visibleColumns.has("component") ? (
         <ComponentColumnCell
           name={vulnerability.affected_component_name}
@@ -1063,8 +1117,62 @@ function VulnerabilityRow({
           ) : null}
         </span>
       ) : null}
+      {visibleColumns.has("discovered") ? (
+        <DiscoveredCell discoveredAt={vulnerability.discovered_at} />
+      ) : null}
       </button>
     </div>
+  );
+}
+
+interface TitleCellProps {
+  /** Advisory summary from the list payload — may be null on sparse CVEs. */
+  summary: string | null;
+}
+
+/**
+ * Title table cell (M-27) — renders the finding's advisory `summary` as a
+ * single truncated line at 40px density. The full text is folded into the
+ * `title` tooltip; a null summary renders the same em-dash placeholder the
+ * CVSS / EPSS cells use, never an empty gap.
+ */
+function TitleCell({ summary }: TitleCellProps) {
+  const hasSummary = summary != null && summary.length > 0;
+  return (
+    <span
+      className={cn(
+        "w-56 truncate text-xs",
+        hasSummary ? "text-foreground" : "text-muted-foreground",
+      )}
+      data-testid="vulnerability-row-title"
+      title={hasSummary ? summary : undefined}
+    >
+      {hasSummary ? summary : "—"}
+    </span>
+  );
+}
+
+interface DiscoveredCellProps {
+  /** ISO-8601 instant the finding was first persisted. Always on the wire. */
+  discoveredAt: string;
+}
+
+/**
+ * Discovered table cell (M-27) — relative timestamp via the shared
+ * `formatRelativeToNow` helper (same pattern as ReleasesTab / ReportsTab),
+ * with the absolute ISO instant in the `title` tooltip for auditors.
+ */
+function DiscoveredCell({ discoveredAt }: DiscoveredCellProps) {
+  const { i18n } = useTranslation("project_detail");
+  return (
+    <span
+      className="w-28 truncate text-xs text-muted-foreground"
+      data-testid="vulnerability-row-discovered"
+      data-discovered-at={discoveredAt}
+      title={discoveredAt}
+    >
+      {formatRelativeToNow(discoveredAt, i18n.language)}
+    </span>
   );
 }
 
