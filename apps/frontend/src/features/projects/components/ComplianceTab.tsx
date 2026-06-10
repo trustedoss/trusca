@@ -65,6 +65,7 @@ import { Virtuoso } from "react-virtuoso";
 import { EmptyState } from "@/components/EmptyState";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MultiSelect } from "@/components/ui/multi-select";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -79,12 +80,14 @@ import type {
   ComplianceSortKey,
   SortOrder,
 } from "@/features/projects/api/complianceApi";
+import type { NoticeFormat } from "@/features/projects/api/obligationsApi";
 import { useCompliance } from "@/features/projects/api/useCompliance";
 import {
   findComponentException,
   useTeamLicensePolicy,
   type LicenseException,
 } from "@/features/projects/api/useLicenseWaive";
+import { useNotice } from "@/features/projects/api/useNotice";
 import { LicenseCategoryBadge } from "@/features/projects/components/LicenseCategoryBadge";
 import { LicenseDrawer } from "@/features/projects/components/LicenseDrawer";
 import { LicenseWaiveAction } from "@/features/projects/components/LicenseWaiveAction";
@@ -93,6 +96,9 @@ import { ProblemError } from "@/lib/problem";
 import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 100;
+
+/** M-21 — NOTICE formats offered by the toolbar (mirrors ReportsTab). */
+const NOTICE_DOWNLOAD_FORMATS: NoticeFormat[] = ["text", "html"];
 
 const VALID_CATEGORY = new Set<LicenseCategoryName>([
   "forbidden",
@@ -156,11 +162,10 @@ function parseHasObligations(raw: string | null): boolean | null {
 export interface ComplianceTabProps {
   projectId: string;
   /**
-   * Project name — accepted for API parity with the old wrapper signature
-   * (the obligations sub-view used it to name the NOTICE download). The
-   * unified grid no longer owns NOTICE download itself (that affordance
-   * lives in the LicenseDrawer / Reports tab), so this prop is currently
-   * unused. Kept for source-compat with ProjectDetailPage.
+   * Project name — names the NOTICE download produced by the toolbar
+   * (M-21 restored the affordance the old obligations sub-view carried;
+   * the Reports tab keeps its own card). Falls back to the project id in
+   * the filename when omitted.
    */
   projectName?: string | null;
   /**
@@ -189,6 +194,7 @@ export interface ComplianceTabProps {
 
 export function ComplianceTab({
   projectId,
+  projectName = null,
   scanId,
   teamId = null,
   projectRole = "developer",
@@ -358,6 +364,8 @@ export function ComplianceTab({
   return (
     <div data-testid="compliance-tab" className="flex flex-1 flex-col">
       <ComplianceToolbar
+        projectId={projectId}
+        projectName={projectName}
         search={search}
         onSearchChange={setSearch}
         categories={categories}
@@ -476,6 +484,10 @@ export function ComplianceTab({
 // ---------------------------------------------------------------------------
 
 interface ComplianceToolbarProps {
+  /** M-21 — NOTICE download target. */
+  projectId: string;
+  /** M-21 — names the downloaded NOTICE file (id fallback when null). */
+  projectName: string | null;
   search: string;
   onSearchChange: (value: string) => void;
   categories: LicenseCategoryName[];
@@ -489,6 +501,8 @@ interface ComplianceToolbarProps {
 }
 
 function ComplianceToolbar({
+  projectId,
+  projectName,
   search,
   onSearchChange,
   categories,
@@ -605,6 +619,84 @@ function ComplianceToolbar({
           <option value="desc">{t("compliance.filter.order_desc")}</option>
         </select>
       </div>
+
+      <ComplianceNoticeDownload
+        projectId={projectId}
+        projectName={projectName}
+      />
+    </div>
+  );
+}
+
+/**
+ * M-21 — compact NOTICE download group on the Compliance toolbar.
+ *
+ * The admin/user guides promise a NOTICE download on the Compliance tab, but
+ * the W9-#58 unified grid dropped the old obligations sub-view affordance —
+ * only the Reports tab card survived. This restores it in toolbar form, on
+ * the same `useNotice` imperative-download hook + text/html format pair as
+ * `ReportsTab.NoticeCard` (which stays untouched).
+ */
+function ComplianceNoticeDownload({
+  projectId,
+  projectName,
+}: {
+  projectId: string;
+  projectName: string | null;
+}) {
+  const { t } = useTranslation("project_detail");
+  const notice = useNotice(projectId, projectName ?? undefined, {
+    defaultFormat: "text",
+  });
+  const [format, setFormat] = useState<NoticeFormat>("text");
+  return (
+    <div className="flex flex-col" data-testid="compliance-notice-download">
+      <label
+        htmlFor="compliance-notice-format"
+        className="text-xs font-medium text-muted-foreground"
+      >
+        {t("compliance.notice_download.format_label")}
+      </label>
+      <div className="mt-1 flex h-9 items-center gap-2">
+        <select
+          id="compliance-notice-format"
+          value={format}
+          onChange={(event) => setFormat(event.target.value as NoticeFormat)}
+          disabled={notice.isLoading}
+          data-testid="compliance-notice-format"
+          className="h-9 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        >
+          {NOTICE_DOWNLOAD_FORMATS.map((fmt) => (
+            <option key={fmt} value={fmt}>
+              {t(`compliance.notice_download.format_${fmt}`)}
+            </option>
+          ))}
+        </select>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            // The hook surfaces failures via `notice.error`; swallow the
+            // reject so the click doesn't become an unhandled promise.
+            notice.download({ format }).catch(() => {});
+          }}
+          disabled={notice.isLoading}
+          data-testid="compliance-notice-action"
+        >
+          {notice.isLoading
+            ? t("compliance.notice_download.action_generating")
+            : t("compliance.notice_download.action")}
+        </Button>
+      </div>
+      {notice.error ? (
+        <p
+          className="mt-1 text-xs text-destructive"
+          data-testid="compliance-notice-error"
+        >
+          {notice.error.message}
+        </p>
+      ) : null}
     </div>
   );
 }

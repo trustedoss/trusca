@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.db import get_db
 from core.errors import problem_response
 from core.security import CurrentUser, require_role
-from schemas.project_detail import ComponentDetailResponse, VulnerabilityRef
+from schemas.project_detail import ComponentDetailResponse, ObligationRef, VulnerabilityRef
 from services.project_detail_service import get_component_detail
 from services.project_service import ProjectError
 
@@ -71,9 +71,15 @@ async def get_component_detail_endpoint(
         license_category=payload["license_category"],
         severity_max=payload["severity_max"],
         vulnerabilities=[VulnerabilityRef.model_validate(v) for v in payload["vulnerabilities"]],
+        # M-20 — license obligations for the drawer's Obligations section.
+        obligations=[ObligationRef.model_validate(o) for o in payload["obligations"]],
         raw_data=payload["raw_data"],
         depth=payload["depth"],
         direct=payload["direct"],
+        # Pre-existing drop fixed alongside M-20: the service has computed
+        # this since W2 #31 but the hand-built response omitted it, so the
+        # wire payload was always ``null``.
+        dependency_scope=payload["dependency_scope"],
         created_at=payload["created_at"],
         updated_at=payload["updated_at"],
     )
