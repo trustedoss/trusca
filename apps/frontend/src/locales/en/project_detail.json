@@ -436,6 +436,7 @@
         "not_found": "Not found in this project",
         "forbidden": "Permission denied",
         "invalid_transition": "Transition not allowed",
+        "already_at_target": "Already at target status",
         "envelope_error": "Request failed",
         "unknown": "Error"
       }
