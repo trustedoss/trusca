@@ -31,6 +31,7 @@ import { HeaderBell } from "@/components/HeaderBell";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import { deriveInitials } from "@/lib/initials";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/authStore";
 import { useUIStore } from "@/stores/uiStore";
@@ -303,6 +304,19 @@ export function AppShell() {
   const isSuperAdmin =
     user?.isSuperuser === true || user?.role === "super_admin";
 
+  // M-17 — header identity. Initials come from displayName (full_name with
+  // an email fallback, mapped in lib/api.ts). The "active team" concept is
+  // the store's default `teamId` (first membership, oldest-first); for
+  // multi-team users we surface that default and deliberately do NOT offer
+  // switching here (out of scope). No team / still bootstrapping → omit the
+  // label entirely instead of rendering a placeholder.
+  const initials = user ? deriveInitials(user.displayName || user.email) : "";
+  const teams = user?.teams ?? [];
+  const activeTeamName =
+    teams.find((team) => team.id === user?.teamId)?.name ??
+    teams[0]?.name ??
+    null;
+
   // W9-#54 — global ⌘K palette. The hook owns the keyboard listener so
   // the shortcut is reachable from any authenticated route, even when the
   // header trigger affordance is off-screen on a narrow viewport.
@@ -372,6 +386,10 @@ export function AppShell() {
                 left rail focused on top-level domains; chore A2 design. */}
             <HeaderBell />
             <LanguageToggle />
+            {/* M-17 — initials avatar + active team. Keeps the existing
+                NavLink-to-/profile behavior and the `header-profile-link`
+                testid (ProfileHarness + docs-uat depend on it); only the
+                visual content changes from icon+"Profile" to monogram+team. */}
             <Button
               variant="ghost"
               size="sm"
@@ -379,8 +397,28 @@ export function AppShell() {
               data-testid="header-profile-link"
             >
               <NavLink to="/profile" aria-label={t("auth.profile")}>
-                <UserCircle2 className="h-4 w-4" aria-hidden />
-                <span>{t("auth.profile")}</span>
+                {initials ? (
+                  <span
+                    aria-hidden
+                    data-testid="header-avatar"
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-foreground"
+                  >
+                    {initials}
+                  </span>
+                ) : (
+                  <UserCircle2 className="h-4 w-4" aria-hidden />
+                )}
+                {activeTeamName ? (
+                  <span
+                    data-testid="header-active-team"
+                    className="max-w-[10rem] truncate text-xs text-muted-foreground"
+                    aria-label={t("auth.active_team", { team: activeTeamName })}
+                    title={t("auth.active_team", { team: activeTeamName })}
+                  >
+                    {activeTeamName}
+                  </span>
+                ) : null}
+                <span className="sr-only">{t("auth.profile")}</span>
               </NavLink>
             </Button>
             <Button

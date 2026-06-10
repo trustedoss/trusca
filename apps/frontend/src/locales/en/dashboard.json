@@ -38,6 +38,8 @@
     "cta": "Register project"
   },
   "error": {
-    "load_failed": "Could not load dashboard data."
+    "load_failed": "Could not load dashboard data.",
+    "retry_hint": "Check your connection, then try again.",
+    "retry": "Retry"
   }
 }

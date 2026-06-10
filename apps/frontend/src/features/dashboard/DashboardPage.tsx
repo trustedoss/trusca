@@ -34,6 +34,7 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
+  AlertTriangle,
   ClipboardCheck,
   FolderOpen,
   ScanLine,
@@ -45,7 +46,6 @@ import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 
 import { EmptyState } from "@/components/EmptyState";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -343,6 +343,14 @@ export function DashboardPage() {
     projectsQuery.isLoading || scansQuery.isLoading || approvalsQuery.isLoading;
   const isAnyError =
     projectsQuery.isError || scansQuery.isError || approvalsQuery.isError;
+
+  // M-18 — retry only the queries that actually failed; the healthy ones
+  // keep their cache and re-render instantly once the failed ones recover.
+  function retryFailedQueries() {
+    if (projectsQuery.isError) void projectsQuery.refetch();
+    if (scansQuery.isError) void scansQuery.refetch();
+    if (approvalsQuery.isError) void approvalsQuery.refetch();
+  }
   const projectsLoaded = !projectsQuery.isLoading && !projectsQuery.isError;
   const hasNoProjects = projectsLoaded && projects.length === 0;
 
@@ -378,15 +386,31 @@ export function DashboardPage() {
         </p>
       </header>
 
+      {/* M-18 — a load failure REPLACES the KPI/chart/recent body instead of
+          stacking an alert above zero-value tiles (zeros read as a healthy
+          portfolio). `isAnyError` is already a composite of the three fan-out
+          queries and every section below draws on at least one of them, so a
+          full-body swap is the consistent granularity; the Retry button only
+          refetches the queries that actually failed. */}
       {isAnyError ? (
-        <div className="px-6 py-4">
-          <Alert variant="destructive" data-testid="dashboard-error">
-            <AlertDescription>{t("error.load_failed")}</AlertDescription>
-          </Alert>
+        <div className="px-6 py-8" data-testid="dashboard-error-wrapper">
+          <EmptyState
+            data-testid="dashboard-error"
+            icon={<AlertTriangle />}
+            title={t("error.load_failed")}
+            description={t("error.retry_hint")}
+            action={
+              <Button
+                variant="outline"
+                onClick={retryFailedQueries}
+                data-testid="dashboard-error-retry"
+              >
+                {t("error.retry")}
+              </Button>
+            }
+          />
         </div>
-      ) : null}
-
-      {hasNoProjects ? (
+      ) : hasNoProjects ? (
         <div className="px-6 py-8" data-testid="dashboard-empty-wrapper">
           <EmptyState
             data-testid="dashboard-empty"

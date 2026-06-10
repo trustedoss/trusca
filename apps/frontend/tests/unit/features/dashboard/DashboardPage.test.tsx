@@ -352,11 +352,53 @@ describe("DashboardPage", () => {
     expect(cta.textContent).toContain("프로젝트 등록");
   });
 
-  it("propagates a destructive load failure into the error alert", async () => {
+  it("replaces the KPI grid with an inline error state on load failure (M-18)", async () => {
     mockedListProjects.mockRejectedValueOnce(new Error("boom"));
     renderPage();
     await waitFor(() => {
       expect(screen.getByTestId("dashboard-error")).toBeInTheDocument();
     });
+    // The body is REPLACED — no zero-value KPI tiles, no empty-state CTA.
+    expect(
+      screen.queryByTestId("dashboard-kpi-grid"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId("dashboard-empty")).not.toBeInTheDocument();
+    expect(screen.getByTestId("dashboard-error-retry")).toBeInTheDocument();
+  });
+
+  it("Retry refetches only the failed queries and restores the dashboard", async () => {
+    // First projects call fails; scans + approvals succeed. The beforeEach
+    // default (empty list) serves the retry, so recovery lands on the
+    // empty-state branch.
+    mockedListProjects.mockRejectedValueOnce(new Error("boom"));
+    renderPage();
+    const retry = await screen.findByTestId("dashboard-error-retry");
+    expect(mockedListProjects).toHaveBeenCalledTimes(1);
+    expect(mockedListMyScans).toHaveBeenCalledTimes(1);
+    expect(mockedListApprovals).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await userEvent.click(retry);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("dashboard-empty")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("dashboard-error")).not.toBeInTheDocument();
+    // Only the failed projects query was refetched.
+    expect(mockedListProjects).toHaveBeenCalledTimes(2);
+    expect(mockedListMyScans).toHaveBeenCalledTimes(1);
+    expect(mockedListApprovals).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders the KPI grid normally when all queries succeed (no error state)", async () => {
+    mockedListProjects.mockResolvedValue(
+      projectsResponse([makeProject("Alpha")]),
+    );
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByTestId("dashboard-kpi-grid")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("dashboard-error")).not.toBeInTheDocument();
   });
 });

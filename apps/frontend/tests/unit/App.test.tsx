@@ -125,6 +125,66 @@ describe("App smoke (authenticated)", () => {
     });
   });
 
+  // M-17 — header initials avatar + active team label.
+  it("renders the header avatar with initials derived from the display name", async () => {
+    useAuthStore.setState({
+      user: { ...fakeUser, displayName: "Alice Smith" },
+      accessToken: "tok-app",
+      status: "authenticated",
+      isAuthenticated: true,
+    });
+    renderAppAt("/projects");
+    const avatar = await screen.findByTestId("header-avatar");
+    expect(avatar.textContent).toBe("AS");
+    // The profile link itself stays reachable for ProfileHarness / docs-uat.
+    expect(screen.getByTestId("header-profile-link")).toHaveAttribute(
+      "href",
+      "/profile",
+    );
+  });
+
+  it("falls back to the email local part for the avatar initial", async () => {
+    useAuthStore.setState({
+      user: { ...fakeUser, displayName: "dev@x.com", email: "dev@x.com" },
+      accessToken: "tok-app",
+      status: "authenticated",
+      isAuthenticated: true,
+    });
+    renderAppAt("/projects");
+    const avatar = await screen.findByTestId("header-avatar");
+    expect(avatar.textContent).toBe("D");
+  });
+
+  it("shows the active team (matching teamId) in the header profile area", async () => {
+    useAuthStore.setState({
+      user: {
+        ...fakeUser,
+        teamId: "team-2",
+        teams: [
+          { id: "team-1", name: "Platform", role: "developer" },
+          { id: "team-2", name: "Security", role: "developer" },
+        ],
+      },
+      accessToken: "tok-app",
+      status: "authenticated",
+      isAuthenticated: true,
+    });
+    renderAppAt("/projects");
+    const team = await screen.findByTestId("header-active-team");
+    expect(team.textContent).toBe("Security");
+  });
+
+  it("omits the team label entirely when the user has no memberships", async () => {
+    // fakeUser ships teamId: null / teams: [] — e.g. the seeded super admin.
+    renderAppAt("/projects");
+    await waitFor(() => {
+      expect(screen.getByTestId("header-avatar")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByTestId("header-active-team"),
+    ).not.toBeInTheDocument();
+  });
+
   it("super admin sees the admin nav section with all admin links", async () => {
     useAuthStore.setState({
       user: { ...fakeUser, isSuperuser: true, role: "super_admin" },
