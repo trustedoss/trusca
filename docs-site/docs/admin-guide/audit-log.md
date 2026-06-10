@@ -91,7 +91,7 @@ The inline filter bar in this release:
 
 - **Actor user ID** — exact UUID match.
 - **Target table** — single-select from the enum (`projects`, `teams`, `users`, `vulnerability_findings`, …).
-- **Action** — free-text contains (case-sensitive).
+- **Action** — free-text contains (case-insensitive — the server uses `ilike`, so `create` and `CREATE` match the same rows).
 - **Date range** — `from` and `to` (custom).
 - **Search** — free-text query (`q`). Performs an `ilike` match against the JSON-encoded `diff` column. `action` and `target_table` are separate filter parameters (`action=`, `target_table=`); `q` does not match those columns.
 
