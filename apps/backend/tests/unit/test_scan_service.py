@@ -309,6 +309,71 @@ async def test_trigger_scan_other_team_is_forbidden(
         )
 
 
+async def test_trigger_scan_project_scoped_key_blocked_on_sibling_project(
+    db_session: AsyncSession,
+) -> None:
+    """M-2: a project-scoped API key principal cannot trigger a SIBLING
+    project of the same team — the boundary is the project, not the team."""
+    import dataclasses
+
+    from schemas.scan import ScanCreate
+    from services.scan_service import ScanForbidden, trigger_scan
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    scoped_project = await make_project(db_session, team=team)
+    sibling = await make_project(db_session, team=team)
+
+    user = await make_user(db_session)
+    await make_membership(db_session, user=user, team=team, role="developer")
+    actor = dataclasses.replace(
+        principal_for(user, team_ids=[team.id], role="developer"),
+        api_key_project_id=scoped_project.id,
+    )
+
+    with pytest.raises(ScanForbidden):
+        await trigger_scan(
+            db_session,
+            project_id=sibling.id,
+            payload=ScanCreate(),
+            actor=actor,
+        )
+
+    # Its own project is unaffected by the boundary.
+    scan = await trigger_scan(
+        db_session,
+        project_id=scoped_project.id,
+        payload=ScanCreate(),
+        actor=actor,
+    )
+    assert scan.project_id == scoped_project.id
+
+
+async def test_get_scan_project_scoped_key_blocked_on_sibling_scan(
+    db_session: AsyncSession,
+) -> None:
+    """M-2 read side: the scoped key cannot poll sibling projects' scans."""
+    import dataclasses
+
+    from services.scan_service import ScanForbidden, get_scan
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    scoped_project = await make_project(db_session, team=team)
+    sibling = await make_project(db_session, team=team)
+    sibling_scan = await make_scan(db_session, project=sibling, status="succeeded")
+
+    user = await make_user(db_session)
+    await make_membership(db_session, user=user, team=team, role="developer")
+    actor = dataclasses.replace(
+        principal_for(user, team_ids=[team.id], role="developer"),
+        api_key_project_id=scoped_project.id,
+    )
+
+    with pytest.raises(ScanForbidden):
+        await get_scan(db_session, scan_id=sibling_scan.id, actor=actor)
+
+
 async def test_trigger_scan_unknown_project_raises_not_found(
     db_session: AsyncSession,
 ) -> None:

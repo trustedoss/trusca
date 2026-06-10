@@ -203,6 +203,13 @@ class CurrentUser:
     team_roles: dict[uuid.UUID, str] = field(default_factory=dict)
     is_active: bool = True
     is_superuser: bool = False
+    # M-2: set ONLY when the principal was synthesized from a project-scoped
+    # API key (``core.api_key_auth``). Narrowing to the project's team is not
+    # enough — a single-project CI key must not trigger scans on the team's
+    # OTHER projects — so project-touching authorization gates compare this
+    # against the target project id. ``None`` for JWT principals and for
+    # team / org-scoped keys (no project boundary applies).
+    api_key_project_id: uuid.UUID | None = None
 
 
 def _highest_role(roles: list[str], *, is_superuser: bool) -> str:
