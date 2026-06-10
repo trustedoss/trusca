@@ -43,6 +43,7 @@ from models import (
     Vulnerability,
     VulnerabilityFinding,
 )
+from services.vulnerability_matching import emit_finding_create_audits
 from tasks._progress import make_line_callback, publish_progress
 from tasks.celery_app import celery_app
 
@@ -254,6 +255,7 @@ def _persist_trivy_report(
 ) -> None:
     """Persist Trivy results into ScanComponent + VulnerabilityFinding rows."""
     results = report.get("Results", []) or []
+    created_findings: list[VulnerabilityFinding] = []
     for result in results:
         if not isinstance(result, dict):
             continue
@@ -321,15 +323,18 @@ def _persist_trivy_report(
                     "external_id": cve_id,
                 },
             )
-            session.add(
-                VulnerabilityFinding(
-                    scan_id=scan_uuid,
-                    component_version_id=cv.id,
-                    vulnerability_id=vuln_row.id,
-                    status="new",
-                    analysis_response=guarded_finding,
-                )
+            finding = VulnerabilityFinding(
+                scan_id=scan_uuid,
+                component_version_id=cv.id,
+                vulnerability_id=vuln_row.id,
+                status="new",
+                analysis_response=guarded_finding,
             )
+            session.add(finding)
+            created_findings.append(finding)
+
+    # M-6: per-finding create audit rows (same transaction as the findings).
+    emit_finding_create_audits(session, scan_uuid=scan_uuid, findings=created_findings)
 
 
 def _get_or_create_component(

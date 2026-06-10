@@ -120,7 +120,7 @@ curl -sS \
 
 ### "프로젝트 X를 누가 삭제했나?"
 
-필터: `target_table=projects&action=delete&target_id=<project-uuid>`. 정확히 한 행이 있습니다.
+필터: `target_table=projects&action=archive&target_id=<project-uuid>`. 정확히 한 행이 있습니다. 프로젝트 삭제는 *soft delete*(행의 `archived_at`만 채워지고 물리 삭제 없음)라 감사 동사가 `archive`입니다 — `action=delete`는 물리 삭제된 행(memberships, teams의 hard delete 등)에만 해당합니다. 보관된 프로젝트를 복원하면 대응하는 `action=unarchive` 행이 남습니다.
 
 ### "사용자 Y가 지난주에 무엇을 했나?"
 

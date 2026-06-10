@@ -124,7 +124,7 @@ The response is paginated by `page` + `page_size`.
 
 ### "Who deleted project X?"
 
-Filter: `target_table=projects&action=delete&target_id=<project-uuid>`. There is exactly one row.
+Filter: `target_table=projects&action=archive&target_id=<project-uuid>`. There is exactly one row. Project deletion is a *soft delete* (the row's `archived_at` is filled, nothing is physically removed), so the audit verb is `archive` — `action=delete` only matches physically deleted rows (memberships, teams' hard deletes, …). Restoring an archived project writes a matching `action=unarchive` row.
 
 ### "What did user Y do last week?"
 
