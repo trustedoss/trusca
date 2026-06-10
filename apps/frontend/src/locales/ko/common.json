@@ -31,7 +31,8 @@
   },
   "auth": {
     "logout": "로그아웃",
-    "profile": "프로필"
+    "profile": "프로필",
+    "active_team": "활성 팀: {{team}}"
   },
   "home": {
     "title": "TrustedOSS Portal에 오신 것을 환영합니다",

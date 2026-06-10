@@ -31,7 +31,8 @@
   },
   "auth": {
     "logout": "Sign out",
-    "profile": "Profile"
+    "profile": "Profile",
+    "active_team": "Active team: {{team}}"
   },
   "home": {
     "title": "Welcome to TrustedOSS Portal",
