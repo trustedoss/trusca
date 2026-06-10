@@ -58,6 +58,10 @@ class ScanError(Exception):
 
     status_code: int = 400
     title: str = "Scan Error"
+    # Machine-readable RFC 7807 extension fields. Class-level default is the
+    # shared empty mapping; subclasses that distinguish sub-reasons set a
+    # per-instance dict in __init__ (e.g. ScanDeleteConflict — M-30).
+    extensions: dict[str, object] = {}
 
 
 class ScanNotFound(ScanError):
@@ -95,10 +99,29 @@ class ScanDeleteConflict(ScanError):
     (b) the scan carries an explicit ``metadata.release`` label and the caller
     did not pass ``force=true``. Release-labelled snapshots are immutable by
     default so a routine cleanup never silently destroys a tagged release.
+
+    M-30: the two cases are distinguished by a machine-readable RFC 7807
+    extension (``scan_active`` / ``scan_release_protected``) so automation does
+    not have to parse the human ``detail`` string. Exactly one is ``true``.
     """
 
     status_code = 409
     title = "Scan Cannot Be Deleted"
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        scan_active: bool = False,
+        scan_release_protected: bool = False,
+    ) -> None:
+        super().__init__(message)
+        # Per-instance extensions so the two delete-conflict reasons surface as
+        # distinct top-level snake_case Problem-Details fields.
+        self.extensions = {
+            "scan_active": scan_active,
+            "scan_release_protected": scan_release_protected,
+        }
 
 
 class ConcurrentScanLimitExceeded(ScanError):
@@ -767,12 +790,14 @@ async def delete_scan(
     if scan.status in ("queued", "running"):
         raise ScanDeleteConflict(
             f"scan {scan_id} is {scan.status}; cancel it before deleting",
+            scan_active=True,
         )
 
     has_release = _has_release_label(scan.scan_metadata)
     if has_release and not force:
         raise ScanDeleteConflict(
             f"scan {scan_id} carries a release label; pass force=true to delete it",
+            scan_release_protected=True,
         )
     if has_release and force and not _can_admin_team(actor, project.team_id):
         # The actor is in-team (passed the gate above) but lacks the role to

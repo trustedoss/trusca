@@ -123,7 +123,7 @@ curl -sS -X DELETE \
 |---|---|
 | 호출자 역할 | **소유** 팀의 `developer` 이상. `force=true`는 `team_admin` 이상 필요. |
 | 타 팀의 스캔 | `404 Not Found` — 타 팀 스캔은 존재 은닉됩니다. `404`가 스캔 존재를 확인해 주지 않습니다. |
-| 스캔이 `queued`·`running` | `409 Conflict` — 활성 스캔은 삭제할 수 없습니다. [먼저 취소](../user-guide/scans.md#스캔-취소)한 뒤 삭제하십시오. |
+| 스캔이 `queued`·`running` | `409 Conflict` — RFC 7807 본문에 `scan_active: true`가 담깁니다. 활성 스캔은 삭제할 수 없으니 [먼저 취소](../user-guide/scans.md#스캔-취소)한 뒤 삭제하십시오. |
 | `release` 라벨 보유, `force` 없음 | `409 Conflict` — RFC 7807 본문에 `scan_release_protected: true`가 담깁니다. `team_admin`으로 `?force=true`를 붙여 재요청하십시오. |
 | 비-`team_admin`의 `force=true` | `403 Forbidden` — release 보호 스캔의 강제 삭제는 `team_admin`이 필요합니다. |
 | 삭제됨 | `204 No Content`. 아티팩트·행이 사라지며 감사 로그가 `scans` `delete` 이벤트를 기록합니다. |

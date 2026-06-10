@@ -206,6 +206,15 @@ If the project has no succeeded scan yet, the export still returns a valid SBOM 
 
 The query string used a value the API does not accept. Use one of the four canonical query values from the table above — in particular, **the SPDX Tag-Value format is `spdx-tv` (not `spdx-tag-value`)**.
 
+### `404` for a project you cannot access
+
+The SBOM and NOTICE endpoints **existence-hide**: a caller who is not a member
+of the project's team receives `404` (not `403`), the same response as a
+project id that does not exist. This is deliberate — unlike the project-detail
+endpoint (which returns `403`), the SBOM/NOTICE bodies expose structural detail
+(component names, versions), so the endpoints refuse to confirm a project even
+exists to a non-member. Join the owning team to get access.
+
 ### NOTICE file has no copyright lines
 
 The NOTICE file does not include per-component copyright statements in this

@@ -53,11 +53,16 @@ _LOG_DOWNLOAD_CHUNK_BYTES = 64 * 1024
 
 
 def _problem_for_scan_error(request: Request, exc: ScanError) -> Response:
+    # M-30: pass any machine-readable extensions (e.g. ScanDeleteConflict's
+    # scan_active / scan_release_protected). The base ScanError defaults to an
+    # empty mapping, so this is a no-op for errors that carry none.
+    extensions: dict[str, object] = dict(exc.extensions)
     return problem_response(
         status_code=exc.status_code,
         title=exc.title,
         detail=str(exc) or exc.title,
         instance=request.url.path,
+        **extensions,  # type: ignore[arg-type]
     )
 
 
