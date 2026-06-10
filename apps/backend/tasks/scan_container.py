@@ -256,6 +256,16 @@ def _persist_trivy_report(
     """Persist Trivy results into ScanComponent + VulnerabilityFinding rows."""
     results = report.get("Results", []) or []
     created_findings: list[VulnerabilityFinding] = []
+    # H-1: a single OS package routinely carries several CVEs. ScanComponent is
+    # unique on (scan_id, component_version_id, dependency_path)
+    # (``uq_scan_components_scan_version_path``), so the row must be created
+    # once per (component, target) and every finding attached to it. Inserting
+    # one ScanComponent per vulnerability violates that constraint and fails
+    # the whole container scan once any package has >1 CVE — i.e. almost every
+    # real image. The source pipeline avoids this by keying dependency_path on
+    # each component's unique bom-ref; the container target string is shared,
+    # so we dedup explicitly here.
+    seen_components: set[tuple[uuid.UUID, str]] = set()
     for result in results:
         if not isinstance(result, dict):
             continue
@@ -281,24 +291,27 @@ def _persist_trivy_report(
                 version=installed,
                 purl_with_version=purl,
             )
-            guarded_raw = enforce_jsonb_row_size_limit(
-                vuln,
-                context={
-                    "scan_id": str(scan_uuid),
-                    "column": "scan_components.raw_data",
-                    "target": target,
-                },
-            )
-            session.add(
-                ScanComponent(
-                    scan_id=scan_uuid,
-                    component_version_id=cv.id,
-                    dependency_scope="runtime",
-                    dependency_path=target,
-                    direct=True,
-                    raw_data=guarded_raw,
+            component_key = (cv.id, target)
+            if component_key not in seen_components:
+                seen_components.add(component_key)
+                guarded_raw = enforce_jsonb_row_size_limit(
+                    vuln,
+                    context={
+                        "scan_id": str(scan_uuid),
+                        "column": "scan_components.raw_data",
+                        "target": target,
+                    },
                 )
-            )
+                session.add(
+                    ScanComponent(
+                        scan_id=scan_uuid,
+                        component_version_id=cv.id,
+                        dependency_scope="runtime",
+                        dependency_path=target,
+                        direct=True,
+                        raw_data=guarded_raw,
+                    )
+                )
 
             vuln_row = session.execute(
                 select(Vulnerability).where(Vulnerability.external_id == cve_id)
