@@ -123,7 +123,7 @@ curl -sS -X DELETE \
 |---|---|
 | Caller role | `developer` or higher on the **owning** team. `force=true` requires `team_admin` or higher. |
 | Other team's scan | `404 Not Found` — other teams' scans are existence-hidden. A `404` does not confirm the scan exists. |
-| Scan is `queued` or `running` | `409 Conflict` — an active scan cannot be deleted. [Cancel it first](../user-guide/scans.md#cancel-a-scan), then delete. |
+| Scan is `queued` or `running` | `409 Conflict` — the RFC 7807 body carries `scan_active: true`. An active scan cannot be deleted; [cancel it first](../user-guide/scans.md#cancel-a-scan), then delete. |
 | Scan has a `release` label, no `force` | `409 Conflict` — the RFC 7807 body carries `scan_release_protected: true`. Re-issue with `?force=true` as a `team_admin`. |
 | `force=true` by a non-`team_admin` | `403 Forbidden` — forcing the delete of a release-protected scan needs `team_admin`. |
 | Deleted | `204 No Content`. Artefacts and rows are gone; the audit log records a `scans` `delete` event. |

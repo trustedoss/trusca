@@ -998,3 +998,62 @@ async def test_trigger_scan_upload_with_existing_archive_queues(
     assert scan.status == "queued"
     assert scan.scan_metadata["source_type"] == "upload"
     assert scan.scan_metadata["archive_id"] == str(archive_id)
+
+
+# ---------------------------------------------------------------------------
+# delete_scan — M-30: 409 carries machine-readable extensions
+# ---------------------------------------------------------------------------
+
+
+async def test_delete_active_scan_conflict_carries_scan_active_extension(
+    db_session: AsyncSession,
+) -> None:
+    """M-30: deleting a queued/running scan → 409 with scan_active=true."""
+    from services.scan_service import ScanDeleteConflict, delete_scan
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    project = await make_project(db_session, team=team)
+    admin = await make_user(db_session)
+    await make_membership(db_session, user=admin, team=team, role="team_admin")
+    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+
+    scan = await make_scan(db_session, project=project, status="running")
+
+    with pytest.raises(ScanDeleteConflict) as excinfo:
+        await delete_scan(db_session, scan_id=scan.id, actor=actor, force=False)
+    assert excinfo.value.status_code == 409
+    assert excinfo.value.extensions == {
+        "scan_active": True,
+        "scan_release_protected": False,
+    }
+
+
+async def test_delete_release_scan_conflict_carries_release_protected_extension(
+    db_session: AsyncSession,
+) -> None:
+    """M-30: deleting a release-labelled scan without force → 409 with
+    scan_release_protected=true (and scan_active=false)."""
+    from services.scan_service import ScanDeleteConflict, delete_scan
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    project = await make_project(db_session, team=team)
+    admin = await make_user(db_session)
+    await make_membership(db_session, user=admin, team=team, role="team_admin")
+    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+
+    scan = await make_scan(
+        db_session,
+        project=project,
+        status="succeeded",
+        scan_metadata={"release": "v1.2.3"},
+    )
+
+    with pytest.raises(ScanDeleteConflict) as excinfo:
+        await delete_scan(db_session, scan_id=scan.id, actor=actor, force=False)
+    assert excinfo.value.status_code == 409
+    assert excinfo.value.extensions == {
+        "scan_active": False,
+        "scan_release_protected": True,
+    }
