@@ -9,10 +9,30 @@ report attachments, scheduled deliveries) without booting FastAPI.
 
 Output formats
 --------------
-- ``cyclonedx-json`` — CycloneDX 1.5 JSON  (Content-Type ``application/json``)
-- ``cyclonedx-xml``  — CycloneDX 1.5 XML   (Content-Type ``application/xml``)
-- ``spdx-json``      — SPDX 2.3 JSON       (Content-Type ``application/json``)
-- ``spdx-tv``        — SPDX 2.3 Tag-Value  (Content-Type ``text/plain``)
+- ``cyclonedx-json`` — CycloneDX 1.6 JSON  (Content-Type ``application/vnd.cyclonedx+json``)
+- ``cyclonedx-xml``  — CycloneDX 1.6 XML   (Content-Type ``application/vnd.cyclonedx+xml``)
+- ``spdx-json``      — SPDX 2.3 JSON       (Content-Type ``application/spdx+json``)
+- ``spdx-tv``        — SPDX 2.3 Tag-Value  (Content-Type ``text/spdx``)
+
+The format-specific media types (M-24) let downstream tooling branch on
+``Content-Type`` instead of sniffing the body; they are the IANA-registered
+(CycloneDX, SPDX-JSON) / community-standard (``text/spdx``) types the user
+guide documents.
+
+VEX in CycloneDX (H-4)
+----------------------
+CycloneDX exports embed the scan's vulnerability findings as a top-level
+``vulnerabilities[]`` array so the SBOM alone carries the project's VEX
+triage. Each entry maps the internal finding status onto CycloneDX's closed
+``analysis.state`` vocabulary via
+:data:`services.vex_export.CYCLONEDX_STATE_MAP` (single source of truth,
+shared with the standalone VEX export). The free-text analyst note
+(``analysis_justification``) goes to ``analysis.detail`` — never the CycloneDX
+``analysis.justification`` enum, whose members have precise meaning we cannot
+infer from arbitrary prose. ``affects[].ref`` points at the affected
+component's ``bom-ref`` within THIS document, so consumers can join findings
+to components without parsing purls. SPDX has no native VEX representation;
+SPDX exports stay component-only (pair them with the standalone VEX export).
 
 Each export is fully self-contained: we do not stream from disk, do not depend
 on the scan_artifacts side-channel, and do not require Dependency-Track.
@@ -76,8 +96,11 @@ from models import (
     Project,
     Scan,
     ScanComponent,
+    Vulnerability,
+    VulnerabilityFinding,
 )
 from services.scan_resolution import resolve_snapshot_scan_id
+from services.vex_export import CYCLONEDX_STATE_MAP
 
 log = structlog.get_logger("sbom_export.service")
 
@@ -107,10 +130,10 @@ class SBOMUnsupportedFormat(SBOMExportError):
 # We keep a literal-style map (rather than a Literal arg with branching at
 # the call site) so adding a new format is a single-line edit.
 _FORMAT_CATALOG: dict[str, tuple[str, str]] = {
-    "cyclonedx-json": ("application/json", "cdx.json"),
-    "cyclonedx-xml": ("application/xml", "cdx.xml"),
-    "spdx-json": ("application/json", "spdx.json"),
-    "spdx-tv": ("text/plain", "spdx"),
+    "cyclonedx-json": ("application/vnd.cyclonedx+json", "cdx.json"),
+    "cyclonedx-xml": ("application/vnd.cyclonedx+xml", "cdx.xml"),
+    "spdx-json": ("application/spdx+json", "spdx.json"),
+    "spdx-tv": ("text/spdx", "spdx"),
 }
 
 SUPPORTED_FORMATS: tuple[str, ...] = tuple(_FORMAT_CATALOG.keys())
@@ -252,6 +275,45 @@ async def _load_scan_licenses(
     return out
 
 
+async def _load_scan_vulnerabilities(
+    session: AsyncSession, *, scan_id: uuid.UUID
+) -> list[dict[str, Any]]:
+    """
+    Return per-finding dictionaries for the scan's CycloneDX ``vulnerabilities[]``.
+
+    Mirrors the standalone VEX exporter's loader (``vex_export._load_findings``)
+    but additionally carries ``component_version_id`` so ``affects[].ref`` can
+    point at the component's ``bom-ref`` within the same document. Deterministic
+    order — CVE external id, then purl, then finding id — keeps the export
+    byte-stable (BUG-006).
+    """
+    stmt = (
+        select(
+            VulnerabilityFinding.id.label("finding_id"),
+            VulnerabilityFinding.status.label("status"),
+            VulnerabilityFinding.analysis_justification.label("justification"),
+            VulnerabilityFinding.component_version_id.label("component_version_id"),
+            Vulnerability.external_id.label("cve_id"),
+            Vulnerability.source.label("source"),
+            ComponentVersion.purl_with_version.label("purl"),
+        )
+        .select_from(VulnerabilityFinding)
+        .join(Vulnerability, Vulnerability.id == VulnerabilityFinding.vulnerability_id)
+        .join(
+            ComponentVersion,
+            ComponentVersion.id == VulnerabilityFinding.component_version_id,
+        )
+        .where(VulnerabilityFinding.scan_id == scan_id)
+        .order_by(
+            Vulnerability.external_id.asc(),
+            ComponentVersion.purl_with_version.asc(),
+            VulnerabilityFinding.id.asc(),
+        )
+    )
+    result = await session.execute(stmt)
+    return [dict(row._mapping) for row in result.all()]
+
+
 def _preferred_licenses(by_kind: ComponentLicenses) -> list[LicenseEntry]:
     """Pick the highest-priority non-empty license set for CycloneDX."""
     for kind in _LICENSE_KIND_PRIORITY:
@@ -386,18 +448,47 @@ def _cyclonedx_components(
     return out
 
 
+def _cyclonedx_vulnerabilities(vuln_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Render finding rows as CycloneDX ``vulnerabilities[]`` entries (H-4).
+
+    The internal → CycloneDX ``analysis.state`` mapping is the shared
+    :data:`CYCLONEDX_STATE_MAP` (single source with the standalone VEX export).
+    Free-text analyst notes go to ``analysis.detail`` — never the closed
+    ``analysis.justification`` enum. ``affects[].ref`` is the affected
+    component's ``bom-ref`` (the component_version UUID used in
+    ``components[]``), so the finding joins to its component inside this
+    document without parsing purls.
+    """
+    out: list[dict[str, Any]] = []
+    for r in vuln_rows:
+        analysis: dict[str, Any] = {"state": CYCLONEDX_STATE_MAP[r["status"]]}
+        if r.get("justification"):
+            analysis["detail"] = r["justification"]
+        out.append(
+            {
+                "id": r["cve_id"],
+                # Mirrors the DB Vulnerability.source (NVD / OSV / GHSA…).
+                "source": {"name": r["source"]},
+                "analysis": analysis,
+                "affects": [{"ref": str(r["component_version_id"])}],
+            }
+        )
+    return out
+
+
 def _build_cyclonedx_doc(
     *,
     project: Project,
     scan: Scan | None,
     rows: list[dict[str, Any]],
     licenses_by_cv: dict[uuid.UUID, ComponentLicenses],
+    vuln_rows: list[dict[str, Any]],
     now: datetime,
 ) -> dict[str, Any]:
-    """Build the CycloneDX 1.5 dict (used both for the JSON and XML serializers)."""
+    """Build the CycloneDX 1.6 dict (used both for the JSON and XML serializers)."""
     return {
         "bomFormat": "CycloneDX",
-        "specVersion": "1.5",
+        "specVersion": "1.6",
         # urn:uuid: is the CycloneDX-prescribed serialNumber form. BUG-006:
         # the UUID derives deterministically from the scan id so re-exporting
         # the same scan is byte-identical — never a fresh uuid4().
@@ -421,6 +512,9 @@ def _build_cyclonedx_doc(
             },
         },
         "components": _cyclonedx_components(rows, licenses_by_cv),
+        # H-4: the SBOM alone carries the VEX triage. Always present (empty
+        # list when the scan has no findings) so consumers can rely on the key.
+        "vulnerabilities": _cyclonedx_vulnerabilities(vuln_rows),
     }
 
 
@@ -437,17 +531,17 @@ def _serialize_cyclonedx_json(doc: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 
 
-_CDX_NS = "http://cyclonedx.org/schema/bom/1.5"
+_CDX_NS = "http://cyclonedx.org/schema/bom/1.6"
 
 
 def _serialize_cyclonedx_xml(doc: dict[str, Any]) -> str:
     """
-    Render the CycloneDX 1.5 dict as XML using ElementTree.
+    Render the CycloneDX 1.6 dict as XML using ElementTree.
 
     We deliberately do not depend on ``cyclonedx-python-lib`` so the export
     surface is import-cheap and stable across the lib's major-version bumps.
     The shape we emit here is a strict subset of the schema (the same subset
-    most tools care about): metadata + components.
+    most tools care about): metadata + components + vulnerabilities.
     """
     # Use the namespace as the default XML namespace via ET's prefix mapping.
     ET.register_namespace("", _CDX_NS)
@@ -502,6 +596,23 @@ def _serialize_cyclonedx_xml(doc: dict[str, Any]) -> str:
                     ET.SubElement(lic_el, f"{{{_CDX_NS}}}name").text = lic["name"]
         if "purl" in comp:
             ET.SubElement(c, f"{{{_CDX_NS}}}purl").text = comp["purl"]
+
+    # H-4: VEX triage — mirrors the JSON ``vulnerabilities[]`` array. In the
+    # XML schema each affected component ref nests as affects > target > ref.
+    vulns_el = ET.SubElement(bom, f"{{{_CDX_NS}}}vulnerabilities")
+    for vuln in doc["vulnerabilities"]:
+        v = ET.SubElement(vulns_el, f"{{{_CDX_NS}}}vulnerability")
+        ET.SubElement(v, f"{{{_CDX_NS}}}id").text = vuln["id"]
+        source_el = ET.SubElement(v, f"{{{_CDX_NS}}}source")
+        ET.SubElement(source_el, f"{{{_CDX_NS}}}name").text = vuln["source"]["name"]
+        analysis_el = ET.SubElement(v, f"{{{_CDX_NS}}}analysis")
+        ET.SubElement(analysis_el, f"{{{_CDX_NS}}}state").text = vuln["analysis"]["state"]
+        if "detail" in vuln["analysis"]:
+            ET.SubElement(analysis_el, f"{{{_CDX_NS}}}detail").text = vuln["analysis"]["detail"]
+        affects_el = ET.SubElement(v, f"{{{_CDX_NS}}}affects")
+        for target in vuln["affects"]:
+            target_el = ET.SubElement(affects_el, f"{{{_CDX_NS}}}target")
+            ET.SubElement(target_el, f"{{{_CDX_NS}}}ref").text = target["ref"]
 
     ET.indent(bom, space="  ")
     body = ET.tostring(bom, encoding="unicode", xml_declaration=False)
@@ -729,9 +840,14 @@ async def export_sbom(
     )
     rows: list[dict[str, Any]] = []
     licenses_by_cv: dict[uuid.UUID, ComponentLicenses] = {}
+    vuln_rows: list[dict[str, Any]] = []
     if scan is not None:
         rows = await _load_scan_components(session, scan_id=scan.id)
         licenses_by_cv = await _load_scan_licenses(session, scan_id=scan.id)
+        # VEX (H-4) is CycloneDX-only: SPDX has no native VEX representation,
+        # so skip the findings query for SPDX exports.
+        if fmt.startswith("cyclonedx"):
+            vuln_rows = await _load_scan_vulnerabilities(session, scan_id=scan.id)
 
     # BUG-006: default to the scan's persisted completion time so re-exports
     # are byte-stable. `now` stays an explicit override for callers that need
@@ -748,6 +864,7 @@ async def export_sbom(
                 scan=scan,
                 rows=rows,
                 licenses_by_cv=licenses_by_cv,
+                vuln_rows=vuln_rows,
                 now=timestamp,
             )
         )
@@ -758,6 +875,7 @@ async def export_sbom(
                 scan=scan,
                 rows=rows,
                 licenses_by_cv=licenses_by_cv,
+                vuln_rows=vuln_rows,
                 now=timestamp,
             )
         )
@@ -799,6 +917,7 @@ async def export_sbom(
         format=fmt,
         components=len(rows),
         licensed_components=len(licenses_by_cv),
+        vulnerabilities=len(vuln_rows),
         generic_purls=generic_count,
         bytes=len(body.encode("utf-8")),
     )

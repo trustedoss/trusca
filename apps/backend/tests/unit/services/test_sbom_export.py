@@ -194,18 +194,20 @@ async def test_export_cyclonedx_json_empty_project(db_session: AsyncSession) -> 
         db_session, project_id=project.id, fmt="cyclonedx-json"
     )
 
-    assert content_type == "application/json"
+    assert content_type == "application/vnd.cyclonedx+json"
     assert filename == f"sbom-{project.slug}.cdx.json"
 
     parsed = json.loads(body)
     assert parsed["bomFormat"] == "CycloneDX"
-    assert parsed["specVersion"] == "1.5"
+    assert parsed["specVersion"] == "1.6"
     assert parsed["serialNumber"].startswith("urn:uuid:")
     assert parsed["version"] == 1
     assert "timestamp" in parsed["metadata"]
     assert parsed["metadata"]["component"]["type"] == "application"
     assert parsed["metadata"]["component"]["name"] == project.name
     assert parsed["components"] == []
+    # H-4: the VEX key is always present so consumers can rely on it.
+    assert parsed["vulnerabilities"] == []
 
 
 async def test_export_cyclonedx_xml_empty_project(db_session: AsyncSession) -> None:
@@ -216,15 +218,15 @@ async def test_export_cyclonedx_xml_empty_project(db_session: AsyncSession) -> N
         db_session, project_id=project.id, fmt="cyclonedx-xml"
     )
 
-    assert content_type == "application/xml"
+    assert content_type == "application/vnd.cyclonedx+xml"
     assert filename == f"sbom-{project.slug}.cdx.xml"
     assert body.startswith("<?xml")
 
-    # Ensure the body is parsable XML and the namespace is the CycloneDX 1.5 schema.
+    # Ensure the body is parsable XML and the namespace is the CycloneDX 1.6 schema.
     root = ET.fromstring(body)
     assert root.tag.endswith("}bom")
     # No components child entries.
-    components_el = root.find("{http://cyclonedx.org/schema/bom/1.5}components")
+    components_el = root.find("{http://cyclonedx.org/schema/bom/1.6}components")
     assert components_el is not None
     assert list(components_el) == []
 
@@ -237,7 +239,7 @@ async def test_export_spdx_json_empty_project(db_session: AsyncSession) -> None:
         db_session, project_id=project.id, fmt="spdx-json"
     )
 
-    assert content_type == "application/json"
+    assert content_type == "application/spdx+json"
     assert filename == f"sbom-{project.slug}.spdx.json"
 
     parsed = json.loads(body)
@@ -259,7 +261,7 @@ async def test_export_spdx_tv_empty_project(db_session: AsyncSession) -> None:
         db_session, project_id=project.id, fmt="spdx-tv"
     )
 
-    assert content_type == "text/plain"
+    assert content_type == "text/spdx"
     assert filename == f"sbom-{project.slug}.spdx"
 
     # The header tag block is line-oriented; assert each required tag fires.
@@ -353,7 +355,7 @@ async def test_cyclonedx_xml_includes_components(db_session: AsyncSession) -> No
         db_session, project_id=project.id, fmt="cyclonedx-xml"
     )
     root = ET.fromstring(body)
-    ns = "{http://cyclonedx.org/schema/bom/1.5}"
+    ns = "{http://cyclonedx.org/schema/bom/1.6}"
     components_el = root.find(f"{ns}components")
     assert components_el is not None
     component_nodes = list(components_el.findall(f"{ns}component"))
@@ -664,7 +666,7 @@ async def test_cyclonedx_xml_emits_license(db_session: AsyncSession) -> None:
         db_session, project_id=project.id, fmt="cyclonedx-xml"
     )
     root = ET.fromstring(body)
-    ns = {"cdx": "http://cyclonedx.org/schema/bom/1.5"}
+    ns = {"cdx": "http://cyclonedx.org/schema/bom/1.6"}
     ids = [el.text for el in root.findall(".//cdx:components//cdx:license/cdx:id", ns)]
     assert ids == ["MIT"]
 
@@ -828,3 +830,189 @@ async def test_top_component_version_falls_back_to_scan_id(
         db_session, project_id=project.id, fmt="cyclonedx-json"
     )
     assert json.loads(body)["metadata"]["component"]["version"] == str(scan.id)
+
+# ---------------------------------------------------------------------------
+# VEX in CycloneDX (H-4) — vulnerabilities[] with analysis.state mapping
+# ---------------------------------------------------------------------------
+
+
+async def _make_vulnerability(session: AsyncSession, *, cve_id: str, severity: str = "high"):
+    from models import Vulnerability
+
+    v = Vulnerability(external_id=cve_id, source="NVD", severity=severity)
+    session.add(v)
+    await session.commit()
+    await session.refresh(v)
+    return v
+
+
+async def _attach_finding(
+    session: AsyncSession,
+    *,
+    scan_id: uuid.UUID,
+    cv_id: uuid.UUID,
+    vulnerability_id: uuid.UUID,
+    status: str = "new",
+    justification: str | None = None,
+):
+    from models import VulnerabilityFinding
+
+    vf = VulnerabilityFinding(
+        scan_id=scan_id,
+        component_version_id=cv_id,
+        vulnerability_id=vulnerability_id,
+        status=status,
+        analysis_state=status,
+        analysis_justification=justification,
+    )
+    session.add(vf)
+    await session.commit()
+    await session.refresh(vf)
+    return vf
+
+
+async def test_cyclonedx_json_emits_vulnerabilities_with_vex_state(
+    db_session: AsyncSession,
+) -> None:
+    """H-4: the SBOM alone carries the VEX triage for every finding."""
+    from services.sbom_export import export_sbom
+
+    _, project, scan = await _make_project_with_succeeded_scan(db_session)
+    suffix = unique_suffix()
+    _, cv = await _make_component_version(db_session, name=f"vexed-{suffix}", version="1.0.0")
+    await _attach(db_session, scan_id=scan.id, cv_id=cv.id)
+
+    v1 = await _make_vulnerability(db_session, cve_id=f"CVE-2099-1{suffix[:4]}")
+    v2 = await _make_vulnerability(db_session, cve_id=f"CVE-2099-2{suffix[:4]}")
+    await _attach_finding(
+        db_session, scan_id=scan.id, cv_id=cv.id, vulnerability_id=v1.id, status="new"
+    )
+    await _attach_finding(
+        db_session,
+        scan_id=scan.id,
+        cv_id=cv.id,
+        vulnerability_id=v2.id,
+        status="not_affected",
+        justification="vulnerable symbol is not on the project's call graph",
+    )
+
+    body, _, _ = await export_sbom(db_session, project_id=project.id, fmt="cyclonedx-json")
+    parsed = json.loads(body)
+
+    vulns = parsed["vulnerabilities"]
+    assert [v["id"] for v in vulns] == [v1.external_id, v2.external_id]
+
+    triaged_new, triaged_na = vulns
+    # Hardcoded expected states — guards the shared map's values, not just
+    # its wiring (the map itself lives in services.vex_export).
+    assert triaged_new["analysis"]["state"] == "in_triage"
+    assert "detail" not in triaged_new["analysis"]
+    assert triaged_na["analysis"]["state"] == "not_affected"
+    assert (
+        triaged_na["analysis"]["detail"]
+        == "vulnerable symbol is not on the project's call graph"
+    )
+    # Free text must NEVER land on the closed CycloneDX justification enum.
+    assert "justification" not in triaged_new["analysis"]
+    assert "justification" not in triaged_na["analysis"]
+    for v in vulns:
+        assert v["source"] == {"name": "NVD"}
+
+
+async def test_cyclonedx_vulnerability_affects_ref_joins_to_component_bom_ref(
+    db_session: AsyncSession,
+) -> None:
+    """affects[].ref must resolve to a bom-ref present in components[]."""
+    from services.sbom_export import export_sbom
+
+    _, project, scan = await _make_project_with_succeeded_scan(db_session)
+    suffix = unique_suffix()
+    _, cv = await _make_component_version(db_session, name=f"ref-{suffix}", version="2.0.0")
+    await _attach(db_session, scan_id=scan.id, cv_id=cv.id)
+    v = await _make_vulnerability(db_session, cve_id=f"CVE-2099-3{suffix[:4]}")
+    await _attach_finding(
+        db_session, scan_id=scan.id, cv_id=cv.id, vulnerability_id=v.id, status="exploitable"
+    )
+
+    body, _, _ = await export_sbom(db_session, project_id=project.id, fmt="cyclonedx-json")
+    parsed = json.loads(body)
+
+    component_refs = {c["bom-ref"] for c in parsed["components"]}
+    (vuln,) = parsed["vulnerabilities"]
+    assert vuln["analysis"]["state"] == "exploitable"
+    assert vuln["affects"] == [{"ref": str(cv.id)}]
+    assert vuln["affects"][0]["ref"] in component_refs
+
+
+async def test_cyclonedx_xml_emits_vulnerabilities(db_session: AsyncSession) -> None:
+    from services.sbom_export import export_sbom
+
+    _, project, scan = await _make_project_with_succeeded_scan(db_session)
+    suffix = unique_suffix()
+    _, cv = await _make_component_version(db_session, name=f"xmlvex-{suffix}", version="3.0.0")
+    await _attach(db_session, scan_id=scan.id, cv_id=cv.id)
+    v = await _make_vulnerability(db_session, cve_id=f"CVE-2099-4{suffix[:4]}")
+    await _attach_finding(
+        db_session,
+        scan_id=scan.id,
+        cv_id=cv.id,
+        vulnerability_id=v.id,
+        status="fixed",
+        justification="patched in the 3.0.1 release",
+    )
+
+    body, _, _ = await export_sbom(db_session, project_id=project.id, fmt="cyclonedx-xml")
+    root = ET.fromstring(body)
+    ns = "{http://cyclonedx.org/schema/bom/1.6}"
+
+    vulns_el = root.find(f"{ns}vulnerabilities")
+    assert vulns_el is not None
+    (vuln_el,) = list(vulns_el)
+    assert vuln_el.findtext(f"{ns}id") == v.external_id
+    assert vuln_el.findtext(f"{ns}source/{ns}name") == "NVD"
+    assert vuln_el.findtext(f"{ns}analysis/{ns}state") == "resolved"
+    assert vuln_el.findtext(f"{ns}analysis/{ns}detail") == "patched in the 3.0.1 release"
+    assert vuln_el.findtext(f"{ns}affects/{ns}target/{ns}ref") == str(cv.id)
+
+
+async def test_spdx_exports_carry_no_vulnerabilities(db_session: AsyncSession) -> None:
+    """SPDX has no native VEX representation — exports stay component-only."""
+    from services.sbom_export import export_sbom
+
+    _, project, scan = await _make_project_with_succeeded_scan(db_session)
+    suffix = unique_suffix()
+    _, cv = await _make_component_version(db_session, name=f"spdxvex-{suffix}", version="1.1.0")
+    await _attach(db_session, scan_id=scan.id, cv_id=cv.id)
+    v = await _make_vulnerability(db_session, cve_id=f"CVE-2099-5{suffix[:4]}")
+    await _attach_finding(
+        db_session, scan_id=scan.id, cv_id=cv.id, vulnerability_id=v.id, status="exploitable"
+    )
+
+    body, _, _ = await export_sbom(db_session, project_id=project.id, fmt="spdx-json")
+    assert "vulnerabilities" not in json.loads(body)
+
+
+async def test_reexport_cyclonedx_with_findings_is_byte_identical(
+    db_session: AsyncSession,
+) -> None:
+    """BUG-006 extends to the VEX section: re-exports stay byte-stable."""
+    from services.sbom_export import export_sbom
+
+    _, project, scan = await _make_project_with_succeeded_scan(db_session)
+    suffix = unique_suffix()
+    _, cv = await _make_component_version(db_session, name=f"stable-{suffix}", version="9.9.9")
+    await _attach(db_session, scan_id=scan.id, cv_id=cv.id)
+    v = await _make_vulnerability(db_session, cve_id=f"CVE-2099-6{suffix[:4]}")
+    await _attach_finding(
+        db_session,
+        scan_id=scan.id,
+        cv_id=cv.id,
+        vulnerability_id=v.id,
+        status="analyzing",
+        justification="triage in progress with the upstream advisory",
+    )
+
+    first, _, _ = await export_sbom(db_session, project_id=project.id, fmt="cyclonedx-json")
+    second, _, _ = await export_sbom(db_session, project_id=project.id, fmt="cyclonedx-json")
+    assert first == second
+    assert json.loads(first)["vulnerabilities"], "fixture must actually emit a finding"

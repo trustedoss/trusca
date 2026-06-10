@@ -36,8 +36,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from models.scan import VULN_FINDING_STATUS_VALUES
 from services.vex_export import (
-    _CYCLONEDX_STATE_MAP,
     _OPENVEX_STATUS_MAP,
+    CYCLONEDX_STATE_MAP,
     SUPPORTED_FORMATS,
     VEXUnsupportedFormat,
 )
@@ -90,7 +90,7 @@ def test_openvex_status_map(internal: str, expected: str) -> None:
     ],
 )
 def test_cyclonedx_state_map(internal: str, expected: str) -> None:
-    assert _CYCLONEDX_STATE_MAP[internal] == expected
+    assert CYCLONEDX_STATE_MAP[internal] == expected
 
 
 def test_status_maps_are_total_over_finding_enum() -> None:
@@ -101,7 +101,7 @@ def test_status_maps_are_total_over_finding_enum() -> None:
     """
     enum = set(VULN_FINDING_STATUS_VALUES)
     assert set(_OPENVEX_STATUS_MAP) == enum
-    assert set(_CYCLONEDX_STATE_MAP) == enum
+    assert set(CYCLONEDX_STATE_MAP) == enum
 
 
 # ===========================================================================
@@ -385,7 +385,7 @@ async def test_openvex_status_mapping_end_to_end(
 @pytest.mark.integration
 @pytest.mark.parametrize(
     ("internal", "cdx_state"),
-    list(_CYCLONEDX_STATE_MAP.items()),
+    list(CYCLONEDX_STATE_MAP.items()),
 )
 async def test_cyclonedx_state_mapping_end_to_end(
     db_session: AsyncSession, internal: str, cdx_state: str
