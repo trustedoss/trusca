@@ -797,10 +797,12 @@ async def test_archive_project_is_idempotent(db_session: AsyncSession) -> None:
     assert again.archived_at == first_archived_at  # unchanged
 
 
-async def test_archive_project_developer_is_forbidden(
+async def test_archive_project_developer_in_own_team_is_allowed(
     db_session: AsyncSession,
 ) -> None:
-    from services.project_service import ProjectForbidden, archive_project
+    """M-10: archiving is developer-level (mirrors create), so a team member
+    with the developer role may archive their own team's project."""
+    from services.project_service import archive_project
 
     org = await make_organization(db_session)
     team = await make_team(db_session, organization=org)
@@ -808,6 +810,25 @@ async def test_archive_project_developer_is_forbidden(
     user = await make_user(db_session)
     await make_membership(db_session, user=user, team=team, role="developer")
     actor = principal_for(user, team_ids=[team.id], role="developer")
+
+    archived = await archive_project(db_session, project_id=project.id, actor=actor)
+    assert archived.archived_at is not None
+
+
+async def test_archive_project_non_member_is_forbidden(
+    db_session: AsyncSession,
+) -> None:
+    """M-10: the membership boundary still holds — a developer of ANOTHER team
+    (not a member of the project's team) cannot archive it."""
+    from services.project_service import ProjectForbidden, archive_project
+
+    org = await make_organization(db_session)
+    target_team = await make_team(db_session, organization=org)
+    other_team = await make_team(db_session, organization=org)
+    project = await make_project(db_session, team=target_team)
+    user = await make_user(db_session)
+    await make_membership(db_session, user=user, team=other_team, role="developer")
+    actor = principal_for(user, team_ids=[other_team.id], role="developer")
 
     with pytest.raises(ProjectForbidden):
         await archive_project(db_session, project_id=project.id, actor=actor)
@@ -872,11 +893,16 @@ async def test_team_admin_in_other_team_cannot_patch_this_team_project(
     assert updated.name == "renamed-legit"
 
 
-async def test_team_admin_in_other_team_cannot_archive_this_team_project(
+async def test_split_membership_user_can_archive_either_team_project(
     db_session: AsyncSession,
 ) -> None:
-    """Same split-membership setup, archive path."""
-    from services.project_service import ProjectForbidden, archive_project
+    """M-10: archive is membership-level, so a split-membership user can
+    archive BOTH teams' projects — team_admin in team_a, developer in team_b,
+    and a member of each. The cross-team escalation guard that H-1 protects
+    only applies to the team_admin-gated update path (covered separately);
+    archive's boundary is membership, enforced by the non-member test above.
+    """
+    from services.project_service import archive_project
 
     org = await make_organization(db_session)
     team_a = await make_team(db_session, organization=org)
@@ -895,9 +921,9 @@ async def test_team_admin_in_other_team_cannot_archive_this_team_project(
         team_roles={team_a.id: "team_admin", team_b.id: "developer"},
     )
 
-    with pytest.raises(ProjectForbidden):
-        await archive_project(db_session, project_id=project_b.id, actor=actor)
+    # developer in team_b → can archive team_b's project (M-10).
+    archived_b = await archive_project(db_session, project_id=project_b.id, actor=actor)
+    assert archived_b.archived_at is not None
 
-    # Positive control: archive on team_a's project succeeds.
-    archived = await archive_project(db_session, project_id=project_a.id, actor=actor)
-    assert archived.archived_at is not None
+    archived_a = await archive_project(db_session, project_id=project_a.id, actor=actor)
+    assert archived_a.archived_at is not None

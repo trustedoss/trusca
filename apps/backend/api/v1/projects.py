@@ -383,13 +383,16 @@ async def update_project_endpoint(
 @router.delete(
     "/{project_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Archive (soft-delete) the project (role >= team_admin)",
+    summary="Archive (soft-delete) the project (developer and above)",
 )
 async def delete_project_endpoint(
     request: Request,
     project_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("team_admin")),
+    # M-10: archiving is a developer-level action (mirrors create). The
+    # route gate only checks "authenticated developer+"; the service enforces
+    # the project-team membership boundary.
+    actor: CurrentUser = Depends(require_role("developer")),
 ) -> Response:
     try:
         await archive_project(session, project_id=project_id, actor=actor)
