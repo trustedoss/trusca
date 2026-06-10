@@ -53,6 +53,10 @@ KNOWN_OBLIGATION_KINDS: tuple[str, ...] = (
     "modifications",
     "dynamic-linking",
     "no-endorsement",
+    # H-9: the catalog emits ``patent`` (Apache-2.0 / GPL-3.0 patent grants);
+    # it was missing from the advertised vocabulary, so kind filters and
+    # distribution counts treated a real, emitted obligation as "unknown".
+    "patent",
 )
 
 ObligationSortKey = Literal["category", "license_name", "kind", "affected_count"]

@@ -314,6 +314,35 @@ async def test_concurrent_trigger_returns_409_problem(client) -> None:
     assert body.get("scan_already_in_progress") is True
 
 
+async def test_trigger_on_archived_project_returns_409(client) -> None:
+    """H-7: an archived project must reject new scans, not silently accept them."""
+    from datetime import UTC, datetime
+
+    from sqlalchemy import update as sa_update
+
+    from models import Project as ProjectModel
+
+    team, user, project = await _seed(client, role="developer")
+
+    factory = await _factory(client)
+    async with factory() as session:
+        await session.execute(
+            sa_update(ProjectModel)
+            .where(ProjectModel.id == project.id)
+            .values(archived_at=datetime.now(tz=UTC))
+        )
+        await session.commit()
+
+    response = await client.post(
+        f"/v1/projects/{project.id}/scans",
+        headers=_bearer_for(user),
+        json={"kind": "source"},
+    )
+    assert response.status_code == 409, response.text
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+    assert response.json()["title"] == "Project Archived"
+
+
 async def test_trigger_scan_other_team_returns_403(client) -> None:
     _, target_user, target_project = await _seed(client, role="developer")
     _, outsider, _ = await _seed(client, role="developer")
