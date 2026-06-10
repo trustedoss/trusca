@@ -236,13 +236,13 @@ _OBLIGATION_BANK: tuple[tuple[str, str, str], ...] = (
     ),
     (
         "LGPL-2.1-only",
-        "source_disclosure",
+        "source-disclosure",
         "Provide the source of the LGPL library (or a written offer) and allow "
         "the end user to relink against a modified version.",
     ),
     (
         "GPL-3.0-only",
-        "source_disclosure",
+        "source-disclosure",
         "Convey the complete corresponding source under GPL-3.0 to every "
         "recipient of the binary.",
     ),
