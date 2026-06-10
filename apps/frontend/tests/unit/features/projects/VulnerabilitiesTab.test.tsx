@@ -8,7 +8,7 @@
  * stub `react-virtuoso` with a plain renderer so all rows mount in jsdom.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type React from "react";
 import { MemoryRouter } from "react-router-dom";
@@ -1067,5 +1067,219 @@ describe("VulnerabilitiesTab", () => {
     });
     // The required CVE-id cell is still present (header carries cve_id).
     expect(screen.getByTestId("vulnerability-row")).toBeInTheDocument();
+  });
+
+  // -------------------------------------------------------------------------
+  // M-27 — Title (source: summary) + Discovered (source: discovered_at)
+  // columns. Both are ColumnsPicker-toggleable; fresh users (no stored
+  // visibility) see them by default per `loadInitialVisibility`.
+  // -------------------------------------------------------------------------
+
+  it("renders Title and Discovered cells by default for a fresh visibility set", async () => {
+    window.localStorage.clear();
+    mockedList.mockResolvedValueOnce(
+      listResponse([
+        vuln("CVE-2024-1111", {
+          summary: "Prototype pollution in lodash before 4.17.21",
+        }),
+      ]),
+    );
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getByTestId("vulnerability-row")).toBeInTheDocument();
+    });
+
+    const title = screen.getByTestId("vulnerability-row-title");
+    expect(title.textContent).toBe(
+      "Prototype pollution in lodash before 4.17.21",
+    );
+    // Long summaries truncate — the full text rides on the title tooltip.
+    expect(title.getAttribute("title")).toBe(
+      "Prototype pollution in lodash before 4.17.21",
+    );
+
+    const discovered = screen.getByTestId("vulnerability-row-discovered");
+    expect(discovered.getAttribute("data-discovered-at")).toBe(
+      "2026-05-01T00:00:00Z",
+    );
+    // Relative formatting (formatRelativeToNow) — never the raw ISO string.
+    expect(discovered.textContent).not.toContain("2026-05-01T");
+    expect(discovered.textContent?.length).toBeGreaterThan(0);
+    // Header cells are mounted too.
+    expect(
+      screen.getByTestId("vulnerabilities-header-cell-title"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("vulnerabilities-header-cell-discovered"),
+    ).toBeInTheDocument();
+  });
+
+  it("renders an em-dash Title placeholder when the summary is null", async () => {
+    window.localStorage.clear();
+    mockedList.mockResolvedValueOnce(
+      listResponse([vuln("CVE-2024-2222", { summary: null })]),
+    );
+    renderTab();
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("vulnerability-row-title"),
+      ).toBeInTheDocument();
+    });
+    const title = screen.getByTestId("vulnerability-row-title");
+    expect(title.textContent).toBe("—");
+    expect(title.getAttribute("title")).toBeNull();
+  });
+
+  it("hiding the Title column via the ColumnsPicker drops the Title cell", async () => {
+    window.localStorage.clear();
+    mockedList.mockResolvedValue(listResponse([vuln("CVE-2024-3333")]));
+    renderTab();
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("vulnerability-row-title"),
+      ).toBeInTheDocument();
+    });
+
+    await userEvent.click(
+      screen.getByTestId("vulnerabilities-columns-picker-trigger"),
+    );
+    const titleOption = await waitFor(() =>
+      screen.getByTestId("vulnerabilities-columns-picker-option-title"),
+    );
+    await userEvent.click(titleOption);
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("vulnerability-row-title"),
+      ).not.toBeInTheDocument();
+    });
+    expect(
+      screen.queryByTestId("vulnerabilities-header-cell-title"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("clicking the Discovered column header requests sort=discovered_at", async () => {
+    window.localStorage.clear();
+    mockedList.mockResolvedValue(listResponse([vuln("CVE-2024-4444")]));
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("vulnerability-row")).toHaveLength(1);
+    });
+    mockedList.mockClear();
+
+    await userEvent.click(
+      screen.getByTestId("vulnerabilities-sort-header-discovered"),
+    );
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalledWith(
+        "proj-1",
+        expect.objectContaining({ sort: "discovered_at" }),
+      );
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // M-28 — mixed-selection bulk transition gating. The bar intersects
+  // STATUS_TRANSITIONS across the selected rows' current statuses; matrix-
+  // illegal targets are hidden from the dropdown and an empty intersection
+  // disables Apply with an explanatory tooltip.
+  // -------------------------------------------------------------------------
+
+  it("disables Apply with a tooltip when a mixed selection has no common target", async () => {
+    window.localStorage.clear();
+    // new → {analyzing, suppressed}; analyzing → {exploitable, …, suppressed}.
+    // Intersection = {suppressed}, which the default developer role cannot
+    // pick → empty legal set.
+    mockedList.mockResolvedValueOnce(
+      listResponse([
+        vuln("CVE-2024-1111", { id: "row-aaaa", status: "new" }),
+        vuln("CVE-2024-2222", { id: "row-bbbb", status: "analyzing" }),
+      ]),
+    );
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("vulnerability-row")).toHaveLength(2);
+    });
+    await userEvent.click(screen.getByTestId("vulnerabilities-select-all"));
+
+    const gate = screen.getByTestId("vulnerabilities-bulk-apply-gate");
+    expect(gate.getAttribute("data-no-common-target")).toBe("true");
+    expect(gate.getAttribute("title")).toContain(
+      "no status they can all transition to",
+    );
+    expect(screen.getByTestId("vulnerabilities-bulk-apply")).toBeDisabled();
+
+    // Only the placeholder option remains — no pickable target at all.
+    const select = screen.getByTestId(
+      "vulnerabilities-bulk-target-select",
+    ) as HTMLSelectElement;
+    expect(select).toBeDisabled();
+    expect(within(select).getAllByRole("option")).toHaveLength(1);
+  });
+
+  it("offers only the transition intersection for a mixed-but-compatible selection", async () => {
+    window.localStorage.clear();
+    // new → {analyzing, suppressed}; suppressed → {analyzing}.
+    // Intersection = {analyzing} — the only option besides the placeholder.
+    mockedList.mockResolvedValueOnce(
+      listResponse([
+        vuln("CVE-2024-1111", { id: "row-aaaa", status: "new" }),
+        vuln("CVE-2024-2222", { id: "row-bbbb", status: "suppressed" }),
+      ]),
+    );
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("vulnerability-row")).toHaveLength(2);
+    });
+    await userEvent.click(screen.getByTestId("vulnerabilities-select-all"));
+
+    const select = screen.getByTestId(
+      "vulnerabilities-bulk-target-select",
+    ) as HTMLSelectElement;
+    const options = within(select).getAllByRole("option");
+    expect(options.map((o) => (o as HTMLOptionElement).value)).toEqual([
+      "",
+      "analyzing",
+    ]);
+    expect(
+      screen
+        .getByTestId("vulnerabilities-bulk-apply-gate")
+        .getAttribute("data-no-common-target"),
+    ).toBe("false");
+
+    await userEvent.selectOptions(select, "analyzing");
+    expect(
+      screen.getByTestId("vulnerabilities-bulk-apply"),
+    ).not.toBeDisabled();
+  });
+
+  it("keeps the existing flow for a homogeneous selection (Apply enabled)", async () => {
+    window.localStorage.clear();
+    mockedList.mockResolvedValueOnce(
+      listResponse([
+        vuln("CVE-2024-1111", { id: "row-aaaa", status: "new" }),
+        vuln("CVE-2024-2222", { id: "row-bbbb", status: "new" }),
+      ]),
+    );
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("vulnerability-row")).toHaveLength(2);
+    });
+    await userEvent.click(screen.getByTestId("vulnerabilities-select-all"));
+
+    const select = screen.getByTestId(
+      "vulnerabilities-bulk-target-select",
+    ) as HTMLSelectElement;
+    // new → {analyzing, suppressed}; suppressed is role-gated away for the
+    // default developer role, leaving analyzing.
+    const options = within(select).getAllByRole("option");
+    expect(options.map((o) => (o as HTMLOptionElement).value)).toEqual([
+      "",
+      "analyzing",
+    ]);
+    await userEvent.selectOptions(select, "analyzing");
+    expect(
+      screen.getByTestId("vulnerabilities-bulk-apply"),
+    ).not.toBeDisabled();
   });
 });
