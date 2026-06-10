@@ -14,8 +14,11 @@
       "name": "Name",
       "scope": "Scope",
       "prefix": "Prefix",
+      "creator": "Creator",
       "created": "Created",
+      "last_used": "Last used",
       "expires": "Expires",
+      "status": "Status",
       "actions": "Actions"
     },
     "scope": {
@@ -23,8 +26,12 @@
       "team": "Team",
       "project": "Project"
     },
+    "status": {
+      "active": "Active",
+      "revoked": "Revoked"
+    },
     "expires_never": "Never",
-    "revoked_badge": "Revoked",
+    "last_used_never": "Never used",
     "revoke": "Revoke",
     "revoke_confirm": {
       "title": "Revoke this API key?",

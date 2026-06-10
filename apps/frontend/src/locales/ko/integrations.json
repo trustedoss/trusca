@@ -14,8 +14,11 @@
       "name": "이름",
       "scope": "범위",
       "prefix": "접두사",
+      "creator": "발급자",
       "created": "생성일",
+      "last_used": "최근 사용",
       "expires": "만료",
+      "status": "상태",
       "actions": "동작"
     },
     "scope": {
@@ -23,8 +26,12 @@
       "team": "팀",
       "project": "프로젝트"
     },
+    "status": {
+      "active": "활성",
+      "revoked": "폐기됨"
+    },
     "expires_never": "없음",
-    "revoked_badge": "폐기됨",
+    "last_used_never": "사용 이력 없음",
     "revoke": "폐기",
     "revoke_confirm": {
       "title": "이 API 키를 폐기하시겠어요?",

@@ -57,7 +57,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.security import CurrentUser, hash_password, verify_password
-from models import APIKey, Project
+from models import APIKey, Project, User
 
 log = structlog.get_logger("api_key.service")
 
@@ -446,12 +446,24 @@ async def list_api_keys(
         count_base = count_base.where(APIKey.revoked_at.is_(None))
 
     total = int((await session.execute(count_base)).scalar_one())
+    # LEFT JOIN users so the list rows carry a human-readable issuer email in
+    # ONE query (no per-row lookup). Outer join: created_by_user_id is SET NULL
+    # on user deletion, and those rows must still list (email → None).
     rows_stmt = (
-        base.order_by(APIKey.created_at.desc(), APIKey.id.desc())
+        base.add_columns(User.email)
+        .outerjoin(User, User.id == APIKey.created_by_user_id)
+        .order_by(APIKey.created_at.desc(), APIKey.id.desc())
         .limit(page_size)
         .offset((page - 1) * page_size)
     )
-    rows = list((await session.execute(rows_stmt)).scalars().all())
+    rows: list[APIKey] = []
+    for api_key, created_by_email in (await session.execute(rows_stmt)).all():
+        # Plain (non-mapped) instance attribute — consumed by
+        # APIKeyListItem.model_validate(from_attributes). It never dirties the
+        # ORM unit of work and is NOT logged anywhere (email is PII; log lines
+        # below carry only ids/counters).
+        setattr(api_key, "created_by_email", created_by_email)  # noqa: B010
+        rows.append(api_key)
 
     log.info(
         "api_key.list",

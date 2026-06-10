@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { usePermissions } from "@/hooks/usePermissions";
 import type { APIKeyCreatePayload, APIKeyScope } from "@/types/apiKey";
 
 interface CreateApiKeyDialogProps {
@@ -40,6 +41,11 @@ export function CreateApiKeyDialog({
   submitting,
 }: CreateApiKeyDialogProps) {
   const { t } = useTranslation("integrations");
+  // L-16: org-scoped keys are super_admin only on the backend (team_admin
+  // gets a 403). Mirror that rule by not rendering the option at all. The
+  // default selection is "project", which every eligible role can see, so a
+  // hidden option can never be the selected value.
+  const { isSuperAdmin } = usePermissions();
   const [name, setName] = useState("");
   const [scope, setScope] = useState<APIKeyScope>("project");
   const [teamId, setTeamId] = useState("");
@@ -135,7 +141,9 @@ export function CreateApiKeyDialog({
             >
               <option value="project">{t("api_keys.scope.project")}</option>
               <option value="team">{t("api_keys.scope.team")}</option>
-              <option value="org">{t("api_keys.scope.org")}</option>
+              {isSuperAdmin ? (
+                <option value="org">{t("api_keys.scope.org")}</option>
+              ) : null}
             </select>
             <p className="text-xs text-muted-foreground">
               {scope === "org"

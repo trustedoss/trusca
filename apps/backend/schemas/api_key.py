@@ -95,6 +95,18 @@ class APIKeyListItem(BaseModel):
     team_id: UUID | None
     project_id: UUID | None
     created_by_user_id: UUID | None
+    created_by_email: str | None = Field(
+        default=None,
+        description=(
+            "Email of the issuing user, so the management UI can show a "
+            "human-readable creator column. None when the issuer account was "
+            "deleted (created_by_user_id was SET NULL) or the user row is "
+            "otherwise gone. PII note: this list is only reachable through the "
+            "key-governance visibility boundary (issuer / team members / "
+            "super_admin), so the email is not exposed beyond actors who can "
+            "already manage the key."
+        ),
+    )
     created_at: datetime
     last_used_at: datetime | None
     revoked_at: datetime | None
