@@ -5,12 +5,15 @@ Returns the storage footprint of the backends the operator cares about:
 
   - ``workspace``  — host filesystem mount under ``WORKSPACE_HOST_PATH``
                      (cdxgen / scancode scratch dirs + preserved tarballs).
+  - ``trivy_db``   — the Trivy vulnerability-DB cache volume under
+                     ``TRIVY_CACHE_DIR`` (M-32). Shared with the worker
+                     (H-6); freshness detail lives on the admin/health
+                     panel, this card covers the bytes.
   - ``postgres``   — total PostgreSQL DB size via ``pg_database_size``.
   - ``redis``      — Redis memory usage via ``INFO memory``.
 
 W6-#43a (ADR-0001): the ``dt_volume`` entry was removed when DT was replaced
-by Trivy (W6-#41). Trivy's vulnerability DB lives in a worker-owned cache
-volume that surfaces through a separate admin/health panel (W6-#43e).
+by Trivy (W6-#41).
 
 Threshold model:
   - Each item carries a static 80% warn / 90% critical threshold pair.
@@ -43,6 +46,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import redis_url
+from integrations.trivy import trivy_cache_dir
 from schemas.admin_ops import (
     AdminDiskItem,
     AdminDiskOut,
@@ -280,13 +284,15 @@ async def get_disk_telemetry(session: AsyncSession) -> AdminDiskOut:
     """
     Return all four storage backends' current usage in one payload.
 
-    Order is fixed (workspace → postgres → redis) so the UI can render a
-    stable card layout without mapping by name. Each probe is independent —
-    a failure in one is reported via the per-item ``error`` field, never
-    raised.
+    Order is fixed (workspace → trivy_db → postgres → redis) so the UI can
+    render a stable card layout without mapping by name. Each probe is
+    independent — a failure in one is reported via the per-item ``error``
+    field, never raised.
     """
     items = [
         _probe_filesystem(name="workspace", path=_workspace_path()),
+        # M-32 — the Trivy DB cache volume (shared with the worker, H-6).
+        _probe_filesystem(name="trivy_db", path=str(trivy_cache_dir())),
         await _probe_postgres(session),
         _probe_redis(),
     ]

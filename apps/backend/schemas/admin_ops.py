@@ -130,13 +130,13 @@ class AdminDiskItem(BaseModel):
     Phase 4; future PRs may make them per-mount tunable.
     """
 
-    name: Literal["workspace", "postgres", "redis"]
+    name: Literal["workspace", "trivy_db", "postgres", "redis"]
     path: str | None = Field(
         default=None,
         description=(
-            "Filesystem path the bytes were read from (only set for "
-            "``workspace`` — DB-backed entries have no single canonical "
-            "path)."
+            "Filesystem path the bytes were read from (only set for the "
+            "filesystem-backed ``workspace`` / ``trivy_db`` entries — "
+            "DB-backed entries have no single canonical path)."
         ),
     )
     total_bytes: int | None = Field(default=None, ge=0)

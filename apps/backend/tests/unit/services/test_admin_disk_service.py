@@ -323,3 +323,25 @@ def test_probe_filesystem_oserror_strips_credentials(
     assert "pass" not in item.error
     assert "postgresql" not in item.error
     assert "@" not in item.error
+
+
+# ---------------------------------------------------------------------------
+# trivy_db card (M-32) — probes the worker-shared Trivy cache volume (H-6)
+# ---------------------------------------------------------------------------
+
+
+def test_trivy_db_probe_reads_trivy_cache_dir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    """The trivy_db card must point at TRIVY_CACHE_DIR (read at call time)."""
+    from integrations.trivy import trivy_cache_dir
+
+    cache = tmp_path / "trivy-cache"
+    cache.mkdir()
+    monkeypatch.setenv("TRIVY_CACHE_DIR", str(cache))
+
+    item = _probe_filesystem(name="trivy_db", path=str(trivy_cache_dir()))
+    assert item.name == "trivy_db"
+    assert item.path == str(cache)
+    assert item.error is None
+    assert item.total_bytes is not None and item.total_bytes > 0

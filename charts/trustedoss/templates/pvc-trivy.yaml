@@ -1,0 +1,27 @@
+{{- /*
+Trivy vulnerability DB cache PVC (H-6 / L-2). Mounted at env.trivy.dbCacheDir
+by the worker (rw — boot download + weekly refresh) AND the backend (ro — the
+admin health panel and the admin/disk `trivy_db` card read metadata.json from
+the same cache). On multi-node clusters the access mode MUST be ReadWriteMany.
+Skipped when persistence is disabled (workloads fall back to per-pod emptyDir
+— the worker then re-downloads the DB on every restart and the backend's
+panel reads its own empty dir) or when an existingClaim is supplied.
+*/ -}}
+{{- if and .Values.trivyCache.persistence.enabled (not .Values.trivyCache.persistence.existingClaim) -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "trustedoss.fullname" . }}-trivy-cache
+  labels:
+    {{- include "trustedoss.labels" . | nindent 4 }}
+    app.kubernetes.io/component: trivy-cache
+spec:
+  accessModes:
+    - {{ .Values.trivyCache.persistence.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.trivyCache.persistence.size }}
+  {{- if .Values.trivyCache.persistence.storageClassName }}
+  storageClassName: {{ .Values.trivyCache.persistence.storageClassName | quote }}
+  {{- end }}
+{{- end -}}

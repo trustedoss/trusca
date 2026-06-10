@@ -82,7 +82,7 @@ sidebar_position: 2
 |---|---|---|---|
 | `TRIVY_DB_REPOSITORY` | `ghcr.io/aquasecurity/trivy-db` | `config.py` | Trivy DB를 받아오는 OCI 저장소. air-gapped 사내 미러로 오버라이드 — [Air-gapped 운영](../admin-guide/vulnerability-data.md#air-gapped) 참조. |
 | `TRIVY_DB_REFRESH_HOURS` | `168` (주간) | `config.py` | `trivy_db_refresh` 태스크의 Celery Beat 주기. 낮추면 신선도↑, 높이면 egress↓. |
-| `TRIVY_DB_CACHE_DIR` | `/var/lib/trivy` | `config.py` | 워커 컨테이너에서 DB가 풀리는 디렉터리. 재부팅 시 재다운로드를 피하려면 호스트 볼륨 마운트. |
+| `TRIVY_CACHE_DIR` | `/var/lib/trivy` | `integrations/trivy.py` | DB가 풀리는 디렉터리. 공유 `trivy-cache` 볼륨이 뒷받침 — 워커(rw)와 backend(ro)가 함께 마운트해 관리자 health/disk 패널이 DB 상태를 읽을 수 있다. |
 | `TRIVY_TIMEOUT_SECONDS` | `300` | `config.py` | `trivy sbom` 스캔별 타임아웃. 매우 큰 모노레포는 `600`~`900`으로 상향. |
 
 ## 빌드 / 정책 게이트

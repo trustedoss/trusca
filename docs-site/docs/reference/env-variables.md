@@ -83,7 +83,7 @@ The portal correlates SBOMs against CVEs using a local **Trivy DB** — a compil
 |---|---|---|---|
 | `TRIVY_DB_REPOSITORY` | `ghcr.io/aquasecurity/trivy-db` | `config.py` | OCI repository the Trivy DB is pulled from. Override for an air-gapped internal mirror — see [Air-gapped operation](../admin-guide/vulnerability-data.md#air-gapped). |
 | `TRIVY_DB_REFRESH_HOURS` | `168` (weekly) | `config.py` | Celery Beat schedule for the `trivy_db_refresh` task. Lower for fresher feeds, higher to reduce egress. |
-| `TRIVY_DB_CACHE_DIR` | `/var/lib/trivy` | `config.py` | Worker-container directory the DB is unpacked into. Mount a host volume so reboots don't re-download. |
+| `TRIVY_CACHE_DIR` | `/var/lib/trivy` | `integrations/trivy.py` | Directory the DB is unpacked into. Backed by the shared `trivy-cache` volume — worker (rw) and backend (ro) mount it so the admin health / disk panels can read the DB state. |
 | `TRIVY_TIMEOUT_SECONDS` | `300` | `config.py` | Per-scan timeout for `trivy sbom`. Raise to `600`–`900` for very large monorepos. |
 
 ## Build / policy gate
