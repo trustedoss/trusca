@@ -346,7 +346,7 @@ Another process holds the port. List bound ports and free them:
 sudo ss -tlnp | grep -E ':80|:443'
 ```
 
-If you intend to keep an existing reverse proxy, edit `docker-compose.yml` to drop the Traefik service and route `/api`, `/health`, `/health/ready`, `/metrics` to the backend container, and `/` to the frontend.
+If you intend to keep an existing reverse proxy, edit `docker-compose.yml` to drop the Traefik service and route `/v1`, `/auth`, `/ws`, `/health`, `/health/ready` to the backend container, and `/` to the frontend.
 
 ### Backend never becomes healthy
 

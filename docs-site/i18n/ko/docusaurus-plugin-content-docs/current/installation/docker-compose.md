@@ -339,7 +339,7 @@ Bind for 0.0.0.0:443 failed: port is already allocated
 sudo ss -tlnp | grep -E ':80|:443'
 ```
 
-기존 리버스 프록시를 유지하려면 `docker-compose.yml`에서 Traefik 서비스를 제거하고 `/api`, `/health`, `/health/ready`, `/metrics`는 backend 컨테이너로, `/`는 frontend 컨테이너로 라우팅하도록 설정합니다.
+기존 리버스 프록시를 유지하려면 `docker-compose.yml`에서 Traefik 서비스를 제거하고 `/v1`, `/auth`, `/ws`, `/health`, `/health/ready`는 backend 컨테이너로, `/`는 frontend 컨테이너로 라우팅하도록 설정합니다.
 
 ### 백엔드가 healthy로 전환되지 않음
 
