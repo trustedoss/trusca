@@ -487,6 +487,73 @@ def run_one(
     return res
 
 
+def container_targets() -> list[dict[str, Any]]:
+    """Container-scan bench cases — REAL public images, pulled by the worker.
+
+    Testing-standards (realistic fixtures): H-1 (multi-CVE UniqueViolation)
+    only reproduced on real images because synthetic fixtures carried one CVE
+    per package while real images carry several as the norm. alpine:3.19 is
+    the smallest image that reproduces that density (recheck round confirmed
+    3/3). Add entries here as detection-power baselines, not load tests.
+    """
+    return [
+        {
+            "name": "alpine 3.19 (container)",
+            "slug": "bench-container-alpine-3-19",
+            "image": "alpine:3.19",
+        },
+    ]
+
+
+def run_container_one(
+    client: PortalClient,
+    team_id: str,
+    target: dict[str, str],
+) -> BenchResult:
+    """Trigger a container (Trivy image) scan and collect the same metrics."""
+    res = BenchResult(
+        suite="container",
+        name=target["name"],
+        slug=target["slug"],
+        source_path=target["image"],
+    )
+    res.ecosystem = "container"
+    try:
+        proj_id = ensure_project(
+            client, team_id=team_id, name=target["name"], slug=target["slug"]
+        )
+        res.project_id = proj_id
+        code, body = client.request(
+            "POST",
+            f"/v1/projects/{proj_id}/scans",
+            json_body={
+                "kind": "container",
+                "metadata": {"image_ref": target["image"]},
+            },
+        )
+        if code != 202:
+            raise RuntimeError(f"container scan trigger failed {code}: {body}")
+        scan_id = body["id"]
+        res.scan_id = scan_id
+        started = datetime.now(timezone.utc)
+        res.scan_started_at = started.isoformat()
+        scan = poll_scan(client, scan_id)
+        finished = datetime.now(timezone.utc)
+        res.scan_finished_at = finished.isoformat()
+        res.scan_duration_sec = (finished - started).total_seconds()
+        res.scan_status = scan.get("status", "")
+        if res.scan_status == "succeeded":
+            collect_metrics(client, proj_id, res)
+            if res.cve_total == 0:
+                res.notes.append("0 CVEs from a real image — detection regression?")
+        else:
+            err = scan.get("error_message") or scan.get("metadata", {}).get("error") or ""
+            res.error = err[:500]
+    except Exception as exc:
+        res.error = f"{type(exc).__name__}: {exc}"
+    return res
+
+
 def write_outputs(suite: str, results: list[BenchResult]) -> tuple[Path, Path, Path]:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -526,7 +593,9 @@ def write_outputs(suite: str, results: list[BenchResult]) -> tuple[Path, Path, P
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--suite", choices=("fixtures", "realworld"), required=True)
+    parser.add_argument(
+        "--suite", choices=("fixtures", "realworld", "container"), required=True
+    )
     parser.add_argument("--only", help="comma-separated names to run (substring match)")
     parser.add_argument("--portal-url", default=PORTAL_URL)
     args = parser.parse_args()
@@ -548,6 +617,8 @@ def main() -> int:
 
     if args.suite == "fixtures":
         targets = fixture_targets()
+    elif args.suite == "container":
+        targets = container_targets()
     else:
         targets = realworld_targets()
 
@@ -564,7 +635,10 @@ def main() -> int:
         print(f"\n[{i}/{len(targets)}] {t['name']} ({t['slug']})", flush=True)
         if client.access_token is None:
             client.login(EMAIL, PASSWORD)
-        res = run_one(client, team_id, args.suite, t)
+        if args.suite == "container":
+            res = run_container_one(client, team_id, t)
+        else:
+            res = run_one(client, team_id, args.suite, t)
         results.append(res)
         print(
             f"   -> status={res.scan_status} comp={res.component_count} "
