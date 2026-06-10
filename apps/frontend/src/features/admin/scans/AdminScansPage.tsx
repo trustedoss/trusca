@@ -2,8 +2,10 @@
  * AdminScansPage — Phase 4 PR #14 §4.5.
  *
  * Compact 40px-row table fed by `useAdminScans`. Four tabs select the
- * status filter — running / queued / failed / all. Clicking a row opens
- * `AdminScanDrawer` with the cancel affordance.
+ * status filter — running / queued / failed / all. Next to the tabs sit
+ * two server-side filters (M-35): a scan-kind select and a debounced
+ * project-name search. Clicking a row opens `AdminScanDrawer` with the
+ * cancel affordance.
  *
  * The query polls every 30s so an operator who lands on the page sees
  * the queue update without a manual refresh; the polling interval is the
@@ -12,12 +14,13 @@
  * cross-team queue would require a fan-out we don't ship yet).
  */
 import { RefreshCw } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AdminScanDrawer, ScanStatusBadge } from "@/features/admin/scans/AdminScanDrawer";
 import {
@@ -27,8 +30,11 @@ import {
 import { useAdminScans } from "@/features/admin/scans/api/useAdminScans";
 import { formatRelativeToNow } from "@/lib/relativeTime";
 import { cn } from "@/lib/utils";
+import type { ScanKind } from "@/lib/projectsApi";
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
+
+const KIND_OPTIONS: ScanKind[] = ["source", "container"];
 
 type ScansTab = "running" | "queued" | "failed" | "all";
 
@@ -45,18 +51,36 @@ export function AdminScansPage() {
   const { t, i18n } = useTranslation("admin");
 
   const [tab, setTab] = useState<ScansTab>("running");
+  const [kindFilter, setKindFilter] = useState<ScanKind | "all">("all");
+  const [projectInput, setProjectInput] = useState("");
+  const [projectDebounced, setProjectDebounced] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] =
     useState<(typeof PAGE_SIZE_OPTIONS)[number]>(50);
   const [openScan, setOpenScan] = useState<AdminScanListItem | null>(null);
+
+  // 300ms debounce on the project-name search — same pattern as the audit
+  // page's text filters. The debounced commit also rewinds to page 1. The
+  // equality guard keeps the mount render (and the settled state) from
+  // scheduling a spurious page-1 reset.
+  useEffect(() => {
+    if (projectInput === projectDebounced) return undefined;
+    const id = setTimeout(() => {
+      setProjectDebounced(projectInput);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(id);
+  }, [projectInput, projectDebounced]);
 
   const queryParams = useMemo(
     () => ({
       page,
       page_size: pageSize,
       status: TAB_TO_STATUS[tab],
+      kind: kindFilter === "all" ? null : kindFilter,
+      project: projectDebounced.trim() || null,
     }),
-    [page, pageSize, tab],
+    [page, pageSize, tab, kindFilter, projectDebounced],
   );
 
   const scansQuery = useAdminScans(queryParams);
@@ -99,6 +123,35 @@ export function AdminScansPage() {
             {t(`admin.scans.tabs.${value}`)}
           </Button>
         ))}
+        <select
+          aria-label={t("admin.scans.filter.kind_label")}
+          data-testid="admin-scans-kind"
+          className={cn(
+            "h-8 rounded-md border border-input bg-background px-2 text-sm",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+          )}
+          value={kindFilter}
+          onChange={(e) => {
+            setKindFilter(e.target.value as ScanKind | "all");
+            setPage(1);
+          }}
+        >
+          <option value="all">{t("admin.scans.filter.kind_all")}</option>
+          {KIND_OPTIONS.map((value) => (
+            <option key={value} value={value}>
+              {t(`admin.scans.filter.kind.${value}`)}
+            </option>
+          ))}
+        </select>
+        <Input
+          aria-label={t("admin.scans.filter.project_label")}
+          data-testid="admin-scans-project"
+          className="h-8 w-56"
+          value={projectInput}
+          placeholder={t("admin.scans.filter.project_placeholder")}
+          onChange={(e) => setProjectInput(e.target.value)}
+          maxLength={255}
+        />
         <div className="ml-auto">
           <Button
             size="sm"

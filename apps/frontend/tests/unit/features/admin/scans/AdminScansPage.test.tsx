@@ -7,11 +7,13 @@
  *   - Row click opens the drawer pre-populated with the row payload.
  *   - The drawer's cancel flow calls the cancel API.
  *   - Status-illegal cancel surfaces the matching toast key.
+ *   - M-35: kind select + debounced project search reach the API call and
+ *     rewind pagination to page 1.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AdminScansPage } from "@/features/admin/scans/AdminScansPage";
 import { ProblemError } from "@/lib/problem";
@@ -55,8 +57,11 @@ function scanFixture(
   };
 }
 
-function pageResponse(items: AdminScanListItem[]): AdminScanListPage {
-  return { items, total: items.length, page: 1, page_size: 50 };
+function pageResponse(
+  items: AdminScanListItem[],
+  total: number = items.length,
+): AdminScanListPage {
+  return { items, total, page: 1, page_size: 50 };
 }
 
 function renderPage() {
@@ -74,6 +79,9 @@ describe("AdminScansPage", () => {
   beforeEach(() => {
     mockedList.mockReset();
     mockedCancel.mockReset();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("renders rows for the running tab and re-queries when switching to failed", async () => {
@@ -196,6 +204,59 @@ describe("AdminScansPage", () => {
     expect(
       screen.queryByTestId("admin-scan-action-cancel"),
     ).not.toBeInTheDocument();
+  });
+
+  it("kind select forwards the kind filter and resets to page 1 (M-35)", async () => {
+    // total=200 enables the Next button so we can prove the page rewind.
+    mockedList.mockResolvedValue(pageResponse([scanFixture()], 200));
+    renderPage();
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalledTimes(1);
+    });
+    expect(mockedList.mock.calls[0]?.[0]).toMatchObject({
+      kind: null,
+      project: null,
+    });
+
+    await userEvent.click(screen.getByTestId("admin-scans-page-next"));
+    await waitFor(() => {
+      expect(mockedList.mock.calls.at(-1)?.[0]).toMatchObject({ page: 2 });
+    });
+
+    await userEvent.selectOptions(
+      screen.getByTestId("admin-scans-kind"),
+      "container",
+    );
+    await waitFor(() => {
+      const last = mockedList.mock.calls.at(-1)?.[0];
+      expect(last).toMatchObject({ kind: "container", page: 1 });
+    });
+  });
+
+  it("project search debounces 300ms, forwards the filter, and resets to page 1 (M-35)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    mockedList.mockResolvedValue(pageResponse([scanFixture()], 200));
+    renderPage();
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalledTimes(1);
+    });
+
+    await userEvent.click(screen.getByTestId("admin-scans-page-next"));
+    await waitFor(() => {
+      expect(mockedList.mock.calls.at(-1)?.[0]).toMatchObject({ page: 2 });
+    });
+    const callsBeforeTyping = mockedList.mock.calls.length;
+
+    await userEvent.type(screen.getByTestId("admin-scans-project"), "alpha");
+    // Nothing fires until the debounce window elapses.
+    expect(mockedList.mock.calls.length).toBe(callsBeforeTyping);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(350);
+    });
+    await waitFor(() => {
+      const last = mockedList.mock.calls.at(-1)?.[0];
+      expect(last).toMatchObject({ project: "alpha", page: 1 });
+    });
   });
 
   it("page-size change resets to page 1 and re-queries", async () => {

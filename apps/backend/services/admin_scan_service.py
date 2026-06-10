@@ -28,12 +28,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.audit import bind_audit_team
 from core.security import CurrentUser
+from core.sql_safety import escape_like
 from models import Project, Scan, Team
 from schemas.admin_ops import (
     AdminScanListItem,
     AdminScanListPage,
     ScanStatus,
 )
+from schemas.scan import ScanKind
 
 log = structlog.get_logger("admin.scan.service")
 
@@ -162,14 +164,20 @@ async def list_scans(
     page: int = 1,
     page_size: int = 50,
     status: ScanStatus | None = None,
+    kind: ScanKind | None = None,
+    project: str | None = None,
 ) -> AdminScanListPage:
     """
     Return a page of scans across every team, newest started_at first.
 
-    The status filter is a closed Literal in the schema; non-enum values are
-    rejected at the boundary as 422. ``page`` and ``page_size`` are bounded
-    by the route layer (``Query(ge=..., le=...)``) but we re-clamp here so
-    direct service callers cannot exceed the limits either.
+    The status / kind filters are closed Literals in the schema; non-enum
+    values are rejected at the boundary as 422. ``project`` is a
+    case-insensitive partial match on the project name — user input, so LIKE
+    metacharacters (``%``, ``_``, ``\\``) are neutralised via
+    :func:`core.sql_safety.escape_like` before the ILIKE pattern is built
+    (M-35). ``page`` and ``page_size`` are bounded by the route layer
+    (``Query(ge=..., le=...)``) but we re-clamp here so direct service
+    callers cannot exceed the limits either.
     """
     page = max(page, 1)
     page_size = max(min(page_size, 200), 1)
@@ -192,6 +200,18 @@ async def list_scans(
     if status is not None:
         base = base.where(Scan.status == status)
         count_base = count_base.where(Scan.status == status)
+
+    if kind is not None:
+        base = base.where(Scan.kind == kind)
+        count_base = count_base.where(Scan.kind == kind)
+
+    if project is not None and project.strip():
+        # Escape LIKE metacharacters in the user-supplied fragment and pass
+        # the escape character explicitly so `%`/`_` in a project name are
+        # matched literally rather than as wildcards.
+        like = f"%{escape_like(project.strip())}%"
+        base = base.where(Project.name.ilike(like, escape="\\"))
+        count_base = count_base.where(Project.name.ilike(like, escape="\\"))
 
     total = int((await session.execute(count_base)).scalar_one())
 

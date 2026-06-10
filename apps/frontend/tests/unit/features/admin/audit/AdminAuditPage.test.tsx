@@ -9,10 +9,14 @@
  *   - CSV export triggers an anchor click + URL.createObjectURL.
  *   - 413 audit_export_too_large surfaces the matching toast key.
  *   - 300ms debounce on the q input.
+ *   - L-14: filters round-trip through the URL (write on change, restore
+ *     on direct entry, fall back on invalid values).
+ *   - L-15: the list polls on refetchInterval.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AdminAuditPage } from "@/features/admin/audit/AdminAuditPage";
@@ -67,13 +71,22 @@ function pageResponse(items: AuditLogItem[]): AuditLogListPage {
   };
 }
 
-function renderPage() {
+/** Exposes the live query string so tests can assert URL sync (L-14). */
+function LocationProbe() {
+  const location = useLocation();
+  return <div data-testid="location-search">{location.search}</div>;
+}
+
+function renderPage(initialEntry = "/admin/audit") {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return render(
     <QueryClientProvider client={client}>
-      <AdminAuditPage />
+      <MemoryRouter initialEntries={[initialEntry]}>
+        <AdminAuditPage />
+        <LocationProbe />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -136,6 +149,102 @@ describe("AdminAuditPage", () => {
     renderPage();
     await waitFor(() => {
       expect(screen.getByTestId("admin-audit-empty")).toBeInTheDocument();
+    });
+  });
+
+  it("L-14: a filter change is written to the URL (shareable view)", async () => {
+    mockedSearch.mockResolvedValue(pageResponse([]));
+    renderPage();
+    await waitFor(() => {
+      expect(mockedSearch).toHaveBeenCalledTimes(1);
+    });
+    await userEvent.selectOptions(
+      screen.getByTestId("admin-audit-target-table"),
+      "scans",
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("location-search")).toHaveTextContent(
+        "target_table=scans",
+      );
+    });
+  });
+
+  it("L-14: a direct URL entry restores the same filter state", async () => {
+    mockedSearch.mockResolvedValue(pageResponse([]));
+    renderPage(
+      "/admin/audit?actor=actor-1&target_table=scans&action=create&q=alpha&page=3&page_size=100",
+    );
+    await waitFor(() => {
+      expect(mockedSearch).toHaveBeenCalled();
+    });
+    expect(mockedSearch.mock.calls.at(-1)?.[0]).toMatchObject({
+      actor_user_id: "actor-1",
+      target_table: "scans",
+      action: "create",
+      q: "alpha",
+      page: 3,
+      page_size: 100,
+    });
+    // The toolbar inputs reflect the URL too.
+    expect(screen.getByTestId("admin-audit-q")).toHaveValue("alpha");
+    expect(screen.getByTestId("admin-audit-actor")).toHaveValue("actor-1");
+    expect(screen.getByTestId("admin-audit-target-table")).toHaveValue(
+      "scans",
+    );
+  });
+
+  it("L-14: invalid URL values fall back to the defaults", async () => {
+    mockedSearch.mockResolvedValue(pageResponse([]));
+    renderPage(
+      "/admin/audit?page=0&target_table=bogus&page_size=33&from=not-a-date",
+    );
+    await waitFor(() => {
+      expect(mockedSearch).toHaveBeenCalled();
+    });
+    expect(mockedSearch.mock.calls.at(-1)?.[0]).toMatchObject({
+      page: 1,
+      target_table: null,
+      page_size: 50,
+      from: null,
+    });
+  });
+
+  it("L-14: the debounced q commit lands in the URL and rewinds the page param", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    mockedSearch.mockResolvedValue(pageResponse([]));
+    renderPage("/admin/audit?page=3");
+    await waitFor(() => {
+      expect(mockedSearch).toHaveBeenCalledTimes(1);
+    });
+    await userEvent.type(screen.getByTestId("admin-audit-q"), "alpha");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(350);
+    });
+    await waitFor(() => {
+      const search = screen.getByTestId("location-search").textContent ?? "";
+      expect(search).toContain("q=alpha");
+      expect(search).not.toContain("page=3");
+    });
+    await waitFor(() => {
+      expect(mockedSearch.mock.calls.at(-1)?.[0]).toMatchObject({
+        q: "alpha",
+        page: 1,
+      });
+    });
+  });
+
+  it("L-15: the list polls on the refetch interval", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    mockedSearch.mockResolvedValue(pageResponse([entryFixture("e1")]));
+    renderPage();
+    await waitFor(() => {
+      expect(mockedSearch).toHaveBeenCalledTimes(1);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_600);
+    });
+    await waitFor(() => {
+      expect(mockedSearch.mock.calls.length).toBeGreaterThanOrEqual(2);
     });
   });
 

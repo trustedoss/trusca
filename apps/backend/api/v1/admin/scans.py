@@ -28,6 +28,7 @@ from schemas.admin_ops import (
     AdminScanListPage,
     ScanStatus,
 )
+from schemas.scan import ScanKind
 from services.admin_scan_service import (
     AdminScanError,
     cancel_scan,
@@ -59,7 +60,7 @@ def _problem_for_admin_scan_error(request: Request, exc: AdminScanError) -> Resp
 @router.get(
     "",
     response_model=AdminScanListPage,
-    summary="List scans (admin) — cross-team queue with optional status filter",
+    summary="List scans (admin) — cross-team queue with optional status/kind/project filters",
 )
 async def list_scans_endpoint(
     request: Request,  # noqa: ARG001
@@ -68,6 +69,10 @@ async def list_scans_endpoint(
     # FastAPI parses the literal type into an enum-like Query param so a
     # value outside the closed set returns 422 + RFC 7807 automatically.
     status_filter: ScanStatus | None = Query(default=None, alias="status"),
+    kind: ScanKind | None = Query(default=None),
+    # Case-insensitive partial match on project name. LIKE metacharacters
+    # are escaped in the service layer (core.sql_safety.escape_like).
+    project: str | None = Query(default=None, max_length=255),
     session: AsyncSession = Depends(get_db),
     actor: CurrentUser = Depends(require_super_admin_or_404()),
 ) -> Response:
@@ -77,6 +82,8 @@ async def list_scans_endpoint(
         page=page,
         page_size=page_size,
         status=status_filter,
+        kind=kind,
+        project=project,
     )
     return Response(
         content=page_obj.model_dump_json(),

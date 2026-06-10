@@ -7,6 +7,9 @@ SELECT FOR UPDATE actually run.
 Coverage:
   - list_scans: cross-team join, status filter, default ordering,
     pagination envelope.
+  - list_scans filters (M-35): kind equality, project name partial match
+    (case-insensitive, LIKE metacharacters escaped), combined filters,
+    count/total parity with the row filters.
   - cancel_scan: queued → cancelled, running → cancelled, terminal-state
     409, 404 on missing scan.
   - revoke is best-effort: a broker exception does NOT prevent the status
@@ -34,6 +37,7 @@ from tests._helpers import (
     make_team,
     make_user,
     principal_for,
+    unique_suffix,
 )
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -151,6 +155,176 @@ async def test_list_scans_status_filter(db_session: AsyncSession) -> None:
     assert any(item.id == queued.id for item in page.items)
     assert all(item.status == "queued" for item in page.items)
     assert succeeded.id not in {item.id for item in page.items}
+
+
+async def test_list_scans_kind_filter(db_session: AsyncSession) -> None:
+    """M-35: `kind` filter narrows to source vs container scans, total agrees."""
+    from services.admin_scan_service import list_scans
+
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    # A unique project name lets us scope the cross-team global listing to
+    # just the rows this test created.
+    name = f"kindfilter-{unique_suffix()}"
+    project = await make_project(db_session, team=team, name=name)
+
+    # ix_scans_project_active allows at most one queued/running scan per
+    # project — keep the second scan terminal.
+    source = await make_scan(db_session, project=project, kind="source", status="succeeded")
+    container = await make_scan(db_session, project=project, kind="container")
+
+    page = await list_scans(
+        db_session, actor=actor, kind="container", project=name, page_size=200
+    )
+    ids = {item.id for item in page.items}
+    assert container.id in ids
+    assert source.id not in ids
+    assert all(item.kind == "container" for item in page.items)
+    # Total reflects the same filters as the rows (count parity).
+    assert page.total == len(page.items) == 1
+
+
+async def test_list_scans_project_partial_match_case_insensitive(
+    db_session: AsyncSession,
+) -> None:
+    """M-35: `project` is a case-insensitive substring match on project name."""
+    from services.admin_scan_service import list_scans
+
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+
+    suffix = unique_suffix()
+    hit_project = await make_project(db_session, team=team, name=f"Payments-{suffix}")
+    miss_project = await make_project(db_session, team=team, name=f"Billing-{suffix}")
+    hit = await make_scan(db_session, project=hit_project)
+    miss = await make_scan(db_session, project=miss_project)
+
+    # Substring, different case than the stored name.
+    page = await list_scans(
+        db_session, actor=actor, project=f"payments-{suffix}".upper(), page_size=200
+    )
+    ids = {item.id for item in page.items}
+    assert hit.id in ids
+    assert miss.id not in ids
+    assert page.total == len(page.items) == 1
+
+
+@pytest.mark.parametrize(
+    ("needle_template", "decoy_name_template"),
+    [
+        # `%` must match literally, not as a multi-char wildcard: searching
+        # "100%-<sfx>" must NOT match "100x-<sfx>".
+        ("100%-{sfx}", "100x-{sfx}"),
+        # `_` must match literally, not as a single-char wildcard: searching
+        # "a_b-<sfx>" must NOT match "axb-<sfx>".
+        ("a_b-{sfx}", "axb-{sfx}"),
+        # A lone backslash must not break the pattern or act as an escape
+        # prefix for the following character.
+        ("c\\d-{sfx}", "cd-{sfx}"),
+    ],
+)
+async def test_list_scans_project_filter_escapes_like_metacharacters(
+    db_session: AsyncSession, needle_template: str, decoy_name_template: str
+) -> None:
+    """M-35 adversarial: LIKE metacharacters in `project` are literal."""
+    from services.admin_scan_service import list_scans
+
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+
+    sfx = unique_suffix()
+    needle = needle_template.format(sfx=sfx)
+    decoy_name = decoy_name_template.format(sfx=sfx)
+
+    literal_project = await make_project(db_session, team=team, name=needle)
+    decoy_project = await make_project(db_session, team=team, name=decoy_name)
+    literal_scan = await make_scan(db_session, project=literal_project)
+    decoy_scan = await make_scan(db_session, project=decoy_project)
+
+    page = await list_scans(db_session, actor=actor, project=needle, page_size=200)
+    ids = {item.id for item in page.items}
+    assert literal_scan.id in ids
+    assert decoy_scan.id not in ids
+    assert page.total == len(page.items) == 1
+
+
+async def test_list_scans_combined_status_kind_project_filters(
+    db_session: AsyncSession,
+) -> None:
+    """M-35: status + kind + project compose with AND semantics; total agrees."""
+    from services.admin_scan_service import list_scans
+
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    # ix_scans_project_active allows at most one queued/running scan per
+    # project — split the two queued scans across two projects whose names
+    # share the searchable fragment.
+    fragment = f"combo-{unique_suffix()}"
+    project_a = await make_project(db_session, team=team, name=f"{fragment}-a")
+    project_b = await make_project(db_session, team=team, name=f"{fragment}-b")
+
+    match = await make_scan(db_session, project=project_a, kind="source", status="queued")
+    wrong_status = await make_scan(
+        db_session, project=project_a, kind="source", status="succeeded"
+    )
+    wrong_kind = await make_scan(
+        db_session, project=project_b, kind="container", status="queued"
+    )
+
+    page = await list_scans(
+        db_session,
+        actor=actor,
+        status="queued",
+        kind="source",
+        project=fragment,
+        page_size=200,
+    )
+    ids = {item.id for item in page.items}
+    assert ids == {match.id}
+    assert wrong_status.id not in ids
+    assert wrong_kind.id not in ids
+    assert page.total == 1
+
+
+async def test_list_scans_total_matches_filtered_rows_across_pages(
+    db_session: AsyncSession,
+) -> None:
+    """M-35: count query carries the same filters — total is the filtered total."""
+    from services.admin_scan_service import list_scans
+
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    name = f"pagetotal-{unique_suffix()}"
+    project = await make_project(db_session, team=team, name=name)
+
+    # All terminal so ix_scans_project_active (one queued/running per
+    # project) is not violated by stacking scans on one project.
+    for _ in range(3):
+        await make_scan(db_session, project=project, kind="source", status="succeeded")
+    # Noise that the filters must exclude from the total.
+    await make_scan(db_session, project=project, kind="container", status="succeeded")
+
+    page = await list_scans(
+        db_session, actor=actor, kind="source", project=name, page_size=2
+    )
+    assert page.total == 3
+    assert len(page.items) == 2  # page 1 of 2
+
+    page2 = await list_scans(
+        db_session, actor=actor, kind="source", project=name, page=2, page_size=2
+    )
+    assert page2.total == 3
+    assert len(page2.items) == 1
 
 
 # ---------------------------------------------------------------------------

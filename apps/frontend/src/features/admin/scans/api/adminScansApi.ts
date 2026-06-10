@@ -6,11 +6,14 @@
  *   - POST /v1/admin/scans/{scan_id}/cancel → AdminScanListItem
  *
  * The scan listing is keyed by status filter so cross-team operators can
- * narrow to running / queued / failed slices. The cancel endpoint surfaces
+ * narrow to running / queued / failed slices. M-35 adds two more server
+ * filters: `kind` (scan kind equality) and `project` (case-insensitive
+ * partial match on the project name). The cancel endpoint surfaces
  * `scan_already_cancelled` and `scan_not_found` Problem extensions; both
  * are whitelisted in `lib/problem.ts` so the toast key path is graceful.
  */
 import { api } from "@/lib/api";
+import type { ScanKind } from "@/lib/projectsApi";
 
 export type AdminScanStatus =
   | "queued"
@@ -47,6 +50,8 @@ export interface AdminScanListParams {
   page?: number;
   page_size?: number;
   status?: AdminScanStatus | null;
+  kind?: ScanKind | null;
+  project?: string | null;
 }
 
 export async function listAdminScans(
@@ -57,6 +62,8 @@ export async function listAdminScans(
       page: params.page,
       page_size: params.page_size,
       status: params.status ?? undefined,
+      kind: params.kind ?? undefined,
+      project: params.project ?? undefined,
     },
   });
   return data;
