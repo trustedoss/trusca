@@ -13,9 +13,11 @@
  *
  * Visual contract (matches `docs/ux/design-philosophy-evolution-plan-2026-05-27.md` §4):
  *   - Outer column, items + content centered, generous vertical padding.
- *   - Icon nested in a 64px muted circle so the icon reads as a "subject"
- *     rather than a free-floating glyph. Icon itself is 32px, rendered
- *     in `text-muted-foreground` so colour stays calm.
+ *   - Icon nested in a layered medallion (W12-D): two soft concentric muted
+ *     rings behind a raised white inner disc, so the icon reads as a designed
+ *     "subject" rather than a flat glyph. Icon is `text-muted-foreground` so
+ *     colour stays calm. A caller may pass `illustration` to swap the
+ *     medallion for a richer inline SVG.
  *   - Title is one notch heavier than body copy (`font-semibold`).
  *   - Description capped at `max-w-md` so long sentences don't span the
  *     whole table viewport.
@@ -31,8 +33,15 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 export interface EmptyStateProps {
-  /** Lucide icon (or any small inline node) rendered inside the muted circle. */
+  /** Lucide icon (or any small inline node) rendered inside the medallion. */
   icon: ReactNode;
+  /**
+   * Optional richer inline illustration rendered in place of the icon
+   * medallion (e.g. a domain SVG). Inline only — no new asset/library, so the
+   * SCA self-scan surface stays unchanged. When omitted, the layered icon
+   * medallion is used.
+   */
+  illustration?: ReactNode;
   /** Primary, already-translated headline. */
   title: string;
   /** Optional supporting copy (already translated). */
@@ -47,6 +56,7 @@ export interface EmptyStateProps {
 
 export function EmptyState({
   icon,
+  illustration,
   title,
   description,
   action,
@@ -62,12 +72,24 @@ export function EmptyState({
         className,
       )}
     >
-      <div
-        aria-hidden="true"
-        className="flex h-16 w-16 items-center justify-center rounded-full bg-muted text-muted-foreground [&_svg]:h-8 [&_svg]:w-8"
-      >
-        {icon}
-      </div>
+      {illustration ? (
+        <div aria-hidden="true">{illustration}</div>
+      ) : (
+        /* Layered medallion (W12-D) — two soft concentric muted rings behind a
+           raised white inner disc holding the icon. Reads as a designed
+           "subject" rather than a flat glyph, using tokens only (muted /
+           border / shadow-sm). */
+        <div
+          aria-hidden="true"
+          className="relative flex h-20 w-20 items-center justify-center"
+        >
+          <div className="absolute inset-0 rounded-full bg-muted/40" />
+          <div className="absolute inset-[10px] rounded-full bg-muted/70 ring-1 ring-border/60" />
+          <div className="relative flex h-12 w-12 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm ring-1 ring-border [&_svg]:h-6 [&_svg]:w-6">
+            {icon}
+          </div>
+        </div>
+      )}
       <p className="text-base font-semibold text-foreground">{title}</p>
       {description ? (
         <p className="max-w-md text-sm text-muted-foreground">{description}</p>

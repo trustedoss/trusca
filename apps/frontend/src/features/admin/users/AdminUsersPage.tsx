@@ -17,7 +17,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { TableRowsSkeleton } from "@/components/ui/skeletons";
 import { useAdminUsers } from "@/features/admin/api/useAdminUsers";
 import type { UserRole } from "@/features/admin/api/adminUsersApi";
 import { useToast } from "@/components/ui/toast";
@@ -248,13 +248,12 @@ export function AdminUsersPage() {
           </thead>
           <tbody data-testid="admin-users-tbody">
             {usersQuery.isLoading
-              ? Array.from({ length: 6 }).map((_, i) => (
-                  <tr key={`skeleton-${i}`} className="border-b">
-                    <td className="px-6 py-2" colSpan={6}>
-                      <Skeleton className="h-5 w-full" />
-                    </td>
-                  </tr>
-                ))
+              ? (
+                  <TableRowsSkeleton
+                    rows={6}
+                    columns={["w-48", "w-32", "w-20", "w-12", "w-24", "w-8"]}
+                  />
+                )
               : items.map((u) => (
                   <tr
                     key={u.id}

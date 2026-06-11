@@ -248,8 +248,15 @@ Do not hand-roll a `<header><h1>` block — extend `PageHeader` if a new layout 
 `apps/frontend/src/components/EmptyState.tsx`
 
 - Centre-aligned, max-width 420 px.
-- Optional small SVG illustration on top (W11-G), title (semibold), description (muted), single primary CTA.
+- Layered icon medallion (W12-D) — two soft concentric muted rings behind a raised white inner disc holding the icon — then title (semibold), description (muted), single primary CTA. Pass `illustration` to swap the medallion for a richer inline SVG (inline only, no new asset).
 - Used for: empty list, empty search result, empty drawer tab, first-time onboarding card.
+
+### Skeleton
+
+`apps/frontend/src/components/ui/skeleton.tsx` · `skeletons.tsx`
+
+- `Skeleton` is the base bar (`animate-pulse`, `rounded-sm`). Prefer composite skeletons that mirror the final layout over a single full-width bar so content settles in without reflow.
+- `TableRowsSkeleton` renders per-column cells (one width per column) for loading tables. The table keeps `aria-busy`; skeleton rows are `aria-hidden`.
 
 ### Badge
 
@@ -364,6 +371,7 @@ All interactive elements are reachable by `Tab` and operable by `Enter` / `Space
 | W12-A | 2026-06-11 | **Craft elevation — typography & page-header system.** Added typography primitives (`PageTitle` / `SectionTitle` / `Subtitle` / `Body` / `Caption` / `Eyebrow`) and a shared `PageHeader` (stacked / bar). Unifies the page-title scale (was `text-lg` vs `text-base`) and header chrome (`bg-card` vs `bg-background`) that had drifted across screens. |
 | W12-B | 2026-06-11 | **Craft elevation — global toast.** Added a `ToastProvider` + `useToast()` (queue, auto-dismiss, `aria-live`), migrating 11 hand-rolled per-page toasts onto it while preserving the `admin-toast` / `data-toast-key` e2e contract. Scan-detail download notice + Settings inline confirmation kept as documented exceptions. |
 | W12-C | 2026-06-11 | **Craft elevation — motion (CSS-only).** Route-change entrance fade (`<main>` keyed on pathname, 250 ms), sidebar collapse aligned to 250 ms, and a global `prefers-reduced-motion` guard. No new dependency (tailwindcss-animate only). Skeleton doc corrected to the real 2000 ms `animate-pulse`. |
+| W12-D | 2026-06-12 | **Craft elevation — empty / loading polish.** EmptyState gains a layered icon medallion + optional `illustration` slot; new `TableRowsSkeleton` renders per-column loading cells (replacing single full-width bars) on the Scans and Admin Users tables. |
 
 The previous "BD-style 2015" aesthetic (`#0f172a` navy, pure white canvas, uniform 8 px radius, no shadow, default browser easing) is fully retired by W11.
 
