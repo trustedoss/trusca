@@ -1270,6 +1270,32 @@ async def _seed_verify_baseline(session: Any) -> dict[str, Any]:
                 ),
             )
         )
+        # A second finding in the 'analyzing' state — vulnerabilities.json
+        # resolves F_ANA via ?status=analyzing on this project, so the project
+        # needs at least one in-triage finding (the first is not_affected).
+        ana_vuln2 = (
+            await session.execute(
+                select(Vulnerability).where(Vulnerability.external_id == "CVE-2024-99103")
+            )
+        ).scalars().first()
+        if ana_vuln2 is None:
+            ana_vuln2 = Vulnerability(
+                external_id="CVE-2024-99103",
+                source="NVD",
+                severity="high",
+                summary="Seeded in-triage fixture CVE.",
+            )
+            session.add(ana_vuln2)
+            await session.flush()
+        session.add(
+            VulnerabilityFinding(
+                scan_id=ana_scan.id,
+                component_version_id=cv.id,
+                vulnerability_id=ana_vuln2.id,
+                status="analyzing",
+                analysis_state="analyzing",
+            )
+        )
     summary["analysis_project"] = True
 
     # ── suppressed-finding project (vulnerabilities.json SUP_P) ──────────
