@@ -138,7 +138,7 @@ Vercel 톤의 subtle elevation. 가벼운 그림자만 — glow 없음.
 |---|---|---|
 | `--duration-fast` | 150 ms | Hover · focus 링 fade-in · 배지 tint shift · 버튼 색 transition. |
 | `--duration-base` | 200 ms | 드로어 slide · popover open · 드롭다운 reveal. |
-| `--duration-slow` | 250 ms | 페이지 크롬 transition · 라우트 전환 shimmer. |
+| `--duration-slow` | 250 ms | 페이지 크롬 transition · 라우트 전환 진입. |
 | `--ease-out` | `cubic-bezier(0.16, 1, 0.3, 1)` | 어디서나 같은 easing 커브. 진입은 snappy, 종료는 gentle. |
 
 **로딩 상태는 spinner 가 아닌 스켈레톤.** 장시간 작업 (스캔 · export) 은 라벨이 붙은 progress bar — bare spinner 금지.
@@ -280,10 +280,13 @@ W11-F polish phase 가 모든 인터랙티브 transition 의 타이밍 · easing
 | 드로어 slide | 200 ms | `--ease-out` | `transform: translateX` |
 | 다이얼로그 open | 200 ms | `--ease-out` | `opacity` (backdrop), `transform: scale` (panel) |
 | 탭 인디케이터 이동 | 200 ms | `--ease-out` | `transform: translateX` |
-| 페이지 크롬 (사이드바 접기 · 라우트 전환) | 250 ms (`--duration-slow`) | `--ease-out` | `width`, `opacity` |
-| 스켈레톤 shimmer | 1500 ms loop | `ease-in-out` | `opacity` |
+| 페이지 크롬 — 사이드바 접기 | 250 ms (`--duration-slow`) | `--ease-out` | `width` |
+| 라우트 전환 진입 | 250 ms (`--duration-slow`) | `--ease-out` | `opacity` (`<main>` 을 pathname 으로 key) |
+| 스켈레톤 pulse | 2000 ms loop (`animate-pulse`) | `ease-in-out` | `opacity` |
 
 **브라우저 기본 easing 사용 금지.** 항상 `--ease-out` 참조 — 모션이 제품 전반에 걸쳐 단일 언어로 읽혀야 합니다.
+
+**Reduced motion.** `index.css` 의 전역 `@media (prefers-reduced-motion: reduce)` 가드가 위의 모든 애니메이션 · transition 을 ~0 으로 줄이고(부드러운 스크롤도 끔), reduced motion 을 요청한 사용자는 즉시 상태 변화를 받습니다 — [접근성](#접근성) 참고.
 
 ## 접근성
 
@@ -360,6 +363,7 @@ Severity 가 표시되는 모든 곳에서 색은 다음 중 하나와 짝지움
 | W11-H | 2026-05-27 | **A11y sweep + 디자인 시스템 문서.** Severity 배지 텍스트 색을 light tint 위 WCAG AA 통과로 짙게 (토큰 변경 없음). 본 페이지 추가. |
 | W12-A | 2026-06-11 | **Craft 격상 — 타이포그래피 · 페이지 헤더 체계.** 타이포그래피 프리미티브(`PageTitle` · `SectionTitle` · `Subtitle` · `Body` · `Caption` · `Eyebrow`)와 공용 `PageHeader`(stacked · bar) 추가. 화면마다 어긋났던 페이지 제목 스케일(`text-lg` 대 `text-base`)과 헤더 chrome(`bg-card` 대 `bg-background`)을 통일. |
 | W12-B | 2026-06-11 | **Craft 격상 — 전역 토스트.** `ToastProvider` + `useToast()`(큐 · 자동 사라짐 · `aria-live`) 추가, 손으로 짠 페이지별 토스트 11곳을 이전하면서 `admin-toast` / `data-toast-key` e2e 계약 보존. 스캔 상세 다운로드 알림 + Settings 인라인 확인은 문서화된 예외로 유지. |
+| W12-C | 2026-06-11 | **Craft 격상 — 모션 (CSS-only).** 라우트 전환 진입 페이드(`<main>` 을 pathname 으로 key, 250 ms), 사이드바 접기 250 ms 정렬, 전역 `prefers-reduced-motion` 가드. 새 의존성 없음(tailwindcss-animate 만). 스켈레톤 문서를 실제 2000 ms `animate-pulse` 로 정정. |
 
 이전 "BD-style 2015" 미감 (`#0f172a` navy · 순백 canvas · 일관 8 px radius · shadow 없음 · 브라우저 기본 easing) 은 W11 로 완전 은퇴.
 

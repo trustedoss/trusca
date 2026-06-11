@@ -138,7 +138,7 @@ Short, ease-out — Linear polish. Three steps cover the majority of UI animatio
 |---|---|---|
 | `--duration-fast` | 150 ms | Hover state, focus ring fade-in, badge tint shift, button colour transition. |
 | `--duration-base` | 200 ms | Drawer slide, popover open, dropdown reveal. |
-| `--duration-slow` | 250 ms | Page-level chrome transitions, route change shimmer. |
+| `--duration-slow` | 250 ms | Page-level chrome transitions, route change entrance. |
 | `--ease-out` | `cubic-bezier(0.16, 1, 0.3, 1)` | Single easing curve used everywhere. Snappy in, gentle out. |
 
 **Loading states are skeletons**, not spinners. Long async work (scans, exports) shows a labelled progress bar — never a bare spinner.
@@ -280,10 +280,13 @@ The W11-F polish phase standardised the timing and easing of every interactive t
 | Drawer slide | 200 ms | `--ease-out` | `transform: translateX` |
 | Dialog open | 200 ms | `--ease-out` | `opacity` (backdrop), `transform: scale` (panel) |
 | Tab indicator shift | 200 ms | `--ease-out` | `transform: translateX` |
-| Page chrome (sidebar collapse, route change) | 250 ms (`--duration-slow`) | `--ease-out` | `width`, `opacity` |
-| Skeleton shimmer | 1500 ms loop | `ease-in-out` | `opacity` |
+| Page chrome — sidebar collapse | 250 ms (`--duration-slow`) | `--ease-out` | `width` |
+| Route change entrance | 250 ms (`--duration-slow`) | `--ease-out` | `opacity` (`<main>` keyed on pathname) |
+| Skeleton pulse | 2000 ms loop (`animate-pulse`) | `ease-in-out` | `opacity` |
 
 **Never use the default browser easing.** Always reference `--ease-out` so motion reads as a single continuous language across the product.
+
+**Reduced motion.** A global `@media (prefers-reduced-motion: reduce)` guard in `index.css` collapses every animation and transition above to ~0 (and disables smooth scrolling), so users who request reduced motion get instant state changes — see [Accessibility](#accessibility).
 
 ## Accessibility
 
@@ -360,6 +363,7 @@ All interactive elements are reachable by `Tab` and operable by `Enter` / `Space
 | W11-H | 2026-05-27 | **A11y sweep + design system docs.** Severity badge text colours darkened to clear WCAG AA on light tints (no token change). This page added. |
 | W12-A | 2026-06-11 | **Craft elevation — typography & page-header system.** Added typography primitives (`PageTitle` / `SectionTitle` / `Subtitle` / `Body` / `Caption` / `Eyebrow`) and a shared `PageHeader` (stacked / bar). Unifies the page-title scale (was `text-lg` vs `text-base`) and header chrome (`bg-card` vs `bg-background`) that had drifted across screens. |
 | W12-B | 2026-06-11 | **Craft elevation — global toast.** Added a `ToastProvider` + `useToast()` (queue, auto-dismiss, `aria-live`), migrating 11 hand-rolled per-page toasts onto it while preserving the `admin-toast` / `data-toast-key` e2e contract. Scan-detail download notice + Settings inline confirmation kept as documented exceptions. |
+| W12-C | 2026-06-11 | **Craft elevation — motion (CSS-only).** Route-change entrance fade (`<main>` keyed on pathname, 250 ms), sidebar collapse aligned to 250 ms, and a global `prefers-reduced-motion` guard. No new dependency (tailwindcss-animate only). Skeleton doc corrected to the real 2000 ms `animate-pulse`. |
 
 The previous "BD-style 2015" aesthetic (`#0f172a` navy, pure white canvas, uniform 8 px radius, no shadow, default browser easing) is fully retired by W11.
 
