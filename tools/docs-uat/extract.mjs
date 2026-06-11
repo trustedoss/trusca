@@ -142,13 +142,34 @@ export function parseMarkdown(absPath, relPath, lang) {
     // Prose binding — a pending annotation latches onto the next non-blank
     // text line (a Verify step or a claim like "services are healthy").
     if (pending && line.trim() !== "") {
-      steps.push({
+      const step = {
         ...pending,
         doc: relPath,
         lang,
         text: line.trim(),
         target: "prose",
-      });
+      };
+      // A prose-bound step may carry its executable command as an *indented*
+      // fence placed directly under the bound line (the api-keys.md "Use raw
+      // SQL to verify" style — the fence stays part of the list item). Indented
+      // fences never match FENCE_OPEN_RE (column-0 anchored), so they are
+      // outside the coverage universe; adopting one adds no lint obligations,
+      // it only lets a Verify list item annotated kind=sql/shell carry its
+      // code. Only blank lines may sit between the bound line and the fence.
+      let j = i + 1;
+      while (j < lines.length && lines[j].trim() === "") j++;
+      const indented = j < lines.length && lines[j].match(/^(\s+)```(\w+)?/);
+      if (indented) {
+        let k = j + 1;
+        while (k < lines.length && !/^\s*```\s*$/.test(lines[k])) k++;
+        const indent = indented[1];
+        step.fenceLang = indented[2] || "";
+        step.code = lines
+          .slice(j + 1, k)
+          .map((l) => (l.startsWith(indent) ? l.slice(indent.length) : l))
+          .join("\n");
+      }
+      steps.push(step);
       pending = null;
       continue;
     }

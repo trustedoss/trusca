@@ -187,12 +187,34 @@ SELECT tgname FROM pg_trigger
 
 권한 작업 후:
 
-<!-- docs-uat: id=audit-verify-new-row kind=manual tier=manual -->
+<!-- docs-uat: id=audit-verify-new-row kind=sql ctx=postgres expect=rows:>0 tier=nightly -->
 1. **/admin/audit**이 ~1초 이내 최상단에 새 행을 표시.
-<!-- docs-uat: id=audit-verify-request-id kind=manual tier=manual -->
+
+   ```sql
+   SELECT count(*) FROM audit_logs
+    WHERE created_at > now() - interval '1 hour';
+   ```
+
+<!-- docs-uat: id=audit-verify-request-id kind=sql ctx=postgres expect=rows:>0 tier=nightly -->
 2. `request_id`가 원래 요청의 `X-Request-ID` 응답 헤더와 일치.
-<!-- docs-uat: id=audit-verify-diff-masked kind=manual tier=manual -->
+
+   ```sql
+   SELECT count(*) FROM audit_logs
+    WHERE request_id IS NOT NULL
+      AND created_at > now() - interval '1 hour';
+   ```
+
+<!-- docs-uat: id=audit-verify-diff-masked kind=sql ctx=postgres expect=rows:0 tier=nightly -->
 3. `diff`가 예상과 일치. PII 필드(이메일·비밀번호 해시·API Key)가 마스킹되어 표시.
+
+   ```sql
+   -- 새로 적재되는 감사 행의 자격증명 컬럼은 항상 '***'로 마스킹되어야 합니다
+   SELECT count(*) FROM audit_logs
+    WHERE target_table = 'refresh_tokens'
+      AND action = 'create'
+      AND created_at > now() - interval '1 hour'
+      AND (diff ->> 'token_hash' <> '***' OR diff ->> 'jti' <> '***');
+   ```
 
 ## 트러블슈팅
 

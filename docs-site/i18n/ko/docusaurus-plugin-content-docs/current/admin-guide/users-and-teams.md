@@ -204,14 +204,27 @@ UI 에서 *마지막* 관리자를 재활성화하면 부트스트랩 역설이 
 
 사용자 온보딩 후:
 
-<!-- docs-uat: id=users-verify-signin kind=manual tier=manual -->
+<!-- docs-uat: id=users-verify-signin kind=api auth=user url=/auth/me expect=status:200 fixture=seed_demo tier=nightly -->
 1. 사용자가 가입 시 설정한 비밀번호로 `/login`에서 로그인 가능.
-<!-- docs-uat: id=users-verify-active kind=manual tier=manual -->
+<!-- docs-uat: id=users-verify-active kind=sql ctx=postgres expect=rows:1 fixture=seed_demo tier=nightly -->
 2. **/admin/users**가 사용자를 `is_active = true`로 표시.
+
+   ```sql
+   SELECT count(*) FROM users
+    WHERE email = 'dev@demo.trustedoss.dev' AND is_active;
+   ```
+
 <!-- docs-uat: id=users-verify-membership-audit kind=manual tier=manual -->
 3. 감사 로그에 팀-추가가 `memberships` insert로 기록.
-<!-- docs-uat: id=users-verify-member-role kind=manual tier=manual -->
+<!-- docs-uat: id=users-verify-member-role kind=sql ctx=postgres expect=rows:>0 fixture=seed_demo tier=nightly -->
 4. 사용자가 배정 역할로 팀 멤버 목록에 등장.
+
+   ```sql
+   SELECT count(*) FROM memberships m
+     JOIN users u ON u.id = m.user_id
+    WHERE u.email = 'dev@demo.trustedoss.dev'
+      AND m.role = 'developer';
+   ```
 
 ## 트러블슈팅
 
