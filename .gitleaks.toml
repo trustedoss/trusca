@@ -25,6 +25,12 @@ paths = [
   # signature, secret-masking, and keyed-hash code paths (e.g. the literal
   # "SECRET-PRIVATE-BYTES" private key and "npm_secret_xyz123" token).
   '''apps/backend/tests/.*''',
+  # Vendored verification-team spec snapshot (byte-faithful, never edited
+  # here — tests/verify-specs/PROVENANCE.md). github-app.json carries
+  # synthetic RSA PEMs the specs POST to exercise credential validation;
+  # they are published fixtures from the bug-hunter repo, not secrets. The
+  # runner's local token cache (.tokens.json) is gitignored, NOT allowlisted.
+  '''tests/verify-specs/specs/.*''',
   # Live-demo docs document a publishable demo-credential placeholder.
   '''docs-site/.*live-demo\.md$''',
   '''docs-site/i18n/.*live-demo\.md$''',
