@@ -1049,10 +1049,11 @@ async def _seed_verify_baseline(session: Any) -> dict[str, Any]:
                     progress_percent=100,
                     started_at=now - timedelta(days=1, hours=1),
                     completed_at=now - timedelta(days=1),
-                    # Retention invariant (TC-RETEN-01-004): only ref-keyed
-                    # scans participate in supersession chains — an ad-hoc
-                    # (ref-less) scan must never carry superseded_at.
-                    ref="refs/heads/main",
+                    # Retention invariants: only ref-keyed scans participate
+                    # in supersession chains (TC-RETEN-01-004), and refs are
+                    # stored NORMALIZED — 'refs/heads/main' is stamped as bare
+                    # 'main' by normalize_ref (TC-RETEN-06-001, PR #313).
+                    ref="main",
                     superseded_at=now - timedelta(hours=20),
                     scan_metadata={"seeded_baseline": True, "branch": "main"},
                 )
