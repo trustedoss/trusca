@@ -151,6 +151,62 @@ def test_normalize_spdx_id(raw: str, expected: list[str]) -> None:
 
 Adversarial parametrize is not a substitute for fuzzing — it complements it. We rely on parametrize for regression-pinning the cases we already know about.
 
+## Hardening rules — what the 2026-06 validation campaign taught us
+
+An external verification team executed 1,360 guide-derived cases against the
+live portal and surfaced 70 unique defects that our unit / functional / e2e
+suites — all green — had missed. The post-mortem traced them to a handful of
+structural blind spots; each rule below closes one and names the defect class
+that proved it. These rules are binding for new PRs (they mirror CLAUDE.md §2).
+
+### 1. Security assertions are permission × state matrices
+
+We had an "other team → 404" test and a "terminal → 409" test — but never
+their cross product, and a real leak lived exactly at that intersection (a
+non-member probing another team's *finished* scan got a 409 that confirmed it
+existed). The permission denial (404 existence-hide / 403) must always fire
+before any state-derived 409. New 409 surfaces add a case to
+`apps/backend/tests/integration/test_existence_hide_state_matrix.py`.
+
+### 2. Duplicated vocabularies require a contract test
+
+When the same closed vocabulary lives in two places — a DB enum and a
+dispatcher catalog, an emitter and an advertised list, a backend enum and a
+frontend mirror constant — per-module tests stay green while the pair drifts
+(the notification-kind drift sat dormant until the approval trigger was
+wired). Import both sides and assert set equality:
+`apps/backend/tests/unit/test_catalog_contracts.py` is the pattern.
+
+### 3. Persistence-boundary tests use recorded real tool output
+
+Hand-built minimal fixtures are too clean. A real container image carries
+several CVEs per package as the *norm*, and the container-scan persist bug
+lived exactly in that density — our one-CVE-per-package fixtures could never
+reach it. Record real tool output (`tests/fixtures/trivy/`) and derive
+expected counts from the fixture so re-recording never breaks assertions.
+
+### 4. The docs are an oracle
+
+34 of the 70 findings were guide–implementation mismatches — invisible to
+code-derived tests by construction, because the code is self-consistently
+wrong. Every documented promise (a status code, a CLI command, a config key)
+gets a docs-uat assertion or a guard test as part of the feature's DoD.
+
+### 5. Lifecycle sequences are a test category
+
+Single-operation tests passed while revoke → re-register was a permanent 409
+(the unique constraint counted revoked rows). Create → revoke → re-create,
+archive → restore → use: test the sequence, not just each verb.
+
+### Two regression nets, on purpose
+
+`tests/verify-specs/` vendors the verification team's deterministic spec
+modules (see its `PROVENANCE.md`) and runs them nightly
+(`verify-specs-nightly.yml`) against a freshly seeded stack. That nightly is
+our internal regression net — it does **not** replace the verification team's
+independent Tier-3 re-verification, whose value is precisely that the oracle
+is not ours.
+
 ## Coverage gate — concrete
 
 The merge gate is enforced in `.github/workflows/ci.yml`:
