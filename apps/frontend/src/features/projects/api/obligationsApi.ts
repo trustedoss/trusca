@@ -40,6 +40,13 @@ export type NoticeFormat = "text" | "markdown" | "html";
  * Ranked allow-list of obligation kinds the backend advertises in the
  * distribution payload's canonical order. The DB column is open, so unknown
  * kinds round-trip transparently — they just sort after these.
+ *
+ * Mirror of `apps/backend/schemas/obligation_detail.py::KNOWN_OBLIGATION_KINDS`
+ * (same order). PR-6 FE regression guards: pinned by
+ * `tests/unit/contracts/catalogMirrors.test.ts` — H-9 added `patent` to the
+ * backend vocabulary while this list silently stayed at seven, so the kind
+ * filter and ranked chip ordering treated a real, emitted obligation as
+ * "unknown".
  */
 export const KNOWN_OBLIGATION_KINDS = [
   "attribution",
@@ -49,6 +56,7 @@ export const KNOWN_OBLIGATION_KINDS = [
   "modifications",
   "dynamic-linking",
   "no-endorsement",
+  "patent",
 ] as const;
 export type KnownObligationKind = (typeof KNOWN_OBLIGATION_KINDS)[number];
 

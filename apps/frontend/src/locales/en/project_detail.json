@@ -668,7 +668,8 @@
       "copyleft": "Copyleft",
       "modifications": "Modification notice",
       "dynamic-linking": "Dynamic linking",
-      "no-endorsement": "No endorsement"
+      "no-endorsement": "No endorsement",
+      "patent": "Patent grant"
     },
     "column": {
       "spdx_id": "SPDX",
