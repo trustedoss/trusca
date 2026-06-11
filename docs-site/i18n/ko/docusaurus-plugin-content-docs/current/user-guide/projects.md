@@ -229,10 +229,27 @@ Generate card 는 Reports 탭 안에 생성 다이얼로그를 띄우지 않고 
 
 <!-- docs-uat: id=projects-appears-idle kind=ui harness=projectCreateAppearsIdle(docs-uat-new-project) tier=nightly -->
 1. **Projects**에 프로젝트가 **Idle**(스캔 없음) 상태로 표시됩니다.
-<!-- docs-uat: id=projects-overview-zero kind=manual tier=manual -->
+<!-- docs-uat: id=projects-overview-zero kind=sql ctx=postgres expect=rows:>=1 tier=nightly -->
 2. Overview 탭은 컴포넌트·취약점 모두 0을 보여줍니다.
-<!-- docs-uat: id=projects-audit-create kind=manual tier=manual -->
+
+   ```sql
+   -- 컴포넌트·취약점은 스캔 단위로 귀속되므로,
+   -- 스캔이 없는 프로젝트는 둘 다 0이어야 합니다
+   SELECT count(*) FROM projects p
+    WHERE p.name = 'docs-uat-new-project'
+      AND NOT EXISTS (SELECT 1 FROM scans s WHERE s.project_id = p.id);
+   ```
+
+<!-- docs-uat: id=projects-audit-create kind=sql ctx=postgres expect=rows:>0 tier=nightly -->
 3. 감사 로그(`/admin/audit`, super-admin 전용)에 본인의 `user_id`로 `target_table=projects&action=create`가 기록됩니다.
+
+   ```sql
+   SELECT count(*) FROM audit_logs
+    WHERE target_table = 'projects'
+      AND action = 'create'
+      AND actor_user_id IS NOT NULL
+      AND created_at > now() - interval '1 hour';
+   ```
 
 ## 트러블슈팅
 

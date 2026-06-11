@@ -21,7 +21,8 @@
     "cve_detected": "New CVE detected",
     "license_violation": "License violation",
     "approval_pending": "Approval pending",
-    "policy_gate_failed": "Policy gate failed"
+    "policy_gate_failed": "Policy gate failed",
+    "approval_state_changed": "Approval state changed"
   },
   "prefs": {
     "section_title": "Delivery preferences",

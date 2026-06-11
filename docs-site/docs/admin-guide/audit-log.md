@@ -191,12 +191,34 @@ Capture the operator action separately (the trigger DDL itself does not emit an 
 
 After any privileged action:
 
-<!-- docs-uat: id=audit-verify-new-row kind=manual tier=manual -->
+<!-- docs-uat: id=audit-verify-new-row kind=sql ctx=postgres expect=rows:>0 tier=nightly -->
 1. **/admin/audit** shows a new row at the top within ~1 second.
-<!-- docs-uat: id=audit-verify-request-id kind=manual tier=manual -->
+
+   ```sql
+   SELECT count(*) FROM audit_logs
+    WHERE created_at > now() - interval '1 hour';
+   ```
+
+<!-- docs-uat: id=audit-verify-request-id kind=sql ctx=postgres expect=rows:>0 tier=nightly -->
 2. The `request_id` matches the `X-Request-ID` response header from the originating request.
-<!-- docs-uat: id=audit-verify-diff-masked kind=manual tier=manual -->
+
+   ```sql
+   SELECT count(*) FROM audit_logs
+    WHERE request_id IS NOT NULL
+      AND created_at > now() - interval '1 hour';
+   ```
+
+<!-- docs-uat: id=audit-verify-diff-masked kind=sql ctx=postgres expect=rows:0 tier=nightly -->
 3. The `diff` matches your expectation. PII fields (email, password hash, API keys) appear masked.
+
+   ```sql
+   -- credential columns must be masked to '***' on every fresh audit row
+   SELECT count(*) FROM audit_logs
+    WHERE target_table = 'refresh_tokens'
+      AND action = 'create'
+      AND created_at > now() - interval '1 hour'
+      AND (diff ->> 'token_hash' <> '***' OR diff ->> 'jti' <> '***');
+   ```
 
 ## Troubleshooting
 
