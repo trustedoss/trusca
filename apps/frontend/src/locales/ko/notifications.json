@@ -21,7 +21,8 @@
     "cve_detected": "새 CVE 탐지",
     "license_violation": "라이선스 위반",
     "approval_pending": "승인 대기",
-    "policy_gate_failed": "정책 게이트 실패"
+    "policy_gate_failed": "정책 게이트 실패",
+    "approval_state_changed": "승인 상태 변경"
   },
   "prefs": {
     "section_title": "알림 채널",

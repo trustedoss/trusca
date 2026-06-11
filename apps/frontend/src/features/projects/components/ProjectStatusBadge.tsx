@@ -26,7 +26,13 @@ interface Visual {
   testid: string;
 }
 
-function visualFor(status: ProjectStatusBadgeProps["status"]): Visual {
+/**
+ * Exported for the PR-6 catalog-mirror contract test
+ * (`tests/unit/contracts/catalogMirrors.test.ts`): every ScanStatus must map
+ * to its OWN `status.<status>` i18n key — `cancelled` silently borrowed
+ * `status.failed` for two releases because nothing pinned the pairing.
+ */
+export function visualFor(status: ProjectStatusBadgeProps["status"]): Visual {
   switch (status) {
     case "queued":
       return { tone: "info", i18nKey: "status.queued", testid: "queued" };
@@ -41,7 +47,14 @@ function visualFor(status: ProjectStatusBadgeProps["status"]): Visual {
     case "failed":
       return { tone: "critical", i18nKey: "status.failed", testid: "failed" };
     case "cancelled":
-      return { tone: "high", i18nKey: "status.failed", testid: "cancelled" };
+      // PR-6 catalog guard fix: was `status.failed` — a cancelled scan
+      // rendered the word "Failed". `status.cancelled` existed in both
+      // locales all along.
+      return {
+        tone: "high",
+        i18nKey: "status.cancelled",
+        testid: "cancelled",
+      };
     case "idle":
     case null:
     default:

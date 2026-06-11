@@ -451,6 +451,27 @@ export class PortalPage {
   }
 
   /**
+   * PR-6 / M-20 — assert the open component drawer renders its license
+   * Obligations section with at least `min` obligation rows. The verified
+   * defect: the section silently vanished from the drawer while the data
+   * stayed on the wire, and nothing in the suite pinned the surface.
+   * Rows carry `component-drawer-obligation`; the section wrapper
+   * (`component-drawer-obligations`) renders even when empty, so both
+   * assertions are needed.
+   */
+  async expectComponentDrawerObligations(min: number = 1): Promise<void> {
+    await expect(
+      this.page.getByTestId("component-drawer-obligations"),
+    ).toBeVisible({ timeout: 10_000 });
+    await expect
+      .poll(
+        () => this.page.getByTestId("component-drawer-obligation").count(),
+        { timeout: 10_000 },
+      )
+      .toBeGreaterThanOrEqual(min);
+  }
+
+  /**
    * Assert the Overview tab's risk gauge reads `expected` ± `tolerance`.
    * The default tolerance is 1 — the backend computes the score from a
    * weighted sum that's deterministic given the seed, but rounds to an
@@ -921,6 +942,27 @@ export class PortalPage {
     const virtual = this.page.getByTestId("compliance-virtual");
     const empty = this.page.getByTestId("compliance-empty");
     await expect(virtual.or(empty)).toBeVisible({ timeout: 10_000 });
+  }
+
+  /**
+   * PR-6 / M-21 — assert the Compliance tab's NOTICE download group renders
+   * on the toolbar and is actionable (format select + download button both
+   * enabled). The verified defect: the affordance was dropped when the old
+   * Obligations sub-view was absorbed into the unified grid, leaving NOTICE
+   * reachable only via the Reports tab; M-21 restored it here. Visibility
+   * only — the actual download contract is owned by `obligations.spec.ts`
+   * S4/S5 via {@link downloadNotice}.
+   */
+  async expectComplianceNoticeToolbar(): Promise<void> {
+    await expect(
+      this.page.getByTestId("compliance-notice-download"),
+    ).toBeVisible({ timeout: 10_000 });
+    await expect(
+      this.page.getByTestId("compliance-notice-format"),
+    ).toBeEnabled({ timeout: 10_000 });
+    await expect(
+      this.page.getByTestId("compliance-notice-action"),
+    ).toBeEnabled({ timeout: 10_000 });
   }
 
   /**

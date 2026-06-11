@@ -1,0 +1,12 @@
+{
+  "$comment": "Shared notification-kind vocabulary fixture (PR-6 FE regression guards). Single source both sides assert against: backend models/notification.py::NOTIFICATION_KIND_VALUES (Postgres enum notification_kind, migration 0030 added approval_state_changed — H-5) and the frontend mirror features/notifications/api/notificationsApi.ts::NOTIFICATION_KINDS. The FE assertion lives in apps/frontend/tests/unit/contracts/catalogMirrors.test.ts; wiring the backend test to this same file is a tracked follow-up. Order matters: it mirrors the enum declaration order.",
+  "kinds": [
+    "scan_completed",
+    "scan_failed",
+    "cve_detected",
+    "license_violation",
+    "approval_pending",
+    "policy_gate_failed",
+    "approval_state_changed"
+  ]
+}

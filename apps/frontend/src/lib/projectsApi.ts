@@ -20,12 +20,23 @@ import { api } from "@/lib/api";
 
 export type ProjectVisibility = "team" | "organization";
 export type ScanKind = "source" | "container";
-export type ScanStatus =
-  | "queued"
-  | "running"
-  | "succeeded"
-  | "failed"
-  | "cancelled";
+/**
+ * Closed scan status set — runtime mirror of the backend's
+ * `models/scan.py::SCAN_STATUS_VALUES`, same order. PR-6 FE regression
+ * guards: `tests/unit/contracts/catalogMirrors.test.ts` walks this array to
+ * assert every status owns its own `status.*` label in both locales and its
+ * own badge visual, so a status added on the backend (or a copy/paste like
+ * the cancelled-badge-says-Failed bug) fails a PR-time vitest.
+ */
+export const SCAN_STATUS_VALUES = [
+  "queued",
+  "running",
+  "succeeded",
+  "failed",
+  "cancelled",
+] as const;
+
+export type ScanStatus = (typeof SCAN_STATUS_VALUES)[number];
 
 export interface ProjectPublic {
   id: string;

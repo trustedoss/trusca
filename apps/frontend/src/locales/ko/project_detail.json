@@ -668,7 +668,8 @@
       "copyleft": "카피레프트",
       "modifications": "변경 표시",
       "dynamic-linking": "동적 링킹",
-      "no-endorsement": "보증 금지"
+      "no-endorsement": "보증 금지",
+      "patent": "특허 조항"
     },
     "column": {
       "spdx_id": "SPDX",
