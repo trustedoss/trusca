@@ -1294,6 +1294,11 @@ async def _seed_verify_baseline(session: Any) -> dict[str, Any]:
                 vulnerability_id=ana_vuln2.id,
                 status="analyzing",
                 analysis_state="analyzing",
+                # TC-VULN-09-005: F_ANA resolves to THIS (analyzing) finding and
+                # asserts its justification flows verbatim into the VEX export.
+                analysis_justification=(
+                    "Seeded in-triage justification carried verbatim to VEX."
+                ),
             )
         )
     summary["analysis_project"] = True
