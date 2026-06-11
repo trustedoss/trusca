@@ -923,6 +923,7 @@ async def _seed_verify_baseline(session: Any) -> dict[str, Any]:
     from core.crypto import encrypt_secret
     from models import (
         AuditLog,
+        ComponentApproval,
         GitHubAppCredential,
         License,
         Obligation,
@@ -1048,6 +1049,22 @@ async def _seed_verify_baseline(session: Any) -> dict[str, Any]:
             )
         ).scalars().first()
         if superseded is None:
+            # TC-RETEN-01-001: a supersession PAIR must exist — the superseded
+            # (loser) scan points at a winner that is the same project + same
+            # ref + succeeded. Seed the winner first, then the loser linking to
+            # it, so the (loser -> winner) join resolves.
+            winner = Scan(
+                project_id=portal_api.id,
+                kind="source",
+                status="succeeded",
+                progress_percent=100,
+                started_at=now - timedelta(hours=20, minutes=30),
+                completed_at=now - timedelta(hours=20),
+                ref="main",
+                scan_metadata={"seeded_baseline": True, "branch": "main"},
+            )
+            session.add(winner)
+            await session.flush()
             session.add(
                 Scan(
                     project_id=portal_api.id,
@@ -1057,11 +1074,12 @@ async def _seed_verify_baseline(session: Any) -> dict[str, Any]:
                     started_at=now - timedelta(days=1, hours=1),
                     completed_at=now - timedelta(days=1),
                     # Retention invariants: only ref-keyed scans participate
-                    # in supersession chains (TC-RETEN-01-004), and refs are
-                    # stored NORMALIZED — 'refs/heads/main' is stamped as bare
-                    # 'main' by normalize_ref (TC-RETEN-06-001, PR #313).
+                    # in supersession chains (TC-RETEN-01-004), refs are stored
+                    # NORMALIZED ('main', TC-RETEN-06-001), and the loser links
+                    # to its winner (TC-RETEN-01-001 pair).
                     ref="main",
                     superseded_at=now - timedelta(hours=20),
+                    superseded_by_scan_id=winner.id,
                     scan_metadata={"seeded_baseline": True, "branch": "main"},
                 )
             )
@@ -1254,11 +1272,143 @@ async def _seed_verify_baseline(session: Any) -> dict[str, Any]:
         )
     summary["analysis_project"] = True
 
+    # ── suppressed-finding project (vulnerabilities.json SUP_P) ──────────
+    sup = (
+        await session.execute(
+            select(Project).where(
+                Project.name == "Project d86682144a",
+                Project.team_id.in_(demo_team_ids),
+            )
+        )
+    ).scalars().first()
+    if sup is None:
+        sup = Project(
+            team_id=teams["backend"].id,
+            name="Project d86682144a",
+            slug="suppressed-d86682144a",
+            description="verification baseline — suppressed-finding fixture",
+        )
+        session.add(sup)
+        await session.flush()
+        sup_scan = Scan(
+            project_id=sup.id,
+            kind="source",
+            status="succeeded",
+            progress_percent=100,
+            started_at=now - timedelta(hours=7),
+            completed_at=now - timedelta(hours=7) + timedelta(minutes=5),
+            ref="main",
+            scan_metadata={"seeded_baseline": True},
+        )
+        session.add(sup_scan)
+        await session.flush()
+        sup.latest_scan_id = sup_scan.id
+        sup_comp = (
+            await session.execute(
+                select(Component).where(Component.purl == "pkg:npm/verify-suppressed-fixture")
+            )
+        ).scalars().first()
+        if sup_comp is None:
+            sup_comp = Component(
+                purl="pkg:npm/verify-suppressed-fixture",
+                name="verify-suppressed-fixture",
+                package_type="npm",
+            )
+            session.add(sup_comp)
+            await session.flush()
+        sup_cv = (
+            await session.execute(
+                select(ComponentVersion).where(
+                    ComponentVersion.purl_with_version
+                    == "pkg:npm/verify-suppressed-fixture@1.0.0"
+                )
+            )
+        ).scalars().first()
+        if sup_cv is None:
+            sup_cv = ComponentVersion(
+                component_id=sup_comp.id,
+                version="1.0.0",
+                purl_with_version="pkg:npm/verify-suppressed-fixture@1.0.0",
+            )
+            session.add(sup_cv)
+            await session.flush()
+        sup_vuln = (
+            await session.execute(
+                select(Vulnerability).where(Vulnerability.external_id == "CVE-2024-99102")
+            )
+        ).scalars().first()
+        if sup_vuln is None:
+            sup_vuln = Vulnerability(
+                external_id="CVE-2024-99102",
+                source="NVD",
+                severity="medium",
+                summary="Seeded suppressed-finding fixture CVE.",
+            )
+            session.add(sup_vuln)
+            await session.flush()
+        session.add(
+            VulnerabilityFinding(
+                scan_id=sup_scan.id,
+                component_version_id=sup_cv.id,
+                vulnerability_id=sup_vuln.id,
+                status="suppressed",
+                analysis_state="suppressed",
+                analysis_justification="Seeded suppression for the SUP_P fixture.",
+            )
+        )
+    summary["suppressed_project"] = True
+
+    # ── approved component approval (approvals.json APPROVED_ID/VER) ──────
     if portal_api is not None:
+        existing_approved = (
+            await session.execute(
+                select(ComponentApproval).where(
+                    ComponentApproval.project_id == portal_api.id,
+                    ComponentApproval.status == "approved",
+                )
+            )
+        ).scalars().first()
+        if existing_approved is None:
+            any_comp = (
+                await session.execute(select(Component).limit(1))
+            ).scalars().first()
+            dev_user = (
+                await session.execute(
+                    select(User).where(User.email == "dev@demo.trustedoss.dev")
+                )
+            ).scalars().first()
+            if any_comp is not None:
+                session.add(
+                    ComponentApproval(
+                        component_id=any_comp.id,
+                        project_id=portal_api.id,
+                        team_id=teams["backend"].id,
+                        requested_by_user_id=dev_user.id if dev_user else None,
+                        status="approved",
+                        decided_by_user_id=super_admin.id,
+                        decided_at=now - timedelta(hours=2),
+                    )
+                )
+    summary["approved_approval"] = True
+
+    # The queued scan lives on a FRONTEND project (portal-mobile), NOT a
+    # backend one: delete_team checks active-scan (422) BEFORE live-project
+    # (409), so a queued scan on portal-api would mask the Backend-team
+    # delete's 409 that TC-USER-04-007 asserts. portal-mobile carries no
+    # team-delete spec, so it is the safe host for the queued fixture.
+    queued_host = (
+        await session.execute(
+            select(Project).where(
+                Project.name == "portal-mobile",
+                Project.team_id.in_(demo_team_ids),
+            )
+        )
+    ).scalars().first()
+    if queued_host is not None:
         queued = (
             await session.execute(
                 select(Scan).where(
-                    Scan.project_id == portal_api.id, Scan.status == "queued"
+                    Scan.project_id == queued_host.id, Scan.status == "queued"
                 )
             )
         ).scalars().first()
@@ -1267,14 +1417,14 @@ async def _seed_verify_baseline(session: Any) -> dict[str, Any]:
             # tasks it was handed, so this stays queued for the spec to see.
             session.add(
                 Scan(
-                    project_id=portal_api.id,
+                    project_id=queued_host.id,
                     kind="source",
                     status="queued",
                     progress_percent=0,
                     scan_metadata={"seeded_baseline": True},
                 )
             )
-    summary["queued_scan"] = portal_api is not None
+    summary["queued_scan"] = queued_host is not None
 
     slot = (
         await session.execute(

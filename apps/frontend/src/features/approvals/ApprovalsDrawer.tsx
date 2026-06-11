@@ -18,7 +18,7 @@
  *   the CLAUDE.md optimistic-concurrency pattern.
  */
 import { Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -34,7 +34,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useApprovalDetail, useTransitionApproval } from "@/features/approvals/useApprovals";
 import { usePermissions } from "@/hooks/usePermissions";
-import { formatRelativeToNow } from "@/lib/relativeTime";
+import RelativeTime from "@/components/RelativeTime";
 import { cn } from "@/lib/utils";
 import type { ApprovalAction, ApprovalStatus } from "@/lib/approvalsApi";
 
@@ -87,7 +87,7 @@ function StatusBadge({ status, t }: StatusBadgeProps) {
 // Meta row
 // ---------------------------------------------------------------------------
 
-function Meta({ label, value }: { label: string; value: string }) {
+function Meta({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div>
       <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
@@ -292,10 +292,12 @@ export function ApprovalsDrawer({
               />
               <Meta
                 label={t("approvals.drawer.requested_at_label")}
-                value={formatRelativeToNow(
-                  approval.requested_at,
-                  i18n.resolvedLanguage,
-                )}
+                value={
+                  <RelativeTime
+                    value={approval.requested_at}
+                    locale={i18n.resolvedLanguage}
+                  />
+                }
               />
               {approval.decided_by_user_id ? (
                 <Meta
@@ -306,10 +308,12 @@ export function ApprovalsDrawer({
               {approval.decided_at ? (
                 <Meta
                   label={t("approvals.drawer.decided_at_label")}
-                  value={formatRelativeToNow(
-                    approval.decided_at,
-                    i18n.resolvedLanguage,
-                  )}
+                  value={
+                    <RelativeTime
+                      value={approval.decided_at}
+                      locale={i18n.resolvedLanguage}
+                    />
+                  }
                 />
               ) : null}
               {approval.decision_note ? (

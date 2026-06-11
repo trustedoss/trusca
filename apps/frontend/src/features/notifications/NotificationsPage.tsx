@@ -62,7 +62,7 @@ import {
   useUpdateNotificationPrefs,
 } from "@/features/notifications/useNotifications";
 import { ProblemError } from "@/lib/problem";
-import { formatRelativeToNow } from "@/lib/relativeTime";
+import RelativeTime from "@/components/RelativeTime";
 import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 20;
@@ -151,16 +151,14 @@ function InboxRow({ item, onActivate }: InboxRowProps) {
               {t(`kind.${item.kind}`)}
             </span>
             <span aria-hidden>·</span>
-            {/* M-19 — the guide promises the absolute timestamp on hover; a
-                title attribute keeps the row compact. */}
-            <span
+            {/* M-19 — the guide promises the absolute timestamp on hover; the
+                shared RelativeTime component keeps that tooltip consistent
+                with every other relative display. */}
+            <RelativeTime
               data-testid="notifications-row-time"
-              title={new Date(item.created_at).toLocaleString(
-                i18n.resolvedLanguage,
-              )}
-            >
-              {formatRelativeToNow(item.created_at, i18n.resolvedLanguage)}
-            </span>
+              value={item.created_at}
+              locale={i18n.resolvedLanguage}
+            />
           </div>
         </div>
       </button>

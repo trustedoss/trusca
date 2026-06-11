@@ -43,6 +43,7 @@ import {
   type ScanStatus,
 } from "@/lib/projectsApi";
 import { formatRelativeToNow } from "@/lib/relativeTime";
+import RelativeTime from "@/components/RelativeTime";
 import { toggleNullable } from "@/lib/searchParamsToggle";
 import { cn } from "@/lib/utils";
 
@@ -922,9 +923,15 @@ function ScanMetadataSummary({ project }: { project: ProjectPublic }) {
         <span aria-hidden>{t("row.scans_abbrev")}</span> {scanCount}
       </span>
       <span aria-hidden>·</span>
-      <span title={lastScanAt ?? undefined} data-testid="project-row-scan-meta-when">
-        {relative}
-      </span>
+      {lastScanAt != null ? (
+        <RelativeTime
+          value={lastScanAt}
+          locale={locale}
+          data-testid="project-row-scan-meta-when"
+        />
+      ) : (
+        <span data-testid="project-row-scan-meta-when">{relative}</span>
+      )}
     </div>
   );
 }

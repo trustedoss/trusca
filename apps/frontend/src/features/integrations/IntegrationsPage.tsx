@@ -30,7 +30,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { createApiKey, revokeApiKey } from "@/lib/apiKeysApi";
 import { getApiBase } from "@/lib/apiBase";
 import { ProblemError } from "@/lib/problem";
-import { formatRelativeToNow } from "@/lib/relativeTime";
+import RelativeTime from "@/components/RelativeTime";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/authStore";
 import type {
@@ -326,29 +326,33 @@ export function IntegrationsPage() {
                             {row.created_by_email ?? "—"}
                           </td>
                           <td className="px-3 text-xs text-muted-foreground">
-                            {formatRelativeToNow(
-                              row.created_at,
-                              i18n.resolvedLanguage,
-                            )}
+                            <RelativeTime
+                              value={row.created_at}
+                              locale={i18n.resolvedLanguage}
+                            />
                           </td>
                           <td
                             className="px-3 text-xs text-muted-foreground"
                             data-testid="integrations-key-last-used"
                           >
-                            {row.last_used_at
-                              ? formatRelativeToNow(
-                                  row.last_used_at,
-                                  i18n.resolvedLanguage,
-                                )
-                              : t("api_keys.last_used_never")}
+                            {row.last_used_at ? (
+                              <RelativeTime
+                                value={row.last_used_at}
+                                locale={i18n.resolvedLanguage}
+                              />
+                            ) : (
+                              t("api_keys.last_used_never")
+                            )}
                           </td>
                           <td className="px-3 text-xs text-muted-foreground">
-                            {row.expires_at
-                              ? formatRelativeToNow(
-                                  row.expires_at,
-                                  i18n.resolvedLanguage,
-                                )
-                              : t("api_keys.expires_never")}
+                            {row.expires_at ? (
+                              <RelativeTime
+                                value={row.expires_at}
+                                locale={i18n.resolvedLanguage}
+                              />
+                            ) : (
+                              t("api_keys.expires_never")
+                            )}
                           </td>
                           <td className="px-3">
                             <StatusBadge revoked={isRevoked} />

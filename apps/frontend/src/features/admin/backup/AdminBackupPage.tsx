@@ -55,7 +55,7 @@ import type {
   BackupInfo,
   BackupKind,
 } from "@/features/admin/api/adminBackupsApi";
-import { formatRelativeToNow } from "@/lib/relativeTime";
+import RelativeTime from "@/components/RelativeTime";
 import { cn } from "@/lib/utils";
 
 /** Literal token the user must type to enable the restore button. */
@@ -437,7 +437,6 @@ function BackupRow({
   const { t } = useTranslation("admin");
   const isAuto = item.kind === "auto";
   const showConfirm = pendingDeleteName === item.name;
-  const relative = formatRelativeToNow(item.created_at, locale);
 
   return (
     <>
@@ -459,7 +458,7 @@ function BackupRow({
           </Badge>
         </td>
         <td className="px-3 text-xs text-muted-foreground">
-          <span title={item.created_at}>{relative}</span>
+          <RelativeTime value={item.created_at} locale={locale} />
         </td>
         <td className="px-3 text-right text-xs text-muted-foreground">
           {formatBytes(item.size_bytes)}

@@ -71,6 +71,7 @@ import {
   type ScanPublic,
 } from "@/lib/projectsApi";
 import { formatRelativeToNow } from "@/lib/relativeTime";
+import RelativeTime from "@/components/RelativeTime";
 
 // Project list page-size ceiling matches ProjectListPage (size=100, the
 // backend `GET /v1/projects` cap). Counts are computed off this slice, so
@@ -87,8 +88,12 @@ interface KpiCardProps {
   testId: string;
   icon: LucideIcon;
   label: string;
-  /** Pre-formatted primary metric (number or short string). */
-  value: string;
+  /**
+   * Primary metric — a pre-formatted number/short string, or a node (e.g.
+   * `<RelativeTime>` for the "last scan" stamp so it carries an absolute-time
+   * tooltip).
+   */
+  value: React.ReactNode;
   /**
    * Optional supporting line (e.g. project name for "last scan", relative
    * time, "never scanned" fallback). Already translated.
@@ -471,12 +476,14 @@ export function DashboardPage() {
               icon={ScanLine}
               label={t("kpi.last_scan")}
               value={
-                lastScannedProject?.last_scan_at
-                  ? formatRelativeToNow(
-                      lastScannedProject.last_scan_at,
-                      locale,
-                    )
-                  : t("kpi.never_scanned")
+                lastScannedProject?.last_scan_at ? (
+                  <RelativeTime
+                    value={lastScannedProject.last_scan_at}
+                    locale={locale}
+                  />
+                ) : (
+                  t("kpi.never_scanned")
+                )
               }
               hint={lastScannedProject?.name ?? undefined}
               link={
@@ -639,12 +646,14 @@ export function DashboardPage() {
                               <ScanStatusPill status={scan.status} />
                             </td>
                             <td className="px-3 text-xs text-muted-foreground">
-                              {scan.started_at
-                                ? formatRelativeToNow(
-                                    scan.started_at,
-                                    locale,
-                                  )
-                                : t("kpi.no_data")}
+                              {scan.started_at ? (
+                                <RelativeTime
+                                  value={scan.started_at}
+                                  locale={locale}
+                                />
+                              ) : (
+                                t("kpi.no_data")
+                              )}
                             </td>
                             <td className="px-3 text-right text-xs text-muted-foreground tabular-nums">
                               {dur == null ? t("kpi.no_data") : `${dur}s`}
