@@ -1,0 +1,102 @@
+{
+  "module": "notifications",
+  "_about": "notifications 모듈 api/shell 케이스 결정적 검증 스펙. 기대값은 user-guide/notifications.md(가이드)에서 도출, 경로는 /openapi.json로 확정. api+shell 14건 중 11건 표본(78.6%). H-5(code-fix #343)로 타깃이 드리프트함: notification_kind enum이 7값(approval_state_changed 추가)이 되고 dispatch가 연결되어 알림이 실제로 흐름 — 그래서 kind 카탈로그 체크는 고정 목록 비교가 아니라 '가이드 명시 kind 포함 여부'(드리프트 강건)로 표현. 제외: TC-NOTI-02-003(미읽음 정확 99건 시드 필요 — 무거운 fixture 변형), TC-NOTI-06-006(원 판정 blocked — 직접 대조 불가), TC-NOTI-07-002('승인 생성해도 알림 총수 불변' 전제가 H-5 dispatch 연결로 무효화된 드리프트 민감 케이스 + 승인 생성 부수효과). 부수효과: prefs는 PUT 후 기본값 복원, 07-005 시드 행(read_at 설정으로 배지 불변)은 측정 후 삭제.",
+  "checks": [
+    {
+      "tc": "TC-NOTI-05-006", "channel": "api",
+      "_expect": "가이드 'Any signed-in user' — 인증 없는 미읽음 카운트 폴링은 401 거부",
+      "request": { "method": "GET", "path": "/v1/notifications/unread-count" },
+      "expect": { "status": 401 }
+    },
+    {
+      "tc": "TC-NOTI-03-002", "channel": "api", "as": "developer",
+      "_expect": "가이드 'Pages of 20 are loaded one at a time' — 인박스 목록의 페이지 크기가 20 (보유 건수와 무관한 서버 page_size 확인)",
+      "request": { "method": "GET", "path": "/v1/notifications" },
+      "expect": { "status": 200, "jsonHas": ["items", "total", "page", "page_size"], "jsonEquals": { "page_size": 20 } }
+    },
+    {
+      "tc": "TC-NOTI-06-001", "channel": "shell",
+      "_expect": "가이드 트리거 카탈로그에 scan_completed 정의(enum 포함 여부 — H-5 enum 확장에 강건한 부분집합 체크)",
+      "sql": "SELECT count(*) FROM pg_enum e JOIN pg_type t ON e.enumtypid=t.oid WHERE t.typname='notification_kind' AND e.enumlabel='scan_completed';",
+      "expect": { "rowEquals": "1" }
+    },
+    {
+      "tc": "TC-NOTI-06-002", "channel": "shell",
+      "_expect": "가이드 트리거 카탈로그에 scan_failed 정의",
+      "sql": "SELECT count(*) FROM pg_enum e JOIN pg_type t ON e.enumtypid=t.oid WHERE t.typname='notification_kind' AND e.enumlabel='scan_failed';",
+      "expect": { "rowEquals": "1" }
+    },
+    {
+      "tc": "TC-NOTI-06-003", "channel": "shell",
+      "_expect": "가이드 트리거 카탈로그에 cve_detected 정의",
+      "sql": "SELECT count(*) FROM pg_enum e JOIN pg_type t ON e.enumtypid=t.oid WHERE t.typname='notification_kind' AND e.enumlabel='cve_detected';",
+      "expect": { "rowEquals": "1" }
+    },
+    {
+      "tc": "TC-NOTI-06-004", "channel": "shell",
+      "_expect": "가이드 트리거 카탈로그에 license_violation 정의",
+      "sql": "SELECT count(*) FROM pg_enum e JOIN pg_type t ON e.enumtypid=t.oid WHERE t.typname='notification_kind' AND e.enumlabel='license_violation';",
+      "expect": { "rowEquals": "1" }
+    },
+    {
+      "tc": "TC-NOTI-06-005", "channel": "shell",
+      "_expect": "가이드 트리거 카탈로그에 policy_gate_failed 정의",
+      "sql": "SELECT count(*) FROM pg_enum e JOIN pg_type t ON e.enumtypid=t.oid WHERE t.typname='notification_kind' AND e.enumlabel='policy_gate_failed';",
+      "expect": { "rowEquals": "1" }
+    },
+    {
+      "tc": "TC-NOTI-H5-repro-setup", "channel": "shell", "knownBug": "H-5",
+      "_expect": "H-5(code-fix #343) 조치 증거: 인앱-디스패처 kind 카탈로그 단일화로 approval_state_changed가 notification_kind enum에 추가됨(Alembic 0030). 원 실행 시점에는 6값이라 0이었을 체크 — 대조 제외용 -setup",
+      "sql": "SELECT count(*) FROM pg_enum e JOIN pg_type t ON e.enumtypid=t.oid WHERE t.typname='notification_kind' AND e.enumlabel='approval_state_changed';",
+      "expect": { "rowEquals": "1" }
+    },
+    {
+      "tc": "TC-NOTI-09-004", "channel": "shell",
+      "_expect": "가이드 roadmap 'disk_pressure notification trigger — planned' — kind 카탈로그에 disk_pressure 부재",
+      "sql": "SELECT count(*) FROM pg_enum e JOIN pg_type t ON e.enumtypid=t.oid WHERE t.typname='notification_kind' AND e.enumlabel='disk_pressure';",
+      "expect": { "rowEquals": "0" }
+    },
+    {
+      "tc": "TC-NOTI-06-007", "channel": "shell",
+      "_expect": "가이드 'no per-team approver routing' — team_admin 계정들에 approval_pending 알림이 전달되지 않음(0건). super-admin 라우팅이 연결돼도 팀 승인자에게는 가지 않아 드리프트에 강건",
+      "sql": "SELECT count(*) FROM notifications n JOIN users u ON n.user_id=u.id WHERE n.kind='approval_pending' AND u.email IN ('backend-admin@demo.trustedoss.dev','frontend-admin@demo.trustedoss.dev','security-admin@demo.trustedoss.dev');",
+      "expect": { "rowEquals": "0" }
+    },
+    {
+      "tc": "TC-NOTI-04-005", "channel": "api", "as": "developer",
+      "_expect": "가이드 'Toggles enter a draft state. Click Save to persist your changes' — Slack on 전체 행 PUT이 200이고 slack_enabled=true 반영",
+      "request": { "method": "PUT", "path": "/v1/users/me/notification-prefs", "body": { "in_app_enabled": true, "email_enabled": true, "slack_enabled": true, "teams_enabled": false } },
+      "expect": { "status": 200, "jsonEquals": { "slack_enabled": true } }
+    },
+    {
+      "tc": "TC-NOTI-04-005-persist-setup", "channel": "api", "as": "developer",
+      "_expect": "저장 영속화 재확인: 재조회에서 slack_enabled=true 유지",
+      "request": { "method": "GET", "path": "/v1/users/me/notification-prefs" },
+      "expect": { "status": 200, "jsonEquals": { "slack_enabled": true } }
+    },
+    {
+      "tc": "TC-NOTI-04-005-restore-setup", "channel": "api", "as": "developer",
+      "_expect": "기본값 복원(가이드 기본: In-app on, Email on, Slack off, Teams off) — 부수효과 제거로 재실행 결정성 확보",
+      "request": { "method": "PUT", "path": "/v1/users/me/notification-prefs", "body": { "in_app_enabled": true, "email_enabled": true, "slack_enabled": false, "teams_enabled": false } },
+      "expect": { "status": 200, "jsonEquals": { "slack_enabled": false } }
+    },
+    {
+      "tc": "TC-NOTI-07-005-seed-setup", "channel": "shell",
+      "_expect": "알림 레코드 직접 시드(명세 TC-NOTI-07-005가 허용하는 주입). read_at=now()로 미읽음 배지에 영향 없음",
+      "sql": "INSERT INTO notifications (id, user_id, kind, title, body, read_at, created_at) SELECT gen_random_uuid(), u.id, 'scan_completed', 'verify-seed-noti-07-005', 'deterministic verify seed', now(), now() FROM users u WHERE u.email='dev@demo.trustedoss.dev' RETURNING title;",
+      "expect": { "rowMatches": "verify-seed-noti-07-005" }
+    },
+    {
+      "tc": "TC-NOTI-07-005", "channel": "api", "as": "developer",
+      "_expect": "가이드 'will populate once the producer-side calls land' — 직접 주입한 레코드가 GET /v1/notifications로 정상 렌더(인박스는 동작, 미연결은 생산자 측 한계)",
+      "request": { "method": "GET", "path": "/v1/notifications" },
+      "expect": { "status": 200, "bodyIncludes": ["verify-seed-noti-07-005", "scan_completed"] }
+    },
+    {
+      "tc": "TC-NOTI-07-005-clean-setup", "channel": "shell",
+      "_expect": "시드 행 삭제로 원상복구(이전 실패 잔여물까지 일괄 제거)",
+      "sql": "WITH del AS (DELETE FROM notifications WHERE title='verify-seed-noti-07-005' RETURNING 1) SELECT count(*) FROM del;",
+      "expect": { "rowMatches": "^[1-9][0-9]*$" }
+    }
+  ]
+}

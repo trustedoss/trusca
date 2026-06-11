@@ -1,0 +1,54 @@
+{
+  "module": "docker-compose",
+  "_about": "docker-compose(설치·운영 가이드) 모듈의 api/shell 결정적 검증 스펙. 기대값은 docs-site/docs/installation/docker-compose.md(가이드)에서 도출, 경로는 /openapi.json로 확정(/health, /health/ready, /auth/me). 원 결과표의 api 채널 11건 중 8건을 스펙화(표본 72.7%), 전부 읽기 전용 — down·재기동·볼륨 조작 없음. 제외: TC-05-005(컨테이너 내 alembic 재실행 필요, shell은 sql만 지원), TC-06-003(503 problem+json은 스키마 불일치 인위 유발 필요 — 파괴적), TC-06-004(AUTO_MIGRATE=false 전환은 backend 재기동 필요 — 금지). 관련 결함 L-5(eval-up.sh 부재)·L-6(/metrics)·L-8(서비스명)은 모두 doc-fix이고 해당 TC가 manual(파일/컨테이너 검사) 채널이라 스펙화 대상 아님.",
+  "checks": [
+    {
+      "tc": "TC-DCOMP-02-004", "channel": "api",
+      "_expect": "스키마가 Alembic HEAD인 가동 스택에서 readiness 게이트 GET /health/ready가 200 {\"status\":\"ready\"} 반환 (가이드: returns 200 only once the Postgres schema is at the Alembic HEAD)",
+      "request": { "method": "GET", "path": "/health/ready" },
+      "expect": { "status": 200, "jsonEquals": { "status": "ready" } }
+    },
+    {
+      "tc": "TC-DCOMP-02-005", "channel": "shell",
+      "_expect": "데모 시드 고유 데이터가 가이드 수치와 정확히 일치: Demo Org 1, 시드 팀 3(Frontend/Backend/Security), 시드 계정 5, 시드 프로젝트 5(slug 고정), 시드 CVE 10(CVE-2024-990xx). 공유 dev DB의 누적 데이터와 분리해 시드 고유 식별자로 카운트 — 정확히 일치하면 멱등(중복 없음)도 함께 입증",
+      "sql": "SELECT (SELECT count(*) FROM organizations WHERE name='Demo Org'), (SELECT count(*) FROM teams t JOIN organizations o ON t.organization_id=o.id WHERE o.name='Demo Org' AND t.name IN ('Frontend','Backend','Security')), (SELECT count(*) FROM users WHERE email IN ('admin@demo.trustedoss.dev','frontend-admin@demo.trustedoss.dev','backend-admin@demo.trustedoss.dev','security-admin@demo.trustedoss.dev','dev@demo.trustedoss.dev')), (SELECT count(*) FROM projects WHERE slug IN ('portal-web','portal-mobile','portal-api','scan-pipeline','vuln-feed')), (SELECT count(*) FROM vulnerabilities WHERE external_id LIKE 'CVE-2024-990%');",
+      "expect": { "rowEquals": "1|3|5|5|10" }
+    },
+    {
+      "tc": "TC-DCOMP-04-003", "channel": "api", "as": "super_admin",
+      "_expect": "자동 마이그레이션은 사용자를 만들지 않으므로 별도 부트스트랩된 첫 super_admin이 존재하고 인증된다 (가이드: you still bootstrap the first admin once). /auth/me 200 + is_superuser=true",
+      "request": { "method": "GET", "path": "/auth/me" },
+      "expect": { "status": 200, "jsonEquals": { "is_superuser": true } }
+    },
+    {
+      "tc": "TC-DCOMP-04-006", "channel": "shell",
+      "_expect": "단일 역할 스택의 AUTO_MIGRATE 기본 true로 기동 시 마이그레이션이 자동 적용됨 — alembic_version 스탬프가 정확히 1행 존재 (가이드: ships AUTO_MIGRATE=true and it just works)",
+      "sql": "SELECT count(*) FROM alembic_version;",
+      "expect": { "rowEquals": "1" }
+    },
+    {
+      "tc": "TC-DCOMP-05-003", "channel": "api",
+      "_expect": "단일 역할 기본 경로(회귀): 자동 마이그레이션 후 backend가 healthy로 전이 — readiness 200 (가이드: /health/ready flips to 200 once it finishes. This is the normal path)",
+      "request": { "method": "GET", "path": "/health/ready" },
+      "expect": { "status": 200, "jsonEquals": { "status": "ready" } }
+    },
+    {
+      "tc": "TC-DCOMP-06-001", "channel": "api",
+      "_expect": "GET /health는 순수 liveness — uvicorn 프로세스가 떠 있으면 DB 미접근으로 200 반환 (가이드: pure liveness, Touches the DB? No)",
+      "request": { "method": "GET", "path": "/health" },
+      "expect": { "status": 200 }
+    },
+    {
+      "tc": "TC-DCOMP-06-002", "channel": "api",
+      "_expect": "스키마가 HEAD일 때 GET /health/ready가 200 {\"status\":\"ready\"} (가이드: returns 200 {\"status\":\"ready\"} only when the schema matches HEAD, alembic_version 읽기 전용 SELECT로 판정)",
+      "request": { "method": "GET", "path": "/health/ready" },
+      "expect": { "status": 200, "jsonEquals": { "status": "ready" } }
+    },
+    {
+      "tc": "TC-DCOMP-07-004", "channel": "api",
+      "_expect": "마법사 8단계가 대기하는 backend /health가 200으로 응답 (가이드: Waits for the backend /health endpoint to return 200, 60-second timeout — 가동 스택에서는 즉시 200)",
+      "request": { "method": "GET", "path": "/health" },
+      "expect": { "status": 200 }
+    }
+  ]
+}

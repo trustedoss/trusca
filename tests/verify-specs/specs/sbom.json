@@ -1,0 +1,159 @@
+{
+  "module": "sbom",
+  "_about": "sbom 모듈 api/shell 케이스 결정적 검증 스펙. 기대값은 test-cases/sbom.md(user-guide/sbom.md 도출)에서 작성, 경로는 /openapi.json로 확정. 확정 결함: H-4(CycloneDX vulnerabilities+1.6, code-fix), M-24(전용 MIME/버전, code-fix), M-6(vf create 감사, code-fix), M-36(export 부수 감사, code-fix), M-12(비멤버 403/404, pending). 전부 읽기(GET)와 거부 경로라 무변경. 주의: 원 실행 fixture(fx-appr succeeded 스캔)가 사라져 portal-web(Frontend 팀, 컴포넌트 10, finding 10, concluded 라이선스 5)을 SBOM fixture로, fx-appr(failed 스캔만 잔존)을 '성공 스캔 없는 프로젝트'로 쓴다. runner의 api()는 비JSON 본문을 null로 만들므로 Content-Type/XML/TV/NOTICE 본문 검증은 불가하고 JSON 본문 구조로 검증한다.",
+  "vars": [
+    { "name": "PW_PID", "as": "team_admin_frontend", "method": "GET", "path": "/v1/projects?q=portal-web", "list": true, "where": { "name": "portal-web" }, "field": "id" },
+    { "name": "FX_PID", "as": "super_admin", "method": "GET", "path": "/v1/projects?q=fx-appr", "list": true, "where": { "name": "fx-appr" }, "field": "id" }
+  ],
+  "checks": [
+    {
+      "tc": "TC-SBOM-01-001", "channel": "api", "as": "team_admin_frontend", "knownBug": "M-24",
+      "_expect": "CycloneDX JSON 내보내기 200, 본문이 CycloneDX 1.6 문서(가이드: 전용 MIME + 1.6. 헤더는 runner로 검증 불가라 본문 specVersion으로 확인. 원 실행 시 1.5 = M-24, #347로 code-fix)",
+      "request": { "method": "GET", "path": "/v1/projects/${PW_PID}/sbom?format=cyclonedx-json" },
+      "expect": { "status": 200, "jsonEquals": { "bomFormat": "CycloneDX", "specVersion": "1.6" } }
+    },
+    {
+      "tc": "TC-SBOM-01-003", "channel": "api", "as": "team_admin_frontend", "knownBug": "M-24",
+      "_expect": "SPDX JSON 내보내기 200, 본문이 SPDX 2.3 문서(가이드: application/spdx+json + SPDX 2.3. 원 실행 시 일반 MIME = M-24)",
+      "request": { "method": "GET", "path": "/v1/projects/${PW_PID}/sbom?format=spdx-json" },
+      "expect": { "status": 200, "jsonEquals": { "spdxVersion": "SPDX-2.3" } }
+    },
+    {
+      "tc": "TC-SBOM-01-005", "channel": "api", "as": "team_admin_frontend",
+      "_expect": "잘못된 별칭 format=spdx-tag-value는 네 정규 값에 없어 422 거부(정규값 spdx-tv)",
+      "request": { "method": "GET", "path": "/v1/projects/${PW_PID}/sbom?format=spdx-tag-value" },
+      "expect": { "status": 422 }
+    },
+    {
+      "tc": "TC-SBOM-01-007", "channel": "api", "as": "team_admin_frontend",
+      "_expect": "format 미지정 시 정의된 기본 형식 반환(OpenAPI default=cyclonedx-json) — 200 + CycloneDX 본문",
+      "request": { "method": "GET", "path": "/v1/projects/${PW_PID}/sbom" },
+      "expect": { "status": 200, "jsonEquals": { "bomFormat": "CycloneDX" } }
+    },
+    {
+      "tc": "TC-SBOM-02-001", "channel": "api", "as": "team_admin_frontend",
+      "_expect": "각 컴포넌트에 name/version/PURL이 있고 검출된 라이선스가 담김(portal-web fixture: 컴포넌트 10, 그중 5개 concluded 라이선스 보유)",
+      "request": { "method": "GET", "path": "/v1/projects/${PW_PID}/sbom?format=cyclonedx-json" },
+      "expect": { "status": 200, "jsonHas": ["components[0].name", "components[0].version", "components[0].purl"], "bodyIncludes": ["\"licenses\""] }
+    },
+    {
+      "tc": "TC-SBOM-02-003", "channel": "api", "as": "team_admin_frontend",
+      "_expect": "SPDX가 licenseDeclared/licenseConcluded 필드를 채움. concluded 판정이 있는 패키지는 NOASSERTION이 아닌 SPDX 표현식",
+      "request": { "method": "GET", "path": "/v1/projects/${PW_PID}/sbom?format=spdx-json" },
+      "expect": { "status": 200, "jsonHas": ["packages[0].licenseDeclared", "packages[0].licenseConcluded"], "bodyMatches": "\"licenseConcluded\":\"(?!NOASSERTION)" }
+    },
+    {
+      "tc": "TC-SBOM-02-004", "channel": "api", "as": "team_admin_frontend",
+      "_expect": "검출 라이선스 없는 컴포넌트는 SPDX에서 NOASSERTION 센티넬을 냄(SPDX 측만 검증. CycloneDX name 유지 측은 fixture에 LicenseRef-* 부재로 미검증)",
+      "request": { "method": "GET", "path": "/v1/projects/${PW_PID}/sbom?format=spdx-json" },
+      "expect": { "status": 200, "bodyIncludes": ["\"licenseConcluded\":\"NOASSERTION\""] }
+    },
+    {
+      "tc": "TC-SBOM-02-005", "channel": "api", "as": "team_admin_frontend",
+      "_expect": "copyrightText는 v0.10.0에서 항상 NOASSERTION(purl 사전순 첫 패키지로 확인)",
+      "request": { "method": "GET", "path": "/v1/projects/${PW_PID}/sbom?format=spdx-json" },
+      "expect": { "status": 200, "jsonEquals": { "packages[0].copyrightText": "NOASSERTION" } }
+    },
+    {
+      "tc": "TC-SBOM-02-006", "channel": "api", "as": "team_admin_frontend",
+      "_expect": "release 라벨 없는 스캔이라 metadata.component.version에 scan id(uuid)가 안정적 fallback으로 들어감",
+      "request": { "method": "GET", "path": "/v1/projects/${PW_PID}/sbom?format=cyclonedx-json" },
+      "expect": { "status": 200, "bodyMatches": "\"name\":\"portal-web\",\"version\":\"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\"" }
+    },
+    {
+      "tc": "TC-SBOM-05-001", "channel": "api", "as": "team_admin_frontend",
+      "_expect": "NOTICE format 미지정 시 기본 text로 200(Content-Type text/plain은 runner로 검증 불가 — 상태만. 본문은 비JSON이라 null)",
+      "request": { "method": "GET", "path": "/v1/projects/${PW_PID}/notice" },
+      "expect": { "status": 200 }
+    },
+    {
+      "tc": "TC-SBOM-06-001", "channel": "api", "as": "team_admin_frontend", "knownBug": "H-4",
+      "_expect": "CycloneDX SBOM이 finding마다 VEX 상태를 analysis.state로 포함(원 실행 시 vulnerabilities 키 자체 부재 = H-4, #347로 code-fix)",
+      "request": { "method": "GET", "path": "/v1/projects/${PW_PID}/sbom?format=cyclonedx-json" },
+      "expect": { "status": 200, "jsonHas": ["vulnerabilities[0].analysis.state"] }
+    },
+    {
+      "tc": "TC-SBOM-06-002", "channel": "api", "as": "team_admin_frontend", "knownBug": "H-4",
+      "_expect": "포털 상태가 CycloneDX analysis.state 정규값으로 매핑. portal-web fixture finding은 전부 New 상태라 in_triage 매핑만 관측 가능(다른 상태 분포 fixture 소실)",
+      "request": { "method": "GET", "path": "/v1/projects/${PW_PID}/sbom?format=cyclonedx-json" },
+      "expect": { "status": 200, "bodyIncludes": ["\"analysis\":{\"state\":\"in_triage\"}"] }
+    },
+    {
+      "tc": "TC-SBOM-06-004", "channel": "api", "as": "team_admin_frontend",
+      "_expect": "SPDX는 native VEX 미지원이라 per-finding 상태가 본문에 없음",
+      "request": { "method": "GET", "path": "/v1/projects/${PW_PID}/sbom?format=spdx-json" },
+      "expect": { "status": 200, "jsonMissing": ["vulnerabilities"] }
+    },
+    {
+      "tc": "TC-SBOM-07-001", "channel": "api", "as": "team_admin_frontend",
+      "_expect": "프로젝트 소유 팀(Frontend) 멤버의 SBOM 읽기 200",
+      "request": { "method": "GET", "path": "/v1/projects/${PW_PID}/sbom?format=cyclonedx-json" },
+      "expect": { "status": 200 }
+    },
+    {
+      "tc": "TC-SBOM-07-002", "channel": "api", "as": "team_admin_backend", "knownBug": "M-12",
+      "_expect": "비멤버(backend-admin은 Frontend 팀 비소속)의 SBOM 접근은 가이드상 403 거부. 실제 404(existence-hide) = M-12 pending이라 det=fail이 정상",
+      "request": { "method": "GET", "path": "/v1/projects/${PW_PID}/sbom?format=cyclonedx-json" },
+      "expect": { "status": 403 }
+    },
+    {
+      "tc": "TC-SBOM-07-003", "channel": "api", "as": "team_admin_backend", "knownBug": "M-12",
+      "_expect": "비멤버의 NOTICE 접근도 가이드상 403 거부. 실제 404 = M-12 pending이라 det=fail이 정상",
+      "request": { "method": "GET", "path": "/v1/projects/${PW_PID}/notice?format=text" },
+      "expect": { "status": 403 }
+    },
+    {
+      "tc": "TC-SBOM-07-004", "channel": "api",
+      "_expect": "Authorization 헤더 없는 SBOM 요청은 401",
+      "request": { "method": "GET", "path": "/v1/projects/${PW_PID}/sbom?format=cyclonedx-json" },
+      "expect": { "status": 401 }
+    },
+    {
+      "tc": "TC-SBOM-08-001", "channel": "api", "as": "super_admin",
+      "_expect": "성공 스캔이 없는 프로젝트(fx-appr: failed 스캔만 존재)의 SBOM은 200 + 유효 CycloneDX 문서 + components 빈 목록",
+      "request": { "method": "GET", "path": "/v1/projects/${FX_PID}/sbom?format=cyclonedx-json" },
+      "expect": { "status": 200, "jsonEquals": { "bomFormat": "CycloneDX" }, "jsonHas": ["components"], "jsonMissing": ["components[0]"] }
+    },
+    {
+      "tc": "TC-SBOM-08-002", "channel": "api", "as": "team_admin_frontend",
+      "_expect": "spdx-tag-value 별칭은 422로 거부(정규값 spdx-tv)",
+      "request": { "method": "GET", "path": "/v1/projects/${PW_PID}/sbom?format=spdx-tag-value" },
+      "expect": { "status": 422 }
+    },
+    {
+      "tc": "TC-SBOM-09-003", "channel": "api", "as": "team_admin_frontend",
+      "_expect": "공급사 표준 필드: 표준 형식 버전(1.6), ISO-8601 타임스탬프, 도구 메타데이터, 컴포넌트별 name/version/PURL, 라이선스(전이 의존성은 fixture lockfile 부재로 미검증)",
+      "request": { "method": "GET", "path": "/v1/projects/${PW_PID}/sbom?format=cyclonedx-json" },
+      "expect": {
+        "status": 200,
+        "jsonEquals": { "specVersion": "1.6" },
+        "jsonHas": ["metadata.timestamp", "metadata.tools[0].name", "components[0].name", "components[0].version", "components[0].purl"],
+        "bodyMatches": "\"timestamp\":\"\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}"
+      }
+    },
+    {
+      "tc": "TC-SBOM-10-002", "channel": "api", "as": "team_admin_frontend",
+      "_expect": "Excel 리포트 엔드포인트(/reports/components.xlsx)는 이 버전에 없어 404",
+      "request": { "method": "GET", "path": "/v1/projects/${PW_PID}/reports/components.xlsx" },
+      "expect": { "status": 404 }
+    },
+    {
+      "tc": "TC-SBOM-10-004", "channel": "api", "as": "team_admin_frontend",
+      "_expect": "vulnerability PDF 리포트는 이 릴리스에 구현되어 200(본문 PDF는 비JSON이라 상태만 검증)",
+      "request": { "method": "GET", "path": "/v1/projects/${PW_PID}/vulnerability-report.pdf" },
+      "expect": { "status": 200 }
+    },
+    {
+      "tc": "TC-SBOM-09-004", "channel": "shell", "knownBug": "M-6",
+      "_expect": "GPL 최초 검출 추적 근거 체인: audit_logs에 scans.create와 vulnerability_findings.create 행이 모두 존재(원 실행 시 vf create 0건 = M-6, #350로 code-fix)",
+      "sql": "SELECT (SELECT count(*) FROM audit_logs WHERE target_table='scans' AND action='create') > 0 AND (SELECT count(*) FROM audit_logs WHERE target_table='vulnerability_findings' AND action='create') > 0;",
+      "expect": { "rowEquals": "t" }
+    },
+    {
+      "tc": "TC-SBOM-09-002", "channel": "shell", "knownBug": "M-36",
+      "_expect": "SBOM/NOTICE 다운로드는 audit_logs 행을 만들지 않음(structlog만). 앞 체크들이 방금 export를 여러 번 수행했으므로 최근 10분 내 report_downloads 감사 행이 0이어야 함(원 실행 시 부수 감사 행 적재 = M-36, #342로 code-fix)",
+      "sql": "SELECT count(*) FROM audit_logs WHERE target_table='report_downloads' AND created_at > now() - interval '10 minutes';",
+      "expect": { "rowEquals": "0" }
+    }
+  ]
+}
