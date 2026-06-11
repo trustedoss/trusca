@@ -204,14 +204,27 @@ Reuse detection: if a refresh token is presented twice, the entire token family 
 
 After onboarding a user:
 
-<!-- docs-uat: id=users-verify-signin kind=manual tier=manual -->
+<!-- docs-uat: id=users-verify-signin kind=api auth=user url=/auth/me expect=status:200 fixture=seed_demo tier=nightly -->
 1. The user can sign in at `/login` with the password they set during registration.
-<!-- docs-uat: id=users-verify-active kind=manual tier=manual -->
+<!-- docs-uat: id=users-verify-active kind=sql ctx=postgres expect=rows:1 fixture=seed_demo tier=nightly -->
 2. **/admin/users** lists the user with `is_active = true`.
+
+   ```sql
+   SELECT count(*) FROM users
+    WHERE email = 'dev@demo.trustedoss.dev' AND is_active;
+   ```
+
 <!-- docs-uat: id=users-verify-membership-audit kind=manual tier=manual -->
 3. The audit log records the team-add as a `memberships` insert.
-<!-- docs-uat: id=users-verify-member-role kind=manual tier=manual -->
+<!-- docs-uat: id=users-verify-member-role kind=sql ctx=postgres expect=rows:>0 fixture=seed_demo tier=nightly -->
 4. The user appears in the team's member list with the assigned role.
+
+   ```sql
+   SELECT count(*) FROM memberships m
+     JOIN users u ON u.id = m.user_id
+    WHERE u.email = 'dev@demo.trustedoss.dev'
+      AND m.role = 'developer';
+   ```
 
 ## Troubleshooting
 

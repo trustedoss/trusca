@@ -93,13 +93,20 @@ async function runShell(step) {
   return { ok: false, detail: `exit ${got}, expected ${want}` };
 }
 
-// Cached bearer token for `auth=admin` api steps — we log in once (well under
-// the 5/min/IP limiter) and reuse the token across every admin-scoped step.
-let _adminToken = null;
-async function getAdminToken() {
-  if (_adminToken) return _adminToken;
-  const email = process.env.DOCS_UAT_ADMIN_EMAIL || "admin@demo.trustedoss.dev";
-  const password = process.env.DOCS_UAT_ADMIN_PASSWORD || "DemoTest2026!";
+// Cached bearer tokens for `auth=admin` / `auth=user` api steps — we log in
+// once per principal (well under the 5/min/IP limiter) and reuse the token
+// across every step with that auth.
+const _tokens = {};
+async function getToken(role) {
+  if (_tokens[role]) return _tokens[role];
+  const email =
+    role === "admin"
+      ? process.env.DOCS_UAT_ADMIN_EMAIL || "admin@demo.trustedoss.dev"
+      : process.env.DOCS_UAT_USER_EMAIL || "dev@demo.trustedoss.dev";
+  const password =
+    role === "admin"
+      ? process.env.DOCS_UAT_ADMIN_PASSWORD || "DemoTest2026!"
+      : process.env.DOCS_UAT_USER_PASSWORD || "DemoTest2026!";
   // auth_router mounts at /auth (no /v1 — see apps/backend/main.py); only the
   // domain routers carry the /v1 prefix.
   const res = await fetch(`${API_BASE}/auth/login`, {
@@ -107,12 +114,13 @@ async function getAdminToken() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
   });
-  if (!res.ok) throw new Error(`admin login failed (status ${res.status})`);
+  if (!res.ok) throw new Error(`${role} login failed (status ${res.status})`);
   const body = await res.json();
-  _adminToken = body.access_token;
-  if (!_adminToken) throw new Error("admin login returned no access_token");
-  return _adminToken;
+  _tokens[role] = body.access_token;
+  if (!_tokens[role]) throw new Error(`${role} login returned no access_token`);
+  return _tokens[role];
 }
+const getAdminToken = () => getToken("admin");
 
 // ───── runtime value resolution ─────────────────────────────────────────
 // Some doc commands embed placeholders that only exist after the demo seed
@@ -168,10 +176,12 @@ async function runApi(step) {
     : `${API_BASE}${resolvedPath}`;
   const m = (step.expect || "status:200").match(/^status:(\d+)$/);
   const wantStatus = m ? Number(m[1]) : 200;
-  // `auth=admin` injects a super-admin bearer; the doc shows the curl with a
+  // `auth=admin` injects a super-admin bearer, `auth=user` the seeded demo
+  // developer's (DOCS_UAT_USER_EMAIL/_PASSWORD); the doc shows the curl with a
   // ${ACCESS_TOKEN} placeholder, the runner supplies a real one.
   const headers = {};
-  if (step.auth === "admin") headers.Authorization = `Bearer ${await getAdminToken()}`;
+  if (step.auth === "admin" || step.auth === "user")
+    headers.Authorization = `Bearer ${await getToken(step.auth)}`;
   const { attempts, intervalMs } = parseRetry(step.retry);
   let last = "no attempt";
   for (let i = 1; i <= attempts; i++) {
@@ -193,23 +203,46 @@ async function runApi(step) {
   return { ok: false, detail: last };
 }
 
-function runSql(step) {
+async function runSql(step) {
   // ctx=postgres → psql inside the postgres container. expect=rows:>N | rows:N
+  // The SQL comes from a column-0 ```sql fence, or (prose-bound Verify steps)
+  // from the indented ```sql fence directly under the bound line.
+  if (!step.code) {
+    return {
+      ok: false,
+      detail:
+        "sql step has no code — bind the annotation to a ```sql fence, " +
+        "or put an indented ```sql fence directly under the bound prose line",
+    };
+  }
   const sql = step.code.trim().replace(/"/g, '\\"');
   const cmd =
     `docker-compose -f docker-compose.dev.yml exec -T postgres ` +
     `psql -U trustedoss -d trustedoss -tAc "${sql}"`;
-  console.log(`  $ ${cmd}`);
-  const res = spawnSync("bash", ["-c", cmd], { cwd: REPO_ROOT, encoding: "utf8" });
-  if ((res.status ?? 1) !== 0) return { ok: false, detail: res.stderr || "psql failed" };
-  const out = (res.stdout || "").trim();
-  const m = (step.expect || "rows:>0").match(/^rows:(>=|>|=)?(\d+)$/);
-  if (!m) return { ok: true };
-  const op = m[1] || "=";
-  const n = Number(m[2]);
-  const value = Number(out.split("\n")[0]);
-  const ok = op === ">" ? value > n : op === ">=" ? value >= n : value === n;
-  return ok ? { ok: true } : { ok: false, detail: `rows=${out} not ${op}${n}` };
+  // `retry=NxMs` tolerates an async write racing the assertion (e.g. a Celery
+  // notification task fanning out right after a ui step's mutation).
+  const { attempts, intervalMs } = parseRetry(step.retry);
+  let detail = "no attempt";
+  for (let i = 1; i <= attempts; i++) {
+    const tag = attempts > 1 ? ` (attempt ${i}/${attempts})` : "";
+    console.log(`  $ ${cmd.replace(/\n/g, "\n    ")}${tag}`);
+    const res = spawnSync("bash", ["-c", cmd], { cwd: REPO_ROOT, encoding: "utf8" });
+    if ((res.status ?? 1) !== 0) {
+      detail = res.stderr || "psql failed";
+    } else {
+      const out = (res.stdout || "").trim();
+      const m = (step.expect || "rows:>0").match(/^rows:(>=|>|=)?(\d+)$/);
+      if (!m) return { ok: true };
+      const op = m[1] || "=";
+      const n = Number(m[2]);
+      const value = Number(out.split("\n")[0]);
+      const ok = op === ">" ? value > n : op === ">=" ? value >= n : value === n;
+      if (ok) return { ok: true };
+      detail = `rows=${out} not ${op}${n}`;
+    }
+    if (i < attempts) await sleep(intervalMs);
+  }
+  return { ok: false, detail };
 }
 
 /** Hand the ui steps to Playwright in one batch (one login, ordered verbs). */
@@ -287,7 +320,7 @@ async function main() {
     let r;
     if (step.kind === "shell") r = await runShell(step);
     else if (step.kind === "api") r = await runApi(step);
-    else if (step.kind === "sql") r = runSql(step);
+    else if (step.kind === "sql") r = await runSql(step);
     else if (step.kind === "ui") {
       if (uiBatchDone) {
         results.push({ id: step.id, status: "ok (ui batch)" });

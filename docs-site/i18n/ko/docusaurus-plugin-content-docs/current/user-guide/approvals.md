@@ -110,10 +110,26 @@ sidebar_position: 6
 
 <!-- docs-uat: id=approvals-state-badge-updates kind=ui harness=approvalsDispose tier=nightly -->
 1. 상태 배지가 즉시 갱신.
-<!-- docs-uat: id=approvals-audit-recorded kind=manual tier=manual -->
+<!-- docs-uat: id=approvals-audit-recorded kind=sql ctx=postgres expect=rows:>0 tier=nightly -->
 2. 감사 로그가 `target_table=component_approvals&action=update`를 `previous_status`, `new_status`, `decision_note`와 함께 diff에 담아 기록.
-<!-- docs-uat: id=approvals-requester-notified kind=manual tier=manual -->
+
+   ```sql
+   SELECT count(*) FROM audit_logs
+    WHERE target_table = 'component_approvals'
+      AND action = 'update'
+      AND diff ? 'previous_status'
+      AND diff ? 'new_status'
+      AND created_at > now() - interval '1 hour';
+   ```
+
+<!-- docs-uat: id=approvals-requester-notified kind=sql ctx=postgres expect=rows:>0 retry=10x3s tier=nightly -->
 3. 원래 요청자(있다면)가 팀의 알림 설정에 따라 알림 수신.
+
+   ```sql
+   SELECT count(*) FROM notifications
+    WHERE kind = 'approval_state_changed';
+   ```
+
 <!-- docs-uat: id=approvals-reject-no-autoblock kind=manual tier=manual -->
 4. **참고**: v0.10.0 에서 반려 결정은 다음 스캔의 빌드 게이트에서 컴포넌트를 `forbidden` 으로 자동 승격하지 **않습니다** — 수동 후속 조치는 [반려 결정 caveat](#rejected-verdict) 참고.
 

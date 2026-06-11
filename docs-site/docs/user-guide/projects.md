@@ -230,10 +230,27 @@ After creating a project:
 
 <!-- docs-uat: id=projects-appears-idle kind=ui harness=projectCreateAppearsIdle(docs-uat-new-project) tier=nightly -->
 1. The project appears in **Projects** with status **Idle** (no scans yet).
-<!-- docs-uat: id=projects-overview-zero kind=manual tier=manual -->
+<!-- docs-uat: id=projects-overview-zero kind=sql ctx=postgres expect=rows:>=1 tier=nightly -->
 2. The Overview tab shows zero components and zero vulnerabilities.
-<!-- docs-uat: id=projects-audit-create kind=manual tier=manual -->
+
+   ```sql
+   -- components / vulnerabilities are scan-scoped, so a project
+   -- without a scan necessarily shows zero of both
+   SELECT count(*) FROM projects p
+    WHERE p.name = 'docs-uat-new-project'
+      AND NOT EXISTS (SELECT 1 FROM scans s WHERE s.project_id = p.id);
+   ```
+
+<!-- docs-uat: id=projects-audit-create kind=sql ctx=postgres expect=rows:>0 tier=nightly -->
 3. The audit log (`/admin/audit`, super-admin only) records `target_table=projects&action=create` with your `user_id`.
+
+   ```sql
+   SELECT count(*) FROM audit_logs
+    WHERE target_table = 'projects'
+      AND action = 'create'
+      AND actor_user_id IS NOT NULL
+      AND created_at > now() - interval '1 hour';
+   ```
 
 ## Troubleshooting
 

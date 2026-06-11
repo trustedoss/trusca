@@ -257,8 +257,17 @@ UI는 단계·진행률 실시간 갱신을 위해 `ws(s)://<host>/ws/scans/{sca
 2. 컴포넌트 수 > 0.
 <!-- docs-uat: id=scans-vulns-tab-ready kind=ui harness=vulnerabilitiesTabReady(portal-web) tier=nightly -->
 3. 취약점 수가 표시(프로젝트가 정말 깨끗하면 0일 수도 있음).
-<!-- docs-uat: id=scans-last-scan-timestamp kind=manual tier=manual -->
+<!-- docs-uat: id=scans-last-scan-timestamp kind=sql ctx=postgres expect=rows:>0 fixture=seed_demo tier=nightly -->
 4. Overview 탭의 마지막 스캔 타임스탬프가 "방금"을 반영.
+
+   ```sql
+   SELECT count(*) FROM scans s
+     JOIN projects p ON p.id = s.project_id
+    WHERE p.slug = 'portal-web'
+      AND s.status = 'succeeded'
+      AND s.completed_at IS NOT NULL;
+   ```
+
 <!-- docs-uat: id=scans-audit-events kind=manual tier=manual -->
 5. 감사 로그에 `target_table=scans&action=create`와 `target_table=scans&action=update` 이벤트가 기록.
 

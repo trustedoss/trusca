@@ -606,8 +606,17 @@ After triaging:
 
 <!-- docs-uat: id=vulns-status-badge-updates kind=ui harness=vulnStatusUpdates(portal-web) tier=nightly -->
 1. The status badge updates immediately in the table.
-<!-- docs-uat: id=vulns-audit-recorded kind=manual tier=manual -->
+<!-- docs-uat: id=vulns-audit-recorded kind=sql ctx=postgres expect=rows:>0 tier=nightly -->
 2. The audit log records `target_table=vulnerability_findings&action=update` with `previous_status`, `new_status`, `justification` in the diff.
+
+   ```sql
+   SELECT count(*) FROM audit_logs
+    WHERE target_table = 'vulnerability_findings'
+      AND action = 'update'
+      AND diff ? 'previous_status'
+      AND diff ? 'new_status'
+      AND created_at > now() - interval '1 hour';
+   ```
 <!-- docs-uat: id=vulns-excluded-risk-score kind=manual tier=manual -->
 3. Excluded findings stop counting toward the project's risk score.
 <!-- docs-uat: id=vulns-excluded-build-gate kind=manual tier=manual -->
