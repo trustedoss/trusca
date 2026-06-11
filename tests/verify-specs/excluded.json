@@ -20,6 +20,7 @@
     "users-and-teams:TC-USER-01-004": "[recheck-artifact] Expects 403 for team_admin org-wide /v1/admin/users; same as TC-USER-01-003.",
     "users-and-teams:TC-USER-04-005": "[recheck-artifact] Expects 403 for team_admin team creation; same existence-hide convention.",
     "vulnerability-data:TC-VDATA-05-003": "[recheck-artifact] Expects 403; 404 existence-hide is the deliberate convention (spec note: '버그 아님, 명세 404 정정 권고').",
-    "vulnerability-data:TC-VDATA-05-004": "[recheck-artifact] Same as TC-VDATA-05-003."
+    "vulnerability-data:TC-VDATA-05-004": "[recheck-artifact] Same as TC-VDATA-05-003.",
+    "backup-and-restore:TC-BACKUP-06-005": "[env-coupling] Expects an auto-YYYYMMDDT... backup in the list; auto backups are produced by the Celery beat midnight job, which a fresh nightly stack has never crossed. The workflow creates one MANUAL backup pre-run (satisfies TC-BACKUP-03-008's items[0] shape); the auto-name assertion stays environment-bound — re-key or a beat-trigger hook requested."
   }
 }

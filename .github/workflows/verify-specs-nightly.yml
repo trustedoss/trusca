@@ -85,6 +85,26 @@ jobs:
       - name: Seed (incl. verification baseline)
         run: docker-compose -f docker-compose.dev.yml exec -T backend python scripts/seed_demo.py
 
+      # backup-and-restore.json asserts the backup list is non-empty with the
+      # full item shape (TC-BACKUP-03-008). A fresh stack has no backups (the
+      # auto backup is the midnight beat job) — create one manual backup.
+      - name: Create one manual backup (spec fixture)
+        run: |
+          TOKEN=$(curl -fsS -X POST http://localhost:8000/auth/login \
+            -H 'Content-Type: application/json' \
+            -d '{"email":"admin@demo.trustedoss.dev","password":"DemoTest2026!"}' | \
+            python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+          curl -fsS -X POST http://localhost:8000/v1/admin/backup \
+            -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{}'
+          # The backup runs via Celery — poll the list until it lands.
+          for i in $(seq 1 24); do
+            n=$(curl -fsS http://localhost:8000/v1/admin/backup -H "Authorization: Bearer $TOKEN" | \
+              python3 -c 'import sys,json;d=json.load(sys.stdin);print(len(d if isinstance(d,list) else d.get("items",[])))')
+            [ "$n" -ge 1 ] && break
+            sleep 5
+          done
+          echo "backups visible: $n"
+
       - name: Run vendored verify specs (26 modules)
         env:
           VERIFY_API_URL: http://localhost:8000
