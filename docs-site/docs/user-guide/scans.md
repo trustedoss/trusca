@@ -257,8 +257,17 @@ After a scan completes:
 2. The Components count > 0.
 <!-- docs-uat: id=scans-vulns-tab-ready kind=ui harness=vulnerabilitiesTabReady(portal-web) tier=nightly -->
 3. The Vulnerabilities count is visible (may be 0 if the project is genuinely clean).
-<!-- docs-uat: id=scans-last-scan-timestamp kind=manual tier=manual -->
+<!-- docs-uat: id=scans-last-scan-timestamp kind=sql ctx=postgres expect=rows:>0 fixture=seed_demo tier=nightly -->
 4. The Last scan timestamp on the Overview tab reflects "now".
+
+   ```sql
+   SELECT count(*) FROM scans s
+     JOIN projects p ON p.id = s.project_id
+    WHERE p.slug = 'portal-web'
+      AND s.status = 'succeeded'
+      AND s.completed_at IS NOT NULL;
+   ```
+
 <!-- docs-uat: id=scans-audit-events kind=manual tier=manual -->
 5. The audit log records `target_table=scans&action=create` and `target_table=scans&action=update` events.
 

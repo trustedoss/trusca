@@ -68,11 +68,30 @@ Tokens are whitespace-separated `key=value`; **values carry no spaces**.
 | `ctx` | shell/sql | `host` `backend` `worker` `postgres` `kind` | where it runs |
 | `expect` | per kind | `exit:N` · `status:N` · `match:/re/` · `rows:>N`/`rows:>=N`/`rows:N` · `ok` (sql: query runs cleanly) | assertion |
 | `url` | api | `/path` or absolute | endpoint hit by the api kind (the doc may show a `${VAR}` host placeholder; the runner uses `DOCS_UAT_API_BASE`) |
-| `auth` | api | `admin` | inject a super-admin bearer (one cached login via `DOCS_UAT_ADMIN_EMAIL`/`_PASSWORD`, default demo super-admin) |
-| `retry` | optional | `NxMs` e.g. `40x6s` | attempts × interval — api polling, or a shell step racing a warming-up service (e.g. `alembic upgrade head` right after `up`) |
+| `auth` | api | `admin` `user` | inject a bearer: `admin` = super-admin (`DOCS_UAT_ADMIN_EMAIL`/`_PASSWORD`, default demo super-admin), `user` = a regular member (`DOCS_UAT_USER_EMAIL`/`_PASSWORD`, default seeded demo developer). One cached login per principal. |
+| `retry` | optional | `NxMs` e.g. `40x6s` | attempts × interval — api polling, a shell step racing a warming-up service (e.g. `alembic upgrade head` right after `up`), or a sql assertion racing an async write (e.g. a Celery notification fan-out) |
 | `harness` | ui | `verb` or `verb(arg1,arg2)` | maps to a registered PortalPage/AuthHarness verb |
 | `fixture` | optional | e.g. `seed_demo` | documents the pre-state the step assumes |
 | `waiver` | optional | `<reason>` (no spaces) | explicitly excludes the block from execution — keeps it counted, never silently dropped |
+
+### Prose-bound sql/shell steps — the indented-fence rule
+
+An annotation placed before a prose line (a Verify list item) binds to the
+prose, which carries no command. For `kind=sql`/`kind=shell` Verify steps the
+extractor therefore **adopts the indented fence placed directly under the
+bound line** (only blank lines may sit in between) as the step's code — the
+api-keys.md "Use raw SQL to verify" style, where the fence stays part of the
+list item. Indented fences never enter the coverage universe (the fence
+matcher is column-0 anchored), so the adoption adds no lint obligations:
+
+```markdown
+<!-- docs-uat: id=audit-verify-new-row kind=sql ctx=postgres expect=rows:>0 tier=nightly -->
+1. **/admin/audit** shows a new row at the top within ~1 second.
+
+   ​```sql
+   SELECT count(*) FROM audit_logs WHERE created_at > now() - interval '1 hour';
+   ​```
+```
 
 ### Coverage rule
 
@@ -133,15 +152,26 @@ the verb to `PortalPage` first (harness-first rule), then register the binding.
 - **`docs-uat-nightly`** — schedule + manual dispatch (not on PRs). Bootstraps
   the dev stack, seeds the demo data, and runs the nightly-tier admin-guide
   api/sql assertions (`admin-guide/audit-log.md`: authed audit API + a jsonb
-  diff query; `admin-guide/disk-and-health.md`: authed `GET /v1/admin/health` +
+  diff query + the Verify SQL — fresh-row / request_id / credential-masking
+  invariants; `admin-guide/disk-and-health.md`: authed `GET /v1/admin/health` +
   `GET /v1/admin/disk`; `admin-guide/users-and-teams.md`: authed
-  `GET /v1/admin/users` + `GET /v1/admin/teams`; `admin-guide/vulnerability-data.md`:
-  authed `GET /v1/admin/trivy/health`, with the Trivy DB / oras / air-gap
-  operator commands waived). Later phases add more docs to its `--doc` list.
+  `GET /v1/admin/users` + `GET /v1/admin/teams`, plus the onboarding Verify
+  steps — `auth=user` sign-in (`/auth/me`) and the `is_active` / membership-role
+  SQL; `admin-guide/vulnerability-data.md`: authed `GET /v1/admin/trivy/health`,
+  with the Trivy DB / oras / air-gap operator commands waived). Later phases
+  add more docs to its `--doc` list.
 - **`docs-uat-nightly-ui`** — schedule + manual dispatch. Same bootstrap plus
   frontend deps + Playwright, then runs the nightly-tier user-guide UI steps
   (`user-guide/components-and-licenses.md` + `dashboard.md` + `scans.md` +
-  `auth-and-profile.md`, dispatched through existing PortalPage verbs).
+  `auth-and-profile.md` + `notifications.md` + `vulnerabilities.md` +
+  `approvals.md` + `projects.md`, dispatched through existing PortalPage
+  verbs). The mutation-driven docs follow their ui step with the converted
+  Verify SQL: `projects.md` asserts the created project's zero-scan state +
+  its `projects/create` audit row, `vulnerabilities.md` / `approvals.md`
+  assert the triage / dispose audit rows (status keys in the jsonb diff) and
+  the requester's `approval_state_changed` notification (Celery-async, so the
+  sql step carries `retry=`), and `scans.md` asserts the seeded `portal-web`
+  succeeded scan carries `completed_at`.
 - **`docs-uat-nightly-helm`** — schedule + manual dispatch. Lightweight (Helm 3
   + Node, no compose stack): runs `installation/helm.md`'s nightly chart-validate
   step (`helm lint` + a full `helm template` render with the minimum required

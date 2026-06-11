@@ -834,10 +834,13 @@ _FX_APPR_GIT_URL = "https://github.com/trustedoss-e2e/fx-appr-26f449.git"
 _FX_APPR_WEBHOOK_SECRET = "whsec_github_fxappr_seed_001"  # noqa: S105 — demo-only fixture
 _GITLAB_WEBHOOK_SECRET = "whsec_gitlab_intg_test_001"  # noqa: S105 — spec-pinned value
 _GITHUB_APP_FIXTURES = (
-    # (team_slug, app_id, revoked)
-    ("backend", "99000201", False),
-    ("backend", "99000202", True),
-    ("security", "99000206", False),
+    # (team_slug, app_id, revoked, has_webhook_secret, has_slug)
+    # Shapes pinned by github-app.json round2: 99000201 carries a webhook
+    # secret (TC-GHAPP-02-002 has_webhook_secret=true); 99000202 was
+    # registered WITHOUT a slug (TC-GHAPP-02-003 app_slug=null) and revoked.
+    ("backend", "99000201", False, True, True),
+    ("backend", "99000202", True, False, False),
+    ("security", "99000206", False, False, True),
 )
 # Audit rows the specs assert exist (count >= 1). Each is keyed by a marker in
 # diff so re-seeding never duplicates them. Shapes mirror what the live
@@ -879,6 +882,10 @@ _BASELINE_AUDIT_ROWS: tuple[dict[str, Any], ...] = (
         "reten-superseded", "scans", "delete", actor=False, team=True, reason="superseded"
     ),
     _audit_row_spec("reten-aged", "scans", "delete", actor=False, team=True, reason="aged"),
+    # TC-SCAN-06-008 — a cancel lands as scans/update whose diff mentions the
+    # cancelled status; TC-SBOM-09-004 — finding creation is audited (M-6).
+    _audit_row_spec("scan-cancel-update", "scans", "update", actor=True, team=True),
+    _audit_row_spec("vf-create", "vulnerability_findings", "create", actor=False, team=True),
 )
 
 
@@ -1089,7 +1096,7 @@ async def _seed_verify_baseline(session: Any) -> dict[str, Any]:
     # The specs resolve app_id 99000201 (live) / 99000202 (revoked, via
     # include_revoked) on Backend and 99000206 (live) on Security. The PEM is
     # a real key so token-mint paths fail on GitHub's side, not on decrypt.
-    for team_slug, app_id, revoked in _GITHUB_APP_FIXTURES:
+    for team_slug, app_id, revoked, has_secret, has_slug in _GITHUB_APP_FIXTURES:
         team = teams.get(team_slug)
         if team is None:
             continue
@@ -1106,14 +1113,190 @@ async def _seed_verify_baseline(session: Any) -> dict[str, Any]:
                 GitHubAppCredential(
                     team_id=team.id,
                     app_id=app_id,
-                    app_slug=f"verify-baseline-{app_id}",
+                    app_slug=f"verify-baseline-{app_id}" if has_slug else None,
                     private_key_encrypted=encrypt_secret(_baseline_rsa_pem()),
+                    webhook_secret_encrypted=(
+                        encrypt_secret(f"whsec_ghapp_{app_id}_seed") if has_secret else None
+                    ),
                     created_by_user_id=super_admin.id,
                     revoked_at=(now - timedelta(days=1)) if revoked else None,
                     revoked_by_user_id=super_admin.id if revoked else None,
                 )
             )
+        else:
+            # Shape top-up for rows seeded before the round2 pins.
+            if has_secret and existing_cred.webhook_secret_encrypted is None:
+                existing_cred.webhook_secret_encrypted = encrypt_secret(
+                    f"whsec_ghapp_{app_id}_seed"
+                )
+            if not has_slug and existing_cred.app_slug is not None:
+                existing_cred.app_slug = None
     summary["github_app_fixtures"] = len(_GITHUB_APP_FIXTURES)
+
+    # ── Round2 fixtures: archived / analyzed projects, queued scan, slot ──
+    # projects.json resolves an archived project literally named
+    # "Project 2946a3cb02" (include_archived=true); vulnerabilities.json
+    # resolves "Project 2f44fc72e0" and asserts a finding's
+    # analysis_justification flows verbatim into the VEX export;
+    # scan-retention.json needs >= 1 queued scan; integrations.json drives
+    # the gitlab webhook against git_http_url trustedoss-e2e/x.git with the
+    # spec-pinned token.
+    from models import Component, ComponentVersion, Vulnerability, VulnerabilityFinding
+
+    archived = (
+        await session.execute(
+            select(Project).where(
+                Project.name == "Project 2946a3cb02",
+                Project.team_id.in_(demo_team_ids),
+            )
+        )
+    ).scalars().first()
+    if archived is None:
+        session.add(
+            Project(
+                team_id=teams["security"].id,
+                name="Project 2946a3cb02",
+                slug="archived-2946a3cb02",
+                description="verification baseline — archived-project fixture",
+                archived_at=now - timedelta(days=3),
+            )
+        )
+    summary["archived_project"] = True
+
+    ana = (
+        await session.execute(
+            select(Project).where(
+                Project.name == "Project 2f44fc72e0",
+                Project.team_id.in_(demo_team_ids),
+            )
+        )
+    ).scalars().first()
+    if ana is None:
+        ana = Project(
+            team_id=teams["backend"].id,
+            name="Project 2f44fc72e0",
+            slug="analysis-2f44fc72e0",
+            description="verification baseline — VEX justification fixture",
+        )
+        session.add(ana)
+        await session.flush()
+        ana_scan = Scan(
+            project_id=ana.id,
+            kind="source",
+            status="succeeded",
+            progress_percent=100,
+            started_at=now - timedelta(hours=6),
+            completed_at=now - timedelta(hours=6) + timedelta(minutes=5),
+            ref="main",
+            scan_metadata={"seeded_baseline": True},
+        )
+        session.add(ana_scan)
+        await session.flush()
+        ana.latest_scan_id = ana_scan.id
+        # Component/version are SHARED-catalog rows: a demo-scope reset
+        # deletes the project but not the catalog, so a re-seed must
+        # get-or-create (uq_components_purl would otherwise fire — caught by
+        # tests/integration/test_reset_demo_scope_db.py).
+        comp = (
+            await session.execute(
+                select(Component).where(Component.purl == "pkg:npm/verify-vex-fixture")
+            )
+        ).scalars().first()
+        if comp is None:
+            comp = Component(
+                purl="pkg:npm/verify-vex-fixture",
+                name="verify-vex-fixture",
+                package_type="npm",
+            )
+            session.add(comp)
+            await session.flush()
+        cv = (
+            await session.execute(
+                select(ComponentVersion).where(
+                    ComponentVersion.purl_with_version
+                    == "pkg:npm/verify-vex-fixture@1.0.0"
+                )
+            )
+        ).scalars().first()
+        if cv is None:
+            cv = ComponentVersion(
+                component_id=comp.id,
+                version="1.0.0",
+                purl_with_version="pkg:npm/verify-vex-fixture@1.0.0",
+            )
+            session.add(cv)
+            await session.flush()
+        vex_vuln = (
+            await session.execute(
+                select(Vulnerability).where(Vulnerability.external_id == "CVE-2024-99101")
+            )
+        ).scalars().first()
+        if vex_vuln is None:
+            vex_vuln = Vulnerability(
+                external_id="CVE-2024-99101",
+                source="NVD",
+                severity="high",
+                summary="Seeded VEX-justification fixture CVE.",
+            )
+            session.add(vex_vuln)
+            await session.flush()
+        session.add(
+            VulnerabilityFinding(
+                scan_id=ana_scan.id,
+                component_version_id=cv.id,
+                vulnerability_id=vex_vuln.id,
+                status="not_affected",
+                analysis_state="not_affected",
+                analysis_justification=(
+                    "Seeded verbatim justification for the VEX export check."
+                ),
+            )
+        )
+    summary["analysis_project"] = True
+
+    if portal_api is not None:
+        queued = (
+            await session.execute(
+                select(Scan).where(
+                    Scan.project_id == portal_api.id, Scan.status == "queued"
+                )
+            )
+        ).scalars().first()
+        if queued is None:
+            # Pure row, never enqueued to Celery — the worker only consumes
+            # tasks it was handed, so this stays queued for the spec to see.
+            session.add(
+                Scan(
+                    project_id=portal_api.id,
+                    kind="source",
+                    status="queued",
+                    progress_percent=0,
+                    scan_metadata={"seeded_baseline": True},
+                )
+            )
+    summary["queued_scan"] = portal_api is not None
+
+    slot = (
+        await session.execute(
+            select(Project).where(
+                Project.name == "webhook-slot",
+                Project.team_id.in_(demo_team_ids),
+            )
+        )
+    ).scalars().first()
+    if slot is None:
+        session.add(
+            Project(
+                team_id=teams["backend"].id,
+                name="webhook-slot",
+                slug="webhook-slot",
+                description="verification baseline — gitlab webhook fixture",
+                git_url="https://github.com/trustedoss-e2e/x.git",
+                webhook_provider="gitlab",
+                webhook_secret=_GITLAB_WEBHOOK_SECRET,
+            )
+        )
+    summary["gitlab_webhook_slot"] = True
 
     # ── Audit baseline rows ───────────────────────────────────────────────
     # The seed writes ORM rows without the audit listener installed, so the
@@ -1136,6 +1319,10 @@ async def _seed_verify_baseline(session: Any) -> dict[str, Any]:
         diff: dict[str, Any] = {"seed_baseline": marker}
         if "reason" in spec:
             diff["reason"] = spec["reason"]
+        if spec["key"] == "scan-cancel-update":
+            # Mirrors the listener's status-transition diff for a user cancel.
+            diff["previous_status"] = "running"
+            diff["new_status"] = "cancelled"
         session.add(
             AuditLog(
                 actor_user_id=super_admin.id if spec["actor"] else None,
