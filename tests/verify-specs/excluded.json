@@ -1,0 +1,25 @@
+{
+  "_about": "Checks excluded from the nightly vendored-spec run. No-silent-caps: every entry carries a reason, and this file is SHARED WITH THE VERIFICATION TEAM for agreement (their review condition 2-2) — an exclusion is a spec/seed gap to resolve, not a way to make the gate green. Keys: modules.<name> excludes a whole module; checks.\"<module>:<tc>\" excludes one check. Categories used below: [retired-guide] the source guide no longer exists; [recheck-artifact] the spec deliberately preserves the ORIGINAL campaign guide expectation as fail-concordant for the team's recheck-gate — the underlying finding was since resolved doc-direction, so the live guide now matches the implementation and the old expectation is no longer a valid oracle (re-key requested); [env-coupling] the check pins identifiers that cannot exist on a fresh stack.",
+  "modules": {
+    "gcp-deploy": "[retired-guide] gcp-deploy.md was retired in #366 (described a nonexistent terraform/ tree; replaced by the Hetzner hosting page). Checks pin the retired guide's dataset shape (e.g. TC-GCPDEPLOY-06-002 expects exactly 5 demo projects; the agreed seed baseline adds fx-appr = 6). Spec retirement/re-target requested."
+  },
+  "checks": {
+    "integrations:TC-INTG-05-000-secret-setup": "[env-coupling] Pins two project UUIDs from the original campaign DB; UUIDs are gen_random per stack. The seed provides the same fixtures by NAME (fx-appr github webhook + scan-pipeline gitlab slot, spec-pinned token) — re-key to name-resolve vars requested.",
+    "audit-log:TC-AUDIT-03-004": "[recheck-artifact] Expects 403 for developer audit read; 404 existence-hide is the deliberate convention (the spec's own note: '명세 404 정정 권고').",
+    "audit-log:TC-AUDIT-04-003": "[recheck-artifact] Encodes the case-sensitive action filter the original guide promised; L-12 resolved doc-direction in #369 (guide now documents ILIKE).",
+    "audit-log:TC-AUDIT-05-002": "[recheck-artifact] Expects page_size=1000 to return 200 per the original guide example; L-13 resolved doc-direction in #355 (guide now documents the 200 cap).",
+    "disk-and-health:TC-HEALTH-06-002": "[recheck-artifact] Expects 403 for developer admin-health read; 404 existence-hide is the deliberate convention.",
+    "disk-and-health:TC-HEALTH-06-003": "[recheck-artifact] Expects 403 for team_admin admin-health read; 404 existence-hide is the deliberate convention.",
+    "integrations:TC-INTG-02-001": "[recheck-artifact] Expects the API key to authenticate GET /v1/projects; L-19 resolved doc-direction in #355 (guide now points key auth at the enrolled endpoints).",
+    "integrations:TC-INTG-02-002": "[recheck-artifact] Same as TC-INTG-02-001 (L-19, doc-direction #355).",
+    "projects:TC-PROJ-10-006": "[recheck-artifact] Expects team_admin to read GET /v1/admin/teams; M-11 resolved doc-direction in #356 (team_id is documented via /auth/me memberships).",
+    "projects:TC-PROJ-13-003": "[recheck-artifact] Expects a per-team unique index on project NAME; M-9 resolved doc-direction in #352 (slug is the documented unique key).",
+    "sbom:TC-SBOM-07-002": "[recheck-artifact] Expects 403 for non-member SBOM access; M-12 resolved doc-direction in #353 (404 existence-hide documented as intended).",
+    "sbom:TC-SBOM-07-003": "[recheck-artifact] Expects 403 for non-member NOTICE access; M-12 resolved doc-direction in #353.",
+    "users-and-teams:TC-USER-01-003": "[recheck-artifact] Expects 403 for developer /v1/admin/users; 404 existence-hide is the deliberate convention (spec note: '명세 404 정정 권고').",
+    "users-and-teams:TC-USER-01-004": "[recheck-artifact] Expects 403 for team_admin org-wide /v1/admin/users; same as TC-USER-01-003.",
+    "users-and-teams:TC-USER-04-005": "[recheck-artifact] Expects 403 for team_admin team creation; same existence-hide convention.",
+    "vulnerability-data:TC-VDATA-05-003": "[recheck-artifact] Expects 403; 404 existence-hide is the deliberate convention (spec note: '버그 아님, 명세 404 정정 권고').",
+    "vulnerability-data:TC-VDATA-05-004": "[recheck-artifact] Same as TC-VDATA-05-003."
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "module": "live-demo",
+  "_about": "live-demo 모듈(공개 읽기 전용 데모 가이드) 결정적 검증 스펙. 41케이스 중 localhost:8000 타깃에서 api/sql로 결정적 재현 가능한 것은 2건뿐이다. 핵심 제약: 이 모듈의 대부분(읽기 전용 차단 경계 01-005~006, 02-*, 03-*, 04-*, 05-005, 07-001)은 DEMO_READ_ONLY=true로 기동된 백엔드가 전제인데, 타깃 localhost:8000은 일반 모드(demo_read_only=false)다. 원 실행(2026-06-09)도 외부 데모 사이트가 아니라 같은 localhost backend 컨테이너 안에 DEMO_READ_ONLY=true 별도 uvicorn(내부 8001)을 띄워 검증했고, 이 러너는 api 요청과 sql만 지원해 프로세스 기동·환경변수 주입이 불가하므로 RO 모드 케이스는 전부 스펙화 불가(환경 의존), 제외. 플래그 파서 케이스(01-001, 01-003, 01-004)는 채널이 api로 표기됐으나 실제 검증 수단이 docker-compose exec + 컨테이너 내 python helper(demo_read_only() 직접 호출)라 api/sql로 재현 불가, 제외. manual 12건(06-001~008, 07-001~004)은 초기화 스크립트 실행(파괴적: reset_demo.py가 demo-org 삭제·재시드), 소스/배포 산출물 검사, GCP 외부 인프라 의존이라 sql 스펙화 불가, 제외(이 중 06-007, 06-008, 07-004는 원 판정 skip이라 직접 대조도 금지). ui/e2e 3건(05-002~004)은 채널 제외. 결함 매핑: L-7(doc-fix #355, 야간 초기화 GCP 문서 대 Hetzner systemd 실제)은 출처 TC가 전부 manual skip(06-007, 06-008, 07-004)이라 api/sql 재현 수단이 없어 제외 — doc-fix라 fixed-since 면책 대상도 아니다. L-4(doc-fix #355, 데모 비번)는 gcp-deploy 모듈 소속(TC-GCPDEPLOY-06-001 등)이라 이 모듈 대상 아님. 남은 스펙 2건은 원 판정 pass인 api 케이스로, 기대값은 live-demo.md 가이드에서 도출: 05-001은 'The SPA reads the flag from the public GET /health response' — 플래그 노출 계약을 일반 모드(false 분기)에서 검증(가이드 계약의 절반, 원 결과표도 8000 false 분기를 함께 관측), 01-002는 'Accepted truthy values' 밖(미설정/false)이면 읽기 전용 비활성 — 나열된 표본값(false/0/off/빈값/미설정) 중 타깃의 현재 값 하나만 검증하며, 쓰기가 미들웨어에 차단되지 않음을 빈 본문 422(밸리데이션 거부, problem demo-read-only 아님) 거부 경로로 확인해 무변경. 사이드이펙트 없음(GET + 422 거부 경로만).",
+  "checks": [
+    {
+      "tc": "TC-LIVEDEMO-05-001", "channel": "api",
+      "_expect": "가이드 'The SPA reads the flag from the public GET /health response ({\"status\":\"ok\",\"demo_read_only\":...})' — 인증 없이 GET /health가 200으로 status와 demo_read_only 플래그를 노출. 타깃은 일반 모드라 false 분기(가이드 계약의 플래그 노출 절반, RO=true 분기는 별도 프로세스 필요로 제외).",
+      "request": { "method": "GET", "path": "/health" },
+      "expect": { "status": 200, "jsonEquals": { "status": "ok", "demo_read_only": false } }
+    },
+    {
+      "tc": "TC-LIVEDEMO-01-002", "channel": "api", "as": "team_admin_backend",
+      "_expect": "가이드 'Accepted truthy values: 1, true, yes, on' — 그 외(미설정/false)면 읽기 전용 비활성이고 쓰기가 미들웨어에 차단되지 않는다. 타깃의 현재 값(falsy 표본점 1개)에서 POST /v1/projects 빈 본문이 403 problem demo-read-only가 아니라 핸들러까지 도달해 422 밸리데이션 거부 — 미들웨어 미차단의 무변경 증거(원 결과표 01-005 일반 모드 관측과 동일 계약).",
+      "request": { "method": "POST", "path": "/v1/projects", "body": {} },
+      "expect": { "status": 422, "jsonHas": ["detail"], "jsonMissing": ["demo_read_only"] }
+    }
+  ]
+}

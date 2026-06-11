@@ -1,0 +1,102 @@
+name: verify-specs-nightly
+
+# Nightly regression gate built on the verification team's vendored
+# deterministic specs (tests/verify-specs/, snapshot bug-hunter@1aa1605 —
+# see tests/verify-specs/PROVENANCE.md for the ground rules: specs are never
+# edited here, exclusions live in excluded.json with reasons and are shared
+# with the verification team, and a green run does NOT waive their
+# independent Tier-3 re-verification).
+#
+# NOT a PR gate (8min+ gates are nightly-only per project policy; not in
+# branch protection). Validate changes via workflow_dispatch on the branch
+# BEFORE merging (memory: nightly verbs must be branch-dispatched).
+
+on:
+  schedule:
+    - cron: "30 17 * * *" # 02:30 KST nightly (after docs-uat's window)
+  workflow_dispatch:
+  # TEMP (remove before merge): branch-push trigger so the gate can be
+  # validated pre-merge — workflow_dispatch 404s until the file exists on the
+  # default branch.
+  push:
+    branches: [feat/vendor-verify-specs]
+
+permissions:
+  contents: read
+
+jobs:
+  verify-specs:
+    # Schedule + manual only — mirrors the docs-uat nightly gate pattern.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'push'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      # Project standard (CLAUDE.md rule #10): docker-compose V1. Ubuntu
+      # runners ship V2 only.
+      - name: Install docker-compose V1
+        run: |
+          sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" \
+            -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+          docker-compose --version
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Bootstrap env
+        run: |
+          cp .env.example .env
+          mkdir -p workspace
+
+      # Order matters (first branch run failed on it): the dev image has no
+      # AUTO_MIGRATE entrypoint and the backend healthcheck needs the schema,
+      # so migrate BEFORE bringing the backend up — same sequence as the
+      # quickstart-gate (docs-uat run.mjs).
+      - name: Start db + migrate
+        env:
+          COMPOSE_DOCKER_CLI_BUILD: "1"
+          DOCKER_BUILDKIT: "1"
+        run: |
+          docker-compose -f docker-compose.dev.yml up -d --build postgres redis
+          docker-compose -f docker-compose.dev.yml run --rm --no-deps backend alembic upgrade head
+
+      - name: Bring up backend + worker
+        env:
+          COMPOSE_DOCKER_CLI_BUILD: "1"
+          DOCKER_BUILDKIT: "1"
+          # The runner caches tokens, but a 26-module run still crosses the
+          # 5-logins/min/IP limit on a cold cache (PROVENANCE.md runtime
+          # assumptions; mirrors the e2e / docs-uat workflows).
+          RATELIMIT_DISABLED: "1"
+        run: |
+          docker-compose -f docker-compose.dev.yml up -d backend celery-worker
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/health || echo 000)
+            [ "$code" = "200" ] && break
+            sleep 5
+          done
+          curl -fsS http://localhost:8000/health
+
+      # seed_demo includes the _seed_verify_baseline block the specs assume
+      # (fresh-stack calibration is the whole point of this gate).
+      - name: Seed (incl. verification baseline)
+        run: docker-compose -f docker-compose.dev.yml exec -T backend python scripts/seed_demo.py
+
+      - name: Run vendored verify specs (26 modules)
+        env:
+          VERIFY_API_URL: http://localhost:8000
+          VERIFY_COMPOSE_FILE: ${{ github.workspace }}/docker-compose.dev.yml
+        run: node tests/verify-specs/run-modules.mjs
+
+      - name: Dump compose logs on failure
+        if: failure()
+        run: |
+          docker-compose -f docker-compose.dev.yml ps || true
+          docker-compose -f docker-compose.dev.yml logs --tail=300 backend celery-worker || true
+
+      - name: Tear down
+        if: always()
+        run: docker-compose -f docker-compose.dev.yml down -v || true

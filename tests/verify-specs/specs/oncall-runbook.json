@@ -1,0 +1,57 @@
+{
+  "module": "oncall-runbook",
+  "_about": "oncall-runbook 모듈의 결정적 검증 스펙. 기대값은 admin-guide/oncall-runbook.md(가이드)에서 도출하고 경로는 /openapi.json로 확정(가이드의 /v1/admin/backup/list·trigger는 실제 GET·POST /v1/admin/backup — 원 실행과 동일하게 실제 경로로 교정). 부수효과 없음: 읽기·거부 경로만. 제외와 사유 — (1) docker exec·로그 grep 진단 케이스(02-001, 02-005, 03-001, 03-003, 04-002, 06-001, 06-002 등): shell은 psql(sql)만 지원해 스펙화 불가. 이 때문에 L-10(04-002, code-fix #357 procps 추가)·L-9(06-001, doc-fix ImportError)·L-11(03-003/03-007, doc-fix 백업 진단)은 결함 매핑은 있으나 결정적 재현 채널이 없어 제외. (2) TC-RUNBOOK-01-001(로그인 성공): 토큰 캐시 정책상 직접 로그인 금지 — tokenFor 캐시 로그인이 간접 검증. (3) 사이드이펙트 케이스 03-006(백업 트리거 생성)·04-004(스캔 트리거 202): 운영 동작이라 금지. (4) 원 판정 blocked 16건·skip 1건: 직접 대조 금지 — 운영 전제(노후 DB, 정체 스캔, 디스크 95%) 부재나 파괴 위험. 그중 04-006(force-cancel)만 종결 스캔 409 거부 경로를 -setup으로 우회 확인. (5) e2e/ui 채널(02-002, 02-003, 03-005, 05-004): 본 러너 범위 밖.",
+  "vars": [
+    { "name": "FAILED_SCAN_ID", "as": "super_admin", "method": "GET", "path": "/v1/scans?status=failed&size=1", "list": true, "field": "id" }
+  ],
+  "checks": [
+    {
+      "tc": "TC-RUNBOOK-01-002", "channel": "api",
+      "_expect": "가이드: super-admin 토큰은 유효 자격증명으로만 발급. 잘못된 password는 401로 거부되고 access_token이 발급되지 않는다",
+      "request": { "method": "POST", "path": "/auth/login", "body": { "email": "admin@demo.trustedoss.dev", "password": "definitely-wrong-pass-1!" } },
+      "expect": { "status": 401, "jsonMissing": ["access_token"] }
+    },
+    {
+      "tc": "TC-RUNBOOK-01-003", "channel": "api",
+      "_expect": "가이드: 진단 curl은 Bearer 토큰을 요구. 토큰 없이 백업 목록(GET /v1/admin/backup) 호출은 401",
+      "request": { "method": "GET", "path": "/v1/admin/backup" },
+      "expect": { "status": 401 }
+    },
+    {
+      "tc": "TC-RUNBOOK-01-004", "channel": "api", "as": "developer",
+      "_expect": "가이드: admin 진단은 설치 시 만든 super-admin 권한 전용 — 비-super_admin은 거부. 명세는 403을 적었으나 구현은 의도된 존재 은닉(require_super_admin_or_404 docstring)으로 404를 반환하므로 '거부'를 403|404로 판정(원 캠페인도 동일 근거로 pass)",
+      "request": { "method": "GET", "path": "/v1/admin/disk" },
+      "expect": { "status": [403, 404] }
+    },
+    {
+      "tc": "TC-RUNBOOK-03-002", "channel": "api", "as": "super_admin",
+      "_expect": "가이드 Scenario 2 진단: 최근 백업 행과 상태 조회 — 200으로 최근 백업 항목(name, kind)이 반환된다",
+      "request": { "method": "GET", "path": "/v1/admin/backup" },
+      "expect": { "status": 200, "jsonHas": ["items", "items[0].name", "items[0].kind"] }
+    },
+    {
+      "tc": "TC-RUNBOOK-04-006-setup", "channel": "api", "as": "super_admin",
+      "_expect": "원 판정 blocked(정체 running 스캔 전제 부재)라 직접 대조하지 않는 우회 확인: force-cancel 엔드포인트가 존재하고 종결(failed) 스캔에는 409 Scan Already Cancelled로 거부(terminal 가드). 거부 경로라 상태 변경 없음",
+      "request": { "method": "POST", "path": "/v1/admin/scans/${FAILED_SCAN_ID}/cancel" },
+      "expect": { "status": 409, "bodyIncludes": ["Scan Already Cancelled"] }
+    },
+    {
+      "tc": "TC-RUNBOOK-05-002", "channel": "api", "as": "super_admin",
+      "_expect": "가이드 Scenario 4 진단: GET /v1/admin/disk가 200으로 카드별 디스크 사용량 분해(items, 각 카드 name)를 반환",
+      "request": { "method": "GET", "path": "/v1/admin/disk" },
+      "expect": { "status": 200, "jsonHas": ["items", "items[0].name", "items[0].status"] }
+    },
+    {
+      "tc": "TC-RUNBOOK-05-003", "channel": "shell",
+      "_expect": "가이드 Scenario 4 진단 SQL: SELECT pg_size_pretty(pg_database_size('trustedoss'))가 데이터베이스 크기를 출력. 케이스의 du -sh /workspace 부분은 docker exec라 제외(부분 검증)",
+      "sql": "SELECT pg_size_pretty(pg_database_size('trustedoss'));",
+      "expect": { "rowMatches": "^[0-9]+ (kB|MB|GB)$" }
+    },
+    {
+      "tc": "TC-RUNBOOK-06-004", "channel": "api", "as": "super_admin",
+      "_expect": "가이드 에스컬레이션 양식: 스캔 이슈는 scan_id와 GET /v1/scans/<scan_id> 전체 JSON을 첨부 — 200으로 id와 status가 든 전체 JSON이 수집된다. metadata.json 부분은 docker exec라 제외(부분 검증)",
+      "request": { "method": "GET", "path": "/v1/scans/${FAILED_SCAN_ID}" },
+      "expect": { "status": 200, "jsonHas": ["id", "status", "project_id"] }
+    }
+  ]
+}

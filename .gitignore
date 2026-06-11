@@ -88,3 +88,6 @@ docs/ux/
 
 # docs-uat generated manifest (rebuilt on every run — never committed)
 docs-uat/manifest.json
+
+# vendored verify-spec runner writes a local JWT cache — never commit it
+tests/verify-specs/.tokens.json

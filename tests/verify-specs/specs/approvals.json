@@ -1,0 +1,36 @@
+{
+  "module": "approvals",
+  "_about": "approvals 모듈 api 채널 결정적 검증 스펙. 전이 검증(409/403/422)은 모두 거부 경로라 fixture 상태를 변경하지 않는다. 기대값은 user-guide/approvals.md에서 도출, 전이는 If-Match(버전 etag) 필수.",
+  "vars": [
+    { "as": "super_admin", "method": "GET", "path": "/v1/approvals?status=pending&page_size=5", "list": true, "fields": { "PENDING_ID": "id", "PENDING_VER": "version" } },
+    { "as": "super_admin", "method": "GET", "path": "/v1/approvals?status=approved&page_size=5", "list": true, "fields": { "APPROVED_ID": "id", "APPROVED_VER": "version" } }
+  ],
+  "checks": [
+    {
+      "tc": "TC-APPR-02-003", "channel": "api", "as": "super_admin",
+      "_expect": "component_id 누락 본문은 검증 실패 422",
+      "request": { "method": "POST", "path": "/v1/approvals", "body": { "project_id": "00000000-0000-0000-0000-000000000000" } },
+      "expect": { "status": 422 }
+    },
+    {
+      "tc": "TC-APPR-04-001", "channel": "api", "as": "super_admin",
+      "_expect": "pending에서 approved 직행은 무효 전이라 409, 본문에 approval_invalid_transition 확장 필드",
+      "headers": { "If-Match": "\"${PENDING_VER}\"" },
+      "request": { "method": "PATCH", "path": "/v1/approvals/${PENDING_ID}/transition", "body": { "action": "approved" } },
+      "expect": { "status": 409, "bodyIncludes": ["Invalid Approval Transition", "approval_invalid_transition"] }
+    },
+    {
+      "tc": "TC-APPR-04-002", "channel": "api", "as": "super_admin",
+      "_expect": "종결(approved) 상태 재승인은 terminal 잠금이라 409 (재처분 불가)",
+      "headers": { "If-Match": "\"${APPROVED_VER}\"" },
+      "request": { "method": "PATCH", "path": "/v1/approvals/${APPROVED_ID}/transition", "body": { "action": "approved" } },
+      "expect": { "status": 409 }
+    },
+    {
+      "tc": "TC-APPR-02-002", "channel": "shell",
+      "_expect": "pending 승인 요청이 DB에 최소 1건 존재(큐 표시 전제)",
+      "sql": "SELECT count(*) FROM component_approvals WHERE status='pending';",
+      "expect": { "rowMatches": "^[1-9][0-9]*$" }
+    }
+  ]
+}

@@ -1,0 +1,130 @@
+{
+  "module": "audit-log",
+  "_about": "audit-log 모듈의 api/shell 케이스 결정적 검증 스펙. 기대값은 test-cases/audit-log.md(가이드)에서 도출하고 경로는 /openapi.json로 확정(GET /v1/admin/audit 단일 읽기 엔드포인트, super_admin 전용). 원 결과표의 api 채널 케이스 약 27건 중 확정 결함 재현 우선으로 표본 추출. 부수효과: api key 1건 생성(추가·복구 가능)만, 나머지는 읽기(GET/SELECT)·거부(4xx) 무변경. 감사 SQL은 target_table+action 단위 count로 과거 잔여 행과 무관하게 결정적. 채널이 manual이던 케이스(H-3 request_id, M-36 SBOM 부수행 등)는 채널 규칙상 제외.",
+  "vars": [
+    { "name": "BACKEND_TEAM", "as": "team_admin_backend", "method": "GET", "path": "/v1/projects", "list": true, "where": { "name": "portal-api" }, "field": "team_id" }
+  ],
+  "checks": [
+    {
+      "tc": "TC-AUDIT-01-003", "channel": "shell",
+      "_expect": "감사 행 스키마가 가이드 명세대로 11개 핵심 컬럼(id, created_at, actor_user_id, team_id, action, target_table, target_id, request_id, diff, ip, user_agent)을 모두 보유. information_schema로 존재 확인",
+      "sql": "SELECT count(*) FROM information_schema.columns WHERE table_name='audit_logs' AND column_name IN ('id','created_at','actor_user_id','team_id','action','target_table','target_id','request_id','diff','ip','user_agent');",
+      "expect": { "rowEquals": 11 }
+    },
+    {
+      "tc": "TC-AUDIT-01-004", "channel": "shell",
+      "_expect": "시스템 작업(Celery 등) 행은 actor_user_id가 null. null-actor 행이 1건 이상 존재(가이드 'null for system jobs')",
+      "sql": "SELECT count(*) FROM audit_logs WHERE actor_user_id IS NULL;",
+      "expect": { "rowMatches": "^[1-9][0-9]*$" }
+    },
+    {
+      "tc": "TC-AUDIT-01-005", "channel": "shell",
+      "_expect": "조직 전체 범위 쓰기 행은 team_id가 null. null-team 행이 1건 이상 존재(가이드 'null for org-wide writes')",
+      "sql": "SELECT count(*) FROM audit_logs WHERE team_id IS NULL;",
+      "expect": { "rowMatches": "^[1-9][0-9]*$" }
+    },
+    {
+      "tc": "TC-AUDIT-01-006-setup", "channel": "api", "as": "team_admin_backend",
+      "_expect": "create 감사 행 target_id 백필을 검증하기 위한 선행 쓰기. 팀 범위 api key 1건 생성(201) 후 id 캡처. 다음 체크에서 이 id로 감사 행을 특정한다. 가이드 01-006은 projects 생성을 예로 들지만 project는 slug 유일키라 재실행 시 409가 나므로, 동일 근본원인(M-4 before_flush PK 미할당)을 재실행 안전한 api key 생성으로 충실 재현한다.",
+      "request": { "method": "POST", "path": "/v1/api-keys", "body": { "name": "verify-audit-target-id", "scope": "team", "team_id": "${BACKEND_TEAM}" } },
+      "capture": { "NEW_KEY_ID": "id" },
+      "expect": { "status": 201 }
+    },
+    {
+      "tc": "TC-AUDIT-01-006", "channel": "shell", "knownBug": "M-4",
+      "_expect": "가이드: 생성된 객체의 감사 행 target_id가 그 객체 id와 같아 'action=create & target_id=<uuid>'로 특정 가능. 원 실행 당시 create 행 target_id가 전부 null이라 fail(M-4). M-4는 code-fix(after_flush PK 확정 백필)라 현재 타깃은 방금 만든 키의 감사 행을 target_id로 특정 → det=pass → fixed-since.",
+      "sql": "SELECT count(*) FROM audit_logs WHERE target_table='api_keys' AND action='create' AND target_id='${NEW_KEY_ID}';",
+      "expect": { "rowMatches": "^[1-9][0-9]*$" }
+    },
+    {
+      "tc": "TC-AUDIT-02-001", "channel": "api", "as": "super_admin",
+      "_expect": "감사 행을 수정·삭제하는 API 엔드포인트가 없어 4xx(부재). OpenAPI에 /v1/admin/audit는 GET만 존재하므로 하위 경로 DELETE는 라우트 없음(404), 베이스 경로면 메서드 불가(405)",
+      "request": { "method": "DELETE", "path": "/v1/admin/audit/00000000-0000-0000-0000-000000000000" },
+      "expect": { "status": [404, 405] }
+    },
+    {
+      "tc": "TC-AUDIT-03-002", "channel": "api", "as": "team_admin_backend", "knownBug": "M-3",
+      "_expect": "가이드: team_admin은 자기 팀 범위로 감사 로그를 읽어 200. 원 구현은 super_admin 단일 게이트(/v1/admin/audit)라 team_admin 404였다. M-3 code-fix(#368): team_admin 팀범위 읽기를 신규 경로 GET /v1/audit로 제공(옛 /v1/admin/audit는 super 전용 유지). 가이드 의도를 새 경로로 재도출 → det=pass, orig=fail, M-3=code-fix → fixed-since. 라이브 확인: backend team_admin 200, items 자기 팀(team_id 단일)만.",
+      "request": { "method": "GET", "path": "/v1/audit?page=1&page_size=5" },
+      "expect": { "status": 200, "jsonHas": ["items", "total"] }
+    },
+    {
+      "tc": "TC-AUDIT-03-003", "channel": "api", "as": "team_admin_backend", "knownBug": "M-3",
+      "_expect": "가이드: team_admin은 200으로 자기 팀 행만 보고 교차 팀 행은 숨겨진다(팀 범위 필터링 전제). M-3 code-fix(#368): 신규 /v1/audit가 CurrentUser.team_roles로 team_admin인 팀만 강제 스코프(WHERE team_id IN ...), 쿼리로 넓힐 수 없다(CWE-863). target_table 필터와 결합해도 자기 팀 행만 200 → det=pass, orig=fail, M-3=code-fix → fixed-since.",
+      "request": { "method": "GET", "path": "/v1/audit?target_table=users&page=1&page_size=5" },
+      "expect": { "status": 200, "jsonHas": ["items", "total"] }
+    },
+    {
+      "tc": "TC-AUDIT-03-004", "channel": "api", "as": "developer", "knownBug": "M-12",
+      "_expect": "가이드: developer는 감사 읽기 권한이 없어 403. 구현은 존재 은닉 정책(require_super_admin_or_404)으로 404 반환. 403↔404 통일은 M-12(pending)라 det=fail concordant.",
+      "request": { "method": "GET", "path": "/v1/admin/audit?page=1&page_size=5" },
+      "expect": { "status": 403 }
+    },
+    {
+      "tc": "TC-AUDIT-03-005", "channel": "api",
+      "_expect": "토큰 없는 요청은 401(인증 필요). 무인증이라 토큰 미주입",
+      "request": { "method": "GET", "path": "/v1/admin/audit?page=1&page_size=5" },
+      "expect": { "status": 401 }
+    },
+    {
+      "tc": "TC-AUDIT-03-006", "channel": "api", "as": "developer",
+      "_expect": "M-3 code-fix(#368) 권한 경계: 신규 /v1/audit는 team_admin 이상 전용이라 developer는 403. 옛 경로(03-004)는 존재 은닉 404였던 것과 달리 새 경로는 권한 거부를 403으로 명시. 원 결과표에 없는 신규 검증(new-check) — 새 엔드포인트의 RBAC 하한 확인.",
+      "request": { "method": "GET", "path": "/v1/audit?page=1&page_size=5" },
+      "expect": { "status": 403 }
+    },
+    {
+      "tc": "TC-AUDIT-03-007", "channel": "api",
+      "_expect": "신규 /v1/audit 무인증 요청은 401. new-check — 새 엔드포인트가 인증 게이트 뒤에 있음을 확인.",
+      "request": { "method": "GET", "path": "/v1/audit?page=1&page_size=5" },
+      "expect": { "status": 401 }
+    },
+    {
+      "tc": "TC-AUDIT-04-003", "channel": "api", "as": "super_admin", "knownBug": "L-12",
+      "_expect": "가이드: action 필터는 대소문자 구분 contains. 소문자 'create' 행만 있으므로 'CREATE'(대문자) 조회는 0건이어야 한다. 구현은 ILIKE(대소문자 무시)라 'CREATE'도 매치돼 total>0. L-12 pending → det=fail concordant.",
+      "request": { "method": "GET", "path": "/v1/admin/audit?action=CREATE&page=1&page_size=5" },
+      "expect": { "jsonEquals": { "total": 0 } }
+    },
+    {
+      "tc": "TC-AUDIT-05-001", "channel": "api", "as": "super_admin",
+      "_expect": "page+page_size 페이지네이션 조회는 200이고 items 배열을 반환(가이드 audit-api-paginate)",
+      "request": { "method": "GET", "path": "/v1/admin/audit?page=1&page_size=10" },
+      "expect": { "status": 200, "jsonHas": ["items", "total", "page", "page_size"] }
+    },
+    {
+      "tc": "TC-AUDIT-05-002", "channel": "api", "as": "super_admin", "knownBug": "L-13",
+      "_expect": "가이드 보존 조회 예시가 page_size=1000을 쓰므로 200을 기대. 구현은 상한 le=200이라 1000은 422 거부. L-13 pending → det=fail concordant.",
+      "request": { "method": "GET", "path": "/v1/admin/audit?from=2026-01-01T00:00:00Z&to=2026-01-31T00:00:00Z&page=1&page_size=1000" },
+      "expect": { "status": 200 }
+    },
+    {
+      "tc": "TC-AUDIT-05-004", "channel": "api", "as": "super_admin",
+      "_expect": "범위 밖 page_size=0은 입력 검증 위반이라 422로 거부(가이드 경계값)",
+      "request": { "method": "GET", "path": "/v1/admin/audit?page=1&page_size=0" },
+      "expect": { "status": 422 }
+    },
+    {
+      "tc": "TC-AUDIT-05-005", "channel": "api", "as": "super_admin",
+      "_expect": "존재 범위를 넘는 page는 200에 빈 목록(가이드 edge). 큰 page 번호로 호출",
+      "request": { "method": "GET", "path": "/v1/admin/audit?page=99999&page_size=10" },
+      "expect": { "status": 200, "jsonEquals": { "page": 99999 } }
+    },
+    {
+      "tc": "TC-AUDIT-06-001", "channel": "shell", "knownBug": "M-5",
+      "_expect": "가이드: '누가 프로젝트 X를 삭제했나'를 action=delete로 추적 → 정확히 한 행 기대. 구현은 프로젝트 삭제가 soft delete(UPDATE→archived_at)라 delete 행이 0건. M-5는 code-fix지만 동사를 'archive'로 정정한 것이라 가이드의 action=delete 기대는 여전히 미충족 → det=fail(orig=fail과 concordant). 잔여 행과 무관하게 projects+delete count로 판정.",
+      "sql": "SELECT count(*) FROM audit_logs WHERE target_table='projects' AND action='delete';",
+      "expect": { "rowMatches": "^[1-9][0-9]*$" }
+    },
+    {
+      "tc": "TC-AUDIT-09-003", "channel": "api", "as": "team_admin_backend", "knownBug": "M-3",
+      "_expect": "가이드: team_admin에게 숨겨지던 교차 팀 행을 super_admin 세션이 조회한다는 흐름. 전제는 team_admin이 200으로 팀 범위를 읽는 것. M-3 code-fix(#368)로 신규 /v1/audit가 team_admin 200을 제공해 전제가 성립한다 → det=pass, orig=fail, M-3=code-fix → fixed-since.",
+      "request": { "method": "GET", "path": "/v1/audit?page=1&page_size=5" },
+      "expect": { "status": 200, "jsonHas": ["items", "total"] }
+    },
+    {
+      "tc": "TC-AUDIT-11-004", "channel": "api", "as": "super_admin",
+      "_expect": "가이드: whitelist 밖 target_table(api_keys 등)은 UI 드롭다운/API 필터 enum에 없어 422로 거부되고 행 자체는 raw SQL로만 조회된다. target_table=api_keys는 AuditTargetTable enum 밖이라 422.",
+      "request": { "method": "GET", "path": "/v1/admin/audit?target_table=api_keys&page=1&page_size=5" },
+      "expect": { "status": 422 }
+    }
+  ]
+}

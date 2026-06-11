@@ -1,0 +1,85 @@
+{
+  "module": "scans",
+  "_about": "scans 모듈 api/shell 케이스 결정적 검증 스펙. 기대값은 user-guide/scans.md(가이드)에서 도출, 경로는 /openapi.json로 확정(/v1/scans 목록 파라미터는 size, 최대 100). 부수효과 0 원칙: 모든 체크가 거부 경로(401/403/404/409/422)·읽기(GET/SELECT)뿐이라 스캔이 기동되거나 상태가 변하지 않는다. 종결 스캔 cancel은 409/404 거부라 무변경. 확정 결함 H-1(container persist UniqueViolation, pending)은 재현에 실제 container 스캔 트리거(202 기동)가 필요해 안전가드상 스펙에서 제외했다(개발팀 #367 integration 회귀로 별도 대조). §4-1 cancel 존재노출(#370)은 타 팀 developer × 실존 종결 스캔 → 404로 보강(TC-SCAN-07-005).",
+  "vars": [
+    { "name": "PW_PID", "as": "team_admin_frontend", "method": "GET", "path": "/v1/projects", "list": true, "where": { "name": "portal-web" }, "field": "id" },
+    { "name": "PW_TERM", "as": "team_admin_frontend", "method": "GET", "path": "/v1/scans?project_id=${PW_PID}&size=100", "list": true, "where": { "status": "succeeded" }, "field": "id" },
+    { "name": "SUCC_SCAN", "as": "super_admin", "method": "GET", "path": "/v1/scans?status=succeeded&size=1", "list": true, "field": "id" },
+    { "name": "FAIL_SCAN", "as": "super_admin", "method": "GET", "path": "/v1/scans?status=failed&size=1", "list": true, "field": "id" },
+    { "name": "CANC_SCAN", "as": "super_admin", "method": "GET", "path": "/v1/scans?status=cancelled&size=1", "list": true, "field": "id" }
+  ],
+  "checks": [
+    {
+      "tc": "TC-SCAN-02-005", "channel": "api",
+      "_expect": "인증 헤더 없는 스캔 트리거는 401 거부(스캔 미생성)",
+      "request": { "method": "POST", "path": "/v1/projects/${PW_PID}/scans", "body": { "kind": "source" } },
+      "expect": { "status": 401 }
+    },
+    {
+      "tc": "TC-SCAN-04-006", "channel": "api", "as": "super_admin",
+      "_expect": "succeeded 종결 스캔 취소는 409 Conflict + RFC 7807 확장 scan_already_cancelled: true (거부 경로, 무변경)",
+      "request": { "method": "POST", "path": "/v1/scans/${SUCC_SCAN}/cancel" },
+      "expect": { "status": 409, "jsonEquals": { "scan_already_cancelled": true } }
+    },
+    {
+      "tc": "TC-SCAN-04-007", "channel": "api", "as": "super_admin",
+      "_expect": "failed 종결 스캔 취소는 409 + scan_already_cancelled: true",
+      "request": { "method": "POST", "path": "/v1/scans/${FAIL_SCAN}/cancel" },
+      "expect": { "status": 409, "jsonEquals": { "scan_already_cancelled": true } }
+    },
+    {
+      "tc": "TC-SCAN-04-008", "channel": "api", "as": "super_admin",
+      "_expect": "cancelled 스캔 재취소는 409 + scan_already_cancelled: true",
+      "request": { "method": "POST", "path": "/v1/scans/${CANC_SCAN}/cancel" },
+      "expect": { "status": 409, "jsonEquals": { "scan_already_cancelled": true } }
+    },
+    {
+      "tc": "TC-SCAN-04-009", "channel": "shell",
+      "_expect": "취소된 스캔 레코드는 완료 타임스탬프가 채워지고 error_message='cancelled by user'로 기록(과거 취소 행으로 검증, ≥1)",
+      "sql": "SELECT count(*) FROM scans WHERE status='cancelled' AND error_message='cancelled by user' AND completed_at IS NOT NULL;",
+      "expect": { "rowMatches": "^[1-9][0-9]*$" }
+    },
+    {
+      "tc": "TC-SCAN-06-008", "channel": "shell",
+      "_expect": "취소가 감사로그에 target_table=scans, action=update로 새 상태(cancelled)와 함께 기록(diff에 cancelled 포함 행 ≥1)",
+      "sql": "SELECT count(*) FROM audit_logs WHERE target_table='scans' AND action='update' AND diff::text LIKE '%cancelled%';",
+      "expect": { "rowMatches": "^[1-9][0-9]*$" }
+    },
+    {
+      "tc": "TC-SCAN-07-002", "channel": "api", "as": "developer",
+      "_expect": "팀 미소속 사용자(backend developer)의 다른 팀(frontend portal-web) 스캔 트리거는 거부(가이드: 403 또는 404), 스캔 미생성",
+      "request": { "method": "POST", "path": "/v1/projects/${PW_PID}/scans", "body": { "kind": "source" } },
+      "expect": { "status": [403, 404] }
+    },
+    {
+      "tc": "TC-SCAN-07-004", "channel": "api", "as": "developer",
+      "_expect": "타 팀 스캔은 존재 은닉 — 404가 스캔 존재를 확인해 주지 않는다. 존재하지 않는 uuid의 cancel도 같은 형태의 404(원 실행의 random uuid 404 재현). 타 팀 running 스캔 취소 시도는 거부 실패(=실제 취소) 위험이 있어 무해한 미존재 uuid로 동일 계약을 재현",
+      "request": { "method": "POST", "path": "/v1/scans/00000000-0000-4000-8000-000000000000/cancel" },
+      "expect": { "status": 404 }
+    },
+    {
+      "tc": "TC-SCAN-07-005", "channel": "api", "as": "developer",
+      "_expect": "§4-1 새 관찰 → #370 code-fix 검증. backend developer가 타 팀(frontend, portal-web) 실존 종결 스캔을 cancel하면, terminal 409가 아니라 팀 게이트 선행으로 404(존재 은닉)를 반환해야 한다(수정 전엔 409가 먼저 실행돼 리소스 존재가 노출). 종결 스캔이라 404/409 어느 쪽이든 상태 무변경. PW_TERM은 frontend팀 portal-web의 succeeded 스캔(종결). 라이브 확인: backend-dev × frontend 종결 스캔 → 404. new-check(원 결과표에 없는 신규 검증).",
+      "request": { "method": "POST", "path": "/v1/scans/${PW_TERM}/cancel" },
+      "expect": { "status": 404 }
+    },
+    {
+      "tc": "TC-SCAN-08-008", "channel": "api", "as": "super_admin",
+      "_expect": "큐 목록 한 번 호출(GET /v1/scans)이 프로젝트 관계를 배치 로드해 모든 행에 project_name이 채워짐(per-row 조회 불필요)",
+      "request": { "method": "GET", "path": "/v1/scans?size=100" },
+      "expect": { "status": 200, "jsonHas": ["total", "items[0].project_name"] }
+    },
+    {
+      "tc": "TC-SCAN-10-001", "channel": "api", "as": "developer",
+      "_expect": "이 버전에는 브랜치 override가 없어 top-level branch 필드는 거부된다(ScanCreate extra=forbid → 422). 비소속 계정이라 검증 실패가 아니어도 403 거부로 스캔이 기동되지 않는 안전 구성",
+      "request": { "method": "POST", "path": "/v1/projects/${PW_PID}/scans", "body": { "kind": "source", "branch": "develop" } },
+      "expect": { "status": 422 }
+    },
+    {
+      "tc": "TC-SCAN-10-002", "channel": "api", "as": "team_admin_frontend",
+      "_expect": "source 스캔 대상인 프로젝트 default_branch가 설정돼 있고 보통 main(per-scan 브랜치 입력 부재의 짝 검증)",
+      "request": { "method": "GET", "path": "/v1/projects/${PW_PID}" },
+      "expect": { "status": 200, "jsonEquals": { "default_branch": "main" } }
+    }
+  ]
+}

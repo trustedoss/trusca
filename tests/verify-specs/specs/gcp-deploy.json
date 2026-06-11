@@ -1,0 +1,37 @@
+{
+  "module": "gcp-deploy",
+  "_about": "gcp-deploy(GCP Demo SaaS 배포 런북) 모듈의 결정적 검증 스펙. 원 41케이스 중 33건은 gcloud/gsutil/terraform/tfenv 부재와 외부 GCP 인프라(Cloud Run, Cloud SQL, Artifact Registry, billing) 의존으로 blocked였고 로컬 결정화 대상이 아니다. 스펙화한 것은 런북 5~6단계 중 로컬 docker-compose 타깃에서 읽기 전용으로 재현 가능한 5건(06-001~005): 시드 자격 로그인, demo 프로젝트 5개, portal-web/portal-mobile 발견 건수, developer 알림 카운트, 틀린 비밀번호 거부. 기대값은 docs-site/docs/installation/gcp-deploy.md 5~6절에서 도출(L-4 doc-fix #355로 가이드 비밀번호가 DemoTest2026!로 정정된 현재 본문 기준). 제외: 05-002/05-003/05-005는 원 판정 blocked(라이브 DB 시드 쓰기·빈 스키마 필요 — 직접 대조 금지, 쓰기 부수효과), 05-004와 09-003은 원 pass이나 backend 컨테이너에서 seed_demo.py 실행이 필요해 스펙 문법(shell=sql 전용)으로 표현 불가, 09-002는 manual(소스 검증). 사이드이펙트: 없음(로그인 시도와 읽기 조회만).",
+  "vars": [],
+  "checks": [
+    {
+      "tc": "TC-GCPDEPLOY-06-001", "channel": "api",
+      "_expect": "가이드 6단계: 시드된 super-admin 자격(admin@demo.trustedoss.dev / DemoTest2026!, 가이드 133행)으로 로그인 성공 → 200 + access_token. 원 실행 시 가이드는 DemoAdmin2026!를 기재해 L-4(doc-fix #355)로 정정됨",
+      "request": { "method": "POST", "path": "/auth/login", "body": { "email": "admin@demo.trustedoss.dev", "password": "DemoTest2026!" } },
+      "expect": { "status": 200, "jsonHas": ["access_token"] }
+    },
+    {
+      "tc": "TC-GCPDEPLOY-06-002", "channel": "shell",
+      "_expect": "가이드 6단계 'The dashboard shows 5 demo projects' — demo-org 소속 프로젝트가 정확히 5개",
+      "sql": "SELECT count(*) FROM projects p JOIN teams t ON p.team_id=t.id JOIN organizations o ON t.organization_id=o.id WHERE o.slug='demo-org';",
+      "expect": { "rowEquals": "5" }
+    },
+    {
+      "tc": "TC-GCPDEPLOY-06-003", "channel": "shell",
+      "_expect": "가이드 6단계 'portal-web and portal-mobile each have 10 CVEs and 5 license findings' — 각 프로젝트 latest scan 기준 CVE 10·license 5",
+      "sql": "SELECT p.name || ' cve=' || (SELECT count(*) FROM vulnerability_findings vf WHERE vf.scan_id=p.latest_scan_id) || ' lic=' || (SELECT count(*) FROM license_findings lf WHERE lf.scan_id=p.latest_scan_id) FROM projects p JOIN teams t ON p.team_id=t.id JOIN organizations o ON t.organization_id=o.id WHERE o.slug='demo-org' AND p.name IN ('portal-web','portal-mobile') ORDER BY p.name;",
+      "expect": { "rowEquals": "portal-mobile cve=10 lic=5\nportal-web cve=10 lic=5" }
+    },
+    {
+      "tc": "TC-GCPDEPLOY-06-004", "channel": "shell",
+      "_expect": "가이드 6단계 'The notifications dropdown shows 2 unread + 1 read for the developer user' — dev@demo 알림 안 읽음 2·읽음 1",
+      "sql": "SELECT 'unread=' || count(*) FILTER (WHERE n.read_at IS NULL) || ' read=' || count(*) FILTER (WHERE n.read_at IS NOT NULL) FROM notifications n JOIN users u ON n.user_id=u.id WHERE u.email='dev@demo.trustedoss.dev';",
+      "expect": { "rowEquals": "unread=2 read=1" }
+    },
+    {
+      "tc": "TC-GCPDEPLOY-06-005", "channel": "api",
+      "_expect": "가이드의 문서화된 자격이 아닌 틀린 비밀번호는 401로 거부되고 토큰이 발급되지 않는다",
+      "request": { "method": "POST", "path": "/auth/login", "body": { "email": "admin@demo.trustedoss.dev", "password": "verify-wrong-password-gcpdeploy" } },
+      "expect": { "status": 401, "jsonMissing": ["access_token"] }
+    }
+  ]
+}

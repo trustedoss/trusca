@@ -1,0 +1,79 @@
+{
+  "module": "quickstart",
+  "_about": "quickstart 모듈의 api/shell 결정적 검증 스펙. 기대값은 docs-site/docs/quickstart.md(가이드)에서 도출: 헬스 게이트(/health/ready=200, docs-uat qs-health expect=status:200), 시드 구성(조직 1·팀 3·사용자 5·프로젝트 5 + CVE/라이선스/의무 혼합), 데모 계정 3종 로그인 성공·잘못된 자격 거부 계약. 원 결과 blocked 16건(환경 파괴·docker·호스트 의존)은 결정적 재현이 불가능해 제외: 스택 정지/볼륨 삭제(08-x), 스키마 미생성 기동·손상 readiness(02-002/005/006, 03-003/004, 04-003, 07-001/003), docker 클라이언트·호스트 자원(01-002~005), 클론/파일 검사(01-001/006), docker exec 실행 계약(02-003, 04-001), 소스 대조 manual(07-002/004/005), 브라우저 전용(06-003~006). 로그인 계약(05-x)은 원 채널 e2e지만 BE 계약(토큰 캐시 + /auth/me, 거부 401)으로 api 재현. 시드 카운트는 누적 e2e 데이터와 섞이지 않게 안정 식별자(slug=demo-org, 시드 계정 이메일 5종, 시드 프로젝트명 5종)로 스코핑. 사이드이펙트 없음(읽기·거부 경로만, 직접 POST는 거부 401 재현 2건뿐).",
+  "vars": [],
+  "checks": [
+    {
+      "tc": "TC-QSTART-02-001", "channel": "shell",
+      "_expect": "alembic upgrade head로 스키마가 생성되어 있음(alembic_version 행 1개)",
+      "sql": "SELECT count(*) FROM alembic_version;",
+      "expect": { "rowEquals": "1" }
+    },
+    {
+      "tc": "TC-QSTART-02-004", "channel": "api",
+      "_expect": "스키마 선생성으로 backend가 healthy — readiness 게이트 200",
+      "request": { "method": "GET", "path": "/health/ready" },
+      "expect": { "status": 200 }
+    },
+    {
+      "tc": "TC-QSTART-03-001", "channel": "api",
+      "_expect": "readiness 엔드포인트 GET /health/ready가 200 반환(docs-uat qs-health expect=status:200)",
+      "request": { "method": "GET", "path": "/health/ready" },
+      "expect": { "status": 200 }
+    },
+    {
+      "tc": "TC-QSTART-04-002", "channel": "shell",
+      "_expect": "시드 구성: 조직 1(slug=demo-org), 그 조직의 팀 3, 시드 사용자 5, 시드 프로젝트 5, CVE/라이선스 발견/의무 혼합 존재 → '1/3/5/5/mix'",
+      "sql": "SELECT (SELECT count(*) FROM organizations WHERE slug='demo-org')::text || '/' || (SELECT count(*) FROM teams WHERE organization_id=(SELECT id FROM organizations WHERE slug='demo-org'))::text || '/' || (SELECT count(*) FROM users WHERE email IN ('admin@demo.trustedoss.dev','frontend-admin@demo.trustedoss.dev','backend-admin@demo.trustedoss.dev','security-admin@demo.trustedoss.dev','dev@demo.trustedoss.dev'))::text || '/' || (SELECT count(DISTINCT name) FROM projects WHERE name IN ('portal-web','portal-mobile','portal-api','scan-pipeline','vuln-feed'))::text || '/' || (CASE WHEN (SELECT count(*) FROM vulnerability_findings)>0 AND (SELECT count(*) FROM license_findings)>0 AND (SELECT count(*) FROM obligations)>0 THEN 'mix' ELSE 'nomix' END);",
+      "expect": { "rowEquals": "1/3/5/5/mix" }
+    },
+    {
+      "tc": "TC-QSTART-05-001", "channel": "api", "as": "super_admin",
+      "_expect": "super_admin 데모 계정(admin@demo.trustedoss.dev/DemoTest2026!) 로그인 성공 계약 — 캐시 토큰으로 /auth/me 200, 본인 이메일 반환",
+      "request": { "method": "GET", "path": "/auth/me" },
+      "expect": { "status": 200, "jsonEquals": { "email": "admin@demo.trustedoss.dev" } }
+    },
+    {
+      "tc": "TC-QSTART-05-002", "channel": "api", "as": "team_admin_frontend",
+      "_expect": "team_admin 데모 계정(frontend-admin@demo.trustedoss.dev) 로그인 성공 계약",
+      "request": { "method": "GET", "path": "/auth/me" },
+      "expect": { "status": 200, "jsonEquals": { "email": "frontend-admin@demo.trustedoss.dev" } }
+    },
+    {
+      "tc": "TC-QSTART-05-003", "channel": "api", "as": "developer",
+      "_expect": "developer 데모 계정(dev@demo.trustedoss.dev) 로그인 성공 계약",
+      "request": { "method": "GET", "path": "/auth/me" },
+      "expect": { "status": 200, "jsonEquals": { "email": "dev@demo.trustedoss.dev" } }
+    },
+    {
+      "tc": "TC-QSTART-05-004", "channel": "api",
+      "_expect": "유효 이메일 + 틀린 비밀번호는 인증 거부 401 (거부 경로라 직접 POST 허용, 토큰 캐시 비오염)",
+      "request": { "method": "POST", "path": "/auth/login", "body": { "email": "admin@demo.trustedoss.dev", "password": "WrongPass-NotDemo1!" } },
+      "expect": { "status": 401 }
+    },
+    {
+      "tc": "TC-QSTART-05-005", "channel": "api",
+      "_expect": "시드에 없는 미등록 이메일 로그인은 거부 401",
+      "request": { "method": "POST", "path": "/auth/login", "body": { "email": "nobody-unregistered@example.com", "password": "Whatever-Pass1!" } },
+      "expect": { "status": 401 }
+    },
+    {
+      "tc": "TC-QSTART-05-006", "channel": "api", "as": "developer",
+      "_expect": "developer는 관리자 영역 접근이 제한됨 — 관리자 API가 403 또는 404(존재 은닉)로 거부",
+      "request": { "method": "GET", "path": "/v1/admin/audit" },
+      "expect": { "status": [403, 404] }
+    },
+    {
+      "tc": "TC-QSTART-06-001", "channel": "api", "as": "super_admin",
+      "_expect": "대시보드 첫 화면 API가 조직 전체 심각도 타일과 최근 스캔 데이터를 제공(severity tiles + recent scans)",
+      "request": { "method": "GET", "path": "/v1/dashboard/summary" },
+      "expect": { "status": 200, "jsonHas": ["vulnerability_severity_counts", "recent_scans"] }
+    },
+    {
+      "tc": "TC-QSTART-06-002", "channel": "shell",
+      "_expect": "시드 프로젝트 5개(portal-web, portal-mobile, portal-api, scan-pipeline, vuln-feed)가 존재해 Projects 목록에 표시될 데이터가 갖춰짐",
+      "sql": "SELECT count(DISTINCT name) FROM projects WHERE name IN ('portal-web','portal-mobile','portal-api','scan-pipeline','vuln-feed');",
+      "expect": { "rowEquals": "5" }
+    }
+  ]
+}

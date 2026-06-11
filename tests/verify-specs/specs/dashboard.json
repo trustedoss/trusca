@@ -1,0 +1,127 @@
+{
+  "module": "dashboard",
+  "_about": "dashboard 모듈 api/shell 케이스 결정적 검증 스펙. 기대값은 user-guide/dashboard.md 기반 케이스 명세에서 도출, 경로는 /openapi.json의 /v1/dashboard/summary와 /v1/approvals로 확정. 대시보드 집계는 시점 데이터라 고정 상수 대신 capture로 API 값을 받아 같은 정의의 SQL 집계와 등식 비교(자기 일관성)로 결정화했다. 전부 읽기(GET/SELECT)로 무변경. 모듈 확정 결함(M-17, M-18)은 모두 ui 채널이라 이 스펙 범위 밖.",
+  "checks": [
+    {
+      "tc": "TC-DASH-01-006", "channel": "api",
+      "_expect": "토큰 없는 summary 호출은 401, RFC7807 problem+json(type/title/status) 본문",
+      "request": { "method": "GET", "path": "/v1/dashboard/summary" },
+      "expect": { "status": 401, "jsonHas": ["type", "title", "status"], "jsonEquals": { "status": 401 } }
+    },
+    {
+      "tc": "TC-DASH-09-006", "channel": "api", "as": "super_admin",
+      "_expect": "summary 엔드포인트 자체는 200으로 동작하고 DashboardSummary 스키마 6키를 반환(화면 미연결과 무관). 이후 등식 비교용으로 집계값 전부 capture",
+      "request": { "method": "GET", "path": "/v1/dashboard/summary" },
+      "capture": {
+        "SUPER_PC": "project_count",
+        "SCS_Q": "scan_status_counts.queued",
+        "SCS_R": "scan_status_counts.running",
+        "SCS_S": "scan_status_counts.succeeded",
+        "SCS_F": "scan_status_counts.failed",
+        "SEV_C": "vulnerability_severity_counts.critical",
+        "SEV_H": "vulnerability_severity_counts.high",
+        "SEV_M": "vulnerability_severity_counts.medium",
+        "SEV_L": "vulnerability_severity_counts.low",
+        "SEV_I": "vulnerability_severity_counts.info",
+        "LIC_PRO": "license_category_counts.prohibited",
+        "LIC_CON": "license_category_counts.conditional",
+        "LIC_PER": "license_category_counts.permissive",
+        "LIC_UNK": "license_category_counts.unknown",
+        "SUPER_PENDING": "pending_approvals_count"
+      },
+      "expect": {
+        "status": 200,
+        "jsonHas": ["project_count", "scan_status_counts", "vulnerability_severity_counts", "license_category_counts", "pending_approvals_count", "recent_scans"]
+      }
+    },
+    {
+      "tc": "TC-DASH-07-003", "channel": "shell",
+      "_expect": "super_admin은 배포 전체 team 데이터를 집계: summary project_count == 전체 비archived 프로젝트 SQL 카운트",
+      "sql": "SELECT count(*) FROM projects WHERE archived_at IS NULL;",
+      "expect": { "rowEquals": "${SUPER_PC}" }
+    },
+    {
+      "tc": "TC-DASH-04-005", "channel": "shell",
+      "_expect": "scan_status_counts가 queued/running/succeeded/failed 네 상태별 정확한 개수: API 값 == 같은 정의(비archived 프로젝트 범위, status group)의 SQL 카운트",
+      "sql": "SELECT (SELECT count(*) FROM scans s JOIN projects p ON p.id=s.project_id WHERE p.archived_at IS NULL AND s.status='queued')::text||'/'||(SELECT count(*) FROM scans s JOIN projects p ON p.id=s.project_id WHERE p.archived_at IS NULL AND s.status='running')||'/'||(SELECT count(*) FROM scans s JOIN projects p ON p.id=s.project_id WHERE p.archived_at IS NULL AND s.status='succeeded')||'/'||(SELECT count(*) FROM scans s JOIN projects p ON p.id=s.project_id WHERE p.archived_at IS NULL AND s.status='failed');",
+      "expect": { "rowEquals": "${SCS_Q}/${SCS_R}/${SCS_S}/${SCS_F}" }
+    },
+    {
+      "tc": "TC-DASH-04-006-setup", "channel": "shell",
+      "_expect": "전제조건: cancelled 스캔이 1건 이상 존재(있어야 제외 동작이 의미 있는 검증이 됨)",
+      "sql": "SELECT count(*) FROM scans s JOIN projects p ON p.id=s.project_id WHERE p.archived_at IS NULL AND s.status='cancelled';",
+      "expect": { "rowMatches": "^[1-9][0-9]*$" }
+    },
+    {
+      "tc": "TC-DASH-04-006", "channel": "api", "as": "super_admin",
+      "_expect": "cancelled는 헤드라인 카운트에서 의도적으로 제외: scan_status_counts에 cancelled 키가 없고 네 키만 존재(어디에도 안 더해짐은 TC-DASH-04-005 등식이 증명)",
+      "request": { "method": "GET", "path": "/v1/dashboard/summary" },
+      "expect": {
+        "status": 200,
+        "jsonHas": ["scan_status_counts.queued", "scan_status_counts.running", "scan_status_counts.succeeded", "scan_status_counts.failed"],
+        "jsonMissing": ["scan_status_counts.cancelled"]
+      }
+    },
+    {
+      "tc": "TC-DASH-02-005", "channel": "shell",
+      "_expect": "심각도 집계: 프로젝트별 최신 성공 스캔만 대상, component_version별 worst(MAX rank), unknown은 info로 접힘(rank 1). API 값 == 같은 정의의 SQL 집계",
+      "sql": "WITH pids AS (SELECT id FROM projects WHERE archived_at IS NULL), latest AS (SELECT DISTINCT ON (project_id) id FROM scans WHERE project_id IN (SELECT id FROM pids) AND status='succeeded' ORDER BY project_id, created_at DESC, id DESC), ranked AS (SELECT vf.scan_id, vf.component_version_id, MAX(CASE v.severity::text WHEN 'critical' THEN 5 WHEN 'high' THEN 4 WHEN 'medium' THEN 3 WHEN 'low' THEN 2 WHEN 'info' THEN 1 WHEN 'unknown' THEN 1 ELSE 0 END) AS r FROM vulnerability_findings vf JOIN vulnerabilities v ON v.id=vf.vulnerability_id WHERE vf.scan_id IN (SELECT id FROM latest) GROUP BY vf.scan_id, vf.component_version_id) SELECT count(*) FILTER (WHERE r=5)||'/'||count(*) FILTER (WHERE r=4)||'/'||count(*) FILTER (WHERE r=3)||'/'||count(*) FILTER (WHERE r=2)||'/'||count(*) FILTER (WHERE r=1) FROM ranked;",
+      "expect": { "rowEquals": "${SEV_C}/${SEV_H}/${SEV_M}/${SEV_L}/${SEV_I}" }
+    },
+    {
+      "tc": "TC-DASH-03-003", "channel": "api", "as": "super_admin",
+      "_expect": "라이선스 버킷 이름 매핑: 응답 키는 prohibited/conditional/permissive/unknown이고 저장명 forbidden/allowed는 노출되지 않음",
+      "request": { "method": "GET", "path": "/v1/dashboard/summary" },
+      "expect": {
+        "status": 200,
+        "jsonHas": ["license_category_counts.prohibited", "license_category_counts.conditional", "license_category_counts.permissive", "license_category_counts.unknown"],
+        "jsonMissing": ["license_category_counts.forbidden", "license_category_counts.allowed"]
+      }
+    },
+    {
+      "tc": "TC-DASH-03-004", "channel": "shell",
+      "_expect": "라이선스 worst category가 component_version 단위 MAX(rank)로 중복 없이 1회 계수(forbidden=3→prohibited, allowed=1→permissive). API 값 == 같은 정의의 SQL 집계",
+      "sql": "WITH pids AS (SELECT id FROM projects WHERE archived_at IS NULL), latest AS (SELECT DISTINCT ON (project_id) id FROM scans WHERE project_id IN (SELECT id FROM pids) AND status='succeeded' ORDER BY project_id, created_at DESC, id DESC), ranked AS (SELECT lf.scan_id, lf.component_version_id, MAX(CASE l.category::text WHEN 'forbidden' THEN 3 WHEN 'conditional' THEN 2 WHEN 'allowed' THEN 1 ELSE 0 END) AS r FROM license_findings lf JOIN licenses l ON l.id=lf.license_id WHERE lf.scan_id IN (SELECT id FROM latest) GROUP BY lf.scan_id, lf.component_version_id) SELECT count(*) FILTER (WHERE r=3)||'/'||count(*) FILTER (WHERE r=2)||'/'||count(*) FILTER (WHERE r=1)||'/'||count(*) FILTER (WHERE r=0) FROM ranked;",
+      "expect": { "rowEquals": "${LIC_PRO}/${LIC_CON}/${LIC_PER}/${LIC_UNK}" }
+    },
+    {
+      "tc": "TC-DASH-07-001-setup", "channel": "api", "as": "team_admin_backend",
+      "_expect": "team_admin_backend의 summary 호출(200). project_count를 capture해 다음 체크에서 멤버십 범위 SQL과 등식 비교",
+      "request": { "method": "GET", "path": "/v1/dashboard/summary" },
+      "capture": { "BE_PC": "project_count" },
+      "expect": { "status": 200 }
+    },
+    {
+      "tc": "TC-DASH-07-001", "channel": "shell",
+      "_expect": "일반 사용자는 소속 team 프로젝트만 집계: backend-admin의 project_count == 해당 계정 멤버십 team 소유 비archived 프로젝트 SQL 카운트",
+      "sql": "SELECT count(*) FROM projects p WHERE p.archived_at IS NULL AND p.team_id IN (SELECT m.team_id FROM memberships m JOIN users u ON u.id=m.user_id WHERE u.email='backend-admin@demo.trustedoss.dev');",
+      "expect": { "rowEquals": "${BE_PC}" }
+    },
+    {
+      "tc": "TC-DASH-07-002-setup", "channel": "api", "as": "developer",
+      "_expect": "developer(여러 team 멤버십, 최고 역할 보유) summary 호출(200). project_count capture",
+      "request": { "method": "GET", "path": "/v1/dashboard/summary" },
+      "capture": { "DEV_PC": "project_count" },
+      "expect": { "status": 200 }
+    },
+    {
+      "tc": "TC-DASH-07-002", "channel": "shell",
+      "_expect": "교차 team 격리: developer의 project_count == 멤버십 team만의 SQL 카운트(최고 역할 actor.role이 멤버십 신호로 오용되면 등식이 깨짐)",
+      "sql": "SELECT count(*) FROM projects p WHERE p.archived_at IS NULL AND p.team_id IN (SELECT m.team_id FROM memberships m JOIN users u ON u.id=m.user_id WHERE u.email='dev@demo.trustedoss.dev');",
+      "expect": { "rowEquals": "${DEV_PC}" }
+    },
+    {
+      "tc": "TC-DASH-09-002-setup", "channel": "api", "as": "super_admin",
+      "_expect": "화면 KPI가 쓰는 /v1/approvals?status=pending의 total capture(200)",
+      "request": { "method": "GET", "path": "/v1/approvals?status=pending&page_size=1" },
+      "capture": { "PENDING_TOTAL": "total" },
+      "expect": { "status": 200 }
+    },
+    {
+      "tc": "TC-DASH-09-002", "channel": "shell",
+      "_expect": "두 표면의 정의 차이(의도된 동작): summary pending_approvals_count는 pending+under_review 합산, approvals?status=pending total은 pending만. 각각 같은 정의의 SQL과 등식 일치",
+      "sql": "SELECT (SELECT count(*) FROM component_approvals ca JOIN projects p ON p.id=ca.project_id WHERE p.archived_at IS NULL AND ca.status IN ('pending','under_review'))::text||'/'||(SELECT count(*) FROM component_approvals ca JOIN projects p ON p.id=ca.project_id WHERE p.archived_at IS NULL AND ca.status='pending');",
+      "expect": { "rowEquals": "${SUPER_PENDING}/${PENDING_TOTAL}" }
+    }
+  ]
+}
