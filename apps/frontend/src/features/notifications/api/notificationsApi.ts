@@ -13,13 +13,27 @@
  */
 import { api } from "@/lib/api";
 
-export type NotificationKind =
-  | "scan_completed"
-  | "scan_failed"
-  | "cve_detected"
-  | "license_violation"
-  | "approval_pending"
-  | "policy_gate_failed";
+/**
+ * Closed in-app notification kind set — runtime mirror of the backend's
+ * `models/notification.py::NOTIFICATION_KIND_VALUES` (Postgres enum
+ * `notification_kind`), same order. PR-6 FE regression guards: the contract
+ * test `tests/unit/contracts/catalogMirrors.test.ts` pins this array against
+ * the shared fixture `tests/contracts/notification-kinds.json` so an enum
+ * value added on the backend (H-5: `approval_state_changed` shipped in
+ * migration 0030 while this union silently stayed at six) fails a PR-time
+ * vitest instead of rendering a fallback icon + raw i18n key in production.
+ */
+export const NOTIFICATION_KINDS = [
+  "scan_completed",
+  "scan_failed",
+  "cve_detected",
+  "license_violation",
+  "approval_pending",
+  "policy_gate_failed",
+  "approval_state_changed",
+] as const;
+
+export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
 export interface NotificationItem {
   id: string;

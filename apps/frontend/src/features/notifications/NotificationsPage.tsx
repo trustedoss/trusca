@@ -74,6 +74,10 @@ const KIND_ICONS: Record<NotificationKind, LucideIcon> = {
   license_violation: ShieldX,
   approval_pending: ClipboardCheck,
   policy_gate_failed: FileWarning,
+  // H-5 — the requester gets an in-app row when their approval is disposed
+  // (migration 0030). Same icon family as approval_pending; the tone below +
+  // the translated label distinguish it.
+  approval_state_changed: ClipboardCheck,
 };
 
 const KIND_TONE: Record<NotificationKind, string> = {
@@ -85,6 +89,7 @@ const KIND_TONE: Record<NotificationKind, string> = {
   license_violation: "text-risk-high",
   approval_pending: "text-risk-low",
   policy_gate_failed: "text-risk-critical",
+  approval_state_changed: "text-risk-info",
 };
 
 function NotificationKindIcon({ kind }: { kind: NotificationKind }) {
