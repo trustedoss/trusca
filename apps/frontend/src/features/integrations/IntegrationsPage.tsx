@@ -17,11 +17,12 @@ import { Copy, KeyRound, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AdminToast, type AdminToastMessage } from "@/features/admin/components/AdminToast";
+import { useToast } from "@/components/ui/toast";
 import { CreateApiKeyDialog } from "@/features/integrations/CreateApiKeyDialog";
 import { RevealApiKeyDialog } from "@/features/integrations/RevealApiKeyDialog";
 import { RevokeApiKeyDialog } from "@/features/integrations/RevokeApiKeyDialog";
@@ -143,10 +144,7 @@ export function IntegrationsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [revealKey, setRevealKey] = useState<APIKeyCreateOut | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<APIKeyListItem | null>(null);
-  const [toast, setToast] = useState<AdminToastMessage | null>(null);
-  // Monotonic id sequence — kept in state so React's batched renders
-  // observe a fresh value on every showToast() call.
-  const [, setToastSeq] = useState(0);
+  const { toast } = useToast();
 
   const params = { page, page_size: PAGE_SIZE };
   const keysQuery = useApiKeys(params);
@@ -155,11 +153,7 @@ export function IntegrationsPage() {
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   function showToast(text: string, tone: "success" | "error", key: string) {
-    setToastSeq((n) => {
-      const id = n + 1;
-      setToast({ id, text, tone, key });
-      return id;
-    });
+    toast(text, { tone, key });
   }
 
   const createMutation = useMutation({
@@ -212,13 +206,16 @@ export function IntegrationsPage() {
 
   return (
     <div className="flex h-full flex-col" data-testid="integrations-page">
-      <header className="border-b bg-card px-6 py-4">
-        <h1 className="flex items-center gap-2 text-lg font-semibold tracking-tight">
-          <KeyRound className="h-4 w-4" aria-hidden />
-          {t("page.title")}
-        </h1>
-        <p className="text-sm text-muted-foreground">{t("page.subtitle")}</p>
-      </header>
+      <PageHeader
+        title={
+          <>
+            <KeyRound className="h-4 w-4" aria-hidden />
+            {t("page.title")}
+          </>
+        }
+        titleProps={{ className: "flex items-center gap-2" }}
+        description={t("page.subtitle")}
+      />
 
       <div className="flex-1 space-y-8 overflow-y-auto px-6 py-6">
         {/* ---------- API keys section ----------------------------------- */}
@@ -478,7 +475,6 @@ export function IntegrationsPage() {
         submitting={revokeMutation.isPending}
       />
 
-      <AdminToast message={toast} onDismiss={() => setToast(null)} />
     </div>
   );
 }

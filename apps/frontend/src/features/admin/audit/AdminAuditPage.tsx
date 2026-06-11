@@ -26,10 +26,11 @@
  * will not match those columns.
  */
 import { Download, RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
+import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,10 +44,7 @@ import {
   type AuditTargetTable,
 } from "@/features/admin/audit/api/adminAuditApi";
 import { useAdminAudit } from "@/features/admin/audit/api/useAdminAudit";
-import {
-  AdminToast,
-  type AdminToastMessage,
-} from "@/features/admin/components/AdminToast";
+import { useToast } from "@/components/ui/toast";
 import {
   adminErrorExtension,
   adminErrorMessageKey,
@@ -188,8 +186,7 @@ export function AdminAuditPage() {
   const [qInput, setQInput] = useDebouncedFilterInput(qParam, commitQ);
 
   const [openEntry, setOpenEntry] = useState<AuditLogItem | null>(null);
-  const [toast, setToast] = useState<AdminToastMessage | null>(null);
-  const toastSeq = useRef(0);
+  const { toast } = useToast();
   const [exporting, setExporting] = useState(false);
 
   const queryParams = useMemo(
@@ -225,8 +222,7 @@ export function AdminAuditPage() {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   function notify(text: string, tone: "success" | "error", key?: string) {
-    toastSeq.current += 1;
-    setToast({ id: toastSeq.current, text, tone, key });
+    toast(text, { tone, key });
   }
 
   async function handleExport() {
@@ -261,14 +257,10 @@ export function AdminAuditPage() {
 
   return (
     <div className="flex h-full flex-col" data-testid="admin-audit-page">
-      <header className="border-b bg-card px-6 py-4">
-        <h1 className="text-lg font-semibold tracking-tight">
-          {t("admin.audit.title")}
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          {t("admin.audit.subtitle")}
-        </p>
-      </header>
+      <PageHeader
+        title={t("admin.audit.title")}
+        description={t("admin.audit.subtitle")}
+      />
 
       <div
         className="grid grid-cols-1 gap-3 border-b bg-card px-6 py-3 sm:grid-cols-2 lg:grid-cols-6"
@@ -569,7 +561,6 @@ export function AdminAuditPage() {
         }}
       />
 
-      <AdminToast message={toast} onDismiss={() => setToast(null)} />
     </div>
   );
 }

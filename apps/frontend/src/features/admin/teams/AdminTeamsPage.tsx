@@ -14,6 +14,7 @@ import { Loader2, Plus } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,7 +22,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCreateTeam } from "@/features/admin/api/useAdminTeamMutations";
 import { useAdminTeams } from "@/features/admin/api/useAdminTeams";
-import { AdminToast, type AdminToastMessage } from "@/features/admin/components/AdminToast";
+import { useToast } from "@/components/ui/toast";
 import { AdminTeamDrawer } from "@/features/admin/teams/AdminTeamDrawer";
 import {
   adminErrorExtension,
@@ -44,8 +45,7 @@ export function AdminTeamsPage() {
   const [createName, setCreateName] = useState("");
   const [createSlug, setCreateSlug] = useState("");
   const [createDescription, setCreateDescription] = useState("");
-  const [toast, setToast] = useState<AdminToastMessage | null>(null);
-  const toastSeq = useRef(0);
+  const { toast } = useToast();
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
@@ -75,8 +75,7 @@ export function AdminTeamsPage() {
   const create = useCreateTeam();
 
   function notify(text: string, tone: "success" | "error", key?: string) {
-    toastSeq.current += 1;
-    setToast({ id: toastSeq.current, text, tone, key });
+    toast(text, { tone, key });
   }
 
   async function handleCreate() {
@@ -102,14 +101,10 @@ export function AdminTeamsPage() {
 
   return (
     <div className="flex h-full flex-col" data-testid="admin-teams-page">
-      <header className="border-b bg-card px-6 py-4">
-        <h1 className="text-lg font-semibold tracking-tight">
-          {t("admin.teams.title")}
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          {t("admin.teams.subtitle")}
-        </p>
-      </header>
+      <PageHeader
+        title={t("admin.teams.title")}
+        description={t("admin.teams.subtitle")}
+      />
 
       <div
         className="flex flex-wrap items-end gap-3 border-b bg-card px-6 py-3"
@@ -362,7 +357,6 @@ export function AdminTeamsPage() {
         onDeleted={() => setOpenTeamId(null)}
       />
 
-      <AdminToast message={toast} onDismiss={() => setToast(null)} />
     </div>
   );
 }

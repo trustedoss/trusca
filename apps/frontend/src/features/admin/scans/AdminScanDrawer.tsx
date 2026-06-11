@@ -11,7 +11,7 @@
  * `scan_already_cancelled` Problem extension.
  */
 import { Loader2 } from "lucide-react";
-import { type ReactNode, useRef, useState } from "react";
+import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -24,10 +24,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import {
-  AdminToast,
-  type AdminToastMessage,
-} from "@/features/admin/components/AdminToast";
+import { useToast } from "@/components/ui/toast";
 import {
   type AdminScanListItem,
   type AdminScanStatus,
@@ -86,12 +83,10 @@ export function AdminScanDrawer({
   const { t, i18n } = useTranslation("admin");
   const cancel = useCancelAdminScan();
   const [confirming, setConfirming] = useState(false);
-  const [toast, setToast] = useState<AdminToastMessage | null>(null);
-  const toastSeq = useRef(0);
+  const { toast } = useToast();
 
   function notify(text: string, tone: "success" | "error", key?: string) {
-    toastSeq.current += 1;
-    setToast({ id: toastSeq.current, text, tone, key });
+    toast(text, { tone, key });
   }
 
   async function handleCancel() {
@@ -269,7 +264,6 @@ export function AdminScanDrawer({
           </>
         ) : null}
 
-        <AdminToast message={toast} onDismiss={() => setToast(null)} />
       </SheetContent>
     </Sheet>
   );

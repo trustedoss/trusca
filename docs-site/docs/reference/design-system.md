@@ -138,7 +138,7 @@ Short, ease-out — Linear polish. Three steps cover the majority of UI animatio
 |---|---|---|
 | `--duration-fast` | 150 ms | Hover state, focus ring fade-in, badge tint shift, button colour transition. |
 | `--duration-base` | 200 ms | Drawer slide, popover open, dropdown reveal. |
-| `--duration-slow` | 250 ms | Page-level chrome transitions, route change shimmer. |
+| `--duration-slow` | 250 ms | Page-level chrome transitions, route change entrance. |
 | `--ease-out` | `cubic-bezier(0.16, 1, 0.3, 1)` | Single easing curve used everywhere. Snappy in, gentle out. |
 
 **Loading states are skeletons**, not spinners. Long async work (scans, exports) shows a labelled progress bar — never a bare spinner.
@@ -152,6 +152,19 @@ Short, ease-out — Linear polish. Three steps cover the majority of UI animatio
 | Mono | JetBrains Mono | 13 px | Code, hashes, CVE IDs, PURLs, JSON snippets. `letter-spacing: 0` — mono does not inherit body tightening. |
 
 OpenType features `rlig` and `calt` are enabled on `body` for proper Inter rendering.
+
+**Use the typography primitives, not raw utilities.** `apps/frontend/src/components/ui/typography.tsx` exposes the scale as named components so a given role is identical on every screen instead of drifting (`text-lg` here, `text-base` there):
+
+| Component | Element | Role |
+|---|---|---|
+| `PageTitle` | `h1` | The single page title — 18 px semibold tracking-tight. |
+| `SectionTitle` | `h2` | Section / sub-area heading — 16 px semibold. |
+| `Subtitle` | `p` | Muted line beneath a page title — 14 px. |
+| `Body` | `p` | Body copy — 14 px (`muted` prop for secondary copy). |
+| `Caption` | `span` | Dense meta (timestamps, counts) — 12 px muted. |
+| `Eyebrow` | `span` | Uppercase overline / column-group label — 12 px medium. |
+
+Reach for a raw `text-*` utility only for one-off inline spans that no primitive covers; never hand-roll a page title.
 
 ## Focus ring
 
@@ -171,6 +184,19 @@ focus-visible:ring-offset-2
 ## Component conventions
 
 The portal builds on [shadcn/ui](https://ui.shadcn.com/) primitives. Each primitive is wired to the design tokens above and re-exported from `apps/frontend/src/components/ui/`.
+
+### Page header
+
+`apps/frontend/src/components/PageHeader.tsx`
+
+Every route renders its header through `PageHeader` so the title typography and header chrome are identical. Chrome is unified to `bg-background` + `border-b` (off-white canvas with a hairline divider) so the white cards / tables below read as raised. Two archetypes:
+
+- `variant="stacked"` (default) — taller header (`py-4`) with a `PageTitle` and a muted `description`. For pages that need an explanatory line (Scans, Admin sections).
+- `variant="bar"` — slim 48 px row (`var(--layout-header)`), title plus an optional right `actions` slot (buttons or meta text), no subtitle. For dense pages whose purpose is self-evident (Dashboard, Project list).
+
+The stacked variant also takes an optional `meta` slot — a block under the description (e.g. a "last updated 2m ago" line with its own test id), kept separate from `description` so block content is not nested inside the subtitle `<p>`. The `actions` slot is caller-owned markup, so existing harness `data-testid`s on buttons / meta are preserved.
+
+Do not hand-roll a `<header><h1>` block — extend `PageHeader` if a new layout is genuinely needed. **Exception:** the detail pages (Project detail, Component / Vulnerability detail, Compare, Scan detail) use a *breadcrumb header* — a `<nav>` breadcrumb plus a contextual title — which is a distinct archetype `PageHeader` does not model yet. Those pages keep their hand-rolled header but still draw type from the same scale.
 
 ### Button
 
@@ -222,14 +248,31 @@ The portal builds on [shadcn/ui](https://ui.shadcn.com/) primitives. Each primit
 `apps/frontend/src/components/EmptyState.tsx`
 
 - Centre-aligned, max-width 420 px.
-- Optional small SVG illustration on top (W11-G), title (semibold), description (muted), single primary CTA.
+- Layered icon medallion (W12-D) — two soft concentric muted rings behind a raised white inner disc holding the icon — then title (semibold), description (muted), single primary CTA. Pass `illustration` to swap the medallion for a richer inline SVG (inline only, no new asset).
 - Used for: empty list, empty search result, empty drawer tab, first-time onboarding card.
+
+### Skeleton
+
+`apps/frontend/src/components/ui/skeleton.tsx` · `skeletons.tsx`
+
+- `Skeleton` is the base bar (`animate-pulse`, `rounded-sm`). Prefer composite skeletons that mirror the final layout over a single full-width bar so content settles in without reflow.
+- `TableRowsSkeleton` renders per-column cells (one width per column) for loading tables. The table keeps `aria-busy`; skeleton rows are `aria-hidden`.
 
 ### Badge
 
 `apps/frontend/src/components/ui/badge.tsx`
 
 Risk-tinted variants pair a status word with the design-system colour. Background uses `bg-risk-X/10` (or `/15` for medium / info) so the chip reads as a coloured tint. Text uses a deeper shade from the same hue family so the rendered contrast clears WCAG AA 4.5:1 — see [Severity colour accessibility](#severity-colour-accessibility).
+
+### Toast
+
+`apps/frontend/src/components/ui/toast.tsx`
+
+A single `<ToastProvider>` (mounted in `AppProviders`) renders one stacked, bottom-right region; `useToast().toast(text, opts)` pushes from anywhere. Toasts queue, auto-dismiss (4 s), and announce through an `aria-live` region.
+
+- **Feedback rule.** Success / non-blocking notices use a toast. Form-validation errors stay **inline** next to the field (RFC 7807 `detail`), never a toast the user might miss.
+- **Test-id contract.** `testId` defaults to `"admin-toast"`, and the toast carries `data-tone` + `data-toast-key`, mirroring the markup every e2e harness selects (`[data-testid="admin-toast"][data-tone][data-toast-key]`). Pass a `tone` (`success` / `error`) and a locale-independent `key`; ScanCancelButton overrides `testId: "scan-cancel-toast"`.
+- **Exceptions.** Two surfaces keep a bespoke local toast: the Scan-detail download notice (neutral `data-toast-variant`, not a success / error tone) and the Settings tab's inline `settings-toast` save confirmation. Both have their own tested contracts and do not fit the success / error model.
 
 ## Micro-interaction guide
 
@@ -244,10 +287,13 @@ The W11-F polish phase standardised the timing and easing of every interactive t
 | Drawer slide | 200 ms | `--ease-out` | `transform: translateX` |
 | Dialog open | 200 ms | `--ease-out` | `opacity` (backdrop), `transform: scale` (panel) |
 | Tab indicator shift | 200 ms | `--ease-out` | `transform: translateX` |
-| Page chrome (sidebar collapse, route change) | 250 ms (`--duration-slow`) | `--ease-out` | `width`, `opacity` |
-| Skeleton shimmer | 1500 ms loop | `ease-in-out` | `opacity` |
+| Page chrome — sidebar collapse | 250 ms (`--duration-slow`) | `--ease-out` | `width` |
+| Route change entrance | 250 ms (`--duration-slow`) | `--ease-out` | `opacity` (`<main>` keyed on pathname) |
+| Skeleton pulse | 2000 ms loop (`animate-pulse`) | `ease-in-out` | `opacity` |
 
 **Never use the default browser easing.** Always reference `--ease-out` so motion reads as a single continuous language across the product.
+
+**Reduced motion.** A global `@media (prefers-reduced-motion: reduce)` guard in `index.css` collapses every animation and transition above to ~0 (and disables smooth scrolling), so users who request reduced motion get instant state changes — see [Accessibility](#accessibility).
 
 ## Accessibility
 
@@ -322,6 +368,11 @@ All interactive elements are reachable by `Tab` and operable by `Enter` / `Space
 | W11-F | 2026-05-27 | Micro-interaction polish — hover / focus / motion (PR #247). |
 | W11-G | 2026-05-27 | Empty state illustrations (PR #248). |
 | W11-H | 2026-05-27 | **A11y sweep + design system docs.** Severity badge text colours darkened to clear WCAG AA on light tints (no token change). This page added. |
+| W12-A | 2026-06-11 | **Craft elevation — typography & page-header system.** Added typography primitives (`PageTitle` / `SectionTitle` / `Subtitle` / `Body` / `Caption` / `Eyebrow`) and a shared `PageHeader` (stacked / bar). Unifies the page-title scale (was `text-lg` vs `text-base`) and header chrome (`bg-card` vs `bg-background`) that had drifted across screens. |
+| W12-B | 2026-06-11 | **Craft elevation — global toast.** Added a `ToastProvider` + `useToast()` (queue, auto-dismiss, `aria-live`), migrating 11 hand-rolled per-page toasts onto it while preserving the `admin-toast` / `data-toast-key` e2e contract. Scan-detail download notice + Settings inline confirmation kept as documented exceptions. |
+| W12-C | 2026-06-11 | **Craft elevation — motion (CSS-only).** Route-change entrance fade (`<main>` keyed on pathname, 250 ms), sidebar collapse aligned to 250 ms, and a global `prefers-reduced-motion` guard. No new dependency (tailwindcss-animate only). Skeleton doc corrected to the real 2000 ms `animate-pulse`. |
+| W12-D | 2026-06-12 | **Craft elevation — empty / loading polish.** EmptyState gains a layered icon medallion + optional `illustration` slot; new `TableRowsSkeleton` renders per-column loading cells (replacing single full-width bars) on the Scans and Admin Users tables. |
+| W12-E/F | 2026-06-12 | **Craft elevation — guardrails + docs.** Grew `/dev/design-preview` into a living component reference (typography, badges, empty / loading, feedback) and added a "Frontend UI" section to the contributor coding standards. Visual-regression baseline expansion (4 → ~15) is a CI / operator follow-up — correct linux baselines cannot be generated from a darwin dev box. |
 
 The previous "BD-style 2015" aesthetic (`#0f172a` navy, pure white canvas, uniform 8 px radius, no shadow, default browser easing) is fully retired by W11.
 

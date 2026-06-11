@@ -18,7 +18,7 @@
  *
  * Patterns reused:
  *   - Inline confirmation strip from `AdminUserDrawer` (no AlertDialog).
- *   - `AdminToast` for success / generic error feedback (matches /integrations).
+ *   - `useToast()` for success / generic error feedback (matches /integrations).
  *   - Compact 40px row density consistent with Integrations / Admin tables.
  *
  * No hardcoded English in JSX — every visible string flows through `t()`
@@ -28,14 +28,12 @@ import { Loader2, Trash2, UserCircle2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { PageHeader } from "@/components/PageHeader";
 import { ProviderIcon } from "@/components/ProviderIcon";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  AdminToast,
-  type AdminToastMessage,
-} from "@/features/admin/components/AdminToast";
+import { useToast } from "@/components/ui/toast";
 import {
   OAUTH_UNLINK_BLOCKS_LOGIN_TYPE,
   type OAuthIdentity,
@@ -217,15 +215,10 @@ export function UserProfilePage() {
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [blocksLoginId, setBlocksLoginId] = useState<string | null>(null);
 
-  const [toast, setToast] = useState<AdminToastMessage | null>(null);
-  const [, setToastSeq] = useState(0);
+  const { toast } = useToast();
 
   function showToast(text: string, tone: "success" | "error", key: string) {
-    setToastSeq((n) => {
-      const id = n + 1;
-      setToast({ id, text, tone, key });
-      return id;
-    });
+    toast(text, { tone, key });
   }
 
   function askUnlink(id: string) {
@@ -276,13 +269,16 @@ export function UserProfilePage() {
 
   return (
     <div className="flex h-full flex-col" data-testid="user-profile-page">
-      <header className="border-b bg-card px-6 py-4">
-        <h1 className="flex items-center gap-2 text-lg font-semibold tracking-tight">
-          <UserCircle2 className="h-4 w-4" aria-hidden />
-          {t("page.title")}
-        </h1>
-        <p className="text-sm text-muted-foreground">{t("page.subtitle")}</p>
-      </header>
+      <PageHeader
+        title={
+          <>
+            <UserCircle2 className="h-4 w-4" aria-hidden />
+            {t("page.title")}
+          </>
+        }
+        titleProps={{ className: "flex items-center gap-2" }}
+        description={t("page.subtitle")}
+      />
 
       <div className="flex-1 space-y-8 overflow-y-auto px-6 py-6">
         {/* ---------- Account header ----------------------------------- */}
@@ -379,7 +375,6 @@ export function UserProfilePage() {
         </section>
       </div>
 
-      <AdminToast message={toast} onDismiss={() => setToast(null)} />
     </div>
   );
 }

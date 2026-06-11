@@ -13,13 +13,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
+import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { TableRowsSkeleton } from "@/components/ui/skeletons";
 import { useAdminUsers } from "@/features/admin/api/useAdminUsers";
 import type { UserRole } from "@/features/admin/api/adminUsersApi";
-import { AdminToast, type AdminToastMessage } from "@/features/admin/components/AdminToast";
+import { useToast } from "@/components/ui/toast";
 import { RoleBadge } from "@/features/admin/components/RoleBadge";
 import { AdminUserDrawer } from "@/features/admin/users/AdminUserDrawer";
 import {
@@ -91,8 +92,7 @@ export function AdminUsersPage() {
   const [searchDebounced, setSearchDebounced] = useState(searchInput);
 
   const [openUserId, setOpenUserId] = useState<string | null>(null);
-  const [toast, setToast] = useState<AdminToastMessage | null>(null);
-  const toastSeq = useRef(0);
+  const { toast } = useToast();
 
   const updateFilterParam = useCallback(
     (key: string, next: string | null) => {
@@ -199,20 +199,15 @@ export function AdminUsersPage() {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   function notify(text: string, tone: "success" | "error", key?: string) {
-    toastSeq.current += 1;
-    setToast({ id: toastSeq.current, text, tone, key });
+    toast(text, { tone, key });
   }
 
   return (
     <div className="flex h-full flex-col" data-testid="admin-users-page">
-      <header className="border-b bg-card px-6 py-4">
-        <h1 className="text-lg font-semibold tracking-tight">
-          {t("admin.users.title")}
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          {t("admin.users.subtitle")}
-        </p>
-      </header>
+      <PageHeader
+        title={t("admin.users.title")}
+        description={t("admin.users.subtitle")}
+      />
 
       <AdminUsersToolbar
         search={searchInput}
@@ -253,13 +248,12 @@ export function AdminUsersPage() {
           </thead>
           <tbody data-testid="admin-users-tbody">
             {usersQuery.isLoading
-              ? Array.from({ length: 6 }).map((_, i) => (
-                  <tr key={`skeleton-${i}`} className="border-b">
-                    <td className="px-6 py-2" colSpan={6}>
-                      <Skeleton className="h-5 w-full" />
-                    </td>
-                  </tr>
-                ))
+              ? (
+                  <TableRowsSkeleton
+                    rows={6}
+                    columns={["w-48", "w-32", "w-20", "w-12", "w-24", "w-8"]}
+                  />
+                )
               : items.map((u) => (
                   <tr
                     key={u.id}
@@ -401,7 +395,6 @@ export function AdminUsersPage() {
         notify={notify}
       />
 
-      <AdminToast message={toast} onDismiss={() => setToast(null)} />
     </div>
   );
 }

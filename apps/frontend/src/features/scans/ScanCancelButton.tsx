@@ -22,11 +22,11 @@
  *     and a `<XCircle>` icon.
  */
 import { Loader2, XCircle } from "lucide-react";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import { useCancelScan } from "@/features/scans/useCancelScan";
 import {
   scanCancelErrorKey,
@@ -34,12 +34,6 @@ import {
 } from "@/features/scans/scanErrorMessage";
 import { cn } from "@/lib/utils";
 import type { ScanStatus } from "@/lib/projectsApi";
-
-interface ToastState {
-  id: number;
-  text: string;
-  token: string;
-}
 
 export interface ScanCancelButtonProps {
   scanId: string;
@@ -64,12 +58,10 @@ export function ScanCancelButton({
   const { t } = useTranslation("scans");
   const cancel = useCancelScan();
   const [confirming, setConfirming] = useState(false);
-  const [toast, setToast] = useState<ToastState | null>(null);
-  const toastSeq = useRef(0);
+  const { toast } = useToast();
 
   function notify(text: string, token: string) {
-    toastSeq.current += 1;
-    setToast({ id: toastSeq.current, text, token });
+    toast(text, { tone: "error", key: token, testId: "scan-cancel-toast" });
   }
 
   async function handleConfirm() {
@@ -151,30 +143,6 @@ export function ScanCancelButton({
           {t("cancel.action")}
         </Button>
       )}
-      {toast ? (
-        <div
-          // W11-F polish — toast appears with a soft slide-up + fade so the
-          // user notices it without a startle (Linear notification pattern).
-          // The `key` change re-mounts the wrapper when a new toast token
-          // fires, replaying the entrance animation for each error event.
-          key={toast.id}
-          className={cn(
-            "fixed bottom-4 right-4 z-50 max-w-sm",
-            "animate-in fade-in-0 slide-in-from-bottom-2 duration-base ease-out-soft",
-          )}
-          data-testid="scan-cancel-toast"
-          data-toast-key={toast.token}
-        >
-          <Alert
-            variant="destructive"
-            className="shadow-lg"
-            role="status"
-            aria-live="polite"
-          >
-            <AlertDescription>{toast.text}</AlertDescription>
-          </Alert>
-        </div>
-      ) : null}
     </>
   );
 }

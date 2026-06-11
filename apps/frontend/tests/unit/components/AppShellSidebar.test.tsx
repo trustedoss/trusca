@@ -128,4 +128,13 @@ describe("AppShell — collapsible sidebar", () => {
       expect(screen.queryByTestId("mobile-nav-drawer")).not.toBeInTheDocument();
     });
   });
+
+  it("applies the W12-C route-change entrance animation to <main>", async () => {
+    renderAppAt("/projects");
+    const main = await screen.findByTestId("app-main");
+    // <main> is keyed on the pathname and carries the 250 ms fade-in entrance.
+    expect(main.className).toContain("animate-in");
+    expect(main.className).toContain("fade-in-0");
+    expect(main.className).toContain("duration-slow");
+  });
 });

@@ -18,10 +18,11 @@ import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
 
 import { EmptyState } from "@/components/EmptyState";
+import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { TableRowsSkeleton } from "@/components/ui/skeletons";
 import { ScanCancelButton } from "@/features/scans/ScanCancelButton";
 import { useScans } from "@/features/scans/useScans";
 import RelativeTime from "@/components/RelativeTime";
@@ -134,12 +135,10 @@ export function ScansPage() {
 
   return (
     <div className="flex h-full flex-col" data-testid="scans-page">
-      <header className="border-b bg-card px-6 py-4">
-        <h1 className="text-lg font-semibold tracking-tight">
-          {t("page.title")}
-        </h1>
-        <p className="text-sm text-muted-foreground">{t("page.subtitle")}</p>
-      </header>
+      <PageHeader
+        title={t("page.title")}
+        description={t("page.subtitle")}
+      />
 
       <div
         className="flex flex-wrap items-center gap-2 border-b bg-card px-6 py-2"
@@ -192,13 +191,11 @@ export function ScansPage() {
           </thead>
           <tbody data-testid="scans-tbody">
             {scansQuery.isLoading
-              ? Array.from({ length: 5 }).map((_, i) => (
-                  <tr key={`skeleton-${i}`} className="border-b">
-                    <td className="px-6 py-2" colSpan={6}>
-                      <Skeleton className="h-5 w-full" />
-                    </td>
-                  </tr>
-                ))
+              ? (
+                  <TableRowsSkeleton
+                    columns={["w-40", "w-16", "w-20", "w-24", "w-12", "w-16"]}
+                  />
+                )
               : items.map((scan) => {
                   const dur = durationSeconds(scan);
                   return (

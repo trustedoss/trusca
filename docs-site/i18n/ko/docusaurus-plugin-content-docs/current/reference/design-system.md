@@ -138,7 +138,7 @@ Vercel 톤의 subtle elevation. 가벼운 그림자만 — glow 없음.
 |---|---|---|
 | `--duration-fast` | 150 ms | Hover · focus 링 fade-in · 배지 tint shift · 버튼 색 transition. |
 | `--duration-base` | 200 ms | 드로어 slide · popover open · 드롭다운 reveal. |
-| `--duration-slow` | 250 ms | 페이지 크롬 transition · 라우트 전환 shimmer. |
+| `--duration-slow` | 250 ms | 페이지 크롬 transition · 라우트 전환 진입. |
 | `--ease-out` | `cubic-bezier(0.16, 1, 0.3, 1)` | 어디서나 같은 easing 커브. 진입은 snappy, 종료는 gentle. |
 
 **로딩 상태는 spinner 가 아닌 스켈레톤.** 장시간 작업 (스캔 · export) 은 라벨이 붙은 progress bar — bare spinner 금지.
@@ -152,6 +152,19 @@ Vercel 톤의 subtle elevation. 가벼운 그림자만 — glow 없음.
 | Mono | JetBrains Mono | 13 px | 코드 · 해시 · CVE ID · PURL · JSON 스니펫. `letter-spacing: 0` — mono 는 body tightening 상속 안 함. |
 
 OpenType `rlig` · `calt` 가 `body` 에 활성화되어 Inter 가 제대로 렌더링.
+
+**raw 유틸리티 대신 타이포그래피 프리미티브를 쓰세요.** `apps/frontend/src/components/ui/typography.tsx` 가 스케일을 이름 붙인 컴포넌트로 제공하므로, 같은 역할이 화면마다 어긋나지 않고(`text-lg` 와 `text-base` 가 섞이지 않고) 동일하게 보입니다.
+
+| 컴포넌트 | 요소 | 역할 |
+|---|---|---|
+| `PageTitle` | `h1` | 페이지 제목 하나 — 18 px semibold tracking-tight. |
+| `SectionTitle` | `h2` | 섹션 · 하위 영역 제목 — 16 px semibold. |
+| `Subtitle` | `p` | 페이지 제목 아래 muted 보조 줄 — 14 px. |
+| `Body` | `p` | 본문 — 14 px (`muted` prop 으로 보조 본문). |
+| `Caption` | `span` | 밀집 메타(타임스탬프 · 카운트) — 12 px muted. |
+| `Eyebrow` | `span` | 대문자 overline · 컬럼 그룹 라벨 — 12 px medium. |
+
+어떤 프리미티브로도 안 되는 일회성 인라인 span 에만 raw `text-*` 유틸리티를 쓰고, 페이지 제목은 절대 직접 조합하지 마세요.
 
 ## Focus ring
 
@@ -171,6 +184,19 @@ focus-visible:ring-offset-2
 ## 컴포넌트 규약
 
 포털은 [shadcn/ui](https://ui.shadcn.com/) primitives 위에 빌드됩니다. 각 primitive 는 위 토큰에 연결되어 `apps/frontend/src/components/ui/` 에 re-export.
+
+### Page header
+
+`apps/frontend/src/components/PageHeader.tsx`
+
+모든 라우트는 헤더를 `PageHeader` 로 렌더링해 제목 타이포그래피와 헤더 chrome 을 동일하게 맞춥니다. chrome 은 `bg-background` + `border-b`(off-white 캔버스에 가는 구분선)로 통일해, 아래의 흰 카드 · 테이블이 떠 보이게 합니다. 두 가지 형태:
+
+- `variant="stacked"`(기본) — 더 높은 헤더(`py-4`)에 `PageTitle` 과 muted `description`. 설명 줄이 필요한 페이지(Scans, Admin 영역).
+- `variant="bar"` — 48 px 슬림 행(`var(--layout-header)`), 제목과 선택적 오른쪽 `actions` 슬롯(버튼 또는 메타 텍스트), 부제 없음. 목적이 자명한 밀집 페이지(Dashboard, 프로젝트 목록).
+
+stacked 변형에는 선택적 `meta` 슬롯도 있습니다 — 부제 아래에 오는 블록("2분 전 갱신" 같은 자체 test id 가진 줄)으로, 블록 내용을 부제 `<p>` 안에 중첩하지 않도록 `description` 과 분리합니다. `actions` 슬롯은 호출 측 마크업이라 버튼 · 메타의 기존 하네스 `data-testid` 가 보존됩니다.
+
+`<header><h1>` 블록을 직접 만들지 말고, 정말 새 레이아웃이 필요하면 `PageHeader` 를 확장하세요. **예외:** detail 페이지(프로젝트 상세, 컴포넌트 · 취약점 상세, Compare, 스캔 상세)는 *브레드크럼 헤더*(breadcrumb `<nav>` + 맥락 제목)를 쓰며, 이는 `PageHeader` 가 아직 모델링하지 않은 별도 archetype 입니다. 이 페이지들은 직접 짠 헤더를 유지하되 타이포는 같은 스케일을 따릅니다.
 
 ### Button
 
@@ -222,14 +248,31 @@ focus-visible:ring-offset-2
 `apps/frontend/src/components/EmptyState.tsx`
 
 - 중앙 정렬, max-width 420 px.
-- 위에 작은 SVG 일러스트 (W11-G) + 타이틀 (semibold) + 설명 (muted) + 단일 primary CTA.
+- 레이어드 아이콘 메달리온 (W12-D) — 부드러운 동심 muted 링 둘 뒤에 떠 있는 흰 안쪽 원판이 아이콘을 담음 — 그 아래 타이틀 (semibold) · 설명 (muted) · 단일 primary CTA. `illustration` 을 넘기면 메달리온 대신 더 풍부한 인라인 SVG 로 교체(인라인만, 새 에셋 없음).
 - 용도: 빈 목록 · 빈 검색 결과 · 빈 드로어 탭 · 첫 사용 온보딩 카드.
+
+### Skeleton
+
+`apps/frontend/src/components/ui/skeleton.tsx` · `skeletons.tsx`
+
+- `Skeleton` 은 기본 바(`animate-pulse` · `rounded-sm`). 전폭 바 하나보다, 최종 레이아웃을 닮은 composite 스켈레톤을 써서 콘텐츠가 reflow 없이 자리잡게 합니다.
+- `TableRowsSkeleton` 은 로딩 테이블에 컬럼별 셀(컬럼당 너비 하나)을 렌더링. 테이블은 `aria-busy` 유지, 스켈레톤 행은 `aria-hidden`.
 
 ### Badge
 
 `apps/frontend/src/components/ui/badge.tsx`
 
 Risk-tinted variant 는 상태 단어와 디자인 시스템 색을 짝지움. 배경은 `bg-risk-X/10` (medium / info 는 `/15`) — 칩이 색 tint 로 읽히도록. 텍스트는 같은 hue family 의 더 짙은 shade — 렌더링 대비가 WCAG AA 4.5:1 을 통과 — [Severity 색 접근성](#severity-색-접근성) 참고.
+
+### Toast
+
+`apps/frontend/src/components/ui/toast.tsx`
+
+`AppProviders` 에 마운트된 단일 `<ToastProvider>` 가 우하단에 쌓이는 영역 하나를 렌더링하고, `useToast().toast(text, opts)` 로 어디서든 띄웁니다. 토스트는 큐로 쌓이고 자동으로 사라지며(4초) `aria-live` 영역으로 안내됩니다.
+
+- **피드백 규칙.** 성공 · 비차단 알림은 토스트, 폼 검증 에러는 필드 옆 **인라인**(RFC 7807 `detail`) — 사용자가 놓칠 토스트로 쓰지 않습니다.
+- **test-id 계약.** `testId` 기본값은 `"admin-toast"` 이고 토스트는 `data-tone` + `data-toast-key` 를 달아, 모든 e2e 하네스가 선택하는 마크업(`[data-testid="admin-toast"][data-tone][data-toast-key]`)을 그대로 냅니다. `tone`(`success` / `error`)과 locale 독립 `key` 를 넘깁니다. ScanCancelButton 만 `testId: "scan-cancel-toast"` 로 덮어씁니다.
+- **예외.** 두 표면은 자체 로컬 토스트를 유지합니다: 스캔 상세의 다운로드 알림(success / error 톤이 아닌 중립 `data-toast-variant`)과 Settings 탭의 인라인 `settings-toast` 저장 확인. 둘 다 자체 테스트 계약이 있고 success / error 모델에 맞지 않습니다.
 
 ## 마이크로인터랙션 가이드
 
@@ -244,10 +287,13 @@ W11-F polish phase 가 모든 인터랙티브 transition 의 타이밍 · easing
 | 드로어 slide | 200 ms | `--ease-out` | `transform: translateX` |
 | 다이얼로그 open | 200 ms | `--ease-out` | `opacity` (backdrop), `transform: scale` (panel) |
 | 탭 인디케이터 이동 | 200 ms | `--ease-out` | `transform: translateX` |
-| 페이지 크롬 (사이드바 접기 · 라우트 전환) | 250 ms (`--duration-slow`) | `--ease-out` | `width`, `opacity` |
-| 스켈레톤 shimmer | 1500 ms loop | `ease-in-out` | `opacity` |
+| 페이지 크롬 — 사이드바 접기 | 250 ms (`--duration-slow`) | `--ease-out` | `width` |
+| 라우트 전환 진입 | 250 ms (`--duration-slow`) | `--ease-out` | `opacity` (`<main>` 을 pathname 으로 key) |
+| 스켈레톤 pulse | 2000 ms loop (`animate-pulse`) | `ease-in-out` | `opacity` |
 
 **브라우저 기본 easing 사용 금지.** 항상 `--ease-out` 참조 — 모션이 제품 전반에 걸쳐 단일 언어로 읽혀야 합니다.
+
+**Reduced motion.** `index.css` 의 전역 `@media (prefers-reduced-motion: reduce)` 가드가 위의 모든 애니메이션 · transition 을 ~0 으로 줄이고(부드러운 스크롤도 끔), reduced motion 을 요청한 사용자는 즉시 상태 변화를 받습니다 — [접근성](#접근성) 참고.
 
 ## 접근성
 
@@ -322,6 +368,11 @@ Severity 가 표시되는 모든 곳에서 색은 다음 중 하나와 짝지움
 | W11-F | 2026-05-27 | 마이크로인터랙션 polish — hover / focus / motion (PR #247). |
 | W11-G | 2026-05-27 | 빈 상태 일러스트 (PR #248). |
 | W11-H | 2026-05-27 | **A11y sweep + 디자인 시스템 문서.** Severity 배지 텍스트 색을 light tint 위 WCAG AA 통과로 짙게 (토큰 변경 없음). 본 페이지 추가. |
+| W12-A | 2026-06-11 | **Craft 격상 — 타이포그래피 · 페이지 헤더 체계.** 타이포그래피 프리미티브(`PageTitle` · `SectionTitle` · `Subtitle` · `Body` · `Caption` · `Eyebrow`)와 공용 `PageHeader`(stacked · bar) 추가. 화면마다 어긋났던 페이지 제목 스케일(`text-lg` 대 `text-base`)과 헤더 chrome(`bg-card` 대 `bg-background`)을 통일. |
+| W12-B | 2026-06-11 | **Craft 격상 — 전역 토스트.** `ToastProvider` + `useToast()`(큐 · 자동 사라짐 · `aria-live`) 추가, 손으로 짠 페이지별 토스트 11곳을 이전하면서 `admin-toast` / `data-toast-key` e2e 계약 보존. 스캔 상세 다운로드 알림 + Settings 인라인 확인은 문서화된 예외로 유지. |
+| W12-C | 2026-06-11 | **Craft 격상 — 모션 (CSS-only).** 라우트 전환 진입 페이드(`<main>` 을 pathname 으로 key, 250 ms), 사이드바 접기 250 ms 정렬, 전역 `prefers-reduced-motion` 가드. 새 의존성 없음(tailwindcss-animate 만). 스켈레톤 문서를 실제 2000 ms `animate-pulse` 로 정정. |
+| W12-D | 2026-06-12 | **Craft 격상 — 빈 상태 · 로딩 폴리시.** EmptyState 에 레이어드 아이콘 메달리온 + 선택적 `illustration` 슬롯 추가, 신규 `TableRowsSkeleton` 이 Scans · Admin Users 테이블에서 컬럼별 로딩 셀(전폭 바 대체)을 렌더링. |
+| W12-E/F | 2026-06-12 | **Craft 격상 — 가드레일 + 문서.** `/dev/design-preview` 를 살아있는 컴포넌트 레퍼런스(타이포그래피 · 배지 · 빈 / 로딩 · 피드백)로 확장하고, 기여자 coding standards 에 "프론트엔드 UI" 섹션 추가. 시각 회귀 베이스라인 확장(4 → ~15)은 CI / 운영자 후속 — darwin 개발 머신에서는 올바른 linux 베이스라인을 생성할 수 없음. |
 
 이전 "BD-style 2015" 미감 (`#0f172a` navy · 순백 canvas · 일관 8 px radius · shadow 없음 · 브라우저 기본 easing) 은 W11 로 완전 은퇴.
 

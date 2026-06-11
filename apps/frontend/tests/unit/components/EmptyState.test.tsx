@@ -59,6 +59,19 @@ describe("EmptyState", () => {
     expect(screen.getByTestId("es-cta")).toBeInTheDocument();
   });
 
+  it("renders a custom illustration in place of the icon medallion", () => {
+    render(
+      <EmptyState
+        icon={<svg data-testid="es-icon" />}
+        illustration={<svg data-testid="es-illustration" />}
+        title="No data"
+      />,
+    );
+    expect(screen.getByTestId("es-illustration")).toBeInTheDocument();
+    // The icon medallion is not rendered when an illustration is supplied.
+    expect(screen.queryByTestId("es-icon")).not.toBeInTheDocument();
+  });
+
   it("forwards className overrides onto the root container", () => {
     render(
       <EmptyState

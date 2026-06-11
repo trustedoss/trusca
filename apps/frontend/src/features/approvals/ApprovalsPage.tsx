@@ -11,10 +11,11 @@
  *     hex literals — to satisfy CLAUDE.md "never hardcode color hex values".
  *   - Color is paired with a text label (CLAUDE.md accessibility rule).
  */
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
+import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,7 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApprovalsDrawer } from "@/features/approvals/ApprovalsDrawer";
-import { AdminToast, type AdminToastMessage } from "@/features/admin/components/AdminToast";
+import { useToast } from "@/components/ui/toast";
 import { useApprovals } from "@/features/approvals/useApprovals";
 import RelativeTime from "@/components/RelativeTime";
 import { cn } from "@/lib/utils";
@@ -166,12 +167,10 @@ export function ApprovalsPage() {
   const [openId, setOpenId] = useState<string | null>(null);
 
   // --- toast ---
-  const [toast, setToast] = useState<AdminToastMessage | null>(null);
-  const toastSeq = useRef(0);
+  const { toast } = useToast();
 
   function notify(text: string, tone: "success" | "error", key?: string) {
-    toastSeq.current += 1;
-    setToast({ id: toastSeq.current, text, tone, key });
+    toast(text, { tone, key });
   }
 
   const queryParams = useMemo(
@@ -201,14 +200,10 @@ export function ApprovalsPage() {
       data-testid="approvals-page"
     >
       {/* Page header */}
-      <header className="border-b bg-card px-6 py-4">
-        <h1 className="text-lg font-semibold tracking-tight">
-          {t("approvals.title")}
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          {t("approvals.subtitle")}
-        </p>
-      </header>
+      <PageHeader
+        title={t("approvals.title")}
+        description={t("approvals.subtitle")}
+      />
 
       {/* Inline filters toolbar */}
       <div className="flex flex-wrap items-end gap-3 border-b bg-card px-6 py-3">
@@ -516,7 +511,6 @@ export function ApprovalsPage() {
         notify={notify}
       />
 
-      <AdminToast message={toast} onDismiss={() => setToast(null)} />
     </div>
   );
 }

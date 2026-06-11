@@ -181,8 +181,21 @@ expression = re.compile(user_input)  # nosemgrep: regex-from-user-input: `is_saf
 
 리뷰어는 정당화가 없거나 룰을 다루지 않는 suppress를 거절합니다. 같은 suppress가 여러 라인에 필요하면 문제 로직을 단일 함수로 추출해 한 곳에서 suppress하세요.
 
+## 프론트엔드 UI — 공용 프리미티브를 쓰세요
+
+프론트엔드는 단일 디자인 시스템을 따릅니다. [디자인 시스템 레퍼런스](../reference/design-system.md)가 토큰 · 컴포넌트 · 모션의 단일 진실입니다. 프리미티브가 이미 다루는 것을 직접 만들지 마세요:
+
+- **페이지 헤더** — 모든 라우트 헤더를 `PageHeader`(stacked / bar)로 렌더링. bare `<header><h1>` 금지(브레드크럼 detail 페이지만 문서화된 예외).
+- **타이포그래피** — `typography.tsx` 프리미티브(`PageTitle` / `SectionTitle` / `Subtitle` / `Body` / `Caption` / `Eyebrow`)를 쓰고, raw `text-*` 유틸리티는 일회성 인라인 span 에만.
+- **피드백** — 성공 · 비차단 알림은 `useToast()`, 폼 검증 에러는 인라인(RFC 7807 `detail`). 토스트는 `data-toast-key` e2e 계약을 가짐 — 안정적인 `key` 를 넘기세요.
+- **빈 / 로딩** — 임시 바가 아니라 `EmptyState`(레이어드 메달리온)와 `skeletons.tsx` 의 composite 스켈레톤.
+- **색** — 컴포넌트에서 hex 리터럴 금지, 토큰 / Tailwind 유틸리티(`bg-card`, `text-risk-high`)를 참조.
+
+모든 프리미티브는 `/dev/design-preview`(살아있는 레퍼런스)에서 눈으로 확인하세요. 새 공용 프리미티브는 거기에 추가합니다.
+
 ## 함께 보기
 
+- [디자인 시스템](../reference/design-system.md) — 토큰 · 컴포넌트 · 모션 · 접근성.
 - [시작하기](./getting-started.md) — dev 스택 띄우기.
 - [테스트 가이드](./testing-guide.md) — pytest, Playwright, coverage 게이트.
 - [에이전트 팀](./agent-team.md) — security review 체크포인트.

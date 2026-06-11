@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { useState, type ComponentType, type SVGProps } from "react";
 import { useTranslation } from "react-i18next";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import {
   CommandMenu,
@@ -295,6 +295,10 @@ export function AppShell() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
+  // W12-C — route-change entrance. Keying <main> on the pathname remounts the
+  // routed subtree on navigation so the fade-in replays; search-param changes
+  // (tabs, filters) keep the same pathname and therefore do NOT re-animate.
+  const location = useLocation();
   const toggleSidebarCollapsed = useUIStore((s) => s.toggleSidebarCollapsed);
 
   // The mobile drawer is ephemeral — it must reset on reload and on navigate,
@@ -339,7 +343,7 @@ export function AppShell() {
       <aside
         className={cn(
           "hidden shrink-0 flex-col border-r bg-card lg:flex",
-          "transition-[width] duration-base ease-out-soft",
+          "transition-[width] duration-slow ease-out-soft",
           sidebarCollapsed
             ? "w-[var(--layout-sidebar-collapsed)]"
             : "w-sidebar",
@@ -433,7 +437,11 @@ export function AppShell() {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto" data-testid="app-main">
+        <main
+          key={location.pathname}
+          className="flex-1 overflow-y-auto animate-in fade-in-0 duration-slow ease-out-soft"
+          data-testid="app-main"
+        >
           <Outlet />
         </main>
       </div>

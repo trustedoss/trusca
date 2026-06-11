@@ -15,6 +15,8 @@
  * rendered copy and stable `data-*` hooks.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+
+import { ToastProvider } from "@/components/ui/toast";
 import {
   fireEvent,
   render,
@@ -141,9 +143,11 @@ function renderPage(initialPath = "/policies") {
   });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[initialPath]}>
-        <PoliciesPage />
-      </MemoryRouter>
+      <ToastProvider>
+        <MemoryRouter initialEntries={[initialPath]}>
+          <PoliciesPage />
+        </MemoryRouter>
+      </ToastProvider>
     </QueryClientProvider>,
   );
 }

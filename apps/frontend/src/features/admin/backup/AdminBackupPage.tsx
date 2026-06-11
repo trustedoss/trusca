@@ -30,16 +30,14 @@ import { Database, Download, Loader2, RefreshCw, Trash2, UploadCloud } from "luc
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  AdminToast,
-  type AdminToastMessage,
-} from "@/features/admin/components/AdminToast";
+import { useToast } from "@/components/ui/toast";
 import {
   adminErrorExtension,
   adminErrorMessageKey,
@@ -96,8 +94,7 @@ export function AdminBackupPage() {
   const deleteMut = useDeleteBackup();
   const uploadMut = useUploadRestore();
 
-  const [toast, setToast] = useState<AdminToastMessage | null>(null);
-  const toastSeq = useRef(0);
+  const { toast } = useToast();
 
   const [pendingDeleteName, setPendingDeleteName] = useState<string | null>(
     null,
@@ -115,8 +112,7 @@ export function AdminBackupPage() {
   }, [backupsQuery.dataUpdatedAt]);
 
   function notify(text: string, tone: "success" | "error", key?: string) {
-    toastSeq.current += 1;
-    setToast({ id: toastSeq.current, text, tone, key });
+    toast(text, { tone, key });
   }
 
   async function handleManualTrigger() {
@@ -199,14 +195,10 @@ export function AdminBackupPage() {
 
   return (
     <div className="flex h-full flex-col" data-testid="admin-backup-page">
-      <header className="border-b bg-card px-6 py-4">
-        <h1 className="text-lg font-semibold tracking-tight">
-          {t("admin.backup.title")}
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          {t("admin.backup.subtitle")}
-        </p>
-      </header>
+      <PageHeader
+        title={t("admin.backup.title")}
+        description={t("admin.backup.subtitle")}
+      />
 
       {restoreQueued ? (
         <div className="border-b bg-amber-50 px-6 py-3" data-testid="admin-backup-restore-queued">
@@ -406,7 +398,6 @@ export function AdminBackupPage() {
         </table>
       </div>
 
-      <AdminToast message={toast} onDismiss={() => setToast(null)} />
     </div>
   );
 }
