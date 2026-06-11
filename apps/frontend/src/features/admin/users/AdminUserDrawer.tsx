@@ -16,7 +16,7 @@
  * (last_super_admin_protected, cannot_modify_self) surface in the toast.
  */
 import { Loader2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -45,7 +45,7 @@ import {
   adminErrorExtension,
   adminErrorMessageKey,
 } from "@/features/admin/lib/adminErrorMessage";
-import { formatRelativeToNow } from "@/lib/relativeTime";
+import RelativeTime from "@/components/RelativeTime";
 import { cn } from "@/lib/utils";
 
 interface AdminUserDrawerProps {
@@ -96,15 +96,25 @@ export function AdminUserDrawer({
   }, [detailId, detail.data]);
 
   const lastLoginRel = useMemo(() => {
-    return detail.data?.last_login_at
-      ? formatRelativeToNow(detail.data.last_login_at, i18n.resolvedLanguage)
-      : t("admin.users.drawer.never");
+    return detail.data?.last_login_at ? (
+      <RelativeTime
+        value={detail.data.last_login_at}
+        locale={i18n.resolvedLanguage}
+      />
+    ) : (
+      t("admin.users.drawer.never")
+    );
   }, [detail.data?.last_login_at, i18n.resolvedLanguage, t]);
 
   const createdRel = useMemo(() => {
-    return detail.data?.created_at
-      ? formatRelativeToNow(detail.data.created_at, i18n.resolvedLanguage)
-      : "—";
+    return detail.data?.created_at ? (
+      <RelativeTime
+        value={detail.data.created_at}
+        locale={i18n.resolvedLanguage}
+      />
+    ) : (
+      "—"
+    );
   }, [detail.data?.created_at, i18n.resolvedLanguage]);
 
   async function handleSaveRole() {
@@ -411,7 +421,7 @@ export function AdminUserDrawer({
 
 interface MetaProps {
   label: string;
-  value: string;
+  value: ReactNode;
 }
 
 function Meta({ label, value }: MetaProps) {

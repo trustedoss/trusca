@@ -26,7 +26,7 @@ import {
   AdminUsersToolbar,
   type UsersActiveFilter,
 } from "@/features/admin/users/AdminUsersToolbar";
-import { formatRelativeToNow } from "@/lib/relativeTime";
+import RelativeTime from "@/components/RelativeTime";
 import { cn } from "@/lib/utils";
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
@@ -303,12 +303,14 @@ export function AdminUsersPage() {
                       </Badge>
                     </td>
                     <td className="px-3 text-xs text-muted-foreground">
-                      {u.last_login_at
-                        ? formatRelativeToNow(
-                            u.last_login_at,
-                            i18n.resolvedLanguage,
-                          )
-                        : t("admin.users.drawer.never")}
+                      {u.last_login_at ? (
+                        <RelativeTime
+                          value={u.last_login_at}
+                          locale={i18n.resolvedLanguage}
+                        />
+                      ) : (
+                        t("admin.users.drawer.never")
+                      )}
                     </td>
                     <td
                       className="px-3 text-right text-xs text-muted-foreground"

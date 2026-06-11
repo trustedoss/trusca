@@ -57,7 +57,7 @@ import {
   type TriageRole,
 } from "@/features/projects/lib/vulnerabilityTransitions";
 import { ProblemError } from "@/lib/problem";
-import { formatRelativeToNow } from "@/lib/relativeTime";
+import RelativeTime from "@/components/RelativeTime";
 import { toggleSingleValue } from "@/lib/searchParamsToggle";
 import { cn } from "@/lib/utils";
 
@@ -1159,8 +1159,9 @@ interface DiscoveredCellProps {
 
 /**
  * Discovered table cell (M-27) — relative timestamp via the shared
- * `formatRelativeToNow` helper (same pattern as ReleasesTab / ReportsTab),
- * with the absolute ISO instant in the `title` tooltip for auditors.
+ * `RelativeTime` component (same pattern across the product), which renders a
+ * semantic `<time>` carrying the absolute instant in its `title` tooltip for
+ * auditors. The outer span keeps the `data-discovered-at` harness hook.
  */
 function DiscoveredCell({ discoveredAt }: DiscoveredCellProps) {
   const { i18n } = useTranslation("project_detail");
@@ -1169,9 +1170,8 @@ function DiscoveredCell({ discoveredAt }: DiscoveredCellProps) {
       className="w-28 truncate text-xs text-muted-foreground"
       data-testid="vulnerability-row-discovered"
       data-discovered-at={discoveredAt}
-      title={discoveredAt}
     >
-      {formatRelativeToNow(discoveredAt, i18n.language)}
+      <RelativeTime value={discoveredAt} locale={i18n.language} />
     </span>
   );
 }

@@ -24,7 +24,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ApprovalsDrawer } from "@/features/approvals/ApprovalsDrawer";
 import { AdminToast, type AdminToastMessage } from "@/features/admin/components/AdminToast";
 import { useApprovals } from "@/features/approvals/useApprovals";
-import { formatRelativeToNow } from "@/lib/relativeTime";
+import RelativeTime from "@/components/RelativeTime";
 import { cn } from "@/lib/utils";
 import type { ApprovalStatus } from "@/lib/approvalsApi";
 
@@ -437,10 +437,10 @@ export function ApprovalsPage() {
 
                     {/* Requested at */}
                     <td className="px-3 text-xs text-muted-foreground">
-                      {formatRelativeToNow(
-                        item.requested_at,
-                        i18n.resolvedLanguage,
-                      )}
+                      <RelativeTime
+                        value={item.requested_at}
+                        locale={i18n.resolvedLanguage}
+                      />
                     </td>
 
                     {/* Actions */}

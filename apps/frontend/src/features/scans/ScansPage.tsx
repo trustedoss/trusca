@@ -24,7 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScanCancelButton } from "@/features/scans/ScanCancelButton";
 import { useScans } from "@/features/scans/useScans";
-import { formatRelativeToNow } from "@/lib/relativeTime";
+import RelativeTime from "@/components/RelativeTime";
 import { cn } from "@/lib/utils";
 import { type ScanPublic, type ScanStatus } from "@/lib/projectsApi";
 
@@ -257,12 +257,14 @@ export function ScansPage() {
                         <StatusBadge status={scan.status} />
                       </td>
                       <td className="px-3 text-xs text-muted-foreground">
-                        {scan.started_at
-                          ? formatRelativeToNow(
-                              scan.started_at,
-                              i18n.resolvedLanguage,
-                            )
-                          : "—"}
+                        {scan.started_at ? (
+                          <RelativeTime
+                            value={scan.started_at}
+                            locale={i18n.resolvedLanguage}
+                          />
+                        ) : (
+                          "—"
+                        )}
                       </td>
                       <td className="px-3 text-right text-xs text-muted-foreground">
                         {dur == null ? "—" : `${dur}s`}

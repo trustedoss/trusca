@@ -28,7 +28,7 @@ import {
   type AdminScanStatus,
 } from "@/features/admin/scans/api/adminScansApi";
 import { useAdminScans } from "@/features/admin/scans/api/useAdminScans";
-import { formatRelativeToNow } from "@/lib/relativeTime";
+import RelativeTime from "@/components/RelativeTime";
 import { cn } from "@/lib/utils";
 import type { ScanKind } from "@/lib/projectsApi";
 
@@ -244,12 +244,14 @@ export function AdminScansPage() {
                       </Badge>
                     </td>
                     <td className="px-3 text-xs text-muted-foreground">
-                      {scan.started_at
-                        ? formatRelativeToNow(
-                            scan.started_at,
-                            i18n.resolvedLanguage,
-                          )
-                        : "—"}
+                      {scan.started_at ? (
+                        <RelativeTime
+                          value={scan.started_at}
+                          locale={i18n.resolvedLanguage}
+                        />
+                      ) : (
+                        "—"
+                      )}
                     </td>
                     <td className="px-3 text-right text-xs text-muted-foreground">
                       {scan.duration_seconds == null
