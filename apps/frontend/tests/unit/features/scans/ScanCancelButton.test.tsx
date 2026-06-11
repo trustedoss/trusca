@@ -17,6 +17,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ToastProvider } from "@/components/ui/toast";
 import { ScanCancelButton } from "@/features/scans/ScanCancelButton";
 import { ProblemError } from "@/lib/problem";
 import type { ScanPublic, ScanStatus } from "@/lib/projectsApi";
@@ -81,7 +82,13 @@ function renderButton(
   });
   render(
     <QueryClientProvider client={client}>
-      <ScanCancelButton scanId={SCAN_ID} status={status} onCancelled={onCancelled} />
+      <ToastProvider>
+        <ScanCancelButton
+          scanId={SCAN_ID}
+          status={status}
+          onCancelled={onCancelled}
+        />
+      </ToastProvider>
     </QueryClientProvider>,
   );
   return { onCancelled };

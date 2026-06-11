@@ -11,6 +11,8 @@
  *     rewind pagination to page 1.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+
+import { ToastProvider } from "@/components/ui/toast";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -70,7 +72,9 @@ function renderPage() {
   });
   return render(
     <QueryClientProvider client={client}>
-      <AdminScansPage />
+      <ToastProvider>
+        <AdminScansPage />
+      </ToastProvider>
     </QueryClientProvider>,
   );
 }

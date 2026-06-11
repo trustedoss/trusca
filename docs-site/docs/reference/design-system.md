@@ -257,6 +257,16 @@ Do not hand-roll a `<header><h1>` block — extend `PageHeader` if a new layout 
 
 Risk-tinted variants pair a status word with the design-system colour. Background uses `bg-risk-X/10` (or `/15` for medium / info) so the chip reads as a coloured tint. Text uses a deeper shade from the same hue family so the rendered contrast clears WCAG AA 4.5:1 — see [Severity colour accessibility](#severity-colour-accessibility).
 
+### Toast
+
+`apps/frontend/src/components/ui/toast.tsx`
+
+A single `<ToastProvider>` (mounted in `AppProviders`) renders one stacked, bottom-right region; `useToast().toast(text, opts)` pushes from anywhere. Toasts queue, auto-dismiss (4 s), and announce through an `aria-live` region.
+
+- **Feedback rule.** Success / non-blocking notices use a toast. Form-validation errors stay **inline** next to the field (RFC 7807 `detail`), never a toast the user might miss.
+- **Test-id contract.** `testId` defaults to `"admin-toast"`, and the toast carries `data-tone` + `data-toast-key`, mirroring the markup every e2e harness selects (`[data-testid="admin-toast"][data-tone][data-toast-key]`). Pass a `tone` (`success` / `error`) and a locale-independent `key`; ScanCancelButton overrides `testId: "scan-cancel-toast"`.
+- **Exceptions.** Two surfaces keep a bespoke local toast: the Scan-detail download notice (neutral `data-toast-variant`, not a success / error tone) and the Settings tab's inline `settings-toast` save confirmation. Both have their own tested contracts and do not fit the success / error model.
+
 ## Micro-interaction guide
 
 The W11-F polish phase standardised the timing and easing of every interactive transition. Components should pick their motion from the tokens, not hand-roll new values.
@@ -349,6 +359,7 @@ All interactive elements are reachable by `Tab` and operable by `Enter` / `Space
 | W11-G | 2026-05-27 | Empty state illustrations (PR #248). |
 | W11-H | 2026-05-27 | **A11y sweep + design system docs.** Severity badge text colours darkened to clear WCAG AA on light tints (no token change). This page added. |
 | W12-A | 2026-06-11 | **Craft elevation — typography & page-header system.** Added typography primitives (`PageTitle` / `SectionTitle` / `Subtitle` / `Body` / `Caption` / `Eyebrow`) and a shared `PageHeader` (stacked / bar). Unifies the page-title scale (was `text-lg` vs `text-base`) and header chrome (`bg-card` vs `bg-background`) that had drifted across screens. |
+| W12-B | 2026-06-11 | **Craft elevation — global toast.** Added a `ToastProvider` + `useToast()` (queue, auto-dismiss, `aria-live`), migrating 11 hand-rolled per-page toasts onto it while preserving the `admin-toast` / `data-toast-key` e2e contract. Scan-detail download notice + Settings inline confirmation kept as documented exceptions. |
 
 The previous "BD-style 2015" aesthetic (`#0f172a` navy, pure white canvas, uniform 8 px radius, no shadow, default browser easing) is fully retired by W11.
 

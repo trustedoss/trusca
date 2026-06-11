@@ -22,7 +22,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCreateTeam } from "@/features/admin/api/useAdminTeamMutations";
 import { useAdminTeams } from "@/features/admin/api/useAdminTeams";
-import { AdminToast, type AdminToastMessage } from "@/features/admin/components/AdminToast";
+import { useToast } from "@/components/ui/toast";
 import { AdminTeamDrawer } from "@/features/admin/teams/AdminTeamDrawer";
 import {
   adminErrorExtension,
@@ -45,8 +45,7 @@ export function AdminTeamsPage() {
   const [createName, setCreateName] = useState("");
   const [createSlug, setCreateSlug] = useState("");
   const [createDescription, setCreateDescription] = useState("");
-  const [toast, setToast] = useState<AdminToastMessage | null>(null);
-  const toastSeq = useRef(0);
+  const { toast } = useToast();
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
@@ -76,8 +75,7 @@ export function AdminTeamsPage() {
   const create = useCreateTeam();
 
   function notify(text: string, tone: "success" | "error", key?: string) {
-    toastSeq.current += 1;
-    setToast({ id: toastSeq.current, text, tone, key });
+    toast(text, { tone, key });
   }
 
   async function handleCreate() {
@@ -359,7 +357,6 @@ export function AdminTeamsPage() {
         onDeleted={() => setOpenTeamId(null)}
       />
 
-      <AdminToast message={toast} onDismiss={() => setToast(null)} />
     </div>
   );
 }

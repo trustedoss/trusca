@@ -17,7 +17,7 @@
  * No hardcoded English strings (every string via `t()`) and no hex literals
  * (Tailwind tokens / CSS vars only) — CLAUDE.md design system + i18n rules.
  */
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { FileText } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -37,7 +37,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AdminToast, type AdminToastMessage } from "@/features/admin/components/AdminToast";
+import { useToast } from "@/components/ui/toast";
 import {
   PolicyEditorPanel,
   type PolicyScope,
@@ -86,11 +86,9 @@ export function PoliciesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const drawerTarget = parseDrawerParam(searchParams.get(DRAWER_PARAM));
 
-  const [toast, setToast] = useState<AdminToastMessage | null>(null);
-  const toastSeq = useRef(0);
+  const { toast } = useToast();
   function notify(text: string, tone: "success" | "error", key?: string) {
-    toastSeq.current += 1;
-    setToast({ id: toastSeq.current, text, tone, key });
+    toast(text, { tone, key });
   }
 
   // --- visible existing policies (membership-filtered server-side) ---
@@ -383,7 +381,6 @@ export function PoliciesPage() {
         </SheetContent>
       </Sheet>
 
-      <AdminToast message={toast} onDismiss={() => setToast(null)} />
     </div>
   );
 }

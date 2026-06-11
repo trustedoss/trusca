@@ -36,7 +36,7 @@ import {
   XCircle,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
@@ -46,10 +46,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import {
-  AdminToast,
-  type AdminToastMessage,
-} from "@/features/admin/components/AdminToast";
+import { useToast } from "@/components/ui/toast";
 import type {
   NotificationItem,
   NotificationKind,
@@ -292,8 +289,7 @@ export function NotificationsPage() {
   const navigate = useNavigate();
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [page, setPage] = useState(1);
-  const [toast, setToast] = useState<AdminToastMessage | null>(null);
-  const toastSeq = useRef(0);
+  const { toast } = useToast();
 
   const params = useMemo(
     () => ({ unread_only: unreadOnly, page, page_size: PAGE_SIZE }),
@@ -312,8 +308,7 @@ export function NotificationsPage() {
   const updatePrefs = useUpdateNotificationPrefs();
 
   function notify(text: string, tone: "success" | "error", key?: string) {
-    toastSeq.current += 1;
-    setToast({ id: toastSeq.current, text, tone, key });
+    toast(text, { tone, key });
   }
 
   function handleActivate(item: NotificationItem) {
@@ -527,7 +522,6 @@ export function NotificationsPage() {
         </section>
       </div>
 
-      <AdminToast message={toast} onDismiss={() => setToast(null)} />
     </div>
   );
 }

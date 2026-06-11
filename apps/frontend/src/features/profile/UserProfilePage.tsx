@@ -18,7 +18,7 @@
  *
  * Patterns reused:
  *   - Inline confirmation strip from `AdminUserDrawer` (no AlertDialog).
- *   - `AdminToast` for success / generic error feedback (matches /integrations).
+ *   - `useToast()` for success / generic error feedback (matches /integrations).
  *   - Compact 40px row density consistent with Integrations / Admin tables.
  *
  * No hardcoded English in JSX — every visible string flows through `t()`
@@ -33,10 +33,7 @@ import { ProviderIcon } from "@/components/ProviderIcon";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  AdminToast,
-  type AdminToastMessage,
-} from "@/features/admin/components/AdminToast";
+import { useToast } from "@/components/ui/toast";
 import {
   OAUTH_UNLINK_BLOCKS_LOGIN_TYPE,
   type OAuthIdentity,
@@ -218,15 +215,10 @@ export function UserProfilePage() {
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [blocksLoginId, setBlocksLoginId] = useState<string | null>(null);
 
-  const [toast, setToast] = useState<AdminToastMessage | null>(null);
-  const [, setToastSeq] = useState(0);
+  const { toast } = useToast();
 
   function showToast(text: string, tone: "success" | "error", key: string) {
-    setToastSeq((n) => {
-      const id = n + 1;
-      setToast({ id, text, tone, key });
-      return id;
-    });
+    toast(text, { tone, key });
   }
 
   function askUnlink(id: string) {
@@ -383,7 +375,6 @@ export function UserProfilePage() {
         </section>
       </div>
 
-      <AdminToast message={toast} onDismiss={() => setToast(null)} />
     </div>
   );
 }

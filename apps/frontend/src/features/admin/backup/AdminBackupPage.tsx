@@ -37,10 +37,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  AdminToast,
-  type AdminToastMessage,
-} from "@/features/admin/components/AdminToast";
+import { useToast } from "@/components/ui/toast";
 import {
   adminErrorExtension,
   adminErrorMessageKey,
@@ -97,8 +94,7 @@ export function AdminBackupPage() {
   const deleteMut = useDeleteBackup();
   const uploadMut = useUploadRestore();
 
-  const [toast, setToast] = useState<AdminToastMessage | null>(null);
-  const toastSeq = useRef(0);
+  const { toast } = useToast();
 
   const [pendingDeleteName, setPendingDeleteName] = useState<string | null>(
     null,
@@ -116,8 +112,7 @@ export function AdminBackupPage() {
   }, [backupsQuery.dataUpdatedAt]);
 
   function notify(text: string, tone: "success" | "error", key?: string) {
-    toastSeq.current += 1;
-    setToast({ id: toastSeq.current, text, tone, key });
+    toast(text, { tone, key });
   }
 
   async function handleManualTrigger() {
@@ -403,7 +398,6 @@ export function AdminBackupPage() {
         </table>
       </div>
 
-      <AdminToast message={toast} onDismiss={() => setToast(null)} />
     </div>
   );
 }

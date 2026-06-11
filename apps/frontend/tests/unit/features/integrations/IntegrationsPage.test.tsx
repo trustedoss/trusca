@@ -10,6 +10,8 @@
  *   - Webhook URLs are rendered with the expected /v1/webhooks/* paths.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+
+import { ToastProvider } from "@/components/ui/toast";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
@@ -95,9 +97,11 @@ function renderPage() {
   });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter>
-        <IntegrationsPage />
-      </MemoryRouter>
+      <ToastProvider>
+        <MemoryRouter>
+          <IntegrationsPage />
+        </MemoryRouter>
+      </ToastProvider>
     </QueryClientProvider>,
   );
 }

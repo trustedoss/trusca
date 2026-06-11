@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAdminUsers } from "@/features/admin/api/useAdminUsers";
 import type { UserRole } from "@/features/admin/api/adminUsersApi";
-import { AdminToast, type AdminToastMessage } from "@/features/admin/components/AdminToast";
+import { useToast } from "@/components/ui/toast";
 import { RoleBadge } from "@/features/admin/components/RoleBadge";
 import { AdminUserDrawer } from "@/features/admin/users/AdminUserDrawer";
 import {
@@ -92,8 +92,7 @@ export function AdminUsersPage() {
   const [searchDebounced, setSearchDebounced] = useState(searchInput);
 
   const [openUserId, setOpenUserId] = useState<string | null>(null);
-  const [toast, setToast] = useState<AdminToastMessage | null>(null);
-  const toastSeq = useRef(0);
+  const { toast } = useToast();
 
   const updateFilterParam = useCallback(
     (key: string, next: string | null) => {
@@ -200,8 +199,7 @@ export function AdminUsersPage() {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   function notify(text: string, tone: "success" | "error", key?: string) {
-    toastSeq.current += 1;
-    setToast({ id: toastSeq.current, text, tone, key });
+    toast(text, { tone, key });
   }
 
   return (
@@ -398,7 +396,6 @@ export function AdminUsersPage() {
         notify={notify}
       />
 
-      <AdminToast message={toast} onDismiss={() => setToast(null)} />
     </div>
   );
 }

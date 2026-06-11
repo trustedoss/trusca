@@ -3,6 +3,7 @@ import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { useState, type ReactNode } from "react";
 import { BrowserRouter } from "react-router-dom";
 
+import { ToastProvider } from "@/components/ui/toast";
 import { createQueryClient } from "@/lib/queryClient";
 
 interface AppProvidersProps {
@@ -22,7 +23,7 @@ export function AppProviders({
 
   const tree = (
     <QueryClientProvider client={queryClient}>
-      {children}
+      <ToastProvider>{children}</ToastProvider>
       {/* Devtools render in dev only; the unused branch is eliminated by Vite
           in production builds (`import.meta.env.DEV === false`). */}
       {import.meta.env.DEV ? (

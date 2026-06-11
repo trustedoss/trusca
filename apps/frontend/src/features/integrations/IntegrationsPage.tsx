@@ -22,7 +22,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AdminToast, type AdminToastMessage } from "@/features/admin/components/AdminToast";
+import { useToast } from "@/components/ui/toast";
 import { CreateApiKeyDialog } from "@/features/integrations/CreateApiKeyDialog";
 import { RevealApiKeyDialog } from "@/features/integrations/RevealApiKeyDialog";
 import { RevokeApiKeyDialog } from "@/features/integrations/RevokeApiKeyDialog";
@@ -144,10 +144,7 @@ export function IntegrationsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [revealKey, setRevealKey] = useState<APIKeyCreateOut | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<APIKeyListItem | null>(null);
-  const [toast, setToast] = useState<AdminToastMessage | null>(null);
-  // Monotonic id sequence — kept in state so React's batched renders
-  // observe a fresh value on every showToast() call.
-  const [, setToastSeq] = useState(0);
+  const { toast } = useToast();
 
   const params = { page, page_size: PAGE_SIZE };
   const keysQuery = useApiKeys(params);
@@ -156,11 +153,7 @@ export function IntegrationsPage() {
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   function showToast(text: string, tone: "success" | "error", key: string) {
-    setToastSeq((n) => {
-      const id = n + 1;
-      setToast({ id, text, tone, key });
-      return id;
-    });
+    toast(text, { tone, key });
   }
 
   const createMutation = useMutation({
@@ -482,7 +475,6 @@ export function IntegrationsPage() {
         submitting={revokeMutation.isPending}
       />
 
-      <AdminToast message={toast} onDismiss={() => setToast(null)} />
     </div>
   );
 }
