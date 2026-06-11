@@ -60,7 +60,7 @@ import { useReportHistory } from "@/features/projects/api/useReportHistory";
 import { useVulnReport } from "@/features/projects/api/useVulnReport";
 import { SbomTab } from "@/features/projects/components/SbomTab";
 import { ProblemError } from "@/lib/problem";
-import { formatRelativeToNow } from "@/lib/relativeTime";
+import RelativeTime from "@/components/RelativeTime";
 import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 50;
@@ -697,13 +697,6 @@ function HistoryRow({ row, locale }: HistoryRowProps) {
   // 8-char prefix mirrors how Components / Vulnerabilities surfaces show
   // scan IDs. Tooltip carries the full UUID so the value remains copyable.
   const scanShort = row.scan_id ? row.scan_id.slice(0, 8) : null;
-  const whenAbsolute = (() => {
-    try {
-      return new Date(row.created_at).toLocaleString(locale ?? "en");
-    } catch {
-      return row.created_at;
-    }
-  })();
   return (
     <tr
       className={cn("h-10 border-b last:border-b-0")}
@@ -712,12 +705,11 @@ function HistoryRow({ row, locale }: HistoryRowProps) {
       data-report-type={row.report_type}
     >
       <td className="px-3 py-1.5">
-        <span
+        <RelativeTime
           className="text-xs text-muted-foreground"
-          title={whenAbsolute}
-        >
-          {formatRelativeToNow(row.created_at, locale)}
-        </span>
+          value={row.created_at}
+          locale={locale}
+        />
       </td>
       <td className="px-3 py-1.5">
         <span className="truncate text-xs">

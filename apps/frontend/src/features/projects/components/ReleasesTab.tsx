@@ -15,7 +15,7 @@ import type {
 } from "@/features/projects/api/releasesApi";
 import { releaseLabel } from "@/features/projects/lib/releaseLabel";
 import { ProblemError } from "@/lib/problem";
-import { formatRelativeToNow } from "@/lib/relativeTime";
+import RelativeTime from "@/components/RelativeTime";
 import { cn } from "@/lib/utils";
 
 /**
@@ -244,9 +244,8 @@ function ReleaseRow({ release, locale, onView }: ReleaseRowProps) {
       <td
         className="px-3 py-2 text-xs text-muted-foreground"
         data-testid="release-row-date"
-        title={release.created_at}
       >
-        {formatRelativeToNow(release.created_at, locale)}
+        <RelativeTime value={release.created_at} locale={locale} />
       </td>
       <td
         className={cn(

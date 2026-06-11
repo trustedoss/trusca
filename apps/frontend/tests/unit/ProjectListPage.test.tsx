@@ -350,8 +350,13 @@ describe("ProjectListPage", () => {
     // The relative label includes "hour(s)" wording from Intl.RelativeTimeFormat.
     expect(meta.textContent?.toLowerCase()).toContain("hour");
     // The absolute timestamp lives on the title tooltip, NEVER inline.
+    // M-19: the shared RelativeTime component renders a <time> with a
+    // locale-formatted absolute title and the raw ISO on `dateTime`.
     const whenSpan = screen.getByTestId("project-row-scan-meta-when");
-    expect(whenSpan).toHaveAttribute("title", lastScan);
+    expect(whenSpan.tagName).toBe("TIME");
+    expect(whenSpan).toHaveAttribute("dateTime", lastScan);
+    expect(whenSpan.getAttribute("title")).toBeTruthy();
+    expect(whenSpan).not.toHaveAttribute("title", lastScan); // formatted, not raw ISO
     // Discoverability colour is a design token, NOT a risk colour.
     expect(meta.className).toContain("text-muted-foreground");
     expect(meta.className).not.toContain("text-risk-");

@@ -11,7 +11,7 @@
  * `scan_already_cancelled` Problem extension.
  */
 import { Loader2 } from "lucide-react";
-import { useRef, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -37,7 +37,7 @@ import {
   adminErrorExtension,
   adminErrorMessageKey,
 } from "@/features/admin/lib/adminErrorMessage";
-import { formatRelativeToNow } from "@/lib/relativeTime";
+import RelativeTime from "@/components/RelativeTime";
 import { cn } from "@/lib/utils";
 
 interface AdminScanDrawerProps {
@@ -158,20 +158,27 @@ export function AdminScanDrawer({
               <Meta
                 label={t("admin.scans.drawer.started_at_label")}
                 value={
-                  scan.started_at
-                    ? formatRelativeToNow(scan.started_at, i18n.resolvedLanguage)
-                    : "—"
+                  scan.started_at ? (
+                    <RelativeTime
+                      value={scan.started_at}
+                      locale={i18n.resolvedLanguage}
+                    />
+                  ) : (
+                    "—"
+                  )
                 }
               />
               <Meta
                 label={t("admin.scans.drawer.finished_at_label")}
                 value={
-                  scan.finished_at
-                    ? formatRelativeToNow(
-                        scan.finished_at,
-                        i18n.resolvedLanguage,
-                      )
-                    : "—"
+                  scan.finished_at ? (
+                    <RelativeTime
+                      value={scan.finished_at}
+                      locale={i18n.resolvedLanguage}
+                    />
+                  ) : (
+                    "—"
+                  )
                 }
               />
               <Meta
@@ -270,7 +277,7 @@ export function AdminScanDrawer({
 
 interface MetaProps {
   label: string;
-  value: string;
+  value: ReactNode;
   testId?: string;
 }
 
