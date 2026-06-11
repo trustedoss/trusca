@@ -15,6 +15,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
+import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -201,14 +202,10 @@ export function ApprovalsPage() {
       data-testid="approvals-page"
     >
       {/* Page header */}
-      <header className="border-b bg-card px-6 py-4">
-        <h1 className="text-lg font-semibold tracking-tight">
-          {t("approvals.title")}
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          {t("approvals.subtitle")}
-        </p>
-      </header>
+      <PageHeader
+        title={t("approvals.title")}
+        description={t("approvals.subtitle")}
+      />
 
       {/* Inline filters toolbar */}
       <div className="flex flex-wrap items-end gap-3 border-b bg-card px-6 py-3">

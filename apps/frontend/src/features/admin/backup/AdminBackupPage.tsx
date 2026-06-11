@@ -30,6 +30,7 @@ import { Database, Download, Loader2, RefreshCw, Trash2, UploadCloud } from "luc
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -199,14 +200,10 @@ export function AdminBackupPage() {
 
   return (
     <div className="flex h-full flex-col" data-testid="admin-backup-page">
-      <header className="border-b bg-card px-6 py-4">
-        <h1 className="text-lg font-semibold tracking-tight">
-          {t("admin.backup.title")}
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          {t("admin.backup.subtitle")}
-        </p>
-      </header>
+      <PageHeader
+        title={t("admin.backup.title")}
+        description={t("admin.backup.subtitle")}
+      />
 
       {restoreQueued ? (
         <div className="border-b bg-amber-50 px-6 py-3" data-testid="admin-backup-restore-queued">

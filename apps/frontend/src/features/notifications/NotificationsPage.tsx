@@ -41,6 +41,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
 import { EmptyState } from "@/components/EmptyState";
+import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -366,13 +367,16 @@ export function NotificationsPage() {
 
   return (
     <div className="flex h-full flex-col" data-testid="notifications-page">
-      <header className="border-b bg-card px-6 py-4">
-        <h1 className="flex items-center gap-2 text-lg font-semibold tracking-tight">
-          <Bell className="h-4 w-4" aria-hidden />
-          {t("page.title")}
-        </h1>
-        <p className="text-sm text-muted-foreground">{t("page.subtitle")}</p>
-      </header>
+      <PageHeader
+        title={
+          <>
+            <Bell className="h-4 w-4" aria-hidden />
+            {t("page.title")}
+          </>
+        }
+        titleProps={{ className: "flex items-center gap-2" }}
+        description={t("page.subtitle")}
+      />
 
       <div className="flex-1 space-y-8 overflow-y-auto px-6 py-6">
         {/* ---------- Inbox section -------------------------------------- */}

@@ -16,6 +16,7 @@
 import { AlertCircle, CheckCircle2, RefreshCw, ShieldAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -192,42 +193,37 @@ export function AdminDiskPage() {
 
   return (
     <div className="flex h-full flex-col" data-testid="admin-disk-page">
-      <header className="flex items-start justify-between border-b bg-card px-6 py-4">
-        <div>
-          <h1 className="text-lg font-semibold tracking-tight">
-            {t("admin.disk.title")}
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            {t("admin.disk.subtitle")}
-          </p>
-          {collectedAt ? (
+      <PageHeader
+        title={t("admin.disk.title")}
+        description={t("admin.disk.subtitle")}
+        meta={
+          collectedAt ? (
             <p
-              className="mt-1 text-xs text-muted-foreground"
+              className="text-xs text-muted-foreground"
               data-testid="admin-disk-collected-at"
             >
               {t("admin.disk.collected_at", {
                 when: formatRelativeToNow(collectedAt, i18n.resolvedLanguage),
               })}
             </p>
-          ) : null}
-        </div>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => diskQuery.refetch()}
-          disabled={diskQuery.isFetching}
-          data-testid="admin-disk-refresh"
-        >
-          <RefreshCw
-            className={cn(
-              "h-4 w-4",
-              diskQuery.isFetching && "animate-spin",
-            )}
-            aria-hidden
-          />
-          {t("admin.disk.actions.refresh")}
-        </Button>
-      </header>
+          ) : null
+        }
+        actions={
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => diskQuery.refetch()}
+            disabled={diskQuery.isFetching}
+            data-testid="admin-disk-refresh"
+          >
+            <RefreshCw
+              className={cn("h-4 w-4", diskQuery.isFetching && "animate-spin")}
+              aria-hidden
+            />
+            {t("admin.disk.actions.refresh")}
+          </Button>
+        }
+      />
 
       <div className="flex-1 overflow-y-auto px-6 py-4">
         {diskQuery.isError ? (

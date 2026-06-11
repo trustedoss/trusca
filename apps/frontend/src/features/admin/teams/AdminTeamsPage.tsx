@@ -14,6 +14,7 @@ import { Loader2, Plus } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -102,14 +103,10 @@ export function AdminTeamsPage() {
 
   return (
     <div className="flex h-full flex-col" data-testid="admin-teams-page">
-      <header className="border-b bg-card px-6 py-4">
-        <h1 className="text-lg font-semibold tracking-tight">
-          {t("admin.teams.title")}
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          {t("admin.teams.subtitle")}
-        </p>
-      </header>
+      <PageHeader
+        title={t("admin.teams.title")}
+        description={t("admin.teams.subtitle")}
+      />
 
       <div
         className="flex flex-wrap items-end gap-3 border-b bg-card px-6 py-3"

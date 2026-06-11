@@ -6,6 +6,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { Virtuoso } from "react-virtuoso";
 
 import { EmptyState } from "@/components/EmptyState";
+import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -440,34 +441,29 @@ export function ProjectListPage() {
       className="flex min-h-screen flex-col bg-background text-foreground"
       data-testid="project-list-page"
     >
-      {/* W11-B polish — page header sits at the standard 48 px height. The
-          title gets the W11-A heading hierarchy (semibold + tight tracking
-          inherited from index.css). Background stays canvas (off-white) so
-          the cards / table below pop as white surfaces. */}
-      <header
-        className="flex items-center justify-between border-b bg-background px-6"
-        style={{ height: "var(--layout-header)" }}
-      >
-        <div>
-          <h1 className="text-base font-semibold tracking-tight">
-            {t("page.title")}
-          </h1>
-        </div>
-        {demoReadOnly ? (
-          <Button
-            size="sm"
-            disabled
-            title={t("demo.write_disabled")}
-            data-testid="project-list-register"
-          >
-            {t("page.register")}
-          </Button>
-        ) : (
-          <Button asChild size="sm" data-testid="project-list-register">
-            <Link to="/projects/new">{t("page.register")}</Link>
-          </Button>
-        )}
-      </header>
+      {/* W12-A — shared PageHeader (bar variant): standard 48 px height, canvas
+          background so the cards / table below pop as white surfaces, with the
+          "Register" CTA in the right action slot. */}
+      <PageHeader
+        variant="bar"
+        title={t("page.title")}
+        actions={
+          demoReadOnly ? (
+            <Button
+              size="sm"
+              disabled
+              title={t("demo.write_disabled")}
+              data-testid="project-list-register"
+            >
+              {t("page.register")}
+            </Button>
+          ) : (
+            <Button asChild size="sm" data-testid="project-list-register">
+              <Link to="/projects/new">{t("page.register")}</Link>
+            </Button>
+          )
+        }
+      />
 
       {/* By-PROJECT axis distribution cards above the toolbar. Both cards are
           interactive: segment click narrows the list to projects whose worst

@@ -153,6 +153,19 @@ Short, ease-out — Linear polish. Three steps cover the majority of UI animatio
 
 OpenType features `rlig` and `calt` are enabled on `body` for proper Inter rendering.
 
+**Use the typography primitives, not raw utilities.** `apps/frontend/src/components/ui/typography.tsx` exposes the scale as named components so a given role is identical on every screen instead of drifting (`text-lg` here, `text-base` there):
+
+| Component | Element | Role |
+|---|---|---|
+| `PageTitle` | `h1` | The single page title — 18 px semibold tracking-tight. |
+| `SectionTitle` | `h2` | Section / sub-area heading — 16 px semibold. |
+| `Subtitle` | `p` | Muted line beneath a page title — 14 px. |
+| `Body` | `p` | Body copy — 14 px (`muted` prop for secondary copy). |
+| `Caption` | `span` | Dense meta (timestamps, counts) — 12 px muted. |
+| `Eyebrow` | `span` | Uppercase overline / column-group label — 12 px medium. |
+
+Reach for a raw `text-*` utility only for one-off inline spans that no primitive covers; never hand-roll a page title.
+
 ## Focus ring
 
 Every interactive element shows a visible focus ring on keyboard navigation:
@@ -171,6 +184,19 @@ focus-visible:ring-offset-2
 ## Component conventions
 
 The portal builds on [shadcn/ui](https://ui.shadcn.com/) primitives. Each primitive is wired to the design tokens above and re-exported from `apps/frontend/src/components/ui/`.
+
+### Page header
+
+`apps/frontend/src/components/PageHeader.tsx`
+
+Every route renders its header through `PageHeader` so the title typography and header chrome are identical. Chrome is unified to `bg-background` + `border-b` (off-white canvas with a hairline divider) so the white cards / tables below read as raised. Two archetypes:
+
+- `variant="stacked"` (default) — taller header (`py-4`) with a `PageTitle` and a muted `description`. For pages that need an explanatory line (Scans, Admin sections).
+- `variant="bar"` — slim 48 px row (`var(--layout-header)`), title plus an optional right `actions` slot (buttons or meta text), no subtitle. For dense pages whose purpose is self-evident (Dashboard, Project list).
+
+The stacked variant also takes an optional `meta` slot — a block under the description (e.g. a "last updated 2m ago" line with its own test id), kept separate from `description` so block content is not nested inside the subtitle `<p>`. The `actions` slot is caller-owned markup, so existing harness `data-testid`s on buttons / meta are preserved.
+
+Do not hand-roll a `<header><h1>` block — extend `PageHeader` if a new layout is genuinely needed. **Exception:** the detail pages (Project detail, Component / Vulnerability detail, Compare, Scan detail) use a *breadcrumb header* — a `<nav>` breadcrumb plus a contextual title — which is a distinct archetype `PageHeader` does not model yet. Those pages keep their hand-rolled header but still draw type from the same scale.
 
 ### Button
 
@@ -322,6 +348,7 @@ All interactive elements are reachable by `Tab` and operable by `Enter` / `Space
 | W11-F | 2026-05-27 | Micro-interaction polish — hover / focus / motion (PR #247). |
 | W11-G | 2026-05-27 | Empty state illustrations (PR #248). |
 | W11-H | 2026-05-27 | **A11y sweep + design system docs.** Severity badge text colours darkened to clear WCAG AA on light tints (no token change). This page added. |
+| W12-A | 2026-06-11 | **Craft elevation — typography & page-header system.** Added typography primitives (`PageTitle` / `SectionTitle` / `Subtitle` / `Body` / `Caption` / `Eyebrow`) and a shared `PageHeader` (stacked / bar). Unifies the page-title scale (was `text-lg` vs `text-base`) and header chrome (`bg-card` vs `bg-background`) that had drifted across screens. |
 
 The previous "BD-style 2015" aesthetic (`#0f172a` navy, pure white canvas, uniform 8 px radius, no shadow, default browser easing) is fully retired by W11.
 

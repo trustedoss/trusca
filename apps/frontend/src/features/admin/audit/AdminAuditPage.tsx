@@ -30,6 +30,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
+import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -261,14 +262,10 @@ export function AdminAuditPage() {
 
   return (
     <div className="flex h-full flex-col" data-testid="admin-audit-page">
-      <header className="border-b bg-card px-6 py-4">
-        <h1 className="text-lg font-semibold tracking-tight">
-          {t("admin.audit.title")}
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          {t("admin.audit.subtitle")}
-        </p>
-      </header>
+      <PageHeader
+        title={t("admin.audit.title")}
+        description={t("admin.audit.subtitle")}
+      />
 
       <div
         className="grid grid-cols-1 gap-3 border-b bg-card px-6 py-3 sm:grid-cols-2 lg:grid-cols-6"

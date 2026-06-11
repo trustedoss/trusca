@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
+import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -205,14 +206,10 @@ export function AdminUsersPage() {
 
   return (
     <div className="flex h-full flex-col" data-testid="admin-users-page">
-      <header className="border-b bg-card px-6 py-4">
-        <h1 className="text-lg font-semibold tracking-tight">
-          {t("admin.users.title")}
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          {t("admin.users.subtitle")}
-        </p>
-      </header>
+      <PageHeader
+        title={t("admin.users.title")}
+        description={t("admin.users.subtitle")}
+      />
 
       <AdminUsersToolbar
         search={searchInput}

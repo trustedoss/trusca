@@ -153,6 +153,19 @@ Vercel 톤의 subtle elevation. 가벼운 그림자만 — glow 없음.
 
 OpenType `rlig` · `calt` 가 `body` 에 활성화되어 Inter 가 제대로 렌더링.
 
+**raw 유틸리티 대신 타이포그래피 프리미티브를 쓰세요.** `apps/frontend/src/components/ui/typography.tsx` 가 스케일을 이름 붙인 컴포넌트로 제공하므로, 같은 역할이 화면마다 어긋나지 않고(`text-lg` 와 `text-base` 가 섞이지 않고) 동일하게 보입니다.
+
+| 컴포넌트 | 요소 | 역할 |
+|---|---|---|
+| `PageTitle` | `h1` | 페이지 제목 하나 — 18 px semibold tracking-tight. |
+| `SectionTitle` | `h2` | 섹션 · 하위 영역 제목 — 16 px semibold. |
+| `Subtitle` | `p` | 페이지 제목 아래 muted 보조 줄 — 14 px. |
+| `Body` | `p` | 본문 — 14 px (`muted` prop 으로 보조 본문). |
+| `Caption` | `span` | 밀집 메타(타임스탬프 · 카운트) — 12 px muted. |
+| `Eyebrow` | `span` | 대문자 overline · 컬럼 그룹 라벨 — 12 px medium. |
+
+어떤 프리미티브로도 안 되는 일회성 인라인 span 에만 raw `text-*` 유틸리티를 쓰고, 페이지 제목은 절대 직접 조합하지 마세요.
+
 ## Focus ring
 
 키보드 navigation 시 모든 interactive element 가 가시 focus ring 표시:
@@ -171,6 +184,19 @@ focus-visible:ring-offset-2
 ## 컴포넌트 규약
 
 포털은 [shadcn/ui](https://ui.shadcn.com/) primitives 위에 빌드됩니다. 각 primitive 는 위 토큰에 연결되어 `apps/frontend/src/components/ui/` 에 re-export.
+
+### Page header
+
+`apps/frontend/src/components/PageHeader.tsx`
+
+모든 라우트는 헤더를 `PageHeader` 로 렌더링해 제목 타이포그래피와 헤더 chrome 을 동일하게 맞춥니다. chrome 은 `bg-background` + `border-b`(off-white 캔버스에 가는 구분선)로 통일해, 아래의 흰 카드 · 테이블이 떠 보이게 합니다. 두 가지 형태:
+
+- `variant="stacked"`(기본) — 더 높은 헤더(`py-4`)에 `PageTitle` 과 muted `description`. 설명 줄이 필요한 페이지(Scans, Admin 영역).
+- `variant="bar"` — 48 px 슬림 행(`var(--layout-header)`), 제목과 선택적 오른쪽 `actions` 슬롯(버튼 또는 메타 텍스트), 부제 없음. 목적이 자명한 밀집 페이지(Dashboard, 프로젝트 목록).
+
+stacked 변형에는 선택적 `meta` 슬롯도 있습니다 — 부제 아래에 오는 블록("2분 전 갱신" 같은 자체 test id 가진 줄)으로, 블록 내용을 부제 `<p>` 안에 중첩하지 않도록 `description` 과 분리합니다. `actions` 슬롯은 호출 측 마크업이라 버튼 · 메타의 기존 하네스 `data-testid` 가 보존됩니다.
+
+`<header><h1>` 블록을 직접 만들지 말고, 정말 새 레이아웃이 필요하면 `PageHeader` 를 확장하세요. **예외:** detail 페이지(프로젝트 상세, 컴포넌트 · 취약점 상세, Compare, 스캔 상세)는 *브레드크럼 헤더*(breadcrumb `<nav>` + 맥락 제목)를 쓰며, 이는 `PageHeader` 가 아직 모델링하지 않은 별도 archetype 입니다. 이 페이지들은 직접 짠 헤더를 유지하되 타이포는 같은 스케일을 따릅니다.
 
 ### Button
 
@@ -322,6 +348,7 @@ Severity 가 표시되는 모든 곳에서 색은 다음 중 하나와 짝지움
 | W11-F | 2026-05-27 | 마이크로인터랙션 polish — hover / focus / motion (PR #247). |
 | W11-G | 2026-05-27 | 빈 상태 일러스트 (PR #248). |
 | W11-H | 2026-05-27 | **A11y sweep + 디자인 시스템 문서.** Severity 배지 텍스트 색을 light tint 위 WCAG AA 통과로 짙게 (토큰 변경 없음). 본 페이지 추가. |
+| W12-A | 2026-06-11 | **Craft 격상 — 타이포그래피 · 페이지 헤더 체계.** 타이포그래피 프리미티브(`PageTitle` · `SectionTitle` · `Subtitle` · `Body` · `Caption` · `Eyebrow`)와 공용 `PageHeader`(stacked · bar) 추가. 화면마다 어긋났던 페이지 제목 스케일(`text-lg` 대 `text-base`)과 헤더 chrome(`bg-card` 대 `bg-background`)을 통일. |
 
 이전 "BD-style 2015" 미감 (`#0f172a` navy · 순백 canvas · 일관 8 px radius · shadow 없음 · 브라우저 기본 easing) 은 W11 로 완전 은퇴.
 

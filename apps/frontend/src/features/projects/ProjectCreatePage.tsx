@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { PageTitle, Subtitle } from "@/components/ui/typography";
 import { createProject } from "@/lib/projectsApi";
 import { ProblemError } from "@/lib/problem";
 import { useAuthStore } from "@/stores/authStore";
@@ -110,12 +111,10 @@ export function ProjectCreatePage() {
 
   return (
     <div className="mx-auto max-w-lg px-6 py-10">
-      <h1 className="mb-1 text-lg font-semibold">
-        {t("create.title")}
-      </h1>
-      <p className="mb-6 text-sm text-muted-foreground" data-testid="project-create-scan-hint">
+      <PageTitle className="mb-1">{t("create.title")}</PageTitle>
+      <Subtitle className="mb-6" data-testid="project-create-scan-hint">
         {t("create.scan_hint")}
-      </p>
+      </Subtitle>
 
       <form
         onSubmit={handleSubmit(onSubmit)}

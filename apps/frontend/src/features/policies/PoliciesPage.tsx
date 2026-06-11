@@ -24,6 +24,7 @@ import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
 import { EmptyState } from "@/components/EmptyState";
+import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -175,12 +176,10 @@ export function PoliciesPage() {
 
   return (
     <div className="flex h-full flex-col" data-testid="policies-page">
-      <header className="border-b bg-card px-6 py-4">
-        <h1 className="text-lg font-semibold tracking-tight">
-          {t("policies.title")}
-        </h1>
-        <p className="text-sm text-muted-foreground">{t("policies.subtitle")}</p>
-      </header>
+      <PageHeader
+        title={t("policies.title")}
+        description={t("policies.subtitle")}
+      />
 
       {/* Inline toolbar: team picker (+ org default for super_admin) */}
       <div className="flex flex-wrap items-end gap-3 border-b bg-card px-6 py-3">

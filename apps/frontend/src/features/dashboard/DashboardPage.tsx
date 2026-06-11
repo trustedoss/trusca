@@ -46,6 +46,7 @@ import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 
 import { EmptyState } from "@/components/EmptyState";
+import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -375,21 +376,19 @@ export function DashboardPage() {
       className="flex flex-col bg-background text-foreground"
       data-testid="dashboard-page"
     >
-      {/* Header — 48 px, parity with ProjectListPage / ScansPage. */}
-      <header
-        className="flex shrink-0 items-center justify-between border-b bg-background px-6"
-        style={{ height: "var(--layout-header)" }}
-      >
-        <h1 className="text-base font-semibold tracking-tight">
-          {t("heading")}
-        </h1>
-        <p
-          className="text-xs text-muted-foreground"
-          data-testid="dashboard-last-updated"
-        >
-          {t("last_updated", { time: lastUpdatedLabel })}
-        </p>
-      </header>
+      {/* Header — 48 px slim bar, with the "last updated" meta in the right slot. */}
+      <PageHeader
+        variant="bar"
+        title={t("heading")}
+        actions={
+          <span
+            className="text-xs text-muted-foreground"
+            data-testid="dashboard-last-updated"
+          >
+            {t("last_updated", { time: lastUpdatedLabel })}
+          </span>
+        }
+      />
 
       {/* M-18 — a load failure REPLACES the KPI/chart/recent body instead of
           stacking an alert above zero-value tiles (zeros read as a healthy

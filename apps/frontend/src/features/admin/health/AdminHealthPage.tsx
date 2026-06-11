@@ -11,6 +11,7 @@
 import { AlertCircle, CheckCircle2, RefreshCw, ShieldAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -106,17 +107,13 @@ export function AdminHealthPage() {
 
   return (
     <div className="flex h-full flex-col" data-testid="admin-health-page">
-      <header className="flex items-start justify-between border-b bg-card px-6 py-4">
-        <div>
-          <h1 className="text-lg font-semibold tracking-tight">
-            {t("admin.health.title")}
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            {t("admin.health.subtitle")}
-          </p>
-          {healthQuery.data?.updated_at ? (
+      <PageHeader
+        title={t("admin.health.title")}
+        description={t("admin.health.subtitle")}
+        meta={
+          healthQuery.data?.updated_at ? (
             <p
-              className="mt-1 text-xs text-muted-foreground"
+              className="text-xs text-muted-foreground"
               data-testid="admin-health-updated-at"
             >
               {t("admin.health.updated_at", {
@@ -126,25 +123,24 @@ export function AdminHealthPage() {
                 ),
               })}
             </p>
-          ) : null}
-        </div>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => healthQuery.refetch()}
-          disabled={healthQuery.isFetching}
-          data-testid="admin-health-refresh"
-        >
-          <RefreshCw
-            className={cn(
-              "h-4 w-4",
-              healthQuery.isFetching && "animate-spin",
-            )}
-            aria-hidden
-          />
-          {t("admin.health.actions.refresh")}
-        </Button>
-      </header>
+          ) : null
+        }
+        actions={
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => healthQuery.refetch()}
+            disabled={healthQuery.isFetching}
+            data-testid="admin-health-refresh"
+          >
+            <RefreshCw
+              className={cn("h-4 w-4", healthQuery.isFetching && "animate-spin")}
+              aria-hidden
+            />
+            {t("admin.health.actions.refresh")}
+          </Button>
+        }
+      />
 
       <div className="flex-1 space-y-4 overflow-y-auto px-6 py-4">
         {healthQuery.isError ? (
