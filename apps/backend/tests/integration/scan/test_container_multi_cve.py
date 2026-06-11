@@ -171,6 +171,64 @@ def test_multi_cve_package_persists_one_component_and_all_findings(
     assert finding_count == 3
 
 
+def test_real_alpine_report_persists_without_unique_violation(
+    sync_session: Session,
+) -> None:
+    """Drive the persistence layer with a RECORDED real `trivy image` report.
+
+    Testing-standards rule (realistic fixtures): H-1 survived our synthetic
+    fixtures because they carried one CVE per package — real images carry
+    several per package as the NORM (this recording: 5 packages, 10 CVEs,
+    every package multi-CVE). Persist-boundary tests must use recorded real
+    tool output, not hand-built minimal JSON.
+
+    Fixture: tests/fixtures/trivy/alpine-3.19-image-report.json — recorded
+    from the dev worker's `trivy image --format json alpine:3.19` (2026-06,
+    public CVE data only). Assertions derive expected counts from the fixture
+    itself so re-recording with a newer DB never breaks them.
+    """
+    import json
+
+    fixture = (
+        Path(__file__).resolve().parent.parent.parent
+        / "fixtures"
+        / "trivy"
+        / "alpine-3.19-image-report.json"
+    )
+    report = json.loads(fixture.read_text())
+
+    expected_components: set[tuple[str, str]] = set()
+    expected_findings = 0
+    for result in report.get("Results", []):
+        for vuln in result.get("Vulnerabilities") or []:
+            expected_components.add((vuln["PkgName"], vuln["InstalledVersion"]))
+            expected_findings += 1
+    assert expected_findings > len(expected_components), (
+        "fixture lost its multi-CVE density — re-record from a real image"
+    )
+
+    scan_id = _seed_queued_container_scan()
+
+    from tasks.scan_container import _persist_trivy_report
+
+    _persist_trivy_report(sync_session, scan_uuid=scan_id, report=report)
+    sync_session.commit()
+
+    component_count = sync_session.execute(
+        select(func.count())
+        .select_from(ScanComponent)
+        .where(ScanComponent.scan_id == scan_id)
+    ).scalar_one()
+    finding_count = sync_session.execute(
+        select(func.count())
+        .select_from(VulnerabilityFinding)
+        .where(VulnerabilityFinding.scan_id == scan_id)
+    ).scalar_one()
+
+    assert component_count == len(expected_components)
+    assert finding_count == expected_findings
+
+
 def test_distinct_packages_get_distinct_components(sync_session: Session) -> None:
     """Two packages on the same target still get their own ScanComponent rows."""
     scan_id = _seed_queued_container_scan()

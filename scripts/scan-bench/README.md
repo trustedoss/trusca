@@ -17,6 +17,10 @@ python3 run_bench.py --suite fixtures
 # B — real-world (Juice Shop + WebGoat + 자체 v1 셀프스캔)
 python3 run_bench.py --suite realworld
 
+# C — container (실물 공개 이미지, worker가 pull — alpine:3.19)
+#     합성 픽스처가 못 잡는 다중-CVE 밀도(H-1류) 검출력 기준선.
+python3 run_bench.py --suite container
+
 # 단일 프로젝트만
 python3 run_bench.py --suite fixtures --only node
 ```
