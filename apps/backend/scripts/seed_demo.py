@@ -1193,20 +1193,39 @@ async def _seed_verify_baseline(session: Any) -> dict[str, Any]:
         session.add(ana_scan)
         await session.flush()
         ana.latest_scan_id = ana_scan.id
-        comp = Component(
-            purl="pkg:npm/verify-vex-fixture",
-            name="verify-vex-fixture",
-            package_type="npm",
-        )
-        session.add(comp)
-        await session.flush()
-        cv = ComponentVersion(
-            component_id=comp.id,
-            version="1.0.0",
-            purl_with_version="pkg:npm/verify-vex-fixture@1.0.0",
-        )
-        session.add(cv)
-        await session.flush()
+        # Component/version are SHARED-catalog rows: a demo-scope reset
+        # deletes the project but not the catalog, so a re-seed must
+        # get-or-create (uq_components_purl would otherwise fire — caught by
+        # tests/integration/test_reset_demo_scope_db.py).
+        comp = (
+            await session.execute(
+                select(Component).where(Component.purl == "pkg:npm/verify-vex-fixture")
+            )
+        ).scalars().first()
+        if comp is None:
+            comp = Component(
+                purl="pkg:npm/verify-vex-fixture",
+                name="verify-vex-fixture",
+                package_type="npm",
+            )
+            session.add(comp)
+            await session.flush()
+        cv = (
+            await session.execute(
+                select(ComponentVersion).where(
+                    ComponentVersion.purl_with_version
+                    == "pkg:npm/verify-vex-fixture@1.0.0"
+                )
+            )
+        ).scalars().first()
+        if cv is None:
+            cv = ComponentVersion(
+                component_id=comp.id,
+                version="1.0.0",
+                purl_with_version="pkg:npm/verify-vex-fixture@1.0.0",
+            )
+            session.add(cv)
+            await session.flush()
         vex_vuln = (
             await session.execute(
                 select(Vulnerability).where(Vulnerability.external_id == "CVE-2024-99101")
