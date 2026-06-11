@@ -66,4 +66,16 @@ describe("DesignSystemPreview (W11-A)", () => {
     expect(screen.getAllByText("backend-api").length).toBeGreaterThan(0);
     expect(screen.getByText("mobile-app")).toBeInTheDocument();
   });
+
+  it("renders the W12-E living-reference showcases", () => {
+    render(<DesignSystemPreview />);
+    // Typography primitives, the EmptyState medallion, and a toast trigger.
+    expect(
+      screen.getByText(/PageTitle — 18px semibold/),
+    ).toBeInTheDocument();
+    expect(screen.getByText("No projects yet")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Trigger success toast" }),
+    ).toBeInTheDocument();
+  });
 });

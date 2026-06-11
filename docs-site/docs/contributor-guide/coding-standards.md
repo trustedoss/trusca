@@ -181,8 +181,21 @@ The format is:
 
 Reviewers reject suppressions that lack a justification or whose justification does not address the rule. If multiple lines need the same suppression, lift the offending logic into a single function and suppress once.
 
+## Frontend UI — use the shared primitives
+
+The frontend has a single design system; the [Design system reference](../reference/design-system.md) is the source of truth for tokens, components, and motion. Do not hand-roll what a primitive already covers:
+
+- **Page headers** — render every route header through `PageHeader` (stacked / bar). Never write a bare `<header><h1>` (the breadcrumb detail pages are the one documented exception).
+- **Typography** — use the `typography.tsx` primitives (`PageTitle` / `SectionTitle` / `Subtitle` / `Body` / `Caption` / `Eyebrow`); reach for a raw `text-*` utility only for one-off inline spans.
+- **Feedback** — `useToast()` for success / non-blocking notices; keep form-validation errors inline (RFC 7807 `detail`). Toasts carry the `data-toast-key` e2e contract — pass a stable `key`.
+- **Empty / loading** — `EmptyState` (layered medallion) and the composite skeletons in `skeletons.tsx`, not ad-hoc bars.
+- **Colour** — reference tokens / Tailwind utilities (`bg-card`, `text-risk-high`), never a hex literal in a component.
+
+Eyeball every primitive at `/dev/design-preview` (the living reference); new shared primitives should be added there.
+
 ## See also
 
+- [Design system](../reference/design-system.md) — tokens, components, motion, accessibility.
 - [Getting started](./getting-started.md) — how to get the dev stack up.
 - [Testing guide](./testing-guide.md) — pytest, Playwright, coverage gates.
 - [Agent team](./agent-team.md) — security review checkpoints.
