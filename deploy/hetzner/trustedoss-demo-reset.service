@@ -1,0 +1,25 @@
+# TrustedOSS Portal — daily demo dataset reset (Hetzner demo SaaS).
+#
+# Runs scripts.reset_demo INSIDE the backend container, so it bypasses the
+# HTTP DEMO_READ_ONLY guard entirely (reset_demo talks to Postgres directly).
+# The script's own APP_ENV allow-list (dev/demo) is the safety boundary — it
+# refuses to run against prod/test/staging. We pass -e APP_ENV=demo explicitly
+# as a belt-and-suspenders guard on top of the container's .env value.
+#
+# Install: see docs/operator-runbook-hetzner.md §"Daily demo reset".
+# Paired timer: trustedoss-demo-reset.timer.
+[Unit]
+Description=TrustedOSS demo dataset daily reset
+Documentation=https://github.com/trustedoss/trustedoss-portal/blob/main/docs/operator-runbook-hetzner.md
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=trustedoss
+WorkingDirectory=/opt/trustedoss/portal
+# docker-compose V1 (hyphen) per CLAUDE.md rule #10. Adjust the path to match
+# `which docker-compose` on the host if you installed it elsewhere.
+ExecStart=/usr/local/bin/docker-compose -f docker-compose.yml exec -T -e APP_ENV=demo backend python -m scripts.reset_demo
+# A reseed touches every demo table; give it room but don't hang forever.
+TimeoutStartSec=900

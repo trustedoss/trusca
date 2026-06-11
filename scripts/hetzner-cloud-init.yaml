@@ -1,0 +1,113 @@
+#cloud-config
+# =============================================================================
+# TrustedOSS Portal — Hetzner CAX31 (ARM64) demo SaaS provisioning.
+#
+# Paste this as the "Cloud config" / user-data when you CREATE the Hetzner
+# server (Cloud Console → Add Server → Cloud config). It runs ONCE on first
+# boot and prepares the OS so you can install the app by hand afterwards.
+#
+# WHAT IT DOES (infrastructure only — NO secrets baked in):
+#   * Ubuntu 24.04, timezone UTC.
+#   * Installs Docker engine + git + curl + openssl + ufw + fail2ban.
+#   * Installs Compose V2 binary AS /usr/local/bin/docker-compose (arm64
+#     native; keeps the hyphenated `docker-compose` command our scripts call).
+#   * Creates an unprivileged `trustedoss` user (sudo, docker group) with YOUR
+#     SSH key — you log in as this user, not root.
+#   * Firewall: allow 22/80/443 only.
+#   * Clones the repo to /opt/trustedoss/portal and creates the workspace dir.
+#
+# WHAT IT DOES NOT DO (you do these by hand — see the runbook):
+#   * It does NOT run install.sh, set passwords, or seed the demo. Secrets are
+#     entered live over SSH so they never sit in Hetzner's user-data console.
+#
+# BEFORE YOU PASTE: replace the two __PLACEHOLDER__ tokens below.
+# Full walkthrough: docs/operator-runbook-hetzner.md
+# =============================================================================
+
+# ----------------------------------------------------------------------------
+# 1. The login user. Replace __SSH_PUBLIC_KEY__ with the ENTIRE one line from
+#    your `cat ~/.ssh/id_ed25519.pub` (starts with "ssh-ed25519 ..." or
+#    "ssh-rsa ..."). Without this you cannot log in.
+# ----------------------------------------------------------------------------
+users:
+  - name: trustedoss
+    groups: [sudo, docker]
+    shell: /bin/bash
+    sudo: ["ALL=(ALL) NOPASSWD:ALL"]
+    ssh_authorized_keys:
+      - __SSH_PUBLIC_KEY__
+
+# Lock down SSH: key-only, no root login. (Cloud images are usually already
+# key-only for root; this makes it explicit and disables root entirely.)
+ssh_pwauth: false
+disable_root: true
+
+timezone: Etc/UTC
+
+# ----------------------------------------------------------------------------
+# 2. OS packages. docker.io is Ubuntu's own Docker engine package — simple and
+#    sufficient for a single-host demo. fail2ban + ufw are basic hardening.
+# ----------------------------------------------------------------------------
+package_update: true
+package_upgrade: true
+packages:
+  - docker.io
+  - git
+  - curl
+  - openssl
+  - ufw
+  - fail2ban
+  - ca-certificates
+
+write_files:
+  # A pinned Compose version, kept in one editable place. CHECK for a newer
+  # release at https://github.com/docker/compose/releases and bump if you like
+  # (we pin — never use :latest, per CLAUDE.md rule #9).
+  - path: /etc/trustedoss-compose-version
+    content: "v2.29.7\n"
+    permissions: "0644"
+
+runcmd:
+  # --- Docker engine: enable + start ---------------------------------------
+  - systemctl enable --now docker
+
+  # --- Compose V2 binary, installed under the hyphenated name --------------
+  # arm64 asset is docker-compose-linux-aarch64. We name it `docker-compose`
+  # so every script/systemd unit that calls `docker-compose` keeps working.
+  - |
+    set -eux
+    CV="$(tr -d '[:space:]' < /etc/trustedoss-compose-version)"
+    curl -fsSL "https://github.com/docker/compose/releases/download/${CV}/docker-compose-linux-aarch64" \
+      -o /usr/local/bin/docker-compose
+    chmod +x /usr/local/bin/docker-compose
+    /usr/local/bin/docker-compose version
+
+  # --- Firewall: 22 (SSH), 80 (HTTP→HTTPS redirect), 443 (HTTPS) -----------
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow 22/tcp
+  - ufw allow 80/tcp
+  - ufw allow 443/tcp
+  - ufw --force enable
+
+  # --- App checkout + workspace dir ----------------------------------------
+  # Clone `main` so the checkout includes these deploy artifacts (the cloud-init,
+  # systemd units, and runbook). The running app's CONTAINER versions are pinned
+  # separately by IMAGE_TAG in .env (default 0.10.0) — the git checkout only
+  # supplies the compose file, scripts, and deploy units, not the images.
+  - mkdir -p /opt/trustedoss
+  - git clone --depth 1 https://github.com/trustedoss/trustedoss-portal.git /opt/trustedoss/portal
+  - mkdir -p /opt/trustedoss/workspace
+  - chown -R trustedoss:trustedoss /opt/trustedoss
+
+  # --- Breadcrumb so a returning operator knows the next move --------------
+  - |
+    cat > /etc/motd <<'MOTD'
+    ===========================================================================
+     TrustedOSS demo host — provisioning by cloud-init is DONE.
+     Next: cd /opt/trustedoss/portal && bash scripts/install.sh
+     Runbook: docs/operator-runbook-hetzner.md
+    ===========================================================================
+    MOTD
+
+final_message: "TrustedOSS cloud-init finished after $UPTIME s. SSH in as 'trustedoss' and run scripts/install.sh."

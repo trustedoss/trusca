@@ -1,0 +1,21 @@
+# TrustedOSS Portal — daily local backup (Hetzner demo SaaS).
+#
+# Wraps scripts/backup.sh: pg_dump (gzip) + workspace tar + manifest.json into
+# backups/<UTC-stamp>/, pruning sets older than BACKUP_RETENTION_DAYS (7).
+# This is LOCAL-ONLY by design (operator chose "local for now"). To add an
+# offsite copy later, append an rclone push to an ExecStartPost= line — see
+# docs/operator-runbook-hetzner.md §"Going offsite (later)".
+#
+# Paired timer: trustedoss-backup.timer.
+[Unit]
+Description=TrustedOSS daily local backup (pg_dump + workspace)
+Documentation=https://github.com/trustedoss/trustedoss-portal/blob/main/docs/operator-runbook-hetzner.md
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=trustedoss
+WorkingDirectory=/opt/trustedoss/portal
+ExecStart=/usr/bin/env bash scripts/backup.sh
+TimeoutStartSec=1800
