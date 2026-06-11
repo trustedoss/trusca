@@ -15,11 +15,6 @@ on:
   schedule:
     - cron: "30 17 * * *" # 02:30 KST nightly (after docs-uat's window)
   workflow_dispatch:
-  # TEMP (remove before merge): branch-push trigger so the gate can be
-  # validated pre-merge — workflow_dispatch 404s until the file exists on the
-  # default branch.
-  push:
-    branches: [feat/vendor-verify-specs]
 
 permissions:
   contents: read
@@ -27,7 +22,7 @@ permissions:
 jobs:
   verify-specs:
     # Schedule + manual only — mirrors the docs-uat nightly gate pattern.
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'push'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     steps:
