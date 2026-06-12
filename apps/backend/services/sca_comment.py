@@ -190,7 +190,7 @@ def build_pr_comment_markdown(
 
     lines: list[str] = []
     lines.append(COMMENT_MARKER)
-    lines.append("## TrustedOSS SCA Report")
+    lines.append("## TRUSCA SCA Report")
     lines.append("")
     lines.append(f"**Gate**: **{_gate_badge(gate_result.gate)}**")
     if gate_result.reason:

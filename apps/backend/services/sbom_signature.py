@@ -455,7 +455,7 @@ def _verification_readme(*, project: Project, has_public_key: bool, has_attestat
         f"# Verifying the SBOM signature for project: {_sanitize_inline(project.name)}",
         "",
         "This bundle lets you independently verify, with cosign, that the SBOM",
-        "in this archive was produced and signed by this TrustedOSS deployment.",
+        "in this archive was produced and signed by this TRUSCA deployment.",
         "",
         "Files:",
         "  sbom-*.cdx.json        the CycloneDX SBOM (the signed bytes)",

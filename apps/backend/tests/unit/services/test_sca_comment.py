@@ -89,7 +89,7 @@ def test_markdown_starts_with_marker_and_renders_fail_summary() -> None:
     )
 
     assert body.startswith(COMMENT_MARKER)
-    assert "TrustedOSS SCA Report" in body
+    assert "TRUSCA SCA Report" in body
     assert "**FAIL**" in body
     assert "2 critical CVEs detected" in body
     assert "Critical**: 2" in body

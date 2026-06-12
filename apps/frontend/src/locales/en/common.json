@@ -1,7 +1,7 @@
 {
   "app": {
-    "name": "TrustedOSS Portal",
-    "tagline": "Open-source SCA platform for enterprise"
+    "name": "TRUSCA",
+    "tagline": "Open-source SCA platform — CVEs, licenses, and SBOMs in one place"
   },
   "language": {
     "label": "Language",
@@ -35,7 +35,7 @@
     "active_team": "Active team: {{team}}"
   },
   "home": {
-    "title": "Welcome to TrustedOSS Portal",
+    "title": "Welcome to TRUSCA",
     "subtitle": "Bootstrap is online. Authentication, projects, and scans land in upcoming phases.",
     "stack": "React 18 · Vite · shadcn/ui · TanStack Query · react-i18next",
     "api_label": "API base",

@@ -93,7 +93,7 @@ def _dispatch_failure_notification(result: TrivyDbDownloadResult) -> int:
     # before this module gets pulled in by ``tasks.celery_app``.
     from tasks.notify import send_notification_task
 
-    title = "TrustedOSS — Trivy DB refresh failed"
+    title = "TRUSCA — Trivy DB refresh failed"
     detail = result.error or "unknown"
     body = (
         f"{title}\n\nstatus: {result.status}\n"
