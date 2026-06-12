@@ -93,10 +93,10 @@ runcmd:
   # --- App checkout + workspace dir ----------------------------------------
   # Clone `main` so the checkout includes these deploy artifacts (the cloud-init,
   # systemd units, and runbook). The running app's CONTAINER versions are pinned
-  # separately by IMAGE_TAG in .env (default 0.10.0) — the git checkout only
+  # separately by IMAGE_TAG in .env (default 0.11.0) — the git checkout only
   # supplies the compose file, scripts, and deploy units, not the images.
   - mkdir -p /opt/trustedoss
-  - git clone --depth 1 https://github.com/trustedoss/trustedoss-portal.git /opt/trustedoss/portal
+  - git clone --depth 1 https://github.com/trustedoss/trusca.git /opt/trustedoss/portal
   - mkdir -p /opt/trustedoss/workspace
   - chown -R trustedoss:trustedoss /opt/trustedoss
 

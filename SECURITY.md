@@ -14,7 +14,7 @@ The TRUSCA team takes the security of our software and our users seriously. This
 
 The fastest, most reliable channel is GitHub's built-in private vulnerability reporting:
 
-→ **[Report a vulnerability](https://github.com/trustedoss/trustedoss-portal/security/advisories/new)**
+→ **[Report a vulnerability](https://github.com/trustedoss/trusca/security/advisories/new)**
 
 This creates a private security advisory visible only to you and the maintainers. Use this channel whenever possible.
 
@@ -139,7 +139,7 @@ Verification instructions will be published in the release notes.
 
 | Topic | Channel |
 |---|---|
-| **Vulnerability report** | [GitHub Private Vulnerability Reporting](https://github.com/trustedoss/trustedoss-portal/security/advisories/new) → fall back to `security@trustedoss.io` |
+| **Vulnerability report** | [GitHub Private Vulnerability Reporting](https://github.com/trustedoss/trusca/security/advisories/new) → fall back to `security@trustedoss.io` |
 | Security policy questions | `security@trustedoss.io` (no encryption needed) |
 | Conduct concerns | `conduct@trustedoss.io` (see [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md)) |
 | Everything else | GitHub Issues / Discussions |

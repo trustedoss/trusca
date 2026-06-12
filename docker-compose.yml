@@ -20,18 +20,18 @@
 #               publishes :80 and :443 only.
 #   postgres  — PostgreSQL 17.2-alpine, primary store, named volume.
 #   redis     — Redis 7.4-alpine, Celery broker + result backend.
-#   backend   — FastAPI image (ghcr.io/trustedoss/backend:${IMAGE_TAG}), 4
+#   backend   — FastAPI image (ghcr.io/trustedoss/trusca-backend:${IMAGE_TAG}), 4
 #               uvicorn workers. Reachable only inside the compose network;
 #               Traefik routes `/v1`, `/auth`, `/ws`, `/health`. A backend
 #               `/metrics` endpoint (Prometheus exporter) is not implemented
 #               in this release, so it is intentionally NOT routed.
 #   worker    — Celery worker on the heavier image
-#               (ghcr.io/trustedoss/backend-worker:${IMAGE_TAG}) which carries
+#               (ghcr.io/trustedoss/trusca-backend-worker:${IMAGE_TAG}) which carries
 #               cdxgen / scancode / Trivy / JRE.
 #   beat      — Celery Beat scheduler (vulnerability re-match every 6 h, Trivy
 #               DB refresh weekly, workspace orphan cleanup, source-archive
 #               retention) — same worker image, separate process.
-#   frontend  — nginx + Vite static bundle (ghcr.io/trustedoss/frontend:
+#   frontend  — nginx + Vite static bundle (ghcr.io/trustedoss/trusca-frontend:
 #               ${IMAGE_TAG}). Reachable only inside the compose network;
 #               Traefik routes `/`.
 #
@@ -266,7 +266,7 @@ services:
   # API — FastAPI + uvicorn, fronted by Traefik on /api and /health.
   # ---------------------------------------------------------------------------
   backend:
-    image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/backend:${IMAGE_TAG:-0.10.0}
+    image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/trusca-backend:${IMAGE_TAG:-0.11.0}
     restart: unless-stopped
     environment:
       <<: *backend-env
@@ -370,7 +370,7 @@ services:
   # with CELERY_CONCURRENCY; the SCANCODE_* guards cap per-task blowups.
   # ---------------------------------------------------------------------------
   worker:
-    image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/backend-worker:${IMAGE_TAG:-0.10.0}
+    image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/trusca-backend-worker:${IMAGE_TAG:-0.11.0}
     restart: unless-stopped
     command: celery -A tasks.celery_app worker --loglevel=info --concurrency=${CELERY_CONCURRENCY:-2}
     environment:
@@ -446,7 +446,7 @@ services:
   # workspace orphan cleaner, source-archive retention).
   # ---------------------------------------------------------------------------
   beat:
-    image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/backend-worker:${IMAGE_TAG:-0.10.0}
+    image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/trusca-backend-worker:${IMAGE_TAG:-0.11.0}
     restart: unless-stopped
     command: celery -A tasks.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule
     environment:
@@ -487,7 +487,7 @@ services:
   # SPA — Vite bundle served by nginx, fronted by Traefik on `/`.
   # ---------------------------------------------------------------------------
   frontend:
-    image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/frontend:${IMAGE_TAG:-0.10.0}
+    image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/trusca-frontend:${IMAGE_TAG:-0.11.0}
     restart: unless-stopped
     networks:
       - trustedoss

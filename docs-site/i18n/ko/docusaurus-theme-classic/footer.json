@@ -29,15 +29,15 @@
   },
   "link.item.label.GitHub": {
     "message": "GitHub",
-    "description": "The label of footer link with label=GitHub linking to https://github.com/trustedoss/trustedoss-portal"
+    "description": "The label of footer link with label=GitHub linking to https://github.com/trustedoss/trusca"
   },
   "link.item.label.Issues": {
     "message": "이슈",
-    "description": "The label of footer link with label=Issues linking to https://github.com/trustedoss/trustedoss-portal/issues"
+    "description": "The label of footer link with label=Issues linking to https://github.com/trustedoss/trusca/issues"
   },
   "link.item.label.Releases": {
     "message": "릴리스",
-    "description": "The label of footer link with label=Releases linking to https://github.com/trustedoss/trustedoss-portal/releases"
+    "description": "The label of footer link with label=Releases linking to https://github.com/trustedoss/trusca/releases"
   },
   "link.item.label.Architecture": {
     "message": "아키텍처",

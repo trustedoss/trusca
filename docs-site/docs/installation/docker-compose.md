@@ -59,8 +59,8 @@ internet.
 ### Bring up the stack
 
 ```bash
-git clone https://github.com/trustedoss/trustedoss-portal.git
-cd trustedoss-portal
+git clone https://github.com/trustedoss/trusca.git
+cd trusca
 cp .env.example .env
 ```
 
@@ -154,13 +154,13 @@ does not enter the ACME flow.
 
 ## Quick install (no clone)
 
-If you just want the stack running and don't need the helper scripts, you can install directly from the published images without cloning the repository — a single-file install experience. The production images are published to GitHub Container Registry (`ghcr.io/trustedoss/backend`, `…/backend-worker`, `…/frontend`) and pull anonymously.
+If you just want the stack running and don't need the helper scripts, you can install directly from the published images without cloning the repository — a single-file install experience. The production images are published to GitHub Container Registry (`ghcr.io/trustedoss/trusca-backend`, `…/trusca-backend-worker`, `…/trusca-frontend`) and pull anonymously.
 
 Fetch the three files the compose stack needs (the compose file, the env template, and the one-time Postgres role init script), edit `.env`, then start:
 
 ```bash
 mkdir -p trustedoss && cd trustedoss
-BASE=https://raw.githubusercontent.com/trustedoss/trustedoss-portal/v0.10.0
+BASE=https://raw.githubusercontent.com/trustedoss/trusca/v0.10.0
 
 # 1. The self-contained production compose file (no `build:` section — pulls
 #    images from ghcr.io) and the env template.
@@ -242,8 +242,8 @@ The `install.sh` wizard (Steps 1–3 below) does all of this for you — secret 
 ## Step 1 — Clone the repository
 
 ```bash
-git clone https://github.com/trustedoss/trustedoss-portal.git
-cd trustedoss-portal
+git clone https://github.com/trustedoss/trusca.git
+cd trusca
 ```
 
 If you maintain a fork, clone the fork instead. Pin to a release tag for reproducible installs:
@@ -396,13 +396,13 @@ sudo rm -rf /opt/trustedoss/workspace
 
 ## Maintainer note — publishing the images (one-time org setup)
 
-The portal images are published to GitHub Container Registry by the [`release.yml`](https://github.com/trustedoss/trustedoss-portal/blob/main/.github/workflows/release.yml) workflow, triggered by pushing a `vX.Y.Z` git tag (or via **Run workflow** with a tag input). For that workflow to push, the **organisation must let GitHub Actions write packages** — Org → Settings → Actions → Workflow permissions → *Read and write permissions* (or grant the repo the *Write* role under the package's *Manage Actions access*). The workflow uses the built-in `GITHUB_TOKEN`; no personal access token is required.
+The portal images are published to GitHub Container Registry by the [`release.yml`](https://github.com/trustedoss/trusca/blob/main/.github/workflows/release.yml) workflow, triggered by pushing a `vX.Y.Z` git tag (or via **Run workflow** with a tag input). For that workflow to push, the **organisation must let GitHub Actions write packages** — Org → Settings → Actions → Workflow permissions → *Read and write permissions* (or grant the repo the *Write* role under the package's *Manage Actions access*). The workflow uses the built-in `GITHUB_TOKEN`; no personal access token is required.
 
 After the first push, set each package's visibility to **Public** (ghcr package → Package settings → Change visibility → Public) so operators can `docker pull` anonymously — the no-clone quick install relies on this. Each release publishes an immutable `X.Y.Z` tag and a movable `X.Y` tag; there is no `latest` tag (CLAUDE.md rule #9).
 
 ## Why docker-compose V1, not V2?
 
-The project's **development and CI** environment standardizes on Compose V1 (`docker-compose`) — V2 syntax differences are not exercised in our internal pipelines, and PRs that introduce `docker compose` (V2) into the dev/CI surface are blocked by review (see [`CLAUDE.md`](https://github.com/trustedoss/trustedoss-portal/blob/main/CLAUDE.md) rule #10).
+The project's **development and CI** environment standardizes on Compose V1 (`docker-compose`) — V2 syntax differences are not exercised in our internal pipelines, and PRs that introduce `docker compose` (V2) into the dev/CI surface are blocked by review (see [`CLAUDE.md`](https://github.com/trustedoss/trusca/blob/main/CLAUDE.md) rule #10).
 
 That constraint is internal. For **end-user installs**, the `install.sh` wizard prefers V1 but falls back to the V2 plugin (`docker compose`) so a stock modern host — where V1 reached end-of-life in 2023 — works out of the box. The compose files themselves use the V1 file format, which V2 also reads.
 

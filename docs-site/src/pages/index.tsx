@@ -44,7 +44,7 @@ function HomepageHero(): ReactNode {
           </Link>
           <Link
             className="button button--outline button--secondary button--lg"
-            href="https://github.com/trustedoss/trustedoss-portal"
+            href="https://github.com/trustedoss/trusca"
           >
             <Translate id="homepage.hero.cta.github">GitHub</Translate>
           </Link>
@@ -55,8 +55,8 @@ function HomepageHero(): ReactNode {
         })}>
           <code>
             <span className={styles.heroCommandPrompt}>$</span>{" "}
-            git clone https://github.com/trustedoss/trustedoss-portal.git &amp;&amp;{" "}
-            cd trustedoss-portal &amp;&amp;{" "}
+            git clone https://github.com/trustedoss/trusca.git &amp;&amp;{" "}
+            cd trusca &amp;&amp;{" "}
             docker-compose -f docker-compose.dev.yml up -d
           </code>
         </div>

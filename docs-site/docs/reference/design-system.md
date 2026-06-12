@@ -380,5 +380,5 @@ The previous "BD-style 2015" aesthetic (`#0f172a` navy, pure white canvas, unifo
 
 - [Architecture](./architecture.md) — backend / frontend / scan pipeline overview.
 - [Coding standards](../contributor-guide/coding-standards.md) — formatting, linting, commit conventions.
-- [`CLAUDE.md`](https://github.com/trustedoss/trustedoss-portal/blob/main/CLAUDE.md) — top-level project rules. The "디자인 시스템 (v2)" section summarises this page.
+- [`CLAUDE.md`](https://github.com/trustedoss/trusca/blob/main/CLAUDE.md) — top-level project rules. The "디자인 시스템 (v2)" section summarises this page.
 - W11 source-of-truth plan — `docs/ux/design-philosophy-evolution-plan-2026-05-27.md` (in-repo).

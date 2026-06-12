@@ -100,4 +100,4 @@ For the user-facing flow (drawer, VEX state machine, suppression), see [Vulnerab
 - [Vulnerability data (Trivy DB)](../admin-guide/vulnerability-data.md) — operator-facing lifecycle, air-gapped mirror, troubleshooting.
 - [Vulnerabilities](../user-guide/vulnerabilities.md) — analyst-facing flow.
 - [Glossary](./glossary.md#vulnerabilities) — CVE, CWE, NVD, EPSS, KEV definitions.
-- [ADR-0001 — Dependency-Track removal](https://github.com/trustedoss/trustedoss-portal/blob/main/docs/decisions/0001-replace-dt-with-trivy.md) — why Trivy is the single engine from v0.10.0.
+- [ADR-0001 — Dependency-Track removal](https://github.com/trustedoss/trusca/blob/main/docs/decisions/0001-replace-dt-with-trivy.md) — why Trivy is the single engine from v0.10.0.

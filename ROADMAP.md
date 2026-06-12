@@ -68,4 +68,4 @@ SSO / OIDC, native Jenkins plugin, Excel reports, compliance PDF, historical-sca
 
 ---
 
-Roadmap items are proposals, not commitments — dates are deliberately omitted. Feedback and contributions are welcome: open a [discussion](https://github.com/trustedoss/trustedoss-portal/discussions) or an issue referencing the relevant section.
+Roadmap items are proposals, not commitments — dates are deliberately omitted. Feedback and contributions are welcome: open a [discussion](https://github.com/trustedoss/trusca/discussions) or an issue referencing the relevant section.

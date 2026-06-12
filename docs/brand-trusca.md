@@ -37,8 +37,8 @@
 | 자산 | 값 | 상태 |
 |------|-----|------|
 | 도메인 | `trusca.dev` | W0에서 등록(Cloudflare). 데모 `demo.trusca.dev`, 문서 `docs.trusca.dev` |
-| GitHub | `github.com/trustedoss/trusca` | 가용 확인(2026-06-12), W4에서 리네임 |
-| ghcr | `ghcr.io/trustedoss/trusca-{backend,backend-worker,frontend}` | W4에서 전환 |
+| GitHub | `github.com/trustedoss/trusca` | **W4 전환 완료** — 레포 리네임(git/웹 URL은 GitHub 자동 리다이렉트, Pages 경로는 `/trusca/`로 변경·리다이렉트 없음) |
+| ghcr | `ghcr.io/trustedoss/trusca-{backend,backend-worker,frontend}` | **W4 전환 완료** — v0.11.0부터 trusca-* 이름으로 게시. 구 릴리스(≤0.10.0)는 구 이름(backend/backend-worker/frontend) 유지 |
 | npm / PyPI | `trusca` | 빈자리 확인(미사용, 선점 옵션) |
 
 ## 4. 로고

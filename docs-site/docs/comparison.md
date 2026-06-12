@@ -11,7 +11,7 @@ description: An honest comparison of TRUSCA versus commercial SCA (Black Duck, S
 Engineers, platform owners, and legal/compliance leads deciding whether
 TRUSCA fits their organization. This page is deliberately honest:
 it lists what the portal does well **and** what it does not do yet. For the
-roadmap behind the "planned" rows, see [`ROADMAP.md`](https://github.com/trustedoss/trustedoss-portal/blob/main/ROADMAP.md).
+roadmap behind the "planned" rows, see [`ROADMAP.md`](https://github.com/trustedoss/trusca/blob/main/ROADMAP.md).
 :::
 
 TRUSCA's core idea is to wrap several best-of-breed open-source
@@ -77,7 +77,7 @@ component approval workflow, build-blocking CI gates, and a fully bilingual
 Dependency-Track (DT) is excellent at what it does — a focused vulnerability
 intelligence platform for SBOMs you supply. TRUSCA uses Trivy as
 its single embedded vulnerability engine (see
-[ADR-0001](https://github.com/trustedoss/trustedoss-portal/blob/main/docs/decisions/0001-replace-dt-with-trivy.md)
+[ADR-0001](https://github.com/trustedoss/trusca/blob/main/docs/decisions/0001-replace-dt-with-trivy.md)
 for the decision). The question is what shape of platform fits your team.
 
 **TRUSCA differs from running DT directly:**
@@ -120,7 +120,7 @@ already have a process built around it.
 ## Current limitations (be aware before you adopt)
 
 These are real and intentional gaps. Each is on the
-[roadmap](https://github.com/trustedoss/trustedoss-portal/blob/main/ROADMAP.md):
+[roadmap](https://github.com/trustedoss/trusca/blob/main/ROADMAP.md):
 
 - **Automated remediation pull requests are planned.** The portal detects
   and gates, and surfaces per-finding `fixed_version` and dependency-graph
@@ -144,4 +144,4 @@ These are real and intentional gaps. Each is on the
 
 - [Introduction](./intro.md) — what the portal does and does not do
 - [Glossary](./reference/glossary.md) — SCA, SBOM, VEX, EPSS, and more
-- [Roadmap](https://github.com/trustedoss/trustedoss-portal/blob/main/ROADMAP.md) — where the "planned" items land
+- [Roadmap](https://github.com/trustedoss/trusca/blob/main/ROADMAP.md) — where the "planned" items land

@@ -15,8 +15,8 @@ type Shot = {
 // Webpack-imported sources so the hashed asset path is correct in every
 // locale. The earlier root-relative form (`/img/...`) plus `useBaseUrl`
 // went wrong under i18n: KO locale's effective baseUrl is
-// `/trustedoss-portal/ko/`, which made the prefix `/trustedoss-portal/ko/
-// img/...` — the static assets live at `/trustedoss-portal/img/...`
+// `/trusca/ko/`, which made the prefix `/trusca/ko/
+// img/...` — the static assets live at `/trusca/img/...`
 // regardless of locale, so the KO showcase rendered broken-image icons.
 const SHOTS: Shot[] = [
   {

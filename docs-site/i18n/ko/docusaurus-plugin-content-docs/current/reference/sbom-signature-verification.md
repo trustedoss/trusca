@@ -300,4 +300,4 @@ SBOM 바이트가 서명과 맞지 않습니다. 둘 다 **같은** 번들에서
 - [용어집](./glossary.md) — SBOM·SCA·VEX·RBAC 역할 정의
 - [환경 변수](./env-variables.md) — `COSIGN_*` 및 `SLSA_*` 키
 - [API 레퍼런스 (Redoc)](pathname:///reference/api) — 생성된 엔드포인트 계약
-- [이슈 보고](https://github.com/trustedoss/trustedoss-portal/issues/new/choose) — 검증이 예기치 않게 실패할 때
+- [이슈 보고](https://github.com/trustedoss/trusca/issues/new/choose) — 검증이 예기치 않게 실패할 때

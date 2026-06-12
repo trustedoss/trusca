@@ -300,4 +300,4 @@ The artifact or bundle exceeds the deployment's configured download size cap. Th
 - [Glossary](./glossary.md) — SBOM, SCA, VEX, and RBAC role definitions
 - [Environment variables](./env-variables.md) — the `COSIGN_*` and `SLSA_*` keys
 - [API reference (Redoc)](pathname:///reference/api) — the generated endpoint contract
-- [Report an issue](https://github.com/trustedoss/trustedoss-portal/issues/new/choose) — if verification fails unexpectedly
+- [Report an issue](https://github.com/trustedoss/trusca/issues/new/choose) — if verification fails unexpectedly

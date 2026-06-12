@@ -64,8 +64,8 @@ sudo chown -R "$USER":"$USER" /opt/trustedoss
 **하나**를 선택하세요. 후자는 CI가 실행하는 방식과 동일합니다.
 
 ```bash
-git clone https://github.com/trustedoss/trustedoss-portal.git
-cd trustedoss-portal
+git clone https://github.com/trustedoss/trusca.git
+cd trusca
 ```
 
 ### (a) 대화형
@@ -161,8 +161,8 @@ scp -r backups/2026-05-09-143022 vm-b:/tmp/backups/
 `vm-b` 에서:
 
 ```bash
-git clone https://github.com/trustedoss/trustedoss-portal.git
-cd trustedoss-portal
+git clone https://github.com/trustedoss/trusca.git
+cd trusca
 bash scripts/install.sh --no-prompt
 mkdir -p backups
 mv /tmp/backups/2026-05-09-143022 backups/

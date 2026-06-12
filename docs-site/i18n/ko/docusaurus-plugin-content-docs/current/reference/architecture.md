@@ -23,15 +23,15 @@ sidebar_position: 1
 | `traefik` | `traefik:v3.2.1` | 엣지 프록시. Let's Encrypt HTTP-01로 TLS 종료. HTTP→HTTPS 리다이렉트. |
 | `postgres` | `postgres:17.2-alpine` | 주 저장소. 모든 영구 상태. |
 | `redis` | `redis:7.4-alpine` | Celery 브로커 + 결과 백엔드. WebSocket pub/sub. |
-| `backend` | `trustedoss/backend:<tag>` | FastAPI + uvicorn(4 workers). Traefik이 `/api`, `/health`로 라우팅. |
-| `worker` | `trustedoss/backend-worker:<tag>` | `cdxgen`, scancode, Trivy, JRE가 번들된 Celery worker(JRE는 `cdxgen`의 Maven / Gradle SBOM 열거용). 워커는 `/var/lib/trivy`에 로컬 **Trivy DB**도 보관합니다. |
-| `beat` | `trustedoss/backend-worker:<tag>` | Celery Beat 스케줄러. Trivy DB refresh(주간), 취약점 재매칭(refresh 후), 백업(매일). |
-| `frontend` | `trustedoss/frontend:<tag>` | Vite 빌드를 nginx로 서비스. Traefik이 `/`로 라우팅. |
+| `backend` | `trustedoss/trusca-backend:<tag>` | FastAPI + uvicorn(4 workers). Traefik이 `/api`, `/health`로 라우팅. |
+| `worker` | `trustedoss/trusca-backend-worker:<tag>` | `cdxgen`, scancode, Trivy, JRE가 번들된 Celery worker(JRE는 `cdxgen`의 Maven / Gradle SBOM 열거용). 워커는 `/var/lib/trivy`에 로컬 **Trivy DB**도 보관합니다. |
+| `beat` | `trustedoss/trusca-backend-worker:<tag>` | Celery Beat 스케줄러. Trivy DB refresh(주간), 취약점 재매칭(refresh 후), 백업(매일). |
+| `frontend` | `trustedoss/trusca-frontend:<tag>` | Vite 빌드를 nginx로 서비스. Traefik이 `/`로 라우팅. |
 
 이미지 태그는 핀되어 있습니다(CLAUDE.md 규칙 #9 — `:latest` 절대 금지).
 
 :::note v0.10.0에서 Dependency-Track 제거
-이전 릴리스는 Dependency-Track을 선택적 8번째 서비스로 제공했습니다. v0.10.0은 Trivy를 단일 취약점 엔진으로 채택하면서 DT를 제거했습니다 — [ADR-0001](https://github.com/trustedoss/trustedoss-portal/blob/main/docs/decisions/0001-replace-dt-with-trivy.md)과 [v0.10.0 릴리스 노트](../release-notes/v0.10.0.md) 참조. Trivy DB는 워커 컨테이너 내부에 존재하며, 별도의 취약점 엔진 서비스는 없습니다.
+이전 릴리스는 Dependency-Track을 선택적 8번째 서비스로 제공했습니다. v0.10.0은 Trivy를 단일 취약점 엔진으로 채택하면서 DT를 제거했습니다 — [ADR-0001](https://github.com/trustedoss/trusca/blob/main/docs/decisions/0001-replace-dt-with-trivy.md)과 [v0.10.0 릴리스 노트](../release-notes/v0.10.0.md) 참조. Trivy DB는 워커 컨테이너 내부에 존재하며, 별도의 취약점 엔진 서비스는 없습니다.
 :::
 
 :::note

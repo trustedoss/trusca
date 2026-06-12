@@ -60,7 +60,7 @@ SLSA_PROVENANCE_PREDICATE_TYPE = "https://slsa.dev/provenance/v1"
 # cdxgen → SBOM). Verifiers key their expectations off this, so it is a stable
 # vendor URI, not configurable.
 TRUSTEDOSS_SOURCE_SCAN_BUILD_TYPE = (
-    "https://github.com/trustedoss/trustedoss-portal/buildtypes/source-scan@v1"
+    "https://github.com/trustedoss/trusca/buildtypes/source-scan@v1"
 )
 
 # Defensive caps on the only two caller-supplied free-text fields. The SBOM file

@@ -23,14 +23,14 @@ fullnameOverride: ""
 #    repositories for a fork / private mirror / air-gapped registry.
 image:
   # API image (FastAPI). Slim, no SCA toolchain.
-  backendRepository: ghcr.io/trustedoss/backend
+  backendRepository: ghcr.io/trustedoss/trusca-backend
   # Worker image (carries cdxgen / scancode / Trivy / JRE). Heavier. Also used
   # by the beat scheduler and the migration Job (alembic ships in this image).
-  workerRepository: ghcr.io/trustedoss/backend-worker
+  workerRepository: ghcr.io/trustedoss/trusca-backend-worker
   # Frontend image (React SPA on nginx, listens on :8080).
-  frontendRepository: ghcr.io/trustedoss/frontend
+  frontendRepository: ghcr.io/trustedoss/trusca-frontend
   # Tag applied to ALL three images. Kept in lock-step with Chart.yaml appVersion.
-  tag: "0.10.0"
+  tag: "0.11.0"
   pullPolicy: IfNotPresent
 # -- Image pull secrets for private registries (list of {name: ...}).
 imagePullSecrets: []

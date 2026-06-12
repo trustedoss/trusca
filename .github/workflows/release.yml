@@ -9,9 +9,13 @@ name: Release (publish container images)
 # that gap by publishing three multi-arch images to GitHub Container Registry
 # on every `vX.Y.Z` tag:
 #
-#   ghcr.io/trustedoss/backend         ← apps/backend/Dockerfile.prod
-#   ghcr.io/trustedoss/backend-worker  ← apps/backend/Dockerfile.worker
-#   ghcr.io/trustedoss/frontend        ← apps/frontend/Dockerfile.prod
+#   ghcr.io/trustedoss/trusca-backend         ← apps/backend/Dockerfile.prod
+#   ghcr.io/trustedoss/trusca-backend-worker  ← apps/backend/Dockerfile.worker
+#   ghcr.io/trustedoss/trusca-frontend        ← apps/frontend/Dockerfile.prod
+#
+# Image names carry the trusca- prefix from v0.11.0 onwards (TRUSCA rebrand
+# W4). Releases <= 0.10.0 stay under the pre-rename names backend /
+# backend-worker / frontend so that older pinned compose files keep pulling.
 #
 # Tag strategy (CLAUDE.md core rule #9 — NEVER `:latest`):
 #   git tag v2.0.1  →  image tags `2.0.1` (immutable) and `2.0` (movable minor).
@@ -60,18 +64,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - image: backend
+          - image: trusca-backend
             dockerfile: apps/backend/Dockerfile.prod
             context: apps/backend
-            description: TrustedOSS Portal backend (FastAPI API).
-          - image: backend-worker
+            description: TRUSCA backend (FastAPI API).
+          - image: trusca-backend-worker
             dockerfile: apps/backend/Dockerfile.worker
             context: apps/backend
-            description: TrustedOSS Portal Celery worker (cdxgen / scancode / Trivy / JRE).
-          - image: frontend
+            description: TRUSCA Celery worker (cdxgen / scancode / Trivy / JRE).
+          - image: trusca-frontend
             dockerfile: apps/frontend/Dockerfile.prod
             context: apps/frontend
-            description: TrustedOSS Portal frontend (React SPA on nginx).
+            description: TRUSCA frontend (React SPA on nginx).
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -105,9 +109,9 @@ jobs:
             type=semver,pattern={{version}},value=${{ github.event.inputs.tag }}
             type=semver,pattern={{major}}.{{minor}},value=${{ github.event.inputs.tag }}
           labels: |
-            org.opencontainers.image.title=trustedoss-${{ matrix.image }}
+            org.opencontainers.image.title=${{ matrix.image }}
             org.opencontainers.image.description=${{ matrix.description }}
-            org.opencontainers.image.source=https://github.com/trustedoss/trustedoss-portal
+            org.opencontainers.image.source=https://github.com/trustedoss/trusca
             org.opencontainers.image.licenses=Apache-2.0
 
       - name: Build & push (linux/amd64, linux/arm64)

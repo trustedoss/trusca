@@ -64,8 +64,8 @@ Clone the repo and run the wizard. Pick **one** of (a) interactive or (b)
 non-interactive — the latter mirrors what CI runs.
 
 ```bash
-git clone https://github.com/trustedoss/trustedoss-portal.git
-cd trustedoss-portal
+git clone https://github.com/trustedoss/trusca.git
+cd trusca
 ```
 
 ### (a) Interactive
@@ -161,8 +161,8 @@ scp -r backups/2026-05-09-143022 vm-b:/tmp/backups/
 On `vm-b`:
 
 ```bash
-git clone https://github.com/trustedoss/trustedoss-portal.git
-cd trustedoss-portal
+git clone https://github.com/trustedoss/trusca.git
+cd trusca
 bash scripts/install.sh --no-prompt
 mkdir -p backups
 mv /tmp/backups/2026-05-09-143022 backups/

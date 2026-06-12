@@ -2,7 +2,7 @@
 //
 // Two locales (en, ko) ship together at GA per CLAUDE.md. The site is built
 // on every push to `main` by .github/workflows/docs.yml and deployed to
-// GitHub Pages at https://trustedoss.github.io/trustedoss-portal/.
+// GitHub Pages at https://trustedoss.github.io/trusca/.
 
 import { themes as prismThemes } from "prism-react-renderer";
 import type { Config } from "@docusaurus/types";
@@ -14,10 +14,10 @@ const config: Config = {
   favicon: "img/favicon.svg",
 
   url: "https://trustedoss.github.io",
-  baseUrl: "/trustedoss-portal/",
+  baseUrl: "/trusca/",
 
   organizationName: "trustedoss",
-  projectName: "trustedoss-portal",
+  projectName: "trusca",
   deploymentBranch: "gh-pages",
   trailingSlash: false,
 
@@ -46,7 +46,7 @@ const config: Config = {
           // Source of truth lives in this monorepo. Doc edits are encouraged
           // via PR — the "Edit this page" link below targets the right path.
           editUrl:
-            "https://github.com/trustedoss/trustedoss-portal/edit/main/docs-site/",
+            "https://github.com/trustedoss/trusca/edit/main/docs-site/",
           editLocalizedFiles: true,
           showLastUpdateAuthor: false,
           showLastUpdateTime: true,
@@ -130,7 +130,7 @@ const config: Config = {
         },
         { type: "localeDropdown", position: "right" },
         {
-          href: "https://github.com/trustedoss/trustedoss-portal",
+          href: "https://github.com/trustedoss/trusca",
           label: "GitHub",
           position: "right",
         },
@@ -153,15 +153,15 @@ const config: Config = {
           items: [
             {
               label: "GitHub",
-              href: "https://github.com/trustedoss/trustedoss-portal",
+              href: "https://github.com/trustedoss/trusca",
             },
             {
               label: "Issues",
-              href: "https://github.com/trustedoss/trustedoss-portal/issues",
+              href: "https://github.com/trustedoss/trusca/issues",
             },
             {
               label: "Releases",
-              href: "https://github.com/trustedoss/trustedoss-portal/releases",
+              href: "https://github.com/trustedoss/trusca/releases",
             },
           ],
         },

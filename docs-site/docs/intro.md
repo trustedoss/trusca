@@ -50,7 +50,7 @@ commercial products.
 ## Project
 
 - **License** — Apache-2.0.
-- **Source** — [github.com/trustedoss/trustedoss-portal](https://github.com/trustedoss/trustedoss-portal).
-- **Roadmap** — [`ROADMAP.md`](https://github.com/trustedoss/trustedoss-portal/blob/main/ROADMAP.md).
-- **Security disclosures** — [`SECURITY.md`](https://github.com/trustedoss/trustedoss-portal/blob/main/SECURITY.md).
+- **Source** — [github.com/trustedoss/trusca](https://github.com/trustedoss/trusca).
+- **Roadmap** — [`ROADMAP.md`](https://github.com/trustedoss/trusca/blob/main/ROADMAP.md).
+- **Security disclosures** — [`SECURITY.md`](https://github.com/trustedoss/trusca/blob/main/SECURITY.md).
 - **Architecture and decisions** — [Architecture reference](./reference/architecture.md).

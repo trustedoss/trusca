@@ -10,9 +10,9 @@ body:
 
         **Do NOT file a public issue for an unpatched vulnerability.**
 
-        For confidential vulnerability reports, please use one of these private channels (see [SECURITY.md](https://github.com/trustedoss/trustedoss-portal/blob/main/SECURITY.md) for details):
+        For confidential vulnerability reports, please use one of these private channels (see [SECURITY.md](https://github.com/trustedoss/trusca/blob/main/SECURITY.md) for details):
 
-        - **GitHub private vulnerability reporting** — [Report a vulnerability](https://github.com/trustedoss/trustedoss-portal/security/advisories/new) (preferred)
+        - **GitHub private vulnerability reporting** — [Report a vulnerability](https://github.com/trustedoss/trusca/security/advisories/new) (preferred)
         - **Encrypted email** — `security@trustedoss.io` (PGP key fingerprint in SECURITY.md)
 
         Use this **public** template only for:
