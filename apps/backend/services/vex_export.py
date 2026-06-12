@@ -157,7 +157,7 @@ _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 
 # OpenVEX context + author are document-level constants (not config).
 _OPENVEX_CONTEXT = "https://openvex.dev/ns/v0.2.0"
-_OPENVEX_AUTHOR = "TrustedOSS Portal"
+_OPENVEX_AUTHOR = "TRUSCA"
 
 
 # ---------------------------------------------------------------------------
@@ -410,7 +410,7 @@ def _build_cyclonedx_doc(
             "tools": [
                 {
                     "vendor": "TrustedOSS",
-                    "name": "TrustedOSS Portal",
+                    "name": "TRUSCA",
                     "version": "0.0.1",
                 }
             ],

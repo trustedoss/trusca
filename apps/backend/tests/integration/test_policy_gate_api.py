@@ -247,7 +247,7 @@ async def test_post_pr_comment_dry_run_returns_body_preview(client) -> None:
     assert body["status"] == "dry_run"
     assert body["comment_id"] is None
     assert body["comment_url"] is None
-    assert "TrustedOSS" in body["body_preview"]
+    assert "TRUSCA" in body["body_preview"]
     assert body["gate"] in ("pass", "fail")
 
 

@@ -310,7 +310,7 @@ async def test_openvex_empty_project(db_session: AsyncSession) -> None:
     parsed = json.loads(body)
     assert parsed["@context"] == "https://openvex.dev/ns/v0.2.0"
     assert parsed["@id"].startswith("https://trustedoss.io/vex/")
-    assert parsed["author"] == "TrustedOSS Portal"
+    assert parsed["author"] == "TRUSCA"
     assert "timestamp" in parsed
     assert parsed["version"] == 1
     assert parsed["statements"] == []

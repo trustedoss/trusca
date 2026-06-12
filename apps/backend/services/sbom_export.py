@@ -499,7 +499,7 @@ def _build_cyclonedx_doc(
             "tools": [
                 {
                     "vendor": "TrustedOSS",
-                    "name": "TrustedOSS Portal",
+                    "name": "TRUSCA",
                     "version": "0.0.1",
                 }
             ],
@@ -710,7 +710,7 @@ def _build_spdx_doc(
         "documentNamespace": _spdx_doc_namespace(project, scan),
         "creationInfo": {
             "created": _utc_iso(now),
-            "creators": ["Tool: TrustedOSS Portal-0.0.1", "Organization: TrustedOSS"],
+            "creators": ["Tool: TRUSCA-0.0.1", "Organization: TrustedOSS"],
         },
         "packages": _spdx_packages(rows, licenses_by_cv),
     }

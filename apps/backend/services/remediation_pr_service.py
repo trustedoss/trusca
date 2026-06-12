@@ -1054,9 +1054,9 @@ def _commit_message(bumps: list[tuple[str, str | None, str]]) -> str:
     if len(bumps) == 1:
         pkg, _frm, to = bumps[0]
         return _strip_newlines(
-            f"chore(deps): bump {pkg} to {to} (TrustedOSS remediation)"
+            f"chore(deps): bump {pkg} to {to} (TRUSCA remediation)"
         )
-    return f"chore(deps): bump {len(bumps)} vulnerable dependencies (TrustedOSS remediation)"
+    return f"chore(deps): bump {len(bumps)} vulnerable dependencies (TRUSCA remediation)"
 
 
 def _pr_title(bumps: list[tuple[str, str | None, str]]) -> str:
@@ -1064,8 +1064,8 @@ def _pr_title(bumps: list[tuple[str, str | None, str]]) -> str:
         pkg, _frm, to = bumps[0]
         # Escape the (allow-listed) name/version — defence in depth so a value can
         # never break out of the title into markdown / a newline.
-        return f"[TrustedOSS] Bump {_escape_md(pkg)} to {_escape_md(to)}"
-    return f"[TrustedOSS] Bump {len(bumps)} vulnerable npm dependencies"
+        return f"[TRUSCA] Bump {_escape_md(pkg)} to {_escape_md(to)}"
+    return f"[TRUSCA] Bump {len(bumps)} vulnerable npm dependencies"
 
 
 def _pr_body(bumps: list[tuple[str, str | None, str]], dry_run: DryRunResult) -> str:
@@ -1078,7 +1078,7 @@ def _pr_body(bumps: list[tuple[str, str | None, str]], dry_run: DryRunResult) ->
     can never produce a body GitHub rejects (its limit is ~65 KB).
     """
     lines = [
-        "This pull request was opened automatically by **TrustedOSS** to "
+        "This pull request was opened automatically by **TRUSCA** to "
         "remediate known vulnerabilities in your npm dependencies.",
         "",
         "### Dependency bumps",
