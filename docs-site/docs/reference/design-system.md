@@ -1,7 +1,7 @@
 ---
 id: design-system
 title: Design system
-description: TrustedOSS Portal design system — tokens (colour, spacing, radius, shadow, motion, typography), component conventions, micro-interactions, accessibility, and the W11 visual-identity refresh.
+description: TRUSCA design system — tokens (colour, spacing, radius, shadow, motion, typography), component conventions, micro-interactions, accessibility, and the W11 visual-identity refresh.
 sidebar_label: Design system
 sidebar_position: 10
 ---
@@ -22,7 +22,7 @@ This page is the single source of truth for visual decisions. The implementation
 
 ## Philosophy
 
-TrustedOSS Portal is a **risk-first, information-dense, modern enterprise SCA** tool. The visual identity must:
+TRUSCA is a **risk-first, information-dense, modern enterprise SCA** tool. The visual identity must:
 
 1. **Communicate severity at a glance.** Risk colours (Critical / High / Medium / Low / Info) appear next to a textual label and an icon or dot — colour is never the sole signal.
 2. **Pack data without feeling cramped.** Compact 40 px table rows; 224 px sidebar; 48 px header; 16 / 20 / 24 px card padding scale.

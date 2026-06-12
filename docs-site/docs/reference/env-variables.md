@@ -1,7 +1,7 @@
 ---
 id: env-variables
 title: Environment variables
-description: Complete reference for the .env keys TrustedOSS Portal reads — defaults, validation, and runtime semantics.
+description: Complete reference for the .env keys TRUSCA reads — defaults, validation, and runtime semantics.
 sidebar_label: Environment variables
 sidebar_position: 2
 ---

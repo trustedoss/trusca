@@ -1,7 +1,7 @@
 ---
 id: users-and-teams
 title: 사용자 및 팀
-description: TrustedOSS Portal의 사용자·팀 관리 — RBAC 역할, 마지막 super-admin 보호, 초대, 조직 vs. 팀 모델.
+description: TRUSCA의 사용자·팀 관리 — RBAC 역할, 마지막 super-admin 보호, 초대, 조직 vs. 팀 모델.
 sidebar_label: 사용자 및 팀
 sidebar_position: 1
 ---

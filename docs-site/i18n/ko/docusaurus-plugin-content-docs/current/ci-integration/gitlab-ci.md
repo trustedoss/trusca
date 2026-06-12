@@ -1,7 +1,7 @@
 ---
 id: gitlab-ci
 title: GitLab CI
-description: include 가능한 templates/gitlab-ci.yml로 TrustedOSS Portal을 GitLab CI에 연결합니다 — 트리거·폴링·게이트·코멘트.
+description: include 가능한 templates/gitlab-ci.yml로 TRUSCA를 GitLab CI에 연결합니다 — 트리거·폴링·게이트·코멘트.
 sidebar_label: GitLab CI
 sidebar_position: 2
 ---

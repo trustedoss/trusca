@@ -1,7 +1,7 @@
 ---
 id: oncall-runbook
 title: On-call runbook
-description: First-response playbook for PagerDuty / production alerts targeting TrustedOSS Portal.
+description: First-response playbook for PagerDuty / production alerts targeting TRUSCA.
 sidebar_label: On-call runbook
 sidebar_position: 99
 ---
@@ -9,7 +9,7 @@ sidebar_position: 99
 # On-call runbook
 
 Quick-reference playbook for the four most common PagerDuty alerts
-against a production TrustedOSS Portal stack. Each scenario lists:
+against a production TRUSCA stack. Each scenario lists:
 
 - **Symptom** — what triggered the page
 - **Customer impact** — what users can/cannot do right now
@@ -34,7 +34,7 @@ ACCESS_TOKEN=$(curl -fsS -X POST "https://<your-host>/api/auth/login" \
 ## Scenario 1 — Trivy DB stale or missing
 
 ### Symptom
-PagerDuty: `TrustedOSS Trivy DB last refresh > 14 days` or `TrustedOSS Trivy DB missing on worker`. The upcoming `/admin/health → Vulnerability data` card drives this.
+PagerDuty: `TRUSCA Trivy DB last refresh > 14 days` or `TRUSCA Trivy DB missing on worker`. The upcoming `/admin/health → Vulnerability data` card drives this.
 
 ### Customer impact
 - New scans CAN still be queued — `cdxgen` + scancode still produce SBOMs and licence findings.
@@ -88,7 +88,7 @@ Page the portal dev team with: worker logs (`docker-compose logs --tail=2000 wor
 ## Scenario 2 — Auto-backup failed for 3 days
 
 ### Symptom
-PagerDuty: `TrustedOSS auto-backup task failure count = 3`.
+PagerDuty: `TRUSCA auto-backup task failure count = 3`.
 
 ### Customer impact
 - All in-portal data is at risk if the host crashes (no recent backup to restore from). Plan downstream tasks (compliance freezes, etc.) accordingly until a fresh backup lands.
@@ -136,7 +136,7 @@ docker-compose -f docker-compose.yml exec backend df -h /opt/trustedoss/backups
 ## Scenario 3 — Scan stuck in `running` for ≥ 4 hours
 
 ### Symptom
-PagerDuty: `TrustedOSS scan running > 4h for project X`.
+PagerDuty: `TRUSCA scan running > 4h for project X`.
 
 ### Customer impact
 - That project: blocked from new scans (one-running-at-a-time).
@@ -173,7 +173,7 @@ docker-compose exec worker ps -ef | grep -E 'cdxgen|ort|trivy'
 ## Scenario 4 — Host disk ≥ 95%
 
 ### Symptom
-PagerDuty: `TrustedOSS portal disk = 95%+`.
+PagerDuty: `TRUSCA disk = 95%+`.
 
 ### Customer impact
 - In-flight scans continue. New scans are **blocked** at the `DISK_HARD_LIMIT_PCT` threshold (default 95%) — `/admin/scans` shows them as queued indefinitely.

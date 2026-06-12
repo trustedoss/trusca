@@ -1,7 +1,7 @@
 ---
 id: helm
 title: Install on Kubernetes with Helm
-description: Deploy TrustedOSS Portal on Kubernetes with the production-grade Helm chart — bundled or external PostgreSQL & Redis, Ingress TLS, and a migration Job.
+description: Deploy TRUSCA on Kubernetes with the production-grade Helm chart — bundled or external PostgreSQL & Redis, Ingress TLS, and a migration Job.
 sidebar_label: Helm / Kubernetes
 sidebar_position: 3
 ---
@@ -9,7 +9,7 @@ sidebar_position: 3
 # Install on Kubernetes with Helm
 
 :::note Audience
-Operators running Kubernetes who want to deploy TrustedOSS Portal with the
+Operators running Kubernetes who want to deploy TRUSCA with the
 production-grade Helm chart. Assume `kubectl`, Helm 3, and basic cluster
 administration (Ingress, StorageClasses, cert-manager) proficiency. If you run a
 single host, the [Docker Compose install](./docker-compose.md) is simpler.

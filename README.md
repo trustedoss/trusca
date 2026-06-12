@@ -1,4 +1,4 @@
-# TrustedOSS Portal
+# TRUSCA
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/badge/release-v0.10.0-2563eb.svg)](CHANGELOG.md)
@@ -7,13 +7,13 @@
 
 > Open-source enterprise SCA portal — manage CVEs, license compliance, and SBOMs in one self-hosted UI.
 
-**TrustedOSS Portal** is an Apache-2.0 licensed, self-hosted alternative to commercial Software Composition Analysis (SCA) products. It unifies vulnerability tracking (CVE), license compliance, and Software Bill of Materials (SBOM) management for engineering and legal teams.
+**TRUSCA** — the SCA tool of the [TrustedOSS](https://trustedoss.github.io/) initiative — is an Apache-2.0 licensed, self-hosted alternative to commercial Software Composition Analysis (SCA) products. It unifies vulnerability tracking (CVE), license compliance, and Software Bill of Materials (SBOM) management for engineering and legal teams.
 
 > **🔭 Live demo:** *Coming soon.* A hosted read-only demo will be published shortly; until then you can run a local read-only demo with `DEMO_READ_ONLY=true`. See [Live demo](https://trustedoss.github.io/trustedoss-portal/docs/installation/live-demo).
 
 ---
 
-## Why TrustedOSS Portal
+## Why TRUSCA
 
 - **Self-hosted, no vendor lock-in.** Apache-2.0, deployable via `docker-compose` or Helm. No per-seat licensing.
 - **Unified risk view.** CVEs, licenses, and SBOM in one project page — no context switching.

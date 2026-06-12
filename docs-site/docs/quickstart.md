@@ -1,7 +1,7 @@
 ---
 id: quickstart
 title: Quickstart
-description: Bring TrustedOSS Portal up on your laptop in 5 minutes with the dev Docker Compose stack and a seeded demo dataset.
+description: Bring TRUSCA up on your laptop in 5 minutes with the dev Docker Compose stack and a seeded demo dataset.
 sidebar_label: Quickstart
 sidebar_position: 1
 slug: /quickstart
@@ -9,7 +9,7 @@ slug: /quickstart
 
 # Quickstart
 
-Run TrustedOSS Portal on your laptop in about 5 minutes. This page gives you a
+Run TRUSCA on your laptop in about 5 minutes. This page gives you a
 populated dashboard you can click through. For a real deployment, see
 [Install with Docker Compose](./installation/docker-compose.md) or the
 [Helm chart](./installation/helm.md).

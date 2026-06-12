@@ -1,7 +1,7 @@
 ---
 id: sbom-signature-verification
 title: Verify SBOM signatures (cosign)
-description: Download a TrustedOSS Portal SBOM signature bundle and verify it externally with cosign verify-blob, plus operator key setup for key-based and keyless signing.
+description: Download a TRUSCA SBOM signature bundle and verify it externally with cosign verify-blob, plus operator key setup for key-based and keyless signing.
 sidebar_label: Verify SBOM signatures
 sidebar_position: 10
 ---
@@ -13,7 +13,7 @@ Every source scan signs its CycloneDX SBOM with [cosign](https://docs.sigstore.d
 :::note Audience
 Two readers:
 
-- **Verifiers** (sections 1–4) — anyone who consumes a TrustedOSS SBOM and wants to prove it is intact and was signed by a known deployment. Assumes a shell and the ability to install a CLI binary.
+- **Verifiers** (sections 1–4) — anyone who consumes a TRUSCA SBOM and wants to prove it is intact and was signed by a known deployment. Assumes a shell and the ability to install a CLI binary.
 - **Operators** (section 5) — the person who deploys the portal and owns the signing key. Assumes Linux + Docker Compose proficiency and familiarity with [environment variables](./env-variables.md).
 :::
 
@@ -21,7 +21,7 @@ Two readers:
 
 For verification:
 
-1. A TrustedOSS account with at least the **Developer** [role](./glossary.md#rbac-roles) on the project's team (the signature endpoints reuse the same access control as the SBOM export — an outsider sees `404`).
+1. A TRUSCA account with at least the **Developer** [role](./glossary.md#rbac-roles) on the project's team (the signature endpoints reuse the same access control as the SBOM export — an outsider sees `404`).
 2. The project has at least one **succeeded** scan, and signing was configured on the deployment that ran it (see [section 5](#5-operator-key-setup)). A scan that was never signed has no signature artifacts.
 3. [cosign](https://docs.sigstore.dev/cosign/installation/) installed on the machine that verifies (see [section 2](#2-install-cosign)).
 
@@ -36,7 +36,7 @@ This is the supply-chain-security expectation set by [Executive Order 14028](htt
 
 ### Key-based vs keyless
 
-cosign supports two trust models. TrustedOSS supports both; **key-based is the default** for self-hosted, on-prem, and air-gapped deployments.
+cosign supports two trust models. TRUSCA supports both; **key-based is the default** for self-hosted, on-prem, and air-gapped deployments.
 
 | Model | How the deployment signs | What the verifier needs | When |
 |---|---|---|---|

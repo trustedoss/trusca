@@ -8,7 +8,7 @@ sidebar_position: 5
 
 # Vulnerability data sources
 
-TrustedOSS Portal correlates SBOMs against CVEs using the **Trivy DB**, a compiled bundle of five public vulnerability feeds. This page is the reference for **what** each source contributes, **when** it refreshes, and **which ecosystems** it covers.
+TRUSCA correlates SBOMs against CVEs using the **Trivy DB**, a compiled bundle of five public vulnerability feeds. This page is the reference for **what** each source contributes, **when** it refreshes, and **which ecosystems** it covers.
 
 :::note Audience
 Security leads, auditors, and operators answering "where does this CVE come from?" or "why is this ecosystem missing?". For the operator-facing lifecycle (download, refresh, air-gapped mirror) see [Vulnerability data (Trivy DB)](../admin-guide/vulnerability-data.md).

@@ -1,7 +1,7 @@
 ---
 id: gitlab-ci
 title: GitLab CI
-description: Wire TrustedOSS Portal into GitLab CI with the include-able templates/gitlab-ci.yml — trigger, poll, gate, comment.
+description: Wire TRUSCA into GitLab CI with the include-able templates/gitlab-ci.yml — trigger, poll, gate, comment.
 sidebar_label: GitLab CI
 sidebar_position: 2
 ---

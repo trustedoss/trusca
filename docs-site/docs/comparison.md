@@ -1,33 +1,33 @@
 ---
 id: comparison
-title: How TrustedOSS Portal compares
+title: How TRUSCA compares
 sidebar_label: Comparison
-description: An honest comparison of TrustedOSS Portal versus commercial SCA (Black Duck, Snyk), Dependency-Track, and SW360 — strengths and current limits.
+description: An honest comparison of TRUSCA versus commercial SCA (Black Duck, Snyk), Dependency-Track, and SW360 — strengths and current limits.
 ---
 
-# How TrustedOSS Portal compares
+# How TRUSCA compares
 
 :::note Audience
 Engineers, platform owners, and legal/compliance leads deciding whether
-TrustedOSS Portal fits their organization. This page is deliberately honest:
+TRUSCA fits their organization. This page is deliberately honest:
 it lists what the portal does well **and** what it does not do yet. For the
 roadmap behind the "planned" rows, see [`ROADMAP.md`](https://github.com/trustedoss/trustedoss-portal/blob/main/ROADMAP.md).
 :::
 
-TrustedOSS Portal's core idea is to wrap several best-of-breed open-source
+TRUSCA's core idea is to wrap several best-of-breed open-source
 tools — cdxgen, scancode, and Trivy (the single vulnerability engine) — in
 one self-hosted UI with teams, roles, approvals, and CI gating. The
 comparisons below frame that idea against three common alternatives. They
 describe shipped capabilities in the current release (with planned items
 marked); they are not benchmarks and they do not disparage other projects,
-several of which TrustedOSS Portal builds on.
+several of which TRUSCA builds on.
 
 For term definitions (SCA, SBOM, VEX, EPSS, reachability), see the
 [glossary](./reference/glossary.md).
 
 ## At a glance
 
-| | TrustedOSS Portal | Commercial SCA (Black Duck / Snyk) | Dependency-Track | Eclipse SW360 |
+| | TRUSCA | Commercial SCA (Black Duck / Snyk) | Dependency-Track | Eclipse SW360 |
 |---|---|---|---|---|
 | License | Apache-2.0 | Proprietary | Apache-2.0 | EPL-2.0 |
 | Hosting | Self-hosted (Docker / Helm) | SaaS or self-managed | Self-hosted | Self-hosted |
@@ -49,25 +49,25 @@ For term definitions (SCA, SBOM, VEX, EPSS, reachability), see the
 
 ## vs commercial SCA (Black Duck, Snyk)
 
-**Choose TrustedOSS Portal when** you want to own your data and avoid per-seat
+**Choose TRUSCA when** you want to own your data and avoid per-seat
 licensing, you are comfortable self-hosting, and a unified open-source portal
 covering detection, licenses, SBOM, approvals, and CI gating meets your needs.
 
 **Where commercial tools lead today:**
 
 - **Curated vulnerability and license intelligence.** Commercial vendors
-  maintain proprietary databases and dedicated research teams. TrustedOSS
-  Portal relies on public feeds (NVD + OSV + GHSA + EPSS + KEV) delivered via
+  maintain proprietary databases and dedicated research teams. TRUSCA
+  relies on public feeds (NVD + OSV + GHSA + EPSS + KEV) delivered via
   the Trivy DB.
 - **Automated remediation.** Snyk and others open fix pull requests
-  automatically. TrustedOSS Portal surfaces per-finding `fixed_version` and
+  automatically. TRUSCA surfaces per-finding `fixed_version` and
   dependency-graph depth but does not yet open upgrade pull requests —
   suggested upgrades are planned.
 - **Prioritization signals.** EPSS prioritization is first-class — column,
   sort, filter, and a policy-gate threshold. Reachability analysis is
   planned, not shipped.
 
-**Where TrustedOSS Portal is competitive:** self-hosting with no seat cost,
+**Where TRUSCA is competitive:** self-hosting with no seat cost,
 Apache-2.0 licensing, a single portal instead of several consoles, a built-in
 component approval workflow, build-blocking CI gates, and a fully bilingual
 (EN/KO) UI and documentation.
@@ -75,12 +75,12 @@ component approval workflow, build-blocking CI gates, and a fully bilingual
 ## vs Dependency-Track
 
 Dependency-Track (DT) is excellent at what it does — a focused vulnerability
-intelligence platform for SBOMs you supply. TrustedOSS Portal uses Trivy as
+intelligence platform for SBOMs you supply. TRUSCA uses Trivy as
 its single embedded vulnerability engine (see
 [ADR-0001](https://github.com/trustedoss/trustedoss-portal/blob/main/docs/decisions/0001-replace-dt-with-trivy.md)
 for the decision). The question is what shape of platform fits your team.
 
-**TrustedOSS Portal differs from running DT directly:**
+**TRUSCA differs from running DT directly:**
 
 - **Scan orchestration.** It runs cdxgen, scancode, and Trivy automatically and
   feeds results in, rather than expecting you to produce and upload SBOMs.
@@ -108,7 +108,7 @@ component cataloging.
 **SW360 leads in:** depth of license clearing workflows, a large component
 clearing catalog, and established enterprise integration patterns.
 
-**TrustedOSS Portal leads in:** an integrated scan pipeline (cdxgen / scancode /
+**TRUSCA leads in:** an integrated scan pipeline (cdxgen / scancode /
 Trivy) out of the box, container scanning, first-class CI build gates,
 byte-stable CycloneDX **and** SPDX export, a modern single-page UI, and EN/KO
 bilingual support. SW360 typically expects SBOMs/components to be supplied and

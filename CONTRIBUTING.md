@@ -1,6 +1,6 @@
-# Contributing to TrustedOSS Portal
+# Contributing to TRUSCA
 
-Thank you for your interest in contributing! TrustedOSS Portal is an Apache-2.0 licensed, self-hosted SCA portal, and we welcome contributions from the community — code, documentation, translations, bug reports, and design feedback.
+Thank you for your interest in contributing! TRUSCA is an Apache-2.0 licensed, self-hosted SCA portal, and we welcome contributions from the community — code, documentation, translations, bug reports, and design feedback.
 
 This document describes how to set up the project locally, the conventions we follow, and what we expect in a pull request.
 
@@ -258,4 +258,4 @@ This is the [Developer Certificate of Origin (DCO) 1.1](https://developercertifi
 
 Thanks again for contributing — every PR, issue, translation, and design suggestion makes the project better.
 
-— The TrustedOSS Portal maintainers
+— The TRUSCA maintainers

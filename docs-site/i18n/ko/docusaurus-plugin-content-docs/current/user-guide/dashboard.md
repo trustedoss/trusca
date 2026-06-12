@@ -1,7 +1,7 @@
 ---
 id: dashboard
 title: 대시보드
-description: TrustedOSS Portal 로그인 직후 착지 화면 — 포트폴리오 심각도·라이선스 혼합·스캔 큐 상태·최근 실행 한눈에 보기.
+description: TRUSCA 로그인 직후 착지 화면 — 포트폴리오 심각도·라이선스 혼합·스캔 큐 상태·최근 실행 한눈에 보기.
 sidebar_label: 대시보드
 sidebar_position: 0
 ---

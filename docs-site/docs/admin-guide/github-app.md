@@ -8,10 +8,10 @@ sidebar_position: 7
 
 # GitHub App connection
 
-A **GitHub App** is the credential TrustedOSS uses for fine-grained, per-repository access — for example, the upcoming auto-remediation flow that opens dependency-bump pull requests. Unlike a personal access token (PAT), a GitHub App is:
+A **GitHub App** is the credential TRUSCA uses for fine-grained, per-repository access — for example, the upcoming auto-remediation flow that opens dependency-bump pull requests. Unlike a personal access token (PAT), a GitHub App is:
 
 - **Installable** per organization / repository, with fine-grained permissions (`contents` + `pull_requests: write`).
-- **Short-lived** at the token level — TrustedOSS mints a fresh installation access token for each operation; the long-lived secret never leaves the server.
+- **Short-lived** at the token level — TRUSCA mints a fresh installation access token for each operation; the long-lived secret never leaves the server.
 - **Multi-tenant** — each team registers and manages its own App independently.
 
 :::note Audience
@@ -48,7 +48,7 @@ The encryption key is resolved at runtime:
    print(Fernet.generate_key().decode())
    ```
 
-2. If unset, TrustedOSS **derives** a key deterministically from `SECRET_KEY` so local / development bring-up works without extra configuration. A structured `WARNING` is logged whenever the derived key is used.
+2. If unset, TRUSCA **derives** a key deterministically from `SECRET_KEY` so local / development bring-up works without extra configuration. A structured `WARNING` is logged whenever the derived key is used.
 
 :::warning Rotate deliberately
 The derived key shares its fate with `SECRET_KEY`. If you run without a dedicated `GITHUB_APP_ENCRYPTION_KEY`, **rotating `SECRET_KEY` will make every stored GitHub App credential undecryptable** — you would have to re-register each App. Set a dedicated, independently rotatable `GITHUB_APP_ENCRYPTION_KEY` in production.
@@ -64,7 +64,7 @@ Revocation is a **soft delete** (sets `revoked_at`), mirroring API keys: the cre
 
 ## Installation opt-in
 
-A credential alone does not grant TrustedOSS the right to touch a project's repository. A team must explicitly **link an installation** (account / repo) to a TrustedOSS project. The opt-in project must belong to the **same team** as the credential — cross-team links are rejected.
+A credential alone does not grant TRUSCA the right to touch a project's repository. A team must explicitly **link an installation** (account / repo) to a TRUSCA project. The opt-in project must belong to the **same team** as the credential — cross-team links are rejected.
 
 ## Endpoints
 

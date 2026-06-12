@@ -1,7 +1,7 @@
 ---
 id: glossary
 title: Glossary
-description: TrustedOSS Portal domain terms — SCA, SBOM, VEX, license tiers, RBAC roles, and CycloneDX/SPDX mappings.
+description: TRUSCA domain terms — SCA, SBOM, VEX, license tiers, RBAC roles, and CycloneDX/SPDX mappings.
 sidebar_label: Glossary
 sidebar_position: 4
 ---
@@ -24,17 +24,17 @@ guides.
 - **SCA — Software Composition Analysis.** The discipline of detecting
   third-party (open-source) components in a software project,
   classifying their licenses, and identifying their known
-  vulnerabilities. TrustedOSS Portal is an SCA tool.
+  vulnerabilities. TRUSCA is an SCA tool.
 - **SBOM — Software Bill of Materials.** A machine-readable inventory
   of every component (and its version, license, and supplier) that
-  ships with a piece of software. TrustedOSS Portal exports SBOMs in
+  ships with a piece of software. TRUSCA exports SBOMs in
   CycloneDX (JSON / XML) and SPDX (JSON / Tag-Value) formats. See
   [CISA SBOM resources](https://www.cisa.gov/sbom).
-- **CycloneDX.** OWASP-maintained SBOM specification. TrustedOSS uses
+- **CycloneDX.** OWASP-maintained SBOM specification. TRUSCA uses
   version 1.6 (JSON + XML). See
   [cyclonedx.org/specification](https://cyclonedx.org/specification/).
 - **SPDX — Software Package Data Exchange.** Linux Foundation-maintained
-  SBOM specification. TrustedOSS uses version 2.3 (JSON + Tag-Value).
+  SBOM specification. TRUSCA uses version 2.3 (JSON + Tag-Value).
   See [spdx.dev](https://spdx.dev/).
 
 ## Vulnerabilities
@@ -54,7 +54,7 @@ guides.
   it is being exploited.
 - **EPSS — Exploit Prediction Scoring System.** A 0–1 probability that a
   CVE will be **exploited in the wild** within the next 30 days. EPSS
-  complements CVSS: CVSS is severity, EPSS is likelihood. TrustedOSS
+  complements CVSS: CVSS is severity, EPSS is likelihood. TRUSCA
   shows the score as a percentage and the percentile as "top N%", and
   can drive the build gate via `GATE_EPSS_THRESHOLD`. EPSS is collected
   from the Trivy DB and is absent for CVEs Trivy does not score. See
@@ -68,7 +68,7 @@ guides.
 - **VEX — Vulnerability Exploitability eXchange.** A document format for
   asserting whether a known vulnerability actually affects a given
   product. CycloneDX `analysis.state` and SPDX VEX are the two main
-  encodings. TrustedOSS implements the 7-state CycloneDX model:
+  encodings. TRUSCA implements the 7-state CycloneDX model:
   `new`, `analyzing`, `exploitable`, `not_affected`, `false_positive`,
   `suppressed`, `fixed`. See
   [CycloneDX VEX](https://cyclonedx.org/capabilities/vex/).
@@ -97,7 +97,7 @@ column.
 - **scancode — scancode-toolkit.** License scanner that reads a
   project's **first-party** source files directly and emits *detected*
   SPDX licenses, each tagged with the `source_path` of the file it was
-  found in. TrustedOSS runs scancode as the second source-scan stage
+  found in. TRUSCA runs scancode as the second source-scan stage
   (it replaced the OSS Review Toolkit, ORT, in this release). Third-party
   dependency sources are not scanned — their licenses stay *declared*
   (from cdxgen). See
@@ -107,22 +107,22 @@ column.
   (`package.json`, `pom.xml`, `requirements.txt`, …). Runs as the
   first scan stage, before scancode.
 - **Trivy.** Container and OS-package vulnerability scanner from
-  Aqua Security. TrustedOSS uses Trivy for the container-scan
+  Aqua Security. TRUSCA uses Trivy for the container-scan
   pipeline (separate from the cdxgen + scancode source-scan path).
 - **Trivy DB.** Compiled bundle of NVD + OSV + GHSA + EPSS + KEV
   published by Aqua Security at `ghcr.io/aquasecurity/trivy-db`.
-  TrustedOSS downloads it once at worker boot and refreshes it weekly
+  TRUSCA downloads it once at worker boot and refreshes it weekly
   (`TRIVY_DB_REPOSITORY`, `TRIVY_DB_REFRESH_HOURS`). See
   [Vulnerability data (Trivy DB)](../admin-guide/vulnerability-data.md) and
   [Data sources](./data-sources.md).
 - **DT — Dependency-Track.** Apache-2.0 vulnerability intelligence platform.
-  TrustedOSS used DT as its vulnerability engine through  and replaced it
+  TRUSCA used DT as its vulnerability engine through  and replaced it
   with Trivy at v0.10.0 — see
   [ADR-0001](https://github.com/trustedoss/trustedoss-portal/blob/main/docs/decisions/0001-replace-dt-with-trivy.md)
   and [Comparison](../comparison.md#vs-dependency-track). The DT term still
   appears in this glossary because legacy audit-log rows and the comparison
   page reference it.
-- **cosign.** Sigstore's signing CLI. TrustedOSS signs every source
+- **cosign.** Sigstore's signing CLI. TRUSCA signs every source
   scan's CycloneDX SBOM with cosign (`cosign sign-blob`) so a consumer
   can verify it with `cosign verify-blob`. Key-based signing is the
   self-hosted default; keyless (OIDC) is opt-in. See
@@ -134,7 +134,7 @@ column.
   signature is recorded in. Only used when `COSIGN_KEYLESS=true`. See
   [sigstore.dev](https://www.sigstore.dev/).
 - **Attestation / provenance (in-toto, SLSA).** A signed statement about
-  *how* an artifact was produced. TrustedOSS emits an
+  *how* an artifact was produced. TRUSCA emits an
   [in-toto](https://in-toto.io/) Statement carrying
   [SLSA](https://slsa.dev/) provenance (builder identity + build
   context) alongside the SBOM signature. See
@@ -214,7 +214,7 @@ API key. Per-action capabilities are on the roadmap.
 ## Operational terminology
 
 - **Circuit breaker (CLOSED / OPEN / HALF_OPEN).** A failure-domain
-  isolation pattern. TrustedOSS used a breaker to wrap the Dependency-Track
+  isolation pattern. TRUSCA used a breaker to wrap the Dependency-Track
   API client through ; with the Trivy DB now local to the worker
   (v0.10.0+), the pattern is no longer used in the vulnerability path. The
   general term still appears in operator literature.

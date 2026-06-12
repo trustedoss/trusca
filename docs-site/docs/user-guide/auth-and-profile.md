@@ -9,7 +9,7 @@ sidebar_position: 7
 # Authentication & profile
 
 <!-- docs-uat: id=auth-login kind=ui harness=login(dev@demo.trustedoss.dev,DemoTest2026!) tier=nightly -->
-TrustedOSS Portal supports two interactive sign-in methods — **email + password** and **OAuth** (GitHub or Google) — plus a self-service password-recovery flow. This page walks through each path and covers identity management on the `/profile` page.
+TRUSCA supports two interactive sign-in methods — **email + password** and **OAuth** (GitHub or Google) — plus a self-service password-recovery flow. This page walks through each path and covers identity management on the `/profile` page.
 
 :::note Audience
 Any signed-in user. No special role required to manage your own identities. The OAuth buttons appear only when the operator has configured the relevant `*_CLIENT_ID` / `*_CLIENT_SECRET` environment variables.
@@ -37,7 +37,7 @@ If you see *"Invalid email or password"*, check the email is correct and try onc
 1. From `/login`, click **Forgot password?** to open `/forgot-password`.
 2. Enter the email associated with your account.
 3. Submit. The portal always returns a 204 No Content response — even if no account exists for that email — so an attacker cannot enumerate users.
-4. Check your inbox. If an account exists, a message with the subject **"Reset your TrustedOSS Portal password"** arrives within ~30 seconds.
+4. Check your inbox. If an account exists, a message with the subject **"Reset your TRUSCA password"** arrives within ~30 seconds.
 
 The reset link is **valid for 24 hours and can be used once**. After expiry or first use, the token is revoked.
 

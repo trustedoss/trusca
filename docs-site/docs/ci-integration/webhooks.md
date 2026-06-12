@@ -1,7 +1,7 @@
 ---
 id: webhooks
 title: Webhooks
-description: Configure GitHub and GitLab webhooks to trigger TrustedOSS scans on push and PR/MR events with HMAC signature verification.
+description: Configure GitHub and GitLab webhooks to trigger TRUSCA scans on push and PR/MR events with HMAC signature verification.
 sidebar_label: Webhooks
 sidebar_position: 4
 ---

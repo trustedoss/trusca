@@ -1,7 +1,7 @@
 ---
 id: scans
 title: 스캔
-description: 소스·컨테이너 스캔 실행, 진행 상황 실시간 모니터링, 종료 상태 읽기 — TrustedOSS Portal의 전체 스캔 수명 주기.
+description: 소스·컨테이너 스캔 실행, 진행 상황 실시간 모니터링, 종료 상태 읽기 — TRUSCA의 전체 스캔 수명 주기.
 sidebar_label: 스캔
 sidebar_position: 2
 ---

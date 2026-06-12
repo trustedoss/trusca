@@ -1,7 +1,7 @@
 ---
 id: scans
 title: Scans
-description: Trigger source and container scans, watch progress in real time, and read terminal status — the full scan lifecycle in TrustedOSS Portal.
+description: Trigger source and container scans, watch progress in real time, and read terminal status — the full scan lifecycle in TRUSCA.
 sidebar_label: Scans
 sidebar_position: 2
 ---

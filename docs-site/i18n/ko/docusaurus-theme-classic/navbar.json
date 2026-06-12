@@ -1,10 +1,10 @@
 {
   "title": {
-    "message": "TrustedOSS Portal",
+    "message": "TRUSCA",
     "description": "The title in the navbar"
   },
   "logo.alt": {
-    "message": "TrustedOSS Portal 로고",
+    "message": "TRUSCA 로고",
     "description": "The alt text of navbar logo"
   },
   "item.label.Docs": {

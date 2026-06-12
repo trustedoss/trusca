@@ -1,7 +1,7 @@
 ---
 id: sbom-signature-verification
 title: SBOM 서명 검증 (cosign)
-description: TrustedOSS Portal의 SBOM 서명 번들을 내려받아 cosign verify-blob으로 외부에서 검증하고, key-based·keyless 서명을 위한 운영자 키를 설정합니다.
+description: TRUSCA의 SBOM 서명 번들을 내려받아 cosign verify-blob으로 외부에서 검증하고, key-based·keyless 서명을 위한 운영자 키를 설정합니다.
 sidebar_label: SBOM 서명 검증
 sidebar_position: 10
 ---
@@ -13,7 +13,7 @@ sidebar_position: 10
 :::note 대상 독자
 두 부류입니다.
 
-- **검증자**(1~4절) — TrustedOSS SBOM을 소비하며 그것이 변조되지 않았고 알려진 배포에서 서명되었음을 증명하려는 모든 사람. 셸 사용과 CLI 바이너리 설치 능력을 가정합니다.
+- **검증자**(1~4절) — TRUSCA SBOM을 소비하며 그것이 변조되지 않았고 알려진 배포에서 서명되었음을 증명하려는 모든 사람. 셸 사용과 CLI 바이너리 설치 능력을 가정합니다.
 - **운영자**(5절) — 포털을 배포하고 서명 키를 소유하는 사람. Linux + Docker Compose 숙련과 [환경 변수](./env-variables.md) 이해를 가정합니다.
 :::
 
@@ -21,7 +21,7 @@ sidebar_position: 10
 
 검증을 위해서는:
 
-1. 프로젝트가 속한 팀에서 최소 **Developer** [역할](./glossary.md#rbac-역할)을 가진 TrustedOSS 계정. 서명 엔드포인트는 SBOM 내보내기와 동일한 접근 제어를 재사용하므로 외부인은 `404`를 봅니다.
+1. 프로젝트가 속한 팀에서 최소 **Developer** [역할](./glossary.md#rbac-역할)을 가진 TRUSCA 계정. 서명 엔드포인트는 SBOM 내보내기와 동일한 접근 제어를 재사용하므로 외부인은 `404`를 봅니다.
 2. 프로젝트에 **성공한(succeeded)** 스캔이 하나 이상 있고, 그 스캔을 실행한 배포에 서명이 설정되어 있어야 합니다([5절](#5-운영자-키-설정) 참고). 서명되지 않은 스캔에는 서명 산출물이 없습니다.
 3. 검증을 수행하는 머신에 [cosign](https://docs.sigstore.dev/cosign/installation/) 설치([2절](#2-cosign-설치) 참고).
 
@@ -36,7 +36,7 @@ sidebar_position: 10
 
 ### key-based vs keyless
 
-cosign은 두 가지 신뢰 모델을 지원합니다. TrustedOSS는 둘 다 지원하며, 자체 호스팅·온프레미스·에어갭 배포에서는 **key-based가 기본값**입니다.
+cosign은 두 가지 신뢰 모델을 지원합니다. TRUSCA는 둘 다 지원하며, 자체 호스팅·온프레미스·에어갭 배포에서는 **key-based가 기본값**입니다.
 
 | 모델 | 배포가 서명하는 방식 | 검증자에게 필요한 것 | 사용 시점 |
 |---|---|---|---|

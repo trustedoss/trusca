@@ -1,14 +1,14 @@
 ---
 id: getting-started
 title: Getting started
-description: Clone the monorepo, bring up the dev stack with docker-compose, and ship your first PR to TrustedOSS Portal.
+description: Clone the monorepo, bring up the dev stack with docker-compose, and ship your first PR to TRUSCA.
 sidebar_label: Getting started
 sidebar_position: 1
 ---
 
 # Getting started
 
-Welcome to the TrustedOSS Portal contributor track. This page takes you from a clean machine to your first merged PR.
+Welcome to the TRUSCA contributor track. This page takes you from a clean machine to your first merged PR.
 
 :::note Audience
 Developers comfortable with Python (FastAPI / Pydantic), TypeScript (React 18 / Vite), Docker, and Git. No prior knowledge of Software Composition Analysis is required — the codebase is well factored.

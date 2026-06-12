@@ -1,7 +1,7 @@
 ---
 id: audit-log
 title: 감사 로그
-description: TrustedOSS Portal에서 모든 쓰기 작업의 추가 전용 감사 로그를 읽고 필터하고 내보냅니다.
+description: TRUSCA에서 모든 쓰기 작업의 추가 전용 감사 로그를 읽고 필터하고 내보냅니다.
 sidebar_label: 감사 로그
 sidebar_position: 4
 ---

@@ -10,7 +10,7 @@ sidebar_position: 7
 
 A **license** tells you *whether* you may use a component. An **obligation**
 tells you *what you must do* in return — reproduce a copyright notice, ship the
-license text, disclose source, and so on. TrustedOSS ships a structured,
+license text, disclose source, and so on. TRUSCA ships a structured,
 per-license **obligation catalog** so the **Obligations** tab and the generated
 **NOTICE** file are populated from real scans, not just demo seed data.
 

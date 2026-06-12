@@ -1,7 +1,7 @@
 ---
 id: jenkins
 title: Jenkins
-description: Wire TrustedOSS Portal into a Jenkins declarative pipeline using the bundled Jenkinsfile snippet.
+description: Wire TRUSCA into a Jenkins declarative pipeline using the bundled Jenkinsfile snippet.
 sidebar_label: Jenkins
 sidebar_position: 3
 ---
@@ -28,7 +28,7 @@ pipeline {
   }
 
   stages {
-    stage('TrustedOSS SCA') {
+    stage('TRUSCA SCA') {
       steps {
         withCredentials([string(credentialsId: 'trustedoss-api-key',
                                 variable: 'TRUSTEDOSS_API_KEY')]) {
@@ -155,7 +155,7 @@ Replace the final `test "${GATE}" = "pass"` line with:
 
 <!-- docs-uat: id=jenkins-warn-gate-snippet kind=shell ctx=host tier=manual waiver=jenkins-pipeline-snippet-not-standalone -->
 ```bash
-echo "::warning::TrustedOSS gate=${GATE}"
+echo "::warning::TRUSCA gate=${GATE}"
 ```
 
 The build stays green; the gate verdict is recorded in the console log only.
@@ -181,7 +181,7 @@ Native Jenkins does not enforce check status on a Git host's PR / MR — that is
 - **GitLab MRs** with Jenkins: install the GitLab plugin to publish the build status. Branch-protect on GitLab by requiring the pipeline to pass.
 - **Bitbucket / Gitea**: install the equivalent status-publisher plugin.
 
-The TrustedOSS gate does not change the wiring — it only changes the build's exit status.
+The TRUSCA gate does not change the wiring — it only changes the build's exit status.
 
 ## Idempotency
 

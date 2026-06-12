@@ -1,7 +1,7 @@
 ---
 id: live-demo
 title: 라이브 읽기 전용 데모
-description: TrustedOSS Portal을 공개 읽기 전용 라이브 데모로 운영하고 매일 밤 데이터셋을 초기화합니다.
+description: TRUSCA를 공개 읽기 전용 라이브 데모로 운영하고 매일 밤 데이터셋을 초기화합니다.
 sidebar_label: 라이브 데모
 sidebar_position: 4
 ---

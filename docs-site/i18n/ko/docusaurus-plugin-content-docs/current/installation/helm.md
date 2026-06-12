@@ -1,7 +1,7 @@
 ---
 id: helm
 title: Helm으로 Kubernetes에 설치
-description: 프로덕션 등급 Helm 차트로 TrustedOSS Portal을 Kubernetes에 배포합니다 — 번들 또는 외부 PostgreSQL·Redis, Ingress TLS, 마이그레이션 Job.
+description: 프로덕션 등급 Helm 차트로 TRUSCA를 Kubernetes에 배포합니다 — 번들 또는 외부 PostgreSQL·Redis, Ingress TLS, 마이그레이션 Job.
 sidebar_label: Helm / Kubernetes
 sidebar_position: 3
 ---
@@ -9,7 +9,7 @@ sidebar_position: 3
 # Helm으로 Kubernetes에 설치
 
 :::note 대상 독자
-프로덕션 등급 Helm 차트로 TrustedOSS Portal을 배포하려는 Kubernetes 운영자.
+프로덕션 등급 Helm 차트로 TRUSCA를 배포하려는 Kubernetes 운영자.
 `kubectl`, Helm 3, 기본 클러스터 관리(Ingress, StorageClass, cert-manager)
 숙련도를 전제합니다. 단일 호스트를 운영한다면
 [Docker Compose 설치](./docker-compose.md)가 더 간단합니다.
