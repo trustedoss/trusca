@@ -13,6 +13,7 @@
  *
  * Unknown errors fall back to `admin.errors.unknown`.
  */
+import { isDemoReadOnlyError } from "@/lib/demoReadOnly";
 import { ProblemError } from "@/lib/problem";
 
 const EXTENSION_KEY_MAP: Array<[string, string]> = [
@@ -33,6 +34,12 @@ const EXTENSION_KEY_MAP: Array<[string, string]> = [
  * generic 422/409 fallbacks.
  */
 export function adminErrorMessageKey(err: unknown): string {
+  // The read-only-demo 403 runs before auth and must win over the generic
+  // 403/forbidden mapping, so a demo write attempt reads as "demo is
+  // read-only" rather than "you lack permission".
+  if (isDemoReadOnlyError(err)) {
+    return "admin.errors.demo_read_only";
+  }
   if (!(err instanceof ProblemError)) {
     return "admin.errors.unknown";
   }
@@ -61,6 +68,11 @@ export function adminErrorMessageKey(err: unknown): string {
  * known extension is present.
  */
 export function adminErrorExtension(err: unknown): string {
+  // Mirror adminErrorMessageKey: the demo guard is the most specific match
+  // and is surfaced as its own token for e2e assertions.
+  if (isDemoReadOnlyError(err)) {
+    return "demo_read_only";
+  }
   if (!(err instanceof ProblemError)) {
     return "unknown";
   }

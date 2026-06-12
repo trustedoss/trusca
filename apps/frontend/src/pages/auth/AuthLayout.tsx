@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
+import { DemoBanner } from "@/components/DemoBanner";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import {
   Card,
@@ -34,6 +35,10 @@ export function AuthLayout({
   const { t } = useTranslation();
   return (
     <div className="min-h-screen bg-background text-foreground">
+      {/* B5 — surface read-only demo mode to unauthenticated visitors too, not
+          just inside the post-login shell. Self-gated: renders nothing on a
+          normal deploy. */}
+      <DemoBanner />
       <header
         className="flex items-center justify-between border-b px-6"
         style={{ height: "var(--layout-header)" }}
