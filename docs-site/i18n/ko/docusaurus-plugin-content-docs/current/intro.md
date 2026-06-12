@@ -1,15 +1,16 @@
 ---
 id: intro
 title: 소개
-description: TrustedOSS Portal — 자체 호스팅 가능한 Apache-2.0 SCA 포털. CVE, 라이선스 컴플라이언스, SBOM을 하나의 UI에서 관리합니다.
+description: TRUSCA — 자체 호스팅 가능한 Apache-2.0 SCA 포털. CVE, 라이선스 컴플라이언스, SBOM을 하나의 UI에서 관리합니다.
 sidebar_label: 소개
 sidebar_position: 0
 slug: /intro
 ---
 
-# TrustedOSS Portal
+# TRUSCA
 
-**TrustedOSS Portal**은 자체 호스팅이 가능한 Apache-2.0 라이선스의 SCA
+**TRUSCA**는 [TrustedOSS](https://trustedoss.github.io/)의 SCA 도구로,
+자체 호스팅이 가능한 Apache-2.0 라이선스의 SCA
 (Software Composition Analysis) 플랫폼입니다. CVE 추적, 라이선스 컴플라이언스,
 SBOM 관리를 한 화면에서 통합 제공하며, 상용 제품의 좌석당 라이선스 비용 없이
 운영할 수 있습니다.

@@ -1,7 +1,7 @@
 ---
 id: sbom
 title: SBOM
-description: TrustedOSS Portal에서 CycloneDX(JSON·XML)와 SPDX(JSON·Tag-Value) SBOM을 내보내고 NOTICE 파일을 생성합니다.
+description: TRUSCA에서 CycloneDX(JSON·XML)와 SPDX(JSON·Tag-Value) SBOM을 내보내고 NOTICE 파일을 생성합니다.
 sidebar_label: SBOM
 sidebar_position: 5
 ---

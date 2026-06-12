@@ -206,7 +206,7 @@ Open an issue on GitHub with:
 - OS + version (`cat /etc/os-release`)
 - Docker version (`docker version --format '{{.Server.Version}}'`)
 - Compose version (`docker-compose --version`)
-- TrustedOSS Portal commit SHA (`git rev-parse HEAD`)
+- TRUSCA commit SHA (`git rev-parse HEAD`)
 - Which sections passed / failed
 - For failures, attach the relevant `docker-compose -f docker-compose.yml logs --tail=300` output
 

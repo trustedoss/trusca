@@ -236,7 +236,7 @@ cron 대신 systemd 타이머를 선호한다면:
 ```ini
 # /etc/systemd/system/trustedoss-backup.service
 [Unit]
-Description=TrustedOSS Portal nightly backup
+Description=TRUSCA nightly backup
 
 [Service]
 Type=oneshot
@@ -247,7 +247,7 @@ StandardError=journal
 
 # /etc/systemd/system/trustedoss-backup.timer
 [Unit]
-Description=TrustedOSS Portal nightly backup timer
+Description=TRUSCA nightly backup timer
 
 [Timer]
 OnCalendar=*-*-* 03:00:00

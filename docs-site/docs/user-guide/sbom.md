@@ -1,7 +1,7 @@
 ---
 id: sbom
 title: SBOM
-description: Export CycloneDX (JSON/XML) and SPDX (JSON/Tag-Value) SBOMs and generate the NOTICE file in TrustedOSS Portal.
+description: Export CycloneDX (JSON/XML) and SPDX (JSON/Tag-Value) SBOMs and generate the NOTICE file in TRUSCA.
 sidebar_label: SBOM
 sidebar_position: 5
 ---

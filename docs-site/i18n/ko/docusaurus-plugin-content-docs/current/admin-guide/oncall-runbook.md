@@ -1,14 +1,14 @@
 ---
 id: oncall-runbook
 title: 온콜 런북
-description: TrustedOSS Portal 운영을 겨냥한 PagerDuty / 프로덕션 알림에 대한 1차 대응 플레이북.
+description: TRUSCA 운영을 겨냥한 PagerDuty / 프로덕션 알림에 대한 1차 대응 플레이북.
 sidebar_label: 온콜 런북
 sidebar_position: 99
 ---
 
 # 온콜 런북
 
-프로덕션 TrustedOSS Portal 스택에 대해 가장 빈번한 4개의 PagerDuty 알림에 대한 빠른 참조 플레이북입니다. 각 시나리오는 다음을 나열합니다:
+프로덕션 TRUSCA 스택에 대해 가장 빈번한 4개의 PagerDuty 알림에 대한 빠른 참조 플레이북입니다. 각 시나리오는 다음을 나열합니다:
 
 - **증상** — 페이지를 트리거한 것
 - **고객 영향** — 사용자가 지금 할 수 있는 / 할 수 없는 것
@@ -33,7 +33,7 @@ ACCESS_TOKEN=$(curl -fsS -X POST "https://<your-host>/api/auth/login" \
 ## 시나리오 1 — Trivy DB stale 또는 누락
 
 ### 증상
-PagerDuty: `TrustedOSS Trivy DB last refresh > 14 days` 또는 `TrustedOSS Trivy DB missing on worker`. 곧 도착하는 `/admin/health → Vulnerability data` 카드(roadmap)가 이를 구동합니다.
+PagerDuty: `TRUSCA Trivy DB last refresh > 14 days` 또는 `TRUSCA Trivy DB missing on worker`. 곧 도착하는 `/admin/health → Vulnerability data` 카드(roadmap)가 이를 구동합니다.
 
 ### 고객 영향
 - 신규 스캔 큐잉은 여전히 가능합니다 — `cdxgen` + scancode가 SBOM과 라이선스 finding을 계속 생성합니다.
@@ -87,7 +87,7 @@ docker-compose -f docker-compose.yml exec worker \
 ## 시나리오 2 — 자동 백업 3일 연속 실패
 
 ### 증상
-PagerDuty: `TrustedOSS auto-backup task failure count = 3`.
+PagerDuty: `TRUSCA auto-backup task failure count = 3`.
 
 ### 고객 영향
 - 호스트가 크래시하면 포털의 모든 데이터가 위험합니다(복원할 최근 백업 없음). 신선한 백업이 도착할 때까지 다운스트림 작업(컴플라이언스 동결 등)을 계획하세요.
@@ -135,7 +135,7 @@ docker-compose -f docker-compose.yml exec backend df -h /opt/trustedoss/backups
 ## 시나리오 3 — 스캔이 `running` 에서 4시간 이상 멈춤
 
 ### 증상
-PagerDuty: `TrustedOSS scan running > 4h for project X`.
+PagerDuty: `TRUSCA scan running > 4h for project X`.
 
 ### 고객 영향
 - 해당 프로젝트: 신규 스캔이 차단됩니다(한 번에 1건 실행 정책).
@@ -172,7 +172,7 @@ docker-compose exec worker ps -ef | grep -E 'cdxgen|ort|trivy'
 ## 시나리오 4 — 호스트 디스크 95% 이상
 
 ### 증상
-PagerDuty: `TrustedOSS portal disk = 95%+`.
+PagerDuty: `TRUSCA disk = 95%+`.
 
 ### 고객 영향
 - 실행 중 스캔은 계속 진행됩니다. 신규 스캔은 `DISK_HARD_LIMIT_PCT` 임계(기본 95%) 에서 **차단**됩니다 — `/admin/scans` 에 무한 큐 상태로 표시됩니다.

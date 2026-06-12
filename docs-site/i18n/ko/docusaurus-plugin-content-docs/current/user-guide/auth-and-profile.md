@@ -9,7 +9,7 @@ sidebar_position: 7
 # 인증과 프로필
 
 <!-- docs-uat: id=auth-login kind=ui harness=login(dev@demo.trustedoss.dev,DemoTest2026!) tier=nightly -->
-TrustedOSS Portal은 두 가지 대화형 로그인 방식 — **이메일 + 비밀번호**와 **OAuth**(GitHub 또는 Google) — 그리고 셀프 서비스 비밀번호 복구 흐름을 제공합니다. 이 페이지는 각 경로를 따라가고 `/profile` 페이지에서의 신원 관리를 다룹니다.
+TRUSCA는 두 가지 대화형 로그인 방식 — **이메일 + 비밀번호**와 **OAuth**(GitHub 또는 Google) — 그리고 셀프 서비스 비밀번호 복구 흐름을 제공합니다. 이 페이지는 각 경로를 따라가고 `/profile` 페이지에서의 신원 관리를 다룹니다.
 
 :::note 대상 독자
 로그인된 모든 사용자. 본인의 신원을 관리하는 데 특별한 역할은 필요 없습니다. OAuth 버튼은 운영자가 해당 `*_CLIENT_ID` / `*_CLIENT_SECRET` 환경 변수를 구성한 경우에만 표시됩니다.
@@ -37,7 +37,7 @@ TrustedOSS Portal은 두 가지 대화형 로그인 방식 — **이메일 + 비
 1. `/login`에서 **Forgot password?**를 클릭하면 `/forgot-password`로 이동합니다.
 2. 계정과 연결된 이메일을 입력합니다.
 3. 제출합니다. 포털은 해당 이메일에 계정이 없더라도 항상 204 No Content를 반환합니다 — 사용자 열거를 막기 위한 설계입니다.
-4. 메일함을 확인합니다. 계정이 존재한다면 **"Reset your TrustedOSS Portal password"** 제목의 메시지가 약 30초 이내에 도착합니다.
+4. 메일함을 확인합니다. 계정이 존재한다면 **"Reset your TRUSCA password"** 제목의 메시지가 약 30초 이내에 도착합니다.
 
 리셋 링크는 **24시간 동안 유효하며 1회만 사용 가능**합니다. 만료되거나 사용된 후에는 토큰이 폐기됩니다.
 

@@ -1,6 +1,6 @@
 # Getting Support
 
-Thanks for using TrustedOSS Portal. This page points you to the right place for
+Thanks for using TRUSCA. This page points you to the right place for
 each kind of request so you get an answer quickly.
 
 ## Documentation first
@@ -54,7 +54,7 @@ process.
 
 ## Commercial inquiries
 
-TrustedOSS Portal is a community-driven, Apache-2.0 project. For commercial
+TRUSCA is a community-driven, Apache-2.0 project. For commercial
 inquiries — managed hosting, support contracts, or partnerships — email
 **hello@trustedoss.io**. There is no paid support tier today; community channels
 above are the supported path.

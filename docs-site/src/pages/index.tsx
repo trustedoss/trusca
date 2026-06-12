@@ -22,8 +22,9 @@ function HomepageHero(): ReactNode {
         <h1 className={styles.heroTitle}>{siteConfig.title}</h1>
         <p className={styles.heroSubtitle}>
           <Translate id="homepage.hero.subtitle">
-            Enterprise Software Composition Analysis — vulnerabilities, license
-            compliance, and SBOMs in one self-hosted UI. No per-seat licensing.
+            The SCA tool of the TrustedOSS initiative — vulnerabilities,
+            license compliance, and SBOMs in one self-hosted UI. No per-seat
+            licensing.
           </Translate>
         </p>
         <div className={styles.heroCtas}>
@@ -99,7 +100,7 @@ export default function Home(): ReactNode {
     <Layout
       title={translate({
         id: "homepage.meta.title",
-        message: "TrustedOSS Portal — Enterprise OSS Risk Management",
+        message: "TRUSCA — Enterprise OSS Risk Management",
       })}
       description={siteConfig.tagline}
     >

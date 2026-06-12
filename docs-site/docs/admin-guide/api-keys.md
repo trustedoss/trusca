@@ -1,7 +1,7 @@
 ---
 id: api-keys
 title: API keys
-description: Issue, scope, and rotate API keys for service accounts and CI integrations in TrustedOSS Portal.
+description: Issue, scope, and rotate API keys for service accounts and CI integrations in TRUSCA.
 sidebar_label: API keys
 sidebar_position: 6
 ---

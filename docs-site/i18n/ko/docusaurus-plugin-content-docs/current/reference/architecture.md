@@ -1,14 +1,14 @@
 ---
 id: architecture
 title: 아키텍처
-description: TrustedOSS Portal 아키텍처 — 서비스, 데이터 흐름, 스캔 파이프라인, 라이선스 분류, Trivy 취약점 매칭, 운영 프리미티브.
+description: TRUSCA 아키텍처 — 서비스, 데이터 흐름, 스캔 파이프라인, 라이선스 분류, Trivy 취약점 매칭, 운영 프리미티브.
 sidebar_label: 아키텍처
 sidebar_position: 1
 ---
 
 # 아키텍처
 
-이 페이지는 TrustedOSS Portal이 내부적으로 어떻게 연결되어 있는지 설명합니다. 포털을 확장하거나 기존 플랫폼에 통합하거나 사내 아키텍처 리뷰에 비교하려고 한다면 여기서 시작하세요.
+이 페이지는 TRUSCA가 내부적으로 어떻게 연결되어 있는지 설명합니다. 포털을 확장하거나 기존 플랫폼에 통합하거나 사내 아키텍처 리뷰에 비교하려고 한다면 여기서 시작하세요.
 
 :::note 대상 독자
 아키텍트, 플랫폼 엔지니어, 보안 리뷰어. FastAPI, PostgreSQL, Celery, Docker에 익숙해야 합니다.

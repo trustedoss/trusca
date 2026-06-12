@@ -1,13 +1,13 @@
 # Project Governance
 
-This document describes how TrustedOSS Portal is governed: how decisions are made,
+This document describes how TRUSCA is governed: how decisions are made,
 who makes them, and how someone becomes a maintainer. It complements
 [`CONTRIBUTING.md`](CONTRIBUTING.md) (how to contribute) and
 [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) (how we treat each other).
 
 ## Decision-making model
 
-TrustedOSS Portal operates on **maintainer consensus** with a lightweight
+TRUSCA operates on **maintainer consensus** with a lightweight
 lead-maintainer tie-breaker. In practice:
 
 - Most decisions are made in the open on issues and pull requests. A change

@@ -1,7 +1,7 @@
 ---
 id: users-and-teams
 title: Users & teams
-description: Manage TrustedOSS Portal users and teams — RBAC roles, last-super-admin protection, invitations, and the org-vs-team model.
+description: Manage TRUSCA users and teams — RBAC roles, last-super-admin protection, invitations, and the org-vs-team model.
 sidebar_label: Users & teams
 sidebar_position: 1
 ---

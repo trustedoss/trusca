@@ -1,7 +1,7 @@
 ---
 id: jenkins
 title: Jenkins
-description: 번들된 Jenkinsfile 스니펫을 사용해 TrustedOSS Portal을 Jenkins declarative pipeline에 연결합니다.
+description: 번들된 Jenkinsfile 스니펫을 사용해 TRUSCA를 Jenkins declarative pipeline에 연결합니다.
 sidebar_label: Jenkins
 sidebar_position: 3
 ---
@@ -28,7 +28,7 @@ pipeline {
   }
 
   stages {
-    stage('TrustedOSS SCA') {
+    stage('TRUSCA SCA') {
       steps {
         withCredentials([string(credentialsId: 'trustedoss-api-key',
                                 variable: 'TRUSTEDOSS_API_KEY')]) {
@@ -147,7 +147,7 @@ when {
 
 <!-- docs-uat: id=jenkins-warn-gate-snippet kind=shell ctx=host tier=manual waiver=jenkins-pipeline-snippet-not-standalone -->
 ```bash
-echo "::warning::TrustedOSS gate=${GATE}"
+echo "::warning::TRUSCA gate=${GATE}"
 ```
 
 빌드는 green을 유지하며 게이트 verdict는 콘솔 로그에만 기록됩니다.
@@ -173,7 +173,7 @@ SBOM이 빌드에 첨부되어 Jenkins UI에서 다운로드 가능합니다.
 - **GitLab MR + Jenkins** — GitLab 플러그인을 설치해 빌드 상태를 게시. GitLab에서 파이프라인 통과를 요구하도록 브랜치 보호.
 - **Bitbucket / Gitea** — 등가의 status-publisher 플러그인 설치.
 
-TrustedOSS 게이트는 와이어링을 바꾸지 않습니다 — 빌드의 종료 상태만 바꿉니다.
+TRUSCA 게이트는 와이어링을 바꾸지 않습니다 — 빌드의 종료 상태만 바꿉니다.
 
 ## 멱등성
 

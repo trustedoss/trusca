@@ -1,12 +1,12 @@
 {
   "homepage.meta.title": {
-    "message": "TrustedOSS Portal — 엔터프라이즈 OSS 리스크 관리"
+    "message": "TRUSCA — 엔터프라이즈 OSS 리스크 관리"
   },
   "homepage.hero.eyebrow": {
     "message": "Apache-2.0 · 자체 호스팅 · v0.10.0"
   },
   "homepage.hero.subtitle": {
-    "message": "엔터프라이즈 SCA — 취약점, 라이선스 컴플라이언스, SBOM을 하나의 자체 호스팅 UI에서. 시트당 라이선스 비용 없음."
+    "message": "TrustedOSS의 SCA 도구, TRUSCA — 취약점, 라이선스 컴플라이언스, SBOM을 하나의 자체 호스팅 UI에서. 시트당 라이선스 비용 없음."
   },
   "homepage.hero.cta.quickstart": {
     "message": "Quickstart — 5분"

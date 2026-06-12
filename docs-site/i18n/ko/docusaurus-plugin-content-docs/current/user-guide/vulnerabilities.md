@@ -1,7 +1,7 @@
 ---
 id: vulnerabilities
 title: 취약점
-description: TrustedOSS Portal에서 CVE 분류 — VEX 상태 머신, 심각도 모델, 억제 흐름, 재탐지.
+description: TRUSCA에서 CVE 분류 — VEX 상태 머신, 심각도 모델, 억제 흐름, 재탐지.
 sidebar_label: 취약점
 sidebar_position: 4
 ---

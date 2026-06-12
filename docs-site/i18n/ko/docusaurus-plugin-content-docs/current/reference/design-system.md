@@ -1,7 +1,7 @@
 ---
 id: design-system
 title: 디자인 시스템
-description: TrustedOSS Portal 디자인 시스템 — 토큰(색·spacing·radius·shadow·motion·typography)·컴포넌트 규약·마이크로인터랙션·접근성·W11 시각 정체성 재정의.
+description: TRUSCA 디자인 시스템 — 토큰(색·spacing·radius·shadow·motion·typography)·컴포넌트 규약·마이크로인터랙션·접근성·W11 시각 정체성 재정의.
 sidebar_label: 디자인 시스템
 sidebar_position: 10
 ---
@@ -22,7 +22,7 @@ sidebar_position: 10
 
 ## 철학
 
-TrustedOSS Portal 은 **리스크 우선 · 정보 밀도 · 모던 엔터프라이즈** SCA 도구입니다. 시각 정체성이 충족해야 할 것:
+TRUSCA는 **리스크 우선 · 정보 밀도 · 모던 엔터프라이즈** SCA 도구입니다. 시각 정체성이 충족해야 할 것:
 
 1. **한눈에 심각도 전달.** Severity 색 (Critical / High / Medium / Low / Info) 은 항상 텍스트 라벨 + 아이콘/dot 와 함께 — 색은 신호의 단독 수단이 아닙니다.
 2. **답답하지 않게 데이터 밀도.** 40 px compact 행 · 224 px 사이드바 · 48 px 헤더 · 16/20/24 px 카드 padding 표준화.

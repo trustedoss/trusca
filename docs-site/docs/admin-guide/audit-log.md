@@ -1,7 +1,7 @@
 ---
 id: audit-log
 title: Audit log
-description: Read, filter, and export the append-only audit log of every write operation in TrustedOSS Portal.
+description: Read, filter, and export the append-only audit log of every write operation in TRUSCA.
 sidebar_label: Audit log
 sidebar_position: 4
 ---

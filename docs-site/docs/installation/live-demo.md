@@ -1,7 +1,7 @@
 ---
 id: live-demo
 title: Live read-only demo
-description: Run TrustedOSS Portal as a public, read-only live demo with a nightly dataset reset.
+description: Run TRUSCA as a public, read-only live demo with a nightly dataset reset.
 sidebar_label: Live demo
 sidebar_position: 4
 ---

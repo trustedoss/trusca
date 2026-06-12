@@ -1,14 +1,14 @@
 ---
 id: github-actions
 title: GitHub Actions
-description: Wire TrustedOSS Portal into a GitHub Actions workflow with the in-repo composite action at actions/scan — trigger, poll, gate, comment.
+description: Wire TRUSCA into a GitHub Actions workflow with the in-repo composite action at actions/scan — trigger, poll, gate, comment.
 sidebar_label: GitHub Actions
 sidebar_position: 1
 ---
 
 # GitHub Actions
 
-The TrustedOSS composite action triggers a TrustedOSS scan, waits for it to finish, evaluates the build gate, and (on pull requests) posts the SCA report back to the PR. It exits non-zero when the gate fails so the PR check turns red and your branch-protection rule blocks the merge.
+The TRUSCA composite action triggers a TRUSCA scan, waits for it to finish, evaluates the build gate, and (on pull requests) posts the SCA report back to the PR. It exits non-zero when the gate fails so the PR check turns red and your branch-protection rule blocks the merge.
 
 :::note Audience
 Engineers maintaining a GitHub repository that uses GitHub Actions. You need an API key for the portal — see [API keys](../admin-guide/api-keys.md).
@@ -23,7 +23,7 @@ Use the in-repo composite action at `actions/scan/action.yml` directly via `uses
 <!-- docs-uat: id=gha-quickstart-workflow kind=manual tier=manual -->
 ```yaml
 # .github/workflows/sca.yml
-name: TrustedOSS SCA
+name: TRUSCA SCA
 on:
   pull_request:
   push:
@@ -37,7 +37,7 @@ jobs:
       pull-requests: write    # required for PR comments
     steps:
       - uses: actions/checkout@v4
-      - name: TrustedOSS SCA scan
+      - name: TRUSCA SCA scan
         uses: trustedoss/trustedoss-portal/actions/scan@v0.10.0
         with:
           api-url: https://trustedoss.example.com
@@ -106,7 +106,7 @@ Drop `.github/workflows/sca.yml` (above) into the repo. On the next PR, the SCA 
 Use them in subsequent steps:
 
 ```yaml
-- name: TrustedOSS SCA scan
+- name: TRUSCA SCA scan
   id: sca
   uses: trustedoss/trustedoss-portal/actions/scan@v0.10.0
   with:

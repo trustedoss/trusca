@@ -1,14 +1,14 @@
 ---
 id: agent-team
 title: Agent team
-description: The nine specialist agents that build TrustedOSS Portal, the Producer-Reviewer pattern, and when to trigger security review.
+description: The nine specialist agents that build TRUSCA, the Producer-Reviewer pattern, and when to trigger security review.
 sidebar_label: Agent team
 sidebar_position: 4
 ---
 
 # Agent team
 
-TrustedOSS Portal is built by an orchestrated team of nine specialist agents. Each owns a domain and is invoked by the harness when the work crosses into that domain. This page is contributor-facing: it tells you which agent does what, when to trigger which one, and the **mandatory security-review checkpoints**.
+TRUSCA is built by an orchestrated team of nine specialist agents. Each owns a domain and is invoked by the harness when the work crosses into that domain. This page is contributor-facing: it tells you which agent does what, when to trigger which one, and the **mandatory security-review checkpoints**.
 
 :::note Audience
 Contributors who use the agent harness to ship work, and reviewers who want to know which checkpoints are non-negotiable.

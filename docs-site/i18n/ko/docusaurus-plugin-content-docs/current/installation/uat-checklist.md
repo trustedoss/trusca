@@ -205,7 +205,7 @@ GitHub 이슈에 다음을 첨부:
 - OS + 버전 (`cat /etc/os-release`)
 - Docker 버전 (`docker version --format '{{.Server.Version}}'`)
 - Compose 버전 (`docker-compose --version`)
-- TrustedOSS Portal 커밋 SHA (`git rev-parse HEAD`)
+- TRUSCA 커밋 SHA (`git rev-parse HEAD`)
 - 어떤 섹션이 통과/실패했는지
 - 실패한 경우 `docker-compose -f docker-compose.yml logs --tail=300` 출력 첨부
 

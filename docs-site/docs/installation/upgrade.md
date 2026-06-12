@@ -1,7 +1,7 @@
 ---
 id: upgrade
 title: Upgrade
-description: Upgrade an existing TrustedOSS Portal install with the bundled wrapper script — backup, image pull, alembic upgrade, health probe.
+description: Upgrade an existing TRUSCA install with the bundled wrapper script — backup, image pull, alembic upgrade, health probe.
 sidebar_label: Upgrade
 sidebar_position: 2
 ---
@@ -16,7 +16,7 @@ Operators with `sudo` on the host that runs the portal. Familiarity with `docker
 
 ## Compatibility & policy
 
-- **Forward-only Alembic migrations.** TrustedOSS Portal does not support `alembic downgrade`. To revert, restore the pre-upgrade backup (see [Rollback](#rollback)).
+- **Forward-only Alembic migrations.** TRUSCA does not support `alembic downgrade`. To revert, restore the pre-upgrade backup (see [Rollback](#rollback)).
 - **Minor / patch upgrades** within the same major version are always supported in place. **Major upgrades** (e.g., 2.x → 3.x) are documented in dedicated release notes; do not run `scripts/upgrade.sh` blindly across major versions.
 - **Downtime expectation:** the portal is briefly unavailable while `docker-compose up -d` recreates services whose image changed. Typical window is under 30 seconds.
 

@@ -1,7 +1,7 @@
 ---
 id: docker-compose
 title: Install with Docker Compose
-description: Step-by-step install of TrustedOSS Portal on a Linux host using docker-compose V1 and the bundled install wizard.
+description: Step-by-step install of TRUSCA on a Linux host using docker-compose V1 and the bundled install wizard.
 sidebar_label: Docker Compose
 sidebar_position: 1
 ---
@@ -37,7 +37,7 @@ df -h /                            # at least 20 GB free
 
 ## Evaluation install (dev stack)
 
-Want to *try* TrustedOSS Portal before committing a production host? The
+Want to *try* TRUSCA before committing a production host? The
 **dev stack** (`docker-compose.dev.yml`) stands the portal up from a clone and
 lets you seed a realistic demo dataset, so you go from clone to a populated
 dashboard in a few commands.

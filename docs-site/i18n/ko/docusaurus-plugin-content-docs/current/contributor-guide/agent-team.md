@@ -1,14 +1,14 @@
 ---
 id: agent-team
 title: 에이전트 팀
-description: TrustedOSS Portal을 만드는 9명의 전문 에이전트, Producer-Reviewer 패턴, security review 트리거 시점.
+description: TRUSCA를 만드는 9명의 전문 에이전트, Producer-Reviewer 패턴, security review 트리거 시점.
 sidebar_label: 에이전트 팀
 sidebar_position: 4
 ---
 
 # 에이전트 팀
 
-TrustedOSS Portal은 9명의 전문 에이전트로 오케스트레이션된 팀이 만듭니다. 각 에이전트는 도메인을 소유하며, 작업이 그 도메인으로 넘어갈 때 하네스가 호출합니다. 이 페이지는 컨트리뷰터를 위해 어떤 에이전트가 무엇을 하는지, 언제 어떤 에이전트를 트리거해야 하는지, **필수 security review 체크포인트**가 무엇인지 설명합니다.
+TRUSCA는 9명의 전문 에이전트로 오케스트레이션된 팀이 만듭니다. 각 에이전트는 도메인을 소유하며, 작업이 그 도메인으로 넘어갈 때 하네스가 호출합니다. 이 페이지는 컨트리뷰터를 위해 어떤 에이전트가 무엇을 하는지, 언제 어떤 에이전트를 트리거해야 하는지, **필수 security review 체크포인트**가 무엇인지 설명합니다.
 
 :::note 대상 독자
 에이전트 하네스로 작업을 출하하는 컨트리뷰터, 그리고 어떤 체크포인트가 비협상인지 알고자 하는 리뷰어.

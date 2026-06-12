@@ -1,8 +1,8 @@
 # Security Policy
 
-The TrustedOSS Portal team takes the security of our software and our users seriously. This document describes how to report a vulnerability, what you can expect from us, and which versions we support.
+The TRUSCA team takes the security of our software and our users seriously. This document describes how to report a vulnerability, what you can expect from us, and which versions we support.
 
-> **Reminder:** TrustedOSS Portal is itself an SCA (Software Composition Analysis) tool. We hold ourselves to the same standard we help our users enforce.
+> **Reminder:** TRUSCA is itself an SCA (Software Composition Analysis) tool. We hold ourselves to the same standard we help our users enforce.
 
 ---
 
@@ -93,8 +93,8 @@ Older versions (including v1) do not receive security patches. Please upgrade.
 
 This policy covers vulnerabilities in:
 
-- TrustedOSS Portal backend (`apps/backend/`)
-- TrustedOSS Portal frontend (`apps/frontend/`)
+- TRUSCA backend (`apps/backend/`)
+- TRUSCA frontend (`apps/frontend/`)
 - Bundled integrations and Celery tasks (`apps/backend/integrations/`, `apps/backend/tasks/`)
 - Official Docker images, Docker Compose configurations, and Helm chart
 - Official install / upgrade / backup / restore scripts (`scripts/`)
@@ -112,7 +112,7 @@ This policy covers vulnerabilities in:
 
 ## Hardening Guidance
 
-If you operate a TrustedOSS Portal deployment, we recommend reviewing:
+If you operate a TRUSCA deployment, we recommend reviewing:
 
 - Enabling HTTPS at the edge (Traefik configuration is included in the production compose file).
 - Rotating the `SECRET_KEY`, `DT_API_KEY`, and database password on installation.
@@ -144,4 +144,4 @@ Verification instructions will be published in the release notes.
 | Conduct concerns | `conduct@trustedoss.io` (see [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md)) |
 | Everything else | GitHub Issues / Discussions |
 
-Thank you for helping keep TrustedOSS Portal and its users safe.
+Thank you for helping keep TRUSCA and its users safe.

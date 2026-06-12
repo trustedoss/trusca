@@ -1,14 +1,14 @@
 ---
 id: architecture
 title: Architecture
-description: TrustedOSS Portal architecture — services, data flow, scan pipeline, license classification, Trivy vulnerability matching, and operational primitives.
+description: TRUSCA architecture — services, data flow, scan pipeline, license classification, Trivy vulnerability matching, and operational primitives.
 sidebar_label: Architecture
 sidebar_position: 1
 ---
 
 # Architecture
 
-This page explains how TrustedOSS Portal is wired up under the hood. It is the place to start if you want to extend the portal, integrate it into an existing platform, or evaluate it against an internal architecture review.
+This page explains how TRUSCA is wired up under the hood. It is the place to start if you want to extend the portal, integrate it into an existing platform, or evaluate it against an internal architecture review.
 
 :::note Audience
 Architects, platform engineers, and security reviewers. Familiarity with FastAPI, PostgreSQL, Celery, and Docker.

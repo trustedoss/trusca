@@ -1,4 +1,4 @@
-// TrustedOSS Portal — Docusaurus configuration.
+// TRUSCA — Docusaurus configuration.
 //
 // Two locales (en, ko) ship together at GA per CLAUDE.md. The site is built
 // on every push to `main` by .github/workflows/docs.yml and deployed to
@@ -9,8 +9,8 @@ import type { Config } from "@docusaurus/types";
 import type * as Preset from "@docusaurus/preset-classic";
 
 const config: Config = {
-  title: "TrustedOSS Portal",
-  tagline: "Enterprise OSS Risk Management — Apache-2.0",
+  title: "TRUSCA",
+  tagline: "Open-source SCA platform — CVEs, licenses, and SBOMs in one place",
   favicon: "img/favicon.svg",
 
   url: "https://trustedoss.github.io",
@@ -91,9 +91,9 @@ const config: Config = {
       respectPrefersColorScheme: true,
     },
     navbar: {
-      title: "TrustedOSS Portal",
+      title: "TRUSCA",
       logo: {
-        alt: "TrustedOSS Portal Logo",
+        alt: "TRUSCA Logo",
         src: "img/logo.svg",
       },
       items: [
