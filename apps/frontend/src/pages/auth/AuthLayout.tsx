@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
-import { useTranslation } from "react-i18next";
 
+import { BrandMark } from "@/components/BrandMark";
+import { BrandWordmark } from "@/components/BrandWordmark";
 import { DemoBanner } from "@/components/DemoBanner";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import {
@@ -32,7 +33,6 @@ export function AuthLayout({
   footer,
   testId,
 }: AuthLayoutProps) {
-  const { t } = useTranslation();
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* B5 — surface read-only demo mode to unauthenticated visitors too, not
@@ -43,8 +43,9 @@ export function AuthLayout({
         className="flex items-center justify-between border-b px-6"
         style={{ height: "var(--layout-header)" }}
       >
-        <span className="text-sm font-semibold tracking-tight">
-          {t("app.name")}
+        <span className="flex items-center gap-2 text-sm font-semibold tracking-tight">
+          <BrandMark size={20} />
+          <BrandWordmark />
         </span>
         <LanguageToggle />
       </header>

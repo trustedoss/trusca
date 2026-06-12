@@ -50,12 +50,16 @@
   - **C Stacked SBOM** — 구성요소 목록 막대 + 최상단 검증
 - **선정안**: **A Hex Check** (2026-06-12 확정) — 패키지 육각 + 검증 체크.
   16px 가독성이 가장 좋고 보안 도구 관례에 부합.
-- **팔레트**: 기존 토큰만 — ink `#18181b`(warm near-black), paper `#fafafa`,
-  accent `#2563eb`(README 배지에 이미 쓰는 블루). 새 브랜드 컬러를 만들지 않는다.
-- **워드마크**: Inter semibold tracking-tight, `TRU`(ink) + `SCA`(accent).
-- **적용 자산**(선정 후 교체): `docs-site/static/img/{logo,favicon}.svg`,
-  `apps/frontend/public/favicon.svg`(+ `index.html` link), AppShell 접힘 레일
-  모노그램.
+- **팔레트**(2026-06-13 갱신): ink `#18181b`(warm near-black), paper `#fafafa`,
+  **accent = 틸 `#0f766e`(teal-700)**. 마크 타일은 ink가 아닌 **accent(틸)** 로 칠한다
+  — 단색 near-black 타일이 "너무 검다"는 사용자 피드백(2026-06-13)에 따라, TRUSCA
+  고유 브랜드 컬러로 틸을 도입(기존 계획의 블루 `#2563eb`에서 변경, 리스크 Low의
+  블루와도 분리). 틸은 흰 배경 5.47:1로 WCAG AA 통과.
+- **워드마크**: Inter semibold tracking-tight, `TRU`(ink) + `SCA`(**틸 accent**).
+  구현은 `apps/frontend/src/components/BrandWordmark.tsx`(AppShell 확장 락업).
+  로그인 등 문장 속 "TRUSCA" 표기는 평문 유지(로케일별 어순 상이).
+- **적용 자산**: 타일 틸 = `apps/frontend/src/components/BrandMark.tsx`,
+  `apps/frontend/public/favicon.svg`, `docs-site/static/img/{logo,favicon}.svg`.
 
 ## 5. 보존 식별자 (의도적 비변경)
 

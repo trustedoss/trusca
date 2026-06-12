@@ -27,6 +27,7 @@ import {
   useCommandMenuShortcut,
 } from "@/components/CommandMenu";
 import { BrandMark } from "@/components/BrandMark";
+import { BrandWordmark } from "@/components/BrandWordmark";
 import { DemoBanner } from "@/components/DemoBanner";
 import { HeaderBell } from "@/components/HeaderBell";
 import { LanguageToggle } from "@/components/LanguageToggle";
@@ -214,7 +215,7 @@ function SidebarNav({
         ) : (
           <span className="flex items-center gap-2">
             <BrandMark size={20} />
-            {t("app.name")}
+            <BrandWordmark />
           </span>
         )}
       </div>

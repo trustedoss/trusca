@@ -7,8 +7,11 @@
  * rail; reuse this component anywhere the symbol is needed instead of
  * re-inlining the paths.
  *
- * Palette is fixed brand ink/paper (not theme tokens) so the tile reads
- * identically on any surface, matching the favicon.
+ * Palette is fixed brand colour (not theme tokens) so the tile reads
+ * identically on any surface, matching the favicon: teal accent tile
+ * (#0f766e) with the hexagon + check in paper (#fafafa). The teal is the
+ * TRUSCA brand accent — also used for the "SCA" half of the wordmark
+ * (see BrandWordmark / docs/brand-trusca.md).
  */
 
 export function BrandMark({ size = 24 }: { size?: number }) {
@@ -22,7 +25,7 @@ export function BrandMark({ size = 24 }: { size?: number }) {
       aria-hidden
       focusable="false"
     >
-      <rect width="32" height="32" rx="7" fill="#18181b" />
+      <rect width="32" height="32" rx="7" fill="#0f766e" />
       <path
         d="M16 6.5 L24.2 11.25 V20.75 L16 25.5 L7.8 20.75 V11.25 Z"
         fill="none"
