@@ -207,7 +207,7 @@ def build_report_html(
 
     # --- Header ---------------------------------------------------------
     parts.append('<header class="report-header">')
-    parts.append('<div class="brand">TrustedOSS Portal</div>')
+    parts.append('<div class="brand">TRUSCA</div>')
     parts.append('<h1 class="report-title">Vulnerability Report</h1>')
     parts.append(f'<div class="project-name">{_esc(project_name)}</div>')
     parts.append(f'<div class="generated">Generated: {_esc(generated_iso)}</div>')

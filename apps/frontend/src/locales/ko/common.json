@@ -1,7 +1,7 @@
 {
   "app": {
-    "name": "TrustedOSS Portal",
-    "tagline": "엔터프라이즈를 위한 오픈소스 SCA 플랫폼"
+    "name": "TRUSCA",
+    "tagline": "오픈소스 SCA 플랫폼 — CVE·라이선스·SBOM을 한곳에서"
   },
   "language": {
     "label": "언어",
@@ -35,7 +35,7 @@
     "active_team": "활성 팀: {{team}}"
   },
   "home": {
-    "title": "TrustedOSS Portal에 오신 것을 환영합니다",
+    "title": "TRUSCA에 오신 것을 환영합니다",
     "subtitle": "부트스트랩이 가동되었습니다. 인증·프로젝트·스캔은 다음 Phase에서 추가됩니다.",
     "stack": "React 18 · Vite · shadcn/ui · TanStack Query · react-i18next",
     "api_label": "API 베이스",

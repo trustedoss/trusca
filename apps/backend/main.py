@@ -120,7 +120,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(
-    title="TrustedOSS Portal API",
+    title="TRUSCA API",
     version="2.2.0-dev",
     description=(
         "Open-source self-hosted SCA portal — CVE, license compliance, and SBOM "

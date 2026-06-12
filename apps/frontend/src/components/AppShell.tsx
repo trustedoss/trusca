@@ -26,6 +26,7 @@ import {
   CommandMenuTrigger,
   useCommandMenuShortcut,
 } from "@/components/CommandMenu";
+import { BrandMark } from "@/components/BrandMark";
 import { DemoBanner } from "@/components/DemoBanner";
 import { HeaderBell } from "@/components/HeaderBell";
 import { LanguageToggle } from "@/components/LanguageToggle";
@@ -208,13 +209,14 @@ function SidebarNav({
       >
         {collapsed ? (
           <>
-            <span aria-hidden className="text-base font-bold text-primary">
-              T
-            </span>
+            <BrandMark size={22} />
             <span className="sr-only">{t("app.name")}</span>
           </>
         ) : (
-          t("app.name")
+          <span className="flex items-center gap-2">
+            <BrandMark size={20} />
+            {t("app.name")}
+          </span>
         )}
       </div>
 
