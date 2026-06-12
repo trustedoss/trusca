@@ -1,0 +1,139 @@
+name: Deploy demo (Hetzner)
+
+# Optional CD for the public read-only demo SaaS on Hetzner (operator-runbook-hetzner.md).
+#
+# The runbook ships a MANUAL deploy path (ssh in, run scripts/upgrade.sh). This
+# workflow automates the same flow so a release can roll out without a hands-on
+# SSH session — it does NOT replace the manual path, it adds a button.
+#
+# It SSHes to the demo host and runs deploy/hetzner/remote-deploy.sh there, which
+# checks out the target tag, pins IMAGE_TAG, and delegates to scripts/upgrade.sh
+# (backup -> pull -> recreate -> migrate -> health probe).
+#
+# ── One-time operator setup (after the server exists) ────────────────────────
+# Create a GitHub Environment named `demo` (Settings -> Environments) and add:
+#   DEPLOY_HOST         the demo host (e.g. demo.trustedoss.dev or its IPv4)
+#   DEPLOY_USER         the SSH login user (the cloud-init user: trustedoss)
+#   DEPLOY_SSH_KEY      a PRIVATE key whose public half is in the host's
+#                       ~/.ssh/authorized_keys (use a dedicated deploy key, not
+#                       your personal key)
+#   DEPLOY_KNOWN_HOSTS  (recommended) output of `ssh-keyscan demo.trustedoss.dev`
+#                       so the host key is pinned. If omitted, the first
+#                       connection is trusted (accept-new) and a warning is logged.
+#   DEPLOY_SSH_PORT     (optional) SSH port, default 22
+#   DEPLOY_PATH         (optional) repo path on the server, default /opt/trustedoss/portal
+# Add a required reviewer on the `demo` Environment if you want a manual approval
+# gate before every deploy (recommended for a public site).
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to deploy (vX.Y.Z). Blank = latest published release."
+        required: false
+        type: string
+  release:
+    types: [published]
+
+# Never let two deploys touch the host at once; queue them instead of cancelling
+# (cancelling mid-upgrade could leave the stack half-recreated).
+concurrency:
+  group: deploy-hetzner
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Secrets live on this Environment; it can also carry a required-reviewer gate.
+    environment: demo
+    steps:
+      - name: Checkout (for deploy/hetzner/remote-deploy.sh)
+        uses: actions/checkout@v4
+
+      - name: Resolve & validate target tag
+        id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          if [ -n "${RELEASE_TAG:-}" ]; then
+            TAG="$RELEASE_TAG"
+          elif [ -n "${INPUT_TAG:-}" ]; then
+            TAG="$INPUT_TAG"
+          else
+            TAG="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName)"
+          fi
+          # Strict semver gate. Everything downstream (the remote git checkout,
+          # the IMAGE_TAG sed) trusts this, so reject anything that is not a bare
+          # vX.Y.Z — this is the injection boundary for the value we ship over SSH.
+          if ! printf '%s' "$TAG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::tag '$TAG' is not a vX.Y.Z semver"
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Deploying tag: $TAG"
+
+      - name: Deploy over SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          for var in DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_KEY; do
+            if [ -z "${!var:-}" ]; then
+              echo "::error::required secret $var is not set on the 'demo' environment"
+              exit 1
+            fi
+          done
+
+          port="${DEPLOY_SSH_PORT:-22}"
+          remote_path="${DEPLOY_PATH:-/opt/trustedoss/portal}"
+
+          # DEPLOY_PATH is an operator-owned secret, but it is interpolated into
+          # the remote command string below, so validate it as a plain absolute
+          # path (no shell metacharacters). This closes a misconfiguration
+          # foot-gun where a stray quote in the secret could break out of the
+          # remote command — defence in depth even though the actor already has
+          # deploy rights.
+          case "$remote_path" in
+            /*) : ;;
+            *) echo "::error::DEPLOY_PATH must be an absolute path (got '$remote_path')"; exit 1 ;;
+          esac
+          if printf '%s' "$remote_path" | grep -qE '[^A-Za-z0-9._/-]'; then
+            echo "::error::DEPLOY_PATH may only contain [A-Za-z0-9._/-]"
+            exit 1
+          fi
+
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          umask 077
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$tmp/key"
+          chmod 600 "$tmp/key"
+
+          ssh_opts=(-o BatchMode=yes -o ConnectTimeout=15)
+          if [ -n "${DEPLOY_KNOWN_HOSTS:-}" ]; then
+            printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$tmp/known_hosts"
+            ssh_opts+=(-o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$tmp/known_hosts")
+          else
+            echo "::warning::DEPLOY_KNOWN_HOSTS not set — trusting the host key on first use (TOFU). Set it to 'ssh-keyscan <host>' output to pin."
+            ssh_opts+=(-o StrictHostKeyChecking=accept-new -o "UserKnownHostsFile=$tmp/known_hosts")
+          fi
+
+          # TAG is a validated bare semver; remote_path is an operator-owned
+          # secret. Both are passed as remote env on the command line and consumed
+          # by the committed remote-deploy.sh (fed over stdin).
+          ssh -i "$tmp/key" -p "$port" "${ssh_opts[@]}" \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "TAG='$TAG' REMOTE_PATH='$remote_path' bash -s" \
+            < deploy/hetzner/remote-deploy.sh

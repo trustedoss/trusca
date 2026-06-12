@@ -286,6 +286,48 @@ du -sh /opt/trustedoss/workspace backups/
 
 ---
 
+## 10.5 자동 배포 (선택, CI/CD)
+
+위 단계는 손으로 배포하는 방법입니다. 서버가 한 번 떠 있으면, **Deploy demo
+(Hetzner)** 워크플로([`.github/workflows/deploy-hetzner.yml`](../.github/workflows/deploy-hetzner.yml))로
+GitHub에서 새 릴리스를 한 번의 클릭으로 배포할 수도 있습니다. SSH로 접속해
+동일한 `scripts/upgrade.sh` 흐름을 대신 실행합니다 — 수동 경로는 그대로
+동작하고, 이건 버튼을 하나 더하는 것뿐입니다.
+
+**일회성 설정**(서버가 생긴 뒤). GitHub **Environment** `demo`를 만들고(레포 →
+Settings → Environments → New environment) 다음을 추가합니다:
+
+| 시크릿 | 값 |
+|--------|------|
+| `DEPLOY_HOST` | 데모 호스트(`demo.trustedoss.dev` 또는 IPv4) |
+| `DEPLOY_USER` | SSH 로그인 사용자(`trustedoss`) |
+| `DEPLOY_SSH_KEY` | **전용** 배포 개인키(아래 참조) |
+| `DEPLOY_KNOWN_HOSTS` | 권장 — `ssh-keyscan <host>` 출력(호스트 키 고정) |
+| `DEPLOY_SSH_PORT` | 선택, 기본 `22` |
+| `DEPLOY_PATH` | 선택, 기본 `/opt/trustedoss/portal` |
+
+개인 키를 재사용하지 말고 **전용** 배포 키를 만듭니다:
+```bash
+ssh-keygen -t ed25519 -f deploy_key -C "trustedoss-cd" -N ""
+# 공개 키를 서버에 추가:
+ssh trustedoss@demo.trustedoss.dev 'cat >> ~/.ssh/authorized_keys' < deploy_key.pub
+# 개인 키(deploy_key 파일)를 DEPLOY_SSH_KEY 시크릿에 붙여넣기
+ssh-keyscan demo.trustedoss.dev      # 출력을 DEPLOY_KNOWN_HOSTS에 붙여넣기
+```
+선택이지만 권장: `demo` Environment에 **필수 리뷰어**를 추가하면 배포마다
+한 번의 승인이 필요해집니다 — 공개 사이트의 안전장치입니다.
+
+**배포**
+- 자동: GitHub Release(`vX.Y.Z`)를 게시하면 해당 태그가 배포됩니다.
+- 수동: Actions → *Deploy demo (Hetzner)* → **Run workflow**, 태그를 입력
+  (비우면 최신 릴리스).
+
+워크플로는 태그가 엄격한 `vX.Y.Z`인지 검증하고, 서버에서 체크아웃해 `IMAGE_TAG`를
+고정한 뒤 `upgrade.sh`를 실행합니다(먼저 백업하고 끝에 헬스 프로브). 동시 배포는
+병렬로 돌지 않고 큐에 쌓입니다.
+
+---
+
 ## 11. 오프사이트로 가기 (나중에)
 
 지금 백업은 **로컬만** 있습니다(운영자 선택). 서버가 죽어도 데이터를 잃지 않으려면

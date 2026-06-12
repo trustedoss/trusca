@@ -293,6 +293,48 @@ du -sh /opt/trustedoss/workspace backups/
 
 ---
 
+## 10.5 Automated deploy (optional CI/CD)
+
+The steps above deploy by hand. Once the server is live you can also roll out a
+new release from GitHub with one click, using the **Deploy demo (Hetzner)**
+workflow ([`.github/workflows/deploy-hetzner.yml`](../.github/workflows/deploy-hetzner.yml)).
+It SSHes in and runs the same `scripts/upgrade.sh` flow for you — the manual
+path keeps working; this just adds a button.
+
+**One-time setup** (after the server exists). Create a GitHub **Environment**
+named `demo` (repo → Settings → Environments → New environment) and add:
+
+| Secret | Value |
+|--------|-------|
+| `DEPLOY_HOST` | the demo host (`demo.trustedoss.dev` or its IPv4) |
+| `DEPLOY_USER` | the SSH login user (`trustedoss`) |
+| `DEPLOY_SSH_KEY` | a **dedicated** deploy private key (see below) |
+| `DEPLOY_KNOWN_HOSTS` | recommended — `ssh-keyscan <host>` output (pins the host key) |
+| `DEPLOY_SSH_PORT` | optional, default `22` |
+| `DEPLOY_PATH` | optional, default `/opt/trustedoss/portal` |
+
+Make a **dedicated** deploy key (don't reuse your personal one):
+```bash
+ssh-keygen -t ed25519 -f deploy_key -C "trustedoss-cd" -N ""
+# add the PUBLIC half to the server:
+ssh trustedoss@demo.trustedoss.dev 'cat >> ~/.ssh/authorized_keys' < deploy_key.pub
+# paste the PRIVATE half (the deploy_key file) into the DEPLOY_SSH_KEY secret
+ssh-keyscan demo.trustedoss.dev      # paste output into DEPLOY_KNOWN_HOSTS
+```
+Optional but recommended: add a **required reviewer** to the `demo` Environment
+so every deploy needs a one-click approval — a safety gate for a public site.
+
+**Deploy**
+- Automatically: publishing a GitHub Release (`vX.Y.Z`) deploys that tag.
+- Manually: Actions → *Deploy demo (Hetzner)* → **Run workflow**, optionally
+  typing a tag (blank = latest release).
+
+The workflow validates the tag is a strict `vX.Y.Z`, checks it out on the
+server, pins `IMAGE_TAG`, and runs `upgrade.sh` (which backs up first and
+health-probes after). Concurrent deploys are queued, never run in parallel.
+
+---
+
 ## 11. Going offsite (later)
 
 Backups are **local only** today (operator's choice). When you want an offsite
