@@ -49,17 +49,17 @@ const badgeVariants = cva(
         //   critical  text-red-700      → 5.54:1
         //   high      text-orange-800   → 6.47:1
         //   medium    text-yellow-800   → 5.91:1
-        //   low       text-teal-800     → 6.59:1 (W13 — token moved to
-        //                                  teal-700, text follows the hue)
+        //   low       text-blue-700     → 5.83:1
         //   info      text-slate-600    → 6.41:1
         //
         // The dot indicators (SeverityBadge / DependencyScopeBadge / chart
         // legends) still use `bg-risk-X` raw so the brand colour stays
-        // recognisable — only the text shade is darkened.
+        // recognisable — only the text shade is darkened. Token values in
+        // `index.css` are NOT changed (W11 prohibition: "Severity 색 변경 0").
         critical: "border-transparent bg-risk-critical/10 text-red-700",
         high: "border-transparent bg-risk-high/10 text-orange-800",
         medium: "border-transparent bg-risk-medium/15 text-yellow-800",
-        low: "border-transparent bg-risk-low/10 text-teal-800",
+        low: "border-transparent bg-risk-low/10 text-blue-700",
         info: "border-transparent bg-risk-info/15 text-slate-600",
         success: "border-transparent bg-emerald-100 text-emerald-700",
       },

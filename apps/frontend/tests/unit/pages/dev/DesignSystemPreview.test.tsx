@@ -17,11 +17,11 @@ import { describe, expect, it } from "vitest";
 
 import { DesignSystemPreview } from "@/pages/dev/DesignSystemPreview";
 
-describe("DesignSystemPreview (W13)", () => {
+describe("DesignSystemPreview (W11-A)", () => {
   it("renders the page header", () => {
     render(<DesignSystemPreview />);
     expect(
-      screen.getByRole("heading", { name: /Google AI Studio light/i }),
+      screen.getByRole("heading", { name: /Vercel base \+ Linear polish/i }),
     ).toBeInTheDocument();
   });
 
@@ -36,11 +36,10 @@ describe("DesignSystemPreview (W13)", () => {
 
   it("renders the four radius hierarchy samples", () => {
     render(<DesignSystemPreview />);
-    // W13 — one step rounder than W11 (--radius 8px; see tailwind.config.ts).
-    expect(screen.getByText(/rounded-sm · 6px/)).toBeInTheDocument();
-    expect(screen.getByText(/rounded-md · 8px/)).toBeInTheDocument();
-    expect(screen.getByText(/rounded-lg · 10px/)).toBeInTheDocument();
-    expect(screen.getByText(/rounded-xl · 14px/)).toBeInTheDocument();
+    expect(screen.getByText(/rounded-sm · 4px/)).toBeInTheDocument();
+    expect(screen.getByText(/rounded-md · 6px/)).toBeInTheDocument();
+    expect(screen.getByText(/rounded-lg · 8px/)).toBeInTheDocument();
+    expect(screen.getByText(/rounded-xl · 12px/)).toBeInTheDocument();
   });
 
   it("renders the three shadow elevation samples", () => {
