@@ -50,14 +50,21 @@
   - **C Stacked SBOM** — 구성요소 목록 막대 + 최상단 검증
 - **선정안**: **A Hex Check** (2026-06-12 확정) — 패키지 육각 + 검증 체크.
   16px 가독성이 가장 좋고 보안 도구 관례에 부합.
-- **팔레트**(2026-06-13 갱신): ink `#18181b`(warm near-black), paper `#fafafa`,
-  **accent = 틸 `#0f766e`(teal-700)**. 마크 타일은 ink가 아닌 **accent(틸)** 로 칠한다
-  — 단색 near-black 타일이 "너무 검다"는 사용자 피드백(2026-06-13)에 따라, TRUSCA
-  고유 브랜드 컬러로 틸을 도입(기존 계획의 블루 `#2563eb`에서 변경, 리스크 Low의
-  블루와도 분리). 틸은 흰 배경 5.47:1로 WCAG AA 통과.
-- **워드마크**: Inter semibold tracking-tight, `TRU`(ink) + `SCA`(**틸 accent**).
-  구현은 `apps/frontend/src/components/BrandWordmark.tsx`(AppShell 확장 락업).
-  로그인 등 문장 속 "TRUSCA" 표기는 평문 유지(로케일별 어순 상이).
+- **팔레트**(2026-06-13 갱신): 브랜드 컬러 = **틸**, paper `#fafafa`, ink `#18181b`.
+  단색 near-black 타일이 "너무 검다"는 피드백 + BomLens 레퍼런스(그라데이션 타일·
+  단색 굵은 워드마크·태그라인) 검토를 거쳐, **마크 타일은 틸 그라데이션
+  `#2dd4bf → #0f766e`**(대각, top-left→bottom-right)로, 육각+체크는 paper로 칠한다.
+  (기존 계획의 블루 `#2563eb`에서 틸로 변경, 리스크 Low의 블루와도 분리.)
+  틸 `#0f766e`는 흰 배경 5.47:1로 WCAG AA 통과.
+- **워드마크**: Inter, 굵게(extrabold), tracking-tight, **"TRUSCA" 단색 틸 `#0f766e`**.
+  단어 중간 색 분리(구 `TRU`+`SCA`)는 폐기 — 싸구려로 읽혀 BomLens식 단색으로 통일.
+- **태그라인**: "Software Composition Analysis"(uppercase, 자간 넓게, muted gray).
+  SCA 강조는 단어 색 분리 대신 태그라인이 담당.
+- **락업**: 풀 락업(마크+워드마크+태그라인)은 여유 있는 곳(로그인 게이트웨이·브랜드
+  쇼케이스)에 — `apps/frontend/src/components/BrandLockup.tsx`. 좁은 48px
+  사이드바/헤더는 축약 락업(마크+워드마크, 태그라인 생략).
+  구현: `BrandMark.tsx`(그라데이션 타일)·`BrandWordmark.tsx`(틸 워드마크).
+  로그인 카드 타이틀 등 문장 속 "TRUSCA"는 평문 유지(로케일별 어순 상이).
 - **적용 자산**: 타일 틸 = `apps/frontend/src/components/BrandMark.tsx`,
   `apps/frontend/public/favicon.svg`, `docs-site/static/img/{logo,favicon}.svg`.
 
