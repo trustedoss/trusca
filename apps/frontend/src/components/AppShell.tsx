@@ -34,7 +34,6 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { deriveInitials } from "@/lib/initials";
 import { cn } from "@/lib/utils";
-import { AisThemeToggle } from "@/pages/dev/AisThemeToggle";
 import { useAuthStore } from "@/stores/authStore";
 import { useUIStore } from "@/stores/uiStore";
 
@@ -161,10 +160,11 @@ function NavItemLink({
         title={collapsed ? label : undefined}
         className={({ isActive }) =>
           cn(
-            // W11-F polish — sidebar nav hover/active transitions land on the
-            // W11-A 150 ms ease-out-soft tokens for parity with every other
-            // hoverable affordance (buttons, dropdown items, tabs).
-            "flex items-center rounded-md py-2 text-sm font-medium transition-colors duration-fast ease-out-soft",
+            // W13 — pill nav items match the AIS button shape; the active
+            // bg-primary/10 + text-primary tint then reads exactly like the
+            // AIS selected-nav state. Hover/active transitions stay on the
+            // W11 150 ms ease-out-soft tokens.
+            "flex items-center rounded-full py-2 text-sm font-medium transition-colors duration-fast ease-out-soft",
             collapsed ? "justify-center px-2" : "gap-2 px-3",
             "hover:bg-accent hover:text-accent-foreground",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
@@ -384,10 +384,6 @@ export function AppShell() {
             <Menu className="h-4 w-4" aria-hidden />
           </Button>
           <div className="flex items-center gap-3">
-            {/* Dev-only AIS theme prototype switch — lets the design review
-                happen on real screens (dashboard, project list), not just the
-                /dev/design-preview gallery. Compiled out of prod builds. */}
-            {import.meta.env.DEV ? <AisThemeToggle /> : null}
             {/* Global ⌘K palette trigger (W9-#54). The button is a
                 discoverability affordance — the keyboard shortcut works
                 whether or not this button is on screen. */}

@@ -2,9 +2,11 @@
  * Design System Preview — W11-A, expanded into a living reference in W12-E.
  *
  * Dev-only sample page. Originally the visual confirm gate for the W11-A
- * token redefinition (Vercel base + Linear polish, light single-theme); W12-E
- * grew it into a living component reference + a manual review / visual-
- * regression surface covering the W12 primitives.
+ * token redefinition; W12-E grew it into a living component reference + a
+ * manual review / visual-regression surface covering the W12 primitives.
+ * W13 (2026-06-12) re-skinned the token set to the Google AI Studio light
+ * tone (white canvas, blue primary, pill buttons) after the PR #394
+ * prototype review.
  *
  * Routing:
  *   - Mounted at `/dev/design-preview` (see router.tsx).
@@ -34,7 +36,6 @@ import {
 } from "lucide-react";
 
 import { EmptyState } from "@/components/EmptyState";
-import { AisThemeToggle } from "@/pages/dev/AisThemeToggle";
 import { BrandCandidates } from "@/pages/dev/BrandCandidates";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -80,48 +81,6 @@ function Section({
   );
 }
 
-/**
- * Shared sample block for the AIS side-by-side comparison. Rendered twice —
- * once under the current tokens, once inside a `.theme-ais` wrapper — so the
- * exact same markup resolves against both token sets. Inline (non-portal)
- * components only; Dialog / Toast surfaces are reviewed via the global
- * toggle, which flips the class on <html> and therefore covers portals.
- */
-function AisSampleBlock() {
-  return (
-    <div className="space-y-3 rounded-md border border-border bg-background p-4">
-      {/* Labels intentionally avoid "Deploy" / "Delete" — the gallery unit
-          test queries those as unique buttons in the main Buttons section. */}
-      <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm">Run scan</Button>
-        <Button size="sm" variant="secondary">
-          Tonal
-        </Button>
-        <Button size="sm" variant="outline">
-          Outline
-        </Button>
-        <Button size="sm" variant="destructive">
-          Remove
-        </Button>
-      </div>
-      <Input placeholder="Search projects…" />
-      <Card>
-        <CardHeader>
-          <CardTitle>trusca-frontend</CardTitle>
-          <CardDescription>
-            Last scan 2h ago · 14 components · 3 findings
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex items-center gap-2">
-          <Badge tone="critical">Critical</Badge>
-          <Badge tone="low">Low</Badge>
-          <Badge tone="success">Clean</Badge>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
 function Swatch({ token, varName }: { token: string; varName: string }) {
   return (
     <div className="flex items-center gap-3">
@@ -148,43 +107,17 @@ export function DesignSystemPreview() {
             Design system · living reference (dev only)
           </Eyebrow>
           <h1 className="text-3xl font-semibold tracking-tight">
-            Vercel base + Linear polish
+            TRUSCA — Google AI Studio light
           </h1>
           <p className="max-w-2xl text-sm text-muted-foreground">
-            Sample of the new token set applied to two foundational
-            components. The rest of the app still uses these same tokens —
-            walk a few pages after this to spot any regressions before we
-            green-light Phase B.
+            Living sample of the W13 token set (adopted 2026-06-12): white
+            canvas, Google-blue primary, tonal secondary, pill buttons, flat
+            cards. The rest of the app uses these same tokens — walk a few
+            pages after this to spot any regressions.
           </p>
-          <div className="flex items-center gap-3 pt-2">
-            <AisThemeToggle />
-            <span className="text-xs text-muted-foreground">
-              Global flip of the TRUSCA / Google AI Studio theme prototype —
-              persists across reloads, covers portals (dialogs, toasts), and
-              follows you onto real screens.
-            </span>
-          </div>
         </header>
 
-        <Section
-          title="TRUSCA — AIS theme prototype (side by side)"
-          description="Identical markup, two token sets. Keep the global toggle OFF here — when it is on, the left column is themed too. Portal surfaces (dialogs, toasts) only theme under the global toggle."
-        >
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Eyebrow>Current — Vercel + Linear</Eyebrow>
-              <AisSampleBlock />
-            </div>
-            <div className="space-y-2">
-              <Eyebrow>Prototype — Google AI Studio light</Eyebrow>
-              <div className="theme-ais">
-                <AisSampleBlock />
-              </div>
-            </div>
-          </div>
-        </Section>
-
-        <Section title="Color tokens" description="Light single-theme. Severity tokens unchanged.">
+        <Section title="Color tokens" description="Light single-theme. Severity: Low moved to teal-700 in W13 so it no longer collides with the blue primary.">
           <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
             <Swatch token="background" varName="--background" />
             <Swatch token="foreground" varName="--foreground" />
@@ -217,7 +150,7 @@ export function DesignSystemPreview() {
           </div>
         </Section>
 
-        <Section title="Buttons" description="Primary near-black + subtle shadow; hover transitions at 150 ms ease-out.">
+        <Section title="Buttons" description="Pill shape (W13) — Google-blue primary, tonal secondary; hover transitions at 150 ms ease-out.">
           <div className="flex flex-wrap items-center gap-3">
             <Button>Deploy</Button>
             <Button variant="secondary">Cancel</Button>
@@ -236,7 +169,7 @@ export function DesignSystemPreview() {
           </div>
         </Section>
 
-        <Section title="Card" description="Off-white canvas + white card + subtle shadow. Vercel domains pattern.">
+        <Section title="Card" description="White canvas + flat card — separation comes from the border, not elevation (AIS).">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Card>
               <CardHeader>
@@ -330,16 +263,16 @@ export function DesignSystemPreview() {
           </div>
           <div className="grid grid-cols-4 gap-4">
             <div className="flex h-16 items-center justify-center rounded-sm border border-border bg-card text-xs">
-              rounded-sm · 4px
+              rounded-sm · 6px
             </div>
             <div className="flex h-16 items-center justify-center rounded-md border border-border bg-card text-xs">
-              rounded-md · 6px
+              rounded-md · 8px
             </div>
             <div className="flex h-16 items-center justify-center rounded-lg border border-border bg-card text-xs">
-              rounded-lg · 8px
+              rounded-lg · 10px
             </div>
             <div className="flex h-16 items-center justify-center rounded-xl border border-border bg-card text-xs">
-              rounded-xl · 12px
+              rounded-xl · 14px
             </div>
           </div>
           <p className="text-xs text-muted-foreground">

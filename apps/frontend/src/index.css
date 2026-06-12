@@ -3,26 +3,28 @@
 @tailwind utilities;
 
 /* ---------------------------------------------------------------------------
- * TrustedOSS Portal — design tokens
+ * TRUSCA — design tokens
  *
- * W11-A (2026-05-27) — Vercel base + Linear polish (option C, light single).
- * SoT: docs/ux/design-philosophy-evolution-plan-2026-05-27.md §4.
+ * W13 (2026-06-12) — Google AI Studio light tone, adopted from the dev
+ * prototype (PR #394) after user review. Supersedes the W11-A Vercel +
+ * Linear palette; the W11 typography hierarchy, focus ring, and motion
+ * polish are retained unchanged.
  *
- * Tone reference:
- *   - Vercel light deployments / domains / deployment detail
- *     → background / surface / border / sidebar tint / dense rows / primary
- *       near-black button
- *   - Linear feature / dashboard
- *     → typography hierarchy (heading semibold), focus ring (visible 2 + 2
- *       offset), hover transitions (150 ms ease-out), elevation shadows,
- *       dropdown polish. Dark variant intentionally NOT absorbed — Linear
- *       is dark-native, we re-interpret only the polish layer in light.
+ * Tone reference — Google AI Studio (light):
+ *   - plain white canvas, grey panel tint, #dadce0 hairline borders
+ *   - Google-blue primary CTA + tonal (light-blue) secondary
+ *   - pill buttons (see button.tsx) and flat cards (border + tone, no
+ *     shadow); shadows are reserved for floating surfaces
+ *   - fonts stay Inter + JetBrains Mono (Google Sans is proprietary)
  *
  * Layout invariants (unchanged):
  *   sidebar 224 px · header 48 px · table row 40 px · Inter + JetBrains Mono.
+ *   Density is kept — only the skin changed.
  *
- * Risk severity colors (unchanged — domain semantics fixed):
- *   Critical / High / Medium / Low / Info.
+ * Risk severity colors:
+ *   Critical / High / Medium / Info unchanged. Low moved blue-600 → teal-700
+ *   in W13 (user decision): the old blue collided with the new Google-blue
+ *   primary, making Low badges read like CTAs / links.
  *
  * Forward-compat note:
  *   Dark mode tokens are NOT defined in this phase (2026-05-27 user decision).
@@ -34,79 +36,83 @@
 @layer base {
   :root {
     /* -------------------------------------------------------------------
-     * shadcn/ui base tokens — re-tuned to Vercel light palette.
+     * shadcn/ui base tokens — Google AI Studio light palette (W13).
      *
      * HSL is shadcn convention. Hex equivalents are noted for review;
      * never reference the hex directly in components (use the CSS var or
      * the Tailwind utility — e.g. `bg-background`, `text-foreground`).
      * ----------------------------------------------------------------- */
 
-    /* Page background — slight off-white so elevated surfaces (cards,
-     * popovers) read as raised. Vercel uses ~#fafafa for the canvas. */
-    --background: 0 0% 98%; /* #fafafa */
-    --foreground: 240 6% 10%; /* #18181b — warm near-black (was #0f172a navy) */
+    /* Page background — plain white canvas (AIS). Cards sit flush on it
+     * and separate via border + tone, not elevation. */
+    --background: 0 0% 100%; /* #ffffff */
+    --foreground: 0 0% 12%; /* #1f1f1f — Google grey-900 */
 
-    /* Elevated surfaces sit on top of --background. Pure white reads as
-     * "card on page" against the off-white canvas. */
+    /* Surfaces share the white canvas; --muted carries the grey panel /
+     * table-header tint instead. */
     --card: 0 0% 100%; /* #ffffff */
-    --card-foreground: 240 6% 10%;
+    --card-foreground: 0 0% 12%;
     --popover: 0 0% 100%;
-    --popover-foreground: 240 6% 10%;
+    --popover-foreground: 0 0% 12%;
 
     /* Muted = table header / sidebar tint / placeholder fill. */
-    --muted: 240 5% 96%; /* #f4f4f5 */
-    --muted-foreground: 240 4% 46%; /* #71717a — passes AA on --muted */
+    --muted: 210 17% 98%; /* #f8f9fa */
+    --muted-foreground: 213 5% 39%; /* #5f6368 — Google grey-700, passes AA */
 
-    /* Border / input outline — softer than slate-200, more neutral. */
-    --border: 240 5% 91%; /* #e5e5ea */
-    --input: 240 5% 91%;
+    /* Border / input outline — the AIS standard hairline. */
+    --border: 220 9% 87%; /* #dadce0 */
+    --input: 220 9% 87%;
 
-    /* Primary CTA — Vercel-style warm near-black instead of navy.
-     * Reads as "important action" without leaning blue. */
-    --primary: 240 6% 10%; /* #18181b */
-    --primary-foreground: 0 0% 98%;
+    /* Primary CTA — Google blue. Hover flows through `bg-primary/90`. */
+    --primary: 217 90% 43%; /* #0b57d0 */
+    --primary-foreground: 0 0% 100%;
 
-    /* Secondary / accent share the muted tint — used for ghost-style
-     * surfaces and hover row backgrounds. */
-    --secondary: 240 5% 96%;
-    --secondary-foreground: 240 6% 10%;
-    --accent: 240 5% 96%;
-    --accent-foreground: 240 6% 10%;
+    /* Secondary = Google "tonal" button (light-blue fill, deep-blue text);
+     * accent = the faint blue-grey tint AIS uses on hover rows and ghost
+     * surfaces. */
+    --secondary: 217 91% 91%; /* #d3e3fd */
+    --secondary-foreground: 217 90% 15%; /* #041e49 */
+    --accent: 213 43% 96%; /* #f0f4f9 */
+    --accent-foreground: 0 0% 12%;
 
-    /* Destructive — aligned with risk-critical hex so destructive
-     * buttons share the visual language of a Critical severity badge. */
-    --destructive: 0 72% 51%; /* ~#dc2626 */
-    --destructive-foreground: 0 0% 98%;
+    /* Destructive — Google red. Near risk-critical (#dc2626) so destructive
+     * buttons still share the visual language of a Critical badge. */
+    --destructive: 4 71% 50%; /* #d93025 */
+    --destructive-foreground: 0 0% 100%;
 
-    /* Focus ring — matches primary tone so the 2 px outline reads as
-     * "the same thing this button is", per Linear polish. */
-    --ring: 240 6% 10%;
-
-    /* -------------------------------------------------------------------
-     * Radius hierarchy (Linear polish — different sizes for different
-     * affordances so depth reads at a glance).
-     *
-     *   --radius-sm   4 px  — small inputs, badges, chips
-     *   --radius      6 px  — buttons, cards, table chrome (DEFAULT)
-     *   --radius-lg   8 px  — drawer, large surfaces
-     *   --radius-xl  12 px  — modals, dialogs
-     *
-     * shadcn convention reads `--radius` as the card default; smaller /
-     * larger variants derive via `calc()` in tailwind.config.ts.
-     * ----------------------------------------------------------------- */
-    --radius: 0.375rem;
+    /* Focus ring — matches the blue primary so the 2 px outline reads as
+     * "the same thing this button is". */
+    --ring: 217 90% 43%;
 
     /* -------------------------------------------------------------------
-     * Elevation — subtle, Vercel-style. Light shadows only; no glow.
-     * Used by Card (sm), Dropdown / Popover (md), Drawer / Dialog (lg).
+     * Radius hierarchy (W13 — one step rounder than W11 across the board).
+     *
+     *   --radius-sm   6 px  — small inputs, badges, chips
+     *   --radius      8 px  — cards, inputs, table chrome (DEFAULT)
+     *   --radius-lg  10 px  — drawer, large surfaces
+     *   --radius-xl  14 px  — modals, dialogs
+     *
+     * Buttons are pills (rounded-full in button.tsx), NOT derived from
+     * this token — raising --radius to a pill value would full-round
+     * cards and dialogs via the calc() derivations in tailwind.config.ts.
      * ----------------------------------------------------------------- */
-    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.04);
+    --radius: 0.5rem;
+
+    /* -------------------------------------------------------------------
+     * Elevation — AIS keeps in-flow surfaces flat (cards/buttons separate
+     * via border + tone), so shadow-sm is a zero-alpha no-op. It must stay
+     * a VALID box-shadow value (consumers do `box-shadow: var(--shadow-sm)`
+     * and an empty string / `none` inside a list breaks them). md / lg
+     * follow the Google elevation-1 / -2 recipes for floating surfaces
+     * (dropdown / popover / drawer / dialog).
+     * ----------------------------------------------------------------- */
+    --shadow-sm: 0 0 0 0 rgb(0 0 0 / 0);
     --shadow-md:
-      0 2px 8px -2px rgb(0 0 0 / 0.08),
-      0 1px 2px 0 rgb(0 0 0 / 0.04);
+      0 1px 2px 0 rgb(60 64 67 / 0.3),
+      0 1px 3px 1px rgb(60 64 67 / 0.15);
     --shadow-lg:
-      0 10px 28px -8px rgb(0 0 0 / 0.12),
-      0 3px 8px -3px rgb(0 0 0 / 0.06);
+      0 1px 3px 0 rgb(60 64 67 / 0.3),
+      0 4px 8px 3px rgb(60 64 67 / 0.15);
 
     /* -------------------------------------------------------------------
      * Motion (Linear polish) — short, ease-out. Three steps cover the
@@ -122,14 +128,19 @@
     --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 
     /* -------------------------------------------------------------------
-     * Risk severity (unchanged — domain meaning is fixed).
+     * Risk severity — domain meaning is fixed.
      * Used directly by recharts / lucide as raw hex, also exposed as
      * Tailwind `text-risk-critical` / `bg-risk-high/10` etc.
+     *
+     * W13: --risk-low moved blue-600 (#2563eb) → teal-700 (#0f766e) so Low
+     * badges no longer share a hue with the Google-blue primary CTA.
+     * Contrast (WCAG): 5.47:1 on white, 4.76:1 on its own 10 % tint —
+     * both clear AA, slightly better than the old blue (5.17 / 4.49).
      * ----------------------------------------------------------------- */
     --risk-critical: #dc2626;
     --risk-high: #ea580c;
     --risk-medium: #ca8a04;
-    --risk-low: #2563eb;
+    --risk-low: #0f766e;
     --risk-info: #71717a;
 
     /* Layout density (unchanged). */

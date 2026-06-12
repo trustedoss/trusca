@@ -91,12 +91,15 @@ const config: Config = {
         row: "var(--table-row)",
       },
       borderRadius: {
-        // W11-A — radius hierarchy. Different sizes for different affordances.
+        // W13 — radius hierarchy, one step rounder than W11 (--radius 8px).
         //
-        //   sm  4 px  — chips / small inputs
-        //   md  6 px  — buttons / cards / table chrome (= --radius default)
-        //   lg  8 px  — drawer, large panels
-        //   xl 12 px  — modals, dialogs
+        //   sm  6 px  — chips / small inputs
+        //   md  8 px  — cards / inputs / table chrome (= --radius default)
+        //   lg 10 px  — drawer, large panels
+        //   xl 14 px  — modals, dialogs
+        //
+        // Buttons are pills (`rounded-full` in button.tsx), not part of
+        // this scale.
         //
         // shadcn's older `rounded-lg`/`rounded-md`/`rounded-sm` mapping
         // (lg = --radius, md = lg-2, sm = lg-4) still works for existing
