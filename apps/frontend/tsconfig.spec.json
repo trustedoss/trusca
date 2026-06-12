@@ -1,0 +1,36 @@
+{
+  // Test-only TypeScript project. Split out of tsconfig.app.json so the
+  // PRODUCTION image build (`npm run build` -> `tsc -b tsconfig.app.json ...`)
+  // never type-checks tests: the contract tests import shared catalogs from
+  // the REPO ROOT (e.g. ../../tests/contracts/*.json), which does not exist
+  // inside the Docker build context (apps/frontend only) and broke the
+  // v0.11.0 trusca-frontend image build. CI's `npm run typecheck`
+  // (`tsc -b --noEmit`) still builds every referenced project, tests included.
+  "compilerOptions": {
+    "composite": true,
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.spec.tsbuildinfo",
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedSideEffectImports": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+    "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom"]
+  },
+  "include": ["src", "tests"]
+}
