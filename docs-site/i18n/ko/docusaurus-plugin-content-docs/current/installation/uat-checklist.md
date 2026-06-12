@@ -105,7 +105,7 @@ stdout에 한 번 출력합니다 — 터미널이 스크롤되기 전에 캡처
 ✓ super admin account ready
 
 Installation complete
-✓ TrustedOSS Portal is running at: http://portal.example.com
+✓ TRUSCA is running at: http://portal.example.com
 ```
 
 `docker-compose -f docker-compose.yml ps`의 모든 행이 `Up (healthy)`이어야

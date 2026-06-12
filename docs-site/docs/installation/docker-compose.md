@@ -276,7 +276,7 @@ The wizard does the following in order:
 
 ```
 Installation complete
-✓ TrustedOSS Portal is running at: https://trustedoss.example.com
+✓ TRUSCA is running at: https://trustedoss.example.com
   Login:           you@example.com
   Admin panel:     https://trustedoss.example.com/admin
   API docs:        https://trustedoss.example.com/api/docs

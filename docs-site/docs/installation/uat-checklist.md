@@ -105,7 +105,7 @@ scrolls. Rotate it on first login.
 ✓ super admin account ready
 
 Installation complete
-✓ TrustedOSS Portal is running at: http://portal.example.com
+✓ TRUSCA is running at: http://portal.example.com
 ```
 
 `docker-compose -f docker-compose.yml ps` should show every row as

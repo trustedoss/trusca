@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# TrustedOSS Portal — interactive install wizard.
+# TRUSCA — interactive install wizard.
 #
 # Targets a fresh host (Linux) with docker-compose V1 (hyphen). Generates
 # .env, brings the stack up, runs alembic upgrade head, and creates the
@@ -398,7 +398,7 @@ ok "super admin account ready"
 # 7. Done
 # ---------------------------------------------------------------------------
 title "Installation complete"
-ok "TrustedOSS Portal is running at: ${BOLD}$public_url${RESET}"
+ok "TRUSCA is running at: ${BOLD}$public_url${RESET}"
 note "Login:           $admin_email"
 note "Admin panel:     $public_url/admin"
 note "API docs:        $public_url/api/docs"
