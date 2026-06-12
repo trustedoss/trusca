@@ -24,7 +24,7 @@ Engineers maintaining a GitLab project that uses GitLab CI / CD. You need an API
 ```yaml
 # .gitlab-ci.yml
 include:
-  - remote: 'https://raw.githubusercontent.com/trustedoss/trustedoss-portal/v0.10.0/templates/gitlab-ci.yml'
+  - remote: 'https://raw.githubusercontent.com/trustedoss/trusca/v0.10.0/templates/gitlab-ci.yml'
 
 variables:
   TRUSTEDOSS_API_URL: 'https://trustedoss.example.com'
@@ -84,7 +84,7 @@ Either way, only `TRUSTEDOSS_API_KEY` must be masked.
 
 ```yaml
 include:
-  - remote: 'https://raw.githubusercontent.com/trustedoss/trustedoss-portal/v0.10.0/templates/gitlab-ci.yml'
+  - remote: 'https://raw.githubusercontent.com/trustedoss/trusca/v0.10.0/templates/gitlab-ci.yml'
 
 variables:
   TRUSTEDOSS_API_URL: 'https://trustedoss.example.com'
@@ -100,7 +100,7 @@ Override the rules of the included job:
 
 ```yaml
 include:
-  - remote: 'https://raw.githubusercontent.com/trustedoss/trustedoss-portal/v0.10.0/templates/gitlab-ci.yml'
+  - remote: 'https://raw.githubusercontent.com/trustedoss/trusca/v0.10.0/templates/gitlab-ci.yml'
 
 .trustedoss-sca:
   rules:
@@ -112,7 +112,7 @@ include:
 
 ```yaml
 include:
-  - remote: 'https://raw.githubusercontent.com/trustedoss/trustedoss-portal/v0.10.0/templates/gitlab-ci.yml'
+  - remote: 'https://raw.githubusercontent.com/trustedoss/trusca/v0.10.0/templates/gitlab-ci.yml'
 
 trustedoss:scan-container:
   extends: .trustedoss-sca
@@ -152,7 +152,7 @@ If you need to copy and inline the job — for instance because your runner cann
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
 ```
 
-The full canonical version lives at [`templates/gitlab-ci.yml`](https://github.com/trustedoss/trustedoss-portal/blob/main/templates/gitlab-ci.yml). Read it before forking — it handles edge cases (network blip during poll, masked-token rotation) you do not want to re-implement.
+The full canonical version lives at [`templates/gitlab-ci.yml`](https://github.com/trustedoss/trusca/blob/main/templates/gitlab-ci.yml). Read it before forking — it handles edge cases (network blip during poll, masked-token rotation) you do not want to re-implement.
 
 ## How the ref becomes a retention key
 

@@ -9,8 +9,8 @@ body:
         Thanks for taking the time to file a bug report.
 
         Before submitting, please:
-        - Search [existing issues](https://github.com/trustedoss/trustedoss-portal/issues?q=is%3Aissue) to avoid duplicates.
-        - **Do not file security vulnerabilities here.** See [SECURITY.md](https://github.com/trustedoss/trustedoss-portal/blob/main/SECURITY.md) for the responsible disclosure process.
+        - Search [existing issues](https://github.com/trustedoss/trusca/issues?q=is%3Aissue) to avoid duplicates.
+        - **Do not file security vulnerabilities here.** See [SECURITY.md](https://github.com/trustedoss/trusca/blob/main/SECURITY.md) for the responsible disclosure process.
 
   - type: textarea
     id: summary

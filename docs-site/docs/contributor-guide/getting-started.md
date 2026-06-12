@@ -30,8 +30,8 @@ You can develop without Go if you do not run scans locally — `cdxgen` only nee
 ## Clone and branch
 
 ```bash
-git clone https://github.com/trustedoss/trustedoss-portal.git
-cd trustedoss-portal
+git clone https://github.com/trustedoss/trusca.git
+cd trusca
 
 # branch naming: feature/* for new features, chore/* for maintenance,
 # fix/* for bug fixes, docs/* for documentation-only changes.

@@ -16,12 +16,12 @@ from core.config import slsa_builder_id, slsa_builder_version
 
 def test_builder_id_default_when_unset(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("SLSA_BUILDER_ID", raising=False)
-    assert slsa_builder_id() == "https://github.com/trustedoss/trustedoss-portal/worker"
+    assert slsa_builder_id() == "https://github.com/trustedoss/trusca/worker"
 
 
 def test_builder_id_blank_falls_back_to_default(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SLSA_BUILDER_ID", "   ")
-    assert slsa_builder_id() == "https://github.com/trustedoss/trustedoss-portal/worker"
+    assert slsa_builder_id() == "https://github.com/trustedoss/trusca/worker"
 
 
 def test_builder_id_override_trimmed(monkeypatch: pytest.MonkeyPatch) -> None:

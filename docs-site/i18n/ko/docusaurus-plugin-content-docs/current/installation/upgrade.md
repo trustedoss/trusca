@@ -25,7 +25,7 @@ sidebar_position: 2
 - 직전 정상 설치 상태 (즉, `docker-compose -f docker-compose.yml ps` 출력에서 모든 서비스가 healthy).
 - PATH의 `docker-compose` (V1).
 - 새 이미지 레이어와 사전 백업을 위해 5 GB 이상 여유 디스크.
-- 의도한 `IMAGE_TAG`가 `.env`에 명시 (혹은 마법사 기본값 `0.10.0` 사용). 사설 레지스트리를 운영한다면 `IMAGE_TAG`는 그곳에 게시된 매니페스트와 일치해야 합니다.
+- 의도한 `IMAGE_TAG`가 `.env`에 명시 (혹은 마법사 기본값 `0.11.0` 사용). 사설 레지스트리를 운영한다면 `IMAGE_TAG`는 그곳에 게시된 매니페스트와 일치해야 합니다.
 
 ## 1단계 — 업그레이드 시점 점검
 
@@ -130,4 +130,4 @@ docker login <your-registry>
 
 - [백업·복원](../admin-guide/backup-and-restore.md)
 - [시스템 health 대시보드](../admin-guide/disk-and-health.md)
-- [릴리스 노트](https://github.com/trustedoss/trustedoss-portal/releases)
+- [릴리스 노트](https://github.com/trustedoss/trusca/releases)

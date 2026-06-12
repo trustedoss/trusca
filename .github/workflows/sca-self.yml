@@ -144,7 +144,7 @@ jobs:
           The nightly SCA self-scan (\`.github/workflows/sca-self.yml\`,
           run [\`${GITHUB_RUN_ID}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}))
           detected **${CRITICAL_COUNT}** Critical-severity vulnerabilities in the
-          dependency tree of \`trustedoss-portal\` itself.
+          dependency tree of \`trusca\` itself.
 
           ## Findings
 

@@ -31,7 +31,7 @@ def _build(**overrides: object) -> dict:
         "sbom_sha256": "a" * 64,
         "scan_id": "11111111-1111-1111-1111-111111111111",
         "project_id": "22222222-2222-2222-2222-222222222222",
-        "builder_id": "https://github.com/trustedoss/trustedoss-portal/worker",
+        "builder_id": "https://github.com/trustedoss/trusca/worker",
         "builder_version": "2.3.0-dev",
     }
     kwargs.update(overrides)
@@ -68,7 +68,7 @@ def test_predicate_run_details_carries_builder_and_metadata() -> None:
     finished = datetime(2026, 5, 25, 10, 5, 0, tzinfo=UTC)
     stmt = _build(started_on=started, finished_on=finished)
     run = stmt["predicate"]["runDetails"]
-    assert run["builder"]["id"] == "https://github.com/trustedoss/trustedoss-portal/worker"
+    assert run["builder"]["id"] == "https://github.com/trustedoss/trusca/worker"
     assert run["builder"]["version"]["trustedoss"] == "2.3.0-dev"
     assert run["metadata"]["invocationId"] == "11111111-1111-1111-1111-111111111111"
     assert run["metadata"]["startedOn"] == "2026-05-25T10:00:00Z"

@@ -131,7 +131,7 @@ scancode is **best-effort**. Detected licenses can be absent — which is normal
 
 ## Obligations
 
-Each license carries **obligations** — duties you must honor when redistributing the component. The portal tracks seven kinds (see [glossary](https://github.com/trustedoss/trustedoss-portal/blob/main/docs/glossary.md)):
+Each license carries **obligations** — duties you must honor when redistributing the component. The portal tracks seven kinds (see [glossary](https://github.com/trustedoss/trusca/blob/main/docs/glossary.md)):
 
 - **Attribution** — preserve the upstream copyright notice.
 - **NOTICE preservation** — carry the upstream `NOTICE` file (Apache-2.0 §4(d)).

@@ -100,4 +100,4 @@ Dependency-Track 급 도구와 비교해 Trivy DB는 finding별로 다음 신호
 - [취약점 데이터 (Trivy DB)](../admin-guide/vulnerability-data.md) — 운영자 라이프사이클, air-gapped 미러, 트러블슈팅.
 - [Vulnerabilities](../user-guide/vulnerabilities.md) — 분석가 흐름.
 - [용어집](./glossary.md#취약점) — CVE, CWE, NVD, EPSS, KEV 정의.
-- [ADR-0001 — Dependency-Track 제거](https://github.com/trustedoss/trustedoss-portal/blob/main/docs/decisions/0001-replace-dt-with-trivy.md) — Trivy가 v0.10.0부터 단일 엔진인 이유.
+- [ADR-0001 — Dependency-Track 제거](https://github.com/trustedoss/trusca/blob/main/docs/decisions/0001-replace-dt-with-trivy.md) — Trivy가 v0.10.0부터 단일 엔진인 이유.

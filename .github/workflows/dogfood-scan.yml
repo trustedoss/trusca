@@ -139,7 +139,7 @@ jobs:
           project_id=$(curl -fsS -X POST "$api/v1/projects" \
             -H "Authorization: Bearer $jwt" -H 'Content-Type: application/json' \
             -d "$(jq -nc --arg t "$team_id" \
-                  '{team_id: $t, name: "Dogfood Self-Scan", slug: "dogfood-self-scan", git_url: "https://github.com/trustedoss/trustedoss-portal.git"}')" \
+                  '{team_id: $t, name: "Dogfood Self-Scan", slug: "dogfood-self-scan", git_url: "https://github.com/trustedoss/trusca.git"}')" \
             | jq -r '.id')
           [ -n "$project_id" ] && [ "$project_id" != "null" ] || { echo "::error::project create failed"; exit 1; }
 

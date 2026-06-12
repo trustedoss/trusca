@@ -46,7 +46,7 @@ SBOM 관리를 한 화면에서 통합 제공하며, 상용 제품의 좌석당 
 ## 프로젝트
 
 - **라이선스** — Apache-2.0.
-- **소스** — [github.com/trustedoss/trustedoss-portal](https://github.com/trustedoss/trustedoss-portal).
-- **로드맵** — [`ROADMAP.md`](https://github.com/trustedoss/trustedoss-portal/blob/main/ROADMAP.md).
-- **보안 신고** — [`SECURITY.md`](https://github.com/trustedoss/trustedoss-portal/blob/main/SECURITY.md).
+- **소스** — [github.com/trustedoss/trusca](https://github.com/trustedoss/trusca).
+- **로드맵** — [`ROADMAP.md`](https://github.com/trustedoss/trusca/blob/main/ROADMAP.md).
+- **보안 신고** — [`SECURITY.md`](https://github.com/trustedoss/trusca/blob/main/SECURITY.md).
 - **아키텍처 / 결정 기록** — [아키텍처 참고](./reference/architecture.md).

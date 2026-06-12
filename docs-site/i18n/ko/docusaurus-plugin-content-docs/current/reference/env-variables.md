@@ -39,7 +39,7 @@ sidebar_position: 2
 |---|---|---|---|
 | `APP_ENV` | `dev` | `config.py` | `dev`, `staging`, 또는 `prod`. 일부 CORS / 로그 기본값에 영향. |
 | `LOG_LEVEL` | `INFO` | `config.py` | `DEBUG`, `INFO`, `WARNING`, `ERROR`. |
-| `IMAGE_TAG` | `2.0.0` | `docker-compose.yml` | `trustedoss/backend`, `trustedoss/backend-worker`, `trustedoss/frontend`의 핀 태그. |
+| `IMAGE_TAG` | `0.11.0` | `docker-compose.yml` | `ghcr.io/trustedoss/trusca-backend`, `…/trusca-backend-worker`, `…/trusca-frontend`의 핀 태그. |
 
 ## 데이터베이스
 
@@ -227,6 +227,6 @@ docker-compose -f docker-compose.yml logs --tail=50 backend | grep backend_start
 
 ## 함께 보기
 
-- [`/.env.example`](https://github.com/trustedoss/trustedoss-portal/blob/main/.env.example) — 표준 레퍼런스, 항상 최신.
+- [`/.env.example`](https://github.com/trustedoss/trusca/blob/main/.env.example) — 표준 레퍼런스, 항상 최신.
 - [아키텍처](./architecture.md)
 - [Docker Compose 설치](../installation/docker-compose.md)

@@ -15,7 +15,7 @@ Engineers maintaining a GitHub repository that uses GitHub Actions. You need an 
 :::
 
 :::note Action source
-Use the in-repo composite action at `actions/scan/action.yml` directly via `uses: trustedoss/trustedoss-portal/actions/scan@v0.10.0` (referenced from this monorepo). A standalone Marketplace publication is on the roadmap.
+Use the in-repo composite action at `actions/scan/action.yml` directly via `uses: trustedoss/trusca/actions/scan@v0.10.0` (referenced from this monorepo). A standalone Marketplace publication is on the roadmap.
 :::
 
 ## Quick start
@@ -38,7 +38,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: TRUSCA SCA scan
-        uses: trustedoss/trustedoss-portal/actions/scan@v0.10.0
+        uses: trustedoss/trusca/actions/scan@v0.10.0
         with:
           api-url: https://trustedoss.example.com
           api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -108,7 +108,7 @@ Use them in subsequent steps:
 ```yaml
 - name: TRUSCA SCA scan
   id: sca
-  uses: trustedoss/trustedoss-portal/actions/scan@v0.10.0
+  uses: trustedoss/trusca/actions/scan@v0.10.0
   with:
     api-url: https://trustedoss.example.com
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -129,7 +129,7 @@ Use them in subsequent steps:
 Useful while you are seeding policies and don't want to block PRs yet:
 
 ```yaml
-- uses: trustedoss/trustedoss-portal/actions/scan@v0.10.0
+- uses: trustedoss/trusca/actions/scan@v0.10.0
   with:
     api-url: https://trustedoss.example.com
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -142,7 +142,7 @@ The PR comment still posts; the check stays green.
 ### Container scan
 
 ```yaml
-- uses: trustedoss/trustedoss-portal/actions/scan@v0.10.0
+- uses: trustedoss/trusca/actions/scan@v0.10.0
   with:
     api-url: https://trustedoss.example.com
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -158,7 +158,7 @@ Run two steps with different `id`s:
 
 ```yaml
 - name: SCA — source
-  uses: trustedoss/trustedoss-portal/actions/scan@v0.10.0
+  uses: trustedoss/trusca/actions/scan@v0.10.0
   with:
     api-url: https://trustedoss.example.com
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -166,7 +166,7 @@ Run two steps with different `id`s:
     scan-kind: source
 
 - name: SCA — container
-  uses: trustedoss/trustedoss-portal/actions/scan@v0.10.0
+  uses: trustedoss/trusca/actions/scan@v0.10.0
   with:
     api-url: https://trustedoss.example.com
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -181,7 +181,7 @@ Either step failing fails the job by default.
 Apply the gate only on `main`, advisory on PRs:
 
 ```yaml
-- uses: trustedoss/trustedoss-portal/actions/scan@v0.10.0
+- uses: trustedoss/trusca/actions/scan@v0.10.0
   with:
     api-url: https://trustedoss.example.com
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -208,7 +208,7 @@ With the threshold set, the gate also fails when any open finding has `epss_scor
 The `@v1` tag floats. Pin to a specific commit for reproducibility:
 
 ```yaml
-- uses: trustedoss/trustedoss-portal/actions/scan@a1b2c3d4e5f6     # v0.10.0
+- uses: trustedoss/trusca/actions/scan@a1b2c3d4e5f6     # v0.10.0
 ```
 
 ## How the ref becomes a retention key

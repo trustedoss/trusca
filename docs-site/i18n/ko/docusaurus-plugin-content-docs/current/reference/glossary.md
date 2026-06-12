@@ -114,7 +114,7 @@ sidebar_position: 4
 - **DT — Dependency-Track.** Apache-2.0 취약점 인텔리전스 플랫폼.
   TRUSCA는 까지 DT를 취약점 엔진으로 사용했고 v0.10.0에서 Trivy로
   교체했습니다 —
-  [ADR-0001](https://github.com/trustedoss/trustedoss-portal/blob/main/docs/decisions/0001-replace-dt-with-trivy.md)과
+  [ADR-0001](https://github.com/trustedoss/trusca/blob/main/docs/decisions/0001-replace-dt-with-trivy.md)과
   [비교](../comparison.md#dependency-track과-비교) 참고. 본 용어집에 여전히
   남아 있는 이유는 레거시 audit log 행과 비교 페이지가 DT를 참조하기 때문입니다.
 - **cosign.** Sigstore의 서명 CLI. TRUSCA는 모든 소스 스캔의

@@ -2,14 +2,14 @@
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/badge/release-v0.10.0-2563eb.svg)](CHANGELOG.md)
-[![Docs](https://img.shields.io/badge/docs-trustedoss.github.io-0f172a.svg)](https://trustedoss.github.io/trustedoss-portal/)
+[![Docs](https://img.shields.io/badge/docs-trustedoss.github.io-0f172a.svg)](https://trustedoss.github.io/trusca/)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/13060/badge)](https://www.bestpractices.dev/projects/13060)
 
 > Open-source enterprise SCA portal — manage CVEs, license compliance, and SBOMs in one self-hosted UI.
 
 **TRUSCA** — the SCA tool of the [TrustedOSS](https://trustedoss.github.io/) initiative — is an Apache-2.0 licensed, self-hosted alternative to commercial Software Composition Analysis (SCA) products. It unifies vulnerability tracking (CVE), license compliance, and Software Bill of Materials (SBOM) management for engineering and legal teams.
 
-> **🔭 Live demo:** *Coming soon.* A hosted read-only demo will be published shortly; until then you can run a local read-only demo with `DEMO_READ_ONLY=true`. See [Live demo](https://trustedoss.github.io/trustedoss-portal/docs/installation/live-demo).
+> **🔭 Live demo:** *Coming soon.* A hosted read-only demo will be published shortly; until then you can run a local read-only demo with `DEMO_READ_ONLY=true`. See [Live demo](https://trustedoss.github.io/trusca/docs/installation/live-demo).
 
 ---
 
@@ -69,8 +69,8 @@
 ## Quick start (development)
 
 ```bash
-git clone https://github.com/trustedoss/trustedoss-portal.git
-cd trustedoss-portal
+git clone https://github.com/trustedoss/trusca.git
+cd trusca
 cp .env.example .env
 
 docker-compose -f docker-compose.dev.yml up
@@ -81,15 +81,15 @@ After roughly 30 seconds the dev containers (`postgres`, `redis`, `backend`, `ce
 
 ### Other ways to run it
 
-- **Production (Docker Compose)** — use the bundled `docker-compose.yml` (Traefik + Let's Encrypt). See the [installation guide](https://trustedoss.github.io/trustedoss-portal/docs/installation/docker-compose).
-- **Production (Kubernetes / Helm)** — the production-grade chart (`charts/trustedoss`) ships bundled-or-external PostgreSQL & Redis, an Ingress with cert-manager TLS, and a migration Job. See the [Helm / Kubernetes guide](https://trustedoss.github.io/trustedoss-portal/docs/installation/helm).
-- **Read-only live demo** — run any deploy with `DEMO_READ_ONLY=true`. See [Live demo](https://trustedoss.github.io/trustedoss-portal/docs/installation/live-demo).
-- **API reference** — the hosted OpenAPI reference is at [`/reference/api`](https://trustedoss.github.io/trustedoss-portal/reference/api).
+- **Production (Docker Compose)** — use the bundled `docker-compose.yml` (Traefik + Let's Encrypt). See the [installation guide](https://trustedoss.github.io/trusca/docs/installation/docker-compose).
+- **Production (Kubernetes / Helm)** — the production-grade chart (`charts/trustedoss`) ships bundled-or-external PostgreSQL & Redis, an Ingress with cert-manager TLS, and a migration Job. See the [Helm / Kubernetes guide](https://trustedoss.github.io/trusca/docs/installation/helm).
+- **Read-only live demo** — run any deploy with `DEMO_READ_ONLY=true`. See [Live demo](https://trustedoss.github.io/trusca/docs/installation/live-demo).
+- **API reference** — the hosted OpenAPI reference is at [`/reference/api`](https://trustedoss.github.io/trusca/reference/api).
 
 ## Repository layout
 
 ```
-trustedoss-portal/
+trusca/
 ├── apps/
 │   ├── backend/         FastAPI app (api, core, models, services, tasks, integrations)
 │   └── frontend/        React + Vite + shadcn/ui app
@@ -102,7 +102,7 @@ trustedoss-portal/
 
 ## Documentation
 
-- **[Documentation site](https://trustedoss.github.io/trustedoss-portal/)** — install, scan, operate, and integrate (English + Korean)
+- **[Documentation site](https://trustedoss.github.io/trusca/)** — install, scan, operate, and integrate (English + Korean)
 - [`ROADMAP.md`](ROADMAP.md) — public roadmap
 - [`CHANGELOG.md`](CHANGELOG.md) — release history
 
@@ -119,7 +119,7 @@ Contributions are welcome — code, documentation, translations, bug reports, an
 
 ## SCA self-scan
 
-[![SCA self-scan](https://github.com/trustedoss/trustedoss-portal/actions/workflows/sca-self.yml/badge.svg)](https://github.com/trustedoss/trustedoss-portal/actions/workflows/sca-self.yml)
+[![SCA self-scan](https://github.com/trustedoss/trusca/actions/workflows/sca-self.yml/badge.svg)](https://github.com/trustedoss/trusca/actions/workflows/sca-self.yml)
 
 The portal dog-foods its own toolchain. A nightly GitHub Actions workflow ([`.github/workflows/sca-self.yml`](.github/workflows/sca-self.yml)) generates a CycloneDX SBOM with cdxgen, runs Trivy against it, and auto-opens / closes a labelled GitHub issue when Critical CVEs appear in our dependency tree.
 

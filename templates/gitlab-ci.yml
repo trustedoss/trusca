@@ -7,7 +7,7 @@
 # Usage:
 #
 #   include:
-#     - remote: 'https://raw.githubusercontent.com/trustedoss/trustedoss-portal/main/templates/gitlab-ci.yml'
+#     - remote: 'https://raw.githubusercontent.com/trustedoss/trusca/main/templates/gitlab-ci.yml'
 #
 #   trustedoss-sca:
 #     extends: .trustedoss-sca

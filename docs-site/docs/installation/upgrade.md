@@ -25,7 +25,7 @@ Operators with `sudo` on the host that runs the portal. Familiarity with `docker
 - A previous successful install (i.e. `docker-compose -f docker-compose.yml ps` shows healthy services).
 - `docker-compose` (V1) on PATH.
 - At least 5 GB free disk for the new image layers and the pre-upgrade backup.
-- The intended `IMAGE_TAG` is in `.env` (or the wizard accepts the default `0.10.0`). If you maintain a private registry, `IMAGE_TAG` should match the manifest published there.
+- The intended `IMAGE_TAG` is in `.env` (or the wizard accepts the default `0.11.0`). If you maintain a private registry, `IMAGE_TAG` should match the manifest published there.
 
 ## Step 1 — Inspect the upgrade window
 
@@ -130,4 +130,4 @@ Then re-run `bash scripts/upgrade.sh`.
 
 - [Backup & restore](../admin-guide/backup-and-restore.md)
 - [System health dashboard](../admin-guide/disk-and-health.md)
-- [Release notes](https://github.com/trustedoss/trustedoss-portal/releases)
+- [Release notes](https://github.com/trustedoss/trusca/releases)

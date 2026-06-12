@@ -10,7 +10,7 @@
 # Paired timer: trustedoss-demo-reset.timer.
 [Unit]
 Description=TrustedOSS demo dataset daily reset
-Documentation=https://github.com/trustedoss/trustedoss-portal/blob/main/docs/operator-runbook-hetzner.md
+Documentation=https://github.com/trustedoss/trusca/blob/main/docs/operator-runbook-hetzner.md
 After=docker.service
 Requires=docker.service
 

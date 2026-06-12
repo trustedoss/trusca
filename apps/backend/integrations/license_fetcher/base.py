@@ -60,7 +60,7 @@ DEFAULT_RETRY_BACKOFF_SECONDS = 0.5
 
 USER_AGENT = (
     "TrustedOSS-Portal/0.1 "
-    "(+https://github.com/trustedoss/trustedoss-portal; license-fetcher)"
+    "(+https://github.com/trustedoss/trusca; license-fetcher)"
 )
 
 

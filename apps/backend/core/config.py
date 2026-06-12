@@ -741,7 +741,7 @@ def slsa_builder_id() -> str:
     """
     raw = os.getenv("SLSA_BUILDER_ID")
     if raw is None or raw.strip() == "":
-        return "https://github.com/trustedoss/trustedoss-portal/worker"
+        return "https://github.com/trustedoss/trusca/worker"
     return raw.strip()
 
 

@@ -7,7 +7,7 @@ each kind of request so you get an answer quickly.
 
 Most "how do I…" answers are in the documentation site:
 
-→ **https://trustedoss.github.io/trustedoss-portal/**
+→ **https://trustedoss.github.io/trusca/**
 
 It covers installation, running scans, reading results, admin operations, and CI
 integration, in English and Korean. Start there before opening an issue.
@@ -17,7 +17,7 @@ integration, in English and Korean. Start there before opening an issue.
 For usage questions, ideas, "is this the right approach", and show-and-tell, use
 **GitHub Discussions**:
 
-→ **https://github.com/trustedoss/trustedoss-portal/discussions**
+→ **https://github.com/trustedoss/trusca/discussions**
 
 Discussions are the best place when you are not yet sure whether something is a
 bug.
@@ -27,7 +27,7 @@ bug.
 If you have found a reproducible bug or want to request a feature, open a
 **GitHub Issue** using the issue templates:
 
-→ **https://github.com/trustedoss/trustedoss-portal/issues**
+→ **https://github.com/trustedoss/trusca/issues**
 
 A good report includes your version (release tag or Git SHA), deployment mode
 (Docker Compose / Helm), steps to reproduce, what you expected, and what
@@ -38,7 +38,7 @@ happened. Logs and screenshots help.
 **Do not** report security issues in public Issues or Discussions. Follow the
 private disclosure process in [`SECURITY.md`](SECURITY.md):
 
-→ [Report a vulnerability privately](https://github.com/trustedoss/trustedoss-portal/security/advisories/new)
+→ [Report a vulnerability privately](https://github.com/trustedoss/trusca/security/advisories/new)
 
 ## Roadmap and project direction
 

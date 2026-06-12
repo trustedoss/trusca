@@ -396,5 +396,5 @@ W11 의 Vercel + Linear 스킨은 W13 으로 은퇴. 그 이전 "BD-style 2015" 
 
 - [아키텍처](./architecture.md) — backend / frontend / 스캔 파이프라인 개요.
 - [코딩 표준](../contributor-guide/coding-standards.md) — 포맷·린트·커밋 규약.
-- [`CLAUDE.md`](https://github.com/trustedoss/trustedoss-portal/blob/main/CLAUDE.md) — 최상위 프로젝트 규칙. "디자인 시스템 (v2)" 절이 본 페이지를 요약.
+- [`CLAUDE.md`](https://github.com/trustedoss/trusca/blob/main/CLAUDE.md) — 최상위 프로젝트 규칙. "디자인 시스템 (v2)" 절이 본 페이지를 요약.
 - W11 진실의 단일 출처 — `docs/ux/design-philosophy-evolution-plan-2026-05-27.md` (in-repo).

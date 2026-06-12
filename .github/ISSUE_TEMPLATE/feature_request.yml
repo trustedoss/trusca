@@ -9,8 +9,8 @@ body:
         Thanks for proposing a new feature.
 
         Before submitting, please:
-        - Search [existing issues](https://github.com/trustedoss/trustedoss-portal/issues?q=is%3Aissue) and [discussions](https://github.com/trustedoss/trustedoss-portal/discussions) to avoid duplicates.
-        - Check the [v2 execution plan](https://github.com/trustedoss/trustedoss-portal/blob/main/docs/v2-execution-plan.md) — your idea may already be on the roadmap.
+        - Search [existing issues](https://github.com/trustedoss/trusca/issues?q=is%3Aissue) and [discussions](https://github.com/trustedoss/trusca/discussions) to avoid duplicates.
+        - Check the [v2 execution plan](https://github.com/trustedoss/trusca/blob/main/docs/v2-execution-plan.md) — your idea may already be on the roadmap.
 
   - type: textarea
     id: problem

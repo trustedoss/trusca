@@ -1,6 +1,6 @@
 # TrustedOSS Portal Helm chart
 
-Production-complete Kubernetes deployment of [TrustedOSS Portal](https://github.com/trustedoss/trustedoss-portal)
+Production-complete Kubernetes deployment of [TrustedOSS Portal](https://github.com/trustedoss/trusca)
 — enterprise open-source risk management (SCA: CVE, license compliance, SBOM).
 
 - **Chart version:** see `Chart.yaml` `version`
@@ -23,7 +23,7 @@ Production-complete Kubernetes deployment of [TrustedOSS Portal](https://github.
 Vulnerability matching runs from the worker via `trivy sbom` against the
 locally-cached Trivy DB — no external engine. Air-gapped sites override the
 upstream OCI registry with `env.trivy.dbRepository`. See
-[ADR-0001 — Dependency-Track removal](https://github.com/trustedoss/trustedoss-portal/blob/main/docs/decisions/0001-replace-dt-with-trivy.md).
+[ADR-0001 — Dependency-Track removal](https://github.com/trustedoss/trusca/blob/main/docs/decisions/0001-replace-dt-with-trivy.md).
 
 ## Quick start (bundled datastores, evaluation)
 
@@ -87,10 +87,10 @@ connections before alembic runs.
 
 | Key | Default | Description |
 |---|---|---|
-| `image.backendRepository` | `ghcr.io/trustedoss/backend` | API image. |
-| `image.workerRepository` | `ghcr.io/trustedoss/backend-worker` | Worker/beat/migrate image (ships alembic). |
-| `image.frontendRepository` | `ghcr.io/trustedoss/frontend` | SPA image. |
-| `image.tag` | `0.10.0` | Tag for all three (lock-step with `appVersion`). Never `:latest`. |
+| `image.backendRepository` | `ghcr.io/trustedoss/trusca-backend` | API image. |
+| `image.workerRepository` | `ghcr.io/trustedoss/trusca-backend-worker` | Worker/beat/migrate image (ships alembic). |
+| `image.frontendRepository` | `ghcr.io/trustedoss/trusca-frontend` | SPA image. |
+| `image.tag` | `0.11.0` | Tag for all three (lock-step with `appVersion`). Never `:latest`. |
 | `image.pullPolicy` | `IfNotPresent` | |
 | `imagePullSecrets` | `[]` | Private-registry pull secrets. |
 

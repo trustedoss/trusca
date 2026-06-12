@@ -118,7 +118,7 @@ column.
 - **DT — Dependency-Track.** Apache-2.0 vulnerability intelligence platform.
   TRUSCA used DT as its vulnerability engine through  and replaced it
   with Trivy at v0.10.0 — see
-  [ADR-0001](https://github.com/trustedoss/trustedoss-portal/blob/main/docs/decisions/0001-replace-dt-with-trivy.md)
+  [ADR-0001](https://github.com/trustedoss/trusca/blob/main/docs/decisions/0001-replace-dt-with-trivy.md)
   and [Comparison](../comparison.md#vs-dependency-track). The DT term still
   appears in this glossary because legacy audit-log rows and the comparison
   page reference it.

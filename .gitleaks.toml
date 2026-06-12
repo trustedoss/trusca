@@ -1,4 +1,4 @@
-# gitleaks configuration for trustedoss-portal.
+# gitleaks configuration for trusca.
 #
 # Extends the upstream default ruleset and adds an allowlist for known
 # non-secrets that the generic high-entropy rules flag: synthetic fixtures
@@ -12,7 +12,7 @@
 # Only provably non-secret values (test fixtures, CI dummies, placeholders)
 # belong in this allowlist.
 
-title = "trustedoss-portal gitleaks config"
+title = "trusca gitleaks config"
 
 [extend]
 useDefault = true

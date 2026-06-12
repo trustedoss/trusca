@@ -81,7 +81,7 @@ re-activation is welcome.
 The lifecycle for a non-trivial change is:
 
 1. **Open an issue** describing the problem and the proposed direction.
-2. **Discuss** on the issue or in [GitHub Discussions](https://github.com/trustedoss/trustedoss-portal/discussions)
+2. **Discuss** on the issue or in [GitHub Discussions](https://github.com/trustedoss/trusca/discussions)
    until the approach has rough agreement.
 3. **Open a pull request** that implements the agreed approach, following
    [`CONTRIBUTING.md`](CONTRIBUTING.md).

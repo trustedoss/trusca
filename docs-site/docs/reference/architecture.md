@@ -23,15 +23,15 @@ The production stack runs seven container services:
 | `traefik` | `traefik:v3.2.1` | Edge proxy. TLS termination via Let's Encrypt HTTP-01. HTTP→HTTPS redirect. |
 | `postgres` | `postgres:17.2-alpine` | Primary store. All persistent state. |
 | `redis` | `redis:7.4-alpine` | Celery broker + result backend. WebSocket pub/sub. |
-| `backend` | `trustedoss/backend:<tag>` | FastAPI + uvicorn (4 workers). Reachable via Traefik on `/api`, `/health`. |
-| `worker` | `trustedoss/backend-worker:<tag>` | Celery worker with `cdxgen`, scancode, Trivy, JRE bundled (JRE is for `cdxgen`'s Maven / Gradle SBOM enumeration). The worker also holds the local **Trivy DB** at `/var/lib/trivy`. |
-| `beat` | `trustedoss/backend-worker:<tag>` | Celery Beat scheduler. Trivy DB refresh (weekly), vulnerability re-match (after each refresh), backup (daily). |
-| `frontend` | `trustedoss/frontend:<tag>` | nginx serving the Vite build. Reachable via Traefik on `/`. |
+| `backend` | `trustedoss/trusca-backend:<tag>` | FastAPI + uvicorn (4 workers). Reachable via Traefik on `/api`, `/health`. |
+| `worker` | `trustedoss/trusca-backend-worker:<tag>` | Celery worker with `cdxgen`, scancode, Trivy, JRE bundled (JRE is for `cdxgen`'s Maven / Gradle SBOM enumeration). The worker also holds the local **Trivy DB** at `/var/lib/trivy`. |
+| `beat` | `trustedoss/trusca-backend-worker:<tag>` | Celery Beat scheduler. Trivy DB refresh (weekly), vulnerability re-match (after each refresh), backup (daily). |
+| `frontend` | `trustedoss/trusca-frontend:<tag>` | nginx serving the Vite build. Reachable via Traefik on `/`. |
 
 Image tags are pinned (`CLAUDE.md` rule #9 — never `:latest`).
 
 :::note Dependency-Track was removed in v0.10.0
-Earlier releases shipped Dependency-Track as an optional eighth service. v0.10.0 removed it in favour of Trivy as the single vulnerability engine — see [ADR-0001](https://github.com/trustedoss/trustedoss-portal/blob/main/docs/decisions/0001-replace-dt-with-trivy.md) and the [v0.10.0 release notes](../release-notes/v0.10.0.md). The Trivy DB lives inside the worker container; there is no separate vulnerability-engine service.
+Earlier releases shipped Dependency-Track as an optional eighth service. v0.10.0 removed it in favour of Trivy as the single vulnerability engine — see [ADR-0001](https://github.com/trustedoss/trusca/blob/main/docs/decisions/0001-replace-dt-with-trivy.md) and the [v0.10.0 release notes](../release-notes/v0.10.0.md). The Trivy DB lives inside the worker container; there is no separate vulnerability-engine service.
 :::
 
 :::note

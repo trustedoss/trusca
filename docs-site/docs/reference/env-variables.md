@@ -40,7 +40,7 @@ These four must be present and non-empty. The wizard sets them.
 | `APP_ENV` | `dev` | `config.py` | `dev`, `staging`, or `prod`. Drives a few CORS / log defaults. |
 | `LOG_LEVEL` | `INFO` | `config.py` | `DEBUG`, `INFO`, `WARNING`, `ERROR`. |
 | `DEMO_READ_ONLY` | `false` | `config.py` | When truthy (`1`/`true`/`yes`/`on`), the backend runs as a **read-only live demo**: every non-auth mutation (POST/PUT/PATCH/DELETE) is rejected with an RFC 7807 `403`. Surfaces on `GET /health` so the SPA shows a banner. See [Live demo](../installation/live-demo.md). |
-| `IMAGE_TAG` | `2.0.0` | `docker-compose.yml` | Pinned tag for `trustedoss/backend`, `trustedoss/backend-worker`, `trustedoss/frontend`. |
+| `IMAGE_TAG` | `0.11.0` | `docker-compose.yml` | Pinned tag for `ghcr.io/trustedoss/trusca-backend`, `…/trusca-backend-worker`, `…/trusca-frontend`. |
 
 ## Database
 
@@ -228,6 +228,6 @@ The startup log emits a single `backend_starting` event with the `app_env` field
 
 ## See also
 
-- [`/.env.example`](https://github.com/trustedoss/trustedoss-portal/blob/main/.env.example) — canonical reference, always up to date.
+- [`/.env.example`](https://github.com/trustedoss/trusca/blob/main/.env.example) — canonical reference, always up to date.
 - [Architecture](./architecture.md)
 - [Install with Docker Compose](../installation/docker-compose.md)

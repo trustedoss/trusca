@@ -43,8 +43,8 @@ This project adheres to the [Contributor Covenant 2.1](CODE_OF_CONDUCT.md). By p
 ### Bootstrap the dev stack
 
 ```bash
-git clone https://github.com/trustedoss/trustedoss-portal.git
-cd trustedoss-portal
+git clone https://github.com/trustedoss/trusca.git
+cd trusca
 cp .env.example .env  # adjust as needed
 docker-compose -f docker-compose.dev.yml up -d
 ```
@@ -74,7 +74,7 @@ npm run test -- --coverage
 
 ### Picking work
 
-- Browse open issues labeled `good first issue` or `help wanted` in the [issue tracker](https://github.com/trustedoss/trustedoss-portal/issues).
+- Browse open issues labeled `good first issue` or `help wanted` in the [issue tracker](https://github.com/trustedoss/trusca/issues).
 - For larger features, open a discussion or feature-request issue first so we can align on scope before you write code.
 
 ### Keeping in sync

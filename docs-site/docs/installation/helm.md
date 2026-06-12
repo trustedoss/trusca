@@ -178,7 +178,7 @@ upgrading — see [Backup & restore](../admin-guide/backup-and-restore.md).
 
 ## Key values
 
-The full table lives in the [chart README](https://github.com/trustedoss/trustedoss-portal/blob/main/charts/trustedoss/README.md).
+The full table lives in the [chart README](https://github.com/trustedoss/trusca/blob/main/charts/trustedoss/README.md).
 The values you most often set:
 
 | Key | Default | Purpose |
@@ -261,7 +261,7 @@ The values you most often set:
   ```
 
 If you hit a chart bug, open an issue using the
-[bug report template](https://github.com/trustedoss/trustedoss-portal/issues/new/choose).
+[bug report template](https://github.com/trustedoss/trusca/issues/new/choose).
 
 ## See also
 

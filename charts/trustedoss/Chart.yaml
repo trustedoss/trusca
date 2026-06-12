@@ -11,25 +11,25 @@ description: >-
 type: application
 
 # Chart version is the packaging version (SemVer); bump on every chart change.
-# Aligned with the application version for the first public release.
-version: 0.10.0
+# Kept aligned with the application version while the two release in lock-step.
+version: 0.11.0
 
 # appVersion tracks the released container image tag (image.tag default).
 # Keep in lock-step with .env.example IMAGE_TAG / docker-compose IMAGE_TAG and
 # the .github/workflows/release.yml image tags.
-appVersion: "0.10.0"
+appVersion: "0.11.0"
 
 keywords:
   - sca
   - sbom
   - vulnerability
   - license-compliance
-home: https://github.com/trustedoss/trustedoss-portal
+home: https://github.com/trustedoss/trusca
 sources:
-  - https://github.com/trustedoss/trustedoss-portal
+  - https://github.com/trustedoss/trusca
 maintainers:
   - name: TrustedOSS
-icon: https://raw.githubusercontent.com/trustedoss/trustedoss-portal/main/docs/static/img/logo.png
+icon: https://raw.githubusercontent.com/trustedoss/trusca/main/docs/static/img/logo.png
 
 # ArtifactHub metadata (https://artifacthub.io/docs/topics/annotations/helm/).
 # Surfaced on the ArtifactHub package page once the OCI repo is registered (a
@@ -38,14 +38,14 @@ annotations:
   artifacthub.io/license: Apache-2.0
   artifacthub.io/links: |
     - name: source
-      url: https://github.com/trustedoss/trustedoss-portal
+      url: https://github.com/trustedoss/trusca
     - name: documentation
-      url: https://trustedoss.github.io/trustedoss-portal
+      url: https://trustedoss.github.io/trusca
   artifacthub.io/maintainers: |
     - name: TrustedOSS
       email: maintainers@trustedoss.dev
   artifacthub.io/prerelease: "false"
   artifacthub.io/containsSecurityUpdates: "false"
   artifacthub.io/changes: |
-    - kind: added
-      description: "First public release of the TrustedOSS Portal chart"
+    - kind: changed
+      description: "TRUSCA rebrand W4 — image repositories renamed to ghcr.io/trustedoss/trusca-{backend,backend-worker,frontend} (chart name unchanged; rename planned for v0.12.0)"
