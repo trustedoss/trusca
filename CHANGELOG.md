@@ -5,6 +5,45 @@ All notable changes to TrustedOSS Portal are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] — 2026-06-12
+
+The first post-GA feature release. Headlines: a public **read-only demo SaaS**
+deployable to a single Hetzner server, a UI **craft pass** (W11–W12), and a
+hardening sweep from an external verification campaign.
+
+### Added
+- **Public read-only demo mode** — `DEMO_READ_ONLY` makes the backend serve all
+  reads but reject every write (allow-listing only the auth login/refresh/logout
+  flow) with an RFC 7807 403. The SPA surfaces it as a banner, a login-page
+  credentials hint, and a dedicated "read-only demo" toast on blocked writes.
+- **Hetzner demo provisioning** — cloud-init, an operator runbook (EN/KO), an
+  idempotent `seed_demo` dataset, a daily `reset_demo` wipe-and-reseed timer, and
+  a daily backup timer.
+- **Optional SSH-based CD** (`deploy-hetzner.yml`) — one-click / on-release deploy
+  to the demo host via the existing `upgrade.sh`, with strict tag validation and
+  host-key pinning.
+- **Day-2 operations** — opt-in offsite backup (`backup-offsite.sh`, rclone), a
+  backstop uptime canary workflow, and a Korean translation-style linter for the
+  docs site.
+
+### Changed
+- **Visual & craft pass (W11–W12)** — modern-enterprise theme (warm near-black
+  primary, off-white canvas), Inter/JetBrains-Mono typography system, an
+  in-house global toast, CSS-only route/motion transitions with a reduced-motion
+  guard, and richer empty/loading states.
+
+### Fixed
+- Drawer obligations, CVE deep-links, and the Compliance NOTICE toolbar
+  (M-20/M-21/M-22). Relative-time displays now always carry an absolute-time title.
+
+### Security
+- Revoke the entire refresh-token family on reuse detection (C-1).
+- Redact embedded `git_url` credentials on the read API and in audit logs (C-2).
+- Enforce the project boundary for project-scoped API keys (M-2) and scope
+  `GET /v1/audit` reads to the caller's team for team admins (M-3).
+- Codified five testing-hardening rules and vendored the verification team's
+  deterministic specs as a nightly regression gate.
+
 ## [0.10.0] — 2026-05-31
 
 First public release of TrustedOSS Portal.
