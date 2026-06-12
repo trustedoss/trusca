@@ -8,7 +8,7 @@ sidebar_position: 5
 
 # 취약점 데이터 출처
 
-TrustedOSS Portal은 5개 공개 취약점 피드를 컴파일한 번들인 **Trivy DB**로 SBOM을 CVE에 대조합니다. 본 페이지는 각 출처가 **무엇을 기여**하는지, **언제 갱신**되는지, **어떤 생태계를 커버**하는지의 reference입니다.
+TRUSCA는 5개 공개 취약점 피드를 컴파일한 번들인 **Trivy DB**로 SBOM을 CVE에 대조합니다. 본 페이지는 각 출처가 **무엇을 기여**하는지, **언제 갱신**되는지, **어떤 생태계를 커버**하는지의 reference입니다.
 
 :::note 대상 독자
 "이 CVE는 어디서 오는가?", "왜 이 생태계는 빠졌나?"에 답해야 하는 보안 리드·감사인·운영자. 다운로드·갱신·air-gapped 미러 같은 운영자 라이프사이클은 [취약점 데이터 (Trivy DB)](../admin-guide/vulnerability-data.md)를 참조하세요.

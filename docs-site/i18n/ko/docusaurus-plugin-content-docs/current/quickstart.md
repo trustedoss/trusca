@@ -1,7 +1,7 @@
 ---
 id: quickstart
 title: Quickstart
-description: dev Docker Compose 스택과 데모 데이터셋으로 노트북에서 5분 만에 TrustedOSS Portal을 띄웁니다.
+description: dev Docker Compose 스택과 데모 데이터셋으로 노트북에서 5분 만에 TRUSCA를 띄웁니다.
 sidebar_label: Quickstart
 sidebar_position: 1
 slug: /quickstart
@@ -9,7 +9,7 @@ slug: /quickstart
 
 # Quickstart
 
-노트북에서 약 5분 만에 TrustedOSS Portal을 실행합니다. 본 페이지는 데이터가 채워진
+노트북에서 약 5분 만에 TRUSCA를 실행합니다. 본 페이지는 데이터가 채워진
 대시보드를 곧바로 보여주는 데 초점을 둡니다. 실제 배포는
 [Docker Compose 설치](./installation/docker-compose.md) 또는
 [Helm 차트](./installation/helm.md)를 참고하십시오.

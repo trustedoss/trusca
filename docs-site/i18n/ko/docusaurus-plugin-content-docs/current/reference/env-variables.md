@@ -1,7 +1,7 @@
 ---
 id: env-variables
 title: 환경 변수
-description: TrustedOSS Portal이 읽는 .env 키의 완전한 레퍼런스 — 기본값, 검증, 런타임 시멘틱.
+description: TRUSCA가 읽는 .env 키의 완전한 레퍼런스 — 기본값, 검증, 런타임 시멘틱.
 sidebar_label: 환경 변수
 sidebar_position: 2
 ---

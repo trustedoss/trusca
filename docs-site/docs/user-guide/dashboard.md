@@ -1,7 +1,7 @@
 ---
 id: dashboard
 title: Dashboard
-description: The post-login landing page in TrustedOSS Portal — at-a-glance portfolio severity, license mix, scan-queue state, and recent runs.
+description: The post-login landing page in TRUSCA — at-a-glance portfolio severity, license mix, scan-queue state, and recent runs.
 sidebar_label: Dashboard
 sidebar_position: 0
 ---

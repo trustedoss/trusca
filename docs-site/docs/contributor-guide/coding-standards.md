@@ -1,7 +1,7 @@
 ---
 id: coding-standards
 title: Coding standards
-description: Language conventions, schema migration policy, error response shape, structured logging, and i18n key rules for TrustedOSS Portal.
+description: Language conventions, schema migration policy, error response shape, structured logging, and i18n key rules for TRUSCA.
 sidebar_label: Coding standards
 sidebar_position: 2
 ---

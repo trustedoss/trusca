@@ -1,7 +1,7 @@
 ---
 id: vulnerabilities
 title: Vulnerabilities
-description: Triage CVEs in TrustedOSS Portal — VEX state machine, severity model, suppression flow, and re-detection.
+description: Triage CVEs in TRUSCA — VEX state machine, severity model, suppression flow, and re-detection.
 sidebar_label: Vulnerabilities
 sidebar_position: 4
 ---

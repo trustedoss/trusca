@@ -75,7 +75,7 @@ curl -sS -X POST \
 In **GitHub Actions**, store the key in the repository or organisation secrets, then expose it as an env var:
 
 ```yaml
-- name: Trigger TrustedOSS scan
+- name: Trigger TRUSCA scan
   env:
     TRUSTEDOSS_API_KEY: ${{ secrets.TRUSTEDOSS_API_KEY }}
   run: curl -sS -H "Authorization: Bearer $TRUSTEDOSS_API_KEY" ...

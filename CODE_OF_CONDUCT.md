@@ -1,6 +1,6 @@
 # Code of Conduct
 
-The TrustedOSS Portal project adopts the **[Contributor Covenant, version 2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct/)** as its code of conduct. The full canonical text — including the pledge, standards, enforcement responsibilities, scope, enforcement guidelines, and attribution — is available at the link above and is incorporated into this project by reference.
+The TRUSCA project adopts the **[Contributor Covenant, version 2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct/)** as its code of conduct. The full canonical text — including the pledge, standards, enforcement responsibilities, scope, enforcement guidelines, and attribution — is available at the link above and is incorporated into this project by reference.
 
 A short summary follows for convenience. **The canonical version at contributor-covenant.org is authoritative** in case of any discrepancy.
 
@@ -8,7 +8,7 @@ A short summary follows for convenience. **The canonical version at contributor-
 
 ## Our Pledge (summary)
 
-We — members, contributors, and project leaders — pledge to make participation in the TrustedOSS Portal community a respectful, welcoming, and inclusive experience for everyone, regardless of background or identity. We commit to acting and interacting in ways that contribute to an open, diverse, and healthy community.
+We — members, contributors, and project leaders — pledge to make participation in the TRUSCA community a respectful, welcoming, and inclusive experience for everyone, regardless of background or identity. We commit to acting and interacting in ways that contribute to an open, diverse, and healthy community.
 
 ## Expected Behavior (summary)
 
@@ -26,7 +26,7 @@ Behavior that the canonical Contributor Covenant 2.1 designates as unacceptable 
 
 ## Scope
 
-This Code of Conduct applies in all project-managed spaces — GitHub repositories, issue trackers, pull request reviews, discussions, official chat channels, mailing lists, and any in-person or virtual events organized under the TrustedOSS Portal name. It also applies when an individual is officially representing the project in public spaces.
+This Code of Conduct applies in all project-managed spaces — GitHub repositories, issue trackers, pull request reviews, discussions, official chat channels, mailing lists, and any in-person or virtual events organized under the TRUSCA name. It also applies when an individual is officially representing the project in public spaces.
 
 ## Reporting
 

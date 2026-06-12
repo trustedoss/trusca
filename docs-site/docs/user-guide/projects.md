@@ -1,7 +1,7 @@
 ---
 id: projects
 title: Projects
-description: Register, configure, and archive projects in TrustedOSS Portal — the unit that ties together scans, components, vulnerabilities, and obligations.
+description: Register, configure, and archive projects in TRUSCA — the unit that ties together scans, components, vulnerabilities, and obligations.
 sidebar_label: Projects
 sidebar_position: 1
 ---

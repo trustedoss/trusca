@@ -1,6 +1,6 @@
 # Roadmap
 
-Public roadmap for TrustedOSS Portal. Intentionally high-level — concrete
+Public roadmap for TRUSCA. Intentionally high-level — concrete
 priorities and target dates are decided per release cycle and announced in
 [`CHANGELOG.md`](CHANGELOG.md).
 

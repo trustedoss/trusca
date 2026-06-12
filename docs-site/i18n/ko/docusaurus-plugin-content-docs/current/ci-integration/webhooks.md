@@ -1,7 +1,7 @@
 ---
 id: webhooks
 title: Webhooks
-description: GitHub과 GitLab Webhook을 구성해 push와 PR/MR 이벤트로 TrustedOSS 스캔을 트리거합니다 — HMAC 서명 검증 포함.
+description: GitHub과 GitLab Webhook을 구성해 push와 PR/MR 이벤트로 TRUSCA 스캔을 트리거합니다 — HMAC 서명 검증 포함.
 sidebar_label: Webhooks
 sidebar_position: 4
 ---

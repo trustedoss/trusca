@@ -1,6 +1,6 @@
 # Maintainers
 
-This file lists the current maintainers of TrustedOSS Portal and their areas of
+This file lists the current maintainers of TRUSCA and their areas of
 ownership. The governance model that defines these roles is in
 [`GOVERNANCE.md`](GOVERNANCE.md). Path-level review assignment is in
 [`.github/CODEOWNERS`](.github/CODEOWNERS).

@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 
 import { EmptyState } from "@/components/EmptyState";
+import { BrandCandidates } from "@/pages/dev/BrandCandidates";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -386,6 +387,13 @@ export function DesignSystemPreview() {
               </Button>
             </div>
           </div>
+        </Section>
+
+        <Section
+          title="Brand — TRUSCA logo candidates"
+          description="W1 rebrand: three new-motif symbol candidates. Pick one; it becomes the favicon, docs logo, and sidebar monogram."
+        >
+          <BrandCandidates />
         </Section>
 
         <footer className="border-t border-border pt-6 text-xs text-muted-foreground">

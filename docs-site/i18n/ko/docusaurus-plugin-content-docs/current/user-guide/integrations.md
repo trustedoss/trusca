@@ -75,7 +75,7 @@ curl -sS -X POST \
 **GitHub Actions**에서는 Key를 저장소 또는 조직 시크릿에 보관하고 환경 변수로 노출합니다.
 
 ```yaml
-- name: Trigger TrustedOSS scan
+- name: Trigger TRUSCA scan
   env:
     TRUSTEDOSS_API_KEY: ${{ secrets.TRUSTEDOSS_API_KEY }}
   run: curl -sS -H "Authorization: Bearer $TRUSTEDOSS_API_KEY" ...

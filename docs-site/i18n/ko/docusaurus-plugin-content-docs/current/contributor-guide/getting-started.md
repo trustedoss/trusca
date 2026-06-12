@@ -1,14 +1,14 @@
 ---
 id: getting-started
 title: 시작하기
-description: 모노레포를 클론하고 docker-compose로 dev 스택을 띄운 다음 TrustedOSS Portal에 첫 PR을 보냅니다.
+description: 모노레포를 클론하고 docker-compose로 dev 스택을 띄운 다음 TRUSCA에 첫 PR을 보냅니다.
 sidebar_label: 시작하기
 sidebar_position: 1
 ---
 
 # 시작하기
 
-TrustedOSS Portal 컨트리뷰터 트랙에 오신 것을 환영합니다. 이 페이지는 깨끗한 머신에서 첫 머지된 PR까지의 과정을 안내합니다.
+TRUSCA 컨트리뷰터 트랙에 오신 것을 환영합니다. 이 페이지는 깨끗한 머신에서 첫 머지된 PR까지의 과정을 안내합니다.
 
 :::note 대상 독자
 Python(FastAPI / Pydantic), TypeScript(React 18 / Vite), Docker, Git에 익숙한 개발자. SCA(Software Composition Analysis)에 대한 사전 지식은 필요 없습니다 — 코드베이스가 잘 분리되어 있습니다.

@@ -3,7 +3,7 @@
 > Korean version: [`operator-runbook-hetzner.ko.md`](./operator-runbook-hetzner.ko.md)
 
 This runbook takes you from **zero to a live, public, read-only demo** of
-TrustedOSS Portal on a single Hetzner ARM server, using the project's existing
+TRUSCA on a single Hetzner ARM server, using the project's existing
 `docker-compose.yml` (Traefik + automatic HTTPS). It is written for someone who
 has **never deployed a service before** — every command is copy-pasteable and
 every decision is explained.

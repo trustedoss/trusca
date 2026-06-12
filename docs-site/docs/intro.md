@@ -1,15 +1,16 @@
 ---
 id: intro
 title: Introduction
-description: TrustedOSS Portal is a self-hosted, Apache-2.0 SCA portal that unifies CVEs, license compliance, and SBOMs in one UI.
+description: TRUSCA is a self-hosted, Apache-2.0 SCA portal that unifies CVEs, license compliance, and SBOMs in one UI.
 sidebar_label: Introduction
 sidebar_position: 0
 slug: /intro
 ---
 
-# TrustedOSS Portal
+# TRUSCA
 
-**TrustedOSS Portal** is a self-hosted, Apache-2.0 Software Composition
+**TRUSCA** — the SCA tool of the [TrustedOSS](https://trustedoss.github.io/)
+initiative — is a self-hosted, Apache-2.0 Software Composition
 Analysis (SCA) platform. It unifies CVE tracking, license compliance, and
 SBOM management in a single web UI — without the per-seat licensing of
 commercial products.

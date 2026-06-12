@@ -1,7 +1,7 @@
 ---
 id: upgrade
 title: 업그레이드
-description: 번들 래퍼 스크립트로 기존 TrustedOSS Portal 설치를 업그레이드 — 백업, 이미지 풀, alembic 마이그레이션, health 프로브.
+description: 번들 래퍼 스크립트로 기존 TRUSCA 설치를 업그레이드 — 백업, 이미지 풀, alembic 마이그레이션, health 프로브.
 sidebar_label: 업그레이드
 sidebar_position: 2
 ---

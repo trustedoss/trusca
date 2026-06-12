@@ -1,7 +1,7 @@
 ---
 id: projects
 title: 프로젝트
-description: TrustedOSS Portal에서 프로젝트 등록·설정·아카이브 — 스캔·컴포넌트·취약점·의무사항을 묶는 단위입니다.
+description: TRUSCA에서 프로젝트 등록·설정·아카이브 — 스캔·컴포넌트·취약점·의무사항을 묶는 단위입니다.
 sidebar_label: 프로젝트
 sidebar_position: 1
 ---

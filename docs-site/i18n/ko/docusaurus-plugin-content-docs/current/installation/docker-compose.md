@@ -1,7 +1,7 @@
 ---
 id: docker-compose
 title: Docker Compose 설치
-description: docker-compose V1과 번들 설치 마법사로 Linux 호스트에 TrustedOSS Portal을 설치하는 단계별 안내.
+description: docker-compose V1과 번들 설치 마법사로 Linux 호스트에 TRUSCA를 설치하는 단계별 안내.
 sidebar_label: Docker Compose
 sidebar_position: 1
 ---
@@ -37,7 +37,7 @@ df -h /                            # 20 GB 이상 여유
 
 ## 평가용 설치 (dev 스택)
 
-프로덕션 호스트를 준비하기 전에 TrustedOSS Portal을 *체험*하고 싶으신가요?
+프로덕션 호스트를 준비하기 전에 TRUSCA를 *체험*하고 싶으신가요?
 **dev 스택**(`docker-compose.dev.yml`)은 클론에서 포털을 띄우고 현실적인 데모
 데이터를 시드할 수 있어, 클론에서 데이터가 채워진 대시보드까지 몇 커맨드로
 도달합니다.
@@ -269,7 +269,7 @@ bash scripts/install.sh
 
 ```
 Installation complete
-✓ TrustedOSS Portal is running at: https://trustedoss.example.com
+✓ TRUSCA is running at: https://trustedoss.example.com
   Login:           you@example.com
   Admin panel:     https://trustedoss.example.com/admin
   API docs:        https://trustedoss.example.com/api/docs
