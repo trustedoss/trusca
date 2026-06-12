@@ -33,6 +33,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { deriveInitials } from "@/lib/initials";
 import { cn } from "@/lib/utils";
+import { AisThemeToggle } from "@/pages/dev/AisThemeToggle";
 import { useAuthStore } from "@/stores/authStore";
 import { useUIStore } from "@/stores/uiStore";
 
@@ -381,6 +382,10 @@ export function AppShell() {
             <Menu className="h-4 w-4" aria-hidden />
           </Button>
           <div className="flex items-center gap-3">
+            {/* Dev-only AIS theme prototype switch — lets the design review
+                happen on real screens (dashboard, project list), not just the
+                /dev/design-preview gallery. Compiled out of prod builds. */}
+            {import.meta.env.DEV ? <AisThemeToggle /> : null}
             {/* Global ⌘K palette trigger (W9-#54). The button is a
                 discoverability affordance — the keyboard shortcut works
                 whether or not this button is on screen. */}
