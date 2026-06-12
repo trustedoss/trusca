@@ -249,6 +249,15 @@ journalctl -u trustedoss-demo-reset.service -n 30 --no-pager
 > true if you used the cloud-init. If you changed any of those, edit the unit
 > files before copying.
 
+> **Keep your super-admin a super-admin.** The daily reset deletes and reseeds
+> the demo accounts, including the demo super-admin (`admin@demo...`). The
+> database refuses to remove the *last* active super-admin, so the reset relies
+> on the **separate** super-admin you created in §5 (`install.sh`) still being a
+> super-admin. If you ever delete or demote that bootstrap admin, the demo
+> super-admin becomes the last one and **every reset will fail** (the timer logs
+> `last active super_admin cannot be removed` and the demo data goes stale).
+> Keep the §5 admin as a super-admin and you never hit this.
+
 ---
 
 ## 10. Day-2 operations
@@ -290,6 +299,22 @@ bash scripts/upgrade.sh         # backs up, pulls, restarts, migrates
 df -h /
 du -sh /opt/trustedoss/workspace backups/
 ```
+
+**Monitor uptime** (know before your visitors do)
+
+The portal exposes a public, unauthenticated `GET /health` (`{"status":"ok", "demo_read_only":…}`).
+Point a monitor at `https://<your-domain>/health`:
+
+- **Recommended — external:** a free **UptimeRobot** monitor (HTTP(s), 5-minute
+  checks, e-mail/Slack alerts). External monitors catch a *whole-host* outage
+  that an in-repo check would miss. Set the keyword `status` so a 200 with the
+  wrong body still alerts.
+- **Backstop — in-repo:** the **Demo health canary** workflow
+  ([`.github/workflows/demo-health-canary.yml`](../.github/workflows/demo-health-canary.yml))
+  probes `/health` every 30 min and opens a tracking issue on a sustained
+  failure. It is **inert until you set the `DEMO_URL` repo variable** (Settings →
+  Variables → Actions → `DEMO_URL = https://<your-domain>`). GitHub's cron is
+  best-effort, so treat this as a backstop, not the primary alarm.
 
 ---
 
@@ -337,20 +362,30 @@ health-probes after). Concurrent deploys are queued, never run in parallel.
 
 ## 11. Going offsite (later)
 
-Backups are **local only** today (operator's choice). When you want an offsite
-copy so a dead server doesn't lose the data:
+Backups are **local only** until you enable this. The backup timer already calls
+`scripts/backup-offsite.sh` (an `ExecStartPost` on `trustedoss-backup.service`),
+which is a **no-op until you point it at a remote** — so enabling offsite is just
+two `.env` lines plus `rclone`, no unit edits:
 
 1. Create a free **Cloudflare R2** (10 GB) or **Backblaze B2** bucket + API key.
-2. Install + configure `rclone` on the server (`rclone config`, S3-compatible
-   remote pointing at the bucket).
-3. Add an `ExecStartPost=` to `trustedoss-backup.service` that pushes the newest
-   `backups/<stamp>/` to the remote, e.g.:
-   ```ini
-   ExecStartPost=/usr/bin/rclone copy /opt/trustedoss/portal/backups r2:trustedoss-backups --max-age 25h
+2. On the server, install + configure `rclone`:
+   ```bash
+   sudo apt-get install -y rclone
+   rclone config        # add an S3-compatible remote, e.g. named "r2"
    ```
-4. `sudo systemctl daemon-reload`.
+3. Set the remote in `.env` (the daily timer picks it up automatically):
+   ```ini
+   BACKUP_OFFSITE_REMOTE=r2:trustedoss-backups
+   # BACKUP_OFFSITE_MAX_AGE=25h   # optional; only ship the latest set each run
+   ```
+4. Test it once by hand:
+   ```bash
+   bash scripts/backup.sh && bash scripts/backup-offsite.sh
+   ```
 
-No app changes are needed — this is purely a backup-pipeline add-on.
+`backup-offsite.sh` uses `rclone copy` (never `sync`), so a local prune never
+deletes the offsite copy. When `BACKUP_OFFSITE_REMOTE` is unset it exits 0
+silently, so local-only deployments are unaffected.
 
 ---
 

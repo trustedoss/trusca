@@ -2,9 +2,10 @@
 #
 # Wraps scripts/backup.sh: pg_dump (gzip) + workspace tar + manifest.json into
 # backups/<UTC-stamp>/, pruning sets older than BACKUP_RETENTION_DAYS (7).
-# This is LOCAL-ONLY by design (operator chose "local for now"). To add an
-# offsite copy later, append an rclone push to an ExecStartPost= line — see
-# docs/operator-runbook-hetzner.md §"Going offsite (later)".
+# Local backup is always taken. The ExecStartPost below then pushes the latest
+# set offsite via scripts/backup-offsite.sh — a SAFE NO-OP unless
+# BACKUP_OFFSITE_REMOTE is set in .env (so this unit works unchanged for
+# local-only deployments). See docs/operator-runbook-hetzner.md §11 to enable it.
 #
 # Paired timer: trustedoss-backup.timer.
 [Unit]
@@ -18,4 +19,6 @@ Type=oneshot
 User=trustedoss
 WorkingDirectory=/opt/trustedoss/portal
 ExecStart=/usr/bin/env bash scripts/backup.sh
+# Offsite push (opt-in): no-op unless BACKUP_OFFSITE_REMOTE is set in .env.
+ExecStartPost=/usr/bin/env bash scripts/backup-offsite.sh
 TimeoutStartSec=1800

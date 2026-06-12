@@ -242,6 +242,14 @@ journalctl -u trustedoss-demo-reset.service -n 30 --no-pager
 > 바이너리가 `/usr/local/bin/docker-compose`라고 가정합니다 — cloud-init을 썼다면 전부
 > 맞습니다. 바꿨다면 복사 전에 유닛 파일을 수정하세요.
 
+> **슈퍼관리자는 슈퍼관리자로 유지하세요.** 매일 리셋은 데모 계정(데모 슈퍼관리자
+> `admin@demo...` 포함)을 삭제·재시드합니다. 데이터베이스는 *마지막* 활성 슈퍼관리자의
+> 삭제를 거부하므로, 리셋은 §5(`install.sh`)에서 만든 **별도** 슈퍼관리자가 여전히
+> 슈퍼관리자로 남아 있다는 데 의존합니다. 그 부트스트랩 관리자를 삭제하거나 강등하면
+> 데모 슈퍼관리자가 마지막 슈퍼관리자가 되어 **모든 리셋이 실패**합니다(타이머 로그에
+> `last active super_admin cannot be removed`가 남고 데모 데이터가 낡습니다). §5 관리자를
+> 슈퍼관리자로 유지하면 이 문제를 겪지 않습니다.
+
 ---
 
 ## 10. 운영 (Day-2)
@@ -283,6 +291,21 @@ bash scripts/upgrade.sh         # 백업 → pull → 재시작 → 마이그레
 df -h /
 du -sh /opt/trustedoss/workspace backups/
 ```
+
+**업타임 모니터링** (방문자보다 먼저 알기)
+
+포털은 인증 없는 공개 `GET /health`(`{"status":"ok", "demo_read_only":…}`)를
+노출합니다. `https://<도메인>/health`에 모니터를 연결하세요:
+
+- **권장 — 외부:** 무료 **UptimeRobot** 모니터(HTTP(s), 5분 간격, 이메일/Slack
+  알림). 외부 모니터는 in-repo 검사가 놓치는 *호스트 전체* 장애를 잡습니다. 키워드
+  `status`를 설정하면 본문이 틀린 200도 알림이 옵니다.
+- **보조 — in-repo:** **Demo health canary** 워크플로
+  ([`.github/workflows/demo-health-canary.yml`](../.github/workflows/demo-health-canary.yml))가
+  30분마다 `/health`를 확인하고 지속 실패 시 추적 이슈를 엽니다. **`DEMO_URL` 레포
+  변수를 설정하기 전까지 무동작**입니다(Settings → Variables → Actions →
+  `DEMO_URL = https://<도메인>`). GitHub cron은 best-effort라 주 알람이 아닌 보조로
+  쓰세요.
 
 ---
 
@@ -330,19 +353,30 @@ ssh-keyscan demo.trustedoss.dev      # 출력을 DEPLOY_KNOWN_HOSTS에 붙여넣
 
 ## 11. 오프사이트로 가기 (나중에)
 
-지금 백업은 **로컬만** 있습니다(운영자 선택). 서버가 죽어도 데이터를 잃지 않으려면
-오프사이트 사본을 두세요:
+이걸 켜기 전까지 백업은 **로컬만** 있습니다. 백업 타이머는 이미
+`scripts/backup-offsite.sh`를 호출합니다(`trustedoss-backup.service`의
+`ExecStartPost`). 이 스크립트는 **remote를 지정하기 전까지 무동작**이라, 오프사이트
+활성화는 유닛 수정 없이 `.env` 두 줄 + `rclone`이면 됩니다:
 
 1. 무료 **Cloudflare R2**(10GB) 또는 **Backblaze B2** 버킷 + API 키 생성.
-2. 서버에 `rclone` 설치·설정(`rclone config`, 버킷을 가리키는 S3 호환 remote).
-3. `trustedoss-backup.service`에 최신 `backups/<스탬프>/`를 remote로 올리는
-   `ExecStartPost=`를 추가, 예:
-   ```ini
-   ExecStartPost=/usr/bin/rclone copy /opt/trustedoss/portal/backups r2:trustedoss-backups --max-age 25h
+2. 서버에 `rclone` 설치·설정:
+   ```bash
+   sudo apt-get install -y rclone
+   rclone config        # S3 호환 remote 추가, 예: 이름 "r2"
    ```
-4. `sudo systemctl daemon-reload`.
+3. `.env`에 remote 지정(매일 타이머가 자동으로 반영):
+   ```ini
+   BACKUP_OFFSITE_REMOTE=r2:trustedoss-backups
+   # BACKUP_OFFSITE_MAX_AGE=25h   # 선택; 매 실행 최신 세트만 전송
+   ```
+4. 한 번 손으로 테스트:
+   ```bash
+   bash scripts/backup.sh && bash scripts/backup-offsite.sh
+   ```
 
-앱 변경은 필요 없습니다 — 순수하게 백업 파이프라인 추가입니다.
+`backup-offsite.sh`는 `rclone copy`(절대 `sync` 아님)를 써서 로컬 prune이 오프사이트
+사본을 지우지 않습니다. `BACKUP_OFFSITE_REMOTE`가 미설정이면 조용히 0으로 종료하므로
+로컬 전용 배포엔 영향이 없습니다.
 
 ---
 
