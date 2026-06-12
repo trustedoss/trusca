@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 
 import { EmptyState } from "@/components/EmptyState";
+import { AisThemeToggle } from "@/pages/dev/AisThemeToggle";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -78,6 +79,48 @@ function Section({
   );
 }
 
+/**
+ * Shared sample block for the AIS side-by-side comparison. Rendered twice —
+ * once under the current tokens, once inside a `.theme-ais` wrapper — so the
+ * exact same markup resolves against both token sets. Inline (non-portal)
+ * components only; Dialog / Toast surfaces are reviewed via the global
+ * toggle, which flips the class on <html> and therefore covers portals.
+ */
+function AisSampleBlock() {
+  return (
+    <div className="space-y-3 rounded-md border border-border bg-background p-4">
+      {/* Labels intentionally avoid "Deploy" / "Delete" — the gallery unit
+          test queries those as unique buttons in the main Buttons section. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button size="sm">Run scan</Button>
+        <Button size="sm" variant="secondary">
+          Tonal
+        </Button>
+        <Button size="sm" variant="outline">
+          Outline
+        </Button>
+        <Button size="sm" variant="destructive">
+          Remove
+        </Button>
+      </div>
+      <Input placeholder="Search projects…" />
+      <Card>
+        <CardHeader>
+          <CardTitle>trusca-frontend</CardTitle>
+          <CardDescription>
+            Last scan 2h ago · 14 components · 3 findings
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex items-center gap-2">
+          <Badge tone="critical">Critical</Badge>
+          <Badge tone="low">Low</Badge>
+          <Badge tone="success">Clean</Badge>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 function Swatch({ token, varName }: { token: string; varName: string }) {
   return (
     <div className="flex items-center gap-3">
@@ -112,7 +155,33 @@ export function DesignSystemPreview() {
             walk a few pages after this to spot any regressions before we
             green-light Phase B.
           </p>
+          <div className="flex items-center gap-3 pt-2">
+            <AisThemeToggle />
+            <span className="text-xs text-muted-foreground">
+              Global flip of the TRUSCA / Google AI Studio theme prototype —
+              persists across reloads, covers portals (dialogs, toasts), and
+              follows you onto real screens.
+            </span>
+          </div>
         </header>
+
+        <Section
+          title="TRUSCA — AIS theme prototype (side by side)"
+          description="Identical markup, two token sets. Keep the global toggle OFF here — when it is on, the left column is themed too. Portal surfaces (dialogs, toasts) only theme under the global toggle."
+        >
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Eyebrow>Current — Vercel + Linear</Eyebrow>
+              <AisSampleBlock />
+            </div>
+            <div className="space-y-2">
+              <Eyebrow>Prototype — Google AI Studio light</Eyebrow>
+              <div className="theme-ais">
+                <AisSampleBlock />
+              </div>
+            </div>
+          </div>
+        </Section>
 
         <Section title="Color tokens" description="Light single-theme. Severity tokens unchanged.">
           <div className="grid grid-cols-2 gap-4 md:grid-cols-3">

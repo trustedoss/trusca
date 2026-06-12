@@ -1,0 +1,101 @@
+/* ---------------------------------------------------------------------------
+ * TRUSCA — Google AI Studio light theme PROTOTYPE (dev only).
+ *
+ * Scoped override of the design tokens defined in src/index.css. The base
+ * `:root` values are untouched; this file redefines the SAME variable names
+ * under `.theme-ais` so the prototype can be flipped on/off at runtime:
+ *
+ *   - Global flip: `document.documentElement.classList.add("theme-ais")`
+ *     (see src/lib/devTheme.ts) — covers Radix portals (Dialog / Popover /
+ *     Toast render into document.body, which is still a descendant of html).
+ *   - Local flip: a `<div className="theme-ais">` wrapper, used by the
+ *     side-by-side comparison section in /dev/design-preview. Portals are
+ *     NOT covered by the wrapper form.
+ *
+ * Cascade note: index.css declares tokens inside `@layer base`; this file is
+ * intentionally NOT layered, so it wins regardless of import order. Keep it
+ * plain CSS — no `@layer`, no `@apply` (it must not create new utilities).
+ *
+ * This file is loaded only behind `import.meta.env.DEV` in main.tsx, so the
+ * production bundle contains none of it.
+ *
+ * PROTOTYPE-ONLY: if the AIS direction is adopted, promote these values into
+ * the `:root` block of index.css and DELETE this file plus the dev toggle.
+ *
+ * Format contract (same as index.css): shadcn-family tokens are HSL triplets
+ * because tailwind.config.ts wraps them as `hsl(var(--X) / <alpha>)` — a hex
+ * value here would silently break alpha variants like `bg-primary/10` (the
+ * active sidebar nav tint). Risk severity tokens stay raw hex but are NOT
+ * overridden — domain semantics are fixed.
+ * ------------------------------------------------------------------------- */
+
+.theme-ais {
+  /* Surfaces — AIS uses a plain white canvas; panels/table headers get the
+   * Google grey tint and separation comes from borders, not elevation. */
+  --background: 0 0% 100%; /* #ffffff */
+  --foreground: 0 0% 12%; /* #1f1f1f — Google grey-900 */
+  --card: 0 0% 100%;
+  --card-foreground: 0 0% 12%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 0 0% 12%;
+  --muted: 210 17% 98%; /* #f8f9fa */
+  --muted-foreground: 213 5% 39%; /* #5f6368 — Google grey-700, AA on muted */
+  --border: 220 9% 87%; /* #dadce0 — AIS standard hairline */
+  --input: 220 9% 87%;
+
+  /* Primary CTA — Google blue replaces the warm near-black. Hover keeps
+   * working through the existing `bg-primary/90` utility. */
+  --primary: 217 90% 43%; /* #0b57d0 */
+  --primary-foreground: 0 0% 100%;
+
+  /* Secondary becomes the Google "tonal" button (light blue fill, deep
+   * blue text); accent is the faint blue-grey hover tint AIS uses on rows
+   * and ghost surfaces. */
+  --secondary: 217 91% 91%; /* #d3e3fd */
+  --secondary-foreground: 217 90% 15%; /* #041e49 */
+  --accent: 213 43% 96%; /* #f0f4f9 */
+  --accent-foreground: 0 0% 12%;
+
+  --destructive: 4 71% 50%; /* #d93025 — Google red */
+  --destructive-foreground: 0 0% 100%;
+
+  /* Focus ring follows primary, so the outline reads blue like AIS. */
+  --ring: 217 90% 43%;
+
+  /* Rounder overall: derived scale becomes sm 6 / md 8 / lg 10 / xl 14 px.
+   * Pill buttons need more than a token bump — see the rule below. */
+  --radius: 0.5rem;
+
+  /* Elevation — AIS keeps cards flat (border + tone only) and reserves
+   * shadows for floating surfaces. Must stay a VALID box-shadow value
+   * (an empty string or `none` would break `boxShadow: var(--shadow-sm)`
+   * consumers), hence the zero-alpha shadow. md/lg follow the Google
+   * elevation-1/-2 recipes. */
+  --shadow-sm: 0 0 0 0 rgb(0 0 0 / 0);
+  --shadow-md:
+    0 1px 2px 0 rgb(60 64 67 / 0.3),
+    0 1px 3px 1px rgb(60 64 67 / 0.15);
+  --shadow-lg:
+    0 1px 3px 0 rgb(60 64 67 / 0.3),
+    0 4px 8px 3px rgb(60 64 67 / 0.15);
+
+  /* NOT overridden, deliberately:
+   *   --duration-* / --ease-out  — motion timing is kept as-is.
+   *   --risk-*                   — severity semantics are fixed. Known
+   *                                follow-up: --risk-low (#2563eb) sits in
+   *                                the same blue family as the new primary;
+   *                                whether to separate them is an adoption-
+   *                                phase decision, not a prototype one.
+   *   --layout-* / --table-row   — density and chrome sizes are unchanged
+   *                                so e2e selectors and layout math hold. */
+}
+
+/* PROTOTYPE-ONLY pill buttons: raising --radius to 9999px would full-round
+ * cards and dialogs too (they derive via calc()), so instead we re-round the
+ * two affordances AIS renders as pills — buttons (every shadcn Button variant
+ * has `rounded-md` in its cva base) and the sidebar NavLink items. Inputs
+ * keep the 8px radius on purpose. If adopted, delete this rule and add a
+ * proper `rounded-full` shape to buttonVariants instead. */
+.theme-ais :is(button, a).rounded-md {
+  border-radius: 9999px;
+}
