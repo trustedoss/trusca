@@ -160,11 +160,10 @@ function NavItemLink({
         title={collapsed ? label : undefined}
         className={({ isActive }) =>
           cn(
-            // W13 — pill nav items match the AIS button shape; the active
-            // bg-primary/10 + text-primary tint then reads exactly like the
-            // AIS selected-nav state. Hover/active transitions stay on the
-            // W11 150 ms ease-out-soft tokens.
-            "flex items-center rounded-full py-2 text-sm font-medium transition-colors duration-fast ease-out-soft",
+            // W11-F polish — sidebar nav hover/active transitions land on the
+            // W11-A 150 ms ease-out-soft tokens for parity with every other
+            // hoverable affordance (buttons, dropdown items, tabs).
+            "flex items-center rounded-md py-2 text-sm font-medium transition-colors duration-fast ease-out-soft",
             collapsed ? "justify-center px-2" : "gap-2 px-3",
             "hover:bg-accent hover:text-accent-foreground",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",

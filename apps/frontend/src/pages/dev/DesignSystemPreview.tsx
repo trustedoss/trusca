@@ -2,11 +2,9 @@
  * Design System Preview — W11-A, expanded into a living reference in W12-E.
  *
  * Dev-only sample page. Originally the visual confirm gate for the W11-A
- * token redefinition; W12-E grew it into a living component reference + a
- * manual review / visual-regression surface covering the W12 primitives.
- * W13 (2026-06-12) re-skinned the token set to the Google AI Studio light
- * tone (white canvas, blue primary, pill buttons) after the PR #394
- * prototype review.
+ * token redefinition (Vercel base + Linear polish, light single-theme); W12-E
+ * grew it into a living component reference + a manual review / visual-
+ * regression surface covering the W12 primitives.
  *
  * Routing:
  *   - Mounted at `/dev/design-preview` (see router.tsx).
@@ -107,17 +105,17 @@ export function DesignSystemPreview() {
             Design system · living reference (dev only)
           </Eyebrow>
           <h1 className="text-3xl font-semibold tracking-tight">
-            TRUSCA — Google AI Studio light
+            Vercel base + Linear polish
           </h1>
           <p className="max-w-2xl text-sm text-muted-foreground">
-            Living sample of the W13 token set (adopted 2026-06-12): white
-            canvas, Google-blue primary, tonal secondary, pill buttons, flat
-            cards. The rest of the app uses these same tokens — walk a few
-            pages after this to spot any regressions.
+            Sample of the new token set applied to two foundational
+            components. The rest of the app still uses these same tokens —
+            walk a few pages after this to spot any regressions before we
+            green-light Phase B.
           </p>
         </header>
 
-        <Section title="Color tokens" description="Light single-theme. Severity: Low moved to teal-700 in W13 so it no longer collides with the blue primary.">
+        <Section title="Color tokens" description="Light single-theme. Severity tokens unchanged.">
           <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
             <Swatch token="background" varName="--background" />
             <Swatch token="foreground" varName="--foreground" />
@@ -150,7 +148,7 @@ export function DesignSystemPreview() {
           </div>
         </Section>
 
-        <Section title="Buttons" description="Pill shape (W13) — Google-blue primary, tonal secondary; hover transitions at 150 ms ease-out.">
+        <Section title="Buttons" description="Primary near-black + subtle shadow; hover transitions at 150 ms ease-out.">
           <div className="flex flex-wrap items-center gap-3">
             <Button>Deploy</Button>
             <Button variant="secondary">Cancel</Button>
@@ -169,7 +167,7 @@ export function DesignSystemPreview() {
           </div>
         </Section>
 
-        <Section title="Card" description="White canvas + flat card — separation comes from the border, not elevation (AIS).">
+        <Section title="Card" description="Off-white canvas + white card + subtle shadow. Vercel domains pattern.">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Card>
               <CardHeader>
@@ -263,16 +261,16 @@ export function DesignSystemPreview() {
           </div>
           <div className="grid grid-cols-4 gap-4">
             <div className="flex h-16 items-center justify-center rounded-sm border border-border bg-card text-xs">
-              rounded-sm · 6px
+              rounded-sm · 4px
             </div>
             <div className="flex h-16 items-center justify-center rounded-md border border-border bg-card text-xs">
-              rounded-md · 8px
+              rounded-md · 6px
             </div>
             <div className="flex h-16 items-center justify-center rounded-lg border border-border bg-card text-xs">
-              rounded-lg · 10px
+              rounded-lg · 8px
             </div>
             <div className="flex h-16 items-center justify-center rounded-xl border border-border bg-card text-xs">
-              rounded-xl · 14px
+              rounded-xl · 12px
             </div>
           </div>
           <p className="text-xs text-muted-foreground">

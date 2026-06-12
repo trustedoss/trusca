@@ -1,14 +1,14 @@
 ---
 id: design-system
 title: Design system
-description: TRUSCA design system — tokens (colour, spacing, radius, shadow, motion, typography), component conventions, micro-interactions, accessibility, and the W13 Google AI Studio re-skin.
+description: TRUSCA design system — tokens (colour, spacing, radius, shadow, motion, typography), component conventions, micro-interactions, accessibility, and the W11 visual-identity refresh.
 sidebar_label: Design system
 sidebar_position: 10
 ---
 
 # Design system
 
-The portal frontend follows a single, light-mode design system in the **Google AI Studio** tone (W13, 2026-06-12): white canvas, Google-blue primary, tonal secondary, pill buttons, flat bordered cards. The typography hierarchy, motion, and focus polish introduced with W11 (Linear-inspired) are retained. Dark mode is deferred to v2.5+.
+The portal frontend follows a single, light-mode design system inspired by **Vercel** (light base — surfaces, dense rows, sidebar tint) and **Linear** (typography hierarchy, motion, focus polish). Dark mode is deferred to +.
 
 :::note Audience
 Frontend contributors, designers, and reviewers. The tokens here are the canonical reference — components should never hard-code hex values or magic spacing.
@@ -26,59 +26,48 @@ TRUSCA is a **risk-first, information-dense, modern enterprise SCA** tool. The v
 
 1. **Communicate severity at a glance.** Risk colours (Critical / High / Medium / Low / Info) appear next to a textual label and an icon or dot — colour is never the sole signal.
 2. **Pack data without feeling cramped.** Compact 40 px table rows; 224 px sidebar; 48 px header; 16 / 20 / 24 px card padding scale.
-3. **Read as a modern product (Google AI Studio tone).** White canvas (`#ffffff`) with `#dadce0` hairline borders; Google-blue primary (`#0b57d0`) with a tonal light-blue secondary; pill buttons; flat cards that separate via border + tone rather than shadow; semibold headings; visible focus rings. Fonts stay Inter + JetBrains Mono (Google Sans is proprietary).
+3. **Read as a modern enterprise product.** Warm near-black (`#18181b`) instead of navy (`#0f172a`); off-white canvas (`#fafafa`) so cards lift visually; subtle shadows; semibold headings; visible focus rings.
 4. **Move only as much as needed.** Motion is short and ease-out — 150 ms for hover / focus, 200 ms for drawer slide, 250 ms for page-level chrome. No bounce, no fade-in delays.
 
-### W13 (2026-06-12) — Google AI Studio re-skin
+### W11 (2026-05-27) — visual refresh
 
-W13 replaced the W11 Vercel + Linear skin with the Google AI Studio light tone, adopted after a dev-toggle prototype review (PR #394). Structural decisions (sidebar nav, 40 px row, drawer-for-detail, risk semantics) and the W11 polish layer (typography, motion, focus ring) carry over unchanged. What changed:
+The W11 milestone replaced the previous "BD-style 2015" aesthetic with the current Vercel+Linear blend. The structural decisions (sidebar nav, 40 px row, drawer-for-detail, risk semantics) carry over unchanged. What changed:
 
-| Surface | W11 (before) | W13 (after) |
+| Surface | Before | After |
 |---|---|---|
-| Primary CTA | `#18181b` warm near-black | `#0b57d0` Google blue |
-| Secondary | muted grey tint | `#d3e3fd` tonal light blue |
-| Page background | `#fafafa` off-white canvas | `#ffffff` white canvas |
-| Card surface | white, lifts via shadow-sm | white, flat — separates via border + tone |
-| Hover / ghost tint | muted grey | `#f0f4f9` faint blue-grey |
-| Border | `#e5e5ea` | `#dadce0` AIS hairline |
-| Button shape | rounded-md (6 px) | pill (`rounded-full`) |
-| Radius scale | sm 4 / md 6 / lg 8 / xl 12 | sm 6 / md 8 / lg 10 / xl 14 |
-| Shadow | sm (card) / md / lg | sm = none (flat); md / lg = Google elevation-1/-2 |
-| Focus ring | near-black | `#0b57d0` blue (matches primary) |
-| `--risk-low` | `#2563eb` blue-600 | `#0f766e` teal-700 (no longer collides with the blue primary) |
+| Primary CTA | `#0f172a` cool navy | `#18181b` warm near-black |
+| Page background | `#ffffff` pure white | `#fafafa` off-white canvas |
+| Card surface | grey-tinted | `#ffffff` pure white (lifts off the canvas) |
+| Border | `slate-200` | `#e5e5ea` neutral hairline |
+| Radius | 8 px uniform | hierarchy — sm 4 / md 6 / lg 8 / xl 12 |
+| Shadow | none / default | sm (card) / md (popover) / lg (drawer · dialog) |
+| Motion | default browser | 150 / 200 / 250 ms ease-out |
+| Heading weight | bold | semibold + tracking-tight |
+| Focus ring | shadcn default | 2 px outline + 2 px offset (a11y) |
+| Detail surface | drawer-only | dual surface — drawer (quick check) + page nav (deep work) |
 
-Risk severity colours for Critical / High / Medium / Info are **unchanged** — the domain semantics are fixed. Low is the single W13 exception (user decision): the old blue read like a CTA / link next to the new Google-blue primary. Where a severity hex fails WCAG AA as body text on a light tint, the badge text shade is darkened within the same hue family (see [Severity colour accessibility](#severity-colour-accessibility) below).
-
-<details>
-<summary>W11 (2026-05-27) — the previous Vercel + Linear refresh</summary>
-
-W11 replaced the original "BD-style 2015" aesthetic (navy `#0f172a`, uniform 8 px radius, default easing) with a Vercel light base + Linear polish: warm near-black `#18181b` primary, `#fafafa` canvas, radius / shadow / motion token hierarchy, semibold headings, visible focus rings, and the drawer + page dual detail surface. The polish layer survives in W13; the colour skin does not.
-
-</details>
+The risk colour palette (Critical / High / Medium / Low / Info) is intentionally **unchanged** — the brand semantics are fixed across releases. Where the raw severity hex fails WCAG AA as body text on a light tint, the badge text shade is darkened within the same hue family (see [Severity colour accessibility](#severity-colour-accessibility) below).
 
 ## Colour tokens
 
 All colour decisions reference the CSS custom properties declared in `index.css`. Components should never reference hex values directly — use the Tailwind utility (`bg-background`, `text-foreground`, `bg-risk-critical/10`) or the CSS variable.
 
-### Neutral palette (Google AI Studio light)
+### Neutral palette (Vercel base)
 
 | Token | Hex | HSL | Use |
 |---|---|---|---|
-| `--background` | `#ffffff` | `0 0% 100%` | Page canvas — plain white (AIS). |
-| `--card` | `#ffffff` | `0 0% 100%` | Cards, popovers, drawer body, tooltip — flush with the canvas, separated by border + tone. |
-| `--foreground` | `#1f1f1f` | `0 0% 12%` | Body text — Google grey-900. |
-| `--muted` | `#f8f9fa` | `210 17% 98%` | Subtle fills — table headers, sidebar tint, placeholder backgrounds, disabled inputs. |
-| `--muted-foreground` | `#5f6368` | `213 5% 39%` | Secondary text, captions, table column headers — Google grey-700. |
-| `--border` | `#dadce0` | `220 9% 87%` | Hairline borders — the AIS standard. Decorative separator only, never the sole means of identifying a UI region. |
-| `--input` | `#dadce0` | `220 9% 87%` | Input outline. |
-| `--primary` | `#0b57d0` | `217 90% 43%` | Primary CTA — Google blue, "the important action on the page". |
-| `--primary-foreground` | `#ffffff` | `0 0% 100%` | Text on primary. |
-| `--secondary` | `#d3e3fd` | `217 91% 91%` | Tonal button fill (Google "tonal" pattern). |
-| `--secondary-foreground` | `#041e49` | `217 90% 15%` | Text on tonal fill. |
-| `--accent` | `#f0f4f9` | `213 43% 96%` | Hover rows, ghost-button hover — faint blue-grey tint. |
-| `--destructive` | `#d93025` | `4 71% 50%` | Destructive CTA — Google red, near `--risk-critical` so destructive buttons share severity-badge visual language. |
-| `--destructive-foreground` | `#ffffff` | `0 0% 100%` | Text on destructive. |
-| `--ring` | `#0b57d0` | `217 90% 43%` | Focus ring. Matches primary so the outline reads as "the same action this is". |
+| `--background` | `#fafafa` | `0 0% 98%` | Page canvas. Lets cards lift visually. |
+| `--card` | `#ffffff` | `0 0% 100%` | Elevated surfaces — cards, popovers, drawer body, tooltip. |
+| `--foreground` | `#18181b` | `240 6% 10%` | Body text. Warm near-black, not navy. |
+| `--muted` | `#f4f4f5` | `240 5% 96%` | Subtle fills — table headers, sidebar tint, placeholder backgrounds, disabled inputs. |
+| `--muted-foreground` | `#71717a` | `240 4% 46%` | Secondary text, captions, table column headers. |
+| `--border` | `#e5e5ea` | `240 5% 91%` | Hairline borders. Decorative separator only — never the sole means of identifying a UI region. |
+| `--input` | `#e5e5ea` | `240 5% 91%` | Input outline. |
+| `--primary` | `#18181b` | `240 6% 10%` | Primary CTA — "the important action on the page". |
+| `--primary-foreground` | `#fafafa` | `0 0% 98%` | Text on primary. |
+| `--destructive` | `#dc2626` | `0 72% 51%` | Destructive CTA. Aligned with `--risk-critical` so destructive buttons share severity-badge visual language. |
+| `--destructive-foreground` | `#fafafa` | `0 0% 98%` | Text on destructive. |
+| `--ring` | `#18181b` | `240 6% 10%` | Focus ring. Matches primary so the outline reads as "the same action this is". |
 
 ### Risk severity (domain semantics — fixed)
 
@@ -87,10 +76,10 @@ All colour decisions reference the CSS custom properties declared in `index.css`
 | `--risk-critical` | `#dc2626` | Critical CVE, forbidden licence, build-blocking finding. |
 | `--risk-high` | `#ea580c` | High-severity CVE, conditional licence at risk. |
 | `--risk-medium` | `#ca8a04` | Medium CVE, conditional licence awaiting review. |
-| `--risk-low` | `#0f766e` | Low CVE, informational status. Teal-700 since W13 — moved out of the blue family so Low badges don't read like the blue primary CTA. |
+| `--risk-low` | `#2563eb` | Low CVE, informational status. |
 | `--risk-info` | `#71717a` | Neutral informational state. |
 
-The severity hex values are stable across releases (the W13 Low move is the documented exception). They appear in:
+The severity hex values are **never changed** between releases. They appear in:
 
 - Recharts fills and chart legends (raw hex via the `--risk-X` variable).
 - `bg-risk-X/N` tints on badges and dot indicators.
@@ -120,26 +109,26 @@ When severity colour is used as **body text** (a coloured word inside a badge or
 
 ## Radius hierarchy
 
-Different affordances use different radii so depth reads at a glance. W13 moved the whole scale one step rounder.
+Different affordances use different radii so depth reads at a glance.
 
 | Token | Value | Affordance |
 |---|---|---|
-| `--radius-sm` | 6 px | Small inputs, badges, chips. |
-| `--radius` | 8 px | **Default** — cards, inputs, table chrome. |
-| `--radius-lg` | 10 px | Drawer, large surfaces. |
-| `--radius-xl` | 14 px | Modals, dialogs. |
+| `--radius-sm` | 4 px | Small inputs, badges, chips. |
+| `--radius` | 6 px | **Default** — buttons, cards, table chrome. |
+| `--radius-lg` | 8 px | Drawer, large surfaces. |
+| `--radius-xl` | 12 px | Modals, dialogs. |
 
-The Tailwind config derives `rounded-sm`, `rounded-md`, `rounded-lg`, `rounded-xl` from these tokens via `calc()`. **Buttons are pills** (`rounded-full` in `button.tsx`) and deliberately not part of this scale — raising `--radius` to a pill value would full-round cards and dialogs through the `calc()` derivations.
+The Tailwind config derives `rounded-sm`, `rounded-md`, `rounded-lg`, `rounded-xl` from these tokens via `calc()`.
 
 ## Shadow scale
 
-AIS keeps in-flow surfaces flat — cards and buttons separate via border + tone. Shadows are reserved for floating surfaces and follow the Google elevation recipes.
+Vercel-style subtle elevation. Light shadows only — no glow.
 
 | Token | Value | Use |
 |---|---|---|
-| `--shadow-sm` | `0 0 0 0 rgb(0 0 0 / 0)` | Intentionally a zero-alpha no-op (flat cards / buttons). Kept a valid box-shadow value so `var(--shadow-sm)` consumers don't break, and so a future token change can re-enable elevation in one place. |
-| `--shadow-md` | `0 1px 2px 0 rgb(60 64 67 / 0.3), 0 1px 3px 1px rgb(60 64 67 / 0.15)` | Dropdown, popover, tooltip (Google elevation-1). |
-| `--shadow-lg` | `0 1px 3px 0 rgb(60 64 67 / 0.3), 0 4px 8px 3px rgb(60 64 67 / 0.15)` | Drawer, dialog (Google elevation-2). |
+| `--shadow-sm` | `0 1px 2px 0 rgb(0 0 0 / 0.04)` | Cards, stat tiles. |
+| `--shadow-md` | `0 2px 8px -2px rgb(0 0 0 / 0.08), 0 1px 2px 0 rgb(0 0 0 / 0.04)` | Dropdown, popover, tooltip. |
+| `--shadow-lg` | `0 10px 28px -8px rgb(0 0 0 / 0.12), 0 3px 8px -3px rgb(0 0 0 / 0.06)` | Drawer, dialog. |
 
 ## Motion
 
@@ -213,12 +202,10 @@ Do not hand-roll a `<header><h1>` block — extend `PageHeader` if a new layout 
 
 `apps/frontend/src/components/ui/button.tsx`
 
-- **Pill shape** (`rounded-full`, W13) on every variant and size — the AIS button silhouette. Inputs keep the token radius; only buttons (and sidebar nav items) are pills.
-- Default variant uses `bg-primary text-primary-foreground` — solid Google blue.
-- `secondary` variant is the Google **tonal** button — light-blue fill (`--secondary`), deep-blue text.
+- Default variant uses `bg-primary text-primary-foreground` — solid warm near-black.
 - `outline` variant uses `border-input bg-background` — for secondary actions.
-- `ghost` variant uses no background, hover tint only (`--accent`) — for nav items and toolbar actions.
-- `destructive` uses `bg-destructive` — Google red near `--risk-critical`, reserved for irreversible actions (delete, revoke, reject).
+- `ghost` variant uses no background, hover tint only — for nav items and toolbar actions.
+- `destructive` uses `bg-destructive` — Critical-aligned red, reserved for irreversible actions (delete, revoke, reject).
 - Hover and focus transitions use `transition-colors duration-fast ease-out` (150 ms).
 - All variants include the focus ring.
 
@@ -230,9 +217,9 @@ Do not hand-roll a `<header><h1>` block — extend `PageHeader` if a new layout 
 
 ### Card
 
-- White surface (`bg-card`) flush on the white canvas — separation comes from the `--border` hairline and the `--muted` tone, not elevation (AIS flat-card pattern; `shadow-sm` resolves to a no-op).
-- `rounded-md` (8 px) by default; `rounded-lg` (10 px) for primary content cards.
-- `shadow-md` only on floating surfaces (popover / dropdown), never on in-flow cards.
+- Pure-white surface (`bg-card`) on the off-white canvas — lifts visually without a heavy shadow.
+- `rounded-md` (6 px) by default; `rounded-lg` (8 px) for primary content cards.
+- `shadow-sm` for stats / tiles; `shadow-md` for elevated popovers.
 
 ### Table
 
@@ -316,29 +303,27 @@ The portal targets **WCAG 2.1 Level AA**. Three policies make this concrete.
 
 | Pair | Ratio | Note |
 |---|---|---|
-| `--foreground` on `--background` / `--card` | 16.48:1 | Body text. AAA. |
-| `--muted-foreground` on `--background` / `--card` | 6.05:1 | Captions, secondary text. AA. |
-| `--muted-foreground` on `--muted` | 5.74:1 | Captions on tinted fills. AA. |
-| `--primary-foreground` on `--primary` | 6.39:1 | Primary button label. AA. |
-| `--secondary-foreground` on `--secondary` | 12.57:1 | Tonal button label. AAA. |
-| `--destructive-foreground` on `--destructive` | 4.77:1 | Destructive button label. AA. |
-| `--ring` on `--background` | 6.39:1 | Focus ring. AA (UI ≥ 3:1). |
+| `--foreground` on `--background` | 16.97:1 | Body text. AAA. |
+| `--foreground` on `--card` | 17.72:1 | Body text on card. AAA. |
+| `--muted-foreground` on `--background` | 4.63:1 | Captions, secondary text. AA. |
+| `--muted-foreground` on `--card` | 4.83:1 | Captions on card. AA. |
+| `--primary-foreground` on `--primary` | 16.97:1 | Primary button label. AAA. |
+| `--destructive-foreground` on `--destructive` | 4.63:1 | Destructive button label. AA. |
+| `--ring` on `--background` | 16.97:1 | Focus ring. AAA. |
 
-Decorative borders (`--border` on `--background`, 1.37:1) are **intentionally low-contrast** — they are visual separators, not informative UI elements, and WCAG 1.4.11 exempts them.
+Decorative borders (`--border` on `--background`, 1.20:1) are **intentionally low-contrast** — they are visual separators, not informative UI elements, and WCAG 1.4.11 exempts them.
 
 ### Severity colour accessibility
 
-Severity hex values (`#dc2626` / `#ea580c` / `#ca8a04` / `#0f766e` / `#71717a`) are brand-fixed. Used as **body text** on a light tint some would measure as low as 2.5:1, which fails AA. The fix is structural, not chromatic — when the severity tone is used as text, the rendered text colour uses a deeper shade from the same Tailwind hue family:
+Severity hex values (`#dc2626` / `#ea580c` / `#ca8a04` / `#2563eb` / `#71717a`) are brand-fixed. Used as **body text** on a light tint they would measure as low as 2.5:1, which fails AA. The fix is structural, not chromatic — when the severity tone is used as text, the rendered text colour uses a deeper shade from the same Tailwind hue family:
 
 | Tone | Tint background | Text colour | Contrast |
 |---|---|---|---|
 | `critical` | `bg-risk-critical/10` | `text-red-700` (`#b91c1c`) | 5.54:1 |
 | `high` | `bg-risk-high/10` | `text-orange-800` (`#9a3412`) | 6.47:1 |
 | `medium` | `bg-risk-medium/15` | `text-yellow-800` (`#854d0e`) | 5.91:1 |
-| `low` | `bg-risk-low/10` | `text-teal-800` (`#115e59`) | 6.59:1 |
+| `low` | `bg-risk-low/10` | `text-blue-700` (`#1d4ed8`) | 5.83:1 |
 | `info` | `bg-risk-info/15` | `text-slate-600` (`#52525b`) | 6.41:1 |
-
-The raw Low token itself (teal-700 `#0f766e`) also clears AA where it's used directly as text (5.47:1 on white, 4.76:1 on its own 10 % tint) — slightly better than the blue-600 it replaced.
 
 The **dot indicators** (in `SeverityBadge`, chart legends, status pills) continue to use the raw `bg-risk-X` token — colour identity stays recognisable; only text shade is darkened. The reference implementation is `apps/frontend/src/components/ui/badge.tsx` (W11-H).
 
@@ -388,9 +373,8 @@ All interactive elements are reachable by `Tab` and operable by `Enter` / `Space
 | W12-C | 2026-06-11 | **Craft elevation — motion (CSS-only).** Route-change entrance fade (`<main>` keyed on pathname, 250 ms), sidebar collapse aligned to 250 ms, and a global `prefers-reduced-motion` guard. No new dependency (tailwindcss-animate only). Skeleton doc corrected to the real 2000 ms `animate-pulse`. |
 | W12-D | 2026-06-12 | **Craft elevation — empty / loading polish.** EmptyState gains a layered icon medallion + optional `illustration` slot; new `TableRowsSkeleton` renders per-column loading cells (replacing single full-width bars) on the Scans and Admin Users tables. |
 | W12-E/F | 2026-06-12 | **Craft elevation — guardrails + docs.** Grew `/dev/design-preview` into a living component reference (typography, badges, empty / loading, feedback) and added a "Frontend UI" section to the contributor coding standards. Visual-regression baseline expansion (4 → ~15) is a CI / operator follow-up — correct linux baselines cannot be generated from a darwin dev box. |
-| W13 | 2026-06-12 | **Google AI Studio re-skin (TRUSCA).** Token promotion from the PR #394 dev prototype after user review: white canvas, `#0b57d0` blue primary, `#d3e3fd` tonal secondary, `#dadce0` borders, radius scale +2 px, flat cards (shadow-sm → no-op, md/lg → Google elevation recipes), pill buttons (`rounded-full` in `button.tsx` + sidebar nav), `--risk-low` blue-600 → teal-700 to separate Low badges from the blue primary. Layout density, motion, typography, and the other severity colours unchanged. Visual-regression baselines require a linux refresh after merge. |
 
-The W11 Vercel + Linear skin is retired by W13; the earlier "BD-style 2015" aesthetic was retired by W11.
+The previous "BD-style 2015" aesthetic (`#0f172a` navy, pure white canvas, uniform 8 px radius, no shadow, default browser easing) is fully retired by W11.
 
 ## See also
 
