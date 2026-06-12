@@ -61,6 +61,12 @@ export const KNOWN_PROBLEM_EXTENSION_KEYS = [
   "scan_already_cancelled",
   "scan_not_found",
   "audit_export_too_large",
+  // v2.1 Track B (B5) — public read-only demo. The demo middleware
+  // (apps/backend/core/middleware.py) blocks every write with a 403 +
+  // `application/problem+json` carrying this boolean flag. Whitelisting it
+  // gives the UI a stable, locale-independent signal to show the friendly
+  // "this is a read-only live demo" toast instead of a generic 403.
+  "demo_read_only",
 ] as const;
 
 export type KnownProblemExtensionKey =
@@ -90,6 +96,7 @@ const KNOWN_EXTENSION_SCHEMAS: Record<KnownProblemExtensionKey, z.ZodTypeAny> = 
   scan_already_cancelled: z.boolean(),
   scan_not_found: z.boolean(),
   audit_export_too_large: z.boolean(),
+  demo_read_only: z.boolean(),
 };
 
 /**

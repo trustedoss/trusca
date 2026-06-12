@@ -357,6 +357,7 @@
       "scan_already_cancelled": "This scan is already terminated and cannot be cancelled again.",
       "scan_not_found": "Scan not found.",
       "audit_export_too_large": "The export exceeds 100,000 rows. Narrow the filter window before retrying.",
+      "demo_read_only": "This is a read-only live demo — creating, editing, and deleting are disabled.",
       "unknown": "Something went wrong. Please try again."
     },
     "not_found": {

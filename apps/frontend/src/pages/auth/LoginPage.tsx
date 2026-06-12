@@ -7,9 +7,11 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { z } from "zod";
 
 import { AuthLayout } from "@/pages/auth/AuthLayout";
+import { DemoCredentialsHint } from "@/pages/auth/DemoCredentialsHint";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ProviderIcon } from "@/components/ProviderIcon";
+import { useDemoMode } from "@/hooks/useDemoMode";
 import {
   Form,
   FormControl,
@@ -74,6 +76,11 @@ export function LoginPage() {
   // whole OAuth section (divider included) stays hidden rather than showing
   // a button that would 503 on click.
   const { configured: oauthProviders } = useOAuthProviders();
+
+  // B5 — on the public read-only demo, show a credentials hint so first-time
+  // visitors can sign in without guessing. Gated on the backend flag so a
+  // normal deploy never exposes demo account hints.
+  const { demoReadOnly } = useDemoMode();
 
   // chore B — OAuth error codes are forwarded via ?error=oauth_*. We keep
   // the raw value local so a malicious URL like ?error=<script> stays
@@ -187,6 +194,15 @@ export function LoginPage() {
           <AlertCircle className="h-4 w-4" aria-hidden />
           <AlertDescription>{apiError}</AlertDescription>
         </Alert>
+      ) : null}
+
+      {demoReadOnly ? (
+        <DemoCredentialsHint
+          onFill={({ email, password }) => {
+            form.setValue("email", email, { shouldValidate: true });
+            form.setValue("password", password, { shouldValidate: true });
+          }}
+        />
       ) : null}
 
       <Form {...form}>
