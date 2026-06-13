@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
-import { useTranslation } from "react-i18next";
 
+import { BrandLockup } from "@/components/BrandLockup";
 import { DemoBanner } from "@/components/DemoBanner";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import {
@@ -32,7 +32,6 @@ export function AuthLayout({
   footer,
   testId,
 }: AuthLayoutProps) {
-  const { t } = useTranslation();
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* B5 — surface read-only demo mode to unauthenticated visitors too, not
@@ -40,19 +39,20 @@ export function AuthLayout({
           normal deploy. */}
       <DemoBanner />
       <header
-        className="flex items-center justify-between border-b px-6"
+        className="flex items-center justify-end border-b px-6"
         style={{ height: "var(--layout-header)" }}
       >
-        <span className="text-sm font-semibold tracking-tight">
-          {t("app.name")}
-        </span>
         <LanguageToggle />
       </header>
       <main
-        className="mx-auto flex w-full max-w-md flex-col gap-6 px-6 py-12"
+        className="mx-auto flex w-full max-w-md flex-col items-center gap-6 px-6 py-12"
         data-testid={testId}
       >
-        <Card>
+        {/* Full brand logo (mark + wordmark + tagline) — the gateway is the
+            one surface with room for the tagline; the post-login sidebar uses
+            the compact mark + wordmark. */}
+        <BrandLockup />
+        <Card className="w-full">
           <CardHeader>
             <CardTitle>{title}</CardTitle>
             {subtitle ? <CardDescription>{subtitle}</CardDescription> : null}
