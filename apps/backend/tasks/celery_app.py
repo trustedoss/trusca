@@ -33,6 +33,10 @@ from core.logging import configure_logging
 _TASK_INCLUDES = [
     "tasks.scan_source",
     "tasks.scan_container",
+    # External CycloneDX SBOM ingest — reuses the source pipeline's back half
+    # (components → Trivy SBOM matching → findings → finalize) against an
+    # uploaded SBOM (no clone / cdxgen / scancode / signing).
+    "tasks.ingest_sbom",
     # v2.3 r1 — Go govulncheck call-graph reachability enrichment, dispatched as
     # a follow-up after a source scan succeeds (best-effort, never blocks a scan).
     "tasks.scan_reachability",

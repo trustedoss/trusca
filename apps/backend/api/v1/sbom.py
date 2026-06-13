@@ -21,14 +21,28 @@ import uuid
 from typing import Literal
 
 import structlog
-from fastapi import APIRouter, Depends, Query, Request, Response, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.api_key_auth import require_role_or_api_key
 from core.authz import assert_team_access
+from core.config import sbom_ingest_max_bytes, scan_trigger_rate_limit
 from core.db import get_db
 from core.errors import problem_response
+from core.ratelimit import _authenticated_user_key, limiter
 from core.security import CurrentUser, require_role
 from models import Project
+from schemas.scan import ScanPublic
 from services.project_service import (
     ProjectError,
     ProjectForbidden,
@@ -40,6 +54,11 @@ from services.sbom_export import (
     SBOMExportError,
     SBOMUnsupportedFormat,
     export_sbom,
+)
+from services.sbom_ingest_service import (
+    SbomIngestError,
+    SbomIngestTooLarge,
+    ingest_sbom,
 )
 from services.sbom_signature import (
     KIND_ATTEST_CERT,
@@ -53,6 +72,11 @@ from services.sbom_signature import (
     get_signature_artifact,
 )
 from services.scan_resolution import SnapshotScanNotFound, latest_succeeded_scan_id
+from services.scan_service import (
+    ConcurrentScanLimitExceeded,
+    ScanError,
+    ScanInProgressConflict,
+)
 
 router = APIRouter(prefix="/v1", tags=["sbom"])
 log = structlog.get_logger("sbom.api")
@@ -94,6 +118,80 @@ def _problem_for_sbom_error(request: Request, exc: SBOMExportError) -> Response:
         detail=str(exc) or exc.title,
         instance=request.url.path,
     )
+
+
+def _problem_for_sbom_ingest_error(request: Request, exc: SbomIngestError) -> Response:
+    """Translate an SBOM-ingest validation error into an RFC 7807 envelope.
+
+    Each ``SbomIngestError`` subclass carries its own ``status_code`` (413 / 415 /
+    422) and a stable ``type_uri`` problem URI.
+    """
+    return problem_response(
+        status_code=exc.status_code,
+        title=exc.title,
+        detail=str(exc) or exc.title,
+        instance=request.url.path,
+        type_=exc.type_uri,
+    )
+
+
+def _problem_for_scan_error(request: Request, exc: ScanError) -> Response:
+    """Translate a scan-domain error (raised by the shared scan guards) to 7807.
+
+    The SBOM-ingest path reuses ``services.scan_service`` guards, so it can raise
+    ``ScanForbidden`` (403), ``ProjectMissingForScan`` (404),
+    ``ScanArchivedConflict`` (409), ``ConcurrentScanLimitExceeded`` (429),
+    ``ScanInProgressConflict`` (409), or ``ScanEnqueueFailed`` (503). The mapping
+    here mirrors ``api/v1/projects.py::_problem_for_scan_error`` exactly so the
+    two scan-creating surfaces return identical envelopes.
+    """
+    # B1: the per-team concurrency cap carries the `limit` extension, a domain
+    # `type` URI, and a Retry-After header. M1 (security-reviewer): the live
+    # running_scans count is deliberately NOT exposed (intra-team side-channel).
+    if isinstance(exc, ConcurrentScanLimitExceeded):
+        response = problem_response(
+            status_code=exc.status_code,
+            title=exc.title,
+            detail=str(exc) or exc.title,
+            instance=request.url.path,
+            type_=exc.type_uri,
+            limit=exc.limit,
+        )
+        response.headers["Retry-After"] = str(exc.retry_after_seconds)
+        return response
+    # P1 #10 — machine-checkable extension on the per-project active-scan conflict.
+    if isinstance(exc, ScanInProgressConflict):
+        return problem_response(
+            status_code=exc.status_code,
+            title=exc.title,
+            detail=str(exc) or exc.title,
+            instance=request.url.path,
+            scan_already_in_progress=True,
+        )
+    return problem_response(
+        status_code=exc.status_code,
+        title=exc.title,
+        detail=str(exc) or exc.title,
+        instance=request.url.path,
+    )
+
+
+def _declared_content_length(request: Request) -> int | None:
+    """Parse the request's ``Content-Length`` header, or ``None`` if absent/bad.
+
+    Mirrors ``api/v1/projects.py``: a multipart upload's Content-Length covers the
+    whole envelope, so it is a safe over-estimate for an early-reject ceiling. A
+    malformed value is treated as absent (the streamed-bytes cap in the service is
+    the authoritative guard).
+    """
+    raw = request.headers.get("content-length")
+    if raw is None:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    return value if value >= 0 else None
 
 
 # ---------------------------------------------------------------------------
@@ -576,3 +674,169 @@ async def download_sbom_signature_bundle_endpoint(
             ),
         )
     return _download_response(artifact)
+
+
+# ---------------------------------------------------------------------------
+# POST /v1/projects/{project_id}/sbom-ingest — external CycloneDX SBOM ingest
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/projects/{project_id}/sbom-ingest",
+    response_model=ScanPublic,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Ingest an external CycloneDX SBOM (queues a Celery task; returns 202 Accepted)",
+    responses={
+        202: {
+            "description": "SBOM accepted; a queued scan row is returned.",
+            "content": {"application/json": {}},
+        },
+        401: {"description": "Authentication required"},
+        403: {
+            "description": (
+                "Caller is not a member of the project's owning team, or a "
+                "project-scoped API key targets a different project. RFC 7807."
+            ),
+            "content": {"application/problem+json": {}},
+        },
+        404: {
+            "description": "Project not found (existence-hidden). RFC 7807.",
+            "content": {"application/problem+json": {}},
+        },
+        409: {
+            "description": (
+                "A scan is already queued/running for this project, or the project "
+                "is archived. RFC 7807."
+            ),
+            "content": {"application/problem+json": {}},
+        },
+        413: {
+            "description": "SBOM exceeds the ingest size cap. RFC 7807.",
+            "content": {"application/problem+json": {}},
+        },
+        415: {
+            "description": "Upload is not a CycloneDX JSON media type. RFC 7807.",
+            "content": {"application/problem+json": {}},
+        },
+        422: {
+            "description": (
+                "Upload is not a valid / supported CycloneDX document (not JSON, "
+                "wrong bomFormat, unsupported specVersion, too many components). "
+                "RFC 7807."
+            ),
+            "content": {"application/problem+json": {}},
+        },
+        429: {
+            "description": (
+                "Rate limited (too many scan creations from this user) or the "
+                "team's concurrent-scan cap is reached. RFC 7807 + Retry-After."
+            ),
+            "content": {"application/problem+json": {}},
+        },
+    },
+)
+# B1: share the SAME rate-limit bucket as the scan-trigger endpoint
+# (``scope="scan_trigger"``, keyed by the authenticated user) — ingesting an SBOM
+# is a scan-creating action, so it draws from the same per-user budget rather than
+# opening a parallel lane. See ``api/v1/projects.py::trigger_scan_endpoint`` for
+# why ``shared_limit`` (route-path-independent bucket key) is required over plain
+# ``@limit`` (which would bucket per {project_id} and let a user spray uploads
+# across projects to bypass the cap).
+@limiter.shared_limit(
+    scan_trigger_rate_limit,
+    scope="scan_trigger",
+    key_func=_authenticated_user_key,
+)
+async def ingest_sbom_endpoint(
+    request: Request,
+    project_id: uuid.UUID,
+    sbom: UploadFile = File(
+        ...,
+        description="A CycloneDX JSON SBOM document (.json / .cdx.json).",
+    ),
+    ref: str | None = Form(
+        default=None,
+        description=(
+            "Optional git ref this SBOM was produced from (e.g. refs/heads/main, "
+            "a tag, or a bare branch name). Normalized into a retention key."
+        ),
+    ),
+    release: str | None = Form(
+        default=None,
+        description="Optional release/version label for the resulting snapshot.",
+    ),
+    session: AsyncSession = Depends(get_db),
+    # Accept a JWT or a tos_ API key — CI pipelines push SBOMs with the key, the
+    # SPA with a JWT. A project-scoped key targeting a different project is 403'd
+    # inside the shared scan guard (existence-hide is not applied to the key-scope
+    # mismatch, matching the scan-trigger endpoint).
+    actor: CurrentUser = Depends(require_role_or_api_key("developer")),
+) -> Response:
+    # NOTE: this is NOT the Dependency-Track ``/api/v1/bom`` + ``X-Api-Key`` BOM
+    # upload surface — it is a first-party, RBAC-scoped portal endpoint that
+    # returns a queued scan row (202) rather than a DT token.
+
+    # M2-style fast-fail: reject before reading a single body byte when the
+    # declared Content-Length already exceeds the ingest cap. The service still
+    # enforces the cap on the ACTUAL streamed bytes (a client can lie about /
+    # omit Content-Length), so this is a courtesy short-circuit, not the guard.
+    declared = _declared_content_length(request)
+    if declared is not None and declared > sbom_ingest_max_bytes():
+        return _problem_for_sbom_ingest_error(
+            request,
+            SbomIngestTooLarge(
+                f"declared content-length {declared} exceeds the "
+                f"{sbom_ingest_max_bytes()}-byte SBOM ingest limit"
+            ),
+        )
+
+    # Guard order is enforced inside ``ingest_sbom``: authz/existence (404/403) +
+    # api-key scope (403) FIRST, then request validation (413/415/422), then the
+    # 409 active-scan conflict at flush — so a non-member never learns a project's
+    # state. Scan-domain guard failures map via ``_problem_for_scan_error``; SBOM
+    # validation failures via ``_problem_for_sbom_ingest_error``.
+    try:
+        scan = await ingest_sbom(
+            session,
+            project_id=project_id,
+            upload=sbom,
+            actor=actor,
+            ref=ref,
+            release=release,
+        )
+    except SbomIngestError as exc:
+        return _problem_for_sbom_ingest_error(request, exc)
+    except ScanError as exc:
+        return _problem_for_scan_error(request, exc)
+
+    body = ScanPublic.model_validate(scan)
+    return Response(
+        # ``by_alias=True`` so the response carries ``metadata`` (the API field
+        # name) rather than ``scan_metadata`` (the ORM attribute name) — matches
+        # the scan-trigger endpoint's ScanPublic serialization.
+        content=body.model_dump_json(by_alias=True),
+        status_code=status.HTTP_202_ACCEPTED,
+        media_type="application/json",
+    )
+
+
+# slowapi's ``@limiter.shared_limit`` wraps the endpoint with functools.wraps,
+# whose ``__globals__`` is slowapi's module. Under ``from __future__ import
+# annotations`` FastAPI's ``get_type_hints()`` on the wrapper cannot resolve our
+# string annotations, so it misclassifies the body / dependency params. Mirror the
+# fix used in projects.py / auth.py: copy the names the wrapper needs into its
+# ``__globals__`` (the dict is mutable even though the attribute is read-only).
+for _name in (
+    "uuid",
+    "UploadFile",
+    "AsyncSession",
+    "CurrentUser",
+    "Request",
+    "Response",
+    "Depends",
+    "File",
+    "Form",
+):
+    if _name in globals():
+        ingest_sbom_endpoint.__globals__.setdefault(_name, globals()[_name])
+del _name

@@ -1,0 +1,71 @@
+{
+  "SchemaVersion": 2,
+  "ArtifactName": "realistic.cdx.json",
+  "ArtifactType": "cyclonedx",
+  "Results": [
+    {
+      "Target": "Node.js",
+      "Class": "lang-pkgs",
+      "Type": "npm",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2020-8203",
+          "PkgName": "lodash",
+          "InstalledVersion": "4.17.19",
+          "FixedVersion": "4.17.20",
+          "Severity": "HIGH",
+          "Title": "Prototype pollution in lodash",
+          "Description": "Prototype pollution attack via zipObjectDeep.",
+          "References": ["https://nvd.nist.gov/vuln/detail/CVE-2020-8203"]
+        },
+        {
+          "VulnerabilityID": "CVE-2021-23337",
+          "PkgName": "lodash",
+          "InstalledVersion": "4.17.19",
+          "FixedVersion": "4.17.21",
+          "Severity": "HIGH",
+          "Title": "Command injection in lodash template",
+          "Description": "Command injection via the template function.",
+          "References": ["https://nvd.nist.gov/vuln/detail/CVE-2021-23337"]
+        },
+        {
+          "VulnerabilityID": "CVE-2020-28500",
+          "PkgName": "lodash",
+          "InstalledVersion": "4.17.19",
+          "FixedVersion": "4.17.21",
+          "Severity": "MEDIUM",
+          "Title": "ReDoS in lodash toNumber/trim",
+          "Description": "Regular expression denial of service.",
+          "References": ["https://nvd.nist.gov/vuln/detail/CVE-2020-28500"]
+        },
+        {
+          "VulnerabilityID": "CVE-2021-44906",
+          "PkgName": "minimist",
+          "InstalledVersion": "1.2.5",
+          "FixedVersion": "1.2.6",
+          "Severity": "CRITICAL",
+          "Title": "Prototype pollution in minimist",
+          "Description": "Prototype pollution via crafted arguments.",
+          "References": ["https://nvd.nist.gov/vuln/detail/CVE-2021-44906"]
+        }
+      ]
+    },
+    {
+      "Target": "Python",
+      "Class": "lang-pkgs",
+      "Type": "pip",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2020-28493",
+          "PkgName": "jinja2",
+          "InstalledVersion": "2.11.2",
+          "FixedVersion": "2.11.3",
+          "Severity": "MEDIUM",
+          "Title": "ReDoS in Jinja2 urlize filter",
+          "Description": "Regular expression denial of service in the urlize filter.",
+          "References": ["https://nvd.nist.gov/vuln/detail/CVE-2020-28493"]
+        }
+      ]
+    }
+  ]
+}

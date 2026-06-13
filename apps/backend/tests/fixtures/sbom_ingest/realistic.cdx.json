@@ -1,0 +1,85 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "serialNumber": "urn:uuid:7f1d8e9a-2b3c-4d5e-9f01-2a3b4c5d6e7f",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-06-10T12:00:00Z",
+    "tools": [
+      {
+        "vendor": "cyclonedx",
+        "name": "cdxgen",
+        "version": "11.0.0"
+      }
+    ],
+    "component": {
+      "type": "application",
+      "bom-ref": "pkg:npm/ingest-fixture-app@0.0.0",
+      "name": "ingest-fixture-app",
+      "version": "0.0.0",
+      "purl": "pkg:npm/ingest-fixture-app@0.0.0"
+    }
+  },
+  "components": [
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/lodash@4.17.19",
+      "name": "lodash",
+      "version": "4.17.19",
+      "purl": "pkg:npm/lodash@4.17.19",
+      "licenses": [{ "license": { "id": "MIT" } }],
+      "externalReferences": [
+        { "type": "website", "url": "https://lodash.com/" }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/minimist@1.2.5",
+      "name": "minimist",
+      "version": "1.2.5",
+      "purl": "pkg:npm/minimist@1.2.5",
+      "licenses": [{ "license": { "id": "MIT" } }]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/conditional-lib@2.0.0",
+      "name": "conditional-lib",
+      "version": "2.0.0",
+      "purl": "pkg:npm/conditional-lib@2.0.0",
+      "licenses": [{ "license": { "id": "MPL-2.0" } }],
+      "components": [
+        {
+          "type": "library",
+          "bom-ref": "pkg:npm/nested-transitive@0.1.0",
+          "name": "nested-transitive",
+          "version": "0.1.0",
+          "purl": "pkg:npm/nested-transitive@0.1.0",
+          "licenses": [{ "license": { "id": "ISC" } }]
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/jinja2@2.11.2",
+      "name": "jinja2",
+      "version": "2.11.2",
+      "purl": "pkg:pypi/jinja2@2.11.2",
+      "licenses": [{ "license": { "name": "BSD-3-Clause" } }]
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "pkg:npm/ingest-fixture-app@0.0.0",
+      "dependsOn": [
+        "pkg:npm/lodash@4.17.19",
+        "pkg:npm/minimist@1.2.5",
+        "pkg:npm/conditional-lib@2.0.0",
+        "pkg:pypi/jinja2@2.11.2"
+      ]
+    },
+    {
+      "ref": "pkg:npm/conditional-lib@2.0.0",
+      "dependsOn": ["pkg:npm/nested-transitive@0.1.0"]
+    }
+  ]
+}
