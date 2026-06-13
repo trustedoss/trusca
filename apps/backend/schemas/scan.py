@@ -174,7 +174,7 @@ ProjectName = Annotated[
 # Literal here local — drift would surface immediately as a mypy error in the
 # service layer when it casts to the model column.
 ProjectVisibility = Literal["team", "organization"]
-ScanKind = Literal["source", "container"]
+ScanKind = Literal["source", "container", "sbom"]
 ScanStatus = Literal["queued", "running", "succeeded", "failed", "cancelled"]
 
 

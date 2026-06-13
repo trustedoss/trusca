@@ -79,7 +79,7 @@ EMPTY_JSONB_ARR = text("'[]'::jsonb")
 # name= with create_type=False so SQLAlchemy never tries to (re)create them.
 
 PROJECT_VISIBILITY_VALUES = ("team", "organization")
-SCAN_KIND_VALUES = ("source", "container")
+SCAN_KIND_VALUES = ("source", "container", "sbom")
 SCAN_STATUS_VALUES = ("queued", "running", "succeeded", "failed", "cancelled")
 VULN_SEVERITY_VALUES = ("critical", "high", "medium", "low", "info", "unknown")
 # Vulnerability finding status — Phase 2 ships the full 7-state set up front
