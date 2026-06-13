@@ -44,7 +44,7 @@
 # crypto are all outside this code path.
 #
 # ----------------------------------------------------------------------------
-# cdxgen 12.5.1 reach surface (single source of truth — keep in sync with
+# cdxgen 12.3.3 reach surface (single source of truth — keep in sync with
 # apps/backend/integrations/cdxgen.py:107-115):
 #   cmd = [
 #       "cdxgen",
@@ -330,7 +330,7 @@ CVE-2026-26171
 CVE-2026-33116
 
 # ---------------------------------------------------------------------------
-# Bundled Go-binary toolchain reach surface — cdxgen 12.5.1 + ORT 85.1.1
+# Bundled Go-binary toolchain reach surface — cdxgen 12.3.3 + ORT 85.1.1
 # vendored Go executables (single source of truth — keep in sync with
 # apps/backend/integrations/cdxgen.py:107-115 and apps/backend/integrations/
 # ort.py:128-139):
