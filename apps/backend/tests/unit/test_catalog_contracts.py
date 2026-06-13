@@ -81,6 +81,26 @@ def test_dispatcher_builders_cover_every_dispatcher_kind() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Scan kind vocabulary — drift guard (testing-standards rule 2)
+# ---------------------------------------------------------------------------
+
+
+def test_scan_kind_enum_matches_schema_literal() -> None:
+    """DB enum tuple (models) and the wire Literal (schemas) must be identical.
+
+    ``scan_kind`` lives in three places: the native Postgres enum (migration
+    0003, extended by 0032 for ``sbom``), ``SCAN_KIND_VALUES`` (the SQLAlchemy
+    binding), and the ``ScanKind`` Literal (the request/response contract). A
+    value added to one without the others either rejects valid input at the API
+    boundary or rejects a valid INSERT at the DB — this test fails first.
+    """
+    from models.scan import SCAN_KIND_VALUES
+    from schemas.scan import ScanKind
+
+    assert set(SCAN_KIND_VALUES) == set(typing.get_args(ScanKind))
+
+
+# ---------------------------------------------------------------------------
 # Obligation kind vocabulary — H-9 guard
 # ---------------------------------------------------------------------------
 
