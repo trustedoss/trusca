@@ -50,21 +50,22 @@
   - **C Stacked SBOM** — 구성요소 목록 막대 + 최상단 검증
 - **선정안**: **A Hex Check** (2026-06-12 확정) — 패키지 육각 + 검증 체크.
   16px 가독성이 가장 좋고 보안 도구 관례에 부합.
-- **팔레트**(2026-06-13 갱신): 브랜드 컬러 = **틸**, paper `#fafafa`, ink `#18181b`.
-  단색 near-black 타일이 "너무 검다"는 피드백 + BomLens 레퍼런스(그라데이션 타일·
-  단색 굵은 워드마크·태그라인) 검토를 거쳐, **마크 타일은 틸 그라데이션
-  `#2dd4bf → #0f766e`**(대각, top-left→bottom-right)로, 육각+체크는 paper로 칠한다.
-  (기존 계획의 블루 `#2563eb`에서 틸로 변경, 리스크 Low의 블루와도 분리.)
-  틸 `#0f766e`는 흰 배경 5.47:1로 WCAG AA 통과.
-- **워드마크**: Inter, 굵게(extrabold), tracking-tight, **"TRUSCA" 단색 틸 `#0f766e`**.
-  단어 중간 색 분리(구 `TRU`+`SCA`)는 폐기 — 싸구려로 읽혀 BomLens식 단색으로 통일.
+- **팔레트**(2026-06-13 안 E 확정): ink `#18181b`, paper `#fafafa`, 브랜드 accent = **틸**.
+  로고 색은 여러 번 바뀜 — near-black 단색("너무 검다") → 틸 그라데이션("촌스럽다") →
+  **안 E: 다크 슬레이트 타일 + 틸 체크 포인트**(절충 — 깔끔한 다크 + 색 정체성).
+  - **마크 타일**: `#0f172a`(다크 슬레이트) **flat**, rx 8.
+  - **육각**: paper `#fafafa` stroke. **체크**: 틸 `#2dd4bf` stroke(다크 위 포인트).
+- **워드마크**: Inter 굵게(extrabold) tracking-tight, **"TRUSCA" 잉크**(= foreground 상속).
+  색은 마크의 틸 체크가 담당, 워드마크는 중립 잉크로 깔끔하게. 단어 중간 색 분리(구
+  `TRU`+`SCA`)는 폐기.
 - **태그라인**: "TrustedOSS SCA"(= TrustedOSS 이니셔티브의 SCA 도구). muted gray,
-  대문자 변환 안 함(우산명 "TrustedOSS" 카멜표기 보존). 단어 색 분리 대신 이
-  태그라인이 SCA·우산 관계를 담당.
+  대문자 변환 안 함(우산명 "TrustedOSS" 카멜표기 보존).
 - **락업**: 풀 락업(마크+워드마크+태그라인)은 여유 있는 곳(로그인 게이트웨이·브랜드
   쇼케이스)에 — `apps/frontend/src/components/BrandLockup.tsx`. 좁은 48px
   사이드바/헤더는 축약 락업(마크+워드마크, 태그라인 생략).
-  구현: `BrandMark.tsx`(그라데이션 타일)·`BrandWordmark.tsx`(틸 워드마크).
+  구현: `BrandMark.tsx`(다크 슬레이트 타일+틸 체크)·`BrandWordmark.tsx`(잉크 워드마크).
+- **래스터 자산**: `docs-site/static/img/logo.png`(256×256, 마크 — Helm 아이콘·README 헤더
+  공용)·`social-card.png`(1200×630 OG). 로고 변경 시 둘 다 재생성(HTML+Playwright).
   로그인 카드 타이틀 등 문장 속 "TRUSCA"는 평문 유지(로케일별 어순 상이).
 - **적용 자산**: 타일 틸 = `apps/frontend/src/components/BrandMark.tsx`,
   `apps/frontend/public/favicon.svg`, `docs-site/static/img/{logo,favicon}.svg`.

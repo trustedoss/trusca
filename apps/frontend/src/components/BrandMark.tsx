@@ -7,15 +7,12 @@
  * the symbol is needed instead of re-inlining the paths.
  *
  * Palette is fixed brand colour (not theme tokens) so the tile reads
- * identically on any surface: a teal gradient tile (#2dd4bf → #0f766e) with
- * the hexagon + check in paper (#fafafa). Teal is the TRUSCA brand colour;
- * the wordmark (BrandWordmark) uses the same teal. The gradient id is
- * per-instance (useId) so multiple marks on one page never collide.
+ * identically on any surface: a dark-slate tile (#0f172a) with the hexagon
+ * in paper (#fafafa) and the check in teal (#2dd4bf) as the brand accent.
+ * Clean dark base + a teal pop — not a flat black, not a loud gradient.
  */
-import { useId } from "react";
 
 export function BrandMark({ size = 24 }: { size?: number }) {
-  const gradId = useId();
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -26,13 +23,7 @@ export function BrandMark({ size = 24 }: { size?: number }) {
       aria-hidden
       focusable="false"
     >
-      <defs>
-        <linearGradient id={gradId} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#2dd4bf" />
-          <stop offset="1" stopColor="#0f766e" />
-        </linearGradient>
-      </defs>
-      <rect width="32" height="32" rx="8" fill={`url(#${gradId})`} />
+      <rect width="32" height="32" rx="8" fill="#0f172a" />
       <path
         d="M16 6.5 L24.2 11.25 V20.75 L16 25.5 L7.8 20.75 V11.25 Z"
         fill="none"
@@ -43,8 +34,8 @@ export function BrandMark({ size = 24 }: { size?: number }) {
       <path
         d="M12.6 16.2 L15.1 18.7 L19.6 13.4"
         fill="none"
-        stroke="#fafafa"
-        strokeWidth="2.2"
+        stroke="#2dd4bf"
+        strokeWidth="2.5"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
