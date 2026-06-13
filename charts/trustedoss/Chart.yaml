@@ -29,7 +29,7 @@ sources:
   - https://github.com/trustedoss/trusca
 maintainers:
   - name: TrustedOSS
-icon: https://raw.githubusercontent.com/trustedoss/trusca/main/docs/static/img/logo.png
+icon: https://raw.githubusercontent.com/trustedoss/trusca/main/docs-site/static/img/logo.png
 
 # ArtifactHub metadata (https://artifacthub.io/docs/topics/annotations/helm/).
 # Surfaced on the ArtifactHub package page once the OCI repo is registered (a

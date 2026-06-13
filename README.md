@@ -1,4 +1,10 @@
-# TRUSCA
+<p align="center">
+  <img src="docs-site/static/img/logo.png" width="72" height="72" alt="TRUSCA" />
+</p>
+
+<h1 align="center">TRUSCA</h1>
+
+<p align="center"><em>TrustedOSS SCA — open-source software composition analysis</em></p>
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/badge/release-v0.10.0-2563eb.svg)](CHANGELOG.md)
