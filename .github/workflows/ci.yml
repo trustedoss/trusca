@@ -391,16 +391,8 @@ jobs:
           file: apps/backend/Dockerfile.worker
           tags: trustedoss/backend-worker:dev
           load: true
-          # Cache scope bumped worker → worker-v2 (PR #406): the prior scope's
-          # cached npm-install layer carried a non-deterministically-resolved
-          # transitive tree (lodash 4.17.19 / minimist 1.2.5) that image-scan
-          # HARD-failed on. A fresh local install of the current cdxgen 12.5.1
-          # AND npm 11.14.1 pulls neither package, so the vulnerable copies came
-          # from a stale cached layer, not the current Dockerfile. Bumping the
-          # scope abandons that poisoned cache and forces one clean rebuild; the
-          # new namespace then caches the clean tree. Bump again if it recurs.
-          cache-from: type=gha,scope=worker-v2
-          cache-to: type=gha,scope=worker-v2,mode=max
+          cache-from: type=gha,scope=worker
+          cache-to: type=gha,scope=worker,mode=max
 
       - name: Trivy scan (HARD FAIL on CRITICAL,HIGH)
         # Chore P (Phase 8 worker-image refresh): single combined gate.
