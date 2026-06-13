@@ -13,7 +13,7 @@ PR-A2: the ORT ``evaluate`` stage was removed (it was broken — it fed a
 CycloneDX SBOM to ``ort evaluate --ort-file``, which expects an OrtResult JSON,
 and aborted every scan with a KotlinInvalidNullException; we had been swallowing
 that with a try/except). License classification for *third-party* dependencies
-remains *declared* (cdxgen package metadata, persisted in ``_persist_components``
+remains *declared* (cdxgen package metadata, persisted in ``persist_sbom_components``
 → ``_persist_component_licenses``). PR-A2 adds *detected* license findings for
 *first-party* source via scancode — third-party dependency sources are NOT
 downloaded (that deep-scan path is out of scope; it would blow the budget).
@@ -121,14 +121,18 @@ from services.source_preservation_service import preserve_scan_source
 from services.vulnerability_matching import persist_trivy_findings
 from tasks._progress import (
     close_log_file,
-    publish_progress,
     reset_log_counter,
 )
 from tasks._progress import (
     make_line_callback as _make_line_callback,
 )
+from tasks._scan_pipeline import (
+    mark_failed,
+    mark_succeeded,
+    record_terminal_failure,
+    set_stage,
+)
 from tasks.celery_app import celery_app
-from tasks.scan_retention import supersede_prior_ref_scans
 
 log = structlog.get_logger("tasks.scan_source")
 
@@ -403,7 +407,7 @@ def _run_pipeline(
     # never raise from this stage onto the terminal-failure path — a missing
     # detected-license set is a degraded-output scenario, not a fatal one
     # (same philosophy as the prep stage). Third-party dependency sources are
-    # NOT downloaded; their licenses stay declared via _persist_components.
+    # NOT downloaded; their licenses stay declared via persist_sbom_components.
     _set_stage(scan_uuid, "scancode")
     scancode_detections: list[scancode_adapter.DetectedLicense] = []
     # G3.1: capture the scancode result JSON path so the preservation stage can
@@ -445,7 +449,7 @@ def _run_pipeline(
     # findings — the declared findings and component graph still commit. A
     # detected-license failure is degraded, never fatal.
     with sync_session_scope() as session:
-        _persist_components(
+        persist_sbom_components(
             session,
             scan_uuid=scan_uuid,
             sbom=cdxgen_result.sbom,
@@ -1008,61 +1012,28 @@ def _mark_running(session: Session, scan: Scan) -> None:
     session.commit()
 
 
-def _mark_failed(session: Session, scan: Scan, message: str) -> None:
-    scan.status = "failed"
-    scan.error_message = message
-    scan.completed_at = datetime.now(UTC)
-    session.commit()
-    # Snapshot the percent under the row (defaults to 0 when None — protects
-    # against an early-failure path where progress was never initialised).
-    last_percent = scan.progress_percent or 0
-    publish_progress(scan.id, step="failed", percent=last_percent)
-
-
-def _record_terminal_failure(scan_uuid: uuid.UUID, message: str) -> None:
-    with sync_session_scope() as session:
-        scan = session.get(Scan, scan_uuid)
-        if scan is None:
-            return
-        _mark_failed(session, scan, message)
-
-
-def _mark_succeeded(scan_uuid: uuid.UUID) -> None:
-    with sync_session_scope() as session:
-        scan = session.get(Scan, scan_uuid)
-        if scan is None:
-            return
-        scan.status = "succeeded"
-        scan.progress_percent = 100
-        scan.current_step = "finalize"
-        scan.completed_at = datetime.now(UTC)
-        # scan-retention Layer 1: this scan is now the live snapshot for its
-        # ref, so prior succeeded same-ref scans (without an explicit release
-        # label) are superseded in the same transaction. No-op when the scan
-        # carries no ref — those are reclaimed by the keep-last/max-age sweep.
-        supersede_prior_ref_scans(
-            session,
-            project_id=scan.project_id,
-            winner_scan_id=scan.id,
-            ref=scan.ref,
-        )
-        session.commit()
-    publish_progress(scan_uuid, step="succeeded", percent=100)
+# The terminal-state writers and the per-stage progress writer were extracted
+# verbatim to ``tasks._scan_pipeline`` so a future SBOM-ingest task can reuse
+# them through a public seam (no cross-module private import). We keep these
+# thin module-level aliases so this module's own call sites — and the existing
+# tests that ``monkeypatch.setattr(scan_source, "_record_terminal_failure", …)``
+# — keep working unchanged. ``_set_stage`` stays a wrapper because it owns the
+# source-pipeline-specific ``_STAGE_PROGRESS`` mapping that the shared
+# ``set_stage`` deliberately does not know about.
+_mark_failed = mark_failed
+_record_terminal_failure = record_terminal_failure
+_mark_succeeded = mark_succeeded
 
 
 def _set_stage(scan_uuid: uuid.UUID, stage: str) -> None:
-    with sync_session_scope() as session:
-        scan = session.get(Scan, scan_uuid)
-        if scan is None:
-            return
-        scan.current_step = stage
-        scan.progress_percent = _STAGE_PROGRESS.get(stage, scan.progress_percent)
-        session.commit()
-        committed_percent = scan.progress_percent or 0
-    log.info("scan_stage", stage=stage, percent=_STAGE_PROGRESS.get(stage))
-    # Publish AFTER the DB commit so a subscriber that reads the row on
-    # receipt sees the same state as the published payload.
-    publish_progress(scan_uuid, step=stage, percent=committed_percent)
+    """Advance a scan to ``stage`` using this pipeline's percent mapping.
+
+    Delegates to :func:`tasks._scan_pipeline.set_stage` with the percent
+    resolved from ``_STAGE_PROGRESS`` — ``None`` for an unmapped stage, which
+    the shared writer treats as "keep the row's prior percent" (preserving the
+    original ``_set_stage`` fallback exactly).
+    """
+    set_stage(scan_uuid, stage, _STAGE_PROGRESS.get(stage))
 
 
 def _persist_artifact(
@@ -1872,7 +1843,7 @@ def _run_prep(
         )
 
 
-def _persist_components(
+def persist_sbom_components(
     session: Session,
     *,
     scan_uuid: uuid.UUID,

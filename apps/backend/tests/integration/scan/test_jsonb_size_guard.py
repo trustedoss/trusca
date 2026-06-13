@@ -4,7 +4,7 @@ JSONB size guard at the persistence boundary — I-1 integration.
 `tasks/scan_source.py` and `tasks/scan_container.py` route every JSONB
 write through `enforce_jsonb_row_size_limit` before the row reaches the
 ORM. We don't drive the full Celery pipeline here — we drive the
-`_persist_components` helper directly with a fabricated cdxgen SBOM whose
+`persist_sbom_components` helper directly with a fabricated cdxgen SBOM whose
 single component carries a large free-form blob. The guard must replace
 the blob with the truncation marker before persistence.
 
@@ -142,9 +142,9 @@ def test_oversized_component_raw_data_is_truncated_at_persist(
         ]
     }
 
-    from tasks.scan_source import _persist_components
+    from tasks.scan_source import persist_sbom_components
 
-    _persist_components(sync_session, scan_uuid=scan_id, sbom=sbom)
+    persist_sbom_components(sync_session, scan_uuid=scan_id, sbom=sbom)
     sync_session.commit()
 
     rows = (
@@ -183,9 +183,9 @@ def test_under_limit_component_is_persisted_intact(
         ]
     }
 
-    from tasks.scan_source import _persist_components
+    from tasks.scan_source import persist_sbom_components
 
-    _persist_components(sync_session, scan_uuid=scan_id, sbom=sbom)
+    persist_sbom_components(sync_session, scan_uuid=scan_id, sbom=sbom)
     sync_session.commit()
 
     rows = (

@@ -1,4 +1,4 @@
-"""Unit tests — npm scope enrichment in ``_persist_components`` (W4-D, 2026-05-27).
+"""Unit tests — npm scope enrichment in ``persist_sbom_components`` (W4-D, 2026-05-27).
 
 cdxgen 12.3.3 does not emit ``scope`` for npm components, so without
 intervention the Components tab's USAGE column is dash for every npm row. The
@@ -52,7 +52,7 @@ def _scan_components(session: _FakeSession) -> list[ScanComponent]:
 
 @pytest.fixture
 def patched_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Stub component / license helpers so ``_persist_components`` runs
+    """Stub component / license helpers so ``persist_sbom_components`` runs
     in-memory against the fake session."""
     monkeypatch.setattr(
         "tasks.scan_source._get_or_create_component",
@@ -92,7 +92,7 @@ def test_cdxgen_scope_wins_over_lockfile(
 ) -> None:
     """A cdxgen-supplied scope (e.g. Maven POM ``<scope>``) is NOT overridden
     by the lockfile. Maven emits scope reliably; the lockfile is npm-only."""
-    from tasks.scan_source import _persist_components
+    from tasks.scan_source import persist_sbom_components
 
     # cdxgen says compile (Maven); lockfile would (wrongly) say dev. cdxgen wins.
     monkeypatch.setattr(
@@ -114,7 +114,7 @@ def test_cdxgen_scope_wins_over_lockfile(
             }
         ]
     }
-    _persist_components(session, scan_uuid=uuid.uuid4(), sbom=sbom, source_dir=tmp_path)
+    persist_sbom_components(session, scan_uuid=uuid.uuid4(), sbom=sbom, source_dir=tmp_path)
     scs = _scan_components(session)
     assert len(scs) == 1
     assert scs[0].dependency_scope == "compile"
@@ -130,7 +130,7 @@ def test_npm_component_uses_lockfile_scope_when_cdxgen_missing(
     This is the dominant 2026-05-26 P3 #12 gap: cdxgen 12.3.3 emits npm
     components with no ``scope`` field, leaving the UI USAGE column at dash
     for every npm row. The lockfile-derived scope closes that gap."""
-    from tasks.scan_source import _persist_components
+    from tasks.scan_source import persist_sbom_components
 
     monkeypatch.setattr(
         "tasks.scan_source.read_lockfile",
@@ -160,7 +160,7 @@ def test_npm_component_uses_lockfile_scope_when_cdxgen_missing(
             },
         ]
     }
-    _persist_components(session, scan_uuid=uuid.uuid4(), sbom=sbom, source_dir=tmp_path)
+    persist_sbom_components(session, scan_uuid=uuid.uuid4(), sbom=sbom, source_dir=tmp_path)
     scs = _scan_components(session)
     scopes = {sc.dependency_scope for sc in scs}
     assert scopes == {"required", "dev"}
@@ -177,7 +177,7 @@ def test_non_npm_component_never_consults_lockfile(
 
     This protects the trust boundary: the lockfile is attacker-controllable
     but its enrichment scope is bounded to npm purls."""
-    from tasks.scan_source import _persist_components
+    from tasks.scan_source import persist_sbom_components
 
     monkeypatch.setattr(
         "tasks.scan_source.read_lockfile",
@@ -200,7 +200,7 @@ def test_non_npm_component_never_consults_lockfile(
             },
         ]
     }
-    _persist_components(session, scan_uuid=uuid.uuid4(), sbom=sbom, source_dir=tmp_path)
+    persist_sbom_components(session, scan_uuid=uuid.uuid4(), sbom=sbom, source_dir=tmp_path)
     scs = _scan_components(session)
     assert len(scs) == 1
     assert scs[0].dependency_scope is None  # NOT "dev" — type-bound
@@ -213,7 +213,7 @@ def test_no_lockfile_means_scope_stays_null(
 ) -> None:
     """No package-lock.json on disk → ``read_lockfile`` returns None → the
     behaviour is identical to pre-W4-D: cdxgen scope or NULL."""
-    from tasks.scan_source import _persist_components
+    from tasks.scan_source import persist_sbom_components
 
     monkeypatch.setattr("tasks.scan_source.read_lockfile", lambda src: None)
     session = _FakeSession()
@@ -227,7 +227,7 @@ def test_no_lockfile_means_scope_stays_null(
             },
         ]
     }
-    _persist_components(session, scan_uuid=uuid.uuid4(), sbom=sbom, source_dir=tmp_path)
+    persist_sbom_components(session, scan_uuid=uuid.uuid4(), sbom=sbom, source_dir=tmp_path)
     scs = _scan_components(session)
     assert scs[0].dependency_scope is None
 
@@ -238,7 +238,7 @@ def test_source_dir_none_skips_lockfile_load(
 ) -> None:
     """When the caller does not pass ``source_dir`` (legacy call sites / tests),
     the lockfile loader is NOT called. Behaviour is identical to pre-W4-D."""
-    from tasks.scan_source import _persist_components
+    from tasks.scan_source import persist_sbom_components
 
     calls: list[Any] = []
 
@@ -258,7 +258,7 @@ def test_source_dir_none_skips_lockfile_load(
             }
         ]
     }
-    _persist_components(session, scan_uuid=uuid.uuid4(), sbom=sbom)
+    persist_sbom_components(session, scan_uuid=uuid.uuid4(), sbom=sbom)
     assert calls == []  # loader never invoked when source_dir is None
 
 
@@ -267,10 +267,10 @@ def test_lockfile_loaded_exactly_once_per_persist_call(
     patched_helpers: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The lockfile is loaded once at the top of ``_persist_components`` — NOT
+    """The lockfile is loaded once at the top of ``persist_sbom_components`` — NOT
     re-loaded per component. A 1000-component scan must not re-parse the
     lockfile 1000 times."""
-    from tasks.scan_source import _persist_components
+    from tasks.scan_source import persist_sbom_components
 
     load_count = 0
 
@@ -291,7 +291,7 @@ def test_lockfile_loaded_exactly_once_per_persist_call(
         }
         for i in range(50)
     ]
-    _persist_components(
+    persist_sbom_components(
         session, scan_uuid=uuid.uuid4(), sbom={"components": components}, source_dir=tmp_path
     )
     assert load_count == 1  # parsed once, used for every lookup
@@ -306,7 +306,7 @@ def test_empty_string_cdxgen_scope_falls_back_to_lockfile(
 
     Some cdxgen versions emit ``scope: ""`` for unresolved entries; an empty
     string is not a useful classification and the lockfile should fill in."""
-    from tasks.scan_source import _persist_components
+    from tasks.scan_source import persist_sbom_components
 
     monkeypatch.setattr(
         "tasks.scan_source.read_lockfile",
@@ -327,6 +327,6 @@ def test_empty_string_cdxgen_scope_falls_back_to_lockfile(
             }
         ]
     }
-    _persist_components(session, scan_uuid=uuid.uuid4(), sbom=sbom, source_dir=tmp_path)
+    persist_sbom_components(session, scan_uuid=uuid.uuid4(), sbom=sbom, source_dir=tmp_path)
     scs = _scan_components(session)
     assert scs[0].dependency_scope == "required"

@@ -1,10 +1,18 @@
 """
-Unit tests for the four publish_progress hook points in `tasks.scan_source`.
+Unit tests for the four publish_progress hook points in the scan pipeline.
 
 The integration tests (which require Postgres) cover the full pipeline
 end-to-end. These unit tests use lightweight mocks to cover the publish
 hooks specifically, so a regression in the order ("commit then publish")
 or in the percent value passed to the publisher is caught without a DB.
+
+The hook implementations were extracted to ``tasks._scan_pipeline`` (public
+names ``set_stage`` / ``mark_succeeded`` / ``mark_failed`` /
+``record_terminal_failure``) so an SBOM-ingest task can reuse them. The
+``scan_source`` privates (``_set_stage`` etc.) remain thin aliases / wrappers
+over the shared implementations, so the tests still exercise them through the
+``scan_source`` seam while monkeypatching the dependencies on the module that
+actually owns the implementation (``tasks._scan_pipeline``).
 
 Pinned hook points:
   - ``_set_stage``       — emits step=<stage>, percent=_STAGE_PROGRESS[stage]
@@ -63,7 +71,7 @@ def patch_session(monkeypatch: pytest.MonkeyPatch) -> Any:
     def _scope() -> Any:
         yield _FakeSession(scan)
 
-    monkeypatch.setattr("tasks.scan_source.sync_session_scope", _scope)
+    monkeypatch.setattr("tasks._scan_pipeline.sync_session_scope", _scope)
     return scan
 
 
@@ -75,7 +83,7 @@ def captured_publishes(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
     def _capture(scan_id: Any, *, step: str, percent: int) -> None:
         captured.append({"scan_id": scan_id, "step": step, "percent": percent})
 
-    monkeypatch.setattr("tasks.scan_source.publish_progress", _capture)
+    monkeypatch.setattr("tasks._scan_pipeline.publish_progress", _capture)
     return captured
 
 
