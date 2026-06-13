@@ -231,13 +231,42 @@ RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - \
     && node --version \
     && npm --version
 
-# ---- cdxgen 12.3.3 (Apache-2.0). -------------------------------------------
+# ---- cdxgen 12.5.1 (Apache-2.0). -------------------------------------------
 # CycloneDX SBOM generator, 30+ ecosystems. The 12.x line trims the 11.x
 # transitive deps tree (drops cacache / pacote / @npmcli/run-script and
 # the cross-spawn 7.0.3 chain underneath) — that's the ~23 HIGH npm CVEs
 # Trivy flagged on cdxgen 11.11.0 (CVE-2024-21538 cross-spawn ReDoS et al.).
 # 12.x still supports Node 20 LTS via `engines.node: ^20 || ^22 || ^24 || ^25`.
 # We install globally so it lands on PATH for the celery worker.
+#
+# PR #406 (image-scan node-pkg fix): bumped 12.3.3 → 12.5.1 (latest 12.x as
+# of 2026-06). This is a ROOT-CAUSE removal, not a suppression, of three
+# Trivy node-pkg findings the image-scan gate started failing on:
+#   lodash 4.17.19   — CVE-2021-23337 (HIGH, fixed 4.17.21),
+#                       CVE-2026-4800  (HIGH, fixed 4.18.0)
+#   minimist 1.2.5   — CVE-2021-44906 (CRITICAL, fixed 1.2.6 / 0.2.4)
+# Those packages were transitive deps of cdxgen's OLDER (11.x) tree, bundled
+# under usr/lib/node_modules/@cyclonedx/cdxgen/node_modules/{lodash,minimist}.
+# Reproduced in a node:20.18.1-bookworm-slim container running this exact
+# `npm install -g --omit=dev --omit=optional @cyclonedx/cdxgen@<ver>` command:
+#   - cdxgen 11.11.0  → ships node_modules/lodash + node_modules/minimist
+#   - cdxgen 12.3.3   → drops both packages entirely (clean tree)
+#   - cdxgen 12.5.1   → also clean (verified empty)
+# So a CLEAN 12.3.3 build already lacks them. The CI failure was a STALE
+# `type=gha,scope=worker` build-cache layer (cache-from/to in ci.yml
+# image-scan) still serving the pre-12.x cdxgen install layer that DID hold
+# lodash 4.17.19 / minimist 1.2.5. Bumping CDXGEN_VERSION changes this RUN's
+# layer cache key (the version is interpolated into the command), forcing a
+# fresh `npm install` that lands the lodash/minimist-free 12.5.1 tree — which
+# busts the stale layer AND keeps us on a cdxgen line that never re-introduces
+# those packages. No `.trivyignore` entry is added: suppressing a package that
+# is not present in a clean build would be wrong (the gate must keep failing
+# if a future cdxgen re-introduces a vulnerable lodash/minimist).
+#
+# Invocation compatibility: our only cdxgen call (apps/backend/integrations/
+# cdxgen.py — `cdxgen -r -o <out> --spec-version 1.5 <src>`) is unchanged
+# across 12.3.3 → 12.5.1, and `engines.node` still lists `^20` so Node 20 LTS
+# in this image remains supported. No SBOM-emit regression risk.
 #
 # Install flags:
 #   --omit=dev      drops devDependencies (biome / poku / sinon / typescript)
@@ -269,7 +298,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - \
 #                   pipeline), drop --omit=optional and add corresponding
 #                   .trivyignore entries with reach analysis — do not
 #                   rollback the gate.
-ENV CDXGEN_VERSION=12.3.3
+ENV CDXGEN_VERSION=12.5.1
 RUN npm install -g --omit=dev --omit=optional "@cyclonedx/cdxgen@${CDXGEN_VERSION}" \
     && cdxgen --version
 
