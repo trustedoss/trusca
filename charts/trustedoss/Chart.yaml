@@ -12,12 +12,12 @@ type: application
 
 # Chart version is the packaging version (SemVer); bump on every chart change.
 # Kept aligned with the application version while the two release in lock-step.
-version: 0.11.0
+version: 0.11.1
 
 # appVersion tracks the released container image tag (image.tag default).
 # Keep in lock-step with .env.example IMAGE_TAG / docker-compose IMAGE_TAG and
 # the .github/workflows/release.yml image tags.
-appVersion: "0.11.0"
+appVersion: "0.11.1"
 
 keywords:
   - sca

@@ -5,6 +5,34 @@ All notable changes to TrustedOSS Portal are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.1] — 2026-06-13
+
+A UI / branding patch release. No backend or API changes — only the frontend
+image, docs, and Helm chart metadata change versus `0.11.0`.
+
+### Changed
+- **Theme reverted to the W11 light theme.** The W13 "Google AI Studio"
+  re-skin shipped in `0.11.0` (white canvas, blue primary, pill buttons) is
+  rolled back to the W11 Vercel + Linear look (off-white canvas, warm
+  near-black primary, square corners, blue Low badge). The TRUSCA brand and
+  rename are unaffected.
+- **New logo.** The mark is now a dark-slate tile (`#0f172a`) with a teal
+  check accent (`#2dd4bf`) and an ink "TRUSCA" wordmark; the full lockup adds
+  the tagline "TrustedOSS SCA" on the login gateway. Replaces the earlier
+  flat-black and teal-gradient marks.
+- **Complete favicon set.** Added `favicon.ico` (16 / 32 / 48) and an
+  `apple-touch-icon.png` (iOS home screen) alongside the existing SVG, wired
+  into `index.html` with a `theme-color`. Previously SVG-only.
+
+### Fixed
+- **Helm chart icon URL.** `Chart.yaml`'s `icon:` pointed at a non-existent
+  path (`docs/static/.../logo.png`); it now resolves to
+  `docs-site/static/img/logo.png` (a new 256×256 raster of the mark).
+
+### Docs
+- Regenerated the docs Open Graph social card with the new logo; added a
+  README header logo; refreshed the design-system and brand reference pages.
+
 ## [0.11.0] — 2026-06-12
 
 The first post-GA feature release. Headlines: the product is **renamed to

@@ -98,7 +98,11 @@ const sidebars: SidebarsConfig = {
       type: "category",
       label: "Release notes",
       collapsed: true,
-      items: ["release-notes/v0-10-0"],
+      items: [
+        "release-notes/v0-11-1",
+        "release-notes/v0-11-0",
+        "release-notes/v0-10-0",
+      ],
     },
   ],
 };
