@@ -58,8 +58,9 @@
   틸 `#0f766e`는 흰 배경 5.47:1로 WCAG AA 통과.
 - **워드마크**: Inter, 굵게(extrabold), tracking-tight, **"TRUSCA" 단색 틸 `#0f766e`**.
   단어 중간 색 분리(구 `TRU`+`SCA`)는 폐기 — 싸구려로 읽혀 BomLens식 단색으로 통일.
-- **태그라인**: "Software Composition Analysis"(uppercase, 자간 넓게, muted gray).
-  SCA 강조는 단어 색 분리 대신 태그라인이 담당.
+- **태그라인**: "TrustedOSS SCA"(= TrustedOSS 이니셔티브의 SCA 도구). muted gray,
+  대문자 변환 안 함(우산명 "TrustedOSS" 카멜표기 보존). 단어 색 분리 대신 이
+  태그라인이 SCA·우산 관계를 담당.
 - **락업**: 풀 락업(마크+워드마크+태그라인)은 여유 있는 곳(로그인 게이트웨이·브랜드
   쇼케이스)에 — `apps/frontend/src/components/BrandLockup.tsx`. 좁은 48px
   사이드바/헤더는 축약 락업(마크+워드마크, 태그라인 생략).

@@ -1,12 +1,13 @@
 /**
  * BrandLockup — the full TRUSCA logo: mark + "TRUSCA" wordmark + the
- * "Software Composition Analysis" tagline (uppercase, letter-spaced, muted).
+ * "TrustedOSS SCA" tagline (the SCA tool of the TrustedOSS initiative).
  *
  * Used where there is vertical room (the auth gateway, brand showcase).
  * Tight surfaces — the 48 px sidebar / header — use the reduced lockup
  * (BrandMark + BrandWordmark, no tagline). See docs/brand-trusca.md.
  *
- * The tagline is a brand string (not translated). Its colour uses the
+ * The tagline is a brand string (not translated) and is NOT uppercased —
+ * the umbrella name "TrustedOSS" keeps its camel casing. Its colour uses the
  * theme's muted-foreground token (passes WCAG AA), while the mark gradient
  * and the teal wordmark are fixed brand colours.
  */
@@ -21,8 +22,8 @@ export function BrandLockup() {
         <span className="text-3xl font-extrabold leading-none tracking-tight">
           <BrandWordmark />
         </span>
-        <span className="mt-1.5 text-[11px] font-bold uppercase leading-none tracking-[0.22em] text-muted-foreground">
-          Software Composition Analysis
+        <span className="mt-1.5 text-xs font-semibold leading-none tracking-wide text-muted-foreground">
+          TrustedOSS SCA
         </span>
       </div>
     </div>
