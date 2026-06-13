@@ -416,6 +416,9 @@
   "POST /v1/projects/{project_id}/remediation/npm/pull-request": [
     "project_id"
   ],
+  "POST /v1/projects/{project_id}/sbom-ingest": [
+    "project_id"
+  ],
   "POST /v1/projects/{project_id}/scans": [
     "project_id"
   ],
