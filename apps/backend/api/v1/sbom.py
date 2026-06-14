@@ -32,6 +32,7 @@ from fastapi import (
     UploadFile,
     status,
 )
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.api_key_auth import require_role_or_api_key
@@ -41,7 +42,8 @@ from core.db import get_db
 from core.errors import problem_response
 from core.ratelimit import _authenticated_user_key, limiter
 from core.security import CurrentUser, require_role
-from models import Project
+from models import Project, SbomConformance
+from schemas.sbom import SbomConformanceRead
 from schemas.scan import ScanPublic
 from services.project_service import (
     ProjectError,
@@ -816,6 +818,77 @@ async def ingest_sbom_endpoint(
         # the scan-trigger endpoint's ScanPublic serialization.
         content=body.model_dump_json(by_alias=True),
         status_code=status.HTTP_202_ACCEPTED,
+        media_type="application/json",
+    )
+
+
+@router.get(
+    "/projects/{project_id}/scans/{scan_id}/conformance",
+    response_model=SbomConformanceRead,
+    summary="Get the conformance verdict for an ingested SBOM scan",
+    responses={
+        200: {
+            "description": "The SBOM conformance verdict (pass/warn/fail + per-check detail).",
+            "content": {"application/json": {}},
+        },
+        401: {"description": "Authentication required"},
+        404: {
+            "description": (
+                "Project not accessible (existence-hidden), or no conformance verdict "
+                "exists for this scan (not an ingested SBOM scan, or still queued). "
+                "RFC 7807."
+            ),
+            "content": {"application/problem+json": {}},
+        },
+    },
+)
+async def get_sbom_conformance_endpoint(
+    request: Request,
+    project_id: uuid.UUID,
+    scan_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_role_or_api_key("developer")),
+) -> Response:
+    # Same auth + IDOR guard as the rest of the SBOM surface: an outsider sees
+    # 404 (existence-hide), and the cross-team audit entry fires.
+    project = await _resolve_project_or_problem(
+        request,
+        project_id=project_id,
+        session=session,
+        actor=actor,
+        resource="sbom_conformance",
+    )
+    if isinstance(project, Response):
+        return project
+
+    # The verdict row carries the denormalised project_id, so the scan-belongs-
+    # to-project check is a single predicate (a cross-project scan_id yields no
+    # row → the same 404 as an unknown scan). No conformance row also means the
+    # scan is not an ingested SBOM scan, or its ingest task has not reached the
+    # conformance stage yet.
+    row = (
+        await session.execute(
+            select(SbomConformance).where(
+                SbomConformance.scan_id == scan_id,
+                SbomConformance.project_id == project_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        return problem_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            title="Conformance Verdict Not Found",
+            detail=(
+                "No SBOM conformance verdict exists for this scan. The scan may not be "
+                "an ingested SBOM scan, or its ingest may still be in progress."
+            ),
+            instance=request.url.path,
+        )
+
+    body = SbomConformanceRead.model_validate(row)
+    return Response(
+        content=body.model_dump_json(),
+        status_code=status.HTTP_200_OK,
         media_type="application/json",
     )
 

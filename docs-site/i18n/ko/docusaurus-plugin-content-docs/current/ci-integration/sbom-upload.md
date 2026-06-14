@@ -77,6 +77,44 @@ curl https://trustedoss.example.com/v1/scans/<SCAN_ID> \
 
 `status`는 `queued → running → succeeded`로 이동합니다. 30초에 한 번 폴링하는 주기가 적당합니다. `status`가 `succeeded`가 되면 포털에서 프로젝트를 열어 컴포넌트·취약점·라이선스를 확인합니다.
 
+## 적합성(conformance) 결과 읽기
+
+SBOM을 업로드하면 TRUSCA는 매칭 이전에(그리고 매칭 여부와 무관하게) SBOM의 **품질**을 정해진 기준으로 채점합니다. 버전·패키지 URL·의존성 그래프가 없는 "껍데기" SBOM이 조용히 빈 결과를 내는 대신 드러나게 하기 위해서입니다. 결과는 다음으로 읽습니다.
+
+```bash
+curl -H "Authorization: Bearer $TRUSTEDOSS_API_KEY" \
+  https://trustedoss.example.com/v1/projects/<PROJECT_ID>/scans/<SCAN_ID>/conformance
+```
+
+응답은 해당 스캔의 채점 결과입니다.
+
+```json
+{
+  "scan_id": "<SCAN_ID>",
+  "project_id": "<PROJECT_ID>",
+  "source_format": "cyclonedx",
+  "result": "warn",
+  "n_fail": 0,
+  "n_warn": 1,
+  "component_count": 42,
+  "purl_coverage_pct": 100,
+  "license_coverage_pct": 96,
+  "hash_coverage_pct": 0,
+  "checks": [
+    { "id": "purl", "label": "PURL coverage (>= 90%)", "required": true, "status": "pass", "detail": "100% (42/42)", "missing": [] },
+    { "id": "hash", "label": "Hash coverage (>= 50%, recommended)", "required": false, "status": "warn", "detail": "0% (0/42)", "missing": [] }
+  ]
+}
+```
+
+- **`result`**는 `pass`·`warn`·`fail` 중 하나입니다. `fail`은 **필수** 검사가 실패했다는 뜻이고, `warn`은 필수 검사는 모두 통과했으나 **권장** 검사(라이선스 또는 해시 커버리지)가 기준에 못 미친 경우이며, `pass`는 모든 검사를 통과한 경우입니다.
+- **필수 검사**: 타임스탬프, 도구 정보, name·version을 가진 최상위 컴포넌트, 컴포넌트 name+version 100%, PURL 커버리지가 `SBOM_CONFORMANCE_PURL_MIN_PCT`(기본 `90`) 이상, `pkg:generic` 자리표시자 없음, 전이 의존성 그래프 존재.
+- **권장 검사**(warn만): 라이선스 커버리지가 `SBOM_CONFORMANCE_LICENSE_MIN_PCT`(기본 `80`) 이상, 해시 커버리지가 `SBOM_CONFORMANCE_HASH_MIN_PCT`(기본 `50`) 이상.
+- `fail` 결과여도 인제스트를 **중단하지 않습니다** — TRUSCA는 CVE 매칭과 라이선스 분류를 그대로 수행하므로 구체적 사유와 함께 부분 결과를 얻습니다. 공급사의 SBOM을 받아들일지 반려할지 판단하는 근거로 씁니다.
+- `purl_coverage_pct`·`license_coverage_pct`·`hash_coverage_pct`는 SPDX Tag-Value 문서에서는 `null`입니다. Tag-Value는 패키지별 커버리지가 아니라 존재 여부로 채점하기 때문입니다.
+
+여기서 `404`는 프로젝트에 접근할 수 없거나, 해당 스캔에 아직 결과가 없다는 뜻입니다(인제스트된 SBOM 스캔이 아니거나, 인제스트가 적합성 단계에 도달하지 않음).
+
 ## 동작 확인
 
 스캔이 `succeeded`에 도달한 다음:

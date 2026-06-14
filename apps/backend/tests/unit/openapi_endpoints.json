@@ -297,6 +297,10 @@
     "project_id",
     "size"
   ],
+  "GET /v1/projects/{project_id}/scans/{scan_id}/conformance": [
+    "project_id",
+    "scan_id"
+  ],
   "GET /v1/projects/{project_id}/source-file": [
     "path",
     "project_id",
