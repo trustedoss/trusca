@@ -31,11 +31,11 @@ import {
 import { useAdminScans } from "@/features/admin/scans/api/useAdminScans";
 import RelativeTime from "@/components/RelativeTime";
 import { cn } from "@/lib/utils";
-import type { ScanKind } from "@/lib/projectsApi";
+import { SCAN_KIND_VALUES, type ScanKind } from "@/lib/projectsApi";
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 
-const KIND_OPTIONS: ScanKind[] = ["source", "container"];
+const KIND_OPTIONS: ScanKind[] = [...SCAN_KIND_VALUES];
 
 type ScansTab = "running" | "queued" | "failed" | "all";
 

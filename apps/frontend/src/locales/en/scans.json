@@ -19,7 +19,8 @@
     },
     "kind": {
       "source": "Source",
-      "container": "Container"
+      "container": "Container",
+      "sbom": "SBOM upload"
     },
     "status": {
       "queued": "Queued",
