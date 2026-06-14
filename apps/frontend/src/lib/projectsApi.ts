@@ -315,6 +315,83 @@ export async function getScan(scanId: string): Promise<ScanPublic> {
   return data;
 }
 
+// ---------------------------------------------------------------------------
+// Received-SBOM conformance — model 3 (external SBOM ingest).
+//
+// `GET /v1/projects/{project_id}/scans/{scan_id}/conformance` returns a
+// quality verdict for an uploaded SBOM (`kind: "sbom"` scans only). The verdict
+// scores how usable the document is for SCA matching: PURL/license/hash
+// coverage plus a list of named checks. A 404 means either the project is
+// unreachable OR no verdict exists yet (existence-hide); the UI treats both as
+// "no panel" rather than an error.
+// ---------------------------------------------------------------------------
+
+export type SbomSourceFormat =
+  | "cyclonedx"
+  | "spdx-json"
+  | "spdx-tv"
+  | "unknown";
+
+export type SbomConformanceResult = "pass" | "warn" | "fail";
+
+export type SbomCheckStatus = "pass" | "fail" | "warn";
+
+export interface SbomConformanceCheck {
+  id: string;
+  label: string;
+  required: boolean;
+  status: SbomCheckStatus;
+  detail: string;
+  missing: string[];
+}
+
+export interface SbomConformanceRead {
+  scan_id: string;
+  project_id: string;
+  source_format: SbomSourceFormat;
+  result: SbomConformanceResult;
+  n_fail: number;
+  n_warn: number;
+  component_count: number;
+  purl_coverage_pct: number | null;
+  license_coverage_pct: number | null;
+  hash_coverage_pct: number | null;
+  checks: SbomConformanceCheck[];
+}
+
+/**
+ * Canonical conformance check ids, in evaluation order.
+ *
+ * Runtime mirror of the backend's
+ * `services/sbom_conformance.CHECK_IDS` — kept in lock-step by the FE↔BE
+ * catalog-mirror contract test (`tests/unit/contracts/catalogMirrors.test.ts`)
+ * so a check added on the backend fails a PR-time vitest instead of silently
+ * rendering a raw `conformance.check_id.*` i18n key (or no label at all).
+ */
+export const SBOM_CHECK_IDS = [
+  "timestamp",
+  "tools",
+  "top-component",
+  "name-version",
+  "purl",
+  "no-generic",
+  "transitive",
+  "license",
+  "hash",
+] as const;
+
+export type SbomCheckId = (typeof SBOM_CHECK_IDS)[number];
+
+export async function getSbomConformance(
+  projectId: string,
+  scanId: string,
+): Promise<SbomConformanceRead> {
+  const { data } = await api.get<SbomConformanceRead>(
+    `/v1/projects/${projectId}/scans/${scanId}/conformance`,
+  );
+  return data;
+}
+
 /**
  * Cancel a queued/running scan owned by the current user's team (PR-A1).
  *

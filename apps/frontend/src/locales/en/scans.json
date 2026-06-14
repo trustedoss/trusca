@@ -172,5 +172,44 @@
     "forbidden": "You no longer have access to this scan.",
     "not_found": "This scan no longer exists.",
     "internal_error": "Connection lost. Reconnecting…"
+  },
+  "conformance": {
+    "title": "SBOM conformance",
+    "result": {
+      "pass": "Pass",
+      "warn": "Warnings",
+      "fail": "Fail"
+    },
+    "check_status": {
+      "pass": "Pass",
+      "warn": "Warn",
+      "fail": "Fail"
+    },
+    "label": {
+      "source_format": "Format",
+      "component_count": "Components",
+      "purl_coverage": "PURL coverage",
+      "license_coverage": "License coverage",
+      "hash_coverage": "Hash coverage",
+      "required": "Required",
+      "recommended": "Recommended"
+    },
+    "check_id": {
+      "timestamp": "Document timestamp",
+      "tools": "Generating tools",
+      "top-component": "Top-level component",
+      "name-version": "Name & version",
+      "purl": "Package URLs",
+      "no-generic": "No generic packages",
+      "transitive": "Transitive dependencies",
+      "license": "Declared licenses",
+      "hash": "File hashes"
+    },
+    "missing_more": "+{{count}} more",
+    "errors": {
+      "not_found": "No conformance verdict is available for this scan yet.",
+      "network": "Could not load the conformance verdict due to a network error.",
+      "unknown": "Could not load the conformance verdict."
+    }
   }
 }

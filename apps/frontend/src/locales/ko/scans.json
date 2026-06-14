@@ -172,5 +172,44 @@
     "forbidden": "이 스캔에 대한 접근 권한이 없습니다.",
     "not_found": "스캔을 찾을 수 없습니다.",
     "internal_error": "연결이 끊어졌습니다. 재연결 중…"
+  },
+  "conformance": {
+    "title": "SBOM 적합성",
+    "result": {
+      "pass": "통과",
+      "warn": "경고",
+      "fail": "실패"
+    },
+    "check_status": {
+      "pass": "통과",
+      "warn": "경고",
+      "fail": "실패"
+    },
+    "label": {
+      "source_format": "형식",
+      "component_count": "컴포넌트",
+      "purl_coverage": "PURL 커버리지",
+      "license_coverage": "라이선스 커버리지",
+      "hash_coverage": "해시 커버리지",
+      "required": "필수",
+      "recommended": "권장"
+    },
+    "check_id": {
+      "timestamp": "문서 타임스탬프",
+      "tools": "생성 도구",
+      "top-component": "최상위 컴포넌트",
+      "name-version": "이름 및 버전",
+      "purl": "패키지 URL",
+      "no-generic": "일반 패키지 없음",
+      "transitive": "전이 의존성",
+      "license": "선언된 라이선스",
+      "hash": "파일 해시"
+    },
+    "missing_more": "외 {{count}}개",
+    "errors": {
+      "not_found": "이 스캔에 대한 적합성 결과가 아직 없습니다.",
+      "network": "네트워크 오류로 적합성 결과를 불러오지 못했습니다.",
+      "unknown": "적합성 결과를 불러오지 못했습니다."
+    }
   }
 }
