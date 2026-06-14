@@ -92,8 +92,37 @@ def test_delegates_with_expected_cdxgen_kwargs(
     assert captured["output_dir"] == req.output_dir
     assert captured["verbose"] is True
     assert captured["line_callback"] is _cb
+    # spec-version / fetch-license toggles flow through from the request.
+    assert captured["spec_version"] == req.spec_version
+    assert captured["fetch_license"] == req.fetch_license
     # timeout_seconds unset on the request → NOT forwarded (adapter default).
     assert "timeout_seconds" not in captured
+
+
+def test_spec_and_fetch_forwarded(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    captured: dict[str, Any] = {}
+
+    from integrations.cdxgen import CdxgenResult
+
+    def _fake_run_cdxgen(**kwargs: Any) -> CdxgenResult:
+        captured.update(kwargs)
+        return CdxgenResult(
+            sbom_path=kwargs["output_dir"] / "cdxgen.cdx.json",
+            sbom={"bomFormat": "CycloneDX"},
+        )
+
+    monkeypatch.setattr(
+        "integrations.scan_executor.inprocess.cdxgen_adapter.run_cdxgen",
+        _fake_run_cdxgen,
+    )
+
+    req = _request(tmp_path, spec_version="1.6", fetch_license=True)
+    InProcessExecutor().generate_sbom(req)
+
+    assert captured["spec_version"] == "1.6"
+    assert captured["fetch_license"] is True
 
 
 def test_explicit_timeout_is_forwarded(

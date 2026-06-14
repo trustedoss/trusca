@@ -56,6 +56,8 @@ class InProcessExecutor(ScanExecutor):
             "output_dir": request.output_dir,
             "line_callback": line_callback,
             "verbose": request.verbose,
+            "spec_version": request.spec_version,
+            "fetch_license": request.fetch_license,
         }
         if request.timeout_seconds is not None:
             kwargs["timeout_seconds"] = request.timeout_seconds

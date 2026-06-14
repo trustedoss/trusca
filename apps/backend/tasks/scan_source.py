@@ -69,6 +69,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from core.config import (
+    cdxgen_fetch_license,
+    cdxgen_spec_version,
     scan_soft_time_limit_seconds,
     slsa_builder_id,
     slsa_builder_version,
@@ -362,6 +364,11 @@ def _run_pipeline(
         output_dir=workspace / "cdxgen",
         detected_env=detected_env,
         verbose=verbose,
+        # spec-version / fetch-license toggles, resolved per-scan (rule #11) and
+        # carried on the request so both the in-process and sidecar executors
+        # apply the same values.
+        spec_version=cdxgen_spec_version(),
+        fetch_license=cdxgen_fetch_license(),
     )
     gen_result = executor.generate_sbom(
         gen_request,

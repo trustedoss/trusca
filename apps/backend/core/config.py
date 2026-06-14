@@ -445,6 +445,30 @@ def scan_backend_mode() -> str:
     return os.getenv("TRUSTEDOSS_SCAN_BACKEND", "real").lower()
 
 
+def cdxgen_spec_version() -> str:
+    """CycloneDX spec version cdxgen emits (``--spec-version``).
+
+    Default ``1.5`` (the historical output). Set ``CDXGEN_SPEC_VERSION=1.6`` to
+    emit 1.6 (matches the BomLens sidecar default). Resolved at call time
+    (CLAUDE.md core rule #11).
+    """
+    return os.getenv("CDXGEN_SPEC_VERSION", "1.5")
+
+
+def cdxgen_fetch_license() -> bool:
+    """Whether cdxgen resolves each component's license (``FETCH_LICENSE`` env).
+
+    Off by default — license lookups add network round-trips. Set
+    ``CDXGEN_FETCH_LICENSE=true`` to enable. Resolved at call time (rule #11).
+    """
+    return os.getenv("CDXGEN_FETCH_LICENSE", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
 def scan_executor_mode() -> str:
     """How the SBOM-generation stage (build-prep + cdxgen) is executed.
 
