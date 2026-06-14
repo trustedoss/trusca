@@ -5,6 +5,45 @@ All notable changes to TrustedOSS Portal are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Model 3 — **received-SBOM ingest with conformance scoring**. A customer can hand
+TRUSCA an SBOM their own tooling already produced (rather than having TRUSCA
+clone and build the source), and TRUSCA validates its quality, matches CVEs,
+classifies licenses, and runs the build gate on it.
+
+### Added
+- **Received-SBOM ingest endpoint** — `POST /v1/projects/{project_id}/sbom-ingest`
+  accepts an uploaded SBOM and queues an `sbom`-kind scan that persists the
+  SBOM's components, matches CVEs with Trivy, and classifies declared licenses —
+  no source clone or build. API-key or JWT auth, one in-flight scan per project,
+  and the usual size / structure guards. (#404, #406)
+- **SPDX input support** — both CycloneDX-JSON and SPDX (JSON and Tag-Value) are
+  accepted. Trivy auto-detects the format for CVE matching; SPDX is mapped to
+  CycloneDX internally for the component graph (no `spdx-tools` dependency).
+  SPDX RDF/XML is not accepted. (#411)
+- **SBOM conformance scoring** — every uploaded SBOM is scored for quality on its
+  original bytes and gets a **pass / warn / fail** verdict. Mandatory checks:
+  timestamp, tool info, a top-level component, 100% component name+version, PURL
+  coverage ≥ `SBOM_CONFORMANCE_PURL_MIN_PCT` (default 90), no `pkg:generic`
+  placeholders, and a transitive dependency graph; license and hash coverage are
+  recommended (warn-only). The verdict is **advisory** — a `fail` is recorded and
+  surfaced but does not block matching. Stored per scan, exposed at
+  `GET /v1/projects/{project_id}/scans/{scan_id}/conformance`, and rendered as a
+  badge + per-check table on the scan detail page. (#409, #410, #412)
+- **`sbom` scan kind** in the UI — badge and admin queue filter label the new
+  scan kind (EN / KO). (#408)
+
+### Changed
+- The `scan_kind` enum gained the `sbom` value, and the shared back-half of the
+  source pipeline (component persistence → Trivy matching → finalize) was
+  extracted to `tasks/_scan_pipeline` so the ingest task reuses it. (#404, #405)
+
+### Documentation
+- New CI-integration guide **Upload an SBOM** (endpoint, formats, conformance
+  verdict; EN / KO), and the user-guide **Scans** / **SBOM** pages now document
+  the `sbom` scan kind, received-SBOM upload, and the conformance verdict. (#413)
+
 ## [0.11.1] — 2026-06-13
 
 A UI / branding patch release. No backend or API changes — only the frontend
