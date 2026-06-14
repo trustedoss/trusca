@@ -94,8 +94,12 @@ def test_mock_backend_falls_back_even_for_android(
 
 
 def test_android_without_docker_cli_falls_back(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    scan_backend_mock: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    # mock backend short-circuits to the in-process fallback before the docker
+    # check; force real mode so we exercise the missing-docker-CLI branch, while
+    # the cdxgen adapter still resolves the mock fixture SBOM.
+    monkeypatch.setattr(f"{_MOD}.scan_backend_mode", lambda: "real")
     monkeypatch.setattr(f"{_MOD}.shutil.which", lambda _n: None)
     res = LocalDockerExecutor().generate_sbom(_request(tmp_path, detected_env="android"))
     assert res.executor == "inprocess"

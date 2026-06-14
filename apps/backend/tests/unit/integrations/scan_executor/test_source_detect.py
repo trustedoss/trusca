@@ -210,9 +210,19 @@ def test_compile_sdk_default_env_override(
 
 
 def test_android_image_is_api_tagged(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("CDXGEN_IMAGE_TAG", raising=False)
+    # Android images use the `latest` / semver tag, distinct from the cdxgen v12
+    # language-image tag.
+    monkeypatch.delenv("SCAN_ANDROID_IMAGE_TAG", raising=False)
     monkeypatch.delenv("SCAN_ANDROID_IMAGE_PREFIX", raising=False)
     assert (
         source_detect.android_image(34)
-        == "ghcr.io/sktelecom/sbom-scanner-android-sdk34:v12"
+        == "ghcr.io/sktelecom/sbom-scanner-android-sdk34:latest"
+    )
+
+
+def test_android_image_tag_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SCAN_ANDROID_IMAGE_TAG", "v1.2.3")
+    assert (
+        source_detect.android_image(35)
+        == "ghcr.io/sktelecom/sbom-scanner-android-sdk35:v1.2.3"
     )
