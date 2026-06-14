@@ -10,6 +10,10 @@ sidebar_position: 5
 
 The portal generates **Software Bill of Materials** (SBOM) artifacts from the latest successful scan. Four interchange formats are supported, plus an attribution `NOTICE` file.
 
+:::note Export vs. upload
+This page is about **exporting** an SBOM that TRUSCA generated from a scan. To go the other way — **upload** an SBOM your own tooling already produced (CycloneDX or SPDX) so TRUSCA matches CVEs and scores its conformance — see [Upload an SBOM](../ci-integration/sbom-upload.md) and [Scans → Received SBOMs](./scans.md#received-sboms-uploaded).
+:::
+
 ![Project detail — SBOM tab with format selector and last-scan summary](/img/screenshots/user-sbom-tab.png)
 
 :::note Audience
