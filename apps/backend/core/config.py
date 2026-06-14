@@ -445,6 +445,23 @@ def scan_backend_mode() -> str:
     return os.getenv("TRUSTEDOSS_SCAN_BACKEND", "real").lower()
 
 
+def scan_executor_mode() -> str:
+    """How the SBOM-generation stage (build-prep + cdxgen) is executed.
+
+    - ``inprocess`` (default): run prep + cdxgen as worker-local subprocesses,
+      exactly as the worker has always done. Fully backward compatible.
+    - ``local_docker``: spin a per-environment cdxgen sidecar container via the
+      host Docker socket (on-prem single-tenant — trust boundary internal).
+    - ``k8s_job``: run the sidecar as a sandboxed Kubernetes Job (multi-tenant
+      SaaS — model 2).
+
+    Resolved at call time (CLAUDE.md core rule #11) so an operator can switch
+    the executor without a rebuild. Unknown values fall back to ``inprocess``
+    at the factory.
+    """
+    return os.getenv("SCAN_EXECUTOR", "inprocess").lower()
+
+
 # ---------------------------------------------------------------------------
 # scancode first-party license detection (PR-A2 — replaces ORT).
 #

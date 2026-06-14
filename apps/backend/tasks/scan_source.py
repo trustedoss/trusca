@@ -80,6 +80,7 @@ from core.url_guard import GitUrlValidationError, validate_git_url_with_ip
 from integrations import attestation as attestation_builder
 from integrations import cdxgen as cdxgen_adapter
 from integrations import cosign as cosign_adapter
+from integrations import scan_executor
 from integrations import scancode as scancode_adapter
 from integrations._size_guard import enforce_jsonb_row_size_limit
 from integrations._subprocess_env import scrubbed_env_for_prep
@@ -333,25 +334,38 @@ def _run_pipeline(
         mock_only=False,
     )
 
-    # Stage 2.5 — multi-language pre-cdxgen prep. cdxgen needs a populated
-    # lockfile to enumerate transitive deps for Ruby / Rust / Go / .NET; the
-    # 2026-05-07 ecosystem-matrix UAT showed bare-source scans returned 0 or
-    # only direct deps for those four ecosystems. Best-effort: a failed prep
-    # logs a warning and the scan continues with whatever cdxgen can extract.
-    _set_stage(scan_uuid, "prep")
-    _prepare_for_cdxgen(source_dir=source_dir, scan_uuid=scan_uuid)
-
-    # Stage 3 — cdxgen.
-    _set_stage(scan_uuid, "cdxgen")
-    cdxgen_result = cdxgen_adapter.run_cdxgen(
+    # Stage 2.5 + 3 — build-prep + cdxgen, behind the ScanExecutor abstraction.
+    # cdxgen needs a populated lockfile to enumerate transitive deps for Ruby /
+    # Rust / Go / .NET; the 2026-05-07 ecosystem-matrix UAT showed bare-source
+    # scans returned 0 or only direct deps for those four ecosystems. The
+    # default in-process executor runs prep + cdxgen as worker-local subprocesses
+    # exactly as before (behaviour-preserving); SCAN_EXECUTOR=local_docker /
+    # k8s_job route environment-specific cdxgen sidecars instead (later
+    # increments). The in-process prep is INJECTED as a callable so this module
+    # stays the only importer of the executor package (no import cycle).
+    #
+    # prep is best-effort: a failed prep logs a warning and the scan continues
+    # with whatever cdxgen can extract (see _prepare_for_cdxgen). The executor
+    # advances "prep" then "cdxgen" so the percent/progress contract is intact.
+    executor = scan_executor.get_executor()
+    gen_request = scan_executor.SbomGenRequest(
+        scan_uuid=scan_uuid,
         source_dir=source_dir,
         output_dir=workspace / "cdxgen",
+        verbose=verbose,
+    )
+    gen_result = executor.generate_sbom(
+        gen_request,
+        prep=lambda: _prepare_for_cdxgen(source_dir=source_dir, scan_uuid=scan_uuid),
+        stage=lambda stage: _set_stage(scan_uuid, stage),
         # P2 #8c — stream cdxgen stdout/stderr lines onto the scan WebSocket
         # so the drawer can render a live tool trace. Best-effort: a publish
         # error inside the callback never propagates, and the per-scan line
         # budget caps runaway tools (publish_log enforces it internally).
         line_callback=_make_line_callback(scan_uuid, stage="cdxgen"),
-        verbose=verbose,
+    )
+    cdxgen_result = cdxgen_adapter.CdxgenResult(
+        sbom_path=gen_result.sbom_path, sbom=gen_result.sbom
     )
     _persist_artifact(
         scan_uuid,
