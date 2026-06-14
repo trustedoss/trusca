@@ -124,17 +124,18 @@ def _stub_trivy_from_fixture(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _seed_queued_sbom_scan(
-    workspace: Path, *, ref: str | None = None
+    workspace: Path, *, ref: str | None = None, sbom_src: Path | None = None
 ) -> tuple[uuid.UUID, uuid.UUID]:
-    """Seed project + queued sbom scan and write the realistic SBOM to its
-    durable on-disk ingest path. Returns (scan_id, project_id)."""
+    """Seed project + queued sbom scan and write the SBOM to its durable on-disk
+    ingest path. Defaults to the realistic CycloneDX fixture; ``sbom_src`` points
+    at a different fixture (e.g. a real SPDX document). Returns (scan_id, project_id)."""
     import asyncio
 
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
     from core.config import database_url
 
-    sbom_bytes = (FIXTURES / "realistic.cdx.json").read_bytes()
+    sbom_bytes = (sbom_src or (FIXTURES / "realistic.cdx.json")).read_bytes()
 
     async def _build() -> tuple[uuid.UUID, uuid.UUID]:
         engine = create_async_engine(database_url(), pool_pre_ping=True, future=True)
@@ -426,3 +427,59 @@ def test_ingest_rerun_replaces_conformance_verdict(
     assert len(rows) == 1, "re-entry must REPLACE the verdict, not duplicate it"
     assert rows[0].id != first_id, "the verdict row was re-created (delete-then-insert)"
     assert rows[0].result == "warn"
+
+
+# ---------------------------------------------------------------------------
+# SPDX input — a real syft SPDX-JSON document ingests (SPDX→CycloneDX mapping)
+# ---------------------------------------------------------------------------
+
+# Real syft SPDX fixtures recorded in PR1 (tests/fixtures/sbom/).
+_SBOM_FIXTURES = BACKEND_ROOT / "tests" / "fixtures" / "sbom"
+
+
+def test_ingest_spdx_json_persists_components_and_conformance(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, sync_session: Session
+) -> None:
+    """An uploaded SPDX-JSON document is mapped to CycloneDX for component
+    persistence, and its conformance verdict records source_format='spdx-json'.
+    Trivy reads the original SPDX file directly (the stub returns a report); the
+    point of this test is the SPDX→component path + the SPDX conformance tag."""
+    monkeypatch.setenv("WORKSPACE_HOST_PATH", str(tmp_path))
+    _stub_trivy_from_fixture(monkeypatch)
+
+    scan_id, _ = _seed_queued_sbom_scan(
+        tmp_path, sbom_src=_SBOM_FIXTURES / "real_spdx.json"
+    )
+
+    from tasks.ingest_sbom import ingest_sbom_task
+
+    result = ingest_sbom_task.apply(args=[str(scan_id)])
+    assert result.successful(), f"task failed: {result.traceback}"
+
+    sync_session.expire_all()
+    scan = sync_session.execute(select(Scan).where(Scan.id == scan_id)).scalar_one()
+    assert scan.status == "succeeded"
+
+    # Components were mapped out of the SPDX packages and persisted.
+    component_rows = list(
+        sync_session.execute(
+            select(ScanComponent).where(ScanComponent.scan_id == scan_id)
+        ).scalars()
+    )
+    assert component_rows, "SPDX packages must map to persisted ScanComponent rows"
+
+    # The conformance verdict is tagged as SPDX-JSON (scored on the original).
+    verdict = sync_session.execute(
+        select(SbomConformance).where(SbomConformance.scan_id == scan_id)
+    ).scalar_one()
+    assert verdict.source_format == "spdx-json"
+
+    # The durable original SBOM is preserved (the bytes are SPDX, but the
+    # download artifact kind is the shared 'sbom_cyclonedx' label).
+    kinds = {
+        a.kind
+        for a in sync_session.execute(
+            select(ScanArtifact).where(ScanArtifact.scan_id == scan_id)
+        ).scalars()
+    }
+    assert "sbom_cyclonedx" in kinds

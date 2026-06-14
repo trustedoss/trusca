@@ -41,7 +41,6 @@ Workspace:
 
 from __future__ import annotations
 
-import json
 import shutil
 import uuid
 from pathlib import Path
@@ -63,6 +62,7 @@ from integrations.trivy import (
 )
 from models import Project, SbomConformance, Scan
 from services import sbom_conformance
+from services.sbom_convert import UnsupportedSbomFormat, to_cyclonedx
 from services.vulnerability_matching import persist_trivy_findings
 from tasks._progress import (
     close_log_file,
@@ -384,12 +384,19 @@ def _persist_conformance(
 
 
 def _load_uploaded_sbom(scan_metadata: dict[str, Any]) -> tuple[Path, dict[str, Any]]:
-    """Resolve, containment-check, and parse the uploaded CycloneDX SBOM.
+    """Resolve, containment-check, and NORMALISE the uploaded SBOM to CycloneDX.
 
-    Returns ``(sbom_path, parsed_dict)``. Raises :class:`_IngestAborted` on a
-    missing path key, a path that resolves outside ``workspace_root()``, an
-    absent file, or invalid JSON. This is a minimal defensive backstop — the
-    synchronous service Pass owns the authoritative CycloneDX schema validation.
+    Returns ``(sbom_path, cyclonedx_dict)``. ``sbom_path`` is the ORIGINAL
+    uploaded file (CycloneDX **or** SPDX) — Trivy reads it directly (``trivy
+    sbom`` auto-detects both formats by content), so no converted file is ever
+    written to disk. The returned dict is always CycloneDX-shaped: an SPDX
+    upload is mapped by :func:`services.sbom_convert.to_cyclonedx` so
+    ``persist_sbom_components`` consumes one shape for every input format.
+
+    Raises :class:`_IngestAborted` on a missing path key, a path that resolves
+    outside ``workspace_root()``, an absent/unreadable file, or content that is
+    neither CycloneDX-JSON nor SPDX (JSON / Tag-Value). The synchronous service
+    Pass owns the authoritative up-front validation; this is a defensive backstop.
     """
     raw_path = scan_metadata.get("sbom_path")
     if not raw_path or not isinstance(raw_path, str):
@@ -412,12 +419,17 @@ def _load_uploaded_sbom(scan_metadata: dict[str, Any]) -> tuple[Path, dict[str, 
         raise _IngestAborted(f"SBOM file not found: {candidate}")
 
     try:
-        with candidate.open("rb") as fh:
-            parsed = json.loads(fh.read())
-    except (OSError, ValueError) as exc:
-        raise _IngestAborted(f"SBOM file is not valid JSON: {exc}") from exc
+        raw = candidate.read_bytes()
+    except OSError as exc:
+        raise _IngestAborted(f"SBOM file could not be read: {exc}") from exc
 
-    if not isinstance(parsed, dict):
-        raise _IngestAborted("SBOM document is not a JSON object")
+    # Normalise to a CycloneDX dict for component persistence. CycloneDX passes
+    # through; SPDX (JSON / Tag-Value) is mapped. RDF/XML/junk raises
+    # UnsupportedSbomFormat → terminal abort (the sync service already rejected
+    # these up front, so reaching here means a tampered/garbled stored file).
+    try:
+        cyclonedx = to_cyclonedx(raw)
+    except UnsupportedSbomFormat as exc:
+        raise _IngestAborted(f"SBOM is not CycloneDX or SPDX: {exc}") from exc
 
-    return candidate, parsed
+    return candidate, cyclonedx

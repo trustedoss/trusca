@@ -795,3 +795,66 @@ async def test_get_conformance_scan_in_other_project_is_404(client) -> None:
         headers=_bearer_for(user),
     )
     assert resp.status_code == 404, resp.text
+
+
+# ---------------------------------------------------------------------------
+# SPDX input — the endpoint now ACCEPTS SPDX (JSON / Tag-Value), not just
+# CycloneDX. enqueue is stubbed, so these assert the front-half (202 + queued
+# sbom scan row) without running the worker.
+# ---------------------------------------------------------------------------
+
+_VALID_SPDX_JSON = json.dumps(
+    {
+        "spdxVersion": "SPDX-2.3",
+        "name": "doc",
+        "creationInfo": {"created": "2026-01-01T00:00:00Z", "creators": ["Tool: syft"]},
+        "packages": [
+            {
+                "SPDXID": "SPDXRef-a",
+                "name": "lodash",
+                "versionInfo": "4.17.19",
+                "externalRefs": [
+                    {
+                        "referenceCategory": "PACKAGE-MANAGER",
+                        "referenceType": "purl",
+                        "referenceLocator": "pkg:npm/lodash@4.17.19",
+                    }
+                ],
+            }
+        ],
+    }
+).encode()
+
+_VALID_SPDX_TV = (
+    b"SPDXVersion: SPDX-2.3\n"
+    b"Created: 2026-01-01T00:00:00Z\n"
+    b"Creator: Tool: syft\n"
+    b"PackageName: lodash\n"
+    b"SPDXID: SPDXRef-a\n"
+    b"PackageVersion: 4.17.19\n"
+    b"ExternalRef: PACKAGE-MANAGER purl pkg:npm/lodash@4.17.19\n"
+)
+
+
+async def test_ingest_spdx_json_returns_202(client, _workspace: Path) -> None:
+    _team, user, project = await _seed(client, role="developer")
+    resp = await client.post(
+        f"/v1/projects/{project.id}/sbom-ingest",
+        headers=_bearer_for(user),
+        files=_sbom_part(_VALID_SPDX_JSON, name="bom.spdx.json", ctype="application/json"),
+    )
+    assert resp.status_code == 202, resp.text
+    assert resp.json()["kind"] == "sbom"
+
+
+async def test_ingest_spdx_tag_value_returns_202(client, _workspace: Path) -> None:
+    _team, user, project = await _seed(client, role="developer")
+    resp = await client.post(
+        f"/v1/projects/{project.id}/sbom-ingest",
+        headers=_bearer_for(user),
+        # Tag-Value is not JSON; the .spdx filename carries it past the advisory
+        # content-type gate, and the content sniff confirms SPDXVersion:.
+        files=_sbom_part(_VALID_SPDX_TV, name="bom.spdx", ctype="application/octet-stream"),
+    )
+    assert resp.status_code == 202, resp.text
+    assert resp.json()["kind"] == "sbom"

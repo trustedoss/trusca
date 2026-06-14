@@ -687,7 +687,7 @@ async def download_sbom_signature_bundle_endpoint(
     "/projects/{project_id}/sbom-ingest",
     response_model=ScanPublic,
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Ingest an external CycloneDX SBOM (queues a Celery task; returns 202 Accepted)",
+    summary="Ingest an external CycloneDX or SPDX SBOM (queues a Celery task; returns 202)",
     responses={
         202: {
             "description": "SBOM accepted; a queued scan row is returned.",
@@ -717,14 +717,14 @@ async def download_sbom_signature_bundle_endpoint(
             "content": {"application/problem+json": {}},
         },
         415: {
-            "description": "Upload is not a CycloneDX JSON media type. RFC 7807.",
+            "description": "Upload is not a CycloneDX or SPDX media type. RFC 7807.",
             "content": {"application/problem+json": {}},
         },
         422: {
             "description": (
-                "Upload is not a valid / supported CycloneDX document (not JSON, "
-                "wrong bomFormat, unsupported specVersion, too many components). "
-                "RFC 7807."
+                "Upload is not a valid / supported SBOM document — not CycloneDX-JSON "
+                "or SPDX (JSON / Tag-Value), wrong bomFormat, unsupported specVersion, "
+                "too many components/packages, or too deeply nested. RFC 7807."
             ),
             "content": {"application/problem+json": {}},
         },
@@ -754,7 +754,11 @@ async def ingest_sbom_endpoint(
     project_id: uuid.UUID,
     sbom: UploadFile = File(
         ...,
-        description="A CycloneDX JSON SBOM document (.json / .cdx.json).",
+        description=(
+            "A CycloneDX-JSON (.json / .cdx.json) or SPDX (.spdx / .spdx.json / "
+            ".tag) SBOM document. Trivy auto-detects the format for CVE matching; "
+            "SPDX is mapped to CycloneDX for component persistence."
+        ),
     ),
     ref: str | None = Form(
         default=None,

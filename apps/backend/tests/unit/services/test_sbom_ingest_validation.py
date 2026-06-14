@@ -29,6 +29,7 @@ never exercised), which lets the validator cases run standalone with plain
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -41,7 +42,10 @@ from services.sbom_ingest_service import (
     _read_bounded,
     _validate_content_type,
     validate_cyclonedx_document,
+    validate_uploaded_sbom,
 )
+
+_SBOM_FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "sbom"
 
 
 def _doc(spec_version: str = "1.5", **extra: object) -> bytes:
@@ -401,3 +405,106 @@ def test_clean_meta_text_caps_length() -> None:
     cleaned = _clean_meta_text("x" * (_META_TEXT_MAX_LEN + 500))
     assert cleaned is not None
     assert len(cleaned) == _META_TEXT_MAX_LEN
+
+
+# ---------------------------------------------------------------------------
+# validate_uploaded_sbom — format dispatch (CycloneDX-JSON + SPDX JSON/TV)
+#
+# Pure (no DB / app). Real syft SPDX fixtures cover density; crafted inputs
+# cover the adversarial / unsupported edges. The byte-depth pre-check must fire
+# BEFORE any json.loads (incl. detect_format's) so a deep document is a clean
+# 422, never a RecursionError → 500.
+# ---------------------------------------------------------------------------
+
+
+def test_validate_accepts_cyclonedx_returns_format() -> None:
+    assert validate_uploaded_sbom(_doc()) == "cyclonedx"
+
+
+def test_validate_accepts_real_spdx_json() -> None:
+    raw = (_SBOM_FIXTURES / "real_spdx.json").read_bytes()
+    assert validate_uploaded_sbom(raw) == "spdx-json"
+
+
+def test_validate_accepts_real_spdx_tag_value() -> None:
+    raw = (_SBOM_FIXTURES / "real_spdx.tag").read_bytes()
+    assert validate_uploaded_sbom(raw) == "spdx-tv"
+
+
+def test_validate_accepts_minimal_spdx_json() -> None:
+    raw = json.dumps(
+        {
+            "spdxVersion": "SPDX-2.3",
+            "name": "doc",
+            "creationInfo": {"created": "2026-01-01T00:00:00Z", "creators": ["Tool: x"]},
+            "packages": [{"SPDXID": "SPDXRef-a", "name": "a", "versionInfo": "1"}],
+        }
+    ).encode()
+    assert validate_uploaded_sbom(raw) == "spdx-json"
+
+
+def test_validate_accepts_minimal_spdx_tag_value() -> None:
+    raw = b"SPDXVersion: SPDX-2.3\nPackageName: a\nPackageVersion: 1\n"
+    assert validate_uploaded_sbom(raw) == "spdx-tv"
+
+
+@pytest.mark.parametrize(
+    ("raw", "why"),
+    [
+        (b"this is not an sbom", "plain-text"),
+        (b"<rdf:RDF>spdx</rdf:RDF>", "spdx-rdf-unsupported"),
+        (b'<?xml version="1.0"?><bom/>', "cyclonedx-xml-unsupported"),
+        (b"[]", "json-array"),
+        (b'{"foo": 1}', "json-without-sbom-markers"),
+        # A pseudo-SPDX with bomFormat:"SPDX" (not real SPDX — real uses
+        # spdxVersion) detects as unknown → 422 (unchanged from #406).
+        (json.dumps({"bomFormat": "SPDX", "specVersion": "1.5"}).encode(), "fake-spdx"),
+    ],
+)
+def test_validate_rejects_unsupported_formats(raw: bytes, why: str) -> None:
+    with pytest.raises(SbomIngestInvalid):
+        validate_uploaded_sbom(raw)
+
+
+def test_validate_spdx_json_packages_cap(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SBOM_INGEST_MAX_COMPONENTS", "2")
+    raw = json.dumps(
+        {
+            "spdxVersion": "SPDX-2.3",
+            "packages": [{"SPDXID": f"SPDXRef-{i}", "name": str(i)} for i in range(3)],
+        }
+    ).encode()
+    with pytest.raises(SbomIngestInvalid):
+        validate_uploaded_sbom(raw)
+
+
+def test_validate_spdx_tag_value_packages_cap(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Tag-Value enforces the same component ceiling as the JSON paths (security
+    # review: a byte-capped .tag could otherwise smuggle millions of packages).
+    monkeypatch.setenv("SBOM_INGEST_MAX_COMPONENTS", "2")
+    raw = b"SPDXVersion: SPDX-2.3\n" + b"PackageName: a\n" * 3
+    with pytest.raises(SbomIngestInvalid):
+        validate_uploaded_sbom(raw)
+
+
+def test_validate_spdx_tag_value_at_cap_passes(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SBOM_INGEST_MAX_COMPONENTS", "3")
+    raw = b"SPDXVersion: SPDX-2.3\n" + b"PackageName: a\n" * 3
+    assert validate_uploaded_sbom(raw) == "spdx-tv"
+
+
+def test_validate_depth_guard_fires_before_json_parse() -> None:
+    # A pathologically deep JSON document must be rejected by the O(n) byte
+    # depth pre-check as a clean 422 — never reaching json.loads (which would
+    # raise RecursionError → unhandled 500). 4000 levels is far past the cap.
+    deep = b'{"a":' * 4000 + b"1" + b"}" * 4000
+    with pytest.raises(SbomIngestInvalid):
+        validate_uploaded_sbom(deep)
+
+
+def test_validate_content_type_accepts_spdx_extensions() -> None:
+    # Filename allow-list now covers SPDX extensions (advisory gate).
+    for name in ("bom.spdx", "bom.spdx.json", "bom.tag", "sbom.spdx.tag"):
+        _validate_content_type(content_type="application/octet-stream", filename=name)
+    _validate_content_type(content_type="application/spdx+json", filename="x.unknown")
+    _validate_content_type(content_type="text/spdx", filename="x.unknown")
