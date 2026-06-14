@@ -53,8 +53,15 @@ from integrations.scan_executor.inprocess import InProcessExecutor
 
 log = structlog.get_logger("integrations.scan_executor.local_docker")
 
-# Android build-prep, shipped beside this module and passed inline to the sidecar.
-_BUILD_PREP_ANDROID = Path(__file__).with_name("build_prep_android.sh")
+# General multi-language build-prep, shipped beside this module and passed inline
+# to the sidecar (covers gradle/cargo/go/pip/dotnet/swift/bundle; cdxgen handles
+# maven/npm/composer itself). Verified to reproduce the Android 67-component graph.
+_BUILD_PREP_SOURCE = Path(__file__).with_name("build_prep_source.sh")
+
+# Which detected environments route to a sidecar (default: the verified gap only).
+# node/go/rust/ruby/java/python/php/dotnet resolve identically in our all-in-one
+# worker (Colima-verified), so routing them is opt-in for isolation, not detection.
+_DEFAULT_ROUTED_ENVS = "android"
 
 # Matches the cdxgen adapter's default per-stage timeout.
 _DEFAULT_SIDECAR_TIMEOUT = 30 * 60
@@ -103,6 +110,12 @@ def _allow_unpinned_image() -> bool:
         "yes",
         "on",
     }
+
+
+def _routed_envs() -> frozenset[str]:
+    """Detected environments to route to a sidecar (SCAN_LOCAL_DOCKER_ENVS)."""
+    raw = os.getenv("SCAN_LOCAL_DOCKER_ENVS", _DEFAULT_ROUTED_ENVS)
+    return frozenset(e.strip() for e in raw.split(",") if e.strip())
 
 
 def _pids_limit() -> str:
@@ -166,9 +179,15 @@ class LocalDockerExecutor(ScanExecutor):
         if scan_backend_mode() == "mock":
             return self._fallback(request, prep, stage, line_callback, cancel_check)
 
-        # Increment 3 routes only Android through the sidecar; everything else
-        # runs in-process (same prep + cdxgen the worker always used).
-        if request.detected_env != "android":
+        # Route only the configured environments to a sidecar; everything else
+        # runs in-process. DEFAULT = "android" — Colima verification (2026-06-14)
+        # showed our all-in-one worker resolves transitive deps for
+        # node/go/rust/ruby/java/python/php/dotnet IDENTICALLY to the dedicated
+        # cdxgen images (e.g. node 68==68, rust 15==15), so routing those buys no
+        # detection gain on-prem; Android is the one verified gap (0→67, no SDK in
+        # the worker). Operators wanting per-build isolation can widen the set via
+        # SCAN_LOCAL_DOCKER_ENVS (see docs).
+        if request.detected_env not in _routed_envs():
             log.info(
                 "local_docker_fallback_inprocess",
                 scan_id=str(request.scan_uuid),
@@ -184,14 +203,14 @@ class LocalDockerExecutor(ScanExecutor):
             )
             return self._fallback(request, prep, stage, line_callback, cancel_check)
 
-        # Sidecar owns prep (gradle) internally; advance stages to preserve the
-        # progress contract, then run the container.
+        # Sidecar owns prep internally; advance stages to preserve the progress
+        # contract, then run the container.
         if stage is not None:
             stage("prep")
         if stage is not None:
             stage("cdxgen")
         try:
-            return self._run_android(request, line_callback=line_callback)
+            return self._run_sidecar(request, line_callback=line_callback)
         except (DockerVolumeError, _UnpinnedImageError):
             # Misconfiguration (no workspace volume named / unpinned image / unsafe
             # env value) must not fail the scan — degrade to in-process and warn.
@@ -221,20 +240,30 @@ class LocalDockerExecutor(ScanExecutor):
             cancel_check=cancel_check,
         )
 
-    def _run_android(
-        self, request: SbomGenRequest, *, line_callback: LineCallback | None
-    ) -> SbomGenResult:
-        api = source_detect.android_compile_sdk(request.source_dir)
-        image = source_detect.android_image(api)
-        # Supply-chain: refuse to run an unpinned (`:latest`) third-party image
-        # unless the operator explicitly allows it (dev). Pin via
-        # SCAN_ANDROID_IMAGE_TAG=<semver|sha256:…> in production (CLAUDE.md rule #9).
+    def _resolve_image(self, request: SbomGenRequest) -> str:
+        """Pick the sidecar image for the detected environment.
+
+        Android uses its API-tagged SDK image (the detection gap); every other
+        routed env uses the matching cdxgen language image. The image must be
+        reproducibly pinned (rule #9) unless the operator allows unpinned for dev.
+        """
+        env = request.detected_env
+        if env == "android":
+            api = source_detect.android_compile_sdk(request.source_dir)
+            image = source_detect.android_image(api)
+        else:
+            image = source_detect.image_for_env(env)
         if not source_detect.image_is_pinned(image) and not _allow_unpinned_image():
             raise _UnpinnedImageError(
-                f"refusing to run unpinned image {image!r}; pin via "
-                "SCAN_ANDROID_IMAGE_TAG (semver or sha256:<digest>) or set "
-                "SCAN_ALLOW_UNPINNED_IMAGE=1 for dev",
+                f"refusing to run unpinned image {image!r}; pin its tag "
+                "(semver or sha256:<digest>) or set SCAN_ALLOW_UNPINNED_IMAGE=1 for dev",
             )
+        return image
+
+    def _run_sidecar(
+        self, request: SbomGenRequest, *, line_callback: LineCallback | None
+    ) -> SbomGenResult:
+        image = self._resolve_image(request)
         request.output_dir.mkdir(parents=True, exist_ok=True)
         sbom_path = request.output_dir / "cdxgen.cdx.json"
         container = f"truscan-{request.scan_uuid.hex}"
@@ -244,10 +273,10 @@ class LocalDockerExecutor(ScanExecutor):
             request, image=image, sbom_path=sbom_path, container=container
         )
         log.info(
-            "local_docker_android_start",
+            "local_docker_sidecar_start",
             scan_id=str(request.scan_uuid),
+            detected_env=request.detected_env,
             image=image,
-            compile_sdk=api,
             container=container,
         )
 
@@ -262,7 +291,8 @@ class LocalDockerExecutor(ScanExecutor):
             )
         except subprocess.TimeoutExpired as exc:
             raise cdxgen_adapter.CdxgenTimeout(
-                f"android sidecar exceeded {timeout}s for scan {request.scan_uuid}",
+                f"{request.detected_env} sidecar exceeded {timeout}s "
+                f"for scan {request.scan_uuid}",
             ) from exc
         finally:
             # --rm handles the normal exit; this reclaims a container left alive by
@@ -278,17 +308,18 @@ class LocalDockerExecutor(ScanExecutor):
                 completed.stderr.decode("utf-8", errors="replace")[:1000],
             )
             raise cdxgen_adapter.CdxgenFailed(
-                f"android sidecar exited {completed.returncode}: {stderr}",
+                f"{request.detected_env} sidecar exited {completed.returncode}: {stderr}",
             )
         if not sbom_path.exists():
             raise cdxgen_adapter.CdxgenFailed(
-                f"android sidecar produced no SBOM at {sbom_path}",
+                f"{request.detected_env} sidecar produced no SBOM at {sbom_path}",
             )
 
         sbom = _load_sbom(sbom_path)
         log.info(
-            "local_docker_android_succeeded",
+            "local_docker_sidecar_succeeded",
             scan_id=str(request.scan_uuid),
+            detected_env=request.detected_env,
             components=len(sbom.get("components", [])),
             sbom_size_bytes=sbom_path.stat().st_size,
         )
@@ -297,7 +328,7 @@ class LocalDockerExecutor(ScanExecutor):
             sbom=sbom,
             executor=self.name,
             image=image,
-            detected_env="android",
+            detected_env=request.detected_env,
         )
 
     def _docker_cmd(
@@ -308,7 +339,7 @@ class LocalDockerExecutor(ScanExecutor):
         sbom_path: Path,
         container: str,
     ) -> list[str]:
-        build_prep = _BUILD_PREP_ANDROID.read_text(encoding="utf-8")
+        build_prep = _BUILD_PREP_SOURCE.read_text(encoding="utf-8")
         cmd = ["docker", "run", "--rm", "--name", container]
         # Label so an orphan reaper can target exactly our sidecars.
         cmd += ["--label", _LABEL_ROLE, "--label", f"trusca.scan={request.scan_uuid.hex}"]
