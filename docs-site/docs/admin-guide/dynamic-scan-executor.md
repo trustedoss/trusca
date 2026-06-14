@@ -23,6 +23,19 @@ Some projects cannot be analysed by reading their manifests alone — an Android
 
 `local_docker` falls back to `inprocess` for any environment that has no routed image and for a worker without the Docker CLI — so turning it on never breaks the scans that already worked.
 
+### Which environments are routed
+
+By default `SCAN_LOCAL_DOCKER_ENVS=android` — **only Android** routes to a sidecar. This is deliberate. We measured the same projects through the all-in-one worker and through the dedicated cdxgen language images: for `node`, `go`, `rust`, `ruby`, `java`, `python`, `php`, and `dotnet` the component counts are **identical** (the worker already carries those toolchains, and cdxgen resolves the transitive graph the same way). Android is the one real gap — the worker has no Android SDK, so the Gradle plugin cannot resolve the dependency graph and yields **0** components, while the SDK sidecar yields the full graph.
+
+So routing those other languages buys you no detection improvement on-prem. If you want each language build to run **isolated** from the worker anyway, widen the set:
+
+<!-- docs-uat: id=dynamic-scan-executor-routed-envs kind=shell ctx=host tier=manual waiver=env-config-snippet-not-a-command -->
+```bash
+SCAN_LOCAL_DOCKER_ENVS=android,node,go,rust,ruby,java,python,php,dotnet
+```
+
+Each routed language pulls its cdxgen image on first use (multi-GB each). The language images are pinned by the `CDXGEN_IMAGE_TAG` (`v12`) tag, so they are accepted without the unpinned-image override; only Android's `:latest` needs `SCAN_ANDROID_IMAGE_TAG` pinned.
+
 :::warning On-prem, single-tenant only
 `local_docker` gives the worker access to the host Docker socket, which is **root-equivalent control of the host**. The repositories it scans are untrusted input — a malicious `build.gradle` or Gradle plugin runs as part of the build. Never enable this on a multi-tenant or internet-exposed deployment. The multi-tenant SaaS path is a separate, sandboxed model (see [Limitations](#limitations)).
 :::
@@ -114,6 +127,7 @@ These mirror the **Dynamic scan executor** section of `.env.example`. All are re
 | Key | Default | Description |
 |---|---|---|
 | `SCAN_EXECUTOR` | `inprocess` | `inprocess` runs cdxgen as a worker subprocess; `local_docker` launches a per-environment sidecar over the Docker socket (on-prem only). |
+| `SCAN_LOCAL_DOCKER_ENVS` | `android` | Comma-separated environments routed to a sidecar. Only `android` is a detection gap; widen for per-build isolation (see below). |
 | `SCAN_DOCKER_VOLUME_STRATEGY` | `named` | `named` mounts only the workspace volume into the sidecar; `volumes_from` re-mounts every worker volume (refused without the ack below). |
 | `SCAN_WORKSPACE_VOLUME` | — | Required for `named`: the compose-prefixed workspace volume name (e.g. `trustedoss-portal_scan-workspace`). Unset falls back to in-process. |
 | `SCAN_WORKSPACE_MOUNT` | `/tmp/trustedoss` | Mount point of the workspace volume inside the sidecar (production: `/workspace`). |

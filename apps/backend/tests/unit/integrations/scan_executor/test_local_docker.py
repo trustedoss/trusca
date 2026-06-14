@@ -350,3 +350,53 @@ def test_sidecar_is_labelled_for_reaping(
     labels = {captured["cmd"][i + 1] for i, a in enumerate(captured["cmd"]) if a == "--label"}
     assert "trusca.role=scan-sidecar" in labels
     assert f"trusca.scan={req.scan_uuid.hex}" in labels
+
+
+# --------------------------------------------------------------------------- #
+# Generalized language routing (increment 5)
+# --------------------------------------------------------------------------- #
+
+
+def test_default_routes_android_only(
+    scan_backend_mock: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """node has detection parity in-worker, so it is NOT routed by default."""
+    monkeypatch.setattr(f"{_MOD}.scan_backend_mode", lambda: "real")
+    monkeypatch.setattr(f"{_MOD}.shutil.which", lambda _n: "/usr/bin/docker")
+    monkeypatch.delenv("SCAN_LOCAL_DOCKER_ENVS", raising=False)  # default "android"
+    res = LocalDockerExecutor().generate_sbom(_request(tmp_path, detected_env="node"))
+    assert res.executor == "inprocess"
+
+
+def test_widened_set_routes_node_to_cdxgen_image(
+    monkeypatch: pytest.MonkeyPatch, _docker_present: None, tmp_path: Path
+) -> None:
+    """SCAN_LOCAL_DOCKER_ENVS can opt a language into sidecar routing."""
+    monkeypatch.setenv("SCAN_LOCAL_DOCKER_ENVS", "android,node")
+    monkeypatch.delenv("CDXGEN_IMAGE_TAG", raising=False)
+    captured = _stub_sidecar(monkeypatch)
+    res = LocalDockerExecutor().generate_sbom(_request(tmp_path, detected_env="node"))
+
+    assert res.executor == "local_docker"
+    assert res.detected_env == "node"
+    # cdxgen language image, pinned by the v12 tag (no SCAN_ALLOW_UNPINNED needed).
+    assert res.image == "ghcr.io/cyclonedx/cdxgen-node20:v12"
+    assert "ghcr.io/cyclonedx/cdxgen-node20:v12" in captured["cmd"]
+
+
+def test_language_image_is_pinned_without_allow_flag(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A cdxgen language image (:v12) is pinned, so it routes even with the dev
+    override OFF (only android's :latest needs the override)."""
+    monkeypatch.setattr(f"{_MOD}.scan_backend_mode", lambda: "real")
+    monkeypatch.setattr(f"{_MOD}.shutil.which", lambda _n: "/usr/bin/docker")
+    monkeypatch.setenv("SCAN_WORKSPACE_VOLUME", "scan-workspace")
+    monkeypatch.setenv("SCAN_LOCAL_DOCKER_ENVS", "go")
+    monkeypatch.delenv("SCAN_ALLOW_UNPINNED_IMAGE", raising=False)  # OFF
+    monkeypatch.delenv("CDXGEN_IMAGE_TAG", raising=False)
+    captured = _stub_sidecar(monkeypatch)
+
+    res = LocalDockerExecutor().generate_sbom(_request(tmp_path, detected_env="go"))
+    assert res.executor == "local_docker"
+    assert "ghcr.io/cyclonedx/cdxgen-debian-golang124:v12" in captured["cmd"]
