@@ -2,10 +2,12 @@
 External CycloneDX SBOM ingest — synchronous validation + scan-row creation.
 
 This is the synchronous *front half* of the SBOM-ingest feature: it accepts an
-uploaded CycloneDX JSON document, validates it adversarially, persists a
-``kind="sbom"`` :class:`~models.scan.Scan` row, writes the validated SBOM to a
-durable on-disk location, and enqueues the Celery task that does the heavy work
-(``tasks.ingest_sbom.ingest_sbom_task``). The endpoint returns ``202 Accepted``
+uploaded CycloneDX-JSON or SPDX (JSON / Tag-Value) document, validates it
+adversarially, persists a ``kind="sbom"`` :class:`~models.scan.Scan` row, writes
+the original SBOM bytes to a durable on-disk location, and enqueues the Celery
+task that does the heavy work (``tasks.ingest_sbom.ingest_sbom_task`` — which
+maps SPDX → CycloneDX for component persistence and hands the original file to
+Trivy, which auto-detects the format). The endpoint returns ``202 Accepted``
 with the queued scan row — never the result (CLAUDE.md core rule #3).
 
 This endpoint is NOT the Dependency-Track ``/api/v1/bom`` + ``X-Api-Key`` BOM
@@ -21,18 +23,20 @@ surface; recorded for the security reviewer):
     fast-fails on a declared ``Content-Length`` over the cap before reading a
     single body byte (mirrors the source-archive endpoint).
 
-  - **Content-Type / filename allow-list.** Only JSON-ish media types and a
-    ``.json`` / ``.cdx.json`` filename are accepted (415 otherwise). The header
-    is advisory; the JSON parse + CycloneDX structure check are authoritative.
+  - **Content-Type / filename allow-list.** Only JSON-ish / SPDX media types and
+    a ``.json`` / ``.cdx.json`` / ``.spdx`` / ``.tag`` filename are accepted (415
+    otherwise). The header is advisory; the content sniff + structure check are
+    authoritative.
 
-  - **Structural whitelist, NO deep traversal.** We parse the JSON and check
-    only the TOP-LEVEL keys: ``bomFormat == "CycloneDX"``, ``specVersion`` in a
-    known set, and (when present) ``components`` is a list whose ``len`` is
-    within ``sbom_ingest_max_components()`` (default 50,000). We deliberately do
-    NOT recurse into the component elements here — a deeply-nested hostile
-    document cannot drive our validation into a recursion / CPU blow-up. The
-    authoritative deep parse happens later, inside the Celery worker
-    (``persist_sbom_components``), off the request path.
+  - **Structural whitelist, NO deep traversal.** ``validate_uploaded_sbom``
+    detects the format (CycloneDX-JSON or SPDX JSON/Tag-Value) and checks only
+    TOP-LEVEL shape: for CycloneDX, ``bomFormat``, ``specVersion`` in a known
+    set, and a bounded ``components`` array; for SPDX-JSON, a bounded
+    ``packages`` array. A byte-level depth pre-check runs BEFORE any
+    ``json.loads`` so a deeply-nested hostile document is a clean 422, never a
+    decoder ``RecursionError`` (500). We deliberately do NOT recurse into element
+    bodies here — the authoritative deep parse / SPDX→CycloneDX mapping happens
+    later, inside the Celery worker, off the request path.
 
 CLAUDE.md compliance:
   - Core rule #11: every limit is read via ``os.getenv`` at call time (through
@@ -46,6 +50,7 @@ CLAUDE.md compliance:
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from pathlib import Path
 from typing import Any
@@ -63,6 +68,12 @@ from core.config import (
 )
 from core.security import CurrentUser
 from models import Scan
+from services.sbom_conformance import (
+    FORMAT_CYCLONEDX,
+    FORMAT_SPDX_JSON,
+    FORMAT_SPDX_TV,
+    detect_format,
+)
 from services.scan_service import (
     ScanEnqueueFailed,
     ScanInProgressConflict,
@@ -83,6 +94,13 @@ _ALLOWED_CONTENT_TYPES = frozenset(
     {
         "application/json",
         "application/vnd.cyclonedx+json",
+        # SPDX media types (model 3 SPDX-input support). SPDX-JSON carriers use
+        # application/spdx+json or application/json; SPDX Tag-Value uploads use
+        # text/spdx (or omit the part content-type, or carry a .spdx/.tag
+        # filename — see the filename allow-list). We deliberately do NOT add the
+        # over-broad text/plain: a .txt with text/plain stays a 415.
+        "application/spdx+json",
+        "text/spdx",
         "application/octet-stream",
         "",  # some CLIs omit the part content-type
     }
@@ -224,7 +242,12 @@ def _validate_content_type(*, content_type: str | None, filename: str | None) ->
     """
     normalized_ct = (content_type or "").lower().split(";", 1)[0].strip()
     name = (filename or "").strip().lower()
-    name_ok = name.endswith(".json") or name.endswith(".cdx.json")
+    # CycloneDX JSON (.json / .cdx.json) or SPDX (.spdx / .spdx.json / .tag /
+    # .spdx.tag). The authoritative format gate is the content sniff in
+    # validate_uploaded_sbom; this is the advisory fast-fail.
+    name_ok = name.endswith(
+        (".json", ".cdx.json", ".spdx", ".spdx.json", ".tag", ".spdx.tag")
+    )
     if normalized_ct in _ALLOWED_CONTENT_TYPES:
         return
     if name_ok:
@@ -236,7 +259,7 @@ def _validate_content_type(*, content_type: str | None, filename: str | None) ->
     )
     raise SbomIngestUnsupportedType(
         f"content-type {normalized_ct!r} (filename {name!r}) is not an accepted "
-        "CycloneDX JSON media type"
+        "CycloneDX or SPDX media type"
     )
 
 
@@ -338,6 +361,71 @@ def validate_cyclonedx_document(raw: bytes) -> dict[str, Any]:
     return parsed
 
 
+def _validate_spdx_json_packages(doc: dict[str, Any]) -> None:
+    """Bound the SPDX-JSON ``packages`` array (the SPDX analogue of the
+    CycloneDX ``components`` cap) so a huge document is rejected up front."""
+    packages = doc.get("packages")
+    if packages is None:
+        return
+    if not isinstance(packages, list):
+        raise SbomIngestInvalid("SPDX 'packages' must be a JSON array when present")
+    max_packages = sbom_ingest_max_components()
+    if len(packages) > max_packages:
+        raise SbomIngestInvalid(
+            f"SBOM declares {len(packages)} packages; the maximum is {max_packages}"
+        )
+
+
+def validate_uploaded_sbom(raw: bytes) -> str:
+    """Validate an uploaded SBOM of any supported format; return the format tag.
+
+    Accepts CycloneDX-JSON and SPDX (JSON / Tag-Value). Raises
+    :class:`SbomIngestInvalid` (422) for anything else, mirroring the per-format
+    handling of :mod:`services.sbom_conformance` / :mod:`services.sbom_convert`.
+
+    Adversarial-input contract: the O(n) byte-depth pre-check runs FIRST, before
+    any ``json.loads`` — including the one inside ``detect_format`` — so a
+    maliciously deep JSON document is rejected as a clean 422 and can never drive
+    the stdlib decoder into a ``RecursionError`` (which would escape as a 500).
+    Total size is already bounded by the read cap applied upstream; deep parsing
+    of the (now format-confirmed) document still happens later in the worker, off
+    the request path.
+    """
+    depth = _max_nesting_depth(raw)
+    if depth > _MAX_NESTING_DEPTH:
+        raise SbomIngestInvalid(
+            f"SBOM nesting depth {depth} exceeds the maximum {_MAX_NESTING_DEPTH}"
+        )
+
+    fmt, doc = detect_format(raw)
+    if fmt == FORMAT_CYCLONEDX:
+        validate_cyclonedx_document(raw)
+        return fmt
+    if fmt == FORMAT_SPDX_JSON:
+        # ``doc`` is the parsed SPDX-JSON object (detect_format already decoded
+        # it under the depth guard above).
+        _validate_spdx_json_packages(doc or {})
+        return fmt
+    if fmt == FORMAT_SPDX_TV:
+        # Tag-Value is line-oriented (no recursion surface), but the read cap
+        # bounds BYTES, not package COUNT — a 32 MiB file of 14-byte
+        # ``PackageName:`` lines is ~2.4M packages, far past the JSON cap. Bound
+        # the count here so every format enforces the same component ceiling
+        # (the worker would otherwise drive millions of upserts). The anchored
+        # regex is linear (security review: no ReDoS).
+        text = raw.decode("utf-8", errors="replace")
+        package_count = len(re.findall(r"(?m)^PackageName:", text))
+        max_packages = sbom_ingest_max_components()
+        if package_count > max_packages:
+            raise SbomIngestInvalid(
+                f"SBOM declares {package_count} packages; the maximum is {max_packages}"
+            )
+        return fmt
+    raise SbomIngestInvalid(
+        "upload is not a CycloneDX or SPDX (JSON / Tag-Value) document"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Ingest — validate + persist scan row + write file + enqueue
 # ---------------------------------------------------------------------------
@@ -386,9 +474,10 @@ async def ingest_sbom(
       1. ``prepare_scan_target`` — existence/team-access (404/403), project-scoped
          API-key boundary (403), archived (409), per-team concurrency cap (429).
          Reuses ``trigger_scan``'s exact guard sequence + exceptions.
-      2. Request validation — Content-Type/filename (415), size cap (413), JSON +
-         CycloneDX structure (422). Runs AFTER the authz/state guards so a
-         non-member learns nothing about a project from a malformed body.
+      2. Request validation — Content-Type/filename (415), size cap (413),
+         CycloneDX-JSON or SPDX (JSON/Tag-Value) structure (422). Runs AFTER the
+         authz/state guards so a non-member learns nothing about a project from a
+         malformed body.
       3. INSERT the scan row, flush. The partial unique index
          ``ix_scans_project_active`` makes this the atomic concurrency check: a
          second in-flight scan for the project raises :class:`ScanInProgressConflict`
@@ -427,8 +516,11 @@ async def ingest_sbom(
     # ---- 2. request validation (untrusted input) -----------------------------
     _validate_content_type(content_type=upload.content_type, filename=upload.filename)
     raw = await _read_bounded(upload, max_bytes=sbom_ingest_max_bytes())
-    # Structural whitelist; never deep-traverses component elements.
-    validate_cyclonedx_document(raw)
+    # Format-dispatched structural whitelist (CycloneDX-JSON or SPDX JSON/TV).
+    # Depth-guarded; never deep-traverses element bodies (that runs in the
+    # worker). The original bytes are stored as-is and Trivy auto-detects the
+    # format; the worker maps SPDX → CycloneDX for component persistence.
+    validate_uploaded_sbom(raw)
 
     original_filename = _clean_meta_text(upload.filename)
     normalized_release = _clean_meta_text(release)

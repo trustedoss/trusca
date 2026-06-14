@@ -1,14 +1,14 @@
 ---
 id: sbom-upload
 title: Upload an SBOM
-description: Upload a CycloneDX SBOM that an external tool already produced — TRUSCA queues a scan that matches CVEs, classifies declared licenses, and runs the build gate.
+description: Upload a CycloneDX or SPDX SBOM that an external tool already produced — TRUSCA queues a scan that matches CVEs, classifies declared licenses, scores conformance, and runs the build gate.
 sidebar_label: Upload an SBOM
 sidebar_position: 5
 ---
 
 # Upload an SBOM
 
-Already have a CycloneDX SBOM (software bill of materials) from another tool? Upload it to an existing TRUSCA project and TRUSCA matches its components against vulnerability data, classifies declared licenses, builds the dependency graph, and runs the build gate — without cloning or scanning your source.
+Already have an SBOM (software bill of materials) from another tool? Upload it to an existing TRUSCA project and TRUSCA matches its components against vulnerability data, classifies declared licenses, builds the dependency graph, scores the SBOM's conformance, and runs the build gate — without cloning or scanning your source. Both **CycloneDX-JSON** and **SPDX** (JSON or Tag-Value) are accepted.
 
 The endpoint is `POST /v1/projects/{project_id}/sbom-ingest`. It is asynchronous: a successful request returns `202 Accepted` with a queued scan row, and you poll the scan to read the result.
 
@@ -25,7 +25,7 @@ TRUSCA is **not** Dependency-Track API compatible. The Dependency-Track flow —
 - A TRUSCA API key in the `tos_<prefix>_<secret>` format. Create one at **/integrations → API keys → New API key**; see [API keys](../admin-guide/api-keys.md) for the scope model.
 - The target **project already exists**. Copy its UUID from **Project Settings → CI/CD**. Uploading an SBOM does not create a project.
 - The API key's scope covers that project — a `project`-scoped key bound to it, or a `team`-scoped key for a project the team owns.
-- A CycloneDX JSON document. Supported `specVersion` values are `1.2` through `1.6`. SPDX is not accepted on this endpoint.
+- A **CycloneDX-JSON** document (supported `specVersion` values are `1.2` through `1.6`) **or** an **SPDX** document in JSON or Tag-Value form. Trivy auto-detects the format for CVE matching; SPDX is mapped to CycloneDX for component persistence. SPDX RDF/XML is not accepted.
 - No scan is currently queued or running for the project (one in-flight scan per project; a second returns `409`).
 
 ## Upload an SBOM
@@ -166,8 +166,8 @@ All errors are RFC 7807 (Problem Details for HTTP APIs) responses with the `appl
 | `404` | The project does not exist, or it is hidden from the caller (existence-hide). |
 | `409` | A scan is already queued or running for this project, or the project is archived. |
 | `413` | The upload exceeds the size cap (`SBOM_INGEST_MAX_BYTES`). |
-| `415` | The upload is not a CycloneDX JSON media type — the content type and filename are both wrong. Use `application/json` or `application/vnd.cyclonedx+json`, with a `.json` or `.cdx.json` filename. |
-| `422` | The upload is not a valid CycloneDX document — not JSON, `bomFormat` is not `CycloneDX`, an unsupported `specVersion`, malformed `components`, or more components than `SBOM_INGEST_MAX_COMPONENTS`. |
+| `415` | The upload's media type and filename are both wrong. Use `application/json` / `application/vnd.cyclonedx+json` / `application/spdx+json` / `text/spdx`, or a `.json` / `.cdx.json` / `.spdx` / `.tag` filename. |
+| `422` | The upload is not a valid CycloneDX-JSON or SPDX (JSON/Tag-Value) document — wrong `bomFormat`, an unsupported CycloneDX `specVersion`, malformed `components`/`packages`, more than `SBOM_INGEST_MAX_COMPONENTS`, or too deeply nested. |
 | `429` | Rate limited, or the team's concurrent-scan cap is reached. The response carries a `Retry-After` header. |
 
 ## Troubleshooting
@@ -186,11 +186,11 @@ A scan is already queued or running for this project — TRUSCA allows one in-fl
 
 ### `415 Unsupported Media Type`
 
-TRUSCA accepts only CycloneDX JSON. Confirm the file is JSON and the upload sets a JSON media type or a `.json` / `.cdx.json` filename. SPDX and CycloneDX XML are not accepted here.
+TRUSCA accepts CycloneDX-JSON and SPDX (JSON or Tag-Value). Confirm the upload sets an accepted media type (`application/json`, `application/vnd.cyclonedx+json`, `application/spdx+json`, `text/spdx`) or a recognised filename (`.json`, `.cdx.json`, `.spdx`, `.tag`). SPDX RDF/XML and CycloneDX XML are not accepted here.
 
 ### `422 Unprocessable Entity`
 
-The document is JSON but not an ingestible CycloneDX SBOM. Check that `bomFormat` is `CycloneDX`, that `specVersion` is between `1.2` and `1.6`, and that the component count is within `SBOM_INGEST_MAX_COMPONENTS`. The `detail` field names the specific reason.
+The upload is not an ingestible CycloneDX or SPDX SBOM. For CycloneDX, check that `bomFormat` is `CycloneDX` and `specVersion` is between `1.2` and `1.6`; for SPDX, that the document carries `spdxVersion` (JSON) or a `SPDXVersion:` line (Tag-Value). The component/package count must be within `SBOM_INGEST_MAX_COMPONENTS`, and the document must not be pathologically nested. The `detail` field names the specific reason.
 
 ### `429 Too Many Requests`
 
