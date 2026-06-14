@@ -293,6 +293,30 @@ RUN set -eux; \
     rm -f /tmp/trivy.deb; \
     trivy --version
 
+# ---- Docker CLI 27.5.1 (Apache-2.0, client only). --------------------------
+# The dynamic-scan executor (SCAN_EXECUTOR=local_docker) shells out to `docker
+# run` to launch a per-environment cdxgen sidecar (e.g. the Android SDK image)
+# against the host Docker socket. We install ONLY the static client binary — no
+# daemon — from the upstream static bundle (deterministic, version-PINNED per
+# CLAUDE.md rule #9). The socket is mounted by the deployment, opt-in; with the
+# default SCAN_EXECUTOR=inprocess this binary is simply unused. The static
+# bundle resolves x86_64 / aarch64 so the image builds on amd64 CI and arm64
+# dev laptops alike.
+ENV DOCKER_CLI_VERSION=27.5.1
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "$arch" in \
+        amd64)  docker_arch="x86_64" ;; \
+        arm64)  docker_arch="aarch64" ;; \
+        *) echo "Unsupported arch: $arch" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL -o /tmp/docker.tgz \
+        "https://download.docker.com/linux/static/stable/${docker_arch}/docker-${DOCKER_CLI_VERSION}.tgz"; \
+    tar -xzf /tmp/docker.tgz -C /tmp docker/docker; \
+    install -m 0755 /tmp/docker/docker /usr/local/bin/docker; \
+    rm -rf /tmp/docker.tgz /tmp/docker; \
+    docker --version
+
 # ---------------------------------------------------------------------------
 # Multi-language lockfile resolvers (chore PR #4 — see
 # docs/sessions/2026-05-07-uat-multi-ecosystem-matrix.md).

@@ -12,6 +12,7 @@ import structlog
 from core.config import scan_executor_mode
 from integrations.scan_executor.base import ScanExecutor
 from integrations.scan_executor.inprocess import InProcessExecutor
+from integrations.scan_executor.local_docker import LocalDockerExecutor
 
 log = structlog.get_logger("integrations.scan_executor.factory")
 
@@ -22,9 +23,11 @@ def get_executor(mode: str | None = None) -> ScanExecutor:
 
     if resolved == "inprocess":
         return InProcessExecutor()
+    if resolved == "local_docker":
+        return LocalDockerExecutor()
 
-    # local_docker / k8s_job are introduced in later increments. Until then,
-    # any non-inprocess value degrades to the legacy path rather than erroring.
+    # k8s_job is introduced in a later increment. Until then, any other value
+    # degrades to the legacy in-process path rather than erroring.
     log.warning(
         "scan_executor_unavailable_fallback_inprocess",
         requested=resolved,

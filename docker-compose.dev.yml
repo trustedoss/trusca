@@ -205,6 +205,9 @@ services:
     command: celery -A tasks.celery_app worker --loglevel=info --concurrency=2
     environment:
       <<: *backend-env
+      # bug-hunter 검증용: 가장 느린 scancode(첫 파티 소스 라이선스) 단계를 스킵해 real 스캔을 단축한다.
+      # 컴포넌트(cdxgen)·취약점(Trivy)은 그대로 — 핵심 데이터 유지. 검증 후 이 줄을 지우면 원복된다.
+      SCANCODE_MAX_FILES: "0"
     volumes:
       - ./apps/backend:/app
       # Marathon bundle 3 (D2) — tasks.backup writes via pg_dump directly.
@@ -220,6 +223,12 @@ services:
       # W6-#44 / H-6 — Trivy DB cache (bootstrap + weekly refresh write here).
       # Shared with backend (read-only there) for health / disk telemetry.
       - trivy-cache:/var/lib/trivy
+      # Dynamic-scan executor (SCAN_EXECUTOR=local_docker) — the worker launches
+      # a per-environment cdxgen sidecar (e.g. the Android SDK image) via the host
+      # Docker socket. OPT-IN: only used when SCAN_EXECUTOR=local_docker; the
+      # default inprocess executor never touches it. On-prem only — the socket is
+      # a host-escape surface (increment 6 hardens it behind a socket proxy).
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       postgres:
         condition: service_healthy
