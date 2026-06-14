@@ -20,8 +20,9 @@ sidebar_position: 2
 |---|---|---|
 | **`source`** | `cdxgen` → scancode(first-party 라이선스 탐지) → Trivy(`trivy sbom`) | 컴포넌트와 그 **declared** 라이선스(의존성 메타데이터에서), **detected** 라이선스(scancode 가 직접 스캔한 first-party 소스), 로컬 Trivy DB가 NVD + OSV + GHSA + EPSS + KEV로 매칭한 CVE(Common Vulnerabilities and Exposures). |
 | **`container`** | Trivy | 컨테이너 이미지의 OS 패키지 취약점(언어 패키지 CVE는 제한적). |
+| **`sbom`** | 적합성 채점 → 컴포넌트 적재 → Trivy(`trivy sbom`) | 고객 도구가 이미 생성한 SBOM(CycloneDX-JSON 또는 SPDX). TRUSCA는 소스를 복제·빌드하지 않고 SBOM의 품질을 채점하고 컴포넌트를 적재하며 CVE를 매칭합니다. 아래 [받은 SBOM](#받은-sbom-업로드) 참고. |
 
-현재 릴리스부터 두 종류 모두 UI 스캔 다이얼로그에서 선택할 수 있습니다 — 스캔을 트리거할 때 **Source** 또는 **Container** 를 고르세요([스캔 트리거 → UI에서](#ui에서) 참고). API도 두 종류를 모두 수용합니다.
+**Source** 와 **Container** 는 UI 스캔 다이얼로그에서 선택합니다 — 스캔을 트리거할 때 하나를 고르세요([스캔 트리거 → UI에서](#ui에서) 참고). **`sbom`** 스캔은 방식이 다릅니다. 다이얼로그에서 고르는 대신 기존 SBOM을 인제스트 엔드포인트로 업로드합니다(아래 [받은 SBOM](#받은-sbom-업로드) 참고). API는 세 종류를 모두 수용합니다.
 
 ## 스캔 트리거
 
@@ -103,6 +104,17 @@ curl -sS -X POST \
 ### CI에서
 
 권장 경로는 [GitHub Action](../ci-integration/github-actions.md), [GitLab CI 템플릿](../ci-integration/gitlab-ci.md), [Jenkinsfile 예시](../ci-integration/jenkins.md)입니다. 모두 API를 감싸고 빌드 게이트를 추가합니다.
+
+## 받은 SBOM(업로드) {#받은-sbom-업로드}
+
+빌드나 CI가 이미 SBOM을 생성한다면, TRUSCA가 소스를 복제·스캔하게 하는 대신 그 SBOM을 업로드할 수 있습니다. 이렇게 하면 **`sbom`** 스캔이 생성됩니다. TRUSCA는 SBOM의 컴포넌트를 적재하고, Trivy로 CVE를 매칭하고, 선언 라이선스를 분류합니다 — 소스 스캔에서 얻는 컴포넌트·취약점·라이선스 화면을 그대로 제공하며, 빌드 게이트도 동일하게 실행됩니다.
+
+- **포맷**: CycloneDX-JSON, 또는 SPDX(JSON·Tag-Value). 매칭에서는 Trivy가 포맷을 자동 감지하고, 컴포넌트 그래프를 위해 SPDX는 내부적으로 CycloneDX로 변환됩니다.
+- **업로드 방법**: API Key로 `POST /v1/projects/{project_id}/sbom-ingest`. 필드·크기 제한·오류를 포함한 전체 안내는 [SBOM 업로드](../ci-integration/sbom-upload.md)에 있습니다.
+
+### 적합성(conformance) 결과
+
+공급사가 제공한 SBOM은 버전·PURL·의존성 그래프가 빠진 "껍데기"일 수 있으므로, TRUSCA는 인제스트 시 SBOM의 **품질**을 채점하고 스캔 상세 페이지에 **pass / warn / fail** 배지와 요구사항별 표를 표시합니다. 이 결과는 **자문(advisory)**입니다 — `fail`이어도 인제스트를 막지 않으며(CVE 매칭은 계속 수행) SBOM을 받아들일지 공급사에 반려할지 판단하는 근거가 됩니다. 필수 검사에는 타임스탬프, 도구 정보, 최상위 컴포넌트, 컴포넌트 name+version 100%, PURL 커버리지 ≥ 90%, `pkg:generic` 자리표시자 없음, 전이 의존성 그래프가 포함되고, 라이선스·해시 커버리지는 권장(warn만)입니다. UI 패널이나 `GET /v1/projects/{project_id}/scans/{scan_id}/conformance`로 읽습니다 — [SBOM 업로드 → 적합성 결과 읽기](../ci-integration/sbom-upload.md#적합성conformance-결과-읽기) 참고.
 
 ## 수명 주기
 

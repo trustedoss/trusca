@@ -20,8 +20,9 @@ Engineers with `developer` or higher on the project's team. Triggering scans aga
 |---|---|---|
 | **`source`** | `cdxgen` (CycloneDX generator) → scancode (first-party license detection) → Trivy (`trivy sbom`) | Components and their **declared** licenses (from dependency metadata) plus **detected** licenses (scancode reading your own first-party source), and CVEs (Common Vulnerabilities and Exposures) matched by the local Trivy DB against NVD + OSV + GHSA + EPSS + KEV. |
 | **`container`** | Trivy (Aqua Security container scanner) | OS-package vulnerabilities and (limited) language-package CVEs in a container image. |
+| **`sbom`** | conformance scoring → component persistence → Trivy (`trivy sbom`) | An SBOM your own tooling already produced (CycloneDX-JSON or SPDX). TRUSCA does not clone or build your source — it scores the SBOM's quality, persists its components, and matches CVEs. See [Received SBOMs](#received-sboms-uploaded) below. |
 
-Both kinds are selectable from the UI scan dialog in this release — pick **Source** or **Container** when you trigger a scan (see [Trigger a scan → From the UI](#from-the-ui)). The API accepts both kinds as well.
+**Source** and **Container** are selectable from the UI scan dialog — pick one when you trigger a scan (see [Trigger a scan → From the UI](#from-the-ui)). An **`sbom`** scan is created differently: you upload an existing SBOM to the ingest endpoint rather than picking it in the dialog (see [Received SBOMs](#received-sboms-uploaded)). The API accepts all three kinds.
 
 ## Trigger a scan
 
@@ -103,6 +104,17 @@ curl -sS -X POST \
 ### From CI
 
 The recommended path is the [GitHub Action](../ci-integration/github-actions.md), the [GitLab CI template](../ci-integration/gitlab-ci.md), or the [Jenkinsfile example](../ci-integration/jenkins.md). Each one wraps the API and adds the build gate.
+
+## Received SBOMs (uploaded) {#received-sboms-uploaded}
+
+If your own build or CI already produces an SBOM, you can upload it instead of having TRUSCA clone and scan your source. This creates an **`sbom`** scan: TRUSCA persists the SBOM's components, matches CVEs with Trivy, and classifies declared licenses — the same component / vulnerability / license views you get from a source scan, and the build gate runs on it too.
+
+- **Formats**: CycloneDX-JSON, or SPDX (JSON or Tag-Value). Trivy auto-detects the format for matching; SPDX is mapped to CycloneDX internally for the component graph.
+- **How to upload**: `POST /v1/projects/{project_id}/sbom-ingest` with an API key. The full how-to (fields, size limits, errors) is in [Upload an SBOM](../ci-integration/sbom-upload.md).
+
+### Conformance verdict
+
+Because a supplier-provided SBOM can be a "shell" with missing versions, PURLs, or no dependency graph, TRUSCA scores its **quality** on ingest and shows a **pass / warn / fail** badge plus a per-requirement table on the scan detail page. The verdict is **advisory** — a `fail` does not block ingest (CVE matching still runs); it tells you whether to accept the SBOM or send it back to the supplier. Mandatory checks include a timestamp, tool info, a top-level component, 100% component name+version, PURL coverage ≥ 90%, no `pkg:generic` placeholders, and a transitive dependency graph; license and hash coverage are recommended (warn-only). Read it via the UI panel or `GET /v1/projects/{project_id}/scans/{scan_id}/conformance` — see [Upload an SBOM → Read the conformance verdict](../ci-integration/sbom-upload.md#read-the-conformance-verdict).
 
 ## Lifecycle
 
