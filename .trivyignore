@@ -212,6 +212,53 @@ CVE-2026-24051
 # under the same rationale.
 CVE-2026-39883
 
+# ----------------------------------------------------------------------------
+# cdxgen Node node-pkg dependency CVEs (lodash, minimist).
+#
+# Trivy's node-pkg analyzer reports these against npm packages vendored under
+# cdxgen's global install tree (usr/lib/node_modules/@cyclonedx/cdxgen/...).
+# They are pulled by a PLATFORM-GATED (cpu=x64 / os=linux) transitive of
+# cdxgen's dependency graph: a fresh `npm install -g @cyclonedx/cdxgen@12.3.3`
+# on linux/amd64 (the CI image-scan platform) resolves lodash 4.17.19 +
+# minimist 1.2.5, while the same install on linux/arm64 and macOS resolves
+# NEITHER — which is why they surfaced only on a no-cache amd64 rebuild in CI
+# and are invisible to local arm64 repros. Category (3): cdxgen runtime never
+# enters the vulnerable sinks. Our only cdxgen invocation is
+#   cdxgen -r -o <out> --spec-version 1.5 <src>
+# (apps/backend/integrations/cdxgen.py) — dependency ENUMERATION from a repo's
+# manifests/lockfiles. cdxgen's own argv is fixed by us (never attacker argv),
+# and it never calls lodash.template() with scanned-repo content.
+# ----------------------------------------------------------------------------
+
+# CVE-2021-23337 — lodash 4.17.19 → 4.17.21 — HIGH
+# Target: usr/lib/node_modules/@cyclonedx/cdxgen/.../node_modules/lodash
+# CVSS: HIGH (command injection via lodash.template template string).
+# Reach: requires calling lodash.template() with an attacker-controlled
+#   template. cdxgen parses dependency manifests structurally and never
+#   compiles a template from scanned-repo input; the worker never calls
+#   lodash directly. UNREACHED.
+# Re-evaluate: 2026-12-14 or when cdxgen ships a lodash≥4.17.21 tree.
+CVE-2021-23337
+
+# CVE-2026-4800 — lodash 4.17.19 → 4.18.0 — HIGH
+# Target: usr/lib/node_modules/@cyclonedx/cdxgen/.../node_modules/lodash
+# CVSS: HIGH (arbitrary code execution via untrusted input in template
+#   imports — same lodash.template sink, newer disclosure).
+# Reach: same as CVE-2021-23337 — no lodash.template call on untrusted input
+#   anywhere in cdxgen's enumeration path or the worker. UNREACHED.
+# Re-evaluate: 2026-12-14 or when cdxgen ships a lodash≥4.18.0 tree.
+CVE-2026-4800
+
+# CVE-2021-44906 — minimist 1.2.5 → 1.2.6 — CRITICAL
+# Target: usr/lib/node_modules/@cyclonedx/cdxgen/.../node_modules/minimist
+# CVSS: CRITICAL (prototype pollution via crafted argv passed to minimist).
+# Reach: the pollution primitive requires feeding attacker-controlled argv
+#   (e.g. `--__proto__.x`) to minimist's parser. cdxgen's CLI argv is the
+#   fixed vector we pass above; a scanned repo cannot influence cdxgen's own
+#   argv, and the worker never invokes minimist. UNREACHED.
+# Re-evaluate: 2026-12-14 or when cdxgen ships a minimist≥1.2.6 tree.
+CVE-2021-44906
+
 # ---------------------------------------------------------------------------
 # Maven 3.9.x bundle (chore PR #4 worker image): JARs vendored alongside
 # the `mvn` binary so we can run `mvn dependency:tree` for the Java
