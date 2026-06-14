@@ -14,9 +14,19 @@ reach a state-derived 409:
 
   - scan delete   × active scan        → ScanNotFound  (not ScanDeleteConflict)
   - scan trigger  × scan-in-progress   → ScanForbidden (not ScanInProgressConflict)
+  - sbom-ingest   × scan-in-progress   → ScanForbidden (not ScanInProgressConflict)
+  - sbom-ingest   × archived project   → ScanForbidden (not ScanArchivedConflict)
   - vuln status   × stale if_match     → VulnerabilityNotFound (not VulnerabilityConflict)
   - approval      × terminal state     → ApprovalNotFound (not ApprovalTerminalState /
                                           ApprovalInvalidTransition)
+
+The two sbom-ingest rows pin the NEW 409 surfaces this feature introduces
+(``POST /v1/projects/{id}/sbom-ingest``): the endpoint reuses
+``prepare_scan_target`` + the partial-unique-index flush, so an active scan
+(409 ScanInProgressConflict) and an archived project (409 ScanArchivedConflict)
+are both state-derived 409s that MUST sit behind the ScanForbidden (403)
+permission gate for a non-member — exactly the intersection the campaign found
+unguarded for cancel.
 
 scan cancel × terminal is covered where it was fixed:
 ``tests/unit/services/test_user_cancel_scan_service.py::
@@ -149,6 +159,83 @@ async def test_trigger_on_other_team_busy_project_is_permission_denial_not_409(
             db_session,
             project_id=project.id,
             payload=ScanCreate(kind="source"),
+            actor=actor,
+        )
+
+
+# ---------------------------------------------------------------------------
+# sbom-ingest × scan already in progress / archived  (NEW 409 surfaces)
+#
+# POST /v1/projects/{id}/sbom-ingest reuses prepare_scan_target + the
+# partial-unique-index flush, so it introduces TWO new state-derived 409
+# surfaces (active-scan conflict, archived project). Both must sit behind the
+# permission gate: a non-member uploading to a busy/archived project must hit
+# ScanForbidden (403, this domain's contract — NOT existence-hiding 404, mirror
+# of scan-trigger) BEFORE any 409 that would confirm the project + its state.
+#
+# The guard order is verified at the SERVICE layer: prepare_scan_target raises
+# ScanForbidden before ingest_sbom ever reads the upload body, so we can pass a
+# throwaway (never-read) UploadFile.
+# ---------------------------------------------------------------------------
+
+
+def _throwaway_upload() -> object:
+    """A minimal CycloneDX UploadFile that the permission gate rejects BEFORE
+    the body is ever read (prepare_scan_target runs first)."""
+    import io
+
+    from starlette.datastructures import Headers, UploadFile
+
+    return UploadFile(
+        file=io.BytesIO(b'{"bomFormat":"CycloneDX","specVersion":"1.5"}'),
+        filename="bom.cdx.json",
+        headers=Headers({"content-type": "application/json"}),
+    )
+
+
+@pytest.mark.parametrize("active_status", ["queued", "running"])
+async def test_sbom_ingest_other_team_busy_project_is_permission_denial_not_409(
+    db_session: AsyncSession, active_status: str
+) -> None:
+    """An active scan would 409 (ScanInProgressConflict) for a member ingesting
+    a duplicate — an outsider must hit ScanForbidden (403) before any
+    in-progress probe."""
+    from services.sbom_ingest_service import ingest_sbom
+    from services.scan_service import ScanForbidden
+
+    actor, owning_team = await _outsider_and_resource_team(db_session)
+    project = await make_project(db_session, team=owning_team)
+    await make_scan(db_session, project=project, status=active_status)
+
+    with pytest.raises(ScanForbidden):
+        await ingest_sbom(
+            db_session,
+            project_id=project.id,
+            upload=_throwaway_upload(),  # type: ignore[arg-type]
+            actor=actor,
+        )
+
+
+async def test_sbom_ingest_other_team_archived_project_is_permission_denial_not_409(
+    db_session: AsyncSession,
+) -> None:
+    """An archived project would 409 (ScanArchivedConflict) for a member — an
+    outsider must hit ScanForbidden (403) before the archived-state check."""
+    from datetime import UTC, datetime
+
+    from services.sbom_ingest_service import ingest_sbom
+    from services.scan_service import ScanForbidden
+
+    actor, owning_team = await _outsider_and_resource_team(db_session)
+    project = await make_project(db_session, team=owning_team)
+    project.archived_at = datetime.now(tz=UTC)
+    await db_session.commit()
+
+    with pytest.raises(ScanForbidden):
+        await ingest_sbom(
+            db_session,
+            project_id=project.id,
+            upload=_throwaway_upload(),  # type: ignore[arg-type]
             actor=actor,
         )
 

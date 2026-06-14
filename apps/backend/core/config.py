@@ -815,6 +815,37 @@ def sbom_download_max_bytes() -> int:
     return int(os.getenv("SBOM_DOWNLOAD_MAX_BYTES", str(64 * 1024 * 1024)))
 
 
+def sbom_ingest_max_bytes() -> int:
+    """Hard ceiling on an externally-ingested CycloneDX SBOM upload.
+
+    The SBOM-ingest endpoint (``POST /v1/projects/{id}/sbom-ingest``) accepts an
+    attacker-controllable JSON document. We read the upload through a bounded,
+    chunked loop and abort the instant the running total crosses this cap — the
+    body is NEVER buffered in full first, so an oversized upload cannot exhaust
+    memory before the size check fires. Over-cap surfaces as a 413 (RFC 7807).
+
+    Default 32 MiB comfortably covers a large real-world CycloneDX SBOM (tens of
+    thousands of components) while still bounding the request. Read at call time
+    (CLAUDE.md core rule #11) so an operator can retune without a rebuild.
+    """
+    return int(os.getenv("SBOM_INGEST_MAX_BYTES", str(32 * 1024 * 1024)))
+
+
+def sbom_ingest_max_components() -> int:
+    """Max number of ``components`` entries an ingested CycloneDX SBOM may carry.
+
+    A second, structural DoS guard layered on top of ``sbom_ingest_max_bytes``:
+    even a within-size document could declare a pathological component count that
+    the downstream Celery persister would loop over. The synchronous validation
+    only checks ``len(components)`` (it never deep-traverses the elements), so the
+    check is O(1) on the already-parsed list. Over-cap surfaces as a 422.
+
+    Default 50,000 mirrors the source-archive member ceiling. Read at call time
+    (CLAUDE.md core rule #11).
+    """
+    return int(os.getenv("SBOM_INGEST_MAX_COMPONENTS", "50000"))
+
+
 def workspace_root() -> str:
     """Root directory under which per-scan workspaces live."""
     return os.getenv("WORKSPACE_HOST_PATH", "/tmp/trustedoss")  # noqa: S108

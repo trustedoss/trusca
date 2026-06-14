@@ -443,6 +443,74 @@ def normalize_ref(raw: str | None) -> str | None:
 
 
 # ---------------------------------------------------------------------------
+# Shared pre-flight guards (trigger_scan + sbom-ingest)
+# ---------------------------------------------------------------------------
+
+
+async def prepare_scan_target(
+    session: AsyncSession,
+    *,
+    project_id: uuid.UUID,
+    actor: CurrentUser,
+) -> Project:
+    """Run the create-a-scan pre-flight guards and return the target project.
+
+    Extracted verbatim from ``trigger_scan`` so the SBOM-ingest path reuses the
+    SAME guard sequence (and the SAME typed exceptions / status codes) instead of
+    re-implementing them. ``trigger_scan`` keeps calling this so its behaviour is
+    unchanged — the only refactor is moving these lines behind a name.
+
+    Guard order (CLAUDE.md §2 rule 1 — authz / existence ALWAYS before state):
+
+      1. existence + team access — :class:`ProjectMissingForScan` (404) for an
+         unknown id; :class:`ScanForbidden` (403) for a project in another team.
+      2. project-scoped API-key boundary — a single-project CI key targeting a
+         different project raises :class:`ScanForbidden` (403). (M-2)
+      3. archived project — :class:`ScanArchivedConflict` (409). (H-7)
+      4. per-team concurrency cap — :class:`ConcurrentScanLimitExceeded` (429).
+
+    The 409 archived state deliberately sits AFTER the 403/404 authz checks so a
+    non-member can never distinguish "archived" from "does not exist".
+
+    The workspace disk guard (:class:`ScanDiskFull`, 503) is deliberately NOT run
+    here: ``trigger_scan`` runs some kind-specific guards (upload-archive resolve,
+    the BUG-008 source-unavailable check) BETWEEN the concurrency cap and the disk
+    guard, so each caller invokes ``_check_disk_guard()`` itself at the right point
+    to keep its established ordering byte-for-byte.
+    """
+    project = await _load_project(session, project_id)
+    if not _can_access_team(actor, project.team_id):
+        raise ScanForbidden(
+            f"actor is not a member of team {project.team_id}",
+        )
+
+    # M-2 — a project-scoped API key is bounded to ITS project, not the whole
+    # owning team. Without this gate a single-project CI key could trigger
+    # scans on every other project of the same team (least-privilege breach).
+    if (
+        actor.api_key_project_id is not None
+        and actor.api_key_project_id != project_id
+    ):
+        raise ScanForbidden(
+            "API key is scoped to a different project",
+        )
+
+    # H-7 — archiving disables new scans. Reject before reserving any worker
+    # slot so a retired project cannot keep consuming capacity.
+    if project.archived_at is not None:
+        raise ScanArchivedConflict(
+            f"project {project_id} is archived; unarchive it to run new scans",
+        )
+
+    # B1 — per-team concurrency cap. Reject the trigger up front when the
+    # team already has the maximum number of queued+running scans, protecting
+    # the shared Celery worker pool from a single team's burst.
+    await _enforce_team_concurrency_cap(session, project.team_id)
+
+    return project
+
+
+# ---------------------------------------------------------------------------
 # Trigger scan (skeleton — Celery enqueue lands in PR #8)
 # ---------------------------------------------------------------------------
 
@@ -479,37 +547,12 @@ async def trigger_scan(
     concurrent caller hits :class:`ScanInProgressConflict` (409) without
     ever reaching the Celery dispatcher.
     """
-    project = await _load_project(session, project_id)
-    if not _can_access_team(actor, project.team_id):
-        raise ScanForbidden(
-            f"actor is not a member of team {project.team_id}",
-        )
-
-    # M-2 — a project-scoped API key is bounded to ITS project, not the whole
-    # owning team. Without this gate a single-project CI key could trigger
-    # scans on every other project of the same team (least-privilege breach).
-    if (
-        actor.api_key_project_id is not None
-        and actor.api_key_project_id != project_id
-    ):
-        raise ScanForbidden(
-            "API key is scoped to a different project",
-        )
-
-    # H-7 — archiving disables new scans. Reject before reserving any worker
-    # slot so a retired project cannot keep consuming capacity.
-    if project.archived_at is not None:
-        raise ScanArchivedConflict(
-            f"project {project_id} is archived; unarchive it to run new scans",
-        )
-
-    # B1 — per-team concurrency cap. Reject the trigger up front when the
-    # team already has the maximum number of queued+running scans, protecting
-    # the shared Celery worker pool from a single team's burst. This is a
-    # soft stability cap (see _enforce_team_concurrency_cap docstring on the
-    # SELECT-then-INSERT race), distinct from the hard per-project unique
-    # index enforced below at flush time.
-    await _enforce_team_concurrency_cap(session, project.team_id)
+    # Shared pre-flight guards (existence/access/scope/archived/concurrency cap).
+    # Extracted to ``prepare_scan_target`` so the SBOM-ingest path reuses the EXACT
+    # same sequence + exceptions; trigger_scan's behaviour is unchanged. The disk
+    # guard is NOT in the helper — it runs below, after the source-specific guards,
+    # to keep this path's established ordering byte-for-byte.
+    project = await prepare_scan_target(session, project_id=project_id, actor=actor)
 
     # feat/zip-upload: when the scan asks for an uploaded source archive,
     # verify the file exists on disk *before* we enqueue. Otherwise the worker
@@ -974,5 +1017,6 @@ __all__ = [
     "list_scans_for_actor",
     "list_scans_for_project",
     "normalize_ref",
+    "prepare_scan_target",
     "trigger_scan",
 ]

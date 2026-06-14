@@ -11,8 +11,9 @@ test harness can monkey-patch one symbol to short-circuit the pipeline.
 The dispatcher branches on ``scan.kind``:
     - ``"source"``    → :func:`tasks.scan_source.scan_source_task`
     - ``"container"`` → :func:`tasks.scan_container.scan_container_task`
+    - ``"sbom"``      → :func:`tasks.ingest_sbom.ingest_sbom_task`
 
-Both tasks accept ``scan_id`` as a UUID string (Celery serialization is JSON;
+All tasks accept ``scan_id`` as a UUID string (Celery serialization is JSON;
 see ``tasks/celery_app.py``).
 """
 
@@ -66,6 +67,7 @@ def enqueue_scan(scan: Scan) -> str:
         scan_hard_time_limit_seconds,
         scan_soft_time_limit_seconds,
     )
+    from tasks.ingest_sbom import ingest_sbom_task
     from tasks.scan_container import scan_container_task
     from tasks.scan_source import scan_source_task
 
@@ -81,6 +83,16 @@ def enqueue_scan(scan: Scan) -> str:
         )
     elif scan.kind == "container":
         async_result = scan_container_task.apply_async(
+            args=(scan_id,),
+            soft_time_limit=soft_limit,
+            time_limit=hard_limit,
+        )
+    elif scan.kind == "sbom":
+        # External CycloneDX SBOM ingest reuses the source pipeline's back half
+        # (components → Trivy → findings → finalize). Same per-dispatch
+        # time-boxing as source/container so a hung Trivy step cannot pin a
+        # worker slot.
+        async_result = ingest_sbom_task.apply_async(
             args=(scan_id,),
             soft_time_limit=soft_limit,
             time_limit=hard_limit,

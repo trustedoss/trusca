@@ -74,6 +74,7 @@ const sidebars: SidebarsConfig = {
         "ci-integration/gitlab-ci",
         "ci-integration/jenkins",
         "ci-integration/webhooks",
+        "ci-integration/sbom-upload",
       ],
     },
     {
