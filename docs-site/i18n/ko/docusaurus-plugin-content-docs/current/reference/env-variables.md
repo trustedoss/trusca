@@ -95,7 +95,7 @@ CI 빌드 게이트는 기본적으로 Critical CVE와 금지 라이선스에서
 
 게이트 모델은 [빌드 게이트](./glossary.md#빌드-게이트), CI 워크스루는 [EPSS로 빌드 게이팅](../ci-integration/github-actions.md#epss로-빌드-게이팅-선택) 참고.
 
-## 스캔 파이프라인
+## 스캔 파이프라인 {#scan-pipeline}
 
 | 키 | 기본값 | 읽는 위치 | 설명 |
 |---|---|---|---|

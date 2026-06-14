@@ -306,12 +306,13 @@ ENV DOCKER_CLI_VERSION=27.5.1
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
-        amd64)  docker_arch="x86_64" ;; \
-        arm64)  docker_arch="aarch64" ;; \
+        amd64)  docker_arch="x86_64";  docker_sha="4f798b3ee1e0140eab5bf30b0edc4e84f4cdb53255a429dc3bbae9524845d640" ;; \
+        arm64)  docker_arch="aarch64"; docker_sha="e6b53725a73763ab3f988c73f8772eaed429754c1a579db5ff11f21990fd1817" ;; \
         *) echo "Unsupported arch: $arch" >&2; exit 1 ;; \
     esac; \
     curl -fsSL -o /tmp/docker.tgz \
         "https://download.docker.com/linux/static/stable/${docker_arch}/docker-${DOCKER_CLI_VERSION}.tgz"; \
+    echo "${docker_sha}  /tmp/docker.tgz" | sha256sum -c -; \
     tar -xzf /tmp/docker.tgz -C /tmp docker/docker; \
     install -m 0755 /tmp/docker/docker /usr/local/bin/docker; \
     rm -rf /tmp/docker.tgz /tmp/docker; \

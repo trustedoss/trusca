@@ -229,9 +229,31 @@ def android_image(api: int, *, prefix: str | None = None, tag: str | None = None
     ``ghcr.io/sktelecom/sbom-scanner-android-sdk34:latest``.
 
     Android images use their own ``latest`` / semver tag (``SCAN_ANDROID_IMAGE_TAG``),
-    distinct from the cdxgen language-image tag.
+    distinct from the cdxgen language-image tag. Pin to an immutable digest by
+    setting ``SCAN_ANDROID_IMAGE_TAG`` to ``sha256:<digest>`` (rendered as ``@sha256:…``).
     """
-    return f"{prefix or _android_prefix()}{api}:{tag or _android_tag()}"
+    base = prefix or _android_prefix()
+    resolved_tag = tag or _android_tag()
+    # A digest pin uses `@sha256:…`, a tag uses `:tag`.
+    separator = "@" if resolved_tag.startswith("sha256:") else ":"
+    return f"{base}{api}{separator}{resolved_tag}"
+
+
+def image_is_pinned(image: str) -> bool:
+    """True if ``image`` is reproducibly pinned (digest, or a non-floating tag).
+
+    A ``@sha256:…`` digest or any explicit tag other than ``latest`` counts as
+    pinned (CLAUDE.md rule #9 forbids ``:latest``). An image with no tag (implicit
+    ``latest``) is unpinned.
+    """
+    if "@sha256:" in image:
+        return True
+    # Split the tag from the last path segment (ignore registry port colons).
+    last = image.rsplit("/", 1)[-1]
+    if ":" not in last:
+        return False
+    tag = last.rsplit(":", 1)[-1]
+    return tag not in {"", "latest"}
 
 
 __all__ = [
@@ -240,4 +262,5 @@ __all__ = [
     "android_image",
     "detect_language",
     "image_for_env",
+    "image_is_pinned",
 ]
