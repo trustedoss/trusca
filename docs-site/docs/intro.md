@@ -33,6 +33,7 @@ commercial products.
 | Vulnerability detection | Trivy matches components against NVD + OSV + GitHub Advisory + EPSS + KEV via a local DB. New CVEs are picked up automatically on the weekly DB refresh. |
 | Container scanning | Trivy detects OS-package CVEs in container images. |
 | SBOM export | CycloneDX (JSON / XML) and SPDX (JSON / Tag-Value), byte-stable. |
+| SBOM ingest | Upload a CycloneDX or SPDX SBOM your own tooling produced; TRUSCA scores its conformance (pass / warn / fail) and matches CVEs without cloning your source. |
 | CI/CD integration | GitHub Action, GitLab CI template, Jenkinsfile example, REST API + API keys. Build gate exits `1` on Critical CVE or forbidden license. |
 | Workflow | Component approval, append-only audit log, notifications via email / Slack / Teams. |
 | Bilingual | English and Korean — UI, error messages, and this documentation site. |

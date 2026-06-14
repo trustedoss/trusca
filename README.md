@@ -46,6 +46,7 @@
 - Vulnerability detection via Trivy's unified DB (NVD + OSV + GitHub Advisory + EPSS + KEV) with weekly DB refresh, automatic re-detection of new CVEs, 7-state VEX triage, EPSS prioritization (column / sort / filter / policy-gate threshold), and per-finding `fixed_version`
 - Container image scanning for OS-package CVEs (Trivy)
 - SBOM export — CycloneDX (JSON/XML) + SPDX (JSON/Tag-Value), byte-stable; VEX export **and** VEX consumption (import OpenVEX / CycloneDX VEX to auto-suppress findings)
+- SBOM ingest — upload a CycloneDX or SPDX SBOM your own tooling produced (`POST /v1/projects/{id}/sbom-ingest`); TRUSCA scores its conformance (pass/warn/fail, advisory) and matches CVEs without cloning or building your source
 - Vulnerability report as PDF (`GET /v1/projects/{id}/vulnerability-report.pdf`); Excel and compliance-PDF reports are on the [roadmap](ROADMAP.md)
 - Obligations tracking + auto-generated `NOTICE` files (text / markdown / HTML)
 - Component approval workflow (Pending → Under Review → Approved / Rejected)
