@@ -29,6 +29,7 @@ By default `SCAN_LOCAL_DOCKER_ENVS=android` — **only Android** routes to a sid
 
 So routing those other languages buys you no detection improvement on-prem. If you want each language build to run **isolated** from the worker anyway, widen the set:
 
+<!-- docs-uat: id=dynamic-scan-executor-routed-envs kind=shell ctx=host tier=manual waiver=env-config-snippet-not-a-command -->
 ```bash
 SCAN_LOCAL_DOCKER_ENVS=android,node,go,rust,ruby,java,python,php,dotnet
 ```
