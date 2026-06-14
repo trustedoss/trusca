@@ -144,7 +144,8 @@
         "kind_all": "All kinds",
         "kind": {
           "source": "Source",
-          "container": "Container"
+          "container": "Container",
+          "sbom": "SBOM upload"
         },
         "project_label": "Project",
         "project_placeholder": "Filter by project name…"

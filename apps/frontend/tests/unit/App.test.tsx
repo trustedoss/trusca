@@ -22,6 +22,9 @@ vi.mock("@/lib/api", () => ({
 // provide those too. All return empty lists so the dashboard renders its
 // empty-state CTA path on the / index.
 vi.mock("@/lib/projectsApi", () => ({
+  // Module-level constant consumed by AdminScansPage's KIND_OPTIONS; the
+  // wholesale mock must re-export it or the route tree fails to import.
+  SCAN_KIND_VALUES: ["source", "container", "sbom"] as const,
   listProjects: vi
     .fn()
     .mockResolvedValue({ items: [], total: 0, page: 1, size: 100 }),

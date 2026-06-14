@@ -144,7 +144,8 @@
         "kind_all": "전체 종류",
         "kind": {
           "source": "소스",
-          "container": "컨테이너"
+          "container": "컨테이너",
+          "sbom": "SBOM 업로드"
         },
         "project_label": "프로젝트",
         "project_placeholder": "프로젝트 이름으로 필터…"

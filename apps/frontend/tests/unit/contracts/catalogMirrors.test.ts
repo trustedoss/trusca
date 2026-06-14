@@ -30,14 +30,18 @@ import { NOTIFICATION_KINDS } from "@/features/notifications/api/notificationsAp
 import { KNOWN_OBLIGATION_KINDS } from "@/features/projects/api/obligationsApi";
 import { ALL_VULNERABILITY_STATUSES } from "@/features/projects/lib/vulnerabilityTransitions";
 import { visualFor } from "@/features/projects/components/ProjectStatusBadge";
-import { SCAN_STATUS_VALUES } from "@/lib/projectsApi";
+import { SCAN_KIND_VALUES, SCAN_STATUS_VALUES } from "@/lib/projectsApi";
 
+import enAdmin from "@/locales/en/admin.json";
+import koAdmin from "@/locales/ko/admin.json";
 import enNotifications from "@/locales/en/notifications.json";
 import koNotifications from "@/locales/ko/notifications.json";
 import enProjectDetail from "@/locales/en/project_detail.json";
 import koProjectDetail from "@/locales/ko/project_detail.json";
 import enProjects from "@/locales/en/projects.json";
 import koProjects from "@/locales/ko/projects.json";
+import enScans from "@/locales/en/scans.json";
+import koScans from "@/locales/ko/scans.json";
 
 // Shared cross-app fixture (repo root). The backend enum and this FE mirror
 // must both equal this list; asserting the BE side against the same file is
@@ -139,6 +143,59 @@ describe("scan statuses — FE mirror of SCAN_STATUS_VALUES", () => {
     expect(visualFor(null).i18nKey).toBe("status.idle");
     expect(visualFor("idle").i18nKey).toBe("status.idle");
   });
+});
+
+describe("scan kinds — FE mirror of the scan `kind` set", () => {
+  // Same latent-drift class as scan statuses: `kind` was a bare string union
+  // until the external SBOM ingest (PR #406) added a third emitted value. Each
+  // emitted/selectable kind renders through a dynamic `…kind.${scan.kind}` key
+  // and the admin filter offers `KIND_OPTIONS`, so a missing label silently
+  // shows a raw i18n key (table badge) or an un-selectable raw value (filter).
+  it("matches the backend's closed kind set, in canonical order", () => {
+    expect([...SCAN_KIND_VALUES]).toEqual(["source", "container", "sbom"]);
+  });
+
+  it.each([
+    ["en", enScans],
+    ["ko", koScans],
+  ])("every kind owns a %s ScansPage `page.kind.*` label", (_locale, ns) => {
+    const kinds = labelMap(ns, "page", "kind");
+    for (const kind of SCAN_KIND_VALUES) {
+      expect(kinds[kind], `page.kind.${kind} missing`).toBeTruthy();
+    }
+  });
+
+  it.each([
+    ["en", enProjectDetail],
+    ["ko", koProjectDetail],
+  ])(
+    "every kind owns a %s `overview.recent_scans.kind.*` label",
+    (_locale, ns) => {
+      const kinds = labelMap(ns, "overview", "recent_scans", "kind");
+      for (const kind of SCAN_KIND_VALUES) {
+        expect(
+          kinds[kind],
+          `overview.recent_scans.kind.${kind} missing`,
+        ).toBeTruthy();
+      }
+    },
+  );
+
+  it.each([
+    ["en", enAdmin],
+    ["ko", koAdmin],
+  ])(
+    "every kind owns a %s admin `scans.filter.kind.*` label",
+    (_locale, ns) => {
+      const kinds = labelMap(ns, "admin", "scans", "filter", "kind");
+      for (const kind of SCAN_KIND_VALUES) {
+        expect(
+          kinds[kind],
+          `admin scans.filter.kind.${kind} missing`,
+        ).toBeTruthy();
+      }
+    },
+  );
 });
 
 describe("vulnerability statuses — label-map half of the 7-state mirror", () => {

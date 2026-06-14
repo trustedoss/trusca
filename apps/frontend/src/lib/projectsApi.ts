@@ -19,7 +19,18 @@ import { api } from "@/lib/api";
 // ---------------------------------------------------------------------------
 
 export type ProjectVisibility = "team" | "organization";
-export type ScanKind = "source" | "container";
+/**
+ * Closed scan-kind set — runtime mirror of the backend's scan `kind` values
+ * (`source` cdxgen→SBOM, `container` image scan, `sbom` external CycloneDX
+ * ingest, PR #406). Same pattern as `SCAN_STATUS_VALUES`: the array is walked
+ * by `tests/unit/contracts/catalogMirrors.test.ts` to assert every kind owns
+ * its own `page.kind.*` / `overview.recent_scans.kind.*` /
+ * `scans.filter.kind.*` label in both locales, so a kind added on the backend
+ * fails a PR-time vitest instead of silently rendering a raw i18n key.
+ */
+export const SCAN_KIND_VALUES = ["source", "container", "sbom"] as const;
+
+export type ScanKind = (typeof SCAN_KIND_VALUES)[number];
 /**
  * Closed scan status set — runtime mirror of the backend's
  * `models/scan.py::SCAN_STATUS_VALUES`, same order. PR-6 FE regression

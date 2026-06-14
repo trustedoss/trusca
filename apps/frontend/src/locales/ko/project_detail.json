@@ -187,7 +187,8 @@
       },
       "kind": {
         "source": "소스",
-        "container": "컨테이너"
+        "container": "컨테이너",
+        "sbom": "SBOM 업로드"
       }
     },
     "gate_card": {
