@@ -334,6 +334,14 @@ def _run_pipeline(
         mock_only=False,
     )
 
+    # Detect the source environment (BomLens-style language → cdxgen image map)
+    # and record it on the scan. Increment 2 only observes: the in-process
+    # executor still handles every environment. SCAN_EXECUTOR=local_docker /
+    # k8s_job (later increments) consume ``detected_env`` to route an
+    # environment-specific cdxgen sidecar. Best-effort — a detection error must
+    # never fail the scan, so we fall back to "unknown" and continue.
+    detected_env = _detect_and_record_env(scan_uuid, source_dir)
+
     # Stage 2.5 + 3 — build-prep + cdxgen, behind the ScanExecutor abstraction.
     # cdxgen needs a populated lockfile to enumerate transitive deps for Ruby /
     # Rust / Go / .NET; the 2026-05-07 ecosystem-matrix UAT showed bare-source
@@ -352,6 +360,7 @@ def _run_pipeline(
         scan_uuid=scan_uuid,
         source_dir=source_dir,
         output_dir=workspace / "cdxgen",
+        detected_env=detected_env,
         verbose=verbose,
     )
     gen_result = executor.generate_sbom(
@@ -1048,6 +1057,45 @@ def _set_stage(scan_uuid: uuid.UUID, stage: str) -> None:
     original ``_set_stage`` fallback exactly).
     """
     set_stage(scan_uuid, stage, _STAGE_PROGRESS.get(stage))
+
+
+def _detect_and_record_env(scan_uuid: uuid.UUID, source_dir: Path) -> str:
+    """Detect the source environment and persist it onto the scan.
+
+    Records ``scan_metadata["detected_env"]`` and ``["detected_image"]`` (the
+    cdxgen image a container executor would route to) on the scan row so an
+    operator can see what a scan resolved to even while every environment still
+    runs in-process (increment 2). Best-effort: any detection or persistence
+    error logs a warning and returns ``"unknown"`` — observation must never fail
+    a scan. The JSONB column is updated by reassigning a fresh dict so
+    SQLAlchemy flushes the change (in-place mutation is not tracked).
+    """
+    try:
+        detected_env = scan_executor.detect_language(source_dir)
+        detected_image = scan_executor.image_for_env(detected_env)
+    except Exception:  # noqa: BLE001 — observation is strictly best-effort
+        log.warning("source_detect_failed", scan_id=str(scan_uuid), exc_info=True)
+        return "unknown"
+
+    log.info(
+        "source_detected",
+        scan_id=str(scan_uuid),
+        detected_env=detected_env,
+        detected_image=detected_image,
+    )
+    try:
+        with sync_session_scope() as session:
+            scan = session.get(Scan, scan_uuid)
+            if scan is not None:
+                merged = dict(scan.scan_metadata or {})
+                merged["detected_env"] = detected_env
+                merged["detected_image"] = detected_image
+                scan.scan_metadata = merged
+                session.commit()
+    except Exception:  # noqa: BLE001 — persistence is best-effort, never fatal
+        log.warning("source_detect_persist_failed", scan_id=str(scan_uuid), exc_info=True)
+
+    return detected_env
 
 
 def _persist_artifact(
