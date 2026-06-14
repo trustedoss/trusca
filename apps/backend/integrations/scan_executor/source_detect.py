@@ -31,10 +31,12 @@ _DEFAULT_IMAGE_TAG = "v12"
 # (BomLens CDXGEN_ALLINONE).
 _DEFAULT_ALLINONE = "ghcr.io/cyclonedx/cdxgen:v12.5.0"
 # Android SDK image prefix + default compileSdk (BomLens ANDROID_IMAGE_PREFIX /
-# ANDROID_API_DEFAULT). The SKT android images are API-tagged; routing to them
-# is deferred past increment 2.
+# ANDROID_API_DEFAULT). The SKT android images are API-tagged and use the
+# ``latest`` / semver tag scheme — NOT the cdxgen ``v12`` language-image tag, so
+# they carry their own tag knob.
 _DEFAULT_ANDROID_PREFIX = "ghcr.io/sktelecom/sbom-scanner-android-sdk"
 _DEFAULT_ANDROID_API = 34
+_DEFAULT_ANDROID_TAG = "latest"
 
 # env → per-language cdxgen image, mirroring ``img_for_lang``. Anything not here
 # (android, cpp, mixed, unknown) resolves to the all-in-one image — exactly as
@@ -99,6 +101,10 @@ def _android_api_default() -> int:
     if raw and raw.isdigit():
         return int(raw)
     return _DEFAULT_ANDROID_API
+
+
+def _android_tag() -> str:
+    return os.getenv("SCAN_ANDROID_IMAGE_TAG", _DEFAULT_ANDROID_TAG)
 
 
 def _has_android_manifest(source_dir: Path) -> bool:
@@ -219,8 +225,13 @@ def android_compile_sdk(source_dir: Path) -> int:
 
 
 def android_image(api: int, *, prefix: str | None = None, tag: str | None = None) -> str:
-    """Return the API-tagged Android scanner image (deferred routing target)."""
-    return f"{prefix or _android_prefix()}{api}:{tag or _image_tag()}"
+    """Return the API-tagged Android scanner image, e.g.
+    ``ghcr.io/sktelecom/sbom-scanner-android-sdk34:latest``.
+
+    Android images use their own ``latest`` / semver tag (``SCAN_ANDROID_IMAGE_TAG``),
+    distinct from the cdxgen language-image tag.
+    """
+    return f"{prefix or _android_prefix()}{api}:{tag or _android_tag()}"
 
 
 __all__ = [

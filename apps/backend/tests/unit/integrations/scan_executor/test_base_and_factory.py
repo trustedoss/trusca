@@ -18,6 +18,7 @@ from integrations.scan_executor import (
     get_executor,
 )
 from integrations.scan_executor.inprocess import InProcessExecutor
+from integrations.scan_executor.local_docker import LocalDockerExecutor
 
 
 def test_request_defaults_preserve_legacy_call() -> None:
@@ -65,7 +66,13 @@ def test_factory_explicit_inprocess(monkeypatch: pytest.MonkeyPatch) -> None:
     assert isinstance(get_executor(), InProcessExecutor)
 
 
-@pytest.mark.parametrize("mode", ["local_docker", "k8s_job", "bogus", "K8S_JOB"])
+@pytest.mark.parametrize("mode", ["local_docker", "LOCAL_DOCKER"])
+def test_factory_local_docker(monkeypatch: pytest.MonkeyPatch, mode: str) -> None:
+    monkeypatch.setenv("SCAN_EXECUTOR", mode)
+    assert isinstance(get_executor(), LocalDockerExecutor)
+
+
+@pytest.mark.parametrize("mode", ["k8s_job", "bogus", "K8S_JOB"])
 def test_factory_unimplemented_modes_fall_back_to_inprocess(
     monkeypatch: pytest.MonkeyPatch, mode: str
 ) -> None:
@@ -78,5 +85,5 @@ def test_factory_mode_argument_overrides_env(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("SCAN_EXECUTOR", "inprocess")
-    # Explicit arg wins; an unimplemented one still falls back to inprocess.
-    assert isinstance(get_executor("local_docker"), InProcessExecutor)
+    # Explicit arg wins over the env.
+    assert isinstance(get_executor("local_docker"), LocalDockerExecutor)
