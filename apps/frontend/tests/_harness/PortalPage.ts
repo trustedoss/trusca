@@ -1851,6 +1851,62 @@ export class PortalPage {
       .waitFor({ state: "visible", timeout: 10_000 });
   }
 
+  // ───── model-3 — received-SBOM conformance panel (kind='sbom' scans) ─────
+  //
+  // The panel renders on /scans/:id only when the scan is an ingested SBOM AND
+  // a verdict exists. Anchors on `data-testid="conformance-panel"`; the result
+  // badge carries `data-result="pass|warn|fail"` so the verdict is assertable
+  // without reading localized text.
+
+  /** Wait for the conformance panel and return its verdict (pass|warn|fail). */
+  async expectConformancePanel(): Promise<"pass" | "warn" | "fail"> {
+    await this.page
+      .getByTestId("conformance-panel")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    const badge = this.page.getByTestId("conformance-badge");
+    await expect(badge).toBeVisible();
+    const result = await badge.getAttribute("data-result");
+    return result as "pass" | "warn" | "fail";
+  }
+
+  /** Assert the conformance panel is NOT present (e.g. for a non-sbom scan). */
+  async expectNoConformancePanel(): Promise<void> {
+    await expect(this.page.getByTestId("conformance-panel")).toHaveCount(0);
+  }
+
+  /** Number of rows in the per-check conformance table. */
+  async conformanceCheckCount(): Promise<number> {
+    return this.page
+      .getByTestId("conformance-checks-table")
+      .getByRole("row")
+      .count();
+  }
+
+  /**
+   * Assert a specific check row is present, optionally with an expected status
+   * (the row's status badge carries `data-status`).
+   */
+  async expectConformanceCheck(
+    checkId: string,
+    status?: "pass" | "warn" | "fail",
+  ): Promise<void> {
+    const row = this.page.getByTestId(`check-${checkId}`);
+    await expect(row).toBeVisible();
+    if (status) {
+      await expect(row.getByTestId("conformance-check-status")).toHaveAttribute(
+        "data-status",
+        status,
+      );
+    }
+  }
+
+  /** Read a conformance summary value (e.g. "conformance-source-format"). */
+  async conformanceSummaryValue(testId: string): Promise<string> {
+    return (
+      (await this.page.getByTestId(testId).textContent())?.trim() ?? ""
+    );
+  }
+
   /**
    * Click the "Download log" button on the scan detail page and capture the
    * resulting browser download. Returns `{ filename, body }` — the body is

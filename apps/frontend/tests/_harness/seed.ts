@@ -41,6 +41,12 @@ export interface SeedSummary {
   project_ids: string[];
   /** Populated when SeedOptions.withScan is true. Same length as project_ids. */
   scan_ids?: string[];
+  /**
+   * The kind='sbom' received-SBOM scan seeded on the first project when
+   * `SeedOptions.withSbom` is set (model 3). Open `/scans/<id>` to assert the
+   * conformance panel. `null` when `withSbom` was off.
+   */
+  sbom_scan_id?: string | null;
   /** Number of components attached to the first project's scan (0 by default). */
   component_count?: number;
   /** Number of vulnerability findings attached to the first project's scan. */
@@ -108,6 +114,13 @@ export interface SeedOptions {
    * `project.latest_scan_id`. Required for the project-detail flows.
    */
   withScan?: boolean;
+  /**
+   * Seed a kind='sbom' (received-SBOM) succeeded scan on the FIRST project plus
+   * its conformance verdict (model 3). Independent of `withScan`. The scan id
+   * comes back as `SeedSummary.sbom_scan_id` — open `/scans/<id>` to assert the
+   * conformance panel.
+   */
+  withSbom?: boolean;
   /**
    * Number of components to attach to the first project's scan. Implies
    * `withScan`. Default: 0 (no components seeded). Phase 3 PR #10
@@ -250,6 +263,11 @@ export function seedE2eUser(opts: SeedOptions): SeedSummary {
     // scan but no components, so the spec stays self-documenting at the call
     // site.
     scriptArgs.push("--with-scan");
+  }
+  if (opts.withSbom) {
+    // Independent of --with-scan: seeds a kind='sbom' scan + conformance verdict
+    // on the first project (model 3).
+    scriptArgs.push("--with-sbom");
   }
   if ((opts.componentCount ?? 0) > 0) {
     scriptArgs.push("--component-count", String(opts.componentCount));

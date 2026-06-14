@@ -389,6 +389,17 @@ def _parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--with-sbom",
+        action="store_true",
+        default=False,
+        help=(
+            "Seed a kind='sbom' (received-SBOM) succeeded scan on the FIRST "
+            "project, plus its conformance verdict (model 3). Independent of "
+            "--with-scan. The resulting scan id is returned as `sbom_scan_id` so "
+            "an e2e can open /scans/<id> and assert the conformance panel."
+        ),
+    )
+    parser.add_argument(
         "--component-count",
         type=int,
         default=0,
@@ -611,6 +622,7 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
     email: str | None,
     password: str | None,
     with_scan: bool,
+    with_sbom: bool = False,
     component_count: int,
     component_prefix: str,
     vulnerability_count: int = 0,
@@ -664,6 +676,7 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
         Organization,
         Project,
         RefreshToken,
+        SbomConformance,
         Scan,
         ScanArtifact,
         ScanComponent,
@@ -905,6 +918,84 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                     await session.commit()
                     await session.refresh(project)
                     scan_ids.append(str(scan.id))
+
+            # Model 3 — seed a received-SBOM scan (kind='sbom') + its conformance
+            # verdict on the FIRST project so the conformance-panel e2e can open
+            # /scans/<sbom_scan_id> and assert the badge + per-check table. The
+            # verdict is computed by the REAL scorer over a small inline CycloneDX
+            # (deterministic 'warn' — full PURLs + graph + licenses but no hashes),
+            # so the seeded row matches production shape exactly.
+            sbom_scan_id: str | None = None
+            if with_sbom and project_rows:
+                from services import sbom_conformance as _conf
+
+                sbom_doc = {
+                    "bomFormat": "CycloneDX",
+                    "specVersion": "1.6",
+                    "metadata": {
+                        "timestamp": "2026-01-01T00:00:00Z",
+                        "tools": [{"name": "cdxgen"}],
+                        "component": {
+                            "type": "application",
+                            "name": "seeded-sbom-app",
+                            "version": "1.0.0",
+                        },
+                    },
+                    "components": [
+                        {
+                            "type": "library",
+                            "name": "lodash",
+                            "version": "4.17.21",
+                            "purl": "pkg:npm/lodash@4.17.21",
+                            "licenses": [{"license": {"id": "MIT"}}],
+                        },
+                        {
+                            "type": "library",
+                            "name": "debug",
+                            "version": "4.3.4",
+                            "purl": "pkg:npm/debug@4.3.4",
+                            "licenses": [{"license": {"id": "MIT"}}],
+                        },
+                    ],
+                    "dependencies": [
+                        {
+                            "ref": "pkg:npm/debug@4.3.4",
+                            "dependsOn": ["pkg:npm/lodash@4.17.21"],
+                        }
+                    ],
+                }
+                verdict = _conf.evaluate(json.dumps(sbom_doc).encode())
+                first = project_rows[0]
+                sbom_scan = Scan(
+                    project_id=first.id,
+                    kind="sbom",
+                    status="succeeded",
+                    progress_percent=100,
+                    started_at=datetime.now(tz=UTC),
+                    completed_at=datetime.now(tz=UTC),
+                    scan_metadata={"seeded": True, "source_type": "sbom"},
+                )
+                session.add(sbom_scan)
+                await session.commit()
+                await session.refresh(sbom_scan)
+                session.add(
+                    SbomConformance(
+                        scan_id=sbom_scan.id,
+                        project_id=first.id,
+                        source_format=verdict.source_format,
+                        result=verdict.result,
+                        n_fail=verdict.n_fail,
+                        n_warn=verdict.n_warn,
+                        component_count=verdict.component_count,
+                        purl_coverage_pct=verdict.purl_coverage_pct,
+                        license_coverage_pct=verdict.license_coverage_pct,
+                        hash_coverage_pct=verdict.hash_coverage_pct,
+                        checks=[c.as_dict() for c in verdict.checks],
+                    )
+                )
+                await session.commit()
+                sbom_scan_id = str(sbom_scan.id)
+                scan_ids.append(sbom_scan_id)
 
             # G3.3 — stage a preserved-source tarball for the first project's
             # scan so the source-tree viewer endpoints return a populated tree
@@ -1155,6 +1246,7 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                 "project_names": project_names,
                 "project_ids": project_ids,
                 "scan_ids": scan_ids,
+                "sbom_scan_id": sbom_scan_id,
                 "component_count": seeded_components,
                 "vulnerability_count": seeded_vulnerabilities,
                 "obligation_count": seeded_obligations_count,
@@ -1227,6 +1319,7 @@ def main() -> int:
                 email=args.email,
                 password=args.password,
                 with_scan=args.with_scan,
+                with_sbom=args.with_sbom,
                 component_count=args.component_count,
                 component_prefix=args.component_prefix,
                 vulnerability_count=args.vulnerability_count,
