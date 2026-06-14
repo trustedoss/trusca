@@ -64,6 +64,9 @@ from .report_download import (  # noqa: E402,F401  (imported for metadata side e
     REPORT_TYPE_VALUES,
     ReportDownload,
 )
+from .sbom_conformance import (  # noqa: E402,F401  (imported for metadata side effects)
+    SbomConformance,
+)
 from .scan import (  # noqa: E402,F401  (imported for metadata side effects)
     Component,
     ComponentDependencyEdge,
@@ -109,6 +112,7 @@ __all__ = [
     "RefreshToken",
     "RemediationPullRequest",
     "ReportDownload",
+    "SbomConformance",
     "Scan",
     "ScanArtifact",
     "ScanComponent",

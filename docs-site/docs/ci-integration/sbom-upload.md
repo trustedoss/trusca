@@ -77,6 +77,44 @@ curl https://trustedoss.example.com/v1/scans/<SCAN_ID> \
 
 `status` moves `queued → running → succeeded`. A reasonable cadence is one poll every 30 seconds. Once `status` is `succeeded`, open the project in the portal to read components, vulnerabilities, and licenses.
 
+## Read the conformance verdict
+
+When you upload an SBOM, TRUSCA scores its **quality** against a fixed bar before (and regardless of) matching — so a "shell" SBOM with no versions, no package URLs, or no dependency graph is flagged rather than silently producing an empty result. Read the verdict with:
+
+```bash
+curl -H "Authorization: Bearer $TRUSTEDOSS_API_KEY" \
+  https://trustedoss.example.com/v1/projects/<PROJECT_ID>/scans/<SCAN_ID>/conformance
+```
+
+The response is the verdict for that scan:
+
+```json
+{
+  "scan_id": "<SCAN_ID>",
+  "project_id": "<PROJECT_ID>",
+  "source_format": "cyclonedx",
+  "result": "warn",
+  "n_fail": 0,
+  "n_warn": 1,
+  "component_count": 42,
+  "purl_coverage_pct": 100,
+  "license_coverage_pct": 96,
+  "hash_coverage_pct": 0,
+  "checks": [
+    { "id": "purl", "label": "PURL coverage (>= 90%)", "required": true, "status": "pass", "detail": "100% (42/42)", "missing": [] },
+    { "id": "hash", "label": "Hash coverage (>= 50%, recommended)", "required": false, "status": "warn", "detail": "0% (0/42)", "missing": [] }
+  ]
+}
+```
+
+- **`result`** is `pass`, `warn`, or `fail`. `fail` means a **mandatory** check failed; `warn` means every mandatory check passed but a **recommended** one (license or hash coverage) fell short; `pass` means all checks passed.
+- **Mandatory checks**: a timestamp, tool info, a top-level component with name and version, 100% component name+version, PURL coverage at or above `SBOM_CONFORMANCE_PURL_MIN_PCT` (default `90`), no `pkg:generic` placeholders, and a transitive dependency graph.
+- **Recommended checks** (warn only): license coverage at or above `SBOM_CONFORMANCE_LICENSE_MIN_PCT` (default `80`) and hash coverage at or above `SBOM_CONFORMANCE_HASH_MIN_PCT` (default `50`).
+- A `fail` verdict does **not** abort the ingest — TRUSCA still matches CVEs and classifies licenses so you get the partial result alongside the concrete reasons. Use the verdict to decide whether to accept a supplier's SBOM or send it back.
+- `purl_coverage_pct`, `license_coverage_pct`, and `hash_coverage_pct` are `null` for SPDX Tag-Value documents, which are scored on presence rather than per-package coverage.
+
+A `404` here means the project is not accessible to you, or the scan has no verdict yet (it is not an ingested SBOM scan, or its ingest has not reached the conformance stage).
+
 ## Verify it worked
 
 After the scan reaches `succeeded`:

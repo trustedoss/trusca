@@ -49,6 +49,8 @@ from typing import Any
 
 import structlog
 from celery.exceptions import SoftTimeLimitExceeded
+from sqlalchemy import delete
+from sqlalchemy.orm import Session
 
 from core.config import scan_soft_time_limit_seconds, workspace_root
 from core.db import sync_session_scope
@@ -59,7 +61,8 @@ from integrations.trivy import (
     TrivyTimeout,
     run_trivy_sbom,
 )
-from models import Project, Scan
+from models import Project, SbomConformance, Scan
+from services import sbom_conformance
 from services.vulnerability_matching import persist_trivy_findings
 from tasks._progress import (
     close_log_file,
@@ -93,6 +96,7 @@ log = structlog.get_logger("tasks.ingest_sbom")
 # render source scans.
 _STAGE_PROGRESS: dict[str, int] = {
     "bootstrap": 0,
+    "conformance": 20,
     "components": 40,
     "trivy": 80,
     "finalize": 100,
@@ -257,6 +261,23 @@ def _run_pipeline(
     # absent file, a path that escaped the workspace root, or non-JSON content.
     sbom_path, sbom_dict = _load_uploaded_sbom(scan_metadata)
 
+    # Stage 1.5 — conformance scoring. Scored on the ORIGINAL uploaded bytes
+    # (before any normalisation) so SPDX-specific metadata is judged
+    # accurately. Quality-gating is advisory: a "fail" verdict is recorded and
+    # surfaced as a badge but does NOT abort the match (the supplier may still
+    # want the partial result + the rejection reasons). The scorer never raises;
+    # the persist is delete-then-insert so an acks_late re-entry replaces the
+    # prior row (uq_sbom_conformance_scan_id).
+    _set_stage(scan_uuid, "conformance")
+    with sync_session_scope() as session:
+        _persist_conformance(
+            session,
+            scan_uuid=scan_uuid,
+            project_id=project_id,
+            raw=sbom_path.read_bytes(),
+        )
+        session.commit()
+
     # Stage 2 — persist components + declared licenses. MUST run before Trivy:
     # ``persist_trivy_findings`` matches each finding to a ``ComponentVersion``
     # by PURL, so the component graph has to exist first. ``source_dir=None``
@@ -316,6 +337,50 @@ def _run_pipeline(
     # publishes the final frame — so a separate set_stage("finalize") would be a
     # redundant frame. We rely on it directly (matching the documented contract).
     mark_succeeded(scan_uuid)
+
+
+def _persist_conformance(
+    session: Session,
+    *,
+    scan_uuid: uuid.UUID,
+    project_id: uuid.UUID,
+    raw: bytes,
+) -> None:
+    """Score the uploaded bytes and (re)write the scan's conformance verdict.
+
+    Delete-then-insert keeps the at-most-one ``sbom_conformance`` row per scan
+    invariant under a Celery ``acks_late`` re-entry (``_reset_scan_for_rerun``
+    does not touch this table). ``evaluate`` never raises — an unparseable
+    upload yields ``result="fail"``, which is a legitimate persisted verdict.
+    """
+    result = sbom_conformance.evaluate(raw)
+    session.execute(
+        delete(SbomConformance).where(SbomConformance.scan_id == scan_uuid)
+    )
+    session.add(
+        SbomConformance(
+            scan_id=scan_uuid,
+            project_id=project_id,
+            source_format=result.source_format,
+            result=result.result,
+            n_fail=result.n_fail,
+            n_warn=result.n_warn,
+            component_count=result.component_count,
+            purl_coverage_pct=result.purl_coverage_pct,
+            license_coverage_pct=result.license_coverage_pct,
+            hash_coverage_pct=result.hash_coverage_pct,
+            checks=[c.as_dict() for c in result.checks],
+        )
+    )
+    log.info(
+        "ingest_sbom_conformance",
+        scan_id=str(scan_uuid),
+        source_format=result.source_format,
+        result=result.result,
+        n_fail=result.n_fail,
+        n_warn=result.n_warn,
+        component_count=result.component_count,
+    )
 
 
 def _load_uploaded_sbom(scan_metadata: dict[str, Any]) -> tuple[Path, dict[str, Any]]:

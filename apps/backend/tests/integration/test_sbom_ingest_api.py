@@ -660,3 +660,138 @@ async def test_ingest_enqueue_failure_marks_scan_failed_and_returns_503(
         assert scan.status == "failed"
         assert scan.error_message is not None
         assert scan.error_message.startswith("enqueue_failed:")
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/projects/{project_id}/scans/{scan_id}/conformance
+#
+# Conformance read surface. Permission×state ordering (CLAUDE.md §2 rule 1): a
+# non-member sees 404 (existence-hide) regardless of whether a verdict exists —
+# the project authz gate fires before any per-scan lookup. A member with no
+# verdict row (or a cross-project scan_id) also sees 404, never a leak.
+# ---------------------------------------------------------------------------
+
+
+async def _seed_sbom_scan_with_verdict(
+    client: AsyncClient,
+    *,
+    project_id: uuid.UUID,
+    result: str = "warn",
+    source_format: str = "cyclonedx",
+):
+    """Insert a succeeded sbom scan + its conformance verdict; return scan_id."""
+    factory = await _factory(client)
+    async with factory() as session:
+        from sqlalchemy import select
+
+        from models import Project, SbomConformance
+
+        project = (
+            await session.execute(select(Project).where(Project.id == project_id))
+        ).scalar_one()
+        scan = await make_scan(session, project=project, kind="sbom", status="succeeded")
+        session.add(
+            SbomConformance(
+                scan_id=scan.id,
+                project_id=project_id,
+                source_format=source_format,
+                result=result,
+                n_fail=0,
+                n_warn=1,
+                component_count=4,
+                purl_coverage_pct=100,
+                license_coverage_pct=100,
+                hash_coverage_pct=0,
+                checks=[
+                    {
+                        "id": "purl",
+                        "label": "PURL coverage (>= 90%)",
+                        "required": True,
+                        "status": "pass",
+                        "detail": "100% (4/4)",
+                        "missing": [],
+                    },
+                    {
+                        "id": "hash",
+                        "label": "Hash coverage (>= 50%, recommended)",
+                        "required": False,
+                        "status": "warn",
+                        "detail": "0% (0/4)",
+                        "missing": [],
+                    },
+                ],
+            )
+        )
+        await session.commit()
+        return scan.id
+
+
+async def test_get_conformance_returns_verdict(client) -> None:
+    team, user, project = await _seed(client, role="developer")
+    scan_id = await _seed_sbom_scan_with_verdict(client, project_id=project.id)
+
+    resp = await client.get(
+        f"/v1/projects/{project.id}/scans/{scan_id}/conformance",
+        headers=_bearer_for(user),
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["result"] == "warn"
+    assert body["source_format"] == "cyclonedx"
+    assert body["purl_coverage_pct"] == 100
+    assert body["component_count"] == 4
+    assert {c["id"] for c in body["checks"]} == {"purl", "hash"}
+
+
+async def test_get_conformance_cross_team_is_404(client) -> None:
+    # Project + verdict owned by team A.
+    _team_a, _user_a, project = await _seed(client, role="developer")
+    scan_id = await _seed_sbom_scan_with_verdict(client, project_id=project.id)
+
+    # A developer on an unrelated team B must see 404 (existence-hide): the
+    # project authz gate fires before the per-scan verdict lookup.
+    _team_b, user_b, _project_b = await _seed(client, role="developer")
+    resp = await client.get(
+        f"/v1/projects/{project.id}/scans/{scan_id}/conformance",
+        headers=_bearer_for(user_b),
+    )
+    assert resp.status_code == 404, resp.text
+    assert resp.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_get_conformance_missing_verdict_is_404(client) -> None:
+    # A scan that exists in the project but has no verdict row (e.g. ingest
+    # still queued, or a non-sbom scan) → 404, never a 500/empty 200.
+    team, user, project = await _seed(client, role="developer")
+    factory = await _factory(client)
+    async with factory() as session:
+        from sqlalchemy import select
+
+        from models import Project
+
+        p = (
+            await session.execute(select(Project).where(Project.id == project.id))
+        ).scalar_one()
+        scan = await make_scan(session, project=p, kind="sbom", status="queued")
+        await session.commit()
+        scan_id = scan.id
+
+    resp = await client.get(
+        f"/v1/projects/{project.id}/scans/{scan_id}/conformance",
+        headers=_bearer_for(user),
+    )
+    assert resp.status_code == 404, resp.text
+
+
+async def test_get_conformance_scan_in_other_project_is_404(client) -> None:
+    # The (scan_id, project_id) predicate must reject a verdict whose scan lives
+    # in a DIFFERENT project of the same team — no cross-project read.
+    team, user, project = await _seed(client, role="developer")
+    scan_id = await _seed_sbom_scan_with_verdict(client, project_id=project.id)
+    other = await _seed_extra_project(client, team_id=team.id)
+
+    resp = await client.get(
+        f"/v1/projects/{other.id}/scans/{scan_id}/conformance",
+        headers=_bearer_for(user),
+    )
+    assert resp.status_code == 404, resp.text

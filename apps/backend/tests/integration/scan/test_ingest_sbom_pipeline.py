@@ -43,6 +43,7 @@ from models import (
     Component,
     ComponentVersion,
     LicenseFinding,
+    SbomConformance,
     Scan,
     ScanArtifact,
     ScanComponent,
@@ -265,6 +266,27 @@ def test_ingest_pipeline_persists_components_and_dense_findings(
     }
     assert "sbom_cyclonedx" in kinds
 
+    # Conformance: scored on the ORIGINAL uploaded bytes. The realistic fixture
+    # is a well-formed CycloneDX (full PURLs + graph + licenses) but carries no
+    # component hashes → all mandatory checks pass, the recommended hash check
+    # warns → overall verdict 'warn'. Exactly one verdict row per scan.
+    verdicts = list(
+        sync_session.execute(
+            select(SbomConformance).where(SbomConformance.scan_id == scan_id)
+        ).scalars()
+    )
+    assert len(verdicts) == 1, "exactly one conformance verdict per ingested scan"
+    verdict = verdicts[0]
+    assert verdict.source_format == "cyclonedx"
+    assert verdict.result == "warn"
+    assert verdict.n_fail == 0
+    assert verdict.purl_coverage_pct == 100
+    assert verdict.component_count == 4
+    assert verdict.checks, "the per-check detail array is persisted"
+    # The denormalised project pointer matches the scan's project (used by the
+    # tenant-scoped read endpoint's belongs-to-project predicate).
+    assert verdict.project_id == _project_id
+
 
 # ---------------------------------------------------------------------------
 # Idempotency — re-running a succeeded ingest is a no-op
@@ -355,3 +377,52 @@ def test_ingest_supersedes_prior_succeeded_scan_on_same_ref(
     assert new_scan.status == "succeeded"
     assert new_scan.superseded_at is None, "the newest succeeded scan is live"
     assert prior.superseded_at is not None, "the prior same-ref scan was superseded"
+
+
+# ---------------------------------------------------------------------------
+# Lifecycle — a forced re-entry REPLACES the conformance verdict (no dupe)
+# ---------------------------------------------------------------------------
+
+
+def test_ingest_rerun_replaces_conformance_verdict(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, sync_session: Session
+) -> None:
+    """``_reset_scan_for_rerun`` does not touch ``sbom_conformance``; the verdict
+    persist is delete-then-insert, so a Celery acks_late re-entry on a scan that
+    is NOT yet succeeded replaces the row rather than tripping the
+    ``uq_sbom_conformance_scan_id`` unique constraint."""
+    monkeypatch.setenv("WORKSPACE_HOST_PATH", str(tmp_path))
+    _stub_trivy_from_fixture(monkeypatch)
+
+    scan_id, _ = _seed_queued_sbom_scan(tmp_path)
+
+    from tasks.ingest_sbom import ingest_sbom_task
+
+    # First run → one verdict, scan succeeded.
+    ingest_sbom_task.apply(args=[str(scan_id)])
+    sync_session.expire_all()
+    first = sync_session.execute(
+        select(SbomConformance).where(SbomConformance.scan_id == scan_id)
+    ).scalar_one()
+    first_id = first.id
+
+    # Force a genuine re-entry: flip the scan back to queued so the task re-runs
+    # the pipeline (instead of the succeeded-skip) and re-scores conformance.
+    scan = sync_session.execute(select(Scan).where(Scan.id == scan_id)).scalar_one()
+    scan.status = "queued"
+    scan.completed_at = None
+    scan.superseded_at = None
+    sync_session.commit()
+
+    ingest_sbom_task.apply(args=[str(scan_id)])
+    sync_session.expire_all()
+
+    # Still exactly one verdict (replaced, not duplicated) — and a fresh row.
+    rows = list(
+        sync_session.execute(
+            select(SbomConformance).where(SbomConformance.scan_id == scan_id)
+        ).scalars()
+    )
+    assert len(rows) == 1, "re-entry must REPLACE the verdict, not duplicate it"
+    assert rows[0].id != first_id, "the verdict row was re-created (delete-then-insert)"
+    assert rows[0].result == "warn"
