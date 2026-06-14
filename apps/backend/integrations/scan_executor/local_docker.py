@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -58,13 +59,92 @@ _BUILD_PREP_ANDROID = Path(__file__).with_name("build_prep_android.sh")
 # Matches the cdxgen adapter's default per-stage timeout.
 _DEFAULT_SIDECAR_TIMEOUT = 30 * 60
 
-# Gradle spawns many helper processes; keep the pids cap generous. Increment 6
-# tightens resource bounds as part of the hardening pass.
+# Gradle spawns many helper processes; keep the pids cap generous.
 _DEFAULT_PIDS_LIMIT = "4096"
+
+# Capability hardening (increment 6). Drop ALL Linux capabilities, then add back
+# only the minimal set build tools need. Verified on Colima against the Android
+# gradle/AGP build: `--cap-drop=ALL` alone yields 0 components ("No packages
+# found"); restoring these five (file ownership + setuid/setgid for process
+# forking) restores the full 67-component graph. This removes the ~9 Docker
+# default caps a scan never needs (NET_RAW, NET_BIND_SERVICE, MKNOD, SYS_CHROOT,
+# KILL, AUDIT_WRITE, SETPCAP, SETFCAP, NET_BIND). Operators can retune both knobs
+# for other ecosystems (CLAUDE.md rule #11).
+_DEFAULT_CAP_DROP = "ALL"
+_DEFAULT_CAP_ADD = "CHOWN,DAC_OVERRIDE,FOWNER,SETGID,SETUID"
+
+# Bound the untrusted build's resources by default so it cannot OOM the host
+# (which would crash-loop Postgres on a shared box). pids alone does not bound
+# memory. Operators retune via env (rule #11).
+_DEFAULT_MEMORY = "4g"
+_DEFAULT_CPUS = "2"
+
+# Sidecar labels so an orphan reaper can find exactly our containers.
+_LABEL_ROLE = "trusca.role=scan-sidecar"
+
+# Redact a PEM private-key block if an untrusted build echoes one to stderr
+# (the streamed log lines pass through the shared credential scrubber, but that
+# one does not match PEM blocks — and a key would never be present at all once
+# the named-volume default stops sharing /cosign; this is defense in depth).
+_PRIVATE_KEY_RE = re.compile(
+    r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?-----END [A-Z0-9 ]*PRIVATE KEY-----",
+    re.DOTALL,
+)
+
+
+class _UnpinnedImageError(RuntimeError):
+    """The resolved sidecar image is not reproducibly pinned (floating tag)."""
+
+
+def _allow_unpinned_image() -> bool:
+    return os.getenv("SCAN_ALLOW_UNPINNED_IMAGE", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 def _pids_limit() -> str:
     return os.getenv("SCAN_SIDECAR_PIDS_LIMIT", _DEFAULT_PIDS_LIMIT)
+
+
+def _safe_token(name: str, value: str) -> str:
+    """Reject an env value that could smuggle an extra ``docker run`` flag.
+
+    Values flow into the argv as single tokens, but a value containing
+    whitespace (``"host --privileged"``) or a leading dash could be re-read as a
+    separate flag if a future edit splits it. Fail closed on anything suspicious.
+    """
+    v = value.strip()
+    if not v or v != value or " " in v or "\t" in v or v.startswith("-"):
+        raise DockerVolumeError(
+            f"unsafe value for {name!r}: must be a single bare token, got {value!r}",
+        )
+    return v
+
+
+def _cap_flag_args(env_name: str, default: str, flag: str) -> list[str]:
+    """Expand a comma-separated capability list into repeated ``flag`` args."""
+    args: list[str] = []
+    for cap in os.getenv(env_name, default).split(","):
+        cap = cap.strip()
+        if cap:
+            args += [flag, cap]
+    return args
+
+
+def _security_run_args() -> list[str]:
+    """Sidecar isolation flags: no privilege escalation, pids cap, dropped caps."""
+    args = [
+        "--security-opt",
+        "no-new-privileges",
+        "--pids-limit",
+        _pids_limit(),
+    ]
+    args += _cap_flag_args("SCAN_SIDECAR_CAP_DROP", _DEFAULT_CAP_DROP, "--cap-drop")
+    args += _cap_flag_args("SCAN_SIDECAR_CAP_ADD", _DEFAULT_CAP_ADD, "--cap-add")
+    return args
 
 
 class LocalDockerExecutor(ScanExecutor):
@@ -112,9 +192,11 @@ class LocalDockerExecutor(ScanExecutor):
             stage("cdxgen")
         try:
             return self._run_android(request, line_callback=line_callback)
-        except DockerVolumeError:
+        except (DockerVolumeError, _UnpinnedImageError):
+            # Misconfiguration (no workspace volume named / unpinned image / unsafe
+            # env value) must not fail the scan — degrade to in-process and warn.
             log.warning(
-                "local_docker_volume_unresolved_fallback_inprocess",
+                "local_docker_config_unsafe_fallback_inprocess",
                 scan_id=str(request.scan_uuid),
                 exc_info=True,
             )
@@ -144,6 +226,15 @@ class LocalDockerExecutor(ScanExecutor):
     ) -> SbomGenResult:
         api = source_detect.android_compile_sdk(request.source_dir)
         image = source_detect.android_image(api)
+        # Supply-chain: refuse to run an unpinned (`:latest`) third-party image
+        # unless the operator explicitly allows it (dev). Pin via
+        # SCAN_ANDROID_IMAGE_TAG=<semver|sha256:…> in production (CLAUDE.md rule #9).
+        if not source_detect.image_is_pinned(image) and not _allow_unpinned_image():
+            raise _UnpinnedImageError(
+                f"refusing to run unpinned image {image!r}; pin via "
+                "SCAN_ANDROID_IMAGE_TAG (semver or sha256:<digest>) or set "
+                "SCAN_ALLOW_UNPINNED_IMAGE=1 for dev",
+            )
         request.output_dir.mkdir(parents=True, exist_ok=True)
         sbom_path = request.output_dir / "cdxgen.cdx.json"
         container = f"truscan-{request.scan_uuid.hex}"
@@ -179,7 +270,13 @@ class LocalDockerExecutor(ScanExecutor):
             self._force_remove(container)
 
         if completed.returncode != 0:
-            stderr = completed.stderr.decode("utf-8", errors="replace")[:1000]
+            # The sidecar runs untrusted build code that could echo a secret to
+            # stderr; redact PEM private-key blocks before this lands in the
+            # persisted scan error.
+            stderr = _PRIVATE_KEY_RE.sub(
+                "***(private key redacted)***",
+                completed.stderr.decode("utf-8", errors="replace")[:1000],
+            )
             raise cdxgen_adapter.CdxgenFailed(
                 f"android sidecar exited {completed.returncode}: {stderr}",
             )
@@ -212,28 +309,43 @@ class LocalDockerExecutor(ScanExecutor):
         container: str,
     ) -> list[str]:
         build_prep = _BUILD_PREP_ANDROID.read_text(encoding="utf-8")
-        cmd = [
-            "docker",
-            "run",
-            "--rm",
-            "--name",
-            container,
-            "--security-opt",
-            "no-new-privileges",
-            "--pids-limit",
-            _pids_limit(),
-        ]
-        memory = os.getenv("SCAN_SIDECAR_MEMORY")
-        if memory:
-            cmd += ["--memory", memory]
-        cpus = os.getenv("SCAN_SIDECAR_CPUS")
-        if cpus:
-            cmd += ["--cpus", cpus]
-        network = os.getenv("SCAN_SIDECAR_NETWORK")
+        cmd = ["docker", "run", "--rm", "--name", container]
+        # Label so an orphan reaper can target exactly our sidecars.
+        cmd += ["--label", _LABEL_ROLE, "--label", f"trusca.scan={request.scan_uuid.hex}"]
+        cmd += _security_run_args()
+
+        # Resource bounds default ON (untrusted build must not OOM the host).
+        memory = _safe_token(
+            "SCAN_SIDECAR_MEMORY", os.getenv("SCAN_SIDECAR_MEMORY", _DEFAULT_MEMORY)
+        )
+        cmd += ["--memory", memory]
+        cpus = _safe_token(
+            "SCAN_SIDECAR_CPUS", os.getenv("SCAN_SIDECAR_CPUS", _DEFAULT_CPUS)
+        )
+        cmd += ["--cpus", cpus]
+
+        # Egress: the build needs package registries (gradle → google/maven), so we
+        # cannot block all egress. An unrestricted default bridge also reaches the
+        # internal network (postgres/redis) + the internet (exfil/SSRF). Recommend
+        # an isolated, allow-listed network via SCAN_SIDECAR_NETWORK; warn when unset.
+        network = os.getenv("SCAN_SIDECAR_NETWORK", "").strip()
         if network:
-            cmd += ["--network", network]
+            cmd += ["--network", _safe_token("SCAN_SIDECAR_NETWORK", network)]
+        else:
+            log.warning(
+                "scan_sidecar_unrestricted_egress",
+                scan_id=str(request.scan_uuid),
+                detail=(
+                    "sidecar runs on the default bridge with unrestricted egress; "
+                    "set SCAN_SIDECAR_NETWORK to an isolated, allow-listed network"
+                ),
+            )
 
         cmd += volume_run_args()
+        # Sidecar env is a CURATED ALLOW-LIST — never the worker's environment.
+        # Worker secrets (SECRET_KEY / DATABASE_URL / *_WEBHOOK_URL / API keys)
+        # MUST NOT reach an untrusted-build sidecar; only these three benign,
+        # cdxgen-relevant vars are forwarded. (Enforced by a negative test.)
         cmd += ["-e", "HOME=/tmp/sbomhome"]
         if request.fetch_license:
             cmd += ["-e", "FETCH_LICENSE=true"]
@@ -241,10 +353,12 @@ class LocalDockerExecutor(ScanExecutor):
             cmd += ["-e", "CDXGEN_DEBUG_MODE=debug"]
 
         # --entrypoint sh ... -c <script> <argv0> <src> <out> <spec>
+        # Validate the (operator-controlled) image ref as a single bare token too,
+        # for defense-in-depth symmetry with the resource knobs.
         cmd += [
             "--entrypoint",
             "sh",
-            image,
+            _safe_token("image", image),
             "-c",
             build_prep,
             "build-prep",

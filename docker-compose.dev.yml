@@ -305,6 +305,37 @@ services:
       retries: 6
       start_period: 60s
 
+  # ---- Docker socket proxy — opt-in hardening for SCAN_EXECUTOR=local_docker ---
+  # The dynamic-scan sidecar needs the Docker API, but mounting the raw socket on
+  # the worker grants root-equivalent host control. This Tecnativa proxy mounts
+  # the socket read-only and exposes a filtered TCP API that allows ONLY the
+  # endpoints the executor uses (containers + images; POST to create/start/pull)
+  # and blocks exec, swarm, networks, volumes, and the rest. It shrinks the API
+  # surface; it does NOT inspect create payloads, so the executor's own
+  # --cap-drop / no-new-privileges on the containers it launches stay essential.
+  #
+  # Opt-in: started only with `docker-compose --profile local-docker up`. To use
+  # the hardened path, set the worker's DOCKER_HOST=tcp://docker-socket-proxy:2375
+  # and REMOVE the raw /var/run/docker.sock mount from celery-worker above.
+  docker-socket-proxy:
+    image: ghcr.io/tecnativa/docker-socket-proxy:0.3.0
+    profiles: ["local-docker"]
+    restart: unless-stopped
+    environment:
+      CONTAINERS: "1"   # GET /containers/* (list / inspect / logs)
+      IMAGES: "1"       # GET /images/* + image pull
+      POST: "1"         # allow POST (create / start / pull) on the allowed resources
+      DELETE: "1"       # allow DELETE /containers/<id> so `docker rm -f` cleanup works
+      EXEC: "0"         # NO `docker exec`
+      VOLUMES: "0"
+      NETWORKS: "0"
+      SWARM: "0"
+      SYSTEM: "0"
+      INFO: "0"
+      AUTH: "0"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
 volumes:
   postgres-data:
   # Shared between backend (uploaded-archive save) and worker (extract/scan)
@@ -313,3 +344,14 @@ volumes:
   # H-6 — Trivy vulnerability DB cache, written by the worker (bootstrap +
   # weekly refresh) and read by the backend (admin health / disk panels).
   trivy-cache:
+
+networks:
+  # Isolated egress network for dynamic-scan sidecars (SCAN_EXECUTOR=local_docker).
+  # The untrusted build needs package registries (gradle → google/maven) so it
+  # keeps internet egress, but it is a SEPARATE network from the default one the
+  # app services share — so a malicious build cannot reach postgres / redis / the
+  # backend (SSRF / internal pivot). Point the sidecar at it with
+  # SCAN_SIDECAR_NETWORK=<compose-project>_scan-egress. A production deployment
+  # should further constrain egress to the needed registries via a firewall/proxy.
+  scan-egress:
+    driver: bridge
