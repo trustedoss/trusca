@@ -57,7 +57,7 @@ from typing import Any
 
 import structlog
 
-from core.config import scan_backend_mode
+from core.config import cdxgen_fetch_license, cdxgen_spec_version, scan_backend_mode
 from integrations._line_streamer import LineCallback, run_with_line_streaming
 from integrations._subprocess_env import scrubbed_env_for_cdxgen
 
@@ -110,6 +110,8 @@ def run_cdxgen(
     backend: str | None = None,
     line_callback: LineCallback | None = None,
     verbose: bool = False,
+    spec_version: str | None = None,
+    fetch_license: bool | None = None,
 ) -> CdxgenResult:
     """
     Generate a CycloneDX SBOM for `source_dir` under `output_dir`.
@@ -130,8 +132,17 @@ def run_cdxgen(
     sbom_path = output_dir / "cdxgen.cdx.json"
     mode = (backend or scan_backend_mode()).lower()
 
+    # Resolve the spec-version / fetch-license toggles. Explicit args (passed by
+    # the executor from the SbomGenRequest) win; otherwise fall back to the env
+    # knobs (CLAUDE.md core rule #11). Default stays 1.5 / no-fetch — backward
+    # compatible for direct callers (tests).
+    resolved_spec = spec_version if spec_version is not None else cdxgen_spec_version()
+    resolved_fetch = fetch_license if fetch_license is not None else cdxgen_fetch_license()
+
     if mode == "mock":
-        return _write_mock_sbom(sbom_path, source_dir=source_dir)
+        return _write_mock_sbom(
+            sbom_path, source_dir=source_dir, spec_version=resolved_spec
+        )
 
     if shutil.which("cdxgen") is None:
         raise CdxgenNotInstalled(
@@ -154,10 +165,14 @@ def run_cdxgen(
         "-o",
         str(sbom_path),
         "--spec-version",
-        "1.5",
+        resolved_spec,
         str(source_dir),
     ]
     env = _build_cdxgen_env(source_dir=source_dir, output_dir=output_dir, verbose=verbose)
+    if resolved_fetch:
+        # cdxgen resolves component licenses when FETCH_LICENSE is truthy (env,
+        # not a CLI flag — matches the BomLens sidecar). Off by default.
+        env["FETCH_LICENSE"] = "true"
     log.info(
         "cdxgen_start",
         source_dir=str(source_dir),
@@ -165,6 +180,8 @@ def run_cdxgen(
         gradle_args=env.get("CDXGEN_GRADLE_ARGS"),
         streaming=line_callback is not None,
         verbose=verbose,
+        spec_version=resolved_spec,
+        fetch_license=resolved_fetch,
     )
     try:
         completed = run_with_line_streaming(
@@ -314,7 +331,9 @@ def _load_sbom(path: Path) -> dict[str, Any]:
     return data
 
 
-def _write_mock_sbom(path: Path, *, source_dir: Path) -> CdxgenResult:
+def _write_mock_sbom(
+    path: Path, *, source_dir: Path, spec_version: str = "1.5"
+) -> CdxgenResult:
     """
     Emit a tiny but valid CycloneDX SBOM for the given source directory.
 
@@ -324,7 +343,7 @@ def _write_mock_sbom(path: Path, *, source_dir: Path) -> CdxgenResult:
     """
     sbom: dict[str, Any] = {
         "bomFormat": "CycloneDX",
-        "specVersion": "1.5",
+        "specVersion": spec_version,
         "serialNumber": f"urn:uuid:mock-{source_dir.name}",
         "version": 1,
         "metadata": {
