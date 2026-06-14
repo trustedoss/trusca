@@ -15,7 +15,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScanProgress } from "@/features/scan/ScanProgress";
+import { SbomConformancePanel } from "@/features/scan/SbomConformancePanel";
 import { ToolLogLine } from "@/features/scan/ToolLogLine";
+import { useSbomConformance } from "@/features/scan/useSbomConformance";
 import {
   useScanWebSocket,
   type ScanLogMessage,
@@ -107,6 +109,14 @@ export function ScanDetailPage() {
 
   const scan = scanQuery.data;
   const liveStatus: ScanStatus | undefined = scan?.status;
+
+  // ---- Received-SBOM conformance (model 3). Only meaningful for `kind: "sbom"`
+  // ingests; the hook stays dormant otherwise. A 404 (no verdict yet /
+  // unreachable) is swallowed by the hook (retry:false) and we simply render no
+  // panel — same quiet-degrade posture as the rest of this page.
+  const conformanceQuery = useSbomConformance(scan?.project_id, scanId, {
+    enabled: scan?.kind === "sbom",
+  });
 
   // ---- Live log stream. We pass through the existing hook so reconnection,
   // ring buffer, and the auth handshake are all reused.
@@ -272,6 +282,10 @@ export function ScanDetailPage() {
                 hideInlineLog
               />
             </section>
+
+            {scan.kind === "sbom" && conformanceQuery.data ? (
+              <SbomConformancePanel conformance={conformanceQuery.data} />
+            ) : null}
 
             <section
               className="flex min-h-0 flex-1 flex-col gap-2"

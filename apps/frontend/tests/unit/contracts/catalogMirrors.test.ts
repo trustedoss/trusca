@@ -30,7 +30,11 @@ import { NOTIFICATION_KINDS } from "@/features/notifications/api/notificationsAp
 import { KNOWN_OBLIGATION_KINDS } from "@/features/projects/api/obligationsApi";
 import { ALL_VULNERABILITY_STATUSES } from "@/features/projects/lib/vulnerabilityTransitions";
 import { visualFor } from "@/features/projects/components/ProjectStatusBadge";
-import { SCAN_KIND_VALUES, SCAN_STATUS_VALUES } from "@/lib/projectsApi";
+import {
+  SBOM_CHECK_IDS,
+  SCAN_KIND_VALUES,
+  SCAN_STATUS_VALUES,
+} from "@/lib/projectsApi";
 
 import enAdmin from "@/locales/en/admin.json";
 import koAdmin from "@/locales/ko/admin.json";
@@ -196,6 +200,50 @@ describe("scan kinds — FE mirror of the scan `kind` set", () => {
       }
     },
   );
+});
+
+describe("SBOM conformance — FE mirror of services/sbom_conformance.CHECK_IDS", () => {
+  // Same latent-drift class as scan kinds: the conformance panel renders each
+  // check label through a dynamic `conformance.check_id.${id}` key and the
+  // FE mirror constant `SBOM_CHECK_IDS` drives nothing structurally but pins
+  // the canonical id set + order against the backend. A check added on the BE
+  // would otherwise render only the backend-supplied `check.label` fallback
+  // (no localized string, no KO mirror) and slip through.
+  const RESULTS = ["pass", "warn", "fail"] as const;
+
+  it("matches the backend's check id set, in canonical order", () => {
+    expect([...SBOM_CHECK_IDS]).toEqual([
+      "timestamp",
+      "tools",
+      "top-component",
+      "name-version",
+      "purl",
+      "no-generic",
+      "transitive",
+      "license",
+      "hash",
+    ]);
+  });
+
+  it.each([
+    ["en", enScans],
+    ["ko", koScans],
+  ])("every check id owns a %s `conformance.check_id.*` label", (_locale, ns) => {
+    const labels = labelMap(ns, "conformance", "check_id");
+    for (const id of SBOM_CHECK_IDS) {
+      expect(labels[id], `conformance.check_id.${id} missing`).toBeTruthy();
+    }
+  });
+
+  it.each([
+    ["en", enScans],
+    ["ko", koScans],
+  ])("every result owns a %s `conformance.result.*` label", (_locale, ns) => {
+    const labels = labelMap(ns, "conformance", "result");
+    for (const result of RESULTS) {
+      expect(labels[result], `conformance.result.${result} missing`).toBeTruthy();
+    }
+  });
 });
 
 describe("vulnerability statuses — label-map half of the 7-state mirror", () => {
