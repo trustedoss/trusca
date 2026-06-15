@@ -168,8 +168,29 @@ test.describe("@auth recovery + oauth", () => {
   }) => {
     const auth = new AuthHarness(page);
 
-    // The page itself does no network IO for the OAuth error path — it's
-    // pure URL → mapped i18n key → Alert. Navigating directly is sufficient.
+    // The OAuth buttons render ONLY for providers the backend reports as
+    // `configured` (GET /auth/oauth/providers — github/google are configured
+    // only when their client id AND secret env vars are set). CI deliberately
+    // ships no OAuth client credentials, so the live endpoint returns both
+    // providers unconfigured and LoginPage CORRECTLY hides the buttons. Stub
+    // the endpoint so this scenario deterministically exercises the
+    // configured-provider rendering path, independent of the runner's OAuth
+    // env. (The real authorize/callback flow is out of scope — we never click.)
+    await page.route("**/auth/oauth/providers", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          providers: [
+            { provider: "github", configured: true },
+            { provider: "google", configured: true },
+          ],
+        }),
+      }),
+    );
+
+    // The oauth_denied error itself does no network IO — it's pure URL →
+    // mapped i18n key → Alert. Navigating directly is sufficient.
     await page.goto(`${auth.baseUrl}/login?error=oauth_denied`);
     await expect(page.getByTestId("login-page")).toBeVisible();
 
