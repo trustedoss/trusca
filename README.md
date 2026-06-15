@@ -7,7 +7,7 @@
 <p align="center"><em>TrustedOSS SCA — open-source software composition analysis</em></p>
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/badge/release-v0.11.1-0f766e.svg)](CHANGELOG.md)
+[![Release](https://img.shields.io/badge/release-v0.12.0-0f766e.svg)](CHANGELOG.md)
 [![Docs](https://img.shields.io/badge/docs-trustedoss.github.io-0f172a.svg)](https://trustedoss.github.io/trusca/)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/13060/badge)](https://www.bestpractices.dev/projects/13060)
 

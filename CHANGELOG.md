@@ -7,6 +7,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.12.0] — 2026-06-15
+
+Two feature themes: **received-SBOM ingest with conformance scoring** (a customer
+hands TRUSCA an SBOM their own tooling produced) and an **on-prem dynamic
+per-environment scan executor** (the worker can launch a per-environment cdxgen
+sidecar for a toolchain it does not carry, closing the Android gap). Both are
+additive and opt-in — existing scans are unchanged.
+
 Model 3 — **received-SBOM ingest with conformance scoring**. A customer can hand
 TRUSCA an SBOM their own tooling already produced (rather than having TRUSCA
 clone and build the source), and TRUSCA validates its quality, matches CVEs,
