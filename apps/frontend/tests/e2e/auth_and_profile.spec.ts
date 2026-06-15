@@ -113,7 +113,7 @@ test.describe("@manual-aligned profile + connected accounts", () => {
   // spec authenticates without driving a real IdP callback. Unlinking the
   // sole identity must trip `OAuthUnlinkBlocksLoginError` and surface the
   // inline red banner (`profile-unlink-blocks-login`).
-  test("3) last-only OAuth Unlink surfaces blocks-login alert", async ({
+  test("3) last-only OAuth Unlink is pre-disabled (blocks-login guard)", async ({
     page,
   }, testInfo) => {
     const seed = tryAcquireSeed(testInfo, {
@@ -137,11 +137,15 @@ test.describe("@manual-aligned profile + connected accounts", () => {
     await profile.gotoProfile();
     await profile.expectConnectedAccounts(["github"]);
 
-    await profile.unlinkProvider("github");
-    await profile.expectUnlinkBlocked("github");
+    // M-16 (PR #362): for the last identity of an OAuth-only account the Unlink
+    // button is PRE-DISABLED with an explanatory tooltip — the user can never
+    // start the unlink, so there is no click → 409 → red-alert flow to drive.
+    // (The backend still 409s as defense-in-depth; the inline blocks-login
+    // alert only appears if a disabled-button guard is ever bypassed.)
+    await profile.expectUnlinkPreDisabled("github");
 
-    // Post-condition: the identity row is still present (no row deletion
-    // happened) and a re-fetch would still report exactly one identity.
+    // Post-condition: the identity row is still present (the guard prevented
+    // any deletion) and a re-fetch still reports exactly one identity.
     await profile.expectConnectedAccounts(["github"]);
   });
 

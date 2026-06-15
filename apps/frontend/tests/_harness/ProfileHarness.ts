@@ -154,6 +154,30 @@ export class ProfileHarness {
   }
 
   /**
+   * Assert the M-16 pre-disable guard: for the LAST identity of an OAuth-only
+   * account (no password fallback), the Unlink button is rendered **disabled**
+   * with an explanatory tooltip on its wrapper — the user can never start the
+   * unlink (vs. the older click → 409 → red-alert flow). Mirrors the unit test
+   * `UserProfilePage.test.tsx` "M-16: ... Unlink disabled with explanatory
+   * tooltip". The row stays in place.
+   */
+  async expectUnlinkPreDisabled(provider: OAuthProvider): Promise<void> {
+    const row = this.providerRow(provider);
+    await expect(row).toBeVisible({ timeout: DEFAULT_TIMEOUT_MS });
+    await expect(row.getByTestId("profile-identity-unlink")).toBeDisabled({
+      timeout: DEFAULT_TIMEOUT_MS,
+    });
+    // The wrapping span carries the blocks-login tooltip (the disabled Button
+    // suppresses its own title via `disabled:pointer-events-none`). Assert the
+    // attribute is present + non-empty rather than a specific string, so KO
+    // drift cannot break this scenario (locale-agnostic).
+    const tooltip = await row
+      .getByTestId("profile-identity-unlink-wrap")
+      .getAttribute("title");
+    expect((tooltip ?? "").trim().length).toBeGreaterThan(0);
+  }
+
+  /**
    * Assert the success toast (`unlinked` key) surfaced — used by happy-path
    * scenarios that have a fallback auth method (password or another OAuth).
    */

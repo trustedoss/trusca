@@ -54,15 +54,25 @@ test.describe("@integrations api keys + webhooks page", () => {
   }, testInfo) => {
     const seed = tryAcquireSeed(testInfo, {
       projectNames: [PROJECT_NAME],
+      extraMembers: 1,
+      extraTeamAdmin: true,
     });
     if (seed === null) return;
 
-    // Sign in as the seeded developer-role user. The seed creates a fresh
-    // team + a single project; that's enough to satisfy /v1/api-keys list
-    // (it will simply return zero items).
+    // Sign in as a TEAM_ADMIN, not the primary developer-role user. The
+    // create-key button is role-gated to team_admin-or-above (L-18, commit
+    // 3027063 — developers are deliberately hidden from the management entry
+    // point, and the backend 403s a developer's POST /v1/api-keys anyway). The
+    // primary seeded user is always a developer, so we log in as the seeded
+    // team_admin extra member (same pattern as license_waive.spec.ts).
+    const admin = seed.extra_members?.find((m) => m.role === "team_admin");
+    if (admin == null) {
+      testInfo.skip(true, "seed did not return a team_admin extra member");
+      return;
+    }
     const auth = new AuthHarness(page);
     await auth.gotoLogin();
-    await auth.login(seed.email, seed.password);
+    await auth.login(admin.email, seed.password);
 
     const integrations = new IntegrationsHarness(page);
     await integrations.goto();
