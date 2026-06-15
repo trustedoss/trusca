@@ -42,6 +42,7 @@
 ## Feature highlights
 
 - Component detection across 30+ language ecosystems (cdxgen, CycloneDX generator), with direct vs. transitive dependency-graph depth
+- Dynamic per-environment scanning (opt-in, on-prem) — `SCAN_EXECUTOR=local_docker` launches a per-environment cdxgen sidecar for toolchains the worker does not carry; closes the Android gap (no SDK in the worker → 0 components) by routing to the Android SDK image. See the [admin guide](https://trustedoss.github.io/trusca/docs/admin-guide/dynamic-scan-executor)
 - License classification with allowed / conditional / forbidden tiers, scored against a fixed classification catalog (dynamic per-team policy editing is on the [roadmap](ROADMAP.md))
 - Vulnerability detection via Trivy's unified DB (NVD + OSV + GitHub Advisory + EPSS + KEV) with weekly DB refresh, automatic re-detection of new CVEs, 7-state VEX triage, EPSS prioritization (column / sort / filter / policy-gate threshold), and per-finding `fixed_version`
 - Container image scanning for OS-package CVEs (Trivy)
