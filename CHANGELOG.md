@@ -44,6 +44,49 @@ classifies licenses, and runs the build gate on it.
   verdict; EN / KO), and the user-guide **Scans** / **SBOM** pages now document
   the `sbom` scan kind, received-SBOM upload, and the conformance verdict. (#413)
 
+---
+
+**Dynamic per-environment scan executor** (BomLens-style, on-prem). The
+SBOM-generation stage is now pluggable: instead of always running cdxgen in the
+worker, the worker can launch a per-environment **sidecar** container for a
+toolchain it does not carry. Opt-in and on-prem single-tenant only; the default
+is unchanged.
+
+### Added
+- **`SCAN_EXECUTOR=local_docker`** — an opt-in executor that launches a
+  per-environment cdxgen sidecar over the host Docker socket, runs build-prep +
+  cdxgen there, and collects the SBOM. The default `inprocess` executor is
+  byte-for-byte unchanged. Behind a `ScanExecutor` abstraction with environment
+  detection ported from BomLens `source-detect.sh`. (#417, #418, #419)
+- **Android dependency-graph scanning** — the worker has no Android SDK, so the
+  Android Gradle Plugin cannot resolve dependencies (0 components). Routing
+  Android to the `sbom-scanner-android-sdk<API>` sidecar resolves the full graph
+  (verified 0 → 67 components on a sample). Android is the default routed
+  environment; the routed set is configurable via `SCAN_LOCAL_DOCKER_ENVS`. (#419, #422)
+- **cdxgen output toggles** — `CDXGEN_SPEC_VERSION` (1.5 default, set 1.6) and
+  `CDXGEN_FETCH_LICENSE` (off by default) tune the SBOM spec version and
+  component-license resolution, applied by both the in-process and sidecar paths. (#420)
+- **Sidecar security hardening** — `named` workspace-only volume mounting by
+  default (never the cosign key), `--cap-drop=ALL` + the minimal build set,
+  `no-new-privileges`, default memory / CPU / pids bounds, a curated env
+  allow-list (no worker secrets), refusal of unpinned `:latest` images, an
+  isolated egress network, an opt-in Docker socket proxy, and PEM-key redaction
+  on sidecar output. Passed a security-reviewer Producer-Reviewer. (#421)
+
+### Changed
+- Generalized the sidecar executor from Android-only to any detected
+  environment. Verification on Colima showed our all-in-one worker resolves
+  transitive dependencies for node / go / rust / ruby / java / python / php /
+  dotnet **identically** to the dedicated cdxgen language images, so those route
+  only for per-build isolation (opt-in), not detection — Android is the one
+  genuine gap and the only default-routed environment. (#422)
+
+### Documentation
+- New admin-guide page **Dynamic scan executor** (security model, in-code
+  containment defaults, opt-in setup; EN / KO). A deferred implementation plan
+  for the SaaS Kubernetes Job executor is recorded in
+  `docs/dynamic-scan-k8s-executor-plan.md`. (#421, #423)
+
 ## [0.11.1] — 2026-06-13
 
 A UI / branding patch release. No backend or API changes — only the frontend
