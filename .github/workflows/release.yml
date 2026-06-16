@@ -143,21 +143,20 @@ jobs:
           # no tag yet. The merge job stitches the digests into a manifest
           # list and applies the version tags.
           outputs: type=image,name=${{ env.REGISTRY_NAMESPACE }}/${{ matrix.image.image }},push-by-digest=true,name-canonical=true,push=true
-          # Disable provenance / SBOM attestations: they wrap the image in an
-          # index whose digest differs from build-push-action's reported
-          # `digest` output, so the merge job's `imagetools create` would look
-          # up a digest the registry never stored ("manifest not found") — seen
-          # on a fully-cached leg (the backend). Plain per-arch manifests keep
-          # the reported digest == the pushed digest.
+          # No provenance / SBOM attestations: the merge job assembles the
+          # multi-arch list from PLAIN per-arch manifests via `imagetools create`,
+          # and per-arch attestation indexes do not compose into that list. This
+          # is the standard posture for the push-by-digest + merge pattern.
           provenance: false
           sbom: false
-          # No GHA layer cache: a fully-cached leg (the light backend) makes
-          # push-by-digest a no-op — buildx reports a digest it never pushed, so
-          # the merge job's `imagetools create` fails with "manifest not found".
-          # Releases are infrequent; a cache-free native build stays well under
-          # the job timeout. (If caching is reintroduced, verify every leg pushes
-          # its reported digest first.)
-          no-cache: true
+          # Per-image-per-arch GHA layer cache so the six legs never clobber each
+          # other (linux/amd64 has a slash → use the slash-free `arch`). NOTE: a
+          # fully-cached leg still pushes its manifest by digest — the earlier
+          # "manifest not found" failures were a digest-artifact name collision
+          # (`trusca-backend` is a prefix of `trusca-backend-worker`), fixed in the
+          # merge job's suffix-anchored download pattern, NOT a cache no-op.
+          cache-from: type=gha,scope=release-${{ matrix.image.image }}-${{ matrix.platform.arch }}
+          cache-to: type=gha,scope=release-${{ matrix.image.image }}-${{ matrix.platform.arch }},mode=max
 
       - name: Export digest
         run: |
