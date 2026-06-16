@@ -143,6 +143,14 @@ jobs:
           # no tag yet. The merge job stitches the digests into a manifest
           # list and applies the version tags.
           outputs: type=image,name=${{ env.REGISTRY_NAMESPACE }}/${{ matrix.image.image }},push-by-digest=true,name-canonical=true,push=true
+          # Disable provenance / SBOM attestations: they wrap the image in an
+          # index whose digest differs from build-push-action's reported
+          # `digest` output, so the merge job's `imagetools create` would look
+          # up a digest the registry never stored ("manifest not found") — seen
+          # on a fully-cached leg (the backend). Plain per-arch manifests keep
+          # the reported digest == the pushed digest.
+          provenance: false
+          sbom: false
           # Per-image-per-arch GHA cache scope so the six legs never clobber
           # each other's layer cache (linux/amd64 has a slash → use `arch`).
           cache-from: type=gha,scope=release-${{ matrix.image.image }}-${{ matrix.platform.arch }}
