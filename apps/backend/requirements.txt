@@ -19,7 +19,12 @@ uvicorn[standard]==0.32.1
 # Request, BackgroundTask, StreamingResponse, CORSMiddleware, WebSocket,
 # types.{ASGIApp,Receive,Scope,Send}) — verified by import smoke against 1.0.1.
 # 1.0.1 also carries forward the prior CVE-2025-62727 Range-header DoS fix.
-starlette==1.0.1
+# 2026-06-16 bump 1.0.1 → 1.3.1: fixes CVE-2026-48818 (SSRF / NTLM credential
+# theft via UNC paths, fix=1.1.0) and CVE-2026-54283 (request.form() size limits
+# silently ignored, fix=1.3.1) — both HIGH, reachable in the HTTP backend. No
+# fastapi bump needed: fastapi 0.133.1 pins `starlette>=0.40.0` with NO upper
+# bound (verified on PyPI), so 1.3.1 resolves cleanly.
+starlette==1.3.1
 sqlalchemy[asyncio]==2.0.36
 asyncpg==0.30.0
 psycopg2-binary==2.9.10
@@ -31,7 +36,9 @@ httpx==0.28.1
 # python-multipart 0.0.27 fixes CVE-2026-42561 (DoS via boundary parsing in
 # multipart/form-data). 0.0.22 still ships the regression. 0.0.20 was the
 # original CVE-2026-24486 path-traversal fix line.
-python-multipart==0.0.27
+# 2026-06-16 bump 0.0.27 → 0.0.30: fixes CVE-2026-53539 (HIGH — quadratic-time
+# querystring parsing DoS).
+python-multipart==0.0.30
 # Auth — Phase 1 PR #5.
 # bcrypt is pinned to 4.0.1 because passlib 1.7.4 is incompatible with
 # bcrypt >= 4.1 (passlib reads bcrypt.__about__.__version__, which 4.1+ removed).
@@ -51,7 +58,9 @@ pyasn1==0.6.3
 # resolved into the image by python-jose[cryptography]; pinning it keeps Trivy /
 # pip-audit able to track CVEs against a named direct dependency and prevents a
 # future jose bump from silently moving the Fernet surface out from under us.
-cryptography==48.0.0
+# 2026-06-16 bump 48.0.0 → 48.0.1: fixes GHSA-537c-gmf6-5ccf (HIGH — vulnerable
+# OpenSSL statically included in the cryptography wheels).
+cryptography==48.0.1
 slowapi==0.1.9
 email-validator==2.2.0
 # Phase 6 PR #18 — async SMTP for the notifications module. aiosmtplib is the
