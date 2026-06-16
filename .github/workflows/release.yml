@@ -151,10 +151,13 @@ jobs:
           # the reported digest == the pushed digest.
           provenance: false
           sbom: false
-          # Per-image-per-arch GHA cache scope so the six legs never clobber
-          # each other's layer cache (linux/amd64 has a slash → use `arch`).
-          cache-from: type=gha,scope=release-${{ matrix.image.image }}-${{ matrix.platform.arch }}
-          cache-to: type=gha,scope=release-${{ matrix.image.image }}-${{ matrix.platform.arch }},mode=max
+          # No GHA layer cache: a fully-cached leg (the light backend) makes
+          # push-by-digest a no-op — buildx reports a digest it never pushed, so
+          # the merge job's `imagetools create` fails with "manifest not found".
+          # Releases are infrequent; a cache-free native build stays well under
+          # the job timeout. (If caching is reintroduced, verify every leg pushes
+          # its reported digest first.)
+          no-cache: true
 
       - name: Export digest
         run: |
