@@ -17,10 +17,22 @@ name: Release (publish container images)
 # W4). Releases <= 0.10.0 stay under the pre-rename names backend /
 # backend-worker / frontend so that older pinned compose files keep pulling.
 #
+# ── Build topology: native-arch runners (no QEMU) ──────────────────────────
+#   Each platform is built on a NATIVE GitHub-hosted runner — amd64 on
+#   ubuntu-22.04, arm64 on ubuntu-24.04-arm — following Docker's "distributed
+#   multi-platform build" pattern. QEMU emulation was dropped: the heavy worker
+#   image (cdxgen / node / scancode / JRE / dotnet) hung for ~6h on the
+#   emulated arm64 nodejs/cdxgen layers and was killed by the job timeout.
+#   Native arm64 runners are free for PUBLIC repos.
+#
+#   The `build` matrix (3 images × 2 platforms = 6 jobs) pushes each platform
+#   image BY DIGEST ONLY (no tags). The `merge` job then assembles a per-image
+#   multi-arch manifest list from those digests and applies the version tags.
+#
 # Tag strategy (CLAUDE.md core rule #9 — NEVER `:latest`):
 #   git tag v2.0.1  →  image tags `2.0.1` (immutable) and `2.0` (movable minor).
 #   No `latest` tag is produced. docker/metadata-action's semver patterns drive
-#   this — see the `tags:` block in the metadata step.
+#   this — see the `tags:` block in the metadata step of the merge job.
 #
 # ── Operator one-time setup (required, see docs-site installation guide) ──
 #   1. ghcr packages inherit the repo's GITHUB_TOKEN write scope below — no
@@ -31,6 +43,8 @@ name: Release (publish container images)
 #   2. For anonymous `docker pull` (so users install without `docker login`),
 #      set each package's visibility to PUBLIC once after the first push:
 #      ghcr package → Package settings → Change visibility → Public.
+#   3. Native arm64 runners (ubuntu-24.04-arm) are free for PUBLIC repos only;
+#      if the repo is ever made private this workflow needs a billing review.
 
 on:
   push:
@@ -54,16 +68,20 @@ permissions:
   contents: read
   packages: write
 
+env:
+  REGISTRY_NAMESPACE: ghcr.io/trustedoss
+
 jobs:
-  publish:
-    name: publish ${{ matrix.image }} (multi-arch)
-    runs-on: ubuntu-22.04
+  build:
+    name: build ${{ matrix.image.image }} (${{ matrix.platform.arch }})
+    runs-on: ${{ matrix.platform.runner }}
     strategy:
-      # One image's build failing should not abort the others — surfacing all
-      # three results in one run is more useful than fail-fast here.
+      # One leg failing should not abort the others — surfacing all six
+      # results in one run is more useful than fail-fast here.
       fail-fast: false
       matrix:
-        include:
+        # 3 images × 2 platforms = 6 native build jobs.
+        image:
           - image: trusca-backend
             dockerfile: apps/backend/Dockerfile.prod
             context: apps/backend
@@ -76,14 +94,19 @@ jobs:
             dockerfile: apps/frontend/Dockerfile.prod
             context: apps/frontend
             description: TRUSCA frontend (React SPA on nginx).
+        platform:
+          # `arch` (amd64 / arm64) is the slash-free token used in cache
+          # scopes and artifact names; `platform` (linux/amd64) is what
+          # buildx consumes.
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-22.04
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      # QEMU provides the arm64 emulation layer so a single amd64 runner can
-      # produce the linux/arm64 image alongside linux/amd64.
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -97,11 +120,87 @@ jobs:
           # no separate PAT is required.
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Derive OCI labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY_NAMESPACE }}/${{ matrix.image.image }}
+          labels: |
+            org.opencontainers.image.title=${{ matrix.image.image }}
+            org.opencontainers.image.description=${{ matrix.image.description }}
+            org.opencontainers.image.source=https://github.com/trustedoss/trusca
+            org.opencontainers.image.licenses=Apache-2.0
+
+      - name: Build & push by digest (${{ matrix.platform.platform }})
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.image.context }}
+          file: ${{ matrix.image.dockerfile }}
+          platforms: ${{ matrix.platform.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Push the single-platform image keyed only by its content digest —
+          # no tag yet. The merge job stitches the digests into a manifest
+          # list and applies the version tags.
+          outputs: type=image,name=${{ env.REGISTRY_NAMESPACE }}/${{ matrix.image.image }},push-by-digest=true,name-canonical=true,push=true
+          # Per-image-per-arch GHA cache scope so the six legs never clobber
+          # each other's layer cache (linux/amd64 has a slash → use `arch`).
+          cache-from: type=gha,scope=release-${{ matrix.image.image }}-${{ matrix.platform.arch }}
+          cache-to: type=gha,scope=release-${{ matrix.image.image }}-${{ matrix.platform.arch }},mode=max
+
+      - name: Export digest
+        run: |
+          mkdir -p "${RUNNER_TEMP}/digests"
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${RUNNER_TEMP}/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.image.image }}-${{ matrix.platform.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    name: merge ${{ matrix.image.image }} manifest
+    runs-on: ubuntu-22.04
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - image: trusca-backend
+            description: TRUSCA backend (FastAPI API).
+          - image: trusca-backend-worker
+            description: TRUSCA Celery worker (cdxgen / scancode / Trivy / JRE).
+          - image: trusca-frontend
+            description: TRUSCA frontend (React SPA on nginx).
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          # Both arch artifacts for this image (digest-<image>-amd64,
+          # digest-<image>-arm64) land in one directory.
+          pattern: digest-${{ matrix.image.image }}-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/digests
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Derive image tags & OCI labels
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/trustedoss/${{ matrix.image }}
+          images: ${{ env.REGISTRY_NAMESPACE }}/${{ matrix.image.image }}
           # On a tag push the ref drives the semver; on workflow_dispatch we
           # feed the operator-supplied tag through the same patterns. Neither
           # produces `latest` — there is no `type=raw,value=latest` line.
@@ -109,21 +208,33 @@ jobs:
             type=semver,pattern={{version}},value=${{ github.event.inputs.tag }}
             type=semver,pattern={{major}}.{{minor}},value=${{ github.event.inputs.tag }}
           labels: |
-            org.opencontainers.image.title=${{ matrix.image }}
-            org.opencontainers.image.description=${{ matrix.description }}
+            org.opencontainers.image.title=${{ matrix.image.image }}
+            org.opencontainers.image.description=${{ matrix.image.description }}
             org.opencontainers.image.source=https://github.com/trustedoss/trusca
             org.opencontainers.image.licenses=Apache-2.0
 
-      - name: Build & push (linux/amd64, linux/arm64)
-        uses: docker/build-push-action@v6
-        with:
-          context: ${{ matrix.context }}
-          file: ${{ matrix.dockerfile }}
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          # Per-image GHA cache scope so the three matrix legs do not clobber
-          # each other's layer cache.
-          cache-from: type=gha,scope=release-${{ matrix.image }}
-          cache-to: type=gha,scope=release-${{ matrix.image }},mode=max
+      - name: Create multi-arch manifest list & push
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          # Expand metadata-action's tags ("type=...,value=..." resolved to
+          # bare `name:tag` lines) into repeated `-t` flags, then append the
+          # per-arch source images addressed by digest. The unquoted command
+          # substitutions below MUST word-split into separate args — that is
+          # the mechanism, so SC2046 is suppressed intentionally.
+          # shellcheck disable=SC2046
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf "${REGISTRY_NAMESPACE}/${IMAGE}@sha256:%s " *)
+        env:
+          REGISTRY_NAMESPACE: ${{ env.REGISTRY_NAMESPACE }}
+          IMAGE: ${{ matrix.image.image }}
+
+      - name: Inspect pushed manifest
+        run: |
+          # `{{version}}` is the immutable tag — verify the assembled list
+          # carries both amd64 and arm64 entries.
+          docker buildx imagetools inspect \
+            "${REGISTRY_NAMESPACE}/${IMAGE}:${{ steps.meta.outputs.version }}"
+        env:
+          REGISTRY_NAMESPACE: ${{ env.REGISTRY_NAMESPACE }}
+          IMAGE: ${{ matrix.image.image }}
