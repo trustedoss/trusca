@@ -168,7 +168,10 @@ jobs:
       - name: Upload digest
         uses: actions/upload-artifact@v4
         with:
-          name: digest-${{ matrix.image.image }}-${{ matrix.platform.arch }}
+          # Image name LAST so the merge job's suffix-anchored download pattern
+          # (`digest-*-<image>`) cannot prefix-match a longer image name — e.g.
+          # `trusca-backend` must NOT also pull in `trusca-backend-worker`.
+          name: digest-${{ matrix.platform.arch }}-${{ matrix.image.image }}
           path: ${{ runner.temp }}/digests/*
           if-no-files-found: error
           retention-days: 1
@@ -191,9 +194,10 @@ jobs:
       - name: Download digests
         uses: actions/download-artifact@v4
         with:
-          # Both arch artifacts for this image (digest-<image>-amd64,
-          # digest-<image>-arm64) land in one directory.
-          pattern: digest-${{ matrix.image.image }}-*
+          # Suffix-anchored on the image name so `trusca-backend` matches only
+          # digest-amd64-trusca-backend / digest-arm64-trusca-backend — NOT
+          # digest-*-trusca-backend-worker. Both arch artifacts land in one dir.
+          pattern: digest-*-${{ matrix.image.image }}
           merge-multiple: true
           path: ${{ runner.temp }}/digests
 
