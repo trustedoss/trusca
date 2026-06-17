@@ -555,8 +555,19 @@ async def authenticate_api_key(
         a sentinel hash so the timing distribution is similar between the
         "wrong prefix" and "right prefix, wrong secret" branches. This is
         defence in depth — a sophisticated attacker could still distinguish
-        via DB latency, but that requires repeated probes which trigger
-        rate limiting.
+        via DB latency, but that requires repeated probes.
+
+    Rate-limit coverage (RED-team F-1):
+      Repeated probes are throttled ONLY on routes that carry a limiter
+      decorator keyed by ``_authenticated_user_key`` (which buckets a ``tos_``
+      bearer by ``apikey:<prefix>`` before this verify runs) — e.g. the
+      scan-trigger / sbom-ingest writes and, since the F-1 fix, the
+      api-key-accepting read GETs (``GET /v1/scans/{id}``,
+      ``.../scans/{id}/conformance``). The limiter is decorator-opt-in
+      (``default_limits=[]``), so any FUTURE route that accepts a key bearer
+      MUST add ``@limiter.shared_limit(api_read_rate_limit, scope="api_read",
+      key_func=_authenticated_user_key)`` (or a stricter policy) or it inherits
+      zero throttling on this bcrypt path.
     """
     parsed = parse_bearer(plaintext)
     if parsed is None:

@@ -674,6 +674,34 @@ async def test_get_scan_super_admin_bypasses_team_check(client) -> None:
     assert response.json()["id"] == str(scan_id)
 
 
+async def test_get_scan_is_rate_limited(client, monkeypatch) -> None:
+    """F-1 (RED-team, Low): GET /v1/scans/{id} accepts a tos_ API key but used
+    to carry NO limiter, so an unbounded Bearer-tos_ flood saturated workers on
+    the per-miss dummy bcrypt. The endpoint now opts into the api_read bucket.
+
+    Set the cap to 2/min, fire three reads as the same actor, and assert the
+    third trips 429 + RFC 7807 + Retry-After.
+    """
+    monkeypatch.setenv("API_READ_RATE_LIMIT", "2/minute")
+
+    team, user, project = await _seed(client, role="developer")
+    scan_id = await _seed_scan(client, project_id=project.id)
+    headers = _bearer_for(user)
+
+    r1 = await client.get(f"/v1/scans/{scan_id}", headers=headers)
+    r2 = await client.get(f"/v1/scans/{scan_id}", headers=headers)
+    assert r1.status_code == 200, r1.text
+    assert r2.status_code == 200, r2.text
+
+    r3 = await client.get(f"/v1/scans/{scan_id}", headers=headers)
+    assert r3.status_code == 429, r3.text
+    assert r3.headers["content-type"].startswith(PROBLEM_JSON)
+    assert r3.headers["Retry-After"] == "60"
+    body = r3.json()
+    assert body["status"] == 429
+    assert body["title"] == "Too Many Requests"
+
+
 async def test_get_scan_unknown_id_returns_404(client) -> None:
     _, admin, _ = await _seed(client, role="developer", is_superuser=True)
     headers = _bearer_for(admin)
