@@ -339,6 +339,27 @@ def scan_trigger_rate_limit() -> str:
     return os.getenv("SCAN_TRIGGER_RATE_LIMIT", "20/minute")
 
 
+def api_read_rate_limit() -> str:
+    """slowapi limit string for api-key-accepting read GETs (per actor).
+
+    Covers the scan-status / SBOM-conformance polling endpoints that the CI
+    scan-action hits with a ``tos_`` API key. Those routes had NO limiter
+    decorator, and because the limiter is decorator-opt-in
+    (``default_limits=[]``) an undecorated route has zero throttling. Every
+    miss in :func:`services.api_key_service.authenticate_api_key` pays a
+    constant-time dummy bcrypt (cost 12, ~50-100ms CPU), so an unbounded flood
+    of ``Authorization: Bearer tos_...`` requests on these GETs is a CPU
+    exhaustion amplifier (RED-team F-1, Low — ``docs/security/red-team-2026-06-17.md``).
+
+    Keyed by actor via ``_authenticated_user_key`` (``apikey:<prefix>`` for a
+    key, ``user:<sub>`` for a JWT, ``ip:<addr>`` otherwise) so the key-prefix
+    bucket caps failed/garbage ``tos_`` floods BEFORE the bcrypt verify on the
+    hot path. Default 60/minute is generous for a CI poller (typically 1 req
+    every few seconds) while bounding abuse.
+    """
+    return os.getenv("API_READ_RATE_LIMIT", "60/minute")
+
+
 def scan_concurrency_cap_per_team() -> int:
     """Max concurrent (queued+running) scans allowed per team.
 

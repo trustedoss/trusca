@@ -285,6 +285,15 @@ def test_scan_trigger_rate_limit_default_and_override() -> None:
     assert scan_trigger_rate_limit() == "5/minute"
 
 
+def test_api_read_rate_limit_default_and_override() -> None:
+    # F-1 (RED-team, Low): per-actor cap for the api-key-accepting read GETs.
+    from core.config import api_read_rate_limit
+
+    assert api_read_rate_limit() == "60/minute"
+    os.environ["API_READ_RATE_LIMIT"] = "10/minute"
+    assert api_read_rate_limit() == "10/minute"
+
+
 def test_scan_concurrency_cap_default_and_override() -> None:
     from core.config import scan_concurrency_cap_per_team
 
