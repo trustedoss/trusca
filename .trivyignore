@@ -117,6 +117,67 @@ CVE-2026-5598
 CVE-2026-21452
 
 # ============================================================================
+# Gradle 8.14.3 distribution jars (opt/gradle/lib/**).
+#
+# The worker pins Gradle 8.14.3 (Dockerfile.worker GRADLE_VERSION) solely to
+# run `gradle dependencies` for cdxgen's dependency ENUMERATION
+# (build_prep_source.sh invokes no other task; when the scanned repo ships an
+# executable ./gradlew, the repo's OWN distribution runs and these pinned
+# jars are not executed at all). Threat-model context shared by every entry
+# below: running Gradle on a scanned repository ALREADY grants that
+# repository arbitrary code execution inside the scan environment by design
+# (build scripts are code). The containment boundary depends on the executor
+# mode — default `inprocess` runs Gradle inside the worker container (the
+# container boundary IS the containment); opt-in `local_docker` runs it in a
+# cap-drop=ALL, pids-limited sidecar with a named-volume workspace, and
+# egress is restricted only when SCAN_SIDECAR_NETWORK is configured (default
+# bridge is unrestricted with a WARNING — local_docker.py:358). In either
+# mode a library CVE inside the Gradle process adds no privilege beyond what
+# a hostile build script already has ("no delta"); the executor boundary,
+# not the jar version, is the containment.
+# ============================================================================
+
+# CVE-2026-54512 — com.fasterxml.jackson.core:jackson-databind 2.16.1 → 2.18.8
+# Target: opt/gradle/lib/jackson-databind-2.16.1.jar
+# CVSS: HIGH (arbitrary code execution via polymorphic deserialisation).
+# Reach: the gadget class requires an application that enables default
+#   typing / polymorphic deserialisation on an attacker-controlled JSON
+#   stream. Gradle bundles jackson for internal tooling metadata; it does
+#   not deserialise scanned-repo JSON through jackson default typing in the
+#   `gradle dependencies` path we invoke. Even under attacker control the
+#   primitive yields code exec inside the Gradle process — no delta over
+#   build-script execution (see section header). UNREACHED / NO-DELTA.
+# Re-evaluate: 2026-11-09 or on next Gradle distribution bump.
+CVE-2026-54512
+
+# CVE-2026-54513 — com.fasterxml.jackson.core:jackson-databind 2.16.1 → 2.18.8
+# Target: opt/gradle/lib/jackson-databind-2.16.1.jar
+# CVSS: HIGH (security bypass in deserialisation gadget block-list).
+# Reach: same surface and same no-delta argument as CVE-2026-54512 above —
+#   the bypass only matters for applications that expose jackson
+#   deserialisation of untrusted streams as a TRUST BOUNDARY; inside the
+#   Gradle process a hostile build script already executes code, so there
+#   is no boundary left to bypass. UNREACHED / NO-DELTA.
+# Re-evaluate: 2026-11-09 or on next Gradle distribution bump.
+CVE-2026-54513
+
+# CVE-2025-14813 — org.bouncycastle:bcprov-jdk18on 1.78.1 → 1.80.2
+# Target: opt/gradle/lib/plugins/bcprov-jdk18on-1.78.1.jar
+# CVSS: CRITICAL (GOST-CTR cipher nonce handling defect).
+# Reach: exploiting a GOST block-cipher CTR defect requires the process to
+#   PERFORM GOST encryption with attacker-influenced parameters and a
+#   victim that relies on the resulting ciphertext. A scanned repo CAN
+#   cause BC to load (shipping gradle/verification-metadata.xml
+#   auto-enables dependency verification), but that path performs PGP
+#   signature verification — asymmetric signature + hash operations, not
+#   GOST-CTR symmetric encryption — and the worker consumes no BC
+#   ciphertext anywhere. The only way to reach GOST-CTR is a build script
+#   calling BC directly, which is code the attacker already runs — no
+#   delta (see section header). UNREACHED / NO-DELTA.
+# Re-evaluate: 2026-11-09 or on next Gradle distribution bump.
+CVE-2025-14813
+
+# ============================================================================
 # cdxgen-plugins-bin Go binary CVEs (12 total, 11 HIGH + 1 CRITICAL).
 #
 # Targets (all under the same path, multi-arch siblings included):
