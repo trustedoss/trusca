@@ -378,6 +378,12 @@ def _attest_key_based(
         "cosign",
         "attest-blob",
         "--yes",
+        # cosign v3 changed the defaults: sign-blob/attest-blob emit the new
+        # bundle format and consult a signing config unless told otherwise.
+        # Our verify path (and stored artifacts) expect the v2-style detached
+        # signature/attestation files, so pin the old behaviour explicitly.
+        "--new-bundle-format=false",
+        "--use-signing-config=false",
         "--key",
         str(key_path),
         "--predicate",
@@ -434,6 +440,12 @@ def _attest_keyless(
         "cosign",
         "attest-blob",
         "--yes",
+        # cosign v3 changed the defaults: sign-blob/attest-blob emit the new
+        # bundle format and consult a signing config unless told otherwise.
+        # Our verify path (and stored artifacts) expect the v2-style detached
+        # signature/attestation files, so pin the old behaviour explicitly.
+        "--new-bundle-format=false",
+        "--use-signing-config=false",
         "--predicate",
         str(predicate_path),
         "--type",
@@ -543,6 +555,12 @@ def _sign_key_based(
         "cosign",
         "sign-blob",
         "--yes",  # non-interactive: do not prompt to confirm
+        # cosign v3 changed the defaults: sign-blob/attest-blob emit the new
+        # bundle format and consult a signing config unless told otherwise.
+        # Our verify path (and stored artifacts) expect the v2-style detached
+        # signature/attestation files, so pin the old behaviour explicitly.
+        "--new-bundle-format=false",
+        "--use-signing-config=false",
         "--key",
         str(key_path),
         "--output-signature",
@@ -600,6 +618,12 @@ def _sign_keyless(
         "cosign",
         "sign-blob",
         "--yes",  # non-interactive (also consents to Rekor upload)
+        # cosign v3 changed the defaults: sign-blob/attest-blob emit the new
+        # bundle format and consult a signing config unless told otherwise.
+        # Our verify path (and stored artifacts) expect the v2-style detached
+        # signature/attestation files, so pin the old behaviour explicitly.
+        "--new-bundle-format=false",
+        "--use-signing-config=false",
         "--output-signature",
         str(signature_path),
         "--output-certificate",
