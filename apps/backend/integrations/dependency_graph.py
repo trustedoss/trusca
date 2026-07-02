@@ -232,9 +232,11 @@ def graph_depths_from_sbom(sbom: dict[str, Any]) -> dict[str, int]:
     """Convenience: parse ``sbom["dependencies"]`` and compute per-ref depths.
 
     The SBOM ``metadata.component.bom-ref`` (the scanned project itself), when
-    present and a node in the graph, is used as the forced root (depth 0) so its
-    immediate children come out as depth-1 *direct* dependencies. When it is
-    absent / not a node, we fall back to in-degree-0 root detection.
+    present and declaring a non-empty ``dependsOn`` in the graph, is used as
+    the forced root (depth 0) so its immediate children come out as depth-1
+    *direct* dependencies. When it is absent, not a node, or an empty-childed
+    node (a cdxgen Maven/Gradle artifact — see inline comment), we fall back
+    to in-degree-0 root detection.
 
     Returns ``{bom_ref: depth}``; an empty dict when there is no usable graph.
     """
@@ -248,7 +250,16 @@ def graph_depths_from_sbom(sbom: dict[str, Any]) -> dict[str, int]:
         component = metadata.get("component")
         if isinstance(component, dict):
             root_ref = component.get("bom-ref") or component.get("purl")
-            if isinstance(root_ref, str) and root_ref:
+            # Only trust the metadata root when it actually declares children.
+            # cdxgen sometimes emits the root's ``dependencies`` entry with an
+            # EMPTY ``dependsOn`` while the real direct deps float as nodes
+            # nothing depends on (observed on Maven/Gradle source scans;
+            # sibling-project fix sktelecom/sbom-tools#278). Forcing such a
+            # root would strand every other node in the orphan-island seeding,
+            # whose sorted-order traversal marks arbitrary transitive deps as
+            # depth-1 "direct". An empty root falls through to in-degree-0
+            # detection, which recovers the floated directs at depth 1.
+            if isinstance(root_ref, str) and root_ref and adjacency.get(root_ref):
                 root_refs.append(root_ref)
 
     return compute_depths(adjacency, root_refs=root_refs or None)
