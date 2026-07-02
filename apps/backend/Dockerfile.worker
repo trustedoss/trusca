@@ -222,8 +222,14 @@ ENV JAVA_HOME=/usr/lib/jvm/java-21 \
 # (latest 11.x as of 2026-05). Same drop-cross-spawn / bundled-tar 7.x
 # rationale as the original 11.13.0 bump; 11.14.1 picks up further
 # bundled-dep patches (npm changelog 2026-04~05).
+# CVE triage 2026-07 (image-scan gate): bumped 11.14.1 → 11.18.0. npm
+# 11.14.1's bundled sigstore 4.1.0 (CVE-2026-48815, silently-dropped
+# certificateOIDs verification) and undici 6.25.0 (CVE-2026-12151,
+# WebSocket unbounded-memory DoS) tripped the gate; 11.18.0 bundles
+# sigstore 4.1.1 + undici 6.27.0, both at/above Trivy's fixed versions
+# (verified from the npm-11.18.0 registry tarball's node_modules).
 ENV NODE_MAJOR=20 \
-    NPM_VERSION=11.14.1
+    NPM_VERSION=11.18.0
 RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/* \
@@ -269,31 +275,66 @@ RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - \
 #                   pipeline), drop --omit=optional and add corresponding
 #                   .trivyignore entries with reach analysis — do not
 #                   rollback the gate.
+#
+# Plugin-bundle attestation SBOMs (CVE triage 2026-07): the postinstall-
+# downloaded @cdxgen/cdxgen-plugins-bin-* packages ship post-build
+# attestation SBOM documents next to the plugin binaries (e.g.
+# plugins/sourcekitten/sbom-trivy-postbuild.cdx.json). Trivy parses any
+# *.cdx.json on the filesystem as a first-class SBOM scan target, so the
+# STALE dependency list frozen inside those documents (containerd 1.7.29,
+# rekor 1.4.3, x/crypto 0.45, …) resurfaces as 19 HIGH findings that no
+# tool bump can fix — the document, not a binary, is the target. The
+# files are build metadata; cdxgen never reads them at runtime (our
+# invocation is `cdxgen -r -o <out> --spec-version 1.5 <src>`, see
+# integrations/cdxgen.py). Delete them after install instead of adding
+# 19 blanket .trivyignore entries that would also mask the same CVE IDs
+# on real binaries elsewhere in the image.
 ENV CDXGEN_VERSION=12.3.3
 RUN npm install -g --omit=dev --omit=optional "@cyclonedx/cdxgen@${CDXGEN_VERSION}" \
+    && find /usr/lib/node_modules/@cyclonedx/cdxgen -path '*/@cdxgen/*' \
+        -name '*.cdx.json' -print -delete \
     && cdxgen --version
 
-# ---- Trivy 0.70.0 (Apache-2.0). --------------------------------------------
+# ---- Trivy 0.72.0 (Apache-2.0). --------------------------------------------
 # Container & filesystem vulnerability scanner. Installed from the upstream
 # deb (aquasecurity GitHub releases) for a deterministic, signed binary.
 # Trivy publishes per-arch debs (Linux-64bit / Linux-ARM64) so we resolve
 # the dpkg arch at build time — keeps the image buildable on amd64 CI and
 # arm64 dev laptops alike.
-ENV TRIVY_VERSION=0.70.0
+# CVE triage 2026-07 (image-scan gate): bumped 0.70.0 → 0.72.0. The 0.70.0
+# binary embedded rekor 1.5.1 (CVE-2026-48702), containerd 1.7.30/2.2.2
+# (CVE-2026-53488/-53489/-53492), x/crypto 0.50 (CVE-2026-39827..46597, 9
+# CVEs), x/net 0.53 (CVE-2026-25681/-27136/-39821/-42502) and Go stdlib
+# 1.25.9 (CVE-2026-27145) — 19 HIGH findings. 0.72.0 ships rekor 1.5.2,
+# containerd/v2 2.3.2, x/crypto 0.53.0, x/net 0.55.0 and is built with
+# go1.26.4 (verified via `go version -m` on the release binary). Residual:
+# oras-go v2.6.0 (CVE-2026-50151) is still bundled by the latest release —
+# ignored with reach analysis in .trivyignore. Release notes for 0.71/0.72
+# list no breaking change to `trivy sbom` / `trivy image` /
+# `--download-db-only` (the only three commands integrations/trivy.py runs).
+# SHA-256 pinned per-arch as a build-time constant (same pattern as the
+# Gradle / Go / cosign layers — previously this deb was downloaded
+# unverified). Values self-computed from the downloaded debs AND cross-
+# checked against the release's trivy_0.72.0_checksums.txt. Refresh with:
+#   curl -fsSL https://github.com/aquasecurity/trivy/releases/download/v<V>/trivy_<V>_checksums.txt
+ENV TRIVY_VERSION=0.72.0 \
+    TRIVY_SHA256_AMD64=9bf8aba92f524b74f8e83d53b298a7dfc6b4d60aca779217e7817e5433c73eeb \
+    TRIVY_SHA256_ARM64=fb1682f059f1b8e77bfad27403aa8357c231a7e8c553f8a69edc8ca651064acb
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
-        amd64)  trivy_arch="Linux-64bit" ;; \
-        arm64)  trivy_arch="Linux-ARM64" ;; \
+        amd64)  trivy_arch="Linux-64bit"; expected_sha="${TRIVY_SHA256_AMD64}" ;; \
+        arm64)  trivy_arch="Linux-ARM64"; expected_sha="${TRIVY_SHA256_ARM64}" ;; \
         *) echo "Unsupported arch: $arch" >&2; exit 1 ;; \
     esac; \
     curl -fsSL -o /tmp/trivy.deb \
         "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_${trivy_arch}.deb"; \
+    echo "${expected_sha}  /tmp/trivy.deb" | sha256sum -c -; \
     dpkg -i /tmp/trivy.deb; \
     rm -f /tmp/trivy.deb; \
     trivy --version
 
-# ---- Docker CLI 27.5.1 (Apache-2.0, client only). --------------------------
+# ---- Docker CLI 29.6.1 (Apache-2.0, client only). --------------------------
 # The dynamic-scan executor (SCAN_EXECUTOR=local_docker) shells out to `docker
 # run` to launch a per-environment cdxgen sidecar (e.g. the Android SDK image)
 # against the host Docker socket. We install ONLY the static client binary — no
@@ -302,12 +343,23 @@ RUN set -eux; \
 # default SCAN_EXECUTOR=inprocess this binary is simply unused. The static
 # bundle resolves x86_64 / aarch64 so the image builds on amd64 CI and arm64
 # dev laptops alike.
-ENV DOCKER_CLI_VERSION=27.5.1
+# CVE triage 2026-07 (image-scan gate): bumped 27.5.1 → 29.6.1. The 27.5.1
+# client was built with go1.22.11, flagged for stdlib CVE-2026-27145
+# (crypto/x509 DoS, fixed 1.25.11/1.26.4); 29.6.1 is built with go1.26.4
+# (verified via `go version -m` on the extracted binary). Older release
+# lines do not get toolchain rebuilds, so the fix requires the current
+# line. Client-major risk is low for our usage: the CLI negotiates the
+# daemon API version at connect time and local_docker.py only issues
+# `docker run`-level commands. Hashes self-computed (sha256sum) from
+#   https://download.docker.com/linux/static/stable/{x86_64,aarch64}/docker-29.6.1.tgz
+# (Docker publishes no checksums file for the static channel — pinning
+# at review time is the strongest available verification.)
+ENV DOCKER_CLI_VERSION=29.6.1
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
-        amd64)  docker_arch="x86_64";  docker_sha="4f798b3ee1e0140eab5bf30b0edc4e84f4cdb53255a429dc3bbae9524845d640" ;; \
-        arm64)  docker_arch="aarch64"; docker_sha="e6b53725a73763ab3f988c73f8772eaed429754c1a579db5ff11f21990fd1817" ;; \
+        amd64)  docker_arch="x86_64";  docker_sha="b0df4a43a98d7ecb708acbdb5a34a3416e13b6e39bcbbdf296f51f0f3442b29f" ;; \
+        arm64)  docker_arch="aarch64"; docker_sha="917a4bb83565bcacb38c430f08daae8b59db3256331ac23f22394f0542509881" ;; \
         *) echo "Unsupported arch: $arch" >&2; exit 1 ;; \
     esac; \
     curl -fsSL -o /tmp/docker.tgz \
@@ -389,7 +441,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && cargo --version
 
-# ---- Gradle 8.10.2 (Apache-2.0). -------------------------------------------
+# ---- Gradle 8.14.3 (Apache-2.0). -------------------------------------------
 # Debian's gradle is 4.4.x — too old for any modern Java project. Install
 # the upstream zip into /opt/gradle-${GRADLE_VERSION} and symlink the
 # launcher onto PATH. SHA-256 pinned as a build-time constant (the same
@@ -419,7 +471,7 @@ RUN set -eux; \
     ln -s "${GRADLE_HOME}/bin/gradle" /usr/local/bin/gradle; \
     gradle --version
 
-# ---- Go 1.22.7 (BSD-3-Clause). ---------------------------------------------
+# ---- Go 1.25.11 (BSD-3-Clause). --------------------------------------------
 # Debian bookworm Go is 1.19 — go.mod files since Go 1.21 declare
 # `toolchain go1.22.x` and refuse to build on older runtimes. Install the
 # upstream tarball with arch detection (linux-amd64 / linux-arm64). Hashes
@@ -438,10 +490,16 @@ RUN set -eux; \
 # limited soak time for the toolchain). cdxgen invokes `go list -m all`
 # / `go mod` only — both work unchanged across 1.22 → 1.25, and any
 # project go.mod with `toolchain go1.22.x` resolves automatically.
-# Hashes from https://go.dev/dl/?mode=json (the `files` array of go1.25.10).
-ENV GO_VERSION=1.25.10 \
-    GO_SHA256_AMD64=42d4f7a32316aa66591eca7e89867256057a4264451aca10570a715b3637ba70 \
-    GO_SHA256_ARM64=654da1f9b50a5d1c2a85ccf8ed405aa89c06e94d18384628bf186f7712677b08 \
+# CVE triage 2026-07 (image-scan gate): bumped 1.25.10 → 1.25.11. Go
+# stdlib CVE-2026-27145 (crypto/x509 DoS via excessive DNS-name
+# processing, HIGH) is fixed in 1.25.11 / 1.26.4 and was flagged on every
+# opt/go binary (go, gofmt, pkg/tool/*) plus the locally-`go install`ed
+# govulncheck. Staying on the 1.25.x line — same soak-time rationale as
+# the 1.22.7 → 1.25.10 bump above.
+# Hashes from https://go.dev/dl/?mode=json (the `files` array of go1.25.11).
+ENV GO_VERSION=1.25.11 \
+    GO_SHA256_AMD64=34f14304e856893f4ba30c2cacfe93906e9de7915c5f6aaaf3a81cdccd7ba30b \
+    GO_SHA256_ARM64=c30bf9e156a54ea4e31fbbbf31a712b32734b58cc9a22426fa5ee632d0885124 \
     GOROOT=/opt/go
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
@@ -478,7 +536,16 @@ RUN set -eux; \
 # only need to `go install` the tool. Version PINNED via ARG/ENV
 # (CLAUDE.md rule #9 — no `@latest`). GOBIN points the install at a dir
 # we then put on PATH so the worker's subprocess call resolves it.
-ENV GOVULNCHECK_VERSION=v1.1.4 \
+# CVE triage 2026-07 (image-scan gate): bumped v1.1.4 → v1.5.0 (latest
+# x/vuln, 2026-06-25). govulncheck is built HERE with the Go toolchain
+# above, so the Go 1.25.11 bump already clears its stdlib
+# CVE-2026-27145 finding; the version bump additionally refreshes the
+# tool's own module pins — x/vuln v1.5.0's go.mod carries no x/net /
+# x/crypto dependency at all (verified from
+# proxy.golang.org/golang.org/x/vuln/@v/v1.5.0.mod). govulncheck
+# executes analysis over untrusted scanned-repo source, so we keep it
+# current rather than triaging its CVEs as unreachable.
+ENV GOVULNCHECK_VERSION=v1.5.0 \
     GOBIN=/usr/local/go-bin \
     GOPATH=/root/go
 RUN set -eux; \
@@ -573,7 +640,7 @@ ENV EXTRACTCODE_LIBARCHIVE_PATH=/usr/local/lib/scancode-libarchive.so \
 #     (govulncheck) adds its OWN binary in a SEPARATE block; keep the two
 #     apart so a sequential merge has no overlapping context.
 # ===========================================================================
-# ---- cosign 2.4.1 (Apache-2.0). --------------------------------------------
+# ---- cosign 3.1.1 (Apache-2.0). --------------------------------------------
 # Sigstore cosign signs the generated CycloneDX SBOM (v2.3-s1). Installed from
 # the upstream GitHub release binary (sigstore/cosign) with a per-arch SHA256
 # pinned IN-REPO as a build ARG (no `:latest`, CLAUDE.md rule #9 — the version
@@ -598,10 +665,37 @@ ENV EXTRACTCODE_LIBARCHIVE_PATH=/usr/local/lib/scancode-libarchive.so \
 #     | grep -E 'cosign-linux-(amd64|arm64)$'
 # (the checksums file is fine to read interactively for the value — it is the
 #  build-time *automatic* trust of it that we removed.)
-# Hashes from cosign v2.4.1 cosign_checksums.txt.
-ENV COSIGN_VERSION=2.4.1
-ARG COSIGN_SHA256_AMD64=8b24b946dd5809c6bd93de08033bcf6bc0ed7d336b7785787c080f574b89249b
-ARG COSIGN_SHA256_ARM64=3b2e2e3854d0356c45fe6607047526ccd04742d20bd44afb5be91fa2a6e7cb4a
+#
+# CVE triage 2026-07 (image-scan gate): bumped 2.4.1 → 3.1.1. The 2.4.1
+# binary carried 18 HIGH findings (fulcio 1.6.3 / rekor 1.3.6 / x/crypto
+# 0.27 / x/net 0.28 / stdlib go1.22.7). v3.1.1 embeds fulcio 1.8.7,
+# rekor 1.5.2, x/crypto 0.53.0, x/net 0.55.0 (verified via
+# `go version -m` on the release binary) — all at/above Trivy's fixed
+# versions. The v2 line ended at 2.6.3 (2026-04), which still bundles
+# fulcio 1.8.4 / rekor 1.4.3 / x/crypto 0.46 and would leave ~14 findings
+# open, so v3 is the only bump that clears the gate. Residual: v3.1.1 is
+# built with go1.26.3, one patch below the stdlib CVE-2026-27145 fix
+# (1.26.4) — ignored with reach analysis in .trivyignore, re-evaluate on
+# the next cosign release.
+#
+# >>> cosign v3 CLI BREAKING CHANGE — companion backend change REQUIRED <<<
+# v3 defaults sign-blob / attest-blob to the new sigstore bundle format
+# and REJECTS the v2-style argv used by integrations/cosign.py
+# ("Error: must specify --bundle with --new-bundle-format"). Verified
+# against the v3.1.1 binary: appending
+#   --new-bundle-format=false --use-signing-config=false
+# to the sign-blob AND attest-blob argv restores the exact v2 behaviour
+# (signature/attestation written to --output-signature /
+# --output-attestation, verify-blob round-trip OK; verify-blob itself
+# needs NO change). This image bump must land together with that
+# integrations/cosign.py argv change — without it, SBOM signing degrades
+# to its graceful-skip path (signed=False) at runtime while unit tests
+# (which mock subprocess) stay green.
+# Hashes from cosign v3.1.1 cosign_checksums.txt (also self-verified by
+# downloading and sha256sum-ing both binaries).
+ENV COSIGN_VERSION=3.1.1
+ARG COSIGN_SHA256_AMD64=ae1ecd212663f3693ad9edf8b1a183900c9a52d3155ba6e354237f9a0f6463fc
+ARG COSIGN_SHA256_ARM64=2ec865872e331c32fd12b08dae15332d3f92c0aa029219589684a4903ca85d11
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
