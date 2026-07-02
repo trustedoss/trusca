@@ -196,6 +196,56 @@ async def _seed_obligation(
         return lic.id, ob.id
 
 
+async def _seed_mit_finding(client: AsyncClient, *, scan_id: uuid.UUID) -> None:
+    """Attach a license_finding for the REAL ``MIT`` license (get-or-create —
+    ``licenses.spdx_id`` is UNIQUE and MIT may already exist from seeds or
+    earlier runs). Used by the Phase B license-text assertions: only a
+    catalogued id has a bundled full text."""
+    factory = await _factory(client)
+    async with factory() as session:
+        from sqlalchemy import select
+
+        from models import Component, ComponentVersion, License, LicenseFinding
+
+        suffix = uuid.uuid4().hex[:10]
+        cname = f"pkg-mit-{suffix}"
+        purl = f"pkg:npm/{cname}"
+        component = Component(purl=purl, package_type="npm", name=cname)
+        session.add(component)
+        await session.commit()
+        await session.refresh(component)
+
+        cv = ComponentVersion(
+            component_id=component.id,
+            version="1.0.0",
+            purl_with_version=f"{purl}@1.0.0",
+        )
+        session.add(cv)
+        await session.commit()
+        await session.refresh(cv)
+
+        lic = (
+            await session.execute(select(License).where(License.spdx_id == "MIT"))
+        ).scalar_one_or_none()
+        if lic is None:
+            lic = License(spdx_id="MIT", name="MIT License", category="allowed")
+            session.add(lic)
+            await session.commit()
+            await session.refresh(lic)
+
+        session.add(
+            LicenseFinding(
+                scan_id=scan_id,
+                component_version_id=cv.id,
+                license_id=lic.id,
+                kind="concluded",
+                source_path=f"path/{suffix}",
+                raw_data={},
+            )
+        )
+        await session.commit()
+
+
 # ---------------------------------------------------------------------------
 # Auth gate
 # ---------------------------------------------------------------------------
@@ -501,6 +551,37 @@ async def test_notice_invalid_format_is_rejected_by_query_validation(client) -> 
         params={"format": "pdf"},
     )
     assert response.status_code == 422
+
+
+async def test_notice_download_includes_bundled_license_full_text(client) -> None:
+    """Phase B wire contract: a downloaded NOTICE for a scan that surfaced a
+    catalogued license (MIT) carries the License Texts section with the
+    bundled standard full text, the per-component copyright attribution line
+    (honest fallback here — no copyright captured), and unchanged inspection
+    headers."""
+    _, team, user = await _seed_team_with_user(client)
+    project_id, scan_id, _ = await _seed_scanned_project(client, team_id=team.id)
+    await _seed_mit_finding(client, scan_id=scan_id)
+    headers = _bearer_for(user)
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/notice",
+        headers=headers,
+        params={"download": True},
+    )
+    assert response.status_code == 200
+    assert response.headers["content-disposition"].startswith("attachment")
+    body = response.text
+    # License Texts section: BomLens-parity divider + the standard MIT text.
+    assert "License Texts" in body
+    assert "----- MIT -----" in body
+    assert "Permission is hereby granted" in body
+    # Copyright attribution never renders blank — honest fallback + the
+    # npm registry URL inferred from the component's purl.
+    assert "Copyright: holders not captured in SBOM — see source (" in body
+    # Inspection headers regression: counts are licenses/obligations, not
+    # inflated by the appended text sections.
+    assert response.headers["x-notice-license-count"] == "1"
 
 
 async def test_notice_download_attaches_filename_with_safe_token(client) -> None:
