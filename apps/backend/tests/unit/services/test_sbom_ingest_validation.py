@@ -136,11 +136,19 @@ def test_rejects_missing_bom_format() -> None:
 
 @pytest.mark.parametrize(
     "spec_version",
-    ["1.1", "2.0", "1.0", "1.7", "v1.5", "1.5.0", "", "latest"],
+    # 1.7 moved to the accepted set (G7 ML-BOM ingest); 1.8 takes its place
+    # as the next-unreleased rejection probe.
+    ["1.1", "2.0", "1.0", "1.8", "v1.5", "1.5.0", "", "latest"],
 )
 def test_rejects_unsupported_spec_version_strings(spec_version: str) -> None:
     with pytest.raises(SbomIngestInvalid):
         validate_cyclonedx_document(_doc(spec_version))
+
+
+@pytest.mark.parametrize("spec_version", ["1.6", "1.7"])
+def test_accepts_supported_upper_spec_versions(spec_version: str) -> None:
+    # 1.7 is the ML-BOM (G7) ingest path — must pass the same gate as 1.6.
+    validate_cyclonedx_document(_doc(spec_version))
 
 
 @pytest.mark.parametrize("spec_version", [1.5, 15, None, True, ["1.5"], {"v": "1.5"}])

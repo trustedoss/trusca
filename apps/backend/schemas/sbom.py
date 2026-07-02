@@ -32,6 +32,35 @@ class SbomConformanceCheck(BaseModel):
         default_factory=list,
         description="Offending item names for a failed check, capped at 50.",
     )
+    # G7 AI-SBOM advisory extensions (services.g7_conformance) — present only
+    # on the g7-* checks an ML-BOM ingest appends; None on the core checks.
+    cluster: str | None = Field(
+        default=None,
+        description=(
+            "G7 cluster id (metadata / slp / models / dp / infrastructure / "
+            "sp / kpi); None for the core conformance checks."
+        ),
+    )
+    source: str | None = Field(
+        default=None,
+        description=(
+            "G7 registry satisfaction source: auto | inferred | declared | na."
+        ),
+    )
+    role: str | None = Field(
+        default=None,
+        description=(
+            "Party the G7 text names as the element's provider "
+            "(informational, not a required/optional gate)."
+        ),
+    )
+    evidence: list[str] | None = Field(
+        default=None,
+        description=(
+            "Extracted values for a satisfied G7 element (e.g. model PURLs, "
+            "license ids) — at most 8 items, each clamped to 200 chars."
+        ),
+    )
 
 
 class SbomConformanceRead(BaseModel):

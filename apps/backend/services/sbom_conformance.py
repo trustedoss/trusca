@@ -23,6 +23,12 @@ on a non-conformant document — a bad SBOM yields ``result="fail"``, not an
 exception (the ingest pipeline still runs the match; see
 ``tasks/scan_sbom_ingest``).
 
+G7 AI SBOM extension: when a CycloneDX document carries a
+``machine-learning-model`` component, the 51 G7 minimum-element advisory
+checks (:mod:`services.g7_conformance`) are appended to ``checks``. They are
+informational only — all ``required=False`` and excluded from ``n_warn`` /
+the overall ``result`` (see the aggregation note in :func:`evaluate`).
+
 Pure function, no DB / network / filesystem — unit-testable offline (the
 backend test lane otherwise needs docker redis).
 
@@ -89,6 +95,22 @@ def _pct(n: int, d: int) -> int:
     return (n * 100) // d
 
 
+def sanitize_jsonb_text(value: str) -> str:
+    """Persist-boundary cleaner for SBOM-derived strings headed into JSONB.
+
+    Mirrors :func:`services.vex_import._clean_provenance`: drops C0 control
+    characters except TAB (``\\x09``) and drops DEL (``\\x7f``); printable
+    Unicode (incl. non-ASCII) passes through. Postgres TEXT/JSONB cannot store
+    NUL (``\\x00``) — an embedded one in ``detail`` / ``missing`` / ``evidence``
+    would abort the whole ingest persist with a ``DataError`` and leak the raw
+    psycopg message into the user-visible ``scan.error_message``. CR/LF removal
+    also blocks log/record injection through replayed check details.
+    """
+    return "".join(
+        ch for ch in value if ch == "\t" or (ord(ch) >= 0x20 and ord(ch) != 0x7F)
+    ).strip()
+
+
 @dataclass
 class Check:
     id: str
@@ -97,16 +119,38 @@ class Check:
     status: str  # "pass" | "fail" | "warn"
     detail: str
     missing: list[str] = field(default_factory=list)
+    # G7 AI-SBOM advisory extensions (services.g7_conformance). None on the 9
+    # core checks; ``as_dict`` omits None fields so the core serialisation is
+    # byte-identical to the pre-G7 shape (backwards-compatible persisted rows).
+    cluster: str | None = None
+    source: str | None = None
+    role: str | None = None
+    evidence: list[str] | None = None
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        # ``as_dict`` IS the persist boundary (the ingest task writes its output
+        # straight into the ``sbom_conformance.checks`` JSONB column), so every
+        # SBOM-derived string — ``detail`` (timestamps, component names),
+        # ``missing[]`` (component names) and ``evidence[]`` (PURLs, license
+        # ids) — passes the NUL / control-char cleaner here. ``id`` / ``label``
+        # are our own catalogue constants and need no cleaning.
+        out: dict[str, Any] = {
             "id": self.id,
             "label": self.label,
             "required": self.required,
             "status": self.status,
-            "detail": self.detail,
-            "missing": self.missing,
+            "detail": sanitize_jsonb_text(self.detail),
+            "missing": [sanitize_jsonb_text(m) for m in self.missing],
         }
+        if self.cluster is not None:
+            out["cluster"] = self.cluster
+        if self.source is not None:
+            out["source"] = self.source
+        if self.role is not None:
+            out["role"] = self.role
+        if self.evidence is not None:
+            out["evidence"] = [sanitize_jsonb_text(v) for v in self.evidence]
+        return out
 
 
 @dataclass
@@ -232,6 +276,16 @@ def _cdx_checks(doc: dict[str, Any]) -> _ScoreResult:
         Check("hash", f"Hash coverage (>= {hashmin}%, recommended)", False,
               "pass" if hash_pct >= hashmin else "warn", f"{hash_pct}% ({hash_ok}/{tot})"),
     ]
+
+    # G7 AI SBOM minimum-elements advisory checks — appended only when the
+    # document actually carries an ML model component (CycloneDX ML-BOM).
+    # Imported lazily: ``g7_conformance`` imports ``Check`` from THIS module,
+    # so a top-level import here would be a cycle.
+    if any(c.get("type") == "machine-learning-model" for c in components):
+        from services import g7_conformance
+
+        checks.extend(g7_conformance.evaluate_g7(doc))
+
     return checks, tot, purl_pct, lic_pct, hash_pct
 
 
@@ -387,8 +441,14 @@ def evaluate(raw: bytes) -> ConformanceResult:
                   "not CycloneDX or SPDX (JSON / Tag-Value)")
         ]
 
+    # Aggregation contract: G7 advisory checks (the cluster-tagged ones from
+    # ``g7_conformance``) surface per-element verdicts ONLY — they never move
+    # the overall result or its counters (BomLens g7_ai_checks parity: the G7
+    # text defines no required matrix, see the registry note). They are all
+    # ``required=False`` so ``n_fail`` skips them structurally; ``n_warn``
+    # skips them explicitly via the cluster tag. A unit test locks both.
     n_fail = sum(1 for c in checks if c.required and c.status == "fail")
-    n_warn = sum(1 for c in checks if c.status == "warn")
+    n_warn = sum(1 for c in checks if c.status == "warn" and c.cluster is None)
     if n_fail > 0:
         result = "fail"
     elif n_warn > 0:
