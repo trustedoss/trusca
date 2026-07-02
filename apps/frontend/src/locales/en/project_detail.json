@@ -366,7 +366,10 @@
       "label": "KEV",
       "tooltip": "Listed in the CISA Known Exploited Vulnerabilities (KEV) catalog — exploitation in the wild has been confirmed.",
       "tooltip_with_due": "Listed in the CISA Known Exploited Vulnerabilities (KEV) catalog — exploitation in the wild has been confirmed. CISA remediation due date: {{date}}.",
-      "due": "Due {{date}}"
+      "due": "Due {{date}}",
+      "due_overdue": "Overdue by {{days}} days",
+      "due_imminent": "Due in {{days}} days",
+      "due_today": "Due today"
     },
     "filter": {
       "minEpss": "EPSS ≥",

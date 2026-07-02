@@ -47,6 +47,20 @@ For PR #11 (Vulnerabilities tab) the script optionally also seeds:
     Statuses cycle: 80% ``new``, 15% ``analyzing``, 5% ``not_affected`` so
     filter-by-status scenarios exercise multiple values.
 
+For Phase C (KEV e2e — `vulnerabilities_kev.spec.ts`) the script optionally
+also flags a subset of the vulnerability-mode findings as CISA KEV entries:
+
+  * ``--kev-count N`` marks the FIRST ``N`` vulnerability-mode CVEs
+    (``--vulnerability-count`` rows, in seed-plan order) with ``kev=True`` +
+    ``kev_date_added`` (today − 30 days) + a ``kev_due_date`` cycled through
+    ``--kev-due-spread`` (default ``overdue,imminent,ok`` → today − 3 /
+    today + 3 / today + 30 days). The offsets sit well inside the FE's
+    SLA classifier bands (``src/lib/dueDate.ts``: < 0 overdue, 0–7
+    imminent, ≥ 8 ok) so a ±1-day UTC↔local skew can never flip a state.
+    Requires ``--vulnerability-count`` ≥ ``--kev-count`` (ValueError guard,
+    mirroring the ``--no-password`` precondition). Summary gains
+    ``kev_count``.
+
 Why a Python script and not Node? psycopg / asyncpg + the SQLAlchemy
 factories (``tests._helpers``) are already available in this repo. Pulling
 ``pg`` into the frontend package just to seed a few rows would balloon the
@@ -89,7 +103,7 @@ import json
 import os
 import sys
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -140,6 +154,24 @@ _VULN_STATUS_CYCLE: tuple[str, ...] = (
 _VULN_SEVERITY_VALUES: frozenset[str] = frozenset(
     {"critical", "high", "medium", "low", "info", "unknown"}
 )
+
+# Phase C — KEV e2e seed. Calendar-day offsets (relative to "today") per SLA
+# state token accepted by ``--kev-due-spread``. The values mirror the FE
+# classifier bands in ``apps/frontend/src/lib/dueDate.ts``:
+#   overdue  : days < 0          → today − 3
+#   imminent : 0 <= days <= 7    → today + 3
+#   ok       : days >= 8         → today + 30
+# ±3 / +30 keep a comfortable margin from every band edge, so the ≤ 1-day
+# skew between the seeder's UTC "today" and the browser's local "today" can
+# never reclassify a seeded row.
+_KEV_DUE_OFFSET_DAYS: dict[str, int] = {
+    "overdue": -3,
+    "imminent": 3,
+    "ok": 30,
+}
+# Catalog listing date for every seeded KEV row — any stable past date works;
+# 30 days back reads plausibly next to the due dates above.
+_KEV_DATE_ADDED_OFFSET_DAYS = -30
 
 # v2.1 "EPSS UI first-class" — seed a spread of EPSS (score, percentile) pairs
 # so e2e sort/filter scenarios have meaningful, distinct values to assert on.
@@ -487,6 +519,31 @@ def _parse_args() -> argparse.Namespace:
             "low:20,info:5,unknown:2'."
         ),
     )
+    # ── Phase C — KEV e2e fixtures ──────────────────────────────────────────
+    parser.add_argument(
+        "--kev-count",
+        type=int,
+        default=0,
+        help=(
+            "Phase C KEV e2e. Flag the FIRST N vulnerability-mode CVEs "
+            "(--vulnerability-count rows, in seed-plan order) as CISA KEV "
+            "entries: kev=True + kev_date_added (today-30d) + kev_due_date "
+            "cycled through --kev-due-spread. Requires --vulnerability-count "
+            ">= N (refused with a ValueError otherwise — KEV flags ride on "
+            "the vuln-mode rows). Default: 0 (no KEV rows)."
+        ),
+    )
+    parser.add_argument(
+        "--kev-due-spread",
+        default="overdue,imminent,ok",
+        help=(
+            "Comma-separated SLA-state cycle for the --kev-count due dates. "
+            "Tokens: overdue (today-3d), imminent (today+3d), ok (today+30d) "
+            "— matching the FE dueDate.ts bands with margin. KEV row i gets "
+            "the state at position i mod len(spread). Unknown tokens are a "
+            "ValueError. Default: 'overdue,imminent,ok'."
+        ),
+    )
     # ── Phase 4 PR #13 — admin e2e fixtures ────────────────────────────────
     parser.add_argument(
         "--super-admin",
@@ -635,6 +692,26 @@ def _parse_severity_mix(raw: str | None, *, total: int) -> dict[str, int]:
     return parsed
 
 
+def _parse_kev_due_spread(raw: str) -> list[str]:
+    """Parse ``--kev-due-spread`` into an ordered token list.
+
+    Raises ``ValueError`` on an empty spread or an unknown token — a silent
+    fallback would make the e2e assert against a fixture it never got
+    (hardening rule: seed preconditions fail loudly, mirroring the
+    ``--no-password`` guard).
+    """
+    tokens = [t.strip().lower() for t in raw.split(",") if t.strip()]
+    if not tokens:
+        raise ValueError("--kev-due-spread must contain at least one token")
+    unknown = sorted(set(tokens) - set(_KEV_DUE_OFFSET_DAYS))
+    if unknown:
+        raise ValueError(
+            f"--kev-due-spread has unknown tokens {unknown}; "
+            f"allowed: {sorted(_KEV_DUE_OFFSET_DAYS)}"
+        )
+    return tokens
+
+
 # feat/g7-conformance — pinned statuses for the ``--with-g7`` seed. The mix
 # (pass / absent-warn / human-review across TWO clusters) was captured from the
 # REAL evaluator (``services.g7_conformance.evaluate_g7``) over the recorded
@@ -710,6 +787,8 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
     component_prefix: str,
     vulnerability_count: int = 0,
     vulnerability_severity_mix: str | None = None,
+    kev_count: int = 0,
+    kev_due_spread: str = "overdue,imminent,ok",
     with_obligations: bool = False,
     with_source: bool = False,
     super_admin: bool = False,
@@ -736,6 +815,23 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
             "--no-password requires --with-oauth-identity so the seeded "
             "user has at least one authentication method."
         )
+    # Phase C — KEV flags ride on the vulnerability-mode rows: without a
+    # vuln-mode seed there is nothing to flag, and flagging fewer rows than
+    # requested would hand the e2e a partial fixture. Same fail-loudly
+    # pattern as the --no-password guard above.
+    if kev_count > 0 and vulnerability_count <= 0:
+        raise ValueError(
+            "--kev-count requires --vulnerability-count > 0 (KEV flags are "
+            "applied to the vulnerability-mode findings)."
+        )
+    if kev_count > vulnerability_count:
+        raise ValueError(
+            f"--kev-count ({kev_count}) cannot exceed "
+            f"--vulnerability-count ({vulnerability_count})."
+        )
+    # Validate the spread up front (ValueError on unknown tokens) so a typo
+    # is a clean exit-2, not a mid-transaction surprise.
+    kev_spread_tokens = _parse_kev_due_spread(kev_due_spread)
     from sqlalchemy.ext.asyncio import (
         AsyncSession,
         async_sessionmaker,
@@ -1272,6 +1368,15 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                 while len(seed_plan) < vulnerability_count:
                     seed_plan.append("low")
 
+                # Phase C — per-row KEV plan. Row idx < kev_count gets
+                # kev=True with a due date cycled through the spread tokens;
+                # every later row stays kev=False (server default) so the
+                # e2e has both badge-present and badge-absent rows.
+                seed_today = datetime.now(tz=UTC).date()
+                kev_date_added_value = seed_today + timedelta(
+                    days=_KEV_DATE_ADDED_OFFSET_DAYS
+                )
+
                 BATCH = 50
                 for idx, sev in enumerate(seed_plan):
                     vname = f"vuln-{idx:05d}"
@@ -1305,6 +1410,17 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                     # cycle is decoupled from severity, so the plan naturally
                     # produces CVSS↔EPSS divergence rows.
                     epss_pair = _EPSS_CYCLE[idx % len(_EPSS_CYCLE)]
+                    is_kev = idx < kev_count
+                    kev_due_date = (
+                        seed_today
+                        + timedelta(
+                            days=_KEV_DUE_OFFSET_DAYS[
+                                kev_spread_tokens[idx % len(kev_spread_tokens)]
+                            ]
+                        )
+                        if is_kev
+                        else None
+                    )
                     vuln = Vulnerability(
                         external_id=f"CVE-2099-VLN-{suffix}-{idx:05d}",
                         source="NVD",
@@ -1312,6 +1428,9 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                         cvss_score=None,
                         epss_score=epss_pair[0] if epss_pair else None,
                         epss_percentile=epss_pair[1] if epss_pair else None,
+                        kev=is_kev,
+                        kev_date_added=kev_date_added_value if is_kev else None,
+                        kev_due_date=kev_due_date,
                         summary=f"e2e seed vulnerability {idx} ({sev})",
                     )
                     session.add(vuln)
@@ -1346,6 +1465,7 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                 "g7_check_count": g7_check_count,
                 "component_count": seeded_components,
                 "vulnerability_count": seeded_vulnerabilities,
+                "kev_count": min(kev_count, seeded_vulnerabilities),
                 "obligation_count": seeded_obligations_count,
                 "source_tarball": source_tarball_path,
                 "extra_members": extra_members_summary,
@@ -1396,6 +1516,9 @@ def main() -> int:
     if args.vulnerability_count < 0:
         print("--vulnerability-count must be non-negative", file=sys.stderr)
         return 2
+    if args.kev_count < 0:
+        print("--kev-count must be non-negative", file=sys.stderr)
+        return 2
     if args.extra_members < 0:
         print("--extra-members must be non-negative", file=sys.stderr)
         return 2
@@ -1422,6 +1545,8 @@ def main() -> int:
                 component_prefix=args.component_prefix,
                 vulnerability_count=args.vulnerability_count,
                 vulnerability_severity_mix=args.vulnerability_severity_mix,
+                kev_count=args.kev_count,
+                kev_due_spread=args.kev_due_spread,
                 with_obligations=args.with_obligations,
                 with_source=args.with_source,
                 super_admin=args.super_admin,

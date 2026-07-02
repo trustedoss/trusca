@@ -399,6 +399,120 @@ class TrivyDbStatusOut(BaseModel):
     )
 
 
+# ---------------------------------------------------------------------------
+# CISA KEV feed sync status (Phase C — admin KEV panel)
+# ---------------------------------------------------------------------------
+
+# Closed 2-value outcome vocabulary OWNED by tasks/kev_catalog_refresh (it is
+# what the task writes into ``kev_sync_state.last_result`` — see the model
+# docstring). Mirrored here as a Literal so the FE renderer can ``switch``
+# without a default arm, same posture as ``TrivyDbFreshness`` above.
+KevSyncResult = Literal["synced", "skipped"]
+
+
+class KevFeedStatusOut(BaseModel):
+    """
+    Response of ``GET /v1/admin/kev/health`` — Phase C KEV feed panel.
+
+    Independent panel schema, deliberately NOT a new arm on the
+    ``HealthComponent`` name Literal — the aggregated ``/v1/admin/health``
+    probe set and the per-feed panels (Trivy DB, KEV) are separate surfaces
+    (same split as ``TrivyDbStatusOut``).
+
+    Every sync-derived field is optional: before the first beat tick ever
+    runs there is no ``kev_sync_state`` row, and a skipped tick carries no
+    counters. The FE keys the empty state off ``last_attempt_at is None``
+    ("never ran"). Configuration-derived fields (``enabled``, ``feed_host``,
+    ``next_refresh_at``) reflect runtime env / the live beat schedule, so
+    they survive the no-row case.
+    """
+
+    enabled: bool = Field(
+        description=(
+            "Mirrors ``KEV_REFRESH_ENABLED``. ``false`` on air-gapped "
+            "deployments without a mirror — the beat still ticks but each "
+            "tick records a ``disabled`` skip."
+        ),
+    )
+    last_synced_at: datetime | None = Field(
+        default=None,
+        description=(
+            "Timestamp of the last SUCCESSFUL reconcile. NOT moved by "
+            "skipped ticks — pair with ``last_attempt_at`` to distinguish "
+            "'healthy but idle' from 'attempting and failing'."
+        ),
+    )
+    last_attempt_at: datetime | None = Field(
+        default=None,
+        description=(
+            "Timestamp of the most recent tick of ANY outcome "
+            "(``kev_sync_state.updated_at``). ``null`` = the refresh has "
+            "never run on this deployment."
+        ),
+    )
+    last_result: KevSyncResult | None = Field(
+        default=None,
+        description="Outcome of the most recent tick: ``synced`` | ``skipped``.",
+    )
+    skipped_reason: str | None = Field(
+        default=None,
+        description=(
+            "Why the most recent tick skipped, when ``last_result`` is "
+            "``skipped``: ``disabled`` / ``feed_unavailable`` / "
+            "``feed_below_sanity_floor`` / ``unexpected:<ExceptionName>``."
+        ),
+    )
+    feed_count: int | None = Field(
+        default=None,
+        ge=0,
+        description="Entries parsed from the CISA feed on the last successful reconcile.",
+    )
+    listed: int | None = Field(
+        default=None,
+        ge=0,
+        description="Catalog rows flagged / date-corrected on the last successful reconcile.",
+    )
+    delisted: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Catalog rows cleared (CVE dropped out of the feed) on the last "
+            "successful reconcile."
+        ),
+    )
+    duration_ms: int | None = Field(
+        default=None,
+        ge=0,
+        description="Wall-clock duration of the last successful reconcile, in milliseconds.",
+    )
+    kev_flagged_total: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Live ``count(*)`` of catalog vulnerabilities currently "
+            "``kev=true`` (rides the partial index "
+            "``ix_vulnerabilities_kev``). ``null`` only when the DB read "
+            "failed and the response degraded to config-only."
+        ),
+    )
+    next_refresh_at: datetime | None = Field(
+        default=None,
+        description=(
+            "Next fire time of the daily KEV beat, derived from the live "
+            "Celery beat schedule (never a hardcoded copy of the cron "
+            "spec). ``null`` if the schedule entry cannot be resolved."
+        ),
+    )
+    feed_host: str | None = Field(
+        default=None,
+        description=(
+            "Host of the configured ``KEV_FEED_URL`` — host only, never the "
+            "full URL (an internal mirror URL may carry path tokens). Lets "
+            "operators verify air-gapped mirror wiring at a glance."
+        ),
+    )
+
+
 __all__ = [
     "AdminDiskItem",
     "AdminDiskOut",
@@ -410,6 +524,8 @@ __all__ = [
     "AuditTargetTable",
     "HealthComponent",
     "HealthStatus",
+    "KevFeedStatusOut",
+    "KevSyncResult",
     "ScanStatus",
     "SystemHealthOut",
     "TrivyDbFreshness",

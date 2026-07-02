@@ -82,6 +82,14 @@ _TASK_INCLUDES = [
     "tasks.trivy_db_bootstrap",
 ]
 
+# Beat-schedule key of the KEV catalog refresh entry. Shared with
+# ``services.kev_health_service``, which derives the admin panel's
+# ``next_refresh_at`` from this entry's live crontab object — a string
+# literal duplicated in two modules would drift silently on a rename, so
+# the key is a module constant (CLAUDE.md 표준 §2 hardening rule 2 spirit:
+# one vocabulary, one owner).
+KEV_BEAT_ENTRY_NAME = "kev-catalog-refresh-daily"
+
 
 def _build_beat_schedule() -> dict[str, dict[str, object]]:
     """
@@ -163,7 +171,7 @@ def _build_beat_schedule() -> dict[str, dict[str, object]]:
         # Trivy refresh at Sun 03:00). The work itself is tiny (one ~10 MiB
         # download + two bounded UPDATE passes), so scheduling inside the
         # 00:00 backup's hour is safe.
-        "kev-catalog-refresh-daily": {
+        KEV_BEAT_ENTRY_NAME: {
             "task": "trustedoss.kev_catalog_refresh",
             "schedule": crontab(minute=45, hour=1),
         },

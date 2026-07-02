@@ -76,4 +76,63 @@ export class AdminHealthHarness {
     await this.page.getByTestId("admin-health-refresh").click();
     await this.expectMounted();
   }
+
+  // ───── Phase C — CISA KEV feed panel ────────────────────────────────────
+  //
+  // Locale-agnostic anchors: the panel root carries
+  // `data-testid="kev-feed-panel"` + `data-status`
+  // (empty/disabled/skipped/synced — absent while the loading skeleton is
+  // up), the never-ran branch renders `kev-feed-empty`, the status badge is
+  // `kev-feed-status-badge` (+ `data-status`), and each KPI tile exposes the
+  // raw wire value on `data-value`. No verb reads translated copy.
+
+  /**
+   * Wait for the KEV feed panel to mount AND settle (loading skeleton gone:
+   * either the never-ran EmptyState, a KPI tile, or the error alert is
+   * visible), then return its resolved shape. `status` is the panel root's
+   * `data-status`; `empty` flags the never-ran EmptyState; `error` flags the
+   * fetch-failed alert — spec files decide which combinations are legal.
+   */
+  async expectKevFeedPanel(): Promise<{
+    status: string | null;
+    empty: boolean;
+    error: boolean;
+  }> {
+    const panel = this.page.getByTestId("kev-feed-panel");
+    await expect(panel).toBeVisible({ timeout: DEFAULT_TIMEOUT_MS });
+    const empty = this.page.getByTestId("kev-feed-empty");
+    const kpi = this.page.getByTestId("kev-feed-kpi-last-synced");
+    const error = this.page.getByTestId("kev-feed-error");
+    await expect(empty.or(kpi).or(error)).toBeVisible({
+      timeout: DEFAULT_TIMEOUT_MS,
+    });
+    return {
+      status: await panel.getAttribute("data-status"),
+      empty: (await empty.count()) > 0,
+      error: (await error.count()) > 0,
+    };
+  }
+
+  /**
+   * Read the KEV status badge's `data-status` (`disabled` / `skipped` /
+   * `synced`), or `null` when no badge renders (the enabled never-ran
+   * branch carries the message via the EmptyState alone).
+   */
+  async getKevFeedBadgeStatus(): Promise<string | null> {
+    const badge = this.page.getByTestId("kev-feed-status-badge");
+    if ((await badge.count()) === 0) return null;
+    return badge.getAttribute("data-status");
+  }
+
+  /**
+   * Read a KEV KPI tile's raw wire value (`data-value`), or `null` when the
+   * tile is absent (never-ran branch) or the run left the metric null.
+   */
+  async getKevKpiValue(
+    kpi: "last-synced" | "flagged-total" | "listed-delisted" | "next-refresh",
+  ): Promise<string | null> {
+    const tile = this.page.getByTestId(`kev-feed-kpi-${kpi}`);
+    if ((await tile.count()) === 0) return null;
+    return tile.getAttribute("data-value");
+  }
 }

@@ -41,6 +41,9 @@ from .github_app import (  # noqa: E402,F401  (imported for metadata side effect
     GitHubAppCredential,
     GitHubAppInstallation,
 )
+from .kev_sync_state import (  # noqa: E402,F401  (imported for metadata side effects)
+    KevSyncState,
+)
 from .license_fetch_cache import (  # noqa: E402,F401  (imported for metadata side effects)
     LicenseFetchCache,
 )
@@ -93,6 +96,7 @@ __all__ = [
     "ComponentVersion",
     "GitHubAppCredential",
     "GitHubAppInstallation",
+    "KevSyncState",
     "License",
     "LicenseFetchCache",
     "LicenseFinding",
