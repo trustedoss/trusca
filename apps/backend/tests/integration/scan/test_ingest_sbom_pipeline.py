@@ -483,3 +483,120 @@ def test_ingest_spdx_json_persists_components_and_conformance(
         ).scalars()
     }
     assert "sbom_cyclonedx" in kinds
+
+
+# ---------------------------------------------------------------------------
+# ML-BOM input — a real OWASP AIBOM Generator 1.7 document carries the G7
+# AI-SBOM advisory checks into the persisted conformance verdict
+# ---------------------------------------------------------------------------
+
+
+def test_ingest_aibom_1_7_persists_g7_conformance_checks(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, sync_session: Session
+) -> None:
+    """A real OWASP AIBOM Generator CycloneDX 1.7 ML-BOM runs the full ingest
+    pipeline. The persisted verdict's checks JSONB carries the 9 core checks
+    PLUS the 51 G7 advisory checks (services.g7_conformance), and the core
+    verdict counters are NOT inflated by the G7 warns — the fixture's only
+    core miss is the recommended hash check (warn), so result='warn' with
+    n_warn == 1 despite dozens of absent G7 elements."""
+    monkeypatch.setenv("WORKSPACE_HOST_PATH", str(tmp_path))
+    _stub_trivy_from_fixture(monkeypatch)
+
+    scan_id, project_id = _seed_queued_sbom_scan(
+        tmp_path, sbom_src=FIXTURES / "aibom-owasp-1_7.json"
+    )
+
+    from tasks.ingest_sbom import ingest_sbom_task
+
+    result = ingest_sbom_task.apply(args=[str(scan_id)])
+    assert result.successful(), f"task failed: {result.traceback}"
+
+    sync_session.expire_all()
+    scan = sync_session.execute(select(Scan).where(Scan.id == scan_id)).scalar_one()
+    assert scan.status == "succeeded"
+
+    verdict = sync_session.execute(
+        select(SbomConformance).where(SbomConformance.scan_id == scan_id)
+    ).scalar_one()
+    assert verdict.source_format == "cyclonedx"
+    assert verdict.project_id == project_id
+
+    g7_checks = [
+        c for c in verdict.checks if str(c.get("id", "")).startswith("g7-")
+    ]
+    assert len(g7_checks) == 51
+    assert len(verdict.checks) == 9 + 51
+    by_id = {c["id"]: c for c in g7_checks}
+    # Automated element satisfied by the fixture's modelCard.
+    assert by_id["g7-model-card"]["status"] == "pass"
+    assert by_id["g7-model-card"]["cluster"] == "models"
+    # Evidence-carrying element: the model PURL is extracted and persisted.
+    assert by_id["g7-model-id"]["evidence"] == [
+        "pkg:huggingface/google-bert/bert-base-uncased@86b5e093"
+    ]
+    # No-automated-source element surfaces as human review.
+    assert (
+        by_id["g7-slp-data-flow"]["detail"]
+        == "requires human review (no automated source)"
+    )
+    # All advisory — never a gate.
+    assert all(c["required"] is False for c in g7_checks)
+
+    # Core aggregation is unmoved by the G7 warns.
+    assert verdict.result == "warn"
+    assert verdict.n_fail == 0
+    assert verdict.n_warn == 1
+
+
+def test_ingest_hostile_control_chars_do_not_sink_conformance_persist(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, sync_session: Session
+) -> None:
+    """F-1 regression: SBOM-derived strings with NUL / ESC must not abort the
+    ingest with a Postgres DataError (which failed the whole scan and leaked
+    the raw psycopg message into the user-visible scan.error_message).
+
+    The real AIBOM 1.7 fixture is cloned and poisoned: NUL goes into metadata
+    fields (metadata flows ONLY into the conformance checks' detail strings —
+    pre-fix that reached the ``sbom_conformance.checks`` JSONB as ``\\u0000``);
+    ESC additionally poisons the ML component's purl AND name (the g7 evidence
+    path). NUL is deliberately NOT placed inside a component: components are
+    persisted verbatim into ``scan_components.raw_data`` JSONB / TEXT columns
+    by a different stage outside this fix's scope."""
+    monkeypatch.setenv("WORKSPACE_HOST_PATH", str(tmp_path))
+    _stub_trivy_from_fixture(monkeypatch)
+
+    doc = json.loads((FIXTURES / "aibom-owasp-1_7.json").read_text())
+    doc["metadata"]["timestamp"] = doc["metadata"]["timestamp"] + "\x00\x1b[2J"
+    doc["metadata"]["component"]["name"] += "\x00"
+    ml = doc["components"][0]
+    ml["purl"] = ml["purl"] + "\x1b[31m"
+    ml["name"] = ml["name"] + "\x1b"
+    hostile = tmp_path / "hostile-aibom.cdx.json"
+    hostile.write_text(json.dumps(doc), encoding="utf-8")
+
+    scan_id, _ = _seed_queued_sbom_scan(tmp_path, sbom_src=hostile)
+
+    from tasks.ingest_sbom import ingest_sbom_task
+
+    result = ingest_sbom_task.apply(args=[str(scan_id)])
+    assert result.successful(), f"task failed: {result.traceback}"
+
+    sync_session.expire_all()
+    scan = sync_session.execute(select(Scan).where(Scan.id == scan_id)).scalar_one()
+    assert scan.status == "succeeded", scan.error_message
+    assert scan.error_message is None
+
+    # The verdict persisted and carries NO control characters anywhere.
+    verdict = sync_session.execute(
+        select(SbomConformance).where(SbomConformance.scan_id == scan_id)
+    ).scalar_one()
+    blob = json.dumps(verdict.checks)
+    assert "\\u0000" not in blob and "\\u001b" not in blob
+    by_id = {c["id"]: c for c in verdict.checks}
+    # Core detail strings sanitised (NUL + ESC stripped, printable tail kept).
+    assert by_id["timestamp"]["detail"] == "2026-06-23T13:18:25+00:00[2J"
+    # G7 evidence sanitised (ESC stripped from the poisoned purl).
+    assert by_id["g7-model-id"]["evidence"] == [
+        "pkg:huggingface/google-bert/bert-base-uncased@86b5e093[31m"
+    ]

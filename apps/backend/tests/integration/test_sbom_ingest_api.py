@@ -292,6 +292,21 @@ async def test_ingest_accepts_realistic_density_fixture(
     assert resp.json()["status"] == "queued"
 
 
+async def test_ingest_accepts_cyclonedx_1_7_ml_bom(client, _workspace: Path) -> None:
+    """specVersion 1.7 (CycloneDX ML-BOM) is an accepted ingest version — a
+    real OWASP AIBOM Generator document (modelCard-carrying ML component, the
+    G7 AI-SBOM input) returns 202 instead of the pre-G7 422."""
+    _team, user, project = await _seed(client, role="developer")
+    body = (FIXTURES / "aibom-owasp-1_7.json").read_bytes()
+    resp = await client.post(
+        f"/v1/projects/{project.id}/sbom-ingest",
+        headers=_bearer_for(user),
+        files=_sbom_part(body, name="aibom.cdx.json"),
+    )
+    assert resp.status_code == 202, resp.text
+    assert resp.json()["status"] == "queued"
+
+
 # ---------------------------------------------------------------------------
 # API-key auth (CI pushes SBOMs with a tos_ key)
 # ---------------------------------------------------------------------------
@@ -719,6 +734,21 @@ async def _seed_sbom_scan_with_verdict(
                         "detail": "0% (0/4)",
                         "missing": [],
                     },
+                    # A G7 AI-SBOM advisory check as the ML-BOM ingest persists
+                    # it (extension fields cluster/source/role/evidence) — the
+                    # read schema must pass these through, not strip them.
+                    {
+                        "id": "g7-model-id",
+                        "label": "Model identifier",
+                        "required": False,
+                        "status": "pass",
+                        "detail": "present",
+                        "missing": [],
+                        "cluster": "models",
+                        "source": "auto",
+                        "role": "sbom-author",
+                        "evidence": ["pkg:huggingface/google-bert/bert-base-uncased@86b5e093"],
+                    },
                 ],
             )
         )
@@ -740,7 +770,16 @@ async def test_get_conformance_returns_verdict(client) -> None:
     assert body["source_format"] == "cyclonedx"
     assert body["purl_coverage_pct"] == 100
     assert body["component_count"] == 4
-    assert {c["id"] for c in body["checks"]} == {"purl", "hash"}
+    assert {c["id"] for c in body["checks"]} == {"purl", "hash", "g7-model-id"}
+    # G7 advisory extension fields survive the read schema (schemas/sbom.py).
+    g7 = next(c for c in body["checks"] if c["id"] == "g7-model-id")
+    assert g7["cluster"] == "models"
+    assert g7["source"] == "auto"
+    assert g7["role"] == "sbom-author"
+    assert g7["evidence"] == ["pkg:huggingface/google-bert/bert-base-uncased@86b5e093"]
+    # Core checks keep None extension fields (backwards compatibility).
+    core = next(c for c in body["checks"] if c["id"] == "purl")
+    assert core["cluster"] is None and core["evidence"] is None
 
 
 async def test_get_conformance_cross_team_is_404(client) -> None:
