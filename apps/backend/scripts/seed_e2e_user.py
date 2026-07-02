@@ -92,6 +92,10 @@ import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from services.sbom_conformance import Check
 
 # Environments where this seed script is allowed to mint a super-admin via
 # ``--super-admin`` (security-reviewer F8 / CWE-489 Active Debug Code).
@@ -655,7 +659,7 @@ _G7_SEED_PLAN: dict[str, tuple[str, str, list[str] | None]] = {
 }
 
 
-def _g7_seed_checks() -> list:
+def _g7_seed_checks() -> list[Check]:
     """Build the ``--with-g7`` advisory checks (list of ``Check``).
 
     Iterates the registry in document order so the persisted per-cluster row
