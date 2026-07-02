@@ -83,18 +83,19 @@ stateDiagram-v2
 - **심각도 (Severity)** — 색상 배지.
 - **CVSS** — 상위 피드의 CVSS v3 숫자 점수.
 - **EPSS** — EPSS 확률을 백분율로 표시(예: `97.3%`). EPSS 값이 없는 CVE는 `—`로 표시됩니다. [EPSS — 악용 확률](#epss--악용-확률) 참고.
+- **KEV** — CVE가 CISA KEV(Known Exploited Vulnerabilities, 알려진 악용 취약점) 카탈로그에 등재된 경우 표시되는 배지와 카탈로그의 대응 기한. [KEV — 알려진 악용 취약점](#kev) 참고.
 - **제목 (Title)** — 권고문의 짧은 요약.
 - **영향 (Affected)** — 영향 받는 컴포넌트(`name@version`).
 - **상태 (Status)** — 현재 VEX 상태.
 - **발견 시각 (Discovered)** — 결과가 처음 등장한 시점.
 
-상단 인라인 필터 바: 심각도, 상태, **EPSS 임계** 필터(`min_epss`), 그리고 **검색** 박스(CVE ID / 제목 / 컴포넌트 자유 텍스트), 정렬·정렬 순서 컨트롤. 정렬 컨트롤에는 **EPSS**(`sort=epss`)가 포함되며, EPSS 값이 없는 행은 마지막으로 정렬됩니다.
+상단 인라인 필터 바: 심각도, 상태, **EPSS 임계** 필터(`min_epss`), 그리고 **검색** 박스(CVE ID / 제목 / 컴포넌트 자유 텍스트), 정렬·정렬 순서 컨트롤. 기본 정렬은 **Priority** — KEV 등재 결과가 먼저, 다음은 심각도, 그다음은 EPSS 순입니다. [Priority 정렬](#priority-sort) 참고. 정렬 컨트롤에는 **EPSS**(`sort=epss`)도 포함되며, EPSS 값이 없는 행은 마지막으로 정렬됩니다.
 
 ## 드로어 — 결과 상세
 
 행을 클릭하면 다음을 봅니다.
 
-- **요약 (Summary)** — 제목, 설명, CWE, CVSS 벡터, 그리고 Trivy DB가 제공할 때의 **EPSS score와 percentile**(미제공 시 `—`). [EPSS — 악용 확률](#epss--악용-확률) 참고.
+- **요약 (Summary)** — 제목, 설명, CWE, CVSS 벡터, 그리고 Trivy DB가 제공할 때의 **EPSS score와 percentile**(미제공 시 `—`). [EPSS — 악용 확률](#epss--악용-확률) 참고. CVE가 CISA KEV 카탈로그에 등재되어 있으면 **KEV 배지**와 대응 기한도 여기에 표시됩니다 — [KEV — 알려진 악용 취약점](#kev) 참고.
 - **참고 자료 (References)** — 벤더 권고, 수정 커밋, 익스플로잇 데이터베이스.
 - **영향 (Affected)** — 상위에서 보고한 영향 범위와 본 프로젝트 컴포넌트 버전 강조, 그리고 **수정 버전(fixed version)** — *이 컴포넌트*에 대해 *이 CVE*를 해소하는 버전 — 을 스캔 파이프라인이 판별할 수 있었던 경우 표시합니다. [수정 버전 — CVE를 해소하는 버전](#수정-버전--cve를-해소하는-버전) 참고. 영향 컴포넌트는 **의존성 깊이**()도 함께 표시합니다: 직접 선언한 **직접(direct)** 의존성(깊이 `1`)인지, 다른 패키지가 끌어온 **전이(transitive)** 의존성(깊이 `2+`)인지. 직접 의존성의 CVE 는 대개 선언 버전을 올려 본인이 고치고, 전이 의존성의 CVE 는 그것을 요구하는 직접 부모를 업그레이드해 고칩니다 — [직접 vs. 전이 (의존성 깊이)](./components-and-licenses.md#dependency-depth) 참고.
 - **분석 (Analysis)** — VEX 상태 전환별 액션 버튼, 현재 상태에서 허용된 전환마다 한 개씩 표시됩니다. 모든 종결 결정은 `analyzing` 상태를 거치므로 새로 발견된 finding 은 곧바로 verdict 로 넘어갈 수 없습니다. 버튼을 클릭하면 사유 입력 다이얼로그가 열리며 제출합니다. `developer` 이상만 가능하며, `Suppressed` 로의 전이는 `team_admin` 이상이 필요합니다.
@@ -194,6 +195,42 @@ curl -sS \
 
 :::tip EPSS로 빌드 게이팅
 EPSS는 CI 빌드 게이트도 구동할 수 있어, Critical이 아니어도 악용 확률이 높은 CVE가 빌드를 실패시킬 수 있습니다. [EPSS로 빌드 게이팅](../ci-integration/github-actions.md#epss로-빌드-게이팅-선택) 참고.
+:::
+
+## KEV — 알려진 악용 취약점 {#kev}
+
+포털은 CVE가 [CISA KEV(Known Exploited Vulnerabilities, 알려진 악용 취약점) 카탈로그](https://www.cisa.gov/known-exploited-vulnerabilities-catalog)에 등재된 모든 결과에 표시를 붙입니다. KEV는 미국 사이버안보·인프라 보안청(CISA, Cybersecurity and Infrastructure Security Agency)이 실제 공격에 악용되었다고 확인한 약 1,600건의 CVE 목록입니다.
+
+### KEV vs. EPSS vs. CVSS
+
+- **CVSS**는 이론적 **심각도**를 측정합니다.
+- **EPSS**는 악용 **확률**을 예측합니다.
+- **KEV**는 **확인된 사실**을 기록합니다 — 누군가 이미 이 CVE를 악용하고 있습니다. KEV 등재는 어떤 예측보다 우선하는 신호이므로, KEV 등재 결과를 조치 대기열의 맨 앞에 두십시오.
+
+### 포털의 KEV 표시 방식
+
+- **배지** — 결과 테이블과 드로어의 **요약(Summary)** 섹션에서 CVE 옆에 **KEV** 배지가 나타납니다. 심각도 표시와 마찬가지로 신호는 색상 단독이 아니라 레이블입니다.
+- **대응 기한** — 드로어는 대응 기한(`kev_due_date`)도 표시합니다. CISA가 카탈로그 항목마다 부여하는 조치 기한으로, 미국 연방 기관을 구속하는 기한이지 여러분의 배포를 구속하지는 않습니다 — 시급성 신호로 읽으십시오.
+- 배지가 없는 결과는 단지 **카탈로그에 없다**는 뜻입니다 — 배지 없음이 안전하다는 판정은 아닙니다.
+
+### Priority 정렬 {#priority-sort}
+
+**Priority**는 결과 테이블의 **기본 정렬**입니다. 행을 다음 순서로 정렬합니다.
+
+1. **KEV** — 카탈로그 등재 결과 먼저,
+2. **심각도** — Critical → Info,
+3. **EPSS** — 악용 확률 높은 순(값 없는 행은 마지막).
+
+따라서 테이블 상단에는 항상 악용이 확인되고, 가장 심각하며, 공격 가능성이 가장 높은 결과가 모입니다. 다른 기준이 필요하면 정렬 컨트롤에서 선택하십시오 — 기존 단일 키 정렬(심각도, EPSS, 발견 시각)은 그대로입니다.
+
+### 데이터 출처
+
+일일 Celery beat 태스크(`trustedoss.kev_catalog_refresh`)가 CISA KEV 피드를 내려받아 포털의 취약점 카탈로그에 동기화합니다. 등재 해제도 동기화됩니다 — CISA가 카탈로그에서 제거한 CVE는 같은 실행에서 배지를 잃습니다. 재스캔은 필요 없습니다 — 등재 여부는 CVE 자체에 저장되므로 기존 결과에 즉시 반영됩니다.
+
+refresh는 세 개의 env 키 — `KEV_FEED_URL`, `KEV_REFRESH_ENABLED`, `KEV_REFRESH_TIMEOUT_SECONDS` — 로 조정합니다. [환경 변수 — KEV 카탈로그](../reference/env-variables.md#kev-catalog) 참고.
+
+:::note Air-gapped 배포
+CISA 피드에 접근할 수 없는 배포는 `KEV_REFRESH_ENABLED=false`로 설정하십시오. refresh를 끄면 KEV 데이터가 로드되지 않으므로 **KEV 배지와 대응 기한이 표시되지 않고**, Priority 정렬은 사실상 심각도 → EPSS로 동작합니다.
 :::
 
 ## 수정 버전 — CVE를 해소하는 버전

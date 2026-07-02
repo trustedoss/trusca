@@ -85,6 +85,16 @@ sidebar_position: 2
 | `TRIVY_CACHE_DIR` | `/var/lib/trivy` | `integrations/trivy.py` | DB가 풀리는 디렉터리. 공유 `trivy-cache` 볼륨이 뒷받침 — 워커(rw)와 backend(ro)가 함께 마운트해 관리자 health/disk 패널이 DB 상태를 읽을 수 있다. |
 | `TRIVY_TIMEOUT_SECONDS` | `300` | `config.py` | `trivy sbom` 스캔별 타임아웃. 매우 큰 모노레포는 `600`~`900`으로 상향. |
 
+### KEV 카탈로그 {#kev-catalog}
+
+포털은 Trivy DB 번들과 별개로 [CISA KEV(Known Exploited Vulnerabilities, 알려진 악용 취약점) 카탈로그](https://www.cisa.gov/known-exploited-vulnerabilities-catalog)를 하루 한 번 취약점 카탈로그에 동기화합니다(Celery beat 태스크 `trustedoss.kev_catalog_refresh`, 약 1,600건, 등재 해제 포함). KEV 등재 결과는 배지와 대응 기한을 표시하고 기본 **Priority** 정렬을 구동합니다 — [취약점 — KEV](../user-guide/vulnerabilities.md#kev) 참고.
+
+| 키 | 기본값 | 읽는 위치 | 설명 |
+|---|---|---|---|
+| `KEV_FEED_URL` | `https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json` | `config.py` | 일일 refresh가 KEV 피드를 내려받는 URL. 사내 미러를 쓰려면 CISA JSON의 미러 주소로 오버라이드하십시오. |
+| `KEV_REFRESH_ENABLED` | `true` | `config.py` | 일일 refresh 토글. 피드에 접근할 수 없는 air-gapped 배포는 `false`로 설정하십시오 — refresh를 끄면 KEV 데이터가 로드되지 않으므로 **KEV 배지와 대응 기한이 표시되지 않고**, Priority 정렬은 사실상 심각도 → EPSS로 동작합니다. |
+| `KEV_REFRESH_TIMEOUT_SECONDS` | `30` | `config.py` | CISA 피드 다운로드의 아웃바운드 HTTP 타임아웃. |
+
 ## 빌드 / 정책 게이트
 
 CI 빌드 게이트는 기본적으로 Critical CVE와 금지 라이선스에서 빌드를 실패시키며, 이 조건들은 env로 구동되지 않습니다. 아래 단일 env 노브는 **선택적** EPSS 차원을 더합니다.
