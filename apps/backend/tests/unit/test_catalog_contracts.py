@@ -130,6 +130,31 @@ def test_emitted_obligation_kinds_are_advertised() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Bundled license texts ↔ obligation catalog — vocabulary-drift guard
+# ---------------------------------------------------------------------------
+
+
+def test_license_text_files_match_obligation_catalog_ids() -> None:
+    """Every catalogued SPDX id has a bundled full text, and vice versa.
+
+    The NOTICE's "License Texts" section (Phase B) promises the standard full
+    text for every license the obligation catalog governs. A catalog id added
+    without vendoring ``services/license_texts/<id>.txt`` silently degrades
+    that license to the "text not bundled" pointer; an orphan ``.txt`` is dead
+    weight that will rot. Same-vocabulary-in-two-places rule (H-5 class).
+    """
+    from services.license_texts import bundled_spdx_ids
+    from services.obligation_catalog import catalog_spdx_ids
+
+    bundled = bundled_spdx_ids()
+    catalogued = catalog_spdx_ids()
+    assert bundled == catalogued, (
+        f"catalog ids without a bundled text: {sorted(catalogued - bundled)}; "
+        f"bundled texts not in the catalog: {sorted(bundled - catalogued)}"
+    )
+
+
+# ---------------------------------------------------------------------------
 # VEX state mapping — H-4 guard
 # ---------------------------------------------------------------------------
 

@@ -8,6 +8,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- **NOTICE license texts + per-component copyright** — the NOTICE document
+  (text / markdown / html) now closes with a "License Texts" section embedding
+  the full SPDX text of every license observed in the project (32 license
+  texts bundled; a license without a bundled text falls back to its
+  reference-URL link), and each component line carries the copyright statement
+  recorded in the scan's SBOM — or, when the SBOM recorded none, an explicit
+  fallback pointing at the component's registry URL (the line is never blank).
+  The NOTICE artifact thereby satisfies the obligation catalog's
+  `license_text_inclusion_required` obligation.
 - **G7 AI SBOM minimum-elements conformance (advisory)** — SBOM ingest now
   accepts CycloneDX `specVersion` 1.7 (the ML-BOM model-card fields), and when
   an uploaded document carries a `machine-learning-model` component the

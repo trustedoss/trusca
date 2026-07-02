@@ -110,14 +110,32 @@ The file contains:
 
 - A header with the project name and generation timestamp.
 - One section per detected license, listing the components (`name @ version`)
-  under that license.
+  under that license, each with a copyright line.
 - Each license section's attribution obligations (e.g. *attribution*,
   *no-endorsement*) with a short description and a policy reference link.
+- A closing **License Texts** section with the full text of every license
+  observed in the project.
 
-Per-component copyright statements are **not** included yet — copyright
-capture (and a manual override in the component drawer) is on the
-[roadmap](#roadmap). Until then, fulfil copyright-notice obligations from the
-upstream package contents directly.
+### Copyright lines
+
+Each component entry carries the copyright statement the scan's SBOM recorded
+for it (`cdxgen` reads it from package metadata). When the SBOM recorded no
+copyright holder, the line is never left blank: it falls back to an explicit
+note that the SBOM carries no copyright holder, pointing at the component's
+registry URL so you can retrieve the statement from the source. A manual
+per-component override in the component drawer is on the [roadmap](#roadmap).
+
+### License texts
+
+The document closes with a **License Texts** section reproducing the full
+canonical text of each license that appears in the project. The portal bundles
+the SPDX (Software Package Data Exchange) text for 32 well-known licenses —
+MIT, Apache-2.0, and the BSD, GPL / LGPL / AGPL, MPL, EPL, and CDDL families,
+among others. A license whose text is not bundled is not silently dropped: its
+entry falls back to the license's reference-URL link to the canonical text.
+With this section the NOTICE artifact itself satisfies the catalog's
+`license_text_inclusion_required` obligation — see the
+[obligation catalog](../reference/obligation-catalog.md#structured-obligation-fields).
 
 ### Supported formats
 
@@ -219,13 +237,15 @@ endpoint (which returns `403`), the SBOM/NOTICE bodies expose structural detail
 (component names, versions), so the endpoints refuse to confirm a project even
 exists to a non-member. Join the owning team to get access.
 
-### NOTICE file has no copyright lines
+### A copyright line shows a registry link instead of a holder
 
-The NOTICE file does not include per-component copyright statements in this
-release — it lists components and their attribution obligations grouped by
-license. Copyright capture (and a manual override in the component drawer) is
-on the [roadmap](#roadmap); SPDX exports carry `copyrightText: NOASSERTION`
-for the same reason.
+The scan's SBOM recorded no copyright holder for that component — `cdxgen`
+found none in the package metadata. The NOTICE never leaves the line blank; it
+notes the missing holder and points at the component's registry URL instead,
+so you can retrieve the copyright statement from the upstream source directly.
+A manual per-component override in the component drawer is on the
+[roadmap](#roadmap). The SPDX export is a separate surface and still emits
+`copyrightText: NOASSERTION`.
 
 ## Compliance evidence trail {#compliance-evidence-trail}
 
