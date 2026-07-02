@@ -36,6 +36,7 @@ import type {
 import { BULK_TRANSITION_MAX } from "@/features/projects/api/vulnerabilitiesApi";
 import { ActiveFilterChips } from "@/features/projects/components/ActiveFilterChips";
 import { AxisPill } from "@/features/projects/components/AxisPill";
+import { KevBadge } from "@/features/projects/components/KevBadge";
 import { ReachabilityBadge } from "@/features/projects/components/ReachabilityBadge";
 import { SeverityBadge } from "@/features/projects/components/SeverityBadge";
 import { SeverityDistributionChart } from "@/features/projects/components/SeverityDistributionChart";
@@ -133,6 +134,7 @@ const VALID_SEVERITY = new Set<VulnSeverity>([
 const VALID_STATUS = new Set<VulnFindingStatus>(ALL_VULNERABILITY_STATUSES);
 
 const VALID_SORT = new Set<VulnerabilitySortKey>([
+  "priority",
   "severity",
   "cvss",
   "status",
@@ -140,6 +142,14 @@ const VALID_SORT = new Set<VulnerabilitySortKey>([
   "epss",
   "reachable",
 ]);
+
+/**
+ * KEV feature — the DEFAULT sort is the composite `priority` ranking
+ * (KEV → severity → EPSS). It replaces the previous "severity desc" default;
+ * `parseSort` still falls back here for absent / invalid URL values, so a
+ * hand-edited `?sort=` can never wedge the list.
+ */
+const DEFAULT_SORT: VulnerabilitySortKey = "priority";
 
 const VALID_REACHABLE = new Set<ReachabilityFilter>([
   "true",
@@ -169,7 +179,7 @@ function parseSort(raw: string | null): VulnerabilitySortKey {
   if (raw && VALID_SORT.has(raw as VulnerabilitySortKey)) {
     return raw as VulnerabilitySortKey;
   }
-  return "severity";
+  return DEFAULT_SORT;
 }
 
 function parseOrder(raw: string | null): SortOrder {
@@ -389,7 +399,7 @@ export function VulnerabilitiesTab({
         else next.delete("severity");
         if (status.length) next.set("status", status.join(","));
         else next.delete("status");
-        if (sort !== "severity") next.set("sort", sort);
+        if (sort !== DEFAULT_SORT) next.set("sort", sort);
         else next.delete("sort");
         if (order !== "desc") next.set("order", order);
         else next.delete("order");
@@ -508,24 +518,33 @@ export function VulnerabilitiesTab({
   );
 
   // W4-B #19 — SortableColumnHeader state derived from the existing
-  // `sort` + `order` state. The default surface state is "severity desc"
-  // (the most useful triage order); we treat the default as the un-sorted
-  // bucket so the Severity header's cycle returns to no-explicit-sort
-  // rather than being stuck on asc/desc forever.
+  // `sort` + `order` state. The default surface state is now the composite
+  // "priority" ranking (KEV → severity → EPSS), which is NOT a table column,
+  // so it maps to the un-sorted header bucket: a column header's cycle
+  // returns to the priority default rather than being stuck on asc/desc.
   const currentSort: SortState | null = useMemo(() => {
-    if (sort === "severity" && order === "desc") return null;
+    if (sort === "priority") return null;
     return { key: sort, order };
   }, [sort, order]);
 
   function handleSortChange(next: SortState | null) {
     if (!next) {
-      setSort("severity");
+      setSort(DEFAULT_SORT);
       setOrder("desc");
       setPage(1);
       return;
     }
     setSort(next.key as VulnerabilitySortKey);
     setOrder(next.order);
+    setPage(1);
+  }
+
+  // KEV feature — the toolbar's sort select shares the same `sort` state as
+  // the column headers (single source of truth): picking a key here resets
+  // the direction to the key's natural "most urgent first" (desc).
+  function handleSortKeyChange(next: VulnerabilitySortKey) {
+    setSort(next);
+    setOrder("desc");
     setPage(1);
   }
 
@@ -598,6 +617,8 @@ export function VulnerabilitiesTab({
       <VulnerabilitiesToolbar
         search={search}
         onSearchChange={setSearch}
+        sort={sort}
+        onSortKeyChange={handleSortKeyChange}
         status={status}
         onStatusChange={(next) => {
           setStatus(next);
@@ -1058,11 +1079,26 @@ function VulnerabilityRow({
           feedback flagged the row license column as noise.
           W9 #52 — each optional cell is gated on `visibleColumns`; required
           ids (`cve_id`, `severity`) always render. */}
+      {/* KEV feature — the CVE cell pairs the id with a compact KEV badge
+          when the CVE sits in the CISA catalog. The badge carries its own
+          "KEV" text label (color is never the only signal); the due date
+          rides on its tooltip so the 40px row stays quiet. */}
       <span
-        className="w-44 truncate font-mono text-xs"
-        title={vulnerability.cve_id}
+        className="flex w-44 items-center gap-1.5"
+        data-testid="vulnerability-row-cve"
+        data-kev={vulnerability.kev ? "true" : "false"}
       >
-        {vulnerability.cve_id}
+        <span
+          className="truncate font-mono text-xs"
+          title={vulnerability.cve_id}
+        >
+          {vulnerability.cve_id}
+        </span>
+        <KevBadge
+          kev={vulnerability.kev}
+          dueDate={vulnerability.kev_due_date}
+          className="shrink-0 px-1.5 py-0 text-[10px]"
+        />
       </span>
       {visibleColumns.has("title") ? (
         <TitleCell summary={vulnerability.summary} />

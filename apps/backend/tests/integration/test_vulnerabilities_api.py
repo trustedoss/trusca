@@ -18,7 +18,7 @@ import os
 import subprocess
 import uuid
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
@@ -139,6 +139,9 @@ async def _seed_finding(
     initial_status: str = "new",
     epss_score: float | None = None,
     epss_percentile: float | None = None,
+    kev: bool = False,
+    kev_date_added: date | None = None,
+    kev_due_date: date | None = None,
     reachable: bool | None = None,
     reachability_source: str | None = None,
     reachability_analyzed_at: datetime | None = None,
@@ -182,6 +185,9 @@ async def _seed_finding(
             "summary": summary or f"summary {suffix}",
             "epss_score": epss_score,
             "epss_percentile": epss_percentile,
+            "kev": kev,
+            "kev_date_added": kev_date_added,
+            "kev_due_date": kev_due_date,
         }
         if details is not None:
             vuln_kwargs["details"] = details
@@ -847,6 +853,101 @@ async def test_list_min_epss_boundary_values_accepted(client) -> None:
             params={"min_epss": ok},
         )
         assert response.status_code == 200, (ok, response.text)
+
+
+# ---------------------------------------------------------------------------
+# CISA KEV exposure — response fields + sort=priority (KEV → severity → EPSS).
+# ---------------------------------------------------------------------------
+
+
+async def test_list_response_carries_kev_fields(client) -> None:
+    _, team, user = await _seed_team_with_user(client)
+    project_id, scan_id = await _seed_scanned_project(client, team_id=team.id)
+    await _seed_finding(
+        client,
+        scan_id=scan_id,
+        severity="critical",
+        kev=True,
+        kev_date_added=date(2021, 12, 10),
+        kev_due_date=date(2021, 12, 24),
+    )
+    headers = _bearer_for(user)
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/vulnerabilities", headers=headers
+    )
+    assert response.status_code == 200, response.text
+    item = response.json()["items"][0]
+    assert item["kev"] is True
+    assert item["kev_due_date"] == "2021-12-24"
+
+
+async def test_list_kev_fields_default_false_and_null(client) -> None:
+    _, team, user = await _seed_team_with_user(client)
+    project_id, scan_id = await _seed_scanned_project(client, team_id=team.id)
+    await _seed_finding(client, scan_id=scan_id, severity="high")
+    headers = _bearer_for(user)
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/vulnerabilities", headers=headers
+    )
+    assert response.status_code == 200, response.text
+    item = response.json()["items"][0]
+    assert item["kev"] is False
+    assert item["kev_due_date"] is None
+
+
+async def test_list_sort_priority_ranks_kev_above_higher_severity(client) -> None:
+    """sort=priority: a KEV-listed medium CVE outranks a non-KEV critical —
+    known active exploitation beats theoretical severity. Within the non-KEV
+    bucket, severity desc then EPSS desc (nulls last) break the ties."""
+    _, team, user = await _seed_team_with_user(client)
+    project_id, scan_id = await _seed_scanned_project(client, team_id=team.id)
+    kev_medium = await _seed_finding(
+        client,
+        scan_id=scan_id,
+        severity="medium",
+        kev=True,
+        kev_date_added=date(2026, 6, 12),
+        kev_due_date=date(2026, 6, 15),
+    )
+    critical_high_epss = await _seed_finding(
+        client, scan_id=scan_id, severity="critical", epss_score=0.90
+    )
+    critical_low_epss = await _seed_finding(
+        client, scan_id=scan_id, severity="critical", epss_score=0.10
+    )
+    critical_no_epss = await _seed_finding(
+        client, scan_id=scan_id, severity="critical", epss_score=None
+    )
+    headers = _bearer_for(user)
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/vulnerabilities",
+        headers=headers,
+        params={"sort": "priority", "order": "desc", "limit": 100},
+    )
+    assert response.status_code == 200, response.text
+    order = [i["id"] for i in response.json()["items"]]
+    assert order == [
+        str(kev_medium),
+        str(critical_high_epss),
+        str(critical_low_epss),
+        str(critical_no_epss),
+    ]
+
+
+async def test_list_sort_priority_accepted_on_empty_project(client) -> None:
+    _, team, user = await _seed_team_with_user(client)
+    project_id, _ = await _seed_scanned_project(client, team_id=team.id)
+    headers = _bearer_for(user)
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/vulnerabilities",
+        headers=headers,
+        params={"sort": "priority", "order": "asc"},
+    )
+    assert response.status_code == 200
 
 
 # ---------------------------------------------------------------------------

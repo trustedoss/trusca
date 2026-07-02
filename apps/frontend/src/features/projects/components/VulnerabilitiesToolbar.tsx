@@ -20,6 +20,7 @@ import type {
   ReachabilityFilter,
   VulnFindingStatus,
   VulnSeverity,
+  VulnerabilitySortKey,
 } from "@/features/projects/api/vulnerabilitiesApi";
 import { VexExportMenu } from "@/features/projects/components/VexExportMenu";
 import { VexImportDialog } from "@/features/projects/components/VexImportDialog";
@@ -67,9 +68,47 @@ export const REACHABLE_OPTIONS: ReachabilityFilter[] = [
   "unknown",
 ];
 
+/**
+ * KEV feature — sort keys offered by the toolbar's sort select. Column sorts
+ * moved to the headers in W4-B #19, but the composite `priority` ranking
+ * (KEV → severity → EPSS) is not a column, so the select returns as the home
+ * for it — listing the column keys too so the select always reflects the
+ * current sort (single `sort` state shared with the headers).
+ */
+export const SORT_OPTIONS: VulnerabilitySortKey[] = [
+  "priority",
+  "severity",
+  "cvss",
+  "epss",
+  "reachable",
+  "component",
+  "status",
+  "discovered_at",
+];
+
+/** i18n label key per sort option — column sorts reuse the column labels. */
+const SORT_OPTION_LABEL_KEY: Record<VulnerabilitySortKey, string> = {
+  priority: "vulnerabilities.toolbar.sort_option.priority",
+  severity: "vulnerabilities.column.severity",
+  cvss: "vulnerabilities.column.cvss",
+  epss: "vulnerabilities.column.epss",
+  reachable: "vulnerabilities.column.reachable",
+  component: "vulnerabilities.column.component",
+  status: "vulnerabilities.column.status",
+  discovered_at: "vulnerabilities.column.discovered",
+};
+
 export interface VulnerabilitiesToolbarProps {
   search: string;
   onSearchChange: (value: string) => void;
+  /**
+   * Current sort key (KEV feature). Shared state with the column headers —
+   * clicking a header updates the select, and vice versa. `"priority"` is
+   * the default (KEV → severity → EPSS).
+   */
+  sort: VulnerabilitySortKey;
+  /** Called with the picked key; the parent resets direction to desc. */
+  onSortKeyChange: (value: VulnerabilitySortKey) => void;
   status: VulnFindingStatus[];
   onStatusChange: (value: VulnFindingStatus[]) => void;
   /**
@@ -165,6 +204,8 @@ const LICENSE_CATEGORY_OPTIONS: LicenseCategoryName[] = [
 export function VulnerabilitiesToolbar({
   search,
   onSearchChange,
+  sort,
+  onSortKeyChange,
   status,
   onStatusChange,
   minEpss,
@@ -279,6 +320,33 @@ export function VulnerabilitiesToolbar({
           data-testid="vulnerabilities-search"
           className="mt-1 h-9"
         />
+      </div>
+
+      {/* KEV feature — sort select. Column sorts stay clickable on the
+          headers; this select exists because the default composite
+          "priority" ranking (KEV → severity → EPSS) is not a column. */}
+      <div className="flex flex-col">
+        <label
+          htmlFor="vulnerabilities-sort-select"
+          className="text-xs font-medium text-muted-foreground"
+        >
+          {t("vulnerabilities.toolbar.sort_label")}
+        </label>
+        <select
+          id="vulnerabilities-sort-select"
+          value={sort}
+          onChange={(event) =>
+            onSortKeyChange(event.target.value as VulnerabilitySortKey)
+          }
+          className="mt-1 h-9 w-56 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          data-testid="vulnerabilities-sort-select"
+        >
+          {SORT_OPTIONS.map((opt) => (
+            <option key={opt} value={opt}>
+              {t(SORT_OPTION_LABEL_KEY[opt])}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="flex flex-col">

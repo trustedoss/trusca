@@ -44,7 +44,13 @@ export type VulnerabilitySortKey =
   | "discovered_at"
   | "epss"
   | "reachable"
-  | "component";
+  | "component"
+  /**
+   * Composite triage ranking (KEV feature): KEV membership first, then
+   * severity, then EPSS. Not a table column — it is offered by the toolbar's
+   * sort select and is the tab's DEFAULT sort.
+   */
+  | "priority";
 export type SortOrder = "asc" | "desc";
 
 /**
@@ -106,6 +112,19 @@ export interface VulnerabilityListItem {
   epss_score: number | null;
   /** EPSS percentile (0–1) — rank of this score among all scored CVEs. */
   epss_percentile: number | null;
+  /**
+   * `true` when the CVE is listed in the CISA KEV (Known Exploited
+   * Vulnerabilities) catalog — confirmed exploitation in the wild. Like EPSS,
+   * this is a CVE-level attribute periodically refreshed from the catalog;
+   * `false` simply means "not (yet) listed".
+   */
+  kev: boolean;
+  /**
+   * CISA's remediation due date for a KEV-listed CVE (ISO date, e.g.
+   * "2026-07-15"). `null` when the CVE is not in the catalog or the catalog
+   * entry carries no due date.
+   */
+  kev_due_date: string | null;
   summary: string | null;
   status: VulnFindingStatus;
   /**
@@ -262,6 +281,14 @@ export interface VulnerabilityDetail {
   epss_score: number | null;
   /** EPSS percentile (0–1) — rank among all scored CVEs. */
   epss_percentile: number | null;
+  /**
+   * CISA KEV catalog membership (same semantics as the list item's `kev`).
+   * Optional (not `boolean`) because the detail schema may lag the list
+   * contract by a deploy — callers treat a missing field as `false`.
+   */
+  kev?: boolean;
+  /** CISA remediation due date (ISO date) — see the list item's field. */
+  kev_due_date?: string | null;
   summary: string | null;
   details: string | null;
   references: VulnerabilityReference[];

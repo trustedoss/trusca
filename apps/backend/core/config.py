@@ -1121,6 +1121,63 @@ def trivy_db_refresh_timeout_seconds() -> int:
 
 
 # ---------------------------------------------------------------------------
+# CISA KEV (Known Exploited Vulnerabilities) catalog refresh.
+#
+# A daily Celery beat (``tasks.kev_catalog_refresh``) pulls the public CISA
+# KEV JSON feed and flags catalog ``vulnerabilities`` rows that appear in it
+# (``kev`` / ``kev_date_added`` / ``kev_due_date`` — migration 0034). The KEV
+# signal feeds the Vulnerabilities tab's ``sort=priority`` ranking (KEV →
+# severity → EPSS, BomLens parity).
+#
+# Every accessor reads the env at call time per CLAUDE.md core rule #11 —
+# style mirrors the ``VULN_REMATCH_*`` block above.
+# ---------------------------------------------------------------------------
+
+
+def kev_feed_url() -> str:
+    """URL of the CISA KEV catalog JSON feed.
+
+    Default is CISA's public feed. Override for an air-gapped mirror the same
+    way ``TRIVY_DB_REPOSITORY`` points Trivy at an internal registry. The
+    value is operator-controlled env configuration only — there is NO user
+    write path to it, so it is not routed through ``core.url_guard`` (same
+    trust model as the env-only notification webhook URLs).
+    """
+    return os.getenv(
+        "KEV_FEED_URL",
+        "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json",
+    )
+
+
+def kev_refresh_enabled() -> bool:
+    """Whether the daily KEV catalog refresh beat actually fetches the feed.
+
+    Default ``true``. Set ``false`` on air-gapped deployments with no mirror —
+    the beat then logs a skip and exits without any network attempt (existing
+    ``kev`` flags stay as-is; they are never cleared by a disabled refresh).
+
+    Truthy: ``1`` / ``true`` / ``yes`` / ``on`` (case-insensitive).
+    Anything else → ``false``.
+    """
+    raw = os.getenv("KEV_REFRESH_ENABLED", "true").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
+def kev_refresh_timeout_seconds() -> int:
+    """HTTP timeout (seconds) for the KEV feed download. Default 30s.
+
+    The feed is a single ~10 MiB JSON document from a CDN; 30 seconds absorbs
+    a slow corporate proxy. Bounded ``[1, 600]``. Read at call time (rule #11).
+    """
+    return _int_env(
+        "KEV_REFRESH_TIMEOUT_SECONDS",
+        default=30,
+        minimum=1,
+        maximum=600,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Phase 2 PR #9 — WebSocket gateway configuration accessors.
 #
 # The WebSocket scan-progress channel name is shared between the FastAPI

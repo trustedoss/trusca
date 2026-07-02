@@ -362,6 +362,12 @@
       "empty": "No EPSS data for this CVE",
       "cell_tooltip": "{{score}} · {{percentile}} most likely to be exploited"
     },
+    "kev": {
+      "label": "KEV",
+      "tooltip": "Listed in the CISA Known Exploited Vulnerabilities (KEV) catalog — exploitation in the wild has been confirmed.",
+      "tooltip_with_due": "Listed in the CISA Known Exploited Vulnerabilities (KEV) catalog — exploitation in the wild has been confirmed. CISA remediation due date: {{date}}.",
+      "due": "Due {{date}}"
+    },
     "filter": {
       "minEpss": "EPSS ≥",
       "minEpssPlaceholder": "0.00–1.00",
@@ -460,6 +466,10 @@
     "toolbar": {
       "search_label": "Search",
       "search_placeholder": "Search by CVE ID, summary, or component",
+      "sort_label": "Sort",
+      "sort_option": {
+        "priority": "Priority (KEV → Severity → EPSS)"
+      },
       "status_label": "Status",
       "reachable_label": "Reachability",
       "reachable_any": "Any reachability",
