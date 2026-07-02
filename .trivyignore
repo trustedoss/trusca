@@ -117,6 +117,67 @@ CVE-2026-5598
 CVE-2026-21452
 
 # ============================================================================
+# Gradle 8.14.3 distribution jars (opt/gradle/lib/**).
+#
+# The worker pins Gradle 8.14.3 (Dockerfile.worker GRADLE_VERSION) solely to
+# run `gradle dependencies` for cdxgen's dependency ENUMERATION
+# (build_prep_source.sh invokes no other task; when the scanned repo ships an
+# executable ./gradlew, the repo's OWN distribution runs and these pinned
+# jars are not executed at all). Threat-model context shared by every entry
+# below: running Gradle on a scanned repository ALREADY grants that
+# repository arbitrary code execution inside the scan environment by design
+# (build scripts are code). The containment boundary depends on the executor
+# mode — default `inprocess` runs Gradle inside the worker container (the
+# container boundary IS the containment); opt-in `local_docker` runs it in a
+# cap-drop=ALL, pids-limited sidecar with a named-volume workspace, and
+# egress is restricted only when SCAN_SIDECAR_NETWORK is configured (default
+# bridge is unrestricted with a WARNING — local_docker.py:358). In either
+# mode a library CVE inside the Gradle process adds no privilege beyond what
+# a hostile build script already has ("no delta"); the executor boundary,
+# not the jar version, is the containment.
+# ============================================================================
+
+# CVE-2026-54512 — com.fasterxml.jackson.core:jackson-databind 2.16.1 → 2.18.8
+# Target: opt/gradle/lib/jackson-databind-2.16.1.jar
+# CVSS: HIGH (arbitrary code execution via polymorphic deserialisation).
+# Reach: the gadget class requires an application that enables default
+#   typing / polymorphic deserialisation on an attacker-controlled JSON
+#   stream. Gradle bundles jackson for internal tooling metadata; it does
+#   not deserialise scanned-repo JSON through jackson default typing in the
+#   `gradle dependencies` path we invoke. Even under attacker control the
+#   primitive yields code exec inside the Gradle process — no delta over
+#   build-script execution (see section header). UNREACHED / NO-DELTA.
+# Re-evaluate: 2026-11-09 or on next Gradle distribution bump.
+CVE-2026-54512
+
+# CVE-2026-54513 — com.fasterxml.jackson.core:jackson-databind 2.16.1 → 2.18.8
+# Target: opt/gradle/lib/jackson-databind-2.16.1.jar
+# CVSS: HIGH (security bypass in deserialisation gadget block-list).
+# Reach: same surface and same no-delta argument as CVE-2026-54512 above —
+#   the bypass only matters for applications that expose jackson
+#   deserialisation of untrusted streams as a TRUST BOUNDARY; inside the
+#   Gradle process a hostile build script already executes code, so there
+#   is no boundary left to bypass. UNREACHED / NO-DELTA.
+# Re-evaluate: 2026-11-09 or on next Gradle distribution bump.
+CVE-2026-54513
+
+# CVE-2025-14813 — org.bouncycastle:bcprov-jdk18on 1.78.1 → 1.80.2
+# Target: opt/gradle/lib/plugins/bcprov-jdk18on-1.78.1.jar
+# CVSS: CRITICAL (GOST-CTR cipher nonce handling defect).
+# Reach: exploiting a GOST block-cipher CTR defect requires the process to
+#   PERFORM GOST encryption with attacker-influenced parameters and a
+#   victim that relies on the resulting ciphertext. A scanned repo CAN
+#   cause BC to load (shipping gradle/verification-metadata.xml
+#   auto-enables dependency verification), but that path performs PGP
+#   signature verification — asymmetric signature + hash operations, not
+#   GOST-CTR symmetric encryption — and the worker consumes no BC
+#   ciphertext anywhere. The only way to reach GOST-CTR is a build script
+#   calling BC directly, which is code the attacker already runs — no
+#   delta (see section header). UNREACHED / NO-DELTA.
+# Re-evaluate: 2026-11-09 or on next Gradle distribution bump.
+CVE-2025-14813
+
+# ============================================================================
 # cdxgen-plugins-bin Go binary CVEs (12 total, 11 HIGH + 1 CRITICAL).
 #
 # Targets (all under the same path, multi-arch siblings included):
@@ -512,4 +573,84 @@ CVE-2025-68121
 # parse attacker-controlled message headers, which our scan entrypoints never
 # feed. Drop this suppression once the vendored binaries ship a Go ≥1.25.11
 # rebuild.
+# 2026-07 toolchain-bump triage: usr/local/bin/cosign is now ALSO covered by
+# this suppression — cosign v3.1.1 (latest) is built with go1.26.3, one patch
+# below the 1.26.4 fix (same residual-target situation as CVE-2026-27145
+# below; see that entry for the cosign reach analysis). Do not drop this
+# entry until BOTH the vendored plugin binaries and cosign ship fixed-stdlib
+# rebuilds.
 CVE-2026-42504
+
+# ============================================================================
+# Latest-upstream residuals after the 2026-07 toolchain bumps
+# (Go 1.25.11 / govulncheck v1.5.0 / Trivy 0.72.0 / Docker CLI 29.6.1 /
+# cosign 3.1.1 / npm 11.18.0 — Dockerfile.worker CVE triage). The entries
+# below are category (2) — the fix exists upstream in a Go module but the
+# LATEST release of the vendoring tool has not re-bundled it yet — except
+# CVE-2026-50163, which is category (1) (no upstream fix cut at all).
+# Nothing newer to bump to. Verified empirically: a `trivy rootfs` self-scan
+# of an image built with all six bumps reports exactly these residuals (plus
+# CVE-2026-42504 on cosign, already suppressed above) and nothing else.
+# ============================================================================
+
+# CVE-2026-50151 — oras.land/oras-go/v2 v2.6.0 → 2.6.1 — HIGH
+# Target: usr/bin/trivy (Trivy 0.72.0 — the latest release, 2026-06-30,
+#   still embeds oras-go v2.6.0; verified via `go version -m` on the
+#   release binary).
+# CVSS: HIGH (blob-upload client forwards registry credentials to a
+#   crafted redirect URL).
+# Reach: the vulnerable path is oras-go's blob UPLOAD (push) client. The
+#   worker invokes trivy only as `trivy image --format json`, `trivy sbom
+#   --format json` and `trivy --download-db-only`
+#   (apps/backend/integrations/trivy.py) — all pull-only operations; no
+#   invocation pushes an OCI artifact, so the upload client never runs
+#   with our credentials. UNREACHED.
+# Re-evaluate: 2026-12-29 or on the next Trivy release — check with
+#   `go version -m /usr/bin/trivy | grep oras`.
+CVE-2026-50151
+
+# CVE-2026-50163 — oras.land/oras-go/v2 v2.6.0 → NO FIX RELEASED — HIGH
+# Target: usr/bin/trivy (same embedded module as CVE-2026-50151 above;
+#   surfaced by a Trivy DB refresh AFTER the PR #437 scan run — caught by
+#   the self-scan gate simulation for this triage).
+# CVSS: HIGH (tar-extraction hardlink entry with a relative Linkname can
+#   escape the extract directory — path traversal on OCI artifact
+#   extraction).
+# Reach: category (1), no upstream fix cut. The vulnerable code is
+#   oras-go's artifact EXTRACTION helper, exercised when Trivy downloads
+#   and unpacks its vulnerability DB as an OCI artifact. The pull source
+#   is the deployment-configured TRIVY_DB_REPOSITORY (default
+#   ghcr.io/aquasecurity/trivy-db) — no scan input (SBOM path, image ref,
+#   scanned repo content) selects the oras download URL in any of the
+#   three commands integrations/trivy.py runs. Triggering the traversal
+#   therefore requires a crafted artifact served by that pinned upstream
+#   DB registry, i.e. a compromise of the DB supply chain itself, not
+#   attacker-controlled scan input. CONDITIONALLY UNREACHED (trust anchor
+#   = operator-pinned DB registry over TLS).
+# Re-evaluate: 2026-12-29 or as soon as oras-go cuts a fixed release and
+#   Trivy re-bundles it — this entry must not outlive an available fix.
+CVE-2026-50163
+
+# CVE-2026-27145 — Go stdlib crypto/x509 — 1.25.11 / 1.26.4 — HIGH
+# Target: usr/local/bin/cosign ONLY. cosign v3.1.1 (latest, 2026-06-09)
+#   was released before go1.26.4 existed and is built with go1.26.3
+#   (verified via `go version -m`). After this triage's bumps every other
+#   Go binary on the image carries a fixed stdlib (opt/go toolchain +
+#   locally-built govulncheck = 1.25.11; trivy 0.72.0 and docker 29.6.1
+#   = go1.26.4), so this global suppression currently masks exactly one
+#   binary.
+# CVSS: HIGH (DoS via excessive processing of DNS names during
+#   certificate parsing — availability only, no integrity/confidentiality
+#   impact).
+# Reach: the default key-based sign/attest/verify flows
+#   (apps/backend/integrations/cosign.py) operate on a local key file and
+#   local blob — no attacker-supplied certificate chain is parsed. The
+#   keyless flow (opt-in) exchanges certificates with the deployment-
+#   configured Fulcio/Rekor endpoints. Worst case is a DoS of the cosign
+#   subprocess, which _run_cosign already bounds with a timeout and maps
+#   to the graceful-skip path. UNREACHED in the default flow / DoS-bounded
+#   in the opt-in flow.
+# Re-evaluate: on the next cosign release built with Go ≥1.26.4 (check
+#   `go version -m /usr/local/bin/cosign | head -1`) or 2026-12-29,
+#   whichever is sooner.
+CVE-2026-27145
