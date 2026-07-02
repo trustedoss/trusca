@@ -112,9 +112,12 @@ jobs:
         run: |
           set -euo pipefail
           # The auth router lives under /v1/auth (see apps/backend/api/v1/auth.py).
-          TOKEN=$(curl -fsS -X POST http://localhost:8000/v1/auth/login \
+          # Fetch and parse as separate statements — piping curl straight into an
+          # interpreter trips semgrep gha-curl-pipe-shell (registry ERROR rule).
+          LOGIN_RESPONSE=$(curl -fsS -X POST http://localhost:8000/v1/auth/login \
             -H "Content-Type: application/json" \
-            -d '{"email":"admin@uat.local","password":"UatAdminPassword123!"}' \
+            -d '{"email":"admin@uat.local","password":"UatAdminPassword123!"}')
+          TOKEN=$(printf '%s' "$LOGIN_RESPONSE" \
             | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')
           test -n "$TOKEN"
           test "$TOKEN" != "null"
