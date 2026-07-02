@@ -116,6 +116,8 @@ curl -sS -X POST \
 
 공급사가 제공한 SBOM은 버전·PURL·의존성 그래프가 빠진 "껍데기"일 수 있으므로, TRUSCA는 인제스트 시 SBOM의 **품질**을 채점하고 스캔 상세 페이지에 **pass / warn / fail** 배지와 요구사항별 표를 표시합니다. 이 결과는 **자문(advisory)**입니다 — `fail`이어도 인제스트를 막지 않으며(CVE 매칭은 계속 수행) SBOM을 받아들일지 공급사에 반려할지 판단하는 근거가 됩니다. 필수 검사에는 타임스탬프, 도구 정보, 최상위 컴포넌트, 컴포넌트 name+version 100%, PURL 커버리지 ≥ 90%, `pkg:generic` 자리표시자 없음, 전이 의존성 그래프가 포함되고, 라이선스·해시 커버리지는 권장(warn만)입니다. UI 패널이나 `GET /v1/projects/{project_id}/scans/{scan_id}/conformance`로 읽습니다 — [SBOM 업로드 → 적합성 결과 읽기](../ci-integration/sbom-upload.md#적합성conformance-결과-읽기) 참고.
 
+CycloneDX `specVersion` 1.7도 받으며, 업로드한 문서에 `machine-learning-model` 컴포넌트가 있으면 패널에 권고 성격의 **G7 AI SBOM 최소요소(Minimum Elements)** 체크리스트(7개 클러스터, 51개 요소)가 추가됩니다 — [AI SBOM 적합성](./ai-sbom-conformance.md) 참고.
+
 ## 수명 주기
 
 ```

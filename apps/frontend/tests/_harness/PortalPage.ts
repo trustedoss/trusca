@@ -1907,6 +1907,114 @@ export class PortalPage {
     );
   }
 
+  // ───── feat/g7-conformance — G7 AI SBOM minimum-elements section ─────
+  //
+  // Renders inside the conformance panel only when the verdict carries
+  // advisory "g7-*" checks. Locale-agnostic anchors: the tally span carries
+  // `data-present`/`data-auto-total`, the advisory/review badges carry
+  // `data-count`, cluster cards carry `data-cluster`, and every G7 check row
+  // carries `data-status` + `data-source` — no assertion reads rendered text
+  // (EN and KO pass on the same verbs).
+
+  /**
+   * Wait for the G7 section and return its tally headline as numbers
+   * (parsed from the tally span's data attributes, not the localized text).
+   */
+  async expectG7Section(): Promise<{ present: number; autoTotal: number }> {
+    await this.page
+      .getByTestId("conformance-g7-section")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    const tally = this.page.getByTestId("conformance-g7-tally");
+    await expect(tally).toBeVisible();
+    return {
+      present: Number(await tally.getAttribute("data-present")),
+      autoTotal: Number(await tally.getAttribute("data-auto-total")),
+    };
+  }
+
+  /** Assert the G7 section is NOT present (core-only conformance verdict). */
+  async expectNoG7Section(): Promise<void> {
+    await expect(
+      this.page.getByTestId("conformance-g7-section"),
+    ).toHaveCount(0);
+  }
+
+  /**
+   * Cluster ids of the rendered G7 cluster cards, in DOM (canonical registry)
+   * order — e.g. `["slp", "models"]`.
+   */
+  async g7ClusterIds(): Promise<string[]> {
+    const section = this.page.getByTestId("conformance-g7-section");
+    await section.waitFor({ state: "visible", timeout: 10_000 });
+    return section
+      .locator("[data-cluster]")
+      .evaluateAll((els) =>
+        els.map((el) => el.getAttribute("data-cluster") ?? ""),
+      );
+  }
+
+  /** Number of G7 check rows inside a given cluster card. */
+  async g7ClusterCheckCount(cluster: string): Promise<number> {
+    return this.page
+      .getByTestId(`g7-cluster-${cluster}`)
+      .getByRole("row")
+      .count();
+  }
+
+  /**
+   * Assert a G7 check row is present, optionally pinning its status and/or
+   * its source classification (`na` = no automated source → human review).
+   */
+  async expectG7Check(
+    checkId: string,
+    expected: {
+      status?: "pass" | "warn" | "fail";
+      source?: "auto" | "inferred" | "declared" | "na";
+    } = {},
+  ): Promise<void> {
+    const row = this.page.getByTestId(`check-${checkId}`);
+    await expect(row).toBeVisible();
+    if (expected.status) {
+      await expect(row).toHaveAttribute("data-status", expected.status);
+    }
+    if (expected.source) {
+      await expect(row).toHaveAttribute("data-source", expected.source);
+      // The row-level attribute and the visible source badge must agree —
+      // the badge is what the user actually sees.
+      await expect(row.getByTestId("g7-source-badge")).toHaveAttribute(
+        "data-source",
+        expected.source,
+      );
+    }
+  }
+
+  /** Evidence chip values rendered for a G7 check (mono PURLs/licenses). */
+  async g7CheckEvidence(checkId: string): Promise<string[]> {
+    const list = this.page.getByTestId(`check-${checkId}-evidence`);
+    await expect(list).toBeVisible();
+    return (await list.locator("li").allTextContents()).map((s) => s.trim());
+  }
+
+  /**
+   * Assert the "needs human review" affordances: the review tally badge with
+   * the expected count AND the explanatory note below the headline.
+   */
+  async expectG7ReviewCount(count: number): Promise<void> {
+    await expect(
+      this.page.getByTestId("conformance-g7-review"),
+    ).toHaveAttribute("data-count", String(count));
+    await expect(
+      this.page.getByTestId("conformance-g7-review-note"),
+    ).toBeVisible();
+  }
+
+  /** Assert the advisory (absent-but-automated) tally badge count. */
+  async expectG7AdvisoryCount(count: number): Promise<void> {
+    await expect(
+      this.page.getByTestId("conformance-g7-advisory"),
+    ).toHaveAttribute("data-count", String(count));
+  }
+
   /**
    * Click the "Download log" button on the scan detail page and capture the
    * resulting browser download. Returns `{ filename, body }` — the body is

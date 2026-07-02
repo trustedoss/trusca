@@ -14,7 +14,7 @@ sidebar_position: 3
 Jenkins controller / agent를 운영하는 엔지니어. declarative pipeline과 Credentials 플러그인에 익숙해야 합니다.
 :::
 
-## 빠른 시작
+## 빠른 시작 {#quick-start}
 
 <!-- docs-uat: id=jenkins-quickstart-pipeline kind=manual tier=manual -->
 ```groovy

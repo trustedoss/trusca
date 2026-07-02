@@ -32,6 +32,7 @@ const sidebars: SidebarsConfig = {
         "user-guide/components-and-licenses",
         "user-guide/vulnerabilities",
         "user-guide/sbom",
+        "user-guide/ai-sbom-conformance",
         "user-guide/approvals",
         "user-guide/auth-and-profile",
         "user-guide/notifications",

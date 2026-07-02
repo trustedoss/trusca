@@ -343,6 +343,22 @@ export interface SbomConformanceCheck {
   status: SbomCheckStatus;
   detail: string;
   missing: string[];
+  // --- G7 AI SBOM extension (feat/g7-conformance) ---------------------------
+  // Optional fields carried only by the advisory G7 minimum-element checks
+  // (ids prefixed "g7-", always required=false, status pass|warn). The 9 core
+  // format checks leave them null/absent, so their render path is unchanged.
+  /** G7 cluster id: metadata|slp|models|dp|infrastructure|sp|kpi. */
+  cluster?: string | null;
+  /**
+   * Where a satisfied value comes from: auto (read directly), inferred
+   * (derived from signals), declared (only if a human/manifest supplied it),
+   * na (no automated source — requires human review).
+   */
+  source?: string | null;
+  /** The party the G7 text names as the provider (informational, not a gate). */
+  role?: string | null;
+  /** Actual SBOM values that satisfied the element (purl, license id, …). */
+  evidence?: string[] | null;
 }
 
 export interface SbomConformanceRead {
