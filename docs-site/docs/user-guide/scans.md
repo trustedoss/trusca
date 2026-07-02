@@ -116,6 +116,8 @@ If your own build or CI already produces an SBOM, you can upload it instead of h
 
 Because a supplier-provided SBOM can be a "shell" with missing versions, PURLs, or no dependency graph, TRUSCA scores its **quality** on ingest and shows a **pass / warn / fail** badge plus a per-requirement table on the scan detail page. The verdict is **advisory** — a `fail` does not block ingest (CVE matching still runs); it tells you whether to accept the SBOM or send it back to the supplier. Mandatory checks include a timestamp, tool info, a top-level component, 100% component name+version, PURL coverage ≥ 90%, no `pkg:generic` placeholders, and a transitive dependency graph; license and hash coverage are recommended (warn-only). Read it via the UI panel or `GET /v1/projects/{project_id}/scans/{scan_id}/conformance` — see [Upload an SBOM → Read the conformance verdict](../ci-integration/sbom-upload.md#read-the-conformance-verdict).
 
+CycloneDX `specVersion` 1.7 is accepted, and when the uploaded document carries a `machine-learning-model` component the panel appends the advisory **G7 AI SBOM minimum elements** checklist (51 elements in seven clusters) — see [AI SBOM conformance](./ai-sbom-conformance.md).
+
 ## Lifecycle
 
 ```

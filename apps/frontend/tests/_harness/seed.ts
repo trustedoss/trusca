@@ -47,6 +47,11 @@ export interface SeedSummary {
    * conformance panel. `null` when `withSbom` was off.
    */
   sbom_scan_id?: string | null;
+  /**
+   * feat/g7-conformance. Number of advisory G7 checks appended to the seeded
+   * conformance verdict — 4 when `SeedOptions.withG7` is set, else 0.
+   */
+  g7_check_count?: number;
   /** Number of components attached to the first project's scan (0 by default). */
   component_count?: number;
   /** Number of vulnerability findings attached to the first project's scan. */
@@ -121,6 +126,14 @@ export interface SeedOptions {
    * conformance panel.
    */
   withSbom?: boolean;
+  /**
+   * feat/g7-conformance. Append 4 advisory G7 AI minimum-element checks to
+   * the seeded conformance verdict (2 clusters: `slp` + `models`; statuses
+   * pass x2 / absent-warn x1 / human-review x1 — pinned from the real
+   * evaluator over the recorded `aibom-owasp-1_7.json` fixture). Implies
+   * `withSbom`. The count comes back as `SeedSummary.g7_check_count`.
+   */
+  withG7?: boolean;
   /**
    * Number of components to attach to the first project's scan. Implies
    * `withScan`. Default: 0 (no components seeded). Phase 3 PR #10
@@ -264,10 +277,14 @@ export function seedE2eUser(opts: SeedOptions): SeedSummary {
     // site.
     scriptArgs.push("--with-scan");
   }
-  if (opts.withSbom) {
+  if (opts.withSbom || opts.withG7) {
     // Independent of --with-scan: seeds a kind='sbom' scan + conformance verdict
-    // on the first project (model 3).
+    // on the first project (model 3). `--with-g7` implies `--with-sbom` in the
+    // script too; we pass it explicitly so the call site stays self-documenting.
     scriptArgs.push("--with-sbom");
+  }
+  if (opts.withG7) {
+    scriptArgs.push("--with-g7");
   }
   if ((opts.componentCount ?? 0) > 0) {
     scriptArgs.push("--component-count", String(opts.componentCount));

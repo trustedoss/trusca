@@ -245,6 +245,36 @@ async function runSql(step) {
   return { ok: false, detail };
 }
 
+/**
+ * Warm the Vite dev server before the first browser hit. The stack poll only
+ * covers backend /health/ready; Vite transforms modules on demand, so on a
+ * runner where the frontend sources changed (cold transform cache) the FIRST
+ * page load can exceed the harness's 10s waitFor and fail qs-login — observed
+ * twice on FE-touching PRs while backend-only PRs stayed green. Fetching the
+ * shell plus the entry module pre-compiles the login-path graph.
+ */
+async function warmFrontend(baseUrl) {
+  const deadline = Date.now() + 120_000;
+  let lastErr = "unreachable";
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(baseUrl, { redirect: "manual" });
+      if (res.status >= 200 && res.status < 400) {
+        // Pull the entry module too — it triggers the dependency transform
+        // that dominates the cold first paint.
+        await fetch(new URL("/src/main.tsx", baseUrl)).catch(() => {});
+        console.log(`  → frontend warm (${baseUrl})`);
+        return { ok: true };
+      }
+      lastErr = `status ${res.status}`;
+    } catch (err) {
+      lastErr = String(err?.cause ?? err);
+    }
+    await sleep(3000);
+  }
+  return { ok: false, detail: `frontend never warm: ${lastErr}` };
+}
+
 /** Hand the ui steps to Playwright in one batch (one login, ordered verbs). */
 function runUiBatch(args) {
   console.log(`  → Playwright (playwright.docs-uat.config.ts)`);
@@ -326,7 +356,12 @@ async function main() {
         results.push({ id: step.id, status: "ok (ui batch)" });
         continue;
       }
-      r = runUiBatch(args); // covers ALL ui steps for this doc/tier at once
+      const warm = await warmFrontend(
+        process.env.PLAYWRIGHT_BASE_URL || "http://localhost:5173",
+      );
+      r = warm.ok
+        ? runUiBatch(args) // covers ALL ui steps for this doc/tier at once
+        : warm;
       uiBatchDone = true;
     } else if (step.kind === "manual") {
       console.log(`     manual step — transcribed only, not executed`);

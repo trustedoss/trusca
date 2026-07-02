@@ -8,6 +8,18 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- **G7 AI SBOM minimum-elements conformance (advisory)** — SBOM ingest now
+  accepts CycloneDX `specVersion` 1.7 (the ML-BOM model-card fields), and when
+  an uploaded document carries a `machine-learning-model` component the
+  conformance verdict appends the 51 G7 "SBOM for AI" minimum-element checks
+  (7 clusters: metadata, system level properties, models, datasets properties,
+  infrastructure, security properties, key performance indicators). Each
+  element reports pass (present), advisory warn (absent), or "requires human
+  review" (no automated source); G7 entries carry `cluster` / `source` /
+  `role` / `evidence` fields in the `checks[]` array. All 51 are advisory —
+  the overall pass / warn / fail verdict and its counters are unchanged.
+  Registry and check semantics are vendored from BomLens
+  (sktelecom/sbom-tools, Apache-2.0). No new env keys.
 - **CISA KEV surfacing + Priority sort** — findings whose CVE is listed in the
   CISA KEV (Known Exploited Vulnerabilities) catalog carry a **KEV** badge and
   the catalog's remediation due date (`kev_due_date`) in the findings table and

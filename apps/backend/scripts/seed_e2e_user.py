@@ -92,6 +92,10 @@ import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from services.sbom_conformance import Check
 
 # Environments where this seed script is allowed to mint a super-admin via
 # ``--super-admin`` (security-reviewer F8 / CWE-489 Active Debug Code).
@@ -400,6 +404,21 @@ def _parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--with-g7",
+        action="store_true",
+        default=False,
+        help=(
+            "feat/g7-conformance. Append 4 advisory G7 AI minimum-element "
+            "checks (pass x2 / absent-warn x1 / human-review x1, across the "
+            "'slp' + 'models' clusters) to the seeded conformance verdict so "
+            "the e2e can assert the G7 section of the panel. Statuses are "
+            "pinned from the REAL evaluator's output over "
+            "tests/fixtures/sbom_ingest/aibom-owasp-1_7.json; label/cluster/"
+            "source metadata comes from the live g7_registry.json. Implies "
+            "--with-sbom. Summary gains `g7_check_count`."
+        ),
+    )
+    parser.add_argument(
         "--component-count",
         type=int,
         default=0,
@@ -616,6 +635,69 @@ def _parse_severity_mix(raw: str | None, *, total: int) -> dict[str, int]:
     return parsed
 
 
+# feat/g7-conformance — pinned statuses for the ``--with-g7`` seed. The mix
+# (pass / absent-warn / human-review across TWO clusters) was captured from the
+# REAL evaluator (``services.g7_conformance.evaluate_g7``) over the recorded
+# fixture ``tests/fixtures/sbom_ingest/aibom-owasp-1_7.json`` — no invented
+# values, only a deterministic subset. Detail strings are the evaluator's own
+# constants; label/cluster/source/role are resolved from the live
+# ``g7_registry.json`` at seed time so a registry refresh cannot desync the
+# persisted shape. id → (status, detail, evidence).
+_G7_SEED_PLAN: dict[str, tuple[str, str, list[str] | None]] = {
+    # slp cluster — pass (source=declared)
+    "g7-slp-name": ("pass", "present", None),
+    # slp cluster — no automated source (source=na) → human review
+    "g7-slp-data-flow": (
+        "warn",
+        "requires human review (no automated source)",
+        None,
+    ),
+    # models cluster — automated but absent → advisory warn (source=auto)
+    "g7-model-hash-value": ("warn", "not present in the SBOM", None),
+    # models cluster — pass with real evidence (fixture model is Apache-2.0)
+    "g7-model-license": ("pass", "present", ["Apache-2.0"]),
+}
+
+
+def _g7_seed_checks() -> list[Check]:
+    """Build the ``--with-g7`` advisory checks (list of ``Check``).
+
+    Iterates the registry in document order so the persisted per-cluster row
+    order matches what ``evaluate_g7`` would emit for the same elements.
+    Raises ``ValueError`` when a planned element vanished from the registry —
+    a silent drop would make the e2e assert against a partial seed.
+    """
+    from services import g7_conformance as _g7
+    from services.sbom_conformance import Check
+
+    checks: list[Check] = []
+    for cluster_id, element in _g7.iter_elements():
+        element_id = str(element.get("id") or "")
+        plan = _G7_SEED_PLAN.get(element_id)
+        if plan is None:
+            continue
+        status, detail, evidence = plan
+        checks.append(
+            Check(
+                id=element_id,
+                label=str(element.get("label") or element_id),
+                required=False,
+                status=status,
+                detail=detail,
+                cluster=cluster_id,
+                source=str(element.get("source") or "") or None,
+                role=str(element.get("role") or "") or None,
+                evidence=evidence,
+            )
+        )
+    if len(checks) != len(_G7_SEED_PLAN):
+        missing = sorted(set(_G7_SEED_PLAN) - {c.id for c in checks})
+        raise ValueError(
+            f"g7 registry no longer contains seed elements: {missing}"
+        )
+    return checks
+
+
 async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better than 5 helpers
     *,
     project_names: list[str],
@@ -623,6 +705,7 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
     password: str | None,
     with_scan: bool,
     with_sbom: bool = False,
+    with_g7: bool = False,
     component_count: int,
     component_prefix: str,
     vulnerability_count: int = 0,
@@ -926,6 +1009,10 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
             # (deterministic 'warn' — full PURLs + graph + licenses but no hashes),
             # so the seeded row matches production shape exactly.
             sbom_scan_id: str | None = None
+            g7_check_count = 0
+            # --with-g7 rides on the sbom seed (implied at the CLI too; this
+            # keeps direct _seed() callers honest).
+            with_sbom = with_sbom or with_g7
             if with_sbom and project_rows:
                 from services import sbom_conformance as _conf
 
@@ -965,6 +1052,15 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                     ],
                 }
                 verdict = _conf.evaluate(json.dumps(sbom_doc).encode())
+                # feat/g7-conformance — advisory G7 checks are appended to the
+                # checks JSONB only; the verdict counters/result stay from the
+                # core evaluate() (aggregation contract: cluster-tagged checks
+                # never move the overall result).
+                seeded_checks = [c.as_dict() for c in verdict.checks]
+                if with_g7:
+                    g7_checks = _g7_seed_checks()
+                    seeded_checks.extend(c.as_dict() for c in g7_checks)
+                    g7_check_count = len(g7_checks)
                 first = project_rows[0]
                 sbom_scan = Scan(
                     project_id=first.id,
@@ -990,7 +1086,7 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                         purl_coverage_pct=verdict.purl_coverage_pct,
                         license_coverage_pct=verdict.license_coverage_pct,
                         hash_coverage_pct=verdict.hash_coverage_pct,
-                        checks=[c.as_dict() for c in verdict.checks],
+                        checks=seeded_checks,
                     )
                 )
                 await session.commit()
@@ -1247,6 +1343,7 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                 "project_ids": project_ids,
                 "scan_ids": scan_ids,
                 "sbom_scan_id": sbom_scan_id,
+                "g7_check_count": g7_check_count,
                 "component_count": seeded_components,
                 "vulnerability_count": seeded_vulnerabilities,
                 "obligation_count": seeded_obligations_count,
@@ -1320,6 +1417,7 @@ def main() -> int:
                 password=args.password,
                 with_scan=args.with_scan,
                 with_sbom=args.with_sbom,
+                with_g7=args.with_g7,
                 component_count=args.component_count,
                 component_prefix=args.component_prefix,
                 vulnerability_count=args.vulnerability_count,

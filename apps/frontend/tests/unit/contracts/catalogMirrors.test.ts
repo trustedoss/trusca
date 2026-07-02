@@ -27,6 +27,7 @@
 import { describe, expect, it } from "vitest";
 
 import { NOTIFICATION_KINDS } from "@/features/notifications/api/notificationsApi";
+import { G7_CLUSTER_ORDER } from "@/features/scan/lib/g7Conformance";
 import { KNOWN_OBLIGATION_KINDS } from "@/features/projects/api/obligationsApi";
 import { ALL_VULNERABILITY_STATUSES } from "@/features/projects/lib/vulnerabilityTransitions";
 import { visualFor } from "@/features/projects/components/ProjectStatusBadge";
@@ -51,6 +52,9 @@ import koScans from "@/locales/ko/scans.json";
 // must both equal this list; asserting the BE side against the same file is
 // the tracked follow-up (see the fixture's $comment).
 import notificationKindsFixture from "../../../../../tests/contracts/notification-kinds.json";
+// Backend G7 registry — the FE cluster ORDER mirror must follow its cluster
+// id order (same latent-drift class: the panel groups G7 checks by this list).
+import g7Registry from "../../../../backend/services/g7_registry.json";
 
 function labelMap(ns: unknown, ...path: string[]): Record<string, string> {
   let node: unknown = ns;
@@ -244,6 +248,37 @@ describe("SBOM conformance — FE mirror of services/sbom_conformance.CHECK_IDS"
       expect(labels[result], `conformance.result.${result} missing`).toBeTruthy();
     }
   });
+});
+
+describe("G7 clusters — FE mirror of services/g7_registry.json cluster order", () => {
+  // feat/g7-conformance: `G7_CLUSTER_ORDER` drives the panel's cluster-card
+  // ordering; the backend emits `check.cluster` values straight from the
+  // registry. A cluster added/reordered on the BE side must fail here rather
+  // than silently render at the end of the section (unknown clusters are
+  // appended, never dropped — so the drift would be invisible in the UI).
+  const registryClusterIds = (
+    g7Registry.clusters as Array<{ id: string }>
+  ).map((c) => c.id);
+
+  it("G7_CLUSTER_ORDER equals the registry's cluster id order", () => {
+    expect([...G7_CLUSTER_ORDER]).toEqual(registryClusterIds);
+  });
+
+  it.each([
+    ["en", enScans],
+    ["ko", koScans],
+  ])(
+    "every canonical cluster owns a %s `conformance.g7.cluster.*` label",
+    (_locale, ns) => {
+      const labels = labelMap(ns, "conformance", "g7", "cluster");
+      for (const cluster of G7_CLUSTER_ORDER) {
+        expect(
+          labels[cluster],
+          `conformance.g7.cluster.${cluster} missing`,
+        ).toBeTruthy();
+      }
+    },
+  );
 });
 
 describe("vulnerability statuses — label-map half of the 7-state mirror", () => {
