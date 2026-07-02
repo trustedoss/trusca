@@ -355,6 +355,51 @@ def test_from_sbom_no_metadata_uses_in_degree_zero_roots() -> None:
     assert graph_depths_from_sbom(sbom) == {"pkg:a@1": 1, "pkg:b@1": 2}
 
 
+def test_from_sbom_empty_root_dependson_falls_back_to_orphan_roots() -> None:
+    """cdxgen sometimes emits the metadata root with an EMPTY ``dependsOn``
+    and floats the real direct dependencies as nodes nothing depends on
+    (observed on Maven/Gradle source scans; sibling-project fix
+    sktelecom/sbom-tools#278). Trusting that root would strand every other
+    node in the orphan-island fallback, whose sorted-order seeding marks
+    whichever ref sorts first as depth 1 — a transitive dep that sorts
+    before its parent comes out "direct". The root must only be trusted
+    when it actually declares children; otherwise fall back to in-degree-0
+    root detection.
+
+    Shape: root(empty) + zeta(direct) → alpha(transitive). ``alpha`` sorts
+    before ``zeta``, so the buggy path classified it depth 1.
+    """
+    sbom = {
+        "metadata": {"component": {"bom-ref": "pkg:maven/com.example/app@1.0"}},
+        "dependencies": [
+            {"ref": "pkg:maven/com.example/app@1.0", "dependsOn": []},
+            {"ref": "pkg:maven/z.zeta/direct@1.0", "dependsOn": ["pkg:maven/a.alpha/trans@1.0"]},
+            {"ref": "pkg:maven/a.alpha/trans@1.0", "dependsOn": []},
+        ],
+    }
+    depths = graph_depths_from_sbom(sbom)
+    assert depths["pkg:maven/z.zeta/direct@1.0"] == 1  # direct
+    assert depths["pkg:maven/a.alpha/trans@1.0"] == 2  # transitive, NOT direct
+
+
+def test_from_sbom_empty_root_multiple_directs_stay_direct() -> None:
+    # Same empty-root shape with several real directs — all of them (and only
+    # them) must come out depth 1 under the in-degree-0 fallback.
+    sbom = {
+        "metadata": {"component": {"bom-ref": "pkg:maven/com.example/app@1.0"}},
+        "dependencies": [
+            {"ref": "pkg:maven/com.example/app@1.0", "dependsOn": []},
+            {"ref": "pkg:maven/g.b/direct-b@1.0", "dependsOn": ["pkg:maven/g.c/shared@1.0"]},
+            {"ref": "pkg:maven/g.a/direct-a@1.0", "dependsOn": ["pkg:maven/g.c/shared@1.0"]},
+            {"ref": "pkg:maven/g.c/shared@1.0", "dependsOn": []},
+        ],
+    }
+    depths = graph_depths_from_sbom(sbom)
+    assert depths["pkg:maven/g.a/direct-a@1.0"] == 1
+    assert depths["pkg:maven/g.b/direct-b@1.0"] == 1
+    assert depths["pkg:maven/g.c/shared@1.0"] == 2
+
+
 @pytest.mark.parametrize(
     "sbom",
     [
