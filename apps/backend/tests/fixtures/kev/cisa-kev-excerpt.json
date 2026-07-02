@@ -1,0 +1,190 @@
+{
+ "title": "CISA Catalog of Known Exploited Vulnerabilities",
+ "catalogVersion": "2026.07.01",
+ "dateReleased": "2026-07-01T19:00:06.9016Z",
+ "count": 12,
+ "vulnerabilities": [
+  {
+   "cveID": "CVE-2021-44228",
+   "vendorProject": "Apache",
+   "product": "Log4j2",
+   "vulnerabilityName": "Apache Log4j2 Remote Code Execution Vulnerability",
+   "dateAdded": "2021-12-10",
+   "shortDescription": "Apache Log4j2 contains a vulnerability where JNDI features do not protect against attacker-controlled JNDI-related endpoints, allowing for remote code execution.",
+   "requiredAction": "For all affected software assets for which updates exist, the only acceptable remediation actions are: 1) Apply updates; OR 2) remove affected assets from agency networks. Temporary mitigations using one of the measures provided at https://www.cisa.gov/uscert/ed-22-02-apache-log4j-recommended-mitigation-measures are only acceptable until updates are available.",
+   "dueDate": "2021-12-24",
+   "knownRansomwareCampaignUse": "Known",
+   "notes": "https://nvd.nist.gov/vuln/detail/CVE-2021-44228",
+   "cwes": [
+    "CWE-20",
+    "CWE-400",
+    "CWE-502"
+   ]
+  },
+  {
+   "cveID": "CVE-2026-35273",
+   "vendorProject": "Oracle",
+   "product": " PeopleSoft Enterprise PeopleTools",
+   "vulnerabilityName": "Oracle PeopleSoft Enterprise PeopleTools Missing Authentication for Critical Function Vulnerability",
+   "dateAdded": "2026-06-12",
+   "shortDescription": "Oracle PeopleSoft Enterprise PeopleTools contains a missing authentication for critical function vulnerability which could allow an unauthenticated attacker to obtain takeover of PeopleSoft Enterprise PeopleTools.",
+   "requiredAction": "Apply mitigations in accordance with vendor instructions, ensuring compliance with CISA\u2019s BOD 26-04 Prioritizing Security Updates Based on Risk (see URL in Notes) guidance and CISA\u2019s \u201cForensics Triage Requirements\u201d (see URL in Notes). Follow applicable BOD 26-04 guidance for cloud services or discontinue use of the product if mitigations are unavailable. Stakeholders are responsible for evaluating each asset's internet exposure and ensuring adherence to BOD 26-04 patching guidelines.",
+   "dueDate": "2026-06-15",
+   "knownRansomwareCampaignUse": "Known",
+   "notes": "https://www.oracle.com/security-alerts/alert-cve-2026-35273.html ; https://support.oracle.com/signin/ ; BOD 26-04: https://www.cisa.gov/news-events/directives/bod-26-04-prioritizing-security-updates-based-risk ; Forensics Triage Requirements: https://www.cisa.gov/news-events/directives/bod-26-04-implementation-guidance-prioritizing-security-updates-based-risk ; https://nvd.nist.gov/vuln/detail/CVE-2026-35273",
+   "cwes": [
+    "CWE-306"
+   ]
+  },
+  {
+   "cveID": "CVE-2026-50751",
+   "vendorProject": "Check Point",
+   "product": "Security Gateway",
+   "vulnerabilityName": "Check Point Security Gateway Improper Authentication Vulnerability",
+   "dateAdded": "2026-06-08",
+   "shortDescription": "Check Point Security Gateway contains an improper authentication vulnerability in IKEv1 key exchange that could allow an unauthenticated remote attacker to bypass user authentication and establish a remote access VPN connection without a valid user password.",
+   "requiredAction": "Apply mitigations per vendor instructions, follow applicable BOD 22-01 guidance for cloud services, or discontinue use of the product if mitigations are unavailable.",
+   "dueDate": "2026-06-11",
+   "knownRansomwareCampaignUse": "Known",
+   "notes": "https://blog.checkpoint.com/security/check-point-releases-important-hotfix-for-vulnerabilities-in-deprecated-ikev1-vpn-protocol/ ; https://support.checkpoint.com/results/sk/sk185033?_gl=1*1wqeqhc*_gcl_au*MTI1MzE5MjI2LjE3ODA5MzQ1NTM. ; https://nvd.nist.gov/vuln/detail/CVE-2026-50751",
+   "cwes": [
+    "CWE-287"
+   ]
+  },
+  {
+   "cveID": "CVE-2026-48027",
+   "vendorProject": "Nx",
+   "product": "Nx Console",
+   "vulnerabilityName": "Nx Console Embedded Malicious Code Vulnerability",
+   "dateAdded": "2026-05-27",
+   "shortDescription": "Nx Console contains an embedded malicious code vulnerability that allowed a malicious version of Nx Console to be published. The compromised extension fetched an obfuscated payload that could harvested credentials from multiple sources on disk and in memory.",
+   "requiredAction": "Apply mitigations per vendor instructions, follow applicable BOD 22-01 guidance for cloud services, or discontinue use of the product if mitigations are unavailable.",
+   "dueDate": "2026-06-10",
+   "knownRansomwareCampaignUse": "Known",
+   "notes": "This vulnerability could affect an open-source component, third-party library, protocol, or proprietary implementation that could be used by different products. For more information, please see: https://github.com/nrwl/nx-console/security/advisories/GHSA-c9j4-9m59-847w ; https://nvd.nist.gov/vuln/detail/CVE-2026-48027",
+   "cwes": [
+    "CWE-506"
+   ]
+  },
+  {
+   "cveID": "CVE-2026-45321",
+   "vendorProject": "TanStack",
+   "product": "TanStack",
+   "vulnerabilityName": "TanStack Unspecified Vulnerability",
+   "dateAdded": "2026-05-27",
+   "shortDescription": "TanStack contains an unspecified vulnerability that allowed malicious versions of the product to be published to the npm registry to publish credential-stealing malware under a trusted identity.",
+   "requiredAction": "Apply mitigations per vendor instructions, follow applicable BOD 22-01 guidance for cloud services, or discontinue use of the product if mitigations are unavailable.",
+   "dueDate": "2026-06-10",
+   "knownRansomwareCampaignUse": "Known",
+   "notes": "This vulnerability could affect an open-source component, third-party library, protocol, or proprietary implementation that could be used by different products. For more information, please see: https://github.com/TanStack/router/security/advisories/GHSA-g7cv-rxg3-hmpx ; https://nvd.nist.gov/vuln/detail/CVE-2026-45321",
+   "cwes": []
+  },
+  {
+   "cveID": "CVE-2026-45659",
+   "vendorProject": "Microsoft",
+   "product": "SharePoint Server",
+   "vulnerabilityName": "Microsoft SharePoint Server Deserialization of Untrusted Data Vulnerability",
+   "dateAdded": "2026-07-01",
+   "shortDescription": "Microsoft SharePoint Server contains a deserialization of untrusted data vulnerability which allows an authorized attacker to execute code over a network.",
+   "requiredAction": "Apply mitigations in accordance with vendor instructions, ensuring compliance with CISA\u2019s BOD 26-04 Prioritizing Security Updates Based on Risk (see URL in Notes) guidance and CISA\u2019s \u201cForensics Triage Requirements\u201d (see URL in Notes). Follow applicable BOD 26-04 guidance for cloud services or discontinue use of the product if mitigations are unavailable. Stakeholders are responsible for evaluating each asset's internet exposure and ensuring adherence to BOD 26-04 patching guidelines.",
+   "dueDate": "2026-07-04",
+   "knownRansomwareCampaignUse": "Unknown",
+   "notes": "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2026-45659 ; BOD 26-04: https://www.cisa.gov/news-events/directives/bod-26-04-prioritizing-security-updates-based-risk ; Forensics Triage Requirements: https://www.cisa.gov/news-events/directives/bod-26-04-implementation-guidance-prioritizing-security-updates-based-risk ; https://nvd.nist.gov/vuln/detail/CVE-2026-45659",
+   "cwes": [
+    "CWE-502"
+   ]
+  },
+  {
+   "cveID": "CVE-2026-48558",
+   "vendorProject": "SimpleHelp ",
+   "product": "SimpleHelp",
+   "vulnerabilityName": "SimpleHelp Authentication Bypass Vulnerability",
+   "dateAdded": "2026-06-29",
+   "shortDescription": "SimpleHelp contains an authentication bypass vulnerability in the OIDC authentication flow. When OIDC authentication is configured, identity tokens submitted during login are accepted without verifying their cryptographic signature. In a vulnerable configuration, a remote, unauthenticated attacker can submit a forged token containing arbitrary identity claims to obtain a fully authenticated technician session. In some configurations, this may also allow bypass of multi-factor authentication.",
+   "requiredAction": "Apply mitigations in accordance with vendor instructions, ensuring compliance with CISA\u2019s BOD 26-04 Prioritizing Security Updates Based on Risk (see URL in Notes) guidance and CISA\u2019s \u201cForensics Triage Requirements\u201d (see URL in Notes). Follow applicable BOD 26-04 guidance for cloud services or discontinue use of the product if mitigations are unavailable. Stakeholders are responsible for evaluating each asset's internet exposure and ensuring adherence to BOD 26-04 patching guidelines.",
+   "dueDate": "2026-07-02",
+   "knownRansomwareCampaignUse": "Unknown",
+   "notes": "https://simple-help.com/security/simplehelp-security-update-2026-05 ; BOD 26-04: https://www.cisa.gov/news-events/directives/bod-26-04-prioritizing-security-updates-based-risk ; Forensics Triage Requirements: https://www.cisa.gov/news-events/directives/bod-26-04-implementation-guidance-prioritizing-security-updates-based-risk ; https://nvd.nist.gov/vuln/detail/CVE-2026-48558",
+   "cwes": [
+    "CWE-347"
+   ]
+  },
+  {
+   "cveID": "CVE-2026-12569",
+   "vendorProject": "PTC",
+   "product": "Windchill and FlexPLM",
+   "vulnerabilityName": "PTC Windchill and FlexPLM Improper Input Validation Vulnerability",
+   "dateAdded": "2026-06-25",
+   "shortDescription": "PTC Windchill and FlexPLM contains an improper input validation vulnerability allowing an unauthenticated, remote attacker to execute arbitrary code by sending a malicious request to the network.",
+   "requiredAction": "Apply mitigations in accordance with vendor instructions, ensuring compliance with CISA\u2019s BOD 26-04 Prioritizing Security Updates Based on Risk (see URL in Notes) guidance and CISA\u2019s \u201cForensics Triage Requirements\u201d (see URL in Notes). Follow applicable BOD 26-04 guidance for cloud services or discontinue use of the product if mitigations are unavailable. Stakeholders are responsible for evaluating each asset's internet exposure and ensuring adherence to BOD 26-04 patching guidelines.",
+   "dueDate": "2026-06-28",
+   "knownRansomwareCampaignUse": "Unknown",
+   "notes": "https://www.ptc.com/en/support/article/CS473270 ; BOD 26-04: https://www.cisa.gov/news-events/directives/bod-26-04-prioritizing-security-updates-based-risk ; Forensics Triage Requirements: https://www.cisa.gov/news-events/directives/bod-26-04-implementation-guidance-prioritizing-security-updates-based-risk ; https://nvd.nist.gov/vuln/detail/CVE-2026-12569",
+   "cwes": [
+    "CWE-20",
+    "CWE-502"
+   ]
+  },
+  {
+   "cveID": "CVE-2026-20230",
+   "vendorProject": "Cisco",
+   "product": "Unified Communications Manager",
+   "vulnerabilityName": "Cisco Unified Communications Manager Server-Side Request Forgery (SSRF) Vulnerability",
+   "dateAdded": "2026-06-25",
+   "shortDescription": "Cisco Unified Communications Manager (Unified CM) and Cisco Unified Communications Manager Session Management Edition (Unified CM SME) contain a server-side request forgery (SSRF) Vulnerability that could allow an unauthenticated, remote attacker to write files to the underlying operating system that could be used later to elevate to root.",
+   "requiredAction": "Apply mitigations in accordance with vendor instructions, ensuring compliance with CISA\u2019s BOD 26-04 Prioritizing Security Updates Based on Risk (see URL in Notes) guidance and CISA\u2019s \u201cForensics Triage Requirements\u201d (see URL in Notes). Follow applicable BOD 26-04 guidance for cloud services or discontinue use of the product if mitigations are unavailable. Stakeholders are responsible for evaluating each asset's internet exposure and ensuring adherence to BOD 26-04 patching guidelines.",
+   "dueDate": "2026-06-28",
+   "knownRansomwareCampaignUse": "Unknown",
+   "notes": "https://www.cisco.com/c/en/us/support/docs/csa/cisco-sa-cucm-ssrf-cXPnHcW.html ; BOD 26-04: https://www.cisa.gov/news-events/directives/bod-26-04-prioritizing-security-updates-based-risk ; Forensics Triage Requirements: https://www.cisa.gov/news-events/directives/bod-26-04-implementation-guidance-prioritizing-security-updates-based-risk ; https://nvd.nist.gov/vuln/detail/CVE-2026-20230",
+   "cwes": [
+    "CWE-918"
+   ]
+  },
+  {
+   "cveID": "CVE-2025-67038",
+   "vendorProject": "Lantronix",
+   "product": "EDS5000",
+   "vulnerabilityName": "Lantronix EDS5000 Code Injection Vulnerability",
+   "dateAdded": "2026-06-23",
+   "shortDescription": "Lantronix EDS5000 contains a code injection vulnerability that could allow attackers to inject arbitrary OS commands into the username parameter. Injected commands are executed with root privileges.",
+   "requiredAction": "Apply mitigations in accordance with vendor instructions, ensuring compliance with CISA\u2019s BOD 26-04 Prioritizing Security Updates Based on Risk (see URL in Notes) guidance and CISA\u2019s \u201cForensics Triage Requirements\u201d (see URL in Notes). Follow applicable BOD 26-04 guidance for cloud services or discontinue use of the product if mitigations are unavailable. Stakeholders are responsible for evaluating each asset's internet exposure and ensuring adherence to BOD 26-04 patching guidelines.",
+   "dueDate": "2026-06-26",
+   "knownRansomwareCampaignUse": "Unknown",
+   "notes": "https://ltrxdev.atlassian.net/wiki/spaces/LTRXTS/pages/2538438657/Latest+Firmware+for+the+EDS5000+series+EDS5008+EDS5016+EDS5032 ; BOD 26-04: https://www.cisa.gov/news-events/directives/bod-26-04-prioritizing-security-updates-based-risk ; Forensics Triage Requirements: https://www.cisa.gov/news-events/directives/bod-26-04-implementation-guidance-prioritizing-security-updates-based-risk ; https://nvd.nist.gov/vuln/detail/CVE-2025-67038",
+   "cwes": [
+    "CWE-78",
+    "CWE-94"
+   ]
+  },
+  {
+   "cveID": "CVE-2026-34910",
+   "vendorProject": "Ubiquiti",
+   "product": "UniFi OS",
+   "vulnerabilityName": "Ubiquiti UniFi OS Improper Input Validation Vulnerability",
+   "dateAdded": "2026-06-23",
+   "shortDescription": "Ubiquiti UniFi OS contains an improper input validation vulnerability which could allow a malicious actor with access to the network to conduct command injection.",
+   "requiredAction": "Apply mitigations in accordance with vendor instructions, ensuring compliance with CISA\u2019s BOD 26-04 Prioritizing Security Updates Based on Risk (see URL in Notes) guidance and CISA\u2019s \u201cForensics Triage Requirements\u201d (see URL in Notes). Follow applicable BOD 26-04 guidance for cloud services or discontinue use of the product if mitigations are unavailable. Stakeholders are responsible for evaluating each asset's internet exposure and ensuring adherence to BOD 26-04 patching guidelines.",
+   "dueDate": "2026-06-26",
+   "knownRansomwareCampaignUse": "Unknown",
+   "notes": "https://community.ui.com/releases/Security-Advisory-Bulletin-064-064/84811c09-4cf4-42ab-bd61-cc994445963b ; BOD 26-04: https://www.cisa.gov/news-events/directives/bod-26-04-prioritizing-security-updates-based-risk ; Forensics Triage Requirements: https://www.cisa.gov/news-events/directives/bod-26-04-implementation-guidance-prioritizing-security-updates-based-risk ; https://nvd.nist.gov/vuln/detail/CVE-2026-34910",
+   "cwes": [
+    "CWE-20"
+   ]
+  },
+  {
+   "cveID": "CVE-2026-34909",
+   "vendorProject": "Ubiquiti",
+   "product": "UniFi OS",
+   "vulnerabilityName": "Ubiquiti UniFi OS Path Traversal Vulnerability",
+   "dateAdded": "2026-06-23",
+   "shortDescription": "Ubiquiti UniFi OS contains a path traversal vulnerability which could allow a malicious actor with access to the network to access files on the underlying system that could be manipulated to access an underlying account.",
+   "requiredAction": "Apply mitigations in accordance with vendor instructions, ensuring compliance with CISA\u2019s BOD 26-04 Prioritizing Security Updates Based on Risk (see URL in Notes) guidance and CISA\u2019s \u201cForensics Triage Requirements\u201d (see URL in Notes). Follow applicable BOD 26-04 guidance for cloud services or discontinue use of the product if mitigations are unavailable. Stakeholders are responsible for evaluating each asset's internet exposure and ensuring adherence to BOD 26-04 patching guidelines.",
+   "dueDate": "2026-06-26",
+   "knownRansomwareCampaignUse": "Unknown",
+   "notes": "https://community.ui.com/releases/Security-Advisory-Bulletin-064-064/84811c09-4cf4-42ab-bd61-cc994445963b ; BOD 26-04: https://www.cisa.gov/news-events/directives/bod-26-04-prioritizing-security-updates-based-risk ; Forensics Triage Requirements: https://www.cisa.gov/news-events/directives/bod-26-04-implementation-guidance-prioritizing-security-updates-based-risk ; https://nvd.nist.gov/vuln/detail/CVE-2026-34909",
+   "cwes": [
+    "CWE-22"
+   ]
+  }
+ ]
+}

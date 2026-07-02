@@ -63,5 +63,6 @@ translate proper nouns (Dependency-Track, SBOM, CVE, ORT, Trivy, cdxgen).
 | EPSS | EPSS | Exploit Prediction Scoring System — the probability (0–1) that a CVE is exploited in the wild within the next 30 days. Complements CVSS. | 악용 예측 점수 체계 — 해당 CVE가 향후 30일 내 실제로 악용될 확률(0~1). CVSS를 보완합니다. |
 | EPSS percentile | EPSS 백분위 | The rank of an EPSS score among all scored CVEs, read as "this CVE is more likely to be exploited than N% of CVEs". | EPSS 점수가 전체 채점 CVE 중 차지하는 순위. "이 CVE가 전체 CVE의 N%보다 악용 가능성이 높음"으로 해석. |
 | CVSS | CVSS | Common Vulnerability Scoring System — the standardized severity score (0–10) of a vulnerability. | 공통 취약점 점수 체계 — 취약점의 표준 심각도 점수(0~10). |
+| KEV | KEV | CISA Known Exploited Vulnerabilities catalog — CVEs with confirmed exploitation in the wild, each with a CISA remediation due date. Proper noun; keep "KEV", spell out on first mention. | CISA KEV(Known Exploited Vulnerabilities, 알려진 악용 취약점) 카탈로그 — 실제 악용이 확인된 CVE 목록으로, 항목마다 CISA 조치 기한이 있음. 고유명사로 "KEV"를 유지하고 첫 등장에서 풀어 씀. |
 
-Updated 2026-05-23 — v2.1 (EPSS UI first-class: EPSS / EPSS percentile / CVSS terms).
+Updated 2026-07-02 — v2.2 (KEV catalog term for vulnerability priority UI).

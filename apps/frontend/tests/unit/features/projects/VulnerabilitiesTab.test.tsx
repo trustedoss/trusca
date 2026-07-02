@@ -78,6 +78,8 @@ function vuln(
     cvss_score: 7.5,
     epss_score: 0.42,
     epss_percentile: 0.7,
+    kev: false,
+    kev_due_date: null,
     summary: `summary for ${cveId}`,
     status: "new",
     analysis_source: null,
@@ -557,6 +559,97 @@ describe("VulnerabilitiesTab", () => {
           sort: "epss",
           order: "asc",
         }),
+      );
+    });
+  });
+
+  // ----- CISA KEV signal + priority sort ------------------------------------
+
+  it("renders a KEV badge only on catalog-listed (kev=true) rows", async () => {
+    mockedList.mockResolvedValueOnce(
+      listResponse([
+        vuln("CVE-2024-1111", { kev: true, kev_due_date: "2026-07-15" }),
+        vuln("CVE-2024-2222", { kev: false }),
+      ]),
+    );
+    renderTab();
+    await waitFor(() =>
+      expect(screen.getAllByTestId("vulnerability-row")).toHaveLength(2),
+    );
+    // Exactly one row carries the KEV badge, and it pairs the color with the
+    // literal "KEV" text label (color is never the only signal).
+    const badges = screen.getAllByTestId("kev-badge");
+    expect(badges).toHaveLength(1);
+    expect(badges[0].textContent).toContain("KEV");
+    expect(badges[0].getAttribute("title")).toContain("2026-07-15");
+    // The CVE cell exposes the flag as a data hook for the e2e harness.
+    const cells = screen.getAllByTestId("vulnerability-row-cve");
+    expect(cells.map((c) => c.getAttribute("data-kev"))).toEqual([
+      "true",
+      "false",
+    ]);
+  });
+
+  it("defaults to sort=priority (KEV → severity → EPSS) on the wire", async () => {
+    mockedList.mockResolvedValueOnce(listResponse([vuln("CVE-2024-1111")]));
+    renderTab();
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalledWith(
+        "proj-1",
+        expect.objectContaining({ sort: "priority", order: "desc" }),
+      );
+    });
+    // The toolbar select reflects the default.
+    expect(
+      (
+        screen.getByTestId(
+          "vulnerabilities-sort-select",
+        ) as HTMLSelectElement
+      ).value,
+    ).toBe("priority");
+  });
+
+  it("picking a key from the toolbar sort select forwards it at offset 0", async () => {
+    mockedList.mockResolvedValue(listResponse([vuln("CVE-2024-1111")]));
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("vulnerability-row")).toHaveLength(1);
+    });
+    mockedList.mockClear();
+
+    await userEvent.selectOptions(
+      screen.getByTestId("vulnerabilities-sort-select"),
+      "severity",
+    );
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalledWith(
+        "proj-1",
+        expect.objectContaining({ sort: "severity", order: "desc", offset: 0 }),
+      );
+    });
+
+    // Returning to Priority restores the default composite ranking.
+    mockedList.mockClear();
+    await userEvent.selectOptions(
+      screen.getByTestId("vulnerabilities-sort-select"),
+      "priority",
+    );
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalledWith(
+        "proj-1",
+        expect.objectContaining({ sort: "priority" }),
+      );
+    });
+  });
+
+  it("hydrates an explicit ?sort=priority URL without wedging (fallback intact)", async () => {
+    mockedList.mockResolvedValueOnce(listResponse([vuln("CVE-2024-1111")]));
+    renderTab(["/projects/proj-1?sort=bogus"]);
+    // Invalid sort tokens fall back to the priority default.
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalledWith(
+        "proj-1",
+        expect.objectContaining({ sort: "priority" }),
       );
     });
   });

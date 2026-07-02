@@ -162,3 +162,30 @@ def test_cyclonedx_state_map_targets_are_valid_spec_states() -> None:
     from services.vex_export import CYCLONEDX_STATE_MAP
 
     assert set(CYCLONEDX_STATE_MAP.values()) <= _CYCLONEDX_ANALYSIS_STATES
+
+
+def test_vulnerability_sort_keys_router_pattern_matches_service_set() -> None:
+    """The router's ``sort`` Query regex and the service's ``_VALID_SORT_KEYS``
+    hold the same vocabulary in two places (hardening rule §2). A key added to
+    one but not the other either 422s a valid sort or lets an unknown key
+    through to the service's fallback — both silent drifts. Parse the regex
+    alternation out of the route signature and assert set equality.
+    """
+    import pathlib
+    import re
+
+    from services.vulnerability_service import _VALID_SORT_KEYS
+
+    # Read the router source as text instead of importing it — importing
+    # api.v1 drags the whole router package (heavy app wiring) into a unit
+    # test that only needs one Query() pattern literal.
+    src = (
+        pathlib.Path(__file__).resolve().parents[2] / "api" / "v1" / "vulnerabilities.py"
+    ).read_text(encoding="utf-8")
+    patterns = re.findall(r'pattern=r"\^\(([a-z_|]+)\)\$"', src)
+    sort_alternations = [p for p in patterns if "severity" in p]
+    assert len(sort_alternations) == 1, (
+        f"expected exactly one sort-key pattern in the router, found "
+        f"{len(sort_alternations)}: {sort_alternations}"
+    )
+    assert set(sort_alternations[0].split("|")) == set(_VALID_SORT_KEYS)

@@ -362,6 +362,12 @@
       "empty": "이 CVE의 EPSS 데이터 없음",
       "cell_tooltip": "{{score}} · 악용 가능성 {{percentile}}"
     },
+    "kev": {
+      "label": "KEV",
+      "tooltip": "CISA KEV(Known Exploited Vulnerabilities, 알려진 악용 취약점) 카탈로그에 등재 — 실제 악용이 확인되었습니다.",
+      "tooltip_with_due": "CISA KEV(Known Exploited Vulnerabilities, 알려진 악용 취약점) 카탈로그에 등재 — 실제 악용이 확인되었습니다. CISA 조치 기한: {{date}}.",
+      "due": "기한 {{date}}"
+    },
     "filter": {
       "minEpss": "EPSS ≥",
       "minEpssPlaceholder": "0.00–1.00",
@@ -460,6 +466,10 @@
     "toolbar": {
       "search_label": "검색",
       "search_placeholder": "CVE ID, 요약, 컴포넌트로 검색",
+      "sort_label": "정렬",
+      "sort_option": {
+        "priority": "우선순위 (KEV → 심각도 → EPSS)"
+      },
       "status_label": "상태",
       "reachable_label": "도달 가능성",
       "reachable_any": "전체",
