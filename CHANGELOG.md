@@ -7,6 +7,25 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+- **CISA KEV surfacing + Priority sort** — findings whose CVE is listed in the
+  CISA KEV (Known Exploited Vulnerabilities) catalog carry a **KEV** badge and
+  the catalog's remediation due date (`kev_due_date`) in the findings table and
+  drawer. A new **Priority** sort — KEV first, then severity, then EPSS — is the
+  default ordering. A daily Celery beat task (`trustedoss.kev_catalog_refresh`)
+  syncs the CISA feed (~1,600 entries) into the vulnerability catalog,
+  delistings included. New env keys: `KEV_FEED_URL`, `KEV_REFRESH_ENABLED`
+  (set `false` on air-gapped deployments — KEV badges are then not shown), and
+  `KEV_REFRESH_TIMEOUT_SECONDS`.
+
+### Fixed
+- **Source scans no longer misclassify transitive dependencies as direct** when
+  cdxgen emits the SBOM root's `dependencies` entry with an empty `dependsOn`
+  (observed on Maven / Gradle source scans). The depth computation now trusts
+  the metadata root only when it declares children and otherwise falls back to
+  in-degree-0 root detection, so the Components TYPE column shows the real
+  direct set. (#435)
+
 ## [0.12.0] — 2026-06-15
 
 Two feature themes: **received-SBOM ingest with conformance scoring** (a customer

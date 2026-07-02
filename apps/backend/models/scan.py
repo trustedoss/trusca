@@ -41,13 +41,14 @@ Concurrency gate (PR #7 contract):
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -680,6 +681,16 @@ class Vulnerability(Base):
     #   (e.g. 0.00042, 0.97123); precision 6 admits the closed-set max 1.00000.
     epss_score: Mapped[Decimal | None] = mapped_column(Numeric(6, 5), nullable=True)
     epss_percentile: Mapped[Decimal | None] = mapped_column(Numeric(6, 5), nullable=True)
+    # CISA KEV (Known Exploited Vulnerabilities) — a CVE-level attribute, NOT
+    # per-finding (same shape as EPSS above). ``kev`` flags membership in the
+    # CISA KEV catalog and is periodically refreshed by
+    # tasks/kev_catalog_refresh; it defaults to false so existing / unmatched
+    # CVEs need no backfill. ``kev_date_added`` (catalog listing date) and
+    # ``kev_due_date`` (CISA remediation due date, kept for the SLA follow-up
+    # feature) are nullable because they only exist for listed CVEs.
+    kev: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    kev_date_added: Mapped[date | None] = mapped_column(Date, nullable=True)
+    kev_due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     cvss_vector: Mapped[str | None] = mapped_column(String(128), nullable=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     details: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -713,6 +724,10 @@ class Vulnerability(Base):
         # A plain b-tree is enough: NULL ordering (NULLS LAST) is handled in
         # the API query, and Postgres b-tree indexes scan in either direction.
         Index("ix_vulnerabilities_epss_score", "epss_score"),
+        # KEV rows are a tiny minority (the CISA catalog is ~1600 CVEs) of a
+        # cross-project, cross-scan table, so a PARTIAL index on the true rows
+        # serves the "KEV only" filter / count without indexing every false row.
+        Index("ix_vulnerabilities_kev", "kev", postgresql_where=text("kev")),
         Index(
             "ix_vulnerabilities_references_gin",
             "references",

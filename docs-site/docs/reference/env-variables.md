@@ -86,6 +86,16 @@ The portal correlates SBOMs against CVEs using a local **Trivy DB** — a compil
 | `TRIVY_CACHE_DIR` | `/var/lib/trivy` | `integrations/trivy.py` | Directory the DB is unpacked into. Backed by the shared `trivy-cache` volume — worker (rw) and backend (ro) mount it so the admin health / disk panels can read the DB state. |
 | `TRIVY_TIMEOUT_SECONDS` | `300` | `config.py` | Per-scan timeout for `trivy sbom`. Raise to `600`–`900` for very large monorepos. |
 
+### KEV catalog {#kev-catalog}
+
+Independently of the Trivy DB bundle, the portal syncs the [CISA KEV (Known Exploited Vulnerabilities) catalog](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) into its vulnerability catalog once a day (Celery beat task `trustedoss.kev_catalog_refresh`, ~1,600 entries, delistings included). KEV-listed findings carry a badge and a remediation due date and drive the default **Priority** sort — see [Vulnerabilities — KEV](../user-guide/vulnerabilities.md#kev).
+
+| Key | Default | Read by | Description |
+|---|---|---|---|
+| `KEV_FEED_URL` | `https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json` | `config.py` | URL the daily refresh downloads the KEV feed from. Override to point at an internal mirror of the CISA JSON. |
+| `KEV_REFRESH_ENABLED` | `true` | `config.py` | Toggles the daily refresh. Set `false` on air-gapped deployments that cannot reach the feed — with the refresh off, no KEV data is loaded, so **KEV badges and due dates are not shown** and the Priority sort effectively degrades to severity → EPSS. |
+| `KEV_REFRESH_TIMEOUT_SECONDS` | `30` | `config.py` | Outbound HTTP timeout for the CISA feed download. |
+
 ## Build / policy gate
 
 The CI build gate fails a build on Critical CVEs and forbidden licenses out of the box; those conditions are not env-driven. The single env knob below adds an **optional** EPSS dimension.
