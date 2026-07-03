@@ -724,5 +724,6 @@ def test_ingest_hostile_control_chars_do_not_sink_conformance_persist(
     )
     assert spdx_ids, "the declared license finding must persist"
     for spdx_id in spdx_ids:
+        assert spdx_id is not None
         assert "\x00" not in spdx_id and "\x1b" not in spdx_id
     assert "Apache-2.0[31m" in spdx_ids
