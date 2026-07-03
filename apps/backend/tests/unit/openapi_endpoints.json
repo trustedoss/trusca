@@ -355,6 +355,10 @@
   "GET /v1/scans/{scan_id}/log": [
     "scan_id"
   ],
+  "GET /v1/search": [
+    "kinds",
+    "q"
+  ],
   "GET /v1/users/me/notification-prefs": [],
   "GET /v1/users/me/oauth-identities": [],
   "GET /v1/vulnerability_findings/{finding_id}": [

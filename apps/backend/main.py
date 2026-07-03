@@ -43,6 +43,7 @@ from api.v1 import (
     reports_router,
     sbom_router,
     scans_router,
+    search_router,
     source_tree_router,
     users_me_router,
     vex_router,
@@ -205,6 +206,10 @@ app.include_router(projects_router)
 # JWT-required; every aggregate is scoped to the caller's accessible projects
 # inside services.dashboard_service (super-admin → all; otherwise → own teams).
 app.include_router(dashboard_router)
+# Cross-project global search (H-2). Team isolation enforced in
+# services.search_service via the core.authz.team_scope_filter choke-point
+# (super-admin → all projects; otherwise → own teams only).
+app.include_router(search_router)
 app.include_router(scans_router)
 app.include_router(components_router)
 app.include_router(vulnerabilities_router)

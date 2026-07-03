@@ -8,6 +8,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- **Global search (⌘K)** — the command palette (⌘K / Ctrl+K) gains cross-project
+  **Components** and **CVEs** groups alongside Projects and Pages, backed by the
+  new `GET /v1/search` endpoint. Results are scoped server-side to the caller's
+  teams through a single `team_scope_filter` chokepoint — another team's
+  components or vulnerabilities never appear. Component hits deep-link to the
+  project's Components tab filtered to the term; CVE hits to its Vulnerabilities
+  tab. Queries run from two characters, debounced, capped at 20 per group.
 - **Dependency graph view** — the Components tab gains a **Table / Graph** toggle.
   The graph view renders the scan's resolved dependency graph (every parent →
   child edge the scanner recorded) as an interactive cytoscape node-link diagram

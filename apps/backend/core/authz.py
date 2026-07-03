@@ -28,9 +28,12 @@ from __future__ import annotations
 import uuid
 from collections.abc import Callable
 
+import sqlalchemy as sa
 import structlog
+from sqlalchemy.sql.elements import ColumnElement
 
 from core.security import CurrentUser
+from models import Project
 
 
 def can_access_team(actor: CurrentUser, team_id: uuid.UUID) -> bool:
@@ -96,4 +99,47 @@ def assert_team_access(
     raise deny()
 
 
-__all__ = ["assert_team_access", "can_access_team"]
+def team_scope_filter(actor: CurrentUser) -> ColumnElement[bool]:
+    """The single team-isolation predicate for *list / cross-project* reads.
+
+    Where :func:`can_access_team` / :func:`assert_team_access` gate ONE
+    resource whose ``team_id`` is already loaded, this returns a SQLAlchemy
+    boolean expression to drop into ``.where(...)`` so a query only ever sees
+    rows in teams the actor may read. It is the mandated choke-point for any
+    endpoint that fans out across projects (global search, portfolio
+    dashboards): every sub-query filters through THIS helper instead of
+    re-deriving ``Project.team_id.in_(...)`` locally, so the isolation policy
+    lives in exactly one place and a future tweak (org-wide viewer role, etc.)
+    lands here only.
+
+    Contract:
+
+    - super-admin (``actor.is_superuser`` OR ``actor.role == "super_admin"``)
+      → :func:`sqlalchemy.true` (no restriction; sees every team's rows).
+    - a member → ``Project.team_id IN (actor.team_ids)``.
+    - a member with NO memberships → :func:`sqlalchemy.false` (matches nothing;
+      explicit rather than relying on ``IN ()`` empty-set behaviour).
+
+    The predicate references :class:`models.Project`, so every query that uses
+    it MUST join ``Project`` into its FROM (directly or transitively). Callers
+    that start from ``ScanComponent`` / ``VulnerabilityFinding`` reach
+    ``Project`` via ``Scan.project_id`` — see
+    :mod:`services.search_service`.
+    """
+    # Gate the unrestricted (cross-tenant) branch on ``is_superuser`` ALONE, not
+    # on the derived ``role == "super_admin"`` string. ``role`` is
+    # ``_highest_role``, which would read ``super_admin`` if any ``Membership.role``
+    # row ever held that value (the ``user_role`` enum permits it, even though no
+    # write path creates one today). Since this helper is the single chokepoint
+    # for every cross-project fan-out surface (search now, portfolio views later),
+    # keying the bypass on the authoritative ``users.is_superuser`` flag closes
+    # that latent membership-role escalation path centrally (security-review H-2,
+    # Low-2 defense-in-depth).
+    if actor.is_superuser:
+        return sa.true()
+    if not actor.team_ids:
+        return sa.false()
+    return Project.team_id.in_(actor.team_ids)
+
+
+__all__ = ["assert_team_access", "can_access_team", "team_scope_filter"]

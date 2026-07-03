@@ -83,9 +83,12 @@
     "trigger_button": "검색...",
     "placeholder": "프로젝트·CVE·페이지 검색...",
     "no_results": "결과가 없습니다.",
+    "searching": "검색 중…",
     "shortcut_hint": "⌘K",
     "group": {
       "projects": "프로젝트",
+      "components": "컴포넌트",
+      "cves": "CVE",
       "vulnerabilities": "취약점",
       "pages": "페이지"
     }
