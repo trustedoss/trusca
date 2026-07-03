@@ -634,11 +634,25 @@ def test_run_prep_seeds_dotnet_telemetry_optout(
         ("Apache-2.0", "allowed"),
         ("BSD-3-Clause", "allowed"),
         ("ISC", "allowed"),
+        # Allowed — Phase E catalog expansion
+        ("BSL-1.0", "allowed"),
+        ("Artistic-2.0", "allowed"),
+        ("PostgreSQL", "allowed"),
+        ("UPL-1.0", "allowed"),
+        ("AFL-3.0", "allowed"),
+        ("MS-PL", "allowed"),
+        ("BSD-4-Clause", "allowed"),
+        ("CC-BY-4.0", "allowed"),
+        ("MIT-0", "allowed"),
         # Conditional
         ("LGPL-2.1-or-later", "conditional"),
         ("MPL-2.0", "conditional"),
         ("EPL-2.0", "conditional"),
         ("CDDL-1.0", "conditional"),
+        # Conditional — Phase E catalog expansion (share-alike / reciprocal)
+        ("OFL-1.1", "conditional"),
+        ("CC-BY-SA-4.0", "conditional"),
+        ("MS-RL", "conditional"),
         # Forbidden
         ("GPL-2.0-only", "forbidden"),
         ("GPL-3.0-or-later", "forbidden"),
@@ -781,12 +795,44 @@ def test_extract_spdx_ids_keeps_first_reference_url() -> None:
     assert _extract_spdx_ids(component) == [("MIT OR Apache-2.0", "https://mit")]
 
 
-def test_extract_spdx_ids_skips_freetext_license_name() -> None:
-    """A `name`-only license entry has no SPDX id we can trust."""
+def test_extract_spdx_ids_skips_unrecognized_freetext_license_name() -> None:
+    """A `name`-only entry the alias normalizer does not recognize is skipped —
+    persisting a raw free-text name would pollute the license surfaces."""
     from tasks.scan_source import _extract_spdx_ids
 
     component = {"licenses": [{"license": {"name": "Acme Proprietary 2.0"}}]}
     assert _extract_spdx_ids(component) == []
+
+
+def test_extract_spdx_ids_recovers_recognized_freetext_name() -> None:
+    """Phase E: a `name`-only entry for a well-known alias is recovered as its
+    canonical SPDX id (so it classifies instead of landing as unknown)."""
+    from tasks.scan_source import _extract_spdx_ids
+
+    component = {
+        "licenses": [
+            {"license": {"name": "Apache License, Version 2.0", "url": "https://apache"}}
+        ]
+    }
+    assert _extract_spdx_ids(component) == [("Apache-2.0", "https://apache")]
+
+
+def test_extract_spdx_ids_prefers_explicit_id_over_name_normalization() -> None:
+    """An explicit SPDX ``id`` is authoritative; the ``name`` is not consulted."""
+    from tasks.scan_source import _extract_spdx_ids
+
+    component = {"licenses": [{"license": {"id": "MIT", "name": "The Apache License"}}]}
+    assert _extract_spdx_ids(component) == [("MIT", None)]
+
+
+def test_extract_spdx_ids_normalized_name_classifies_not_unknown() -> None:
+    """The recovered id flows through the classifier to a real category."""
+    from tasks.scan_source import _classify_license_category, _extract_spdx_ids
+
+    component = {"licenses": [{"license": {"name": "Boost Software License 1.0"}}]}
+    extracted = _extract_spdx_ids(component)
+    assert extracted == [("BSL-1.0", None)]
+    assert _classify_license_category(extracted[0][0]) == "allowed"
 
 
 def test_extract_spdx_ids_handles_missing_licenses_field() -> None:

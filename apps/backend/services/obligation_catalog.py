@@ -180,6 +180,38 @@ def _permissive(
     )
 
 
+def _permissive_patent(spdx_id: str, *, text: str = _ATTR_TEXT) -> LicenseObligations:
+    """Permissive attribution license that ALSO carries an express patent grant.
+
+    Used for UPL-1.0 / AFL-3.0 / MS-PL / BlueOak-1.0.0 — like :func:`_permissive`
+    plus a ``patent_grant`` and a ``KIND_PATENT`` row. The classification stays
+    ``allowed`` (permissive): the patent grant is a *right* to the consumer, not
+    a redistribution restriction.
+    """
+    rows: tuple[tuple[str, str], ...] = (
+        (KIND_ATTRIBUTION, text),
+        (
+            KIND_NOTICE,
+            "Include a copy of the license text with any redistribution so "
+            "recipients receive the same grant and disclaimers.",
+        ),
+        (
+            KIND_PATENT,
+            "The license includes an express patent grant from contributors; "
+            "asserting a covered patent against the work can terminate your "
+            "patent rights.",
+        ),
+    )
+    return LicenseObligations(
+        spdx_id=spdx_id,
+        attribution_required=True,
+        license_text_inclusion_required=True,
+        copyright_notice_required=True,
+        patent_grant=True,
+        rows=rows,
+    )
+
+
 def _public_domain(spdx_id: str) -> LicenseObligations:
     """Public-domain / no-attribution dedication — no obligations to satisfy."""
     return LicenseObligations(spdx_id=spdx_id)
@@ -535,6 +567,158 @@ _CATALOG: dict[str, LicenseObligations] = {
             ),
         ),
     ),
+    # BSL-1.0 — https://spdx.org/licenses/BSL-1.0.html (Boost; notice in source only)
+    "BSL-1.0": _permissive("BSL-1.0"),
+    # PostgreSQL — https://spdx.org/licenses/PostgreSQL.html (BSD/MIT-equivalent)
+    "PostgreSQL": _permissive("PostgreSQL"),
+    # NTP — https://spdx.org/licenses/NTP.html (permissive, name-not-for-promotion)
+    "NTP": _permissive("NTP"),
+    # curl — https://spdx.org/licenses/curl.html (MIT-equivalent attribution)
+    "curl": _permissive("curl"),
+    # Ruby — https://spdx.org/licenses/Ruby.html (own terms, dual with BSD-2-Clause)
+    "Ruby": _permissive("Ruby"),
+    # X11 — https://spdx.org/licenses/X11.html (MIT variant + no-endorsement)
+    "X11": LicenseObligations(
+        spdx_id="X11",
+        attribution_required=True,
+        license_text_inclusion_required=True,
+        copyright_notice_required=True,
+        rows=(
+            (KIND_ATTRIBUTION, _ATTR_TEXT),
+            (
+                KIND_NOTICE,
+                "Do not use the X Consortium name in advertising or promotion "
+                "relating to the software without prior written authorization.",
+            ),
+        ),
+    ),
+    # Artistic-2.0 — https://spdx.org/licenses/Artistic-2.0.html (Perl/CPAN)
+    "Artistic-2.0": LicenseObligations(
+        spdx_id="Artistic-2.0",
+        attribution_required=True,
+        license_text_inclusion_required=True,
+        copyright_notice_required=True,
+        state_changes_required=True,
+        rows=(
+            (
+                KIND_ATTRIBUTION,
+                "Retain the copyright notice and this license with the package, "
+                "and duplicate all of the original copyright notices and "
+                "associated disclaimers.",
+            ),
+            (
+                KIND_MODIFICATIONS,
+                "If you modify the package, document your changes and how they "
+                "differ from the Standard Version (Artistic-2.0 §§4–6).",
+            ),
+        ),
+    ),
+    # PHP-3.01 — https://spdx.org/licenses/PHP-3.01.html (attribution + naming)
+    "PHP-3.01": LicenseObligations(
+        spdx_id="PHP-3.01",
+        attribution_required=True,
+        license_text_inclusion_required=True,
+        copyright_notice_required=True,
+        rows=(
+            (KIND_ATTRIBUTION, _ATTR_TEXT),
+            (
+                KIND_NOTICE,
+                "Products derived from this software may not be called \"PHP\", "
+                "nor may \"PHP\" appear in their name, without prior written "
+                "permission from the PHP Group (PHP-3.01 clauses 3–4).",
+            ),
+        ),
+    ),
+    # Libpng — https://spdx.org/licenses/Libpng.html (no-misrepresentation + mark)
+    "Libpng": LicenseObligations(
+        spdx_id="Libpng",
+        attribution_required=True,
+        copyright_notice_required=True,
+        state_changes_required=True,
+        rows=(
+            (
+                KIND_ATTRIBUTION,
+                "Do not misrepresent the origin of the source; keep the license "
+                "and authorship notices in the source distribution.",
+            ),
+            (
+                KIND_MODIFICATIONS,
+                "Plainly mark altered source versions as changed, and do not "
+                "misrepresent them as the original software.",
+            ),
+        ),
+    ),
+    # OpenSSL — https://spdx.org/licenses/OpenSSL.html (attribution + advertising)
+    "OpenSSL": LicenseObligations(
+        spdx_id="OpenSSL",
+        attribution_required=True,
+        license_text_inclusion_required=True,
+        copyright_notice_required=True,
+        notice_file_required=True,
+        rows=(
+            (KIND_ATTRIBUTION, _BSD_ATTR_TEXT),
+            (
+                KIND_NOTICE,
+                "Advertising materials mentioning features of the software must "
+                "display the acknowledgement crediting the OpenSSL Project, and "
+                "products may not be called \"OpenSSL\" without permission.",
+            ),
+        ),
+    ),
+    # BSD-4-Clause — https://spdx.org/licenses/BSD-4-Clause.html (BSD-3 + advertising)
+    "BSD-4-Clause": LicenseObligations(
+        spdx_id="BSD-4-Clause",
+        attribution_required=True,
+        license_text_inclusion_required=True,
+        copyright_notice_required=True,
+        notice_file_required=True,
+        rows=(
+            (KIND_ATTRIBUTION, _BSD_ATTR_TEXT),
+            (
+                KIND_NOTICE,
+                "The advertising clause requires all advertising materials "
+                "mentioning features or use of the software to display the "
+                "acknowledgement crediting the copyright holder, and forbids "
+                "using their name to endorse derived products without permission.",
+            ),
+        ),
+    ),
+    # CC-BY-4.0 — https://spdx.org/licenses/CC-BY-4.0.html (attribution + indicate changes)
+    "CC-BY-4.0": LicenseObligations(
+        spdx_id="CC-BY-4.0",
+        attribution_required=True,
+        license_text_inclusion_required=True,
+        copyright_notice_required=True,
+        state_changes_required=True,
+        rows=(
+            (
+                KIND_ATTRIBUTION,
+                "Give appropriate credit (author, copyright notice, license "
+                "notice, disclaimer) and a link to the license, and to the "
+                "material if supplied.",
+            ),
+            (
+                KIND_MODIFICATIONS,
+                "Indicate whether you modified the material and retain an "
+                "indication of any previous modifications.",
+            ),
+            (
+                KIND_NOTICE,
+                "You may not apply legal terms or technological measures that "
+                "legally restrict others from doing anything the license permits.",
+            ),
+        ),
+    ),
+    # UPL-1.0 — https://spdx.org/licenses/UPL-1.0.html (permissive + large patent grant)
+    "UPL-1.0": _permissive_patent("UPL-1.0"),
+    # AFL-3.0 — https://spdx.org/licenses/AFL-3.0.html (permissive + express patent grant)
+    "AFL-3.0": _permissive_patent("AFL-3.0"),
+    # MS-PL — https://spdx.org/licenses/MS-PL.html (permissive + patent grant)
+    "MS-PL": _permissive_patent("MS-PL"),
+    # BlueOak-1.0.0 — https://spdx.org/licenses/BlueOak-1.0.0.html (permissive + patent)
+    "BlueOak-1.0.0": _permissive_patent("BlueOak-1.0.0"),
+    # MIT-0 — https://spdx.org/licenses/MIT-0.html (MIT No Attribution)
+    "MIT-0": _public_domain("MIT-0"),
     # ----- Weak copyleft / conditional -----------------------------------
     # MPL-2.0 — https://spdx.org/licenses/MPL-2.0.html (file-level copyleft + patent)
     "MPL-2.0": _weak_copyleft("MPL-2.0", patent_grant=True),
@@ -555,6 +739,60 @@ _CATALOG: dict[str, LicenseObligations] = {
     "LGPL-2.1-or-later": _lgpl("LGPL-2.1-or-later"),
     "LGPL-3.0-only": _lgpl("LGPL-3.0-only"),
     "LGPL-3.0-or-later": _lgpl("LGPL-3.0-or-later"),
+    # MS-RL — https://spdx.org/licenses/MS-RL.html (file-level reciprocal + patent)
+    "MS-RL": _weak_copyleft("MS-RL", patent_grant=True),
+    # OFL-1.1 — https://spdx.org/licenses/OFL-1.1.html (font share-alike + reserved name)
+    "OFL-1.1": LicenseObligations(
+        spdx_id="OFL-1.1",
+        attribution_required=True,
+        license_text_inclusion_required=True,
+        copyright_notice_required=True,
+        same_license_required=True,  # modified fonts stay OFL (font-scoped)
+        rows=(
+            (
+                KIND_ATTRIBUTION,
+                "Keep the copyright and license notice with the font, in the "
+                "font files or accompanying documentation.",
+            ),
+            (
+                KIND_COPYLEFT,
+                "Modified versions of the font must be distributed entirely "
+                "under the OFL; the font itself (bundled or standalone) may not "
+                "be sold on its own.",
+            ),
+            (
+                KIND_NOTICE,
+                "Do not use any Reserved Font Name declared by the author for "
+                "your modified version without written permission.",
+            ),
+        ),
+    ),
+    # CC-BY-SA-4.0 — https://spdx.org/licenses/CC-BY-SA-4.0.html (attribution + ShareAlike)
+    "CC-BY-SA-4.0": LicenseObligations(
+        spdx_id="CC-BY-SA-4.0",
+        attribution_required=True,
+        license_text_inclusion_required=True,
+        copyright_notice_required=True,
+        state_changes_required=True,
+        same_license_required=True,  # ShareAlike — adaptations under same terms
+        rows=(
+            (
+                KIND_ATTRIBUTION,
+                "Give appropriate credit (author, copyright notice, license "
+                "notice, disclaimer) and a link to the license.",
+            ),
+            (
+                KIND_COPYLEFT,
+                "If you remix or build upon the material, distribute your "
+                "adaptations under CC-BY-SA-4.0 or a BY-SA-compatible license.",
+            ),
+            (
+                KIND_MODIFICATIONS,
+                "Indicate whether you modified the material and retain an "
+                "indication of any previous modifications.",
+            ),
+        ),
+    ),
     # ----- Strong copyleft / forbidden -----------------------------------
     # GPL family — https://spdx.org/licenses/GPL-3.0-only.html (+ variants)
     "GPL-2.0-only": _gpl("GPL-2.0-only"),
