@@ -105,9 +105,21 @@ def sanitize_jsonb_text(value: str) -> str:
     would abort the whole ingest persist with a ``DataError`` and leak the raw
     psycopg message into the user-visible ``scan.error_message``. CR/LF removal
     also blocks log/record injection through replayed check details.
+
+    Lone surrogates (``0xD800``–``0xDFFF``) are dropped too: a hostile JSON
+    document can carry ``"x\\ud800"``, which ``json.loads`` happily decodes
+    into a Python str holding an UNPAIRED surrogate — not encodable to UTF-8,
+    so any downstream ``.encode("utf-8")`` (psycopg's wire encode, the JSONB
+    size guard's byte measurement) raises ``UnicodeEncodeError`` and sinks
+    the whole persist. A surrogate-range code point inside an already-decoded
+    str is by definition invalid (``json.loads`` combines VALID pairs into a
+    single non-BMP character), so dropping the range never loses real text.
     """
     return "".join(
-        ch for ch in value if ch == "\t" or (ord(ch) >= 0x20 and ord(ch) != 0x7F)
+        ch
+        for ch in value
+        if ch == "\t"
+        or (ord(ch) >= 0x20 and ord(ch) != 0x7F and not (0xD800 <= ord(ch) <= 0xDFFF))
     ).strip()
 
 
