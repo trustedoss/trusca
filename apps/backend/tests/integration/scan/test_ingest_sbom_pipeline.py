@@ -42,6 +42,7 @@ from integrations.trivy import TrivyResult
 from models import (
     Component,
     ComponentVersion,
+    License,
     LicenseFinding,
     SbomConformance,
     Scan,
@@ -193,6 +194,21 @@ def test_ingest_pipeline_persists_components_and_dense_findings(
     monkeypatch.setenv("WORKSPACE_HOST_PATH", str(tmp_path))
     _stub_trivy_from_fixture(monkeypatch)
 
+    # Zero-cost pass-through pin (fix/scan-persist-sanitize): the realistic
+    # fixture carries NO control characters, so the NUL-gated deep-clean walk
+    # in ``persist_sbom_components`` must never fire — clean SBOMs take the
+    # probe short-circuit (same-object return, no per-node Python work).
+    import tasks.scan_source as scan_source_module
+
+    walk_calls: list[object] = []
+    real_walk = scan_source_module._deep_sanitize_jsonb
+
+    def _counting_walk(value: object) -> object:
+        walk_calls.append(value)
+        return real_walk(value)
+
+    monkeypatch.setattr(scan_source_module, "_deep_sanitize_jsonb", _counting_walk)
+
     scan_id, _project_id = _seed_queued_sbom_scan(tmp_path)
 
     from tasks.ingest_sbom import ingest_sbom_task
@@ -287,6 +303,9 @@ def test_ingest_pipeline_persists_components_and_dense_findings(
     # The denormalised project pointer matches the scan's project (used by the
     # tenant-scoped read endpoint's belongs-to-project predicate).
     assert verdict.project_id == _project_id
+
+    # The sanitising deep walk never ran on the clean document.
+    assert walk_calls == [], "clean SBOM must not trigger the sanitising deep walk"
 
 
 # ---------------------------------------------------------------------------
@@ -552,17 +571,35 @@ def test_ingest_aibom_1_7_persists_g7_conformance_checks(
 def test_ingest_hostile_control_chars_do_not_sink_conformance_persist(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, sync_session: Session
 ) -> None:
-    """F-1 regression: SBOM-derived strings with NUL / ESC must not abort the
-    ingest with a Postgres DataError (which failed the whole scan and leaked
-    the raw psycopg message into the user-visible scan.error_message).
+    """F-1 regression + follow-up: SBOM-derived strings with NUL / ESC must not
+    abort the ingest with a Postgres DataError (which failed the whole scan and
+    leaked the raw psycopg message into the user-visible scan.error_message).
 
-    The real AIBOM 1.7 fixture is cloned and poisoned: NUL goes into metadata
-    fields (metadata flows ONLY into the conformance checks' detail strings —
-    pre-fix that reached the ``sbom_conformance.checks`` JSONB as ``\\u0000``);
-    ESC additionally poisons the ML component's purl AND name (the g7 evidence
-    path). NUL is deliberately NOT placed inside a component: components are
-    persisted verbatim into ``scan_components.raw_data`` JSONB / TEXT columns
-    by a different stage outside this fix's scope."""
+    The real AIBOM 1.7 fixture is cloned and poisoned on BOTH persist surfaces:
+
+      * metadata fields (NUL + ESC) — flow into the conformance checks' detail
+        strings (pre-fix that reached the ``sbom_conformance.checks`` JSONB as
+        ``\\u0000``);
+      * the ML component itself — purl / name / version / bom-ref / description
+        / license id all carry NUL and/or ESC. Components are persisted into
+        ``scan_components.raw_data`` (JSONB) and Component / ComponentVersion /
+        License TEXT columns by ``persist_sbom_components``; pre-fix a
+        component NUL was this test's documented out-of-scope reservation and
+        sank stage 2 with a DataError. The reservation is lifted: the persist
+        path now cleans through ``sanitize_jsonb_text`` (fix/scan-persist-
+        sanitize), and the license-id cleaning is the #443 F-2 root fix (the
+        NOTICE plain-text header replays ``licenses.spdx_id`` verbatim).
+
+    Second round (same attack class, remaining paths):
+
+      * a LONE SURROGATE (``"x\\ud800"`` in the JSON) rides in the component
+        name — ``json.loads`` decodes it into a non-UTF-8-encodable str that
+        bypasses a NUL-only probe and crashed the size guard's byte
+        measurement with UnicodeEncodeError pre-fix;
+      * a sanitisation COLLISION pair (``pkg:npm/dup@1.0.0`` vs the same +
+        NUL) converges to one (component_version, dependency_path) identity —
+        two rows would violate ``uq_scan_components_scan_version_path`` at
+        commit and echo SBOM content in the IntegrityError DETAIL."""
     monkeypatch.setenv("WORKSPACE_HOST_PATH", str(tmp_path))
     _stub_trivy_from_fixture(monkeypatch)
 
@@ -570,8 +607,33 @@ def test_ingest_hostile_control_chars_do_not_sink_conformance_persist(
     doc["metadata"]["timestamp"] = doc["metadata"]["timestamp"] + "\x00\x1b[2J"
     doc["metadata"]["component"]["name"] += "\x00"
     ml = doc["components"][0]
-    ml["purl"] = ml["purl"] + "\x1b[31m"
-    ml["name"] = ml["name"] + "\x1b"
+    ml["purl"] = ml["purl"] + "\x00\x1b[31m"
+    # chr(0xD800): json.dumps escapes it to the \ud800 JSON escape on disk;
+    # the ingest's json.loads turns it back into a lone surrogate in memory.
+    ml["name"] = ml["name"] + "\x00\x1b" + chr(0xD800)
+    ml["version"] = ml["version"] + "\x00"
+    ml["bom-ref"] = ml["bom-ref"] + "\x00"
+    ml["description"] = ml["description"] + "\x00\x1b[2J"
+    ml["licenses"][0]["license"]["id"] = "Apache-2.0\x00\x1b[31m"
+    # Round-2 F-2: a collision pair — identical after sanitisation.
+    doc["components"].append(
+        {
+            "type": "library",
+            "name": "dup",
+            "version": "1.0.0",
+            "purl": "pkg:npm/dup@1.0.0",
+            "bom-ref": "pkg:npm/dup@1.0.0",
+        }
+    )
+    doc["components"].append(
+        {
+            "type": "library",
+            "name": "dup",
+            "version": "1.0.0\x00",
+            "purl": "pkg:npm/dup@1.0.0\x00",
+            "bom-ref": "pkg:npm/dup@1.0.0\x00",
+        }
+    )
     hostile = tmp_path / "hostile-aibom.cdx.json"
     hostile.write_text(json.dumps(doc), encoding="utf-8")
 
@@ -596,7 +658,71 @@ def test_ingest_hostile_control_chars_do_not_sink_conformance_persist(
     by_id = {c["id"]: c for c in verdict.checks}
     # Core detail strings sanitised (NUL + ESC stripped, printable tail kept).
     assert by_id["timestamp"]["detail"] == "2026-06-23T13:18:25+00:00[2J"
-    # G7 evidence sanitised (ESC stripped from the poisoned purl).
+    # G7 evidence sanitised (NUL + ESC stripped from the poisoned purl).
     assert by_id["g7-model-id"]["evidence"] == [
         "pkg:huggingface/google-bert/bert-base-uncased@86b5e093[31m"
     ]
+
+    # ------------------------------------------------------------------
+    # Component persist surface (the lifted reservation): the poisoned
+    # component PERSISTED — pre-fix its NUL sank stage 2 with a DataError —
+    # and every stored value is control-char free.
+    # ------------------------------------------------------------------
+    scan_components = list(
+        sync_session.execute(
+            select(ScanComponent).where(ScanComponent.scan_id == scan_id)
+        ).scalars()
+    )
+    assert scan_components, "the poisoned component must persist, not sink the scan"
+    for sc in scan_components:
+        raw_blob = json.dumps(sc.raw_data)
+        assert "\\u0000" not in raw_blob and "\\u001b" not in raw_blob
+        # Round-2 F-1: the lone surrogate was dropped too (pre-fix it crashed
+        # the size guard's UTF-8 byte measurement before even reaching PG).
+        assert "\\ud800" not in raw_blob
+        if sc.dependency_path is not None:
+            assert "\x00" not in sc.dependency_path
+            assert "\x1b" not in sc.dependency_path
+
+    # TEXT columns: Component purl/name + ComponentVersion version/purl clean
+    # (control chars AND the surrogate range).
+    identity_rows = sync_session.execute(
+        select(
+            Component.purl,
+            Component.name,
+            ComponentVersion.version,
+            ComponentVersion.purl_with_version,
+        )
+        .join(ComponentVersion, ComponentVersion.component_id == Component.id)
+        .join(ScanComponent, ScanComponent.component_version_id == ComponentVersion.id)
+        .where(ScanComponent.scan_id == scan_id)
+    ).all()
+    assert identity_rows
+    for row in identity_rows:
+        for value in row:
+            assert "\x00" not in value and "\x1b" not in value
+            assert all(not (0xD800 <= ord(ch) <= 0xDFFF) for ch in value)
+    assert ("pkg:huggingface/google-bert/bert-base-uncased@86b5e093[31m") in {
+        r.purl_with_version for r in identity_rows
+    }
+
+    # Round-2 F-2: the collision pair collapsed to exactly ONE ScanComponent
+    # row (two would have violated uq_scan_components_scan_version_path at
+    # commit and killed the scan with an IntegrityError whose DETAIL echoes
+    # SBOM content).
+    dup_rows = [r for r in identity_rows if r.purl_with_version == "pkg:npm/dup@1.0.0"]
+    assert len(dup_rows) == 1, "sanitisation-converged duplicates collapse to one row"
+
+    # #443 F-2 root fix: the poisoned license id was cleaned at extraction —
+    # the value the NOTICE plain-text header replays cannot carry NUL/ESC.
+    spdx_ids = list(
+        sync_session.execute(
+            select(License.spdx_id)
+            .join(LicenseFinding, LicenseFinding.license_id == License.id)
+            .where(LicenseFinding.scan_id == scan_id)
+        ).scalars()
+    )
+    assert spdx_ids, "the declared license finding must persist"
+    for spdx_id in spdx_ids:
+        assert "\x00" not in spdx_id and "\x1b" not in spdx_id
+    assert "Apache-2.0[31m" in spdx_ids

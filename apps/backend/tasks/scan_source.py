@@ -50,6 +50,7 @@ Workspace:
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import shutil
 import subprocess
@@ -114,6 +115,7 @@ from models import (
 )
 from services.component_approval_service import auto_create_pending_approvals
 from services.license_expression import evaluate_expression
+from services.sbom_conformance import sanitize_jsonb_text
 from services.source_archive_service import (
     SourceArchiveError,
     delete_archive,
@@ -1912,6 +1914,106 @@ def _run_prep(
         )
 
 
+# Probe for JSON-escaped code points that would sink the persist:
+#   * NUL — the only code point Postgres jsonb rejects (DataError);
+#   * the surrogate range ``\ud800``–``\udfff`` — ``json.loads`` decodes a
+#     hostile ``"x\ud800"`` into a Python str holding a LONE surrogate, which
+#     is not UTF-8-encodable, so the size guard's byte measurement / psycopg's
+#     wire encode raise ``UnicodeEncodeError`` (equally scan-fatal).
+# We dump with ``ensure_ascii=False`` so the probe stays a fast-path: NUL
+# still emits as the literal text `` `` and a lone surrogate emits as the
+# actual surrogate character (both matched below), while a VALID non-BMP
+# character (emoji, CJK Extension B) emits as its literal self and does NOT
+# match — ``ensure_ascii=True`` would escape those to surrogate *pairs* and
+# make every emoji-bearing SBOM take the full recursive walk for nothing.
+_JSONB_HOSTILE_RE = re.compile(r"\\u0000|[\ud800-\udfff]")
+
+
+def _deep_sanitize_jsonb(value: Any) -> Any:
+    """Recursively pass every string (dict keys included) through
+    ``sanitize_jsonb_text``.
+
+    Only called on payloads that failed the cheap hostile-escape probe in
+    ``_sanitize_jsonb_payload`` — see there for the cost rationale. Non-string
+    scalars (numbers, bools, None) pass through untouched.
+    """
+    if isinstance(value, str):
+        return sanitize_jsonb_text(value)
+    if isinstance(value, list):
+        return [_deep_sanitize_jsonb(v) for v in value]
+    if isinstance(value, dict):
+        return {
+            (sanitize_jsonb_text(k) if isinstance(k, str) else k): _deep_sanitize_jsonb(v)
+            for k, v in value.items()
+        }
+    return value
+
+
+def _sanitize_jsonb_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Probe-gated deep clean for an SBOM-derived dict headed into JSONB.
+
+    Two scan-fatal vectors hide inside ``scan_components.raw_data``:
+      * an embedded NUL (``\\u0000``) — the one code point Postgres jsonb
+        rejects (DataError);
+      * a lone surrogate (``\\ud800``–``\\udfff``) — decodable by
+        ``json.loads`` but not UTF-8-encodable, so the size guard's byte
+        measurement / psycopg's wire encode raise ``UnicodeEncodeError``.
+    Pre-fix, either one aborted the WHOLE component persist and leaked the raw
+    driver message into the user-visible ``scan.error_message`` (F-1 follow-up;
+    ingest of external SBOMs makes this attacker-reachable).
+
+    Performance: a Python-level recursive walk over every node of every
+    component is expensive on large SBOMs (10k+ components, deep
+    dict-of-lists). We gate the walk behind a single ``json.dumps`` +
+    ``_JSONB_HOSTILE_ESCAPE_RE`` probe: the dump runs at C speed — the same
+    order of cost as the byte measurement ``enforce_jsonb_row_size_limit``
+    performs on the same dict right after — and the default-``ensure_ascii``
+    dump escapes both hostile classes as literal ``\\uXXXX`` text, so one
+    regex pass finds them at ANY depth, keys included. Clean payloads (the
+    overwhelmingly common case) are returned as the SAME object — no copy, no
+    per-node Python work. A string containing the *literal text* ``\\u0000`` /
+    ``\\ud800`` (backslash escapes, no real code point) false-positives the
+    probe; that only costs the walk — the walk never alters printable text,
+    so the payload round-trips unchanged.
+
+    When the probe fires, the walk reuses ``sanitize_jsonb_text`` (the
+    established persist-boundary cleaner, which drops the surrogate range
+    too), so ESC/CSI sequences riding along in a poisoned document are
+    stripped in the same pass. Telemetry is the caller's job: the component
+    loop aggregates ONE ``jsonb_nul_sanitized`` warning per scan instead of
+    one per poisoned component (a hostile 10k-component SBOM must not be able
+    to write 10k warning lines).
+    """
+    if _JSONB_HOSTILE_RE.search(json.dumps(payload, ensure_ascii=False, default=str)) is None:
+        # ``default=str`` is defensive parity with the size guard's serializer
+        # — the payload comes from ``json.loads`` so it is pure JSON types.
+        return payload
+    # Top-level dict handled inline (mypy: keys of a dict[str, Any] are str,
+    # so the cleaned mapping stays dict[str, Any]); values recurse.
+    return {
+        sanitize_jsonb_text(k): _deep_sanitize_jsonb(v) for k, v in payload.items()
+    }
+
+
+def _component_text_field(value: Any, fallback: str) -> str:
+    """Coerce a component ``name`` / ``version`` for TEXT-column persist.
+
+    F-3: a hostile SBOM can type these fields as anything — a non-string
+    slipping through an ``isinstance`` gate reaches psycopg as a Python object
+    and dies with a driver type error (same whole-scan-abort class as the NUL
+    DataError). Strings are cleaned through ``sanitize_jsonb_text``; JSON
+    numbers are stringified (real-world lenient producers emit
+    ``"version": 1.0``); anything else (bool / list / dict / None) falls back
+    to the caller's default rather than persisting ``str(obj)`` repr garbage
+    of unbounded length.
+    """
+    if isinstance(value, str):
+        return sanitize_jsonb_text(value) or fallback
+    if isinstance(value, int | float) and not isinstance(value, bool):
+        return str(value)
+    return fallback
+
+
 def persist_sbom_components(
     session: Session,
     *,
@@ -1983,15 +2085,34 @@ def persist_sbom_components(
     ref_to_cv_id: dict[str, uuid.UUID] = {}
     # cdxgen ref → the ScanComponent we created, so we can backfill depth.
     ref_to_scan_component: dict[str, ScanComponent] = {}
+    # F-2: post-sanitisation row identity → the FIRST ScanComponent persisted
+    # for it (see the dedup block inside the loop).
+    seen_component_rows: dict[tuple[uuid.UUID, str | None], ScanComponent] = {}
+    # F-4: aggregated telemetry — one warning per scan, not per component.
+    sanitized_count = 0
+    deduplicated_count = 0
 
     for raw in components:
         if not isinstance(raw, dict):
             continue
-        purl = raw.get("purl") or raw.get("bom-ref")
-        if not isinstance(purl, str) or not purl:
+        raw_ref = raw.get("purl") or raw.get("bom-ref")
+        if not isinstance(raw_ref, str) or not raw_ref:
             continue
-        name = raw.get("name") or "unknown"
-        version = raw.get("version") or "0.0.0"
+        # F-1 follow-up (persist-boundary cleaning): purl / name / version land
+        # in Postgres TEXT columns, which reject NUL — an unsanitised hostile
+        # SBOM (attacker-reachable through external ingest, surface widened by
+        # CycloneDX 1.7 acceptance) aborted the whole persist with a DataError
+        # and leaked the raw psycopg message into scan.error_message. The RAW
+        # ref strings (``raw_ref`` / ``bom_ref``) stay as the in-memory
+        # graph-map keys below so a poisoned bom-ref still matches its equally
+        # poisoned entry in ``sbom["dependencies"]`` — only persisted values
+        # are cleaned (the maps resolve to UUIDs, never to persisted text).
+        purl = sanitize_jsonb_text(raw_ref)
+        if not purl:
+            continue  # nothing printable left — not a usable identifier
+        # F-3: non-string name/version must not reach psycopg as raw objects.
+        name = _component_text_field(raw.get("name"), "unknown")
+        version = _component_text_field(raw.get("version"), "0.0.0")
         package_type = _purl_package_type(purl)
 
         component = _get_or_create_component(
@@ -2004,8 +2125,44 @@ def persist_sbom_components(
             purl_with_version=purl,
         )
 
+        bom_ref = raw.get("bom-ref")
+        # TEXT column — persist the CLEANED ref; the raw one keys the maps.
+        # F-3: a non-string bom-ref carries no path information → NULL.
+        dependency_path = (
+            sanitize_jsonb_text(bom_ref) or None if isinstance(bom_ref, str) else None
+        )
+
+        # F-2: sanitisation can make two DISTINCT raw components converge on
+        # the same identity — ``a@1.0.0`` and ``a@1.0.0\\x00`` clean to the
+        # same purl (→ same component_version row) and the same
+        # dependency_path, violating ``uq_scan_components_scan_version_path``
+        # at commit (an IntegrityError whose DETAIL echoes SBOM content into
+        # scan.error_message — the exact failure class this fix removes).
+        # Literal duplicate entries in a raw SBOM hit the same constraint.
+        # Keep the FIRST row; still register the duplicate's RAW refs so the
+        # dependency graph resolves through either spelling.
+        dedup_key = (component_version.id, dependency_path)
+        existing_row = seen_component_rows.get(dedup_key)
+        if existing_row is not None:
+            deduplicated_count += 1
+            if isinstance(bom_ref, str) and bom_ref:
+                ref_to_cv_id.setdefault(bom_ref, component_version.id)
+                ref_to_scan_component.setdefault(bom_ref, existing_row)
+            ref_to_cv_id.setdefault(raw_ref, component_version.id)
+            ref_to_scan_component.setdefault(raw_ref, existing_row)
+            continue
+
+        # Hostile-escape-clean BEFORE the size guard so (a) the guard measures
+        # the bytes that are actually persisted and (b) a truncation marker's
+        # ``summary`` copy is built from already-clean strings. Both helpers
+        # are no-copy pass-throughs on clean, in-limit payloads.
+        cleaned_raw = _sanitize_jsonb_payload(raw)
+        if cleaned_raw is not raw:
+            # F-4: aggregate ONE warning per scan after the loop — per-component
+            # lines would let a hostile 10k-component SBOM flood the log.
+            sanitized_count += 1
         guarded_raw = enforce_jsonb_row_size_limit(
-            raw,
+            cleaned_raw,
             context={
                 "scan_id": str(scan_uuid),
                 "column": "scan_components.raw_data",
@@ -2017,6 +2174,10 @@ def persist_sbom_components(
         # for npm). The lookup is by purl, which is the same string cdxgen uses
         # — for non-npm purls the lockup misses harmlessly.
         cdxgen_scope = raw.get("scope")
+        if isinstance(cdxgen_scope, str):
+            # A scope that sanitises to "" falls through to the lockfile
+            # fallback, same as cdxgen's literal ``scope: ""`` emissions.
+            cdxgen_scope = sanitize_jsonb_text(cdxgen_scope)
         scope_value: str | None
         if isinstance(cdxgen_scope, str) and cdxgen_scope:
             scope_value = cdxgen_scope
@@ -2028,21 +2189,23 @@ def persist_sbom_components(
             scan_id=scan_uuid,
             component_version_id=component_version.id,
             dependency_scope=scope_value,
-            dependency_path=raw.get("bom-ref"),
+            dependency_path=dependency_path,
             direct=False,
             raw_data=guarded_raw,
         )
         session.add(scan_component)
+        seen_component_rows[dedup_key] = scan_component
 
         # Map BOTH the bom-ref and the purl to this component_version: cdxgen
         # graph refs are bom-refs, which usually equal the purl but can differ
         # (e.g. a scoped/aliased ref). Recording both maximises edge resolution.
-        bom_ref = raw.get("bom-ref")
+        # Keys are the RAW (unsanitised) strings on purpose — they must equal
+        # the equally raw refs in ``sbom["dependencies"]`` byte-for-byte.
         if isinstance(bom_ref, str) and bom_ref:
             ref_to_cv_id[bom_ref] = component_version.id
             ref_to_scan_component[bom_ref] = scan_component
-        ref_to_cv_id.setdefault(purl, component_version.id)
-        ref_to_scan_component.setdefault(purl, scan_component)
+        ref_to_cv_id.setdefault(raw_ref, component_version.id)
+        ref_to_scan_component.setdefault(raw_ref, scan_component)
 
         _persist_component_licenses(
             session,
@@ -2050,6 +2213,15 @@ def persist_sbom_components(
             component_version_id=component_version.id,
             cdxgen_component=raw,
             purl=purl,
+        )
+
+    if sanitized_count or deduplicated_count:
+        log.warning(
+            "jsonb_nul_sanitized",
+            scan_id=str(scan_uuid),
+            column="scan_components.raw_data",
+            sanitized_components=sanitized_count,
+            deduplicated_components=deduplicated_count,
         )
 
     # v2.2 2.2-a2 — stamp depth + persist the resolved dependency edges. Runs
@@ -2318,15 +2490,25 @@ def _extract_spdx_ids(cdxgen_component: dict[str, Any]) -> list[tuple[str, str |
             continue
         lic = entry.get("license") or {}
         if isinstance(lic, dict):
+            # #443 F-2 root fix: the id/expression lands in ``licenses.spdx_id``
+            # (TEXT) and is replayed verbatim into the NOTICE plain-text header,
+            # so a hostile SBOM could forge NOTICE lines with CR/LF/ESC or abort
+            # the persist with an embedded NUL. Clean at extraction (the NOTICE
+            # renderer keeps its own defence as belt-and-braces). Same for the
+            # reference URL, which lands in ``licenses.reference_url`` (TEXT).
             spdx = lic.get("id")
             if isinstance(spdx, str) and spdx:
-                ids.append(spdx)
-                if ref_url is None and isinstance(lic.get("url"), str):
-                    ref_url = lic["url"]
-                continue
+                spdx = sanitize_jsonb_text(spdx)
+                if spdx:
+                    ids.append(spdx)
+                    if ref_url is None and isinstance(lic.get("url"), str):
+                        ref_url = sanitize_jsonb_text(lic["url"]) or None
+                    continue
         expression = entry.get("expression")
-        if isinstance(expression, str) and expression.strip():
-            ids.append(expression.strip())
+        if isinstance(expression, str):
+            expression = sanitize_jsonb_text(expression)
+            if expression:
+                ids.append(expression)
     if not ids:
         return []
     combined = ids[0] if len(ids) == 1 else " OR ".join(ids)
