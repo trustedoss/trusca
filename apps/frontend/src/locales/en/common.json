@@ -83,9 +83,12 @@
     "trigger_button": "Search...",
     "placeholder": "Search projects, CVEs, pages...",
     "no_results": "No results found.",
+    "searching": "Searching…",
     "shortcut_hint": "⌘K",
     "group": {
       "projects": "Projects",
+      "components": "Components",
+      "cves": "CVEs",
       "vulnerabilities": "Vulnerabilities",
       "pages": "Pages"
     }

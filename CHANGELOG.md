@@ -8,6 +8,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- **Global search (⌘K)** — the command palette (⌘K / Ctrl+K) gains cross-project
+  **Components** and **CVEs** groups alongside Projects and Pages, backed by the
+  new `GET /v1/search` endpoint. Results are scoped server-side to the caller's
+  teams through a single `team_scope_filter` chokepoint — another team's
+  components or vulnerabilities never appear. Component hits deep-link to the
+  project's Components tab filtered to the term; CVE hits to its Vulnerabilities
+  tab. Queries run from two characters, debounced, capped at 20 per group.
 - **Excel (`.xlsx`) vulnerability report** — the project vulnerability report can
   now be downloaded as an Excel workbook in addition to PDF, from the **Excel**
   button on the Reports tab's Vulnerability-report card (or

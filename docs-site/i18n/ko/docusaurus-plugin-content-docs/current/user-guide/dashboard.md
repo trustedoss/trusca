@@ -34,6 +34,17 @@ sidebar_position: 0
 
 페이지는 백엔드 `/v1/dashboard/summary` 엔드포인트를 폴링하며 첫 응답 대기 동안 스켈레톤을 표시합니다. 이후 새로고침은 캐시된 응답을 사용하고 백그라운드로 refetch 합니다.
 
+## 전역 검색 (⌘K)
+
+**⌘K**(macOS) / **Ctrl+K**(Windows·Linux)를 누르거나 헤더의 검색 상자를 클릭하면 앱 어디서든 커맨드 팔레트가 열립니다. 접근 가능한 모든 프로젝트를 가로질러 검색하며 — 서버에서 소속 팀으로 스코프가 제한되어 다른 팀의 데이터는 결과에 포함되지 않습니다 — 네 그룹으로 나뉩니다:
+
+- **Projects** — 이름으로 프로젝트로 이동.
+- **Pages** — 상위 페이지(Dashboard·Scans·Policies 등)로 이동.
+- **Components** — 접근 가능한 프로젝트에서 패키지를 이름이나 purl 로 검색; 결과를 선택하면 해당 프로젝트의 **Components** 탭이 그 검색어로 필터링되어 열립니다.
+- **CVEs** — 취약점을 CVE id 로 검색; 결과를 선택하면 해당 프로젝트의 **Vulnerabilities** 탭이 그것으로 필터링되어 열립니다.
+
+Components·CVEs 그룹은 입력하는 대로(두 글자부터, 디바운스) 질의하고, Projects·Pages 는 즉시 매칭됩니다. 모두 키보드로 조작할 수 있습니다 — 화살표로 이동, Enter 로 열기, Esc 로 닫기.
+
 ## 빈 상태
 
 프로젝트가 하나도 없는 새 배포에서는 0 으로 채운 타일 대신 가운데 정렬된 CTA("No projects yet — register your first project to start scanning…")가 표시됩니다. **Register project** 버튼을 클릭하면 `/projects/new` 로 이동합니다.

@@ -360,6 +360,21 @@ def api_read_rate_limit() -> str:
     return os.getenv("API_READ_RATE_LIMIT", "60/minute")
 
 
+def search_rate_limit() -> str:
+    """slowapi limit string for the global search endpoint (per actor).
+
+    Global search (``GET /v1/search``) runs a leading-wildcard ``ILIKE`` over
+    ``components`` / ``vulnerabilities`` (non-SARGable → sequential scan + sort
+    per request; the ``LIMIT 20`` bounds output rows, not scan cost). The ⌘K
+    palette fires one debounced query per keystroke, so search gets its OWN,
+    tighter budget instead of sharing the CI-poll ``api_read_rate_limit`` bucket
+    — bounding the seq-scan amplifier a scripted client could otherwise drive
+    (security-review H-2, Low-1). Keyed per actor via ``_authenticated_user_key``.
+    Default 20/minute comfortably covers interactive typing while capping abuse.
+    """
+    return os.getenv("SEARCH_RATE_LIMIT", "20/minute")
+
+
 def scan_concurrency_cap_per_team() -> int:
     """Max concurrent (queued+running) scans allowed per team.
 

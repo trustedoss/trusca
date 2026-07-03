@@ -32,7 +32,7 @@
 | 7 | 라이선스 분류 카탈로그 확장 (32개 → SPDX 주요 라이선스) | P2 | **closed (#451, 2026-07-03 Phase E)** | 카탈로그 32→52종(허용 17+조건부 3, 전문 SPDX 공식 vendored) + `services/license_normalize.py`(BomLens `spdx-normalize.jq` 포팅, `_extract_spdx_ids` name-only 회복 — 미인식은 unknown 유지) + 3자 정합 계약(분류↔카탈로그↔전문). 판정: OFL-1.1/CC-BY-SA-4.0/MS-RL=조건부, OpenSSL/BSD-4-Clause=허용(advertising→notice 의무). 로컬 991 passed |
 | 8 | Excel 리포트 | P3 | in-progress (Phase G) | CLAUDE.md가 약속했으나 미구현(PDF만). Phase G: openpyxl 기반 `build_report_xlsx`(Overview/Components/Vulnerabilities 3시트, formula-injection 방어) + `GET /projects/{id}/vulnerability-report.xlsx` + report_type enum `vuln_xlsx`(0037) + Reports 탭 Excel 버튼 |
 | 9 | 의존성 그래프 뷰 | P3 | open | BomLens cytoscape 그래프+트리 재설계(#243) ↔ TRUSCA Components는 테이블+드로어만 |
-| 10 | 전역 검색(컴포넌트+CVE 크로스 프로젝트) | P3 | open | BomLens 상단바 전역 검색(#274) ↔ TRUSCA 없음 |
+| 10 | 전역 검색(컴포넌트+CVE 크로스 프로젝트) | P3 | in-progress (Phase H-2) | BomLens 상단바 전역 검색(#274) ↔ TRUSCA 없음. H-2: `GET /v1/search`(컴포넌트/CVE 크로스 프로젝트, `team_scope_filter` 단일 초크포인트 팀 격리) + ⌘K 팔레트 Components/CVEs 카테고리·딥링크. security-reviewer Producer-Reviewer |
 | 11 | SCANOSS vendored OSS 식별 | P3 | open | BomLens 기본 탑재(#271) ↔ TRUSCA 없음. C/C++ 고객 요구 시 착수 |
 | 12 | 릴리즈 게이트 강화(published 이미지에서 first-scan 실증 후 publish) | P3 | open | BomLens #239/#241 draft→검증→publish ↔ TRUSCA release.yml에 이식 가치 |
 | 13 | 바이너리/펌웨어/ROOTFS 스캔 | — | 역할경계 | BomLens 영역. "BomLens로 스캔 → TRUSCA ingest" 연계 문서화로 커버 권장 |

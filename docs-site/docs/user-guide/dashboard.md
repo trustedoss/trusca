@@ -34,6 +34,17 @@ The Dashboard renders four bands stacked top-to-bottom:
 
 The page polls the backend's `/v1/dashboard/summary` endpoint and renders skeletons while the first response is in flight. Subsequent reloads use the cached response and refetch in the background.
 
+## Global search (⌘K)
+
+Press **⌘K** (macOS) / **Ctrl+K** (Windows / Linux), or click the search box in the header, to open the command palette from anywhere in the app. It searches across every project you can access — scoped server-side to your teams, so results never include another team's data — in four groups:
+
+- **Projects** — jump to a project by name.
+- **Pages** — jump to a top-level page (Dashboard, Scans, Policies, …).
+- **Components** — find a package by name or purl across your projects; selecting a hit opens that project's **Components** tab filtered to the term.
+- **CVEs** — find a vulnerability by CVE id; selecting a hit opens that project's **Vulnerabilities** tab filtered to it.
+
+The Components and CVEs groups query as you type (from two characters up, debounced); Projects and Pages match instantly. Everything is keyboard-navigable — arrow keys to move, Enter to open, Esc to close.
+
 ## Empty state
 
 A brand-new deployment with no projects shows a centered call-to-action ("No projects yet — register your first project to start scanning…") instead of zero-filled tiles. Click the **Register project** button to land on `/projects/new`.
