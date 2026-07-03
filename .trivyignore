@@ -320,6 +320,22 @@ CVE-2026-4800
 # Re-evaluate: 2026-12-14 or when cdxgen ships a minimist≥1.2.6 tree.
 CVE-2021-44906
 
+# CVE-2026-52746 — jsonata 2.1.0 → 2.2.0 — HIGH
+# Target: usr/lib/node_modules/@cyclonedx/cdxgen/node_modules/jsonata/package.json
+# CVSS: HIGH (DoS via malicious inputs to the JSONata `$toMillis` function).
+# Reach: jsonata is cdxgen's JSONata expression engine, exercised ONLY by its
+#   query features (the `--query` flag / the evinse query evaluation path). Our
+#   sole cdxgen invocation is `cdxgen -r -o <out> --spec-version <v> <src>`
+#   (apps/backend/integrations/cdxgen.py:154) — dependency ENUMERATION with no
+#   `--query`, so no JSONata expression is ever evaluated over scanned-repo
+#   content and the vulnerable `$toMillis` code path is never reached. Same
+#   category (3) surface and no-invocation rationale as the lodash / minimist
+#   entries above (upstream-PATCHED in jsonata 2.2.0, but not yet re-bundled by
+#   cdxgen 12.3.3). Surfaced on this PR's image-scan by a Trivy-DB refresh after
+#   #451 (which passed the same gate). UNREACHED.
+# Re-evaluate: 2026-12-14 or when cdxgen ships a jsonata≥2.2.0 tree.
+CVE-2026-52746
+
 # ---------------------------------------------------------------------------
 # Maven 3.9.x bundle (chore PR #4 worker image): JARs vendored alongside
 # the `mvn` binary so we can run `mvn dependency:tree` for the Java
