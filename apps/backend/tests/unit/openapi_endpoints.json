@@ -225,6 +225,7 @@
     "offset",
     "order",
     "project_id",
+    "review_flag",
     "scan_id",
     "search",
     "sort"

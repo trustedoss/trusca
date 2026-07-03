@@ -113,35 +113,43 @@ def test_persist_boundary_sets_review_flag_from_real_mlbom(
 def test_backfill_lifecycle_null_then_classify_then_idempotent(
     sync_session: Session,
 ) -> None:
-    """NULL → backfill sets the flag; a second run is a no-op (idempotent)."""
+    """NULL → backfill sets the flag; a second run is a no-op (idempotent).
+
+    The backfill is invoked with the test's OWN session (``session=`` param) so
+    the sweep sees the un-committed seed row and shares its transaction — the
+    production trigger keeps its independent-session path. Without this, the
+    task's separate connection could not see the rolled-back test row and would
+    silently skip it (session-visibility, not a wiring bug).
+    """
     from tasks.license_review_flag_backfill import backfill_license_review_flags
 
     # Seed a legacy-shaped row: an AI license with a NULL review_flag (as if
-    # created before the classifier existed).
+    # created before the classifier existed). Not committed — the test tx owns it.
     spdx_id = f"OpenRAIL-M-{uuid.uuid4().hex[:8]}"
     row = LicenseModel(spdx_id=spdx_id, name=spdx_id, category="unknown", review_flag=None)
     sync_session.add(row)
-    sync_session.commit()
+    sync_session.flush()
     row_id = row.id
 
-    # First sweep: NULL → behavioral_use.
-    summary1 = backfill_license_review_flags.run(dry_run=False)
+    # First sweep: NULL → behavioral_use for the seeded row.
+    summary1 = backfill_license_review_flags.run(dry_run=False, session=sync_session)
     assert summary1["updated"] >= 1
     assert summary1["set_from_null"] >= 1
 
-    sync_session.expire_all()
     refreshed = sync_session.execute(
         select(LicenseModel).where(LicenseModel.id == row_id)
     ).scalar_one()
     assert refreshed.review_flag == "behavioral_use"
 
-    # Second sweep: this row is now in agreement, so it must not be re-counted.
-    summary2 = backfill_license_review_flags.run(dry_run=False)
+    # Second sweep on the same session: every row is now reconciled, so the
+    # sweep changes nothing (strict idempotence within one transaction).
+    summary2 = backfill_license_review_flags.run(dry_run=False, session=sync_session)
     still = sync_session.execute(
         select(LicenseModel).where(LicenseModel.id == row_id)
     ).scalar_one()
     assert still.review_flag == "behavioral_use"
-    # The seeded row contributes nothing to the second run's update tally
-    # (idempotence). Other concurrent rows might, so we assert on our row's
-    # stability rather than a global zero.
-    assert summary2["set_from_null"] <= summary1["set_from_null"]
+    assert summary2["updated"] == 0
+    assert summary2["set_from_null"] == 0
+
+    # Roll back the seed so the test leaves no residue.
+    sync_session.rollback()

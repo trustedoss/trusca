@@ -87,6 +87,64 @@ def _iter_candidate_ids(
     return [row[0] for row in session.execute(stmt).all()]
 
 
+def _new_summary(*, dry_run: bool) -> dict[str, Any]:
+    return {
+        "scanned": 0,
+        "updated": 0,
+        "set_from_null": 0,
+        "cleared_to_null": 0,
+        "reclassified": 0,
+        "duration_seconds": 0.0,
+        "aborted": False,
+        "dry_run": dry_run,
+    }
+
+
+def _reconcile_row(
+    row: LicenseModel, summary: dict[str, Any], *, dry_run: bool
+) -> None:
+    """Recompute + reconcile one row's ``review_flag`` in place, updating counters.
+
+    Idempotent: a row already in agreement with the classifier is a no-op (no
+    counter bump, no write). The single source of truth for the decision is
+    :func:`services.license_flags.classify_review_flag` so the task, the
+    scan-time upsert, and this backfill can never diverge.
+    """
+    computed = classify_review_flag(row.spdx_id, row.name)
+    if row.review_flag == computed:
+        return
+    if row.review_flag is None:
+        summary["set_from_null"] += 1
+    elif computed is None:
+        summary["cleared_to_null"] += 1
+    else:
+        summary["reclassified"] += 1
+    summary["updated"] += 1
+    if not dry_run:
+        row.review_flag = computed
+
+
+def _sweep_with_session(
+    session: Session, summary: dict[str, Any], *, dry_run: bool
+) -> None:
+    """Single-transaction sweep over the whole catalog on a caller-owned session.
+
+    Used when a ``session`` is injected (integration tests): the caller controls
+    the transaction boundary, so we neither open our own connection nor commit —
+    which lets the sweep SEE the caller's un-committed seed rows and lets the
+    caller assert the mutation before rollback. Production uses the batched,
+    independent-session, per-batch-commit path in the task body instead.
+    """
+    rows = list(session.execute(select(LicenseModel)).scalars().all())
+    summary["scanned"] += len(rows)
+    for row in rows:
+        _reconcile_row(row, summary, dry_run=dry_run)
+    if not dry_run:
+        # Flush so a subsequent sweep on this same session reads the reconciled
+        # values from the identity map (idempotence within one transaction).
+        session.flush()
+
+
 @celery_app.task(  # type: ignore[misc]
     name="trustedoss.license_review_flag_backfill",
     bind=True,
@@ -94,13 +152,18 @@ def _iter_candidate_ids(
     default_retry_delay=60,
 )
 def backfill_license_review_flags(
-    self: Any, dry_run: bool = False
+    self: Any, dry_run: bool = False, session: Session | None = None
 ) -> dict[str, Any]:
     """One-shot backfill — reconcile ``review_flag`` on every ``licenses`` row.
 
     Args:
         dry_run: When True, walk the catalog and COUNT what would change but
             commit no UPDATE. Default False.
+        session: Optional caller-owned session (integration tests). When given,
+            the sweep runs in ONE transaction on that session and does not
+            commit — so it sees the caller's un-committed seed rows and leaves
+            the transaction boundary to the caller. Production omits it and gets
+            the batched, independent-session, per-batch-commit path below.
 
     Returns a summary dict::
 
@@ -121,18 +184,18 @@ def backfill_license_review_flags(
         dry_run=dry_run,
     )
 
-    summary: dict[str, Any] = {
-        "scanned": 0,
-        "updated": 0,
-        "set_from_null": 0,
-        "cleared_to_null": 0,
-        "reclassified": 0,
-        "duration_seconds": 0.0,
-        "aborted": False,
-        "dry_run": dry_run,
-    }
+    summary = _new_summary(dry_run=dry_run)
     started = time.monotonic()
     log.info("license_review_flag_backfill_started")
+
+    if session is not None:
+        # Test / caller-owned path: single transaction, no commit, sees
+        # un-committed rows. No batching or time-limit — the injected session is
+        # used for focused reconcile assertions, not a production-scale sweep.
+        _sweep_with_session(session, summary, dry_run=dry_run)
+        summary["duration_seconds"] = time.monotonic() - started
+        log.info("license_review_flag_backfill_complete", **summary)
+        return summary
 
     last_id: uuid.UUID | None = None
     while True:
@@ -146,8 +209,8 @@ def backfill_license_review_flags(
             )
             break
 
-        with sync_session_scope() as session:
-            ids = _iter_candidate_ids(session, after_id=last_id, limit=_BATCH_SIZE)
+        with sync_session_scope() as scoped:
+            ids = _iter_candidate_ids(scoped, after_id=last_id, limit=_BATCH_SIZE)
             if not ids:
                 break
 
@@ -162,25 +225,14 @@ def backfill_license_review_flags(
                     .where(LicenseModel.id.in_(ids))
                     .with_for_update(skip_locked=True)
                 )
-            rows = list(session.execute(stmt).scalars().all())
+            rows = list(scoped.execute(stmt).scalars().all())
             summary["scanned"] += len(rows)
 
             for row in rows:
-                computed = classify_review_flag(row.spdx_id, row.name)
-                if row.review_flag == computed:
-                    continue
-                if row.review_flag is None:
-                    summary["set_from_null"] += 1
-                elif computed is None:
-                    summary["cleared_to_null"] += 1
-                else:
-                    summary["reclassified"] += 1
-                summary["updated"] += 1
-                if not dry_run:
-                    row.review_flag = computed
+                _reconcile_row(row, summary, dry_run=dry_run)
 
             if dry_run:
-                session.rollback()
+                scoped.rollback()
 
             last_id = ids[-1]
 
@@ -193,4 +245,6 @@ __all__ = [
     "backfill_license_review_flags",
     # Exposed for unit tests.
     "_iter_candidate_ids",
+    "_reconcile_row",
+    "_sweep_with_session",
 ]
