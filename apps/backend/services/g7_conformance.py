@@ -2,30 +2,45 @@
 G7 AI SBOM minimum-elements conformance — advisory checks for ML-BOM ingests.
 
 Registry and semantics vendored from BomLens (sktelecom/sbom-tools,
-Apache-2.0, Copyright SK Telecom) ``docker/lib/g7-registry.json`` +
-``validate-sbom.sh``'s ``g7_ai_checks()`` — faithful Python port.
+Apache-2.0, Copyright SK Telecom) ``docker/lib/g7-registry.json`` **v2**
+(sbom-tools#306) + ``validate-sbom.sh``'s ``g7_ai_checks()`` — faithful
+Python port.
 
 The vendored ``g7_registry.json`` (same directory) is the SINGLE SOURCE OF
-TRUTH for element *metadata*: id, label, cluster, source, role. Its ``cdxPath``
-jq expressions are NOT executed — each is hand-ported to a Python predicate in
-``_PREDICATES`` (the original jq is kept verbatim in every predicate's
-docstring so a registry refresh can be diffed against the port). Elements whose
-``cdxPath`` is null (``source == "na"``) carry no predicate and are surfaced as
-"requires human review". Elements with an ``evidencePath`` have a matching
+TRUTH for element *metadata*: id, label, cluster, source, role. Its jq
+expressions are NOT executed — each is hand-ported to Python (the original jq
+is kept verbatim in every port's docstring so a registry refresh can be
+diffed against the port). v2 defines two element shapes:
+
+- ``cdxPath`` — a boolean presence expression over the whole SBOM, ported to
+  ``_PREDICATES``.
+- ``missingPath`` — per-model coverage (models cluster): the evaluator binds
+  ``$models`` (the machine-learning-model components) once per run and each
+  expression returns the names of the models MISSING the element, ported to
+  ``_MISSING``. One unlicensed model in a multi-model supplier SBOM now warns
+  with the offender listed, where v1's any-model semantics passed.
+
+Elements with both null (``source == "na"``) carry no port and are surfaced
+as "requires human review". Elements with an ``evidencePath`` have a matching
 extractor in ``_EVIDENCE`` that pulls the actual satisfied values (clamped —
 adversarial SBOMs must not flood the verdict row).
 
-Two contract tests (tests/unit/services/test_g7_conformance.py) lock the port
-against the registry: automated element ids == ``_PREDICATES`` keys and
-evidence element ids == ``_EVIDENCE`` keys — a registry refresh with a missed
-port fails the suite immediately (CLAUDE.md §2 rule 2).
+Three contract tests (tests/unit/services/test_g7_conformance.py) lock the
+port against the registry: cdxPath element ids == ``_PREDICATES`` keys,
+missingPath element ids == ``_MISSING`` keys, and evidence element ids ==
+``_EVIDENCE`` keys — a registry refresh with a missed port fails the suite
+immediately (CLAUDE.md §2 rule 2).
 
 Scoring mirrors BomLens ``validate-sbom.sh`` g7_ai_checks(): predicate True →
-pass "present" / False → warn "not present in the SBOM" / no predicate → warn
-"requires human review (no automated source)". Every check is advisory
-(``required=False``) — G7 defines no per-role required matrix (see the registry
-``note``), so these never move the core conformance verdict (the aggregation in
-``sbom_conformance.evaluate`` skips cluster-tagged checks).
+pass "present" / False → warn "not present in the SBOM" / no port → warn
+"requires human review (no automated source)". missingPath elements score
+per-model: no models → warn "no machine-learning-model components", none
+missing → pass "{t}/{t} model component(s)", otherwise → warn
+"{t-m}/{t} model component(s)" with the offender names in ``Check.missing``.
+Every check is advisory (``required=False``) — G7 defines no per-role
+required matrix (see the registry ``note``), so these never move the core
+conformance verdict (the aggregation in ``sbom_conformance.evaluate`` skips
+cluster-tagged checks).
 
 Defensive posture: predicates are pure ``dict.get`` chains with ``isinstance``
 guards and must never raise on an adversarial SBOM; if one does anyway, the
@@ -54,12 +69,21 @@ _REGISTRY_PATH = Path(__file__).resolve().parent / "g7_registry.json"
 _DETAIL_PRESENT = "present"
 _DETAIL_ABSENT = "not present in the SBOM"
 _DETAIL_REVIEW = "requires human review (no automated source)"
+_DETAIL_NO_MODELS = "no machine-learning-model components"
 _DETAIL_ERROR = "evaluation error"
 
 # Evidence clamp — an adversarial SBOM must not balloon the persisted verdict
 # (checks live in a JSONB column): at most 8 items, each cut to 200 chars.
+# ``Check.missing`` reuses the same caps (BomLens caps at MISSING_CAP=50 with
+# no per-item truncation; we clamp tighter — same JSONB posture as evidence).
 _EVIDENCE_MAX_ITEMS = 8
 _EVIDENCE_MAX_CHARS = 200
+
+# v2 g7-model-openness prose fallback — jq:
+# test("open[ _-]?(weight|architecture|data|training)";"i")
+_OPENNESS_PROSE_RE = re.compile(
+    r"open[ _-]?(weight|architecture|data|training)", re.IGNORECASE
+)
 
 # Registry recursion guard for the `..` (recursive descent) port. The ingest
 # service already rejects documents nested deeper than 64; this evaluator may
@@ -103,6 +127,15 @@ def automated_element_ids() -> frozenset[str]:
     )
 
 
+def missing_element_ids() -> frozenset[str]:
+    """Element ids the registry scores per-model (``missingPath`` != null)."""
+    return frozenset(
+        _str(e.get("id"))
+        for _, e in iter_elements()
+        if e.get("missingPath") is not None
+    )
+
+
 def evidence_element_ids() -> frozenset[str]:
     """Element ids that carry an ``evidencePath`` in the registry."""
     return frozenset(
@@ -143,8 +176,11 @@ def _data_components(doc: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _tool_entries(doc: dict[str, Any]) -> list[dict[str, Any]]:
-    """jq: ``(.metadata.tools.components // .metadata.tools // [])`` —
-    CycloneDX 1.5+ object form (``tools.components``) or the legacy array."""
+    """jq: ``(.metadata.tools.components? // .metadata.tools // [])`` —
+    CycloneDX 1.5+ object form (``tools.components``) or the legacy array.
+    v2 (#306) added the ``?`` error suppression so a legacy array ``tools``
+    no longer errors the expression into ``catch false``; this port always
+    had the array-safe semantics (the ``isinstance`` branch below)."""
     tools = _metadata(doc).get("tools")
     entries: Any
     if isinstance(tools, dict):
@@ -167,9 +203,25 @@ def _walk_objects(node: Any, depth: int = 0) -> Iterator[dict[str, Any]]:
             yield from _walk_objects(item, depth + 1)
 
 
+def _walk_strings(node: Any, depth: int = 0) -> Iterator[str]:
+    """Port of jq's ``.. | strings`` — every string *value* anywhere in the
+    document (jq's ``..`` emits values, never object keys), depth-guarded
+    like :func:`_walk_objects`."""
+    if depth > _MAX_WALK_DEPTH:
+        return
+    if isinstance(node, dict):
+        for value in node.values():
+            yield from _walk_strings(value, depth + 1)
+    elif isinstance(node, list):
+        for item in node:
+            yield from _walk_strings(item, depth + 1)
+    elif isinstance(node, str):
+        yield node
+
+
 # ---------------------------------------------------------------------------
-# Predicates — one per automated element. Each docstring carries the original
-# jq ``cdxPath`` verbatim for diffability against a registry refresh.
+# Predicates — one per ``cdxPath`` element. Each docstring carries the
+# original jq ``cdxPath`` verbatim for diffability against a registry refresh.
 # ---------------------------------------------------------------------------
 def _p_meta_author(doc: dict[str, Any]) -> bool:
     """jq: ((.metadata.authors // []) | length > 0) or
@@ -204,14 +256,14 @@ def _p_meta_signature(doc: dict[str, Any]) -> bool:
 
 
 def _p_meta_tool_name(doc: dict[str, Any]) -> bool:
-    """jq: [ (.metadata.tools.components // .metadata.tools // []) |
+    """jq: [ (.metadata.tools.components? // .metadata.tools // []) |
     if type=="array" then .[] else empty end |
     select((.name // "") != "") ] | length > 0"""
     return any(_str(t.get("name")) != "" for t in _tool_entries(doc))
 
 
 def _p_meta_tool_version(doc: dict[str, Any]) -> bool:
-    """jq: [ (.metadata.tools.components // .metadata.tools // []) |
+    """jq: [ (.metadata.tools.components? // .metadata.tools // []) |
     if type=="array" then .[] else empty end |
     select((.version // "") != "") ] | length > 0"""
     return any(_str(t.get("version")) != "" for t in _tool_entries(doc))
@@ -271,142 +323,38 @@ def _p_slp_timestamp(doc: dict[str, Any]) -> bool:
     return _p_meta_timestamp(doc)
 
 
-def _p_model_name(doc: dict[str, Any]) -> bool:
-    """jq: [ .components[]? | select(.type=="machine-learning-model") |
-    select((.name // "") != "") ] | length > 0"""
-    return any(_str(c.get("name")) != "" for c in _ml_components(doc))
-
-
-def _p_model_id(doc: dict[str, Any]) -> bool:
-    """jq: [ .components[]? | select(.type=="machine-learning-model") |
-    select(((.purl // "") != "") or ((.cpe // "") != "")) ] | length > 0"""
-    return any(
-        _str(c.get("purl")) != "" or _str(c.get("cpe")) != ""
-        for c in _ml_components(doc)
-    )
-
-
-def _p_model_version(doc: dict[str, Any]) -> bool:
-    """jq: [ .components[]? | select(.type=="machine-learning-model") |
-    select((.version // "") != "") ] | length > 0"""
-    return any(_str(c.get("version")) != "" for c in _ml_components(doc))
-
-
-def _p_model_timestamp(doc: dict[str, Any]) -> bool:
-    """jq: [ .components[]? | select(.type=="machine-learning-model") |
-    (.properties // [])[]? |
-    select((.name // "") | test("timestamp|created";"i")) ] | length > 0"""
-    return any(
-        isinstance(p, dict)
-        and re.search(r"timestamp|created", _str(p.get("name")), re.IGNORECASE)
-        for c in _ml_components(doc)
-        for p in _list(c.get("properties"))
-    )
-
-
-def _p_model_producer(doc: dict[str, Any]) -> bool:
-    """jq: [ .components[]? | select(.type=="machine-learning-model") |
-    select(((.publisher // "") != "") or ((.supplier // null) != null)
-    or ((.manufacturer // null) != null)) ] | length > 0"""
-    return any(
-        _str(c.get("publisher")) != ""
-        or c.get("supplier") is not None
-        or c.get("manufacturer") is not None
-        for c in _ml_components(doc)
-    )
-
-
-def _p_model_description(doc: dict[str, Any]) -> bool:
-    """jq: [ .components[]? | select(.type=="machine-learning-model") |
-    select((.description // "") != "") ] | length > 0"""
-    return any(_str(c.get("description")) != "" for c in _ml_components(doc))
-
-
-def _p_model_hash_value(doc: dict[str, Any]) -> bool:
-    """jq: [ .components[]? | select(.type=="machine-learning-model") |
-    select(((.hashes // []) | length) > 0) ] | length > 0"""
-    return any(len(_list(c.get("hashes"))) > 0 for c in _ml_components(doc))
-
-
-def _p_model_hash_alg(doc: dict[str, Any]) -> bool:
-    """jq: [ .components[]? | select(.type=="machine-learning-model") |
-    .hashes[]? | select((.alg // "") != "") ] | length > 0"""
-    return any(
-        isinstance(h, dict) and _str(h.get("alg")) != ""
-        for c in _ml_components(doc)
-        for h in _list(c.get("hashes"))
-    )
-
-
-def _p_model_card(doc: dict[str, Any]) -> bool:
-    """jq: [ .components[]? | select(.type=="machine-learning-model") |
-    select((.modelCard.modelParameters // null) != null) ] | length > 0"""
-    return any(
-        _dict(c.get("modelCard")).get("modelParameters") is not None
-        for c in _ml_components(doc)
-    )
-
-
-def _p_model_io(doc: dict[str, Any]) -> bool:
-    """jq: [ .components[]? | select(.type=="machine-learning-model") |
-    select(((.modelCard.modelParameters.inputs // null) != null) or
-    ((.modelCard.modelParameters.outputs // null) != null)) ] | length > 0"""
-    for c in _ml_components(doc):
-        params = _dict(_dict(c.get("modelCard")).get("modelParameters"))
-        if params.get("inputs") is not None or params.get("outputs") is not None:
-            return True
-    return False
-
-
-def _p_model_training(doc: dict[str, Any]) -> bool:
-    """jq: [ .components[]? | select(.type=="machine-learning-model") |
-    (.modelCard.modelParameters // {}) |
-    select(has("datasets") or has("modelArchitecture") or
-    has("architectureFamily")) ] | length > 0"""
-    for c in _ml_components(doc):
-        params = _dict(_dict(c.get("modelCard")).get("modelParameters"))
-        if (
-            "datasets" in params
-            or "modelArchitecture" in params
-            or "architectureFamily" in params
-        ):
-            return True
-    return False
-
-
-def _p_model_license(doc: dict[str, Any]) -> bool:
-    """jq: [ .components[]? | select(.type=="machine-learning-model") |
-    select(((.licenses // []) | length) > 0) ] | length > 0"""
-    return any(len(_list(c.get("licenses"))) > 0 for c in _ml_components(doc))
-
-
 def _p_model_openness(doc: dict[str, Any]) -> bool:
-    """jq: [ .components[]? | select(.type=="machine-learning-model") |
-    (.properties // [])[]? |
-    select((.name // "") | startswith("openness:")) ] | length > 0"""
-    return any(
+    """jq: (([ $models[] | (.properties // [])[]? |
+    select((.name // "") | startswith("openness:")) ] | length) > 0) or
+    (([ .. | strings |
+    select(test("open[ _-]?(weight|architecture|data|training)";"i")) ]
+    | length) > 0)
+
+    v2 (#306): openness:* properties (written by enrich-aibom.sh) OR a prose
+    declaration anywhere in the SBOM — supplier SBOMs that state openness in
+    text still count.
+    """
+    if any(
         isinstance(p, dict) and _str(p.get("name")).startswith("openness:")
         for c in _ml_components(doc)
         for p in _list(c.get("properties"))
-    )
-
-
-def _p_model_extref(doc: dict[str, Any]) -> bool:
-    """jq: [ .components[]? | select(.type=="machine-learning-model") |
-    select(((.externalReferences // []) | length) > 0) ] | length > 0"""
-    return any(
-        len(_list(c.get("externalReferences"))) > 0 for c in _ml_components(doc)
-    )
+    ):
+        return True
+    return any(_OPENNESS_PROSE_RE.search(s) for s in _walk_strings(doc))
 
 
 def _dataset_entry_name(entry: Any) -> str:
     """jq map body: if type=="string" then . elif type=="object" then
-    (.name // .componentData.name // "") else "" end"""
+    (.name // .ref // .componentData.name // "") else "" end
+    (v2 added the ``.ref`` fallback for dataset entries that only carry a
+    bom-ref pointer)."""
     if isinstance(entry, str):
         return entry
     if isinstance(entry, dict):
-        return _str(entry.get("name")) or _str(
-            _dict(entry.get("componentData")).get("name")
+        return (
+            _str(entry.get("name"))
+            or _str(entry.get("ref"))
+            or _str(_dict(entry.get("componentData")).get("name"))
         )
     return ""
 
@@ -415,7 +363,7 @@ def _p_ds_name(doc: dict[str, Any]) -> bool:
     """jq: (([ .components[]? | select(.type=="data") ]) +
     ([ .. | objects | select(has("datasets")) | .datasets[]? ])) |
     map(if type=="string" then . elif type=="object" then
-    (.name // .componentData.name // "") else "" end) |
+    (.name // .ref // .componentData.name // "") else "" end) |
     map(select(. != "")) | length > 0"""
     for c in _data_components(doc):
         if _dataset_entry_name(c):
@@ -526,20 +474,7 @@ _PREDICATES: dict[str, Callable[[dict[str, Any]], bool | None]] = {
     "g7-slp-producer": _p_slp_producer,
     "g7-slp-version": _p_slp_version,
     "g7-slp-timestamp": _p_slp_timestamp,
-    "g7-model-name": _p_model_name,
-    "g7-model-id": _p_model_id,
-    "g7-model-version": _p_model_version,
-    "g7-model-timestamp": _p_model_timestamp,
-    "g7-model-producer": _p_model_producer,
-    "g7-model-description": _p_model_description,
-    "g7-model-hash-value": _p_model_hash_value,
-    "g7-model-hash-alg": _p_model_hash_alg,
-    "g7-model-card": _p_model_card,
-    "g7-model-io": _p_model_io,
-    "g7-model-training": _p_model_training,
-    "g7-model-license": _p_model_license,
     "g7-model-openness": _p_model_openness,
-    "g7-model-extref": _p_model_extref,
     "g7-ds-name": _p_ds_name,
     "g7-ds-description": _p_ds_description,
     "g7-ds-identifier": _p_ds_identifier,
@@ -553,12 +488,181 @@ _PREDICATES: dict[str, Callable[[dict[str, Any]], bool | None]] = {
 
 
 # ---------------------------------------------------------------------------
+# missingPath ports (registry v2, sbom-tools#306) — one per per-model-coverage
+# element. Each takes the pre-bound ``$models`` array (the evaluator extracts
+# the machine-learning-model components ONCE per run, like the BomLens jq
+# program binds ``$models`` once) and returns the names of the models MISSING
+# the element, in document order. Each docstring carries the original jq
+# ``missingPath`` verbatim for diffability against a registry refresh.
+# ---------------------------------------------------------------------------
+def _missing_name(component: dict[str, Any]) -> str:
+    """jq offender label: ``(.name // "(unnamed)")``.
+
+    Defensive divergence: jq's ``//`` only falls through on null/false, so an
+    empty-string or non-string ``name`` would be emitted verbatim; the port
+    folds every empty / non-string name into ``"(unnamed)"`` so the missing
+    list stays a useful ``list[str]``.
+    """
+    return _str(component.get("name")) or "(unnamed)"
+
+
+def _m_model_name(models: list[dict[str, Any]]) -> list[str]:
+    """jq: [ $models[] | select((.name // "") == "") | (.name // "(unnamed)") ]"""
+    return [_missing_name(c) for c in models if _str(c.get("name")) == ""]
+
+
+def _m_model_id(models: list[dict[str, Any]]) -> list[str]:
+    """jq: [ $models[] | select(((.purl // "") == "") and ((.cpe // "") == ""))
+    | (.name // "(unnamed)") ]"""
+    return [
+        _missing_name(c)
+        for c in models
+        if _str(c.get("purl")) == "" and _str(c.get("cpe")) == ""
+    ]
+
+
+def _m_model_version(models: list[dict[str, Any]]) -> list[str]:
+    """jq: [ $models[] | select((.version // "") == "") | (.name // "(unnamed)") ]"""
+    return [_missing_name(c) for c in models if _str(c.get("version")) == ""]
+
+
+def _m_model_timestamp(models: list[dict[str, Any]]) -> list[str]:
+    """jq: [ $models[] | select(((.properties // []) | map(.name // "") |
+    any(test("timestamp|created";"i"))) | not) | (.name // "(unnamed)") ]"""
+    return [
+        _missing_name(c)
+        for c in models
+        if not any(
+            isinstance(p, dict)
+            and re.search(r"timestamp|created", _str(p.get("name")), re.IGNORECASE)
+            for p in _list(c.get("properties"))
+        )
+    ]
+
+
+def _m_model_producer(models: list[dict[str, Any]]) -> list[str]:
+    """jq: [ $models[] | select(((.publisher // "") == "") and
+    ((.supplier // null) == null) and ((.manufacturer // null) == null)) |
+    (.name // "(unnamed)") ]"""
+    return [
+        _missing_name(c)
+        for c in models
+        if _str(c.get("publisher")) == ""
+        and c.get("supplier") is None
+        and c.get("manufacturer") is None
+    ]
+
+
+def _m_model_description(models: list[dict[str, Any]]) -> list[str]:
+    """jq: [ $models[] | select((.description // "") == "") |
+    (.name // "(unnamed)") ]"""
+    return [_missing_name(c) for c in models if _str(c.get("description")) == ""]
+
+
+def _m_model_hash_value(models: list[dict[str, Any]]) -> list[str]:
+    """jq: [ $models[] | select(((.hashes // []) | length) == 0) |
+    (.name // "(unnamed)") ]"""
+    return [_missing_name(c) for c in models if len(_list(c.get("hashes"))) == 0]
+
+
+def _m_model_hash_alg(models: list[dict[str, Any]]) -> list[str]:
+    """jq: [ $models[] | select(([.hashes[]? | select((.alg // "") != "")] |
+    length) == 0) | (.name // "(unnamed)") ]"""
+    return [
+        _missing_name(c)
+        for c in models
+        if not any(
+            isinstance(h, dict) and _str(h.get("alg")) != ""
+            for h in _list(c.get("hashes"))
+        )
+    ]
+
+
+def _m_model_card(models: list[dict[str, Any]]) -> list[str]:
+    """jq: [ $models[] | select((.modelCard.modelParameters // null) == null) |
+    (.name // "(unnamed)") ]"""
+    return [
+        _missing_name(c)
+        for c in models
+        if _dict(c.get("modelCard")).get("modelParameters") is None
+    ]
+
+
+def _m_model_io(models: list[dict[str, Any]]) -> list[str]:
+    """jq: [ $models[] | select(((.modelCard.modelParameters.inputs // null)
+    == null) and ((.modelCard.modelParameters.outputs // null) == null)) |
+    (.name // "(unnamed)") ]"""
+    out: list[str] = []
+    for c in models:
+        params = _dict(_dict(c.get("modelCard")).get("modelParameters"))
+        if params.get("inputs") is None and params.get("outputs") is None:
+            out.append(_missing_name(c))
+    return out
+
+
+def _m_model_training(models: list[dict[str, Any]]) -> list[str]:
+    """jq: [ $models[] | select(((.modelCard.modelParameters // {}) |
+    (has("datasets") or has("modelArchitecture") or
+    has("architectureFamily"))) | not) | (.name // "(unnamed)") ]"""
+    out: list[str] = []
+    for c in models:
+        params = _dict(_dict(c.get("modelCard")).get("modelParameters"))
+        if not (
+            "datasets" in params
+            or "modelArchitecture" in params
+            or "architectureFamily" in params
+        ):
+            out.append(_missing_name(c))
+    return out
+
+
+def _m_model_license(models: list[dict[str, Any]]) -> list[str]:
+    """jq: [ $models[] | select(((.licenses // []) | length) == 0) |
+    (.name // "(unnamed)") ]"""
+    return [_missing_name(c) for c in models if len(_list(c.get("licenses"))) == 0]
+
+
+def _m_model_extref(models: list[dict[str, Any]]) -> list[str]:
+    """jq: [ $models[] | select(((.externalReferences // []) | length) == 0) |
+    (.name // "(unnamed)") ]"""
+    return [
+        _missing_name(c)
+        for c in models
+        if len(_list(c.get("externalReferences"))) == 0
+    ]
+
+
+# Element id → missingPath port. Key set MUST equal ``missing_element_ids()``
+# (contract test) — a registry refresh cannot silently miss a port. The
+# returned names are verbatim SBOM content: they go into ``Check.missing``,
+# and ``Check.as_dict`` (the JSONB persist boundary) already passes every
+# ``missing[]`` item through ``sanitize_jsonb_text`` (Phase A F-1), so no
+# NUL / control-char cleaning is needed here — only the size clamp
+# (:func:`_clamp_missing`).
+_MISSING: dict[str, Callable[[list[dict[str, Any]]], list[str]]] = {
+    "g7-model-name": _m_model_name,
+    "g7-model-id": _m_model_id,
+    "g7-model-version": _m_model_version,
+    "g7-model-timestamp": _m_model_timestamp,
+    "g7-model-producer": _m_model_producer,
+    "g7-model-description": _m_model_description,
+    "g7-model-hash-value": _m_model_hash_value,
+    "g7-model-hash-alg": _m_model_hash_alg,
+    "g7-model-card": _m_model_card,
+    "g7-model-io": _m_model_io,
+    "g7-model-training": _m_model_training,
+    "g7-model-license": _m_model_license,
+    "g7-model-extref": _m_model_extref,
+}
+
+
+# ---------------------------------------------------------------------------
 # Evidence extractors — one per registry ``evidencePath``. Only invoked when
 # the matching predicate is satisfied; output is clamped by ``_clamp_evidence``.
 # ---------------------------------------------------------------------------
 def _e_model_id(doc: dict[str, Any]) -> list[str]:
-    """jq: [ .components[]? | select(.type=="machine-learning-model") |
-    (.purl // .cpe) | select(. != null and . != "") ] | unique"""
+    """jq: [ $models[] | (.purl // .cpe) | select(. != null and . != "") ]
+    | unique"""
     return [
         _str(c.get("purl")) or _str(c.get("cpe"))
         for c in _ml_components(doc)
@@ -567,8 +671,8 @@ def _e_model_id(doc: dict[str, Any]) -> list[str]:
 
 
 def _e_model_hash_alg(doc: dict[str, Any]) -> list[str]:
-    """jq: [ .components[]? | select(.type=="machine-learning-model") |
-    .hashes[]? | .alg | select(. != null and . != "") ] | unique"""
+    """jq: [ $models[] | .hashes[]? | .alg | select(. != null and . != "") ]
+    | unique"""
     return [
         _str(h.get("alg"))
         for c in _ml_components(doc)
@@ -577,9 +681,30 @@ def _e_model_hash_alg(doc: dict[str, Any]) -> list[str]:
     ]
 
 
+def _e_model_card(doc: dict[str, Any]) -> list[str]:
+    """jq: [ $models[] | .modelCard.modelParameters | select(. != null) |
+    (.architectureFamily // .modelArchitecture // "documented") ] | unique
+
+    Defensive divergence: in jq a non-object ``modelParameters`` (scalar)
+    passes ``select(. != null)`` and then errors the WHOLE evidence expression
+    (→ ``catch []``); the port skips just that component.
+    """
+    values: list[str] = []
+    for c in _ml_components(doc):
+        params = _dict(c.get("modelCard")).get("modelParameters")
+        if params is None or not isinstance(params, dict):
+            continue
+        values.append(
+            _str(params.get("architectureFamily"))
+            or _str(params.get("modelArchitecture"))
+            or "documented"
+        )
+    return values
+
+
 def _e_model_license(doc: dict[str, Any]) -> list[str]:
-    """jq: [ .components[]? | select(.type=="machine-learning-model") |
-    .licenses[]? | (.license.id // .license.name // .expression) |
+    """jq: [ $models[] | .licenses[]? |
+    (.license.id // .license.name // .expression) |
     select(. != null and . != "") ] | unique"""
     values: list[str] = []
     for c in _ml_components(doc):
@@ -598,15 +723,32 @@ def _e_model_license(doc: dict[str, Any]) -> list[str]:
 
 
 def _e_model_openness(doc: dict[str, Any]) -> list[str]:
-    """jq: [ .components[]? | select(.type=="machine-learning-model") |
-    (.properties // [])[]? | select((.name // "") | startswith("openness:")) |
-    "\\(.name)=\\(.value)" ] | unique"""
-    return [
+    """jq: ([ $models[] | (.properties // [])[]? |
+    select((.name // "") | startswith("openness:")) |
+    "\\(.name)=\\(.value)" ] + [ .. | strings |
+    select(test("open[ _-]?(weight|architecture|data|training)";"i")) ])
+    | unique"""
+    values = [
         f"{_str(p.get('name'))}={_str(p.get('value'))}"
         for c in _ml_components(doc)
         for p in _list(c.get("properties"))
         if isinstance(p, dict) and _str(p.get("name")).startswith("openness:")
     ]
+    values.extend(s for s in _walk_strings(doc) if _OPENNESS_PROSE_RE.search(s))
+    return values
+
+
+def _e_ds_name(doc: dict[str, Any]) -> list[str]:
+    """jq: (([ .components[]? | select(.type=="data") ]) + ([ .. | objects |
+    select(has("datasets")) | .datasets[]? ])) | map(if type=="string" then .
+    elif type=="object" then (.name // .ref // .componentData.name // "")
+    else "" end) | map(select(. != "")) | unique"""
+    values = [n for c in _data_components(doc) if (n := _dataset_entry_name(c))]
+    for obj in _walk_objects(doc):
+        for entry in _list(obj.get("datasets")):
+            if name := _dataset_entry_name(entry):
+                values.append(name)
+    return values
 
 
 # Element id → evidence extractor. Key set MUST equal ``evidence_element_ids()``
@@ -614,8 +756,10 @@ def _e_model_openness(doc: dict[str, Any]) -> list[str]:
 _EVIDENCE: dict[str, Callable[[dict[str, Any]], list[str]]] = {
     "g7-model-id": _e_model_id,
     "g7-model-hash-alg": _e_model_hash_alg,
+    "g7-model-card": _e_model_card,
     "g7-model-license": _e_model_license,
     "g7-model-openness": _e_model_openness,
+    "g7-ds-name": _e_ds_name,
 }
 
 
@@ -641,6 +785,32 @@ def _clamp_evidence(values: list[str]) -> list[str]:
     return sorted(prepared)[:_EVIDENCE_MAX_ITEMS]
 
 
+def _clamp_missing(names: list[str]) -> list[str]:
+    """Clamp a missingPath offender list for the verdict row.
+
+    BomLens fold: ``missing:(._missing[0:$cap])`` — document order, no dedupe
+    (MISSING_CAP=50, no per-item truncation). The port keeps the order but
+    clamps tighter, reusing the evidence caps (8 items × 200 chars), because
+    ``Check.missing`` persists into the same JSONB column and model names are
+    verbatim SBOM content. NUL / control-char cleaning is deliberately NOT
+    done here — ``Check.as_dict`` (the JSONB persist boundary, Phase A F-1)
+    already runs every ``missing[]`` item through ``sanitize_jsonb_text``.
+    """
+    return [n[:_EVIDENCE_MAX_CHARS] for n in names if n][:_EVIDENCE_MAX_ITEMS]
+
+
+def _extract_evidence(element_id: str, doc: dict[str, Any]) -> list[str] | None:
+    """Run the element's evidence extractor (if any), clamped; never raises."""
+    extractor = _EVIDENCE.get(element_id)
+    if extractor is None:
+        return None
+    try:
+        return _clamp_evidence(extractor(doc))
+    except Exception:
+        log.warning("g7_evidence_error", element_id=element_id, exc_info=True)
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Evaluator.
 # ---------------------------------------------------------------------------
@@ -650,18 +820,56 @@ def evaluate_g7(doc: dict[str, Any]) -> list[Check]:
     Returns 51 advisory :class:`~services.sbom_conformance.Check` entries in
     registry order, all ``required=False`` and tagged with their cluster /
     source / role. Never raises on an adversarial document.
+
+    Evidence is extracted on pass only — a deliberate divergence from the
+    BomLens fold (which computes ``_ev`` unconditionally): a warn row's
+    partial evidence would change the persisted shape of existing rows for
+    no consumer, and the offender list (``missing``) already tells the story.
     """
     checks: list[Check] = []
+    # $models — bound once per run, like the BomLens jq program.
+    models = _ml_components(doc)
     for cluster_id, element in iter_elements():
         element_id = _str(element.get("id"))
         label = _str(element.get("label"))
         source = _str(element.get("source")) or None
         role = _str(element.get("role")) or None
 
+        missing_fn = _MISSING.get(element_id)
         predicate = _PREDICATES.get(element_id)
         evidence: list[str] | None = None
-        if predicate is None:
-            # cdxPath null (source == "na") — no automated source.
+        missing: list[str] = []
+        if missing_fn is not None:
+            # missingPath — per-model coverage (models cluster, registry v2).
+            total = len(models)
+            try:
+                absent = missing_fn(models)
+            except Exception:
+                # missingPath ports are written to never raise; this is the
+                # last-line defence against a hostile shape a guard missed.
+                log.warning(
+                    "g7_missing_error", element_id=element_id, exc_info=True
+                )
+                status, detail = "warn", _DETAIL_ERROR
+            else:
+                if total == 0:
+                    # Defensive: sbom_conformance.evaluate only calls this
+                    # evaluator when an ML component exists, but the module
+                    # is pure and may be handed any document.
+                    status, detail = "warn", _DETAIL_NO_MODELS
+                elif not absent:
+                    # BomLens fold wording verbatim: "\($t)/\($t) model
+                    # component(s)".
+                    status = "pass"
+                    detail = f"{total}/{total} model component(s)"
+                    evidence = _extract_evidence(element_id, doc)
+                else:
+                    status = "warn"
+                    detail = f"{total - len(absent)}/{total} model component(s)"
+                    missing = _clamp_missing(absent)
+        elif predicate is None:
+            # cdxPath AND missingPath null (source == "na") — no automated
+            # source.
             status, detail = "warn", _DETAIL_REVIEW
         else:
             try:
@@ -676,17 +884,7 @@ def evaluate_g7(doc: dict[str, Any]) -> list[Check]:
             else:
                 if satisfied:
                     status, detail = "pass", _DETAIL_PRESENT
-                    extractor = _EVIDENCE.get(element_id)
-                    if extractor is not None:
-                        try:
-                            evidence = _clamp_evidence(extractor(doc))
-                        except Exception:
-                            log.warning(
-                                "g7_evidence_error",
-                                element_id=element_id,
-                                exc_info=True,
-                            )
-                            evidence = None
+                    evidence = _extract_evidence(element_id, doc)
                 else:
                     status, detail = "warn", _DETAIL_ABSENT
 
@@ -697,6 +895,7 @@ def evaluate_g7(doc: dict[str, Any]) -> list[Check]:
                 required=False,
                 status=status,
                 detail=detail,
+                missing=missing,
                 cluster=cluster_id,
                 source=source,
                 role=role,
