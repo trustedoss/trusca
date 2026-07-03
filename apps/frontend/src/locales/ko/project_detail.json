@@ -584,6 +584,10 @@
       "search_placeholder": "SPDX ID 또는 이름으로 검색",
       "filter_category": "카테고리",
       "filter_kind": "분류",
+      "filter_review_flag": "검토 플래그",
+      "review_flag": {
+        "all": "모든 라이선스"
+      },
       "sort_label": "정렬 기준",
       "sort": {
         "category": "리스크 (금지 우선)",
@@ -594,6 +598,17 @@
       "order_label": "순서",
       "order_asc": "오름차순",
       "order_desc": "내림차순"
+    },
+    "review": {
+      "badge_label": "검토 필요",
+      "short": {
+        "behavioral_use": "행동 사용 제한",
+        "non_commercial": "비상업"
+      },
+      "description": {
+        "behavioral_use": "행동 사용 제한(RAIL(Responsible AI License, 책임 있는 AI 라이선스)·OpenRAIL과 Llama·Gemma·Falcon 커뮤니티 라이선스). 용도 기반 조항이 실제 사용에 적용되는지는 사람이 검토해야 합니다.",
+        "non_commercial": "비상업(비영리) 조항(CC-BY-NC(Creative Commons Attribution-NonCommercial, 크리에이티브 커먼즈 저작자표시-비영리) 등). 해당 사용이 비상업에 해당하거나 달리 허용되는지는 사람이 확인해야 합니다."
+      }
     },
     "kind": {
       "declared": "선언됨",
@@ -644,6 +659,10 @@
         "osi_approved": "OSI 승인",
         "fsf_libre": "FSF 자유 소프트웨어",
         "deprecated": "사용 중단된 SPDX ID"
+      },
+      "review": {
+        "title": "AI 검토 플래그",
+        "disclaimer": "이 플래그는 제약의 부류만 표시합니다. 실제 사용에 적용되는지는 사람과 법무가 판단할 사안입니다."
       },
       "reference_url_label": "참조",
       "ort_match": {

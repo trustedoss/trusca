@@ -103,6 +103,29 @@ sidebar_position: 3
 분류는 정확 일치(exact-match) SPDX ID 를 사용합니다. 접미사 없는 변형(`LGPL-3.0-or-later` 대신 `LGPL-3.0`)은 `unknown` 으로 떨어집니다. 잘 알려진 SPDX ID 인데도 `unknown` 으로 표시된다면 출처가 deprecated alias 를 발신했을 가능성이 높습니다. fuzzy SPDX 정규화는 로드맵 항목입니다.
 :::
 
+## AI 라이선스 검토 플래그 {#ai-license-review-flags}
+
+일부 라이선스는 컴포넌트를 *어떻게* 사용할지를 위 4단계 법적 분류가 담지 못하는 방식으로 제한합니다 — 표준 오픈소스 컴플라이언스 도구가 자주 놓치는 지점입니다. TRUSCA는 이런 제약 부류 2종을 amber **Review needed** 플래그로 표시하며, 라이선스 단계 배지 옆에 함께 나타나고 Compliance 탭에서 필터링됩니다.
+
+이 플래그는 의도적으로 좁습니다. 단계 모델(`permissive` / `conditional` / `forbidden` / `unknown`)이 이미 표현하는 제약은 제외하고, AI 관련 제약만 표시합니다. 일반 오픈소스 라이선스 — MIT, Apache-2.0, BSD 계열, GPL / LGPL — 는 이 플래그가 붙지 않습니다.
+
+| 플래그 (코드 값) | UI 라벨 | 무엇을 표시하나 | 예시 라이선스 |
+|---|---|---|---|
+| `behavioral_use` | **행동 사용 제한** | 라이선스가 재배포를 제한하는 대신 소프트웨어·모델의 특정 *용도* — 예: 군사·감시·차별적 응용 — 를 금지합니다. | RAIL(Responsible AI License, 책임 있는 AI 라이선스)과 OpenRAIL 변형; Llama·Gemma·Falcon 커뮤니티 모델 라이선스. |
+| `non_commercial` | **비상업 전용** | 라이선스가 연구·개인 용도는 허용하되 상업적 사용은 금지합니다. | CC-BY-NC(Creative Commons Attribution-NonCommercial, 크리에이티브 커먼즈 저작자표시-비영리)와 그 ShareAlike / NoDerivatives 변형; 기타 비상업 source-available 조항. |
+
+:::note 플래그는 적용 여부가 아니라 존재를 표시
+**Review needed** 플래그는 해당 부류의 제약이 라이선스에 존재한다는 사실을 알릴 뿐, 특정 사용이 그 제약을 위반한다는 뜻은 아닙니다. 행동 사용 조항이나 비상업 조항이 프로젝트의 컴포넌트 사용 방식에 실제로 적용되는지는 스캐너가 아니라 사람이 내리는 법적·사업적 판단입니다. TRUSCA는 BomLens `license-flags.jq` 규칙과 OpenChain AI SBOM 가이드의 원칙을 따릅니다 — 도구는 제약의 *부류*를 표시하고, 적용 여부는 사람이 판단합니다.
+:::
+
+행동 사용·비상업 제약은 일반 코드보다 AI 모델·데이터셋에 훨씬 자주 따라붙으며, SPDX 법적 단계의 재배포 중심 논리 바깥에 놓입니다 — 그래서 겉으로 permissive 해 보이는 단계만으로는 이 제약이 가려질 수 있습니다. 플래그는 제약을 판정하지 않으면서 눈에 보이게 만듭니다.
+
+### 플래그 읽기
+
+- **Compliance** 탭에서 플래그가 붙은 라이선스 행은 단계 배지 옆에 amber **Review needed** 배지를 표시합니다. 라이선스 카테고리 다중 선택과 함께 **Review needed** 필터로 그 행만 좁힐 수 있습니다.
+- 플래그는 권고입니다. 빌드를 차단하지 않고 법적 단계를 바꾸지 않습니다. 컴포넌트가 `permissive` 단계이면서 동시에 **Review needed** 플래그를 달 수 있습니다.
+- 플래그가 붙은 라이선스는 생성된 NOTICE 문서의 별도 "License review needed" 섹션에도 나타납니다 — [SBOM → NOTICE 파일](./sbom.md#notice-파일) 참고.
+
 ## Declared vs. detected {#declared-vs-detected}
 
 각 라이선스 결과에는 라이선스가 어디서 왔는지 알려주는 **kind** 가 있습니다. kind 는 컴포넌트 테이블·Licenses 탭·컴포넌트 드로어에 출처 배지로 표시되며, Licenses 탭에서 kind 별로 필터링할 수 있습니다.

@@ -2525,6 +2525,7 @@ def _get_or_create_license(
     reference_url: str | None,
 ) -> Any:
     from models import License as LicenseModel
+    from services.license_flags import classify_review_flag
 
     existing = session.execute(
         select(LicenseModel).where(LicenseModel.spdx_id == spdx_id)
@@ -2540,11 +2541,21 @@ def _get_or_create_license(
             if reclassified != "unknown":
                 existing.category = reclassified
                 session.flush()
+        # Keep the AI review flag in lock-step with the category self-heal above:
+        # the classifier vocabulary can grow between deploys, so recompute and
+        # reconcile the flag on every touch (idempotent — a no-op when unchanged).
+        # ``name`` mirrors ``spdx_id`` at creation time (below), so classifying on
+        # ``existing.name`` covers both fields for legacy rows too.
+        review_flag = classify_review_flag(existing.spdx_id, existing.name)
+        if existing.review_flag != review_flag:
+            existing.review_flag = review_flag
+            session.flush()
         return existing
     lic = LicenseModel(
         spdx_id=spdx_id,
         name=spdx_id,
         category=_classify_license_category(spdx_id),
+        review_flag=classify_review_flag(spdx_id, spdx_id),
         reference_url=reference_url,
     )
     session.add(lic)

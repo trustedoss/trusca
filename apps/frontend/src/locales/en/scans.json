@@ -229,7 +229,8 @@
         "sp": "Security Properties",
         "kpi": "Key Performance Indicators"
       },
-      "learn_more": "Learn more"
+      "learn_more": "Learn more",
+      "missing_label": "Missing:"
     },
     "errors": {
       "not_found": "No conformance verdict is available for this scan yet.",

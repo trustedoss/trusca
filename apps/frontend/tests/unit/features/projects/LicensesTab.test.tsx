@@ -28,6 +28,8 @@ vi.mock("@/features/projects/api/licensesApi", async () => {
   return {
     listProjectLicenses: vi.fn(),
     getLicenseFinding: vi.fn(),
+    // Real value re-exported so the toolbar's REVIEW_FLAG_OPTIONS still builds.
+    REVIEW_FLAG_VALUES: ["behavioral_use", "non_commercial"] as const,
   };
 });
 
@@ -72,6 +74,7 @@ function lic(
     affected_count: 1,
     is_osi_approved: false,
     is_fsf_libre: false,
+    review_flag: null,
     sample_finding_id: id,
     ...overrides,
   };
@@ -301,6 +304,68 @@ describe("LicensesTab", () => {
       expect(mockedList).toHaveBeenCalledWith(
         "proj-1",
         expect.objectContaining({ sort: "name" }),
+      );
+    });
+  });
+
+  it("renders the amber review-flag badge only on flagged rows (color + label)", async () => {
+    mockedList.mockResolvedValueOnce(
+      listResponse([
+        lic("MIT", { review_flag: null }),
+        lic("LLAMA-2", {
+          id: "00000000-0000-0000-0000-bbbb00000001",
+          review_flag: "behavioral_use",
+        }),
+        lic("CC-BY-NC-4.0", {
+          id: "00000000-0000-0000-0000-cccc00000001",
+          review_flag: "non_commercial",
+        }),
+      ]),
+    );
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("license-row")).toHaveLength(3);
+    });
+    // Exactly the two flagged rows carry the badge — the permissive MIT row
+    // does not.
+    const badges = screen.getAllByTestId("license-review-flag-badge");
+    expect(badges).toHaveLength(2);
+    expect(badges.map((b) => b.getAttribute("data-review-flag"))).toEqual(
+      expect.arrayContaining(["behavioral_use", "non_commercial"]),
+    );
+    // Color is never the only signal — the badge carries a visible word.
+    for (const badge of badges) {
+      expect(badge.textContent).toContain("Review needed");
+    }
+  });
+
+  it("changing the review-flag filter triggers a query at offset 0", async () => {
+    mockedList.mockResolvedValue(listResponse([lic("MIT")]));
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("license-row")).toHaveLength(1);
+    });
+    mockedList.mockClear();
+
+    await userEvent.selectOptions(
+      screen.getByTestId("licenses-review-flag"),
+      "behavioral_use",
+    );
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalledWith(
+        "proj-1",
+        expect.objectContaining({ reviewFlag: "behavioral_use", offset: 0 }),
+      );
+    });
+  });
+
+  it("hydrates the review-flag filter from the URL on first render", async () => {
+    mockedList.mockResolvedValueOnce(listResponse([lic("MIT")]));
+    renderTab(["/projects/proj-1?review_flag=non_commercial"]);
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalledWith(
+        "proj-1",
+        expect.objectContaining({ reviewFlag: "non_commercial" }),
       );
     });
   });

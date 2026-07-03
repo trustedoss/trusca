@@ -11,7 +11,7 @@
  *     and clears `?license=<id>`.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useSearchParams } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -77,6 +77,7 @@ function renderDrawer(
   open = true,
   onOpenChange: (open: boolean) => void = () => {},
   initialEntries: string[] = ["/projects/p1?license=00000000-0000-0000-0000-licfind00001"],
+  reviewFlag: "behavioral_use" | "non_commercial" | null = null,
 ) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -87,6 +88,7 @@ function renderDrawer(
         <LicenseDrawer
           open={open}
           findingId={findingId}
+          reviewFlag={reviewFlag}
           onOpenChange={onOpenChange}
         />
         <URLProbe />
@@ -150,6 +152,35 @@ describe("LicenseDrawer", () => {
         screen.getByTestId("license-drawer-flag-deprecated"),
       ).toBeInTheDocument();
     });
+  });
+
+  it("shows the AI review-flag section with a description when a flag is passed (Phase D)", async () => {
+    mockedGet.mockResolvedValueOnce(detail({ name: "Llama 2 Community License" }));
+    renderDrawer(
+      "any-id",
+      true,
+      () => {},
+      ["/projects/p1?license=any-id"],
+      "behavioral_use",
+    );
+    const section = await screen.findByTestId("license-drawer-review-flag");
+    expect(section).toHaveAttribute("data-review-flag", "behavioral_use");
+    // The class-specific description text renders (color is not the only signal).
+    expect(section.textContent).toContain("Behavioral-use");
+    expect(
+      within(section).getByTestId("license-review-flag-badge"),
+    ).toBeInTheDocument();
+  });
+
+  it("omits the review-flag section when no flag is passed", async () => {
+    mockedGet.mockResolvedValueOnce(detail());
+    renderDrawer("any-id");
+    await waitFor(() => {
+      expect(screen.getByTestId("license-drawer-meta")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByTestId("license-drawer-review-flag"),
+    ).not.toBeInTheDocument();
   });
 
   it("renders non-http reference_url as plain text (XSS scheme guard)", async () => {

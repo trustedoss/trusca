@@ -17,7 +17,7 @@
  *
  *   g7-slp-name         slp     pass  source=declared
  *   g7-slp-data-flow    slp     warn  source=na  (human review)
- *   g7-model-hash-value models  warn  source=auto (absent → advisory)
+ *   g7-model-hash-value models  warn  source=auto, missing ["<model>"] (offenders)
  *   g7-model-license    models  pass  source=auto, evidence ["Apache-2.0"]
  *
  * → deterministic tally: present 2 / autoTotal 3, advisory 1, review 1,

@@ -6,8 +6,10 @@ import type {
   LicenseCategoryName,
   LicenseFindingKind,
   LicenseSortKey,
+  ReviewFlag,
   SortOrder,
 } from "@/features/projects/api/licensesApi";
+import { REVIEW_FLAG_VALUES } from "@/features/projects/api/licensesApi";
 import { cn } from "@/lib/utils";
 
 /**
@@ -44,6 +46,9 @@ export const SORT_OPTIONS: LicenseSortKey[] = [
   "affected_count",
 ];
 
+/** Single-select review-flag facet options (Phase D). Mirrors the backend. */
+export const REVIEW_FLAG_OPTIONS: ReviewFlag[] = [...REVIEW_FLAG_VALUES];
+
 export interface LicensesToolbarProps {
   search: string;
   onSearchChange: (value: string) => void;
@@ -51,6 +56,8 @@ export interface LicensesToolbarProps {
   onCategoriesChange: (value: LicenseCategoryName[]) => void;
   kinds: LicenseFindingKind[];
   onKindsChange: (value: LicenseFindingKind[]) => void;
+  reviewFlag: ReviewFlag | undefined;
+  onReviewFlagChange: (value: ReviewFlag | undefined) => void;
   sort: LicenseSortKey;
   onSortChange: (value: LicenseSortKey) => void;
   order: SortOrder;
@@ -65,6 +72,8 @@ export function LicensesToolbar({
   onCategoriesChange,
   kinds,
   onKindsChange,
+  reviewFlag,
+  onReviewFlagChange,
   sort,
   onSortChange,
   order,
@@ -138,6 +147,35 @@ export function LicensesToolbar({
           selected={kinds}
           onChange={(next) => onKindsChange(next as LicenseFindingKind[])}
         />
+      </div>
+
+      <div className="flex flex-col">
+        <label
+          htmlFor="licenses-review-flag"
+          className="text-xs font-medium text-muted-foreground"
+        >
+          {t("licenses.toolbar.filter_review_flag")}
+        </label>
+        <select
+          id="licenses-review-flag"
+          value={reviewFlag ?? ""}
+          onChange={(event) =>
+            onReviewFlagChange(
+              event.target.value
+                ? (event.target.value as ReviewFlag)
+                : undefined,
+            )
+          }
+          className="mt-1 h-9 w-40 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          data-testid="licenses-review-flag"
+        >
+          <option value="">{t("licenses.toolbar.review_flag.all")}</option>
+          {REVIEW_FLAG_OPTIONS.map((flag) => (
+            <option key={flag} value={flag}>
+              {t(`licenses.review.short.${flag}`)}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="flex flex-col">

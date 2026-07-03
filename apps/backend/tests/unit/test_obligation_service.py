@@ -45,6 +45,7 @@ from services.obligation_service import (
     ObligationNotFound,
     _clamp_obligation_text,
     _clean_copyright,
+    _collect_review_entries,
     _format_header,
     _html_reference_line,
     _license_text_sections,
@@ -57,6 +58,10 @@ from services.obligation_service import (
     _render_empty_notice,
     _render_notice,
     _render_notice_html,
+    _render_review_section_html,
+    _render_review_section_markdown,
+    _render_review_section_text,
+    _review_flag_label,
     generate_notice,
     get_obligation_detail,
     list_project_obligations,
@@ -2455,3 +2460,109 @@ async def test_generate_notice_idor_other_team_returns_404_and_logs(
         and evt.get("resource") == "project_notice"
         for evt in captured
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase D3 — "License review needed" section (pure render, no DB)
+# ---------------------------------------------------------------------------
+
+
+def _flagged_license(spdx_id, name, review_flag, *labels):
+    return {
+        "license_id": uuid.uuid4(),
+        "spdx_id": spdx_id,
+        "name": name,
+        "reference_url": None,
+        "review_flag": review_flag,
+        "components": _comps(*labels),
+    }
+
+
+def test_review_flag_label_maps_known_tokens() -> None:
+    assert "RAIL" in _review_flag_label("behavioral_use")
+    assert _review_flag_label("non_commercial") == "Non-commercial"
+    # Unknown token falls back to itself rather than vanishing.
+    assert _review_flag_label("future_class") == "future_class"
+
+
+def test_collect_review_entries_filters_and_orders() -> None:
+    lics = [
+        _flagged_license("MIT", "MIT License", None, "a @ 1"),  # not flagged
+        _flagged_license("CC-BY-NC-4.0", "CC BY-NC 4.0", "non_commercial", "b @ 1"),
+        _flagged_license("LLAMA-2", "Llama 2", "behavioral_use", "c @ 1", "d @ 2"),
+    ]
+    entries = _collect_review_entries(lics)
+    # Only the two flagged licenses; behavioral_use ordered before non_commercial.
+    assert [e["flag"] for e in entries] == ["behavioral_use", "non_commercial"]
+    assert entries[0]["license"] == "LLAMA-2"
+    assert entries[0]["components"] == ["c @ 1", "d @ 2"]
+
+
+def test_collect_review_entries_empty_when_nothing_flagged() -> None:
+    assert _collect_review_entries([_flagged_license("MIT", "MIT", None, "a @ 1")]) == []
+
+
+def test_review_section_text_present_and_absent() -> None:
+    entries = _collect_review_entries(
+        [_flagged_license("LLAMA-2", "Llama 2", "behavioral_use", "c @ 1")]
+    )
+    lines = _render_review_section_text(entries)
+    body = "\n".join(lines)
+    assert "License review needed" in body
+    assert "[Behavioral-use restriction (RAIL/community license)] LLAMA-2" in body
+    assert "  - c @ 1" in body
+    # A normal software scan (nothing flagged) adds no section.
+    assert _render_review_section_text([]) == []
+
+
+def test_review_section_markdown_escapes_and_present() -> None:
+    entries = _collect_review_entries(
+        [_flagged_license("CC-BY-NC-4.0", "CC BY-NC", "non_commercial", "x*y @ 1")]
+    )
+    body = "\n".join(_render_review_section_markdown(entries))
+    assert "## License review needed" in body
+    assert "**[Non-commercial]**" in body
+    # Untrusted component label is markdown-escaped (asterisk neutralised).
+    assert "x*y" not in body or "\\*" in body
+    assert _render_review_section_markdown([]) == []
+
+
+def test_review_section_html_escapes_and_present() -> None:
+    entries = _collect_review_entries(
+        [_flagged_license("LLAMA-2", "Llama", "behavioral_use", "<img src=x>")]
+    )
+    body = "\n".join(_render_review_section_html(entries))
+    assert '<section class="license-review">' in body
+    assert "License review needed" in body
+    # Hostile component label is HTML-escaped.
+    assert "<img src=x>" not in body
+    assert "&lt;img src=x&gt;" in body
+    assert _render_review_section_html([]) == []
+
+
+def test_full_notice_includes_review_section_all_formats() -> None:
+    when = datetime(2026, 7, 2, 12, 0, 0, tzinfo=UTC)
+    lics = [_flagged_license("LLAMA-2", "Llama 2", "behavioral_use", "c @ 1")]
+    for fmt in ("text", "markdown", "html"):
+        body = _render_notice(
+            project_name="P",
+            generated_at=when,
+            licenses_with_components=lics,
+            obligations_by_license={lics[0]["license_id"]: []},
+            fmt=fmt,
+        )
+        assert "License review needed" in body, fmt
+
+
+def test_full_notice_omits_review_section_when_unflagged() -> None:
+    when = datetime(2026, 7, 2, 12, 0, 0, tzinfo=UTC)
+    lics = [_flagged_license("MIT", "MIT", None, "a @ 1")]
+    for fmt in ("text", "markdown", "html"):
+        body = _render_notice(
+            project_name="P",
+            generated_at=when,
+            licenses_with_components=lics,
+            obligations_by_license={lics[0]["license_id"]: []},
+            fmt=fmt,
+        )
+        assert "License review needed" not in body, fmt

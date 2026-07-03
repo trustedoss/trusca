@@ -64,6 +64,11 @@ _TASK_INCLUDES = [
     # the Beat schedule; triggered manually by the operator. See the module
     # docstring for the invocation.
     "tasks.vulnerability_catalog_refresh",
+    # Phase D1 — one-shot backfill for licenses.review_flag (AI review class:
+    # behavioral-use / non-commercial). Reconciles pre-classifier NULL rows.
+    # Not on the Beat schedule; triggered manually by the operator. See the
+    # module docstring for the invocation.
+    "tasks.license_review_flag_backfill",
     # CISA KEV catalog refresh — daily beat that reconciles the
     # ``vulnerabilities.kev*`` columns (migration 0034) against CISA's public
     # Known Exploited Vulnerabilities feed. Backs the Vulnerabilities tab's

@@ -229,7 +229,8 @@
         "sp": "보안 속성",
         "kpi": "핵심성과지표"
       },
-      "learn_more": "자세히 보기"
+      "learn_more": "자세히 보기",
+      "missing_label": "누락:"
     },
     "errors": {
       "not_found": "이 스캔에 대한 적합성 결과가 아직 없습니다.",

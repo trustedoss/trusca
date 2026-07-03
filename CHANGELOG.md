@@ -8,6 +8,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- **AI license review flags** — the license catalog now carries two advisory
+  "review needed" flags for AI-relevant restrictions that standard open-source
+  compliance tooling misses: `behavioral_use` (RAIL / OpenRAIL and the Llama,
+  Gemma, and Falcon community model licenses — behavioral-use restrictions) and
+  `non_commercial` (CC-BY-NC and similar non-commercial terms). Flagged licenses
+  show an amber "Review needed" badge and filter on the Compliance tab, and the
+  generated NOTICE document gains a "License review needed" section. The flags
+  report only the *existence* of a restriction class — whether it applies to a
+  given use is a human / legal judgment (BomLens `license-flags.jq` /
+  OpenChain AI SBOM principle). Ordinary licenses (MIT, Apache-2.0, GPL) are not
+  flagged.
 - **NOTICE license texts + per-component copyright** — the NOTICE document
   (text / markdown / html) now closes with a "License Texts" section embedding
   the full SPDX text of every license observed in the project (32 license

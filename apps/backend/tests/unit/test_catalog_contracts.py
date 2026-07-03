@@ -214,3 +214,46 @@ def test_vulnerability_sort_keys_router_pattern_matches_service_set() -> None:
         f"{len(sort_alternations)}: {sort_alternations}"
     )
     assert set(sort_alternations[0].split("|")) == set(_VALID_SORT_KEYS)
+
+
+# ---------------------------------------------------------------------------
+# Review flags — AI license review class (Phase D) — §2 vocabulary guard
+# ---------------------------------------------------------------------------
+
+
+def test_review_flag_values_match_schema_literal() -> None:
+    """The classifier's single source of truth (``REVIEW_FLAG_VALUES``) and the
+    API wire Literal (``schemas.license_detail.ReviewFlag``) must be identical.
+
+    §2: the same review-flag vocabulary lives in the classifier, the schema
+    Literal, and (later) a frontend mirror. A token added to one side without
+    the other silently 422s a valid filter or advertises a value the persistence
+    layer never stores.
+    """
+    import typing
+
+    from schemas.license_detail import ReviewFlag
+    from services.license_flags import REVIEW_FLAG_VALUES
+
+    assert set(REVIEW_FLAG_VALUES) == set(typing.get_args(ReviewFlag))
+
+
+def test_review_flag_router_pattern_matches_classifier_values() -> None:
+    """The licenses router's ``review_flag`` Query regex holds the same
+    vocabulary as ``REVIEW_FLAG_VALUES`` (hardening rule §2).
+    """
+    import pathlib
+    import re
+
+    from services.license_flags import REVIEW_FLAG_VALUES
+
+    src = (
+        pathlib.Path(__file__).resolve().parents[2] / "api" / "v1" / "licenses.py"
+    ).read_text(encoding="utf-8")
+    patterns = re.findall(r'pattern=r"\^\(([a-z_|]+)\)\$"', src)
+    review_alternations = [p for p in patterns if "behavioral_use" in p]
+    assert len(review_alternations) == 1, (
+        f"expected exactly one review_flag pattern in the router, found "
+        f"{len(review_alternations)}: {review_alternations}"
+    )
+    assert set(review_alternations[0].split("|")) == set(REVIEW_FLAG_VALUES)

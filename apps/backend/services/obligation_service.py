@@ -784,6 +784,127 @@ async def _load_affected_components(
 
 _NOTICE_DIVIDER = "=" * 80
 
+# Phase D3 — human-readable labels for the ``licenses.review_flag`` classes in
+# the "License review needed" NOTICE section. Keys are the persisted tokens
+# (``services.license_flags.REVIEW_FLAG_VALUES``); an unrecognised flag falls
+# back to the raw token so a future class still renders rather than vanishing.
+_REVIEW_FLAG_LABELS: dict[str, str] = {
+    "behavioral_use": "Behavioral-use restriction (RAIL/community license)",
+    "non_commercial": "Non-commercial",
+}
+
+
+def _review_flag_label(flag: str) -> str:
+    return _REVIEW_FLAG_LABELS.get(flag, flag)
+
+
+def _collect_review_entries(
+    licenses_with_components: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Flatten the flagged licenses into render-ready review entries.
+
+    Returns, for every license carrying a non-NULL ``review_flag``, a dict of
+    ``{flag, label, license, components}`` where ``license`` is the display id
+    (spdx_id, else name) and ``components`` is the license's already-capped
+    component-label list. Order follows ``licenses_with_components`` (spdx asc,
+    name asc), grouped behavioral-use before non-commercial so the section
+    reads worst-first. Empty when nothing is flagged — a normal software scan's
+    NOTICE gains no section at all (BomLens parity).
+    """
+    entries: list[dict[str, Any]] = []
+    for entry in licenses_with_components:
+        flag = entry.get("review_flag")
+        if not flag:
+            continue
+        display = entry["spdx_id"] or entry["name"] or "(no SPDX id)"
+        entries.append(
+            {
+                "flag": flag,
+                "label": _review_flag_label(flag),
+                "license": display,
+                "components": [c["label"] for c in entry.get("components", [])],
+            }
+        )
+    # Stable worst-first ordering: behavioral-use ahead of non-commercial, then
+    # the underlying (spdx, name) order the query already fixed.
+    flag_rank = {"behavioral_use": 0, "non_commercial": 1}
+    entries.sort(key=lambda e: flag_rank.get(e["flag"], 99))
+    return entries
+
+
+_REVIEW_SECTION_TITLE = "License review needed — AI / restrictive terms"
+_REVIEW_SECTION_INTRO = (
+    "The following licenses carry AI-relevant or restrictive terms a human must "
+    "review. The portal surfaces the class only; whether a restriction applies "
+    "to your use is a legal judgement."
+)
+
+
+def _render_review_section_text(entries: list[dict[str, Any]]) -> list[str]:
+    """Plain-text "License review needed" block (no escaping — served as text/plain)."""
+    if not entries:
+        return []
+    parts = [
+        _NOTICE_DIVIDER,
+        _REVIEW_SECTION_TITLE,
+        _NOTICE_DIVIDER,
+        _REVIEW_SECTION_INTRO,
+        "",
+    ]
+    for e in entries:
+        parts.append(
+            f"[{e['label']}] {e['license']}  ({len(e['components'])} component(s)):"
+        )
+        for label in e["components"]:
+            parts.append(f"  - {label}")
+        parts.append("")
+    return parts
+
+
+def _render_review_section_markdown(entries: list[dict[str, Any]]) -> list[str]:
+    """Markdown "License review needed" block. Every dynamic value is escaped."""
+    if not entries:
+        return []
+    parts = [
+        "---",
+        "",
+        f"## {_REVIEW_SECTION_TITLE}",
+        "",
+        f"_{_md_escape(_REVIEW_SECTION_INTRO)}_",
+        "",
+    ]
+    for e in entries:
+        parts.append(
+            f"**[{_md_escape(e['label'])}]** {_md_escape(e['license'])} — "
+            f"{len(e['components'])} component(s):"
+        )
+        parts.append("")
+        for label in e["components"]:
+            parts.append(f"- {_md_escape(label)}")
+        parts.append("")
+    return parts
+
+
+def _render_review_section_html(entries: list[dict[str, Any]]) -> list[str]:
+    """HTML "License review needed" block. Every dynamic value is escaped."""
+    if not entries:
+        return []
+    parts = [
+        '<section class="license-review">',
+        f"<h2>{html_escape(_REVIEW_SECTION_TITLE)}</h2>",
+        f'<p class="meta">{html_escape(_REVIEW_SECTION_INTRO)}</p>',
+    ]
+    for e in entries:
+        parts.append(
+            f"<h3>[{html_escape(e['label'])}] {html_escape(e['license'])}</h3>"
+        )
+        parts.append("<ul>")
+        for label in e["components"]:
+            parts.append(f"<li>{html_escape(label)}</li>")
+        parts.append("</ul>")
+    parts.append("</section>")
+    return parts
+
 # Character allowlist for a purl we are willing to transform into a registry
 # URL. Anything outside the purl-spec vocabulary (spaces, quotes, angle
 # brackets, control chars) means the value is not a well-formed purl — we
@@ -1277,6 +1398,8 @@ async def _load_notice_data(
             LicenseModel.spdx_id.label("spdx_id"),
             LicenseModel.name.label("name"),
             LicenseModel.reference_url.label("reference_url"),
+            # Phase D3 — AI review flag drives the "License review needed" section.
+            LicenseModel.review_flag.label("review_flag"),
             func.jsonb_agg(func.distinct(component_obj)).label("component_entries"),
         )
         .select_from(LicenseFinding)
@@ -1294,6 +1417,7 @@ async def _load_notice_data(
             LicenseModel.spdx_id,
             LicenseModel.name,
             LicenseModel.reference_url,
+            LicenseModel.review_flag,
         )
         .order_by(LicenseModel.spdx_id.asc().nullslast(), LicenseModel.name.asc())
     )
@@ -1345,6 +1469,7 @@ async def _load_notice_data(
                 "spdx_id": r.spdx_id,
                 "name": clamped_name,
                 "reference_url": r.reference_url,
+                "review_flag": r.review_flag,
                 "components": components,
                 "components_omitted": components_omitted,
                 # Filled in below once the per-license obligation rows are capped.
@@ -1498,6 +1623,13 @@ def _render_notice(
                 "NOTICE._"
             )
             parts.append("")
+        # Phase D3 — "License review needed" section (AI behavioral-use /
+        # non-commercial). Empty for a normal software scan.
+        parts.extend(
+            _render_review_section_markdown(
+                _collect_review_entries(licenses_with_components)
+            )
+        )
         # Phase B — full license texts. The bundled texts are rendered inside
         # ONE verbatim fenced block (fence sized past any backtick run in the
         # content) so the standard texts survive byte-for-byte with no escaping
@@ -1575,6 +1707,11 @@ def _render_notice(
             f"... and {licenses_omitted} more license(s) omitted from this NOTICE"
         )
         parts.append("")
+    # Phase D3 — "License review needed" section (AI behavioral-use /
+    # non-commercial). Empty for a normal software scan.
+    parts.extend(
+        _render_review_section_text(_collect_review_entries(licenses_with_components))
+    )
     # Phase B — full license texts, appended verbatim (this format is served as
     # text/plain, so the standard texts need no escaping — same posture as the
     # rest of the plain-text branch).
@@ -1623,6 +1760,12 @@ _NOTICE_HTML_STYLE = (
     "li span.attr.none{font-style:italic}"
     "section.license-texts{border-top:1px solid #e2e8f0;margin-top:1.5rem;"
     "padding-top:.6rem}"
+    # Phase D3 — "License review needed" banner. Amber left border so the AI /
+    # restrictive-terms section reads as an advisory, not an error.
+    "section.license-review{border-left:3px solid #ca8a04;background:#fffbeb;"
+    "margin-top:1.5rem;padding:.6rem .8rem;border-radius:4px}"
+    "section.license-review h3{color:#0f172a}"
+    "p.meta{color:#64748b;font-size:.85rem}"
 )
 
 
@@ -1725,6 +1868,14 @@ def _render_notice_html(
                 f'<p class="muted">… and {licenses_omitted} more license(s) '
                 "omitted from this NOTICE.</p>"
             )
+
+        # Phase D3 — "License review needed" section (AI behavioral-use /
+        # non-commercial). Empty for a normal software scan.
+        parts.extend(
+            _render_review_section_html(
+                _collect_review_entries(licenses_with_components)
+            )
+        )
 
         # Phase B — full license texts: <h3>{id}</h3><pre>{escaped text}</pre>
         # per bundled operand (BomLens generate-notice.sh parity), one-line
