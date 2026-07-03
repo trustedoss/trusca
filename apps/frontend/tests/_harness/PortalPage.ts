@@ -609,6 +609,20 @@ export class PortalPage {
   }
 
   /**
+   * Open the Releases tab (feature #28) and wait for its container. The tab
+   * lists the project's succeeded-scan snapshots and hosts the Compare entry
+   * (`releases-compare-button`, enabled once there are two releases). Not in
+   * the `selectTab` union because that helper only covers the four primary
+   * tabs; Releases follows the dedicated-verb pattern of `selectSourceTab`.
+   */
+  async selectReleasesTab(): Promise<void> {
+    await this.page.getByTestId("project-detail-tab-releases").click();
+    await this.page
+      .getByTestId("releases-tab")
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  /**
    * Wait until either the virtualized list or the empty card is visible
    * (the loading skeleton has finished). Use after applying filters /
    * sorts to wait for the next page to land.

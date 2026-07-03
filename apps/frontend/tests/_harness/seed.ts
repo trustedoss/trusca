@@ -42,6 +42,13 @@ export interface SeedSummary {
   /** Populated when SeedOptions.withScan is true. Same length as project_ids. */
   scan_ids?: string[];
   /**
+   * Phase F (scan compare). The id of the SECOND, newer succeeded scan seeded
+   * on the first project when `SeedOptions.scanCount` is 2 — the diff `target`
+   * (the diff `base` is `scan_ids[0]`, the older scan). `null`/absent when
+   * `scanCount` was 1.
+   */
+  second_scan_id?: string | null;
+  /**
    * The kind='sbom' received-SBOM scan seeded on the first project when
    * `SeedOptions.withSbom` is set (model 3). Open `/scans/<id>` to assert the
    * conformance panel. `null` when `withSbom` was off.
@@ -126,6 +133,18 @@ export interface SeedOptions {
    * `project.latest_scan_id`. Required for the project-detail flows.
    */
   withScan?: boolean;
+  /**
+   * Phase F (scan compare). Number of succeeded scans to seed on the FIRST
+   * project. Default 1. Set to 2 to seed a SECOND succeeded scan whose SCA
+   * posture differs from the first by an exact, deterministic delta — 1 added
+   * / 1 removed / 1 changed component and 1 introduced / 1 resolved finding —
+   * so the release-diff (`/projects/:id/compare`) has non-empty change sets.
+   * Requires `componentCount >= 4` and `vulnerabilityCount >= 2`; implies
+   * `withScan`. The newer scan's id comes back as `SeedSummary.second_scan_id`,
+   * and the project then lists two releases (so the Releases-tab Compare button
+   * is enabled). Only value 1 or 2 is accepted.
+   */
+  scanCount?: number;
   /**
    * Seed a kind='sbom' (received-SBOM) succeeded scan on the FIRST project plus
    * its conformance verdict (model 3). Independent of `withScan`. The scan id
@@ -300,6 +319,12 @@ export function seedE2eUser(opts: SeedOptions): SeedSummary {
     // scan but no components, so the spec stays self-documenting at the call
     // site.
     scriptArgs.push("--with-scan");
+  }
+  if ((opts.scanCount ?? 1) !== 1) {
+    scriptArgs.push("--scan-count", String(opts.scanCount));
+    // `--scan-count 2` implies `--with-scan` in the script; set it here too so
+    // the call site stays self-documenting.
+    if (!scriptArgs.includes("--with-scan")) scriptArgs.push("--with-scan");
   }
   if (opts.withSbom || opts.withG7) {
     // Independent of --with-scan: seeds a kind='sbom' scan + conformance verdict

@@ -208,7 +208,7 @@ Every time a scan reaches a terminal `succeeded` status the portal records a **r
 
 Click a release row directly to navigate to the **Components** tab with the snapshot pinned. The pin propagates as a `?scan=<id>` URL parameter so the deep link survives reload and can be shared with a teammate — every tab on the project (Components, Vulnerabilities, Licenses, …) reads from the pinned snapshot until you clear the pin in the breadcrumb. Removing the pin restores the *latest succeeded* scan as the data anchor everywhere.
 
-The companion **Compare** screen (linked from the Releases-tab toolbar) takes two snapshot ids and shows the added / removed components and severities between them — the canonical diff view for "what changed between release X and release Y".
+The companion **Compare** screen (the **Compare** button on the Releases-tab toolbar, enabled once the project has at least two releases) takes two snapshot ids — a **base** and a **target** — and shows what changed between them: added / removed / version-changed components, introduced / resolved vulnerabilities, and the risk-score, per-severity, license-tier, and build-gate deltas. A **swap** control flips base and target. The button defaults to comparing the newest release (target) against the one before it (base), and the two ids live in the URL (`?base=&target=`) so a specific comparison can be shared. It is the canonical diff view for "what changed between release X and release Y".
 
 ## The Reports tab {#the-reports-tab}
 
