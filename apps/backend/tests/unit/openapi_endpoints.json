@@ -209,6 +209,10 @@
     "severity",
     "sort"
   ],
+  "GET /v1/projects/{project_id}/dependency-graph": [
+    "project_id",
+    "scan_id"
+  ],
   "GET /v1/projects/{project_id}/diff": [
     "base",
     "project_id",

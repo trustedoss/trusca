@@ -15,6 +15,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   components or vulnerabilities never appear. Component hits deep-link to the
   project's Components tab filtered to the term; CVE hits to its Vulnerabilities
   tab. Queries run from two characters, debounced, capped at 20 per group.
+- **Dependency graph view** — the Components tab gains a **Table / Graph** toggle.
+  The graph view renders the scan's resolved dependency graph (every parent →
+  child edge the scanner recorded) as an interactive cytoscape node-link diagram
+  with a severity-coloured node per component, a search highlight, and a
+  click-to-detail panel — backed by the new
+  `GET /v1/projects/{id}/dependency-graph` endpoint (serialised from the existing
+  `component_dependency_edges` table; no migration). The choice mirrors into
+  `?view=graph`. Graphs past the server node cap
+  (`DEPENDENCY_GRAPH_MAX_NODES`, default 5000) or with no recorded edges fall
+  back to a banner / collapsible tree so the view stays usable at scale.
 - **Excel (`.xlsx`) vulnerability report** — the project vulnerability report can
   now be downloaded as an Excel workbook in addition to PDF, from the **Excel**
   button on the Reports tab's Vulnerability-report card (or

@@ -43,6 +43,17 @@ The inline filter bar at the top supports:
 
 Filters compose. The URL updates (`?direct=…`, `?dependency_scope=…`, …) so you can share a filtered view.
 
+## Table view vs. graph view
+
+The Components tab has a **Table / Graph** toggle (top-left). **Table** is the default virtualized list above. **Graph** renders the scan's resolved **dependency graph** — every *parent → child* edge the scanner recorded — as an interactive node-link diagram (left-to-right layout), so you can see *how* a package is pulled in rather than just *that* it is present. Each node is coloured by its highest-severity finding (colour is never the only signal — the detail panel and the tree fallback show a severity label too), and a search box highlights matching packages. Clicking a node opens its details beside the canvas.
+
+The choice is mirrored into `?view=graph` so a reload or shared link keeps the graph open; the graph is scoped to the currently pinned `?scan=` snapshot like every other tab.
+
+Two fallbacks keep the view usable at scale:
+
+- A scan whose graph exceeds the server node cap (`DEPENDENCY_GRAPH_MAX_NODES`, default 5000) is **not** materialised — the view shows a banner pointing you back to the table.
+- A graph with no recorded edges (a flat component list) or one past the client render cap falls back to a collapsible **dependency tree**.
+
 ## The drawer — component detail
 
 Click any row to open a right-side drawer with:
