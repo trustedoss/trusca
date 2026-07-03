@@ -713,26 +713,37 @@ def _parse_kev_due_spread(raw: str) -> list[str]:
 
 
 # feat/g7-conformance — pinned statuses for the ``--with-g7`` seed. The mix
-# (pass / absent-warn / human-review across TWO clusters) was captured from the
-# REAL evaluator (``services.g7_conformance.evaluate_g7``) over the recorded
-# fixture ``tests/fixtures/sbom_ingest/aibom-owasp-1_7.json`` — no invented
-# values, only a deterministic subset. Detail strings are the evaluator's own
-# constants; label/cluster/source/role are resolved from the live
-# ``g7_registry.json`` at seed time so a registry refresh cannot desync the
-# persisted shape. id → (status, detail, evidence).
-_G7_SEED_PLAN: dict[str, tuple[str, str, list[str] | None]] = {
+# (pass / per-model-coverage warn / human-review across TWO clusters) was
+# captured from the REAL evaluator (``services.g7_conformance.evaluate_g7``)
+# over the recorded fixture ``tests/fixtures/sbom_ingest/aibom-owasp-1_7.json``
+# — no invented values, only a deterministic subset. Registry v2 (#306): the
+# models-cluster elements score per-model coverage, so their details read
+# "N/M model component(s)" and a warn names the offending models in
+# ``missing`` (the fixture's single model is "bert-base-uncased"). Detail
+# strings are the evaluator's own output; label/cluster/source/role are
+# resolved from the live ``g7_registry.json`` at seed time so a registry
+# refresh cannot desync the persisted shape.
+# id → (status, detail, evidence, missing).
+_G7_SEED_PLAN: dict[str, tuple[str, str, list[str] | None, list[str]]] = {
     # slp cluster — pass (source=declared)
-    "g7-slp-name": ("pass", "present", None),
+    "g7-slp-name": ("pass", "present", None, []),
     # slp cluster — no automated source (source=na) → human review
     "g7-slp-data-flow": (
         "warn",
         "requires human review (no automated source)",
         None,
+        [],
     ),
-    # models cluster — automated but absent → advisory warn (source=auto)
-    "g7-model-hash-value": ("warn", "not present in the SBOM", None),
-    # models cluster — pass with real evidence (fixture model is Apache-2.0)
-    "g7-model-license": ("pass", "present", ["Apache-2.0"]),
+    # models cluster — per-model coverage, absent on the only model →
+    # advisory warn naming the offender (source=auto)
+    "g7-model-hash-value": (
+        "warn",
+        "0/1 model component(s)",
+        None,
+        ["bert-base-uncased"],
+    ),
+    # models cluster — every model covered, real evidence (Apache-2.0)
+    "g7-model-license": ("pass", "1/1 model component(s)", ["Apache-2.0"], []),
 }
 
 
@@ -753,7 +764,7 @@ def _g7_seed_checks() -> list[Check]:
         plan = _G7_SEED_PLAN.get(element_id)
         if plan is None:
             continue
-        status, detail, evidence = plan
+        status, detail, evidence, missing = plan
         checks.append(
             Check(
                 id=element_id,
@@ -761,6 +772,7 @@ def _g7_seed_checks() -> list[Check]:
                 required=False,
                 status=status,
                 detail=detail,
+                missing=missing,
                 cluster=cluster_id,
                 source=str(element.get("source") or "") or None,
                 role=str(element.get("role") or "") or None,
