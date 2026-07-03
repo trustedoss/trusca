@@ -291,6 +291,11 @@
         "forbidden": "You do not have permission to view this component.",
         "unknown": "Could not load this component. Please try again."
       }
+    },
+    "view_toggle": {
+      "aria": "Component view",
+      "table": "Table",
+      "graph": "Graph"
     }
   },
   "drawer": {
@@ -1105,6 +1110,33 @@
       "user_unknown": "Deleted user",
       "scan_unknown": "—",
       "size_unknown": "—"
+    }
+  },
+  "dependency_graph": {
+    "search": "Search packages",
+    "empty": "No dependency graph is available for this scan.",
+    "truncated": "This dependency graph has {{count}} nodes, over the {{cap}} limit, so it can't be drawn. Use the Table view to browse components.",
+    "tooLarge": "This graph has {{count}} nodes, over the {{cap}} render limit. Showing the dependency tree instead.",
+    "noEdges": "This scan recorded no dependency relationships, so the components are listed as a flat tree.",
+    "nodeListAria": "Dependency graph nodes",
+    "canvasAria": "Dependency graph",
+    "legend": {
+      "direct": "Direct",
+      "transitive": "Transitive",
+      "vulnerable": "Vulnerable",
+      "hint": "Click a node for details. Type to highlight matching packages."
+    },
+    "selection": {
+      "vulnCount": "{{count}} known vulnerabilities"
+    },
+    "tree": {
+      "collapse": "Collapse",
+      "expand": "Expand",
+      "cycle": "Cycle"
+    },
+    "errors": {
+      "load_failed": "Could not load the dependency graph.",
+      "render_failed": "Could not render the dependency graph."
     }
   }
 }

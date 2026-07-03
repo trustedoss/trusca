@@ -291,6 +291,11 @@
         "forbidden": "이 컴포넌트를 볼 권한이 없습니다.",
         "unknown": "이 컴포넌트를 불러오지 못했습니다. 다시 시도해 주세요."
       }
+    },
+    "view_toggle": {
+      "aria": "컴포넌트 보기",
+      "table": "표",
+      "graph": "그래프"
     }
   },
   "drawer": {
@@ -1105,6 +1110,33 @@
       "user_unknown": "삭제된 사용자",
       "scan_unknown": "—",
       "size_unknown": "—"
+    }
+  },
+  "dependency_graph": {
+    "search": "패키지 검색",
+    "empty": "이 스캔에는 의존성 그래프가 없습니다.",
+    "truncated": "이 의존성 그래프는 노드가 {{count}}개로 상한 {{cap}}개를 넘어 그릴 수 없습니다. 표 보기에서 컴포넌트를 살펴보세요.",
+    "tooLarge": "이 그래프는 노드가 {{count}}개로 렌더링 상한 {{cap}}개를 넘습니다. 대신 의존성 트리를 표시합니다.",
+    "noEdges": "이 스캔에는 의존성 관계가 기록되지 않아 컴포넌트를 단일 계층 트리로 나열합니다.",
+    "nodeListAria": "의존성 그래프 노드",
+    "canvasAria": "의존성 그래프",
+    "legend": {
+      "direct": "직접",
+      "transitive": "간접",
+      "vulnerable": "취약",
+      "hint": "노드를 클릭하면 상세 정보가 나옵니다. 입력하면 일치하는 패키지가 강조됩니다."
+    },
+    "selection": {
+      "vulnCount": "알려진 취약점 {{count}}개"
+    },
+    "tree": {
+      "collapse": "접기",
+      "expand": "펼치기",
+      "cycle": "순환"
+    },
+    "errors": {
+      "load_failed": "의존성 그래프를 불러오지 못했습니다.",
+      "render_failed": "의존성 그래프를 표시하지 못했습니다."
     }
   }
 }

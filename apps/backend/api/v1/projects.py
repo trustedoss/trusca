@@ -42,6 +42,7 @@ from core.db import get_db
 from core.errors import problem_response
 from core.ratelimit import _authenticated_user_key, limiter
 from core.security import CurrentUser, require_role
+from schemas.dependency_graph import ProjectDependencyGraph
 from schemas.project_detail import (
     ComponentListResponse,
     ComponentSummary,
@@ -62,6 +63,7 @@ from schemas.scan import (
     SeveritySummary,
     SourceArchiveUploadResponse,
 )
+from services.dependency_graph_service import get_dependency_graph
 from services.project_detail_service import (
     get_project_overview,
     list_components_for_project,
@@ -687,6 +689,67 @@ async def diff_project_releases_endpoint(
         return _problem_for_project_error(request, exc)
 
     body = ProjectDiff.model_validate(payload)
+    return Response(
+        content=body.model_dump_json(),
+        status_code=status.HTTP_200_OK,
+        media_type="application/json",
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/projects/{project_id}/dependency-graph  (BomLens parity Phase H-1)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/{project_id}/dependency-graph",
+    response_model=ProjectDependencyGraph,
+    summary="Resolved dependency graph (nodes + edges) of a scan snapshot",
+    responses={
+        404: {
+            "description": (
+                "Project does not exist, the caller is not a member of its owning "
+                "team, or the pinned `scan_id` is not a succeeded scan of THIS "
+                "project (nonexistent / another project's scan / non-succeeded — "
+                "all existence-hidden behind one 404). Also returned when the "
+                "project has no succeeded scan to read. RFC 7807 problem+json."
+            ),
+            "content": {"application/problem+json": {}},
+        },
+    },
+)
+async def get_dependency_graph_endpoint(
+    request: Request,
+    project_id: uuid.UUID,
+    scan_id: uuid.UUID | None = Query(
+        default=None,
+        description=(
+            "Optional release-snapshot anchor. When given, serialize this SPECIFIC "
+            "succeeded scan's graph instead of the project's latest succeeded scan. "
+            "Must belong to this project and be succeeded, else 404 (existence-hide). "
+            "Omit for the default latest-succeeded behaviour."
+        ),
+    ),
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_role("developer")),
+) -> Response:
+    # Team membership + snapshot resolution are enforced INSIDE the service
+    # (non-member and missing-project both existence-hide to 404; an invalid /
+    # cross-project / non-succeeded scan_id, and "no succeeded scan", raise
+    # SnapshotScanNotFound). The router only translates those to RFC 7807.
+    try:
+        payload = await get_dependency_graph(
+            session,
+            project_id=project_id,
+            actor=actor,
+            scan_id=scan_id,
+        )
+    except SnapshotScanNotFound:
+        return _problem_for_snapshot_not_found(request)
+    except ProjectError as exc:
+        return _problem_for_project_error(request, exc)
+
+    body = ProjectDependencyGraph.model_validate(payload)
     return Response(
         content=body.model_dump_json(),
         status_code=status.HTTP_200_OK,

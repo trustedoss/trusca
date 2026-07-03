@@ -924,6 +924,7 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
     )
     from models import (
         Component,
+        ComponentDependencyEdge,
         ComponentVersion,
         License,
         LicenseFinding,
@@ -1369,6 +1370,12 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                 # Now create components in batches. We commit every 100 rows
                 # so the connection isn't held with a huge in-memory tx.
                 BATCH = 100
+                # Collect the created component_version ids so we can wire a small
+                # resolved dependency graph afterwards (H-1 dependency-graph view:
+                # without edges the graph endpoint returns an edge-less flat set,
+                # so the e2e can only exercise the fallback — a binary-tree edge
+                # set gives the cytoscape path real edges + depth to render).
+                seeded_cv_ids: list[uuid.UUID] = []
                 for i in range(component_count):
                     cname = f"{component_prefix}-{i:05d}"
                     purl = f"pkg:npm/{cname}"
@@ -1387,6 +1394,7 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                     )
                     session.add(cv)
                     await session.flush()
+                    seeded_cv_ids.append(cv.id)
 
                     sc = ScanComponent(
                         scan_id=anchor_scan_id,
@@ -1423,6 +1431,22 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                         seeded_components = i + 1
                 await session.commit()
                 seeded_components = component_count
+
+                # Wire a resolved dependency graph over the seeded nodes: a
+                # binary tree (node i's parent is node (i-1)//2), so the graph
+                # has ``component_count - 1`` edges with real branching + depth
+                # for the H-1 dependency-graph view / e2e. Idempotent per scan
+                # via the (scan, parent, child) unique constraint.
+                for child_idx in range(1, len(seeded_cv_ids)):
+                    parent_idx = (child_idx - 1) // 2
+                    session.add(
+                        ComponentDependencyEdge(
+                            scan_id=anchor_scan_id,
+                            parent_component_version_id=seeded_cv_ids[parent_idx],
+                            child_component_version_id=seeded_cv_ids[child_idx],
+                        )
+                    )
+                await session.commit()
 
             seeded_vulnerabilities = 0
             if vulnerability_count > 0 and project_rows:

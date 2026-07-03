@@ -985,6 +985,29 @@ def jsonb_row_size_limit_bytes() -> int:
     return int(os.getenv("JSONB_ROW_SIZE_LIMIT_BYTES", str(256 * 1024)))
 
 
+def dependency_graph_max_nodes() -> int:
+    """Max nodes the dependency-graph endpoint will serialize (BomLens H-1).
+
+    ``GET /v1/projects/{id}/dependency-graph`` ships a scan's whole node/edge
+    adjacency to the browser for an interactive render. A pathological scan
+    (tens of thousands of components) would freeze that render, so when a scan's
+    node count exceeds this ceiling the endpoint returns ``truncated=true`` with
+    EMPTY nodes/edges (the frontend then renders its tree fallback). The exact
+    counts are always returned regardless.
+
+    Default 5000 comfortably covers real-world graphs while bounding the payload.
+    A non-numeric or non-positive value falls back to 5000 so a fat-finger cannot
+    disable the guard or ship an empty graph for every scan. Read at call time
+    per CLAUDE.md core rule #11 so an operator can retune without a rebuild.
+    """
+    raw = os.getenv("DEPENDENCY_GRAPH_MAX_NODES", "5000")
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return 5000
+    return value if value > 0 else 5000
+
+
 # ---------------------------------------------------------------------------
 # W6-#42 — vulnerability rematch beat tuning.
 #
