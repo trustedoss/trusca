@@ -366,7 +366,10 @@
       "label": "KEV",
       "tooltip": "CISA KEV(Known Exploited Vulnerabilities, 알려진 악용 취약점) 카탈로그에 등재 — 실제 악용이 확인되었습니다.",
       "tooltip_with_due": "CISA KEV(Known Exploited Vulnerabilities, 알려진 악용 취약점) 카탈로그에 등재 — 실제 악용이 확인되었습니다. CISA 조치 기한: {{date}}.",
-      "due": "기한 {{date}}"
+      "due": "기한 {{date}}",
+      "due_overdue": "기한 {{days}}일 초과",
+      "due_imminent": "기한 {{days}}일 남음",
+      "due_today": "오늘 기한"
     },
     "filter": {
       "minEpss": "EPSS ≥",

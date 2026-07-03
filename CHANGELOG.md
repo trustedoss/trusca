@@ -38,6 +38,18 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   delistings included. New env keys: `KEV_FEED_URL`, `KEV_REFRESH_ENABLED`
   (set `false` on air-gapped deployments — KEV badges are then not shown), and
   `KEV_REFRESH_TIMEOUT_SECONDS`.
+- **KEV operations closeout — admin feed panel + due-date status** —
+  `/admin/health` gains a **KEV feed** panel: last successful sync time, live
+  KEV-listed CVE count, listed / delisted counts from the last run, the next
+  daily sync (01:45 UTC beat), and an OK / skipped (+reason) / disabled /
+  never-run status backed by a new single-row `kev_sync_state` table the beat
+  task upserts on every tick. A parsed feed below the 500-entry sanity floor
+  is skipped like an outage (`skipped_reason: feed_below_sanity_floor`),
+  preserving existing KEV flags so a gutted or truncated feed document can
+  never mass-delist the catalog. The KEV badge in the findings table and
+  drawer now grades the CISA remediation due date into three states — overdue
+  (red) / due within 7 days (amber) / on track (neutral) — with a `D-n` /
+  `D+n` day count.
 
 ### Fixed
 - **Source scans no longer misclassify transitive dependencies as direct** when

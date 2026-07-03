@@ -20,6 +20,7 @@ import {
   type HealthComponent,
   type HealthStatus,
 } from "@/features/admin/health/api/adminHealthApi";
+import { KevFeedPanel } from "@/features/admin/health/KevFeedPanel";
 import { TrivyDBPanel } from "@/features/admin/health/TrivyDBPanel";
 import { useAdminHealth } from "@/features/admin/health/api/useAdminHealth";
 import { adminErrorMessageKey } from "@/features/admin/lib/adminErrorMessage";
@@ -152,12 +153,16 @@ export function AdminHealthPage() {
         ) : null}
 
         {/*
-          W6-#43e: Trivy DB lifecycle panel. Sits above the probe grid so
-          operators see the vulnerability-DB state next to the other
-          infrastructure health signals. Owns its own loading / error /
-          empty state internally.
+          W6-#43e: Trivy DB lifecycle panel + Phase C/C2: CISA KEV feed
+          panel. Both sit above the probe grid so operators see the
+          vulnerability-data state next to the other infrastructure health
+          signals. Each panel owns its loading / error / empty state
+          internally. Side-by-side on wide screens, stacked below xl.
         */}
-        <TrivyDBPanel />
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          <TrivyDBPanel />
+          <KevFeedPanel />
+        </div>
 
         <div
           className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"

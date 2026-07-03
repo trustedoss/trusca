@@ -215,8 +215,20 @@ The portal flags every finding whose CVE is listed in the [CISA KEV (Known Explo
 ### How the portal displays KEV
 
 - **Badge** — a **KEV** badge appears next to the CVE in the findings table and in the drawer's **Summary** section. As with severity, the signal is the label, not color alone.
-- **Due date** — the drawer also shows the entry's remediation due date (`kev_due_date`), the deadline CISA assigns to each catalog entry. The deadline binds U.S. federal agencies, not your deployment — read it as an urgency signal.
+- **Due date** — the drawer also shows the entry's remediation due date (`kev_due_date`), the deadline CISA assigns to each catalog entry. The deadline binds U.S. federal agencies, not your deployment — read it as an urgency signal. The badge grades that deadline into a three-state day count — see [Due-date status](#kev-due-date-status).
 - A finding without the badge is merely **not in the catalog** — absence is not a verdict of safety.
+
+### Due-date status {#kev-due-date-status}
+
+The KEV badge grades the CISA remediation due date so you can read the time pressure without doing calendar math. The findings table and the drawer show the same three states:
+
+| State | When | Display |
+|---|---|---|
+| **Overdue** | The due date has passed | Red, `D+n` — days past the deadline |
+| **Imminent** | Due within the next 7 days | Amber, `D-n` — days remaining |
+| **On track** | Due more than 7 days out | Neutral, `D-n` |
+
+As everywhere in the portal, color is never the only signal — the state is carried by the `D-n` / `D+n` day-count label itself, not by the tint alone. And as with the raw due date, the deadline binds U.S. federal agencies, not your deployment: read **Overdue** as the strongest urgency signal CISA publishes, not as a compliance breach on your side.
 
 ### Priority sort {#priority-sort}
 
@@ -232,7 +244,7 @@ The top of the table is therefore always the confirmed-exploited, most severe, m
 
 A daily Celery beat task (`trustedoss.kev_catalog_refresh`) downloads the CISA KEV feed and syncs it into the portal's vulnerability catalog. Delisting is synced too: a CVE CISA removes from the catalog loses its badge on the same run. No re-scan is needed — the listing is stored on the CVE itself, so existing findings reflect it immediately.
 
-Three env keys tune the refresh — `KEV_FEED_URL`, `KEV_REFRESH_ENABLED`, and `KEV_REFRESH_TIMEOUT_SECONDS`. See [Environment variables — KEV catalog](../reference/env-variables.md#kev-catalog).
+Three env keys tune the refresh — `KEV_FEED_URL`, `KEV_REFRESH_ENABLED`, and `KEV_REFRESH_TIMEOUT_SECONDS`. See [Environment variables — KEV catalog](../reference/env-variables.md#kev-catalog). Operators can audit the sync (last run, listed / delisted counts, skip reasons) on the admin health page — see [KEV feed panel](../admin-guide/vulnerability-data.md#kev-feed-panel).
 
 :::note Air-gapped deployments
 A deployment that cannot reach the CISA feed should set `KEV_REFRESH_ENABLED=false`. With the refresh disabled, no KEV data is loaded — **no KEV badges or due dates appear**, and the Priority sort effectively degrades to severity → EPSS.

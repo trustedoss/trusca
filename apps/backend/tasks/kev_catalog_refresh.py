@@ -38,6 +38,15 @@ Air-gapped deployments:
   ``KEV_FEED_URL`` can alternatively point at an internal mirror (same
   pattern as ``TRIVY_DB_REPOSITORY``).
 
+Status row (Phase C — admin KEV panel):
+  Every tick ends by UPSERTing the single ``kev_sync_state`` row (migration
+  0035) with its outcome — the admin/health KEV panel's only durable source
+  (``services.kev_health_service`` reads it). Writer contract lives in
+  ``models/kev_sync_state.py``: a skipped tick touches only ``last_result``
+  / ``skipped_reason`` / ``updated_at``; ``last_synced_at`` and the counters
+  keep their last-good values. The write is best-effort — it runs after the
+  reconcile session committed and a failure degrades to a WARNING.
+
 CLAUDE.md compliance:
   - Core rule #3: the feed download sits behind a Celery task; no request
     path ever fetches it synchronously.
@@ -50,14 +59,16 @@ CLAUDE.md compliance:
 from __future__ import annotations
 
 import time
+from datetime import UTC, datetime
 from typing import Any
 
 import structlog
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from core.config import kev_refresh_enabled
 from integrations.kev_feed import KevEntry, KevFeedUnavailable, fetch_kev_catalog
-from models import Vulnerability
+from models import KevSyncState, Vulnerability
 from tasks.celery_app import celery_app
 
 log = structlog.get_logger("tasks.kev_catalog_refresh")
@@ -105,6 +116,70 @@ def _apply_delisting(row: Vulnerability) -> bool:
         row.kev_due_date = None
         changed = True
     return changed
+
+
+def _sync_state_values(summary: dict[str, Any], now: datetime) -> dict[str, Any]:
+    """Map a tick summary onto the ``kev_sync_state`` UPSERT column set.
+
+    Pure function (no DB) so the model's writer contract is directly
+    unit-testable:
+
+      * **synced** tick → full refresh: ``last_synced_at`` moves to ``now``,
+        counters + ``duration_ms`` (float seconds → integer ms) are replaced,
+        ``skipped_reason`` clears.
+      * **skipped** tick → status-only touch: ``last_result`` /
+        ``skipped_reason`` / ``updated_at``. ``last_synced_at`` and the
+        counters are deliberately ABSENT from the mapping so the UPSERT's
+        ``DO UPDATE SET`` never overwrites the last-good values (model
+        docstring: the panel shows "last attempt" AND "last success").
+    """
+    if summary["skipped"]:
+        return {
+            "id": True,
+            "last_result": "skipped",
+            "skipped_reason": summary["skipped_reason"],
+            "updated_at": now,
+        }
+    return {
+        "id": True,
+        "last_synced_at": now,
+        "last_result": "synced",
+        "skipped_reason": None,
+        "feed_count": summary["feed_count"],
+        "listed": summary["listed"],
+        "delisted": summary["delisted"],
+        "duration_ms": int(round(summary["duration_seconds"] * 1000)),
+        "updated_at": now,
+    }
+
+
+def _persist_sync_state(summary: dict[str, Any]) -> None:
+    """UPSERT the single ``kev_sync_state`` row from this tick's summary.
+
+    Postgres ``INSERT .. ON CONFLICT (id) DO UPDATE`` (repo convention —
+    same construct as ``services.obligation_service``) keeps the write one
+    race-free round-trip against the BOOLEAN-PK singleton row; the first
+    tick ever inserts, every later tick updates.
+
+    Runs in its OWN session scope, AFTER the reconcile session has already
+    committed — a failure here can therefore never roll back reconcile
+    writes. Exceptions propagate to the caller, which treats them as
+    best-effort (WARNING, never into the beat).
+    """
+    from core.db import sync_session_scope
+
+    values = _sync_state_values(summary, datetime.now(tz=UTC))
+    stmt = (
+        pg_insert(KevSyncState)
+        .values(values)
+        .on_conflict_do_update(
+            index_elements=[KevSyncState.id],
+            set_={k: v for k, v in values.items() if k != "id"},
+        )
+    )
+    with sync_session_scope() as session:
+        session.execute(stmt)
+        session.commit()
 
 
 @celery_app.task(  # type: ignore[misc]
@@ -240,6 +315,17 @@ def refresh_kev_catalog(self: Any) -> dict[str, Any]:
         )
         return summary
     finally:
+        # Status-row write covers EVERY exit path (synced, all skip flavours,
+        # unexpected error) from one call site. Best-effort by contract: a
+        # persist failure must neither undo the already-committed reconcile
+        # (it runs in its own session) nor raise into the beat.
+        try:
+            _persist_sync_state(summary)
+        except Exception as exc:  # noqa: BLE001 — best-effort status write
+            log.warning(
+                "kev_sync_state_persist_failed",
+                error=str(exc)[:300],
+            )
         structlog.contextvars.unbind_contextvars("task_name", "task_id")
 
 
@@ -249,4 +335,6 @@ __all__ = [
     "_FEED_SANITY_FLOOR",
     "_apply_delisting",
     "_apply_listing",
+    "_persist_sync_state",
+    "_sync_state_values",
 ]

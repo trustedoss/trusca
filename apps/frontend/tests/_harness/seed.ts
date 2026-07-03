@@ -56,6 +56,13 @@ export interface SeedSummary {
   component_count?: number;
   /** Number of vulnerability findings attached to the first project's scan. */
   vulnerability_count?: number;
+  /**
+   * Phase C KEV e2e. Number of vulnerability-mode CVEs flagged as CISA KEV
+   * entries (`kev=true` + `kev_date_added` + a `kev_due_date` cycled through
+   * `SeedOptions.kevDueSpread`). Always ≤ `vulnerability_count`; 0 when
+   * `kevCount` was off.
+   */
+  kev_count?: number;
   /** Number of obligation rows attached to the seeded licenses (PR #13). */
   obligation_count?: number;
   /**
@@ -163,6 +170,23 @@ export interface SeedOptions {
    * 2 unknown).
    */
   vulnerabilitySeverityMix?: string;
+  /**
+   * Phase C KEV e2e. Flag the FIRST N `vulnerabilityCount` CVEs (seed-plan
+   * order) as CISA KEV entries: `kev=true`, `kev_date_added` (today − 30 d)
+   * and a `kev_due_date` cycled through `kevDueSpread`. Requires
+   * `vulnerabilityCount >= kevCount` — the script exits 2 (ValueError)
+   * otherwise, and the helper throws a descriptive Error. Default: 0.
+   */
+  kevCount?: number;
+  /**
+   * SLA-state cycle for the `kevCount` due dates. Comma-separated tokens
+   * from `overdue` (today − 3 d) / `imminent` (today + 3 d) / `ok`
+   * (today + 30 d) — the offsets sit inside the FE `dueDate.ts` bands with
+   * margin so a UTC↔local day skew never flips a state. Defaults to
+   * `"overdue,imminent,ok"` in the Python script (all three states seeded
+   * when `kevCount >= 3`).
+   */
+  kevDueSpread?: string;
   /**
    * Phase 3 PR #13. When true, attach a small obligation catalog to each
    * seed-license created by `componentCount`. No-op when `componentCount`
@@ -303,6 +327,12 @@ export function seedE2eUser(opts: SeedOptions): SeedSummary {
       "--vulnerability-severity-mix",
       opts.vulnerabilitySeverityMix,
     );
+  }
+  if ((opts.kevCount ?? 0) > 0) {
+    scriptArgs.push("--kev-count", String(opts.kevCount));
+  }
+  if (opts.kevDueSpread) {
+    scriptArgs.push("--kev-due-spread", opts.kevDueSpread);
   }
   if (opts.withObligations) {
     scriptArgs.push("--with-obligations");

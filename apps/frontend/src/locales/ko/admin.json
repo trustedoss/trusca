@@ -306,6 +306,28 @@
         "repository": "저장소"
       }
     },
+    "kev_feed": {
+      "heading": "CISA KEV 피드",
+      "status": {
+        "synced": "정상",
+        "skipped": "건너뜀",
+        "disabled": "비활성"
+      },
+      "skipped_reason": "마지막 동기화 건너뜀: {{reason}}",
+      "kpi": {
+        "last_synced": "마지막 동기화",
+        "kev_flagged_total": "KEV 등재 취약점",
+        "listed_delisted": "최근 등재 / 해제",
+        "next_refresh": "다음 동기화"
+      },
+      "empty": {
+        "title": "KEV 피드 아직 동기화되지 않음",
+        "description": "CISA KEV(Known Exploited Vulnerabilities, 알려진 악용 취약점) 카탈로그는 다음 예약 실행 시 자동으로 동기화됩니다."
+      },
+      "footer": {
+        "feed_host": "피드 호스트"
+      }
+    },
     "backup": {
       "title": "백업",
       "subtitle": "자동 일일 백업 + 수동 백업 트리거 + 복원.",

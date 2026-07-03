@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
+import { dueDateStatus, type DueDateStatus } from "@/lib/dueDate";
 import { cn } from "@/lib/utils";
 
 /**
@@ -20,9 +21,20 @@ import { cn } from "@/lib/utils";
  * (Critical / High / …) while this one carries the literal "KEV" label —
  * the same disambiguation rationale ReachabilityBadge documents for orange.
  *
- * The CISA remediation due date, when present, rides on the tooltip in every
- * surface; the drawer additionally renders it inline (`showDueDate`) so the
- * deadline is legible up close without hovering.
+ * Phase C / C3 — remediation-deadline (SLA) visualization. When a due date
+ * is present the badge escalates by {@link dueDateStatus}:
+ *
+ *   - "overdue"  — solid critical fill (strongest treatment on the page) +
+ *                  inline "Overdue by n days" on `showDueDate` surfaces.
+ *   - "imminent" — amber (risk-medium) tint + inline "Due in n days" /
+ *                  "Due today".
+ *   - "ok"       — unchanged from the pre-C3 badge: critical tint + muted
+ *                  "Due {date}" inline text.
+ *
+ * List rows (`showDueDate={false}`) convey the state through the badge tone
+ * alone to keep the 40px row quiet; the full absolute date always rides on
+ * the tooltip, the "KEV" text label is always present, and `data-due-state`
+ * anchors e2e assertions — so color is never the only carrier of meaning.
  */
 
 export interface KevBadgeProps {
@@ -36,42 +48,93 @@ export interface KevBadgeProps {
    * the tooltip only.
    */
   showDueDate?: boolean;
+  /** Injectable clock for deterministic SLA classification in tests. */
+  now?: Date;
   className?: string;
+}
+
+/**
+ * State-specific chip treatment layered over the base `tone="critical"`
+ * classes (tailwind-merge dedupes the bg-/text- pairs). The dot keeps the
+ * same hue family as the chip so the two never disagree.
+ */
+function dueVisuals(state: DueDateStatus["state"] | null): {
+  badge?: string;
+  dot: string;
+} {
+  if (state === "overdue") {
+    // Solid critical fill — the escalation above the default tint. White on
+    // `--risk-critical` (#dc2626) measures 4.53:1, clearing WCAG AA.
+    return { badge: "bg-risk-critical text-white", dot: "bg-white" };
+  }
+  if (state === "imminent") {
+    // Amber — mirrors the Badge `medium` tone pair (risk-medium tint +
+    // yellow-800 text, the AA-audited combination from W11-H).
+    return {
+      badge: "bg-risk-medium/15 text-yellow-800",
+      dot: "bg-risk-medium",
+    };
+  }
+  // "ok" or no due date — pre-C3 appearance.
+  return { dot: "bg-risk-critical" };
 }
 
 export function KevBadge({
   kev,
   dueDate,
   showDueDate = false,
+  now,
   className,
 }: KevBadgeProps) {
   const { t } = useTranslation("project_detail");
 
   if (kev !== true) return null;
 
+  const due = dueDate ? dueDateStatus(dueDate, now) : null;
+  // Malformed date strings degrade to the pre-C3 badge (no SLA state).
+  const dueState = due && Number.isFinite(due.days) ? due.state : null;
+  const visuals = dueVisuals(dueState);
+
   const tooltip = dueDate
     ? t("vulnerabilities.kev.tooltip_with_due", { date: dueDate })
     : t("vulnerabilities.kev.tooltip");
+
+  let dueText: string | null = null;
+  if (showDueDate && dueDate) {
+    if (dueState === "overdue" && due) {
+      dueText = t("vulnerabilities.kev.due_overdue", {
+        days: Math.abs(due.days),
+      });
+    } else if (dueState === "imminent" && due) {
+      dueText =
+        due.days === 0
+          ? t("vulnerabilities.kev.due_today")
+          : t("vulnerabilities.kev.due_imminent", { days: due.days });
+    } else {
+      dueText = t("vulnerabilities.kev.due", { date: dueDate });
+    }
+  }
 
   return (
     <Badge
       tone="critical"
       data-testid="kev-badge"
       data-kev-due-date={dueDate ?? undefined}
+      data-due-state={dueState ?? undefined}
       title={tooltip}
-      className={cn("gap-1.5 font-semibold", className)}
+      className={cn("gap-1.5 font-semibold", visuals.badge, className)}
     >
       <span
         aria-hidden
-        className="inline-block h-1.5 w-1.5 rounded-full bg-risk-critical"
+        className={cn("inline-block h-1.5 w-1.5 rounded-full", visuals.dot)}
       />
       <span>{t("vulnerabilities.kev.label")}</span>
-      {showDueDate && dueDate ? (
+      {dueText != null ? (
         <span
           className="font-mono text-[10px] font-normal tabular-nums"
           data-testid="kev-badge-due-date"
         >
-          {t("vulnerabilities.kev.due", { date: dueDate })}
+          {dueText}
         </span>
       ) : null}
     </Badge>

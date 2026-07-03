@@ -36,7 +36,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
 from integrations.kev_feed import KevEntry, KevFeedUnavailable, parse_kev_catalog
-from models import Vulnerability
+from models import KevSyncState, Vulnerability
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
 FIXTURE_PATH = BACKEND_ROOT / "tests" / "fixtures" / "kev" / "cisa-kev-excerpt.json"
@@ -352,3 +352,130 @@ async def test_feed_unavailable_leaves_existing_flags_untouched(
     assert kev is True
     assert added == date(2021, 12, 10)
     assert due == date(2021, 12, 24)
+
+
+# ---------------------------------------------------------------------------
+# kev_sync_state status row (Phase C) — every tick UPSERTs the singleton row;
+# skips preserve last-success fields; a persist failure never reverts the
+# reconcile nor raises into the beat.
+# ---------------------------------------------------------------------------
+
+
+async def _read_sync_state(client: AsyncClient) -> KevSyncState | None:
+    factory = await _factory(client)
+    async with factory() as session:
+        row: KevSyncState | None = await session.get(KevSyncState, True)
+        return row
+
+
+async def test_sync_state_lifecycle_synced_then_skips_preserve_success(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Lifecycle sequence (hardening rule 5): synced tick → feed-outage skip
+    → disabled skip. The skips move only the attempt-side fields."""
+    from tasks import kev_catalog_refresh as task_module
+
+    monkeypatch.setenv("KEV_REFRESH_ENABLED", "true")
+    catalog = _fixture_catalog()
+    await _get_or_create_vuln(client, external_id=LOG4SHELL, severity="critical")
+
+    # (1) Synced tick — the row records the full reconcile summary.
+    summary = _run_with_catalog(monkeypatch, catalog)
+    assert summary["skipped"] is False, summary
+
+    row = await _read_sync_state(client)
+    assert row is not None
+    assert row.last_result == "synced"
+    assert row.skipped_reason is None
+    assert row.last_synced_at is not None
+    assert row.feed_count == 12
+    assert row.listed == summary["listed"]
+    assert row.delisted == summary["delisted"]
+    assert row.duration_ms is not None and row.duration_ms >= 0
+    synced_at = row.last_synced_at
+    synced_counters = (row.feed_count, row.listed, row.delisted, row.duration_ms)
+    attempt_after_sync = row.updated_at
+
+    # (2) Feed-outage skip — attempt side moves, success side frozen.
+    def _feed_down() -> dict[str, KevEntry]:
+        raise KevFeedUnavailable("simulated outage")
+
+    monkeypatch.setattr(task_module, "fetch_kev_catalog", _feed_down)
+    summary = task_module.refresh_kev_catalog.run()
+    assert summary["skipped_reason"] == "feed_unavailable"
+
+    row = await _read_sync_state(client)
+    assert row is not None
+    assert row.last_result == "skipped"
+    assert row.skipped_reason == "feed_unavailable"
+    assert row.last_synced_at == synced_at  # frozen
+    assert (row.feed_count, row.listed, row.delisted, row.duration_ms) == synced_counters
+    assert row.updated_at >= attempt_after_sync
+
+    # (3) Disabled skip — same preservation, different reason.
+    monkeypatch.setenv("KEV_REFRESH_ENABLED", "false")
+    summary = task_module.refresh_kev_catalog.run()
+    assert summary["skipped_reason"] == "disabled"
+
+    row = await _read_sync_state(client)
+    assert row is not None
+    assert row.last_result == "skipped"
+    assert row.skipped_reason == "disabled"
+    assert row.last_synced_at == synced_at
+    assert (row.feed_count, row.listed, row.delisted, row.duration_ms) == synced_counters
+
+
+async def test_sync_state_below_floor_records_reason(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("KEV_REFRESH_ENABLED", "true")
+    truncated = dict(list(_fixture_catalog().items())[:3])
+    summary = _run_with_catalog(monkeypatch, truncated, lower_floor=False)
+    assert summary["skipped_reason"] == "feed_below_sanity_floor"
+
+    row = await _read_sync_state(client)
+    assert row is not None
+    assert row.last_result == "skipped"
+    assert row.skipped_reason == "feed_below_sanity_floor"
+
+
+async def test_persist_failure_keeps_reconcile_and_returns_summary(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Best-effort contract: the status write blowing up must neither revert
+    the already-committed reconcile nor raise into the beat, and the stale
+    status row simply keeps its previous state."""
+    from tasks import kev_catalog_refresh as task_module
+
+    monkeypatch.setenv("KEV_REFRESH_ENABLED", "true")
+    catalog = _fixture_catalog()
+    # Seed a known pre-state for the status row (a disabled tick writes one).
+    monkeypatch.setenv("KEV_REFRESH_ENABLED", "false")
+    task_module.refresh_kev_catalog.run()
+    before = await _read_sync_state(client)
+    assert before is not None
+    before_attempt = before.updated_at
+    monkeypatch.setenv("KEV_REFRESH_ENABLED", "true")
+
+    log4shell_id = await _get_or_create_vuln(
+        client, external_id=LOG4SHELL, severity="critical"
+    )
+
+    def _persist_boom(summary: dict[str, Any]) -> None:
+        raise RuntimeError("status table unavailable")
+
+    monkeypatch.setattr(task_module, "_persist_sync_state", _persist_boom)
+    summary = _run_with_catalog(monkeypatch, catalog)
+
+    # Reconcile result intact — summary returned, vulnerabilities updated.
+    assert summary["skipped"] is False, summary
+    kev, added, due = await _read_kev_state(client, log4shell_id)
+    assert kev is True
+    assert added == date(2021, 12, 10)
+
+    # Status row untouched — still the pre-failure state.
+    after = await _read_sync_state(client)
+    assert after is not None
+    assert after.updated_at == before_attempt
+    assert after.last_result == "skipped"
+    assert after.skipped_reason == "disabled"

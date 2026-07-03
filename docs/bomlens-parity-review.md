@@ -23,7 +23,7 @@
 
 | # | 항목 | 우선순위 | 상태 | 근거 (BomLens ↔ TRUSCA) |
 |---|---|---|---|---|
-| 1 | CISA KEV 신호 표면화 + KEV→severity→EPSS 정렬 | P1 | **closed (#438, 2026-07-02)** | BomLens #203 미러. CISA 피드 일일 동기화(beat) + kev/kev_due_date 컬럼 + priority 기본 정렬 + KEV 뱃지. security-reviewer 2회전 APPROVE. 참고: KEV는 Trivy 출력에 없음(0.71.2 실측) — 피드 별도 동기화가 정답이었음. 후속: SLA 뱃지, admin/health 피드 상태 패널, KEV e2e |
+| 1 | CISA KEV 신호 표면화 + KEV→severity→EPSS 정렬 | P1 | **closed (#438, 2026-07-02)** | BomLens #203 미러. CISA 피드 일일 동기화(beat) + kev/kev_due_date 컬럼 + priority 기본 정렬 + KEV 뱃지. security-reviewer 2회전 APPROVE. 참고: KEV는 Trivy 출력에 없음(0.71.2 실측) — 피드 별도 동기화가 정답이었음. 후속(Phase C 진행 중): SLA 뱃지·admin/health 패널·KEV e2e |
 | 2 | AI SBOM(CycloneDX 1.7 ML-BOM) 수용 + G7 최소요소 적합성 검사 | P1 | **closed (#440·#441, 2026-07-02)** | BomLens 레지스트리(51요소/7클러스터) 벤더링 + Python 술어 포팅(정합 계약 3건), ingest 1.7 수용(Trivy 파싱 실측), 클러스터 패널(EN/KO)·e2e 4건·가이드 신설. security-reviewer 2회전 APPROVE. EU AI Act(8/2) 한 달 전 출시. 후속: G7 스크린샷 2장, persist NUL 세척 |
 | 3 | NOTICE 라이선스 전문 번들 + copyright 표시 | P1 | **closed (#443, 2026-07-03)** | 전문 32종 전수(BomLens 21 + SPDX 공식 11, 카탈로그 정합 계약 테스트) + 3포맷 License Texts 섹션 + copyright(SQL 클램프·레지스트리 URL 폴백). security-reviewer CHANGES REQUESTED(Medium 1 외 3) → 전건 반영 → PASS. license_text_inclusion_required 의무를 제품 스스로 충족 |
 | 4 | Maven/Gradle 직접/간접 의존성 오분류 검증 | P1 | **closed (#435, 2026-07-02)** | 검증 결과 결함 실재(방향은 반대): 빈 루트 `dependsOn` 시 고아 섬 폴백의 정렬순 시딩이 **간접→직접 오분류**. BomLens #285의 근본 원인(cdxgen 플래그)은 TRUSCA에 없음. 수정: 자식 선언한 루트만 신뢰 + in-degree-0 폴백 |
