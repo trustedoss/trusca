@@ -337,6 +337,9 @@
   "GET /v1/projects/{project_id}/vulnerability-report.pdf": [
     "project_id"
   ],
+  "GET /v1/projects/{project_id}/vulnerability-report.xlsx": [
+    "project_id"
+  ],
   "GET /v1/scans": [
     "page",
     "size",

@@ -483,7 +483,9 @@
       },
       "report_label": "보고서",
       "download_pdf": "PDF 보고서 다운로드",
-      "download_pdf_generating": "생성 중…"
+      "download_pdf_generating": "생성 중…",
+      "download_xlsx": "Excel 다운로드",
+      "download_xlsx_generating": "생성 중…"
     },
     "empty": {
       "title": "조건에 맞는 취약점이 없습니다",

@@ -52,3 +52,30 @@ export async function fetchVulnerabilityReportPdf(
   const blob = new Blob([response.data as Blob], { type: "application/pdf" });
   return { blob, filename: headerFilename ?? fallback };
 }
+
+const XLSX_MIME =
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+/**
+ * Fetch the vulnerability report as an Excel (.xlsx) workbook Blob (Phase G).
+ * Mirrors {@link fetchVulnerabilityReportPdf} — same axios blob wiring and
+ * Content-Disposition filename parsing, different endpoint + MIME type.
+ */
+export async function fetchVulnerabilityReportXlsx(
+  projectId: string,
+  projectName?: string | null,
+): Promise<VulnReportDownload> {
+  const response = await api.get<Blob>(
+    `/v1/projects/${projectId}/vulnerability-report.xlsx`,
+    { responseType: "blob" },
+  );
+  const headers = (response.headers ?? {}) as Record<string, string>;
+  const disposition =
+    headers["content-disposition"] ?? headers["Content-Disposition"] ?? "";
+  const headerFilename = parseContentDispositionFilename(disposition);
+  const fallback = `vulnerability-report-${safeFilenameToken(
+    projectName ?? projectId,
+  )}.xlsx`;
+  const blob = new Blob([response.data as Blob], { type: XLSX_MIME });
+  return { blob, filename: headerFilename ?? fallback };
+}

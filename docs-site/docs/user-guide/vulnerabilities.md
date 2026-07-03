@@ -364,22 +364,26 @@ The finding detail (`GET /v1/vulnerability_findings/{finding_id}`) carries an `u
 
 `reason` is `ok` (a version was computed), `no_fix_version`, `unparseable_version`, or `no_open_findings`; `recommended_version` is `null` for every value except `ok`.
 
-## Download a PDF report
+## Download a report (PDF or Excel)
 
-The portal renders a project-level **vulnerability PDF report** from the latest successful scan: a risk summary, the severity and license distribution, the vulnerabilities grouped by severity (with CVE id and CVSS), and the component list. It is generated on demand — there is no batch job to schedule.
+The portal renders a project-level **vulnerability report** from the latest successful scan: a risk summary, the severity and license distribution, the vulnerabilities (with CVE id, CVSS, EPSS, KEV state, and affected component), and the component list. It is generated on demand — there is no batch job to schedule. Two formats are offered: a **PDF** for reading / sharing, and an **Excel (`.xlsx`)** workbook (three sheets — Overview, Components, Vulnerabilities) for filtering and pivoting the data yourself.
 
 ### Download from the UI
 
 1. Open the project.
-2. Click the **Vulnerabilities** tab.
-3. Click **Download PDF report** in the toolbar (top right). The button shows **Generating…** while the document renders, then the download starts.
+2. Click the **Reports** tab.
+3. On the **Vulnerability report** card, click **Download PDF report** or **Download Excel**. The button shows **Generating…** while the document is built, then the download starts.
 
-The file name is `vulnerability-report-<project>.pdf`. Any inline error from the last attempt appears beside the button.
+The file name is `vulnerability-report-<project>.pdf` or `vulnerability-report-<project>.xlsx`. Any inline error from the last attempt appears beside the buttons, and each download is recorded in the Reports tab's export-history table.
+
+:::note Excel formula-injection safety
+Cell values sourced from scanned third-party metadata (component names, purls, CVE summaries) are neutralised before export: a value that begins with `=`, `+`, `-`, or `@` is written as literal text, so opening the workbook can never execute a package name as a spreadsheet formula.
+:::
 
 ### Download from the API
 
 <!-- docs-uat: id=vulns-report-pdf-api kind=api auth=admin url=/v1/projects/${PROJECT_ID}/vulnerability-report.pdf expect=status:200 retry=5x2s tier=nightly -->
-Fetch the same report over the API (returns the PDF bytes):
+Fetch the report over the API. The PDF endpoint returns the PDF bytes:
 
 <!-- docs-uat: id=vulns-api-report-pdf kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
@@ -388,7 +392,17 @@ curl -sS -L -OJ \
   "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/vulnerability-report.pdf"
 ```
 
-The response is `application/pdf` with `Content-Disposition: attachment` (the `-OJ` flags tell curl to save it under the server-supplied file name). The report always reflects the **latest succeeded** scan — pinning to a specific historical scan id is not supported in this release.
+<!-- docs-uat: id=vulns-report-xlsx-api kind=api auth=admin url=/v1/projects/${PROJECT_ID}/vulnerability-report.xlsx expect=status:200 retry=5x2s tier=nightly -->
+The Excel endpoint returns the `.xlsx` workbook bytes:
+
+<!-- docs-uat: id=vulns-api-report-xlsx kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
+```bash
+curl -sS -L -OJ \
+  -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+  "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/vulnerability-report.xlsx"
+```
+
+The PDF response is `application/pdf`; the Excel response is `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`. Both carry `Content-Disposition: attachment` (the `-OJ` flags tell curl to save under the server-supplied file name) and always reflect the **latest succeeded** scan — pinning to a specific historical scan id is not supported in this release.
 
 | Status | Meaning |
 |---|---|
