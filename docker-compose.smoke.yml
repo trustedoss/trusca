@@ -1,0 +1,35 @@
+# TRUSCA — release-gate smoke overlay.
+#
+# Layered ONLY over the production docker-compose.yml by the `release-gate` job
+# in .github/workflows/release.yml (BomLens parity backlog Phase I / P3-12). It
+# runs the PUBLISHED multi-arch ghcr images (resolved through ${IMAGE_TAG}) the
+# same way an operator would, but publishes the backend + frontend container
+# ports on the runner so the documented Quickstart smoke (health → login →
+# projects API, reused from install-uat.yml) can reach them WITHOUT Traefik, a
+# real DNS domain, or a Let's Encrypt certificate. Traefik is simply left out of
+# the `up` service list — nothing in the stack depends on it — so no edge/TLS is
+# needed to prove the images boot and serve a first scan.
+#
+# Compose V1 file format (CLAUDE.md core rule #10: `docker-compose`, hyphenated).
+# The published image tags stay pinned to the release version via ${IMAGE_TAG}
+# (rule #9: never `:latest`).
+#
+# NOT for production. Publishing the API/SPA ports bypasses the TLS edge; this
+# overlay exists only so CI can gate a release on the freshly published images
+# before the GitHub Release is flipped out of draft.
+#
+# Usage (see release.yml → release-gate):
+#   docker-compose -f docker-compose.yml -f docker-compose.smoke.yml \
+#     up -d postgres redis backend worker beat frontend
+
+services:
+  backend:
+    # Expose the API on the runner so the reused install-uat smoke can curl
+    # http://localhost:8000/health and /v1/* directly, instead of via Traefik.
+    ports:
+      - "8000:8000"
+  frontend:
+    # Expose the SPA so the frontend healthcheck / a browser smoke can reach
+    # http://localhost:8080 without the edge proxy.
+    ports:
+      - "8080:8080"

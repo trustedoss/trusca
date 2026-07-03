@@ -48,6 +48,7 @@ const sidebars: SidebarsConfig = {
         "contributor-guide/coding-standards",
         "contributor-guide/testing-guide",
         "contributor-guide/agent-team",
+        "contributor-guide/releasing",
       ],
     },
     {
