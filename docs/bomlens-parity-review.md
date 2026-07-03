@@ -34,7 +34,7 @@
 | 9 | 의존성 그래프 뷰 | P3 | in-progress (Phase H-1) | BomLens cytoscape 그래프+트리 재설계(#243) ↔ TRUSCA Components는 테이블+드로어만. H-1: `GET /projects/{id}/dependency-graph`(edge 테이블 직렬화, 노드 상한) + cytoscape+dagre FE 포팅 + Components 탭 테이블↔그래프 토글 |
 | 10 | 전역 검색(컴포넌트+CVE 크로스 프로젝트) | P3 | open | BomLens 상단바 전역 검색(#274) ↔ TRUSCA 없음 |
 | 11 | SCANOSS vendored OSS 식별 | P3 | open | BomLens 기본 탑재(#271) ↔ TRUSCA 없음. C/C++ 고객 요구 시 착수 |
-| 12 | 릴리즈 게이트 강화(published 이미지에서 first-scan 실증 후 publish) | P3 | open | BomLens #239/#241 draft→검증→publish ↔ TRUSCA release.yml에 이식 가치 |
+| 12 | 릴리즈 게이트 강화(published 이미지에서 first-scan 실증 후 publish) | P3 | in-progress (Phase I) | BomLens #239/#241 draft→검증→publish ↔ TRUSCA release.yml에 이식. Phase I: release.yml에 `release`(draft GitHub Release) + `release-gate`(발행 이미지 pull·compose 부팅·quickstart 스모크→`gh release edit --draft=false`) 잡, `docker-compose.smoke.yml` 오버레이, 기여자 가이드 releasing.md(EN/KO). 실검증은 다음 실릴리즈 v0.13.0 |
 | 13 | 바이너리/펌웨어/ROOTFS 스캔 | — | 역할경계 | BomLens 영역. "BomLens로 스캔 → TRUSCA ingest" 연계 문서화로 커버 권장 |
 | 14 | 데스크톱 앱, local-first, `--byte-stable`·cosign 서명 | — | 역할경계 | BomLens 정체성 영역 |
 

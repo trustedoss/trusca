@@ -252,3 +252,231 @@ jobs:
         env:
           REGISTRY_NAMESPACE: ${{ env.REGISTRY_NAMESPACE }}
           IMAGE: ${{ matrix.image.image }}
+
+  # ===========================================================================
+  # release — create the DRAFT GitHub Release (BomLens parity backlog Phase I /
+  # P3-12, step I1). Runs only after all three per-image manifest lists are
+  # published (needs: merge). We create the Release as a DRAFT here and only
+  # reveal it in `release-gate` once the published images are proven bootable.
+  #
+  # Ordering matters: the container images are published FIRST (build + merge),
+  # THEN the Release is drafted, THEN the images are exercised, THEN the Release
+  # is revealed. If anything downstream fails the Release stays a draft while the
+  # image tags remain pullable — see docs-site contributor-guide/releasing.md
+  # for the full failure semantics.
+  # ===========================================================================
+  release:
+    name: create draft GitHub Release
+    runs-on: ubuntu-22.04
+    needs: merge
+    # Least privilege: only this job (and release-gate) needs to write the
+    # Release. build / merge keep the top-level contents:read, packages:write.
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      version: ${{ steps.resolve.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve tag & version
+        id: resolve
+        run: |
+          set -euo pipefail
+          # On a tag push github.ref_name is the tag (vX.Y.Z); on a manual
+          # workflow_dispatch it is the branch, so fall back to the operator
+          # supplied `tag` input — the same source the merge job's semver
+          # patterns consume.
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          case "$TAG" in
+            v[0-9]*.[0-9]*.[0-9]*) : ;;
+            *) echo "::error::expected a vX.Y.Z tag, got '$TAG'"; exit 1 ;;
+          esac
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          # Strip the leading v — the image tags (merge job) and the compose
+          # ${IMAGE_TAG} are the bare X.Y.Z version.
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Create draft release (idempotent)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.resolve.outputs.tag }}
+          VERSION: ${{ steps.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          # Re-runs (a retried workflow) must not fail on an existing Release —
+          # leave whatever is there untouched (its draft state is managed by
+          # release-gate, not recreated here).
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG already exists — leaving it as-is"
+            exit 0
+          fi
+          # Prefer the curated per-version notes shipped in docs-site; fall back
+          # to GitHub's auto-generated notes (from merged PRs) when they are
+          # absent. Either way the Release is created as a DRAFT.
+          NOTES_FILE="docs-site/docs/release-notes/${VERSION}.md"
+          if [ -f "$NOTES_FILE" ]; then
+            echo "using curated release notes: $NOTES_FILE"
+            gh release create "$TAG" --draft --title "$TAG" --notes-file "$NOTES_FILE"
+          else
+            echo "no curated notes for $VERSION — auto-generating from history"
+            gh release create "$TAG" --draft --title "$TAG" --generate-notes
+          fi
+
+  # ===========================================================================
+  # release-gate — prove the PUBLISHED images before revealing the Release
+  # (Phase I / P3-12, steps I2 + I3). Pulls the three multi-arch images at the
+  # release version, boots the REAL production docker-compose.yml (published
+  # image set, no local build), and runs the documented Quickstart first-scan
+  # smoke reused from install-uat.yml — health poll → super_admin bootstrap →
+  # login → projects API. Only on success is the draft dropped.
+  #
+  # Reuse & parameterisation: this stands up the production compose stack with
+  # a tiny smoke overlay (docker-compose.smoke.yml) that publishes the backend
+  # + frontend ports so the install-uat smoke steps work without Traefik / DNS /
+  # TLS. The NEW work over install-uat's published-image-pull job is injecting
+  # the release version as ${IMAGE_TAG} (job env below) so the compose file
+  # resolves ghcr.io/trustedoss/trusca-*:X.Y.Z — the exact tags merge just
+  # pushed — rather than a hard-coded known-good tag.
+  # ===========================================================================
+  release-gate:
+    name: release-gate (published images first-scan smoke)
+    runs-on: ubuntu-22.04
+    needs: release
+    timeout-minutes: 40
+    # contents:write to reveal the Release; packages:read to pull the images.
+    permissions:
+      contents: write
+      packages: read
+    env:
+      # All docker-compose interpolation vars live at job scope so every step
+      # (pull / up / ps / logs / down) resolves the SAME published image set.
+      TAG: ${{ needs.release.outputs.tag }}
+      # ${IMAGE_TAG} is the bare X.Y.Z the merge job tagged the images with.
+      IMAGE_TAG: ${{ needs.release.outputs.version }}
+      IMAGE_REGISTRY: ghcr.io/trustedoss
+      # Traefik is not started, but DOMAIN / TLS_EMAIL / CORS are required for
+      # `docker-compose config` to interpolate the production file cleanly.
+      DOMAIN: localhost
+      TLS_EMAIL: release-gate@example.invalid
+      TRAEFIK_LOG_LEVEL: INFO
+      SECRET_KEY: release-gate-secret-key-32-characters-minimum
+      CORS_ALLOWED_ORIGINS: http://localhost:8080
+      POSTGRES_USER: trustedoss
+      POSTGRES_PASSWORD: trustedoss
+      POSTGRES_DB: trustedoss
+      DATABASE_URL: postgresql+asyncpg://trustedoss:trustedoss@postgres:5432/trustedoss
+      # Skip the ~600 MB Trivy DB download — the smoke proves the images boot
+      # and serve the API, not the vulnerability feed (covered elsewhere). The
+      # worker's health is a celery ping, independent of the DB bootstrap.
+      TRIVY_DB_BOOTSTRAP_ON_START: "false"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Project standard (CLAUDE.md rule #10): docker-compose V1. Ubuntu 22.04
+      # runners ship V2 only — install the pinned V1 release so the gate
+      # exercises the documented `docker-compose` (hyphenated) invocation.
+      - name: Install docker-compose V1
+        run: |
+          sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" \
+            -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+          docker-compose --version
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Pull the three first-party images at the release version, then boot the
+      # production stack (published images, no build) with the smoke overlay.
+      # Traefik is deliberately omitted from the service list. depends_on gates
+      # the order: backend waits for postgres+redis healthy, worker for backend
+      # (schema at HEAD via /health/ready + AUTO_MIGRATE=true), beat for worker.
+      - name: Pull & boot the published stack (no Traefik)
+        run: |
+          set -euo pipefail
+          echo "release-gate: booting ${IMAGE_REGISTRY}/trusca-*:${IMAGE_TAG}"
+          docker-compose -f docker-compose.yml -f docker-compose.smoke.yml pull backend worker frontend
+          docker-compose -f docker-compose.yml -f docker-compose.smoke.yml up -d \
+            postgres redis backend worker beat frontend
+
+      # Reused from install-uat.yml — the smoke overlay publishes backend :8000,
+      # so we poll the host port directly (production routes this via Traefik).
+      - name: Wait for backend health (host port 8000)
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8000/health >/dev/null 2>&1; then
+              echo "backend up"
+              curl -fsS http://localhost:8000/health
+              exit 0
+            fi
+            echo "waiting for backend ($i/30)"
+            sleep 6
+          done
+          echo "::error::published backend never came up"
+          docker-compose -f docker-compose.yml -f docker-compose.smoke.yml ps
+          docker-compose -f docker-compose.yml -f docker-compose.smoke.yml logs --tail=200
+          exit 1
+
+      # Bootstrap the first super_admin INSIDE the published image — the same
+      # entrypoint install.sh drives (scripts.create_super_admin). Schema is
+      # already at HEAD (backend auto-migrated on boot), so this just seeds the
+      # login used by the smoke below.
+      - name: Bootstrap super_admin in the published image
+        run: |
+          set -euo pipefail
+          docker-compose -f docker-compose.yml -f docker-compose.smoke.yml exec -T \
+            -e ADMIN_EMAIL="admin@release-gate.local" \
+            -e ADMIN_PASSWORD="ReleaseGatePassword123!" \
+            backend python -m scripts.create_super_admin
+          echo "super_admin bootstrapped in the published backend image"
+
+      # Reused from install-uat.yml — the documented Quickstart first-scan smoke:
+      # authenticate, then reach an authed domain endpoint. Proves the published
+      # image serves the real API, not just /health.
+      - name: Smoke — login + projects API (published image)
+        run: |
+          set -euo pipefail
+          # The auth router lives under /v1/auth (apps/backend/api/v1/auth.py).
+          # Fetch and parse as separate statements — piping curl straight into an
+          # interpreter trips semgrep gha-curl-pipe-shell (registry ERROR rule).
+          LOGIN_RESPONSE=$(curl -fsS -X POST http://localhost:8000/v1/auth/login \
+            -H "Content-Type: application/json" \
+            -d '{"email":"admin@release-gate.local","password":"ReleaseGatePassword123!"}')
+          TOKEN=$(printf '%s' "$LOGIN_RESPONSE" \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')
+          test -n "$TOKEN"
+          test "$TOKEN" != "null"
+          echo "got token (length=${#TOKEN})"
+          curl -fsS http://localhost:8000/v1/projects \
+            -H "Authorization: Bearer $TOKEN" >/dev/null
+          echo "projects endpoint reachable on the published image"
+
+      # SUCCESS PATH ONLY (no `if:` guard) — reached only when every step above
+      # passed. Drop the draft so the Release goes public and becomes `latest`.
+      # If any step failed this is skipped: the Release stays a draft while the
+      # image tags remain published & pullable (see releasing.md).
+      - name: Reveal the release (drop draft)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "first-scan smoke passed against ${IMAGE_REGISTRY}/trusca-*:${IMAGE_TAG} — publishing $TAG"
+          gh release edit "$TAG" --draft=false --latest
+
+      - name: Dump compose logs on failure
+        if: failure()
+        run: |
+          docker-compose -f docker-compose.yml -f docker-compose.smoke.yml ps || true
+          docker-compose -f docker-compose.yml -f docker-compose.smoke.yml logs --tail=300 || true
+
+      - name: Tear down
+        if: always()
+        run: |
+          docker-compose -f docker-compose.yml -f docker-compose.smoke.yml down -v || true
