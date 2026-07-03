@@ -205,6 +205,7 @@ async def _make_license(
     is_fsf_libre: bool = False,
     is_deprecated_license_id: bool = False,
     reference_url: str | None = None,
+    review_flag: str | None = None,
 ):
     from models import License as LicenseModel
 
@@ -217,6 +218,7 @@ async def _make_license(
         is_fsf_libre=is_fsf_libre,
         is_deprecated_license_id=is_deprecated_license_id,
         reference_url=reference_url,
+        review_flag=review_flag,
     )
     session.add(lic)
     await session.commit()
@@ -788,6 +790,7 @@ async def test_detail_returns_payload_with_meta_match_and_affected(
         is_osi_approved=True,
         is_fsf_libre=False,
         reference_url="https://example.com/license",
+        review_flag="behavioral_use",
     )
     raw = {"rule_name": "rule_x", "score": 0.97, "matched_text": "permission is granted"}
     finding = await _attach_license_finding(
@@ -812,6 +815,9 @@ async def test_detail_returns_payload_with_meta_match_and_affected(
     assert payload["is_osi_approved"] is True
     assert payload["is_fsf_libre"] is False
     assert payload["reference_url"] == "https://example.com/license"
+    # review_flag is exposed on the detail payload too (FE deep-link / reload:
+    # the drawer must render the AI flag without depending on the list page).
+    assert payload["review_flag"] == "behavioral_use"
     # raw_data passes through verbatim.
     assert payload["ort_match"] == raw
     # finding_kind reflects the row at finding.id, not the other cv.
@@ -845,6 +851,8 @@ async def test_detail_with_null_raw_data_returns_none_ort_match(
     )
     # Empty dict is falsy → None.
     assert payload["ort_match"] is None
+    # Ordinary license carries no AI review flag.
+    assert payload["review_flag"] is None
 
 
 @pytestmark_db

@@ -34,6 +34,12 @@ from pydantic import BaseModel, ConfigDict, Field
 LicenseCategory = Literal["allowed", "conditional", "forbidden", "unknown"]
 LicenseFindingKind = Literal["declared", "concluded", "detected"]
 
+# AI-relevant restriction class a human must review (Phase D). Mirrors
+# ``services.license_flags.REVIEW_FLAG_VALUES`` — the two are reconciled in
+# ``tests/unit/test_catalog_contracts.py`` (testing standard §2: same vocabulary
+# in ≥2 places ⇒ contract test). ``None`` on the wire means "not in scope".
+ReviewFlag = Literal["behavioral_use", "non_commercial"]
+
 
 # ---------------------------------------------------------------------------
 # List endpoint
@@ -80,6 +86,16 @@ class LicenseListItem(BaseModel):
     )
     is_osi_approved: bool = False
     is_fsf_libre: bool = False
+    review_flag: ReviewFlag | None = Field(
+        default=None,
+        description=(
+            "AI-relevant restriction class requiring human review "
+            "(behavioral_use = RAIL/Llama/Gemma/Falcon community licenses; "
+            "non_commercial = CC-BY-NC…). Null for ordinary OSS licenses. The "
+            "portal only surfaces the class; applicability is a human/legal "
+            "judgement."
+        ),
+    )
     sample_finding_id: uuid.UUID = Field(
         description=(
             "Finding row to pass to GET /v1/license_findings/{id} when the "
@@ -146,6 +162,16 @@ class LicenseDetailResponse(BaseModel):
     is_osi_approved: bool = False
     is_fsf_libre: bool = False
     is_deprecated_license_id: bool = False
+    review_flag: ReviewFlag | None = Field(
+        default=None,
+        description=(
+            "AI-relevant restriction class requiring human review "
+            "(behavioral_use = RAIL/Llama/Gemma/Falcon community licenses; "
+            "non_commercial = CC-BY-NC…). Null for ordinary OSS licenses. "
+            "Exposed on the detail payload too so the drawer renders the flag "
+            "on a direct load / deep link without depending on the list page."
+        ),
+    )
     reference_url: str | None = None
     finding_kind: LicenseFindingKind = Field(
         description="ORT classification kind on this specific finding row.",

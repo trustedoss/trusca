@@ -877,6 +877,11 @@ class License(Base):
     spdx_id: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     category: Mapped[str] = mapped_column(_license_category_enum(), nullable=False)
+    # AI-specific restriction class requiring human review (RAIL/OpenRAIL/Llama/
+    # Gemma community, CC-BY-NC…); classified from id/name by
+    # services.license_flags. NULL = not in scope. The tool only surfaces the
+    # class; applicability is a human/legal judgement.
+    review_flag: Mapped[str | None] = mapped_column(String(24), nullable=True)
     is_osi_approved: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )
@@ -898,7 +903,17 @@ class License(Base):
         back_populates="license", cascade="all, delete-orphan", passive_deletes=True
     )
 
-    __table_args__ = (Index("ix_licenses_category", "category"),)
+    __table_args__ = (
+        Index("ix_licenses_category", "category"),
+        # Flagged licenses are a small minority of the catalog, so a partial
+        # index over the non-NULL rows keeps the structure tiny while serving
+        # the "list AI-review-flagged licenses" query path.
+        Index(
+            "ix_licenses_review_flag",
+            "review_flag",
+            postgresql_where=text("review_flag IS NOT NULL"),
+        ),
+    )
 
 
 class LicenseFinding(Base):

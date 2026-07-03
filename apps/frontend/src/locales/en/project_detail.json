@@ -584,6 +584,10 @@
       "search_placeholder": "Search by SPDX ID or name",
       "filter_category": "Category",
       "filter_kind": "Kind",
+      "filter_review_flag": "Review flag",
+      "review_flag": {
+        "all": "All licenses"
+      },
       "sort_label": "Sort by",
       "sort": {
         "category": "Risk (forbidden first)",
@@ -594,6 +598,17 @@
       "order_label": "Order",
       "order_asc": "Ascending",
       "order_desc": "Descending"
+    },
+    "review": {
+      "badge_label": "Review needed",
+      "short": {
+        "behavioral_use": "Behavioral-use",
+        "non_commercial": "Non-commercial"
+      },
+      "description": {
+        "behavioral_use": "Behavioral-use restriction (RAIL/OpenRAIL and the Llama, Gemma, and Falcon community licenses). A human must review whether the use-based terms apply to your use.",
+        "non_commercial": "Non-commercial terms (CC-BY-NC and similar). A human must confirm the use qualifies as non-commercial or is otherwise permitted."
+      }
     },
     "kind": {
       "declared": "Declared",
@@ -644,6 +659,10 @@
         "osi_approved": "OSI Approved",
         "fsf_libre": "FSF Free/Libre",
         "deprecated": "Deprecated SPDX ID"
+      },
+      "review": {
+        "title": "AI review flag",
+        "disclaimer": "This flag surfaces the restriction class only. Whether it applies to your use is a human/legal judgement."
       },
       "reference_url_label": "Reference",
       "ort_match": {

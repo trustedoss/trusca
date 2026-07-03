@@ -23,6 +23,7 @@ import {
   type LicenseFindingKind,
   type LicenseListResponse,
   type LicenseSortKey,
+  type ReviewFlag,
   type SortOrder,
 } from "@/features/projects/api/licensesApi";
 
@@ -30,6 +31,8 @@ export interface LicensesQueryFilters {
   search: string;
   categories: LicenseCategoryName[];
   kinds: LicenseFindingKind[];
+  /** AI review-flag facet (Phase D). `undefined` → no review-flag filter. */
+  reviewFlag?: ReviewFlag;
   sort: LicenseSortKey;
   order: SortOrder;
   limit: number;
@@ -56,6 +59,7 @@ export function licensesKey(
       search: filters.search,
       categories: [...filters.categories].sort(),
       kinds: [...filters.kinds].sort(),
+      reviewFlag: filters.reviewFlag ?? null,
       sort: filters.sort,
       order: filters.order,
       limit: filters.limit,
@@ -79,6 +83,7 @@ export function useLicenses(
         search: filters.search.trim() || undefined,
         categories: filters.categories.length ? filters.categories : undefined,
         kinds: filters.kinds.length ? filters.kinds : undefined,
+        reviewFlag: filters.reviewFlag,
         sort: filters.sort,
         order: filters.order,
         scanId: filters.scanId,

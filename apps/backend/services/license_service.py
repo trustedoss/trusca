@@ -72,6 +72,7 @@ from models import (
 from models import (
     License as LicenseModel,
 )
+from services.license_flags import REVIEW_FLAG_VALUES
 from services.project_detail_service import _license_rank_case
 from services.project_service import ProjectError, ProjectForbidden, ProjectNotFound
 from services.scan_resolution import resolve_snapshot_scan_id
@@ -103,6 +104,11 @@ class LicenseFindingNotFound(LicenseError):
 # All license_category ENUM values for filter validation.
 _ALL_CATEGORY_VALUES: frozenset[str] = frozenset({"allowed", "conditional", "forbidden", "unknown"})
 _ALL_KIND_VALUES: frozenset[str] = frozenset({"declared", "concluded", "detected"})
+
+# Valid ``review_flag`` filter values (Phase D). Sourced from the classifier's
+# single source of truth so the filter can never accept a token the persistence
+# layer would never store.
+_REVIEW_FLAG_VALUES: frozenset[str] = frozenset(REVIEW_FLAG_VALUES)
 
 # Distribution buckets — always emitted (zero if absent) so the bar chart
 # renders a stable axis. Order is the UI's "worst first" presentation.
@@ -168,6 +174,7 @@ async def list_project_licenses(
     search: str | None = None,
     sort: str = "category",
     order: str = "desc",
+    review_flag: str | None = None,
     snapshot_scan_id: uuid.UUID | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, int], int]:
     """
@@ -261,6 +268,7 @@ async def list_project_licenses(
             LicenseModel.category.label("category"),
             LicenseModel.is_osi_approved.label("is_osi_approved"),
             LicenseModel.is_fsf_libre.label("is_fsf_libre"),
+            LicenseModel.review_flag.label("review_flag"),
             func.min(cast(LicenseFinding.kind, String)).label("kind"),
             # Postgres has no built-in `min(uuid)` operator class. Cast to text
             # for the aggregate (UUID strings sort lexicographically, which is
@@ -280,8 +288,19 @@ async def list_project_licenses(
             LicenseModel.category,
             LicenseModel.is_osi_approved,
             LicenseModel.is_fsf_libre,
+            LicenseModel.review_flag,
         )
     )
+
+    if review_flag is not None:
+        # Filter to a single AI review class (Phase D). Unknown values collapse
+        # the result to empty without a 422 — same tolerant posture as the
+        # category / kind filters above. The partial index ``ix_licenses_review_flag``
+        # (migration 0036) serves the non-NULL predicate.
+        if review_flag not in _REVIEW_FLAG_VALUES:
+            distribution = await _compute_distribution(session, scan_id)
+            return [], distribution, 0
+        base = base.where(LicenseModel.review_flag == review_flag)
 
     if category_filter:
         # Compare against text since `category` is a Postgres ENUM and bind
@@ -353,6 +372,7 @@ async def list_project_licenses(
                 "affected_count": int(r.affected_count),
                 "is_osi_approved": bool(r.is_osi_approved),
                 "is_fsf_libre": bool(r.is_fsf_libre),
+                "review_flag": r.review_flag,
                 "sample_finding_id": r.sample_finding_id,
             }
         )
@@ -468,6 +488,7 @@ async def get_license_finding_detail(
         "is_osi_approved": bool(lic.is_osi_approved),
         "is_fsf_libre": bool(lic.is_fsf_libre),
         "is_deprecated_license_id": bool(lic.is_deprecated_license_id),
+        "review_flag": lic.review_flag,
         "reference_url": lic.reference_url,
         "finding_kind": finding.kind,
         "ort_match": raw_match,

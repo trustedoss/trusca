@@ -407,6 +407,10 @@ function G7CheckRow({ check }: { check: SbomConformanceCheck }) {
   // G7 labels come from the backend registry (`g7_registry.json`); the FE
   // check_id mirror stays scoped to the 9 core format checks.
   const evidence = check.evidence ?? [];
+  // G7 v2 (#447 follow-up): warn rows on the models cluster carry the missing
+  // model names (offenders). Rendered as distinct-toned chips below any
+  // evidence so a reviewer sees exactly which models tripped the check.
+  const missing = check.missing ?? [];
   const guidance = G7_GUIDANCE[check.id];
 
   return (
@@ -439,6 +443,27 @@ function G7CheckRow({ check }: { check: SbomConformanceCheck }) {
               <li
                 key={item}
                 className="inline-flex max-w-full items-center truncate rounded-sm border border-border bg-muted px-1.5 py-0.5 font-mono text-[11px] text-foreground"
+              >
+                {item}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {missing.length > 0 ? (
+          <ul
+            className="mt-1 flex flex-wrap items-center gap-1"
+            data-testid={`check-${check.id}-missing`}
+          >
+            <li
+              className="text-[11px] font-medium uppercase tracking-wide text-risk-medium"
+              aria-hidden
+            >
+              {t("conformance.g7.missing_label")}
+            </li>
+            {missing.map((item) => (
+              <li
+                key={item}
+                className="inline-flex max-w-full items-center truncate rounded-sm border border-risk-medium/40 bg-risk-medium/10 px-1.5 py-0.5 font-mono text-[11px] text-foreground"
               >
                 {item}
               </li>

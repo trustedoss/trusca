@@ -24,11 +24,15 @@
  * `tests/unit/features/projects/vulnerabilityTransitions.test.ts`; here we
  * only add the label-map half (every state owns an EN + KO label).
  */
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import { NOTIFICATION_KINDS } from "@/features/notifications/api/notificationsApi";
 import { G7_CLUSTER_ORDER } from "@/features/scan/lib/g7Conformance";
 import { KNOWN_OBLIGATION_KINDS } from "@/features/projects/api/obligationsApi";
+import { REVIEW_FLAG_VALUES } from "@/features/projects/api/licensesApi";
 import { ALL_VULNERABILITY_STATUSES } from "@/features/projects/lib/vulnerabilityTransitions";
 import { visualFor } from "@/features/projects/components/ProjectStatusBadge";
 import {
@@ -279,6 +283,51 @@ describe("G7 clusters — FE mirror of services/g7_registry.json cluster order",
       }
     },
   );
+});
+
+describe("review flags — FE mirror of services/license_flags.REVIEW_FLAG_VALUES", () => {
+  // Phase D: the AI license review-flag vocabulary lives in the backend
+  // classifier (`services/license_flags.py::REVIEW_FLAG_VALUES`, the single
+  // source of truth), the schema Literal, the router regex — and here, the FE
+  // mirror that drives the review badge + the licenses filter select. Same
+  // latent-drift class as the G7 clusters (§2): a token added on one side
+  // without the other silently 422s a valid filter or advertises a value the
+  // persistence layer never stores. We read the backend source verbatim and
+  // extract the tuple so the guard can't drift out of sync with an import.
+  function backendReviewFlagValues(): string[] {
+    // Vitest root is apps/frontend, so the backend sits one level up. Reading
+    // the source verbatim keeps the guard from drifting via a stale import.
+    const src = readFileSync(
+      resolve(process.cwd(), "../backend/services/license_flags.py"),
+      "utf-8",
+    );
+    // Match `REVIEW_FLAG_VALUES: Final[tuple[str, str]] = ("a", "b")`.
+    const assignment = /REVIEW_FLAG_VALUES[^=]*=\s*\(([^)]*)\)/.exec(src);
+    if (!assignment) {
+      throw new Error("REVIEW_FLAG_VALUES tuple not found in license_flags.py");
+    }
+    return [...assignment[1].matchAll(/"([a-z_]+)"/g)].map((m) => m[1]);
+  }
+
+  it("REVIEW_FLAG_VALUES equals the backend classifier's tuple (set equality)", () => {
+    expect(new Set(REVIEW_FLAG_VALUES)).toEqual(
+      new Set(backendReviewFlagValues()),
+    );
+  });
+
+  it.each([
+    ["en", enProjectDetail],
+  ])("every flag owns a %s short + description label", (_locale, ns) => {
+    const short = labelMap(ns, "licenses", "review", "short");
+    const description = labelMap(ns, "licenses", "review", "description");
+    for (const flag of REVIEW_FLAG_VALUES) {
+      expect(short[flag], `licenses.review.short.${flag} missing`).toBeTruthy();
+      expect(
+        description[flag],
+        `licenses.review.description.${flag} missing`,
+      ).toBeTruthy();
+    }
+  });
 });
 
 describe("vulnerability statuses — label-map half of the 7-state mirror", () => {

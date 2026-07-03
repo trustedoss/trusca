@@ -321,6 +321,46 @@ describe("SbomConformancePanel", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("renders G7 missing offender chips only when the warn row carries them (#447 v2)", () => {
+    render(
+      <SbomConformancePanel
+        conformance={conformance({
+          checks: [
+            // models cluster warn row with missing model names (offenders).
+            g7Check({
+              id: "g7-model-hash-value",
+              label: "Model hash",
+              cluster: "models",
+              status: "warn",
+              source: "auto",
+              missing: ["gpt-oss-20b", "llama-3-8b"],
+            }),
+            // A satisfied row with no missing → no missing list.
+            g7Check({
+              id: "g7-model-license",
+              label: "Model license",
+              cluster: "models",
+              status: "pass",
+              evidence: ["Apache-2.0"],
+            }),
+          ],
+        })}
+      />,
+    );
+    const missing = screen.getByTestId("check-g7-model-hash-value-missing");
+    // The two offender names render as mono chips (plus the "Missing:" label li).
+    expect(missing.textContent).toContain("gpt-oss-20b");
+    expect(missing.textContent).toContain("llama-3-8b");
+    // The satisfied row has no missing block.
+    expect(
+      screen.queryByTestId("check-g7-model-license-missing"),
+    ).not.toBeInTheDocument();
+    // Evidence and missing are distinct surfaces on the same panel.
+    expect(
+      screen.getByTestId("check-g7-model-license-evidence").textContent,
+    ).toContain("Apache-2.0");
+  });
+
   it("renders an em-dash for a null coverage metric", () => {
     render(
       <SbomConformancePanel

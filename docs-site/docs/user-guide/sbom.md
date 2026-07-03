@@ -115,6 +115,9 @@ The file contains:
   *no-endorsement*) with a short description and a policy reference link.
 - A closing **License Texts** section with the full text of every license
   observed in the project.
+- A **License review needed** section listing any component whose license
+  carries an AI-specific restriction flag (behavioral-use or non-commercial);
+  see [AI license review flags](./components-and-licenses.md#ai-license-review-flags).
 
 ### Copyright lines
 

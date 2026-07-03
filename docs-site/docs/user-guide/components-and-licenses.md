@@ -103,6 +103,29 @@ The legal-tier classification (`forbidden` / `conditional` / `permissive` / `unk
 Classification uses exact-match SPDX IDs. Suffix-less variants (`LGPL-3.0` instead of `LGPL-3.0-or-later`) fall through to `unknown`. If a component shows `unknown` despite a well-known SPDX ID, the source likely emitted a deprecated alias. Fuzzy SPDX normalization is on the roadmap.
 :::
 
+## AI license review flags {#ai-license-review-flags}
+
+Some licenses restrict *how* you may use a component in ways the four-tier legal classification above does not capture — and that standard open-source compliance tooling often misses. TRUSCA surfaces two such restriction classes as an amber **Review needed** flag, shown next to the license tier badge and filterable on the Compliance tab.
+
+The flag is deliberately narrow. It marks only AI-relevant restrictions the tier model (`permissive` / `conditional` / `forbidden` / `unknown`) does not already express. Ordinary open-source licenses — MIT, Apache-2.0, the BSD family, GPL / LGPL — never carry it.
+
+| Flag (code value) | UI label | What it marks | Example licenses |
+|---|---|---|---|
+| `behavioral_use` | **Behavioral-use restriction** | The license forbids specific *uses* of the software or model — for example military, surveillance, or discriminatory applications — rather than restricting redistribution. | RAIL (Responsible AI License) and OpenRAIL variants; the Llama, Gemma, and Falcon community model licenses. |
+| `non_commercial` | **Non-commercial only** | The license permits research or personal use but forbids commercial use. | CC-BY-NC (Creative Commons Attribution-NonCommercial) and its ShareAlike / NoDerivatives variants; other non-commercial source-available terms. |
+
+:::note The flag reports existence, not applicability
+A **Review needed** flag tells you a restriction of that class exists in the license — not that your particular use violates it. Whether a behavioral-use clause or a non-commercial clause actually applies to how your project uses the component is a legal and business judgment a person makes, not the scanner. TRUSCA follows the principle behind the BomLens `license-flags.jq` rules and the OpenChain AI SBOM guidance: the tool flags the *class* of restriction; a human decides whether it applies.
+:::
+
+Behavioral-use and non-commercial restrictions travel with AI models and datasets far more than with conventional code, and they sit outside the redistribution-centric logic of the SPDX legal tiers — so a permissive-looking tier alone can hide them. The flag makes the restriction visible without adjudicating it.
+
+### Reading the flag
+
+- On the **Compliance** tab, a flagged license row shows an amber **Review needed** badge next to its tier badge. Narrow the table to just those rows with the **Review needed** filter, alongside the license-category multi-select.
+- The flag is advisory: it never blocks a build and never changes the legal tier. A component can be tier `permissive` and still carry a **Review needed** flag.
+- Flagged licenses also appear in a dedicated "License review needed" section of the generated NOTICE document — see [SBOM → NOTICE file](./sbom.md#notice-file).
+
 ## Declared vs. detected {#declared-vs-detected}
 
 Each license finding has a **kind** that tells you where the license came from. The kind shows as a provenance badge in the components table, the Licenses tab, and the component drawer, and you can filter the Licenses tab by it.

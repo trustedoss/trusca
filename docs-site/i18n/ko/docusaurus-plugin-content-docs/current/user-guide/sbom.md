@@ -111,6 +111,7 @@ Apache-2.0 §4(d)와 유사한 attribution 의무 이행을 위해 포털은 프
 - 검출된 라이선스별 섹션 하나씩 — 해당 라이선스의 컴포넌트(`name @ version`) 목록과 컴포넌트별 저작권 라인 포함.
 - 각 라이선스 섹션의 attribution 의무(예: *attribution*, *no-endorsement*)와 짧은 설명, 정책 참조 링크.
 - 문서 말미의 **License Texts** 섹션 — 프로젝트에 등장한 모든 라이선스의 전문 수록.
+- 라이선스에 AI 특화 제약 플래그(행동 사용 또는 비상업)가 붙은 컴포넌트를 나열하는 **License review needed** 섹션 — [AI 라이선스 검토 플래그](./components-and-licenses.md#ai-license-review-flags) 참고.
 
 ### 저작권 라인
 
