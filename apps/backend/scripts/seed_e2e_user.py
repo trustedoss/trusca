@@ -61,6 +61,31 @@ also flags a subset of the vulnerability-mode findings as CISA KEV entries:
     mirroring the ``--no-password`` precondition). Summary gains
     ``kev_count``.
 
+For Phase F (release-diff e2e — `project_diff.spec.ts`) the script optionally
+seeds a SECOND succeeded scan on the FIRST project so the diff endpoint
+(``GET /v1/projects/{id}/diff?base=<scan1>&target=<scan2>``) has a
+deterministic fixture:
+
+  * ``--scan-count N`` (default 1; only 1 or 2 are accepted, >2 is refused).
+    ``--scan-count 2`` implies ``--with-scan`` and requires
+    ``--component-count >= 4`` (so scan1 has a real "unchanged" pool). It does
+    NOT require ``--vulnerability-count`` — the diff's introduced/resolved rows
+    are seeded on dedicated delta components with unique CVEs, independent of
+    the ``--vulnerability-count`` mode.
+  * scan2 is scan1's snapshot cloned verbatim (every scan_component /
+    license_finding / vulnerability_finding replicated on the SAME
+    component_version + vulnerability, so shared ``(cve, version)`` keys cancel
+    as "unchanged"), then mutated by exactly three deltas: one removed
+    component (scan1-only, unique open CVE → resolved), one changed component
+    (present in both at version 1.0.0 → 2.0.0, no finding), and one added
+    component (scan2-only, unique open CVE → introduced). The diff therefore
+    reports exactly components added=1 / removed=1 / changed=1 and
+    vulnerabilities introduced=1 / resolved=1.
+  * scan2.created_at is strictly after scan1 and ``project.latest_scan_id`` is
+    promoted to scan2. Both scans stay ``succeeded`` + non-superseded so the
+    Releases tab lists exactly two releases. Summary gains ``second_scan_id``
+    (scan2's id); ``scan_ids[0]`` stays scan1 (the diff base).
+
 Why a Python script and not Node? psycopg / asyncpg + the SQLAlchemy
 factories (``tests._helpers``) are already available in this repo. Pulling
 ``pg`` into the frontend package just to seed a few rows would balloon the
@@ -82,6 +107,11 @@ Usage:
         --project-names ci-vulns \\
         --with-scan \\
         --vulnerability-count 44
+
+    python3 apps/backend/scripts/seed_e2e_user.py \\
+        --project-names ci-diff \\
+        --scan-count 2 \\
+        --component-count 6
 
 Output (stdout, single JSON line):
 
@@ -422,6 +452,22 @@ def _parse_args() -> argparse.Namespace:
         help=(
             "Seed a `succeeded` scan per project and wire it as "
             "project.latest_scan_id. Required when --component-count > 0."
+        ),
+    )
+    parser.add_argument(
+        "--scan-count",
+        type=int,
+        default=1,
+        help=(
+            "Phase F release-diff e2e. Number of succeeded scans to seed on the "
+            "FIRST project. Accepts 1 (default) or 2; any other value is "
+            "refused. --scan-count 2 implies --with-scan and requires "
+            "--component-count >= 4 (so scan1 has an 'unchanged' pool). It "
+            "seeds a second succeeded scan (scan2) whose snapshot differs from "
+            "scan1 by exactly one added / removed / changed component and one "
+            "introduced / resolved vulnerability, promotes project.latest_scan_id "
+            "to scan2, and emits scan2's id as `second_scan_id`. `scan_ids[0]` "
+            "stays scan1 (the diff base)."
         ),
     )
     parser.add_argument(
@@ -793,6 +839,7 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
     email: str | None,
     password: str | None,
     with_scan: bool,
+    scan_count: int = 1,
     with_sbom: bool = False,
     with_g7: bool = False,
     component_count: int,
@@ -841,6 +888,25 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
             f"--kev-count ({kev_count}) cannot exceed "
             f"--vulnerability-count ({vulnerability_count})."
         )
+    # Phase F — release-diff fixture. Only 1 or 2 scans are supported; a larger
+    # count has no defined delta semantics, so refuse it loudly (same
+    # fail-early pattern as the guards above). --scan-count 2 needs a real
+    # "unchanged" component pool on scan1 to distinguish unchanged from
+    # added/removed/changed, hence the --component-count floor.
+    if scan_count not in (1, 2):
+        raise ValueError(
+            f"--scan-count must be 1 or 2 (got {scan_count}); values > 2 have "
+            "no defined diff-delta semantics."
+        )
+    if scan_count == 2:
+        # Implies --with-scan (we need scan1 to anchor + clone from).
+        with_scan = True
+        if component_count < 4:
+            raise ValueError(
+                "--scan-count 2 requires --component-count >= 4 so scan1 has an "
+                "'unchanged' component pool alongside the removed/changed/added "
+                f"deltas (got --component-count {component_count})."
+            )
     # Validate the spread up front (ValueError on unknown tokens) so a typo
     # is a clean exit-2, not a mid-transaction surprise.
     kev_spread_tokens = _parse_kev_due_spread(kev_due_spread)
@@ -1463,6 +1529,308 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                 await session.commit()
                 seeded_vulnerabilities = vulnerability_count
 
+            # ── Phase F — second succeeded scan for the release-diff e2e ─────
+            # When --scan-count 2, seed a SECOND succeeded scan (scan2) on the
+            # FIRST project whose snapshot differs from scan1 by exactly one
+            # added / removed / changed component and one introduced / resolved
+            # vulnerability. Runs AFTER the component + vulnerability blocks so
+            # they anchor on scan1 (project.latest_scan_id) before scan2 exists.
+            #
+            # Strategy: clone scan1's snapshot into scan2 (every scan_component /
+            # license_finding / vulnerability_finding replicated on the SAME
+            # component_version + vulnerability, so shared (cve, version) keys
+            # cancel and read as "unchanged"), then apply three dedicated deltas:
+            #   R (removed)  — a scan1-only component with a UNIQUE open CVE
+            #                  → components.removed +1, vulnerabilities.resolved +1
+            #   C (changed)  — a component in BOTH scans at a different version
+            #                  (1.0.0 → 2.0.0), no finding → components.changed +1
+            #   A (added)    — a scan2-only component with a UNIQUE open CVE
+            #                  → components.added +1, vulnerabilities.introduced +1
+            # Dedicated CVEs (not the round-robin shared ones) guarantee the
+            # (cve, version) dedupe in project_diff_service cannot let a shared
+            # key mask the intended resolved/introduced.
+            second_scan_id: str | None = None
+            if scan_count == 2 and project_rows:
+                from sqlalchemy import select as _select
+
+                diff_project = project_rows[0]
+                scan1_id = diff_project.latest_scan_id
+                assert scan1_id is not None  # scan_count==2 forces with_scan
+
+                scan1_row = (
+                    await session.execute(_select(Scan).where(Scan.id == scan1_id))
+                ).scalar_one()
+                base_ts = scan1_row.created_at
+
+                # Dedicated license shared by the three delta components — kept
+                # out of the round-robin catalog so its category is stable.
+                diff_license = License(
+                    spdx_id=f"E2E-DIFF-{suffix}",
+                    name="E2E Diff License",
+                    category="allowed",
+                )
+                session.add(diff_license)
+                await session.flush()
+
+                # R — scan1-only "removed" component carrying a unique OPEN CVE.
+                r_component = Component(
+                    purl=f"pkg:npm/e2e-diff-removed-{suffix}",
+                    package_type="npm",
+                    name=f"e2e-diff-removed-{suffix}",
+                )
+                session.add(r_component)
+                await session.flush()
+                r_cv = ComponentVersion(
+                    component_id=r_component.id,
+                    version="1.0.0",
+                    purl_with_version=f"pkg:npm/e2e-diff-removed-{suffix}@1.0.0",
+                )
+                session.add(r_cv)
+                await session.flush()
+                session.add(
+                    ScanComponent(
+                        scan_id=scan1_id,
+                        component_version_id=r_cv.id,
+                        direct=True,
+                        raw_data={"diff_role": "removed"},
+                    )
+                )
+                session.add(
+                    LicenseFinding(
+                        scan_id=scan1_id,
+                        component_version_id=r_cv.id,
+                        license_id=diff_license.id,
+                        kind="concluded",
+                        source_path="diff/removed",
+                    )
+                )
+                r_vuln = Vulnerability(
+                    external_id=f"CVE-2099-DIFFRES-{suffix}",
+                    source="NVD",
+                    severity="high",
+                    summary="e2e diff — resolved-on-target CVE",
+                )
+                session.add(r_vuln)
+                await session.flush()
+                session.add(
+                    VulnerabilityFinding(
+                        scan_id=scan1_id,
+                        component_version_id=r_cv.id,
+                        vulnerability_id=r_vuln.id,
+                        status="new",
+                        analysis_state="new",
+                    )
+                )
+
+                # C — "changed" component: scan1 side at version 1.0.0, no CVE.
+                c_component = Component(
+                    purl=f"pkg:npm/e2e-diff-changed-{suffix}",
+                    package_type="npm",
+                    name=f"e2e-diff-changed-{suffix}",
+                )
+                session.add(c_component)
+                await session.flush()
+                c_cv_base = ComponentVersion(
+                    component_id=c_component.id,
+                    version="1.0.0",
+                    purl_with_version=f"pkg:npm/e2e-diff-changed-{suffix}@1.0.0",
+                )
+                session.add(c_cv_base)
+                await session.flush()
+                session.add(
+                    ScanComponent(
+                        scan_id=scan1_id,
+                        component_version_id=c_cv_base.id,
+                        direct=True,
+                        raw_data={"diff_role": "changed_base"},
+                    )
+                )
+                session.add(
+                    LicenseFinding(
+                        scan_id=scan1_id,
+                        component_version_id=c_cv_base.id,
+                        license_id=diff_license.id,
+                        kind="concluded",
+                        source_path="diff/changed",
+                    )
+                )
+                await session.commit()
+
+                # scan2 — created strictly after scan1 (created_at + 1 min) so
+                # the Releases table (created_at DESC) lists it first and the
+                # diff base→target direction is deterministic.
+                scan2 = Scan(
+                    project_id=diff_project.id,
+                    kind="source",
+                    status="succeeded",
+                    progress_percent=100,
+                    started_at=base_ts + timedelta(minutes=1),
+                    completed_at=base_ts + timedelta(minutes=1),
+                    created_at=base_ts + timedelta(minutes=1),
+                    scan_metadata={"seeded": True, "diff_target": True},
+                )
+                session.add(scan2)
+                await session.flush()
+
+                # Clone scan1's snapshot into scan2 as "unchanged", EXCLUDING R
+                # (removed) and C-base (its version changes on the target side).
+                excluded_cv_ids = {r_cv.id, c_cv_base.id}
+                scan1_scs = (
+                    (
+                        await session.execute(
+                            _select(ScanComponent).where(
+                                ScanComponent.scan_id == scan1_id
+                            )
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                cloned_cv_ids = {
+                    sc.component_version_id
+                    for sc in scan1_scs
+                    if sc.component_version_id not in excluded_cv_ids
+                }
+                for sc in scan1_scs:
+                    if sc.component_version_id in excluded_cv_ids:
+                        continue
+                    session.add(
+                        ScanComponent(
+                            scan_id=scan2.id,
+                            component_version_id=sc.component_version_id,
+                            direct=sc.direct,
+                            raw_data=dict(sc.raw_data or {}),
+                        )
+                    )
+                scan1_lfs = (
+                    (
+                        await session.execute(
+                            _select(LicenseFinding).where(
+                                LicenseFinding.scan_id == scan1_id
+                            )
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                for lf in scan1_lfs:
+                    if lf.component_version_id in cloned_cv_ids:
+                        session.add(
+                            LicenseFinding(
+                                scan_id=scan2.id,
+                                component_version_id=lf.component_version_id,
+                                license_id=lf.license_id,
+                                kind=lf.kind,
+                                source_path=lf.source_path,
+                            )
+                        )
+                scan1_vfs = (
+                    (
+                        await session.execute(
+                            _select(VulnerabilityFinding).where(
+                                VulnerabilityFinding.scan_id == scan1_id
+                            )
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                for vf in scan1_vfs:
+                    if vf.component_version_id in cloned_cv_ids:
+                        session.add(
+                            VulnerabilityFinding(
+                                scan_id=scan2.id,
+                                component_version_id=vf.component_version_id,
+                                vulnerability_id=vf.vulnerability_id,
+                                status=vf.status,
+                                analysis_state=vf.analysis_state,
+                            )
+                        )
+
+                # C — scan2 side at a NEW version 2.0.0 (same package) → changed.
+                c_cv_target = ComponentVersion(
+                    component_id=c_component.id,
+                    version="2.0.0",
+                    purl_with_version=f"pkg:npm/e2e-diff-changed-{suffix}@2.0.0",
+                )
+                session.add(c_cv_target)
+                await session.flush()
+                session.add(
+                    ScanComponent(
+                        scan_id=scan2.id,
+                        component_version_id=c_cv_target.id,
+                        direct=True,
+                        raw_data={"diff_role": "changed_target"},
+                    )
+                )
+                session.add(
+                    LicenseFinding(
+                        scan_id=scan2.id,
+                        component_version_id=c_cv_target.id,
+                        license_id=diff_license.id,
+                        kind="concluded",
+                        source_path="diff/changed",
+                    )
+                )
+
+                # A — scan2-only "added" component carrying a unique OPEN CVE.
+                a_component = Component(
+                    purl=f"pkg:npm/e2e-diff-added-{suffix}",
+                    package_type="npm",
+                    name=f"e2e-diff-added-{suffix}",
+                )
+                session.add(a_component)
+                await session.flush()
+                a_cv = ComponentVersion(
+                    component_id=a_component.id,
+                    version="1.0.0",
+                    purl_with_version=f"pkg:npm/e2e-diff-added-{suffix}@1.0.0",
+                )
+                session.add(a_cv)
+                await session.flush()
+                session.add(
+                    ScanComponent(
+                        scan_id=scan2.id,
+                        component_version_id=a_cv.id,
+                        direct=True,
+                        raw_data={"diff_role": "added"},
+                    )
+                )
+                session.add(
+                    LicenseFinding(
+                        scan_id=scan2.id,
+                        component_version_id=a_cv.id,
+                        license_id=diff_license.id,
+                        kind="concluded",
+                        source_path="diff/added",
+                    )
+                )
+                a_vuln = Vulnerability(
+                    external_id=f"CVE-2099-DIFFINT-{suffix}",
+                    source="NVD",
+                    severity="critical",
+                    summary="e2e diff — introduced-on-target CVE",
+                )
+                session.add(a_vuln)
+                await session.flush()
+                session.add(
+                    VulnerabilityFinding(
+                        scan_id=scan2.id,
+                        component_version_id=a_cv.id,
+                        vulnerability_id=a_vuln.id,
+                        status="new",
+                        analysis_state="new",
+                    )
+                )
+                await session.commit()
+
+                # Promote scan2 to the project's latest snapshot (its created_at
+                # is already the newest, so current-state readers follow it).
+                diff_project.latest_scan_id = scan2.id
+                diff_project.updated_at = base_ts + timedelta(minutes=2)
+                await session.commit()
+                second_scan_id = str(scan2.id)
+
             return {
                 "email": user.email,
                 "password": chosen_password,
@@ -1473,6 +1841,7 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                 "project_names": project_names,
                 "project_ids": project_ids,
                 "scan_ids": scan_ids,
+                "second_scan_id": second_scan_id,
                 "sbom_scan_id": sbom_scan_id,
                 "g7_check_count": g7_check_count,
                 "component_count": seeded_components,
@@ -1551,6 +1920,7 @@ def main() -> int:
                 email=args.email,
                 password=args.password,
                 with_scan=args.with_scan,
+                scan_count=args.scan_count,
                 with_sbom=args.with_sbom,
                 with_g7=args.with_g7,
                 component_count=args.component_count,
