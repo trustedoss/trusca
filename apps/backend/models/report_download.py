@@ -98,7 +98,7 @@ NOW = text("now()")
 # Closed report-type set — encoded as a Postgres native ENUM. The migration
 # (0025) owns ``CREATE TYPE``; here we bind with ``create_type=False`` so
 # SQLAlchemy never emits its own.
-REPORT_TYPE_VALUES = ("notice", "sbom", "vuln_pdf", "vex_export")
+REPORT_TYPE_VALUES = ("notice", "sbom", "vuln_pdf", "vex_export", "vuln_xlsx")
 
 
 def _report_type_enum() -> PG_ENUM:

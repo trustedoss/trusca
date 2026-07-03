@@ -473,6 +473,31 @@ async def test_vuln_pdf_endpoint_emits_one_row(client: AsyncClient) -> None:
     assert row.size_bytes is not None and row.size_bytes > 0
 
 
+async def test_vuln_xlsx_endpoint_emits_one_row(client: AsyncClient) -> None:
+    """Phase G: the Excel download records exactly one ``vuln_xlsx`` history row.
+
+    No weasyprint gate — openpyxl is a hard dependency, so this always runs and
+    proves both the enum value (mig 0037) and the download-history wiring.
+    """
+    _, user, project = await _seed(client)
+    headers = _bearer_for(user)
+
+    response = await client.get(
+        f"/v1/projects/{project.id}/vulnerability-report.xlsx",
+        headers=headers,
+    )
+    assert response.status_code == 200, response.text
+
+    rows = await _fetch_rows(client, project_id=project.id)
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.report_type == "vuln_xlsx"
+    assert row.format == "xlsx"
+    assert row.team_id == project.team_id
+    assert row.user_id == user.id
+    assert row.size_bytes is not None and row.size_bytes > 0
+
+
 # ---------------------------------------------------------------------------
 # Negative coverage — failed export must not emit; VEX import never emits
 # ---------------------------------------------------------------------------

@@ -71,6 +71,7 @@ from services.report_service import (
     build_report_html,
     render_report_pdf,
 )
+from services.report_xlsx_service import XLSX_MIME, build_report_xlsx
 from services.scan_resolution import latest_succeeded_scan_id
 from services.vulnerability_service import list_project_vulnerabilities
 
@@ -100,16 +101,17 @@ def _safe_filename_token(name: str) -> str:
     return token or "project"
 
 
-def _format_content_disposition(project_name: str) -> str:
-    """Build an RFC 6266 ``Content-Disposition: attachment`` value for the PDF.
+def _format_content_disposition(project_name: str, *, ext: str = "pdf") -> str:
+    """Build an RFC 6266 ``Content-Disposition: attachment`` value.
 
     Emits both the ASCII ``filename=`` fallback and the UTF-8
     ``filename*=UTF-8''…`` extended parameter, exactly like the NOTICE
-    endpoint. Filename shape: ``vulnerability-report-<name>.pdf``.
+    endpoint. Filename shape: ``vulnerability-report-<name>.<ext>`` (``ext`` is
+    ``pdf`` for the PDF endpoint, ``xlsx`` for the Excel endpoint).
     """
     token = _safe_filename_token(project_name)
-    ascii_filename = f"vulnerability-report-{token}.pdf"
-    utf8_full = f"vulnerability-report-{project_name}.pdf"
+    ascii_filename = f"vulnerability-report-{token}.{ext}"
+    utf8_full = f"vulnerability-report-{project_name}.{ext}"
     utf8_encoded = urllib.parse.quote(utf8_full, safe="")
     return f'attachment; filename="{ascii_filename}"; filename*=UTF-8\'\'{utf8_encoded}'
 
@@ -282,6 +284,125 @@ async def get_vulnerability_report_pdf_endpoint(
         content=pdf_bytes,
         status_code=status.HTTP_200_OK,
         media_type="application/pdf",
+        headers=headers,
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/projects/{project_id}/vulnerability-report.xlsx — Phase G (P3-8)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/projects/{project_id}/vulnerability-report.xlsx",
+    summary="Download a vulnerability Excel (.xlsx) report for the project's latest scan",
+    response_class=Response,
+    responses={
+        200: {
+            "description": "XLSX report download",
+            "content": {XLSX_MIME: {}},
+        },
+        401: {"description": "Authentication required"},
+        404: {"description": "Project not found or not accessible"},
+    },
+)
+async def get_vulnerability_report_xlsx_endpoint(
+    request: Request,
+    project_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_role("developer")),
+) -> Response:
+    # Same IDOR / existence-hide posture as the PDF endpoint above.
+    try:
+        project = await get_project(session, project_id=project_id, actor=actor)
+    except (ProjectNotFound, ProjectForbidden) as exc:
+        return _problem_for_project_error(request, exc)
+    except ProjectError as exc:  # pragma: no cover - defensive catch-all
+        return _problem_for_project_error(request, exc)
+
+    assert_team_access(
+        actor,
+        project.team_id,
+        log=log,
+        resource="vulnerability_report_xlsx",
+        resource_id=str(project_id),
+        deny=lambda: ProjectForbidden(f"actor is not a member of team {project.team_id}"),
+    )
+
+    # Reuse the SAME read services the PDF path uses — no duplicate queries.
+    overview = await get_project_overview(session, project_id=project_id, actor=actor)
+    components, components_total = await list_components_for_project(
+        session,
+        project_id=project_id,
+        actor=actor,
+        limit=_REPORT_ROW_LIMIT,
+        offset=0,
+        sort="severity",
+        order="desc",
+    )
+    vulnerabilities, vulnerabilities_total, _ = await list_project_vulnerabilities(
+        session,
+        project_id=project_id,
+        actor=actor,
+        limit=_REPORT_ROW_LIMIT,
+        offset=0,
+        sort="severity",
+        order="desc",
+    )
+
+    # Skip the build if the caller already went away (mirrors the PDF path).
+    if await request.is_disconnected():
+        log.info("report.client_disconnected_before_render", project_id=str(project_id))
+        return Response(status_code=499)
+
+    # build_report_xlsx is pure CPU (openpyxl) and synchronous; offload to the
+    # threadpool so the event loop stays free under load, like render_report_pdf.
+    xlsx_bytes = await run_in_threadpool(
+        lambda: build_report_xlsx(
+            project_name=overview["project_name"],
+            generated_at=datetime.now(tz=UTC),
+            risk_score=overview["risk_score"],
+            total_components=overview["total_components"],
+            severity_distribution=overview["severity_distribution"],
+            license_distribution=overview["license_distribution"],
+            components=components,
+            vulnerabilities=vulnerabilities,
+            components_total=components_total,
+            vulnerabilities_total=vulnerabilities_total,
+        )
+    )
+
+    log.info(
+        "report.generated",
+        project_id=str(project_id),
+        report_type="vuln_xlsx",
+        component_count=components_total,
+        vulnerability_count=vulnerabilities_total,
+        xlsx_bytes=len(xlsx_bytes),
+    )
+
+    # Reports-center history row (best-effort; never 5xx a succeeded download).
+    resolved_scan_id = await latest_succeeded_scan_id(session, project_id)
+    await record_report_download(
+        session,
+        project=project,
+        scan_id=resolved_scan_id,
+        user=actor,
+        report_type="vuln_xlsx",
+        fmt="xlsx",
+        size_bytes=len(xlsx_bytes),
+        request=request,
+    )
+
+    headers = {
+        "content-disposition": _format_content_disposition(
+            overview["project_name"], ext="xlsx"
+        ),
+    }
+    return Response(
+        content=xlsx_bytes,
+        status_code=status.HTTP_200_OK,
+        media_type=XLSX_MIME,
         headers=headers,
     )
 

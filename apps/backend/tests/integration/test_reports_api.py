@@ -232,3 +232,62 @@ async def test_report_super_admin_bypasses_team_check(client: AsyncClient) -> No
     )
     assert response.status_code == 200, response.text
     assert response.content.startswith(b"%PDF")
+
+
+# ---------------------------------------------------------------------------
+# XLSX endpoint (Phase G). No weasyprint gate — openpyxl is a hard dependency,
+# so the happy path runs unconditionally (unlike the PDF path above).
+# ---------------------------------------------------------------------------
+
+_XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+async def test_xlsx_happy_path_returns_workbook(client: AsyncClient) -> None:
+    _, user, project = await _seed(client)
+    headers = _bearer_for(user)
+
+    response = await client.get(
+        f"/v1/projects/{project.id}/vulnerability-report.xlsx",
+        headers=headers,
+    )
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"].startswith(_XLSX_MIME)
+    # xlsx is a ZIP container — magic bytes ``PK``.
+    assert response.content.startswith(b"PK")
+    cd = response.headers["content-disposition"]
+    assert cd.startswith("attachment;")
+    assert "vulnerability-report-" in cd
+    assert ".xlsx" in cd
+
+
+async def test_xlsx_without_auth_returns_401(client: AsyncClient) -> None:
+    _, _, project = await _seed(client)
+    response = await client.get(f"/v1/projects/{project.id}/vulnerability-report.xlsx")
+    assert response.status_code == 401
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_xlsx_other_team_returns_404_existence_hide(client: AsyncClient) -> None:
+    _, _, project = await _seed(client)
+    _, outsider, _ = await _seed(client)
+    headers = _bearer_for(outsider)
+
+    response = await client.get(
+        f"/v1/projects/{project.id}/vulnerability-report.xlsx",
+        headers=headers,
+    )
+    assert response.status_code == 404
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_xlsx_super_admin_bypasses_team_check(client: AsyncClient) -> None:
+    _, _, target_project = await _seed(client)
+    _, admin, _ = await _seed(client, is_superuser=True)
+    headers = _bearer_for(admin)
+
+    response = await client.get(
+        f"/v1/projects/{target_project.id}/vulnerability-report.xlsx",
+        headers=headers,
+    )
+    assert response.status_code == 200, response.text
+    assert response.content.startswith(b"PK")

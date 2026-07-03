@@ -97,3 +97,10 @@ aiosmtplib==3.0.2
 # returns `b'%PDF'`. Re-verify the render on every future bump of either pin.
 weasyprint==68.0
 pydyf==0.12.1
+
+# openpyxl — XLSX vulnerability-report export (Phase G, api/v1/reports.py
+# vulnerability-report.xlsx). Pure-Python (no native deps), so it installs in
+# every image; the build itself runs in the API endpoint via run_in_threadpool,
+# like the weasyprint PDF path. Pinned to the current latest stable (3.1.5,
+# 2024-06). No known CVEs at pin time; re-verify on bump.
+openpyxl==3.1.5

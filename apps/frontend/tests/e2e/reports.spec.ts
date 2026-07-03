@@ -111,4 +111,32 @@ test.describe("@reports project reports tab", () => {
     // Staying on the Reports tab — no navigation happened.
     expect(new URL(page.url()).searchParams.get("tab")).toBe("reports");
   });
+
+  test("S2) the vulnerability card downloads an .xlsx workbook (Phase G)", async ({
+    page,
+  }, testInfo) => {
+    const seed = await bootstrap(testInfo, page);
+    if (seed === null) return;
+
+    const portal = new PortalPage(page);
+    await portal.gotoProjects();
+    await portal.openProjectDetail(PROJECT_NAME);
+    await portal.selectReportsTab();
+
+    // The vulnerability card exposes both a PDF and an Excel download button.
+    await expect(page.getByTestId("reports-card-vuln-pdf-download")).toBeVisible();
+    const xlsxButton = page.getByTestId("reports-card-vuln-xlsx-download");
+    await expect(xlsxButton).toBeVisible();
+
+    // Clicking Excel yields a vulnerability-report-*.xlsx download. openpyxl is
+    // a hard dependency (no native libs like weasyprint), so this always works
+    // — unlike the PDF path which can no-op on a pip-only image.
+    const [download] = await Promise.all([
+      page.waitForEvent("download"),
+      xlsxButton.click(),
+    ]);
+    expect(download.suggestedFilename()).toMatch(/^vulnerability-report-.*\.xlsx$/);
+    // No navigation — the download happens in place on the Reports tab.
+    expect(new URL(page.url()).searchParams.get("tab")).toBe("reports");
+  });
 });

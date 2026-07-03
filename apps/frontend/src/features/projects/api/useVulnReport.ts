@@ -13,6 +13,7 @@ import { useCallback, useState } from "react";
 
 import {
   fetchVulnerabilityReportPdf,
+  fetchVulnerabilityReportXlsx,
   type VulnReportDownload,
 } from "@/features/projects/api/vulnReportApi";
 import { triggerBlobDownload } from "@/lib/download";
@@ -23,7 +24,19 @@ export interface UseVulnReportReturn {
   error: Error | null;
 }
 
-export function useVulnReport(
+type ReportFetcher = (
+  projectId: string,
+  projectName?: string | null,
+) => Promise<VulnReportDownload>;
+
+/**
+ * Shared imperative-download hook for a vulnerability report artefact. The
+ * PDF (`useVulnReport`) and Excel (`useVulnReportXlsx`) hooks differ only in
+ * the fetcher, so both delegate here — one fetch + blob download, its own
+ * loading / error state (deliberately NOT a `useQuery`).
+ */
+function useReportDownload(
+  fetcher: ReportFetcher,
   projectId: string | undefined,
   projectName?: string | null,
 ): UseVulnReportReturn {
@@ -37,7 +50,7 @@ export function useVulnReport(
     setIsLoading(true);
     setError(null);
     try {
-      const result = await fetchVulnerabilityReportPdf(projectId, projectName);
+      const result = await fetcher(projectId, projectName);
       triggerBlobDownload(result.blob, result.filename);
       return result;
     } catch (e) {
@@ -47,7 +60,22 @@ export function useVulnReport(
     } finally {
       setIsLoading(false);
     }
-  }, [projectId, projectName]);
+  }, [fetcher, projectId, projectName]);
 
   return { download, isLoading, error };
+}
+
+export function useVulnReport(
+  projectId: string | undefined,
+  projectName?: string | null,
+): UseVulnReportReturn {
+  return useReportDownload(fetchVulnerabilityReportPdf, projectId, projectName);
+}
+
+/** Phase G — Excel (.xlsx) sibling of {@link useVulnReport}. */
+export function useVulnReportXlsx(
+  projectId: string | undefined,
+  projectName?: string | null,
+): UseVulnReportReturn {
+  return useReportDownload(fetchVulnerabilityReportXlsx, projectId, projectName);
 }

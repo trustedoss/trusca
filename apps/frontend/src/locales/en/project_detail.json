@@ -483,7 +483,9 @@
       },
       "report_label": "Report",
       "download_pdf": "Download PDF report",
-      "download_pdf_generating": "Generating…"
+      "download_pdf_generating": "Generating…",
+      "download_xlsx": "Download Excel",
+      "download_xlsx_generating": "Generating…"
     },
     "empty": {
       "title": "No vulnerabilities match",

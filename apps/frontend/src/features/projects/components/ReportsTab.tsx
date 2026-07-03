@@ -57,7 +57,10 @@ import {
 import type { NoticeFormat } from "@/features/projects/api/obligationsApi";
 import { useNotice } from "@/features/projects/api/useNotice";
 import { useReportHistory } from "@/features/projects/api/useReportHistory";
-import { useVulnReport } from "@/features/projects/api/useVulnReport";
+import {
+  useVulnReport,
+  useVulnReportXlsx,
+} from "@/features/projects/api/useVulnReport";
 import { SbomTab } from "@/features/projects/components/SbomTab";
 import { ProblemError } from "@/lib/problem";
 import RelativeTime from "@/components/RelativeTime";
@@ -500,6 +503,7 @@ function GenerateCard({ slug, target, onDeeplink }: GenerateCardProps) {
 function VulnPdfCard({ projectId }: { projectId: string }) {
   const { t } = useTranslation("project_detail");
   const vulnReport = useVulnReport(projectId);
+  const vulnXlsx = useVulnReportXlsx(projectId);
   const titleKey = "reports.cards.vuln-pdf.title" as const;
   const descKey = "reports.cards.vuln-pdf.description" as const;
   return (
@@ -509,32 +513,52 @@ function VulnPdfCard({ projectId }: { projectId: string }) {
         <CardDescription className="text-xs">{t(descKey)}</CardDescription>
       </CardHeader>
       <CardContent className="p-4 pt-0">
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          onClick={() => {
-            // Hook surfaces errors via `vulnReport.error`; swallow the reject
-            // so the click doesn't bubble up as an unhandled promise.
-            vulnReport.download().catch(() => {});
-          }}
-          disabled={vulnReport.isLoading}
-          data-testid="reports-card-vuln-pdf-download"
-        >
-          {vulnReport.isLoading
-            ? t("vulnerabilities.toolbar.download_pdf_generating", {
-                defaultValue: "Generating…",
-              })
-            : t("vulnerabilities.toolbar.download_pdf", {
-                defaultValue: "Download PDF",
-              })}
-        </Button>
-        {vulnReport.error ? (
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              // Hook surfaces errors via `vulnReport.error`; swallow the reject
+              // so the click doesn't bubble up as an unhandled promise.
+              vulnReport.download().catch(() => {});
+            }}
+            disabled={vulnReport.isLoading}
+            data-testid="reports-card-vuln-pdf-download"
+          >
+            {vulnReport.isLoading
+              ? t("vulnerabilities.toolbar.download_pdf_generating", {
+                  defaultValue: "Generating…",
+                })
+              : t("vulnerabilities.toolbar.download_pdf", {
+                  defaultValue: "Download PDF",
+                })}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              vulnXlsx.download().catch(() => {});
+            }}
+            disabled={vulnXlsx.isLoading}
+            data-testid="reports-card-vuln-xlsx-download"
+          >
+            {vulnXlsx.isLoading
+              ? t("vulnerabilities.toolbar.download_xlsx_generating", {
+                  defaultValue: "Generating…",
+                })
+              : t("vulnerabilities.toolbar.download_xlsx", {
+                  defaultValue: "Download Excel",
+                })}
+          </Button>
+        </div>
+        {vulnReport.error || vulnXlsx.error ? (
           <p
             className="mt-2 text-xs text-destructive"
             data-testid="reports-card-vuln-pdf-error"
           >
-            {vulnReport.error.message}
+            {(vulnReport.error ?? vulnXlsx.error)?.message}
           </p>
         ) : null}
       </CardContent>

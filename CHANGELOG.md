@@ -8,6 +8,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- **Excel (`.xlsx`) vulnerability report** — the project vulnerability report can
+  now be downloaded as an Excel workbook in addition to PDF, from the **Excel**
+  button on the Reports tab's Vulnerability-report card (or
+  `GET /v1/projects/{id}/vulnerability-report.xlsx`). The workbook has three
+  sheets — Overview (risk score, severity + license distribution), Components,
+  and Vulnerabilities (CVE, CVSS, EPSS, KEV state + due date, affected
+  component) — and each download is recorded in the export history as
+  `vuln_xlsx`. Cell values sourced from scanned third-party metadata are
+  neutralised against spreadsheet formula injection (a value starting with
+  `= + - @` is written as literal text — CWE-1236). This closes the CLAUDE.md
+  "Excel / PDF reports" commitment, which previously shipped PDF only.
 - **License classification catalog expansion (32 → 52 licenses)** — the license
   categoriser, obligation catalog, and bundled full-text set grew by 20 common
   SPDX licenses so fewer components land as `unknown`. New allowed (permissive)

@@ -359,22 +359,26 @@ curl -sS \
 
 `reason`은 `ok`(버전 계산됨), `no_fix_version`, `unparseable_version`, `no_open_findings` 중 하나이며, `recommended_version`은 `ok` 외의 모든 값에서 `null`입니다.
 
-## PDF 보고서 다운로드
+## 보고서 다운로드 (PDF 또는 Excel)
 
-포털은 가장 최근 성공 스캔으로부터 프로젝트 단위 **취약점 PDF 보고서**를 렌더링합니다 — 리스크 요약, 심각도·라이선스 분포, 심각도별로 그룹화한 취약점(CVE id와 CVSS 포함), 컴포넌트 목록. 요청 시점에 생성되며 별도로 예약할 배치 작업은 없습니다.
+포털은 가장 최근 성공 스캔으로부터 프로젝트 단위 **취약점 보고서**를 렌더링합니다 — 리스크 요약, 심각도·라이선스 분포, 취약점(CVE id·CVSS·EPSS·KEV 상태·영향 컴포넌트 포함), 컴포넌트 목록. 요청 시점에 생성되며 별도로 예약할 배치 작업은 없습니다. 두 가지 형식을 제공합니다: 읽기·공유용 **PDF**, 그리고 직접 필터링·피벗하기 좋은 **Excel(`.xlsx`)** 워크북(Overview·Components·Vulnerabilities 3개 시트).
 
 ### UI에서 다운로드
 
 1. 프로젝트 열기.
-2. **Vulnerabilities** 탭 클릭.
-3. 툴바(우측 상단)의 **PDF 보고서 다운로드**를 클릭. 문서가 렌더링되는 동안 버튼에 **생성 중…**이 표시되고, 이어서 다운로드가 시작됩니다.
+2. **Reports** 탭 클릭.
+3. **Vulnerability report** 카드에서 **PDF 보고서 다운로드** 또는 **Excel 다운로드**를 클릭. 문서가 생성되는 동안 버튼에 **생성 중…**이 표시되고, 이어서 다운로드가 시작됩니다.
 
-파일명은 `vulnerability-report-<project>.pdf`. 직전 시도에서 오류가 있으면 버튼 옆에 인라인으로 표시됩니다.
+파일명은 `vulnerability-report-<project>.pdf` 또는 `vulnerability-report-<project>.xlsx`. 직전 시도에서 오류가 있으면 버튼 옆에 인라인으로 표시되며, 각 다운로드는 Reports 탭의 내보내기 이력 표에 기록됩니다.
+
+:::note Excel 수식 주입 방지
+스캔된 서드파티 메타데이터(컴포넌트 이름, purl, CVE 요약)에서 온 셀 값은 내보내기 전에 무해화됩니다: `=`, `+`, `-`, `@`로 시작하는 값은 리터럴 텍스트로 기록되므로, 워크북을 열 때 패키지 이름이 스프레드시트 수식으로 실행되는 일은 없습니다.
+:::
 
 ### API에서 다운로드
 
 <!-- docs-uat: id=vulns-report-pdf-api kind=api auth=admin url=/v1/projects/${PROJECT_ID}/vulnerability-report.pdf expect=status:200 retry=5x2s tier=nightly -->
-같은 보고서를 API로 받습니다(PDF 바이트 반환):
+보고서를 API로 받습니다. PDF 엔드포인트는 PDF 바이트를 반환합니다:
 
 <!-- docs-uat: id=vulns-api-report-pdf kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
@@ -383,7 +387,17 @@ curl -sS -L -OJ \
   "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/vulnerability-report.pdf"
 ```
 
-응답은 `application/pdf`이며 `Content-Disposition: attachment`가 설정됩니다(`-OJ` 플래그는 서버가 제공한 파일명으로 저장하도록 curl에 지시). 보고서는 항상 **가장 최근에 성공한 스캔(latest succeeded)** 을 반영합니다 — 특정 과거 스캔 ID로 고정하는 기능은 현재 릴리스에서 지원되지 않습니다.
+<!-- docs-uat: id=vulns-report-xlsx-api kind=api auth=admin url=/v1/projects/${PROJECT_ID}/vulnerability-report.xlsx expect=status:200 retry=5x2s tier=nightly -->
+Excel 엔드포인트는 `.xlsx` 워크북 바이트를 반환합니다:
+
+<!-- docs-uat: id=vulns-api-report-xlsx kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
+```bash
+curl -sS -L -OJ \
+  -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+  "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/vulnerability-report.xlsx"
+```
+
+PDF 응답은 `application/pdf`, Excel 응답은 `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`입니다. 둘 다 `Content-Disposition: attachment`가 설정되며(`-OJ` 플래그는 서버가 제공한 파일명으로 저장하도록 curl에 지시), 항상 **가장 최근에 성공한 스캔(latest succeeded)** 을 반영합니다 — 특정 과거 스캔 ID로 고정하는 기능은 현재 릴리스에서 지원되지 않습니다.
 
 | 상태 | 의미 |
 |---|---|
