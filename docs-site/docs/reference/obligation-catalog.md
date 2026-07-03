@@ -14,9 +14,12 @@ license text, disclose source, and so on. TRUSCA ships a structured,
 per-license **obligation catalog** so the **Obligations** tab and the generated
 **NOTICE** file are populated from real scans, not just demo seed data.
 
-The catalog covers the ~30 well-known SPDX licenses the portal classifies (the
-same set used by the license categoriser). For each license it records the
-concrete obligations a consumer must satisfy, derived from the license text.
+The catalog covers 50+ well-known SPDX licenses the portal classifies (the same
+set used by the license categoriser). For each license it records the concrete
+obligations a consumer must satisfy, derived from the license text. The set is
+kept in lock-step across three places by a contract test: the categoriser's
+tier map, the obligation catalog, and the bundled full-text files must name the
+exact same licenses.
 
 :::note Not legal advice
 The catalog summarises the obligations of common licenses to help you act on
@@ -117,6 +120,12 @@ The obligation set tracks the `allowed | conditional | forbidden` categories
   of every recognised operand. This is the safe compliance default: you must
   satisfy whatever any constituent license demands. Unrecognised operands are
   ignored.
+- A **free-text license name** with no SPDX id (for example a component that
+  declares `"Apache License, Version 2.0"` as a plain name) is run through an
+  alias normaliser: a name that matches a well-known alias is recovered as its
+  canonical SPDX id and classified normally, while an unfamiliar name is left as
+  `unknown` rather than guessed. This widens coverage for scanners that emit
+  names instead of ids, without ever rewriting a name onto an uncertain id.
 
 ## Where it surfaces
 

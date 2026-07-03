@@ -2,9 +2,10 @@
 Bundled SPDX license full texts — Phase B (NOTICE license-text sections).
 
 The ``services/license_texts/`` directory vendors the standard full text for
-every SPDX id the obligation catalog covers (``<spdx-id>.txt``, 32 files:
-21 mirrored from BomLens ``docker/lib/licenses/`` + 11 from the official SPDX
-``license-list-data`` set). This module is the read-only loader the NOTICE
+every SPDX id the obligation catalog covers (``<spdx-id>.txt``, 52 files:
+21 mirrored from BomLens ``docker/lib/licenses/`` + 31 from the official SPDX
+``license-list-data`` set — the Phase B 11 plus the Phase E catalog expansion).
+This module is the read-only loader the NOTICE
 generator uses to append a "License Texts" section — offline, no network at
 notice time, mirroring BomLens ``generate-notice.sh``.
 
@@ -45,7 +46,7 @@ _TEXT_DIR = Path(__file__).resolve().parent
 _SAFE_SPDX_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+-]{0,63}$")
 
 # Directory snapshot + per-file content cache. Both are bounded by the
-# vendored file set (32 today) — misses are answered from the snapshot set,
+# vendored file set (52 today) — misses are answered from the snapshot set,
 # so hostile ids can never grow the cache.
 _available_ids: frozenset[str] | None = None
 _text_cache: dict[str, str] = {}

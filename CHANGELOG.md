@@ -8,6 +8,19 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- **License classification catalog expansion (32 → 52 licenses)** — the license
+  categoriser, obligation catalog, and bundled full-text set grew by 20 common
+  SPDX licenses so fewer components land as `unknown`. New allowed (permissive)
+  entries: BSL-1.0, Artistic-2.0, PostgreSQL, X11, NTP, Ruby, PHP-3.01, UPL-1.0,
+  MIT-0, BlueOak-1.0.0, AFL-3.0, MS-PL, Libpng, CC-BY-4.0, curl, OpenSSL,
+  BSD-4-Clause; new conditional (share-alike / reciprocal) entries: OFL-1.1,
+  CC-BY-SA-4.0, MS-RL. Each ships its structured obligations and its verbatim
+  SPDX full text for the NOTICE. A component that declares a license by
+  **free-text name** with no SPDX id (e.g. `"Apache License, Version 2.0"`) is
+  now run through an alias normaliser (ported from BomLens `spdx-normalize.jq`)
+  and recovered as its canonical id when the name is a recognised alias;
+  unfamiliar names stay `unknown` rather than being guessed. The three-way
+  set (categoriser ↔ catalog ↔ bundled texts) is locked by a contract test.
 - **AI license review flags** — the license catalog now carries two advisory
   "review needed" flags for AI-relevant restrictions that standard open-source
   compliance tooling misses: `behavioral_use` (RAIL / OpenRAIL and the Llama,
@@ -21,9 +34,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   flagged.
 - **NOTICE license texts + per-component copyright** — the NOTICE document
   (text / markdown / html) now closes with a "License Texts" section embedding
-  the full SPDX text of every license observed in the project (32 license
-  texts bundled; a license without a bundled text falls back to its
-  reference-URL link), and each component line carries the copyright statement
+  the full SPDX text of every license observed in the project (50+ license
+  texts bundled — see the catalog-expansion entry above; a license without a
+  bundled text falls back to its reference-URL link), and each component line carries the copyright statement
   recorded in the scan's SBOM — or, when the SBOM recorded none, an explicit
   fallback pointing at the component's registry URL (the line is never blank).
   The NOTICE artifact thereby satisfies the obligation catalog's

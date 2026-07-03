@@ -115,6 +115,7 @@ from models import (
 )
 from services.component_approval_service import auto_create_pending_approvals
 from services.license_expression import evaluate_expression
+from services.license_normalize import normalize_license_name
 from services.sbom_conformance import sanitize_jsonb_text
 from services.source_archive_service import (
     SourceArchiveError,
@@ -2400,7 +2401,27 @@ _LICENSE_CATEGORY_DEFAULTS: dict[str, str] = {
     "Zlib": "allowed",
     "WTFPL": "allowed",
     "Python-2.0": "allowed",
+    "BSL-1.0": "allowed",
+    "PostgreSQL": "allowed",
+    "NTP": "allowed",
+    "curl": "allowed",
+    "Ruby": "allowed",
+    "X11": "allowed",
+    "Artistic-2.0": "allowed",
+    "PHP-3.01": "allowed",
+    "Libpng": "allowed",
+    "OpenSSL": "allowed",
+    "BSD-4-Clause": "allowed",
+    "CC-BY-4.0": "allowed",
+    "UPL-1.0": "allowed",
+    "AFL-3.0": "allowed",
+    "MS-PL": "allowed",
+    "BlueOak-1.0.0": "allowed",
+    "MIT-0": "allowed",
     # Conditional
+    "MS-RL": "conditional",
+    "OFL-1.1": "conditional",
+    "CC-BY-SA-4.0": "conditional",
     "LGPL-2.0-only": "conditional",
     "LGPL-2.0-or-later": "conditional",
     "LGPL-2.1-only": "conditional",
@@ -2473,8 +2494,11 @@ def _extract_spdx_ids(cdxgen_component: dict[str, Any]) -> list[tuple[str, str |
     least-restrictive, so e.g. a ``[GPL-2.0-or-later, LGPL-2.1-or-later,
     MPL-1.1]`` set classifies as conditional, not forbidden — whenever cdxgen
     emits the full multi-license set for a component. A single id/expression
-    passes through unchanged. Free-text ``name``-only entries are skipped
-    (they'd need a license-text scanner to map to SPDX).
+    passes through unchanged. Free-text ``name``-only entries are run through
+    :func:`services.license_normalize.normalize_license_name` (Phase E): a
+    recognized alias ("Apache License, Version 2.0" → ``Apache-2.0``) is
+    recovered as its SPDX id, and an unrecognized name is skipped (persisting a
+    raw free-text name would pollute the license surfaces).
 
     Returns ``[]`` or a single ``(combined, url)`` tuple. The combined string is
     bounded to the ``License.spdx_id`` column width (64); a longer one is
@@ -2501,6 +2525,20 @@ def _extract_spdx_ids(cdxgen_component: dict[str, Any]) -> list[tuple[str, str |
                 spdx = sanitize_jsonb_text(spdx)
                 if spdx:
                     ids.append(spdx)
+                    if ref_url is None and isinstance(lic.get("url"), str):
+                        ref_url = sanitize_jsonb_text(lic["url"]) or None
+                    continue
+            # Phase E: no usable SPDX ``id`` — try to recover a canonical id
+            # from a free-text ``name`` (e.g. "Apache License, Version 2.0").
+            # ``normalize_license_name`` returns a value only for confidently
+            # recognized aliases, drawn from a fixed SPDX-id set, so the result
+            # needs no further sanitizing; an unrecognized name yields None and
+            # the entry is skipped exactly as before.
+            name = lic.get("name")
+            if isinstance(name, str) and name:
+                normalized = normalize_license_name(name)
+                if normalized:
+                    ids.append(normalized)
                     if ref_url is None and isinstance(lic.get("url"), str):
                         ref_url = sanitize_jsonb_text(lic["url"]) or None
                     continue
