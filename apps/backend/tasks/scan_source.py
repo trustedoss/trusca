@@ -1921,7 +1921,7 @@ def _run_prep(
 #     is not UTF-8-encodable, so the size guard's byte measurement / psycopg's
 #     wire encode raise ``UnicodeEncodeError`` (equally scan-fatal).
 # We dump with ``ensure_ascii=False`` so the probe stays a fast-path: NUL
-# still emits as the literal text `` `` and a lone surrogate emits as the
+# still emits as the literal text ``\\u0000`` and a lone surrogate emits as the
 # actual surrogate character (both matched below), while a VALID non-BMP
 # character (emoji, CJK Extension B) emits as its literal self and does NOT
 # match — ``ensure_ascii=True`` would escape those to surrogate *pairs* and
