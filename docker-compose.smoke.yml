@@ -49,11 +49,45 @@ services:
       timeout: 5s
       retries: 24
       start_period: 10s
+  # -------------------------------------------------------------------------
+  # DB DSN override — docker-compose V1 (1.29.2) nested-interpolation fix.
+  #
+  # The production docker-compose.yml resolves the runtime DSN with a NESTED
+  # default:
+  #   DATABASE_URL_APP: ${DATABASE_URL_APP:-${DATABASE_URL}}
+  #   DATABASE_URL:     ${DATABASE_URL_APP:-${DATABASE_URL}}
+  # The gate (unlike install.sh) does NOT set DATABASE_URL_APP, so the
+  # `:-${DATABASE_URL}` fallback fires. docker-compose V1 1.29.2 — the version
+  # the release-gate installs and runs (CLAUDE.md rule #10) — CANNOT parse the
+  # inner `${DATABASE_URL}`: its interpolator stops at the FIRST `}`, so the
+  # backend/worker/beat receive either a literal `${DATABASE_URL}` (when
+  # DATABASE_URL_APP is unset) or a DSN with a stray trailing `}` (when it is
+  # set) — e.g. `...:5432/trustedoss}`. Either way the runtime cannot reach the
+  # DB and the entrypoint reports the masked "database not reachable" loop.
+  # docker-compose V2 expands the nested form correctly, which is why a V2 local
+  # run passed while the V1 CI gate failed.
+  #
+  # This overlay overrides ONLY the two DSN keys for the three DB-touching
+  # services with a SINGLE-LEVEL `${DATABASE_URL}` that V1 resolves cleanly.
+  # The gate runs a single-role stack (app role == owner in dev mode), so both
+  # keys legitimately point at the same DSN. This is GATE-ONLY: the production
+  # base file (and its L1 split for real install.sh deployments) is untouched.
   backend:
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_URL_APP: ${DATABASE_URL}
     # Expose the API on the runner so the reused install-uat smoke can curl
     # http://localhost:8000/health and /v1/* directly, instead of via Traefik.
     ports:
       - "8000:8000"
+  worker:
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_URL_APP: ${DATABASE_URL}
+  beat:
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_URL_APP: ${DATABASE_URL}
   frontend:
     # Expose the SPA so the frontend healthcheck / a browser smoke can reach
     # http://localhost:8080 without the edge proxy.
