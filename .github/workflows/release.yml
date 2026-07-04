@@ -322,13 +322,16 @@ jobs:
           fi
           # Prefer the curated per-version notes shipped in docs-site; fall back
           # to GitHub's auto-generated notes (from merged PRs) when they are
-          # absent. Either way the Release is created as a DRAFT.
-          NOTES_FILE="docs-site/docs/release-notes/${VERSION}.md"
+          # absent. Either way the Release is created as a DRAFT. The docs-site
+          # convention keeps the leading ``v`` in the filename
+          # (``release-notes/v0.13.0.md``), so key off ``$TAG`` (which has the
+          # ``v``), NOT the bare ``$VERSION``.
+          NOTES_FILE="docs-site/docs/release-notes/${TAG}.md"
           if [ -f "$NOTES_FILE" ]; then
             echo "using curated release notes: $NOTES_FILE"
             gh release create "$TAG" --draft --title "$TAG" --notes-file "$NOTES_FILE"
           else
-            echo "no curated notes for $VERSION — auto-generating from history"
+            echo "no curated notes for $TAG — auto-generating from history"
             gh release create "$TAG" --draft --title "$TAG" --generate-notes
           fi
 

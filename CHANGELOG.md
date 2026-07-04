@@ -7,6 +7,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.13.0] — 2026-07-04
+
+A broad parity release closing the BomLens capability gap — additive throughout;
+the one external-egress capability (SCANOSS) is off by default.
+
 ### Added
 - **SCANOSS vendored-OSS identification (opt-in, off by default)** — an optional
   scan stage that fingerprints the source tree and matches copied-in
