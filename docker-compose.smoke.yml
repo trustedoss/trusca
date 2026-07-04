@@ -23,6 +23,32 @@
 #     up -d postgres redis backend worker beat frontend
 
 services:
+  postgres:
+    # Gate-only healthcheck override — fixes the first-live cold-boot race.
+    #
+    # The base docker-compose.yml probes readiness with `pg_isready` and NO host
+    # flag, so it connects over the LOCAL UNIX SOCKET. On a COLD volume the
+    # official postgres image runs initdb behind an INTERNAL temporary server
+    # started with `listen_addresses=''` (unix socket only, no TCP) to execute
+    # /docker-entrypoint-initdb.d/* (here: the trustedoss_app role script). A
+    # socket `pg_isready` answers "accepting connections" DURING that bootstrap,
+    # so `service_healthy` fires before the REAL server is up on TCP — releasing
+    # the backend too early. Its bounded (10 x 3s) alembic-current probe reaches
+    # over TCP to postgres:5432, finds no listener mid-initdb, exhausts the budget,
+    # and exits; `worker` (depends_on backend: service_healthy) then aborts `up`
+    # with "Container is unhealthy". Warm boots skip initdb, so CI never saw it.
+    #
+    # Forcing a TCP probe (`-h 127.0.0.1`) makes the check FAIL during initdb
+    # (the temp server has no TCP listener) and PASS only once the real server
+    # accepts network connections — so `service_healthy` becomes truthful. This
+    # lives ONLY in the gate overlay; the production base file is untouched, so
+    # runtime deployment semantics are unchanged.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 10s
   backend:
     # Expose the API on the runner so the reused install-uat smoke can curl
     # http://localhost:8000/health and /v1/* directly, instead of via Traefik.
