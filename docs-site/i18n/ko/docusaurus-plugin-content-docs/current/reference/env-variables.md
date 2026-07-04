@@ -114,6 +114,10 @@ CI 빌드 게이트는 기본적으로 Critical CVE와 금지 라이선스에서
 | `SCANCODE_MAX_FILES` | `20000` | `config.py` | 적격 first-party 파일(제외 필터 적용 후) 상한. 초과 시 scancode 를 건너뛰고 declared 라이선스만 유지합니다. |
 | `SCANCODE_MAX_DETECTIONS` | `5000` | `config.py` | 스캔당 저장되는 detected 라이선스 결과 수 상한. |
 | `SCANCODE_MAX_RESULT_BYTES` | `268435456` (256 MB) | `config.py` | 파싱 전 scancode JSON 아티팩트 상한 — 악의적 트리의 OOM 가드. |
+| `SCANOSS_ENABLED` | `false` | `config.py` | SCANOSS vendored-OSS 단계 마스터 opt-in. **기본 비활성.** `true`면 소스 트리를 핑거프린트해 그 핑거프린트(소스 자체는 아님)를 `SCANOSS_API_URL`로 보내 복사된 OSS를 식별 — 그 외부 egress에 동의할 때만 켜세요. `false`면 단계 전체 스킵(스캐너·egress 없음). [컴포넌트·라이선스 → Vendored-OSS 식별](../user-guide/components-and-licenses.md#vendored-oss) 참고. |
+| `SCANOSS_API_URL` | `https://api.osskb.org` | `config.py` | 핑거프린트를 매칭할 SCANOSS 지식 베이스 엔드포인트(`SCANOSS_ENABLED=true`일 때만 사용). 자체 호스팅 SCANOSS 인스턴스로 향하게 하면 핑거프린트가 사내에 머뭅니다. |
+| `SCANOSS_API_KEY` | *(빈 값)* | `config.py` | `SCANOSS_API_URL`용 선택 API 키(유료/자체 호스팅 엔드포인트). 비우면 무료 `api.osskb.org` 등급 사용. |
+| `SCANOSS_TIMEOUT_SECONDS` | `300` | `config.py` | SCANOSS 단계의 하드 wall-clock 제한. 타임아웃 시 vendored-OSS 결과 없이 스캔 계속(best-effort). |
 | `WORKSPACE_HOST_PATH` | `/tmp/trustedoss` | `config.py`, `docker-compose.yml` | worker에 `/workspace`로 마운트되는 호스트 디렉터리. 레포 클론 + 스캔 아티팩트(cdxgen SBOM, scancode 출력) 보관. compose 스택은 컨테이너 내에서 `/workspace`로 오버라이드합니다. |
 | `ORT_RULES_PATH` | `/opt/trustedoss/ort/rules.kts` | `docker-compose.yml` | worker 내부 레거시 경로로, ORT 단계 제거 후 잔재입니다. 파일은 placeholder 이며 v0.10.0 에서는 효과가 없습니다 — 라이선스 단계 분류는 `apps/backend/tasks/scan_source.py` 의 `_LICENSE_CATEGORY_DEFAULTS` 에서 옵니다. |
 | `JSONB_ROW_SIZE_LIMIT_BYTES` | `262144` (256 KB) | `config.py` | writer가 truncate + warn하기 전 행당 JSON 바이트 상한. I-1 무한 페이로드 클래스 가드. |

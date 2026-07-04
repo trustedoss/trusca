@@ -582,6 +582,78 @@ def scancode_max_result_bytes() -> int:
 
 
 # ---------------------------------------------------------------------------
+# SCANOSS vendored-OSS identification (Phase J / P3-11 — opt-in, default OFF).
+#
+# SCANOSS fingerprints first-party files and sends those fingerprints (a
+# Winnowing hash, NOT the source itself) to an external matching API
+# (``api.osskb.org`` by default) to identify open-source code that was copied
+# into the tree without a package manifest ("vendored" OSS). Because TRUSCA is
+# an on-prem PERSISTENT portal — unlike BomLens, which is a local CLI where the
+# operator already owns the network boundary — this MUST be explicit opt-in.
+# When ``SCANOSS_ENABLED`` is false (the default) the pipeline stage is a
+# complete no-op: no scanner runs, no fingerprints are computed, and NOTHING
+# leaves the worker. Every accessor resolves env at call time (CLAUDE.md core
+# rule #11) so an operator can flip the toggle without a rebuild.
+# ---------------------------------------------------------------------------
+
+
+def scanoss_enabled() -> bool:
+    """Whether the SCANOSS vendored-OSS stage runs at all.
+
+    Default ``false`` — this feature sends file fingerprints to an EXTERNAL API,
+    so it is disabled unless an operator explicitly turns it on. Only the exact
+    truthy tokens ``true`` / ``1`` / ``yes`` (case-insensitive) enable it; any
+    other value (including typos, ``on``, ``enabled``) reads as OFF, so a
+    mis-set variable fails closed to "no egress" rather than open. Read at call
+    time (rule #11).
+    """
+    return os.getenv("SCANOSS_ENABLED", "false").strip().lower() in {
+        "true",
+        "1",
+        "yes",
+    }
+
+
+def scanoss_api_url() -> str:
+    """SCANOSS matching API endpoint (``--apiurl``).
+
+    Default ``https://api.osskb.org`` (the free Open Source Knowledge Base
+    endpoint). An operator can point this at a self-hosted SCANOSS server to
+    keep fingerprints on-premises. Read at call time (rule #11).
+    """
+    return os.getenv("SCANOSS_API_URL", "https://api.osskb.org")
+
+
+def scanoss_api_key() -> str:
+    """SCANOSS API key (``--key``), empty when unset.
+
+    The public osskb.org endpoint needs no key; a commercial / self-hosted
+    SCANOSS deployment may require one. Empty string means "send no ``--key``
+    flag". Read at call time (rule #11). NEVER log this value.
+    """
+    return os.getenv("SCANOSS_API_KEY", "")
+
+
+def scanoss_timeout_seconds() -> int:
+    """Hard wall-clock limit (seconds) for one ``scanoss-py scan`` invocation.
+
+    SCANOSS walks the first-party tree, fingerprints files, and round-trips
+    them to the matching API; on a large tree this can take a few minutes.
+    Default 300s (5 min). A non-integer / non-positive value falls back to the
+    default so a mis-set variable cannot make the stage hang forever or abort
+    on a parse error. Read at call time (rule #11).
+    """
+    raw = os.getenv("SCANOSS_TIMEOUT_SECONDS")
+    if raw is None or raw.strip() == "":
+        return 300
+    try:
+        value = int(raw)
+    except ValueError:
+        return 300
+    return value if value > 0 else 300
+
+
+# ---------------------------------------------------------------------------
 # v2.3 r1 — govulncheck reachability analysis (Go call-graph, best-effort).
 #
 # A follow-up Celery task (``tasks.scan_reachability``) runs Go ``govulncheck``

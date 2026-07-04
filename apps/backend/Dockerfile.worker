@@ -25,6 +25,11 @@
 # All shipped tools are Apache-2.0 unless noted:
 #   cdxgen     — https://github.com/CycloneDX/cdxgen         (Apache-2.0)
 #   scancode   — https://github.com/aboutcode-org/scancode-toolkit (Apache-2.0)
+#   scanoss    — https://github.com/scanoss/scanoss.py        (MIT — vendored /
+#                copied-in OSS identification via the OSS Knowledge Base. MIT
+#                (not GPL-adjacent) so it ships in the base image freely.
+#                ALWAYS installed; execution is opt-in, gated at RUNTIME by
+#                SCANOSS_ENABLED (default false).)
 #   Trivy      — https://github.com/aquasecurity/trivy       (Apache-2.0)
 #   Temurin    — Eclipse Temurin JDK 21                      (GPL-2.0-CE — runtime
 #                only; Classpath Exception lets user code stay non-GPL).
@@ -712,6 +717,43 @@ RUN set -eux; \
 # ===========================================================================
 # <<< v2.3-s1 (s-track) cosign — END.
 # ===========================================================================
+
+# ---- scanoss.py 1.53.1 (MIT). ----------------------------------------------
+# SCANOSS CLI — vendored / copied-in OSS identification (BomLens parity Phase J,
+# P3-11). Where cdxgen enumerates DECLARED dependencies and scancode DETECTS
+# first-party license text, scanoss fingerprints source files and matches them
+# against the OSS Knowledge Base (api.osskb.org by default) to surface
+# third-party code COPIED into the tree without a package manifest.
+#
+# MIT-licensed (unlike the GPL-adjacent tools) so it ships in the base image
+# with no license-contamination concern. Installed into its OWN virtualenv
+# (/opt/scanoss-venv) — the SAME isolation pattern as scancode above: its pinned
+# dep tree (crc32c / binaryornot / requests / pypac …) must not collide with the
+# backend's pinned deps (requirements.txt). Only the ``scanoss-py`` launcher is
+# symlinked onto $PATH; the Celery worker shells to it via subprocess
+# (integrations/scanoss.py), never imports it. Separate RUN layer so buildx/GHA
+# cache re-uses it unchanged across unrelated edits.
+#
+# ALWAYS installed — TRUSTEDOSS ships a SINGLE worker image, so (unlike
+# BomLens's SBOM_SCANOSS build-arg image variants) there is no build-time
+# toggle: the binary is unconditionally present and execution is gated at
+# RUNTIME by SCANOSS_ENABLED (default false, enforced by the application). With
+# the flag off the binary is simply never invoked, and the image is byte-for-
+# byte identical whether or not an operator opts in. Privacy: when enabled,
+# scanoss sends file FINGERPRINTS (hashes) — never source — to the configured
+# SCANOSS_API_URL, so sensitive sites leave it off or point at a private mirror.
+#
+# Version PINNED to ==1.53.1 (latest stable on PyPI, verified 2026-07 — no
+# `:latest` / unpinned, CLAUDE.md rule #9). Re-review at every worker-image
+# refresh alongside cdxgen / scancode / Trivy. Source: https://pypi.org/project/scanoss/.
+ENV SCANOSS_VERSION=1.53.1 \
+    SCANOSS_VENV=/opt/scanoss-venv
+RUN set -eux; \
+    python3 -m venv "${SCANOSS_VENV}"; \
+    "${SCANOSS_VENV}/bin/pip" install --no-cache-dir --upgrade pip; \
+    "${SCANOSS_VENV}/bin/pip" install --no-cache-dir "scanoss==${SCANOSS_VERSION}"; \
+    ln -s "${SCANOSS_VENV}/bin/scanoss-py" /usr/local/bin/scanoss-py; \
+    scanoss-py --version
 
 # Application source. The dev compose bind-mounts ./apps/backend:/app on top
 # of this so the COPY here only matters for one-off `docker run` and prod.
