@@ -755,6 +755,43 @@ RUN set -eux; \
     ln -s "${SCANOSS_VENV}/bin/scanoss-py" /usr/local/bin/scanoss-py; \
     scanoss-py --version
 
+# ---- Drop kernel headers (linux-libc-dev) after all native builds. ---------
+# DURABLE image-scan fix (CVE triage 2026-07): Trivy's DB refresh surfaced 76
+# HIGH+CRITICAL findings ALL on the `linux-libc-dev` OS package (debian 12.14
+# shipped 6.1.174-1; the CVEs are fixed in 6.1.176-1) — every one a Linux
+# KERNEL CVE (net/mvpp2, io_uring, f2fs, ksmbd, bpf, …). This is a well-known
+# false-positive class for containers: `linux-libc-dev` is nothing but kernel
+# SOURCE HEADERS under /usr/include/{linux,asm} used to COMPILE against the
+# kernel ABI — it ships no executable code, and a container never runs its own
+# kernel (it uses the HOST kernel), so a header-package kernel CVE is
+# unreachable at container runtime. The package is only a BUILD-time transitive
+# dependency of build-essential (pulled via libc6-dev): the worker needs a C
+# toolchain to compile PyICU (scancode, arm64 sdist) and psycopg2 at image-build
+# time, but NOT at run time. The scan pipeline's prep steps are all lockfile
+# resolution — `bundle lock`, `cargo generate-lockfile`, `go mod tidy`,
+# `dotnet restore`, and `npm install --package-lock-only` (see
+# tasks/scan_source._prepare_for_cdxgen) — none compile C, and npm is
+# deliberately `--package-lock-only` so cdxgen never triggers node-gyp. So we
+# remove the header chain HERE, after the last native build (scancode/scanoss
+# above), instead of accreting an ever-growing `.trivyignore` block that would
+# gain a new CVE ID on every kernel point release.
+#
+# Surgical on purpose: purge ONLY `linux-libc-dev` and the two packages that
+# force it to stay — `libc6-dev` (Depends: linux-libc-dev) and the
+# `build-essential` meta-package (Depends: libc6-dev). We do NOT pass
+# `--auto-remove`: that cascade is unpredictable (it would also sweep perl /
+# xz-utils / make / binutils / libgomp1 whose manual-vs-auto mark depends on
+# install order) and risks stripping a scancode runtime lib. gcc / g++ / make
+# stay on the image (harmless without headers; not Trivy-flagged) — the ONLY
+# package Trivy reported, linux-libc-dev, is gone. Verified on debian bookworm:
+# the three named packages purge clean and libgomp1/libpopt0/libarchive13/
+# libmagic1 (scancode runtime deps) all survive. `purge` needs no apt lists
+# (it reads the local dpkg db), so no `apt-get update` here.
+# Re-evaluate: drop this layer if a future base bump ships a
+# fixed linux-libc-dev AND we still need libc6-dev at runtime (we don't today).
+RUN apt-get purge -y linux-libc-dev libc6-dev build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
 # Application source. The dev compose bind-mounts ./apps/backend:/app on top
 # of this so the COPY here only matters for one-off `docker run` and prod.
 COPY . /app
