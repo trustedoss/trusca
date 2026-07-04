@@ -367,8 +367,29 @@ jobs:
       # ${IMAGE_TAG} is the bare X.Y.Z the merge job tagged the images with.
       IMAGE_TAG: ${{ needs.release.outputs.version }}
       IMAGE_REGISTRY: ghcr.io/trustedoss
+      # Run the published images in the app's DEV runtime mode. This is the SAME
+      # posture the install-uat boot smoke uses (it boots via docker-compose.dev.yml)
+      # and it is deliberate: APP_ENV defaults to `prod` in docker-compose.yml
+      # (`APP_ENV: ${APP_ENV:-prod}`), and prod mode enforces two guards that a
+      # from-scratch `docker-compose up` — WITHOUT install.sh's full provisioning —
+      # cannot satisfy:
+      #   1. CORS origins must be https:// (main.py validate_cors_origins). The
+      #      smoke reaches the API over http on the runner (no Traefik/TLS), so a
+      #      prod-mode https requirement would crash uvicorn at import.
+      #   2. L1 role separation: the compose file ALWAYS sets DATABASE_URL_APP
+      #      (`${DATABASE_URL_APP:-${DATABASE_URL}}`), and prod mode then requires
+      #      the runtime to connect as `trustedoss_app`. That role is provisioned
+      #      by scripts/postgres-init.sh only during install.sh; a raw compose `up`
+      #      never creates it, so prod mode fails password auth for trustedoss_app.
+      # This gate proves the published images PULL, the production compose file
+      # RESOLVES + BOOTS all six services to health, migrations apply, and an
+      # authed first-scan API call works. It does NOT exercise the prod-only L1 /
+      # TLS edge (out of scope here; that is the install.sh + manual UAT path).
+      APP_ENV: dev
       # Traefik is not started, but DOMAIN / TLS_EMAIL / CORS are required for
-      # `docker-compose config` to interpolate the production file cleanly.
+      # `docker-compose config` to interpolate the production file cleanly. In
+      # dev mode a plain http:// origin is accepted (see guard #1 above); it is
+      # the origin the smoke overlay publishes the SPA on.
       DOMAIN: localhost
       TLS_EMAIL: release-gate@example.invalid
       TRAEFIK_LOG_LEVEL: INFO
@@ -466,12 +487,15 @@ jobs:
       # Bootstrap the first super_admin INSIDE the published image — the same
       # entrypoint install.sh drives (scripts.create_super_admin). Schema is
       # already at HEAD (backend auto-migrated on boot), so this just seeds the
-      # login used by the smoke below.
+      # login used by the smoke below. The email must be a syntactically valid,
+      # resolvable-looking address: the login endpoint validates it with
+      # Pydantic EmailStr, which rejects reserved TLDs like `.local` (422), so a
+      # `.example.com` address is used for BOTH the bootstrap and the login.
       - name: Bootstrap super_admin in the published image
         run: |
           set -euo pipefail
           docker-compose -f docker-compose.yml -f docker-compose.smoke.yml exec -T \
-            -e ADMIN_EMAIL="admin@release-gate.local" \
+            -e ADMIN_EMAIL="admin@release-gate.example.com" \
             -e ADMIN_PASSWORD="ReleaseGatePassword123!" \
             backend python -m scripts.create_super_admin
           echo "super_admin bootstrapped in the published backend image"
@@ -482,12 +506,15 @@ jobs:
       - name: Smoke — login + projects API (published image)
         run: |
           set -euo pipefail
-          # The auth router lives under /v1/auth (apps/backend/api/v1/auth.py).
-          # Fetch and parse as separate statements — piping curl straight into an
-          # interpreter trips semgrep gha-curl-pipe-shell (registry ERROR rule).
-          LOGIN_RESPONSE=$(curl -fsS -X POST http://localhost:8000/v1/auth/login \
+          # The auth router mounts at /auth (apps/backend/api/v1/auth.py sets
+          # prefix="/auth"; main.py includes it with no extra prefix), so login is
+          # /auth/login — NOT /v1/auth/login (only the domain routers, e.g.
+          # /v1/projects below, carry the /v1 prefix). Fetch and parse as separate
+          # statements — piping curl straight into an interpreter trips semgrep
+          # gha-curl-pipe-shell (registry ERROR rule).
+          LOGIN_RESPONSE=$(curl -fsS -X POST http://localhost:8000/auth/login \
             -H "Content-Type: application/json" \
-            -d '{"email":"admin@release-gate.local","password":"ReleaseGatePassword123!"}')
+            -d '{"email":"admin@release-gate.example.com","password":"ReleaseGatePassword123!"}')
           TOKEN=$(printf '%s' "$LOGIN_RESPONSE" \
             | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')
           test -n "$TOKEN"
