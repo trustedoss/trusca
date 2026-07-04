@@ -8,6 +8,18 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- **SCANOSS vendored-OSS identification (opt-in, off by default)** — an optional
+  scan stage that fingerprints the source tree and matches copied-in
+  ("vendored") open source against the SCANOSS knowledge base, recording
+  full-file matches as components with detected licenses. This closes the gap
+  for C/C++ / embedded trees that have no package manifest, where cdxgen alone
+  finds almost nothing. It is **disabled by default** and gated on
+  `SCANOSS_ENABLED=true`: unlike a local dev tool, a self-hosted portal must not
+  send file fingerprints to an external API without explicit operator consent.
+  When enabled, only file **fingerprints** (never source) are sent to
+  `SCANOSS_API_URL` (default `api.osskb.org`, overridable for a self-hosted
+  SCANOSS); snippet matches are skipped to keep results clean, and the stage
+  degrades to a no-op on any error so a scan never fails because of it.
 - **Global search (⌘K)** — the command palette (⌘K / Ctrl+K) gains cross-project
   **Components** and **CVEs** groups alongside Projects and Pages, backed by the
   new `GET /v1/search` endpoint. Results are scoped server-side to the caller's

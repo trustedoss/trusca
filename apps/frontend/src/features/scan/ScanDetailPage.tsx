@@ -57,12 +57,13 @@ import { getScan, type ScanStatus } from "@/lib/projectsApi";
  *     consistent with the drawer's (now-hidden) inline panel.
  */
 
-type LogFilter = "all" | "cdxgen" | "scancode" | "trivy" | "errors";
+type LogFilter = "all" | "cdxgen" | "scancode" | "scanoss" | "trivy" | "errors";
 
 const FILTER_CHIPS: { value: LogFilter; key: string }[] = [
   { value: "all", key: "detail.filter_all" },
   { value: "cdxgen", key: "progress.step_cdxgen" },
   { value: "scancode", key: "progress.step_scancode" },
+  { value: "scanoss", key: "progress.step_scanoss" },
   { value: "trivy", key: "progress.step_trivy" },
   { value: "errors", key: "detail.filter_errors" },
 ];

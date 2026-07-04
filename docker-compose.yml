@@ -137,6 +137,17 @@ x-backend-env: &backend-env
   SCANCODE_MAX_FILES: ${SCANCODE_MAX_FILES:-20000}
   SCANCODE_MAX_DETECTIONS: ${SCANCODE_MAX_DETECTIONS:-5000}
   SCANCODE_MAX_RESULT_BYTES: ${SCANCODE_MAX_RESULT_BYTES:-268435456}
+  # scanoss vendored-OSS identification (BomLens parity Phase J, P3-11). The
+  # worker image ALWAYS ships the scanoss-py CLI (MIT); execution is gated
+  # HERE — SCANOSS_ENABLED defaults false, so an unset .env leaves it off while
+  # still letting an operator flip it on without a rebuild. SCANOSS_API_URL
+  # defaults to the public OSS KB; point it at a private mirror for air-gapped
+  # / privacy-sensitive sites. Worker reads each via os.getenv() at runtime
+  # (rule #11).
+  SCANOSS_ENABLED: ${SCANOSS_ENABLED:-false}
+  SCANOSS_API_URL: ${SCANOSS_API_URL:-https://api.osskb.org}
+  SCANOSS_API_KEY: ${SCANOSS_API_KEY:-}
+  SCANOSS_TIMEOUT_SECONDS: ${SCANOSS_TIMEOUT_SECONDS:-300}
   # Fernet key for secrets-at-rest (GitHub App credentials AND — v2.3-s1 — the
   # cosign key password). Unset in dev/CI derives from SECRET_KEY (WARNING);
   # APP_ENV=prod with no key FAILS CLOSED. See core/crypto.py + .env.example.

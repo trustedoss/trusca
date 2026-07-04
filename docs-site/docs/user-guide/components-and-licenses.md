@@ -163,6 +163,18 @@ scancode is **best-effort**. Detected licenses can be absent — which is normal
 - The first-party tree exceeds the `SCANCODE_MAX_FILES` ceiling, scancode timed out, or its result was too large.
 - The relevant code lives inside an **excluded** directory. To stay within the resource budget, scancode skips directories named `node_modules`, `vendor`, `bower_components`, `.venv`, `venv`, `virtualenv`, `site-packages`, `dist`, `build`, `target`, `out`, `.next`, `.nuxt`, `__pycache__`, `.gradle`, `.git`, `.hg`, `.svn`, `.tox`, `.mypy_cache`, `.pytest_cache`, `.ruff_cache`, `.idea`, and `.vscode` — at any depth. Code committed under one of these names will not produce a detected license.
 
+## Vendored-OSS identification (SCANOSS) {#vendored-oss}
+
+Some projects — C / C++ and embedded trees especially — carry open source **copied straight into the source tree** with no package manifest (a `liblzma`, `openssl`, or `zlib` folder committed under `src/`). `cdxgen` sees only unnamed `pkg:generic` files there and the real OSS goes unrecorded. **SCANOSS** closes that gap: it fingerprints the source files and matches them against a knowledge base of known OSS releases, so a copied file is recorded as a proper component (name + version + purl) with its detected license.
+
+TRUSCA treats only **full-file matches** as components — a snippet match (a few lines copied from elsewhere) is noisy and is skipped, so the components that feed the build gate and NOTICE stay clean. Matched components appear on the Components tab tagged as coming from SCANOSS, and their licenses are **Detected** findings, exactly like scancode's.
+
+:::warning Off by default — sends fingerprints to an external service
+SCANOSS is **disabled unless an operator sets `SCANOSS_ENABLED=true`**. When enabled, it sends file **fingerprints** (hashes, never your source code) to `SCANOSS_API_URL` — the free `api.osskb.org` by default. Because a self-hosted portal shouldn't quietly egress data about your code, this is opt-in: turn it on only if that external match is acceptable, or point `SCANOSS_API_URL` at a **self-hosted SCANOSS** instance to keep everything inside your network. See [Environment variables → Scan pipeline](../reference/env-variables.md#scan-pipeline).
+:::
+
+Like scancode, the stage is **best-effort**: if SCANOSS is off, the tool is missing, the endpoint is unreachable, or nothing matches, the scan simply continues without vendored-OSS results — it never fails because of this stage.
+
 ## Obligations
 
 Each license carries **obligations** — duties you must honor when redistributing the component. The portal tracks seven kinds (see [glossary](https://github.com/trustedoss/trusca/blob/main/docs/glossary.md)):

@@ -43,6 +43,7 @@
     "step_fetch": "Fetch source",
     "step_cdxgen": "cdxgen (SBOM)",
     "step_scancode": "ScanCode (license)",
+    "step_scanoss": "SCANOSS (vendored)",
     "step_trivy": "Trivy (CVE match)",
     "step_finalize": "Finalize",
     "step_succeeded": "Scan completed",

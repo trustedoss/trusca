@@ -73,6 +73,7 @@ from core.config import (
     cdxgen_fetch_license,
     cdxgen_spec_version,
     scan_soft_time_limit_seconds,
+    scanoss_enabled,
     slsa_builder_id,
     slsa_builder_version,
     workspace_root,
@@ -85,6 +86,7 @@ from integrations import cdxgen as cdxgen_adapter
 from integrations import cosign as cosign_adapter
 from integrations import scan_executor
 from integrations import scancode as scancode_adapter
+from integrations import scanoss as scanoss_adapter
 from integrations._size_guard import enforce_jsonb_row_size_limit
 from integrations._subprocess_env import scrubbed_env_for_prep
 from integrations.dependency_graph import (
@@ -165,6 +167,11 @@ _STAGE_PROGRESS: dict[str, int] = {
     # matching. Slotted between "scancode" (50) and "trivy" (90) so the WS
     # progress frame stays monotonic.
     "approvals": 60,
+    # Phase J (P3-11): SCANOSS vendored-OSS identification. Opt-in (default OFF);
+    # when disabled the stage is skipped entirely and this frame is never
+    # emitted. Slotted between "approvals" (60) and "trivy" (90) so the WS
+    # progress frame stays monotonic whether or not the stage runs.
+    "scanoss": 70,
     # Stage label for ``trivy sbom`` matching (replaces the W6-era
     # ``dt_findings`` slot). v2.4.0 not yet publicly released, so no back-compat
     # shim is needed — the FE PIPELINE_STEPS is updated in the matching FE PR.
@@ -515,6 +522,25 @@ def _run_pipeline(
     # approval (and _reset_scan_for_rerun never deletes approvals).
     _set_stage(scan_uuid, "approvals")
     _auto_create_conditional_approvals(scan_uuid=scan_uuid, project_id=project_id)
+
+    # Stage 5.5 — SCANOSS vendored-OSS identification (Phase J, opt-in OFF).
+    #
+    # PRIVACY GATE: this whole block — including the "scanoss" WS frame — runs
+    # ONLY when ``scanoss_enabled()`` is true. Default OFF means NO scanner
+    # spawns and NO fingerprints leave the worker; the pipeline goes straight
+    # from "approvals" (60) to "trivy" (90). The adapter ALSO re-checks the
+    # toggle (defence in depth), but gating here guarantees run_scanoss is never
+    # even called on a disabled deployment. Best-effort like scancode: any
+    # failure logs a WARNING and the scan still succeeds.
+    if scanoss_enabled():
+        _set_stage(scan_uuid, "scanoss")
+        _run_scanoss_stage(
+            scan_uuid=scan_uuid,
+            source_dir=source_dir,
+            workspace=workspace,
+            sbom=cdxgen_result.sbom,
+            verbose=verbose,
+        )
 
     # Stage 6 — Trivy SBOM matching (W6, replaces DT findings poll).
     # ``trivy sbom`` consumes the CycloneDX JSON we already wrote in the cdxgen
@@ -2776,6 +2802,195 @@ def _persist_detected_licenses(
             raw_data={"source": "scancode"},
         )
         session.add(finding)
+
+
+# ---------------------------------------------------------------------------
+# SCANOSS vendored-OSS → scan_components + detected licenses (Phase J / P3-11)
+# ---------------------------------------------------------------------------
+
+
+def _run_scanoss_stage(
+    *,
+    scan_uuid: uuid.UUID,
+    source_dir: Path,
+    workspace: Path,
+    sbom: dict[str, Any],
+    verbose: bool,
+) -> None:
+    """Run SCANOSS and persist full-file vendored matches. Best-effort.
+
+    Called ONLY when ``scanoss_enabled()`` is true (the caller gates on it).
+    A missing binary / no matches / any error degrades to a no-op — a vendored
+    match set is enrichment, never a reason to fail the scan (same philosophy as
+    the scancode stage). Idempotent on re-run: ``_reset_scan_for_rerun`` clears
+    this scan's ScanComponent / LicenseFinding rows first, and every upsert is
+    keyed on stable identity, so a re-execution cannot duplicate rows.
+    """
+    try:
+        result = scanoss_adapter.run_scanoss(
+            source_dir=source_dir,
+            output_dir=workspace / "scanoss",
+            line_callback=_make_line_callback(scan_uuid, stage="scanoss"),
+            verbose=verbose,
+        )
+    except Exception as exc:  # noqa: BLE001 — the stage must never fail the scan
+        log.warning("scanoss_stage_skipped", error=str(exc)[:300])
+        return
+
+    if result.result_path is not None:
+        _persist_artifact(scan_uuid, kind="scanoss_result", path=result.result_path)
+
+    if not result.vendored:
+        log.info("scanoss_stage_no_matches", scan_id=str(scan_uuid))
+        return
+
+    try:
+        with sync_session_scope() as session:
+            persisted = _persist_vendored_components(
+                session, scan_uuid=scan_uuid, vendored=result.vendored
+            )
+            session.commit()
+        log.info(
+            "scanoss_stage_done",
+            scan_id=str(scan_uuid),
+            matches=len(result.vendored),
+            components_persisted=persisted,
+        )
+    except SQLAlchemyError as exc:
+        # A persist failure here is degraded, not fatal — the component graph +
+        # vuln matching stand on their own. Log and continue.
+        log.warning(
+            "scanoss_persist_skipped",
+            scan_id=str(scan_uuid),
+            error=str(exc)[:300],
+            matches=len(result.vendored),
+        )
+
+
+# Provenance marker recorded in ``scan_components.raw_data`` (the table has no
+# dedicated ``source`` column — provenance rides in the JSONB blob, mirroring
+# how declared/concluded/detected license findings carry ``raw_data.source``).
+_SCANOSS_SOURCE = "scanoss"
+
+
+def _persist_vendored_components(
+    session: Session,
+    *,
+    scan_uuid: uuid.UUID,
+    vendored: list[scanoss_adapter.VendoredComponent],
+) -> int:
+    """Upsert vendored components + detected license findings for a scan.
+
+    Each :class:`~integrations.scanoss.VendoredComponent` becomes:
+      * a ``Component`` (by version-less purl) + ``ComponentVersion`` (by
+        purl-with-version) — reusing the SAME upsert helpers cdxgen uses, so a
+        purl SCANOSS reports that cdxgen ALSO found resolves to the identical
+        component_version row (no duplicate Component);
+      * a ``ScanComponent`` with ``direct=False`` and
+        ``raw_data={"source": "scanoss"}`` — but ONLY when this scan does not
+        already carry a ScanComponent for that component_version (cdxgen may
+        already have enumerated it; we never add a second row for the same
+        package in the same scan);
+      * ``detected`` ``LicenseFinding`` rows for each reported license name
+        (``kind='detected'``, ``raw_data.source='scanoss'``) — kind + source
+        keep these distinct from cdxgen's ``declared`` findings, so they never
+        collide on ``uq_license_findings_*``.
+
+    Returns the number of NEW ScanComponent rows created (reused rows are not
+    counted). Input strings are sanitised at the persist boundary (NUL-byte /
+    control-char safe) because they originate from an external API.
+    """
+    created = 0
+    for vc in vendored:
+        purl = sanitize_jsonb_text(vc.purl)
+        if not purl:
+            continue
+        # Defensive length caps at the persist boundary (column widths:
+        # components.name String(512), component_versions.version String(255),
+        # components.package_type String(32)). The adapter already truncates
+        # name/version, but re-clamp here so an over-long field from the
+        # external SCANOSS response can never raise StringDataRightTruncation
+        # and roll back the whole vendored batch (security-review Low-1).
+        name = (sanitize_jsonb_text(vc.name) or "unknown")[:512]
+        version = (sanitize_jsonb_text(vc.version) or "unknown")[:255]
+        package_type = _purl_package_type(purl)[:32] or "generic"
+
+        component = _get_or_create_component(
+            session,
+            purl=_purl_without_version(purl),
+            name=name,
+            package_type=package_type,
+        )
+        component_version = _get_or_create_component_version(
+            session,
+            component=component,
+            version=version,
+            purl_with_version=purl,
+        )
+
+        # Skip if cdxgen (or a prior vendored match this scan) already recorded
+        # this component_version — avoids a duplicate package row in the UI and
+        # a potential uq_scan_components_scan_version_path collision.
+        existing = session.execute(
+            select(ScanComponent).where(
+                ScanComponent.scan_id == scan_uuid,
+                ScanComponent.component_version_id == component_version.id,
+            )
+        ).first()
+        if existing is None:
+            session.add(
+                ScanComponent(
+                    scan_id=scan_uuid,
+                    component_version_id=component_version.id,
+                    direct=False,
+                    raw_data={"source": _SCANOSS_SOURCE},
+                )
+            )
+            session.flush()
+            created += 1
+
+        _persist_vendored_licenses(
+            session,
+            scan_uuid=scan_uuid,
+            component_version_id=component_version.id,
+            licenses=vc.licenses,
+        )
+
+    return created
+
+
+def _persist_vendored_licenses(
+    session: Session,
+    *,
+    scan_uuid: uuid.UUID,
+    component_version_id: uuid.UUID,
+    licenses: list[str],
+) -> None:
+    """Emit ``detected`` LicenseFindings for a vendored component's licenses.
+
+    SCANOSS reports SPDX-ish license names; we upsert each into ``licenses``
+    and attach a ``kind='detected'`` finding with ``source_path=None`` and
+    ``raw_data.source='scanoss'``. De-duped per component_version; over-length
+    names dropped (defence in depth against the ``licenses.spdx_id`` column
+    width, since the names come from the external API).
+    """
+    seen: set[str] = set()
+    for raw_name in licenses:
+        spdx = sanitize_jsonb_text(raw_name)
+        if not spdx or len(spdx) > _SPDX_ID_MAX_LENGTH or spdx in seen:
+            continue
+        seen.add(spdx)
+        license_row = _get_or_create_license(session, spdx_id=spdx, reference_url=None)
+        session.add(
+            LicenseFinding(
+                scan_id=scan_uuid,
+                component_version_id=component_version_id,
+                license_id=license_row.id,
+                kind="detected",
+                source_path=None,
+                raw_data={"source": _SCANOSS_SOURCE},
+            )
+        )
 
 
 def _get_or_create_first_party_component_version(

@@ -43,6 +43,7 @@
     "step_fetch": "소스 가져오기",
     "step_cdxgen": "cdxgen (SBOM 생성)",
     "step_scancode": "ScanCode (라이선스)",
+    "step_scanoss": "SCANOSS (vendored)",
     "step_trivy": "Trivy (취약점 매칭)",
     "step_finalize": "마무리",
     "step_succeeded": "스캔 완료",

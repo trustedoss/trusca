@@ -309,6 +309,40 @@ def scrubbed_env_for_scancode() -> dict[str, str]:
 
 
 # ---------------------------------------------------------------------------
+# SCANOSS (Phase J — opt-in vendored-OSS identification)
+# ---------------------------------------------------------------------------
+
+# scanoss-py is pure Python. It reads the API endpoint / key from CLI flags
+# (see integrations.scanoss._build_command), not env, so no ``SCANOSS_*`` keys
+# are forwarded here — the adapter passes ``--apiurl`` / ``--key`` explicitly.
+# It DOES honour standard proxy / CA hints (in _BASE_ALLOWLIST) so an operator
+# behind a TLS-intercepting proxy can still reach osskb.org. Worker secrets
+# (``SECRET_KEY`` / ``DATABASE_URL`` / ``*_WEBHOOK_URL``) are stripped: scanoss
+# reads attacker-controlled file contents while fingerprinting, so a scanoss CVE
+# or a hostile payload must have no credential to exfiltrate.
+_SCANOSS_EXTRA_ALLOWLIST: frozenset[str] = frozenset(
+    {
+        # scanoss-py caches settings / the .scanoss dir under HOME; harmless.
+        "SCANOSS_SETTINGS",
+    }
+)
+
+
+def scrubbed_env_for_scanoss() -> dict[str, str]:
+    """Env dict for the ``scanoss-py scan`` invocation (Phase J).
+
+    The shared base allowlist (PATH / HOME / proxy / CA hints) plus the generic
+    defaults — and nothing else. The API endpoint + key travel as CLI flags, not
+    env, and worker secrets are stripped (scanoss fingerprints attacker-supplied
+    source, so a compromise must find no credential in the environment).
+    """
+    return _build_env(
+        explicit=_BASE_ALLOWLIST | _SCANOSS_EXTRA_ALLOWLIST,
+        defaults=_GENERIC_DEFAULTS,
+    )
+
+
+# ---------------------------------------------------------------------------
 # cosign (v2.3-s1 — SBOM signing)
 # ---------------------------------------------------------------------------
 
@@ -406,5 +440,6 @@ __all__ = [
     "scrubbed_env_for_cosign",
     "scrubbed_env_for_prep",
     "scrubbed_env_for_scancode",
+    "scrubbed_env_for_scanoss",
     "scrubbed_env_for_trivy",
 ]
