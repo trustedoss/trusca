@@ -413,8 +413,50 @@ jobs:
           set -euo pipefail
           echo "release-gate: booting ${IMAGE_REGISTRY}/trusca-*:${IMAGE_TAG}"
           docker-compose -f docker-compose.yml -f docker-compose.smoke.yml pull backend worker frontend
+
+          # Two-phase boot to survive a COLD postgres (fresh initdb). The v0.13.0
+          # first live run failed here with a single
+          #   up -d postgres redis backend worker beat frontend
+          # on a fresh volume: the postgres image runs initdb behind an INTERNAL
+          # temp server (listen_addresses='' — unix socket only) to run the
+          # trustedoss_app role script, so the base file's socket `pg_isready`
+          # healthcheck reported "healthy" DURING bootstrap. `service_healthy`
+          # released the backend early; its bounded (10 x 3s) alembic-current
+          # probe over TCP expired mid-initdb, the backend exited, and `worker`
+          # (depends_on backend: service_healthy) aborted `up` with
+          # "Container is unhealthy". Warm boots skip initdb, so CI/image-scan
+          # never hit it.
+          #
+          # Fix: bring up the data stores first, then WAIT until postgres answers
+          # over TCP (the smoke overlay's healthcheck is TCP-anchored for the same
+          # reason), then start the app tier against a genuinely-ready DB — so the
+          # backend's alembic-current probe now succeeds on its first attempt.
+          docker-compose -f docker-compose.yml -f docker-compose.smoke.yml up -d postgres redis
+
+          echo "waiting for postgres to accept TCP connections (cold initdb + role script can take ~30s)"
+          pg_ready=0
+          for i in $(seq 1 60); do
+            if docker-compose -f docker-compose.yml -f docker-compose.smoke.yml exec -T postgres \
+                 pg_isready -h 127.0.0.1 -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" >/dev/null 2>&1; then
+              echo "postgres accepting TCP connections after ${i} probe(s)"
+              pg_ready=1
+              break
+            fi
+            echo "postgres not TCP-ready yet ($i/60); retrying in 2s"
+            sleep 2
+          done
+          if [ "$pg_ready" -ne 1 ]; then
+            echo "::error::postgres never became TCP-ready within ~120s — dumping diagnostics"
+            docker-compose -f docker-compose.yml -f docker-compose.smoke.yml ps
+            docker-compose -f docker-compose.yml -f docker-compose.smoke.yml logs --tail=200 postgres
+            exit 1
+          fi
+
+          # Postgres is genuinely ready (real server on TCP, initdb + role script
+          # complete). Start the app tier; backend migrates & turns healthy, then
+          # worker / beat (depends_on backend: service_healthy) start in order.
           docker-compose -f docker-compose.yml -f docker-compose.smoke.yml up -d \
-            postgres redis backend worker beat frontend
+            backend worker beat frontend
 
       # Reused from install-uat.yml — the smoke overlay publishes backend :8000,
       # so we poll the host port directly (production routes this via Traefik).
