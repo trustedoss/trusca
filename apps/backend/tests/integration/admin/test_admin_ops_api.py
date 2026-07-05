@@ -112,6 +112,8 @@ _AUTH_MATRIX_ENDPOINTS = [
     ("GET", "/v1/admin/health"),
     # W6-#43e: Trivy DB health panel — existence-hide for non-super-admin.
     ("GET", "/v1/admin/trivy/health"),
+    # Phase C: KEV feed sync status panel — same existence-hide gate.
+    ("GET", "/v1/admin/kev/health"),
 ]
 
 
@@ -384,3 +386,57 @@ async def test_admin_trivy_health_super_admin_returns_payload(
     assert body["refresh_interval_hours"] >= 1
     assert body["cache_dir"].endswith("trivy-cache")
     assert body["repository"] == "ghcr.io/aquasecurity/trivy-db"
+
+
+# ---------------------------------------------------------------------------
+# KEV feed sync status panel (Phase C)
+# ---------------------------------------------------------------------------
+
+
+async def test_admin_kev_health_super_admin_returns_payload(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Super admin sees the KEV feed status snapshot.
+
+    The shared integration DB may or may not carry a ``kev_sync_state`` row
+    (the refresh task's own integration tests write one), so this asserts
+    the closed response shape + config-derived fields, not row presence —
+    the three row states are pinned in the service unit tests and the task's
+    integration lifecycle test.
+    """
+    monkeypatch.delenv("KEV_FEED_URL", raising=False)
+    monkeypatch.setenv("KEV_REFRESH_ENABLED", "true")
+
+    factory = await _factory(client)
+    async with factory() as session:
+        admin = await make_user(session, is_superuser=True)
+
+    response = await client.get("/v1/admin/kev/health", headers=_bearer_for(admin))
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"].startswith("application/json")
+    body = response.json()
+    # Closed shape: every contracted field present.
+    assert set(body.keys()) == {
+        "enabled",
+        "last_synced_at",
+        "last_attempt_at",
+        "last_result",
+        "skipped_reason",
+        "feed_count",
+        "listed",
+        "delisted",
+        "duration_ms",
+        "kev_flagged_total",
+        "next_refresh_at",
+        "feed_host",
+    }
+    assert body["enabled"] is True
+    assert body["feed_host"] == "www.cisa.gov"
+    # Live count reads the partial index — always an int against a live DB.
+    assert isinstance(body["kev_flagged_total"], int)
+    assert body["kev_flagged_total"] >= 0
+    # Derived from the live beat schedule (daily crontab) — present and in
+    # the future.
+    assert body["next_refresh_at"] is not None
+    if body["last_result"] is not None:
+        assert body["last_result"] in {"synced", "skipped"}

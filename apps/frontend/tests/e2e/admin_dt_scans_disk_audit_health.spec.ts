@@ -199,4 +199,45 @@ test.describe("@critical admin scans / disk / audit / health", () => {
       expect(["ok", "degraded", "down"]).toContain(status);
     }
   });
+
+  test("6) KEV feed panel — renders on /admin/health with never-ran or a valid status (Phase C)", async ({
+    page,
+  }, testInfo) => {
+    const seed = tryAcquireSeed(testInfo, {
+      projectNames: ["admin-e2e-kev"],
+      superAdmin: true,
+    });
+    if (seed === null) return;
+
+    const auth = new AuthHarness(page);
+    await auth.gotoLogin();
+    await auth.login(seed.email, seed.password);
+
+    const portal = new PortalPage(page);
+    const health = await portal.gotoAdminHealth();
+
+    // The panel is a fixed part of /admin/health (mounted next to the Trivy
+    // DB card) and backs onto `GET /v1/admin/kev/health` — a pure read of
+    // the single `kev_sync_state` row. In the seeded e2e environment the
+    // daily beat has (almost certainly) never fired, so the expected shape
+    // is the never-ran EmptyState; a stack whose beat DID run must instead
+    // show a status badge with one of the three legal values. Either way
+    // the fetch must not error — an error alert means the endpoint or the
+    // super-admin gate regressed.
+    const panel = await health.expectKevFeedPanel();
+    expect(panel.error).toBe(false);
+    if (panel.empty) {
+      // Never ran: no synced/skipped result to describe. A badge appears
+      // only when the config signal outranks "no runs yet" (disabled).
+      expect(["empty", "disabled"]).toContain(panel.status);
+      const badge = await health.getKevFeedBadgeStatus();
+      expect([null, "disabled"]).toContain(badge);
+    } else {
+      // A beat tick has run — the KPI grid is up and the badge carries one
+      // of the legal statuses (data-status on root and badge must agree).
+      expect(["disabled", "skipped", "synced"]).toContain(panel.status);
+      const badge = await health.getKevFeedBadgeStatus();
+      expect(badge).toBe(panel.status);
+    }
+  });
 });

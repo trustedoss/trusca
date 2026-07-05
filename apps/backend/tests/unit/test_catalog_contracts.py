@@ -130,6 +130,31 @@ def test_emitted_obligation_kinds_are_advertised() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Bundled license texts ↔ obligation catalog — vocabulary-drift guard
+# ---------------------------------------------------------------------------
+
+
+def test_license_text_files_match_obligation_catalog_ids() -> None:
+    """Every catalogued SPDX id has a bundled full text, and vice versa.
+
+    The NOTICE's "License Texts" section (Phase B) promises the standard full
+    text for every license the obligation catalog governs. A catalog id added
+    without vendoring ``services/license_texts/<id>.txt`` silently degrades
+    that license to the "text not bundled" pointer; an orphan ``.txt`` is dead
+    weight that will rot. Same-vocabulary-in-two-places rule (H-5 class).
+    """
+    from services.license_texts import bundled_spdx_ids
+    from services.obligation_catalog import catalog_spdx_ids
+
+    bundled = bundled_spdx_ids()
+    catalogued = catalog_spdx_ids()
+    assert bundled == catalogued, (
+        f"catalog ids without a bundled text: {sorted(catalogued - bundled)}; "
+        f"bundled texts not in the catalog: {sorted(bundled - catalogued)}"
+    )
+
+
+# ---------------------------------------------------------------------------
 # VEX state mapping — H-4 guard
 # ---------------------------------------------------------------------------
 
@@ -162,3 +187,73 @@ def test_cyclonedx_state_map_targets_are_valid_spec_states() -> None:
     from services.vex_export import CYCLONEDX_STATE_MAP
 
     assert set(CYCLONEDX_STATE_MAP.values()) <= _CYCLONEDX_ANALYSIS_STATES
+
+
+def test_vulnerability_sort_keys_router_pattern_matches_service_set() -> None:
+    """The router's ``sort`` Query regex and the service's ``_VALID_SORT_KEYS``
+    hold the same vocabulary in two places (hardening rule §2). A key added to
+    one but not the other either 422s a valid sort or lets an unknown key
+    through to the service's fallback — both silent drifts. Parse the regex
+    alternation out of the route signature and assert set equality.
+    """
+    import pathlib
+    import re
+
+    from services.vulnerability_service import _VALID_SORT_KEYS
+
+    # Read the router source as text instead of importing it — importing
+    # api.v1 drags the whole router package (heavy app wiring) into a unit
+    # test that only needs one Query() pattern literal.
+    src = (
+        pathlib.Path(__file__).resolve().parents[2] / "api" / "v1" / "vulnerabilities.py"
+    ).read_text(encoding="utf-8")
+    patterns = re.findall(r'pattern=r"\^\(([a-z_|]+)\)\$"', src)
+    sort_alternations = [p for p in patterns if "severity" in p]
+    assert len(sort_alternations) == 1, (
+        f"expected exactly one sort-key pattern in the router, found "
+        f"{len(sort_alternations)}: {sort_alternations}"
+    )
+    assert set(sort_alternations[0].split("|")) == set(_VALID_SORT_KEYS)
+
+
+# ---------------------------------------------------------------------------
+# Review flags — AI license review class (Phase D) — §2 vocabulary guard
+# ---------------------------------------------------------------------------
+
+
+def test_review_flag_values_match_schema_literal() -> None:
+    """The classifier's single source of truth (``REVIEW_FLAG_VALUES``) and the
+    API wire Literal (``schemas.license_detail.ReviewFlag``) must be identical.
+
+    §2: the same review-flag vocabulary lives in the classifier, the schema
+    Literal, and (later) a frontend mirror. A token added to one side without
+    the other silently 422s a valid filter or advertises a value the persistence
+    layer never stores.
+    """
+    import typing
+
+    from schemas.license_detail import ReviewFlag
+    from services.license_flags import REVIEW_FLAG_VALUES
+
+    assert set(REVIEW_FLAG_VALUES) == set(typing.get_args(ReviewFlag))
+
+
+def test_review_flag_router_pattern_matches_classifier_values() -> None:
+    """The licenses router's ``review_flag`` Query regex holds the same
+    vocabulary as ``REVIEW_FLAG_VALUES`` (hardening rule §2).
+    """
+    import pathlib
+    import re
+
+    from services.license_flags import REVIEW_FLAG_VALUES
+
+    src = (
+        pathlib.Path(__file__).resolve().parents[2] / "api" / "v1" / "licenses.py"
+    ).read_text(encoding="utf-8")
+    patterns = re.findall(r'pattern=r"\^\(([a-z_|]+)\)\$"', src)
+    review_alternations = [p for p in patterns if "behavioral_use" in p]
+    assert len(review_alternations) == 1, (
+        f"expected exactly one review_flag pattern in the router, found "
+        f"{len(review_alternations)}: {review_alternations}"
+    )
+    assert set(review_alternations[0].split("|")) == set(REVIEW_FLAG_VALUES)

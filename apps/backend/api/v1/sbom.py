@@ -37,7 +37,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.api_key_auth import require_role_or_api_key
 from core.authz import assert_team_access
-from core.config import sbom_ingest_max_bytes, scan_trigger_rate_limit
+from core.config import (
+    api_read_rate_limit,
+    sbom_ingest_max_bytes,
+    scan_trigger_rate_limit,
+)
 from core.db import get_db
 from core.errors import problem_response
 from core.ratelimit import _authenticated_user_key, limiter
@@ -845,6 +849,16 @@ async def ingest_sbom_endpoint(
             "content": {"application/problem+json": {}},
         },
     },
+)
+# F-1 (RED-team, Low): same unthrottled-api-key-GET gap as GET /v1/scans/{id}.
+# shared_limit buckets by (actor, "api_read") — fixed scope excludes the
+# {project_id}/{scan_id} path so the cap can't be sprayed across ids — and
+# _authenticated_user_key yields apikey:<prefix> pre-auth, capping a Bearer-tos_
+# flood before the dummy-bcrypt verify. Accessor (not its result) → per-request.
+@limiter.shared_limit(
+    api_read_rate_limit,
+    scope="api_read",
+    key_func=_authenticated_user_key,
 )
 async def get_sbom_conformance_endpoint(
     request: Request,

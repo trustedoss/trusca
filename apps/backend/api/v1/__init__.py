@@ -24,6 +24,7 @@ from .remediation import router as remediation_router
 from .reports import router as reports_router
 from .sbom import router as sbom_router
 from .scans import router as scans_router
+from .search import router as search_router
 from .source_tree import router as source_tree_router
 from .users_me import router as users_me_router
 from .vex import router as vex_router
@@ -54,6 +55,7 @@ __all__ = [
     "reports_router",
     "sbom_router",
     "scans_router",
+    "search_router",
     "source_tree_router",
     "users_me_router",
     "vex_router",

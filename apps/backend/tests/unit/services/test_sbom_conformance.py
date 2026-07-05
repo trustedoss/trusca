@@ -213,3 +213,131 @@ def test_empty_components_zero_division_guarded() -> None:
 def test_recognised_format_emits_full_check_catalogue() -> None:
     ids = {c.id for c in sc.evaluate(_load("real_cyclonedx_small.json")).checks}
     assert ids == set(sc.CHECK_IDS)
+
+
+# ---------------------------------------------------------------------------
+# G7 AI SBOM advisory checks (services.g7_conformance) — appended ONLY when a
+# machine-learning-model component exists, and NEVER moving the core verdict.
+# The 51-element per-check expectations live in test_g7_conformance.py; here
+# we lock the integration seam.
+# ---------------------------------------------------------------------------
+AIBOM_FIXTURE = (
+    Path(__file__).resolve().parents[2]
+    / "fixtures"
+    / "sbom_ingest"
+    / "aibom-owasp-1_7.json"
+)
+
+
+def test_non_ml_1_7_document_emits_no_g7_checks() -> None:
+    """A 1.7 document WITHOUT an ML component gets only the 9 core checks."""
+    raw = _cdx(
+        [{"type": "library", "name": "x", "version": "1", "purl": "pkg:npm/x@1"}],
+        specVersion="1.7",
+    )
+    result = sc.evaluate(raw)
+    assert len(result.checks) == 9
+    assert not [c for c in result.checks if c.id.startswith("g7-")]
+
+
+def test_ml_bom_appends_51_advisory_g7_checks() -> None:
+    result = sc.evaluate(AIBOM_FIXTURE.read_bytes())
+    core = [c for c in result.checks if c.cluster is None]
+    g7_checks = [c for c in result.checks if c.cluster is not None]
+    assert {c.id for c in core} == set(sc.CHECK_IDS)
+    assert len(g7_checks) == 51
+    assert len(result.checks) == 9 + 51
+    assert all(c.id.startswith("g7-") for c in g7_checks)
+    assert all(not c.required for c in g7_checks)
+    assert all(c.status in {"pass", "warn"} for c in g7_checks)
+
+
+def test_g7_warns_never_move_the_core_verdict_or_counters() -> None:
+    """AIBOM fixture: every mandatory core check passes; the recommended core
+    hash check warns → result 'warn' with n_warn == 1 EVEN THOUGH dozens of
+    G7 advisory checks also warn (they are excluded from the aggregation)."""
+    result = sc.evaluate(AIBOM_FIXTURE.read_bytes())
+    g7_warns = [c for c in result.checks if c.cluster is not None and c.status == "warn"]
+    assert g7_warns, "the fixture must carry warning G7 elements for this lock"
+    assert result.n_fail == 0
+    assert result.n_warn == 1  # the core hash check only
+    assert result.result == "warn"
+
+
+def test_all_core_pass_stays_pass_despite_g7_warns() -> None:
+    """A fully-conformant core document whose only component is an ML model:
+    the overall result stays 'pass' regardless of absent G7 elements."""
+    raw = _cdx(
+        [
+            {
+                "type": "machine-learning-model",
+                "name": "m",
+                "version": "1",
+                "purl": "pkg:huggingface/org/m@1",
+                "licenses": [{"license": {"id": "MIT"}}],
+                "hashes": [{"alg": "SHA-256", "content": "aa"}],
+            }
+        ]
+    )
+    result = sc.evaluate(raw)
+    assert any(c.cluster is not None and c.status == "warn" for c in result.checks)
+    assert result.n_fail == 0
+    assert result.n_warn == 0
+    assert result.result == "pass"
+
+
+def test_core_check_as_dict_is_byte_compatible() -> None:
+    """Backwards compatibility: the 9 core checks serialise with EXACTLY the
+    legacy key set — no new keys leak into persisted rows for non-ML SBOMs."""
+    result = sc.evaluate(_load("real_cyclonedx_small.json"))
+    for check in result.checks:
+        assert set(check.as_dict()) == {
+            "id",
+            "label",
+            "required",
+            "status",
+            "detail",
+            "missing",
+        }
+
+
+def test_g7_check_as_dict_carries_extension_fields() -> None:
+    result = sc.evaluate(AIBOM_FIXTURE.read_bytes())
+    by_id = {c.id: c for c in result.checks}
+    d = by_id["g7-model-id"].as_dict()
+    assert d["cluster"] == "models"
+    assert d["source"] == "auto"
+    assert d["role"] == "sbom-author"
+    assert d["evidence"] == ["pkg:huggingface/google-bert/bert-base-uncased@86b5e093"]
+    # Unsatisfied element: extension metadata present, evidence omitted.
+    absent = by_id["g7-model-openness"].as_dict()
+    assert absent["cluster"] == "models"
+    assert "evidence" not in absent
+
+
+def test_as_dict_sanitises_sbom_derived_strings() -> None:
+    """F-1: ``as_dict`` is the JSONB persist boundary — SBOM-derived strings in
+    ``detail`` (timestamp, top-component name) and ``missing[]`` (component
+    names) must be NUL / control-char cleaned. Pre-fix an embedded NUL reached
+    the ``sbom_conformance.checks`` JSONB as ``\\u0000``, Postgres raised a
+    DataError, the WHOLE ingest scan failed, and the raw psycopg message
+    surfaced in the user-visible ``scan.error_message``."""
+    raw = _cdx(
+        [{"name": "evil\x00comp\x1b", "purl": None}],  # no version → missing[]
+        metadata={
+            "timestamp": "2026-01-01T00:00:00Z\x00\x1b[2J",
+            "tools": [{"name": "t"}],
+            "component": {"name": "root\x00", "version": "1.0"},
+        },
+    )
+    result = sc.evaluate(raw)
+    dumped = [c.as_dict() for c in result.checks]
+    blob = json.dumps(dumped)
+    assert "\\u0000" not in blob and "\\u001b" not in blob
+    by_id = {d["id"]: d for d in dumped}
+    assert by_id["timestamp"]["detail"] == "2026-01-01T00:00:00Z[2J"
+    assert by_id["top-component"]["detail"] == "root@1.0"
+    assert by_id["name-version"]["missing"] == ["evilcomp"]
+    # The in-memory dataclass keeps the raw value; only serialisation cleans.
+    raw_detail = next(c for c in result.checks if c.id == "timestamp").detail
+    assert "\x00" in raw_detail

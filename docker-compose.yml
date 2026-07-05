@@ -57,8 +57,30 @@ x-backend-env: &backend-env
   # override from install.sh / upgrade.sh so the DDL run uses the
   # owner role exactly once, then exits. The runtime can never see
   # the owner DSN, so a runtime RCE cannot DROP TRIGGER on audit_logs.
-  DATABASE_URL_APP: ${DATABASE_URL_APP:-${DATABASE_URL}}
-  DATABASE_URL: ${DATABASE_URL_APP:-${DATABASE_URL}}
+  # docker-compose V1 (1.29.2 — the project standard, CLAUDE.md rule #10) does
+  # NOT expand a NESTED default: `${DATABASE_URL_APP:-${DATABASE_URL}}` leaves a
+  # stray trailing `}` when DATABASE_URL_APP is set (L1), so the runtime got the
+  # app DSN with a broken `.../trustedoss}` database name and could not connect.
+  # The single-brace default form `${A:-$B}` expands cleanly under BOTH V1 and
+  # V2 when A is set (verified with 1.29.2 + the V2 plugin), so the L1 runtime
+  # now receives the exact trustedoss_app DSN install.sh wrote. Semantics are
+  # otherwise unchanged: L1 (DATABASE_URL_APP set) -> app DSN in the container
+  # (owner creds never leak to the runtime); single-role installs still resolve
+  # via DATABASE_URL. See install-uat.yml `install-uat-l1` for the end-to-end
+  # gate that exercises this under V1.
+  DATABASE_URL_APP: ${DATABASE_URL_APP:-$DATABASE_URL}
+  DATABASE_URL: ${DATABASE_URL_APP:-$DATABASE_URL}
+  # H1 — plumb the migration toggle INTO the container. The backend entrypoint
+  # reads AUTO_MIGRATE from its own environment (docker-entrypoint.sh); a value
+  # in .env is only visible to compose interpolation, never to the container,
+  # unless it is referenced here. Without this line install.sh's
+  # `AUTO_MIGRATE=false` for L1 role-separated stacks (the runtime app role has
+  # no DDL grant, so migrations run once as the owner via install.sh) was
+  # silently dropped — the runtime defaulted back to true and attempted DDL as
+  # trustedoss_app. Default `true` matches .env.example and the single-role path,
+  # so nothing changes for existing deployments. backend / worker / beat share
+  # this anchor and the same entrypoint, so all three honour the toggle.
+  AUTO_MIGRATE: ${AUTO_MIGRATE:-true}
   REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
   SECRET_KEY: ${SECRET_KEY}
   ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
@@ -137,6 +159,17 @@ x-backend-env: &backend-env
   SCANCODE_MAX_FILES: ${SCANCODE_MAX_FILES:-20000}
   SCANCODE_MAX_DETECTIONS: ${SCANCODE_MAX_DETECTIONS:-5000}
   SCANCODE_MAX_RESULT_BYTES: ${SCANCODE_MAX_RESULT_BYTES:-268435456}
+  # scanoss vendored-OSS identification (BomLens parity Phase J, P3-11). The
+  # worker image ALWAYS ships the scanoss-py CLI (MIT); execution is gated
+  # HERE — SCANOSS_ENABLED defaults false, so an unset .env leaves it off while
+  # still letting an operator flip it on without a rebuild. SCANOSS_API_URL
+  # defaults to the public OSS KB; point it at a private mirror for air-gapped
+  # / privacy-sensitive sites. Worker reads each via os.getenv() at runtime
+  # (rule #11).
+  SCANOSS_ENABLED: ${SCANOSS_ENABLED:-false}
+  SCANOSS_API_URL: ${SCANOSS_API_URL:-https://api.osskb.org}
+  SCANOSS_API_KEY: ${SCANOSS_API_KEY:-}
+  SCANOSS_TIMEOUT_SECONDS: ${SCANOSS_TIMEOUT_SECONDS:-300}
   # Fernet key for secrets-at-rest (GitHub App credentials AND — v2.3-s1 — the
   # cosign key password). Unset in dev/CI derives from SECRET_KEY (WARNING);
   # APP_ENV=prod with no key FAILS CLOSED. See core/crypto.py + .env.example.

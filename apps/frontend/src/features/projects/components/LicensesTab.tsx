@@ -12,8 +12,10 @@ import type {
   LicenseFindingKind,
   LicenseListItem,
   LicenseSortKey,
+  ReviewFlag,
   SortOrder,
 } from "@/features/projects/api/licensesApi";
+import { REVIEW_FLAG_VALUES } from "@/features/projects/api/licensesApi";
 import { useLicenses } from "@/features/projects/api/useLicenses";
 import { LicenseCategoryBadge } from "@/features/projects/components/LicenseCategoryBadge";
 import { AxisPill } from "@/features/projects/components/AxisPill";
@@ -21,6 +23,7 @@ import { LicenseDistributionChart } from "@/features/projects/components/License
 import { LicenseDrawer } from "@/features/projects/components/LicenseDrawer";
 import { LicenseKindBadge } from "@/features/projects/components/LicenseKindBadge";
 import { LicensesToolbar } from "@/features/projects/components/LicensesToolbar";
+import { ReviewFlagBadge } from "@/features/projects/components/ReviewFlagBadge";
 import { ProblemError } from "@/lib/problem";
 import { toggleSingleValue } from "@/lib/searchParamsToggle";
 import { cn } from "@/lib/utils";
@@ -70,12 +73,20 @@ const VALID_SORT = new Set<LicenseSortKey>([
   "affected_count",
 ]);
 
+const VALID_REVIEW_FLAG = new Set<ReviewFlag>(REVIEW_FLAG_VALUES);
+
 function parseList<T extends string>(raw: string | null, valid: Set<T>): T[] {
   if (!raw) return [];
   return raw
     .split(",")
     .map((v) => v.trim())
     .filter((v): v is T => valid.has(v as T));
+}
+
+function parseReviewFlag(raw: string | null): ReviewFlag | undefined {
+  return raw && VALID_REVIEW_FLAG.has(raw as ReviewFlag)
+    ? (raw as ReviewFlag)
+    : undefined;
 }
 
 function parseSort(raw: string | null): LicenseSortKey {
@@ -119,6 +130,9 @@ export function LicensesTab({ projectId, scanId }: LicensesTabProps) {
   );
   const [kinds, setKinds] = useState<LicenseFindingKind[]>(() =>
     parseList<LicenseFindingKind>(searchParams.get("kind"), VALID_KIND),
+  );
+  const [reviewFlag, setReviewFlag] = useState<ReviewFlag | undefined>(() =>
+    parseReviewFlag(searchParams.get("review_flag")),
   );
   const [sort, setSort] = useState<LicenseSortKey>(() =>
     parseSort(searchParams.get("sort")),
@@ -177,6 +191,8 @@ export function LicensesTab({ projectId, scanId }: LicensesTabProps) {
         else next.delete("license_category");
         if (kinds.length) next.set("kind", kinds.join(","));
         else next.delete("kind");
+        if (reviewFlag) next.set("review_flag", reviewFlag);
+        else next.delete("review_flag");
         if (sort !== "category") next.set("sort", sort);
         else next.delete("sort");
         if (order !== "desc") next.set("order", order);
@@ -191,6 +207,7 @@ export function LicensesTab({ projectId, scanId }: LicensesTabProps) {
     debouncedSearch,
     categories,
     kinds,
+    reviewFlag,
     sort,
     order,
     page,
@@ -202,13 +219,14 @@ export function LicensesTab({ projectId, scanId }: LicensesTabProps) {
       search: debouncedSearch,
       categories,
       kinds,
+      reviewFlag,
       sort,
       order,
       limit: PAGE_SIZE,
       offset: (page - 1) * PAGE_SIZE,
       scanId,
     }),
-    [debouncedSearch, categories, kinds, sort, order, page, scanId],
+    [debouncedSearch, categories, kinds, reviewFlag, sort, order, page, scanId],
   );
 
   const licenses = useLicenses(projectId, filters);
@@ -249,6 +267,11 @@ export function LicensesTab({ projectId, scanId }: LicensesTabProps) {
         kinds={kinds}
         onKindsChange={(next) => {
           setKinds(next);
+          setPage(1);
+        }}
+        reviewFlag={reviewFlag}
+        onReviewFlagChange={(next) => {
+          setReviewFlag(next);
           setPage(1);
         }}
         sort={sort}
@@ -339,6 +362,11 @@ export function LicensesTab({ projectId, scanId }: LicensesTabProps) {
       <LicenseDrawer
         open={drawerOpen}
         findingId={drawerId}
+        reviewFlag={
+          // Best-effort: the detail endpoint doesn't echo review_flag, so we
+          // carry it from the selected list row when it's on the current page.
+          items.find((it) => it.id === drawerId)?.review_flag ?? null
+        }
         onOpenChange={(open) => {
           if (!open) setDrawerLicense(null);
         }}
@@ -383,6 +411,7 @@ function LicenseRow({ license, rowIndex, onSelect }: LicenseRowProps) {
       data-spdx-id={license.spdx_id ?? ""}
       data-category={license.category}
       data-kind={license.kind}
+      data-review-flag={license.review_flag ?? ""}
       data-row-index={rowIndex}
       className={cn(
         "flex w-full items-center gap-3 border-b px-4 text-left text-sm transition-colors duration-fast ease-out-soft hover:bg-muted/50",
@@ -396,8 +425,13 @@ function LicenseRow({ license, rowIndex, onSelect }: LicenseRowProps) {
       >
         {license.spdx_id ?? t("licenses.row.no_spdx_id")}
       </span>
-      <span className="flex-1 truncate" title={license.name}>
-        {license.name}
+      <span className="flex min-w-0 flex-1 items-center gap-2">
+        <span className="truncate" title={license.name}>
+          {license.name}
+        </span>
+        {license.review_flag ? (
+          <ReviewFlagBadge flag={license.review_flag} className="shrink-0" />
+        ) : null}
       </span>
       <span className="w-32">
         <LicenseCategoryBadge category={license.category} />

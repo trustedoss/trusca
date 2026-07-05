@@ -43,6 +43,7 @@
     "step_fetch": "Fetch source",
     "step_cdxgen": "cdxgen (SBOM)",
     "step_scancode": "ScanCode (license)",
+    "step_scanoss": "SCANOSS (vendored)",
     "step_trivy": "Trivy (CVE match)",
     "step_finalize": "Finalize",
     "step_succeeded": "Scan completed",
@@ -206,6 +207,32 @@
       "hash": "File hashes"
     },
     "missing_more": "+{{count}} more",
+    "g7": {
+      "title": "G7 AI SBOM minimum elements",
+      "tally": {
+        "present": "{{present}} / {{autoTotal}} present",
+        "advisory": "{{count}} advisory",
+        "review": "{{count}} need human review"
+      },
+      "review_note": "Elements marked \"No automated source\" cannot be verified from the SBOM alone and require human review.",
+      "source": {
+        "auto": "Auto",
+        "inferred": "Inferred",
+        "declared": "Declared",
+        "na": "No automated source"
+      },
+      "cluster": {
+        "metadata": "Metadata",
+        "slp": "System Level Properties",
+        "models": "Models",
+        "dp": "Datasets Properties",
+        "infrastructure": "Infrastructure",
+        "sp": "Security Properties",
+        "kpi": "Key Performance Indicators"
+      },
+      "learn_more": "Learn more",
+      "missing_label": "Missing:"
+    },
     "errors": {
       "not_found": "No conformance verdict is available for this scan yet.",
       "network": "Could not load the conformance verdict due to a network error.",

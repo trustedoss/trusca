@@ -27,9 +27,10 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.api_key_auth import require_role_or_api_key
-from core.config import workspace_root
+from core.config import api_read_rate_limit, workspace_root
 from core.db import get_db
 from core.errors import problem_response
+from core.ratelimit import _authenticated_user_key, limiter
 from core.security import CurrentUser, require_role
 from schemas.scan import ScanListResponse, ScanPublic
 from services.admin_scan_service import (
@@ -139,6 +140,19 @@ async def list_my_scans_endpoint(
     "/scans/{scan_id}",
     response_model=ScanPublic,
     summary="Read one scan (IDOR-safe via project team membership)",
+)
+# F-1 (RED-team, Low): this GET accepts a tos_ API key, but had no limiter — and
+# the limiter is decorator-opt-in (default_limits=[]), so an undecorated route
+# is fully unthrottled. Every api-key miss runs a dummy bcrypt (~50-100ms CPU);
+# an unbounded Bearer-tos_ flood here saturates workers. shared_limit with a
+# FIXED scope buckets by (actor, "api_read") and EXCLUDES the {scan_id} path so
+# one actor can't bypass the cap by spraying different scan ids. Keyed by
+# _authenticated_user_key → apikey:<prefix> pre-auth, so the cap fires before
+# bcrypt on the hot path. Accessor (not its result) → re-read per request.
+@limiter.shared_limit(
+    api_read_rate_limit,
+    scope="api_read",
+    key_func=_authenticated_user_key,
 )
 async def get_scan_endpoint(
     request: Request,

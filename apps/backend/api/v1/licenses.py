@@ -109,6 +109,15 @@ async def list_project_licenses_endpoint(
         pattern=r"^(category|name|spdx_id|affected_count)$",
     ),
     order: str = Query(default="desc", pattern=r"^(asc|desc)$"),
+    review_flag: str | None = Query(
+        default=None,
+        pattern=r"^(behavioral_use|non_commercial)$",
+        description=(
+            "Filter to licenses carrying an AI review flag (Phase D). "
+            "behavioral_use = RAIL/Llama/Gemma/Falcon community licenses; "
+            "non_commercial = CC-BY-NC…. Omit to list all licenses."
+        ),
+    ),
     scan_id: uuid.UUID | None = Query(
         default=None,
         description=(
@@ -133,6 +142,7 @@ async def list_project_licenses_endpoint(
             search=search,
             sort=sort,
             order=order,
+            review_flag=review_flag,
             snapshot_scan_id=scan_id,
         )
     except SnapshotScanNotFound:

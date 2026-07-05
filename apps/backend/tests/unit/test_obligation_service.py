@@ -39,19 +39,29 @@ from schemas.obligation_detail import KNOWN_OBLIGATION_KINDS
 from services.obligation_service import (
     _NOTICE_COMPONENT_LABELS_CAP,
     _NOTICE_LICENSE_CAP,
+    _NOTICE_LICENSE_TEXT_CAP,
     _NOTICE_OBLIGATIONS_PER_LICENSE_CAP,
     ObligationError,
     ObligationNotFound,
     _clamp_obligation_text,
+    _clean_copyright,
+    _collect_review_entries,
     _format_header,
     _html_reference_line,
+    _license_text_sections,
     _md_escape,
+    _md_fence_for,
     _normalize_category_filter,
     _normalize_kind_filter,
     _order_distribution,
+    _purl_source_url,
     _render_empty_notice,
     _render_notice,
     _render_notice_html,
+    _render_review_section_html,
+    _render_review_section_markdown,
+    _render_review_section_text,
+    _review_flag_label,
     generate_notice,
     get_obligation_detail,
     list_project_obligations,
@@ -68,6 +78,12 @@ from tests._helpers import (
 )
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+def _comps(*labels: str) -> list[dict]:
+    """Phase B entry shape: each credited component is a dict (label +
+    copyright + source_url), not a bare label string."""
+    return [{"label": lb, "copyright": None, "source_url": None} for lb in labels]
 
 
 # ---------------------------------------------------------------------------
@@ -259,7 +275,7 @@ def test_render_notice_html_renders_licenses_components_and_obligations() -> Non
                 "spdx_id": "MIT",
                 "name": "MIT License",
                 "reference_url": "https://opensource.org/licenses/MIT",
-                "component_labels": ["foo @ 1.2.3", "bar @ 4.5.6"],
+                "components": _comps("foo @ 1.2.3", "bar @ 4.5.6"),
             }
         ],
         obligations_by_license={
@@ -267,8 +283,11 @@ def test_render_notice_html_renders_licenses_components_and_obligations() -> Non
         },
     )
     assert "<h2>MIT — MIT License</h2>" in body
-    assert "<li>foo @ 1.2.3</li>" in body
-    assert "<li>bar @ 4.5.6</li>" in body
+    # Phase B: the credited-component <li> now carries a copyright attribution
+    # span (value when captured, honest fallback otherwise).
+    assert "<li>foo @ 1.2.3<span" in body
+    assert "<li>bar @ 4.5.6<span" in body
+    assert "holders not captured in SBOM — see source" in body
     assert "Obligation: notice" in body
     assert "<pre>Preserve the copyright.</pre>" in body
     # Safe http(s) reference becomes a real link.
@@ -288,7 +307,7 @@ def test_render_notice_html_marks_licenses_without_obligations() -> None:
                 "spdx_id": None,
                 "name": "Weird",
                 "reference_url": None,
-                "component_labels": ["x @ 1"],
+                "components": _comps("x @ 1"),
             }
         ],
         obligations_by_license={lic_id: []},
@@ -311,7 +330,7 @@ def test_render_notice_html_escapes_untrusted_fields() -> None:
                 "spdx_id": "<b>MIT</b>",
                 "name": 'name"&<>',
                 "reference_url": None,
-                "component_labels": ["<img src=x onerror=alert(1)>"],
+                "components": _comps("<img src=x onerror=alert(1)>"),
             }
         ],
         obligations_by_license={
@@ -403,8 +422,8 @@ def test_render_notice_markdown_escapes_untrusted_fields() -> None:
                 "spdx_id": "MIT",
                 "name": "evil [x](javascript:alert(1))",
                 "reference_url": "javascript:alert(2)",
-                "component_labels": ["pkg `inject` @ 1.0"],
-                "component_labels_omitted": 0,
+                "components": _comps("pkg `inject` @ 1.0"),
+                "components_omitted": 0,
             }
         ],
         obligations_by_license={
@@ -441,8 +460,8 @@ def test_render_notice_markdown_component_fence_breakout_is_neutralized() -> Non
                 "spdx_id": "MIT",
                 "name": "MIT",
                 "reference_url": None,
-                "component_labels": ["```\n# heading injection"],
-                "component_labels_omitted": 0,
+                "components": _comps("```\n# heading injection"),
+                "components_omitted": 0,
             }
         ],
         obligations_by_license={lic_id: []},
@@ -489,8 +508,8 @@ def test_render_notice_markdown_newline_cannot_inject_line_start_structure(
                 "spdx_id": "MIT",
                 "name": name,
                 "reference_url": None,
-                "component_labels": [label],
-                "component_labels_omitted": 0,
+                "components": _comps(label),
+                "components_omitted": 0,
             }
         ],
         obligations_by_license={
@@ -535,8 +554,8 @@ def test_render_notice_markdown_clamps_reference_and_obligation_link_length() ->
                 "spdx_id": "MIT",
                 "name": "MIT",
                 "reference_url": huge,
-                "component_labels": ["pkg @ 1.0"],
-                "component_labels_omitted": 0,
+                "components": _comps("pkg @ 1.0"),
+                "components_omitted": 0,
             }
         ],
         obligations_by_license={
@@ -568,8 +587,8 @@ def test_render_notice_records_omitted_component_count(fmt: str) -> None:
         "spdx_id": "MIT",
         "name": "MIT License",
         "reference_url": None,
-        "component_labels": ["a @ 1", "b @ 2"],
-        "component_labels_omitted": 12345,
+        "components": _comps("a @ 1", "b @ 2"),
+        "components_omitted": 12345,
     }
     if fmt == "html":
         body = _render_notice_html(
@@ -601,8 +620,8 @@ def test_render_notice_no_omitted_note_when_under_cap(fmt: str) -> None:
         "spdx_id": "MIT",
         "name": "MIT License",
         "reference_url": None,
-        "component_labels": ["a @ 1"],
-        "component_labels_omitted": 0,
+        "components": _comps("a @ 1"),
+        "components_omitted": 0,
     }
     if fmt == "html":
         body = _render_notice_html(
@@ -663,8 +682,8 @@ def test_render_notice_records_omitted_license_count(fmt: str) -> None:
         "spdx_id": "MIT",
         "name": "MIT License",
         "reference_url": None,
-        "component_labels": ["a @ 1"],
-        "component_labels_omitted": 0,
+        "components": _comps("a @ 1"),
+        "components_omitted": 0,
         "obligations_omitted": 0,
     }
     if fmt == "html":
@@ -698,8 +717,8 @@ def test_render_notice_no_license_omitted_note_under_cap(fmt: str) -> None:
         "spdx_id": "MIT",
         "name": "MIT License",
         "reference_url": None,
-        "component_labels": ["a @ 1"],
-        "component_labels_omitted": 0,
+        "components": _comps("a @ 1"),
+        "components_omitted": 0,
         "obligations_omitted": 0,
     }
     if fmt == "html":
@@ -733,8 +752,8 @@ def test_render_notice_records_omitted_obligations_per_license(fmt: str) -> None
         "spdx_id": "GPL-3.0-only",
         "name": "GNU GPL v3",
         "reference_url": None,
-        "component_labels": ["a @ 1"],
-        "component_labels_omitted": 0,
+        "components": _comps("a @ 1"),
+        "components_omitted": 0,
         "obligations_omitted": 42,
     }
     obs = [{"kind": "notice", "text": "Keep this notice.", "link": None}]
@@ -767,8 +786,8 @@ def test_render_notice_no_obligations_omitted_note_under_cap(fmt: str) -> None:
         "spdx_id": "MIT",
         "name": "MIT License",
         "reference_url": None,
-        "component_labels": ["a @ 1"],
-        "component_labels_omitted": 0,
+        "components": _comps("a @ 1"),
+        "components_omitted": 0,
         "obligations_omitted": 0,
     }
     obs = [{"kind": "notice", "text": "Keep this notice.", "link": None}]
@@ -788,6 +807,397 @@ def test_render_notice_no_obligations_omitted_note_under_cap(fmt: str) -> None:
             fmt=fmt,
         )
     assert "more obligation(s) omitted" not in body
+
+
+# ---------------------------------------------------------------------------
+# Phase B — _purl_source_url (BomLens purl_src mirror)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("purl", "expected"),
+    [
+        # The nine registry types the BomLens jq purl_src() maps, with version…
+        (
+            "pkg:maven/org.apache.commons/commons-lang3@3.12.0",
+            "https://repo1.maven.org/maven2/org/apache/commons/commons-lang3/3.12.0/",
+        ),
+        ("pkg:npm/left-pad@1.3.0", "https://www.npmjs.com/package/left-pad/v/1.3.0"),
+        ("pkg:pypi/requests@2.31.0", "https://pypi.org/project/requests/2.31.0/"),
+        ("pkg:gem/rails@7.0.4", "https://rubygems.org/gems/rails/versions/7.0.4"),
+        ("pkg:cargo/serde@1.0.196", "https://crates.io/crates/serde/1.0.196"),
+        (
+            "pkg:nuget/Newtonsoft.Json@13.0.1",
+            "https://www.nuget.org/packages/Newtonsoft.Json/13.0.1",
+        ),
+        (
+            "pkg:golang/github.com/gin-gonic/gin@v1.9.1",
+            "https://pkg.go.dev/github.com/gin-gonic/gin@v1.9.1",
+        ),
+        (
+            "pkg:composer/Symfony/console@6.4.0",
+            "https://packagist.org/packages/symfony/console#6.4.0",
+        ),
+        (
+            "pkg:huggingface/meta-llama/Llama-2-7b",
+            "https://huggingface.co/meta-llama/Llama-2-7b",
+        ),
+        # …and without version (maven needs one; the rest fall back to the page).
+        ("pkg:npm/left-pad", "https://www.npmjs.com/package/left-pad"),
+        ("pkg:pypi/requests", "https://pypi.org/project/requests/"),
+        ("pkg:gem/rails", "https://rubygems.org/gems/rails"),
+        ("pkg:cargo/serde", "https://crates.io/crates/serde"),
+        ("pkg:nuget/Newtonsoft.Json", "https://www.nuget.org/packages/Newtonsoft.Json"),
+        ("pkg:golang/github.com/gin-gonic/gin", "https://pkg.go.dev/github.com/gin-gonic/gin"),
+        ("pkg:composer/symfony/console", "https://packagist.org/packages/symfony/console"),
+        ("pkg:maven/org.apache.commons/commons-lang3", None),
+        # Qualifiers / subpath are stripped before mapping (purl spec).
+        (
+            "pkg:maven/org.apache.commons/commons-lang3@3.12.0?type=jar#sub/path",
+            "https://repo1.maven.org/maven2/org/apache/commons/commons-lang3/3.12.0/",
+        ),
+    ],
+)
+def test_purl_source_url_maps_registry_types(purl: str, expected: str | None) -> None:
+    assert _purl_source_url(purl) == expected
+
+
+@pytest.mark.parametrize(
+    "hostile",
+    [
+        None,
+        "",
+        "not-a-purl",
+        "pkg:",
+        "pkg:npm",  # type only, no name segment
+        "pkg:generic/something@1.0",  # unknown type → never guess a URL
+        "pkg:npm/a b@1.0",  # whitespace fails the character allowlist
+        'pkg:npm/x"y@1.0',  # quote fails the character allowlist
+        "pkg:npm/<script>@1.0",  # angle brackets fail the allowlist
+        "pkg:npm/x\ny@1.0",  # control char fails the allowlist
+        "pkg:npm/" + "a" * 600,  # over the 512-char bound
+        # F-4: traversal-looking / percent-encoded path parts never become a
+        # "source" URL (misleading-link prevention; deliberate deviation from
+        # the BomLens jq, which maps these verbatim). Scoped-npm purls encode
+        # ``@`` as ``%40`` per the purl spec, so they land here too — such
+        # components fall back to the src-less attribution line.
+        "pkg:npm/../evil@1.0",
+        "pkg:golang/github.com/x/../evil@v1.0.0",
+        "pkg:maven/org..evil/lib@1.0",  # dotted ns expands to slashes
+        "pkg:pypi/requests@..",
+        "pkg:npm/%40babel/core@7.24.0",
+        "pkg:pypi/req%2e%2euests@1.0",
+    ],
+)
+def test_purl_source_url_rejects_hostile_or_unknown(hostile: str | None) -> None:
+    assert _purl_source_url(hostile) is None
+
+
+# ---------------------------------------------------------------------------
+# Phase B — _clean_copyright (untrusted SBOM attribution string)
+# ---------------------------------------------------------------------------
+
+
+def test_clean_copyright_passes_normal_value() -> None:
+    assert _clean_copyright("Copyright (c) 2016 Left Pad Inc.") == (
+        "Copyright (c) 2016 Left Pad Inc."
+    )
+
+
+@pytest.mark.parametrize("raw", [None, "", "   ", 42, {"a": 1}, ["x"]])
+def test_clean_copyright_non_string_or_blank_is_none(raw: object) -> None:
+    assert _clean_copyright(raw) is None
+
+
+def test_clean_copyright_strips_control_chars_and_newlines() -> None:
+    """CR/LF/NUL are dropped (sanitize_jsonb_text) so a hostile copyright can
+    never inject a new NOTICE line or abort a render."""
+    assert _clean_copyright("Evil\x00\r\nInjected \x1b[31mred") == "EvilInjected [31mred"
+
+
+def test_clean_copyright_clamps_length() -> None:
+    cleaned = _clean_copyright("h" * 10_000)
+    assert cleaned is not None
+    assert len(cleaned) == 500
+
+
+# ---------------------------------------------------------------------------
+# Phase B — _md_fence_for / _license_text_sections
+# ---------------------------------------------------------------------------
+
+
+def test_md_fence_is_longer_than_any_backtick_run() -> None:
+    assert _md_fence_for("no backticks here") == "```"
+    assert _md_fence_for("has `single` ticks") == "```"
+    assert _md_fence_for("hostile ``` fence inside") == "````"
+    assert _md_fence_for("worse ````` run") == "``````"
+
+
+def test_license_text_sections_dedupes_compound_operands() -> None:
+    """`MIT` + `MIT OR Apache-2.0` → each operand's text exactly once, sorted."""
+    entries = [
+        {"spdx_id": "MIT"},
+        {"spdx_id": "MIT OR Apache-2.0"},
+    ]
+    sections, omitted = _license_text_sections(entries)
+    assert [sid for sid, _ in sections] == ["Apache-2.0", "MIT"]
+    assert all(text is not None for _, text in sections)
+    assert omitted == 0
+
+
+def test_license_text_sections_marks_unbundled_ids() -> None:
+    sections, omitted = _license_text_sections([{"spdx_id": "NotARealLicense-1.0"}])
+    assert sections == [("NotARealLicense-1.0", None)]
+    assert omitted == 0
+
+
+def test_license_text_sections_empty_for_no_spdx_ids() -> None:
+    sections, omitted = _license_text_sections([{"spdx_id": None}])
+    assert sections == []
+    assert omitted == 0
+
+
+def test_license_text_sections_caps_full_texts_with_omitted_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import services.obligation_service as svc
+
+    monkeypatch.setattr(svc, "_NOTICE_LICENSE_TEXT_CAP", 1)
+    sections, omitted = _license_text_sections([{"spdx_id": "MIT OR Apache-2.0"}])
+    # One full text kept (first in spdx-asc order), one clipped by the cap.
+    assert [(sid, text is not None) for sid, text in sections] == [("Apache-2.0", True)]
+    assert omitted == 1
+
+
+def test_license_text_sections_caps_unbundled_pointer_lines(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """F-3: the 'text not bundled' one-liners are bounded on their own axis."""
+    import services.obligation_service as svc
+
+    monkeypatch.setattr(svc, "_NOTICE_LICENSE_TEXT_POINTER_CAP", 2)
+    entries = [{"spdx_id": f"NotBundled-{i}.0"} for i in range(5)]
+    sections, omitted = _license_text_sections(entries)
+    # Two pointer rows kept (spdx asc head), three clipped into the footer.
+    assert [(sid, text) for sid, text in sections] == [
+        ("NotBundled-0.0", None),
+        ("NotBundled-1.0", None),
+    ]
+    assert omitted == 3
+
+
+def test_notice_license_text_pointer_cap_is_sane() -> None:
+    from services.obligation_service import _NOTICE_LICENSE_TEXT_POINTER_CAP
+
+    assert 100 <= _NOTICE_LICENSE_TEXT_POINTER_CAP <= 10_000
+
+
+def test_notice_license_text_cap_is_sane() -> None:
+    # Must cover the whole bundled set with real headroom, but stay bounded.
+    assert 32 <= _NOTICE_LICENSE_TEXT_CAP <= 10_000
+
+
+# ---------------------------------------------------------------------------
+# Phase B — License Texts section rendering (all three formats)
+# ---------------------------------------------------------------------------
+
+
+def _render(fmt: str, entries: list[dict], obs: dict | None = None) -> str:
+    when = datetime(2026, 7, 3, 12, 0, 0, tzinfo=UTC)
+    obs = obs or {}
+    if fmt == "html":
+        return _render_notice_html(
+            project_name="P",
+            generated_at=when,
+            licenses_with_components=entries,
+            obligations_by_license=obs,
+        )
+    return _render_notice(
+        project_name="P",
+        generated_at=when,
+        licenses_with_components=entries,
+        obligations_by_license=obs,
+        fmt=fmt,
+    )
+
+
+def _mit_entry(**overrides: object) -> dict:
+    entry: dict = {
+        "license_id": uuid.uuid4(),
+        "spdx_id": "MIT",
+        "name": "MIT License",
+        "reference_url": None,
+        "components": _comps("a @ 1"),
+        "components_omitted": 0,
+        "obligations_omitted": 0,
+    }
+    entry.update(overrides)
+    return entry
+
+
+@pytest.mark.parametrize("fmt", ["text", "markdown", "html"])
+def test_render_notice_appends_bundled_license_full_text(fmt: str) -> None:
+    body = _render(fmt, [_mit_entry()])
+    assert "License Texts" in body
+    if fmt == "html":
+        assert '<section class="license-texts">' in body
+        assert "<h3>MIT</h3>" in body
+        # The full text rides in an escaped <pre>: the literal "<year>" from
+        # the vendored MIT text must never appear as a raw tag.
+        assert "Copyright (c) &lt;year&gt;" in body
+        assert "<year>" not in body
+    else:
+        # BomLens-parity divider + verbatim standard text.
+        assert "----- MIT -----" in body
+        assert "Permission is hereby granted" in body
+    if fmt == "markdown":
+        # The verbatim texts are wrapped in a fenced block sized past any
+        # backtick run in the content.
+        assert "```text" in body
+
+
+@pytest.mark.parametrize("fmt", ["text", "markdown", "html"])
+def test_render_notice_compound_expression_texts_deduped(fmt: str) -> None:
+    """`MIT` + `MIT OR Apache-2.0` in one document → each text exactly once."""
+    entries = [
+        _mit_entry(),
+        _mit_entry(spdx_id="MIT OR Apache-2.0", name="Dual"),
+    ]
+    body = _render(fmt, entries)
+    if fmt == "html":
+        assert body.count("<h3>MIT</h3>") == 1
+        assert body.count("<h3>Apache-2.0</h3>") == 1
+    else:
+        assert body.count("----- MIT -----") == 1
+        assert body.count("----- Apache-2.0 -----") == 1
+
+
+@pytest.mark.parametrize("fmt", ["text", "markdown", "html"])
+def test_render_notice_unbundled_text_gets_pointer_line(fmt: str) -> None:
+    body = _render(fmt, [_mit_entry(spdx_id="NotARealLicense-1.0", name="Custom")])
+    assert "text not bundled" in body
+    assert "see the license reference above" in body
+
+
+def test_render_notice_text_divider_scrubs_hostile_unbundled_id() -> None:
+    """F-2: a scan-derived operand id failing the strict SPDX allowlist cannot
+    forge ``----- <id> -----`` section boundaries in the plain-text branch —
+    control chars (incl. newlines) are scrubbed before the divider is built."""
+    hostile = "Evil\n----- FAKE -----\nX"
+    body = _render("text", [_mit_entry(spdx_id=hostile, name="Custom")])
+    # Only inspect the License Texts section: the body heading above renders
+    # scan text under the pre-existing text/plain posture and is out of scope.
+    tail = body.split("License Texts", 1)[1]
+    # The scrubbed id sits on ONE divider line; the smuggled newlines are gone.
+    assert "----- Evil----- FAKE -----X -----" in tail
+    assert "\n----- FAKE -----\n" not in tail
+    # A well-formed id passes through the divider untouched.
+    safe_body = _render("text", [_mit_entry()])
+    assert "----- MIT -----" in safe_body
+
+
+@pytest.mark.parametrize("fmt", ["text", "markdown", "html"])
+def test_render_notice_no_license_texts_section_without_spdx_ids(fmt: str) -> None:
+    body = _render(fmt, [_mit_entry(spdx_id=None, name="Anonymous")])
+    assert "License Texts" not in body
+
+
+@pytest.mark.parametrize("fmt", ["text", "markdown", "html"])
+def test_render_notice_license_text_cap_records_omitted(
+    fmt: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import services.obligation_service as svc
+
+    monkeypatch.setattr(svc, "_NOTICE_LICENSE_TEXT_CAP", 1)
+    body = _render(fmt, [_mit_entry(spdx_id="MIT OR Apache-2.0", name="Dual")])
+    assert "1 more license text(s) omitted" in body
+    # The kept head (Apache-2.0, spdx-asc) is present; MIT's text is clipped.
+    if fmt == "html":
+        assert "<h3>Apache-2.0</h3>" in body
+        assert "<h3>MIT</h3>" not in body
+    else:
+        assert "----- Apache-2.0 -----" in body
+        assert "----- MIT -----" not in body
+
+
+# ---------------------------------------------------------------------------
+# Phase B — per-component copyright attribution rendering
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("fmt", ["text", "markdown", "html"])
+def test_render_notice_shows_captured_copyright(fmt: str) -> None:
+    entry = _mit_entry(
+        components=[
+            {
+                "label": "left-pad @ 1.3.0",
+                "copyright": "Copyright 2016 Left Pad Inc.",
+                "source_url": None,
+            }
+        ]
+    )
+    body = _render(fmt, [entry])
+    assert "Copyright: Copyright 2016 Left Pad Inc." in body
+    assert "holders not captured" not in body
+
+
+@pytest.mark.parametrize("fmt", ["text", "markdown", "html"])
+def test_render_notice_copyright_fallback_includes_source_url(fmt: str) -> None:
+    entry = _mit_entry(
+        components=[
+            {
+                "label": "requests @ 2.31.0",
+                "copyright": None,
+                "source_url": "https://pypi.org/project/requests/2.31.0/",
+            }
+        ]
+    )
+    body = _render(fmt, [entry])
+    assert "Copyright: holders not captured in SBOM — see source" in body
+    assert "https://pypi.org/project/requests/2.31.0/" in body
+    if fmt == "html":
+        # The source pointer is linkified via _safe_href (https only).
+        assert 'href="https://pypi.org/project/requests/2.31.0/"' in body
+
+
+@pytest.mark.parametrize("fmt", ["text", "markdown", "html"])
+def test_render_notice_copyright_fallback_without_source_stays_honest(fmt: str) -> None:
+    entry = _mit_entry(
+        components=[{"label": "mystery @ 0.1", "copyright": None, "source_url": None}]
+    )
+    body = _render(fmt, [entry])
+    assert "Copyright: holders not captured in SBOM — see source" in body
+
+
+def test_render_notice_html_escapes_hostile_copyright() -> None:
+    entry = _mit_entry(
+        components=[
+            {
+                "label": "evil @ 1.0",
+                "copyright": '<script>alert("cp")</script>',
+                "source_url": None,
+            }
+        ]
+    )
+    body = _render("html", [entry])
+    assert "<script>alert" not in body
+    assert "&lt;script&gt;alert" in body
+
+
+def test_render_notice_markdown_escapes_hostile_copyright() -> None:
+    entry = _mit_entry(
+        components=[
+            {
+                "label": "evil @ 1.0",
+                "copyright": "[x](javascript:alert(1)) **bold**",
+                "source_url": None,
+            }
+        ]
+    )
+    body = _render("markdown", [entry])
+    assert "](javascript:alert(1))" not in body
+    assert "\\[x\\]\\(javascript:alert\\(1\\)\\)" in body
+    assert "\\*\\*bold\\*\\*" in body
 
 
 # ---------------------------------------------------------------------------
@@ -948,6 +1358,47 @@ async def _make_obligation(
     await session.commit()
     await session.refresh(ob)
     return ob
+
+
+async def _make_scan_component(
+    session: AsyncSession,
+    *,
+    scan_id: uuid.UUID,
+    cv_id: uuid.UUID,
+    raw_data: dict,
+    dependency_path: str | None = None,
+):
+    """A scan_components row carrying cdxgen-verbatim raw_data (Phase B —
+    the NOTICE reads ``raw_data["copyright"]`` from here)."""
+    from models import ScanComponent
+
+    sc = ScanComponent(
+        scan_id=scan_id,
+        component_version_id=cv_id,
+        dependency_path=dependency_path,
+        raw_data=raw_data,
+    )
+    session.add(sc)
+    await session.commit()
+    await session.refresh(sc)
+    return sc
+
+
+async def _get_or_create_license_by_spdx(session: AsyncSession, spdx_id: str):
+    """licenses.spdx_id is UNIQUE — a real id like ``MIT`` may already exist
+    from an earlier test run or seed, so fetch-or-create instead of insert."""
+    from sqlalchemy import select as sa_select
+
+    from models import License as LicenseModel
+
+    existing = (
+        await session.execute(
+            sa_select(LicenseModel).where(LicenseModel.spdx_id == spdx_id)
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return existing
+    return await _make_license(session, spdx_id=spdx_id, name=spdx_id)
 
 
 async def _make_project_with_scan(session: AsyncSession):
@@ -1838,6 +2289,138 @@ async def test_generate_notice_caps_license_count_with_omitted_footer(
 
 
 @pytestmark_db
+async def test_generate_notice_renders_copyright_and_bundled_license_text(
+    db_session: AsyncSession,
+) -> None:
+    """End-to-end over ``_load_notice_data`` (Phase B):
+
+    - captured copyright comes from ``scan_components.raw_data`` (cdxgen
+      verbatim, CR/LF scrubbed), and a diamond dependency (second row at
+      another path WITHOUT copyright) never erases or duplicates it;
+    - a component with no captured copyright falls back to the honest
+      "not captured" attribution + its purl-derived registry URL;
+    - the MIT full text lands in the License Texts section;
+    - the inspection counts are unaffected by the new sections (regression
+      guard for the X-Notice-* headers).
+    """
+    team, user, project, scan = await _make_project_with_scan(db_session)
+    actor = principal_for(user, team_ids=[team.id], role="developer")
+    suffix = unique_suffix()
+
+    _, cv_with = await _make_component_version(db_session, name=f"withcp-{suffix}")
+    _, cv_without = await _make_component_version(db_session, name=f"nocp-{suffix}")
+
+    lic = await _get_or_create_license_by_spdx(db_session, "MIT")
+    for cv in (cv_with, cv_without):
+        await _attach_license_finding(
+            db_session, scan_id=scan.id, cv_id=cv.id, license_id=lic.id
+        )
+
+    # cdxgen-shaped raw_data — realistic density (bom-ref / purl / licenses /
+    # properties alongside copyright), mirroring a real `cdxgen` component
+    # entry rather than a minimal one-key dict (testing-standards rule 3).
+    copyright_line = f"Copyright (c) 2016 WithCp Contributors {suffix}"
+    raw = {
+        "type": "library",
+        "bom-ref": f"pkg:npm/withcp-{suffix}@1.0.0",
+        "name": f"withcp-{suffix}",
+        "version": "1.0.0",
+        "purl": f"pkg:npm/withcp-{suffix}@1.0.0",
+        # Embedded CR/LF is hostile (NOTICE line injection) — must be scrubbed.
+        "copyright": copyright_line + "\r\n tail",
+        "licenses": [{"license": {"id": "MIT"}}],
+        "properties": [{"name": "SrcFile", "value": "/app/package-lock.json"}],
+    }
+    await _make_scan_component(
+        db_session,
+        scan_id=scan.id,
+        cv_id=cv_with.id,
+        raw_data=raw,
+        dependency_path=f"root/withcp-{suffix}",
+    )
+    # Diamond dependency: same component version at a second path, this row's
+    # raw_data carries NO copyright — the captured one must still win, once.
+    raw_no_cp = {k: v for k, v in raw.items() if k != "copyright"}
+    await _make_scan_component(
+        db_session,
+        scan_id=scan.id,
+        cv_id=cv_with.id,
+        raw_data=raw_no_cp,
+        dependency_path=f"root/other/withcp-{suffix}",
+    )
+
+    payload = await generate_notice(
+        db_session, project_id=project.id, actor=actor, fmt="text"
+    )
+    body = payload["body"]
+    # Captured copyright renders with CR/LF collapsed out, exactly once.
+    assert f"Copyright: {copyright_line} tail" in body
+    assert body.count(f"withcp-{suffix} @ 1.0.0") == 1
+    # The copyright-less component gets the honest fallback + npm registry URL
+    # inferred from its purl.
+    assert "Copyright: holders not captured in SBOM — see source (" in body
+    assert f"https://www.npmjs.com/package/nocp-{suffix}/v/1.0.0" in body
+    # Bundled MIT full text is appended.
+    assert "License Texts" in body
+    assert "----- MIT -----" in body
+    assert "Permission is hereby granted" in body
+    # X-Notice-* regression: counts reflect licenses/obligations, not sections.
+    assert payload["license_count"] == 1
+    # MIT is in the obligation catalog → sync_catalog_obligations seeds rows.
+    assert payload["obligation_count"] >= 1
+
+
+@pytestmark_db
+async def test_generate_notice_clamps_oversized_copyright_in_sql(
+    db_session: AsyncSession,
+) -> None:
+    """security-reviewer F-1: raw_data admits huge values, so the copyright is
+    clamped INSIDE the SQL aggregate (``left(... ->> 'copyright', cap)``) — the
+    64 KiB payload below must never reach Python or the rendered body in full.
+    Asserted at the realistic density the hardening rules require (multiple
+    keys per raw_data row, several components on one license)."""
+    from services.obligation_service import _NOTICE_COPYRIGHT_CAP_CHARS
+
+    team, user, project, scan = await _make_project_with_scan(db_session)
+    actor = principal_for(user, team_ids=[team.id], role="developer")
+    suffix = unique_suffix()
+
+    lic = await _make_license(
+        db_session, spdx_id=f"CPCAP-{suffix}", name="CpCap", category="allowed"
+    )
+    huge = "H" * (64 * 1024)  # one oversized copyright, well past the cap
+    for i in range(3):
+        _, cv = await _make_component_version(db_session, name=f"cpcap{i}-{suffix}")
+        await _attach_license_finding(
+            db_session, scan_id=scan.id, cv_id=cv.id, license_id=lic.id
+        )
+        await _make_scan_component(
+            db_session,
+            scan_id=scan.id,
+            cv_id=cv.id,
+            raw_data={
+                "type": "library",
+                "name": f"cpcap{i}-{suffix}",
+                "version": "1.0.0",
+                "purl": f"pkg:npm/cpcap{i}-{suffix}@1.0.0",
+                "copyright": huge,
+            },
+            dependency_path=f"root/cpcap{i}-{suffix}",
+        )
+
+    payload = await generate_notice(
+        db_session, project_id=project.id, actor=actor, fmt="text"
+    )
+    body = payload["body"]
+    # The clamped head renders; the oversized tail never reaches the body.
+    clamped = "H" * _NOTICE_COPYRIGHT_CAP_CHARS
+    assert f"Copyright: {clamped}" in body
+    assert clamped + "H" not in body
+    # Belt and braces: the whole document stays far below 3 × 64 KiB.
+    assert len(body) < 64 * 1024
+
+
+@pytestmark_db
 async def test_generate_notice_invalid_format_raises_obligation_error(
     db_session: AsyncSession,
 ) -> None:
@@ -1877,3 +2460,109 @@ async def test_generate_notice_idor_other_team_returns_404_and_logs(
         and evt.get("resource") == "project_notice"
         for evt in captured
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase D3 — "License review needed" section (pure render, no DB)
+# ---------------------------------------------------------------------------
+
+
+def _flagged_license(spdx_id, name, review_flag, *labels):
+    return {
+        "license_id": uuid.uuid4(),
+        "spdx_id": spdx_id,
+        "name": name,
+        "reference_url": None,
+        "review_flag": review_flag,
+        "components": _comps(*labels),
+    }
+
+
+def test_review_flag_label_maps_known_tokens() -> None:
+    assert "RAIL" in _review_flag_label("behavioral_use")
+    assert _review_flag_label("non_commercial") == "Non-commercial"
+    # Unknown token falls back to itself rather than vanishing.
+    assert _review_flag_label("future_class") == "future_class"
+
+
+def test_collect_review_entries_filters_and_orders() -> None:
+    lics = [
+        _flagged_license("MIT", "MIT License", None, "a @ 1"),  # not flagged
+        _flagged_license("CC-BY-NC-4.0", "CC BY-NC 4.0", "non_commercial", "b @ 1"),
+        _flagged_license("LLAMA-2", "Llama 2", "behavioral_use", "c @ 1", "d @ 2"),
+    ]
+    entries = _collect_review_entries(lics)
+    # Only the two flagged licenses; behavioral_use ordered before non_commercial.
+    assert [e["flag"] for e in entries] == ["behavioral_use", "non_commercial"]
+    assert entries[0]["license"] == "LLAMA-2"
+    assert entries[0]["components"] == ["c @ 1", "d @ 2"]
+
+
+def test_collect_review_entries_empty_when_nothing_flagged() -> None:
+    assert _collect_review_entries([_flagged_license("MIT", "MIT", None, "a @ 1")]) == []
+
+
+def test_review_section_text_present_and_absent() -> None:
+    entries = _collect_review_entries(
+        [_flagged_license("LLAMA-2", "Llama 2", "behavioral_use", "c @ 1")]
+    )
+    lines = _render_review_section_text(entries)
+    body = "\n".join(lines)
+    assert "License review needed" in body
+    assert "[Behavioral-use restriction (RAIL/community license)] LLAMA-2" in body
+    assert "  - c @ 1" in body
+    # A normal software scan (nothing flagged) adds no section.
+    assert _render_review_section_text([]) == []
+
+
+def test_review_section_markdown_escapes_and_present() -> None:
+    entries = _collect_review_entries(
+        [_flagged_license("CC-BY-NC-4.0", "CC BY-NC", "non_commercial", "x*y @ 1")]
+    )
+    body = "\n".join(_render_review_section_markdown(entries))
+    assert "## License review needed" in body
+    assert "**[Non-commercial]**" in body
+    # Untrusted component label is markdown-escaped (asterisk neutralised).
+    assert "x*y" not in body or "\\*" in body
+    assert _render_review_section_markdown([]) == []
+
+
+def test_review_section_html_escapes_and_present() -> None:
+    entries = _collect_review_entries(
+        [_flagged_license("LLAMA-2", "Llama", "behavioral_use", "<img src=x>")]
+    )
+    body = "\n".join(_render_review_section_html(entries))
+    assert '<section class="license-review">' in body
+    assert "License review needed" in body
+    # Hostile component label is HTML-escaped.
+    assert "<img src=x>" not in body
+    assert "&lt;img src=x&gt;" in body
+    assert _render_review_section_html([]) == []
+
+
+def test_full_notice_includes_review_section_all_formats() -> None:
+    when = datetime(2026, 7, 2, 12, 0, 0, tzinfo=UTC)
+    lics = [_flagged_license("LLAMA-2", "Llama 2", "behavioral_use", "c @ 1")]
+    for fmt in ("text", "markdown", "html"):
+        body = _render_notice(
+            project_name="P",
+            generated_at=when,
+            licenses_with_components=lics,
+            obligations_by_license={lics[0]["license_id"]: []},
+            fmt=fmt,
+        )
+        assert "License review needed" in body, fmt
+
+
+def test_full_notice_omits_review_section_when_unflagged() -> None:
+    when = datetime(2026, 7, 2, 12, 0, 0, tzinfo=UTC)
+    lics = [_flagged_license("MIT", "MIT", None, "a @ 1")]
+    for fmt in ("text", "markdown", "html"):
+        body = _render_notice(
+            project_name="P",
+            generated_at=when,
+            licenses_with_components=lics,
+            obligations_by_license={lics[0]["license_id"]: []},
+            fmt=fmt,
+        )
+        assert "License review needed" not in body, fmt

@@ -43,6 +43,17 @@ The inline filter bar at the top supports:
 
 Filters compose. The URL updates (`?direct=…`, `?dependency_scope=…`, …) so you can share a filtered view.
 
+## Table view vs. graph view
+
+The Components tab has a **Table / Graph** toggle (top-left). **Table** is the default virtualized list above. **Graph** renders the scan's resolved **dependency graph** — every *parent → child* edge the scanner recorded — as an interactive node-link diagram (left-to-right layout), so you can see *how* a package is pulled in rather than just *that* it is present. Each node is coloured by its highest-severity finding (colour is never the only signal — the detail panel and the tree fallback show a severity label too), and a search box highlights matching packages. Clicking a node opens its details beside the canvas.
+
+The choice is mirrored into `?view=graph` so a reload or shared link keeps the graph open; the graph is scoped to the currently pinned `?scan=` snapshot like every other tab.
+
+Two fallbacks keep the view usable at scale:
+
+- A scan whose graph exceeds the server node cap (`DEPENDENCY_GRAPH_MAX_NODES`, default 5000) is **not** materialised — the view shows a banner pointing you back to the table.
+- A graph with no recorded edges (a flat component list) or one past the client render cap falls back to a collapsible **dependency tree**.
+
 ## The drawer — component detail
 
 Click any row to open a right-side drawer with:
@@ -103,6 +114,29 @@ The legal-tier classification (`forbidden` / `conditional` / `permissive` / `unk
 Classification uses exact-match SPDX IDs. Suffix-less variants (`LGPL-3.0` instead of `LGPL-3.0-or-later`) fall through to `unknown`. If a component shows `unknown` despite a well-known SPDX ID, the source likely emitted a deprecated alias. Fuzzy SPDX normalization is on the roadmap.
 :::
 
+## AI license review flags {#ai-license-review-flags}
+
+Some licenses restrict *how* you may use a component in ways the four-tier legal classification above does not capture — and that standard open-source compliance tooling often misses. TRUSCA surfaces two such restriction classes as an amber **Review needed** flag, shown next to the license tier badge and filterable on the Compliance tab.
+
+The flag is deliberately narrow. It marks only AI-relevant restrictions the tier model (`permissive` / `conditional` / `forbidden` / `unknown`) does not already express. Ordinary open-source licenses — MIT, Apache-2.0, the BSD family, GPL / LGPL — never carry it.
+
+| Flag (code value) | UI label | What it marks | Example licenses |
+|---|---|---|---|
+| `behavioral_use` | **Behavioral-use restriction** | The license forbids specific *uses* of the software or model — for example military, surveillance, or discriminatory applications — rather than restricting redistribution. | RAIL (Responsible AI License) and OpenRAIL variants; the Llama, Gemma, and Falcon community model licenses. |
+| `non_commercial` | **Non-commercial only** | The license permits research or personal use but forbids commercial use. | CC-BY-NC (Creative Commons Attribution-NonCommercial) and its ShareAlike / NoDerivatives variants; other non-commercial source-available terms. |
+
+:::note The flag reports existence, not applicability
+A **Review needed** flag tells you a restriction of that class exists in the license — not that your particular use violates it. Whether a behavioral-use clause or a non-commercial clause actually applies to how your project uses the component is a legal and business judgment a person makes, not the scanner. TRUSCA follows the principle behind the BomLens `license-flags.jq` rules and the OpenChain AI SBOM guidance: the tool flags the *class* of restriction; a human decides whether it applies.
+:::
+
+Behavioral-use and non-commercial restrictions travel with AI models and datasets far more than with conventional code, and they sit outside the redistribution-centric logic of the SPDX legal tiers — so a permissive-looking tier alone can hide them. The flag makes the restriction visible without adjudicating it.
+
+### Reading the flag
+
+- On the **Compliance** tab, a flagged license row shows an amber **Review needed** badge next to its tier badge. Narrow the table to just those rows with the **Review needed** filter, alongside the license-category multi-select.
+- The flag is advisory: it never blocks a build and never changes the legal tier. A component can be tier `permissive` and still carry a **Review needed** flag.
+- Flagged licenses also appear in a dedicated "License review needed" section of the generated NOTICE document — see [SBOM → NOTICE file](./sbom.md#notice-file).
+
 ## Declared vs. detected {#declared-vs-detected}
 
 Each license finding has a **kind** that tells you where the license came from. The kind shows as a provenance badge in the components table, the Licenses tab, and the component drawer, and you can filter the Licenses tab by it.
@@ -129,6 +163,18 @@ scancode is **best-effort**. Detected licenses can be absent — which is normal
 - The first-party tree exceeds the `SCANCODE_MAX_FILES` ceiling, scancode timed out, or its result was too large.
 - The relevant code lives inside an **excluded** directory. To stay within the resource budget, scancode skips directories named `node_modules`, `vendor`, `bower_components`, `.venv`, `venv`, `virtualenv`, `site-packages`, `dist`, `build`, `target`, `out`, `.next`, `.nuxt`, `__pycache__`, `.gradle`, `.git`, `.hg`, `.svn`, `.tox`, `.mypy_cache`, `.pytest_cache`, `.ruff_cache`, `.idea`, and `.vscode` — at any depth. Code committed under one of these names will not produce a detected license.
 
+## Vendored-OSS identification (SCANOSS) {#vendored-oss}
+
+Some projects — C / C++ and embedded trees especially — carry open source **copied straight into the source tree** with no package manifest (a `liblzma`, `openssl`, or `zlib` folder committed under `src/`). `cdxgen` sees only unnamed `pkg:generic` files there and the real OSS goes unrecorded. **SCANOSS** closes that gap: it fingerprints the source files and matches them against a knowledge base of known OSS releases, so a copied file is recorded as a proper component (name + version + purl) with its detected license.
+
+TRUSCA treats only **full-file matches** as components — a snippet match (a few lines copied from elsewhere) is noisy and is skipped, so the components that feed the build gate and NOTICE stay clean. Matched components appear on the Components tab tagged as coming from SCANOSS, and their licenses are **Detected** findings, exactly like scancode's.
+
+:::warning Off by default — sends fingerprints to an external service
+SCANOSS is **disabled unless an operator sets `SCANOSS_ENABLED=true`**. When enabled, it sends file **fingerprints** (hashes, never your source code) to `SCANOSS_API_URL` — the free `api.osskb.org` by default. Because a self-hosted portal shouldn't quietly egress data about your code, this is opt-in: turn it on only if that external match is acceptable, or point `SCANOSS_API_URL` at a **self-hosted SCANOSS** instance to keep everything inside your network. See [Environment variables → Scan pipeline](../reference/env-variables.md#scan-pipeline).
+:::
+
+Like scancode, the stage is **best-effort**: if SCANOSS is off, the tool is missing, the endpoint is unreachable, or nothing matches, the scan simply continues without vendored-OSS results — it never fails because of this stage.
+
 ## Obligations
 
 Each license carries **obligations** — duties you must honor when redistributing the component. The portal tracks seven kinds (see [glossary](https://github.com/trustedoss/trusca/blob/main/docs/glossary.md)):
@@ -141,7 +187,7 @@ Each license carries **obligations** — duties you must honor when redistributi
 - **Dynamic linking** — LGPL-style: end-users must be able to relink against a modified library.
 - **No endorsement** — do not use the project name to endorse derivatives without permission.
 
-The **Compliance** tab with the **Has obligations** toggle on consolidates obligations across components. Pick a NOTICE format (**text** or **HTML**) on the toolbar and click **Download NOTICE** to save a NOTICE document summarizing every attribution and license. The endpoint also serves a `markdown` variant via the API. See [SBOM → NOTICE file](./sbom.md#notice-file) for the format / MIME / extension table.
+The **Compliance** tab with the **Has obligations** toggle on consolidates obligations across components. Pick a NOTICE format (**text** or **HTML**) on the toolbar and click **Download NOTICE** to save a NOTICE document summarizing every attribution and license. The endpoint also serves a `markdown` variant via the API. The document carries a copyright line per component (falling back to the component's registry URL when the SBOM recorded no holder) and closes with a **License Texts** section embedding the full text of every license in the project — so the `license_text_inclusion_required` obligation is satisfied by the NOTICE itself. See [SBOM → NOTICE file](./sbom.md#notice-file) for the format / MIME / extension table and the section-by-section contents.
 
 ![Project detail — Compliance tab with the Has obligations toggle on, showing the per-component obligations distribution](/img/screenshots/user-obligations-distribution.png)
 

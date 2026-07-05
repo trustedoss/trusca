@@ -609,6 +609,20 @@ export class PortalPage {
   }
 
   /**
+   * Open the Releases tab (feature #28) and wait for its container. The tab
+   * lists the project's succeeded-scan snapshots and hosts the Compare entry
+   * (`releases-compare-button`, enabled once there are two releases). Not in
+   * the `selectTab` union because that helper only covers the four primary
+   * tabs; Releases follows the dedicated-verb pattern of `selectSourceTab`.
+   */
+  async selectReleasesTab(): Promise<void> {
+    await this.page.getByTestId("project-detail-tab-releases").click();
+    await this.page
+      .getByTestId("releases-tab")
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  /**
    * Wait until either the virtualized list or the empty card is visible
    * (the loading skeleton has finished). Use after applying filters /
    * sorts to wait for the next page to land.
@@ -651,16 +665,36 @@ export class PortalPage {
   }
 
   /**
-   * Sort the vulnerabilities list by a given key. EPSS (v2.1) joins the
-   * existing severity/cvss/status/discovered_at keys; the toolbar is a native
-   * `<select>` so `selectOption` drives it. Locale-agnostic — anchors on the
-   * option value, not the translated label.
+   * Sort the vulnerabilities list by a given key. The KEV feature moved the
+   * control to the toolbar's `vulnerabilities-sort-select` (the composite
+   * `priority` ranking — KEV → severity → EPSS — is not a column, so the
+   * select is its home; column keys are listed too and stay in sync with the
+   * clickable headers). Native `<select>`, so `selectOption` drives it.
+   * Locale-agnostic — anchors on the option value, not the translated label.
    */
   async sortVulnerabilitiesBy(
-    sort: "severity" | "cvss" | "epss" | "status" | "discovered_at",
+    sort:
+      | "priority"
+      | "severity"
+      | "cvss"
+      | "epss"
+      | "reachable"
+      | "component"
+      | "status"
+      | "discovered_at",
   ): Promise<void> {
-    await this.page.getByTestId("vulnerabilities-sort").selectOption(sort);
+    await this.page
+      .getByTestId("vulnerabilities-sort-select")
+      .selectOption(sort);
     await this.expectVulnerabilitiesTabReady();
+  }
+
+  /**
+   * Read the sort select's current value (e.g. `"priority"`, the KEV-aware
+   * default). Locale-agnostic — reads the option *value*, never the label.
+   */
+  async getVulnerabilitiesSortKey(): Promise<string> {
+    return this.page.getByTestId("vulnerabilities-sort-select").inputValue();
   }
 
   /**
@@ -754,6 +788,108 @@ export class PortalPage {
     const text = (await chip.first().textContent()) ?? "";
     const match = text.match(/([0-9]+(?:\.[0-9]+)?)\s*$/);
     return match ? Number(match[1]) : null;
+  }
+
+  // ───── Phase C — KEV (CISA Known Exploited Vulnerabilities) ────────────
+  //
+  // Locale-agnostic anchors only: the CVE cell carries `data-kev`
+  // ("true"/"false"), the badge carries `data-testid="kev-badge"` +
+  // `data-kev-due-date` (ISO date) + `data-due-state`
+  // (overdue/imminent/ok, absent when no due date), and the drawer's
+  // inline due text is `data-testid="kev-badge-due-date"`. No verb reads
+  // the translated "KEV" label or the localized due copy, so EN and KO
+  // pass on the same assertions.
+
+  /**
+   * Read the KEV state of every mounted vulnerability row (top → bottom).
+   * Each entry pairs the CVE cell's `data-kev` flag with the row badge's
+   * `data-due-state` (`null` when the row has no badge or the badge carries
+   * no due date). The list virtualizes — like {@link getMountedRowEpssScores}
+   * this covers only mounted rows, which is the full set for the seeded
+   * fixtures (≤ a few dozen rows).
+   */
+  async getMountedRowKevStates(): Promise<
+    { cveId: string | null; kev: boolean; dueState: string | null }[]
+  > {
+    const rows = this.page.getByTestId("vulnerability-row");
+    // Wait for the first row to mount before counting — `count()` does not
+    // auto-retry, and the virtual list mounts a frame after the tab-ready
+    // signal (the row-mount race the EPSS suite documented as Task #24).
+    await expect(rows.first()).toBeVisible({ timeout: 10_000 });
+    const count = await rows.count();
+    const out: {
+      cveId: string | null;
+      kev: boolean;
+      dueState: string | null;
+    }[] = [];
+    for (let i = 0; i < count; i++) {
+      const row = rows.nth(i);
+      const cveId = await row.getAttribute("data-cve-id");
+      const cveCell = row.getByTestId("vulnerability-row-cve");
+      const kev = (await cveCell.getAttribute("data-kev")) === "true";
+      const badge = row.getByTestId("kev-badge");
+      const dueState =
+        (await badge.count()) > 0
+          ? await badge.first().getAttribute("data-due-state")
+          : null;
+      out.push({ cveId, kev, dueState });
+    }
+    return out;
+  }
+
+  /**
+   * Assert a row's KEV badge is present (and optionally pin its SLA state).
+   * Scoped by `data-cve-id` so the assertion is unambiguous even with the
+   * drawer open over the list.
+   */
+  async expectRowKevBadge(
+    cveId: string,
+    expected: { dueState?: "overdue" | "imminent" | "ok" } = {},
+  ): Promise<void> {
+    const row = this.page.locator(
+      `[data-testid="vulnerability-row"][data-cve-id="${cveId}"]`,
+    );
+    const badge = row.getByTestId("kev-badge");
+    await expect(badge).toBeVisible({ timeout: 10_000 });
+    if (expected.dueState) {
+      await expect(badge).toHaveAttribute("data-due-state", expected.dueState);
+    }
+  }
+
+  /** Assert a row renders NO KEV badge (non-catalog CVE — absence is the signal). */
+  async expectRowWithoutKevBadge(cveId: string): Promise<void> {
+    const row = this.page.locator(
+      `[data-testid="vulnerability-row"][data-cve-id="${cveId}"]`,
+    );
+    await expect(row.getByTestId("vulnerability-row-cve")).toHaveAttribute(
+      "data-kev",
+      "false",
+    );
+    await expect(row.getByTestId("kev-badge")).toHaveCount(0);
+  }
+
+  /**
+   * Assert the open drawer surfaces the KEV badge WITH its inline
+   * remediation-deadline text (`showDueDate` surfaces render
+   * `kev-badge-due-date`), and return the raw anchors:
+   * `dueDate` (ISO `YYYY-MM-DD` from `data-kev-due-date`) + `dueState`.
+   * Scoped to `vulnerability-drawer-meta` so the row badge behind the
+   * drawer can never satisfy the assertion.
+   */
+  async expectDrawerKevBadge(): Promise<{
+    dueDate: string | null;
+    dueState: string | null;
+  }> {
+    const meta = this.page.getByTestId("vulnerability-drawer-meta");
+    const badge = meta.getByTestId("kev-badge");
+    await expect(badge).toBeVisible({ timeout: 10_000 });
+    const dueText = badge.getByTestId("kev-badge-due-date");
+    await expect(dueText).toBeVisible();
+    await expect(dueText).not.toBeEmpty();
+    return {
+      dueDate: await badge.getAttribute("data-kev-due-date"),
+      dueState: await badge.getAttribute("data-due-state"),
+    };
   }
 
   /**
@@ -1905,6 +2041,114 @@ export class PortalPage {
     return (
       (await this.page.getByTestId(testId).textContent())?.trim() ?? ""
     );
+  }
+
+  // ───── feat/g7-conformance — G7 AI SBOM minimum-elements section ─────
+  //
+  // Renders inside the conformance panel only when the verdict carries
+  // advisory "g7-*" checks. Locale-agnostic anchors: the tally span carries
+  // `data-present`/`data-auto-total`, the advisory/review badges carry
+  // `data-count`, cluster cards carry `data-cluster`, and every G7 check row
+  // carries `data-status` + `data-source` — no assertion reads rendered text
+  // (EN and KO pass on the same verbs).
+
+  /**
+   * Wait for the G7 section and return its tally headline as numbers
+   * (parsed from the tally span's data attributes, not the localized text).
+   */
+  async expectG7Section(): Promise<{ present: number; autoTotal: number }> {
+    await this.page
+      .getByTestId("conformance-g7-section")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    const tally = this.page.getByTestId("conformance-g7-tally");
+    await expect(tally).toBeVisible();
+    return {
+      present: Number(await tally.getAttribute("data-present")),
+      autoTotal: Number(await tally.getAttribute("data-auto-total")),
+    };
+  }
+
+  /** Assert the G7 section is NOT present (core-only conformance verdict). */
+  async expectNoG7Section(): Promise<void> {
+    await expect(
+      this.page.getByTestId("conformance-g7-section"),
+    ).toHaveCount(0);
+  }
+
+  /**
+   * Cluster ids of the rendered G7 cluster cards, in DOM (canonical registry)
+   * order — e.g. `["slp", "models"]`.
+   */
+  async g7ClusterIds(): Promise<string[]> {
+    const section = this.page.getByTestId("conformance-g7-section");
+    await section.waitFor({ state: "visible", timeout: 10_000 });
+    return section
+      .locator("[data-cluster]")
+      .evaluateAll((els) =>
+        els.map((el) => el.getAttribute("data-cluster") ?? ""),
+      );
+  }
+
+  /** Number of G7 check rows inside a given cluster card. */
+  async g7ClusterCheckCount(cluster: string): Promise<number> {
+    return this.page
+      .getByTestId(`g7-cluster-${cluster}`)
+      .getByRole("row")
+      .count();
+  }
+
+  /**
+   * Assert a G7 check row is present, optionally pinning its status and/or
+   * its source classification (`na` = no automated source → human review).
+   */
+  async expectG7Check(
+    checkId: string,
+    expected: {
+      status?: "pass" | "warn" | "fail";
+      source?: "auto" | "inferred" | "declared" | "na";
+    } = {},
+  ): Promise<void> {
+    const row = this.page.getByTestId(`check-${checkId}`);
+    await expect(row).toBeVisible();
+    if (expected.status) {
+      await expect(row).toHaveAttribute("data-status", expected.status);
+    }
+    if (expected.source) {
+      await expect(row).toHaveAttribute("data-source", expected.source);
+      // The row-level attribute and the visible source badge must agree —
+      // the badge is what the user actually sees.
+      await expect(row.getByTestId("g7-source-badge")).toHaveAttribute(
+        "data-source",
+        expected.source,
+      );
+    }
+  }
+
+  /** Evidence chip values rendered for a G7 check (mono PURLs/licenses). */
+  async g7CheckEvidence(checkId: string): Promise<string[]> {
+    const list = this.page.getByTestId(`check-${checkId}-evidence`);
+    await expect(list).toBeVisible();
+    return (await list.locator("li").allTextContents()).map((s) => s.trim());
+  }
+
+  /**
+   * Assert the "needs human review" affordances: the review tally badge with
+   * the expected count AND the explanatory note below the headline.
+   */
+  async expectG7ReviewCount(count: number): Promise<void> {
+    await expect(
+      this.page.getByTestId("conformance-g7-review"),
+    ).toHaveAttribute("data-count", String(count));
+    await expect(
+      this.page.getByTestId("conformance-g7-review-note"),
+    ).toBeVisible();
+  }
+
+  /** Assert the advisory (absent-but-automated) tally badge count. */
+  async expectG7AdvisoryCount(count: number): Promise<void> {
+    await expect(
+      this.page.getByTestId("conformance-g7-advisory"),
+    ).toHaveAttribute("data-count", String(count));
   }
 
   /**

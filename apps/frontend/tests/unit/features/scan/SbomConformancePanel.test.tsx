@@ -158,6 +158,209 @@ describe("SbomConformancePanel", () => {
     ).not.toBeInTheDocument();
   });
 
+  // --- G7 AI SBOM minimum elements (feat/g7-conformance) -------------------
+
+  /** A G7 advisory check as the backend emits it (required=false, pass|warn). */
+  function g7Check(
+    overrides: Partial<SbomConformanceCheck> = {},
+  ): SbomConformanceCheck {
+    return check({
+      id: "g7-model-name",
+      label: "Model name",
+      required: false,
+      status: "pass",
+      cluster: "models",
+      source: "auto",
+      role: "model-producer",
+      evidence: null,
+      ...overrides,
+    });
+  }
+
+  it("does not render the G7 section for a core-only verdict", () => {
+    // The 9 core checks carry null/absent G7 fields — their render is frozen.
+    render(
+      <SbomConformancePanel
+        conformance={conformance({
+          checks: [check({ id: "purl" }), check({ id: "hash" })],
+        })}
+      />,
+    );
+    expect(
+      screen.queryByTestId("conformance-g7-section"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders G7 checks below the base table, grouped by cluster in canonical order", () => {
+    render(
+      <SbomConformancePanel
+        conformance={conformance({
+          checks: [
+            check({ id: "purl" }),
+            // Deliberately out of canonical order (models before metadata).
+            g7Check({ id: "g7-model-name", cluster: "models" }),
+            g7Check({
+              id: "g7-meta-author",
+              label: "SBOM author",
+              cluster: "metadata",
+            }),
+          ],
+        })}
+      />,
+    );
+    const section = screen.getByTestId("conformance-g7-section");
+    // Localized section title + localized cluster titles.
+    expect(section.textContent).toContain("G7 AI SBOM minimum elements");
+    const clusters = within(section).getAllByTestId(/^g7-cluster-/);
+    expect(clusters.map((c) => c.getAttribute("data-testid"))).toEqual([
+      "g7-cluster-metadata",
+      "g7-cluster-models",
+    ]);
+    // The base table still holds only the base check.
+    const table = screen.getByTestId("conformance-checks-table");
+    expect(within(table).queryByTestId("check-g7-model-name")).toBeNull();
+    expect(
+      within(section).getByTestId("check-g7-model-name"),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the computed tally headline with advisory and review counts", () => {
+    render(
+      <SbomConformancePanel
+        conformance={conformance({
+          checks: [
+            g7Check({ id: "g7-a", status: "pass", source: "auto" }),
+            g7Check({ id: "g7-b", status: "warn", source: "inferred" }),
+            g7Check({
+              id: "g7-c",
+              status: "warn",
+              source: "na",
+              cluster: "slp",
+            }),
+          ],
+        })}
+      />,
+    );
+    // present 1 / autoTotal 2 (the na check is excluded from the base).
+    expect(screen.getByTestId("conformance-g7-tally").textContent).toBe(
+      "1 / 2 present",
+    );
+    expect(
+      screen.getByTestId("conformance-g7-advisory").textContent,
+    ).toContain("1");
+    expect(screen.getByTestId("conformance-g7-review").textContent).toContain(
+      "1",
+    );
+    // The human-review explanation renders because review > 0.
+    expect(
+      screen.getByTestId("conformance-g7-section").textContent,
+    ).toContain("require human review");
+  });
+
+  it("pairs each G7 row with a status badge and a source badge (color never alone)", () => {
+    render(
+      <SbomConformancePanel
+        conformance={conformance({
+          checks: [
+            g7Check({ id: "g7-a", source: "auto" }),
+            g7Check({ id: "g7-b", source: "inferred" }),
+            g7Check({ id: "g7-c", source: "declared" }),
+            g7Check({ id: "g7-d", source: "na", status: "warn" }),
+          ],
+        })}
+      />,
+    );
+    const section = screen.getByTestId("conformance-g7-section");
+    const sources = within(section).getAllByTestId("g7-source-badge");
+    expect(sources.map((b) => b.getAttribute("data-source"))).toEqual([
+      "auto",
+      "inferred",
+      "declared",
+      "na",
+    ]);
+    // Every source badge carries a visible text label, not just a tint.
+    for (const badge of sources) {
+      expect(badge.textContent?.trim().length ?? 0).toBeGreaterThan(0);
+    }
+    expect(
+      within(section).getAllByTestId("conformance-check-status"),
+    ).toHaveLength(4);
+  });
+
+  it("renders evidence chips and a guidance link when available", () => {
+    render(
+      <SbomConformancePanel
+        conformance={conformance({
+          checks: [
+            g7Check({
+              id: "g7-model-license",
+              label: "Model license",
+              evidence: ["Apache-2.0", "MIT"],
+            }),
+            g7Check({
+              id: "g7-slp-data-flow",
+              label: "System data flow",
+              cluster: "slp",
+              status: "warn",
+              source: "na",
+            }),
+          ],
+        })}
+      />,
+    );
+    // Evidence values render as mono chips.
+    const chips = within(
+      screen.getByTestId("check-g7-model-license-evidence"),
+    ).getAllByRole("listitem");
+    expect(chips.map((c) => c.textContent)).toEqual(["Apache-2.0", "MIT"]);
+    // Guidance link only for ids the vendored table knows.
+    const link = screen.getByTestId("check-g7-model-license-guidance");
+    expect(link).toHaveAttribute("href", expect.stringContaining("https://"));
+    expect(
+      screen.queryByTestId("check-g7-slp-data-flow-guidance"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders G7 missing offender chips only when the warn row carries them (#447 v2)", () => {
+    render(
+      <SbomConformancePanel
+        conformance={conformance({
+          checks: [
+            // models cluster warn row with missing model names (offenders).
+            g7Check({
+              id: "g7-model-hash-value",
+              label: "Model hash",
+              cluster: "models",
+              status: "warn",
+              source: "auto",
+              missing: ["gpt-oss-20b", "llama-3-8b"],
+            }),
+            // A satisfied row with no missing → no missing list.
+            g7Check({
+              id: "g7-model-license",
+              label: "Model license",
+              cluster: "models",
+              status: "pass",
+              evidence: ["Apache-2.0"],
+            }),
+          ],
+        })}
+      />,
+    );
+    const missing = screen.getByTestId("check-g7-model-hash-value-missing");
+    // The two offender names render as mono chips (plus the "Missing:" label li).
+    expect(missing.textContent).toContain("gpt-oss-20b");
+    expect(missing.textContent).toContain("llama-3-8b");
+    // The satisfied row has no missing block.
+    expect(
+      screen.queryByTestId("check-g7-model-license-missing"),
+    ).not.toBeInTheDocument();
+    // Evidence and missing are distinct surfaces on the same panel.
+    expect(
+      screen.getByTestId("check-g7-model-license-evidence").textContent,
+    ).toContain("Apache-2.0");
+  });
+
   it("renders an em-dash for a null coverage metric", () => {
     render(
       <SbomConformancePanel

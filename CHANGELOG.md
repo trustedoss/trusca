@@ -7,6 +7,127 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.13.0] — 2026-07-04
+
+A broad parity release closing the BomLens capability gap — additive throughout;
+the one external-egress capability (SCANOSS) is off by default.
+
+### Added
+- **SCANOSS vendored-OSS identification (opt-in, off by default)** — an optional
+  scan stage that fingerprints the source tree and matches copied-in
+  ("vendored") open source against the SCANOSS knowledge base, recording
+  full-file matches as components with detected licenses. This closes the gap
+  for C/C++ / embedded trees that have no package manifest, where cdxgen alone
+  finds almost nothing. It is **disabled by default** and gated on
+  `SCANOSS_ENABLED=true`: unlike a local dev tool, a self-hosted portal must not
+  send file fingerprints to an external API without explicit operator consent.
+  When enabled, only file **fingerprints** (never source) are sent to
+  `SCANOSS_API_URL` (default `api.osskb.org`, overridable for a self-hosted
+  SCANOSS); snippet matches are skipped to keep results clean, and the stage
+  degrades to a no-op on any error so a scan never fails because of it.
+- **Global search (⌘K)** — the command palette (⌘K / Ctrl+K) gains cross-project
+  **Components** and **CVEs** groups alongside Projects and Pages, backed by the
+  new `GET /v1/search` endpoint. Results are scoped server-side to the caller's
+  teams through a single `team_scope_filter` chokepoint — another team's
+  components or vulnerabilities never appear. Component hits deep-link to the
+  project's Components tab filtered to the term; CVE hits to its Vulnerabilities
+  tab. Queries run from two characters, debounced, capped at 20 per group.
+- **Dependency graph view** — the Components tab gains a **Table / Graph** toggle.
+  The graph view renders the scan's resolved dependency graph (every parent →
+  child edge the scanner recorded) as an interactive cytoscape node-link diagram
+  with a severity-coloured node per component, a search highlight, and a
+  click-to-detail panel — backed by the new
+  `GET /v1/projects/{id}/dependency-graph` endpoint (serialised from the existing
+  `component_dependency_edges` table; no migration). The choice mirrors into
+  `?view=graph`. Graphs past the server node cap
+  (`DEPENDENCY_GRAPH_MAX_NODES`, default 5000) or with no recorded edges fall
+  back to a banner / collapsible tree so the view stays usable at scale.
+- **Excel (`.xlsx`) vulnerability report** — the project vulnerability report can
+  now be downloaded as an Excel workbook in addition to PDF, from the **Excel**
+  button on the Reports tab's Vulnerability-report card (or
+  `GET /v1/projects/{id}/vulnerability-report.xlsx`). The workbook has three
+  sheets — Overview (risk score, severity + license distribution), Components,
+  and Vulnerabilities (CVE, CVSS, EPSS, KEV state + due date, affected
+  component) — and each download is recorded in the export history as
+  `vuln_xlsx`. Cell values sourced from scanned third-party metadata are
+  neutralised against spreadsheet formula injection (a value starting with
+  `= + - @` is written as literal text — CWE-1236). This closes the CLAUDE.md
+  "Excel / PDF reports" commitment, which previously shipped PDF only.
+- **License classification catalog expansion (32 → 52 licenses)** — the license
+  categoriser, obligation catalog, and bundled full-text set grew by 20 common
+  SPDX licenses so fewer components land as `unknown`. New allowed (permissive)
+  entries: BSL-1.0, Artistic-2.0, PostgreSQL, X11, NTP, Ruby, PHP-3.01, UPL-1.0,
+  MIT-0, BlueOak-1.0.0, AFL-3.0, MS-PL, Libpng, CC-BY-4.0, curl, OpenSSL,
+  BSD-4-Clause; new conditional (share-alike / reciprocal) entries: OFL-1.1,
+  CC-BY-SA-4.0, MS-RL. Each ships its structured obligations and its verbatim
+  SPDX full text for the NOTICE. A component that declares a license by
+  **free-text name** with no SPDX id (e.g. `"Apache License, Version 2.0"`) is
+  now run through an alias normaliser (ported from BomLens `spdx-normalize.jq`)
+  and recovered as its canonical id when the name is a recognised alias;
+  unfamiliar names stay `unknown` rather than being guessed. The three-way
+  set (categoriser ↔ catalog ↔ bundled texts) is locked by a contract test.
+- **AI license review flags** — the license catalog now carries two advisory
+  "review needed" flags for AI-relevant restrictions that standard open-source
+  compliance tooling misses: `behavioral_use` (RAIL / OpenRAIL and the Llama,
+  Gemma, and Falcon community model licenses — behavioral-use restrictions) and
+  `non_commercial` (CC-BY-NC and similar non-commercial terms). Flagged licenses
+  show an amber "Review needed" badge and filter on the Compliance tab, and the
+  generated NOTICE document gains a "License review needed" section. The flags
+  report only the *existence* of a restriction class — whether it applies to a
+  given use is a human / legal judgment (BomLens `license-flags.jq` /
+  OpenChain AI SBOM principle). Ordinary licenses (MIT, Apache-2.0, GPL) are not
+  flagged.
+- **NOTICE license texts + per-component copyright** — the NOTICE document
+  (text / markdown / html) now closes with a "License Texts" section embedding
+  the full SPDX text of every license observed in the project (50+ license
+  texts bundled — see the catalog-expansion entry above; a license without a
+  bundled text falls back to its reference-URL link), and each component line carries the copyright statement
+  recorded in the scan's SBOM — or, when the SBOM recorded none, an explicit
+  fallback pointing at the component's registry URL (the line is never blank).
+  The NOTICE artifact thereby satisfies the obligation catalog's
+  `license_text_inclusion_required` obligation.
+- **G7 AI SBOM minimum-elements conformance (advisory)** — SBOM ingest now
+  accepts CycloneDX `specVersion` 1.7 (the ML-BOM model-card fields), and when
+  an uploaded document carries a `machine-learning-model` component the
+  conformance verdict appends the 51 G7 "SBOM for AI" minimum-element checks
+  (7 clusters: metadata, system level properties, models, datasets properties,
+  infrastructure, security properties, key performance indicators). Each
+  element reports pass (present), advisory warn (absent), or "requires human
+  review" (no automated source); G7 entries carry `cluster` / `source` /
+  `role` / `evidence` fields in the `checks[]` array. All 51 are advisory —
+  the overall pass / warn / fail verdict and its counters are unchanged.
+  Registry and check semantics are vendored from BomLens
+  (sktelecom/sbom-tools, Apache-2.0). No new env keys.
+- **CISA KEV surfacing + Priority sort** — findings whose CVE is listed in the
+  CISA KEV (Known Exploited Vulnerabilities) catalog carry a **KEV** badge and
+  the catalog's remediation due date (`kev_due_date`) in the findings table and
+  drawer. A new **Priority** sort — KEV first, then severity, then EPSS — is the
+  default ordering. A daily Celery beat task (`trustedoss.kev_catalog_refresh`)
+  syncs the CISA feed (~1,600 entries) into the vulnerability catalog,
+  delistings included. New env keys: `KEV_FEED_URL`, `KEV_REFRESH_ENABLED`
+  (set `false` on air-gapped deployments — KEV badges are then not shown), and
+  `KEV_REFRESH_TIMEOUT_SECONDS`.
+- **KEV operations closeout — admin feed panel + due-date status** —
+  `/admin/health` gains a **KEV feed** panel: last successful sync time, live
+  KEV-listed CVE count, listed / delisted counts from the last run, the next
+  daily sync (01:45 UTC beat), and an OK / skipped (+reason) / disabled /
+  never-run status backed by a new single-row `kev_sync_state` table the beat
+  task upserts on every tick. A parsed feed below the 500-entry sanity floor
+  is skipped like an outage (`skipped_reason: feed_below_sanity_floor`),
+  preserving existing KEV flags so a gutted or truncated feed document can
+  never mass-delist the catalog. The KEV badge in the findings table and
+  drawer now grades the CISA remediation due date into three states — overdue
+  (red) / due within 7 days (amber) / on track (neutral) — with a `D-n` /
+  `D+n` day count.
+
+### Fixed
+- **Source scans no longer misclassify transitive dependencies as direct** when
+  cdxgen emits the SBOM root's `dependencies` entry with an empty `dependsOn`
+  (observed on Maven / Gradle source scans). The depth computation now trusts
+  the metadata root only when it declares children and otherwise falls back to
+  in-degree-0 root detection, so the Components TYPE column shows the real
+  direct set. (#435)
+
 ## [0.12.0] — 2026-06-15
 
 Two feature themes: **received-SBOM ingest with conformance scoring** (a customer

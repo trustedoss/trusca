@@ -17,10 +17,22 @@ name: Release (publish container images)
 # W4). Releases <= 0.10.0 stay under the pre-rename names backend /
 # backend-worker / frontend so that older pinned compose files keep pulling.
 #
+# ── Build topology: native-arch runners (no QEMU) ──────────────────────────
+#   Each platform is built on a NATIVE GitHub-hosted runner — amd64 on
+#   ubuntu-22.04, arm64 on ubuntu-24.04-arm — following Docker's "distributed
+#   multi-platform build" pattern. QEMU emulation was dropped: the heavy worker
+#   image (cdxgen / node / scancode / JRE / dotnet) hung for ~6h on the
+#   emulated arm64 nodejs/cdxgen layers and was killed by the job timeout.
+#   Native arm64 runners are free for PUBLIC repos.
+#
+#   The `build` matrix (3 images × 2 platforms = 6 jobs) pushes each platform
+#   image BY DIGEST ONLY (no tags). The `merge` job then assembles a per-image
+#   multi-arch manifest list from those digests and applies the version tags.
+#
 # Tag strategy (CLAUDE.md core rule #9 — NEVER `:latest`):
 #   git tag v2.0.1  →  image tags `2.0.1` (immutable) and `2.0` (movable minor).
 #   No `latest` tag is produced. docker/metadata-action's semver patterns drive
-#   this — see the `tags:` block in the metadata step.
+#   this — see the `tags:` block in the metadata step of the merge job.
 #
 # ── Operator one-time setup (required, see docs-site installation guide) ──
 #   1. ghcr packages inherit the repo's GITHUB_TOKEN write scope below — no
@@ -31,6 +43,8 @@ name: Release (publish container images)
 #   2. For anonymous `docker pull` (so users install without `docker login`),
 #      set each package's visibility to PUBLIC once after the first push:
 #      ghcr package → Package settings → Change visibility → Public.
+#   3. Native arm64 runners (ubuntu-24.04-arm) are free for PUBLIC repos only;
+#      if the repo is ever made private this workflow needs a billing review.
 
 on:
   push:
@@ -54,16 +68,20 @@ permissions:
   contents: read
   packages: write
 
+env:
+  REGISTRY_NAMESPACE: ghcr.io/trustedoss
+
 jobs:
-  publish:
-    name: publish ${{ matrix.image }} (multi-arch)
-    runs-on: ubuntu-22.04
+  build:
+    name: build ${{ matrix.image.image }} (${{ matrix.platform.arch }})
+    runs-on: ${{ matrix.platform.runner }}
     strategy:
-      # One image's build failing should not abort the others — surfacing all
-      # three results in one run is more useful than fail-fast here.
+      # One leg failing should not abort the others — surfacing all six
+      # results in one run is more useful than fail-fast here.
       fail-fast: false
       matrix:
-        include:
+        # 3 images × 2 platforms = 6 native build jobs.
+        image:
           - image: trusca-backend
             dockerfile: apps/backend/Dockerfile.prod
             context: apps/backend
@@ -76,14 +94,19 @@ jobs:
             dockerfile: apps/frontend/Dockerfile.prod
             context: apps/frontend
             description: TRUSCA frontend (React SPA on nginx).
+        platform:
+          # `arch` (amd64 / arm64) is the slash-free token used in cache
+          # scopes and artifact names; `platform` (linux/amd64) is what
+          # buildx consumes.
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-22.04
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      # QEMU provides the arm64 emulation layer so a single amd64 runner can
-      # produce the linux/arm64 image alongside linux/amd64.
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -97,11 +120,101 @@ jobs:
           # no separate PAT is required.
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Derive OCI labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY_NAMESPACE }}/${{ matrix.image.image }}
+          labels: |
+            org.opencontainers.image.title=${{ matrix.image.image }}
+            org.opencontainers.image.description=${{ matrix.image.description }}
+            org.opencontainers.image.source=https://github.com/trustedoss/trusca
+            org.opencontainers.image.licenses=Apache-2.0
+
+      - name: Build & push by digest (${{ matrix.platform.platform }})
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.image.context }}
+          file: ${{ matrix.image.dockerfile }}
+          platforms: ${{ matrix.platform.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Push the single-platform image keyed only by its content digest —
+          # no tag yet. The merge job stitches the digests into a manifest
+          # list and applies the version tags.
+          outputs: type=image,name=${{ env.REGISTRY_NAMESPACE }}/${{ matrix.image.image }},push-by-digest=true,name-canonical=true,push=true
+          # No provenance / SBOM attestations: the merge job assembles the
+          # multi-arch list from PLAIN per-arch manifests via `imagetools create`,
+          # and per-arch attestation indexes do not compose into that list. This
+          # is the standard posture for the push-by-digest + merge pattern.
+          provenance: false
+          sbom: false
+          # Per-image-per-arch GHA layer cache so the six legs never clobber each
+          # other (linux/amd64 has a slash → use the slash-free `arch`). NOTE: a
+          # fully-cached leg still pushes its manifest by digest — the earlier
+          # "manifest not found" failures were a digest-artifact name collision
+          # (`trusca-backend` is a prefix of `trusca-backend-worker`), fixed in the
+          # merge job's suffix-anchored download pattern, NOT a cache no-op.
+          cache-from: type=gha,scope=release-${{ matrix.image.image }}-${{ matrix.platform.arch }}
+          cache-to: type=gha,scope=release-${{ matrix.image.image }}-${{ matrix.platform.arch }},mode=max
+
+      - name: Export digest
+        run: |
+          mkdir -p "${RUNNER_TEMP}/digests"
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${RUNNER_TEMP}/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          # Image name LAST so the merge job's suffix-anchored download pattern
+          # (`digest-*-<image>`) cannot prefix-match a longer image name — e.g.
+          # `trusca-backend` must NOT also pull in `trusca-backend-worker`.
+          name: digest-${{ matrix.platform.arch }}-${{ matrix.image.image }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    name: merge ${{ matrix.image.image }} manifest
+    runs-on: ubuntu-22.04
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - image: trusca-backend
+            description: TRUSCA backend (FastAPI API).
+          - image: trusca-backend-worker
+            description: TRUSCA Celery worker (cdxgen / scancode / Trivy / JRE).
+          - image: trusca-frontend
+            description: TRUSCA frontend (React SPA on nginx).
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          # Suffix-anchored on the image name so `trusca-backend` matches only
+          # digest-amd64-trusca-backend / digest-arm64-trusca-backend — NOT
+          # digest-*-trusca-backend-worker. Both arch artifacts land in one dir.
+          pattern: digest-*-${{ matrix.image.image }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/digests
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Derive image tags & OCI labels
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/trustedoss/${{ matrix.image }}
+          images: ${{ env.REGISTRY_NAMESPACE }}/${{ matrix.image.image }}
           # On a tag push the ref drives the semver; on workflow_dispatch we
           # feed the operator-supplied tag through the same patterns. Neither
           # produces `latest` — there is no `type=raw,value=latest` line.
@@ -109,21 +222,327 @@ jobs:
             type=semver,pattern={{version}},value=${{ github.event.inputs.tag }}
             type=semver,pattern={{major}}.{{minor}},value=${{ github.event.inputs.tag }}
           labels: |
-            org.opencontainers.image.title=${{ matrix.image }}
-            org.opencontainers.image.description=${{ matrix.description }}
+            org.opencontainers.image.title=${{ matrix.image.image }}
+            org.opencontainers.image.description=${{ matrix.image.description }}
             org.opencontainers.image.source=https://github.com/trustedoss/trusca
             org.opencontainers.image.licenses=Apache-2.0
 
-      - name: Build & push (linux/amd64, linux/arm64)
-        uses: docker/build-push-action@v6
+      - name: Create multi-arch manifest list & push
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          # Expand metadata-action's tags ("type=...,value=..." resolved to
+          # bare `name:tag` lines) into repeated `-t` flags, then append the
+          # per-arch source images addressed by digest. The unquoted command
+          # substitutions below MUST word-split into separate args — that is
+          # the mechanism, so SC2046 is suppressed intentionally.
+          # shellcheck disable=SC2046
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf "${REGISTRY_NAMESPACE}/${IMAGE}@sha256:%s " *)
+        env:
+          REGISTRY_NAMESPACE: ${{ env.REGISTRY_NAMESPACE }}
+          IMAGE: ${{ matrix.image.image }}
+
+      - name: Inspect pushed manifest
+        run: |
+          # `{{version}}` is the immutable tag — verify the assembled list
+          # carries both amd64 and arm64 entries.
+          docker buildx imagetools inspect \
+            "${REGISTRY_NAMESPACE}/${IMAGE}:${{ steps.meta.outputs.version }}"
+        env:
+          REGISTRY_NAMESPACE: ${{ env.REGISTRY_NAMESPACE }}
+          IMAGE: ${{ matrix.image.image }}
+
+  # ===========================================================================
+  # release — create the DRAFT GitHub Release (BomLens parity backlog Phase I /
+  # P3-12, step I1). Runs only after all three per-image manifest lists are
+  # published (needs: merge). We create the Release as a DRAFT here and only
+  # reveal it in `release-gate` once the published images are proven bootable.
+  #
+  # Ordering matters: the container images are published FIRST (build + merge),
+  # THEN the Release is drafted, THEN the images are exercised, THEN the Release
+  # is revealed. If anything downstream fails the Release stays a draft while the
+  # image tags remain pullable — see docs-site contributor-guide/releasing.md
+  # for the full failure semantics.
+  # ===========================================================================
+  release:
+    name: create draft GitHub Release
+    runs-on: ubuntu-22.04
+    needs: merge
+    # Least privilege: only this job (and release-gate) needs to write the
+    # Release. build / merge keep the top-level contents:read, packages:write.
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      version: ${{ steps.resolve.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve tag & version
+        id: resolve
+        # Pass the (attacker-influenceable) ref / dispatch input through the
+        # environment rather than interpolating ``${{ }}`` directly into the
+        # script — a tag/branch name with shell metacharacters can't inject when
+        # it arrives as an env var the shell never re-evaluates as code
+        # (semgrep run-shell-injection / GitHub Actions hardening).
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # On a tag push github.ref_name is the tag (vX.Y.Z); on a manual
+          # workflow_dispatch it is the branch, so fall back to the operator
+          # supplied `tag` input — the same source the merge job's semver
+          # patterns consume.
+          TAG="${INPUT_TAG:-$REF_NAME}"
+          case "$TAG" in
+            v[0-9]*.[0-9]*.[0-9]*) : ;;
+            *) echo "::error::expected a vX.Y.Z tag, got '$TAG'"; exit 1 ;;
+          esac
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          # Strip the leading v — the image tags (merge job) and the compose
+          # ${IMAGE_TAG} are the bare X.Y.Z version.
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Create draft release (idempotent)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.resolve.outputs.tag }}
+          VERSION: ${{ steps.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          # Re-runs (a retried workflow) must not fail on an existing Release —
+          # leave whatever is there untouched (its draft state is managed by
+          # release-gate, not recreated here).
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG already exists — leaving it as-is"
+            exit 0
+          fi
+          # Prefer the curated per-version notes shipped in docs-site; fall back
+          # to GitHub's auto-generated notes (from merged PRs) when they are
+          # absent. Either way the Release is created as a DRAFT. The docs-site
+          # convention keeps the leading ``v`` in the filename
+          # (``release-notes/v0.13.0.md``), so key off ``$TAG`` (which has the
+          # ``v``), NOT the bare ``$VERSION``.
+          NOTES_FILE="docs-site/docs/release-notes/${TAG}.md"
+          if [ -f "$NOTES_FILE" ]; then
+            echo "using curated release notes: $NOTES_FILE"
+            gh release create "$TAG" --draft --title "$TAG" --notes-file "$NOTES_FILE"
+          else
+            echo "no curated notes for $TAG — auto-generating from history"
+            gh release create "$TAG" --draft --title "$TAG" --generate-notes
+          fi
+
+  # ===========================================================================
+  # release-gate — prove the PUBLISHED images before revealing the Release
+  # (Phase I / P3-12, steps I2 + I3). Pulls the three multi-arch images at the
+  # release version, boots the REAL production docker-compose.yml (published
+  # image set, no local build), and runs the documented Quickstart first-scan
+  # smoke reused from install-uat.yml — health poll → super_admin bootstrap →
+  # login → projects API. Only on success is the draft dropped.
+  #
+  # Reuse & parameterisation: this stands up the production compose stack with
+  # a tiny smoke overlay (docker-compose.smoke.yml) that publishes the backend
+  # + frontend ports so the install-uat smoke steps work without Traefik / DNS /
+  # TLS. The NEW work over install-uat's published-image-pull job is injecting
+  # the release version as ${IMAGE_TAG} (job env below) so the compose file
+  # resolves ghcr.io/trustedoss/trusca-*:X.Y.Z — the exact tags merge just
+  # pushed — rather than a hard-coded known-good tag.
+  # ===========================================================================
+  release-gate:
+    name: release-gate (published images first-scan smoke)
+    runs-on: ubuntu-22.04
+    needs: release
+    timeout-minutes: 40
+    # contents:write to reveal the Release; packages:read to pull the images.
+    permissions:
+      contents: write
+      packages: read
+    env:
+      # All docker-compose interpolation vars live at job scope so every step
+      # (pull / up / ps / logs / down) resolves the SAME published image set.
+      TAG: ${{ needs.release.outputs.tag }}
+      # ${IMAGE_TAG} is the bare X.Y.Z the merge job tagged the images with.
+      IMAGE_TAG: ${{ needs.release.outputs.version }}
+      IMAGE_REGISTRY: ghcr.io/trustedoss
+      # Run the published images in the app's DEV runtime mode. This is the SAME
+      # posture the install-uat boot smoke uses (it boots via docker-compose.dev.yml)
+      # and it is deliberate: APP_ENV defaults to `prod` in docker-compose.yml
+      # (`APP_ENV: ${APP_ENV:-prod}`), and prod mode enforces two guards that a
+      # from-scratch `docker-compose up` — WITHOUT install.sh's full provisioning —
+      # cannot satisfy:
+      #   1. CORS origins must be https:// (main.py validate_cors_origins). The
+      #      smoke reaches the API over http on the runner (no Traefik/TLS), so a
+      #      prod-mode https requirement would crash uvicorn at import.
+      #   2. L1 role separation: the compose file ALWAYS sets DATABASE_URL_APP
+      #      (`${DATABASE_URL_APP:-${DATABASE_URL}}`), and prod mode then requires
+      #      the runtime to connect as `trustedoss_app`. That role is provisioned
+      #      by scripts/postgres-init.sh only during install.sh; a raw compose `up`
+      #      never creates it, so prod mode fails password auth for trustedoss_app.
+      # This gate proves the published images PULL, the production compose file
+      # RESOLVES + BOOTS all six services to health, migrations apply, and an
+      # authed first-scan API call works. It does NOT exercise the prod-only L1 /
+      # TLS edge (out of scope here; that is the install.sh + manual UAT path).
+      APP_ENV: dev
+      # Traefik is not started, but DOMAIN / TLS_EMAIL / CORS are required for
+      # `docker-compose config` to interpolate the production file cleanly. In
+      # dev mode a plain http:// origin is accepted (see guard #1 above); it is
+      # the origin the smoke overlay publishes the SPA on.
+      DOMAIN: localhost
+      TLS_EMAIL: release-gate@example.invalid
+      TRAEFIK_LOG_LEVEL: INFO
+      SECRET_KEY: release-gate-secret-key-32-characters-minimum
+      CORS_ALLOWED_ORIGINS: http://localhost:8080
+      POSTGRES_USER: trustedoss
+      POSTGRES_PASSWORD: trustedoss
+      POSTGRES_DB: trustedoss
+      DATABASE_URL: postgresql+asyncpg://trustedoss:trustedoss@postgres:5432/trustedoss
+      # Skip the ~600 MB Trivy DB download — the smoke proves the images boot
+      # and serve the API, not the vulnerability feed (covered elsewhere). The
+      # worker's health is a celery ping, independent of the DB bootstrap.
+      TRIVY_DB_BOOTSTRAP_ON_START: "false"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Project standard (CLAUDE.md rule #10): docker-compose V1. Ubuntu 22.04
+      # runners ship V2 only — install the pinned V1 release so the gate
+      # exercises the documented `docker-compose` (hyphenated) invocation.
+      - name: Install docker-compose V1
+        run: |
+          sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" \
+            -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+          docker-compose --version
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
         with:
-          context: ${{ matrix.context }}
-          file: ${{ matrix.dockerfile }}
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          # Per-image GHA cache scope so the three matrix legs do not clobber
-          # each other's layer cache.
-          cache-from: type=gha,scope=release-${{ matrix.image }}
-          cache-to: type=gha,scope=release-${{ matrix.image }},mode=max
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Pull the three first-party images at the release version, then boot the
+      # production stack (published images, no build) with the smoke overlay.
+      # Traefik is deliberately omitted from the service list. depends_on gates
+      # the order: backend waits for postgres+redis healthy, worker for backend
+      # (schema at HEAD via /health/ready + AUTO_MIGRATE=true), beat for worker.
+      - name: Pull & boot the published stack (no Traefik)
+        run: |
+          set -euo pipefail
+          echo "release-gate: booting ${IMAGE_REGISTRY}/trusca-*:${IMAGE_TAG}"
+          docker-compose -f docker-compose.yml -f docker-compose.smoke.yml pull backend worker frontend
+
+          # Cold-boot tolerance — mirror how production actually recovers, don't
+          # out-run it. On a FRESH postgres volume the official image runs initdb
+          # behind an internal temp server, then restarts the real server to run the
+          # trustedoss_app role script — a window that can outlast the published
+          # backend image's fixed 10x3s DB-wait. So the backend's FIRST start can
+          # exit before postgres accepts app connections, and `up` then reports
+          # `worker` (depends_on backend: service_healthy) "unhealthy" and exits
+          # non-zero. Production heals exactly this with `restart: unless-stopped`
+          # (line ~281): the backend restarts and connects once postgres is truly
+          # ready. Warm boots skip initdb, so CI / image-scan never hit it.
+          #
+          # Therefore the gate must gate on the backend BECOMING HEALTHY (via the
+          # restart-heal, in the next step's 180s wait), NOT on this `up`'s exit
+          # code — hence `|| true`. A genuinely-broken image still fails, because
+          # the health wait below never turns green. (`pg_isready` is not a reliable
+          # pre-gate: during initdb it answers on the socket before the real server
+          # accepts network connections, giving a false-ready.)
+          docker-compose -f docker-compose.yml -f docker-compose.smoke.yml up -d \
+            postgres redis backend worker beat frontend || true
+
+      # Reused from install-uat.yml — the smoke overlay publishes backend :8000,
+      # so we poll the host port directly (production routes this via Traefik).
+      - name: Wait for backend health (host port 8000)
+        run: |
+          set -euo pipefail
+          # 30 x 6s = 180s — generous enough to cover a cold initdb plus the
+          # backend's restart-heal (its first start may have exited during initdb;
+          # `restart: unless-stopped` brings it back once postgres is truly ready).
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8000/health >/dev/null 2>&1; then
+              echo "backend up"
+              curl -fsS http://localhost:8000/health
+              # Backend is healthy now. Re-run `up` (idempotent) so worker / beat /
+              # frontend — which docker-compose may have left uncreated when the
+              # cold-boot `up` above bailed on the transient — start now that their
+              # `depends_on backend: service_healthy` is satisfied.
+              docker-compose -f docker-compose.yml -f docker-compose.smoke.yml up -d \
+                postgres redis backend worker beat frontend
+              docker-compose -f docker-compose.yml -f docker-compose.smoke.yml ps
+              exit 0
+            fi
+            echo "waiting for backend ($i/30)"
+            sleep 6
+          done
+          echo "::error::published backend never came up"
+          docker-compose -f docker-compose.yml -f docker-compose.smoke.yml ps
+          docker-compose -f docker-compose.yml -f docker-compose.smoke.yml logs --tail=200
+          exit 1
+
+      # Bootstrap the first super_admin INSIDE the published image — the same
+      # entrypoint install.sh drives (scripts.create_super_admin). Schema is
+      # already at HEAD (backend auto-migrated on boot), so this just seeds the
+      # login used by the smoke below. The email must be a syntactically valid,
+      # resolvable-looking address: the login endpoint validates it with
+      # Pydantic EmailStr, which rejects reserved TLDs like `.local` (422), so a
+      # `.example.com` address is used for BOTH the bootstrap and the login.
+      - name: Bootstrap super_admin in the published image
+        run: |
+          set -euo pipefail
+          docker-compose -f docker-compose.yml -f docker-compose.smoke.yml exec -T \
+            -e ADMIN_EMAIL="admin@release-gate.example.com" \
+            -e ADMIN_PASSWORD="ReleaseGatePassword123!" \
+            backend python -m scripts.create_super_admin
+          echo "super_admin bootstrapped in the published backend image"
+
+      # Reused from install-uat.yml — the documented Quickstart first-scan smoke:
+      # authenticate, then reach an authed domain endpoint. Proves the published
+      # image serves the real API, not just /health.
+      - name: Smoke — login + projects API (published image)
+        run: |
+          set -euo pipefail
+          # The auth router mounts at /auth (apps/backend/api/v1/auth.py sets
+          # prefix="/auth"; main.py includes it with no extra prefix), so login is
+          # /auth/login — NOT /v1/auth/login (only the domain routers, e.g.
+          # /v1/projects below, carry the /v1 prefix). Fetch and parse as separate
+          # statements — piping curl straight into an interpreter trips semgrep
+          # gha-curl-pipe-shell (registry ERROR rule).
+          LOGIN_RESPONSE=$(curl -fsS -X POST http://localhost:8000/auth/login \
+            -H "Content-Type: application/json" \
+            -d '{"email":"admin@release-gate.example.com","password":"ReleaseGatePassword123!"}')
+          TOKEN=$(printf '%s' "$LOGIN_RESPONSE" \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')
+          test -n "$TOKEN"
+          test "$TOKEN" != "null"
+          echo "got token (length=${#TOKEN})"
+          curl -fsS http://localhost:8000/v1/projects \
+            -H "Authorization: Bearer $TOKEN" >/dev/null
+          echo "projects endpoint reachable on the published image"
+
+      # SUCCESS PATH ONLY (no `if:` guard) — reached only when every step above
+      # passed. Drop the draft so the Release goes public and becomes `latest`.
+      # If any step failed this is skipped: the Release stays a draft while the
+      # image tags remain published & pullable (see releasing.md).
+      - name: Reveal the release (drop draft)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "first-scan smoke passed against ${IMAGE_REGISTRY}/trusca-*:${IMAGE_TAG} — publishing $TAG"
+          gh release edit "$TAG" --draft=false --latest
+
+      - name: Dump compose logs on failure
+        if: failure()
+        run: |
+          docker-compose -f docker-compose.yml -f docker-compose.smoke.yml ps || true
+          docker-compose -f docker-compose.yml -f docker-compose.smoke.yml logs --tail=300 || true
+
+      - name: Tear down
+        if: always()
+        run: |
+          docker-compose -f docker-compose.yml -f docker-compose.smoke.yml down -v || true

@@ -64,6 +64,16 @@ _TASK_INCLUDES = [
     # the Beat schedule; triggered manually by the operator. See the module
     # docstring for the invocation.
     "tasks.vulnerability_catalog_refresh",
+    # Phase D1 — one-shot backfill for licenses.review_flag (AI review class:
+    # behavioral-use / non-commercial). Reconciles pre-classifier NULL rows.
+    # Not on the Beat schedule; triggered manually by the operator. See the
+    # module docstring for the invocation.
+    "tasks.license_review_flag_backfill",
+    # CISA KEV catalog refresh — daily beat that reconciles the
+    # ``vulnerabilities.kev*`` columns (migration 0034) against CISA's public
+    # Known Exploited Vulnerabilities feed. Backs the Vulnerabilities tab's
+    # ``sort=priority`` ranking (KEV → severity → EPSS).
+    "tasks.kev_catalog_refresh",
     # W6-#44 — Trivy DB weekly refresh beat. Pairs with the worker-boot
     # bootstrap hook (tasks.trivy_db_bootstrap) so a fresh worker picks up
     # the DB once at start, and a running deployment refreshes weekly to
@@ -77,6 +87,14 @@ _TASK_INCLUDES = [
     "tasks.trivy_db_bootstrap",
 ]
 
+# Beat-schedule key of the KEV catalog refresh entry. Shared with
+# ``services.kev_health_service``, which derives the admin panel's
+# ``next_refresh_at`` from this entry's live crontab object — a string
+# literal duplicated in two modules would drift silently on a rename, so
+# the key is a module constant (CLAUDE.md 표준 §2 hardening rule 2 spirit:
+# one vocabulary, one owner).
+KEV_BEAT_ENTRY_NAME = "kev-catalog-refresh-daily"
+
 
 def _build_beat_schedule() -> dict[str, dict[str, object]]:
     """
@@ -89,6 +107,7 @@ def _build_beat_schedule() -> dict[str, dict[str, object]]:
       - ``trustedoss.workspace_cleaner``            — every 30 minutes
       - ``trustedoss.backup.run``                   — daily at 00:00 UTC
       - ``trustedoss.vulnerability_rematch_enqueue`` — every 6h at :15
+      - ``trustedoss.kev_catalog_refresh``          — daily at 01:45 UTC
       - ``trustedoss.trivy_db_refresh``             — weekly, Sun 03:00 UTC
 
     chore PR #4 wires a `celery-beat` sidecar in
@@ -146,6 +165,20 @@ def _build_beat_schedule() -> dict[str, dict[str, object]]:
         "vulnerability-rematch-six-hourly": {
             "task": "trustedoss.vulnerability_rematch_enqueue",
             "schedule": crontab(minute=15, hour="*/6"),
+        },
+        # CISA KEV catalog refresh — daily at 01:45 UTC. CISA updates the
+        # feed on US business days, so daily is the right cadence (weekly
+        # would let a newly-listed actively-exploited CVE sit unflagged for
+        # up to 6 days). ``minute=45`` keeps the minute lane clear of the
+        # other beats: the 6h sweepers own :00, the rematch beat owns :15,
+        # scan-retention owns :30, and the daily backup fires at 00:00 —
+        # 01:45 never shares a tick with any of them (nor with the weekly
+        # Trivy refresh at Sun 03:00). The work itself is tiny (one ~10 MiB
+        # download + two bounded UPDATE passes), so scheduling inside the
+        # 00:00 backup's hour is safe.
+        KEV_BEAT_ENTRY_NAME: {
+            "task": "trustedoss.kev_catalog_refresh",
+            "schedule": crontab(minute=45, hour=1),
         },
         # W6-#44 — weekly Trivy DB refresh. Sunday 03:00 UTC was chosen as
         # the lowest-traffic window on the typical enterprise cluster: 03:00

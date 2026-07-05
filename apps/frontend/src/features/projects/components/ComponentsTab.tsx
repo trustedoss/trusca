@@ -4,6 +4,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { Virtuoso } from "react-virtuoso";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -31,6 +32,7 @@ import type {
 import { useComponents } from "@/features/projects/api/useComponents";
 import { ActiveFilterChips } from "@/features/projects/components/ActiveFilterChips";
 import { ComponentDrawer } from "@/features/projects/components/ComponentDrawer";
+import { DependencyGraph } from "@/features/projects/components/DependencyGraph";
 import {
   ComponentsToolbar,
   type ComponentsExtraFilter,
@@ -229,6 +231,24 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
     loadInitialVisibility(COMPONENT_COLUMNS_STORAGE_KEY, columnsCatalog),
   );
 
+  // View toggle — `?view=graph` swaps the virtual table for the dependency
+  // graph (BomLens parity H-1). Anything other than the literal "graph"
+  // collapses to the default table so a typoed URL never sticks.
+  const view: "table" | "graph" =
+    searchParams.get("view") === "graph" ? "graph" : "table";
+
+  function setView(next: "table" | "graph") {
+    setSearchParams(
+      (prev) => {
+        const nextParams = new URLSearchParams(prev);
+        if (next === "graph") nextParams.set("view", "graph");
+        else nextParams.delete("view");
+        return nextParams;
+      },
+      { replace: true },
+    );
+  }
+
   // Drawer state — `?drawer=<componentId>` so reload restores the selection.
   const drawerId = searchParams.get("drawer");
   const drawerOpen = drawerId != null && drawerId.length > 0;
@@ -363,6 +383,50 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
 
   return (
     <div data-testid="components-tab" className="flex flex-1 flex-col">
+      {/* View toggle — Table (virtual list) vs Graph (dependency graph, H-1).
+          The choice is mirrored into `?view=graph` so reload / deep-link keep
+          it. Rendered as a segmented control, keyboard-reachable, with the
+          active view marked via aria-pressed (not color alone). */}
+      <div
+        className="flex items-center justify-end border-b border-border/60 px-6 py-2"
+        data-testid="components-view-toggle"
+        role="group"
+        aria-label={t("components.view_toggle.aria")}
+      >
+        <div className="inline-flex overflow-hidden rounded-md border">
+          <Button
+            type="button"
+            variant={view === "table" ? "secondary" : "ghost"}
+            size="sm"
+            className="h-7 rounded-none px-3"
+            aria-pressed={view === "table"}
+            data-testid="components-view-toggle-table"
+            data-active={view === "table"}
+            onClick={() => setView("table")}
+          >
+            {t("components.view_toggle.table")}
+          </Button>
+          <Button
+            type="button"
+            variant={view === "graph" ? "secondary" : "ghost"}
+            size="sm"
+            className="h-7 rounded-none px-3"
+            aria-pressed={view === "graph"}
+            data-testid="components-view-toggle-graph"
+            data-active={view === "graph"}
+            onClick={() => setView("graph")}
+          >
+            {t("components.view_toggle.graph")}
+          </Button>
+        </div>
+      </div>
+
+      {view === "graph" ? (
+        <div className="flex flex-1 flex-col" data-testid="components-graph-view">
+          <DependencyGraph projectId={projectId} scanId={scanId} />
+        </div>
+      ) : (
+        <>
       {/* Two summary cards mirroring the Overview tab. Clicking a segment or
           legend row narrows the list below to that bucket only (single-select
           replace). The shared overview query backs them so they always show
@@ -561,6 +625,8 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
           if (!open) setDrawerComponent(null);
         }}
       />
+        </>
+      )}
     </div>
   );
 }

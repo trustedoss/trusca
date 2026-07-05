@@ -42,15 +42,34 @@ export interface SeedSummary {
   /** Populated when SeedOptions.withScan is true. Same length as project_ids. */
   scan_ids?: string[];
   /**
+   * Phase F (scan compare). The id of the SECOND, newer succeeded scan seeded
+   * on the first project when `SeedOptions.scanCount` is 2 — the diff `target`
+   * (the diff `base` is `scan_ids[0]`, the older scan). `null`/absent when
+   * `scanCount` was 1.
+   */
+  second_scan_id?: string | null;
+  /**
    * The kind='sbom' received-SBOM scan seeded on the first project when
    * `SeedOptions.withSbom` is set (model 3). Open `/scans/<id>` to assert the
    * conformance panel. `null` when `withSbom` was off.
    */
   sbom_scan_id?: string | null;
+  /**
+   * feat/g7-conformance. Number of advisory G7 checks appended to the seeded
+   * conformance verdict — 4 when `SeedOptions.withG7` is set, else 0.
+   */
+  g7_check_count?: number;
   /** Number of components attached to the first project's scan (0 by default). */
   component_count?: number;
   /** Number of vulnerability findings attached to the first project's scan. */
   vulnerability_count?: number;
+  /**
+   * Phase C KEV e2e. Number of vulnerability-mode CVEs flagged as CISA KEV
+   * entries (`kev=true` + `kev_date_added` + a `kev_due_date` cycled through
+   * `SeedOptions.kevDueSpread`). Always ≤ `vulnerability_count`; 0 when
+   * `kevCount` was off.
+   */
+  kev_count?: number;
   /** Number of obligation rows attached to the seeded licenses (PR #13). */
   obligation_count?: number;
   /**
@@ -115,12 +134,32 @@ export interface SeedOptions {
    */
   withScan?: boolean;
   /**
+   * Phase F (scan compare). Number of succeeded scans to seed on the FIRST
+   * project. Default 1. Set to 2 to seed a SECOND succeeded scan whose SCA
+   * posture differs from the first by an exact, deterministic delta — 1 added
+   * / 1 removed / 1 changed component and 1 introduced / 1 resolved finding —
+   * so the release-diff (`/projects/:id/compare`) has non-empty change sets.
+   * Requires `componentCount >= 4` and `vulnerabilityCount >= 2`; implies
+   * `withScan`. The newer scan's id comes back as `SeedSummary.second_scan_id`,
+   * and the project then lists two releases (so the Releases-tab Compare button
+   * is enabled). Only value 1 or 2 is accepted.
+   */
+  scanCount?: number;
+  /**
    * Seed a kind='sbom' (received-SBOM) succeeded scan on the FIRST project plus
    * its conformance verdict (model 3). Independent of `withScan`. The scan id
    * comes back as `SeedSummary.sbom_scan_id` — open `/scans/<id>` to assert the
    * conformance panel.
    */
   withSbom?: boolean;
+  /**
+   * feat/g7-conformance. Append 4 advisory G7 AI minimum-element checks to
+   * the seeded conformance verdict (2 clusters: `slp` + `models`; statuses
+   * pass x2 / absent-warn x1 / human-review x1 — pinned from the real
+   * evaluator over the recorded `aibom-owasp-1_7.json` fixture). Implies
+   * `withSbom`. The count comes back as `SeedSummary.g7_check_count`.
+   */
+  withG7?: boolean;
   /**
    * Number of components to attach to the first project's scan. Implies
    * `withScan`. Default: 0 (no components seeded). Phase 3 PR #10
@@ -150,6 +189,23 @@ export interface SeedOptions {
    * 2 unknown).
    */
   vulnerabilitySeverityMix?: string;
+  /**
+   * Phase C KEV e2e. Flag the FIRST N `vulnerabilityCount` CVEs (seed-plan
+   * order) as CISA KEV entries: `kev=true`, `kev_date_added` (today − 30 d)
+   * and a `kev_due_date` cycled through `kevDueSpread`. Requires
+   * `vulnerabilityCount >= kevCount` — the script exits 2 (ValueError)
+   * otherwise, and the helper throws a descriptive Error. Default: 0.
+   */
+  kevCount?: number;
+  /**
+   * SLA-state cycle for the `kevCount` due dates. Comma-separated tokens
+   * from `overdue` (today − 3 d) / `imminent` (today + 3 d) / `ok`
+   * (today + 30 d) — the offsets sit inside the FE `dueDate.ts` bands with
+   * margin so a UTC↔local day skew never flips a state. Defaults to
+   * `"overdue,imminent,ok"` in the Python script (all three states seeded
+   * when `kevCount >= 3`).
+   */
+  kevDueSpread?: string;
   /**
    * Phase 3 PR #13. When true, attach a small obligation catalog to each
    * seed-license created by `componentCount`. No-op when `componentCount`
@@ -264,10 +320,20 @@ export function seedE2eUser(opts: SeedOptions): SeedSummary {
     // site.
     scriptArgs.push("--with-scan");
   }
-  if (opts.withSbom) {
+  if ((opts.scanCount ?? 1) !== 1) {
+    scriptArgs.push("--scan-count", String(opts.scanCount));
+    // `--scan-count 2` implies `--with-scan` in the script; set it here too so
+    // the call site stays self-documenting.
+    if (!scriptArgs.includes("--with-scan")) scriptArgs.push("--with-scan");
+  }
+  if (opts.withSbom || opts.withG7) {
     // Independent of --with-scan: seeds a kind='sbom' scan + conformance verdict
-    // on the first project (model 3).
+    // on the first project (model 3). `--with-g7` implies `--with-sbom` in the
+    // script too; we pass it explicitly so the call site stays self-documenting.
     scriptArgs.push("--with-sbom");
+  }
+  if (opts.withG7) {
+    scriptArgs.push("--with-g7");
   }
   if ((opts.componentCount ?? 0) > 0) {
     scriptArgs.push("--component-count", String(opts.componentCount));
@@ -286,6 +352,12 @@ export function seedE2eUser(opts: SeedOptions): SeedSummary {
       "--vulnerability-severity-mix",
       opts.vulnerabilitySeverityMix,
     );
+  }
+  if ((opts.kevCount ?? 0) > 0) {
+    scriptArgs.push("--kev-count", String(opts.kevCount));
+  }
+  if (opts.kevDueSpread) {
+    scriptArgs.push("--kev-due-spread", opts.kevDueSpread);
   }
   if (opts.withObligations) {
     scriptArgs.push("--with-obligations");

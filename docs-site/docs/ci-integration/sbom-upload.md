@@ -25,7 +25,7 @@ TRUSCA is **not** Dependency-Track API compatible. The Dependency-Track flow —
 - A TRUSCA API key in the `tos_<prefix>_<secret>` format. Create one at **/integrations → API keys → New API key**; see [API keys](../admin-guide/api-keys.md) for the scope model.
 - The target **project already exists**. Copy its UUID from **Project Settings → CI/CD**. Uploading an SBOM does not create a project.
 - The API key's scope covers that project — a `project`-scoped key bound to it, or a `team`-scoped key for a project the team owns.
-- A **CycloneDX-JSON** document (supported `specVersion` values are `1.2` through `1.6`) **or** an **SPDX** document in JSON or Tag-Value form. Trivy auto-detects the format for CVE matching; SPDX is mapped to CycloneDX for component persistence. SPDX RDF/XML is not accepted.
+- A **CycloneDX-JSON** document (supported `specVersion` values are `1.2` through `1.7`; 1.7 adds the ML-BOM fields — see [AI SBOM conformance](../user-guide/ai-sbom-conformance.md)) **or** an **SPDX** document in JSON or Tag-Value form. Trivy auto-detects the format for CVE matching; SPDX is mapped to CycloneDX for component persistence. SPDX RDF/XML is not accepted.
 - No scan is currently queued or running for the project (one in-flight scan per project; a second returns `409`).
 
 ## Upload an SBOM
@@ -113,6 +113,8 @@ The response is the verdict for that scan:
 - A `fail` verdict does **not** abort the ingest — TRUSCA still matches CVEs and classifies licenses so you get the partial result alongside the concrete reasons. Use the verdict to decide whether to accept a supplier's SBOM or send it back.
 - `purl_coverage_pct`, `license_coverage_pct`, and `hash_coverage_pct` are `null` for SPDX Tag-Value documents, which are scored on presence rather than per-package coverage.
 
+When the uploaded document contains a `machine-learning-model` component, `checks[]` additionally carries the 51 advisory G7 AI SBOM minimum-element entries (tagged with `cluster` and `source`) — see [AI SBOM conformance](../user-guide/ai-sbom-conformance.md).
+
 A `404` here means the project is not accessible to you, or the scan has no verdict yet (it is not an ingested SBOM scan, or its ingest has not reached the conformance stage).
 
 ## Verify it worked
@@ -190,7 +192,7 @@ TRUSCA accepts CycloneDX-JSON and SPDX (JSON or Tag-Value). Confirm the upload s
 
 ### `422 Unprocessable Entity`
 
-The upload is not an ingestible CycloneDX or SPDX SBOM. For CycloneDX, check that `bomFormat` is `CycloneDX` and `specVersion` is between `1.2` and `1.6`; for SPDX, that the document carries `spdxVersion` (JSON) or a `SPDXVersion:` line (Tag-Value). The component/package count must be within `SBOM_INGEST_MAX_COMPONENTS`, and the document must not be pathologically nested. The `detail` field names the specific reason.
+The upload is not an ingestible CycloneDX or SPDX SBOM. For CycloneDX, check that `bomFormat` is `CycloneDX` and `specVersion` is between `1.2` and `1.7`; for SPDX, that the document carries `spdxVersion` (JSON) or a `SPDXVersion:` line (Tag-Value). The component/package count must be within `SBOM_INGEST_MAX_COMPONENTS`, and the document must not be pathologically nested. The `detail` field names the specific reason.
 
 ### `429 Too Many Requests`
 

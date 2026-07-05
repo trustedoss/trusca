@@ -43,6 +43,7 @@
     "step_fetch": "소스 가져오기",
     "step_cdxgen": "cdxgen (SBOM 생성)",
     "step_scancode": "ScanCode (라이선스)",
+    "step_scanoss": "SCANOSS (vendored)",
     "step_trivy": "Trivy (취약점 매칭)",
     "step_finalize": "마무리",
     "step_succeeded": "스캔 완료",
@@ -206,6 +207,32 @@
       "hash": "파일 해시"
     },
     "missing_more": "외 {{count}}개",
+    "g7": {
+      "title": "G7 AI SBOM 최소요소",
+      "tally": {
+        "present": "{{present}} / {{autoTotal}} 충족",
+        "advisory": "권고 {{count}}건",
+        "review": "사람 검토 필요 {{count}}건"
+      },
+      "review_note": "자동 검사 출처가 없는 요소는 SBOM만으로 확인할 수 없으므로 사람의 검토가 필요합니다.",
+      "source": {
+        "auto": "자동 확인",
+        "inferred": "신호 추정",
+        "declared": "제공 값",
+        "na": "사람 검토 필요"
+      },
+      "cluster": {
+        "metadata": "메타데이터",
+        "slp": "시스템 수준 속성",
+        "models": "모델",
+        "dp": "데이터셋 속성",
+        "infrastructure": "인프라",
+        "sp": "보안 속성",
+        "kpi": "핵심성과지표"
+      },
+      "learn_more": "자세히 보기",
+      "missing_label": "누락:"
+    },
     "errors": {
       "not_found": "이 스캔에 대한 적합성 결과가 아직 없습니다.",
       "network": "네트워크 오류로 적합성 결과를 불러오지 못했습니다.",

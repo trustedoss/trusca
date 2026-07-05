@@ -1,0 +1,66 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.7",
+  "serialNumber": "urn:uuid:aa11bb22-cc33-dd44-ee55-ff6677889900",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-07-02T09:00:00+00:00",
+    "component": {
+      "bom-ref": "pkg:generic/OWASP-AIBOM-Generator/review-flags-job@1",
+      "type": "application",
+      "name": "review-flags-job",
+      "version": "1"
+    }
+  },
+  "components": [
+    {
+      "bom-ref": "pkg:huggingface/meta-llama/Llama-2-7b@0e6e5f6b",
+      "type": "machine-learning-model",
+      "group": "meta-llama",
+      "name": "Llama-2-7b",
+      "version": "0e6e5f6b",
+      "purl": "pkg:huggingface/meta-llama/Llama-2-7b@0e6e5f6b",
+      "description": "Llama 2 base model",
+      "licenses": [
+        {
+          "license": {
+            "id": "LLAMA-2-Community-License",
+            "url": "https://ai.meta.com/llama/license/"
+          }
+        }
+      ]
+    },
+    {
+      "bom-ref": "pkg:huggingface/datasets/some-nc-dataset@1",
+      "type": "data",
+      "group": "datasets",
+      "name": "some-nc-dataset",
+      "version": "1",
+      "purl": "pkg:huggingface/datasets/some-nc-dataset@1",
+      "description": "A non-commercial dataset",
+      "licenses": [
+        {
+          "license": {
+            "id": "CC-BY-NC-4.0"
+          }
+        }
+      ]
+    },
+    {
+      "bom-ref": "pkg:huggingface/google-bert/bert-base-uncased@86b5e093",
+      "type": "machine-learning-model",
+      "group": "google-bert",
+      "name": "bert-base-uncased",
+      "version": "86b5e093",
+      "purl": "pkg:huggingface/google-bert/bert-base-uncased@86b5e093",
+      "description": "Control component — permissive, must NOT be flagged",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ]
+    }
+  ]
+}

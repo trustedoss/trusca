@@ -37,6 +37,22 @@ export type LicenseFindingKind = "declared" | "concluded" | "detected";
 export type LicenseSortKey = "category" | "name" | "spdx_id" | "affected_count";
 export type SortOrder = "asc" | "desc";
 
+/**
+ * AI-relevant restriction class a human must review (Phase D). Mirror of the
+ * backend single source of truth `services.license_flags.REVIEW_FLAG_VALUES`
+ * (also echoed by the schema Literal `schemas.license_detail.ReviewFlag`). The
+ * two sides are reconciled by a set-equality contract test in
+ * `tests/unit/contracts/catalogMirrors.test.ts` (testing standard §2: the same
+ * vocabulary in ≥2 places ⇒ a contract test is mandatory). Order is
+ * behavioral-first, matching the classifier's jq precedence.
+ */
+export const REVIEW_FLAG_VALUES = [
+  "behavioral_use",
+  "non_commercial",
+] as const;
+
+export type ReviewFlag = (typeof REVIEW_FLAG_VALUES)[number];
+
 export interface LicenseListItem {
   /** license_findings.id of a representative finding (drawer primary key). */
   id: string;
@@ -50,6 +66,14 @@ export interface LicenseListItem {
   affected_count: number;
   is_osi_approved: boolean;
   is_fsf_libre: boolean;
+  /**
+   * AI-relevant restriction class requiring human review (Phase D):
+   * `behavioral_use` = RAIL/Llama/Gemma/Falcon community licenses;
+   * `non_commercial` = CC-BY-NC and similar. `null` for ordinary OSS
+   * licenses. The portal surfaces the class only — applicability is a
+   * human/legal judgement.
+   */
+  review_flag: ReviewFlag | null;
   /** Today echoes `id`; kept distinct so frontends stay forward-compatible. */
   sample_finding_id: string;
 }
@@ -113,6 +137,11 @@ export interface ListLicensesParams {
   search?: string;
   categories?: LicenseCategoryName[];
   kinds?: LicenseFindingKind[];
+  /**
+   * Narrow to licenses carrying an AI review flag (Phase D). Single-valued —
+   * the backend `review_flag` query parameter accepts one token. Omit → all.
+   */
+  reviewFlag?: ReviewFlag;
   sort?: LicenseSortKey;
   order?: SortOrder;
   /**
@@ -146,6 +175,7 @@ function listLicensesQuery(
   if (params.kinds && params.kinds.length > 0) {
     out.kind = params.kinds;
   }
+  if (params.reviewFlag != null) out.review_flag = params.reviewFlag;
   if (params.sort != null) out.sort = params.sort;
   if (params.order != null) out.order = params.order;
   if (params.scanId != null && params.scanId.length > 0) {

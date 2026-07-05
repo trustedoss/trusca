@@ -26,16 +26,77 @@ vi.mock("@/lib/projectsApi", async () => {
   };
 });
 
+vi.mock("@/lib/searchApi", async () => {
+  const actual =
+    await vi.importActual<typeof import("@/lib/searchApi")>("@/lib/searchApi");
+  return {
+    ...actual,
+    globalSearch: vi.fn(),
+  };
+});
+
 import { listProjects } from "@/lib/projectsApi";
+import {
+  globalSearch,
+  type GlobalSearchResults,
+  type SearchComponentHit,
+  type SearchVulnerabilityHit,
+} from "@/lib/searchApi";
 
 const mockedListProjects = vi.mocked(listProjects);
+const mockedGlobalSearch = vi.mocked(globalSearch);
+
+function componentHit(
+  over: Partial<SearchComponentHit> = {},
+): SearchComponentHit {
+  return {
+    project_id: "proj-abc",
+    project_name: "test-project",
+    project_slug: "test-project",
+    component_name: "lodash",
+    version: "4.17.21",
+    purl: "pkg:npm/lodash@4.17.21",
+    ...over,
+  };
+}
+
+function vulnHit(
+  over: Partial<SearchVulnerabilityHit> = {},
+): SearchVulnerabilityHit {
+  return {
+    project_id: "proj-abc",
+    project_name: "test-project",
+    project_slug: "test-project",
+    cve_id: "CVE-2021-23337",
+    severity: "high",
+    ...over,
+  };
+}
+
+function searchResults(
+  over: Partial<GlobalSearchResults> = {},
+): GlobalSearchResults {
+  return {
+    query: "",
+    components: [],
+    vulnerabilities: [],
+    ...over,
+  };
+}
 
 // Tracks the URL inside MemoryRouter so we can assert navigations. Has to
 // live inside the <MemoryRouter> tree so useLocation sees the in-memory
 // history (window.location stays "/" because MemoryRouter doesn't touch it).
-function LocationProbe({ onLocation }: { onLocation: (path: string) => void }) {
+function LocationProbe({
+  onLocation,
+  onFullLocation,
+}: {
+  onLocation?: (path: string) => void;
+  onFullLocation?: (loc: { pathname: string; search: string }) => void;
+}) {
   const location = useLocation();
-  onLocation(location.pathname);
+  onLocation?.(location.pathname);
+  onFullLocation?.({ pathname: location.pathname, search: location.search });
   return <div data-testid="location-probe" data-pathname={location.pathname} />;
 }
 
@@ -44,6 +105,7 @@ interface HarnessProps {
   onOpenChange?: (open: boolean) => void;
   initialEntries?: string[];
   onLocation?: (path: string) => void;
+  onFullLocation?: (loc: { pathname: string; search: string }) => void;
   withTrigger?: boolean;
 }
 
@@ -52,6 +114,7 @@ function Harness({
   onOpenChange,
   initialEntries = ["/projects"],
   onLocation,
+  onFullLocation,
   withTrigger,
 }: HarnessProps) {
   const client = new QueryClient({
@@ -67,7 +130,12 @@ function Harness({
           <CommandMenuTrigger onOpen={() => onOpenChange?.(true)} />
         ) : null}
         <CommandMenu open={open} onOpenChange={onOpenChange ?? (() => {})} />
-        {onLocation ? <LocationProbe onLocation={onLocation} /> : null}
+        {onLocation || onFullLocation ? (
+          <LocationProbe
+            onLocation={onLocation}
+            onFullLocation={onFullLocation}
+          />
+        ) : null}
       </MemoryRouter>
     </QueryClientProvider>
   );
@@ -105,11 +173,13 @@ function ControlledHarness({
   initiallyOpen,
   initialEntries,
   onLocation,
+  onFullLocation,
   withTrigger,
 }: {
   initiallyOpen: boolean;
   initialEntries?: string[];
   onLocation?: (path: string) => void;
+  onFullLocation?: (loc: { pathname: string; search: string }) => void;
   withTrigger?: boolean;
 }): ReactNode {
   return (
@@ -117,6 +187,7 @@ function ControlledHarness({
       initiallyOpen={initiallyOpen}
       initialEntries={initialEntries}
       onLocation={onLocation}
+      onFullLocation={onFullLocation}
       withTrigger={withTrigger}
     />
   );
@@ -128,11 +199,13 @@ function ControlledHarnessInner({
   initiallyOpen,
   initialEntries,
   onLocation,
+  onFullLocation,
   withTrigger,
 }: {
   initiallyOpen: boolean;
   initialEntries?: string[];
   onLocation?: (path: string) => void;
+  onFullLocation?: (loc: { pathname: string; search: string }) => void;
   withTrigger?: boolean;
 }) {
   const [open, setOpen] = useState(initiallyOpen);
@@ -142,6 +215,7 @@ function ControlledHarnessInner({
       onOpenChange={setOpen}
       initialEntries={initialEntries}
       onLocation={onLocation}
+      onFullLocation={onFullLocation}
       withTrigger={withTrigger}
     />
   );
@@ -151,6 +225,8 @@ describe("CommandMenu", () => {
   beforeEach(() => {
     mockedListProjects.mockReset();
     mockedListProjects.mockResolvedValue(emptyProjectsResponse());
+    mockedGlobalSearch.mockReset();
+    mockedGlobalSearch.mockResolvedValue(searchResults());
     setUser({ superuser: false });
   });
 
@@ -363,6 +439,150 @@ describe("CommandMenu", () => {
     expect(
       await screen.findByPlaceholderText("Search projects, CVEs, pages..."),
     ).toBeInTheDocument();
+  });
+
+  // --- BomLens parity Phase H-2: cross-project component/CVE search ---------
+
+  it("does NOT call the global-search endpoint below the 2-char threshold", async () => {
+    const user = userEvent.setup();
+    render(<ControlledHarness initiallyOpen={true} />);
+
+    const input = await screen.findByPlaceholderText(
+      "Search projects, CVEs, pages...",
+    );
+    // A single character is under SEARCH_MIN_CHARS — projects still search, but
+    // the heavier global-search endpoint must stay idle.
+    await user.type(input, "l");
+
+    // Give the 200ms debounce room to fire before asserting the negative.
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    expect(mockedGlobalSearch).not.toHaveBeenCalled();
+  });
+
+  it("calls global-search with the debounced query once it clears 2 chars", async () => {
+    const user = userEvent.setup();
+    mockedGlobalSearch.mockResolvedValue(
+      searchResults({ components: [componentHit()] }),
+    );
+    render(<ControlledHarness initiallyOpen={true} />);
+
+    const input = await screen.findByPlaceholderText(
+      "Search projects, CVEs, pages...",
+    );
+    await user.type(input, "lodash");
+
+    await waitFor(
+      () => {
+        const matched = mockedGlobalSearch.mock.calls.some(
+          (c) => c[0] === "lodash",
+        );
+        expect(matched).toBe(true);
+      },
+      { timeout: 1500 },
+    );
+  });
+
+  it("renders component hits under the Components group and deep-links into the components tab", async () => {
+    const user = userEvent.setup();
+    mockedGlobalSearch.mockResolvedValue(
+      searchResults({ components: [componentHit()] }),
+    );
+
+    const locations: Array<{ pathname: string; search: string }> = [];
+    render(
+      <ControlledHarness
+        initiallyOpen={true}
+        onFullLocation={(loc) => locations.push(loc)}
+      />,
+    );
+
+    const input = await screen.findByPlaceholderText(
+      "Search projects, CVEs, pages...",
+    );
+    await user.type(input, "lodash");
+
+    // Group heading + row both carry stable testids.
+    expect(
+      await screen.findByTestId("command-menu-group-components"),
+    ).toBeInTheDocument();
+    const row = await screen.findByTestId("command-menu-component-proj-abc-0");
+    await user.click(row);
+
+    await waitFor(() => {
+      const hit = locations.find(
+        (l) => l.pathname === "/projects/proj-abc",
+      );
+      expect(hit).toBeDefined();
+      expect(hit?.search).toBe("?tab=components&search=lodash");
+    });
+  });
+
+  it("renders CVE hits under the CVEs group and deep-links into the vulnerabilities tab", async () => {
+    const user = userEvent.setup();
+    mockedGlobalSearch.mockResolvedValue(
+      searchResults({ vulnerabilities: [vulnHit()] }),
+    );
+
+    const locations: Array<{ pathname: string; search: string }> = [];
+    render(
+      <ControlledHarness
+        initiallyOpen={true}
+        onFullLocation={(loc) => locations.push(loc)}
+      />,
+    );
+
+    const input = await screen.findByPlaceholderText(
+      "Search projects, CVEs, pages...",
+    );
+    await user.type(input, "CVE-2021-23337");
+
+    expect(
+      await screen.findByTestId("command-menu-group-cves"),
+    ).toBeInTheDocument();
+    const row = await screen.findByTestId(
+      "command-menu-cve-proj-abc-CVE-2021-23337",
+    );
+    // Severity label text is present alongside the color dot (a11y: color is
+    // not the sole signal).
+    expect(row).toHaveTextContent("high");
+
+    await user.click(row);
+
+    await waitFor(() => {
+      const hit = locations.find(
+        (l) => l.pathname === "/projects/proj-abc",
+      );
+      expect(hit).toBeDefined();
+      expect(hit?.search).toBe(
+        "?tab=vulnerabilities&search=CVE-2021-23337",
+      );
+    });
+  });
+
+  it("clears component/CVE hits when the query drops back below 2 chars", async () => {
+    const user = userEvent.setup();
+    mockedGlobalSearch.mockResolvedValue(
+      searchResults({ components: [componentHit()] }),
+    );
+    render(<ControlledHarness initiallyOpen={true} />);
+
+    const input = await screen.findByPlaceholderText(
+      "Search projects, CVEs, pages...",
+    );
+    await user.type(input, "lodash");
+    expect(
+      await screen.findByTestId("command-menu-component-proj-abc-0"),
+    ).toBeInTheDocument();
+
+    // Erase down to a single character — the Components group must disappear.
+    await user.clear(input);
+    await user.type(input, "l");
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("command-menu-group-components"),
+      ).not.toBeInTheDocument();
+    });
   });
 });
 

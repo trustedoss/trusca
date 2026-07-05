@@ -339,6 +339,42 @@ def scan_trigger_rate_limit() -> str:
     return os.getenv("SCAN_TRIGGER_RATE_LIMIT", "20/minute")
 
 
+def api_read_rate_limit() -> str:
+    """slowapi limit string for api-key-accepting read GETs (per actor).
+
+    Covers the scan-status / SBOM-conformance polling endpoints that the CI
+    scan-action hits with a ``tos_`` API key. Those routes had NO limiter
+    decorator, and because the limiter is decorator-opt-in
+    (``default_limits=[]``) an undecorated route has zero throttling. Every
+    miss in :func:`services.api_key_service.authenticate_api_key` pays a
+    constant-time dummy bcrypt (cost 12, ~50-100ms CPU), so an unbounded flood
+    of ``Authorization: Bearer tos_...`` requests on these GETs is a CPU
+    exhaustion amplifier (RED-team F-1, Low — ``docs/security/red-team-2026-06-17.md``).
+
+    Keyed by actor via ``_authenticated_user_key`` (``apikey:<prefix>`` for a
+    key, ``user:<sub>`` for a JWT, ``ip:<addr>`` otherwise) so the key-prefix
+    bucket caps failed/garbage ``tos_`` floods BEFORE the bcrypt verify on the
+    hot path. Default 60/minute is generous for a CI poller (typically 1 req
+    every few seconds) while bounding abuse.
+    """
+    return os.getenv("API_READ_RATE_LIMIT", "60/minute")
+
+
+def search_rate_limit() -> str:
+    """slowapi limit string for the global search endpoint (per actor).
+
+    Global search (``GET /v1/search``) runs a leading-wildcard ``ILIKE`` over
+    ``components`` / ``vulnerabilities`` (non-SARGable → sequential scan + sort
+    per request; the ``LIMIT 20`` bounds output rows, not scan cost). The ⌘K
+    palette fires one debounced query per keystroke, so search gets its OWN,
+    tighter budget instead of sharing the CI-poll ``api_read_rate_limit`` bucket
+    — bounding the seq-scan amplifier a scripted client could otherwise drive
+    (security-review H-2, Low-1). Keyed per actor via ``_authenticated_user_key``.
+    Default 20/minute comfortably covers interactive typing while capping abuse.
+    """
+    return os.getenv("SEARCH_RATE_LIMIT", "20/minute")
+
+
 def scan_concurrency_cap_per_team() -> int:
     """Max concurrent (queued+running) scans allowed per team.
 
@@ -543,6 +579,78 @@ def scancode_max_result_bytes() -> int:
     it exceeds this ceiling. Default 256 MiB. Read at call time (rule #11).
     """
     return int(os.getenv("SCANCODE_MAX_RESULT_BYTES", str(256 * 1024 * 1024)))
+
+
+# ---------------------------------------------------------------------------
+# SCANOSS vendored-OSS identification (Phase J / P3-11 — opt-in, default OFF).
+#
+# SCANOSS fingerprints first-party files and sends those fingerprints (a
+# Winnowing hash, NOT the source itself) to an external matching API
+# (``api.osskb.org`` by default) to identify open-source code that was copied
+# into the tree without a package manifest ("vendored" OSS). Because TRUSCA is
+# an on-prem PERSISTENT portal — unlike BomLens, which is a local CLI where the
+# operator already owns the network boundary — this MUST be explicit opt-in.
+# When ``SCANOSS_ENABLED`` is false (the default) the pipeline stage is a
+# complete no-op: no scanner runs, no fingerprints are computed, and NOTHING
+# leaves the worker. Every accessor resolves env at call time (CLAUDE.md core
+# rule #11) so an operator can flip the toggle without a rebuild.
+# ---------------------------------------------------------------------------
+
+
+def scanoss_enabled() -> bool:
+    """Whether the SCANOSS vendored-OSS stage runs at all.
+
+    Default ``false`` — this feature sends file fingerprints to an EXTERNAL API,
+    so it is disabled unless an operator explicitly turns it on. Only the exact
+    truthy tokens ``true`` / ``1`` / ``yes`` (case-insensitive) enable it; any
+    other value (including typos, ``on``, ``enabled``) reads as OFF, so a
+    mis-set variable fails closed to "no egress" rather than open. Read at call
+    time (rule #11).
+    """
+    return os.getenv("SCANOSS_ENABLED", "false").strip().lower() in {
+        "true",
+        "1",
+        "yes",
+    }
+
+
+def scanoss_api_url() -> str:
+    """SCANOSS matching API endpoint (``--apiurl``).
+
+    Default ``https://api.osskb.org`` (the free Open Source Knowledge Base
+    endpoint). An operator can point this at a self-hosted SCANOSS server to
+    keep fingerprints on-premises. Read at call time (rule #11).
+    """
+    return os.getenv("SCANOSS_API_URL", "https://api.osskb.org")
+
+
+def scanoss_api_key() -> str:
+    """SCANOSS API key (``--key``), empty when unset.
+
+    The public osskb.org endpoint needs no key; a commercial / self-hosted
+    SCANOSS deployment may require one. Empty string means "send no ``--key``
+    flag". Read at call time (rule #11). NEVER log this value.
+    """
+    return os.getenv("SCANOSS_API_KEY", "")
+
+
+def scanoss_timeout_seconds() -> int:
+    """Hard wall-clock limit (seconds) for one ``scanoss-py scan`` invocation.
+
+    SCANOSS walks the first-party tree, fingerprints files, and round-trips
+    them to the matching API; on a large tree this can take a few minutes.
+    Default 300s (5 min). A non-integer / non-positive value falls back to the
+    default so a mis-set variable cannot make the stage hang forever or abort
+    on a parse error. Read at call time (rule #11).
+    """
+    raw = os.getenv("SCANOSS_TIMEOUT_SECONDS")
+    if raw is None or raw.strip() == "":
+        return 300
+    try:
+        value = int(raw)
+    except ValueError:
+        return 300
+    return value if value > 0 else 300
 
 
 # ---------------------------------------------------------------------------
@@ -964,6 +1072,29 @@ def jsonb_row_size_limit_bytes() -> int:
     return int(os.getenv("JSONB_ROW_SIZE_LIMIT_BYTES", str(256 * 1024)))
 
 
+def dependency_graph_max_nodes() -> int:
+    """Max nodes the dependency-graph endpoint will serialize (BomLens H-1).
+
+    ``GET /v1/projects/{id}/dependency-graph`` ships a scan's whole node/edge
+    adjacency to the browser for an interactive render. A pathological scan
+    (tens of thousands of components) would freeze that render, so when a scan's
+    node count exceeds this ceiling the endpoint returns ``truncated=true`` with
+    EMPTY nodes/edges (the frontend then renders its tree fallback). The exact
+    counts are always returned regardless.
+
+    Default 5000 comfortably covers real-world graphs while bounding the payload.
+    A non-numeric or non-positive value falls back to 5000 so a fat-finger cannot
+    disable the guard or ship an empty graph for every scan. Read at call time
+    per CLAUDE.md core rule #11 so an operator can retune without a rebuild.
+    """
+    raw = os.getenv("DEPENDENCY_GRAPH_MAX_NODES", "5000")
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return 5000
+    return value if value > 0 else 5000
+
+
 # ---------------------------------------------------------------------------
 # W6-#42 — vulnerability rematch beat tuning.
 #
@@ -1096,6 +1227,63 @@ def trivy_db_refresh_timeout_seconds() -> int:
         default=15 * 60,
         minimum=30,
         maximum=60 * 60,
+    )
+
+
+# ---------------------------------------------------------------------------
+# CISA KEV (Known Exploited Vulnerabilities) catalog refresh.
+#
+# A daily Celery beat (``tasks.kev_catalog_refresh``) pulls the public CISA
+# KEV JSON feed and flags catalog ``vulnerabilities`` rows that appear in it
+# (``kev`` / ``kev_date_added`` / ``kev_due_date`` — migration 0034). The KEV
+# signal feeds the Vulnerabilities tab's ``sort=priority`` ranking (KEV →
+# severity → EPSS, BomLens parity).
+#
+# Every accessor reads the env at call time per CLAUDE.md core rule #11 —
+# style mirrors the ``VULN_REMATCH_*`` block above.
+# ---------------------------------------------------------------------------
+
+
+def kev_feed_url() -> str:
+    """URL of the CISA KEV catalog JSON feed.
+
+    Default is CISA's public feed. Override for an air-gapped mirror the same
+    way ``TRIVY_DB_REPOSITORY`` points Trivy at an internal registry. The
+    value is operator-controlled env configuration only — there is NO user
+    write path to it, so it is not routed through ``core.url_guard`` (same
+    trust model as the env-only notification webhook URLs).
+    """
+    return os.getenv(
+        "KEV_FEED_URL",
+        "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json",
+    )
+
+
+def kev_refresh_enabled() -> bool:
+    """Whether the daily KEV catalog refresh beat actually fetches the feed.
+
+    Default ``true``. Set ``false`` on air-gapped deployments with no mirror —
+    the beat then logs a skip and exits without any network attempt (existing
+    ``kev`` flags stay as-is; they are never cleared by a disabled refresh).
+
+    Truthy: ``1`` / ``true`` / ``yes`` / ``on`` (case-insensitive).
+    Anything else → ``false``.
+    """
+    raw = os.getenv("KEV_REFRESH_ENABLED", "true").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
+def kev_refresh_timeout_seconds() -> int:
+    """HTTP timeout (seconds) for the KEV feed download. Default 30s.
+
+    The feed is a single ~10 MiB JSON document from a CDN; 30 seconds absorbs
+    a slow corporate proxy. Bounded ``[1, 600]``. Read at call time (rule #11).
+    """
+    return _int_env(
+        "KEV_REFRESH_TIMEOUT_SECONDS",
+        default=30,
+        minimum=1,
+        maximum=600,
     )
 
 

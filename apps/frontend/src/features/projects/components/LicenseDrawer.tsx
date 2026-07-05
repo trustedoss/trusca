@@ -16,10 +16,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type {
   AffectedComponentByLicense,
   LicenseDetailResponse,
+  ReviewFlag,
 } from "@/features/projects/api/licensesApi";
 import { useLicenseFinding } from "@/features/projects/api/useLicenseFinding";
 import { LicenseCategoryBadge } from "@/features/projects/components/LicenseCategoryBadge";
 import { LicenseKindBadge } from "@/features/projects/components/LicenseKindBadge";
+import { ReviewFlagBadge } from "@/features/projects/components/ReviewFlagBadge";
 import { ProblemError } from "@/lib/problem";
 import { cn } from "@/lib/utils";
 
@@ -62,12 +64,19 @@ function isSafeUrl(raw: unknown): raw is string {
 export interface LicenseDrawerProps {
   open: boolean;
   findingId: string | null;
+  /**
+   * AI review flag (Phase D) carried from the selected list row. The detail
+   * endpoint does not echo it, so `null` means "not on the current page /
+   * not flagged" — the review section is simply omitted then.
+   */
+  reviewFlag?: ReviewFlag | null;
   onOpenChange: (open: boolean) => void;
 }
 
 export function LicenseDrawer({
   open,
   findingId,
+  reviewFlag = null,
   onOpenChange,
 }: LicenseDrawerProps) {
   const { t } = useTranslation("project_detail");
@@ -117,6 +126,7 @@ export function LicenseDrawer({
         {detail.data ? (
           <div className="flex flex-col gap-5">
             <DrawerMetaSection detail={detail.data} />
+            {reviewFlag ? <DrawerReviewFlagSection flag={reviewFlag} /> : null}
             <DrawerOrtMatchSection ortMatch={detail.data.ort_match} />
             <DrawerAffectedSection
               components={detail.data.affected_components ?? []}
@@ -206,6 +216,39 @@ function DrawerMetaSection({ detail }: MetaProps) {
           <span className="font-mono">{detail.reference_url}</span>
         </div>
       ) : null}
+    </section>
+  );
+}
+
+interface ReviewFlagSectionProps {
+  flag: ReviewFlag;
+}
+
+/**
+ * AI review-flag callout (Phase D). Explains why the license is flagged for
+ * human review and which restriction class applies. The portal surfaces the
+ * class only — applicability is a human/legal judgement.
+ */
+function DrawerReviewFlagSection({ flag }: ReviewFlagSectionProps) {
+  const { t } = useTranslation("project_detail");
+  return (
+    <section
+      className="flex flex-col gap-2 rounded-md border border-risk-medium/40 bg-risk-medium/5 p-3"
+      data-testid="license-drawer-review-flag"
+      data-review-flag={flag}
+    >
+      <div className="flex items-center gap-2">
+        <h3 className="text-sm font-semibold">
+          {t("licenses.drawer.review.title")}
+        </h3>
+        <ReviewFlagBadge flag={flag} showKind />
+      </div>
+      <p className="text-sm text-muted-foreground">
+        {t(`licenses.review.description.${flag}`)}
+      </p>
+      <p className="text-xs text-muted-foreground">
+        {t("licenses.drawer.review.disclaimer")}
+      </p>
     </section>
   );
 }

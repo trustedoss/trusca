@@ -1,7 +1,7 @@
 """
 Trivy adapter — container image vulnerability scanner.
 
-Trivy 0.70.0 ships with the worker image and can pull images directly from
+Trivy 0.72.0 ships with the worker image and can pull images directly from
 any reachable registry (with credentials from ``~/.docker/config.json``).
 This adapter wraps a single ``trivy image --format json --output ...`` call.
 

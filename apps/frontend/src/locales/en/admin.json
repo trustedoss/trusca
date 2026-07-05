@@ -306,6 +306,28 @@
         "repository": "Repository"
       }
     },
+    "kev_feed": {
+      "heading": "CISA KEV feed",
+      "status": {
+        "synced": "Synced",
+        "skipped": "Skipped",
+        "disabled": "Disabled"
+      },
+      "skipped_reason": "Last sync skipped: {{reason}}",
+      "kpi": {
+        "last_synced": "Last sync",
+        "kev_flagged_total": "KEV-flagged vulnerabilities",
+        "listed_delisted": "Recently listed / delisted",
+        "next_refresh": "Next sync"
+      },
+      "empty": {
+        "title": "KEV feed not yet synced",
+        "description": "The CISA Known Exploited Vulnerabilities catalog will sync automatically on the next scheduled refresh."
+      },
+      "footer": {
+        "feed_host": "Feed host"
+      }
+    },
     "backup": {
       "title": "Backups",
       "subtitle": "Automated daily backups + manual triggers + restore.",

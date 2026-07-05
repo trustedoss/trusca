@@ -55,6 +55,7 @@ read shapes for the latest-scan working set (db-designer verification, PR
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import UTC, datetime
 from html import escape as html_escape
@@ -74,14 +75,17 @@ from models import (
     LicenseFinding,
     Obligation,
     Project,
+    ScanComponent,
 )
 from models import (
     License as LicenseModel,
 )
 from schemas.obligation_detail import KNOWN_OBLIGATION_KINDS
+from services.license_texts import is_safe_spdx_id, license_text, spdx_ids_for_expression
 from services.obligation_catalog import obligations_for
 from services.project_detail_service import _license_rank_case
 from services.project_service import ProjectError, ProjectNotFound
+from services.sbom_conformance import sanitize_jsonb_text
 from services.scan_resolution import (
     latest_succeeded_scan_id,
     resolve_snapshot_scan_id,
@@ -145,7 +149,7 @@ _OBLIGATION_TEXT_CAP_BYTES = 64 * 1024  # 64 KiB
 _NOTICE_COMPONENT_LABELS_CAP = 5000
 
 # G2 follow-up (security-reviewer Low/Info from PR #107) — the per-license
-# ``component_labels`` list was already capped above, but the NUMBER of license
+# ``components`` list was already capped above, but the NUMBER of license
 # sections and the NUMBER of obligations rendered PER license were unbounded. A
 # pathological catalog (tens of thousands of distinct licenses, or one license
 # carrying a runaway obligation set) would still inflate the synchronous NOTICE
@@ -159,6 +163,35 @@ _NOTICE_COMPONENT_LABELS_CAP = 5000
 # — both bound the body without clipping a realistic document.
 _NOTICE_LICENSE_CAP = 2000
 _NOTICE_OBLIGATIONS_PER_LICENSE_CAP = 500
+
+# Phase B — "License Texts" section caps. The number of FULL license texts
+# appended to the document is bounded (a text averages 10–35 KiB; 200 texts is
+# far beyond any real project's distinct-license surface — the whole bundled
+# set is 32 — while bounding a pathological scan at a sane body size). Beyond
+# the cap the document records the honest "+N more omitted" footer, mirroring
+# the component / license / obligation cap convention above.
+_NOTICE_LICENSE_TEXT_CAP = 200
+
+# security-reviewer F-3 — the "text not bundled" one-liners are cheap but were
+# unbounded: a scan surfacing thousands of distinct un-catalogued ids (compound
+# expressions multiply operands) could still inflate the section line-by-line.
+# 500 pointer rows dwarf any real un-bundled surface; the excess joins the
+# honest "+N more omitted" footer.
+_NOTICE_LICENSE_TEXT_POINTER_CAP = 500
+
+# Per-component copyright attribution (cdxgen ``component.copyright`` via
+# ``scan_components.raw_data``) is an untrusted single-line-ish string; clamp
+# it so one hostile SBOM field cannot inflate the NOTICE body. 500 chars holds
+# any real multi-holder line; the tail is dropped silently (the value is an
+# attribution string, not a legal text — the full license text section is the
+# legally load-bearing part).
+_NOTICE_COPYRIGHT_CAP_CHARS = 500
+
+# BomLens generate-notice.sh parity: when the SBOM captured no copyright for a
+# component, the NOTICE shows an honest "not captured" attribution (never a
+# blank), pointing at the component's source/registry URL when one can be
+# inferred from its purl.
+_COPYRIGHT_FALLBACK = "holders not captured in SBOM — see source"
 
 
 # ---------------------------------------------------------------------------
@@ -751,6 +784,379 @@ async def _load_affected_components(
 
 _NOTICE_DIVIDER = "=" * 80
 
+# Phase D3 — human-readable labels for the ``licenses.review_flag`` classes in
+# the "License review needed" NOTICE section. Keys are the persisted tokens
+# (``services.license_flags.REVIEW_FLAG_VALUES``); an unrecognised flag falls
+# back to the raw token so a future class still renders rather than vanishing.
+_REVIEW_FLAG_LABELS: dict[str, str] = {
+    "behavioral_use": "Behavioral-use restriction (RAIL/community license)",
+    "non_commercial": "Non-commercial",
+}
+
+
+def _review_flag_label(flag: str) -> str:
+    return _REVIEW_FLAG_LABELS.get(flag, flag)
+
+
+def _collect_review_entries(
+    licenses_with_components: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Flatten the flagged licenses into render-ready review entries.
+
+    Returns, for every license carrying a non-NULL ``review_flag``, a dict of
+    ``{flag, label, license, components}`` where ``license`` is the display id
+    (spdx_id, else name) and ``components`` is the license's already-capped
+    component-label list. Order follows ``licenses_with_components`` (spdx asc,
+    name asc), grouped behavioral-use before non-commercial so the section
+    reads worst-first. Empty when nothing is flagged — a normal software scan's
+    NOTICE gains no section at all (BomLens parity).
+    """
+    entries: list[dict[str, Any]] = []
+    for entry in licenses_with_components:
+        flag = entry.get("review_flag")
+        if not flag:
+            continue
+        display = entry["spdx_id"] or entry["name"] or "(no SPDX id)"
+        entries.append(
+            {
+                "flag": flag,
+                "label": _review_flag_label(flag),
+                "license": display,
+                "components": [c["label"] for c in entry.get("components", [])],
+            }
+        )
+    # Stable worst-first ordering: behavioral-use ahead of non-commercial, then
+    # the underlying (spdx, name) order the query already fixed.
+    flag_rank = {"behavioral_use": 0, "non_commercial": 1}
+    entries.sort(key=lambda e: flag_rank.get(e["flag"], 99))
+    return entries
+
+
+_REVIEW_SECTION_TITLE = "License review needed — AI / restrictive terms"
+_REVIEW_SECTION_INTRO = (
+    "The following licenses carry AI-relevant or restrictive terms a human must "
+    "review. The portal surfaces the class only; whether a restriction applies "
+    "to your use is a legal judgement."
+)
+
+
+def _render_review_section_text(entries: list[dict[str, Any]]) -> list[str]:
+    """Plain-text "License review needed" block (no escaping — served as text/plain)."""
+    if not entries:
+        return []
+    parts = [
+        _NOTICE_DIVIDER,
+        _REVIEW_SECTION_TITLE,
+        _NOTICE_DIVIDER,
+        _REVIEW_SECTION_INTRO,
+        "",
+    ]
+    for e in entries:
+        parts.append(
+            f"[{e['label']}] {e['license']}  ({len(e['components'])} component(s)):"
+        )
+        for label in e["components"]:
+            parts.append(f"  - {label}")
+        parts.append("")
+    return parts
+
+
+def _render_review_section_markdown(entries: list[dict[str, Any]]) -> list[str]:
+    """Markdown "License review needed" block. Every dynamic value is escaped."""
+    if not entries:
+        return []
+    parts = [
+        "---",
+        "",
+        f"## {_REVIEW_SECTION_TITLE}",
+        "",
+        f"_{_md_escape(_REVIEW_SECTION_INTRO)}_",
+        "",
+    ]
+    for e in entries:
+        parts.append(
+            f"**[{_md_escape(e['label'])}]** {_md_escape(e['license'])} — "
+            f"{len(e['components'])} component(s):"
+        )
+        parts.append("")
+        for label in e["components"]:
+            parts.append(f"- {_md_escape(label)}")
+        parts.append("")
+    return parts
+
+
+def _render_review_section_html(entries: list[dict[str, Any]]) -> list[str]:
+    """HTML "License review needed" block. Every dynamic value is escaped."""
+    if not entries:
+        return []
+    parts = [
+        '<section class="license-review">',
+        f"<h2>{html_escape(_REVIEW_SECTION_TITLE)}</h2>",
+        f'<p class="meta">{html_escape(_REVIEW_SECTION_INTRO)}</p>',
+    ]
+    for e in entries:
+        parts.append(
+            f"<h3>[{html_escape(e['label'])}] {html_escape(e['license'])}</h3>"
+        )
+        parts.append("<ul>")
+        for label in e["components"]:
+            parts.append(f"<li>{html_escape(label)}</li>")
+        parts.append("</ul>")
+    parts.append("</section>")
+    return parts
+
+# Character allowlist for a purl we are willing to transform into a registry
+# URL. Anything outside the purl-spec vocabulary (spaces, quotes, angle
+# brackets, control chars) means the value is not a well-formed purl — we
+# refuse to build a URL from it rather than emit a corrupted "source" link.
+# The 512-char bound keeps a hostile purl from bloating the document.
+_PURL_SAFE_RE = re.compile(r"^pkg:[A-Za-z0-9._/@%+~!#?&=:,-]{1,512}$")
+
+
+def _purl_source_url(purl: str | None) -> str | None:
+    """Infer a package-registry / download URL from a purl, or ``None``.
+
+    Mirror of BomLens ``docker/lib/generate-notice.sh`` ``purl_src()`` (jq) —
+    keep the two in sync. Original mapping, verbatim:
+
+        maven       → https://repo1.maven.org/maven2/<ns .→/>/<name>/<ver>/
+        npm         → https://www.npmjs.com/package/<ns/name>[/v/<ver>]
+        pypi        → https://pypi.org/project/<name>[/<ver>]/
+        gem         → https://rubygems.org/gems/<name>[/versions/<ver>]
+        cargo       → https://crates.io/crates/<name>[/<ver>]
+        nuget       → https://www.nuget.org/packages/<name>[/<ver>]
+        golang      → https://pkg.go.dev/<ns/name>[@<ver>]
+        composer    → https://packagist.org/packages/<ns>/<name>[#<ver>]
+        huggingface → https://huggingface.co/<ns/name>
+
+    Only well-known, stable URL shapes are mapped — an unknown type returns
+    ``None`` and the caller falls back to text without a source pointer, so we
+    never emit a wrong "source location". Every constructed URL is https, so
+    the html renderer's ``_safe_href`` scheme gate always accepts it; the purl
+    itself is untrusted (cdxgen metadata), hence the character allowlist and
+    length bound BEFORE any parsing.
+    """
+    if not purl or not _PURL_SAFE_RE.match(purl):
+        return None
+    # pkg:<type>/<namespace>/<name>@<version>?<qual>#<sub>  (namespace optional)
+    body = purl[len("pkg:") :].split("#", 1)[0].split("?", 1)[0]
+    # security-reviewer F-4 (deliberate deviation from the BomLens jq, which
+    # maps these verbatim): refuse ``..`` and percent-encoding anywhere in the
+    # namespace/name/version part. ``..`` path segments (and maven's dotted
+    # namespace, which we expand to slashes) could steer the constructed URL to
+    # a sibling path, and ``%``-encoding (``%2e%2e``, ``%2f``) could smuggle the
+    # same after server-side decoding — either way a misleading "source"
+    # pointer in a legal document. Qualifiers/subpath were already stripped, so
+    # legitimate purls are unaffected (checksums etc. live in qualifiers).
+    if ".." in body or "%" in body:
+        return None
+    name_ver = body.split("@", 1)
+    ver = name_ver[1] if len(name_ver) > 1 else ""
+    seg = name_ver[0].split("/")
+    if len(seg) < 2:
+        return None
+    ptype = seg[0].lower()
+    name = seg[-1]
+    ns = "/".join(seg[1:-1])
+    if not name:
+        return None
+    if ptype == "maven":
+        if not ver or not ns:
+            return None
+        return f"https://repo1.maven.org/maven2/{ns.replace('.', '/')}/{name}/{ver}/"
+    if ptype == "npm":
+        path = "/".join(seg[1:])
+        return f"https://www.npmjs.com/package/{path}/v/{ver}" if ver else (
+            f"https://www.npmjs.com/package/{path}"
+        )
+    if ptype == "pypi":
+        return f"https://pypi.org/project/{name}/{ver}/" if ver else (
+            f"https://pypi.org/project/{name}/"
+        )
+    if ptype == "gem":
+        return f"https://rubygems.org/gems/{name}/versions/{ver}" if ver else (
+            f"https://rubygems.org/gems/{name}"
+        )
+    if ptype == "cargo":
+        return f"https://crates.io/crates/{name}/{ver}" if ver else (
+            f"https://crates.io/crates/{name}"
+        )
+    if ptype == "nuget":
+        return f"https://www.nuget.org/packages/{name}/{ver}" if ver else (
+            f"https://www.nuget.org/packages/{name}"
+        )
+    if ptype == "golang":
+        path = "/".join(seg[1:])
+        return f"https://pkg.go.dev/{path}@{ver}" if ver else f"https://pkg.go.dev/{path}"
+    if ptype == "composer":
+        if not ns:
+            return None
+        base = f"https://packagist.org/packages/{ns.lower()}/{name}"
+        return f"{base}#{ver}" if ver else base
+    if ptype == "huggingface":
+        return f"https://huggingface.co/{'/'.join(seg[1:])}"
+    return None
+
+
+def _clean_copyright(raw: Any) -> str | None:
+    """Sanitize an SBOM-derived copyright string for NOTICE rendering.
+
+    ``scan_components.raw_data["copyright"]`` is verbatim cdxgen output —
+    untrusted. Non-string / empty values collapse to ``None`` (the renderer
+    then emits the honest fallback line); strings go through the shared
+    control-char cleaner (:func:`services.sbom_conformance.sanitize_jsonb_text`
+    — strips C0 controls incl. CR/LF, so the value can never inject a new
+    NOTICE line) and the :data:`_NOTICE_COPYRIGHT_CAP_CHARS` clamp. Format
+    escaping (markdown / html) stays with each renderer.
+    """
+    if not isinstance(raw, str):
+        return None
+    cleaned = sanitize_jsonb_text(raw)
+    if not cleaned:
+        return None
+    return cleaned[:_NOTICE_COPYRIGHT_CAP_CHARS]
+
+
+def _license_text_sections(
+    licenses_with_components: list[dict[str, Any]],
+) -> tuple[list[tuple[str, str | None]], int]:
+    """The "License Texts" section rows for a rendered NOTICE.
+
+    Returns ``(sections, texts_omitted)`` where ``sections`` is one row per
+    UNIQUE SPDX operand observed across the document's license entries
+    (compound expressions like ``MIT OR Apache-2.0`` are split and de-duplicated
+    so each text appears once), sorted by SPDX id ascending. A row's text is
+    ``None`` when no full text is bundled for that operand — the renderer then
+    emits a one-line pointer instead of a text block (the entry's
+    ``reference_url`` in the body above stays the canonical fallback).
+
+    ``texts_omitted`` feeds the honest "+N more omitted" footer. It counts FULL
+    texts clipped by :data:`_NOTICE_LICENSE_TEXT_CAP` plus (security-reviewer
+    F-3) not-bundled one-liners clipped by
+    :data:`_NOTICE_LICENSE_TEXT_POINTER_CAP` — both row kinds are bounded so a
+    pathological scan cannot inflate the section on either axis.
+    """
+    ids: list[str] = []
+    seen: set[str] = set()
+    for entry in licenses_with_components:
+        for operand in spdx_ids_for_expression(entry.get("spdx_id")):
+            if operand not in seen:
+                seen.add(operand)
+                ids.append(operand)
+    sections: list[tuple[str, str | None]] = []
+    included = 0
+    pointers = 0
+    omitted = 0
+    for operand in sorted(ids):
+        text = license_text(operand)
+        if text is None:
+            if pointers >= _NOTICE_LICENSE_TEXT_POINTER_CAP:
+                omitted += 1
+                continue
+            pointers += 1
+            sections.append((operand, None))
+            continue
+        if included >= _NOTICE_LICENSE_TEXT_CAP:
+            omitted += 1
+            continue
+        included += 1
+        sections.append((operand, text))
+    return sections, omitted
+
+
+def _license_text_divider(spdx_id: str) -> str:
+    """The ``----- <id> -----`` separator above each full text (BomLens parity)."""
+    return f"----- {spdx_id} -----"
+
+
+def _display_spdx_id(spdx_id: str) -> str:
+    """A divider-safe representation of a scan-derived SPDX operand id.
+
+    security-reviewer F-2: the plain-text branch interpolates the operand into
+    the ``----- <id> -----`` divider VERBATIM. Bundled ids are safe by
+    construction (they passed the strict allowlist to load at all), but a
+    NOT-bundled operand is raw scanner output — an id smuggling newlines could
+    forge section boundaries / whole fake text blocks in the downloaded
+    document. Ids that fail the strict allowlist are control-char scrubbed
+    (:func:`services.sbom_conformance.sanitize_jsonb_text` drops CR/LF/NUL) and
+    bounded to the ``licenses.spdx_id`` column width. markdown/html need no
+    equivalent: their branches already ``_md_escape`` / ``html_escape`` the id.
+    """
+    if is_safe_spdx_id(spdx_id):
+        return spdx_id
+    return sanitize_jsonb_text(spdx_id)[:64]
+
+
+def _md_fence_for(content: str) -> str:
+    """A backtick fence guaranteed longer than any backtick run in *content*.
+
+    The bundled license texts are vendored (trusted) data, but a few carry
+    literal backticks (GPL's ``\\`this'`` quoting); sizing the fence past the
+    longest run keeps the verbatim block from being closed early — belt and
+    braces even if a future vendored text carried a ```````.
+    """
+    longest = 0
+    run = 0
+    for ch in content:
+        run = run + 1 if ch == "`" else 0
+        longest = max(longest, run)
+    return "`" * max(3, longest + 1)
+
+
+def _text_copyright_line(comp: dict[str, Any]) -> str:
+    """The plain-text ``Copyright:`` sub-line for one credited component."""
+    copyright_ = comp.get("copyright")
+    if copyright_:
+        return f"    Copyright: {copyright_}"
+    source_url = comp.get("source_url")
+    if source_url:
+        return f"    Copyright: {_COPYRIGHT_FALLBACK} ({source_url})"
+    return f"    Copyright: {_COPYRIGHT_FALLBACK}"
+
+
+def _md_copyright_suffix(comp: dict[str, Any]) -> str:
+    """The markdown ``— Copyright: …`` tail for one credited component line.
+
+    Kept on the SAME bullet line (``_md_escape`` collapses embedded newlines)
+    so an untrusted copyright can never reach markdown column 0.
+    """
+    copyright_ = comp.get("copyright")
+    if copyright_:
+        return f" — Copyright: {_md_escape(copyright_)}"
+    source_url = comp.get("source_url")
+    if source_url:
+        # Clamp mirrors the reference-URL 2048 cap elsewhere in this module.
+        return f" — Copyright: {_COPYRIGHT_FALLBACK} ({_md_escape(source_url[:2048])})"
+    return f" — Copyright: {_COPYRIGHT_FALLBACK}"
+
+
+def _html_component_li(comp: dict[str, Any]) -> str:
+    """One ``<li>`` for a credited component: label + copyright attribution.
+
+    Every interpolated value is escaped; the source URL additionally passes
+    ``_safe_href`` before becoming a link (``_purl_source_url`` only builds
+    https URLs, but the purl it derives from is untrusted — defence in depth).
+    """
+    label = html_escape(comp["label"])
+    copyright_ = comp.get("copyright")
+    if copyright_:
+        return f'<li>{label}<span class="attr">Copyright: {html_escape(copyright_)}</span></li>'
+    fallback = html_escape(_COPYRIGHT_FALLBACK)
+    source_url = comp.get("source_url")
+    if source_url:
+        href = _safe_href(source_url)
+        if href is not None:
+            return (
+                f'<li>{label}<span class="attr none">Copyright: {fallback} '
+                f'(<a href="{href}" rel="noopener noreferrer">'
+                f"{html_escape(source_url)}</a>)</span></li>"
+            )
+        return (
+            f'<li>{label}<span class="attr none">Copyright: {fallback} '
+            f"({html_escape(source_url)})</span></li>"
+        )
+    return f'<li>{label}<span class="attr none">Copyright: {fallback}</span></li>'
+
 # CommonMark inline-active metacharacters we backslash-escape in untrusted
 # values so a value can never open an emphasis run, link, image, code span, or
 # table cell when interpolated MID-LINE (which is the only way this module
@@ -957,28 +1363,61 @@ async def _load_notice_data(
         obligation rows beyond ``_NOTICE_OBLIGATIONS_PER_LICENSE_CAP`` that were
         clipped from that license's section.
     """
+    # Phase B — the credited component now carries copyright + purl alongside
+    # its label, so we aggregate a JSONB object per component instead of the
+    # bare label string. ``scan_components.raw_data`` is the cdxgen output
+    # verbatim; its ``copyright`` key is the only copyright source we have
+    # (cdxgen usually leaves it empty — the renderer then falls back to the
+    # honest "not captured" attribution). The LEFT JOIN keeps licenses whose
+    # findings have no scan_components row (e.g. SBOM-ingest paths) rendering
+    # exactly as before; ``jsonb_agg(DISTINCT ...)`` keeps this a single trip
+    # (no N+1) and collapses the multi-dependency-path duplicates a diamond
+    # dependency creates in scan_components.
+    # security-reviewer F-1: clamp the copyright INSIDE the aggregate. raw_data
+    # rows admit large values (up to 256 KiB), and ``jsonb_agg`` would otherwise
+    # materialise every oversized copyright in full before Python ever saw it —
+    # a memory-DoS vector on a synchronous GET. ``left()`` bounds each value at
+    # the same cap the Python cleaner enforces, so the aggregate can never
+    # exceed components × cap. ``_clean_copyright`` still runs on the clamped
+    # value (the control-char scrub is a rendering concern, not an aggregation
+    # one).
+    component_obj = func.jsonb_build_object(
+        "label",
+        Component.name.op("||")(" @ ").op("||")(ComponentVersion.version),
+        "purl",
+        ComponentVersion.purl_with_version,
+        "copyright",
+        func.left(
+            ScanComponent.raw_data.op("->>")("copyright"),
+            _NOTICE_COPYRIGHT_CAP_CHARS,
+        ),
+    )
     license_stmt = (
         select(
             LicenseModel.id.label("license_id"),
             LicenseModel.spdx_id.label("spdx_id"),
             LicenseModel.name.label("name"),
             LicenseModel.reference_url.label("reference_url"),
-            func.array_agg(
-                func.distinct(
-                    Component.name.op("||")(" @ ").op("||")(ComponentVersion.version)
-                )
-            ).label("component_labels"),
+            # Phase D3 — AI review flag drives the "License review needed" section.
+            LicenseModel.review_flag.label("review_flag"),
+            func.jsonb_agg(func.distinct(component_obj)).label("component_entries"),
         )
         .select_from(LicenseFinding)
         .join(LicenseModel, LicenseModel.id == LicenseFinding.license_id)
         .join(ComponentVersion, ComponentVersion.id == LicenseFinding.component_version_id)
         .join(Component, Component.id == ComponentVersion.component_id)
+        .outerjoin(
+            ScanComponent,
+            (ScanComponent.scan_id == LicenseFinding.scan_id)
+            & (ScanComponent.component_version_id == ComponentVersion.id),
+        )
         .where(LicenseFinding.scan_id == scan_id)
         .group_by(
             LicenseModel.id,
             LicenseModel.spdx_id,
             LicenseModel.name,
             LicenseModel.reference_url,
+            LicenseModel.review_flag,
         )
         .order_by(LicenseModel.spdx_id.asc().nullslast(), LicenseModel.name.asc())
     )
@@ -992,12 +1431,33 @@ async def _load_notice_data(
     license_ids: list[uuid.UUID] = []
     for r in license_rows:
         license_ids.append(r.license_id)
-        all_labels = sorted(label for label in (r.component_labels or []) if label)
+        # Collapse the JSONB entries to one record per label (a component
+        # version can surface via several scan_components rows / dependency
+        # paths; a non-empty copyright wins over a NULL sibling so a diamond
+        # dependency never erases a captured attribution). Deterministic sort
+        # keeps the rendered order stable across runs.
+        by_label: dict[str, dict[str, Any]] = {}
+        for raw in r.component_entries or []:
+            if not isinstance(raw, dict):
+                continue
+            label = raw.get("label")
+            if not label or not isinstance(label, str):
+                continue
+            copyright_ = _clean_copyright(raw.get("copyright"))
+            purl = raw.get("purl") if isinstance(raw.get("purl"), str) else None
+            existing = by_label.get(label)
+            if existing is None or (copyright_ and not existing["copyright"]):
+                by_label[label] = {
+                    "label": label,
+                    "copyright": copyright_,
+                    "source_url": _purl_source_url(purl),
+                }
+        all_components = [by_label[label] for label in sorted(by_label)]
         # G2: cap the credited-component list with an honest omitted-count so a
         # license attached to a pathological number of components cannot inflate
         # the body. Renderers append a "+N more omitted" note when this fires.
-        labels = all_labels[:_NOTICE_COMPONENT_LABELS_CAP]
-        labels_omitted = max(len(all_labels) - len(labels), 0)
+        components = all_components[:_NOTICE_COMPONENT_LABELS_CAP]
+        components_omitted = max(len(all_components) - len(components), 0)
         # G2: clamp the license display name defensively (the column is bounded
         # in practice, but the NOTICE body must not trust any single field).
         clamped_name, _name_truncated = (
@@ -1009,8 +1469,9 @@ async def _load_notice_data(
                 "spdx_id": r.spdx_id,
                 "name": clamped_name,
                 "reference_url": r.reference_url,
-                "component_labels": labels,
-                "component_labels_omitted": labels_omitted,
+                "review_flag": r.review_flag,
+                "components": components,
+                "components_omitted": components_omitted,
                 # Filled in below once the per-license obligation rows are capped.
                 "obligations_omitted": 0,
             }
@@ -1126,9 +1587,10 @@ def _render_notice(
             parts.append("")
             # Escaped bullet list (not a fenced block) so a label containing a
             # ``` fence delimiter cannot break out and so each label is inert.
-            for label in entry["component_labels"]:
-                parts.append(f"- {_md_escape(label)}")
-            omitted = entry.get("component_labels_omitted", 0)
+            # The copyright attribution rides on the same bullet line (Phase B).
+            for comp in entry["components"]:
+                parts.append(f"- {_md_escape(comp['label'])}{_md_copyright_suffix(comp)}")
+            omitted = entry.get("components_omitted", 0)
             if omitted:
                 parts.append(f"- _… and {omitted} more component(s) omitted_")
             parts.append("")
@@ -1161,6 +1623,46 @@ def _render_notice(
                 "NOTICE._"
             )
             parts.append("")
+        # Phase D3 — "License review needed" section (AI behavioral-use /
+        # non-commercial). Empty for a normal software scan.
+        parts.extend(
+            _render_review_section_markdown(
+                _collect_review_entries(licenses_with_components)
+            )
+        )
+        # Phase B — full license texts. The bundled texts are rendered inside
+        # ONE verbatim fenced block (fence sized past any backtick run in the
+        # content) so the standard texts survive byte-for-byte with no escaping
+        # burden; operands without a bundled text get an escaped one-line
+        # pointer back to the body's reference URL.
+        sections, texts_omitted = _license_text_sections(licenses_with_components)
+        if sections:
+            parts.append("## License Texts")
+            parts.append("")
+            bundled = [(sid, text) for sid, text in sections if text is not None]
+            if bundled:
+                blob_lines: list[str] = []
+                for spdx_id, full_text in bundled:
+                    blob_lines.append(_license_text_divider(spdx_id))
+                    blob_lines.append("")
+                    blob_lines.append(full_text.rstrip("\n"))
+                    blob_lines.append("")
+                blob = "\n".join(blob_lines).rstrip()
+                fence = _md_fence_for(blob)
+                parts.append(f"{fence}text")
+                parts.append(blob)
+                parts.append(fence)
+                parts.append("")
+            for spdx_id, text in sections:
+                if text is None:
+                    parts.append(
+                        f"_{_md_escape(spdx_id)}: text not bundled — "
+                        "see the license reference above._"
+                    )
+                    parts.append("")
+            if texts_omitted:
+                parts.append(f"_… and {texts_omitted} more license text(s) omitted._")
+                parts.append("")
         return "\n".join(parts).rstrip() + "\n"
 
     # plain text
@@ -1173,9 +1675,10 @@ def _render_notice(
             parts.append(f"Reference: {entry['reference_url']}")
         parts.append("")
         parts.append("Components:")
-        for label in entry["component_labels"]:
-            parts.append(f"  - {label}")
-        omitted = entry.get("component_labels_omitted", 0)
+        for comp in entry["components"]:
+            parts.append(f"  - {comp['label']}")
+            parts.append(_text_copyright_line(comp))
+        omitted = entry.get("components_omitted", 0)
         if omitted:
             parts.append(f"  - ... and {omitted} more component(s) omitted")
         parts.append("")
@@ -1204,6 +1707,32 @@ def _render_notice(
             f"... and {licenses_omitted} more license(s) omitted from this NOTICE"
         )
         parts.append("")
+    # Phase D3 — "License review needed" section (AI behavioral-use /
+    # non-commercial). Empty for a normal software scan.
+    parts.extend(
+        _render_review_section_text(_collect_review_entries(licenses_with_components))
+    )
+    # Phase B — full license texts, appended verbatim (this format is served as
+    # text/plain, so the standard texts need no escaping — same posture as the
+    # rest of the plain-text branch).
+    sections, texts_omitted = _license_text_sections(licenses_with_components)
+    if sections:
+        parts.append("License Texts")
+        parts.append(_NOTICE_DIVIDER)
+        parts.append("")
+        for spdx_id, text in sections:
+            # F-2: divider-safe id — a hostile un-bundled operand cannot forge
+            # section boundaries (bundled ids pass through unchanged).
+            parts.append(_license_text_divider(_display_spdx_id(spdx_id)))
+            parts.append("")
+            if text is None:
+                parts.append("(text not bundled — see the license reference above)")
+            else:
+                parts.append(text.rstrip("\n"))
+            parts.append("")
+        if texts_omitted:
+            parts.append(f"... and {texts_omitted} more license text(s) omitted")
+            parts.append("")
     return "\n".join(parts).rstrip() + "\n"
 
 
@@ -1226,6 +1755,17 @@ _NOTICE_HTML_STYLE = (
     "li.muted{color:#64748b;font-style:italic;list-style:none}"
     "p.muted{color:#64748b;font-style:italic}"
     ".obligation{margin:.5rem 0}"
+    # Phase B — per-component copyright attribution + license-text section.
+    "li span.attr{display:block;color:#64748b;font-size:.85em;margin-top:.15rem}"
+    "li span.attr.none{font-style:italic}"
+    "section.license-texts{border-top:1px solid #e2e8f0;margin-top:1.5rem;"
+    "padding-top:.6rem}"
+    # Phase D3 — "License review needed" banner. Amber left border so the AI /
+    # restrictive-terms section reads as an advisory, not an error.
+    "section.license-review{border-left:3px solid #ca8a04;background:#fffbeb;"
+    "margin-top:1.5rem;padding:.6rem .8rem;border-radius:4px}"
+    "section.license-review h3{color:#0f172a}"
+    "p.meta{color:#64748b;font-size:.85rem}"
 )
 
 
@@ -1291,9 +1831,9 @@ def _render_notice_html(
             parts.append(_html_reference_line(entry["reference_url"]))
             parts.append("<h3>Components</h3>")
             parts.append("<ul>")
-            for label in entry["component_labels"]:
-                parts.append(f"<li>{html_escape(label)}</li>")
-            omitted = entry.get("component_labels_omitted", 0)
+            for comp in entry["components"]:
+                parts.append(_html_component_li(comp))
+            omitted = entry.get("components_omitted", 0)
             if omitted:
                 parts.append(
                     f'<li class="muted">… and {omitted} more component(s) '
@@ -1328,6 +1868,38 @@ def _render_notice_html(
                 f'<p class="muted">… and {licenses_omitted} more license(s) '
                 "omitted from this NOTICE.</p>"
             )
+
+        # Phase D3 — "License review needed" section (AI behavioral-use /
+        # non-commercial). Empty for a normal software scan.
+        parts.extend(
+            _render_review_section_html(
+                _collect_review_entries(licenses_with_components)
+            )
+        )
+
+        # Phase B — full license texts: <h3>{id}</h3><pre>{escaped text}</pre>
+        # per bundled operand (BomLens generate-notice.sh parity), one-line
+        # pointer for operands without a bundled text, honest omitted footer
+        # when the text cap fires.
+        sections, texts_omitted = _license_text_sections(licenses_with_components)
+        if sections:
+            parts.append('<section class="license-texts">')
+            parts.append("<h2>License Texts</h2>")
+            for spdx_id, text in sections:
+                if text is None:
+                    parts.append(
+                        f'<p class="muted">{html_escape(spdx_id)}: text not bundled '
+                        "— see the license reference above.</p>"
+                    )
+                else:
+                    parts.append(f"<h3>{html_escape(spdx_id)}</h3>")
+                    parts.append(f"<pre>{html_escape(text.rstrip())}</pre>")
+            if texts_omitted:
+                parts.append(
+                    f'<p class="muted">… and {texts_omitted} more license text(s) '
+                    "omitted.</p>"
+                )
+            parts.append("</section>")
 
     parts.append("</body>")
     parts.append("</html>")

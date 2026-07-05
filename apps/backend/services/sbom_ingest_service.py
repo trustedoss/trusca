@@ -109,7 +109,9 @@ _ALLOWED_CONTENT_TYPES = frozenset(
 # CycloneDX spec versions we accept. The Celery persister handles the structural
 # differences; here we only gate the declared version so a wildly-mismatched
 # document is rejected up front.
-_ALLOWED_SPEC_VERSIONS = frozenset({"1.2", "1.3", "1.4", "1.5", "1.6"})
+# 1.7 = CycloneDX ML-BOM (modelCard) — required for G7 AI SBOM minimum-elements
+# conformance (services/g7_conformance.py; e.g. OWASP AIBOM Generator output).
+_ALLOWED_SPEC_VERSIONS = frozenset({"1.2", "1.3", "1.4", "1.5", "1.6", "1.7"})
 
 # Reject a document whose structural nesting exceeds this before it ever reaches
 # ``json.loads`` — the stdlib decoder recurses per nesting level and overflows

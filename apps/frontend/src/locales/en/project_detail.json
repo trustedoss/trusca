@@ -291,6 +291,11 @@
         "forbidden": "You do not have permission to view this component.",
         "unknown": "Could not load this component. Please try again."
       }
+    },
+    "view_toggle": {
+      "aria": "Component view",
+      "table": "Table",
+      "graph": "Graph"
     }
   },
   "drawer": {
@@ -361,6 +366,15 @@
       "tooltip": "EPSS — probability this CVE is exploited in the wild within 30 days. Complements CVSS (severity).",
       "empty": "No EPSS data for this CVE",
       "cell_tooltip": "{{score}} · {{percentile}} most likely to be exploited"
+    },
+    "kev": {
+      "label": "KEV",
+      "tooltip": "Listed in the CISA Known Exploited Vulnerabilities (KEV) catalog — exploitation in the wild has been confirmed.",
+      "tooltip_with_due": "Listed in the CISA Known Exploited Vulnerabilities (KEV) catalog — exploitation in the wild has been confirmed. CISA remediation due date: {{date}}.",
+      "due": "Due {{date}}",
+      "due_overdue": "Overdue by {{days}} days",
+      "due_imminent": "Due in {{days}} days",
+      "due_today": "Due today"
     },
     "filter": {
       "minEpss": "EPSS ≥",
@@ -460,6 +474,10 @@
     "toolbar": {
       "search_label": "Search",
       "search_placeholder": "Search by CVE ID, summary, or component",
+      "sort_label": "Sort",
+      "sort_option": {
+        "priority": "Priority (KEV → Severity → EPSS)"
+      },
       "status_label": "Status",
       "reachable_label": "Reachability",
       "reachable_any": "Any reachability",
@@ -470,7 +488,9 @@
       },
       "report_label": "Report",
       "download_pdf": "Download PDF report",
-      "download_pdf_generating": "Generating…"
+      "download_pdf_generating": "Generating…",
+      "download_xlsx": "Download Excel",
+      "download_xlsx_generating": "Generating…"
     },
     "empty": {
       "title": "No vulnerabilities match",
@@ -571,6 +591,10 @@
       "search_placeholder": "Search by SPDX ID or name",
       "filter_category": "Category",
       "filter_kind": "Kind",
+      "filter_review_flag": "Review flag",
+      "review_flag": {
+        "all": "All licenses"
+      },
       "sort_label": "Sort by",
       "sort": {
         "category": "Risk (forbidden first)",
@@ -581,6 +605,17 @@
       "order_label": "Order",
       "order_asc": "Ascending",
       "order_desc": "Descending"
+    },
+    "review": {
+      "badge_label": "Review needed",
+      "short": {
+        "behavioral_use": "Behavioral-use",
+        "non_commercial": "Non-commercial"
+      },
+      "description": {
+        "behavioral_use": "Behavioral-use restriction (RAIL/OpenRAIL and the Llama, Gemma, and Falcon community licenses). A human must review whether the use-based terms apply to your use.",
+        "non_commercial": "Non-commercial terms (CC-BY-NC and similar). A human must confirm the use qualifies as non-commercial or is otherwise permitted."
+      }
     },
     "kind": {
       "declared": "Declared",
@@ -631,6 +666,10 @@
         "osi_approved": "OSI Approved",
         "fsf_libre": "FSF Free/Libre",
         "deprecated": "Deprecated SPDX ID"
+      },
+      "review": {
+        "title": "AI review flag",
+        "disclaimer": "This flag surfaces the restriction class only. Whether it applies to your use is a human/legal judgement."
       },
       "reference_url_label": "Reference",
       "ort_match": {
@@ -1071,6 +1110,33 @@
       "user_unknown": "Deleted user",
       "scan_unknown": "—",
       "size_unknown": "—"
+    }
+  },
+  "dependency_graph": {
+    "search": "Search packages",
+    "empty": "No dependency graph is available for this scan.",
+    "truncated": "This dependency graph has {{count}} nodes, over the {{cap}} limit, so it can't be drawn. Use the Table view to browse components.",
+    "tooLarge": "This graph has {{count}} nodes, over the {{cap}} render limit. Showing the dependency tree instead.",
+    "noEdges": "This scan recorded no dependency relationships, so the components are listed as a flat tree.",
+    "nodeListAria": "Dependency graph nodes",
+    "canvasAria": "Dependency graph",
+    "legend": {
+      "direct": "Direct",
+      "transitive": "Transitive",
+      "vulnerable": "Vulnerable",
+      "hint": "Click a node for details. Type to highlight matching packages."
+    },
+    "selection": {
+      "vulnCount": "{{count}} known vulnerabilities"
+    },
+    "tree": {
+      "collapse": "Collapse",
+      "expand": "Expand",
+      "cycle": "Cycle"
+    },
+    "errors": {
+      "load_failed": "Could not load the dependency graph.",
+      "render_failed": "Could not render the dependency graph."
     }
   }
 }

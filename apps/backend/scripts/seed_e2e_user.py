@@ -47,6 +47,45 @@ For PR #11 (Vulnerabilities tab) the script optionally also seeds:
     Statuses cycle: 80% ``new``, 15% ``analyzing``, 5% ``not_affected`` so
     filter-by-status scenarios exercise multiple values.
 
+For Phase C (KEV e2e — `vulnerabilities_kev.spec.ts`) the script optionally
+also flags a subset of the vulnerability-mode findings as CISA KEV entries:
+
+  * ``--kev-count N`` marks the FIRST ``N`` vulnerability-mode CVEs
+    (``--vulnerability-count`` rows, in seed-plan order) with ``kev=True`` +
+    ``kev_date_added`` (today − 30 days) + a ``kev_due_date`` cycled through
+    ``--kev-due-spread`` (default ``overdue,imminent,ok`` → today − 3 /
+    today + 3 / today + 30 days). The offsets sit well inside the FE's
+    SLA classifier bands (``src/lib/dueDate.ts``: < 0 overdue, 0–7
+    imminent, ≥ 8 ok) so a ±1-day UTC↔local skew can never flip a state.
+    Requires ``--vulnerability-count`` ≥ ``--kev-count`` (ValueError guard,
+    mirroring the ``--no-password`` precondition). Summary gains
+    ``kev_count``.
+
+For Phase F (release-diff e2e — `project_diff.spec.ts`) the script optionally
+seeds a SECOND succeeded scan on the FIRST project so the diff endpoint
+(``GET /v1/projects/{id}/diff?base=<scan1>&target=<scan2>``) has a
+deterministic fixture:
+
+  * ``--scan-count N`` (default 1; only 1 or 2 are accepted, >2 is refused).
+    ``--scan-count 2`` implies ``--with-scan`` and requires
+    ``--component-count >= 4`` (so scan1 has a real "unchanged" pool). It does
+    NOT require ``--vulnerability-count`` — the diff's introduced/resolved rows
+    are seeded on dedicated delta components with unique CVEs, independent of
+    the ``--vulnerability-count`` mode.
+  * scan2 is scan1's snapshot cloned verbatim (every scan_component /
+    license_finding / vulnerability_finding replicated on the SAME
+    component_version + vulnerability, so shared ``(cve, version)`` keys cancel
+    as "unchanged"), then mutated by exactly three deltas: one removed
+    component (scan1-only, unique open CVE → resolved), one changed component
+    (present in both at version 1.0.0 → 2.0.0, no finding), and one added
+    component (scan2-only, unique open CVE → introduced). The diff therefore
+    reports exactly components added=1 / removed=1 / changed=1 and
+    vulnerabilities introduced=1 / resolved=1.
+  * scan2.created_at is strictly after scan1 and ``project.latest_scan_id`` is
+    promoted to scan2. Both scans stay ``succeeded`` + non-superseded so the
+    Releases tab lists exactly two releases. Summary gains ``second_scan_id``
+    (scan2's id); ``scan_ids[0]`` stays scan1 (the diff base).
+
 Why a Python script and not Node? psycopg / asyncpg + the SQLAlchemy
 factories (``tests._helpers``) are already available in this repo. Pulling
 ``pg`` into the frontend package just to seed a few rows would balloon the
@@ -69,6 +108,11 @@ Usage:
         --with-scan \\
         --vulnerability-count 44
 
+    python3 apps/backend/scripts/seed_e2e_user.py \\
+        --project-names ci-diff \\
+        --scan-count 2 \\
+        --component-count 6
+
 Output (stdout, single JSON line):
 
     {"email": "...", "password": "...", "user_id": "...",
@@ -89,9 +133,13 @@ import json
 import os
 import sys
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from services.sbom_conformance import Check
 
 # Environments where this seed script is allowed to mint a super-admin via
 # ``--super-admin`` (security-reviewer F8 / CWE-489 Active Debug Code).
@@ -136,6 +184,24 @@ _VULN_STATUS_CYCLE: tuple[str, ...] = (
 _VULN_SEVERITY_VALUES: frozenset[str] = frozenset(
     {"critical", "high", "medium", "low", "info", "unknown"}
 )
+
+# Phase C — KEV e2e seed. Calendar-day offsets (relative to "today") per SLA
+# state token accepted by ``--kev-due-spread``. The values mirror the FE
+# classifier bands in ``apps/frontend/src/lib/dueDate.ts``:
+#   overdue  : days < 0          → today − 3
+#   imminent : 0 <= days <= 7    → today + 3
+#   ok       : days >= 8         → today + 30
+# ±3 / +30 keep a comfortable margin from every band edge, so the ≤ 1-day
+# skew between the seeder's UTC "today" and the browser's local "today" can
+# never reclassify a seeded row.
+_KEV_DUE_OFFSET_DAYS: dict[str, int] = {
+    "overdue": -3,
+    "imminent": 3,
+    "ok": 30,
+}
+# Catalog listing date for every seeded KEV row — any stable past date works;
+# 30 days back reads plausibly next to the due dates above.
+_KEV_DATE_ADDED_OFFSET_DAYS = -30
 
 # v2.1 "EPSS UI first-class" — seed a spread of EPSS (score, percentile) pairs
 # so e2e sort/filter scenarios have meaningful, distinct values to assert on.
@@ -389,6 +455,22 @@ def _parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--scan-count",
+        type=int,
+        default=1,
+        help=(
+            "Phase F release-diff e2e. Number of succeeded scans to seed on the "
+            "FIRST project. Accepts 1 (default) or 2; any other value is "
+            "refused. --scan-count 2 implies --with-scan and requires "
+            "--component-count >= 4 (so scan1 has an 'unchanged' pool). It "
+            "seeds a second succeeded scan (scan2) whose snapshot differs from "
+            "scan1 by exactly one added / removed / changed component and one "
+            "introduced / resolved vulnerability, promotes project.latest_scan_id "
+            "to scan2, and emits scan2's id as `second_scan_id`. `scan_ids[0]` "
+            "stays scan1 (the diff base)."
+        ),
+    )
+    parser.add_argument(
         "--with-sbom",
         action="store_true",
         default=False,
@@ -397,6 +479,21 @@ def _parse_args() -> argparse.Namespace:
             "project, plus its conformance verdict (model 3). Independent of "
             "--with-scan. The resulting scan id is returned as `sbom_scan_id` so "
             "an e2e can open /scans/<id> and assert the conformance panel."
+        ),
+    )
+    parser.add_argument(
+        "--with-g7",
+        action="store_true",
+        default=False,
+        help=(
+            "feat/g7-conformance. Append 4 advisory G7 AI minimum-element "
+            "checks (pass x2 / absent-warn x1 / human-review x1, across the "
+            "'slp' + 'models' clusters) to the seeded conformance verdict so "
+            "the e2e can assert the G7 section of the panel. Statuses are "
+            "pinned from the REAL evaluator's output over "
+            "tests/fixtures/sbom_ingest/aibom-owasp-1_7.json; label/cluster/"
+            "source metadata comes from the live g7_registry.json. Implies "
+            "--with-sbom. Summary gains `g7_check_count`."
         ),
     )
     parser.add_argument(
@@ -466,6 +563,31 @@ def _parse_args() -> argparse.Namespace:
             "Buckets not listed default to 0; the sum is clamped to "
             "--vulnerability-count. Default: 'critical:2,high:5,medium:10,"
             "low:20,info:5,unknown:2'."
+        ),
+    )
+    # ── Phase C — KEV e2e fixtures ──────────────────────────────────────────
+    parser.add_argument(
+        "--kev-count",
+        type=int,
+        default=0,
+        help=(
+            "Phase C KEV e2e. Flag the FIRST N vulnerability-mode CVEs "
+            "(--vulnerability-count rows, in seed-plan order) as CISA KEV "
+            "entries: kev=True + kev_date_added (today-30d) + kev_due_date "
+            "cycled through --kev-due-spread. Requires --vulnerability-count "
+            ">= N (refused with a ValueError otherwise — KEV flags ride on "
+            "the vuln-mode rows). Default: 0 (no KEV rows)."
+        ),
+    )
+    parser.add_argument(
+        "--kev-due-spread",
+        default="overdue,imminent,ok",
+        help=(
+            "Comma-separated SLA-state cycle for the --kev-count due dates. "
+            "Tokens: overdue (today-3d), imminent (today+3d), ok (today+30d) "
+            "— matching the FE dueDate.ts bands with margin. KEV row i gets "
+            "the state at position i mod len(spread). Unknown tokens are a "
+            "ValueError. Default: 'overdue,imminent,ok'."
         ),
     )
     # ── Phase 4 PR #13 — admin e2e fixtures ────────────────────────────────
@@ -616,17 +738,116 @@ def _parse_severity_mix(raw: str | None, *, total: int) -> dict[str, int]:
     return parsed
 
 
+def _parse_kev_due_spread(raw: str) -> list[str]:
+    """Parse ``--kev-due-spread`` into an ordered token list.
+
+    Raises ``ValueError`` on an empty spread or an unknown token — a silent
+    fallback would make the e2e assert against a fixture it never got
+    (hardening rule: seed preconditions fail loudly, mirroring the
+    ``--no-password`` guard).
+    """
+    tokens = [t.strip().lower() for t in raw.split(",") if t.strip()]
+    if not tokens:
+        raise ValueError("--kev-due-spread must contain at least one token")
+    unknown = sorted(set(tokens) - set(_KEV_DUE_OFFSET_DAYS))
+    if unknown:
+        raise ValueError(
+            f"--kev-due-spread has unknown tokens {unknown}; "
+            f"allowed: {sorted(_KEV_DUE_OFFSET_DAYS)}"
+        )
+    return tokens
+
+
+# feat/g7-conformance — pinned statuses for the ``--with-g7`` seed. The mix
+# (pass / per-model-coverage warn / human-review across TWO clusters) was
+# captured from the REAL evaluator (``services.g7_conformance.evaluate_g7``)
+# over the recorded fixture ``tests/fixtures/sbom_ingest/aibom-owasp-1_7.json``
+# — no invented values, only a deterministic subset. Registry v2 (#306): the
+# models-cluster elements score per-model coverage, so their details read
+# "N/M model component(s)" and a warn names the offending models in
+# ``missing`` (the fixture's single model is "bert-base-uncased"). Detail
+# strings are the evaluator's own output; label/cluster/source/role are
+# resolved from the live ``g7_registry.json`` at seed time so a registry
+# refresh cannot desync the persisted shape.
+# id → (status, detail, evidence, missing).
+_G7_SEED_PLAN: dict[str, tuple[str, str, list[str] | None, list[str]]] = {
+    # slp cluster — pass (source=declared)
+    "g7-slp-name": ("pass", "present", None, []),
+    # slp cluster — no automated source (source=na) → human review
+    "g7-slp-data-flow": (
+        "warn",
+        "requires human review (no automated source)",
+        None,
+        [],
+    ),
+    # models cluster — per-model coverage, absent on the only model →
+    # advisory warn naming the offender (source=auto)
+    "g7-model-hash-value": (
+        "warn",
+        "0/1 model component(s)",
+        None,
+        ["bert-base-uncased"],
+    ),
+    # models cluster — every model covered, real evidence (Apache-2.0)
+    "g7-model-license": ("pass", "1/1 model component(s)", ["Apache-2.0"], []),
+}
+
+
+def _g7_seed_checks() -> list[Check]:
+    """Build the ``--with-g7`` advisory checks (list of ``Check``).
+
+    Iterates the registry in document order so the persisted per-cluster row
+    order matches what ``evaluate_g7`` would emit for the same elements.
+    Raises ``ValueError`` when a planned element vanished from the registry —
+    a silent drop would make the e2e assert against a partial seed.
+    """
+    from services import g7_conformance as _g7
+    from services.sbom_conformance import Check
+
+    checks: list[Check] = []
+    for cluster_id, element in _g7.iter_elements():
+        element_id = str(element.get("id") or "")
+        plan = _G7_SEED_PLAN.get(element_id)
+        if plan is None:
+            continue
+        status, detail, evidence, missing = plan
+        checks.append(
+            Check(
+                id=element_id,
+                label=str(element.get("label") or element_id),
+                required=False,
+                status=status,
+                detail=detail,
+                missing=missing,
+                cluster=cluster_id,
+                source=str(element.get("source") or "") or None,
+                role=str(element.get("role") or "") or None,
+                evidence=evidence,
+            )
+        )
+    if len(checks) != len(_G7_SEED_PLAN):
+        missing = sorted(set(_G7_SEED_PLAN) - {c.id for c in checks})
+        raise ValueError(
+            f"g7 registry no longer contains seed elements: {missing}"
+        )
+    return checks
+
+
 async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better than 5 helpers
     *,
     project_names: list[str],
     email: str | None,
     password: str | None,
     with_scan: bool,
+    scan_count: int = 1,
     with_sbom: bool = False,
+    with_g7: bool = False,
     component_count: int,
     component_prefix: str,
     vulnerability_count: int = 0,
     vulnerability_severity_mix: str | None = None,
+    kev_count: int = 0,
+    kev_due_spread: str = "overdue,imminent,ok",
     with_obligations: bool = False,
     with_source: bool = False,
     super_admin: bool = False,
@@ -653,6 +874,42 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
             "--no-password requires --with-oauth-identity so the seeded "
             "user has at least one authentication method."
         )
+    # Phase C — KEV flags ride on the vulnerability-mode rows: without a
+    # vuln-mode seed there is nothing to flag, and flagging fewer rows than
+    # requested would hand the e2e a partial fixture. Same fail-loudly
+    # pattern as the --no-password guard above.
+    if kev_count > 0 and vulnerability_count <= 0:
+        raise ValueError(
+            "--kev-count requires --vulnerability-count > 0 (KEV flags are "
+            "applied to the vulnerability-mode findings)."
+        )
+    if kev_count > vulnerability_count:
+        raise ValueError(
+            f"--kev-count ({kev_count}) cannot exceed "
+            f"--vulnerability-count ({vulnerability_count})."
+        )
+    # Phase F — release-diff fixture. Only 1 or 2 scans are supported; a larger
+    # count has no defined delta semantics, so refuse it loudly (same
+    # fail-early pattern as the guards above). --scan-count 2 needs a real
+    # "unchanged" component pool on scan1 to distinguish unchanged from
+    # added/removed/changed, hence the --component-count floor.
+    if scan_count not in (1, 2):
+        raise ValueError(
+            f"--scan-count must be 1 or 2 (got {scan_count}); values > 2 have "
+            "no defined diff-delta semantics."
+        )
+    if scan_count == 2:
+        # Implies --with-scan (we need scan1 to anchor + clone from).
+        with_scan = True
+        if component_count < 4:
+            raise ValueError(
+                "--scan-count 2 requires --component-count >= 4 so scan1 has an "
+                "'unchanged' component pool alongside the removed/changed/added "
+                f"deltas (got --component-count {component_count})."
+            )
+    # Validate the spread up front (ValueError on unknown tokens) so a typo
+    # is a clean exit-2, not a mid-transaction surprise.
+    kev_spread_tokens = _parse_kev_due_spread(kev_due_spread)
     from sqlalchemy.ext.asyncio import (
         AsyncSession,
         async_sessionmaker,
@@ -667,6 +924,7 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
     )
     from models import (
         Component,
+        ComponentDependencyEdge,
         ComponentVersion,
         License,
         LicenseFinding,
@@ -926,6 +1184,10 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
             # (deterministic 'warn' — full PURLs + graph + licenses but no hashes),
             # so the seeded row matches production shape exactly.
             sbom_scan_id: str | None = None
+            g7_check_count = 0
+            # --with-g7 rides on the sbom seed (implied at the CLI too; this
+            # keeps direct _seed() callers honest).
+            with_sbom = with_sbom or with_g7
             if with_sbom and project_rows:
                 from services import sbom_conformance as _conf
 
@@ -965,6 +1227,15 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                     ],
                 }
                 verdict = _conf.evaluate(json.dumps(sbom_doc).encode())
+                # feat/g7-conformance — advisory G7 checks are appended to the
+                # checks JSONB only; the verdict counters/result stay from the
+                # core evaluate() (aggregation contract: cluster-tagged checks
+                # never move the overall result).
+                seeded_checks = [c.as_dict() for c in verdict.checks]
+                if with_g7:
+                    g7_checks = _g7_seed_checks()
+                    seeded_checks.extend(c.as_dict() for c in g7_checks)
+                    g7_check_count = len(g7_checks)
                 first = project_rows[0]
                 sbom_scan = Scan(
                     project_id=first.id,
@@ -990,7 +1261,7 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                         purl_coverage_pct=verdict.purl_coverage_pct,
                         license_coverage_pct=verdict.license_coverage_pct,
                         hash_coverage_pct=verdict.hash_coverage_pct,
-                        checks=[c.as_dict() for c in verdict.checks],
+                        checks=seeded_checks,
                     )
                 )
                 await session.commit()
@@ -1099,6 +1370,12 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                 # Now create components in batches. We commit every 100 rows
                 # so the connection isn't held with a huge in-memory tx.
                 BATCH = 100
+                # Collect the created component_version ids so we can wire a small
+                # resolved dependency graph afterwards (H-1 dependency-graph view:
+                # without edges the graph endpoint returns an edge-less flat set,
+                # so the e2e can only exercise the fallback — a binary-tree edge
+                # set gives the cytoscape path real edges + depth to render).
+                seeded_cv_ids: list[uuid.UUID] = []
                 for i in range(component_count):
                     cname = f"{component_prefix}-{i:05d}"
                     purl = f"pkg:npm/{cname}"
@@ -1117,6 +1394,7 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                     )
                     session.add(cv)
                     await session.flush()
+                    seeded_cv_ids.append(cv.id)
 
                     sc = ScanComponent(
                         scan_id=anchor_scan_id,
@@ -1154,6 +1432,22 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                 await session.commit()
                 seeded_components = component_count
 
+                # Wire a resolved dependency graph over the seeded nodes: a
+                # binary tree (node i's parent is node (i-1)//2), so the graph
+                # has ``component_count - 1`` edges with real branching + depth
+                # for the H-1 dependency-graph view / e2e. Idempotent per scan
+                # via the (scan, parent, child) unique constraint.
+                for child_idx in range(1, len(seeded_cv_ids)):
+                    parent_idx = (child_idx - 1) // 2
+                    session.add(
+                        ComponentDependencyEdge(
+                            scan_id=anchor_scan_id,
+                            parent_component_version_id=seeded_cv_ids[parent_idx],
+                            child_component_version_id=seeded_cv_ids[child_idx],
+                        )
+                    )
+                await session.commit()
+
             seeded_vulnerabilities = 0
             if vulnerability_count > 0 and project_rows:
                 first_project = project_rows[0]
@@ -1175,6 +1469,15 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                     seed_plan = seed_plan[:vulnerability_count]
                 while len(seed_plan) < vulnerability_count:
                     seed_plan.append("low")
+
+                # Phase C — per-row KEV plan. Row idx < kev_count gets
+                # kev=True with a due date cycled through the spread tokens;
+                # every later row stays kev=False (server default) so the
+                # e2e has both badge-present and badge-absent rows.
+                seed_today = datetime.now(tz=UTC).date()
+                kev_date_added_value = seed_today + timedelta(
+                    days=_KEV_DATE_ADDED_OFFSET_DAYS
+                )
 
                 BATCH = 50
                 for idx, sev in enumerate(seed_plan):
@@ -1209,6 +1512,17 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                     # cycle is decoupled from severity, so the plan naturally
                     # produces CVSS↔EPSS divergence rows.
                     epss_pair = _EPSS_CYCLE[idx % len(_EPSS_CYCLE)]
+                    is_kev = idx < kev_count
+                    kev_due_date = (
+                        seed_today
+                        + timedelta(
+                            days=_KEV_DUE_OFFSET_DAYS[
+                                kev_spread_tokens[idx % len(kev_spread_tokens)]
+                            ]
+                        )
+                        if is_kev
+                        else None
+                    )
                     vuln = Vulnerability(
                         external_id=f"CVE-2099-VLN-{suffix}-{idx:05d}",
                         source="NVD",
@@ -1216,6 +1530,9 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                         cvss_score=None,
                         epss_score=epss_pair[0] if epss_pair else None,
                         epss_percentile=epss_pair[1] if epss_pair else None,
+                        kev=is_kev,
+                        kev_date_added=kev_date_added_value if is_kev else None,
+                        kev_due_date=kev_due_date,
                         summary=f"e2e seed vulnerability {idx} ({sev})",
                     )
                     session.add(vuln)
@@ -1236,6 +1553,308 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                 await session.commit()
                 seeded_vulnerabilities = vulnerability_count
 
+            # ── Phase F — second succeeded scan for the release-diff e2e ─────
+            # When --scan-count 2, seed a SECOND succeeded scan (scan2) on the
+            # FIRST project whose snapshot differs from scan1 by exactly one
+            # added / removed / changed component and one introduced / resolved
+            # vulnerability. Runs AFTER the component + vulnerability blocks so
+            # they anchor on scan1 (project.latest_scan_id) before scan2 exists.
+            #
+            # Strategy: clone scan1's snapshot into scan2 (every scan_component /
+            # license_finding / vulnerability_finding replicated on the SAME
+            # component_version + vulnerability, so shared (cve, version) keys
+            # cancel and read as "unchanged"), then apply three dedicated deltas:
+            #   R (removed)  — a scan1-only component with a UNIQUE open CVE
+            #                  → components.removed +1, vulnerabilities.resolved +1
+            #   C (changed)  — a component in BOTH scans at a different version
+            #                  (1.0.0 → 2.0.0), no finding → components.changed +1
+            #   A (added)    — a scan2-only component with a UNIQUE open CVE
+            #                  → components.added +1, vulnerabilities.introduced +1
+            # Dedicated CVEs (not the round-robin shared ones) guarantee the
+            # (cve, version) dedupe in project_diff_service cannot let a shared
+            # key mask the intended resolved/introduced.
+            second_scan_id: str | None = None
+            if scan_count == 2 and project_rows:
+                from sqlalchemy import select as _select
+
+                diff_project = project_rows[0]
+                scan1_id = diff_project.latest_scan_id
+                assert scan1_id is not None  # scan_count==2 forces with_scan
+
+                scan1_row = (
+                    await session.execute(_select(Scan).where(Scan.id == scan1_id))
+                ).scalar_one()
+                base_ts = scan1_row.created_at
+
+                # Dedicated license shared by the three delta components — kept
+                # out of the round-robin catalog so its category is stable.
+                diff_license = License(
+                    spdx_id=f"E2E-DIFF-{suffix}",
+                    name="E2E Diff License",
+                    category="allowed",
+                )
+                session.add(diff_license)
+                await session.flush()
+
+                # R — scan1-only "removed" component carrying a unique OPEN CVE.
+                r_component = Component(
+                    purl=f"pkg:npm/e2e-diff-removed-{suffix}",
+                    package_type="npm",
+                    name=f"e2e-diff-removed-{suffix}",
+                )
+                session.add(r_component)
+                await session.flush()
+                r_cv = ComponentVersion(
+                    component_id=r_component.id,
+                    version="1.0.0",
+                    purl_with_version=f"pkg:npm/e2e-diff-removed-{suffix}@1.0.0",
+                )
+                session.add(r_cv)
+                await session.flush()
+                session.add(
+                    ScanComponent(
+                        scan_id=scan1_id,
+                        component_version_id=r_cv.id,
+                        direct=True,
+                        raw_data={"diff_role": "removed"},
+                    )
+                )
+                session.add(
+                    LicenseFinding(
+                        scan_id=scan1_id,
+                        component_version_id=r_cv.id,
+                        license_id=diff_license.id,
+                        kind="concluded",
+                        source_path="diff/removed",
+                    )
+                )
+                r_vuln = Vulnerability(
+                    external_id=f"CVE-2099-DIFFRES-{suffix}",
+                    source="NVD",
+                    severity="high",
+                    summary="e2e diff — resolved-on-target CVE",
+                )
+                session.add(r_vuln)
+                await session.flush()
+                session.add(
+                    VulnerabilityFinding(
+                        scan_id=scan1_id,
+                        component_version_id=r_cv.id,
+                        vulnerability_id=r_vuln.id,
+                        status="new",
+                        analysis_state="new",
+                    )
+                )
+
+                # C — "changed" component: scan1 side at version 1.0.0, no CVE.
+                c_component = Component(
+                    purl=f"pkg:npm/e2e-diff-changed-{suffix}",
+                    package_type="npm",
+                    name=f"e2e-diff-changed-{suffix}",
+                )
+                session.add(c_component)
+                await session.flush()
+                c_cv_base = ComponentVersion(
+                    component_id=c_component.id,
+                    version="1.0.0",
+                    purl_with_version=f"pkg:npm/e2e-diff-changed-{suffix}@1.0.0",
+                )
+                session.add(c_cv_base)
+                await session.flush()
+                session.add(
+                    ScanComponent(
+                        scan_id=scan1_id,
+                        component_version_id=c_cv_base.id,
+                        direct=True,
+                        raw_data={"diff_role": "changed_base"},
+                    )
+                )
+                session.add(
+                    LicenseFinding(
+                        scan_id=scan1_id,
+                        component_version_id=c_cv_base.id,
+                        license_id=diff_license.id,
+                        kind="concluded",
+                        source_path="diff/changed",
+                    )
+                )
+                await session.commit()
+
+                # scan2 — created strictly after scan1 (created_at + 1 min) so
+                # the Releases table (created_at DESC) lists it first and the
+                # diff base→target direction is deterministic.
+                scan2 = Scan(
+                    project_id=diff_project.id,
+                    kind="source",
+                    status="succeeded",
+                    progress_percent=100,
+                    started_at=base_ts + timedelta(minutes=1),
+                    completed_at=base_ts + timedelta(minutes=1),
+                    created_at=base_ts + timedelta(minutes=1),
+                    scan_metadata={"seeded": True, "diff_target": True},
+                )
+                session.add(scan2)
+                await session.flush()
+
+                # Clone scan1's snapshot into scan2 as "unchanged", EXCLUDING R
+                # (removed) and C-base (its version changes on the target side).
+                excluded_cv_ids = {r_cv.id, c_cv_base.id}
+                scan1_scs = (
+                    (
+                        await session.execute(
+                            _select(ScanComponent).where(
+                                ScanComponent.scan_id == scan1_id
+                            )
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                cloned_cv_ids = {
+                    sc.component_version_id
+                    for sc in scan1_scs
+                    if sc.component_version_id not in excluded_cv_ids
+                }
+                for sc in scan1_scs:
+                    if sc.component_version_id in excluded_cv_ids:
+                        continue
+                    session.add(
+                        ScanComponent(
+                            scan_id=scan2.id,
+                            component_version_id=sc.component_version_id,
+                            direct=sc.direct,
+                            raw_data=dict(sc.raw_data or {}),
+                        )
+                    )
+                scan1_lfs = (
+                    (
+                        await session.execute(
+                            _select(LicenseFinding).where(
+                                LicenseFinding.scan_id == scan1_id
+                            )
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                for lf in scan1_lfs:
+                    if lf.component_version_id in cloned_cv_ids:
+                        session.add(
+                            LicenseFinding(
+                                scan_id=scan2.id,
+                                component_version_id=lf.component_version_id,
+                                license_id=lf.license_id,
+                                kind=lf.kind,
+                                source_path=lf.source_path,
+                            )
+                        )
+                scan1_vfs = (
+                    (
+                        await session.execute(
+                            _select(VulnerabilityFinding).where(
+                                VulnerabilityFinding.scan_id == scan1_id
+                            )
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                for vf in scan1_vfs:
+                    if vf.component_version_id in cloned_cv_ids:
+                        session.add(
+                            VulnerabilityFinding(
+                                scan_id=scan2.id,
+                                component_version_id=vf.component_version_id,
+                                vulnerability_id=vf.vulnerability_id,
+                                status=vf.status,
+                                analysis_state=vf.analysis_state,
+                            )
+                        )
+
+                # C — scan2 side at a NEW version 2.0.0 (same package) → changed.
+                c_cv_target = ComponentVersion(
+                    component_id=c_component.id,
+                    version="2.0.0",
+                    purl_with_version=f"pkg:npm/e2e-diff-changed-{suffix}@2.0.0",
+                )
+                session.add(c_cv_target)
+                await session.flush()
+                session.add(
+                    ScanComponent(
+                        scan_id=scan2.id,
+                        component_version_id=c_cv_target.id,
+                        direct=True,
+                        raw_data={"diff_role": "changed_target"},
+                    )
+                )
+                session.add(
+                    LicenseFinding(
+                        scan_id=scan2.id,
+                        component_version_id=c_cv_target.id,
+                        license_id=diff_license.id,
+                        kind="concluded",
+                        source_path="diff/changed",
+                    )
+                )
+
+                # A — scan2-only "added" component carrying a unique OPEN CVE.
+                a_component = Component(
+                    purl=f"pkg:npm/e2e-diff-added-{suffix}",
+                    package_type="npm",
+                    name=f"e2e-diff-added-{suffix}",
+                )
+                session.add(a_component)
+                await session.flush()
+                a_cv = ComponentVersion(
+                    component_id=a_component.id,
+                    version="1.0.0",
+                    purl_with_version=f"pkg:npm/e2e-diff-added-{suffix}@1.0.0",
+                )
+                session.add(a_cv)
+                await session.flush()
+                session.add(
+                    ScanComponent(
+                        scan_id=scan2.id,
+                        component_version_id=a_cv.id,
+                        direct=True,
+                        raw_data={"diff_role": "added"},
+                    )
+                )
+                session.add(
+                    LicenseFinding(
+                        scan_id=scan2.id,
+                        component_version_id=a_cv.id,
+                        license_id=diff_license.id,
+                        kind="concluded",
+                        source_path="diff/added",
+                    )
+                )
+                a_vuln = Vulnerability(
+                    external_id=f"CVE-2099-DIFFINT-{suffix}",
+                    source="NVD",
+                    severity="critical",
+                    summary="e2e diff — introduced-on-target CVE",
+                )
+                session.add(a_vuln)
+                await session.flush()
+                session.add(
+                    VulnerabilityFinding(
+                        scan_id=scan2.id,
+                        component_version_id=a_cv.id,
+                        vulnerability_id=a_vuln.id,
+                        status="new",
+                        analysis_state="new",
+                    )
+                )
+                await session.commit()
+
+                # Promote scan2 to the project's latest snapshot (its created_at
+                # is already the newest, so current-state readers follow it).
+                diff_project.latest_scan_id = scan2.id
+                diff_project.updated_at = base_ts + timedelta(minutes=2)
+                await session.commit()
+                second_scan_id = str(scan2.id)
+
             return {
                 "email": user.email,
                 "password": chosen_password,
@@ -1246,9 +1865,12 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                 "project_names": project_names,
                 "project_ids": project_ids,
                 "scan_ids": scan_ids,
+                "second_scan_id": second_scan_id,
                 "sbom_scan_id": sbom_scan_id,
+                "g7_check_count": g7_check_count,
                 "component_count": seeded_components,
                 "vulnerability_count": seeded_vulnerabilities,
+                "kev_count": min(kev_count, seeded_vulnerabilities),
                 "obligation_count": seeded_obligations_count,
                 "source_tarball": source_tarball_path,
                 "extra_members": extra_members_summary,
@@ -1299,6 +1921,9 @@ def main() -> int:
     if args.vulnerability_count < 0:
         print("--vulnerability-count must be non-negative", file=sys.stderr)
         return 2
+    if args.kev_count < 0:
+        print("--kev-count must be non-negative", file=sys.stderr)
+        return 2
     if args.extra_members < 0:
         print("--extra-members must be non-negative", file=sys.stderr)
         return 2
@@ -1319,11 +1944,15 @@ def main() -> int:
                 email=args.email,
                 password=args.password,
                 with_scan=args.with_scan,
+                scan_count=args.scan_count,
                 with_sbom=args.with_sbom,
+                with_g7=args.with_g7,
                 component_count=args.component_count,
                 component_prefix=args.component_prefix,
                 vulnerability_count=args.vulnerability_count,
                 vulnerability_severity_mix=args.vulnerability_severity_mix,
+                kev_count=args.kev_count,
+                kev_due_spread=args.kev_due_spread,
                 with_obligations=args.with_obligations,
                 with_source=args.with_source,
                 super_admin=args.super_admin,

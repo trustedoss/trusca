@@ -32,6 +32,7 @@ const sidebars: SidebarsConfig = {
         "user-guide/components-and-licenses",
         "user-guide/vulnerabilities",
         "user-guide/sbom",
+        "user-guide/ai-sbom-conformance",
         "user-guide/approvals",
         "user-guide/auth-and-profile",
         "user-guide/notifications",
@@ -47,6 +48,7 @@ const sidebars: SidebarsConfig = {
         "contributor-guide/coding-standards",
         "contributor-guide/testing-guide",
         "contributor-guide/agent-team",
+        "contributor-guide/releasing",
       ],
     },
     {
@@ -101,6 +103,7 @@ const sidebars: SidebarsConfig = {
       label: "Release notes",
       collapsed: true,
       items: [
+        "release-notes/v0-13-0",
         "release-notes/v0-12-0",
         "release-notes/v0-11-1",
         "release-notes/v0-11-0",

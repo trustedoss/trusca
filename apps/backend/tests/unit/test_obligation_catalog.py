@@ -149,12 +149,70 @@ def test_bsd_requires_attribution_and_license_text(spdx: str) -> None:
     assert KIND_ATTRIBUTION in kinds
 
 
-@pytest.mark.parametrize("spdx", ["0BSD", "Unlicense", "CC0-1.0", "WTFPL"])
+@pytest.mark.parametrize("spdx", ["0BSD", "Unlicense", "CC0-1.0", "WTFPL", "MIT-0"])
 def test_public_domain_licenses_have_no_obligations(spdx: str) -> None:
     o = get_license_obligations(spdx)
     assert o is not None
     assert o.attribution_required is False
     assert obligations_for(spdx) == []
+
+
+# ---------------------------------------------------------------------------
+# Phase E catalog expansion — lock the new judgment calls.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("spdx", ["UPL-1.0", "AFL-3.0", "MS-PL", "BlueOak-1.0.0"])
+def test_permissive_with_patent_has_patent_grant(spdx: str) -> None:
+    """Permissive licenses that also carry an express patent grant expose the
+    grant as a fact and a rendered patent row, but stay attribution-only
+    (no source disclosure / no copyleft)."""
+    o = get_license_obligations(spdx)
+    assert o is not None
+    assert o.attribution_required is True
+    assert o.patent_grant is True
+    assert o.same_license_required is False
+    assert o.source_disclosure is SourceDisclosure.NONE
+    kinds = {k for k, _, _ in obligations_for(spdx)}
+    assert KIND_PATENT in kinds
+
+
+@pytest.mark.parametrize("spdx", ["OFL-1.1", "CC-BY-SA-4.0"])
+def test_share_alike_licenses_are_copyleft_without_source_disclosure(spdx: str) -> None:
+    """OFL / CC-BY-SA are share-alike (adaptations stay under the same license)
+    but do NOT impose a source-disclosure obligation — they are modelled as
+    copyleft (``same_license_required``) with no source-disclosure enum."""
+    o = get_license_obligations(spdx)
+    assert o is not None
+    assert o.same_license_required is True
+    assert o.source_disclosure is SourceDisclosure.NONE
+    kinds = {k for k, _, _ in obligations_for(spdx)}
+    assert KIND_COPYLEFT in kinds
+    assert KIND_ATTRIBUTION in kinds
+
+
+def test_ms_rl_is_file_scoped_source_disclosure() -> None:
+    """MS-RL is file-level reciprocal — like the weak-copyleft family: source of
+    the covered files is disclosed, the larger work may stay under other terms."""
+    o = get_license_obligations("MS-RL")
+    assert o is not None
+    assert o.source_disclosure is SourceDisclosure.LIBRARY
+    assert o.same_license_required is False
+    kinds = {k for k, _, _ in obligations_for("MS-RL")}
+    assert KIND_SOURCE_DISCLOSURE in kinds
+
+
+@pytest.mark.parametrize(
+    "spdx", ["BSL-1.0", "PostgreSQL", "NTP", "curl", "Ruby", "X11", "Artistic-2.0"]
+)
+def test_new_permissive_licenses_require_attribution(spdx: str) -> None:
+    o = get_license_obligations(spdx)
+    assert o is not None
+    assert o.attribution_required is True
+    assert o.source_disclosure is SourceDisclosure.NONE
+    assert o.same_license_required is False
+    kinds = {k for k, _, _ in obligations_for(spdx)}
+    assert KIND_ATTRIBUTION in kinds
 
 
 def test_obligations_for_attaches_reference_url_as_link() -> None:

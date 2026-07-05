@@ -141,6 +141,224 @@ jobs:
         run: shellcheck --severity=warning scripts/*.sh
 
   # -------------------------------------------------------------------------
+  # 1c) Postgres init L1 role contract — the ONLY gate that actually boots a
+  #     real postgres:17.2-alpine on a fresh volume and mounts
+  #     scripts/postgres-init.sh as /docker-entrypoint-initdb.d/
+  #     10-trustedoss-app-role.sh, the exact path + trigger the operator
+  #     install.sh L1 (role-separation) deploy uses.
+  #
+  #     WHY THIS EXISTS (regression guard for #466): the L1 first-boot path is
+  #     invisible to every other job. `test (backend)` uses postgres only as a
+  #     service container (init scripts never run); release-gate runs
+  #     single-role dev mode (POSTGRES_APP_PASSWORD unset → the script skips).
+  #     #466 shipped a psql `:'app_user'` interpolation *inside* a `DO $$ … $$`
+  #     block, which psql does not substitute → `syntax error` → the
+  #     trustedoss_app role was never created → every L1 install.sh deploy
+  #     failed backend auth at startup. No CI test caught it. This job does.
+  #
+  #     Pure `docker run` (no docker-compose — irrelevant here). The stock
+  #     image trusts loopback, so the SCRAM login assertion connects over the
+  #     container's own eth0 IP to force real password auth (db-designer's
+  #     verified recipe).
+  # -------------------------------------------------------------------------
+  postgres-init-l1:
+    name: postgres-init L1 role contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run L1 role provisioning contract (3 scenarios)
+        run: |
+          set -euo pipefail
+
+          image="postgres:17.2-alpine"
+          init_script="$(pwd)/scripts/postgres-init.sh"
+          # The exact password from the task spec: contains @ : ' \ and other
+          # special chars, so this doubles as an injection / quote-safety guard.
+          app_pw='p@ss:with'\''quote\and\special'
+          wrong_pw='definitely-not-the-right-password'
+
+          cleanup() { docker rm -f pg_l1 pg_legacy >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          cleanup
+
+          # Wait until postgres serves over TCP on its OWN eth0 IP. During the
+          # first-boot init phase the entrypoint runs a socket-only temporary
+          # server (listen_addresses=''), so a successful eth0 TCP probe proves
+          # the init scripts completed AND the real server is up. If the
+          # container exits during init (a failed init script aborts the
+          # entrypoint) we fail fast and dump logs. Sets the global SERVING_IP.
+          SERVING_IP=""
+          wait_serving() {
+            local name="$1" deadline state ip
+            deadline=$(( $(date +%s) + 120 ))
+            while :; do
+              state=$(docker inspect -f '{{.State.Status}}' "$name" 2>/dev/null || echo missing)
+              if [ "$state" = "exited" ] || [ "$state" = "dead" ]; then
+                echo "::error::$name exited during init"
+                docker logs "$name" || true
+                return 1
+              fi
+              ip=$(docker exec "$name" hostname -i 2>/dev/null | awk '{print $1}' || true)
+              if [ -n "$ip" ] && docker exec "$name" pg_isready -h "$ip" -U trustedoss -d trustedoss >/dev/null 2>&1; then
+                SERVING_IP="$ip"
+                return 0
+              fi
+              if [ "$(date +%s)" -ge "$deadline" ]; then
+                echo "::error::$name never served over TCP within deadline"
+                docker logs "$name" || true
+                return 1
+              fi
+              sleep 2
+            done
+          }
+
+          # Poll `docker logs` until a marker line appears. The image entrypoint
+          # is a shell whose stdout is block-buffered when piped to the docker
+          # log driver, so an init-script echo can land in `docker logs` a beat
+          # AFTER the final "ready to accept connections" line that flips the
+          # TCP gate above. This poll closes that flush race for log-content
+          # assertions (a single grep would flake). Negative "no syntax error"
+          # checks run only after the corresponding positive marker is seen, so
+          # they assert against fully-flushed init output.
+          wait_log() {
+            local name="$1" pattern="$2" deadline
+            deadline=$(( $(date +%s) + 30 ))
+            while :; do
+              if docker logs "$name" 2>&1 | grep -qi "$pattern"; then
+                return 0
+              fi
+              if [ "$(date +%s)" -ge "$deadline" ]; then
+                echo "::error::$name: log marker never appeared: $pattern"
+                docker logs "$name" || true
+                return 1
+              fi
+              sleep 1
+            done
+          }
+
+          echo "::group::Scenario 1 — L1 role-separation mode (regression guard #466)"
+          docker run -d --name pg_l1 \
+            -e POSTGRES_USER=trustedoss \
+            -e POSTGRES_PASSWORD=trustedoss \
+            -e POSTGRES_DB=trustedoss \
+            -e POSTGRES_APP_USER=trustedoss_app \
+            -e POSTGRES_APP_PASSWORD="$app_pw" \
+            -v "$init_script":/docker-entrypoint-initdb.d/10-trustedoss-app-role.sh:ro \
+            "$image" >/dev/null
+          wait_serving pg_l1
+          eth0="$SERVING_IP"
+          echo "postgres serving on eth0 $eth0"
+
+          # Ensure the init script's output has flushed before the negative
+          # syntax-error assertion (otherwise "no syntax error" could pass
+          # trivially against a not-yet-flushed log).
+          wait_log pg_l1 "provisioned trustedoss_app"
+
+          # (a) init completed with no syntax error (the #466 symptom)
+          if docker logs pg_l1 2>&1 | grep -i "syntax error"; then
+            echo "::error::init log contains 'syntax error' (regression of #466)"
+            exit 1
+          fi
+          echo "(a) OK — no syntax error in init log"
+
+          # (b) role exists with LOGIN + INHERIT
+          row=$(docker exec pg_l1 psql -U trustedoss -d trustedoss -tAc \
+            "SELECT rolname, rolcanlogin, rolinherit FROM pg_roles WHERE rolname='trustedoss_app'")
+          echo "(b) pg_roles row=[$row]"
+          if [ "$row" != "trustedoss_app|t|t" ]; then
+            echo "::error::trustedoss_app role missing or wrong attributes (want trustedoss_app|t|t)"
+            exit 1
+          fi
+          echo "(b) OK — role present, canlogin+inherit"
+
+          # (c) real SCRAM login with the special-char password over eth0 TCP
+          got=$(docker exec -e PGPASSWORD="$app_pw" pg_l1 \
+            psql -h "$eth0" -U trustedoss_app -d trustedoss -tAc "SELECT 1")
+          echo "(c) SELECT 1 => [$got]"
+          if [ "$got" != "1" ]; then
+            echo "::error::trustedoss_app could not authenticate over TCP with its password"
+            exit 1
+          fi
+          echo "(c) OK — SCRAM TCP login succeeded"
+
+          # (d) a wrong password is rejected
+          if docker exec -e PGPASSWORD="$wrong_pw" pg_l1 \
+               psql -h "$eth0" -U trustedoss_app -d trustedoss -tAc "SELECT 1" 2>/tmp/pwerr; then
+            echo "::error::wrong password was accepted"
+            cat /tmp/pwerr || true
+            exit 1
+          fi
+          cat /tmp/pwerr
+          if ! grep -q "password authentication failed" /tmp/pwerr; then
+            echo "::error::expected 'password authentication failed', got the above"
+            exit 1
+          fi
+          echo "(d) OK — wrong password rejected with FATAL"
+
+          # (e) no unexpected roles created (only built-ins + the two we want)
+          roles=$(docker exec pg_l1 psql -U trustedoss -d trustedoss -tAc \
+            "SELECT string_agg(rolname, ',' ORDER BY rolname) FROM pg_roles WHERE rolname NOT LIKE 'pg\_%'")
+          echo "(e) non-builtin roles=[$roles]"
+          if [ "$roles" != "trustedoss,trustedoss_app" ]; then
+            echo "::error::unexpected role census (want trustedoss,trustedoss_app)"
+            exit 1
+          fi
+          echo "(e) OK — role census clean"
+          echo "::endgroup::"
+
+          echo "::group::Scenario 3 — idempotency (replay the SQL on a live DB)"
+          # Re-apply the same script against the already-provisioned DB. The
+          # WHERE NOT EXISTS guard must make this a no-op: exit 0, role count
+          # stays 1. Runs the real script bytes piped into the container.
+          docker exec -i \
+            -e POSTGRES_USER=trustedoss \
+            -e POSTGRES_DB=trustedoss \
+            -e POSTGRES_APP_USER=trustedoss_app \
+            -e POSTGRES_APP_PASSWORD="$app_pw" \
+            pg_l1 bash -s < "$init_script"
+          cnt=$(docker exec pg_l1 psql -U trustedoss -d trustedoss -tAc \
+            "SELECT count(*) FROM pg_roles WHERE rolname='trustedoss_app'")
+          echo "role count after replay=[$cnt]"
+          if [ "$cnt" != "1" ]; then
+            echo "::error::idempotency violated — role count is $cnt, want 1"
+            exit 1
+          fi
+          echo "OK — replay is a clean no-op, count stays 1"
+          echo "::endgroup::"
+
+          echo "::group::Scenario 2 — legacy single-role mode (POSTGRES_APP_PASSWORD unset)"
+          docker run -d --name pg_legacy \
+            -e POSTGRES_USER=trustedoss \
+            -e POSTGRES_PASSWORD=trustedoss \
+            -e POSTGRES_DB=trustedoss \
+            -v "$init_script":/docker-entrypoint-initdb.d/10-trustedoss-app-role.sh:ro \
+            "$image" >/dev/null
+          wait_serving pg_legacy
+
+          # Wait for the skip line to flush (same buffering race as scenario 1).
+          wait_log pg_legacy "skipping L1 role provisioning"
+          if docker logs pg_legacy 2>&1 | grep -i "syntax error"; then
+            echo "::error::legacy init log contains 'syntax error'"
+            exit 1
+          fi
+          cnt=$(docker exec pg_legacy psql -U trustedoss -d trustedoss -tAc \
+            "SELECT count(*) FROM pg_roles WHERE rolname='trustedoss_app'")
+          echo "legacy trustedoss_app count=[$cnt]"
+          if [ "$cnt" != "0" ]; then
+            echo "::error::legacy mode must NOT create trustedoss_app (got $cnt)"
+            exit 1
+          fi
+          echo "OK — skip log present, no app role created, init clean"
+          echo "::endgroup::"
+
+          echo "All three L1 contract scenarios passed."
+
+      - name: Clean up containers
+        if: always()
+        run: docker rm -f pg_l1 pg_legacy 2>/dev/null || true
+
+  # -------------------------------------------------------------------------
   # 2) Typecheck — mypy (backend) + tsc (frontend)
   # -------------------------------------------------------------------------
   typecheck:

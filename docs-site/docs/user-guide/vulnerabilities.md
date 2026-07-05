@@ -83,18 +83,19 @@ Columns:
 - **Severity** — color-coded badge.
 - **CVSS** — numeric CVSS v3 score from the upstream feed.
 - **EPSS** — the EPSS probability rendered as a percentage (for example `97.3%`). CVEs without an EPSS value show `—`. See [EPSS — exploitation probability](#epss--exploitation-probability).
+- **KEV** — a badge shown when the CVE is listed in the CISA KEV (Known Exploited Vulnerabilities) catalog, together with the catalog's remediation due date. See [KEV — known exploited vulnerabilities](#kev).
 - **Title** — short summary from the advisory.
 - **Affected** — the affected component (`name@version`).
 - **Status** — current VEX status.
 - **Discovered** — first time this finding appeared on a scan.
 
-Filters on the inline bar: severity, status, an **EPSS threshold** filter (`min_epss`), plus a **search** box (free text against CVE ID / title / component) and sort + order controls. The sort control includes **EPSS** (`sort=epss`); rows without an EPSS value sort last.
+Filters on the inline bar: severity, status, an **EPSS threshold** filter (`min_epss`), plus a **search** box (free text against CVE ID / title / component) and sort + order controls. The default sort is **Priority** — KEV-listed findings first, then severity, then EPSS; see [Priority sort](#priority-sort). The sort control also includes **EPSS** (`sort=epss`); rows without an EPSS value sort last.
 
 ## The drawer — finding detail
 
 Click any row to open:
 
-- **Summary** — title, description, CWE, CVSS vector, and the **EPSS score and percentile** when the Trivy DB supplies them (otherwise `—`). See [EPSS — exploitation probability](#epss--exploitation-probability).
+- **Summary** — title, description, CWE, CVSS vector, and the **EPSS score and percentile** when the Trivy DB supplies them (otherwise `—`). See [EPSS — exploitation probability](#epss--exploitation-probability). A finding whose CVE is in the CISA KEV catalog also shows the **KEV badge** and the remediation due date here — see [KEV — known exploited vulnerabilities](#kev).
 - **References** — vendor advisories, fix commits, exploit databases.
 - **Affected** — the upstream-reported affected range with the project's component version highlighted, plus the **fixed version** — the version that remediates this CVE *for this component* — when the scan pipeline could determine one. See [Fixed version — the version that remediates the CVE](#fixed-version--the-version-that-remediates-the-cve). The affected component also carries its **dependency depth**: whether it is a **direct** dependency you declared (depth `1`) or a **transitive** one pulled in by another package (depth `2+`). A CVE in a direct dependency is usually yours to fix by bumping the declared version; a CVE in a transitive dependency is fixed by upgrading the direct parent that requires it — see [Direct vs. transitive (dependency depth)](./components-and-licenses.md#dependency-depth).
 - **Analysis** — VEX status action buttons. **The buttons you see depend on the finding's _current_ state.** Every terminal decision is routed through the `analyzing` state, so a brand-new finding cannot jump straight to a verdict:
@@ -199,6 +200,54 @@ A finding in the response looks like this (other fields omitted):
 
 :::tip Gate the build on EPSS
 EPSS can also drive the CI build gate, so a high-probability CVE fails the build even when it is not Critical. See [Gate the build on EPSS](../ci-integration/github-actions.md#gate-the-build-on-epss-optional).
+:::
+
+## KEV — known exploited vulnerabilities {#kev}
+
+The portal flags every finding whose CVE is listed in the [CISA KEV (Known Exploited Vulnerabilities) catalog](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) — the list of roughly 1,600 CVEs the U.S. Cybersecurity and Infrastructure Security Agency (CISA) has confirmed are exploited in the wild.
+
+### KEV vs. EPSS vs. CVSS
+
+- **CVSS** measures theoretical **severity**.
+- **EPSS** predicts the **probability** of exploitation.
+- **KEV** records a **confirmed fact** — someone is already exploiting this CVE. A KEV listing outranks any prediction; treat KEV-listed findings as the front of the remediation queue.
+
+### How the portal displays KEV
+
+- **Badge** — a **KEV** badge appears next to the CVE in the findings table and in the drawer's **Summary** section. As with severity, the signal is the label, not color alone.
+- **Due date** — the drawer also shows the entry's remediation due date (`kev_due_date`), the deadline CISA assigns to each catalog entry. The deadline binds U.S. federal agencies, not your deployment — read it as an urgency signal. The badge grades that deadline into a three-state day count — see [Due-date status](#kev-due-date-status).
+- A finding without the badge is merely **not in the catalog** — absence is not a verdict of safety.
+
+### Due-date status {#kev-due-date-status}
+
+The KEV badge grades the CISA remediation due date so you can read the time pressure without doing calendar math. The findings table and the drawer show the same three states:
+
+| State | When | Display |
+|---|---|---|
+| **Overdue** | The due date has passed | Red, `D+n` — days past the deadline |
+| **Imminent** | Due within the next 7 days | Amber, `D-n` — days remaining |
+| **On track** | Due more than 7 days out | Neutral, `D-n` |
+
+As everywhere in the portal, color is never the only signal — the state is carried by the `D-n` / `D+n` day-count label itself, not by the tint alone. And as with the raw due date, the deadline binds U.S. federal agencies, not your deployment: read **Overdue** as the strongest urgency signal CISA publishes, not as a compliance breach on your side.
+
+### Priority sort {#priority-sort}
+
+**Priority** is the findings table's **default sort**. It orders rows by:
+
+1. **KEV** — catalog-listed findings first,
+2. **severity** — Critical → Info,
+3. **EPSS** — highest exploitation probability first (missing values last).
+
+The top of the table is therefore always the confirmed-exploited, most severe, most-likely-attacked slice of the backlog. Pick any other option in the sort control to override it — the single-key sorts (severity, EPSS, discovered) are unchanged.
+
+### Where the data comes from
+
+A daily Celery beat task (`trustedoss.kev_catalog_refresh`) downloads the CISA KEV feed and syncs it into the portal's vulnerability catalog. Delisting is synced too: a CVE CISA removes from the catalog loses its badge on the same run. No re-scan is needed — the listing is stored on the CVE itself, so existing findings reflect it immediately.
+
+Three env keys tune the refresh — `KEV_FEED_URL`, `KEV_REFRESH_ENABLED`, and `KEV_REFRESH_TIMEOUT_SECONDS`. See [Environment variables — KEV catalog](../reference/env-variables.md#kev-catalog). Operators can audit the sync (last run, listed / delisted counts, skip reasons) on the admin health page — see [KEV feed panel](../admin-guide/vulnerability-data.md#kev-feed-panel).
+
+:::note Air-gapped deployments
+A deployment that cannot reach the CISA feed should set `KEV_REFRESH_ENABLED=false`. With the refresh disabled, no KEV data is loaded — **no KEV badges or due dates appear**, and the Priority sort effectively degrades to severity → EPSS.
 :::
 
 ## Fixed version — the version that remediates the CVE
@@ -315,22 +364,26 @@ The finding detail (`GET /v1/vulnerability_findings/{finding_id}`) carries an `u
 
 `reason` is `ok` (a version was computed), `no_fix_version`, `unparseable_version`, or `no_open_findings`; `recommended_version` is `null` for every value except `ok`.
 
-## Download a PDF report
+## Download a report (PDF or Excel)
 
-The portal renders a project-level **vulnerability PDF report** from the latest successful scan: a risk summary, the severity and license distribution, the vulnerabilities grouped by severity (with CVE id and CVSS), and the component list. It is generated on demand — there is no batch job to schedule.
+The portal renders a project-level **vulnerability report** from the latest successful scan: a risk summary, the severity and license distribution, the vulnerabilities (with CVE id, CVSS, EPSS, KEV state, and affected component), and the component list. It is generated on demand — there is no batch job to schedule. Two formats are offered: a **PDF** for reading / sharing, and an **Excel (`.xlsx`)** workbook (three sheets — Overview, Components, Vulnerabilities) for filtering and pivoting the data yourself.
 
 ### Download from the UI
 
 1. Open the project.
-2. Click the **Vulnerabilities** tab.
-3. Click **Download PDF report** in the toolbar (top right). The button shows **Generating…** while the document renders, then the download starts.
+2. Click the **Reports** tab.
+3. On the **Vulnerability report** card, click **Download PDF report** or **Download Excel**. The button shows **Generating…** while the document is built, then the download starts.
 
-The file name is `vulnerability-report-<project>.pdf`. Any inline error from the last attempt appears beside the button.
+The file name is `vulnerability-report-<project>.pdf` or `vulnerability-report-<project>.xlsx`. Any inline error from the last attempt appears beside the buttons, and each download is recorded in the Reports tab's export-history table.
+
+:::note Excel formula-injection safety
+Cell values sourced from scanned third-party metadata (component names, purls, CVE summaries) are neutralised before export: a value that begins with `=`, `+`, `-`, or `@` is written as literal text, so opening the workbook can never execute a package name as a spreadsheet formula.
+:::
 
 ### Download from the API
 
 <!-- docs-uat: id=vulns-report-pdf-api kind=api auth=admin url=/v1/projects/${PROJECT_ID}/vulnerability-report.pdf expect=status:200 retry=5x2s tier=nightly -->
-Fetch the same report over the API (returns the PDF bytes):
+Fetch the report over the API. The PDF endpoint returns the PDF bytes:
 
 <!-- docs-uat: id=vulns-api-report-pdf kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
@@ -339,7 +392,17 @@ curl -sS -L -OJ \
   "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/vulnerability-report.pdf"
 ```
 
-The response is `application/pdf` with `Content-Disposition: attachment` (the `-OJ` flags tell curl to save it under the server-supplied file name). The report always reflects the **latest succeeded** scan — pinning to a specific historical scan id is not supported in this release.
+<!-- docs-uat: id=vulns-report-xlsx-api kind=api auth=admin url=/v1/projects/${PROJECT_ID}/vulnerability-report.xlsx expect=status:200 retry=5x2s tier=nightly -->
+The Excel endpoint returns the `.xlsx` workbook bytes:
+
+<!-- docs-uat: id=vulns-api-report-xlsx kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
+```bash
+curl -sS -L -OJ \
+  -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+  "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/vulnerability-report.xlsx"
+```
+
+The PDF response is `application/pdf`; the Excel response is `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`. Both carry `Content-Disposition: attachment` (the `-OJ` flags tell curl to save under the server-supplied file name) and always reflect the **latest succeeded** scan — pinning to a specific historical scan id is not supported in this release.
 
 | Status | Meaning |
 |---|---|

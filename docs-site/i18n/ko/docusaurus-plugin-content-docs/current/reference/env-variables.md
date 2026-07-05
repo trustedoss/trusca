@@ -85,6 +85,16 @@ sidebar_position: 2
 | `TRIVY_CACHE_DIR` | `/var/lib/trivy` | `integrations/trivy.py` | DB가 풀리는 디렉터리. 공유 `trivy-cache` 볼륨이 뒷받침 — 워커(rw)와 backend(ro)가 함께 마운트해 관리자 health/disk 패널이 DB 상태를 읽을 수 있다. |
 | `TRIVY_TIMEOUT_SECONDS` | `300` | `config.py` | `trivy sbom` 스캔별 타임아웃. 매우 큰 모노레포는 `600`~`900`으로 상향. |
 
+### KEV 카탈로그 {#kev-catalog}
+
+포털은 Trivy DB 번들과 별개로 [CISA KEV(Known Exploited Vulnerabilities, 알려진 악용 취약점) 카탈로그](https://www.cisa.gov/known-exploited-vulnerabilities-catalog)를 하루 한 번 취약점 카탈로그에 동기화합니다(Celery beat 태스크 `trustedoss.kev_catalog_refresh`, 약 1,600건, 등재 해제 포함). KEV 등재 결과는 배지와 대응 기한을 표시하고 기본 **Priority** 정렬을 구동합니다 — [취약점 — KEV](../user-guide/vulnerabilities.md#kev) 참고.
+
+| 키 | 기본값 | 읽는 위치 | 설명 |
+|---|---|---|---|
+| `KEV_FEED_URL` | `https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json` | `config.py` | 일일 refresh가 KEV 피드를 내려받는 URL. 사내 미러를 쓰려면 CISA JSON의 미러 주소로 오버라이드하십시오. |
+| `KEV_REFRESH_ENABLED` | `true` | `config.py` | 일일 refresh 토글. 피드에 접근할 수 없는 air-gapped 배포는 `false`로 설정하십시오 — refresh를 끄면 KEV 데이터가 로드되지 않으므로 **KEV 배지와 대응 기한이 표시되지 않고**, Priority 정렬은 사실상 심각도 → EPSS로 동작합니다. |
+| `KEV_REFRESH_TIMEOUT_SECONDS` | `30` | `config.py` | CISA 피드 다운로드의 아웃바운드 HTTP 타임아웃. |
+
 ## 빌드 / 정책 게이트
 
 CI 빌드 게이트는 기본적으로 Critical CVE와 금지 라이선스에서 빌드를 실패시키며, 이 조건들은 env로 구동되지 않습니다. 아래 단일 env 노브는 **선택적** EPSS 차원을 더합니다.
@@ -104,6 +114,10 @@ CI 빌드 게이트는 기본적으로 Critical CVE와 금지 라이선스에서
 | `SCANCODE_MAX_FILES` | `20000` | `config.py` | 적격 first-party 파일(제외 필터 적용 후) 상한. 초과 시 scancode 를 건너뛰고 declared 라이선스만 유지합니다. |
 | `SCANCODE_MAX_DETECTIONS` | `5000` | `config.py` | 스캔당 저장되는 detected 라이선스 결과 수 상한. |
 | `SCANCODE_MAX_RESULT_BYTES` | `268435456` (256 MB) | `config.py` | 파싱 전 scancode JSON 아티팩트 상한 — 악의적 트리의 OOM 가드. |
+| `SCANOSS_ENABLED` | `false` | `config.py` | SCANOSS vendored-OSS 단계 마스터 opt-in. **기본 비활성.** `true`면 소스 트리를 핑거프린트해 그 핑거프린트(소스 자체는 아님)를 `SCANOSS_API_URL`로 보내 복사된 OSS를 식별 — 그 외부 egress에 동의할 때만 켜세요. `false`면 단계 전체 스킵(스캐너·egress 없음). [컴포넌트·라이선스 → Vendored-OSS 식별](../user-guide/components-and-licenses.md#vendored-oss) 참고. |
+| `SCANOSS_API_URL` | `https://api.osskb.org` | `config.py` | 핑거프린트를 매칭할 SCANOSS 지식 베이스 엔드포인트(`SCANOSS_ENABLED=true`일 때만 사용). 자체 호스팅 SCANOSS 인스턴스로 향하게 하면 핑거프린트가 사내에 머뭅니다. |
+| `SCANOSS_API_KEY` | *(빈 값)* | `config.py` | `SCANOSS_API_URL`용 선택 API 키(유료/자체 호스팅 엔드포인트). 비우면 무료 `api.osskb.org` 등급 사용. |
+| `SCANOSS_TIMEOUT_SECONDS` | `300` | `config.py` | SCANOSS 단계의 하드 wall-clock 제한. 타임아웃 시 vendored-OSS 결과 없이 스캔 계속(best-effort). |
 | `WORKSPACE_HOST_PATH` | `/tmp/trustedoss` | `config.py`, `docker-compose.yml` | worker에 `/workspace`로 마운트되는 호스트 디렉터리. 레포 클론 + 스캔 아티팩트(cdxgen SBOM, scancode 출력) 보관. compose 스택은 컨테이너 내에서 `/workspace`로 오버라이드합니다. |
 | `ORT_RULES_PATH` | `/opt/trustedoss/ort/rules.kts` | `docker-compose.yml` | worker 내부 레거시 경로로, ORT 단계 제거 후 잔재입니다. 파일은 placeholder 이며 v0.10.0 에서는 효과가 없습니다 — 라이선스 단계 분류는 `apps/backend/tasks/scan_source.py` 의 `_LICENSE_CATEGORY_DEFAULTS` 에서 옵니다. |
 | `JSONB_ROW_SIZE_LIMIT_BYTES` | `262144` (256 KB) | `config.py` | writer가 truncate + warn하기 전 행당 JSON 바이트 상한. I-1 무한 페이로드 클래스 가드. |

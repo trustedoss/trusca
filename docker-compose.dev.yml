@@ -86,6 +86,13 @@ x-backend-env: &backend-env
   SCANCODE_MAX_FILES: ${SCANCODE_MAX_FILES:-20000}
   SCANCODE_MAX_DETECTIONS: ${SCANCODE_MAX_DETECTIONS:-5000}
   SCANCODE_MAX_RESULT_BYTES: ${SCANCODE_MAX_RESULT_BYTES:-268435456}
+  # scanoss vendored-OSS identification (BomLens parity Phase J, P3-11). Always
+  # shipped in the worker image (MIT); gated at runtime by SCANOSS_ENABLED
+  # (default off). Exposed here so dev can reproduce a prod opt-in locally.
+  SCANOSS_ENABLED: ${SCANOSS_ENABLED:-false}
+  SCANOSS_API_URL: ${SCANOSS_API_URL:-https://api.osskb.org}
+  SCANOSS_API_KEY: ${SCANOSS_API_KEY:-}
+  SCANOSS_TIMEOUT_SECONDS: ${SCANOSS_TIMEOUT_SECONDS:-300}
   # Fernet key for secrets-at-rest (GitHub App creds AND — v2.3-s1 — the cosign
   # key password). Unset in dev derives from SECRET_KEY (WARNING). See core/crypto.py.
   GITHUB_APP_ENCRYPTION_KEY: ${GITHUB_APP_ENCRYPTION_KEY:-}
@@ -190,8 +197,11 @@ services:
       # worker / beat `service_healthy` gates below mean "schema migrated", not
       # just "uvicorn answers". With AUTO_MIGRATE=true (the dev default) backend
       # runs `alembic upgrade head` on start and /health/ready flips to 200 once
-      # it finishes. The pure-liveness /health route still exists for
-      # liveness-only consumers. (See docs-site deployment notes.)
+      # it finishes. This works because the dev image (apps/backend/Dockerfile)
+      # routes CMD through docker-entrypoint.sh via ENTRYPOINT — the entrypoint
+      # applies the migration before exec'ing uvicorn (same path as the prod
+      # image). The pure-liveness /health route still exists for liveness-only
+      # consumers. (See docs-site deployment notes.)
       test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health/ready || exit 1"]
       interval: 10s
       timeout: 5s

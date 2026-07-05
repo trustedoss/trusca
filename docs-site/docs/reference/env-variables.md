@@ -86,6 +86,16 @@ The portal correlates SBOMs against CVEs using a local **Trivy DB** — a compil
 | `TRIVY_CACHE_DIR` | `/var/lib/trivy` | `integrations/trivy.py` | Directory the DB is unpacked into. Backed by the shared `trivy-cache` volume — worker (rw) and backend (ro) mount it so the admin health / disk panels can read the DB state. |
 | `TRIVY_TIMEOUT_SECONDS` | `300` | `config.py` | Per-scan timeout for `trivy sbom`. Raise to `600`–`900` for very large monorepos. |
 
+### KEV catalog {#kev-catalog}
+
+Independently of the Trivy DB bundle, the portal syncs the [CISA KEV (Known Exploited Vulnerabilities) catalog](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) into its vulnerability catalog once a day (Celery beat task `trustedoss.kev_catalog_refresh`, ~1,600 entries, delistings included). KEV-listed findings carry a badge and a remediation due date and drive the default **Priority** sort — see [Vulnerabilities — KEV](../user-guide/vulnerabilities.md#kev).
+
+| Key | Default | Read by | Description |
+|---|---|---|---|
+| `KEV_FEED_URL` | `https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json` | `config.py` | URL the daily refresh downloads the KEV feed from. Override to point at an internal mirror of the CISA JSON. |
+| `KEV_REFRESH_ENABLED` | `true` | `config.py` | Toggles the daily refresh. Set `false` on air-gapped deployments that cannot reach the feed — with the refresh off, no KEV data is loaded, so **KEV badges and due dates are not shown** and the Priority sort effectively degrades to severity → EPSS. |
+| `KEV_REFRESH_TIMEOUT_SECONDS` | `30` | `config.py` | Outbound HTTP timeout for the CISA feed download. |
+
 ## Build / policy gate
 
 The CI build gate fails a build on Critical CVEs and forbidden licenses out of the box; those conditions are not env-driven. The single env knob below adds an **optional** EPSS dimension.
@@ -105,6 +115,10 @@ See [build gate](./glossary.md#build-gates) for the gate model and [Gate the bui
 | `SCANCODE_MAX_FILES` | `20000` | `config.py` | Ceiling on eligible first-party files (after the exclude filter). Over this, scancode is skipped and the scan keeps declared licenses only. |
 | `SCANCODE_MAX_DETECTIONS` | `5000` | `config.py` | Cap on the number of detected-license findings persisted per scan. |
 | `SCANCODE_MAX_RESULT_BYTES` | `268435456` (256 MB) | `config.py` | Ceiling on the scancode JSON artefact before parsing — guards against an OOM from a hostile tree. |
+| `SCANOSS_ENABLED` | `false` | `config.py` | Master opt-in for the SCANOSS vendored-OSS stage. **Off by default.** When `true`, the stage fingerprints the source tree and sends those fingerprints (never source) to `SCANOSS_API_URL` to identify copied-in OSS — enable only with operator consent to that external egress. When `false` the stage is skipped entirely (no scanner, no egress). See [Components & licenses → Vendored-OSS identification](../user-guide/components-and-licenses.md#vendored-oss). |
+| `SCANOSS_API_URL` | `https://api.osskb.org` | `config.py` | SCANOSS knowledge-base endpoint the fingerprints are matched against (used only when `SCANOSS_ENABLED=true`). Point this at a self-hosted SCANOSS instance to keep fingerprints inside your network. |
+| `SCANOSS_API_KEY` | *(empty)* | `config.py` | Optional API key for `SCANOSS_API_URL` (a paid / self-hosted endpoint). Empty uses the free `api.osskb.org` tier. |
+| `SCANOSS_TIMEOUT_SECONDS` | `300` | `config.py` | Hard wall-clock limit for the SCANOSS stage. On timeout the scan continues without vendored-OSS results (best-effort). |
 | `WORKSPACE_HOST_PATH` | `/tmp/trustedoss` | `config.py`, `docker-compose.yml` | Host directory mounted into the worker as `/workspace`. Holds repo clones + scan artefacts (cdxgen SBOM, scancode output). The compose stack overrides this to `/workspace` inside the container. |
 | `ORT_RULES_PATH` | `/opt/trustedoss/ort/rules.kts` | `docker-compose.yml` | Legacy path inside the worker, vestigial after the ORT stage was removed. The file is a placeholder and has no effect in this release — license-tier classification comes from `_LICENSE_CATEGORY_DEFAULTS` in `apps/backend/tasks/scan_source.py`. |
 | `JSONB_ROW_SIZE_LIMIT_BYTES` | `262144` (256 KB) | `config.py` | Per-row JSON byte ceiling before the writer truncates and emits a warning. Guards the I-1 unbounded-payload class. |
