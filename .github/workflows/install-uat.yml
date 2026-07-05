@@ -234,7 +234,7 @@ jobs:
           set -euo pipefail
           # IMAGE_REGISTRY defaults to ghcr.io/trustedoss inside the compose file.
           echo "Resolving production compose for IMAGE_TAG=${IMAGE_TAG}"
-          docker-compose -f docker-compose.yml config | grep -E "image: ghcr.io/trustedoss/(backend|backend-worker|frontend):"
+          docker-compose -f docker-compose.yml config | grep -E "image: ghcr.io/trustedoss/trusca-(backend|backend-worker|frontend):"
           # Pull only the three first-party published images (postgres/redis/
           # traefik are upstream and always available). --include-deps off via
           # explicit service list.
