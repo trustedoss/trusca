@@ -55,6 +55,18 @@ COPY requirements.txt requirements-dev.txt /app/
 RUN pip install --upgrade pip \
     && pip install -r requirements-dev.txt
 
+# Entrypoint applies Alembic migrations on container start (AUTO_MIGRATE=true,
+# the dev default) before exec'ing CMD. Copy it EXPLICITLY with an executable
+# mode BEFORE the broad `COPY . /app`, so the image layer carries the +x bit
+# regardless of the host checkout's umask (BuildKit `--chmod`, same posture as
+# Dockerfile.prod:75). The dev stack bind-mounts ./apps/backend over /app at
+# runtime, so the file actually executed is the host copy (git-tracked mode
+# 100755) — this explicit COPY additionally guarantees a self-consistent image
+# for a plain `docker run` without the bind mount. Build context is
+# ./apps/backend (docker-compose.dev.yml x-backend-build), so the source path is
+# docker-entrypoint.sh, not apps/backend/docker-entrypoint.sh.
+COPY --chmod=0755 docker-entrypoint.sh /app/docker-entrypoint.sh
+
 COPY . /app
 
 EXPOSE 8000
@@ -63,4 +75,17 @@ EXPOSE 8000
 # uvicorn --reload watches the bind-mounted source tree, which requires
 # matching uid/gid with the host. Production uses Dockerfile.prod which
 # pins `USER trustedoss` (see Dockerfile.prod:61).
+#
+# v2.1 dev parity — route CMD through docker-entrypoint.sh so the dev backend
+# runs `alembic upgrade head` on start (AUTO_MIGRATE, default true), exactly like
+# the production image (Dockerfile.prod:98). Without this ENTRYPOINT the
+# container exec'd uvicorn directly: alembic_version was never created,
+# /health/ready stayed 503, and the backend never went healthy — so worker /
+# beat (depends_on backend: service_healthy) never started and install.sh's
+# `up -d` failed with "backend unhealthy". No tini here (not installed in the
+# slim dev image; dev runs uvicorn --reload as root for bind-mount uid parity):
+# the script `exec`s CMD so uvicorn replaces the shell and owns its own SIGTERM
+# graceful shutdown — no signal-handling regression vs. running uvicorn as PID 1
+# directly. CMD is unchanged; the entrypoint runs it via `exec "$@"`.
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
