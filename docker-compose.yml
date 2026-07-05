@@ -59,6 +59,17 @@ x-backend-env: &backend-env
   # the owner DSN, so a runtime RCE cannot DROP TRIGGER on audit_logs.
   DATABASE_URL_APP: ${DATABASE_URL_APP:-${DATABASE_URL}}
   DATABASE_URL: ${DATABASE_URL_APP:-${DATABASE_URL}}
+  # H1 — plumb the migration toggle INTO the container. The backend entrypoint
+  # reads AUTO_MIGRATE from its own environment (docker-entrypoint.sh); a value
+  # in .env is only visible to compose interpolation, never to the container,
+  # unless it is referenced here. Without this line install.sh's
+  # `AUTO_MIGRATE=false` for L1 role-separated stacks (the runtime app role has
+  # no DDL grant, so migrations run once as the owner via install.sh) was
+  # silently dropped — the runtime defaulted back to true and attempted DDL as
+  # trustedoss_app. Default `true` matches .env.example and the single-role path,
+  # so nothing changes for existing deployments. backend / worker / beat share
+  # this anchor and the same entrypoint, so all three honour the toggle.
+  AUTO_MIGRATE: ${AUTO_MIGRATE:-true}
   REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
   SECRET_KEY: ${SECRET_KEY}
   ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}

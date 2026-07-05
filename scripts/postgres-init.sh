@@ -56,26 +56,29 @@ psql --username "${POSTGRES_USER}" --dbname "${POSTGRES_DB}" \
      --set ON_ERROR_STOP=1 \
      --variable=app_user="${app_user}" \
      --variable=app_password="${POSTGRES_APP_PASSWORD}" <<-'SQL'
-	-- :'app_user' / :'app_password' are SQL-quoted by psql before the
-	-- query reaches Postgres. ``format(%I, %L, ...)`` then re-quotes for
-	-- the EXECUTE on the identifier / literal — double-quote defence.
-	DO $$
-	DECLARE
-	  v_user TEXT := :'app_user';
-	  v_pass TEXT := :'app_password';
-	BEGIN
-	  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = v_user) THEN
-	    EXECUTE format(
-	      'CREATE ROLE %I WITH LOGIN INHERIT PASSWORD %L',
-	      v_user,
-	      v_pass
-	    );
-	    RAISE NOTICE 'created role %', v_user;
-	  ELSE
-	    RAISE NOTICE 'role % already exists — skipping CREATE', v_user;
-	  END IF;
-	END
-	$$;
+	-- Interpolation happens in a plain SELECT, NOT inside a DO $$ … $$
+	-- block: psql does not substitute :'name' variables inside a
+	-- dollar-quoted string, so the reference must sit in ordinary SQL.
+	--
+	-- Defence in depth (unchanged intent from M4):
+	--   1. psql expands :'app_user' / :'app_password' and SQL-quotes each
+	--      value (single quotes doubled) before the line reaches Postgres.
+	--   2. format(%I, %L, …) re-quotes the already-quoted text as a proper
+	--      identifier / literal for the generated CREATE ROLE statement.
+	--   3. \gexec runs the generated statement verbatim — it does NOT
+	--      re-run psql variable substitution, so a ':' in the password is
+	--      inert (no re-interpolation, no injection surface).
+	-- Idempotent: WHERE NOT EXISTS yields zero rows when the role already
+	-- exists, so \gexec executes nothing on replay.
+	SELECT format(
+	         'CREATE ROLE %I WITH LOGIN INHERIT PASSWORD %L',
+	         :'app_user',
+	         :'app_password'
+	       )
+	WHERE NOT EXISTS (
+	  SELECT 1 FROM pg_roles WHERE rolname = :'app_user'
+	)
+	\gexec
 SQL
 
 echo "[trustedoss-app-role] provisioned ${app_user} (alembic 0014 will apply GRANTs)"
