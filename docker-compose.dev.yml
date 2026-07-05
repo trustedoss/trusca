@@ -197,8 +197,11 @@ services:
       # worker / beat `service_healthy` gates below mean "schema migrated", not
       # just "uvicorn answers". With AUTO_MIGRATE=true (the dev default) backend
       # runs `alembic upgrade head` on start and /health/ready flips to 200 once
-      # it finishes. The pure-liveness /health route still exists for
-      # liveness-only consumers. (See docs-site deployment notes.)
+      # it finishes. This works because the dev image (apps/backend/Dockerfile)
+      # routes CMD through docker-entrypoint.sh via ENTRYPOINT — the entrypoint
+      # applies the migration before exec'ing uvicorn (same path as the prod
+      # image). The pure-liveness /health route still exists for liveness-only
+      # consumers. (See docs-site deployment notes.)
       test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health/ready || exit 1"]
       interval: 10s
       timeout: 5s

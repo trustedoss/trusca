@@ -79,11 +79,18 @@ jobs:
         run: |
           cp docker-compose.yml docker-compose.yml.bak
           cp docker-compose.dev.yml docker-compose.yml
+          # Pre-create ./backups as the runner user BEFORE the stack starts.
+          # docker-compose.dev.yml bind-mounts ./backups into the backend; if it
+          # does not exist, the docker daemon creates it root-owned, and the
+          # host-side backup.sh (run as the non-root runner) then can't mkdir the
+          # timestamped subdir -> "Permission denied". Creating it here keeps the
+          # dir runner-owned so the manual host backup path works.
+          mkdir -p backups
 
       - name: Run install.sh in non-interactive mode
         env:
           INSTALL_HOST: http://localhost:8000
-          INSTALL_ADMIN_EMAIL: admin@uat.local
+          INSTALL_ADMIN_EMAIL: admin@uat.example.com
           INSTALL_ADMIN_PASSWORD: UatAdminPassword123!
           INSTALL_SECRET_KEY: ci-uat-secret-key-32-characters-min-padding
         run: bash scripts/install.sh --no-prompt
@@ -111,12 +118,17 @@ jobs:
       - name: Smoke — login + projects API
         run: |
           set -euo pipefail
-          # The auth router lives under /v1/auth (see apps/backend/api/v1/auth.py).
+          # The auth router mounts at /auth (apps/backend/api/v1/auth.py sets
+          # prefix="/auth"; main.py includes it with no extra prefix), so login is
+          # /auth/login — NOT /v1/auth/login. Only the domain routers (e.g.
+          # /v1/projects below) carry the /v1 prefix. The admin email must avoid a
+          # reserved TLD: Pydantic EmailStr 422s on `.local`, so both the install.sh
+          # bootstrap (INSTALL_ADMIN_EMAIL above) and this login use `.example.com`.
           # Fetch and parse as separate statements — piping curl straight into an
           # interpreter trips semgrep gha-curl-pipe-shell (registry ERROR rule).
-          LOGIN_RESPONSE=$(curl -fsS -X POST http://localhost:8000/v1/auth/login \
+          LOGIN_RESPONSE=$(curl -fsS -X POST http://localhost:8000/auth/login \
             -H "Content-Type: application/json" \
-            -d '{"email":"admin@uat.local","password":"UatAdminPassword123!"}')
+            -d '{"email":"admin@uat.example.com","password":"UatAdminPassword123!"}')
           TOKEN=$(printf '%s' "$LOGIN_RESPONSE" \
             | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')
           test -n "$TOKEN"
