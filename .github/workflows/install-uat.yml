@@ -418,7 +418,20 @@ jobs:
       - name: Assert liveness /health (app-role runtime booted)
         run: |
           set -euo pipefail
-          docker-compose -f docker-compose.yml exec -T backend curl -fsS http://127.0.0.1:8000/health
+          # Retry: after Stage 1 `up -d` the backend needs a moment to bind uvicorn
+          # to :8000. AUTO_MIGRATE=false skips migration so it is quick, but a
+          # single immediate exec-curl races the bind on a cold CI runner (passes
+          # on a warm local Docker, fails in CI) — poll instead.
+          for i in $(seq 1 20); do
+            if docker-compose -f docker-compose.yml exec -T backend \
+                 curl -fsS http://127.0.0.1:8000/health >/dev/null 2>&1; then
+              echo "backend live after ~$((i*3))s"; exit 0
+            fi
+            sleep 3
+          done
+          echo "::error::liveness /health never responded (uvicorn did not bind :8000)"
+          docker-compose -f docker-compose.yml logs --tail=120 backend
+          exit 1
 
       # STAGE 2 — apply the schema ONCE as the OWNER role (DDL). The runtime app
       # role lacks CREATE, so this is the authoritative migration pass install.sh
