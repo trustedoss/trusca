@@ -134,62 +134,174 @@ else
   # shellcheck source=scripts/lib/env_sync.sh
   source "$ROOT_DIR/scripts/lib/env_sync.sh"
   env_append_only_sync .env.example .env
+fi
 
-  # SECRET_KEY: --no-prompt may pin via INSTALL_SECRET_KEY (CI reproducibility).
-  # Otherwise we always auto-generate strong entropy.
-  if [[ $NO_PROMPT -eq 1 && -n "${INSTALL_SECRET_KEY:-}" ]]; then
-    secret_key="$INSTALL_SECRET_KEY"
-    note "using INSTALL_SECRET_KEY (length=${#secret_key})"
-  else
-    secret_key=$(openssl rand -hex 32)
-  fi
-  db_password=$(openssl rand -base64 24 | tr -d '=+/')
-  # Marathon bundle 8 (L1) — split runtime / migration roles. The owner
-  # role keeps the legacy "trustedoss" name (so existing data + grants
-  # stay valid); the runtime role gets its own password and is
-  # provisioned by Postgres at first up via the docker-compose env (see
-  # POSTGRES_APP_USER / POSTGRES_APP_PASSWORD in docker-compose.yml).
-  app_password=$(openssl rand -base64 24 | tr -d '=+/')
+# ---------------------------------------------------------------------------
+# 2b. Secrets — idempotent (append-only), owner/app DSN consistency (L1)
+# ---------------------------------------------------------------------------
+# Runs for BOTH the fresh (.env just copied) and reuse paths. A GENUINE secret
+# is PRESERVED across re-runs — rotating it would (a) break auth against an
+# already-initialised Postgres volume (the superuser password is fixed at the
+# volume's first boot and never changes) and (b) violate env_sync's append-only
+# contract. We only ever FILL IN a MISSING or PLACEHOLDER secret. A fresh
+# install therefore gets a STRONG RANDOM owner password (the .env.example
+# default is a placeholder, not a real value — see PLACEHOLDER_PASSWORDS), while
+# a re-run keeps whatever the first run generated (idempotent).
+#
+# Consistency invariants enforced on every run (this is bug #1's fix):
+#   * owner DSN password  == POSTGRES_PASSWORD.  The owner role IS the Postgres
+#     superuser (POSTGRES_USER), and Postgres initialises its password from
+#     POSTGRES_PASSWORD on first boot. DATABASE_URL / DATABASE_URL_OWNER must
+#     therefore carry that SAME password or the owner alembic pass (Step 5)
+#     fails password auth on a fresh volume.
+#   * app DSN password    == POSTGRES_APP_PASSWORD  (only when L1 is enabled).
+#
+# Security (L1 boundary): the owner role is the SUPERUSER, so a fresh install
+# must never ship it with a well-known password — otherwise any in-network
+# foothold could connect as superuser and run DDL (DROP the audit trigger, etc.),
+# bypassing the whole runtime/owner split. Placeholder owner passwords are
+# regenerated; only a real operator-chosen value survives.
+#
+# L1 (Marathon bundle 8) role split is enabled when POSTGRES_APP_PASSWORD is
+# non-empty — either already in .env (reuse) or exported in the environment
+# (fresh / CI). An empty app password keeps the stack single-role (owner ==
+# runtime), which is the default fresh install. Operator-provided passwords with
+# docker-compose-hostile characters ('$', leading/trailing whitespace) should be
+# avoided — the generated path uses a compose-safe alphabet to sidestep this.
+#
+# SECRET_KEY: --no-prompt may pin via INSTALL_SECRET_KEY (CI reproducibility);
+# otherwise we preserve an existing non-placeholder key and only generate one
+# when the file still carries the .env.example placeholder.
+if [[ $NO_PROMPT -eq 1 && -n "${INSTALL_SECRET_KEY:-}" ]]; then
+  pinned_secret_key="$INSTALL_SECRET_KEY"
+  note "using INSTALL_SECRET_KEY (length=${#pinned_secret_key})"
+else
+  pinned_secret_key=""
+fi
+# Generated secrets use a COMPOSE-SAFE alphabet — openssl base64 minus '=+/'
+# leaves [A-Za-z0-9] only. That guarantees a generated value never needs
+# URL-encoding in a DSN and never trips docker-compose .env interpolation
+# ('$', '#', whitespace), so the raw POSTGRES_PASSWORD line and the DSN stay
+# byte-consistent (closes the special-char raw/DSN mismatch class).
+gen_secret_key=$(openssl rand -hex 32)
+gen_db_password=$(openssl rand -base64 24 | tr -d '=+/')
 
-  # Substitute placeholders. We intentionally do NOT sed -i in place across
-  # platforms (BSD sed differs); use a portable temp-file swap instead.
-  python3 - <<PYTHON
-import re
+# Environment overrides (optional). When exported these seed .env so an
+# operator / CI can enable L1 or pin passwords WITHOUT hand-editing .env,
+# honouring rule #11 (values live in .env, not inlined into commands).
+env_pg_password="${POSTGRES_PASSWORD:-}"
+env_pg_user="${POSTGRES_USER:-}"
+env_pg_db="${POSTGRES_DB:-}"
+env_app_password="${POSTGRES_APP_PASSWORD:-}"
+env_app_user="${POSTGRES_APP_USER:-}"
+
+# Secrets are handed to python via the ENVIRONMENT, never argv: /proc/<pid>/cmdline
+# is world-readable (a local unprivileged user could scrape a pinned SECRET_KEY /
+# DB password from argv), whereas /proc/<pid>/environ is 0400 owner-only. The
+# heredoc stays quoted (<<'PYTHON') so the shell does not expand the body.
+mode=$(
+  PINNED_SECRET="$pinned_secret_key" \
+  GEN_SECRET="$gen_secret_key" \
+  GEN_DB_PASSWORD="$gen_db_password" \
+  ENV_PG_USER="$env_pg_user" \
+  ENV_PG_PASSWORD="$env_pg_password" \
+  ENV_PG_DB="$env_pg_db" \
+  ENV_APP_USER="$env_app_user" \
+  ENV_APP_PASSWORD="$env_app_password" \
+  python3 - <<'PYTHON'
+import os, re
 from pathlib import Path
+from urllib.parse import quote
+
+pinned_secret    = os.environ["PINNED_SECRET"]
+gen_secret       = os.environ["GEN_SECRET"]
+gen_db_password  = os.environ["GEN_DB_PASSWORD"]
+env_pg_user      = os.environ["ENV_PG_USER"]
+env_pg_password  = os.environ["ENV_PG_PASSWORD"]
+env_pg_db        = os.environ["ENV_PG_DB"]
+env_app_user     = os.environ["ENV_APP_USER"]
+env_app_password = os.environ["ENV_APP_PASSWORD"]
+
+PLACEHOLDER_SECRET = "change-this-to-a-random-secret-key-min-32-chars"
+# Well-known non-secret owner-password defaults that must NEVER survive as a
+# real Postgres SUPERUSER password (they are public in .env.example / dev
+# compose). Treated as "regenerate me", exactly like the SECRET_KEY placeholder,
+# so a fresh install never ships the owner role with a known password — which
+# would let any in-network foothold connect as superuser and defeat the L1
+# owner/app split. A genuine operator value (incl. env override) is preserved.
+PLACEHOLDER_PASSWORDS = {"", "trustedoss", "changeme", "change_me", "CHANGE_ME"}
+
 env = Path(".env")
 text = env.read_text()
-text = re.sub(r"^SECRET_KEY=.*$", f"SECRET_KEY=${secret_key}", text, flags=re.M)
-# DATABASE_URL stays the legacy single-role DSN so older deployments
-# that haven't yet rotated to the L1 split keep working.
-text = re.sub(
-    r"^DATABASE_URL=.*$",
-    f"DATABASE_URL=postgresql+asyncpg://trustedoss:${db_password}@postgres:5432/trustedoss",
-    text,
-    flags=re.M,
-)
-# DATABASE_URL_OWNER + DATABASE_URL_APP — the L1 split. alembic uses
-# OWNER (DDL); backend / worker runtime uses APP (DML-only on
-# audit_logs). When unset, both fall back to DATABASE_URL.
-def _ensure(line: str, value: str, body: str) -> str:
-    if re.search(rf"^{line}=", body, flags=re.M):
-        return re.sub(rf"^{line}=.*$", f"{line}={value}", body, flags=re.M)
-    return body.rstrip() + f"\n{line}={value}\n"
 
-text = _ensure(
-    "DATABASE_URL_OWNER",
-    f"postgresql+asyncpg://trustedoss:${db_password}@postgres:5432/trustedoss",
-    text,
+def get(key, default=""):
+    m = re.search(rf"^{re.escape(key)}=(.*)$", text, flags=re.M)
+    return m.group(1) if m else default
+
+def upsert(body, key, value):
+    pattern = rf"^{re.escape(key)}=.*$"
+    # Replace with a CALLABLE so `value` is treated as a literal — a backslash /
+    # \g<0> / \1 inside a pinned secret must NOT be interpreted as an re
+    # backreference (that would silently corrupt the written secret).
+    if re.search(pattern, body, flags=re.M):
+        return re.sub(pattern, lambda _m: f"{key}={value}", body, flags=re.M)
+    return body.rstrip() + f"\n{key}={value}\n"
+
+# --- SECRET_KEY: pinned > existing-non-placeholder > generated -------------
+cur_secret = get("SECRET_KEY")
+if pinned_secret:
+    secret = pinned_secret
+elif cur_secret and cur_secret != PLACEHOLDER_SECRET:
+    secret = cur_secret            # preserve — idempotent re-run
+else:
+    secret = gen_secret
+text = upsert(text, "SECRET_KEY", secret)
+
+# --- Owner (superuser) identity + password --------------------------------
+# Owner password precedence: explicit env override > a GENUINE existing value
+# (preserved -> idempotent, and matches an already-initialised volume) > a
+# STRONG GENERATED value. A placeholder / public default (see the set above) is
+# treated as "generate", so a fresh install always gets a random superuser
+# password consistent with the owner DSN.
+pg_user = env_pg_user or get("POSTGRES_USER") or "trustedoss"
+pg_db = env_pg_db or get("POSTGRES_DB") or "trustedoss"
+cur_pg = get("POSTGRES_PASSWORD")
+pg_password = (
+    env_pg_password
+    or (cur_pg if cur_pg not in PLACEHOLDER_PASSWORDS else "")
+    or gen_db_password
 )
-text = _ensure(
-    "DATABASE_URL_APP",
-    f"postgresql+asyncpg://trustedoss_app:${app_password}@postgres:5432/trustedoss",
-    text,
+text = upsert(text, "POSTGRES_USER", pg_user)
+text = upsert(text, "POSTGRES_DB", pg_db)
+text = upsert(text, "POSTGRES_PASSWORD", pg_password)
+
+owner_dsn = (
+    f"postgresql+asyncpg://{quote(pg_user, safe='')}:"
+    f"{quote(pg_password, safe='')}@postgres:5432/{pg_db}"
 )
-text = _ensure("POSTGRES_APP_PASSWORD", "${app_password}", text)
+# DATABASE_URL is the runtime DSN for a SINGLE-role stack and the owner DSN
+# baseline the compose file falls back to; DATABASE_URL_OWNER is the DDL DSN
+# alembic runs as. Both must match POSTGRES_PASSWORD.
+text = upsert(text, "DATABASE_URL", owner_dsn)
+text = upsert(text, "DATABASE_URL_OWNER", owner_dsn)
+
+# --- App role (L1): enabled iff POSTGRES_APP_PASSWORD is non-empty ---------
+app_user = env_app_user or get("POSTGRES_APP_USER") or "trustedoss_app"
+app_password = env_app_password or get("POSTGRES_APP_PASSWORD")
+if app_password:
+    app_dsn = (
+        f"postgresql+asyncpg://{quote(app_user, safe='')}:"
+        f"{quote(app_password, safe='')}@postgres:5432/{pg_db}"
+    )
+    text = upsert(text, "POSTGRES_APP_USER", app_user)
+    text = upsert(text, "POSTGRES_APP_PASSWORD", app_password)
+    text = upsert(text, "DATABASE_URL_APP", app_dsn)
+
 env.write_text(text)
+print("L1" if app_password else "single-role")
 PYTHON
-  ok "generated SECRET_KEY (64 hex chars) and Postgres passwords (owner + app)"
-fi
+)
+ok "secrets synced (idempotent) — strong owner password, DSN pinned to POSTGRES_PASSWORD [${mode}]"
 
 # ---------------------------------------------------------------------------
 # 3. Public URL prompt
@@ -296,46 +408,64 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 4. docker-compose pull + up
+# 4. Staged bring-up — schema BEFORE the runtime fleet (bug #2 fix)
 # ---------------------------------------------------------------------------
-title "Bringing up the stack"
+# A single `$DC up -d` (whole stack) DEADLOCKS on an L1 role-separated stack:
+# worker / beat declare `depends_on backend: service_healthy`, and backend's
+# healthcheck probes /health/ready (200 only when the schema == Alembic HEAD).
+# Under L1 AUTO_MIGRATE=false, so the entrypoint SKIPS migration and
+# /health/ready stays 503 until this script applies the schema as the OWNER
+# role — but that owner pass (old Step 5) came AFTER `up -d`, which had already
+# failed waiting for a backend that could never go healthy without a schema.
+#
+# Fix — stage the boot so the schema exists before the fleet that gates on it:
+#   Stage 1  postgres + redis + backend      (backend answers liveness /health)
+#   Stage 2  owner-role `alembic upgrade head` (authoritative DDL; idempotent)
+#   Stage 3  up -d (whole stack)             (backend now /health/ready -> healthy
+#                                             -> worker / beat / frontend start)
+# On a single-role stack (AUTO_MIGRATE=true) the order is equally safe: the
+# entrypoint migrates on start, Stage 2 is an idempotent no-op, Stage 3 is a
+# normal full up. This mirrors the proven staged sequence in
+# .github/workflows/install-uat.yml (install-uat-l1 job).
+title "Bringing up the stack (staged: schema before the runtime fleet)"
 
 # shellcheck disable=SC2086  # $DC may be "docker compose" (two words) — intentional word-split.
 $DC -f docker-compose.yml pull
-# shellcheck disable=SC2086
-$DC -f docker-compose.yml up -d
-ok "containers started"
 
-# Wait for backend health
-note "waiting for backend to become healthy (60s timeout)..."
+# Stage 1 — backend + its data deps ONLY. worker / beat / frontend are held
+# back until the schema is in place (Stage 3).
+# shellcheck disable=SC2086
+$DC -f docker-compose.yml up -d postgres redis backend
+ok "postgres + redis + backend started"
+
+# Wait for backend LIVENESS. Probe /health (NOT /health/ready): under L1 the
+# schema is not applied yet, so /health/ready is 503 until Stage 2 — but
+# /health answers as soon as uvicorn binds, without touching the DB.
+note "waiting for backend liveness (/health, 60s timeout)..."
 for i in $(seq 1 30); do
   # shellcheck disable=SC2086
   if $DC -f docker-compose.yml exec -T backend curl -fsS http://localhost:8000/health >/dev/null 2>&1; then
-    ok "backend is healthy"
+    ok "backend is live"
     break
   fi
   sleep 2
   if [[ $i -eq 30 ]]; then
-    fail "backend did not become healthy. Run: $DC -f docker-compose.yml logs backend"
+    fail "backend did not answer /health. Run: $DC -f docker-compose.yml logs backend"
   fi
 done
 
 # ---------------------------------------------------------------------------
-# 5. alembic upgrade head (owner role — authoritative DDL pass)
+# 5. alembic upgrade head (owner role — authoritative DDL pass) — Stage 2
 # ---------------------------------------------------------------------------
-# v2.1: the backend container entrypoint already applied migrations on start
-# (AUTO_MIGRATE=true) using whatever DATABASE_URL the container holds. We
-# STILL run this explicit pass because:
-#   * Marathon bundle 8 (L1) — alembic must run as the OWNER role so DDL
-#     (CREATE / ALTER / DROP / GRANT) has the necessary privileges. Under L1
-#     the runtime container holds only the DML-only app DSN, so the
-#     entrypoint's auto-migration would FAIL on DDL; this one-shot exec
-#     overrides DATABASE_URL with the owner DSN just for the alembic process
-#     so the owner DSN never lingers in the live container environment.
-#   * It is idempotent — already-applied revisions are skipped — so on a
-#     single-role stack (where the entrypoint already succeeded) this is a
-#     harmless no-op confirmation.
-title "Database migration"
+# Marathon bundle 8 (L1) — alembic must run as the OWNER role so DDL
+# (CREATE / ALTER / DROP / GRANT) has the necessary privileges. Under L1 the
+# runtime container holds only the DML-only app DSN, so the entrypoint's
+# auto-migration would FAIL on DDL; this one-shot exec overrides DATABASE_URL
+# with the owner DSN JUST for the alembic process — the owner DSN never lingers
+# in the live container environment (the L1 security contract). It is
+# idempotent (already-applied revisions are skipped), so on a single-role stack
+# (where the entrypoint already migrated) this is a harmless no-op confirmation.
+title "Database migration (owner role)"
 owner_url=$(grep -E "^DATABASE_URL_OWNER=" .env | head -1 | cut -d= -f2- || true)
 if [[ -z "$owner_url" ]]; then
   # Legacy / single-role deployments: fall back to DATABASE_URL.
@@ -346,6 +476,31 @@ $DC -f docker-compose.yml exec -T \
   -e DATABASE_URL="$owner_url" \
   backend alembic upgrade head
 ok "schema is at HEAD"
+
+# Wait for READINESS before starting the fleet. /health/ready flips to 200 once
+# the schema == HEAD (read by the runtime role), which is what turns backend
+# `healthy` so Stage 3's `depends_on backend: service_healthy` proceeds without
+# blocking. On single-role this is already 200 (entrypoint migrated on start).
+note "waiting for backend readiness (/health/ready, 60s timeout)..."
+for i in $(seq 1 30); do
+  # shellcheck disable=SC2086
+  if $DC -f docker-compose.yml exec -T backend curl -fsS http://localhost:8000/health/ready >/dev/null 2>&1; then
+    ok "backend is ready (schema visible to the runtime role)"
+    break
+  fi
+  sleep 2
+  if [[ $i -eq 30 ]]; then
+    fail "backend /health/ready never turned 200. Run: $DC -f docker-compose.yml logs backend"
+  fi
+done
+
+# Stage 3 — schema is at HEAD and backend is ready, so it can now go healthy.
+# Bring up the whole stack; worker / beat / frontend (+ traefik) start once
+# their `depends_on backend: service_healthy` gate is satisfied.
+title "Starting the runtime fleet (worker, beat, frontend)"
+# shellcheck disable=SC2086
+$DC -f docker-compose.yml up -d
+ok "all containers started"
 
 # ---------------------------------------------------------------------------
 # 6. Bootstrap super_admin
