@@ -57,8 +57,19 @@ x-backend-env: &backend-env
   # override from install.sh / upgrade.sh so the DDL run uses the
   # owner role exactly once, then exits. The runtime can never see
   # the owner DSN, so a runtime RCE cannot DROP TRIGGER on audit_logs.
-  DATABASE_URL_APP: ${DATABASE_URL_APP:-${DATABASE_URL}}
-  DATABASE_URL: ${DATABASE_URL_APP:-${DATABASE_URL}}
+  # docker-compose V1 (1.29.2 — the project standard, CLAUDE.md rule #10) does
+  # NOT expand a NESTED default: `${DATABASE_URL_APP:-${DATABASE_URL}}` leaves a
+  # stray trailing `}` when DATABASE_URL_APP is set (L1), so the runtime got the
+  # app DSN with a broken `.../trustedoss}` database name and could not connect.
+  # The single-brace default form `${A:-$B}` expands cleanly under BOTH V1 and
+  # V2 when A is set (verified with 1.29.2 + the V2 plugin), so the L1 runtime
+  # now receives the exact trustedoss_app DSN install.sh wrote. Semantics are
+  # otherwise unchanged: L1 (DATABASE_URL_APP set) -> app DSN in the container
+  # (owner creds never leak to the runtime); single-role installs still resolve
+  # via DATABASE_URL. See install-uat.yml `install-uat-l1` for the end-to-end
+  # gate that exercises this under V1.
+  DATABASE_URL_APP: ${DATABASE_URL_APP:-$DATABASE_URL}
+  DATABASE_URL: ${DATABASE_URL_APP:-$DATABASE_URL}
   # H1 — plumb the migration toggle INTO the container. The backend entrypoint
   # reads AUTO_MIGRATE from its own environment (docker-entrypoint.sh); a value
   # in .env is only visible to compose interpolation, never to the container,
