@@ -32,9 +32,9 @@ on:
   workflow_dispatch:
     inputs:
       pull_image_tag:
-        description: "Published IMAGE_TAG to verify the ghcr pull path against (e.g. 2.0.1)."
+        description: "Published IMAGE_TAG to verify the ghcr pull path against (e.g. 0.13.0)."
         required: false
-        default: "2.0.0"
+        default: "0.13.0"
         type: string
   schedule:
     # Weekly Sunday 03:00 UTC — catches drift from base image / dep updates.
@@ -219,7 +219,7 @@ jobs:
         env:
           # A known-published tag, NOT the repo ref — the commit under test may
           # predate any release. Override on dispatch via `pull_image_tag`.
-          IMAGE_TAG: ${{ github.event.inputs.pull_image_tag || '2.0.0' }}
+          IMAGE_TAG: ${{ github.event.inputs.pull_image_tag || '0.13.0' }}
           # The published-image services need these to be set for `config` to
           # interpolate without warnings; values are irrelevant to a pull.
           DOMAIN: example.invalid
@@ -234,9 +234,314 @@ jobs:
           set -euo pipefail
           # IMAGE_REGISTRY defaults to ghcr.io/trustedoss inside the compose file.
           echo "Resolving production compose for IMAGE_TAG=${IMAGE_TAG}"
-          docker-compose -f docker-compose.yml config | grep -E "image: ghcr.io/trustedoss/(backend|backend-worker|frontend):"
+          docker-compose -f docker-compose.yml config | grep -E "image: ghcr.io/trustedoss/trusca-(backend|backend-worker|frontend):"
           # Pull only the three first-party published images (postgres/redis/
           # traefik are upstream and always available). --include-deps off via
           # explicit service list.
           docker-compose -f docker-compose.yml pull backend worker frontend
           echo "all three first-party images pulled for amd64"
+
+  # ===========================================================================
+  # install-uat-l1 — the L1 ROLE-SEPARATED deployment path, end-to-end.
+  #
+  # WHY THIS EXISTS (the blind spot): the `install-uat` job above boots the DEV
+  # compose (single-role, AUTO_MIGRATE=true), and `release-gate` (release.yml)
+  # boots the PUBLISHED images in DEV single-role mode via docker-compose.smoke.yml.
+  # NEITHER exercises the L1 posture the production docker-compose.yml is designed
+  # for: a restricted runtime role (`trustedoss_app`, DML-only) provisioned by
+  # scripts/postgres-init.sh, with DDL run once as the OWNER role and AUTO_MIGRATE
+  # pinned false so the runtime never attempts a doomed app-role migration. Two
+  # severe bugs shipped through that gap and were fixed in #466:
+  #   (A)  postgres-init.sh failed to create the role (unbound psql :'app_user').
+  #   (B1) AUTO_MIGRATE=false never reached the container (compose didn't map it).
+  # #467 unit-gates (A) at the postgres-init layer; this job is the missing
+  # END-TO-END gate: the backend actually connects as `trustedoss_app`, the
+  # runtime honours AUTO_MIGRATE=false, and an authed first-scan API call works.
+  #
+  # BOOT STRATEGY: PUBLISHED images (same as release-gate — ${IMAGE_TAG}) plus the
+  # CURRENT-commit docker-compose.yml + scripts/postgres-init.sh (the files the
+  # #466 fixes live in; both are mounted/interpolated, not baked into the image).
+  # We do NOT drive scripts/install.sh here: its L1 REUSE path currently (a)
+  # regenerates the owner password without syncing POSTGRES_PASSWORD (owner-auth
+  # mismatch on a fresh volume) and (b) does a single `up -d` that DEADLOCKS on
+  # `worker`'s `depends_on backend: service_healthy` while backend is not-yet-ready
+  # under AUTO_MIGRATE=false. Both are tracked for a follow-up install.sh fix; once
+  # they land this job should switch to invoking install.sh directly. The staged
+  # sequence below (backend+deps -> owner migrate -> rest) is exactly what a fixed
+  # install.sh must do, and mirrors the operator L1 runbook.
+  #
+  # This whole flow was reproduced locally on docker-compose V1 1.29.2 (the CI
+  # binary) before commit — including the V1 nested-interpolation DSN fix in
+  # docker-compose.yml without which the L1 runtime DSN resolved with a stray
+  # trailing `}` and could not connect.
+  # ===========================================================================
+  install-uat-l1:
+    name: install-uat-l1 (ubuntu-22.04, docker-compose V1, role-separated)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    # Anonymous ghcr pull suffices for public packages; a read-only token avoids
+    # rate limits. No push here, so least privilege = packages: read.
+    permissions:
+      contents: read
+      packages: read
+    env:
+      # Published image set, resolved through the production docker-compose.yml
+      # exactly as an operator would. Override IMAGE_TAG on dispatch if needed.
+      IMAGE_TAG: ${{ github.event.inputs.pull_image_tag || '0.13.0' }}
+      IMAGE_REGISTRY: ghcr.io/trustedoss
+      # APP_ENV=dev matches install.sh's default .env (it copies .env.example, which
+      # pins APP_ENV=dev, and never sets prod). It also lets the smoke reach the API
+      # over http on the runner — prod mode would require https CORS origins. L1 role
+      # separation is orthogonal to APP_ENV: the runtime connects as trustedoss_app
+      # regardless. (Same rationale as release-gate.)
+      APP_ENV: dev
+      LOG_LEVEL: INFO
+      # DOMAIN / TLS_EMAIL / TRAEFIK_LOG_LEVEL are only needed for the production
+      # file to interpolate cleanly; Traefik is not in the `up` service list.
+      DOMAIN: localhost
+      TLS_EMAIL: install-uat-l1@example.invalid
+      TRAEFIK_LOG_LEVEL: INFO
+      SECRET_KEY: install-uat-l1-secret-key-32-characters-min
+      CORS_ALLOWED_ORIGINS: http://localhost:8000
+      # ---- L1 role split -----------------------------------------------------
+      # POSTGRES_* seed the superuser (owner). The owner DSN uses the SAME
+      # password so a fresh-volume owner migration authenticates (the sync
+      # install.sh's reuse path currently misses — see the job header).
+      POSTGRES_USER: trustedoss
+      POSTGRES_PASSWORD: OwnerPw123
+      POSTGRES_DB: trustedoss
+      # postgres-init.sh reads these on first boot to CREATE the runtime role. A
+      # deliberately SPECIAL-CHARACTER password exercises the M4 psql --variable
+      # quoting end-to-end (`#`, `!` would break a naive heredoc / DO $$ block).
+      POSTGRES_APP_USER: trustedoss_app
+      POSTGRES_APP_PASSWORD: 'App#Pw!9x_Zq'
+      # OWNER DSN (DDL) != runtime DSN — this INEQUALITY is what marks the stack
+      # as L1. DATABASE_URL is the legacy owner DSN; alembic runs against OWNER.
+      DATABASE_URL: 'postgresql+asyncpg://trustedoss:OwnerPw123@postgres:5432/trustedoss'
+      DATABASE_URL_OWNER: 'postgresql+asyncpg://trustedoss:OwnerPw123@postgres:5432/trustedoss'
+      # Runtime (backend/worker/beat) DSN — the RESTRICTED app role. Password is
+      # URL-ENCODED here (#->%23, !->%21) because asyncpg parses the DSN as a URL.
+      DATABASE_URL_APP: 'postgresql+asyncpg://trustedoss_app:App%23Pw%219x_Zq@postgres:5432/trustedoss'
+      # The runtime app role has no DDL grant, so it must NOT auto-migrate; DDL is
+      # applied once as the owner role below. This is the (B1) toggle under test.
+      AUTO_MIGRATE: 'false'
+      # Skip the ~600 MB Trivy DB download — this gate proves the L1 boot + API,
+      # not the vulnerability feed (worker health is a celery ping, DB-independent).
+      TRIVY_DB_BOOTSTRAP_ON_START: 'false'
+    steps:
+      - uses: actions/checkout@v4
+
+      # Project standard (CLAUDE.md rule #10): docker-compose V1. Ubuntu 22.04
+      # runners ship V2 only — install the pinned V1 release so this gate
+      # exercises the documented `docker-compose` (hyphenated) invocation AND the
+      # V1 interpolation semantics the production compose must satisfy.
+      - name: Install docker-compose V1
+        run: |
+          sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" \
+            -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+          docker-compose --version
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Guard: the whole point is the L1 runtime connecting as trustedoss_app.
+      # Under docker-compose V1 the production compose must resolve DATABASE_URL to
+      # the app DSN with NO stray trailing `}` (the nested-interpolation bug fixed
+      # in docker-compose.yml). Assert the resolved value BEFORE booting so a
+      # regression fails fast with a clear message.
+      - name: Verify V1 resolves the L1 runtime DSN to the app role (no trailing brace)
+        run: |
+          set -euo pipefail
+          resolved=$(docker-compose -f docker-compose.yml config \
+            | grep -E "^\s+DATABASE_URL:" | head -1 | sed -E 's/^\s+DATABASE_URL:\s*//')
+          echo "resolved backend DATABASE_URL = ${resolved}"
+          case "$resolved" in
+            *trustedoss_app:*@postgres:5432/trustedoss) echo "app-role DSN resolves cleanly" ;;
+            *"}"*) echo "::error::V1 nested-interpolation regression — DSN has a trailing brace: ${resolved}"; exit 1 ;;
+            *) echo "::error::runtime DSN is NOT the app role: ${resolved}"; exit 1 ;;
+          esac
+
+      # STAGE 1 — bring up backend + its deps ONLY. worker/beat gate on
+      # `backend: service_healthy`; under AUTO_MIGRATE=false backend cannot be
+      # ready until the owner migration (Stage 2), so a full `up -d` would block.
+      - name: Stage 1 — boot postgres + redis + backend
+        run: |
+          set -euo pipefail
+          docker-compose -f docker-compose.yml pull postgres redis backend
+          docker-compose -f docker-compose.yml up -d postgres redis backend
+          echo "waiting for postgres healthy..."
+          for i in $(seq 1 30); do
+            if docker-compose -f docker-compose.yml ps postgres | grep -q healthy; then
+              echo "postgres healthy"; break
+            fi
+            sleep 3
+            if [ "$i" -eq 30 ]; then echo "::error::postgres never became healthy"; exit 1; fi
+          done
+
+      # (A) — postgres-init.sh created the runtime role, INCLUDING the
+      # special-character password (proves the M4 psql --variable quoting live).
+      - name: Assert (A) — trustedoss_app role provisioned
+        run: |
+          set -euo pipefail
+          role=$(docker-compose -f docker-compose.yml exec -T postgres \
+            psql -U trustedoss -d trustedoss -tAc \
+            "SELECT rolname FROM pg_roles WHERE rolname='trustedoss_app'" | tr -d '[:space:]')
+          echo "role = '${role}'"
+          test "$role" = "trustedoss_app"
+
+      # (B1) — AUTO_MIGRATE=false reached the CONTAINER (not just .env), and the
+      # backend entrypoint SKIPPED auto-migration. Assert both the env and the log.
+      - name: Assert (B1) — AUTO_MIGRATE=false honoured inside the container
+        run: |
+          set -euo pipefail
+          val=$(docker-compose -f docker-compose.yml exec -T backend printenv AUTO_MIGRATE | tr -d '[:space:]')
+          echo "container AUTO_MIGRATE = '${val}'"
+          test "$val" = "false"
+          # The entrypoint logs the skip; the enabled path must NOT appear.
+          logs=$(docker-compose -f docker-compose.yml logs backend)
+          echo "$logs" | grep -q "migrations skipped" \
+            || { echo "::error::entrypoint did not log the AUTO_MIGRATE=false skip"; exit 1; }
+          if echo "$logs" | grep -q "auto-migration enabled"; then
+            echo "::error::entrypoint ran auto-migration despite AUTO_MIGRATE=false"; exit 1
+          fi
+          # The container's effective runtime DSN must be the app role.
+          dsn=$(docker-compose -f docker-compose.yml exec -T backend printenv DATABASE_URL | tr -d '[:space:]')
+          echo "container DATABASE_URL = ${dsn}"
+          case "$dsn" in *trustedoss_app:*@postgres:5432/trustedoss) ;; *) echo "::error::runtime not on app role"; exit 1 ;; esac
+
+      # Liveness answers immediately even without a schema (no DB touch).
+      - name: Assert liveness /health (app-role runtime booted)
+        run: |
+          set -euo pipefail
+          # Retry: after Stage 1 `up -d` the backend needs a moment to bind uvicorn
+          # to :8000. AUTO_MIGRATE=false skips migration so it is quick, but a
+          # single immediate exec-curl races the bind on a cold CI runner (passes
+          # on a warm local Docker, fails in CI) — poll instead.
+          for i in $(seq 1 20); do
+            if docker-compose -f docker-compose.yml exec -T backend \
+                 curl -fsS http://127.0.0.1:8000/health >/dev/null 2>&1; then
+              echo "backend live after ~$((i*3))s"; exit 0
+            fi
+            sleep 3
+          done
+          echo "::error::liveness /health never responded (uvicorn did not bind :8000)"
+          docker-compose -f docker-compose.yml logs --tail=120 backend
+          exit 1
+
+      # STAGE 2 — apply the schema ONCE as the OWNER role (DDL). The runtime app
+      # role lacks CREATE, so this is the authoritative migration pass install.sh
+      # / upgrade.sh own. We override DATABASE_URL for the alembic process only.
+      - name: Stage 2 — owner-role migration (alembic upgrade head)
+        run: |
+          set -euo pipefail
+          docker-compose -f docker-compose.yml exec -T \
+            -e DATABASE_URL="$DATABASE_URL_OWNER" \
+            backend alembic upgrade head
+          docker-compose -f docker-compose.yml exec -T \
+            -e DATABASE_URL="$DATABASE_URL_OWNER" \
+            backend alembic current | grep -q "(head)"
+
+      # /health/ready flips to 200 only once the schema == HEAD, read by the
+      # RESTRICTED app role — proving the end-to-end app-role connection (A).
+      - name: Assert readiness /health/ready (app role reads migrated schema)
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 20); do
+            if docker-compose -f docker-compose.yml exec -T backend \
+                 curl -fsS http://127.0.0.1:8000/health/ready >/dev/null 2>&1; then
+              echo "ready after ~$((i*4))s"; exit 0
+            fi
+            sleep 4
+          done
+          echo "::error::/health/ready never turned 200 (app role could not read schema)"
+          docker-compose -f docker-compose.yml logs --tail=120 backend
+          exit 1
+
+      - name: Assert active backend connections use the trustedoss_app role
+        run: |
+          set -euo pipefail
+          rows=$(docker-compose -f docker-compose.yml exec -T postgres \
+            psql -U trustedoss -d trustedoss -tAc \
+            "SELECT usename, count(*) FROM pg_stat_activity WHERE datname='trustedoss' AND usename IS NOT NULL GROUP BY usename ORDER BY usename")
+          echo "connected roles (role|count):"
+          echo "$rows"
+          echo "$rows" | grep -q "^trustedoss_app|" \
+            || { echo "::error::no backend connection is using trustedoss_app"; exit 1; }
+
+      # The L1 privilege boundary is real, not cosmetic: the app role must be
+      # unable to run DDL. (PGPASSWORD carries the raw special-char password.)
+      - name: Assert L1 boundary — app role is DDL-denied
+        env:
+          PGPASSWORD: 'App#Pw!9x_Zq'
+        run: |
+          set -euo pipefail
+          out=$(docker-compose -f docker-compose.yml exec -T -e PGPASSWORD="$PGPASSWORD" postgres \
+            psql -h 127.0.0.1 -U trustedoss_app -d trustedoss -tAc \
+            "CREATE TABLE l1_should_fail(x int)" 2>&1 || true)
+          echo "$out"
+          echo "$out" | grep -qi "permission denied" \
+            || { echo "::error::app role was NOT denied DDL — L1 boundary broken"; exit 1; }
+
+      # STAGE 3 — now that backend can go healthy, bring up the runtime fleet.
+      # worker/beat connect to the DB as the app role too (DML-only).
+      - name: Stage 3 — boot worker + beat + frontend
+        run: |
+          set -euo pipefail
+          docker-compose -f docker-compose.yml pull worker beat frontend
+          docker-compose -f docker-compose.yml up -d postgres redis backend worker beat frontend
+          echo "waiting for worker healthy..."
+          for _ in $(seq 1 30); do
+            if docker-compose -f docker-compose.yml ps worker | grep -q healthy; then
+              echo "worker healthy"; docker-compose -f docker-compose.yml ps; exit 0
+            fi
+            sleep 4
+          done
+          echo "::error::worker never became healthy on the app-role runtime"
+          docker-compose -f docker-compose.yml ps
+          docker-compose -f docker-compose.yml logs --tail=120 worker
+          exit 1
+
+      # Seed the first super_admin via the RUNTIME (app role, DML INSERT) — the
+      # same path install.sh drives after migration.
+      - name: Bootstrap super_admin (DML as the app role)
+        run: |
+          set -euo pipefail
+          docker-compose -f docker-compose.yml exec -T \
+            -e ADMIN_EMAIL="admin@l1-uat.example.com" \
+            -e ADMIN_PASSWORD="L1UatPassword123!" \
+            backend python -m scripts.create_super_admin
+
+      # First-scan smoke on the app-role runtime: authenticate, then reach an
+      # authed domain endpoint. The published image mounts auth at /auth/login.
+      - name: Smoke — login + projects API (app-role runtime)
+        run: |
+          set -euo pipefail
+          LOGIN_RESPONSE=$(docker-compose -f docker-compose.yml exec -T backend \
+            curl -fsS -X POST http://127.0.0.1:8000/auth/login \
+            -H "Content-Type: application/json" \
+            -d '{"email":"admin@l1-uat.example.com","password":"L1UatPassword123!"}')
+          TOKEN=$(printf '%s' "$LOGIN_RESPONSE" \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')
+          test -n "$TOKEN"
+          test "$TOKEN" != "null"
+          echo "got token (length=${#TOKEN})"
+          docker-compose -f docker-compose.yml exec -T backend \
+            curl -fsS http://127.0.0.1:8000/v1/projects \
+            -H "Authorization: Bearer $TOKEN" >/dev/null
+          echo "projects endpoint reachable on the L1 app-role runtime"
+
+      - name: Dump compose logs on failure
+        if: failure()
+        run: |
+          docker-compose -f docker-compose.yml ps || true
+          docker-compose -f docker-compose.yml logs --tail=300 || true
+
+      - name: Tear down
+        if: always()
+        run: |
+          docker-compose -f docker-compose.yml down -v || true
