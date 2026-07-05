@@ -79,6 +79,13 @@ jobs:
         run: |
           cp docker-compose.yml docker-compose.yml.bak
           cp docker-compose.dev.yml docker-compose.yml
+          # Pre-create ./backups as the runner user BEFORE the stack starts.
+          # docker-compose.dev.yml bind-mounts ./backups into the backend; if it
+          # does not exist, the docker daemon creates it root-owned, and the
+          # host-side backup.sh (run as the non-root runner) then can't mkdir the
+          # timestamped subdir -> "Permission denied". Creating it here keeps the
+          # dir runner-owned so the manual host backup path works.
+          mkdir -p backups
 
       - name: Run install.sh in non-interactive mode
         env:
