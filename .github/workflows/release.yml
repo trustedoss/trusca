@@ -329,7 +329,17 @@ jobs:
           NOTES_FILE="docs-site/docs/release-notes/${TAG}.md"
           if [ -f "$NOTES_FILE" ]; then
             echo "using curated release notes: $NOTES_FILE"
-            gh release create "$TAG" --draft --title "$TAG" --notes-file "$NOTES_FILE"
+            # Strip the Docusaurus YAML front matter (the leading --- ... ---
+            # block). GitHub renders the Release body as plain Markdown and does
+            # NOT recognise front matter — worse, the closing `---` is parsed as
+            # the setext-heading underline of the metadata block above it, so the
+            # whole `id:/title:/description:/...` block renders as one giant H2.
+            # Emit only the body after the second `---` delimiter.
+            BODY_FILE="${RUNNER_TEMP}/${TAG}-notes.md"
+            awk 'NR==1 && $0=="---" {infm=1; next}
+                 infm && $0=="---" {infm=0; next}
+                 !infm {print}' "$NOTES_FILE" > "$BODY_FILE"
+            gh release create "$TAG" --draft --title "$TAG" --notes-file "$BODY_FILE"
           else
             echo "no curated notes for $TAG — auto-generating from history"
             gh release create "$TAG" --draft --title "$TAG" --generate-notes
