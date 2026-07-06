@@ -38,7 +38,9 @@ httpx==0.28.1
 # original CVE-2026-24486 path-traversal fix line.
 # 2026-06-16 bump 0.0.27 → 0.0.30: fixes CVE-2026-53539 (HIGH — quadratic-time
 # querystring parsing DoS).
-python-multipart==0.0.30
+# 2026-07-06 bump 0.0.30 → 0.0.31: fixes CVE-2026-53540 (LOW — a negative
+# Content-Length in parse_form buffered the entire body in memory / DoS).
+python-multipart==0.0.31
 # Auth — Phase 1 PR #5.
 # bcrypt is pinned to 4.0.1 because passlib 1.7.4 is incompatible with
 # bcrypt >= 4.1 (passlib reads bcrypt.__about__.__version__, which 4.1+ removed).
