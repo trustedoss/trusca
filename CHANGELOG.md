@@ -7,6 +7,51 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.13.1] — 2026-07-07
+
+A fixes-only patch release: repairs fresh role-separated (L1) installs and
+deployments, and picks up a security bump. No feature or schema changes.
+
+### Fixed
+- **L1 role provisioning: `trustedoss_app` was never created.**
+  `scripts/postgres-init.sh` interpolated the role name / password inside a
+  dollar-quoted `DO $$ … $$` block, where psql performs no variable
+  substitution, so the literal `:'app_user'` reached the server and aborted the
+  init script (`syntax error at or near ":"`). Every L1 backend then failed
+  password auth as `trustedoss_app`. Role creation now uses `SELECT format(…)
+  … \gexec` with `WHERE NOT EXISTS` — SQL-quoted and idempotent. (#466)
+- **`AUTO_MIGRATE` was never plumbed into the container.** `install.sh` writes
+  `AUTO_MIGRATE=false` on L1 stacks (migrations run once as the owner role), but
+  the compose file never referenced `${AUTO_MIGRATE}`, so the backend entrypoint
+  defaulted back to `true` and attempted DDL as the unprivileged app role. (#466)
+- **install.sh L1 path: owner-password consistency + staged boot.** The secret
+  block is now idempotent — `POSTGRES_PASSWORD` is the single source of truth for
+  the owner password and is never rotated on re-run — and boot is staged
+  (postgres+redis+backend → wait `/health` → owner-role `alembic upgrade head` →
+  wait `/health/ready` → full fleet) so the worker's `depends_on backend:
+  service_healthy` no longer deadlocks under `AUTO_MIGRATE=false`. A fresh
+  install now also generates a strong random owner password instead of the
+  shipped default. (#470)
+- **Dev backend image now auto-migrates.** `apps/backend/Dockerfile` had a `CMD`
+  but no `ENTRYPOINT`, so the dev container skipped `docker-entrypoint.sh` and
+  never ran its migration — `/health/ready` stayed 503 and the backend was
+  permanently unhealthy. It now carries the entrypoint like the production
+  image. (#469)
+
+### Security
+- **`python-multipart` 0.0.30 → 0.0.31** — picks up the fix for CVE-2026-53540.
+  Ships in the backend image. (#472)
+
+### Internal
+- Release notes are now stripped of Docusaurus front matter before being
+  published to GitHub Releases (the closing `---` was rendering the metadata
+  block as a giant heading). (#473)
+- Release-gate CI hardening: cold-boot postgres readiness race, dev-runtime
+  boot mode, docker-compose V1 nested-DSN interpolation, and health-gated
+  (not `up`-exit-gated) patience. (#462, #463, #464, #465)
+- Added L1 role-separated `install-uat` coverage and a `postgres-init` role
+  contract gate. (#467, #468)
+
 ## [0.13.0] — 2026-07-04
 
 A broad parity release closing the BomLens capability gap — additive throughout;
