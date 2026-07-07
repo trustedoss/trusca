@@ -98,15 +98,28 @@ jobs:
       - name: Install Trivy (pinned release asset + checksum)
         env:
           TRIVY_VERSION: "0.58.0"
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          base="https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}"
-          tarball="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
-          checksums="trivy_${TRIVY_VERSION}_checksums.txt"
-          # Download to the CANONICAL asset names — `sha256sum -c` verifies the
-          # file named in the checksum line, so the on-disk name must match.
-          curl -fsSL -o "$tarball"   "${base}/${tarball}"
-          curl -fsSL -o "$checksums" "${base}/${checksums}"
+          tag="v${TRIVY_VERSION}"
+          # Resolve the exact asset names from the API rather than hard-coding
+          # them: a published release is IMMUTABLE (deterministic) and the token
+          # auth avoids the anon rate limit, but Trivy's asset naming has varied
+          # (Linux-64bit vs linux_amd64), so enumerate and match instead of
+          # guessing. This keeps the pin on TRIVY_VERSION while removing both the
+          # moving-ref install.sh AND the filename-guess fragility.
+          names="$(gh api "repos/aquasecurity/trivy/releases/tags/${tag}" --jq '.assets[].name')"
+          tarball="$(printf '%s\n' "$names" | grep -iE 'Linux[-_](64bit|amd64)\.tar\.gz$' | head -1)"
+          checksums="$(printf '%s\n' "$names" | grep -iE 'checksums\.txt$' | head -1)"
+          if [ -z "$tarball" ] || [ -z "$checksums" ]; then
+            echo "::error::could not resolve Trivy ${tag} assets (tarball='$tarball' checksums='$checksums')"
+            printf '%s\n' "$names"
+            exit 1
+          fi
+          gh release download "$tag" --repo aquasecurity/trivy \
+            --pattern "$tarball" --pattern "$checksums" --clobber
+          # `sha256sum -c` verifies the file named in the checksum line, so the
+          # on-disk name must match the enumerated asset name (it does).
           grep " ${tarball}\$" "$checksums" | sha256sum -c -
           tar -xzf "$tarball" trivy
           sudo install -m 0755 trivy /usr/local/bin/trivy
