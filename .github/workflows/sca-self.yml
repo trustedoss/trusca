@@ -79,16 +79,39 @@ jobs:
         run: cdxgen -r --no-validate -o sbom.cdx.json .
 
       # Trivy is bundled into the worker image at apps/backend/Dockerfile.worker;
-      # for this workflow we install the standalone CLI via the official
-      # setup-trivy action (smaller, faster than spinning up the worker
-      # image just to run trivy sbom, and more reliable than the curl |
-      # sh installer which started returning non-zero on a clean fetch
-      # in May 2026).
-      - name: Install Trivy
-        uses: aquasecurity/setup-trivy@v0.2.6
-        with:
-          version: v0.58.0
-          cache: true
+      # for this workflow we install the standalone CLI directly from a PINNED
+      # release asset and verify its checksum. This is deliberately NOT the
+      # `curl | sh` installer NOR the `aquasecurity/setup-trivy` action — both
+      # of those execute Trivy's `contrib/install.sh` fetched from a MOVING ref
+      # (Trivy's default branch), so a change to that script breaks this job
+      # with no change on our side. That has now happened twice:
+      #   * 2026-05 — the `curl | sh` installer began returning non-zero on a
+      #     clean fetch (we then switched to setup-trivy).
+      #   * 2026-07 — setup-trivy@v0.2.6 broke after Trivy commit 75c4dc0
+      #     ("add client option to install script", #9962) changed install.sh,
+      #     failing every nightly at the install step (exit 1 right after the
+      #     version resolved) — unrelated to any CVE finding.
+      # Downloading the pinned tarball + `sha256sum -c` removes the moving-ref
+      # dependency entirely (and drops the GitHub-API tag lookup, so no rate
+      # limit surface), which also matches the supply-chain-integrity posture
+      # TRUSCA itself ships. Bump TRIVY_VERSION deliberately when upgrading.
+      - name: Install Trivy (pinned release asset + checksum)
+        env:
+          TRIVY_VERSION: "0.58.0"
+        run: |
+          set -euo pipefail
+          base="https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}"
+          tarball="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          checksums="trivy_${TRIVY_VERSION}_checksums.txt"
+          # Download to the CANONICAL asset names — `sha256sum -c` verifies the
+          # file named in the checksum line, so the on-disk name must match.
+          curl -fsSL -o "$tarball"   "${base}/${tarball}"
+          curl -fsSL -o "$checksums" "${base}/${checksums}"
+          grep " ${tarball}\$" "$checksums" | sha256sum -c -
+          tar -xzf "$tarball" trivy
+          sudo install -m 0755 trivy /usr/local/bin/trivy
+          rm -f "$tarball" "$checksums" trivy
+          trivy --version
 
       - name: Trivy SBOM scan (CRITICAL + HIGH)
         # --exit-code 0 — never fail the JOB on findings; the parse step
