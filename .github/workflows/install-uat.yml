@@ -34,7 +34,7 @@ on:
       pull_image_tag:
         description: "Published IMAGE_TAG to verify the ghcr pull path against (e.g. 0.13.0)."
         required: false
-        default: "0.13.0"
+        default: "0.13.1"
         type: string
   schedule:
     # Weekly Sunday 03:00 UTC — catches drift from base image / dep updates.
@@ -231,7 +231,7 @@ jobs:
         env:
           # A known-published tag, NOT the repo ref — the commit under test may
           # predate any release. Override on dispatch via `pull_image_tag`.
-          IMAGE_TAG: ${{ github.event.inputs.pull_image_tag || '0.13.0' }}
+          IMAGE_TAG: ${{ github.event.inputs.pull_image_tag || '0.13.1' }}
           # The published-image services need these to be set for `config` to
           # interpolate without warnings; values are irrelevant to a pull.
           DOMAIN: example.invalid
@@ -299,7 +299,7 @@ jobs:
     env:
       # Published image set, resolved through the production docker-compose.yml
       # exactly as an operator would. Override IMAGE_TAG on dispatch if needed.
-      IMAGE_TAG: ${{ github.event.inputs.pull_image_tag || '0.13.0' }}
+      IMAGE_TAG: ${{ github.event.inputs.pull_image_tag || '0.13.1' }}
       IMAGE_REGISTRY: ghcr.io/trustedoss
       # APP_ENV=dev matches install.sh's default .env (it copies .env.example, which
       # pins APP_ENV=dev, and never sets prod). It also lets the smoke reach the API
