@@ -97,7 +97,7 @@ aiosmtplib==3.0.2
 # render_report_pdf runs in the API endpoint api/v1/reports.py, not a Celery
 # task) and rendering a real PDF -- services.report_service.render_report_pdf
 # returns `b'%PDF'`. Re-verify the render on every future bump of either pin.
-weasyprint==68.0
+weasyprint==69.0
 pydyf==0.12.1
 
 # openpyxl — XLSX vulnerability-report export (Phase G, api/v1/reports.py
