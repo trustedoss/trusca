@@ -1,7 +1,7 @@
 -r requirements.txt
-pytest==8.3.4
-pytest-asyncio==0.24.0
-pytest-cov==6.0.0
+pytest==9.0.3
+pytest-asyncio==1.4.0
+pytest-cov==7.1.0
 ruff==0.8.4
 mypy==1.13.0
 # Phase 2 PR #8: in-memory Redis double for CircuitBreaker unit tests.

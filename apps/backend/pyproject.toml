@@ -1,5 +1,11 @@
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# Pin the async-fixture event-loop scope explicitly. pytest-asyncio 1.x makes
+# this configurable and warns when it is unset; "function" preserves the
+# per-test loop behaviour the suite ran under with pytest-asyncio 0.24 (the
+# root `_isolate_engine_per_test` autouse fixture is function-scoped), so the
+# 8->9 upgrade is behaviour-preserving.
+asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 pythonpath = ["."]
 markers = [
