@@ -352,13 +352,24 @@ def _run_pipeline(
         mock_only=False,
     )
 
+    # The PROJECT root vs the workspace parent: the git path clones into
+    # ``source/repo`` while the zip path extracts into ``source/`` itself, and
+    # ``_fetch_source`` returns the PARENT either way. cdxgen is fine with the
+    # parent (``-r`` recurses), but every ROOT-KEYED consumer — the prep
+    # lockfile generators, the scope filter's / CocoaPods fill-in's lockfile
+    # reads, persist's npm scope enrichment, language detection — must see the
+    # actual project root or it silently no-ops on every git scan (found by
+    # the Phase K real-scan verification; the W4-D npm enrichment had the same
+    # latent gap).
+    project_root = _resolve_project_root(source_dir)
+
     # Detect the source environment (BomLens-style language → cdxgen image map)
     # and record it on the scan. Increment 2 only observes: the in-process
     # executor still handles every environment. SCAN_EXECUTOR=local_docker /
     # k8s_job (later increments) consume ``detected_env`` to route an
     # environment-specific cdxgen sidecar. Best-effort — a detection error must
     # never fail the scan, so we fall back to "unknown" and continue.
-    detected_env = _detect_and_record_env(scan_uuid, source_dir)
+    detected_env = _detect_and_record_env(scan_uuid, project_root)
 
     # Stage 2.5 + 3 — build-prep + cdxgen, behind the ScanExecutor abstraction.
     # cdxgen needs a populated lockfile to enumerate transitive deps for Ruby /
@@ -388,7 +399,7 @@ def _run_pipeline(
     )
     gen_result = executor.generate_sbom(
         gen_request,
-        prep=lambda: _prepare_for_cdxgen(source_dir=source_dir, scan_uuid=scan_uuid),
+        prep=lambda: _prepare_for_cdxgen(source_dir=project_root, scan_uuid=scan_uuid),
         stage=lambda stage: _set_stage(scan_uuid, stage),
         # P2 #8c — stream cdxgen stdout/stderr lines onto the scan WebSocket
         # so the drawer can render a live tool trace. Best-effort: a publish
@@ -408,7 +419,7 @@ def _run_pipeline(
     # trusca:scope_filter property describe the FINAL document (cocoapods
     # purls pass both keep-predicates untouched). Best-effort, never fatal.
     _merge_cocoapods_components(
-        scan_uuid=scan_uuid, cdxgen_result=cdxgen_result, source_dir=source_dir
+        scan_uuid=scan_uuid, cdxgen_result=cdxgen_result, source_dir=project_root
     )
 
     # Stage 3.25 — runtime-scope post-filter (Phase K). MUST run before the
@@ -417,7 +428,7 @@ def _run_pipeline(
     # artifact, vulnerability matching) sees ONE consistent filtered document.
     # Best-effort: any failure leaves the SBOM exactly as cdxgen wrote it.
     _apply_scope_filter(
-        scan_uuid=scan_uuid, cdxgen_result=cdxgen_result, source_dir=source_dir
+        scan_uuid=scan_uuid, cdxgen_result=cdxgen_result, source_dir=project_root
     )
 
     _persist_artifact(
@@ -520,7 +531,9 @@ def _run_pipeline(
             session,
             scan_uuid=scan_uuid,
             sbom=cdxgen_result.sbom,
-            source_dir=source_dir,
+            # The PROJECT root (not the workspace parent) so the npm-lockfile
+            # scope enrichment actually finds package-lock.json on git scans.
+            source_dir=project_root,
         )
         if scancode_detections:
             try:
@@ -1212,6 +1225,21 @@ def _merge_cocoapods_components(
         log.warning(
             "cocoapods_merge_stage_failed", scan_id=str(scan_uuid), exc_info=True
         )
+
+
+def _resolve_project_root(source_dir: Path) -> Path:
+    """The scanned PROJECT's root inside the fetch output.
+
+    ``_fetch_source`` returns ``workspace/source`` while the git path clones
+    into ``workspace/source/repo`` (the zip path extracts into ``source/``
+    itself). Root-keyed consumers — the prep lockfile generators, the scope
+    filter's and CocoaPods fill-in's lockfile reads, persist's npm scope
+    enrichment, language detection — need the repo root; handing them the
+    parent made every one of them silently no-op on git scans. cdxgen is
+    unaffected either way (``-r`` recurses from the parent).
+    """
+    repo = source_dir / "repo"
+    return repo if repo.is_dir() else source_dir
 
 
 def _apply_scope_filter(

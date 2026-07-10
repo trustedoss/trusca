@@ -358,3 +358,25 @@ def test_ingest_pipeline_never_references_the_scope_filter() -> None:
     } | {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
     assert "_apply_scope_filter" not in names
     assert "filter_sbom_to_runtime_scope" not in names
+
+
+# ---------------------------------------------------------------------------
+# _resolve_project_root — the git-clone repo/ subdirectory (real-scan finding)
+# ---------------------------------------------------------------------------
+
+
+def test_project_root_resolves_the_git_clone_subdir(tmp_path: Path) -> None:
+    # git path: _fetch_source clones into source/repo — root-keyed consumers
+    # (lockfile reads, prep, detection) must see repo/, not the parent.
+    from tasks.scan_source import _resolve_project_root
+
+    (tmp_path / "repo").mkdir()
+    assert _resolve_project_root(tmp_path) == tmp_path / "repo"
+
+
+def test_project_root_falls_back_for_zip_extractions(tmp_path: Path) -> None:
+    # zip path: extraction lands at source/ itself — no repo/ subdir.
+    from tasks.scan_source import _resolve_project_root
+
+    (tmp_path / "package.json").write_text("{}", encoding="utf-8")
+    assert _resolve_project_root(tmp_path) == tmp_path

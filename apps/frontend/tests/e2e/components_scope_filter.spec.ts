@@ -35,6 +35,10 @@ import { seedE2eUser, type SeedSummary } from "../_harness/seed";
 
 const FILTERED_PROJECT = "ci-scope-filter";
 const EXPECTED_DROPPED = 15; // seed writes {maven: 3, npm: 12}
+// Component-mode purls are NOT run-suffixed by the seed — a repeated default
+// prefix collides with earlier runs' catalog rows (see
+// vulnerabilities_epss.spec.ts), so mint one per run.
+const PREFIX = `scopeseed${Date.now().toString(36)}`;
 
 let sharedPage: Page;
 let seedFailed = false;
@@ -48,6 +52,7 @@ test.describe.serial("@components scope-filter summary note", () => {
         projectNames: [FILTERED_PROJECT],
         withScan: true,
         componentCount: 5,
+        componentPrefix: PREFIX,
       });
     } catch {
       seedFailed = true;

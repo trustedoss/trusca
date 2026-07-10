@@ -80,6 +80,14 @@ async def get_component_detail_endpoint(
         # this since W2 #31 but the hand-built response omitted it, so the
         # wire payload was always ``null``.
         dependency_scope=payload["dependency_scope"],
+        # Phase M — same hand-built-response drop class as the line above
+        # (caught by the components_eol e2e: DB and list carried the verdict,
+        # the drawer read null).
+        eol_state=payload["eol_state"],
+        eol_product=payload["eol_product"],
+        eol_cycle=payload["eol_cycle"],
+        eol_date=payload["eol_date"],
+        eol_source=payload["eol_source"],
         created_at=payload["created_at"],
         updated_at=payload["updated_at"],
     )

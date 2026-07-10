@@ -450,6 +450,10 @@ async def get_project_overview_endpoint(
         project_id=payload["project_id"],
         project_name=payload["project_name"],
         total_components=payload["total_components"],
+        # Phase M — hand-built-response completeness (see
+        # tests/unit/api/test_handbuilt_response_completeness.py: this
+        # construction has silently dropped fields before).
+        eol_count=payload["eol_count"],
         severity_distribution=payload["severity_distribution"],
         license_distribution=payload["license_distribution"],
         risk_score=payload["risk_score"],
