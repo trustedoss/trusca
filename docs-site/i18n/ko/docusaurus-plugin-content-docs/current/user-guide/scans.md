@@ -144,7 +144,7 @@ queued ─────► running ─────► succeeded
 
 1. **Bootstrapping** — 작업 공간 준비.
 2. **Fetching source** — `git clone`(또는 기존 작업 공간이면 `git fetch` + checkout).
-3. **Detecting components** — `cdxgen`이 레포를 탐색하여 CycloneDX SBOM을 생성하고, 각 의존성의 패키지 메타데이터에서 **declared** 라이선스를 읽습니다.
+3. **Detecting components** — `cdxgen`이 레포를 탐색하여 CycloneDX SBOM을 생성하고, 각 의존성의 패키지 메타데이터에서 **declared** 라이선스를 읽습니다. 직후 **런타임 스코프 필터**가 배포되지 않는 의존성(Maven `test`/`provided`, npm `devDependencies`)을 제거하여, 이후 모든 단계 — 서명·저장·취약점 매칭 — 가 배포 세트만 보게 합니다([컴포넌트·라이선스 → 런타임 스코프 필터링](./components-and-licenses.md#runtime-scope-filtering) 참고).
 4. **Detecting first-party licenses** — scancode 가 프로젝트 자체 소스 파일을 스캔하여 발견한 **detected** 라이선스를 기록하며, 각 항목에 라이선스가 발견된 파일의 `source_path` 를 함께 태깅합니다([컴포넌트·라이선스 → declared vs. detected](./components-and-licenses.md#declared-vs-detected) 참고). 이 단계는 best-effort 입니다: scancode 가 미설치이거나 타임아웃이거나 트리가 너무 크면 declared 라이선스만으로 스캔을 계속합니다 — 저하되었으나 비치명적인 결과입니다. 이후 법적 단계 분류는 내장 분류 카탈로그에서 적용됩니다([컴포넌트·라이선스 → 분류 출처](./components-and-licenses.md#라이선스-분류) 참고).
 5. **Resolving vulnerabilities** — `trivy sbom`이 CycloneDX SBOM을 로컬 Trivy DB(NVD + OSV + GHSA + EPSS + KEV)에 매칭. 스캔당 네트워크 호출 없음.
 6. **Persisting** — 컴포넌트·라이선스·결과를 PostgreSQL에 저장.
@@ -253,13 +253,13 @@ UI는 단계·진행률 실시간 갱신을 위해 `ws(s)://<host>/ws/scans/{sca
 
 ```json
 {
-  "step": "dt_findings",
-  "percent": 62,
+  "step": "trivy",
+  "percent": 90,
   "ts": "2026-05-09T13:42:11Z"
 }
 ```
 
-`percent`는 0–100 정수입니다. `step`은 파이프라인 슬러그(`bootstrap`, `fetch`, `prep`, `cdxgen`, `scancode`, `dt_upload`, `dt_findings`, `finalize`)와 2개의 종단 상태(`succeeded`, `failed`) 중 하나입니다. `scancode` 슬러그는 이전의 `ort` 슬러그를 같은 진행 percent 에서 대체했습니다. 프레임은 `scan_id`를 다시 보내지 않습니다 — 구독자가 URL에서 이미 알고 있기 때문입니다.
+`percent`는 0–100 정수입니다. `step`은 파이프라인 슬러그(`bootstrap`, `fetch`, `prep`, `cdxgen`, `sign`, `scancode`, `approvals`, `scanoss`, `trivy`, `finalize`)와 2개의 종단 상태(`succeeded`, `failed`) 중 하나입니다. `scancode` 슬러그는 이전의 `ort` 슬러그를 대체했고, Dependency-Track 제거(ADR-0001) 이후 `trivy`가 이전의 `dt_upload`/`dt_findings` 쌍을 대체했습니다. 프레임은 `scan_id`를 다시 보내지 않습니다 — 구독자가 URL에서 이미 알고 있기 때문입니다.
 
 ## 정상 동작 확인
 

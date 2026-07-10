@@ -505,6 +505,59 @@ def cdxgen_fetch_license() -> bool:
     }
 
 
+# ---------------------------------------------------------------------------
+# Runtime-scope SBOM post-filter (Phase K — default ON).
+#
+# Drops test/provided/dev dependencies from the cdxgen SBOM before persist,
+# signing and Trivy matching, so CVE counts and license obligations describe
+# the deployable artifact (BomLens build-prep parity). Unlike SCANOSS this is
+# a pure local transformation with no egress, so it defaults ON; the guards
+# inside integrations/sbom_scope_filter.py make it a structural no-op wherever
+# the data to filter safely is absent. Parsing is inverted vs scanoss_enabled:
+# only the exact falsy tokens disable, so a typo fails OPEN to the
+# correct-by-default behaviour rather than silently reverting to over-counting.
+# ---------------------------------------------------------------------------
+
+
+_SCOPE_FILTER_FALSY = {"false", "0", "no"}
+
+
+def scan_scope_filter_enabled() -> bool:
+    """Master switch for the runtime-scope post-filter stage.
+
+    Default ``true``. Only ``false`` / ``0`` / ``no`` (case-insensitive)
+    disable it. Read at call time (rule #11).
+    """
+    return (
+        os.getenv("SCAN_SCOPE_FILTER_ENABLED", "true").strip().lower()
+        not in _SCOPE_FILTER_FALSY
+    )
+
+
+def scan_scope_filter_maven_enabled() -> bool:
+    """Maven scope-tag filter (drop ``optional``/``excluded`` maven nodes).
+
+    Default ``true``; disable when a project relies on Maven
+    ``<optional>true</optional>`` runtime deps (cdxgen tags those ``optional``
+    like test scope — documented caveat). Read at call time (rule #11).
+    """
+    return (
+        os.getenv("SCAN_SCOPE_FILTER_MAVEN_ENABLED", "true").strip().lower()
+        not in _SCOPE_FILTER_FALSY
+    )
+
+
+def scan_scope_filter_node_enabled() -> bool:
+    """npm dev-dependency filter (drop lockfile-classified ``dev`` nodes).
+
+    Default ``true``. Read at call time (rule #11).
+    """
+    return (
+        os.getenv("SCAN_SCOPE_FILTER_NODE_ENABLED", "true").strip().lower()
+        not in _SCOPE_FILTER_FALSY
+    )
+
+
 def scan_executor_mode() -> str:
     """How the SBOM-generation stage (build-prep + cdxgen) is executed.
 

@@ -7,6 +7,19 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+- **Runtime-scope SBOM filtering (default ON).** Source scans now drop
+  non-deployable dependencies from the cdxgen SBOM before persist, signing and
+  vulnerability matching: Maven `test`/`provided` nodes (cdxgen scope tags
+  `optional`/`excluded`) and npm `devDependencies` (lockfile-classified `dev`).
+  CVE counts and license obligations now describe the artifact that actually
+  ships. **Component and CVE counts drop on the first re-scan of affected
+  Maven/npm projects** — the scan summary records how many components were
+  excluded, and `SCAN_SCOPE_FILTER_ENABLED=false` (or the per-ecosystem
+  `SCAN_SCOPE_FILTER_MAVEN_ENABLED` / `SCAN_SCOPE_FILTER_NODE_ENABLED`)
+  restores the full graph. SBOMs uploaded via the ingest API are never
+  filtered — an uploaded SBOM is the supplier's declared truth.
+
 ## [0.13.1] — 2026-07-07
 
 A fixes-only patch release: repairs fresh role-separated (L1) installs and

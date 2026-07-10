@@ -49,6 +49,7 @@ Workspace:
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import re
@@ -72,6 +73,9 @@ from sqlalchemy.orm import Session
 from core.config import (
     cdxgen_fetch_license,
     cdxgen_spec_version,
+    scan_scope_filter_enabled,
+    scan_scope_filter_maven_enabled,
+    scan_scope_filter_node_enabled,
     scan_soft_time_limit_seconds,
     scanoss_enabled,
     slsa_builder_id,
@@ -84,7 +88,7 @@ from core.url_guard import GitUrlValidationError, validate_git_url_with_ip
 from integrations import attestation as attestation_builder
 from integrations import cdxgen as cdxgen_adapter
 from integrations import cosign as cosign_adapter
-from integrations import scan_executor
+from integrations import sbom_scope_filter, scan_executor
 from integrations import scancode as scancode_adapter
 from integrations import scanoss as scanoss_adapter
 from integrations._size_guard import enforce_jsonb_row_size_limit
@@ -393,6 +397,16 @@ def _run_pipeline(
     cdxgen_result = cdxgen_adapter.CdxgenResult(
         sbom_path=gen_result.sbom_path, sbom=gen_result.sbom
     )
+
+    # Stage 3.25 — runtime-scope post-filter (Phase K). MUST run before the
+    # artifact persist, cosign signing, SCANOSS and Trivy below so every
+    # downstream consumer (persisted components, the signed/downloadable
+    # artifact, vulnerability matching) sees ONE consistent filtered document.
+    # Best-effort: any failure leaves the SBOM exactly as cdxgen wrote it.
+    _apply_scope_filter(
+        scan_uuid=scan_uuid, cdxgen_result=cdxgen_result, source_dir=source_dir
+    )
+
     _persist_artifact(
         scan_uuid,
         kind="sbom_cyclonedx",
@@ -1132,6 +1146,81 @@ def _detect_and_record_env(scan_uuid: uuid.UUID, source_dir: Path) -> str:
         log.warning("source_detect_persist_failed", scan_id=str(scan_uuid), exc_info=True)
 
     return detected_env
+
+
+def _apply_scope_filter(
+    *,
+    scan_uuid: uuid.UUID,
+    cdxgen_result: cdxgen_adapter.CdxgenResult,
+    source_dir: Path,
+) -> None:
+    """Filter the cdxgen SBOM down to the deployable runtime set (Phase K).
+
+    Copy-then-commit transactional shape: the filter runs on a deep copy, the
+    on-disk file (the same file Trivy later reads) is rewritten atomically,
+    and only after that succeeds is the in-memory document swapped. A failed
+    rewrite therefore degrades to "filter skipped" with memory and disk still
+    consistent — persist, signing and Trivy can never see diverging documents.
+    Best-effort throughout: no failure here may fail the scan.
+    """
+    if not scan_scope_filter_enabled():
+        return
+    try:
+        npm_lock = read_lockfile(source_dir)
+        working = copy.deepcopy(cdxgen_result.sbom)
+        result = sbom_scope_filter.filter_sbom_to_runtime_scope(
+            working,
+            npm_lock=npm_lock,
+            maven=scan_scope_filter_maven_enabled(),
+            node=scan_scope_filter_node_enabled(),
+        )
+        if not result.applied:
+            return
+        if result.dropped:
+            if not sbom_scope_filter.rewrite_sbom_file(
+                cdxgen_result.sbom_path, working
+            ):
+                return
+            # Same object identity — CdxgenResult stays valid either way.
+            cdxgen_result.sbom.clear()
+            cdxgen_result.sbom.update(working)
+        log.info(
+            "scope_filter_applied",
+            scan_id=str(scan_uuid),
+            dropped=dict(result.dropped),
+            kept=result.kept_components,
+        )
+        _record_scope_filter(scan_uuid, result)
+    except Exception:  # noqa: BLE001 — the filter must never fail the scan
+        log.warning(
+            "scope_filter_stage_failed", scan_id=str(scan_uuid), exc_info=True
+        )
+
+
+def _record_scope_filter(
+    scan_uuid: uuid.UUID, result: sbom_scope_filter.ScopeFilterResult
+) -> None:
+    """Persist the filter outcome onto ``scan_metadata`` (best-effort).
+
+    Same JSONB reassign-fresh-dict pattern as ``_detect_and_record_env`` —
+    in-place mutation is not tracked by SQLAlchemy.
+    """
+    try:
+        with sync_session_scope() as session:
+            scan = session.get(Scan, scan_uuid)
+            if scan is not None:
+                merged = dict(scan.scan_metadata or {})
+                merged["scope_filter"] = {
+                    "applied": True,
+                    "dropped": dict(result.dropped),
+                    "kept": result.kept_components,
+                }
+                scan.scan_metadata = merged
+                session.commit()
+    except Exception:  # noqa: BLE001 — telemetry is best-effort, never fatal
+        log.warning(
+            "scope_filter_persist_failed", scan_id=str(scan_uuid), exc_info=True
+        )
 
 
 def _persist_artifact(

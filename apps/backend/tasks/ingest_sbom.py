@@ -283,6 +283,15 @@ def _run_pipeline(
     # by PURL, so the component graph has to exist first. ``source_dir=None``
     # because an ingested SBOM has no first-party source tree (no npm-lockfile
     # enrichment, no scancode detections).
+    #
+    # DELIBERATE divergence from the source pipeline: the runtime-scope
+    # post-filter (Phase K, ``_apply_scope_filter`` in tasks/scan_source.py)
+    # does NOT run here. An uploaded SBOM is the supplier's *declared truth* —
+    # silently shrinking it would corrupt the conformance verdict already
+    # scored on the original bytes above, and producers that filter (e.g.
+    # BomLens) have already done so before upload. There is also no source
+    # tree, so the Node lockfile predicate could not run anyway. Pinned by
+    # tests/unit/tasks/test_ingest_sbom_no_scope_filter.py.
     _set_stage(scan_uuid, "components")
     with sync_session_scope() as session:
         persist_sbom_components(

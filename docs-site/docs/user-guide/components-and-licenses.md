@@ -43,6 +43,38 @@ The inline filter bar at the top supports:
 
 Filters compose. The URL updates (`?direct=…`, `?dependency_scope=…`, …) so you can share a filtered view.
 
+### Runtime-scope filtering {#runtime-scope-filtering}
+
+The table shows the **deployable runtime set**, not everything the build
+resolved. cdxgen records every resolved node — including the test/dev
+toolchain (`junit`, `lombok`, `jest`, `eslint`, …) that never ships with the
+artifact — so by default the scanner drops those before the SBOM is persisted,
+signed and matched against the vulnerability DB:
+
+- **Maven** — components cdxgen tagged `optional` (Maven `test` scope) or
+  `excluded` (`provided`/`system` scope) are removed. The filter only runs
+  when the SBOM actually carries scope tags; an SBOM without them is kept
+  whole, so recall never regresses.
+- **npm** — packages the project's `package-lock.json` classifies as
+  `dev` are removed. A package the lockfile does not cover is always kept
+  (nested manifests in a monorepo are not covered by the root lockfile), so
+  the filter only removes components with positive dev-dependency evidence.
+
+The number of excluded components is recorded on the scan, and the SBOM's
+`metadata.properties` carries a `trusca:scope_filter` entry with per-ecosystem
+counts, so a filtered document self-documents what was removed. SBOMs uploaded
+through the ingest API are **never** filtered — an uploaded SBOM is the
+supplier's declared truth.
+
+Two caveats worth knowing:
+
+- cdxgen tags Maven `<optional>true</optional>` dependencies the same way as
+  `test` scope, so a rare *runtime* optional dependency is dropped with them.
+  Set `SCAN_SCOPE_FILTER_MAVEN_ENABLED=false` for such projects.
+- Turning the filter off (`SCAN_SCOPE_FILTER_ENABLED=false`) restores the full
+  resolved graph on the next scan. See
+  [Environment variables](../reference/env-variables.md) for all three toggles.
+
 ## Table view vs. graph view
 
 The Components tab has a **Table / Graph** toggle (top-left). **Table** is the default virtualized list above. **Graph** renders the scan's resolved **dependency graph** — every *parent → child* edge the scanner recorded — as an interactive node-link diagram (left-to-right layout), so you can see *how* a package is pulled in rather than just *that* it is present. Each node is coloured by its highest-severity finding (colour is never the only signal — the detail panel and the tree fallback show a severity label too), and a search box highlights matching packages. Clicking a node opens its details beside the canvas.

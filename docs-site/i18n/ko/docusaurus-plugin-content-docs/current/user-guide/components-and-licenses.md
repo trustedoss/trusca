@@ -43,6 +43,37 @@ sidebar_position: 3
 
 필터는 결합됩니다. URL(`?direct=…`, `?dependency_scope=…`, …)이 갱신되어 필터된 뷰를 공유할 수 있습니다.
 
+### 런타임 스코프 필터링 {#runtime-scope-filtering}
+
+테이블에는 빌드가 해석한 전부가 아니라 **배포되는 런타임 세트**가 표시됩니다.
+cdxgen 은 해석된 모든 노드를 기록하므로, 산출물과 함께 배포되지 않는 테스트·개발
+도구(`junit`, `lombok`, `jest`, `eslint`, …)까지 SBOM 에 담깁니다. 기본 설정에서
+스캐너는 SBOM 을 저장·서명하고 취약점 DB 에 매칭하기 전에 이런 컴포넌트를
+제거합니다.
+
+- **Maven** — cdxgen 이 `optional`(Maven `test` scope) 또는 `excluded`
+  (`provided`/`system` scope)로 태깅한 컴포넌트를 제거합니다. 이 필터는 SBOM 에
+  scope 태그가 실제로 존재할 때만 동작하며, 태그가 없는 SBOM 은 그대로 두므로
+  탐지 범위가 줄어드는 일은 없습니다.
+- **npm** — 프로젝트의 `package-lock.json` 이 `dev` 로 분류한 패키지를
+  제거합니다. lockfile 이 다루지 않는 패키지는 항상 유지합니다(모노레포의 중첩
+  manifest 는 루트 lockfile 에 없습니다). 즉 dev 의존성이라는 명확한 근거가 있는
+  컴포넌트만 제거합니다.
+
+제외된 컴포넌트 수는 스캔에 기록되고, SBOM 의 `metadata.properties` 에는
+생태계별 개수를 담은 `trusca:scope_filter` 항목이 남아 필터된 문서가 제거 내역을
+스스로 설명합니다. 인제스트 API 로 업로드한 SBOM 은 **절대** 필터링하지
+않습니다 — 업로드된 SBOM 은 공급자가 선언한 내용 그대로를 신뢰합니다.
+
+알아 둘 주의점 2가지:
+
+- cdxgen 은 Maven `<optional>true</optional>` 의존성을 `test` scope 와 같은
+  방식으로 태깅하므로, 드물게 *런타임* optional 의존성도 함께 제거됩니다. 그런
+  프로젝트에서는 `SCAN_SCOPE_FILTER_MAVEN_ENABLED=false` 로 끄십시오.
+- 필터를 끄면(`SCAN_SCOPE_FILTER_ENABLED=false`) 다음 스캔부터 전체 해석
+  그래프가 복원됩니다. 토글 3종은 [환경변수](../reference/env-variables.md)를
+  참고하십시오.
+
 ## 표 보기와 그래프 보기
 
 Components 탭에는 **표 / 그래프** 토글이 있습니다(좌측 상단). 기본값은 위의 가상 스크롤 목록(**표**)입니다. **그래프**는 스캔이 해석한 **의존성 그래프**(스캐너가 기록한 모든 부모 → 자식 엣지)를 상호작용형 노드-링크 다이어그램(좌→우 배치)으로 렌더링합니다. 어떤 패키지가 단지 존재하는지가 아니라 어떻게 끌려 들어왔는지를 볼 수 있습니다. 각 노드는 가장 높은 심각도 결과에 따라 색으로 표시되며(색은 유일한 신호가 아닙니다 — 상세 패널과 트리 폴백에 심각도 라벨도 함께 표시), 검색 상자로 일치하는 패키지를 강조할 수 있습니다. 노드를 클릭하면 캔버스 옆에 상세가 열립니다.
