@@ -1378,6 +1378,51 @@ def eol_snapshot_path() -> str:
     return os.getenv("EOL_SNAPSHOT_PATH", "").strip()
 
 
+def eol_refresh_enabled() -> bool:
+    """Whether the weekly beat FETCHES fresh data from endoflife.date.
+
+    Default ``false`` — this is NEW egress to a third-party host the product
+    has never contacted, so it follows the SCANOSS fail-closed posture (only
+    the exact truthy tokens enable), NOT the KEV default-on one: unlike KEV
+    — where a stale catalog misses actively-exploited CVEs daily — EOL dates
+    churn quarterly and the per-release vendored snapshot already bounds
+    staleness. The beat's RE-STAMP pass runs regardless of this toggle (it
+    is pure-local). Read at call time (rule #11).
+    """
+    return os.getenv("EOL_REFRESH_ENABLED", "false").strip().lower() in {
+        "true",
+        "1",
+        "yes",
+    }
+
+
+def eol_feed_url_template() -> str:
+    """URL template for the endoflife.date per-product API.
+
+    ``{product}`` is substituted with each mapped product slug. Env-only
+    trust model (same as ``KEV_FEED_URL`` — no user write path, so no
+    ``core.url_guard``); point it at an internal mirror to keep the egress
+    inside your network. Read at call time (rule #11).
+    """
+    return os.getenv(
+        "EOL_FEED_URL_TEMPLATE", "https://endoflife.date/api/{product}.json"
+    ).strip()
+
+
+def eol_refresh_timeout_seconds() -> int:
+    """HTTP timeout (seconds) per product request. Default 15s.
+
+    Each product document is a few KB; 15 seconds absorbs a slow corporate
+    proxy. Bounded ``[1, 120]``. Read at call time (rule #11).
+    """
+    return _int_env(
+        "EOL_REFRESH_TIMEOUT_SECONDS",
+        default=15,
+        minimum=1,
+        maximum=120,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Phase 2 PR #9 — WebSocket gateway configuration accessors.
 #

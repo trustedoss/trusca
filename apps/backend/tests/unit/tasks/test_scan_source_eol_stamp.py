@@ -24,7 +24,7 @@ import json
 import uuid
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -97,7 +97,7 @@ def fixture_dataset(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _sbom() -> dict[str, Any]:
-    return json.loads(SBOM_PATH.read_text(encoding="utf-8"))
+    return cast(dict[str, Any], json.loads(SBOM_PATH.read_text(encoding="utf-8")))
 
 
 def _persist(session: _FakeSession) -> None:

@@ -82,7 +82,9 @@ def captured_cmd(monkeypatch: pytest.MonkeyPatch) -> list[list[str]]:
         return SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
 
     monkeypatch.setattr(cdxgen, "run_with_line_streaming", _fake_run)
-    monkeypatch.setattr(cdxgen.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(
+        "integrations.cdxgen.shutil.which", lambda name: f"/usr/bin/{name}"
+    )
     return calls
 
 

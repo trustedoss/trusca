@@ -24,7 +24,7 @@ import json
 import shutil
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -39,15 +39,18 @@ NODE_LOCK = FIXTURES / "npm" / "package-lock.devdeps.json"
 
 
 def _load(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text(encoding="utf-8"))
+    return cast(dict[str, Any], json.loads(path.read_text(encoding="utf-8")))
 
 
 def _refs(components: list[dict[str, Any]]) -> set[str]:
-    return {
-        c.get("bom-ref") or c.get("purl")
-        for c in components
-        if isinstance(c, dict) and (c.get("bom-ref") or c.get("purl"))
-    }
+    refs: set[str] = set()
+    for component in components:
+        if not isinstance(component, dict):
+            continue
+        ref = component.get("bom-ref") or component.get("purl")
+        if isinstance(ref, str) and ref:
+            refs.add(ref)
+    return refs
 
 
 # ---------------------------------------------------------------------------
@@ -280,7 +283,8 @@ def test_apply_scope_filter_rewrite_failure_keeps_memory_and_disk_unfiltered(
     from tasks import scan_source
 
     monkeypatch.setattr(
-        scan_source.sbom_scope_filter, "rewrite_sbom_file", lambda path, sbom: False
+        "tasks.scan_source.sbom_scope_filter.rewrite_sbom_file",
+        lambda path, sbom: False,
     )
     recorded: list[Any] = []
     monkeypatch.setattr(

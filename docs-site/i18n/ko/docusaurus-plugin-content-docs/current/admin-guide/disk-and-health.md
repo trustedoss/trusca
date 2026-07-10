@@ -51,6 +51,29 @@ sidebar_position: 3
 
 포털은 `backend`, `worker`, `beat`, `frontend`, `traefik`을 별도 프로브하지 않습니다. 이들의 liveness 는 암묵적입니다 — 대시보드가 렌더되면 backend 가동 중, `celery` 행이 `ok`이면 worker(와 worker 가 의존하는 broker)도 도달 가능.
 
+### endoflife.date 스냅숏 패널 {#eol-panel}
+
+<!-- docs-uat: id=eol-health-api kind=api auth=admin url=/v1/admin/eol/health expect=status:200 tier=nightly -->
+Trivy DB·KEV 피드 패널 아래의 **endoflife.date 스냅숏** 패널은 Components 탭
+[EOL 배지](../user-guide/components-and-licenses.md#end-of-life-flagging)의
+데이터셋 상태를 보여줍니다.
+
+- **스냅숏 날짜** — 유효 데이터셋의 생성일(릴리즈에 벤더링된 스냅숏과,
+  `EOL_REFRESH_ENABLED=true` 인 경우 마지막으로 수집한 스냅숏 중 더 최신).
+  180일이 지나면 주황색 **오래됨** 배지로 격상됩니다 — 릴리즈를
+  업그레이드하거나 `python3 scripts/refresh_eol_snapshot.py` 로 스냅숏을
+  다시 만드십시오.
+- **지원 종료 컴포넌트** — 지원 종료를 지난 카탈로그 컴포넌트 버전의 실시간
+  개수.
+- **최근 기록 / 해제** — 주간 beat 의 재기록 패스가 마지막 실행에서 한 일.
+  재기록은 실시간 수집이 꺼져 있어도 실행됩니다 — 순수 로컬 패스로, 더 새
+  벤더 스냅숏을 기존 행에 반영하고 목록에서 빠진 제품의 기록을 지웁니다.
+- **다음 실행** — 라이브 Celery beat 스케줄에서 유도(기본 일요일 02:15 UTC).
+
+푸터에는 데이터셋 출처(벤더링/피드 수집)와 실시간 갱신 여부가 표시됩니다.
+실시간 갱신은 **기본 꺼짐**입니다 — [환경변수](../reference/env-variables.md)의
+`EOL_REFRESH_ENABLED` 를 참고하십시오.
+
 ## 디스크 대시보드 {#disk}
 
 <!-- docs-uat: id=disk-api kind=api auth=admin url=/v1/admin/disk expect=status:200 tier=nightly -->

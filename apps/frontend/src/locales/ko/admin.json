@@ -328,6 +328,35 @@
         "feed_host": "피드 호스트"
       }
     },
+    "eol": {
+      "heading": "endoflife.date 스냅숏",
+      "status": {
+        "ok": "정상",
+        "stale": "오래됨",
+        "skipped": "건너뜀",
+        "disabled": "비활성"
+      },
+      "stale_note": "스냅숏이 {{days}}일 지났습니다 — 릴리즈를 업그레이드하거나 scripts/refresh_eol_snapshot.py 로 갱신하십시오.",
+      "skipped_reason": "마지막 갱신 건너뜀: {{reason}}",
+      "kpi": {
+        "snapshot_date": "스냅숏 날짜",
+        "snapshot_age": "{{days}}일 경과",
+        "flagged_total": "지원 종료 컴포넌트",
+        "stamped_cleared": "최근 기록 / 해제",
+        "next_refresh": "다음 실행"
+      },
+      "origin": {
+        "vendored": "릴리즈에 벤더링됨",
+        "feed": "피드에서 수집됨"
+      },
+      "footer": {
+        "origin": "데이터셋",
+        "products": "제품 수",
+        "refresh": "실시간 갱신",
+        "refresh_on": "켬 ({{host}})",
+        "refresh_off": "끔 — 벤더 스냅숏만 사용"
+      }
+    },
     "backup": {
       "title": "백업",
       "subtitle": "자동 일일 백업 + 수동 백업 트리거 + 복원.",

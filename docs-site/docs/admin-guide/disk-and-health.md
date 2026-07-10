@@ -51,6 +51,31 @@ Each row maps to a real probe in `services/admin_health_service.py`:
 
 The portal does not separately probe `backend`, `worker`, `beat`, `frontend`, or `traefik`. Their liveness is implicit: if the dashboard renders at all, the backend is up; if the `celery` row is `ok`, the worker (and the broker the worker depends on) are reachable.
 
+### endoflife.date snapshot panel {#eol-panel}
+
+<!-- docs-uat: id=eol-health-api kind=api auth=admin url=/v1/admin/eol/health expect=status:200 tier=nightly -->
+Below the Trivy DB and KEV feed panels, the **endoflife.date snapshot** panel
+tracks the dataset behind the Components tab's
+[EOL badge](../user-guide/components-and-licenses.md#end-of-life-flagging):
+
+- **Snapshot date** — the effective dataset's build date (the newer of the
+  release-vendored snapshot and, when `EOL_REFRESH_ENABLED=true`, the last
+  fetched one). The panel escalates to an amber **Stale** badge past 180
+  days — upgrade the release or rebuild the snapshot with
+  `python3 scripts/refresh_eol_snapshot.py`.
+- **EOL-flagged components** — live count of catalog component versions past
+  their end-of-life.
+- **Recently stamped / cleared** — what the weekly beat's re-stamp pass did
+  on its last tick. The re-stamp runs even when the live fetch is off — it
+  is a pure-local pass that applies a newer vendored snapshot to existing
+  rows and clears stamps the whitelist no longer covers.
+- **Next tick** — derived from the live Celery beat schedule (Sunday 02:15
+  UTC by default).
+
+The footer shows the dataset origin (vendored vs fetched) and whether the
+live refresh is on. The refresh is **off by default** — see
+`EOL_REFRESH_ENABLED` in [Environment variables](../reference/env-variables.md).
+
 ## Disk dashboard {#disk}
 
 <!-- docs-uat: id=disk-api kind=api auth=admin url=/v1/admin/disk expect=status:200 tier=nightly -->

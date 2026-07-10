@@ -20,6 +20,7 @@ import {
   type HealthComponent,
   type HealthStatus,
 } from "@/features/admin/health/api/adminHealthApi";
+import { EolPanel } from "@/features/admin/health/EolPanel";
 import { KevFeedPanel } from "@/features/admin/health/KevFeedPanel";
 import { TrivyDBPanel } from "@/features/admin/health/TrivyDBPanel";
 import { useAdminHealth } from "@/features/admin/health/api/useAdminHealth";
@@ -162,6 +163,7 @@ export function AdminHealthPage() {
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
           <TrivyDBPanel />
           <KevFeedPanel />
+          <EolPanel />
         </div>
 
         <div

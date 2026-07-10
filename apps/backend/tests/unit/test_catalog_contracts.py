@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import typing
 
+from pydantic import BaseModel
+
 # ---------------------------------------------------------------------------
 # Notification kinds — H-5 guard
 # ---------------------------------------------------------------------------
@@ -272,13 +274,13 @@ def test_eol_states_catalog_matches_schema_literals() -> None:
     The FE mirror half is
     ``apps/frontend/tests/unit/contracts/catalogMirrors.test.ts``.
     """
-    from services.eol.eol_catalog import EOL_STATES
     from schemas.project_detail import ComponentDetailResponse, ComponentSummary
+    from services.eol.eol_catalog import EOL_STATES
 
     expected = {"eol", "supported", "unknown"}
     assert set(EOL_STATES) == expected
 
-    def _literal_states(model: type, field: str) -> set[str]:
+    def _literal_states(model: type[BaseModel], field: str) -> set[str]:
         annotation = model.model_fields[field].annotation
         # ``Literal["eol","supported","unknown"] | None`` — walk the union.
         states: set[str] = set()

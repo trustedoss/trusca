@@ -34,7 +34,7 @@ Closed enums (must stay in sync with ``models.scan.SCAN_STATUS_VALUES``):
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -513,6 +513,118 @@ class KevFeedStatusOut(BaseModel):
     )
 
 
+# Closed fetch-outcome vocabulary owned by tasks/eol_catalog_refresh (same
+# posture as KevSyncResult above).
+EolSyncResult = Literal["synced", "skipped"]
+
+
+class EolStatusOut(BaseModel):
+    """
+    Response of ``GET /v1/admin/eol/health`` — Phase M EOL snapshot panel.
+
+    Structural mirror of :class:`KevFeedStatusOut` with the dataset-specific
+    additions: the EFFECTIVE snapshot date (max of vendored and fetched — the
+    dataset the weekly re-stamp actually used), its origin, and the re-stamp
+    counters that update on every tick (the re-stamp half runs even when the
+    fetch is disabled).
+    """
+
+    enabled: bool = Field(
+        description="Mirrors ``EOL_ENABLED`` — the flagging feature itself.",
+    )
+    refresh_enabled: bool = Field(
+        description=(
+            "Mirrors ``EOL_REFRESH_ENABLED`` — the optional live fetch. "
+            "``false`` (the default) means verdicts come from the vendored "
+            "snapshot only; the weekly re-stamp still runs."
+        ),
+    )
+    snapshot_date: date | None = Field(
+        default=None,
+        description=(
+            "Date of the EFFECTIVE dataset — the newer of the vendored "
+            "snapshot and the last fetched one. The panel's staleness "
+            "signal (warn past 180 days). ``null`` when no dataset loads."
+        ),
+    )
+    snapshot_origin: Literal["vendored", "feed"] | None = Field(
+        default=None,
+        description="Where the effective dataset came from.",
+    )
+    rule_count: int = Field(
+        default=0,
+        ge=0,
+        description="Rules in the vendored purl→product whitelist.",
+    )
+    product_count: int = Field(
+        default=0,
+        ge=0,
+        description="Products carried by the effective dataset.",
+    )
+    eol_flagged_total: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Live count of catalog component versions currently "
+            "``eol_state='eol'`` (rides the partial index "
+            "``ix_component_versions_eol``). ``null`` only on DB-read "
+            "degrade."
+        ),
+    )
+    last_synced_at: datetime | None = Field(
+        default=None,
+        description="Timestamp of the last SUCCESSFUL feed fetch.",
+    )
+    last_attempt_at: datetime | None = Field(
+        default=None,
+        description=(
+            "Timestamp of the most recent beat tick of any outcome "
+            "(``eol_sync_state.updated_at``). ``null`` = never ran."
+        ),
+    )
+    last_result: EolSyncResult | None = Field(
+        default=None,
+        description="Fetch outcome of the most recent tick.",
+    )
+    skipped_reason: str | None = Field(
+        default=None,
+        description=(
+            "Why the most recent fetch skipped: ``disabled`` / "
+            "``refresh_disabled`` / ``feed_unavailable`` / "
+            "``feed_below_sanity_floor`` / ``unexpected:<ExceptionName>``."
+        ),
+    )
+    stamped: int | None = Field(
+        default=None,
+        ge=0,
+        description="Catalog rows (re)stamped on the most recent tick.",
+    )
+    cleared: int | None = Field(
+        default=None,
+        ge=0,
+        description="Stale stamps cleared on the most recent tick.",
+    )
+    duration_ms: int | None = Field(
+        default=None,
+        ge=0,
+        description="Wall-clock duration of the most recent tick, in milliseconds.",
+    )
+    next_refresh_at: datetime | None = Field(
+        default=None,
+        description=(
+            "Next fire time of the weekly EOL beat, derived from the live "
+            "Celery beat schedule. ``null`` if the entry cannot be resolved."
+        ),
+    )
+    feed_host: str | None = Field(
+        default=None,
+        description=(
+            "Host of ``EOL_FEED_URL_TEMPLATE`` — host only, never the full "
+            "URL."
+        ),
+    )
+
+
 __all__ = [
     "AdminDiskItem",
     "AdminDiskOut",
@@ -524,6 +636,8 @@ __all__ = [
     "AuditTargetTable",
     "HealthComponent",
     "HealthStatus",
+    "EolStatusOut",
+    "EolSyncResult",
     "KevFeedStatusOut",
     "KevSyncResult",
     "ScanStatus",

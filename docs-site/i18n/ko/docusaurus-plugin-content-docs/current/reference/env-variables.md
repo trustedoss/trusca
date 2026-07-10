@@ -123,6 +123,9 @@ CI 빌드 게이트는 기본적으로 Critical CVE와 금지 라이선스에서
 | `SCAN_SCOPE_FILTER_NODE_ENABLED` | `true` | `config.py` | 스코프 필터의 npm 부분(커밋되었거나 prep 단계가 생성한 `package-lock.json` 이 `dev` 로 분류한 패키지 제거). lockfile 에 없는 패키지는 항상 유지합니다. |
 | `EOL_ENABLED` | `true` | `config.py` | 지원 종료(EOL) 표시: endoflife.date 추적 제품 목록에 맞는 컴포넌트를 공유 카탈로그에 `eol` / `supported` / `unknown` 으로 기록합니다. 완전 오프라인 — 판정은 릴리즈에 벤더링된 스냅숏에서 나오며 외부 전송이 없습니다. 정확히 `false` / `0` / `no` 만 끕니다. [컴포넌트·라이선스 → 지원 종료 표시](../user-guide/components-and-licenses.md#end-of-life-flagging) 참고. |
 | `EOL_SNAPSHOT_PATH` | *(빈 값 — 벤더 파일)* | `config.py` | endoflife.date 스냅숏 재정의. air-gapped 설치에서는 연결된 호스트에서 더 신선한 스냅숏을 만들어(`python3 scripts/refresh_eol_snapshot.py`) 마운트한 뒤 이 변수로 지정합니다. |
+| `EOL_REFRESH_ENABLED` | `false` | `config.py` | 실시간 수집 opt-in: 주간 beat 가 `EOL_FEED_URL_TEMPLATE` 에서 신선한 라이프사이클 데이터를 내려받습니다. **기본 꺼짐** — 새로운 외부 전송이기 때문입니다. beat 의 로컬 재기록 패스는 이 값과 무관하게 실행됩니다. 정확히 `true` / `1` / `yes` 토큰만 켭니다(fail-closed, SCANOSS 방식). |
+| `EOL_FEED_URL_TEMPLATE` | `https://endoflife.date/api/{product}.json` | `config.py` | 실시간 수집용 제품별 API 템플릿(`{product}` 치환). 내부 미러를 지정하면 전송이 사내에 머뭅니다. |
+| `EOL_REFRESH_TIMEOUT_SECONDS` | `15` | `config.py` | 실시간 수집 시 제품 요청당 HTTP 타임아웃. `[1, 120]` 범위이며, 전체 수집은 별도로 60초 wall-clock 으로 제한됩니다. |
 | `WORKSPACE_HOST_PATH` | `/tmp/trustedoss` | `config.py`, `docker-compose.yml` | worker에 `/workspace`로 마운트되는 호스트 디렉터리. 레포 클론 + 스캔 아티팩트(cdxgen SBOM, scancode 출력) 보관. compose 스택은 컨테이너 내에서 `/workspace`로 오버라이드합니다. |
 | `ORT_RULES_PATH` | `/opt/trustedoss/ort/rules.kts` | `docker-compose.yml` | worker 내부 레거시 경로로, ORT 단계 제거 후 잔재입니다. 파일은 placeholder 이며 v0.10.0 에서는 효과가 없습니다 — 라이선스 단계 분류는 `apps/backend/tasks/scan_source.py` 의 `_LICENSE_CATEGORY_DEFAULTS` 에서 옵니다. |
 | `JSONB_ROW_SIZE_LIMIT_BYTES` | `262144` (256 KB) | `config.py` | writer가 truncate + warn하기 전 행당 JSON 바이트 상한. I-1 무한 페이로드 클래스 가드. |

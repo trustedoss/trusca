@@ -137,7 +137,8 @@ def test_merge_rewrite_failure_keeps_memory_and_disk_unmerged(
     from tasks import scan_source
 
     monkeypatch.setattr(
-        scan_source.sbom_scope_filter, "rewrite_sbom_file", lambda path, sbom: False
+        "tasks.scan_source.sbom_scope_filter.rewrite_sbom_file",
+        lambda path, sbom: False,
     )
     cdxgen_result = _cdxgen_result(tmp_path)
     original = copy.deepcopy(cdxgen_result.sbom)

@@ -20,6 +20,7 @@ attacker-controlled, so malformed shapes degrade to None / 0 — never raise.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from integrations.cocoapods_lockfile import (
     MAX_PODS,
@@ -194,7 +195,7 @@ def _data() -> CocoapodsLockfileData:
 
 
 def test_merge_appends_components_edges_and_stamp() -> None:
-    sbom = {
+    sbom: dict[str, Any] = {
         "components": [{"purl": "pkg:swift/github.com/apple/swift-log@1.5.3"}],
         "dependencies": [],
         "metadata": {},
@@ -214,7 +215,7 @@ def test_merge_appends_components_edges_and_stamp() -> None:
 
 
 def test_merge_noop_when_pods_already_present() -> None:
-    sbom = {
+    sbom: dict[str, Any] = {
         "components": [{"purl": "pkg:cocoapods/Existing@1.0.0"}],
         "dependencies": [],
     }

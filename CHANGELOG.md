@@ -8,6 +8,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- **EOL operations: weekly refresh beat + admin health panel.** A weekly
+  Celery beat re-stamps the component catalog against the newest
+  endoflife.date snapshot (so release upgrades reach existing rows without
+  a re-scan, and stamps are cleared when the whitelist shrinks) and — only
+  when `EOL_REFRESH_ENABLED=true`, off by default — fetches fresh lifecycle
+  data with a sanity floor that stops a gutted sweep from displacing a good
+  dataset. The admin/health page gains an endoflife.date snapshot panel
+  (dataset age with a 180-day stale warning, flagged totals, last tick,
+  next fire) at `GET /v1/admin/eol/health`.
 - **End-of-life (EOL) component flagging.** Components matching a curated
   endoflife.date product whitelist (Spring Boot, Express, Django, Rails,
   Angular, Vue, Next.js, Symfony, Laravel, Spring Framework) are stamped
