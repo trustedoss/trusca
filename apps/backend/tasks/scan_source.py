@@ -1280,6 +1280,11 @@ def _record_scope_filter(
                     "applied": True,
                     "dropped": dict(result.dropped),
                     "kept": result.kept_components,
+                    # Audit trail (security-reviewer L2): the identities of
+                    # what was removed, bounded at the module cap — counts
+                    # alone are not reviewable when the npm predicate trusts
+                    # an attacker-controlled lockfile classification.
+                    "dropped_refs": list(result.dropped_refs),
                 }
                 scan.scan_metadata = merged
                 session.commit()

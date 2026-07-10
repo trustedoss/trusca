@@ -313,3 +313,21 @@ def test_stamp_none_verdict_leaves_row_untouched() -> None:
     )
     assert row.eol_state is None
     assert row.eol_evaluated_at is None
+
+
+def test_pathological_numeric_version_is_underivable() -> None:
+    # security-reviewer M2 — a 33+-digit "major" would overflow the
+    # VARCHAR(32) eol_cycle column at flush time, OUTSIDE the per-component
+    # best-effort guard. Over-long segments must read as underivable.
+    assert derive_cycle("1" * 40, "major") is None
+    assert derive_cycle("1" * 40 + ".2", "major.minor") is None
+    verdict = evaluate(
+        "pkg:npm/express@" + "1" * 40,
+        "1" * 40,
+        rules=_rules(),
+        dataset=_dataset(),
+        today=TODAY,
+    )
+    assert verdict is not None
+    assert verdict.state == "unknown"
+    assert verdict.cycle is None

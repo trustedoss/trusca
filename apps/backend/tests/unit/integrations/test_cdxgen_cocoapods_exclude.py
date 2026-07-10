@@ -113,3 +113,13 @@ def test_no_exclude_type_without_podfile(
         source_dir=source, output_dir=tmp_path / "out", backend="real"
     )
     assert "--exclude-type" not in captured_cmd[-1]
+
+
+def test_symlinked_podfile_not_detected(tmp_path: Path) -> None:
+    # L3 — a symlinked Podfile must not steer the --exclude-type flag.
+    outside = tmp_path / "outside-podfile"
+    outside.write_text("platform :ios\n", encoding="utf-8")
+    source = tmp_path / "src"
+    source.mkdir()
+    (source / "Podfile").symlink_to(outside)
+    assert cdxgen._podfile_present(source) is False

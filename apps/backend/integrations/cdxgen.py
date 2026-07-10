@@ -105,12 +105,20 @@ def _podfile_present(source_dir: Path) -> bool:
     surface. ``Pods/`` copies are ignored — ``Pods/Manifest.lock`` trees ship
     their own Podfiles that do not make the project a CocoaPods root.
     """
-    if (source_dir / "Podfile").is_file():
+    root_podfile = source_dir / "Podfile"
+    if root_podfile.is_file() and not root_podfile.is_symlink():
         return True
     for pattern in ("*/Podfile", "*/*/Podfile"):
         for candidate in source_dir.glob(pattern):
             relative_parts = candidate.relative_to(source_dir).parts
-            if candidate.is_file() and "Pods" not in relative_parts:
+            if (
+                candidate.is_file()
+                # Symlink guard — a symlinked Podfile (or one under a
+                # symlinked dir the glob followed) must not steer the flag
+                # off tree-local evidence (security-reviewer L3).
+                and not candidate.is_symlink()
+                and "Pods" not in relative_parts
+            ):
                 return True
     return False
 

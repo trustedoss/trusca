@@ -134,3 +134,20 @@ def test_template_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
 
     fetch_eol_dataset(["express"], http=_client(handler))
     assert seen == ["https://mirror.internal/eol/express.json"]
+
+
+def test_oversized_field_values_are_dropped_not_persisted() -> None:
+    # security-reviewer M3 — a hostile mirror packing a huge string into a
+    # kept field must not bloat the persisted snapshot; the entry survives
+    # with the oversized field removed (drop, never truncate — a truncated
+    # version string would match the wrong cycle).
+    huge = "x" * 100_000
+    cycles = [{"cycle": "4", "eol": False, "latest": huge}]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=cycles)
+
+    result = fetch_eol_dataset(["express"], http=_client(handler))
+    entry = result.dataset["express"][0]
+    assert entry["cycle"] == "4"
+    assert "latest" not in entry

@@ -53,6 +53,18 @@ log = structlog.get_logger("integrations.cocoapods_lockfile")
 # a hostile file could declare millions of synthetic lines.
 MAX_PODS = 20_000
 
+# File-size ceiling before ANY parsing. Real Podfile.locks are tens of KB;
+# 2 MiB (the npm-reader intent) flags a hostile/corrupt file without reading
+# it into memory (security-reviewer M1 — the regex cost below is per-line,
+# so the byte cap must run first).
+_MAX_LOCKFILE_BYTES = 2 * 1024 * 1024
+
+# Per-line length ceiling. The PODS-block regexes carry a lazy `.+?` whose
+# backtracking is quadratic on a pathological line (measured: 16s at 80k
+# chars) — no real lockfile line approaches 4 KiB, so longer lines are
+# skipped before the regex ever sees them (security-reviewer M1 ReDoS).
+_MAX_LINE_CHARS = 4096
+
 # "  - Alamofire (5.8.1)" / "  - Moya (15.0.0):" (trailing colon when children
 # follow). Version group optional — a malformed entry without one is skipped.
 _POD_RE = re.compile(r"^  - (?P<name>.+?)(?: \((?P<ver>[^)]*)\))?:?\s*$")
@@ -135,16 +147,29 @@ def read_podfile_lock(source_dir: Path) -> CocoapodsLockfileData | None:
     info line flags it for future extension if real repos demand it.
     """
     lock_path = source_dir / "Podfile.lock"
+    # Symlink guard (security-reviewer L3): a repo shipping
+    # ``Podfile.lock -> /etc/passwd`` must not make the worker read outside
+    # the source tree (the cosign module models the same defense).
+    if lock_path.is_symlink():
+        log.warning("cocoapods_lockfile_symlink_rejected", path=str(lock_path))
+        return None
     if not lock_path.is_file():
         for pattern in ("*/Podfile.lock", "*/*/Podfile.lock"):
             for nested in source_dir.glob(pattern):
-                if "Pods" not in nested.parts:
+                if "Pods" not in nested.parts and not nested.is_symlink():
                     log.info(
                         "cocoapods_lockfile_not_at_root", found=str(nested)
                     )
                     break
         return None
     try:
+        if lock_path.stat().st_size > _MAX_LOCKFILE_BYTES:
+            log.warning(
+                "cocoapods_lockfile_too_large",
+                path=str(lock_path),
+                limit_bytes=_MAX_LOCKFILE_BYTES,
+            )
+            return None
         lines = lock_path.read_text(
             encoding="utf-8", errors="replace"
         ).splitlines()
@@ -160,7 +185,7 @@ def read_podfile_lock(source_dir: Path) -> CocoapodsLockfileData | None:
     edges: dict[str, set[str]] = {}
     in_pods = False
     current: str | None = None
-    parsed = 0
+    examined = 0
     for line in lines:
         if not in_pods:
             if line.rstrip() == "PODS:":
@@ -170,12 +195,17 @@ def read_podfile_lock(source_dir: Path) -> CocoapodsLockfileData | None:
         # non-empty line such as ``DEPENDENCIES:``).
         if line and not line.startswith(" "):
             break
+        # Work bound counts EXAMINED lines, not matches — a hostile block of
+        # never-matching lines must not bypass the cap (security-reviewer M1).
+        examined += 1
+        if examined > MAX_PODS:
+            log.warning("cocoapods_lockfile_pod_cap_exceeded", limit=MAX_PODS)
+            break
+        # ReDoS guard: skip pathological lines before the regexes see them.
+        if len(line) > _MAX_LINE_CHARS:
+            continue
         pod_match = _POD_RE.match(line)
         if pod_match:
-            parsed += 1
-            if parsed > MAX_PODS:
-                log.warning("cocoapods_lockfile_pod_cap_exceeded", limit=MAX_PODS)
-                break
             name = pod_match.group("name").strip()
             version = (pod_match.group("ver") or "").strip()
             if not name or not version:

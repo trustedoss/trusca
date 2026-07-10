@@ -59,6 +59,14 @@ _KEEP_FIELDS = ("cycle", "eol", "releaseDate", "latest", "latestReleaseDate")
 # Ceiling on cycles accepted per product — a real product has dozens.
 _MAX_CYCLES_PER_PRODUCT = 500
 
+# Ceiling on a single kept field VALUE. Real values are version strings and
+# ISO dates (< 40 chars); without this a hostile mirror could pack a
+# multi-hundred-KB string into ``latest`` on every cycle and bloat the
+# persisted eol_sync_state.snapshot JSONB far past its few-KB contract
+# (security-reviewer M3). Longer values are dropped, not truncated — a
+# truncated version string would silently match the wrong cycle.
+_MAX_FIELD_CHARS = 256
+
 
 class EolFeedUnavailable(Exception):
     """No product could be fetched at all (network dead, mirror broken).
@@ -101,7 +109,20 @@ def _compact_cycles(payload: Any) -> list[dict[str, Any]] | None:
     for entry in payload[:_MAX_CYCLES_PER_PRODUCT]:
         if not isinstance(entry, dict):
             continue
-        compact.append({k: entry[k] for k in _KEEP_FIELDS if k in entry})
+        kept: dict[str, Any] = {}
+        for key in _KEEP_FIELDS:
+            if key not in entry:
+                continue
+            value = entry[key]
+            # Field-value bound (M3): only scalar shapes the evaluator can
+            # read survive, and oversized strings are dropped outright.
+            if isinstance(value, str):
+                if len(value) <= _MAX_FIELD_CHARS:
+                    kept[key] = value
+            elif isinstance(value, bool | int | float) or value is None:
+                kept[key] = value
+        if kept:
+            compact.append(kept)
     return compact if compact else None
 
 
@@ -165,9 +186,16 @@ def fetch_eol_dataset(
     template = eol_feed_url_template()
     safe_host = _safe_host(template.replace("{product}", "probe"))
     owned = http is None
+    # follow_redirects with a TIGHT cap (security-reviewer L1): the env-only
+    # trust model covers the CONFIGURED host, and a redirect extends that
+    # trust to wherever the mirror points — endoflife.date fronts with a
+    # redirecting CDN so redirects can't be off entirely, but 3 hops bounds
+    # how far a compromised mirror can bounce the worker, and every fetch
+    # logs the (template) host so a bounce is attributable.
     client = http or httpx.Client(
         timeout=eol_refresh_timeout_seconds(),
         follow_redirects=True,
+        max_redirects=3,
     )
     dataset: dict[str, Any] = {
         "_snapshot": datetime.now(tz=UTC).date().isoformat()

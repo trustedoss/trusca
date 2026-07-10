@@ -328,3 +328,32 @@ def test_rewrite_sbom_file_unserializable_payload_keeps_original(
     target.write_text('{"old": true}', encoding="utf-8")
     assert rewrite_sbom_file(target, {"bad": object()}) is False
     assert json.loads(target.read_text(encoding="utf-8")) == {"old": True}
+
+
+# ---------------------------------------------------------------------------
+# Audit trail — dropped identities (security-reviewer L2)
+# ---------------------------------------------------------------------------
+
+
+def test_dropped_refs_record_the_removed_purls() -> None:
+    lock = _lock({"pkg:npm/jest@29.7.0": "dev"})
+    sbom = _sbom(
+        [_maven("keep", "required"), _maven("junit", "optional"), _npm("jest", "29.7.0")]
+    )
+    result = filter_sbom_to_runtime_scope(sbom, npm_lock=lock)
+    assert set(result.dropped_refs) == {
+        "pkg:maven/com.example/junit@1.0.0",
+        "pkg:npm/jest@29.7.0",
+    }
+
+
+def test_dropped_refs_bounded_while_counts_stay_exact() -> None:
+    from integrations.sbom_scope_filter import MAX_DROPPED_REFS_RECORDED
+
+    total = MAX_DROPPED_REFS_RECORDED + 50
+    components = [_maven("keep", "required")] + [
+        _maven(f"test-dep-{i}", "optional") for i in range(total)
+    ]
+    result = filter_sbom_to_runtime_scope(_sbom(components), npm_lock=None)
+    assert result.dropped == {"maven": total}  # exact totals survive the cap
+    assert len(result.dropped_refs) == MAX_DROPPED_REFS_RECORDED

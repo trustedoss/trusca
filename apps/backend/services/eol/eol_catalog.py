@@ -50,6 +50,14 @@ _SNAPSHOT_PATH = Path(__file__).resolve().parent / "eol_snapshot.json"
 
 _LEADING_INT = re.compile(r"^([0-9]+)")
 
+# Ceiling on a single numeric segment in a derived cycle. The persisted
+# column is VARCHAR(32) (0038) and no real release cycle approaches double
+# digits per segment; a crafted 33+-digit "version" in a hostile SBOM would
+# otherwise overflow the column at flush time — OUTSIDE the per-component
+# best-effort guard — and abort the whole persist (security-reviewer M2).
+# Over-long segments make the cycle underivable → "unknown", never a guess.
+_MAX_CYCLE_SEGMENT_CHARS = 15
+
 EolState = Literal["eol", "supported", "unknown"]
 
 # Closed vocabulary persisted into component_versions.eol_state (0038).
@@ -171,6 +179,10 @@ def derive_cycle(version: str, granularity: str) -> str | None:
         match = _LEADING_INT.match(part)
         if not match:
             break
+        if len(match.group(1)) > _MAX_CYCLE_SEGMENT_CHARS:
+            # Pathological numeric run — no real cycle looks like this, and
+            # persisting it would overflow VARCHAR(32). Underivable.
+            return None
         segments.append(match.group(1))
     if not segments:
         return None

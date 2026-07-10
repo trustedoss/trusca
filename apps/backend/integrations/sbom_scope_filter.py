@@ -71,6 +71,14 @@ _MAVEN_DROP_SCOPES = frozenset({"optional", "excluded"})
 # ``bomlens:*`` provenance convention).
 FILTER_PROPERTY_NAME = "trusca:scope_filter"
 
+# Audit-trail bound (security-reviewer L2): the purls of dropped components
+# are recorded (a bounded sample + the exact totals) so a reviewer can verify
+# that nothing shipping was hidden behind an opaque count — the npm predicate
+# trusts an attacker-controlled lockfile classification, so counts alone are
+# not an auditable trail. 200 covers every realistic drop set; a hostile SBOM
+# cannot bloat scan_metadata past it.
+MAX_DROPPED_REFS_RECORDED = 200
+
 
 @dataclass(frozen=True)
 class ScopeFilterResult:
@@ -90,6 +98,9 @@ class ScopeFilterResult:
     applied: bool
     dropped: dict[str, int] = field(default_factory=dict)
     kept_components: int = 0
+    # Purls of the dropped components — the audit trail (bounded at
+    # MAX_DROPPED_REFS_RECORDED; ``dropped`` carries the exact totals).
+    dropped_refs: list[str] = field(default_factory=list)
 
     @property
     def total_dropped(self) -> int:
@@ -173,6 +184,13 @@ def _filter(
 
     kept: list[Any] = []
     dropped: dict[str, int] = {}
+    dropped_refs: list[str] = []
+
+    def _record_drop(ecosystem: str, purl: str) -> None:
+        dropped[ecosystem] = dropped.get(ecosystem, 0) + 1
+        if len(dropped_refs) < MAX_DROPPED_REFS_RECORDED:
+            dropped_refs.append(purl)
+
     for component in components:
         if not isinstance(component, dict):
             kept.append(component)  # defensive: never drop what we can't read
@@ -181,12 +199,13 @@ def _filter(
         purl = purl if isinstance(purl, str) else ""
         if maven_active and purl.startswith("pkg:maven/"):
             if component.get("scope") in _MAVEN_DROP_SCOPES:
-                dropped["maven"] = dropped.get("maven", 0) + 1
+                _record_drop("maven", purl)
                 continue
-        if node_active and purl.startswith("pkg:npm/"):
-            assert npm_lock is not None  # implied by node_active
+        # ``node_active`` implies a parsed lockfile; the explicit None check
+        # (not an assert — stripped under ``python -O``) keeps that visible.
+        if node_active and npm_lock is not None and purl.startswith("pkg:npm/"):
             if npm_lock.scope_for_purl(purl) == "dev":
-                dropped["npm"] = dropped.get("npm", 0) + 1
+                _record_drop("npm", purl)
                 continue
         kept.append(component)
 
@@ -198,7 +217,10 @@ def _filter(
     _prune_dependencies(sbom, _kept_refs(sbom, kept))
     _stamp_filter_property(sbom, dropped)
     return ScopeFilterResult(
-        applied=True, dropped=dropped, kept_components=len(kept)
+        applied=True,
+        dropped=dropped,
+        kept_components=len(kept),
+        dropped_refs=dropped_refs,
     )
 
 

@@ -240,3 +240,29 @@ def test_clear_stamp_nulls_everything_once() -> None:
     stamp_time = row.eol_evaluated_at
     assert _clear_stamp(row) is False  # type: ignore[arg-type]
     assert row.eol_evaluated_at == stamp_time  # idempotent — not re-dirtied
+
+
+def test_fetch_half_rejects_an_oversized_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # security-reviewer M3 — the assembled dataset is size-gated before the
+    # JSONB persist; an over-limit sweep skips like a bad feed.
+    from integrations.eol_feed import EolFetchResult
+
+    monkeypatch.setenv("EOL_REFRESH_ENABLED", "true")
+
+    def _bloated(products: list[str]) -> EolFetchResult:
+        dataset: dict[str, Any] = {"_snapshot": "2026-07-12"}
+        for product in products:
+            # ~60 KB per product × 10 products > the 256 KiB ceiling while
+            # every individual field stays under the eol_feed field bound.
+            dataset[product] = [
+                {"cycle": str(i), "eol": False, "latest": "v" * 250}
+                for i in range(250)
+            ]
+        return EolFetchResult(dataset=dataset, fetched=list(products), failed=[])
+
+    monkeypatch.setattr("tasks.eol_catalog_refresh.fetch_eol_dataset", _bloated)
+    summary = _base_summary(snapshot=None)
+    assert _fetch_half(summary) is None
+    assert summary["skipped_reason"] == "snapshot_too_large"

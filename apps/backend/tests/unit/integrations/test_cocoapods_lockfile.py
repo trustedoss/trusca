@@ -233,3 +233,48 @@ def test_merge_tolerates_missing_arrays() -> None:
 
 def test_merge_never_raises_on_hostile_document() -> None:
     assert merge_into_sbom({"components": "not-a-list"}, _data()) == 0
+
+
+# ---------------------------------------------------------------------------
+# Security-review hardening (M1 ReDoS / L3 symlinks)
+# ---------------------------------------------------------------------------
+
+
+def test_pathological_long_line_is_skipped_fast(tmp_path: Path) -> None:
+    # ReDoS guard: an 80k-char crafted line used to take ~16s in the POD
+    # regex; the per-line cap must skip it before the regex runs. The real
+    # pod on the next line still parses.
+    evil = "  - a" + " " * 80_000 + "a"
+    src = _write_lock(tmp_path, f"PODS:\n{evil}\n  - Real (1.0.0)\n")
+    import time
+
+    started = time.monotonic()
+    data = read_podfile_lock(src)
+    elapsed = time.monotonic() - started
+    assert elapsed < 1.0  # the unguarded regex alone took >15s here
+    assert data is not None
+    assert set(data.pods) == {"Real"}
+
+
+def test_oversized_lockfile_rejected_before_parsing(tmp_path: Path) -> None:
+    filler = "# junk\n" * 400_000  # ~2.8 MiB — over _MAX_LOCKFILE_BYTES
+    src = _write_lock(tmp_path, "PODS:\n  - Real (1.0.0)\n" + filler)
+    assert read_podfile_lock(src) is None
+
+
+def test_symlinked_lockfile_rejected(tmp_path: Path) -> None:
+    outside = tmp_path / "outside.txt"
+    outside.write_text("PODS:\n  - Sneaky (1.0.0)\n", encoding="utf-8")
+    src = tmp_path / "repo"
+    src.mkdir()
+    (src / "Podfile.lock").symlink_to(outside)
+    assert read_podfile_lock(src) is None
+
+
+def test_examined_line_cap_bounds_never_matching_blocks(tmp_path: Path) -> None:
+    # The work bound counts EXAMINED lines: a hostile block of non-matching
+    # indented lines cannot buy unbounded regex passes.
+    lines = ["PODS:"] + ["  x" for _ in range(MAX_PODS + 100)] + ["  - Tail (1.0)"]
+    src = _write_lock(tmp_path, "\n".join(lines) + "\n")
+    data = read_podfile_lock(src)
+    assert data is None or "Tail" not in (data.pods if data else {})

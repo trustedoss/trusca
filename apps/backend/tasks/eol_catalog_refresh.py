@@ -31,6 +31,7 @@ guards make re-runs no-ops; the ``finally`` UPSERT covers every exit path).
 
 from __future__ import annotations
 
+import json
 import time
 from datetime import UTC, date, datetime
 from typing import Any
@@ -51,6 +52,14 @@ from services.eol.eol_catalog import (
 from tasks.celery_app import celery_app
 
 log = structlog.get_logger("tasks.eol_catalog_refresh")
+
+# Ceiling on the assembled snapshot's serialized size before it may be
+# persisted into the eol_sync_state JSONB row (security-reviewer M3). The
+# real dataset is ~16 KB; 256 KiB (the shared JSONB row-size posture) is
+# far above any legitimate sweep and far below what a hostile mirror could
+# otherwise pack in. Over the ceiling the tick is treated like a bad feed:
+# skip, keep the last-good snapshot, retry next week.
+_MAX_SNAPSHOT_BYTES = 256 * 1024
 
 
 def _snapshot_to_dataset(raw: Any) -> EolDataset | None:
@@ -203,6 +212,21 @@ def _fetch_half(summary: dict[str, Any]) -> EolDataset | None:
         )
         return None
 
+    snapshot_bytes = len(json.dumps(result.dataset, separators=(",", ":")))
+    if snapshot_bytes > _MAX_SNAPSHOT_BYTES:
+        # Size gate before the JSONB persist (M3) — the per-field bound in
+        # eol_feed already makes this unreachable for a real feed, so
+        # tripping it means a hostile/broken mirror. Same posture as a bad
+        # sweep: last-good snapshot survives.
+        summary["skipped"] = True
+        summary["skipped_reason"] = "snapshot_too_large"
+        log.warning(
+            "eol_catalog_refresh_snapshot_too_large",
+            bytes=snapshot_bytes,
+            limit_bytes=_MAX_SNAPSHOT_BYTES,
+        )
+        return None
+
     summary["products_ok"] = len(result.fetched)
     summary["products_failed"] = len(result.failed)
     summary["snapshot"] = result.dataset
@@ -289,15 +313,33 @@ def refresh_eol_catalog(self: Any) -> dict[str, Any]:
             # set) OR already stamped (the clear set — covers a shrunk map).
             # %40-encoded npm scopes are matched by a second LIKE per rule
             # whose prefix contains '@' (cdxgen emits both spellings).
+            # LIKE-metacharacter escape (security-reviewer INFO): the "%40"
+            # spelling would otherwise read as a one-char wildcard ("%4" +
+            # "0")… harmless today because evaluate() re-checks the literal
+            # prefix, but escape properly so a future map entry containing
+            # '%'/'_' in a real coordinate cannot silently over-match.
+            def _escaped_prefix(prefix: str) -> str:
+                return (
+                    prefix.replace("\\", "\\\\")
+                    .replace("%", "\\%")
+                    .replace("_", "\\_")
+                )
+
             like_clauses = []
             for rule in rules:
                 like_clauses.append(
-                    ComponentVersion.purl_with_version.like(rule.purl_prefix + "%")
+                    ComponentVersion.purl_with_version.like(
+                        _escaped_prefix(rule.purl_prefix) + "%", escape="\\"
+                    )
                 )
                 if "@" in rule.purl_prefix:
                     like_clauses.append(
                         ComponentVersion.purl_with_version.like(
-                            rule.purl_prefix.replace("@", "%40") + "%"
+                            _escaped_prefix(
+                                rule.purl_prefix.replace("@", "%40")
+                            )
+                            + "%",
+                            escape="\\",
                         )
                     )
             like_clauses.append(ComponentVersion.eol_state.is_not(None))
