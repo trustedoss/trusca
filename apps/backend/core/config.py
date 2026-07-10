@@ -1341,6 +1341,44 @@ def kev_refresh_timeout_seconds() -> int:
 
 
 # ---------------------------------------------------------------------------
+# Phase M — end-of-life (EOL) component flagging (endoflife.date).
+#
+# The default path is FULLY offline: verdicts come from a snapshot vendored
+# into the repo (services/eol/eol_snapshot.json, refreshed per release by
+# scripts/refresh_eol_snapshot.py), so EOL_ENABLED defaults ON — reading a
+# local file has zero egress (contrast SCANOSS). The optional live-refresh
+# beat (PR M-3) is a SEPARATE, default-OFF toggle because that one does
+# introduce new egress. Accessors resolve env at call time (rule #11).
+# ---------------------------------------------------------------------------
+
+
+def eol_enabled() -> bool:
+    """Whether components are stamped with endoflife.date EOL verdicts.
+
+    Default ``true`` — offline, additive, never fatal (a missing/corrupt
+    dataset just skips stamping with one WARNING per scan). Only the exact
+    falsy tokens ``false`` / ``0`` / ``no`` disable. Read at call time
+    (rule #11).
+    """
+    return os.getenv("EOL_ENABLED", "true").strip().lower() not in {
+        "false",
+        "0",
+        "no",
+    }
+
+
+def eol_snapshot_path() -> str:
+    """Operator override for the endoflife.date snapshot file.
+
+    Empty (default) → the vendored ``services/eol/eol_snapshot.json``.
+    Air-gapped installs can mount a fresher snapshot (built with
+    ``scripts/refresh_eol_snapshot.py`` on a connected host) and point this
+    at it. Read at call time (rule #11).
+    """
+    return os.getenv("EOL_SNAPSHOT_PATH", "").strip()
+
+
+# ---------------------------------------------------------------------------
 # Phase 2 PR #9 — WebSocket gateway configuration accessors.
 #
 # The WebSocket scan-progress channel name is shared between the FastAPI

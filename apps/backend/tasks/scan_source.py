@@ -73,6 +73,7 @@ from sqlalchemy.orm import Session
 from core.config import (
     cdxgen_fetch_license,
     cdxgen_spec_version,
+    eol_enabled,
     scan_scope_filter_enabled,
     scan_scope_filter_maven_enabled,
     scan_scope_filter_node_enabled,
@@ -120,6 +121,7 @@ from models import (
     VulnerabilityFinding,
 )
 from services.component_approval_service import auto_create_pending_approvals
+from services.eol import eol_catalog
 from services.license_expression import evaluate_expression
 from services.license_normalize import normalize_license_name
 from services.sbom_conformance import sanitize_jsonb_text
@@ -2271,6 +2273,13 @@ def persist_sbom_components(
     # F-4: aggregated telemetry — one warning per scan, not per component.
     sanitized_count = 0
     deduplicated_count = 0
+    # Phase M — EOL enrichment. One evaluator per persist call (rules +
+    # snapshot loaded once). None when disabled or the dataset failed to
+    # load — stamping silently skips (an EOL failure never breaks persist).
+    # Covers BOTH the source-scan and SBOM-ingest paths (they converge here).
+    eol_evaluator = eol_catalog.build_evaluator() if eol_enabled() else None
+    eol_stamped_count = 0
+    eol_now = datetime.now(UTC)
 
     for raw in components:
         if not isinstance(raw, dict):
@@ -2304,6 +2313,23 @@ def persist_sbom_components(
             version=version,
             purl_with_version=purl,
         )
+
+        # Phase M — stamp the shared catalog row with its endoflife.date
+        # verdict. Changed-value-guarded (idempotent on re-scan); an
+        # unmapped purl returns None and leaves every eol_* column NULL.
+        if eol_evaluator is not None:
+            try:
+                if eol_catalog.stamp_component_version(
+                    component_version,
+                    eol_evaluator.verdict_for(purl, version),
+                    eol_now,
+                ):
+                    eol_stamped_count += 1
+            except Exception:  # noqa: BLE001 — enrichment is best-effort
+                eol_evaluator = None  # disable for the rest of the scan
+                log.warning(
+                    "eol_stamp_failed", scan_id=str(scan_uuid), exc_info=True
+                )
 
         bom_ref = raw.get("bom-ref")
         # TEXT column — persist the CLEANED ref; the raw one keys the maps.
@@ -2402,6 +2428,14 @@ def persist_sbom_components(
             column="scan_components.raw_data",
             sanitized_components=sanitized_count,
             deduplicated_components=deduplicated_count,
+        )
+
+    if eol_stamped_count:
+        # Aggregate INFO — one line per scan, not per component (F-4 idiom).
+        log.info(
+            "eol_stamped",
+            scan_id=str(scan_uuid),
+            stamped_component_versions=eol_stamped_count,
         )
 
     # v2.2 2.2-a2 — stamp depth + persist the resolved dependency edges. Runs

@@ -506,6 +506,24 @@ class ComponentVersion(Base):
         DateTime(timezone=True), nullable=False, server_default=NOW
     )
 
+    # Phase M — end-of-life flag (endoflife.date, 0038). EOL is a fact about
+    # product + release cycle, shared across every scan/project observing
+    # this purl_with_version — the KEV shape (kev on the vulnerabilities
+    # catalog), so it lives here, not on ScanComponent. All NULLable: NULL =
+    # never evaluated / not a tracked product (closed whitelist — an
+    # unmapped component is never guessed). eol_state is a closed vocabulary
+    # ('eol' | 'supported' | 'unknown') enforced at the application layer
+    # (services/eol/eol_catalog.py), VARCHAR not native ENUM per the
+    # kev_sync_state.last_result convention.
+    eol_state: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    eol_product: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    eol_cycle: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    eol_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    eol_source: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    eol_evaluated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     component: Mapped[Component] = relationship(back_populates="versions")
 
     __table_args__ = (
@@ -516,6 +534,13 @@ class ComponentVersion(Base):
         # (e.g. com.github.jnr/jffi@1.3.1 vs same?classifier=native). See
         # alembic/versions/0027_drop_redundant_component_version_unique.py.
         Index("ix_component_versions_component_id", "component_id"),
+        # Partial: EOL rows are a tiny curated minority — the ?eol=true filter
+        # and the overview/health counts read only flagged rows (0038).
+        Index(
+            "ix_component_versions_eol",
+            "eol_state",
+            postgresql_where=text("eol_state = 'eol'"),
+        ),
     )
 
 
