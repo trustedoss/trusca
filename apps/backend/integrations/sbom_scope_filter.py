@@ -189,7 +189,10 @@ def _filter(
     def _record_drop(ecosystem: str, purl: str) -> None:
         dropped[ecosystem] = dropped.get(ecosystem, 0) + 1
         if len(dropped_refs) < MAX_DROPPED_REFS_RECORDED:
-            dropped_refs.append(purl)
+            # Per-ref char cap: 200 hostile mega-purls must not inflate the
+            # scan_metadata JSONB row (re-review residual). Real purls are
+            # far under 512; a clipped ref still identifies the component.
+            dropped_refs.append(purl[:512])
 
     for component in components:
         if not isinstance(component, dict):

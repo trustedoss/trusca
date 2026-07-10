@@ -113,9 +113,11 @@ def _podfile_present(source_dir: Path) -> bool:
             relative_parts = candidate.relative_to(source_dir).parts
             if (
                 candidate.is_file()
-                # Symlink guard — a symlinked Podfile (or one under a
-                # symlinked dir the glob followed) must not steer the flag
-                # off tree-local evidence (security-reviewer L3).
+                # Symlink guard on the LEAF only — glob still traverses
+                # directory symlinks, which is acceptable: the flag decides
+                # a CLI argument, not a read path, and a repo author could
+                # equally commit a real Podfile. The out-of-tree READ guard
+                # lives in cocoapods_lockfile.read_podfile_lock.
                 and not candidate.is_symlink()
                 and "Pods" not in relative_parts
             ):
