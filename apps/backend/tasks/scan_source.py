@@ -87,8 +87,8 @@ from core.pii_mask import mask_pii, redact_url_userinfo
 from core.url_guard import GitUrlValidationError, validate_git_url_with_ip
 from integrations import attestation as attestation_builder
 from integrations import cdxgen as cdxgen_adapter
+from integrations import cocoapods_lockfile, sbom_scope_filter, scan_executor
 from integrations import cosign as cosign_adapter
-from integrations import sbom_scope_filter, scan_executor
 from integrations import scancode as scancode_adapter
 from integrations import scanoss as scanoss_adapter
 from integrations._size_guard import enforce_jsonb_row_size_limit
@@ -396,6 +396,17 @@ def _run_pipeline(
     )
     cdxgen_result = cdxgen_adapter.CdxgenResult(
         sbom_path=gen_result.sbom_path, sbom=gen_result.sbom
+    )
+
+    # Stage 3.2 — CocoaPods lockfile fill-in (Phase L). cdxgen ran with
+    # --exclude-type cocoapods when a Podfile was present (its cataloger
+    # crashes without the `pod` CLI — see integrations/cdxgen.py), so the
+    # pods are reconstructed offline from Podfile.lock and merged here.
+    # MUST precede the scope filter so the filter's counts and the
+    # trusca:scope_filter property describe the FINAL document (cocoapods
+    # purls pass both keep-predicates untouched). Best-effort, never fatal.
+    _merge_cocoapods_components(
+        scan_uuid=scan_uuid, cdxgen_result=cdxgen_result, source_dir=source_dir
     )
 
     # Stage 3.25 — runtime-scope post-filter (Phase K). MUST run before the
@@ -1146,6 +1157,59 @@ def _detect_and_record_env(scan_uuid: uuid.UUID, source_dir: Path) -> str:
         log.warning("source_detect_persist_failed", scan_id=str(scan_uuid), exc_info=True)
 
     return detected_env
+
+
+def _merge_cocoapods_components(
+    *,
+    scan_uuid: uuid.UUID,
+    cdxgen_result: cdxgen_adapter.CdxgenResult,
+    source_dir: Path,
+) -> None:
+    """Fill CocoaPods components back into the SBOM from Podfile.lock (Phase L).
+
+    Same copy-then-commit shape as ``_apply_scope_filter``: merge into a deep
+    copy, rewrite the on-disk file atomically, and only then swap the
+    in-memory document — persist, signing and Trivy can never see diverging
+    documents. Best-effort throughout; ``dependency_scope`` stays NULL for
+    pods (Podfile.lock carries no runtime/test distinction).
+    """
+    try:
+        lock_data = cocoapods_lockfile.read_podfile_lock(source_dir)
+        if lock_data is None:
+            return
+        working = copy.deepcopy(cdxgen_result.sbom)
+        merged = cocoapods_lockfile.merge_into_sbom(working, lock_data)
+        if merged <= 0:
+            return
+        if not sbom_scope_filter.rewrite_sbom_file(
+            cdxgen_result.sbom_path, working
+        ):
+            return
+        cdxgen_result.sbom.clear()
+        cdxgen_result.sbom.update(working)
+        log.info(
+            "cocoapods_lockfile_merged",
+            scan_id=str(scan_uuid),
+            merged=merged,
+        )
+        try:
+            with sync_session_scope() as session:
+                scan = session.get(Scan, scan_uuid)
+                if scan is not None:
+                    meta = dict(scan.scan_metadata or {})
+                    meta["cocoapods"] = {"merged": merged}
+                    scan.scan_metadata = meta
+                    session.commit()
+        except Exception:  # noqa: BLE001 — telemetry is best-effort
+            log.warning(
+                "cocoapods_merge_persist_failed",
+                scan_id=str(scan_uuid),
+                exc_info=True,
+            )
+    except Exception:  # noqa: BLE001 — the fill-in must never fail the scan
+        log.warning(
+            "cocoapods_merge_stage_failed", scan_id=str(scan_uuid), exc_info=True
+        )
 
 
 def _apply_scope_filter(

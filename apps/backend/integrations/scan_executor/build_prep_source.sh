@@ -69,7 +69,10 @@ if { ls ./*.csproj >/dev/null 2>&1 || ls ./*.sln >/dev/null 2>&1; } && command -
 fi
 
 # Swift / SPM — resolve generates Package.resolved so cdxgen sees the graph.
-if [ -f Package.swift ] && command -v swift >/dev/null 2>&1; then
+# Skipped when Package.resolved is already committed: the committed lockfile
+# IS the resolved truth, and re-resolving hits the network and can drag in
+# unrelated tooling / "unspecified" versions (BomLens build-prep parity).
+if [ -f Package.swift ] && [ ! -f Package.resolved ] && command -v swift >/dev/null 2>&1; then
   log "swift package resolve"
   swift package resolve >/dev/null 2>&1 || true
 fi
@@ -79,15 +82,26 @@ fi
 # transitive graph itself (a separate step was redundant + noisy, per BomLens).
 
 # --- locate cdxgen (path differs per image) and generate the SBOM ---
+# Phase L: with a Podfile present and no `pod` CLI, cdxgen's cocoapods
+# cataloger throws (TypeError on undefined stdout) and kills the whole run —
+# exclude the type; the worker fills pods back in from Podfile.lock
+# (integrations/cocoapods_lockfile.py). The in-process adapter carries the
+# same guard in integrations/cdxgen.py (_podfile_present) — keep both in sync.
+# Depth-bounded find mirrors the adapter's depth-3 glob; Pods/ copies ignored.
+set -- -r --no-validate --spec-version "$SPEC" -o "$OUT"
+if find "$SRC" -maxdepth 3 -name Podfile -type f -not -path '*/Pods/*' 2>/dev/null | grep -q .; then
+  log "Podfile detected — cdxgen --exclude-type cocoapods (pod CLI absent in image)"
+  set -- "$@" --exclude-type cocoapods
+fi
 if command -v cdxgen >/dev/null 2>&1; then
   log "cdxgen (PATH)"
-  cdxgen -r --no-validate --spec-version "$SPEC" -o "$OUT" "$SRC"
+  cdxgen "$@" "$SRC"
 elif [ -f /opt/cdxgen/bin/cdxgen.js ]; then
   log "cdxgen (/opt/cdxgen/bin/cdxgen.js)"
-  node /opt/cdxgen/bin/cdxgen.js -r --no-validate --spec-version "$SPEC" -o "$OUT" "$SRC"
+  node /opt/cdxgen/bin/cdxgen.js "$@" "$SRC"
 elif [ -f /opt/bin/cdxgen ]; then
   log "cdxgen (/opt/bin/cdxgen)"
-  /opt/bin/cdxgen -r --no-validate --spec-version "$SPEC" -o "$OUT" "$SRC"
+  /opt/bin/cdxgen "$@" "$SRC"
 else
   echo "[build-prep] ERROR: cdxgen not found in image" >&2
   exit 1

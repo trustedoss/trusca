@@ -8,6 +8,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- **iOS CocoaPods/SPM lockfile scanning.** A `Podfile` used to crash the
+  whole source scan (cdxgen's cocoapods cataloger throws without the `pod`
+  CLI). The scanner now excludes that cataloger and reconstructs pods —
+  components AND dependency graph, subspecs included — offline from the
+  committed `Podfile.lock`. Repos with only a committed `Package.resolved`
+  now route to the swift environment, and the sidecar executors no longer
+  re-run `swift package resolve` over a committed lockfile.
 - **Runtime-scope SBOM filtering (default ON).** Source scans now drop
   non-deployable dependencies from the cdxgen SBOM before persist, signing and
   vulnerability matching: Maven `test`/`provided` nodes (cdxgen scope tags

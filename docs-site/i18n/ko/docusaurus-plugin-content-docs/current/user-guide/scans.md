@@ -155,6 +155,26 @@ queued ─────► running ─────► succeeded
 
 5단계 실행 시 로컬 Trivy DB가 아직 다운로드되지 않았다면(첫 설치에서 가장 흔함) 스캔은 **취약점 finding 0개**로 완료되며 Vulnerabilities 탭에 [취약점 데이터 (Trivy DB)](../admin-guide/vulnerability-data.md)를 가리키는 배너가 표시됩니다. 자동 재매칭 beat이 DB 도착 후 finding을 가져옵니다 — 재스캔 불필요.
 
+### iOS 프로젝트 (CocoaPods / Swift Package Manager) {#ios-projects}
+
+iOS 저장소는 **커밋된 lockfile**만으로 오프라인 스캔됩니다 — 워커에 Xcode,
+Swift 툴체인, CocoaPods CLI 가 필요하지 않습니다.
+
+- **CocoaPods** — `cdxgen` 은 `pod` CLI 없이는 pod 를 수집하지 못하므로,
+  스캐너가 해당 수집기를 제외하고(예전에는 스캔 전체가 죽던 크래시를 회피)
+  `Podfile.lock` 에서 pod 목록과 의존성 그래프를 직접 복원합니다. `PODS:`
+  블록이 완전히 해석된 진실입니다: 직접·전이 pod, 고정 버전, 각 pod 의 하위
+  의존성이 모두 담겨 있고, `Moya/Core` 같은 서브스펙도 별도 컴포넌트로
+  나타납니다. `Podfile.lock` 에는 런타임/테스트 구분이 없어 pod 의
+  Usage(Required/Optional) 값은 `—` 로 표시됩니다.
+- **Swift Package Manager** — 커밋된 `Package.resolved` 는 `cdxgen` 이 그대로
+  파싱합니다(v1·v2 형식 모두). 파일이 커밋돼 있으면 사이드카 실행기는
+  `swift package resolve` 를 건너뜁니다 — 커밋된 lockfile 이 이미 해석된
+  그래프이고, 다시 해석하면 네트워크에 접근하게 됩니다.
+
+`Podfile.lock` 과 `Package.resolved` 를 저장소에 커밋하십시오 — 없으면 iOS
+스캔은 manifest 가 선언한 것만 찾습니다.
+
 ## 평균 소요 시간
 
 | 프로젝트 크기 | 소스 스캔 | 컨테이너 스캔 |

@@ -155,6 +155,27 @@ Earlier builds ran the OSS Review Toolkit (ORT) at the license stage. v0.10.0 re
 
 If the local Trivy DB has not finished downloading when stage 5 runs (most common on a fresh install), the scan completes with **0 vulnerability findings** and a banner on the Vulnerabilities tab pointing operators at [Vulnerability data (Trivy DB)](../admin-guide/vulnerability-data.md). The automatic re-match beat picks up findings once the DB lands — no re-scan needed.
 
+### iOS projects (CocoaPods / Swift Package Manager) {#ios-projects}
+
+iOS repositories scan offline from their **committed lockfiles** — the worker
+needs neither Xcode, a Swift toolchain, nor the CocoaPods CLI:
+
+- **CocoaPods** — `cdxgen` cannot catalog pods without the `pod` CLI, so the
+  scanner excludes that cataloger (avoiding a crash that used to kill the
+  whole scan) and reconstructs the pod set and its dependency graph directly
+  from `Podfile.lock`. The `PODS:` block is the fully resolved truth: direct
+  and transitive pods, pinned versions, and each pod's sub-dependencies —
+  subspecs like `Moya/Core` appear as their own components. Pods carry no
+  Usage (Required/Optional) value because `Podfile.lock` records no
+  runtime/test distinction; the column shows `—`.
+- **Swift Package Manager** — a committed `Package.resolved` is parsed by
+  `cdxgen` as-is (both the v1 and v2 formats). The sidecar executors skip
+  `swift package resolve` when the file is committed — the committed lockfile
+  already is the resolved graph, and re-resolving would hit the network.
+
+Commit `Podfile.lock` and `Package.resolved` to the repository — without
+them an iOS scan finds only what the manifests declare.
+
 ## Average duration
 
 | Project size | Source scan | Container scan |

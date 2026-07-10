@@ -138,7 +138,11 @@ def _is_android(source_dir: Path) -> bool:
 
 
 def _is_swift(source_dir: Path) -> bool:
-    if any((source_dir / name).is_file() for name in ("Package.swift", "Podfile", "Podfile.lock")):
+    # Package.resolved: a repo may commit only the resolved SPM lockfile
+    # (cdxgen parses it offline, both v1 object.pins and v2 pins — verified
+    # against the pinned cdxgen 12.3.3, Phase L).
+    swift_markers = ("Package.swift", "Package.resolved", "Podfile", "Podfile.lock")
+    if any((source_dir / name).is_file() for name in swift_markers):
         return True
     return any(source_dir.glob("*.xcodeproj")) or any(source_dir.glob("*.xcworkspace"))
 

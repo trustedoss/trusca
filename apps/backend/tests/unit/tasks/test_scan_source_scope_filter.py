@@ -334,6 +334,12 @@ def test_pipeline_filters_before_artifact_persist_and_signing() -> None:
     order = _call_order("_run_pipeline", Path(scan_source_module.__file__))
     assert order.index("_apply_scope_filter") < order.index("_persist_artifact")
     assert order.index("_apply_scope_filter") < order.index("_sign_sbom")
+    # Phase L — the CocoaPods fill-in must precede the scope filter so the
+    # filter's counts + trusca:scope_filter property describe the FINAL
+    # document (and both precede the artifact persist).
+    assert order.index("_merge_cocoapods_components") < order.index(
+        "_apply_scope_filter"
+    )
 
 
 def test_ingest_pipeline_never_references_the_scope_filter() -> None:

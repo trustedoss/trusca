@@ -97,6 +97,24 @@ class CdxgenResult:
     sbom: dict[str, Any]
 
 
+def _podfile_present(source_dir: Path) -> bool:
+    """True when a ``Podfile`` exists within depth 3 of the source root.
+
+    Depth-bounded on purpose (mirrors ``source_detect._has_android_manifest``):
+    BomLens' unbounded ``find .`` over an attacker-controlled tree is a DoS
+    surface. ``Pods/`` copies are ignored — ``Pods/Manifest.lock`` trees ship
+    their own Podfiles that do not make the project a CocoaPods root.
+    """
+    if (source_dir / "Podfile").is_file():
+        return True
+    for pattern in ("*/Podfile", "*/*/Podfile"):
+        for candidate in source_dir.glob(pattern):
+            relative_parts = candidate.relative_to(source_dir).parts
+            if candidate.is_file() and "Pods" not in relative_parts:
+                return True
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -166,8 +184,18 @@ def run_cdxgen(
         str(sbom_path),
         "--spec-version",
         resolved_spec,
-        str(source_dir),
     ]
+    if _podfile_present(source_dir):
+        # Phase L — cdxgen's cocoapods cataloger does NOT skip when the `pod`
+        # CLI is absent (the worker ships no Ruby/CocoaPods toolchain): it
+        # throws a TypeError on the undefined `pod` stdout and aborts the
+        # WHOLE stage-1 scan. Excluding the type keeps the rest of the scan
+        # alive; integrations/cocoapods_lockfile.py fills the pods back in
+        # from Podfile.lock after cdxgen (see _merge_cocoapods_components in
+        # tasks/scan_source.py). The sidecar executors carry the same guard
+        # in scan_executor/build_prep_source.sh — keep both in sync.
+        cmd += ["--exclude-type", "cocoapods"]
+    cmd.append(str(source_dir))
     env = _build_cdxgen_env(source_dir=source_dir, output_dir=output_dir, verbose=verbose)
     if resolved_fetch:
         # cdxgen resolves component licenses when FETCH_LICENSE is truthy (env,
