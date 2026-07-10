@@ -26,6 +26,12 @@ TRUSCA는 5개 공개 취약점 피드를 컴파일한 번들인 **Trivy DB**로
 
 다섯 출처 모두 동일한 Trivy DB 번들에 함께 들어 있습니다 — 포털은 스캔 시점에 이 API들을 **호출하지 않습니다**. 스캔별 매칭은 워커의 `/var/lib/trivy/db/`에서 읽으며, [Trivy DB refresh 태스크](../admin-guide/vulnerability-data.md)가 이를 최신으로 유지합니다.
 
+컴포넌트 수준 출처 하나는 Trivy DB 밖에 있습니다:
+
+| 출처 | 발행처 | 갱신 | 기여 내용 |
+|---|---|---|---|
+| **endoflife.date** — 제품 라이프사이클 날짜 | endoflife.date 커뮤니티 (코드는 MIT, 라이프사이클 날짜는 사실 데이터) | 릴리즈마다 벤더링되는 스냅숏 (`scripts/refresh_eol_snapshot.py`) | 선별된 런타임·프레임워크 목록의 지원 종료 판정 — [EOL 배지와 필터](../user-guide/components-and-licenses.md#end-of-life-flagging). 스캔 시 번들된 스냅숏에서 읽으며 네트워크 호출이 없습니다. |
+
 ## 포털에서의 갱신 주기
 
 | 레이어 | 주기 | 노브 |

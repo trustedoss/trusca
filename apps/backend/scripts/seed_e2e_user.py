@@ -133,7 +133,7 @@ import json
 import os
 import sys
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -1403,6 +1403,19 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                         version="1.0.0",
                         purl_with_version=f"{purl}@1.0.0",
                     )
+                    if i == 0:
+                        # Phase M — deterministic EOL fixture: the FIRST seeded
+                        # component carries a past end-of-life verdict (columns
+                        # written directly — the far-past date can never flip
+                        # with the run date, and e2e stays decoupled from the
+                        # vendored snapshot's live contents). Every other row
+                        # stays NULL = untracked (badge absent — the contract).
+                        cv.eol_state = "eol"
+                        cv.eol_product = "seed-product"
+                        cv.eol_cycle = "1.0"
+                        cv.eol_date = date(2020, 1, 1)
+                        cv.eol_source = "endoflife.date@seed"
+                        cv.eol_evaluated_at = datetime.now(tz=UTC)
                     session.add(cv)
                     await session.flush()
                     seeded_cv_ids.append(cv.id)

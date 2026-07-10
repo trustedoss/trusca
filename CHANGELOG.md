@@ -8,6 +8,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- **End-of-life (EOL) component flagging.** Components matching a curated
+  endoflife.date product whitelist (Spring Boot, Express, Django, Rails,
+  Angular, Vue, Next.js, Symfony, Laravel, Spring Framework) are stamped
+  with their lifecycle verdict on the shared catalog. The Components tab
+  gains an EOL column/badge and an "EOL only" filter (`?eol=true`), the
+  drawer an End-of-life row, and the project Overview an EOL count that
+  deep-links to the filtered list. Verdicts come from a snapshot vendored
+  with the release — zero network at scan time, air-gap safe
+  (`EOL_SNAPSHOT_PATH` mounts a fresher snapshot; `EOL_ENABLED=false`
+  disables).
 - **iOS CocoaPods/SPM lockfile scanning.** A `Podfile` used to crash the
   whole source scan (cdxgen's cocoapods cataloger throws without the `pod`
   CLI). The scanner now excludes that cataloger and reconstructs pods —

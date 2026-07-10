@@ -506,6 +506,16 @@ async def list_project_components_endpoint(
             "values returns an empty page (not a 422). Omit to include all."
         ),
     ),
+    eol: bool | None = Query(
+        default=None,
+        description=(
+            "Phase M — end-of-life facet. ``true`` keeps only components "
+            "whose release cycle is past its published end-of-life "
+            "(endoflife.date); ``false`` keeps everything else, including "
+            "untracked components. Omit to include both. Boolean mirrors "
+            "the KEV filter UX."
+        ),
+    ),
     sort: str = Query(default="name", pattern=r"^(name|severity|license)$"),
     order: str = Query(default="asc", pattern=r"^(asc|desc)$"),
     scan_id: uuid.UUID | None = Query(
@@ -532,6 +542,7 @@ async def list_project_components_endpoint(
             license_category=license_category,
             direct=direct,
             dependency_scope=dependency_scope,
+            eol=eol,
             sort=sort,
             order=order,
             scan_id=scan_id,

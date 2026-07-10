@@ -135,6 +135,7 @@ function overview(
     project_id: "proj-1",
     project_name: "Demo Project",
     total_components: 5,
+    eol_count: 0,
     severity_distribution: { critical: 1, high: 1 },
     license_distribution: { allowed: 4, forbidden: 1 },
     risk_score: 80,

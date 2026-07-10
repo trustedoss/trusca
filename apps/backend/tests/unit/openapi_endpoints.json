@@ -199,6 +199,7 @@
   "GET /v1/projects/{project_id}/components": [
     "dependency_scope",
     "direct",
+    "eol",
     "license_category",
     "limit",
     "offset",

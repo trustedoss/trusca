@@ -11,6 +11,7 @@ import type {
 } from "@/features/projects/api/projectDetailApi";
 import { DependencyScopeBadge } from "@/features/projects/components/DependencyScopeBadge";
 import { DependencyTypeBadge } from "@/features/projects/components/DependencyTypeBadge";
+import { EolBadge } from "@/features/projects/components/EolBadge";
 import { LicenseCategoryBadge } from "@/features/projects/components/LicenseCategoryBadge";
 import { SeverityBadge } from "@/features/projects/components/SeverityBadge";
 import {
@@ -128,6 +129,37 @@ export function ComponentDetailBody({ detail }: ComponentDetailBodyProps) {
             {t("drawer.usage_label")}
           </span>
           <DependencyScopeBadge scope={detail.dependency_scope} />
+        </div>
+        {/*
+          * Phase M — end-of-life row. Always rendered (layout stability,
+          * same rationale as Type/Usage above): the EolBadge itself renders
+          * only for `eol`, so untracked / supported components show "—".
+          */}
+        <div
+          className="flex items-center gap-2 text-xs"
+          data-testid="component-drawer-eol"
+        >
+          <span className="uppercase tracking-wide text-muted-foreground">
+            {t("drawer.eol_label")}
+          </span>
+          {detail.eol_state === "eol" ? (
+            <EolBadge
+              eolState={detail.eol_state}
+              eolDate={detail.eol_date}
+              showDate
+            />
+          ) : (
+            <span
+              className="text-muted-foreground"
+              title={
+                detail.eol_state
+                  ? t(`components.eol.state.${detail.eol_state}`)
+                  : t("components.eol.state.untracked")
+              }
+            >
+              —
+            </span>
+          )}
         </div>
       </section>
 
