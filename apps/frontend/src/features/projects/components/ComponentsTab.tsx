@@ -30,6 +30,7 @@ import type {
   SortOrder,
 } from "@/features/projects/api/projectDetailApi";
 import { useComponents } from "@/features/projects/api/useComponents";
+import { useScanScopeFilter } from "@/features/projects/api/useScanScopeFilter";
 import { ActiveFilterChips } from "@/features/projects/components/ActiveFilterChips";
 import { ComponentDrawer } from "@/features/projects/components/ComponentDrawer";
 import { DependencyGraph } from "@/features/projects/components/DependencyGraph";
@@ -381,6 +382,10 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
   const severityDistribution = overview.data?.severity_distribution;
   const licenseDistribution = overview.data?.license_distribution;
 
+  // Phase K — runtime-scope filter transparency. Non-null only when the
+  // rendered scan's worker telemetry says components were actually dropped.
+  const scopeFilter = useScanScopeFilter(scanId, overview.data?.recent_scans);
+
   return (
     <div data-testid="components-tab" className="flex flex-1 flex-col">
       {/* View toggle — Table (virtual list) vs Graph (dependency graph, H-1).
@@ -530,6 +535,19 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
         <span>
           {t("components.summary", { loaded: items.length, total })}
         </span>
+        {scopeFilter ? (
+          <span
+            data-testid="components-scope-filter-note"
+            data-dropped={scopeFilter.totalDropped}
+            title={Object.entries(scopeFilter.dropped)
+              .map(([ecosystem, count]) => `${ecosystem}: ${count}`)
+              .join(", ")}
+          >
+            {t("components.summary_scope_filtered", {
+              count: scopeFilter.totalDropped,
+            })}
+          </span>
+        ) : null}
       </div>
 
       {components.isError ? (

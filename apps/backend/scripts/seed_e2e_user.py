@@ -1166,7 +1166,18 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                         progress_percent=100,
                         started_at=datetime.now(tz=UTC),
                         completed_at=datetime.now(tz=UTC),
-                        scan_metadata={"seeded": True},
+                        scan_metadata={
+                            "seeded": True,
+                            # Phase K — deterministic runtime-scope filter
+                            # telemetry so components_scope_filter.spec.ts can
+                            # assert the summary-band note without a live
+                            # worker run. 3 + 12 = 15 is the asserted total.
+                            "scope_filter": {
+                                "applied": True,
+                                "dropped": {"maven": 3, "npm": 12},
+                                "kept": 42,
+                            },
+                        },
                     )
                     session.add(scan)
                     await session.commit()

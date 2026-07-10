@@ -224,6 +224,7 @@
   },
   "components": {
     "summary": "전체 {{total}}개 중 {{loaded}}개 로드됨.",
+    "summary_scope_filtered": "런타임 스코프 필터가 dev/test 컴포넌트 {{count}}개를 제외함",
     "vulns_link_aria": "{{name}}의 CVE {{count}}건을 취약점 탭에서 보기",
     "col": {
       "name": "컴포넌트",

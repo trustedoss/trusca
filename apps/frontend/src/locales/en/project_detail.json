@@ -224,6 +224,7 @@
   },
   "components": {
     "summary": "{{loaded}} of {{total}} components loaded.",
+    "summary_scope_filtered": "{{count}} dev/test components excluded by the runtime-scope filter",
     "vulns_link_aria": "View {{count}} CVEs for {{name}} in the Vulnerabilities tab",
     "col": {
       "name": "Component",
