@@ -35,6 +35,7 @@ function overview(
     project_id: "11111111-1111-1111-1111-111111111111",
     project_name: "demo",
     total_components: 12,
+    eol_count: 0,
     severity_distribution: { critical: 1, high: 2, medium: 3, low: 6 },
     license_distribution: { forbidden: 1, allowed: 11 },
     risk_score: 80,

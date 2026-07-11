@@ -32,6 +32,7 @@ import { describe, expect, it } from "vitest";
 import { NOTIFICATION_KINDS } from "@/features/notifications/api/notificationsApi";
 import { G7_CLUSTER_ORDER } from "@/features/scan/lib/g7Conformance";
 import { KNOWN_OBLIGATION_KINDS } from "@/features/projects/api/obligationsApi";
+import { EOL_STATES } from "@/features/projects/api/projectDetailApi";
 import { REVIEW_FLAG_VALUES } from "@/features/projects/api/licensesApi";
 import { ALL_VULNERABILITY_STATUSES } from "@/features/projects/lib/vulnerabilityTransitions";
 import { visualFor } from "@/features/projects/components/ProjectStatusBadge";
@@ -344,6 +345,32 @@ describe("vulnerability statuses — label-map half of the 7-state mirror", () =
           `vulnerabilities.status.${status} missing`,
         ).toBeTruthy();
       }
+    },
+  );
+});
+
+describe("EOL states — FE mirror of services.eol.eol_catalog.EOL_STATES", () => {
+  // Phase M — the closed eol_state vocabulary lives twice: the backend
+  // catalog (services/eol/eol_catalog.py EOL_STATES, persisted into
+  // component_versions.eol_state) and the FE mirror EOL_STATES used by the
+  // EolBadge / drawer labels. The backend half of this contract is
+  // apps/backend/tests/unit/test_catalog_contracts.py.
+  it("matches the backend's closed eol_state set, in canonical order", () => {
+    expect([...EOL_STATES]).toEqual(["eol", "supported", "unknown"]);
+  });
+
+  it.each([
+    ["en", enProjectDetail],
+    ["ko", koProjectDetail],
+  ])(
+    "every eol state owns a %s `components.eol.state.*` label (plus untracked)",
+    (_locale, ns) => {
+      const states = labelMap(ns, "components", "eol", "state");
+      for (const state of EOL_STATES) {
+        expect(states[state], `components.eol.state.${state} missing`).toBeTruthy();
+      }
+      // The NULL (not-a-tracked-product) bucket renders through `untracked`.
+      expect(states.untracked, "components.eol.state.untracked missing").toBeTruthy();
     },
   );
 });

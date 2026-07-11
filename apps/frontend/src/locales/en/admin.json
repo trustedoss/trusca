@@ -328,6 +328,35 @@
         "feed_host": "Feed host"
       }
     },
+    "eol": {
+      "heading": "endoflife.date snapshot",
+      "status": {
+        "ok": "OK",
+        "stale": "Stale",
+        "skipped": "Skipped",
+        "disabled": "Disabled"
+      },
+      "stale_note": "The snapshot is {{days}} days old — upgrade the release or refresh it with scripts/refresh_eol_snapshot.py.",
+      "skipped_reason": "Last fetch skipped: {{reason}}",
+      "kpi": {
+        "snapshot_date": "Snapshot date",
+        "snapshot_age": "{{days}} days old",
+        "flagged_total": "EOL-flagged components",
+        "stamped_cleared": "Recently stamped / cleared",
+        "next_refresh": "Next tick"
+      },
+      "origin": {
+        "vendored": "vendored with the release",
+        "feed": "fetched from the feed"
+      },
+      "footer": {
+        "origin": "Dataset",
+        "products": "Products",
+        "refresh": "Live refresh",
+        "refresh_on": "on ({{host}})",
+        "refresh_off": "off — vendored snapshot only"
+      }
+    },
     "backup": {
       "title": "Backups",
       "subtitle": "Automated daily backups + manual triggers + restore.",

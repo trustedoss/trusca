@@ -49,6 +49,7 @@ Workspace:
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import re
@@ -72,6 +73,10 @@ from sqlalchemy.orm import Session
 from core.config import (
     cdxgen_fetch_license,
     cdxgen_spec_version,
+    eol_enabled,
+    scan_scope_filter_enabled,
+    scan_scope_filter_maven_enabled,
+    scan_scope_filter_node_enabled,
     scan_soft_time_limit_seconds,
     scanoss_enabled,
     slsa_builder_id,
@@ -83,8 +88,8 @@ from core.pii_mask import mask_pii, redact_url_userinfo
 from core.url_guard import GitUrlValidationError, validate_git_url_with_ip
 from integrations import attestation as attestation_builder
 from integrations import cdxgen as cdxgen_adapter
+from integrations import cocoapods_lockfile, sbom_scope_filter, scan_executor
 from integrations import cosign as cosign_adapter
-from integrations import scan_executor
 from integrations import scancode as scancode_adapter
 from integrations import scanoss as scanoss_adapter
 from integrations._size_guard import enforce_jsonb_row_size_limit
@@ -116,6 +121,7 @@ from models import (
     VulnerabilityFinding,
 )
 from services.component_approval_service import auto_create_pending_approvals
+from services.eol import eol_catalog
 from services.license_expression import evaluate_expression
 from services.license_normalize import normalize_license_name
 from services.sbom_conformance import sanitize_jsonb_text
@@ -346,13 +352,24 @@ def _run_pipeline(
         mock_only=False,
     )
 
+    # The PROJECT root vs the workspace parent: the git path clones into
+    # ``source/repo`` while the zip path extracts into ``source/`` itself, and
+    # ``_fetch_source`` returns the PARENT either way. cdxgen is fine with the
+    # parent (``-r`` recurses), but every ROOT-KEYED consumer — the prep
+    # lockfile generators, the scope filter's / CocoaPods fill-in's lockfile
+    # reads, persist's npm scope enrichment, language detection — must see the
+    # actual project root or it silently no-ops on every git scan (found by
+    # the Phase K real-scan verification; the W4-D npm enrichment had the same
+    # latent gap).
+    project_root = _resolve_project_root(source_dir)
+
     # Detect the source environment (BomLens-style language → cdxgen image map)
     # and record it on the scan. Increment 2 only observes: the in-process
     # executor still handles every environment. SCAN_EXECUTOR=local_docker /
     # k8s_job (later increments) consume ``detected_env`` to route an
     # environment-specific cdxgen sidecar. Best-effort — a detection error must
     # never fail the scan, so we fall back to "unknown" and continue.
-    detected_env = _detect_and_record_env(scan_uuid, source_dir)
+    detected_env = _detect_and_record_env(scan_uuid, project_root)
 
     # Stage 2.5 + 3 — build-prep + cdxgen, behind the ScanExecutor abstraction.
     # cdxgen needs a populated lockfile to enumerate transitive deps for Ruby /
@@ -382,7 +399,7 @@ def _run_pipeline(
     )
     gen_result = executor.generate_sbom(
         gen_request,
-        prep=lambda: _prepare_for_cdxgen(source_dir=source_dir, scan_uuid=scan_uuid),
+        prep=lambda: _prepare_for_cdxgen(source_dir=project_root, scan_uuid=scan_uuid),
         stage=lambda stage: _set_stage(scan_uuid, stage),
         # P2 #8c — stream cdxgen stdout/stderr lines onto the scan WebSocket
         # so the drawer can render a live tool trace. Best-effort: a publish
@@ -393,6 +410,27 @@ def _run_pipeline(
     cdxgen_result = cdxgen_adapter.CdxgenResult(
         sbom_path=gen_result.sbom_path, sbom=gen_result.sbom
     )
+
+    # Stage 3.2 — CocoaPods lockfile fill-in (Phase L). cdxgen ran with
+    # --exclude-type cocoapods when a Podfile was present (its cataloger
+    # crashes without the `pod` CLI — see integrations/cdxgen.py), so the
+    # pods are reconstructed offline from Podfile.lock and merged here.
+    # MUST precede the scope filter so the filter's counts and the
+    # trusca:scope_filter property describe the FINAL document (cocoapods
+    # purls pass both keep-predicates untouched). Best-effort, never fatal.
+    _merge_cocoapods_components(
+        scan_uuid=scan_uuid, cdxgen_result=cdxgen_result, source_dir=project_root
+    )
+
+    # Stage 3.25 — runtime-scope post-filter (Phase K). MUST run before the
+    # artifact persist, cosign signing, SCANOSS and Trivy below so every
+    # downstream consumer (persisted components, the signed/downloadable
+    # artifact, vulnerability matching) sees ONE consistent filtered document.
+    # Best-effort: any failure leaves the SBOM exactly as cdxgen wrote it.
+    _apply_scope_filter(
+        scan_uuid=scan_uuid, cdxgen_result=cdxgen_result, source_dir=project_root
+    )
+
     _persist_artifact(
         scan_uuid,
         kind="sbom_cyclonedx",
@@ -493,7 +531,9 @@ def _run_pipeline(
             session,
             scan_uuid=scan_uuid,
             sbom=cdxgen_result.sbom,
-            source_dir=source_dir,
+            # The PROJECT root (not the workspace parent) so the npm-lockfile
+            # scope enrichment actually finds package-lock.json on git scans.
+            source_dir=project_root,
         )
         if scancode_detections:
             try:
@@ -1132,6 +1172,154 @@ def _detect_and_record_env(scan_uuid: uuid.UUID, source_dir: Path) -> str:
         log.warning("source_detect_persist_failed", scan_id=str(scan_uuid), exc_info=True)
 
     return detected_env
+
+
+def _merge_cocoapods_components(
+    *,
+    scan_uuid: uuid.UUID,
+    cdxgen_result: cdxgen_adapter.CdxgenResult,
+    source_dir: Path,
+) -> None:
+    """Fill CocoaPods components back into the SBOM from Podfile.lock (Phase L).
+
+    Same copy-then-commit shape as ``_apply_scope_filter``: merge into a deep
+    copy, rewrite the on-disk file atomically, and only then swap the
+    in-memory document — persist, signing and Trivy can never see diverging
+    documents. Best-effort throughout; ``dependency_scope`` stays NULL for
+    pods (Podfile.lock carries no runtime/test distinction).
+    """
+    try:
+        lock_data = cocoapods_lockfile.read_podfile_lock(source_dir)
+        if lock_data is None:
+            return
+        working = copy.deepcopy(cdxgen_result.sbom)
+        merged = cocoapods_lockfile.merge_into_sbom(working, lock_data)
+        if merged <= 0:
+            return
+        if not sbom_scope_filter.rewrite_sbom_file(
+            cdxgen_result.sbom_path, working
+        ):
+            return
+        cdxgen_result.sbom.clear()
+        cdxgen_result.sbom.update(working)
+        log.info(
+            "cocoapods_lockfile_merged",
+            scan_id=str(scan_uuid),
+            merged=merged,
+        )
+        try:
+            with sync_session_scope() as session:
+                scan = session.get(Scan, scan_uuid)
+                if scan is not None:
+                    meta = dict(scan.scan_metadata or {})
+                    meta["cocoapods"] = {"merged": merged}
+                    scan.scan_metadata = meta
+                    session.commit()
+        except Exception:  # noqa: BLE001 — telemetry is best-effort
+            log.warning(
+                "cocoapods_merge_persist_failed",
+                scan_id=str(scan_uuid),
+                exc_info=True,
+            )
+    except Exception:  # noqa: BLE001 — the fill-in must never fail the scan
+        log.warning(
+            "cocoapods_merge_stage_failed", scan_id=str(scan_uuid), exc_info=True
+        )
+
+
+def _resolve_project_root(source_dir: Path) -> Path:
+    """The scanned PROJECT's root inside the fetch output.
+
+    ``_fetch_source`` returns ``workspace/source`` while the git path clones
+    into ``workspace/source/repo`` (the zip path extracts into ``source/``
+    itself). Root-keyed consumers — the prep lockfile generators, the scope
+    filter's and CocoaPods fill-in's lockfile reads, persist's npm scope
+    enrichment, language detection — need the repo root; handing them the
+    parent made every one of them silently no-op on git scans. cdxgen is
+    unaffected either way (``-r`` recurses from the parent).
+    """
+    repo = source_dir / "repo"
+    return repo if repo.is_dir() else source_dir
+
+
+def _apply_scope_filter(
+    *,
+    scan_uuid: uuid.UUID,
+    cdxgen_result: cdxgen_adapter.CdxgenResult,
+    source_dir: Path,
+) -> None:
+    """Filter the cdxgen SBOM down to the deployable runtime set (Phase K).
+
+    Copy-then-commit transactional shape: the filter runs on a deep copy, the
+    on-disk file (the same file Trivy later reads) is rewritten atomically,
+    and only after that succeeds is the in-memory document swapped. A failed
+    rewrite therefore degrades to "filter skipped" with memory and disk still
+    consistent — persist, signing and Trivy can never see diverging documents.
+    Best-effort throughout: no failure here may fail the scan.
+    """
+    if not scan_scope_filter_enabled():
+        return
+    try:
+        npm_lock = read_lockfile(source_dir)
+        working = copy.deepcopy(cdxgen_result.sbom)
+        result = sbom_scope_filter.filter_sbom_to_runtime_scope(
+            working,
+            npm_lock=npm_lock,
+            maven=scan_scope_filter_maven_enabled(),
+            node=scan_scope_filter_node_enabled(),
+        )
+        if not result.applied:
+            return
+        if result.dropped:
+            if not sbom_scope_filter.rewrite_sbom_file(
+                cdxgen_result.sbom_path, working
+            ):
+                return
+            # Same object identity — CdxgenResult stays valid either way.
+            cdxgen_result.sbom.clear()
+            cdxgen_result.sbom.update(working)
+        log.info(
+            "scope_filter_applied",
+            scan_id=str(scan_uuid),
+            dropped=dict(result.dropped),
+            kept=result.kept_components,
+        )
+        _record_scope_filter(scan_uuid, result)
+    except Exception:  # noqa: BLE001 — the filter must never fail the scan
+        log.warning(
+            "scope_filter_stage_failed", scan_id=str(scan_uuid), exc_info=True
+        )
+
+
+def _record_scope_filter(
+    scan_uuid: uuid.UUID, result: sbom_scope_filter.ScopeFilterResult
+) -> None:
+    """Persist the filter outcome onto ``scan_metadata`` (best-effort).
+
+    Same JSONB reassign-fresh-dict pattern as ``_detect_and_record_env`` —
+    in-place mutation is not tracked by SQLAlchemy.
+    """
+    try:
+        with sync_session_scope() as session:
+            scan = session.get(Scan, scan_uuid)
+            if scan is not None:
+                merged = dict(scan.scan_metadata or {})
+                merged["scope_filter"] = {
+                    "applied": True,
+                    "dropped": dict(result.dropped),
+                    "kept": result.kept_components,
+                    # Audit trail (security-reviewer L2): the identities of
+                    # what was removed, bounded at the module cap — counts
+                    # alone are not reviewable when the npm predicate trusts
+                    # an attacker-controlled lockfile classification.
+                    "dropped_refs": list(result.dropped_refs),
+                }
+                scan.scan_metadata = merged
+                session.commit()
+    except Exception:  # noqa: BLE001 — telemetry is best-effort, never fatal
+        log.warning(
+            "scope_filter_persist_failed", scan_id=str(scan_uuid), exc_info=True
+        )
 
 
 def _persist_artifact(
@@ -2118,6 +2306,13 @@ def persist_sbom_components(
     # F-4: aggregated telemetry — one warning per scan, not per component.
     sanitized_count = 0
     deduplicated_count = 0
+    # Phase M — EOL enrichment. One evaluator per persist call (rules +
+    # snapshot loaded once). None when disabled or the dataset failed to
+    # load — stamping silently skips (an EOL failure never breaks persist).
+    # Covers BOTH the source-scan and SBOM-ingest paths (they converge here).
+    eol_evaluator = eol_catalog.build_evaluator() if eol_enabled() else None
+    eol_stamped_count = 0
+    eol_now = datetime.now(UTC)
 
     for raw in components:
         if not isinstance(raw, dict):
@@ -2151,6 +2346,23 @@ def persist_sbom_components(
             version=version,
             purl_with_version=purl,
         )
+
+        # Phase M — stamp the shared catalog row with its endoflife.date
+        # verdict. Changed-value-guarded (idempotent on re-scan); an
+        # unmapped purl returns None and leaves every eol_* column NULL.
+        if eol_evaluator is not None:
+            try:
+                if eol_catalog.stamp_component_version(
+                    component_version,
+                    eol_evaluator.verdict_for(purl, version),
+                    eol_now,
+                ):
+                    eol_stamped_count += 1
+            except Exception:  # noqa: BLE001 — enrichment is best-effort
+                eol_evaluator = None  # disable for the rest of the scan
+                log.warning(
+                    "eol_stamp_failed", scan_id=str(scan_uuid), exc_info=True
+                )
 
         bom_ref = raw.get("bom-ref")
         # TEXT column — persist the CLEANED ref; the raw one keys the maps.
@@ -2249,6 +2461,14 @@ def persist_sbom_components(
             column="scan_components.raw_data",
             sanitized_components=sanitized_count,
             deduplicated_components=deduplicated_count,
+        )
+
+    if eol_stamped_count:
+        # Aggregate INFO — one line per scan, not per component (F-4 idiom).
+        log.info(
+            "eol_stamped",
+            scan_id=str(scan_uuid),
+            stamped_component_versions=eol_stamped_count,
         )
 
     # v2.2 2.2-a2 — stamp depth + persist the resolved dependency edges. Runs

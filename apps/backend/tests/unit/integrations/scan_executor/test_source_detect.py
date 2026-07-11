@@ -50,6 +50,7 @@ def _touch(root: Path, *relpaths: str) -> Path:
         (["conanfile.py"], "cpp"),
         (["vcpkg.json"], "cpp"),
         (["Package.swift"], "swift"),
+        (["Package.resolved"], "swift"),
         (["Podfile"], "swift"),
         (["Podfile.lock"], "swift"),
     ],

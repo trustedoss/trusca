@@ -65,6 +65,12 @@ export interface ProjectOverviewResponse {
   project_id: string;
   project_name: string;
   total_components: number;
+  /**
+   * Phase M — count of distinct components in the anchored scan past their
+   * published end-of-life (endoflife.date). Maintenance-risk KPI, distinct
+   * from CVEs.
+   */
+  eol_count: number;
   /** Counts per severity bucket. May omit zero buckets — render with fallback. */
   severity_distribution: Partial<Record<ComponentSeverity, number>>;
   /** Counts per license category. */
@@ -139,6 +145,15 @@ export interface ComponentSummary {
    * ``optional`` so the strictest wins.
    */
   dependency_scope: "required" | "optional" | null;
+  /**
+   * Phase M — endoflife.date verdict. ``eol`` = past published end-of-life,
+   * ``supported`` = tracked and supported, ``unknown`` = tracked but cycle
+   * undecidable, ``null`` = not a tracked product (closed whitelist). The
+   * EolBadge renders only for ``eol`` — absence is the signal.
+   */
+  eol_state: EolState | null;
+  /** Published EOL date (ISO) when the feed is dated; else null. */
+  eol_date: string | null;
 }
 
 export interface ComponentListResponse {
@@ -212,11 +227,30 @@ export interface ComponentDetailResponse {
    * scan didn't encode a scope on the edge.
    */
   dependency_scope: "required" | "optional" | null;
+  /** Phase M — endoflife.date verdict (see ComponentSummary.eol_state). */
+  eol_state: EolState | null;
+  /** endoflife.date product slug the component mapped to, or null. */
+  eol_product: string | null;
+  /** Release cycle derived from the version (e.g. "3.2"), or null. */
+  eol_cycle: string | null;
+  /** Published EOL date (ISO) when the feed is dated; else null. */
+  eol_date: string | null;
+  /** Snapshot provenance, e.g. "endoflife.date@2026-07-11". */
+  eol_source: string | null;
 }
 
 // ---------------------------------------------------------------------------
 // Endpoints
 // ---------------------------------------------------------------------------
+
+/**
+ * Phase M — the closed eol_state vocabulary. Mirrors
+ * ``services.eol.eol_catalog.EOL_STATES`` on the backend; contract-tested in
+ * tests/unit/contracts/catalogMirrors.test.ts against the backend half in
+ * apps/backend/tests/unit/test_catalog_contracts.py.
+ */
+export const EOL_STATES = ["eol", "supported", "unknown"] as const;
+export type EolState = (typeof EOL_STATES)[number];
 
 export type ComponentSortKey = "name" | "severity" | "license";
 export type SortOrder = "asc" | "desc";
@@ -248,6 +282,12 @@ export interface ListComponentsParams {
    * to include all buckets.
    */
   dependency_scope?: DependencyScopeFilter[];
+  /**
+   * Phase M — EOL facet. ``true`` keeps only components past their published
+   * end-of-life; ``false`` keeps everything else (including untracked). Omit
+   * / ``null`` to include both.
+   */
+  eol?: boolean | null;
   /**
    * Pin the read to a specific succeeded scan (feature #28 snapshot anchoring).
    * Omit → the project's latest succeeded scan (unchanged default). An invalid /
@@ -286,6 +326,10 @@ function listComponentsQuery(
   }
   if (params.dependency_scope && params.dependency_scope.length > 0) {
     out.dependency_scope = params.dependency_scope;
+  }
+  // Phase M — same emit-only-on-opinion contract as `direct`.
+  if (params.eol === true || params.eol === false) {
+    out.eol = params.eol;
   }
   if (params.scanId != null && params.scanId.length > 0) {
     out.scan_id = params.scanId;

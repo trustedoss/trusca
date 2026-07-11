@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import typing
 
+from pydantic import BaseModel
+
 # ---------------------------------------------------------------------------
 # Notification kinds — H-5 guard
 # ---------------------------------------------------------------------------
@@ -257,3 +259,34 @@ def test_review_flag_router_pattern_matches_classifier_values() -> None:
         f"{len(review_alternations)}: {review_alternations}"
     )
     assert set(review_alternations[0].split("|")) == set(REVIEW_FLAG_VALUES)
+
+
+# ---------------------------------------------------------------------------
+# EOL state vocabulary — Phase M
+# ---------------------------------------------------------------------------
+
+
+def test_eol_states_catalog_matches_schema_literals() -> None:
+    """The closed ``eol_state`` vocabulary lives in three places: the catalog
+    tuple (``services.eol.eol_catalog.EOL_STATES``, the values the evaluator
+    persists into ``component_versions.eol_state``), the ``ComponentSummary``
+    Literal and the ``ComponentDetailResponse`` Literal (the wire contracts).
+    The FE mirror half is
+    ``apps/frontend/tests/unit/contracts/catalogMirrors.test.ts``.
+    """
+    from schemas.project_detail import ComponentDetailResponse, ComponentSummary
+    from services.eol.eol_catalog import EOL_STATES
+
+    expected = {"eol", "supported", "unknown"}
+    assert set(EOL_STATES) == expected
+
+    def _literal_states(model: type[BaseModel], field: str) -> set[str]:
+        annotation = model.model_fields[field].annotation
+        # ``Literal["eol","supported","unknown"] | None`` — walk the union.
+        states: set[str] = set()
+        for arg in typing.get_args(annotation):
+            states.update(a for a in typing.get_args(arg) if isinstance(a, str))
+        return states
+
+    assert _literal_states(ComponentSummary, "eol_state") == expected
+    assert _literal_states(ComponentDetailResponse, "eol_state") == expected

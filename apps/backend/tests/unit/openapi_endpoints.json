@@ -77,6 +77,7 @@
     "name"
   ],
   "GET /v1/admin/disk": [],
+  "GET /v1/admin/eol/health": [],
   "GET /v1/admin/health": [],
   "GET /v1/admin/kev/health": [],
   "GET /v1/admin/scans": [
@@ -199,6 +200,7 @@
   "GET /v1/projects/{project_id}/components": [
     "dependency_scope",
     "direct",
+    "eol",
     "license_category",
     "limit",
     "offset",

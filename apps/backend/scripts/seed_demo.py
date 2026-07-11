@@ -566,7 +566,18 @@ async def _seed() -> dict[str, Any]:  # noqa: PLR0915 — single linear seed rea
                     progress_percent=100,
                     started_at=now - timedelta(minutes=12),
                     completed_at=now - timedelta(minutes=4),
-                    scan_metadata={"seeded_demo": True, "branch": "main"},
+                    scan_metadata={
+                        "seeded_demo": True,
+                        "branch": "main",
+                        # Phase K — deterministic runtime-scope filter telemetry
+                        # so the Components summary band's "excluded N" note is
+                        # e2e-testable without a live worker run.
+                        "scope_filter": {
+                            "applied": True,
+                            "dropped": {"maven": 3, "npm": 12},
+                            "kept": 42,
+                        },
+                    },
                 )
                 session.add(scan)
                 scans.append(scan)

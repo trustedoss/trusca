@@ -123,6 +123,11 @@
     "none": "리스크 없음"
   },
   "overview": {
+    "eol_chip": {
+      "title": "지원 종료된 컴포넌트 {{count}}개",
+      "body": "지원 종료된 릴리즈에는 업스트림 수정이 제공되지 않아, 이후 발견되는 Critical CVE 에 패치가 없습니다.",
+      "link": "EOL 컴포넌트 보기"
+    },
     "info_card": {
       "title": "프로젝트 정보",
       "description": "설명",
@@ -224,6 +229,7 @@
   },
   "components": {
     "summary": "전체 {{total}}개 중 {{loaded}}개 로드됨.",
+    "summary_scope_filtered": "런타임 스코프 필터가 dev/test 컴포넌트 {{count}}개를 제외함",
     "vulns_link_aria": "{{name}}의 CVE {{count}}건을 취약점 탭에서 보기",
     "col": {
       "name": "컴포넌트",
@@ -232,8 +238,21 @@
       "license": "라이선스",
       "policy": "정책",
       "usage": "용도",
+      "eol": "EOL",
       "severity": "심각도",
       "vulns": "CVE"
+    },
+    "eol": {
+      "label": "EOL",
+      "tooltip": "이 릴리즈 사이클은 공표된 지원 종료(endoflife.date)를 지났습니다 — 업스트림 수정이 더 이상 제공되지 않습니다.",
+      "tooltip_with_date": "{{date}}부터 지원 종료(endoflife.date) — 업스트림 수정이 더 이상 제공되지 않습니다.",
+      "since": "{{date}}부터",
+      "state": {
+        "eol": "지원 종료됨",
+        "supported": "지원 중 (endoflife.date 추적 대상)",
+        "unknown": "추적 대상이나 릴리즈 사이클을 판정할 수 없음",
+        "untracked": "endoflife.date 추적 대상이 아님"
+      }
     },
     "license": {
       "unknown_dash": "—"
@@ -268,7 +287,9 @@
         "required": "필수",
         "optional": "선택",
         "unspecified": "지정 안 됨"
-      }
+      },
+      "eol_label": "지원 종료",
+      "eol_only": "EOL만"
     },
     "empty": {
       "title": "조건에 맞는 컴포넌트가 없습니다",
@@ -305,6 +326,7 @@
     "purl_label": "purl",
     "dependency_type_label": "유형",
     "usage_label": "용도",
+    "eol_label": "지원 종료",
     "open_full_view": "전체 화면으로 보기",
     "error": "컴포넌트를 불러오지 못했습니다.",
     "vulns": {

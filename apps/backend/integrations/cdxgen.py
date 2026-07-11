@@ -97,6 +97,34 @@ class CdxgenResult:
     sbom: dict[str, Any]
 
 
+def _podfile_present(source_dir: Path) -> bool:
+    """True when a ``Podfile`` exists within depth 3 of the source root.
+
+    Depth-bounded on purpose (mirrors ``source_detect._has_android_manifest``):
+    BomLens' unbounded ``find .`` over an attacker-controlled tree is a DoS
+    surface. ``Pods/`` copies are ignored — ``Pods/Manifest.lock`` trees ship
+    their own Podfiles that do not make the project a CocoaPods root.
+    """
+    root_podfile = source_dir / "Podfile"
+    if root_podfile.is_file() and not root_podfile.is_symlink():
+        return True
+    for pattern in ("*/Podfile", "*/*/Podfile"):
+        for candidate in source_dir.glob(pattern):
+            relative_parts = candidate.relative_to(source_dir).parts
+            if (
+                candidate.is_file()
+                # Symlink guard on the LEAF only — glob still traverses
+                # directory symlinks, which is acceptable: the flag decides
+                # a CLI argument, not a read path, and a repo author could
+                # equally commit a real Podfile. The out-of-tree READ guard
+                # lives in cocoapods_lockfile.read_podfile_lock.
+                and not candidate.is_symlink()
+                and "Pods" not in relative_parts
+            ):
+                return True
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -166,8 +194,18 @@ def run_cdxgen(
         str(sbom_path),
         "--spec-version",
         resolved_spec,
-        str(source_dir),
     ]
+    if _podfile_present(source_dir):
+        # Phase L — cdxgen's cocoapods cataloger does NOT skip when the `pod`
+        # CLI is absent (the worker ships no Ruby/CocoaPods toolchain): it
+        # throws a TypeError on the undefined `pod` stdout and aborts the
+        # WHOLE stage-1 scan. Excluding the type keeps the rest of the scan
+        # alive; integrations/cocoapods_lockfile.py fills the pods back in
+        # from Podfile.lock after cdxgen (see _merge_cocoapods_components in
+        # tasks/scan_source.py). The sidecar executors carry the same guard
+        # in scan_executor/build_prep_source.sh — keep both in sync.
+        cmd += ["--exclude-type", "cocoapods"]
+    cmd.append(str(source_dir))
     env = _build_cdxgen_env(source_dir=source_dir, output_dir=output_dir, verbose=verbose)
     if resolved_fetch:
         # cdxgen resolves component licenses when FETCH_LICENSE is truthy (env,

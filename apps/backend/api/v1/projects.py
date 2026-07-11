@@ -450,6 +450,10 @@ async def get_project_overview_endpoint(
         project_id=payload["project_id"],
         project_name=payload["project_name"],
         total_components=payload["total_components"],
+        # Phase M — hand-built-response completeness (see
+        # tests/unit/api/test_handbuilt_response_completeness.py: this
+        # construction has silently dropped fields before).
+        eol_count=payload["eol_count"],
         severity_distribution=payload["severity_distribution"],
         license_distribution=payload["license_distribution"],
         risk_score=payload["risk_score"],
@@ -506,6 +510,16 @@ async def list_project_components_endpoint(
             "values returns an empty page (not a 422). Omit to include all."
         ),
     ),
+    eol: bool | None = Query(
+        default=None,
+        description=(
+            "Phase M — end-of-life facet. ``true`` keeps only components "
+            "whose release cycle is past its published end-of-life "
+            "(endoflife.date); ``false`` keeps everything else, including "
+            "untracked components. Omit to include both. Boolean mirrors "
+            "the KEV filter UX."
+        ),
+    ),
     sort: str = Query(default="name", pattern=r"^(name|severity|license)$"),
     order: str = Query(default="asc", pattern=r"^(asc|desc)$"),
     scan_id: uuid.UUID | None = Query(
@@ -532,6 +546,7 @@ async def list_project_components_endpoint(
             license_category=license_category,
             direct=direct,
             dependency_scope=dependency_scope,
+            eol=eol,
             sort=sort,
             order=order,
             scan_id=scan_id,

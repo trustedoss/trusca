@@ -314,6 +314,7 @@ async def get_project_overview(
     severity_distribution = dict.fromkeys(_ALL_SEVERITY_KEYS, 0)
     license_distribution = dict.fromkeys(_ALL_LICENSE_KEYS, 0)
     total_components = 0
+    eol_count = 0
     last_scan_at: Any = None
     last_succeeded_scan_at: Any = None
     # #35 Surface B — tri-state: True/False once we know the DT vuln-DB size at
@@ -414,11 +415,33 @@ async def get_project_overview(
             Scan.id == aggregate_scan_id
         )
 
-        agg_result, recent_result, succeeded_meta_result = await asyncio.gather(
+        # Phase M — EOL rollup for the Overview KPI chip: distinct catalog
+        # rows observed in the anchor scan that are past end-of-life. Rides
+        # the partial index ix_component_versions_eol (flagged rows are a
+        # tiny curated minority).
+        eol_count_stmt = (
+            select(func.count(func.distinct(ScanComponent.component_version_id)))
+            .select_from(ScanComponent)
+            .join(
+                ComponentVersion,
+                ComponentVersion.id == ScanComponent.component_version_id,
+            )
+            .where(ScanComponent.scan_id == aggregate_scan_id)
+            .where(ComponentVersion.eol_state == "eol")
+        )
+
+        (
+            agg_result,
+            recent_result,
+            succeeded_meta_result,
+            eol_count_result,
+        ) = await asyncio.gather(
             session.execute(agg_stmt),
             session.execute(recent_stmt),
             session.execute(succeeded_meta_stmt),
+            session.execute(eol_count_stmt),
         )
+        eol_count = int(eol_count_result.scalar_one())
 
         succeeded_row = succeeded_meta_result.one_or_none()
         if succeeded_row is not None:
@@ -462,6 +485,7 @@ async def get_project_overview(
         "project_id": project.id,
         "project_name": project.name,
         "total_components": total_components,
+        "eol_count": eol_count,
         "severity_distribution": severity_distribution,
         "license_distribution": license_distribution,
         "risk_score": overall_risk,
@@ -537,6 +561,7 @@ async def list_components_for_project(
     license_category: list[str] | None = None,
     direct: bool | None = None,
     dependency_scope: list[str] | None = None,
+    eol: bool | None = None,
     sort: str = "name",
     order: str = "asc",
     scan_id: uuid.UUID | None = None,
@@ -666,6 +691,10 @@ async def list_components_for_project(
             per_cv_subq.c.min_depth.label("min_depth"),
             per_cv_subq.c.is_direct.label("is_direct"),
             per_cv_subq.c.max_scope_rank.label("max_scope_rank"),
+            # Phase M — EOL rides the catalog row (component_versions), so the
+            # labels are free on the existing join; no extra query.
+            ComponentVersion.eol_state.label("eol_state"),
+            ComponentVersion.eol_date.label("eol_date"),
         )
         .select_from(per_cv_subq)
         .join(ComponentVersion, ComponentVersion.id == per_cv_subq.c.cv_id)
@@ -710,6 +739,21 @@ async def list_components_for_project(
             return [], 0
         scope_ranks = [_SCOPE_FILTER_RANK[s] for s in scope_filter]
         base = base.where(per_cv_subq.c.max_scope_rank.in_(scope_ranks))
+
+    # Phase M — EOL filter. ``eol=true`` keeps only flagged rows (served by
+    # the partial index ix_component_versions_eol); ``eol=false`` keeps
+    # everything else INCLUDING untracked (NULL) and unknown rows — the
+    # boolean maps to "past end-of-life or not", mirroring the KEV filter UX.
+    if eol is not None:
+        if eol:
+            base = base.where(ComponentVersion.eol_state == "eol")
+        else:
+            base = base.where(
+                or_(
+                    ComponentVersion.eol_state.is_(None),
+                    ComponentVersion.eol_state != "eol",
+                )
+            )
 
     # Sorting. We pick the primary column then call .asc()/.desc() inline so
     # mypy --strict doesn't complain about an untyped lambda factory.
@@ -799,6 +843,11 @@ async def list_components_for_project(
                 # SBOM didn't encode one); the UI renders that as "—" rather
                 # than guessing.
                 "dependency_scope": _SCOPE_FROM_RANK[int(r.max_scope_rank)],
+                # Phase M — endoflife.date verdict off the catalog row. NULL =
+                # not a tracked product (the FE renders nothing, KevBadge
+                # contract: absence is the signal).
+                "eol_state": r.eol_state,
+                "eol_date": r.eol_date,
             }
         )
 
@@ -837,6 +886,12 @@ async def get_component_detail(
             ComponentVersion.purl_with_version,
             ComponentVersion.created_at,
             ComponentVersion.updated_at,
+            # Phase M — EOL columns ride the catalog row; free on this select.
+            ComponentVersion.eol_state,
+            ComponentVersion.eol_product,
+            ComponentVersion.eol_cycle,
+            ComponentVersion.eol_date,
+            ComponentVersion.eol_source,
             Component.id.label("component_id"),
             Component.name.label("component_name"),
             Project.id.label("project_id"),
@@ -1054,6 +1109,13 @@ async def get_component_detail(
             if row.dependency_scope in ("required", "optional")
             else None
         ),
+        # Phase M — endoflife.date verdict (catalog columns). All None for an
+        # untracked component; the drawer's EOL row renders "—" then.
+        "eol_state": row.eol_state,
+        "eol_product": row.eol_product,
+        "eol_cycle": row.eol_cycle,
+        "eol_date": row.eol_date,
+        "eol_source": row.eol_source,
         "created_at": row.created_at,
         "updated_at": row.updated_at,
     }

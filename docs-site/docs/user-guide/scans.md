@@ -144,7 +144,7 @@ The progress view shows real-time stage transitions:
 
 1. **Bootstrapping** — preparing the workspace.
 2. **Fetching source** — `git clone` (or `git fetch` + checkout for an existing workspace).
-3. **Detecting components** — `cdxgen` walks the repo and emits a CycloneDX SBOM, with **declared** licenses read from each dependency's package metadata.
+3. **Detecting components** — `cdxgen` walks the repo and emits a CycloneDX SBOM, with **declared** licenses read from each dependency's package metadata. Immediately after, the **runtime-scope post-filter** drops non-deployable dependencies (Maven `test`/`provided`, npm `devDependencies`) so every later stage — signing, persistence, vulnerability matching — sees the deployable set; see [Components & licenses → Runtime-scope filtering](./components-and-licenses.md#runtime-scope-filtering).
 4. **Detecting first-party licenses** — scancode scans the project's own source files and records the **detected** licenses it finds, each tagged with the `source_path` of the file it came from (see [Components & licenses → Detected vs. declared](./components-and-licenses.md#declared-vs-detected)). This stage is best-effort: if scancode is not installed, times out, or the tree is too large, the scan continues with declared licenses only — a degraded but non-fatal outcome. Legal-tier classification is then applied from the built-in classifier catalog (see [Components & licenses → Classification source](./components-and-licenses.md#license-classification)).
 5. **Resolving vulnerabilities** — `trivy sbom` matches the CycloneDX SBOM against the local Trivy DB (NVD + OSV + GHSA + EPSS + KEV). No network call per scan.
 6. **Persisting** — components, licenses, and findings are written to PostgreSQL.
@@ -154,6 +154,27 @@ Earlier builds ran the OSS Review Toolkit (ORT) at the license stage. v0.10.0 re
 :::
 
 If the local Trivy DB has not finished downloading when stage 5 runs (most common on a fresh install), the scan completes with **0 vulnerability findings** and a banner on the Vulnerabilities tab pointing operators at [Vulnerability data (Trivy DB)](../admin-guide/vulnerability-data.md). The automatic re-match beat picks up findings once the DB lands — no re-scan needed.
+
+### iOS projects (CocoaPods / Swift Package Manager) {#ios-projects}
+
+iOS repositories scan offline from their **committed lockfiles** — the worker
+needs neither Xcode, a Swift toolchain, nor the CocoaPods CLI:
+
+- **CocoaPods** — `cdxgen` cannot catalog pods without the `pod` CLI, so the
+  scanner excludes that cataloger (avoiding a crash that used to kill the
+  whole scan) and reconstructs the pod set and its dependency graph directly
+  from `Podfile.lock`. The `PODS:` block is the fully resolved truth: direct
+  and transitive pods, pinned versions, and each pod's sub-dependencies —
+  subspecs like `Moya/Core` appear as their own components. Pods carry no
+  Usage (Required/Optional) value because `Podfile.lock` records no
+  runtime/test distinction; the column shows `—`.
+- **Swift Package Manager** — a committed `Package.resolved` is parsed by
+  `cdxgen` as-is (both the v1 and v2 formats). The sidecar executors skip
+  `swift package resolve` when the file is committed — the committed lockfile
+  already is the resolved graph, and re-resolving would hit the network.
+
+Commit `Podfile.lock` and `Package.resolved` to the repository — without
+them an iOS scan finds only what the manifests declare.
 
 ## Average duration
 
@@ -253,13 +274,13 @@ If you build a custom client, the message shape is:
 
 ```json
 {
-  "step": "dt_findings",
-  "percent": 62,
+  "step": "trivy",
+  "percent": 90,
   "ts": "2026-05-09T13:42:11Z"
 }
 ```
 
-`percent` is an integer 0–100. `step` is one of the pipeline slugs (`bootstrap`, `fetch`, `prep`, `cdxgen`, `scancode`, `dt_upload`, `dt_findings`, `finalize`) plus the two terminal states (`succeeded`, `failed`). The `scancode` slug replaced the former `ort` slug at the same progress percent. The frame does not echo `scan_id` — the subscriber already knows it from the URL.
+`percent` is an integer 0–100. `step` is one of the pipeline slugs (`bootstrap`, `fetch`, `prep`, `cdxgen`, `sign`, `scancode`, `approvals`, `scanoss`, `trivy`, `finalize`) plus the two terminal states (`succeeded`, `failed`). The `scancode` slug replaced the former `ort` slug, and `trivy` replaced the former `dt_upload`/`dt_findings` pair after the Dependency-Track removal (ADR-0001). The frame does not echo `scan_id` — the subscriber already knows it from the URL.
 
 ## Verify it worked
 

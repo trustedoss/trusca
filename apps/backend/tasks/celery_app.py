@@ -74,6 +74,11 @@ _TASK_INCLUDES = [
     # Known Exploited Vulnerabilities feed. Backs the Vulnerabilities tab's
     # ``sort=priority`` ranking (KEV → severity → EPSS).
     "tasks.kev_catalog_refresh",
+    # Phase M — endoflife.date refresh beat: weekly re-stamp of the
+    # ``component_versions.eol_*`` columns (migration 0038) against the
+    # newest snapshot (vendored or, when EOL_REFRESH_ENABLED, freshly
+    # fetched). Backs the Components tab's EOL badge/filter.
+    "tasks.eol_catalog_refresh",
     # W6-#44 — Trivy DB weekly refresh beat. Pairs with the worker-boot
     # bootstrap hook (tasks.trivy_db_bootstrap) so a fresh worker picks up
     # the DB once at start, and a running deployment refreshes weekly to
@@ -94,6 +99,11 @@ _TASK_INCLUDES = [
 # the key is a module constant (CLAUDE.md 표준 §2 hardening rule 2 spirit:
 # one vocabulary, one owner).
 KEV_BEAT_ENTRY_NAME = "kev-catalog-refresh-daily"
+
+# Beat-schedule key of the EOL catalog refresh entry — shared with
+# ``services.eol_health_service`` for the same live-crontab derivation
+# (see KEV_BEAT_ENTRY_NAME's rationale above).
+EOL_BEAT_ENTRY_NAME = "eol-catalog-refresh-weekly"
 
 
 def _build_beat_schedule() -> dict[str, dict[str, object]]:
@@ -179,6 +189,16 @@ def _build_beat_schedule() -> dict[str, dict[str, object]]:
         KEV_BEAT_ENTRY_NAME: {
             "task": "trustedoss.kev_catalog_refresh",
             "schedule": crontab(minute=45, hour=1),
+        },
+        # Phase M — endoflife.date refresh + catalog re-stamp. Weekly is
+        # proportionate to EOL churn (lifecycle dates move quarterly, not
+        # daily). Sunday 02:15 UTC sits between the daily KEV tick (01:45)
+        # and the weekly Trivy refresh (Sun 03:00) so no two beats share a
+        # tick; the work is bounded (≤10 tiny fetches when enabled + one
+        # whitelist-bounded UPDATE pass).
+        EOL_BEAT_ENTRY_NAME: {
+            "task": "trustedoss.eol_catalog_refresh",
+            "schedule": crontab(minute=15, hour=2, day_of_week="sun"),
         },
         # W6-#44 — weekly Trivy DB refresh. Sunday 03:00 UTC was chosen as
         # the lowest-traffic window on the typical enterprise cluster: 03:00

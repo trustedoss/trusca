@@ -218,6 +218,45 @@ export function OverviewTab({
         </Alert>
       ) : null}
 
+      {/* Phase M — end-of-life KPI. Rendered only when the anchored scan
+          carries EOL components (absence is the signal, EolBadge contract);
+          clicking deep-links into the Components tab pre-filtered on
+          `?eol=true`. Amber (High family) — maintenance risk, not confirmed
+          exploitation. */}
+      {data.eol_count > 0 ? (
+        <Alert
+          className="border-orange-300 bg-orange-50 text-orange-900 md:col-span-2"
+          data-testid="overview-eol-chip"
+          data-eol-count={data.eol_count}
+        >
+          <AlertTriangle className="h-4 w-4" aria-hidden />
+          <AlertDescription className="flex flex-wrap items-baseline gap-2">
+            <span className="font-semibold">
+              {t("overview.eol_chip.title", { count: data.eol_count })}
+            </span>
+            <span>{t("overview.eol_chip.body")}</span>
+            <button
+              type="button"
+              className="underline underline-offset-2 hover:no-underline"
+              data-testid="overview-eol-chip-link"
+              onClick={() =>
+                setSearchParams(
+                  (prev) => {
+                    const next = new URLSearchParams(prev);
+                    next.set("tab", "components");
+                    next.set("eol", "true");
+                    return next;
+                  },
+                  { replace: false },
+                )
+              }
+            >
+              {t("overview.eol_chip.link")}
+            </button>
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
       {/* Row 1 left — Project info. Single column so it pairs with the gate
           card on the right; missing-`project` (standalone tests) keeps the
           card hidden and the gate card moves into the slot naturally. */}

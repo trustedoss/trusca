@@ -25,6 +25,7 @@ Columns:
 - **Version** — pinned version found in the manifest or lockfile.
 - **License** — the license attached to the component. For a dependency this is the **declared** license `cdxgen` read from package metadata; see [Declared vs. detected](#declared-vs-detected) for how detected and concluded licenses relate. This is the value used by the build gate.
 - **Usage** — **Required** / **Optional** / `—`. The dependency scope `cdxgen` recorded along the *shortest* path to this component (when the same component is reachable via several paths the highest-scope path wins, i.e. `Required` > `Optional`). `—` means the scanner did not emit a scope for this component. Optional dependencies often carry the same legal obligations as required ones, but the **Required** / **Optional** distinction maps to license-compliance burden — an unused `Optional` extra is cheaper to remove than a deeply-required transitive dependency.
+- **EOL** — an **EOL** badge when the component's release cycle is past its published end-of-life; blank otherwise. See [End-of-life flagging](#end-of-life-flagging).
 - **Severity** — the highest severity across this component's open CVEs (carries the license-classification color via the legend).
 - **CVEs** — count of open vulnerabilities for this component (clickable; jumps to the Vulnerabilities tab pre-filtered).
 
@@ -39,9 +40,73 @@ The inline filter bar at the top supports:
 - **Usage** — multi-select (`Required` / `Optional`). Selecting both is equivalent to no filter; selecting only an unknown value drops to an empty page rather than 422-rejecting (consistent with severity / license-category filter semantics).
 - **Severity** — multi-select badges (Critical / High / Medium / Low / Info).
 - **License category** — multi-select (`Allowed` / `Conditional` / `Forbidden` / `Unknown`).
+- **EOL only** — a toggle that narrows the table to components past their end-of-life (`?eol=true`).
 - **Sort** + **order** — column-driven sort with ascending / descending toggle.
 
 Filters compose. The URL updates (`?direct=…`, `?dependency_scope=…`, …) so you can share a filtered view.
+
+### Runtime-scope filtering {#runtime-scope-filtering}
+
+The table shows the **deployable runtime set**, not everything the build
+resolved. cdxgen records every resolved node — including the test/dev
+toolchain (`junit`, `lombok`, `jest`, `eslint`, …) that never ships with the
+artifact — so by default the scanner drops those before the SBOM is persisted,
+signed and matched against the vulnerability DB:
+
+- **Maven** — components cdxgen tagged `optional` (Maven `test` scope) or
+  `excluded` (`provided`/`system` scope) are removed. The filter only runs
+  when the SBOM actually carries scope tags; an SBOM without them is kept
+  whole, so recall never regresses.
+- **npm** — packages the project's `package-lock.json` classifies as
+  `dev` are removed. A package the lockfile does not cover is always kept
+  (nested manifests in a monorepo are not covered by the root lockfile), so
+  the filter only removes components with positive dev-dependency evidence.
+
+The number of excluded components is recorded on the scan, and the SBOM's
+`metadata.properties` carries a `trusca:scope_filter` entry with per-ecosystem
+counts, so a filtered document self-documents what was removed. SBOMs uploaded
+through the ingest API are **never** filtered — an uploaded SBOM is the
+supplier's declared truth.
+
+Two caveats worth knowing:
+
+- cdxgen tags Maven `<optional>true</optional>` dependencies the same way as
+  `test` scope, so a rare *runtime* optional dependency is dropped with them.
+  Set `SCAN_SCOPE_FILTER_MAVEN_ENABLED=false` for such projects.
+- Turning the filter off (`SCAN_SCOPE_FILTER_ENABLED=false`) restores the full
+  resolved graph on the next scan. See
+  [Environment variables](../reference/env-variables.md) for all three toggles.
+
+### End-of-life flagging {#end-of-life-flagging}
+
+A runtime or framework past its published **end-of-life (EOL)** receives no
+upstream fixes — a Critical CVE found tomorrow will have no patch. That is a
+supply-chain risk distinct from today's CVE count, so the scanner flags it
+separately: every scanned component is matched against a curated whitelist of
+products tracked by [endoflife.date](https://endoflife.date) (Spring Boot,
+Spring Framework, Express, Next.js, Angular, Vue, Django, Rails, Symfony,
+Laravel), its release cycle is derived from the version (`3.2.0` → cycle
+`3.2`), and the cycle's published EOL is read from a snapshot **bundled with
+the release** — scans make zero network calls, so this works air-gapped.
+
+How to read the surfaces:
+
+- **EOL column / badge** — the amber **EOL** badge appears only when the
+  cycle is *past* end-of-life. The published date rides the badge tooltip.
+- **Blank vs. unknown** — a blank cell means the component is **not a
+  tracked product** (the whitelist is deliberately closed: long-tail
+  libraries are absent and the scanner never guesses). The drawer's
+  End-of-life row distinguishes further: `—` with a tooltip saying either
+  "not tracked" or "tracked, but the release cycle could not be determined".
+- **Overview chip** — when the anchored scan contains EOL components the
+  Overview tab shows a count with a one-click jump to the filtered list.
+- The verdict is stored on the shared component catalog and re-evaluated
+  when a newer snapshot arrives (release upgrades), so older projects pick
+  up newly-published EOL dates without a re-scan.
+
+Set `EOL_ENABLED=false` to turn the flagging off, or point
+`EOL_SNAPSHOT_PATH` at a fresher snapshot file on air-gapped installs — see
+[Environment variables](../reference/env-variables.md).
 
 ## Table view vs. graph view
 

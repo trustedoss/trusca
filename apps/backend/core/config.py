@@ -505,6 +505,59 @@ def cdxgen_fetch_license() -> bool:
     }
 
 
+# ---------------------------------------------------------------------------
+# Runtime-scope SBOM post-filter (Phase K — default ON).
+#
+# Drops test/provided/dev dependencies from the cdxgen SBOM before persist,
+# signing and Trivy matching, so CVE counts and license obligations describe
+# the deployable artifact (BomLens build-prep parity). Unlike SCANOSS this is
+# a pure local transformation with no egress, so it defaults ON; the guards
+# inside integrations/sbom_scope_filter.py make it a structural no-op wherever
+# the data to filter safely is absent. Parsing is inverted vs scanoss_enabled:
+# only the exact falsy tokens disable, so a typo fails OPEN to the
+# correct-by-default behaviour rather than silently reverting to over-counting.
+# ---------------------------------------------------------------------------
+
+
+_SCOPE_FILTER_FALSY = {"false", "0", "no"}
+
+
+def scan_scope_filter_enabled() -> bool:
+    """Master switch for the runtime-scope post-filter stage.
+
+    Default ``true``. Only ``false`` / ``0`` / ``no`` (case-insensitive)
+    disable it. Read at call time (rule #11).
+    """
+    return (
+        os.getenv("SCAN_SCOPE_FILTER_ENABLED", "true").strip().lower()
+        not in _SCOPE_FILTER_FALSY
+    )
+
+
+def scan_scope_filter_maven_enabled() -> bool:
+    """Maven scope-tag filter (drop ``optional``/``excluded`` maven nodes).
+
+    Default ``true``; disable when a project relies on Maven
+    ``<optional>true</optional>`` runtime deps (cdxgen tags those ``optional``
+    like test scope — documented caveat). Read at call time (rule #11).
+    """
+    return (
+        os.getenv("SCAN_SCOPE_FILTER_MAVEN_ENABLED", "true").strip().lower()
+        not in _SCOPE_FILTER_FALSY
+    )
+
+
+def scan_scope_filter_node_enabled() -> bool:
+    """npm dev-dependency filter (drop lockfile-classified ``dev`` nodes).
+
+    Default ``true``. Read at call time (rule #11).
+    """
+    return (
+        os.getenv("SCAN_SCOPE_FILTER_NODE_ENABLED", "true").strip().lower()
+        not in _SCOPE_FILTER_FALSY
+    )
+
+
 def scan_executor_mode() -> str:
     """How the SBOM-generation stage (build-prep + cdxgen) is executed.
 
@@ -1284,6 +1337,89 @@ def kev_refresh_timeout_seconds() -> int:
         default=30,
         minimum=1,
         maximum=600,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Phase M — end-of-life (EOL) component flagging (endoflife.date).
+#
+# The default path is FULLY offline: verdicts come from a snapshot vendored
+# into the repo (services/eol/eol_snapshot.json, refreshed per release by
+# scripts/refresh_eol_snapshot.py), so EOL_ENABLED defaults ON — reading a
+# local file has zero egress (contrast SCANOSS). The optional live-refresh
+# beat (PR M-3) is a SEPARATE, default-OFF toggle because that one does
+# introduce new egress. Accessors resolve env at call time (rule #11).
+# ---------------------------------------------------------------------------
+
+
+def eol_enabled() -> bool:
+    """Whether components are stamped with endoflife.date EOL verdicts.
+
+    Default ``true`` — offline, additive, never fatal (a missing/corrupt
+    dataset just skips stamping with one WARNING per scan). Only the exact
+    falsy tokens ``false`` / ``0`` / ``no`` disable. Read at call time
+    (rule #11).
+    """
+    return os.getenv("EOL_ENABLED", "true").strip().lower() not in {
+        "false",
+        "0",
+        "no",
+    }
+
+
+def eol_snapshot_path() -> str:
+    """Operator override for the endoflife.date snapshot file.
+
+    Empty (default) → the vendored ``services/eol/eol_snapshot.json``.
+    Air-gapped installs can mount a fresher snapshot (built with
+    ``scripts/refresh_eol_snapshot.py`` on a connected host) and point this
+    at it. Read at call time (rule #11).
+    """
+    return os.getenv("EOL_SNAPSHOT_PATH", "").strip()
+
+
+def eol_refresh_enabled() -> bool:
+    """Whether the weekly beat FETCHES fresh data from endoflife.date.
+
+    Default ``false`` — this is NEW egress to a third-party host the product
+    has never contacted, so it follows the SCANOSS fail-closed posture (only
+    the exact truthy tokens enable), NOT the KEV default-on one: unlike KEV
+    — where a stale catalog misses actively-exploited CVEs daily — EOL dates
+    churn quarterly and the per-release vendored snapshot already bounds
+    staleness. The beat's RE-STAMP pass runs regardless of this toggle (it
+    is pure-local). Read at call time (rule #11).
+    """
+    return os.getenv("EOL_REFRESH_ENABLED", "false").strip().lower() in {
+        "true",
+        "1",
+        "yes",
+    }
+
+
+def eol_feed_url_template() -> str:
+    """URL template for the endoflife.date per-product API.
+
+    ``{product}`` is substituted with each mapped product slug. Env-only
+    trust model (same as ``KEV_FEED_URL`` — no user write path, so no
+    ``core.url_guard``); point it at an internal mirror to keep the egress
+    inside your network. Read at call time (rule #11).
+    """
+    return os.getenv(
+        "EOL_FEED_URL_TEMPLATE", "https://endoflife.date/api/{product}.json"
+    ).strip()
+
+
+def eol_refresh_timeout_seconds() -> int:
+    """HTTP timeout (seconds) per product request. Default 15s.
+
+    Each product document is a few KB; 15 seconds absorbs a slow corporate
+    proxy. Bounded ``[1, 120]``. Read at call time (rule #11).
+    """
+    return _int_env(
+        "EOL_REFRESH_TIMEOUT_SECONDS",
+        default=15,
+        minimum=1,
+        maximum=120,
     )
 
 

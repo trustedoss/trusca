@@ -41,7 +41,7 @@ distribution map is empty.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -128,6 +128,15 @@ class ProjectOverviewResponse(BaseModel):
     project_id: uuid.UUID
     project_name: str
     total_components: int
+    eol_count: int = Field(
+        default=0,
+        description=(
+            "Phase M — count of distinct components in the anchored scan "
+            "whose release cycle is past its published end-of-life "
+            "(endoflife.date). A supply-chain risk axis distinct from CVEs: "
+            "an EOL runtime gets no upstream fixes."
+        ),
+    )
     severity_distribution: dict[str, int] = Field(
         default_factory=dict,
         description=(
@@ -280,6 +289,24 @@ class ComponentSummary(BaseModel):
             "guessing."
         ),
     )
+    eol_state: Literal["eol", "supported", "unknown"] | None = Field(
+        default=None,
+        description=(
+            "Phase M — endoflife.date verdict for this component version. "
+            "``eol`` = release cycle past its published end-of-life; "
+            "``supported`` = tracked and still supported; ``unknown`` = "
+            "tracked product but the cycle could not be decided; ``null`` = "
+            "not a tracked product (closed whitelist — never guessed). The "
+            "UI renders a badge only for ``eol`` (absence is the signal)."
+        ),
+    )
+    eol_date: date | None = Field(
+        default=None,
+        description=(
+            "Published end-of-life date, when the feed carries one (dated "
+            "cycles). ``null`` for boolean-only feeds and untracked rows."
+        ),
+    )
 
 
 class ComponentListResponse(BaseModel):
@@ -413,6 +440,29 @@ class ComponentDetailResponse(BaseModel):
             "surface the row's own scope rather than an aggregate, because "
             "depth/direct already pin one path."
         ),
+    )
+    eol_state: Literal["eol", "supported", "unknown"] | None = Field(
+        default=None,
+        description=(
+            "Phase M — endoflife.date verdict (see ComponentSummary.eol_state "
+            "for the vocabulary). ``null`` = not a tracked product."
+        ),
+    )
+    eol_product: str | None = Field(
+        default=None,
+        description="endoflife.date product slug the component mapped to.",
+    )
+    eol_cycle: str | None = Field(
+        default=None,
+        description="Release cycle derived from the version (e.g. '3.2').",
+    )
+    eol_date: date | None = Field(
+        default=None,
+        description="Published end-of-life date, when the feed carries one.",
+    )
+    eol_source: str | None = Field(
+        default=None,
+        description="Snapshot provenance, e.g. 'endoflife.date@2026-07-11'.",
     )
     created_at: datetime
     updated_at: datetime

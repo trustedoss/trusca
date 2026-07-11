@@ -25,6 +25,7 @@ sidebar_position: 3
 - **버전 (Version)** — 매니페스트나 락파일에서 고정된 버전.
 - **라이선스 (License)** — 컴포넌트에 부여된 라이선스. 의존성의 경우 `cdxgen` 이 패키지 메타데이터에서 읽은 **declared** 라이선스입니다. detected·concluded 와의 관계는 [declared vs. detected](#declared-vs-detected) 참고. 빌드 게이트가 사용하는 값입니다.
 - **Usage** — **Required** / **Optional** / `—`. `cdxgen` 이 본 컴포넌트로 가는 *가장 얕은* 경로에서 기록한 의존성 스코프(같은 컴포넌트가 여러 경로로 도달 가능하면 가장 높은 스코프 — `Required` > `Optional` — 가 이김). `—` 는 스캐너가 스코프를 emit 하지 않은 경우. Optional 의존성은 Required 와 같은 법적 의무를 가지는 경우가 많지만, **Required / Optional** 구분은 라이선스 컴플라이언스 부담에 매핑됩니다 — 사용하지 않는 `Optional` extra 는 깊이 박힌 required transitive 의존성보다 제거 비용이 낮습니다.
+- **EOL** — 컴포넌트의 릴리즈 사이클이 공표된 지원 종료를 지났으면 **EOL** 배지, 아니면 빈칸. [지원 종료 표시](#end-of-life-flagging) 참고.
 - **심각도 (Severity)** — 본 컴포넌트의 미해결 CVE 중 가장 높은 심각도(범례를 통해 라이선스 분류 색상도 함께 표시).
 - **CVEs** — 본 컴포넌트의 미해결 취약점 수(클릭 시 사전 필터링된 Vulnerabilities 탭으로 이동).
 
@@ -39,9 +40,72 @@ sidebar_position: 3
 - **Usage** — 다중 선택(`Required` / `Optional`). 둘 다 선택하면 필터 없음과 동일합니다. 미지값만 선택한 쿼리는 422 거부 대신 empty page 로 드롭됩니다(심각도·라이선스 카테고리 필터 시멘틱과 일치).
 - **심각도 (Severity)** — 다중 선택 배지(Critical / High / Medium / Low / Info).
 - **라이선스 카테고리 (License category)** — 다중 선택(`Allowed` / `Conditional` / `Forbidden` / `Unknown`).
+- **EOL만 (EOL only)** — 지원 종료된 컴포넌트만 남기는 토글(`?eol=true`).
 - **정렬 (Sort)** + **순서 (order)** — 컬럼 기반 정렬과 오름·내림 토글.
 
 필터는 결합됩니다. URL(`?direct=…`, `?dependency_scope=…`, …)이 갱신되어 필터된 뷰를 공유할 수 있습니다.
+
+### 런타임 스코프 필터링 {#runtime-scope-filtering}
+
+테이블에는 빌드가 해석한 전부가 아니라 **배포되는 런타임 세트**가 표시됩니다.
+cdxgen 은 해석된 모든 노드를 기록하므로, 산출물과 함께 배포되지 않는 테스트·개발
+도구(`junit`, `lombok`, `jest`, `eslint`, …)까지 SBOM 에 담깁니다. 기본 설정에서
+스캐너는 SBOM 을 저장·서명하고 취약점 DB 에 매칭하기 전에 이런 컴포넌트를
+제거합니다.
+
+- **Maven** — cdxgen 이 `optional`(Maven `test` scope) 또는 `excluded`
+  (`provided`/`system` scope)로 태깅한 컴포넌트를 제거합니다. 이 필터는 SBOM 에
+  scope 태그가 실제로 존재할 때만 동작하며, 태그가 없는 SBOM 은 그대로 두므로
+  탐지 범위가 줄어드는 일은 없습니다.
+- **npm** — 프로젝트의 `package-lock.json` 이 `dev` 로 분류한 패키지를
+  제거합니다. lockfile 이 다루지 않는 패키지는 항상 유지합니다(모노레포의 중첩
+  manifest 는 루트 lockfile 에 없습니다). 즉 dev 의존성이라는 명확한 근거가 있는
+  컴포넌트만 제거합니다.
+
+제외된 컴포넌트 수는 스캔에 기록되고, SBOM 의 `metadata.properties` 에는
+생태계별 개수를 담은 `trusca:scope_filter` 항목이 남아 필터된 문서가 제거 내역을
+스스로 설명합니다. 인제스트 API 로 업로드한 SBOM 은 **절대** 필터링하지
+않습니다 — 업로드된 SBOM 은 공급자가 선언한 내용 그대로를 신뢰합니다.
+
+알아 둘 주의점 2가지:
+
+- cdxgen 은 Maven `<optional>true</optional>` 의존성을 `test` scope 와 같은
+  방식으로 태깅하므로, 드물게 *런타임* optional 의존성도 함께 제거됩니다. 그런
+  프로젝트에서는 `SCAN_SCOPE_FILTER_MAVEN_ENABLED=false` 로 끄십시오.
+- 필터를 끄면(`SCAN_SCOPE_FILTER_ENABLED=false`) 다음 스캔부터 전체 해석
+  그래프가 복원됩니다. 토글 3종은 [환경변수](../reference/env-variables.md)를
+  참고하십시오.
+
+### 지원 종료(EOL) 표시 {#end-of-life-flagging}
+
+공표된 **지원 종료(EOL, end-of-life)** 를 지난 런타임·프레임워크에는
+업스트림 수정이 더 이상 제공되지 않습니다 — 내일 발견되는 Critical CVE 에
+패치가 없다는 뜻입니다. 오늘의 CVE 수와는 별개의 공급망 리스크라서 스캐너가
+따로 표시합니다. 스캔된 모든 컴포넌트를 [endoflife.date](https://endoflife.date)
+추적 대상 제품의 선별 목록(Spring Boot, Spring Framework, Express, Next.js,
+Angular, Vue, Django, Rails, Symfony, Laravel)과 대조하고, 버전에서 릴리즈
+사이클을 유도한 뒤(`3.2.0` → 사이클 `3.2`), 해당 사이클의 지원 종료일을
+**릴리즈에 번들된 스냅숏**에서 읽습니다 — 스캔 시 네트워크 호출이 없어
+air-gapped 환경에서도 동작합니다.
+
+화면 읽는 방법:
+
+- **EOL 컬럼/배지** — 사이클이 지원 종료를 *지난* 경우에만 주황색 **EOL**
+  배지가 나타납니다. 공표된 종료일은 배지 툴팁에 표시됩니다.
+- **빈칸과 unknown 의 구분** — 빈칸은 **추적 대상 제품이 아니라는** 뜻입니다
+  (목록은 의도적으로 닫혀 있습니다: 롱테일 라이브러리는 없고, 스캐너는 절대
+  추정하지 않습니다). 드로어의 지원 종료 행은 한 단계 더 구분합니다: `—` 에
+  마우스를 올리면 "추적 대상 아님" 또는 "추적 대상이나 릴리즈 사이클을
+  판정할 수 없음"이 표시됩니다.
+- **Overview 칩** — 기준 스캔에 EOL 컴포넌트가 있으면 Overview 탭에 개수와
+  함께 필터된 목록으로 바로 이동하는 링크가 나타납니다.
+- 판정은 공유 컴포넌트 카탈로그에 저장되고 새 스냅숏이 도착하면(릴리즈
+  업그레이드) 재평가되므로, 오래된 프로젝트도 재스캔 없이 새로 공표된
+  지원 종료일을 반영합니다.
+
+`EOL_ENABLED=false` 로 끄거나, air-gapped 설치에서는 `EOL_SNAPSHOT_PATH` 로
+더 신선한 스냅숏 파일을 지정할 수 있습니다 —
+[환경변수](../reference/env-variables.md) 참고.
 
 ## 표 보기와 그래프 보기
 

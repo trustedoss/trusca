@@ -26,6 +26,12 @@ Security leads, auditors, and operators answering "where does this CVE come from
 
 All five live in the same Trivy DB bundle — the portal does **not** call any of these APIs at scan time. Per-scan matching reads from `/var/lib/trivy/db/` on the worker, which the [Trivy DB refresh task](../admin-guide/vulnerability-data.md) keeps current.
 
+One component-level source sits outside the Trivy DB:
+
+| Source | Publisher | Refresh | What it contributes |
+|---|---|---|---|
+| **endoflife.date** — product lifecycle dates | endoflife.date community (code MIT; lifecycle dates are factual data) | Snapshot vendored per release (`scripts/refresh_eol_snapshot.py`) | End-of-life verdicts for a curated whitelist of runtimes/frameworks — the [EOL badge and filter](../user-guide/components-and-licenses.md#end-of-life-flagging). Read from the bundled snapshot at scan time; zero network calls. |
+
 ## Refresh cadence in the portal
 
 | Layer | Cadence | Knob |

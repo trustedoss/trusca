@@ -30,6 +30,7 @@ import type {
   SortOrder,
 } from "@/features/projects/api/projectDetailApi";
 import { useComponents } from "@/features/projects/api/useComponents";
+import { useScanScopeFilter } from "@/features/projects/api/useScanScopeFilter";
 import { ActiveFilterChips } from "@/features/projects/components/ActiveFilterChips";
 import { ComponentDrawer } from "@/features/projects/components/ComponentDrawer";
 import { DependencyGraph } from "@/features/projects/components/DependencyGraph";
@@ -38,6 +39,7 @@ import {
   type ComponentsExtraFilter,
 } from "@/features/projects/components/ComponentsToolbar";
 import { DependencyScopeBadge } from "@/features/projects/components/DependencyScopeBadge";
+import { EolBadge } from "@/features/projects/components/EolBadge";
 import { AxisPill } from "@/features/projects/components/AxisPill";
 import { DependencyTypeBadge } from "@/features/projects/components/DependencyTypeBadge";
 import { LicenseCategoryBadge } from "@/features/projects/components/LicenseCategoryBadge";
@@ -85,6 +87,7 @@ function getComponentColumnsCatalog(
     { id: "license", label: t("components.col.license") },
     { id: "policy", label: t("components.col.policy") },
     { id: "usage", label: t("components.col.usage") },
+    { id: "eol", label: t("components.col.eol") },
     { id: "severity", label: t("components.col.severity") },
     { id: "vulns", label: t("components.col.vulns") },
   ];
@@ -185,6 +188,11 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
       searchParams.get("dependency_scope"),
       VALID_SCOPE,
     ),
+  );
+  // Phase M — EOL-only toggle. Boolean facet (`?eol=true` when on); the
+  // "off" state means "no opinion" (both buckets), never `?eol=false`.
+  const [eolOnly, setEolOnly] = useState<boolean>(
+    () => searchParams.get("eol") === "true",
   );
   const [sort, setSort] = useState<ComponentSortKey>(() =>
     parseSort(searchParams.get("sort")),
@@ -300,6 +308,9 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
         if (dependencyScope.length)
           next.set("dependency_scope", dependencyScope.join(","));
         else next.delete("dependency_scope");
+        // Phase M — `?eol=true` only when the toggle is on.
+        if (eolOnly) next.set("eol", "true");
+        else next.delete("eol");
         if (sort !== "name") next.set("sort", sort);
         else next.delete("sort");
         if (order !== "asc") next.set("order", order);
@@ -314,6 +325,7 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
     licenseCategory,
     direct,
     dependencyScope,
+    eolOnly,
     sort,
     order,
     setSearchParams,
@@ -326,6 +338,7 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
       license_category: licenseCategory,
       direct,
       dependency_scope: dependencyScope,
+      eol: eolOnly ? true : null,
       sort,
       order,
       pageSize: PAGE_SIZE,
@@ -337,6 +350,7 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
       licenseCategory,
       direct,
       dependencyScope,
+      eolOnly,
       sort,
       order,
       scanId,
@@ -380,6 +394,10 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
   const overview = useProjectOverview(projectId, scanId);
   const severityDistribution = overview.data?.severity_distribution;
   const licenseDistribution = overview.data?.license_distribution;
+
+  // Phase K — runtime-scope filter transparency. Non-null only when the
+  // rendered scan's worker telemetry says components were actually dropped.
+  const scopeFilter = useScanScopeFilter(scanId, overview.data?.recent_scans);
 
   return (
     <div data-testid="components-tab" className="flex flex-1 flex-col">
@@ -499,6 +517,8 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
         onDirectChange={setDirect}
         dependencyScope={dependencyScope}
         onDependencyScopeChange={setDependencyScope}
+        eolOnly={eolOnly}
+        onEolOnlyChange={setEolOnly}
         severity={severity}
         onSeverityChange={setSeverity}
         licenseCategory={licenseCategory}
@@ -530,6 +550,19 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
         <span>
           {t("components.summary", { loaded: items.length, total })}
         </span>
+        {scopeFilter ? (
+          <span
+            data-testid="components-scope-filter-note"
+            data-dropped={scopeFilter.totalDropped}
+            title={Object.entries(scopeFilter.dropped)
+              .map(([ecosystem, count]) => `${ecosystem}: ${count}`)
+              .join(", ")}
+          >
+            {t("components.summary_scope_filtered", {
+              count: scopeFilter.totalDropped,
+            })}
+          </span>
+        ) : null}
       </div>
 
       {components.isError ? (
@@ -699,6 +732,11 @@ function ComponentsTableHeader({
           {t("components.col.usage")}
         </span>
       ) : null}
+      {visibleColumns.has("eol") ? (
+        <span className="w-16" data-testid="components-header-cell-eol">
+          {t("components.col.eol")}
+        </span>
+      ) : null}
       {visibleColumns.has("severity") ? (
         <span className="w-24" data-testid="components-header-cell-severity">
           <SortableColumnHeader
@@ -823,6 +861,14 @@ function ComponentRow({
       {visibleColumns.has("usage") ? (
         <span className="w-24" data-testid="component-row-cell-usage">
           <DependencyScopeBadge scope={component.dependency_scope} />
+        </span>
+      ) : null}
+      {visibleColumns.has("eol") ? (
+        <span className="w-16" data-testid="component-row-cell-eol">
+          <EolBadge
+            eolState={component.eol_state}
+            eolDate={component.eol_date}
+          />
         </span>
       ) : null}
       {visibleColumns.has("severity") ? (

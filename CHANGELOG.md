@@ -7,6 +7,45 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+- **EOL operations: weekly refresh beat + admin health panel.** A weekly
+  Celery beat re-stamps the component catalog against the newest
+  endoflife.date snapshot (so release upgrades reach existing rows without
+  a re-scan, and stamps are cleared when the whitelist shrinks) and — only
+  when `EOL_REFRESH_ENABLED=true`, off by default — fetches fresh lifecycle
+  data with a sanity floor that stops a gutted sweep from displacing a good
+  dataset. The admin/health page gains an endoflife.date snapshot panel
+  (dataset age with a 180-day stale warning, flagged totals, last tick,
+  next fire) at `GET /v1/admin/eol/health`.
+- **End-of-life (EOL) component flagging.** Components matching a curated
+  endoflife.date product whitelist (Spring Boot, Express, Django, Rails,
+  Angular, Vue, Next.js, Symfony, Laravel, Spring Framework) are stamped
+  with their lifecycle verdict on the shared catalog. The Components tab
+  gains an EOL column/badge and an "EOL only" filter (`?eol=true`), the
+  drawer an End-of-life row, and the project Overview an EOL count that
+  deep-links to the filtered list. Verdicts come from a snapshot vendored
+  with the release — zero network at scan time, air-gap safe
+  (`EOL_SNAPSHOT_PATH` mounts a fresher snapshot; `EOL_ENABLED=false`
+  disables).
+- **iOS CocoaPods/SPM lockfile scanning.** A `Podfile` used to crash the
+  whole source scan (cdxgen's cocoapods cataloger throws without the `pod`
+  CLI). The scanner now excludes that cataloger and reconstructs pods —
+  components AND dependency graph, subspecs included — offline from the
+  committed `Podfile.lock`. Repos with only a committed `Package.resolved`
+  now route to the swift environment, and the sidecar executors no longer
+  re-run `swift package resolve` over a committed lockfile.
+- **Runtime-scope SBOM filtering (default ON).** Source scans now drop
+  non-deployable dependencies from the cdxgen SBOM before persist, signing and
+  vulnerability matching: Maven `test`/`provided` nodes (cdxgen scope tags
+  `optional`/`excluded`) and npm `devDependencies` (lockfile-classified `dev`).
+  CVE counts and license obligations now describe the artifact that actually
+  ships. **Component and CVE counts drop on the first re-scan of affected
+  Maven/npm projects** — the scan summary records how many components were
+  excluded, and `SCAN_SCOPE_FILTER_ENABLED=false` (or the per-ecosystem
+  `SCAN_SCOPE_FILTER_MAVEN_ENABLED` / `SCAN_SCOPE_FILTER_NODE_ENABLED`)
+  restores the full graph. SBOMs uploaded via the ingest API are never
+  filtered — an uploaded SBOM is the supplier's declared truth.
+
 ## [0.13.1] — 2026-07-07
 
 A fixes-only patch release: repairs fresh role-separated (L1) installs and

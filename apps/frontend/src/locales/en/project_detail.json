@@ -123,6 +123,11 @@
     "none": "No risk"
   },
   "overview": {
+    "eol_chip": {
+      "title": "{{count}} component(s) past end-of-life",
+      "body": "End-of-life releases receive no upstream fixes — a future Critical CVE will have no patch.",
+      "link": "View EOL components"
+    },
     "info_card": {
       "title": "Project info",
       "description": "Description",
@@ -224,6 +229,7 @@
   },
   "components": {
     "summary": "{{loaded}} of {{total}} components loaded.",
+    "summary_scope_filtered": "{{count}} dev/test components excluded by the runtime-scope filter",
     "vulns_link_aria": "View {{count}} CVEs for {{name}} in the Vulnerabilities tab",
     "col": {
       "name": "Component",
@@ -232,8 +238,21 @@
       "license": "License",
       "policy": "Policy",
       "usage": "Usage",
+      "eol": "EOL",
       "severity": "Severity",
       "vulns": "CVEs"
+    },
+    "eol": {
+      "label": "EOL",
+      "tooltip": "This release cycle is past its published end-of-life (endoflife.date) — no more upstream fixes.",
+      "tooltip_with_date": "End-of-life since {{date}} (endoflife.date) — no more upstream fixes.",
+      "since": "since {{date}}",
+      "state": {
+        "eol": "Past end-of-life",
+        "supported": "Supported (tracked by endoflife.date)",
+        "unknown": "Tracked product, but the release cycle could not be determined",
+        "untracked": "Not a product tracked by endoflife.date"
+      }
     },
     "license": {
       "unknown_dash": "—"
@@ -268,7 +287,9 @@
         "required": "Required",
         "optional": "Optional",
         "unspecified": "Unspecified"
-      }
+      },
+      "eol_label": "End-of-life",
+      "eol_only": "EOL only"
     },
     "empty": {
       "title": "No components match",
@@ -305,6 +326,7 @@
     "purl_label": "purl",
     "dependency_type_label": "Type",
     "usage_label": "Usage",
+    "eol_label": "End-of-life",
     "open_full_view": "Open in full view",
     "error": "Could not load component.",
     "vulns": {

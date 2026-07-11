@@ -45,6 +45,11 @@ function detail(
     depth: null,
     direct: false,
     dependency_scope: null,
+    eol_state: null,
+    eol_product: null,
+    eol_cycle: null,
+    eol_date: null,
+    eol_source: null,
     ...overrides,
   };
 }
