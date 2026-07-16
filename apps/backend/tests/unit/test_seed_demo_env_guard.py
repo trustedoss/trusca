@@ -130,6 +130,32 @@ def test_seed_demo_main_dry_run_succeeds(
     assert payload["projects"] == []
 
 
+def test_seed_demo_parse_args_demo_only_flag() -> None:
+    """``--demo-only`` parses and defaults to False (quickstart-gate fix).
+
+    The quickstart doc's seed command uses the flag so the visible project
+    list matches the documented 5 projects; the default keeps the verify
+    baseline (PROVENANCE.md seed-baseline agreement).
+    """
+    from scripts.seed_demo import _parse_args
+
+    assert _parse_args([]).demo_only is False
+    assert _parse_args(["--demo-only"]).demo_only is True
+
+
+def test_seed_demo_main_dry_run_accepts_demo_only(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The documented quickstart invocation shape stays valid end-to-end."""
+    monkeypatch.setenv("APP_ENV", "demo")
+    from scripts.seed_demo import main
+
+    rc = main(["--dry-run", "--demo-only"])
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out.strip())
+    assert payload["ok"] is True
+
+
 def test_seed_demo_main_dry_run_refuses_prod(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
