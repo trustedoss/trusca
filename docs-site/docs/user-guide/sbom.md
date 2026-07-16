@@ -284,7 +284,7 @@ Two caveats to be aware of before submitting:
 
 Items the manual previously promised that are not in this release; tracked for later releases.
 
-- The **vulnerability PDF report** _is_ implemented in this release — see [Vulnerabilities → Download a PDF report](./vulnerabilities.md#download-a-pdf-report) (`GET /v1/projects/{id}/vulnerability-report.pdf`). Still **not** implemented: the **Excel** reports (Components Excel, Vulnerabilities Excel) and the **Compliance PDF**; there are no `/v1/projects/{id}/reports/...` endpoints for those, and they will land in a later release. Stakeholders who need a tabular view today should consume the SBOM (CycloneDX JSON) via their preferred tooling.
+- The **vulnerability report** _is_ implemented — as **PDF**, and since v0.13.0 also as **Excel (`.xlsx`)**; see [Vulnerabilities → Download a report (PDF or Excel)](./vulnerabilities.md#download-a-report-pdf-or-excel) (`GET /v1/projects/{id}/vulnerability-report.pdf` / `.xlsx`). Still **not** implemented: a standalone **Components Excel** export and the **Compliance PDF**; those will land in a later release. Stakeholders who need a components table today should consume the SBOM (CycloneDX JSON) via their preferred tooling.
 - Manual copyright override in the component drawer for NOTICE assembly — planned.
 - Historical-scan pinning on the SBOM and NOTICE exports — planned.
 - Promote SBOM / NOTICE downloads from `structlog` events to `audit_logs` rows — planned.

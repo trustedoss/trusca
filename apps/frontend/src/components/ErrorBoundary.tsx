@@ -1,5 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
+import i18n from "@/lib/i18n";
+
 interface Props {
   children: ReactNode;
   fallback?: ReactNode;
@@ -52,10 +54,15 @@ export class ErrorBoundary extends Component<Props, State> {
       return (
         <div
           data-testid="error-boundary-fallback"
+          // A crash replaces the entire subtree — announce it assertively so
+          // screen-reader users are not left on a silently swapped page.
+          role="alert"
           className="mx-auto mt-16 max-w-lg rounded-md border border-destructive/30 bg-destructive/5 p-6"
         >
           <h2 className="text-lg font-semibold text-destructive">
-            Something went wrong
+            {/* Class component — use the i18n instance directly. The crash
+                screen does not live-switch language (a reload follows anyway). */}
+            {i18n.t("common:errors.boundary_title")}
           </h2>
           <p className="mt-2 text-sm text-muted-foreground">
             <code className="font-mono">{errorName}</code>: {errorMessage}
@@ -70,7 +77,7 @@ export class ErrorBoundary extends Component<Props, State> {
             // still feels coherent if the user ends up here.
             className="mt-4 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors duration-fast ease-out-soft hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
-            Reload page
+            {i18n.t("common:errors.boundary_reload")}
           </button>
         </div>
       );

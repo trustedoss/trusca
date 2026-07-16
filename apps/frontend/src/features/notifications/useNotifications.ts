@@ -80,6 +80,8 @@ export function useMarkRead(): UseMutationResult<void, Error, string> {
   const queryClient = useQueryClient();
   return useMutation<void, Error, string>({
     mutationFn: (id) => markRead(id),
+    // Error surfaced locally (toast/inline) — keep the global error toast quiet.
+    meta: { errorToast: false },
     onSuccess: () => invalidateAll(queryClient),
   });
 }
@@ -88,6 +90,7 @@ export function useMarkAllRead(): UseMutationResult<void, Error, void> {
   const queryClient = useQueryClient();
   return useMutation<void, Error, void>({
     mutationFn: () => markAllRead(),
+    meta: { errorToast: false },
     onSuccess: () => invalidateAll(queryClient),
   });
 }
@@ -110,6 +113,7 @@ export function useUpdateNotificationPrefs(): UseMutationResult<
   const queryClient = useQueryClient();
   return useMutation<NotificationPrefs, Error, NotificationPrefs>({
     mutationFn: (prefs) => updatePrefs(prefs),
+    meta: { errorToast: false },
     onSuccess: (saved) => {
       // Reflect the server's authoritative row back into cache so the
       // form's `defaultValues` re-derive on next render.

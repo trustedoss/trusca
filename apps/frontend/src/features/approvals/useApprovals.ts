@@ -92,6 +92,8 @@ export function useTransitionApproval() {
   return useMutation<ApprovalOut, Error, TransitionVars>({
     mutationFn: ({ id, action, etag, decisionNote }) =>
       transitionApproval(id, action, etag, decisionNote),
+    // Error surfaced locally (toast/inline) — keep the global error toast quiet.
+    meta: { errorToast: false },
     onSuccess: (updated) => {
       // Invalidate the list (all filter variants) and the individual detail.
       void queryClient.invalidateQueries({ queryKey: ["approvals"] });

@@ -71,6 +71,8 @@ export function useNpmDryRun(
 ): UseMutationResult<NpmDryRunResponse, Error, RemediationManifestBody | void> {
   return useMutation<NpmDryRunResponse, Error, RemediationManifestBody | void>({
     mutationFn: (body) => npmDryRun(projectId, body ?? {}),
+    // Error surfaced locally (toast/inline) — keep the global error toast quiet.
+    meta: { errorToast: false },
   });
 }
 
@@ -92,6 +94,7 @@ export function useCreateNpmPullRequest(
     RemediationManifestBody | void
   >({
     mutationFn: (body) => createNpmPullRequest(projectId, body ?? {}),
+    meta: { errorToast: false },
     onSuccess: () => {
       // Invalidate every page of the list for this project so the new PR
       // (or the updated idempotent hit) shows up.

@@ -93,6 +93,8 @@ export function ProjectCreatePage() {
         git_url: values.git_url || null,
         default_branch: values.default_branch || null,
       }),
+    // Error surfaced locally (toast/inline) — keep the global error toast quiet.
+    meta: { errorToast: false },
     onSuccess: (project) => {
       void queryClient.invalidateQueries({ queryKey: ["projects"] });
       navigate(`/projects/${project.id}`);

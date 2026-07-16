@@ -59,6 +59,7 @@ import shutil
 import uuid
 import zipfile
 from pathlib import Path
+from typing import NamedTuple
 
 import structlog
 from fastapi import UploadFile
@@ -122,6 +123,24 @@ def _max_compression_ratio() -> float:
     where a few KiB inflates to gigabytes.
     """
     return float(os.getenv("SOURCE_ARCHIVE_MAX_COMPRESSION_RATIO", "200"))
+
+
+def _ratio_guard_min_bytes() -> int:
+    """Uncompressed-size floor below which the ratio ceiling is not applied
+    (default 10 MiB).
+
+    W8-#47: real OSS trees ship tiny, extremely compressible fixtures — Juice
+    Shop 17.0.0 carries two sparse test PDFs at 918x / 940x that inflate to
+    only ~220 KB — and the flat 200x ceiling rejected the whole upload on
+    first contact. A high ratio is only dangerous when the inflated size is
+    large, so members whose *declared* uncompressed size is at or below this
+    floor skip the ratio check. Lying about the declared size buys an attacker
+    nothing: CPython's ``zipfile`` enforces ``file_size`` as a hard read
+    limit (an understated header truncates and fails CRC → ArchiveInvalid),
+    and the streamed total-bytes cap in ``_extract_member`` stays the
+    authoritative bomb guard regardless.
+    """
+    return int(os.getenv("SOURCE_ARCHIVE_RATIO_GUARD_MIN_BYTES", str(10 * 1024 * 1024)))
 
 
 def _project_quota_bytes() -> int:
@@ -317,14 +336,27 @@ async def _load_accessible_project(
 # ---------------------------------------------------------------------------
 
 
+class SavedArchive(NamedTuple):
+    """Outcome of :func:`save_uploaded_archive` — everything the caller needs
+    to respond AND to write the explicit audit row without re-querying the
+    project or stat()-ing the freshly saved file (security review 2026-07-16:
+    a post-save ``stat()`` can race retention cleanup and 500 an upload that
+    already succeeded)."""
+
+    archive_id: str
+    bytes_written: int
+    team_id: uuid.UUID
+
+
 async def save_uploaded_archive(
     session: AsyncSession,
     *,
     project_id: uuid.UUID,
     upload: UploadFile,
     actor: CurrentUser,
-) -> str:
-    """Validate + stream a zip upload to disk and return its ``archive_id``.
+) -> SavedArchive:
+    """Validate + stream a zip upload to disk and return its ``archive_id``,
+    written byte count, and the owning ``team_id``.
 
     Validation order (cheapest / least-trusting first):
       1. RBAC — actor must be able to access the project's team (else 404).
@@ -460,7 +492,11 @@ async def save_uploaded_archive(
         team_id=str(project.team_id),
         bytes=bytes_written,
     )
-    return str(archive_id)
+    return SavedArchive(
+        archive_id=str(archive_id),
+        bytes_written=bytes_written,
+        team_id=project.team_id,
+    )
 
 
 def _unlink_quietly(path: Path) -> None:
@@ -528,6 +564,7 @@ def safe_extract_archive(*, archive_path: Path, target_dir: Path) -> None:
     max_extracted = _max_extracted_bytes()
     max_members = _max_members()
     max_ratio = _max_compression_ratio()
+    ratio_min_bytes = _ratio_guard_min_bytes()
 
     try:
         zf = zipfile.ZipFile(archive_path)
@@ -554,6 +591,7 @@ def safe_extract_archive(*, archive_path: Path, target_dir: Path) -> None:
                     total_written=total_written,
                     max_extracted=max_extracted,
                     max_ratio=max_ratio,
+                    ratio_min_bytes=ratio_min_bytes,
                 )
     except (ArchiveExtractionRejected, ArchiveInvalid):
         # M3-fix: a rejected archive must leave ZERO bytes on disk. Members
@@ -580,6 +618,7 @@ def _extract_one_member(
     total_written: int,
     max_extracted: int,
     max_ratio: float,
+    ratio_min_bytes: int,
 ) -> int:
     """Validate + materialise a single zip member. Returns the new running total.
 
@@ -626,19 +665,28 @@ def _extract_one_member(
     #    positive ``file_size`` is itself a lie we refuse to trust: it claims
     #    "infinite" compression and would otherwise skip the ratio guard
     #    entirely (L5-fix — previously the ``> 0`` branch silently passed). When
-    #    compress_size is positive we apply the normal ratio ceiling; the
-    #    running total-bytes cap remains the authoritative bomb guard regardless.
+    #    compress_size is positive we apply the ratio ceiling only to members
+    #    whose declared uncompressed size exceeds ``ratio_min_bytes`` (W8-#47 —
+    #    tiny sparse fixtures in real OSS trees compress 900x+ but inflate to
+    #    a couple hundred KB and are harmless; see _ratio_guard_min_bytes for
+    #    why a lying header cannot exploit the exemption). The running
+    #    total-bytes cap remains the authoritative bomb guard regardless.
     if info.compress_size == 0:
         if info.file_size > 0:
             raise ArchiveExtractionRejected(
                 f"member declares 0 compressed bytes for {info.file_size} "
                 f"uncompressed (impossible ratio): {name!r}"
             )
-    else:
+    elif info.file_size > ratio_min_bytes:
         ratio = info.file_size / info.compress_size
         if ratio > max_ratio:
             raise ArchiveExtractionRejected(
-                f"member compression ratio {ratio:.0f}x exceeds {max_ratio:.0f}x: {name!r}"
+                f"member compression ratio {ratio:.0f}x exceeds the "
+                f"{max_ratio:.0f}x ceiling: {name!r} "
+                f"({info.file_size:,} bytes from {info.compress_size:,} compressed). "
+                "If this member is legitimate, remove it from the archive or "
+                "raise SOURCE_ARCHIVE_MAX_COMPRESSION_RATIO / "
+                "SOURCE_ARCHIVE_RATIO_GUARD_MIN_BYTES."
             )
 
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -684,6 +732,7 @@ __all__ = [
     "ArchiveQuotaExceeded",
     "ArchiveTooLarge",
     "ArchiveUnsupportedType",
+    "SavedArchive",
     "SourceArchiveError",
     "archive_path",
     "archives_dir_for_project",

@@ -187,6 +187,8 @@ export function useTriggerScan(
 
   return useMutation<ScanPublic, Error, TriggerScanInput>({
     mutationFn: (input) => runTrigger(projectId, input, options.onUpdate),
+    // Error surfaced locally (toast/inline) — keep the global error toast quiet.
+    meta: { errorToast: false },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["projects"] });
     },

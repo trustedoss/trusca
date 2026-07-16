@@ -363,3 +363,99 @@ async def test_load_project_for_gate_blocks_sibling_project_for_scoped_key(
     async with factory() as session:
         resolved = await _load_project_for_gate(session, sibling, jwt_actor)
         assert resolved.id == sibling
+
+
+# ---------------------------------------------------------------------------
+# Audit — the PR comment is an external side effect no DB row records, so the
+# endpoint writes the AuditLog row explicitly (automatic listener can't see it)
+# ---------------------------------------------------------------------------
+
+
+async def test_post_pr_comment_posted_writes_audit_row(client, monkeypatch) -> None:
+    from sqlalchemy import select
+
+    from api.v1 import policy_gate as pg
+    from models import AuditLog
+    from services.sca_comment import PostedComment
+
+    _, team, user = await _seed_team_and_user(client)
+    project_id = await _seed_project(client, team_id=team.id)
+    scan_id = await _seed_succeeded_scan(client, project_id=project_id)
+
+    async def _fake_post(**_kwargs):
+        return PostedComment(
+            status="posted",
+            comment_id=987654,
+            comment_url="https://github.com/trustedoss/portal/pull/42#issuecomment-987654",
+            body_preview="TRUSCA gate summary",
+        )
+
+    monkeypatch.setattr(pg, "post_pr_comment", _fake_post)
+    monkeypatch.setattr(pg, "_resolve_github_token", lambda: "ghp_test_token")
+
+    response = await client.post(
+        f"/v1/scans/{scan_id}/post-pr-comment",
+        headers=_bearer_for(user),
+        json={
+            "repo_full_name": "trustedoss/portal",
+            "pr_number": 42,
+            "dry_run": False,
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "posted"
+
+    factory = await _factory(client)
+    async with factory() as session:
+        row = (
+            await session.execute(
+                select(AuditLog)
+                .where(
+                    AuditLog.action == "sca_pr_comment.posted",
+                    AuditLog.target_id == str(scan_id),
+                )
+                .order_by(AuditLog.created_at.desc())
+            )
+        ).scalars().first()
+    assert row is not None, "posting a PR comment must leave an audit row"
+    assert row.target_table == "scans"
+    assert row.actor_user_id == user.id
+    assert row.team_id == team.id
+    assert row.diff["repo_full_name"] == "trustedoss/portal"
+    assert row.diff["pr_number"] == 42
+    assert row.diff["comment_id"] == 987654
+    # The GitHub token must never round-trip into the audit trail.
+    assert "ghp_test_token" not in str(row.diff)
+
+
+async def test_post_pr_comment_dry_run_writes_no_audit_row(client) -> None:
+    from sqlalchemy import select
+
+    from models import AuditLog
+
+    _, team, user = await _seed_team_and_user(client)
+    project_id = await _seed_project(client, team_id=team.id)
+    scan_id = await _seed_succeeded_scan(client, project_id=project_id)
+
+    response = await client.post(
+        f"/v1/scans/{scan_id}/post-pr-comment",
+        headers=_bearer_for(user),
+        json={
+            "repo_full_name": "trustedoss/portal",
+            "pr_number": 7,
+            "dry_run": True,
+        },
+    )
+    assert response.status_code == 200, response.text
+
+    factory = await _factory(client)
+    async with factory() as session:
+        rows = (
+            await session.execute(
+                select(AuditLog).where(
+                    AuditLog.action.like("sca_pr_comment.%"),
+                    AuditLog.target_id == str(scan_id),
+                )
+            )
+        ).scalars().all()
+    assert rows == [], "dry_run has no side effect and must not be audited"

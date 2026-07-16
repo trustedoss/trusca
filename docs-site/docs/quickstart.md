@@ -57,12 +57,14 @@ The schema is already applied, so `postgres`, `redis`, `backend`,
 <!-- docs-uat: id=qs-seed kind=shell ctx=host expect=exit:0 fixture=seed_demo tier=gate -->
 ```bash
 docker-compose -f docker-compose.dev.yml exec backend \
-  python -m scripts.seed_demo
+  python -m scripts.seed_demo --demo-only
 ```
 
 This creates one organization, three teams, five users, five projects, plus
 a realistic mix of CVEs, license findings, and obligations — about
-10 seconds.
+10 seconds. (`--demo-only` skips the internal verification fixtures the
+nightly spec harness seeds by default, so the project list matches this
+guide exactly.)
 
 ## 3. Sign in
 

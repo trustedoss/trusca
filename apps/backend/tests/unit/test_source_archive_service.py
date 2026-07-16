@@ -125,15 +125,18 @@ async def test_save_uploaded_archive_happy_path_writes_file(_workspace: Path) ->
     body = _make_zip({"src/main.py": b"print('hi')\n"})
     upload = _FakeUpload(body, filename="source.zip", content_type="application/zip")
 
-    archive_id = await save_uploaded_archive(
+    saved = await save_uploaded_archive(
         session, project_id=project_id, upload=upload, actor=actor  # type: ignore[arg-type]
     )
 
-    # archive_id is a UUID; the file exists at the resolved path.
-    uuid.UUID(archive_id)  # raises if not a UUID
-    path = archive_path(project_id, archive_id)
+    # archive_id is a UUID; the file exists at the resolved path. The result
+    # also carries the written byte count + owning team for the audit row.
+    uuid.UUID(saved.archive_id)  # raises if not a UUID
+    path = archive_path(project_id, saved.archive_id)
     assert path.is_file()
     assert path.read_bytes() == body
+    assert saved.bytes_written == len(body)
+    assert saved.team_id == team_id
 
 
 async def test_save_uploaded_archive_super_admin_bypasses_team_check(_workspace: Path) -> None:
@@ -144,10 +147,10 @@ async def test_save_uploaded_archive_super_admin_bypasses_team_check(_workspace:
     upload = _FakeUpload(
         _make_zip({"a.txt": b"x"}), filename="s.zip", content_type="application/zip"
     )
-    archive_id = await save_uploaded_archive(
+    saved = await save_uploaded_archive(
         session, project_id=project.id, upload=upload, actor=actor  # type: ignore[arg-type]
     )
-    assert archive_path(project.id, archive_id).is_file()
+    assert archive_path(project.id, saved.archive_id).is_file()
 
 
 async def test_save_uploaded_archive_other_team_is_404_existence_hide(_workspace: Path) -> None:
@@ -491,6 +494,9 @@ def test_safe_extract_rejects_compression_ratio_bomb(
     _workspace: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("SOURCE_ARCHIVE_MAX_COMPRESSION_RATIO", "10")
+    # The ratio guard only applies above the size floor (W8-#47); lower the
+    # floor so this 256 KiB member is in scope for the ceiling under test.
+    monkeypatch.setenv("SOURCE_ARCHIVE_RATIO_GUARD_MIN_BYTES", "65536")
     # 256 KiB of zeros under deflate compresses ~1000x — well past a 10x ratio.
     zip_bytes = _make_zip({"ratio.bin": b"\x00" * (256 * 1024)})
     archive = tmp_path / "ratio.zip"
@@ -499,6 +505,65 @@ def test_safe_extract_rejects_compression_ratio_bomb(
     with pytest.raises(ArchiveExtractionRejected) as ei:
         safe_extract_archive(archive_path=archive, target_dir=target)
     assert "ratio" in str(ei.value).lower()
+
+
+def test_safe_extract_allows_tiny_high_ratio_member_juice_shop_fixture(
+    _workspace: Path, tmp_path: Path
+) -> None:
+    """W8-#47 — a real OSS tree's sparse fixture must not be rejected.
+
+    The fixture is the REAL ``test/files/invalidSizeForServer.pdf`` captured
+    from the Juice Shop 17.0.0 release archive (225,720 bytes that deflate to
+    ~240 bytes — a 940x ratio, far past the 200x ceiling). Before the
+    ratio-floor fix this blocked Juice Shop's first upload outright; with the
+    default 10 MiB floor the member is exempt because its inflated size is
+    trivially small, while the total-extracted cap still bounds every member.
+    """
+    sparse_pdf = (
+        Path(__file__).resolve().parent.parent
+        / "fixtures"
+        / "archives"
+        / "juice_shop_v17_invalidSizeForServer.pdf"
+    ).read_bytes()
+    assert len(sparse_pdf) == 225_720  # provenance pin — the real member size
+    zip_bytes = _make_zip(
+        {
+            "juice-shop/test/files/invalidSizeForServer.pdf": sparse_pdf,
+            "juice-shop/package.json": b'{"name": "juice-shop"}',
+        }
+    )
+    # Sanity: the fixture really is past the default 200x ceiling.
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as probe:
+        info = probe.getinfo("juice-shop/test/files/invalidSizeForServer.pdf")
+        assert info.file_size / info.compress_size > 200
+
+    archive = tmp_path / "juice.zip"
+    archive.write_bytes(zip_bytes)
+    target = tmp_path / "out"
+    safe_extract_archive(archive_path=archive, target_dir=target)
+    extracted = target / "juice-shop" / "test" / "files" / "invalidSizeForServer.pdf"
+    assert extracted.read_bytes() == sparse_pdf
+
+
+def test_safe_extract_ratio_floor_does_not_exempt_large_members(
+    _workspace: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A high-ratio member ABOVE the floor is still rejected (42.zip class)."""
+    monkeypatch.setenv("SOURCE_ARCHIVE_RATIO_GUARD_MIN_BYTES", str(1024 * 1024))
+    # 8 MiB of zeros → ~4000x under deflate; above the 1 MiB floor → rejected.
+    zip_bytes = _make_zip({"bomb.bin": b"\x00" * (8 * 1024 * 1024)})
+    archive = tmp_path / "bomb.zip"
+    archive.write_bytes(zip_bytes)
+    target = tmp_path / "out"
+    with pytest.raises(ArchiveExtractionRejected) as ei:
+        safe_extract_archive(archive_path=archive, target_dir=target)
+    msg = str(ei.value)
+    assert "ratio" in msg.lower()
+    # UX (W8-#47): the rejection names the member and tells the operator the
+    # two knobs that resolve a false positive.
+    assert "bomb.bin" in msg
+    assert "SOURCE_ARCHIVE_MAX_COMPRESSION_RATIO" in msg
+    assert "SOURCE_ARCHIVE_RATIO_GUARD_MIN_BYTES" in msg
 
 
 def test_safe_extract_understated_header_does_not_silently_truncate(
@@ -638,6 +703,11 @@ def test_limit_accessors_read_env_at_call_time(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setenv("SOURCE_ARCHIVE_MAX_COMPRESSION_RATIO", "9.5")
     assert svc._max_compression_ratio() == 9.5
 
+    monkeypatch.delenv("SOURCE_ARCHIVE_RATIO_GUARD_MIN_BYTES", raising=False)
+    assert svc._ratio_guard_min_bytes() == 10 * 1024 * 1024
+    monkeypatch.setenv("SOURCE_ARCHIVE_RATIO_GUARD_MIN_BYTES", "123")
+    assert svc._ratio_guard_min_bytes() == 123
+
 
 def test_no_module_level_env_caching(monkeypatch: pytest.MonkeyPatch) -> None:
     """The module must resolve WORKSPACE_HOST_PATH at call time, not import time."""
@@ -722,10 +792,10 @@ async def test_save_succeeds_when_under_quota(
     upload = _FakeUpload(
         _make_zip({"a.txt": b"x"}), filename="s.zip", content_type="application/zip"
     )
-    archive_id = await save_uploaded_archive(
+    saved = await save_uploaded_archive(
         _FakeSession(project), project_id=project.id, upload=upload, actor=actor  # type: ignore[arg-type]
     )
-    assert archive_path(project.id, archive_id).is_file()
+    assert archive_path(project.id, saved.archive_id).is_file()
 
 
 def test_project_archive_bytes_sums_only_zip(_workspace: Path) -> None:

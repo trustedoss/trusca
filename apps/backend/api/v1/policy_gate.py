@@ -42,11 +42,13 @@ from sqlalchemy import String, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.api_key_auth import get_api_key_principal
+from core.audit import bind_audit_team, get_audit_context, mask_sensitive_columns
 from core.authz import assert_team_access
 from core.db import get_db
 from core.errors import problem_response
 from core.security import CurrentUser, get_optional_current_user
 from models import (
+    AuditLog,
     Component,
     ComponentVersion,
     LicenseFinding,
@@ -524,7 +526,7 @@ async def post_pr_comment_endpoint(
         )
 
     try:
-        await _load_project_for_gate(session, scan_row.project_id, actor)
+        project = await _load_project_for_gate(session, scan_row.project_id, actor)
     except ProjectError as exc:
         return _problem_for_project_error(request, exc)
 
@@ -551,6 +553,42 @@ async def post_pr_comment_endpoint(
         )
     except SCACommentError as exc:
         return _problem_for_sca_comment_error(request, exc)
+
+    # The comment is an EXTERNAL side effect (a write to GitHub) that no DB
+    # row records, so the automatic audit listener never sees it — write the
+    # audit row explicitly. dry_run produces no side effect and is not
+    # audited. Never put the token or the full comment body in the diff.
+    if posted.status in ("posted", "updated"):
+        bind_audit_team(project.team_id)
+        ctx = get_audit_context()
+        session.add(
+            AuditLog(
+                action=(
+                    "sca_pr_comment.posted"
+                    if posted.status == "posted"
+                    else "sca_pr_comment.updated"
+                ),
+                target_table="scans",
+                target_id=str(gate_result.scan_id),
+                actor_user_id=actor.id,
+                team_id=project.team_id,
+                request_id=ctx.get("request_id"),
+                ip=ctx.get("ip"),
+                user_agent=ctx.get("user_agent"),
+                # Explicit rows bypass the listener's masking — run the diff
+                # through the same masker so a future sensitive key is caught.
+                diff=mask_sensitive_columns(
+                    {
+                        "repo_full_name": payload.repo_full_name,
+                        "pr_number": payload.pr_number,
+                        "gate": gate_result.gate,
+                        "comment_id": posted.comment_id,
+                        "comment_url": posted.comment_url,
+                    }
+                ),
+            )
+        )
+        await session.commit()
 
     body = PostPRCommentResponse(
         status=posted.status,
