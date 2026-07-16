@@ -7,7 +7,22 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.14.0] — 2026-07-16
+
 ### Added
+- **Audit trail for external side effects.** Posting/updating a gate PR
+  comment (`sca_pr_comment.posted` / `.updated`) and uploading a source
+  archive (`source_archive.uploaded`) now write explicit audit rows with
+  full request context — both actions previously left no trail because the
+  automatic audit listener only sees DB rows. Explicit rows also run their
+  diff through the sensitive-column masker.
+- **Global mutation error toast (frontend).** A cache-level error handler
+  guarantees no failed write stays silent: any mutation that does not
+  surface its own error now raises an error toast with the RFC 7807
+  `detail`. Existing call sites keep their local error UX via an explicit
+  opt-out; 422 validation problems stay inline per the design system. The
+  ErrorBoundary fallback is now translated (EN/KO) and announced via
+  `role="alert"`.
 - **EOL operations: weekly refresh beat + admin health panel.** A weekly
   Celery beat re-stamps the component catalog against the newest
   endoflife.date snapshot (so release upgrades reach existing rows without
@@ -45,6 +60,29 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   `SCAN_SCOPE_FILTER_MAVEN_ENABLED` / `SCAN_SCOPE_FILTER_NODE_ENABLED`)
   restores the full graph. SBOMs uploaded via the ingest API are never
   filtered — an uploaded SBOM is the supplier's declared truth.
+
+### Fixed
+- **Source-archive zip-ratio guard no longer rejects real OSS trees.** The
+  flat 200x per-member compression-ratio ceiling blocked archives carrying
+  tiny sparse fixtures (Juice Shop 17.0.0 ships two test PDFs at 918x/940x
+  that inflate to ~150–225 KB). The ceiling now applies only to members
+  declaring more than `SOURCE_ARCHIVE_RATIO_GUARD_MIN_BYTES` uncompressed
+  (default 10 MiB); the streamed total-extracted cap remains the
+  authoritative bomb guard and 42.zip-class members are still rejected. The
+  rejection message now names the member and the resolving env knobs.
+- **`seed_demo --demo-only` restores the documented 5-project quickstart.**
+  The verify-baseline fixtures the default seed creates (per the
+  seed-baseline agreement) had pushed the visible project list to 8, and
+  the docs-uat quickstart-gate had failed nightly since 2026-06-10. The
+  quickstart guide's seed command now uses the flag; the default seed is
+  unchanged for the verify-specs nightly and Tier-3 runs.
+
+### Security
+- **Worker Go toolchain 1.25.11 → 1.25.12** — clears Go stdlib
+  CVE-2026-39822 (`os.Root` symlink-following directory traversal, HIGH)
+  on the bundled Go binaries and govulncheck. cosign/docker CLI carry the
+  same stdlib finding with no upstream rebuild available yet — suppressed
+  as UNREACHED with a re-evaluate deadline (`.trivyignore`).
 
 ## [0.13.1] — 2026-07-07
 

@@ -74,10 +74,14 @@ unrelated (e.g. infrastructure) reason, a maintainer can reveal it by hand with
 
 ## Cutting a release
 
-1. Land the release notes at `docs-site/docs/release-notes/X.Y.Z.md` and bump
+1. Refresh the vendored endoflife.date snapshot so the release ships current
+   lifecycle data (EOL verdicts are stamped offline from this file):
+   `python3 scripts/refresh_eol_snapshot.py` from `apps/backend`, and commit
+   the updated snapshot with the release-prep changes.
+2. Land the release notes at `docs-site/docs/release-notes/X.Y.Z.md` and bump
    `IMAGE_TAG` in `.env.example` to `X.Y.Z`.
-2. Tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
-3. Watch the `release-gate` job. When it goes green the Release is public and
+3. Tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+4. Watch the `release-gate` job. When it goes green the Release is public and
    marked `latest` automatically — no manual step is needed.
 
 ## See also
