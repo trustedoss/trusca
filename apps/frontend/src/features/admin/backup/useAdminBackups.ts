@@ -47,6 +47,8 @@ export function useTriggerManualBackup(): UseMutationResult<
   const queryClient = useQueryClient();
   return useMutation<BackupTriggerResponse, Error, void>({
     mutationFn: () => triggerManualBackup(),
+    // Error surfaced locally (toast/inline) — keep the global error toast quiet.
+    meta: { errorToast: false },
     onSuccess: () => {
       // The new artifact lands on disk asynchronously (Celery task) — the
       // list refetch will pick it up once the task writes the manifest.
@@ -58,6 +60,7 @@ export function useTriggerManualBackup(): UseMutationResult<
 export function useDownloadBackup(): UseMutationResult<void, Error, string> {
   return useMutation<void, Error, string>({
     mutationFn: (name) => downloadBackup(name),
+    meta: { errorToast: false },
   });
 }
 
@@ -65,6 +68,7 @@ export function useDeleteBackup(): UseMutationResult<void, Error, string> {
   const queryClient = useQueryClient();
   return useMutation<void, Error, string>({
     mutationFn: (name) => deleteBackup(name),
+    meta: { errorToast: false },
     onSuccess: () => invalidate(queryClient),
   });
 }
@@ -76,5 +80,6 @@ export function useUploadRestore(): UseMutationResult<
 > {
   return useMutation<BackupRestoreResponse, Error, File>({
     mutationFn: (file) => uploadRestore(file),
+    meta: { errorToast: false },
   });
 }

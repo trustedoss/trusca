@@ -55,11 +55,13 @@ docker-compose -f docker-compose.dev.yml up -d
 <!-- docs-uat: id=qs-seed kind=shell ctx=host expect=exit:0 fixture=seed_demo tier=gate -->
 ```bash
 docker-compose -f docker-compose.dev.yml exec backend \
-  python -m scripts.seed_demo
+  python -m scripts.seed_demo --demo-only
 ```
 
 조직 1개, 팀 3개, 사용자 5명, 프로젝트 5개, 그리고 현실적인 CVE·라이선스
-finding·의무사항 묶음이 약 10초 안에 생성됩니다.
+finding·의무사항 묶음이 약 10초 안에 생성됩니다. (`--demo-only`는 nightly
+스펙 하네스가 기본으로 심는 내부 검증용 픽스처를 건너뛰어, 프로젝트 목록이
+이 가이드의 설명과 정확히 일치하게 합니다.)
 
 ## 3. 로그인
 

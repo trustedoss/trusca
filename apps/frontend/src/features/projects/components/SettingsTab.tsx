@@ -107,6 +107,8 @@ export function SettingsTab({ projectId, project }: SettingsTabProps) {
         git_url: values.git_url || null,
         default_branch: values.default_branch || null,
       }),
+    // Error surfaced locally (toast/inline) — keep the global error toast quiet.
+    meta: { errorToast: false },
     onSuccess: (next) => {
       void queryClient.invalidateQueries({
         queryKey: ["projects", projectId, "summary"],
@@ -141,6 +143,7 @@ export function SettingsTab({ projectId, project }: SettingsTabProps) {
           ? { clear_git_credential: true }
           : { git_credential: variables.token },
       ),
+    meta: { errorToast: false },
     onSuccess: () => {
       void queryClient.invalidateQueries({
         queryKey: ["projects", projectId, "summary"],
@@ -174,6 +177,7 @@ export function SettingsTab({ projectId, project }: SettingsTabProps) {
 
   const archiveMutation = useMutation({
     mutationFn: () => archiveProject(projectId),
+    meta: { errorToast: false },
     onSuccess: () => {
       void queryClient.invalidateQueries({
         queryKey: ["projects", projectId, "summary"],
@@ -186,6 +190,7 @@ export function SettingsTab({ projectId, project }: SettingsTabProps) {
 
   const unarchiveMutation = useMutation({
     mutationFn: () => unarchiveProject(projectId),
+    meta: { errorToast: false },
     onSuccess: () => {
       void queryClient.invalidateQueries({
         queryKey: ["projects", projectId, "summary"],
