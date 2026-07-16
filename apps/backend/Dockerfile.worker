@@ -476,7 +476,7 @@ RUN set -eux; \
     ln -s "${GRADLE_HOME}/bin/gradle" /usr/local/bin/gradle; \
     gradle --version
 
-# ---- Go 1.25.11 (BSD-3-Clause). --------------------------------------------
+# ---- Go 1.25.12 (BSD-3-Clause). --------------------------------------------
 # Debian bookworm Go is 1.19 — go.mod files since Go 1.21 declare
 # `toolchain go1.22.x` and refuse to build on older runtimes. Install the
 # upstream tarball with arch detection (linux-amd64 / linux-arm64). Hashes
@@ -501,10 +501,14 @@ RUN set -eux; \
 # opt/go binary (go, gofmt, pkg/tool/*) plus the locally-`go install`ed
 # govulncheck. Staying on the 1.25.x line — same soak-time rationale as
 # the 1.22.7 → 1.25.10 bump above.
-# Hashes from https://go.dev/dl/?mode=json (the `files` array of go1.25.11).
-ENV GO_VERSION=1.25.11 \
-    GO_SHA256_AMD64=34f14304e856893f4ba30c2cacfe93906e9de7915c5f6aaaf3a81cdccd7ba30b \
-    GO_SHA256_ARM64=c30bf9e156a54ea4e31fbbbf31a712b32734b58cc9a22426fa5ee632d0885124 \
+# CVE triage 2026-07-16 (image-scan gate): bumped 1.25.11 → 1.25.12. Go
+# stdlib CVE-2026-39822 (os.Root symlink following allows directory
+# traversal, HIGH) is fixed in 1.25.12 / 1.26.5 and was flagged on the
+# same 12 opt/go binaries + govulncheck. Same 1.25.x-line rationale.
+# Hashes from https://go.dev/dl/?mode=json (the `files` array of go1.25.12).
+ENV GO_VERSION=1.25.12 \
+    GO_SHA256_AMD64=234828b7a89e0e303d2556310ee549fbcf253d28de937bac3da13d6294262ac1 \
+    GO_SHA256_ARM64=8b5884aef89600aef5b0b051fb971f11f49bb996521e911f30f02a66884f7bd2 \
     GOROOT=/opt/go
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
