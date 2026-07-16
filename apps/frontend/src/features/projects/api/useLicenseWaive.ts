@@ -125,6 +125,8 @@ export function useWaiveLicense(projectId: string) {
   return useMutation<LicensePolicyOut, Error, WaiveVars>({
     mutationFn: ({ teamId, ...payload }) =>
       addTeamLicenseException(teamId, payload),
+    // Error surfaced locally (toast/inline) — keep the global error toast quiet.
+    meta: { errorToast: false },
     onSuccess: (updated) => {
       queryClient.setQueryData(teamLicensePolicyKey(updated.team_id), updated);
       void queryClient.invalidateQueries({ queryKey: ["license-policies"] });
@@ -148,6 +150,7 @@ export function useUnwaiveLicense(projectId: string) {
   return useMutation<LicensePolicyOut, Error, UnwaiveVars>({
     mutationFn: ({ teamId, spdx_id, component_purl }) =>
       deleteTeamLicenseException(teamId, { spdx_id, component_purl }),
+    meta: { errorToast: false },
     onSuccess: (updated) => {
       queryClient.setQueryData(teamLicensePolicyKey(updated.team_id), updated);
       void queryClient.invalidateQueries({ queryKey: ["license-policies"] });

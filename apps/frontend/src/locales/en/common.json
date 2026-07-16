@@ -92,5 +92,10 @@
       "vulnerabilities": "Vulnerabilities",
       "pages": "Pages"
     }
+  },
+  "errors": {
+    "request_failed": "The request failed. Please try again.",
+    "boundary_title": "Something went wrong",
+    "boundary_reload": "Reload page"
   }
 }

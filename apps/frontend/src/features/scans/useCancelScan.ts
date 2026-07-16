@@ -35,6 +35,8 @@ export function useCancelScan(): UseMutationResult<
   const queryClient = useQueryClient();
   return useMutation<ScanPublic, Error, CancelScanVariables>({
     mutationFn: ({ scanId }) => cancelScan(scanId),
+    // Error surfaced locally (toast/inline) — keep the global error toast quiet.
+    meta: { errorToast: false },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["scans"] });
       void queryClient.invalidateQueries({ queryKey: ["projects"] });
