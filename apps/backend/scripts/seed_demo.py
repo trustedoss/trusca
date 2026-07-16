@@ -292,6 +292,20 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "unit smoke test so it does not need a live Postgres."
         ),
     )
+    parser.add_argument(
+        "--demo-only",
+        action="store_true",
+        default=False,
+        help=(
+            "Seed only the human-facing demo dataset and skip the "
+            "_seed_verify_baseline fixtures (fx-appr, 'Project …' probe rows) "
+            "that the vendored verify specs assume. Use for quickstart/demo "
+            "stacks where the project list must match the documented 5 "
+            "projects. The default (no flag) keeps the seed-baseline "
+            "agreement with the verification team intact "
+            "(tests/verify-specs/PROVENANCE.md)."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -300,8 +314,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 # ---------------------------------------------------------------------------
 
 
-async def _seed() -> dict[str, Any]:  # noqa: PLR0915 — single linear seed reads better than 6 helpers
+async def _seed(demo_only: bool = False) -> dict[str, Any]:  # noqa: PLR0915 — single linear seed reads better than 6 helpers
     """Run the seed against the live Postgres pointed at by ``DATABASE_URL``.
+
+    ``demo_only=True`` skips the ``_seed_verify_baseline`` fixtures so the
+    stack matches the quickstart's documented 5-project demo exactly.
 
     Returns a JSON-serializable summary that the caller prints as a single
     stdout line.
@@ -354,7 +371,11 @@ async def _seed() -> dict[str, Any]:  # noqa: PLR0915 — single linear seed rea
                 # Already seeded — top up the verification baseline (PR-4;
                 # idempotent) so an existing dev stack also satisfies the
                 # vendored verify specs, then return the same JSON contract.
-                baseline = await _seed_verify_baseline(session)
+                # --demo-only skips the top-up (it does NOT remove baseline
+                # rows a previous full seed created).
+                baseline = (
+                    None if demo_only else await _seed_verify_baseline(session)
+                )
                 existing_summary = await _collect_existing_summary(session, existing_org)
                 existing_summary["verify_baseline"] = baseline
                 return existing_summary
@@ -714,7 +735,7 @@ async def _seed() -> dict[str, Any]:  # noqa: PLR0915 — single linear seed rea
             await session.commit()
 
             # ── Verification baseline (PR-4; idempotent). ─────────────────
-            baseline = await _seed_verify_baseline(session)
+            baseline = None if demo_only else await _seed_verify_baseline(session)
 
             # ── Build the summary that the orchestrator parses. ───────────
             users_summary: list[dict[str, str]] = [
@@ -1544,7 +1565,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     try:
-        summary = asyncio.run(_seed())
+        summary = asyncio.run(_seed(demo_only=args.demo_only))
     except SystemExit:
         # _refuse_outside_safe_env raises SystemExit(1); propagate.
         raise
