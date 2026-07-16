@@ -670,3 +670,24 @@ CVE-2026-50163
 #   `go version -m /usr/local/bin/cosign | head -1`) or 2026-12-29,
 #   whichever is sooner.
 CVE-2026-27145
+
+# CVE-2026-39822 — Go stdlib os.Root — 1.25.12 / 1.26.5 — HIGH
+# Target: usr/local/bin/cosign (go1.26.3) + usr/local/bin/docker (go1.26.4)
+#   ONLY. The 2026-07-16 toolchain bump moved opt/go + the locally-built
+#   govulncheck to 1.25.12 (fixed); cosign v3.1.1 and docker CLI 29.6.1 are
+#   both the LATEST upstream releases and were built before go1.26.5 existed
+#   (verified: cosign latest = v3.1.1 2026-06-09; download.docker.com static
+#   stable tops out at 29.6.1).
+# CVSS: HIGH (os.Root symlink following allows directory traversal — affects
+#   programs that sandbox attacker-influenced relative paths with os.Root).
+# Reach: neither binary processes attacker-controlled filesystem paths here.
+#   cosign signs/verifies portal-GENERATED local blobs at portal-constructed
+#   paths (integrations/cosign.py) — no untrusted path input. The docker CLI
+#   exists solely for the opt-in local_docker scan executor (default
+#   SCAN_EXECUTOR=inprocess leaves it unused); even when enabled it receives
+#   fixed, portal-constructed arguments (pinned image refs, workspace-only
+#   mounts), not archive-derived paths. UNREACHED.
+# Re-evaluate: on the next cosign / docker CLI releases built with Go >=1.26.5
+#   (check `go version -m <binary> | head -1`) or 2026-11-16, whichever is
+#   sooner — this entry must not outlive an available upstream rebuild.
+CVE-2026-39822
