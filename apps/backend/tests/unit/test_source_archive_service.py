@@ -125,15 +125,18 @@ async def test_save_uploaded_archive_happy_path_writes_file(_workspace: Path) ->
     body = _make_zip({"src/main.py": b"print('hi')\n"})
     upload = _FakeUpload(body, filename="source.zip", content_type="application/zip")
 
-    archive_id = await save_uploaded_archive(
+    saved = await save_uploaded_archive(
         session, project_id=project_id, upload=upload, actor=actor  # type: ignore[arg-type]
     )
 
-    # archive_id is a UUID; the file exists at the resolved path.
-    uuid.UUID(archive_id)  # raises if not a UUID
-    path = archive_path(project_id, archive_id)
+    # archive_id is a UUID; the file exists at the resolved path. The result
+    # also carries the written byte count + owning team for the audit row.
+    uuid.UUID(saved.archive_id)  # raises if not a UUID
+    path = archive_path(project_id, saved.archive_id)
     assert path.is_file()
     assert path.read_bytes() == body
+    assert saved.bytes_written == len(body)
+    assert saved.team_id == team_id
 
 
 async def test_save_uploaded_archive_super_admin_bypasses_team_check(_workspace: Path) -> None:
@@ -144,10 +147,10 @@ async def test_save_uploaded_archive_super_admin_bypasses_team_check(_workspace:
     upload = _FakeUpload(
         _make_zip({"a.txt": b"x"}), filename="s.zip", content_type="application/zip"
     )
-    archive_id = await save_uploaded_archive(
+    saved = await save_uploaded_archive(
         session, project_id=project.id, upload=upload, actor=actor  # type: ignore[arg-type]
     )
-    assert archive_path(project.id, archive_id).is_file()
+    assert archive_path(project.id, saved.archive_id).is_file()
 
 
 async def test_save_uploaded_archive_other_team_is_404_existence_hide(_workspace: Path) -> None:
@@ -722,10 +725,10 @@ async def test_save_succeeds_when_under_quota(
     upload = _FakeUpload(
         _make_zip({"a.txt": b"x"}), filename="s.zip", content_type="application/zip"
     )
-    archive_id = await save_uploaded_archive(
+    saved = await save_uploaded_archive(
         _FakeSession(project), project_id=project.id, upload=upload, actor=actor  # type: ignore[arg-type]
     )
-    assert archive_path(project.id, archive_id).is_file()
+    assert archive_path(project.id, saved.archive_id).is_file()
 
 
 def test_project_archive_bytes_sums_only_zip(_workspace: Path) -> None:

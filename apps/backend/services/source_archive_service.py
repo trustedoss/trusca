@@ -59,6 +59,7 @@ import shutil
 import uuid
 import zipfile
 from pathlib import Path
+from typing import NamedTuple
 
 import structlog
 from fastapi import UploadFile
@@ -317,14 +318,27 @@ async def _load_accessible_project(
 # ---------------------------------------------------------------------------
 
 
+class SavedArchive(NamedTuple):
+    """Outcome of :func:`save_uploaded_archive` — everything the caller needs
+    to respond AND to write the explicit audit row without re-querying the
+    project or stat()-ing the freshly saved file (security review 2026-07-16:
+    a post-save ``stat()`` can race retention cleanup and 500 an upload that
+    already succeeded)."""
+
+    archive_id: str
+    bytes_written: int
+    team_id: uuid.UUID
+
+
 async def save_uploaded_archive(
     session: AsyncSession,
     *,
     project_id: uuid.UUID,
     upload: UploadFile,
     actor: CurrentUser,
-) -> str:
-    """Validate + stream a zip upload to disk and return its ``archive_id``.
+) -> SavedArchive:
+    """Validate + stream a zip upload to disk and return its ``archive_id``,
+    written byte count, and the owning ``team_id``.
 
     Validation order (cheapest / least-trusting first):
       1. RBAC — actor must be able to access the project's team (else 404).
@@ -460,7 +474,11 @@ async def save_uploaded_archive(
         team_id=str(project.team_id),
         bytes=bytes_written,
     )
-    return str(archive_id)
+    return SavedArchive(
+        archive_id=str(archive_id),
+        bytes_written=bytes_written,
+        team_id=project.team_id,
+    )
 
 
 def _unlink_quietly(path: Path) -> None:
@@ -684,6 +702,7 @@ __all__ = [
     "ArchiveQuotaExceeded",
     "ArchiveTooLarge",
     "ArchiveUnsupportedType",
+    "SavedArchive",
     "SourceArchiveError",
     "archive_path",
     "archives_dir_for_project",
