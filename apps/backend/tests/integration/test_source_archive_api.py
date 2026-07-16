@@ -312,3 +312,45 @@ async def test_trigger_upload_scan_without_archive_id_returns_422(client) -> Non
     )
     assert resp.status_code == 422
     assert resp.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+# ---------------------------------------------------------------------------
+# Audit — the saved .zip is a filesystem side effect no DB row records, so the
+# upload endpoint writes the AuditLog row explicitly
+# ---------------------------------------------------------------------------
+
+
+async def test_upload_writes_audit_row(client) -> None:
+    from sqlalchemy import select
+
+    from models import AuditLog
+
+    team, user, project = await _seed(client, role="developer")
+    body = _zip_bytes({"src/app.py": b"x = 1\n"})
+    resp = await client.post(
+        f"/v1/projects/{project.id}/source-archive",
+        headers=_bearer_for(user),
+        files=_zip_part(body),
+    )
+    assert resp.status_code == 201, resp.text
+    archive_id = resp.json()["archive_id"]
+
+    factory = await _factory(client)
+    async with factory() as session:
+        row = (
+            await session.execute(
+                select(AuditLog)
+                .where(
+                    AuditLog.action == "source_archive.uploaded",
+                    AuditLog.target_id == str(project.id),
+                )
+                .order_by(AuditLog.created_at.desc())
+            )
+        ).scalars().first()
+    assert row is not None, "a source-archive upload must leave an audit row"
+    assert row.target_table == "projects"
+    assert row.actor_user_id == user.id
+    assert row.team_id == team.id
+    assert row.diff["archive_id"] == archive_id
+    assert row.diff["filename"] == "source.zip"
+    assert row.diff["bytes"] == len(body)

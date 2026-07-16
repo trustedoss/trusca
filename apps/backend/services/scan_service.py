@@ -861,6 +861,8 @@ async def delete_scan(
             actor_user_id=actor.id,
             team_id=project.team_id,
             request_id=ctx.get("request_id"),
+            ip=ctx.get("ip"),
+            user_agent=ctx.get("user_agent"),
             diff={
                 "reason": "manual",
                 "forced": bool(force),

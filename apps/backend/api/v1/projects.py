@@ -37,11 +37,13 @@ from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFi
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.api_key_auth import require_role_or_api_key
+from core.audit import bind_audit_team, get_audit_context, mask_sensitive_columns
 from core.config import scan_trigger_rate_limit
 from core.db import get_db
 from core.errors import problem_response
 from core.ratelimit import _authenticated_user_key, limiter
 from core.security import CurrentUser, require_role
+from models import AuditLog
 from schemas.dependency_graph import ProjectDependencyGraph
 from schemas.project_detail import (
     ComponentListResponse,
@@ -901,7 +903,7 @@ async def upload_source_archive_endpoint(
     #   - ArchiveInvalid           (400) — empty / truncated / unwritable
     # All carry a `type_uri` so the RFC 7807 envelope gets a stable problem URI.
     try:
-        archive_id = await save_uploaded_archive(
+        saved = await save_uploaded_archive(
             session,
             project_id=project_id,
             upload=upload,
@@ -910,7 +912,37 @@ async def upload_source_archive_endpoint(
     except SourceArchiveError as exc:
         return _problem_for_archive_error(request, exc)
 
-    body = SourceArchiveUploadResponse(archive_id=archive_id)
+    # The saved .zip is a filesystem side effect no DB row records, so the
+    # automatic audit listener never sees the upload — write the row
+    # explicitly (the later scan INSERT audits the scan, not this upload).
+    # The service already authorized the actor against the project's team and
+    # returns the byte count + team_id, so no re-query / stat() is needed.
+    bind_audit_team(saved.team_id)
+    ctx = get_audit_context()
+    session.add(
+        AuditLog(
+            action="source_archive.uploaded",
+            target_table="projects",
+            target_id=str(project_id),
+            actor_user_id=actor.id,
+            team_id=saved.team_id,
+            request_id=ctx.get("request_id"),
+            ip=ctx.get("ip"),
+            user_agent=ctx.get("user_agent"),
+            # Explicit rows bypass the listener's masking — run the diff
+            # through the same masker so a future sensitive key is caught.
+            diff=mask_sensitive_columns(
+                {
+                    "archive_id": saved.archive_id,
+                    "filename": upload.filename,
+                    "bytes": saved.bytes_written,
+                }
+            ),
+        )
+    )
+    await session.commit()
+
+    body = SourceArchiveUploadResponse(archive_id=saved.archive_id)
     return Response(
         content=body.model_dump_json(),
         status_code=status.HTTP_201_CREATED,
