@@ -92,5 +92,10 @@
       "vulnerabilities": "취약점",
       "pages": "페이지"
     }
+  },
+  "errors": {
+    "request_failed": "요청이 실패했습니다. 잠시 후 다시 시도해 주세요.",
+    "boundary_title": "문제가 발생했습니다",
+    "boundary_reload": "페이지 새로 고침"
   }
 }

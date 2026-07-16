@@ -40,6 +40,9 @@ export function useBulkTransitionVulnerabilities() {
     mutationFn: ({ projectId, body }) =>
       bulkTransitionVulnerabilities(projectId, body),
 
+    // Error surfaced locally (toast/inline) — keep the global error toast quiet.
+    meta: { errorToast: false },
+
     onSuccess: (response, { projectId }) => {
       // Reconcile from the server: invalidate the project's vulnerabilities
       // list (any filter tuple under it) so every visible page re-fetches

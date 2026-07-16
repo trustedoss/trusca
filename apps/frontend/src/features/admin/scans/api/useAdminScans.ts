@@ -50,6 +50,8 @@ export function useCancelAdminScan() {
   const queryClient = useQueryClient();
   return useMutation<AdminScanListItem, Error, { scanId: string }>({
     mutationFn: ({ scanId }) => cancelAdminScan(scanId),
+    // Error surfaced locally (toast/inline) — keep the global error toast quiet.
+    meta: { errorToast: false },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["admin", "scans"] });
     },
