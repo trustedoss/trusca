@@ -122,6 +122,8 @@ export function useSaveTeamPolicy() {
   const queryClient = useQueryClient();
   return useMutation<LicensePolicyOut, Error, SaveTeamVars>({
     mutationFn: ({ teamId, payload }) => upsertTeamPolicy(teamId, payload),
+    // Error surfaced locally (toast/inline) — keep the global error toast quiet.
+    meta: { errorToast: false },
     onSuccess: (updated) => {
       queryClient.setQueryData(teamPolicyQueryKey(updated.team_id), updated);
       void queryClient.invalidateQueries({ queryKey: ["license-policies"] });
@@ -139,6 +141,7 @@ export function useSaveOrgPolicy() {
   return useMutation<LicensePolicyOut, Error, SaveOrgVars>({
     mutationFn: ({ organizationId, payload }) =>
       upsertOrgPolicy(organizationId, payload),
+    meta: { errorToast: false },
     onSuccess: (updated) => {
       queryClient.setQueryData(
         orgPolicyQueryKey(updated.organization_id),
@@ -153,6 +156,7 @@ export function useResetTeamPolicy() {
   const queryClient = useQueryClient();
   return useMutation<void, Error, string>({
     mutationFn: (teamId) => deleteTeamPolicy(teamId),
+    meta: { errorToast: false },
     onSuccess: (_data, teamId) => {
       queryClient.removeQueries({ queryKey: teamPolicyQueryKey(teamId) });
       void queryClient.invalidateQueries({ queryKey: ["license-policies"] });

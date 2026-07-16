@@ -47,6 +47,8 @@ export function useUnlinkIdentity(): UseMutationResult<void, Error, string> {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (identityId: string) => unlinkIdentity(identityId),
+    // Error surfaced locally (toast/inline) — keep the global error toast quiet.
+    meta: { errorToast: false },
     onSuccess: () => {
       void queryClient.invalidateQueries({
         queryKey: OAUTH_IDENTITIES_QUERY_KEY,

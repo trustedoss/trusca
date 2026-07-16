@@ -28,6 +28,8 @@ export function useCreateTeam() {
   const queryClient = useQueryClient();
   return useMutation<AdminTeamDetail, Error, AdminTeamCreatePayload>({
     mutationFn: (payload) => createTeam(payload),
+    // Error surfaced locally (toast/inline) — keep the global error toast quiet.
+    meta: { errorToast: false },
     onSuccess: (data) => {
       queryClient.setQueryData(adminTeamQueryKey(data.id), data);
       invalidateAll(queryClient);
@@ -43,6 +45,7 @@ export function useUpdateTeam() {
     { teamId: string; payload: AdminTeamUpdatePayload }
   >({
     mutationFn: ({ teamId, payload }) => updateTeam(teamId, payload),
+    meta: { errorToast: false },
     onSuccess: (data) => {
       queryClient.setQueryData(adminTeamQueryKey(data.id), data);
       invalidateAll(queryClient);
@@ -54,6 +57,7 @@ export function useDeleteTeam() {
   const queryClient = useQueryClient();
   return useMutation<void, Error, { teamId: string }>({
     mutationFn: ({ teamId }) => deleteTeam(teamId),
+    meta: { errorToast: false },
     onSuccess: (_data, vars) => {
       queryClient.removeQueries({ queryKey: adminTeamQueryKey(vars.teamId) });
       invalidateAll(queryClient);
@@ -69,6 +73,7 @@ export function useAddTeamMember() {
     { teamId: string; payload: AdminTeamMemberAddPayload }
   >({
     mutationFn: ({ teamId, payload }) => addTeamMember(teamId, payload),
+    meta: { errorToast: false },
     onSuccess: (data) => {
       queryClient.setQueryData(adminTeamQueryKey(data.id), data);
       invalidateAll(queryClient);
@@ -86,6 +91,7 @@ export function useRemoveTeamMember() {
     { teamId: string; userId: string }
   >({
     mutationFn: ({ teamId, userId }) => removeTeamMember(teamId, userId),
+    meta: { errorToast: false },
     onSuccess: (data) => {
       queryClient.setQueryData(adminTeamQueryKey(data.id), data);
       invalidateAll(queryClient);

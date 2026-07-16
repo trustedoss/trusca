@@ -27,6 +27,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -34,6 +35,7 @@ import {
 } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { registerToastDispatcher } from "@/lib/toastBus";
 import { cn } from "@/lib/utils";
 
 export type ToastTone = "success" | "error";
@@ -116,6 +118,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<ToastContextValue>(() => ({ toast }), [toast]);
+
+  // Non-React code (the global mutation error handler in lib/queryClient.ts)
+  // dispatches through the toast bus; wire it to this provider's dispatcher
+  // for the provider's lifetime.
+  useEffect(() => {
+    registerToastDispatcher(toast);
+    return () => registerToastDispatcher(null);
+  }, [toast]);
 
   return (
     <ToastContext.Provider value={value}>

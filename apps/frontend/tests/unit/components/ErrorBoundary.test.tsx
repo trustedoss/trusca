@@ -40,6 +40,23 @@ describe("ErrorBoundary", () => {
     expect(screen.getByTestId("error-boundary-reload")).toBeInTheDocument();
   });
 
+  it("announces the crash via role=alert and uses the i18n strings", () => {
+    render(
+      <ErrorBoundary>
+        <Boom />
+      </ErrorBoundary>,
+    );
+    const fallback = screen.getByTestId("error-boundary-fallback");
+    // a11y: the swapped-in crash screen must be announced assertively.
+    expect(fallback).toHaveAttribute("role", "alert");
+    // i18n: the copy comes from common:errors.* (EN default in tests) —
+    // no hardcoded English strings left in the component.
+    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
+    expect(screen.getByTestId("error-boundary-reload")).toHaveTextContent(
+      "Reload page",
+    );
+  });
+
   it("renders the provided custom fallback instead of the default", () => {
     render(
       <ErrorBoundary fallback={<div data-testid="custom-fallback">nope</div>}>
