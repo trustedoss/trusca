@@ -37,6 +37,8 @@ export function useUpdateUserRole() {
     { userId: string; payload: RoleUpdatePayload }
   >({
     mutationFn: ({ userId, payload }) => updateUserRole(userId, payload),
+    // Error surfaced locally (toast/inline) — keep the global error toast quiet.
+    meta: { errorToast: false },
     onSuccess: (data) => {
       queryClient.setQueryData(adminUserQueryKey(data.id), data);
       invalidateAll(queryClient);
@@ -48,6 +50,7 @@ export function useDeactivateUser() {
   const queryClient = useQueryClient();
   return useMutation<AdminUserDetail, Error, { userId: string }>({
     mutationFn: ({ userId }) => deactivateUser(userId),
+    meta: { errorToast: false },
     onSuccess: (data) => {
       queryClient.setQueryData(adminUserQueryKey(data.id), data);
       invalidateAll(queryClient);
@@ -59,6 +62,7 @@ export function useActivateUser() {
   const queryClient = useQueryClient();
   return useMutation<AdminUserDetail, Error, { userId: string }>({
     mutationFn: ({ userId }) => activateUser(userId),
+    meta: { errorToast: false },
     onSuccess: (data) => {
       queryClient.setQueryData(adminUserQueryKey(data.id), data);
       invalidateAll(queryClient);
@@ -69,5 +73,6 @@ export function useActivateUser() {
 export function useResetUserPassword() {
   return useMutation<void, Error, { userId: string }>({
     mutationFn: ({ userId }) => requestPasswordReset(userId),
+    meta: { errorToast: false },
   });
 }

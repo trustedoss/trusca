@@ -34,6 +34,8 @@ export function useVexImport(projectId: string | undefined) {
       }
       return importVex(projectId, file);
     },
+    // Error surfaced locally (toast/inline) — keep the global error toast quiet.
+    meta: { errorToast: false },
     onSuccess: () => {
       if (!projectId) return;
       // Reconcile every derived surface the import may have moved.
