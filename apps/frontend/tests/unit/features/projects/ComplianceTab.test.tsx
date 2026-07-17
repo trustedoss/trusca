@@ -249,6 +249,7 @@ describe("ComplianceTab unified grid", () => {
               obligation_id: "ob-1",
               kind: "source-disclosure",
               summary: "Disclose corresponding source.",
+              summary_ko: null,
             },
           ],
           notice_required: true,
