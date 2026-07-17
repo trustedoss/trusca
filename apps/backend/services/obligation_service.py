@@ -82,6 +82,7 @@ from models import (
 )
 from schemas.obligation_detail import KNOWN_OBLIGATION_KINDS
 from services.license_texts import is_safe_spdx_id, license_text, spdx_ids_for_expression
+from services.license_translations import obligation_text_ko
 from services.obligation_catalog import obligations_for
 from services.project_detail_service import _license_rank_case
 from services.project_service import ProjectError, ProjectNotFound
@@ -542,6 +543,11 @@ async def list_project_obligations(
                 "license_category": r.license_category,
                 "kind": r.kind,
                 "text": r.text,
+                # C1a — advisory KO rendering, resolved from the code catalog
+                # by the English text (no DB column, no migration). None for
+                # obligations that did not come from the catalog; the client
+                # falls back to the English text.
+                "text_ko": obligation_text_ko(r.text),
                 "link": r.link,
                 "affected_count": int(r.affected_count),
                 "updated_at": r.updated_at,
@@ -682,6 +688,10 @@ async def get_obligation_detail(
         "kind": obligation.kind,
         "text": capped_text,
         "text_truncated": text_truncated,
+        # C1a — looked up by the UNTRUNCATED text so a clamped English body
+        # still resolves its translation (catalog paragraphs are far below
+        # the cap; the clamp only ever fires on a runaway non-catalog row).
+        "text_ko": obligation_text_ko(obligation.text),
         "link": obligation.link,
         "affected_components": affected_components,
         "affected_components_truncated": ac_truncated,

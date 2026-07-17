@@ -85,8 +85,16 @@ class ComplianceObligation(BaseModel):
     )
     summary: str = Field(
         description=(
-            "Short human-readable summary of the obligation. Capped at 240 "
-            "chars by the service so the grid row stays compact."
+            "Short human-readable summary of the obligation (English). Capped "
+            "at 240 chars by the service so the grid row stays compact."
+        ),
+    )
+    summary_ko: str | None = Field(
+        default=None,
+        description=(
+            "Advisory Korean rendering of ``summary``, capped the same way. "
+            "Null when the obligation did not come from the catalog — clients "
+            "fall back to ``summary``. English remains authoritative."
         ),
     )
 

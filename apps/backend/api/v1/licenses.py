@@ -200,6 +200,8 @@ async def get_license_finding_endpoint(
         license_id=payload["license_id"],
         spdx_id=payload["spdx_id"],
         name=payload["name"],
+        summary=payload["summary"],
+        summary_ko=payload["summary_ko"],
         category=payload["category"],
         is_osi_approved=payload["is_osi_approved"],
         is_fsf_libre=payload["is_fsf_libre"],

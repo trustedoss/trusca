@@ -17,6 +17,7 @@ import type {
 } from "@/features/projects/api/obligationsApi";
 import { useObligation } from "@/features/projects/api/useObligation";
 import { LicenseCategoryBadge } from "@/features/projects/components/LicenseCategoryBadge";
+import { useAdvisoryTranslation } from "@/lib/advisoryTranslation";
 import { cn } from "@/lib/utils";
 import { ProblemError } from "@/lib/problem";
 
@@ -187,6 +188,10 @@ function DrawerMetaSection({ detail }: MetaProps) {
 
 function DrawerObligationBody({ detail }: MetaProps) {
   const { t } = useTranslation("project_detail");
+  const { pick } = useAdvisoryTranslation();
+  // C1a — Korean readers get the advisory rendering with the authoritative
+  // English original one click away; everyone else sees English unchanged.
+  const body = pick(detail.text, detail.text_ko);
   return (
     <section
       className="flex flex-col gap-2"
@@ -199,8 +204,24 @@ function DrawerObligationBody({ detail }: MetaProps) {
         className="whitespace-pre-wrap rounded-md border bg-muted/30 p-3 text-sm"
         data-testid="obligation-drawer-text"
       >
-        {detail.text}
+        {body.text}
       </p>
+      {body.original !== null ? (
+        <details
+          className="rounded-md border bg-background px-3 py-2 text-xs"
+          data-testid="obligation-drawer-original"
+        >
+          <summary className="cursor-pointer text-muted-foreground transition-colors duration-fast ease-out-soft hover:text-foreground">
+            {t("obligations.drawer.translation_advisory")}
+          </summary>
+          <p
+            className="mt-2 whitespace-pre-wrap text-sm"
+            data-testid="obligation-drawer-original-text"
+          >
+            {body.original}
+          </p>
+        </details>
+      ) : null}
       {detail.text_truncated ? (
         <p
           className="text-xs text-muted-foreground"

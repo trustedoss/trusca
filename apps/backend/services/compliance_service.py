@@ -75,6 +75,7 @@ from models import (
     Project,
 )
 from models import License as LicenseModel
+from services.license_translations import obligation_text_ko
 from services.obligation_service import sync_catalog_obligations
 from services.project_detail_service import _license_rank_case
 from services.project_service import ProjectError, ProjectForbidden, ProjectNotFound
@@ -483,11 +484,16 @@ async def _load_obligations_for_licenses(
     rows = (await session.execute(stmt)).all()
     out: dict[uuid.UUID, list[dict[str, Any]]] = {lid: [] for lid in license_ids}
     for r in rows:
+        # C1a — the KO rendering is summarized with the SAME rule as the
+        # English text so both stay one grid line. None for obligations
+        # outside the catalog; the client falls back to ``summary``.
+        text_ko = obligation_text_ko(r.text)
         out.setdefault(r.license_id, []).append(
             {
                 "obligation_id": r.obligation_id,
                 "kind": r.kind,
                 "summary": _summarize_obligation(r.text),
+                "summary_ko": _summarize_obligation(text_ko) if text_ko else None,
             }
         )
     return out

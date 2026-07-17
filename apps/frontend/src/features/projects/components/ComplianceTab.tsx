@@ -91,6 +91,7 @@ import { useNotice } from "@/features/projects/api/useNotice";
 import { LicenseCategoryBadge } from "@/features/projects/components/LicenseCategoryBadge";
 import { LicenseDrawer } from "@/features/projects/components/LicenseDrawer";
 import { LicenseWaiveAction } from "@/features/projects/components/LicenseWaiveAction";
+import { useAdvisoryTranslation } from "@/lib/advisoryTranslation";
 import type { LicensePolicyOut } from "@/lib/licensePoliciesApi";
 import { ProblemError } from "@/lib/problem";
 import { cn } from "@/lib/utils";
@@ -942,6 +943,7 @@ interface ObligationChipProps {
 
 function ObligationChip({ obligation }: ObligationChipProps) {
   const { t, i18n } = useTranslation("project_detail");
+  const { pick } = useAdvisoryTranslation();
   // Re-use the obligations.kind.* dictionary the old ObligationsTab seeded.
   // For unknown kinds the catalog can emit anything (free-form), so fall
   // back to the raw kind verbatim.
@@ -949,11 +951,14 @@ function ObligationChip({ obligation }: ObligationChipProps) {
   const label = i18n.exists(dictKey, { ns: "project_detail" })
     ? t(dictKey)
     : obligation.kind;
+  // C1a — the hover summary follows the reader's language (advisory KO with
+  // an English fallback); the drawer carries the English original.
+  const summary = pick(obligation.summary, obligation.summary_ko);
   return (
     <Badge
       tone="info"
       className="max-w-[8rem] truncate"
-      title={obligation.summary}
+      title={summary.text}
       data-testid="compliance-obligation-chip"
       data-kind={obligation.kind}
     >

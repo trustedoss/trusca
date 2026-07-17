@@ -715,7 +715,8 @@
         "kind_label": "Kind"
       },
       "affected_truncated": "Showing {{shown}} of {{total}} components. Open the Components tab to see the full list.",
-      "cross_link_component": "View component"
+      "cross_link_component": "View component",
+      "summary_advisory": "Show the original English (authoritative)"
     }
   },
   "obligations": {
@@ -788,7 +789,8 @@
         "empty": "No affected components in the latest scan."
       },
       "affected_truncated": "Showing {{shown}} of {{total}} components. Open the Components tab to see the full list.",
-      "text_truncated": "Obligation text was truncated by the server. See the source catalog for the complete text."
+      "text_truncated": "Obligation text was truncated by the server. See the source catalog for the complete text.",
+      "translation_advisory": "Show the original English (authoritative)"
     }
   },
   "sbom": {
