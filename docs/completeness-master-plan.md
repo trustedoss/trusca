@@ -51,8 +51,8 @@ v0.13.1 기준 BomLens 격차 17건은 전부 해소됐고, 남은 완성도 과
 
 | # | 항목 | 요지 | 상태 |
 |---|------|------|------|
-| C1a | 라이선스 요약·의무사항 KO | 카탈로그 52종 번역(전문 정본은 영어 유지), KO 필드 추가(Alembic), 언어 토글 연동, EN/KO 집합 동등성 정합 테스트 | ⏳ |
-| C3 | 정책 반영 맞춤 SBOM 프로파일 | 수출 시 프로파일 선택 → 위반 컴포넌트를 CycloneDX properties/SPDX annotation 주석 또는 필터. 기존 수출 4포맷·정책엔진·VEX 재사용. 수출 UI + CI 게이트 문서 동행 | ⏳ |
+| C1a | 라이선스 요약·의무사항 KO | 카탈로그 52종 번역(전문 정본은 영어 유지). 마이그레이션 0건 — 코드 카탈로그(services/license_translations.py) + 응답 시 부착. EN/KO 드리프트 계약 테스트 | ✅ #491 머지 |
+| C3 | 정책 반영 맞춤 SBOM 프로파일 | 수출 시 `?profile=policy-annotated\|policy-filtered`. 게이트 위반맵 헬퍼(`compute_component_policy_categories`, 공유 CATEGORY_RANK) 재사용, 기본 수출 byte-stable 불변, 서명은 기본 수출만(프로파일 미서명 명시). security-reviewer 2회전 APPROVE | ✅ #492 머지 |
 
 ## 4. v0.16.0 — 스캐너 정밀도 + 문서 parity (Wave 7)
 
