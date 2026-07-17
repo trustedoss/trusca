@@ -102,6 +102,47 @@ store it in your release archive. Treat the portal as the *current*
 SBOM, not the *historical* one.
 :::
 
+## Policy profiles {#policy-profiles}
+
+By default the export is the raw inventory. An optional **policy profile**
+applies your team's [license policy](./components-and-licenses.md#license-classification)
+to the export, so a distribution SBOM reflects your organization's rules:
+
+- **Policy annotated** — every violating component is flagged **in place**
+  without removing anything. CycloneDX components gain
+  `trusca:policy:category` / `trusca:policy:spdx` `properties`; SPDX packages
+  gain a `REVIEW` annotation. Forbidden **and** conditional components are
+  annotated, so a reviewer sees *why* each is a concern inside the SBOM.
+- **Policy filtered** — forbidden components are **dropped** from the export
+  (along with the vulnerability entries that referenced them), and the number
+  removed is recorded on the document
+  (`trusca:policy:excluded_count` / a document annotation).
+
+When no team or organization policy is configured, the profile falls back to
+the built-in classification catalog, so a forbidden GPL is still flagged.
+
+Select the profile on the SBOM tab, or pass `profile` on the API:
+
+<!-- docs-uat: id=sbom-profile-annotated-api kind=api auth=admin url=/v1/projects/${PROJECT_ID}/sbom?format=cyclonedx-json&profile=policy-annotated expect=status:200 tier=nightly -->
+```bash
+curl -sS -L -OJ \
+  -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+  "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/sbom?format=cyclonedx-json&profile=policy-annotated"
+```
+
+`profile` accepts: `policy-annotated`, `policy-filtered`. A profiled download
+is named distinctly (`sbom-<project>-<profile>.<ext>`) so it is never mistaken
+for the canonical export.
+
+:::caution Profile exports are not signed
+The cosign [signature](../reference/sbom-signature-verification.md) covers only
+the **default** SBOM — the exact bytes produced at scan time. A policy profile
+is generated on demand and
+therefore has **no signature**; `cosign verify-blob` against a profiled export
+will fail. Use the default export when you need a verifiable, signed artifact,
+and treat profiled exports as review / distribution conveniences.
+:::
+
 ## NOTICE file
 
 For Apache-2.0 §4(d) compliance and similar attribution obligations, the portal auto-generates a NOTICE attribution body from the project's latest scan.

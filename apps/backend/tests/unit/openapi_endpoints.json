@@ -279,6 +279,7 @@
   ],
   "GET /v1/projects/{project_id}/sbom": [
     "format",
+    "profile",
     "project_id",
     "scan_id"
   ],

@@ -825,6 +825,18 @@
       "unsigned": "The latest scan has no signature. SBOM signing may be disabled, or this scan was not signed.",
       "verify_hint": "The bundle includes a VERIFY.md with step-by-step cosign verify-blob instructions.",
       "verify_docs_link": "Verification guide"
+    },
+    "profile": {
+      "label": "Export profile",
+      "choice": {
+        "default": "Default",
+        "policy_annotated": "Policy annotated",
+        "policy_filtered": "Policy filtered"
+      },
+      "hint": {
+        "default": "The canonical SBOM. This is the only export that carries a cosign signature.",
+        "profiled": "Applies your team's license policy. Profile exports are not signed."
+      }
     }
   },
   "source": {

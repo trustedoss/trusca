@@ -176,4 +176,49 @@ describe("SbomTab", () => {
       );
     });
   });
+
+  // C3 — profile selector threads the chosen profile into the download.
+  it("defaults to no profile so the canonical (signable) SBOM is exported", async () => {
+    mockedDownloadSbom.mockResolvedValue({
+      blob: new Blob(["{}"], { type: "application/json" }),
+      filename: "sbom-proj-1.cdx.json",
+      format: "cyclonedx-json",
+    });
+    const user = userEvent.setup();
+    render(<SbomTab projectId="proj-1" />);
+    // The default choice is pre-selected.
+    expect(screen.getByTestId("sbom-profile-default")).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    await user.click(screen.getByTestId("sbom-download-cyclonedx-json"));
+    await waitFor(() => {
+      expect(mockedDownloadSbom).toHaveBeenCalledWith("proj-1", "cyclonedx-json", {
+        scanId: undefined,
+        profile: undefined,
+      });
+    });
+  });
+
+  it("threads the selected policy profile into the download", async () => {
+    mockedDownloadSbom.mockResolvedValue({
+      blob: new Blob(["{}"], { type: "application/json" }),
+      filename: "sbom-proj-1-policy-filtered.cdx.json",
+      format: "cyclonedx-json",
+    });
+    const user = userEvent.setup();
+    render(<SbomTab projectId="proj-1" />);
+    await user.click(screen.getByTestId("sbom-profile-policy-filtered"));
+    expect(screen.getByTestId("sbom-profile-policy-filtered")).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    await user.click(screen.getByTestId("sbom-download-cyclonedx-json"));
+    await waitFor(() => {
+      expect(mockedDownloadSbom).toHaveBeenCalledWith("proj-1", "cyclonedx-json", {
+        scanId: undefined,
+        profile: "policy-filtered",
+      });
+    });
+  });
 });

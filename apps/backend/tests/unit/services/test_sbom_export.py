@@ -1034,3 +1034,318 @@ async def test_reexport_cyclonedx_with_findings_is_byte_identical(
     second, _, _ = await export_sbom(db_session, project_id=project.id, fmt="cyclonedx-json")
     assert first == second
     assert json.loads(first)["vulnerabilities"], "fixture must actually emit a finding"
+
+
+# ===========================================================================
+# C3 — policy-aware SBOM profiles (annotate / filter)
+# ===========================================================================
+
+
+async def _attach_categorized_license(
+    session: AsyncSession,
+    *,
+    scan_id: uuid.UUID,
+    cv_id: uuid.UUID,
+    spdx_id: str,
+    category: str,
+    kind: str = "concluded",
+) -> None:
+    """Attach a license with an explicit persisted category (static path)."""
+    lic = await _get_or_create_license(
+        session, name=spdx_id, spdx_id=spdx_id, category=category
+    )
+    from models import LicenseFinding
+
+    session.add(
+        LicenseFinding(
+            scan_id=scan_id,
+            component_version_id=cv_id,
+            license_id=lic.id,
+            kind=kind,
+        )
+    )
+    await session.commit()
+
+
+async def _seed_mixed_policy_scan(session: AsyncSession):
+    """A scan with one allowed, one conditional, one forbidden component.
+
+    Returns ``(project, scan, {category: cv})``. No team policy is configured,
+    so the profile resolves verdicts from the persisted static categories.
+    """
+    _, project, scan = await _make_project_with_succeeded_scan(session)
+    suffix = unique_suffix()
+    cvs: dict[str, uuid.UUID] = {}
+    for category, spdx in (
+        ("allowed", "MIT"),
+        ("conditional", "MPL-2.0"),
+        ("forbidden", "GPL-3.0-only"),
+    ):
+        _, cv = await _make_component_version(
+            session, name=f"{category}-{suffix}", version="1.0.0"
+        )
+        await _attach(session, scan_id=scan.id, cv_id=cv.id)
+        await _attach_categorized_license(
+            session, scan_id=scan.id, cv_id=cv.id, spdx_id=spdx, category=category
+        )
+        cvs[category] = cv.id
+    return project, scan, cvs
+
+
+async def test_default_export_carries_no_profile_marker(
+    db_session: AsyncSession,
+) -> None:
+    """The pre-C3 contract: without a profile there are NO policy annotations."""
+    from services.sbom_export import export_sbom
+
+    project, _scan, _cvs = await _seed_mixed_policy_scan(db_session)
+    body, _, filename = await export_sbom(
+        db_session, project_id=project.id, fmt="cyclonedx-json"
+    )
+    doc = json.loads(body)
+    assert "properties" not in doc["metadata"]
+    assert all("properties" not in c for c in doc["components"])
+    assert filename.endswith(".cdx.json") and "policy" not in filename
+
+
+async def test_policy_annotated_flags_only_violating_components(
+    db_session: AsyncSession,
+) -> None:
+    """Annotate profile: forbidden + conditional get properties, allowed does not."""
+    from services.sbom_export import PROFILE_ANNOTATED, export_sbom
+
+    project, _scan, cvs = await _seed_mixed_policy_scan(db_session)
+    body, _, filename = await export_sbom(
+        db_session, project_id=project.id, fmt="cyclonedx-json", profile=PROFILE_ANNOTATED
+    )
+    doc = json.loads(body)
+    assert "policy-annotated" in filename
+    # Document marker records the profile + zero exclusions (annotate removes nothing).
+    marker = {p["name"]: p["value"] for p in doc["metadata"]["properties"]}
+    assert marker["trusca:policy:profile"] == "policy-annotated"
+    assert marker["trusca:policy:excluded_count"] == "0"
+
+    by_ref = {c["bom-ref"]: c for c in doc["components"]}
+    forbidden = by_ref[str(cvs["forbidden"])]
+    conditional = by_ref[str(cvs["conditional"])]
+    allowed = by_ref[str(cvs["allowed"])]
+
+    fprops = {p["name"]: p["value"] for p in forbidden["properties"]}
+    assert fprops["trusca:policy:category"] == "forbidden"
+    assert fprops["trusca:policy:spdx"] == "GPL-3.0-only"
+    assert {p["name"] for p in conditional["properties"]} >= {"trusca:policy:category"}
+    # An allowed component is never annotated.
+    assert "properties" not in allowed
+
+
+async def test_policy_filtered_drops_forbidden_and_keeps_the_rest(
+    db_session: AsyncSession,
+) -> None:
+    from services.sbom_export import PROFILE_FILTERED, export_sbom
+
+    project, _scan, cvs = await _seed_mixed_policy_scan(db_session)
+    body, _, filename = await export_sbom(
+        db_session, project_id=project.id, fmt="cyclonedx-json", profile=PROFILE_FILTERED
+    )
+    doc = json.loads(body)
+    refs = {c["bom-ref"] for c in doc["components"]}
+    assert str(cvs["forbidden"]) not in refs
+    assert str(cvs["conditional"]) in refs
+    assert str(cvs["allowed"]) in refs
+    marker = {p["name"]: p["value"] for p in doc["metadata"]["properties"]}
+    assert marker["trusca:policy:profile"] == "policy-filtered"
+    assert marker["trusca:policy:excluded_count"] == "1"
+    assert "policy-filtered" in filename
+
+
+async def test_policy_filtered_removes_vex_entries_of_dropped_components(
+    db_session: AsyncSession,
+) -> None:
+    """VEX integrity: no ``affects[].ref`` may dangle after filtering."""
+    from services.sbom_export import PROFILE_FILTERED, export_sbom
+
+    project, scan, cvs = await _seed_mixed_policy_scan(db_session)
+    suffix = unique_suffix()
+    # A finding on the forbidden component (dropped) and one on the allowed (kept).
+    v_forbidden = await _make_vulnerability(db_session, cve_id=f"CVE-2099-F{suffix[:4]}")
+    v_allowed = await _make_vulnerability(db_session, cve_id=f"CVE-2099-A{suffix[:4]}")
+    await _attach_finding(
+        db_session, scan_id=scan.id, cv_id=cvs["forbidden"], vulnerability_id=v_forbidden.id
+    )
+    await _attach_finding(
+        db_session, scan_id=scan.id, cv_id=cvs["allowed"], vulnerability_id=v_allowed.id
+    )
+
+    body, _, _ = await export_sbom(
+        db_session, project_id=project.id, fmt="cyclonedx-json", profile=PROFILE_FILTERED
+    )
+    doc = json.loads(body)
+    component_refs = {c["bom-ref"] for c in doc["components"]}
+    for vuln in doc["vulnerabilities"]:
+        for aff in vuln["affects"]:
+            assert aff["ref"] in component_refs, "VEX entry references a filtered-out component"
+    # The dropped component's CVE is gone; the kept one's remains.
+    cve_ids = {v["id"] for v in doc["vulnerabilities"]}
+    assert v_forbidden.external_id not in cve_ids
+    assert v_allowed.external_id in cve_ids
+
+
+@pytest.mark.parametrize(
+    "fmt,profile",
+    [
+        ("cyclonedx-json", "policy-annotated"),
+        ("cyclonedx-xml", "policy-annotated"),
+        ("spdx-json", "policy-annotated"),
+        ("spdx-tv", "policy-annotated"),
+        ("cyclonedx-json", "policy-filtered"),
+        ("spdx-json", "policy-filtered"),
+    ],
+)
+async def test_profiled_export_is_byte_stable(
+    db_session: AsyncSession, fmt: str, profile: str
+) -> None:
+    """Each profile is self-reproducible (annotation dates are deterministic)."""
+    from services.sbom_export import export_sbom
+
+    project, _scan, _cvs = await _seed_mixed_policy_scan(db_session)
+    first, _, _ = await export_sbom(
+        db_session, project_id=project.id, fmt=fmt, profile=profile
+    )
+    second, _, _ = await export_sbom(
+        db_session, project_id=project.id, fmt=fmt, profile=profile
+    )
+    assert first == second
+
+
+async def test_spdx_annotated_emits_review_annotation_on_forbidden(
+    db_session: AsyncSession,
+) -> None:
+    from services.sbom_export import PROFILE_ANNOTATED, export_sbom
+
+    project, _scan, cvs = await _seed_mixed_policy_scan(db_session)
+    body, _, _ = await export_sbom(
+        db_session, project_id=project.id, fmt="spdx-json", profile=PROFILE_ANNOTATED
+    )
+    doc = json.loads(body)
+    # Document-level profile annotation is present.
+    assert any(
+        "policy profile: policy-annotated" in a["comment"]
+        for a in doc.get("annotations", [])
+    )
+    # The forbidden package carries a REVIEW annotation naming its category.
+    forbidden_spdxid = f"SPDXRef-Pkg-{cvs['forbidden'].hex}"
+    pkg = next(p for p in doc["packages"] if p["SPDXID"] == forbidden_spdxid)
+    assert pkg["annotations"][0]["annotationType"] == "REVIEW"
+    assert "forbidden" in pkg["annotations"][0]["comment"]
+
+
+async def test_unknown_profile_raises_422(db_session: AsyncSession) -> None:
+    from services.sbom_export import SBOMUnsupportedProfile, export_sbom
+
+    project, _scan, _cvs = await _seed_mixed_policy_scan(db_session)
+    with pytest.raises(SBOMUnsupportedProfile) as ei:
+        await export_sbom(
+            db_session, project_id=project.id, fmt="cyclonedx-json", profile="bogus"
+        )
+    assert ei.value.status_code == 422
+
+
+async def test_team_policy_override_drives_profile_verdict(
+    db_session: AsyncSession,
+) -> None:
+    """The DYNAMIC path: a team policy that overrides MIT→forbidden must make
+    the filter drop an otherwise-allowed MIT component. Proves the profile
+    consumes the effective policy, not just the persisted static category."""
+    from models import LicensePolicy
+    from services.sbom_export import PROFILE_FILTERED, export_sbom
+
+    team, project, scan = await _make_project_with_succeeded_scan(db_session)
+    suffix = unique_suffix()
+    _, cv = await _make_component_version(
+        db_session, name=f"mit-{suffix}", version="1.0.0"
+    )
+    await _attach(db_session, scan_id=scan.id, cv_id=cv.id)
+    # Persisted category is 'allowed' — only the policy makes it forbidden.
+    await _attach_categorized_license(
+        db_session, scan_id=scan.id, cv_id=cv.id, spdx_id="MIT", category="allowed"
+    )
+    db_session.add(
+        LicensePolicy(
+            organization_id=team.organization_id,
+            team_id=team.id,
+            name=f"policy-{suffix}",
+            category_overrides={"MIT": "forbidden"},
+            license_exceptions=[],
+            unknown_license_category="conditional",
+            compound_operator_strategy={
+                "AND": "most_restrictive",
+                "OR": "least_restrictive",
+                "WITH": "most_restrictive",
+            },
+            enabled=True,
+        )
+    )
+    await db_session.commit()
+
+    body, _, _ = await export_sbom(
+        db_session, project_id=project.id, fmt="cyclonedx-json", profile=PROFILE_FILTERED
+    )
+    doc = json.loads(body)
+    # The policy override forbade MIT, so the component is filtered out.
+    assert str(cv.id) not in {c["bom-ref"] for c in doc["components"]}
+    marker = {p["name"]: p["value"] for p in doc["metadata"]["properties"]}
+    assert marker["trusca:policy:excluded_count"] == "1"
+
+
+def test_category_rank_is_the_single_shared_vocabulary() -> None:
+    """C3 hardening (rule 2): the SBOM static-fold rank IS the gate's rank.
+
+    Both the build gate's dynamic verdict fold and the SBOM profile's static
+    fold must rank categories identically, or a policy-filtered export could
+    keep a forbidden component the gate would block. They share ONE map by
+    import; this test pins that they are literally the same object so a future
+    'convenience copy' fails here.
+    """
+    from services import policy_gate, sbom_export
+
+    assert sbom_export.CATEGORY_RANK is policy_gate.CATEGORY_RANK
+    # forbidden must outrank every other category — the load-bearing invariant.
+    rank = policy_gate.CATEGORY_RANK
+    assert rank["forbidden"] == max(rank.values())
+
+
+async def test_annotation_strips_xml_illegal_control_chars(
+    db_session: AsyncSession,
+) -> None:
+    """A hostile license string with an XML-illegal control char must not
+    produce non-well-formed XML.
+
+    Postgres itself rejects a raw NUL (0x00) at insert, so the reachable case
+    is a control char that IS valid UTF-8 but XML-1.0-illegal — e.g. the
+    vertical tab (0x0b). Our ``_xml_safe`` drops it before it reaches the
+    property text.
+    """
+    from services.sbom_export import PROFILE_ANNOTATED, export_sbom
+
+    _, project, scan = await _make_project_with_succeeded_scan(db_session)
+    suffix = unique_suffix()
+    _, cv = await _make_component_version(
+        db_session, name=f"evil-{suffix}", version="1.0.0"
+    )
+    await _attach(db_session, scan_id=scan.id, cv_id=cv.id)
+    # A forbidden license whose SPDX string smuggles a vertical tab (0x0b).
+    await _attach_categorized_license(
+        db_session,
+        scan_id=scan.id,
+        cv_id=cv.id,
+        spdx_id="GPL-3.0-only\x0bevil",
+        category="forbidden",
+    )
+
+    body, _, _ = await export_sbom(
+        db_session, project_id=project.id, fmt="cyclonedx-xml", profile=PROFILE_ANNOTATED
+    )
+    # The export must still parse as well-formed XML (the control char is gone).
+    root = ET.fromstring(body)
+    assert root.tag.endswith("}bom")
+    assert "\x0b" not in body

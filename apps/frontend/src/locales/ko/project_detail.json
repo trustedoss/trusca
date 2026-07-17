@@ -825,6 +825,18 @@
       "unsigned": "최근 스캔에 서명이 없습니다. SBOM 서명이 비활성화되었거나 이 스캔이 서명되지 않았습니다.",
       "verify_hint": "번들에는 cosign verify-blob 단계별 안내가 담긴 VERIFY.md가 포함됩니다.",
       "verify_docs_link": "검증 가이드"
+    },
+    "profile": {
+      "label": "내보내기 프로파일",
+      "choice": {
+        "default": "기본",
+        "policy_annotated": "정책 주석",
+        "policy_filtered": "정책 필터"
+      },
+      "hint": {
+        "default": "표준 SBOM입니다. cosign 서명이 붙는 유일한 내보내기입니다.",
+        "profiled": "팀의 라이선스 정책을 반영합니다. 프로파일 내보내기에는 서명이 붙지 않습니다."
+      }
     }
   },
   "source": {
