@@ -384,7 +384,7 @@ describe("C1a advisory-translation affordances — EN + KO parity", () => {
     ["en", enProjectDetail],
     ["ko", koProjectDetail],
   ])("obligation drawer owns a %s translation_advisory label", (_locale, ns) => {
-    const drawer = (ns as Record<string, any>).obligations?.drawer ?? {};
+    const drawer = labelMap(ns, "obligations", "drawer");
     expect(
       drawer.translation_advisory,
       "obligations.drawer.translation_advisory missing",
@@ -395,7 +395,7 @@ describe("C1a advisory-translation affordances — EN + KO parity", () => {
     ["en", enProjectDetail],
     ["ko", koProjectDetail],
   ])("license drawer owns a %s summary_advisory label", (_locale, ns) => {
-    const drawer = (ns as Record<string, any>).licenses?.drawer ?? {};
+    const drawer = labelMap(ns, "licenses", "drawer");
     expect(
       drawer.summary_advisory,
       "licenses.drawer.summary_advisory missing",
