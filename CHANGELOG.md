@@ -7,6 +7,23 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+- **Korean license content (summaries + obligations).** When the interface
+  language is Korean, each classification-catalog license's plain-language
+  summary and its obligation text now render in Korean, with the authoritative
+  English original one click away (the canonical license text stays English).
+  Covers the finite 52-license catalog; licenses outside it fall back to
+  English. No schema change — the translations live in a code catalog and are
+  attached to the API responses, with an EN↔KO drift contract test.
+- **Policy-aware SBOM export profiles.** `GET /v1/projects/{id}/sbom` accepts
+  an optional `profile`: `policy-annotated` flags each component that violates
+  the project's effective license policy in place (CycloneDX `properties` /
+  SPDX annotations, for forbidden and conditional licenses); `policy-filtered`
+  drops forbidden components (and the vulnerability entries referencing them),
+  recording the excluded count on the document. The default export is
+  unchanged and byte-stable. Profile exports are **not** cosign-signed — the
+  signature covers only the canonical default SBOM.
+
 ## [0.14.0] — 2026-07-16
 
 ### Added
