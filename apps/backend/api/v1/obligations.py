@@ -216,6 +216,7 @@ async def get_obligation_endpoint(
         license_reference_url=payload["license_reference_url"],
         kind=payload["kind"],
         text=payload["text"],
+        text_ko=payload["text_ko"],
         text_truncated=payload["text_truncated"],
         link=payload["link"],
         affected_components=[

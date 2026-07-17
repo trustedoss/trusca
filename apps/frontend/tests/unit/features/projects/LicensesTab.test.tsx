@@ -69,6 +69,8 @@ function lic(
     license_id: overrides.license_id ?? `lic-${spdxId}`,
     spdx_id: spdxId,
     name: overrides.name ?? spdxId,
+    summary: overrides.summary ?? null,
+    summary_ko: overrides.summary_ko ?? null,
     category: "allowed",
     kind: "concluded",
     affected_count: 1,

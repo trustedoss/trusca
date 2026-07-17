@@ -99,7 +99,16 @@ class ObligationListItem(BaseModel):
         ),
         max_length=64,
     )
-    text: str = Field(description="Human-readable obligation text.")
+    text: str = Field(description="Human-readable obligation text (English).")
+    text_ko: str | None = Field(
+        default=None,
+        description=(
+            "Advisory Korean rendering of ``text``. Null when the obligation "
+            "did not come from the catalog (no translation exists) — clients "
+            "fall back to ``text``. English remains authoritative; the Korean "
+            "text is a reading aid, not a legal instrument."
+        ),
+    )
     link: str | None = Field(
         default=None,
         description=(
@@ -172,8 +181,18 @@ class ObligationDetailResponse(BaseModel):
     kind: str = Field(max_length=64)
     text: str = Field(
         description=(
-            "Human-readable obligation text. Capped at 65 536 bytes — see "
-            "``text_truncated``."
+            "Human-readable obligation text (English). Capped at 65 536 bytes "
+            "— see ``text_truncated``."
+        ),
+    )
+    text_ko: str | None = Field(
+        default=None,
+        description=(
+            "Advisory Korean rendering of ``text``. Null when the obligation "
+            "did not come from the catalog — clients fall back to ``text``. "
+            "English remains authoritative. Never truncated: the catalog "
+            "paragraphs are short, and the translation is looked up by the "
+            "UNTRUNCATED English text, so a truncated ``text`` still resolves."
         ),
     )
     text_truncated: bool = Field(
