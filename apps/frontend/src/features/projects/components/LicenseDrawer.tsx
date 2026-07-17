@@ -22,6 +22,7 @@ import { useLicenseFinding } from "@/features/projects/api/useLicenseFinding";
 import { LicenseCategoryBadge } from "@/features/projects/components/LicenseCategoryBadge";
 import { LicenseKindBadge } from "@/features/projects/components/LicenseKindBadge";
 import { ReviewFlagBadge } from "@/features/projects/components/ReviewFlagBadge";
+import { useAdvisoryTranslation } from "@/lib/advisoryTranslation";
 import { ProblemError } from "@/lib/problem";
 import { cn } from "@/lib/utils";
 
@@ -151,6 +152,12 @@ interface MetaProps {
 
 function DrawerMetaSection({ detail }: MetaProps) {
   const { t } = useTranslation("project_detail");
+  const { pick } = useAdvisoryTranslation();
+  // C1a — the plain-language summary follows the reader's language, with the
+  // authoritative English original one click away. Null outside the catalog.
+  const summary = detail.summary
+    ? pick(detail.summary, detail.summary_ko)
+    : null;
   return (
     <section
       className="flex flex-col gap-2"
@@ -177,6 +184,25 @@ function DrawerMetaSection({ detail }: MetaProps) {
           </Badge>
         ) : null}
       </div>
+
+      {summary ? (
+        <div className="flex flex-col gap-1" data-testid="license-drawer-summary">
+          <p className="text-sm text-foreground">{summary.text}</p>
+          {summary.original !== null ? (
+            <details className="text-xs">
+              <summary className="cursor-pointer text-muted-foreground transition-colors duration-fast ease-out-soft hover:text-foreground">
+                {t("licenses.drawer.summary_advisory")}
+              </summary>
+              <p
+                className="mt-1 text-sm"
+                data-testid="license-drawer-summary-original"
+              >
+                {summary.original}
+              </p>
+            </details>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="font-mono text-xs text-muted-foreground">
         <span className="mr-2 uppercase tracking-wide">

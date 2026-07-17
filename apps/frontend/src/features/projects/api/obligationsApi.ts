@@ -68,6 +68,11 @@ export interface ObligationListItem {
   license_category: LicenseCategoryName;
   kind: string;
   text: string;
+  /**
+   * Advisory Korean rendering of `text` (C1a). Null when the obligation is
+   * outside the catalog — render `text` then. English stays authoritative.
+   */
+  text_ko: string | null;
   link: string | null;
   affected_count: number;
   updated_at: string;
@@ -95,6 +100,11 @@ export interface ObligationDetailResponse {
   license_reference_url: string | null;
   kind: string;
   text: string;
+  /**
+   * Advisory Korean rendering of `text` (C1a). Null when the obligation is
+   * outside the catalog — render `text` then. English stays authoritative.
+   */
+  text_ko: string | null;
   /** True when the server clamped `text` at 64 KiB (chore PR #3). */
   text_truncated: boolean;
   link: string | null;

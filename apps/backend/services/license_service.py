@@ -73,6 +73,7 @@ from models import (
     License as LicenseModel,
 )
 from services.license_flags import REVIEW_FLAG_VALUES
+from services.license_translations import license_summary
 from services.project_detail_service import _license_rank_case
 from services.project_service import ProjectError, ProjectForbidden, ProjectNotFound
 from services.scan_resolution import resolve_snapshot_scan_id
@@ -361,12 +362,18 @@ async def list_project_licenses(
 
     items: list[dict[str, Any]] = []
     for r in rows:
+        # C1a — plain-language summary (EN authoritative + advisory KO),
+        # resolved from the code catalog by SPDX id. Both are None for ids
+        # outside the catalog (LicenseRef-*, compound expressions).
+        summary = license_summary(r.spdx_id)
         items.append(
             {
                 "id": r.sample_finding_id,
                 "license_id": r.license_id,
                 "spdx_id": r.spdx_id,
                 "name": r.name,
+                "summary": summary.en if summary else None,
+                "summary_ko": summary.ko if summary else None,
                 "category": r.category,
                 "kind": r.kind,
                 "affected_count": int(r.affected_count),
@@ -479,11 +486,14 @@ async def get_license_finding_detail(
     else:
         raw_match = None
 
+    summary = license_summary(lic.spdx_id)
     return {
         "id": finding.id,
         "license_id": lic.id,
         "spdx_id": lic.spdx_id,
         "name": lic.name,
+        "summary": summary.en if summary else None,
+        "summary_ko": summary.ko if summary else None,
         "category": lic.category,
         "is_osi_approved": bool(lic.is_osi_approved),
         "is_fsf_libre": bool(lic.is_fsf_libre),

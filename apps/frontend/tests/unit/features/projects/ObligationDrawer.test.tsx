@@ -19,6 +19,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ObligationDetailResponse } from "@/features/projects/api/obligationsApi";
 import { ObligationDrawer } from "@/features/projects/components/ObligationDrawer";
+import i18n from "@/lib/i18n";
 import { ProblemError } from "@/lib/problem";
 
 vi.mock("@/features/projects/api/obligationsApi", async () => {
@@ -54,6 +55,7 @@ function detail(
     license_reference_url: "https://opensource.org/licenses/MIT",
     kind: "attribution",
     text: "Include the original copyright notice.",
+    text_ko: null,
     text_truncated: false,
     link: "https://example.org/policy/attribution",
     affected_components: [
@@ -232,5 +234,60 @@ describe("ObligationDrawer", () => {
     expect(
       screen.getByTestId("obligation-drawer-error").textContent,
     ).toContain("Obligation does not exist or is not visible to you.");
+  });
+
+  // C1a — advisory Korean rendering with the English original disclosable.
+  it("shows only the English text in English, with no original toggle", async () => {
+    mockedGet.mockResolvedValueOnce(
+      detail({
+        text: "Include the original copyright notice.",
+        text_ko: "원본 저작권 표시를 포함해야 합니다.",
+      }),
+    );
+    renderDrawer("obg-1");
+    await waitFor(() => {
+      expect(screen.getByTestId("obligation-drawer-text")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("obligation-drawer-text").textContent).toBe(
+      "Include the original copyright notice.",
+    );
+    // No original-language disclosure while reading English.
+    expect(screen.queryByTestId("obligation-drawer-original")).toBeNull();
+  });
+
+  it("shows the Korean rendering in Korean and discloses the English original", async () => {
+    await i18n.changeLanguage("ko");
+    mockedGet.mockResolvedValueOnce(
+      detail({
+        text: "Include the original copyright notice.",
+        text_ko: "원본 저작권 표시를 포함해야 합니다.",
+      }),
+    );
+    renderDrawer("obg-1");
+    await waitFor(() => {
+      expect(screen.getByTestId("obligation-drawer-text")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("obligation-drawer-text").textContent).toBe(
+      "원본 저작권 표시를 포함해야 합니다.",
+    );
+    // The authoritative English text stays reachable.
+    expect(
+      screen.getByTestId("obligation-drawer-original-text").textContent,
+    ).toBe("Include the original copyright notice.");
+  });
+
+  it("falls back to English in Korean when no translation exists", async () => {
+    await i18n.changeLanguage("ko");
+    mockedGet.mockResolvedValueOnce(
+      detail({ text: "A non-catalog obligation.", text_ko: null }),
+    );
+    renderDrawer("obg-1");
+    await waitFor(() => {
+      expect(screen.getByTestId("obligation-drawer-text")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("obligation-drawer-text").textContent).toBe(
+      "A non-catalog obligation.",
+    );
+    expect(screen.queryByTestId("obligation-drawer-original")).toBeNull();
   });
 });

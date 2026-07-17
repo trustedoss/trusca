@@ -39,6 +39,8 @@ function detail(
     license_id: "00000000-0000-0000-0000-license00001",
     spdx_id: "MIT",
     name: "MIT License",
+    summary: null,
+    summary_ko: null,
     category: "allowed",
     is_osi_approved: true,
     is_fsf_libre: true,

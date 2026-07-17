@@ -73,6 +73,22 @@ class LicenseListItem(BaseModel):
         ),
     )
     name: str
+    summary: str | None = Field(
+        default=None,
+        description=(
+            "Plain-language summary of what the license asks of you (English). "
+            "Null for licenses outside the classification catalog "
+            "(LicenseRef-*, compound expressions)."
+        ),
+    )
+    summary_ko: str | None = Field(
+        default=None,
+        description=(
+            "Advisory Korean rendering of ``summary``. Null when ``summary`` "
+            "is null. English remains authoritative — the canonical license "
+            "text is never translated."
+        ),
+    )
     category: LicenseCategory
     kind: LicenseFindingKind = Field(
         description=(
@@ -158,6 +174,20 @@ class LicenseDetailResponse(BaseModel):
     license_id: uuid.UUID
     spdx_id: str | None = None
     name: str
+    summary: str | None = Field(
+        default=None,
+        description=(
+            "Plain-language summary of what the license asks of you (English). "
+            "Null for licenses outside the classification catalog."
+        ),
+    )
+    summary_ko: str | None = Field(
+        default=None,
+        description=(
+            "Advisory Korean rendering of ``summary``. English remains "
+            "authoritative — the canonical license text is never translated."
+        ),
+    )
     category: LicenseCategory
     is_osi_approved: bool = False
     is_fsf_libre: bool = False

@@ -60,6 +60,10 @@ export interface LicenseListItem {
   /** SPDX short id (e.g. MIT, Apache-2.0). Null for ORT custom licenses. */
   spdx_id: string | null;
   name: string;
+  /** Plain-language summary in English (C1a). Null outside the catalog. */
+  summary: string | null;
+  /** Advisory Korean rendering of `summary` (C1a). Null when `summary` is. */
+  summary_ko: string | null;
   category: LicenseCategoryName;
   kind: LicenseFindingKind;
   /** Distinct component_versions in the latest scan that carry this license. */
@@ -105,6 +109,10 @@ export interface LicenseDetailResponse {
   license_id: string;
   spdx_id: string | null;
   name: string;
+  /** Plain-language summary in English (C1a). Null outside the catalog. */
+  summary: string | null;
+  /** Advisory Korean rendering of `summary` (C1a). Null when `summary` is. */
+  summary_ko: string | null;
   category: LicenseCategoryName;
   is_osi_approved: boolean;
   is_fsf_libre: boolean;

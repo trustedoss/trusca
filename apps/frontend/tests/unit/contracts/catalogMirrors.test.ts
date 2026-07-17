@@ -374,3 +374,31 @@ describe("EOL states — FE mirror of services.eol.eol_catalog.EOL_STATES", () =
     },
   );
 });
+
+describe("C1a advisory-translation affordances — EN + KO parity", () => {
+  // The advisory KO rendering of backend-owned license content (summaries +
+  // obligation prose) needs one FE string per surface: a disclosure that
+  // reveals the authoritative English original. Both must exist in both
+  // locales, or a Korean reader gets a raw i18n key on the toggle.
+  it.each([
+    ["en", enProjectDetail],
+    ["ko", koProjectDetail],
+  ])("obligation drawer owns a %s translation_advisory label", (_locale, ns) => {
+    const drawer = labelMap(ns, "obligations", "drawer");
+    expect(
+      drawer.translation_advisory,
+      "obligations.drawer.translation_advisory missing",
+    ).toBeTruthy();
+  });
+
+  it.each([
+    ["en", enProjectDetail],
+    ["ko", koProjectDetail],
+  ])("license drawer owns a %s summary_advisory label", (_locale, ns) => {
+    const drawer = labelMap(ns, "licenses", "drawer");
+    expect(
+      drawer.summary_advisory,
+      "licenses.drawer.summary_advisory missing",
+    ).toBeTruthy();
+  });
+});

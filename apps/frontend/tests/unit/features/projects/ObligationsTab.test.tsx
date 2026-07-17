@@ -75,6 +75,7 @@ function ob(
     license_category: overrides.license_category ?? "allowed",
     kind,
     text: overrides.text ?? `Default text for ${kind}`,
+    text_ko: overrides.text_ko ?? null,
     link: overrides.link ?? null,
     affected_count: overrides.affected_count ?? 1,
     updated_at: overrides.updated_at ?? "2026-05-07T00:00:00Z",

@@ -271,6 +271,22 @@ For these, see the underlying license text via the component drawer; a
 richer obligation taxonomy is on the roadmap.
 :::
 
+## Korean license content {#korean-license-content}
+
+When the interface language is Korean, the license **summary** (the
+plain-language "what does this license ask of me?" line in the license drawer)
+and the **obligation text** are shown in Korean for every license in the
+classification catalog. Licenses outside the catalog (`LicenseRef-*`, compound
+expressions the catalog does not fully cover) fall back to English.
+
+:::note The English text is authoritative
+The Korean rendering is an advisory reading aid, **not** a legal instrument.
+Each translated summary and obligation exposes a **Show the original English**
+disclosure so you can read the authoritative wording, and the canonical
+license text — the full SPDX text bundled in the NOTICE file's *License Texts*
+section — is never translated. Rely on the English text for legal review.
+:::
+
 ## SPDX expressions
 
 Licenses are identified by [SPDX identifiers](https://spdx.org/licenses/). Compound licenses use the SPDX expression syntax:

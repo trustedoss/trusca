@@ -45,8 +45,13 @@ export interface ComplianceAffectedComponent {
 export interface ComplianceObligation {
   obligation_id: string;
   kind: string;
-  /** Short one-line summary (capped at 240 chars server-side). */
+  /** Short one-line summary in English (capped at 240 chars server-side). */
   summary: string;
+  /**
+   * Advisory Korean rendering of `summary`, capped the same way (C1a). Null
+   * when the obligation is outside the catalog — render `summary` then.
+   */
+  summary_ko: string | null;
 }
 
 export interface ComplianceRow {

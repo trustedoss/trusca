@@ -290,3 +290,86 @@ def test_eol_states_catalog_matches_schema_literals() -> None:
 
     assert _literal_states(ComponentSummary, "eol_state") == expected
     assert _literal_states(ComponentDetailResponse, "eol_state") == expected
+
+
+# ---------------------------------------------------------------------------
+# License content translations (C1a) — EN ↔ KO drift guards
+# ---------------------------------------------------------------------------
+
+
+def test_every_catalog_obligation_paragraph_has_a_korean_rendering() -> None:
+    """Each English obligation paragraph must carry a Korean translation.
+
+    ``services.license_translations`` keys its translations by the exact
+    English paragraph, which buys reuse (52 licenses share 48 paragraphs —
+    translate once, every license inherits it) at the cost of a drift class:
+    editing an English paragraph silently orphans its Korean text. This test
+    is the closure — same-vocabulary-in-two-places rule (H-5 class).
+
+    Failing here means one of two things: you added a paragraph (translate it)
+    or you edited one (update its Korean rendering).
+    """
+    from services.license_translations import translated_obligation_texts
+    from services.obligation_catalog import _CATALOG
+
+    catalog_texts = {text for entry in _CATALOG.values() for _, text in entry.rows}
+    translated = translated_obligation_texts()
+
+    # Guard against a vacuous pass if either side stops loading.
+    assert catalog_texts, "catalog exposes no obligation paragraphs — layout changed?"
+    assert translated, "translation module exposes nothing — layout changed?"
+
+    assert not (catalog_texts - translated), (
+        "catalog paragraphs with no Korean rendering: "
+        f"{sorted(t[:60] for t in catalog_texts - translated)}"
+    )
+    assert not (translated - catalog_texts), (
+        "orphan translations no catalog paragraph reaches (edited English?): "
+        f"{sorted(t[:60] for t in translated - catalog_texts)}"
+    )
+
+
+def test_every_catalog_license_has_both_summaries() -> None:
+    """Every catalogued SPDX id has an EN + KO summary, and no orphans."""
+    from services.license_translations import summarized_spdx_ids
+    from services.obligation_catalog import catalog_spdx_ids
+
+    catalogued = catalog_spdx_ids()
+    summarized = summarized_spdx_ids()
+
+    assert catalogued, "catalog exposes no SPDX ids — layout changed?"
+    assert summarized, "summary module exposes nothing — layout changed?"
+
+    assert not (catalogued - summarized), (
+        f"catalogued licenses with no summary: {sorted(catalogued - summarized)}"
+    )
+    assert not (summarized - catalogued), (
+        f"summaries for licenses outside the catalog: {sorted(summarized - catalogued)}"
+    )
+
+
+def test_translated_content_is_non_empty_and_actually_korean() -> None:
+    """Korean text must be present and contain Hangul — not an English copy.
+
+    A copy-paste that leaves the English string in the ``ko`` slot passes a
+    set-equality test but ships an untranslated UI, so assert the script.
+    """
+    from services.license_translations import (
+        _LICENSE_SUMMARY,
+        _OBLIGATION_TEXT_KO,
+    )
+
+    def _has_hangul(text: str) -> bool:
+        return any("가" <= ch <= "힣" for ch in text)
+
+    for english, korean in _OBLIGATION_TEXT_KO.items():
+        assert korean.strip(), f"empty Korean rendering for: {english[:60]}"
+        assert _has_hangul(korean), f"Korean rendering has no Hangul: {english[:60]}"
+
+    for spdx_id, summary in _LICENSE_SUMMARY.items():
+        assert summary.en.strip(), f"empty English summary for {spdx_id}"
+        assert summary.ko.strip(), f"empty Korean summary for {spdx_id}"
+        assert _has_hangul(summary.ko), f"Korean summary has no Hangul for {spdx_id}"
+        assert not _has_hangul(summary.en), (
+            f"English summary contains Hangul for {spdx_id} — swapped fields?"
+        )
