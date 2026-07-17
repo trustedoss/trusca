@@ -93,6 +93,10 @@ log = structlog.get_logger("sbom.api")
 # depth. The Literal mirrors ``services.sbom_export.SUPPORTED_FORMATS``.
 SBOMFormat = Literal["cyclonedx-json", "cyclonedx-xml", "spdx-json", "spdx-tv"]
 
+# `profile` (C3) is likewise a Literal so the OpenAPI layer 422s an invalid
+# value; the service re-validates. Mirrors ``sbom_export.SUPPORTED_PROFILES``.
+SBOMProfile = Literal["policy-annotated", "policy-filtered"]
+
 
 def _problem_for_project_error(request: Request, exc: ProjectError) -> Response:
     """Translate project-domain errors with existence-hide on forbidden.
@@ -243,6 +247,18 @@ async def export_project_sbom_endpoint(
             "the default latest-succeeded behaviour."
         ),
     ),
+    profile: SBOMProfile | None = Query(
+        default=None,
+        description=(
+            "Optional policy profile (C3). Applies the project's effective "
+            "license policy: 'policy-annotated' flags each violating component "
+            "in place (CycloneDX properties / SPDX annotations); "
+            "'policy-filtered' drops forbidden components (and their VEX "
+            "entries), recording the excluded count on the document. Omit for "
+            "the canonical, cosign-signable default export. Profile exports are "
+            "NOT signed."
+        ),
+    ),
     session: AsyncSession = Depends(get_db),
     actor: CurrentUser = Depends(require_role("developer")),
 ) -> Response:
@@ -276,6 +292,7 @@ async def export_project_sbom_endpoint(
             project_id=project_id,
             fmt=fmt,
             scan_id=scan_id,
+            profile=profile,
         )
     except SnapshotScanNotFound:
         # Existence-hide: a pinned scan_id that is cross-project / non-succeeded /

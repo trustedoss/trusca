@@ -79,8 +79,10 @@ which we mirror by replacing CR/LF with spaces in any free-form text.
 from __future__ import annotations
 
 import json
+import re
 import uuid
 import xml.etree.ElementTree as ET
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -98,6 +100,12 @@ from models import (
     ScanComponent,
     Vulnerability,
     VulnerabilityFinding,
+)
+from services.license_policy_service import get_effective_policy
+from services.policy_gate import (
+    CATEGORY_RANK,
+    ComponentPolicyVerdict,
+    compute_component_policy_categories,
 )
 from services.scan_resolution import resolve_snapshot_scan_id
 from services.vex_export import CYCLONEDX_STATE_MAP
@@ -120,6 +128,56 @@ class SBOMExportError(Exception):
 class SBOMUnsupportedFormat(SBOMExportError):
     status_code = 422
     title = "Unsupported SBOM Format"
+
+
+class SBOMUnsupportedProfile(SBOMExportError):
+    status_code = 422
+    title = "Unsupported SBOM Profile"
+
+
+# ---------------------------------------------------------------------------
+# Policy profiles (C3)
+# ---------------------------------------------------------------------------
+#
+# A profile applies the project's effective license policy to the export:
+#   - policy-annotated : flag each violating component in place (CycloneDX
+#     ``properties`` / SPDX ``annotations``) without removing anything, so a
+#     reviewer sees WHY a component is a concern inside the SBOM itself.
+#   - policy-filtered  : drop forbidden components (and the vulnerability
+#     entries that reference them) so a distribution SBOM carries only what
+#     the policy permits, with the excluded count recorded on the document.
+#
+# No profile (the default) reproduces the pre-C3 export byte-for-byte.
+PROFILE_ANNOTATED = "policy-annotated"
+PROFILE_FILTERED = "policy-filtered"
+SUPPORTED_PROFILES: frozenset[str] = frozenset({PROFILE_ANNOTATED, PROFILE_FILTERED})
+
+# The category a component must resolve to before a profile annotates it. A
+# filtered export removes only ``forbidden``; annotation covers ``conditional``
+# too, since a conditional license is exactly what a reviewer wants surfaced.
+_ANNOTATE_CATEGORIES: frozenset[str] = frozenset({"forbidden", "conditional"})
+
+# CycloneDX property / SPDX annotation field names. Namespaced under ``trusca:``
+# so a consumer can distinguish TRUSCA policy annotations from other tools'.
+_PROP_PROFILE = "trusca:policy:profile"
+_PROP_EXCLUDED = "trusca:policy:excluded_count"
+_PROP_CATEGORY = "trusca:policy:category"
+_PROP_SPDX = "trusca:policy:spdx"
+
+
+@dataclass(frozen=True)
+class _ProfileMarker:
+    """What a profile export needs the serializers to stamp.
+
+    ``annotations`` is per-component (annotate mode only; empty for filter mode
+    because the violating rows are already gone). ``excluded_count`` records how
+    many components a filter dropped, so the document self-describes the
+    reduction (no-silent-caps).
+    """
+
+    profile: str
+    annotations: dict[uuid.UUID, ComponentPolicyVerdict]
+    excluded_count: int
 
 
 # ---------------------------------------------------------------------------
@@ -410,40 +468,70 @@ def _cyclonedx_license_entries(entries: list[LicenseEntry]) -> list[dict[str, An
     """
     out: list[dict[str, Any]] = []
     for e in entries:
+        # id / name are scan-derived; strip XML-illegal control chars so the
+        # XML serializer cannot emit a non-well-formed document (a hostile
+        # dependency's license string carrying e.g. a vertical tab). Normal
+        # SPDX ids / names contain none, so this is a no-op for valid data.
         if e["spdx_id"]:
-            out.append({"license": {"id": e["spdx_id"]}})
+            out.append({"license": {"id": _xml_safe(e["spdx_id"])}})
         else:
-            out.append({"license": {"name": e["name"]}})
+            out.append({"license": {"name": _xml_safe(e["name"] or "")}})
     return out
+
+
+def _cyclonedx_policy_properties(
+    verdict: ComponentPolicyVerdict,
+) -> list[dict[str, str]]:
+    """CycloneDX ``properties`` marking a component's policy verdict (C3).
+
+    Deterministic order (category then spdx) keeps the export byte-stable. The
+    spdx property is omitted when the expression is unknown so we never emit a
+    ``value: null``.
+    """
+    props = [{"name": _PROP_CATEGORY, "value": verdict.category}]
+    if verdict.spdx_id:
+        # spdx_id is scan-derived; strip XML-illegal control chars so a hostile
+        # license string cannot produce non-well-formed XML.
+        props.append({"name": _PROP_SPDX, "value": _xml_safe(verdict.spdx_id)})
+    return props
 
 
 def _cyclonedx_components(
     rows: list[dict[str, Any]],
     licenses_by_cv: dict[uuid.UUID, ComponentLicenses],
+    annotations: dict[uuid.UUID, ComponentPolicyVerdict] | None = None,
 ) -> list[dict[str, Any]]:
+    annotations = annotations or {}
     out: list[dict[str, Any]] = []
     for r in rows:
+        cv_id = r["component_version_id"]
         comp: dict[str, Any] = {
             # CycloneDX uses bom-ref to disambiguate components within one BOM.
             # The cv_id (UUID) is unique within the export; using it directly
             # makes diffs across two exports of the same scan identical.
-            "bom-ref": str(r["component_version_id"]),
+            "bom-ref": str(cv_id),
             "type": "library",
-            "name": r["name"],
-            "version": r["version"],
+            # name / version / group / description are scan-derived; strip
+            # XML-illegal control chars so the XML serializer stays well-formed
+            # (no-op for valid data).
+            "name": _xml_safe(r["name"]),
+            "version": _xml_safe(r["version"]),
         }
         if r.get("namespace"):
-            comp["group"] = r["namespace"]
+            comp["group"] = _xml_safe(r["namespace"])
         if r.get("description"):
-            comp["description"] = r["description"]
+            comp["description"] = _xml_safe(r["description"])
         # licenses precede purl to match the CycloneDX schema field order.
         license_entries = _cyclonedx_license_entries(
-            _preferred_licenses(licenses_by_cv.get(r["component_version_id"], {}))
+            _preferred_licenses(licenses_by_cv.get(cv_id, {}))
         )
         if license_entries:
             comp["licenses"] = license_entries
         if r.get("purl"):
             comp["purl"] = r["purl"]
+        verdict = annotations.get(cv_id)
+        if verdict is not None:
+            comp["properties"] = _cyclonedx_policy_properties(verdict)
         out.append(comp)
     return out
 
@@ -484,8 +572,33 @@ def _build_cyclonedx_doc(
     licenses_by_cv: dict[uuid.UUID, ComponentLicenses],
     vuln_rows: list[dict[str, Any]],
     now: datetime,
+    profile: _ProfileMarker | None = None,
 ) -> dict[str, Any]:
     """Build the CycloneDX 1.6 dict (used both for the JSON and XML serializers)."""
+    metadata: dict[str, Any] = {
+        "timestamp": _utc_iso(now),
+        "tools": [
+            {
+                "vendor": "TrustedOSS",
+                "name": "TRUSCA",
+                "version": "0.0.1",
+            }
+        ],
+        "component": {
+            # The scanned project itself, as a CycloneDX "application".
+            "bom-ref": f"project:{project.id}",
+            "type": "application",
+            "name": project.name,
+            "version": _top_component_version(scan),
+        },
+    }
+    if profile is not None:
+        # Document-level marker so a profile export self-describes: which
+        # profile produced it, and (for the filter) how many were removed.
+        metadata["properties"] = [
+            {"name": _PROP_PROFILE, "value": profile.profile},
+            {"name": _PROP_EXCLUDED, "value": str(profile.excluded_count)},
+        ]
     return {
         "bomFormat": "CycloneDX",
         "specVersion": "1.6",
@@ -494,24 +607,10 @@ def _build_cyclonedx_doc(
         # the same scan is byte-identical — never a fresh uuid4().
         "serialNumber": f"urn:uuid:{_deterministic_serial_uuid(project, scan)}",
         "version": 1,
-        "metadata": {
-            "timestamp": _utc_iso(now),
-            "tools": [
-                {
-                    "vendor": "TrustedOSS",
-                    "name": "TRUSCA",
-                    "version": "0.0.1",
-                }
-            ],
-            "component": {
-                # The scanned project itself, as a CycloneDX "application".
-                "bom-ref": f"project:{project.id}",
-                "type": "application",
-                "name": project.name,
-                "version": _top_component_version(scan),
-            },
-        },
-        "components": _cyclonedx_components(rows, licenses_by_cv),
+        "metadata": metadata,
+        "components": _cyclonedx_components(
+            rows, licenses_by_cv, profile.annotations if profile else None
+        ),
         # H-4: the SBOM alone carries the VEX triage. Always present (empty
         # list when the scan has no findings) so consumers can rely on the key.
         "vulnerabilities": _cyclonedx_vulnerabilities(vuln_rows),
@@ -571,6 +670,14 @@ def _serialize_cyclonedx_xml(doc: dict[str, Any]) -> str:
     )
     ET.SubElement(pc, f"{{{_CDX_NS}}}name").text = project_component["name"]
     ET.SubElement(pc, f"{{{_CDX_NS}}}version").text = project_component["version"]
+    # C3: document-level policy-profile marker (mirrors metadata.properties).
+    if doc["metadata"].get("properties"):
+        meta_props_el = ET.SubElement(metadata, f"{{{_CDX_NS}}}properties")
+        for prop in doc["metadata"]["properties"]:
+            p = ET.SubElement(
+                meta_props_el, f"{{{_CDX_NS}}}property", attrib={"name": prop["name"]}
+            )
+            p.text = prop["value"]
 
     components_el = ET.SubElement(bom, f"{{{_CDX_NS}}}components")
     for comp in doc["components"]:
@@ -596,6 +703,14 @@ def _serialize_cyclonedx_xml(doc: dict[str, Any]) -> str:
                     ET.SubElement(lic_el, f"{{{_CDX_NS}}}name").text = lic["name"]
         if "purl" in comp:
             ET.SubElement(c, f"{{{_CDX_NS}}}purl").text = comp["purl"]
+        # C3: per-component policy-verdict properties (annotate profile).
+        if comp.get("properties"):
+            props_el = ET.SubElement(c, f"{{{_CDX_NS}}}properties")
+            for prop in comp["properties"]:
+                p = ET.SubElement(
+                    props_el, f"{{{_CDX_NS}}}property", attrib={"name": prop["name"]}
+                )
+                p.text = prop["value"]
 
     # H-4: VEX triage — mirrors the JSON ``vulnerabilities[]`` array. In the
     # XML schema each affected component ref nests as affects > target > ref.
@@ -644,15 +759,52 @@ def _spdx_doc_namespace(project: Project, scan: Scan | None) -> str:
     return f"{base}/{project.id}/{_deterministic_serial_uuid(project, scan)}"
 
 
+# XML 1.0 forbids most C0 control characters (only tab / LF / CR are legal).
+# A scan-derived string (a hostile dependency's declared license expression)
+# carrying e.g. a NUL would otherwise produce non-well-formed XML that a
+# consumer's parser rejects. We drop the illegal range before emitting any
+# scan-derived text into an XML property or an SPDX comment.
+_XML_ILLEGAL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+
+
+def _xml_safe(value: str) -> str:
+    """Drop XML-1.0-illegal control characters from a scan-derived string."""
+    return _XML_ILLEGAL.sub("", value)
+
+
 def _spdx_clean(value: str) -> str:
-    """Strip CR/LF — SPDX tag values are line-oriented."""
-    return value.replace("\r", " ").replace("\n", " ").strip()
+    """Strip CR/LF (SPDX tag values are line-oriented) + XML-illegal controls."""
+    return _xml_safe(value.replace("\r", " ").replace("\n", " ").strip())
+
+
+def _spdx_policy_annotation(
+    verdict: ComponentPolicyVerdict, now: datetime
+) -> dict[str, Any]:
+    """An SPDX ``REVIEW`` annotation recording a component's policy verdict (C3).
+
+    ``annotationDate`` uses the export's deterministic timestamp — never a
+    wall-clock now — so a profiled export stays byte-stable across re-exports.
+    """
+    comment = f"TRUSCA policy: {verdict.category}"
+    if verdict.spdx_id:
+        # spdx_id is scan-derived; strip XML-illegal controls so a downstream
+        # SPDX→XML re-serialization of this comment stays well-formed.
+        comment += f" ({_xml_safe(verdict.spdx_id)})"
+    return {
+        "annotationType": "REVIEW",
+        "annotator": "Tool: TRUSCA-0.0.1",
+        "annotationDate": _utc_iso(now),
+        "comment": comment,
+    }
 
 
 def _spdx_packages(
     rows: list[dict[str, Any]],
     licenses_by_cv: dict[uuid.UUID, ComponentLicenses],
+    annotations: dict[uuid.UUID, ComponentPolicyVerdict] | None = None,
+    now: datetime | None = None,
 ) -> list[dict[str, Any]]:
+    annotations = annotations or {}
     out: list[dict[str, Any]] = []
     for r in rows:
         spdx_id = _spdx_id_for_component(r["component_version_id"])
@@ -690,6 +842,9 @@ def _spdx_packages(
                     "referenceLocator": r["purl"],
                 }
             ]
+        verdict = annotations.get(r["component_version_id"])
+        if verdict is not None and now is not None:
+            pkg["annotations"] = [_spdx_policy_annotation(verdict, now)]
         out.append(pkg)
     return out
 
@@ -701,8 +856,9 @@ def _build_spdx_doc(
     rows: list[dict[str, Any]],
     licenses_by_cv: dict[uuid.UUID, ComponentLicenses],
     now: datetime,
+    profile: _ProfileMarker | None = None,
 ) -> dict[str, Any]:
-    return {
+    doc: dict[str, Any] = {
         "spdxVersion": "SPDX-2.3",
         "dataLicense": "CC0-1.0",
         "SPDXID": "SPDXRef-DOCUMENT",
@@ -712,8 +868,28 @@ def _build_spdx_doc(
             "created": _utc_iso(now),
             "creators": ["Tool: TRUSCA-0.0.1", "Organization: TrustedOSS"],
         },
-        "packages": _spdx_packages(rows, licenses_by_cv),
+        "packages": _spdx_packages(
+            rows,
+            licenses_by_cv,
+            profile.annotations if profile else None,
+            now,
+        ),
     }
+    if profile is not None:
+        # Document-level annotation so a profile export self-describes (mirrors
+        # the CycloneDX metadata.properties marker). Deterministic date.
+        doc["annotations"] = [
+            {
+                "annotationType": "OTHER",
+                "annotator": "Tool: TRUSCA-0.0.1",
+                "annotationDate": _utc_iso(now),
+                "comment": (
+                    f"TRUSCA policy profile: {profile.profile}; "
+                    f"excluded_count: {profile.excluded_count}"
+                ),
+            }
+        ]
+    return doc
 
 
 def _serialize_spdx_json(doc: dict[str, Any]) -> str:
@@ -744,6 +920,13 @@ def _serialize_spdx_tv(doc: dict[str, Any]) -> str:
     lines.append(f"Created: {doc['creationInfo']['created']}")
     for creator in doc["creationInfo"]["creators"]:
         lines.append(f"Creator: {creator}")
+    # C3: document-level policy-profile annotation (mirrors the JSON form).
+    for ann in doc.get("annotations", []):
+        lines.append(f"AnnotationDate: {ann['annotationDate']}")
+        lines.append(f"Annotator: {ann['annotator']}")
+        lines.append(f"AnnotationType: {ann['annotationType']}")
+        lines.append(f"SPDXREF: {doc['SPDXID']}")
+        lines.append(f"AnnotationComment: {_spdx_clean(ann['comment'])}")
 
     # One blank line between sections is the SPDX convention.
     for pkg in doc.get("packages", []):
@@ -763,6 +946,13 @@ def _serialize_spdx_tv(doc: dict[str, Any]) -> str:
                 "ExternalRef: "
                 f"{ref['referenceCategory']} {ref['referenceType']} {ref['referenceLocator']}"
             )
+        # C3: per-package policy-verdict annotation (annotate profile).
+        for ann in pkg.get("annotations", []):
+            lines.append(f"AnnotationDate: {ann['annotationDate']}")
+            lines.append(f"Annotator: {ann['annotator']}")
+            lines.append(f"AnnotationType: {ann['annotationType']}")
+            lines.append(f"SPDXREF: {pkg['SPDXID']}")
+            lines.append(f"AnnotationComment: {_spdx_clean(ann['comment'])}")
 
     # Trailing newline keeps `cat` / `wc -l` output sane.
     return "\n".join(lines) + "\n"
@@ -773,12 +963,69 @@ def _serialize_spdx_tv(doc: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _filename(project: Project, fmt: str) -> str:
-    """Operator-friendly filename: ``sbom-<project-slug>.<ext>``."""
+def _filename(project: Project, fmt: str, profile: str | None = None) -> str:
+    """Operator-friendly filename: ``sbom-<project-slug>[-<profile>].<ext>``.
+
+    A profile export names the file distinctly so a policy-annotated /
+    policy-filtered download does not overwrite (or get mistaken for) the
+    canonical, signable default SBOM.
+    """
     _, ext = _FORMAT_CATALOG[fmt]
-    # Slug is already validated [a-z0-9-]+ at create time, so no further
-    # escaping is required.
-    return f"sbom-{project.slug}.{ext}"
+    # Slug is already validated [a-z0-9-]+ at create time, and the profile is
+    # one of a fixed allow-list, so no further escaping is required.
+    suffix = f"-{profile}" if profile else ""
+    return f"sbom-{project.slug}{suffix}.{ext}"
+
+
+async def _static_component_verdicts(
+    session: AsyncSession,
+    scan_id: uuid.UUID,
+) -> dict[uuid.UUID, ComponentPolicyVerdict]:
+    """Per-component verdict from the PERSISTED license categories.
+
+    The no-policy fallback for a profile export: reads the ``licenses.category``
+    stored at scan time (the same source the static build gate uses) and folds
+    to the worst category per DISTINCT ``component_version_id``. A profile is
+    still meaningful without a configured policy — a forbidden GPL is flagged
+    from the catalog defaults.
+    """
+    stmt = (
+        select(
+            LicenseFinding.component_version_id,
+            License.category,
+            License.spdx_id,
+        )
+        .select_from(LicenseFinding)
+        .join(License, License.id == LicenseFinding.license_id)
+        .where(LicenseFinding.scan_id == scan_id)
+        .distinct()
+    )
+    verdicts: dict[uuid.UUID, ComponentPolicyVerdict] = {}
+    for cv_id, category, spdx_id in (await session.execute(stmt)).all():
+        cat = str(category)
+        prior = verdicts.get(cv_id)
+        if prior is None or CATEGORY_RANK.get(cat, 0) > CATEGORY_RANK.get(
+            prior.category, 0
+        ):
+            verdicts[cv_id] = ComponentPolicyVerdict(category=cat, spdx_id=spdx_id)
+    return verdicts
+
+
+async def _component_verdicts_for_profile(
+    session: AsyncSession,
+    *,
+    project: Project,
+    scan_id: uuid.UUID,
+) -> dict[uuid.UUID, ComponentPolicyVerdict]:
+    """Resolve every component's policy verdict for a profile export.
+
+    Uses the project team's effective (team > org-default) license policy when
+    one is configured; otherwise falls back to the persisted static categories.
+    """
+    policy = await get_effective_policy(session, team_id=project.team_id)
+    if policy is not None:
+        return await compute_component_policy_categories(session, scan_id, policy)
+    return await _static_component_verdicts(session, scan_id)
 
 
 async def export_sbom(
@@ -788,6 +1035,7 @@ async def export_sbom(
     fmt: str,
     now: datetime | None = None,
     scan_id: uuid.UUID | None = None,
+    profile: str | None = None,
 ) -> tuple[str, str, str]:
     """
     Build the SBOM body for ``project_id`` in the requested format.
@@ -819,6 +1067,11 @@ async def export_sbom(
     if fmt not in _FORMAT_CATALOG:
         raise SBOMUnsupportedFormat(
             f"unknown SBOM format {fmt!r}; supported: {sorted(SUPPORTED_FORMATS)}",
+        )
+    if profile is not None and profile not in SUPPORTED_PROFILES:
+        raise SBOMUnsupportedProfile(
+            f"unknown SBOM profile {profile!r}; supported: "
+            f"{sorted(SUPPORTED_PROFILES)}",
         )
 
     project = await _load_project(session, project_id)
@@ -854,8 +1107,49 @@ async def export_sbom(
     # to pin a specific stamp.
     timestamp = now if now is not None else _deterministic_timestamp(scan)
 
+    # C3 profile: resolve per-component verdicts, then either annotate the
+    # violating components in place or filter the forbidden ones out. The
+    # default (profile is None) skips all of this so the export is byte-for-
+    # byte the pre-C3 contract.
+    annotations: dict[uuid.UUID, ComponentPolicyVerdict] = {}
+    excluded_count = 0
+    if profile is not None and scan is not None:
+        verdicts = await _component_verdicts_for_profile(
+            session, project=project, scan_id=scan.id
+        )
+        if profile == PROFILE_FILTERED:
+            # Drop forbidden components, then drop the vulnerability entries
+            # that referenced them so no ``affects[].ref`` dangles (VEX
+            # integrity). Rows stay in their byte-stable purl order.
+            kept_rows: list[dict[str, Any]] = []
+            for r in rows:
+                verdict = verdicts.get(r["component_version_id"])
+                if verdict is not None and verdict.category == "forbidden":
+                    excluded_count += 1
+                    continue
+                kept_rows.append(r)
+            rows = kept_rows
+            kept_cv_ids = {r["component_version_id"] for r in rows}
+            vuln_rows = [
+                v for v in vuln_rows if v["component_version_id"] in kept_cv_ids
+            ]
+        else:  # PROFILE_ANNOTATED
+            annotations = {
+                cv_id: v
+                for cv_id, v in verdicts.items()
+                if v.category in _ANNOTATE_CATEGORIES
+            }
+
+    profile_marker = (
+        _ProfileMarker(
+            profile=profile, annotations=annotations, excluded_count=excluded_count
+        )
+        if profile is not None
+        else None
+    )
+
     content_type, _ = _FORMAT_CATALOG[fmt]
-    filename = _filename(project, fmt)
+    filename = _filename(project, fmt, profile=profile)
 
     if fmt == "cyclonedx-json":
         body = _serialize_cyclonedx_json(
@@ -866,6 +1160,7 @@ async def export_sbom(
                 licenses_by_cv=licenses_by_cv,
                 vuln_rows=vuln_rows,
                 now=timestamp,
+                profile=profile_marker,
             )
         )
     elif fmt == "cyclonedx-xml":
@@ -877,6 +1172,7 @@ async def export_sbom(
                 licenses_by_cv=licenses_by_cv,
                 vuln_rows=vuln_rows,
                 now=timestamp,
+                profile=profile_marker,
             )
         )
     elif fmt == "spdx-json":
@@ -887,6 +1183,7 @@ async def export_sbom(
                 rows=rows,
                 licenses_by_cv=licenses_by_cv,
                 now=timestamp,
+                profile=profile_marker,
             )
         )
     elif fmt == "spdx-tv":
@@ -897,6 +1194,7 @@ async def export_sbom(
                 rows=rows,
                 licenses_by_cv=licenses_by_cv,
                 now=timestamp,
+                profile=profile_marker,
             )
         )
     else:  # pragma: no cover - guarded by the catalog check above
@@ -925,8 +1223,13 @@ async def export_sbom(
 
 
 __all__ = [
+    "CATEGORY_RANK",
+    "PROFILE_ANNOTATED",
+    "PROFILE_FILTERED",
     "SBOMExportError",
     "SBOMUnsupportedFormat",
+    "SBOMUnsupportedProfile",
     "SUPPORTED_FORMATS",
+    "SUPPORTED_PROFILES",
     "export_sbom",
 ]

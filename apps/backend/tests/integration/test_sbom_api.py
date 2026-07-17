@@ -262,3 +262,56 @@ async def test_sbom_unknown_format_returns_422(client: AsyncClient) -> None:
     )
     assert response.status_code == 422
     assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+# ---------------------------------------------------------------------------
+# Profile validation + existence-hide ordering (C3)
+# ---------------------------------------------------------------------------
+
+
+async def test_sbom_unknown_profile_returns_422(client: AsyncClient) -> None:
+    _, user, project = await _seed(client)
+    headers = _bearer_for(user)
+
+    response = await client.get(
+        f"/v1/projects/{project.id}/sbom",
+        headers=headers,
+        params={"format": "cyclonedx-json", "profile": "totally-bogus"},
+    )
+    assert response.status_code == 422
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+@pytest.mark.parametrize("profile", ["policy-annotated", "policy-filtered"])
+async def test_sbom_valid_profile_returns_200(
+    client: AsyncClient, profile: str
+) -> None:
+    _, user, project = await _seed(client)
+    headers = _bearer_for(user)
+
+    response = await client.get(
+        f"/v1/projects/{project.id}/sbom",
+        headers=headers,
+        params={"format": "cyclonedx-json", "profile": profile},
+    )
+    assert response.status_code == 200, response.text
+    # The profiled download names itself distinctly from the signable default.
+    assert profile in response.headers.get("content-disposition", "")
+
+
+async def test_sbom_outsider_with_profile_still_404_before_profile_check(
+    client: AsyncClient,
+) -> None:
+    """Existence-hide wins over profile validation — an outsider must not learn
+    the project exists even by probing with a valid profile (hardening rule 1:
+    the authorization gate fires before any request-shape processing)."""
+    _, _, target_project = await _seed(client)
+    _, outsider, _ = await _seed(client)
+
+    response = await client.get(
+        f"/v1/projects/{target_project.id}/sbom",
+        headers=_bearer_for(outsider),
+        params={"format": "cyclonedx-json", "profile": "policy-filtered"},
+    )
+    assert response.status_code == 404
+    assert response.json()["title"] == "Project Not Found"

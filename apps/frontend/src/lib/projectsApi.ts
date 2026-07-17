@@ -473,6 +473,14 @@ export type SbomFormat =
   | "spdx-json"
   | "spdx-tv";
 
+/**
+ * Optional policy profile (C3). Applies the project's effective license
+ * policy to the export: `policy-annotated` flags violating components in
+ * place; `policy-filtered` drops forbidden ones. Omit for the canonical,
+ * cosign-signable default export — profile exports are NOT signed.
+ */
+export type SbomProfile = "policy-annotated" | "policy-filtered";
+
 export interface SbomDownload {
   blob: Blob;
   filename: string;
@@ -496,11 +504,14 @@ const SBOM_FALLBACK_EXTENSIONS: Record<SbomFormat, string> = {
 export async function downloadSbom(
   projectId: string,
   format: SbomFormat,
-  options: { scanId?: string } = {},
+  options: { scanId?: string; profile?: SbomProfile } = {},
 ): Promise<SbomDownload> {
   const params: Record<string, unknown> = { format };
   if (options.scanId != null && options.scanId.length > 0) {
     params.scan_id = options.scanId;
+  }
+  if (options.profile != null) {
+    params.profile = options.profile;
   }
   const response = await api.get<Blob>(`/v1/projects/${projectId}/sbom`, {
     params,

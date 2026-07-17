@@ -446,18 +446,44 @@ async def _load_scan_license_rows(
     return [(row[0], row[1], row[2]) for row in result.all()]
 
 
-async def _count_forbidden_license_components_dynamic(
+@dataclass(frozen=True)
+class ComponentPolicyVerdict:
+    """The policy category a scan component's license resolves to.
+
+    ``category`` is the worst (most restrictive) verdict across all of the
+    component's license expressions under the effective policy; ``spdx_id`` is
+    the expression that produced it (for the SBOM annotation's ``value``). One
+    verdict per ``component_version_id``.
+    """
+
+    category: str
+    spdx_id: str | None
+
+
+# Category precedence — a component with several license rows takes its worst
+# verdict, mirroring the classifier's "most restrictive wins" posture. Exported
+# so the SBOM-profile static path (services.sbom_export) folds identically; a
+# second copy there would be the "same vocabulary in two places" drift class.
+CATEGORY_RANK: dict[str, int] = {
+    "forbidden": 3,
+    "conditional": 2,
+    "unknown": 1,
+    "allowed": 0,
+}
+
+
+async def compute_component_policy_categories(
     session: AsyncSession,
     scan_id: uuid.UUID,
     policy: LicensePolicy,
-) -> int:
-    """Count components whose license resolves to ``forbidden`` under *policy*.
+) -> dict[uuid.UUID, ComponentPolicyVerdict]:
+    """Resolve every scan component's license to its policy category.
 
     Re-classifies each component's stored license expression through the policy
     (overrides / exceptions / compound-operator strategy / unknown posture) via
-    the hardened compound-SPDX evaluator, then counts DISTINCT
-    ``component_version_id`` with at least one expression resolving to
-    ``forbidden``. Replaces the static SQL count when a policy is active.
+    the hardened compound-SPDX evaluator, keeping the WORST verdict per DISTINCT
+    ``component_version_id``. Shared by the build gate's forbidden count and the
+    C3 policy-annotated / policy-filtered SBOM export.
 
     Performance: one batched query loads the (cv, expression) pairs; the
     evaluation is pure CPU over a memoised cache so a license shared by many
@@ -473,7 +499,7 @@ async def _count_forbidden_license_components_dynamic(
     # across many components, and the purl only changes the verdict for the rare
     # component-scoped exception, so the cache still collapses the common case.
     cache: dict[tuple[str | None, str | None], str] = {}
-    forbidden_cv_ids: set[uuid.UUID] = set()
+    verdicts: dict[uuid.UUID, ComponentPolicyVerdict] = {}
 
     for cv_id, expression, purl in rows:
         key = (expression, purl)
@@ -488,10 +514,30 @@ async def _count_forbidden_license_components_dynamic(
                 unknown_category=unknown_posture,
             ).category
             cache[key] = category
-        if category == "forbidden":
-            forbidden_cv_ids.add(cv_id)
+        prior = verdicts.get(cv_id)
+        if prior is None or CATEGORY_RANK.get(category, 0) > CATEGORY_RANK.get(
+            prior.category, 0
+        ):
+            verdicts[cv_id] = ComponentPolicyVerdict(
+                category=category, spdx_id=expression
+            )
 
-    return len(forbidden_cv_ids)
+    return verdicts
+
+
+async def _count_forbidden_license_components_dynamic(
+    session: AsyncSession,
+    scan_id: uuid.UUID,
+    policy: LicensePolicy,
+) -> int:
+    """Count components whose license resolves to ``forbidden`` under *policy*.
+
+    Thin wrapper over :func:`compute_component_policy_categories` — the build
+    gate only needs the forbidden count, but the per-component verdict map is
+    the reusable primitive (C3 SBOM profiles consume the same computation).
+    """
+    verdicts = await compute_component_policy_categories(session, scan_id, policy)
+    return sum(1 for v in verdicts.values() if v.category == "forbidden")
 
 
 async def _team_id_for_project(
