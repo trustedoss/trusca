@@ -58,7 +58,7 @@ v0.13.1 기준 BomLens 격차 17건은 전부 해소됐고, 남은 완성도 과
 
 | # | 항목 | 상태 |
 |---|------|------|
-| W8-#48 | Python 라이선스 메타 보강 (requirements.txt 셀프스캔 90% unknown → PyPI 메타) | ⏳ |
+| W8-#48 | Python 라이선스 메타 보강 — 조사 결과 PyPI enrichment(`integrations/license_fetcher/`)는 이미 구현·배선됨(골든 python-pip 베이스라인이 bare requirements.txt→PyPI 해석 검증). 진짜 결함은 fetcher가 air-gap 게이트 없이 무조건 egress한 것 → `LICENSE_FETCH_ENABLED`(기본 ON) 추가로 마감 | ✅ PR (진행) |
 | W8-#49 | Ruby(Gemfile)·dotnet(.nuspec) 라이선스 보강 (100% unknown) | ⏳ |
 | K-f1 | 컨테이너 스캔 Trivy `eosl`(이미지 OS 단위 EOL) 표면화 | ⏳ |
 | K-f2 | `detected_env` 정상화의 local_docker/k8s 실행기 라우팅 영향 확인 | ⏳ |

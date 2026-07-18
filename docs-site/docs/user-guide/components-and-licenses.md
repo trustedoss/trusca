@@ -179,6 +179,16 @@ The legal-tier classification (`forbidden` / `conditional` / `permissive` / `unk
 Classification uses exact-match SPDX IDs. Suffix-less variants (`LGPL-3.0` instead of `LGPL-3.0-or-later`) fall through to `unknown`. If a component shows `unknown` despite a well-known SPDX ID, the source likely emitted a deprecated alias. Fuzzy SPDX normalization is on the roadmap.
 :::
 
+A separate, common cause is a manifest that names dependencies without their
+licenses — a bare `requirements.txt` or `go.mod` lists packages but carries no
+license metadata, so the scanner has nothing to classify. To fill that gap the
+pipeline looks the license up in the component's public registry (PyPI, Maven
+Central, crates.io, pkg.go.dev) by package coordinate and records it as a
+*concluded* finding. This is on by default; an **air-gapped** deployment turns
+it off with `LICENSE_FETCH_ENABLED=false` (see
+[Environment variables](../reference/env-variables.md)), and then such
+components stay `unknown` because the registry is unreachable.
+
 ## AI license review flags {#ai-license-review-flags}
 
 Some licenses restrict *how* you may use a component in ways the four-tier legal classification above does not capture — and that standard open-source compliance tooling often misses. TRUSCA surfaces two such restriction classes as an amber **Review needed** flag, shown next to the license tier badge and filterable on the Compliance tab.

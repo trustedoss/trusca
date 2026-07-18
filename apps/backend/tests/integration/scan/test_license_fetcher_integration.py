@@ -322,3 +322,141 @@ def test_dispatcher_skips_fetcher_when_cdxgen_already_has_license(
     ).scalar_one_or_none()
     # No cache row — the fetcher path was never taken.
     assert cached is None
+
+
+def _seed_component_rows(purl: str) -> tuple[uuid.UUID, uuid.UUID]:
+    """Seed the minimal Project/Scan/Component/ComponentVersion rows a
+    ``_persist_component_licenses`` call needs, returning ``(scan_id, cv_id)``.
+
+    Mirrors the inline seed in the skip-test above; factored out so the W8-#48
+    gate tests do not duplicate 40 lines of async setup.
+    """
+    import asyncio
+
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+    from core.config import database_url
+    from models import Component, ComponentVersion
+    from models import Scan as ScanModel
+    from tests._helpers import (
+        make_membership,
+        make_organization,
+        make_project,
+        make_team,
+        make_user,
+    )
+
+    async def _build() -> tuple[uuid.UUID, uuid.UUID]:
+        engine = create_async_engine(database_url(), pool_pre_ping=True, future=True)
+        factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+        async with factory() as s:
+            org = await make_organization(s)
+            team = await make_team(s, organization=org)
+            user = await make_user(s)
+            await make_membership(s, user=user, team=team, role="developer")
+            project = await make_project(s, team=team)
+            scan = ScanModel(
+                project_id=project.id,
+                kind="source",
+                status="queued",
+                progress_percent=0,
+                requested_by_user_id=user.id,
+                scan_metadata={},
+            )
+            s.add(scan)
+            await s.flush()
+            comp = Component(
+                purl=purl.split("@", 1)[0],
+                package_type="maven",
+                name="foo",
+            )
+            s.add(comp)
+            await s.flush()
+            cv = ComponentVersion(
+                component_id=comp.id,
+                version="1.0.0",
+                purl_with_version=purl,
+            )
+            s.add(cv)
+            await s.commit()
+            return scan.id, cv.id
+
+    scan_id, cv_id = asyncio.run(_build())
+    return scan_id, cv_id
+
+
+@pytest.mark.parametrize(
+    "flag_value,should_fetch",
+    [
+        (None, True),        # unset → default on → fetcher runs
+        ("true", True),      # explicit on
+        ("false", False),    # air-gap off → fetcher skipped
+        ("0", False),
+        ("no", False),
+    ],
+)
+def test_license_fetch_gate_controls_registry_egress(
+    sync_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    flag_value: str | None,
+    should_fetch: bool,
+) -> None:
+    """W8-#48: LICENSE_FETCH_ENABLED gates the post-cdxgen registry fetch.
+
+    An unlicensed cdxgen component (a bare ``requirements.txt`` component has
+    no ``licenses[]``) triggers the fetcher only when the gate is on. When
+    off (the air-gap posture), the fetcher is never invoked, no network egress
+    happens, and no ``concluded`` LicenseFinding / cache row is written — the
+    component simply stays license-unknown.
+    """
+    from models import LicenseFinding
+    from tasks.scan_source import _persist_component_licenses
+
+    if flag_value is None:
+        monkeypatch.delenv("LICENSE_FETCH_ENABLED", raising=False)
+    else:
+        monkeypatch.setenv("LICENSE_FETCH_ENABLED", flag_value)
+
+    # _unique_purl yields a pkg:maven/ purl; stub that fetcher so a gated-on
+    # fetch hits the stub (counting the call) instead of real registry egress.
+    purl = _unique_purl()
+    stub = _StubFetcher(
+        LicenseFetchResult(spdx_id="Apache-2.0", reference_url=None, source="stub_registry")
+    )
+    monkeypatch.setitem(
+        dispatcher_mod.PURL_PREFIX_TO_FETCHER, "pkg:maven/", lambda: stub
+    )
+
+    scan_id, cv_id = _seed_component_rows(purl)
+
+    # cdxgen produced NO license for this component (the bare-manifest case).
+    cdxgen_component = {"purl": purl, "name": "foo", "version": "1.0.0"}
+    _persist_component_licenses(
+        sync_session,
+        scan_uuid=scan_id,
+        component_version_id=cv_id,
+        cdxgen_component=cdxgen_component,
+        purl=purl,
+    )
+    sync_session.commit()
+
+    if should_fetch:
+        assert stub.calls == 1, "gate on → fetcher must run"
+        findings = sync_session.execute(
+            select(LicenseFinding).where(
+                LicenseFinding.component_version_id == cv_id
+            )
+        ).scalars().all()
+        assert any(f.kind == "concluded" for f in findings)
+    else:
+        assert stub.calls == 0, "gate off → fetcher must not run (air-gap)"
+        cached = sync_session.execute(
+            select(LicenseFetchCache).where(LicenseFetchCache.purl == purl)
+        ).scalar_one_or_none()
+        assert cached is None
+        findings = sync_session.execute(
+            select(LicenseFinding).where(
+                LicenseFinding.component_version_id == cv_id
+            )
+        ).scalars().all()
+        assert findings == []
