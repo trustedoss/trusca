@@ -178,6 +178,16 @@ Components 탭에는 **표 / 그래프** 토글이 있습니다(좌측 상단). 
 분류는 정확 일치(exact-match) SPDX ID 를 사용합니다. 접미사 없는 변형(`LGPL-3.0-or-later` 대신 `LGPL-3.0`)은 `unknown` 으로 떨어집니다. 잘 알려진 SPDX ID 인데도 `unknown` 으로 표시된다면 출처가 deprecated alias 를 발신했을 가능성이 높습니다. fuzzy SPDX 정규화는 로드맵 항목입니다.
 :::
 
+또 다른 흔한 원인은 의존성 이름만 있고 라이선스가 없는 매니페스트입니다 —
+설치된 패키지가 없는 `requirements.txt` 나 `go.mod` 는 패키지를 나열하지만
+라이선스 메타데이터를 담지 않아 분류할 대상이 없습니다. 이 공백을 메우려고
+파이프라인은 컴포넌트의 공개 레지스트리(PyPI, Maven Central, crates.io,
+pkg.go.dev)에 패키지 좌표로 라이선스를 조회해 *concluded* finding 으로
+기록합니다. 기본으로 켜져 있으며, **air-gapped** 배포는
+`LICENSE_FETCH_ENABLED=false`([환경변수](../reference/env-variables.md) 참고)로
+끄고, 그 경우 레지스트리에 접근할 수 없어 이런 컴포넌트는 `unknown` 으로
+남습니다.
+
 ## AI 라이선스 검토 플래그 {#ai-license-review-flags}
 
 일부 라이선스는 컴포넌트를 *어떻게* 사용할지를 위 4단계 법적 분류가 담지 못하는 방식으로 제한합니다 — 표준 오픈소스 컴플라이언스 도구가 자주 놓치는 지점입니다. TRUSCA는 이런 제약 부류 2종을 amber **Review needed** 플래그로 표시하며, 라이선스 단계 배지 옆에 함께 나타나고 Compliance 탭에서 필터링됩니다.

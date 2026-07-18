@@ -505,6 +505,33 @@ def cdxgen_fetch_license() -> bool:
     }
 
 
+def license_fetch_enabled() -> bool:
+    """Whether the post-cdxgen license fetcher enriches unlicensed components.
+
+    W8-#48. When cdxgen emits a component with NO SPDX license (the common
+    case for a bare ``requirements.txt`` / ``go.mod`` with no installed
+    packages), the pipeline falls back to
+    :func:`integrations.license_fetcher.fetch_license`, which asks the
+    component's PUBLIC registry (PyPI / Maven Central / crates.io /
+    pkg.go.dev) for the declared license by purl and caches the answer. This
+    is what pulls the self-scan's "unknown" ratio down from ~90%.
+
+    Default ``true`` — the request carries only a package name+version (the
+    same public registry the package manager already contacts), so it is far
+    lower-sensitivity than the SCANOSS fingerprint egress (default off) and is
+    kept on for the enrichment value. But it IS scan-time egress, so an
+    air-gapped deployment sets ``LICENSE_FETCH_ENABLED=false`` to skip it
+    cleanly (otherwise every unlicensed component pays a network timeout and
+    poisons the fetch cache with negatives). Only the exact falsy tokens
+    ``false`` / ``0`` / ``no`` disable; read at call time (rule #11).
+    """
+    return os.getenv("LICENSE_FETCH_ENABLED", "true").strip().lower() not in {
+        "false",
+        "0",
+        "no",
+    }
+
+
 # ---------------------------------------------------------------------------
 # Runtime-scope SBOM post-filter (Phase K — default ON).
 #

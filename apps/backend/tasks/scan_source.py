@@ -74,6 +74,7 @@ from core.config import (
     cdxgen_fetch_license,
     cdxgen_spec_version,
     eol_enabled,
+    license_fetch_enabled,
     scan_scope_filter_enabled,
     scan_scope_filter_maven_enabled,
     scan_scope_filter_node_enabled,
@@ -2890,6 +2891,14 @@ def _persist_component_licenses(
         # value added when we already have a declared license.
         return
     if not purl:
+        return
+
+    # W8-#48 air-gap gate: the fetcher egresses to the component's public
+    # registry (PyPI / Maven / crates / pkg.go.dev). Default on for the
+    # license-enrichment value, but an air-gapped deployment sets
+    # LICENSE_FETCH_ENABLED=false so an unlicensed component stays unknown
+    # instead of paying a network timeout and caching a negative.
+    if not license_fetch_enabled():
         return
 
     # Lazy import to keep `models`/scan_source import order stable —
