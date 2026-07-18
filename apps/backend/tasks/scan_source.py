@@ -2862,7 +2862,7 @@ def _persist_component_licenses(
     chore PR #5 Part B (`docs/sessions/_next-session-prompt-chore-pr5.md`):
     when cdxgen produced **no** SPDX ids for the component, fall back to
     the multi-ecosystem license fetcher. The fetcher hits the relevant
-    registry (Maven Central / PyPI / crates.io / pkg.go.dev), caches
+    registry (Maven Central / PyPI / crates.io / pkg.go.dev / RubyGems / NuGet), caches
     the answer in ``license_fetch_cache`` (24h TTL, positive +
     negative), and returns a single ``LicenseFetchResult``. We then
     emit a *concluded* LicenseFinding so downstream consumers can tell
@@ -2894,7 +2894,7 @@ def _persist_component_licenses(
         return
 
     # W8-#48 air-gap gate: the fetcher egresses to the component's public
-    # registry (PyPI / Maven / crates / pkg.go.dev). Default on for the
+    # registry (PyPI / Maven / crates / pkg.go.dev / RubyGems / NuGet). Default on for the
     # license-enrichment value, but an air-gapped deployment sets
     # LICENSE_FETCH_ENABLED=false so an unlicensed component stays unknown
     # instead of paying a network timeout and caching a negative.

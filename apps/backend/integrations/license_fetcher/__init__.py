@@ -37,8 +37,10 @@ from sqlalchemy.orm import Session
 from .base import LicenseFetchResult
 from .crates import CratesLicenseFetcher
 from .maven import MavenLicenseFetcher
+from .nuget import NuGetLicenseFetcher
 from .pkggo import PkgGoLicenseFetcher
 from .pypi import PyPILicenseFetcher
+from .rubygems import RubyGemsLicenseFetcher
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from .base import LicenseFetcher
@@ -86,6 +88,8 @@ PURL_PREFIX_TO_FETCHER: dict[str, Callable[[], LicenseFetcher]] = {
     "pkg:pypi/": PyPILicenseFetcher,
     "pkg:cargo/": CratesLicenseFetcher,
     "pkg:golang/": PkgGoLicenseFetcher,
+    "pkg:gem/": RubyGemsLicenseFetcher,
+    "pkg:nuget/": NuGetLicenseFetcher,
 }
 
 

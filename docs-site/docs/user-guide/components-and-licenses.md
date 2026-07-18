@@ -183,7 +183,7 @@ A separate, common cause is a manifest that names dependencies without their
 licenses — a bare `requirements.txt` or `go.mod` lists packages but carries no
 license metadata, so the scanner has nothing to classify. To fill that gap the
 pipeline looks the license up in the component's public registry (PyPI, Maven
-Central, crates.io, pkg.go.dev) by package coordinate and records it as a
+Central, crates.io, pkg.go.dev, RubyGems, NuGet) by package coordinate and records it as a
 *concluded* finding. This is on by default; an **air-gapped** deployment turns
 it off with `LICENSE_FETCH_ENABLED=false` (see
 [Environment variables](../reference/env-variables.md)), and then such
@@ -220,7 +220,7 @@ Each license finding has a **kind** that tells you where the license came from. 
 |---|---|---|
 | **Declared** | `cdxgen` — read from a dependency's published package metadata (`package.json`, `pom.xml`, `setup.py`, …). | The license the dependency's author *says* it ships under. This is the value the build gate evaluates. Most dependency findings are declared. |
 | **Detected** | scancode — scans your project's **first-party** source files directly. Each detected finding carries a `source_path` (the file the license text was found in). | The license actually present in **your own code**. This catches cases the metadata misses — for example a dependency declared `MIT` but with `GPL-3.0`-licensed code copied into your tree. |
-| **Concluded** | The multi-ecosystem registry fetcher (Maven Central / PyPI / crates.io / pkg.go.dev), used as a fallback **only** when `cdxgen` produced no SPDX id for a dependency. | A registry-derived license for a dependency whose own metadata was silent. It is *not* the result of reconciling declared and detected — v0.10.0 does not perform automatic reconciliation. |
+| **Concluded** | The multi-ecosystem registry fetcher (Maven Central / PyPI / crates.io / pkg.go.dev / RubyGems / NuGet), used as a fallback **only** when `cdxgen` produced no SPDX id for a dependency. | A registry-derived license for a dependency whose own metadata was silent. It is *not* the result of reconciling declared and detected — v0.10.0 does not perform automatic reconciliation. |
 
 :::note "Detected" means first-party, not dependency source
 scancode runs over your **own** source tree only. Third-party dependency sources are deliberately **not** downloaded — that keeps per-scan runtime within budget. So a dependency's license is **declared** (or **concluded** via the registry fallback), never **detected**; **detected** licenses always describe code in your repository.

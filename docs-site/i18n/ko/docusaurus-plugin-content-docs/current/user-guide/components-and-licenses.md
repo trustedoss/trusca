@@ -182,7 +182,7 @@ Components 탭에는 **표 / 그래프** 토글이 있습니다(좌측 상단). 
 설치된 패키지가 없는 `requirements.txt` 나 `go.mod` 는 패키지를 나열하지만
 라이선스 메타데이터를 담지 않아 분류할 대상이 없습니다. 이 공백을 메우려고
 파이프라인은 컴포넌트의 공개 레지스트리(PyPI, Maven Central, crates.io,
-pkg.go.dev)에 패키지 좌표로 라이선스를 조회해 *concluded* finding 으로
+pkg.go.dev, RubyGems, NuGet)에 패키지 좌표로 라이선스를 조회해 *concluded* finding 으로
 기록합니다. 기본으로 켜져 있으며, **air-gapped** 배포는
 `LICENSE_FETCH_ENABLED=false`([환경변수](../reference/env-variables.md) 참고)로
 끄고, 그 경우 레지스트리에 접근할 수 없어 이런 컴포넌트는 `unknown` 으로
@@ -219,7 +219,7 @@ pkg.go.dev)에 패키지 좌표로 라이선스를 조회해 *concluded* finding
 |---|---|---|
 | **Declared** | `cdxgen` — 의존성의 공개 패키지 메타데이터(`package.json`, `pom.xml`, `setup.py` 등)에서 읽음. | 의존성 작성자가 *명시한* 라이선스. 빌드 게이트가 평가하는 값입니다. 대부분의 의존성 결과는 declared 입니다. |
 | **Detected** | scancode — 프로젝트의 **first-party** 소스 파일을 직접 스캔. 각 detected 결과에 `source_path`(라이선스 텍스트가 발견된 파일)를 포함. | **내 코드**에 실제로 존재하는 라이선스. 메타데이터가 놓치는 경우를 잡아냅니다 — 예: declared 는 `MIT` 인데 `GPL-3.0` 라이선스 코드가 트리에 복사되어 들어온 경우. |
-| **Concluded** | 다중 생태계 레지스트리 fetcher(Maven Central / PyPI / crates.io / pkg.go.dev). `cdxgen` 이 의존성의 SPDX id 를 전혀 만들지 못했을 때**만** 폴백으로 사용. | 메타데이터가 침묵한 의존성에 대해 레지스트리에서 도출한 라이선스. declared 와 detected 를 화해한 결과가 *아닙니다* — v0.10.0 은 자동 화해(reconciliation)를 수행하지 않습니다. |
+| **Concluded** | 다중 생태계 레지스트리 fetcher(Maven Central / PyPI / crates.io / pkg.go.dev / RubyGems / NuGet). `cdxgen` 이 의존성의 SPDX id 를 전혀 만들지 못했을 때**만** 폴백으로 사용. | 메타데이터가 침묵한 의존성에 대해 레지스트리에서 도출한 라이선스. declared 와 detected 를 화해한 결과가 *아닙니다* — v0.10.0 은 자동 화해(reconciliation)를 수행하지 않습니다. |
 
 :::note "Detected" 는 의존성 소스가 아니라 first-party
 scancode 는 **내** 소스 트리에서만 실행됩니다. 서드파티 의존성 소스는 의도적으로 다운로드하지 **않습니다** — 이는 스캔당 실행 시간을 예산 내로 유지하기 위함입니다. 따라서 의존성의 라이선스는 **declared**(또는 레지스트리 폴백을 통한 **concluded**)이며 결코 **detected** 가 아닙니다. **detected** 라이선스는 항상 내 저장소의 코드를 설명합니다.

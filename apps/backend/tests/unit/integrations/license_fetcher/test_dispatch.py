@@ -124,12 +124,16 @@ def cache_stub(monkeypatch: pytest.MonkeyPatch) -> _CacheStub:
 # ---------------------------------------------------------------------------
 
 
-def test_dispatch_routes_maven_pypi_crates_pkggo_by_prefix() -> None:
-    assert "pkg:maven/" in PURL_PREFIX_TO_FETCHER
-    assert "pkg:pypi/" in PURL_PREFIX_TO_FETCHER
-    assert "pkg:cargo/" in PURL_PREFIX_TO_FETCHER
-    assert "pkg:golang/" in PURL_PREFIX_TO_FETCHER
-    assert len(PURL_PREFIX_TO_FETCHER) == 4
+def test_dispatch_routes_every_supported_ecosystem_by_prefix() -> None:
+    # The full set of ecosystems the fetcher covers. W8-#49 added gem + nuget.
+    assert set(PURL_PREFIX_TO_FETCHER) == {
+        "pkg:maven/",
+        "pkg:pypi/",
+        "pkg:cargo/",
+        "pkg:golang/",
+        "pkg:gem/",
+        "pkg:nuget/",
+    }
 
 
 # ---------------------------------------------------------------------------
