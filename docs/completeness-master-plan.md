@@ -61,7 +61,7 @@ v0.13.1 기준 BomLens 격차 17건은 전부 해소됐고, 남은 완성도 과
 | W8-#48 | Python 라이선스 메타 보강 — 조사 결과 PyPI enrichment(`integrations/license_fetcher/`)는 이미 구현·배선됨(골든 python-pip 베이스라인이 bare requirements.txt→PyPI 해석 검증). 진짜 결함은 fetcher가 air-gap 게이트 없이 무조건 egress한 것 → `LICENSE_FETCH_ENABLED`(기본 ON) 추가로 마감 | ✅ PR (진행) |
 | W8-#49 | Ruby(Gemfile)·dotnet(.nuspec) 라이선스 보강 (100% unknown) — `license_fetcher`에 RubyGems(`pkg:gem/`, v2 API `licenses` 배열)·NuGet(`pkg:nuget/`, registration API `licenseExpression`) fetcher 추가. XML 대신 JSON API로 nuspec entity-expansion DoS 회피 | ✅ PR (진행) |
 | K-f1 | 컨테이너 스캔 Trivy `eosl`(이미지 OS 단위 EOL) 표면화 | ⏳ |
-| K-f2 | `detected_env` 정상화의 local_docker/k8s 실행기 라우팅 영향 확인 | ⏳ |
+| K-f2 | `detected_env` 정상화의 local_docker/k8s 실행기 라우팅 영향 확인 — 조사 결과 실제 결함: 사이드카가 detected_env는 project_root(내부 clone 루트)로 판정하면서 android compileSdk 읽기·스캔 대상은 outer source_dir를 써 git 스캔에서 오탐. `SbomGenRequest.project_root`+`effective_root`로 수정. security-reviewer APPROVE. (k8s 실행기는 미구현이라 무관) | ✅ PR (진행) |
 | W7-A~F | 문서 parity 5건 — Triage 통합 가이드, Analysis Types, Best Practices 4페이지, FAQ, DefectDojo/ThreadFix 조사(구현 여부는 조사 후 판단). EN/KO 동시, docs-uat 단언 동행 | ⏳ |
 
 ## 5. v0.17.0 — C1b CVE 한글화 + UX 확장

@@ -249,7 +249,10 @@ class LocalDockerExecutor(ScanExecutor):
         """
         env = request.detected_env
         if env == "android":
-            api = source_detect.android_compile_sdk(request.source_dir)
+            # K-f2: read compileSdk from the RESOLVED project root (the dir
+            # detection ran on) — the gradle files live in the git-clone root,
+            # a level below source_dir, and this read is non-recursive.
+            api = source_detect.android_compile_sdk(request.effective_root)
             image = source_detect.android_image(api)
         else:
             image = source_detect.image_for_env(env)
@@ -393,7 +396,10 @@ class LocalDockerExecutor(ScanExecutor):
             "-c",
             build_prep,
             "build-prep",
-            str(request.source_dir),
+            # K-f2: scan the resolved project root, not the outer source_dir —
+            # for a git scan the clone is a level below and the sidecar targets
+            # a single directory (no cdxgen -r recursion from the mount root).
+            str(request.effective_root),
             str(sbom_path),
             request.spec_version,
         ]

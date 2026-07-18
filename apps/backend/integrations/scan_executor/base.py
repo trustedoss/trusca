@@ -67,6 +67,22 @@ class SbomGenRequest:
     # None → let the cdxgen adapter apply its own default timeout (preserves the
     # legacy call which passed no explicit timeout).
     timeout_seconds: int | None = None
+    # K-f2: the RESOLVED project root — the directory that ``detected_env`` was
+    # detected from. For a git scan the clone lands a level below ``source_dir``
+    # (``source/`` vs ``source/repo/``), and language detection / android
+    # compileSdk reads are NON-recursive, so they must run on this resolved
+    # root, not the outer ``source_dir``. The in-process executor runs cdxgen
+    # with ``-r`` from ``source_dir`` (recursion covers the inner repo, so it is
+    # unaffected); a container sidecar targets a single directory, so it uses
+    # this. None → falls back to ``source_dir`` (the non-git / zip-upload case
+    # where the two already coincide). Use :attr:`effective_root`.
+    project_root: Path | None = None
+
+    @property
+    def effective_root(self) -> Path:
+        """The directory a single-target executor should scan — the resolved
+        ``project_root`` when set, else ``source_dir``."""
+        return self.project_root if self.project_root is not None else self.source_dir
 
 
 @dataclass(frozen=True)

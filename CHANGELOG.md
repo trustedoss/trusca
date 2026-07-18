@@ -7,6 +7,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Fixed
+- **Dynamic-scan sidecar now targets the git-clone root.** With
+  `SCAN_EXECUTOR=local_docker`, an Android scan of a **git** repository routed
+  to the sidecar but read the compileSdk and ran the build from the outer
+  workspace directory instead of the clone root a level below — so it picked
+  the default SDK image and scanned an empty directory. (Language detection is
+  non-recursive and the sidecar targets a single directory, unlike the default
+  in-process cdxgen which recurses.) The scan executor now carries the resolved
+  project root and the sidecar uses it. Only affects the opt-in `local_docker`
+  executor; the default in-process path was unaffected.
+
 ### Added
 - **License enrichment now covers RubyGems and NuGet, and is air-gap gated
   (`LICENSE_FETCH_ENABLED`).** When cdxgen emits a component with no SPDX

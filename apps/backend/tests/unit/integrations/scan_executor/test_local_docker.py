@@ -400,3 +400,59 @@ def test_language_image_is_pinned_without_allow_flag(
     res = LocalDockerExecutor().generate_sbom(_request(tmp_path, detected_env="go"))
     assert res.executor == "local_docker"
     assert "ghcr.io/cyclonedx/cdxgen-debian-golang124:v12" in captured["cmd"]
+
+
+def test_git_scan_targets_resolved_project_root_not_outer_source_dir(
+    monkeypatch: pytest.MonkeyPatch, _docker_present: None, tmp_path: Path
+) -> None:
+    """K-f2: for a git scan the clone lands a level below source_dir, so the
+    gradle files (and the sidecar's single-dir scan) must use the resolved
+    project_root — detection is non-recursive and the sidecar does not `-r`.
+
+    Here the OUTER source_dir has no gradle; the INNER project_root declares
+    compileSdk 34. The sidecar must (a) resolve the sdk34 image from the inner
+    root, and (b) pass the inner root as the scan target — never the outer dir.
+    """
+    captured = _stub_sidecar(monkeypatch)
+    outer = tmp_path / "source"
+    outer.mkdir()
+    inner = outer / "repo"
+    inner.mkdir()
+    # gradle only in the inner clone root, with a DIFFERENT api than the helper's.
+    (inner / "build.gradle").write_text(
+        "android { compileSdk 34 }", encoding="utf-8"
+    )
+
+    req = SbomGenRequest(
+        scan_uuid=uuid.uuid4(),
+        source_dir=outer,
+        output_dir=tmp_path / "cdxgen",
+        detected_env="android",
+        project_root=inner,
+    )
+    res = LocalDockerExecutor().generate_sbom(req)
+
+    cmd = captured["cmd"]
+    # (a) compileSdk read from the inner root → sdk34 image, not the default.
+    assert res.image == "ghcr.io/sktelecom/sbom-scanner-android-sdk34:latest"
+    assert "ghcr.io/sktelecom/sbom-scanner-android-sdk34:latest" in cmd
+    # (b) the sidecar scans the inner root, and the outer dir is NOT the target.
+    assert str(inner) in cmd
+    assert str(outer) not in cmd
+
+
+def test_effective_root_defaults_to_source_dir_when_project_root_unset() -> None:
+    # Non-git / zip-upload case: the two coincide, so effective_root is source_dir.
+    req = SbomGenRequest(
+        scan_uuid=uuid.uuid4(),
+        source_dir=Path("/w/source"),
+        output_dir=Path("/w/out"),
+    )
+    assert req.effective_root == Path("/w/source")
+    req2 = SbomGenRequest(
+        scan_uuid=uuid.uuid4(),
+        source_dir=Path("/w/source"),
+        output_dir=Path("/w/out"),
+        project_root=Path("/w/source/repo"),
+    )
+    assert req2.effective_root == Path("/w/source/repo")
