@@ -7,6 +7,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+- **Container scans surface base-image OS end-of-life (EOSL).** Trivy reports
+  whether a scanned image's base OS release is past its end-of-service-life —
+  it no longer receives upstream security fixes, so newly disclosed CVEs will
+  never be patched on it, a risk that no individual package CVE captures. We
+  now persist that OS family/release + EOSL flag (into `scan_metadata`, no
+  migration) and show an "OS end-of-life" panel on the scan detail page when
+  the release is EOL. The verdict comes from Trivy's bundled database (no extra
+  network), so a stale database may not yet flag a recently retired release.
+
 ### Fixed
 - **Dynamic-scan sidecar now targets the git-clone root.** With
   `SCAN_EXECUTOR=local_docker`, an Android scan of a **git** repository routed

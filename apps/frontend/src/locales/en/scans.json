@@ -100,6 +100,13 @@
     "subtitle": "Scan a container image for {{project}} with Trivy.",
     "errors": {
       "image_required": "Enter an image reference to scan."
+    },
+    "os_eol": {
+      "label": "OS end-of-life",
+      "heading": "Base image OS",
+      "os": "{{family}} {{name}}",
+      "detail": "This image's base OS release ({{os}}) is past its end-of-service-life. It no longer receives upstream security fixes, so newly disclosed CVEs will not be patched. Rebuild on a supported release.",
+      "note": "The end-of-service-life verdict comes from Trivy's vulnerability database; a stale database may not yet flag a recently retired release."
     }
   },
   "release": {
