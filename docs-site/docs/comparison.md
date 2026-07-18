@@ -64,7 +64,7 @@ covering detection, licenses, SBOM, approvals, and CI gating meets your needs.
   dependency-graph depth but does not yet open upgrade pull requests —
   suggested upgrades are planned.
 - **Prioritization signals.** EPSS prioritization is first-class — column,
-  sort, filter, and a policy-gate threshold. Reachability analysis ships
+  sort, filter, and a build-gate threshold. Reachability analysis ships
   for Go (via `govulncheck`); reachability for other ecosystems is planned.
 
 **Where TRUSCA is competitive:** self-hosting with no seat cost,
@@ -92,7 +92,7 @@ for the decision). The question is what shape of platform fits your team.
   a 4 GB host.
 - **Bilingual UI.** English and Korean.
 - **Triage signals.** EPSS is a first-class signal (column, sort, filter,
-  policy-gate threshold), KEV badges flag in-the-wild exploitation, and external
+  build-gate threshold), KEV badges flag in-the-wild exploitation, and external
   VEX (OpenVEX / CycloneDX VEX) can be imported to auto-suppress findings.
 
 **Use Dependency-Track directly when** you want DT's native features (its UI,

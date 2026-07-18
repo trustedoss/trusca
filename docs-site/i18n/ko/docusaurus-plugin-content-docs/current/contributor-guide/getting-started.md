@@ -47,13 +47,13 @@ git rebase origin/main
 
 ## dev 스택 띄우기
 
-단일 명령으로 PostgreSQL 17, Redis 7, Celery worker, FastAPI 백엔드(`--reload`), HMR 가능한 Vite dev 서버가 시작됩니다.
-
-```bash
-docker-compose -f docker-compose.dev.yml up -d
-```
-
-최초 시작은 이미지를 받고 캐시를 데우느라 ~3분 정도 걸립니다. 이후 시작은 ~10초.
+dev 스택은 PostgreSQL 17, Redis 7, Celery worker, FastAPI 백엔드(`--reload`),
+HMR 가능한 Vite dev 서버로 구성됩니다. 정본 기동 절차 — env 파일, 스키마
+마이그레이션(dev 이미지는 자동 마이그레이션을 **하지 않고**, health 게이트가
+걸린 worker가 마이그레이션 없이는 `up`을 막습니다), `up -d`, 데모 시드와
+로그인 계정 — 는 [Quickstart 1~3단계](../quickstart.md)입니다. 한 번 따라 한
+뒤 여기로 돌아오세요. 최초 시작은 이미지를 받고 캐시를 데우느라 ~3분 정도
+걸립니다. 이후 시작은 ~10초.
 
 로그 추적:
 

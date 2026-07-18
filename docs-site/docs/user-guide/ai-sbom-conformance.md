@@ -113,6 +113,6 @@ The model component has no `purl`, so it was not persisted to the component list
 ## See also
 
 - [Upload an SBOM](../ci-integration/sbom-upload.md) — the ingest endpoint, fields, and errors
-- [Scans → Received SBOMs](./scans.md#received-sboms-uploaded) — how `sbom`-kind scans behave
+- [Scans → SBOM upload](./scans.md#received-sboms-uploaded) — how `sbom`-kind scans behave
 - [Scans → Conformance verdict](./scans.md#conformance-verdict) — the nine core checks the G7 rows extend
 - [SBOM](./sbom.md) — exporting SBOMs that TRUSCA generates

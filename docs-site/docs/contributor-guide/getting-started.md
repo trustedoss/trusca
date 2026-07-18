@@ -47,13 +47,14 @@ git rebase origin/main
 
 ## Bring up the dev stack
 
-A single command starts PostgreSQL 17, Redis 7, the Celery worker, the FastAPI backend (with `--reload`), and the Vite dev server with HMR:
-
-```bash
-docker-compose -f docker-compose.dev.yml up -d
-```
-
-First start pulls images and warms the cache; expect ~3 minutes. Subsequent starts take ~10 seconds.
+The dev stack is PostgreSQL 17, Redis 7, the Celery worker, the FastAPI
+backend (with `--reload`), and the Vite dev server with HMR. The canonical
+bring-up sequence — env file, schema migration (the dev image does **not**
+auto-migrate, and the health-gated worker blocks `up` without it), `up -d`,
+and the demo seed with its sign-in accounts — is
+[Quickstart, steps 1–3](../quickstart.md); follow it once and come back here.
+First start pulls images and warms the cache; expect ~3 minutes. Subsequent
+starts take ~10 seconds.
 
 Tail the logs:
 

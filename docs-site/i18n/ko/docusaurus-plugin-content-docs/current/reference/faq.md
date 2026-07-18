@@ -26,7 +26,7 @@ sidebar_position: 12
 
 ### 어떤 종류의 분석을 실행할 수 있나요? {#analysis-types}
 
-네 가지입니다. 소스 SBOM 스캔, 컨테이너 이미지 스캔, 정책 게이트, 그리고 reachability 신호(현재 Go 모듈 한정, `govulncheck` 사용)입니다. [분석 유형](./analysis-types.md) 레퍼런스가 각각이 무엇을 입력받고 산출하는지 한 매트릭스로 정리합니다.
+네 가지입니다. 소스 SBOM 스캔, 컨테이너 이미지 스캔, 빌드 게이트, 그리고 reachability 신호(현재 Go 모듈 한정, `govulncheck` 사용)입니다. [분석 유형](./analysis-types.md) 레퍼런스가 각각이 무엇을 입력받고 산출하는지 한 매트릭스로 정리합니다.
 
 ## 스캔 {#scanning}
 

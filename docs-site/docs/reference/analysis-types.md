@@ -1,7 +1,7 @@
 ---
 id: analysis-types
 title: Analysis types
-description: The kinds of analysis TRUSCA runs — source SBOM scan, container image scan, policy gate, reachability — what each consumes, the tool behind it, and what it produces.
+description: The kinds of analysis TRUSCA runs — source SBOM scan, container image scan, build gate, reachability — what each consumes, the tool behind it, and what it produces.
 sidebar_label: Analysis types
 sidebar_position: 6
 ---
@@ -15,7 +15,7 @@ New adopters and platform owners choosing which analysis to run, and reviewers m
 :::
 
 :::note This is a matrix of pipelines, not data signals
-This page lists the **analysis pipelines** — source scan, container scan, policy gate, reachability. The [Data sources](./data-sources.md#analysis-types) page has a similarly named `## Analysis types` section, but that one is a matrix of the per-finding **data signals** the Trivy DB exposes (NVD · OSV · GHSA · EPSS · KEV, plus CVSS, CWE, fixed version, and so on). Read the two together: this page is *which analysis runs*; that page is *what data each vulnerability finding carries*.
+This page lists the **analysis pipelines** — source scan, container scan, build gate, reachability. The [Data sources](./data-sources.md#analysis-types) page has a similarly named `## Analysis types` section, but that one is a matrix of the per-finding **data signals** the Trivy DB exposes (NVD · OSV · GHSA · EPSS · KEV, plus CVSS, CWE, fixed version, and so on). Read the two together: this page is *which analysis runs*; that page is *what data each vulnerability finding carries*.
 :::
 
 ## The matrix
@@ -24,7 +24,7 @@ This page lists the **analysis pipelines** — source scan, container scan, poli
 |---|---|---|---|---|---|
 | **Source SBOM scan** | A Git repository (or an uploaded source archive) | `cdxgen` → scancode → `trivy sbom` | A CycloneDX SBOM, declared + detected licenses with legal-tier classification, and matched CVEs | The default. You want the full component inventory, licenses, and vulnerabilities for a project's dependency tree. | [Scans → Scan kinds](../user-guide/scans.md#scan-kinds), [SBOM](../user-guide/sbom.md) |
 | **Container image scan** | A built container image reference (`name:tag`) | Trivy | OS-package CVEs and a base-image OS end-of-life (EOSL) verdict | You ship a container and want to know about vulnerabilities in the OS layer, not just your application dependencies. | [Scans → Scan a container image](../user-guide/scans.md#scan-a-container-image), [Container OS end-of-life](../user-guide/scans.md#container-os-eol) |
-| **Policy gate** | The findings and licenses from a completed scan | Portal gate evaluator | A pass/fail build verdict (CI exit code `0` or `1`) | You want a build to fail automatically on a forbidden license or a vulnerability over threshold — the CI enforcement point. | [Approvals](../user-guide/approvals.md), [License policies](./license-policies.md), [GitHub Actions](../ci-integration/github-actions.md) |
+| **Build gate** | The findings and licenses from a completed scan | Portal gate evaluator | A pass/fail build verdict (CI exit code `0` or `1`) | You want a build to fail automatically on a forbidden license or a vulnerability over threshold — the CI enforcement point. | [Approvals](../user-guide/approvals.md), [License policies](./license-policies.md), [GitHub Actions](../ci-integration/github-actions.md) |
 | **Reachability analysis** | Preserved Go source of a scanned module | `govulncheck` (Go) | A per-finding reachable / not-reachable / not-analysed signal (Go findings only) | You want to prioritise findings whose vulnerable code is actually called. **Go only today — see the status note below.** | [Comparison → reachability](../comparison.md) |
 
 All four ship and run today. Reachability ships **for Go** via `govulncheck` — read the note below for its scope: it covers Go modules only, and findings in every other ecosystem are not yet analysed.
@@ -35,7 +35,7 @@ A source scan is the default analysis. `cdxgen` (a CycloneDX SBOM generator cove
 
 The result feeds every project tab — Components, Licenses, Vulnerabilities, SBOM. See [Architecture → Scan pipeline](./architecture.md#scan-pipeline) for the stage-by-stage flow and [Scans](../user-guide/scans.md) for how to trigger one.
 
-An **uploaded SBOM** (an SBOM your own build already produced) is a variant of this kind: TRUSCA scores its conformance, persists its components, and runs the same `trivy sbom` matching, without cloning or building your source. See [Received SBOMs](../user-guide/scans.md#received-sboms-uploaded).
+An **uploaded SBOM** (an SBOM your own build already produced) is a variant of this kind: TRUSCA scores its conformance, persists its components, and runs the same `trivy sbom` matching, without cloning or building your source. See [SBOM upload](../user-guide/scans.md#received-sboms-uploaded).
 
 ## Container image scan {#container-detail}
 
@@ -43,9 +43,9 @@ A container scan targets a **built image** rather than source. Trivy inspects th
 
 See [Scan a container image](../user-guide/scans.md#scan-a-container-image) and [Base-image OS end-of-life](../user-guide/scans.md#container-os-eol).
 
-## Policy gate {#gate-detail}
+## Build gate {#gate-detail}
 
-The policy gate is not a scanner — it **evaluates** the output of a completed scan against your rules to reach a build verdict. It counts components whose license resolves to `forbidden` and vulnerabilities over the configured thresholds, then returns a pass/fail result. In CI, a failing gate exits with code `1` to block the build. Thresholds and posture are set through `GATE_*` environment variables (see [Environment variables](./env-variables.md)) and, per team or organization, through a [license policy](./license-policies.md) that re-classifies licenses dynamically before counting.
+The build gate is not a scanner — it **evaluates** the output of a completed scan against your rules to reach a build verdict. It counts components whose license resolves to `forbidden` and vulnerabilities over the configured thresholds, then returns a pass/fail result. In CI, a failing gate exits with code `1` to block the build. Thresholds and posture are set through `GATE_*` environment variables (see [Environment variables](./env-variables.md)) and, per team or organization, through a [license policy](./license-policies.md) that re-classifies licenses dynamically before counting.
 
 See [Approvals](../user-guide/approvals.md) for the human workflow around conditional licenses and [GitHub Actions](../ci-integration/github-actions.md) for the CI wiring.
 
@@ -64,14 +64,14 @@ Track the multi-language roadmap on the [comparison page](../comparison.md) and 
 ## Verify it worked
 
 <!-- docs-uat: id=analysis-types-pipelines-match-scans kind=manual tier=manual -->
-1. The three shipped analysis kinds on this page (source, container, policy gate) match the scan kinds and gate documented in [Scans → Scan kinds](../user-guide/scans.md#scan-kinds) and [License policies → Dynamic gate evaluation](./license-policies.md#dynamic-gate-evaluation) — no pipeline appears here that is not documented there.
+1. The three shipped analysis kinds on this page (source, container, build gate) match the scan kinds and gate documented in [Scans → Scan kinds](../user-guide/scans.md#scan-kinds) and [License policies → Dynamic gate evaluation](./license-policies.md#dynamic-gate-evaluation) — no pipeline appears here that is not documented there.
 
 <!-- docs-uat: id=analysis-types-reachability-go kind=manual tier=manual -->
 2. The reachability row and its status note describe a **Go-only, best-effort** signal that ships today: a Go finding can carry a `reachable = true / false / null` verdict from `govulncheck`, while non-Go findings stay "not analysed". This is consistent with [Comparison](../comparison.md) ("Go only", reachability prioritization ships for Go) and [Data sources](./data-sources.md) (reachability is not a Trivy-DB signal but a separate `govulncheck` pipeline for Go).
 
 ## Troubleshooting
 
-- **"Which analysis do I run for licenses and CVEs?"** A source scan — it produces both in one run. The policy gate then turns those results into a build verdict.
+- **"Which analysis do I run for licenses and CVEs?"** A source scan — it produces both in one run. The build gate then turns those results into a build verdict.
 - **"My container scan found no application-dependency CVEs."** Container scans cover OS packages only. Run a source scan for the application dependency tree; the two are complementary.
 - **"The reachability badge is blank on every finding."** Expected on non-Go findings, and on Go findings when reachability could not run (source not preserved, `REACHABILITY_ENABLED=false`, or `govulncheck` missing or timed out): the finding stays "not analysed" and the compact list renders nothing for that state. Go findings that were analysed show a reachable / not-reachable badge. See the [status note](#reachability-detail).
 
@@ -81,5 +81,5 @@ Track the multi-language roadmap on the [comparison page](../comparison.md) and 
 - [SBOM](../user-guide/sbom.md) — export and read the SBOM a source scan produces.
 - [Architecture](./architecture.md) — services, scan pipeline stages, Trivy matching.
 - [Data sources](./data-sources.md) — the per-finding data signals (NVD · OSV · GHSA · EPSS · KEV) behind each vulnerability.
-- [License policies](./license-policies.md) — how the policy gate classifies and gates licenses.
+- [License policies](./license-policies.md) — how the build gate classifies and gates licenses.
 - [Comparison](../comparison.md) — reachability scope (Go today) and where other planned items stand.

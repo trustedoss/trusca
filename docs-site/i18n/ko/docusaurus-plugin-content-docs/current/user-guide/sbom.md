@@ -11,7 +11,7 @@ sidebar_position: 5
 포털은 가장 최근 성공 스캔으로부터 **Software Bill of Materials**(SBOM) 산출물을 생성합니다. 4가지 교환 포맷과 attribution `NOTICE` 파일을 지원합니다.
 
 :::note 내보내기 vs 업로드
-이 페이지는 TRUSCA가 스캔으로부터 생성한 SBOM을 **내보내는(export)** 방법을 다룹니다. 반대로 고객 도구가 이미 만든 SBOM(CycloneDX 또는 SPDX)을 **업로드**해 TRUSCA가 CVE를 매칭하고 적합성을 채점하게 하려면 [SBOM 업로드](../ci-integration/sbom-upload.md)와 [스캔 → 받은 SBOM](./scans.md#받은-sbom-업로드)을 참고하세요.
+이 페이지는 TRUSCA가 스캔으로부터 생성한 SBOM을 **내보내는(export)** 방법을 다룹니다. 반대로 고객 도구가 이미 만든 SBOM(CycloneDX 또는 SPDX)을 **업로드**해 TRUSCA가 CVE를 매칭하고 적합성을 채점하게 하려면 [SBOM 업로드](../ci-integration/sbom-upload.md)와 [스캔 → SBOM 업로드](./scans.md#받은-sbom-업로드)을 참고하세요.
 :::
 
 ![프로젝트 상세 — 포맷 선택기와 마지막 스캔 요약이 있는 SBOM 탭](/img/screenshots/user-sbom-tab.png)

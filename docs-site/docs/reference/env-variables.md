@@ -96,7 +96,7 @@ Independently of the Trivy DB bundle, the portal syncs the [CISA KEV (Known Expl
 | `KEV_REFRESH_ENABLED` | `true` | `config.py` | Toggles the daily refresh. Set `false` on air-gapped deployments that cannot reach the feed — with the refresh off, no KEV data is loaded, so **KEV badges and due dates are not shown** and the Priority sort effectively degrades to severity → EPSS. |
 | `KEV_REFRESH_TIMEOUT_SECONDS` | `30` | `config.py` | Outbound HTTP timeout for the CISA feed download. |
 
-## Build / policy gate
+## Build gate {#build--policy-gate}
 
 The CI build gate fails a build on Critical CVEs and forbidden licenses out of the box; those conditions are not env-driven. The single env knob below adds an **optional** EPSS dimension.
 

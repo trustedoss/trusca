@@ -101,4 +101,4 @@ sidebar_position: 2
 - [의무 카탈로그](../reference/obligation-catalog.md#라이선스-카테고리별-정리) — 라이선스 분류별 의무
 - [승인](../user-guide/approvals.md) — 조건부 라이선스 워크플로우
 - [취약점](../user-guide/vulnerabilities.md#vex-상태-머신) — 게이트를 형성하는 VEX 분류
-- [환경변수 — Build / policy gate](../reference/env-variables.md#빌드--정책-게이트) — `GATE_EPSS_THRESHOLD`
+- [환경변수 — 빌드 게이트](../reference/env-variables.md#빌드--정책-게이트) — `GATE_EPSS_THRESHOLD`

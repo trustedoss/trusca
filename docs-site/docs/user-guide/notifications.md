@@ -17,7 +17,7 @@ Any signed-in user. The header bell and `/notifications` page are visible to eve
 
 :::note
 Notification triggers are wired into the producing services — scans,
-vulnerability ingest, license findings, the policy gate, and the approval
+vulnerability ingest, license findings, the build gate, and the approval
 workflow all emit in-app rows (and external channels per your Preferences).
 See the full trigger catalog under [Triggers](#triggers).
 :::

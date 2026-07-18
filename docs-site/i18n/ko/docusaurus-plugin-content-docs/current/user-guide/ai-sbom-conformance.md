@@ -113,6 +113,6 @@ OpenChain AI SBOM 가이드와 같은 원칙을 따릅니다 — **생성은 도
 ## 더 보기
 
 - [SBOM 업로드](../ci-integration/sbom-upload.md) — 인제스트 엔드포인트·필드·오류
-- [스캔 → 받은 SBOM](./scans.md#받은-sbom-업로드) — `sbom` 종류 스캔의 동작
+- [스캔 → SBOM 업로드](./scans.md#받은-sbom-업로드) — `sbom` 종류 스캔의 동작
 - [스캔 → 적합성 결과](./scans.md#적합성conformance-결과) — G7 행이 확장하는 핵심 검사 9개
 - [SBOM](./sbom.md) — TRUSCA가 생성한 SBOM 내보내기
