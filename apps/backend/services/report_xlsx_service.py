@@ -32,6 +32,8 @@ Numbers / booleans are written as native types and can never be a formula.
 
 from __future__ import annotations
 
+import re
+import zipfile
 from datetime import date, datetime
 from io import BytesIO
 from typing import Any
@@ -39,6 +41,14 @@ from typing import Any
 from openpyxl import Workbook
 from openpyxl.styles import Font
 from openpyxl.worksheet.worksheet import Worksheet
+
+# openpyxl rewrites ``docProps/core.xml``'s ``<dcterms:modified>`` with
+# ``datetime.now()`` at save time regardless of ``wb.properties.modified`` — so
+# it must be re-pinned in the produced bytes (see ``_normalize_zip_timestamps``).
+_CORE_XML = "docProps/core.xml"
+_CORE_DT_RE = re.compile(
+    r"(<dcterms:(?:created|modified)[^>]*>)[^<]*(</dcterms:(?:created|modified)>)"
+)
 
 # Leading characters that make a spreadsheet cell execute as a formula. Same set
 # as ``admin_audit_service._DANGEROUS_CSV_PREFIX`` (OWASP CSV-injection).
@@ -244,7 +254,42 @@ def build_report_xlsx(
 
     buffer = BytesIO()
     wb.save(buffer)
-    return buffer.getvalue()
+    return _normalize_zip_timestamps(buffer.getvalue(), stamp)
+
+
+def _normalize_zip_timestamps(data: bytes, stamp: datetime) -> bytes:
+    """Rewrite an xlsx (a zip) with fixed member timestamps → byte-determinism.
+
+    Two wall-clock leaks make the "pure" builder non-deterministic across a
+    one-second boundary:
+
+    1. ``wb.save`` stamps each zip member's ``date_time`` with the clock at save
+       time (openpyxl offers no hook to pin it).
+    2. openpyxl overwrites ``docProps/core.xml``'s ``<dcterms:modified>`` with
+       ``datetime.now()`` at save, ignoring ``wb.properties.modified``.
+
+    Both are re-pinned to ``stamp`` (already an input, so "same inputs → same
+    bytes" holds), preserving member order, contents, compression type, and
+    attributes. The zip's earliest representable time is 1980-01-01;
+    ``generated_at`` is always well after that.
+    """
+    date_time = (stamp.year, stamp.month, stamp.day, stamp.hour, stamp.minute, stamp.second)
+    iso = stamp.strftime("%Y-%m-%dT%H:%M:%SZ")
+    out = BytesIO()
+    with zipfile.ZipFile(BytesIO(data), "r") as src, zipfile.ZipFile(out, "w") as dst:
+        for info in src.infolist():
+            member = zipfile.ZipInfo(filename=info.filename, date_time=date_time)
+            member.compress_type = info.compress_type
+            member.external_attr = info.external_attr
+            member.internal_attr = info.internal_attr
+            member.create_system = info.create_system
+            content = src.read(info.filename)
+            if info.filename == _CORE_XML:
+                text = content.decode("utf-8")
+                text = _CORE_DT_RE.sub(rf"\g<1>{iso}\g<2>", text)
+                content = text.encode("utf-8")
+            dst.writestr(member, content)
+    return out.getvalue()
 
 
 __all__ = ["build_report_xlsx", "XLSX_MIME"]
