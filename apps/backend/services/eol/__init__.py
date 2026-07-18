@@ -11,6 +11,7 @@ Package layout:
 """
 
 from services.eol.eol_catalog import (
+    CURRENCY_STATES,
     EolDataset,
     EolRule,
     EolVerdict,
@@ -23,6 +24,7 @@ from services.eol.eol_catalog import (
 )
 
 __all__ = [
+    "CURRENCY_STATES",
     "EolDataset",
     "EolRule",
     "EolVerdict",

@@ -105,6 +105,12 @@ export interface ComponentsToolbarProps {
   eolOnly: boolean;
   onEolOnlyChange: (value: boolean) => void;
   /**
+   * Version-currency-only toggle (sibling of `eolOnly`). `?outdated=true` when
+   * on; off = no opinion (`?outdated=false` is never emitted from here).
+   */
+  outdatedOnly: boolean;
+  onOutdatedOnlyChange: (value: boolean) => void;
+  /**
    * W9 #52 — current severity selection (mirrors parent state). When the
    * user mounts the severity facet via "+ Add filter", the toolbar renders
    * a MultiSelect bound to this prop.
@@ -142,6 +148,8 @@ export function ComponentsToolbar({
   onDependencyScopeChange,
   eolOnly,
   onEolOnlyChange,
+  outdatedOnly,
+  onOutdatedOnlyChange,
   severity,
   onSeverityChange,
   licenseCategory,
@@ -308,6 +316,33 @@ export function ComponentsToolbar({
           )}
         >
           {t("components.toolbar.eol_only")}
+        </button>
+      </div>
+
+      {/* Version-currency-only toggle — sibling of the EOL toggle. "on"
+          narrows to components behind the newest patch in their release line;
+          "off" means no opinion — `?outdated=false` is never emitted here. A
+          lower-urgency signal than EOL (a newer patch exists, not end-of-life). */}
+      <div className="flex flex-col">
+        <span className="text-xs font-medium text-muted-foreground">
+          {t("components.toolbar.currency_label")}
+        </span>
+        <button
+          type="button"
+          aria-pressed={outdatedOnly}
+          data-testid="components-outdated-filter"
+          data-active={outdatedOnly ? "true" : "false"}
+          onClick={() => onOutdatedOnlyChange(!outdatedOnly)}
+          className={cn(
+            "mt-1 inline-flex h-9 items-center rounded-md border border-input px-3 text-xs font-medium",
+            "transition-colors duration-fast ease-out-soft",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+            outdatedOnly
+              ? "bg-primary text-primary-foreground"
+              : "bg-background text-muted-foreground hover:bg-muted",
+          )}
+        >
+          {t("components.toolbar.outdated_only")}
         </button>
       </div>
 

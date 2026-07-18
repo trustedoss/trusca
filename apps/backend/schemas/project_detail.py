@@ -137,6 +137,15 @@ class ProjectOverviewResponse(BaseModel):
             "an EOL runtime gets no upstream fixes."
         ),
     )
+    outdated_count: int = Field(
+        default=0,
+        description=(
+            "0040 — count of distinct components in the anchored scan behind "
+            "the newest patch of their release line (version currency). A "
+            "maintenance signal distinct from EOL: the release line is still "
+            "supported, but a newer patch is available."
+        ),
+    )
     severity_distribution: dict[str, int] = Field(
         default_factory=dict,
         description=(
@@ -307,6 +316,25 @@ class ComponentSummary(BaseModel):
             "cycles). ``null`` for boolean-only feeds and untracked rows."
         ),
     )
+    currency_state: Literal["current", "outdated", "unknown"] | None = Field(
+        default=None,
+        description=(
+            "Version-currency verdict for this component version (sibling of "
+            "``eol_state``). ``outdated`` = a newer patch exists in the same "
+            "release line; ``current`` = already the newest known patch; "
+            "``unknown`` = tracked product but the newest patch could not be "
+            "decided; ``null`` = not a tracked product (closed whitelist — "
+            "never guessed). The UI renders a badge only for ``outdated`` "
+            "(absence is the signal)."
+        ),
+    )
+    currency_latest: str | None = Field(
+        default=None,
+        description=(
+            "Newest known patch of this version's release line, when tracked. "
+            "``null`` for untracked rows or when it could not be decided."
+        ),
+    )
 
 
 class ComponentListResponse(BaseModel):
@@ -463,6 +491,21 @@ class ComponentDetailResponse(BaseModel):
     eol_source: str | None = Field(
         default=None,
         description="Snapshot provenance, e.g. 'endoflife.date@2026-07-11'.",
+    )
+    currency_state: Literal["current", "outdated", "unknown"] | None = Field(
+        default=None,
+        description=(
+            "Version-currency verdict (see ComponentSummary.currency_state for "
+            "the vocabulary). ``null`` = not a tracked product."
+        ),
+    )
+    currency_latest: str | None = Field(
+        default=None,
+        description="Newest known patch of the version's release line, when tracked.",
+    )
+    currency_latest_release_date: date | None = Field(
+        default=None,
+        description="Release date of the newest known patch, when the feed carries one.",
     )
     created_at: datetime
     updated_at: datetime

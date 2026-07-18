@@ -225,6 +225,11 @@
     "errors": {
       "title": "개요를 불러오지 못했습니다.",
       "detail": "페이지를 새로고침해 주세요."
+    },
+    "outdated_chip": {
+      "title": "최신 패치보다 뒤처진 컴포넌트 {{count}}개",
+      "body": "같은 릴리스 라인에 더 새로운 패치가 있습니다. 지원은 유지되지만 최신 상태는 아닙니다.",
+      "link": "뒤처진 컴포넌트 보기"
     }
   },
   "components": {
@@ -239,6 +244,7 @@
       "policy": "정책",
       "usage": "용도",
       "eol": "EOL",
+      "currency": "최신성",
       "severity": "심각도",
       "vulns": "CVE"
     },
@@ -252,6 +258,19 @@
         "supported": "지원 중 (endoflife.date 추적 대상)",
         "unknown": "추적 대상이나 릴리즈 사이클을 판정할 수 없음",
         "untracked": "endoflife.date 추적 대상이 아님"
+      }
+    },
+    "currency": {
+      "label": "뒤처짐",
+      "tooltip": "이 릴리즈 라인에 더 새로운 패치가 있습니다 — 이 버전은 최신 패치보다 뒤처져 있습니다.",
+      "tooltip_with_version": "최신 패치 {{version}}이(가) 있습니다 — 이 버전은 그보다 뒤처져 있습니다.",
+      "latest": "최신 {{version}}",
+      "latest_with_date": "최신 {{version}} ({{date}})",
+      "state": {
+        "current": "릴리즈 라인의 최신 패치 사용 중",
+        "outdated": "릴리즈 라인의 최신 패치보다 뒤처짐",
+        "unknown": "추적 대상이나 최신 패치를 판정할 수 없음",
+        "untracked": "이 컴포넌트의 릴리즈 라인 정보가 없음"
       }
     },
     "license": {
@@ -289,7 +308,9 @@
         "unspecified": "지정 안 됨"
       },
       "eol_label": "지원 종료",
-      "eol_only": "EOL만"
+      "eol_only": "EOL만",
+      "currency_label": "버전 최신성",
+      "outdated_only": "뒤처진 것만"
     },
     "empty": {
       "title": "조건에 맞는 컴포넌트가 없습니다",
@@ -327,6 +348,7 @@
     "dependency_type_label": "유형",
     "usage_label": "용도",
     "eol_label": "지원 종료",
+    "currency_label": "버전 최신성",
     "open_full_view": "전체 화면으로 보기",
     "error": "컴포넌트를 불러오지 못했습니다.",
     "vulns": {

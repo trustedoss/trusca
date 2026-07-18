@@ -36,6 +36,7 @@ function overview(
     project_name: "demo",
     total_components: 12,
     eol_count: 0,
+    outdated_count: 0,
     severity_distribution: { critical: 1, high: 2, medium: 3, low: 6 },
     license_distribution: { forbidden: 1, allowed: 11 },
     risk_score: 80,
@@ -428,5 +429,51 @@ describe("OverviewTab", () => {
     expect(screen.getByTestId("overview-error").textContent).toContain(
       "You cannot view this project.",
     );
+  });
+
+  it("renders the outdated KPI chip only when outdated_count > 0", async () => {
+    mockedGet.mockResolvedValue(overview({ outdated_count: 3 }));
+    renderTab();
+    const chip = await screen.findByTestId("overview-outdated-chip");
+    expect(chip).toHaveAttribute("data-outdated-count", "3");
+    expect(chip.textContent).toMatch(/3/);
+  });
+
+  it("hides the outdated KPI chip when outdated_count is 0", async () => {
+    mockedGet.mockResolvedValue(overview({ outdated_count: 0 }));
+    renderTab();
+    await screen.findByTestId("overview-severity-card");
+    expect(screen.queryByTestId("overview-outdated-chip")).toBeNull();
+  });
+
+  it("deep-links the outdated chip to the components tab filtered by outdated", async () => {
+    mockedGet.mockResolvedValue(overview({ outdated_count: 2 }));
+    render(
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
+        <MemoryRouter initialEntries={["/projects/p1"]}>
+          <Routes>
+            <Route
+              path="/projects/:id"
+              element={
+                <>
+                  <OverviewTab projectId="11111111-1111-1111-1111-111111111111" />
+                  <LocationProbe />
+                </>
+              }
+            />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    const link = await screen.findByTestId("overview-outdated-chip-link");
+    await userEvent.click(link);
+    await waitFor(() => {
+      const search =
+        screen.getByTestId("location-probe").getAttribute("data-search") ?? "";
+      expect(search).toContain("tab=components");
+      expect(search).toContain("outdated=true");
+    });
   });
 });

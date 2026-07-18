@@ -315,6 +315,7 @@ async def get_project_overview(
     license_distribution = dict.fromkeys(_ALL_LICENSE_KEYS, 0)
     total_components = 0
     eol_count = 0
+    outdated_count = 0
     last_scan_at: Any = None
     last_succeeded_scan_at: Any = None
     # #35 Surface B — tri-state: True/False once we know the DT vuln-DB size at
@@ -430,18 +431,35 @@ async def get_project_overview(
             .where(ComponentVersion.eol_state == "eol")
         )
 
+        # Version-currency rollup (0040), the sibling KPI chip: distinct catalog
+        # rows in the anchor scan behind the newest patch of their release line.
+        # Rides the partial index ix_component_versions_currency_outdated.
+        outdated_count_stmt = (
+            select(func.count(func.distinct(ScanComponent.component_version_id)))
+            .select_from(ScanComponent)
+            .join(
+                ComponentVersion,
+                ComponentVersion.id == ScanComponent.component_version_id,
+            )
+            .where(ScanComponent.scan_id == aggregate_scan_id)
+            .where(ComponentVersion.currency_state == "outdated")
+        )
+
         (
             agg_result,
             recent_result,
             succeeded_meta_result,
             eol_count_result,
+            outdated_count_result,
         ) = await asyncio.gather(
             session.execute(agg_stmt),
             session.execute(recent_stmt),
             session.execute(succeeded_meta_stmt),
             session.execute(eol_count_stmt),
+            session.execute(outdated_count_stmt),
         )
         eol_count = int(eol_count_result.scalar_one())
+        outdated_count = int(outdated_count_result.scalar_one())
 
         succeeded_row = succeeded_meta_result.one_or_none()
         if succeeded_row is not None:
@@ -486,6 +504,7 @@ async def get_project_overview(
         "project_name": project.name,
         "total_components": total_components,
         "eol_count": eol_count,
+        "outdated_count": outdated_count,
         "severity_distribution": severity_distribution,
         "license_distribution": license_distribution,
         "risk_score": overall_risk,
@@ -562,6 +581,7 @@ async def list_components_for_project(
     direct: bool | None = None,
     dependency_scope: list[str] | None = None,
     eol: bool | None = None,
+    outdated: bool | None = None,
     sort: str = "name",
     order: str = "asc",
     scan_id: uuid.UUID | None = None,
@@ -695,6 +715,10 @@ async def list_components_for_project(
             # labels are free on the existing join; no extra query.
             ComponentVersion.eol_state.label("eol_state"),
             ComponentVersion.eol_date.label("eol_date"),
+            # Version currency rides the same catalog row (sibling of EOL);
+            # free on the existing join, no extra query.
+            ComponentVersion.currency_state.label("currency_state"),
+            ComponentVersion.currency_latest.label("currency_latest"),
         )
         .select_from(per_cv_subq)
         .join(ComponentVersion, ComponentVersion.id == per_cv_subq.c.cv_id)
@@ -752,6 +776,21 @@ async def list_components_for_project(
                 or_(
                     ComponentVersion.eol_state.is_(None),
                     ComponentVersion.eol_state != "eol",
+                )
+            )
+
+    # Version currency filter (sibling of EOL). ``outdated=true`` keeps only
+    # rows behind the newest patch of their release line (served by the partial
+    # index ix_component_versions_currency_outdated); ``outdated=false`` keeps
+    # everything else INCLUDING untracked (NULL), current and unknown rows.
+    if outdated is not None:
+        if outdated:
+            base = base.where(ComponentVersion.currency_state == "outdated")
+        else:
+            base = base.where(
+                or_(
+                    ComponentVersion.currency_state.is_(None),
+                    ComponentVersion.currency_state != "outdated",
                 )
             )
 
@@ -848,6 +887,10 @@ async def list_components_for_project(
                 # contract: absence is the signal).
                 "eol_state": r.eol_state,
                 "eol_date": r.eol_date,
+                # Version currency off the same catalog row. NULL = not a
+                # tracked product (FE renders nothing; absence is the signal).
+                "currency_state": r.currency_state,
+                "currency_latest": r.currency_latest,
             }
         )
 
@@ -892,6 +935,10 @@ async def get_component_detail(
             ComponentVersion.eol_cycle,
             ComponentVersion.eol_date,
             ComponentVersion.eol_source,
+            # Version currency (sibling of EOL); free on this select.
+            ComponentVersion.currency_state,
+            ComponentVersion.currency_latest,
+            ComponentVersion.currency_latest_release_date,
             Component.id.label("component_id"),
             Component.name.label("component_name"),
             Project.id.label("project_id"),
@@ -1116,6 +1163,11 @@ async def get_component_detail(
         "eol_cycle": row.eol_cycle,
         "eol_date": row.eol_date,
         "eol_source": row.eol_source,
+        # Version currency (catalog columns). All None for an untracked
+        # component; the drawer's currency row renders "—" then.
+        "currency_state": row.currency_state,
+        "currency_latest": row.currency_latest,
+        "currency_latest_release_date": row.currency_latest_release_date,
         "created_at": row.created_at,
         "updated_at": row.updated_at,
     }

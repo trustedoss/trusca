@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING, Any, Literal
 import structlog
 
 from core.config import eol_snapshot_path
+from services.upgrade_recommendation import compare_versions, parse_version
 
 if TYPE_CHECKING:
     from models import ComponentVersion
@@ -49,6 +50,10 @@ _MAP_PATH = Path(__file__).resolve().parent / "eol_purl_map.json"
 _SNAPSHOT_PATH = Path(__file__).resolve().parent / "eol_snapshot.json"
 
 _LEADING_INT = re.compile(r"^([0-9]+)")
+
+# ``EolVerdict.date`` (a field) shadows the ``date`` type inside that class
+# body; this alias lets fields declared after it still name the type.
+_ReleaseDate = date
 
 # Ceiling on a single numeric segment in a derived cycle. The persisted
 # column is VARCHAR(32) (0038) and no real release cycle approaches double
@@ -62,6 +67,18 @@ EolState = Literal["eol", "supported", "unknown"]
 
 # Closed vocabulary persisted into component_versions.eol_state (0038).
 EOL_STATES: tuple[EolState, ...] = ("eol", "supported", "unknown")
+
+# Version-currency signal (0040), a sibling of EOL derived from the SAME
+# endoflife.date match. Where EOL answers "is this release line dead?",
+# currency answers "is this version behind the newest patch of its release
+# line?" — the snapshot carries ``latest`` (the newest patch in the cycle) and
+# ``latestReleaseDate`` per cycle. ``outdated`` = installed < cycle.latest;
+# ``current`` = installed >= cycle.latest; ``unknown`` = no cycle match, no
+# ``latest``, or an unparseable version. This is the OFFLINE half; the
+# deps.dev "absolute newest across the ecosystem / N releases behind" half is
+# a separate opt-in egress path (not implemented here).
+CurrencyState = Literal["current", "outdated", "unknown"]
+CURRENCY_STATES: tuple[CurrencyState, ...] = ("current", "outdated", "unknown")
 
 
 @dataclass(frozen=True)
@@ -78,6 +95,13 @@ class EolVerdict:
     cycle: str | None
     date: date | None
     source: str
+    # Currency (0040) — defaulted so the no-cycle-match branches (where the
+    # snapshot carries no ``latest``) stay ``unknown``/NULL without threading.
+    currency_state: CurrencyState = "unknown"
+    currency_latest: str | None = None
+    # The ``date`` field above shadows the ``date`` type inside the class body,
+    # so this later field aliases it (see ``_ReleaseDate``).
+    currency_latest_release_date: _ReleaseDate | None = None
 
 
 @dataclass(frozen=True)
@@ -193,6 +217,36 @@ def derive_cycle(version: str, granularity: str) -> str | None:
     return segments[0]
 
 
+def _evaluate_currency(
+    version: str, entry: dict[str, Any]
+) -> tuple[CurrencyState, str | None, date | None]:
+    """Currency verdict from a matched cycle entry's ``latest`` field.
+
+    ``outdated`` when the installed version parses strictly below the cycle's
+    ``latest`` patch; ``current`` when ``>=``; ``unknown`` when the entry has no
+    usable ``latest`` or either version is unparseable. Uses the tolerant,
+    cross-ecosystem comparator from ``upgrade_recommendation`` (never raises).
+    """
+    latest = entry.get("latest")
+    if not isinstance(latest, str) or not latest:
+        return ("unknown", None, None)
+    latest_release_date: date | None = None
+    raw_date = entry.get("latestReleaseDate")
+    if isinstance(raw_date, str):
+        try:
+            latest_release_date = date.fromisoformat(raw_date)
+        except ValueError:
+            latest_release_date = None
+    installed_parsed = parse_version(version)
+    latest_parsed = parse_version(latest)
+    if installed_parsed is None or latest_parsed is None:
+        return ("unknown", latest, latest_release_date)
+    state: CurrencyState = (
+        "outdated" if compare_versions(installed_parsed, latest_parsed) < 0 else "current"
+    )
+    return (state, latest, latest_release_date)
+
+
 def evaluate(
     purl_with_version: str,
     version: str,
@@ -201,7 +255,12 @@ def evaluate(
     dataset: EolDataset,
     today: date,
 ) -> EolVerdict | None:
-    """Verdict for one component; ``None`` = unmapped (leave columns NULL)."""
+    """Verdict for one component; ``None`` = unmapped (leave columns NULL).
+
+    Carries both the EOL state and the version-currency signal (0040) — both
+    derive from the SAME endoflife.date cycle match, so they are computed in
+    one pass. Currency stays ``unknown`` on any branch without a cycle entry.
+    """
     purl = purl_with_version.replace("%40", "@")
     rule = next((r for r in rules if purl.startswith(r.purl_prefix)), None)
     if rule is None:
@@ -220,18 +279,27 @@ def evaluate(
     )
     if entry is None:
         return EolVerdict("unknown", rule.product, cycle, None, source)
+    cur_state, cur_latest, cur_date = _evaluate_currency(version, entry)
     eol_value = entry.get("eol")
     if isinstance(eol_value, bool):
         state: EolState = "eol" if eol_value else "supported"
-        return EolVerdict(state, rule.product, cycle, None, source)
+        return EolVerdict(
+            state, rule.product, cycle, None, source, cur_state, cur_latest, cur_date
+        )
     if isinstance(eol_value, str):
         try:
             eol_date = date.fromisoformat(eol_value)
         except ValueError:
-            return EolVerdict("unknown", rule.product, cycle, None, source)
+            return EolVerdict(
+                "unknown", rule.product, cycle, None, source, cur_state, cur_latest, cur_date
+            )
         state = "eol" if eol_date < today else "supported"
-        return EolVerdict(state, rule.product, cycle, eol_date, source)
-    return EolVerdict("unknown", rule.product, cycle, None, source)
+        return EolVerdict(
+            state, rule.product, cycle, eol_date, source, cur_state, cur_latest, cur_date
+        )
+    return EolVerdict(
+        "unknown", rule.product, cycle, None, source, cur_state, cur_latest, cur_date
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -299,4 +367,20 @@ def stamp_component_version(
             changed = True
     if changed:
         component_version.eol_evaluated_at = now
-    return changed
+
+    # Currency (0040) — tracked independently so a currency-only change does
+    # not dirty the EOL stamp time, and vice versa, keeping each idempotent.
+    currency_changed = False
+    currency_updates = {
+        "currency_state": verdict.currency_state,
+        "currency_latest": verdict.currency_latest,
+        "currency_latest_release_date": verdict.currency_latest_release_date,
+    }
+    for attr, value in currency_updates.items():
+        if getattr(component_version, attr) != value:
+            setattr(component_version, attr, value)
+            currency_changed = True
+    if currency_changed:
+        component_version.currency_evaluated_at = now
+
+    return changed or currency_changed

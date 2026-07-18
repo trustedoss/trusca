@@ -8,6 +8,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- **Version currency: "behind latest patch" component signal.** A sibling of
+  the EOL flag, answering a different question — not "is this release line
+  dead?" but "is this version behind the newest patch of its (still-supported)
+  release line?". It reuses the vendored endoflife.date snapshot (each cycle
+  carries its newest patch), so it is fully offline — no new network at scan
+  time. Components in the Components tab and drawer gain an "Outdated" badge
+  (a lower-urgency amber-below tone than EOL) with the latest patch version, an
+  "Outdated only" filter (`?outdated=true`), and a project-Overview "N
+  outdated" chip. The deps.dev "absolute-newest across the ecosystem / N
+  releases behind" enrichment is a separate opt-in egress path, not included
+  here.
 - **Vulnerabilities "Group by upgrade" view.** The project Vulnerabilities tab
   gains a Flat ⇄ By upgrade toggle. "By upgrade" replaces the flat finding list
   with the whole-project set of remediation clusters — each the *minimum safe

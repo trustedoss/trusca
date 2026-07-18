@@ -257,6 +257,43 @@ export function OverviewTab({
         </Alert>
       ) : null}
 
+      {/* Version-currency KPI chip (0040) — components behind the newest patch
+          of their release line. Blue (Low family): a maintenance signal one
+          notch below EOL's amber. Deep-links to Components `?outdated=true`. */}
+      {data.outdated_count > 0 ? (
+        <Alert
+          className="border-blue-300 bg-blue-50 text-blue-900 md:col-span-2"
+          data-testid="overview-outdated-chip"
+          data-outdated-count={data.outdated_count}
+        >
+          <AlertTriangle className="h-4 w-4" aria-hidden />
+          <AlertDescription className="flex flex-wrap items-baseline gap-2">
+            <span className="font-semibold">
+              {t("overview.outdated_chip.title", { count: data.outdated_count })}
+            </span>
+            <span>{t("overview.outdated_chip.body")}</span>
+            <button
+              type="button"
+              className="underline underline-offset-2 hover:no-underline"
+              data-testid="overview-outdated-chip-link"
+              onClick={() =>
+                setSearchParams(
+                  (prev) => {
+                    const next = new URLSearchParams(prev);
+                    next.set("tab", "components");
+                    next.set("outdated", "true");
+                    return next;
+                  },
+                  { replace: false },
+                )
+              }
+            >
+              {t("overview.outdated_chip.link")}
+            </button>
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
       {/* Row 1 left — Project info. Single column so it pairs with the gate
           card on the right; missing-`project` (standalone tests) keeps the
           card hidden and the gate card moves into the slot naturally. */}

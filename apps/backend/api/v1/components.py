@@ -88,6 +88,10 @@ async def get_component_detail_endpoint(
         eol_cycle=payload["eol_cycle"],
         eol_date=payload["eol_date"],
         eol_source=payload["eol_source"],
+        # Version currency — same hand-built-response drop class as EOL above.
+        currency_state=payload["currency_state"],
+        currency_latest=payload["currency_latest"],
+        currency_latest_release_date=payload["currency_latest_release_date"],
         created_at=payload["created_at"],
         updated_at=payload["updated_at"],
     )

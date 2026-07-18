@@ -50,6 +50,9 @@ function detail(
     eol_cycle: null,
     eol_date: null,
     eol_source: null,
+    currency_state: null,
+    currency_latest: null,
+    currency_latest_release_date: null,
     ...overrides,
   };
 }
@@ -172,6 +175,36 @@ describe("ComponentDetailBody (W10-E)", () => {
     expect(
       usageRow.querySelector("[data-dependency-scope='unknown']"),
     ).toBeInTheDocument();
+  });
+
+  // ─── Version currency row (EolBadge sibling) ─────────────────────────────
+
+  it("renders the currency row with the badge + latest patch when outdated", () => {
+    renderBody(
+      detail({
+        currency_state: "outdated",
+        currency_latest: "2.5.1",
+        currency_latest_release_date: "2026-03-01",
+      }),
+    );
+
+    const row = screen.getByTestId("component-drawer-currency");
+    const badge = row.querySelector("[data-testid='currency-badge']");
+    expect(badge).toBeInTheDocument();
+    expect(badge).toHaveAttribute("data-currency-latest", "2.5.1");
+    // Latest patch + release date render inline on the drawer surface.
+    expect(row.textContent).toContain("2.5.1");
+    expect(row.textContent).toContain("2026-03-01");
+  });
+
+  it("renders a '—' currency row (no badge) when the component is current", () => {
+    renderBody(detail({ currency_state: "current", currency_latest: "1.0.0" }));
+
+    const row = screen.getByTestId("component-drawer-currency");
+    expect(
+      row.querySelector("[data-testid='currency-badge']"),
+    ).not.toBeInTheDocument();
+    expect(row.textContent).toContain("—");
   });
 
   // ─── M-20 — Obligations section ──────────────────────────────────────────

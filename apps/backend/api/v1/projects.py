@@ -456,6 +456,7 @@ async def get_project_overview_endpoint(
         # tests/unit/api/test_handbuilt_response_completeness.py: this
         # construction has silently dropped fields before).
         eol_count=payload["eol_count"],
+        outdated_count=payload["outdated_count"],
         severity_distribution=payload["severity_distribution"],
         license_distribution=payload["license_distribution"],
         risk_score=payload["risk_score"],
@@ -522,6 +523,16 @@ async def list_project_components_endpoint(
             "the KEV filter UX."
         ),
     ),
+    outdated: bool | None = Query(
+        default=None,
+        description=(
+            "Version-currency facet (sibling of the EOL filter). ``true`` "
+            "keeps only components behind the newest patch of their release "
+            "line (endoflife.date); ``false`` keeps everything else, "
+            "including current, unknown and untracked components. Omit to "
+            "include both. Boolean mirrors the KEV filter UX."
+        ),
+    ),
     sort: str = Query(default="name", pattern=r"^(name|severity|license)$"),
     order: str = Query(default="asc", pattern=r"^(asc|desc)$"),
     scan_id: uuid.UUID | None = Query(
@@ -549,6 +560,7 @@ async def list_project_components_endpoint(
             direct=direct,
             dependency_scope=dependency_scope,
             eol=eol,
+            outdated=outdated,
             sort=sort,
             order=order,
             scan_id=scan_id,

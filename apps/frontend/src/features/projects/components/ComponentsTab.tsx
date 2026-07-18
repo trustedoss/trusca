@@ -40,6 +40,7 @@ import {
 } from "@/features/projects/components/ComponentsToolbar";
 import { DependencyScopeBadge } from "@/features/projects/components/DependencyScopeBadge";
 import { EolBadge } from "@/features/projects/components/EolBadge";
+import { CurrencyBadge } from "@/features/projects/components/CurrencyBadge";
 import { AxisPill } from "@/features/projects/components/AxisPill";
 import { DependencyTypeBadge } from "@/features/projects/components/DependencyTypeBadge";
 import { LicenseCategoryBadge } from "@/features/projects/components/LicenseCategoryBadge";
@@ -88,6 +89,7 @@ function getComponentColumnsCatalog(
     { id: "policy", label: t("components.col.policy") },
     { id: "usage", label: t("components.col.usage") },
     { id: "eol", label: t("components.col.eol") },
+    { id: "currency", label: t("components.col.currency") },
     { id: "severity", label: t("components.col.severity") },
     { id: "vulns", label: t("components.col.vulns") },
   ];
@@ -193,6 +195,11 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
   // "off" state means "no opinion" (both buckets), never `?eol=false`.
   const [eolOnly, setEolOnly] = useState<boolean>(
     () => searchParams.get("eol") === "true",
+  );
+  // Version-currency-only toggle (sibling of eolOnly). `?outdated=true` when
+  // on; "off" means "no opinion" (both buckets), never `?outdated=false`.
+  const [outdatedOnly, setOutdatedOnly] = useState<boolean>(
+    () => searchParams.get("outdated") === "true",
   );
   const [sort, setSort] = useState<ComponentSortKey>(() =>
     parseSort(searchParams.get("sort")),
@@ -311,6 +318,9 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
         // Phase M — `?eol=true` only when the toggle is on.
         if (eolOnly) next.set("eol", "true");
         else next.delete("eol");
+        // Version currency — `?outdated=true` only when the toggle is on.
+        if (outdatedOnly) next.set("outdated", "true");
+        else next.delete("outdated");
         if (sort !== "name") next.set("sort", sort);
         else next.delete("sort");
         if (order !== "asc") next.set("order", order);
@@ -326,6 +336,7 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
     direct,
     dependencyScope,
     eolOnly,
+    outdatedOnly,
     sort,
     order,
     setSearchParams,
@@ -339,6 +350,7 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
       direct,
       dependency_scope: dependencyScope,
       eol: eolOnly ? true : null,
+      outdated: outdatedOnly ? true : null,
       sort,
       order,
       pageSize: PAGE_SIZE,
@@ -351,6 +363,7 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
       direct,
       dependencyScope,
       eolOnly,
+      outdatedOnly,
       sort,
       order,
       scanId,
@@ -519,6 +532,8 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
         onDependencyScopeChange={setDependencyScope}
         eolOnly={eolOnly}
         onEolOnlyChange={setEolOnly}
+        outdatedOnly={outdatedOnly}
+        onOutdatedOnlyChange={setOutdatedOnly}
         severity={severity}
         onSeverityChange={setSeverity}
         licenseCategory={licenseCategory}
@@ -737,6 +752,11 @@ function ComponentsTableHeader({
           {t("components.col.eol")}
         </span>
       ) : null}
+      {visibleColumns.has("currency") ? (
+        <span className="w-20" data-testid="components-header-cell-currency">
+          {t("components.col.currency")}
+        </span>
+      ) : null}
       {visibleColumns.has("severity") ? (
         <span className="w-24" data-testid="components-header-cell-severity">
           <SortableColumnHeader
@@ -868,6 +888,14 @@ function ComponentRow({
           <EolBadge
             eolState={component.eol_state}
             eolDate={component.eol_date}
+          />
+        </span>
+      ) : null}
+      {visibleColumns.has("currency") ? (
+        <span className="w-20" data-testid="component-row-cell-currency">
+          <CurrencyBadge
+            currencyState={component.currency_state}
+            currencyLatest={component.currency_latest}
           />
         </span>
       ) : null}

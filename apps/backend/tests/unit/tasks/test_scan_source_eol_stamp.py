@@ -48,6 +48,10 @@ class _FakeComponentVersion:
         self.eol_date: date | None = None
         self.eol_source: str | None = None
         self.eol_evaluated_at = None
+        self.currency_state: str | None = None
+        self.currency_latest: str | None = None
+        self.currency_latest_release_date: date | None = None
+        self.currency_evaluated_at = None
 
 
 class _FakeSession:
