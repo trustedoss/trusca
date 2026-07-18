@@ -30,6 +30,9 @@ from core.errors import problem_response
 from core.security import CurrentUser, require_role
 from schemas.vulnerability_detail import (
     AffectedComponent,
+    UpgradeCluster,
+    UpgradeClusterFinding,
+    UpgradeClusterListResponse,
     UpgradeRecommendation,
     VulnerabilityBulkStatusResponse,
     VulnerabilityBulkStatusResult,
@@ -42,6 +45,7 @@ from schemas.vulnerability_detail import (
 )
 from services.project_service import ProjectError
 from services.scan_resolution import SnapshotScanNotFound
+from services.upgrade_cluster_service import list_upgrade_clusters
 from services.vulnerability_service import (
     VulnerabilityBulkInputError,
     VulnerabilityConflict,
@@ -203,6 +207,77 @@ async def list_project_vulnerabilities_endpoint(
         limit=limit,
         offset=offset,
         severity_distribution=severity_distribution,
+    )
+    return Response(
+        content=body.model_dump_json(),
+        status_code=status.HTTP_200_OK,
+        media_type="application/json",
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/projects/{project_id}/vulnerabilities/upgrade-clusters
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/projects/{project_id}/vulnerabilities/upgrade-clusters",
+    response_model=UpgradeClusterListResponse,
+    summary="Open findings grouped by the component upgrade that fixes them",
+)
+async def list_upgrade_clusters_endpoint(
+    request: Request,
+    project_id: uuid.UUID,
+    scan_id: uuid.UUID | None = Query(
+        default=None,
+        description=(
+            "Optional release-snapshot anchor (feature #28). When given, cluster "
+            "the CVE findings of this SPECIFIC succeeded scan instead of the "
+            "project's latest succeeded scan. Must belong to this project and be "
+            "succeeded, else 404. Omit for the default latest-succeeded behaviour."
+        ),
+    ),
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_role("developer")),
+) -> Response:
+    """The "Group by upgrade" view: the resolved scan's OPEN findings grouped by
+    the minimum safe upgrade that clears them, most-actionable first.
+
+    Same auth / snapshot semantics as the list endpoint — non-member → 403,
+    missing project → 404, unresolvable ``?scan_id=`` → 404, no succeeded scan →
+    200 with an empty ``clusters`` and ``total_findings == 0``.
+    """
+    try:
+        result = await list_upgrade_clusters(
+            session,
+            project_id=project_id,
+            actor=actor,
+            snapshot_scan_id=scan_id,
+        )
+    except SnapshotScanNotFound:
+        return _problem_for_snapshot_not_found(request)
+    except (VulnerabilityError, ProjectError) as exc:
+        return _problem_for_vulnerability_error(request, exc)
+
+    body = UpgradeClusterListResponse(
+        scan_id=result.scan_id,
+        total_findings=result.total_findings,
+        clusters=[
+            UpgradeCluster(
+                component_version_id=c["component_version_id"],
+                component_name=c["component_name"],
+                component_purl=c["component_purl"],
+                current_version=c["current_version"],
+                recommended_version=c["recommended_version"],
+                reason=c["reason"],
+                direct=c["direct"],
+                max_severity=c["max_severity"],
+                max_epss=c["max_epss"],
+                finding_count=c["finding_count"],
+                findings=[UpgradeClusterFinding.model_validate(f) for f in c["findings"]],
+            )
+            for c in result.clusters
+        ],
     )
     return Response(
         content=body.model_dump_json(),

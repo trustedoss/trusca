@@ -24,6 +24,7 @@ import { ProblemError } from "@/lib/problem";
 vi.mock("@/features/projects/api/vulnerabilitiesApi", async () => {
   return {
     listProjectVulnerabilities: vi.fn(),
+    listUpgradeClusters: vi.fn(),
     getVulnerabilityFinding: vi.fn(),
     updateVulnerabilityStatus: vi.fn(),
     bulkTransitionVulnerabilities: vi.fn(),
@@ -60,9 +61,12 @@ import {
   bulkTransitionVulnerabilities,
   getVulnerabilityFinding,
   listProjectVulnerabilities,
+  listUpgradeClusters,
+  type UpgradeClusterListResponse,
 } from "@/features/projects/api/vulnerabilitiesApi";
 
 const mockedList = vi.mocked(listProjectVulnerabilities);
+const mockedClusters = vi.mocked(listUpgradeClusters);
 const mockedGet = vi.mocked(getVulnerabilityFinding);
 const mockedReport = vi.mocked(fetchVulnerabilityReportPdf);
 const mockedBulk = vi.mocked(bulkTransitionVulnerabilities);
@@ -126,6 +130,7 @@ function renderTab(
 describe("VulnerabilitiesTab", () => {
   beforeEach(() => {
     mockedList.mockReset();
+    mockedClusters.mockReset();
     mockedGet.mockReset();
     mockedReport.mockReset();
   });
@@ -1374,5 +1379,129 @@ describe("VulnerabilitiesTab", () => {
     expect(
       screen.getByTestId("vulnerabilities-bulk-apply"),
     ).not.toBeDisabled();
+  });
+
+  // ─── W9-#53 "Group by upgrade" ──────────────────────────────────────────
+  function clusterResponse(): UpgradeClusterListResponse {
+    return {
+      scan_id: "scan-1",
+      total_findings: 3,
+      clusters: [
+        {
+          component_version_id: "cv-1",
+          component_name: "lodash",
+          component_purl: "pkg:npm/lodash",
+          current_version: "4.17.20",
+          recommended_version: "4.17.21",
+          reason: "ok",
+          direct: true,
+          max_severity: "critical",
+          max_epss: 0.9,
+          finding_count: 3,
+          findings: [
+            {
+              finding_id: "finding-xyz",
+              cve_id: "CVE-2024-7777",
+              severity: "critical",
+              status: "new",
+              epss_score: 0.9,
+              kev: false,
+              fixed_version: "4.17.21",
+            },
+          ],
+        },
+      ],
+    };
+  }
+
+  it("switching to 'By upgrade' fetches clusters and hides the flat controls", async () => {
+    mockedList.mockResolvedValue(
+      listResponse([vuln("CVE-2024-1111", { severity: "high" })]),
+    );
+    mockedClusters.mockResolvedValueOnce(clusterResponse());
+    renderTab();
+    // Flat mode first: the sort select (flat-only) is present.
+    await waitFor(() => {
+      expect(screen.getAllByTestId("vulnerability-row")).toHaveLength(1);
+    });
+    expect(
+      screen.getByTestId("vulnerabilities-sort-select"),
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId("vulnerabilities-group-by-upgrade"));
+
+    // The clusters query fired and the grouped summary + card render.
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("vulnerabilities-upgrade-list"),
+      ).toBeInTheDocument();
+    });
+    expect(mockedClusters).toHaveBeenCalledWith("proj-1", {
+      scanId: undefined,
+    });
+    expect(
+      screen.getByTestId("vulnerabilities-upgrade-summary"),
+    ).toHaveAttribute("data-findings", "3");
+    // Flat-only controls are gone in upgrade mode.
+    expect(
+      screen.queryByTestId("vulnerabilities-sort-select"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("vulnerability-row"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("clicking a finding inside a cluster opens the shared drawer (URL ?vuln=)", async () => {
+    mockedList.mockResolvedValue(listResponse([]));
+    mockedClusters.mockResolvedValueOnce(clusterResponse());
+    // The drawer's detail fetch — resolve so the drawer body doesn't throw.
+    mockedGet.mockResolvedValue({
+      id: "finding-xyz",
+      project_id: "proj-1",
+      scan_id: "scan-1",
+      cve_id: "CVE-2024-7777",
+      severity: "critical",
+      cvss_score: null,
+      cvss_vector: null,
+      epss_score: 0.9,
+      epss_percentile: 0.99,
+      summary: null,
+      details: null,
+      references: [],
+      published_at: null,
+      status: "new",
+      analysis_state: null,
+      analysis_justification: null,
+      analysis_source: null,
+      vex_origin: null,
+      analyst_user_id: null,
+      analyzed_at: null,
+      reachable: null,
+      reachability_source: null,
+      reachability_analyzed_at: null,
+      affected_components: [],
+      status_history: [],
+      upgrade_recommendation: null,
+      created_at: "2026-05-01T00:00:00Z",
+      updated_at: "2026-05-01T00:00:00Z",
+    });
+
+    renderTab();
+    await userEvent.click(screen.getByTestId("vulnerabilities-group-by-upgrade"));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("vulnerability-upgrade-cluster-header"),
+      ).toBeInTheDocument();
+    });
+    // Expand the cluster, then click the finding row.
+    await userEvent.click(
+      screen.getByTestId("vulnerability-upgrade-cluster-header"),
+    );
+    await userEvent.click(screen.getByTestId("vulnerability-upgrade-finding"));
+
+    // The shared drawer opens keyed by finding_id — its detail fetch fires.
+    await waitFor(() => {
+      expect(mockedGet).toHaveBeenCalledWith("finding-xyz");
+    });
   });
 });

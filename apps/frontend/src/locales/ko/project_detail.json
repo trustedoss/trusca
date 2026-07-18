@@ -348,6 +348,25 @@
   },
   "vulnerabilities": {
     "summary": "전체 {{total}}개 중 {{loaded}}개 로드됨.",
+    "group_by": {
+      "label": "그룹화",
+      "flat": "플랫",
+      "upgrade": "업그레이드별"
+    },
+    "upgrade_cluster": {
+      "upgrade_to": "{{name}} {{from}} → {{to}} 업그레이드",
+      "fixes_count": "{{count}}건 해소",
+      "no_upgrade": "업그레이드 없음",
+      "no_fix_reason": "일부 CVE는 아직 해결 버전이 없습니다",
+      "unparseable_reason": "해결 버전을 해석할 수 없습니다",
+      "direct": "직접 의존성",
+      "finding_fixed_version": "{{version}}에서 해결",
+      "summary_count": "업그레이드 {{clusters}}건으로 취약점 {{findings}}건 해소",
+      "empty": {
+        "title": "표시할 업그레이드가 없습니다",
+        "subtitle": "미해결 취약점이 없거나 완료된 스캔이 아직 없습니다."
+      }
+    },
     "remediation": {
       "heading": "보안 조치",
       "subheading": "이 프로젝트의 npm 버전 업그레이드 제안을 미리 보고, 권한이 있을 때 보안 조치 PR을 생성합니다.",

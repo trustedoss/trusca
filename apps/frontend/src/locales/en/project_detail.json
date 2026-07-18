@@ -348,6 +348,25 @@
   },
   "vulnerabilities": {
     "summary": "{{loaded}} of {{total}} findings loaded.",
+    "group_by": {
+      "label": "Group by",
+      "flat": "Flat",
+      "upgrade": "By upgrade"
+    },
+    "upgrade_cluster": {
+      "upgrade_to": "Upgrade {{name}} {{from}} → {{to}}",
+      "fixes_count": "Fixes {{count}}",
+      "no_upgrade": "No upgrade available",
+      "no_fix_reason": "Some CVEs have no fix version yet",
+      "unparseable_reason": "Fix version could not be parsed",
+      "direct": "Direct",
+      "finding_fixed_version": "Fixed in {{version}}",
+      "summary_count": "{{clusters}} upgrades resolve {{findings}} findings",
+      "empty": {
+        "title": "No upgrades to show",
+        "subtitle": "There are no open findings, or no scan has succeeded yet."
+      }
+    },
     "remediation": {
       "heading": "Remediation",
       "subheading": "Preview proposed npm version bumps for this project and, when authorised, open a remediation pull request.",

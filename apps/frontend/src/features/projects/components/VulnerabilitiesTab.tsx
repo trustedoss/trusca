@@ -1,4 +1,4 @@
-import { ShieldCheck } from "lucide-react";
+import { PackageCheck, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
@@ -24,10 +24,12 @@ import {
 } from "@/components/filters/ColumnsPicker";
 import type { LicenseCategoryName } from "@/features/projects/api/projectDetailApi";
 import { useProjectOverview } from "@/features/projects/api/useProjectOverview";
+import { useUpgradeClusters } from "@/features/projects/api/useUpgradeClusters";
 import { useVulnerabilities } from "@/features/projects/api/useVulnerabilities";
 import type {
   ReachabilityFilter,
   SortOrder,
+  UpgradeCluster,
   VulnFindingStatus,
   VulnSeverity,
   VulnerabilityListItem,
@@ -41,9 +43,11 @@ import { ReachabilityBadge } from "@/features/projects/components/ReachabilityBa
 import { SeverityBadge } from "@/features/projects/components/SeverityBadge";
 import { SeverityDistributionChart } from "@/features/projects/components/SeverityDistributionChart";
 import { VulnerabilitiesRemediationPanel } from "@/features/projects/components/VulnerabilitiesRemediationPanel";
+import { UpgradeClusterList } from "@/features/projects/components/UpgradeClusterList";
 import {
   VulnerabilitiesToolbar,
   type VulnerabilitiesExtraFilter,
+  type VulnerabilitiesGroupByMode,
 } from "@/features/projects/components/VulnerabilitiesToolbar";
 import { VulnerabilityBulkActionBar } from "@/features/projects/components/VulnerabilityBulkActionBar";
 import { VulnerabilityDrawer } from "@/features/projects/components/VulnerabilityDrawer";
@@ -243,6 +247,11 @@ export function VulnerabilitiesTab({
 }: VulnerabilitiesTabProps) {
   const { t } = useTranslation("project_detail");
   const [searchParams, setSearchParams] = useSearchParams();
+
+  // W9-#53 — group-by mode. Local UI state (NOT URL-persisted): switching
+  // tabs unmounts the tab and resets this to the default flat list. "upgrade"
+  // swaps the paginated findings table for whole-project upgrade clusters.
+  const [groupBy, setGroupBy] = useState<VulnerabilitiesGroupByMode>("flat");
 
   // ----- filter state, hydrated from URL on first render -------------------
   const [search, setSearch] = useState(() => searchParams.get("search") ?? "");
@@ -462,7 +471,17 @@ export function VulnerabilitiesTab({
     ],
   );
 
-  const vulnerabilities = useVulnerabilities(projectId, filters);
+  // W9-#53 — exactly one of {flat list, upgrade clusters} runs at a time.
+  // The flat query is gated off in "upgrade" mode and vice-versa, threading
+  // the same `scanId` snapshot anchor.
+  const vulnerabilities = useVulnerabilities(projectId, filters, {
+    enabled: groupBy === "flat",
+  });
+  const upgradeClusters = useUpgradeClusters(projectId, {
+    scanId,
+    enabled: groupBy === "upgrade",
+  });
+  const clusters = upgradeClusters.data?.clusters ?? [];
 
   // W2 #33b — drop selection when the row set shifts. Refs to the filter
   // tuple change atomically with the query key, so this fires exactly when
@@ -572,7 +591,7 @@ export function VulnerabilitiesTab({
 
   return (
     <div data-testid="vulnerabilities-tab" className="flex flex-1 flex-col">
-      {distributionHasAny ? (
+      {groupBy === "flat" && distributionHasAny ? (
         <div
           // W11-C polish — distribution card lands on the canonical px-6 +
           // py-4 gutter shared by toolbar / rows below (Vercel deployments-1
@@ -615,6 +634,8 @@ export function VulnerabilitiesTab({
       ) : null}
 
       <VulnerabilitiesToolbar
+        groupBy={groupBy}
+        onGroupByChange={setGroupBy}
         search={search}
         onSearchChange={setSearch}
         sort={sort}
@@ -662,6 +683,8 @@ export function VulnerabilitiesTab({
         columnsStorageKey={VULN_COLUMNS_STORAGE_KEY}
       />
 
+      {groupBy === "flat" ? (
+        <>
       <ActiveFilterChips<VulnSeverity>
         severity={severity}
         onSeverityChange={(next) => {
@@ -804,6 +827,15 @@ export function VulnerabilitiesTab({
           </div>
         </div>
       ) : null}
+        </>
+      ) : (
+        <UpgradeClustersSection
+          query={upgradeClusters}
+          clusters={clusters}
+          totalFindings={upgradeClusters.data?.total_findings ?? 0}
+          onOpenFinding={setDrawerVuln}
+        />
+      )}
 
       <VulnerabilityDrawer
         open={drawerOpen}
@@ -824,6 +856,87 @@ export function VulnerabilitiesTab({
       {!readOnly ? (
         <VulnerabilitiesRemediationPanel projectId={projectId} />
       ) : null}
+    </div>
+  );
+}
+
+interface UpgradeClustersSectionProps {
+  query: { isLoading: boolean; isError: boolean; error: unknown };
+  clusters: UpgradeCluster[];
+  totalFindings: number;
+  onOpenFinding: (findingId: string) => void;
+}
+
+/**
+ * W9-#53 — grouped ("By upgrade") view. Owns the same loading / error / empty
+ * chrome the flat list uses (skeletons, destructive alert, EmptyState) plus a
+ * summary band reading "N upgrades resolve M findings", then hands the sorted
+ * clusters to {@link UpgradeClusterList}. Clicking a finding inside a cluster
+ * opens the SAME shared drawer via `onOpenFinding`.
+ */
+function UpgradeClustersSection({
+  query,
+  clusters,
+  totalFindings,
+  onOpenFinding,
+}: UpgradeClustersSectionProps) {
+  const { t } = useTranslation("project_detail");
+
+  if (query.isLoading) {
+    return (
+      <div
+        className="flex flex-col gap-2 px-4 py-3"
+        data-testid="vulnerabilities-upgrade-loading"
+      >
+        {Array.from({ length: 6 }).map((_, i) => (
+          <Skeleton key={i} className="h-10 w-full" />
+        ))}
+      </div>
+    );
+  }
+
+  if (query.isError) {
+    return (
+      <div className="px-6 py-6">
+        <Alert variant="destructive" data-testid="vulnerabilities-upgrade-error">
+          <AlertDescription>
+            {query.error instanceof ProblemError
+              ? query.error.detail
+              : t("vulnerabilities.errors.load_failed")}
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
+
+  if (clusters.length === 0) {
+    return (
+      <EmptyState
+        data-testid="vulnerabilities-upgrade-empty"
+        className="m-6"
+        icon={<PackageCheck />}
+        title={t("vulnerabilities.upgrade_cluster.empty.title")}
+        description={t("vulnerabilities.upgrade_cluster.empty.subtitle")}
+      />
+    );
+  }
+
+  return (
+    <div className="flex flex-1 flex-col">
+      <div
+        className="flex items-center justify-between border-b border-border/60 px-6 py-2 text-xs text-muted-foreground"
+        data-testid="vulnerabilities-upgrade-summary"
+        data-clusters={clusters.length}
+        data-findings={totalFindings}
+      >
+        <span>
+          {t("vulnerabilities.upgrade_cluster.summary_count", {
+            clusters: clusters.length,
+            findings: totalFindings,
+          })}
+        </span>
+      </div>
+      <UpgradeClusterList clusters={clusters} onOpenFinding={onOpenFinding} />
     </div>
   );
 }

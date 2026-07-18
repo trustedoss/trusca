@@ -7,6 +7,19 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+- **Vulnerabilities "Group by upgrade" view.** The project Vulnerabilities tab
+  gains a Flat ⇄ By upgrade toggle. "By upgrade" replaces the flat finding list
+  with the whole-project set of remediation clusters — each the *minimum safe
+  upgrade* for one component (the semver-maximum of its open findings' fix
+  versions), showing "Upgrade {component} {from} → {to}" and how many findings
+  it resolves, expandable to the findings themselves (which still open the same
+  drawer). Components whose open findings have no published fix are grouped
+  under "No upgrade available" rather than given a misleading partial bump.
+  Served by `GET /v1/projects/{id}/vulnerabilities/upgrade-clusters`, which
+  reuses the existing upgrade-recommendation engine and the build gate's own
+  open-status set, so the cluster counts stay in lock-step with the gate.
+
 ### Documentation
 - **Wave 7 documentation parity.** New pages, EN + KO: a **Triage** guide
   (`user-guide/triage.md`) that consolidates how a finding flows across VEX

@@ -85,13 +85,24 @@ export function vulnerabilitiesKey(
   ] as const;
 }
 
+export interface UseVulnerabilitiesOptions {
+  /**
+   * Gate the query on the tab's group-by mode (W9-#53). `false` in "upgrade"
+   * mode so only the upgrade-clusters query is in flight there; defaults to
+   * `true` so existing callers keep the always-on behavior.
+   */
+  enabled?: boolean;
+}
+
 export function useVulnerabilities(
   projectId: string | undefined,
   filters: VulnerabilitiesQueryFilters,
+  { enabled = true }: UseVulnerabilitiesOptions = {},
 ): UseQueryResult<VulnerabilityListResponse, Error> {
   return useQuery({
     queryKey: vulnerabilitiesKey(projectId ?? "", filters),
-    enabled: typeof projectId === "string" && projectId.length > 0,
+    enabled:
+      enabled && typeof projectId === "string" && projectId.length > 0,
     queryFn: () =>
       listProjectVulnerabilities(projectId as string, {
         limit: filters.limit,
