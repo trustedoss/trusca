@@ -31,6 +31,7 @@ const sidebars: SidebarsConfig = {
         "user-guide/scans",
         "user-guide/components-and-licenses",
         "user-guide/vulnerabilities",
+        "user-guide/triage",
         "user-guide/sbom",
         "user-guide/ai-sbom-conformance",
         "user-guide/approvals",
@@ -70,6 +71,17 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: "category",
+      label: "Best practices",
+      collapsed: true,
+      items: [
+        "best-practices/scan-frequency",
+        "best-practices/policy-design",
+        "best-practices/team-structure",
+        "best-practices/upgrade-cadence",
+      ],
+    },
+    {
+      type: "category",
       label: "CI integration",
       collapsed: true,
       items: [
@@ -87,9 +99,11 @@ const sidebars: SidebarsConfig = {
       items: [
         "reference/architecture",
         "reference/glossary",
+        "reference/faq",
         "reference/env-variables",
         "reference/api-overview",
         "reference/data-sources",
+        "reference/analysis-types",
         "reference/license-policies",
         "reference/obligation-catalog",
         "reference/remediation-dry-run",
@@ -103,6 +117,8 @@ const sidebars: SidebarsConfig = {
       label: "Release notes",
       collapsed: true,
       items: [
+        "release-notes/v0-14-0",
+        "release-notes/v0-13-1",
         "release-notes/v0-13-0",
         "release-notes/v0-12-0",
         "release-notes/v0-11-1",

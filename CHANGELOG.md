@@ -7,6 +7,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Documentation
+- **Wave 7 documentation parity.** New pages, EN + KO: a **Triage** guide
+  (`user-guide/triage.md`) that consolidates how a finding flows across VEX
+  vulnerability triage, component approval, and the build gate — and makes
+  explicit that a rejected component approval does not gate the build; an
+  **Analysis types** reference (`reference/analysis-types.md`) matrix of source
+  SBOM scan / container scan / policy gate / (planned) reachability; a
+  **Best practices** category (scan frequency, policy design, team structure,
+  upgrade cadence); and an **FAQ** (`reference/faq.md`) link hub. Also wired the
+  previously-unlisted v0.13.1 and v0.14.0 release notes into the sidebar.
+
 ### Added
 - **Container scans surface base-image OS end-of-life (EOSL).** Trivy reports
   whether a scanned image's base OS release is past its end-of-service-life —
