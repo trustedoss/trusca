@@ -79,9 +79,13 @@ v0.13.1 기준 BomLens 격차 17건은 전부 해소됐고, 남은 완성도 과
 
 **2026-07-18 재평가**: C4의 원 전제("BomLens가 call-graph 산출 → TRUSCA가 ingest")는 폐기한다. BomLens 조사(파리티 8차) 결과 BomLens는 도달성 분석을 정책 게이트·triage·VEX와 함께 **"포털(TRUSCA)의 영역"으로 명시 분류**하고(`bomlens-internal/improvement-roadmap.md:75`) 무상태 로컬 도구 정체성을 불변 선언 → 산출 주체가 될 의사가 없다. 따라서 C4-1(인터페이스 설계)·C4-2(협의 제안)는 상류 전제가 사라져 무의미.
 
-**재정의**: C4 = "TRUSCA 자체 다언어 도달성". 이미 **Go 도달성은 탑재 완료**(`tasks/scan_reachability.py`, govulncheck, v2.3 r1 — 소스 스캔 후 best-effort, 기본 ON, 게이트 신호로도 사용). 남은 격차는 Java·JS·Python 등으로의 확장인데, **오프라인·OSS 콜그래프 도구가 사실상 부재**(상용 Black Duck·Snyk의 독점 해자)라 연구성 대형 투자가 필요.
+**재정의**: C4 = "TRUSCA 자체 다언어 도달성". 이미 **Go 도달성은 탑재 완료**(`tasks/scan_reachability.py`, govulncheck, v2.3 r1 — 소스 스캔 후 best-effort, 기본 ON, 게이트 신호로도 사용). 남은 격차는 Java·JS·Python 등으로의 확장.
 
-**결정**: 실사용자·수요 없는 현 단계에서 다언어 확장은 **보류**. 가용한 오프라인 OSS 도달성 분석기가 특정 생태계에 등장하면 그때 해당 언어부터 착수(Go 파이프라인이 어댑터 패턴 선례). C4-1/C4-2는 폐기, C4-3(미확정 구현 금지)는 유지.
+**진짜 장벽은 데이터 (ADR-0004, 2026-07-18 실증)**: 이전에 "OSS 콜그래프 도구 부재"라 적었으나 이는 부정확 — 콜그래프 도구는 있다(JS/TS [Jelly] 현역·OSS, Java WALA/Soot/Eclipse Steady, Python PyCG). 진짜 해자는 **비-Go 생태계의 오픈 함수 단위 취약-심볼 데이터 부재**다. 함수 단위 어드바이저리는 전 생태계 ~1%, Go만 ~31%(Go DB가 심볼 큐레이션) — 이래서 govulncheck는 turnkey고, Black Duck조차 도달성이 **Java 전용 + 사람 큐레이션**이다. 콜그래프를 뽑아도 "무엇에 도달하는지" 타겟 데이터가 없다.
+
+**결정**: 다언어 확장 **보류**(사유 = 도구가 아니라 데이터 해자). Go 도달성은 유지(Black Duck 대비 자동·오프라인 우위). C4-1/C4-2 폐기, C4-3 유지. 재개 트리거·어댑터 재사용 설계는 `docs/decisions/0004-multilanguage-reachability-deferred.md` 참조.
+
+[Jelly]: https://github.com/cs-au-dk/jelly
 
 ## 7. 상시 트랙 — 부채 청산·유지 (우선순위 낮음, 관련 코드 작업에 편승)
 
