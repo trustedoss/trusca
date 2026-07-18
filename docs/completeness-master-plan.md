@@ -62,7 +62,7 @@ v0.13.1 기준 BomLens 격차 17건은 전부 해소됐고, 남은 완성도 과
 | W8-#49 | Ruby(Gemfile)·dotnet(.nuspec) 라이선스 보강 (100% unknown) — `license_fetcher`에 RubyGems(`pkg:gem/`, v2 API `licenses` 배열)·NuGet(`pkg:nuget/`, registration API `licenseExpression`) fetcher 추가. XML 대신 JSON API로 nuspec entity-expansion DoS 회피 | ✅ PR (진행) |
 | K-f1 | 컨테이너 스캔 Trivy `eosl`(이미지 OS 단위 EOL) 표면화 — Trivy 이미지 리포트 최상위 `Metadata.OS.EOSL`을 파싱해 `scan_metadata['os']`(family/name/eosl)에 저장(마이그레이션 0건), 스캔 상세에 EOL 패널 노출. 신규 egress 없음(번들 DB), DB 신선도 caveat 명시. 실물 alpine-3.19 픽스처로 EOSL=true 채록 | ✅ PR (진행) |
 | K-f2 | `detected_env` 정상화의 local_docker/k8s 실행기 라우팅 영향 확인 — 조사 결과 실제 결함: 사이드카가 detected_env는 project_root(내부 clone 루트)로 판정하면서 android compileSdk 읽기·스캔 대상은 outer source_dir를 써 git 스캔에서 오탐. `SbomGenRequest.project_root`+`effective_root`로 수정. security-reviewer APPROVE. (k8s 실행기는 미구현이라 무관) | ✅ PR (진행) |
-| W7-A~F | 문서 parity 5건 — Triage 통합 가이드, Analysis Types, Best Practices 4페이지, FAQ, DefectDojo/ThreadFix 조사(구현 여부는 조사 후 판단). EN/KO 동시, docs-uat 단언 동행 | ⏳ |
+| W7-A~F | 문서 parity — Triage 통합 가이드(user-guide/triage.md), Analysis Types(reference/analysis-types.md), Best Practices 4페이지(best-practices/), FAQ(reference/faq.md). EN/KO 동시, docs-uat 단언 동행, Docusaurus 빌드·docs-uat lint·ko-style 전부 green. sidebars에 Best practices 카테고리 신설 + 누락됐던 v0.13.1/v0.14.0 릴리즈 노트 배선 정정. **W7-E(소급 릴리즈 노트 v2.1/2.2/2.3)는 stale-skip** — 실제 스킴은 0.x이고 v0.10~v0.14 노트가 모두 이미 존재, "v2.x"는 트래커 구표기(마스터플랜이 오버라이드). 소급 대상 없음. **W7-F(DefectDojo/ThreadFix)는 defer** — 구현·의도 부재, 트래커 자체가 미등재 유지 지시 | ✅ PR (진행) |
 
 ## 5. v0.17.0 — C1b CVE 한글화 + UX 확장
 
