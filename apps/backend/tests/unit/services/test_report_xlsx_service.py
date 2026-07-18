@@ -179,6 +179,32 @@ def test_pure_function_is_deterministic() -> None:
     assert _build() == _build()
 
 
+def test_document_timestamps_are_pinned_to_generated_at_not_wall_clock() -> None:
+    """No wall-clock leak: the xlsx metadata reflects ``generated_at`` only.
+
+    Directly guards the flake that `_build() == _build()` only caught by luck:
+    openpyxl stamps both the zip member ``date_time`` and, at save, overwrites
+    ``docProps/core.xml``'s ``<dcterms:modified>`` with ``datetime.now()`` —
+    so two builds straddling a one-second boundary differed byte-for-byte and
+    the archive leaked the build host's clock. The builder re-pins both to
+    ``generated_at``; assert that here so the property can't silently regress.
+    """
+    import zipfile
+    from io import BytesIO
+
+    raw = _build()
+    wb = load_workbook(BytesIO(raw))
+    assert wb.properties.created == _GENERATED.replace(tzinfo=None)
+    assert wb.properties.modified == _GENERATED.replace(tzinfo=None)
+
+    with zipfile.ZipFile(BytesIO(raw)) as zf:
+        # Every zip member carries the pinned date, never the current clock.
+        for info in zf.infolist():
+            assert info.date_time == (2026, 7, 3, 12, 0, 0)
+        core = zf.read("docProps/core.xml").decode("utf-8")
+    assert "2026-07-03T12:00:00Z" in core
+
+
 def test_empty_project_still_builds_valid_workbook() -> None:
     wb = _load(_build(components=[], vulnerabilities=[], vulnerabilities_total=0))
     assert wb.sheetnames == ["Overview", "Components", "Vulnerabilities"]
