@@ -59,7 +59,7 @@ v0.13.1 기준 BomLens 격차 17건은 전부 해소됐고, 남은 완성도 과
 | # | 항목 | 상태 |
 |---|------|------|
 | W8-#48 | Python 라이선스 메타 보강 — 조사 결과 PyPI enrichment(`integrations/license_fetcher/`)는 이미 구현·배선됨(골든 python-pip 베이스라인이 bare requirements.txt→PyPI 해석 검증). 진짜 결함은 fetcher가 air-gap 게이트 없이 무조건 egress한 것 → `LICENSE_FETCH_ENABLED`(기본 ON) 추가로 마감 | ✅ PR (진행) |
-| W8-#49 | Ruby(Gemfile)·dotnet(.nuspec) 라이선스 보강 (100% unknown) | ⏳ |
+| W8-#49 | Ruby(Gemfile)·dotnet(.nuspec) 라이선스 보강 (100% unknown) — `license_fetcher`에 RubyGems(`pkg:gem/`, v2 API `licenses` 배열)·NuGet(`pkg:nuget/`, registration API `licenseExpression`) fetcher 추가. XML 대신 JSON API로 nuspec entity-expansion DoS 회피 | ✅ PR (진행) |
 | K-f1 | 컨테이너 스캔 Trivy `eosl`(이미지 OS 단위 EOL) 표면화 | ⏳ |
 | K-f2 | `detected_env` 정상화의 local_docker/k8s 실행기 라우팅 영향 확인 | ⏳ |
 | W7-A~F | 문서 parity 5건 — Triage 통합 가이드, Analysis Types, Best Practices 4페이지, FAQ, DefectDojo/ThreadFix 조사(구현 여부는 조사 후 판단). EN/KO 동시, docs-uat 단언 동행 | ⏳ |
@@ -91,6 +91,7 @@ v0.13.1 기준 BomLens 격차 17건은 전부 해소됐고, 남은 완성도 과
 - aiosmtplib 3→5 major 업그레이드 (별도 PR)
 - Android release-classpath 스코프 필터 — 워커 Android SDK 탑재 선행, 수요 확인 전 보류
 - BomLens 예고 기능 감시 — `docs/bomlens-parity-review.md` 감시 목록을 BomLens 릴리즈 태그마다 재점검
+- license_fetcher 하드닝 (W8-#49 리뷰 후속, 6개 fetcher 공통): ① `quote(name, safe="")` 백필(현재 crates/pypi/maven/pkggo는 `safe='/'` 상속 — in-registry 경로 traversal 방어, gem/nuget은 W8-#49에서 이미 적용), ② `base.request_with_retry`에 응답 본문 크기 상한(디컴프레션 밤 방어, 공유 코드라 전 fetcher 일괄)
 
 ## 8. 검증 기준 (릴리즈별)
 

@@ -8,15 +8,18 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
-- **License enrichment is now air-gap gated (`LICENSE_FETCH_ENABLED`).** When
-  cdxgen emits a component with no SPDX license — the common case for a bare
-  `requirements.txt` or `go.mod` — the pipeline looks the license up in the
-  component's public registry (PyPI / Maven / crates.io / pkg.go.dev) by purl
-  and records it as a *concluded* finding, which pulls the "unknown" license
-  ratio down. This was previously unconditional scan-time egress; it now
-  respects an `LICENSE_FETCH_ENABLED` flag (default **on** — only a package
-  name+version leaves the network) so an air-gapped deployment sets it `false`
-  to skip the fetch cleanly instead of paying a per-component network timeout.
+- **License enrichment now covers RubyGems and NuGet, and is air-gap gated
+  (`LICENSE_FETCH_ENABLED`).** When cdxgen emits a component with no SPDX
+  license — the common case for a bare `requirements.txt`, `Gemfile`, or
+  `.csproj` — the pipeline looks the license up in the component's public
+  registry and records it as a *concluded* finding, pulling the "unknown"
+  license ratio down. Gem (`rubygems.org`) and NuGet (`api.nuget.org`)
+  fetchers join the existing PyPI / Maven / crates.io / pkg.go.dev set, so
+  Ruby and .NET dependencies are no longer 100% unknown. The lookup was
+  previously unconditional scan-time egress; it now respects an
+  `LICENSE_FETCH_ENABLED` flag (default **on** — only a package name+version
+  leaves the network) so an air-gapped deployment sets it `false` to skip the
+  fetch cleanly instead of paying a per-component network timeout.
 - **Korean license content (summaries + obligations).** When the interface
   language is Korean, each classification-catalog license's plain-language
   summary and its obligation text now render in Korean, with the authoritative
