@@ -456,6 +456,7 @@ async def get_project_overview_endpoint(
         # tests/unit/api/test_handbuilt_response_completeness.py: this
         # construction has silently dropped fields before).
         eol_count=payload["eol_count"],
+        outdated_count=payload["outdated_count"],
         severity_distribution=payload["severity_distribution"],
         license_distribution=payload["license_distribution"],
         risk_score=payload["risk_score"],
