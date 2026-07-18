@@ -235,7 +235,7 @@ You do not configure anything for this — running the action on `push` and `pul
 
 ## How the PR comment is posted
 
-The PR comment is posted **server-side by the portal**, not by your workflow. After the action uploads the SCA results, the portal evaluates the policy gate and — if comment posting is enabled — calls `https://api.github.com` directly using a GitHub PAT stored in the portal's environment (`GITHUB_TOKEN` or `TRUSTEDOSS_GITHUB_TOKEN`). Your workflow never forwards `secrets.GITHUB_TOKEN` to the portal. A first-class GitHub App with portal-stored installation tokens is on the roadmap.
+The PR comment is posted **server-side by the portal**, not by your workflow. After the action uploads the SCA results, the portal evaluates the build gate and — if comment posting is enabled — calls `https://api.github.com` directly using a GitHub PAT stored in the portal's environment (`GITHUB_TOKEN` or `TRUSTEDOSS_GITHUB_TOKEN`). Your workflow never forwards `secrets.GITHUB_TOKEN` to the portal. A first-class GitHub App with portal-stored installation tokens is on the roadmap.
 
 The comment is **idempotent**: re-running the workflow on the same PR updates the existing comment in place. The marker `<!-- trustedoss-sca -->` identifies it.
 

@@ -20,9 +20,9 @@ sidebar_position: 2
 |---|---|---|
 | **`source`** | `cdxgen` → scancode(first-party 라이선스 탐지) → Trivy(`trivy sbom`) | 컴포넌트와 그 **declared** 라이선스(의존성 메타데이터에서), **detected** 라이선스(scancode 가 직접 스캔한 first-party 소스), 로컬 Trivy DB가 NVD + OSV + GHSA + EPSS + KEV로 매칭한 CVE(Common Vulnerabilities and Exposures). |
 | **`container`** | Trivy | 컨테이너 이미지의 OS 패키지 취약점(언어 패키지 CVE는 제한적). |
-| **`sbom`** | 적합성 채점 → 컴포넌트 적재 → Trivy(`trivy sbom`) | 고객 도구가 이미 생성한 SBOM(CycloneDX-JSON 또는 SPDX). TRUSCA는 소스를 복제·빌드하지 않고 SBOM의 품질을 채점하고 컴포넌트를 적재하며 CVE를 매칭합니다. 아래 [받은 SBOM](#받은-sbom-업로드) 참고. |
+| **`sbom`** | 적합성 채점 → 컴포넌트 적재 → Trivy(`trivy sbom`) | 고객 도구가 이미 생성한 SBOM(CycloneDX-JSON 또는 SPDX). TRUSCA는 소스를 복제·빌드하지 않고 SBOM의 품질을 채점하고 컴포넌트를 적재하며 CVE를 매칭합니다. 아래 [SBOM 업로드](#받은-sbom-업로드) 참고. |
 
-**Source** 와 **Container** 는 UI 스캔 다이얼로그에서 선택합니다 — 스캔을 트리거할 때 하나를 고르세요([스캔 트리거 → UI에서](#ui에서) 참고). **`sbom`** 스캔은 방식이 다릅니다. 다이얼로그에서 고르는 대신 기존 SBOM을 인제스트 엔드포인트로 업로드합니다(아래 [받은 SBOM](#받은-sbom-업로드) 참고). API는 세 종류를 모두 수용합니다.
+**Source** 와 **Container** 는 UI 스캔 다이얼로그에서 선택합니다 — 스캔을 트리거할 때 하나를 고르세요([스캔 트리거 → UI에서](#ui에서) 참고). **`sbom`** 스캔은 방식이 다릅니다. 다이얼로그에서 고르는 대신 기존 SBOM을 인제스트 엔드포인트로 업로드합니다(아래 [SBOM 업로드](#받은-sbom-업로드) 참고). API는 세 종류를 모두 수용합니다.
 
 ## 스캔 트리거
 
@@ -111,7 +111,7 @@ curl -sS -X POST \
 
 권장 경로는 [GitHub Action](../ci-integration/github-actions.md), [GitLab CI 템플릿](../ci-integration/gitlab-ci.md), [Jenkinsfile 예시](../ci-integration/jenkins.md)입니다. 모두 API를 감싸고 빌드 게이트를 추가합니다.
 
-## 받은 SBOM(업로드) {#받은-sbom-업로드}
+## SBOM 업로드(받은 SBOM) {#받은-sbom-업로드}
 
 빌드나 CI가 이미 SBOM을 생성한다면, TRUSCA가 소스를 복제·스캔하게 하는 대신 그 SBOM을 업로드할 수 있습니다. 이렇게 하면 **`sbom`** 스캔이 생성됩니다. TRUSCA는 SBOM의 컴포넌트를 적재하고, Trivy로 CVE를 매칭하고, 선언 라이선스를 분류합니다 — 소스 스캔에서 얻는 컴포넌트·취약점·라이선스 화면을 그대로 제공하며, 빌드 게이트도 동일하게 실행됩니다.
 

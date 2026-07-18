@@ -101,4 +101,4 @@ Sanity-check the policy you designed:
 - [Obligation catalog](../reference/obligation-catalog.md#by-license-category) — duties per license category
 - [Approvals](../user-guide/approvals.md) — the conditional-license workflow
 - [Vulnerabilities](../user-guide/vulnerabilities.md#vex-state-machine) — VEX triage that shapes the gate
-- [Environment variables — Build / policy gate](../reference/env-variables.md#build--policy-gate) — `GATE_EPSS_THRESHOLD`
+- [Environment variables — Build gate](../reference/env-variables.md#build--policy-gate) — `GATE_EPSS_THRESHOLD`

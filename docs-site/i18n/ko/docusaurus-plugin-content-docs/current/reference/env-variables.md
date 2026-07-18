@@ -95,7 +95,7 @@ sidebar_position: 2
 | `KEV_REFRESH_ENABLED` | `true` | `config.py` | 일일 refresh 토글. 피드에 접근할 수 없는 air-gapped 배포는 `false`로 설정하십시오 — refresh를 끄면 KEV 데이터가 로드되지 않으므로 **KEV 배지와 대응 기한이 표시되지 않고**, Priority 정렬은 사실상 심각도 → EPSS로 동작합니다. |
 | `KEV_REFRESH_TIMEOUT_SECONDS` | `30` | `config.py` | CISA 피드 다운로드의 아웃바운드 HTTP 타임아웃. |
 
-## 빌드 / 정책 게이트
+## 빌드 게이트 {#빌드--정책-게이트}
 
 CI 빌드 게이트는 기본적으로 Critical CVE와 금지 라이선스에서 빌드를 실패시키며, 이 조건들은 env로 구동되지 않습니다. 아래 단일 env 노브는 **선택적** EPSS 차원을 더합니다.
 
