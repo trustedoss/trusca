@@ -24,7 +24,10 @@ TRUSCA 릴리스는 `vX.Y.Z` 형식의 git 태그를 push하면 시작됩니다.
    붙입니다(`X.Y.Z`는 불변, `X.Y`는 이동 가능 — `:latest`는 절대 쓰지 않습니다).
 3. **`release`** — GitHub Release를 **draft**로 생성합니다. 릴리스 노트는
    `docs-site/docs/release-notes/X.Y.Z.md`가 있으면 그것을, 없으면 GitHub가
-   자동 생성한 노트를 씁니다.
+   자동 생성한 노트를 씁니다. 이 잡은 릴리스 자신의 소스 트리에 대한
+   CycloneDX SBOM도 생성해(syft) Release 자산으로
+   첨부합니다(`trusca-X.Y.Z.cdx.json`) — SCA 제품은 자기 SBOM을 함께
+   내놓습니다.
 4. **`release-gate`** — 방금 발행한 `X.Y.Z` 이미지를 pull해서 **프로덕션**
    `docker-compose.yml`을 기동합니다. 이때 작은 오버레이
    [`docker-compose.smoke.yml`](https://github.com/trustedoss/trusca/blob/main/docker-compose.smoke.yml)이

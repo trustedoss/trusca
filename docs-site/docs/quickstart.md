@@ -113,6 +113,15 @@ your own code. Still on the demo stack:
    **Vulnerabilities** tab shows the open findings — switch it to the
    **By upgrade** view for the exact version bumps that would clear them.
 
+:::note First boot downloads the vulnerability DB
+On a fresh stack the worker downloads the Trivy vulnerability database in the
+background (1–3 minutes with internet egress). A scan that finishes before the
+download does shows its **components but zero vulnerabilities** — that is the
+DB still arriving, not a clean bill of health. No re-scan is needed: the
+automatic re-match fills the findings in once the DB lands. See
+[Vulnerability data](./admin-guide/vulnerability-data.md).
+:::
+
 A private repository needs a credential first — see
 [Private repositories](./user-guide/projects.md#private-repositories). The full
 scan reference (container scans, SBOM upload, cancelling, troubleshooting) is

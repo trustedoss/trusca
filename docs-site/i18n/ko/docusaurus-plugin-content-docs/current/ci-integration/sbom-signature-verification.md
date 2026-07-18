@@ -14,20 +14,20 @@ sidebar_position: 10
 두 부류입니다.
 
 - **검증자**(1~4절) — TRUSCA SBOM을 소비하며 그것이 변조되지 않았고 알려진 배포에서 서명되었음을 증명하려는 모든 사람. 셸 사용과 CLI 바이너리 설치 능력을 가정합니다.
-- **운영자**(5절) — 포털을 배포하고 서명 키를 소유하는 사람. Linux + Docker Compose 숙련과 [환경 변수](./env-variables.md) 이해를 가정합니다.
+- **운영자**(5절) — 포털을 배포하고 서명 키를 소유하는 사람. Linux + Docker Compose 숙련과 [환경 변수](../reference/env-variables.md) 이해를 가정합니다.
 :::
 
 ## 사전 조건
 
 검증을 위해서는:
 
-1. 프로젝트가 속한 팀에서 최소 **Developer** [역할](./glossary.md#rbac-역할)을 가진 TRUSCA 계정. 서명 엔드포인트는 SBOM 내보내기와 동일한 접근 제어를 재사용하므로 외부인은 `404`를 봅니다.
+1. 프로젝트가 속한 팀에서 최소 **Developer** [역할](../reference/glossary.md#rbac-역할)을 가진 TRUSCA 계정. 서명 엔드포인트는 SBOM 내보내기와 동일한 접근 제어를 재사용하므로 외부인은 `404`를 봅니다.
 2. 프로젝트에 **성공한(succeeded)** 스캔이 하나 이상 있고, 그 스캔을 실행한 배포에 서명이 설정되어 있어야 합니다([5절](#5-운영자-키-설정) 참고). 서명되지 않은 스캔에는 서명 산출물이 없습니다.
 3. 검증을 수행하는 머신에 [cosign](https://docs.sigstore.dev/cosign/installation/) 설치([2절](#2-cosign-설치) 참고).
 
 ## 1. SBOM에 서명하는 이유
 
-[SBOM](./glossary.md#sca-핵심)은 릴리스 *안에 무엇이 들어 있는지*를 소비자에게 알려 줍니다. **서명**은 SBOM만으로는 답할 수 없는 두 가지를 추가로 답합니다.
+[SBOM](../reference/glossary.md#sca-핵심)은 릴리스 *안에 무엇이 들어 있는지*를 소비자에게 알려 줍니다. **서명**은 SBOM만으로는 답할 수 없는 두 가지를 추가로 답합니다.
 
 - **무결성(integrity)** — 배포가 생성한 후 SBOM 바이트가 변경되었는가? 정확한 바이트에 대한 서명은 모든 변조를 탐지합니다.
 - **출처(provenance)** — SBOM을 *어떻게*, 누가 생성했는가? [in-toto](https://in-toto.io/) / [SLSA](https://slsa.dev/) provenance attestation은 빌드 플랫폼 식별자와 버전을 기록합니다.
@@ -263,7 +263,7 @@ attestation은 provenance에 빌더 신원을 새깁니다. 검증자가 provena
 | `SLSA_BUILDER_ID` | 벤더 중립 URI | provenance `builder.id`에서 이 빌드 플랫폼을 명명하는 URI |
 | `TRUSTEDOSS_VERSION` | 번들된 포털 버전 | `builder.version`과 SBOM 생성 컨텍스트에 새겨짐 |
 
-전체 키 목록과 런타임 의미는 [환경 변수 → cosign signing](./env-variables.md)을 참고하십시오.
+전체 키 목록과 런타임 의미는 [환경 변수 → cosign signing](../reference/env-variables.md)을 참고하십시오.
 
 ## 트러블슈팅
 
@@ -297,7 +297,7 @@ SBOM 바이트가 서명과 맞지 않습니다. 둘 다 **같은** 번들에서
 ## 참고
 
 - [SBOM](../user-guide/sbom.md) — 서명 대상 SBOM 내보내기
-- [용어집](./glossary.md) — SBOM·SCA·VEX·RBAC 역할 정의
-- [환경 변수](./env-variables.md) — `COSIGN_*` 및 `SLSA_*` 키
+- [용어집](../reference/glossary.md) — SBOM·SCA·VEX·RBAC 역할 정의
+- [환경 변수](../reference/env-variables.md) — `COSIGN_*` 및 `SLSA_*` 키
 - [API 레퍼런스 (Redoc)](pathname:///reference/api) — 생성된 엔드포인트 계약
 - [이슈 보고](https://github.com/trustedoss/trusca/issues/new/choose) — 검증이 예기치 않게 실패할 때

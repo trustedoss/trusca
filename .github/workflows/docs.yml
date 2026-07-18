@@ -49,6 +49,10 @@ jobs:
       REDIS_URL: redis://localhost:6379/0
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history: `showLastUpdateTime` reads each page's git log —
+          # a shallow clone would stamp every page with the deploy date.
+          fetch-depth: 0
 
       # --- Regenerate the OpenAPI spec from the live backend BEFORE the docs
       # build, so the published Redoc reference always reflects the current

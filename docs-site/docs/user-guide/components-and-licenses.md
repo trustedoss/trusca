@@ -226,13 +226,13 @@ the **UI label** column is what appears in tables and badges.
 | `unknown` | **Unknown** | Surfaced for review; no automatic block. Always needs human review. | License could not be parsed; SPDX ID not matched by the classifier — see [below](#why-so-many-unknown). |
 
 :::warning Classification source
-The legal-tier classification (`forbidden` / `conditional` / `permissive` / `unknown`) is driven by a built-in SPDX-to-tier catalog. Per-organization rule customization is on the roadmap. Until then, super-admins can override individual entries in-place and restart the worker — an operator-only path.
+The legal-tier classification (`forbidden` / `conditional` / `permissive` / `unknown`) is driven by a built-in SPDX-to-tier catalog. Until per-organization rule customization lands (see [Roadmap](#roadmap)), super-admins can override individual entries in-place and restart the worker — an operator-only path.
 :::
 
 ### Why so many `unknown`? {#why-so-many-unknown}
 
 :::info
-Classification uses exact-match SPDX IDs. Suffix-less variants (`LGPL-3.0` instead of `LGPL-3.0-or-later`) fall through to `unknown`. If a component shows `unknown` despite a well-known SPDX ID, the source likely emitted a deprecated alias. Fuzzy SPDX normalization is on the roadmap.
+Classification uses exact-match SPDX IDs. Suffix-less variants (`LGPL-3.0` instead of `LGPL-3.0-or-later`) fall through to `unknown`. If a component shows `unknown` despite a well-known SPDX ID, the source likely emitted a deprecated alias — see [Roadmap](#roadmap) for the planned fuzzy normalization.
 :::
 
 A separate, common cause is a manifest that names dependencies without their
@@ -333,8 +333,8 @@ kinds yet:
 - **Trademark restrictions** (Apache-2.0 §6, BSD-4-clause).
 - **Field-of-use restrictions** (BUSL-1.1).
 
-For these, see the underlying license text via the component drawer; a
-richer obligation taxonomy is on the roadmap.
+For these, see the underlying license text via the component drawer
+(see [Roadmap](#roadmap)).
 :::
 
 ## Korean license content {#korean-license-content}
@@ -387,7 +387,7 @@ The license could not be parsed, or the SPDX ID was not in the classifier's exac
 
 ### Classification looks wrong
 
-Classification is driven by the built-in SPDX-to-tier catalog (see [Classification source](#license-classification) above). For a one-off override today, a super-admin can patch the catalog and restart the worker; the per-organization customization path is on the roadmap. If the catalog entry is correct but a detected license disagrees with the declared one, review both findings in the component drawer (see [Declared vs. detected](#declared-vs-detected)).
+Classification is driven by the built-in SPDX-to-tier catalog (see [Classification source](#license-classification) above). For a one-off override today, a super-admin can patch the catalog and restart the worker; per-organization customization is tracked on the [Roadmap](#roadmap). If the catalog entry is correct but a detected license disagrees with the declared one, review both findings in the component drawer (see [Declared vs. detected](#declared-vs-detected)).
 
 ### Lockfile not detected
 
@@ -403,6 +403,7 @@ Items the manual previously promised that are not in this release; tracked for l
 - Manual **Override concluded license** action in the drawer (`team_admin`) — planned.
 - Fuzzy SPDX normalization for suffix-less variants (`LGPL-3.0` → `LGPL-3.0-or-later`) — planned.
 - Per-organization license-classification rule customization — planned; today classification uses the built-in catalog.
+- Richer obligation taxonomy (network-use disclosure, patent-grant termination, trademark restrictions, field-of-use) — planned; today these are read from the license text via the drawer.
 
 ## See also
 
