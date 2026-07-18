@@ -44,7 +44,7 @@ For term definitions (SCA, SBOM, VEX, EPSS, reachability), see the
 | Auto remediation / PRs | Planned | Yes | No | No |
 | EPSS prioritization | **Yes** | Yes | Partial | No |
 | VEX consumption | **Yes** | Yes | Partial | No |
-| Reachability analysis | Planned | Yes (some) | No | No |
+| Reachability analysis | Go only (govulncheck) | Yes (some) | No | No |
 | Signed SBOM / provenance | Planned | Partial | No | No |
 
 ## vs commercial SCA (Black Duck, Snyk)
@@ -64,8 +64,8 @@ covering detection, licenses, SBOM, approvals, and CI gating meets your needs.
   dependency-graph depth but does not yet open upgrade pull requests —
   suggested upgrades are planned.
 - **Prioritization signals.** EPSS prioritization is first-class — column,
-  sort, filter, and a policy-gate threshold. Reachability analysis is
-  planned, not shipped.
+  sort, filter, and a policy-gate threshold. Reachability analysis ships
+  for Go (via `govulncheck`); reachability for other ecosystems is planned.
 
 **Where TRUSCA is competitive:** self-hosting with no seat cost,
 Apache-2.0 licensing, a single portal instead of several consoles, a built-in
@@ -129,8 +129,12 @@ These are real and intentional gaps. Each is on the
 - **Vulnerability data depends on the Trivy DB.** Signals are limited to
   what NVD + OSV + GHSA + EPSS + KEV expose, augmented by first-class EPSS
   prioritization, KEV in-the-wild badges, and imported VEX.
-- **No reachability prioritization.** Findings are listed in full rather than
-  ranked by whether vulnerable code is reachable (planned, best-effort).
+- **Multi-language reachability is limited.** Reachability prioritization
+  ships for **Go** (via `govulncheck`) — a reachable / not-reachable badge,
+  the `?reachable=` filter, `sort=reachable`, and a gate signal. Findings in
+  other ecosystems (Java, JS/TS, Python, and so on) are not yet analysed and
+  are shown in full. Proprietary multi-language reachability is where the
+  commercial tools still lead.
 - **Static license policy.** Classification uses a fixed catalog; per-team /
   per-org editable policy is planned.
 - **No signed SBOMs / provenance.** SBOM signing and SLSA provenance are

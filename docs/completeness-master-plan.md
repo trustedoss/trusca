@@ -75,15 +75,13 @@ v0.13.1 기준 BomLens 격차 17건은 전부 해소됐고, 남은 완성도 과
 
 **v0.17.0 종결**: C1b 드롭 + W9-#53 출하 + W9-#55/#56 미채택으로 v0.17.0 UX 확장 트랙 마감. 남은 로드맵은 조건부 트랙 C4(BomLens 협의 선행)와 §7 상시 부채뿐.
 
-## 6. 조건부 트랙 C4 — 다언어 도달성 분석 (BomLens 협업)
+## 6. 조건부 트랙 C4 — 다언어 도달성 분석 (전제 폐기 → 재정의·보류)
 
-상용 대비 최대 격차이나 BomLens 스코프 합의가 선행 조건. 합의 준비물까지만 이 플랜에서 진행한다.
+**2026-07-18 재평가**: C4의 원 전제("BomLens가 call-graph 산출 → TRUSCA가 ingest")는 폐기한다. BomLens 조사(파리티 8차) 결과 BomLens는 도달성 분석을 정책 게이트·triage·VEX와 함께 **"포털(TRUSCA)의 영역"으로 명시 분류**하고(`bomlens-internal/improvement-roadmap.md:75`) 무상태 로컬 도구 정체성을 불변 선언 → 산출 주체가 될 의사가 없다. 따라서 C4-1(인터페이스 설계)·C4-2(협의 제안)는 상류 전제가 사라져 무의미.
 
-| # | 항목 | 상태 |
-|---|------|------|
-| C4-1 | 인터페이스 설계 문서 — BomLens call-graph 산출 포맷 + TRUSCA ingest 스키마 초안 (ADR) | ⏳ |
-| C4-2 | 협의 제안서 — 대상 언어 우선순위(Java·JS), 산출물 경계, 검증 방법 | ⏳ |
-| C4-3 | 합의 확정 시 별도 릴리즈 트랙으로 분리해 이 문서 갱신. 미확정 상태로 구현 착수 금지 | — |
+**재정의**: C4 = "TRUSCA 자체 다언어 도달성". 이미 **Go 도달성은 탑재 완료**(`tasks/scan_reachability.py`, govulncheck, v2.3 r1 — 소스 스캔 후 best-effort, 기본 ON, 게이트 신호로도 사용). 남은 격차는 Java·JS·Python 등으로의 확장인데, **오프라인·OSS 콜그래프 도구가 사실상 부재**(상용 Black Duck·Snyk의 독점 해자)라 연구성 대형 투자가 필요.
+
+**결정**: 실사용자·수요 없는 현 단계에서 다언어 확장은 **보류**. 가용한 오프라인 OSS 도달성 분석기가 특정 생태계에 등장하면 그때 해당 언어부터 착수(Go 파이프라인이 어댑터 패턴 선례). C4-1/C4-2는 폐기, C4-3(미확정 구현 금지)는 유지.
 
 ## 7. 상시 트랙 — 부채 청산·유지 (우선순위 낮음, 관련 코드 작업에 편승)
 
@@ -93,6 +91,7 @@ v0.13.1 기준 BomLens 격차 17건은 전부 해소됐고, 남은 완성도 과
 - aiosmtplib 3→5 major 업그레이드 (별도 PR)
 - Android release-classpath 스코프 필터 — 워커 Android SDK 탑재 선행, 수요 확인 전 보류
 - BomLens 예고 기능 감시 — `docs/bomlens-parity-review.md` 감시 목록을 BomLens 릴리즈 태그마다 재점검
+- **버전 currency/staleness (파리티 #18, 8차 채택 → 구현 착수)** — EOL과 별개 축("최신 패치 대비 낙후·releases-behind"). 오프라인(같은 릴리스 라인 내 낙후)은 EOL 스냅샷 인프라 재사용, deps.dev 절대최신은 egress라 air-gap 게이트 필요. W9-#53 업그레이드 클러스터와 시너지
 - license_fetcher 하드닝 (W8-#49 리뷰 후속, 6개 fetcher 공통): ① `quote(name, safe="")` 백필(현재 crates/pypi/maven/pkggo는 `safe='/'` 상속 — in-registry 경로 traversal 방어, gem/nuget은 W8-#49에서 이미 적용), ② `base.request_with_retry`에 응답 본문 크기 상한(디컴프레션 밤 방어, 공유 코드라 전 fetcher 일괄)
 
 ## 8. 검증 기준 (릴리즈별)
