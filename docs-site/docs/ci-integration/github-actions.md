@@ -18,6 +18,22 @@ Engineers maintaining a GitHub repository that uses GitHub Actions. You need an 
 Use the in-repo composite action at `actions/scan/action.yml` directly via `uses: trustedoss/trusca/actions/scan@v0.10.0` (referenced from this monorepo). A standalone Marketplace publication is on the roadmap.
 :::
 
+## Before you begin
+
+Three things must exist before the workflow below can run:
+
+- **A portal the runner can reach.** GitHub-hosted runners cannot reach
+  `http://localhost:5173` — the [Quickstart](../quickstart.md) demo stack on
+  your laptop is not enough. You need a TRUSCA deployment with a
+  network-reachable URL (see
+  [Install with Docker Compose](../installation/docker-compose.md)); that URL
+  becomes `api-url`. Self-hosted runners inside the same network can of course
+  use an internal URL.
+- **An API key**, issued in the portal under **/integrations → API keys** —
+  Setup step 1 below walks through it.
+- **The project id** of the portal project this repository maps to, from
+  **Project Settings → CI/CD** — Setup step 3 below shows where.
+
 ## Quick start
 
 <!-- docs-uat: id=gha-quickstart-workflow kind=manual tier=manual -->

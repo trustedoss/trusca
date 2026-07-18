@@ -26,7 +26,7 @@ Follow the [Quickstart](../quickstart.md) — it brings up the stack, creates a 
 
 ### What kinds of analysis can it run? {#analysis-types}
 
-Four: a source SBOM scan, a container image scan, the policy gate, and a planned reachability signal. The [Analysis types](./analysis-types.md) reference lays out what each consumes and produces in one matrix.
+Four: a source SBOM scan, a container image scan, the policy gate, and a reachability signal (Go modules today, via `govulncheck`). The [Analysis types](./analysis-types.md) reference lays out what each consumes and produces in one matrix.
 
 ## Scanning {#scanning}
 

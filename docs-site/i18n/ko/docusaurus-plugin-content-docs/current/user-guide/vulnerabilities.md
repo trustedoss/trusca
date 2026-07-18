@@ -91,6 +91,8 @@ stateDiagram-v2
 
 상단 인라인 필터 바: 심각도, 상태, **EPSS 임계** 필터(`min_epss`), 그리고 **검색** 박스(CVE ID / 제목 / 컴포넌트 자유 텍스트), 정렬·정렬 순서 컨트롤. 기본 정렬은 **Priority** — KEV 등재 결과가 먼저, 다음은 심각도, 그다음은 EPSS 순입니다. [Priority 정렬](#priority-sort) 참고. 정렬 컨트롤에는 **EPSS**(`sort=epss`)도 포함되며, EPSS 값이 없는 행은 마지막으로 정렬됩니다.
 
+툴바에는 **그룹화** 컨트롤도 있어 플랫 결과 테이블을 업그레이드 중심의 조치 작업 목록으로 바꿔 볼 수 있습니다 — [업그레이드별 보기](#group-by-upgrade) 참고.
+
 ## 드로어 — 결과 상세
 
 행을 클릭하면 다음을 봅니다.
@@ -358,6 +360,65 @@ curl -sS \
 ```
 
 `reason`은 `ok`(버전 계산됨), `no_fix_version`, `unparseable_version`, `no_open_findings` 중 하나이며, `recommended_version`은 `ok` 외의 모든 값에서 `null`입니다.
+
+## 업그레이드별 보기 — 조치 작업 목록 {#group-by-upgrade}
+
+[권장 버전](#업그레이드-추천권장-버전)은 컴포넌트 단위로 계산되지만, 플랫 결과 테이블은 CVE 단위로 구성됩니다. 그래서 미해결 CVE 5건을 가진 컴포넌트가 5개 행을 차지하는데, 실제로는 한 번의 버전 인상으로 모두 해소됩니다. **업그레이드별** 보기는 이 테이블을 뒤집습니다: "미해결 결과마다 한 행"이 아니라 **프로젝트에 필요한 업그레이드마다 카드 하나** — 조치 작업 목록 전체가 한눈에 들어옵니다.
+
+툴바의 **그룹화** 컨트롤로 보기를 전환합니다: **플랫**(기본 결과 테이블) ⇄ **업그레이드별**. 선택은 방문 단위로만 유지됩니다 — 탭을 벗어나면 플랫으로 돌아옵니다.
+
+![Vulnerabilities 탭 — 컴포넌트별 조치 클러스터를 실행 가치 순으로 보여주는 업그레이드별 보기](/img/screenshots/user-vulns-group-by-upgrade.png)
+
+### 카드 읽는 법
+
+각 카드는 컴포넌트 하나의 **최소 안전 업그레이드**입니다 — 드로어의 [업그레이드 추천](#업그레이드-추천권장-버전) 패널이 보여주는 값과 같으며, 이를 프로젝트 전체로 집계한 것입니다.
+
+- 헤더는 **`{컴포넌트}` `{현재}` → `{권장}` 업그레이드** 형식이고, **N건 해소** 카운트가 붙습니다 — 그 한 번의 버전 인상이 해소하는 미해결 결과 수입니다.
+- 목록은 [우선순위 신호](#우선순위-신호) 세 가지를 기준으로, 실행 가치가 높은 것부터 정렬됩니다: **직접 의존성** 배지(직접 선언한 의존성이라 자신의 매니페스트에서 바로 올릴 수 있음), 최고 심각도, 카드에 묶인 결과 중 최고 EPSS.
+- 카드를 펼치면 포함된 개별 결과가 보이고 — 각각 **`{버전}`에서 해결** 표시를 가집니다 — 결과를 클릭하면 플랫 테이블과 같은 결과 드로어가 열립니다.
+
+미해결 결과에 **공개된 수정 버전이 없는** 컴포넌트는, 오해를 부르는 부분 업그레이드를 제시하는 대신 **업그레이드 없음** 그룹으로 묶입니다. 카드에 사유가 함께 표시됩니다("일부 CVE는 아직 해결 버전이 없습니다" 또는 "해결 버전을 해석할 수 없습니다").
+
+### 빌드 게이트와의 동기화
+
+**미해결** 결과만 클러스터로 묶습니다 — [빌드 게이트](#심각도-모델)가 집계하는 것과 정확히 같은 집합입니다. 이미 처리한 결과(`Not affected`, `False positive`, `Fixed`, `Suppressed`)는 제외되므로, 카드 위의 요약 줄("업그레이드 N건으로 취약점 M건 해소")은 프로젝트와 깨끗한 게이트 사이에 남은 작업을 정확히 설명합니다.
+
+### API에서 읽기
+
+<!-- docs-uat: id=vulns-upgrade-clusters-api kind=api auth=admin url=/v1/projects/${PROJECT_ID}/vulnerabilities/upgrade-clusters expect=status:200 tier=nightly -->
+이 보기는 단일 엔드포인트가 제공합니다:
+
+<!-- docs-uat: id=vulns-api-upgrade-clusters kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
+```bash
+curl -sS \
+  -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+  "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/vulnerabilities/upgrade-clusters"
+```
+
+응답의 클러스터는 다음과 같은 형태입니다(결과 필드는 축약):
+
+```json
+{
+  "scan_id": "0197fa2e-…",
+  "total_findings": 9,
+  "clusters": [
+    {
+      "component_name": "log4j-core",
+      "component_purl": "pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1",
+      "current_version": "2.14.1",
+      "recommended_version": "2.17.1",
+      "reason": "ok",
+      "direct": true,
+      "max_severity": "critical",
+      "max_epss": 0.974,
+      "finding_count": 2,
+      "findings": [{ "cve_id": "CVE-2021-44228", "fixed_version": "2.17.1" }]
+    }
+  ]
+}
+```
+
+클러스터는 기본적으로 프로젝트의 **가장 최근 성공** 스캔을 기준으로 계산됩니다. `?scan_id=`를 주면 특정 성공 스캔에 고정할 수 있습니다 — 결과 목록과 같은 스냅숏 의미론이라, 이 프로젝트의 성공 스캔이 아닌 id는 `404`를 반환합니다. 성공 스캔이 없는(또는 미해결 결과가 없는) 프로젝트는 빈 `clusters` 목록과 `total_findings: 0`으로 `200`을 반환합니다. 보기 조회에는 결과 목록과 같은 기준인 `developer` 이상이 필요합니다.
 
 ## 보고서 다운로드 (PDF 또는 Excel)
 

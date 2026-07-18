@@ -17,12 +17,21 @@ commercial products.
 
 ## Where to start
 
-- **Try it in 5 minutes** → [Quickstart](./quickstart.md) — one command,
-  preloaded with a realistic demo dataset.
-- **Install on your own host** → [Docker Compose](./installation/docker-compose.md)
-  or the [Helm chart](./installation/helm.md).
-- **See how it compares** → [Comparison](./comparison.md) — versus commercial
-  SCA, Dependency-Track, and SW360.
+New to TRUSCA? Follow the recommended path — each step builds on the one
+before it:
+
+1. **Try it in 5 minutes** → [Quickstart](./quickstart.md) — a few commands,
+   preloaded with a realistic demo dataset.
+2. **Scan your first real project** →
+   [Quickstart, step 5](./quickstart.md#first-real-scan) — register a project
+   and scan your own code, still on the demo stack.
+3. **Move to production** → [Docker Compose](./installation/docker-compose.md)
+   or the [Helm chart](./installation/helm.md).
+
+Evaluating rather than installing? Read the
+[Comparison](./comparison.md) — versus commercial SCA, Dependency-Track, and
+SW360 — or click through the read-only
+[live demo](./installation/live-demo.md), no install required.
 
 ## What it does
 

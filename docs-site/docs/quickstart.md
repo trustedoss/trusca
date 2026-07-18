@@ -1,7 +1,7 @@
 ---
 id: quickstart
 title: Quickstart
-description: Bring TRUSCA up on your laptop in 5 minutes with the dev Docker Compose stack and a seeded demo dataset.
+description: Bring TRUSCA up on your laptop in 5 minutes with the dev Docker Compose stack, a seeded demo dataset, and your first real scan.
 sidebar_label: Quickstart
 sidebar_position: 1
 slug: /quickstart
@@ -10,7 +10,9 @@ slug: /quickstart
 # Quickstart
 
 Run TRUSCA on your laptop in about 5 minutes. This page gives you a
-populated dashboard you can click through. For a real deployment, see
+populated dashboard you can click through — and, in
+[step 5](#first-real-scan), your first scan of a real repository. For a
+production deployment, see
 [Install with Docker Compose](./installation/docker-compose.md) or the
 [Helm chart](./installation/helm.md).
 
@@ -93,10 +95,32 @@ reuse it on a host that anyone else can reach.
 
 ![Project list — five seeded projects with severity roll-up](/img/screenshots/user-projects-list.png)
 
+## 5. Scan your first real project {#first-real-scan}
+
+The seeded data shows what a triaged portfolio looks like; the real test is
+your own code. Still on the demo stack:
+
+<!-- docs-uat: id=qs-first-real-scan kind=manual tier=manual -->
+1. Click **Projects** in the sidebar, then **New project** (top-right).
+2. Enter a **Name** and a public **Git URL** — any repository with a lockfile
+   works — then click **Create**.
+3. Click **Scan** (on the project row in the list, or in the project detail
+   header), keep the **Source** scan type, and click **Start scan**.
+4. A drawer streams the pipeline stages live (fetch → cdxgen → scancode →
+   vuln match → finalize). A small repository takes a few minutes; you can
+   close the tab — the scan keeps running on the worker.
+5. When the scan succeeds, the **Components** tab lists what was found and the
+   **Vulnerabilities** tab shows the open findings — switch it to the
+   **By upgrade** view for the exact version bumps that would clear them.
+
+A private repository needs a credential first — see
+[Private repositories](./user-guide/projects.md#private-repositories). The full
+scan reference (container scans, SBOM upload, cancelling, troubleshooting) is
+[Scans](./user-guide/scans.md).
+
 ## What next
 
 - Wire it into CI → [GitHub Actions](./ci-integration/github-actions.md), [GitLab CI](./ci-integration/gitlab-ci.md), or [Jenkins](./ci-integration/jenkins.md).
-- Trigger your own scan → [Scans](./user-guide/scans.md).
 - Operate it for a team → [Users & teams](./admin-guide/users-and-teams.md), [Backup & restore](./admin-guide/backup-and-restore.md).
 - Move to production → [Install with Docker Compose](./installation/docker-compose.md).
 

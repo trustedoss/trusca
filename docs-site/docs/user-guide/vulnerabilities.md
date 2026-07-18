@@ -91,6 +91,8 @@ Columns:
 
 Filters on the inline bar: severity, status, an **EPSS threshold** filter (`min_epss`), plus a **search** box (free text against CVE ID / title / component) and sort + order controls. The default sort is **Priority** — KEV-listed findings first, then severity, then EPSS; see [Priority sort](#priority-sort). The sort control also includes **EPSS** (`sort=epss`); rows without an EPSS value sort last.
 
+The toolbar also carries a **Group by** control that swaps the flat findings table for the upgrade-centric remediation worklist — see [Group by upgrade](#group-by-upgrade).
+
 ## The drawer — finding detail
 
 Click any row to open:
@@ -363,6 +365,65 @@ The finding detail (`GET /v1/vulnerability_findings/{finding_id}`) carries an `u
 ```
 
 `reason` is `ok` (a version was computed), `no_fix_version`, `unparseable_version`, or `no_open_findings`; `recommended_version` is `null` for every value except `ok`.
+
+## Group by upgrade — the remediation worklist {#group-by-upgrade}
+
+The [recommended version](#upgrade-recommendation-recommended-version) is computed per component, but the flat findings table is organised per CVE — so a component with five open CVEs occupies five rows, all fixed by the same single bump. The **By upgrade** view inverts the table: instead of "every open finding, one row each", it shows **every upgrade the project needs, one card each** — the whole remediation worklist at a glance.
+
+Switch views with the toolbar's **Group by** control: **Flat** (the default findings table) ⇄ **By upgrade**. The choice is per-visit — navigating away from the tab returns you to Flat.
+
+![Vulnerabilities tab — By upgrade view with one remediation cluster per component, most-actionable first](/img/screenshots/user-vulns-group-by-upgrade.png)
+
+### Reading a cluster
+
+Each card is one component's **minimum safe upgrade** — the same value the drawer's [Recommended upgrade](#upgrade-recommendation-recommended-version) panel shows, aggregated across the whole project:
+
+- The header reads **Upgrade `{component}` `{current}` → `{recommended}`**, with a **Fixes N** count — how many open findings that single bump resolves.
+- The same three [priority signals](#priority-signals) order the list, most-actionable first: a **Direct** badge (a dependency you declared yourself, so you can bump it in your own manifest), the highest severity, and the highest EPSS among the cluster's findings.
+- Expand a card to see the individual findings it covers — each carries its own **Fixed in `{version}`** — and clicking one opens the same finding drawer as the flat table.
+
+Components whose open findings have **no published fix** are grouped under **No upgrade available** rather than given a misleading partial bump; the card states the reason ("Some CVEs have no fix version yet" or "Fix version could not be parsed").
+
+### In lock-step with the build gate
+
+Only **open** findings are clustered — exactly the set the [build gate](#severity-model) counts. Findings you have dispositioned (`Not affected`, `False positive`, `Fixed`, `Suppressed`) are excluded, so the summary line above the cards ("N upgrades resolve M findings") describes precisely the work that stands between the project and a clean gate.
+
+### Read it from the API
+
+<!-- docs-uat: id=vulns-upgrade-clusters-api kind=api auth=admin url=/v1/projects/${PROJECT_ID}/vulnerabilities/upgrade-clusters expect=status:200 tier=nightly -->
+The view is served by a single endpoint:
+
+<!-- docs-uat: id=vulns-api-upgrade-clusters kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
+```bash
+curl -sS \
+  -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+  "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/vulnerabilities/upgrade-clusters"
+```
+
+A cluster in the response looks like this (finding fields abbreviated):
+
+```json
+{
+  "scan_id": "0197fa2e-…",
+  "total_findings": 9,
+  "clusters": [
+    {
+      "component_name": "log4j-core",
+      "component_purl": "pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1",
+      "current_version": "2.14.1",
+      "recommended_version": "2.17.1",
+      "reason": "ok",
+      "direct": true,
+      "max_severity": "critical",
+      "max_epss": 0.974,
+      "finding_count": 2,
+      "findings": [{ "cve_id": "CVE-2021-44228", "fixed_version": "2.17.1" }]
+    }
+  ]
+}
+```
+
+Clusters are computed against the project's **latest succeeded** scan by default; pass `?scan_id=` to anchor them to a specific succeeded scan instead — the same snapshot semantics as the findings list, so an id that is not one of this project's succeeded scans returns `404`. A project with no succeeded scan (or no open findings) returns `200` with an empty `clusters` list and `total_findings: 0`. Reading the view requires `developer` or higher, the same bar as the findings list.
 
 ## Download a report (PDF or Excel)
 

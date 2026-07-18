@@ -39,8 +39,12 @@ df -h /                            # at least 20 GB free
 
 Want to *try* TRUSCA before committing a production host? The
 **dev stack** (`docker-compose.dev.yml`) stands the portal up from a clone and
-lets you seed a realistic demo dataset, so you go from clone to a populated
-dashboard in a few commands.
+seeds a realistic demo dataset. The steps — clone, migrate, `up`, seed, and the
+sign-in accounts — are the [Quickstart](../quickstart.md); it takes about
+5 minutes on any **2 vCPU / 4 GB RAM** host and ends with
+[your first real scan](../quickstart.md#first-real-scan). This page keeps only
+what the Quickstart does not cover: production sizing, TLS, and the install
+wizard below.
 
 :::note When to use this
 A laptop, a throwaway cloud VM, or any **2 vCPU / 4 GB RAM** host. For a real
@@ -49,61 +53,6 @@ the dev stack trades production hardening (TLS, role separation, the full
 6 GB scan worker) for a low-friction first look. Do not expose it to the public
 internet.
 :::
-
-### Requirements
-
-- **2 vCPU / 4 GB RAM** (vs. 4 vCPU / 8 GB recommended for the full stack).
-- `docker-compose` (V1) and `git`.
-- A clone of the repository.
-
-### Bring up the stack
-
-```bash
-git clone https://github.com/trustedoss/trusca.git
-cd trusca
-cp .env.example .env
-```
-
-The dev image runs `uvicorn --reload` directly, so — unlike the production
-image — it does not auto-apply migrations on boot. Create the schema first so
-the backend reports healthy as soon as it starts (otherwise the health-gated
-`celery-worker` blocks `up`):
-
-```bash
-docker-compose -f docker-compose.dev.yml run --rm backend alembic upgrade head
-```
-
-Then bring the full stack up:
-
-```bash
-docker-compose -f docker-compose.dev.yml up -d
-```
-
-The schema is already applied, so `postgres`, `redis`, `backend`,
-`celery-worker`, `celery-beat`, and `frontend` report healthy within about
-30 seconds (`docker-compose -f docker-compose.dev.yml ps`).
-
-### Seed the demo dataset
-
-```bash
-docker-compose -f docker-compose.dev.yml exec backend \
-  python -m scripts.seed_demo
-```
-
-The seed (`apps/backend/scripts/seed_demo.py`, idempotent) creates 1 org,
-3 teams, 5 users, 5 projects, plus a realistic mix of CVEs, license findings,
-obligations, and in-app notifications — about 10 seconds.
-
-Open **`http://localhost:5173/`** and sign in:
-
-| Account | Email | Password |
-| --- | --- | --- |
-| Super admin | `admin@demo.trustedoss.dev` | `DemoTest2026!` |
-| Team admin | `frontend-admin@demo.trustedoss.dev` | `DemoTest2026!` |
-| Developer | `dev@demo.trustedoss.dev` | `DemoTest2026!` |
-
-The demo password is set in `.env.example` and is intentionally weak — never
-reuse it on a host that anyone else can reach.
 
 ### How vulnerabilities show up
 
@@ -123,12 +72,8 @@ internet. Use the [install wizard](#step-2--run-the-install-wizard) for anything
 beyond a first look.
 :::
 
-Tear down when you are done:
-
-```bash
-docker-compose -f docker-compose.dev.yml down
-# add -v to also delete the Postgres / workspace volumes (wipes the demo data)
-```
+Tear down when you are done — see
+[Quickstart — Stop the stack](../quickstart.md#stop-the-stack).
 
 ## Prerequisites for HTTPS deployments
 
