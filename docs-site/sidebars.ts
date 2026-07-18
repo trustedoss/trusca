@@ -31,6 +31,7 @@ const sidebars: SidebarsConfig = {
         "user-guide/scans",
         "user-guide/components-and-licenses",
         "user-guide/vulnerabilities",
+        "user-guide/vex",
         "user-guide/triage",
         "user-guide/sbom",
         "user-guide/ai-sbom-conformance",
@@ -90,6 +91,7 @@ const sidebars: SidebarsConfig = {
         "ci-integration/jenkins",
         "ci-integration/webhooks",
         "ci-integration/sbom-upload",
+        "ci-integration/sbom-signature-verification",
       ],
     },
     {
@@ -108,7 +110,6 @@ const sidebars: SidebarsConfig = {
         "reference/obligation-catalog",
         "reference/remediation-dry-run",
         "reference/remediation-pull-request",
-        "reference/sbom-signature-verification",
         "reference/design-system",
       ],
     },

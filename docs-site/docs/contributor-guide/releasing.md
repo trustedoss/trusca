@@ -24,7 +24,9 @@ The workflow runs four stages in order, each depending on the previous one:
    version tags (`X.Y.Z` immutable, `X.Y` movable — never `:latest`).
 3. **`release`** — creates the GitHub Release as a **draft**. Notes come from
    `docs-site/docs/release-notes/X.Y.Z.md` when present, otherwise from GitHub's
-   auto-generated notes.
+   auto-generated notes. The job also generates a CycloneDX SBOM of the
+   release's own source tree (syft) and attaches it as a Release asset
+   (`trusca-X.Y.Z.cdx.json`) — an SCA product ships its own SBOM.
 4. **`release-gate`** — pulls the freshly published `X.Y.Z` images, boots the
    **production** `docker-compose.yml` (with the small
    [`docker-compose.smoke.yml`](https://github.com/trustedoss/trusca/blob/main/docker-compose.smoke.yml)

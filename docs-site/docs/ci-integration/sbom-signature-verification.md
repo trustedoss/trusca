@@ -14,20 +14,20 @@ Every source scan signs its CycloneDX SBOM with [cosign](https://docs.sigstore.d
 Two readers:
 
 - **Verifiers** (sections 1–4) — anyone who consumes a TRUSCA SBOM and wants to prove it is intact and was signed by a known deployment. Assumes a shell and the ability to install a CLI binary.
-- **Operators** (section 5) — the person who deploys the portal and owns the signing key. Assumes Linux + Docker Compose proficiency and familiarity with [environment variables](./env-variables.md).
+- **Operators** (section 5) — the person who deploys the portal and owns the signing key. Assumes Linux + Docker Compose proficiency and familiarity with [environment variables](../reference/env-variables.md).
 :::
 
 ## Prerequisites
 
 For verification:
 
-1. A TRUSCA account with at least the **Developer** [role](./glossary.md#rbac-roles) on the project's team (the signature endpoints reuse the same access control as the SBOM export — an outsider sees `404`).
+1. A TRUSCA account with at least the **Developer** [role](../reference/glossary.md#rbac-roles) on the project's team (the signature endpoints reuse the same access control as the SBOM export — an outsider sees `404`).
 2. The project has at least one **succeeded** scan, and signing was configured on the deployment that ran it (see [section 5](#5-operator-key-setup)). A scan that was never signed has no signature artifacts.
 3. [cosign](https://docs.sigstore.dev/cosign/installation/) installed on the machine that verifies (see [section 2](#2-install-cosign)).
 
 ## 1. Why sign an SBOM?
 
-An [SBOM](./glossary.md#sca-core) tells a consumer *what is inside* a release. A **signature** answers two further questions the SBOM alone cannot:
+An [SBOM](../reference/glossary.md#sca-core) tells a consumer *what is inside* a release. A **signature** answers two further questions the SBOM alone cannot:
 
 - **Integrity** — were the SBOM bytes altered after the deployment produced them? A signature over the exact bytes detects any tampering.
 - **Provenance** — *how* was the SBOM produced, and by whom? The [in-toto](https://in-toto.io/) / [SLSA](https://slsa.dev/) provenance attestation records the build platform identity and version.
@@ -263,7 +263,7 @@ The attestation stamps a builder identity into the provenance. Set these so a ve
 | `SLSA_BUILDER_ID` | a vendor-neutral URI | URI naming this build platform in the provenance `builder.id` |
 | `TRUSTEDOSS_VERSION` | bundled portal version | stamped into `builder.version` and the SBOM-generation context |
 
-See [Environment variables → cosign signing](./env-variables.md) for the full key list and runtime semantics.
+See [Environment variables → cosign signing](../reference/env-variables.md) for the full key list and runtime semantics.
 
 ## Troubleshooting
 
@@ -297,7 +297,7 @@ The artifact or bundle exceeds the deployment's configured download size cap. Th
 ## See also
 
 - [SBOM](../user-guide/sbom.md) — export the SBOM the signature is over
-- [Glossary](./glossary.md) — SBOM, SCA, VEX, and RBAC role definitions
-- [Environment variables](./env-variables.md) — the `COSIGN_*` and `SLSA_*` keys
+- [Glossary](../reference/glossary.md) — SBOM, SCA, VEX, and RBAC role definitions
+- [Environment variables](../reference/env-variables.md) — the `COSIGN_*` and `SLSA_*` keys
 - [API reference (Redoc)](pathname:///reference/api) — the generated endpoint contract
 - [Report an issue](https://github.com/trustedoss/trusca/issues/new/choose) — if verification fails unexpectedly

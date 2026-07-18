@@ -345,6 +345,29 @@ jobs:
             gh release create "$TAG" --draft --title "$TAG" --generate-notes
           fi
 
+      # An SCA product ships its own SBOM (Dependency-Track convention):
+      # generate a CycloneDX document over the release's checked-out source
+      # tree and attach it to the (draft) Release. Runs on re-runs too — the
+      # create step above leaves an existing Release untouched, and --clobber
+      # makes the asset upload idempotent.
+      - name: Generate source SBOM (CycloneDX)
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: trusca-${{ steps.resolve.outputs.version }}.cdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Attach SBOM to the Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.resolve.outputs.tag }}
+          VERSION: ${{ steps.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" "trusca-${VERSION}.cdx.json" --clobber
+
   # ===========================================================================
   # release-gate — prove the PUBLISHED images before revealing the Release
   # (Phase I / P3-12, steps I2 + I3). Pulls the three multi-arch images at the

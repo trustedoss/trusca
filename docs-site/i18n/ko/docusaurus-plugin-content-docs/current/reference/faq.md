@@ -116,7 +116,7 @@ finding을 제외 VEX 상태(`Not affected`, `False positive`, `Suppressed`, `Fi
 
 ### VEX 문서를 생성하거나 가져올 수 있나요? {#vex-export}
 
-가능합니다. VEX는 내보내고 다시 가져올 수 있습니다. [취약점](../user-guide/vulnerabilities.md)을 참고하세요.
+가능합니다. VEX는 내보내고 다시 가져올 수 있습니다. [VEX 문서](../user-guide/vex.md)를 참고하세요.
 
 ## SBOM과 보고서 {#sbom-reports}
 
@@ -126,7 +126,7 @@ CycloneDX(JSON/XML)와 SPDX(JSON/Tag-Value)를 지원하며, 선택적으로 정
 
 ### SBOM이 TRUSCA로 서명되었는지 검증할 수 있나요? {#sbom-verify}
 
-가능합니다. 기본 SBOM 수출은 cosign으로 서명되며 오프라인에서 검증할 수 있습니다. 수출 프로파일은 서명되지 않습니다. [SBOM 서명 검증](./sbom-signature-verification.md)을 참고하세요.
+가능합니다. 기본 SBOM 수출은 cosign으로 서명되며 오프라인에서 검증할 수 있습니다. 수출 프로파일은 서명되지 않습니다. [SBOM 서명 검증](../ci-integration/sbom-signature-verification.md)을 참고하세요.
 
 ## 운영·관리 {#admin-ops}
 

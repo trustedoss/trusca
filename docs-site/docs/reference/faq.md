@@ -116,7 +116,7 @@ Move the finding to an excluded VEX state (`Not affected`, `False positive`, `Su
 
 ### Can I generate or import a VEX document? {#vex-export}
 
-Yes — VEX can be exported and re-imported. See [Vulnerabilities](../user-guide/vulnerabilities.md).
+Yes — VEX can be exported and re-imported. See [VEX documents](../user-guide/vex.md).
 
 ## SBOM and reports {#sbom-reports}
 
@@ -126,7 +126,7 @@ CycloneDX (JSON/XML) and SPDX (JSON/Tag-Value), with optional policy-annotated a
 
 ### Can I verify an SBOM was signed by TRUSCA? {#sbom-verify}
 
-Yes — default SBOM exports are signed with cosign and can be verified offline. Note that export profiles are unsigned. See [SBOM signature verification](./sbom-signature-verification.md).
+Yes — default SBOM exports are signed with cosign and can be verified offline. Note that export profiles are unsigned. See [SBOM signature verification](../ci-integration/sbom-signature-verification.md).
 
 ## Administration and operations {#admin-ops}
 

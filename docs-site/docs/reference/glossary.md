@@ -126,7 +126,7 @@ column.
   scan's CycloneDX SBOM with cosign (`cosign sign-blob`) so a consumer
   can verify it with `cosign verify-blob`. Key-based signing is the
   self-hosted default; keyless (OIDC) is opt-in. See
-  [Verify SBOM signatures](./sbom-signature-verification.md) and
+  [Verify SBOM signatures](../ci-integration/sbom-signature-verification.md) and
   [docs.sigstore.dev/cosign](https://docs.sigstore.dev/cosign/overview/).
 - **Sigstore / Fulcio / Rekor.** The keyless-signing ecosystem cosign
   draws on: **Fulcio** issues a short-lived signing certificate bound to
@@ -138,7 +138,7 @@ column.
   [in-toto](https://in-toto.io/) Statement carrying
   [SLSA](https://slsa.dev/) provenance (builder identity + build
   context) alongside the SBOM signature. See
-  [Verify SBOM signatures](./sbom-signature-verification.md#inspect-the-provenance-attestation).
+  [Verify SBOM signatures](../ci-integration/sbom-signature-verification.md#inspect-the-provenance-attestation).
 
 ## License classification
 

@@ -135,7 +135,7 @@ is named distinctly (`sbom-<project>-<profile>.<ext>`) so it is never mistaken
 for the canonical export.
 
 :::caution Profile exports are not signed
-The cosign [signature](../reference/sbom-signature-verification.md) covers only
+The cosign [signature](../ci-integration/sbom-signature-verification.md) covers only
 the **default** SBOM — the exact bytes produced at scan time. A policy profile
 is generated on demand and
 therefore has **no signature**; `cosign verify-blob` against a profiled export
@@ -332,7 +332,7 @@ Items the manual previously promised that are not in this release; tracked for l
 
 ## See also
 
-- [Verify SBOM signatures (cosign)](../reference/sbom-signature-verification.md) — prove the SBOM is intact and signed by this deployment
+- [Verify SBOM signatures (cosign)](../ci-integration/sbom-signature-verification.md) — prove the SBOM is intact and signed by this deployment
 - [Components & licenses](./components-and-licenses.md)
 - [Vulnerabilities](./vulnerabilities.md)
 - [API overview](../reference/api-overview.md)
