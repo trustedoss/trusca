@@ -341,6 +341,10 @@
     "sort",
     "status"
   ],
+  "GET /v1/projects/{project_id}/vulnerabilities/upgrade-clusters": [
+    "project_id",
+    "scan_id"
+  ],
   "GET /v1/projects/{project_id}/vulnerability-report.pdf": [
     "project_id"
   ],

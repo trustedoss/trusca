@@ -448,6 +448,95 @@ export async function updateVulnerabilityStatus(
 }
 
 // ---------------------------------------------------------------------------
+// Upgrade clusters (W9-#53 — "Group by upgrade")
+// ---------------------------------------------------------------------------
+
+/**
+ * One open finding inside an {@link UpgradeCluster}. Mirrors
+ * `schemas.vulnerability_detail.UpgradeClusterFinding` (snake_case). The
+ * `finding_id` keys the SAME per-finding detail drawer the flat list opens
+ * (`GET /v1/vulnerability_findings/{id}`), so a cluster row and a flat row
+ * that reference the same finding land on identical drawer state.
+ *
+ * `findings` arrive pre-sorted (severity desc, then `cve_id` asc); the UI
+ * renders them verbatim.
+ */
+export interface UpgradeClusterFinding {
+  finding_id: string;
+  cve_id: string;
+  severity: VulnSeverity;
+  status: VulnFindingStatus;
+  epss_score: number | null;
+  kev: boolean;
+  fixed_version: string | null;
+}
+
+/**
+ * A minimum-safe-upgrade cluster: every open finding on ONE component_version
+ * that a single version bump would resolve. Mirrors
+ * `schemas.vulnerability_detail.UpgradeCluster`.
+ *
+ * `recommended_version` is the semver maximum of the cluster findings' fix
+ * versions — the lowest bump that clears them all. It is `null` (with a
+ * `reason` other than `"ok"`) when we decline to recommend a partial or
+ * unparseable upgrade. `direct` / `max_severity` / `max_epss` are priority
+ * signals so the UI can flag the highest-leverage bump.
+ */
+export interface UpgradeCluster {
+  component_version_id: string;
+  component_name: string;
+  component_purl: string | null;
+  current_version: string;
+  recommended_version: string | null;
+  reason: UpgradeRecommendationReason;
+  direct: boolean;
+  max_severity: VulnSeverity | null;
+  max_epss: number | null;
+  finding_count: number;
+  findings: UpgradeClusterFinding[];
+}
+
+/**
+ * Response of `GET /v1/projects/{id}/vulnerabilities/upgrade-clusters`. The
+ * clusters arrive most-actionable first (a direct dependency with a computed
+ * upgrade, high severity + EPSS, ranks above an indirect one with no fix). By
+ * contract `total_findings` equals the sum of every cluster's `finding_count`
+ * AND the scan's open-finding total — the header uses it for a single count.
+ * `scan_id` echoes the resolved snapshot (the pinned `?scan_id=` or the latest
+ * succeeded scan); `null` with empty `clusters` when the project has no
+ * succeeded scan.
+ */
+export interface UpgradeClusterListResponse {
+  scan_id: string | null;
+  total_findings: number;
+  clusters: UpgradeCluster[];
+}
+
+export interface ListUpgradeClustersParams {
+  /**
+   * Pin the read to a specific succeeded scan (feature #28 snapshot anchoring),
+   * threading the same anchor the flat list uses. Omit → latest succeeded scan.
+   * An invalid / cross-project / non-succeeded id is a 404 problem+json.
+   */
+  scanId?: string;
+}
+
+export async function listUpgradeClusters(
+  projectId: string,
+  params: ListUpgradeClustersParams = {},
+): Promise<UpgradeClusterListResponse> {
+  const query: Record<string, unknown> = {};
+  if (params.scanId != null && params.scanId.length > 0) {
+    query.scan_id = params.scanId;
+  }
+  const { data } = await api.get<UpgradeClusterListResponse>(
+    `/v1/projects/${projectId}/vulnerabilities/upgrade-clusters`,
+    { params: query },
+  );
+  return data;
+}
+
+// ---------------------------------------------------------------------------
 // 422 narrow: extract `allowed_to` extension from the RFC 7807 problem body.
 // ---------------------------------------------------------------------------
 

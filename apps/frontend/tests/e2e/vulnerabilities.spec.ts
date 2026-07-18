@@ -208,6 +208,76 @@ test.describe("@vulnerabilities project vulnerabilities tab", () => {
       .toBeGreaterThan(historyBefore);
   });
 
+  test("S6) 'By upgrade' groups findings into clusters and a finding opens the drawer", async ({
+    page,
+  }, testInfo) => {
+    const seed = await bootstrap(testInfo, page);
+    if (seed === null) return;
+
+    const portal = new PortalPage(page);
+    await portal.gotoProjects();
+    await portal.openProjectDetail(PROJECT_NAME);
+    await portal.selectVulnerabilitiesTab();
+
+    // Flip to the grouped view.
+    await portal.toggleVulnerabilitiesGroupBy("upgrade");
+
+    // At least one cluster renders (the seed has open findings).
+    const clusterCount = await portal.getUpgradeClusterCount();
+    expect(clusterCount).toBeGreaterThanOrEqual(1);
+
+    // The grouped summary reports the whole-project open-finding total.
+    const summary = page.getByTestId("vulnerabilities-upgrade-summary");
+    await expect(summary).toBeVisible();
+    const findings = Number(await summary.getAttribute("data-findings"));
+    expect(findings).toBeGreaterThanOrEqual(1);
+
+    // Every cluster header carries a fixes-count (findings the bump resolves).
+    const firstCluster = page
+      .getByTestId("vulnerability-upgrade-cluster")
+      .first();
+    await expect(
+      firstCluster.getByTestId("vulnerability-upgrade-cluster-fixes"),
+    ).toBeVisible();
+
+    // When the seed produced a concrete upgrade (reason="ok"), the header
+    // names the recommended version. Otherwise the "no upgrade" reason shows —
+    // both are valid cluster shapes, so assert the recommended version only on
+    // the actionable clusters.
+    const okCluster = page.locator(
+      '[data-testid="vulnerability-upgrade-cluster"][data-reason="ok"]',
+    );
+    if ((await okCluster.count()) > 0) {
+      const recommended = await okCluster
+        .first()
+        .getAttribute("data-recommended-version");
+      expect(recommended && recommended.length).toBeTruthy();
+      await expect(
+        okCluster
+          .first()
+          .getByTestId("vulnerability-upgrade-cluster-recommended"),
+      ).toBeVisible();
+    }
+
+    // Expand the first cluster and open one of its findings — the SAME
+    // vulnerability drawer the flat list uses opens (URL mirrors ?vuln=<id>).
+    await firstCluster
+      .getByTestId("vulnerability-upgrade-cluster-header")
+      .click();
+    await firstCluster
+      .getByTestId("vulnerability-upgrade-finding")
+      .first()
+      .click();
+    await expect(
+      page.getByTestId("vulnerability-drawer"),
+    ).toBeVisible({ timeout: 10_000 });
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get("vuln"), {
+        timeout: 5_000,
+      })
+      .not.toBeNull();
+  });
+
   test("S5) developer cannot suppress — action button is disabled", async ({
     page,
   }, testInfo) => {

@@ -644,6 +644,49 @@ export class PortalPage {
     return raw == null ? 0 : Number(raw);
   }
 
+  // ───── W9-#53 — Vulnerabilities "Group by upgrade" ─────────────────────
+  /**
+   * Flip the vulnerabilities list grouping via the segmented control:
+   * `"flat"` → the paginated findings table, `"upgrade"` → the whole-project
+   * upgrade clusters. Clicks the target button (locale-agnostic — anchors on
+   * the `data-testid`), then waits for the matching view to settle so callers
+   * can read rows / clusters deterministically.
+   */
+  async toggleVulnerabilitiesGroupBy(
+    mode: "flat" | "upgrade",
+  ): Promise<void> {
+    await this.page.getByTestId(`vulnerabilities-group-by-${mode}`).click();
+    if (mode === "upgrade") {
+      await this.expectVulnerabilitiesUpgradeReady();
+    } else {
+      await this.expectVulnerabilitiesTabReady();
+    }
+  }
+
+  /**
+   * Wait until the "By upgrade" grouped view has settled: either the cluster
+   * list, the empty card, or the error alert is visible (the loading skeleton
+   * has finished). Event-driven — never `waitForTimeout`.
+   */
+  async expectVulnerabilitiesUpgradeReady(): Promise<void> {
+    const list = this.page.getByTestId("vulnerabilities-upgrade-list");
+    const empty = this.page.getByTestId("vulnerabilities-upgrade-empty");
+    const error = this.page.getByTestId("vulnerabilities-upgrade-error");
+    await expect(list.or(empty).or(error)).toBeVisible({ timeout: 10_000 });
+  }
+
+  /**
+   * Read the number of upgrade clusters rendered in the "By upgrade" view.
+   * Prefers the container's `data-cluster-count` anchor (present even before
+   * every card paints); returns 0 when the empty card is shown.
+   */
+  async getUpgradeClusterCount(): Promise<number> {
+    const list = this.page.getByTestId("vulnerabilities-upgrade-list");
+    if ((await list.count()) === 0) return 0;
+    const raw = await list.first().getAttribute("data-cluster-count");
+    return raw == null ? 0 : Number(raw);
+  }
+
   /** Set the multi-select severity filter. Empty array clears it. */
   async filterVulnerabilitiesBySeverity(
     severities: ("critical" | "high" | "medium" | "low" | "info" | "unknown")[],

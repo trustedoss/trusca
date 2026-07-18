@@ -38,6 +38,19 @@ import { cn } from "@/lib/utils";
 export type VulnerabilitiesExtraFilter = "severity" | "license_category";
 
 /**
+ * W9-#53 — grouping mode of the Vulnerabilities list. `"flat"` is the paginated
+ * findings table; `"upgrade"` swaps it for the whole-project minimum-safe-
+ * upgrade clusters (not paginated / not filtered), so the flat-list-only
+ * controls (sort, status, filters, columns) are hidden in that mode.
+ */
+export type VulnerabilitiesGroupByMode = "flat" | "upgrade";
+
+const GROUP_BY_OPTIONS: { value: VulnerabilitiesGroupByMode; key: string }[] = [
+  { value: "flat", key: "flat" },
+  { value: "upgrade", key: "upgrade" },
+];
+
+/**
  * VulnerabilitiesToolbar — Phase 3 PR #11, updated in W4-B #19.
  *
  * Inline filter row above the virtualized vulnerabilities list. Mirrors the
@@ -99,6 +112,13 @@ const SORT_OPTION_LABEL_KEY: Record<VulnerabilitySortKey, string> = {
 };
 
 export interface VulnerabilitiesToolbarProps {
+  /**
+   * W9-#53 — current grouping mode. `"flat"` renders every filter/sort/column
+   * control; `"upgrade"` hides them (the grouped view is whole-project and not
+   * paginated) leaving only the group-by segmented control.
+   */
+  groupBy: VulnerabilitiesGroupByMode;
+  onGroupByChange: (value: VulnerabilitiesGroupByMode) => void;
   search: string;
   onSearchChange: (value: string) => void;
   /**
@@ -202,6 +222,8 @@ const LICENSE_CATEGORY_OPTIONS: LicenseCategoryName[] = [
 ];
 
 export function VulnerabilitiesToolbar({
+  groupBy,
+  onGroupByChange,
   search,
   onSearchChange,
   sort,
@@ -304,6 +326,47 @@ export function VulnerabilitiesToolbar({
       )}
       data-testid="vulnerabilities-toolbar"
     >
+      {/* W9-#53 — group-by segmented control. Mirrors the hand-rolled control
+          on ComponentsToolbar (role=group + aria-pressed buttons). Always
+          visible; picking "By upgrade" hides the flat-list-only controls. */}
+      <div className="flex flex-col">
+        <span className="text-xs font-medium text-muted-foreground">
+          {t("vulnerabilities.group_by.label")}
+        </span>
+        <div
+          role="group"
+          aria-label={t("vulnerabilities.group_by.label")}
+          data-testid="vulnerabilities-group-by"
+          className="mt-1 inline-flex h-9 items-stretch overflow-hidden rounded-md border border-input bg-background"
+        >
+          {GROUP_BY_OPTIONS.map((opt, idx) => {
+            const isActive = groupBy === opt.value;
+            return (
+              <button
+                key={opt.key}
+                type="button"
+                aria-pressed={isActive}
+                data-testid={`vulnerabilities-group-by-${opt.key}`}
+                data-active={isActive ? "true" : "false"}
+                onClick={() => onGroupByChange(opt.value)}
+                className={cn(
+                  "px-3 text-xs font-medium transition-colors duration-fast ease-out-soft",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+                  idx > 0 && "border-l border-input",
+                  isActive
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-muted",
+                )}
+              >
+                {t(`vulnerabilities.group_by.${opt.key}`)}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {groupBy === "flat" ? (
+        <>
       <div className="flex-1">
         <label
           htmlFor="vulnerabilities-search"
@@ -605,6 +668,8 @@ export function VulnerabilitiesToolbar({
           ``vuln-pdf`` generate card there owns the download. The toolbar
           prop API still threads ``vulnReport`` so the existing hook +
           tests stay intact; only the button moved. */}
+        </>
+      ) : null}
     </div>
   );
 }
