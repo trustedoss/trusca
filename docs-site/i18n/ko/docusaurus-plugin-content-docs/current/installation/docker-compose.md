@@ -39,8 +39,11 @@ df -h /                            # 20 GB 이상 여유
 
 프로덕션 호스트를 준비하기 전에 TRUSCA를 *체험*하고 싶으신가요?
 **dev 스택**(`docker-compose.dev.yml`)은 클론에서 포털을 띄우고 현실적인 데모
-데이터를 시드할 수 있어, 클론에서 데이터가 채워진 대시보드까지 몇 커맨드로
-도달합니다.
+데이터를 시드합니다. 클론·마이그레이션·`up`·시드·로그인 계정까지의 절차는
+[Quickstart](../quickstart.md)가 단일 기준입니다 — **2 vCPU / 4 GB RAM**
+호스트에서 약 5분이 걸리고 [실제 저장소 첫
+스캔](../quickstart.md#first-real-scan)으로 끝납니다. 본 페이지는 Quickstart가
+다루지 않는 것만 담습니다: 프로덕션 사양, TLS, 그리고 아래의 설치 마법사.
 
 :::note 언제 사용하나
 노트북, 일회용 클라우드 VM, 또는 **2 vCPU / 4 GB RAM** 호스트. 실제 배포에는
@@ -48,61 +51,6 @@ df -h /                            # 20 GB 이상 여유
 하드닝(TLS, 역할 분리, 6 GB 스캔 워커)을 첫 체험의 낮은 마찰과 맞바꿉니다. 공개
 인터넷에 노출하지 마세요.
 :::
-
-### 요구사항
-
-- **2 vCPU / 4 GB RAM** (풀 스택 권장 사양은 4 vCPU / 8 GB).
-- `docker-compose`(V1)와 `git`.
-- 레포 클론.
-
-### 스택 기동
-
-```bash
-git clone https://github.com/trustedoss/trusca.git
-cd trusca
-cp .env.example .env
-```
-
-dev 이미지는 `uvicorn --reload`를 직접 실행하므로 — 프로덕션 이미지와 달리 —
-부팅 시 마이그레이션을 자동 적용하지 않습니다. 백엔드가 기동하자마자 healthy로
-보고하도록 스키마를 먼저 생성하세요(그러지 않으면 health 게이트가 걸린
-`celery-worker`가 `up`을 막습니다):
-
-```bash
-docker-compose -f docker-compose.dev.yml run --rm backend alembic upgrade head
-```
-
-그다음 전체 스택을 기동합니다:
-
-```bash
-docker-compose -f docker-compose.dev.yml up -d
-```
-
-스키마가 이미 적용됐으므로 `postgres`, `redis`, `backend`, `celery-worker`,
-`celery-beat`, `frontend`가 약 30초 안에 healthy로 보고합니다
-(`docker-compose -f docker-compose.dev.yml ps`).
-
-### 데모 데이터 시드
-
-```bash
-docker-compose -f docker-compose.dev.yml exec backend \
-  python -m scripts.seed_demo
-```
-
-시드(`apps/backend/scripts/seed_demo.py`, 멱등)는 조직 1, 팀 3, 사용자 5,
-프로젝트 5와 현실적인 CVE·라이선스 발견·의무사항·인앱 알림 조합을 생성합니다 —
-약 10초.
-
-**`http://localhost:5173/`**을 열어 로그인하세요:
-
-| 계정 | 이메일 | 비밀번호 |
-| --- | --- | --- |
-| 슈퍼 관리자 | `admin@demo.trustedoss.dev` | `DemoTest2026!` |
-| 팀 관리자 | `frontend-admin@demo.trustedoss.dev` | `DemoTest2026!` |
-| 개발자 | `dev@demo.trustedoss.dev` | `DemoTest2026!` |
-
-데모 비밀번호는 `.env.example`에 설정돼 있고 의도적으로 약합니다 — 다른 사람이
-접근할 수 있는 호스트에서는 절대 재사용하지 마세요.
 
 ### 취약점이 보이는 경로
 
@@ -120,12 +68,8 @@ air-gapped 평가(`ghcr.io` egress 없음)는 [취약점 데이터 — Air-gappe
 [설치 마법사](#2단계--설치-마법사-실행)를 사용하세요.
 :::
 
-다 사용한 뒤 정리:
-
-```bash
-docker-compose -f docker-compose.dev.yml down
-# -v 를 추가하면 Postgres / workspace 볼륨까지 삭제(데모 데이터 제거)
-```
+다 사용한 뒤의 정리는 [Quickstart — 스택 종료](../quickstart.md#스택-종료)를
+참고하세요.
 
 ## HTTPS 배포의 사전 요구사항
 

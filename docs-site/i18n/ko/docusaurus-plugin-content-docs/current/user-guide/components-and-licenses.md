@@ -26,6 +26,7 @@ sidebar_position: 3
 - **라이선스 (License)** — 컴포넌트에 부여된 라이선스. 의존성의 경우 `cdxgen` 이 패키지 메타데이터에서 읽은 **declared** 라이선스입니다. detected·concluded 와의 관계는 [declared vs. detected](#declared-vs-detected) 참고. 빌드 게이트가 사용하는 값입니다.
 - **Usage** — **Required** / **Optional** / `—`. `cdxgen` 이 본 컴포넌트로 가는 *가장 얕은* 경로에서 기록한 의존성 스코프(같은 컴포넌트가 여러 경로로 도달 가능하면 가장 높은 스코프 — `Required` > `Optional` — 가 이김). `—` 는 스캐너가 스코프를 emit 하지 않은 경우. Optional 의존성은 Required 와 같은 법적 의무를 가지는 경우가 많지만, **Required / Optional** 구분은 라이선스 컴플라이언스 부담에 매핑됩니다 — 사용하지 않는 `Optional` extra 는 깊이 박힌 required transitive 의존성보다 제거 비용이 낮습니다.
 - **EOL** — 컴포넌트의 릴리즈 사이클이 공표된 지원 종료를 지났으면 **EOL** 배지, 아니면 빈칸. [지원 종료 표시](#end-of-life-flagging) 참고.
+- **최신성 (Currency)** — 컴포넌트의 (아직 지원되는) 릴리즈 라인에 더 새로운 패치가 공개돼 있으면 **뒤처짐** 배지, 아니면 빈칸. [버전 최신성](#version-currency) 참고.
 - **심각도 (Severity)** — 본 컴포넌트의 미해결 CVE 중 가장 높은 심각도(범례를 통해 라이선스 분류 색상도 함께 표시).
 - **CVEs** — 본 컴포넌트의 미해결 취약점 수(클릭 시 사전 필터링된 Vulnerabilities 탭으로 이동).
 
@@ -41,6 +42,7 @@ sidebar_position: 3
 - **심각도 (Severity)** — 다중 선택 배지(Critical / High / Medium / Low / Info).
 - **라이선스 카테고리 (License category)** — 다중 선택(`Allowed` / `Conditional` / `Forbidden` / `Unknown`).
 - **EOL만 (EOL only)** — 지원 종료된 컴포넌트만 남기는 토글(`?eol=true`).
+- **뒤처진 것만 (Outdated only)** — 릴리즈 라인의 최신 패치보다 뒤처진 컴포넌트만 남기는 토글(`?outdated=true`). [버전 최신성](#version-currency) 참고.
 - **정렬 (Sort)** + **순서 (order)** — 컬럼 기반 정렬과 오름·내림 토글.
 
 필터는 결합됩니다. URL(`?direct=…`, `?dependency_scope=…`, …)이 갱신되어 필터된 뷰를 공유할 수 있습니다.
@@ -106,6 +108,58 @@ air-gapped 환경에서도 동작합니다.
 `EOL_ENABLED=false` 로 끄거나, air-gapped 설치에서는 `EOL_SNAPSHOT_PATH` 로
 더 신선한 스냅숏 파일을 지정할 수 있습니다 —
 [환경변수](../reference/env-variables.md) 참고.
+
+### 버전 최신성 — 최신 패치보다 뒤처짐 {#version-currency}
+
+[EOL 플래그](#end-of-life-flagging)의 자매 신호이지만 답하는 질문이
+다릅니다. EOL 은 *"이 릴리즈 라인이 수명을 다했는가?"* 를 묻고, 버전
+최신성은 *"이 버전이 — 아직 지원되는 — 자기 릴리즈 라인의 최신 패치보다
+뒤처져 있는가?"* 를 묻습니다. `3.2` 라인이 멀쩡히 살아 있어도 `3.2.7` 보다
+패치 세 개 뒤처진 채, 이미 나온 수정들을 조용히 놓치고 있을 수 있습니다.
+
+이 신호는 EOL 플래그와 같은 번들 endoflife.date 스냅숏에서 유도됩니다
+(추적되는 릴리즈 사이클마다 최신 패치 버전이 실려 있음). 그래서 똑같이
+오프라인입니다 — 스캔 시 네트워크 호출이 없어 air-gapped 환경에서도
+동작하고, 같은 닫힌 추적 대상 목록이 적용됩니다: 목록 밖의 컴포넌트는
+최신성 데이터가 없다고만 표시될 뿐, 절대 추정하지 않습니다.
+
+![Components 탭 — 뒤처진 것만 필터를 켠 상태와 최신성 컬럼 배지](/img/screenshots/user-components-outdated.png)
+
+화면 읽는 방법:
+
+- **최신성 컬럼/배지** — **뒤처짐** 배지. 의도적으로 EOL 보다 한 단계 낮은
+  톤입니다: 뒤처짐은 위생 신호이지 리스크 판정이 아닙니다. 툴팁에 최신
+  패치 버전이(스냅숏에 기록돼 있으면 공개일도 함께) 표시됩니다.
+- **드로어 행** — 드로어의 **버전 최신성** 행은 네 가지 상태를 구분합니다:
+  릴리즈 라인의 최신 패치 사용 중, 최신 패치보다 뒤처짐, 추적 대상이나
+  최신 패치를 판정할 수 없음, 릴리즈 라인 정보 없음.
+- **Overview 칩** — 기준 스캔에 뒤처진 컴포넌트가 있으면 Overview 탭에
+  "최신 패치보다 뒤처진 컴포넌트 N개" 칩과 함께 사전 필터된 목록으로 바로
+  이동하는 링크가 나타납니다.
+- **필터** — **뒤처진 것만** 토글이 테이블을 뒤처진 행으로
+  좁힙니다(`?outdated=true`).
+
+알아 둘 경계 두 가지:
+
+- 이 신호는 **릴리즈 라인** 기준 최신성입니다 — "*자기* 라인의 최신 패치보다
+  뒤처짐"이지, "모든 라인을 통틀어 최신 버전보다 뒤처짐"이 아닙니다. 더
+  새로운 major·minor 라인으로 옮기는 것은 호환성 파괴 가능성이 있는
+  업그레이드 결정이고, 이 배지는 리스크가 낮은 패치 인상만 가리킵니다.
+- 뒤처짐은 **취약점 판정이 아닙니다** — CVE 컬럼이 따로 말해 줍니다. 결과가
+  0건인 뒤처진 컴포넌트는 싸게 최신화할 수 있다는 뜻일 뿐이고, 결과가
+  *있는* 뒤처진 컴포넌트는 바로 그 패치 인상 안에 수정이 들어 있는 경우가
+  많습니다([업그레이드 추천](./vulnerabilities.md#업그레이드-추천권장-버전)
+  참고).
+
+<!-- docs-uat: id=components-outdated-filter-api kind=api auth=admin url=/v1/projects/${PROJECT_ID}/components?outdated=true expect=status:200 tier=nightly -->
+API 에서는 `GET /v1/projects/{id}/components?outdated=true` 가 뒤처진 행만
+반환하며, 모든 컴포넌트에 `currency_state`(`current` / `outdated` /
+`unknown`, 추적 대상이 아니면 `null`), `currency_latest`,
+`currency_latest_release_date` 가 실립니다.
+
+이 신호는 EOL 파이프라인에 함께 실립니다: `EOL_ENABLED=false` 는 두 플래그를
+모두 끄고, air-gapped 설치에서는 `EOL_SNAPSHOT_PATH` 로 더 신선한 스냅숏을
+지정합니다 — [환경변수](../reference/env-variables.md) 참고.
 
 ## 표 보기와 그래프 보기
 

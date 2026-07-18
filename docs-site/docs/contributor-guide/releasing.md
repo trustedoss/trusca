@@ -78,10 +78,22 @@ unrelated (e.g. infrastructure) reason, a maintainer can reveal it by hand with
    lifecycle data (EOL verdicts are stamped offline from this file):
    `python3 scripts/refresh_eol_snapshot.py` from `apps/backend`, and commit
    the updated snapshot with the release-prep changes.
-2. Land the release notes at `docs-site/docs/release-notes/X.Y.Z.md` and bump
-   `IMAGE_TAG` in `.env.example` to `X.Y.Z`.
-3. Tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
-4. Watch the `release-gate` job. When it goes green the Release is public and
+2. **Documentation sweep** — the release ships its docs, so before tagging:
+   - Write the release notes at `docs-site/docs/release-notes/X.Y.Z.md`
+     (EN + KO mirror, wired into `sidebars.ts`), sourced from the
+     `[Unreleased]` section of `CHANGELOG.md` — then move those entries under
+     a new `[X.Y.Z]` heading.
+   - Walk the `[Unreleased]` entries once more and confirm every
+     **user-facing** feature also landed in the relevant guide page
+     (user-guide / admin-guide / ci-integration), not only in the release
+     notes. A feature without a guide section is a release blocker — this
+     is the "docs accompany features" rule enforced at the moment it is
+     cheapest to fix.
+   - If a new UI surface shipped, capture its screenshot via
+     `make screenshots-capture` and reference it from the guide section.
+3. Bump `IMAGE_TAG` in `.env.example` to `X.Y.Z`.
+4. Tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+5. Watch the `release-gate` job. When it goes green the Release is public and
    marked `latest` automatically — no manual step is needed.
 
 ## See also

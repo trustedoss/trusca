@@ -17,9 +17,13 @@ SBOM 관리를 한 화면에서 통합 제공하며, 상용 제품의 좌석당 
 
 ## 시작 지점
 
-- **5분 안에 체험** → [Quickstart](./quickstart.md) — 단일 명령으로 데모 데이터셋과 함께 실행.
-- **자체 호스트에 설치** → [Docker Compose](./installation/docker-compose.md) 또는 [Helm 차트](./installation/helm.md).
-- **다른 도구와 비교** → [비교](./comparison.md) — 상용 SCA / Dependency-Track / SW360 대비.
+TRUSCA가 처음이라면 권장 경로를 따르십시오 — 각 단계가 앞 단계 위에 쌓입니다.
+
+1. **5분 안에 체험** → [Quickstart](./quickstart.md) — 몇 개의 명령으로 데모 데이터셋과 함께 실행.
+2. **실제 프로젝트 첫 스캔** → [Quickstart 5단계](./quickstart.md#first-real-scan) — 데모 스택 그대로 프로젝트를 등록하고 자기 코드를 스캔.
+3. **프로덕션으로 이행** → [Docker Compose](./installation/docker-compose.md) 또는 [Helm 차트](./installation/helm.md).
+
+설치보다 평가가 먼저라면? [비교](./comparison.md) — 상용 SCA / Dependency-Track / SW360 대비 — 를 읽거나, 설치 없이 읽기 전용 [라이브 데모](./installation/live-demo.md)를 둘러보십시오.
 
 ## 제공 기능
 

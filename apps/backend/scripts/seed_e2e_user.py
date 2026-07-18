@@ -1580,6 +1580,12 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                         vulnerability_id=vuln.id,
                         status=status,
                         analysis_state=status,
+                        # W9-#53 — deterministic upgrade-cluster fixture: every
+                        # other finding carries a fixed version so the "Group by
+                        # upgrade" view renders real "Upgrade X 1.0.0 → N.0.0"
+                        # clusters alongside the no-fix group (odd rows stay
+                        # NULL = "No upgrade available" — both states covered).
+                        fixed_version=f"{2 + (idx % 3)}.0.0" if idx % 2 == 0 else None,
                     )
                     session.add(finding)
 

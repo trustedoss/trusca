@@ -26,6 +26,7 @@ Columns:
 - **License** — the license attached to the component. For a dependency this is the **declared** license `cdxgen` read from package metadata; see [Declared vs. detected](#declared-vs-detected) for how detected and concluded licenses relate. This is the value used by the build gate.
 - **Usage** — **Required** / **Optional** / `—`. The dependency scope `cdxgen` recorded along the *shortest* path to this component (when the same component is reachable via several paths the highest-scope path wins, i.e. `Required` > `Optional`). `—` means the scanner did not emit a scope for this component. Optional dependencies often carry the same legal obligations as required ones, but the **Required** / **Optional** distinction maps to license-compliance burden — an unused `Optional` extra is cheaper to remove than a deeply-required transitive dependency.
 - **EOL** — an **EOL** badge when the component's release cycle is past its published end-of-life; blank otherwise. See [End-of-life flagging](#end-of-life-flagging).
+- **Currency** — an **Outdated** badge when a newer patch of the component's (still-supported) release line has been published; blank otherwise. See [Version currency](#version-currency).
 - **Severity** — the highest severity across this component's open CVEs (carries the license-classification color via the legend).
 - **CVEs** — count of open vulnerabilities for this component (clickable; jumps to the Vulnerabilities tab pre-filtered).
 
@@ -41,6 +42,7 @@ The inline filter bar at the top supports:
 - **Severity** — multi-select badges (Critical / High / Medium / Low / Info).
 - **License category** — multi-select (`Allowed` / `Conditional` / `Forbidden` / `Unknown`).
 - **EOL only** — a toggle that narrows the table to components past their end-of-life (`?eol=true`).
+- **Outdated only** — a toggle that narrows the table to components behind the latest patch of their release line (`?outdated=true`). See [Version currency](#version-currency).
 - **Sort** + **order** — column-driven sort with ascending / descending toggle.
 
 Filters compose. The URL updates (`?direct=…`, `?dependency_scope=…`, …) so you can share a filtered view.
@@ -107,6 +109,60 @@ How to read the surfaces:
 Set `EOL_ENABLED=false` to turn the flagging off, or point
 `EOL_SNAPSHOT_PATH` at a fresher snapshot file on air-gapped installs — see
 [Environment variables](../reference/env-variables.md).
+
+### Version currency — behind the latest patch {#version-currency}
+
+A sibling of the [EOL flag](#end-of-life-flagging) that answers a different
+question. EOL asks *"is this release line dead?"*; version currency asks *"is
+this version behind the newest patch of its — still supported — release
+line?"*. A component can be perfectly alive on the `3.2` line and still sit
+three patches behind `3.2.7`, quietly missing fixes that already shipped.
+
+The signal is derived from the same vendored endoflife.date snapshot as the
+EOL flag (each tracked release cycle carries its latest patch version), so it
+is equally offline — zero network at scan time, air-gap safe — and the same
+closed whitelist of tracked products applies: a component outside the
+whitelist simply shows no currency data, never a guess.
+
+![Components tab — Outdated only filter on, with the Currency column badge](/img/screenshots/user-components-outdated.png)
+
+How to read the surfaces:
+
+- **Currency column / badge** — an **Outdated** badge, deliberately a step
+  below the EOL tone: staleness is a hygiene signal, not a risk verdict. The
+  tooltip carries the latest patch version (and its release date when the
+  snapshot records one).
+- **Drawer row** — the drawer's **Version currency** row distinguishes four
+  states: on the latest patch, behind it, tracked-but-undetermined (the
+  release cycle's latest patch could not be parsed), and no release-line data
+  for this component.
+- **Overview chip** — when the anchored scan contains outdated components the
+  Overview tab shows an "N component(s) behind latest patch" chip with a
+  one-click jump to the pre-filtered list.
+- **Filter** — the **Outdated only** toggle narrows the table to outdated
+  rows (`?outdated=true`).
+
+Two boundaries worth knowing:
+
+- The signal is **release-line** currency — "behind the latest patch of
+  *your* line", not "behind the newest version across all lines". Moving to a
+  newer major or minor line is an upgrade decision with breaking-change
+  implications; this badge only points at the low-risk patch bump.
+- Being outdated is **not** a vulnerability verdict — the CVE columns speak
+  for themselves. An outdated component with zero findings is merely cheap to
+  freshen; an outdated component *with* findings often has its fix inside
+  that same patch bump (see the
+  [upgrade recommendation](./vulnerabilities.md#upgrade-recommendation-recommended-version)).
+
+<!-- docs-uat: id=components-outdated-filter-api kind=api auth=admin url=/v1/projects/${PROJECT_ID}/components?outdated=true expect=status:200 tier=nightly -->
+On the API, `GET /v1/projects/{id}/components?outdated=true` returns only the
+outdated rows, and every component carries `currency_state`
+(`current` / `outdated` / `unknown`, `null` for untracked components),
+`currency_latest`, and `currency_latest_release_date`.
+
+The signal rides the EOL pipeline: `EOL_ENABLED=false` turns both flags off,
+and `EOL_SNAPSHOT_PATH` supplies a fresher snapshot on air-gapped installs —
+see [Environment variables](../reference/env-variables.md).
 
 ## Table view vs. graph view
 

@@ -1,7 +1,7 @@
 ---
 id: quickstart
 title: Quickstart
-description: dev Docker Compose 스택과 데모 데이터셋으로 노트북에서 5분 만에 TRUSCA를 띄웁니다.
+description: dev Docker Compose 스택과 데모 데이터셋으로 노트북에서 5분 만에 TRUSCA를 띄우고, 실제 저장소 첫 스캔까지 실행합니다.
 sidebar_label: Quickstart
 sidebar_position: 1
 slug: /quickstart
@@ -10,7 +10,8 @@ slug: /quickstart
 # Quickstart
 
 노트북에서 약 5분 만에 TRUSCA를 실행합니다. 본 페이지는 데이터가 채워진
-대시보드를 곧바로 보여주는 데 초점을 둡니다. 실제 배포는
+대시보드를 곧바로 보여주고, [5단계](#first-real-scan)에서 실제 저장소의 첫
+스캔까지 이어집니다. 프로덕션 배포는
 [Docker Compose 설치](./installation/docker-compose.md) 또는
 [Helm 차트](./installation/helm.md)를 참고하십시오.
 
@@ -89,10 +90,32 @@ finding·의무사항 묶음이 약 10초 안에 생성됩니다. (`--demo-only`
 
 ![Project list — 시드된 5개 프로젝트의 심각도 롤업](/img/screenshots/user-projects-list.png)
 
+## 5. 실제 프로젝트 첫 스캔 {#first-real-scan}
+
+시드된 데이터는 트리아지가 끝난 포트폴리오의 모습을 보여줍니다. 진짜 시험대는
+자기 코드입니다. 데모 스택 그대로 진행합니다.
+
+<!-- docs-uat: id=qs-first-real-scan kind=manual tier=manual -->
+1. 사이드바에서 **Projects** 를 클릭하고, 오른쪽 위 **New project** 를 클릭합니다.
+2. **Name** 과 공개 **Git URL** 을 입력하고 — 락파일이 있는 저장소라면 무엇이든
+   됩니다 — **Create** 를 클릭합니다.
+3. **Scan** 을 클릭하고(프로젝트 목록의 행 끝, 또는 프로젝트 상세 헤더),
+   **Source** 스캔 타입을 그대로 둔 채 **Start scan** 을 클릭합니다.
+4. 드로어가 파이프라인 단계(fetch → cdxgen → scancode → vuln match →
+   finalize)를 실시간으로 보여줍니다. 작은 저장소는 몇 분이면 끝나고, 탭을
+   닫아도 스캔은 워커에서 계속 실행됩니다.
+5. 스캔이 성공하면 **Components** 탭에 발견된 패키지가, **Vulnerabilities**
+   탭에 미해결 결과가 나타납니다 — **업그레이드별** 보기로 전환하면 결과를
+   해소하는 정확한 버전 인상 목록을 볼 수 있습니다.
+
+사설 저장소는 자격 증명을 먼저 등록해야 합니다 —
+[사설 저장소](./user-guide/projects.md#사설-저장소) 참고. 스캔 전체
+레퍼런스(컨테이너 스캔, SBOM 업로드, 취소, 문제 해결)는
+[스캔](./user-guide/scans.md)입니다.
+
 ## 다음 단계
 
 - CI에 연결 → [GitHub Actions](./ci-integration/github-actions.md), [GitLab CI](./ci-integration/gitlab-ci.md), [Jenkins](./ci-integration/jenkins.md).
-- 자체 스캔 실행 → [스캔](./user-guide/scans.md).
 - 팀 단위 운영 → [사용자·팀](./admin-guide/users-and-teams.md), [백업·복원](./admin-guide/backup-and-restore.md).
 - 프로덕션으로 이행 → [Docker Compose 설치](./installation/docker-compose.md).
 
