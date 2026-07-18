@@ -57,6 +57,14 @@ _STAGE_PROGRESS: dict[str, int] = {
     "finalize": 100,
 }
 
+# K-f1: clamp bounds for the image OS block before it lands in scan_metadata.
+# family/name derive from the scanned image's release files and are therefore
+# attacker-influenced; a real OS family/version is a few chars, so these caps
+# keep the write far under the API's 16 KiB scan_metadata invariant regardless
+# of image contents (worker-side writes bypass the inbound validator).
+_OS_FAMILY_MAX = 64
+_OS_NAME_MAX = 128
+
 
 # PR-A1 (scan stability): time limits are passed per dispatch by
 # ``tasks.enqueue_scan`` (read from env at call time, rule #11) rather than
@@ -156,6 +164,12 @@ def _run_pipeline(
     with sync_session_scope() as session:
         _persist_trivy_report(session, scan_uuid=scan_uuid, report=trivy_result.report)
         session.commit()
+
+    # K-f1: the OS/EOSL block is optional telemetry — record it in its OWN
+    # best-effort transaction so a malformed report shape never rolls back the
+    # vulnerability findings we just committed (mirrors the scan_source
+    # detected_env writes: "observation must never fail a scan").
+    _persist_os_metadata(scan_uuid=scan_uuid, report=trivy_result.report)
 
     _set_stage(scan_uuid, "finalize")
     _mark_succeeded(scan_uuid)
@@ -348,6 +362,73 @@ def _persist_trivy_report(
 
     # M-6: per-finding create audit rows (same transaction as the findings).
     emit_finding_create_audits(session, scan_uuid=scan_uuid, findings=created_findings)
+
+
+def extract_os_metadata(report: dict[str, Any]) -> dict[str, Any] | None:
+    """Pull the image OS block from a Trivy image report (K-f1).
+
+    Trivy image scans carry a top-level ``Metadata.OS`` with the detected base
+    image OS and — via its bundled vulnerability DB — an ``EOSL`` flag that is
+    True when that OS release is past its end-of-service-life (no upstream
+    security fixes). This is a scan-level fact (one per image), distinct from
+    the component-level EOL that ``services/eol`` stamps on source-scan
+    packages. We surface it so an image built on, e.g., an EOL Debian release
+    is flagged even when no individual package CVE fires.
+
+    Returns ``{"family", "name", "eosl"}`` (name may be absent), or ``None``
+    when the report carries no OS block (mock reports, SBOM-mode reports, a
+    scan target Trivy could not fingerprint). The ``eosl`` verdict depends on
+    Trivy DB freshness — a stale DB may not yet know a newly-EOL release.
+
+    ``family``/``name`` originate from the SCANNED image's release files
+    (``/etc/os-release`` etc.), so they are attacker-influenced. They are
+    clamped to short bounds before storage — the API's inbound 16 KiB
+    ``scan_metadata`` cap (``ScanCreate._validate_metadata``) does not cover
+    worker-side writes, and a real OS family/version is a handful of chars.
+    """
+    metadata = report.get("Metadata")
+    if not isinstance(metadata, dict):
+        return None
+    os_block = metadata.get("OS")
+    if not isinstance(os_block, dict):
+        return None
+    family = os_block.get("Family")
+    if not isinstance(family, str) or not family:
+        return None
+    os_meta: dict[str, Any] = {
+        "family": family[:_OS_FAMILY_MAX],
+        "eosl": bool(os_block.get("EOSL")),
+    }
+    name = os_block.get("Name")
+    if isinstance(name, str) and name:
+        os_meta["name"] = name[:_OS_NAME_MAX]
+    return os_meta
+
+
+def _persist_os_metadata(
+    *,
+    scan_uuid: uuid.UUID,
+    report: dict[str, Any],
+) -> None:
+    """Record the image OS / EOSL block into ``scan_metadata`` (JSONB, no migration).
+
+    Best-effort and self-contained: opens its own transaction and swallows any
+    failure so optional OS telemetry never fails an otherwise-good scan.
+    """
+    os_meta = extract_os_metadata(report)
+    if os_meta is None:
+        return
+    try:
+        with sync_session_scope() as session:
+            scan = session.get(Scan, scan_uuid)
+            if scan is None:
+                return
+            merged = dict(scan.scan_metadata or {})
+            merged["os"] = os_meta
+            scan.scan_metadata = merged
+            session.commit()
+    except Exception:  # noqa: BLE001 — OS telemetry is best-effort, never fatal
+        log.warning("container_os_metadata_persist_failed", scan_id=str(scan_uuid), exc_info=True)
 
 
 def _get_or_create_component(

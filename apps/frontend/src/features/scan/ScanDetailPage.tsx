@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScanProgress } from "@/features/scan/ScanProgress";
+import { OsEolPanel } from "@/features/scan/OsEolPanel";
 import { SbomConformancePanel } from "@/features/scan/SbomConformancePanel";
 import { ToolLogLine } from "@/features/scan/ToolLogLine";
 import { useSbomConformance } from "@/features/scan/useSbomConformance";
@@ -286,6 +287,10 @@ export function ScanDetailPage() {
 
             {scan.kind === "sbom" && conformanceQuery.data ? (
               <SbomConformancePanel conformance={conformanceQuery.data} />
+            ) : null}
+
+            {scan.kind === "container" ? (
+              <OsEolPanel metadata={scan.metadata} />
             ) : null}
 
             <section

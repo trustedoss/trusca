@@ -229,6 +229,43 @@ def test_real_alpine_report_persists_without_unique_violation(
     assert finding_count == expected_findings
 
 
+def test_os_eosl_persisted_to_scan_metadata_from_real_report(
+    sync_session: Session,
+) -> None:
+    """K-f1: the image OS / EOSL block lands in scan_metadata['os'] (no migration).
+
+    Uses the recorded real report whose base image (alpine 3.19) is past EOL,
+    so eosl is True — the case a badge must surface.
+    """
+    import json
+
+    from models import Scan
+
+    fixture = (
+        Path(__file__).resolve().parent.parent.parent
+        / "fixtures"
+        / "trivy"
+        / "alpine-3.19-image-report.json"
+    )
+    report = json.loads(fixture.read_text())
+
+    scan_id = _seed_queued_container_scan()
+
+    from tasks.scan_container import _persist_os_metadata
+
+    # Opens and commits its own best-effort transaction.
+    _persist_os_metadata(scan_uuid=scan_id, report=report)
+
+    sync_session.expire_all()
+    scan = sync_session.get(Scan, scan_id)
+    assert scan is not None
+    assert scan.scan_metadata.get("os") == {
+        "family": "alpine",
+        "name": "3.19.9",
+        "eosl": True,
+    }
+
+
 def test_distinct_packages_get_distinct_components(sync_session: Session) -> None:
     """Two packages on the same target still get their own ScanComponent rows."""
     scan_id = _seed_queued_container_scan()

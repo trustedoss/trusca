@@ -445,6 +445,14 @@ def _write_mock_report(path: Path, *, image_ref: str) -> TrivyResult:
         "SchemaVersion": 2,
         "ArtifactName": image_ref,
         "ArtifactType": "container_image",
+        # K-f1: real Trivy image reports carry the base-image OS here, with an
+        # EOSL flag when the release is past end-of-service-life. The mock uses
+        # a currently-supported release (EOSL false) so mock scans do not
+        # falsely flag; the recorded alpine-3.19 fixture covers the EOSL-true
+        # path.
+        "Metadata": {
+            "OS": {"Family": "alpine", "Name": "3.19.1", "EOSL": False},
+        },
         "Results": [
             {
                 "Target": f"{image_ref} (alpine 3.19.1)",

@@ -67,6 +67,12 @@ Pick **Container** in the scan dialog to scan a built image instead of source. T
 
 The same progress drawer opens. When the scan reaches `succeeded`, the OS-package vulnerabilities appear under the project's **Vulnerabilities** tab.
 
+#### Base-image OS end-of-life {#container-os-eol}
+
+Trivy also reports whether the image's **base OS release** is past its end-of-service-life — a release such as an old Debian or Alpine version that no longer receives upstream security fixes. When it is, the scan detail page shows an **OS end-of-life** panel naming the OS family and release. This is a scan-level signal distinct from the per-component [end-of-life badge](components-and-licenses.md) on source scans: even if no individual package CVE fires, an image built on an end-of-life OS will never receive patches for CVEs disclosed after that OS retired, so the recommendation is to rebuild on a supported release.
+
+The end-of-life verdict comes from Trivy's bundled vulnerability database, so it needs no extra network access. A stale database may not yet flag a release that was retired very recently; keep the Trivy database fresh (see the admin health panel) for an accurate verdict.
+
 :::note Container scans do not need a Git URL
 A container scan reads an image reference, not the repository. A project with no `git_url` can still run container scans. The Source / Container choice is independent of the project's source configuration.
 :::
