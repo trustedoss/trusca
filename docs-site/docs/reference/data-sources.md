@@ -90,7 +90,7 @@ The portal **does not** consume:
 
 - Curated vulnerability research from commercial feeds (Black Duck KnowledgeBase, Snyk DB) — by design, we ship the open feeds only.
 - Vendor-specific advisory feeds (Oracle CPU, Microsoft MSRC) beyond what flows into NVD. These can be added as additional Trivy data sources in a future release.
-- Reachability analysis. The portal does not parse call graphs; every matched CVE is shown as "potentially affected".
+- Reachability as a **Trivy-DB signal** — the Trivy DB does not carry reachability. TRUSCA does run reachability, but as a separate `govulncheck` analyser for **Go**, not from Trivy DB data (see [Analysis types → Reachability](./analysis-types.md#reachability-detail)). It marks Go findings reachable / not-reachable / not-analysed; findings in other ecosystems are not analysed and are shown as "potentially affected".
 
 ## What this means for triage
 

@@ -90,7 +90,7 @@ Dependency-Track 급 도구와 비교해 Trivy DB는 finding별로 다음 신호
 
 - 상용 피드의 큐레이션된 취약점 리서치(Black Duck KnowledgeBase, Snyk DB) — 설계상 공개 피드만 사용.
 - NVD로 흘러드는 것 외 벤더 어드바이저리(Oracle CPU, Microsoft MSRC). 향후 릴리스에서 추가 Trivy data source로 붙일 수 있음.
-- Reachability 분석. 포털은 콜 그래프를 파싱하지 않으며, 매칭된 CVE는 모두 "영향 가능"으로 표시.
+- **Trivy DB 신호로서의** reachability — Trivy DB는 reachability를 담지 않습니다. TRUSCA는 reachability를 실행하지만, Trivy DB 데이터가 아니라 **Go**를 위한 별도 `govulncheck` 분석기로 실행합니다([분석 유형 → Reachability](./analysis-types.md#reachability-detail) 참조). Go finding을 reachable / not-reachable / not-analysed로 표시하며, 다른 생태계의 finding은 분석되지 않고 "영향 가능"으로 표시됩니다.
 
 ## 트리아지에의 의미
 
