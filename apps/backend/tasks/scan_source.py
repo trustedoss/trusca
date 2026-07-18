@@ -391,6 +391,11 @@ def _run_pipeline(
         source_dir=source_dir,
         output_dir=workspace / "cdxgen",
         detected_env=detected_env,
+        # K-f2: carry the resolved project root so a container sidecar targets
+        # the same directory ``detected_env`` was detected from (a git clone
+        # lands under source_dir; non-recursive detection + the sidecar's
+        # single-dir scan would otherwise mis-target the outer dir).
+        project_root=project_root,
         verbose=verbose,
         # spec-version / fetch-license toggles, resolved per-scan (rule #11) and
         # carried on the request so both the in-process and sidecar executors
