@@ -71,6 +71,8 @@ export interface ProjectOverviewResponse {
    * from CVEs.
    */
   eol_count: number;
+  /** 0040 — components behind the newest patch of their release line (version currency). */
+  outdated_count: number;
   /** Counts per severity bucket. May omit zero buckets — render with fallback. */
   severity_distribution: Partial<Record<ComponentSeverity, number>>;
   /** Counts per license category. */
@@ -154,6 +156,18 @@ export interface ComponentSummary {
   eol_state: EolState | null;
   /** Published EOL date (ISO) when the feed is dated; else null. */
   eol_date: string | null;
+  /**
+   * Version-currency verdict — the lower-urgency sibling of ``eol_state``.
+   * ``outdated`` = the installed version is behind the newest patch in its
+   * release line, ``current`` = on the newest patch, ``unknown`` = tracked but
+   * undecidable, ``null`` = not a tracked product. The CurrencyBadge renders
+   * only for ``outdated`` (absence is the signal, EolBadge contract). Unlike
+   * EOL (past end-of-life, no security fixes) this is only "a newer patch
+   * exists" — never Critical/High visual weight.
+   */
+  currency_state: CurrencyState | null;
+  /** Newest patch version in the installed version's release line, or null. */
+  currency_latest: string | null;
 }
 
 export interface ComponentListResponse {
@@ -237,6 +251,12 @@ export interface ComponentDetailResponse {
   eol_date: string | null;
   /** Snapshot provenance, e.g. "endoflife.date@2026-07-11". */
   eol_source: string | null;
+  /** Version-currency verdict (see ComponentSummary.currency_state). */
+  currency_state: CurrencyState | null;
+  /** Newest patch version in the release line, or null. */
+  currency_latest: string | null;
+  /** Publish date (ISO) of `currency_latest`, or null when undated. */
+  currency_latest_release_date: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -251,6 +271,15 @@ export interface ComponentDetailResponse {
  */
 export const EOL_STATES = ["eol", "supported", "unknown"] as const;
 export type EolState = (typeof EOL_STATES)[number];
+
+/**
+ * The closed currency_state vocabulary (version-currency sibling of
+ * EOL_STATES). Mirrors ``services.eol.eol_catalog.CURRENCY_STATES`` on the
+ * backend; contract-tested in tests/unit/contracts/catalogMirrors.test.ts
+ * against apps/backend/tests/unit/test_catalog_contracts.py.
+ */
+export const CURRENCY_STATES = ["current", "outdated", "unknown"] as const;
+export type CurrencyState = (typeof CURRENCY_STATES)[number];
 
 export type ComponentSortKey = "name" | "severity" | "license";
 export type SortOrder = "asc" | "desc";
@@ -288,6 +317,13 @@ export interface ListComponentsParams {
    * / ``null`` to include both.
    */
   eol?: boolean | null;
+  /**
+   * Version-currency facet (sibling of `eol`). ``true`` keeps only components
+   * behind the newest patch in their release line (`currency_state ===
+   * "outdated"`); everything else (current / unknown / untracked) is dropped.
+   * Omit / ``null`` to include both.
+   */
+  outdated?: boolean | null;
   /**
    * Pin the read to a specific succeeded scan (feature #28 snapshot anchoring).
    * Omit → the project's latest succeeded scan (unchanged default). An invalid /
@@ -330,6 +366,10 @@ function listComponentsQuery(
   // Phase M — same emit-only-on-opinion contract as `direct`.
   if (params.eol === true || params.eol === false) {
     out.eol = params.eol;
+  }
+  // Version-currency facet — same emit-only-on-opinion contract as `eol`.
+  if (params.outdated === true || params.outdated === false) {
+    out.outdated = params.outdated;
   }
   if (params.scanId != null && params.scanId.length > 0) {
     out.scan_id = params.scanId;

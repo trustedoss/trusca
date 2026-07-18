@@ -32,7 +32,10 @@ import { describe, expect, it } from "vitest";
 import { NOTIFICATION_KINDS } from "@/features/notifications/api/notificationsApi";
 import { G7_CLUSTER_ORDER } from "@/features/scan/lib/g7Conformance";
 import { KNOWN_OBLIGATION_KINDS } from "@/features/projects/api/obligationsApi";
-import { EOL_STATES } from "@/features/projects/api/projectDetailApi";
+import {
+  CURRENCY_STATES,
+  EOL_STATES,
+} from "@/features/projects/api/projectDetailApi";
 import { REVIEW_FLAG_VALUES } from "@/features/projects/api/licensesApi";
 import { ALL_VULNERABILITY_STATUSES } from "@/features/projects/lib/vulnerabilityTransitions";
 import { visualFor } from "@/features/projects/components/ProjectStatusBadge";
@@ -371,6 +374,38 @@ describe("EOL states — FE mirror of services.eol.eol_catalog.EOL_STATES", () =
       }
       // The NULL (not-a-tracked-product) bucket renders through `untracked`.
       expect(states.untracked, "components.eol.state.untracked missing").toBeTruthy();
+    },
+  );
+});
+
+describe("currency states — FE mirror of services.eol.eol_catalog.CURRENCY_STATES", () => {
+  // Version-currency sibling of the EOL vocabulary: the closed currency_state
+  // set lives twice — the backend catalog (services/eol/eol_catalog.py
+  // CURRENCY_STATES, persisted into component_versions.currency_state) and the
+  // FE mirror CURRENCY_STATES used by the CurrencyBadge / drawer labels. Same
+  // latent-drift guard class as EOL_STATES above.
+  it("matches the backend's closed currency_state set, in canonical order", () => {
+    expect([...CURRENCY_STATES]).toEqual(["current", "outdated", "unknown"]);
+  });
+
+  it.each([
+    ["en", enProjectDetail],
+    ["ko", koProjectDetail],
+  ])(
+    "every currency state owns a %s `components.currency.state.*` label (plus untracked)",
+    (_locale, ns) => {
+      const states = labelMap(ns, "components", "currency", "state");
+      for (const state of CURRENCY_STATES) {
+        expect(
+          states[state],
+          `components.currency.state.${state} missing`,
+        ).toBeTruthy();
+      }
+      // The NULL (untracked) bucket renders through `untracked`.
+      expect(
+        states.untracked,
+        "components.currency.state.untracked missing",
+      ).toBeTruthy();
     },
   );
 });

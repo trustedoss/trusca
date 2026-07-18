@@ -23,7 +23,7 @@ import os
 import subprocess
 import uuid
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
@@ -1538,3 +1538,187 @@ async def test_component_detail_exposes_dependency_scope(
     )
     assert detail_req["dependency_scope"] == "required"
     assert detail_unspec["dependency_scope"] is None
+
+
+# ---------------------------------------------------------------------------
+# Version currency (0040) — sibling of EOL. The columns are stamped by the
+# EOL hook; here we assert the persisted verdict rides the list item + drawer
+# and that the ``?outdated=true`` filter mirrors the EOL filter exactly.
+# ---------------------------------------------------------------------------
+
+
+async def _set_currency(
+    session: AsyncSession,
+    *,
+    cv_id: uuid.UUID,
+    currency_state: str | None,
+    currency_latest: str | None = None,
+    currency_latest_release_date: date | None = None,
+) -> None:
+    """Stamp the persisted currency columns on an existing component version.
+
+    Mirrors what the EOL stamp hook writes; we set the columns directly so the
+    exposure/filter tests don't depend on the endoflife.date dataset.
+    """
+    from models import ComponentVersion
+
+    cv = await session.get(ComponentVersion, cv_id)
+    assert cv is not None
+    cv.currency_state = currency_state
+    cv.currency_latest = currency_latest
+    cv.currency_latest_release_date = currency_latest_release_date
+    await session.commit()
+
+
+async def test_list_components_exposes_currency_state_and_latest(
+    db_session: AsyncSession,
+) -> None:
+    """An ``outdated`` component surfaces ``currency_state`` and
+    ``currency_latest`` on the list item; an untracked (NULL) one carries
+    ``None`` rather than an invented verdict."""
+    from services.project_detail_service import list_components_for_project
+
+    team, user, project, scan = await _make_project_with_scan(db_session)
+    actor = principal_for(user, team_ids=[team.id], role="developer")
+
+    _, cv_outdated = await _make_component_version(
+        db_session, name=f"cur-out-{unique_suffix()}"
+    )
+    _, cv_untracked = await _make_component_version(
+        db_session, name=f"cur-null-{unique_suffix()}"
+    )
+    await _attach_to_scan(db_session, scan_id=scan.id, cv_id=cv_outdated.id)
+    await _attach_to_scan(db_session, scan_id=scan.id, cv_id=cv_untracked.id)
+    await _set_currency(
+        db_session,
+        cv_id=cv_outdated.id,
+        currency_state="outdated",
+        currency_latest="4.2.16",
+    )
+    # cv_untracked keeps NULL currency columns.
+
+    items, _ = await list_components_for_project(
+        db_session, project_id=project.id, actor=actor, limit=50, offset=0
+    )
+    by_id = {i["id"]: i for i in items}
+    assert by_id[cv_outdated.id]["currency_state"] == "outdated"
+    assert by_id[cv_outdated.id]["currency_latest"] == "4.2.16"
+    # Untracked must not be invented as current/outdated.
+    assert by_id[cv_untracked.id]["currency_state"] is None
+    assert by_id[cv_untracked.id]["currency_latest"] is None
+
+
+async def test_component_detail_exposes_currency_columns(
+    db_session: AsyncSession,
+) -> None:
+    """The drawer surfaces ``currency_state``, ``currency_latest`` and
+    ``currency_latest_release_date`` off the catalog row."""
+    from services.project_detail_service import get_component_detail
+
+    team, user, project, scan = await _make_project_with_scan(db_session)
+    actor = principal_for(user, team_ids=[team.id], role="developer")
+
+    _, cv = await _make_component_version(
+        db_session, name=f"cur-drawer-{unique_suffix()}"
+    )
+    await _attach_to_scan(db_session, scan_id=scan.id, cv_id=cv.id, depth=1)
+    released = date(2024, 3, 1)
+    await _set_currency(
+        db_session,
+        cv_id=cv.id,
+        currency_state="outdated",
+        currency_latest="4.2.16",
+        currency_latest_release_date=released,
+    )
+
+    detail = await get_component_detail(
+        db_session, component_version_id=cv.id, actor=actor
+    )
+    assert detail["currency_state"] == "outdated"
+    assert detail["currency_latest"] == "4.2.16"
+    assert detail["currency_latest_release_date"] == released
+
+
+async def test_list_components_filters_by_outdated_true(
+    db_session: AsyncSession,
+) -> None:
+    """``?outdated=true`` keeps only components behind the newest patch of
+    their release line; current / unknown / NULL rows drop — mirroring the
+    EOL filter's boolean shape."""
+    from services.project_detail_service import list_components_for_project
+
+    team, user, project, scan = await _make_project_with_scan(db_session)
+    actor = principal_for(user, team_ids=[team.id], role="developer")
+
+    _, cv_outdated = await _make_component_version(
+        db_session, name=f"f-out-{unique_suffix()}"
+    )
+    _, cv_current = await _make_component_version(
+        db_session, name=f"f-cur-{unique_suffix()}"
+    )
+    _, cv_unknown = await _make_component_version(
+        db_session, name=f"f-unk-{unique_suffix()}"
+    )
+    _, cv_untracked = await _make_component_version(
+        db_session, name=f"f-null-{unique_suffix()}"
+    )
+    for cv in (cv_outdated, cv_current, cv_unknown, cv_untracked):
+        await _attach_to_scan(db_session, scan_id=scan.id, cv_id=cv.id)
+    await _set_currency(
+        db_session, cv_id=cv_outdated.id, currency_state="outdated",
+        currency_latest="4.2.16",
+    )
+    await _set_currency(db_session, cv_id=cv_current.id, currency_state="current")
+    await _set_currency(db_session, cv_id=cv_unknown.id, currency_state="unknown")
+    # cv_untracked stays NULL.
+
+    items_out, total_out = await list_components_for_project(
+        db_session, project_id=project.id, actor=actor,
+        outdated=True, limit=50, offset=0,
+    )
+    out_ids = {i["id"] for i in items_out}
+    assert out_ids == {cv_outdated.id}
+    assert total_out == 1
+
+    # outdated=false keeps everything else INCLUDING current/unknown/NULL.
+    items_rest, total_rest = await list_components_for_project(
+        db_session, project_id=project.id, actor=actor,
+        outdated=False, limit=50, offset=0,
+    )
+    rest_ids = {i["id"] for i in items_rest}
+    assert cv_outdated.id not in rest_ids
+    assert {cv_current.id, cv_unknown.id, cv_untracked.id} <= rest_ids
+
+    # Omitting the filter includes the outdated row and still shows its state.
+    items_all, _ = await list_components_for_project(
+        db_session, project_id=project.id, actor=actor, limit=50, offset=0
+    )
+    all_by_id = {i["id"]: i for i in items_all}
+    assert all_by_id[cv_outdated.id]["currency_state"] == "outdated"
+    assert all_by_id[cv_current.id]["currency_state"] == "current"
+    assert all_by_id[cv_untracked.id]["currency_state"] is None
+
+
+async def test_list_components_outdated_filter_hides_other_team_before_state(
+    db_session: AsyncSession,
+) -> None:
+    """Permission is enforced before the currency state filter: a foreign
+    team's member is forbidden, not served a filtered empty page. Mirrors the
+    IDOR hardening rule (perm/existence before state)."""
+    from services.project_detail_service import list_components_for_project
+    from services.project_service import ProjectForbidden
+
+    org = await make_organization(db_session)
+    target_team = await make_team(db_session, organization=org)
+    other_team = await make_team(db_session, organization=org)
+    project = await make_project(db_session, team=target_team)
+
+    user = await make_user(db_session)
+    await make_membership(db_session, user=user, team=other_team, role="developer")
+    actor = principal_for(user, team_ids=[other_team.id], role="developer")
+
+    with pytest.raises(ProjectForbidden):
+        await list_components_for_project(
+            db_session, project_id=project.id, actor=actor,
+            outdated=True, limit=50, offset=0,
+        )

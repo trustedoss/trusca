@@ -76,6 +76,8 @@ function comp(
     dependency_scope: null,
     eol_state: null,
     eol_date: null,
+    currency_state: null,
+    currency_latest: null,
     ...overrides,
   };
 }
@@ -115,6 +117,9 @@ function detail(
     eol_cycle: null,
     eol_date: null,
     eol_source: null,
+    currency_state: null,
+    currency_latest: null,
+    currency_latest_release_date: null,
     ...overrides,
   };
 }

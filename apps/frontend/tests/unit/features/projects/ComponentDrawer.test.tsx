@@ -56,6 +56,9 @@ function detail(
     eol_cycle: null,
     eol_date: null,
     eol_source: null,
+    currency_state: null,
+    currency_latest: null,
+    currency_latest_release_date: null,
     ...overrides,
   };
 }

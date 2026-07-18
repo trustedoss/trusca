@@ -50,6 +50,12 @@ export interface ComponentsQueryFilters {
    */
   eol?: boolean | null;
   /**
+   * Version-currency facet (sibling of `eol`). ``true`` → only components
+   * behind the newest patch in their release line; ``null``/``undefined`` →
+   * include both. Part of the cache key so the toggle refetches from offset 0.
+   */
+  outdated?: boolean | null;
+  /**
    * Pin the list to a specific succeeded scan (feature #28 snapshot anchoring).
    * `undefined` → latest succeeded scan. Part of the cache key so flipping the
    * pinned snapshot refetches from offset 0.
@@ -78,6 +84,7 @@ export function componentsKey(
       direct: filters.direct ?? null,
       dependency_scope: [...(filters.dependency_scope ?? [])].sort(),
       eol: filters.eol ?? null,
+      outdated: filters.outdated ?? null,
       scanId: filters.scanId ?? null,
     },
   ] as const;
@@ -108,6 +115,7 @@ export function useComponents(
             ? filters.dependency_scope
             : undefined,
         eol: filters.eol ?? undefined,
+        outdated: filters.outdated ?? undefined,
         sort: filters.sort,
         order: filters.order,
         scanId: filters.scanId,

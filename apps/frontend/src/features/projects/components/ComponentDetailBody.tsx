@@ -12,6 +12,7 @@ import type {
 import { DependencyScopeBadge } from "@/features/projects/components/DependencyScopeBadge";
 import { DependencyTypeBadge } from "@/features/projects/components/DependencyTypeBadge";
 import { EolBadge } from "@/features/projects/components/EolBadge";
+import { CurrencyBadge } from "@/features/projects/components/CurrencyBadge";
 import { LicenseCategoryBadge } from "@/features/projects/components/LicenseCategoryBadge";
 import { SeverityBadge } from "@/features/projects/components/SeverityBadge";
 import {
@@ -155,6 +156,39 @@ export function ComponentDetailBody({ detail }: ComponentDetailBodyProps) {
                 detail.eol_state
                   ? t(`components.eol.state.${detail.eol_state}`)
                   : t("components.eol.state.untracked")
+              }
+            >
+              —
+            </span>
+          )}
+        </div>
+        {/*
+          * Version-currency row — sibling of the EOL row above, one notch
+          * lower urgency. Always rendered (layout stability): the CurrencyBadge
+          * renders only for `outdated`, so current / unknown / untracked show
+          * "—" with the state on the tooltip.
+          */}
+        <div
+          className="flex items-center gap-2 text-xs"
+          data-testid="component-drawer-currency"
+        >
+          <span className="uppercase tracking-wide text-muted-foreground">
+            {t("drawer.currency_label")}
+          </span>
+          {detail.currency_state === "outdated" ? (
+            <CurrencyBadge
+              currencyState={detail.currency_state}
+              currencyLatest={detail.currency_latest}
+              currencyLatestReleaseDate={detail.currency_latest_release_date}
+              showDate
+            />
+          ) : (
+            <span
+              className="text-muted-foreground"
+              title={
+                detail.currency_state
+                  ? t(`components.currency.state.${detail.currency_state}`)
+                  : t("components.currency.state.untracked")
               }
             >
               —

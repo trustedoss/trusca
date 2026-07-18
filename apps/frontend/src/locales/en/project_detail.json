@@ -225,6 +225,11 @@
     "errors": {
       "title": "Could not load overview.",
       "detail": "Try refreshing the page."
+    },
+    "outdated_chip": {
+      "title": "{{count}} component(s) behind latest patch",
+      "body": "A newer patch is available on the same release line — still supported, just not current.",
+      "link": "View outdated components"
     }
   },
   "components": {
@@ -239,6 +244,7 @@
       "policy": "Policy",
       "usage": "Usage",
       "eol": "EOL",
+      "currency": "Currency",
       "severity": "Severity",
       "vulns": "CVEs"
     },
@@ -252,6 +258,19 @@
         "supported": "Supported (tracked by endoflife.date)",
         "unknown": "Tracked product, but the release cycle could not be determined",
         "untracked": "Not a product tracked by endoflife.date"
+      }
+    },
+    "currency": {
+      "label": "Outdated",
+      "tooltip": "A newer patch is available in this release line — this version is behind the latest patch.",
+      "tooltip_with_version": "Latest patch {{version}} is available — this version is behind it.",
+      "latest": "latest {{version}}",
+      "latest_with_date": "latest {{version}} ({{date}})",
+      "state": {
+        "current": "On the latest patch in its release line",
+        "outdated": "Behind the latest patch in its release line",
+        "unknown": "Tracked, but the latest patch could not be determined",
+        "untracked": "No release-line data available for this component"
       }
     },
     "license": {
@@ -289,7 +308,9 @@
         "unspecified": "Unspecified"
       },
       "eol_label": "End-of-life",
-      "eol_only": "EOL only"
+      "eol_only": "EOL only",
+      "currency_label": "Version currency",
+      "outdated_only": "Outdated only"
     },
     "empty": {
       "title": "No components match",
@@ -327,6 +348,7 @@
     "dependency_type_label": "Type",
     "usage_label": "Usage",
     "eol_label": "End-of-life",
+    "currency_label": "Version currency",
     "open_full_view": "Open in full view",
     "error": "Could not load component.",
     "vulns": {

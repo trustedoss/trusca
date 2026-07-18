@@ -405,6 +405,59 @@ export class PortalPage {
   }
 
   /**
+   * Toggle the "Outdated only" version-currency filter (sibling of the EOL
+   * toggle). The pill is a plain on/off toggle mirrored into `?outdated=true`,
+   * so this reads the current `data-active` state and clicks only when the
+   * requested state differs — calling it twice with the same arg is a no-op.
+   */
+  async filterComponentsByOutdated(enable: boolean = true): Promise<void> {
+    const toggle = this.page.getByTestId("components-outdated-filter");
+    const active = (await toggle.getAttribute("data-active")) === "true";
+    if (active !== enable) {
+      await toggle.click();
+    }
+    await this.expectComponentsTabReady();
+  }
+
+  /**
+   * Read the version-currency verdict shown on the open component drawer's
+   * currency row. Returns the badge's `data-currency-state` (always
+   * "outdated" when a badge is present) or `null` when the row renders the
+   * "—" dash (current / unknown / untracked — the CurrencyBadge is absent).
+   */
+  async getDrawerCurrencyState(): Promise<string | null> {
+    const badge = this.page
+      .getByTestId("component-drawer-currency")
+      .getByTestId("currency-badge");
+    if ((await badge.count()) === 0) return null;
+    return badge.first().getAttribute("data-currency-state");
+  }
+
+  /**
+   * Read the version-currency verdict of every mounted component row, keyed
+   * by the row's visible component name. A row with no CurrencyBadge maps to
+   * `null` (current / unknown / untracked). Mirrors the KEV row reader.
+   */
+  async getMountedRowCurrencyStates(): Promise<
+    { name: string; currencyState: string | null }[]
+  > {
+    const rows = this.page.getByTestId("component-row");
+    const count = await rows.count();
+    const out: { name: string; currencyState: string | null }[] = [];
+    for (let i = 0; i < count; i++) {
+      const row = rows.nth(i);
+      const name = ((await row.textContent()) ?? "").trim();
+      const badge = row.getByTestId("currency-badge");
+      const currencyState =
+        (await badge.count()) > 0
+          ? await badge.first().getAttribute("data-currency-state")
+          : null;
+      out.push({ name, currencyState });
+    }
+    return out;
+  }
+
+  /**
    * Type into the components search input. The toolbar debounces by 300ms
    * before mutating the URL + firing the next page request — callers that
    * assert on row count should use `expectComponentsTabReady()` afterwards.

@@ -1416,6 +1416,17 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                         cv.eol_date = date(2020, 1, 1)
                         cv.eol_source = "endoflife.date@seed"
                         cv.eol_evaluated_at = datetime.now(tz=UTC)
+                    if i == 1:
+                        # 0040 — deterministic version-currency fixture: the
+                        # SECOND seeded component is behind the newest patch of
+                        # its (still-supported) release line. Kept on a separate
+                        # row from the EOL fixture so the two badges/chips assert
+                        # independently. Columns written directly (snapshot-
+                        # decoupled, like the EOL block above).
+                        cv.currency_state = "outdated"
+                        cv.currency_latest = "9.9.9"
+                        cv.currency_latest_release_date = date(2026, 1, 1)
+                        cv.currency_evaluated_at = datetime.now(tz=UTC)
                     session.add(cv)
                     await session.flush()
                     seeded_cv_ids.append(cv.id)

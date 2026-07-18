@@ -288,6 +288,10 @@ class _FakeComponentVersion:
     eol_date: date | None = None
     eol_source: str | None = None
     eol_evaluated_at: datetime | None = None
+    currency_state: str | None = None
+    currency_latest: str | None = None
+    currency_latest_release_date: date | None = None
+    currency_evaluated_at: datetime | None = None
 
 
 def test_stamp_writes_then_second_stamp_is_a_noop() -> None:
@@ -331,3 +335,94 @@ def test_pathological_numeric_version_is_underivable() -> None:
     assert verdict is not None
     assert verdict.state == "unknown"
     assert verdict.cycle is None
+
+
+# ---------------------------------------------------------------------------
+# Version currency (0040) — offline "behind latest patch in release line"
+# ---------------------------------------------------------------------------
+
+
+def test_currency_outdated_when_installed_below_cycle_latest() -> None:
+    # django 4.2 cycle latest is 4.2.16 in the fixture; 4.2.1 is behind.
+    verdict = evaluate(
+        "pkg:pypi/django@4.2.1",
+        "4.2.1",
+        rules=_rules(),
+        dataset=_dataset(),
+        today=TODAY,
+    )
+    assert verdict is not None
+    assert verdict.currency_state == "outdated"
+    assert verdict.currency_latest == "4.2.16"
+
+
+def test_currency_current_when_installed_at_or_above_cycle_latest() -> None:
+    verdict = evaluate(
+        "pkg:pypi/django@4.2.16",
+        "4.2.16",
+        rules=_rules(),
+        dataset=_dataset(),
+        today=TODAY,
+    )
+    assert verdict is not None
+    assert verdict.currency_state == "current"
+    assert verdict.currency_latest == "4.2.16"
+
+
+def test_currency_unknown_when_cycle_entry_has_no_latest() -> None:
+    # express cycle 3 in the fixture carries `eol: true` but no `latest`.
+    verdict = evaluate(
+        "pkg:npm/express@3.1.0",
+        "3.1.0",
+        rules=_rules(),
+        dataset=_dataset(),
+        today=TODAY,
+    )
+    assert verdict is not None
+    assert verdict.currency_state == "unknown"
+    assert verdict.currency_latest is None
+
+
+def test_currency_unknown_when_no_cycle_match() -> None:
+    # An unlisted cycle → no entry → currency stays unknown/NULL.
+    verdict = evaluate(
+        "pkg:pypi/django@9.9.9",
+        "9.9.9",
+        rules=_rules(),
+        dataset=_dataset(),
+        today=TODAY,
+    )
+    assert verdict is not None
+    assert verdict.currency_state == "unknown"
+    assert verdict.currency_latest is None
+
+
+def test_currency_unmapped_component_returns_none() -> None:
+    # Not in the whitelist → no verdict at all (columns stay NULL).
+    assert (
+        evaluate(
+            "pkg:npm/left-pad@1.0.0",
+            "1.0.0",
+            rules=_rules(),
+            dataset=_dataset(),
+            today=TODAY,
+        )
+        is None
+    )
+
+
+def test_stamp_writes_currency_columns_and_is_idempotent() -> None:
+    row = _FakeComponentVersion()
+    verdict = evaluate(
+        "pkg:pypi/django@4.2.1", "4.2.1",
+        rules=_rules(), dataset=_dataset(), today=TODAY,
+    )
+    now = datetime(2026, 7, 11, 12, 0, 0)
+    assert stamp_component_version(row, verdict, now) is True  # type: ignore[arg-type]
+    assert row.currency_state == "outdated"
+    assert row.currency_latest == "4.2.16"
+    assert row.currency_evaluated_at == now
+
+    later = datetime(2026, 7, 12, 12, 0, 0)
+    assert stamp_component_version(row, verdict, later) is False  # type: ignore[arg-type]
+    assert row.currency_evaluated_at == now  # unchanged row not re-dirtied

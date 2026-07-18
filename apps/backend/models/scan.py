@@ -523,6 +523,17 @@ class ComponentVersion(Base):
     eol_evaluated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Version currency (0040) — sibling of EOL from the same endoflife.date
+    # match: is this version behind the newest patch of its release line?
+    # currency_state closed vocabulary ('current' | 'outdated' | 'unknown'),
+    # currency_latest is the cycle's newest patch (offline half; the deps.dev
+    # absolute-latest is a separate opt-in egress path). All NULLable.
+    currency_state: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    currency_latest: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    currency_latest_release_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    currency_evaluated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     component: Mapped[Component] = relationship(back_populates="versions")
 
@@ -540,6 +551,13 @@ class ComponentVersion(Base):
             "ix_component_versions_eol",
             "eol_state",
             postgresql_where=text("eol_state = 'eol'"),
+        ),
+        # Partial: the ?currency=outdated filter + overview count read only the
+        # outdated minority — mirrors the EOL partial index (0040).
+        Index(
+            "ix_component_versions_currency_outdated",
+            "currency_state",
+            postgresql_where=text("currency_state = 'outdated'"),
         ),
     )
 
