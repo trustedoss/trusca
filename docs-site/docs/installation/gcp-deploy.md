@@ -35,9 +35,10 @@ Because the Demo SaaS is a stock docker-compose install, there is no
 separate cloud-specific runbook to follow: the [installation
 guide](docker-compose.md), [upgrade guide](upgrade.md), and
 [backup/restore guide](../admin-guide/backup-and-restore.md) apply as-is.
-A dedicated operator runbook covering the Hetzner-specific pieces
-(provisioning, cloud-init, systemd timers, off-host backup) is being
-prepared and will be linked here when it lands.
+The Hetzner-specific pieces (server provisioning, the reverse proxy, and the
+systemd timers for backup and the nightly reset) are operator plumbing, not a
+product feature, so they live in the deployment's private ops repository
+rather than in these public docs.
 
 ## Demo accounts
 

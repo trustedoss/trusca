@@ -24,7 +24,7 @@ sidebar_position: 3
 | 백업 | systemd 타이머로 매일 `scripts/backup.sh` 실행 후 외부 저장소로 전송 |
 | 데모 데이터 초기화 | systemd 타이머로 야간 데모 재시드 |
 
-데모 SaaS는 표준 docker-compose 설치이므로 클라우드 전용 런북이 따로 필요하지 않습니다. [설치 가이드](docker-compose.md), [업그레이드 가이드](upgrade.md), [백업/복원 가이드](../admin-guide/backup-and-restore.md)가 그대로 적용됩니다. Hetzner 특화 항목(프로비저닝, cloud-init, systemd 타이머, 외부 백업)을 다루는 전용 운영자 런북은 준비 중이며, 완성되면 여기서 링크합니다.
+데모 SaaS는 표준 docker-compose 설치이므로 클라우드 전용 런북이 따로 필요하지 않습니다. [설치 가이드](docker-compose.md), [업그레이드 가이드](upgrade.md), [백업/복원 가이드](../admin-guide/backup-and-restore.md)가 그대로 적용됩니다. Hetzner 특화 항목(서버 프로비저닝, 리버스 프록시, 백업·야간 리셋용 systemd 타이머)은 제품 기능이 아니라 운영 배관이므로, 이 공개 문서가 아니라 배포의 비공개 운영 저장소에 둡니다.
 
 ## 데모 계정
 

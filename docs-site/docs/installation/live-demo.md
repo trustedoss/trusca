@@ -125,7 +125,7 @@ reseed generates a random password each night but does **not** log the
 plaintext, so you would not learn the new credential.
 :::
 
-See [GCP Demo SaaS deploy](./gcp-deploy.md) for the full deploy runbook.
+See [Demo SaaS hosting](./gcp-deploy.md) for where the public demo runs and how it is operated.
 
 :::note Manual reset
 Trigger a reset on demand without waiting for the timer:
