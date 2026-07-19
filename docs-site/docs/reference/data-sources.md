@@ -69,7 +69,7 @@ If a component's `purl` does not match a feed entry, no finding is created — s
 - **Non-canonical `purl`.** `cdxgen` is conservative: a malformed `package.json` may yield a `purl` that doesn't normalize. File an issue with the scan ID; we tighten the generator over time.
 - **Ecosystem is not in OSV / GHSA yet.** Coverage grows monthly. The [OSV ecosystem list](https://ossf.github.io/osv-schema/) is the upstream source of truth.
 
-## Analysis types
+## Per-finding data signals {#per-finding-signals}
 
 Compared to a Dependency-Track-class tool, the Trivy DB exposes the following per-finding signals. The portal surfaces all of them on the Vulnerabilities tab and through the API.
 

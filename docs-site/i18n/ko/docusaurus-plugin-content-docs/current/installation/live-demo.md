@@ -120,7 +120,7 @@ sudo systemctl enable --now trustedoss-demo-reset.timer
 알 수 없습니다.
 :::
 
-전체 배포 런북은 [GCP 데모 SaaS 배포](./gcp-deploy.md) 를 참고하세요.
+공개 데모가 어디서 운영되는지는 [데모 SaaS 호스팅](./gcp-deploy.md) 을 참고하세요.
 
 :::note 수동 리셋
 타이머를 기다리지 않고 즉시 리셋을 실행합니다.

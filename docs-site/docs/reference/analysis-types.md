@@ -15,7 +15,7 @@ New adopters and platform owners choosing which analysis to run, and reviewers m
 :::
 
 :::note This is a matrix of pipelines, not data signals
-This page lists the **analysis pipelines** — source scan, container scan, build gate, reachability. The [Data sources](./data-sources.md#analysis-types) page has a similarly named `## Analysis types` section, but that one is a matrix of the per-finding **data signals** the Trivy DB exposes (NVD · OSV · GHSA · EPSS · KEV, plus CVSS, CWE, fixed version, and so on). Read the two together: this page is *which analysis runs*; that page is *what data each vulnerability finding carries*.
+This page lists the **analysis pipelines** — source scan, container scan, build gate, reachability. Its companion, [Data sources → Per-finding data signals](./data-sources.md#per-finding-signals), is a matrix of the **data signals** each finding carries (NVD · OSV · GHSA · EPSS · KEV, plus CVSS, CWE, fixed version, and so on). Read the two together: this page is *which analysis runs*; that page is *what data each vulnerability finding carries*.
 :::
 
 ## The matrix
