@@ -104,3 +104,15 @@ v0.13.1 기준 BomLens 격차 17건은 전부 해소됐고, 남은 완성도 과
 - 운영 트랙: 데모 배포 후 demo-health-canary green + KEV beat 01:45 UTC 자연 실행 로그.
 - v0.15.0: EN/KO 카탈로그 집합 동등성 테스트 + 언어 토글 e2e. C3는 프로파일별 수출 SBOM golden fixture(실물 채록, 보강 5규칙 #3).
 - 문서: docs-uat 워크플로 + `node tools/ko-style/lint.mjs --changed --fail-on S2`.
+
+## 9. 신규 후보 — 외부 입력(2026-07-19 보안 칼럼 검토)
+
+강은성 교수 보안 칼럼 "AI의 사이버 공격 대응(상/하)"(ZDNet Korea) 검토에서 도출. 칼럼 내용의 대부분은 우리 방향(SBOM + 공급망 + 자동 재매칭 + DevSecOps)의 검증이었고, 순수 신규 후보는 아래 셋.
+
+| # | 항목 | 요지 | 상태 |
+|---|------|------|------|
+| X1 | 취약점 경과시간·조치 SLA 추적 | 실질 격차. `vulnerability_findings`에 최초 탐지 시각(`first_detected_at`) 없음 → aging 뷰·severity별 SLA 기한·SLA 초과 알림 불가. CRA "지체 없는 수정"·PSIRT 4단계를 제품 기능으로 흡수하는 항목. 스키마 마이그레이션(expand)+서비스+UI, 중간 규모. **최우선 후보** | ⏳ 백로그 |
+| X2 | CRA 대응 레퍼런스 문서 | 이미 갖춘 SBOM·VEX·remediation·KEV/EPSS·빌드 게이트를 CRA Annex I Part II·Art.14 의무에 정직하게 매핑. 규제 포지셔닝 확보, 저비용. `reference/cra-compliance.md`(EN/KO), X1 한계 명시 | ✅ 작성 완료 |
+| X3 | OSS 건강도/유지보수 신호 보강 | "패치 지원 능력 보고 OSS 선정"에 대응. 현재 EOL·currency만 노출. OpenSSF Scorecard/deps.dev 유지보수 활동(커밋·릴리즈 주기·아카이브 여부) 신호 추가 시 상용 격차 축소와 겹침. 외부 피드 의존↑ → 비용 큼, 백로그 검토용. C4·상용 격차 트랙과 함께 검토 | ⏳ 백로그 |
+
+**VDP/CVD(취약점 신고제도)는 제외** — 제품 벤더 PSIRT의 몫이고 SCA 도구 범위 밖. 자사용 채널은 `SECURITY.md`로 이미 존재.
