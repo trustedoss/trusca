@@ -46,13 +46,13 @@ python-multipart==0.0.31
 # bcrypt >= 4.1 (passlib reads bcrypt.__about__.__version__, which 4.1+ removed).
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
-# python-jose 3.5.0 widened pyasn1 to >=0.5.0 so we can take the pyasn1 0.6.3
-# fix (CVE-2026-30922, ASN.1 unbounded-recursion DoS). 3.4.0 still pinned
-# pyasn1<0.5.0, which blocked the bump.
+# python-jose 3.5.0 widened pyasn1 to >=0.5.0 so we can take the pyasn1 0.6.x
+# fixes (CVE-2026-30922 recursion DoS; CVE-2026-59885/-59886 crafted REAL
+# DoS, fixed in 0.6.4). 3.4.0 still pinned pyasn1<0.5.0, which blocked the bump.
 python-jose[cryptography]==3.5.0  # H-1 CVE fix (algorithm confusion / DoS) + pyasn1 0.6.x compat
 # Transitive of python-jose / rsa. Pinned explicitly so Trivy / pip-audit
-# can verify the CVE-2026-30922 fix on a clean image rebuild.
-pyasn1==0.6.3
+# can verify the CVE fixes on a clean image rebuild (0.6.4: CVE-2026-59885/-59886).
+pyasn1==0.6.4
 # v2.2-b1 — GitHub App credential storage. ``cryptography`` was previously only
 # a TRANSITIVE dep (via python-jose[cryptography]); the b1 reversible-encryption
 # helper (core/crypto.py, Fernet at-rest encryption of the App PEM private key)

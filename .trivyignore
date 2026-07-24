@@ -691,3 +691,28 @@ CVE-2026-27145
 #   (check `go version -m <binary> | head -1`) or 2026-11-16, whichever is
 #   sooner — this entry must not outlive an available upstream rebuild.
 CVE-2026-39822
+
+# CVE-2026-47302 / CVE-2026-47304 / CVE-2026-50525 / CVE-2026-50527 /
+# CVE-2026-50648 — .NET System.Security.Cryptography.Xml 8.0.3 — HIGH (5x)
+# Target: the dotnet SDK layer in Dockerfile.worker (dotnet-install.sh,
+#   floating --channel 8.0). Fixed package version is 8.0.4, but as of
+#   2026-07-24 the latest 8.0-channel SDK still bundles the 8.0.3 assembly —
+#   there is NO upstream SDK build to bump to yet (the channel install
+#   already floats to the newest patch; today's CI rebuild proved it).
+# CVSS: HIGH (DoS / security-feature bypass in SignedXml processing).
+# Reach: the worker carries the .NET SDK for exactly one purpose — running
+#   `dotnet restore` in the scan sidecar so cdxgen can read
+#   project.assets.json (Dockerfile.worker "cdxgen needs the dotnet restore
+#   CLI" block). No portal code loads System.Security.Cryptography.Xml or
+#   processes signed XML; the assembly just sits in the SDK layer. The
+#   DoS-class payloads require a SignedXml consumer, which never executes.
+#   Category-3 UNREACHED (same class as the cosign/docker Go entries above).
+# Re-evaluate: on the next 8.0-channel SDK release (a rebuild drops the
+#   finding automatically once the bundled assembly reaches >= 8.0.4) or
+#   2026-10-24, whichever is sooner — this entry must not outlive an
+#   available rebuild.
+CVE-2026-47302
+CVE-2026-47304
+CVE-2026-50525
+CVE-2026-50527
+CVE-2026-50648
