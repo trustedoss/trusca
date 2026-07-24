@@ -31,11 +31,26 @@
  * badge (auto/inferred/declared/na), optional evidence chips (mono), and a
  * docs link when `g7Guidance` knows the element. Splitting/grouping/tally
  * logic is vendored from BomLens in `lib/g7Conformance.ts`.
+ *
+ * Regulatory crosswalk (feat/sbom-conformance-crosswalk): when the verdict
+ * carries `regulatory_crosswalk` (read-time rollup joined from the vendored
+ * BomLens crosswalk), a final section renders one collapsible row per
+ * framework — short name (locale-aware `short` / `short_ko`), the
+ * present / gap / review / total tally (same vocabulary as the G7 tally) —
+ * expanding to the mapped elements (label, status badge, section refs,
+ * detail). The section is strictly informational: an intro sentence plus the
+ * backend-supplied disclaimer make explicit that it is a
+ * documentation-preparation aid, never a compliance determination. `null`
+ * crosswalk (nothing maps, e.g. unknown format) renders no section at all.
  */
+import { useState } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
 import type {
+  CrosswalkFramework,
+  RegulatoryCrosswalk,
   SbomCheckStatus,
   SbomConformanceCheck,
   SbomConformanceRead,
@@ -151,6 +166,11 @@ export function SbomConformancePanel({
       </div>
 
       {g7.length > 0 ? <G7Section g7={g7} /> : null}
+
+      {conformance.regulatory_crosswalk &&
+      conformance.regulatory_crosswalk.frameworks.length > 0 ? (
+        <CrosswalkSection crosswalk={conformance.regulatory_crosswalk} />
+      ) : null}
     </section>
   );
 }
@@ -482,6 +502,157 @@ function G7CheckRow({ check }: { check: SbomConformanceCheck }) {
           </a>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Regulatory crosswalk (feat/sbom-conformance-crosswalk)
+// ---------------------------------------------------------------------------
+
+/** True when the active i18n language is Korean (drives short/short_ko etc.). */
+function useIsKoLocale(): boolean {
+  const { i18n } = useTranslation("scans");
+  return (i18n.resolvedLanguage ?? i18n.language ?? "en").startsWith("ko");
+}
+
+function CrosswalkSection({ crosswalk }: { crosswalk: RegulatoryCrosswalk }) {
+  const { t } = useTranslation("scans");
+  const isKo = useIsKoLocale();
+  const disclaimer = isKo ? crosswalk.disclaimer_ko : crosswalk.disclaimer;
+
+  return (
+    <section className="mt-4" data-testid="conformance-crosswalk-section">
+      <header className="flex flex-wrap items-center gap-3">
+        <h3 className="text-sm font-semibold tracking-tight">
+          {t("conformance.crosswalk.title")}
+        </h3>
+      </header>
+      {/* Informational framing — the crosswalk is a documentation aid, never
+          a compliance determination (mirrors the backend disclaimer). */}
+      <p className="mt-1 text-xs text-muted-foreground">
+        {t("conformance.crosswalk.intro")}
+      </p>
+
+      <div
+        className="mt-3 grid grid-cols-1 divide-y rounded-md border"
+        data-testid="conformance-crosswalk-frameworks"
+      >
+        {crosswalk.frameworks.map((framework) => (
+          <CrosswalkFrameworkRow key={framework.id} framework={framework} />
+        ))}
+      </div>
+
+      {disclaimer ? (
+        <p
+          className="mt-2 text-xs text-muted-foreground"
+          data-testid="conformance-crosswalk-disclaimer"
+        >
+          {disclaimer}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+function CrosswalkFrameworkRow({
+  framework,
+}: {
+  framework: CrosswalkFramework;
+}) {
+  const { t } = useTranslation("scans");
+  const isKo = useIsKoLocale();
+  const [open, setOpen] = useState(false);
+  const short = isKo ? framework.short_ko : framework.short;
+
+  return (
+    <div
+      data-testid={`crosswalk-framework-${framework.id}`}
+      data-total={framework.total}
+      data-present={framework.present}
+      data-gap={framework.gap}
+      data-review={framework.review}
+    >
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((prev) => !prev)}
+        className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-left transition-colors duration-fast hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        data-testid={`crosswalk-framework-${framework.id}-toggle`}
+      >
+        {open ? (
+          <ChevronDown aria-hidden className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        ) : (
+          <ChevronRight aria-hidden className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        )}
+        <span className="text-sm font-medium">{short}</span>
+        <span className="font-mono text-xs text-foreground">
+          {t("conformance.crosswalk.tally.present", {
+            present: framework.present,
+            total: framework.total,
+          })}
+        </span>
+        {framework.gap > 0 ? (
+          <Badge tone="medium" data-testid={`crosswalk-${framework.id}-gap`}>
+            {t("conformance.crosswalk.tally.gap", { count: framework.gap })}
+          </Badge>
+        ) : null}
+        {framework.review > 0 ? (
+          <Badge
+            variant="muted"
+            data-testid={`crosswalk-${framework.id}-review`}
+          >
+            {t("conformance.crosswalk.tally.review", {
+              count: framework.review,
+            })}
+          </Badge>
+        ) : null}
+      </button>
+
+      {open ? (
+        <div
+          className="grid grid-cols-1 divide-y border-t"
+          role="table"
+          aria-label={short}
+          data-testid={`crosswalk-framework-${framework.id}-elements`}
+        >
+          {framework.elements.map((element) => (
+            <div
+              key={element.id}
+              className="flex flex-col gap-1 px-3 py-2 sm:flex-row sm:items-start sm:gap-3"
+              data-testid={`crosswalk-element-${framework.id}-${element.id}`}
+              data-status={element.status}
+              role="row"
+            >
+              <span className="min-w-0 text-sm font-medium sm:w-64 sm:shrink-0">
+                {element.label}
+              </span>
+              <div className="sm:shrink-0">
+                <CheckStatusBadge status={element.status} />
+              </div>
+              <div className="min-w-0 flex-1">
+                {element.detail ? (
+                  <p className="text-xs text-muted-foreground">
+                    {element.detail}
+                  </p>
+                ) : null}
+                {element.refs.length > 0 ? (
+                  <ul className="mt-1 flex flex-wrap gap-1">
+                    {element.refs.map((ref) => (
+                      <li
+                        key={ref}
+                        className="inline-flex max-w-full items-center truncate rounded-sm border border-border bg-muted px-1.5 py-0.5 font-mono text-[11px] text-foreground"
+                      >
+                        {ref}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

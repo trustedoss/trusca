@@ -25,14 +25,14 @@ The timing is regulatory: the European Union's Artificial Intelligence Act (AI A
 There is no separate upload path or setting. Send the document through the regular received-SBOM ingest — see [Upload an SBOM](../ci-integration/sbom-upload.md) — and TRUSCA detects the AI content automatically:
 
 - **CycloneDX `specVersion` 1.7 is accepted.** 1.7 is the version that carries the ML-BOM fields (`modelCard`, model parameters, dataset governance). Earlier versions (`1.2`–`1.6`) remain accepted as before.
-- **Detection is automatic.** If the document contains at least one component of type `machine-learning-model`, the 51 G7 checks are appended to the scan's conformance verdict. Documents without one get the usual nine core checks only.
+- **Detection is automatic.** If the document contains at least one component of type `machine-learning-model`, the 51 G7 checks are appended to the scan's conformance verdict. Documents without one get the core checks and the [regulatory field checks](../ci-integration/sbom-upload.md#regulatory-field-checks-advisory) only.
 - **Any generator works.** Tools such as BomLens or the OWASP AIBOM Generator emit CycloneDX 1.7 ML-BOMs that TRUSCA evaluates out of the box; a hand-assembled document is fine too, as long as it is valid CycloneDX JSON.
 
 ## Read the checklist
 
-The checklist appears on the **scan detail page** as its own **G7 AI SBOM minimum elements** section below the nine core checks. A tally headline summarizes coverage — elements present out of the 38 machine-checkable ones, an advisory count, and a human-review count — followed by one card per cluster in the canonical order. Each row pairs the status badge with a **source** badge; where the element is known, the row also offers a correct CycloneDX fragment and a **Learn more** link to the authoritative specification (for example the [CycloneDX ML-BOM capability page](https://cyclonedx.org/capabilities/mlbom/)).
+The checklist appears on the **scan detail page** as its own **G7 AI SBOM minimum elements** section below the core check table. A tally headline summarizes coverage — elements present out of the 38 machine-checkable ones, an advisory count, and a human-review count — followed by one card per cluster in the canonical order. Each row pairs the status badge with a **source** badge; where the element is known, the row also offers a correct CycloneDX fragment and a **Learn more** link to the authoritative specification (for example the [CycloneDX ML-BOM capability page](https://cyclonedx.org/capabilities/mlbom/)).
 
-The API returns the same data: the G7 entries in the `checks[]` array of `GET /v1/projects/{project_id}/scans/{scan_id}/conformance` carry extra `cluster`, `source`, `role`, and (when values were extracted) `evidence` fields; the nine core checks omit them.
+The API returns the same data: the G7 entries in the `checks[]` array of `GET /v1/projects/{project_id}/scans/{scan_id}/conformance` carry extra `cluster`, `source`, `role`, and (when values were extracted) `evidence` fields; the non-G7 checks omit them (among those, only `file-properties` carries a `source` tag).
 
 ### The seven clusters
 
@@ -73,6 +73,16 @@ For a few satisfied elements — model identifier, hash algorithm, model license
 
 All 51 G7 checks are recommended (`required: false`) and excluded from the verdict's `n_warn` counter. An ML-BOM missing half its G7 elements still gets an overall `pass` if the nine core checks pass. Treat the checklist as a completeness conversation with the SBOM's producer, not as a gate.
 
+## Regulatory crosswalk (EU AI Act, AI Framework Act)
+
+The G7 elements enumerate the inventory facts that regulatory technical documentation draws on, so the conformance response joins a **regulatory crosswalk** onto them: every G7 element with a defensible mapping gains `regulations` references into the **EU AI Act** — section-level pointers into the Annex IV technical documentation, for example Annex IV(2)(d) for the training-data elements — and **Korea's AI Framework Act** (article-level: 제31조 transparency through 제35조 impact assessment). The mapping is deliberately conservative: an element without a defensible correspondence simply has no entry.
+
+The response's `regulatory_crosswalk.frameworks[]` block rolls the mapped elements up per framework — present, gap, or needs human review — and the scan detail page's conformance panel shows the same rollup. The classic (non-AI) checks map to BSI TR-03183-2 and the NTIA minimum elements the same way; the field shapes and the rollup semantics are documented at [Upload an SBOM → Regulatory crosswalk](../ci-integration/sbom-upload.md#regulatory-crosswalk).
+
+:::note Not a compliance determination
+The crosswalk is a documentation-preparation aid. TRUSCA does not certify or determine compliance with the EU AI Act, the Korean AI Framework Act, or any other regulation — it covers only what an SBOM can carry. The AI Act's fairness and non-discrimination duties (bias examination, the fundamental-rights impact assessment) have no SBOM-expressible element and are not covered; an AI Framework Act 제32조 link points at the duty's subject, not a determination that the duty applies to your system. The response carries this disclaimer verbatim.
+:::
+
 ## What the tool does not check
 
 The working principle — shared with the OpenChain AI SBOM guidance — is **generate with tools, interpret with humans**. TRUSCA verifies that a field is present and extracts its value; it does not vouch for what the value means:
@@ -89,7 +99,7 @@ Two operational boundaries also apply:
 ## Verify it worked
 
 1. Upload a CycloneDX 1.7 document that contains at least one `machine-learning-model` component ([Upload an SBOM](../ci-integration/sbom-upload.md)).
-2. When the scan reaches `succeeded`, open its scan detail page. Below the nine core checks, a **G7 AI SBOM minimum elements** section shows the tally headline and seven cluster cards in order (Metadata first, Key performance indicators last).
+2. When the scan reaches `succeeded`, open its scan detail page. Below the core check table, a **G7 AI SBOM minimum elements** section shows the tally headline and seven cluster cards in order (Metadata first, Key performance indicators last).
 3. The overall conformance badge is the same as it would be without the ML content — G7 misses alone never turn a `pass` into a `warn`.
 
 ## Troubleshooting

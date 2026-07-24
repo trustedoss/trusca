@@ -8,6 +8,23 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- **SBOM conformance: regulatory field checks + crosswalk.** Uploaded-SBOM
+  conformance scoring gains five advisory per-component field checks named by
+  the regulatory baselines (BSI TR-03183-2 for the EU CRA, the NTIA minimum
+  elements): SHA-512 checksum, component creator, component filename, source /
+  distribution URI, and delivered-file properties coverage. They are
+  verdict-neutral — they describe how well the SBOM would answer a regulator
+  and never move the pass / warn / fail badge (`SBOM_CONFORMANCE_FIELD_MIN_PCT`,
+  default 80, tunes the coverage bar). The conformance response and panel gain
+  a regulatory crosswalk: per-framework rollups (BSI TR-03183-2, NTIA, EU AI
+  Act Annex IV, the Korean AI Framework Act) showing which mapped requirements
+  are present, a gap, or human-review-only — explicitly a
+  documentation-preparation aid with the vendored disclaimer, not a compliance
+  determination. Coverage checks also stop failing zero-package SBOMs
+  ("no packages to measure" instead of "0%"), and dataset (`type: "data"`)
+  components no longer count against package-only fields such as PURL
+  coverage. Vendored from and parity with BomLens (sktelecom/sbom-tools #454,
+  #457, #462).
 - **Version currency: "behind latest patch" component signal.** A sibling of
   the EOL flag, answering a different question — not "is this release line
   dead?" but "is this version behind the newest patch of its (still-supported)

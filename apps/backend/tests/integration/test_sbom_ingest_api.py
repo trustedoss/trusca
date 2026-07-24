@@ -780,6 +780,25 @@ async def test_get_conformance_returns_verdict(client) -> None:
     # Core checks keep None extension fields (backwards compatibility).
     core = next(c for c in body["checks"] if c["id"] == "purl")
     assert core["cluster"] is None and core["evidence"] is None
+    # Regulatory crosswalk joined at read time (services.regulation_crosswalk):
+    # persisted rows never carry ``regulations``, the endpoint attaches them.
+    assert {r["framework"] for r in core["regulations"]} == {
+        "bsi-tr-03183-2",
+        "us-sbom-minimum-elements",
+    }
+    assert all(r["short"] and r["ref"] and r["basis"] for r in core["regulations"])
+    # g7-model-id has no crosswalk entry → empty list, not null / missing.
+    assert g7["regulations"] == []
+    xwalk = body["regulatory_crosswalk"]
+    assert xwalk["disclaimer"] and xwalk["disclaimer_ko"]
+    frameworks = {f["id"]: f for f in xwalk["frameworks"]}
+    bsi = frameworks["bsi-tr-03183-2"]
+    assert bsi["total"] == 2  # purl + hash map to BSI
+    assert bsi["present"] == 1  # purl passes
+    assert bsi["gap"] == 1  # hash warns (automated source)
+    assert frameworks["us-sbom-minimum-elements"]["total"] == 1
+    # No AI framework rows — nothing in this verdict maps to them.
+    assert "eu-ai-act" not in frameworks
 
 
 async def test_get_conformance_cross_team_is_404(client) -> None:

@@ -110,12 +110,77 @@ curl -H "Authorization: Bearer $TRUSTEDOSS_API_KEY" \
 - **`result`**는 `pass`·`warn`·`fail` 중 하나입니다. `fail`은 **필수** 검사가 실패했다는 뜻이고, `warn`은 필수 검사는 모두 통과했으나 **권장** 검사(라이선스 또는 해시 커버리지)가 기준에 못 미친 경우이며, `pass`는 모든 검사를 통과한 경우입니다.
 - **필수 검사**: 타임스탬프, 도구 정보, name·version을 가진 최상위 컴포넌트, 컴포넌트 name+version 100%, PURL 커버리지가 `SBOM_CONFORMANCE_PURL_MIN_PCT`(기본 `90`) 이상, `pkg:generic` 자리표시자 없음, 전이 의존성 그래프 존재.
 - **권장 검사**(warn만): 라이선스 커버리지가 `SBOM_CONFORMANCE_LICENSE_MIN_PCT`(기본 `80`) 이상, 해시 커버리지가 `SBOM_CONFORMANCE_HASH_MIN_PCT`(기본 `50`) 이상.
+- **규제 필드 검사**(CycloneDX 전용, 판정 불변): 컴포넌트별 필드 커버리지 검사 5종이 `SBOM_CONFORMANCE_FIELD_MIN_PCT`(기본 `80`) 이상인지 봅니다 — 아래 [규제 필드 검사](#규제-필드-검사권고) 참고. `result`를 바꾸지 않습니다.
 - `fail` 결과여도 인제스트를 **중단하지 않습니다** — TRUSCA는 CVE 매칭과 라이선스 분류를 그대로 수행하므로 구체적 사유와 함께 부분 결과를 얻습니다. 공급사의 SBOM을 받아들일지 반려할지 판단하는 근거로 씁니다.
 - `purl_coverage_pct`·`license_coverage_pct`·`hash_coverage_pct`는 SPDX Tag-Value 문서에서는 `null`입니다. Tag-Value는 패키지별 커버리지가 아니라 존재 여부로 채점하기 때문입니다.
+- **패키지 컴포넌트가 0개인 SBOM**은 커버리지 검사에서 실패하지 않습니다. 측정할 대상이 없으면 PURL 커버리지는 0%로 깎이는 대신 `no packages to measure`로 통과합니다. CycloneDX 문서에서 데이터셋 컴포넌트(`"type": "data"` — 예: ML-BOM의 학습 데이터셋)는 패키지 성격의 검사(name+version, PURL, 규제 필드 검사 중 4종)의 측정 대상에서 빠지지만, 라이선스·체크섬 커버리지에는 그대로 포함됩니다. 데이터셋도 라이선스와 체크섬은 담을 수 있기 때문입니다. 다만 한 가지 보호 장치가 있습니다. 컴포넌트 **전부**가 `"data"` 타입인 문서는 정상적인 ML-BOM일 수 없으므로, 빈 분모로 통과하는 대신 name+version·PURL 검사가 `all components are typed "data"`를 보고하고 판정을 `warn`으로 내립니다.
 
 업로드한 문서에 `machine-learning-model` 컴포넌트가 있으면 `checks[]`에 권고 성격의 G7 AI SBOM 최소요소 항목 51개(`cluster`·`source` 태그 포함)가 추가됩니다 — [AI SBOM 적합성](../user-guide/ai-sbom-conformance.md) 참고.
 
 여기서 `404`는 프로젝트에 접근할 수 없거나, 해당 스캔에 아직 결과가 없다는 뜻입니다(인제스트된 SBOM 스캔이 아니거나, 인제스트가 적합성 단계에 도달하지 않음).
+
+### 규제 필드 검사(권고)
+
+**CycloneDX** 문서에는 컴포넌트별 필드 검사 5종이 추가됩니다. 검사 대상 필드는 필드 수준 규제 기준 — BSI TR-03183-2(EU 사이버복원력법 대응으로 작성된 독일 기술 지침)와 미국 NTIA 최소 요소 — 가 지정한 것입니다. SPDX 문서는 위의 검사 9개만 수행합니다.
+
+5종 모두 **권고이며 판정 불변**입니다. `required: false`인 데다 `n_warn` 카운터에서도 제외되므로 pass / warn / fail 판정을 바꾸는 일이 없습니다. 이 검사들은 SBOM이 규제 기관의 질문에 얼마나 답할 수 있는지를 보여 주고, 아래 [규제 대응표](#규제-대응표crosswalk)의 입력이 됩니다. 5종 공통 커버리지 기준은 `SBOM_CONFORMANCE_FIELD_MIN_PCT`(기본 `80`)입니다.
+
+| 검사 id | 측정 내용 | 측정 대상 |
+|---|---|---|
+| `hash-algorithm` | **SHA-512** 체크섬을 가진 컴포넌트. | 전체 컴포넌트. |
+| `component-creator` | 제작 주체를 밝힌 컴포넌트 — `authors`·`publisher`·`supplier`·`manufacturer` 중 하나. | 패키지 컴포넌트. |
+| `component-filename` | `bsi:component:filename` 속성을 가진 컴포넌트. | 패키지 컴포넌트. |
+| `artifact-uri` | `vcs` 또는 `distribution` external reference(소스·배포 URI)를 가진 컴포넌트. | 패키지 컴포넌트. |
+| `file-properties` | `bsi:component:executable` / `bsi:component:archive` / `bsi:component:structured` 세 속성을 모두 가진 컴포넌트. | 패키지 컴포넌트. |
+
+"패키지 컴포넌트"는 `"type": "data"`를 제외한 모든 컴포넌트입니다(위의 패키지 0개 항목 참고). `file-properties`에는 동작이 하나 더 있습니다. 문서의 **어느** 컴포넌트에도 세 속성이 없으면, 이 공급망에서 전달 파일을 검사한 생산자가 없었다는 뜻이므로 검사 결과는 `requires inspecting the delivered files (no automated source in this scan)`에 `source: "na"`가 붙습니다 — 커버리지 미달이 아니라 사람 검토 항목으로 읽으라는 표시입니다.
+
+### 규제 대응표(crosswalk)
+
+적합성 응답은 각 검사의 대상이 어떤 규제 문서화 요구에 닿는지를 4개 프레임워크에 걸쳐 상호 참조합니다.
+
+| 프레임워크 | 대응표에서의 범위 |
+|---|---|
+| **BSI TR-03183-2** — SBOM 데이터 필드(EU 사이버복원력법) | 섹션 단위 참조(5.1, 5.2.1, 5.2.2, 5.2.4). 핵심 검사 8종과 규제 필드 검사 5종 전부가 대응. |
+| **NTIA** — 미국 SBOM 최소 요소(행정명령 14028) | 2021년 데이터 필드 7종. 타임스탬프·도구·name+version·PURL·의존성 검사와 `component-creator`가 대응. |
+| **EU 인공지능법** — 부속서 IV 기술문서 | [G7 AI SBOM 검사](../user-guide/ai-sbom-conformance.md)를 통해 — ML-BOM에만 해당. |
+| **AI 기본법(대한민국)** | G7 검사를 통해 — ML-BOM에만 해당. |
+
+대응표는 응답의 두 필드에 실립니다.
+
+- `checks[]`의 각 항목에 `regulations` 배열 — `{framework, ref, basis, short, short_ko}` — 이 붙습니다. `basis`는 연결 근거를 그대로 인용한 해석 문구입니다. 대응 관계를 세울 수 없는 검사는 빈 배열을 받습니다.
+- 응답 최상위에 `regulatory_crosswalk` 블록이 붙습니다. 면책 문구(`disclaimer` / `disclaimer_ko`)와 함께, 대응 검사가 하나 이상 있는 프레임워크마다 롤업 행이 하나씩 들어갑니다 — `total`, `present`(통과한 대응 검사), `gap`(자동 원천이 있는 warn), `review`(사람만 답할 수 있는 항목, `source: "na"`), 그리고 대응된 `elements[]`. 스캔 상세 페이지의 적합성 패널에도 같은 프레임워크별 롤업이 표시됩니다. 아무것도 대응되지 않으면(포맷을 인식하지 못한 문서) 이 블록은 `null`입니다.
+
+위 예시 스캔의 발췌입니다(elements는 2개로 줄임).
+
+```json
+"regulatory_crosswalk": {
+  "disclaimer": "…",
+  "disclaimer_ko": "…",
+  "frameworks": [
+    {
+      "id": "bsi-tr-03183-2",
+      "title": "BSI TR-03183-2 — SBOM data fields (EU CRA)",
+      "short": "BSI TR-03183-2",
+      "source": "Regulation (EU) 2024/2847 Annex I Part II(1); BSI TR-03183-2 v2.1.0 (2025-08-20)",
+      "total": 13,
+      "present": 10,
+      "gap": 2,
+      "review": 1,
+      "elements": [
+        { "id": "hash", "label": "Hash coverage (>= 50%, recommended)", "status": "warn", "source": null, "detail": "0% (0/42)", "refs": ["Section 5.2.2"] },
+        { "id": "file-properties", "label": "Delivered-file properties (executable/archive/structured)", "status": "warn", "source": "na", "detail": "requires inspecting the delivered files (no automated source in this scan)", "refs": ["Section 5.2.2"] }
+      ]
+    }
+  ]
+}
+```
+
+대응표 결합은 벤더링된 카탈로그를 상대로 읽기 시점에 수행되므로, 이전 스캔이 저장한 판정도 다시 스캔하지 않고 갱신된 대응 관계를 반영합니다. 실패한 필수 검사는 프레임워크의 `total`에만 셉니다 — 필수 검사 실패는 이미 제출 전체를 fail로 만들었으므로, 대응표가 두 번째 판정이 되지는 않습니다.
+
+:::note 컴플라이언스 판정이 아닙니다
+대응표는 **문서화 준비를 돕는 자료**입니다. TRUSCA는 EU 사이버복원력법, EU 인공지능법, AI 기본법을 비롯한 어떤 규제의 준수 여부도 인증하거나 판정하지 않습니다. 대응표는 SBOM이 담을 수 있는 문서화 항목만 다루며, 공정성·편향 평가, 위험관리, 인간 감독처럼 SBOM으로 표현할 수 없는 의무는 범위 밖이라 별도 문서로 이행해야 합니다. 응답에는 이 면책 문구가 그대로 실리며, 롤업을 특정 제품의 법적 의무에 비추어 해석하는 일은 사람이 해야 합니다.
+:::
 
 ## 동작 확인
 

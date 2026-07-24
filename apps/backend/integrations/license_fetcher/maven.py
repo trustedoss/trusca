@@ -146,17 +146,19 @@ class MavenLicenseFetcher:
             log.info("maven_purl_unrecognized", purl=purl)
             return None
         group, artifact, version = parsed
-        group_path = group.replace(".", "/")
-        # quote() with an empty safe string is overkill for Maven coords
-        # (which are restricted to the group/artifact charset), but it
-        # protects against unusual characters slipping through and
-        # building a malformed URL.
+        # ``safe=""`` on every path piece (W8-#49 security-reviewer follow-up):
+        # the default ``safe='/'`` would let a hostile purl smuggle ``/`` (or
+        # an encoded ``../``) through ``artifact`` / ``version`` and traverse
+        # to an arbitrary in-registry path. The group segments are quoted
+        # individually so the ``.``→``/`` expansion stays the ONLY source of
+        # separators in the URL.
+        group_path = "/".join(quote(seg, safe="") for seg in group.split("."))
         url = (
             f"{_MAVEN_CENTRAL_BASE}/"
-            f"{quote(group_path)}/"
-            f"{quote(artifact)}/"
-            f"{quote(version)}/"
-            f"{quote(artifact)}-{quote(version)}.pom"
+            f"{group_path}/"
+            f"{quote(artifact, safe='')}/"
+            f"{quote(version, safe='')}/"
+            f"{quote(artifact, safe='')}-{quote(version, safe='')}.pom"
         )
         client = self._client(timeout)
         response = request_with_retry(

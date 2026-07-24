@@ -41,6 +41,7 @@ import { ALL_VULNERABILITY_STATUSES } from "@/features/projects/lib/vulnerabilit
 import { visualFor } from "@/features/projects/components/ProjectStatusBadge";
 import {
   SBOM_CHECK_IDS,
+  SBOM_REGULATORY_CHECK_IDS,
   SCAN_KIND_VALUES,
   SCAN_STATUS_VALUES,
 } from "@/lib/projectsApi";
@@ -224,6 +225,9 @@ describe("SBOM conformance — FE mirror of services/sbom_conformance.CHECK_IDS"
   const RESULTS = ["pass", "warn", "fail"] as const;
 
   it("matches the backend's check id set, in canonical order", () => {
+    // Sourced from `apps/backend/services/sbom_conformance.py::CHECK_IDS` —
+    // the 9 original format checks plus the 5 regulatory field checks
+    // (feat/sbom-conformance-crosswalk, verdict-neutral, CycloneDX only).
     expect([...SBOM_CHECK_IDS]).toEqual([
       "timestamp",
       "tools",
@@ -234,7 +238,25 @@ describe("SBOM conformance — FE mirror of services/sbom_conformance.CHECK_IDS"
       "transitive",
       "license",
       "hash",
+      "hash-algorithm",
+      "component-creator",
+      "component-filename",
+      "artifact-uri",
+      "file-properties",
     ]);
+  });
+
+  it("the regulatory subset mirrors REGULATORY_FIELD_CHECK_IDS and stays inside the full set", () => {
+    expect([...SBOM_REGULATORY_CHECK_IDS]).toEqual([
+      "hash-algorithm",
+      "component-creator",
+      "component-filename",
+      "artifact-uri",
+      "file-properties",
+    ]);
+    for (const id of SBOM_REGULATORY_CHECK_IDS) {
+      expect(SBOM_CHECK_IDS).toContain(id);
+    }
   });
 
   it.each([
@@ -242,7 +264,12 @@ describe("SBOM conformance — FE mirror of services/sbom_conformance.CHECK_IDS"
     ["ko", koScans],
   ])("every check id owns a %s `conformance.check_id.*` label", (_locale, ns) => {
     const labels = labelMap(ns, "conformance", "check_id");
+    // The 5 regulatory field checks intentionally render the backend-supplied
+    // `check.label` (no FE localization — same convention as the G7 checks),
+    // so the label contract covers the 9 core format checks only.
+    const regulatory = new Set<string>(SBOM_REGULATORY_CHECK_IDS);
     for (const id of SBOM_CHECK_IDS) {
+      if (regulatory.has(id)) continue;
       expect(labels[id], `conformance.check_id.${id} missing`).toBeTruthy();
     }
   });

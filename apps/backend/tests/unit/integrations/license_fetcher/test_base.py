@@ -263,3 +263,82 @@ def test_request_with_retry_returns_none_on_persistent_transport_error(
     )
     assert response is None
     assert len(attempts) == 3
+
+
+# ---------------------------------------------------------------------------
+# Response-body size cap (W8-#49 security-reviewer follow-up).
+# ---------------------------------------------------------------------------
+
+
+def test_request_with_retry_caps_oversized_body(no_throttle: None) -> None:
+    """A body over ``max_body_bytes`` (decompression bomb from a compromised
+    registry) degrades to ``None`` — the same observable state as a registry
+    without metadata — instead of ballooning worker memory."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"x" * 2048)
+
+    client = _make_client(handler)
+    response = request_with_retry(
+        client=client,
+        method="GET",
+        url="https://example.invalid/x",
+        host="example.invalid",
+        sleep=lambda _: None,
+        max_body_bytes=1024,
+    )
+    assert response is None
+
+
+def test_request_with_retry_capped_body_keeps_json_usable(no_throttle: None) -> None:
+    """Under the cap the rebuilt response must behave like a normal one for
+    the callers (``.json()`` / ``.text``), with the wire-only headers
+    (Content-Encoding / Content-Length) dropped after decompression."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"license": "MIT"},
+            headers={"X-Registry": "mock"},
+        )
+
+    client = _make_client(handler)
+    response = request_with_retry(
+        client=client,
+        method="GET",
+        url="https://example.invalid/x",
+        host="example.invalid",
+        sleep=lambda _: None,
+    )
+    assert response is not None
+    assert response.json() == {"license": "MIT"}
+    assert response.headers["X-Registry"] == "mock"
+    # The wire Content-Encoding must not survive (the body is already
+    # decompressed); httpx re-derives an accurate Content-Length from the
+    # materialised body, which is fine.
+    assert "content-encoding" not in response.headers
+    assert response.headers["content-length"] == str(len(response.content))
+
+
+def test_request_with_retry_caps_decompression_bomb(no_throttle: None) -> None:
+    """A small gzip body that inflates past the cap is rejected on the
+    DECOMPRESSED count — the wire size alone would sail under the limit."""
+    import gzip as _gzip
+
+    bomb = _gzip.compress(b"\0" * (4 * 1024 * 1024))  # ~4 KiB wire, 4 MiB inflated
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, content=bomb, headers={"Content-Encoding": "gzip"}
+        )
+
+    client = _make_client(handler)
+    response = request_with_retry(
+        client=client,
+        method="GET",
+        url="https://example.invalid/x",
+        host="example.invalid",
+        sleep=lambda _: None,
+        max_body_bytes=1024 * 1024,
+    )
+    assert response is None

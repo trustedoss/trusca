@@ -110,12 +110,77 @@ The response is the verdict for that scan:
 - **`result`** is `pass`, `warn`, or `fail`. `fail` means a **mandatory** check failed; `warn` means every mandatory check passed but a **recommended** one (license or hash coverage) fell short; `pass` means all checks passed.
 - **Mandatory checks**: a timestamp, tool info, a top-level component with name and version, 100% component name+version, PURL coverage at or above `SBOM_CONFORMANCE_PURL_MIN_PCT` (default `90`), no `pkg:generic` placeholders, and a transitive dependency graph.
 - **Recommended checks** (warn only): license coverage at or above `SBOM_CONFORMANCE_LICENSE_MIN_PCT` (default `80`) and hash coverage at or above `SBOM_CONFORMANCE_HASH_MIN_PCT` (default `50`).
+- **Regulatory field checks** (CycloneDX only, verdict-neutral): five per-component field coverage checks at or above `SBOM_CONFORMANCE_FIELD_MIN_PCT` (default `80`) — see [Regulatory field checks](#regulatory-field-checks-advisory) below. They never change `result`.
 - A `fail` verdict does **not** abort the ingest — TRUSCA still matches CVEs and classifies licenses so you get the partial result alongside the concrete reasons. Use the verdict to decide whether to accept a supplier's SBOM or send it back.
 - `purl_coverage_pct`, `license_coverage_pct`, and `hash_coverage_pct` are `null` for SPDX Tag-Value documents, which are scored on presence rather than per-package coverage.
+- An SBOM with **zero package components** does not fail the coverage checks: with nothing to measure, PURL coverage reports `no packages to measure` and passes instead of scoring 0%. In a CycloneDX document, dataset components (`"type": "data"` — a training dataset in an ML-BOM, say) are excluded from the package-natured checks (name+version, PURL, and four of the regulatory field checks) but still count toward license and checksum coverage, which they can carry. One guard rides along: a document whose components are **all** typed `"data"` is not a plausible ML-BOM, so instead of passing on the empty denominator, its name+version and PURL checks report `all components are typed "data"` and degrade the verdict to `warn`.
 
 When the uploaded document contains a `machine-learning-model` component, `checks[]` additionally carries the 51 advisory G7 AI SBOM minimum-element entries (tagged with `cluster` and `source`) — see [AI SBOM conformance](../user-guide/ai-sbom-conformance.md).
 
 A `404` here means the project is not accessible to you, or the scan has no verdict yet (it is not an ingested SBOM scan, or its ingest has not reached the conformance stage).
+
+### Regulatory field checks (advisory)
+
+On **CycloneDX** documents the verdict carries five additional per-component field checks, named by the field-level regulatory baselines — BSI TR-03183-2 (the German technical guideline for the EU Cyber Resilience Act) and the US NTIA minimum elements. SPDX documents keep the nine checks above.
+
+All five are **advisory and verdict-neutral**: they are `required: false` and additionally excluded from the `n_warn` counter, so they never change the pass / warn / fail result. They describe how well the SBOM would answer a regulator, and feed the [regulatory crosswalk](#regulatory-crosswalk) below. The coverage bar for all five is `SBOM_CONFORMANCE_FIELD_MIN_PCT` (default `80`).
+
+| Check id | What it measures | Measured over |
+|---|---|---|
+| `hash-algorithm` | Components carrying a **SHA-512** checksum. | All components. |
+| `component-creator` | Components naming their creator — `authors`, `publisher`, `supplier`, or `manufacturer`. | Package components. |
+| `component-filename` | Components carrying a `bsi:component:filename` property. | Package components. |
+| `artifact-uri` | Components carrying a `vcs` or `distribution` external reference (source or distribution URI). | Package components. |
+| `file-properties` | Components carrying all three `bsi:component:executable` / `bsi:component:archive` / `bsi:component:structured` properties. | Package components. |
+
+"Package components" means every component except `"type": "data"` (see the zero-package bullet above). `file-properties` has one extra behavior: when **no** component in the document carries the property trio, no producer in the chain inspected the delivered files, so the check reports `requires inspecting the delivered files (no automated source in this scan)` with `source: "na"` — a human-review item, not a coverage failure.
+
+### Regulatory crosswalk
+
+The conformance response cross-references each check to the regulatory documentation requirements its subject touches, across four frameworks:
+
+| Framework | Scope in the crosswalk |
+|---|---|
+| **BSI TR-03183-2** — SBOM data fields (EU Cyber Resilience Act) | Section-level references (5.1, 5.2.1, 5.2.2, 5.2.4), mapped from eight core checks and all five regulatory field checks. |
+| **NTIA** — US SBOM minimum elements (Executive Order 14028) | The seven 2021 data fields, mapped from the timestamp, tool, name+version, PURL, and dependency checks plus `component-creator`. |
+| **EU AI Act** — Annex IV technical documentation | Via the [G7 AI SBOM checks](../user-guide/ai-sbom-conformance.md) — ML-BOMs only. |
+| **AI Framework Act (Korea)** | Via the G7 checks — ML-BOMs only. |
+
+Two response fields carry the crosswalk:
+
+- Each entry in `checks[]` gains a `regulations` array — `{framework, ref, basis, short, short_ko}` — where `basis` quotes the interpretive ground for the link. A check with no defensible mapping gets an empty array.
+- The response gains a top-level `regulatory_crosswalk` block: the disclaimer (`disclaimer` / `disclaimer_ko`) plus one rollup row per framework that has at least one mapped check — `total`, `present` (mapped checks that pass), `gap` (warn with an automated source), `review` (answerable only by a human, `source: "na"`), and the mapped `elements[]`. The scan detail page's conformance panel shows the same per-framework rollup. The block is `null` when nothing maps (an unrecognized-format document).
+
+An excerpt for the example scan above (elements truncated to two):
+
+```json
+"regulatory_crosswalk": {
+  "disclaimer": "…",
+  "disclaimer_ko": "…",
+  "frameworks": [
+    {
+      "id": "bsi-tr-03183-2",
+      "title": "BSI TR-03183-2 — SBOM data fields (EU CRA)",
+      "short": "BSI TR-03183-2",
+      "source": "Regulation (EU) 2024/2847 Annex I Part II(1); BSI TR-03183-2 v2.1.0 (2025-08-20)",
+      "total": 13,
+      "present": 10,
+      "gap": 2,
+      "review": 1,
+      "elements": [
+        { "id": "hash", "label": "Hash coverage (>= 50%, recommended)", "status": "warn", "source": null, "detail": "0% (0/42)", "refs": ["Section 5.2.2"] },
+        { "id": "file-properties", "label": "Delivered-file properties (executable/archive/structured)", "status": "warn", "source": "na", "detail": "requires inspecting the delivered files (no automated source in this scan)", "refs": ["Section 5.2.2"] }
+      ]
+    }
+  ]
+}
+```
+
+The join happens at read time against a vendored catalogue, so verdicts stored by earlier scans pick up mapping updates without a re-scan. A failed mandatory check counts toward a framework's `total` only — a mandatory failure already fails the whole submission, and the crosswalk is not a second verdict.
+
+:::note Not a compliance determination
+The crosswalk is a **documentation-preparation aid**. TRUSCA does not certify or determine compliance with the EU Cyber Resilience Act, the EU AI Act, the Korean AI Framework Act, or any other regulation. It covers only the documentation elements an SBOM can carry; obligations an SBOM cannot express — bias and fairness assessment, risk management, human oversight — are out of its scope and must be met through separate documents. The payload carries this disclaimer verbatim, and interpreting the rollup against a specific product's legal obligations is a person's job.
+:::
 
 ## Verify it worked
 

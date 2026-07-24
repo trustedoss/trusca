@@ -96,6 +96,7 @@ v0.13.1 기준 BomLens 격차 17건은 전부 해소됐고, 남은 완성도 과
 - Android release-classpath 스코프 필터 — 워커 Android SDK 탑재 선행, 수요 확인 전 보류
 - BomLens 예고 기능 감시 — `docs/bomlens-parity-review.md` 감시 목록을 BomLens 릴리즈 태그마다 재점검
 - **버전 currency/staleness (파리티 #18)** — ✅ 오프라인 MVP 구현 완료. EOL 스냅샷 cycle `latest` 재사용, `component_versions.currency_*` 컬럼(0040)+같은 매처·스탬프·beat 편승(egress 0), CurrencyBadge·컬럼·드로어·Overview 칩·`?outdated=true` 필터. deps.dev 절대최신·N releases-behind(egress)는 게이트 opt-in 후속(미구현)
+- 워커 cdxgen 핀 범프 12.3.3 → 12.8.x (BomLens 9차 파리티 부수 발견, 2026-07-24) — 골든 베이스라인 재채록 동반이라 단독 PR로, 공개 태그 전 여력 시
 - license_fetcher 하드닝 (W8-#49 리뷰 후속, 6개 fetcher 공통): ① `quote(name, safe="")` 백필(현재 crates/pypi/maven/pkggo는 `safe='/'` 상속 — in-registry 경로 traversal 방어, gem/nuget은 W8-#49에서 이미 적용), ② `base.request_with_retry`에 응답 본문 크기 상한(디컴프레션 밤 방어, 공유 코드라 전 fetcher 일괄)
 
 ## 8. 검증 기준 (릴리즈별)

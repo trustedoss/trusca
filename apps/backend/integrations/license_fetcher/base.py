@@ -58,6 +58,15 @@ DEFAULT_TIMEOUT_SECONDS = 30.0
 DEFAULT_MAX_RETRIES = 3
 DEFAULT_RETRY_BACKOFF_SECONDS = 0.5
 
+# Decompressed-body ceiling for registry responses (W8-#49 security-reviewer
+# follow-up). The largest legitimate payload this layer reads is a Maven POM /
+# registry JSON document — tens of KiB; 5 MiB leaves two orders of magnitude
+# of headroom. Enforced on the DECOMPRESSED stream, so a gzip bomb from a
+# compromised registry / mirror cannot balloon worker memory: the read stops
+# at the cap and the lookup degrades to "license unknown" (negative cache),
+# the same observable state as a registry without metadata.
+DEFAULT_MAX_BODY_BYTES = 5 * 1024 * 1024
+
 USER_AGENT = (
     "TrustedOSS-Portal/0.1 "
     "(+https://github.com/trustedoss/trusca; license-fetcher)"
@@ -134,6 +143,7 @@ def request_with_retry(
     sleep: Callable[[float], None] = time.sleep,
     clock: Callable[[], float] = time.monotonic,
     accept_404: bool = True,
+    max_body_bytes: int = DEFAULT_MAX_BODY_BYTES,
 ) -> httpx.Response | None:
     """Issue an HTTP request through the per-host gate with retry.
 
@@ -143,6 +153,11 @@ def request_with_retry(
         errors). 429 / 5xx trigger exponential backoff up to
         ``max_retries``; persistent failure returns ``None`` (the
         caller treats that as "license unknown" + negative cache).
+
+    The 2xx body is read as a capped stream: once the DECOMPRESSED size
+    exceeds ``max_body_bytes`` the read stops and the call returns ``None``
+    — a decompression bomb from a compromised registry degrades to a
+    "license unknown" lookup instead of ballooning worker memory.
 
     Why ``None`` on retry exhaustion (not raise):
         License lookup is best-effort metadata enrichment, not a hot
@@ -164,7 +179,90 @@ def request_with_retry(
                 sleep(wait)
             last[0] = clock()
             try:
-                response = client.request(method, url)
+                # Streamed (not ``client.request``) so the body cap below can
+                # stop reading MID-STREAM — with a buffered request the whole
+                # decompressed payload would already sit in memory before any
+                # size check could run.
+                with client.stream(method, url) as response:
+                    status = response.status_code
+                    if 200 <= status < 300:
+                        chunks: list[bytes] = []
+                        size = 0
+                        too_large = False
+                        for chunk in response.iter_bytes():
+                            # Two counters (security-reviewer Low, this
+                            # branch): decompressed bytes are the real
+                            # ceiling, but a single network read can expand
+                            # ~1000x inside zlib BEFORE this loop sees it —
+                            # so the WIRE byte count is capped too. A
+                            # legitimate registry document is tens of KiB
+                            # compressed; only a bomb trips either early.
+                            size += len(chunk)
+                            if (
+                                size > max_body_bytes
+                                or response.num_bytes_downloaded > max_body_bytes
+                            ):
+                                too_large = True
+                                break
+                            chunks.append(chunk)
+                        if too_large:
+                            log.warning(
+                                "license_fetch_body_too_large",
+                                host=host,
+                                url=url,
+                                limit_bytes=max_body_bytes,
+                            )
+                            return None
+                        # Materialise a response for the caller.
+                        # Content-Encoding / Content-Length describe the wire
+                        # bytes; ``iter_bytes`` already decompressed, so they
+                        # must not survive onto the rebuilt response (httpx
+                        # would misreport, and ``.json()`` could double-decode).
+                        headers = [
+                            (k, v)
+                            for k, v in response.headers.items()
+                            if k.lower() not in ("content-encoding", "content-length")
+                        ]
+                        return httpx.Response(
+                            status_code=status,
+                            headers=headers,
+                            content=b"".join(chunks),
+                            request=response.request,
+                        )
+                    if status == 404 and accept_404:
+                        return None
+                    if 300 <= status < 400:
+                        # Registries occasionally redirect mirror traffic, but
+                        # the fetcher clients run with ``follow_redirects=False``
+                        # (security-reviewer L4, chore PR #6) so an unexpected
+                        # 3xx is reported here. Returning ``None`` registers a
+                        # negative cache entry — the attacker host in
+                        # ``Location`` is never contacted.
+                        log.warning(
+                            "license_fetch_unexpected_redirect",
+                            host=host,
+                            url=url,
+                            status=status,
+                            location=response.headers.get("Location", "")[:500],
+                        )
+                        return None
+                    if status == 429 or 500 <= status < 600:
+                        log.info(
+                            "license_fetch_retryable",
+                            host=host,
+                            url=url,
+                            status=status,
+                            attempt=attempt,
+                        )
+                    else:
+                        # 4xx (other than 404/429) — caller-side issue, no retry.
+                        log.info(
+                            "license_fetch_client_error",
+                            host=host,
+                            url=url,
+                            status=status,
+                        )
+                        return None
             except httpx.TimeoutException as exc:
                 last_exc = exc
                 log.warning(
@@ -182,44 +280,6 @@ def request_with_retry(
                     attempt=attempt,
                     error=str(exc)[:200],
                 )
-            else:
-                status = response.status_code
-                if 200 <= status < 300:
-                    return response
-                if status == 404 and accept_404:
-                    return None
-                if 300 <= status < 400:
-                    # Registries occasionally redirect mirror traffic, but
-                    # the fetcher clients run with ``follow_redirects=False``
-                    # (security-reviewer L4, chore PR #6) so an unexpected
-                    # 3xx is reported here. Returning ``None`` registers a
-                    # negative cache entry — the attacker host in
-                    # ``Location`` is never contacted.
-                    log.warning(
-                        "license_fetch_unexpected_redirect",
-                        host=host,
-                        url=url,
-                        status=status,
-                        location=response.headers.get("Location", "")[:500],
-                    )
-                    return None
-                if status == 429 or 500 <= status < 600:
-                    log.info(
-                        "license_fetch_retryable",
-                        host=host,
-                        url=url,
-                        status=status,
-                        attempt=attempt,
-                    )
-                else:
-                    # 4xx (other than 404/429) — caller-side issue, no retry.
-                    log.info(
-                        "license_fetch_client_error",
-                        host=host,
-                        url=url,
-                        status=status,
-                    )
-                    return None
 
         attempt += 1
         if attempt > max_retries:
@@ -429,6 +489,7 @@ def normalize_spdx_id(raw: str | None) -> str | None:
 
 
 __all__ = [
+    "DEFAULT_MAX_BODY_BYTES",
     "DEFAULT_MAX_RETRIES",
     "DEFAULT_RETRY_BACKOFF_SECONDS",
     "DEFAULT_TIMEOUT_SECONDS",
