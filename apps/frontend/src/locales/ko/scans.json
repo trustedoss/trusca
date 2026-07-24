@@ -240,6 +240,15 @@
       "learn_more": "자세히 보기",
       "missing_label": "누락:"
     },
+    "crosswalk": {
+      "title": "규제 대응표",
+      "intro": "참고용 정보입니다. 위 검사 항목이 어떤 규제 문서 요소와 관련되는지 보여 줄 뿐, 규제 준수 여부를 판정하지 않습니다.",
+      "tally": {
+        "present": "{{present}} / {{total}} 충족",
+        "gap": "결측 {{count}}건",
+        "review": "사람 검토 필요 {{count}}건"
+      }
+    },
     "errors": {
       "not_found": "이 스캔에 대한 적합성 결과가 아직 없습니다.",
       "network": "네트워크 오류로 적합성 결과를 불러오지 못했습니다.",

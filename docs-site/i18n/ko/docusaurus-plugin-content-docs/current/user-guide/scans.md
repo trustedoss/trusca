@@ -122,6 +122,8 @@ curl -sS -X POST \
 
 공급사가 제공한 SBOM은 버전·PURL·의존성 그래프가 빠진 "껍데기"일 수 있으므로, TRUSCA는 인제스트 시 SBOM의 **품질**을 채점하고 스캔 상세 페이지에 **pass / warn / fail** 배지와 요구사항별 표를 표시합니다. 이 결과는 **자문(advisory)**입니다 — `fail`이어도 인제스트를 막지 않으며(CVE 매칭은 계속 수행) SBOM을 받아들일지 공급사에 반려할지 판단하는 근거가 됩니다. 필수 검사에는 타임스탬프, 도구 정보, 최상위 컴포넌트, 컴포넌트 name+version 100%, PURL 커버리지 ≥ 90%, `pkg:generic` 자리표시자 없음, 전이 의존성 그래프가 포함되고, 라이선스·해시 커버리지는 권장(warn만)입니다. UI 패널이나 `GET /v1/projects/{project_id}/scans/{scan_id}/conformance`로 읽습니다 — [SBOM 업로드 → 적합성 결과 읽기](../ci-integration/sbom-upload.md#적합성conformance-결과-읽기) 참고.
 
+CycloneDX 문서라면 결과에 **규제 필드 검사** 5종 — SHA-512 체크섬, 컴포넌트 제작 주체, 컴포넌트 파일명, 소스·배포 URI, 전달 파일 속성 커버리지(기준 `SBOM_CONFORMANCE_FIELD_MIN_PCT`, 기본 `80`) — 도 함께 실립니다. 5종 모두 권고이며 판정 불변입니다. pass / warn / fail 배지를 움직이는 일이 없습니다. 대신 이 검사들은 **규제 대응표(crosswalk)**의 입력이 됩니다. 대응표는 각 검사를 4개 프레임워크 — BSI TR-03183-2(EU 사이버복원력법), 미국 NTIA 최소 요소, EU 인공지능법 부속서 IV, AI 기본법(대한민국) — 의 문서화 요구와 상호 참조하고, 프레임워크별로 충족 / 결측 / 사람 검토 필요를 집계합니다. 대응표는 컴플라이언스 판정이 아니라 문서화 준비를 돕는 자료이며, 응답에 그 면책 문구가 그대로 실립니다. [SBOM 업로드 → 규제 필드 검사](../ci-integration/sbom-upload.md#규제-필드-검사권고) 참고.
+
 CycloneDX `specVersion` 1.7도 받으며, 업로드한 문서에 `machine-learning-model` 컴포넌트가 있으면 패널에 권고 성격의 **G7 AI SBOM 최소요소(Minimum Elements)** 체크리스트(7개 클러스터, 51개 요소)가 추가됩니다 — [AI SBOM 적합성](./ai-sbom-conformance.md) 참고.
 
 ## 수명 주기

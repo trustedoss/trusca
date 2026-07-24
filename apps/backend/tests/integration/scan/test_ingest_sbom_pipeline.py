@@ -545,7 +545,11 @@ def test_ingest_aibom_1_7_persists_g7_conformance_checks(
         c for c in verdict.checks if str(c.get("id", "")).startswith("g7-")
     ]
     assert len(g7_checks) == 51
-    assert len(verdict.checks) == 9 + 51
+    # Core catalogue size comes from the SSOT, not a literal — the regulatory
+    # field checks (BomLens #462 parity) grew it from 9 to 14.
+    from services.sbom_conformance import CHECK_IDS
+
+    assert len(verdict.checks) == len(CHECK_IDS) + 51
     by_id = {c["id"]: c for c in g7_checks}
     # Automated element satisfied by the fixture's modelCard.
     assert by_id["g7-model-card"]["status"] == "pass"

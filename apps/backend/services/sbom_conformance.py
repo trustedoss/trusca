@@ -16,6 +16,11 @@ This is a faithful Python port of the SK Telecom BomLens
                 no pkg:generic, transitive dependency edges (> 0)
   recommended : license coverage >= threshold (warn only),
                 hash coverage >= threshold (warn only)
+  regulatory  : SHA-512 checksum / component creator / component filename /
+                artifact URI / delivered-file properties coverage (CycloneDX
+                only — BomLens #462 parity). Advisory AND verdict-neutral:
+                they feed the regulatory crosswalk
+                (:mod:`services.regulation_crosswalk`), never the result.
 
 Scoring runs on the **original** submission bytes (before any CycloneDX
 normalisation) so SPDX-specific metadata is judged accurately. It never raises
@@ -59,6 +64,32 @@ CHECK_IDS: tuple[str, ...] = (
     "transitive",
     "license",
     "hash",
+    # Regulatory per-component field checks (BomLens #462 parity — BSI
+    # TR-03183-2 / NTIA fields named by services/regulation_crosswalk.json).
+    # CycloneDX scorer only; SPDX scorers keep the original 9 (upstream adds
+    # them for CycloneDX only too).
+    "hash-algorithm",
+    "component-creator",
+    "component-filename",
+    "artifact-uri",
+    "file-properties",
+)
+
+# The five regulatory field checks are VERDICT-NEUTRAL by design (upstream
+# comment: "they describe how well the SBOM would answer a regulator, and
+# never move the submission verdict"). Like the G7 advisory checks they are
+# all ``required=False``, and ``evaluate`` additionally excludes them from
+# ``n_warn`` — otherwise virtually every real-world SBOM (SHA-512 checksums
+# are rare in the wild) would flip from pass to warn the day this ships. A
+# unit test locks the exclusion.
+REGULATORY_FIELD_CHECK_IDS: frozenset[str] = frozenset(
+    {
+        "hash-algorithm",
+        "component-creator",
+        "component-filename",
+        "artifact-uri",
+        "file-properties",
+    }
 )
 
 # Recognised input serialisations. RDF / XML SPDX are intentionally unsupported
@@ -88,11 +119,36 @@ def _hash_min_pct() -> int:
     return int(os.getenv("SBOM_CONFORMANCE_HASH_MIN_PCT", "50"))
 
 
+def _field_min_pct() -> int:
+    """Threshold for the regulatory field-coverage checks (BomLens FIELD_MIN_PCT)."""
+    return int(os.getenv("SBOM_CONFORMANCE_FIELD_MIN_PCT", "80"))
+
+
 def _pct(n: int, d: int) -> int:
     """Integer percentage with zero-guard (matches jq ``pct``)."""
     if d == 0:
         return 0
     return (n * 100) // d
+
+
+def _as_list(value: Any) -> list[Any]:
+    """``value`` if it is a list, else ``[]`` — hostile-shape container guard.
+
+    ``evaluate`` must NEVER raise on malformed input (a bad SBOM yields
+    ``result="fail"``, not a dead ingest — see the module docstring), but the
+    sync upload validator only whitelists the TOP-level structure, so any
+    nested container can arrive as a scalar (``"hashes": 1``). The old
+    ``value or []`` idiom passes such scalars straight into iteration →
+    TypeError → the whole ingest task fails (security-reviewer Medium,
+    feat/sbom-conformance-crosswalk). Route every nested container read
+    through this guard instead.
+    """
+    return value if isinstance(value, list) else []
+
+
+def _as_dict(value: Any) -> dict[str, Any]:
+    """``value`` if it is a dict, else ``{}`` — same guard for objects."""
+    return value if isinstance(value, dict) else {}
 
 
 def sanitize_jsonb_text(value: str) -> str:
@@ -226,23 +282,35 @@ def detect_format(raw: bytes) -> tuple[str, dict[str, Any] | None]:
 # CycloneDX scorer.
 # ---------------------------------------------------------------------------
 def _cdx_checks(doc: dict[str, Any]) -> _ScoreResult:
-    components = [c for c in (doc.get("components") or []) if isinstance(c, dict)]
+    components = [c for c in _as_list(doc.get("components")) if isinstance(c, dict)]
     tot = len(components)
-    metadata = doc.get("metadata") or {}
+    metadata = _as_dict(doc.get("metadata"))
 
     tools = metadata.get("tools")
     if isinstance(tools, list):
         n_tools = len(tools)
     elif isinstance(tools, dict):
-        n_tools = len(tools.get("components") or []) + len(tools.get("services") or [])
+        n_tools = len(_as_list(tools.get("components"))) + len(
+            _as_list(tools.get("services"))
+        )
     else:
         n_tools = 0
 
     def _name(c: dict[str, Any]) -> str:
         return c.get("name") or c.get("purl") or "(unnamed)"
 
-    miss_nv = [_name(c) for c in components if not c.get("name") or not c.get("version")]
-    miss_purl = [c.get("name") or "(unnamed)" for c in components if not c.get("purl")]
+    # name+version, purl and the regulatory per-component fields are PACKAGE
+    # questions, so they are measured over ``pkg`` (everything except type
+    # "data") rather than every component (BomLens #456/#457 parity). A data
+    # component — a training dataset, say — has no package version, no purl
+    # type, no filename or artifact URI to carry; counting them would fail an
+    # otherwise complete ML-BOM for fields that cannot exist. License and
+    # checksum coverage still count them, because those they can carry.
+    pkg = [c for c in components if c.get("type") != "data"]
+    ptot = len(pkg)
+
+    miss_nv = [_name(c) for c in pkg if not c.get("name") or not c.get("version")]
+    miss_purl = [c.get("name") or "(unnamed)" for c in pkg if not c.get("purl")]
     generic = [
         c.get("name") or c.get("purl")
         for c in components
@@ -251,18 +319,83 @@ def _cdx_checks(doc: dict[str, Any]) -> _ScoreResult:
     lic_ok = sum(1 for c in components if (c.get("licenses") or []))
     hash_ok = sum(1 for c in components if (c.get("hashes") or []))
     dep_edges = sum(
-        len(d.get("dependsOn") or [])
-        for d in (doc.get("dependencies") or [])
+        len(_as_list(d.get("dependsOn")))
+        for d in _as_list(doc.get("dependencies"))
         if isinstance(d, dict)
     )
     ts = metadata.get("timestamp") or ""
-    top = metadata.get("component") or {}
-    purl_ok = tot - len(miss_purl)
+    top = _as_dict(metadata.get("component"))
+    purl_ok = ptot - len(miss_purl)
 
-    purl_pct = _pct(purl_ok, tot)
+    # Regulatory field tallies (BSI TR-03183-2 / NTIA — see the crosswalk).
+    # SHA-512 counts every component (a dataset can carry a checksum); the
+    # rest are package-scoped like name+version above.
+    def _props(c: dict[str, Any]) -> list[dict[str, Any]]:
+        return [p for p in _as_list(c.get("properties")) if isinstance(p, dict)]
+
+    creator_ok = sum(
+        1
+        for c in pkg
+        if (c.get("authors") or [])
+        or (c.get("publisher") or "")
+        or (c.get("supplier") or {})
+        or (c.get("manufacturer") or {})
+    )
+    fname_ok = sum(
+        1
+        for c in pkg
+        if any(p.get("name") == "bsi:component:filename" for p in _props(c))
+    )
+    sha512_ok = sum(
+        1
+        for c in components
+        if any(
+            isinstance(h, dict) and h.get("alg") == "SHA-512"
+            for h in _as_list(c.get("hashes"))
+        )
+    )
+    uri_ok = sum(
+        1
+        for c in pkg
+        if any(
+            isinstance(r, dict) and r.get("type") in ("vcs", "distribution")
+            for r in _as_list(c.get("externalReferences"))
+        )
+    )
+    _FPROP_NAMES = (
+        "bsi:component:executable",
+        "bsi:component:archive",
+        "bsi:component:structured",
+    )
+    fprops_ok = sum(
+        1
+        for c in pkg
+        if all(
+            any(p.get("name") == want for p in _props(c)) for want in _FPROP_NAMES
+        )
+    )
+
+    purl_pct = _pct(purl_ok, ptot)
     lic_pct = _pct(lic_ok, tot)
     hash_pct = _pct(hash_ok, tot)
     purlmin, licmin, hashmin = _purl_min_pct(), _license_min_pct(), _hash_min_pct()
+    fieldmin = _field_min_pct()
+
+    def _cov(n: int, d: int) -> str:
+        """Coverage detail with the empty-denominator guard (BomLens #457):
+        zero subjects is "nothing to measure", NOT "0%, the worst score"."""
+        return "no packages to measure" if d == 0 else f"{_pct(n, d)}% ({n}/{d})"
+
+    # Anti-evasion (security-reviewer Low, this branch): typing EVERY
+    # component "data" would zero the package denominator and slide a shell
+    # SBOM past the mandatory name-version / purl checks on the
+    # empty-denominator guard. An all-dataset document is not a plausible
+    # ML-BOM (the model itself is not type "data"), so that shape downgrades
+    # both checks to warn. Deliberate divergence from upstream (BomLens
+    # passes it): a report-only CLI can afford that, a governance badge
+    # cannot.
+    data_only = tot > 0 and ptot == 0
+    _DATA_ONLY_DETAIL = 'all components are typed "data" — nothing to measure'
 
     checks = [
         Check("timestamp", "Timestamp (metadata.timestamp)", True,
@@ -273,11 +406,14 @@ def _cdx_checks(doc: dict[str, Any]) -> _ScoreResult:
               "pass" if top.get("name") and top.get("version") else "fail",
               f"{top.get('name') or '(none)'}@{top.get('version') or ''}"),
         Check("name-version", "Component name+version coverage (100%)", True,
-              "pass" if not miss_nv else "fail",
-              f"{tot - len(miss_nv)}/{tot}", _cap(miss_nv)),
+              "warn" if data_only else ("pass" if not miss_nv else "fail"),
+              _DATA_ONLY_DETAIL if data_only
+              else f"{ptot - len(miss_nv)}/{ptot}", _cap(miss_nv)),
         Check("purl", f"PURL coverage (>= {purlmin}%)", True,
-              "pass" if purl_pct >= purlmin else "fail",
-              f"{purl_pct}% ({purl_ok}/{tot})", _cap(miss_purl)),
+              "warn" if data_only
+              else ("pass" if ptot == 0 or purl_pct >= purlmin else "fail"),
+              _DATA_ONLY_DETAIL if data_only
+              else _cov(purl_ok, ptot), _cap(miss_purl)),
         Check("no-generic", "No pkg:generic / custom PURL (0)", True,
               "pass" if not generic else "fail",
               f"{len(generic)} offending", _cap([str(g) for g in generic])),
@@ -287,6 +423,38 @@ def _cdx_checks(doc: dict[str, Any]) -> _ScoreResult:
               "pass" if lic_pct >= licmin else "warn", f"{lic_pct}% ({lic_ok}/{tot})"),
         Check("hash", f"Hash coverage (>= {hashmin}%, recommended)", False,
               "pass" if hash_pct >= hashmin else "warn", f"{hash_pct}% ({hash_ok}/{tot})"),
+        # Regulatory field checks — advisory AND verdict-neutral (excluded
+        # from n_warn in ``evaluate``; see REGULATORY_FIELD_CHECK_IDS).
+        Check("hash-algorithm",
+              f"SHA-512 checksum coverage (>= {fieldmin}%, recommended)", False,
+              "pass" if tot == 0 or _pct(sha512_ok, tot) >= fieldmin else "warn",
+              "nothing to measure" if tot == 0
+              else f"{_pct(sha512_ok, tot)}% ({sha512_ok}/{tot})"),
+        Check("component-creator",
+              f"Component creator coverage (>= {fieldmin}%, recommended)", False,
+              "pass" if ptot == 0 or _pct(creator_ok, ptot) >= fieldmin else "warn",
+              _cov(creator_ok, ptot)),
+        Check("component-filename",
+              f"Component filename coverage (>= {fieldmin}%, recommended)", False,
+              "pass" if ptot == 0 or _pct(fname_ok, ptot) >= fieldmin else "warn",
+              _cov(fname_ok, ptot)),
+        Check("artifact-uri",
+              f"Source or distribution URI coverage (>= {fieldmin}%, recommended)",
+              False,
+              "pass" if ptot == 0 or _pct(uri_ok, ptot) >= fieldmin else "warn",
+              _cov(uri_ok, ptot)),
+        # ``source`` mirrors upstream: "auto" when the SBOM actually carries
+        # the bsi:component:* trio somewhere, "na" (human review) when no
+        # producer in this chain inspected the delivered files — the check
+        # then reads as a review item, not a coverage failure.
+        Check("file-properties",
+              "Delivered-file properties (executable/archive/structured)", False,
+              "pass" if ptot == 0 or _pct(fprops_ok, ptot) >= fieldmin else "warn",
+              "no packages to measure" if ptot == 0
+              else ("requires inspecting the delivered files "
+                    "(no automated source in this scan)" if fprops_ok == 0
+                    else f"{_pct(fprops_ok, ptot)}% ({fprops_ok}/{ptot})"),
+              source="auto" if (ptot == 0 or fprops_ok > 0) else "na"),
     ]
 
     # G7 AI SBOM minimum-elements advisory checks — appended only when the
@@ -305,10 +473,10 @@ def _cdx_checks(doc: dict[str, Any]) -> _ScoreResult:
 # SPDX-JSON scorer.
 # ---------------------------------------------------------------------------
 def _spdx_json_checks(doc: dict[str, Any]) -> _ScoreResult:
-    packages = [p for p in (doc.get("packages") or []) if isinstance(p, dict)]
+    packages = [p for p in _as_list(doc.get("packages")) if isinstance(p, dict)]
     tot = len(packages)
-    creation = doc.get("creationInfo") or {}
-    creators = creation.get("creators") or []
+    creation = _as_dict(doc.get("creationInfo"))
+    creators = _as_list(creation.get("creators"))
     n_tools = sum(
         1 for c in creators if isinstance(c, str) and c.startswith("Tool:")
     )
@@ -317,7 +485,7 @@ def _spdx_json_checks(doc: dict[str, Any]) -> _ScoreResult:
     def _ext_purls(p: dict[str, Any]) -> list[str]:
         return [
             ref.get("referenceLocator") or ""
-            for ref in (p.get("externalRefs") or [])
+            for ref in _as_list(p.get("externalRefs"))
             if isinstance(ref, dict) and ref.get("referenceType") == "purl"
         ]
 
@@ -345,11 +513,11 @@ def _spdx_json_checks(doc: dict[str, Any]) -> _ScoreResult:
     hash_ok = sum(1 for p in packages if (p.get("checksums") or []))
     dep_edges = sum(
         1
-        for r in (doc.get("relationships") or [])
+        for r in _as_list(doc.get("relationships"))
         if isinstance(r, dict) and r.get("relationshipType") == "DEPENDS_ON"
     )
     docname = doc.get("name") or ""
-    describes = len(doc.get("documentDescribes") or [])
+    describes = len(_as_list(doc.get("documentDescribes")))
     purl_ok = tot - len(miss_purl)
 
     purl_pct = _pct(purl_ok, tot)
@@ -369,8 +537,9 @@ def _spdx_json_checks(doc: dict[str, Any]) -> _ScoreResult:
               "pass" if not miss_nv else "fail",
               f"{tot - len(miss_nv)}/{tot}", _cap(miss_nv)),
         Check("purl", f"PURL coverage (>= {purlmin}%)", True,
-              "pass" if purl_pct >= purlmin else "fail",
-              f"{purl_pct}% ({purl_ok}/{tot})", _cap(miss_purl)),
+              "pass" if tot == 0 or purl_pct >= purlmin else "fail",
+              "no packages to measure" if tot == 0
+              else f"{purl_pct}% ({purl_ok}/{tot})", _cap(miss_purl)),
         Check("no-generic", "No pkg:generic / custom PURL (0)", True,
               "pass" if not generic else "fail",
               f"{len(generic)} offending", _cap(generic)),
@@ -458,9 +627,18 @@ def evaluate(raw: bytes) -> ConformanceResult:
     # the overall result or its counters (BomLens g7_ai_checks parity: the G7
     # text defines no required matrix, see the registry note). They are all
     # ``required=False`` so ``n_fail`` skips them structurally; ``n_warn``
-    # skips them explicitly via the cluster tag. A unit test locks both.
+    # skips them explicitly via the cluster tag. The regulatory field checks
+    # (REGULATORY_FIELD_CHECK_IDS) are likewise verdict-neutral — upstream:
+    # "they describe how well the SBOM would answer a regulator, and never
+    # move the submission verdict". A unit test locks all three exclusions.
     n_fail = sum(1 for c in checks if c.required and c.status == "fail")
-    n_warn = sum(1 for c in checks if c.status == "warn" and c.cluster is None)
+    n_warn = sum(
+        1
+        for c in checks
+        if c.status == "warn"
+        and c.cluster is None
+        and c.id not in REGULATORY_FIELD_CHECK_IDS
+    )
     if n_fail > 0:
         result = "fail"
     elif n_warn > 0:

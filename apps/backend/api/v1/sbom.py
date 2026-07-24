@@ -47,7 +47,11 @@ from core.errors import problem_response
 from core.ratelimit import _authenticated_user_key, limiter
 from core.security import CurrentUser, require_role
 from models import Project, SbomConformance
-from schemas.sbom import SbomConformanceRead
+from schemas.sbom import (
+    RegulatoryCrosswalk,
+    SbomConformanceCheck,
+    SbomConformanceRead,
+)
 from schemas.scan import ScanPublic
 from services.project_service import (
     ProjectError,
@@ -55,6 +59,7 @@ from services.project_service import (
     ProjectNotFound,
     get_project,
 )
+from services.regulation_crosswalk import attach_regulations, crosswalk_summary
 from services.report_download_service import record_report_download
 from services.sbom_export import (
     SBOMExportError,
@@ -920,7 +925,23 @@ async def get_sbom_conformance_endpoint(
             instance=request.url.path,
         )
 
-    body = SbomConformanceRead.model_validate(row)
+    # Read-time regulatory crosswalk join (services.regulation_crosswalk):
+    # each check gains its BSI / NTIA / AI-Act references and the response
+    # gains the per-framework rollup. Computed here rather than persisted —
+    # the crosswalk is a static vendored catalogue, so old rows pick up
+    # mapping updates for free. Informational only, never verdict-moving.
+    joined = attach_regulations(list(row.checks or []))
+    summary = crosswalk_summary(joined)
+    body = SbomConformanceRead.model_validate(row).model_copy(
+        update={
+            "checks": [SbomConformanceCheck.model_validate(c) for c in joined],
+            "regulatory_crosswalk": (
+                RegulatoryCrosswalk.model_validate(summary)
+                if summary["frameworks"]
+                else None
+            ),
+        }
+    )
     return Response(
         content=body.model_dump_json(),
         status_code=status.HTTP_200_OK,

@@ -67,6 +67,45 @@ describe("splitChecks", () => {
     expect(g7).toHaveLength(0);
   });
 
+  it("keeps the 5 regulatory field checks in base — even file-properties with source 'na'", () => {
+    // feat/sbom-conformance-crosswalk: the new verdict-neutral regulatory
+    // checks carry no cluster and no "g7-" prefix, but `file-properties` MAY
+    // carry a `source` field ("auto" | "na"). The partition is prefix-based,
+    // so none of them may leak into the G7 array (which would pollute the G7
+    // tally headline).
+    const checks = [
+      check({ id: "purl", cluster: null, source: null }),
+      check({ id: "hash-algorithm", cluster: null, source: null, status: "warn" }),
+      check({ id: "component-creator", cluster: null, source: null }),
+      check({ id: "component-filename", cluster: null, source: null }),
+      check({ id: "artifact-uri", cluster: null, source: null }),
+      check({ id: "file-properties", cluster: null, source: "na", status: "warn" }),
+      check({ id: "g7-model-name" }),
+      check({ id: "g7-slp-data-flow", cluster: "slp", source: "na", status: "warn" }),
+    ];
+    const { base, g7 } = splitChecks(checks);
+    expect(base.map((c) => c.id)).toEqual([
+      "purl",
+      "hash-algorithm",
+      "component-creator",
+      "component-filename",
+      "artifact-uri",
+      "file-properties",
+    ]);
+    expect(g7.map((c) => c.id)).toEqual(["g7-model-name", "g7-slp-data-flow"]);
+
+    // The G7 tally is computed over the g7 partition only — the regulatory
+    // warn rows (incl. the source="na" file-properties) do not move it.
+    expect(g7Tally(g7)).toEqual({
+      present: 1,
+      advisory: 0,
+      review: 1,
+      total: 2,
+      autoTotal: 1,
+      failed: 0,
+    });
+  });
+
   it("isG7 / clusterOf handle null and empty cluster values", () => {
     expect(isG7(check({ id: "g7-slp-name" }))).toBe(true);
     expect(isG7(check({ id: "license" }))).toBe(false);

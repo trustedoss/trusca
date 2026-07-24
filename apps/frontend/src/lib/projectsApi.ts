@@ -336,6 +336,60 @@ export type SbomConformanceResult = "pass" | "warn" | "fail";
 
 export type SbomCheckStatus = "pass" | "fail" | "warn";
 
+/**
+ * One regulatory crosswalk reference joined onto a check at read time
+ * (backend `services/regulation_crosswalk.py::attach_regulations`).
+ * Informational only — which regulatory obligation the check's subject
+ * touches. Never a compliance determination (see the crosswalk disclaimer).
+ */
+export interface RegulationRef {
+  /** Framework id (e.g. "bsi-tr-03183-2"). */
+  framework: string;
+  /** Section / article the check maps to. */
+  ref: string;
+  /** Interpretive basis for the link, quoted from the crosswalk. */
+  basis: string;
+  /** Short framework display name (EN). */
+  short: string;
+  /** Short framework display name (KO). */
+  short_ko: string;
+}
+
+/** A mapped check inside one framework's rollup row. */
+export interface CrosswalkElement {
+  id: string;
+  label: string;
+  status: SbomCheckStatus;
+  source: string | null;
+  detail: string;
+  refs: string[];
+}
+
+/** Per-framework rollup: how well this SBOM would answer that regulator. */
+export interface CrosswalkFramework {
+  id: string;
+  title: string;
+  title_ko: string;
+  short: string;
+  short_ko: string;
+  source: string;
+  total: number;
+  /** Mapped checks that pass. */
+  present: number;
+  /** Mapped checks warning with an automated source. */
+  gap: number;
+  /** Mapped checks answerable only by a human (source "na"). */
+  review: number;
+  elements: CrosswalkElement[];
+}
+
+/** The crosswalk summary block — documentation-preparation aid, not a verdict. */
+export interface RegulatoryCrosswalk {
+  disclaimer: string;
+  disclaimer_ko: string;
+  frameworks: CrosswalkFramework[];
+}
+
 export interface SbomConformanceCheck {
   id: string;
   label: string;
@@ -359,6 +413,12 @@ export interface SbomConformanceCheck {
   role?: string | null;
   /** Actual SBOM values that satisfied the element (purl, license id, …). */
   evidence?: string[] | null;
+  /**
+   * Regulatory references this check's subject maps to (joined at read time
+   * from the vendored `regulation_crosswalk.json`). Empty list = no mapping;
+   * null/absent = the join was not applied. Informational only.
+   */
+  regulations?: RegulationRef[] | null;
 }
 
 export interface SbomConformanceRead {
@@ -373,6 +433,12 @@ export interface SbomConformanceRead {
   license_coverage_pct: number | null;
   hash_coverage_pct: number | null;
   checks: SbomConformanceCheck[];
+  /**
+   * Read-time computed per-framework rollup (backend
+   * `services/regulation_crosswalk.py::crosswalk_summary`) — null when no
+   * check maps to any framework (e.g. unknown-format rows).
+   */
+  regulatory_crosswalk?: RegulatoryCrosswalk | null;
 }
 
 /**
@@ -394,9 +460,31 @@ export const SBOM_CHECK_IDS = [
   "transitive",
   "license",
   "hash",
+  // Regulatory per-component field checks (CycloneDX only, verdict-neutral) —
+  // mirror of `services/sbom_conformance.REGULATORY_FIELD_CHECK_IDS`.
+  "hash-algorithm",
+  "component-creator",
+  "component-filename",
+  "artifact-uri",
+  "file-properties",
 ] as const;
 
 export type SbomCheckId = (typeof SBOM_CHECK_IDS)[number];
+
+/**
+ * The five regulatory field checks (mirror of the backend's
+ * `REGULATORY_FIELD_CHECK_IDS`). They are verdict-neutral, `required=false`,
+ * carry no cluster (they render in the base table), and their display labels
+ * come from the backend `check.label` string — so the `conformance.check_id.*`
+ * i18n label contract intentionally excludes them (see catalogMirrors.test.ts).
+ */
+export const SBOM_REGULATORY_CHECK_IDS = [
+  "hash-algorithm",
+  "component-creator",
+  "component-filename",
+  "artifact-uri",
+  "file-properties",
+] as const;
 
 export async function getSbomConformance(
   projectId: string,

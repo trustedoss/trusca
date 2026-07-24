@@ -160,7 +160,10 @@ class PkgGoLicenseFetcher:
         module, version = parsed
         # Each path segment is url-encoded individually so module slashes survive.
         module_path = "/".join(quote(seg, safe="") for seg in module.split("/"))
-        url = f"{_PKG_GO_BASE}/{module_path}@{quote(version)}?tab=licenses"
+        # ``safe=""`` on the version too — the module path is already quoted
+        # per segment, so the version must not be able to reintroduce ``/``
+        # (W8-#49 security-reviewer follow-up).
+        url = f"{_PKG_GO_BASE}/{module_path}@{quote(version, safe='')}?tab=licenses"
         client = self._client(timeout)
         response = request_with_retry(
             client=client,

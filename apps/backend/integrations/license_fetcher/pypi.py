@@ -148,7 +148,10 @@ class PyPILicenseFetcher:
             log.info("pypi_purl_unrecognized", purl=purl)
             return None
         name, version = parsed
-        url = f"{_PYPI_BASE}/{quote(name)}/{quote(version)}/json"
+        # ``safe=""`` so a hostile purl cannot smuggle ``/`` through the name
+        # or version and traverse to another in-registry path (W8-#49
+        # security-reviewer follow-up; gem/nuget shipped with this already).
+        url = f"{_PYPI_BASE}/{quote(name, safe='')}/{quote(version, safe='')}/json"
         client = self._client(timeout)
         response = request_with_retry(
             client=client,

@@ -13,10 +13,12 @@
  * matching the GateResultCard / SeverityBadge test convention.
  */
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import { SbomConformancePanel } from "@/features/scan/SbomConformancePanel";
 import type {
+  RegulatoryCrosswalk,
   SbomConformanceCheck,
   SbomConformanceRead,
 } from "@/lib/projectsApi";
@@ -380,5 +382,217 @@ describe("SbomConformancePanel", () => {
     expect(screen.getByTestId("conformance-hash-coverage").textContent).toBe(
       "—",
     );
+  });
+
+  // --- Regulatory field checks + crosswalk (feat/sbom-conformance-crosswalk) -
+
+  it("renders the 5 regulatory field checks in the base table without a G7 section", () => {
+    // The new checks have no cluster and no g7- prefix; `file-properties` may
+    // carry source="na" and must STILL render as a base row (never leak into
+    // the G7 section or its tally).
+    render(
+      <SbomConformancePanel
+        conformance={conformance({
+          checks: [
+            check({ id: "purl" }),
+            check({
+              id: "hash-algorithm",
+              label: "Hash algorithm strength",
+              required: false,
+              status: "warn",
+            }),
+            check({
+              id: "file-properties",
+              label: "File-level properties",
+              required: false,
+              status: "warn",
+              source: "na",
+            }),
+          ],
+        })}
+      />,
+    );
+    const table = screen.getByTestId("conformance-checks-table");
+    expect(
+      within(table).getByTestId("check-hash-algorithm"),
+    ).toBeInTheDocument();
+    expect(
+      within(table).getByTestId("check-file-properties"),
+    ).toBeInTheDocument();
+    // Backend-supplied labels render (no FE check_id.* localization for them).
+    expect(
+      within(table).getByTestId("check-hash-algorithm").textContent,
+    ).toContain("Hash algorithm strength");
+    // No G7 section — the source="na" regulatory row is not a G7 check.
+    expect(
+      screen.queryByTestId("conformance-g7-section"),
+    ).not.toBeInTheDocument();
+  });
+
+  /** A crosswalk rollup as the backend emits it (two frameworks). */
+  function crosswalk(
+    overrides: Partial<RegulatoryCrosswalk> = {},
+  ): RegulatoryCrosswalk {
+    return {
+      disclaimer:
+        "Informational mapping — not legal advice or a compliance determination.",
+      disclaimer_ko: "참고용 매핑입니다. 규제 준수 판정이 아닙니다.",
+      frameworks: [
+        {
+          id: "bsi-tr-03183-2",
+          title: "BSI Technical Guideline TR-03183 Part 2",
+          title_ko: "BSI 기술 지침 TR-03183 2부",
+          short: "BSI TR-03183-2",
+          short_ko: "BSI TR-03183-2",
+          source: "https://example.invalid/bsi",
+          total: 9,
+          present: 6,
+          gap: 2,
+          review: 1,
+          elements: [
+            {
+              id: "hash",
+              label: "File hashes",
+              status: "warn",
+              source: null,
+              detail: "40% (2/5)",
+              refs: ["Section 5.2.2"],
+            },
+            {
+              id: "purl",
+              label: "Package URLs",
+              status: "pass",
+              source: null,
+              detail: "100% (5/5)",
+              refs: ["Section 5.2.4"],
+            },
+          ],
+        },
+        {
+          id: "ntia-minimum",
+          title: "NTIA Minimum Elements for an SBOM",
+          title_ko: "NTIA SBOM 최소 요소",
+          short: "NTIA minimum",
+          short_ko: "NTIA 최소 요소",
+          source: "https://example.invalid/ntia",
+          total: 5,
+          present: 5,
+          gap: 0,
+          review: 0,
+          elements: [
+            {
+              id: "timestamp",
+              label: "Document timestamp",
+              status: "pass",
+              source: null,
+              detail: "",
+              refs: ["§2"],
+            },
+          ],
+        },
+      ],
+      ...overrides,
+    };
+  }
+
+  it("does not render the crosswalk section when regulatory_crosswalk is null", () => {
+    render(
+      <SbomConformancePanel
+        conformance={conformance({ regulatory_crosswalk: null })}
+      />,
+    );
+    expect(
+      screen.queryByTestId("conformance-crosswalk-section"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders one framework row per framework with the present/gap/review tally", () => {
+    render(
+      <SbomConformancePanel
+        conformance={conformance({ regulatory_crosswalk: crosswalk() })}
+      />,
+    );
+    const section = screen.getByTestId("conformance-crosswalk-section");
+    // Localized section title + informational intro (not a verdict).
+    expect(section.textContent).toContain("Regulatory crosswalk");
+    expect(section.textContent).toContain("not a compliance determination");
+
+    const rows = within(section)
+      .getAllByTestId(/^crosswalk-framework-/)
+      .filter((r) => {
+        const id = r.getAttribute("data-testid") ?? "";
+        return !id.endsWith("-toggle") && !id.endsWith("-elements");
+      });
+    expect(rows).toHaveLength(2);
+
+    // Rollup numbers surface as data attributes (locale-independent).
+    const bsi = screen.getByTestId("crosswalk-framework-bsi-tr-03183-2");
+    expect(bsi).toHaveAttribute("data-total", "9");
+    expect(bsi).toHaveAttribute("data-present", "6");
+    expect(bsi).toHaveAttribute("data-gap", "2");
+    expect(bsi).toHaveAttribute("data-review", "1");
+    // Locale-aware short name + the visible tally text.
+    expect(bsi.textContent).toContain("BSI TR-03183-2");
+    expect(bsi.textContent).toContain("6 / 9 present");
+    // Gap/review badges only where the count is > 0.
+    expect(
+      screen.getByTestId("crosswalk-bsi-tr-03183-2-gap").textContent,
+    ).toContain("2");
+    expect(
+      screen.getByTestId("crosswalk-bsi-tr-03183-2-review").textContent,
+    ).toContain("1");
+    expect(
+      screen.queryByTestId("crosswalk-ntia-minimum-gap"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("crosswalk-ntia-minimum-review"),
+    ).not.toBeInTheDocument();
+
+    // The backend disclaimer renders as small muted text at the end.
+    expect(
+      screen.getByTestId("conformance-crosswalk-disclaimer").textContent,
+    ).toBe(
+      "Informational mapping — not legal advice or a compliance determination.",
+    );
+  });
+
+  it("expands a framework row to its mapped elements (label, status badge, refs, detail)", async () => {
+    const user = userEvent.setup();
+    render(
+      <SbomConformancePanel
+        conformance={conformance({ regulatory_crosswalk: crosswalk() })}
+      />,
+    );
+    // Collapsed by default.
+    expect(
+      screen.queryByTestId("crosswalk-framework-bsi-tr-03183-2-elements"),
+    ).not.toBeInTheDocument();
+
+    const toggle = screen.getByTestId(
+      "crosswalk-framework-bsi-tr-03183-2-toggle",
+    );
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+
+    const elements = screen.getByTestId(
+      "crosswalk-framework-bsi-tr-03183-2-elements",
+    );
+    const hashRow = within(elements).getByTestId(
+      "crosswalk-element-bsi-tr-03183-2-hash",
+    );
+    expect(hashRow.textContent).toContain("File hashes");
+    expect(hashRow.textContent).toContain("40% (2/5)");
+    expect(hashRow.textContent).toContain("Section 5.2.2");
+    // Status is a badge (text + dot), not color alone.
+    expect(
+      within(hashRow).getByTestId("conformance-check-status"),
+    ).toHaveAttribute("data-status", "warn");
+
+    // Collapses again on a second activation.
+    await user.click(toggle);
+    expect(
+      screen.queryByTestId("crosswalk-framework-bsi-tr-03183-2-elements"),
+    ).not.toBeInTheDocument();
   });
 });

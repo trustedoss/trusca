@@ -98,7 +98,9 @@ class CratesLicenseFetcher:
             log.info("crates_purl_unrecognized", purl=purl)
             return None
         name, version = parsed
-        url = f"{_CRATES_BASE}/{quote(name)}/{quote(version)}"
+        # ``safe=""`` — same in-registry path-traversal guard as pypi/gem/nuget
+        # (W8-#49 security-reviewer follow-up).
+        url = f"{_CRATES_BASE}/{quote(name, safe='')}/{quote(version, safe='')}"
         client = self._client(timeout)
         response = request_with_retry(
             client=client,
