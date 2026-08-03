@@ -40,12 +40,60 @@ title() { printf "\n${BOLD}%s${RESET}\n" "$1"; }
 command -v docker-compose >/dev/null 2>&1 || fail "docker-compose (V1) is required."
 
 # ---------------------------------------------------------------------------
+# 0. Compose file selection — follow the deploy's own overlay
+# ---------------------------------------------------------------------------
+# Every docker-compose call below used to hard-code `-f docker-compose.yml`,
+# which silently DROPS whatever overlay the deployment actually runs with. An
+# explicit `-f` also overrides the standard COMPOSE_FILE variable, so declaring
+# the overlay the documented way had no effect here.
+#
+# That is not cosmetic. The demo host runs `docker-compose.yml` +
+# `docker-compose.demo.yml`, and the overlay is what passes DEMO_READ_ONLY into
+# the backend and what caps the worker at the box's 2 CPUs. Upgrading through
+# the base file alone rebuilt the stack WITHOUT the public read-only lock and
+# with the 4.0 CPU default — a deploy quietly turning off a safety boundary.
+#
+# COMPOSE_FILE is read from .env when the environment does not already carry
+# it, because that is where an operator declares it and where docker-compose
+# itself looks. Unset (the single-file default) keeps the previous behaviour.
+if [ -z "${COMPOSE_FILE:-}" ] && [ -f .env ]; then
+  COMPOSE_FILE="$(grep -E '^COMPOSE_FILE=' .env | tail -1 | cut -d= -f2- || true)"
+  [ -n "$COMPOSE_FILE" ] && export COMPOSE_FILE
+fi
+COMPOSE_ARGS=(-f docker-compose.yml)
+if [ -n "${COMPOSE_FILE:-}" ]; then
+  COMPOSE_ARGS=()
+  IFS=':' read -ra _compose_files <<< "$COMPOSE_FILE"
+  for _f in "${_compose_files[@]}"; do
+    [ -n "$_f" ] && COMPOSE_ARGS+=(-f "$_f")
+  done
+  [ ${#COMPOSE_ARGS[@]} -eq 0 ] && COMPOSE_ARGS=(-f docker-compose.yml)
+fi
+note "compose files: ${COMPOSE_ARGS[*]}"
+
+# ---------------------------------------------------------------------------
 # 1. Pre-upgrade backup
 # ---------------------------------------------------------------------------
+# Mandatory while there is a live database to dump — and skipped when there is
+# not. backup.sh runs `pg_dump` through `docker-compose exec postgres`, which
+# exits non-zero with "service \"postgres\" is not running" against a stopped
+# stack. Failing here used to be unrecoverable in the one situation that needs
+# this script most: a previous deploy that died AFTER stopping the containers
+# left the stack down, and the next upgrade could not get past its own backup
+# step to bring it back. A stopped database also has nothing to lose, so the
+# safety net protects nothing here.
 title "Pre-upgrade backup"
-note "Running scripts/backup.sh — this is mandatory before pulling new images."
-bash "$ROOT_DIR/scripts/backup.sh"
-ok "backup complete"
+pg_cid="$(docker-compose "${COMPOSE_ARGS[@]}" ps -q postgres 2>/dev/null || true)"
+if [ -n "$pg_cid" ] && \
+   [ "$(docker inspect -f '{{.State.Running}}' "$pg_cid" 2>/dev/null || echo false)" = "true" ]; then
+  note "Running scripts/backup.sh — this is mandatory before pulling new images."
+  bash "$ROOT_DIR/scripts/backup.sh"
+  ok "backup complete"
+else
+  warn "postgres is not running — skipping the pre-upgrade backup."
+  note "There is no live database to dump. Continuing so a stack that is"
+  note "already down can be brought back up."
+fi
 
 # ---------------------------------------------------------------------------
 # 1.5 .env sync — append-only (W6-chore-seed B)
@@ -101,7 +149,7 @@ if [[ $dt_env_set -eq 1 || -n "$dt_container" ]]; then
       # Empty/no-output OR `{}`-only output → no active tasks. ``|| true`` so a
       # non-zero exit from inspect (broker unreachable, no workers) does not
       # abort the upgrade — we re-check at the end of the loop.
-      active=$(docker-compose -f docker-compose.yml exec -T worker \
+      active=$(docker-compose "${COMPOSE_ARGS[@]}" exec -T worker \
         celery -A tasks.celery_app inspect active --timeout=5 2>/dev/null || true)
       # `inspect active` prints "- empty -" when there are no tasks, OR an
       # `<worker>: OK` line followed by `- empty -`. Treat both empties OR an
@@ -226,7 +274,7 @@ fi
 # 3. Pull new images
 # ---------------------------------------------------------------------------
 title "Pulling new images"
-docker-compose -f docker-compose.yml pull
+docker-compose "${COMPOSE_ARGS[@]}" pull
 ok "images pulled"
 
 # ---------------------------------------------------------------------------
@@ -243,25 +291,52 @@ ok "images pulled"
 title "Draining removed DT tasks from the broker"
 note "Purging trustedoss.dt_{resync,health,orphan_cleaner,orphan_cleanup}"
 note "(in-flight DT messages would NACK forever against the new worker)."
-docker-compose -f docker-compose.yml exec -T worker \
+docker-compose "${COMPOSE_ARGS[@]}" exec -T worker \
   celery -A tasks.celery_app purge -f \
     --task-names=trustedoss.dt_resync,trustedoss.dt_health,trustedoss.dt_orphan_cleaner,trustedoss.dt_orphan_cleanup \
     >/dev/null 2>&1 || true
 ok "broker drain complete (best-effort)"
 
 # ---------------------------------------------------------------------------
+# 4.5 Worker CPU limit — clamp to the host's online CPU count
+# ---------------------------------------------------------------------------
+# Same clamp install.sh applies at 2c, repeated here because an .env can reach
+# this point without it: installs that predate that step, hand-written files,
+# or a host that was resized down. docker-compose.yml caps the worker at
+# `${WORKER_CPU_LIMIT:-4.0}`, and Compose V2 treats a cpus limit above the
+# host's online CPU count as a HARD error at `up` ("range of CPUs is from 0.01
+# to N") — so the stock 4.0 aborts the recreate below on a 2-vCPU box, midway
+# through, with services already stopped.
+title "Worker CPU limit"
+host_cpus=$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || echo 4)
+case "$host_cpus" in ''|*[!0-9]*) host_cpus=4 ;; esac
+if [ "$host_cpus" -lt 4 ]; then worker_cpu_limit="$host_cpus"; else worker_cpu_limit="4"; fi
+python3 - "$worker_cpu_limit" <<'PYTHON'
+import re, sys
+from pathlib import Path
+val = sys.argv[1]
+env = Path(".env")
+text = env.read_text()
+line = f"WORKER_CPU_LIMIT={val}"
+pat = r"^WORKER_CPU_LIMIT=.*$"
+text = re.sub(pat, line, text, flags=re.M) if re.search(pat, text, flags=re.M) else text.rstrip() + f"\n{line}\n"
+env.write_text(text)
+PYTHON
+ok "WORKER_CPU_LIMIT=${worker_cpu_limit} (host has ${host_cpus} online CPU(s))"
+
+# ---------------------------------------------------------------------------
 # 5. Recreate containers
 # ---------------------------------------------------------------------------
 title "Recreating containers"
 note "The portal will be briefly unavailable (typically <30s)."
-docker-compose -f docker-compose.yml up -d
+docker-compose "${COMPOSE_ARGS[@]}" up -d
 ok "containers running"
 
 # ---------------------------------------------------------------------------
 # 6. alembic upgrade head
 # ---------------------------------------------------------------------------
 title "Database migration"
-docker-compose -f docker-compose.yml exec -T backend alembic upgrade head
+docker-compose "${COMPOSE_ARGS[@]}" exec -T backend alembic upgrade head
 ok "schema is at HEAD"
 
 # ---------------------------------------------------------------------------
@@ -269,7 +344,7 @@ ok "schema is at HEAD"
 # ---------------------------------------------------------------------------
 title "Post-upgrade health probe"
 for _ in $(seq 1 30); do
-  if docker-compose -f docker-compose.yml exec -T backend curl -fsS http://localhost:8000/health >/dev/null 2>&1; then
+  if docker-compose "${COMPOSE_ARGS[@]}" exec -T backend curl -fsS http://localhost:8000/health >/dev/null 2>&1; then
     ok "backend is healthy"
     title "Upgrade complete"
     note "If something looks off, restore the pre-upgrade backup:"
@@ -278,4 +353,4 @@ for _ in $(seq 1 30); do
   fi
   sleep 2
 done
-fail "backend did not become healthy. Inspect: docker-compose -f docker-compose.yml logs backend"
+fail "backend did not become healthy. Inspect: docker-compose ${COMPOSE_ARGS[*]} logs backend"

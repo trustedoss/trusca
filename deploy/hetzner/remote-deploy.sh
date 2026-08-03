@@ -37,6 +37,24 @@ IMG="${TAG#v}"   # image tags are published without the leading 'v' (see release
 
 cd "$REMOTE_PATH"
 
+# Bring the stack back if any step below fails. upgrade.sh recreates services
+# one at a time, so a failure partway through leaves the earlier ones stopped —
+# a failed deploy became an outage that the next deploy could not clear on its
+# own. Best-effort and non-masking: the original exit status is what the
+# workflow sees, so a recovered stack still reports a red deploy.
+restore_stack_on_failure() {
+  rc=$?
+  [ "$rc" -eq 0 ] && exit 0
+  echo "==> deploy failed (exit $rc) — attempting to restart the stack" >&2
+  if docker-compose -f docker-compose.yml up -d >&2; then
+    echo "==> stack is back up; the deploy itself still FAILED (exit $rc)" >&2
+  else
+    echo "==> could not restart the stack — it needs manual attention" >&2
+  fi
+  exit "$rc"
+}
+trap restore_stack_on_failure EXIT
+
 echo "==> fetching tags"
 git fetch --tags --prune --force
 
@@ -68,5 +86,30 @@ echo "==> running scripts/upgrade.sh (non-interactive)"
 #                        wait. (On a fresh demo the v2.3→v2.4 DT prelude is skipped
 #                        entirely anyway — no DT artefacts exist.)
 NO_PROMPT=1 UPGRADE_SKIP_DRAIN=1 bash scripts/upgrade.sh
+
+# Optional demo reseed. OFF by default: reset_demo DROPS and rebuilds the demo
+# dataset, so it must never be something a routine deploy does silently.
+#
+# It is needed when a release changes what seed_demo.py produces. The login page
+# advertises `explore@demo.trustedoss.dev`, and that account existed in the code
+# for releases before it existed in the database — visitors were handed
+# credentials that returned "invalid email or password". A new image alone does
+# not reseed; the daily timer eventually does, which leaves a window measured in
+# hours where the demo's own instructions are wrong.
+#
+# Scope: reset_demo deletes only what belongs to the demo organisation, in one
+# transaction. Accounts outside it are untouched.
+if [ "${RESEED:-0}" = "1" ]; then
+  echo "==> reseeding the demo dataset (RESEED=1)"
+  compose_args="-f docker-compose.yml"
+  if [ -f .env ] && grep -qE '^COMPOSE_FILE=' .env; then
+    compose_args=""   # docker-compose reads COMPOSE_FILE from .env itself
+  fi
+  # shellcheck disable=SC2086  # compose_args is our own literal, word-splitting intended.
+  docker-compose $compose_args exec -T -e APP_ENV=demo backend python -m scripts.reset_demo
+  echo "==> reseed complete"
+else
+  echo "==> skipping demo reseed (set RESEED=1 to rebuild the demo dataset)"
+fi
 
 echo "==> deploy of $TAG complete"

@@ -32,6 +32,11 @@ on:
         description: "Release tag to deploy (vX.Y.Z). Blank = latest published release."
         required: false
         type: string
+      reseed:
+        description: "Rebuild the demo dataset after deploying. Needed when the release changes seed_demo.py — DROPS the demo organisation and reseeds it."
+        required: false
+        default: false
+        type: boolean
   release:
     types: [published]
 
@@ -87,6 +92,8 @@ jobs:
           DEPLOY_SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
           TAG: ${{ steps.tag.outputs.tag }}
+          # Empty on the `release` trigger, which carries no inputs.
+          RESEED_INPUT: ${{ inputs.reseed }}
         run: |
           set -euo pipefail
 
@@ -133,7 +140,21 @@ jobs:
           # TAG is a validated bare semver; remote_path is an operator-owned
           # secret. Both are passed as remote env on the command line and consumed
           # by the committed remote-deploy.sh (fed over stdin).
+          #
+          # RESEED is only ever the literal 1 or 0 — the boolean input is
+          # normalised here rather than interpolated, so nothing from the
+          # dispatch payload reaches the remote shell verbatim. A `release`
+          # trigger has no inputs and therefore never reseeds.
+          #
+          # The input arrives through the step's `env:` block rather than an
+          # expression written inline here. Expression interpolation is textual
+          # — the value becomes part of the script before the shell parses it —
+          # so it is a code-injection surface regardless of the input's declared
+          # type. Through `env:` the value stays data.
+          reseed=0
+          [ "$RESEED_INPUT" = "true" ] && reseed=1
+          echo "reseed=$reseed"
           ssh -i "$tmp/key" -p "$port" "${ssh_opts[@]}" \
             "$DEPLOY_USER@$DEPLOY_HOST" \
-            "TAG='$TAG' REMOTE_PATH='$remote_path' bash -s" \
+            "TAG='$TAG' REMOTE_PATH='$remote_path' RESEED='$reseed' bash -s" \
             < deploy/hetzner/remote-deploy.sh
