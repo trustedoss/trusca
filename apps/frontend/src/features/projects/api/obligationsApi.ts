@@ -201,6 +201,13 @@ export interface FetchNoticeParams {
   format?: NoticeFormat;
   /** When true, ask the backend to set Content-Disposition: attachment. */
   download?: boolean;
+  /**
+   * Release-snapshot anchor. When the tab is pinned to a past release, the
+   * NOTICE must be composed from that scan too — otherwise the downloaded
+   * attribution document describes the latest scan while the table above it
+   * shows the pinned one.
+   */
+  scanId?: string;
 }
 
 export async function fetchProjectNotice(
@@ -212,6 +219,9 @@ export async function fetchProjectNotice(
     params: {
       format: fmt,
       ...(params.download ? { download: true } : {}),
+      ...(params.scanId != null && params.scanId.length > 0
+        ? { scan_id: params.scanId }
+        : {}),
     },
     responseType: "text",
     transformResponse: [(raw: string) => raw],

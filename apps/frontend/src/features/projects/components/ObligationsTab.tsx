@@ -213,7 +213,7 @@ export function ObligationsTab({
   );
 
   const obligations = useObligations(projectId, filters);
-  const notice = useNotice(projectId, projectName ?? undefined);
+  const notice = useNotice(projectId, projectName ?? undefined, { scanId });
 
   const items: ObligationListItem[] = obligations.data?.items ?? [];
   const total = obligations.data?.total ?? 0;

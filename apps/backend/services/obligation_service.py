@@ -1239,9 +1239,20 @@ async def generate_notice(
     project_id: uuid.UUID,
     actor: CurrentUser,
     fmt: str = "text",
+    snapshot_scan_id: uuid.UUID | None = None,
 ) -> dict[str, Any]:
     """
     Compose a NOTICE attribution body for the project's latest scan.
+
+    ``snapshot_scan_id`` pins the document to a SPECIFIC succeeded snapshot
+    instead of the latest succeeded scan — the same anchor every other detail
+    read already accepts (obligations / licenses / vulnerabilities / SBOM).
+    Without it, "give me the NOTICE we shipped with 4.0" became impossible the
+    moment a 4.1 scan succeeded: the attribution document a release earned is
+    exactly the artefact that must stay retrievable after the next scan lands.
+    Validated by :func:`services.scan_resolution.resolve_snapshot_scan_id`
+    (cross-project / non-succeeded / nonexistent → :class:`SnapshotScanNotFound`
+    → 404 at the router, so a pinned id cannot probe another project's scans).
 
     Output shape (text format)::
 
@@ -1300,16 +1311,18 @@ async def generate_notice(
 
     generated_at = datetime.now(tz=UTC)
 
-    # Anchor the NOTICE on the latest SUCCEEDED scan — not
+    # Anchor on the resolved snapshot scan — the pinned ``snapshot_scan_id``
+    # when given, else the latest SUCCEEDED scan; never
     # ``project.latest_scan_id`` (the last *attempted* scan). A failed newest
     # attempt must not erase the attribution document the last good scan earned.
     # See ``services.scan_resolution``.
-    scan_id = await latest_succeeded_scan_id(session, project_id)
+    scan_id = await resolve_snapshot_scan_id(session, project_id, snapshot_scan_id)
     if scan_id is None:
         body = _render_empty_notice(project.name, generated_at, fmt=fmt)
         return {
             "project_id": project.id,
             "project_name": project.name,
+            "scan_id": None,
             "generated_at": generated_at,
             "format": fmt,
             "body": body,
@@ -1345,6 +1358,10 @@ async def generate_notice(
     return {
         "project_id": project.id,
         "project_name": project.name,
+        # The scan this body was actually rendered against. The router reuses it
+        # for the Reports-center history row so the recorded snapshot is the one
+        # the user downloaded, not whatever is latest by the time we log.
+        "scan_id": scan_id,
         "generated_at": generated_at,
         "format": fmt,
         "body": body,
