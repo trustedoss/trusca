@@ -1,0 +1,162 @@
+{
+  "module": "projects",
+  "_about": "projects 모듈의 api/shell 결정적 검증 스펙. 기대값은 test-cases/projects.md(가이드 도출)에서 작성, 경로는 /openapi.json로 확정. 표본: api 채널 34건 중 19 TC + shell(psql) 3 TC. 확정 결함 매핑(bugreport 확인): H-7=TC-PROJ-06-002(code-fix #345), M-10=TC-PROJ-10-003(code-fix #352), M-11=TC-PROJ-10-006(doc-fix #356), M-9=TC-PROJ-13-003(doc-fix #352). C-2(TC-PROJ-07-002/004)는 PAT 임베드 fixture가 reseed로 사라져 생성 없이는 재현 불가라 제외. M-5는 audit-log 모듈(TC-AUDIT-06-001), M-8은 users-and-teams 모듈(TC-USER-04-007) 소속이라 직접 대조 대상이 아니며, M-8은 거부 경로(409)라 무변경이어서 -setup 체크로 독립 재현만 한다. 사이드이펙트: 전 체크가 거부(4xx)·읽기·검증실패(422, 행 미생성)뿐 — 생성/보관/삭제/팀 변경 없음. M-10 직접 재현(멤버 developer 보관 204)은 영구 변경이라 제외하고, 구분 가능한 안전 변형(비멤버 developer 보관 403 + 멤버십 게이트 detail — 수정 전에는 route 게이트가 'Requires role >= team_admin'을 반환했으므로 detail로 수정 여부가 구분됨)으로 대체. 주의: ARCHIVED 대상은 벌크 시드 프로젝트(이름 난수 접미사)라 reseed 시 vars의 q/name 갱신 필요. RELEASES_PID는 드리프트로 난수 프로젝트의 succeeded 스캔이 소실(recheck §4-5)되는 사례가 있어 안정 시드 프로젝트 portal-api(releases 1건·scan_id 보유)로 고정했다.",
+  "vars": [
+    { "as": "team_admin_backend", "method": "GET", "path": "/v1/projects", "list": true, "where": { "name": "portal-api" }, "fields": { "PORTAL_API_PID": "id", "BACKEND_TEAM": "team_id" } },
+    { "as": "super_admin", "method": "GET", "path": "/v1/projects?include_archived=true&q=2946a3cb02", "list": true, "where": { "name": "Project 2946a3cb02" }, "fields": { "ARCHIVED_PID": "id", "ARCHIVED_TEAM": "team_id" } },
+    { "name": "FX_APPR_PID", "as": "super_admin", "method": "GET", "path": "/v1/projects?q=fx-appr", "list": true, "where": { "name": "fx-appr" }, "field": "id" },
+    { "name": "RELEASES_PID", "as": "super_admin", "method": "GET", "path": "/v1/projects?q=portal-api", "list": true, "where": { "name": "portal-api" }, "field": "id" }
+  ],
+  "checks": [
+    {
+      "tc": "TC-PROJ-02-002", "channel": "api", "as": "team_admin_backend",
+      "_expect": "team_id 누락 본문은 422, 오류에 missing: body.team_id",
+      "request": { "method": "POST", "path": "/v1/projects", "body": { "name": "verify-no-team", "slug": "verify-no-team" } },
+      "expect": { "status": 422, "bodyIncludes": ["missing", "team_id"] }
+    },
+    {
+      "tc": "TC-PROJ-02-003", "channel": "api", "as": "team_admin_backend",
+      "_expect": "slug 누락 본문은 422 (slug는 필수)",
+      "request": { "method": "POST", "path": "/v1/projects", "body": { "team_id": "${BACKEND_TEAM}", "name": "verify-no-slug" } },
+      "expect": { "status": 422, "bodyIncludes": ["slug"] }
+    },
+    {
+      "tc": "TC-PROJ-02-004", "channel": "api", "as": "team_admin_backend",
+      "_expect": "name 누락 본문은 422 (name은 필수)",
+      "request": { "method": "POST", "path": "/v1/projects", "body": { "team_id": "${BACKEND_TEAM}", "slug": "verify-no-name" } },
+      "expect": { "status": 422, "bodyIncludes": ["missing", "name"] }
+    },
+    {
+      "tc": "TC-PROJ-02-005", "channel": "api", "as": "team_admin_backend",
+      "_expect": "정의되지 않은 필드는 extra=forbid로 422 (행 미생성)",
+      "request": { "method": "POST", "path": "/v1/projects", "body": { "team_id": "${BACKEND_TEAM}", "name": "verify-bogus", "slug": "verify-bogus", "bogus_field": "x" } },
+      "expect": { "status": 422, "bodyIncludes": ["bogus_field"] }
+    },
+    {
+      "tc": "TC-PROJ-02-007", "channel": "api", "as": "team_admin_backend",
+      "_expect": "단일 팀 세션(backend-admin@ 멤버십 1개)이라도 team_id를 세션에서 보완하지 않고 422",
+      "request": { "method": "POST", "path": "/v1/projects", "body": { "name": "verify-session-team", "slug": "verify-session-team" } },
+      "expect": { "status": 422, "bodyIncludes": ["team_id"] }
+    },
+    {
+      "tc": "TC-PROJ-03-004", "channel": "api", "as": "team_admin_backend",
+      "_expect": "목록 행에 서버 집계 3필드(scan_count, release_count, last_scan_at) 존재 (단일 쿼리 여부는 API 표면에서 비관측이라 필드 존재만 검증)",
+      "request": { "method": "GET", "path": "/v1/projects" },
+      "expect": { "status": 200, "jsonHas": ["items[0].scan_count", "items[0].release_count", "items[0].last_scan_at"] }
+    },
+    {
+      "tc": "TC-PROJ-03-005", "channel": "api", "as": "super_admin",
+      "_expect": "보관된 프로젝트는 기본 목록에서 숨겨진다 (해당 팀은 보관 1건뿐이라 기본 목록이 빈 배열)",
+      "request": { "method": "GET", "path": "/v1/projects?team_id=${ARCHIVED_TEAM}" },
+      "expect": { "status": 200, "jsonMissing": ["items[0]"] }
+    },
+    {
+      "tc": "TC-PROJ-03-005-setup", "channel": "api", "as": "super_admin",
+      "_expect": "같은 팀을 include_archived=true로 조회하면 보관 프로젝트가 노출 (03-005의 대조군)",
+      "request": { "method": "GET", "path": "/v1/projects?team_id=${ARCHIVED_TEAM}&include_archived=true" },
+      "expect": { "status": 200, "jsonEquals": { "items[0].id": "${ARCHIVED_PID}" } }
+    },
+    {
+      "tc": "TC-PROJ-05-002", "channel": "api", "as": "team_admin_backend",
+      "_expect": "team_admin의 PATCH visibility=team은 2xx 수락, 값 유지 (현재값과 동일해 무변경)",
+      "request": { "method": "PATCH", "path": "/v1/projects/${PORTAL_API_PID}", "body": { "visibility": "team" } },
+      "expect": { "status": 200, "jsonEquals": { "visibility": "team" } }
+    },
+    {
+      "tc": "TC-PROJ-05-003", "channel": "api", "as": "team_admin_backend",
+      "_expect": "PATCH visibility=organization은 team 외 값이라 거부(422)",
+      "request": { "method": "PATCH", "path": "/v1/projects/${PORTAL_API_PID}", "body": { "visibility": "organization" } },
+      "expect": { "status": 422, "bodyIncludes": ["visibility"] }
+    },
+    {
+      "tc": "TC-PROJ-05-004", "channel": "api", "as": "developer",
+      "_expect": "developer의 visibility PATCH는 403 (team_admin 이상 필요)",
+      "request": { "method": "PATCH", "path": "/v1/projects/${PORTAL_API_PID}", "body": { "visibility": "team" } },
+      "expect": { "status": 403 }
+    },
+    {
+      "tc": "TC-PROJ-06-002", "channel": "api", "as": "super_admin", "knownBug": "H-7",
+      "_expect": "보관된 프로젝트에 새 source 스캔 트리거는 거부된다(가이드: archive는 disables new scans). 원 실행 시 202 접수 = H-7(#345로 수정). 거부라 스캔 미기동·무변경",
+      "request": { "method": "POST", "path": "/v1/projects/${ARCHIVED_PID}/scans", "body": { "kind": "source" } },
+      "expect": { "status": 409, "bodyIncludes": ["archived"] }
+    },
+    {
+      "tc": "TC-PROJ-08-006", "channel": "api", "as": "super_admin",
+      "_expect": "overview에 레거시 risk_score가 두 축(security_score, license_score)과 함께 계속 노출(back-compat). max() 산술은 fixture 수치 의존이라 필드 노출만 검증",
+      "request": { "method": "GET", "path": "/v1/projects/${PORTAL_API_PID}/overview" },
+      "expect": { "status": 200, "jsonHas": ["risk_score", "security_score", "license_score"] }
+    },
+    {
+      "tc": "TC-PROJ-10-003", "channel": "api", "as": "developer", "knownBug": "M-10",
+      "_expect": "가이드: developer 이상이 보관 가능(#352로 route 게이트가 developer로 하향 + 서비스 멤버십 게이트 추가). 멤버 developer 보관(204)은 영구 변경이라, 구분 가능한 안전 변형으로 검증: 비멤버 developer의 보관 시도가 route 게이트(수정 전 'Requires role >= team_admin')가 아닌 서비스 멤버십 게이트의 403('requires membership of the project's team')으로 거부되면 developer가 route를 통과한 것",
+      "request": { "method": "DELETE", "path": "/v1/projects/${FX_APPR_PID}" },
+      "expect": { "status": 403, "bodyIncludes": ["requires membership of the project's team"] }
+    },
+    {
+      "tc": "TC-PROJ-10-005", "channel": "api", "as": "developer",
+      "_expect": "비소속 팀 프로젝트(fx-appr, 07e90c1f 팀) 조회는 차단된다 (dev@는 Backend만 소속)",
+      "request": { "method": "GET", "path": "/v1/projects/${FX_APPR_PID}" },
+      "expect": { "status": 403 }
+    },
+    {
+      "tc": "TC-PROJ-10-006", "channel": "api", "as": "team_admin_backend", "knownBug": "M-11",
+      "_expect": "원 캠페인 시점 가이드: team_admin 또는 super_admin이 GET /v1/admin/teams로 team_id를 읽는다(200). 구현은 super_admin 전용 404 — M-11은 doc-fix(#356, 코드 무변경)라 옛 가이드 기대를 유지해 fail=orig fail(concordant)",
+      "request": { "method": "GET", "path": "/v1/admin/teams" },
+      "expect": { "status": 200 }
+    },
+    {
+      "tc": "TC-PROJ-10-007", "channel": "api", "as": "team_admin_frontend",
+      "_expect": "비소속 팀 team_admin은 프로젝트 자체가 보이지 않아(403) git_url 등 어떤 필드에도 접근 불가 (PAT fixture는 reseed로 부재하므로 데이터 무관 검증)",
+      "request": { "method": "GET", "path": "/v1/projects/${PORTAL_API_PID}" },
+      "expect": { "status": 403, "jsonMissing": ["git_url"] }
+    },
+    {
+      "tc": "TC-PROJ-11-001", "channel": "api", "as": "super_admin",
+      "_expect": "succeeded 스캔이 있는 프로젝트의 releases가 scan id, 컴포넌트 수, severity 요약, 게이트 상태, 생성 시각을 담은 스냅샷을 반환",
+      "request": { "method": "GET", "path": "/v1/projects/${RELEASES_PID}/releases" },
+      "expect": { "status": 200, "jsonHas": ["items[0].scan_id", "items[0].component_count", "items[0].severity_summary", "items[0].gate_status", "items[0].created_at"] }
+    },
+    {
+      "tc": "TC-PROJ-12-004-setup", "channel": "api", "as": "developer",
+      "_expect": "소속 developer는 reports/history를 읽는다(200) — 12-004의 허용 측",
+      "request": { "method": "GET", "path": "/v1/projects/${PORTAL_API_PID}/reports/history" },
+      "expect": { "status": 200 }
+    },
+    {
+      "tc": "TC-PROJ-12-004", "channel": "api", "as": "developer",
+      "_expect": "비소속의 reports/history 조회는 존재를 숨기는 404",
+      "request": { "method": "GET", "path": "/v1/projects/${FX_APPR_PID}/reports/history" },
+      "expect": { "status": 404 }
+    },
+    {
+      "tc": "TC-PROJ-14-002", "channel": "api", "as": "team_admin_backend",
+      "_expect": "생성 시 visibility=organization은 받지 않는다(로드맵 미구현). 422 거부라 행 미생성",
+      "request": { "method": "POST", "path": "/v1/projects", "body": { "team_id": "${BACKEND_TEAM}", "name": "verify-org-visibility", "slug": "verify-org-visibility", "visibility": "organization" } },
+      "expect": { "status": 422, "bodyIncludes": ["visibility"] }
+    },
+    {
+      "tc": "TC-USER-04-007-setup", "channel": "api", "as": "super_admin",
+      "_expect": "M-8(#356) 독립 재현(adversarial confirm): live 프로젝트(portal-api 등)가 남은 Backend 팀 삭제는 409로 거부 — 거부라 무변경. 원 TC는 users-and-teams 모듈 소속이라 대조 제외(-setup)",
+      "request": { "method": "DELETE", "path": "/v1/admin/teams/${BACKEND_TEAM}" },
+      "expect": { "status": 409, "bodyIncludes": ["non-archived"] }
+    },
+    {
+      "tc": "TC-PROJ-05-005", "channel": "shell",
+      "_expect": "프로젝트 PATCH 감사 행이 actor를 기록한다(projects/update 행 전부 actor_user_id 보유 ≥1)",
+      "sql": "SELECT count(*) FROM audit_logs WHERE target_table='projects' AND action='update' AND actor_user_id IS NOT NULL;",
+      "expect": { "rowMatches": "^[1-9][0-9]*$" }
+    },
+    {
+      "tc": "TC-PROJ-09-003", "channel": "shell",
+      "_expect": "프로젝트 생성이 target_table=projects, action=create로 생성자 user_id와 함께 감사 기록됨(≥1)",
+      "sql": "SELECT count(*) FROM audit_logs WHERE target_table='projects' AND action='create' AND actor_user_id IS NOT NULL;",
+      "expect": { "rowMatches": "^[1-9][0-9]*$" }
+    },
+    {
+      "tc": "TC-PROJ-13-003", "channel": "shell", "knownBug": "M-9",
+      "_expect": "원 캠페인 시점 가이드: name은 팀 내 유일('Project name already in use') → name 유일 제약(unique index)이 존재해야 한다. 구현은 uq_projects_team_slug(slug)만 강제 — M-9는 doc-fix(#352, 코드 무변경)라 옛 가이드 기대를 유지해 fail=orig fail(concordant). 중복 생성 호출 재현은 행이 실제 생성되는 영구 변경이라 제약 존재 검증으로 대체",
+      "sql": "SELECT count(*) FROM pg_indexes WHERE tablename='projects' AND indexdef ILIKE '%UNIQUE%' AND indexdef ~* '\\(team_id, name\\)|\\(name[,)]';",
+      "expect": { "rowMatches": "^[1-9][0-9]*$" }
+    }
+  ]
+}

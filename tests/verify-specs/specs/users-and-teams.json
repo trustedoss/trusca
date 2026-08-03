@@ -1,0 +1,82 @@
+{
+  "module": "users-and-teams",
+  "_about": "users-and-teams 모듈 api 채널 결정적 검증 스펙. 기대값은 test-cases/users-and-teams.md(가이드 도출)에서 작성하고 경로는 /openapi.json로 확정. 읽기(GET)와 거부 경로(404/422) 위주로 무변경 재현하며, 유일한 쓰기는 TC-USER-04-003의 멱등 재추가(기존 멤버십과 동일 역할 upsert, 변경 0)다. H-8(비밀번호 정책)은 정정된 가이드 기준(8자 하한 + 금지목록)으로 기대를 도출. 제외: TC-USER-04-007(M-8 pending — 거부가 미구현이라 시도 시 실제 팀 삭제가 일어나 비파괴 재현 불가), TC-USER-06-003(C-1 — refresh 쿠키 jar 필요, auth-and-profile 스펙과 동일 사유로 전용 재현 스크립트 영역), TC-USER-05-001/002(마지막 super_admin 강등/비활성 — 두 번째 super_admin 임시 승격이라는 실역할 변경 없이는 재현 불가), 역할 변경 계열 03-001/002/004/005·01-005(영구 역할 변경), 06-001/002(시간 경과·쿠키 의존), H-2(FE 전용이라 api 재현 불가).",
+  "vars": [
+    { "as": "super_admin", "method": "GET", "path": "/auth/me", "fields": { "SA_ID": "id", "FRONTEND_TEAM": "memberships[0].team_id" } },
+    { "name": "PORTAL_API_PID", "as": "team_admin_backend", "method": "GET", "path": "/v1/projects", "list": true, "where": { "name": "portal-api" }, "field": "id" }
+  ],
+  "checks": [
+    {
+      "tc": "TC-USER-01-001", "channel": "api", "as": "super_admin",
+      "_expect": "super_admin 사용자 목록 200, 항목에 역할(role)·활성(is_active)·마지막 로그인(last_login_at)·팀 멤버십 수(team_count) 포함",
+      "request": { "method": "GET", "path": "/v1/admin/users?page_size=5" },
+      "expect": { "status": 200, "jsonHas": ["items[0].email", "items[0].role", "items[0].is_active", "items[0].last_login_at", "items[0].team_count"] }
+    },
+    {
+      "tc": "TC-USER-01-002", "channel": "api", "as": "super_admin",
+      "_expect": "super_admin 팀 목록 200, 팀별 멤버 수(member_count)와 프로젝트 수(project_count) 반환",
+      "request": { "method": "GET", "path": "/v1/admin/teams?page_size=5" },
+      "expect": { "status": 200, "jsonHas": ["items[0].member_count", "items[0].project_count"] }
+    },
+    {
+      "tc": "TC-USER-01-003", "channel": "api", "as": "developer",
+      "_expect": "가이드 기준 developer의 /v1/admin/users 접근은 403 거부. 구현은 require_super_admin_or_404의 존재 은닉으로 404를 반환(원 결과표 fail과 동일 = concordant, 정답지에 항목 없음 — '버그 아님: 명세 404 정정 권고'로 분류된 케이스 오류)",
+      "request": { "method": "GET", "path": "/v1/admin/users" },
+      "expect": { "status": 403 }
+    },
+    {
+      "tc": "TC-USER-01-004", "channel": "api", "as": "team_admin_frontend",
+      "_expect": "가이드 기준 team_admin의 조직 단위 /v1/admin/users 접근은 403 거부. 구현은 존재 은닉 404(원 fail과 concordant, 위와 동일 분류)",
+      "request": { "method": "GET", "path": "/v1/admin/users" },
+      "expect": { "status": 403 }
+    },
+    {
+      "tc": "TC-USER-01-006", "channel": "api", "as": "super_admin",
+      "_expect": "super_admin은 팀 멤버십(Frontend developer뿐)과 무관하게 backend 팀 프로젝트(portal-api)를 조회할 수 있다 → 200",
+      "request": { "method": "GET", "path": "/v1/projects/${PORTAL_API_PID}" },
+      "expect": { "status": 200, "jsonEquals": { "name": "portal-api" } }
+    },
+    {
+      "tc": "TC-USER-02-002", "channel": "api", "knownBug": "H-8",
+      "_expect": "정정된 가이드 기준 비밀번호 하한 8자 — 7자 비밀번호 등록은 422 거부(거부 경로만 검증해 사용자 생성 없음). 원 실행 시 정책 미강제(11자 201)로 fail → H-8 code-fix(#346) 후 fixed-since",
+      "request": { "method": "POST", "path": "/auth/register", "body": { "email": "verify-pw-short@example.com", "password": "Abc123!" } },
+      "expect": { "status": 422 }
+    },
+    {
+      "tc": "TC-USER-02-003", "channel": "api", "knownBug": "H-8",
+      "_expect": "길이(8자 이상)를 만족해도 금지 목록 비밀번호(password1234)는 422 거부. 원 실행 시 금지목록 미구현(201)으로 fail → H-8 code-fix 후 fixed-since",
+      "request": { "method": "POST", "path": "/auth/register", "body": { "email": "verify-pw-banned@example.com", "password": "password1234" } },
+      "expect": { "status": 422 }
+    },
+    {
+      "tc": "TC-USER-02-004", "channel": "api",
+      "_expect": "형식이 잘못된 이메일은 검증에서 422 거부",
+      "request": { "method": "POST", "path": "/auth/register", "body": { "email": "not-an-email", "password": "SomethingLong123!" } },
+      "expect": { "status": 422 }
+    },
+    {
+      "tc": "TC-USER-03-003", "channel": "api", "as": "super_admin",
+      "_expect": "자기 자신 역할 변경(자기 승격/강등)은 차단 — 422 + cannot_modify_self 확장. 거부 경로라 역할 무변경(이중 안전: 마지막 super_admin 보호 트리거도 강등을 막음)",
+      "request": { "method": "PATCH", "path": "/v1/admin/users/${SA_ID}/role", "body": { "role": "developer" } },
+      "expect": { "status": 422, "bodyIncludes": ["cannot_modify_self"] }
+    },
+    {
+      "tc": "TC-USER-04-003", "channel": "api", "as": "super_admin",
+      "_expect": "이미 멤버인 사용자(super_admin=Frontend developer) 재추가는 같은 흐름의 멱등 upsert로 200(409 충돌 아님). 동일 역할(developer)을 보내 상태 무변경",
+      "request": { "method": "POST", "path": "/v1/admin/teams/${FRONTEND_TEAM}/members", "body": { "user_id": "${SA_ID}", "role": "developer" } },
+      "expect": { "status": 200 }
+    },
+    {
+      "tc": "TC-USER-04-003-verify", "channel": "shell",
+      "_expect": "재추가 후에도 멤버십이 중복되지 않음(count=1) — 멱등성 DB 검증(헬퍼 체크, 원 결과표 대조 제외)",
+      "sql": "SELECT count(*) FROM memberships WHERE user_id='${SA_ID}' AND team_id='${FRONTEND_TEAM}';",
+      "expect": { "rowEquals": "1" }
+    },
+    {
+      "tc": "TC-USER-04-005", "channel": "api", "as": "team_admin_frontend",
+      "_expect": "가이드 기준 팀 생성은 super_admin 전용 — team_admin 시도는 403 거부. 구현은 존재 은닉 404(원 fail과 concordant, 01-003과 동일 분류). 404라 팀 미생성",
+      "request": { "method": "POST", "path": "/v1/admin/teams", "body": { "name": "verify-deny-team", "slug": "verify-deny-team" } },
+      "expect": { "status": 403 }
+    }
+  ]
+}

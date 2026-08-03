@@ -1,0 +1,105 @@
+{
+  "policies": {
+    "title": "라이선스 정책",
+    "subtitle": "SPDX 라이선스를 허용·조건부·금지로 분류하는 방식을 팀 또는 조직 단위로 재정의합니다.",
+    "empty": "아직 라이선스 정책이 없습니다. 위에서 팀을 선택해 정책을 작성하세요.",
+    "no_name": "이름 없는 정책",
+    "toolbar": {
+      "team_label": "팀",
+      "team_placeholder": "팀 선택…",
+      "edit_team": "팀 정책 편집",
+      "edit_org": "조직 기본값 편집"
+    },
+    "column": {
+      "scope": "범위",
+      "name": "이름",
+      "status": "상태",
+      "overrides": "재정의",
+      "exceptions": "예외",
+      "actions": "작업"
+    },
+    "scope": {
+      "org": "조직 기본값"
+    },
+    "status": {
+      "enabled": "사용",
+      "disabled": "사용 안 함"
+    },
+    "action": {
+      "open": "열기"
+    },
+    "category": {
+      "allowed": "허용",
+      "conditional": "조건부",
+      "forbidden": "금지"
+    },
+    "strategy": {
+      "most_restrictive": "가장 엄격하게",
+      "least_restrictive": "가장 관대하게"
+    },
+    "fields": {
+      "enabled": {
+        "label": "정책 사용",
+        "help": "끄면 이 정책의 내용을 유지한 채 팀이 내장 정적 라이선스 카탈로그로 되돌아갑니다."
+      },
+      "name": {
+        "label": "이름",
+        "placeholder": "예: 엔지니어링 정책"
+      },
+      "unknown": {
+        "label": "미분류 라이선스 처리",
+        "help": "내장 카탈로그와 아래 재정의 어디에도 없는 라이선스에 적용할 분류입니다."
+      },
+      "compound": {
+        "label": "복합 표현식 전략",
+        "help": "여러 라이선스 표현식(A AND B, A OR B, A WITH 예외)을 하나의 분류로 결정하는 방식입니다."
+      }
+    },
+    "overrides": {
+      "title": "분류 재정의",
+      "help": "특정 SPDX 라이선스 식별자를 카탈로그 판정 대신 지정한 분류로 강제합니다.",
+      "add": "재정의 추가",
+      "remove": "삭제",
+      "empty": "재정의가 없습니다. 모든 라이선스는 내장 카탈로그가 결정합니다.",
+      "spdx_label": "SPDX 식별자",
+      "spdx_placeholder": "예: MPL-2.0",
+      "category_label": "분류"
+    },
+    "exceptions": {
+      "title": "라이선스 예외",
+      "help": "명시적 면제 항목으로, 일치하는 라이선스를 허용으로 강제합니다. 만료일이나 단일 컴포넌트로 범위를 좁힐 수 있습니다.",
+      "add": "예외 추가",
+      "remove": "삭제",
+      "empty": "예외가 없습니다.",
+      "spdx_label": "SPDX 식별자",
+      "expiry_label": "만료",
+      "purl_label": "컴포넌트 (선택)",
+      "purl_placeholder": "예: pkg:pypi/somepkg@1.2.3",
+      "reason_label": "사유",
+      "reason_placeholder": "이 라이선스를 면제하는 이유 (예: 법무 승인 면제 TICKET-123)."
+    },
+    "editor": {
+      "team_title": "팀 정책 — {{team}}",
+      "org_title": "조직 기본 정책",
+      "description": "변경 사항은 다음에 팀이 평가될 때 빌드 차단 게이트에 적용됩니다.",
+      "no_policy_hint": "이 범위에는 아직 정책이 없습니다. 아래에서 구성하고 저장하면 생성됩니다.",
+      "readonly_member": "이 정책을 볼 수 있지만 변경은 팀 관리자만 가능합니다.",
+      "readonly_role": "이 정책을 편집할 권한이 없습니다.",
+      "save": "정책 저장",
+      "saving": "저장 중…",
+      "reset": "기본값으로 초기화",
+      "resetting": "초기화 중…"
+    },
+    "toast": {
+      "saved": "정책을 저장했습니다.",
+      "reset": "정책을 초기화했습니다. 이제 팀은 조직 기본값 또는 정적 카탈로그로 되돌아갑니다."
+    },
+    "errors": {
+      "forbidden": "이 작업을 수행할 권한이 없습니다.",
+      "not_found": "이 범위에 대한 정책을 찾을 수 없습니다.",
+      "conflict": "이 범위에 이미 정책이 있습니다. 새로 고침 후 다시 시도하세요.",
+      "validation": "정책을 저장할 수 없습니다. 식별자·크기·사유를 확인한 뒤 다시 시도하세요.",
+      "unknown": "문제가 발생했습니다. 다시 시도하세요."
+    }
+  }
+}

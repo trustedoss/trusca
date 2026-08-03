@@ -1,0 +1,96 @@
+/**
+ * The representative screen set — one entry per layout template.
+ *
+ * Two gates walk the same screens: the visual baselines
+ * (`tests/visual/visual.spec.ts`) and the accessibility scan
+ * (`tests/a11y/a11y.spec.ts`). They live here rather than being listed
+ * twice, because a screen added to one and forgotten in the other is the
+ * drift CLAUDE.md hardening rule #2 is about — each spec would stay green
+ * on its own while the pair quietly disagreed about what "covered" means.
+ *
+ * Which screens earn a slot, and why each is here, is recorded in
+ * `tests/visual/coverage-manifest.ts`; `visualCoverage.test.ts` holds the
+ * manifest against what `router.tsx` actually mounts and against the ids
+ * in `screenIds.ts`.
+ *
+ * The `Record<AuthenticatedScreenId, …>` below is load-bearing: adding an
+ * id without a navigation function is a type error, so the two halves
+ * cannot drift apart.
+ */
+import type { Page } from "@playwright/test";
+
+import { PortalPage } from "./PortalPage";
+import {
+  AUTHENTICATED_SCREEN_IDS,
+  type AuthenticatedScreenId,
+} from "./screenIds";
+
+export interface ScreenContext {
+  /** Seeded project the detail screens hang off. */
+  projectId: string;
+}
+
+export type VisitScreen = (page: Page, ctx: ScreenContext) => Promise<void>;
+
+export interface RepresentativeScreen {
+  /** Stable id — also the visual baseline's file stem. */
+  id: AuthenticatedScreenId;
+  /** Navigate and wait until the surface is genuinely settled. */
+  visit: VisitScreen;
+}
+
+const VISITS: Record<AuthenticatedScreenId, VisitScreen> = {
+  "projects-list": async (page) => {
+    const portal = new PortalPage(page);
+    await portal.gotoProjects();
+    await portal.expectProjectListVisible();
+  },
+  "project-detail-overview": async (page, { projectId }) => {
+    await page.goto(`/projects/${projectId}`);
+    await new PortalPage(page).expectProjectDetailMounted();
+  },
+  "project-detail-vulnerabilities": async (page, { projectId }) => {
+    await page.goto(`/projects/${projectId}?tab=vulnerabilities`);
+    const portal = new PortalPage(page);
+    await portal.expectProjectDetailMounted();
+    await portal.expectVulnerabilitiesTabReady();
+  },
+  dashboard: async (page) => {
+    await page.goto("/");
+    await page
+      .getByTestId("dashboard-severity-card")
+      .waitFor({ state: "visible" });
+    // The trend panel resolves on its own request. Without this wait the
+    // capture races it, and whichever of skeleton or chart wins becomes the
+    // baseline — the kind of drift a pixel gate is supposed to prevent
+    // rather than record. Waiting for the panel (not for either panel or
+    // its error card) also means a broken endpoint fails the run loudly
+    // instead of quietly baselining an error state.
+    await page.getByTestId("trends-panel").waitFor({ state: "visible" });
+    await page.getByTestId("portfolio-grid").waitFor({ state: "visible" });
+  },
+  scans: async (page) => {
+    await page.goto("/scans");
+    await page
+      .getByTestId("scans-status-badge")
+      .first()
+      .waitFor({ state: "visible" });
+  },
+  approvals: async (page) => {
+    await page.goto("/approvals");
+    await new PortalPage(page).expectMounted();
+  },
+  "admin-users": async (page) => {
+    await page.goto("/admin/users");
+    await new PortalPage(page).expectMounted();
+  },
+};
+
+/**
+ * Screens behind authentication. The pre-auth login page is handled
+ * separately by each spec — it needs a cleared auth state rather than a
+ * seeded one, so folding it in here would mean every consumer carrying a
+ * special case.
+ */
+export const AUTHENTICATED_SCREENS: RepresentativeScreen[] =
+  AUTHENTICATED_SCREEN_IDS.map((id) => ({ id, visit: VISITS[id] }));

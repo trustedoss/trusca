@@ -1,0 +1,1064 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    # Docs/config-only changes don't exercise lint/typecheck/test. Skipping
+    # them turns a 14m+ wall-clock into 0s for chore PRs (e.g. .env.example
+    # one-liners, ADR/roadmap updates). Mixed PRs (any source file changed)
+    # still trigger the full pipeline — `paths-ignore` only fires when EVERY
+    # changed path matches one of these patterns. If you add a new path here,
+    # mirror it under `pull_request` below.
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+      - ".env.example"
+      - "CLAUDE.md"
+      - "ROADMAP.md"
+      - "SECURITY.md"
+      - "LICENSE"
+      - ".gitignore"
+  pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+      - ".env.example"
+      - "CLAUDE.md"
+      - "ROADMAP.md"
+      - "SECURITY.md"
+      - "LICENSE"
+      - ".gitignore"
+  # Nightly run — the slow gate (e2e Playwright matrix) sits behind a
+  # `github.event_name == 'schedule' || workflow_dispatch` guard so PRs
+  # stay fast. The same schedule walks the lint/test/SAST path again so
+  # any drift on main between PR runs surfaces here too.
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch: {}
+
+# Least-privilege default — every job here only needs to check out the
+# repo. Image-scan additionally pulls cached Trivy DB layers from ghcr,
+# and e2e pulls docker images; both are covered by `packages: read`
+# added at the job level where needed (or by anonymous pulls when the
+# packages are public).
+permissions:
+  contents: read
+
+# Cancel in-progress runs of the same ref so the latest push wins.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # -------------------------------------------------------------------------
+  # 1) Lint — ruff (backend) + eslint (frontend)
+  # -------------------------------------------------------------------------
+  lint:
+    name: lint (${{ matrix.target }})
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        if: matrix.target == 'backend'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/backend/requirements-dev.txt
+
+      - name: Install backend dev deps
+        if: matrix.target == 'backend'
+        working-directory: apps/backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Run ruff
+        if: matrix.target == 'backend'
+        working-directory: apps/backend
+        run: ruff check .
+
+      - name: Setup Node
+        if: matrix.target == 'frontend'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: apps/frontend/package-lock.json
+
+      - name: Install frontend deps
+        if: matrix.target == 'frontend'
+        working-directory: apps/frontend
+        run: npm ci --no-audit --no-fund
+
+      - name: Run eslint
+        if: matrix.target == 'frontend'
+        working-directory: apps/frontend
+        run: npm run lint
+
+      # chore A1 — i18n drift gate. Runs i18next-parser into a temp dir and
+      # compares against the committed src/locales/. Fails on any missing or
+      # stale key, or any EN ↔ KO parity gap. This guarantees that every
+      # `t('ns:key')` call site has a matching translation in BOTH locales
+      # — CLAUDE.md "EN/KO 번역 동시 반영" enforced at PR time.
+      - name: Run i18n drift check
+        if: matrix.target == 'frontend'
+        working-directory: apps/frontend
+        run: npm run i18n:check
+
+      # Design-token ratchet. Colour discipline was the one design rule no
+      # machine enforced, and it decayed accordingly — 260 bypasses (raw
+      # hex + Tailwind palette classes) had accumulated across 44 files by
+      # the time this gate was written. The per-file baseline in
+      # scripts/token-lint-baseline.json can only go down: new bypasses
+      # fail, and paid-down debt must be re-recorded so the budget cannot
+      # be quietly re-spent. Token contract: docs-site/docs/reference/
+      # design-system.md ("Status surfaces" / "Risk tint foregrounds").
+      - name: Run design-token lint
+        if: matrix.target == 'frontend'
+        working-directory: apps/frontend
+        run: npm run token:lint
+
+      # Korean translation-ese, on the KO guides AND the app's own Korean
+      # strings. The linter existed and a PostToolUse hook ran it on edit,
+      # but nothing checked it at merge time — and its scope was the guides
+      # only, so a sentence in English word order shipped to the login
+      # screen while the linter reported a clean run on the docs beside it.
+      # `--all`, not `--changed`: checkout is shallow here, so the diff the
+      # changed-mode needs is not in the clone and the linter would fall
+      # back to an empty file list — a gate that reports success because it
+      # examined nothing, which this repository has shipped once already.
+      # The whole corpus is 82 files and takes under a second. Existing debt
+      # is held by tools/ko-style/baseline.json; S3 findings are advisory
+      # (reported, not blocking) because "reads like a translation" is a
+      # judgement a regex can point at but not settle.
+      - name: Run Korean style lint
+        if: matrix.target == 'frontend'
+        run: node tools/ko-style/lint.mjs --all --fail-on S2
+
+      # SPDX headers on first-party source. Apache-2.0 only RECOMMENDS per-file
+      # headers, but this product detects licenses per file — scanning our own
+      # repo with our own scanner and getting NOASSERTION on every source file is
+      # a statement about the scanner. It also separates first-party code from
+      # the vendored BomLens files sitting in the same directories, and covers
+      # the operator-facing artifacts (scripts/, actions/, charts/, the compose
+      # files) that a user can receive one at a time.
+      #
+      # Runs under the frontend target because Node is already set up there, and
+      # once (not per-target) because the linter checks BOTH trees itself. It is
+      # a step in the existing `lint` job rather than a job of its own: a new job
+      # means a new required check, and docs-only PRs already stall on checks
+      # that skip (see the branch-protection note in CONTRIBUTING.md).
+      #
+      # `--all`, not `--changed`: the checkout is shallow, so changed-mode has no
+      # merge-base and would examine nothing while reporting success — the same
+      # trap the ko-style gate above documents.
+      #
+      # The selftest runs first. An exclusion glob that silently matches nothing
+      # would stamp our copyright onto third-party files and still report clean,
+      # which is the one failure here that is worse than a red build.
+      - name: Run license-header selftest
+        if: matrix.target == 'frontend'
+        run: node tools/license-header/selftest.mjs
+
+      - name: Run license-header gate
+        if: matrix.target == 'frontend'
+        run: node tools/license-header/lint.mjs --all
+
+  # -------------------------------------------------------------------------
+  # 1b) Shellcheck — install/backup/restore/upgrade/release wrappers.
+  #
+  # Chore E (PR #38) added this gate. The wrappers are part of the operator
+  # surface (run on a fresh Ubuntu/Rocky host as `bash scripts/install.sh
+  # --no-prompt`), so a regression here is a release-day blocker.
+  #
+  # We hard-fail on `--severity=warning` (i.e. error + warning). Info-level
+  # findings (mainly SC1091 "not following sourced file" on `. ./.env`)
+  # remain visible in the log for triage but don't block the PR — the
+  # `.env` file is generated at install-time and never committed, so the
+  # static analyser can't follow it. The two affected lines already carry
+  # `# shellcheck disable=SC1091` as documentation of the choice.
+  # -------------------------------------------------------------------------
+  shellcheck:
+    name: shellcheck (scripts)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Show shellcheck version
+        run: shellcheck --version
+
+      - name: Run shellcheck (severity=warning)
+        run: shellcheck --severity=warning scripts/*.sh
+
+  # -------------------------------------------------------------------------
+  # 1c) Postgres init L1 role contract — the ONLY gate that actually boots a
+  #     real postgres:17.2-alpine on a fresh volume and mounts
+  #     scripts/postgres-init.sh as /docker-entrypoint-initdb.d/
+  #     10-trustedoss-app-role.sh, the exact path + trigger the operator
+  #     install.sh L1 (role-separation) deploy uses.
+  #
+  #     WHY THIS EXISTS (regression guard for #466): the L1 first-boot path is
+  #     invisible to every other job. `test (backend)` uses postgres only as a
+  #     service container (init scripts never run); release-gate runs
+  #     single-role dev mode (POSTGRES_APP_PASSWORD unset → the script skips).
+  #     #466 shipped a psql `:'app_user'` interpolation *inside* a `DO $$ … $$`
+  #     block, which psql does not substitute → `syntax error` → the
+  #     trustedoss_app role was never created → every L1 install.sh deploy
+  #     failed backend auth at startup. No CI test caught it. This job does.
+  #
+  #     Pure `docker run` (no docker-compose — irrelevant here). The stock
+  #     image trusts loopback, so the SCRAM login assertion connects over the
+  #     container's own eth0 IP to force real password auth (
+  #     verified recipe).
+  # -------------------------------------------------------------------------
+  postgres-init-l1:
+    name: postgres-init L1 role contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run L1 role provisioning contract (3 scenarios)
+        run: |
+          set -euo pipefail
+
+          image="postgres:17.2-alpine"
+          init_script="$(pwd)/scripts/postgres-init.sh"
+          # The exact password from the task spec: contains @ : ' \ and other
+          # special chars, so this doubles as an injection / quote-safety guard.
+          app_pw='p@ss:with'\''quote\and\special'
+          wrong_pw='definitely-not-the-right-password'
+
+          cleanup() { docker rm -f pg_l1 pg_legacy >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          cleanup
+
+          # Wait until postgres serves over TCP on its OWN eth0 IP. During the
+          # first-boot init phase the entrypoint runs a socket-only temporary
+          # server (listen_addresses=''), so a successful eth0 TCP probe proves
+          # the init scripts completed AND the real server is up. If the
+          # container exits during init (a failed init script aborts the
+          # entrypoint) we fail fast and dump logs. Sets the global SERVING_IP.
+          SERVING_IP=""
+          wait_serving() {
+            local name="$1" deadline state ip
+            deadline=$(( $(date +%s) + 120 ))
+            while :; do
+              state=$(docker inspect -f '{{.State.Status}}' "$name" 2>/dev/null || echo missing)
+              if [ "$state" = "exited" ] || [ "$state" = "dead" ]; then
+                echo "::error::$name exited during init"
+                docker logs "$name" || true
+                return 1
+              fi
+              ip=$(docker exec "$name" hostname -i 2>/dev/null | awk '{print $1}' || true)
+              if [ -n "$ip" ] && docker exec "$name" pg_isready -h "$ip" -U trustedoss -d trustedoss >/dev/null 2>&1; then
+                SERVING_IP="$ip"
+                return 0
+              fi
+              if [ "$(date +%s)" -ge "$deadline" ]; then
+                echo "::error::$name never served over TCP within deadline"
+                docker logs "$name" || true
+                return 1
+              fi
+              sleep 2
+            done
+          }
+
+          # Poll `docker logs` until a marker line appears. The image entrypoint
+          # is a shell whose stdout is block-buffered when piped to the docker
+          # log driver, so an init-script echo can land in `docker logs` a beat
+          # AFTER the final "ready to accept connections" line that flips the
+          # TCP gate above. This poll closes that flush race for log-content
+          # assertions (a single grep would flake). Negative "no syntax error"
+          # checks run only after the corresponding positive marker is seen, so
+          # they assert against fully-flushed init output.
+          wait_log() {
+            local name="$1" pattern="$2" deadline
+            deadline=$(( $(date +%s) + 30 ))
+            while :; do
+              if docker logs "$name" 2>&1 | grep -qi "$pattern"; then
+                return 0
+              fi
+              if [ "$(date +%s)" -ge "$deadline" ]; then
+                echo "::error::$name: log marker never appeared: $pattern"
+                docker logs "$name" || true
+                return 1
+              fi
+              sleep 1
+            done
+          }
+
+          echo "::group::Scenario 1 — L1 role-separation mode (regression guard #466)"
+          docker run -d --name pg_l1 \
+            -e POSTGRES_USER=trustedoss \
+            -e POSTGRES_PASSWORD=trustedoss \
+            -e POSTGRES_DB=trustedoss \
+            -e POSTGRES_APP_USER=trustedoss_app \
+            -e POSTGRES_APP_PASSWORD="$app_pw" \
+            -v "$init_script":/docker-entrypoint-initdb.d/10-trustedoss-app-role.sh:ro \
+            "$image" >/dev/null
+          wait_serving pg_l1
+          eth0="$SERVING_IP"
+          echo "postgres serving on eth0 $eth0"
+
+          # Ensure the init script's output has flushed before the negative
+          # syntax-error assertion (otherwise "no syntax error" could pass
+          # trivially against a not-yet-flushed log).
+          wait_log pg_l1 "provisioned trustedoss_app"
+
+          # (a) init completed with no syntax error (the #466 symptom)
+          if docker logs pg_l1 2>&1 | grep -i "syntax error"; then
+            echo "::error::init log contains 'syntax error' (regression of #466)"
+            exit 1
+          fi
+          echo "(a) OK — no syntax error in init log"
+
+          # (b) role exists with LOGIN + INHERIT
+          row=$(docker exec pg_l1 psql -U trustedoss -d trustedoss -tAc \
+            "SELECT rolname, rolcanlogin, rolinherit FROM pg_roles WHERE rolname='trustedoss_app'")
+          echo "(b) pg_roles row=[$row]"
+          if [ "$row" != "trustedoss_app|t|t" ]; then
+            echo "::error::trustedoss_app role missing or wrong attributes (want trustedoss_app|t|t)"
+            exit 1
+          fi
+          echo "(b) OK — role present, canlogin+inherit"
+
+          # (c) real SCRAM login with the special-char password over eth0 TCP
+          got=$(docker exec -e PGPASSWORD="$app_pw" pg_l1 \
+            psql -h "$eth0" -U trustedoss_app -d trustedoss -tAc "SELECT 1")
+          echo "(c) SELECT 1 => [$got]"
+          if [ "$got" != "1" ]; then
+            echo "::error::trustedoss_app could not authenticate over TCP with its password"
+            exit 1
+          fi
+          echo "(c) OK — SCRAM TCP login succeeded"
+
+          # (d) a wrong password is rejected
+          if docker exec -e PGPASSWORD="$wrong_pw" pg_l1 \
+               psql -h "$eth0" -U trustedoss_app -d trustedoss -tAc "SELECT 1" 2>/tmp/pwerr; then
+            echo "::error::wrong password was accepted"
+            cat /tmp/pwerr || true
+            exit 1
+          fi
+          cat /tmp/pwerr
+          if ! grep -q "password authentication failed" /tmp/pwerr; then
+            echo "::error::expected 'password authentication failed', got the above"
+            exit 1
+          fi
+          echo "(d) OK — wrong password rejected with FATAL"
+
+          # (e) no unexpected roles created (only built-ins + the two we want)
+          roles=$(docker exec pg_l1 psql -U trustedoss -d trustedoss -tAc \
+            "SELECT string_agg(rolname, ',' ORDER BY rolname) FROM pg_roles WHERE rolname NOT LIKE 'pg\_%'")
+          echo "(e) non-builtin roles=[$roles]"
+          if [ "$roles" != "trustedoss,trustedoss_app" ]; then
+            echo "::error::unexpected role census (want trustedoss,trustedoss_app)"
+            exit 1
+          fi
+          echo "(e) OK — role census clean"
+          echo "::endgroup::"
+
+          echo "::group::Scenario 3 — idempotency (replay the SQL on a live DB)"
+          # Re-apply the same script against the already-provisioned DB. The
+          # WHERE NOT EXISTS guard must make this a no-op: exit 0, role count
+          # stays 1. Runs the real script bytes piped into the container.
+          docker exec -i \
+            -e POSTGRES_USER=trustedoss \
+            -e POSTGRES_DB=trustedoss \
+            -e POSTGRES_APP_USER=trustedoss_app \
+            -e POSTGRES_APP_PASSWORD="$app_pw" \
+            pg_l1 bash -s < "$init_script"
+          cnt=$(docker exec pg_l1 psql -U trustedoss -d trustedoss -tAc \
+            "SELECT count(*) FROM pg_roles WHERE rolname='trustedoss_app'")
+          echo "role count after replay=[$cnt]"
+          if [ "$cnt" != "1" ]; then
+            echo "::error::idempotency violated — role count is $cnt, want 1"
+            exit 1
+          fi
+          echo "OK — replay is a clean no-op, count stays 1"
+          echo "::endgroup::"
+
+          echo "::group::Scenario 2 — legacy single-role mode (POSTGRES_APP_PASSWORD unset)"
+          docker run -d --name pg_legacy \
+            -e POSTGRES_USER=trustedoss \
+            -e POSTGRES_PASSWORD=trustedoss \
+            -e POSTGRES_DB=trustedoss \
+            -v "$init_script":/docker-entrypoint-initdb.d/10-trustedoss-app-role.sh:ro \
+            "$image" >/dev/null
+          wait_serving pg_legacy
+
+          # Wait for the skip line to flush (same buffering race as scenario 1).
+          wait_log pg_legacy "skipping L1 role provisioning"
+          if docker logs pg_legacy 2>&1 | grep -i "syntax error"; then
+            echo "::error::legacy init log contains 'syntax error'"
+            exit 1
+          fi
+          cnt=$(docker exec pg_legacy psql -U trustedoss -d trustedoss -tAc \
+            "SELECT count(*) FROM pg_roles WHERE rolname='trustedoss_app'")
+          echo "legacy trustedoss_app count=[$cnt]"
+          if [ "$cnt" != "0" ]; then
+            echo "::error::legacy mode must NOT create trustedoss_app (got $cnt)"
+            exit 1
+          fi
+          echo "OK — skip log present, no app role created, init clean"
+          echo "::endgroup::"
+
+          echo "All three L1 contract scenarios passed."
+
+      - name: Clean up containers
+        if: always()
+        run: docker rm -f pg_l1 pg_legacy 2>/dev/null || true
+
+  # -------------------------------------------------------------------------
+  # 2) Typecheck — mypy (backend) + tsc (frontend)
+  # -------------------------------------------------------------------------
+  typecheck:
+    name: typecheck (${{ matrix.target }})
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        if: matrix.target == 'backend'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/backend/requirements-dev.txt
+
+      - name: Install backend dev deps
+        if: matrix.target == 'backend'
+        working-directory: apps/backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Run mypy
+        if: matrix.target == 'backend'
+        working-directory: apps/backend
+        run: mypy .
+
+      - name: Setup Node
+        if: matrix.target == 'frontend'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: apps/frontend/package-lock.json
+
+      - name: Install frontend deps
+        if: matrix.target == 'frontend'
+        working-directory: apps/frontend
+        run: npm ci --no-audit --no-fund
+
+      - name: Run tsc
+        if: matrix.target == 'frontend'
+        working-directory: apps/frontend
+        run: npm run typecheck
+
+  # -------------------------------------------------------------------------
+  # 3) Test — pytest (unit + integration with services) + vitest (with coverage)
+  #    Backend matrix value spins up Postgres 17 + Redis 7 sidecars and runs
+  #    both unit and integration suites. CLAUDE.md §2 (품질·보안·운영 표준):
+  #    PR 머지 게이트 = 신규/변경 코드 line coverage ≥ 80%.
+  # -------------------------------------------------------------------------
+  test:
+    name: test (${{ matrix.target }})
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [backend, frontend]
+    services:
+      postgres:
+        image: postgres:17.2-alpine
+        env:
+          POSTGRES_USER: trustedoss
+          POSTGRES_PASSWORD: trustedoss
+          POSTGRES_DB: trustedoss
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U trustedoss -d trustedoss"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql+asyncpg://trustedoss:trustedoss@localhost:5432/trustedoss
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: ci-secret-key-min-32-chars-padding-1234
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        if: matrix.target == 'backend'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/backend/requirements-dev.txt
+
+      - name: Install backend dev deps
+        if: matrix.target == 'backend'
+        working-directory: apps/backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      # Marathon bundle 3 (D2) — the backup round-trip integration test
+      # (tests/integration/test_backup_task_round_trip.py) runs the real
+      # ``pg_dump`` / ``psql`` binaries against the Postgres 17 service
+      # container. Ubuntu 22.04 ships pg_dump 14, which refuses with
+      # "server version mismatch" against a Postgres 17 server. Add the
+      # PGDG apt repo (fingerprint-pinned, same as the worker / backend
+      # Dockerfiles) and install postgresql-client-17 so pg_dump matches
+      # the server major version. Without this the round-trip test fails
+      # in CI even though it passes locally inside the dev container.
+      - name: Install postgresql-client-17 (matches Postgres service container)
+        if: matrix.target == 'backend'
+        run: |
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /tmp/pgdg.asc
+          gpg --show-keys --with-fingerprint --with-colons /tmp/pgdg.asc \
+            | grep '^fpr:' \
+            | grep -q ':B97B0AFCAA1A47F044F244A07FCC7D46ACCC4CF8:'
+          sudo gpg --dearmor -o /usr/share/keyrings/postgresql.gpg /tmp/pgdg.asc
+          rm /tmp/pgdg.asc
+          echo "deb [signed-by=/usr/share/keyrings/postgresql.gpg] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client-17
+          pg_dump --version
+
+      - name: Run pytest (unit + integration)
+        if: matrix.target == 'backend'
+        working-directory: apps/backend
+        run: |
+          pytest \
+            --cov=. \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            tests/unit tests/integration
+
+      # v2.1 Track B (B4) — NOTE: there is deliberately NO byte-exact OpenAPI
+      # freshness gate here. A previous version ran
+      # `python scripts/dump_openapi.py --check` to diff the committed
+      # docs-site/static/openapi.json against `app.openapi()`. That gate was
+      # brittle across environments: FastAPI/Pydantic serialise the schema
+      # slightly differently depending on the Python / library minor version,
+      # so a snapshot generated locally on Python 3.11 would not be
+      # byte-identical to one regenerated on CI's Python 3.12 — failing the PR
+      # for a non-substantive reason. The committed openapi.json is now only a
+      # local-build fallback; the docs deploy workflow (.github/workflows/
+      # docs.yml) regenerates it from the live app on the same Python as CI
+      # before publishing, so the hosted Redoc reference is always fresh.
+      #
+      # Real contract drift (a route / method / param added or removed) is
+      # still gated — version-independently — by the METHOD+path→param subset
+      # check in apps/backend/tests/unit/test_openapi_contract.py
+      # (openapi_endpoints.json), which runs as part of the pytest step above.
+
+      - name: Upload backend coverage
+        if: matrix.target == 'backend'
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: apps/backend/coverage.xml
+          if-no-files-found: ignore
+
+      - name: Setup Node
+        if: matrix.target == 'frontend'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: apps/frontend/package-lock.json
+
+      - name: Install frontend deps
+        if: matrix.target == 'frontend'
+        working-directory: apps/frontend
+        run: npm ci --no-audit --no-fund
+
+      - name: Run vitest (with coverage gate ≥ 80%)
+        if: matrix.target == 'frontend'
+        working-directory: apps/frontend
+        run: npm run test:coverage
+
+      - name: Upload frontend coverage
+        if: matrix.target == 'frontend'
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: apps/frontend/coverage/
+          if-no-files-found: ignore
+
+  # -------------------------------------------------------------------------
+  # 4) Image scan — build the Celery worker image (cdxgen / ORT / Trivy +
+  #    JRE + Node) and scan it with Trivy. Fails on HIGH or CRITICAL OS or
+  #    library vulnerabilities. Runs in parallel with lint/typecheck/test so
+  #    overall PR latency is unchanged.
+  #    CLAUDE.md core rule #9: no `:latest` tags. Tool versions pinned in
+  #    apps/backend/Dockerfile.worker.
+  # -------------------------------------------------------------------------
+  image-scan:
+    name: image-scan (worker)
+    runs-on: ubuntu-22.04
+    # Chore P (Phase 8 worker-image refresh): HIGH is now HARD FAIL alongside
+    # CRITICAL. Implemented as a single Trivy step with `severity:
+    # CRITICAL,HIGH`. The previous two-step split (CRITICAL hard /
+    # HIGH advisory, chore PR #25) was a deliberate stop-gap while we
+    # collected reach-analysis on the multi-language toolchain bundle
+    # findings (Maven jars, cdxgen-plugins-bin Go binaries, ORT java
+    # jars). All of those are now either bumped (Go SDK 1.22 → 1.25,
+    # ORT 85.0.0 → 85.1.1, npm 11.13.0 → 11.14.1, Gradle 8.10.2 → 8.14.3)
+    # or carry per-CVE reach-analysis ignores in `.trivyignore` with
+    # category-(3) justification (cdxgen-plugins-bin runtime-unreached
+    # since we never invoke any cdxgen plugin — see the cdxgen reach
+    # surface block in `.trivyignore` and apps/backend/integrations/
+    # cdxgen.py:107-115).
+    #
+    # `ignore-unfixed: true` keeps us from chasing CVEs upstream hasn't
+    # patched yet — those remain visible in the table but never bake
+    # into the actionable list. `trivyignores: ./.trivyignore` makes the
+    # file the single source of truth for accepted findings; new HIGH
+    # CVEs from a future bundle dep bump must either land an upstream
+    # fix or get a reach-analysis ignore through code review.
+    #
+    # Re-evaluate the .trivyignore entries every 180 days OR on next
+    # upstream release of the bundled tool — see `.trivyignore` policy
+    # header.
+    steps:
+      - uses: actions/checkout@v4
+
+      # The worker image carries a JVM, Gradle, the Node toolchain, cdxgen,
+      # cosign and Trivy, and the scan does not read it in place: Trivy exports
+      # an UNCOMPRESSED copy through the Docker daemon before analysing it. So
+      # the runner has to hold the image and its expansion at once, and a
+      # hosted runner's free space stopped being enough for that on
+      # 2026-08-01 — two consecutive runs died mid-scan with "no space left on
+      # device", after the same image had scanned clean an hour earlier.
+      #
+      # Deleting the preinstalled toolchains this job never touches reclaims
+      # more than 20 GB and takes seconds. `|| true` because the set of
+      # preinstalled directories is the runner image's business, not ours, and
+      # a missing one must not fail the build.
+      - name: Free runner disk space
+        run: |
+          echo "before:"; df -h / | tail -1
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                      /usr/local/share/boost /usr/local/share/powershell \
+                      /usr/local/.ghcup "${AGENT_TOOLSDIRECTORY:-}" || true
+          echo "after:"; df -h / | tail -1
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Cache Trivy DB
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/trivy
+          key: trivy-db-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            trivy-db-${{ runner.os }}-
+
+      - name: Build worker image
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/backend
+          file: apps/backend/Dockerfile.worker
+          tags: trustedoss/backend-worker:dev
+          load: true
+          cache-from: type=gha,scope=worker
+          cache-to: type=gha,scope=worker,mode=max
+
+      - name: Trivy scan (HARD FAIL on CRITICAL,HIGH)
+        # Chore P (Phase 8 worker-image refresh): single combined gate.
+        # Replaces the chore PR #25 two-step split (CRITICAL hard / HIGH
+        # advisory). All previously-advisory HIGH findings are now either
+        # patched via base-image dep bumps (Go SDK / ORT / Gradle / npm —
+        # see Dockerfile.worker `Chore P` comments) or accepted with a
+        # per-CVE reach-analysis ignore in `.trivyignore`. New HIGH
+        # findings from a future dep bump must clear the same bar
+        # (upstream fix OR reach-analysis ignore) before merge.
+        #
+        # `ignore-unfixed: true` keeps us from chasing CVEs upstream
+        # hasn't patched yet — those remain visible in the table for
+        # triage but never bake into the actionable list.
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: trustedoss/backend-worker:dev
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+          vuln-type: os,library
+          # `scanners: vuln` explicitly disables Trivy's secret + license
+          # scanners on this gate. We gate on CVEs here; secrets are
+          # caught by the separate gitleaks job (cleaner separation of
+          # concerns), and licenses are owned by ORT in the runtime
+          # pipeline. Without this Go SDK 1.25 ships a test-fixture
+          # private key at `/opt/go/src/crypto/x509/platform_root_key.pem`
+          # (NOT an operational secret — it's a Go stdlib test artifact
+          # bundled with the source-only `src/` tree) which Trivy's
+          # secret scanner flags as HIGH and breaks this gate. Disabling
+          # the secret scanner here is preferred over a per-file ignore
+          # because the same Go source tree contains other test fixtures
+          # that may surface as secrets in future Go versions.
+          scanners: vuln
+          trivyignores: ./.trivyignore
+          # Trivy's default deadline is 5 minutes, and this image does not fit
+          # in it on a cold runner. The worker carries a JDK, a Node runtime,
+          # a .NET SDK and two extra Python environments, and the Java DB alone
+          # is ~900 MB to fetch before analysis starts. The first run against
+          # the rebuilt repository — no Actions cache to draw on — died with
+          # "context deadline exceeded" partway through a layer walk, which the
+          # gate reports the same way it reports a CVE.
+          #
+          # 20 minutes is the walk time with a cold Java DB plus room. Raise it
+          # rather than trim the scan: a scan that times out is a gate that
+          # tells you nothing.
+          timeout: 20m
+
+  # -------------------------------------------------------------------------
+  # 5) Frontend bundle audit — production build must not contain dev-only
+  #    auth hooks (`__setAccessToken`, `__authStore`) or scaffolded secret
+  #    placeholders. The hooks are gated by `import.meta.env.DEV` in
+  #    apps/frontend/src/lib/api.ts so Vite's tree-shaker drops them at
+  #    `vite build` time. This job is the regression guard: any future
+  #    refactor that moves the hook out of a `DEV` block (or imports it
+  #    eagerly) will land a literal "__setAccessToken" string in
+  #    apps/frontend/dist/ and fail the gate. Hard-fail (no
+  #    continue-on-error) — the cost of a leaked auth backdoor in the
+  #    production bundle is unacceptable.
+  # -------------------------------------------------------------------------
+  frontend-bundle-audit:
+    name: frontend-bundle-audit
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: apps/frontend/package-lock.json
+
+      - name: Install frontend deps
+        working-directory: apps/frontend
+        run: npm ci --no-audit --no-fund
+
+      - name: Production build
+        working-directory: apps/frontend
+        run: npm run build
+
+      # `grep -r` returns 0 when matches are found, 1 when not. We invert with
+      # `!`. Each pattern is a separate step so a CI failure points at the
+      # exact leak. We deliberately do NOT grep for `import.meta.env.DEV` —
+      # that text is replaced by the literal `false` at build time and Vite
+      # tree-shakes the gated branch, so its absence in source ≠ its absence
+      # in dist; checking the actual symptom (the hook identifier) is the
+      # honest signal.
+      - name: Audit dist — no __setAccessToken leak
+        working-directory: apps/frontend
+        run: |
+          if grep -r "__setAccessToken" dist/; then
+            echo "::error::__setAccessToken leaked into production bundle"
+            exit 1
+          fi
+
+      - name: Audit dist — no __authStore leak
+        working-directory: apps/frontend
+        run: |
+          if grep -r "__authStore" dist/; then
+            echo "::error::__authStore leaked into production bundle"
+            exit 1
+          fi
+
+      - name: Audit dist — no VITE_DEV_SECRET placeholder
+        working-directory: apps/frontend
+        run: |
+          if grep -r "VITE_DEV_SECRET" dist/; then
+            echo "::error::VITE_DEV_SECRET placeholder leaked into production bundle"
+            exit 1
+          fi
+
+  # -------------------------------------------------------------------------
+  # 6) E2E — Playwright against a real docker-compose dev stack with the
+  #    Celery worker in mock-scan mode. Runs in parallel with the other jobs
+  #    so PR latency is gated by the slowest job, not the sum.
+  #
+  #    The worker uses TRUSTEDOSS_SCAN_BACKEND=mock so cdxgen / ORT / Trivy
+  #    short-circuit to fixture frames — the real toolchain takes 5-60min
+  #    per scan and would blow the 15min timeout.
+  #
+  #    Auth surface has no team-creation endpoint at this Phase, so a brand-
+  #    new user can't list/create projects. The Playwright harness
+  #    (`tests/_harness/seed.ts`) spawns `python3
+  #    apps/backend/scripts/seed_e2e_user.py` on the runner per scenario
+  #    against the host-mapped Postgres. We also smoke-run it once via
+  #    `docker-compose exec` before Playwright starts so a broken seed
+  #    fails fast.
+  # -------------------------------------------------------------------------
+  e2e:
+    # Nightly-only — the matrix takes ~8 minutes per shard and would
+    # double the typical PR wall-clock. The job still runs on every
+    # workflow_dispatch (maintainer can verify before a risky merge)
+    # and on the daily 04:00 UTC schedule (catches drift on main
+    # between PR runs).
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    # Matrix split (PR #46, Phase 6 of post-GA Manual Walkthrough):
+    #   - shard=scan-flow      → 9 spec / 39 scenario (existing core)
+    #   - shard=manual-aligned → 3 spec / 27 scenario (Phase 5 PR #45)
+    # Both shards run the same dev stack + Playwright config but `--grep`
+    # filter on the `@manual-aligned` tag. Running them as separate matrix
+    # legs parallelises wall-time (~6 min cap) and attributes failures
+    # cleanly without duplicating the 130-line setup block.
+    name: e2e (${{ matrix.shard }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: scan-flow
+            grep_args: "--grep-invert @manual-aligned"
+          - shard: manual-aligned
+            grep_args: "--grep @manual-aligned"
+    runs-on: ubuntu-22.04
+    # 30, not 20. The comment above still says "~8 minutes per shard"; that
+    # stopped being true some time ago. The scan-flow shard's last clean run
+    # took 17m48s wall-clock including stack bring-up, so a 20-minute cap left
+    # 11% headroom — and on 2026-08-01 a slower runner (the manual-aligned
+    # shard went from 10m55s to 13m55s for identical tests) pushed scan-flow
+    # past it and the job was killed mid-suite with nothing failing.
+    #
+    # This still guards what a timeout is for. A hung stack or a Playwright
+    # deadlock blows through 30 minutes just as surely; what it no longer does
+    # is fail a suite for finishing at its normal speed on a bad day.
+    timeout-minutes: 30
+    env:
+      # The worker's mock backend short-circuits cdxgen/ORT/Trivy. Compose
+      # picks this up via the `<<: *backend-env` anchor in
+      # docker-compose.dev.yml.
+      TRUSTEDOSS_SCAN_BACKEND: mock
+      # Pin SECRET_KEY so the JWT signer doesn't rotate between containers
+      # (worker + api would mutually invalidate tokens otherwise).
+      SECRET_KEY: ci-e2e-secret-key-min-32-chars-padding-aabbcc
+      # Vite dev server URL — Playwright's default. Pinned so a future
+      # config drift doesn't silently swap the browser target.
+      PLAYWRIGHT_BASE_URL: http://localhost:5173
+      # Disable slowapi 5/min login limit for the e2e job only. The runner
+      # has a single egress IP, so 7 cumulative logins (auth.spec.ts ×3 +
+      # scan_flow.spec.ts ×4) trip the limit on the third / fourth scenario.
+      # Production / dev keep this unset → limiter enabled by default.
+      RATELIMIT_DISABLED: "1"
+      # /health/ready (the dev compose backend healthcheck) returns 200
+      # only after Alembic schema is at HEAD. Set AUTO_MIGRATE so the
+      # entrypoint runs `alembic upgrade head` before uvicorn binds —
+      # without this the healthcheck loop sees a backend that answers
+      # liveness but flunks readiness for the full deadline, then the
+      # dependent services (celery-worker, frontend) never reach
+      # `service_healthy`.
+      AUTO_MIGRATE: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: apps/frontend/package-lock.json
+
+      # Backend deps are installed on the host runner only because the
+      # Playwright harness (`tests/_harness/seed.ts`) spawns `python3
+      # apps/backend/scripts/seed_e2e_user.py` directly; the script imports
+      # SQLAlchemy + asyncpg + bcrypt. We could rewrite the harness to
+      # `docker-compose exec` instead, but the per-scenario seed cost goes
+      # from ~200ms to ~1.5s — measurable on a 4-scenario suite. Host
+      # python wins.
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/backend/requirements-dev.txt
+
+      - name: Install backend deps (for host-side seed)
+        working-directory: apps/backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-1.48.2
+
+      - name: Install frontend deps
+        working-directory: apps/frontend
+        run: npm ci --no-audit --no-fund
+
+      - name: Install Playwright browsers
+        working-directory: apps/frontend
+        run: npx playwright install --with-deps chromium
+
+      # CI uses docker compose V2 (`docker compose`) because ubuntu-22.04
+      # runners no longer ship docker-compose V1 (the binary was removed
+      # from hosted images in 2024; first PR #9 push surfaced the gap with
+      # exit 127 on this verify step). Host development still uses V1 per
+      # CLAUDE.md core rule #10 — the divergence is contained to this job
+      # and V2 reads the same docker-compose.dev.yml unchanged.
+      - name: Verify docker compose V2 available
+        run: docker compose version
+
+      # Pre-build the backend / worker / frontend images BEFORE bringing the
+      # stack up. The image refs in docker-compose.dev.yml
+      # (\`trustedoss/{backend,backend-worker,frontend}:dev\`) are not
+      # published anywhere — compose tries Docker Hub, gets a "denied"
+      # warning, then falls back to the local \`build:\` directive. On a
+      # cold runner that build adds 2-3 minutes to the startup wall clock,
+      # which used to spill past the 180-second healthcheck deadline below.
+      # Building explicitly here also surfaces a build error as its own
+      # step rather than as a confusing "container unhealthy" 3 minutes
+      # later.
+      - name: Pre-build dev images
+        run: |
+          docker compose -f docker-compose.dev.yml build \
+            backend celery-worker frontend
+
+      # The dev backend image's CMD is bare uvicorn — only the prod
+      # Dockerfile wires up docker-entrypoint.sh, so AUTO_MIGRATE never
+      # actually runs on a dev image. We migrate explicitly here against a
+      # throwaway backend container BEFORE bringing the live services up
+      # so backend's /health/ready (queries alembic_version) can flip to
+      # 200 on the very first probe.
+      - name: Start postgres + redis only
+        run: |
+          docker compose -f docker-compose.dev.yml up -d postgres redis
+
+      - name: Wait for postgres healthy
+        run: |
+          set -euo pipefail
+          deadline=$(( $(date +%s) + 60 ))
+          while :; do
+            cid=$(docker compose -f docker-compose.dev.yml ps -q postgres)
+            status=$(docker inspect --format '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo "none")
+            [ "$status" = "healthy" ] && break
+            [ "$(date +%s)" -ge "$deadline" ] && { echo "::error::postgres never healthy"; exit 1; }
+            sleep 3
+          done
+
+      - name: Run alembic migrations (pre-boot)
+        run: |
+          docker compose -f docker-compose.dev.yml run --rm --no-deps backend \
+            alembic upgrade head
+
+      - name: Bring up the rest of the stack
+        run: |
+          docker compose -f docker-compose.dev.yml up -d \
+            backend celery-worker frontend
+
+      - name: Wait for stack to become healthy
+        # Compose V1 has no `--wait`; poll the `healthy` count until all five
+        # services report green or 240s elapses. The deadline was 180s but a
+        # cold-image-cache backend (Postgres init + alembic upgrade head +
+        # uvicorn boot) regularly used 180-220s on the hosted runner. 240s
+        # leaves headroom; the pre-build step above keeps total wall-clock
+        # bounded.
+        run: |
+          set -euo pipefail
+          services=(postgres redis backend celery-worker frontend)
+          deadline=$(( $(date +%s) + 240 ))
+          while :; do
+            healthy=0
+            for svc in "${services[@]}"; do
+              cid=$(docker compose -f docker-compose.dev.yml ps -q "$svc")
+              if [ -z "$cid" ]; then
+                continue
+              fi
+              status=$(docker inspect --format '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo "none")
+              if [ "$status" = "healthy" ]; then
+                healthy=$(( healthy + 1 ))
+              fi
+            done
+            echo "healthy=$healthy/${#services[@]}"
+            if [ "$healthy" -eq "${#services[@]}" ]; then
+              break
+            fi
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::stack did not become healthy within 180s"
+              docker compose -f docker-compose.dev.yml ps
+              exit 1
+            fi
+            sleep 5
+          done
+
+      - name: Seed e2e user (fail fast if seed broken)
+        # Smoke-run the seed script once before Playwright fans out, so a
+        # broken seed surfaces in <5s instead of after a full Playwright
+        # boot. The spec re-runs the script per scenario for isolation.
+        run: |
+          docker compose -f docker-compose.dev.yml exec -T backend \
+            python scripts/seed_e2e_user.py --project-names ci-smoke
+
+      - name: Run Playwright e2e (${{ matrix.shard }})
+        working-directory: apps/frontend
+        env:
+          # The harness `seed.ts` uses these to spawn python3 against the
+          # docker-compose Postgres mapped to localhost:5432. We override
+          # the default `localhost` host because GitHub runners expose
+          # mapped ports there.
+          DATABASE_URL: postgresql+asyncpg://trustedoss:trustedoss@localhost:5432/trustedoss
+          APP_ENV: dev
+          PYTHON: python3
+          CI: "true"
+        run: npm run test:e2e -- ${{ matrix.grep_args }}
+
+      - name: Dump compose logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.dev.yml logs --tail=200
+
+      - name: Upload Playwright report
+        # Per-shard artifact name — both shards upload concurrently and
+        # actions/upload-artifact@v4 rejects duplicate names.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ matrix.shard }}
+          path: apps/frontend/playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload Playwright traces / screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results-${{ matrix.shard }}
+          path: apps/frontend/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Tear down stack
+        if: always()
+        run: docker compose -f docker-compose.dev.yml down -v

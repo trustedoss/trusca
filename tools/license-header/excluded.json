@@ -1,0 +1,63 @@
+{
+  "$comment": [
+    "Files the license-header gate must NOT touch. Every entry needs a reason.",
+    "",
+    "The load-bearing category is `vendored`: those files are copyright someone",
+    "else (see THIRD_PARTY_NOTICES.md). Stamping `Copyright TRUSCA contributors`",
+    "on them would assert ownership we do not have — the compliance failure this",
+    "whole effort exists to fix, pointed the other way. If you add a vendored",
+    "file, add it here in the same change."
+  ],
+  "vendored": {
+    "$reason": "Copyright SK Telecom Co., Ltd. — verbatim upstream data files, attributed in THIRD_PARTY_NOTICES.md §1. A consistency test pins them byte-identical to a BomLens revision; a header would break that and misstate ownership.",
+    "paths": [
+      "apps/backend/services/g7_registry.json",
+      "apps/backend/services/eol/eol_purl_map.json",
+      "apps/backend/services/regulation_crosswalk.json"
+    ]
+  },
+  "vendored_specs": {
+    "$reason": "Copyright assigned to TRUSCA, but held byte-faithful to the verification team's snapshot by agreement (tests/verify-specs/PROVENANCE.md). No edits of any kind, headers included.",
+    "globs": [
+      "tests/verify-specs/**"
+    ]
+  },
+  "third_party_texts": {
+    "$reason": "Verbatim published license texts, each the work of its own steward (Apache Software Foundation, Free Software Foundation, ...). Not ours to stamp.",
+    "globs": [
+      "apps/backend/services/license_texts/*.txt"
+    ]
+  },
+  "generated": {
+    "$reason": "Machine-generated. Alembic writes revision files from a template; a header would be dropped by the next autogenerate and reappear as noise in every migration diff.",
+    "globs": [
+      "apps/backend/alembic/versions/*.py"
+    ]
+  },
+  "derived_dual_copyright": {
+    "$reason": "Adapted from BomLens within the SAME language, so upstream EXPRESSION survives, not just the idea. These carry a dual copyright header (SK Telecom AND TRUSCA) written by hand; the auto-inserter must not overwrite that with our name alone. Contrast the jq-to-Python ports (g7_conformance.py, license_flags.py, ...): a change of language means the expression is ours, and THIRD_PARTY_NOTICES.md §1 carries the upstream credit.",
+    "paths": [
+      "apps/frontend/src/features/scan/lib/g7Conformance.ts",
+      "apps/frontend/src/features/scan/lib/g7Guidance.ts",
+      "apps/backend/integrations/scan_executor/build_prep_source.sh"
+    ]
+  },
+  "position_sensitive_first_line": {
+    "$reason": "cloud-init identifies the payload by its FIRST line (`#cloud-config`); a header above it silently breaks provisioning. It is also our own demo-host bootstrap rather than a product artifact — the same reason deploy/ is out of scope.",
+    "paths": [
+      "scripts/hetzner-cloud-init.yaml"
+    ]
+  },
+  "ambient_declarations": {
+    "$reason": "A single triple-slash reference directive. No authorship to claim, and the directive is position-sensitive by spec (comments may precede it, but a two-line header over a one-line file is noise either way).",
+    "paths": [
+      "apps/frontend/src/vite-env.d.ts"
+    ]
+  },
+  "vendored_snapshots": {
+    "$reason": "Data snapshots fetched from upstream APIs, not authored here. Provenance is in THIRD_PARTY_NOTICES.md §1 and in the refresh script's docstring.",
+    "paths": [
+      "apps/backend/services/eol/eol_snapshot.json"
+    ]
+  }
+}

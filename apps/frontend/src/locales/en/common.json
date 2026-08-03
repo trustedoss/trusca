@@ -1,0 +1,122 @@
+{
+  "app": {
+    "name": "TRUSCA",
+    "tagline": "Open-source SCA platform — CVEs, licenses, and SBOMs in one place"
+  },
+  "language": {
+    "label": "Language",
+    "english": "English",
+    "korean": "한국어"
+  },
+  "theme": {
+    "label": "Theme",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System",
+    "next": {
+      "light": "Switch to light theme",
+      "dark": "Switch to dark theme",
+      "system": "Follow system theme"
+    }
+  },
+  "multiselect": {
+    "all": "All",
+    "clear": "Clear",
+    "count_selected": "{{count}} selected"
+  },
+  "filters": {
+    "more_filters": {
+      "trigger": "Add filter",
+      "aria": "Add more filters"
+    },
+    "columns": {
+      "trigger": "Columns",
+      "aria": "Choose visible columns",
+      "required_hint": "Always visible"
+    }
+  },
+  "sort": {
+    "aria_ascending": "sorted ascending — click to sort descending",
+    "aria_descending": "sorted descending — click to clear sort",
+    "aria_unsorted": "not sorted — click to sort ascending"
+  },
+  "auth": {
+    "logout": "Sign out",
+    "profile": "Profile",
+    "active_team": "Active team: {{team}}"
+  },
+  "home": {
+    "title": "Welcome to TRUSCA",
+    "subtitle": "Bootstrap is online. Authentication, projects, and scans land in upcoming phases.",
+    "stack": "React 18 · Vite · shadcn/ui · TanStack Query · react-i18next",
+    "api_label": "API base",
+    "primary_cta": "View component"
+  },
+  "risk": {
+    "critical": "Critical",
+    "high": "High",
+    "medium": "Medium",
+    "low": "Low",
+    "info": "Info"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "about": "About",
+    "projects": "Projects",
+    "scans": "Scans",
+    "approvals": "Approvals",
+    "policies": "Policies",
+    "integrations": "Integrations",
+    "bell": {
+      "aria": "Notifications",
+      "aria_with_count": "Notifications, {{count}} unread"
+    },
+    "collapseSidebar": "Collapse sidebar",
+    "expandSidebar": "Expand sidebar",
+    "openMenu": "Open navigation menu",
+    "closeMenu": "Close navigation menu",
+    "admin": {
+      "section": "Administration"
+    },
+    "group": {
+      "portfolio": "Portfolio",
+      "operations": "Operations"
+    },
+    "switchTeam": "Switch team",
+    "components": "Components"
+  },
+  "approvals": {
+    "coming_soon": "Coming soon in Step 3."
+  },
+  "scans": {
+    "title": "Scans",
+    "coming_soon": "Coming soon in Step 4."
+  },
+  "demo": {
+    "banner_title": "Read-only demo",
+    "banner_detail": "This is a live demo. Browse freely — creating, editing, and deleting are disabled.",
+    "write_disabled": "Disabled in the read-only demo"
+  },
+  "command_menu": {
+    "trigger_button": "Search...",
+    "placeholder": "Search projects, CVEs, pages...",
+    "no_results": "No results found.",
+    "searching": "Searching…",
+    "shortcut_hint": "⌘K",
+    "group": {
+      "projects": "Projects",
+      "components": "Components",
+      "cves": "CVEs",
+      "vulnerabilities": "Vulnerabilities",
+      "pages": "Pages"
+    },
+    "see_all": "See all results",
+    "open_search": "Open full search",
+    "open_search_hint": "Page, filter and save results"
+  },
+  "errors": {
+    "request_failed": "The request failed. Please try again.",
+    "boundary_title": "Something went wrong",
+    "boundary_reload": "Reload page"
+  }
+}

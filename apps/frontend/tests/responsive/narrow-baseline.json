@@ -1,0 +1,17 @@
+{
+  "admin-users": 0,
+  "admin-users (widened)": 0,
+  "approvals": 0,
+  "approvals (widened)": 0,
+  "dashboard": 0,
+  "dashboard (widened)": 0,
+  "login": 0,
+  "project-detail-overview": 0,
+  "project-detail-overview (widened)": 0,
+  "project-detail-vulnerabilities": 0,
+  "project-detail-vulnerabilities (widened)": 0,
+  "projects-list": 0,
+  "projects-list (widened)": 0,
+  "scans": 0,
+  "scans (widened)": 0
+}

@@ -1,0 +1,107 @@
+{
+  "module": "disk-and-health",
+  "_about": "disk-and-health 모듈 api 채널 결정적 검증 스펙. 기대값은 admin-guide/disk-and-health.md(케이스 명세 test-cases/disk-and-health.md)에서 도출, 경로는 /openapi.json로 확정. 원 결과표에 shell 채널 케이스는 없음(docs-uat kind=shell은 manual로 실행됨). 전부 GET 조회·거부 경로(401/403기대/404)라 무변경. 디스크 사용률 경계(80/90/95)와 정리 절차는 환경 조정(디스크 채움·재기동)이 필요해 원 판정 blocked — 스펙 제외.",
+  "_env_notes": "이 환경 전제: WORKSPACE_HOST_PATH 미설정 → /opt/trustedoss/workspace 미존재 → health의 disk 행은 결정적으로 down(detail=workspace), disk의 workspace 카드는 down(used_pct=null). admin 엔드포인트는 require_super_admin_or_404 패턴이라 비super_admin에게 404(존재 은닉)를 준다 — 가이드 기대 403과 어긋나며 결함 ID가 없어 fail-concordant로 둔다(bugreport '참고: 403이 아니라 404' 절, 명세 404 정정 권고).",
+  "vars": [],
+  "checks": [
+    {
+      "tc": "TC-HEALTH-01-001", "channel": "api", "as": "super_admin",
+      "_expect": "헬스 API 200 + 컴포넌트별 행. 가이드의 여섯 컴포넌트(postgres, redis, celery, disk, active_scans, last_24h_errors)가 본문에 담긴다",
+      "request": { "method": "GET", "path": "/v1/admin/health" },
+      "expect": {
+        "status": 200,
+        "jsonHas": ["components", "updated_at"],
+        "bodyIncludes": ["\"name\":\"postgres\"", "\"name\":\"redis\"", "\"name\":\"celery\"", "\"name\":\"disk\"", "\"name\":\"active_scans\"", "\"name\":\"last_24h_errors\""]
+      }
+    },
+    {
+      "tc": "TC-HEALTH-01-004", "channel": "api", "as": "super_admin",
+      "_expect": "가이드: State가 ok 아닌 행은 Detail에 오류 메시지/사유 표면화. 이 환경에서 disk 행이 결정적으로 down(workspace 경로 부재) — detail이 비어 있지 않은지만 본다(구체 문자열은 구현 상세라 고정 안 함)",
+      "request": { "method": "GET", "path": "/v1/admin/health" },
+      "expect": {
+        "status": 200,
+        "jsonEquals": { "components[3].name": "disk", "components[3].status": "down" },
+        "bodyMatches": "\"name\":\"disk\",\"status\":\"down\",\"detail\":\"[^\"]+\""
+      }
+    },
+    {
+      "tc": "TC-HEALTH-01-005", "channel": "api", "as": "super_admin",
+      "_expect": "가이드: active_scans와 last_24h_errors는 카운트를 보여 주는 정보성 행 — 두 행 모두 value가 숫자 카운트로 반환(detail 문구는 구현 상세라 고정 안 함)",
+      "request": { "method": "GET", "path": "/v1/admin/health" },
+      "expect": {
+        "status": 200,
+        "jsonEquals": { "components[4].name": "active_scans", "components[5].name": "last_24h_errors" },
+        "bodyMatches": "\"name\":\"active_scans\"[^}]*\"value\":\\d+.*\"name\":\"last_24h_errors\"[^}]*\"value\":\\d+"
+      }
+    },
+    {
+      "tc": "TC-HEALTH-02-005", "channel": "api", "as": "super_admin",
+      "_expect": "API 계약은 소문자 enum(ok/degraded/down) 유지 — jsonEquals는 대소문자 정확 일치라 소문자 검증이 된다(postgres=ok, disk=down)",
+      "request": { "method": "GET", "path": "/v1/admin/health" },
+      "expect": {
+        "status": 200,
+        "jsonEquals": { "components[0].name": "postgres", "components[0].status": "ok", "components[3].status": "down" },
+        "bodyMatches": "^(?!.*\"status\":\"(?:OK|Ok|Healthy|HEALTHY|Degraded|DEGRADED|Down|DOWN)\").*$"
+      }
+    },
+    {
+      "tc": "TC-HEALTH-03-001", "channel": "api", "as": "super_admin", "knownBug": "M-32",
+      "_expect": "디스크 API 200 + items: AdminDiskItem[]에 가이드가 약속한 네 카드(workspace, trivy_db, postgres, redis). 원 실행 시 trivy_db 카드 부재(M-32) → #348로 코드 추가됨(fixed-since 기대)",
+      "request": { "method": "GET", "path": "/v1/admin/disk" },
+      "expect": {
+        "status": 200,
+        "jsonHas": ["items", "collected_at"],
+        "bodyIncludes": ["\"name\":\"workspace\"", "\"name\":\"trivy_db\"", "\"name\":\"postgres\"", "\"name\":\"redis\""]
+      }
+    },
+    {
+      "tc": "TC-HEALTH-06-001", "channel": "api", "as": "super_admin",
+      "_expect": "super_admin의 헬스 조회 200 (디스크 200은 TC-HEALTH-03-001이 동일 계정으로 검증)",
+      "request": { "method": "GET", "path": "/v1/admin/health" },
+      "expect": { "status": 200, "jsonHas": ["components"] }
+    },
+    {
+      "tc": "TC-HEALTH-06-002", "channel": "api", "as": "developer",
+      "_expect": "가이드 기대: developer의 admin 헬스 조회는 403 거부. 구현은 require_super_admin_or_404로 404(존재 은닉) — 결함 ID 없음, fail-concordant(orig=fail) 정상",
+      "request": { "method": "GET", "path": "/v1/admin/health" },
+      "expect": { "status": 403 }
+    },
+    {
+      "tc": "TC-HEALTH-06-003", "channel": "api", "as": "team_admin_frontend",
+      "_expect": "가이드 기대: team_admin의 admin 헬스 조회는 403 거부. 구현은 404(존재 은닉) — 결함 ID 없음, fail-concordant(orig=fail) 정상",
+      "request": { "method": "GET", "path": "/v1/admin/health" },
+      "expect": { "status": 403 }
+    },
+    {
+      "tc": "TC-HEALTH-06-004", "channel": "api",
+      "_expect": "인증 토큰 없는 admin 헬스 호출은 401",
+      "request": { "method": "GET", "path": "/v1/admin/health" },
+      "expect": { "status": 401 }
+    },
+    {
+      "tc": "TC-HEALTH-11-002", "channel": "api", "as": "super_admin",
+      "_expect": "가이드: celery 행이 ok면 워커와 브로커 도달 가능으로 추정 — celery 행이 ok인 것만 본다(detail 문구는 구현 상세라 고정 안 함)",
+      "request": { "method": "GET", "path": "/v1/admin/health" },
+      "expect": {
+        "status": 200,
+        "jsonEquals": { "components[2].name": "celery", "components[2].status": "ok" }
+      }
+    },
+    {
+      "tc": "TC-HEALTH-09-003-setup", "channel": "api", "as": "super_admin",
+      "_expect": "헬퍼(orig=blocked라 대조 제외): 강제 취소 엔드포인트 계약 중 부수효과 없는 거부 경로만 — 미존재 scan_id 취소는 404 Scan Not Found. 멈춘 running 스캔 데이터 부재로 정상 취소 흐름은 재현 불가",
+      "request": { "method": "POST", "path": "/v1/admin/scans/00000000-0000-0000-0000-000000000000/cancel" },
+      "expect": { "status": 404, "bodyIncludes": ["Scan Not Found"] }
+    },
+    {
+      "tc": "TC-HEALTH-H6-setup", "channel": "api", "as": "super_admin",
+      "_expect": "헬퍼(타 모듈 결함 H-6 재현, 원 TC는 oncall-runbook의 TC-RUNBOOK-02-002): backend의 Trivy DB 상태 패널이 항상 unknown이던 버그 — #348 공유볼륨(backend ro)로 수정. 이제 metadata를 읽어 freshness가 fresh|stale로 판정된다(unknown 아님)",
+      "request": { "method": "GET", "path": "/v1/admin/trivy/health" },
+      "expect": {
+        "status": 200,
+        "jsonHas": ["last_update", "db_version", "db_size_bytes"],
+        "bodyMatches": "\"freshness\":\"(fresh|stale)\""
+      }
+    }
+  ]
+}

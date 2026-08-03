@@ -1,0 +1,332 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 TRUSCA contributors
+/**
+ * SearchPage — unit tests (S3).
+ *
+ * The wire layer is mocked so these can assert the page's own behaviour: what
+ * it asks the server for, what it does with the answer, and which of its
+ * decisions live in the URL. The E2E suite covers the round trip against a
+ * real backend.
+ */
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { SearchPage } from "@/features/search/SearchPage";
+import type { SearchResultsPage } from "@/features/search/api/searchResultsApi";
+
+vi.mock("@/features/search/api/searchResultsApi", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/features/search/api/searchResultsApi")
+  >("@/features/search/api/searchResultsApi");
+  return {
+    ...actual,
+    fetchSearchResults: vi.fn(),
+    listSavedSearches: vi.fn(),
+    createSavedSearch: vi.fn(),
+    deleteSavedSearch: vi.fn(),
+  };
+});
+
+const { fetchSearchResults, listSavedSearches, createSavedSearch } =
+  await import("@/features/search/api/searchResultsApi");
+
+const mockedFetch = vi.mocked(fetchSearchResults);
+const mockedSaved = vi.mocked(listSavedSearches);
+const mockedCreate = vi.mocked(createSavedSearch);
+
+function emptyPage(overrides: Partial<SearchResultsPage> = {}): SearchResultsPage {
+  return {
+    kind: "components",
+    query: "",
+    items_projects: [],
+    items_components: [],
+    items_vulnerabilities: [],
+    items_licenses: [],
+    total: 0,
+    page: 1,
+    size: 25,
+    facets: {},
+    ...overrides,
+  };
+}
+
+function componentRow(name: string) {
+  return {
+    project_id: `p-${name}`,
+    project_name: `project ${name}`,
+    project_slug: `project-${name}`,
+    component_id: `c-${name}`,
+    component_name: name,
+    version: "1.0.0",
+    purl: `pkg:npm/${name}`,
+    package_type: "npm",
+  };
+}
+
+function renderPage(initialUrl = "/search?kind=components&q=lodash") {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={[initialUrl]}>
+        <SearchPage />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
+beforeEach(() => {
+  mockedSaved.mockResolvedValue({ items: [], total: 0, limit: 20 });
+  mockedCreate.mockResolvedValue({
+    id: "s-1",
+    name: "n",
+    kind: "components",
+    params: {},
+    created_at: new Date().toISOString(),
+  });
+});
+
+afterEach(() => {
+  vi.clearAllMocks();
+  vi.useRealTimers();
+});
+
+describe("SearchPage", () => {
+  it("asks the server for the kind and term the URL names", async () => {
+    mockedFetch.mockResolvedValue(emptyPage({ query: "lodash" }));
+    renderPage();
+
+    await waitFor(() => {
+      expect(mockedFetch).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: "components", q: "lodash" }),
+      );
+    });
+  });
+
+  it("does not spend a request below the two-character threshold", async () => {
+    mockedFetch.mockResolvedValue(emptyPage());
+    renderPage("/search?kind=components&q=a");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("search-summary")).toBeInTheDocument();
+    });
+    expect(mockedFetch).not.toHaveBeenCalled();
+  });
+
+  it("renders the rows the server returned and reports the total", async () => {
+    mockedFetch.mockResolvedValue(
+      emptyPage({
+        query: "lodash",
+        items_components: [componentRow("lodash"), componentRow("lodash-es")],
+        total: 2,
+      }),
+    );
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("search-result-row")).toHaveLength(2);
+    });
+    expect(screen.getByTestId("search-summary")).toHaveAttribute(
+      "data-total",
+      "2",
+    );
+  });
+
+  // The scope line is the answer to "why does this tab show more rows than the
+  // /components inventory". The asymmetry is the backend's — components and
+  // projects search all of history, vulnerabilities and licences only the
+  // current scan — and it was documented nowhere the user could see.
+  // `as const` matters: without it the tuples widen to `string`, and
+  // `emptyPage({ kind })` wants the literal union its wire type declares.
+  it.each([
+    ["components", "all_scans"],
+    ["projects", "all_scans"],
+    ["vulnerabilities", "current_scan"],
+    ["licenses", "current_scan"],
+  ] as const)("states that the %s tab covers %s", async (kind, scope) => {
+    mockedFetch.mockResolvedValue(emptyPage({ kind, query: "lodash" }));
+    renderPage(`/search?kind=${kind}&q=lodash`);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("search-scope")).toHaveAttribute(
+        "data-scope",
+        scope,
+      );
+    });
+  });
+
+  it("states the scope before a term is typed", async () => {
+    mockedFetch.mockResolvedValue(emptyPage());
+    // Below the 2-char threshold nothing is fetched, but the tab still has to
+    // say what it would search — that is when someone is choosing a tab.
+    renderPage("/search?kind=vulnerabilities");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("search-scope")).toHaveAttribute(
+        "data-scope",
+        "current_scan",
+      );
+    });
+    expect(mockedFetch).not.toHaveBeenCalled();
+  });
+
+  it("switching tabs sheds the previous tab's facets", async () => {
+    // package_type means nothing on the vulnerabilities tab, so carrying it
+    // would filter by something the new tab cannot show the user.
+    mockedFetch.mockResolvedValue(
+      emptyPage({
+        query: "lodash",
+        items_components: [componentRow("lodash")],
+        total: 1,
+        facets: { package_type: [{ value: "npm", count: 1 }] },
+      }),
+    );
+    renderPage("/search?kind=components&q=lodash&package_type=npm");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("search-tabs")).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByTestId("search-tab-vulnerabilities"));
+
+    await waitFor(() => {
+      expect(mockedFetch).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: "vulnerabilities", packageType: [] }),
+      );
+    });
+  });
+
+  it("a facet chip carries the server's count and toggles into the query", async () => {
+    mockedFetch.mockResolvedValue(
+      emptyPage({
+        kind: "vulnerabilities",
+        query: "CVE",
+        items_vulnerabilities: [],
+        total: 5,
+        facets: {
+          severity: [
+            { value: "critical", count: 2 },
+            { value: "high", count: 3 },
+          ],
+        },
+      }),
+    );
+    renderPage("/search?kind=vulnerabilities&q=CVE");
+
+    const chip = await screen.findByTestId("search-facet-severity-critical");
+    // The count is the promise the click makes.
+    expect(within(chip).getByText("2")).toBeInTheDocument();
+    expect(chip).toHaveAttribute("data-active", "false");
+
+    await userEvent.click(chip);
+    await waitFor(() => {
+      expect(mockedFetch).toHaveBeenCalledWith(
+        expect.objectContaining({ severity: ["critical"] }),
+      );
+    });
+  });
+
+  it("shows the pagination footer only when there is more than one page", async () => {
+    mockedFetch.mockResolvedValue(
+      emptyPage({ query: "lodash", items_components: [componentRow("a")], total: 5 }),
+    );
+    const { unmount } = renderPage();
+    await waitFor(() => {
+      expect(screen.getByTestId("search-summary")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("search-pagination")).not.toBeInTheDocument();
+    unmount();
+
+    mockedFetch.mockResolvedValue(
+      emptyPage({ query: "lodash", items_components: [componentRow("a")], total: 60 }),
+    );
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByTestId("search-pagination")).toBeInTheDocument();
+    });
+  });
+
+  it("paging forward asks for the next page", async () => {
+    mockedFetch.mockResolvedValue(
+      emptyPage({ query: "lodash", items_components: [componentRow("a")], total: 60 }),
+    );
+    renderPage();
+
+    const next = await screen.findByTestId("search-page-next");
+    await userEvent.click(next);
+    await waitFor(() => {
+      expect(mockedFetch).toHaveBeenCalledWith(
+        expect.objectContaining({ page: 2 }),
+      );
+    });
+  });
+
+  it("changing the term resets the page number", async () => {
+    // Staying on page 4 of a set that just shrank shows an empty table.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    mockedFetch.mockResolvedValue(
+      emptyPage({ query: "lodash", items_components: [componentRow("a")], total: 60 }),
+    );
+    renderPage("/search?kind=components&q=lodash&page=3");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("search-input")).toBeInTheDocument();
+    });
+    await userEvent.type(screen.getByTestId("search-input"), "x");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(350);
+    });
+
+    await waitFor(() => {
+      const calls = mockedFetch.mock.calls.map(([params]) => params);
+      expect(calls.some((params) => params.q === "lodashx")).toBe(true);
+    });
+  });
+
+  it("saves the current query string under a name", async () => {
+    mockedFetch.mockResolvedValue(
+      emptyPage({ query: "lodash", items_components: [componentRow("a")], total: 1 }),
+    );
+    renderPage("/search?kind=components&q=lodash&package_type=npm");
+
+    await userEvent.click(await screen.findByTestId("search-save-trigger"));
+    await userEvent.type(
+      await screen.findByTestId("search-save-name"),
+      "my search",
+    );
+    await userEvent.click(screen.getByTestId("search-save-confirm"));
+
+    await waitFor(() => {
+      expect(mockedCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "my search",
+          kind: "components",
+          params: expect.objectContaining({ q: "lodash", package_type: "npm" }),
+        }),
+      );
+    });
+  });
+
+  it("disables saving once the per-user limit is reached", async () => {
+    mockedSaved.mockResolvedValue({ items: [], total: 20, limit: 20 });
+    mockedFetch.mockResolvedValue(
+      emptyPage({ query: "lodash", items_components: [componentRow("a")], total: 1 }),
+    );
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("search-save-trigger")).toBeDisabled();
+    });
+  });
+
+  it("surfaces a load failure instead of an empty table", async () => {
+    mockedFetch.mockRejectedValue(new Error("boom"));
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByTestId("search-error")).toBeInTheDocument();
+    });
+  });
+});

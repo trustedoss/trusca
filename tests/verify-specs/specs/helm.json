@@ -1,0 +1,18 @@
+{
+  "module": "helm",
+  "_about": "helm 모듈(k8s 설치 가이드) 결정적 검증 스펙. 48케이스 중 api/shell로 결정적 재현 가능한 것은 health API 2건뿐이다. 채널 분포: manual 42(helm lint/template 로컬 렌더, 차트 파일·소스 검사, kubectl, backup.sh — api/sql 스펙화 불가), api 5, e2e 1. api 5건 중 3건(TC-04-003, TC-06-004, TC-08-001)은 마이그레이션 미완 상태(스키마 다운그레이드 필요 — 파괴적) 또는 라이브 클러스터가 전제라 원 판정이 blocked이고, blocked TC는 직접 대조 금지라 제외. e2e 1건(TC-05-004)은 Ingress+cert-manager 전제로 blocked, 제외. 결함 매핑: L-1(doc-fix #355, 차트 버전 0.3.0 대 0.10.0)은 blocked인 manual install 케이스에서 드러난 문서 결함이고 검증 수단이 Chart.yaml 파일 검사라 api/sql 스펙화 불가, 제외. L-2(code-fix #348, TC-07-005 trivyDbPersistence 볼륨 마운트)는 검증 수단이 helm template 렌더 산출물 검사(manual)라 SQL로 재현할 수 없어 제외 — 수정 확인은 차트 렌더 재실행으로만 가능. L-3(doc-fix #355, IMAGE_TAG)은 upgrade 모듈 소속(TC-UPGRADE-01-004)이라 이 모듈 대상 아님. 남은 스펙은 원 판정 pass인 api 2건이며 기대값은 helm.md 가이드 문장(readiness probe passes / Ready means /health/ready returned 200)에서 도출. 사이드이펙트 없음(읽기 전용 GET).",
+  "checks": [
+    {
+      "tc": "TC-HELM-05-003", "channel": "api",
+      "_expect": "가이드 'The readiness probe passes from inside the cluster' — GET /health/ready가 200과 {\"status\":\"ready\"} 반환. 무인증 읽기 전용.",
+      "request": { "method": "GET", "path": "/health/ready" },
+      "expect": { "status": 200, "jsonEquals": { "status": "ready" } }
+    },
+    {
+      "tc": "TC-HELM-05-005", "channel": "api",
+      "_expect": "가이드 'backend pods Ready means /health/ready returned 200 (schema at HEAD)' — readiness 게이트가 200이면 스키마 HEAD 동치(health.py가 스키마 behind HEAD면 503을 내므로 200 자체가 HEAD 증거). 파드 Ready 관측은 클러스터 필요라 api로 확인 가능한 동치 절반만 검증.",
+      "request": { "method": "GET", "path": "/health/ready" },
+      "expect": { "status": 200, "jsonEquals": { "status": "ready" } }
+    }
+  ]
+}

@@ -1,0 +1,164 @@
+/**
+ * projectDetailApi — wire layer tests (PR #10).
+ *
+ * Direct unit tests for the axios wrappers, ensuring the URL paths match the
+ * backend contract and the array filters serialize as repeated query params
+ * (FastAPI `list[str]` convention).
+ */
+import type { AxiosInstance } from "axios";
+import { describe, expect, it, vi, beforeEach } from "vitest";
+
+vi.mock("@/lib/api", () => {
+  const get = vi.fn();
+  return { api: { get } as unknown as AxiosInstance };
+});
+
+import { api } from "@/lib/api";
+import {
+  getComponent,
+  getGateResult,
+  getProjectOverview,
+  listProjectComponents,
+} from "@/features/projects/api/projectDetailApi";
+
+const mockedGet = api.get as unknown as ReturnType<typeof vi.fn>;
+
+describe("projectDetailApi", () => {
+  beforeEach(() => {
+    mockedGet.mockReset();
+    mockedGet.mockResolvedValue({ data: {} });
+  });
+
+  it("getProjectOverview hits /v1/projects/{id}/overview", async () => {
+    await getProjectOverview("proj-1");
+    expect(mockedGet).toHaveBeenCalledWith("/v1/projects/proj-1/overview", {
+      params: {},
+    });
+  });
+
+  it("getProjectOverview sends scan_id when a snapshot is pinned (feature #28)", async () => {
+    await getProjectOverview("proj-1", { scanId: "scan-old" });
+    expect(mockedGet).toHaveBeenCalledWith(
+      "/v1/projects/proj-1/overview",
+      expect.objectContaining({ params: { scan_id: "scan-old" } }),
+    );
+  });
+
+  it("listProjectComponents sends scan_id when a snapshot is pinned (feature #28)", async () => {
+    await listProjectComponents("proj-1", { scanId: "scan-old" });
+    const call = mockedGet.mock.calls[0]!;
+    expect(call[1].params).toMatchObject({ scan_id: "scan-old" });
+  });
+
+  it("listProjectComponents passes pagination + sort params", async () => {
+    await listProjectComponents("proj-1", {
+      limit: 50,
+      offset: 100,
+      sort: "severity",
+      order: "desc",
+    });
+    expect(mockedGet).toHaveBeenCalledWith(
+      "/v1/projects/proj-1/components",
+      expect.objectContaining({
+        params: expect.objectContaining({
+          limit: 50,
+          offset: 100,
+          sort: "severity",
+          order: "desc",
+        }),
+      }),
+    );
+  });
+
+  it("listProjectComponents includes severity / license_category arrays only when non-empty", async () => {
+    await listProjectComponents("proj-1", {
+      severity: ["critical", "high"],
+      license_category: [],
+    });
+    const call = mockedGet.mock.calls[0]!;
+    const params = call[1].params;
+    expect(params.severity).toEqual(["critical", "high"]);
+    expect(params).not.toHaveProperty("license_category");
+  });
+
+  it("listProjectComponents trims empty searches before sending", async () => {
+    await listProjectComponents("proj-1", { search: "" });
+    const call = mockedGet.mock.calls[0]!;
+    expect(call[1].params).not.toHaveProperty("search");
+  });
+
+  // W2 #31 — Direct/Transitive + Usage facet wire shape.
+
+  it("listProjectComponents emits ?direct=true only when explicitly true", async () => {
+    await listProjectComponents("proj-1", { direct: true });
+    expect(mockedGet.mock.calls[0]![1].params).toMatchObject({ direct: true });
+  });
+
+  it("listProjectComponents emits ?direct=false only when explicitly false", async () => {
+    await listProjectComponents("proj-1", { direct: false });
+    expect(mockedGet.mock.calls[0]![1].params).toMatchObject({
+      direct: false,
+    });
+  });
+
+  it("listProjectComponents omits direct when null/undefined (include both)", async () => {
+    await listProjectComponents("proj-1", { direct: null });
+    expect(mockedGet.mock.calls[0]![1].params).not.toHaveProperty("direct");
+    mockedGet.mockReset();
+    mockedGet.mockResolvedValue({ data: {} });
+    await listProjectComponents("proj-1", {});
+    expect(mockedGet.mock.calls[0]![1].params).not.toHaveProperty("direct");
+  });
+
+  it("listProjectComponents sends dependency_scope array when non-empty (repeated key)", async () => {
+    await listProjectComponents("proj-1", {
+      dependency_scope: ["required", "unspecified"],
+    });
+    const call = mockedGet.mock.calls[0]!;
+    expect(call[1].params.dependency_scope).toEqual(["required", "unspecified"]);
+    // Repeat-key serializer is enabled so FastAPI parses `list[str]`.
+    expect(call[1].paramsSerializer).toEqual({ indexes: null });
+  });
+
+  it("listProjectComponents omits dependency_scope when empty", async () => {
+    await listProjectComponents("proj-1", { dependency_scope: [] });
+    expect(mockedGet.mock.calls[0]![1].params).not.toHaveProperty(
+      "dependency_scope",
+    );
+  });
+
+  it("getComponent hits /v1/components/{id}", async () => {
+    await getComponent("alpha-id");
+    expect(mockedGet).toHaveBeenCalledWith("/v1/components/alpha-id");
+  });
+
+  it("getGateResult hits /v1/projects/{id}/gate-result and returns the body", async () => {
+    mockedGet.mockResolvedValueOnce({
+      data: {
+        gate: "fail",
+        reason: "1 critical CVE blocks this build.",
+        critical_cve_count: 1,
+        forbidden_license_count: 0,
+        epss_gate_count: 0,
+        epss_threshold: null,
+        project_id: "proj-1",
+        scan_id: "scan-9",
+        evaluated_at: "2026-05-23T00:00:00Z",
+      },
+    });
+    const result = await getGateResult("proj-1");
+    expect(mockedGet).toHaveBeenCalledWith("/v1/projects/proj-1/gate-result", {
+      params: {},
+    });
+    expect(result.gate).toBe("fail");
+    expect(result.critical_cve_count).toBe(1);
+  });
+
+  it("getGateResult sends scan_id when a snapshot is pinned (feature #28)", async () => {
+    await getGateResult("proj-1", { scanId: "scan-old" });
+    expect(mockedGet).toHaveBeenCalledWith(
+      "/v1/projects/proj-1/gate-result",
+      expect.objectContaining({ params: { scan_id: "scan-old" } }),
+    );
+  });
+});

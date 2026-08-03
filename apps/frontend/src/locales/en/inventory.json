@@ -1,0 +1,80 @@
+{
+  "page": {
+    "title": "Components"
+  },
+  "summary": {
+    "count": "{{total}} packages in use across your projects — showing {{loaded}}."
+  },
+  "col": {
+    "name": "Package",
+    "type": "Type",
+    "projects": "Projects",
+    "versions": "Versions in use",
+    "severity": "Severity",
+    "cves": "CVEs",
+    "license": "License"
+  },
+  "row": {
+    "versions_truncated": "{{shown}} +{{more}} more"
+  },
+  "toolbar": {
+    "search_label": "Search",
+    "search_placeholder": "Search by name or purl",
+    "package_type": "Type",
+    "sort_label": "Sort by",
+    "order_label": "Sort direction",
+    "eol_only": "End-of-life only",
+    "outdated_only": "Outdated only",
+    "filter": {
+      "severity": "Severity",
+      "license_category": "License",
+      "lifecycle": "Lifecycle"
+    },
+    "sort": {
+      "project_count": "Project count",
+      "name": "Name",
+      "severity": "Severity",
+      "license": "License"
+    },
+    "order": {
+      "desc": "Descending",
+      "asc": "Ascending"
+    }
+  },
+  "severity": {
+    "critical": "Critical",
+    "high": "High",
+    "medium": "Medium",
+    "low": "Low",
+    "info": "Info",
+    "none": "None"
+  },
+  "license": {
+    "forbidden": "Forbidden",
+    "conditional": "Conditional",
+    "allowed": "Allowed",
+    "unknown": "Unknown"
+  },
+  "drawer": {
+    "title": "Used by",
+    "subtitle": "Projects whose latest successful scan contains this package.",
+    "direct": "Direct",
+    "transitive": "Transitive"
+  },
+  "empty": {
+    "title": "No packages match",
+    "subtitle": "Adjust the filters, or scan a project to populate the inventory.",
+    "wider": {
+      "hint": "This page lists only what each project's latest scan found. A package removed a few releases ago is still in the scan history.",
+      "action": "Search every scan"
+    }
+  },
+  "errors": {
+    "load_failed": "Couldn't load the inventory. Please try again."
+  },
+  "affected": {
+    "title": "Also affected",
+    "also_in": "{{count}} other project(s)",
+    "this_project": "This project"
+  }
+}

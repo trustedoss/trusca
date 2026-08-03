@@ -1,0 +1,3 @@
+# Playwright scratch output (traces from failed runs). CI uploads what it
+# needs as an artifact; the repo tracks only the baseline JSON.
+.output/

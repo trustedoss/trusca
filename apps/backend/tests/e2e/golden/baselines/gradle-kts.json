@@ -1,0 +1,39 @@
+{
+  "components": {
+    "count": 7,
+    "nix_spurious": 0,
+    "purls": [
+      "pkg:maven/com.google.code.findbugs/jsr305@3.0.2?type=jar",
+      "pkg:maven/com.google.errorprone/error_prone_annotations@2.21.1?type=jar",
+      "pkg:maven/com.google.guava/failureaccess@1.0.1?type=jar",
+      "pkg:maven/com.google.guava/guava@32.1.3-jre?type=jar",
+      "pkg:maven/com.google.guava/listenablefuture@9999.0-empty-to-avoid-conflict-with-guava?type=jar",
+      "pkg:maven/com.google.j2objc/j2objc-annotations@2.8?type=jar",
+      "pkg:maven/org.checkerframework/checker-qual@3.37.0?type=jar"
+    ]
+  },
+  "gate": {
+    "critical_cve": 0,
+    "forbidden_license": 0,
+    "gate": "pass"
+  },
+  "licenses": [
+    "Apache-2.0|allowed|concluded",
+    "MIT|allowed|concluded"
+  ],
+  "notice": {
+    "csp": true,
+    "html_ok": true,
+    "text_ok": true
+  },
+  "report_pdf_ok": true,
+  "sbom": {
+    "cyclonedx-json": true,
+    "cyclonedx-xml": true,
+    "spdx-json": true,
+    "spdx-tv": true
+  },
+  "scan_status": "succeeded",
+  "source_tree_root_entries": 2,
+  "vulnerabilities_count": 0
+}

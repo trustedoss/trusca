@@ -1,0 +1,82 @@
+name: Demo health canary
+
+# Optional secondary uptime check for the public demo. The PRIMARY recommended
+# monitor is an external service (UptimeRobot, 5-min checks, e-mail/Slack alerts)
+# — see docs-site/docs/installation/live-demo.md. GitHub's cron is best-effort
+# (it can be delayed or dropped under load), so this is a backstop, not an SLA.
+#
+# It probes GET <DEMO_URL>/health and, on a sustained failure, opens (or reuses)
+# a tracking issue. INERT BY DEFAULT: with the `DEMO_URL` repo variable unset the
+# job logs a notice and succeeds, so enabling this workflow costs nothing until
+# you point it at a host (repo → Settings → Variables → Actions → DEMO_URL).
+
+on:
+  schedule:
+    - cron: "*/30 * * * *" # every 30 min (best-effort)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: demo-health-canary
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe /health
+        id: probe
+        env:
+          DEMO_URL: ${{ vars.DEMO_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DEMO_URL:-}" ]; then
+            echo "::notice::DEMO_URL repo variable is unset — canary disabled (no-op)."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          url="${DEMO_URL%/}/health"
+          # 3 attempts (transient-blip tolerant) before declaring down.
+          for attempt in 1 2 3; do
+            if body="$(curl -fsS --max-time 15 "$url" 2>/dev/null)"; then
+              echo "attempt $attempt OK: $body"
+              echo "ok=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "attempt $attempt failed for $url"
+            sleep 10
+          done
+          echo "ok=false" >> "$GITHUB_OUTPUT"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Open / reuse a tracking issue on failure
+        if: steps.probe.outputs.skip != 'true' && steps.probe.outputs.ok == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          URL: ${{ steps.probe.outputs.url }}
+        run: |
+          set -euo pipefail
+          title="Demo health check failing"
+          # Dedup: only open a new issue if no open one with this title exists.
+          existing="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
+            --search "in:title \"$title\"" --json number -q '.[0].number' || true)"
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          # Build the body in a temp file so its newlines never break YAML block
+          # indentation (printf keeps everything inside the run scalar).
+          body_file="$(mktemp)"
+          printf '%s\n\n%s\n\n%s\n' \
+            "The demo health probe \`$URL\` failed 3 consecutive attempts." \
+            "GitHub Actions backstop canary (external UptimeRobot is the primary monitor). On the demo host check: \`docker-compose -f docker-compose.yml logs backend traefik\`." \
+            "Run: $run_url" > "$body_file"
+          if [ -n "${existing:-}" ]; then
+            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" \
+              --body "Still failing: \`$URL\` unreachable. $run_url"
+            echo "commented on existing issue #$existing"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" \
+              --body-file "$body_file"
+            echo "opened a new tracking issue"
+          fi

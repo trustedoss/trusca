@@ -1,0 +1,37 @@
+{
+  "title": "About",
+  "subtitle": "What this deployment is, and the license notices it ships with.",
+  "load_failed": "Could not load the deployment details. {{detail}}",
+  "field": {
+    "product": "Product",
+    "version": "Version",
+    "license": "License",
+    "copyright": "Copyright",
+    "source": "Source"
+  },
+  "notices": {
+    "heading": "License notices",
+    "intro": "These are the notice files distributed with this release. They also ship at /licenses/ inside every container image and inside the Helm chart.",
+    "none_title": "No notice files found",
+    "none_description": "This deployment has no readable notice files, which means the image was built without them. Check the release artifacts."
+  },
+  "notice": {
+    "load_failed": "Could not load this document. {{detail}}",
+    "missing_title": "Not in this deployment",
+    "missing_description": "{{filename}} is missing from this installation. Every release ships it, so this points at a packaging fault."
+  },
+  "documents": {
+    "license": {
+      "title": "License",
+      "description": "The license TRUSCA itself is distributed under."
+    },
+    "notice": {
+      "title": "Notice",
+      "description": "TRUSCA's own copyright notice, required by Apache-2.0 section 4(d)."
+    },
+    "third_party_notices": {
+      "title": "Third-party notices",
+      "description": "Attribution for third-party material vendored into the source tree, and for the tools bundled in the container images."
+    }
+  }
+}

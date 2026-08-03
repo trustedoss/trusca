@@ -1,0 +1,86 @@
+# Dependabot — security updates only.
+#
+# The actual on/off switch for security updates is the repository setting
+# "Dependabot security updates" (automated-security-fixes), enabled separately.
+# Here, routine *version* updates are disabled per ecosystem via
+# `open-pull-requests-limit: 0` — the GitHub-supported way to suppress weekly
+# version bumps while still receiving automatic security-fix PRs. Each ecosystem
+# groups its security fixes into a single PR to keep our heavy CI to one run.
+#
+# Test fixtures under apps/backend/tests/e2e/golden/fixtures/** are
+# intentionally-vulnerable scanner-detection data and are deliberately NOT
+# listed here (no version updates). They currently have zero open alerts; if a
+# security PR ever targets them, close it and dismiss the alert as "won't fix".
+version: 2
+updates:
+  # ── npm ───────────────────────────────────────────────────────────────
+  - package-ecosystem: "npm"
+    directory: "/apps/frontend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    labels: ["dependencies"]
+    groups:
+      frontend-npm-security:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  - package-ecosystem: "npm"
+    directory: "/docs-site"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    labels: ["dependencies"]
+    groups:
+      docs-site-npm-security:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  # ── pip ───────────────────────────────────────────────────────────────
+  - package-ecosystem: "pip"
+    directory: "/apps/backend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    labels: ["dependencies"]
+    groups:
+      backend-pip-security:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  # ── docker (base images) ──────────────────────────────────────────────
+  - package-ecosystem: "docker"
+    directory: "/apps/frontend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    labels: ["dependencies"]
+    groups:
+      frontend-docker-security:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  - package-ecosystem: "docker"
+    directory: "/apps/backend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    labels: ["dependencies"]
+    groups:
+      backend-docker-security:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  # ── github-actions (workflows + composite action) ─────────────────────
+  - package-ecosystem: "github-actions"
+    directories:
+      - "/"
+      - "/actions/scan"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    labels: ["dependencies"]
+    groups:
+      github-actions-security:
+        applies-to: security-updates
+        patterns: ["*"]

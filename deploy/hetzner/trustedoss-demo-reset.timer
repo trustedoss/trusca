@@ -1,0 +1,17 @@
+# Fires trustedoss-demo-reset.service once a day at 03:17 UTC.
+#
+# Why 03:17 and not 03:00 — off-the-hour avoids the thundering-herd of every
+# cron-style job on the box waking at :00. Persistent=true means a reset missed
+# while the VPS was down (reboot, maintenance) runs once on next boot.
+#
+# Enable: sudo systemctl enable --now trustedoss-demo-reset.timer
+[Unit]
+Description=Run TrustedOSS demo reset daily at 03:17 UTC
+
+[Timer]
+OnCalendar=*-*-* 03:17:00 UTC
+Persistent=true
+Unit=trustedoss-demo-reset.service
+
+[Install]
+WantedBy=timers.target

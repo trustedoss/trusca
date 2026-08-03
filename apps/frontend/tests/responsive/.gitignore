@@ -1,0 +1,10 @@
+# Playwright scratch output — traces from failed runs, and the per-screen
+# spill counts an update run accumulates before `afterAll` merges them into
+# `narrow-baseline.json`. CI uploads what it needs as an artifact; the repo
+# tracks only the baseline JSON.
+#
+# Sibling of tests/a11y/.gitignore and tests/visual/.gitignore. This one
+# arrived late: G0-9 gave this directory its first output and the pattern was
+# not copied across, so a `git add tests/` swept sixteen scratch files into a
+# commit.
+.output/

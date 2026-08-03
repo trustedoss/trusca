@@ -1,0 +1,30 @@
+{
+  "module": "uat-checklist",
+  "_about": "Install UAT checklist(INSTUAT) 모듈의 결정적 검증 스펙. 41케이스 중 api 채널은 2건뿐이라(나머지 e2e 6, manual 33) 그 2건을 전부 결정화한다(api/shell 대상 2/2 = 100%, 모듈 전체 대비 2/41 = 4.9%). 기대값은 docs-site/docs/installation/uat-checklist.md §2의 합격 기준('backend is healthy', 'schema is at HEAD', 'super admin account ready')에서 도출했고, 경로는 /openapi.json로 확정(/health, /health/ready, /auth/me). /health/ready 200은 OpenAPI 정의상 '스키마가 Alembic HEAD'를 뜻하므로 schema-at-HEAD 주장을 결정적으로 덮는다. 제외: manual 33건(install/backup/restore/upgrade 스크립트 소스 검증, docker-compose ps, 호스트 전제 — api/sql로 재현 불가), e2e 6건(Playwright UI 전용), blocked 19·skip 3은 전부 위 채널에 속함(파괴 위험·두 번째 호스트·외부 의존이 사유라 결정화 대상 아님). fail 2건(02-004 install.sh 입력 검증, 02-008 beat healthcheck)도 manual 채널이라 스펙 범위 밖. 사이드이펙트: 읽기 전용(GET 2종 + /auth/me + SELECT 1건).",
+  "checks": [
+    {
+      "tc": "TC-INSTUAT-02-006", "channel": "api",
+      "_expect": "가이드 §2 'backend is healthy' — 인증 없는 liveness 점검 GET /health가 200",
+      "request": { "method": "GET", "path": "/health" },
+      "expect": { "status": 200 }
+    },
+    {
+      "tc": "TC-INSTUAT-02-006", "channel": "api",
+      "_expect": "가이드 §2 'schema is at HEAD' — GET /health/ready 200은 OpenAPI 정의상 스키마가 Alembic HEAD 리비전임을 뜻함(불일치면 503 problem+json)",
+      "request": { "method": "GET", "path": "/health/ready" },
+      "expect": { "status": 200 }
+    },
+    {
+      "tc": "TC-INSTUAT-02-007", "channel": "api", "as": "super_admin",
+      "_expect": "가이드 §2 'super admin account ready' — super-admin 자격증명으로 토큰이 발급되고(tokenFor가 캐시 로그인 수행) /auth/me가 해당 계정을 superuser·active로 반환",
+      "request": { "method": "GET", "path": "/auth/me" },
+      "expect": { "status": 200, "jsonHas": ["email", "is_superuser", "is_active"], "jsonEquals": { "email": "admin@demo.trustedoss.dev", "is_superuser": true, "is_active": true } }
+    },
+    {
+      "tc": "TC-INSTUAT-02-007", "channel": "shell",
+      "_expect": "가이드 §2 'super admin account ready' — DB에 활성 superuser 계정이 정확히 1건 존재(부트스트랩 super-admin)",
+      "sql": "SELECT count(*) FROM users WHERE email='admin@demo.trustedoss.dev' AND is_superuser AND is_active;",
+      "expect": { "rowEquals": "1" }
+    }
+  ]
+}

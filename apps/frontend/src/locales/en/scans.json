@@ -1,0 +1,281 @@
+{
+  "page": {
+    "title": "Scans",
+    "subtitle": "Scan queue across the projects you can access.",
+    "tab": {
+      "running": "Running",
+      "queued": "Queued",
+      "succeeded": "Succeeded",
+      "failed": "Failed",
+      "all": "All"
+    },
+    "column": {
+      "project": "Project",
+      "kind": "Kind",
+      "status": "Status",
+      "started": "Started",
+      "duration": "Duration",
+      "actions": "Actions"
+    },
+    "kind": {
+      "source": "Source",
+      "container": "Container",
+      "sbom": "SBOM upload"
+    },
+    "status": {
+      "queued": "Queued",
+      "running": "Running",
+      "succeeded": "Succeeded",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    },
+    "empty": "No scans match the current filter.",
+    "error": "Could not load scans.",
+    "pagination": {
+      "summary": "Page {{page}} of {{total}}",
+      "previous": "Previous",
+      "next": "Next"
+    }
+  },
+  "progress": {
+    "title": "Scan in progress",
+    "step_bootstrap": "Workspace prep",
+    "step_fetch": "Fetch source",
+    "step_cdxgen": "cdxgen (SBOM)",
+    "step_scancode": "ScanCode (license)",
+    "step_scanoss": "SCANOSS (vendored)",
+    "step_trivy": "Trivy (CVE match)",
+    "step_finalize": "Finalize",
+    "step_succeeded": "Scan completed",
+    "step_failed": "Scan failed",
+    "step_cancelled": "Scan cancelled",
+    "cancelled_notice": "This scan was cancelled. Any in-progress work has been stopped.",
+    "step_unknown": "Working…",
+    "reconnecting": "Reconnecting…",
+    "reconnect_attempt": "Attempt {{n}}",
+    "background_notice": "Scan continues in the background — you can close this panel.",
+    "log_toggle": "Per-step log",
+    "tool_log_toggle": "Tool log",
+    "open_full_log": "Open full log →",
+    "close": "Close",
+    "retry": "Retry",
+    "percent_label": "{{value}}%"
+  },
+  "detail": {
+    "title": "Scan {{shortId}}",
+    "download": "Download log",
+    "download_unavailable": "Scan log not available yet",
+    "empty": "Waiting for scan output…",
+    "filter_all": "All",
+    "filter_errors": "Errors only",
+    "back_to_project": "Back to project"
+  },
+  "cancel": {
+    "action": "Cancel scan",
+    "confirm": {
+      "title": "Cancel scan",
+      "message": "Cancel this scan? Any in-progress work will be stopped and the scan will be marked as cancelled.",
+      "confirm": "Cancel scan",
+      "dismiss": "Keep running"
+    },
+    "errors": {
+      "already_terminal": "This scan already finished and can no longer be cancelled.",
+      "not_found": "This scan no longer exists or you no longer have access to it.",
+      "forbidden": "You do not have permission to cancel this scan.",
+      "unknown": "Could not cancel the scan. Please try again."
+    }
+  },
+  "alerts": {
+    "dt_unavailable": "The vulnerability matcher is temporarily unavailable. Showing cached results."
+  },
+  "kind": {
+    "legend": "Scan type",
+    "source": "Source",
+    "container": "Container"
+  },
+  "container": {
+    "label": "Container image",
+    "placeholder": "alpine:3.19",
+    "hint": "Trivy scans the image's OS packages for vulnerabilities, e.g. ghcr.io/org/app:1.2.3.",
+    "subtitle": "Scan a container image for {{project}} with Trivy.",
+    "errors": {
+      "image_required": "Enter an image reference to scan."
+    },
+    "os_eol": {
+      "label": "OS end-of-life",
+      "heading": "Base image OS",
+      "os": "{{family}} {{name}}",
+      "detail": "This image's base OS release ({{os}}) is past its end-of-service-life. It no longer receives upstream security fixes, so newly disclosed CVEs will not be patched. Rebuild on a supported release.",
+      "note": "The end-of-service-life verdict comes from Trivy's vulnerability database; a stale database may not yet flag a recently retired release."
+    }
+  },
+  "release": {
+    "label": "Release / version",
+    "placeholder": "v1.2.3",
+    "hint": "Optional. Tags this scan with a release label, e.g. v1.2.3.",
+    "chip_aria": "Release {{release}}"
+  },
+  "verbose": {
+    "label": "Verbose logs (debug)",
+    "hint": "Stream the full cdxgen / scancode / Trivy diagnostic trace into the scan log. Useful when debugging a scan."
+  },
+  "source": {
+    "title": "Start a scan",
+    "subtitle": "Choose how to provide the source for {{project}}.",
+    "method_legend": "Source provision method",
+    "method": {
+      "git": "Git URL",
+      "upload": "Upload .zip",
+      "folder": "Select folder"
+    },
+    "git": {
+      "label": "Configured Git URL",
+      "missing": "This project has no Git URL. Upload a .zip or select a folder instead, or add a Git URL in project settings.",
+      "credential_configured": "Private credential configured — used at clone time.",
+      "credential_missing_prefix": "Cloned as a public repository. For a private repo, add a token in",
+      "credential_settings_link": "Settings"
+    },
+    "upload": {
+      "label": "Source archive (.zip)",
+      "choose_file": "Choose file",
+      "no_file_chosen": "No file chosen",
+      "hint": "ZIP archive, up to {{max}}.",
+      "selected": "Selected: {{name}} ({{size}})"
+    },
+    "folder": {
+      "label": "Project folder",
+      "choose_folder": "Choose folder",
+      "no_folder_chosen": "No folder chosen",
+      "files_count": "{{count}} file(s) selected",
+      "hint": "The folder is zipped in your browser before upload, up to {{max}}.",
+      "selected": "{{count}} files selected ({{size}})",
+      "too_large": "The selected folder exceeds the {{max}} limit. Remove large directories and try again.",
+      "noisy": "Large directories detected: {{dirs}}. These will inflate the upload — consider excluding them."
+    },
+    "stage": {
+      "idle": "Preparing…",
+      "zipping": "Compressing folder…",
+      "uploading": "Uploading archive…",
+      "triggering": "Starting scan…"
+    },
+    "percent": "{{value}}%",
+    "start": "Start scan",
+    "starting": "Starting…",
+    "cancel": "Cancel"
+  },
+  "upload": {
+    "errors": {
+      "too_large": "The archive is too large. The limit is 100 MiB.",
+      "not_a_zip": "Only .zip archives are supported.",
+      "quota_exceeded": "This project has reached its storage quota.",
+      "not_found": "Project not found.",
+      "bad_request": "The upload could not be processed.",
+      "empty_folder": "The selected folder is empty.",
+      "network": "Upload failed due to a network error. Please try again.",
+      "unknown": "The upload failed. Please try again."
+    }
+  },
+  "sbom_ingest": {
+    "title": "Upload an SBOM",
+    "subtitle": "Upload a CycloneDX or SPDX SBOM for {{project}}. We match it against vulnerability and license data — no source needed.",
+    "file_label": "SBOM file",
+    "choose_file": "Choose SBOM",
+    "no_file_chosen": "No file chosen",
+    "hint": "CycloneDX JSON (.json, .cdx.json) or SPDX (.spdx, .spdx.json, .tag).",
+    "selected": "{{name}} · {{size}}",
+    "submit": "Upload SBOM",
+    "uploading": "Uploading…",
+    "cancel": "Cancel",
+    "shared_warning": "Shared public sandbox: do not upload proprietary or sensitive SBOMs. Uploads are visible to other visitors and deleted periodically.",
+    "errors": {
+      "too_large": "The SBOM is too large to ingest. Please upload a smaller document.",
+      "unsupported_type": "Only CycloneDX or SPDX SBOMs are supported.",
+      "invalid_document": "This file is not a valid CycloneDX or SPDX SBOM.",
+      "scan_in_progress": "A scan is already running for this project. Wait for it to finish, then upload again.",
+      "not_found": "Project not found.",
+      "rate_limited": "Too many uploads. Please wait a moment and try again.",
+      "network": "Upload failed due to a network error. Please try again.",
+      "unknown": "The SBOM upload failed. Please try again."
+    }
+  },
+  "close_codes": {
+    "auth_expired": "Session expired. Please sign in again.",
+    "forbidden": "You no longer have access to this scan.",
+    "not_found": "This scan no longer exists.",
+    "internal_error": "Connection lost. Reconnecting…"
+  },
+  "conformance": {
+    "title": "SBOM conformance",
+    "result": {
+      "pass": "Pass",
+      "warn": "Warnings",
+      "fail": "Fail"
+    },
+    "check_status": {
+      "pass": "Pass",
+      "warn": "Warn",
+      "fail": "Fail"
+    },
+    "label": {
+      "source_format": "Format",
+      "component_count": "Components",
+      "purl_coverage": "PURL coverage",
+      "license_coverage": "License coverage",
+      "hash_coverage": "Hash coverage",
+      "required": "Required",
+      "recommended": "Recommended"
+    },
+    "check_id": {
+      "timestamp": "Document timestamp",
+      "tools": "Generating tools",
+      "top-component": "Top-level component",
+      "name-version": "Name & version",
+      "purl": "Package URLs",
+      "no-generic": "No generic packages",
+      "transitive": "Transitive dependencies",
+      "license": "Declared licenses",
+      "hash": "File hashes"
+    },
+    "missing_more": "+{{count}} more",
+    "g7": {
+      "title": "G7 AI SBOM minimum elements",
+      "tally": {
+        "present": "{{present}} / {{autoTotal}} present",
+        "advisory": "{{count}} advisory",
+        "review": "{{count}} need human review"
+      },
+      "review_note": "Elements marked \"No automated source\" cannot be verified from the SBOM alone and require human review.",
+      "source": {
+        "auto": "Auto",
+        "inferred": "Inferred",
+        "declared": "Declared",
+        "na": "No automated source"
+      },
+      "cluster": {
+        "metadata": "Metadata",
+        "slp": "System Level Properties",
+        "models": "Models",
+        "dp": "Datasets Properties",
+        "infrastructure": "Infrastructure",
+        "sp": "Security Properties",
+        "kpi": "Key Performance Indicators"
+      },
+      "learn_more": "Learn more",
+      "missing_label": "Missing:"
+    },
+    "crosswalk": {
+      "title": "Regulatory crosswalk",
+      "intro": "Informational only — this maps the checks above to the regulatory documentation elements they touch. It is not a compliance determination.",
+      "tally": {
+        "present": "{{present}} / {{total}} present",
+        "gap": "{{count}} gaps",
+        "review": "{{count}} need human review"
+      }
+    },
+    "errors": {
+      "not_found": "No conformance verdict is available for this scan yet.",
+      "network": "Could not load the conformance verdict due to a network error.",
+      "unknown": "Could not load the conformance verdict."
+    }
+  }
+}

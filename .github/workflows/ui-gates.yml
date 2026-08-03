@@ -1,0 +1,427 @@
+name: ui-gates
+
+# Playwright UI gates — visual regression, accessibility, narrow viewport.
+#
+# Both walk the same representative screens
+# (apps/frontend/tests/_harness/representativeScreens.ts) on one dev stack:
+# booting compose twice to check pixels and then ARIA would double the cost
+# for no benefit. They report independently, and the a11y step runs even
+# when the visual step fails — during a re-skin the two usually break
+# together, and seeing only the first is how the second gets missed.
+#
+# Spins up the dev stack via docker-compose, runs the visual spec, and
+# compares fresh captures against the baselines committed under
+# ``apps/frontend/tests/visual/visual.spec.ts-snapshots/``.
+#
+# This is a blocking PR gate — listed in the branch's required status
+# checks. It was not always one, twice over: the job carried
+# ``continue-on-error: true`` from its bootstrap, so for months it ran
+# nightly and reported success no matter what the pixels said; and once
+# that was fixed it still was not *required*, so it could fail without
+# stopping anything.
+#
+# Being required is why there is no ``paths:`` filter. A required check
+# that a path filter skips never reports, and GitHub waits for a report
+# that will never come — a docs-only PR would sit blocked forever. So the
+# job always starts and decides for itself (see "Decide whether the gates
+# apply"): unrelated changes finish in seconds having done nothing, and
+# report green.
+#
+# The baselines it guards are chosen in
+# ``apps/frontend/tests/visual/coverage-manifest.ts``, and a unit test
+# fails if a screen the router mounts is missing from that register —
+# which is what stops new screens from silently arriving unwatched.
+#
+# This is a separate workflow (not a job inside ci.yml) for two
+# reasons:
+#   1. The compose stack spin-up + Playwright cache restore costs
+#      ~3 minutes per run; cross-firing it on every doc-only PR
+#      would be wasted CI minutes. The path filter caps the cost.
+#   2. The tolerance settings need to stay isolated from the e2e
+#      matrix's pass/fail criteria. A threshold loosened here must
+#      not also let the e2e suite slip.
+#
+# Threshold + tolerance live in playwright.visual.config.ts:
+#   maxDiffPixelRatio: 0.15
+#   threshold: 0.2 (per-pixel color delta)
+#
+# Refreshing baselines after an intentional UI change
+# ---------------------------------------------------
+# There is no skip label — an escape hatch on a gate this cheap to
+# satisfy would be the hole everything drains through. Instead:
+#
+#   gh workflow run ui-gates.yml --ref <branch> \
+#      -f update_baselines=true
+#
+# then download the ``visual-baselines`` artifact and commit the PNGs.
+# The capture MUST come from this workflow rather than a local run:
+# macOS font hinting diverges from the linux runner by 5-20 % on
+# text-heavy frames, which is exactly the drift the gate measures.
+
+on:
+  # No `paths:` filter, on purpose. A required status check that is skipped
+  # by a path filter never reports at all, so a docs-only PR would wait
+  # forever on a check that was never going to run. The job therefore always
+  # starts, decides for itself whether the UI surface changed, and reports
+  # success either way — see the "Decide whether the gates apply" step.
+  pull_request:
+  schedule:
+    - cron: "30 4 * * *"
+  workflow_dispatch:
+    inputs:
+      update_baselines:
+        description: >-
+          Re-capture the baselines instead of comparing against them, and
+          upload the PNGs as an artifact. This is the only sanctioned way
+          to refresh them: they must come from a linux runner, because
+          font hinting on macOS diverges enough to trip the diff.
+        type: boolean
+        default: false
+      capture_screenshots:
+        description: >-
+          Re-capture the documentation screenshots and upload them as an
+          artifact. Separate from the baselines because these are product
+          assets rather than a gate, and because they must be captured on a
+          FRESH database — a developer's local stack accumulates test
+          projects, and capturing there put "APPROVALS WAITING 213" and ten
+          seeded project names into the user guide. The runner seeds from
+          empty every time, which is the property that matters here.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  ui-gates:
+    runs-on: ubuntu-22.04
+    # 40, not 25. A typical run finishes in ~9 minutes, but `Pre-build dev
+    # images` has twice taken past 25 on its own — the runner gets no layer
+    # cache between runs, so a slow registry day is the whole budget. Both
+    # times the job was cancelled seconds after the gate steps began, which
+    # reports as a failed check that measured nothing. A gate that cannot
+    # reach its assertions is the same problem this workflow's specs are
+    # about; the deadline should bound a hang, not an unlucky pull.
+    timeout-minutes: 40
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://trustedoss:trustedoss@postgres:5432/trustedoss
+      DATABASE_URL_OWNER: postgresql+asyncpg://trustedoss:trustedoss@postgres:5432/trustedoss
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ci-visual-secret-key-min-32-chars-padding-aabbcc
+      DT_URL: http://dtrack-api:8080
+      DT_API_KEY: ci-visual-dt-stub-key
+      WORKSPACE_HOST_PATH: ${{ github.workspace }}/workspace
+      DISABLE_LOGIN_RATE_LIMIT: "1"
+      # /health/ready returns 200 only after Alembic schema is at HEAD.
+      # Without AUTO_MIGRATE the backend never runs `alembic upgrade head`
+      # on its own; the workflow's explicit migrate step only fires AFTER
+      # the wait-for-healthy loop times out. Same fix as ci.yml e2e.
+      AUTO_MIGRATE: "true"
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Needed for the merge-base diff in the next step.
+          fetch-depth: 0
+
+      # Everything below is skipped when a PR does not touch the rendered
+      # surface, but the job still completes green so it is safe to require.
+      - name: Decide whether the gates apply
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "Not a pull request — running the gates."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git fetch --no-tags --depth=0 origin "$BASE_REF" >/dev/null 2>&1 || true
+          base="$(git merge-base "origin/$BASE_REF" HEAD)"
+          changed="$(git diff --name-only "$base" HEAD)"
+
+          if printf '%s\n' "$changed" | grep -qE '^(apps/frontend/(src/|tests/(visual|a11y|_harness|screenshots)/|tailwind\.config\.ts|package-lock\.json|playwright\.(visual|a11y)\.config\.ts)|apps/backend/(api|schemas)/|\.github/workflows/ui-gates\.yml)'; then
+            echo "Rendered surface touched — running the gates."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No rendered-surface changes — gates not applicable."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.scope.outputs.run == 'true'
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: apps/frontend/package-lock.json
+
+      # Backend deps are installed on the host runner only because the
+      # Playwright harness (`tests/_harness/seed.ts`) spawns `python3
+      # apps/backend/scripts/seed_e2e_user.py` directly during globalSetup;
+      # the script imports SQLAlchemy + asyncpg + bcrypt and uses
+      # `from datetime import UTC` (Python 3.11+). Without this step the
+      # runner's system python (3.10 on ubuntu-22.04) raises
+      # `ImportError: cannot import name 'UTC'`. Mirrors ci.yml's e2e job.
+      - name: Setup Python
+        if: steps.scope.outputs.run == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/backend/requirements-dev.txt
+
+      - name: Install backend deps (for host-side seed)
+        if: steps.scope.outputs.run == 'true'
+        working-directory: apps/backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Install frontend deps
+        if: steps.scope.outputs.run == 'true'
+        working-directory: apps/frontend
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        if: steps.scope.outputs.run == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-1.48.2
+
+      - name: Install Playwright (chromium only)
+        if: steps.scope.outputs.run == 'true'
+        working-directory: apps/frontend
+        run: npx playwright install --with-deps chromium
+
+      # Pre-build the backend / worker / frontend images BEFORE bringing the
+      # stack up — the dev compose image refs are unpublished so compose
+      # falls back to local build during `up -d`, which on a cold runner
+      # would spill past the 180-second healthcheck deadline below. Same
+      # split as ci.yml e2e.
+      - name: Pre-build dev images
+        if: steps.scope.outputs.run == 'true'
+        env:
+          COMPOSE_DOCKER_CLI_BUILD: "1"
+          DOCKER_BUILDKIT: "1"
+        run: |
+          docker compose -f docker-compose.dev.yml build \
+            backend celery-worker frontend
+
+      # The dev Dockerfile has no ENTRYPOINT so docker-entrypoint.sh
+      # (which honours AUTO_MIGRATE) never runs. Migrate explicitly in a
+      # throwaway backend container BEFORE the live backend starts, so
+      # /health/ready can flip green on the first probe. Same pattern as
+      # ci.yml e2e.
+      - name: Start postgres + redis only
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          mkdir -p workspace
+          docker compose -f docker-compose.dev.yml up -d postgres redis
+        env:
+          COMPOSE_DOCKER_CLI_BUILD: "1"
+          DOCKER_BUILDKIT: "1"
+
+      - name: Wait for postgres healthy
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          deadline=$(( $(date +%s) + 60 ))
+          while :; do
+            cid=$(docker compose -f docker-compose.dev.yml ps -q postgres)
+            status=$(docker inspect -f '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo none)
+            [ "$status" = "healthy" ] && break
+            [ "$(date +%s)" -ge "$deadline" ] && { echo "::error::postgres never healthy"; exit 1; }
+            sleep 3
+          done
+
+      - name: Run alembic migrations (pre-boot)
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          docker compose -f docker-compose.dev.yml run --rm --no-deps backend \
+            alembic upgrade head
+
+      - name: Bring up the rest of the stack
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          docker compose -f docker-compose.dev.yml up -d \
+            backend celery-worker frontend
+
+      - name: Wait for services to be healthy
+        if: steps.scope.outputs.run == 'true'
+        # Deadline bumped 180 → 240s. Alembic upgrade + uvicorn boot on a
+        # cold cache regularly used the full 180-second budget; the
+        # pre-build step caps total wall clock while 240s leaves headroom.
+        run: |
+          services=(postgres redis backend celery-worker frontend)
+          deadline=$((SECONDS + 240))
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            healthy=0
+            for svc in "${services[@]}"; do
+              cid=$(docker compose -f docker-compose.dev.yml ps -q "$svc")
+              if [ -z "$cid" ]; then continue; fi
+              status=$(docker inspect -f '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo unknown)
+              if [ "$status" = "healthy" ] || [ "$status" = "unknown" ]; then
+                state=$(docker inspect -f '{{.State.Status}}' "$cid")
+                [ "$state" = "running" ] && healthy=$((healthy + 1))
+              fi
+            done
+            echo "healthy=$healthy/${#services[@]}"
+            if [ "$healthy" -eq "${#services[@]}" ]; then
+              echo "✓ stack healthy"; break
+            fi
+            sleep 5
+          done
+
+      - name: Run visual regression spec
+        if: steps.scope.outputs.run == 'true'
+        working-directory: apps/frontend
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:5173
+          # The harness `seed.ts` (globalSetup) spawns python3 against the
+          # docker-compose Postgres mapped to localhost:5432. The job-level
+          # DATABASE_URL points at `postgres:5432`, which only resolves inside
+          # the compose network — the host-side seed needs the published port
+          # on localhost. Mirrors ci.yml's e2e "Run Playwright" step.
+          DATABASE_URL: postgresql+asyncpg://trustedoss:trustedoss@localhost:5432/trustedoss
+          APP_ENV: dev
+          PYTHON: python3
+          CI: "true"
+          # Read through env rather than splicing the expression into the
+          # shell (semgrep run-shell-injection), matching release.yml.
+          # Empty on pull_request / schedule → comparison mode.
+          UPDATE_BASELINES: ${{ inputs.update_baselines }}
+        run: |
+          if [ "${UPDATE_BASELINES}" = "true" ]; then
+            # `=all`, not the default `=changed`. The default rewrites only
+            # the baselines that already fail, so anything drifting *within*
+            # tolerance survives every refresh and accumulates — a slow leak
+            # in exactly the gate meant to stop slow leaks. A refresh should
+            # mean "these pixels are the truth now".
+            npx playwright test --config=playwright.visual.config.ts \
+                                --update-snapshots=all
+          else
+            npx playwright test --config=playwright.visual.config.ts
+          fi
+
+      # Runs on the stack that is already up, over the same representative
+      # screens. `always()` so a pixel failure and an accessibility failure
+      # are reported together rather than the first one hiding the second —
+      # during a re-skin they usually arrive as a pair.
+      - name: Run accessibility spec
+        if: ${{ always() && steps.scope.outputs.run == 'true' }}
+        working-directory: apps/frontend
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:5173
+          DATABASE_URL: postgresql+asyncpg://trustedoss:trustedoss@localhost:5432/trustedoss
+          APP_ENV: dev
+          PYTHON: python3
+          CI: "true"
+          # Same dispatch input refreshes both baselines — pixels and rule
+          # counts drift for the same reasons, so splitting the switch would
+          # only invite one of them to go stale.
+          A11Y_UPDATE_BASELINE: ${{ inputs.update_baselines == true && '1' || '' }}
+        run: npx playwright test --config=playwright.a11y.config.ts
+
+      # Unconditional: the observed rule counts are how a reviewer sees what
+      # the accessibility state actually is, and uploading them only on
+      # failure means the one run you want to inspect is the one that
+      # produced nothing.
+      # G0-6 — the band nothing rendered in until now. Not a screenshot
+      # gate: it asserts that nothing is wider than what contains it, which
+      # is the category the W14 bar fell into (sign-out pushed off screen at
+      # phone width) without adding eight more baselines to maintain.
+      - name: Run narrow-viewport spec
+        if: ${{ always() && steps.scope.outputs.run == 'true' }}
+        working-directory: apps/frontend
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:5173
+          DATABASE_URL: postgresql+asyncpg://trustedoss:trustedoss@localhost:5432/trustedoss
+          APP_ENV: dev
+          PYTHON: python3
+          CI: "true"
+          # G0-9 — this spec now carries a frozen spill budget of its own,
+          # so it runs on baseline-refresh dispatches too. It used to be
+          # skipped on them, which meant the one run allowed to write
+          # baselines was the one that never measured this gate.
+          NARROW_UPDATE_BASELINE: ${{ inputs.update_baselines == true && '1' || '' }}
+        run: npx playwright test --config=playwright.responsive.config.ts
+
+      # R1-7 — documentation screenshots, on demand only.
+      #
+      # Rides this workflow because the expensive part is already done here:
+      # a stack booted from an empty database and seeded once. That freshness
+      # is the whole reason this cannot be a local `make screenshots-capture`
+      # — a developer's stack carries every project any previous run created,
+      # and a capture taken there shipped "APPROVALS WAITING 213" and ten
+      # seeded project names into the user guide.
+      #
+      # Never on a pull request or the nightly schedule: these are product
+      # assets, and regenerating them on every PR would put a 44-PNG diff in
+      # front of a reviewer who changed a button.
+      - name: Capture documentation screenshots
+        if: ${{ inputs.capture_screenshots && steps.scope.outputs.run == 'true' }}
+        working-directory: apps/frontend
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:5173
+          DATABASE_URL: postgresql+asyncpg://trustedoss:trustedoss@localhost:5432/trustedoss
+          APP_ENV: dev
+          PYTHON: python3
+          CI: "true"
+        run: |
+          npx playwright test --config=playwright.screenshots.config.ts \
+                              --grep-invert "@w18dark"
+
+      - name: Upload documentation screenshots
+        if: ${{ always() && inputs.capture_screenshots && steps.scope.outputs.run == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: doc-screenshots
+          path: docs-site/static/img/screenshots/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload observed accessibility counts
+        if: ${{ always() && steps.scope.outputs.run == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: a11y-observed
+          path: |
+            apps/frontend/tests/a11y/.output/a11y-observed.json
+            apps/frontend/tests/a11y/.output/observed/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload refreshed baselines
+        if: ${{ always() && inputs.update_baselines && steps.scope.outputs.run == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-baselines
+          path: |
+            apps/frontend/tests/visual/visual.spec.ts-snapshots/
+            apps/frontend/tests/a11y/a11y-baseline.json
+            apps/frontend/tests/responsive/narrow-baseline.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload diff artifacts on failure
+        if: ${{ failure() && steps.scope.outputs.run == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-regression-diffs
+          path: |
+            apps/frontend/tests/visual/.output/
+            apps/frontend/tests/visual/.report/
+            apps/frontend/tests/a11y/.output/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Dump container logs on failure
+        if: ${{ failure() && steps.scope.outputs.run == 'true' }}
+        run: |
+          docker compose -f docker-compose.dev.yml ps
+          docker compose -f docker-compose.dev.yml logs --tail 200 backend celery-worker frontend

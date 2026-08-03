@@ -1,0 +1,33 @@
+{
+  "module": "auth-and-profile",
+  "_about": "auth-and-profile 모듈 api 채널 결정적 검증 스펙. 사이드이펙트 없는 인증 계약 위주. C-1(refresh 패밀리 폐기, 쿠키 jar 필요)과 H-8(리셋 토큰 필요한 비번 정책)은 전용 재현 스크립트(auth-0204-repro 등)에서 다루고 여기서는 제외. 기대값은 admin/user-guide의 auth 절에서 도출.",
+  "vars": [
+    { "as": "super_admin", "method": "GET", "path": "/v1/admin/users?page_size=5", "list": true, "fields": { "ADMIN_USER_ID": "id" } }
+  ],
+  "checks": [
+    {
+      "tc": "TC-AUTH-01-003", "channel": "api",
+      "_expect": "틀린 자격증명은 401 + Invalid Credentials(열거 방지 일반 메시지)",
+      "request": { "method": "POST", "path": "/auth/login", "body": { "email": "dev@demo.trustedoss.dev", "password": "verify-wrong-password-xyz" } },
+      "expect": { "status": 401, "bodyIncludes": "Invalid Credentials" }
+    },
+    {
+      "tc": "TC-AUTH-03-002", "channel": "api",
+      "_expect": "forgot-password는 등록 여부와 무관하게 204(열거 방지)",
+      "request": { "method": "POST", "path": "/auth/forgot-password", "body": { "email": "dev@demo.trustedoss.dev" } },
+      "expect": { "status": 204 }
+    },
+    {
+      "tc": "TC-AUTH-07-003", "channel": "api", "as": "developer",
+      "_expect": "developer가 admin password-reset 호출 시 존재 은닉으로 404",
+      "request": { "method": "POST", "path": "/v1/admin/users/${ADMIN_USER_ID}/password-reset", "body": {} },
+      "expect": { "status": 404 }
+    },
+    {
+      "tc": "TC-AUTH-02-005", "channel": "api", "as": "developer",
+      "_expect": "유효 토큰으로 보호 자원 /auth/me 접근 200 + email 포함",
+      "request": { "method": "GET", "path": "/auth/me" },
+      "expect": { "status": 200, "jsonHas": ["email"] }
+    }
+  ]
+}

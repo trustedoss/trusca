@@ -1,0 +1,119 @@
+name: Deploy Docs to GitHub Pages
+
+# Auto-deploy on every main push. The push trigger was disabled during W6
+# (ADR-0001, 2026-05-27) because the repo was private and free-plan private
+# repos cannot serve GitHub Pages, so every deploy failed with
+# `Failed to create deployment (status: 404). Ensure GitHub Pages has been
+# enabled`. The repo is public since the v0.10.0 release, so the trigger is
+# restored here per the "defer to release" policy. GitHub Pages must be enabled
+# with `build_type=workflow` (Settings → Pages → Source: GitHub Actions) for
+# the deploy job's `actions/deploy-pages@v4` step to publish.
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - "docs-site/**"
+      - ".github/workflows/docs.yml"
+      # B4: the hosted API reference (Redoc) renders from
+      # docs-site/static/openapi.json, which this workflow regenerates
+      # from the live FastAPI app. Backend API changes must therefore
+      # re-trigger a docs deploy so the published spec stays in sync
+      # with the code.
+      - "apps/backend/**"
+      - "scripts/dump_openapi.py"
+
+# Least-privilege default — the build job only reads source. The
+# subsequent deploy step has its own `permissions:` block elevating to
+# `pages: write` and `id-token: write` per the GitHub Pages workflow.
+permissions:
+  contents: read
+
+# Cancel any in-flight deploy when a newer commit lands.
+concurrency:
+  group: docs-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # Dummy runtime env so `import main` succeeds in dump_openapi.py without
+    # real Postgres/Redis. These satisfy import-time reads in core.config only;
+    # app.openapi() is pure schema generation and never connects to services
+    # (the lifespan does not run on import). Values mirror the ci.yml backend
+    # job so the regenerated spec matches what CI would produce.
+    env:
+      SECRET_KEY: ci-secret-key-min-32-chars-padding-1234
+      DATABASE_URL: postgresql+asyncpg://trustedoss:trustedoss@localhost:5432/trustedoss
+      REDIS_URL: redis://localhost:6379/0
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: `showLastUpdateTime` reads each page's git log —
+          # a shallow clone would stamp every page with the deploy date.
+          fetch-depth: 0
+
+      # --- Regenerate the OpenAPI spec from the live backend BEFORE the docs
+      # build, so the published Redoc reference always reflects the current
+      # API on the same Python (3.12) CI uses. The committed
+      # docs-site/static/openapi.json is only a local-build fallback; this
+      # step overwrites it for the deploy. dump_openapi.py is read-only on the
+      # backend (it imports main.app and calls app.openapi()). -------------
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/backend/requirements.txt
+
+      - name: Install backend deps
+        working-directory: apps/backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Regenerate OpenAPI spec
+        run: python scripts/dump_openapi.py
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
+
+      - name: Install dependencies
+        working-directory: docs-site
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Build site
+        working-directory: docs-site
+        run: npm run build
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs-site/build
+
+  deploy:
+    needs: build
+    # A private repository on a free plan cannot serve GitHub Pages — every
+    # deploy fails with "Ensure GitHub Pages has been enabled" (404). Skipping
+    # is honest about that, where a red check is not. The condition, rather
+    # than a removed trigger, is deliberate: publishing resumes on its own the
+    # day the repository goes public again, with nothing to remember to undo.
+    # Delete this line if Pages ever works here on a private repository.
+    if: github.event.repository.visibility == 'public'
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

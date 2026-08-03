@@ -1,0 +1,104 @@
+{
+  "heading": "대시보드",
+  "last_updated": "마지막 업데이트 {{time}}",
+  "kpi": {
+    "active_projects": "활성 프로젝트",
+    "open_vulnerabilities": "미해결 취약점",
+    "pending_approvals": "승인 대기",
+    "last_scan": "마지막 스캔",
+    "view_all": "전체 보기",
+    "never_scanned": "스캔 없음",
+    "no_data": "—"
+  },
+  "chart": {
+    "severity_heading": "취약점 심각도",
+    "license_heading": "라이선스 분류",
+    "subtitle_severity": "각 프로젝트를 가장 높은 심각도 버킷으로 집계합니다.",
+    "subtitle_license": "각 프로젝트를 가장 위험한 라이선스 버킷으로 집계합니다."
+  },
+  "recent_scans": {
+    "heading": "최근 스캔",
+    "view_all": "전체 스캔 보기",
+    "empty": "스캔 기록이 없습니다.",
+    "column": {
+      "project": "프로젝트",
+      "kind": "종류",
+      "status": "상태",
+      "started": "시작",
+      "duration": "소요"
+    }
+  },
+  "recent_activity": {
+    "heading": "최근 활동",
+    "empty": "최근 활동이 없습니다."
+  },
+  "empty": {
+    "title": "프로젝트가 없습니다",
+    "description": "첫 프로젝트를 등록하고 스캔을 시작하세요.",
+    "cta": "프로젝트 등록"
+  },
+  "error": {
+    "load_failed": "대시보드 데이터를 불러오지 못했습니다.",
+    "retry_hint": "연결 상태를 확인한 후 다시 시도하세요.",
+    "retry": "다시 시도"
+  },
+  "action_queue": {
+    "heading": "확인이 필요한 일",
+    "approvals": "대기 중인 승인",
+    "kev": "KEV 기한",
+    "kev_split": "기한 초과 {{overdue}}건 · 일주일 내 {{dueSoon}}건",
+    "gate_blocked": "차단된 빌드",
+    "stale": "최근 스캔 없음",
+    "stale_hint": "14일간 성공한 스캔 없음",
+    "gate_blocked_detail": "빌드 게이트가 막은 프로젝트",
+    "gate_reason": "치명 {{critical}}건 · 금지 라이선스 {{licenses}}건",
+    "stale_detail": "스캔을 기다리는 프로젝트",
+    "never_scanned": "스캔한 적 없음",
+    "all_clear": "지금 처리를 기다리는 일이 없습니다.",
+    "error": "큐를 불러오지 못했습니다. 이것은 큐가 비었다는 뜻이 아니므로, 할 일이 없다고 보기 전에 다시 시도하세요."
+  },
+  "trends": {
+    "heading": "기간별 위험 추이",
+    "window_label": "기간",
+    "window_option": "{{days}}일",
+    "critical_open": "미해결 치명",
+    "kev_open": "미해결 KEV",
+    "flow": "신규와 해소",
+    "flow_new": "신규",
+    "flow_resolved": "해소",
+    "delta": "기간 시작 대비 {{delta}}",
+    "critical_aria": "최근 {{days}}일간 미해결 치명 취약점 추이",
+    "kev_aria": "최근 {{days}}일간 미해결 KEV 취약점 추이",
+    "flow_aria": "최근 {{days}}일간 하루별 신규·해소 취약점: 신규 {{added}}건, 해소 {{resolved}}건",
+    "carry_forward": "스캔이 없는 날은 직전 값을 그대로 잇습니다. 선이 평평한 것은 변화가 없었다는 뜻일 수도, 아무도 확인하지 않았다는 뜻일 수도 있습니다.",
+    "no_scans": "이 기간에 성공한 스캔이 없어 아직 그릴 수 있는 측정값이 없습니다.",
+    "error": "추이를 불러오지 못했습니다. 빈 차트는 포트폴리오가 깨끗하다는 뜻이 되므로 그렇게 표시하지 않습니다.",
+    "table_caption": "최근 {{days}}일간 일자별 포트폴리오 위험",
+    "column": {
+      "date": "날짜",
+      "new": "신규",
+      "resolved": "해소",
+      "critical": "미해결 치명",
+      "kev": "미해결 KEV"
+    },
+    "day_summary": "{{date}}: 신규 {{added}}건, 해소 {{resolved}}건"
+  },
+  "portfolio": {
+    "heading": "팀별 포트폴리오",
+    "empty": "아직 프로젝트가 없습니다. 프로젝트를 등록하면 여기에 포트폴리오가 표시됩니다.",
+    "error": "포트폴리오를 불러오지 못했습니다. 빈 격자는 깨끗하다는 뜻으로 읽히므로 그렇게 표시하지 않습니다.",
+    "team_projects": "프로젝트 {{count}}개",
+    "never_scanned": "스캔한 적 없음",
+    "clean": "이상 없음",
+    "bucket": {
+      "critical": "Critical",
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low"
+    },
+    "breakdown": "Critical {{critical}} · High {{high}} · Medium {{medium}} · Low {{low}} — 마지막 스캔 {{scanned}}",
+    "team_truncated": "{{total}}개 중 위험이 큰 {{shown}}개를 표시합니다.",
+    "truncated": "팀 {{teams}}개 중 {{shownTeams}}개, 프로젝트 {{total}}개 중 {{shown}}개를 위험이 큰 순서로 표시합니다. 나머지는 프로젝트 목록에서 확인하세요.",
+    "never_scanned_hint": "이 프로젝트는 성공한 스캔이 없어 아직 측정된 값이 없습니다."
+  }
+}

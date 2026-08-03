@@ -1,0 +1,73 @@
+{
+  "page": {
+    "title": "Search"
+  },
+  "tab": {
+    "projects": "Projects",
+    "components": "Components",
+    "vulnerabilities": "Vulnerabilities",
+    "licenses": "Licenses"
+  },
+  "toolbar": {
+    "search_label": "Search",
+    "search_placeholder": "Search across every project you can see"
+  },
+  "summary": {
+    "count": "{{total}} results",
+    "type_more": "Type at least {{min}} characters to search."
+  },
+  "scope": {
+    "all_scans": "every scan these projects have run",
+    "current_scan": "each project's latest successful scan only"
+  },
+  "facet": {
+    "severity": "Severity",
+    "status": "Status",
+    "package_type": "Type",
+    "license_category": "License"
+  },
+  "col": {
+    "project": "Project",
+    "git_url": "Git URL",
+    "package": "Package",
+    "version": "Version",
+    "cve": "CVE",
+    "severity": "Severity",
+    "license": "License"
+  },
+  "badge": {
+    "archived": "Archived"
+  },
+  "pagination": {
+    "summary": "Page {{page}} of {{total}}",
+    "previous": "Previous",
+    "next": "Next"
+  },
+  "save": {
+    "trigger": "Save search",
+    "title": "Save this search",
+    "subtitle": "Name it, and it appears on your dashboard. The filters currently applied are what gets saved.",
+    "name_placeholder": "e.g. Critical CVEs in payments",
+    "confirm": "Save",
+    "cancel": "Cancel",
+    "failed": "Couldn't save the search. Please try again.",
+    "at_limit": "You've reached the limit of {{limit}} saved searches. Remove one to save another."
+  },
+  "saved": {
+    "title": "Saved searches",
+    "remove": "Remove {{name}}"
+  },
+  "empty": {
+    "start": {
+      "title": "Search across your projects",
+      "subtitle": "Type at least {{min}} characters to find projects, packages, CVEs, or licenses."
+    },
+    "none": {
+      "title": "No results",
+      "subtitle": "Try a different term, another tab, or clear the filters."
+    }
+  },
+  "errors": {
+    "load_failed": "Couldn't run the search. Please try again."
+  }
+}

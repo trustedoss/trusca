@@ -1,0 +1,88 @@
+{
+  "module": "scan-retention",
+  "_about": "scan-retention 모듈의 api/shell 케이스 결정적 검증 스펙. 기대값은 admin-guide/scan-retention.md(가이드)에서 도출, 경로는 /openapi.json로 확정. 사이드이펙트 0: 읽기(SELECT)와 거부 경로(404/409)만 쓰고 스캔 기동(2xx)·삭제(204)·보존 정책 변경은 하지 않는다. 확정 결함 M-30(409 RFC7807 확장 필드 부재, pending)은 active 스캔 경로로 재현(05-004, 07-005). 05-003/05-006은 release 라벨 스캔이 안정 fixture(이름 고정 프로젝트)에 없고 생성은 스캔 기동이라 제외. H-7(#345)은 bugreport 출처가 TC-PROJ-06-002(projects 모듈)라 이 모듈 스펙에 넣지 않는다.",
+  "vars": [
+    { "name": "ACTIVE_SCAN_ID", "as": "super_admin", "method": "GET", "path": "/v1/scans?status=queued&size=5", "list": true, "field": "id" },
+    { "name": "BACKEND_SCAN_ID", "as": "team_admin_backend", "method": "GET", "path": "/v1/scans?size=5", "list": true, "field": "id" }
+  ],
+  "checks": [
+    {
+      "tc": "TC-RETEN-01-001", "channel": "shell",
+      "_expect": "supersession 불변식: superseded 스캔의 승자(superseded_by)는 같은 프로젝트·같은 ref의 succeeded 스캔이며(위반 0), supersede 쌍이 실제로 존재한다. 승자 created_at 비교와 dangling 승자(이후 수동/aged 삭제됨)는 시드 산물이라 제외",
+      "sql": "SELECT (SELECT count(*) FROM scans s JOIN scans w ON w.id = s.superseded_by_scan_id WHERE s.superseded_at IS NOT NULL AND (w.project_id <> s.project_id OR w.ref IS DISTINCT FROM s.ref OR w.status <> 'succeeded'))::text || '|' || (SELECT CASE WHEN count(*) > 0 THEN 'pairs' ELSE 'none' END FROM scans s JOIN scans w ON w.id = s.superseded_by_scan_id WHERE s.superseded_at IS NOT NULL);",
+      "expect": { "rowEquals": "0|pairs" }
+    },
+    {
+      "tc": "TC-RETEN-01-003", "channel": "shell",
+      "_expect": "superseded 스캔은 유예 기간(grace 기본 7일) 내에는 회수되지 않고 조회 가능하게 잔존한다 — grace 미경과 superseded 행이 1건 이상 존재",
+      "sql": "SELECT count(*) FROM scans WHERE superseded_at IS NOT NULL AND superseded_at > now() - interval '7 days';",
+      "expect": { "rowMatches": "^[1-9][0-9]*$" }
+    },
+    {
+      "tc": "TC-RETEN-01-004", "channel": "shell",
+      "_expect": "ref 없는 ad-hoc 스캔은 supersession 체인에 포함되지 않는다 — ref IS NULL이면서 superseded_at이 채워진 행 0",
+      "sql": "SELECT count(*) FROM scans WHERE ref IS NULL AND superseded_at IS NOT NULL;",
+      "expect": { "rowEquals": "0" }
+    },
+    {
+      "tc": "TC-RETEN-01-005", "channel": "shell",
+      "_expect": "실패한 스캔은 supersession 체인에 포함되지 않는다 — status=failed이면서 superseded_at이 채워진 행 0",
+      "sql": "SELECT count(*) FROM scans WHERE status = 'failed' AND superseded_at IS NOT NULL;",
+      "expect": { "rowEquals": "0" }
+    },
+    {
+      "tc": "TC-RETEN-03-002", "channel": "shell",
+      "_expect": "release 라벨 스캔은 같은 브랜치 후속 스캔에도 superseded되지 않는다 — release 라벨이면서 superseded_at이 채워진 행 0",
+      "sql": "SELECT count(*) FROM scans WHERE metadata->>'release' IS NOT NULL AND superseded_at IS NOT NULL;",
+      "expect": { "rowEquals": "0" }
+    },
+    {
+      "tc": "TC-RETEN-04-001", "channel": "shell",
+      "_expect": "sweep이 grace 경과 superseded를 회수하면 감사로그에 reason=superseded인 scans delete 이벤트가 남는다 — 해당 행 1건 이상",
+      "sql": "SELECT count(*) FROM audit_logs WHERE target_table = 'scans' AND action = 'delete' AND diff->>'reason' = 'superseded';",
+      "expect": { "rowMatches": "^[1-9][0-9]*$" }
+    },
+    {
+      "tc": "TC-RETEN-04-003", "channel": "shell",
+      "_expect": "sweep이 ref-less/failed/cancelled 스캔을 aged 사유로 회수하면 감사로그에 reason=aged인 scans delete 이벤트가 남는다 — 해당 행 1건 이상",
+      "sql": "SELECT count(*) FROM audit_logs WHERE target_table = 'scans' AND action = 'delete' AND diff->>'reason' = 'aged';",
+      "expect": { "rowMatches": "^[1-9][0-9]*$" }
+    },
+    {
+      "tc": "TC-RETEN-04-006", "channel": "shell",
+      "_expect": "회수 사유가 superseded와 aged 두 값으로 구분되어 감사로그에 기록된다 — 두 reason 모두 존재(distinct 2)",
+      "sql": "SELECT count(DISTINCT diff->>'reason') FROM audit_logs WHERE target_table = 'scans' AND action = 'delete' AND diff->>'reason' IN ('superseded','aged');",
+      "expect": { "rowEquals": "2" }
+    },
+    {
+      "tc": "TC-RETEN-06-001", "channel": "shell",
+      "_expect": "보존 타깃 ref는 정규화되어 stamp된다 — refs/ prefix가 남은 행 0이고 bare 'main' ref가 실제 존재(refs/heads/main → main 정규화의 데이터 증거)",
+      "sql": "SELECT (SELECT count(*) FROM scans WHERE ref LIKE 'refs/%')::text || '|' || (SELECT CASE WHEN count(*) > 0 THEN 'has-main' ELSE 'no-main' END FROM scans WHERE ref = 'main');",
+      "expect": { "rowEquals": "0|has-main" }
+    },
+    {
+      "tc": "TC-RETEN-05-004", "channel": "api", "as": "super_admin", "knownBug": "M-30",
+      "_expect": "queued/running 스캔 삭제는 409로 거부되고 RFC 7807 본문에 scan_active 확장 필드가 담긴다(가이드). M-30 pending: 구현은 확장 필드 없이 detail 문구만 → det=fail이 orig=fail과 일치(concordant)가 정상. 409 거부라 스캔 무변경",
+      "request": { "method": "DELETE", "path": "/v1/scans/${ACTIVE_SCAN_ID}" },
+      "expect": { "status": 409, "bodyIncludes": ["scan_active"] }
+    },
+    {
+      "tc": "TC-RETEN-07-005", "channel": "api", "as": "super_admin", "knownBug": "M-30",
+      "_expect": "409 삭제 거부 본문의 RFC 7807 확장 필드(scan_active 또는 scan_release_protected)로 사유를 구분할 수 있다(가이드). active 경로로 재현(release 라벨 스캔은 fixture에 안정적으로 없음). M-30 pending: 두 확장 필드 모두 부재 → det=fail 정상",
+      "request": { "method": "DELETE", "path": "/v1/scans/${ACTIVE_SCAN_ID}" },
+      "expect": { "status": 409, "bodyMatches": "scan_active|scan_release_protected" }
+    },
+    {
+      "tc": "TC-RETEN-05-005", "channel": "api", "as": "team_admin_frontend",
+      "_expect": "다른 팀(frontend team_admin)이 Backend 팀 스캔을 삭제 시도하면 404로 존재가 은닉된다. 404 거부라 무변경",
+      "request": { "method": "DELETE", "path": "/v1/scans/${BACKEND_SCAN_ID}" },
+      "expect": { "status": 404 }
+    },
+    {
+      "tc": "TC-RETEN-05-005-setup", "channel": "shell",
+      "_expect": "후행 점검: 앞의 404가 삭제가 아닌 은닉임을 확인 — 대상 Backend 스캔 행이 그대로 잔존",
+      "sql": "SELECT count(*) FROM scans WHERE id = '${BACKEND_SCAN_ID}';",
+      "expect": { "rowEquals": "1" }
+    }
+  ]
+}

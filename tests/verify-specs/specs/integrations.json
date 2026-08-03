@@ -1,0 +1,186 @@
+{
+  "module": "integrations",
+  "_about": "integrations 모듈 결정적 검증 스펙. 기대값은 user-guide/integrations.md(test-cases/integrations.md)에서 도출, 경로는 /openapi.json로 확정. api 채널 25케이스 중 18개 표본 + 확정 결함 L-19(키 검증 예시가 JWT 전용 GET /v1/projects를 가리킴, pending) 재현 2건(TC-INTG-02-001/002, 원 결과표 채널은 manual이나 curl 호출이라 api로 결정화). 부수효과: 키 4개 생성(전부 verify- prefix, 런 내 폐기)과 무시되는 웹훅 delivery 행 1개뿐. 웹훅 유효-수락 경로(05-002/005)는 실제 스캔 enqueue(외부 git clone)를 일으켜 제외 — L-20(202 vs 200, pending)은 이 때문에 스펙화 불가. runner가 HMAC 계산을 지원하지 않아 05-004(재직렬화 서명)도 제외. 웹훅 secret은 원 캠페인이 부트스트랩한 값(whsec_*_intg_test_001)을 읽기 전용으로 사용하며 -setup shell 체크가 전제를 검사한다.",
+  "vars": [
+    { "as": "team_admin_backend", "method": "GET", "path": "/v1/projects", "list": true, "where": { "name": "portal-api" }, "fields": { "PORTAL_API_PID": "id", "BACKEND_TEAM": "team_id" } },
+    { "name": "SECURITY_PID", "as": "team_admin_security", "method": "GET", "path": "/v1/projects", "list": true, "where": { "name": "vuln-feed" }, "field": "id" },
+    { "name": "FRONTEND_PID", "as": "team_admin_frontend", "method": "GET", "path": "/v1/projects", "list": true, "where": { "name": "portal-web" }, "field": "id" }
+  ],
+  "checks": [
+    {
+      "tc": "TC-INTG-01-004", "channel": "api", "as": "team_admin_backend",
+      "_expect": "scope=team인데 team_id 누락이면 422 + RFC7807 본문(title/status)",
+      "request": { "method": "POST", "path": "/v1/api-keys", "body": { "name": "verify-intg-noteam", "scope": "team" } },
+      "expect": { "status": 422, "jsonHas": ["title", "status"] }
+    },
+    {
+      "tc": "TC-INTG-01-005", "channel": "api", "as": "team_admin_backend",
+      "_expect": "scope=project인데 project_id 누락이면 422",
+      "request": { "method": "POST", "path": "/v1/api-keys", "body": { "name": "verify-intg-noproj", "scope": "project" } },
+      "expect": { "status": 422, "jsonHas": ["title", "status"] }
+    },
+    {
+      "tc": "TC-INTG-02-003", "channel": "api",
+      "_expect": "Authorization 헤더 없는 요청은 401 (키 인증을 받는 스캔 트리거 경로로 검증, 거부라 스캔 미기동)",
+      "request": { "method": "POST", "path": "/v1/projects/${PORTAL_API_PID}/scans", "body": { "kind": "source" } },
+      "expect": { "status": 401 }
+    },
+    {
+      "tc": "TC-INTG-02-004", "channel": "api", "useKey": "not-a-real-key",
+      "_expect": "형식이 잘못된 Bearer 토큰은 401",
+      "request": { "method": "POST", "path": "/v1/projects/${PORTAL_API_PID}/scans", "body": { "kind": "source" } },
+      "expect": { "status": 401 }
+    },
+    {
+      "tc": "TC-INTG-03-001", "channel": "api", "as": "super_admin",
+      "_expect": "super_admin은 org 스코프 키 발급 허용(201, tos_ 형식 raw_key)",
+      "request": { "method": "POST", "path": "/v1/api-keys", "body": { "name": "verify-intg-org-key", "scope": "org" } },
+      "capture": { "ORG_KEY_ID": "id" },
+      "expect": { "status": 201, "bodyMatches": "tos_[0-9a-f]{8}_[A-Za-z0-9_-]{32}" }
+    },
+    {
+      "tc": "TC-INTG-03-001-revoke-setup", "channel": "api", "as": "super_admin",
+      "_expect": "정리: 방금 만든 org 키 폐기 204",
+      "request": { "method": "DELETE", "path": "/v1/api-keys/${ORG_KEY_ID}" },
+      "expect": { "status": 204 }
+    },
+    {
+      "tc": "TC-INTG-03-002", "channel": "api", "as": "team_admin_backend",
+      "_expect": "team_admin의 org 스코프 발급은 403",
+      "request": { "method": "POST", "path": "/v1/api-keys", "body": { "name": "verify-intg-ta-org-deny", "scope": "org" } },
+      "expect": { "status": 403 }
+    },
+    {
+      "tc": "TC-INTG-03-003", "channel": "api", "as": "developer",
+      "_expect": "developer의 org 스코프 발급은 403",
+      "request": { "method": "POST", "path": "/v1/api-keys", "body": { "name": "verify-intg-dev-org-deny", "scope": "org" } },
+      "expect": { "status": 403 }
+    },
+    {
+      "tc": "TC-INTG-03-003-team-setup", "channel": "api", "as": "developer",
+      "_expect": "같은 케이스의 후반부: developer의 team 스코프 발급도 403",
+      "request": { "method": "POST", "path": "/v1/api-keys", "body": { "name": "verify-intg-dev-team-deny", "scope": "team", "team_id": "${BACKEND_TEAM}" } },
+      "expect": { "status": 403 }
+    },
+    {
+      "tc": "TC-INTG-03-005", "channel": "api", "as": "developer",
+      "_expect": "developer는 소속 팀 프로젝트(portal-api)의 project 스코프 키 발급 허용(201)",
+      "request": { "method": "POST", "path": "/v1/api-keys", "body": { "name": "verify-intg-dev-proj-key", "scope": "project", "project_id": "${PORTAL_API_PID}" } },
+      "capture": { "DEV_KEY_ID": "id" },
+      "expect": { "status": 201, "bodyMatches": "tos_[0-9a-f]{8}_[A-Za-z0-9_-]{32}" }
+    },
+    {
+      "tc": "TC-INTG-03-005-revoke-setup", "channel": "api", "as": "super_admin",
+      "_expect": "정리: developer 프로젝트 키 폐기 204",
+      "request": { "method": "DELETE", "path": "/v1/api-keys/${DEV_KEY_ID}" },
+      "expect": { "status": 204 }
+    },
+    {
+      "tc": "TC-INTG-03-006", "channel": "api", "as": "developer",
+      "_expect": "developer가 다른 팀(Security/vuln-feed) 프로젝트 스코프 키 발급 시 403 (vuln-feed id는 team_admin_security로 resolve)",
+      "request": { "method": "POST", "path": "/v1/api-keys", "body": { "name": "verify-intg-dev-xteam-deny", "scope": "project", "project_id": "${SECURITY_PID}" } },
+      "expect": { "status": 403 }
+    },
+    {
+      "tc": "TC-INTG-04-002-issue-setup", "channel": "api", "as": "team_admin_backend",
+      "_expect": "셋업: 폐기 검증용 team 키 발급(201), raw_key와 id 캡처",
+      "request": { "method": "POST", "path": "/v1/api-keys", "body": { "name": "verify-intg-revoke-key", "scope": "team", "team_id": "${BACKEND_TEAM}" } },
+      "capture": { "RVK_KEY": "raw_key", "RVK_ID": "id" },
+      "expect": { "status": 201 }
+    },
+    {
+      "tc": "TC-INTG-04-002-revoke-setup", "channel": "api", "as": "team_admin_backend",
+      "_expect": "셋업: 키 폐기 204",
+      "request": { "method": "DELETE", "path": "/v1/api-keys/${RVK_ID}" },
+      "expect": { "status": 204 }
+    },
+    {
+      "tc": "TC-INTG-04-002", "channel": "api", "useKey": "${RVK_KEY}",
+      "_expect": "폐기 후 같은 키 요청은 401 (가이드 한도 ~5초 이내, 구현은 즉시 반영. 401 거부라 스캔 미기동)",
+      "request": { "method": "POST", "path": "/v1/projects/${PORTAL_API_PID}/scans", "body": { "kind": "source" } },
+      "expect": { "status": 401 }
+    },
+    {
+      "tc": "TC-INTG-07-001", "channel": "api", "useKey": "${RVK_KEY}",
+      "_expect": "폐기된 키로 호출하면 401",
+      "request": { "method": "POST", "path": "/v1/projects/${PORTAL_API_PID}/scans", "body": { "kind": "source" } },
+      "expect": { "status": 401 }
+    },
+    {
+      "tc": "TC-INTG-04-004-issue-setup", "channel": "api", "as": "team_admin_backend",
+      "_expect": "셋업: developer 폐기 차단·키 사용 검증용 team 키 발급(201)",
+      "request": { "method": "POST", "path": "/v1/api-keys", "body": { "name": "verify-intg-team-key", "scope": "team", "team_id": "${BACKEND_TEAM}" } },
+      "capture": { "TEAM_KEY": "raw_key", "TEAM_KEY_ID": "id" },
+      "expect": { "status": 201 }
+    },
+    {
+      "tc": "TC-INTG-04-004", "channel": "api", "as": "developer",
+      "_expect": "developer의 team 스코프 키 폐기는 403 (team_admin 이상 필요)",
+      "request": { "method": "DELETE", "path": "/v1/api-keys/${TEAM_KEY_ID}" },
+      "expect": { "status": 403 }
+    },
+    {
+      "tc": "TC-INTG-02-001", "channel": "api", "useKey": "${TEAM_KEY}", "knownBug": "L-19",
+      "_expect": "가이드: Bearer 키로 GET /v1/projects가 인증되어 목록 응답(200). 구현은 JWT 전용이라 401 — L-19(pending). det=fail이 정상",
+      "request": { "method": "GET", "path": "/v1/projects" },
+      "expect": { "status": 200 }
+    },
+    {
+      "tc": "TC-INTG-02-002", "channel": "api", "useKey": "${TEAM_KEY}", "knownBug": "L-19",
+      "_expect": "가이드: 발급한 키로 200과 팀 프로젝트 목록(items). 구현은 401 — L-19(pending). det=fail이 정상",
+      "request": { "method": "GET", "path": "/v1/projects" },
+      "expect": { "status": 200, "jsonHas": ["items"] }
+    },
+    {
+      "tc": "TC-INTG-07-002", "channel": "api", "useKey": "${TEAM_KEY}",
+      "_expect": "Backend team 스코프 키로 타 팀(Frontend/portal-web) 스캔 트리거는 스코프 밖이라 403 (거부라 스캔 미기동)",
+      "request": { "method": "POST", "path": "/v1/projects/${FRONTEND_PID}/scans", "body": { "kind": "source" } },
+      "expect": { "status": 403 }
+    },
+    {
+      "tc": "TC-INTG-07-002-cleanup-setup", "channel": "api", "as": "team_admin_backend",
+      "_expect": "정리: team 키 폐기 204",
+      "request": { "method": "DELETE", "path": "/v1/api-keys/${TEAM_KEY_ID}" },
+      "expect": { "status": 204 }
+    },
+    {
+      "tc": "TC-INTG-06-002", "channel": "api", "as": "team_admin_backend",
+      "_expect": "감사로그는 super_admin 전용 — team_admin 접근 거부(구현은 존재 은닉 404, 의도된 동작으로 분류됨이라 403/404 허용)",
+      "request": { "method": "GET", "path": "/v1/admin/audit" },
+      "expect": { "status": [403, 404] }
+    },
+    {
+      "tc": "TC-INTG-08-004", "channel": "api", "as": "team_admin_backend", "knownBug": "M-3",
+      "_expect": "원 실행(06-09) 당시 team_admin용 /v1/audit는 없어 404였고 원 결과표는 그 404를 pass로 기록했다. M-3 code-fix(#368)로 GET /v1/audit가 신설돼 team_admin은 이제 200(팀 범위 감사 읽기). 타깃 진화로 'roadmap 404' 기대를 폐기하고 현재 동작(200)으로 갱신 — det=pass, orig=pass(케이스 의도 충족) concordant. M-3 수정의 교차 모듈 증거(audit-log 03-002 등과 동일 경로).",
+      "request": { "method": "GET", "path": "/v1/audit" },
+      "expect": { "status": 200, "jsonHas": ["items", "total"] }
+    },
+    {
+      "tc": "TC-INTG-05-000-secret-setup", "channel": "shell",
+      "_expect": "전제 확인(읽기 전용): 원 캠페인이 부트스트랩한 webhook_secret/provider가 github(fx-appr)·gitlab(slot) 두 프로젝트에 남아 있어야 웹훅 체크가 유효",
+      "sql": "SELECT count(*) FROM projects WHERE (id='f9bd3ed4-16a6-44d0-a943-e132c7c4dd8b' AND webhook_provider='github' AND webhook_secret IS NOT NULL) OR (id='f27bb557-9ba3-4854-bf67-c5ed81bc615b' AND webhook_provider='gitlab' AND webhook_secret='whsec_gitlab_intg_test_001');",
+      "expect": { "rowEquals": "2" }
+    },
+    {
+      "tc": "TC-INTG-05-003", "channel": "api",
+      "_expect": "GitHub 서명 불일치(X-Hub-Signature-256 검증 실패)는 401. 거부 경로라 delivery 행·스캔 없음",
+      "headers": { "X-Hub-Signature-256": "sha256=0000000000000000000000000000000000000000000000000000000000000000", "X-GitHub-Delivery": "verify-${RVK_ID}-ghbad", "X-GitHub-Event": "push" },
+      "request": { "method": "POST", "path": "/v1/webhooks/github", "body": { "repository": { "clone_url": "https://github.com/trustedoss-e2e/fx-appr-26f449.git" }, "ref": "refs/heads/main" } },
+      "expect": { "status": 401 }
+    },
+    {
+      "tc": "TC-INTG-05-006", "channel": "api",
+      "_expect": "GitLab 토큰 불일치(X-Gitlab-Token ≠ webhook_secret)는 401. 거부 경로라 delivery 행·스캔 없음",
+      "headers": { "X-Gitlab-Token": "verify-wrong-token", "X-Gitlab-Webhook-UUID": "verify-${RVK_ID}-glbad", "X-Gitlab-Event": "Push Hook" },
+      "request": { "method": "POST", "path": "/v1/webhooks/gitlab", "body": { "object_kind": "push", "project": { "git_http_url": "https://github.com/trustedoss-e2e/x.git" } } },
+      "expect": { "status": 401 }
+    },
+    {
+      "tc": "TC-INTG-05-007", "channel": "api",
+      "_expect": "지원 이벤트(push/merge request) 외(Issue Hook)는 스캔 트리거를 일으키지 않음(scan_id null). delivery id는 런마다 고유(${RVK_ID})해 duplicate로 빠지지 않음. 외부 호출 없음",
+      "headers": { "X-Gitlab-Token": "whsec_gitlab_intg_test_001", "X-Gitlab-Webhook-UUID": "verify-${RVK_ID}-ignored", "X-Gitlab-Event": "Issue Hook" },
+      "request": { "method": "POST", "path": "/v1/webhooks/gitlab", "body": { "object_kind": "issue", "project": { "git_http_url": "https://github.com/trustedoss-e2e/x.git" } } },
+      "expect": { "status": [200, 202], "jsonEquals": { "scan_id": null } }
+    }
+  ]
+}

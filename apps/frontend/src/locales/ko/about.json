@@ -1,0 +1,37 @@
+{
+  "title": "제품 정보",
+  "subtitle": "이 설치본이 무엇이고, 어떤 라이선스 고지를 함께 배포하는지 보여줍니다.",
+  "load_failed": "설치본 정보를 불러오지 못했습니다. {{detail}}",
+  "field": {
+    "product": "제품",
+    "version": "버전",
+    "license": "라이선스",
+    "copyright": "저작권",
+    "source": "소스 코드"
+  },
+  "notices": {
+    "heading": "라이선스 고지",
+    "intro": "이 릴리스와 함께 배포되는 고지 파일입니다. 모든 컨테이너 이미지의 /licenses/ 경로와 Helm 차트에도 같은 파일이 들어 있습니다.",
+    "none_title": "고지 파일이 없습니다",
+    "none_description": "이 설치본에서 읽을 수 있는 고지 파일이 없습니다. 이미지를 빌드할 때 파일이 빠진 것이니 릴리스 산출물을 확인하세요."
+  },
+  "notice": {
+    "load_failed": "이 문서를 불러오지 못했습니다. {{detail}}",
+    "missing_title": "이 설치본에 없습니다",
+    "missing_description": "{{filename}} 파일이 이 설치본에 없습니다. 모든 릴리스에 포함되는 파일이므로 패키징 문제로 보입니다."
+  },
+  "documents": {
+    "license": {
+      "title": "라이선스",
+      "description": "TRUSCA 자체에 적용되는 라이선스입니다."
+    },
+    "notice": {
+      "title": "고지",
+      "description": "Apache-2.0 라이선스 4(d)항이 요구하는 TRUSCA의 저작권 고지입니다."
+    },
+    "third_party_notices": {
+      "title": "서드파티 고지",
+      "description": "소스 트리에 포함한 서드파티 자료와 컨테이너 이미지에 번들한 도구의 귀속 정보입니다."
+    }
+  }
+}

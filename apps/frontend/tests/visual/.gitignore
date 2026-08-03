@@ -1,0 +1,13 @@
+# Marathon bundle 9 (4b) — Playwright visual regression scratch dirs.
+# Test output (videos, traces, diff PNGs from failed comparisons) and
+# the html reporter dir are local-only — CI uploads them as artifacts
+# on demand, the repo doesn't track them. Baselines under
+# ``visual.spec.ts-snapshots/`` ARE committed (they ARE the spec).
+.output/
+.report/
+# Operators running ``--update-snapshots`` locally on macOS/Windows
+# generate platform-suffixed PNGs (e.g. login-chromium-darwin.png)
+# that the spec never reads (snapshotPathTemplate strips the suffix).
+# They are noise — keep them off git.
+visual.spec.ts-snapshots/*-chromium-darwin.png
+visual.spec.ts-snapshots/*-chromium-win32.png

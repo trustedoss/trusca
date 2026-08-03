@@ -1,0 +1,274 @@
+// TrustedOSS SCA — Jenkins Declarative Pipeline example
+// =============================================================================
+// Triggers a TrustedOSS SCA scan, polls until it finishes, evaluates the build
+// gate, posts the SCA report to the PR (when the build was triggered by a
+// GitHub / Bitbucket multibranch PR), and fails the build on gate failure.
+//
+// Required Jenkins credentials (Manage Jenkins → Credentials → System →
+// Global credentials):
+//
+//   trustedoss-api-url        Secret text   https://trustedoss.example.com
+//   trustedoss-api-key        Secret text   tos_<prefix>_<secret>
+//   trustedoss-project-id     Secret text   UUID from project Settings tab
+//
+// (We use Secret-text for all three even though the URL and project-id are
+// not strictly secret — keeping them in credentials lets ops rotate them
+// without editing every Jenkinsfile, and avoids leaking environment-specific
+// URLs into shared library snippets.)
+//
+// Required tools on the agent:
+//   - bash, curl, jq (install with `apt-get install -y jq` on Debian-based
+//                     Jenkins agent images)
+//
+// Drop this file into your repository as `Jenkinsfile`, drop the `.example`
+// suffix, and configure a multibranch pipeline pointing at it.
+// =============================================================================
+
+pipeline {
+    agent any
+
+    options {
+        // Real ORT runs typically take 5-60 minutes. 35 minutes covers the
+        // action's default poll-timeout (30 min) plus setup. Bump together
+        // with TRUSTEDOSS_POLL_TIMEOUT below if your projects are larger.
+        timeout(time: 35, unit: 'MINUTES')
+        // Avoid stacking up scans when a branch gets several rapid pushes.
+        disableConcurrentBuilds()
+        timestamps()
+    }
+
+    environment {
+        TRUSTEDOSS_API_URL    = credentials('trustedoss-api-url')
+        TRUSTEDOSS_API_KEY    = credentials('trustedoss-api-key')
+        TRUSTEDOSS_PROJECT_ID = credentials('trustedoss-project-id')
+        TRUSTEDOSS_SCAN_KIND  = 'source'
+        TRUSTEDOSS_FAIL_ON_GATE   = 'true'
+        TRUSTEDOSS_POST_PR_COMMENT = 'true'
+        TRUSTEDOSS_POLL_TIMEOUT   = '1800'
+        TRUSTEDOSS_POLL_INTERVAL  = '30'
+    }
+
+    stages {
+
+        stage('Preflight') {
+            steps {
+                sh '''
+                    set -euo pipefail
+                    if ! command -v jq >/dev/null 2>&1; then
+                        echo "FATAL: jq is required on this agent."
+                        echo "Install with 'apt-get install -y jq' or 'apk add jq'."
+                        exit 1
+                    fi
+                    if ! command -v curl >/dev/null 2>&1; then
+                        echo "FATAL: curl is required on this agent."
+                        exit 1
+                    fi
+                '''
+            }
+        }
+
+        stage('Trigger TrustedOSS scan') {
+            steps {
+                script {
+                    // Capture scan_id into env so subsequent stages see it.
+                    env.TRUSTEDOSS_SCAN_ID = sh(
+                        returnStdout: true,
+                        script: '''
+                            set -euo pipefail
+                            api="${TRUSTEDOSS_API_URL%/}"
+                            body=$(jq -nc --arg kind "$TRUSTEDOSS_SCAN_KIND" \
+                                '{kind: $kind, metadata: {source: "jenkins"}}')
+
+                            response=$(curl --fail-with-body -sS -X POST \
+                                -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+                                -H "Content-Type: application/json" \
+                                -H "Accept: application/json" \
+                                -w "\\n%{http_code}" \
+                                "${api}/v1/projects/${TRUSTEDOSS_PROJECT_ID}/scans" \
+                                -d "$body")
+
+                            http_code=$(echo "$response" | tail -n1)
+                            json_body=$(echo "$response" | sed '$d')
+                            if [ "$http_code" != "202" ] && [ "$http_code" != "200" ]; then
+                                echo "FATAL: unexpected HTTP $http_code from scan trigger:" >&2
+                                echo "$json_body" >&2
+                                exit 1
+                            fi
+                            echo "$json_body" | jq -er '.id'
+                        '''
+                    ).trim()
+                    echo "TrustedOSS scan enqueued: ${env.TRUSTEDOSS_SCAN_ID}"
+                }
+            }
+        }
+
+        stage('Wait for scan to finish') {
+            steps {
+                sh '''
+                    set -euo pipefail
+                    api="${TRUSTEDOSS_API_URL%/}"
+                    deadline=$(( $(date +%s) + TRUSTEDOSS_POLL_TIMEOUT ))
+                    while :; do
+                        response=$(curl --fail-with-body -sS \
+                            -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+                            -H "Accept: application/json" \
+                            -w "\\n%{http_code}" \
+                            "${api}/v1/scans/${TRUSTEDOSS_SCAN_ID}")
+
+                        http_code=$(echo "$response" | tail -n1)
+                        json_body=$(echo "$response" | sed '$d')
+                        if [ "$http_code" != "200" ]; then
+                            echo "FATAL: unexpected HTTP $http_code from scan status:"
+                            echo "$json_body"
+                            exit 1
+                        fi
+                        scan_status=$(echo "$json_body" | jq -r '.status')
+                        progress=$(echo "$json_body" | jq -r '.progress_percent // 0')
+                        step=$(echo "$json_body" | jq -r '.current_step // "?"')
+                        echo "[$(date -u +%H:%M:%S)] status=$scan_status progress=${progress}% step=$step"
+                        case "$scan_status" in
+                            succeeded) break ;;
+                            failed|cancelled)
+                                err=$(echo "$json_body" | jq -r '.error_message // "(no error message)"')
+                                echo "FATAL: scan ended with status=$scan_status: $err"
+                                exit 1
+                                ;;
+                            queued|running) ;;
+                            *) echo "WARN: unknown status '$scan_status', continuing" ;;
+                        esac
+                        if [ "$(date +%s)" -ge "$deadline" ]; then
+                            echo "FATAL: scan did not finish within ${TRUSTEDOSS_POLL_TIMEOUT}s"
+                            exit 1
+                        fi
+                        sleep "$TRUSTEDOSS_POLL_INTERVAL"
+                    done
+                '''
+            }
+        }
+
+        stage('Evaluate gate') {
+            steps {
+                script {
+                    def gateJson = sh(
+                        returnStdout: true,
+                        script: '''
+                            set -euo pipefail
+                            api="${TRUSTEDOSS_API_URL%/}"
+                            response=$(curl --fail-with-body -sS \
+                                -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+                                -H "Accept: application/json" \
+                                -w "\\n%{http_code}" \
+                                "${api}/v1/projects/${TRUSTEDOSS_PROJECT_ID}/gate-result")
+
+                            http_code=$(echo "$response" | tail -n1)
+                            json_body=$(echo "$response" | sed '$d')
+                            if [ "$http_code" != "200" ]; then
+                                echo "FATAL: unexpected HTTP $http_code from gate-result:" >&2
+                                echo "$json_body" >&2
+                                exit 1
+                            fi
+                            echo "$json_body"
+                        '''
+                    ).trim()
+
+                    // Parse on the controller; the agent already validated the JSON.
+                    def gate = readJSON(text: gateJson)
+                    env.TRUSTEDOSS_GATE = gate.gate
+                    env.TRUSTEDOSS_GATE_REASON = gate.reason ?: ''
+                    env.TRUSTEDOSS_GATE_CRITICAL = "${gate.critical_cve_count ?: 0}"
+                    env.TRUSTEDOSS_GATE_FORBIDDEN = "${gate.forbidden_license_count ?: 0}"
+
+                    echo "TrustedOSS gate=${env.TRUSTEDOSS_GATE} " +
+                         "critical=${env.TRUSTEDOSS_GATE_CRITICAL} " +
+                         "forbidden=${env.TRUSTEDOSS_GATE_FORBIDDEN}"
+                }
+            }
+        }
+
+        stage('Post PR comment') {
+            // Multibranch Pipeline sets CHANGE_ID on PR builds. If it's null
+            // the build was triggered by a branch push, not a PR, so there's
+            // nothing to comment on.
+            when {
+                allOf {
+                    expression { env.TRUSTEDOSS_POST_PR_COMMENT == 'true' }
+                    expression { env.CHANGE_ID != null && env.CHANGE_ID != '' }
+                }
+            }
+            steps {
+                // Advisory: a 5xx from the SCM should not fail an otherwise
+                // passing gate. We `|| true` after capturing the body so the
+                // step prints the warning but never returns non-zero.
+                sh '''
+                    set -euo pipefail
+                    api="${TRUSTEDOSS_API_URL%/}"
+                    # CHANGE_URL example: https://github.com/owner/repo/pull/42
+                    # We extract owner/repo from CHANGE_URL — the multibranch
+                    # plugin sets it consistently across SCMs.
+                    repo=$(printf '%s' "${CHANGE_URL:-}" \
+                        | sed -E 's#^https?://[^/]+/([^/]+/[^/]+)/pull/.*#\\1#')
+                    if [ -z "$repo" ] || [ "$repo" = "${CHANGE_URL:-}" ]; then
+                        echo "WARN: could not parse owner/repo from CHANGE_URL='${CHANGE_URL:-}'; skipping MR comment"
+                        exit 0
+                    fi
+                    body=$(jq -nc \
+                        --arg repo "$repo" \
+                        --argjson pr "$CHANGE_ID" \
+                        '{repo_full_name: $repo, pr_number: $pr, dry_run: false}')
+
+                    response=$(curl --fail-with-body -sS -X POST \
+                        -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+                        -H "Content-Type: application/json" \
+                        -H "Accept: application/json" \
+                        -w "\\n%{http_code}" \
+                        "${api}/v1/scans/${TRUSTEDOSS_SCAN_ID}/post-pr-comment" \
+                        -d "$body") || {
+                            echo "WARN: PR-comment post failed (advisory, continuing):"
+                            echo "$response"
+                            exit 0
+                        }
+                    http_code=$(echo "$response" | tail -n1)
+                    json_body=$(echo "$response" | sed '$d')
+                    if [ "$http_code" != "200" ]; then
+                        echo "WARN: unexpected HTTP $http_code from post-pr-comment (continuing):"
+                        echo "$json_body"
+                        exit 0
+                    fi
+                    status_value=$(echo "$json_body" | jq -r '.status')
+                    url=$(echo "$json_body" | jq -r '.comment_url // ""')
+                    echo "PR comment $status_value${url:+ — $url}"
+                '''
+            }
+        }
+
+        stage('Apply gate verdict') {
+            // Single source of truth on whether the build fails. We do this
+            // last so the PR comment goes out before the build flips red.
+            when {
+                allOf {
+                    expression { env.TRUSTEDOSS_FAIL_ON_GATE == 'true' }
+                    expression { env.TRUSTEDOSS_GATE == 'fail' }
+                }
+            }
+            steps {
+                error("TrustedOSS gate FAILED — critical=${env.TRUSTEDOSS_GATE_CRITICAL} " +
+                      "forbidden=${env.TRUSTEDOSS_GATE_FORBIDDEN}. " +
+                      "Reason: ${env.TRUSTEDOSS_GATE_REASON ?: '(none)'}")
+            }
+        }
+    }
+
+    post {
+        always {
+            // Compact, machine-readable summary in the build description so
+            // the Jenkins UI shows the verdict next to the build number.
+            script {
+                if (env.TRUSTEDOSS_GATE) {
+                    currentBuild.description = "TrustedOSS gate=${env.TRUSTEDOSS_GATE} " +
+                        "critical=${env.TRUSTEDOSS_GATE_CRITICAL} " +
+                        "forbidden=${env.TRUSTEDOSS_GATE_FORBIDDEN}"
+                }
+            }
+        }
+    }
+}

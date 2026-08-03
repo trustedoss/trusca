@@ -1,0 +1,18 @@
+{
+  "module": "upgrade",
+  "_about": "upgrade 모듈 결정적 검증 스펙. 이 모듈은 34케이스 중 blocked 17건(업그레이드·복원 실제 실행이 환경 파괴라 안전 가드로 금지)이고 manual 28건은 스크립트 소스·파일 검사 기반이라 스펙화 대상이 좁다. api/shell(sql) 채널이면서 읽기 전용으로 결정 가능한 2건만 결정화한다. 제외 사유: [1] TC-UPGRADE-03-001(shell)은 backup.sh 스크립트 실행이라 sql-only 규칙 밖. [2] TC-UPGRADE-04-002(api)는 원 판정 blocked(dev 환경 disk=down, 현재도 disk down에 active_scans down 추가)라 직접 대조 금지 대상이고 우회 셋업으로 만들 불변식도 없음. [3] TC-UPGRADE-01-004(L-3, doc-fix #355, IMAGE_TAG 2.0.0 대 0.10.0)는 .env/compose 파일 검사 채널(manual)이라 제외 — doc-fix는 fixed-since 면책이 안 되지만 api/sql 표면에 IMAGE_TAG가 노출되지 않아 결정화 불가. [4] 나머지 manual 케이스는 docker-compose·alembic CLI·스크립트 소스 검사라 전부 규칙상 제외. 고정 버전 단언 제외: 가이드(upgrade.md)는 특정 리비전을 못 박지 않고 'alembic upgrade head로 새 마이그레이션 적용'만 약속하므로, 현재 head(0030, H-5 조치로 추가)를 핀하면 다음 마이그레이션 머지 시 드리프트로 비결정이 된다. 단일 리비전 행 존재 + 4자리 리비전 명명 규약이라는 드리프트 강건 불변식만 단언한다. 사이드이펙트 없음(읽기 전용 GET + SELECT만, 업그레이드·다운그레이드·마이그레이션 실행 없음).",
+  "checks": [
+    {
+      "tc": "TC-UPGRADE-03-004", "channel": "shell",
+      "_expect": "가이드 'alembic upgrade head — applies any new migrations': 마이그레이션이 적용된 스키마는 alembic_version에 정확히 1행의 리비전을 가지며, 이 프로젝트의 전진 전용 4자리 리비전 명명(00NN)을 따른다. 특정 head 값(현재 0030) 핀은 드리프트 취약이라 제외(_about 참조). alembic CLI 실행 없이 alembic_version SELECT만 사용.",
+      "sql": "SELECT version_num FROM alembic_version;",
+      "expect": { "rowCount": 1, "rowMatches": "^[0-9]{4}$" }
+    },
+    {
+      "tc": "TC-UPGRADE-03-005", "channel": "api",
+      "_expect": "가이드 'Health probe — polls /health for up to 60 seconds': probe가 성공 판정하는 조건인 GET /health = 200(인증 불요)을 결정화. 60초 폴링 루프 자체는 upgrade.sh 소스 검사 영역이라 여기서 다루지 않음(원 결과도 이 api 부분으로 pass 판정).",
+      "request": { "method": "GET", "path": "/health" },
+      "expect": { "status": 200, "jsonHas": ["status"] }
+    }
+  ]
+}

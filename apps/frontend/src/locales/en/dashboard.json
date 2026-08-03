@@ -1,0 +1,104 @@
+{
+  "heading": "Dashboard",
+  "last_updated": "Last updated {{time}}",
+  "kpi": {
+    "active_projects": "Active projects",
+    "open_vulnerabilities": "Open vulnerabilities",
+    "pending_approvals": "Pending approvals",
+    "last_scan": "Last scan",
+    "view_all": "View all",
+    "never_scanned": "Never scanned",
+    "no_data": "—"
+  },
+  "chart": {
+    "severity_heading": "Vulnerability severity",
+    "license_heading": "License classification",
+    "subtitle_severity": "Each project counted by its worst non-zero severity bucket.",
+    "subtitle_license": "Each project counted by its worst non-zero license bucket."
+  },
+  "recent_scans": {
+    "heading": "Recent scans",
+    "view_all": "View all scans",
+    "empty": "No scans yet.",
+    "column": {
+      "project": "Project",
+      "kind": "Kind",
+      "status": "Status",
+      "started": "Started",
+      "duration": "Duration"
+    }
+  },
+  "recent_activity": {
+    "heading": "Recent activity",
+    "empty": "No recent activity."
+  },
+  "empty": {
+    "title": "No projects yet",
+    "description": "Register your first project to start scanning.",
+    "cta": "Register project"
+  },
+  "error": {
+    "load_failed": "Could not load dashboard data.",
+    "retry_hint": "Check your connection, then try again.",
+    "retry": "Retry"
+  },
+  "action_queue": {
+    "heading": "Needs attention",
+    "approvals": "Approvals waiting",
+    "kev": "KEV deadlines",
+    "kev_split": "{{overdue}} overdue · {{dueSoon}} due within a week",
+    "gate_blocked": "Builds blocked",
+    "stale": "Not scanned lately",
+    "stale_hint": "No successful scan in 14 days",
+    "gate_blocked_detail": "Blocked by the build gate",
+    "gate_reason": "{{critical}} critical · {{licenses}} forbidden licences",
+    "stale_detail": "Waiting on a scan",
+    "never_scanned": "Never scanned",
+    "all_clear": "Nothing is waiting on you right now.",
+    "error": "Could not load the queue. This is not the same as an empty queue — retry before assuming there is nothing to do."
+  },
+  "trends": {
+    "heading": "Risk over time",
+    "window_label": "Time range",
+    "window_option": "{{days}}d",
+    "critical_open": "Open critical",
+    "kev_open": "Open KEV",
+    "flow": "New vs resolved",
+    "flow_new": "New",
+    "flow_resolved": "Resolved",
+    "delta": "{{delta}} over the period",
+    "critical_aria": "Open critical findings over the last {{days}} days",
+    "kev_aria": "Open known-exploited findings over the last {{days}} days",
+    "flow_aria": "Findings opened and closed per day over the last {{days}} days: {{added}} new, {{resolved}} resolved",
+    "carry_forward": "Standing counts carry forward on days with no scan — a flat line can mean nothing changed or nobody looked.",
+    "no_scans": "No successful scan in this period, so there is nothing measured to chart yet.",
+    "error": "Could not load the trend. An empty chart would say the portfolio is clean, which is not what this means.",
+    "table_caption": "Daily portfolio risk over the last {{days}} days",
+    "column": {
+      "date": "Date",
+      "new": "New",
+      "resolved": "Resolved",
+      "critical": "Open critical",
+      "kev": "Open KEV"
+    },
+    "day_summary": "{{date}}: {{added}} new, {{resolved}} resolved"
+  },
+  "portfolio": {
+    "heading": "Portfolio by team",
+    "empty": "No projects yet. Register one to see your portfolio here.",
+    "error": "Could not load the portfolio. An empty grid would read as a clean one, which is not what this means.",
+    "team_projects": "{{count}} project(s)",
+    "never_scanned": "Never scanned",
+    "clean": "Clean",
+    "bucket": {
+      "critical": "Critical",
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low"
+    },
+    "breakdown": "Critical {{critical}} · High {{high}} · Medium {{medium}} · Low {{low}} — last scan {{scanned}}",
+    "team_truncated": "Showing the worst {{shown}} of {{total}}.",
+    "truncated": "Showing {{shown}} of {{total}} projects across {{shownTeams}} of {{teams}} teams — worst first. Open the project list for the rest.",
+    "never_scanned_hint": "No scan has ever succeeded for this project, so there is nothing measured to show."
+  }
+}

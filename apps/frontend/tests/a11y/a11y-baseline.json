@@ -1,0 +1,18 @@
+{
+  "admin-users": {},
+  "admin-users-dark": {},
+  "approvals": {},
+  "approvals-dark": {},
+  "dashboard": {},
+  "dashboard-dark": {},
+  "login": {},
+  "login-dark": {},
+  "project-detail-overview": {},
+  "project-detail-overview-dark": {},
+  "project-detail-vulnerabilities": {},
+  "project-detail-vulnerabilities-dark": {},
+  "projects-list": {},
+  "projects-list-dark": {},
+  "scans": {},
+  "scans-dark": {}
+}

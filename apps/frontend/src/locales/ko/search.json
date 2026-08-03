@@ -1,0 +1,73 @@
+{
+  "page": {
+    "title": "검색"
+  },
+  "tab": {
+    "projects": "프로젝트",
+    "components": "컴포넌트",
+    "vulnerabilities": "취약점",
+    "licenses": "라이선스"
+  },
+  "toolbar": {
+    "search_label": "검색",
+    "search_placeholder": "볼 수 있는 모든 프로젝트에서 검색"
+  },
+  "summary": {
+    "count": "결과 {{total}}건",
+    "type_more": "{{min}}자 이상 입력하면 검색합니다."
+  },
+  "scope": {
+    "all_scans": "지금까지 실행한 모든 스캔이 대상",
+    "current_scan": "프로젝트별 최신 성공 스캔만 대상"
+  },
+  "facet": {
+    "severity": "심각도",
+    "status": "상태",
+    "package_type": "종류",
+    "license_category": "라이선스"
+  },
+  "col": {
+    "project": "프로젝트",
+    "git_url": "Git URL",
+    "package": "패키지",
+    "version": "버전",
+    "cve": "CVE",
+    "severity": "심각도",
+    "license": "라이선스"
+  },
+  "badge": {
+    "archived": "보관됨"
+  },
+  "pagination": {
+    "summary": "{{total}}쪽 중 {{page}}쪽",
+    "previous": "이전",
+    "next": "다음"
+  },
+  "save": {
+    "trigger": "검색 저장",
+    "title": "이 검색을 저장합니다",
+    "subtitle": "이름을 붙이면 대시보드에 나타납니다. 지금 적용된 필터가 그대로 저장됩니다.",
+    "name_placeholder": "예: 결제 서비스의 치명 CVE",
+    "confirm": "저장",
+    "cancel": "취소",
+    "failed": "검색을 저장하지 못했습니다. 다시 시도해 주세요.",
+    "at_limit": "저장한 검색이 {{limit}}개로 한도에 도달했습니다. 하나를 지우면 새로 저장할 수 있습니다."
+  },
+  "saved": {
+    "title": "저장한 검색",
+    "remove": "{{name}} 삭제"
+  },
+  "empty": {
+    "start": {
+      "title": "프로젝트 전체에서 찾아봅니다",
+      "subtitle": "{{min}}자 이상 입력하면 프로젝트·패키지·CVE·라이선스를 찾습니다."
+    },
+    "none": {
+      "title": "결과가 없습니다",
+      "subtitle": "다른 검색어나 다른 탭을 시도하거나 필터를 해제해 보세요."
+    }
+  },
+  "errors": {
+    "load_failed": "검색을 실행하지 못했습니다. 다시 시도해 주세요."
+  }
+}

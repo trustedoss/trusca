@@ -1,0 +1,122 @@
+{
+  "app": {
+    "name": "TRUSCA",
+    "tagline": "오픈소스 SCA 플랫폼 — CVE·라이선스·SBOM을 한곳에서"
+  },
+  "language": {
+    "label": "언어",
+    "english": "English",
+    "korean": "한국어"
+  },
+  "theme": {
+    "label": "테마",
+    "light": "라이트",
+    "dark": "다크",
+    "system": "시스템",
+    "next": {
+      "light": "라이트 테마로 바꿉니다",
+      "dark": "다크 테마로 바꿉니다",
+      "system": "시스템 설정을 따릅니다"
+    }
+  },
+  "multiselect": {
+    "all": "전체",
+    "clear": "지우기",
+    "count_selected": "{{count}}개 선택됨"
+  },
+  "filters": {
+    "more_filters": {
+      "trigger": "필터 추가",
+      "aria": "필터 추가하기"
+    },
+    "columns": {
+      "trigger": "컬럼",
+      "aria": "표시 컬럼 선택",
+      "required_hint": "항상 표시"
+    }
+  },
+  "sort": {
+    "aria_ascending": "오름차순 정렬됨 — 클릭하여 내림차순 정렬",
+    "aria_descending": "내림차순 정렬됨 — 클릭하여 정렬 해제",
+    "aria_unsorted": "정렬되지 않음 — 클릭하여 오름차순 정렬"
+  },
+  "auth": {
+    "logout": "로그아웃",
+    "profile": "프로필",
+    "active_team": "활성 팀: {{team}}"
+  },
+  "home": {
+    "title": "TRUSCA에 오신 것을 환영합니다",
+    "subtitle": "부트스트랩이 가동되었습니다. 인증·프로젝트·스캔은 다음 Phase에서 추가됩니다.",
+    "stack": "React 18 · Vite · shadcn/ui · TanStack Query · react-i18next",
+    "api_label": "API 베이스",
+    "primary_cta": "컴포넌트 보기"
+  },
+  "risk": {
+    "critical": "치명",
+    "high": "높음",
+    "medium": "중간",
+    "low": "낮음",
+    "info": "정보"
+  },
+  "nav": {
+    "dashboard": "대시보드",
+    "about": "제품 정보",
+    "projects": "프로젝트",
+    "scans": "스캔",
+    "approvals": "승인",
+    "policies": "정책",
+    "integrations": "통합",
+    "bell": {
+      "aria": "알림",
+      "aria_with_count": "알림, 읽지 않은 항목 {{count}}건"
+    },
+    "collapseSidebar": "사이드바 접기",
+    "expandSidebar": "사이드바 펼치기",
+    "openMenu": "내비게이션 메뉴 열기",
+    "closeMenu": "내비게이션 메뉴 닫기",
+    "admin": {
+      "section": "관리"
+    },
+    "group": {
+      "portfolio": "포트폴리오",
+      "operations": "운영"
+    },
+    "switchTeam": "팀 전환",
+    "components": "컴포넌트"
+  },
+  "approvals": {
+    "coming_soon": "Step 3에서 추가됩니다."
+  },
+  "scans": {
+    "title": "스캔",
+    "coming_soon": "Step 4에서 추가됩니다."
+  },
+  "demo": {
+    "banner_title": "읽기 전용 데모",
+    "banner_detail": "라이브 데모입니다. 자유롭게 둘러보세요. 생성·수정·삭제는 비활성화되어 있습니다.",
+    "write_disabled": "읽기 전용 데모에서는 사용할 수 없습니다"
+  },
+  "command_menu": {
+    "trigger_button": "검색...",
+    "placeholder": "프로젝트·CVE·페이지 검색...",
+    "no_results": "결과가 없습니다.",
+    "searching": "검색 중…",
+    "shortcut_hint": "⌘K",
+    "group": {
+      "projects": "프로젝트",
+      "components": "컴포넌트",
+      "cves": "CVE",
+      "vulnerabilities": "취약점",
+      "pages": "페이지"
+    },
+    "see_all": "모든 결과 보기",
+    "open_search": "검색 화면 열기",
+    "open_search_hint": "쪽 넘기기·필터·저장까지"
+  },
+  "errors": {
+    "request_failed": "요청이 실패했습니다. 잠시 후 다시 시도해 주세요.",
+    "boundary_title": "문제가 발생했습니다",
+    "boundary_reload": "페이지 새로 고침"
+  }
+}

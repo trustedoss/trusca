@@ -1,0 +1,35 @@
+name: TrustedOSS Portal CodeQL config
+
+# Paths CodeQL should NOT scan. This file is applied via the advanced CodeQL
+# workflow (.github/workflows/codeql.yml) through the `init` action's
+# `config-file` input. (GitHub's *default* code-scanning setup does NOT
+# reliably honour these `paths-ignore` entries, which is why we run the
+# advanced workflow instead.)
+paths-ignore:
+  # Tests are not shipped to users — pattern checks in them (e.g.
+  # Math.random for fixture ids, substring URL checks on canned
+  # blocklists, mock secret strings) are not a real risk.
+  - apps/backend/tests/**
+  - apps/frontend/tests/**
+  - tests/**
+
+  # Maintainer / QA / docs utilities run locally with controlled inputs;
+  # not deployed and not part of the product attack surface.
+  - scripts/scan-bench/**
+  - tools/**
+
+  # Alembic-generated migration scripts are mostly DSL; bandit / mypy
+  # already cover the human-authored bits.
+  - apps/backend/alembic/versions/**
+
+  # Build outputs, dependency trees, and lock-only generated files.
+  - apps/frontend/dist/**
+  - apps/frontend/node_modules/**
+  - apps/frontend/playwright-report/**
+  - docs-site/build/**
+  - docs-site/.docusaurus/**
+
+  # Captured screenshots / walkthroughs / visual baselines.
+  - apps/frontend/tests/visual/**
+  - apps/frontend/tests/screenshots/**
+  - apps/frontend/tests/walkthroughs/**

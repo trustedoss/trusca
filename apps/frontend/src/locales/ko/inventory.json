@@ -1,0 +1,80 @@
+{
+  "page": {
+    "title": "컴포넌트"
+  },
+  "summary": {
+    "count": "프로젝트 전체에서 사용 중인 패키지 {{total}}개 중 {{loaded}}개를 표시했습니다."
+  },
+  "col": {
+    "name": "패키지",
+    "type": "종류",
+    "projects": "프로젝트",
+    "versions": "사용 중 버전",
+    "severity": "심각도",
+    "cves": "취약점",
+    "license": "라이선스"
+  },
+  "row": {
+    "versions_truncated": "{{shown}} 외 {{more}}개"
+  },
+  "toolbar": {
+    "search_label": "검색",
+    "search_placeholder": "이름 또는 purl로 검색",
+    "package_type": "종류",
+    "sort_label": "정렬",
+    "order_label": "정렬 방향",
+    "eol_only": "지원 종료만",
+    "outdated_only": "구버전만",
+    "filter": {
+      "severity": "심각도",
+      "license_category": "라이선스",
+      "lifecycle": "수명주기"
+    },
+    "sort": {
+      "project_count": "사용 프로젝트 수",
+      "name": "이름",
+      "severity": "심각도",
+      "license": "라이선스"
+    },
+    "order": {
+      "desc": "내림차순",
+      "asc": "오름차순"
+    }
+  },
+  "severity": {
+    "critical": "심각",
+    "high": "높음",
+    "medium": "보통",
+    "low": "낮음",
+    "info": "정보",
+    "none": "없음"
+  },
+  "license": {
+    "forbidden": "금지",
+    "conditional": "조건부",
+    "allowed": "허용",
+    "unknown": "미확인"
+  },
+  "drawer": {
+    "title": "사용 중인 프로젝트",
+    "subtitle": "최근 성공한 스캔에 이 패키지가 포함된 프로젝트입니다.",
+    "direct": "직접",
+    "transitive": "전이"
+  },
+  "empty": {
+    "title": "조건에 맞는 패키지가 없습니다",
+    "subtitle": "필터를 조정하거나 프로젝트를 스캔하면 목록이 채워집니다.",
+    "wider": {
+      "hint": "이 화면에는 프로젝트별 최신 스캔에서 찾은 것만 담깁니다. 몇 릴리스 전에 걷어낸 패키지는 스캔 이력에 남아 있습니다.",
+      "action": "전체 스캔 이력에서 찾기"
+    }
+  },
+  "errors": {
+    "load_failed": "인벤토리를 불러오지 못했습니다. 다시 시도해 주세요."
+  },
+  "affected": {
+    "title": "함께 영향받는 프로젝트",
+    "also_in": "다른 프로젝트 {{count}}개",
+    "this_project": "현재 프로젝트"
+  }
+}

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Favicons: modern browsers pick the SVG; .ico (16/32/48) is the legacy
+         fallback; apple-touch-icon is the iOS home-screen icon. -->
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="theme-color" content="#0f172a" />
+    <title>TRUSCA</title>
+    <!-- W18 — resolve the theme before the first paint.
+         If this ran from the bundle, the first frame would be light and the
+         app would flash white on every reload for anyone using dark.
+         The key and the class name are duplicated from src/lib/theme.ts on
+         purpose: an inline script cannot import, and copying two literals is
+         cheaper than teaching this script zustand's storage envelope.
+         tests/unit/design/themeGuard.test.ts holds the two copies together. -->
+    <script>
+      (function () {
+        try {
+          var stored = window.localStorage.getItem("trusca-theme");
+          var dark =
+            stored === "dark" ||
+            (stored !== "light" &&
+              window.matchMedia("(prefers-color-scheme: dark)").matches);
+          if (dark) {
+            document.documentElement.classList.add("dark");
+            document.documentElement.style.colorScheme = "dark";
+          }
+        } catch (e) {
+          /* No storage (private mode) — light is a safe first frame. */
+        }
+      })();
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

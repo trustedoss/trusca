@@ -1,0 +1,573 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---------------------------------------------------------------------------
+ * TRUSCA — design tokens
+ *
+ * W11-A (2026-05-27) — Vercel base + Linear polish (option C, light single).
+ * SoT: docs/ux/design-philosophy-evolution-plan-2026-05-27.md §4.
+ *
+ * Tone reference:
+ *   - Vercel light deployments / domains / deployment detail
+ *     → background / surface / border / sidebar tint / dense rows / primary
+ *       near-black button
+ *   - Linear feature / dashboard
+ *     → typography hierarchy (heading semibold), focus ring (visible 2 + 2
+ *       offset), hover transitions (150 ms ease-out), elevation shadows,
+ *       dropdown polish. Dark variant intentionally NOT absorbed — Linear
+ *       is dark-native, we re-interpret only the polish layer in light.
+ *
+ * Layout invariants (unchanged):
+ *   global bar 56 px · sidebar 256 px · in-page header 48 px ·
+ *   table row 40 px · Inter + JetBrains Mono. (W14 moved the chrome into
+ *   a full-width bar above the sidebar; --layout-header now governs only
+ *   the in-page PageHeader.)
+ *
+ * Risk severity colors (unchanged — domain semantics fixed):
+ *   Critical / High / Medium / Low / Info.
+ *
+ * Forward-compat note:
+ *   Dark mode tokens are NOT defined in this phase (2026-05-27 user decision).
+ *   The `.dark` selector below is intentionally left as a TODO placeholder so
+ *   a future v2.5+ dark trail only has to mirror the same token names — no
+ *   structural Tailwind config changes required.
+ * ------------------------------------------------------------------------- */
+
+@layer base {
+  :root {
+    /* -------------------------------------------------------------------
+     * shadcn/ui base tokens — re-tuned to Vercel light palette.
+     *
+     * HSL is shadcn convention. Hex equivalents are noted for review;
+     * never reference the hex directly in components (use the CSS var or
+     * the Tailwind utility — e.g. `bg-background`, `text-foreground`).
+     * ----------------------------------------------------------------- */
+
+    /* Page background — slight off-white so elevated surfaces (cards,
+     * popovers) read as raised. Vercel uses ~#fafafa for the canvas. */
+    --background: 0 0% 98%; /* #fafafa */
+    --foreground: 240 6% 10%; /* #18181b — warm near-black (was #0f172a navy) */
+
+    /* Elevated surfaces sit on top of --background. Pure white reads as
+     * "card on page" against the off-white canvas. */
+    --card: 0 0% 100%; /* #ffffff */
+    --card-foreground: 240 6% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 6% 10%;
+
+    /* Muted = table header / sidebar tint / placeholder fill. */
+    --muted: 240 5% 96%; /* #f4f4f5 */
+    /* 44 %, not 46 %. At 46 % (#71717a) this measured 4.40:1 against
+     * --muted — under AA, despite the comment that used to sit here
+     * claiming otherwise. axe caught it on the ⌘K hint (`<kbd>` is
+     * muted-on-muted) on all eight scanned screens. 44 % clears every
+     * surface it lands on: 4.73:1 on --muted, 4.98:1 on --background,
+     * 5.20:1 on --card. */
+    --muted-foreground: 240 4% 44%; /* #6c6c75 */
+
+    /* Border / input outline — softer than slate-200, more neutral. */
+    --border: 240 5% 91%; /* #e7e7e9 */
+    --input: 240 5% 91%;
+
+    /* Primary CTA — Vercel-style warm near-black instead of navy.
+     * Reads as "important action" without leaning blue. */
+    --primary: 240 6% 10%; /* #18181b */
+    --primary-foreground: 0 0% 98%;
+
+    /* Secondary / accent share the muted tint — used for ghost-style
+     * surfaces and hover row backgrounds. */
+    --secondary: 240 5% 96%;
+    --secondary-foreground: 240 6% 10%;
+    --accent: 240 5% 96%;
+    --accent-foreground: 240 6% 10%;
+
+    /* Destructive — aligned with risk-critical hex so destructive
+     * buttons share the visual language of a Critical severity badge.
+     *
+     * The lightness carries a decimal because 51 % renders #dc2828, and
+     * "aligned with --risk-critical" was then a claim the stylesheet did
+     * not keep — two reds two channels apart, which is exactly the
+     * "second, slightly different red" the status-surface section says
+     * this project does not want. 50.6 % is #dc2626 on the nose. */
+    --destructive: 0 72% 50.6%; /* #dc2626 */
+    --destructive-foreground: 0 0% 98%;
+
+    /* Focus ring — matches primary tone so the 2 px outline reads as
+     * "the same thing this button is", per Linear polish. */
+    --ring: 240 6% 10%;
+
+    /* Scrim behind a dialog or drawer.
+     *
+     * Its own token rather than `bg-foreground/40`, which is what the
+     * overlays used until W18. In light, foreground is near-black and the
+     * scrim reads correctly by accident; in dark, foreground is near-white
+     * and the same class frosts the screen pale — a modal that lightens
+     * everything behind it. A scrim is always darker than what it covers,
+     * in both themes, which is a fact about scrims and not about text. */
+    --overlay: 240 6% 10%; /* #18181b */
+
+    /* -------------------------------------------------------------------
+     * Radius hierarchy (Linear polish — different sizes for different
+     * affordances so depth reads at a glance).
+     *
+     *   --radius-sm   4 px  — small inputs, badges, chips
+     *   --radius      6 px  — buttons, cards, table chrome (DEFAULT)
+     *   --radius-lg   8 px  — drawer, large surfaces
+     *   --radius-xl  12 px  — modals, dialogs
+     *
+     * shadcn convention reads `--radius` as the card default; smaller /
+     * larger variants derive via `calc()` in tailwind.config.ts.
+     * ----------------------------------------------------------------- */
+    --radius: 0.375rem;
+
+    /* -------------------------------------------------------------------
+     * Elevation — subtle, Vercel-style. Light shadows only; no glow.
+     * Used by Card (sm), Dropdown / Popover (md), Drawer / Dialog (lg).
+     * ----------------------------------------------------------------- */
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.04);
+    --shadow-md:
+      0 2px 8px -2px rgb(0 0 0 / 0.08),
+      0 1px 2px 0 rgb(0 0 0 / 0.04);
+    --shadow-lg:
+      0 10px 28px -8px rgb(0 0 0 / 0.12),
+      0 3px 8px -3px rgb(0 0 0 / 0.06);
+
+    /* -------------------------------------------------------------------
+     * Motion (Linear polish) — short, ease-out. Three steps cover the
+     * majority of UI animation needs:
+     *
+     *   --duration-fast  150 ms — hover / focus state transitions
+     *   --duration-base  200 ms — drawer slide, popover open
+     *   --duration-slow  250 ms — page-level chrome transitions
+     * ----------------------------------------------------------------- */
+    --duration-fast: 150ms;
+    --duration-base: 200ms;
+    --duration-slow: 250ms;
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+    /* -------------------------------------------------------------------
+     * Risk severity (unchanged — domain meaning is fixed).
+     * Used directly by recharts / lucide as raw hex, also exposed as
+     * Tailwind `text-risk-critical` / `bg-risk-high/10` etc.
+     *
+     * The hex stays a hex here because charts read `var(--risk-critical)`
+     * straight. The opacity modifier (`/10`, `/20`, `/40`) is what
+     * `tailwind.config.ts` has to work for: it wraps each of these in a
+     * `color-mix()` carrying Tailwind's `<alpha-value>`, because a bare
+     * `var()` gives Tailwind no channels to divide and it then emits no
+     * rule at all for the slashed class. See the note in that file — it
+     * is the whole reason `bg-risk-critical/10` painted nothing until
+     * G0-7.
+     *
+     * The alpha scale is three steps, and only three:
+     *   /10  tinted surface — the default
+     *   /20  the same surface emphasised (hover, or a chip nested on /10)
+     *   /40  border on either
+     * ----------------------------------------------------------------- */
+    --risk-critical: #dc2626;
+    --risk-high: #ea580c;
+    --risk-medium: #ca8a04;
+    --risk-low: #2563eb;
+    --risk-info: #71717a;
+
+    /* -------------------------------------------------------------------
+     * Risk tint foregrounds (G0-1, completed in G0-7).
+     *
+     * The severity hexes above are chart/dot fills. Text placed ON a risk
+     * tint needs its own darker shade — without one, call sites reached
+     * for raw palette classes and each picked a different one
+     * (`text-yellow-800` here, `text-amber-900` there). These tokens close
+     * that gap: same hue family, AA-verified against the tint composited
+     * over the page canvas.
+     *
+     * All five shades are declared now because all five have a call site:
+     * G0-7 made the tints paint for the first time, and the severity hex
+     * itself is not readable on its own tint (`text-risk-high` on
+     * `bg-risk-high/10` measures 3.05:1). Every place that used to write
+     * the severity hex as text over a tint now writes the foreground.
+     *
+     * Where the line falls (W18): if it draws letters, it uses the
+     * `-foreground`; if it is an icon or a decorative `aria-hidden` symbol,
+     * it keeps the severity hex. The first is text and owes AA on whatever
+     * it sits on — `text-risk-medium` measured 2.86:1 on a white card, so
+     * some of those sites were already under AA in light before dark
+     * existed. The second is a non-text mark, owes 3:1, clears it on every
+     * surface in both themes, and is the whole reason the severity colours
+     * are recognisable at a glance. Sixteen icon call sites deliberately
+     * still say `text-risk-critical` and similar.
+     *
+     * Contrast on `bg-risk-X/20` over --background (the densest tint on
+     * the darker of the two surfaces — worst case; asserted in
+     * tests/unit/design/statusTokenContrast.test.ts):
+     *   critical 4.55 · high 5.51 · medium 5.43 · low 4.86 · info 5.80
+     *
+     * The three shades added here are not new values. `design-system.md` had
+     * been listing all five as though they were declared since G0-1 — these
+     * are the hexes it named, moved out of the doc and into the stylesheet,
+     * which is the direction that drift has to be resolved in.
+     * ----------------------------------------------------------------- */
+    --risk-critical-foreground: #b91c1c;
+    --risk-high-foreground: #9a3412;
+    --risk-medium-foreground: #854d0e;
+    --risk-low-foreground: #1d4ed8;
+    --risk-info-foreground: #52525b;
+
+
+    /* -------------------------------------------------------------------
+     * Status surfaces (G0-1).
+     *
+     * Operation / entity state — distinct from `--risk-*`, which carries
+     * the severity of a finding. A scan is running, a gate passed, a
+     * credential is present: those are statuses, not severities.
+     *
+     * Each status exposes four tokens so a pill or callout never has to
+     * reach for a raw palette class:
+     *   --status-X             solid fill for NON-TEXT marks (dots, bars)
+     *                          — WCAG 1.4.11 UI contrast ≥ 3:1
+     *   --status-X-subtle      tinted surface background
+     *   --status-X-border      border on that tint (decorative — the tint
+     *                          + foreground already carry the meaning, so
+     *                          this one is deliberately not contrast-gated)
+     *   --status-X-foreground  text on that tint — WCAG AA ≥ 4.5:1
+     *
+     * Measured (see statusTokenContrast.test.ts — the test is the gate,
+     * these numbers are for readers):
+     *   foreground on subtle: success 5.21 · warning 6.84 · danger 5.91
+     *                         · info 6.16
+     *   solid on --background: success 3.61 · danger 4.70
+     *
+     * `success` and `danger` declare a solid; `warning` and `info` do not.
+     * A solid exists only where something paints a non-text mark with it —
+     * the finished-scan progress bar for success, the dashboard trend's
+     * "new findings" bars for danger — because a solid nobody paints with
+     * is a contrast promise nobody has tested (`tokenConsumers.test.ts`
+     * enforces that). When a warning dot appears, declare that solid then,
+     * and measure it then.
+     *
+     * The danger solid deliberately equals `--risk-critical` / the
+     * destructive hex. The two vocabularies stay separate in NAME because
+     * they answer different questions — a severity versus an operation's
+     * state — but a red that means "this went badly" should not be a
+     * second, slightly different red.
+     *
+     * The trend chart pairs `--status-danger` with `--status-success` as a
+     * two-series categorical palette; measured under simulated colour-vision
+     * deficiency they separate by ΔE 8.6 (deuteranopia, OKLab ×100) on top
+     * of the positional encoding, which is above the ΔE 8 floor.
+     * ----------------------------------------------------------------- */
+    --status-success: #059669;
+    --status-success-subtle: #ecfdf5;
+    --status-success-border: #6ee7b7;
+    --status-success-foreground: #047857;
+
+    --status-warning-subtle: #fffbeb;
+    --status-warning-border: #fcd34d;
+    --status-warning-foreground: #92400e;
+
+    --status-danger: #dc2626;
+    --status-danger-subtle: #fef2f2;
+    --status-danger-border: #fca5a5;
+    --status-danger-foreground: #b91c1c;
+
+    --status-info-subtle: #eff6ff;
+    --status-info-border: #93c5fd;
+    --status-info-foreground: #1d4ed8;
+
+    /* Layout density (unchanged). */
+    /* -------------------------------------------------------------------
+     * Brand accent (W14).
+     *
+     * The mark has carried teal since the 2026-06 rebrand, but it never
+     * reached the interface — leaving the product neutral-on-neutral while
+     * the sister project, which mirrored this design system, added its own
+     * accent on top. Same tokens, no identity.
+     *
+     * Applied to a whitelist — active nav row, active tab underline,
+     * progress indicator — and never to severity: risk colour is domain
+     * meaning, and tinting it with brand would blur the signal. The login
+     * gateway gets its brand moment when that screen is rebuilt; listing it
+     * here before then would be describing an intention as a fact.
+     *
+     * Contrast (asserted in statusTokenContrast.test.ts) is measured
+     * against the surfaces the accent is actually painted on, not against
+     * white — the indicator sits on --brand-subtle, the progress bar on
+     * --muted:
+     *   --brand on --brand-subtle      3.59:1  (UI, ≥3)
+     *   --brand on --muted             3.40:1  (UI, ≥3)
+     *   --brand-on-ink on --topbar     9.52:1
+     * ----------------------------------------------------------------- */
+    --brand: #0d9488;
+    --brand-subtle: #f0fdfa;
+    /* The logo's own teal. Too light for white surfaces (2.49:1) but the
+     * right note on the ink bar, where it is the one spot of colour. */
+    --brand-on-ink: #2dd4bf;
+
+    /* -------------------------------------------------------------------
+     * Global bar (W14) — a dark island in a light theme.
+     *
+     * The bar is near-black while everything below it stays light, so it
+     * needs its own foreground scale; without these tokens every call site
+     * would reach for a palette class, which the token lint blocks. Ink
+     * matches --primary, so the bar and the primary CTA read as the same
+     * material.
+     *
+     * Contrast on --topbar: foreground 16.97:1, muted 6.91:1.
+     * ----------------------------------------------------------------- */
+    --topbar: #18181b;
+    --topbar-foreground: #fafafa;
+    --topbar-muted-foreground: #a1a1aa;
+    --topbar-border: #27272a;
+    --topbar-accent: #27272a;
+
+    --layout-sidebar: 256px;
+    --layout-topbar: 56px;
+    /* Icon-only rail width when the user collapses the sidebar (≥lg only). */
+    --layout-sidebar-collapsed: 64px;
+    --layout-header: 48px;
+    --table-row: 40px;
+  }
+
+  /* -------------------------------------------------------------------
+   * Dark mode (W18). Enabled — the v2.5+ deferral was reversed by the
+   * 2026-07-27 differentiation decision.
+   *
+   * Slate, not zinc. The light theme is zinc (hue 240, a neutral grey)
+   * and mirroring it darker would land on the same dark palette every
+   * shadcn app ships, BomLens included. This one inherits the hue of the
+   * brand SoT's dark slate `#0f172a` (~221°), so the dark theme reads as
+   * this product rather than as "dark mode was turned on".
+   *
+   * What changes and what does not:
+   *
+   *   - Neutrals, `-foreground` shades, status tints, the brand accent and
+   *     the bar are all redeclared here.
+   *   - The five risk hexes are NOT. They are domain semantics and survive
+   *     the theme (CLAUDE.md, W11: "Severity 색 변경 0"). Measured on both
+   *     dark surfaces they still clear the 3:1 that WCAG 1.4.11 asks of a
+   *     non-text mark — the weakest is `--risk-low` on `--card` at 3.38.
+   *   - Layout, radius and motion tokens are geometry and timing. A theme
+   *     has no opinion about them.
+   *
+   * Two things a light theme gets for free and this one has to earn:
+   *
+   * 1. A shadow lifts a card off the canvas in light. In dark it is a dark
+   *    smudge on a dark ground and does nothing, so the separation has to
+   *    come from lightness and from the border: `--border` sits at 1.51:1
+   *    against `--card` here, against 1.23:1 in light. The border is doing
+   *    a job it only decorated before.
+   * 2. Text on a risk tint flips direction. Light darkens the severity hue
+   *    (`--risk-critical-foreground: #b91c1c`); dark has to lighten it, so
+   *    these are the 400-level shades. Worst case across both surfaces and
+   *    both tint steps is 5.49:1 — every one clears AA. Using the severity
+   *    hex itself as text would measure 3.04:1.
+   *
+   * `tests/unit/design/statusTokenContrast.test.ts` asserts every number
+   * quoted above. Do not edit a value here without re-running it.
+   * ----------------------------------------------------------------- */
+  .dark {
+    /* Canvas and raised surfaces. `--card` is the brand SoT slate; the
+     * canvas goes below it and `--popover` above, so a dialog over a card
+     * over the page reads as three layers without a shadow. */
+    --background: 223 47% 6%; /* #080c16 */
+    --foreground: 210 40% 96%; /* #f1f5f9 */
+    --card: 221 46% 12%; /* #11192d */
+    --card-foreground: 210 40% 96%;
+    --popover: 223 43% 16%; /* #17213a */
+    --popover-foreground: 210 40% 96%;
+
+    /* Subtle fills — table headers, sidebar tint, disabled inputs. */
+    --muted: 222 39% 18%; /* #1c2740 */
+    /* slate-400. 7.62:1 on the canvas, 6.76:1 on a card, 5.79:1 on
+     * `--muted` itself — the surface that caught the light theme out. */
+    --muted-foreground: 215 20% 65%; /* #94a3b8 */
+
+    /* Carrying the card edge, not decorating it — see note 1 above. */
+    --border: 218 30% 25%; /* #2d3b53 */
+    --input: 218 30% 25%;
+
+    /* The primary CTA inverts: near-black on near-white becomes near-white
+     * on the card slate. 16.30:1, within a rounding of the light theme's
+     * 16.97:1, so "the important action on the page" reads with the same
+     * force in both. */
+    --primary: 210 40% 96%; /* #f1f5f9 */
+    --primary-foreground: 221 46% 12%; /* #11192d */
+
+    --secondary: 222 39% 18%;
+    --secondary-foreground: 210 40% 96%;
+    --accent: 222 39% 18%;
+    --accent-foreground: 210 40% 96%;
+
+    /* Inverted, and the alignment survives the inversion.
+     *
+     * `--destructive` is two things at once: the fill of a destructive
+     * button, and — through shadcn's `text-destructive` — the colour of an
+     * error sentence. In light, `#dc2626` does both: 4.83:1 as text on a
+     * white card, 4.63:1 under its own foreground as a fill. On a dark card
+     * it measures 3.62:1 as text, so 24 call sites that read fine in light
+     * would be under AA in dark.
+     *
+     * Lightening it fixes the text and keeps the fill idiomatic (a bright
+     * red button on a dark ground is the standard shape). And the design
+     * claim holds: light pairs `--destructive` with `--risk-critical`, dark
+     * pairs it with `--risk-critical-foreground` — the same red the
+     * severity vocabulary uses for text at this lightness. The two
+     * vocabularies stay separate in name, as the status-surface section
+     * insists, while continuing to agree on the colour.
+     *
+     * HSL, not the hex it resolves to, because `tailwind.config.ts` reads
+     * this token as `hsl(var(--destructive))`. A hex here produces
+     * `hsl(#f87171)`, which is not a colour — the rule is dropped and the
+     * button loses its fill. The light block's `50.6%` is the same story
+     * told forwards; `tokenFormatContract.test.ts` now checks it for every
+     * token in both blocks rather than leaving it to be discovered.
+     */
+    --destructive: 0 90.6% 70.8%; /* #f87171 */
+    --destructive-foreground: 221 46% 12%; /* #11192d */
+
+    /* Light matches the ring to `--primary`; so does this. 6.76:1 against
+     * a card, which a 2 px outline needs to be seen at all. */
+    --ring: 215 20% 65%; /* #94a3b8 */
+
+    /* Pure black, not the canvas. The canvas is already dark, so a scrim
+     * made of it at 40 % would barely register — the dialog would float
+     * with nothing separating it from the page underneath. */
+    --overlay: 0 0% 0%;
+
+    /* -----------------------------------------------------------------
+     * Risk tint foregrounds — the 400-level shades (note 2 above).
+     * Worst case 5.49:1, on `--risk-critical`'s /20 tint over a card.
+     * ----------------------------------------------------------------- */
+    --risk-critical-foreground: #f87171;
+    --risk-high-foreground: #fb923c;
+    --risk-medium-foreground: #facc15;
+    --risk-low-foreground: #60a5fa;
+    --risk-info-foreground: #a1a1aa;
+
+    /* -----------------------------------------------------------------
+     * Status surfaces. The subtle tints become dark tints of the same hue
+     * and the foregrounds lighten; the two declared solids do not move,
+     * both still clearing 3:1 as non-text marks (success 5.19, danger
+     * 4.05). Borders stay decorative and ungated, per the light block.
+     * ----------------------------------------------------------------- */
+    --status-success: #059669;
+    --status-success-subtle: #052e22;
+    --status-success-border: #15803d;
+    --status-success-foreground: #4ade80; /* 8.48:1 on its subtle */
+
+    --status-warning-subtle: #2e2205;
+    --status-warning-border: #a16207;
+    --status-warning-foreground: #facc15; /* 10.18:1 */
+
+    --status-danger: #dc2626;
+    --status-danger-subtle: #3a0d0d;
+    --status-danger-border: #b91c1c;
+    --status-danger-foreground: #f87171; /* 6.11:1 */
+
+    --status-info-subtle: #0a1a2e;
+    --status-info-border: #1d4ed8;
+    --status-info-foreground: #60a5fa; /* 6.88:1 */
+
+    /* -----------------------------------------------------------------
+     * Brand accent — the two teals swap which one leads.
+     *
+     * In light, `--brand` (teal-600) is for pale surfaces and
+     * `--brand-on-ink` (teal-400, the mark's own teal) is for the ink bar.
+     * In dark almost every surface is dark, so the mark's teal becomes the
+     * general case: 9.39:1 on a card against teal-600's 4.63:1, which
+     * clears AA but only barely and looks muddy next to slate.
+     *
+     * The names still hold. `--brand` is "the accent", whatever the theme
+     * decides that is; `--brand-on-ink` is "the teal on the bar", and the
+     * bar is dark in both themes — so here they simply agree.
+     * ----------------------------------------------------------------- */
+    --brand: #2dd4bf;
+    --brand-subtle: #0b2b28; /* body text 13.79:1, teal 8.11:1 */
+    --brand-on-ink: #2dd4bf;
+
+    /* -----------------------------------------------------------------
+     * The global bar. `--topbar: #18181b` was ink against a white app; on
+     * this canvas it measures 1.06:1 and the bar disappears entirely. The
+     * plan anticipated this (§3.6-(6)) and offered inverting the bar to be
+     * lighter than the canvas.
+     *
+     * It sits on the popover plane — one step above the card. Three
+     * candidates were rendered and compared: the card plane (1.12:1) left
+     * the bar and the page header reading as one slab, and inverting the
+     * bar brighter than everything made the chrome the loudest thing on a
+     * screen someone reads all day. This one separates without shouting,
+     * and it puts the surfaces in the order a user would guess: canvas
+     * below, cards above it, chrome above those.
+     * ----------------------------------------------------------------- */
+    --topbar: #17213a;
+    --topbar-foreground: #f1f5f9;
+    --topbar-muted-foreground: #94a3b8;
+    --topbar-border: #2d3b53;
+    --topbar-accent: #1c2740;
+  }
+
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    /* Linear polish — slightly tighter letter-spacing on body copy reads
+     * more "modern enterprise" without sacrificing legibility. */
+    letter-spacing: -0.005em;
+  }
+  code,
+  kbd,
+  pre,
+  samp {
+    @apply font-mono;
+    /* Mono should NOT inherit the body's negative letter-spacing. */
+    letter-spacing: 0;
+  }
+
+  /* Heading hierarchy — semibold per Linear, NOT bold. Tailwind classes
+   * `font-semibold` already use 600; this rule documents the intent. */
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-semibold tracking-tight;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Reduced motion (W12-C) — honour the OS "reduce motion" setting globally.
+ *
+ * Collapses every animation/transition to ~0 and disables smooth scrolling so
+ * the route-change fade, drawer slides, hover transitions, and skeleton pulse
+ * become effectively instant for users who request it (WCAG 2.3.3 — flagship
+ * accessibility baseline). One global guard beats sprinkling
+ * `motion-reduce:` variants across every animated component.
+ * ------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Risk tints — the four `.risk-tint-*` classes that stood here (W16) are gone.
+ *
+ * They existed because `bg-risk-critical/10` painted nothing: Tailwind applies
+ * an opacity modifier only to colours whose channels it can parse, these
+ * tokens held a `var()` it could not see into, and it emitted no rule at all
+ * for the slashed class. Hand-written `color-mix` classes worked around that
+ * for one caller while twenty-six call sites elsewhere kept rendering
+ * transparent.
+ *
+ * G0-7 fixed the mechanism instead, in `tailwind.config.ts`: the same
+ * `color-mix` now carries Tailwind's `<alpha-value>`, so the spelling
+ * everybody was already writing works — including the variants a bespoke
+ * class cannot reach (`hover:bg-risk-low/20`). One mechanism, no second
+ * vocabulary to remember.
+ * ------------------------------------------------------------------------- */

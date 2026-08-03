@@ -1,0 +1,94 @@
+{
+  "described": {
+    "releaseDate": "2023-05-22",
+    "urls": {
+      "registry": "https://pypi.org/project/requests",
+      "version": "https://pypi.org/project/requests/2.31.0",
+      "download": "https://files.pythonhosted.org/packages/9d/be/10918a2eac4ae9f02f6cfe6414b7a155ccd8f7f9d4380d62fd5b955065c3/requests-2.31.0.tar.gz"
+    },
+    "hashes": {
+      "sha1": "23ef233afce04d4a1d4856353dc3aaa255cbce3e",
+      "sha256": "942c5a758f98d790eaed1a29cb6eefc7ffb0d1cf7af05c3d2791656dbd6ad1e1"
+    },
+    "files": 48,
+    "tools": [
+      "clearlydefined/1.4.1",
+      "reuse/6.4.0",
+      "licensee/9.18.1",
+      "scancode/32.7.0"
+    ],
+    "toolScore": {
+      "total": 100,
+      "date": 30,
+      "source": 70
+    },
+    "sourceLocation": {
+      "type": "pypi",
+      "provider": "pypi",
+      "name": "requests",
+      "revision": "2.31.0",
+      "url": "https://pypi.org/project/requests/2.31.0/"
+    },
+    "score": {
+      "total": 100,
+      "date": 30,
+      "source": 70
+    }
+  },
+  "licensed": {
+    "declared": "Apache-2.0",
+    "toolScore": {
+      "total": 47,
+      "declared": 30,
+      "discovered": 2,
+      "consistency": 0,
+      "spdx": 15,
+      "texts": 0
+    },
+    "facets": {
+      "core": {
+        "attribution": {
+          "unknown": 44,
+          "parties": [
+            "Copyright Kenneth Reitz",
+            "Copyright 2019 Kenneth Reitz",
+            "copyright (c) 2012 by Kenneth Reitz",
+            "copyright (c) 2017 by Kenneth Reitz"
+          ]
+        },
+        "discovered": {
+          "unknown": 39,
+          "expressions": [
+            "Apache-2.0",
+            "Apache-2.0 AND LicenseRef-scancode-unknown-license-reference",
+            "LicenseRef-scancode-unknown-license-reference",
+            "MIT AND Apache-2.0"
+          ]
+        },
+        "files": 48
+      }
+    },
+    "score": {
+      "total": 47,
+      "declared": 30,
+      "discovered": 2,
+      "consistency": 0,
+      "spdx": 15,
+      "texts": 0
+    }
+  },
+  "coordinates": {
+    "type": "pypi",
+    "provider": "pypi",
+    "name": "requests",
+    "revision": "2.31.0"
+  },
+  "_meta": {
+    "schemaVersion": "1.7.0",
+    "updated": "2026-05-15T01:01:08.902Z"
+  },
+  "scores": {
+    "effective": 73,
+    "tool": 73
+  }
+}

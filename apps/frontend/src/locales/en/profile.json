@@ -1,0 +1,43 @@
+{
+  "page": {
+    "title": "Your profile",
+    "subtitle": "Manage your account, sign-in methods, and connected services."
+  },
+  "header": {
+    "display_name_label": "Display name",
+    "email_label": "Email"
+  },
+  "connected_accounts": {
+    "section_title": "Connected Accounts",
+    "section_description": "OAuth providers linked to your account.",
+    "loading": "Loading connected accounts…",
+    "error": "Failed to load connected accounts.",
+    "empty": "No OAuth providers linked yet. Use the buttons on the login page to link one.",
+    "no_email": "—",
+    "linked_since": "Linked {{relative}}",
+    "table": {
+      "provider": "Provider",
+      "email": "Email",
+      "linked": "Linked",
+      "actions": "Actions"
+    },
+    "provider": {
+      "github": "GitHub",
+      "google": "Google"
+    },
+    "unlink": {
+      "button": "Unlink",
+      "confirm_title": "Unlink this provider?",
+      "confirm_body": "You won't be able to sign in with this provider anymore.",
+      "confirm": "Unlink",
+      "cancel": "Cancel"
+    },
+    "toast": {
+      "unlinked": "Provider unlinked.",
+      "unlink_failed": "Failed to unlink provider."
+    }
+  },
+  "unlink": {
+    "blocks_login_alert": "This is your only way to sign in. Set a password before unlinking."
+  }
+}

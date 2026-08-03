@@ -1,0 +1,15 @@
+# Fires trustedoss-backup.service once a day at 02:30 UTC — 47 minutes BEFORE
+# the demo reset (03:17) so the day's accumulated state is captured before it
+# is wiped. Persistent=true backfills a backup missed while the VPS was down.
+#
+# Enable: sudo systemctl enable --now trustedoss-backup.timer
+[Unit]
+Description=Run TrustedOSS local backup daily at 02:30 UTC
+
+[Timer]
+OnCalendar=*-*-* 02:30:00 UTC
+Persistent=true
+Unit=trustedoss-backup.service
+
+[Install]
+WantedBy=timers.target

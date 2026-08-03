@@ -1,0 +1,655 @@
+---
+id: vulnerabilities
+title: 취약점
+description: TRUSCA에서 CVE 분류 — VEX 상태 머신, 심각도 모델, 조치 SLA 추적, 억제 흐름, 재탐지.
+sidebar_label: 취약점
+sidebar_position: 4
+---
+
+# 취약점
+
+**Vulnerabilities** 탭은 스캔 파이프라인이 프로젝트 컴포넌트와 상관시킨 모든 미해결 CVE(Common Vulnerabilities and Exposures)를 나열합니다. 결과는 스캔을 거쳐 영속화됩니다 — CVE가 한번 발견되면 근본 컴포넌트가 제거·업그레이드될 때까지 상태와 분류 노트와 함께 프로젝트 이력에 남습니다.
+
+![프로젝트 상세 — 심각도 필터와 행별 CVE 링크가 있는 Vulnerabilities 탭](/img/screenshots/user-vulns-list.png)
+
+:::note 대상 독자
+개별 결과를 분류하는 엔지니어; SLA를 추적하는 보안 리드. VEX 상태 변경은 `developer` 이상; 일괄 억제는 `team_admin`.
+:::
+
+## "Vulnerability data unavailable" 배너 {#vuln-data-unavailable-banner}
+
+Vulnerabilities 탭 상단에 파란색 **Vulnerability data unavailable** 배너가 나타나는 경우는, 포털이 스캔에서 발견한 *컴포넌트*는 보여줄 수 있지만 finding이 0 건일 때 — 보통 로컬 Trivy DB의 다운로드가 아직 끝나지 않았거나(워커가 막 부팅한 신규 배포), DB 다운로드가 실패한 경우입니다. 배너는 원인을 설명하고 다음 절차를 안내합니다.
+
+- 관리자는 워커 디스크의 Trivy DB를 확인해야 합니다 — 정확한 명령은 [취약점 데이터 — 동작 확인](../admin-guide/vulnerability-data.md#동작-확인) 참조. 곧 도착할 `/admin/health` 하위의 **Vulnerability data** 카드(roadmap)가 UI에서 신선도를 노출합니다.
+- Trivy DB가 자리 잡으면 자동 재매칭 beat이 모든 프로젝트의 최신 SBOM에서 finding을 가져옵니다 — 사용자 측 인앱 액션은 필요 없습니다. 배너는 적어도 한 건의 finding이 반환되는 다음 페이지 로드에서 자동으로 사라집니다.
+
+배너는 *정보성* 이지 에러가 아닙니다 — 실제로 깨끗한 프로젝트의 `0 findings`는 API 레벨에서 동일하게 보이므로, 메시지는 의도적으로 단정하지 않고 진단 표면을 가리킵니다.
+
+## 심각도 모델
+
+| 심각도 | 색상 토큰 | CVSS v3 (일반) | 빌드 게이트 |
+|---|---|---|---|
+| **Critical** | `#dc2626` | 9.0–10.0 | 종료 코드 1(기본) |
+| **High** | `#ea580c` | 7.0–8.9 | 프로젝트별 설정 |
+| **Medium** | `#ca8a04` | 4.0–6.9 | 영향 없음 |
+| **Low** | `#2563eb` | 0.1–3.9 | 영향 없음 |
+| **Info** | `#71717a` | — | 영향 없음 |
+
+기본 정책은 `Critical`에서만 빌드를 실패시킵니다. 프로젝트 소유자는 임계치를 `High`로 낮출 수 있습니다.
+
+## VEX 상태 머신
+
+결과는 [CycloneDX VEX(Vulnerability Exploitability eXchange)](https://cyclonedx.org/capabilities/vex/) 7-state 모델을 따릅니다. 각 결과는 **신규**에서 시작하며 분석가가 분류함에 따라 전환됩니다.
+
+```mermaid
+stateDiagram-v2
+  direction LR
+  [*] --> New
+  New --> Analyzing: Mark in triage
+  New --> Suppressed: Mark suppressed
+  Analyzing --> Exploitable: Mark exploitable
+  Analyzing --> Not_affected: Mark not affected
+  Analyzing --> False_positive: Mark false positive
+  Analyzing --> Fixed: Mark fixed
+  Analyzing --> Suppressed: Mark suppressed
+  Exploitable --> Analyzing: Reopen
+  Not_affected --> Analyzing: Reopen
+  False_positive --> Analyzing: Reopen
+  Fixed --> Analyzing: Reopen
+  Suppressed --> Analyzing: Reopen
+```
+
+| 상태 | 정의 | 빌드 게이트 |
+|---|---|---|
+| **신규 (New)** | 막 발견됨; 분류되지 않음. | 카운트. |
+| **분석 중 (Analyzing)** | 분류 진행 중. | 카운트. |
+| **악용 가능 (Exploitable)** | 이 프로젝트 맥락에서 악용 가능 확인. | 카운트. |
+| **해당 없음 (Not affected)** | 컴포넌트는 있으나 취약 코드 경로에 도달 불가. | 제외. |
+| **오탐 (False positive)** | 탐지 자체가 잘못됨(예: 잘못된 purl). | 제외. |
+| **억제됨 (Suppressed)** | 운영자가 명시적으로 침묵 처리(`not_affected` + 명시적 억제). | 제외. |
+| **수정됨 (Fixed)** | 해결됨(컴포넌트 업그레이드 또는 패치 적용). | 제외. |
+
+전환은 행위자, `previous_status`, `new_status`, 필수 사유 메시지와 함께 감사 로그에 기록됩니다.
+
+### 필수 사유
+
+`New` / `Analyzing` 외 상태로 전환할 때마다 자유 텍스트 사유(10자 이상)가 필요합니다. 포털은 사유를 그대로 저장합니다 — 사실 기반으로 작성하세요("lodash를 4.17.21로 업그레이드", "취약 코드 경로는 `dev_only` 모듈에 있음"). 본 텍스트는 CycloneDX VEX 출력에 그대로 노출됩니다.
+
+## 결과 테이블
+
+컬럼:
+
+- **CVE** — CVE-YYYY-NNNN 식별자 (평문 표시; NVD 클릭 이동은 로드맵 항목).
+- **심각도 (Severity)** — 색상 배지.
+- **CVSS** — 상위 피드의 CVSS v3 숫자 점수.
+- **EPSS** — EPSS 확률을 백분율로 표시(예: `97.3%`). EPSS 값이 없는 CVE는 `—`로 표시됩니다. [EPSS — 악용 확률](#epss--악용-확률) 참고.
+- **KEV** — CVE가 CISA KEV(Known Exploited Vulnerabilities, 알려진 악용 취약점) 카탈로그에 등재된 경우 표시되는 배지와 카탈로그의 대응 기한. [KEV — 알려진 악용 취약점](#kev) 참고.
+- **제목 (Title)** — 권고문의 짧은 요약.
+- **영향 (Affected)** — 영향 받는 컴포넌트(`name@version`).
+- **상태 (Status)** — 현재 VEX 상태.
+- **SLA 기한 (SLA due)** — 조치 SLA 기한을 **기한 초과** / **임박** / **여유** 세 상태로 구분해 표시합니다. SLA가 없는 심각도는 `—`로 표시됩니다. [조치 SLA와 경과시간 추적](#sla) 참고.
+- **발견 시각 (Discovered)** — *이번* 스캔이 결과를 기록한 시점. 재스캔하면 초기화됩니다. SLA 시계는 이 값이 아니라 **최초 탐지** 시각을 씁니다 — [최초 탐지 vs. 발견 시각](#first-detected-vs-discovered) 참고.
+
+상단 인라인 필터 바: 심각도, 상태, **EPSS 임계** 필터(`min_epss`), **SLA** 상태 필터(`sla`), 그리고 **검색** 박스(CVE ID / 제목 / 컴포넌트 자유 텍스트), 정렬·정렬 순서 컨트롤. 기본 정렬은 **Priority** — KEV 등재 결과가 먼저, 다음은 심각도, 그다음은 EPSS 순입니다. [Priority 정렬](#priority-sort) 참고. 정렬 컨트롤에는 **EPSS**(`sort=epss`)와 **SLA 기한**(`sort=sla_due`)도 포함되며, 해당 값이 없는 행은 마지막으로 정렬됩니다.
+
+툴바에는 **그룹화** 컨트롤도 있어 플랫 결과 테이블을 업그레이드 중심의 조치 작업 목록으로 바꿔 볼 수 있습니다 — [업그레이드별 보기](#group-by-upgrade) 참고.
+
+## 드로어 — 결과 상세
+
+행을 클릭하면 다음을 봅니다.
+
+- **요약 (Summary)** — 제목, 설명, CWE, CVSS 벡터, 그리고 Trivy DB가 제공할 때의 **EPSS score와 percentile**(미제공 시 `—`). [EPSS — 악용 확률](#epss--악용-확률) 참고. CVE가 CISA KEV 카탈로그에 등재되어 있으면 **KEV 배지**와 대응 기한도 여기에 표시됩니다 — [KEV — 알려진 악용 취약점](#kev) 참고. 요약에는 **SLA 칩**(기한과 기한 초과 / 임박 / 여유 상태)과 SLA 시계의 시작점인 **최초 탐지** 행도 표시됩니다 — [조치 SLA와 경과시간 추적](#sla) 참고.
+- **참고 자료 (References)** — 벤더 권고, 수정 커밋, 익스플로잇 데이터베이스.
+- **영향 (Affected)** — 상위에서 보고한 영향 범위와 본 프로젝트 컴포넌트 버전 강조, 그리고 **수정 버전(fixed version)** — *이 컴포넌트*에 대해 *이 CVE*를 해소하는 버전 — 을 스캔 파이프라인이 판별할 수 있었던 경우 표시합니다. [수정 버전 — CVE를 해소하는 버전](#수정-버전--cve를-해소하는-버전) 참고. 영향 컴포넌트는 **의존성 깊이**()도 함께 표시합니다: 직접 선언한 **직접(direct)** 의존성(깊이 `1`)인지, 다른 패키지가 끌어온 **전이(transitive)** 의존성(깊이 `2+`)인지. 직접 의존성의 CVE는 대개 선언 버전을 올려 본인이 고치고, 전이 의존성의 CVE는 그것을 요구하는 직접 부모를 업그레이드해 고칩니다 — [직접 vs. 전이 (의존성 깊이)](./components-and-licenses.md#dependency-depth) 참고.
+- **분석 (Analysis)** — VEX 상태 전환별 액션 버튼, 현재 상태에서 허용된 전환마다 한 개씩 표시됩니다. 모든 종결 결정은 `analyzing` 상태를 거치므로 새로 발견된 finding은 곧바로 verdict로 넘어갈 수 없습니다. 버튼을 클릭하면 사유 입력 다이얼로그가 열리며 제출합니다. `developer` 이상만 가능하며, `Suppressed` 로의 전이는 `team_admin` 이상이 필요합니다.
+- **이력 (History)** — VEX 상태 전환 타임라인(누가, 언제, 어떤 사유로 상태를 변경했는지).
+
+![취약점 드로어 — VEX 액션 버튼과 사유 입력 텍스트 영역이 있는 Analysis 섹션](/img/screenshots/user-vulns-drawer-vex.png)
+
+## 일괄 상태 전이 {#bulk-transition}
+
+여러 finding이 같은 디스포지션을 공유할 때 — 예를 들어 방금 업그레이드한 동일 라이브러리의 10 개 finding — 툴바의 **Bulk action bar**로 드로어를 일일이 열지 않고 한 번에 전이할 수 있습니다.
+
+![Bulk action bar — 두 행을 선택한 뒤 표시되는 선택 개수와 Set status to · Apply / Clear 컨트롤](/img/screenshots/user-vulns-bulk-bar.png)
+
+1. 행 단위 체크박스(또는 헤더 트라이-스테이트 체크박스로 현재 페이지의 모든 행 선택 — 필터·페이지가 변경되면 선택이 자동으로 클리어되어 stale 선택이 뷰를 건너 leak 되지 않음)를 체크합니다.
+2. 표 상단의 액션 바가 선택 개수와, 선택된 행들의 *공통* 현재 상태에서 가능한 verdict 들을 보여줍니다. 선택이 상태를 섞어 합법적 다음 상태의 교집합이 비면 verdict 버튼이 비활성화되고 툴팁이 이유를 설명합니다.
+3. verdict를 선택하고 justification을 한 번만 입력(같은 텍스트가 모든 행에 적용)한 뒤 submit.
+
+응답은 **행 단위** 입니다 — 선택된 모든 finding이 결과 alert에 결과를 받습니다. 각 행은 `success`·HTTP 형식의 `status_code`·기계 판독 `error` 코드를 담습니다. 코드는 다음과 같습니다.
+
+- **transitioned** — `success: true`, `status_code: 200`, `error: null`. 상태가 실제로 변경됨.
+- **already_at_target** — `success: true`, `status_code: 200`, `error: "already_at_target"`. 행이 이미 요청한 상태였음; 멱등 no-op은 실패가 아니라 성공입니다(audit 행만 남기지 않음).
+- **invalid_transition** — `success: false`, `status_code: 422`. 워크플로 매트릭스가 허용하지 않는 전이; 행에 `allowed_to`(다음 허용 상태)가 실립니다.
+- **forbidden** — `success: false`, `status_code: 403`. 행위자의 역할이 부족함(예: `developer`가 행을 `Suppressed`로).
+- **not_found** — `success: false`, `status_code: 404`. id가 이 프로젝트의 finding이 아님.
+
+envelope의 `succeeded` / `failed` 개수는 이를 합산합니다(`already_at_target`은 succeeded로 집계). alert가 닫히면 표가 새 상태를 반영하며 reload 됩니다.
+
+서버 쪽에서 요청은 선택된 finding id 목록·target status·justification을 담은 단일 `POST /v1/projects/{id}/vulnerabilities:bulk-transition` 호출입니다. 엔드포인트는 행 단위 엔드포인트와 동일한 상태 머신 가드를 적용하며, 실제 전이된 finding 당 audit-log 행 1 개를 emit 합니다. 한 호출 당 상한은 **200 ids** 입니다 — 그보다 큰 선택은 페이지를 넘기며 청크 단위로 submit 하세요.
+
+:::caution Suppressed 전이는 여전히 `team_admin` 권한 필요
+bulk 엔드포인트는 행 단위 엔드포인트의 권한을 **확장하지 않습니다**. 선택된 *어느* 행이라도 `Suppressed`로 옮기려면 여전히 프로젝트 팀의 `team_admin` (또는 그 이상) 권한이 필요합니다 — `developer`가 `→ Suppressed` 전이를 포함한 bulk 요청을 submit 하면 해당 행들은 `forbidden`(`status_code: 403`)으로 보고되고, 같은 submit의 다른 행들은 정상 완료됩니다.
+:::
+
+## EPSS — 악용 확률
+
+포털은 [EPSS(Exploit Prediction Scoring System)](https://www.first.org/epss/) score를 CVSS 옆에 노출해, *심각한* CVE와 *실제 공격받을 가능성이 높은* CVE를 구분할 수 있게 합니다.
+
+### EPSS vs. CVSS — 각각 무엇을 답하나
+
+- **CVSS**는 **심각도**를 측정합니다 — CVE가 악용되었을 때의 이론적 영향. 누군가 실제로 악용하는지, 할 것인지는 말하지 않습니다.
+- **EPSS**는 향후 30일 내 **실제 악용 확률**을 `0`~`1` 사이의 숫자로 측정합니다.
+
+둘은 보완 관계입니다. CVSS `9.8`(Critical)인데 EPSS는 `0.01`인 CVE — 문서상으로는 심각하지만 공격받을 예측 확률은 낮은 — 가 흔합니다. EPSS로 정렬·필터하면 *실제로* 위험한 소수의 결과에 집중하고 노이즈를 줄일 수 있습니다.
+
+:::caution EPSS는 best-effort
+EPSS 데이터는 Trivy DB에서 옵니다 — **Trivy가 EPSS 값을 제공하는 CVE에 한해서만** 존재합니다. EPSS 값이 없는 결과는 UI에서 `—`, API에서 `null`로 표시됩니다 — 누락된 EPSS는 "낮음"이 아니라 "알 수 없음"으로 다루세요. EPSS는 CVSS나 VEX 분류를 대체하지 않으며, 하나의 추가 신호입니다.
+:::
+
+### 포털의 EPSS 표시 방식
+
+- **Score** — 백분율로 렌더링. EPSS `0.973`은 `97.3%`로 표시됩니다.
+- **Percentile** — "상위 N%"로 렌더링. 99번째 백분위수의 결과는 대략 "상위 1%"로 표시되며, 그 점수가 전체 채점된 CVE의 약 99%보다 높음을 뜻합니다.
+- **누락** — `—` (Trivy DB가 해당 CVE에 EPSS 값을 제공하지 않음).
+
+score와 percentile은 결과 테이블의 **EPSS** 컬럼과 드로어의 **요약(Summary)** 섹션에 나타납니다.
+
+### EPSS 정렬·필터
+
+- **정렬** — 툴바 정렬 컨트롤에서 **EPSS**를 선택(내림차순이면 가장 악용 가능성 높은 결과가 위로). EPSS 값이 없는 결과는 정렬 순서와 무관하게 항상 마지막으로 정렬됩니다(`NULLS LAST`).
+- **필터** — **EPSS 임계**(`min_epss`, `0`~`1` 값)를 설정하면 `epss_score >= min_epss`인 결과만 표시합니다. 예를 들어 `min_epss=0.5`는 모델이 악용 확률 50% 미만으로 예측한 모든 결과를 숨깁니다. EPSS 값이 없는 결과는 임계 필터에서 제외됩니다(누락된 score는 `>=`를 만족할 수 없음).
+
+### API에서 EPSS 읽기
+
+`GET /v1/projects/{id}/vulnerabilities`는 모든 결과에 `epss_score`와 `epss_percentile`을 반환합니다(Trivy DB가 값을 제공하지 않으면 둘 다 `null`). 동일한 필드가 결과 상세(`GET /v1/vulnerability_findings/{finding_id}`)와 중첩된 `VulnerabilityRef`에도 나타납니다.
+
+<!-- docs-uat: id=vulns-list-epss-api kind=api auth=admin url=/v1/projects/${PROJECT_ID}/vulnerabilities?sort=epss&order=desc expect=status:200 tier=nightly -->
+EPSS로 정렬, 높은 순:
+
+<!-- docs-uat: id=vulns-api-list-epss kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
+```bash
+curl -sS \
+  -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+  "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/vulnerabilities?sort=epss&order=desc"
+```
+
+모델이 악용 확률 50% 이상으로 예측한 결과만 반환:
+
+<!-- docs-uat: id=vulns-api-list-min-epss kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
+```bash
+curl -sS \
+  -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+  "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/vulnerabilities?min_epss=0.5"
+```
+
+응답의 한 결과는 다음과 같습니다(그 외 필드 생략).
+
+```json
+{
+  "cve_id": "CVE-2021-44228",
+  "severity": "critical",
+  "cvss_score": 10.0,
+  "epss_score": 0.974,
+  "epss_percentile": 0.999,
+  "status": "new"
+}
+```
+
+:::tip EPSS로 빌드 게이팅
+EPSS는 CI 빌드 게이트도 구동할 수 있어, Critical이 아니어도 악용 확률이 높은 CVE가 빌드를 실패시킬 수 있습니다. [EPSS로 빌드 게이팅](../ci-integration/github-actions.md#epss로-빌드-게이팅-선택) 참고.
+:::
+
+## KEV — 알려진 악용 취약점 {#kev}
+
+포털은 CVE가 [CISA KEV(Known Exploited Vulnerabilities, 알려진 악용 취약점) 카탈로그](https://www.cisa.gov/known-exploited-vulnerabilities-catalog)에 등재된 모든 결과에 표시를 붙입니다. KEV는 미국 사이버안보·인프라 보안청(CISA, Cybersecurity and Infrastructure Security Agency)이 실제 공격에 악용되었다고 확인한 약 1,600건의 CVE 목록입니다.
+
+### KEV vs. EPSS vs. CVSS
+
+- **CVSS**는 이론적 **심각도**를 측정합니다.
+- **EPSS**는 악용 **확률**을 예측합니다.
+- **KEV**는 **확인된 사실**을 기록합니다 — 누군가 이미 이 CVE를 악용하고 있습니다. KEV 등재는 어떤 예측보다 우선하는 신호이므로, KEV 등재 결과를 조치 대기열의 맨 앞에 두십시오.
+
+### 포털의 KEV 표시 방식
+
+- **배지** — 결과 테이블과 드로어의 **요약(Summary)** 섹션에서 CVE 옆에 **KEV** 배지가 나타납니다. 심각도 표시와 마찬가지로 신호는 색상 단독이 아니라 레이블입니다.
+- **대응 기한** — 드로어는 대응 기한(`kev_due_date`)도 표시합니다. CISA가 카탈로그 항목마다 부여하는 조치 기한으로, 미국 연방 기관을 구속하는 기한이지 여러분의 배포를 구속하지는 않습니다 — 시급성 신호로 읽으십시오. 배지는 이 기한을 세 단계의 D-day 표기로 구분해 보여줍니다 — [대응 기한 상태](#kev-due-date-status) 참고.
+- 배지가 없는 결과는 단지 **카탈로그에 없다**는 뜻입니다 — 배지 없음이 안전하다는 판정은 아닙니다.
+
+### 대응 기한 상태 {#kev-due-date-status}
+
+KEV 배지는 CISA 대응 기한을 세 단계로 구분해 표시하므로, 날짜를 계산하지 않아도 시간 압박을 바로 읽을 수 있습니다. 결과 테이블과 드로어가 같은 세 가지 상태를 보여줍니다.
+
+| 상태 | 조건 | 표시 |
+|---|---|---|
+| **기한 초과** | 대응 기한이 지남 | 빨강, `D+n` — 기한이 지난 일수 |
+| **임박** | 7일 이내 도래 | 주황, `D-n` — 남은 일수 |
+| **여유** | 7일 넘게 남음 | 중립, `D-n` |
+
+포털의 다른 표시와 마찬가지로 색상은 단독 신호가 아닙니다 — 상태는 색조가 아니라 `D-n` / `D+n` 일수 레이블 자체로 전달됩니다. 대응 기한 자체와 마찬가지로 이 기한은 미국 연방 기관을 구속할 뿐 여러분의 배포를 구속하지 않습니다. **기한 초과**는 CISA가 발행하는 가장 강한 시급성 신호로 읽으시고, 여러분 쪽의 컴플라이언스 위반으로 읽지는 마십시오.
+
+### Priority 정렬 {#priority-sort}
+
+**Priority**는 결과 테이블의 **기본 정렬**입니다. 행을 다음 순서로 정렬합니다.
+
+1. **KEV** — 카탈로그 등재 결과 먼저,
+2. **심각도** — Critical → Info,
+3. **EPSS** — 악용 확률 높은 순(값 없는 행은 마지막).
+
+따라서 테이블 상단에는 항상 악용이 확인되고, 가장 심각하며, 공격 가능성이 가장 높은 결과가 모입니다. 다른 기준이 필요하면 정렬 컨트롤에서 선택하십시오 — 기존 단일 키 정렬(심각도, EPSS, 발견 시각)은 그대로입니다.
+
+### 데이터 출처
+
+일일 Celery beat 태스크(`trustedoss.kev_catalog_refresh`)가 CISA KEV 피드를 내려받아 포털의 취약점 카탈로그에 동기화합니다. 등재 해제도 동기화됩니다 — CISA가 카탈로그에서 제거한 CVE는 같은 실행에서 배지를 잃습니다. 재스캔은 필요 없습니다 — 등재 여부는 CVE 자체에 저장되므로 기존 결과에 즉시 반영됩니다.
+
+refresh는 세 개의 env 키 — `KEV_FEED_URL`, `KEV_REFRESH_ENABLED`, `KEV_REFRESH_TIMEOUT_SECONDS` — 로 조정합니다. [환경 변수 — KEV 카탈로그](../reference/env-variables.md#kev-catalog) 참고. 운영자는 관리자 health 페이지에서 동기화 상태(마지막 실행, 등재/해제 수, 건너뜀 사유)를 확인할 수 있습니다 — [KEV 피드 패널](../admin-guide/vulnerability-data.md#kev-feed-panel) 참고.
+
+:::note Air-gapped 배포
+CISA 피드에 접근할 수 없는 배포는 `KEV_REFRESH_ENABLED=false`로 설정하십시오. refresh를 끄면 KEV 데이터가 로드되지 않으므로 **KEV 배지와 대응 기한이 표시되지 않고**, Priority 정렬은 사실상 심각도 → EPSS로 동작합니다.
+:::
+
+## 조치 SLA와 경과시간 추적 {#sla}
+
+포털은 모든 결과가 얼마나 오래 열려 있었는지를 **심각도별 조치 기간** 대비로 추적합니다. "Critical CVE는 일주일 안에 고친다" 같은 정책이 별도 스프레드시트가 아니라 결과 테이블에서 필터·정렬할 수 있는 상태가 됩니다.
+
+### 최초 탐지 vs. 발견 시각 {#first-detected-vs-discovered}
+
+비슷해 보이지만 답하는 질문이 다른 두 시각이 있습니다.
+
+- **발견 시각 (Discovered)** — *이번* 스캔이 결과 행을 기록한 시점. 재스캔하면 초기화됩니다.
+- **최초 탐지 (First detected)** — 이 (프로젝트 × 컴포넌트 × CVE) 조합이 프로젝트에서 처음 관찰된 시점. 재스캔·자동 재매칭·컨테이너 재스캔을 거쳐도 그대로 승계되며, **SLA 시계의 시작점**입니다. 드로어의 **최초 탐지** 행이 이 값입니다.
+
+SLA 기한은 항상 최초 탐지 시각으로 계산하고, 최신 스캔 시각은 쓰지 않습니다 — 프로젝트를 재스캔해도 기한이 되돌아가지 않습니다. SLA 추적 도입 이전 릴리스가 기록한 결과에는 저장된 최초 탐지 시각이 없으므로, 행 생성 시각으로 대체합니다.
+
+### 심각도별 조치 기간
+
+기한은 *최초 탐지 + 심각도별 기간*입니다.
+
+| 심각도 | 기본 기간 | env 키 |
+|---|---|---|
+| Critical | 7일 | `VULN_SLA_DAYS_CRITICAL` |
+| High | 30일 | `VULN_SLA_DAYS_HIGH` |
+| Medium | 90일 | `VULN_SLA_DAYS_MEDIUM` |
+| Low | 180일 | `VULN_SLA_DAYS_LOW` |
+
+`Info`·`Unknown` 심각도에는 **SLA가 없습니다** — 정보성 결과는 조치 대상 작업이 아니고, 심각도를 알 수 없는 결과에 기한을 묵시적으로 부여해서도 안 되기 때문입니다. 이런 결과의 **SLA 기한** 셀은 `—`로 표시되고 어떤 SLA 필터에도 걸리지 않습니다. 기간은 배포 단위로 조정할 수 있습니다 — [환경 변수 — 취약점 SLA](../reference/env-variables.md#vuln-sla) 참고. 숫자가 아니거나 0 이하인 값을 설정하면 시계가 꺼지는 대신 기본값으로 되돌아갑니다.
+
+### 세 가지 상태
+
+**SLA 기한** 컬럼과 드로어의 SLA 칩은 기한을 세 상태로 구분해 표시합니다.
+
+| 상태 | 조건 | 표시 |
+|---|---|---|
+| **기한 초과** | 기한이 지남 | 빨강, 기한과 함께 |
+| **임박** | 7일 이내 도래 | 주황, 기한과 함께 |
+| **여유** | 7일 넘게 남음 | 중립, 기한과 함께 |
+
+"임박" 판정의 7일 창은 고정값이며, [KEV 대응 기한 상태](#kev-due-date-status)와 같은 구분 방식입니다. 포털의 다른 표시와 마찬가지로 상태는 색상 단독이 아니라 레이블로 전달됩니다.
+
+### SLA 필터·정렬
+
+- **필터** — 툴바의 **SLA** 컨트롤로 테이블을 한 상태로 좁힙니다(`sla=overdue`, `sla=imminent`, `sla=ok`). SLA가 없는 결과(Info / Unknown 심각도)는 어떤 값에도 걸리지 않습니다.
+- **정렬** — 정렬 컨트롤에서 **SLA 기한**(`sort=sla_due`)을 선택합니다. 오름차순이면 가장 급한 결과가 맨 위로 오고, SLA가 없는 결과는 정렬 순서와 무관하게 항상 마지막입니다(`NULLS LAST`).
+
+실무에서 시계 대비로 관리할 대상은 **미해결** 작업입니다. 디스포지션을 내린 결과(`Not affected`, `False positive`, `Fixed`)도 API에서는 계산된 날짜를 유지하지만, 빌드 게이트와 아래 초과 알림에서는 제외됩니다.
+
+### 초과 알림
+
+일일 Celery beat 태스크(`trustedoss.vuln_sla_sweep`, 02:45 UTC)가 모든 프로젝트의 **최신 성공 스캔**을 훑어, 미해결 결과가 기한을 막 넘겼을 때 소유 팀에 알립니다.
+
+- **지난 24시간 안에** 기한을 넘긴 결과만 알립니다 — 각 초과는 발생한 그날 정확히 한 번만 통지됩니다. 오래된 초과 건은 받은함이 아니라 `?sla=overdue` 뷰에서 봅니다.
+- **미해결** 결과만 집계합니다 — 빌드 게이트와 같은 종결 집합을 씁니다(`not_affected`·`fixed`·`false_positive` 제외, `suppressed`는 여전히 미해결 작업으로 집계).
+- 알림은 소유 팀의 각 멤버에게 **프로젝트당 1건으로 묶은 인앱 알림**(종류 `vuln_sla_breach`)으로 전달되며, 넘긴 결과 수·심각도 분포·`?sla=overdue`로 미리 필터된 Vulnerabilities 탭 링크를 담습니다. 인앱 채널로만 전달되고, 사용자별 인앱 알림 설정을 존중합니다.
+
+운영자는 `VULN_SLA_ALERTS_ENABLED=false`로 배포 전체의 sweep을 끌 수 있습니다 — [환경 변수 — 취약점 SLA](../reference/env-variables.md#vuln-sla) 참고.
+
+### API에서 읽기
+
+`GET /v1/projects/{id}/vulnerabilities`는 모든 결과에 `first_detected_at`·`sla_due_date`·`sla_status`(`overdue` / `imminent` / `ok`, 세 필드 모두 `null` 가능)를 반환합니다. 결과 상세(`GET /v1/vulnerability_findings/{finding_id}`)에도 같은 필드가 실립니다.
+
+<!-- docs-uat: id=vulns-list-sla-api kind=api auth=admin url=/v1/projects/${PROJECT_ID}/vulnerabilities?sla=overdue expect=status:200 tier=nightly -->
+기한을 넘긴 결과만 나열:
+
+<!-- docs-uat: id=vulns-api-list-sla-overdue kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
+```bash
+curl -sS \
+  -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+  "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/vulnerabilities?sla=overdue"
+```
+
+전체 백로그를 기한순으로, 가장 급한 것부터:
+
+<!-- docs-uat: id=vulns-api-list-sla-sort kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
+```bash
+curl -sS \
+  -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+  "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/vulnerabilities?sort=sla_due&order=asc"
+```
+
+응답의 한 결과는 다음과 같습니다(그 외 필드 생략).
+
+```json
+{
+  "cve_id": "CVE-2021-44228",
+  "severity": "critical",
+  "status": "new",
+  "discovered_at": "2026-07-20T08:12:03Z",
+  "first_detected_at": "2026-07-01T02:30:44Z",
+  "sla_due_date": "2026-07-08T02:30:44Z",
+  "sla_status": "overdue"
+}
+```
+
+:::note CRA — "지체 없는 수정"
+EU 사이버 복원력법(CRA)은 취약점을 "지체 없이" 조치할 것을 요구합니다(Annex I Part II §2). SLA 추적은 이 의무를 뒷받침하는 경과시간 증적과 기한을 제공할 뿐, 그것만으로 제품이 규제를 충족하지는 않습니다. [CRA 컴플라이언스 대응표](../reference/cra-compliance.md) 참고.
+:::
+
+## 수정 버전 — CVE를 해소하는 버전
+
+결과 드로어의 **영향(Affected)** 섹션은 영향 받는 각 컴포넌트 옆에 **수정 버전(fixed version)**을 표시합니다. *그 컴포넌트*를 어느 버전으로 올리면 *그 CVE*를 더 이상 가지지 않는지 알려줍니다 — 모든 트리아지 담당자가 가장 먼저 묻는 "무엇으로 올리면 되나?"에 답합니다.
+
+### CVE 단위가 아니라 (컴포넌트 × CVE) 단위입니다
+
+하나의 CVE라도 **패키지마다 서로 다른 버전에서 패치**되는 경우가 흔하고, 하나의 패키지라도 **CVE마다 서로 다른 버전에서 패치**될 수 있습니다. 따라서 수정 버전은 CVE 전역이 아니라 개별 결과(즉 `(컴포넌트, CVE)` 쌍)에 저장됩니다. 같은 CVE에 영향받는 두 컴포넌트가 서로 다른 수정 버전을 보이는 것은 정상이며, 버그가 아닙니다.
+
+### 데이터 출처
+
+스캔 파이프라인은 **Trivy DB 결과(findings)** 로부터 다음 우선순위로 수정 버전을 수집합니다.
+
+1. Trivy가 결과에 첨부한 **구조화된 패치 버전 목록**(가장 낮은 패치 버전 채택).
+2. `status: fixed`로 표시된 **CycloneDX VEX `affects[].versions[]`** 항목.
+3. 권고문의 자유 텍스트 **recommendation**("Upgrade to 2.17.1 or later")에서 구체적 버전을 추출.
+
+수집된 문자열은 저장 전에 검증됩니다 — 제어 문자, 과도한 길이, 범위 연산자(`^`, `>=`), 그리고 그럴듯한 버전 토큰이 아닌 값은 저장하지 않고 "알 수 없음"으로 처리합니다.
+
+### 비어 있을 때
+
+다음의 경우 수정 버전은 `—`로 표시(API는 `null` 반환)됩니다.
+
+- Trivy DB가 이 컴포넌트/CVE에 대한 수정을 보고하지 않은 경우(상위 권고에 아직 패치 버전이 없음 — 실제 제로데이거나 아직 미수정 CVE), **또는**
+- 해당 결과가 이 수집 기능을 도입한 ** 이전** 스캔에서 발견된 경우. 프로젝트를 재스캔하면 채워집니다.
+
+수정 버전이 비어 있다는 것은 "수정이 존재하지 않는다"가 아니라 **"알려진 수정 버전이 없다"**는 의미입니다 — CVE가 수정 불가하다고 결론짓기 전에 항상 상위 권고를 확인하세요.
+
+### API로 읽기
+
+수정 버전은 결과 상세의 영향 컴포넌트와 컴포넌트 드로어의 중첩 CVE 참조에 `fixed_version`으로 노출됩니다.
+
+<!-- docs-uat: id=vulns-api-finding-detail kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
+```bash
+# 결과 상세 — 각 영향 컴포넌트의 fixed_version
+curl -sS \
+  -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+  "https://trustedoss.example.com/v1/vulnerability_findings/${FINDING_ID}"
+```
+
+```json
+{
+  "cve_id": "CVE-2021-44228",
+  "affected_components": [
+    {
+      "name": "log4j-core",
+      "version": "2.14.1",
+      "purl": "pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1",
+      "fixed_version": "2.17.1"
+    }
+  ]
+}
+```
+
+:::note 업그레이드 추천이 이 위에 쌓입니다
+수정 버전은 **업그레이드 추천(권장 버전)**()의 입력입니다. 각 결과가 수정 버전을 알게 되면, 포털은 컴포넌트별 최소한의 안전한 업그레이드를 계산합니다. [업그레이드 추천(권장 버전)](#업그레이드-추천권장-버전) 참고.
+:::
+
+## 업그레이드 추천(권장 버전)
+
+[수정 버전](#수정-버전--cve를-해소하는-버전)이 "*이* CVE를 무엇이 패치하나"에 답한다면, **권장 버전(recommended version)**은 그다음 질문 — "이 컴포넌트를 어느 한 버전으로 올리면 깨끗해지나?"에 답합니다. 이것은 **최소 안전 업그레이드(minimum safe upgrade)** 입니다: 그 컴포넌트의 미해결 CVE를 **모두** 한 번에 해소하는 가장 낮은 버전.
+
+결과 드로어는 이를 참조·영향 컴포넌트 위의 **권장 업그레이드** 패널에 표시합니다.
+
+### 계산 방식
+
+하나의 컴포넌트가 여러 미해결 CVE를 가질 수 있고, 각 CVE는 저마다의 버전에서 수정됩니다. 권장 버전은 그 CVE별 [수정 버전](#수정-버전--cve를-해소하는-버전)들의 **시맨틱 버전 최댓값** — 개별 수정 버전 모두 이상이 되는 가장 낮은 버전 — 입니다.
+
+- 컴포넌트 `log4j-core@2.14.1`에 미해결 CVE 두 개가 각각 `2.16.0`, `2.17.1`에서 수정됩니다. 권장 버전은 **`2.17.1`** — 이 버전으로 올리면 둘 다 해소됩니다.
+
+**미해결** 결과만 계산에 포함됩니다. 이미 디스포지션한 CVE(`영향 없음`, `오탐`, `수정됨`)는 제외됩니다 — [빌드 게이트](#심각도-모델)가 보는 집합과 정확히 동일하므로, 추천이 이미 닫은 CVE를 좇으라고 하지 않습니다.
+
+### 우선순위 신호
+
+패널은 "지금 고칠 것"과 "나중에 고칠 것"을 구분할 수 있도록 세 가지 신호도 함께 노출합니다.
+
+- **직접 의존성** — 직접 선언한 컴포넌트(그래프 깊이 `1`)이므로 본인 매니페스트에서 즉시 버전을 올릴 수 있습니다. 전이 의존성은 배지가 없습니다 — 그것을 끌어오는 직접 부모를 업그레이드해 고칩니다([직접 vs. 전이](./components-and-licenses.md#dependency-depth) 참고).
+- **최고 심각도** — 컴포넌트의 미해결 결과 중 가장 심각한 CVE.
+- **최고 EPSS** — 그중 가장 높은 [악용 확률](#epss--악용-확률).
+
+이 신호들은 추천의 **정렬**(직접·고EPSS·심각 업그레이드를 먼저)에 쓰일 뿐, 권장 *버전* 자체를 바꾸지 않습니다.
+
+### 추천이 없을 때
+
+포털은 오해를 부르는 부분 업그레이드를 권하기보다, 일부러 추천을 보류하고 이유를 밝힙니다.
+
+- **알려진 수정 버전 없음** — 컴포넌트의 미해결 CVE 중 하나 이상이 [수정 버전](#수정-버전--cve를-해소하는-버전)을 갖지 않습니다(진짜 제로데이이거나  이전 스캔 결과). *알려진* 수정의 최댓값으로 올리면 컴포넌트가 완전히 깨끗하다고 잘못 암시하므로, 대신 "추천 불가" 안내를 표시합니다.
+- **해석 불가한 수정 버전** — 사용 가능한 모든 수정 문자열이 비정상이라 비교할 수 없었습니다.
+
+"추천 불가" 상태는 오류가 아니라 정보입니다 — 미해결 CVE를 상위 권고에서 확인하세요.
+
+### CI 빌드 게이트 코멘트에서
+
+[빌드 게이트](../ci-integration/github-actions.md)가 게시하는 SCA PR 코멘트에는 우선순위가 높은 업그레이드(직접·심각 순)를 나열하는 **Recommended upgrades** 섹션이 포함됩니다. 각 항목은 `컴포넌트 현재 → 권장`과 해소하는 CVE를 함께 보여주며, 실행 가능한 업그레이드가 하나라도 있을 때만 표시됩니다.
+
+### API에서 읽기
+
+결과 상세(`GET /v1/vulnerability_findings/{finding_id}`)는 `upgrade_recommendation` 객체를 함께 반환합니다.
+
+```json
+{
+  "cve_id": "CVE-2021-44228",
+  "upgrade_recommendation": {
+    "recommended_version": "2.17.1",
+    "reason": "ok",
+    "direct": true,
+    "max_severity": "critical",
+    "max_epss": 0.974,
+    "finding_count": 2
+  }
+}
+```
+
+`reason`은 `ok`(버전 계산됨), `no_fix_version`, `unparseable_version`, `no_open_findings` 중 하나이며, `recommended_version`은 `ok` 외의 모든 값에서 `null`입니다.
+
+## 업그레이드별 보기 — 조치 작업 목록 {#group-by-upgrade}
+
+[권장 버전](#업그레이드-추천권장-버전)은 컴포넌트 단위로 계산되지만, 플랫 결과 테이블은 CVE 단위로 구성됩니다. 그래서 미해결 CVE 5건을 가진 컴포넌트가 5개 행을 차지하는데, 실제로는 한 번의 버전 인상으로 모두 해소됩니다. **업그레이드별** 보기는 이 테이블을 뒤집습니다: "미해결 결과마다 한 행"이 아니라 **프로젝트에 필요한 업그레이드마다 카드 하나** — 조치 작업 목록 전체가 한눈에 들어옵니다.
+
+툴바의 **그룹화** 컨트롤로 보기를 전환합니다: **플랫**(기본 결과 테이블) ⇄ **업그레이드별**. 선택은 방문 단위로만 유지됩니다 — 탭을 벗어나면 플랫으로 돌아옵니다.
+
+![Vulnerabilities 탭 — 컴포넌트별 조치 클러스터를 실행 가치 순으로 보여주는 업그레이드별 보기](/img/screenshots/user-vulns-group-by-upgrade.png)
+
+### 카드 읽는 법
+
+각 카드는 컴포넌트 하나의 **최소 안전 업그레이드**입니다 — 드로어의 [업그레이드 추천](#업그레이드-추천권장-버전) 패널이 보여주는 값과 같으며, 이를 프로젝트 전체로 집계한 것입니다.
+
+- 헤더는 **`{컴포넌트}` `{현재}` → `{권장}` 업그레이드** 형식이고, **N건 해소** 카운트가 붙습니다 — 그 한 번의 버전 인상이 해소하는 미해결 결과 수입니다.
+- 목록은 [우선순위 신호](#우선순위-신호) 세 가지를 기준으로, 실행 가치가 높은 것부터 정렬됩니다: **직접 의존성** 배지(직접 선언한 의존성이라 자신의 매니페스트에서 바로 올릴 수 있음), 최고 심각도, 카드에 묶인 결과 중 최고 EPSS.
+- 카드를 펼치면 포함된 개별 결과가 보이고 — 각각 **`{버전}`에서 해결** 표시를 가집니다 — 결과를 클릭하면 플랫 테이블과 같은 결과 드로어가 열립니다.
+
+미해결 결과에 **공개된 수정 버전이 없는** 컴포넌트는, 오해를 부르는 부분 업그레이드를 제시하는 대신 **업그레이드 없음** 그룹으로 묶입니다. 카드에 사유가 함께 표시됩니다("일부 CVE는 아직 해결 버전이 없습니다" 또는 "해결 버전을 해석할 수 없습니다").
+
+### 빌드 게이트와의 동기화
+
+**미해결** 결과만 클러스터로 묶습니다 — [빌드 게이트](#심각도-모델)가 집계하는 것과 정확히 같은 집합입니다. 이미 처리한 결과(`Not affected`, `False positive`, `Fixed`, `Suppressed`)는 제외되므로, 카드 위의 요약 줄("업그레이드 N건으로 취약점 M건 해소")은 프로젝트와 깨끗한 게이트 사이에 남은 작업을 정확히 설명합니다.
+
+### API에서 읽기
+
+<!-- docs-uat: id=vulns-upgrade-clusters-api kind=api auth=admin url=/v1/projects/${PROJECT_ID}/vulnerabilities/upgrade-clusters expect=status:200 tier=nightly -->
+이 보기는 단일 엔드포인트가 제공합니다:
+
+<!-- docs-uat: id=vulns-api-upgrade-clusters kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
+```bash
+curl -sS \
+  -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+  "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/vulnerabilities/upgrade-clusters"
+```
+
+응답의 클러스터는 다음과 같은 형태입니다(결과 필드는 축약):
+
+```json
+{
+  "scan_id": "0197fa2e-…",
+  "total_findings": 9,
+  "clusters": [
+    {
+      "component_name": "log4j-core",
+      "component_purl": "pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1",
+      "current_version": "2.14.1",
+      "recommended_version": "2.17.1",
+      "reason": "ok",
+      "direct": true,
+      "max_severity": "critical",
+      "max_epss": 0.974,
+      "finding_count": 2,
+      "findings": [{ "cve_id": "CVE-2021-44228", "fixed_version": "2.17.1" }]
+    }
+  ]
+}
+```
+
+클러스터는 기본적으로 프로젝트의 **가장 최근 성공** 스캔을 기준으로 계산됩니다. `?scan_id=`를 주면 특정 성공 스캔에 고정할 수 있습니다 — 결과 목록과 같은 스냅숏 의미론이라, 이 프로젝트의 성공 스캔이 아닌 id는 `404`를 반환합니다. 성공 스캔이 없는(또는 미해결 결과가 없는) 프로젝트는 빈 `clusters` 목록과 `total_findings: 0`으로 `200`을 반환합니다. 보기 조회에는 결과 목록과 같은 기준인 `developer` 이상이 필요합니다.
+
+## 보고서 다운로드 (PDF 또는 Excel)
+
+포털은 가장 최근 성공 스캔으로부터 프로젝트 단위 **취약점 보고서**를 렌더링합니다 — 리스크 요약, 심각도·라이선스 분포, 취약점(CVE id·CVSS·EPSS·KEV 상태·영향 컴포넌트 포함), 컴포넌트 목록. 요청 시점에 생성되며 별도로 예약할 배치 작업은 없습니다. 두 가지 형식을 제공합니다: 읽기·공유용 **PDF**, 그리고 직접 필터링·피벗하기 좋은 **Excel(`.xlsx`)** 워크북(Overview·Components·Vulnerabilities 3개 시트).
+
+### UI에서 다운로드
+
+1. 프로젝트 열기.
+2. **Reports** 탭 클릭.
+3. **Vulnerability report** 카드에서 **PDF 보고서 다운로드** 또는 **Excel 다운로드**를 클릭. 문서가 생성되는 동안 버튼에 **생성 중…**이 표시되고, 이어서 다운로드가 시작됩니다.
+
+파일명은 `vulnerability-report-<project>.pdf` 또는 `vulnerability-report-<project>.xlsx`. 직전 시도에서 오류가 있으면 버튼 옆에 인라인으로 표시되며, 각 다운로드는 Reports 탭의 내보내기 이력 표에 기록됩니다.
+
+:::note Excel 수식 주입 방지
+스캔된 서드파티 메타데이터(컴포넌트 이름, purl, CVE 요약)에서 온 셀 값은 내보내기 전에 무해화됩니다: `=`, `+`, `-`, `@`로 시작하는 값은 리터럴 텍스트로 기록되므로, 워크북을 열 때 패키지 이름이 스프레드시트 수식으로 실행되는 일은 없습니다.
+:::
+
+### API에서 다운로드
+
+<!-- docs-uat: id=vulns-report-pdf-api kind=api auth=admin url=/v1/projects/${PROJECT_ID}/vulnerability-report.pdf expect=status:200 retry=5x2s tier=nightly -->
+보고서를 API로 받습니다. PDF 엔드포인트는 PDF 바이트를 반환합니다:
+
+<!-- docs-uat: id=vulns-api-report-pdf kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
+```bash
+curl -sS -L -OJ \
+  -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+  "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/vulnerability-report.pdf"
+```
+
+<!-- docs-uat: id=vulns-report-xlsx-api kind=api auth=admin url=/v1/projects/${PROJECT_ID}/vulnerability-report.xlsx expect=status:200 retry=5x2s tier=nightly -->
+Excel 엔드포인트는 `.xlsx` 워크북 바이트를 반환합니다:
+
+<!-- docs-uat: id=vulns-api-report-xlsx kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
+```bash
+curl -sS -L -OJ \
+  -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+  "https://trustedoss.example.com/v1/projects/${PROJECT_ID}/vulnerability-report.xlsx"
+```
+
+PDF 응답은 `application/pdf`, Excel 응답은 `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`입니다. 둘 다 `Content-Disposition: attachment`가 설정되며(`-OJ` 플래그는 서버가 제공한 파일명으로 저장하도록 curl에 지시), 항상 **가장 최근에 성공한 스캔(latest succeeded)**을 반영합니다 — 특정 과거 스캔 ID로 고정하는 기능은 현재 릴리스에서 지원되지 않습니다.
+
+| 상태 | 의미 |
+|---|---|
+| `200` | PDF 다운로드. |
+| `401` | 미인증 — 유효한 토큰을 제공하세요. |
+| `404` | 프로젝트가 없거나, 호출자가 해당 팀의 멤버가 아님(existence-hide, SBOM 내보내기와 동일한 정책). |
+| `500` | PDF 렌더러 실패; 본문은 `application/problem+json`. 재시도 후 워커 이미지를 확인하세요(트러블슈팅 참고). |
+
+:::note 접근 권한
+보고서 다운로드는 `developer` 이상이 필요합니다. 크로스팀 호출자는 `403`이 아닌 `404`를 받으므로 비멤버는 프로젝트의 존재 여부를 알 수 없습니다.
+:::
+
+## VEX 문서 — 내보내기와 가져오기
+
+트리아지는 표준 문서로 포털을 나갔다가 돌아올 수 있습니다. 프로젝트의 현재
+결과 상태를 OpenVEX 또는 CycloneDX VEX 문서로 **내보내거나**, 외부
+문서(공급업체의 "해당 없음" 판정, 편집한 왕복 문서, CI 산출물)를 **가져와**
+statement를 자동 적용합니다. 두 방향과 상태 매핑, UI 버튼은 별도 페이지에서
+다룹니다 — [VEX 문서 — 내보내기와 가져오기](./vex.md) 참고.
+
+## 재탐지
+
+Trivy DB가 갱신되어 새 CVE가 도착하면 **자동 재매칭** Celery beat 태스크가 모든 프로젝트의 최신 SBOM을 순회하며 재상관합니다. 새 결과는 자동으로 등장합니다 — 재스캔 불필요.
+
+재매칭은 주간 refresh 성공 후 매번 실행됩니다(주기 `TRIVY_DB_REFRESH_HOURS`, 기본 168). 영향을 받는 프로젝트는 새 `vulnerability_findings` 행을 받습니다. 운영자는 `/admin/scans`와 프로젝트별 Vulnerabilities 탭으로 모니터링합니다.
+
+**신규 CVE 알림** 트리거가 활성화되어 있으면([admin 알림](../admin-guide/vulnerability-data.md#알림) 참고) 담당 팀 또는 워처에게 이메일·Slack·Teams 메시지가 발송됩니다.
+
+## 억제 vs. 해당 없음 vs. 수정됨
+
+자주 혼동되는 부분:
+
+- **해당 없음** — 취약 코드 경로가 실행되지 않음을 확신할 때. 분석가가 파일이나 모듈을 짚을 수 있을 때만 사용. 절제하여 사용.
+- **억제됨** — 다른 상태에 맞지 않는 사유로 명시적으로 침묵(예: "내부 보상 통제 적용"). 더 절제하여 사용; 사유에 만료일을 명시하는 것을 권장.
+- **수정됨** — 컴포넌트 업그레이드·패치 적용; 다음 스캔에서 (아마도) 확인. 다음 스캔이 결과를 더 이상 보고하지 않으면 포털이 `Fixed`를 자동으로 closed로 승격합니다.
+
+## 정상 동작 확인
+
+분류 후:
+
+<!-- docs-uat: id=vulns-status-badge-updates kind=ui harness=vulnStatusUpdates(portal-web) tier=nightly -->
+1. status 배지가 테이블에서 즉시 갱신.
+<!-- docs-uat: id=vulns-audit-recorded kind=sql ctx=postgres expect=rows:>0 tier=nightly -->
+2. 감사 로그에 `target_table=vulnerability_findings&action=update`가 `previous_status`, `new_status`, `justification`을 diff에 담아 기록.
+
+   ```sql
+   SELECT count(*) FROM audit_logs
+    WHERE target_table = 'vulnerability_findings'
+      AND action = 'update'
+      AND diff ? 'previous_status'
+      AND diff ? 'new_status'
+      AND created_at > now() - interval '1 hour';
+   ```
+
+<!-- docs-uat: id=vulns-excluded-risk-score kind=manual tier=manual -->
+3. 제외된 결과는 프로젝트 리스크 점수에서 카운트되지 않음.
+<!-- docs-uat: id=vulns-excluded-build-gate kind=manual tier=manual -->
+4. 다음 스캔의 빌드 게이트에서 제외된 결과는 제외.
+
+## 트러블슈팅
+
+### 억제 후 결과가 다시 나타남
+
+다음 스캔 후 `New`로 돌아오는 결과는 보통 **프로젝트** 수준이 아닌 **스캔** 수준에서 억제된 경우입니다. 포털은 억제를 프로젝트·컴포넌트·CVE 트리플에 고정합니다 — 억제 메타데이터 일치 여부를 다시 확인하세요.
+
+### 스캔 간 심각도 변경
+
+상위 피드는 가끔 CVE를 재점수화합니다(NVD 분석가 검토, 벤더 권고). 포털은 스캔 시점 심각도를 저장하고 다음 동기화에서 갱신합니다. 두 값이 다르면 드로어가 둘 다 보여줍니다.
+
+### 보고서에서 CVE 누락
+
+가능 원인:
+
+- 컴포넌트의 `purl`이 Trivy DB의 정규화와 일치하지 않음(드물지만 Maven `groupId:artifactId` 스타일이 가장 흔한 원인). 스캔 보고서와 함께 이슈를 등록.
+- 스캔 실행 시 Trivy DB가 다운로드 중이었음 — 자동 재매칭 beat이 다음 refresh 사이클에서 finding을 재채움.
+- Trivy DB가 아직 커버하지 않는 생태계의 CVE. [데이터 출처 — 생태계 커버리지](../reference/data-sources.md#생태계-커버리지) 참조.
+
+### PDF 보고서 다운로드가 `500`을 반환
+
+PDF는 요청 시점에 weasyprint로 렌더링됩니다. `500`(본문은 `application/problem+json`)은 렌더러를 사용할 수 없다는 뜻으로, 대개 백엔드 이미지가 weasyprint 의존성보다 오래된 경우입니다. 백엔드 이미지를 재빌드한 뒤 재시도하세요. 그래도 지속되면 프로젝트 ID와 요청 시각을 담아 이슈를 등록하세요.
+
+## 로드맵
+
+매뉴얼이 이전에 약속했으나 v0.10.0에 포함되지 않은 항목.
+
+- 결과 테이블의 "마지막 확인 (Last seen)" 컬럼(결과를 마지막으로 확인한 스캔) — 예정.
+- 결과 툴바의 컴포넌트 단위 필터와 발견 일자 범위 필터 — 예정. 현재는 검색 박스가 컴포넌트 조회를 대체합니다.
+- 별도의 **수정 가용성** 드로어 섹션 — 현재는 수정 버전이 **영향** 섹션 안의 `fixed_version`으로 노출되고(부터 실데이터 — [수정 버전](#수정-버전--cve를-해소하는-버전) 참고), 컴포넌트별 최소 안전 업그레이드는 **권장 업그레이드** 패널로 노출됩니다( — [업그레이드 추천](#업그레이드-추천권장-버전) 참고).
+
+## 함께 보기
+
+- [VEX 문서 — 내보내기와 가져오기](./vex.md)
+- [컴포넌트·라이선스](./components-and-licenses.md)
+- [승인](./approvals.md)
+- [취약점 데이터 (Trivy DB)](../admin-guide/vulnerability-data.md)
+- [데이터 출처](../reference/data-sources.md)
+- [GitHub Actions — CVE 게이팅](../ci-integration/github-actions.md)

@@ -1,0 +1,105 @@
+{
+  "policies": {
+    "title": "License policies",
+    "subtitle": "Override how SPDX licenses map to allowed, conditional, and forbidden for your team or organization.",
+    "empty": "No license policies yet. Pick a team above to author one.",
+    "no_name": "Unnamed policy",
+    "toolbar": {
+      "team_label": "Team",
+      "team_placeholder": "Select a team…",
+      "edit_team": "Edit team policy",
+      "edit_org": "Edit org default"
+    },
+    "column": {
+      "scope": "Scope",
+      "name": "Name",
+      "status": "Status",
+      "overrides": "Overrides",
+      "exceptions": "Exceptions",
+      "actions": "Actions"
+    },
+    "scope": {
+      "org": "Organization default"
+    },
+    "status": {
+      "enabled": "Enabled",
+      "disabled": "Disabled"
+    },
+    "action": {
+      "open": "Open"
+    },
+    "category": {
+      "allowed": "Allowed",
+      "conditional": "Conditional",
+      "forbidden": "Forbidden"
+    },
+    "strategy": {
+      "most_restrictive": "Most restrictive",
+      "least_restrictive": "Least restrictive"
+    },
+    "fields": {
+      "enabled": {
+        "label": "Policy enabled",
+        "help": "When off, the team falls back to the static built-in license catalog without losing this policy's contents."
+      },
+      "name": {
+        "label": "Name",
+        "placeholder": "e.g. Engineering policy"
+      },
+      "unknown": {
+        "label": "Uncatalogued license posture",
+        "help": "Category applied to a license that is in neither the built-in catalog nor the overrides below."
+      },
+      "compound": {
+        "label": "Compound expression strategy",
+        "help": "How a multi-license expression (A AND B, A OR B, A WITH exception) is resolved into one category."
+      }
+    },
+    "overrides": {
+      "title": "Category overrides",
+      "help": "Force a specific SPDX license identifier into a category, replacing the catalog verdict.",
+      "add": "Add override",
+      "remove": "Remove",
+      "empty": "No overrides. The built-in catalog decides every license.",
+      "spdx_label": "SPDX identifier",
+      "spdx_placeholder": "e.g. MPL-2.0",
+      "category_label": "Category"
+    },
+    "exceptions": {
+      "title": "License exceptions",
+      "help": "Explicit waivers — each forces the matched license to allowed, optionally until an expiry date or for one component.",
+      "add": "Add exception",
+      "remove": "Remove",
+      "empty": "No exceptions.",
+      "spdx_label": "SPDX identifier",
+      "expiry_label": "Expires",
+      "purl_label": "Component (optional)",
+      "purl_placeholder": "e.g. pkg:pypi/somepkg@1.2.3",
+      "reason_label": "Reason",
+      "reason_placeholder": "Why this license is waived (e.g. legal-approved waiver TICKET-123)."
+    },
+    "editor": {
+      "team_title": "Team policy — {{team}}",
+      "org_title": "Organization default policy",
+      "description": "Changes apply to the build-blocking gate the next time the team is evaluated.",
+      "no_policy_hint": "This scope has no policy yet. Configure it below and save to create one.",
+      "readonly_member": "You can view this policy but only a team admin can change it.",
+      "readonly_role": "You do not have permission to edit this policy.",
+      "save": "Save policy",
+      "saving": "Saving…",
+      "reset": "Reset to default",
+      "resetting": "Resetting…"
+    },
+    "toast": {
+      "saved": "Policy saved.",
+      "reset": "Policy reset. The team now falls back to the org default or the static catalog."
+    },
+    "errors": {
+      "forbidden": "You do not have permission to perform this action.",
+      "not_found": "No policy was found for this scope.",
+      "conflict": "A policy already exists for this scope. Reload and try again.",
+      "validation": "The policy could not be saved. Check the identifiers, sizes, and reasons, then try again.",
+      "unknown": "Something went wrong. Please try again."
+    }
+  }
+}

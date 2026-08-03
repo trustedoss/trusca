@@ -1,0 +1,2648 @@
+/**
+ * PortalPage — Playwright harness skeleton.
+ *
+ * Phase 0 PR #3 ships only the harness shape: a navigation root + a small
+ * vocabulary of high-level methods. Real Playwright execution is wired up in
+ * PR #5 (Phase 1 authentication) when a meaningful login/dashboard surface
+ * exists. The shape mirrors the v1 PortalPage so harness authors can reuse
+ * the muscle memory.
+ *
+ * Why ship the harness now: PR #5 will land 14+ scenarios in a single
+ * session, so having the entry point + supported-language enum already in
+ * tree avoids a same-PR refactor of every spec we touch.
+ */
+import { expect, type Locator, type Page } from "@playwright/test";
+
+import { COMPONENTS_SEARCH_PARAM } from "@/features/projects/components/tabSearchParam";
+
+import { AdminAuditHarness } from "./AdminAuditHarness";
+import { AdminDiskHarness } from "./AdminDiskHarness";
+import { AdminHealthHarness } from "./AdminHealthHarness";
+import { AdminScansHarness } from "./AdminScansHarness";
+import { AdminTeamsHarness } from "./AdminTeamsHarness";
+import { AdminUsersHarness } from "./AdminUsersHarness";
+
+// We deliberately re-declare the supported-language tuple here instead of
+// importing from `@/lib/i18n`. The product i18n module pulls in JSON locale
+// files as ESM imports — Playwright's runner does not understand the
+// `import attributes` proposal yet, so importing it transitively breaks
+// every spec that uses PortalPage. The list is short enough that a manual
+// duplicate is the lesser evil; a unit test in
+// `apps/frontend/tests/unit/lib/wsBase.test.ts` (or equivalent) can pin
+// the contract.
+const SUPPORTED_LANGUAGES = ["en", "ko"] as const;
+type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];
+
+const DEFAULT_BASE_URL = "http://localhost:5173";
+
+export class PortalPage {
+  readonly page: Page;
+  readonly baseUrl: string;
+
+  constructor(page: Page, baseUrl: string = DEFAULT_BASE_URL) {
+    this.page = page;
+    this.baseUrl = baseUrl;
+  }
+
+  // ───── navigation ──────────────────────────────────────────────────────
+  async goto(path: string = "/"): Promise<void> {
+    await this.page.goto(`${this.baseUrl}${path}`);
+    await this.expectMounted();
+  }
+
+  async expectMounted(): Promise<void> {
+    // `app-shell` is the sentinel because it renders inside <RequireAuth>,
+    // which is exactly what "the authenticated shell loaded" means, and it
+    // is present at every width.
+    //
+    // It used to wait on `app-sidebar`, which is `hidden … lg:flex` — so the
+    // verb silently meant "loaded AND the viewport is at least 1024 px". No
+    // test noticed until the narrow-viewport gate ran the same screens at
+    // 390 px and two of them timed out waiting for a sidebar that is not
+    // supposed to be there. Sidebar-specific assertions live in
+    // `expectSidebarExpanded` / `expectSidebarCollapsed`.
+    await this.page
+      .getByTestId("app-shell")
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  // ───── i18n ────────────────────────────────────────────────────────────
+  languageToggle(): Locator {
+    return this.page.getByTestId("language-toggle");
+  }
+
+  async currentLanguage(): Promise<SupportedLanguage> {
+    const value = await this.languageToggle().getAttribute(
+      "data-current-language",
+    );
+    return assertSupported(value);
+  }
+
+  async toggleLanguage(): Promise<SupportedLanguage> {
+    await this.languageToggle().click();
+    return this.currentLanguage();
+  }
+
+  // ───── sidebar (collapse rail + mobile drawer) ─────────────────────────
+  sidebar(): Locator {
+    return this.page.getByTestId("app-sidebar");
+  }
+
+  /** Whether the desktop sidebar is currently collapsed to the icon rail. */
+  async isSidebarCollapsed(): Promise<boolean> {
+    return (
+      (await this.sidebar().getAttribute("data-collapsed")) === "true"
+    );
+  }
+
+  /** Click the desktop collapse toggle (256 px rail ⇄ 64 px icon rail). */
+  async toggleSidebarCollapse(): Promise<void> {
+    await this.page.getByTestId("sidebar-collapse-toggle").click();
+  }
+
+  async expectSidebarCollapsed(): Promise<void> {
+    await expect(this.sidebar()).toHaveAttribute("data-collapsed", "true");
+  }
+
+  async expectSidebarExpanded(): Promise<void> {
+    await expect(this.sidebar()).toHaveAttribute("data-collapsed", "false");
+  }
+
+  /** Open the mobile nav drawer via the header hamburger (<lg viewports). */
+  async openMobileNav(): Promise<void> {
+    await this.page.getByTestId("sidebar-mobile-trigger").click();
+    await this.page
+      .getByTestId("mobile-nav-drawer")
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  mobileNavDrawer(): Locator {
+    return this.page.getByTestId("mobile-nav-drawer");
+  }
+
+  // ───── PR #5 placeholders ──────────────────────────────────────────────
+  // The methods below intentionally throw so accidental early use surfaces
+  // a clear "not wired yet" error instead of a silent test pass.
+  async login(_email: string, _password: string): Promise<void> {
+    throw new Error("PortalPage.login: wired in PR #5");
+  }
+
+  async logout(): Promise<void> {
+    throw new Error("PortalPage.logout: wired in PR #5");
+  }
+
+  // ───── PR #9 — Projects + scan progress (task 2.10/2.11) ───────────────
+  /** Navigate to the project list page (`/projects`). */
+  async gotoProjects(): Promise<void> {
+    await this.page.goto(`${this.baseUrl}/projects`);
+    await this.expectProjectListVisible();
+  }
+
+  async expectProjectListVisible(): Promise<void> {
+    await this.page
+      .getByTestId("project-list-page")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    // The container mounts with the skeleton inside it, so waiting on it
+    // alone returns while the page is still five grey bars. Every gate that
+    // walks the representative screens then measures the skeleton: the
+    // narrow-viewport run judged an empty layout locally and a populated
+    // one on CI, for the same commit. Wait for a row — the state the
+    // screens are supposed to be captured, scanned and measured in.
+    await this.page
+      .getByTestId("project-row")
+      .first()
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  /**
+   * Navigate straight to a project's detail page, optionally on a given tab
+   * and with extra query params (deep-link restoration tests).
+   *
+   * `params` is passed through verbatim so a caller can exercise the URL
+   * contract itself — including legacy keys a deep link may still carry.
+   */
+  async gotoProjectDetail(
+    projectId: string,
+    options: { tab?: string; params?: Record<string, string> } = {},
+  ): Promise<void> {
+    const query = new URLSearchParams();
+    if (options.tab) query.set("tab", options.tab);
+    for (const [key, value] of Object.entries(options.params ?? {})) {
+      query.set(key, value);
+    }
+    const suffix = query.toString();
+    await this.page.goto(
+      `${this.baseUrl}/projects/${projectId}${suffix ? `?${suffix}` : ""}`,
+    );
+    await this.page
+      .getByTestId("project-detail-tabs")
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  /** Switch the project detail page to `tab` and wait for it to be selected. */
+  async openProjectTab(tab: string): Promise<void> {
+    const trigger = this.page.getByTestId(`project-detail-tab-${tab}`);
+    await trigger.click();
+    await trigger.and(
+      this.page.locator('[data-state="active"]'),
+    ).waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  /**
+   * Click the "Scan" button on the project row whose `data-project-name`
+   * equals `projectName`, then drive the source-select dialog (PR #91) to
+   * actually start the scan. Uses the row's button so the test does not
+   * depend on visual ordering of the virtualized list.
+   *
+   * `method` defaults to "git" — the seed project carries a git_url, so the
+   * dialog can submit without attaching a file. Pass "upload"/"folder" only
+   * for tests that exercise those input paths (they must stage a file first).
+   */
+  async clickTriggerScan(
+    projectName: string,
+    method: "git" | "upload" | "folder" = "git",
+  ): Promise<void> {
+    const button = this.page.locator(
+      `[data-testid="project-row-scan"][data-project-name="${projectName}"]`,
+    );
+    // Same fixture-leftover fallback as `openProjectDetail`: when the row
+    // isn't on the visible page, narrow the list with the toolbar search.
+    if ((await button.count()) === 0) {
+      const search = this.page.getByTestId("project-search");
+      if (await search.count()) {
+        await search.fill(projectName);
+        await button.waitFor({ state: "visible", timeout: 5_000 });
+      }
+    }
+    await button.click();
+    // PR #91: the scan button opens the source-select dialog first.
+    await this.page
+      .getByTestId("source-select-dialog")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    await this.page.getByTestId(`source-method-${method}`).click();
+    await this.page.getByTestId("source-submit").click();
+  }
+
+  /** Open the source-select dialog without submitting (input-path tests). */
+  async openSourceSelectDialog(projectName: string): Promise<void> {
+    await this.page
+      .locator(`[data-testid="project-row-scan"][data-project-name="${projectName}"]`)
+      .click();
+    await this.page
+      .getByTestId("source-select-dialog")
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  /**
+   * Drive the source-select dialog's "upload .zip" path end to end:
+   * select the upload method, stage an in-memory `.zip` (so the test never
+   * touches the host filesystem), wait for the submit button to enable, then
+   * submit. The dialog requires a `.zip` (the file picker rejects other
+   * extensions client-side), so callers pass a tiny valid zip payload.
+   *
+   * `zip` defaults to a minimal empty-zip byte sequence (the PK end-of-central-
+   * directory record), which is enough for the SPA's client-side `.zip`
+   * extension guard + multipart upload. The backend's archive extractor may
+   * reject a zip with no entries — for tests that need the worker to actually
+   * process the upload, pass a real fixture zip's bytes.
+   *
+   * Must be called from the projects list (it opens the row's dialog itself).
+   */
+  async startScanByUpload(
+    projectName: string,
+    zip?: { name?: string; bytes?: Uint8Array },
+  ): Promise<void> {
+    await this.openSourceSelectDialog(projectName);
+    await this.page.getByTestId("source-method-upload").click();
+    await this.attachScanZip(zip);
+    // The submit button is disabled until a valid file is staged — wait for
+    // it to enable (event-driven), then submit.
+    const submit = this.page.getByTestId("source-submit");
+    await expect(submit).toBeEnabled({ timeout: 10_000 });
+    await submit.click();
+  }
+
+  /**
+   * Stage a `.zip` on the dialog's hidden `<input type=file>` using an
+   * in-memory buffer so no temp file is written to the host. Mirrors the
+   * shape Playwright's `setInputFiles({ name, mimeType, buffer })` expects.
+   */
+  async attachScanZip(zip?: {
+    name?: string;
+    bytes?: Uint8Array;
+  }): Promise<void> {
+    const name = zip?.name ?? "source.zip";
+    // Minimal valid empty-zip: just the End Of Central Directory record.
+    const bytes =
+      zip?.bytes ??
+      new Uint8Array([
+        0x50, 0x4b, 0x05, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      ]);
+    await this.page.getByTestId("source-zip-input").setInputFiles({
+      name,
+      mimeType: "application/zip",
+      buffer: Buffer.from(bytes),
+    });
+    // The dialog echoes the staged file name once accepted.
+    await this.page
+      .getByTestId("source-upload-selected")
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  /**
+   * Assert the scan progress drawer is visible. Optionally pass a step
+   * label (e.g. "cdxgen") and the harness verifies that step has reached
+   * the "current" or "completed" state.
+   */
+  async expectScanProgress(stepLabel?: string): Promise<void> {
+    await this.page
+      .getByTestId("scan-progress-drawer")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    if (stepLabel) {
+      const stepLocator = this.page.locator(
+        `[data-testid="scan-progress-steps"] [data-step="${stepLabel}"]`,
+      );
+      await stepLocator.waitFor({ state: "visible", timeout: 10_000 });
+    }
+  }
+
+  /** Assert the live progress reached `succeeded`. */
+  async expectScanCompleted(): Promise<void> {
+    await this.page
+      .locator('[data-testid="scan-progress-steps"] [data-step="finalize"][data-state="completed"]')
+      .waitFor({ state: "visible", timeout: 30_000 });
+  }
+
+  /** Assert the live progress reached `failed`. */
+  async expectScanFailed(): Promise<void> {
+    await this.page
+      .locator('[data-testid="scan-progress-steps"] [data-state="failed"]')
+      .waitFor({ state: "visible", timeout: 30_000 });
+  }
+
+  // ───── Project list filtering / sorting (PR #9 task 2.11) ──────────────
+  /**
+   * Type into the project list search box. Empty string clears the filter.
+   * The toolbar debounces by 300ms — callers should follow with
+   * {@link expectVisibleProjectCount} which auto-retries until the rendered
+   * count converges.
+   */
+  async searchProjects(query: string): Promise<void> {
+    const input = this.page.getByTestId("project-search");
+    await input.fill(query);
+  }
+
+  /** Pick a status filter option (`all` | `idle` | `running` | …). */
+  async filterProjectsByStatus(value: string): Promise<void> {
+    await this.page.getByTestId("project-status-filter").selectOption(value);
+  }
+
+  /** Pick a sort option (`name` | `latest_scan` | `risk`). */
+  async sortProjectsBy(value: string): Promise<void> {
+    await this.page.getByTestId("project-sort").selectOption(value);
+  }
+
+  /**
+   * Assert the virtualized list reports exactly `count` rows via the
+   * `data-total` attribute on the container. The empty state replaces the
+   * virtual list when zero rows match — the harness routes to the right
+   * assertion automatically.
+   */
+  async expectVisibleProjectCount(count: number): Promise<void> {
+    if (count === 0) {
+      await this.page
+        .getByTestId("project-list-empty")
+        .waitFor({ state: "visible", timeout: 10_000 });
+      return;
+    }
+    await this.page
+      .locator(`[data-testid="project-list-virtual"][data-total="${count}"]`)
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  /** Assert that a project row with the given name is visible. */
+  async expectProjectRowVisible(projectName: string): Promise<void> {
+    await this.page
+      .locator(
+        `[data-testid="project-row-scan"][data-project-name="${projectName}"]`,
+      )
+      .first()
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  /** Click the close affordance on the scan-progress drawer (sheet). */
+  async closeScanProgressDrawer(): Promise<void> {
+    await this.page.getByTestId("scan-progress-close").click();
+  }
+
+  // ───── PR #10 — Project Detail (task 3.1 / 3.3) ────────────────────────
+  /**
+   * Click the project name link inside the row whose `data-project-name`
+   * equals `projectName` and wait until the detail page is mounted.
+   *
+   * Project rows render two `data-testid="project-row-link"` siblings only if
+   * the same project appears twice; we anchor on the first one whose `text`
+   * matches the seeded name to stay deterministic when multiple projects
+   * share a similar prefix.
+   */
+  async openProjectDetail(projectName: string): Promise<void> {
+    // The link carries `data-project-id` only — the seeded `projectName` is
+    // the visible text. Anchoring by visible text would couple the harness
+    // to translation keys, so we target the row's `data-project-name` on
+    // the sibling Scan button to find the row, then click the row's link.
+    const row = this.page.locator(
+      `[data-testid="project-row"]:has([data-testid="project-row-scan"][data-project-name="${projectName}"])`,
+    );
+    // Narrow the list down with the toolbar's search input when the row is
+    // not already in the visible window — fixture leftovers from prior runs
+    // can push our freshly-seeded project off page one. The search input is
+    // only present on the project list route; if we're already on the detail
+    // page (deep-linked) the lookup is skipped.
+    if ((await row.count()) === 0) {
+      const search = this.page.getByTestId("project-search");
+      if (await search.count()) {
+        await search.fill(projectName);
+        await row.waitFor({ state: "visible", timeout: 5_000 });
+      }
+    }
+    await row.locator('[data-testid="project-row-link"]').click();
+    await this.expectProjectDetailMounted();
+  }
+
+  /** Assert the project detail page is mounted (any tab). */
+  async expectProjectDetailMounted(): Promise<void> {
+    await this.page
+      .getByTestId("project-detail-page")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    // As with the project list: the page element mounts around a skeleton,
+    // so waiting on it alone hands back a screen with no figures on it. The
+    // narrow-viewport gate found this by asserting it had numbers to widen
+    // and discovering there were none — on a screen whose own screenshot,
+    // taken moments later, shows a risk score and four counters.
+    await this.page
+      .getByTestId("governance-risk")
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  /**
+   * Switch to one of the four detail tabs. The detail page's
+   * `?tab=…` URL mirroring is asserted in scenarios that care.
+   */
+  async selectTab(
+    tabName: "overview" | "components" | "vulnerabilities" | "licenses",
+  ): Promise<void> {
+    await this.page
+      .getByTestId(`project-detail-tab-${tabName}`)
+      .click();
+  }
+
+  /**
+   * Wait until the components tab's network call resolves. The tab renders
+   * `[data-testid=components-virtual]` only after the first page lands, so
+   * the absence of that node is the synchronization signal — far more
+   * reliable than waiting for a specific row count.
+   */
+  async expectComponentsTabReady(): Promise<void> {
+    // Either the virtual list mounted (rows arrived) or the empty card
+    // mounted (zero rows for the current filter set). Both are valid
+    // "tab finished loading" states.
+    const virtual = this.page.getByTestId("components-virtual");
+    const empty = this.page.getByTestId("components-empty");
+    await expect(virtual.or(empty)).toBeVisible({ timeout: 10_000 });
+  }
+
+  /**
+   * Set the multi-select severity filter to exactly the given severities.
+   * An empty array clears the filter. Backed by a native `<select multiple>`
+   * — Playwright's `selectOption` semantics handle the multi-select cleanly.
+   */
+  async filterComponentsBySeverity(
+    severities: ("critical" | "high" | "medium" | "low" | "info" | "none")[],
+  ): Promise<void> {
+    await this.page
+      .getByTestId("components-severity-filter")
+      .selectOption(severities);
+    await this.expectComponentsTabReady();
+  }
+
+  /**
+   * Toggle the "Outdated only" version-currency filter (sibling of the EOL
+   * toggle). The pill is a plain on/off toggle mirrored into `?outdated=true`,
+   * so this reads the current `data-active` state and clicks only when the
+   * requested state differs — calling it twice with the same arg is a no-op.
+   */
+  async filterComponentsByOutdated(enable: boolean = true): Promise<void> {
+    const toggle = this.page.getByTestId("components-outdated-filter");
+    const active = (await toggle.getAttribute("data-active")) === "true";
+    if (active !== enable) {
+      await toggle.click();
+    }
+    await this.expectComponentsTabReady();
+  }
+
+  /**
+   * Read the version-currency verdict shown on the open component drawer's
+   * currency row. Returns the badge's `data-currency-state` (always
+   * "outdated" when a badge is present) or `null` when the row renders the
+   * "—" dash (current / unknown / untracked — the CurrencyBadge is absent).
+   */
+  async getDrawerCurrencyState(): Promise<string | null> {
+    const badge = this.page
+      .getByTestId("component-drawer-currency")
+      .getByTestId("currency-badge");
+    if ((await badge.count()) === 0) return null;
+    return badge.first().getAttribute("data-currency-state");
+  }
+
+  /**
+   * Read the malicious verdict off the drawer, or `null` when the row is not
+   * flagged. Unlike the EOL/currency drawer rows this block renders ONLY for a
+   * flagged component — a "Malicious: —" line on every healthy package would
+   * train the eye to skip the one line that matters — so absence of the block
+   * is the expected shape for an ordinary component, not a failure.
+   */
+  async getDrawerMaliciousState(): Promise<string | null> {
+    const badge = this.page
+      .getByTestId("component-drawer-malicious")
+      .getByTestId("malicious-badge");
+    if ((await badge.count()) === 0) return null;
+    return badge.first().getAttribute("data-malicious-state");
+  }
+
+  /**
+   * Read the version-currency verdict of every mounted component row, keyed
+   * by the row's visible component name. A row with no CurrencyBadge maps to
+   * `null` (current / unknown / untracked). Mirrors the KEV row reader.
+   */
+  async getMountedRowCurrencyStates(): Promise<
+    { name: string; currencyState: string | null }[]
+  > {
+    const rows = this.page.getByTestId("component-row");
+    const count = await rows.count();
+    const out: { name: string; currencyState: string | null }[] = [];
+    for (let i = 0; i < count; i++) {
+      const row = rows.nth(i);
+      const name = ((await row.textContent()) ?? "").trim();
+      const badge = row.getByTestId("currency-badge");
+      const currencyState =
+        (await badge.count()) > 0
+          ? await badge.first().getAttribute("data-currency-state")
+          : null;
+      out.push({ name, currencyState });
+    }
+    return out;
+  }
+
+  /**
+   * Type into the components search input. The toolbar debounces by 300ms
+   * before mutating the URL + firing the next page request — callers that
+   * assert on row count should use `expectComponentsTabReady()` afterwards.
+   *
+   * Empty string clears the filter.
+   */
+  async searchComponents(query: string): Promise<void> {
+    const input = this.page.getByTestId("components-search");
+    await input.fill(query);
+    // Wait for the debounce to fire and the URL to reflect the new query.
+    // We watch for `?components_search=…` rather than waitForTimeout —
+    // auto-retrying and locale-agnostic. S1-5 gave each detail tab its own
+    // param; this verb tracks the Components one.
+    if (query.length > 0) {
+      await expect
+        .poll(
+          () =>
+            new URL(this.page.url()).searchParams.get(COMPONENTS_SEARCH_PARAM),
+          { timeout: 5_000 },
+        )
+        .toBe(query);
+    } else {
+      await expect
+        .poll(
+          () =>
+            new URL(this.page.url()).searchParams.get(COMPONENTS_SEARCH_PARAM),
+          { timeout: 5_000 },
+        )
+        .toBeNull();
+    }
+    await this.expectComponentsTabReady();
+  }
+
+  /**
+   * Click the row whose visible name matches `componentName` and wait for
+   * the drawer to mount. Anchors on the row's truncated `<span>` text — the
+   * row carries no `data-component-name`, but the seeded names are unique
+   * per scan so a strict equality match is safe.
+   */
+  async openComponentDrawer(componentName: string): Promise<void> {
+    const row = this.page
+      .getByTestId("component-row")
+      .filter({ hasText: componentName })
+      .first();
+    await row.click();
+    await this.page
+      .getByTestId("component-drawer")
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  /**
+   * PR-6 / M-20 — assert the open component drawer renders its license
+   * Obligations section with at least `min` obligation rows. The verified
+   * defect: the section silently vanished from the drawer while the data
+   * stayed on the wire, and nothing in the suite pinned the surface.
+   * Rows carry `component-drawer-obligation`; the section wrapper
+   * (`component-drawer-obligations`) renders even when empty, so both
+   * assertions are needed.
+   */
+  async expectComponentDrawerObligations(min: number = 1): Promise<void> {
+    await expect(
+      this.page.getByTestId("component-drawer-obligations"),
+    ).toBeVisible({ timeout: 10_000 });
+    await expect
+      .poll(
+        () => this.page.getByTestId("component-drawer-obligation").count(),
+        { timeout: 10_000 },
+      )
+      .toBeGreaterThanOrEqual(min);
+  }
+
+  /**
+   * Assert the Overview tab's risk gauge reads `expected` ± `tolerance`.
+   * The default tolerance is 1 — the backend computes the score from a
+   * weighted sum that's deterministic given the seed, but rounds to an
+   * int for display. Callers can pass `{ tolerance: 0 }` for an exact match.
+   */
+  async assertRiskScore(
+    expected: number,
+    options: { tolerance?: number } = {},
+  ): Promise<void> {
+    const tolerance = options.tolerance ?? 1;
+    const gauge = this.page.getByTestId("risk-gauge");
+    await expect(gauge).toBeVisible({ timeout: 10_000 });
+    // The numeric is exposed via a `data-score` attribute so we can assert
+    // without hitting the rendered text (locale-agnostic).
+    await expect
+      .poll(
+        async () => {
+          const raw = await gauge.getAttribute("data-score");
+          return raw == null ? Number.NaN : Number(raw);
+        },
+        { timeout: 10_000 },
+      )
+      .toBeGreaterThanOrEqual(expected - tolerance);
+    const score = Number(await gauge.getAttribute("data-score"));
+    expect(score).toBeLessThanOrEqual(expected + tolerance);
+  }
+
+  /**
+   * Read the components-virtual `data-loaded` attribute (loaded row count).
+   * Returns 0 when the virtual list is not mounted (empty state).
+   */
+  async getLoadedComponentCount(): Promise<number> {
+    const virtual = this.page.getByTestId("components-virtual");
+    if ((await virtual.count()) === 0) return 0;
+    const raw = await virtual.first().getAttribute("data-loaded");
+    return raw == null ? 0 : Number(raw);
+  }
+
+  /**
+   * Read the components-virtual `data-total` attribute (server-reported
+   * total row count). Returns 0 when the empty card is shown.
+   */
+  async getTotalComponentCount(): Promise<number> {
+    const virtual = this.page.getByTestId("components-virtual");
+    if ((await virtual.count()) === 0) return 0;
+    const raw = await virtual.first().getAttribute("data-total");
+    return raw == null ? 0 : Number(raw);
+  }
+
+  /**
+   * Trigger Virtuoso's `endReached` until the loaded count stops growing or
+   * we hit `maxIterations`. We dispatch a wheel event over the virtual list
+   * — `mouse.wheel` requires the cursor to be over the scroll container,
+   * which Virtuoso renders inside the `[data-testid=components-virtual]`
+   * wrapper.
+   */
+  async scrollComponentsToLoadMore(maxIterations: number = 8): Promise<number> {
+    const virtual = this.page.getByTestId("components-virtual");
+    await expect(virtual).toBeVisible();
+    const box = await virtual.boundingBox();
+    if (!box) return this.getLoadedComponentCount();
+
+    let lastLoaded = await this.getLoadedComponentCount();
+    for (let i = 0; i < maxIterations; i++) {
+      await this.page.mouse.move(
+        box.x + box.width / 2,
+        box.y + box.height - 10,
+      );
+      await this.page.mouse.wheel(0, 4_000);
+      // Wait for either the loaded count to grow or the network to settle.
+      try {
+        await expect
+          .poll(() => this.getLoadedComponentCount(), { timeout: 2_500 })
+          .toBeGreaterThan(lastLoaded);
+      } catch {
+        // No new rows arrived in this tick — accept and stop scrolling.
+        break;
+      }
+      lastLoaded = await this.getLoadedComponentCount();
+    }
+    return lastLoaded;
+  }
+
+  /**
+   * Pick a sort key on the components toolbar. Values map to the
+   * `ComponentSortKey` enum in `projectDetailApi.ts` ('name' | 'severity'
+   * | 'license').
+   */
+  async sortComponentsBy(
+    key: "name" | "severity" | "license",
+  ): Promise<void> {
+    await this.page.getByTestId("components-sort").selectOption(key);
+    await this.expectComponentsTabReady();
+  }
+
+  /** Pick a sort order — 'asc' | 'desc'. */
+  async setComponentsOrder(order: "asc" | "desc"): Promise<void> {
+    await this.page.getByTestId("components-order").selectOption(order);
+    await this.expectComponentsTabReady();
+  }
+
+  /**
+   * Read the severity of the n-th row's SeverityBadge. The badge surfaces
+   * its 6-bucket value verbatim via `data-severity` ('critical' | 'high' |
+   * 'medium' | 'low' | 'info' | 'none'), so this is locale-agnostic.
+   * Throws if no row at that index is mounted.
+   */
+  async getRowSeverity(index: number): Promise<string | null> {
+    const row = this.page.getByTestId("component-row").nth(index);
+    await expect(row).toBeVisible({ timeout: 10_000 });
+    return row.locator("[data-severity]").first().getAttribute("data-severity");
+  }
+
+  // ───── PR #11 — Vulnerabilities tab + drawer ───────────────────────────
+  /**
+   * Click the Vulnerabilities tab trigger and wait for the tab content to
+   * mount. The tab renders `[data-testid="vulnerabilities-tab"]` once
+   * mounted; the loading skeleton is a sibling, so `vulnerabilities-tab`
+   * being visible is the synchronization signal.
+   *
+   * Locale-agnostic: anchors on `data-testid` attributes rather than the
+   * translated tab label.
+   */
+  async selectVulnerabilitiesTab(): Promise<void> {
+    await this.page
+      .getByTestId("project-detail-tab-vulnerabilities")
+      .click();
+    await this.page
+      .getByTestId("vulnerabilities-tab")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    // After the tab mounts, either the empty card, the virtual list, or the
+    // loading skeleton is visible — wait until one of the data states
+    // resolves so subsequent verbs can click rows reliably.
+    await this.expectVulnerabilitiesTabReady();
+  }
+
+  /**
+   * Open the Releases tab (feature #28) and wait for its container. The tab
+   * lists the project's succeeded-scan snapshots and hosts the Compare entry
+   * (`releases-compare-button`, enabled once there are two releases). Not in
+   * the `selectTab` union because that helper only covers the four primary
+   * tabs; Releases follows the dedicated-verb pattern of `selectSourceTab`.
+   */
+  async selectReleasesTab(): Promise<void> {
+    await this.page.getByTestId("project-detail-tab-releases").click();
+    await this.page
+      .getByTestId("releases-tab")
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  /**
+   * Wait until either the virtualized list or the empty card is visible
+   * (the loading skeleton has finished). Use after applying filters /
+   * sorts to wait for the next page to land.
+   */
+  async expectVulnerabilitiesTabReady(): Promise<void> {
+    const virtual = this.page.getByTestId("vulnerabilities-virtual");
+    const empty = this.page.getByTestId("vulnerabilities-empty");
+    await expect(virtual.or(empty)).toBeVisible({ timeout: 10_000 });
+  }
+
+  /**
+   * Read the `data-total` attribute on the summary row (server-reported
+   * count). Returns 0 when the empty card is shown.
+   */
+  async getVulnerabilityRowCount(): Promise<number> {
+    const summary = this.page.getByTestId("vulnerabilities-summary");
+    if ((await summary.count()) === 0) return 0;
+    const raw = await summary.first().getAttribute("data-total");
+    return raw == null ? 0 : Number(raw);
+  }
+
+  // ───── W9-#53 — Vulnerabilities "Group by upgrade" ─────────────────────
+  /**
+   * Flip the vulnerabilities list grouping via the segmented control:
+   * `"flat"` → the paginated findings table, `"upgrade"` → the whole-project
+   * upgrade clusters. Clicks the target button (locale-agnostic — anchors on
+   * the `data-testid`), then waits for the matching view to settle so callers
+   * can read rows / clusters deterministically.
+   */
+  async toggleVulnerabilitiesGroupBy(
+    mode: "flat" | "upgrade",
+  ): Promise<void> {
+    await this.page.getByTestId(`vulnerabilities-group-by-${mode}`).click();
+    if (mode === "upgrade") {
+      await this.expectVulnerabilitiesUpgradeReady();
+    } else {
+      await this.expectVulnerabilitiesTabReady();
+    }
+  }
+
+  /**
+   * Wait until the "By upgrade" grouped view has settled: either the cluster
+   * list, the empty card, or the error alert is visible (the loading skeleton
+   * has finished). Event-driven — never `waitForTimeout`.
+   */
+  async expectVulnerabilitiesUpgradeReady(): Promise<void> {
+    const list = this.page.getByTestId("vulnerabilities-upgrade-list");
+    const empty = this.page.getByTestId("vulnerabilities-upgrade-empty");
+    const error = this.page.getByTestId("vulnerabilities-upgrade-error");
+    await expect(list.or(empty).or(error)).toBeVisible({ timeout: 10_000 });
+  }
+
+  /**
+   * Read the number of upgrade clusters rendered in the "By upgrade" view.
+   * Prefers the container's `data-cluster-count` anchor (present even before
+   * every card paints); returns 0 when the empty card is shown.
+   */
+  async getUpgradeClusterCount(): Promise<number> {
+    const list = this.page.getByTestId("vulnerabilities-upgrade-list");
+    if ((await list.count()) === 0) return 0;
+    const raw = await list.first().getAttribute("data-cluster-count");
+    return raw == null ? 0 : Number(raw);
+  }
+
+  /** Set the multi-select severity filter. Empty array clears it. */
+  async filterVulnerabilitiesBySeverity(
+    severities: ("critical" | "high" | "medium" | "low" | "info" | "unknown")[],
+  ): Promise<void> {
+    await this.page
+      .getByTestId("vulnerabilities-severity-filter")
+      .selectOption(severities);
+    await this.expectVulnerabilitiesTabReady();
+  }
+
+  /** Set the multi-select status filter. */
+  async filterVulnerabilitiesByStatus(
+    statuses: VulnFindingStatus[],
+  ): Promise<void> {
+    await this.page
+      .getByTestId("vulnerabilities-status-filter")
+      .selectOption(statuses);
+    await this.expectVulnerabilitiesTabReady();
+  }
+
+  /**
+   * Sort the vulnerabilities list by a given key. The KEV feature moved the
+   * control to the toolbar's `vulnerabilities-sort-select` (the composite
+   * `priority` ranking — KEV → severity → EPSS — is not a column, so the
+   * select is its home; column keys are listed too and stay in sync with the
+   * clickable headers). Native `<select>`, so `selectOption` drives it.
+   * Locale-agnostic — anchors on the option value, not the translated label.
+   */
+  async sortVulnerabilitiesBy(
+    sort:
+      | "priority"
+      | "severity"
+      | "cvss"
+      | "epss"
+      | "reachable"
+      | "component"
+      | "status"
+      | "discovered_at",
+  ): Promise<void> {
+    await this.page
+      .getByTestId("vulnerabilities-sort-select")
+      .selectOption(sort);
+    await this.expectVulnerabilitiesTabReady();
+  }
+
+  /**
+   * Read the sort select's current value (e.g. `"priority"`, the KEV-aware
+   * default). Locale-agnostic — reads the option *value*, never the label.
+   */
+  async getVulnerabilitiesSortKey(): Promise<string> {
+    return this.page.getByTestId("vulnerabilities-sort-select").inputValue();
+  }
+
+  /**
+   * Set the inline EPSS threshold filter ("EPSS ≥ x", v2.1). Pass a number in
+   * [0, 1] to keep findings at or above that EPSS probability, or `null` to
+   * clear the filter via the Clear button. After mutating, waits for the URL
+   * to mirror `?min_epss=…` (set) or to drop it (cleared).
+   */
+  async filterVulnerabilitiesByMinEpss(min: number | null): Promise<void> {
+    const input = this.page.getByTestId("vulnerabilities-min-epss");
+    if (min == null) {
+      await this.page.getByTestId("vulnerabilities-min-epss-clear").click();
+      await expect
+        .poll(() => new URL(this.page.url()).searchParams.get("min_epss"))
+        .toBeNull();
+    } else {
+      await input.fill(String(min));
+      await expect
+        .poll(() => new URL(this.page.url()).searchParams.get("min_epss"))
+        .toBe(String(min));
+    }
+    await this.expectVulnerabilitiesTabReady();
+  }
+
+  /**
+   * Read the ordered list of per-row EPSS scores from the mounted
+   * vulnerability rows (top → bottom). Each entry is the row's
+   * `data-epss-score` parsed as a number, or `null` when the cell rendered
+   * the "no EPSS" placeholder (`data-epss-empty="true"`). Locale-agnostic —
+   * reads the data anchors the EpssCell exposes verbatim, never the rendered
+   * percentage text.
+   *
+   * NOTE: the list virtualizes, so this returns only the rows currently
+   * mounted in the viewport. For the seeded fixture (≤ a few dozen rows) the
+   * top of the list is mounted from the first frame, which is all the
+   * sort/NULLS-LAST scenarios need to assert on.
+   */
+  async getMountedRowEpssScores(): Promise<(number | null)[]> {
+    const cells = this.page
+      .getByTestId("vulnerability-row")
+      .locator('[data-testid="vulnerability-row-epss"]');
+    const count = await cells.count();
+    const out: (number | null)[] = [];
+    for (let i = 0; i < count; i++) {
+      const cell = cells.nth(i);
+      const empty = await cell.getAttribute("data-epss-empty");
+      if (empty === "true") {
+        out.push(null);
+        continue;
+      }
+      const raw = await cell.getAttribute("data-epss-score");
+      out.push(raw == null ? null : Number(raw));
+    }
+    return out;
+  }
+
+  /**
+   * Read the EPSS score (raw [0,1] value) shown inside the open drawer's EPSS
+   * chip, or `null` when the chip is absent (no EPSS published for the CVE).
+   * Locale-agnostic — reads `data-epss-score`.
+   */
+  async getDrawerEpssScore(): Promise<number | null> {
+    const chip = this.page.getByTestId("vulnerability-drawer-epss");
+    if ((await chip.count()) === 0) return null;
+    const raw = await chip.first().getAttribute("data-epss-score");
+    return raw == null ? null : Number(raw);
+  }
+
+  /**
+   * Read the EPSS percentile (raw [0,1] rank) shown inside the open drawer's
+   * EPSS chip, or `null` when absent. The chip renders the percentile as
+   * localized "Top N%" text; this reads the `data-epss-percentile` anchor so
+   * the assertion stays locale-agnostic.
+   */
+  async getDrawerEpssPercentile(): Promise<number | null> {
+    const chip = this.page.getByTestId("vulnerability-drawer-epss");
+    if ((await chip.count()) === 0) return null;
+    const raw = await chip.first().getAttribute("data-epss-percentile");
+    return raw == null ? null : Number(raw);
+  }
+
+  /**
+   * Read the CVSS score (one-decimal numeric) shown inside the open drawer's
+   * CVSS chip, or `null` when absent. Lets the divergence scenario assert "high
+   * CVSS, low EPSS" on the same drawer. Locale-agnostic — the chip text is
+   * `"<label>: 9.8"`, so we strip the leading label and parse the number.
+   */
+  async getDrawerCvssScore(): Promise<number | null> {
+    const chip = this.page.getByTestId("vulnerability-drawer-cvss");
+    if ((await chip.count()) === 0) return null;
+    const text = (await chip.first().textContent()) ?? "";
+    const match = text.match(/([0-9]+(?:\.[0-9]+)?)\s*$/);
+    return match ? Number(match[1]) : null;
+  }
+
+  // ───── Phase C — KEV (CISA Known Exploited Vulnerabilities) ────────────
+  //
+  // Locale-agnostic anchors only: the CVE cell carries `data-kev`
+  // ("true"/"false"), the badge carries `data-testid="kev-badge"` +
+  // `data-kev-due-date` (ISO date) + `data-due-state`
+  // (overdue/imminent/ok, absent when no due date), and the drawer's
+  // inline due text is `data-testid="kev-badge-due-date"`. No verb reads
+  // the translated "KEV" label or the localized due copy, so EN and KO
+  // pass on the same assertions.
+
+  /**
+   * Read the KEV state of every mounted vulnerability row (top → bottom).
+   * Each entry pairs the CVE cell's `data-kev` flag with the row badge's
+   * `data-due-state` (`null` when the row has no badge or the badge carries
+   * no due date). The list virtualizes — like {@link getMountedRowEpssScores}
+   * this covers only mounted rows, which is the full set for the seeded
+   * fixtures (≤ a few dozen rows).
+   */
+  async getMountedRowKevStates(): Promise<
+    { cveId: string | null; kev: boolean; dueState: string | null }[]
+  > {
+    const rows = this.page.getByTestId("vulnerability-row");
+    // Wait for the first row to mount before counting — `count()` does not
+    // auto-retry, and the virtual list mounts a frame after the tab-ready
+    // signal (the row-mount race the EPSS suite documented as Task #24).
+    await expect(rows.first()).toBeVisible({ timeout: 10_000 });
+    const count = await rows.count();
+    const out: {
+      cveId: string | null;
+      kev: boolean;
+      dueState: string | null;
+    }[] = [];
+    for (let i = 0; i < count; i++) {
+      const row = rows.nth(i);
+      const cveId = await row.getAttribute("data-cve-id");
+      const cveCell = row.getByTestId("vulnerability-row-cve");
+      const kev = (await cveCell.getAttribute("data-kev")) === "true";
+      const badge = row.getByTestId("kev-badge");
+      const dueState =
+        (await badge.count()) > 0
+          ? await badge.first().getAttribute("data-due-state")
+          : null;
+      out.push({ cveId, kev, dueState });
+    }
+    return out;
+  }
+
+  /**
+   * Assert a row's KEV badge is present (and optionally pin its SLA state).
+   * Scoped by `data-cve-id` so the assertion is unambiguous even with the
+   * drawer open over the list.
+   */
+  async expectRowKevBadge(
+    cveId: string,
+    expected: { dueState?: "overdue" | "imminent" | "ok" } = {},
+  ): Promise<void> {
+    const row = this.page.locator(
+      `[data-testid="vulnerability-row"][data-cve-id="${cveId}"]`,
+    );
+    const badge = row.getByTestId("kev-badge");
+    await expect(badge).toBeVisible({ timeout: 10_000 });
+    if (expected.dueState) {
+      await expect(badge).toHaveAttribute("data-due-state", expected.dueState);
+    }
+  }
+
+  /** Assert a row renders NO KEV badge (non-catalog CVE — absence is the signal). */
+  async expectRowWithoutKevBadge(cveId: string): Promise<void> {
+    const row = this.page.locator(
+      `[data-testid="vulnerability-row"][data-cve-id="${cveId}"]`,
+    );
+    await expect(row.getByTestId("vulnerability-row-cve")).toHaveAttribute(
+      "data-kev",
+      "false",
+    );
+    await expect(row.getByTestId("kev-badge")).toHaveCount(0);
+  }
+
+  /**
+   * Assert the open drawer surfaces the KEV badge WITH its inline
+   * remediation-deadline text (`showDueDate` surfaces render
+   * `kev-badge-due-date`), and return the raw anchors:
+   * `dueDate` (ISO `YYYY-MM-DD` from `data-kev-due-date`) + `dueState`.
+   * Scoped to `vulnerability-drawer-meta` so the row badge behind the
+   * drawer can never satisfy the assertion.
+   */
+  async expectDrawerKevBadge(): Promise<{
+    dueDate: string | null;
+    dueState: string | null;
+  }> {
+    const meta = this.page.getByTestId("vulnerability-drawer-meta");
+    const badge = meta.getByTestId("kev-badge");
+    await expect(badge).toBeVisible({ timeout: 10_000 });
+    const dueText = badge.getByTestId("kev-badge-due-date");
+    await expect(dueText).toBeVisible();
+    await expect(dueText).not.toBeEmpty();
+    return {
+      dueDate: await badge.getAttribute("data-kev-due-date"),
+      dueState: await badge.getAttribute("data-due-state"),
+    };
+  }
+
+  /**
+   * Find the row whose `data-cve-id` equals `cveId` and click it. Wait
+   * for the drawer to open (URL carries `?vuln=<finding_id>` and the
+   * drawer container is visible).
+   *
+   * Locale-agnostic: anchors on the `data-cve-id` attribute the row
+   * exposes verbatim.
+   */
+  async openVulnerabilityDrawer(cveId: string): Promise<void> {
+    const row = this.page.locator(
+      `[data-testid="vulnerability-row"][data-cve-id="${cveId}"]`,
+    );
+    await row.first().click();
+    await this.page
+      .getByTestId("vulnerability-drawer")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    // URL mirrors the selection — wait until ?vuln=<...> appears.
+    await expect
+      .poll(() => new URL(this.page.url()).searchParams.get("vuln"), {
+        timeout: 5_000,
+      })
+      .not.toBeNull();
+  }
+
+  /**
+   * Click the first vulnerability row (whatever it happens to be) and wait
+   * for the drawer to mount. Sibling of {@link openVulnerabilityDrawer} for
+   * scenarios that don't care which CVE — e.g. screenshot capture, where
+   * the seeded CVE ids are timestamped and the spec only needs *some*
+   * drawer open. Anchors on the `data-testid="vulnerability-row"` attribute
+   * (locale-agnostic) and waits for the URL to mirror `?vuln=<finding_id>`.
+   */
+  async openFirstVulnerabilityDrawer(): Promise<void> {
+    const row = this.page.getByTestId("vulnerability-row").first();
+    await expect(row).toBeVisible({ timeout: 10_000 });
+    await row.click();
+    await this.page
+      .getByTestId("vulnerability-drawer")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    await expect
+      .poll(() => new URL(this.page.url()).searchParams.get("vuln"), {
+        timeout: 5_000,
+      })
+      .not.toBeNull();
+    // Also wait for the Analysis section to mount — the screenshot caller
+    // depends on the VEX action buttons being visible, which only render
+    // once the detail query resolves (the drawer body is a skeleton until
+    // then).
+    await this.page
+      .getByTestId("vulnerability-drawer-analysis")
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  // ───── v2.1 A3 — VEX consume UI (import / filter / provenance) ─────────
+  /**
+   * Whether the VEX import trigger is enabled for the current user. Disabled
+   * for a developer (role gate), enabled for a team_admin / super_admin. Reads
+   * the native `disabled` property — locale-agnostic.
+   */
+  async isVexImportEnabled(): Promise<boolean> {
+    return this.page.getByTestId("vex-import-open").isEnabled();
+  }
+
+  /**
+   * Upload a VEX document via the import dialog and wait for the result summary
+   * (or an error) to render. Drives the real `<input type=file>` with
+   * `setInputFiles`, so the multipart body is built by the browser exactly as
+   * in production. Returns once either the summary panel or the error alert is
+   * visible.
+   *
+   * `filePath` is an absolute path to a JSON document on disk; callers
+   * typically write a fixture to a temp dir first.
+   */
+  async importVexDocument(filePath: string): Promise<void> {
+    await this.page.getByTestId("vex-import-open").click();
+    await this.page
+      .getByTestId("vex-import-dialog")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    await this.page.getByTestId("vex-import-file").setInputFiles(filePath);
+    await this.page.getByTestId("vex-import-submit").click();
+    const summary = this.page.getByTestId("vex-import-summary");
+    const error = this.page.getByTestId("vex-import-error");
+    await expect(summary.or(error)).toBeVisible({ timeout: 15_000 });
+  }
+
+  /**
+   * Read the `applied` count from the VEX import summary panel (the number of
+   * findings whose status the upload changed). Returns `null` if the summary is
+   * not present (e.g. an error was shown instead). Reads the `data-applied`
+   * anchor — locale-agnostic.
+   */
+  async getVexImportApplied(): Promise<number | null> {
+    const panel = this.page.getByTestId("vex-import-summary");
+    if ((await panel.count()) === 0) return null;
+    const raw = await panel.first().getAttribute("data-applied");
+    return raw == null ? null : Number(raw);
+  }
+
+  /** Close the VEX import dialog. */
+  async closeVexImportDialog(): Promise<void> {
+    await this.page.getByTestId("vex-import-cancel").click();
+    await this.page
+      .getByTestId("vex-import-dialog")
+      .waitFor({ state: "hidden", timeout: 10_000 });
+  }
+
+  /**
+   * Toggle the inline "VEX-suppressed only" filter on, then wait for the URL to
+   * mirror `vex_suppressed=1` (so callers can read it deterministically) and
+   * for the list / empty state to settle.
+   */
+  async enableVexSuppressedFilter(): Promise<void> {
+    await this.page.getByTestId("vulnerabilities-vex-suppressed-filter").check();
+    await expect
+      .poll(() => new URL(this.page.url()).searchParams.get("vex_suppressed"))
+      .toBe("1");
+    await this.expectVulnerabilitiesTabReady();
+  }
+
+  /**
+   * Count the mounted rows that carry the "VEX" provenance marker (status set
+   * by an imported VEX document). Locale-agnostic — anchors on the marker's
+   * `data-testid`.
+   */
+  async getVexMarkedRowCount(): Promise<number> {
+    return this.page.getByTestId("vulnerability-row-vex-marker").count();
+  }
+
+  /**
+   * Read the VEX provenance author shown in the open drawer's VEX section, or
+   * `null` when the section is absent (a manually-triaged finding). Locale-
+   * agnostic — reads the `data-testid` value verbatim.
+   */
+  async getDrawerVexAuthor(): Promise<string | null> {
+    const cell = this.page.getByTestId("vulnerability-drawer-vex-author");
+    if ((await cell.count()) === 0) return null;
+    return cell.first().textContent();
+  }
+
+  /** Whether the open drawer shows the VEX provenance section. */
+  async drawerHasVexProvenance(): Promise<boolean> {
+    return (
+      (await this.page.getByTestId("vulnerability-drawer-vex").count()) > 0
+    );
+  }
+
+  // ───── PR #12 — Licenses tab + drawer ────────────────────────────────
+  /**
+   * Click the Licenses tab trigger and wait for the tab content to mount.
+   * Mirrors `selectVulnerabilitiesTab`: the tab renders
+   * `[data-testid="licenses-tab"]` once the React subtree mounts; we also
+   * wait until either the virtual list or the empty card is visible so
+   * subsequent verbs (filter / open drawer) have a settled DOM to target.
+   *
+   * Locale-agnostic — anchors on `data-testid` attributes, never the
+   * translated tab label.
+   */
+  /**
+   * Click the (W4-C → W9-#58) Compliance tab. The legacy standalone
+   * Licenses tab was absorbed into a unified Compliance grid; this verb
+   * keeps the original name so existing specs keep working. It ensures
+   * the `Has obligations` toggle is **off** so the grid shows the
+   * licenses-first view that `selectLicensesTab` historically promised.
+   */
+  async selectLicensesTab(): Promise<void> {
+    await this.page.getByTestId("project-detail-tab-compliance").click();
+    await this.page
+      .getByTestId("compliance-tab")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    const toggle = this.page.getByTestId("compliance-has-obligations");
+    if ((await toggle.getAttribute("data-state")) === "checked") {
+      await toggle.click();
+    }
+    await this.expectLicensesTabReady();
+  }
+
+  /**
+   * Wait until either the virtualized list or the empty card is visible
+   * (the loading skeleton has finished). Use after applying filters or
+   * sorts to wait for the next page to land. Event-driven — never
+   * `waitForTimeout`.
+   */
+  async expectLicensesTabReady(): Promise<void> {
+    const virtual = this.page.getByTestId("compliance-virtual");
+    const empty = this.page.getByTestId("compliance-empty");
+    await expect(virtual.or(empty)).toBeVisible({ timeout: 10_000 });
+  }
+
+  /**
+   * PR-6 / M-21 — assert the Compliance tab's NOTICE download group renders
+   * on the toolbar and is actionable (format select + download button both
+   * enabled). The verified defect: the affordance was dropped when the old
+   * Obligations sub-view was absorbed into the unified grid, leaving NOTICE
+   * reachable only via the Reports tab; M-21 restored it here. Visibility
+   * only — the actual download contract is owned by `obligations.spec.ts`
+   * S4/S5 via {@link downloadNotice}.
+   */
+  async expectComplianceNoticeToolbar(): Promise<void> {
+    await expect(
+      this.page.getByTestId("compliance-notice-download"),
+    ).toBeVisible({ timeout: 10_000 });
+    await expect(
+      this.page.getByTestId("compliance-notice-format"),
+    ).toBeEnabled({ timeout: 10_000 });
+    await expect(
+      this.page.getByTestId("compliance-notice-action"),
+    ).toBeEnabled({ timeout: 10_000 });
+  }
+
+  /**
+   * Set the unified Compliance grid's category filter to exactly the given
+   * categories. An empty array clears the filter. W9-#58 replaced the native
+   * `<select multiple>` with a checkbox-popover `MultiSelect`
+   * (`compliance-category-filter`), so the harness drives it via the
+   * shared {@link setMultiSelect} helper.
+   *
+   * After mutating the filter the harness waits for the URL to mirror the
+   * change (`?compliance_category=…`) so callers can read the URL
+   * deterministically.
+   */
+  async filterLicensesByCategory(
+    categories: ("forbidden" | "conditional" | "allowed" | "unknown")[],
+  ): Promise<void> {
+    await this.setMultiSelect("compliance-category-filter", categories);
+    // URL mirrors the filter as a CSV under `compliance_category`.
+    if (categories.length > 0) {
+      await expect
+        .poll(
+          () =>
+            (
+              new URL(this.page.url()).searchParams.get(
+                "compliance_category",
+              ) ?? ""
+            )
+              .split(",")
+              .filter((v) => v.length > 0)
+              .sort()
+              .join(","),
+          { timeout: 5_000 },
+        )
+        .toBe([...categories].sort().join(","));
+    } else {
+      await expect
+        .poll(
+          () =>
+            new URL(this.page.url()).searchParams.get("compliance_category"),
+          { timeout: 5_000 },
+        )
+        .toBeNull();
+    }
+    await this.expectLicensesTabReady();
+  }
+
+  /**
+   * Drive a checkbox-popover {@link MultiSelect} to the exact target set.
+   * Opens the trigger, toggles only the options whose current checked state
+   * differs from the target, then closes the popover with Escape so the
+   * DOM is settled for the caller's URL/row assertions.
+   *
+   * The popover keeps itself open between toggles (the option rows call
+   * `event.preventDefault()` on select), so all toggles happen in one open
+   * session. `data-value` on each option row makes the verb locale-agnostic.
+   */
+  private async setMultiSelect(
+    testId: string,
+    target: readonly string[],
+  ): Promise<void> {
+    const trigger = this.page.getByTestId(testId);
+    await trigger.click();
+    const option = (value: string) =>
+      this.page.locator(
+        `[data-testid="${testId}-option"][data-value="${cssEscapeAttr(value)}"]`,
+      );
+    // Toggle each desired value on if it isn't already checked. Radix
+    // CheckboxItem mirrors state into `aria-checked`.
+    const want = new Set(target);
+    // First ensure every wanted option is checked.
+    for (const value of want) {
+      const item = option(value);
+      await item.waitFor({ state: "visible", timeout: 5_000 });
+      if ((await item.getAttribute("aria-checked")) !== "true") {
+        await item.click();
+      }
+    }
+    // Then uncheck anything selected that isn't wanted. We only iterate over
+    // the rendered options so we never touch values outside this control.
+    const rendered = this.page.locator(`[data-testid="${testId}-option"]`);
+    const renderedCount = await rendered.count();
+    for (let i = 0; i < renderedCount; i++) {
+      const item = rendered.nth(i);
+      const value = await item.getAttribute("data-value");
+      if (
+        value != null &&
+        !want.has(value) &&
+        (await item.getAttribute("aria-checked")) === "true"
+      ) {
+        await item.click();
+      }
+    }
+    // Close the popover so subsequent locators aren't shadowed by the portal.
+    await this.page.keyboard.press("Escape");
+  }
+
+  /**
+   * Find the Compliance grid row whose `data-spdx-id` equals `spdxId` and
+   * open its drawer. Wait for the (reused) LicenseDrawer to mount (URL
+   * carries `?license=<finding_id>` and the drawer container is visible).
+   *
+   * Locale-agnostic — anchors on the `data-spdx-id` attribute the row
+   * exposes verbatim. ORT custom licenses (LicenseRef-*) without an SPDX
+   * id are out of scope for this verb; callers that need them should
+   * target the row's `data-finding-id` directly.
+   */
+  async openLicenseDrawer(spdxId: string): Promise<void> {
+    const row = this.page.locator(
+      `[data-testid="compliance-row"][data-spdx-id="${cssEscapeAttr(spdxId)}"]`,
+    );
+    await row.first().getByTestId("compliance-row-open").click();
+    await this.page
+      .getByTestId("license-drawer")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    await expect
+      .poll(() => new URL(this.page.url()).searchParams.get("license"), {
+        timeout: 5_000,
+      })
+      .not.toBeNull();
+  }
+
+  /**
+   * Read the unified Compliance grid's server-reported total. The W9-#58
+   * grid replaced the standalone Licenses table; its `compliance-summary`
+   * row carries `data-total` (server count) and `data-loaded` (rendered
+   * page). We report `data-total` to preserve the old `getLicenseRowCount`
+   * contract (server-side count, independent of virtual-scroll paging).
+   * Returns 0 when the empty card is shown.
+   */
+  async getLicenseRowCount(): Promise<number> {
+    const summary = this.page.getByTestId("compliance-summary");
+    if ((await summary.count()) === 0) return 0;
+    const raw = await summary.first().getAttribute("data-total");
+    return raw == null ? 0 : Number(raw);
+  }
+
+  /**
+   * Phase 3 PR #13 — Obligations tab harness verbs.
+   *
+   * Mirrors the licenses-tab verbs: select / wait-ready / multi-filter / row
+   * → drawer / read summary count. Plus a `downloadNotice` verb that wraps
+   * `page.waitForEvent('download')` so callers can assert the file name +
+   * MIME without rolling their own download plumbing per spec.
+   */
+  /**
+   * Click the (W4-C → W9-#58) Compliance tab and flip the `Has obligations`
+   * toggle on. The historical `selectObligationsTab` verb still resolves to
+   * a row set scoped to obligations-bearing components, matching what the
+   * original standalone Obligations tab showed.
+   */
+  async selectObligationsTab(): Promise<void> {
+    await this.page.getByTestId("project-detail-tab-compliance").click();
+    await this.page
+      .getByTestId("compliance-tab")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    const toggle = this.page.getByTestId("compliance-has-obligations");
+    if ((await toggle.getAttribute("data-state")) !== "checked") {
+      await toggle.click();
+    }
+    await this.expectObligationsTabReady();
+  }
+
+  async expectObligationsTabReady(): Promise<void> {
+    const virtual = this.page.getByTestId("compliance-virtual");
+    const empty = this.page.getByTestId("compliance-empty");
+    await expect(virtual.or(empty)).toBeVisible({ timeout: 10_000 });
+  }
+
+  /**
+   * Switch to the project-detail SBOM surface. W4-C #21 absorbed the
+   * standalone SBOM tab into the Reports tab as an in-page section, so this
+   * verb now lands on Reports and scrolls to the SBOM area. The
+   * ``sbom-tab`` testid still rooting the section (we reuse the same
+   * `SbomTab` component) so caller assertions remain stable.
+   */
+  async selectSbomTab(): Promise<void> {
+    await this.page.getByTestId("project-detail-tab-reports").click();
+    await this.page
+      .getByTestId("reports-tab")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    await this.page
+      .getByTestId("reports-sbom-section")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    await this.expectSbomTabReady();
+  }
+
+  async expectSbomTabReady(): Promise<void> {
+    const tab = this.page.getByTestId("sbom-tab");
+    await expect(tab).toBeVisible({ timeout: 10_000 });
+    await expect(
+      this.page
+        .getByTestId("sbom-last-scan")
+        .or(this.page.getByTestId("sbom-no-scan")),
+    ).toBeVisible({ timeout: 10_000 });
+  }
+
+  /**
+   * W3 #32 — Reports tab harness verbs.
+   *
+   * The Reports tab is a navigation hub: 4 generate cards (deep-links to
+   * Obligations / SBOM / Vulnerabilities) on the left + a chronological
+   * history table on the right. Tab-ready is signalled by either the table
+   * or the empty-state card being mounted — both are valid "settled" states.
+   */
+  async selectReportsTab(): Promise<void> {
+    await this.page.getByTestId("project-detail-tab-reports").click();
+    await this.expectReportsTabReady();
+  }
+
+  async expectReportsTabReady(): Promise<void> {
+    const tab = this.page.getByTestId("reports-tab");
+    await expect(tab).toBeVisible({ timeout: 10_000 });
+    const table = this.page.getByTestId("reports-history-table");
+    const empty = this.page.getByTestId("reports-history-empty");
+    const errored = this.page.getByTestId("reports-history-error");
+    await expect(table.or(empty).or(errored)).toBeVisible({
+      timeout: 10_000,
+    });
+  }
+
+  /**
+   * Click one of the deeplink generate-cards. Each takes the user to the
+   * corresponding domain tab where the artefact's generation UI lives.
+   *
+   * NOTICE is intentionally excluded — it downloads directly from the card
+   * (see {@link downloadNotice}) rather than deep-linking anywhere.
+   *
+   * @param slug ``sbom`` → in-page SBOM section / ``vuln-pdf`` →
+   *             Vulnerabilities / ``vex`` → Vulnerabilities.
+   */
+  async clickReportsGenerateCard(
+    slug: "sbom" | "vuln-pdf" | "vex",
+  ): Promise<void> {
+    await this.page.getByTestId(`reports-card-${slug}-deeplink`).click();
+  }
+
+  /**
+   * Download the NOTICE attribution file directly from the Reports tab card.
+   * Distinct from {@link downloadNotice} (the legacy Obligations-toolbar
+   * variant) — this drives the Reports-tab card's own picker + button.
+   * Optionally pick a format ("text" | "html") before triggering; returns the
+   * captured download so callers can assert on the filename.
+   */
+  async downloadNoticeFromReports(
+    format: "text" | "html" = "text",
+  ): Promise<import("@playwright/test").Download> {
+    await this.page
+      .getByTestId("reports-card-notice-format")
+      .selectOption(format);
+    const [download] = await Promise.all([
+      this.page.waitForEvent("download"),
+      this.page.getByTestId("reports-card-notice-download").click(),
+    ]);
+    return download;
+  }
+
+  /**
+   * Count the obligation chips rendered inline on the first Compliance grid
+   * row that carries any. W9-#58 folded obligations into the unified grid as
+   * inline `compliance-obligation-chip` badges (each tagged with
+   * `data-kind`), so the old standalone obligation rows / drawer are gone.
+   * This verb lets the obligations spec assert "obligations surface, tagged
+   * by kind" without depending on the removed drawer.
+   *
+   * Returns the kinds (`data-kind`) of the chips on the first
+   * obligations-bearing row, in DOM order. Empty array when no row carries
+   * an obligation chip.
+   */
+  async firstRowObligationKinds(): Promise<string[]> {
+    const row = this.page
+      .locator(
+        '[data-testid="compliance-row"][data-has-obligations="true"]',
+      )
+      .first();
+    if ((await row.count()) === 0) return [];
+    await row.waitFor({ state: "visible", timeout: 10_000 });
+    const chips = row.getByTestId("compliance-obligation-chip");
+    const count = await chips.count();
+    const kinds: string[] = [];
+    for (let i = 0; i < count; i++) {
+      const kind = await chips.nth(i).getAttribute("data-kind");
+      if (kind != null) kinds.push(kind);
+    }
+    return kinds;
+  }
+
+  async getObligationRowCount(): Promise<number> {
+    // The standalone Obligations table was absorbed into the unified
+    // Compliance grid; both `select*Tab` verbs land on the same
+    // `compliance-summary`. `selectObligationsTab` flips the
+    // `Has obligations` toggle on first so the reported total reflects only
+    // obligations-bearing rows, matching the old Obligations tab's count.
+    const summary = this.page.getByTestId("compliance-summary");
+    if ((await summary.count()) === 0) return 0;
+    const raw = await summary.first().getAttribute("data-total");
+    return raw == null ? 0 : Number(raw);
+  }
+
+  /**
+   * Download the attribution NOTICE and return `{ filename, body }` so
+   * callers can assert provenance without snooping the response stream.
+   *
+   * W4-C #20 / W9-#58 moved the NOTICE affordance off the (now read-only)
+   * Compliance grid onto the **Reports tab** card — the old
+   * ObligationsToolbar download button is unrouted. This verb navigates to
+   * the Reports tab, drives the card's format `<select>`
+   * (`reports-card-notice-format`, exposing `text` + `html`; markdown stays
+   * API-only) and clicks `reports-card-notice-download`.
+   *
+   * `format` defaults to "text". Passing "markdown" falls through to the same
+   * select; if the option is absent Playwright's `selectOption` throws,
+   * surfacing the contract drift rather than silently downloading text.
+   */
+  async downloadNotice(
+    format: "text" | "markdown" | "html" = "text",
+  ): Promise<{ filename: string; body: string }> {
+    await this.selectReportsTab();
+    // The card's format select defaults to "text"; only touch it when the
+    // caller asked for something else so the default path stays one click.
+    if (format !== "text") {
+      await this.page
+        .getByTestId("reports-card-notice-format")
+        .selectOption(format);
+    }
+    const downloadPromise = this.page.waitForEvent("download", {
+      timeout: 15_000,
+    });
+    await this.page.getByTestId("reports-card-notice-download").click();
+    const download = await downloadPromise;
+    return readDownload(download);
+  }
+
+  // ───── G3.3 — Source file-tree viewer (Source tab) ─────────────────────
+  /**
+   * Click the Source tab trigger and wait for the tab body to mount. The tab
+   * renders `[data-testid="source-tab"]` in both the populated (two-pane) and
+   * the "no preserved source" empty states, so its visibility is the
+   * synchronization signal. Inside, the harness waits until the tree's first
+   * level resolves — either rows mounted, the empty-source card mounted, or
+   * the tree error alert mounted — so subsequent verbs target a settled DOM.
+   *
+   * Locale-agnostic — anchors on `data-testid` attributes, never the
+   * translated tab label.
+   */
+  async selectSourceTab(): Promise<void> {
+    await this.page.getByTestId("project-detail-tab-source").click();
+    await this.page
+      .getByTestId("source-tab")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    await this.expectSourceTreeReady();
+  }
+
+  /**
+   * Wait until the source tree's root level has settled into one of its
+   * terminal states. The tree mounts a loading skeleton first; we wait until
+   * one of {first row, empty-dir note, no-preserved-source card, tree error}
+   * is visible. Event-driven — never `waitForTimeout`.
+   */
+  async expectSourceTreeReady(): Promise<void> {
+    const firstRow = this.page.getByTestId("source-tree-row").first();
+    const noSource = this.page.getByTestId("source-no-preserved");
+    const treeError = this.page.getByTestId("source-tree-error");
+    await expect(firstRow.or(noSource).or(treeError)).toBeVisible({
+      timeout: 10_000,
+    });
+  }
+
+  /**
+   * Assert the "no preserved source" empty state is showing. Old scans (or
+   * the current e2e seed, which does not stage a source tarball) return a 404
+   * for the tree root, which the tab swaps for this single card instead of an
+   * error toast.
+   */
+  async expectSourceEmptyState(): Promise<void> {
+    await this.page
+      .getByTestId("source-no-preserved")
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  /**
+   * Expand the directory tree node whose `data-path` equals `dirPath`. The
+   * row is a `<button role=treeitem>` carrying `data-is-dir="true"`; clicking
+   * toggles `data-expanded`. The harness waits until the row reports
+   * `data-expanded="true"` and the child level (`source-tree-level` /
+   * `…-level-virtual` keyed by `data-dir=dirPath`) mounts, so callers can
+   * immediately target deeper rows. Lazy disclosure means the child level's
+   * own network call resolves before its rows appear — we wait on the level
+   * wrapper, then on its readiness, both event-driven.
+   *
+   * Throws (via auto-retry) if the path is not a directory row.
+   */
+  async expandSourceTreeNode(dirPath: string): Promise<void> {
+    const row = this.page.locator(
+      `[data-testid="source-tree-row"][data-path="${cssEscapeAttr(dirPath)}"][data-is-dir="true"]`,
+    );
+    await expect(row.first()).toBeVisible({ timeout: 10_000 });
+    // Toggle open only if currently collapsed (idempotent).
+    if ((await row.first().getAttribute("data-expanded")) !== "true") {
+      await row.first().click();
+    }
+    await expect(row.first()).toHaveAttribute("data-expanded", "true", {
+      timeout: 10_000,
+    });
+    // The child level mounts keyed by data-dir; wait for either the plain or
+    // the virtualized wrapper to appear so deeper-row queries are stable.
+    const level = this.page.locator(
+      `[data-dir="${cssEscapeAttr(dirPath)}"]`,
+    );
+    await expect(level.first()).toBeVisible({ timeout: 10_000 });
+  }
+
+  /**
+   * Click the file tree row whose `data-path` equals `filePath` (a leaf,
+   * `data-is-dir="false"`) and wait for the viewer to render that file. The
+   * viewer mirrors the path to `?path=` and renders
+   * `[data-testid="source-file-viewer"][data-path=…]` once the file query
+   * resolves. The harness waits for both the URL mirror and the viewer's
+   * `data-path` to converge on `filePath`, so the per-line assertions below
+   * read a settled DOM. Binary / truncated / not-found terminal states are
+   * still inside `source-file-viewer`'s siblings and have their own verbs.
+   */
+  async openSourceFile(filePath: string): Promise<void> {
+    const row = this.page.locator(
+      `[data-testid="source-tree-row"][data-path="${cssEscapeAttr(filePath)}"][data-is-dir="false"]`,
+    );
+    await expect(row.first()).toBeVisible({ timeout: 10_000 });
+    await row.first().click();
+    // URL mirrors the selection (?path=…).
+    await expect
+      .poll(() => new URL(this.page.url()).searchParams.get("path"), {
+        timeout: 5_000,
+      })
+      .toBe(filePath);
+    // The viewer resolves to one of: content viewer, binary note, not-found,
+    // or error. Wait until the loading skeleton clears (any terminal mounts).
+    await this.expectSourceFileSettled();
+  }
+
+  /**
+   * Wait until the file viewer pane has left its loading skeleton — one of
+   * {content viewer, binary note, not-found card, error alert} is visible.
+   * Event-driven.
+   */
+  async expectSourceFileSettled(): Promise<void> {
+    const viewer = this.page.getByTestId("source-file-viewer");
+    const binary = this.page.getByTestId("source-file-binary");
+    const notFound = this.page.getByTestId("source-file-not-found");
+    const error = this.page.getByTestId("source-file-error");
+    await expect(
+      viewer.or(binary).or(notFound).or(error),
+    ).toBeVisible({ timeout: 10_000 });
+  }
+
+  /**
+   * Assert the viewer is showing a decoded text file (utf-8) — the content
+   * pane (`source-file-content`) is mounted and the viewer's `data-encoding`
+   * is "utf-8". Returns once both hold.
+   */
+  async expectSourceFileText(): Promise<void> {
+    const viewer = this.page.getByTestId("source-file-viewer");
+    await expect(viewer).toBeVisible({ timeout: 10_000 });
+    await expect(viewer).toHaveAttribute("data-encoding", "utf-8", {
+      timeout: 10_000,
+    });
+    await expect(this.page.getByTestId("source-file-content")).toBeVisible({
+      timeout: 10_000,
+    });
+  }
+
+  /** Assert the viewer rendered the binary-file notice (we never show bytes). */
+  async expectSourceFileBinary(): Promise<void> {
+    await this.page
+      .getByTestId("source-file-binary")
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  /**
+   * Assert the viewer rendered the truncated banner + download button (the
+   * file exceeded the per-file byte cap). Optionally returns nothing — pair
+   * with {@link downloadTruncatedSourceFile} to exercise the download.
+   */
+  async expectSourceFileTruncated(): Promise<void> {
+    const viewer = this.page.getByTestId("source-file-viewer");
+    await expect(viewer).toHaveAttribute("data-truncated", "true", {
+      timeout: 10_000,
+    });
+    await expect(
+      this.page.getByTestId("source-file-truncated-banner"),
+    ).toBeVisible({ timeout: 10_000 });
+  }
+
+  /**
+   * Assert that the line numbered `lineNumber` (1-based) carries a license
+   * match. The line row exposes `data-highlighted="true"` and a sibling
+   * license chip (`source-line-license-chip`) whose `data-spdx-ids` lists the
+   * matched SPDX ids (CSV). When `expectedSpdxId` is given, the harness
+   * additionally asserts it appears in that CSV — locale-agnostic, reads the
+   * attribute not the rendered label.
+   *
+   * NOTE: lines virtualize through react-virtuoso, so a line far down a long
+   * file may not be mounted until scrolled into view. Use this for lines in
+   * the first viewport (the seeded fixtures keep matches near the top); a
+   * `scrollSourceLineIntoView` verb can be added if deeper assertions are
+   * needed.
+   */
+  async expectSourceLineLicense(
+    lineNumber: number,
+    expectedSpdxId?: string,
+  ): Promise<void> {
+    const line = this.page.locator(
+      `[data-testid="source-line"][data-line="${lineNumber}"]`,
+    );
+    await expect(line.first()).toBeVisible({ timeout: 10_000 });
+    await expect(line.first()).toHaveAttribute("data-highlighted", "true", {
+      timeout: 10_000,
+    });
+    const chip = line
+      .first()
+      .locator('[data-testid="source-line-license-chip"]');
+    await expect(chip).toBeVisible({ timeout: 10_000 });
+    if (expectedSpdxId !== undefined) {
+      const raw = (await chip.getAttribute("data-spdx-ids")) ?? "";
+      const ids = raw.split(",").map((s) => s.trim());
+      expect(ids).toContain(expectedSpdxId);
+    }
+  }
+
+  /**
+   * Assert the line numbered `lineNumber` is NOT highlighted (no license
+   * match). Companion of {@link expectSourceLineLicense} so a spec can show
+   * the per-line panel is selective, not a blanket tint.
+   */
+  async expectSourceLineUnmatched(lineNumber: number): Promise<void> {
+    const line = this.page.locator(
+      `[data-testid="source-line"][data-line="${lineNumber}"]`,
+    );
+    await expect(line.first()).toBeVisible({ timeout: 10_000 });
+    await expect(line.first()).toHaveAttribute(
+      "data-highlighted",
+      "false",
+      { timeout: 10_000 },
+    );
+  }
+
+  /**
+   * Click the truncated-file download button and capture the resulting
+   * browser download. Returns `{ filename, body }` so the spec can assert the
+   * downloaded slice matches the bytes that were rendered. Throws (via
+   * auto-retry on the button) when the file is not truncated.
+   */
+  async downloadTruncatedSourceFile(): Promise<{
+    filename: string;
+    body: string;
+  }> {
+    const downloadPromise = this.page.waitForEvent("download", {
+      timeout: 15_000,
+    });
+    await this.page.getByTestId("source-file-download").click();
+    const download = await downloadPromise;
+    return readDownload(download);
+  }
+
+  // ───── G2 — Vulnerability PDF report download ──────────────────────────
+  /**
+   * Download the vulnerability PDF report and return `{ filename, body }` —
+   * the body is the raw PDF bytes as a binary string so the caller can assert
+   * the `%PDF-` magic header without rolling its own stream plumbing.
+   *
+   * User-test follow-up (2026-05-27) moved the PDF trigger off the
+   * Vulnerabilities toolbar onto the **Reports tab** card
+   * (`reports-card-vuln-pdf-download`, backed by the same `useVulnReport`
+   * hook). This verb navigates to Reports and clicks that card. The button
+   * disables itself while generating; the harness does not need to poll the
+   * disabled state because the download event only fires once the blob is
+   * ready.
+   *
+   * Locale-agnostic — anchors on `data-testid="reports-card-vuln-pdf-download"`.
+   */
+  async downloadVulnReportPdf(): Promise<{ filename: string; body: string }> {
+    await this.selectReportsTab();
+    const downloadPromise = this.page.waitForEvent("download", {
+      timeout: 20_000,
+    });
+    await this.page.getByTestId("reports-card-vuln-pdf-download").click();
+    const download = await downloadPromise;
+    // PDFs are binary — read as latin1 so the %PDF- magic + %%EOF trailer
+    // survive byte-for-byte for the magic-header assertion.
+    return readDownload(download, "latin1");
+  }
+
+  /**
+   * Assert the PDF download surfaced an inline error (e.g. the project has no
+   * succeeded scan). The Reports-tab card renders
+   * `reports-card-vuln-pdf-error` with the problem detail; the harness only
+   * asserts presence so the spec stays locale-agnostic. Must be called with
+   * the Reports tab mounted.
+   */
+  async expectVulnReportPdfError(): Promise<void> {
+    await this.page
+      .getByTestId("reports-card-vuln-pdf-error")
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  /**
+   * Drive a status transition from inside the open drawer.
+   *
+   * Optionally fills the justification textarea, then clicks the action
+   * button matching `targetStatus`. Waits until the drawer's status badge
+   * reflects the new value (event-driven via `expect.poll`; never
+   * `waitForTimeout`).
+   *
+   * Throws via Playwright's auto-retrying assertions if the button is
+   * disabled (role-gated) or the post-mutation badge never updates.
+   */
+  async setVulnerabilityStatus(
+    targetStatus: VulnFindingStatus,
+    justification?: string,
+  ): Promise<void> {
+    if (justification !== undefined) {
+      await this.page
+        .getByTestId("vulnerability-drawer-justification")
+        .fill(justification);
+    }
+    await this.page
+      .getByTestId(`vulnerability-drawer-action-${targetStatus}`)
+      .click();
+    // The status badge inside the drawer carries `data-status`; wait until
+    // it flips to the target value (or stays put on error — caller can
+    // inspect the alert separately).
+    await expect
+      .poll(
+        async () => {
+          const badge = this.page
+            .getByTestId("vulnerability-drawer-meta")
+            .locator(`[data-testid^="vulnerability-status-badge-"]`)
+            .first();
+          if ((await badge.count()) === 0) return null;
+          return badge.getAttribute("data-status");
+        },
+        { timeout: 10_000 },
+      )
+      .toBe(targetStatus);
+  }
+
+  // ───── PR #13 — Admin panel ──────────────────────────────────
+  /**
+   * Navigate to ``/admin/users`` and return a domain-verb harness for the
+   * page. Convenience wrapper so spec files don't have to import the admin
+   * harnesses themselves; the underlying class is still available for tests
+   * that need to construct it directly (e.g. "expectAccessDenied" assertions
+   * that don't want the auto-mount wait).
+   */
+  async gotoAdminUsers(): Promise<AdminUsersHarness> {
+    const harness = new AdminUsersHarness(this.page, this.baseUrl);
+    await harness.goto();
+    return harness;
+  }
+
+  /** Sibling of {@link gotoAdminUsers} for the ``/admin/teams`` surface. */
+  async gotoAdminTeams(): Promise<AdminTeamsHarness> {
+    const harness = new AdminTeamsHarness(this.page, this.baseUrl);
+    await harness.goto();
+    return harness;
+  }
+
+  // ───── PR #14 — Admin operational dashboards (Scans/Disk/Audit/Health)
+  /** Navigate to ``/admin/scans`` and return the {@link AdminScansHarness}. */
+  async gotoAdminScans(): Promise<AdminScansHarness> {
+    const harness = new AdminScansHarness(this.page, this.baseUrl);
+    await harness.goto();
+    return harness;
+  }
+
+  /** Navigate to ``/admin/disk`` and return the {@link AdminDiskHarness}. */
+  async gotoAdminDisk(): Promise<AdminDiskHarness> {
+    const harness = new AdminDiskHarness(this.page, this.baseUrl);
+    await harness.goto();
+    return harness;
+  }
+
+  /** Navigate to ``/admin/audit`` and return the {@link AdminAuditHarness}. */
+  async gotoAdminAudit(): Promise<AdminAuditHarness> {
+    const harness = new AdminAuditHarness(this.page, this.baseUrl);
+    await harness.goto();
+    return harness;
+  }
+
+  /** Navigate to ``/admin/health`` and return the {@link AdminHealthHarness}. */
+  async gotoAdminHealth(): Promise<AdminHealthHarness> {
+    const harness = new AdminHealthHarness(this.page, this.baseUrl);
+    await harness.goto();
+    return harness;
+  }
+
+  // ───── W10-F — dual surface (drawer + page nav) ────────────────────────
+  /**
+   * Directly navigate to the vulnerability detail page at
+   * ``/projects/:projectId/vulnerabilities/:findingId`` and wait for the
+   * page surface to mount.
+   *
+   * Locale-agnostic — anchors on the `vulnerability-detail-page` testid +
+   * the `data-finding-id` attribute the page exposes verbatim so callers
+   * can assert provenance without parsing the rendered breadcrumb.
+   *
+   * Used by W10-F Scenario B (deep-link entry) and as a synchronization
+   * primitive after {@link clickOpenInFullView} fires the navigation.
+   */
+  async gotoVulnerabilityDetailPage(
+    projectId: string,
+    findingId: string,
+  ): Promise<void> {
+    await this.page.goto(
+      `${this.baseUrl}/projects/${projectId}/vulnerabilities/${findingId}`,
+    );
+    await this.expectVulnerabilityDetailPageMounted(findingId);
+  }
+
+  /** Sibling of {@link gotoVulnerabilityDetailPage} for the component surface. */
+  async gotoComponentDetailPage(
+    projectId: string,
+    componentId: string,
+  ): Promise<void> {
+    await this.page.goto(
+      `${this.baseUrl}/projects/${projectId}/components/${componentId}`,
+    );
+    await this.expectComponentDetailPageMounted(componentId);
+  }
+
+  /**
+   * Open the vulnerability drawer from the Vulnerabilities list. The list
+   * exposes both `data-cve-id` and `data-finding-id` on each row; this verb
+   * accepts either and picks the right anchor by best-effort prefix sniff
+   * (CVE ids start with "CVE-" while finding ids are UUIDs). Locale-agnostic.
+   *
+   * The verb waits until the drawer is visible AND the URL mirrors the
+   * selection via `?vuln=<findingId>` so callers can subsequently read the
+   * finding id off the URL without racing the next render.
+   */
+  async openVulnerabilityDrawerFromList(
+    findingIdOrCveId: string,
+  ): Promise<void> {
+    const isCve = /^CVE-/i.test(findingIdOrCveId);
+    const selector = isCve
+      ? `[data-testid="vulnerability-row"][data-cve-id="${findingIdOrCveId}"]`
+      : `[data-testid="vulnerability-row"][data-finding-id="${findingIdOrCveId}"]`;
+    const row = this.page.locator(selector).first();
+    await expect(row).toBeVisible({ timeout: 10_000 });
+    await row.click();
+    await this.page
+      .getByTestId("vulnerability-drawer")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    await expect
+      .poll(() => new URL(this.page.url()).searchParams.get("vuln"), {
+        timeout: 5_000,
+      })
+      .not.toBeNull();
+  }
+
+  /**
+   * Open the component drawer from the Components list by visible name.
+   * The list virtualizes; rows in the first viewport are reliably present
+   * for the seeded fixtures. Mirrors the locale-agnostic anchors used by
+   * {@link openComponentDrawer} (same selector strategy).
+   */
+  async openComponentDrawerFromList(name: string): Promise<void> {
+    const row = this.page
+      .getByTestId("component-row")
+      .filter({ hasText: name })
+      .first();
+    await expect(row).toBeVisible({ timeout: 10_000 });
+    await row.click();
+    await this.page
+      .getByTestId("component-drawer")
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  /**
+   * Click the drawer's "Open in full view" affordance. Disambiguates between
+   * the vulnerability drawer and the component drawer by checking which
+   * drawer is currently mounted — both drawers expose a sibling testid
+   * (`vulnerability-drawer-open-full` / `component-drawer-open-full`) but
+   * only one drawer renders at a time. After the click the harness waits for
+   * the URL pathname to switch off the project-detail route (the drawer's
+   * `onOpenChange(false)` fires synchronously so we cannot wait on the
+   * drawer disappearing — that races the navigation).
+   */
+  async clickOpenInFullView(): Promise<void> {
+    const vulnBtn = this.page.getByTestId("vulnerability-drawer-open-full");
+    const compBtn = this.page.getByTestId("component-drawer-open-full");
+    const button = (await vulnBtn.count()) > 0 ? vulnBtn : compBtn;
+    await expect(button).toBeVisible({ timeout: 10_000 });
+    await button.click();
+    // The page surface mounts on the destination route — wait for either
+    // detail page testid so the verb is symmetric across both drawers.
+    const vulnPage = this.page.getByTestId("vulnerability-detail-page");
+    const compPage = this.page.getByTestId("component-detail-page");
+    await expect(vulnPage.or(compPage)).toBeVisible({ timeout: 10_000 });
+  }
+
+  /**
+   * Click the "Back to Vulnerabilities" link in the page header. Waits
+   * until the project detail page mounts again so callers can assert on the
+   * URL deterministically. The link targets either the captured
+   * `location.state.from` (when same-project) or the default
+   * `/projects/<id>?tab=vulnerabilities` fallback.
+   */
+  async clickBackToVulnerabilities(): Promise<void> {
+    await this.page
+      .getByTestId("vulnerability-detail-page-back-link")
+      .click();
+    await this.expectProjectDetailMounted();
+  }
+
+  /** Sibling of {@link clickBackToVulnerabilities} for the component surface. */
+  async clickBackToComponents(): Promise<void> {
+    await this.page
+      .getByTestId("component-detail-page-back-link")
+      .click();
+    await this.expectProjectDetailMounted();
+  }
+
+  /**
+   * Assert the vulnerability detail page is mounted and (optionally) is for
+   * the given finding id. The page exposes the id verbatim on
+   * `[data-finding-id]` so the assertion is locale-agnostic.
+   */
+  async expectVulnerabilityDetailPageMounted(
+    findingId?: string,
+  ): Promise<void> {
+    const page = this.page.getByTestId("vulnerability-detail-page");
+    await expect(page).toBeVisible({ timeout: 10_000 });
+    if (findingId !== undefined) {
+      await expect(page).toHaveAttribute("data-finding-id", findingId, {
+        timeout: 10_000,
+      });
+    }
+    // Header + breadcrumb are part of the page surface contract.
+    await expect(
+      this.page.getByTestId("vulnerability-detail-page-header"),
+    ).toBeVisible();
+  }
+
+  /** Sibling of {@link expectVulnerabilityDetailPageMounted} for components. */
+  async expectComponentDetailPageMounted(
+    componentId?: string,
+  ): Promise<void> {
+    const page = this.page.getByTestId("component-detail-page");
+    await expect(page).toBeVisible({ timeout: 10_000 });
+    if (componentId !== undefined) {
+      await expect(page).toHaveAttribute("data-component-id", componentId, {
+        timeout: 10_000,
+      });
+    }
+    await expect(
+      this.page.getByTestId("component-detail-page-header"),
+    ).toBeVisible();
+  }
+
+  /**
+   * Assert the NEXT STEPS sticky sidebar is mounted. Page-only (the drawer
+   * surface does NOT render this panel — see W10-D rationale in
+   * `VulnerabilityDetailPage.tsx`). The sidebar mounts only once the finding
+   * resolves; callers should ensure the page is past its loading skeleton.
+   */
+  async expectNextStepsPanelVisible(): Promise<void> {
+    await expect(
+      this.page.getByTestId("vulnerability-next-steps-panel"),
+    ).toBeVisible({ timeout: 10_000 });
+  }
+
+  // ───── scan-detail-page-fe-v2 — dedicated /scans/:scanId page ──────────
+  /**
+   * Navigate directly to the dedicated scan detail page at `/scans/:scanId`
+   * and wait for the page header to render. The page hosts the large log
+   * panel + filter chips + download button — the dedicated surface that
+   * replaces the cramped inline drawer log.
+   *
+   * Locale-agnostic — anchors on `data-testid="scan-detail-page"` (the
+   * page root carries `data-scan-id` so callers can assert on provenance
+   * without parsing the rendered breadcrumb).
+   */
+  async gotoScanDetail(scanId: string): Promise<void> {
+    await this.page.goto(`${this.baseUrl}/scans/${scanId}`);
+    await this.page
+      .getByTestId("scan-detail-page-header")
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  // ───── model-3 — received-SBOM conformance panel (kind='sbom' scans) ─────
+  //
+  // The panel renders on /scans/:id only when the scan is an ingested SBOM AND
+  // a verdict exists. Anchors on `data-testid="conformance-panel"`; the result
+  // badge carries `data-result="pass|warn|fail"` so the verdict is assertable
+  // without reading localized text.
+
+  /** Wait for the conformance panel and return its verdict (pass|warn|fail). */
+  async expectConformancePanel(): Promise<"pass" | "warn" | "fail"> {
+    await this.page
+      .getByTestId("conformance-panel")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    const badge = this.page.getByTestId("conformance-badge");
+    await expect(badge).toBeVisible();
+    const result = await badge.getAttribute("data-result");
+    return result as "pass" | "warn" | "fail";
+  }
+
+  /** Assert the conformance panel is NOT present (e.g. for a non-sbom scan). */
+  async expectNoConformancePanel(): Promise<void> {
+    await expect(this.page.getByTestId("conformance-panel")).toHaveCount(0);
+  }
+
+  /** Number of rows in the per-check conformance table. */
+  async conformanceCheckCount(): Promise<number> {
+    return this.page
+      .getByTestId("conformance-checks-table")
+      .getByRole("row")
+      .count();
+  }
+
+  /**
+   * Assert a specific check row is present, optionally with an expected status
+   * (the row's status badge carries `data-status`).
+   */
+  async expectConformanceCheck(
+    checkId: string,
+    status?: "pass" | "warn" | "fail",
+  ): Promise<void> {
+    const row = this.page.getByTestId(`check-${checkId}`);
+    await expect(row).toBeVisible();
+    if (status) {
+      await expect(row.getByTestId("conformance-check-status")).toHaveAttribute(
+        "data-status",
+        status,
+      );
+    }
+  }
+
+  /** Read a conformance summary value (e.g. "conformance-source-format"). */
+  async conformanceSummaryValue(testId: string): Promise<string> {
+    return (
+      (await this.page.getByTestId(testId).textContent())?.trim() ?? ""
+    );
+  }
+
+  // ───── feat/g7-conformance — G7 AI SBOM minimum-elements section ─────
+  //
+  // Renders inside the conformance panel only when the verdict carries
+  // advisory "g7-*" checks. Locale-agnostic anchors: the tally span carries
+  // `data-present`/`data-auto-total`, the advisory/review badges carry
+  // `data-count`, cluster cards carry `data-cluster`, and every G7 check row
+  // carries `data-status` + `data-source` — no assertion reads rendered text
+  // (EN and KO pass on the same verbs).
+
+  /**
+   * Wait for the G7 section and return its tally headline as numbers
+   * (parsed from the tally span's data attributes, not the localized text).
+   */
+  async expectG7Section(): Promise<{ present: number; autoTotal: number }> {
+    await this.page
+      .getByTestId("conformance-g7-section")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    const tally = this.page.getByTestId("conformance-g7-tally");
+    await expect(tally).toBeVisible();
+    return {
+      present: Number(await tally.getAttribute("data-present")),
+      autoTotal: Number(await tally.getAttribute("data-auto-total")),
+    };
+  }
+
+  /** Assert the G7 section is NOT present (core-only conformance verdict). */
+  async expectNoG7Section(): Promise<void> {
+    await expect(
+      this.page.getByTestId("conformance-g7-section"),
+    ).toHaveCount(0);
+  }
+
+  /**
+   * Cluster ids of the rendered G7 cluster cards, in DOM (canonical registry)
+   * order — e.g. `["slp", "models"]`.
+   */
+  async g7ClusterIds(): Promise<string[]> {
+    const section = this.page.getByTestId("conformance-g7-section");
+    await section.waitFor({ state: "visible", timeout: 10_000 });
+    return section
+      .locator("[data-cluster]")
+      .evaluateAll((els) =>
+        els.map((el) => el.getAttribute("data-cluster") ?? ""),
+      );
+  }
+
+  /** Number of G7 check rows inside a given cluster card. */
+  async g7ClusterCheckCount(cluster: string): Promise<number> {
+    return this.page
+      .getByTestId(`g7-cluster-${cluster}`)
+      .getByRole("row")
+      .count();
+  }
+
+  /**
+   * Assert a G7 check row is present, optionally pinning its status and/or
+   * its source classification (`na` = no automated source → human review).
+   */
+  async expectG7Check(
+    checkId: string,
+    expected: {
+      status?: "pass" | "warn" | "fail";
+      source?: "auto" | "inferred" | "declared" | "na";
+    } = {},
+  ): Promise<void> {
+    const row = this.page.getByTestId(`check-${checkId}`);
+    await expect(row).toBeVisible();
+    if (expected.status) {
+      await expect(row).toHaveAttribute("data-status", expected.status);
+    }
+    if (expected.source) {
+      await expect(row).toHaveAttribute("data-source", expected.source);
+      // The row-level attribute and the visible source badge must agree —
+      // the badge is what the user actually sees.
+      await expect(row.getByTestId("g7-source-badge")).toHaveAttribute(
+        "data-source",
+        expected.source,
+      );
+    }
+  }
+
+  /** Evidence chip values rendered for a G7 check (mono PURLs/licenses). */
+  async g7CheckEvidence(checkId: string): Promise<string[]> {
+    const list = this.page.getByTestId(`check-${checkId}-evidence`);
+    await expect(list).toBeVisible();
+    return (await list.locator("li").allTextContents()).map((s) => s.trim());
+  }
+
+  /**
+   * Assert the "needs human review" affordances: the review tally badge with
+   * the expected count AND the explanatory note below the headline.
+   */
+  async expectG7ReviewCount(count: number): Promise<void> {
+    await expect(
+      this.page.getByTestId("conformance-g7-review"),
+    ).toHaveAttribute("data-count", String(count));
+    await expect(
+      this.page.getByTestId("conformance-g7-review-note"),
+    ).toBeVisible();
+  }
+
+  /** Assert the advisory (absent-but-automated) tally badge count. */
+  async expectG7AdvisoryCount(count: number): Promise<void> {
+    await expect(
+      this.page.getByTestId("conformance-g7-advisory"),
+    ).toHaveAttribute("data-count", String(count));
+  }
+
+  /**
+   * Click the "Download log" button on the scan detail page and capture the
+   * resulting browser download. Returns `{ filename, body }` — the body is
+   * the raw `scan.log` text so the spec can assert on its content.
+   *
+   * The button itself is gated (disabled while status=queued AND no log
+   * lines yet); callers should wait for at least one log frame to arrive
+   * (or for the persisted status to move past queued) before calling this
+   * verb. Otherwise the click silently no-ops and `waitForEvent('download')`
+   * times out.
+   *
+   * Locale-agnostic — anchors on `data-testid="scan-detail-page-download"`.
+   */
+  async downloadScanLog(): Promise<{ filename: string; body: string }> {
+    const downloadPromise = this.page.waitForEvent("download", {
+      timeout: 15_000,
+    });
+    await this.page.getByTestId("scan-detail-page-download").click();
+    const download = await downloadPromise;
+    return readDownload(download);
+  }
+
+  /**
+   * From an open scan-progress drawer, click the "Open full log →" link to
+   * the dedicated detail page. Asserts the URL pathname switches to
+   * `/scans/<scanId>` (extracted from the link's `href`) and waits for the
+   * destination page header to mount.
+   *
+   * Used by drawer call sites (project list, project detail) where the
+   * inline log panel is now hidden (`hideInlineLog`) in favour of the
+   * dedicated route. Locale-agnostic — reads the link's `href` attribute,
+   * never the rendered text.
+   */
+  async openFullLogFromDrawer(): Promise<void> {
+    const link = this.page.getByTestId("scan-drawer-open-full-log");
+    await expect(link).toBeVisible({ timeout: 10_000 });
+    const href = await link.getAttribute("href");
+    if (href == null || !href.startsWith("/scans/")) {
+      throw new Error(
+        `openFullLogFromDrawer: link href must point to /scans/<id>, got ${href ?? "null"}`,
+      );
+    }
+    await link.click();
+    // Wait for the destination page to mount + assert the URL converged.
+    await this.page
+      .getByTestId("scan-detail-page-header")
+      .waitFor({ state: "visible", timeout: 10_000 });
+    await expect
+      .poll(() => new URL(this.page.url()).pathname, { timeout: 5_000 })
+      .toBe(href);
+  }
+
+  // -------------------------------------------------------------------------
+  // Tier 6 — client-abandonment / bad-client resilience verbs
+  // -------------------------------------------------------------------------
+
+  /** Abort every in-flight + future request whose URL contains `urlSubstring`
+   * (simulates a flaky connection / a download the browser cancels). */
+  async abortRequests(urlSubstring: string): Promise<void> {
+    await this.page.route(
+      (url) => url.href.includes(urlSubstring),
+      (route) => route.abort("aborted"),
+    );
+  }
+
+  /** Toggle the browser context offline (mid-stream network drop). */
+  async setOffline(offline: boolean): Promise<void> {
+    await this.page.context().setOffline(offline);
+  }
+
+  /** Reload the current page (e.g. mid-scan) — the app must recover. */
+  async reload(): Promise<void> {
+    await this.page.reload({ waitUntil: "domcontentloaded" });
+  }
+
+  /** Abruptly close the page (user closes the tab mid-operation). */
+  async closeTab(): Promise<void> {
+    await this.page.close({ runBeforeUnload: false });
+  }
+
+  // ───── c3 — per-component license waive (Compliance tab) ─────────────────
+  /**
+   * Open the Compliance grid and wait until at least one forbidden row's
+   * waive strip has mounted. The waive strip (`compliance-row-waive-strip`)
+   * renders only under `compliance-row[data-category="forbidden"]` rows whose
+   * affected components carry a purl, so this is the settled-DOM sentinel for
+   * the waive flows. Reuses {@link selectLicensesTab} (which flips the
+   * obligations toggle off → licenses-first view) so callers don't repeat the
+   * tab-entry dance.
+   *
+   * Locale-agnostic — anchors on `data-testid` + `data-category`, never the
+   * translated tab label or row text.
+   */
+  async openComplianceWaiveStrip(): Promise<void> {
+    await this.selectLicensesTab();
+    await this.forbiddenWaiveStrip()
+      .first()
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  /**
+   * Open the waive dialog for a forbidden component. With no `purl` the first
+   * waivable component in the first forbidden row is used; pass `purl` to
+   * target a specific `compliance-waive-component` by its
+   * `data-component-purl`. Waits for the dialog to mount.
+   *
+   * Locale-agnostic — anchors on `data-testid` + `data-component-purl`.
+   */
+  async openLicenseWaive(opts?: { purl?: string }): Promise<void> {
+    await this.waiveComponent(opts?.purl)
+      .getByTestId("license-waive-open")
+      .click();
+    await this.page
+      .getByTestId("license-waive-dialog")
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  /**
+   * Fill the waive dialog: the mandatory reason textarea and (optionally) the
+   * expiry date. `expires` is a bare `yyyy-mm-dd` string the native
+   * `<input type="date">` accepts; omit it to exercise the
+   * "expiry missing → submit disabled" forbidden-license guard.
+   */
+  async fillWaive({
+    reason,
+    expires,
+  }: {
+    reason: string;
+    expires?: string;
+  }): Promise<void> {
+    await this.page.getByTestId("license-waive-reason").fill(reason);
+    if (expires !== undefined) {
+      await this.page.getByTestId("license-waive-expires").fill(expires);
+    }
+  }
+
+  /** Click the waive dialog's submit button. */
+  async submitWaive(): Promise<void> {
+    await this.page.getByTestId("license-waive-submit").click();
+  }
+
+  /**
+   * Assert the waive dialog's submit button is disabled — the forbidden-
+   * license expiry guard (reason present but no expiry yet). Auto-retries.
+   */
+  async expectWaiveSubmitDisabled(): Promise<void> {
+    await expect(this.page.getByTestId("license-waive-submit")).toBeDisabled({
+      timeout: 5_000,
+    });
+  }
+
+  /** Assert the waive dialog's submit button is enabled. Auto-retries. */
+  async expectWaiveSubmitEnabled(): Promise<void> {
+    await expect(this.page.getByTestId("license-waive-submit")).toBeEnabled({
+      timeout: 5_000,
+    });
+  }
+
+  /**
+   * Assert the "Waived" badge is visible for a component. With no `purl` the
+   * first badge on the surface is used; pass `purl` to scope to one component
+   * by its `license-waive-state[data-component-purl]`. The badge appearing is
+   * the success signal that the dialog mutation committed (the dialog closes
+   * and the row's state flips to `data-waived="true"`).
+   */
+  async expectWaivedBadge(opts?: { purl?: string }): Promise<void> {
+    const root =
+      opts?.purl != null
+        ? this.waiveState(opts.purl)
+        : this.page.getByTestId("license-waive-state").first();
+    await expect(
+      root.getByTestId("license-waived-badge"),
+    ).toBeVisible({ timeout: 10_000 });
+  }
+
+  /**
+   * Click the "Un-waive" button to remove a committed exception. With no
+   * `purl` the first un-waive control is used; pass `purl` to scope it.
+   */
+  async unwaiveLicense(opts?: { purl?: string }): Promise<void> {
+    const root =
+      opts?.purl != null
+        ? this.waiveState(opts.purl)
+        : this.page.getByTestId("license-waive-state").first();
+    await root.getByTestId("license-unwaive").click();
+  }
+
+  /**
+   * Assert the un-waive succeeded → the component's waive control is back in
+   * the not-waived state (`license-waive-state[data-waived="false"]`). With no
+   * `purl` the first state container is used. Auto-retries so the harness
+   * waits out the DELETE round-trip + cache invalidation.
+   */
+  async expectNotWaived(opts?: { purl?: string }): Promise<void> {
+    const selector =
+      opts?.purl != null
+        ? `[data-testid="license-waive-state"][data-waived="false"][data-component-purl="${cssEscapeAttr(opts.purl)}"]`
+        : `[data-testid="license-waive-state"][data-waived="false"]`;
+    await expect(this.page.locator(selector).first()).toBeVisible({
+      timeout: 10_000,
+    });
+  }
+
+  /**
+   * Assert the waive trigger is role-gated for the current actor — the
+   * `license-waive-open` button is disabled and carries `data-role-gated="true"`
+   * (a developer sees the affordance disabled rather than absent, mirroring the
+   * VEX-suppression pattern). With no `purl` the first waivable component is
+   * used.
+   */
+  async expectWaiveRoleGated(opts?: { purl?: string }): Promise<void> {
+    const trigger = this.waiveComponent(opts?.purl).getByTestId(
+      "license-waive-open",
+    );
+    await expect(trigger).toBeVisible({ timeout: 10_000 });
+    await expect(trigger).toBeDisabled();
+    await expect(trigger).toHaveAttribute("data-role-gated", "true");
+  }
+
+  // ───── waive — private selectors ─────────────────────────────────────────
+  /** Forbidden rows' waive strips (the only category that renders one). */
+  private forbiddenWaiveStrip(): Locator {
+    return this.page.locator(
+      '[data-testid="compliance-row"][data-category="forbidden"] [data-testid="compliance-row-waive-strip"]',
+    );
+  }
+
+  /**
+   * Resolve a `compliance-waive-component` entry. With `purl` it matches on
+   * `data-component-purl`; otherwise it returns the first waivable component
+   * in the first forbidden row's strip.
+   */
+  private waiveComponent(purl?: string): Locator {
+    if (purl != null) {
+      return this.page
+        .locator(
+          `[data-testid="compliance-waive-component"][data-component-purl="${cssEscapeAttr(purl)}"]`,
+        )
+        .first();
+    }
+    return this.forbiddenWaiveStrip()
+      .first()
+      .getByTestId("compliance-waive-component")
+      .first();
+  }
+
+  /** The `license-waive-state` wrapper for a given component purl. */
+  private waiveState(purl: string): Locator {
+    return this.page
+      .locator(
+        `[data-testid="license-waive-state"][data-component-purl="${cssEscapeAttr(purl)}"]`,
+      )
+      .first();
+  }
+}
+
+/** CycloneDX VEX status union — mirrors the backend ENUM. */
+export type VulnFindingStatus =
+  | "new"
+  | "analyzing"
+  | "exploitable"
+  | "not_affected"
+  | "false_positive"
+  | "suppressed"
+  | "fixed";
+
+function assertSupported(value: string | null): SupportedLanguage {
+  if (value && (SUPPORTED_LANGUAGES as readonly string[]).includes(value)) {
+    return value as SupportedLanguage;
+  }
+  throw new Error(`Unsupported language attribute: ${String(value)}`);
+}
+
+/**
+ * Read a Playwright `Download` into memory. Prefers the on-disk path (set
+ * when downloads are saved) and falls back to the stream. `encoding` selects
+ * the decoding: 'utf-8' for text artifacts (NOTICE), 'latin1' for binary ones
+ * (PDF) so the bytes round-trip 1:1 for magic-header assertions.
+ *
+ * Shared by `downloadNotice`, `downloadVulnReportPdf`, and
+ * `downloadTruncatedSourceFile` so the download plumbing lives in exactly one
+ * place — spec files only see `{ filename, body }`.
+ */
+async function readDownload(
+  download: import("@playwright/test").Download,
+  encoding: BufferEncoding = "utf-8",
+): Promise<{ filename: string; body: string }> {
+  const fs = await import("node:fs/promises");
+  const onDisk = await download.path();
+  let body: string;
+  if (onDisk) {
+    const buf = await fs.readFile(onDisk);
+    body = buf.toString(encoding);
+  } else {
+    const stream = await download.createReadStream();
+    if (!stream) {
+      body = "";
+    } else {
+      const chunks: Buffer[] = [];
+      for await (const chunk of stream) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      }
+      body = Buffer.concat(chunks).toString(encoding);
+    }
+  }
+  return { filename: download.suggestedFilename(), body };
+}
+
+/**
+ * Escape a `data-*` attribute value for embedding inside a CSS attribute
+ * selector. Source paths can contain quotes/backslashes; we escape `\` and
+ * `"` so `[data-path="<value>"]` stays well-formed. POSIX source paths in the
+ * preserved tree never contain newlines, so this minimal escape is sufficient.
+ */
+function cssEscapeAttr(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}

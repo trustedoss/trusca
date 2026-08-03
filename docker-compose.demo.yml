@@ -1,0 +1,211 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 TRUSCA contributors
+# TRUSCA — low-cost public-demo overlay (Hetzner CAX11: Arm, 2 vCPU / 4 GB).
+#
+# Layered ON TOP of the production docker-compose.yml (never used alone):
+#
+#   docker-compose -f docker-compose.yml -f docker-compose.demo.yml up -d
+#
+# Compose V1 file format (CLAUDE.md core rule #10: `docker-compose`, hyphenated).
+# Image tags stay pinned via the base file's ${IMAGE_TAG} (rule #9: no `:latest`).
+# Every value here is read at container start from `.env` or is a static tuning
+# constant — nothing is baked into an image (rule #11).
+#
+# WHAT THIS OVERLAY DOES — and does NOT do:
+#   * It RESIZES the stack for a 4 GB box: hard per-container memory caps, one
+#     Celery slot, two uvicorn workers, a modest Postgres.
+#   * It does NOT change the edge. Traefik + Let's Encrypt TLS are inherited
+#     UNTOUCHED from the base file — this is a real public HTTPS deployment, so
+#     (unlike docker-compose.smoke.yml) NO container port is published to the
+#     host. Only Traefik's :80 / :443 (from the base) face the internet.
+#   * It does NOT enable the demo carve-out by itself. The public read-only lock
+#     (DEMO_READ_ONLY=true) and the sandbox-scan carve-out
+#     (DEMO_ALLOW_SANDBOX_SCANS=true) are OPERATOR CHOICES set in `.env` — see
+#     the "Demo profile" block in .env.example and the operator runbook.
+#
+# ---------------------------------------------------------------------------
+# ENFORCEMENT NOTE — why both `mem_limit` AND `deploy.resources.limits`:
+#
+# Plain `docker-compose up` (V1 1.29.x, the project standard) IGNORES the
+# `deploy:` block — those limits bite only under `docker stack deploy` (Swarm)
+# or `--compatibility`. The runbook brings the demo up with a plain
+# `docker-compose ... up -d`, so to make the caps REAL we set the v2-style
+# `mem_limit` (which plain `up` DOES honour) as well. `deploy.resources.limits`
+# is kept in lock-step for Swarm parity and self-documentation.
+# ---------------------------------------------------------------------------
+
+# Scan-safety rails for the low-cost public demo. Applied to backend + worker +
+# beat so the caps hold no matter which process reads them. These are STATIC on
+# the demo profile (not `${VAR:-...}`) so a stray/empty `.env` cannot widen them:
+#   * SCAN_SOURCE_RAW_DOWNLOAD_MAX_BYTES=10485760 — a visitor's remote source
+#     archive is capped at 10 MiB. Bigger inputs are refused BEFORE download, so
+#     the 4 GB box is never asked to unpack a huge tree. Visitors with larger
+#     code scan locally with BomLens and upload the resulting SBOM instead.
+#   * SCAN_CONCURRENCY_CAP_PER_TEAM=1 — the seeded demo runs as one team, so this
+#     serialises visitor scans: at most one (queued+running) scan at a time. A
+#     second concurrent trigger gets a 429, not a second memory-hungry job.
+#   * SCANCODE_ENABLED=false / SCANOSS_ENABLED=false — drop the heaviest license
+#     detectors. cdxgen -> CycloneDX -> Trivy still produces components +
+#     licenses + CVEs; we just skip the deep first-party scanners that add the
+#     most CPU/RAM for the least demo value.
+#   * SCAN_TRIGGER_RATE_LIMIT=5/minute — per-user trigger throttle, tighter than
+#     the prod default (20/minute), to blunt scripted abuse of the public form.
+#   * SBOM_INGEST_MAX_BYTES=10485760 — a visitor's uploaded CycloneDX SBOM is
+#     capped at 10 MiB (prod default 32 MiB). The SBOM-ingest carve-out is the
+#     large-source escape hatch, but on a public demo an unbounded upload lets a
+#     visitor bloat the demo DB and drain the 5/minute rate bucket. Matched to
+#     the source-scan input cap so both write paths share one 10 MiB ceiling.
+#   * SBOM_INGEST_MAX_COMPONENTS=3000 — structural cap (prod default 50,000). A
+#     within-size SBOM could still declare a pathological component count that
+#     the Celery persister loops over; 3,000 is ample for a demo upload while
+#     bounding the DB row explosion. Over-cap surfaces as a 422.
+x-demo-scan-env: &demo-scan-env
+  SCAN_SOURCE_RAW_DOWNLOAD_MAX_BYTES: "10485760"
+  SCAN_CONCURRENCY_CAP_PER_TEAM: "1"
+  SCANCODE_ENABLED: "false"
+  SCANOSS_ENABLED: "false"
+  SCAN_TRIGGER_RATE_LIMIT: "5/minute"
+  SBOM_INGEST_MAX_BYTES: "10485760"
+  SBOM_INGEST_MAX_COMPONENTS: "3000"
+  # Demo carve-out toggles — the operator choices from .env (runbook §6 / §6.5).
+  # These MUST be plumbed into the container: the backend reads DEMO_READ_ONLY /
+  # DEMO_ALLOW_SANDBOX_SCANS via os.getenv() at RUNTIME (core/config.py), so a
+  # value that lives only in `.env` sits in compose-interpolation scope and never
+  # reaches the process — the read-only lock silently stayed OFF without this.
+  # Unlike the STATIC caps above these are `${VAR:-false}` so `.env` drives them;
+  # the `false` default keeps a misconfigured overlay CLOSED (no writes allowed,
+  # no sandbox carve-out) rather than silently exposing a writable public demo.
+  DEMO_READ_ONLY: ${DEMO_READ_ONLY:-false}
+  DEMO_ALLOW_SANDBOX_SCANS: ${DEMO_ALLOW_SANDBOX_SCANS:-false}
+
+services:
+  # ---------------------------------------------------------------------------
+  # Datastore — trim Postgres to a 4 GB box. Modest bump over the stock 128 MB
+  # shared_buffers (no aggressive tuning), a cache hint sized to the box, and a
+  # connection ceiling that comfortably covers the shrunk fleet (see the budget
+  # in .env.example's Demo profile block). The init-script mount + healthcheck
+  # are inherited unchanged from the base file.
+  # ---------------------------------------------------------------------------
+  postgres:
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_buffers=256MB"
+      - "-c"
+      - "effective_cache_size=768MB"
+      - "-c"
+      - "max_connections=60"
+    mem_limit: 768m
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
+
+  # ---------------------------------------------------------------------------
+  # Broker — Redis stays a pure Celery broker; a small cap is plenty for the
+  # demo's shallow queues. No maxmemory eviction: dropping broker messages would
+  # lose queued scans, so we cap the container instead and let it OOM-fail loud
+  # (it never approaches this under demo load).
+  # ---------------------------------------------------------------------------
+  redis:
+    mem_limit: 192m
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 192M
+
+  # ---------------------------------------------------------------------------
+  # API — two uvicorn workers (the prod image bakes `--workers 4`; we override
+  # the command for the small box) and a smaller async DB pool. Budget: 2 x
+  # (DB_POOL_SIZE 5 + DB_MAX_OVERFLOW 5) = 20 connections, well inside the 60
+  # ceiling above. The entrypoint (tini -> docker-entrypoint.sh) still runs and
+  # `exec`s this command, so AUTO_MIGRATE behaviour is unchanged.
+  # ---------------------------------------------------------------------------
+  backend:
+    command:
+      - "uvicorn"
+      - "main:app"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8000"
+      - "--workers"
+      - "2"
+    environment:
+      <<: *demo-scan-env
+      DB_POOL_SIZE: "5"
+      DB_MAX_OVERFLOW: "5"
+    mem_limit: 512m
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+  # ---------------------------------------------------------------------------
+  # Celery worker — the load-bearing cap on this box.
+  #
+  # `replicas: 1` (NOT 0 — the demo must be able to run a live sandbox scan) and
+  # `--concurrency=1` so exactly ONE scan runs at a time.
+  #
+  # HARD 2 GB memory cap, enforced via `mem_limit` (+ `memswap_limit` equal to
+  # it to DISABLE swap for this container). Intent: if a visitor's ≤10 MiB scan
+  # somehow balloons past 2 GB, the kernel OOM-kills THAT scan's process inside
+  # the worker cgroup — the container's task fails, Celery reports the failure,
+  # and the HOST stays alive. Without this cap a pathological scan could exhaust
+  # all 4 GB and take Postgres / Traefik / the whole box down with it. Disabling
+  # swap turns a slow swap-thrash death spiral into a fast, contained OOM-kill.
+  #
+  # A runaway scan therefore fails in isolation; every other visitor keeps
+  # browsing. SCANCODE/SCANOSS off + the 10 MiB input cap make hitting this
+  # ceiling unlikely in the first place.
+  # ---------------------------------------------------------------------------
+  worker:
+    command: celery -A tasks.celery_app worker --loglevel=info --concurrency=1
+    environment:
+      <<: *demo-scan-env
+    mem_limit: 2g
+    memswap_limit: 2g
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+        reservations:
+          # Guarantee the worker enough to start the toolchain, but keep the
+          # floor modest on a 4 GB box so the scheduler does not over-reserve.
+          cpus: "0.5"
+          memory: 512M
+
+  # ---------------------------------------------------------------------------
+  # Celery Beat — kept running (re-match + Trivy DB refresh + retention still
+  # matter on the demo). Pure scheduler; a small cap is ample.
+  # ---------------------------------------------------------------------------
+  beat:
+    environment:
+      <<: *demo-scan-env
+    mem_limit: 160m
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 160M
+
+  # ---------------------------------------------------------------------------
+  # SPA — nginx serving the static bundle. Tiny footprint; a small cap enforces
+  # it under plain `docker-compose up`. Routing / TLS labels inherited from base.
+  # ---------------------------------------------------------------------------
+  frontend:
+    mem_limit: 128m
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+
+  # NOTE: `traefik` is intentionally absent — the edge (entrypoints, Let's
+  # Encrypt resolver, :80/:443 publish, security-headers middleware) is used
+  # AS-IS from docker-compose.yml. Do not resize or re-expose it here.

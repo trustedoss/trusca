@@ -1,0 +1,6 @@
+# Marathon bundle 9 (4c) — ephemeral Playwright video output.
+# Walkthrough captures land here as webm; the encode script reads
+# them and writes mp4/gif assets under docs-site/static/img/walkthroughs/.
+# The webm files are not committed (they are ~3-5x larger than the
+# mp4 + gif combined and have no consumer outside this script).
+.output/

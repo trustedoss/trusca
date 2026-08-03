@@ -1,0 +1,100 @@
+# Agent worktrees (harness isolation) + runtime backups
+.claude/worktrees/
+backups/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# Node / frontend
+node_modules/
+dist/
+build/
+.vite/
+*.tsbuildinfo
+coverage/
+playwright-report/
+test-results/
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+
+# cosign signing keys (v2.3-s1) — the encrypted private key + public key live
+# under ./secrets/cosign (default COSIGN_KEYS_HOST_PATH) but must NEVER be
+# committed. The directory itself is kept via secrets/cosign/.gitkeep so the
+# docker-compose bind mount resolves on a fresh checkout.
+secrets/cosign/cosign.key
+secrets/cosign/cosign.pub
+secrets/**/*.key
+secrets/**/*.pub
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+*.bak
+.DS_Store
+Thumbs.db
+
+# Logs / runtime
+*.log
+*.pid
+
+# Docker / volumes
+docker-data/
+postgres-data/
+redis-data/
+
+# Workspace / scan output
+workspace/
+.ort/scan-results/
+
+# Docusaurus build cache
+docs-site/.docusaurus/
+docs-site/build/
+
+# apps/frontend artifact (shadcn/ui add output dir)
+apps/frontend/@/
+
+# Guide screenshot staging area (ad-hoc captures; committed assets live
+# alongside under docs-site/static/img/screenshots/)
+docs-site/static/img/screenshots/staging/
+
+# ---- Internal-only artifacts (never pushed publicly) -----------------------
+# Session handoffs, internal planning, agent tooling, scan-bench fixtures,
+# UX work-product, ADRs — kept locally for context restoration across
+# sessions but not part of the public OSS repo. The public source of truth
+# for design decisions is docs-site/docs/reference/design-system.md.
+.claude/
+CLAUDE.md
+# 내부 문서 일체. 계획·조사·감사·런북·ADR·세션 기록 — 공개 저장소에 두지
+# 않는다. 원본은 ~/projects/trusca-internal/docs/ 에 있다. 개별 파일이
+# 아니라 디렉터리를 통째로 무시하므로 새 내부 문서가 생겨도 규칙을 고칠
+# 일이 없고, 무엇을 공개할지 파일마다 판단할 일도 없다. 공개 문서는
+# docs-site/ 가 담당한다.
+docs/
+
+# QA 인수인계 문서 — 내부 자료. 저장소 밖(~/projects/trusca-internal/)에 둔다.
+qa-handover/
+# The neighbouring rules are all named individually, and the file this rule
+# exists for — search-and-catalog-plan-2026-07-30.md — was committed and
+# published because no rule anticipated it. A pattern covers the next one
+# before anyone has to remember.
+
+# docs-uat generated manifest (rebuilt on every run — never committed)
+docs-uat/manifest.json
+
+# vendored verify-spec runner writes a local JWT cache — never commit it
+tests/verify-specs/.tokens.json

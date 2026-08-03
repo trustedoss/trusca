@@ -1,0 +1,41 @@
+{
+  // Test-only TypeScript project. Split out of tsconfig.app.json so the
+  // PRODUCTION image build (`npm run build` -> `tsc -b tsconfig.app.json ...`)
+  // never type-checks tests: the contract tests import shared catalogs from
+  // the REPO ROOT (e.g. ../../tests/contracts/*.json), which does not exist
+  // inside the Docker build context (apps/frontend only) and broke the
+  // v0.11.0 trusca-frontend image build. CI's `npm run typecheck`
+  // (`tsc -b --noEmit`) still builds every referenced project, tests included.
+  "compilerOptions": {
+    "composite": true,
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.spec.tsbuildinfo",
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedSideEffectImports": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+    "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom"]
+  },
+  // `tailwind.config.ts` belongs to tsconfig.node.json, but riskTintOpacity
+  // (G0-7) imports it to compile the stylesheet for real rather than assert
+  // the config's shape. A project reference cannot express that — the node
+  // project sets `noEmit`, so it has no declarations to reference — so the
+  // file is listed in both projects and type-checked under each.
+  "include": ["src", "tests", "tailwind.config.ts"]
+}

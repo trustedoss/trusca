@@ -1,0 +1,94 @@
+{
+  "described": {
+    "releaseDate": "2021-02-20",
+    "sourceLocation": {
+      "type": "git",
+      "provider": "github",
+      "namespace": "lodash",
+      "name": "lodash",
+      "revision": "f299b52f39486275a9e6483b60a410e06520c538",
+      "url": "https://github.com/lodash/lodash/tree/f299b52f39486275a9e6483b60a410e06520c538"
+    },
+    "urls": {
+      "registry": "https://npmjs.com/package/lodash",
+      "version": "https://npmjs.com/package/lodash/v/4.17.21",
+      "download": "https://registry.npmjs.com/lodash/-/lodash-4.17.21.tgz"
+    },
+    "projectWebsite": "https://lodash.com/",
+    "issueTracker": "https://github.com/lodash/lodash/issues",
+    "hashes": {
+      "sha1": "679591c564c3bffaae8454cf0b3df370c3d6911c",
+      "sha256": "6a087ac9e5702a0c9d60fbcd48696012646ec8df1491dea472b150e79fcaf804"
+    },
+    "files": 1054,
+    "tools": [
+      "clearlydefined/1.3.4",
+      "reuse/6.4.0",
+      "licensee/9.18.1",
+      "scancode/32.7.0"
+    ],
+    "toolScore": {
+      "total": 100,
+      "date": 30,
+      "source": 70
+    },
+    "score": {
+      "total": 100,
+      "date": 30,
+      "source": 70
+    }
+  },
+  "licensed": {
+    "declared": "CC0-1.0 AND MIT",
+    "toolScore": {
+      "total": 75,
+      "declared": 30,
+      "discovered": 0,
+      "consistency": 15,
+      "spdx": 15,
+      "texts": 15
+    },
+    "facets": {
+      "core": {
+        "attribution": {
+          "unknown": 1050,
+          "parties": [
+            "Copyright OpenJS Foundation and other contributors https://openjsf.org",
+            "Copyright Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors",
+            "copyright Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors http://underscorejs.org"
+          ]
+        },
+        "discovered": {
+          "unknown": 1049,
+          "expressions": [
+            "MIT",
+            "MIT AND CC0-1.0"
+          ]
+        },
+        "files": 1054
+      }
+    },
+    "score": {
+      "total": 75,
+      "declared": 30,
+      "discovered": 0,
+      "consistency": 15,
+      "spdx": 15,
+      "texts": 15
+    }
+  },
+  "coordinates": {
+    "type": "npm",
+    "provider": "npmjs",
+    "name": "lodash",
+    "revision": "4.17.21"
+  },
+  "_meta": {
+    "schemaVersion": "1.7.0",
+    "updated": "2026-05-30T10:48:05.122Z"
+  },
+  "scores": {
+    "effective": 87,
+    "tool": 87
+  }
+}

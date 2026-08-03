@@ -1,0 +1,95 @@
+/**
+ * Product screenshot showcase — shares the landing design system:
+ *   deep navy primary, card hover transform/shadow, light/dark aware.
+ */
+
+.showcase {
+  padding: 0 0 5rem;
+  background: var(--ifm-background-color);
+}
+
+.sectionHeader {
+  max-width: 60ch;
+  margin-bottom: 2.5rem;
+}
+
+.sectionHeader h2 {
+  margin: 0 0 0.5rem;
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.sectionHeader p {
+  margin: 0;
+  color: var(--ifm-color-emphasis-700);
+  font-size: 1.05rem;
+  line-height: 1.6;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+}
+
+.shot {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.frame {
+  overflow: hidden;
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: 8px;
+  background: var(--ifm-background-surface-color);
+  transition:
+    border-color 120ms ease,
+    transform 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.frame:hover,
+.frame:focus-within {
+  border-color: var(--ifm-color-primary);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+}
+
+[data-theme="dark"] .frame:hover,
+[data-theme="dark"] .frame:focus-within {
+  border-color: var(--ifm-color-primary-lightest);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.image {
+  display: block;
+  width: 100%;
+  height: auto;
+  /* Screenshots were captured in light mode; soften slightly in dark theme. */
+}
+
+[data-theme="dark"] .image {
+  filter: brightness(0.92);
+}
+
+.caption {
+  margin: 0.75rem 0 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--ifm-color-emphasis-700);
+  font-family: var(--ifm-font-family-monospace);
+}
+
+@media (max-width: 996px) {
+  .grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
