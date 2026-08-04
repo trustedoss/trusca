@@ -270,6 +270,15 @@ export function ProjectDetailPage() {
   const activeScan = (overview.data?.recent_scans ?? []).find(
     (scan) => scan.status === "queued" || scan.status === "running",
   );
+  // The concurrency gate is per-(project, branch), and the Scan button always
+  // triggers an ad-hoc (ref-less) run — so only another ad-hoc scan can block
+  // it. A CI scan on `main` leaves the button usable; disabling on "any active
+  // scan" would hide the concurrency the gate now allows.
+  const blockingScan = (overview.data?.recent_scans ?? []).find(
+    (scan) =>
+      (scan.status === "queued" || scan.status === "running") &&
+      scan.ref == null,
+  );
 
   if (!projectId) {
     return (
@@ -493,6 +502,7 @@ export function ProjectDetailPage() {
         demoReadOnly={writesDisabled}
         onScan={() => setSourceDialogOpen(true)}
         activeScan={activeScan ?? null}
+        blockingScan={blockingScan ?? null}
         onReopenActiveScan={
           activeScan ? () => handleReopenScan(activeScan) : undefined
         }
@@ -768,6 +778,8 @@ interface ProjectDetailHeaderProps {
    * progress drawer never strands the user.
    */
   activeScan: ScanSummary | null;
+  /** The active ad-hoc scan that would actually conflict with the button. */
+  blockingScan: ScanSummary | null;
   /** Re-open the live progress drawer for {@link activeScan}. */
   onReopenActiveScan?: () => void;
   /** Currently pinned scan id (`?scan=`), or undefined for the live view. */
@@ -792,6 +804,7 @@ function ProjectDetailHeader({
   demoReadOnly,
   onScan,
   activeScan,
+  blockingScan,
   onReopenActiveScan,
   pinnedScanId,
   latestScanId,
@@ -905,11 +918,11 @@ function ProjectDetailHeader({
         <Button
           size="sm"
           onClick={onScan}
-          disabled={!canScan || activeScan !== null}
+          disabled={!canScan || blockingScan !== null}
           title={
             demoReadOnly
               ? t("page.scan_demo_disabled")
-              : activeScan !== null
+              : blockingScan !== null
                 ? t("page.scan_already_active", {
                     defaultValue:
                       "A scan is already running for this project — open the in-progress drawer to view it.",
@@ -917,7 +930,7 @@ function ProjectDetailHeader({
                 : undefined
           }
           data-testid="project-detail-scan"
-          data-scan-blocked={activeScan !== null ? "active" : undefined}
+          data-scan-blocked={blockingScan !== null ? "active" : undefined}
         >
           {t("page.scan")}
         </Button>

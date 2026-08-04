@@ -86,6 +86,16 @@ class ScanSummary(BaseModel):
             "renders). ``null`` when the scan was run without a release label."
         ),
     )
+    ref: str | None = Field(
+        default=None,
+        description=(
+            "Normalized git ref this scan targeted (``main``, ``pr-12``), or "
+            "``null`` for an ad-hoc trigger that carried none. The concurrency "
+            "gate is per-(project, ref), so a client deciding whether its own "
+            "trigger would conflict has to compare against this, not merely "
+            "against 'some scan is active'."
+        ),
+    )
 
     @model_validator(mode="before")
     @classmethod

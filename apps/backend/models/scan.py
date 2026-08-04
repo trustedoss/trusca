@@ -381,13 +381,20 @@ class Scan(Base):
         Index("ix_scans_celery_task_id", "celery_task_id"),
         # JSONB GIN — supports `metadata @> '{...}'` (e.g. "find scans of branch X").
         Index("ix_scans_metadata_gin", "metadata", postgresql_using="gin"),
-        # Concurrency gate: at most one scan per project may be queued or
-        # running at any time. Mirrored in the migration via op.execute()
-        # because partial unique indexes need explicit DDL.
+        # Concurrency gate: at most one in-flight scan per (project, branch).
+        # Two branches write disjoint snapshots, so serializing them only made
+        # one CI job wait on another's push. NULLS NOT DISTINCT is what keeps
+        # this a guard rather than a formality: ``ref`` is NULL for ad-hoc
+        # scans (most rows), and under the default NULLS DISTINCT those would
+        # stop colliding entirely and a project could queue unbounded manual
+        # re-triggers. Migration 0047 mirrors this via op.execute() — partial
+        # unique indexes need explicit DDL.
         Index(
             "ix_scans_project_active",
             "project_id",
+            "ref",
             unique=True,
+            postgresql_nulls_not_distinct=True,
             postgresql_where=text("status IN ('queued','running')"),
         ),
         # W6-#42 — rematch beat's "due succeeded scans" hot path. Partial on

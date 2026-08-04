@@ -61,6 +61,12 @@ export interface ScanSummary {
    * without a release label.
    */
   release: string | null;
+  /**
+   * Normalized git ref the scan targeted, or `null` for an ad-hoc trigger.
+   * The concurrency gate is per-(project, ref), so "is my trigger blocked?"
+   * has to compare refs rather than just checking for any active scan.
+   */
+  ref: string | null;
 }
 
 export interface ProjectOverviewResponse {

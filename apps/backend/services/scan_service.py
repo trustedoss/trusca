@@ -9,10 +9,12 @@ running pipeline lands in PR #8 — the comment
 inside `trigger_scan` flags the exact insertion point.
 
 Concurrency contract (CLAUDE.md core rule #3 + models/scan.py partial unique
-index `ix_scans_project_active`): at most one scan per project may be in
-state queued|running. The DB rejects a second INSERT with IntegrityError; we
-translate that to `ScanInProgressConflict` (409) so callers get a stable RFC
-7807 envelope instead of a Python traceback.
+index `ix_scans_project_active`): at most one scan per (project, branch) may
+be in state queued|running, where all ref-less ad-hoc scans of a project count
+as one branch. Two branches write disjoint snapshots, so they run in parallel;
+re-triggering the same branch still conflicts. The DB rejects the second
+INSERT with IntegrityError; we translate that to `ScanInProgressConflict` (409)
+so callers get a stable RFC 7807 envelope instead of a Python traceback.
 """
 
 from __future__ import annotations
@@ -106,6 +108,19 @@ class DemoSandboxScanKindNotAllowed(ScanError):
 class ScanInProgressConflict(ScanError):
     status_code = 409
     title = "Scan Already In Progress"
+
+
+def _in_progress_detail(project_id: object, ref: str | None) -> str:
+    """Name the branch that is busy, not just the project.
+
+    Since the concurrency gate became per-(project, ref), "a scan is already
+    running for this project" would send the caller looking for a conflict that
+    may be on a branch they are not touching. The ref-less case keeps the old
+    wording because there is no branch to name.
+    """
+    if ref:
+        return f"a scan is already queued or running for {ref} in project {project_id}"
+    return f"a scan is already queued or running for project {project_id}"
 
 
 class ScanArchivedConflict(ScanError):
@@ -336,8 +351,8 @@ async def _enforce_team_concurrency_cap(
     """Raise :class:`ConcurrentScanLimitExceeded` if the team is at the cap.
 
     A cap of 0 (or negative) disables the check entirely — the operator has
-    opted out and only the per-project unique index + per-user rate limit
-    apply.
+    opted out and only the per-(project, branch) unique index + per-user rate
+    limit apply.
 
     Note (race window — soft cap): this SELECT-then-INSERT is not atomic
     across concurrent triggers from the same team. N requests can each read
@@ -347,9 +362,10 @@ async def _enforce_team_concurrency_cap(
     M2 (security review): worst-case bound. The overshoot is bounded, not
     unbounded, by two independent controls:
 
-      * the per-project unique partial index (``ix_scans_project_active``)
-        guarantees at most ONE active scan per project, so a single project
-        can never contribute more than 1 to the overshoot; and
+      * the unique partial index (``ix_scans_project_active``) guarantees at
+        most ONE active scan per (project, branch), so a project contributes at
+        most one per branch it is being pushed to rather than an unbounded
+        number of re-triggers; and
       * the per-user scan-trigger rate limit (``SCAN_TRIGGER_RATE_LIMIT``,
         default 20/min) bounds how many triggers any one member can fire in
         the race window.
@@ -708,7 +724,7 @@ async def trigger_scan(
     try:
         await session.flush()
     except IntegrityError as exc:
-        # The partial unique index on (project_id) WHERE status IN
+        # The partial unique index on (project_id, ref) WHERE status IN
         # ('queued','running') is the canonical signal. Postgres returns the
         # constraint name in the orig message; we don't switch on it because
         # the only realistic constraint that fires from this INSERT is the
@@ -716,7 +732,7 @@ async def trigger_scan(
         # exists.
         await session.rollback()
         raise ScanInProgressConflict(
-            f"a scan is already queued or running for project {project_id_value}",
+            _in_progress_detail(project_id_value, scan.ref),
         ) from exc
 
     # I-2: keep the project.latest_scan_id pointer in sync so list pages
@@ -735,7 +751,7 @@ async def trigger_scan(
         # possible if the txn was held briefly). Translate identically.
         await session.rollback()
         raise ScanInProgressConflict(
-            f"a scan is already queued or running for project {project_id_value}",
+            _in_progress_detail(project_id_value, scan.ref),
         ) from exc
 
     await session.refresh(scan)
