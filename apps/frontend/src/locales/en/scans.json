@@ -110,10 +110,10 @@
     }
   },
   "release": {
-    "label": "Release / version",
+    "label": "Version",
     "placeholder": "v1.2.3",
-    "hint": "Optional. Tags this scan with a release label, e.g. v1.2.3.",
-    "chip_aria": "Release {{release}}"
+    "hint": "Optional. Names the shipped unit, e.g. v1.2.3. A labelled release is exempt from retention.",
+    "chip_aria": "Version {{release}}"
   },
   "verbose": {
     "label": "Verbose logs (debug)",
