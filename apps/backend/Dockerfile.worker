@@ -239,20 +239,24 @@ RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/* \
     && npm install -g "npm@${NPM_VERSION}" \
-    # CVE-2026-14257 (HIGH, brace-expansion ReDoS): npm 11.18.0 bundles
-    # brace-expansion 5.0.7 under its OWN node_modules. npm is a BUILD-time tool
-    # (it installed cdxgen above); the celery worker never invokes it at runtime,
-    # so this is not runtime-reachable — but 5.0.8 is a drop-in patch, so we
-    # REPLACE the vulnerable copy rather than blanket-ignore the CVE ID (an
-    # ignore would also mask brace-expansion findings elsewhere). Verbatim
-    # npm-pack swap, same pattern as the cdxgen tar override below.
-    && npm pack brace-expansion@5.0.8 --pack-destination /tmp \
+    # brace-expansion ReDoS/OOM chain under npm's OWN node_modules. npm ships
+    # 5.0.7 (CVE-2026-14257); 5.0.8 fixed that but is itself vulnerable to
+    # CVE-2026-69152, whose fix landed in 5.0.9. npm is a BUILD-time tool here
+    # (it installed cdxgen above) and the celery worker never invokes it at
+    # runtime, so neither is runtime-reachable — we still REPLACE rather than
+    # blanket-ignore, because an ignore would mask the same CVE ids on copies
+    # that ARE reachable (cdxgen's tree, overridden below).
+    #
+    # Pinning a fixed version is not a one-time act: this line said 5.0.8 until
+    # 5.0.8 became the vulnerable one. Re-check it whenever the image scan
+    # flags brace-expansion again.
+    && npm pack brace-expansion@5.0.9 --pack-destination /tmp \
     && rm -rf /usr/lib/node_modules/npm/node_modules/brace-expansion \
     && mkdir -p /usr/lib/node_modules/npm/node_modules/brace-expansion \
-    && tar -xzf /tmp/brace-expansion-5.0.8.tgz --strip-components=1 \
+    && tar -xzf /tmp/brace-expansion-5.0.9.tgz --strip-components=1 \
         -C /usr/lib/node_modules/npm/node_modules/brace-expansion \
-    && rm -f /tmp/brace-expansion-5.0.8.tgz \
-    && node -e "const p=require('/usr/lib/node_modules/npm/node_modules/brace-expansion/package.json');if(p.version!=='5.0.8'){throw new Error('brace-expansion override failed: '+p.version)}" \
+    && rm -f /tmp/brace-expansion-5.0.9.tgz \
+    && node -e "const p=require('/usr/lib/node_modules/npm/node_modules/brace-expansion/package.json');if(p.version!=='5.0.9'){throw new Error('brace-expansion override failed: '+p.version)}" \
     && node --version \
     && npm --version
 
@@ -334,24 +338,24 @@ RUN npm install -g --omit=dev --omit=optional "@cyclonedx/cdxgen@${CDXGEN_VERSIO
     # brace-expansion flaw is an uncatchable OOM, so an upstream try/catch
     # would not contain it either.
     #
-    # Unlike the tar swap above these are TRANSITIVE (glob → minimatch →
-    # brace-expansion, socks → ip-address), so npm may hoist them anywhere in
-    # the tree and may keep more than one copy. Rewrite every copy and verify
-    # each one; a surviving stale copy fails the build rather than shipping
+    # Unlike the tar swap above these are TRANSITIVE, and they land in more
+    # than one tree: cdxgen's own node_modules AND npm's. The sweep therefore
+    # walks all of /usr/lib/node_modules, rewrites every copy, and verifies
+    # each — a surviving stale copy fails the build rather than shipping
     # quietly. Both bumps are patch-level on the same major, so no dependency
     # range moves and no re-resolution runs.
     #
-    # A plain rebuild does NOT pick these up even though the fixed versions
-    # sit inside their parents' caret ranges — they arrive through a
-    # platform-gated branch of cdxgen's graph that resolves differently on
-    # linux/amd64 (the image-scan platform) than on arm64. The lodash /
-    # minimist entries in .trivyignore describe the same trap.
+    # Scoping this to cdxgen's subtree was the first attempt and it swept
+    # nothing: cdxgen's own copies are already current, and both findings sit
+    # under npm's tree instead. A sweep that finds nothing looks identical to
+    # a sweep that fixed everything, which is why the verification below runs
+    # per directory rather than once at the end.
     #
     # Drop this when the cdxgen pin moves to a release carrying the fixes.
     && for spec in "brace-expansion@5.0.9" "ip-address@10.3.1"; do \
         name="${spec%@*}"; ver="${spec##*@}"; \
         npm pack "$spec" --pack-destination /tmp; \
-        for dir in $(find /usr/lib/node_modules/@cyclonedx/cdxgen -type d -name "$name" -prune); do \
+        for dir in $(find /usr/lib/node_modules -type d -name "$name" -prune -print); do \
             rm -rf "$dir"; \
             mkdir -p "$dir"; \
             tar -xzf "/tmp/${name}-${ver}.tgz" --strip-components=1 -C "$dir"; \
