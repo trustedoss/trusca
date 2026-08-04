@@ -328,6 +328,41 @@ RUN npm install -g --omit=dev --omit=optional "@cyclonedx/cdxgen@${CDXGEN_VERSIO
         -C /usr/lib/node_modules/@cyclonedx/cdxgen/node_modules/tar \
     && rm -f /tmp/tar-7.5.19.tgz \
     && node -e "const p=require('/usr/lib/node_modules/@cyclonedx/cdxgen/node_modules/tar/package.json');if(p.version!=='7.5.19'){throw new Error('tar override failed: '+p.version)}" \
+    # Force brace-expansion >= 5.0.9 and ip-address >= 10.3.1 (CVE-2026-69152
+    # HIGH, CVE-2026-69192). Neither is suppressible as unreached: cdxgen puts
+    # values it read from the SCANNED repository into glob patterns, and the
+    # brace-expansion flaw is an uncatchable OOM, so an upstream try/catch
+    # would not contain it either.
+    #
+    # Unlike the tar swap above these are TRANSITIVE (glob → minimatch →
+    # brace-expansion, socks → ip-address), so npm may hoist them anywhere in
+    # the tree and may keep more than one copy. Rewrite every copy and verify
+    # each one; a surviving stale copy fails the build rather than shipping
+    # quietly. Both bumps are patch-level on the same major, so no dependency
+    # range moves and no re-resolution runs.
+    #
+    # A plain rebuild does NOT pick these up even though the fixed versions
+    # sit inside their parents' caret ranges — they arrive through a
+    # platform-gated branch of cdxgen's graph that resolves differently on
+    # linux/amd64 (the image-scan platform) than on arm64. The lodash /
+    # minimist entries in .trivyignore describe the same trap.
+    #
+    # Drop this when the cdxgen pin moves to a release carrying the fixes.
+    && for spec in "brace-expansion@5.0.9" "ip-address@10.3.1"; do \
+        name="${spec%@*}"; ver="${spec##*@}"; \
+        npm pack "$spec" --pack-destination /tmp; \
+        for dir in $(find /usr/lib/node_modules/@cyclonedx/cdxgen -type d -name "$name" -prune); do \
+            rm -rf "$dir"; \
+            mkdir -p "$dir"; \
+            tar -xzf "/tmp/${name}-${ver}.tgz" --strip-components=1 -C "$dir"; \
+            got=$(node -p "require('${dir}/package.json').version"); \
+            if [ "$got" != "$ver" ]; then \
+                echo "override failed: ${dir} is ${got}, want ${ver}" >&2; \
+                exit 1; \
+            fi; \
+        done; \
+        rm -f "/tmp/${name}-${ver}.tgz"; \
+    done \
     && cdxgen --version
 
 # ---- Trivy 0.72.0 (Apache-2.0). --------------------------------------------
