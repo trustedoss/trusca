@@ -64,6 +64,12 @@ outputs:
   forbidden-license-count:
     description: 'Distinct components carrying a forbidden-classification license.'
     value: ${{ steps.gate.outputs.forbidden_license_count }}
+  malicious-component-count:
+    description: >-
+      Distinct components the malicious-package snapshot flags. These block
+      regardless of severity — remove the package and rotate the credentials
+      this build could reach; upgrading does not help.
+    value: ${{ steps.gate.outputs.malicious_component_count }}
 
 # -----------------------------------------------------------------------------
 # Steps
@@ -266,6 +272,7 @@ runs:
         reason=$(echo "$json_body" | jq -r '.reason // ""')
         critical=$(echo "$json_body" | jq -r '.critical_cve_count // 0')
         forbidden=$(echo "$json_body" | jq -r '.forbidden_license_count // 0')
+        malicious=$(echo "$json_body" | jq -r '.malicious_component_count // 0')
 
         # GITHUB_OUTPUT supports multi-line via heredoc, but reason is single
         # line by contract — we still defensively strip newlines.
@@ -276,6 +283,7 @@ runs:
           echo "reason=${reason_oneline}"
           echo "critical_cve_count=${critical}"
           echo "forbidden_license_count=${forbidden}"
+          echo "malicious_component_count=${malicious}"
         } >> "$GITHUB_OUTPUT"
 
         # Job summary block — visible on the workflow run page.
@@ -287,12 +295,18 @@ runs:
           echo "| Verdict | **${gate}** |"
           echo "| Critical CVEs | ${critical} |"
           echo "| Forbidden licenses | ${forbidden} |"
+          # Only shown when non-zero: a "Malicious packages | 0" row on every
+          # passing build would read as an all-clear, and the count is 0 when
+          # the axis is switched off too.
+          if [ "${malicious}" != "0" ]; then
+            echo "| Known-malicious packages | ${malicious} — remove, rotate credentials |"
+          fi
           if [ -n "${reason_oneline}" ]; then
             echo "| Reason | ${reason_oneline} |"
           fi
         } >> "$GITHUB_STEP_SUMMARY"
 
-        echo "TrustedOSS gate=${gate} critical=${critical} forbidden=${forbidden}"
+        echo "TrustedOSS gate=${gate} critical=${critical} forbidden=${forbidden} malicious=${malicious}"
 
     # -------------------------------------------------------------------------
     # 4) Post PR comment — only on pull_request events, only when caller

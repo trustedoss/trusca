@@ -207,6 +207,21 @@ class LicensePolicy(Base):
         JSONB, nullable=False, server_default=EMPTY_JSONB_ARR
     )
 
+    # Array of {"component_purl","reason","expires_at"} — temporary waivers for
+    # packages the malicious snapshot flags (#26). Kept separate from
+    # ``license_exceptions`` because that array keys on ``spdx_id`` and this one
+    # on a package identifier, and because ``expires_at`` is REQUIRED here: a
+    # malicious flag is either an upstream mistake that gets retracted or a
+    # package that has to go, so an open-ended waiver only hides an unfinished
+    # decision. Shape validation lives in the Pydantic layer.
+    #
+    # The waiver removes the component from the GATE COUNT only. The badge, the
+    # filter and the drawer keep showing it — this is a deferral of blocking,
+    # not a way to make the signal disappear.
+    malicious_exceptions: Mapped[list[Any]] = mapped_column(
+        JSONB, nullable=False, server_default=EMPTY_JSONB_ARR
+    )
+
     # Gate posture for licenses absent from both the override map and the static
     # catalog. One of allowed|conditional|forbidden. Default ``conditional`` —
     # an uncatalogued license should be reviewed, not silently allowed/blocked.
