@@ -114,6 +114,7 @@ The CI build gate fails a build on Critical CVEs and forbidden licenses out of t
 
 | Key | Default | Read by | Description |
 |---|---|---|---|
+| `GATE_MALICIOUS_ENABLED` | `true` | `config.py` | Whether the build gate blocks on known-malicious packages. On by default, unlike the other `GATE_*` knobs: those tune how strictly an existing signal is read, this one decides whether an active attack reaches production. Blocks regardless of severity — a malicious package has no honest version to upgrade to. When off the gate's `malicious_component_count` is 0 because nothing was checked, and `malicious_gate_enforced` says so. Only `false` / `0` / `no` disable. |
 | `GATE_EPSS_THRESHOLD` | (unset) | `config.py` | Optional EPSS gate. A value from `0` to `1`. When set, the build gate also fails if any open finding has `epss_score >= GATE_EPSS_THRESHOLD`, and the gate result carries `epss_gate_count` + `epss_threshold`. **Unset (the default) disables the EPSS gate** — only the existing Critical-CVE / forbidden-license conditions apply. Findings without an EPSS value never trip the gate. EPSS data is sourced from the Trivy DB, so only CVEs Trivy supplies a value for are eligible. |
 
 See [build gate](./glossary.md#build-gates) for the gate model and [Gate the build on EPSS](../ci-integration/github-actions.md#gate-the-build-on-epss-optional) for the CI walkthrough.

@@ -47,6 +47,20 @@ TRUSCA는 코드와 그 의존성에 대해 서로 다른 여러 **종류**의 �
 
 빌드 게이트는 스캐너가 아닙니다 — 완료된 스캔의 출력을 규칙에 대조해 빌드 판정을 내리는 **평가** 단계입니다. 라이선스가 `forbidden`으로 판정되는 컴포넌트와 설정된 임계값을 넘는 취약점을 세어 pass/fail 결과를 냅니다. CI에서 실패한 게이트는 exit code `1`로 빌드를 차단합니다. 임계값과 태세는 `GATE_*` 환경변수([환경변수](./env-variables.md) 참조)로, 팀·조직 단위로는 카운트 전에 라이선스를 동적으로 재분류하는 [라이선스 정책](./license-policies.md)으로 설정합니다.
 
+게이트에는 임계값이 아닌 축이 하나 있습니다.
+[악성 패키지 스냅샷](../user-guide/components-and-licenses.md#known-malicious-packages)이
+지목한 컴포넌트는 **심각도와 무관하게 차단**됩니다. 설치하는 쪽을 공격하려고 배포된
+패키지에는 올라갈 정상 버전이 없기 때문입니다. 대응은 제거와 자격증명 교체입니다.
+`GATE_MALICIOUS_ENABLED=false`로 이 축을 끌 수 있지만, 끄면 개수가 0으로 나오는 것은
+찾지 못해서가 아니라 확인하지 않았기 때문입니다.
+
+오탐이 나면 상류에서 권고가 철회될 때까지 며칠 동안 모든 빌드가 멈춥니다. 그래서
+[라이선스 정책](./license-policies.md)에 `malicious_exceptions`를 둘 수 있습니다.
+패키지 식별자와 사유, 그리고 **만료 시한(필수)**으로 이루어집니다. 이 면제는 게이트
+집계에서만 제외하며 배지·필터·드로어 표시는 그대로 두고, 시한이 지나면 차단이 저절로
+돌아옵니다.
+
+
 조건부 라이선스를 둘러싼 사람의 워크플로우는 [승인](../user-guide/approvals.md)을, CI 배선은 [GitHub Actions](../ci-integration/github-actions.md)를 참조하세요.
 
 ## Reachability 분석 {#reachability-detail}

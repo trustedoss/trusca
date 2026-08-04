@@ -52,6 +52,7 @@ turn dynamic policy off and back on without re-authoring it.
 | `name` | string \| null | Display label for the UI. |
 | `category_overrides` | object | SPDX id → `allowed` \| `conditional` \| `forbidden`. Replaces the catalog verdict for that exact id. |
 | `license_exceptions` | array | Explicit waivers — each forces the matched license to `allowed`. |
+| `malicious_exceptions` | array | Time-boxed waivers for packages the malicious snapshot flags — gate count only. |
 | `unknown_license_category` | enum | Posture for licenses absent from the catalog and the override map. Default `conditional`. |
 | `compound_operator_strategy` | object | How a compound SPDX expression (`A AND B`, `A OR B`, `A WITH exc`) is resolved. |
 | `enabled` | bool | Master toggle. `false` → policy ignored during resolution. |
@@ -82,6 +83,32 @@ to a single component instead of every component carrying the license.
   }
 ]
 ```
+
+### `malicious_exceptions`
+
+Each entry needs `component_purl`, `reason` and `expires_at` — the expiry is
+**required** here, unlike a licence waiver. A licence waiver can reasonably be
+permanent: counsel cleared the dependency and the answer will not change. A
+[malicious flag](../user-guide/components-and-licenses.md#known-malicious-packages)
+always resolves — either the advisory is wrong, in which case challenging it
+upstream drops the package from the next snapshot, or it is right, in which case
+the package has to go. An open-ended waiver would only park that decision out of
+sight.
+
+```json
+[
+  {
+    "component_purl": "pkg:npm/some-package",
+    "reason": "advisory challenged upstream, TICKET-456",
+    "expires_at": "2026-08-20T00:00:00Z"
+  }
+]
+```
+
+The waiver removes the component from the **build gate count only**. Its badge,
+its place in the `?malicious=true` filter and its drawer row are unchanged — this
+defers a block while you sort the advisory out, it does not retract the finding.
+Matching is on the base purl, so an entry pasted with a version still applies.
 
 ### `compound_operator_strategy`
 
