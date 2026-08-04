@@ -47,6 +47,22 @@ See [Scan a container image](../user-guide/scans.md#scan-a-container-image) and 
 
 The build gate is not a scanner — it **evaluates** the output of a completed scan against your rules to reach a build verdict. It counts components whose license resolves to `forbidden` and vulnerabilities over the configured thresholds, then returns a pass/fail result. In CI, a failing gate exits with code `1` to block the build. Thresholds and posture are set through `GATE_*` environment variables (see [Environment variables](./env-variables.md)) and, per team or organization, through a [license policy](./license-policies.md) that re-classifies licenses dynamically before counting.
 
+The gate has one axis that is not a threshold. A component the
+[malicious-package snapshot](../user-guide/components-and-licenses.md#known-malicious-packages)
+flags **blocks regardless of severity**, because a package published to attack
+its installers has no honest version to upgrade to — the response is removal
+plus rotating the credentials the build could reach. Turn the axis off with
+`GATE_MALICIOUS_ENABLED=false`; note that the count then reads 0 because
+nothing was checked, not because nothing was found.
+
+A false positive would otherwise stop every build until the advisory is
+retracted upstream, which takes days. A [license policy](./license-policies.md)
+can therefore carry `malicious_exceptions` — a package identifier, a reason,
+and a **required expiry**. The waiver removes the component from the gate count
+only: its badge, filter entry and drawer row stay exactly as they were, and the
+block returns on its own when the waiver lapses.
+
+
 See [Approvals](../user-guide/approvals.md) for the human workflow around conditional licenses and [GitHub Actions](../ci-integration/github-actions.md) for the CI wiring.
 
 ## Reachability analysis {#reachability-detail}

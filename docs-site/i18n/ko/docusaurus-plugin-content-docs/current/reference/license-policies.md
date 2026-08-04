@@ -51,6 +51,7 @@ sidebar_position: 5
 | `name` | string \| null | UI 표시 라벨. |
 | `category_overrides` | object | SPDX id → `allowed` \| `conditional` \| `forbidden`. 해당 id의 카탈로그 판정을 대체. |
 | `license_exceptions` | array | 명시적 예외 — 매칭된 라이선스를 `allowed`로 강제. |
+| `malicious_exceptions` | 배열 | 악성으로 지목된 패키지의 기한부 면제 — 게이트 집계에만 적용됩니다. |
 | `unknown_license_category` | enum | 카탈로그·오버라이드 맵에 없는 라이선스의 자세. 기본 `conditional`. |
 | `compound_operator_strategy` | object | 복합 SPDX 식(`A AND B`·`A OR B`·`A WITH exc`) 해석 방식. |
 | `enabled` | bool | 마스터 토글. `false` → 해석 시 정책 무시. |
@@ -81,6 +82,30 @@ sidebar_position: 5
   }
 ]
 ```
+
+### `malicious_exceptions`
+
+각 항목에는 `component_purl`, `reason`, `expires_at`이 필요하며 만료 시한은
+라이선스 면제와 달리 **필수**입니다. 라이선스 면제는 영구적일 수 있습니다. 법무 검토가
+끝났다면 답이 달라지지 않기 때문입니다. 반면
+[악성 표시](../user-guide/components-and-licenses.md#known-malicious-packages)는 항상
+결론이 납니다. 권고가 틀렸다면 상류에 이의를 제기해 다음 스냅샷에서 빠지고, 맞다면
+패키지를 걷어내야 합니다. 기한 없는 면제는 그 결정을 보이지 않는 곳에 미뤄 둘 뿐입니다.
+
+```json
+[
+  {
+    "component_purl": "pkg:npm/some-package",
+    "reason": "상류에 이의 제기함, TICKET-456",
+    "expires_at": "2026-08-20T00:00:00Z"
+  }
+]
+```
+
+면제는 **빌드 게이트 집계에서만** 컴포넌트를 제외합니다. 배지도, `?malicious=true`
+필터에 나오는 것도, 드로어 항목도 그대로입니다. 권고를 정리하는 동안 차단을 미루는
+장치이지 표시를 철회하는 것이 아닙니다. 대조는 버전을 뗀 식별자로 하므로 버전이 붙은
+채로 적어도 적용됩니다.
 
 ### `compound_operator_strategy`
 

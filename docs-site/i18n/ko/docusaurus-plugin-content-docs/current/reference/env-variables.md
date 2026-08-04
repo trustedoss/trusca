@@ -113,6 +113,7 @@ CI 빌드 게이트는 기본적으로 Critical CVE와 금지 라이선스에서
 
 | 키 | 기본값 | 읽는 위치 | 설명 |
 |---|---|---|---|
+| `GATE_MALICIOUS_ENABLED` | `true` | `config.py` | 빌드 게이트가 알려진 악성 패키지를 차단할지 정합니다. 다른 `GATE_*` 설정과 달리 기본값이 켜짐입니다. 나머지는 이미 있는 신호를 얼마나 엄격히 읽을지 조정하지만 이것은 공격이 그대로 배포될지를 정하기 때문입니다. 심각도와 무관하게 차단합니다. 악성 패키지에는 올라갈 정상 버전이 없습니다. 끄면 `malicious_component_count`가 0이 되는데 이는 확인하지 않았다는 뜻이며 `malicious_gate_enforced`가 그것을 알려 줍니다. `false` / `0` / `no`만 끕니다. |
 | `GATE_EPSS_THRESHOLD` | (미설정) | `config.py` | 선택적 EPSS 게이트. `0`~`1` 값. 설정 시 미해결 결과 중 `epss_score >= GATE_EPSS_THRESHOLD`인 것이 있으면 빌드 게이트도 실패하며, 게이트 결과에 `epss_gate_count` + `epss_threshold`가 실립니다. **미설정(기본)이면 EPSS 게이트는 비활성** — 기존 Critical-CVE / 금지-라이선스 조건만 적용됩니다. EPSS 값이 없는 결과는 게이트를 트리거하지 않습니다. EPSS 데이터는 Trivy DB에서 옵니다 — Trivy가 값을 제공하는 CVE만 대상입니다. |
 
 게이트 모델은 [빌드 게이트](./glossary.md#빌드-게이트), CI 워크스루는 [EPSS로 빌드 게이팅](../ci-integration/github-actions.md#epss로-빌드-게이팅-선택) 참고.
