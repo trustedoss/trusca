@@ -41,8 +41,12 @@ The scan dialog has a **Verbose logs (debug)** toggle (off by default). Leave it
 
 A right-slide drawer opens on the project list page with a live progress view backed by a WebSocket connection. You can close the tab — the scan continues on the worker. Reopen the project and reconnect at any time. While a scan is `queued` or `running`, the drawer carries a **Cancel scan** action — see [Cancel a scan](#cancel-a-scan).
 
-:::note Only one scan at a time per project
-If a project already has a `queued` or `running` scan, the **Scan** button is disabled on the project detail header and its tooltip points you at the in-progress chip in the header (clicking the chip re-opens the existing scan's progress drawer). Triggering a second scan via the API returns `409 Conflict` with the RFC 7807 extension `scan_already_in_progress: true` — wait for the active scan to reach a terminal state, or **Cancel** it, before starting another. The same guard applies to UI, API, and CI clients.
+:::note One scan at a time per branch
+A project can scan several branches at once — pushing to `main` and `release/1.x` together no longer makes one CI job wait on the other, because the two write to separate snapshots. What is still serialized is the *same* branch: triggering a second scan for a branch that already has one `queued` or `running` returns `409 Conflict` with the RFC 7807 extension `scan_already_in_progress: true`, and the detail names the branch that is busy.
+
+Scans triggered without a ref — the **Scan** button, and API calls that omit `metadata.ref` — all count as one bucket, so two of those still conflict with each other. That is why the button greys out only while another ad-hoc scan is in flight; a CI scan on `main` leaves it usable, and the in-progress chip beside it stays visible either way (clicking it re-opens that scan's drawer).
+
+Wait for the conflicting scan to reach a terminal state, or **Cancel** it, before re-triggering. The same guard applies to UI, API, and CI clients.
 :::
 
 ![Scan progress drawer — bootstrap → fetch → cdxgen → scancode → vuln_match → finalize stages, live over WebSocket](/img/screenshots/user-scans-progress-drawer.png)
@@ -381,7 +385,7 @@ The scan reached a terminal state (`succeeded` / `failed` / `cancelled`) between
 
 ### A second scan won't start — the **Scan** button is greyed out
 
-The project already has a `queued` or `running` scan. Only one active scan per project is allowed. Open the in-progress chip in the project header (or the row in the global queue) to see the existing run, wait for it to finish, or **Cancel** it before starting another. See [Only one scan at a time per project](#from-the-ui).
+The project already has an ad-hoc (`queued` or `running`) scan, and the button triggers another of the same kind. Only one active scan per branch is allowed, and every ref-less trigger shares one bucket. Open the in-progress chip in the project header (or the row in the global queue) to see the existing run, wait for it to finish, or **Cancel** it before starting another. A scan running on a named branch does not disable the button — see [One scan at a time per branch](#from-the-ui).
 
 ### A completed scan's drawer shows a spinner that never finishes
 

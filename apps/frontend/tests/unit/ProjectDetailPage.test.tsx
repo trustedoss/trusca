@@ -99,7 +99,7 @@ function makeProject(): ProjectPublic {
   };
 }
 
-function scan(status: string, id: string): ScanSummary {
+function scan(status: string, id: string, ref: string | null = null): ScanSummary {
   return {
     id,
     kind: "source",
@@ -109,6 +109,7 @@ function scan(status: string, id: string): ScanSummary {
     completed_at: null,
     created_at: "2026-05-26T00:00:00Z",
     release: null,
+    ref,
   };
 }
 
@@ -195,5 +196,27 @@ describe("ProjectDetailPage active-scan chip (#29)", () => {
     await screen.findByTestId("project-detail-scan");
     // …but no active-scan chip, because nothing is queued/running.
     expect(screen.queryByTestId("project-detail-active-scan")).not.toBeInTheDocument();
+  });
+
+  it("disables Scan while an ad-hoc scan is in flight", async () => {
+    mockedUseOverview.mockReturnValue(overviewWith([scan("running", "scan-adhoc")]));
+    renderPage();
+    const button = await screen.findByTestId("project-detail-scan");
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("data-scan-blocked", "active");
+  });
+
+  it("leaves Scan usable while a branch scan runs — it cannot conflict", async () => {
+    // The gate is per-(project, branch) and this button triggers an ad-hoc
+    // run, so a CI scan on main must not grey it out.
+    mockedUseOverview.mockReturnValue(
+      overviewWith([scan("running", "scan-main", "main")]),
+    );
+    renderPage();
+    const button = await screen.findByTestId("project-detail-scan");
+    expect(button).toBeEnabled();
+    expect(button).not.toHaveAttribute("data-scan-blocked");
+    // The chip still reports the branch scan — it is informational, not a lock.
+    expect(screen.getByTestId("project-detail-active-scan")).toBeInTheDocument();
   });
 });

@@ -368,6 +368,92 @@ async def test_concurrent_trigger_returns_409_problem(client) -> None:
     assert body.get("scan_already_in_progress") is True
 
 
+async def test_two_branches_scan_concurrently(client) -> None:
+    """The gate is per-(project, branch): disjoint branches must not serialize."""
+    team, user, project = await _seed(client, role="developer")
+    headers = _bearer_for(user)
+
+    first = await client.post(
+        f"/v1/projects/{project.id}/scans",
+        headers=headers,
+        json={"kind": "source", "metadata": {"ref": "refs/heads/main"}},
+    )
+    assert first.status_code == 202, first.text
+
+    second = await client.post(
+        f"/v1/projects/{project.id}/scans",
+        headers=headers,
+        json={"kind": "source", "metadata": {"ref": "refs/heads/release/1.x"}},
+    )
+    assert second.status_code == 202, second.text
+    assert first.json()["ref"] == "main"
+    assert second.json()["ref"] == "release/1.x"
+
+
+async def test_same_branch_retrigger_still_conflicts(client) -> None:
+    # Relaxing the gate must not make it a formality — the same branch twice is
+    # still duplicate work on the same snapshot.
+    team, user, project = await _seed(client, role="developer")
+    headers = _bearer_for(user)
+
+    first = await client.post(
+        f"/v1/projects/{project.id}/scans",
+        headers=headers,
+        json={"kind": "source", "metadata": {"ref": "refs/heads/main"}},
+    )
+    assert first.status_code == 202, first.text
+
+    # A bare branch name must collide with the fully-qualified form the first
+    # trigger used — both normalize to `main`.
+    second = await client.post(
+        f"/v1/projects/{project.id}/scans",
+        headers=headers,
+        json={"kind": "source", "metadata": {"ref": "main"}},
+    )
+    assert second.status_code == 409, second.text
+    body = second.json()
+    assert body.get("scan_already_in_progress") is True
+    # The detail names the busy branch so the caller does not go looking for a
+    # conflict on a branch they never touched.
+    assert "main" in body["detail"]
+
+
+async def test_adhoc_scans_still_serialize_with_each_other(client) -> None:
+    # ref is NULL for ad-hoc triggers. Under the default NULLS DISTINCT the
+    # relaxed index would stop constraining them at all, so this pins the
+    # NULLS NOT DISTINCT half of the migration.
+    team, user, project = await _seed(client, role="developer")
+    headers = _bearer_for(user)
+
+    first = await client.post(
+        f"/v1/projects/{project.id}/scans", headers=headers, json={"kind": "source"}
+    )
+    assert first.status_code == 202, first.text
+
+    second = await client.post(
+        f"/v1/projects/{project.id}/scans", headers=headers, json={"kind": "source"}
+    )
+    assert second.status_code == 409, second.text
+    assert second.json().get("scan_already_in_progress") is True
+
+
+async def test_adhoc_scan_does_not_block_a_branch_scan(client) -> None:
+    team, user, project = await _seed(client, role="developer")
+    headers = _bearer_for(user)
+
+    adhoc = await client.post(
+        f"/v1/projects/{project.id}/scans", headers=headers, json={"kind": "source"}
+    )
+    assert adhoc.status_code == 202, adhoc.text
+
+    branch = await client.post(
+        f"/v1/projects/{project.id}/scans",
+        headers=headers,
+        json={"kind": "source", "metadata": {"ref": "refs/heads/main"}},
+    )
+    assert branch.status_code == 202, branch.text
+
+
 async def test_trigger_on_archived_project_returns_409(client) -> None:
     """H-7: an archived project must reject new scans, not silently accept them."""
     from datetime import UTC, datetime

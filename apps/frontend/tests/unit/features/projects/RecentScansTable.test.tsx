@@ -17,6 +17,7 @@ function scan(overrides: Partial<ScanSummary> = {}): ScanSummary {
     completed_at: "2026-05-01T12:01:30Z",
     created_at: "2026-05-01T12:00:00Z",
     release: null,
+    ref: null,
     ...overrides,
   };
 }
