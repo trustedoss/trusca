@@ -858,6 +858,152 @@ async def test_gate_ref_with_no_succeeded_scan_does_not_borrow_another_branch(
 
 
 # ---------------------------------------------------------------------------
+# ?release= anchor — a permanent URL per version
+# ---------------------------------------------------------------------------
+
+
+async def _seed_labelled_project(client: AsyncClient):
+    """v1.0 (2 critical + forbidden licence) then an unlabelled newer scan."""
+    team, user = await _seed_team_with_user(client)
+    project_id = await _seed_empty_project(client, team_id=team.id)
+    base = datetime(2026, 5, 20, tzinfo=UTC)
+    tagged = await _seed_succeeded_scan(
+        client,
+        project_id=project_id,
+        created_at=base,
+        n_critical=2,
+        forbidden_license=True,
+        release="v1.0",
+        ref="main",
+    )
+    newer = await _seed_succeeded_scan(
+        client, project_id=project_id, created_at=base + timedelta(days=5), ref="main"
+    )
+    return user, project_id, tagged, newer
+
+
+async def test_release_anchor_reads_that_version_across_surfaces(client) -> None:
+    user, project_id, tagged, _newer = await _seed_labelled_project(client)
+    headers = _bearer_for(user)
+
+    # Current state is the newer, empty scan on every surface.
+    overview = await client.get(f"/v1/projects/{project_id}/overview", headers=headers)
+    assert overview.json()["severity_distribution"]["critical"] == 0
+
+    # ?release= reaches the tagged snapshot without the caller knowing its id.
+    pinned = await client.get(
+        f"/v1/projects/{project_id}/overview", headers=headers, params={"release": "v1.0"}
+    )
+    assert pinned.status_code == 200, pinned.text
+    assert pinned.json()["severity_distribution"]["critical"] == 2
+
+    gate = await client.get(
+        f"/v1/projects/{project_id}/gate-result",
+        headers=headers,
+        params={"release": "v1.0"},
+    )
+    assert gate.status_code == 200, gate.text
+    assert gate.json()["scan_id"] == str(tagged)
+    assert gate.json()["gate"] == "fail"
+
+    notice = await client.get(
+        f"/v1/projects/{project_id}/notice", headers=headers, params={"release": "v1.0"}
+    )
+    assert notice.status_code == 200, notice.text
+    assert "GPL-3.0-only" in notice.text
+
+    vulns = await client.get(
+        f"/v1/projects/{project_id}/vulnerabilities",
+        headers=headers,
+        params={"release": "v1.0"},
+    )
+    assert vulns.json()["total"] == 2
+
+
+async def test_release_anchor_trims_and_404s_on_unknown_label(client) -> None:
+    user, project_id, tagged, _newer = await _seed_labelled_project(client)
+    headers = _bearer_for(user)
+
+    trimmed = await client.get(
+        f"/v1/projects/{project_id}/overview",
+        headers=headers,
+        params={"release": "  v1.0  "},
+    )
+    assert trimmed.status_code == 200, trimmed.text
+    assert trimmed.json()["severity_distribution"]["critical"] == 2
+
+    unknown = await client.get(
+        f"/v1/projects/{project_id}/overview", headers=headers, params={"release": "v9.9"}
+    )
+    assert unknown.status_code == 404, unknown.text
+    assert unknown.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_release_anchor_does_not_leak_another_projects_version(client) -> None:
+    user, project_id, _tagged, _newer = await _seed_labelled_project(client)
+    headers = _bearer_for(user)
+    other_team, _ = await _seed_team_with_user(client)
+    other_project = await _seed_empty_project(client, team_id=other_team.id)
+    await _seed_succeeded_scan(
+        client,
+        project_id=other_project,
+        created_at=datetime(2026, 5, 21, tzinfo=UTC),
+        n_critical=3,
+        release="theirs-1.0",
+    )
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/overview",
+        headers=headers,
+        params={"release": "theirs-1.0"},
+    )
+    assert response.status_code == 404, response.text
+
+
+async def test_scan_id_wins_when_both_anchors_are_given(client) -> None:
+    # scan_id names one immutable snapshot; a label names whichever snapshot
+    # currently holds it. The more specific one must not be overridden.
+    user, project_id, tagged, newer = await _seed_labelled_project(client)
+    headers = _bearer_for(user)
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/overview",
+        headers=headers,
+        params={"scan_id": str(newer), "release": "v1.0"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["severity_distribution"]["critical"] == 0
+
+
+async def test_release_anchor_ignores_a_superseded_claim_on_the_label(client) -> None:
+    # Rescanning v1.0 moves the label; the anchor must follow it to the winner
+    # rather than resolving the snapshot that used to hold it.
+    user, project_id, first, _newer = await _seed_labelled_project(client)
+    headers = _bearer_for(user)
+    factory = await _factory(client)
+    async with factory() as session:
+        scan = (await session.execute(select(Scan).where(Scan.id == first))).scalar_one()
+        scan.superseded_at = datetime(2026, 5, 26, tzinfo=UTC)
+        await session.commit()
+    rescan = await _seed_succeeded_scan(
+        client,
+        project_id=project_id,
+        created_at=datetime(2026, 5, 27, tzinfo=UTC),
+        n_high=1,
+        release="v1.0",
+        ref="main",
+    )
+
+    gate = await client.get(
+        f"/v1/projects/{project_id}/gate-result",
+        headers=headers,
+        params={"release": "v1.0"},
+    )
+    assert gate.status_code == 200, gate.text
+    assert gate.json()["scan_id"] == str(rescan)
+
+
+# ---------------------------------------------------------------------------
 # IDOR + invalid-pin guards
 # ---------------------------------------------------------------------------
 

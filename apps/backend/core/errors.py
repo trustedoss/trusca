@@ -28,6 +28,8 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import Request
 
+from services.scan_resolution import SnapshotScanNotFound
+
 PROBLEM_CONTENT_TYPE = "application/problem+json"
 
 # Sentinel emitted in place of any user-provided value that Pydantic v2's
@@ -109,6 +111,22 @@ def install_exception_handlers(app: FastAPI) -> None:
             status_code=exc.status_code,
             title=title,
             detail=title if isinstance(exc.detail, str) else None,
+            instance=request.url.path,
+        )
+
+    @app.exception_handler(SnapshotScanNotFound)
+    async def _snapshot_not_found_handler(
+        request: Request, exc: SnapshotScanNotFound
+    ) -> JSONResponse:
+        # Raised by the shared ``?scan_id=`` / ``?release=`` anchor dependency,
+        # which runs before the endpoint body and so cannot use the routers'
+        # local try/except. The wording is deliberately the same for an unknown
+        # version label and an unusable scan id: the anchor existence-hides, so
+        # the response must not distinguish them.
+        return problem_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            title="Scan Snapshot Not Found",
+            detail="No succeeded scan matching that anchor exists for this project.",
             instance=request.url.path,
         )
 

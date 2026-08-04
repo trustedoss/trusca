@@ -244,6 +244,8 @@ API에서는 `GET /v1/projects/{id}/releases?release=4.0`이 그 버전 라벨�
 
 검색이 아니라 정확히 일치하는 값을 찾습니다. `4.0`으로는 `4.0.1`을 찾지 못합니다. 앞뒤 공백은 양쪽 모두 제거하고 비교합니다.
 
+상세 조회도 라벨을 직접 받으므로 두 단계를 거칠 일은 드뭅니다. `GET /v1/projects/{id}/notice?release=4.0`, `.../overview?release=4.0`, `.../vulnerabilities?release=4.0` 등이 그 버전 기준으로 응답합니다. 라벨은 현재 그것을 가진 스냅샷을 따라가므로 티켓에 적어 둘 수 있는 영구 주소가 됩니다. 변하지 않는 스캔 하나를 고정하려면 `?scan_id=`를 쓰고, 둘 다 주면 `scan_id`가 이깁니다. 없는 라벨은 `404`를 반환하는데 쓸 수 없는 `scan_id`와 같은 응답이라, 어느 쪽도 상대의 존재 여부를 알려 주지 않습니다.
+
 ### 브랜치로 거르기
 
 `GET /v1/projects/{id}/releases?ref=main`과 `GET /v1/projects/{id}/scans?ref=main` 모두 브랜치 하나로 좁힙니다. 짧은 브랜치명과 전체 형식(`refs/heads/main`, `refs/pull/12/merge`) 둘 다 받습니다. 스캔 트리거와 같은 방식으로 정규화하므로 어느 쪽으로 적어도 그 브랜치의 행에 닿습니다.

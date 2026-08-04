@@ -227,6 +227,7 @@
     "offset",
     "order",
     "project_id",
+    "release",
     "scan_id",
     "search",
     "sort"
@@ -242,6 +243,7 @@
     "order",
     "outdated",
     "project_id",
+    "release",
     "scan_id",
     "search",
     "severity",
@@ -249,6 +251,7 @@
   ],
   "GET /v1/projects/{project_id}/dependency-graph": [
     "project_id",
+    "release",
     "scan_id"
   ],
   "GET /v1/projects/{project_id}/diff": [
@@ -259,6 +262,7 @@
   "GET /v1/projects/{project_id}/gate-result": [
     "project_id",
     "ref",
+    "release",
     "scan_id"
   ],
   "GET /v1/projects/{project_id}/governance": [
@@ -271,6 +275,7 @@
     "offset",
     "order",
     "project_id",
+    "release",
     "review_flag",
     "scan_id",
     "search",
@@ -280,6 +285,7 @@
     "download",
     "format",
     "project_id",
+    "release",
     "scan_id"
   ],
   "GET /v1/projects/{project_id}/obligations": [
@@ -289,6 +295,7 @@
     "offset",
     "order",
     "project_id",
+    "release",
     "scan_id",
     "search",
     "sort"
@@ -299,6 +306,7 @@
   ],
   "GET /v1/projects/{project_id}/overview": [
     "project_id",
+    "release",
     "scan_id"
   ],
   "GET /v1/projects/{project_id}/releases": [
@@ -317,6 +325,7 @@
     "page",
     "page_size",
     "project_id",
+    "release",
     "scan_id",
     "type"
   ],
@@ -324,6 +333,7 @@
     "format",
     "profile",
     "project_id",
+    "release",
     "scan_id"
   ],
   "GET /v1/projects/{project_id}/sbom/attestation": [
@@ -358,12 +368,14 @@
     "path",
     "project_id",
     "raw",
+    "release",
     "scan_id"
   ],
   "GET /v1/projects/{project_id}/source-tree": [
     "page",
     "path",
     "project_id",
+    "release",
     "scan_id",
     "size"
   ],
@@ -379,6 +391,7 @@
     "order",
     "project_id",
     "reachable",
+    "release",
     "scan_id",
     "search",
     "severity",
@@ -388,6 +401,7 @@
   ],
   "GET /v1/projects/{project_id}/vulnerabilities/upgrade-clusters": [
     "project_id",
+    "release",
     "scan_id"
   ],
   "GET /v1/projects/{project_id}/vulnerability-report.pdf": [

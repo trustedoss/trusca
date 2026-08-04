@@ -34,6 +34,7 @@ import structlog
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.v1._snapshot_anchor import snapshot_anchor
 from core.db import get_db
 from core.errors import problem_response
 from core.security import CurrentUser, require_role
@@ -120,15 +121,7 @@ async def list_project_licenses_endpoint(
             "non_commercial = CC-BY-NC…. Omit to list all licenses."
         ),
     ),
-    scan_id: uuid.UUID | None = Query(
-        default=None,
-        description=(
-            "Optional release-snapshot anchor (feature #28). When given, list "
-            "license rows of this SPECIFIC succeeded scan instead of the project's "
-            "latest succeeded scan. Must belong to this project and be succeeded, "
-            "else 404. Omit for the default latest-succeeded behaviour."
-        ),
-    ),
+    scan_id: uuid.UUID | None = Depends(snapshot_anchor),
     session: AsyncSession = Depends(get_db),
     actor: CurrentUser = Depends(require_role("developer")),
 ) -> Response:

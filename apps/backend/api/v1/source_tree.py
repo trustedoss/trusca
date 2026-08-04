@@ -32,6 +32,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response, status
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.v1._snapshot_anchor import snapshot_anchor
 from core.db import get_db
 from core.errors import problem_response
 from core.security import CurrentUser, require_role
@@ -116,10 +117,7 @@ async def get_source_tree(
     ),
     page: int = Query(default=1, ge=1, description="1-based page index."),
     size: int = Query(default=100, ge=1, le=500, description="Page size (max 500)."),
-    scan_id: uuid.UUID | None = Query(
-        default=None,
-        description="Scan to read; defaults to the project's latest scan.",
-    ),
+    scan_id: uuid.UUID | None = Depends(snapshot_anchor),
     session: AsyncSession = Depends(get_db),
     actor: CurrentUser = Depends(require_role("developer")),
 ) -> JSONResponse | SourceTreePage:
@@ -185,10 +183,7 @@ async def get_source_file(
     request: Request,
     project_id: uuid.UUID,
     path: str = Query(description="File to read, relative to the source root."),
-    scan_id: uuid.UUID | None = Query(
-        default=None,
-        description="Scan to read; defaults to the project's latest scan.",
-    ),
+    scan_id: uuid.UUID | None = Depends(snapshot_anchor),
     raw: bool = Query(
         default=False,
         description=(
