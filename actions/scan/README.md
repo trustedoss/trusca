@@ -1,6 +1,6 @@
-# TrustedOSS SCA Scan — GitHub Action
+# TRUSCA Scan — GitHub Action
 
-Composite GitHub Action that triggers a TrustedOSS SCA scan, waits for it to
+Composite GitHub Action that triggers a TRUSCA scan, waits for it to
 finish, evaluates the build gate, and (on pull requests) posts the SCA report
 back to the PR.
 
@@ -13,7 +13,7 @@ SCA tool ships, on Apache-2.0 self-hosted infra.
 ## Quick start
 
 ```yaml
-name: TrustedOSS SCA
+name: TRUSCA SCA
 on:
   pull_request:
   push:
@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: TrustedOSS SCA scan
+      - name: TRUSCA SCA scan
         uses: trustedoss/scan-action@v1
         with:
           api-url: https://trustedoss.example.com

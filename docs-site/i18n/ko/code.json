@@ -6,7 +6,7 @@
     "message": "Apache-2.0 · 자체 호스팅 · v0.19.2"
   },
   "homepage.hero.subtitle": {
-    "message": "TrustedOSS의 SCA 도구, TRUSCA — 취약점, 라이선스 컴플라이언스, SBOM을 하나의 자체 호스팅 UI에서. 시트당 라이선스 비용 없음."
+    "message": "Trusted SCA — 취약점, 라이선스 컴플라이언스, SBOM을 자체 호스팅 UI 하나에서 관리합니다. 좌석당 라이선스 비용이 없습니다."
   },
   "homepage.hero.cta.quickstart": {
     "message": "Quickstart — 5분"

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 TRUSCA contributors
-name: 'TrustedOSS SCA Scan'
-description: 'Trigger a TrustedOSS scan and gate the build on Critical CVEs / forbidden licenses.'
+name: 'TRUSCA Scan'
+description: 'Trigger a TRUSCA scan and gate the build on Critical CVEs / forbidden licenses.'
 author: 'TrustedOSS'
 branding:
   icon: 'shield'
@@ -280,7 +280,7 @@ runs:
 
         # Job summary block — visible on the workflow run page.
         {
-          echo "## TrustedOSS SCA Gate"
+          echo "## TRUSCA Gate"
           echo ""
           echo "| Field | Value |"
           echo "|---|---|"

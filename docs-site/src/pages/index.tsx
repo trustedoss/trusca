@@ -22,9 +22,8 @@ function HomepageHero(): ReactNode {
         <h1 className={styles.heroTitle}>{siteConfig.title}</h1>
         <p className={styles.heroSubtitle}>
           <Translate id="homepage.hero.subtitle">
-            The SCA tool of the TrustedOSS initiative — vulnerabilities,
-            license compliance, and SBOMs in one self-hosted UI. No per-seat
-            licensing.
+            Trusted SCA — vulnerabilities, license compliance, and SBOMs in
+            one self-hosted UI. No per-seat licensing.
           </Translate>
         </p>
         <div className={styles.heroCtas}>

@@ -1,6 +1,6 @@
-# TrustedOSS SCA — GitLab CI template
+# TRUSCA — GitLab CI template
 # =============================================================================
-# Triggers a TrustedOSS SCA scan, polls until it finishes, evaluates the build
+# Triggers a TRUSCA scan, polls until it finishes, evaluates the build
 # gate, posts the SCA report to the MR (when running on a merge_request_event
 # pipeline), and exits non-zero on gate failure so the pipeline turns red.
 #
