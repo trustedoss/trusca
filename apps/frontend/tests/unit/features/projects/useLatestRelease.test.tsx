@@ -24,6 +24,7 @@ function snapshot(scanId: string): ReleaseSnapshot {
   return {
     scan_id: scanId,
     release: "v1.0.0",
+    ref: null,
     created_at: "2026-05-22T10:00:00Z",
     risk_score: 50,
     severity_summary: { critical: 0, high: 0, medium: 0, low: 0 },
