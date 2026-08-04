@@ -216,6 +216,12 @@ The card is the same data the project-list meta row exposes, surfaced once at th
 
 ## The Releases tab {#the-releases-tab}
 
+:::note[Project, scan, release, version, branch]
+
+Four words, and they are not interchangeable. A **project** is what you manage — a repository or image. A **scan** is one analysis run of it, with a status: queued, running, succeeded, failed, cancelled. A **release** is a succeeded scan read as a point-in-time record; every succeeded scan is one release, which is why the Releases tab lists more rows than you have shipped builds. A **version** (`v1.2.3`) is an optional label you attach when triggering a scan, naming the unit you intend to ship — it is a property of a release, not a separate thing, and a labelled release is exempt from retention. A **branch** is the line of development a scan targeted; unlike a version it keeps moving, and newer scans on the same branch supersede older ones.
+
+:::
+
 Every time a scan reaches a terminal `succeeded` status the portal records a **release snapshot** — an immutable point-in-time view of the project (component list, license tier mix, vulnerability findings, scan id) tagged with the scan's completion timestamp. The **Releases** tab on a project lists those snapshots newest-first:
 
 | Column | What it shows |

@@ -121,8 +121,11 @@ _SCAN_METADATA_MAX_DEPTH = 4
 #   - "upload": extract a previously-uploaded zip identified by archive_id
 _SCAN_SOURCE_TYPES = frozenset({"git", "upload"})
 
-# Feature #18 Part A — release/version label. An optional ``metadata.release``
-# (e.g. "v1.2.3") lets a user map a release tag → its scan findings. We restrict
+# Feature #18 Part A — version label. An optional ``metadata.release`` (e.g.
+# "v1.2.3") names the shipped unit a scan corresponds to, so a user can map a
+# release tag → its scan findings. Vocabulary note: "release" is a succeeded
+# scan (see ``schemas.release_snapshot``); "version" is this label attached to
+# one. The JSON key stays ``release`` — it is a published API field. We restrict
 # it to the SAME git-ref-safe charset/length approach used for ``default_branch``
 # (letters, digits, and the ref-safe punctuation ``._/-``), bounded at 100 chars
 # (a generous cap for a version/ref label — well under the 16 KiB metadata cap).
@@ -598,8 +601,8 @@ class ScanCreate(BaseModel):
                     " source_type == 'upload'",
                 )
 
-        # Feature #18 Part A — optional release/version label. Absent / blank is
-        # allowed (the scan simply carries no release). When present it must be a
+        # Feature #18 Part A — optional version label. Absent / blank is
+        # allowed (the scan simply carries no version). When present it must be a
         # short, ref-safe label (same charset as default_branch). This rejects
         # spaces, control chars, and shell metacharacters (`;`, `&`, `|`, ...)
         # by construction — they are not in the charset.
@@ -671,7 +674,7 @@ class ScanPublic(BaseModel):
         validation_alias="scan_metadata",
         serialization_alias="metadata",
     )
-    # Feature #18 Part A — convenience surfacing of the release/version label that
+    # Feature #18 Part A — convenience surfacing of the version label that
     # rides inside `metadata` (the canonical store). It is derived from
     # `metadata.get("release")` in the `_derive_release` validator below so a
     # client never has to dig into the metadata blob to map a release → findings.

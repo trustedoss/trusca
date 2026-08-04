@@ -65,8 +65,10 @@ class ReleaseSnapshot(BaseModel):
     release: str | None = Field(
         default=None,
         description=(
-            "Optional release/version label from the scan's ``metadata.release`` "
-            "(e.g. 'v1.2.3'). Non-unique and often absent (null)."
+            "Optional version label from the scan's ``metadata.release`` (e.g. "
+            "'v1.2.3') naming the shipped unit this release corresponds to. "
+            "Non-unique and often absent (null) — most releases are unlabelled "
+            "CI scans."
         ),
     )
     created_at: datetime = Field(
