@@ -980,8 +980,15 @@ async def list_scans_for_project(
     actor: CurrentUser,
     page: int = 1,
     size: int = 20,
+    ref: str | None = None,
 ) -> tuple[list[Scan], int]:
-    """Return (scans, total) ordered by created_at desc, paginated."""
+    """Return (scans, total) ordered by created_at desc, paginated.
+
+    ``ref`` narrows the history to one normalized branch. The caller passes an
+    already-normalized value (``normalize_ref``) so ``refs/heads/main`` and
+    ``main`` reach the same rows the scan-create path stamped. Applied to the
+    count as well, so a filtered page does not report the unfiltered total.
+    """
     page = max(page, 1)
     size = max(min(size, 100), 1)
 
@@ -991,9 +998,10 @@ async def list_scans_for_project(
             f"actor is not a member of team {project.team_id}",
         )
 
-    total_result = await session.execute(
-        select(func.count()).select_from(Scan).where(Scan.project_id == project_id)
-    )
+    count_stmt = select(func.count()).select_from(Scan).where(Scan.project_id == project_id)
+    if ref is not None:
+        count_stmt = count_stmt.where(Scan.ref == ref)
+    total_result = await session.execute(count_stmt)
     total = int(total_result.scalar_one())
 
     rows_stmt = (
@@ -1008,6 +1016,8 @@ async def list_scans_for_project(
         .limit(size)
         .offset((page - 1) * size)
     )
+    if ref is not None:
+        rows_stmt = rows_stmt.where(Scan.ref == ref)
     rows_result = await session.execute(rows_stmt)
     rows = list(rows_result.scalars().all())
     return rows, total

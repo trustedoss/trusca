@@ -1029,7 +1029,8 @@
       "risk": "리스크",
       "severity": "심각도",
       "gate": "게이트",
-      "actions": "작업"
+      "actions": "작업",
+      "branch": "브랜치"
     },
     "severity_abbr": {
       "critical": "C",
@@ -1043,7 +1044,8 @@
     },
     "errors": {
       "load_failed": "릴리스를 불러오지 못했습니다. 다시 시도해 주세요."
-    }
+    },
+    "branch_none": "지정 없음"
   },
   "release_switcher": {
     "menu_label": "릴리스",

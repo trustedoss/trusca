@@ -1029,7 +1029,8 @@
       "risk": "Risk",
       "severity": "Severity",
       "gate": "Gate",
-      "actions": "Actions"
+      "actions": "Actions",
+      "branch": "Branch"
     },
     "severity_abbr": {
       "critical": "C",
@@ -1043,7 +1044,8 @@
     },
     "errors": {
       "load_failed": "Could not load releases. Please try again."
-    }
+    },
+    "branch_none": "ad-hoc"
   },
   "release_switcher": {
     "menu_label": "Release",

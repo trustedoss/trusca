@@ -440,6 +440,72 @@ async def test_releases_release_filter_does_not_cross_projects(client) -> None:
     assert response.json()["items"] == []
 
 
+async def test_releases_expose_and_filter_by_branch(client) -> None:
+    team, user = await _seed_team_with_user(client)
+    project_id = await _seed_empty_project(client, team_id=team.id)
+    headers = _bearer_for(user)
+    base = datetime(2026, 5, 20, tzinfo=UTC)
+    main_scan = await _seed_succeeded_scan(
+        client, project_id=project_id, created_at=base, ref="main"
+    )
+    await _seed_succeeded_scan(
+        client, project_id=project_id, created_at=base + timedelta(days=1), ref="pr-12"
+    )
+
+    unfiltered = await client.get(f"/v1/projects/{project_id}/releases", headers=headers)
+    assert unfiltered.json()["total"] == 2
+    assert {row["ref"] for row in unfiltered.json()["items"]} == {"main", "pr-12"}
+
+    # A fully-qualified ref must reach the same rows the bare branch stamped.
+    for query in ("main", "refs/heads/main"):
+        filtered = await client.get(
+            f"/v1/projects/{project_id}/releases", headers=headers, params={"ref": query}
+        )
+        assert filtered.status_code == 200, filtered.text
+        assert filtered.json()["total"] == 1
+        assert [r["scan_id"] for r in filtered.json()["items"]] == [str(main_scan)]
+
+
+async def test_releases_ref_is_null_for_adhoc_scans(client) -> None:
+    team, user = await _seed_team_with_user(client)
+    project_id = await _seed_empty_project(client, team_id=team.id)
+    headers = _bearer_for(user)
+    await _seed_succeeded_scan(
+        client, project_id=project_id, created_at=datetime(2026, 5, 20, tzinfo=UTC)
+    )
+
+    response = await client.get(f"/v1/projects/{project_id}/releases", headers=headers)
+    assert response.status_code == 200, response.text
+    assert response.json()["items"][0]["ref"] is None
+
+
+async def test_project_scans_list_filters_by_branch_including_failures(client) -> None:
+    # The releases list only shows succeeded scans; the scans list is where a
+    # branch's failed attempts have to remain visible.
+    team, user = await _seed_team_with_user(client)
+    project_id = await _seed_empty_project(client, team_id=team.id)
+    headers = _bearer_for(user)
+    base = datetime(2026, 5, 20, tzinfo=UTC)
+    await _seed_succeeded_scan(client, project_id=project_id, created_at=base, ref="main")
+    await _seed_succeeded_scan(
+        client,
+        project_id=project_id,
+        created_at=base + timedelta(days=1),
+        ref="main",
+        status="failed",
+    )
+    await _seed_succeeded_scan(
+        client, project_id=project_id, created_at=base + timedelta(days=2), ref="pr-12"
+    )
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/scans", headers=headers, params={"ref": "main"}
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["total"] == 2
+    assert {row["ref"] for row in response.json()["items"]} == {"main"}
+
+
 async def test_releases_empty_when_no_succeeded_scan(client) -> None:
     team, user = await _seed_team_with_user(client)
     project_id = await _seed_empty_project(client, team_id=team.id)

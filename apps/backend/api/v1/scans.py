@@ -45,6 +45,7 @@ from services.scan_service import (
     get_scan,
     list_scans_for_actor,
     list_scans_for_project,
+    normalize_ref,
 )
 
 router = APIRouter(prefix="/v1", tags=["scans"])
@@ -449,6 +450,17 @@ async def list_scans_endpoint(
     project_id: uuid.UUID,
     page: int = Query(default=1, ge=1),
     size: int = Query(default=20, ge=1, le=100),
+    ref: str | None = Query(
+        default=None,
+        max_length=255,
+        description=(
+            "Optional branch filter. Accepts a bare branch (``main``) or a "
+            "fully-qualified ref (``refs/heads/main``, ``refs/pull/12/merge``), "
+            "normalized the same way scan triggers normalize it. Unlike the "
+            "releases list this covers every status, so it answers \"what has "
+            "this branch done lately\" including failures."
+        ),
+    ),
     session: AsyncSession = Depends(get_db),
     actor: CurrentUser = Depends(require_role("developer")),
 ) -> Response:
@@ -459,6 +471,7 @@ async def list_scans_endpoint(
             actor=actor,
             page=page,
             size=size,
+            ref=normalize_ref(ref),
         )
     except ScanError as exc:
         return _problem_for_scan_error(request, exc)

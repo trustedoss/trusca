@@ -71,6 +71,15 @@ class ReleaseSnapshot(BaseModel):
             "CI scans."
         ),
     )
+    ref: str | None = Field(
+        default=None,
+        description=(
+            "Normalized git ref this snapshot was scanned from (``main``, "
+            "``v1.2.3``, ``pr-12``), or null for an ad-hoc scan that carried no "
+            "ref. Distinct from ``release``: the ref is where the code came "
+            "from and keeps moving, the label names a shipped unit and does not."
+        ),
+    )
     created_at: datetime = Field(
         description="When this scan was created (snapshots are ordered newest-first by this)."
     )
@@ -112,6 +121,7 @@ class ReleaseListResponse(BaseModel):
                     {
                         "scan_id": "7822b62d-9156-423d-9df6-5e51f546fbe8",
                         "release": "v1.2.3",
+                        "ref": "v1.2.3",
                         "created_at": "2026-05-22T10:00:00Z",
                         "risk_score": 92.9,
                         "severity_summary": {

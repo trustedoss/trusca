@@ -151,6 +151,7 @@ async def _paged_succeeded_scans(
     page: int,
     size: int,
     release: str | None = None,
+    ref: str | None = None,
 ) -> tuple[list[Scan], int]:
     """Return ``(page_of_succeeded_scans, total)`` newest-first.
 
@@ -191,6 +192,11 @@ async def _paged_succeeded_scans(
         .where(cast(Scan.status, String) == "succeeded")
         .where(Scan.superseded_at.is_(None))
     )
+    if ref is not None:
+        # Already normalized by the caller, matching the value the scan-create
+        # path stamped — so ``refs/heads/main`` and ``main`` reach one branch.
+        items_stmt = items_stmt.where(Scan.ref == ref)
+        count_stmt = count_stmt.where(Scan.ref == ref)
     if label:
         # Applied to both statements so `total` describes the filtered set — a
         # caller paging a label filter must not be told there are 40 matches.
@@ -343,6 +349,7 @@ async def list_release_snapshots(
     page: int = 1,
     size: int = 20,
     release: str | None = None,
+    ref: str | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
     """List a project's release snapshots (succeeded scans), newest-first.
 
@@ -383,7 +390,7 @@ async def list_release_snapshots(
     )
 
     scans, total = await _paged_succeeded_scans(
-        session, project_id=project_id, page=page, size=size, release=release
+        session, project_id=project_id, page=page, size=size, release=release, ref=ref
     )
     if not scans:
         return [], total
@@ -412,6 +419,7 @@ async def list_release_snapshots(
             {
                 "scan_id": scan.id,
                 "release": _release_label(scan),
+                "ref": scan.ref,
                 "created_at": scan.created_at,
                 "risk_score": risk_score,
                 "severity_summary": {

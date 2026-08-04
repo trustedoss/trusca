@@ -39,6 +39,7 @@ function snapshot(
   return {
     scan_id: scanId,
     release: null,
+    ref: null,
     created_at: "2026-05-22T10:00:00Z",
     risk_score: 80,
     severity_summary: { critical: 10, high: 0, medium: 0, low: 0 },
@@ -232,5 +233,27 @@ describe("ReleasesTab", () => {
     expect(screen.getByTestId("releases-error").textContent).toContain(
       "Release access denied — surfaced verbatim.",
     );
+  });
+
+  it("shows the branch a snapshot was scanned from", async () => {
+    mockedList.mockResolvedValue(
+      listResponse([snapshot("scan-branch", { ref: "release/1.x" })]),
+    );
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getByTestId("release-row-branch")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("release-row-branch").textContent).toBe(
+      "release/1.x",
+    );
+  });
+
+  it("labels an ad-hoc snapshot rather than leaving the branch cell blank", async () => {
+    mockedList.mockResolvedValue(listResponse([snapshot("scan-adhoc")]));
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getByTestId("release-row-branch")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("release-row-branch").textContent).toBe("ad-hoc");
   });
 });

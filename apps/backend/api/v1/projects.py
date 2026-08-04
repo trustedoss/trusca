@@ -90,6 +90,7 @@ from services.scan_service import (
     ConcurrentScanLimitExceeded,
     ScanError,
     ScanInProgressConflict,
+    normalize_ref,
     trigger_scan,
 )
 from services.source_archive_service import (
@@ -681,6 +682,16 @@ async def list_project_releases_endpoint(
             "``?scan_id=``. An unknown label returns an empty list, not a 404."
         ),
     ),
+    ref: str | None = Query(
+        default=None,
+        max_length=255,
+        description=(
+            "Optional branch filter. Accepts a bare branch (``main``) or a "
+            "fully-qualified ref (``refs/heads/main``, ``refs/pull/12/merge``), "
+            "normalized the same way scan triggers normalize it, so a branch "
+            "reaches its own snapshots either way."
+        ),
+    ),
     session: AsyncSession = Depends(get_db),
     actor: CurrentUser = Depends(require_role("developer")),
 ) -> Response:
@@ -695,6 +706,7 @@ async def list_project_releases_endpoint(
             page=page,
             size=size,
             release=release,
+            ref=normalize_ref(ref),
         )
     except ProjectError as exc:
         return _problem_for_project_error(request, exc)

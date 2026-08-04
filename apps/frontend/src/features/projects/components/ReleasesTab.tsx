@@ -173,6 +173,9 @@ export function ReleasesTab({ projectId, onViewSnapshot }: ReleasesTabProps) {
                       {t("releases.col.release")}
                     </th>
                     <th className="px-3 py-2 font-medium">
+                      {t("releases.col.branch")}
+                    </th>
+                    <th className="px-3 py-2 font-medium">
                       {t("releases.col.date")}
                     </th>
                     <th className="px-3 py-2 text-right font-medium">
@@ -242,6 +245,19 @@ function ReleaseRow({ release, locale, onView }: ReleaseRowProps) {
         >
           {label}
         </span>
+      </td>
+      <td className="px-3 py-2" data-testid="release-row-branch">
+        {release.ref ? (
+          <span className="font-mono text-xs text-muted-foreground">
+            {release.ref}
+          </span>
+        ) : (
+          // An ad-hoc scan carried no ref. Say so rather than leaving the cell
+          // blank, which reads as missing data.
+          <span className="text-xs text-muted-foreground">
+            {t("releases.branch_none")}
+          </span>
+        )}
       </td>
       <td
         className="px-3 py-2 text-xs text-muted-foreground"
