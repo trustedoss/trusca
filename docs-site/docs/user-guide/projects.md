@@ -178,7 +178,9 @@ Screenshots taken before  W1 show a single gauge labelled "Risk". The two-axis c
 
 ## Build gate verdict (Overview tab)
 
-The **Overview** tab shows a **Build gate** card next to the risk gauge. It surfaces the same build-blocking verdict the CI integration computes — so you can read the gate result in the portal without opening a CI log. The card evaluates the project's **latest successful scan**.
+The **Overview** tab shows a **Build gate** card next to the risk gauge. It surfaces the same build-blocking verdict the CI integration computes — so you can read the gate result in the portal without opening a CI log. The card evaluates the project's **main line** — the newest successful scan whose branch matches the project's default branch (falling back to `main`, and to the newest successful scan of any branch if neither matched). A project scanned on several branches therefore shows a stable verdict instead of one that flips to whichever branch finished last.
+
+Over the API, a CI job should name its own branch: `GET /v1/projects/{id}/gate-result?ref=<branch>` evaluates that branch alone, so a release branch's critical CVE cannot block `main`'s pipeline. Fully-qualified refs (`refs/heads/main`, `$GITHUB_REF`) are normalized the same way scan triggers normalize them. A branch with no successful scan returns the no-signal pass rather than borrowing another branch's findings.
 
 The **build gate** (also called the **policy gate**) is the CI-blocking mechanism that exits non-zero when a build carries critical CVEs or forbidden-tier licenses. The concept and how to wire it into a pipeline live in [GitHub Actions → the build gate](../ci-integration/github-actions.md#outputs) and [Glossary → Build gates](../reference/glossary.md#build-gates); this card is the read-only, in-UI view of the same verdict.
 

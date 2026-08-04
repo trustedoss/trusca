@@ -258,6 +258,7 @@
   ],
   "GET /v1/projects/{project_id}/gate-result": [
     "project_id",
+    "ref",
     "scan_id"
   ],
   "GET /v1/projects/{project_id}/governance": [

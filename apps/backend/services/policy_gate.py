@@ -629,6 +629,7 @@ async def evaluate_gate(
     project_id: uuid.UUID,
     *,
     scan_id: uuid.UUID | None = None,
+    ref: str | None = None,
 ) -> GateResult:
     """Compute the build-gate verdict for ``project_id``.
 
@@ -643,9 +644,16 @@ async def evaluate_gate(
     :func:`services.scan_resolution.resolve_snapshot_scan_id` before calling).
     When ``None`` (the default, used by CI's "latest verdict" contract) the
     latest succeeded scan is resolved here exactly as before.
+
+    ``ref`` scopes that internal resolution to one branch, and must be passed
+    whenever the caller resolved with a ref of its own. The caller's ``None``
+    means "not pinned", but a ref that has never had a succeeded scan also
+    resolves to ``None`` — without this parameter the two collapse and the gate
+    would answer a branch-scoped request with the main line's findings, which is
+    the exact confusion the ref anchor exists to prevent.
     """
     if scan_id is None:
-        scan_id = await _latest_succeeded_scan_id(session, project_id)
+        scan_id = await _latest_succeeded_scan_id(session, project_id, ref=ref)
     evaluated_at = datetime.now(tz=UTC)
 
     # Read the EPSS threshold once per evaluation (None when the gate is

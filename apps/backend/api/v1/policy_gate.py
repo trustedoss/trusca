@@ -79,6 +79,7 @@ from services.sca_comment import (
     post_pr_comment,
 )
 from services.scan_resolution import SnapshotScanNotFound, resolve_snapshot_scan_id
+from services.scan_service import normalize_ref
 from services.upgrade_recommendation import (
     FindingSignal,
     priority_rank,
@@ -233,7 +234,7 @@ def _build_response_body(result: GateResult) -> GateResultResponse:
 @router.get(
     "/projects/{project_id}/gate-result",
     response_model=GateResultResponse,
-    summary="Evaluate the build-gate verdict for the project's latest succeeded scan",
+    summary="Evaluate the build-gate verdict for the project's current-state scan",
 )
 async def get_gate_result_endpoint(
     request: Request,
@@ -246,6 +247,18 @@ async def get_gate_result_endpoint(
             "project's latest succeeded scan (so the Overview gate card can reflect "
             "a pinned release). Must belong to this project and be succeeded, else "
             "404. Omit for the default latest-succeeded behaviour (the CI contract)."
+        ),
+    ),
+    ref: str | None = Query(
+        default=None,
+        max_length=255,
+        description=(
+            "Optional branch anchor: evaluate against the newest succeeded scan "
+            "of this normalized git ref (``main``, ``pr-12``) instead of the "
+            "project's main line. A CI job should pass its own ref so its verdict "
+            "cannot be decided by a scan of a different branch. Exact: a ref with "
+            "no succeeded scan yields the no-signal pass, never another branch's "
+            "findings. Ignored when ``scan_id`` is given, which is more specific."
         ),
     ),
     session: AsyncSession = Depends(get_db),
@@ -261,7 +274,9 @@ async def get_gate_result_endpoint(
     # pinned scan_id (cross-project / non-succeeded / nonexistent) → existence-
     # hide 404. ``None`` → latest succeeded (unchanged CI default).
     try:
-        resolved_scan_id = await resolve_snapshot_scan_id(session, project_id, scan_id)
+        resolved_scan_id = await resolve_snapshot_scan_id(
+            session, project_id, scan_id, ref=normalize_ref(ref)
+        )
     except SnapshotScanNotFound:
         return problem_response(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -270,7 +285,12 @@ async def get_gate_result_endpoint(
             instance=request.url.path,
         )
 
-    gate_result = await evaluate_gate(session, project_id, scan_id=resolved_scan_id)
+    # Pass the ref as well: `resolved_scan_id` is None both when nothing was
+    # pinned and when the named branch has no succeeded scan, and only the ref
+    # tells evaluate_gate which of the two it is.
+    gate_result = await evaluate_gate(
+        session, project_id, scan_id=resolved_scan_id, ref=normalize_ref(ref)
+    )
     body = _build_response_body(gate_result)
     return Response(
         content=body.model_dump_json(),
