@@ -68,6 +68,19 @@ describe("releasesApi", () => {
       expect.objectContaining({ params: { page: 3, size: 25 } }),
     );
   });
+
+  it("forwards the version-label filter, trimmed", async () => {
+    await listProjectReleases("proj-1", { release: "  4.0  " });
+    const call = mockedGet.mock.calls.at(-1)!;
+    expect(call[1].params).toEqual({ release: "4.0" });
+  });
+
+  it("omits an absent or blank label so the list stays unfiltered", async () => {
+    await listProjectReleases("proj-1", { release: "   " });
+    expect(mockedGet.mock.calls.at(-1)![1].params).not.toHaveProperty("release");
+    await listProjectReleases("proj-1", {});
+    expect(mockedGet.mock.calls.at(-1)![1].params).not.toHaveProperty("release");
+  });
 });
 
 describe("releaseLabel", () => {

@@ -236,6 +236,12 @@ Click a release row directly to navigate to the **Components** tab with the snap
 
 Downloads follow the pin too. With a release pinned, the **NOTICE** you download is composed from that release's licenses, not from the newest scan — so the attribution document you shipped with an earlier release stays retrievable after later scans succeed. Over the API this is `GET /v1/projects/{id}/notice?scan_id=<id>`; as with every other snapshot-anchored read, an id that is not one of this project's succeeded scans returns `404`.
 
+### Looking a version up by name
+
+Over the API, `GET /v1/projects/{id}/releases?release=4.0` returns the snapshot carrying that version label. Because a labelled scan supersedes any earlier scan claiming the same label, the answer is at most one row — read its `scan_id` and pin it on the detail endpoints (`?scan_id=`) to read that release's components, licences, findings, SBOM, or NOTICE. An unknown label returns an empty list rather than a `404`: not having shipped 9.9 yet is a normal answer, and a `404` would be indistinguishable from "no such project".
+
+The match is exact, not a search — `4.0` does not find `4.0.1`. Surrounding whitespace is trimmed on both sides.
+
 The companion **Compare** screen (the **Compare** button on the Releases-tab toolbar, enabled once the project has at least two releases) takes two snapshot ids — a **base** and a **target** — and shows what changed between them: added / removed / version-changed components, introduced / resolved vulnerabilities, and the risk-score, per-severity, license-tier, and build-gate deltas. A **swap** control flips base and target. The button defaults to comparing the newest release (target) against the one before it (base), and the two ids live in the URL (`?base=&target=`) so a specific comparison can be shared. It is the canonical diff view for "what changed between release X and release Y".
 
 ## The Reports tab {#the-reports-tab}

@@ -8,7 +8,7 @@
  * needs to pick a snapshot to inspect (risk score, severity summary, gate
  * verdict, component count).
  *
- *   - GET /v1/projects/{id}/releases?page=&size= → ReleaseListResponse
+ *   - GET /v1/projects/{id}/releases?page=&size=&release= → ReleaseListResponse
  *
  * The wire types mirror the backend's `ReleaseSnapshot` 1:1 (snake_case).
  * `release` is frequently `null` (the scan was triggered without a version
@@ -77,6 +77,13 @@ export interface ListReleasesParams {
   page?: number;
   /** Page size (server default applies when omitted). */
   size?: number;
+  /**
+   * Exact version-label filter (e.g. "4.0"). A label identifies at most one
+   * live release, so this is the "which snapshot is 4.0?" lookup rather than a
+   * search. Whitespace is trimmed on both sides; an unknown label yields an
+   * empty list, not an error.
+   */
+  release?: string;
 }
 
 export async function listProjectReleases(
@@ -86,6 +93,9 @@ export async function listProjectReleases(
   const query: Record<string, unknown> = {};
   if (params.page != null) query.page = params.page;
   if (params.size != null) query.size = params.size;
+  if (params.release != null && params.release.trim().length > 0) {
+    query.release = params.release.trim();
+  }
   const { data } = await api.get<ReleaseListResponse>(
     `/v1/projects/${projectId}/releases`,
     { params: query },
