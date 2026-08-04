@@ -14,6 +14,11 @@ Model (stateful, so results stay readable in the UI):
     scan finalize path): when a scan succeeds it becomes the live snapshot for
     its normalized ref; older succeeded same-ref scans without an explicit
     ``metadata.release`` label are stamped ``superseded_at``.
+  Layer 1b — label-keyed retire (``supersede_prior_release_scans``, same call
+    site): a scan carrying ``metadata.release`` becomes the one snapshot that
+    label resolves to, superseding prior succeeded scans with the SAME label.
+    Unlike layer 1 this is a pointer move only — labelled scans are exempt from
+    every reclaim sweep, so the displaced snapshot stays readable by id.
   Layer 2 — this beat:
     (a) superseded scans past a grace period are hard-deleted (cascade reclaims
         their findings/components/artifacts);
@@ -228,6 +233,67 @@ def supersede_prior_ref_scans(
     return count
 
 
+def supersede_prior_release_scans(
+    session: Session,
+    *,
+    project_id: uuid.UUID,
+    winner_scan_id: uuid.UUID,
+    release: str | None,
+    now: datetime | None = None,
+) -> int:
+    """Mark prior succeeded scans carrying the SAME version label superseded.
+
+    Rescanning a shipped version is ordinary practice — the first attempt
+    failed, the scanner improved, the label was a typo. Rejecting the second
+    "4.0" would make the label a one-shot resource with no way out, so instead
+    the newest labelled scan becomes the one "4.0" resolves to and the earlier
+    ones step aside. That keeps the label answering exactly one question:
+    *which* snapshot is version 4.0.
+
+    Superseding here is a pointer move, NOT a prelude to deletion. The
+    grace-period reclaim (:func:`_reclaim_superseded`) skips labelled scans, so
+    the earlier 4.0 stays readable by scan id and stays out of the reaper's
+    reach — it just stops being the live release row.
+
+    Ref-keyed supersede (:func:`supersede_prior_ref_scans`) deliberately does
+    NOT touch labelled scans: a branch pointer moves on every push, and a
+    version must not be retired by unrelated traffic on the branch it was cut
+    from. Only another scan claiming the SAME label may displace it — that is
+    the whole difference between a branch and a version.
+
+    Returns the number of rows superseded. The caller owns the commit.
+    """
+    if not release or not release.strip():
+        return 0
+    now = now or datetime.now(UTC)
+    label = release.strip()
+    stmt = (
+        update(Scan)
+        .where(
+            Scan.project_id == project_id,
+            Scan.id != winner_scan_id,
+            cast(Scan.status, String) == "succeeded",
+            Scan.superseded_at.is_(None),
+            # Compare the trimmed label, matching how the winner's own label was
+            # normalised — " 4.0" and "4.0" name the same version.
+            func.jsonb_typeof(Scan.scan_metadata["release"]) == "string",
+            func.btrim(Scan.scan_metadata["release"].astext) == label,
+        )
+        .values(superseded_at=now, superseded_by_scan_id=winner_scan_id)
+    )
+    result = session.execute(stmt)
+    count = int(result.rowcount or 0)
+    if count:
+        log.info(
+            "scan_release_superseded",
+            project_id=str(project_id),
+            release=label,
+            winner_scan_id=str(winner_scan_id),
+            superseded_count=count,
+        )
+    return count
+
+
 # ---------------------------------------------------------------------------
 # Layer 2 — retention beat
 # ---------------------------------------------------------------------------
@@ -294,12 +360,21 @@ def _reclaim_superseded(session: Session, *, now: datetime, grace_days: int) -> 
     A superseded scan already lost its ref slot to a newer winner; after the
     grace window it is reclaimed. Children cascade; pointers SET NULL. Each
     reclaimed scan gets an explicit AuditLog row (counts captured pre-delete).
+
+    Labelled scans are exempt. They became superseded only by another scan
+    claiming the same version label (``supersede_prior_release_scans``), and
+    the point of that move is to pick a winner, not to schedule a delete: the
+    earlier 4.0 must stay readable. Without this predicate the label rule would
+    quietly turn into "rescanning a version destroys the previous one after the
+    grace period" — the same protection ``_reclaim_aged`` and the manual delete
+    endpoint already give labelled scans, applied on this path too.
     """
     cutoff = now - timedelta(days=grace_days)
     pre = session.execute(
         select(Scan.id, Scan.ref, Scan.project_id).where(
             Scan.superseded_at.is_not(None),
             Scan.superseded_at < cutoff,
+            _release_absent(),
         )
     ).all()
     if not pre:
@@ -437,4 +512,8 @@ def _reclaim_aged(
     return reclaimed
 
 
-__all__ = ["scan_retention_task", "supersede_prior_ref_scans"]
+__all__ = [
+    "scan_retention_task",
+    "supersede_prior_ref_scans",
+    "supersede_prior_release_scans",
+]

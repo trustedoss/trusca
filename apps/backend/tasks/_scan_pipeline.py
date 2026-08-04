@@ -50,7 +50,10 @@ from sqlalchemy.orm import Session
 from core.db import sync_session_scope
 from models import Scan
 from tasks._progress import publish_progress
-from tasks.scan_retention import supersede_prior_ref_scans
+from tasks.scan_retention import (
+    supersede_prior_ref_scans,
+    supersede_prior_release_scans,
+)
 
 log = structlog.get_logger("tasks.scan_pipeline")
 
@@ -92,6 +95,20 @@ def mark_succeeded(scan_uuid: uuid.UUID) -> None:
             project_id=scan.project_id,
             winner_scan_id=scan.id,
             ref=scan.ref,
+        )
+        # Layer 1b: if this scan names a version, it becomes the snapshot that
+        # version resolves to — prior succeeded scans carrying the SAME label
+        # step aside. Rescanning a shipped version is routine (failed first
+        # attempt, improved scanner, corrected typo), so the label moves rather
+        # than the second scan being refused. The displaced snapshot is only
+        # superseded, never reclaimed: labelled scans are exempt from every
+        # sweep, so it stays readable by scan id.
+        release_label = (scan.scan_metadata or {}).get("release")
+        supersede_prior_release_scans(
+            session,
+            project_id=scan.project_id,
+            winner_scan_id=scan.id,
+            release=release_label if isinstance(release_label, str) else None,
         )
         session.commit()
     publish_progress(scan_uuid, step="succeeded", percent=100)

@@ -28,7 +28,7 @@ scan #3 on main  ──► live, scan #2 superseded ──► grace 후 회수
 
 - **Live** — 타겟의 가장 최근 성공 스캔. 항상 조회 가능하며 나이만으로는 회수되지 않습니다.
 - **Superseded** — 동일 타겟의 더 새로운 성공 스캔으로 대체된, 이전에 live였던 스캔. diff·롤백을 위해 grace 윈도우(`SCAN_RETENTION_SUPERSEDED_GRACE_DAYS`, 기본 7일) 동안 보존된 뒤 sweep이 회수합니다.
-- **Release** — `metadata.release` 라벨이 설정된 스캔. **불변이며 영구**입니다 — 나이나 supersession과 무관하게 sweep이 절대 건드리지 않습니다. [스캔을 영구 보존하는 법](#keep-a-scan-forever-release-label)을 참고하십시오.
+- **Release** — `metadata.release` 라벨이 설정된 스캔. **영구**입니다 — 나이나 supersession과 무관하게 sweep이 절대 삭제하지 않습니다. 같은 라벨을 주장하는 다른 스캔만이 이를 Releases 목록에서 밀어낼 수 있고, 그 경우에도 행 자체는 남습니다. [스캔을 영구 보존하는 법](#keep-a-scan-forever-release-label)을 참고하십시오.
 - **Ref-less / 실패** — ref 타겟이 없는 스캔(ad-hoc UI 스캔)과 실패 스캔은 supersession 체인에 속하지 않습니다. 프로젝트당 하한(`SCAN_RETENTION_KEEP_LAST`, 기본 30)과 age 상한(`SCAN_RETENTION_MAX_AGE_DAYS`, 기본 180)으로 보호됩니다.
 
 ### ref 정규화 {#ref-normalization}
@@ -93,9 +93,17 @@ curl -sS -X POST \
 
 `release` 값은 자유 형식 라벨입니다(버전 문자열이 관례). CI에서는 태그 push에서 실행되는 워크플로에만 설정하여, 일상적 브랜치·PR 스캔은 회수 가능한 상태로 두고 release 스캔만 영구 컴플라이언스 기록으로 누적되게 하십시오.
 
-:::note release 스캔은 superseded 되지 않습니다
-release 스캔은 supersession 체인 밖에 있으므로, 같은 브랜치의 두 릴리스가 모두 live로 남습니다. 이는 의도된 동작입니다 — 출시된 모든 버전의 SBOM을 기록으로 남기길 원합니다.
+:::note 브랜치 트래픽은 릴리스를 밀어내지 않습니다
+라벨이 **서로 다른** 두 릴리스는 같은 브랜치에 있어도 나란히 live로 남고, 그 브랜치에 push가 들어와도 둘 다 물러나지 않습니다. 라벨을 두는 이유가 이것입니다. 브랜치 포인터는 계속 움직이지만, 출시한 버전은 그 브랜치의 무관한 트래픽 때문에 물러나서는 안 됩니다.
 :::
+
+### 이미 라벨을 붙인 버전을 다시 스캔하면
+
+앞선 스캔이 이미 쓰고 있는 라벨을 두 번째 스캔에 붙일 수 있고, 이때는 새 스캔이 이깁니다. 앞선 스캔에 `superseded_at`이 찍히고 Releases 목록에서 빠집니다. 출시한 버전을 다시 스캔하는 일은 흔합니다. 첫 시도가 실패했거나, 스캐너가 개선되었거나, 라벨에 오타가 있었을 수 있습니다. 그래서 포털은 스캔을 거부해 빠져나갈 길을 막는 대신 라벨을 옮깁니다.
+
+여기서 supersession은 삭제를 뜻하지 않습니다. 회수 sweep은 모든 경로에서 라벨이 붙은 스캔을 건너뛰므로, 밀려난 스냅샷은 컴포넌트·결과·SBOM을 그대로 유지하고 `GET /v1/scans/{id}`와 `?scan_id=` 앵커로 계속 읽을 수 있습니다. 옮겨 가는 것은 라벨에 대한 소유권뿐입니다. 이전 스냅샷을 Releases 목록에 되돌리려면 그 라벨로 다시 스캔하거나, 애초에 라벨을 다르게 붙여(`4.0`과 `4.0-rescan`) 둘을 갈라 두십시오.
+
+라벨은 앞뒤 공백을 제거하고 비교하므로 `4.0`과 `" 4.0"`은 같은 버전이며 둘 다 live일 수 없습니다.
 
 ## 스캔 수동 삭제 {#delete-a-scan-by-hand}
 
@@ -133,11 +141,13 @@ curl -sS -X DELETE \
 <!-- docs-uat: id=scan-retention-verify-live kind=manual tier=manual -->
 1. 같은 브랜치에 소스 스캔 두 번을 트리거합니다. 더 오래된 스캔을 `GET /v1/scans/{id}`로 조회하면 `superseded_at`이 설정돼 있습니다. 프로젝트 **Releases** 목록(`GET /v1/projects/{id}/releases`)에는 더 새로운 스냅샷만 보이고, superseded된 것은 거기서 숨겨집니다.
 <!-- docs-uat: id=scan-retention-verify-release kind=manual tier=manual -->
-2. `release` 라벨을 단 스캔과 같은 브랜치의 두 번째 스캔을 트리거합니다. release 스캔의 `superseded_at`은 `null`로 남고 Releases 목록에 그대로 유지됩니다 — superseded되지 **않습니다**.
+2. `release` 라벨을 단 스캔과 같은 브랜치의 라벨 없는 두 번째 스캔을 트리거합니다. release 스캔의 `superseded_at`은 `null`로 남고 Releases 목록에 그대로 유지됩니다 — 브랜치 트래픽은 이를 밀어내지 않습니다.
+<!-- docs-uat: id=scan-retention-verify-release-relabel kind=manual tier=manual -->
+3. **같은** `release` 라벨을 단 두 번째 스캔을 트리거합니다. 이제 첫 번째 스캔에 `superseded_at`이 찍히고 Releases 목록에는 새 스냅샷만 남습니다. 그래도 `GET /v1/scans/{first_id}`는 여전히 응답하고, 어떤 sweep도 이를 삭제하지 않습니다.
 <!-- docs-uat: id=scan-retention-verify-sweep kind=manual tier=manual -->
-3. superseded 스캔이 grace 윈도우를 지난 뒤, 다음 6시간 주기 sweep이 그것을 제거합니다. 감사 로그로 확인하십시오 — 사유 `superseded`의 `scans` `delete` 이벤트.
+4. 라벨 **없는** superseded 스캔이 grace 윈도우를 지난 뒤, 다음 6시간 주기 sweep이 그것을 제거합니다. 감사 로그로 확인하십시오 — 사유 `superseded`의 `scans` `delete` 이벤트.
 <!-- docs-uat: id=scan-retention-verify-delete kind=manual tier=manual -->
-4. release가 아닌 terminal 스캔에 대한 `DELETE /v1/scans/{scan_id}`는 `204`를 반환하고 스캔이 이력에서 사라집니다.
+5. release가 아닌 terminal 스캔에 대한 `DELETE /v1/scans/{scan_id}`는 `204`를 반환하고 스캔이 이력에서 사라집니다.
 
 ## 트러블슈팅 {#troubleshooting}
 
@@ -148,7 +158,7 @@ curl -sS -X DELETE \
 
 ### 같은 브랜치의 두 스캔이 모두 live로 남음 {#two-scans-same-branch-live}
 
-같은 정규화 타겟에 있지 않은 것입니다. 둘 다 **동일한** `metadata.ref`를 전달했는지 확인하십시오. bare 브랜치명(`main`)과 fully-qualified ref(`refs/heads/main`)는 같은 타겟으로 정규화되지만, PR merge ref(`refs/pull/12/merge` → `pr-12`)는 base 브랜치와 별개 타겟입니다 — 이는 의도된 동작입니다.
+같은 정규화 타겟에 있지 않거나, 둘 중 하나에 `release` 라벨이 붙어 있는 것입니다. 먼저 둘 다 **동일한** `metadata.ref`를 전달했는지 확인하십시오. bare 브랜치명(`main`)과 fully-qualified ref(`refs/heads/main`)는 같은 타겟으로 정규화되지만, PR merge ref(`refs/pull/12/merge` → `pr-12`)는 base 브랜치와 별개 타겟입니다 — 이는 의도된 동작입니다. 그다음 양쪽의 `metadata.release`를 확인하십시오. 라벨이 붙은 스캔은 같은 라벨을 주장하는 다른 스캔에만 밀려나며, 브랜치 트래픽으로는 밀려나지 않습니다.
 
 ### 회수될 것이라 기대한 스캔이 그대로 있음 {#expected-reclaim-still-here}
 

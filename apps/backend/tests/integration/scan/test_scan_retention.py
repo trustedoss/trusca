@@ -32,6 +32,7 @@ from tasks.scan_retention import (
     _reclaim_aged,
     _reclaim_superseded,
     supersede_prior_ref_scans,
+    supersede_prior_release_scans,
 )
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -220,6 +221,122 @@ def test_retire_noop_when_ref_none(sync_session: Session) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Layer 1b — label-keyed retire ("which snapshot is version 4.0?")
+# ---------------------------------------------------------------------------
+
+
+def test_release_retire_supersedes_prior_same_label(sync_session: Session) -> None:
+    # Rescanning a shipped version moves the label to the newer snapshot rather
+    # than refusing the scan — a version names one snapshot, and which one it
+    # names is allowed to change.
+    pid, _ = _seed_project(sync_session)
+    first = _add_scan(sync_session, project_id=pid, ref="main", release="4.0")
+    winner = _add_scan(sync_session, project_id=pid, ref="main", release="4.0")
+    sync_session.commit()
+
+    n = supersede_prior_release_scans(
+        sync_session, project_id=pid, winner_scan_id=winner, release="4.0"
+    )
+    sync_session.commit()
+
+    assert n == 1
+    assert _is_superseded(sync_session, first)
+    assert not _is_superseded(sync_session, winner)
+
+
+def test_release_retire_ignores_other_labels_and_unlabelled(
+    sync_session: Session,
+) -> None:
+    pid, _ = _seed_project(sync_session)
+    other_version = _add_scan(sync_session, project_id=pid, release="3.9")
+    unlabelled = _add_scan(sync_session, project_id=pid, ref="main")
+    winner = _add_scan(sync_session, project_id=pid, release="4.0")
+    sync_session.commit()
+
+    n = supersede_prior_release_scans(
+        sync_session, project_id=pid, winner_scan_id=winner, release="4.0"
+    )
+    sync_session.commit()
+
+    assert n == 0
+    assert not _is_superseded(sync_session, other_version)
+    assert not _is_superseded(sync_session, unlabelled)
+
+
+def test_release_retire_matches_on_trimmed_label(sync_session: Session) -> None:
+    # " 4.0" and "4.0" name the same version; the comparison and the index that
+    # serves it both trim, so a stray space must not mint a second live 4.0.
+    pid, _ = _seed_project(sync_session)
+    first = _add_scan(sync_session, project_id=pid, release=" 4.0 ")
+    winner = _add_scan(sync_session, project_id=pid, release="4.0")
+    sync_session.commit()
+
+    n = supersede_prior_release_scans(
+        sync_session, project_id=pid, winner_scan_id=winner, release="4.0"
+    )
+    sync_session.commit()
+
+    assert n == 1
+    assert _is_superseded(sync_session, first)
+
+
+def test_release_retire_ignores_other_projects(sync_session: Session) -> None:
+    pid_a, _ = _seed_project(sync_session)
+    pid_b, _ = _seed_project(sync_session)
+    theirs = _add_scan(sync_session, project_id=pid_b, release="4.0")
+    winner = _add_scan(sync_session, project_id=pid_a, release="4.0")
+    sync_session.commit()
+
+    n = supersede_prior_release_scans(
+        sync_session, project_id=pid_a, winner_scan_id=winner, release="4.0"
+    )
+    sync_session.commit()
+
+    assert n == 0
+    assert not _is_superseded(sync_session, theirs)
+
+
+def test_release_retire_noop_without_label(sync_session: Session) -> None:
+    pid, _ = _seed_project(sync_session)
+    old = _add_scan(sync_session, project_id=pid, ref="main")
+    winner = _add_scan(sync_session, project_id=pid, ref="main")
+    sync_session.commit()
+
+    for label in (None, "", "   "):
+        assert (
+            supersede_prior_release_scans(
+                sync_session, project_id=pid, winner_scan_id=winner, release=label
+            )
+            == 0
+        )
+    sync_session.commit()
+
+    assert not _is_superseded(sync_session, old)
+
+
+def test_release_retire_skips_already_superseded(sync_session: Session) -> None:
+    # Idempotence: re-running finalize must not re-stamp a scan that already
+    # lost the label, which would restart its (irrelevant) grace clock.
+    pid, _ = _seed_project(sync_session)
+    already = _add_scan(
+        sync_session,
+        project_id=pid,
+        release="4.0",
+        superseded_at=datetime.now(UTC) - timedelta(days=30),
+    )
+    winner = _add_scan(sync_session, project_id=pid, release="4.0")
+    sync_session.commit()
+
+    n = supersede_prior_release_scans(
+        sync_session, project_id=pid, winner_scan_id=winner, release="4.0"
+    )
+    sync_session.commit()
+
+    assert n == 0
+    assert _is_superseded(sync_session, already)
+
+
+# ---------------------------------------------------------------------------
 # Layer 2 — reclaim superseded
 # ---------------------------------------------------------------------------
 
@@ -260,6 +377,29 @@ def test_reclaim_superseded_within_grace_kept(sync_session: Session) -> None:
 
     assert reclaimed == 0
     assert _exists(sync_session, fresh)
+
+
+def test_reclaim_superseded_spares_release_labelled(sync_session: Session) -> None:
+    # A labelled scan only becomes superseded by another scan claiming the same
+    # version. That move picks a winner; it must not schedule a delete, or
+    # rescanning 4.0 would silently destroy the 4.0 you actually shipped once
+    # the grace period elapsed.
+    pid, _ = _seed_project(sync_session)
+    now = datetime.now(UTC)
+    displaced = _add_scan(
+        sync_session,
+        project_id=pid,
+        ref="main",
+        release="4.0",
+        superseded_at=now - timedelta(days=365),
+    )
+    sync_session.commit()
+
+    reclaimed = _reclaim_superseded(sync_session, now=now, grace_days=7)
+
+    assert reclaimed == 0
+    assert _exists(sync_session, displaced)
+    assert _audit_count_for(sync_session, displaced) == 0
 
 
 # ---------------------------------------------------------------------------

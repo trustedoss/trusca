@@ -28,7 +28,7 @@ scan #3 on main  ──► live, scan #2 becomes superseded ──► reclaimed 
 
 - **Live** — the most recent successful scan for a target. Always queryable; never reclaimed by age alone.
 - **Superseded** — a previously-live scan replaced by a newer success on the same target. Kept for a grace window (`SCAN_RETENTION_SUPERSEDED_GRACE_DAYS`, default 7 days) so you can diff or roll back, then reclaimed by the sweep.
-- **Release** — a scan whose `metadata.release` label is set. **Immutable and permanent** — the sweep never touches it, regardless of age or supersession. See [Keep a scan forever](#keep-a-scan-forever-release-label).
+- **Release** — a scan whose `metadata.release` label is set. **Permanent** — the sweep never deletes it, regardless of age or supersession. Only another scan claiming the same label can displace it from the Releases list, and even then the row survives. See [Keep a scan forever](#keep-a-scan-forever-release-label).
 - **Ref-less / failed** — scans with no ref target (ad-hoc UI scans) and failed scans are not part of the supersession chain. They are protected by a per-project floor (`SCAN_RETENTION_KEEP_LAST`, default 30) and an age ceiling (`SCAN_RETENTION_MAX_AGE_DAYS`, default 180).
 
 ### Ref normalization
@@ -93,9 +93,17 @@ curl -sS -X POST \
 
 The `release` value is a free-form label (a version string is conventional). From CI, set it only on the workflow that runs on a tag push, so day-to-day branch and PR scans stay reclaimable while your release scans accumulate as a permanent compliance record.
 
-:::note Release scans are not superseded
-Because release scans are outside the supersession chain, two releases on the same branch both stay live. That is intentional — you want every shipped version's SBOM on record.
+:::note Branch traffic never supersedes a release
+Two releases carrying **different** labels stay live side by side, even on the same branch, and ordinary pushes to that branch do not retire either of them. That is the point of a label: a branch pointer moves constantly, and a shipped version must not be retired by unrelated traffic on the branch it was cut from.
 :::
+
+### Rescanning a version you already labelled
+
+Labelling a second scan with a label an earlier scan already carries is allowed, and the newer scan wins: the earlier one is marked `superseded_at` and drops out of the Releases list. Rescanning a shipped version is ordinary practice — the first attempt failed, the scanner improved, the label had a typo — so the portal moves the label rather than refusing the scan and leaving you with no way to correct it.
+
+What supersession does **not** mean here is deletion. The reclaim sweep skips labelled scans on every path, so the displaced snapshot keeps its components, findings, and SBOM, and stays readable at `GET /v1/scans/{id}` and through the `?scan_id=` anchor. Only its claim on the label moves. If you need the older snapshot back on the Releases list, scan again with that label — or keep the two apart by labelling them distinctly (`4.0` and `4.0-rescan`).
+
+Labels are compared with surrounding whitespace trimmed, so `4.0` and `" 4.0"` name the same version and cannot both be live.
 
 ## Delete a scan by hand
 
@@ -133,11 +141,13 @@ curl -sS -X DELETE \
 <!-- docs-uat: id=scan-retention-verify-live kind=manual tier=manual -->
 1. Trigger two source scans against the same branch. Fetch the older scan with `GET /v1/scans/{id}` — its `superseded_at` is now set. The project's **Releases** list (`GET /v1/projects/{id}/releases`) shows only the newer snapshot; the superseded one is hidden there.
 <!-- docs-uat: id=scan-retention-verify-release kind=manual tier=manual -->
-2. Trigger a scan with a `release` label and a second scan on the same branch. The release scan's `superseded_at` stays `null` and it remains in the Releases list — it is **not** superseded.
+2. Trigger a scan with a `release` label and a second, unlabelled scan on the same branch. The release scan's `superseded_at` stays `null` and it remains in the Releases list — branch traffic does not supersede it.
+<!-- docs-uat: id=scan-retention-verify-release-relabel kind=manual tier=manual -->
+3. Trigger a second scan carrying the **same** `release` label. Now the first one's `superseded_at` is set and only the newer snapshot appears in the Releases list — but `GET /v1/scans/{first_id}` still returns it, and no sweep will delete it.
 <!-- docs-uat: id=scan-retention-verify-sweep kind=manual tier=manual -->
-3. After a superseded scan passes its grace window, the next 6-hourly sweep removes it. Confirm with the audit log: a `scans` `delete` event with reason `superseded`.
+4. After a superseded **unlabelled** scan passes its grace window, the next 6-hourly sweep removes it. Confirm with the audit log: a `scans` `delete` event with reason `superseded`.
 <!-- docs-uat: id=scan-retention-verify-delete kind=manual tier=manual -->
-4. `DELETE /v1/scans/{scan_id}` on a non-release, terminal scan returns `204` and the scan disappears from the history.
+5. `DELETE /v1/scans/{scan_id}` on a non-release, terminal scan returns `204` and the scan disappears from the history.
 
 ## Troubleshooting
 
@@ -148,7 +158,7 @@ curl -sS -X DELETE \
 
 ### Two scans on the same branch both stay live
 
-They are not on the same normalized target. Confirm both forwarded the **same** `metadata.ref`. A bare branch name (`main`) and a fully-qualified ref (`refs/heads/main`) normalize to the same target, but a PR merge ref (`refs/pull/12/merge` → `pr-12`) is a distinct target from the base branch — that is intentional.
+Either they are not on the same normalized target, or one of them carries a `release` label. Confirm both forwarded the **same** `metadata.ref`: a bare branch name (`main`) and a fully-qualified ref (`refs/heads/main`) normalize to the same target, but a PR merge ref (`refs/pull/12/merge` → `pr-12`) is a distinct target from the base branch — that is intentional. Then check `metadata.release` on both: a labelled scan is only displaced by another scan claiming the same label, never by branch traffic.
 
 ### A scan I expected to be reclaimed is still here
 

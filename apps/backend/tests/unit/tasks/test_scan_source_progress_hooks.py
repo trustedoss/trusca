@@ -46,6 +46,9 @@ class _FakeScan:
         # short-circuits (no session.execute) when ref is None — so a ref-less
         # fake never touches the fake session's missing execute().
         self.ref: str | None = None
+        # Same short-circuit for the label-keyed retire: an unlabelled scan
+        # returns before touching the session.
+        self.scan_metadata: dict[str, Any] = {}
 
 
 class _FakeSession:
