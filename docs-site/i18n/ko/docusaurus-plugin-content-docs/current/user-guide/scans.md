@@ -379,7 +379,7 @@ docker-compose -f docker-compose.yml exec worker \
 
 ### "This scan already finished and can no longer be cancelled"
 
-페이지가 로드된 시점과 **Cancel scan**을 클릭한 시점 사이에 스캔이 종단 상태(`succeeded` / `failed` / `cancelled`)에 도달했습니다. 큐를 새로고침하여 최신 상태를 확인하세요 — 별도 조치는 필요 없습니다.
+페이지가 로드된 시점과 **Cancel scan**을 클릭한 시점 사이에 스캔이 종단 상태(`succeeded` / `failed` / `cancelled`)에 도달했습니다. 큐를 새로 고침하여 최신 상태를 확인하세요 — 별도 조치는 필요 없습니다.
 
 ### 두 번째 스캔이 시작되지 않음 — **Scan** 버튼이 비활성
 
@@ -387,7 +387,7 @@ docker-compose -f docker-compose.yml exec worker \
 
 ### 완료된 스캔 드로어의 스피너가 멈추지 않음
 
-이전 빌드(P1 #11 이전)에서는 스캔이 이미 `succeeded`에 도달한 뒤에도 **Finalizing** 단계의 스피너가 계속 도는 회귀가 있었습니다. 수정은 완료된 실행에 대해 드로어를 열 때 종단 상태에서 스피너를 동결합니다. 여전히 증상이 보이면 프로젝트 페이지를 강제 새로고침해 캐시된 스캔 레코드를 갱신하세요.
+이전 빌드(P1 #11 이전)에서는 스캔이 이미 `succeeded`에 도달한 뒤에도 **Finalizing** 단계의 스피너가 계속 도는 회귀가 있었습니다. 수정은 완료된 실행에 대해 드로어를 열 때 종단 상태에서 스피너를 동결합니다. 여전히 증상이 보이면 프로젝트 페이지를 강제 새로 고침해 캐시된 스캔 레코드를 갱신하세요.
 
 ### detected(first-party) 라이선스가 누락됨
 

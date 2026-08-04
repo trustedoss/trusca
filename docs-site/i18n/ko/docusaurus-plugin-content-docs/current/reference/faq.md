@@ -140,7 +140,7 @@ Super Admin(배포 전체), Team Admin(팀 설정·팀원), Developer(스캔 실
 
 ### TRUSCA를 어떻게 업그레이드하나요? {#upgrade}
 
-릴리즈 노트를 읽고, 백업한 뒤 업그레이드를 실행하세요. 마이그레이션은 forward-only로 적용됩니다. [설치 → 업그레이드](../installation/upgrade.md)와 [모범 사례 → 업그레이드 주기](../best-practices/upgrade-cadence.md)를 참고하세요.
+릴리스 노트를 읽고, 백업한 뒤 업그레이드를 실행하세요. 마이그레이션은 forward-only로 적용됩니다. [설치 → 업그레이드](../installation/upgrade.md)와 [모범 사례 → 업그레이드 주기](../best-practices/upgrade-cadence.md)를 참고하세요.
 
 ### 프로덕션에서 문제가 생겼습니다 — 어디부터 봐야 하나요? {#incident}
 

@@ -171,7 +171,7 @@
         "refresh": "새로 고침"
       },
       "confirm": {
-        "cancel": "이 스캔을 취소하시겠습니까? Celery 작업이 revoke 되고 상태가 cancelled로 변경됩니다."
+        "cancel": "이 스캔을 취소하시겠습니까? Celery 작업이 취소되고 상태가 cancelled로 변경됩니다."
       },
       "drawer": {
         "title": "스캔 {{id}}",
@@ -348,24 +348,24 @@
       }
     },
     "eol": {
-      "heading": "endoflife.date 스냅숏",
+      "heading": "endoflife.date 스냅샷",
       "status": {
         "ok": "정상",
         "stale": "오래됨",
         "skipped": "건너뜀",
         "disabled": "비활성"
       },
-      "stale_note": "스냅숏이 {{days}}일 지났습니다 — 릴리즈를 업그레이드하거나 scripts/refresh_eol_snapshot.py로 갱신하십시오.",
+      "stale_note": "스냅샷이 {{days}}일 지났습니다 — 릴리스를 업그레이드하거나 scripts/refresh_eol_snapshot.py로 갱신하십시오.",
       "skipped_reason": "마지막 갱신 건너뜀: {{reason}}",
       "kpi": {
-        "snapshot_date": "스냅숏 날짜",
+        "snapshot_date": "스냅샷 날짜",
         "snapshot_age": "{{days}}일 경과",
         "flagged_total": "지원 종료 컴포넌트",
         "stamped_cleared": "최근 기록 / 해제",
         "next_refresh": "다음 실행"
       },
       "origin": {
-        "vendored": "릴리즈에 벤더링됨",
+        "vendored": "릴리스에 포함됨",
         "feed": "피드에서 수집됨"
       },
       "footer": {
@@ -373,7 +373,7 @@
         "products": "제품 수",
         "refresh": "실시간 갱신",
         "refresh_on": "켬 ({{host}})",
-        "refresh_off": "끔 — 벤더 스냅숏만 사용"
+        "refresh_off": "끔 — 저장소에 포함된 스냅샷만 사용"
       }
     },
     "backup": {
@@ -408,7 +408,7 @@
       "restore": {
         "warning": "복원 시 사용자, 프로젝트, 스캔을 포함한 모든 데이터가 덮어써집니다. 되돌릴 수 없습니다.",
         "type_to_confirm": "확인하려면 '{{token}}' 을(를) 입력하세요",
-        "queued_banner": "복원이 큐에 등록되었습니다. 백엔드가 일시 중지됩니다; 30초 후 새로고침하세요."
+        "queued_banner": "복원이 큐에 등록되었습니다. 백엔드가 일시 중지됩니다. 30초 후 새로 고치세요."
       },
       "toast": {
         "manual_triggered": "수동 백업이 큐에 등록되었습니다.",

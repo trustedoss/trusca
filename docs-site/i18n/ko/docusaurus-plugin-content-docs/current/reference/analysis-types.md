@@ -22,7 +22,7 @@ TRUSCA는 코드와 그 의존성에 대해 서로 다른 여러 **종류**의 �
 
 | 분석 | 입력 | 도구 | 산출 | 사용 시점 | 자세히 |
 |---|---|---|---|---|---|
-| **소스 SBOM 스캔** | Git 레포지토리 (또는 업로드한 소스 아카이브) | `cdxgen` → scancode → `trivy sbom` | CycloneDX SBOM, 법적 tier 분류가 붙은 declared + detected 라이선스, 매칭된 CVE | 기본값. 프로젝트 의존성 트리의 전체 컴포넌트 목록·라이선스·취약점이 필요할 때. | [스캔 → 스캔 종류](../user-guide/scans.md#스캔-종류), [SBOM](../user-guide/sbom.md) |
+| **소스 SBOM 스캔** | Git 저장소 (또는 업로드한 소스 아카이브) | `cdxgen` → scancode → `trivy sbom` | CycloneDX SBOM, 법적 tier 분류가 붙은 declared + detected 라이선스, 매칭된 CVE | 기본값. 프로젝트 의존성 트리의 전체 컴포넌트 목록·라이선스·취약점이 필요할 때. | [스캔 → 스캔 종류](../user-guide/scans.md#스캔-종류), [SBOM](../user-guide/sbom.md) |
 | **컨테이너 이미지 스캔** | 빌드된 컨테이너 이미지 참조 (`name:tag`) | Trivy | OS 패키지 CVE와 베이스 이미지 OS 지원 종료(EOSL) 판정 | 컨테이너를 배포하며, 애플리케이션 의존성뿐 아니라 OS 계층의 취약점도 알고 싶을 때. | [스캔 → 컨테이너 이미지 스캔](../user-guide/scans.md#컨테이너-이미지-스캔), [컨테이너 OS 지원 종료](../user-guide/scans.md#container-os-eol) |
 | **빌드 게이트** | 완료된 스캔의 finding과 라이선스 | 포털 게이트 평가기 | pass/fail 빌드 판정 (CI exit code `0` 또는 `1`) | 금지 라이선스나 임계값 초과 취약점에서 빌드를 자동으로 실패시키고 싶을 때 — CI 집행 지점. | [승인](../user-guide/approvals.md), [라이선스 정책](./license-policies.md), [GitHub Actions](../ci-integration/github-actions.md) |
 | **Reachability 분석** | 스캔한 모듈의 보존된 Go 소스 | `govulncheck` (Go) | finding별 reachable / not-reachable / not-analysed 신호 (Go finding에 한함) | 취약 코드가 실제로 호출되는 finding에 우선순위를 매기고 싶을 때. **현재 Go만 지원 — 아래 상태 안내를 확인하세요.** | [비교 → reachability](../comparison.md) |
@@ -31,7 +31,7 @@ TRUSCA는 코드와 그 의존성에 대해 서로 다른 여러 **종류**의 �
 
 ## 소스 SBOM 스캔 {#source-detail}
 
-소스 스캔은 기본 분석입니다. `cdxgen`(30개 이상 생태계를 커버하는 CycloneDX SBOM 생성기)이 레포지토리를 순회해 의존성 트리의 SBOM을 내며, 각 패키지의 메타데이터에서 읽은 **declared** 라이선스를 함께 담습니다. 이어서 scancode가 팀이 직접 작성한 first-party 소스를 읽어 **detected** 라이선스를 찾습니다(베스트에포트). 마지막으로 `trivy sbom`이 SBOM을 로컬 Trivy DB에 대조해 CVE finding을 내고, 내장 분류기가 각 라이선스에 법적 tier(`permissive` / `conditional` / `forbidden` / `unknown`)를 부여합니다.
+소스 스캔은 기본 분석입니다. `cdxgen`(30개 이상 생태계를 커버하는 CycloneDX SBOM 생성기)이 저장소를 순회해 의존성 트리의 SBOM을 내며, 각 패키지의 메타데이터에서 읽은 **declared** 라이선스를 함께 담습니다. 이어서 scancode가 팀이 직접 작성한 first-party 소스를 읽어 **detected** 라이선스를 찾습니다(베스트에포트). 마지막으로 `trivy sbom`이 SBOM을 로컬 Trivy DB에 대조해 CVE finding을 내고, 내장 분류기가 각 라이선스에 법적 tier(`permissive` / `conditional` / `forbidden` / `unknown`)를 부여합니다.
 
 결과는 모든 프로젝트 탭 — Components, Licenses, Vulnerabilities, SBOM — 으로 흘러갑니다. 단계별 흐름은 [아키텍처 → 스캔 파이프라인](./architecture.md#스캔-파이프라인)을, 실행 방법은 [스캔](../user-guide/scans.md)을 참조하세요.
 

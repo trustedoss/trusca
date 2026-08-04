@@ -177,7 +177,7 @@ def test_normalize_spdx_id(raw: str, expected: list[str]) -> None:
 
 ### 회귀망은 의도적으로 두 겹
 
-`tests/verify-specs/`는 검증팀의 결정적 스펙 모듈을 벤더링한 것이고(동봉 `PROVENANCE.md` 참조) nightly(`verify-specs-nightly.yml`)가 신선하게 시드된 스택에 전수 실행합니다. 이 nightly는 우리 내부 회귀망입니다 — 검증팀의 독립 Tier-3 재검증을 대체하지 않으며, 후자의 가치는 오라클이 우리 것이 아니라는 데 있습니다.
+`tests/verify-specs/`는 검증팀의 결정적 스펙 모듈을 저장소에 포함한 것이고(동봉 `PROVENANCE.md` 참조) nightly(`verify-specs-nightly.yml`)가 신선하게 시드된 스택에 전수 실행합니다. 이 nightly는 우리 내부 회귀망입니다 — 검증팀의 독립 Tier-3 재검증을 대체하지 않으며, 후자의 가치는 오라클이 우리 것이 아니라는 데 있습니다.
 
 ## 디자인 게이트 — 색과 픽셀
 
