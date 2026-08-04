@@ -4,7 +4,7 @@
 
 <h1 align="center">TRUSCA</h1>
 
-<p align="center"><em>TrustedOSS SCA — open-source software composition analysis</em></p>
+<p align="center"><em>Trusted SCA — open-source software composition analysis</em></p>
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/badge/release-v0.12.0-0f766e.svg)](CHANGELOG.md)
@@ -13,7 +13,7 @@
 
 > Open-source enterprise SCA portal — manage CVEs, license compliance, and SBOMs in one self-hosted UI.
 
-**TRUSCA** — the SCA tool of the [TrustedOSS](https://trustedoss.github.io/) initiative — is an Apache-2.0 licensed, self-hosted alternative to commercial Software Composition Analysis (SCA) products. It unifies vulnerability tracking (CVE), license compliance, and Software Bill of Materials (SBOM) management for engineering and legal teams.
+**TRUSCA** (short for Trusted SCA) is an Apache-2.0 licensed, self-hosted alternative to commercial Software Composition Analysis (SCA) products. It unifies vulnerability tracking (CVE), license compliance, and Software Bill of Materials (SBOM) management for engineering and legal teams.
 
 > **🔭 Live demo:** **[trusca-demo.duckdns.org](https://trusca-demo.duckdns.org)** — a public, read-only demo seeded with real projects, scans, CVEs, licenses, and SBOMs. Sign in as `dev@demo.trustedoss.dev` / `DemoTest2026!` (the same password works for every seeded account). Writes are disabled and the dataset resets nightly; you can also upload a CycloneDX SBOM to the **Demo Sandbox** project and watch it matched against licenses and CVEs. See [Live demo](https://trustedoss.github.io/trusca/docs/installation/live-demo).
 

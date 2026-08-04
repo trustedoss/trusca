@@ -9,11 +9,10 @@ slug: /intro
 
 # TRUSCA
 
-**TRUSCA**는 [TrustedOSS](https://trustedoss.github.io/)의 SCA 도구로,
-자체 호스팅이 가능한 Apache-2.0 라이선스의 SCA
-(Software Composition Analysis) 플랫폼입니다. CVE 추적, 라이선스 컴플라이언스,
-SBOM 관리를 한 화면에서 통합 제공하며, 상용 제품의 좌석당 라이선스 비용 없이
-운영할 수 있습니다.
+**TRUSCA**는 Trusted SCA에서 온 이름으로, 자체 호스팅이 가능한
+Apache-2.0 라이선스의 SCA(Software Composition Analysis) 플랫폼입니다.
+CVE 추적, 라이선스 컴플라이언스, SBOM 관리를 한 화면에서 통합 제공하며,
+상용 제품의 좌석당 라이선스 비용 없이 운영할 수 있습니다.
 
 ## 시작 지점
 

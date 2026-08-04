@@ -2,16 +2,15 @@
 // Copyright 2026 TRUSCA contributors
 /**
  * BrandLockup — the full TRUSCA logo: mark + "TRUSCA" wordmark + the
- * "TrustedOSS SCA" tagline (the SCA tool of the TrustedOSS initiative).
+ * "Trusted SCA" tagline, which is what the name expands to.
  *
  * Used where there is vertical room (the auth gateway, brand showcase).
  * Tight surfaces — the 48 px sidebar / header — use the reduced lockup
  * (BrandMark + BrandWordmark, no tagline).
  *
- * The tagline is a brand string (not translated) and is NOT uppercased —
- * the umbrella name "TrustedOSS" keeps its camel casing. Its colour uses the
- * theme's muted-foreground token (passes WCAG AA), while the mark gradient
- * and the teal wordmark are fixed brand colours.
+ * The tagline is a brand string (not translated) and is NOT uppercased. Its
+ * colour uses the theme's muted-foreground token (passes WCAG AA), while the
+ * mark gradient and the teal wordmark are fixed brand colours.
  */
 import { BrandMark } from "@/components/BrandMark";
 import { BrandWordmark } from "@/components/BrandWordmark";
@@ -46,7 +45,7 @@ export function BrandLockup({
             onInk ? "text-topbar-muted-foreground" : "text-muted-foreground",
           )}
         >
-          TrustedOSS SCA
+          Trusted SCA
         </span>
       </div>
     </div>
