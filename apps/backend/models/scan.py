@@ -417,6 +417,22 @@ class Scan(Base):
             "superseded_at",
             postgresql_where=text("superseded_at IS NOT NULL"),
         ),
+        # Label-keyed retire + "which snapshot is version 4.0?". The finalize
+        # path asks this on every labelled scan, so it must not be a sequential
+        # scan over the project's history. Trimmed inside the index because the
+        # supersede compares trimmed labels (" 4.0" and "4.0" are one version);
+        # the WHERE mirrors ``tasks.scan_retention._release_absent`` inverted,
+        # so the index covers exactly the labelled cohort. Migration 0046
+        # creates it via op.execute() — expression + partial needs raw DDL.
+        Index(
+            "ix_scans_project_release_label",
+            "project_id",
+            text("btrim(metadata ->> 'release')"),
+            postgresql_where=text(
+                "jsonb_typeof(metadata -> 'release') = 'string'"
+                " AND btrim(metadata ->> 'release') <> ''"
+            ),
+        ),
     )
 
 
