@@ -26,6 +26,7 @@ function snapshot(overrides: Partial<ReleaseSnapshot> = {}): ReleaseSnapshot {
   return {
     scan_id: "scan-1",
     release: null,
+    ref: null,
     created_at: "2026-05-22T10:00:00Z",
     risk_score: 50,
     severity_summary: { critical: 1, high: 0, medium: 0, low: 0 },
@@ -73,6 +74,15 @@ describe("releasesApi", () => {
     await listProjectReleases("proj-1", { release: "  4.0  " });
     const call = mockedGet.mock.calls.at(-1)!;
     expect(call[1].params).toEqual({ release: "4.0" });
+  });
+
+  it("forwards the branch filter, trimmed, and omits it when blank", async () => {
+    await listProjectReleases("proj-1", { ref: "  refs/heads/main  " });
+    expect(mockedGet.mock.calls.at(-1)![1].params).toEqual({
+      ref: "refs/heads/main",
+    });
+    await listProjectReleases("proj-1", { ref: "  " });
+    expect(mockedGet.mock.calls.at(-1)![1].params).not.toHaveProperty("ref");
   });
 
   it("omits an absent or blank label so the list stays unfiltered", async () => {

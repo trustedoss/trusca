@@ -8,7 +8,7 @@
  * needs to pick a snapshot to inspect (risk score, severity summary, gate
  * verdict, component count).
  *
- *   - GET /v1/projects/{id}/releases?page=&size=&release= → ReleaseListResponse
+ *   - GET /v1/projects/{id}/releases?page=&size=&release=&ref= → ReleaseListResponse
  *
  * The wire types mirror the backend's `ReleaseSnapshot` 1:1 (snake_case).
  * `release` is frequently `null` (the scan was triggered without a version
@@ -50,6 +50,12 @@ export interface ReleaseSnapshot {
    * em-dash so the row is never blank.
    */
   release: string | null;
+  /**
+   * Normalized git ref the scan ran against (`main`, `pr-12`), or `null` for an
+   * ad-hoc scan that carried none. Distinct from `release`: the ref is where
+   * the code came from and keeps moving; the label names a shipped unit.
+   */
+  ref: string | null;
   /** ISO-8601 instant the scan was created. */
   created_at: string;
   /** Computed 0..100 risk score for this snapshot, or `null` when unscored. */
@@ -84,6 +90,11 @@ export interface ListReleasesParams {
    * empty list, not an error.
    */
   release?: string;
+  /**
+   * Branch filter. Accepts a bare branch or a fully-qualified ref — the server
+   * normalizes both to the value scans were stamped with.
+   */
+  ref?: string;
 }
 
 export async function listProjectReleases(
@@ -95,6 +106,9 @@ export async function listProjectReleases(
   if (params.size != null) query.size = params.size;
   if (params.release != null && params.release.trim().length > 0) {
     query.release = params.release.trim();
+  }
+  if (params.ref != null && params.ref.trim().length > 0) {
+    query.ref = params.ref.trim();
   }
   const { data } = await api.get<ReleaseListResponse>(
     `/v1/projects/${projectId}/releases`,

@@ -92,6 +92,7 @@ function release(
   return {
     scan_id: scanId,
     release: null,
+    ref: null,
     created_at: "2026-05-22T10:00:00Z",
     risk_score: 80,
     severity_summary: { critical: 10, high: 0, medium: 0, low: 0 },

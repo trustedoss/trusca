@@ -304,6 +304,7 @@
   "GET /v1/projects/{project_id}/releases": [
     "page",
     "project_id",
+    "ref",
     "release",
     "size"
   ],
@@ -346,6 +347,7 @@
   "GET /v1/projects/{project_id}/scans": [
     "page",
     "project_id",
+    "ref",
     "size"
   ],
   "GET /v1/projects/{project_id}/scans/{scan_id}/conformance": [

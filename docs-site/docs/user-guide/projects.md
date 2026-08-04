@@ -229,6 +229,7 @@ Every time a scan reaches a terminal `succeeded` status the portal records a **r
 | Column | What it shows |
 |---|---|
 | **Snapshot** | The scan completion time (`yyyy-mm-dd HH:MM`) + relative time. |
+| **Branch** | The normalized git ref the scan ran against (`main`, `pr-12`), or `ad-hoc` when the trigger carried no ref. |
 | **Scan kind** | `source` or `container`. |
 | **Severity counts** | Critical / High / Medium / Low at snapshot time. |
 | **License mix** | Allowed / Conditional / Forbidden bars at snapshot time. |
@@ -243,6 +244,14 @@ Downloads follow the pin too. With a release pinned, the **NOTICE** you download
 Over the API, `GET /v1/projects/{id}/releases?release=4.0` returns the snapshot carrying that version label. Because a labelled scan supersedes any earlier scan claiming the same label, the answer is at most one row — read its `scan_id` and pin it on the detail endpoints (`?scan_id=`) to read that release's components, licences, findings, SBOM, or NOTICE. An unknown label returns an empty list rather than a `404`: not having shipped 9.9 yet is a normal answer, and a `404` would be indistinguishable from "no such project".
 
 The match is exact, not a search — `4.0` does not find `4.0.1`. Surrounding whitespace is trimmed on both sides.
+
+### Filtering by branch
+
+Both `GET /v1/projects/{id}/releases?ref=main` and `GET /v1/projects/{id}/scans?ref=main` narrow to one branch. A bare branch and a fully-qualified ref (`refs/heads/main`, `refs/pull/12/merge`) both work — they are normalized the same way scan triggers normalize them, so a branch reaches its own rows either way.
+
+The two lists answer different questions. Releases covers succeeded scans only, so it is the branch's usable history; the scans list covers every status, so it is where a branch's failed attempts stay visible.
+
+Branch and version are separate axes and neither replaces the other. A branch keeps moving — the newest scan on it supersedes the previous one — while a version names a shipped unit and is displaced only by another scan claiming that same version.
 
 The companion **Compare** screen (the **Compare** button on the Releases-tab toolbar, enabled once the project has at least two releases) takes two snapshot ids — a **base** and a **target** — and shows what changed between them: added / removed / version-changed components, introduced / resolved vulnerabilities, and the risk-score, per-severity, license-tier, and build-gate deltas. A **swap** control flips base and target. The button defaults to comparing the newest release (target) against the one before it (base), and the two ids live in the URL (`?base=&target=`) so a specific comparison can be shared. It is the canonical diff view for "what changed between release X and release Y".
 
