@@ -303,6 +303,7 @@
   "GET /v1/projects/{project_id}/releases": [
     "page",
     "project_id",
+    "release",
     "size"
   ],
   "GET /v1/projects/{project_id}/remediation/pull-requests": [

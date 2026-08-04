@@ -669,6 +669,18 @@ async def list_project_releases_endpoint(
     project_id: uuid.UUID,
     page: int = Query(default=1, ge=1),
     size: int = Query(default=20, ge=1, le=100),
+    release: str | None = Query(
+        default=None,
+        max_length=100,
+        description=(
+            "Optional version label filter (e.g. '4.0'), matched exactly against "
+            "the scan's ``metadata.release`` with surrounding whitespace trimmed. "
+            "This is the lookup for \"which snapshot is version 4.0?\": a label "
+            "identifies at most one live snapshot, so the filtered list carries "
+            "one row whose ``scan_id`` you then pin on the detail endpoints via "
+            "``?scan_id=``. An unknown label returns an empty list, not a 404."
+        ),
+    ),
     session: AsyncSession = Depends(get_db),
     actor: CurrentUser = Depends(require_role("developer")),
 ) -> Response:
@@ -682,6 +694,7 @@ async def list_project_releases_endpoint(
             actor=actor,
             page=page,
             size=size,
+            release=release,
         )
     except ProjectError as exc:
         return _problem_for_project_error(request, exc)

@@ -342,6 +342,97 @@ async def test_releases_lists_succeeded_scans_newest_first_with_summaries(client
     assert older_row["risk_score"] == 83.3
 
 
+async def test_releases_release_filter_returns_only_that_version(client) -> None:
+    # "Which snapshot is 4.0?" — the whole point of attaching a version label.
+    team, user = await _seed_team_with_user(client)
+    project_id = await _seed_empty_project(client, team_id=team.id)
+    headers = _bearer_for(user)
+    base = datetime(2026, 5, 20, tzinfo=UTC)
+
+    tagged = await _seed_succeeded_scan(
+        client, project_id=project_id, created_at=base, release="4.0"
+    )
+    await _seed_succeeded_scan(
+        client, project_id=project_id, created_at=base + timedelta(days=1), release="4.1"
+    )
+    await _seed_succeeded_scan(
+        client, project_id=project_id, created_at=base + timedelta(days=2)
+    )
+
+    unfiltered = await client.get(f"/v1/projects/{project_id}/releases", headers=headers)
+    assert unfiltered.json()["total"] == 3
+
+    filtered = await client.get(
+        f"/v1/projects/{project_id}/releases", headers=headers, params={"release": "4.0"}
+    )
+    assert filtered.status_code == 200, filtered.text
+    body = filtered.json()
+    # `total` must describe the FILTERED set — a caller paging the filter must
+    # not be told there are three matches.
+    assert body["total"] == 1
+    assert [row["scan_id"] for row in body["items"]] == [str(tagged)]
+    assert body["items"][0]["release"] == "4.0"
+
+
+async def test_releases_release_filter_trims_both_sides(client) -> None:
+    team, user = await _seed_team_with_user(client)
+    project_id = await _seed_empty_project(client, team_id=team.id)
+    headers = _bearer_for(user)
+    tagged = await _seed_succeeded_scan(
+        client,
+        project_id=project_id,
+        created_at=datetime(2026, 5, 20, tzinfo=UTC),
+        release=" 4.0 ",
+    )
+
+    for query in ("4.0", "  4.0  "):
+        response = await client.get(
+            f"/v1/projects/{project_id}/releases",
+            headers=headers,
+            params={"release": query},
+        )
+        assert response.status_code == 200, response.text
+        assert [row["scan_id"] for row in response.json()["items"]] == [str(tagged)]
+
+
+async def test_releases_unknown_release_is_empty_200_not_404(client) -> None:
+    # Absence of a version is a normal answer. A 404 here would be
+    # indistinguishable from "no such project".
+    team, user = await _seed_team_with_user(client)
+    project_id = await _seed_empty_project(client, team_id=team.id)
+    headers = _bearer_for(user)
+    await _seed_succeeded_scan(
+        client,
+        project_id=project_id,
+        created_at=datetime(2026, 5, 20, tzinfo=UTC),
+        release="4.0",
+    )
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/releases",
+        headers=headers,
+        params={"release": "9.9"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["items"] == []
+    assert response.json()["total"] == 0
+
+
+async def test_releases_release_filter_does_not_cross_projects(client) -> None:
+    team, user = await _seed_team_with_user(client)
+    mine = await _seed_empty_project(client, team_id=team.id)
+    theirs = await _seed_empty_project(client, team_id=team.id)
+    headers = _bearer_for(user)
+    base = datetime(2026, 5, 20, tzinfo=UTC)
+    await _seed_succeeded_scan(client, project_id=theirs, created_at=base, release="4.0")
+
+    response = await client.get(
+        f"/v1/projects/{mine}/releases", headers=headers, params={"release": "4.0"}
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["items"] == []
+
+
 async def test_releases_empty_when_no_succeeded_scan(client) -> None:
     team, user = await _seed_team_with_user(client)
     project_id = await _seed_empty_project(client, team_id=team.id)

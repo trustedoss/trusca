@@ -53,7 +53,7 @@ import uuid
 from typing import Any
 
 import structlog
-from sqlalchemy import String, case, cast, func, literal, select
+from sqlalchemy import String, and_, case, cast, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.authz import assert_team_access
@@ -150,6 +150,7 @@ async def _paged_succeeded_scans(
     project_id: uuid.UUID,
     page: int,
     size: int,
+    release: str | None = None,
 ) -> tuple[list[Scan], int]:
     """Return ``(page_of_succeeded_scans, total)`` newest-first.
 
@@ -157,8 +158,18 @@ async def _paged_succeeded_scans(
     pages and covered by ``ix_scans_project_created_at``) and one count. We load
     the ORM ``Scan`` rows so we can read ``scan_metadata['release']`` without a
     second round-trip.
+
+    ``release`` narrows the listing to snapshots carrying that exact version
+    label. This is how a caller answers "which snapshot is 4.0?" without paging
+    the project's whole history: since a labelled scan supersedes any earlier
+    scan claiming the same label, and superseded rows are excluded below, a
+    label match yields at most one row. The comparison trims both sides — the
+    stored label is trimmed at write time and the supersede rule compares
+    trimmed — and it is served by ``ix_scans_project_release_label``, whose key
+    is the trimmed expression.
     """
     offset = (page - 1) * size
+    label = release.strip() if release is not None else None
 
     # scan-retention: hide superseded snapshots. A superseded scan lost its ref
     # slot to a newer winner (and carries no release label — retire never
@@ -180,6 +191,15 @@ async def _paged_succeeded_scans(
         .where(cast(Scan.status, String) == "succeeded")
         .where(Scan.superseded_at.is_(None))
     )
+    if label:
+        # Applied to both statements so `total` describes the filtered set — a
+        # caller paging a label filter must not be told there are 40 matches.
+        label_match = and_(
+            func.jsonb_typeof(Scan.scan_metadata["release"]) == "string",
+            func.btrim(Scan.scan_metadata["release"].astext) == label,
+        )
+        items_stmt = items_stmt.where(label_match)
+        count_stmt = count_stmt.where(label_match)
 
     items_result = await session.execute(items_stmt)
     count_result = await session.execute(count_stmt)
@@ -322,12 +342,19 @@ async def list_release_snapshots(
     actor: CurrentUser,
     page: int = 1,
     size: int = 20,
+    release: str | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
     """List a project's release snapshots (succeeded scans), newest-first.
 
     Returns ``(items, total)`` where each item is a plain dict shaped to
     :class:`schemas.release_snapshot.ReleaseSnapshot`. ``total`` is the count of
     succeeded scans before pagination.
+
+    ``release`` narrows the listing to the snapshot carrying that version label,
+    which is how "give me version 4.0" is answered — the caller reads the row's
+    ``scan_id`` and pins it on the detail endpoints via ``?scan_id=``. An
+    unknown label is an empty 200, not a 404: absence of a version is a normal
+    answer, and 404 here would be indistinguishable from "no such project".
 
     Authorization mirrors :func:`get_project_overview`: ``ProjectNotFound`` (404)
     for a missing project, ``ProjectForbidden`` (403) for a non-member (super_admin
@@ -356,7 +383,7 @@ async def list_release_snapshots(
     )
 
     scans, total = await _paged_succeeded_scans(
-        session, project_id=project_id, page=page, size=size
+        session, project_id=project_id, page=page, size=size, release=release
     )
     if not scans:
         return [], total
