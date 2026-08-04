@@ -46,6 +46,7 @@ import structlog
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.v1._snapshot_anchor import snapshot_anchor
 from core.db import get_db
 from core.errors import problem_response
 from core.ratelimit import limiter
@@ -130,15 +131,7 @@ async def list_project_obligations_endpoint(
         pattern=r"^(category|license_name|kind|affected_count)$",
     ),
     order: str = Query(default="desc", pattern=r"^(asc|desc)$"),
-    scan_id: uuid.UUID | None = Query(
-        default=None,
-        description=(
-            "Optional release-snapshot anchor (feature #28). When given, list "
-            "obligation rows of this SPECIFIC succeeded scan instead of the "
-            "project's latest succeeded scan. Must belong to this project and be "
-            "succeeded, else 404. Omit for the default latest-succeeded behaviour."
-        ),
-    ),
+    scan_id: uuid.UUID | None = Depends(snapshot_anchor),
     session: AsyncSession = Depends(get_db),
     actor: CurrentUser = Depends(require_role("developer")),
 ) -> Response:
@@ -312,17 +305,7 @@ def _format_content_disposition(project_name: str, ext: str) -> str:
 async def get_project_notice_endpoint(
     request: Request,
     project_id: uuid.UUID,
-    scan_id: uuid.UUID | None = Query(
-        default=None,
-        description=(
-            "Optional release-snapshot anchor. When given, compose the NOTICE "
-            "from this SPECIFIC succeeded scan instead of the project's latest "
-            "succeeded scan — this is how the attribution document for an "
-            "already-shipped release stays retrievable after a newer scan "
-            "succeeds. Must belong to this project and be succeeded, else 404. "
-            "Omit for the default latest-succeeded behaviour."
-        ),
-    ),
+    scan_id: uuid.UUID | None = Depends(snapshot_anchor),
     fmt: str = Query(
         default="text",
         alias="format",

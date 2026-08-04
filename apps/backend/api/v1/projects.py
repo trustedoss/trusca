@@ -38,6 +38,7 @@ import structlog
 from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.v1._snapshot_anchor import snapshot_anchor
 from core.api_key_auth import require_role_or_api_key
 from core.audit import bind_audit_team, get_audit_context, mask_sensitive_columns
 from core.config import scan_trigger_rate_limit
@@ -429,15 +430,7 @@ async def delete_project_endpoint(
 async def get_project_overview_endpoint(
     request: Request,
     project_id: uuid.UUID,
-    scan_id: uuid.UUID | None = Query(
-        default=None,
-        description=(
-            "Optional release-snapshot anchor (feature #28). When given, aggregate "
-            "this SPECIFIC succeeded scan instead of the project's latest succeeded "
-            "scan. Must belong to this project and be succeeded, else 404. Omit for "
-            "the default latest-succeeded behaviour."
-        ),
-    ),
+    scan_id: uuid.UUID | None = Depends(snapshot_anchor),
     session: AsyncSession = Depends(get_db),
     actor: CurrentUser = Depends(require_role("developer")),
 ) -> Response:
@@ -593,15 +586,7 @@ async def list_project_components_endpoint(
     ),
     sort: str = Query(default="name", pattern=r"^(name|severity|license)$"),
     order: str = Query(default="asc", pattern=r"^(asc|desc)$"),
-    scan_id: uuid.UUID | None = Query(
-        default=None,
-        description=(
-            "Optional release-snapshot anchor (feature #28). When given, list "
-            "components of this SPECIFIC succeeded scan instead of the project's "
-            "latest succeeded scan. Must belong to this project and be succeeded, "
-            "else 404. Omit for the default latest-succeeded behaviour."
-        ),
-    ),
+    scan_id: uuid.UUID | None = Depends(snapshot_anchor),
     session: AsyncSession = Depends(get_db),
     actor: CurrentUser = Depends(require_role("developer")),
 ) -> Response:
@@ -833,15 +818,7 @@ async def diff_project_releases_endpoint(
 async def get_dependency_graph_endpoint(
     request: Request,
     project_id: uuid.UUID,
-    scan_id: uuid.UUID | None = Query(
-        default=None,
-        description=(
-            "Optional release-snapshot anchor. When given, serialize this SPECIFIC "
-            "succeeded scan's graph instead of the project's latest succeeded scan. "
-            "Must belong to this project and be succeeded, else 404 (existence-hide). "
-            "Omit for the default latest-succeeded behaviour."
-        ),
-    ),
+    scan_id: uuid.UUID | None = Depends(snapshot_anchor),
     session: AsyncSession = Depends(get_db),
     actor: CurrentUser = Depends(require_role("developer")),
 ) -> Response:

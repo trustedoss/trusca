@@ -27,6 +27,7 @@ import structlog
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.v1._snapshot_anchor import snapshot_anchor
 from core.db import get_db
 from core.errors import problem_response
 from core.security import CurrentUser, require_role
@@ -181,15 +182,7 @@ async def list_project_vulnerabilities_endpoint(
         ),
     ),
     order: str = Query(default="desc", pattern=r"^(asc|desc)$"),
-    scan_id: uuid.UUID | None = Query(
-        default=None,
-        description=(
-            "Optional release-snapshot anchor (feature #28). When given, list CVE "
-            "findings of this SPECIFIC succeeded scan instead of the project's "
-            "latest succeeded scan. Must belong to this project and be succeeded, "
-            "else 404. Omit for the default latest-succeeded behaviour."
-        ),
-    ),
+    scan_id: uuid.UUID | None = Depends(snapshot_anchor),
     session: AsyncSession = Depends(get_db),
     actor: CurrentUser = Depends(require_role("developer")),
 ) -> Response:
@@ -243,15 +236,7 @@ async def list_project_vulnerabilities_endpoint(
 async def list_upgrade_clusters_endpoint(
     request: Request,
     project_id: uuid.UUID,
-    scan_id: uuid.UUID | None = Query(
-        default=None,
-        description=(
-            "Optional release-snapshot anchor (feature #28). When given, cluster "
-            "the CVE findings of this SPECIFIC succeeded scan instead of the "
-            "project's latest succeeded scan. Must belong to this project and be "
-            "succeeded, else 404. Omit for the default latest-succeeded behaviour."
-        ),
-    ),
+    scan_id: uuid.UUID | None = Depends(snapshot_anchor),
     session: AsyncSession = Depends(get_db),
     actor: CurrentUser = Depends(require_role("developer")),
 ) -> Response:

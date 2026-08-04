@@ -29,6 +29,7 @@ import structlog
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.v1._snapshot_anchor import snapshot_anchor
 from core.db import get_db
 from core.errors import problem_response
 from core.security import CurrentUser, require_role
@@ -114,15 +115,7 @@ async def list_project_compliance_endpoint(
         pattern=r"^(category|license_name|spdx_id|affected_count)$",
     ),
     order: str = Query(default="desc", pattern=r"^(asc|desc)$"),
-    scan_id: uuid.UUID | None = Query(
-        default=None,
-        description=(
-            "Optional release-snapshot anchor (feature #28). When given, the "
-            "grid reflects this specific succeeded scan instead of the "
-            "project's latest succeeded scan. Must belong to this project "
-            "and be succeeded, else 404."
-        ),
-    ),
+    scan_id: uuid.UUID | None = Depends(snapshot_anchor),
     session: AsyncSession = Depends(get_db),
     actor: CurrentUser = Depends(require_role("developer")),
 ) -> Response:

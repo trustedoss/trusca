@@ -37,6 +37,7 @@ from fastapi import (
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.v1._snapshot_anchor import snapshot_anchor
 from core.api_key_auth import require_role_or_api_key
 from core.authz import assert_team_access
 from core.config import (
@@ -245,15 +246,7 @@ async def export_project_sbom_endpoint(
         alias="format",
         description="SBOM output format.",
     ),
-    scan_id: uuid.UUID | None = Query(
-        default=None,
-        description=(
-            "Optional release-snapshot anchor (feature #28). When given, export "
-            "this SPECIFIC succeeded scan instead of the project's latest succeeded "
-            "scan. Must belong to this project and be succeeded, else 404. Omit for "
-            "the default latest-succeeded behaviour."
-        ),
-    ),
+    scan_id: uuid.UUID | None = Depends(snapshot_anchor),
     profile: SBOMProfile | None = Query(
         default=None,
         description=(

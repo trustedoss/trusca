@@ -43,6 +43,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 from sqlalchemy import String, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.v1._snapshot_anchor import snapshot_anchor
 from core.api_key_auth import get_api_key_principal
 from core.audit import bind_audit_team, get_audit_context, mask_sensitive_columns
 from core.authz import assert_team_access
@@ -239,16 +240,7 @@ def _build_response_body(result: GateResult) -> GateResultResponse:
 async def get_gate_result_endpoint(
     request: Request,
     project_id: uuid.UUID,
-    scan_id: uuid.UUID | None = Query(
-        default=None,
-        description=(
-            "Optional release-snapshot anchor (feature #28). When given, evaluate "
-            "the build gate against this SPECIFIC succeeded scan instead of the "
-            "project's latest succeeded scan (so the Overview gate card can reflect "
-            "a pinned release). Must belong to this project and be succeeded, else "
-            "404. Omit for the default latest-succeeded behaviour (the CI contract)."
-        ),
-    ),
+    scan_id: uuid.UUID | None = Depends(snapshot_anchor),
     ref: str | None = Query(
         default=None,
         max_length=255,

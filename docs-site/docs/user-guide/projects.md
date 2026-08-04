@@ -245,6 +245,8 @@ Over the API, `GET /v1/projects/{id}/releases?release=4.0` returns the snapshot 
 
 The match is exact, not a search — `4.0` does not find `4.0.1`. Surrounding whitespace is trimmed on both sides.
 
+Every detail read also takes the label directly, so you rarely need the two-step. `GET /v1/projects/{id}/notice?release=4.0`, `.../overview?release=4.0`, `.../vulnerabilities?release=4.0` and the rest read as of that version — a permanent URL you can put in a ticket, because the label follows the snapshot that currently holds it. Pass `?scan_id=` instead to pin one immutable scan; if you pass both, `scan_id` wins. An unknown label returns `404`, the same response an unusable `scan_id` gets, so neither reveals whether the other exists.
+
 ### Filtering by branch
 
 Both `GET /v1/projects/{id}/releases?ref=main` and `GET /v1/projects/{id}/scans?ref=main` narrow to one branch. A bare branch and a fully-qualified ref (`refs/heads/main`, `refs/pull/12/merge`) both work — they are normalized the same way scan triggers normalize them, so a branch reaches its own rows either way.

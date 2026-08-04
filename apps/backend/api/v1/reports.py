@@ -43,6 +43,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response, status
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.v1._snapshot_anchor import snapshot_anchor
 from core.authz import assert_team_access
 from core.db import get_db
 from core.errors import problem_response
@@ -463,14 +464,7 @@ async def list_project_report_history_endpoint(
             "Omit for all four types."
         ),
     ),
-    scan_id: uuid.UUID | None = Query(
-        default=None,
-        description=(
-            "Optional filter — return only rows where ``scan_id`` matches. "
-            "Pair with ``type=sbom`` etc. to find all artefacts produced for "
-            "one scan."
-        ),
-    ),
+    scan_id: uuid.UUID | None = Depends(snapshot_anchor),
     page: int = Query(default=1, ge=1, description="1-based page number."),
     page_size: int = Query(
         default=PAGE_SIZE_DEFAULT,
