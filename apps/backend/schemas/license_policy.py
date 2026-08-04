@@ -145,6 +145,44 @@ class LicenseException(BaseModel):
         return v
 
 
+class MaliciousException(BaseModel):
+    """One temporary waiver for a package the malicious snapshot flags (#26).
+
+    Separate from :class:`LicenseException` rather than an extra shape on it:
+    that one keys on ``spdx_id`` and this one on a package identifier, and the
+    expiry rules differ.
+
+    ``expires_at`` is REQUIRED here, where the licence waiver treats it as
+    optional. A licence exception can reasonably be permanent — a lawyer
+    cleared this dependency and the answer does not change. A malicious flag is
+    either a mistake upstream (fixed by challenging the advisory, which lands
+    in the next snapshot) or correct (in which case the package must go). Both
+    resolve, so an open-ended waiver would only hide an unfinished decision.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    component_purl: str = Field(..., min_length=1, max_length=_MAX_PURL_LEN)
+    reason: str = Field(..., min_length=1, max_length=_MAX_REASON_LEN)
+    expires_at: datetime
+
+    @field_validator("component_purl")
+    @classmethod
+    def _check_purl(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("component_purl must be non-empty")
+        if _has_control_chars(v):
+            raise ValueError("component_purl must not contain control characters")
+        return v
+
+    @field_validator("reason")
+    @classmethod
+    def _check_reason(cls, v: str) -> str:
+        if _has_control_chars(v.replace("\n", "").replace("\r", "").replace("\t", "")):
+            raise ValueError("reason must not contain control characters")
+        return v
+
+
 # ---------------------------------------------------------------------------
 # Upsert input
 # ---------------------------------------------------------------------------
@@ -163,6 +201,7 @@ class LicensePolicyUpsertIn(BaseModel):
     name: str | None = Field(default=None, max_length=_MAX_NAME_LEN)
     category_overrides: dict[str, PolicyCategory] = Field(default_factory=dict)
     license_exceptions: list[LicenseException] = Field(default_factory=list)
+    malicious_exceptions: list[MaliciousException] = Field(default_factory=list)
     unknown_license_category: PolicyCategory = "conditional"
     compound_operator_strategy: dict[CompoundOperator, CompoundStrategy] = Field(
         default_factory=lambda: _default_compound_strategy()
@@ -192,6 +231,15 @@ class LicensePolicyUpsertIn(BaseModel):
     def _check_exceptions(cls, v: list[LicenseException]) -> list[LicenseException]:
         if len(v) > _MAX_EXCEPTIONS:
             raise ValueError(f"license_exceptions exceeds {_MAX_EXCEPTIONS} entries")
+        return v
+
+    @field_validator("malicious_exceptions")
+    @classmethod
+    def _check_malicious_exceptions(
+        cls, v: list[MaliciousException]
+    ) -> list[MaliciousException]:
+        if len(v) > _MAX_EXCEPTIONS:
+            raise ValueError(f"malicious_exceptions exceeds {_MAX_EXCEPTIONS} entries")
         return v
 
     @model_validator(mode="after")

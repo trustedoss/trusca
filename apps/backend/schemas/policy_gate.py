@@ -81,6 +81,23 @@ class GateResultResponse(BaseModel):
         "when the EPSS gate is disabled (unset/unparseable env), in which case the "
         "gate behaves exactly as the critical-CVE + forbidden-license gate.",
     )
+    malicious_component_count: int = Field(
+        default=0,
+        ge=0,
+        description="Distinct components on the evaluated scan that the vendored "
+        "OSV MAL- snapshot lists as known-malicious. These block regardless of "
+        "severity: a malicious package was published to attack whoever installs "
+        "it, so the response is removal plus rotating the credentials the build "
+        "could reach, not an upgrade. Not a vulnerability count — these never "
+        "appear in ``critical_cve_count`` or any severity total.",
+    )
+    malicious_gate_enforced: bool = Field(
+        default=True,
+        description="Whether the known-malicious axis was active for this "
+        "evaluation (``GATE_MALICIOUS_ENABLED``, on by default). When ``false`` "
+        "the count is 0 because nothing was checked, NOT because nothing was "
+        "found — consumers must not render that as a clean result.",
+    )
     reachable_critical_cve_count: int = Field(
         default=0,
         ge=0,

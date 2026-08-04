@@ -221,6 +221,8 @@ def _build_response_body(result: GateResult) -> GateResultResponse:
         epss_threshold=result.epss_threshold,
         reachable_critical_cve_count=result.reachable_critical_cve_count,
         reachable_gate_enforced=result.reachable_gate_enforced,
+        malicious_component_count=result.malicious_component_count,
+        malicious_gate_enforced=result.malicious_gate_enforced,
         project_id=result.project_id,
         scan_id=result.scan_id,
         evaluated_at=result.evaluated_at,

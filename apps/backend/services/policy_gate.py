@@ -86,6 +86,7 @@ from models import (
     LicenseFinding,
     LicensePolicy,
     Project,
+    ScanComponent,
     VulnerabilityFinding,
 )
 from models import (
@@ -96,6 +97,7 @@ from models import (
 )
 from services.license_expression import evaluate_expression
 from services.license_policy_service import effective_category, get_effective_policy
+from services.malicious import malicious_catalog
 from services.scan_resolution import latest_succeeded_scan_id
 
 log = structlog.get_logger("policy_gate.service")
@@ -149,6 +151,13 @@ class GateResult:
     # ``reachable_relaxation_applied`` is False — the gate ran at full strength.
     # Consumers (SCA comment) use this to render an accurate advisory.
     reachable_relaxation_applied: bool = False
+    # Known-malicious components on this scan (#26). Blocks regardless of
+    # severity: a malicious package has no honest version to upgrade to, so the
+    # response is removal plus credential rotation. ``malicious_gate_enforced``
+    # records whether the axis was active, so a consumer can tell "none found"
+    # from "not checked" — the same NULL-vs-clear distinction the column carries.
+    malicious_component_count: int = 0
+    malicious_gate_enforced: bool = True
 
 
 # The latest-succeeded-scan resolver was PROMOTED to ``services.scan_resolution``
@@ -293,6 +302,23 @@ def _resolve_reachable_critical_only() -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _resolve_gate_malicious_enabled() -> bool:
+    """Read ``GATE_MALICIOUS_ENABLED`` at evaluation time (core rule #11).
+
+    Defaults to ON, unlike the EPSS and reachability knobs. Those tune how
+    strictly an existing signal is read; this one decides whether an active
+    attack blocks the build. Shipping it off by default would mean a package
+    published to steal the build's credentials passes CI until someone opts in.
+
+    Only the exact falsy tokens disable, matching ``MALICIOUS_ENABLED``.
+    """
+    return os.getenv("GATE_MALICIOUS_ENABLED", "true").strip().lower() not in {
+        "false",
+        "0",
+        "no",
+    }
+
+
 def _resolve_epss_threshold() -> float | None:
     """Read ``GATE_EPSS_THRESHOLD`` at evaluation time, or None if disabled.
 
@@ -372,6 +398,112 @@ async def _count_forbidden_license_components(
     )
     result = await session.execute(stmt)
     return int(result.scalar_one())
+
+
+async def _flagged_component_purls(
+    session: AsyncSession,
+    scan_id: uuid.UUID,
+) -> list[str]:
+    """Versioned purls of the components on ``scan_id`` the snapshot flags (#26).
+
+    Reads the catalog column rather than a findings table, because this signal
+    deliberately creates no finding: a malicious package is removed and the
+    build's credentials rotated, not patched, so putting it on the severity
+    axis would prescribe the wrong action. That makes the shape here match the
+    project overview's rollup rather than the licence axis beside it.
+
+    Only ``flagged`` counts. A row that was never assessed is NULL and a row
+    the snapshot did not list is ``clear``; neither blocks, but they mean
+    different things and the gate must not read the first as the second.
+
+    DISTINCT on ``component_version_id`` so a package reachable by several
+    dependency paths is returned once. The purls come back rather than a count
+    because the caller subtracts policy waivers before counting.
+    """
+    stmt = (
+        select(
+            func.distinct(ScanComponent.component_version_id),
+            ComponentVersion.purl_with_version,
+        )
+        .select_from(ScanComponent)
+        .join(
+            ComponentVersion,
+            ComponentVersion.id == ScanComponent.component_version_id,
+        )
+        .where(ScanComponent.scan_id == scan_id)
+        .where(ComponentVersion.malicious_state == "flagged")
+    )
+    result = await session.execute(stmt)
+    return [row[1] for row in result.all()]
+
+
+def _active_malicious_waivers(
+    policy: LicensePolicy | None, now: datetime
+) -> frozenset[str]:
+    """Base purls waived by *policy* and not yet expired.
+
+    An entry without a parseable ``expires_at`` is ignored rather than treated
+    as permanent: the schema requires the field, so a row missing it reached
+    the column some other way and the conservative reading of a malformed
+    waiver is "no waiver".
+    """
+    if policy is None:
+        return frozenset()
+    waived: set[str] = set()
+    for entry in policy.malicious_exceptions or []:
+        if not isinstance(entry, dict):
+            continue
+        purl = entry.get("component_purl")
+        raw_expiry = entry.get("expires_at")
+        if not isinstance(purl, str) or not purl:
+            continue
+        if not isinstance(raw_expiry, str):
+            continue
+        try:
+            expires = datetime.fromisoformat(raw_expiry.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=UTC)
+        if expires > now:
+            waived.add(malicious_catalog.base_purl(purl))
+    return frozenset(waived)
+
+
+async def _resolve_malicious_count(
+    session: AsyncSession,
+    *,
+    project_id: uuid.UUID,
+    scan_id: uuid.UUID,
+    now: datetime,
+) -> int:
+    """Blocking malicious-component count, with policy waivers removed.
+
+    A waiver exists because the alternative is worse: an upstream false
+    positive would otherwise stop every build until the advisory is retracted,
+    which takes days. It buys time to challenge the advisory — nothing more —
+    so it is bounded by a mandatory expiry and it only affects this count. The
+    component keeps its badge everywhere else.
+
+    Waivers are matched on the BASE purl (version stripped), because an
+    advisory that names a package names it across the versions it applies to;
+    asking an operator to waive each version separately during an incident
+    would be the wrong ergonomics.
+    """
+    purls = await _flagged_component_purls(session, scan_id)
+    if not purls:
+        return 0
+
+    team_id = await _team_id_for_project(session, project_id)
+    policy = (
+        await get_effective_policy(session, team_id=team_id)
+        if team_id is not None
+        else None
+    )
+    waived = _active_malicious_waivers(policy, now)
+    if not waived:
+        return len(purls)
+    return sum(1 for purl in purls if malicious_catalog.base_purl(purl) not in waived)
 
 
 def _static_default_for(spdx_id: str) -> str:
@@ -587,6 +719,7 @@ def _build_reason(
     forbidden_license_count: int,
     epss_gate_count: int = 0,
     epss_threshold: float | None = None,
+    malicious_component_count: int = 0,
     *,
     reachable_critical_only: bool = False,
 ) -> str | None:
@@ -618,6 +751,14 @@ def _build_reason(
         parts.append(
             f"{epss_gate_count} open "
             f"{'CVE' if epss_gate_count == 1 else 'CVEs'} with EPSS >= {epss_threshold:g}",
+        )
+    if malicious_component_count > 0:
+        # Worded as an instruction, not a count: an upgrade is the wrong move
+        # here and the reason line is often all a CI reader sees.
+        parts.append(
+            f"{malicious_component_count} known-malicious "
+            f"{'package' if malicious_component_count == 1 else 'packages'} "
+            f"detected — remove and rotate exposed credentials",
         )
     if not parts:
         return None
@@ -662,6 +803,8 @@ async def evaluate_gate(
     epss_threshold = _resolve_epss_threshold()
     # Opt-in reachable-only critical mode (default OFF → legacy behaviour).
     reachable_critical_only = _resolve_reachable_critical_only()
+    # #26 — on by default; see the resolver for why this one differs.
+    malicious_gate_enabled = _resolve_gate_malicious_enabled()
 
     if scan_id is None:
         # No signal: we explicitly pass. See module docstring.
@@ -679,6 +822,8 @@ async def evaluate_gate(
             reachable_gate_enforced=reachable_critical_only,
             # No scan → nothing analysed → the relaxation can never have applied.
             reachable_relaxation_applied=False,
+            malicious_component_count=0,
+            malicious_gate_enforced=malicious_gate_enabled,
         )
         log.info(
             "policy_gate.evaluated",
@@ -692,6 +837,8 @@ async def evaluate_gate(
             reachable_critical_cve_count=0,
             reachable_gate_enforced=reachable_critical_only,
             reachable_relaxation_applied=False,
+            malicious_component_count=0,
+            malicious_gate_enforced=malicious_gate_enabled,
             reason=None,
         )
         return result
@@ -707,6 +854,13 @@ async def evaluate_gate(
     epss_gate_count = (
         await _count_open_epss_findings(session, scan_id, epss_threshold)
         if epss_threshold is not None
+        else 0
+    )
+    malicious_component_count = (
+        await _resolve_malicious_count(
+            session, project_id=project_id, scan_id=scan_id, now=evaluated_at
+        )
+        if malicious_gate_enabled
         else 0
     )
 
@@ -759,6 +913,7 @@ async def evaluate_gate(
         forbidden_license_count,
         epss_gate_count,
         epss_threshold,
+        malicious_component_count,
         reachable_critical_only=relaxation_applies,
     )
     gate: GateOutcome = "fail" if reason is not None else "pass"
@@ -780,6 +935,8 @@ async def evaluate_gate(
         reachable_critical_cve_count=reachable_critical_cve_count,
         reachable_gate_enforced=reachable_critical_only,
         reachable_relaxation_applied=relaxation_applies,
+        malicious_component_count=malicious_component_count,
+        malicious_gate_enforced=malicious_gate_enabled,
     )
     log.info(
         "policy_gate.evaluated",
@@ -796,6 +953,8 @@ async def evaluate_gate(
         forbidden_license_count=forbidden_license_count,
         epss_gate_count=epss_gate_count,
         epss_threshold=epss_threshold,
+        malicious_component_count=malicious_component_count,
+        malicious_gate_enforced=malicious_gate_enabled,
         reason=reason,
     )
     return result
