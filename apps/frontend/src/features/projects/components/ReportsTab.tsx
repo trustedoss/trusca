@@ -309,7 +309,11 @@ export function ReportsTab({
               read-only grid and the old ObligationsTab affordance is unrouted,
               so deep-linking there was a dead end. Same direct-download pattern
               as VulnPdfCard. */}
-          <NoticeCard projectId={projectId} projectName={projectName} />
+          <NoticeCard
+            projectId={projectId}
+            projectName={projectName}
+            scanId={scanId}
+          />
           {/* W4-C #21 — SBOM card scrolls to the in-page SBOM section below
               instead of navigating to a separate tab. */}
           <GenerateCard
@@ -580,13 +584,16 @@ function VulnPdfCard({ projectId }: { projectId: string }) {
 function NoticeCard({
   projectId,
   projectName,
+  scanId,
 }: {
   projectId: string;
   projectName?: string | null;
+  scanId?: string;
 }) {
   const { t } = useTranslation("project_detail");
   const notice = useNotice(projectId, projectName ?? undefined, {
     defaultFormat: "text",
+    scanId,
   });
   const [format, setFormat] = useState<NoticeFormat>("text");
   return (

@@ -22,6 +22,12 @@ import { safeFilenameToken, triggerBlobDownload } from "@/lib/download";
 
 export interface UseNoticeOptions {
   defaultFormat?: NoticeFormat;
+  /**
+   * Release-snapshot anchor forwarded to the backend. Pass the tab's pinned
+   * scan so the downloaded NOTICE describes the release on screen rather than
+   * whatever scan succeeded most recently.
+   */
+  scanId?: string;
 }
 
 export interface UseNoticeReturn {
@@ -69,6 +75,7 @@ export function useNotice(
         const result = await fetchProjectNotice(projectId, {
           format: fmt,
           download: true,
+          scanId: options.scanId,
         });
         const ext = fmt === "markdown" ? "md" : fmt === "html" ? "html" : "txt";
         const fallbackName = `NOTICE-${safeFilenameToken(projectName ?? projectId)}.${ext}`;
@@ -83,7 +90,7 @@ export function useNotice(
         setIsLoading(false);
       }
     },
-    [projectId, projectName, options.defaultFormat],
+    [projectId, projectName, options.defaultFormat, options.scanId],
   );
 
   return { download, isLoading, error, lastResult };

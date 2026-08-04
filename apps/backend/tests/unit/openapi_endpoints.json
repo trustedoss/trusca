@@ -278,7 +278,8 @@
   "GET /v1/projects/{project_id}/notice": [
     "download",
     "format",
-    "project_id"
+    "project_id",
+    "scan_id"
   ],
   "GET /v1/projects/{project_id}/obligations": [
     "category",

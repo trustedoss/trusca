@@ -369,6 +369,7 @@ export function ComplianceTab({
       <ComplianceToolbar
         projectId={projectId}
         projectName={projectName}
+        scanId={scanId}
         search={search}
         onSearchChange={setSearch}
         categories={categories}
@@ -491,6 +492,8 @@ interface ComplianceToolbarProps {
   projectId: string;
   /** M-21 — names the downloaded NOTICE file (id fallback when null). */
   projectName: string | null;
+  /** Release-snapshot pin, so the NOTICE matches the grid below it. */
+  scanId?: string;
   search: string;
   onSearchChange: (value: string) => void;
   categories: LicenseCategoryName[];
@@ -506,6 +509,7 @@ interface ComplianceToolbarProps {
 function ComplianceToolbar({
   projectId,
   projectName,
+  scanId,
   search,
   onSearchChange,
   categories,
@@ -626,6 +630,7 @@ function ComplianceToolbar({
       <ComplianceNoticeDownload
         projectId={projectId}
         projectName={projectName}
+        scanId={scanId}
       />
     </div>
   );
@@ -643,13 +648,16 @@ function ComplianceToolbar({
 function ComplianceNoticeDownload({
   projectId,
   projectName,
+  scanId,
 }: {
   projectId: string;
   projectName: string | null;
+  scanId?: string;
 }) {
   const { t } = useTranslation("project_detail");
   const notice = useNotice(projectId, projectName ?? undefined, {
     defaultFormat: "text",
+    scanId,
   });
   const [format, setFormat] = useState<NoticeFormat>("text");
   return (

@@ -487,6 +487,55 @@ async def test_gate_result_anchor_reflects_pinned_snapshot(client) -> None:
     assert pinned.json()["critical_cve_count"] == 2
 
 
+async def test_notice_anchor_pins_older_scan(client) -> None:
+    # The NOTICE is the artefact a shipped release is judged by, so it has to
+    # honour the same pin the tab above it does. Without the anchor, "give me
+    # the NOTICE we shipped with the previous release" stops being answerable
+    # the moment a newer scan succeeds.
+    user, project_id, older, _latest = await _seed_two_snapshot_project(client)
+    headers = _bearer_for(user)
+
+    # Default (latest succeeded): no license findings on that scan at all.
+    default = await client.get(f"/v1/projects/{project_id}/notice", headers=headers)
+    assert default.status_code == 200, default.text
+    assert default.headers["x-notice-license-count"] == "0"
+    assert "GPL-3.0-only" not in default.text
+
+    # Pinned to the OLDER scan: its forbidden license must be credited.
+    pinned = await client.get(
+        f"/v1/projects/{project_id}/notice",
+        headers=headers,
+        params={"scan_id": str(older)},
+    )
+    assert pinned.status_code == 200, pinned.text
+    assert pinned.headers["x-notice-license-count"] == "1"
+    assert "GPL-3.0-only" in pinned.text
+
+
+async def test_notice_anchor_non_succeeded_scan_id_is_404(client) -> None:
+    team, user = await _seed_team_with_user(client)
+    project_id = await _seed_empty_project(client, team_id=team.id)
+    headers = _bearer_for(user)
+    await _seed_succeeded_scan(
+        client, project_id=project_id, created_at=datetime(2026, 5, 20, tzinfo=UTC), n_high=1
+    )
+    failed_scan = await _seed_succeeded_scan(
+        client,
+        project_id=project_id,
+        created_at=datetime(2026, 5, 22, tzinfo=UTC),
+        status="failed",
+    )
+
+    for pinned_scan_id in (failed_scan, uuid.uuid4()):
+        response = await client.get(
+            f"/v1/projects/{project_id}/notice",
+            headers=headers,
+            params={"scan_id": str(pinned_scan_id)},
+        )
+        assert response.status_code == 404, response.text
+        assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
 async def test_omitting_scan_id_returns_latest_succeeded(client) -> None:
     user, project_id, older, latest = await _seed_two_snapshot_project(client)
     headers = _bearer_for(user)
@@ -526,6 +575,7 @@ async def test_anchor_idor_other_project_scan_id_is_404(client) -> None:
         f"/v1/projects/{project_id}/obligations",
         f"/v1/projects/{project_id}/gate-result",
         f"/v1/projects/{project_id}/sbom",
+        f"/v1/projects/{project_id}/notice",
     ):
         response = await client.get(
             path, headers=headers, params={"scan_id": str(foreign_scan)}

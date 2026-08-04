@@ -69,7 +69,7 @@ from services.project_service import (
     get_project,
 )
 from services.report_download_service import record_report_download
-from services.scan_resolution import SnapshotScanNotFound, latest_succeeded_scan_id
+from services.scan_resolution import SnapshotScanNotFound
 
 router = APIRouter(prefix="/v1", tags=["obligations"])
 log = structlog.get_logger("obligations.api")
@@ -280,7 +280,7 @@ def _format_content_disposition(project_name: str, ext: str) -> str:
 
 @router.get(
     "/projects/{project_id}/notice",
-    summary="Compose a NOTICE attribution body for the project's latest scan",
+    summary="Compose a NOTICE attribution body for the project's latest scan (or a pinned one)",
     responses={
         200: {
             "description": (
@@ -297,8 +297,9 @@ def _format_content_disposition(project_name: str, ext: str) -> str:
         },
         404: {
             "description": (
-                "Project does not exist, or the caller is not a member of the "
-                "project's team (existence-hidden)."
+                "Project does not exist, the caller is not a member of the "
+                "project's team (existence-hidden), or a pinned ``scan_id`` is "
+                "not a succeeded scan of this project."
             )
         },
         429: {
@@ -311,6 +312,17 @@ def _format_content_disposition(project_name: str, ext: str) -> str:
 async def get_project_notice_endpoint(
     request: Request,
     project_id: uuid.UUID,
+    scan_id: uuid.UUID | None = Query(
+        default=None,
+        description=(
+            "Optional release-snapshot anchor. When given, compose the NOTICE "
+            "from this SPECIFIC succeeded scan instead of the project's latest "
+            "succeeded scan — this is how the attribution document for an "
+            "already-shipped release stays retrievable after a newer scan "
+            "succeeds. Must belong to this project and be succeeded, else 404. "
+            "Omit for the default latest-succeeded behaviour."
+        ),
+    ),
     fmt: str = Query(
         default="text",
         alias="format",
@@ -336,7 +348,10 @@ async def get_project_notice_endpoint(
             project_id=project_id,
             actor=actor,
             fmt=fmt,
+            snapshot_scan_id=scan_id,
         )
+    except SnapshotScanNotFound:
+        return _problem_for_snapshot_not_found(request)
     except (ObligationError, ProjectError) as exc:
         return _problem_for_obligation_error(request, exc)
 
@@ -370,9 +385,11 @@ async def get_project_notice_endpoint(
     # already enforced existence-hide team membership, so reaching this point
     # means the actor is allowed to read this project. We load the project for
     # its ``team_id`` (denormalised onto every history row so admin / team-wide
-    # queries do not need a join) and resolve the latest succeeded scan as the
-    # snapshot anchor, mirroring what the NOTICE service rendered against.
-    # Best-effort: ANY DB error inside the helper is logged + swallowed.
+    # queries do not need a join) and record the scan the service actually
+    # rendered against — re-resolving "latest succeeded" here would mislabel a
+    # pinned download, and could even disagree with an unpinned one if a scan
+    # succeeded mid-request. Best-effort: ANY DB error inside the helper is
+    # logged + swallowed.
     body_bytes = (
         payload["body"].encode("utf-8")
         if isinstance(payload["body"], str)
@@ -386,11 +403,10 @@ async def get_project_notice_endpoint(
         # between the two reads). Skip the emit silently — never 5xx.
         project = None
     if project is not None:
-        resolved_scan_id = await latest_succeeded_scan_id(session, project_id)
         await record_report_download(
             session,
             project=project,
-            scan_id=resolved_scan_id,
+            scan_id=payload["scan_id"],
             user=actor,
             report_type="notice",
             fmt=fmt,
