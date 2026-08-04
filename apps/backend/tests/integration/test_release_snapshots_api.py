@@ -173,6 +173,7 @@ async def _seed_succeeded_scan(
     n_high: int = 0,
     forbidden_license: bool = False,
     release: str | None = None,
+    ref: str | None = None,
     status: str = "succeeded",
 ) -> uuid.UUID:
     """Create a scan (default succeeded) with components + findings keyed to it.
@@ -193,6 +194,7 @@ async def _seed_succeeded_scan(
             progress_percent=100 if status == "succeeded" else 0,
             scan_metadata=metadata,
             created_at=created_at,
+            ref=ref,
         )
         session.add(scan)
         await session.commit()
@@ -262,11 +264,16 @@ async def _seed_team_with_user(client: AsyncClient, *, role: str = "developer"):
     return team, user
 
 
-async def _seed_empty_project(client: AsyncClient, *, team_id: uuid.UUID) -> uuid.UUID:
+async def _seed_empty_project(
+    client: AsyncClient, *, team_id: uuid.UUID, default_branch: str | None = None
+) -> uuid.UUID:
     factory = await _factory(client)
     async with factory() as session:
         team = (await session.execute(select(Team).where(Team.id == team_id))).scalar_one()
         project = await make_project(session, team=team)
+        if default_branch is not None:
+            project.default_branch = default_branch
+            await session.commit()
         return project.id
 
 
@@ -635,6 +642,153 @@ async def test_omitting_scan_id_returns_latest_succeeded(client) -> None:
     assert response.status_code == 200, response.text
     # latest_succeeded_scan_at reflects the LATEST scan, never the older pin.
     assert response.json()["last_succeeded_scan_at"] is not None
+
+
+# ---------------------------------------------------------------------------
+# Current-state anchor follows the project's main line
+# ---------------------------------------------------------------------------
+
+
+async def _seed_two_branch_project(client: AsyncClient, *, default_branch: str | None):
+    """Main line scanned first (2 critical), another branch scanned LAST (1 high).
+
+    The release branch finishing last is the whole point: under a purely
+    recency-based anchor it would decide the project's current state.
+    """
+    team, user = await _seed_team_with_user(client)
+    project_id = await _seed_empty_project(
+        client, team_id=team.id, default_branch=default_branch
+    )
+    base = datetime(2026, 5, 20, tzinfo=UTC)
+    main_scan = await _seed_succeeded_scan(
+        client, project_id=project_id, created_at=base, n_critical=2, ref="main"
+    )
+    release_scan = await _seed_succeeded_scan(
+        client,
+        project_id=project_id,
+        created_at=base + timedelta(days=2),
+        n_high=1,
+        ref="release/1.x",
+    )
+    return user, project_id, main_scan, release_scan
+
+
+async def test_anchor_prefers_main_line_over_a_newer_other_branch(client) -> None:
+    user, project_id, _main_scan, _release_scan = await _seed_two_branch_project(
+        client, default_branch="main"
+    )
+    headers = _bearer_for(user)
+
+    overview = await client.get(f"/v1/projects/{project_id}/overview", headers=headers)
+    assert overview.status_code == 200, overview.text
+    # main's 2 critical, not release/1.x's 1 high, even though the latter is newer.
+    assert overview.json()["severity_distribution"]["critical"] == 2
+    assert overview.json()["severity_distribution"]["high"] == 0
+
+
+async def test_gate_verdict_is_not_decided_by_another_branch(client) -> None:
+    # The defect that motivated this: main's CI asks for its verdict and gets
+    # the release branch's, because that branch scanned more recently.
+    user, project_id, main_scan, release_scan = await _seed_two_branch_project(
+        client, default_branch="main"
+    )
+    headers = _bearer_for(user)
+
+    default = await client.get(f"/v1/projects/{project_id}/gate-result", headers=headers)
+    assert default.status_code == 200, default.text
+    assert default.json()["scan_id"] == str(main_scan)
+    assert default.json()["critical_cve_count"] == 2
+
+    # A CI job on the release branch names its own ref and gets its own verdict.
+    pinned = await client.get(
+        f"/v1/projects/{project_id}/gate-result",
+        headers=headers,
+        params={"ref": "release/1.x"},
+    )
+    assert pinned.status_code == 200, pinned.text
+    assert pinned.json()["scan_id"] == str(release_scan)
+    assert pinned.json()["critical_cve_count"] == 0
+
+
+async def test_gate_ref_accepts_a_fully_qualified_ref(client) -> None:
+    # CI passes $GITHUB_REF; the endpoint must normalize it the same way the
+    # scan-create path did, or the branch would never match its own scans.
+    user, project_id, main_scan, _release = await _seed_two_branch_project(
+        client, default_branch="release/1.x"
+    )
+    headers = _bearer_for(user)
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/gate-result",
+        headers=headers,
+        params={"ref": "refs/heads/main"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["scan_id"] == str(main_scan)
+
+
+async def test_anchor_falls_back_when_no_scan_is_on_the_main_line(client) -> None:
+    # A project whose main line is 'trunk' matches nothing, so the guess must
+    # degrade to the pre-existing "newest succeeded scan" rule, not to nothing.
+    user, project_id, _main, release_scan = await _seed_two_branch_project(
+        client, default_branch="trunk"
+    )
+    headers = _bearer_for(user)
+
+    response = await client.get(f"/v1/projects/{project_id}/gate-result", headers=headers)
+    assert response.status_code == 200, response.text
+    assert response.json()["scan_id"] == str(release_scan)
+
+
+async def test_anchor_defaults_to_main_when_default_branch_is_unset(client) -> None:
+    # default_branch is NULL on most projects (the create form never asks), so
+    # the fallback to 'main' is what makes the fix reach them at all.
+    user, project_id, main_scan, _release = await _seed_two_branch_project(
+        client, default_branch=None
+    )
+    headers = _bearer_for(user)
+
+    response = await client.get(f"/v1/projects/{project_id}/gate-result", headers=headers)
+    assert response.status_code == 200, response.text
+    assert response.json()["scan_id"] == str(main_scan)
+
+
+async def test_refless_scans_are_unaffected_by_the_main_line_preference(client) -> None:
+    # Ad-hoc scans carry ref=NULL. NULL must not be treated as matching 'main'
+    # (SQL NULL sorts first under DESC), so these projects keep pure recency.
+    team, user = await _seed_team_with_user(client)
+    project_id = await _seed_empty_project(client, team_id=team.id)
+    headers = _bearer_for(user)
+    base = datetime(2026, 5, 20, tzinfo=UTC)
+    await _seed_succeeded_scan(client, project_id=project_id, created_at=base, n_critical=2)
+    newest = await _seed_succeeded_scan(
+        client, project_id=project_id, created_at=base + timedelta(days=1), n_high=1
+    )
+
+    response = await client.get(f"/v1/projects/{project_id}/gate-result", headers=headers)
+    assert response.status_code == 200, response.text
+    assert response.json()["scan_id"] == str(newest)
+
+
+async def test_gate_ref_with_no_succeeded_scan_does_not_borrow_another_branch(
+    client,
+) -> None:
+    user, project_id, _main, _release = await _seed_two_branch_project(
+        client, default_branch="main"
+    )
+    headers = _bearer_for(user)
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/gate-result",
+        headers=headers,
+        params={"ref": "feature/nope"},
+    )
+    assert response.status_code == 200, response.text
+    # No signal for that branch → the documented no-scan pass, and crucially
+    # NOT main's two criticals.
+    assert response.json()["scan_id"] is None
+    assert response.json()["gate"] == "pass"
+    assert response.json()["critical_cve_count"] == 0
 
 
 # ---------------------------------------------------------------------------

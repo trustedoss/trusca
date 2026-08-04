@@ -38,12 +38,36 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import String, cast, select
+from sqlalchemy import String, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 from sqlalchemy.sql.elements import ColumnElement
 
 from models import Project, Scan
+
+
+def _project_main_line_ref() -> ColumnElement[str]:
+    """SQL for the ref a project's *current state* should be read from.
+
+    ``projects.default_branch`` is the declared main line, but it is unset on
+    most rows (the create form does not ask for it, and the source pipeline
+    clones the remote's own HEAD rather than passing ``--branch``). Falling back
+    to ``main`` makes the common repo work without configuration; a project
+    whose main line is ``master`` or ``trunk`` simply matches nothing and keeps
+    the old project-wide behaviour, so the guess can only help.
+    """
+    return func.coalesce(func.nullif(func.btrim(Project.default_branch), ""), "main")
+
+
+def _on_main_line() -> ColumnElement[bool]:
+    """SQL predicate: this scan targeted the project's main line.
+
+    ``IS NOT DISTINCT FROM`` rather than ``=`` because ``Scan.ref`` is NULL for
+    ad-hoc scans, and ``NULL = 'main'`` is NULL — which sorts FIRST under
+    ``ORDER BY ... DESC`` in Postgres and would make ref-less scans outrank the
+    main line exactly when we are trying to prefer it.
+    """
+    return Scan.ref.is_not_distinct_from(_project_main_line_ref())
 
 
 class SnapshotScanNotFound(Exception):
@@ -68,8 +92,26 @@ class SnapshotScanNotFound(Exception):
 async def latest_succeeded_scan_id(
     session: AsyncSession,
     project_id: uuid.UUID,
+    ref: str | None = None,
 ) -> uuid.UUID | None:
-    """Return the ID of the project's most recent ``status='succeeded'`` scan, or None.
+    """Return the ID of the project's current-state ``status='succeeded'`` scan.
+
+    "Current state" prefers the project's MAIN LINE. Ordering by
+    :func:`_on_main_line` first and recency second means a project that scans
+    several branches resolves to its main line's newest snapshot, while a
+    project with no main-line scan falls through to the newest snapshot of any
+    branch — the pre-existing behaviour, unchanged.
+
+    Without that preference the anchor was purely "newest succeeded scan of this
+    project", so a project wired to CI on both ``main`` and ``release/1.x``
+    flipped its Overview, badges, and — because the build gate resolves through
+    here too — its CI verdict, to whichever branch happened to finish last.
+    ``main``'s pipeline could be blocked by a release branch's critical CVE.
+
+    Pass *ref* to anchor on a specific branch instead. That is exact: a branch
+    with no succeeded scan returns ``None`` (the caller's "empty 200" path)
+    rather than silently falling back to another branch's findings, because a
+    caller that named a branch wants that branch or nothing.
 
     We deliberately do NOT use ``Project.latest_scan_id`` here: that pointer
     reflects the last *attempted* scan, so a successful scan whose last attempt
@@ -84,11 +126,14 @@ async def latest_succeeded_scan_id(
     """
     stmt = (
         select(Scan.id)
+        .join(Project, Project.id == Scan.project_id)
         .where(Scan.project_id == project_id)
         .where(cast(Scan.status, String) == "succeeded")
-        .order_by(Scan.created_at.desc(), Scan.id.desc())
+        .order_by(_on_main_line().desc(), Scan.created_at.desc(), Scan.id.desc())
         .limit(1)
     )
+    if ref is not None:
+        stmt = stmt.where(Scan.ref == ref)
     result = await session.execute(stmt)
     return result.scalar_one_or_none()
 
@@ -128,7 +173,15 @@ def latest_succeeded_scan_select(
         .join(Project, Project.id == Scan.project_id)
         .distinct(Scan.project_id)
         .where(cast(Scan.status, String) == "succeeded")
-        .order_by(Scan.project_id, Scan.created_at.desc(), Scan.id.desc())
+        .order_by(
+            Scan.project_id,
+            # Same main-line preference as the single-project resolver — the
+            # two must agree or the inventory would list a component the owning
+            # project's Components tab does not show.
+            _on_main_line().desc(),
+            Scan.created_at.desc(),
+            Scan.id.desc(),
+        )
     )
     if project_filter is not None:
         stmt = stmt.where(project_filter)
@@ -139,6 +192,7 @@ async def resolve_snapshot_scan_id(
     session: AsyncSession,
     project_id: uuid.UUID,
     scan_id: uuid.UUID | None,
+    ref: str | None = None,
 ) -> uuid.UUID | None:
     """Resolve which scan a detail-read surface should anchor on (feature #28).
 
@@ -170,7 +224,7 @@ async def resolve_snapshot_scan_id(
     invoking the resolver (same contract as :func:`latest_succeeded_scan_id`).
     """
     if scan_id is None:
-        return await latest_succeeded_scan_id(session, project_id)
+        return await latest_succeeded_scan_id(session, project_id, ref=ref)
 
     # Validate ownership AND succeeded status in one statement. We deliberately
     # do NOT split "wrong project" from "not succeeded": both collapse to the
