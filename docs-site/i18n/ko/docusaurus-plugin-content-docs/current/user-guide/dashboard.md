@@ -39,7 +39,7 @@ sidebar_position: 0
 6. **License classification (라이선스 분류)** — 네 티어(Permissive / Conditional / Prohibited / Unknown)의 수평 바와 그 아래 티어별 카운트 범례.
 7. **Recent scans (최근 스캔)** — 포트폴리오 전체의 가장 최근 스캔 행. 각 행은 프로젝트 상세로 이동합니다. 각 행은 프로젝트 이름, 릴리스 태그(릴리스 스냅샷이 기록된 경우), 스캔 종류(`source` / `container`), 상태 배지, 상대 시간을 포함합니다.
 
-밴드들은 엔드포인트 네 개를 읽습니다 — `/v1/dashboard/action-queue`, `/v1/dashboard/trends`, `/v1/dashboard/portfolio`, `/v1/dashboard/summary`. 모두 서버에서 소속 팀이 닿는 프로젝트로 스코프가 제한됩니다. 첫 응답을 기다리는 동안에는 스켈레톤을 표시하고, 이후 새로고침은 캐시된 응답을 쓰면서 백그라운드로 refetch 합니다.
+밴드들은 엔드포인트 네 개를 읽습니다 — `/v1/dashboard/action-queue`, `/v1/dashboard/trends`, `/v1/dashboard/portfolio`, `/v1/dashboard/summary`. 모두 서버에서 소속 팀이 닿는 프로젝트로 스코프가 제한됩니다. 첫 응답을 기다리는 동안에는 스켈레톤을 표시하고, 이후 새로 고침은 캐시된 응답을 쓰면서 백그라운드로 refetch 합니다.
 
 ## 전역 검색 (⌘K)
 

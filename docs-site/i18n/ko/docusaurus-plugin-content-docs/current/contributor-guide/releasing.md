@@ -74,10 +74,10 @@ pull해서 실행해봐야만 설치 가능 여부를 증명할 수 있기 때�
 
 ## 릴리스 절차
 
-1. 벤더링된 endoflife.date 스냅숏을 갱신해 릴리스가 최신 수명 주기 데이터를
+1. 저장소에 포함된 endoflife.date 스냅샷을 갱신해 릴리스가 최신 수명 주기 데이터를
    담게 합니다(EOL 판정은 이 파일에서 오프라인으로 스탬프됩니다).
    `apps/backend`에서 `python3 scripts/refresh_eol_snapshot.py`를 실행하고,
-   갱신된 스냅숏을 릴리스 준비 변경과 함께 커밋합니다.
+   갱신된 스냅샷을 릴리스 준비 변경과 함께 커밋합니다.
 2. **문서 일괄 점검** — 릴리스는 문서와 함께 나갑니다. 태그 전에:
    - `docs-site/docs/release-notes/X.Y.Z.md`에 릴리스 노트를 작성합니다
      (EN + KO 미러, `sidebars.ts` 배선 포함). 내용은 `CHANGELOG.md`의

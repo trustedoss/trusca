@@ -22,7 +22,7 @@ slug: /quickstart
 
 ## 1. 스택 기동
 
-레포지토리를 클론하고 env 파일을 생성합니다.
+저장소를 클론하고 env 파일을 생성합니다.
 
 <!-- docs-uat: id=qs-bootstrap kind=shell ctx=host tier=gate waiver=ci-uses-checkout-tree -->
 ```bash

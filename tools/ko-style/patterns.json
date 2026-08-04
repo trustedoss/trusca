@@ -152,6 +152,56 @@
       "example_ok": "금지 라이선스가 발견되면 빌드를 차단합니다."
     },
     {
+      "id": "term-release",
+      "category": "용어 비일관",
+      "severity": "S1",
+      "pattern": "릴리즈",
+      "message": "용어집 정규형이 아닙니다.",
+      "suggestion": "'릴리즈' → '릴리스' (용어집 표준 표기).",
+      "example_bad": "지원 종료된 릴리즈에는 수정이 제공되지 않습니다.",
+      "example_ok": "지원 종료된 릴리스에는 수정이 제공되지 않습니다."
+    },
+    {
+      "id": "term-snapshot",
+      "category": "용어 비일관",
+      "severity": "S1",
+      "pattern": "스냅숏",
+      "message": "용어집 정규형이 아닙니다.",
+      "suggestion": "'스냅숏' → '스냅샷' (용어집 표준 표기).",
+      "example_bad": "스냅숏이 30일 지났습니다.",
+      "example_ok": "스냅샷이 30일 지났습니다."
+    },
+    {
+      "id": "term-repository",
+      "category": "용어 비일관",
+      "severity": "S1",
+      "pattern": "리포지토리|레포지토리",
+      "message": "용어집 정규형이 아닙니다.",
+      "suggestion": "'저장소'로 통일하세요 (용어집 표준 표기).",
+      "example_bad": "리포지토리 URL을 입력하세요.",
+      "example_ok": "저장소 URL을 입력하세요."
+    },
+    {
+      "id": "term-refresh-spacing",
+      "category": "용어 비일관",
+      "severity": "S1",
+      "pattern": "새로고침",
+      "message": "'새로 고침'은 띄어 씁니다.",
+      "suggestion": "명사는 '새로 고침', 동사는 '새로 고치다'로 쓰세요.",
+      "example_bad": "페이지를 새로고침해 주세요.",
+      "example_ok": "페이지를 새로 고쳐 주세요."
+    },
+    {
+      "id": "term-vendoring",
+      "category": "용어 비일관",
+      "severity": "S1",
+      "pattern": "벤더링|벤더된|벤더링됨",
+      "message": "'vendoring'을 음차한 표현입니다.",
+      "suggestion": "'저장소에 포함'으로 풀어 쓰세요. 코드·커밋 메시지의 영어 vendored는 그대로 둡니다.",
+      "example_bad": "이 스냅샷은 릴리스에 벤더링됩니다.",
+      "example_ok": "이 스냅샷은 릴리스에 포함해 배포합니다."
+    },
+    {
       "id": "term-component-misspell",
       "category": "용어 비일관",
       "severity": "S1",
