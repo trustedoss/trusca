@@ -62,7 +62,9 @@ pyasn1==0.6.4
 # future jose bump from silently moving the Fernet surface out from under us.
 # 2026-06-16 bump 48.0.0 → 48.0.1: fixes GHSA-537c-gmf6-5ccf (HIGH — vulnerable
 # OpenSSL statically included in the cryptography wheels).
-cryptography==48.0.1
+# 2026-08-04 bump 48.0.1 → 50.0.0: CVE-2026-69247 (HIGH) and CVE-2026-69249.
+# 50.0.0 is the floor for the first; 49.0.0 would only clear the second.
+cryptography==50.0.0
 slowapi==0.1.9
 email-validator==2.2.0
 # Phase 6 PR #18 — async SMTP for the notifications module. aiosmtplib is the
