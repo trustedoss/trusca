@@ -113,7 +113,7 @@ CI 빌드 게이트는 기본적으로 Critical CVE와 금지 라이선스에서
 
 | 키 | 기본값 | 읽는 위치 | 설명 |
 |---|---|---|---|
-| `GATE_MALICIOUS_ENABLED` | `true` | `config.py` | 빌드 게이트가 알려진 악성 패키지를 차단할지 정합니다. 다른 `GATE_*` 설정과 달리 기본값이 켜짐입니다. 나머지는 이미 있는 신호를 얼마나 엄격히 읽을지 조정하지만 이것은 공격이 그대로 배포될지를 정하기 때문입니다. 심각도와 무관하게 차단합니다. 악성 패키지에는 올라갈 정상 버전이 없습니다. 끄면 `malicious_component_count`가 0이 되는데 이는 확인하지 않았다는 뜻이며 `malicious_gate_enforced`가 그것을 알려 줍니다. `false` / `0` / `no`만 끕니다. |
+| `GATE_MALICIOUS_ENABLED` | `true` | `policy_gate.py` | 빌드 게이트가 알려진 악성 패키지를 차단할지 정합니다. 다른 `GATE_*` 설정과 달리 기본값이 켜짐입니다. 나머지는 이미 있는 신호를 얼마나 엄격히 읽을지 조정하지만 이것은 공격이 그대로 배포될지를 정하기 때문입니다. 심각도와 무관하게 차단합니다. 악성 패키지에는 올라갈 정상 버전이 없습니다. 끄면 `malicious_component_count`가 0이 되는데 이는 확인하지 않았다는 뜻이며 `malicious_gate_enforced`가 그것을 알려 줍니다. `false` / `0` / `no`만 끕니다. |
 | `GATE_EPSS_THRESHOLD` | (미설정) | `config.py` | 선택적 EPSS 게이트. `0`~`1` 값. 설정 시 미해결 결과 중 `epss_score >= GATE_EPSS_THRESHOLD`인 것이 있으면 빌드 게이트도 실패하며, 게이트 결과에 `epss_gate_count` + `epss_threshold`가 실립니다. **미설정(기본)이면 EPSS 게이트는 비활성** — 기존 Critical-CVE / 금지-라이선스 조건만 적용됩니다. EPSS 값이 없는 결과는 게이트를 트리거하지 않습니다. EPSS 데이터는 Trivy DB에서 옵니다 — Trivy가 값을 제공하는 CVE만 대상입니다. |
 
 게이트 모델은 [빌드 게이트](./glossary.md#빌드-게이트), CI 워크스루는 [EPSS로 빌드 게이팅](../ci-integration/github-actions.md#epss로-빌드-게이팅-선택) 참고.
@@ -136,6 +136,9 @@ CI 빌드 게이트는 기본적으로 Critical CVE와 금지 라이선스에서
 | `SCAN_SCOPE_FILTER_NODE_ENABLED` | `true` | `config.py` | 스코프 필터의 npm 부분(커밋되었거나 prep 단계가 생성한 `package-lock.json`이 `dev`로 분류한 패키지 제거). lockfile에 없는 패키지는 항상 유지합니다. |
 | `LICENSE_FETCH_ENABLED` | `true` | `config.py` | cdxgen 이후 라이선스 보강. cdxgen이 SPDX 라이선스를 못 준 컴포넌트(설치된 패키지가 없는 `requirements.txt` / `go.mod`에서 흔함)에 대해, 컴포넌트의 공개 레지스트리(PyPI / Maven Central / crates.io / pkg.go.dev / RubyGems / NuGet)에 purl로 선언 라이선스를 조회하고 캐시합니다 — "unknown" 라이선스 비율을 낮춥니다. 네트워크로 나가는 것은 패키지명+버전뿐(패키지 매니저가 이미 접속하는 레지스트리)이라 SCANOSS 핑거프린트 egress와 달리 기본 **켬** 입니다. **air-gapped** 배포에서는 `false` / `0` / `no`로 꺼서, 미해석 컴포넌트가 컴포넌트마다 네트워크 타임아웃을 치르지 않고 unknown으로 남게 하십시오. |
 | `MALICIOUS_ENABLED` | `true` | `config.py` | 알려진 악성 패키지 표시. 릴리스에 함께 담긴 OSV `MAL-` 권고 스냅샷과 컴포넌트를 대조해 공유 카탈로그에 `flagged` / `clear`를 기록합니다. 전부 오프라인이라 외부 통신이 없습니다. 취약점 축이 아니므로 findings를 만들지 않고 심각도 합계에도 들어가지 않습니다. 끄면 값이 비는데, 화면은 이를 *안전*이 아니라 *확인하지 않음*으로 표시합니다. `false` / `0` / `no`만 끕니다. [컴포넌트·라이선스 → 알려진 악성 패키지](../user-guide/components-and-licenses.md#known-malicious-packages) 참고. |
+| `MALICIOUS_REFRESH_ENABLED` | `false` | `config.py` | 주간 작업이 OSV 아카이브(약 274 MB)에서 악성 패키지 스냅샷을 다시 만들지 정합니다. 새로 생기는 외부 통신은 모두 그렇듯 기본값이 꺼짐입니다. 같은 작업의 재판정 부분은 외부 통신이 없어 항상 돌기 때문에, 이 값을 켜지 않아도 릴리스를 올리면 기존 행에 반영됩니다. 인터넷이 차단된 설치는 켜지 않습니다. |
+| `MALICIOUS_WAIVE_MAX_DAYS` | `30` | `license_policy_service.py` | 악성 패키지 면제의 최대 수명입니다. `LICENSE_WAIVE_MAX_DAYS`보다 짧게 잡았습니다. 라이선스 면제는 결론일 수 있지만 악성 면제는 권고에 이의를 제기하는 동안 시간을 버는 장치이기 때문입니다. 값을 낮춰도 이미 작성된 면제가 짧아지지는 않습니다. |
+| `MALICIOUS_SNAPSHOT_STALE_DAYS` | `60` | `config.py` | 관리자 화면이 악성 스냅샷을 오래됐다고 표시하는 기준입니다. 권고가 매일 나오므로 지원 종료 화면의 180일보다 짧습니다. |
 | `EOL_ENABLED` | `true` | `config.py` | 지원 종료(EOL) 표시: endoflife.date 추적 제품 목록에 맞는 컴포넌트를 공유 카탈로그에 `eol` / `supported` / `unknown`으로 기록합니다. 완전 오프라인 — 판정은 릴리스에 포함된 스냅샷에서 나오며 외부 전송이 없습니다. 정확히 `false` / `0` / `no` 만 끕니다. [컴포넌트·라이선스 → 지원 종료 표시](../user-guide/components-and-licenses.md#end-of-life-flagging) 참고. |
 | `EOL_SNAPSHOT_PATH` | *(빈 값 — 벤더 파일)* | `config.py` | endoflife.date 스냅샷 재정의. air-gapped 설치에서는 연결된 호스트에서 더 신선한 스냅샷을 만들어(`python3 scripts/refresh_eol_snapshot.py`) 마운트한 뒤 이 변수로 지정합니다. |
 | `EOL_REFRESH_ENABLED` | `false` | `config.py` | 실시간 수집 opt-in: 주간 beat가 `EOL_FEED_URL_TEMPLATE`에서 신선한 라이프사이클 데이터를 내려받습니다. **기본 꺼짐** — 새로운 외부 전송이기 때문입니다. beat의 로컬 재기록 패스는 이 값과 무관하게 실행됩니다. 정확히 `true` / `1` / `yes` 토큰만 켭니다(fail-closed, SCANOSS 방식). |

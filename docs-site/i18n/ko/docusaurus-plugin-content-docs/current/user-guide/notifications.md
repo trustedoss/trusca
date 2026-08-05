@@ -89,8 +89,9 @@ sidebar_position: 8
 | `approval_state_changed` | 본인이 제출한 승인 요청의 상태가 바뀔 때(승인 / 거부 / 검토 전환) — 요청자에게 처리 결과를 알립니다. |
 | `policy_gate_failed` | CI 빌드 게이트가 실패(Critical CVE 또는 금지 라이선스가 빌드를 차단). |
 | `vuln_sla_breach` | 프로젝트 최신 성공 스캔의 미해결 결과가 지난 24시간 안에 조치 SLA 기한을 넘김(일일 sweep, 02:45 UTC). 소유 팀의 모든 멤버에게 프로젝트당 1건으로 묶어 전달하며, 기한 초과로 미리 필터된 Vulnerabilities 탭 링크를 담습니다. [조치 SLA와 경과시간 추적](./vulnerabilities.md#sla) 참고. |
+| `malicious_detected` | 프로젝트 최신 성공 스캔에 이미 들어 있던 컴포넌트가 새로 나온 악성 패키지 권고에서 지목됨(주간 재확인, 일요일 02:40 UTC). 아무도 지난 릴리스를 다시 스캔하지 않으므로 스캔으로는 나오지 않는 결과입니다. 소유 팀의 모든 멤버에게 전달합니다. 버전 올리기로 끝낼 일이 아니라 사고로 다루십시오 — 배포된 산출물 자체가 공격이므로 해당 패키지를 제거하고 빌드가 접근할 수 있었던 자격 증명을 모두 교체해야 합니다. [악성 패키지](./components-and-licenses.md#known-malicious-packages) 참고. |
 
-채널 선택은 전역입니다 — **Preferences** 탭이 모든 트리거의 전달 채널을 결정합니다. 예외가 하나 있습니다. `vuln_sla_breach`는 **인앱 채널로만** 전달되며(인앱 알림 설정은 그대로 존중), 이메일·Slack·Teams로는 나가지 않습니다.
+채널 선택은 전역입니다 — **Preferences** 탭이 모든 트리거의 전달 채널을 결정합니다. 예외가 둘 있습니다. `vuln_sla_breach`와 `malicious_detected`는 **인앱 채널로만** 전달되며(인앱 알림 설정은 그대로 존중), 이메일·Slack·Teams로는 나가지 않습니다.
 
 ## 정상 동작 확인
 

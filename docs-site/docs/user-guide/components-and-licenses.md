@@ -123,6 +123,19 @@ advisory at [ossf/malicious-packages](https://github.com/ossf/malicious-packages
 A retracted advisory is dropped from the next snapshot and the flag clears on
 its own.
 
+The snapshot ships with each release, so an install that never reaches the
+internet still flags packages — it just works from the data current at
+release time. A weekly job re-checks every component already in the catalog
+against that snapshot, which is how a package that turned out to be malicious
+*after* your last scan gets found: nobody re-scans an old release, so without
+that pass it would wait for the next build that happens to touch it. When it
+finds one, the owning team gets a notification.
+
+Setting `MALICIOUS_REFRESH_ENABLED=true` additionally lets that job rebuild
+the snapshot from the upstream archives each week (~274 MB). It is off by
+default; the re-check runs either way. Admins can see the snapshot's age and
+the last run's results under **Admin → Health**.
+
 Set `MALICIOUS_ENABLED=false` to turn the flagging off — see
 [Environment variables](../reference/env-variables.md).
 
