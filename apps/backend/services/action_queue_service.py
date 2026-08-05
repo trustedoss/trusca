@@ -81,9 +81,12 @@ from services.dashboard_service import (
     _latest_succeeded_scan_ids,
 )
 from services.license_policy_service import get_effective_policy
+from services.malicious import malicious_catalog
 from services.policy_gate import (
     _CLOSED_FINDING_STATUSES,
+    _active_malicious_waivers,
     _count_forbidden_license_components_dynamic,
+    _flagged_purls_for_scan,
     _resolve_epss_threshold,
 )
 
@@ -173,11 +176,9 @@ async def _malicious_counts(
     blocked builds, and the most urgent ones at that: a malicious package is
     an attack in the build, not a defect to schedule.
 
-    Policy waivers are NOT applied. This panel answers "what is blocked", and
-    a waived component does not block — but the waiver is resolved per team in
-    `evaluate_gate`, and reproducing that here would duplicate the resolution
-    the parity test exists to prevent. The count is therefore an upper bound;
-    the per-project gate result is authoritative.
+    Raw tally: waivers are subtracted afterwards by
+    ``_malicious_counts_under_policy``, which reuses the gate's own resolver
+    rather than restating the rule here.
     """
     if not scan_ids:
         return {}
@@ -285,6 +286,58 @@ async def _forbidden_counts_under_policy(
     return counts
 
 
+async def _malicious_counts_under_policy(
+    session: AsyncSession,
+    *,
+    scan_by_project: dict[uuid.UUID, uuid.UUID],
+    raw_counts: dict[uuid.UUID, int],
+) -> dict[uuid.UUID, int]:
+    """Subtract active waivers so the panel agrees with the gate.
+
+    A waived component does not block, so listing its project under "blocked
+    builds" is the failure this module's docstring already describes for the
+    licence axis: the panel keeps naming a project until people stop reading
+    the panel.
+
+    No waiver rule is duplicated here — the resolution is
+    ``policy_gate._active_malicious_waivers``, reused. Only teams that run a
+    policy pay for the extra lookup, and a team with no malicious waivers
+    exits after one dict miss.
+    """
+    if not raw_counts or not scan_by_project:
+        return raw_counts
+
+    now = datetime.now(tz=UTC)
+    team_rows = (
+        await session.execute(
+            select(Project.id, Project.team_id).where(
+                Project.id.in_(list(scan_by_project))
+            )
+        )
+    ).all()
+
+    policies: dict[uuid.UUID, LicensePolicy | None] = {}
+    counts = dict(raw_counts)
+
+    for project_id, team_id in team_rows:
+        scan_id = scan_by_project.get(project_id)
+        if scan_id is None or not counts.get(scan_id):
+            continue
+        if team_id is None:
+            continue
+        if team_id not in policies:
+            policies[team_id] = await get_effective_policy(session, team_id=team_id)
+        waived = _active_malicious_waivers(policies[team_id], now)
+        if not waived:
+            continue
+        purls = await _flagged_purls_for_scan(session, scan_id)
+        counts[scan_id] = sum(
+            1 for purl in purls if malicious_catalog.base_purl(purl) not in waived
+        )
+
+    return counts
+
+
 async def _gate_blocked(
     session: AsyncSession,
     *,
@@ -311,6 +364,9 @@ async def _gate_blocked(
 
     epss = await _epss_counts(session, scan_ids=scan_ids)
     malicious = await _malicious_counts(session, scan_ids=scan_ids)
+    malicious = await _malicious_counts_under_policy(
+        session, scan_by_project=scan_by_project, raw_counts=malicious
+    )
 
     blocked_scan_ids = [
         sid

@@ -434,29 +434,73 @@ async def _malicious_scan_counts(
     the snapshot did not list is ``clear``; neither blocks, but they mean
     different things and the gate must not read the first as the second.
 
-    DISTINCT over the projected pair so a package reachable by several
-    dependency paths is counted once. The purls come back rather than a count
-    because the caller subtracts policy waivers before counting.
+    Two statements rather than one. Reading every component to derive the
+    tallies would drop the ``malicious_state = 'flagged'`` predicate, and that
+    predicate is the only reason the partial index exists — a projects page,
+    a release snapshot and a PR comment each evaluate the gate, so hauling
+    every component of a large scan into Python has a cost the axis does not
+    need to pay. The tallies come from one conditional aggregate row; the
+    purls come from an indexed lookup over the flagged minority.
+
+    The purls come back rather than a count because the caller subtracts
+    policy waivers before counting.
     """
-    stmt = (
-        select(
-            ComponentVersion.purl_with_version,
-            ComponentVersion.malicious_state,
+    tallies = (
+        await session.execute(
+            select(
+                func.count(func.distinct(ScanComponent.component_version_id)),
+                func.count(
+                    func.distinct(
+                        case(
+                            (
+                                ComponentVersion.malicious_state.is_not(None),
+                                ScanComponent.component_version_id,
+                            ),
+                        )
+                    )
+                ),
+            )
+            .select_from(ScanComponent)
+            .join(
+                ComponentVersion,
+                ComponentVersion.id == ScanComponent.component_version_id,
+            )
+            .where(ScanComponent.scan_id == scan_id)
         )
-        .select_from(ScanComponent)
-        .join(
-            ComponentVersion,
-            ComponentVersion.id == ScanComponent.component_version_id,
-        )
-        .where(ScanComponent.scan_id == scan_id)
-        .distinct()
-    )
-    rows = (await session.execute(stmt)).all()
-    flagged = [purl for purl, state in rows if state == "flagged"]
-    assessed = sum(1 for _, state in rows if state is not None)
+    ).one()
+    total, assessed = int(tallies[0]), int(tallies[1])
+
     return _MaliciousScanCounts(
-        flagged_purls=flagged, assessed=assessed, total=len(rows)
+        flagged_purls=await _flagged_purls_for_scan(session, scan_id),
+        assessed=assessed,
+        total=total,
     )
+
+
+async def _flagged_purls_for_scan(
+    session: AsyncSession,
+    scan_id: uuid.UUID,
+) -> list[str]:
+    """Versioned purls the snapshot flags on ``scan_id``.
+
+    Split out because the action queue needs the same list to subtract its
+    waivers, and a second implementation there is exactly what the gate-parity
+    test exists to prevent. Rides the partial index.
+    """
+    rows = (
+        await session.execute(
+            select(ComponentVersion.purl_with_version)
+            .select_from(ScanComponent)
+            .join(
+                ComponentVersion,
+                ComponentVersion.id == ScanComponent.component_version_id,
+            )
+            .where(ScanComponent.scan_id == scan_id)
+            .where(ComponentVersion.malicious_state == "flagged")
+            .distinct()
+        )
+    ).scalars()
+    return list(rows)
 
 
 def _active_malicious_waivers(
@@ -901,11 +945,14 @@ async def evaluate_gate(
         malicious_component_count, malicious_counts = await _resolve_malicious_count(
             session, project_id=project_id, scan_id=scan_id, now=evaluated_at
         )
-        # "assessed" is what separates a clean scan from an unexamined one. A
-        # scan with components but none of them evaluated reports zero for the
-        # same reason an empty project does, and only one of those is good news.
+        # Every component, not merely one. The persist hook disables its
+        # evaluator on the first exception and leaves the rest of the scan
+        # unstamped, so a partially evaluated scan is the realistic failure —
+        # and `assessed > 0` would call that "assessed" and report a clean
+        # zero for the 4,998 rows nobody looked at. An empty scan satisfies
+        # this trivially, which is correct: there was nothing to examine.
         malicious_scan_assessed = (
-            malicious_counts.total == 0 or malicious_counts.assessed > 0
+            malicious_counts.assessed == malicious_counts.total
         )
     else:
         malicious_component_count = 0
