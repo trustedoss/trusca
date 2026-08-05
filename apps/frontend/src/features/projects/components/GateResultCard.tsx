@@ -210,6 +210,16 @@ export function GateResultCard({ projectId, scanId }: GateResultCardProps) {
                   emphasize
                   testid="gate-metric-malicious"
                 />
+              ) : !data.malicious_scan_assessed ? (
+                /* A zero nobody computed. Rendering it as a metric would make
+                   an unexamined scan look like a clean one, so it says which
+                   it is instead. */
+                <div
+                  className="text-xs text-muted-foreground"
+                  data-testid="gate-malicious-unassessed"
+                >
+                  {t("overview.gate_card.malicious_unassessed")}
+                </div>
               ) : null}
               {data.epss_threshold != null ? (
                 <GateMetric

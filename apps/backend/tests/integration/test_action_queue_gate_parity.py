@@ -646,3 +646,126 @@ async def test_parity_holds_when_only_a_malicious_package_blocks(
     assert verdict.malicious_component_count == 1
     assert blocked, "the queue omitted a project blocked only by a malicious package"
     assert blocked[0].malicious_component_count == verdict.malicious_component_count
+
+
+async def test_parity_holds_when_a_waiver_lifts_a_malicious_block(
+    db_session: AsyncSession,
+) -> None:
+    """A waived package must leave the panel, not linger until it expires.
+
+    The panel and the gate answer the same question. If a waiver clears the
+    build but the panel keeps naming the project, the list stops meaning
+    "blocked" and people stop reading it — the failure this module's docstring
+    describes for the licence axis.
+    """
+    from models import ComponentVersion, LicensePolicy, ScanComponent
+    from services.action_queue_service import _blocked_for_projects
+    from services.policy_gate import evaluate_gate
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    project_id, scan_id = await _project_with_scan(db_session, team=team)
+
+    cv_id = await _component_version(db_session)
+    cv = await db_session.get(ComponentVersion, cv_id)
+    assert cv is not None
+    cv.malicious_state = "flagged"
+    cv.malicious_id = "MAL-0000-WAIVED"
+    cv.malicious_source = "osv.dev@seed"
+    db_session.add(cv)
+    db_session.add(
+        ScanComponent(
+            scan_id=scan_id, component_version_id=cv_id, direct=True, raw_data={}
+        )
+    )
+    await db_session.commit()
+
+    # Without a waiver both agree it blocks.
+    assert (await evaluate_gate(db_session, project_id)).gate == "fail"
+    assert await _blocked_for_projects(db_session, project_ids=[project_id])
+
+    base_purl = cv.purl_with_version.rsplit("@", 1)[0]
+    db_session.add(
+        LicensePolicy(
+            organization_id=org.id,
+            team_id=team.id,
+            name="waiver",
+            category_overrides={},
+            license_exceptions=[],
+            malicious_exceptions=[
+                {
+                    "component_purl": base_purl,
+                    "reason": "challenged upstream",
+                    "expires_at": (
+                        datetime.now(tz=UTC) + timedelta(days=7)
+                    ).isoformat(),
+                }
+            ],
+            unknown_license_category="conditional",
+            enabled=True,
+        )
+    )
+    await db_session.commit()
+
+    verdict = await evaluate_gate(db_session, project_id)
+    blocked = await _blocked_for_projects(db_session, project_ids=[project_id])
+
+    assert verdict.gate == "pass"
+    assert verdict.malicious_component_count == 0
+    assert not blocked, "the panel still lists a project the waiver unblocked"
+
+
+async def test_parity_holds_when_a_malicious_waiver_has_expired(
+    db_session: AsyncSession,
+) -> None:
+    """An expired waiver puts the project back on both surfaces."""
+    from models import ComponentVersion, LicensePolicy, ScanComponent
+    from services.action_queue_service import _blocked_for_projects
+    from services.policy_gate import evaluate_gate
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    project_id, scan_id = await _project_with_scan(db_session, team=team)
+
+    cv_id = await _component_version(db_session)
+    cv = await db_session.get(ComponentVersion, cv_id)
+    assert cv is not None
+    cv.malicious_state = "flagged"
+    cv.malicious_source = "osv.dev@seed"
+    db_session.add(cv)
+    db_session.add(
+        ScanComponent(
+            scan_id=scan_id, component_version_id=cv_id, direct=True, raw_data={}
+        )
+    )
+    base_purl = cv.purl_with_version.rsplit("@", 1)[0]
+    db_session.add(
+        LicensePolicy(
+            organization_id=org.id,
+            team_id=team.id,
+            name="lapsed",
+            category_overrides={},
+            license_exceptions=[],
+            malicious_exceptions=[
+                {
+                    "component_purl": base_purl,
+                    "reason": "lapsed",
+                    "expires_at": (
+                        datetime.now(tz=UTC) - timedelta(minutes=1)
+                    ).isoformat(),
+                }
+            ],
+            unknown_license_category="conditional",
+            enabled=True,
+        )
+    )
+    await db_session.commit()
+
+    verdict = await evaluate_gate(db_session, project_id)
+    blocked = await _blocked_for_projects(db_session, project_ids=[project_id])
+
+    assert verdict.gate == "fail"
+    assert verdict.malicious_component_count == 1
+    assert blocked
+    assert blocked[0].malicious_component_count == 1
+

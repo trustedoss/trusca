@@ -232,7 +232,8 @@
         "forbidden": "이 프로젝트의 빌드 차단 게이트를 볼 권한이 없습니다.",
         "unknown": "빌드 차단 게이트를 불러오지 못했습니다. 다시 시도해 주세요."
       },
-      "malicious_packages": "알려진 악성 패키지"
+      "malicious_packages": "알려진 악성 패키지",
+      "malicious_unassessed": "알려진 악성 패키지: 이 스캔에서는 확인하지 않았습니다"
     },
     "errors": {
       "title": "개요를 불러오지 못했습니다.",
