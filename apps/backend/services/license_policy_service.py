@@ -199,14 +199,44 @@ def _max_malicious_waive_days() -> int:
     return value
 
 
-def _enforce_malicious_ttl(exceptions: list[Any]) -> None:
-    """Reject a malicious waiver that is already expired or outlives the cap.
+def _prune_expired_waivers(exceptions: list[Any]) -> list[Any]:
+    """Drop waivers whose expiry has passed.
 
-    The schema makes ``expires_at`` required; this adds the two bounds a
-    required field cannot express — that it is in the future at all, and that
-    it is not so far out as to be permanent in practice. Without the upper
-    bound ``9999-12-31`` is a valid answer, which is exactly the open-ended
-    waiver the required field was meant to prevent.
+    The gate already ignores them, so no verdict changes — this keeps the
+    persisted array equal to the live set, which is what makes the policy
+    response worth reading during an incident.
+    """
+    now = _now()
+    live: list[Any] = []
+    for exc in exceptions:
+        raw = exc.get("expires_at") if isinstance(exc, dict) else None
+        if not isinstance(raw, str):
+            continue
+        try:
+            parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        if parsed > now:
+            live.append(exc)
+    return live
+
+
+def _enforce_malicious_ttl(exceptions: list[Any]) -> None:
+    """Reject a malicious waiver that outlives the cap.
+
+    The schema makes ``expires_at`` required; this adds the bound a required
+    field cannot express — that it is not so far out as to be permanent in
+    practice. Without it ``9999-12-31`` is a valid answer, which is exactly
+    the open-ended waiver the required field was meant to prevent.
+
+    Already-expired entries are NOT rejected. Rejecting them would lock the
+    whole policy: a waiver written 30 days ago lapses, and from then on any
+    read-edit-write round trip fails validation, including edits that have
+    nothing to do with this axis. They are pruned on write instead (see
+    ``_prune_expired_waivers``), which also keeps the stored array equal to
+    the set of live waivers.
     """
     max_days = _max_malicious_waive_days()
     now = _now()
@@ -219,10 +249,6 @@ def _enforce_malicious_ttl(exceptions: list[Any]) -> None:
             raise LicensePolicyValidationError(
                 f"the waiver for '{exc.component_purl}' must give expires_at "
                 "with a timezone (e.g. 2026-08-20T00:00:00Z)"
-            )
-        if expires_at <= now:
-            raise LicensePolicyValidationError(
-                f"the waiver for '{exc.component_purl}' has already expired"
             )
         if expires_at > cap:
             raise LicensePolicyValidationError(
@@ -292,7 +318,7 @@ def _apply_upsert(row: LicensePolicy, payload: LicensePolicyUpsertIn) -> None:
     row.name = payload.name
     row.category_overrides = dumped["category_overrides"]
     row.license_exceptions = dumped["license_exceptions"]
-    row.malicious_exceptions = dumped["malicious_exceptions"]
+    row.malicious_exceptions = _prune_expired_waivers(dumped["malicious_exceptions"])
     row.unknown_license_category = payload.unknown_license_category
     row.compound_operator_strategy = dumped["compound_operator_strategy"]
     row.enabled = payload.enabled
