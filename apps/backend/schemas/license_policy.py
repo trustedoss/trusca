@@ -270,6 +270,14 @@ class LicensePolicyOut(BaseModel):
     name: str | None
     category_overrides: dict[str, str]
     license_exceptions: list[dict[str, object]]
+    malicious_exceptions: list[dict[str, object]] = Field(
+        default_factory=list,
+        description=(
+            "Time-boxed waivers for packages the malicious snapshot flags. "
+            "Readable so an operator can see which waivers are live and when "
+            "they lapse — a waiver nobody can enumerate is one nobody reviews."
+        ),
+    )
     unknown_license_category: str
     compound_operator_strategy: dict[str, str]
     enabled: bool

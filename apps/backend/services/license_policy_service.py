@@ -115,6 +115,9 @@ def _now() -> datetime:
 # precedence steps 2–4, skipping the step-1 exception match.
 
 _DEFAULT_MAX_WAIVE_DAYS = 90
+# Shorter than the licence cap on purpose — a malicious waiver is a stopgap
+# while an advisory is challenged upstream, not a settled decision.
+_DEFAULT_MALICIOUS_WAIVE_DAYS = 30
 # Default unknown-license posture when no policy row exists yet (mirrors
 # ``schemas.license_policy.LicensePolicyUpsertIn.unknown_license_category``).
 _DEFAULT_UNKNOWN_POSTURE = "conditional"
@@ -170,6 +173,62 @@ def _base_category(
     if static != "unknown":
         return static
     return unknown_posture
+
+
+def _max_malicious_waive_days() -> int:
+    """Cap on a malicious-package waiver's lifetime, in days.
+
+    Deliberately shorter than the licence cap. A licence waiver can be a
+    settled decision — counsel cleared the dependency. A malicious waiver only
+    buys time to challenge the advisory upstream and wait for the next
+    snapshot, so a long one is a decision nobody finished making.
+
+    Read at call time from ``MALICIOUS_WAIVE_MAX_DAYS`` (rule #11).
+    """
+    raw = os.getenv("MALICIOUS_WAIVE_MAX_DAYS")
+    if raw is None or raw.strip() == "":
+        return _DEFAULT_MALICIOUS_WAIVE_DAYS
+    try:
+        value = int(raw.strip())
+    except (TypeError, ValueError):
+        log.warning("license_policy.bad_malicious_waive_days", raw=raw)
+        return _DEFAULT_MALICIOUS_WAIVE_DAYS
+    if value <= 0:
+        log.warning("license_policy.bad_malicious_waive_days", raw=raw)
+        return _DEFAULT_MALICIOUS_WAIVE_DAYS
+    return value
+
+
+def _enforce_malicious_ttl(exceptions: list[Any]) -> None:
+    """Reject a malicious waiver that is already expired or outlives the cap.
+
+    The schema makes ``expires_at`` required; this adds the two bounds a
+    required field cannot express — that it is in the future at all, and that
+    it is not so far out as to be permanent in practice. Without the upper
+    bound ``9999-12-31`` is a valid answer, which is exactly the open-ended
+    waiver the required field was meant to prevent.
+    """
+    max_days = _max_malicious_waive_days()
+    now = _now()
+    cap = now + timedelta(days=max_days)
+    for exc in exceptions:
+        expires_at = exc.expires_at
+        if expires_at.tzinfo is None:
+            # Naive input is read as UTC everywhere downstream; say so rather
+            # than letting an operator's local midnight drift by their offset.
+            raise LicensePolicyValidationError(
+                f"the waiver for '{exc.component_purl}' must give expires_at "
+                "with a timezone (e.g. 2026-08-20T00:00:00Z)"
+            )
+        if expires_at <= now:
+            raise LicensePolicyValidationError(
+                f"the waiver for '{exc.component_purl}' has already expired"
+            )
+        if expires_at > cap:
+            raise LicensePolicyValidationError(
+                f"the waiver for '{exc.component_purl}' exceeds the maximum of "
+                f"{max_days} days"
+            )
 
 
 def _enforce_forbidden_ttl(
@@ -233,6 +292,7 @@ def _apply_upsert(row: LicensePolicy, payload: LicensePolicyUpsertIn) -> None:
     row.name = payload.name
     row.category_overrides = dumped["category_overrides"]
     row.license_exceptions = dumped["license_exceptions"]
+    row.malicious_exceptions = dumped["malicious_exceptions"]
     row.unknown_license_category = payload.unknown_license_category
     row.compound_operator_strategy = dumped["compound_operator_strategy"]
     row.enabled = payload.enabled
@@ -282,6 +342,7 @@ async def upsert_team_policy(
         payload.category_overrides,
         payload.unknown_license_category,
     )
+    _enforce_malicious_ttl(payload.malicious_exceptions)
 
     bind_audit_team(team_id)
 
@@ -520,6 +581,7 @@ async def upsert_org_policy(
         payload.category_overrides,
         payload.unknown_license_category,
     )
+    _enforce_malicious_ttl(payload.malicious_exceptions)
 
     existing = (
         await session.execute(

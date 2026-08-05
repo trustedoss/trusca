@@ -158,6 +158,9 @@ class GateResult:
     # from "not checked" — the same NULL-vs-clear distinction the column carries.
     malicious_component_count: int = 0
     malicious_gate_enforced: bool = True
+    #: False when this scan's components were never evaluated — a count of 0
+    #: then means "not checked", not "nothing found".
+    malicious_scan_assessed: bool = False
 
 
 # The latest-succeeded-scan resolver was PROMOTED to ``services.scan_resolution``
@@ -400,10 +403,25 @@ async def _count_forbidden_license_components(
     return int(result.scalar_one())
 
 
-async def _flagged_component_purls(
+@dataclass(frozen=True)
+class _MaliciousScanCounts:
+    """What the scan's catalog rows say about malicious packages.
+
+    ``assessed`` exists so the gate can tell "nothing malicious" from "nobody
+    looked". Both produce a count of zero, and only one of them is reassuring.
+    Rows predating the feature, scans persisted with ``MALICIOUS_ENABLED=false``
+    and scans whose snapshot failed to load all land in the second case.
+    """
+
+    flagged_purls: list[str]
+    assessed: int
+    total: int
+
+
+async def _malicious_scan_counts(
     session: AsyncSession,
     scan_id: uuid.UUID,
-) -> list[str]:
+) -> _MaliciousScanCounts:
     """Versioned purls of the components on ``scan_id`` the snapshot flags (#26).
 
     Reads the catalog column rather than a findings table, because this signal
@@ -416,14 +434,14 @@ async def _flagged_component_purls(
     the snapshot did not list is ``clear``; neither blocks, but they mean
     different things and the gate must not read the first as the second.
 
-    DISTINCT on ``component_version_id`` so a package reachable by several
-    dependency paths is returned once. The purls come back rather than a count
+    DISTINCT over the projected pair so a package reachable by several
+    dependency paths is counted once. The purls come back rather than a count
     because the caller subtracts policy waivers before counting.
     """
     stmt = (
         select(
-            func.distinct(ScanComponent.component_version_id),
             ComponentVersion.purl_with_version,
+            ComponentVersion.malicious_state,
         )
         .select_from(ScanComponent)
         .join(
@@ -431,10 +449,14 @@ async def _flagged_component_purls(
             ComponentVersion.id == ScanComponent.component_version_id,
         )
         .where(ScanComponent.scan_id == scan_id)
-        .where(ComponentVersion.malicious_state == "flagged")
+        .distinct()
     )
-    result = await session.execute(stmt)
-    return [row[1] for row in result.all()]
+    rows = (await session.execute(stmt)).all()
+    flagged = [purl for purl, state in rows if state == "flagged"]
+    assessed = sum(1 for _, state in rows if state is not None)
+    return _MaliciousScanCounts(
+        flagged_purls=flagged, assessed=assessed, total=len(rows)
+    )
 
 
 def _active_malicious_waivers(
@@ -449,8 +471,17 @@ def _active_malicious_waivers(
     """
     if policy is None:
         return frozenset()
+    entries = policy.malicious_exceptions
+    if not isinstance(entries, list):
+        # JSONB holds whatever was written to it. A shape we cannot read is
+        # not a reason to fail every gate read for this team, and it is not a
+        # reason to honour waivers we cannot parse either — so: no waivers.
+        log.warning(
+            "policy_gate.malicious_exceptions_malformed", policy_id=str(policy.id)
+        )
+        return frozenset()
     waived: set[str] = set()
-    for entry in policy.malicious_exceptions or []:
+    for entry in entries:
         if not isinstance(entry, dict):
             continue
         purl = entry.get("component_purl")
@@ -476,8 +507,8 @@ async def _resolve_malicious_count(
     project_id: uuid.UUID,
     scan_id: uuid.UUID,
     now: datetime,
-) -> int:
-    """Blocking malicious-component count, with policy waivers removed.
+) -> tuple[int, _MaliciousScanCounts]:
+    """Blocking malicious count plus the raw scan tallies behind it.
 
     A waiver exists because the alternative is worse: an upstream false
     positive would otherwise stop every build until the advisory is retracted,
@@ -490,9 +521,9 @@ async def _resolve_malicious_count(
     asking an operator to waive each version separately during an incident
     would be the wrong ergonomics.
     """
-    purls = await _flagged_component_purls(session, scan_id)
-    if not purls:
-        return 0
+    counts = await _malicious_scan_counts(session, scan_id)
+    if not counts.flagged_purls:
+        return 0, counts
 
     team_id = await _team_id_for_project(session, project_id)
     policy = (
@@ -502,8 +533,13 @@ async def _resolve_malicious_count(
     )
     waived = _active_malicious_waivers(policy, now)
     if not waived:
-        return len(purls)
-    return sum(1 for purl in purls if malicious_catalog.base_purl(purl) not in waived)
+        return len(counts.flagged_purls), counts
+    blocking = sum(
+        1
+        for purl in counts.flagged_purls
+        if malicious_catalog.base_purl(purl) not in waived
+    )
+    return blocking, counts
 
 
 def _static_default_for(spdx_id: str) -> str:
@@ -823,7 +859,11 @@ async def evaluate_gate(
             # No scan → nothing analysed → the relaxation can never have applied.
             reachable_relaxation_applied=False,
             malicious_component_count=0,
-            malicious_gate_enforced=malicious_gate_enabled,
+            # Nothing was evaluated because nothing was scanned. Claiming the
+            # axis was enforced here would be the same lie as reporting a
+            # clean result for an unexamined scan.
+            malicious_gate_enforced=False,
+            malicious_scan_assessed=False,
         )
         log.info(
             "policy_gate.evaluated",
@@ -838,7 +878,8 @@ async def evaluate_gate(
             reachable_gate_enforced=reachable_critical_only,
             reachable_relaxation_applied=False,
             malicious_component_count=0,
-            malicious_gate_enforced=malicious_gate_enabled,
+            malicious_gate_enforced=False,
+            malicious_scan_assessed=False,
             reason=None,
         )
         return result
@@ -856,13 +897,19 @@ async def evaluate_gate(
         if epss_threshold is not None
         else 0
     )
-    malicious_component_count = (
-        await _resolve_malicious_count(
+    if malicious_gate_enabled:
+        malicious_component_count, malicious_counts = await _resolve_malicious_count(
             session, project_id=project_id, scan_id=scan_id, now=evaluated_at
         )
-        if malicious_gate_enabled
-        else 0
-    )
+        # "assessed" is what separates a clean scan from an unexamined one. A
+        # scan with components but none of them evaluated reports zero for the
+        # same reason an empty project does, and only one of those is good news.
+        malicious_scan_assessed = (
+            malicious_counts.total == 0 or malicious_counts.assessed > 0
+        )
+    else:
+        malicious_component_count = 0
+        malicious_scan_assessed = False
 
     # The critical count that DRIVES the verdict.
     #
@@ -937,6 +984,7 @@ async def evaluate_gate(
         reachable_relaxation_applied=relaxation_applies,
         malicious_component_count=malicious_component_count,
         malicious_gate_enforced=malicious_gate_enabled,
+        malicious_scan_assessed=malicious_scan_assessed,
     )
     log.info(
         "policy_gate.evaluated",
@@ -955,6 +1003,7 @@ async def evaluate_gate(
         epss_threshold=epss_threshold,
         malicious_component_count=malicious_component_count,
         malicious_gate_enforced=malicious_gate_enabled,
+        malicious_scan_assessed=malicious_scan_assessed,
         reason=reason,
     )
     return result
