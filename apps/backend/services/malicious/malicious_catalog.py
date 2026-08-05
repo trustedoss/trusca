@@ -118,6 +118,26 @@ def base_purl(purl_with_version: str) -> str:
     return head[:at] if at > 0 else head
 
 
+def version_from_purl(purl_with_version: str) -> str | None:
+    """The version encoded in a PURL, or ``None`` when it carries none.
+
+    The catalog row's identity is ``purl_with_version``, so the verdict has to
+    be decided from that same string. Taking the version from a separate field
+    lets the two disagree: an uploaded SBOM can name
+    ``pkg:cargo/example@0.3.1`` in ``purl`` while leaving ``version`` absent,
+    and a version-pinned advisory would then read "not one of the named
+    versions" and clear a row that is genuinely malicious — for every project
+    sharing that catalog row, not just the uploader's.
+    """
+    head = purl_with_version.split("?", 1)[0].split("#", 1)[0]
+    slash = head.rfind("/")
+    at = head.find("@", slash + 1) if slash >= 0 else head.find("@")
+    if at <= 0:
+        return None
+    version = head[at + 1 :]
+    return version or None
+
+
 @lru_cache(maxsize=1)
 def load_index() -> MaliciousIndex | None:
     """Load the vendored snapshot once per process. ``None`` on any problem.
