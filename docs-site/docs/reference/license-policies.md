@@ -241,5 +241,5 @@ curl -X PUT https://<portal>/v1/license-policies/teams/$TEAM_ID \
 ```
 
 The full request / response schemas (with examples) are in the live OpenAPI
-document at `/api/docs`. See also the [license classification table](../comparison.md)
+document at `/api/docs`. See also the [license classification table](../user-guide/components-and-licenses.md)
 for the built-in catalog the policy overrides.

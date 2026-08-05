@@ -115,8 +115,8 @@ sidebar_position: 4
   TRUSCA는 까지 DT를 취약점 엔진으로 사용했고 v0.10.0에서 Trivy로
   교체했습니다 —
   [ADR-0001](https://github.com/trustedoss/trusca/blob/main/docs/decisions/0001-replace-dt-with-trivy.md)과
-  [비교](../comparison.md#dependency-track과-비교) 참고. 본 용어집에 여전히
-  남아 있는 이유는 레거시 audit log 행과 비교 페이지가 DT를 참조하기 때문입니다.
+  본 용어집에 여전히 남아 있는 이유는 레거시 audit log 행이 DT를
+  참조하기 때문입니다.
 - **cosign.** Sigstore의 서명 CLI. TRUSCA는 모든 소스 스캔의
   CycloneDX SBOM을 cosign(`cosign sign-blob`)으로 서명하여 소비자가
   `cosign verify-blob`으로 검증할 수 있게 합니다. 자체 호스팅에서는

@@ -25,7 +25,7 @@ This page lists the **analysis pipelines** — source scan, container scan, buil
 | **Source SBOM scan** | A Git repository (or an uploaded source archive) | `cdxgen` → scancode → `trivy sbom` | A CycloneDX SBOM, declared + detected licenses with legal-tier classification, and matched CVEs | The default. You want the full component inventory, licenses, and vulnerabilities for a project's dependency tree. | [Scans → Scan kinds](../user-guide/scans.md#scan-kinds), [SBOM](../user-guide/sbom.md) |
 | **Container image scan** | A built container image reference (`name:tag`) | Trivy | OS-package CVEs and a base-image OS end-of-life (EOSL) verdict | You ship a container and want to know about vulnerabilities in the OS layer, not just your application dependencies. | [Scans → Scan a container image](../user-guide/scans.md#scan-a-container-image), [Container OS end-of-life](../user-guide/scans.md#container-os-eol) |
 | **Build gate** | The findings and licenses from a completed scan | Portal gate evaluator | A pass/fail build verdict (CI exit code `0` or `1`) | You want a build to fail automatically on a forbidden license or a vulnerability over threshold — the CI enforcement point. | [Approvals](../user-guide/approvals.md), [License policies](./license-policies.md), [GitHub Actions](../ci-integration/github-actions.md) |
-| **Reachability analysis** | Preserved Go source of a scanned module | `govulncheck` (Go) | A per-finding reachable / not-reachable / not-analysed signal (Go findings only) | You want to prioritise findings whose vulnerable code is actually called. **Go only today — see the status note below.** | [Comparison → reachability](../comparison.md) |
+| **Reachability analysis** | Preserved Go source of a scanned module | `govulncheck` (Go) | A per-finding reachable / not-reachable / not-analysed signal (Go findings only) | You want to prioritise findings whose vulnerable code is actually called. **Go only today — see the status note below.** | [Roadmap](https://github.com/trustedoss/trusca/blob/main/ROADMAP.md) |
 
 All four ship and run today. Reachability ships **for Go** via `govulncheck` — read the note below for its scope: it covers Go modules only, and findings in every other ecosystem are not yet analysed.
 
@@ -75,7 +75,7 @@ For each **Go** finding (a `pkg:golang/` component whose CVE / GHSA / GO id `gov
 **Findings in other ecosystems (Java, JS/TS, Python, and so on) are not yet analysed** — they stay `reachable = null` and are shown as "potentially affected". Multi-language reachability is the current commercial gap: some commercial tools run proprietary multi-language reachability, whereas TRUSCA ships Go-only reachability via `govulncheck`.
 :::
 
-Track the multi-language roadmap on the [comparison page](../comparison.md) and the [roadmap](https://github.com/trustedoss/trusca/blob/main/ROADMAP.md).
+Track the multi-language roadmap on the [roadmap](https://github.com/trustedoss/trusca/blob/main/ROADMAP.md).
 
 ## Verify it worked
 
@@ -83,7 +83,7 @@ Track the multi-language roadmap on the [comparison page](../comparison.md) and 
 1. The three shipped analysis kinds on this page (source, container, build gate) match the scan kinds and gate documented in [Scans → Scan kinds](../user-guide/scans.md#scan-kinds) and [License policies → Dynamic gate evaluation](./license-policies.md#dynamic-gate-evaluation) — no pipeline appears here that is not documented there.
 
 <!-- docs-uat: id=analysis-types-reachability-go kind=manual tier=manual -->
-2. The reachability row and its status note describe a **Go-only, best-effort** signal that ships today: a Go finding can carry a `reachable = true / false / null` verdict from `govulncheck`, while non-Go findings stay "not analysed". This is consistent with [Comparison](../comparison.md) ("Go only", reachability prioritization ships for Go) and [Data sources](./data-sources.md) (reachability is not a Trivy-DB signal but a separate `govulncheck` pipeline for Go).
+2. The reachability row and its status note describe a **Go-only, best-effort** signal that ships today: a Go finding can carry a `reachable = true / false / null` verdict from `govulncheck`, while non-Go findings stay "not analysed". This is consistent with [Data sources](./data-sources.md) (reachability is not a Trivy-DB signal but a separate `govulncheck` pipeline for Go).
 
 ## Troubleshooting
 
@@ -98,4 +98,3 @@ Track the multi-language roadmap on the [comparison page](../comparison.md) and 
 - [Architecture](./architecture.md) — services, scan pipeline stages, Trivy matching.
 - [Data sources](./data-sources.md) — the per-finding data signals (NVD · OSV · GHSA · EPSS · KEV) behind each vulnerability.
 - [License policies](./license-policies.md) — how the build gate classifies and gates licenses.
-- [Comparison](../comparison.md) — reachability scope (Go today) and where other planned items stand.

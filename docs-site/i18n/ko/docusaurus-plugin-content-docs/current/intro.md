@@ -22,7 +22,7 @@ TRUSCA가 처음이라면 권장 경로를 따르십시오 — 각 단계가 앞
 2. **실제 프로젝트 첫 스캔** → [Quickstart 5단계](./quickstart.md#first-real-scan) — 데모 스택 그대로 프로젝트를 등록하고 자기 코드를 스캔.
 3. **프로덕션으로 이행** → [Docker Compose](./installation/docker-compose.md) 또는 [Helm 차트](./installation/helm.md).
 
-설치보다 평가가 먼저라면? [비교](./comparison.md) — 상용 SCA / Dependency-Track / SW360 대비 — 를 읽거나, 설치 없이 읽기 전용 [라이브 데모](./installation/live-demo.md)를 둘러보십시오.
+설치보다 평가가 먼저라면? 설치 없이 읽기 전용 [라이브 데모](./installation/live-demo.md)를 둘러보십시오.
 
 ## 제공 기능
 
