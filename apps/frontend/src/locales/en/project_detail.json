@@ -232,7 +232,8 @@
         "forbidden": "You do not have permission to view this project's build gate.",
         "unknown": "Could not load the build gate. Please try again."
       },
-      "malicious_packages": "Known-malicious packages"
+      "malicious_packages": "Known-malicious packages",
+      "malicious_unassessed": "Known-malicious packages: not assessed on this scan"
     },
     "errors": {
       "title": "Could not load overview.",

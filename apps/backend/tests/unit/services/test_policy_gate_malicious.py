@@ -349,3 +349,81 @@ async def test_waiver_written_with_a_version_still_matches(
 
     result = await evaluate_gate(db_session, project.id, scan_id=scan.id)
     assert result.gate == "pass"
+
+
+async def test_a_partly_evaluated_scan_does_not_claim_to_be_assessed(
+    db_session: AsyncSession,
+) -> None:
+    """One evaluated row must not vouch for the ones nobody looked at.
+
+    The persist hook turns its evaluator off on the first exception and leaves
+    the rest of the scan unstamped, so "some rows have verdicts" is the shape
+    a failed enrichment leaves behind — not the shape of a healthy scan. An
+    `assessed > 0` test would call this assessed and report a clean zero.
+    """
+    from services.policy_gate import evaluate_gate
+
+    _, _, project = await _seed_project(db_session)
+    scan = await _seeded_scan(db_session, project)
+    _, evaluated = await _make_component(db_session, malicious_state="clear")
+    _, never_evaluated = await _make_component(db_session, malicious_state=None)
+    await _attach(db_session, scan_id=scan.id, cv_id=evaluated.id)
+    await _attach(db_session, scan_id=scan.id, cv_id=never_evaluated.id)
+
+    result = await evaluate_gate(db_session, project.id, scan_id=scan.id)
+
+    assert result.gate == "pass"
+    assert result.malicious_component_count == 0
+    assert result.malicious_scan_assessed is False
+
+
+async def test_a_fully_evaluated_scan_reports_assessed(
+    db_session: AsyncSession,
+) -> None:
+    from services.policy_gate import evaluate_gate
+
+    _, _, project = await _seed_project(db_session)
+    scan = await _seeded_scan(db_session, project)
+    for _ in range(2):
+        _, cv = await _make_component(db_session, malicious_state="clear")
+        await _attach(db_session, scan_id=scan.id, cv_id=cv.id)
+
+    result = await evaluate_gate(db_session, project.id, scan_id=scan.id)
+
+    assert result.malicious_scan_assessed is True
+
+
+async def test_a_malformed_waiver_array_leaves_the_block_in_place(
+    db_session: AsyncSession,
+) -> None:
+    """JSONB holds whatever was written to it.
+
+    A shape the reader cannot parse is not a reason to 500 every gate read for
+    the team, and not a reason to honour waivers it cannot read either.
+    """
+    from models import LicensePolicy
+    from services.policy_gate import evaluate_gate
+
+    org, team, project = await _seed_project(db_session)
+    scan = await _seeded_scan(db_session, project)
+    _, cv = await _make_component(db_session, malicious_state="flagged")
+    await _attach(db_session, scan_id=scan.id, cv_id=cv.id)
+
+    policy = LicensePolicy(
+        organization_id=org.id,
+        team_id=team.id,
+        name="malformed",
+        category_overrides={},
+        license_exceptions=[],
+        malicious_exceptions={"not": "a list"},
+        unknown_license_category="conditional",
+        enabled=True,
+    )
+    db_session.add(policy)
+    await db_session.commit()
+
+    result = await evaluate_gate(db_session, project.id, scan_id=scan.id)
+
+    assert result.gate == "fail"
+    assert result.malicious_component_count == 1
+

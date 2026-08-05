@@ -273,6 +273,7 @@ runs:
         critical=$(echo "$json_body" | jq -r '.critical_cve_count // 0')
         forbidden=$(echo "$json_body" | jq -r '.forbidden_license_count // 0')
         malicious=$(echo "$json_body" | jq -r '.malicious_component_count // 0')
+        malicious_assessed=$(echo "$json_body" | jq -r '.malicious_scan_assessed // false')
 
         # GITHUB_OUTPUT supports multi-line via heredoc, but reason is single
         # line by contract — we still defensively strip newlines.
@@ -300,6 +301,9 @@ runs:
           # the axis is switched off too.
           if [ "${malicious}" != "0" ]; then
             echo "| Known-malicious packages | ${malicious} — remove, rotate credentials |"
+          elif [ "${malicious_assessed}" != "true" ]; then
+            # A zero nobody computed must not read like a clean result.
+            echo "| Known-malicious packages | not assessed on this scan |"
           fi
           if [ -n "${reason_oneline}" ]; then
             echo "| Reason | ${reason_oneline} |"
