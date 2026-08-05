@@ -91,6 +91,17 @@ class GateResultResponse(BaseModel):
         "could reach, not an upgrade. Not a vulnerability count — these never "
         "appear in ``critical_cve_count`` or any severity total.",
     )
+    malicious_scan_assessed: bool = Field(
+        default=False,
+        description=(
+            "Whether this scan's components actually carry malicious verdicts. "
+            "``false`` means the scan predates the feature, ran with flagging "
+            "off, or hit a snapshot problem — so ``malicious_component_count`` "
+            "of 0 says nothing was checked rather than nothing was found. "
+            "``true`` on a scan with no components at all (there was nothing "
+            "to check)."
+        ),
+    )
     malicious_gate_enforced: bool = Field(
         default=True,
         description="Whether the known-malicious axis was active for this "
