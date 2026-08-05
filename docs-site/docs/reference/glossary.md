@@ -119,9 +119,8 @@ column.
   TRUSCA used DT as its vulnerability engine through  and replaced it
   with Trivy at v0.10.0 — see
   [ADR-0001](https://github.com/trustedoss/trusca/blob/main/docs/decisions/0001-replace-dt-with-trivy.md)
-  and [Comparison](../comparison.md#vs-dependency-track). The DT term still
-  appears in this glossary because legacy audit-log rows and the comparison
-  page reference it.
+  The DT term still appears in this glossary because legacy audit-log rows
+  reference it.
 - **cosign.** Sigstore's signing CLI. TRUSCA signs every source
   scan's CycloneDX SBOM with cosign (`cosign sign-blob`) so a consumer
   can verify it with `cosign verify-blob`. Key-based signing is the

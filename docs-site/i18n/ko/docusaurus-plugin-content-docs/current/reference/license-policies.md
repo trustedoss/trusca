@@ -228,4 +228,4 @@ curl -X PUT https://<portal>/v1/license-policies/teams/$TEAM_ID \
 ```
 
 전체 요청/응답 스키마(예시 포함)는 `/api/docs`의 라이브 OpenAPI 문서에 있습니다.
-정책이 오버라이드하는 내장 카탈로그는 [라이선스 분류 표](../comparison.md)도 참고하세요.
+정책이 오버라이드하는 내장 카탈로그는 [라이선스 분류 표](../user-guide/components-and-licenses.md)도 참고하세요.

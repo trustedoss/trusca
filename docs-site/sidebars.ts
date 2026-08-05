@@ -7,7 +7,6 @@ const sidebars: SidebarsConfig = {
   docs: [
     "intro",
     "quickstart",
-    "comparison",
     {
       type: "category",
       label: "Installation",

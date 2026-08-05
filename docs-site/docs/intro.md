@@ -27,9 +27,7 @@ before it:
 3. **Move to production** → [Docker Compose](./installation/docker-compose.md)
    or the [Helm chart](./installation/helm.md).
 
-Evaluating rather than installing? Read the
-[Comparison](./comparison.md) — versus commercial SCA, Dependency-Track, and
-SW360 — or click through the read-only
+Evaluating rather than installing? Click through the read-only
 [live demo](./installation/live-demo.md), no install required.
 
 ## What it does

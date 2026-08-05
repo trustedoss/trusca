@@ -25,7 +25,7 @@ TRUSCA는 코드와 그 의존성에 대해 서로 다른 여러 **종류**의 �
 | **소스 SBOM 스캔** | Git 저장소 (또는 업로드한 소스 아카이브) | `cdxgen` → scancode → `trivy sbom` | CycloneDX SBOM, 법적 tier 분류가 붙은 declared + detected 라이선스, 매칭된 CVE | 기본값. 프로젝트 의존성 트리의 전체 컴포넌트 목록·라이선스·취약점이 필요할 때. | [스캔 → 스캔 종류](../user-guide/scans.md#스캔-종류), [SBOM](../user-guide/sbom.md) |
 | **컨테이너 이미지 스캔** | 빌드된 컨테이너 이미지 참조 (`name:tag`) | Trivy | OS 패키지 CVE와 베이스 이미지 OS 지원 종료(EOSL) 판정 | 컨테이너를 배포하며, 애플리케이션 의존성뿐 아니라 OS 계층의 취약점도 알고 싶을 때. | [스캔 → 컨테이너 이미지 스캔](../user-guide/scans.md#컨테이너-이미지-스캔), [컨테이너 OS 지원 종료](../user-guide/scans.md#container-os-eol) |
 | **빌드 게이트** | 완료된 스캔의 finding과 라이선스 | 포털 게이트 평가기 | pass/fail 빌드 판정 (CI exit code `0` 또는 `1`) | 금지 라이선스나 임계값 초과 취약점에서 빌드를 자동으로 실패시키고 싶을 때 — CI 집행 지점. | [승인](../user-guide/approvals.md), [라이선스 정책](./license-policies.md), [GitHub Actions](../ci-integration/github-actions.md) |
-| **Reachability 분석** | 스캔한 모듈의 보존된 Go 소스 | `govulncheck` (Go) | finding별 reachable / not-reachable / not-analysed 신호 (Go finding에 한함) | 취약 코드가 실제로 호출되는 finding에 우선순위를 매기고 싶을 때. **현재 Go만 지원 — 아래 상태 안내를 확인하세요.** | [비교 → reachability](../comparison.md) |
+| **Reachability 분석** | 스캔한 모듈의 보존된 Go 소스 | `govulncheck` (Go) | finding별 reachable / not-reachable / not-analysed 신호 (Go finding에 한함) | 취약 코드가 실제로 호출되는 finding에 우선순위를 매기고 싶을 때. **현재 Go만 지원 — 아래 상태 안내를 확인하세요.** | [로드맵](https://github.com/trustedoss/trusca/blob/main/ROADMAP.md) |
 
 네 가지 모두 현재 제공·실행됩니다. reachability는 `govulncheck`로 **Go에 대해** 제공됩니다 — 범위는 아래 안내를 읽으세요. Go 모듈만 커버하며, 다른 모든 생태계의 finding은 아직 분석되지 않습니다.
 
@@ -73,7 +73,7 @@ Reachability는 현재 **Go에 대해** 제공됩니다. 성공한 소스 스캔
 **다른 생태계(Java, JS/TS, Python 등)의 finding은 아직 분석되지 않습니다** — `reachable = null`로 남으며 "영향 가능"으로 표시됩니다. 다중 언어 reachability가 현재의 상용 격차입니다: 일부 상용 도구는 독점 다중 언어 reachability를 실행하지만, TRUSCA는 `govulncheck`로 Go 전용 reachability를 제공합니다.
 :::
 
-다중 언어 로드맵은 [비교 페이지](../comparison.md)와 [로드맵](https://github.com/trustedoss/trusca/blob/main/ROADMAP.md)에서 확인하세요.
+다중 언어 로드맵은 [로드맵](https://github.com/trustedoss/trusca/blob/main/ROADMAP.md)에서 확인하세요.
 
 ## 동작 확인
 
@@ -81,7 +81,7 @@ Reachability는 현재 **Go에 대해** 제공됩니다. 성공한 소스 스캔
 1. 본 페이지의 제공되는 세 분석 종류(소스, 컨테이너, 빌드 게이트)는 [스캔 → 스캔 종류](../user-guide/scans.md#스캔-종류)와 [라이선스 정책 → 동적 게이트 평가](./license-policies.md#동적-게이트-평가)에 문서화된 스캔 종류·게이트와 일치합니다 — 그곳에 문서화되지 않은 파이프라인이 여기 등장하지 않습니다.
 
 <!-- docs-uat: id=analysis-types-reachability-go kind=manual tier=manual -->
-2. reachability 행과 그 상태 안내는 현재 제공되는 **Go 전용 베스트에포트** 신호를 기술합니다: Go finding은 `govulncheck`의 `reachable = true / false / null` 판정을 담을 수 있고, non-Go finding은 "not analysed"로 남습니다. 이는 [비교](../comparison.md)("Go만 지원", reachability 우선순위화는 Go에 제공)·[데이터 출처](./data-sources.md)(reachability는 Trivy DB 신호가 아니라 Go를 위한 별도 `govulncheck` 파이프라인)와 일관됩니다.
+2. reachability 행과 그 상태 안내는 현재 제공되는 **Go 전용 베스트에포트** 신호를 기술합니다: Go finding은 `govulncheck`의 `reachable = true / false / null` 판정을 담을 수 있고, non-Go finding은 "not analysed"로 남습니다. 이는 [데이터 출처](./data-sources.md)(reachability는 Trivy DB 신호가 아니라 Go를 위한 별도 `govulncheck` 파이프라인)와 일관됩니다.
 
 ## 트러블슈팅
 
@@ -96,4 +96,3 @@ Reachability는 현재 **Go에 대해** 제공됩니다. 성공한 소스 스캔
 - [아키텍처](./architecture.md) — 서비스, 스캔 파이프라인 단계, Trivy 매칭.
 - [데이터 출처](./data-sources.md) — 각 취약점 뒤의 finding별 데이터 신호(NVD · OSV · GHSA · EPSS · KEV).
 - [라이선스 정책](./license-policies.md) — 빌드 게이트가 라이선스를 분류·게이트하는 방식.
-- [비교](../comparison.md) — reachability 범위(현재 Go)와 다른 계획 항목의 현황.

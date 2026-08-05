@@ -14,7 +14,7 @@ This page answers the questions new adopters ask most often, and points to the p
 
 ### What does TRUSCA actually do? {#what-is-trusca}
 
-It scans your projects for open-source components, classifies their licenses, matches known vulnerabilities (CVEs) against them, and can fail a CI build on a forbidden license or a Critical vulnerability. It is a self-hosted software composition analysis (SCA) portal. See the [Introduction](../intro.md) and the [Comparison](../comparison.md) with commercial tools.
+It scans your projects for open-source components, classifies their licenses, matches known vulnerabilities (CVEs) against them, and can fail a CI build on a forbidden license or a Critical vulnerability. It is a self-hosted software composition analysis (SCA) portal. See the [Introduction](../intro.md).
 
 ### How do I install it? {#install}
 
@@ -152,4 +152,3 @@ The [on-call runbook](../admin-guide/oncall-runbook.md) has step-by-step recover
 - [Analysis types](./analysis-types.md) — what each kind of scan produces
 - [Triage](../user-guide/triage.md) — how findings become build-gate decisions
 - [Best practices](../best-practices/scan-frequency.md) — operating decisions (frequency, policy, teams, upgrades)
-- [Comparison](../comparison.md) — how TRUSCA relates to commercial SCA tools

@@ -10,7 +10,7 @@ sidebar_label: CRA 대응
 :::note 대상 독자
 CRA의 취약점 처리 의무를 TRUSCA가 어떻게 뒷받침하는지 판단하려는 보안 리드,
 제품보안팀, 법무·컴플라이언스 담당자. 이 문서는 규정 문구를 실제 기능에
-대응시키고, [비교 문서](../comparison.md)와 같은 정직한 태도로 한계를 함께 밝힌다.
+대응시키고, 한계를 함께 밝힌다.
 :::
 
 :::warning 법률 자문이 아니며 컴플라이언스 인증도 아니다
@@ -90,6 +90,5 @@ CRA 프로그램 안에서 TRUSCA를 실용적으로 쓰는 방법이다.
 ## 참고
 
 - [Regulation (EU) 2024/2847 (사이버 복원력법)](https://eur-lex.europa.eu/eli/reg/2024/2847/oj)
-- [TRUSCA 비교](../comparison.md) — 정직한 기능 기준선
 - [취약점 데이터 출처](./data-sources.md) — KEV·EPSS의 출처
 - [VEX](../user-guide/vex.md), [SBOM 수출](../user-guide/sbom.md)

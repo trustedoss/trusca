@@ -14,7 +14,7 @@ sidebar_position: 12
 
 ### TRUSCA는 무엇을 하나요? {#what-is-trusca}
 
-프로젝트에서 오픈소스 컴포넌트를 스캔하고, 라이선스를 분류하고, 알려진 취약점(CVE)을 매칭하며, 금지 라이선스나 Critical 취약점이 있으면 CI 빌드를 실패시킬 수 있습니다. 자체 호스팅하는 소프트웨어 구성 분석(SCA) 포털입니다. [소개](../intro.md)와 상용 도구와의 [비교](../comparison.md)를 참고하세요.
+프로젝트에서 오픈소스 컴포넌트를 스캔하고, 라이선스를 분류하고, 알려진 취약점(CVE)을 매칭하며, 금지 라이선스나 Critical 취약점이 있으면 CI 빌드를 실패시킬 수 있습니다. 자체 호스팅하는 소프트웨어 구성 분석(SCA) 포털입니다. [소개](../intro.md)를 참고하세요.
 
 ### 어떻게 설치하나요? {#install}
 
@@ -152,4 +152,3 @@ Super Admin(배포 전체), Team Admin(팀 설정·팀원), Developer(스캔 실
 - [분석 유형](./analysis-types.md) — 각 스캔 종류가 산출하는 것
 - [Triage](../user-guide/triage.md) — finding이 빌드 게이트 결정이 되는 과정
 - [모범 사례](../best-practices/scan-frequency.md) — 운영 결정(빈도·정책·팀·업그레이드)
-- [비교](../comparison.md) — TRUSCA와 상용 SCA 도구의 관계

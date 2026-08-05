@@ -10,8 +10,7 @@ sidebar_label: CRA compliance
 :::note Audience
 Security leads, product-security teams, and legal/compliance owners assessing
 how TRUSCA supports **CRA vulnerability-handling obligations**. This page maps
-regulation text to shipped features and states the limits honestly, in the same
-spirit as the [comparison page](../comparison.md).
+regulation text to shipped features and states the limits honestly.
 :::
 
 :::warning Not legal advice, not a compliance certificate
@@ -95,6 +94,5 @@ A pragmatic way to use TRUSCA inside a CRA programme:
 ## References
 
 - [Regulation (EU) 2024/2847 (Cyber Resilience Act)](https://eur-lex.europa.eu/eli/reg/2024/2847/oj)
-- [How TRUSCA compares](../comparison.md) — the honest capability baseline
 - [Vulnerability data sources](./data-sources.md) — where KEV/EPSS come from
 - [VEX](../user-guide/vex.md), [SBOM export](../user-guide/sbom.md)
