@@ -85,6 +85,10 @@ _TASK_INCLUDES = [
     # newest snapshot (vendored or, when EOL_REFRESH_ENABLED, freshly
     # fetched). Backs the Components tab's EOL badge/filter.
     "tasks.eol_catalog_refresh",
+    # #26 — weekly re-stamp of the malicious columns, plus the optional
+    # snapshot rebuild. The re-stamp half is what finds a package that turned
+    # malicious after the last scan touched it.
+    "tasks.malicious_catalog_refresh",
     # W6-#44 — Trivy DB weekly refresh beat. Pairs with the worker-boot
     # bootstrap hook (tasks.trivy_db_bootstrap) so a fresh worker picks up
     # the DB once at start, and a running deployment refreshes weekly to
@@ -117,6 +121,9 @@ KEV_BEAT_ENTRY_NAME = "kev-catalog-refresh-daily"
 # (see KEV_BEAT_ENTRY_NAME's rationale above).
 EOL_BEAT_ENTRY_NAME = "eol-catalog-refresh-weekly"
 
+# Same live-crontab derivation for the malicious panel's ``next_refresh_at``.
+MALICIOUS_BEAT_ENTRY_NAME = "malicious-catalog-refresh-weekly"
+
 
 def _build_beat_schedule() -> dict[str, dict[str, object]]:
     """
@@ -131,6 +138,7 @@ def _build_beat_schedule() -> dict[str, dict[str, object]]:
       - ``trustedoss.vulnerability_rematch_enqueue`` — every 6h at :15
       - ``trustedoss.kev_catalog_refresh``          — daily at 01:45 UTC
       - ``trustedoss.vuln_sla_sweep``               — daily at 02:45 UTC
+      - ``trustedoss.malicious_catalog_refresh``    — weekly, Sun 02:40 UTC
       - ``trustedoss.trivy_db_refresh``             — weekly, Sun 03:00 UTC
 
     chore PR #4 wires a `celery-beat` sidecar in
@@ -228,6 +236,14 @@ def _build_beat_schedule() -> dict[str, dict[str, object]]:
         EOL_BEAT_ENTRY_NAME: {
             "task": "trustedoss.eol_catalog_refresh",
             "schedule": crontab(minute=15, hour=2, day_of_week="sun"),
+        },
+        # #26 — Sunday 02:40 UTC. Sits between the EOL re-stamp (02:15) and
+        # the Trivy DB refresh (03:00) so the three catalog passes do not
+        # contend for the worker, and after EOL because this one walks every
+        # component_versions row.
+        MALICIOUS_BEAT_ENTRY_NAME: {
+            "task": "trustedoss.malicious_catalog_refresh",
+            "schedule": crontab(minute=40, hour=2, day_of_week="sun"),
         },
         # W6-#44 — weekly Trivy DB refresh. Sunday 03:00 UTC was chosen as
         # the lowest-traffic window on the typical enterprise cluster: 03:00

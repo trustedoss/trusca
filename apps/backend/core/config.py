@@ -1522,6 +1522,40 @@ def malicious_enabled() -> bool:
     }
 
 
+def malicious_refresh_enabled() -> bool:
+    """Whether the weekly beat may rebuild the malicious snapshot from OSV.
+
+    Default OFF, like every other new egress target in this codebase. The
+    re-stamp half of that beat always runs — it is local — so leaving this
+    alone still lets an image upgrade reach existing rows. An air-gapped
+    install never turns it on and works from the snapshot in the release.
+
+    Read at call time (rule #11).
+    """
+    return os.getenv("MALICIOUS_REFRESH_ENABLED", "").strip().lower() in {
+        "true",
+        "1",
+        "yes",
+    }
+
+
+def malicious_snapshot_stale_days() -> int:
+    """Age at which the admin panel calls the malicious snapshot stale.
+
+    60 days, shorter than the EOL panel's 180. End-of-life dates move on a
+    product's release calendar; malicious advisories are published daily, so
+    a snapshot two months old has stopped answering the question it is asked.
+    """
+    raw = os.getenv("MALICIOUS_SNAPSHOT_STALE_DAYS", "").strip()
+    if not raw:
+        return 60
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return 60
+    return value if value > 0 else 60
+
+
 def eol_enabled() -> bool:
     """Whether components are stamped with endoflife.date EOL verdicts.
 

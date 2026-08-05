@@ -23,6 +23,7 @@ import {
   type HealthStatus,
 } from "@/features/admin/health/api/adminHealthApi";
 import { EolPanel } from "@/features/admin/health/EolPanel";
+import { MaliciousPanel } from "@/features/admin/health/MaliciousPanel";
 import { KevFeedPanel } from "@/features/admin/health/KevFeedPanel";
 import { TrivyDBPanel } from "@/features/admin/health/TrivyDBPanel";
 import { useAdminHealth } from "@/features/admin/health/api/useAdminHealth";
@@ -195,6 +196,7 @@ export function AdminHealthPage() {
           <TrivyDBPanel />
           <KevFeedPanel />
           <EolPanel />
+          <MaliciousPanel />
         </div>
 
         <div

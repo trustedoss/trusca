@@ -89,8 +89,9 @@ Eight distinct triggers fire notifications:
 | `approval_state_changed` | An approval request you filed changes state (approved / rejected / moved to review) — the requester is notified of the disposition. |
 | `policy_gate_failed` | A CI build gate fails (Critical CVE or forbidden license blocks the build). |
 | `vuln_sla_breach` | Open findings on a project's latest succeeded scan crossed their remediation-SLA due date within the last 24 hours (daily sweep at 02:45 UTC). One aggregated alert per project, delivered to every member of the owning team, with a link to the Vulnerabilities tab pre-filtered to overdue. See [Remediation SLA and aging](./vulnerabilities.md#sla). |
+| `malicious_detected` | A component already present in a project's latest succeeded scan was named by a newly published malicious-package advisory (weekly re-check, Sundays 02:40 UTC). No scan produces this finding — nobody re-scans an old release. Delivered to every member of the owning team. Treat it as an incident, not an upgrade: the published artifact is the attack, so remove it and rotate any credential the build had access to. See [Malicious packages](./components-and-licenses.md#known-malicious-packages). |
 
-Channel selection is global — the **Preferences** tab decides which channels deliver every trigger. One exception: `vuln_sla_breach` is delivered **in-app only** (your in-app preference is still respected); it never goes out via email, Slack, or Teams.
+Channel selection is global — the **Preferences** tab decides which channels deliver every trigger. Two exceptions: `vuln_sla_breach` and `malicious_detected` are delivered **in-app only** (your in-app preference is still respected); it never goes out via email, Slack, or Teams.
 
 ## Verify it worked
 

@@ -33,6 +33,8 @@ export const NOTIFICATION_KINDS = [
   "approval_pending",
   "policy_gate_failed",
   "approval_state_changed",
+  "vuln_sla_breach",
+  "malicious_detected",
 ] as const;
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];

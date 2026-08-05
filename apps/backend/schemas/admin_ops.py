@@ -540,6 +540,106 @@ class KevFeedStatusOut(BaseModel):
 EolSyncResult = Literal["synced", "skipped"]
 
 
+MaliciousSyncResult = Literal["synced", "skipped"]
+
+
+class MaliciousStatusOut(BaseModel):
+    """
+    Response of ``GET /v1/admin/malicious/health`` — #26 snapshot panel.
+
+    Sibling of :class:`EolStatusOut`. Two fields differ in meaning and are
+    worth reading carefully:
+
+    ``snapshot_date`` warns past 60 days rather than EOL's 180. End-of-life
+    dates move on a product's release calendar; malicious advisories are
+    published daily, so a two-month-old snapshot has stopped answering the
+    question it is asked.
+
+    ``newly_flagged`` is the number of catalog rows that went from clear to
+    flagged on the last re-stamp — packages already in stock that an advisory
+    caught up with. That is the count this beat exists to produce.
+    """
+
+    enabled: bool = Field(
+        description="Mirrors ``MALICIOUS_ENABLED`` — the flagging itself.",
+    )
+    refresh_enabled: bool = Field(
+        description=(
+            "Mirrors ``MALICIOUS_REFRESH_ENABLED`` — the optional snapshot "
+            "rebuild. ``false`` (the default) means verdicts come from the "
+            "snapshot shipped with the release; the weekly re-stamp still runs."
+        ),
+    )
+    snapshot_date: date | None = Field(
+        default=None,
+        description=(
+            "Date of the snapshot in effect. The panel's staleness signal "
+            "(warn past ``MALICIOUS_SNAPSHOT_STALE_DAYS``, default 60). "
+            "``null`` when no snapshot loads."
+        ),
+    )
+    snapshot_stale: bool = Field(
+        default=False,
+        description="Whether ``snapshot_date`` is past the staleness window.",
+    )
+    purl_count: int = Field(
+        default=0,
+        ge=0,
+        description="Package identifiers carried by the snapshot in effect.",
+    )
+    ecosystems: list[str] = Field(
+        default_factory=list,
+        description="Ecosystems the snapshot covers.",
+    )
+    flagged_total: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Live count of catalog component versions currently "
+            "``malicious_state='flagged'`` (rides the partial index). "
+            "``null`` only on DB-read degrade."
+        ),
+    )
+    last_synced_at: datetime | None = Field(
+        default=None,
+        description="Timestamp of the last SUCCESSFUL snapshot rebuild.",
+    )
+    last_attempt_at: datetime | None = Field(
+        default=None,
+        description="Most recent beat tick of any outcome. ``null`` = never ran.",
+    )
+    last_result: MaliciousSyncResult | None = Field(
+        default=None,
+        description="Fetch outcome of the most recent tick.",
+    )
+    skipped_reason: str | None = Field(
+        default=None,
+        description=(
+            "Why the most recent fetch skipped: ``disabled`` / "
+            "``refresh_disabled`` / ``feed_unavailable`` / "
+            "``feed_below_sanity_floor`` / ``unexpected:<ExceptionName>``."
+        ),
+    )
+    stamped: int | None = Field(
+        default=None,
+        ge=0,
+        description="Catalog rows whose verdict changed on the last re-stamp.",
+    )
+    newly_flagged: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Rows that went clear → flagged on the last re-stamp — packages "
+            "already in stock that a new advisory caught up with. Non-zero "
+            "means the beat found something no scan would have."
+        ),
+    )
+    next_refresh_at: datetime | None = Field(
+        default=None,
+        description="Next scheduled beat fire, derived from the live crontab.",
+    )
+
+
 class EolStatusOut(BaseModel):
     """
     Response of ``GET /v1/admin/eol/health`` — Phase M EOL snapshot panel.

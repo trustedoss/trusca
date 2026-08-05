@@ -48,6 +48,39 @@ def test_notification_kind_enum_matches_schema_literal() -> None:
     assert set(NOTIFICATION_KIND_VALUES) == set(typing.get_args(NotificationKind))
 
 
+def test_notification_kind_enum_matches_the_shared_frontend_fixture() -> None:
+    """Backend enum vs the fixture the frontend mirror is pinned against.
+
+    ``tests/contracts/notification-kinds.json`` was written to be the single
+    vocabulary both sides assert on, but only the frontend was ever wired to
+    it — the file's own comment called the backend half a follow-up. So a kind
+    added here failed nothing, and ``vuln_sla_breach`` (X1) shipped with no
+    frontend label or icon: the inbox rendered a fallback icon next to a raw
+    i18n key. Adding ``malicious_detected`` (MAL-2b) would have repeated it.
+
+    Order is asserted too. The fixture mirrors enum declaration order, and the
+    frontend derives a TypeScript union from the array, so a reordering that
+    the set comparison forgives is still churn worth catching at review time.
+    """
+    import json
+    from pathlib import Path
+
+    from models.notification import NOTIFICATION_KIND_VALUES
+
+    fixture = (
+        Path(__file__).resolve().parents[4] / "tests/contracts/notification-kinds.json"
+    )
+    assert fixture.is_file(), f"shared notification-kind fixture missing: {fixture}"
+    kinds = json.loads(fixture.read_text(encoding="utf-8"))["kinds"]
+
+    assert list(NOTIFICATION_KIND_VALUES) == kinds, (
+        "notification_kind drifted from the shared fixture — update "
+        "tests/contracts/notification-kinds.json AND the frontend mirror "
+        "(notificationsApi.ts, NotificationsPage icons/tones, locales) "
+        "together, or the inbox renders a raw key."
+    )
+
+
 def test_dispatcher_kinds_exist_in_inapp_enum_or_dispatch_only_list() -> None:
     """Every dispatcher kind is either a valid in-app kind or explicitly
     dispatch-only.

@@ -55,6 +55,9 @@ from .license_fetch_cache import (  # noqa: E402,F401  (imported for metadata si
 from .license_policy import (  # noqa: E402,F401  (imported for metadata side effects)
     LicensePolicy,
 )
+from .malicious_sync_state import (  # noqa: E402,F401  (imported for metadata side effects)
+    MaliciousSyncState,
+)
 from .notification import (  # noqa: E402,F401  (imported for metadata side effects)
     NOTIFICATION_KIND_VALUES,
     Notification,
@@ -103,6 +106,7 @@ __all__ = [
     "ComponentDependencyEdge",
     "ComponentVersion",
     "EolSyncState",
+    "MaliciousSyncState",
     "GitHubAppCredential",
     "GitHubAppInstallation",
     "KevSyncState",

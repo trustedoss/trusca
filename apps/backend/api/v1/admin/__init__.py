@@ -18,6 +18,7 @@ Sub-routers:
   - ``trivy``  — ``/v1/admin/trivy/*``   (W6-#43e: vulnerability DB status panel)
   - ``kev``    — ``/v1/admin/kev/*``     (Phase C: CISA KEV feed sync status panel)
   - ``eol``    — ``/v1/admin/eol/*``     (Phase M: endoflife.date snapshot status panel)
+  - ``malicious`` — ``/v1/admin/malicious/*`` (#26: malicious-snapshot status panel)
 
 W6-#43a (ADR-0001): the ``dt`` sub-router was removed when DT was replaced
 by Trivy; previously-issued DT audit-log rows are preserved as
@@ -33,7 +34,19 @@ from fastapi import APIRouter, Depends
 
 from core.security import require_super_admin_or_404
 
-from . import audit, backup, disk, eol, health, kev, scans, teams, trivy, users
+from . import (
+    audit,
+    backup,
+    disk,
+    eol,
+    health,
+    kev,
+    malicious,
+    scans,
+    teams,
+    trivy,
+    users,
+)
 
 # Apply the super-admin gate at the parent-router level so individual route
 # signatures stay clean — each route still gets the resolved CurrentUser
@@ -55,6 +68,7 @@ router.include_router(backup.router)
 router.include_router(trivy.router)
 router.include_router(kev.router)
 router.include_router(eol.router)
+router.include_router(malicious.router)
 
 
 __all__ = ["router"]

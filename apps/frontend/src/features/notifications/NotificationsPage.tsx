@@ -78,6 +78,11 @@ const KIND_ICONS: Record<NotificationKind, LucideIcon> = {
   // (migration 0030). Same icon family as approval_pending; the tone below +
   // the translated label distinguish it.
   approval_state_changed: ClipboardCheck,
+  // X1 — the daily SLA sweep; a due date passed, nothing new was found.
+  vuln_sla_breach: AlertTriangle,
+  // MAL-2b (#26) — a package already in the project was named by a new
+  // advisory. Not a vulnerability to schedule: the artifact is the attack.
+  malicious_detected: ShieldX,
 };
 
 const KIND_TONE: Record<NotificationKind, string> = {
@@ -90,6 +95,8 @@ const KIND_TONE: Record<NotificationKind, string> = {
   approval_pending: "text-risk-low",
   policy_gate_failed: "text-risk-critical",
   approval_state_changed: "text-risk-info",
+  vuln_sla_breach: "text-risk-high",
+  malicious_detected: "text-risk-critical",
 };
 
 function NotificationKindIcon({ kind }: { kind: NotificationKind }) {

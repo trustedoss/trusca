@@ -49,6 +49,10 @@ NotificationKind = Literal[
     # X1 — emitted by the daily SLA sweep when an open finding crosses its
     # per-severity SLA due date (one aggregated alert per project per member).
     "vuln_sla_breach",
+    # MAL-2b (#26) — emitted by the weekly re-check when a component already in
+    # a project goes clear -> flagged. No scan produces this finding, because
+    # nobody re-scans an old release.
+    "malicious_detected",
 ]
 
 

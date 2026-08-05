@@ -22,7 +22,9 @@
     "license_violation": "라이선스 위반",
     "approval_pending": "승인 대기",
     "policy_gate_failed": "정책 게이트 실패",
-    "approval_state_changed": "승인 상태 변경"
+    "approval_state_changed": "승인 상태 변경",
+    "vuln_sla_breach": "조치 기한 초과",
+    "malicious_detected": "악성 패키지"
   },
   "prefs": {
     "section_title": "알림 채널",
