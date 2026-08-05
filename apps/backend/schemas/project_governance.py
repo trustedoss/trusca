@@ -41,6 +41,15 @@ class GovernanceGate(BaseModel):
         ge=0,
         description="Always zero when GATE_EPSS_THRESHOLD is unset, which disables that condition.",
     )
+    malicious_component_count: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Components the malicious snapshot flags on the anchored scan. "
+            "Carried so the band can say why a build is blocked when this is "
+            "the only axis failing — otherwise it renders zeros and no reason."
+        ),
+    )
     scan_id: uuid.UUID | None = Field(
         default=None, description="The snapshot the verdict was computed from."
     )

@@ -133,7 +133,12 @@ function TrendSpark({ points }: { points: GovernanceTrendPoint[] }) {
  * because that condition can block on its own.
  */
 function gateReason(
-  gate: { critical_cve_count: number; forbidden_license_count: number; epss_gate_count: number },
+  gate: {
+    critical_cve_count: number;
+    forbidden_license_count: number;
+    epss_gate_count: number;
+    malicious_component_count: number;
+  },
   t: (key: string, options?: Record<string, unknown>) => string,
 ): string {
   const clauses: string[] = [];
@@ -142,6 +147,15 @@ function gateReason(
   }
   if (gate.forbidden_license_count > 0) {
     clauses.push(t("governance.gate_reason_licenses", { count: gate.forbidden_license_count }));
+  }
+  if (gate.malicious_component_count > 0) {
+    // First clause, not last: this one says remove-and-rotate, and a reader
+    // who stops after the first phrase should get that one.
+    clauses.unshift(
+      t("governance.gate_reason_malicious", {
+        count: gate.malicious_component_count,
+      }),
+    );
   }
   if (gate.epss_gate_count > 0) {
     clauses.push(t("governance.gate_reason_epss", { count: gate.epss_gate_count }));

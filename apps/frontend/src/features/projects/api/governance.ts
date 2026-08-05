@@ -22,6 +22,7 @@ export interface GovernanceGate {
   critical_cve_count: number;
   forbidden_license_count: number;
   epss_gate_count: number;
+  malicious_component_count: number;
   scan_id: string | null;
 }
 

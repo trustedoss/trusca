@@ -194,6 +194,7 @@ async def get_project_governance(
             critical_cve_count=gate_result.critical_cve_count,
             forbidden_license_count=gate_result.forbidden_license_count,
             epss_gate_count=gate_result.epss_gate_count,
+            malicious_component_count=gate_result.malicious_component_count,
             scan_id=current_scan_id,
         ),
         kev_sla=GovernanceKevSla(overdue=kev.overdue, due_soon=kev.due_soon),

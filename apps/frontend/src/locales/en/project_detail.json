@@ -223,13 +223,16 @@
         "critical_cve": "{{count}} open critical CVE(s)",
         "forbidden_license": "{{count}} forbidden license(s)",
         "epss": "{{count}} finding(s) with EPSS ≥ {{threshold}}",
-        "fallback": "The build gate failed. See the metrics below for details."
+        "fallback": "The build gate failed. See the metrics below for details.",
+        "malicious": "{{count}} known-malicious package — remove it and rotate the credentials this build could reach",
+        "malicious_plural": "{{count}} known-malicious packages — remove them and rotate the credentials this build could reach"
       },
       "errors": {
         "not_found": "This project no longer exists or you no longer have access to it.",
         "forbidden": "You do not have permission to view this project's build gate.",
         "unknown": "Could not load the build gate. Please try again."
-      }
+      },
+      "malicious_packages": "Known-malicious packages"
     },
     "errors": {
       "title": "Could not load overview.",
@@ -1293,6 +1296,8 @@
     "error": "Could not load the governance summary. Retry before reading its absence as good news.",
     "gate_reason_critical": "{{count}} critical",
     "gate_reason_licenses": "{{count}} forbidden licences",
-    "gate_reason_epss": "{{count}} above the EPSS threshold"
+    "gate_reason_epss": "{{count}} above the EPSS threshold",
+    "gate_reason_malicious": "{{count}} known-malicious package",
+    "gate_reason_malicious_plural": "{{count}} known-malicious packages"
   }
 }

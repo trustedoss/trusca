@@ -233,6 +233,8 @@ describe("ProjectDetailPage", () => {
       critical_cve_count: 10,
       forbidden_license_count: 0,
       epss_gate_count: 0,
+      malicious_component_count: 0,
+      malicious_scan_assessed: true,
       epss_threshold: null,
       project_id: "proj-1",
       scan_id: "scan-latest",
