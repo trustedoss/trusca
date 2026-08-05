@@ -182,6 +182,43 @@ def test_disabled_leaves_every_column_null(
     assert all(cv.malicious_evaluated_at is None for cv in cv_registry.values())
 
 
+def test_a_missing_version_field_cannot_clear_a_flagged_row(
+    cv_registry: dict[str, _FakeComponentVersion],
+) -> None:
+    """An uploaded SBOM must not be able to un-flag a shared catalog row.
+
+    ``component_versions`` is org-wide, so a wrong verdict here reaches every
+    project using the package. The hook used to decide from the SBOM's
+    ``version`` field, which defaults to "0.0.0" when absent — against a
+    version-pinned advisory that reads as "not one of the named versions" and
+    clears the row. 12.4% of the snapshot is version-pinned, so this was not a
+    corner case. The verdict now comes from the PURL, which is the same string
+    the row is keyed on.
+    """
+    from services.malicious import malicious_catalog
+
+    index = malicious_catalog.load_index()
+    assert index is not None
+    pinned_purl, versions = next(
+        (k, v) for k, v in index.versions.items() if k.startswith("pkg:")
+    )
+    named = versions[0]
+
+    sbom = {
+        "components": [
+            # `purl` names the malicious release; `version` is absent, exactly
+            # what an attacker-supplied document would look like.
+            {"name": "pinned", "purl": f"{pinned_purl}@{named}", "type": "library"}
+        ]
+    }
+    from tasks.scan_source import persist_sbom_components
+
+    persist_sbom_components(_FakeSession(), scan_uuid=uuid.uuid4(), sbom=sbom)
+
+    row = cv_registry[f"{pinned_purl}@{named}"]
+    assert row.malicious_state == "flagged"
+
+
 def test_flagging_never_creates_a_finding(
     cv_registry: dict[str, _FakeComponentVersion],
 ) -> None:

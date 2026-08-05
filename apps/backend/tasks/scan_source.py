@@ -2390,11 +2390,33 @@ def persist_sbom_components(
         # case. The flagged tally feeds the scan summary log.
         if malicious_evaluator is not None:
             try:
-                verdict = malicious_evaluator.verdict_for(purl, version)
+                # Decide from the PURL, never from the sibling `version`
+                # field. The catalog row's identity is `purl_with_version`,
+                # and these two can disagree: an SBOM may carry
+                # `pkg:cargo/x@0.3.1` while omitting `version` (which then
+                # defaults to "0.0.0"). A version-pinned advisory would read
+                # that as "not one of the named versions" and clear a row that
+                # is genuinely malicious — for EVERY project sharing the
+                # catalog row, since this table is org-wide.
+                pinned_version = (
+                    malicious_catalog.version_from_purl(purl) or version
+                )
+                verdict = malicious_evaluator.verdict_for(purl, pinned_version)
+                was_flagged = component_version.malicious_state == "flagged"
                 if malicious_catalog.stamp_component_version(
                     component_version, verdict, eol_now
                 ):
                     malicious_stamped_count += 1
+                    if was_flagged and verdict.state == "clear":
+                        # Legitimate when a snapshot refresh drops a withdrawn
+                        # advisory; suspicious when a single scan does it, so
+                        # it is never silent.
+                        log.warning(
+                            "malicious_flag_cleared",
+                            scan_id=str(scan_uuid),
+                            purl=purl,
+                            source=verdict.source,
+                        )
                 if verdict.state == "flagged":
                     malicious_flagged_count += 1
             except Exception:  # noqa: BLE001 — enrichment is best-effort
