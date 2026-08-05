@@ -1,5 +1,5 @@
 {
-  "$comment": "Shared notification-kind vocabulary fixture (PR-6 FE regression guards). Single source both sides assert against: backend models/notification.py::NOTIFICATION_KIND_VALUES (Postgres enum notification_kind, migration 0030 added approval_state_changed — H-5) and the frontend mirror features/notifications/api/notificationsApi.ts::NOTIFICATION_KINDS. The FE assertion lives in apps/frontend/tests/unit/contracts/catalogMirrors.test.ts; wiring the backend test to this same file is a tracked follow-up. Order matters: it mirrors the enum declaration order.",
+  "$comment": "Shared notification-kind vocabulary fixture (PR-6 FE regression guards). Single source both sides assert against: backend models/notification.py::NOTIFICATION_KIND_VALUES (Postgres enum notification_kind) and the frontend mirror features/notifications/api/notificationsApi.ts::NOTIFICATION_KINDS. Asserted from apps/frontend/tests/unit/contracts/catalogMirrors.test.ts and from apps/backend/tests/unit/test_catalog_contracts.py — the one-sided guard is why vuln_sla_breach (X1) reached production rendering a raw i18n key. Order matters: it mirrors the enum declaration order.",
   "kinds": [
     "scan_completed",
     "scan_failed",
@@ -7,6 +7,7 @@
     "license_violation",
     "approval_pending",
     "policy_gate_failed",
-    "approval_state_changed"
+    "approval_state_changed",
+    "vuln_sla_breach"
   ]
 }
