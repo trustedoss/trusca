@@ -7,6 +7,72 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.20.1] — 2026-08-05
+
+### Added
+- **Known-malicious packages now fail the build — this axis is on by default.**
+  A build that passed on 0.20.0 can fail on 0.20.1 if it carries a package named
+  by an OSV `MAL-` advisory. Severity is not weighed: the published artifact is
+  the attack, so there is no version to upgrade to. An upstream false positive
+  would otherwise stop every build until the advisory is retracted, so a licence
+  policy can carry `malicious_exceptions` — package, reason, and a **required**
+  expiry capped at `MALICIOUS_WAIVE_MAX_DAYS` (30). Set
+  `GATE_MALICIOUS_ENABLED=false` to keep the verdicts visible without blocking.
+- **A weekly re-check catches packages flagged after they shipped.** Verdicts
+  previously came only from a scan, and nothing re-scans an old release, so a
+  package named by an advisory published after the last scan stayed unflagged.
+  The beat runs Sundays 02:40 UTC and alerts the teams whose latest scan carries
+  it. Rebuilding the snapshot from OSV is a separate switch
+  (`MALICIOUS_REFRESH_ENABLED`, off by default); the re-check itself needs no
+  network, so an air-gapped install still picks up a newer snapshot from an
+  upgrade. `admin/health` gains a status panel.
+- **A version label is a permanent address for a snapshot.** Two succeeded scans
+  could carry the same `metadata.release`, so "which snapshot is 4.0?" had no
+  answer; a labelled scan now supersedes earlier ones with the same label, and
+  the displaced scan is exempt from the reclaim sweep. `?release=4.0` works on
+  the releases list and on fourteen detail endpoints, so `/notice?release=4.0`
+  no longer requires knowing a scan UUID. Migration 0046.
+
+### Changed
+- **Scans serialize per branch, not per project.** Pushing to `main` and
+  `release/1.x` at once made one CI job wait on the other or take a 409 it could
+  do nothing about, though the branches write disjoint snapshots. Migration 0047
+  rebuilds the index on `(project_id, ref)`.
+- **The gate reads current state from the project's main line**, not from
+  whichever scan finished last, so a feature-branch scan no longer decides
+  whether `main` is passing.
+
+### Removed
+- **The documentation comparison page**, along with its sidebar entry and the
+  thirteen links that pointed at it. Each link now goes to the page that holds
+  the detail it was reaching for: the roadmap, the introduction, `data-sources`,
+  or the licence classification table in `components-and-licenses`.
+
+### Fixed
+- **The malicious verdict is decided from the PURL**, not a sibling field an SBOM
+  upload could set — that let an upload clear the shared catalogue's flags for
+  every project.
+- **NOTICE downloads honour the `?scan_id=` release pin** instead of always
+  serving the newest scan.
+- **The notification inbox showed a raw translation key for `vuln_sla_breach`.**
+  The kind shipped without a frontend label; the shared vocabulary fixture that
+  exists to catch that was wired to only one side, and now guards both.
+- **The demo deploy path.** `upgrade.sh` hardcoded `-f docker-compose.yml` and
+  dropped the demo overlay, the required backup did not run with the stack down,
+  and a failed deploy left the service stopped.
+- Korean term spellings and one mistranslation; the release list is now called
+  "releases", with "version" reserved for the label.
+
+### Security
+- **`cryptography` bumped for CVE-2026-69247.**
+- **`brace-expansion` and `ip-address` pinned to fixed versions in the worker
+  image**, sweeping npm's own dependency tree rather than only cdxgen's.
+
+## [0.20.0] — 2026-08-03
+
+No itemised entry was written when this release was tagged, and the notable
+change below is the only one recovered. Later releases are itemised in full.
+
 ### Security
 - **Worker image: replace npm's bundled brace-expansion 5.0.7 (CVE-2026-14257,
   HIGH ReDoS) with 5.0.8.** npm is a build-time tool in the worker image and is
