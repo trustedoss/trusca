@@ -441,6 +441,27 @@
       "confirm": "확인",
       "save": "저장",
       "close": "닫기"
+    },
+    "malicious": {
+      "heading": "악성 패키지",
+      "status": {
+        "ok": "정상",
+        "stale": "오래됨",
+        "skipped": "건너뜀",
+        "disabled": "꺼짐"
+      },
+      "stale_note": "스냅샷이 오래되어 최근 권고가 빠져 있을 수 있습니다. 릴리스를 올리거나 주간 재생성을 켜십시오.",
+      "newly_flagged_note": "새로 나온 권고가 이미 프로젝트에 있던 패키지 {{count}}개를 악성으로 지목했습니다.",
+      "kpi": {
+        "newly_flagged": "새로 지목됨",
+        "flagged_total": "지목된 컴포넌트",
+        "snapshot": "스냅샷",
+        "snapshot_hint": "패키지 {{count}}개 수록",
+        "next_tick": "다음 확인",
+        "refresh_on": "재생성 켜짐",
+        "refresh_off": "재확인만, 재생성 안 함"
+      },
+      "footer": "생태계 {{ecosystems}}종 · 판정 변경 {{stamped}}건 · 마지막 실행 {{last}}"
     }
   }
 }

@@ -441,6 +441,27 @@
       "confirm": "Confirm",
       "save": "Save",
       "close": "Close"
+    },
+    "malicious": {
+      "heading": "Malicious packages",
+      "status": {
+        "ok": "OK",
+        "stale": "Stale",
+        "skipped": "Skipped",
+        "disabled": "Disabled"
+      },
+      "stale_note": "The snapshot is old enough that new advisories are likely missing from it. Upgrade the release, or enable the weekly rebuild.",
+      "newly_flagged_note": "Newly published advisories flagged {{count}} of the packages already in your projects.",
+      "kpi": {
+        "newly_flagged": "Newly flagged",
+        "flagged_total": "Flagged components",
+        "snapshot": "Snapshot",
+        "snapshot_hint": "{{count}} packages listed",
+        "next_tick": "Next check",
+        "refresh_on": "Rebuild enabled",
+        "refresh_off": "Re-check only, no rebuild"
+      },
+      "footer": "{{ecosystems}} ecosystems · {{stamped}} verdicts changed · last run {{last}}"
     }
   }
 }

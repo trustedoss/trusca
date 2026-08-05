@@ -114,6 +114,8 @@ _AUTH_MATRIX_ENDPOINTS = [
     ("GET", "/v1/admin/trivy/health"),
     # Phase C: KEV feed sync status panel — same existence-hide gate.
     ("GET", "/v1/admin/kev/health"),
+    # MAL-2b (#26): malicious-snapshot status panel — same existence-hide gate.
+    ("GET", "/v1/admin/malicious/health"),
 ]
 
 
@@ -437,6 +439,57 @@ async def test_admin_kev_health_super_admin_returns_payload(
     assert body["kev_flagged_total"] >= 0
     # Derived from the live beat schedule (daily crontab) — present and in
     # the future.
+    assert body["next_refresh_at"] is not None
+    if body["last_result"] is not None:
+        assert body["last_result"] in {"synced", "skipped"}
+
+
+async def test_admin_malicious_health_super_admin_returns_payload(
+    client: AsyncClient,
+) -> None:
+    """Super admin sees the malicious-snapshot status (#26, MAL-2b).
+
+    Same posture as the KEV panel above: the closed response shape plus the
+    fields derived from config and the shipped snapshot, not row presence —
+    the beat may not have ticked against this database.
+
+    The snapshot ships with the release, so `purl_count` and `ecosystems` are
+    populated before the first tick; only the beat-derived counters are null.
+    """
+    factory = await _factory(client)
+    async with factory() as session:
+        admin = await make_user(session, is_superuser=True)
+
+    response = await client.get(
+        "/v1/admin/malicious/health", headers=_bearer_for(admin)
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert set(body.keys()) == {
+        "enabled",
+        "refresh_enabled",
+        "snapshot_date",
+        "snapshot_stale",
+        "purl_count",
+        "ecosystems",
+        "flagged_total",
+        "last_synced_at",
+        "last_attempt_at",
+        "last_result",
+        "skipped_reason",
+        "stamped",
+        "newly_flagged",
+        "next_refresh_at",
+    }
+    # Fetching is off by default; the re-stamp half runs regardless, which is
+    # what lets an air-gapped install pick up a newer snapshot from an upgrade.
+    assert body["refresh_enabled"] is False
+    assert body["purl_count"] > 0
+    assert body["ecosystems"]
+    # Live count rides the partial index — always an int against a live DB.
+    assert isinstance(body["flagged_total"], int)
+    assert body["flagged_total"] >= 0
+    # Derived from the live weekly crontab.
     assert body["next_refresh_at"] is not None
     if body["last_result"] is not None:
         assert body["last_result"] in {"synced", "skipped"}
