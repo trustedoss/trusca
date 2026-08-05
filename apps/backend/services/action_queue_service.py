@@ -60,10 +60,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.security import CurrentUser
 from models import (
     ComponentApproval,
+    ComponentVersion,
     License,
     LicenseFinding,
     Project,
     Scan,
+    ScanComponent,
     Vulnerability,
     VulnerabilityFinding,
 )
@@ -156,6 +158,45 @@ async def _gate_input_counts(
     }
 
     return critical, forbidden
+
+
+async def _malicious_counts(
+    session: AsyncSession,
+    *,
+    scan_ids: list[uuid.UUID],
+) -> dict[uuid.UUID, int]:
+    """Components each scan carries that the malicious snapshot flags.
+
+    A project can be blocked by this term alone — the gate fails on any
+    non-empty reason clause, and this is one of five. Omitting it here would
+    drop exactly those builds from the panel whose whole purpose is listing
+    blocked builds, and the most urgent ones at that: a malicious package is
+    an attack in the build, not a defect to schedule.
+
+    Policy waivers are NOT applied. This panel answers "what is blocked", and
+    a waived component does not block — but the waiver is resolved per team in
+    `evaluate_gate`, and reproducing that here would duplicate the resolution
+    the parity test exists to prevent. The count is therefore an upper bound;
+    the per-project gate result is authoritative.
+    """
+    if not scan_ids:
+        return {}
+
+    stmt = (
+        select(
+            ScanComponent.scan_id,
+            func.count(func.distinct(ScanComponent.component_version_id)),
+        )
+        .select_from(ScanComponent)
+        .join(
+            ComponentVersion,
+            ComponentVersion.id == ScanComponent.component_version_id,
+        )
+        .where(ScanComponent.scan_id.in_(scan_ids))
+        .where(ComponentVersion.malicious_state == "flagged")
+        .group_by(ScanComponent.scan_id)
+    )
+    return {sid: int(count) for sid, count in (await session.execute(stmt)).all()}
 
 
 async def _epss_counts(
@@ -269,11 +310,17 @@ async def _gate_blocked(
     )
 
     epss = await _epss_counts(session, scan_ids=scan_ids)
+    malicious = await _malicious_counts(session, scan_ids=scan_ids)
 
     blocked_scan_ids = [
         sid
         for sid in scan_ids
-        if critical.get(sid, 0) or forbidden.get(sid, 0) or epss.get(sid, 0)
+        if (
+            critical.get(sid, 0)
+            or forbidden.get(sid, 0)
+            or epss.get(sid, 0)
+            or malicious.get(sid, 0)
+        )
     ]
     if not blocked_scan_ids:
         return []
@@ -299,6 +346,7 @@ async def _gate_blocked(
             critical_cve_count=critical.get(scan_id, 0),
             forbidden_license_count=forbidden.get(scan_id, 0),
             epss_gate_count=epss.get(scan_id, 0),
+            malicious_component_count=malicious.get(scan_id, 0),
         )
         for scan_id, project_id, name in rows
     ]
@@ -307,7 +355,12 @@ async def _gate_blocked(
     # the one dropped at the BUCKET_LIMIT boundary changes at random.
     blocked.sort(
         key=lambda b: (
-            -(b.critical_cve_count + b.forbidden_license_count + b.epss_gate_count),
+            -(
+                b.critical_cve_count
+                + b.forbidden_license_count
+                + b.epss_gate_count
+                + b.malicious_component_count
+            ),
             b.project_name,
         )
     )

@@ -41,6 +41,15 @@ class GateBlockedProject(BaseModel):
             "when GATE_EPSS_THRESHOLD is unset, which disables that condition."
         ),
     )
+    malicious_component_count: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Components the malicious snapshot flags on this scan. An upper "
+            "bound: team policy waivers are resolved per project by the gate, "
+            "not here."
+        ),
+    )
 
 
 class KevSlaBucket(BaseModel):

@@ -602,3 +602,47 @@ async def test_parity_holds_when_only_the_epss_gate_blocks(
     assert verdict.forbidden_license_count == 0
     assert blocked, "the queue omitted a project blocked only by the EPSS gate"
     assert blocked[0].epss_gate_count == verdict.epss_gate_count
+
+
+async def test_parity_holds_when_only_a_malicious_package_blocks(
+    db_session: AsyncSession,
+) -> None:
+    """The panel must list a build blocked solely by a malicious package.
+
+    This axis is the one an operator most needs to see in a list of blocked
+    builds — the response is removal plus credential rotation, not a scheduled
+    upgrade — and it is the one an aggregate written before the axis existed
+    silently omits.
+    """
+    from services.action_queue_service import _blocked_for_projects
+    from services.policy_gate import evaluate_gate
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    project_id, scan_id = await _project_with_scan(db_session, team=team)
+
+    from models import ComponentVersion, ScanComponent
+
+    cv_id = await _component_version(db_session)
+    cv = await db_session.get(ComponentVersion, cv_id)
+    assert cv is not None
+    cv.malicious_state = "flagged"
+    cv.malicious_id = "MAL-0000-PARITY"
+    cv.malicious_source = "osv.dev@seed"
+    db_session.add(cv)
+    db_session.add(
+        ScanComponent(
+            scan_id=scan_id, component_version_id=cv_id, direct=True, raw_data={}
+        )
+    )
+    await db_session.commit()
+
+    verdict = await evaluate_gate(db_session, project_id)
+    blocked = await _blocked_for_projects(db_session, project_ids=[project_id])
+
+    assert verdict.gate == "fail"
+    assert verdict.critical_cve_count == 0
+    assert verdict.forbidden_license_count == 0
+    assert verdict.malicious_component_count == 1
+    assert blocked, "the queue omitted a project blocked only by a malicious package"
+    assert blocked[0].malicious_component_count == verdict.malicious_component_count
