@@ -127,7 +127,7 @@ async def test_a_waiver_saved_through_the_service_reaches_the_gate(
     floor and answered 200, so an operator saw success while the build stayed
     blocked. Nothing raised, and every ORM-built test still passed.
     """
-    from schemas.license_policy import LicensePolicyUpsertIn
+    from schemas.license_policy import LicensePolicyUpsertIn, MaliciousException
     from services.license_policy_service import get_team_policy_row, upsert_team_policy
     from services.policy_gate import evaluate_gate
 
@@ -153,11 +153,11 @@ async def test_a_waiver_saved_through_the_service_reaches_the_gate(
         team_id=team.id,
         payload=LicensePolicyUpsertIn(
             malicious_exceptions=[
-                {
-                    "component_purl": purl,
-                    "reason": "challenged upstream",
-                    "expires_at": _future(),
-                }
+                MaliciousException(
+                    component_purl=purl,
+                    reason="challenged upstream",
+                    expires_at=datetime.fromisoformat(_future()),
+                )
             ]
         ),
     )
@@ -190,7 +190,7 @@ async def test_a_waiver_saved_through_the_service_reaches_the_gate(
 async def test_waiver_expiry_bounds_are_enforced(
     db_session: AsyncSession, expires_at: str, expected_fragment: str
 ) -> None:
-    from schemas.license_policy import LicensePolicyUpsertIn
+    from schemas.license_policy import LicensePolicyUpsertIn, MaliciousException
     from services.license_policy_service import (
         LicensePolicyValidationError,
         upsert_team_policy,
@@ -215,11 +215,11 @@ async def test_waiver_expiry_bounds_are_enforced(
             team_id=team.id,
             payload=LicensePolicyUpsertIn(
                 malicious_exceptions=[
-                    {
-                        "component_purl": "pkg:npm/whatever",
-                        "reason": "r",
-                        "expires_at": expires_at,
-                    }
+                    MaliciousException(
+                        component_purl="pkg:npm/whatever",
+                        reason="r",
+                        expires_at=datetime.fromisoformat(expires_at),
+                    )
                 ]
             ),
         )
@@ -236,7 +236,7 @@ async def test_an_expired_waiver_is_pruned_rather_than_blocking_the_edit(
     fails validation until someone hand-strips the payload. They are dropped
     on write instead, which also keeps the stored array equal to the live set.
     """
-    from schemas.license_policy import LicensePolicyUpsertIn
+    from schemas.license_policy import LicensePolicyUpsertIn, MaliciousException
     from services.license_policy_service import get_team_policy_row, upsert_team_policy
 
     _, team, user, _, _ = await _seed(db_session)
@@ -258,13 +258,11 @@ async def test_an_expired_waiver_is_pruned_rather_than_blocking_the_edit(
         payload=LicensePolicyUpsertIn(
             category_overrides={"MIT": "forbidden"},
             malicious_exceptions=[
-                {
-                    "component_purl": "pkg:npm/lapsed",
-                    "reason": "r",
-                    "expires_at": (
-                        datetime.now(tz=UTC) - timedelta(days=1)
-                    ).isoformat(),
-                }
+                MaliciousException(
+                    component_purl="pkg:npm/lapsed",
+                    reason="r",
+                    expires_at=datetime.now(tz=UTC) - timedelta(days=1),
+                )
             ],
         ),
     )
