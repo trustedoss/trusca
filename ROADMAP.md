@@ -10,50 +10,43 @@ Priorities follow three principles, in order:
 2. **Reach parity** with running a single SCA tool directly (don't be a thinner wrapper).
 3. **Differentiate** with capabilities a single tool doesn't give you.
 
-Legend: ☐ planned · ◐ in progress · ☑ done in the current release
+Legend: ☐ planned · ◐ in progress
 
 ---
 
-## Recently shipped (in v0.10.0)
+## Recently shipped (v0.11.0 – v0.20.1)
 
-- Trivy as the single vulnerability matching engine — unified NVD + OSV + GHSA + EPSS + KEV DB, weekly refresh, air-gapped support, automatic CVE re-detection
-- EPSS prioritization as a first-class signal (column / sort / filter / policy-gate threshold)
-- VEX consumption and export (OpenVEX + CycloneDX VEX)
-- Per-finding `fixed_version` + direct vs. transitive dependency depth
-- Production-grade Helm chart with Ingress + cert-manager TLS + migration Job
-- Read-only demo mode (`DEMO_READ_ONLY=true`)
-- Modern enterprise design system (light theme, WCAG AA, compact tables, dual drawer/page surfaces)
-- Filter URL persistence + global ⌘K palette + Portfolio Dashboard
-- EN + KO i18n for every UI string and every documentation page
-- GitHub Actions composite action + GitLab CI template + Jenkinsfile example
-- Ref-keyed scan retention (latest scan + findings per project ref, manual delete)
-- Time-boxed forbidden-license waivers (`LICENSE_WAIVE_MAX_DAYS` cap)
-- Collapsible sidebar + responsive mobile drawer
-- Documentation UAT harness + re-enabled SAST / e2e / supply-chain CI gates
+Highlights only, and only what closes a roadmap line — the itemised history,
+including the v0.10.0 foundation (Trivy as the single matching engine, VEX,
+EPSS, the Helm chart, the design system), is in [`CHANGELOG.md`](CHANGELOG.md).
 
-## Remediation & Policy
-
-Close the "detect → act" loop and remove the static-policy limitation.
-
-- ◐ **Suggested dependency upgrades** — compute the minimal safe bump from `fixed_version` + dependency graph
-- ☐ **Automated upgrade PRs** (opt-in, per-ecosystem, dry-run first)
-- ☐ **Dynamic license policy engine** — per-team/org editable rules
+- **Known-malicious package detection** — OSV `MAL-` advisories as a build-gate axis, with expiry-capped exceptions and a weekly re-check that catches a package flagged after it shipped
+- **Automated remediation pull requests**, with a dry run, on top of the minimum-safe-upgrade engine and a "group by upgrade" view of the findings one bump resolves
+- **Dynamic license policy** — per-team and per-organization category overrides, exceptions, and gate posture
+- **Signed SBOMs** — cosign signatures plus an in-toto / SLSA provenance attestation on every source scan, verifiable outside the portal
+- **SBOM conformance scoring** for uploaded documents, with a regulatory crosswalk (BSI TR-03183-2 for the EU CRA, the NTIA minimum elements, EU AI Act Annex IV, the Korean AI Framework Act) and CycloneDX 1.7 ML-BOM support
+- **CISA KEV** badges and remediation due dates, with a KEV-first Priority sort
+- **Vulnerability SLA / aging** — a first-detection clock that survives re-scans, severity-based due dates, and a daily breach sweep
+- **End-of-life components**, a "behind latest patch" signal, and base-image OS end-of-service-life on container scans
+- **Organization-wide component inventory and search** — which projects carry a package, and which projects a CVE reaches
+- **Release labels as permanent snapshot addresses** (`?release=`) across the detail endpoints, SBOM, and NOTICE
+- **Dark theme** alongside light, both measured against WCAG AA
 
 ## Supply-chain Integrity
 
 Align with CISA 2025 / SLSA, cut noise further.
 
-- ☐ **Signed SBOMs** — cosign signatures, in-toto attestation, SLSA provenance, CISA 2025 / NTIA element coverage
 - ☐ **Reachability**-based prioritization (best-effort, rolled out per language)
+- ☐ **Declared-vs-actual SBOM drift** — diff an uploaded SBOM against TRUSCA's own scan of the same ref and report what each side is missing. The conformance score grades whether the document's fields are filled in; this answers whether the document matches the code.
 
 ## Threat Detection & Deeper Prioritization
 
 Close the biggest remaining gaps vs commercial SCA, reusing best-of-breed open source rather than building from scratch.
 
-- ☐ **Malicious / typosquatting package detection** — OSSF malicious-packages + OSV `MAL-` feeds plus typosquat heuristics; a new `malicious` finding type that blocks the build gate (parity with commercial SCA malicious-package firewalls)
-- ☐ **CISA KEV + unified Risk Score** — a known-exploited flag plus a single 0–100 score combining CVSS, EPSS, KEV, fix availability, and dependency depth
+- ☐ **Typosquat heuristics** — name-distance and popularity signals alongside the OSV `MAL-` feed, which only names packages an advisory has already caught up with
+- ☐ **Unified risk score** — one 0–100 number combining CVSS, EPSS, KEV, fix availability, and dependency depth. The current score reads severity and license distribution only; the other signals are surfaced but not folded in.
 - ☐ **Binary scanning** (OSS-in-binary) — Syft binary classifier + Trivy filesystem mode (best-effort; no modified-binary fingerprinting)
-- ☐ **AI-BOM** — CycloneDX ML-BOM via cdxgen: detect AI model / dataset components and their licenses
+- ☐ **AI-BOM generation** — detect AI model / dataset components and their licenses at scan time via cdxgen. Uploaded ML-BOMs are already ingested and scored; producing one is not.
 - ☐ **Snippet / AI-generated-code origin matching** — *lowest priority, RFC-gated.* ScanOSS (MIT client + GPL-2.0 engine as an isolated sidecar). Requires a separate RFC on knowledge-base hosting and fingerprint egress before any work starts.
 
 ---
@@ -64,7 +57,7 @@ Close the biggest remaining gaps vs commercial SCA, reusing best-of-breed open s
 
 ## Backlog (not yet scheduled)
 
-SSO / OIDC, native Jenkins plugin, Excel reports, compliance PDF, historical-scan pinning on SBOM/NOTICE, dark mode, per-project / per-scan exclude paths (ignore generated / test / vendored trees in first-party license detection).
+SSO / OIDC, native Jenkins plugin, per-project / per-scan exclude paths (ignore generated / test / vendored trees in first-party license detection), a daily rather than weekly malicious re-check (the re-stamp half needs no network, and a package can be flagged hours after it ships).
 
 ---
 
