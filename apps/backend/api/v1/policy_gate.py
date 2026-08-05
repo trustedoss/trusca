@@ -223,6 +223,7 @@ def _build_response_body(result: GateResult) -> GateResultResponse:
         reachable_gate_enforced=result.reachable_gate_enforced,
         malicious_component_count=result.malicious_component_count,
         malicious_gate_enforced=result.malicious_gate_enforced,
+        malicious_scan_assessed=result.malicious_scan_assessed,
         project_id=result.project_id,
         scan_id=result.scan_id,
         evaluated_at=result.evaluated_at,
