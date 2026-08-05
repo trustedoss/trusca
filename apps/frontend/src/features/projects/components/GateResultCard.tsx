@@ -201,6 +201,16 @@ export function GateResultCard({ projectId, scanId }: GateResultCardProps) {
                 emphasize={data.forbidden_license_count > 0}
                 testid="gate-metric-forbidden"
               />
+              {data.malicious_component_count > 0 ? (
+                <GateMetric
+                  label={t("overview.gate_card.malicious_packages", {
+                    defaultValue: "Known-malicious packages",
+                  })}
+                  value={data.malicious_component_count}
+                  emphasize
+                  testid="gate-metric-malicious"
+                />
+              ) : null}
               {data.epss_threshold != null ? (
                 <GateMetric
                   label={t("overview.gate_card.epss_findings", {
@@ -238,6 +248,17 @@ function GateFailReason({ data }: { data: GateResultResponse }) {
     clauses.push(
       t("overview.gate_card.reason.critical_cve", {
         count: data.critical_cve_count,
+      }),
+    );
+  }
+  if (data.malicious_component_count > 0) {
+    // First, ahead of the CVE clause — the same order the Overview chip uses.
+    // A CVE is a defect to schedule; this is an attack already in the build,
+    // and the instruction it carries (remove, rotate credentials) is not the
+    // one the other clauses imply.
+    clauses.unshift(
+      t("overview.gate_card.reason.malicious", {
+        count: data.malicious_component_count,
       }),
     );
   }

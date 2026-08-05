@@ -34,6 +34,8 @@ function gate(overrides: Partial<GateResultResponse> = {}): GateResultResponse {
     forbidden_license_count: 0,
     epss_gate_count: 0,
     epss_threshold: null,
+    malicious_component_count: 0,
+    malicious_scan_assessed: true,
     project_id: PROJECT_ID,
     scan_id: "22222222-2222-2222-2222-222222222222",
     evaluated_at: "2026-05-23T00:00:00Z",

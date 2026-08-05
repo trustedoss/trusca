@@ -497,6 +497,10 @@ export interface GateResultResponse {
    * when the EPSS gate is disabled (`epss_threshold === null`).
    */
   epss_gate_count: number;
+  /** #26 — components the malicious snapshot flags on the evaluated scan. */
+  malicious_component_count: number;
+  /** Whether the malicious axis ran at all (false → the count means "not checked"). */
+  malicious_scan_assessed: boolean;
   /** Active EPSS gate threshold in [0, 1], or `null` when the EPSS gate is off. */
   epss_threshold: number | null;
   project_id: string;
