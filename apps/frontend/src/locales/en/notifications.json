@@ -23,7 +23,8 @@
     "approval_pending": "Approval pending",
     "policy_gate_failed": "Policy gate failed",
     "approval_state_changed": "Approval state changed",
-    "vuln_sla_breach": "Remediation overdue"
+    "vuln_sla_breach": "Remediation overdue",
+    "malicious_detected": "Malicious package"
   },
   "prefs": {
     "section_title": "Delivery preferences",

@@ -79,6 +79,12 @@ NOTIFICATION_KIND_VALUES = (
     # X1: emitted by the daily SLA sweep beat when an open finding crosses its
     # severity SLA due date (migration 0042).
     "vuln_sla_breach",
+    # #26: emitted when a package already in stock turns out to be malicious —
+    # either a scan meets one, or a refreshed snapshot flags a component that
+    # was clear the last time anyone looked (migration 0049). The second case
+    # is why this kind exists: nobody re-scans an old release, so without an
+    # alert the finding waits for the next build that happens to touch it.
+    "malicious_detected",
 )
 
 
