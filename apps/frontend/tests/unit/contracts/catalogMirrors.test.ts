@@ -568,8 +568,11 @@ describe("2026 baseline clusters — FE mirror of services/cisa_registry.json", 
     ["en", enScans],
     ["ko", koScans],
   ])("every cluster owns a %s `conformance.cisa.cluster.*` label", (_locale, ns) => {
-    const labels = (ns as Record<string, Record<string, Record<string, string>>>)
-      .conformance.cisa.cluster;
+    const labels = (
+      ns as unknown as {
+        conformance: { cisa: { cluster: Record<string, string> } };
+      }
+    ).conformance.cisa.cluster;
     for (const id of registryClusterIds) {
       expect(labels[id], `missing ${id}`).toBeTruthy();
     }
