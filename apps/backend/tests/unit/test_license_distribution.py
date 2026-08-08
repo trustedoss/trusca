@@ -190,11 +190,16 @@ VENDORED_DATA = {
     Path("apps/backend/services/license_osori/osori_snapshot.json"): "OSORI",
     Path("apps/backend/services/g7_registry.json"): "BomLens",
     Path("apps/backend/services/malicious/malicious_snapshot.json"): "OSV",
+    Path("apps/backend/services/regulation_crosswalk.json"): "BomLens",
 }
 
 #: Files matching this shape must be registered above. Without it the registry
 #: is a list someone remembers to update, which is not a gate.
-VENDORED_DATA_GLOBS = ("services/**/*_snapshot.json", "services/*_registry.json")
+VENDORED_DATA_GLOBS = (
+    "services/**/*_snapshot.json",
+    "services/*_registry.json",
+    "services/*_crosswalk.json",
+)
 
 
 def test_every_vendored_data_file_is_registered() -> None:
