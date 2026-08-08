@@ -92,6 +92,7 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.config import sbom_author, slsa_builder_version
 from models import (
     Component,
     ComponentVersion,
@@ -398,6 +399,91 @@ def _spdx_license_expr(entries: list[LicenseEntry]) -> str:
     return " AND ".join(ids)
 
 
+# ---------------------------------------------------------------------------
+# Document metadata — the 2026 SBOM minimum elements ask an SBOM to say at
+# which lifecycle phase it was generated, who generated it, with which tool at
+# which version, and whether an empty field is unknown or withheld. None of the
+# four was recorded, and the tool version was a literal that had drifted from
+# every other statement of the product's version.
+# ---------------------------------------------------------------------------
+
+#: Document property naming the fields this document leaves empty and why. The
+#: 2026 guidance asks an author to tell an absent value the author could not
+#: establish apart from one the author is withholding. A scan only ever
+#: produces the first kind — it writes what it managed to read and has nothing
+#: held back — so the statement is made ONCE for the document rather than on
+#: every empty field: the claim is identical for all of them, and on a large
+#: SBOM the per-field form would add thousands of properties saying it again.
+UNDECLARED_FIELDS_PROPERTY = "trusca:undeclared-fields"
+
+#: Marks a component whose version the scan could not establish. Read by
+#: services/cisa_conformance.py, which matches the suffix so a document written
+#: by the sibling upstream tool (``bomlens:evidenceGrade``) is read the same
+#: way. The name-and-version coverage check treats a marked component as
+#: answered rather than as a silent gap.
+EVIDENCE_GRADE_PROPERTY = "trusca:evidenceGrade"
+
+#: What the vendored-code identifier path stores when a match carries no
+#: version (the column is NOT NULL, so it cannot store absence).
+_UNESTABLISHED_VERSION = "unknown"
+UNDECLARED_FIELDS_VALUE = (
+    "unknown to the SBOM author: any field left empty in this document is one "
+    "this scan could not establish. Nothing is withheld."
+)
+
+#: Lifecycle phase per scan kind, using the distinction the minimum elements
+#: draw themselves. A scan of source manifests describes software that is not
+#: built yet; a scan of a built image describes one that is. An ingested
+#: supplier document is deliberately absent from this map — re-exporting it
+#: converts someone else's document, and stamping our phase onto the conversion
+#: would claim we generated data we only reformatted.
+_LIFECYCLE_PHASE_BY_SCAN_KIND = {
+    "source": "pre-build",
+    "container": "post-build",
+}
+
+
+def _tool_version() -> str:
+    """The product version recorded as the SBOM tool version.
+
+    Single source: ``core.config.slsa_builder_version`` already fills this role
+    for SLSA provenance and the About surface. A second source here would mean
+    two answers to one question.
+    """
+    return slsa_builder_version() or "unknown"
+
+
+def _spdx_creators() -> list[str]:
+    """SPDX ``creationInfo.creators`` — tool, and the author if one is declared."""
+    creators = [f"Tool: TRUSCA-{_tool_version()}"]
+    author = sbom_author()
+    if author:
+        creators.append(f"Organization: {author}")
+    return creators
+
+
+def _document_metadata_extras(scan: Scan | None) -> dict[str, Any]:
+    """Generation context, author, and the undeclared-fields statement.
+
+    Returned as a partial ``metadata`` dict so both serializers stamp the same
+    thing. The author cannot be discovered from anything here — it is the
+    entity operating the tool — so it is declared through ``SBOM_AUTHOR`` and
+    the field is omitted entirely when unset, rather than filled with a
+    placeholder that would answer the element without answering the question.
+    """
+    extras: dict[str, Any] = {}
+
+    phase = _LIFECYCLE_PHASE_BY_SCAN_KIND.get(getattr(scan, "kind", "") or "")
+    if phase:
+        extras["lifecycles"] = [{"phase": phase}]
+
+    author = sbom_author()
+    if author:
+        extras["authors"] = [{"name": author}]
+
+    return extras
+
+
 def _top_component_version(scan: Scan | None) -> str:
     """The top-level component version for the SBOM metadata.
 
@@ -519,6 +605,18 @@ def _cyclonedx_components(
             "name": _xml_safe(r["name"]),
             "version": _xml_safe(r["version"]),
         }
+        # A version the scan could not establish is not a version. The vendored
+        # -code identifier path stores the literal "unknown" because the column
+        # is NOT NULL; carrying it through would read as an answer, and the
+        # coverage check that measures name-and-version would count the
+        # component as versioned. Drop the field and mark it instead — that
+        # marking IS the statement the 2026 guidance asks for, and
+        # services/cisa_conformance.py reads it.
+        if comp["version"] == _UNESTABLISHED_VERSION:
+            del comp["version"]
+            comp.setdefault("properties", []).append(
+                {"name": EVIDENCE_GRADE_PROPERTY, "value": "version-unestablished"}
+            )
         if r.get("namespace"):
             comp["group"] = _xml_safe(r["namespace"])
         if r.get("description"):
@@ -583,7 +681,7 @@ def _build_cyclonedx_doc(
             {
                 "vendor": "TrustedOSS",
                 "name": "TRUSCA",
-                "version": "0.0.1",
+                "version": _tool_version(),
             }
         ],
         "component": {
@@ -594,13 +692,21 @@ def _build_cyclonedx_doc(
             "version": _top_component_version(scan),
         },
     }
+    metadata.update(_document_metadata_extras(scan))
+
+    # Stated once for the document (see UNDECLARED_FIELDS_PROPERTY), before the
+    # profile markers so the ordering is stable across exports.
+    properties: list[dict[str, str]] = [
+        {"name": UNDECLARED_FIELDS_PROPERTY, "value": UNDECLARED_FIELDS_VALUE}
+    ]
     if profile is not None:
         # Document-level marker so a profile export self-describes: which
         # profile produced it, and (for the filter) how many were removed.
-        metadata["properties"] = [
+        properties += [
             {"name": _PROP_PROFILE, "value": profile.profile},
             {"name": _PROP_EXCLUDED, "value": str(profile.excluded_count)},
         ]
+    metadata["properties"] = properties
     return {
         "bomFormat": "CycloneDX",
         "specVersion": "1.6",
@@ -794,7 +900,7 @@ def _spdx_policy_annotation(
         comment += f" ({_xml_safe(verdict.spdx_id)})"
     return {
         "annotationType": "REVIEW",
-        "annotator": "Tool: TRUSCA-0.0.1",
+        "annotator": f"Tool: TRUSCA-{_tool_version()}",
         "annotationDate": _utc_iso(now),
         "comment": comment,
     }
@@ -868,7 +974,7 @@ def _build_spdx_doc(
         "documentNamespace": _spdx_doc_namespace(project, scan),
         "creationInfo": {
             "created": _utc_iso(now),
-            "creators": ["Tool: TRUSCA-0.0.1", "Organization: TrustedOSS"],
+            "creators": _spdx_creators(),
         },
         "packages": _spdx_packages(
             rows,
@@ -883,7 +989,7 @@ def _build_spdx_doc(
         doc["annotations"] = [
             {
                 "annotationType": "OTHER",
-                "annotator": "Tool: TRUSCA-0.0.1",
+                "annotator": f"Tool: TRUSCA-{_tool_version()}",
                 "annotationDate": _utc_iso(now),
                 "comment": (
                     f"TRUSCA policy profile: {profile.profile}; "

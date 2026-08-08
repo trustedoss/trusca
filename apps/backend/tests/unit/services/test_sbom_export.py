@@ -1103,7 +1103,14 @@ async def test_default_export_carries_no_profile_marker(
         db_session, project_id=project.id, fmt="cyclonedx-json"
     )
     doc = json.loads(body)
-    assert "properties" not in doc["metadata"]
+    # Document metadata always states why an empty field is empty (the 2026
+    # minimum elements ask for it); what a profile adds on top is the profile
+    # markers, and without a profile there are none.
+    from services.sbom_export import UNDECLARED_FIELDS_PROPERTY
+
+    assert [p["name"] for p in doc["metadata"]["properties"]] == [
+        UNDECLARED_FIELDS_PROPERTY
+    ]
     assert all("properties" not in c for c in doc["components"])
     assert filename.endswith(".cdx.json") and "policy" not in filename
 
@@ -1368,7 +1375,7 @@ async def test_annotation_strips_xml_illegal_control_chars(
 #: Element id -> status our own CycloneDX export earns, as of the 2026 baseline
 #: landing. Ordered by what it says about the exporter.
 _EXPORT_BASELINE = {
-    # Satisfied by the exporter as it stands.
+    # Satisfied by the exporter.
     "cisa-sbom-format-name": "pass",
     "cisa-sbom-format-version": "pass",
     "cisa-sbom-timestamp": "pass",
@@ -1376,10 +1383,14 @@ _EXPORT_BASELINE = {
     "cisa-sbom-tool-version": "pass",
     "cisa-sbom-version": "pass",
     "cisa-machine-processable-data": "pass",
-    # Not satisfied. Each is a field the exporter does not write yet.
+    # Written by the exporter's document-metadata pass. The fixture scan is a
+    # source scan, so the generation context is pre-build.
+    "cisa-sbom-generation-context": "pass",
+    "cisa-explicit-unknowns": "pass",
+    # Declared, not discovered: SBOM_AUTHOR is unset in this fixture, so the
+    # field is omitted rather than filled with a placeholder. The test below
+    # sets it and expects a pass.
     "cisa-sbom-author": "warn",
-    "cisa-sbom-generation-context": "warn",
-    "cisa-explicit-unknowns": "warn",
     # Empty by construction here: the fixture project has no components, so it
     # declares no dependencies either. A populated export does satisfy this.
     "cisa-component-dependency-relationship": "warn",
@@ -1436,3 +1447,133 @@ async def test_the_export_baseline_covers_every_document_level_element(
         if element.get("missingPath") is None
     }
     assert document_level == set(_EXPORT_BASELINE)
+
+
+async def test_declaring_an_sbom_author_fills_the_element(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The one element that cannot be discovered, only declared."""
+    from services.sbom_conformance import evaluate
+    from services.sbom_export import export_sbom
+
+    monkeypatch.setenv("SBOM_AUTHOR", "Example Manufacturing Co., Ltd.")
+    _, project, _ = await _make_project_with_succeeded_scan(db_session)
+    body, _, _ = await export_sbom(
+        db_session, project_id=project.id, fmt="cyclonedx-json"
+    )
+
+    parsed = json.loads(body)
+    assert parsed["metadata"]["authors"] == [
+        {"name": "Example Manufacturing Co., Ltd."}
+    ]
+    rows = {c.id: c.status for c in evaluate(body.encode("utf-8")).checks}
+    assert rows["cisa-sbom-author"] == "pass"
+
+
+async def test_an_undeclared_author_is_omitted_not_placeheld(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A placeholder would satisfy the element while answering nothing."""
+    from services.sbom_export import export_sbom
+
+    monkeypatch.delenv("SBOM_AUTHOR", raising=False)
+    _, project, _ = await _make_project_with_succeeded_scan(db_session)
+    body, _, _ = await export_sbom(
+        db_session, project_id=project.id, fmt="cyclonedx-json"
+    )
+    assert "authors" not in json.loads(body)["metadata"]
+
+
+async def test_the_generation_context_follows_the_scan_kind(
+    db_session: AsyncSession,
+) -> None:
+    """Source manifests are pre-build; a built artifact is post-build."""
+    from models import Scan
+    from services.sbom_export import _document_metadata_extras
+
+    source = Scan(kind="source")
+    container = Scan(kind="container")
+    ingested = Scan(kind="sbom")
+
+    assert _document_metadata_extras(source)["lifecycles"] == [{"phase": "pre-build"}]
+    assert _document_metadata_extras(container)["lifecycles"] == [
+        {"phase": "post-build"}
+    ]
+    # An ingested supplier document is re-exported, not generated here. Claiming
+    # a phase would claim authorship of data we only reformatted.
+    assert "lifecycles" not in _document_metadata_extras(ingested)
+    assert "lifecycles" not in _document_metadata_extras(None)
+
+
+async def test_every_export_states_why_an_empty_field_is_empty(
+    db_session: AsyncSession,
+) -> None:
+    """Stated once for the document, not repeated on every empty field."""
+    from services.sbom_export import UNDECLARED_FIELDS_PROPERTY, export_sbom
+
+    _, project, _ = await _make_project_with_succeeded_scan(db_session)
+    body, _, _ = await export_sbom(
+        db_session, project_id=project.id, fmt="cyclonedx-json"
+    )
+    props = json.loads(body)["metadata"]["properties"]
+    stated = [p for p in props if p["name"] == UNDECLARED_FIELDS_PROPERTY]
+    assert len(stated) == 1
+    assert stated[0]["value"]
+
+
+async def test_the_tool_version_comes_from_the_single_source(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """All four places that name the version read the same configured value."""
+    from services.sbom_export import export_sbom
+
+    monkeypatch.setenv("TRUSTEDOSS_VERSION", "9.9.9-test")
+    _, project, _ = await _make_project_with_succeeded_scan(db_session)
+
+    cdx, _, _ = await export_sbom(
+        db_session, project_id=project.id, fmt="cyclonedx-json"
+    )
+    assert json.loads(cdx)["metadata"]["tools"][0]["version"] == "9.9.9-test"
+
+    spdx, _, _ = await export_sbom(
+        db_session, project_id=project.id, fmt="spdx-json"
+    )
+    assert "Tool: TRUSCA-9.9.9-test" in json.loads(spdx)["creationInfo"]["creators"]
+
+    tv, _, _ = await export_sbom(db_session, project_id=project.id, fmt="spdx-tv")
+    assert "TRUSCA-9.9.9-test" in tv
+
+
+async def test_an_unestablished_version_is_marked_not_asserted(
+    db_session: AsyncSession,
+) -> None:
+    """The vendored-code path stores "unknown" because the column is NOT NULL.
+
+    Exported as-is it reads as an answer, and the coverage check that measures
+    name-and-version counts the component as versioned. The field is dropped
+    and the component marked instead, which is the statement the 2026 guidance
+    asks for — and the check reads that marking.
+    """
+    from services.sbom_conformance import evaluate
+    from services.sbom_export import EVIDENCE_GRADE_PROPERTY, export_sbom
+
+    _, project, scan = await _make_project_with_succeeded_scan(db_session)
+    suffix = unique_suffix()
+    _, cv = await _make_component_version(
+        db_session, name=f"vendored-{suffix}", version="unknown"
+    )
+    await _attach(db_session, scan_id=scan.id, cv_id=cv.id)
+
+    body, _, _ = await export_sbom(
+        db_session, project_id=project.id, fmt="cyclonedx-json"
+    )
+    parsed = json.loads(body)
+    component = next(
+        c for c in parsed["components"] if c["name"].startswith("vendored-")
+    )
+    assert "version" not in component
+    assert any(
+        p["name"] == EVIDENCE_GRADE_PROPERTY for p in component.get("properties", [])
+    )
+    rows = {c.id: c for c in evaluate(body.encode("utf-8")).checks}
+    assert component["name"] not in rows["cisa-component-version"].missing
