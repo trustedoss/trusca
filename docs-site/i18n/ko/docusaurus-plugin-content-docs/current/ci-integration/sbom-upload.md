@@ -121,7 +121,7 @@ curl -H "Authorization: Bearer $TRUSTEDOSS_API_KEY" \
 
 ### 규제 필드 검사(권고)
 
-**CycloneDX** 문서에는 컴포넌트별 필드 검사 5종이 추가됩니다. 검사 대상 필드는 필드 수준 규제 기준 — BSI TR-03183-2(EU 사이버복원력법 대응으로 작성된 독일 기술 지침)와 미국 NTIA 최소 요소 — 가 지정한 것입니다. SPDX 문서는 위의 검사 9개만 수행합니다.
+**CycloneDX** 문서에는 컴포넌트별 필드 검사 5종이 추가됩니다. 검사 대상 필드는 필드 수준 규제 기준 — BSI TR-03183-2(EU 사이버복원력법 대응으로 작성된 독일 기술 지침)와 과거의 미국 최소 요소 — 가 지정한 것입니다. SPDX 문서는 위의 검사 9개만 수행합니다. CycloneDX 문서에는 [2026 최소 요소](../user-guide/ai-sbom-conformance.md#the-2026-sbom-minimum-elements) 검사 23종도 함께 붙으며, 이 역시 권고입니다.
 
 5종 모두 **권고이며 판정 불변**입니다. `required: false`인 데다 `n_warn` 카운터에서도 제외되므로 pass / warn / fail 판정을 바꾸는 일이 없습니다. 이 검사들은 SBOM이 규제 기관의 질문에 얼마나 답할 수 있는지를 보여 주고, 아래 [규제 대응표](#규제-대응표crosswalk)의 입력이 됩니다. 5종 공통 커버리지 기준은 `SBOM_CONFORMANCE_FIELD_MIN_PCT`(기본 `80`)입니다.
 
@@ -142,7 +142,7 @@ curl -H "Authorization: Bearer $TRUSTEDOSS_API_KEY" \
 | 프레임워크 | 대응표에서의 범위 |
 |---|---|
 | **BSI TR-03183-2** — SBOM 데이터 필드(EU 사이버복원력법) | 섹션 단위 참조(5.1, 5.2.1, 5.2.2, 5.2.4). 핵심 검사 8종과 규제 필드 검사 5종 전부가 대응. |
-| **NTIA** — 미국 SBOM 최소 요소(행정명령 14028) | 2021년 데이터 필드 7종. 타임스탬프·도구·name+version·PURL·의존성 검사와 `component-creator`가 대응. |
+| **CISA 2026** — 미국 SBOM 최소 요소 | [2026 최소 요소](../user-guide/ai-sbom-conformance.md#the-2026-sbom-minimum-elements)의 데이터 필드 17종과 실무 6종입니다. 2021년 NTIA 최소 요소를 대체합니다. `cisa-*` 검사에서 요구사항 하나당 한 번씩 대응합니다. CycloneDX 문서에만 적용하므로, SPDX 제출물은 BSI 행만 받습니다. |
 | **EU 인공지능법** — 부속서 IV 기술문서 | [G7 AI SBOM 검사](../user-guide/ai-sbom-conformance.md)를 통해 — ML-BOM에만 해당. |
 | **AI 기본법(대한민국)** | G7 검사를 통해 — ML-BOM에만 해당. |
 

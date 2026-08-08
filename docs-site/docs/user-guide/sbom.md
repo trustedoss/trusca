@@ -26,7 +26,7 @@ Engineers shipping releases, compliance leads filing artifacts, customers fulfil
 |---|---|---|---|
 | **CycloneDX 1.6 (JSON)** | `cyclonedx-json` | `application/vnd.cyclonedx+json` | Modern de-facto standard for SCA tooling. Includes VEX. |
 | **CycloneDX 1.6 (XML)** | `cyclonedx-xml` | `application/vnd.cyclonedx+xml` | Same data; XML for legacy tooling. |
-| **SPDX 2.3 (JSON)** | `spdx-json` | `application/spdx+json` | NTIA minimum elements; broadly accepted in regulated industries. |
+| **SPDX 2.3 (JSON)** | `spdx-json` | `application/spdx+json` | Broadly accepted in regulated industries. |
 | **SPDX 2.3 (Tag-Value)** | `spdx-tv` | `text/spdx` | The original SPDX line-based format. |
 
 Both formats are produced from the same internal model, so component lists are identical (modulo format-specific fields).

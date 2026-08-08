@@ -24,6 +24,29 @@ export function isG7(check: SbomConformanceCheck): boolean {
   return check.id.startsWith("g7-");
 }
 
+/** The 2026 SBOM minimum elements — measured on every CycloneDX document. */
+export function isCisa(check: SbomConformanceCheck): boolean {
+  return check.id.startsWith("cisa-");
+}
+
+/**
+ * A row belonging to a declarative baseline rather than to the core checks.
+ *
+ * What decides is what the check IS — an element a registry declared, which is
+ * what carries a cluster — not which id prefix it happens to have. A third
+ * baseline lands in the right place without touching this.
+ */
+export function isBaselineCheck(check: SbomConformanceCheck): boolean {
+  return Boolean(check.cluster && check.cluster.length > 0);
+}
+
+/** Canonical cluster order for the 2026 baseline (mirrors cisa_registry.json). */
+export const CISA_CLUSTER_ORDER = [
+  "cisa-metadata",
+  "cisa-component",
+  "cisa-practices",
+] as const;
+
 /** Canonical cluster order for the G7 sub-groups (mirrors g7_registry.json). */
 export const G7_CLUSTER_ORDER = [
   "metadata",
@@ -52,6 +75,106 @@ export function splitChecks(checks: SbomConformanceCheck[]): SplitChecks {
   return {
     base: checks.filter((c) => !isG7(c)),
     g7: checks.filter(isG7),
+  };
+}
+
+export interface BaselineSplit {
+  /** The core format checks — the only ones that decide pass / warn / fail. */
+  core: SbomConformanceCheck[];
+  /** 2026 SBOM minimum elements (every CycloneDX document). */
+  cisa: SbomConformanceCheck[];
+  /** G7 AI minimum elements (ML-BOMs only). */
+  g7: SbomConformanceCheck[];
+}
+
+/**
+ * Split a verdict into the core checks and each declarative baseline.
+ *
+ * The core set is what a reader needs first: it is the only part that moves the
+ * badge. Anything a registry declared goes to its own section below, so a
+ * baseline landing later cannot push the mandatory rows off the top of the
+ * panel — which is exactly what happened when 23 advisory rows arrived in the
+ * middle of the core table.
+ */
+export function splitByBaseline(
+  checks: SbomConformanceCheck[],
+): BaselineSplit {
+  return {
+    core: checks.filter((c) => !isBaselineCheck(c)),
+    cisa: checks.filter((c) => isBaselineCheck(c) && isCisa(c)),
+    g7: checks.filter((c) => isBaselineCheck(c) && isG7(c)),
+  };
+}
+
+export interface VerdictHeadline {
+  /** Mandatory core checks that failed — the only count that decides the badge. */
+  mandatoryFailed: number;
+  /** Advisory rows, core or baseline, that fell short. */
+  advisoryShort: number;
+  /** Rows no scan can settle; a person has to. */
+  needsReview: number;
+}
+
+/**
+ * The three numbers a reader wants before reading any row.
+ *
+ * Ordered by severity on purpose. Without this the panel opened with whatever
+ * came first in the array, and on an AI SBOM the mandatory checks sat below
+ * twelve thousand pixels of advisory elements.
+ */
+export function verdictHeadline(
+  checks: SbomConformanceCheck[],
+): VerdictHeadline {
+  const isReview = (c: SbomConformanceCheck) =>
+    c.status === "warn" && c.source === "na";
+  return {
+    mandatoryFailed: checks.filter((c) => c.required && c.status === "fail")
+      .length,
+    advisoryShort: checks.filter(
+      (c) => !c.required && c.status === "warn" && !isReview(c),
+    ).length,
+    needsReview: checks.filter(isReview).length,
+  };
+}
+
+/**
+ * Sort rows by what needs attention: failures, then shortfalls, then review
+ * items, then passes. Registry order is preserved within each band, so a reader
+ * who knows the baseline still finds its elements grouped as the guidance
+ * groups them.
+ */
+export function byAttention(
+  checks: SbomConformanceCheck[],
+): SbomConformanceCheck[] {
+  const rank = (c: SbomConformanceCheck): number => {
+    if (c.status === "fail") return 0;
+    if (c.status === "warn" && c.source === "na") return 2;
+    if (c.status === "warn") return 1;
+    return 3;
+  };
+  return checks
+    .map((check, index) => ({ check, index }))
+    .sort((a, b) => rank(a.check) - rank(b.check) || a.index - b.index)
+    .map(({ check }) => check);
+}
+
+/**
+ * Collapse a repeated name in a missing list into "name (xN)", and say how many
+ * the caller left out. A list that prints the same name twice reads as two
+ * problems.
+ */
+export function collapseMissing(
+  missing: string[],
+  limit = 8,
+): { items: string[]; omitted: number } {
+  const counts = new Map<string, number>();
+  for (const name of missing) counts.set(name, (counts.get(name) ?? 0) + 1);
+  const collapsed = [...counts.entries()].map(([name, n]) =>
+    n > 1 ? `${name} (x${n})` : name,
+  );
+  return {
+    items: collapsed.slice(0, limit),
+    omitted: Math.max(0, collapsed.length - limit),
   };
 }
 

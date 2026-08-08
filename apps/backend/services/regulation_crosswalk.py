@@ -28,11 +28,13 @@ This is a faithful Python port of two jq passes in BomLens
            short_ko}]``; unmapped checks gain ``regulations: []``.
   rollup : ``XW_SUMMARY`` — one row per framework that has at least one mapped
            check in this result: ``{id, title, …, total, present, gap, review,
-           elements[]}`` where present = pass, gap = warn with an automated
-           source, review = source "na" (human-review-only). A failed
-           mandatory check counts in ``total`` only — same as upstream: a
-           mandatory failure already fails the whole submission, the crosswalk
-           is not a second verdict.
+           failed, elements[]}`` where present = pass, gap = warn with an
+           automated source, review = warn with source "na" (human-review-only),
+           failed = fail. The four partition ``total``. A failed mandatory check
+           is still not a second verdict — the crosswalk reports it, it does not
+           re-decide it — but it is now named rather than left as the arithmetic
+           remainder, which is how it came to be shown under the mildest label
+           on the page.
 
 Both passes are purely informational: they NEVER change a check status, the
 counters, or the overall result (the disclaimer in the vendored file is part
@@ -129,6 +131,14 @@ def crosswalk_summary(joined_checks: list[dict[str, Any]]) -> dict[str, Any]:
                 "short": meta.get("short") or fid,
                 "short_ko": meta.get("short_ko") or meta.get("short") or fid,
                 "source": meta.get("source") or "",
+                # The four counters partition ``total`` — a test holds them to
+                # it. They did not before: a failing requirement fell outside
+                # all three, so a consumer that wanted the number had to work
+                # it out as the remainder, and the most serious category ended
+                # up displayed under whatever name the remainder was given.
+                # ``review`` is now narrowed to warn-with-no-automated-source
+                # for the same reason: a passing check with source "na" would
+                # otherwise be counted twice.
                 "total": len(rows),
                 "present": sum(1 for c in rows if c.get("status") == "pass"),
                 "gap": sum(
@@ -136,7 +146,12 @@ def crosswalk_summary(joined_checks: list[dict[str, Any]]) -> dict[str, Any]:
                     for c in rows
                     if c.get("status") == "warn" and (c.get("source") or "") != "na"
                 ),
-                "review": sum(1 for c in rows if (c.get("source") or "") == "na"),
+                "review": sum(
+                    1
+                    for c in rows
+                    if c.get("status") == "warn" and (c.get("source") or "") == "na"
+                ),
+                "failed": sum(1 for c in rows if c.get("status") == "fail"),
                 "elements": [
                     {
                         "id": c.get("id"),

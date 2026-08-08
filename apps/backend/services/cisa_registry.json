@@ -1,0 +1,211 @@
+{
+  "spec": "2026 Minimum Elements for a Software Bill of Materials (SBOM), v2.1 (2026-07-29), published by CISA, the NSA and the FBI with fifteen international partners including Germany's BSI, Japan's METI and Korea's KISA. Replaces the NTIA minimum elements of 2021.",
+  "note": "Declarative map of the 2026 SBOM minimum elements — 17 data fields and 6 practices — to CycloneDX checks, read by services/registry_conformance.py. Element shapes follow services/g7_registry.json's note: 'cdxPath' is a jq boolean over the whole SBOM, 'missingPath' is a jq expression over $subjects returning the names of subjects MISSING the element, and an element with neither has no automated source and is surfaced as human review. The jq is kept for diffing against upstream; TRUSCA executes the Python ports in services/cisa_conformance.py. Subjects here are the target component plus every enumerated component, which is what the guidance measures its data fields over — not the machine-learning-model subset the G7 registry uses. Every element is advisory (no 'required' key, so the spec default of false applies). The baseline itself draws no such line, but promoting a field would fail an SBOM for a value it may legitimately not have: the guidance accepts an explicit statement that a value is unknown in place of the value, and what is worth reading is how much of each field the scan actually established, which the coverage checks already report. Five of the six practices describe how an organisation operates rather than what a document contains; they carry no automated source. The exceptions are machine-processable data, which format detection has already established, and explicitly identifying unknown information, which a document-level statement can satisfy.",
+  "clusters": [
+    {
+      "id": "cisa-metadata",
+      "name": "SBOM metadata",
+      "name_ko": "SBOM 메타데이터",
+      "elements": [
+        {
+          "id": "cisa-sbom-author",
+          "label": "SBOM author",
+          "label_ko": "SBOM 작성자",
+          "source": "declared",
+          "cdxPath": "((.metadata.authors // []) | length > 0) or ((.metadata.supplier // null) != null) or ((.metadata.manufacturer // null) != null)",
+          "missingPath": null
+        },
+        {
+          "id": "cisa-sbom-author-signature",
+          "label": "SBOM author signature",
+          "label_ko": "SBOM 작성자 서명",
+          "source": "declared",
+          "cdxPath": "(.signature // null) != null",
+          "missingPath": null
+        },
+        {
+          "id": "cisa-sbom-format-name",
+          "label": "SBOM data format name",
+          "label_ko": "SBOM 데이터 형식 이름",
+          "source": "auto",
+          "cdxPath": "(.bomFormat // \"\") != \"\"",
+          "missingPath": null
+        },
+        {
+          "id": "cisa-sbom-format-version",
+          "label": "SBOM data format version",
+          "label_ko": "SBOM 데이터 형식 버전",
+          "source": "auto",
+          "cdxPath": "(.specVersion // \"\") != \"\"",
+          "missingPath": null
+        },
+        {
+          "id": "cisa-sbom-generation-context",
+          "label": "SBOM generation context",
+          "label_ko": "SBOM 생성 시점",
+          "source": "auto",
+          "cdxPath": "[ (.metadata.lifecycles // [])[] | select(((.phase // \"\") != \"\") or ((.name // \"\") != \"\")) ] | length > 0",
+          "missingPath": null
+        },
+        {
+          "id": "cisa-sbom-timestamp",
+          "label": "SBOM timestamp",
+          "label_ko": "SBOM 생성 시각",
+          "source": "auto",
+          "cdxPath": "(.metadata.timestamp // \"\") != \"\"",
+          "missingPath": null
+        },
+        {
+          "id": "cisa-sbom-tool-name",
+          "label": "SBOM tool name",
+          "label_ko": "SBOM 생성 도구 이름",
+          "source": "auto",
+          "cdxPath": "[ (if ((.metadata.tools // null) | type) == \"array\" then (.metadata.tools // [])[] else ((.metadata.tools.components // []) + (.metadata.tools.services // []))[] end) | select((.name // \"\") != \"\") ] | length > 0",
+          "missingPath": null
+        },
+        {
+          "id": "cisa-sbom-tool-version",
+          "label": "SBOM tool version",
+          "label_ko": "SBOM 생성 도구 버전",
+          "source": "auto",
+          "cdxPath": "[ (if ((.metadata.tools // null) | type) == \"array\" then (.metadata.tools // [])[] else ((.metadata.tools.components // []) + (.metadata.tools.services // []))[] end) ] as $t | ($t | length > 0) and ([ $t[] | select((.version // \"\") == \"\") ] | length == 0)",
+          "missingPath": null
+        },
+        {
+          "id": "cisa-sbom-version",
+          "label": "SBOM version",
+          "label_ko": "SBOM 문서 버전",
+          "source": "auto",
+          "cdxPath": "(.version // null) != null",
+          "missingPath": null
+        }
+      ]
+    },
+    {
+      "id": "cisa-component",
+      "name": "Component data",
+      "name_ko": "컴포넌트 데이터",
+      "elements": [
+        {
+          "id": "cisa-component-name",
+          "label": "Component name",
+          "label_ko": "컴포넌트 이름",
+          "source": "auto",
+          "cdxPath": null,
+          "missingPath": "[ $subjects[] | select((.name // \"\") == \"\") | (.purl // \"(unnamed)\") ]"
+        },
+        {
+          "id": "cisa-component-version",
+          "label": "Component version",
+          "label_ko": "컴포넌트 버전",
+          "source": "auto",
+          "cdxPath": null,
+          "missingPath": "[ $subjects[] | select((.version // \"\") == \"\") | select([ (.properties // [])[] | select((.name // \"\") | endswith(\"evidenceGrade\")) ] | length == 0) | (.name // \"(unnamed)\") ]"
+        },
+        {
+          "id": "cisa-component-producer",
+          "label": "Component producer",
+          "label_ko": "컴포넌트 생산자",
+          "source": "auto",
+          "cdxPath": null,
+          "missingPath": "[ $subjects[] | select((((.authors // []) | length) == 0) and ((.publisher // \"\") == \"\") and (((.supplier // {}) | length) == 0) and (((.manufacturer // {}) | length) == 0)) | (.name // \"(unnamed)\") ]"
+        },
+        {
+          "id": "cisa-component-identifiers",
+          "label": "Component identifiers",
+          "label_ko": "컴포넌트 식별자",
+          "source": "auto",
+          "cdxPath": null,
+          "missingPath": "[ $subjects[] | select(((.purl // \"\") == \"\") and ((.cpe // \"\") == \"\") and (((.hashes // []) | length) == 0) and ((.swhid // \"\") == \"\")) | (.name // \"(unnamed)\") ]"
+        },
+        {
+          "id": "cisa-component-license",
+          "label": "Component license",
+          "label_ko": "컴포넌트 라이선스",
+          "source": "auto",
+          "cdxPath": null,
+          "missingPath": "[ $subjects[] | select(((.licenses // []) | length) == 0) | (.name // \"(unnamed)\") ]"
+        },
+        {
+          "id": "cisa-component-hash-value",
+          "label": "Component hash value",
+          "label_ko": "컴포넌트 해시 값",
+          "source": "auto",
+          "cdxPath": null,
+          "missingPath": "[ $subjects[] | select([ (.hashes // [])[] | select((.content // \"\") != \"\") ] | length == 0) | (.name // \"(unnamed)\") ]"
+        },
+        {
+          "id": "cisa-component-hash-algorithm",
+          "label": "Component hash algorithm",
+          "label_ko": "컴포넌트 해시 알고리즘",
+          "source": "auto",
+          "cdxPath": null,
+          "missingPath": "[ $subjects[] | select(((.hashes // []) | length) > 0) | select((([ (.hashes // [])[] | select(((.alg // \"\") | ascii_downcase) | test(\"^(md5|sha-?1|sha-?(224|256|384|512)|sha3-(256|384|512)|blake2b-(256|384|512)|blake3)$\")) ] | length) != ((.hashes // []) | length))) | (.name // \"(unnamed)\") ]"
+        },
+        {
+          "id": "cisa-component-dependency-relationship",
+          "label": "Component dependency relationship",
+          "label_ko": "컴포넌트 의존 관계",
+          "source": "auto",
+          "cdxPath": "[ .dependencies[]? | .dependsOn[]? ] | length > 0",
+          "missingPath": null
+        }
+      ]
+    },
+    {
+      "id": "cisa-practices",
+      "name": "Practices and processes",
+      "name_ko": "실무와 절차",
+      "elements": [
+        {
+          "id": "cisa-machine-processable-data",
+          "label": "Machine-processable data",
+          "label_ko": "기계 판독 가능 데이터",
+          "source": "auto",
+          "cdxPath": "((.bomFormat // \"\") != \"\") or ((.spdxVersion // \"\") != \"\")",
+          "missingPath": null
+        },
+        {
+          "id": "cisa-coverage",
+          "label": "Coverage",
+          "label_ko": "포함 범위",
+          "source": "na",
+          "cdxPath": null,
+          "missingPath": null
+        },
+        {
+          "id": "cisa-accommodation-of-updates",
+          "label": "Accommodation of updates to SBOM data",
+          "label_ko": "SBOM 데이터 갱신 수용",
+          "source": "na",
+          "cdxPath": null,
+          "missingPath": null
+        },
+        {
+          "id": "cisa-distribution-and-delivery",
+          "label": "Distribution and delivery",
+          "label_ko": "배포와 전달",
+          "source": "na",
+          "cdxPath": null,
+          "missingPath": null
+        },
+        {
+          "id": "cisa-explicit-unknowns",
+          "label": "Explicitly identifying unknown information",
+          "label_ko": "미확인 정보의 명시",
+          "source": "auto",
+          "cdxPath": "[ (.metadata.properties // [])[] | select(((.name // \"\") | endswith(\"undeclared-fields\")) and ((.value // \"\") != \"\")) ] | length > 0",
+          "missingPath": null
+        },
+        {
+          "id": "cisa-frequency",
+          "label": "Frequency",
+          "label_ko": "갱신 주기",
+          "source": "na",
+          "cdxPath": null,
+          "missingPath": null
+        }
+      ]
+    }
+  ]
+}

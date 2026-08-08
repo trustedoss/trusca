@@ -30,7 +30,10 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { NOTIFICATION_KINDS } from "@/features/notifications/api/notificationsApi";
-import { G7_CLUSTER_ORDER } from "@/features/scan/lib/g7Conformance";
+import {
+  CISA_CLUSTER_ORDER,
+  G7_CLUSTER_ORDER,
+} from "@/features/scan/lib/g7Conformance";
 import { KNOWN_OBLIGATION_KINDS } from "@/features/projects/api/obligationsApi";
 import {
   CURRENCY_STATES,
@@ -66,6 +69,7 @@ import koScans from "@/locales/ko/scans.json";
 import notificationKindsFixture from "../../../../../tests/contracts/notification-kinds.json";
 // Backend G7 registry — the FE cluster ORDER mirror must follow its cluster
 // id order (same latent-drift class: the panel groups G7 checks by this list).
+import cisaRegistry from "../../../../backend/services/cisa_registry.json";
 import g7Registry from "../../../../backend/services/g7_registry.json";
 
 function labelMap(ns: unknown, ...path: string[]): Record<string, string> {
@@ -545,5 +549,36 @@ describe("C1a advisory-translation affordances — EN + KO parity", () => {
       throw new Error("_DEMO_EXPLORE_EMAIL not found in seed_demo.py");
     }
     expect(DEMO_LOGIN_EMAIL).toBe(assignment[1]);
+  });
+});
+
+describe("2026 baseline clusters — FE mirror of services/cisa_registry.json", () => {
+  // The same drift the G7 contract above guards, for the baseline that arrived
+  // second. An unexpected cluster renders at the end of the section rather than
+  // disappearing, so without this the mismatch would be invisible in the UI.
+  const registryClusterIds = (
+    cisaRegistry.clusters as Array<{ id: string }>
+  ).map((c) => c.id);
+
+  it("CISA_CLUSTER_ORDER equals the registry's cluster id order", () => {
+    expect([...CISA_CLUSTER_ORDER]).toEqual(registryClusterIds);
+  });
+
+  it.each([
+    ["en", enScans],
+    ["ko", koScans],
+  ])("every cluster owns a %s `conformance.cisa.cluster.*` label", (_locale, ns) => {
+    const labels = (ns as Record<string, Record<string, Record<string, string>>>)
+      .conformance.cisa.cluster;
+    for (const id of registryClusterIds) {
+      expect(labels[id], `missing ${id}`).toBeTruthy();
+    }
+  });
+
+  it("the registry carries 23 elements — 17 data fields and 6 practices", () => {
+    const total = (
+      cisaRegistry.clusters as Array<{ elements: unknown[] }>
+    ).reduce((n, c) => n + c.elements.length, 0);
+    expect(total).toBe(23);
   });
 });

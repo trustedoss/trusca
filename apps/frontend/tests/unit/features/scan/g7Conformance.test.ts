@@ -18,11 +18,15 @@ import { describe, expect, it } from "vitest";
 
 import {
   G7_CLUSTER_ORDER,
+  byAttention,
   clusterOf,
+  collapseMissing,
   g7Tally,
   groupG7ByCluster,
   isG7,
+  splitByBaseline,
   splitChecks,
+  verdictHeadline,
 } from "@/features/scan/lib/g7Conformance";
 import type { SbomConformanceCheck } from "@/lib/projectsApi";
 
@@ -197,5 +201,53 @@ describe("g7Tally", () => {
     const groups = groupG7ByCluster(all);
     expect(groups.map((g) => g.cluster)).toEqual([...G7_CLUSTER_ORDER]);
     expect(groups.flatMap((g) => g.checks)).toHaveLength(51);
+  });
+});
+
+describe("splitByBaseline / verdictHeadline / collapseMissing", () => {
+  const core = { id: "purl", label: "PURL", required: true, status: "fail" as const, detail: "", missing: [] };
+  const cisa = { id: "cisa-coverage", label: "Coverage", required: false, status: "warn" as const, detail: "", missing: [], cluster: "cisa-practices", source: "na" };
+  const g7 = { id: "g7-meta-author", label: "Author", required: false, status: "warn" as const, detail: "", missing: [], cluster: "metadata", source: "auto" };
+
+  it("keeps the core checks apart from every declarative baseline", () => {
+    const split = splitByBaseline([core, cisa, g7]);
+    expect(split.core.map((c) => c.id)).toEqual(["purl"]);
+    expect(split.cisa.map((c) => c.id)).toEqual(["cisa-coverage"]);
+    expect(split.g7.map((c) => c.id)).toEqual(["g7-meta-author"]);
+  });
+
+  it("decides by what a check is, not by its id prefix", () => {
+    const future = { ...cisa, id: "xyz-1", cluster: "xyz-cluster" };
+    const split = splitByBaseline([core, future]);
+    expect(split.core.map((c) => c.id)).toEqual(["purl"]);
+    expect(split.cisa).toHaveLength(0);
+    expect(split.g7).toHaveLength(0);
+  });
+
+  it("leads with what blocks the SBOM", () => {
+    const headline = verdictHeadline([core, cisa, g7]);
+    expect(headline.mandatoryFailed).toBe(1);
+    expect(headline.advisoryShort).toBe(1);
+    expect(headline.needsReview).toBe(1);
+  });
+
+  it("sorts rows by what needs attention, keeping registry order within a band", () => {
+    const rows = [
+      { ...g7, id: "a", status: "pass" as const },
+      { ...g7, id: "b", status: "warn" as const },
+      { ...g7, id: "c", status: "fail" as const },
+      { ...g7, id: "d", status: "warn" as const },
+    ];
+    expect(byAttention(rows).map((r) => r.id)).toEqual(["c", "b", "d", "a"]);
+  });
+
+  it("collapses a repeated name and says how many it left out", () => {
+    const { items, omitted } = collapseMissing(["a", "a", "b"], 8);
+    expect(items).toEqual(["a (x2)", "b"]);
+    expect(omitted).toBe(0);
+
+    const many = collapseMissing(Array.from({ length: 12 }, (_, i) => `n${i}`), 8);
+    expect(many.items).toHaveLength(8);
+    expect(many.omitted).toBe(4);
   });
 });

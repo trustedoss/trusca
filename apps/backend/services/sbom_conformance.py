@@ -465,10 +465,14 @@ def _cdx_checks(doc: dict[str, Any]) -> _ScoreResult:
     # component, and a baseline that measures every SBOM says so by saying
     # nothing. Imported lazily: ``g7_conformance`` imports ``Check`` from THIS
     # module, so a top-level import here would be a cycle.
-    from services import g7_conformance, registry_conformance
+    from services import cisa_conformance, g7_conformance, registry_conformance
 
-    if registry_conformance.applies(doc, g7_conformance.G7_SPEC):
-        checks.extend(g7_conformance.evaluate_g7(doc))
+    for spec, evaluate_baseline in (
+        (cisa_conformance.CISA_SPEC, cisa_conformance.evaluate_cisa),
+        (g7_conformance.G7_SPEC, g7_conformance.evaluate_g7),
+    ):
+        if registry_conformance.applies(doc, spec):
+            checks.extend(evaluate_baseline(doc))
 
     return checks, tot, purl_pct, lic_pct, hash_pct
 

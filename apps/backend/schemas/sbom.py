@@ -69,6 +69,22 @@ class RegulatoryCrosswalk(BaseModel):
     frameworks: list[CrosswalkFramework] = Field(default_factory=list)
 
 
+class ConformanceGuidance(BaseModel):
+    """A fill-in fragment for an element the SBOM does not satisfy."""
+
+    snippet: str = Field(description="CycloneDX fragment that would satisfy the element.")
+    docUrl: str | None = Field(  # noqa: N815 — mirrors the vendored key name
+        default=None, description="Link to the authoritative field documentation."
+    )
+
+
+class ConformanceReviewNote(BaseModel):
+    """What a person has to establish for an element no scan can settle."""
+
+    how: str = Field(description="English review note.")
+    how_ko: str | None = Field(default=None, description="Korean review note.")
+
+
 class SbomConformanceCheck(BaseModel):
     """One requirement's verdict within a conformance result."""
 
@@ -121,6 +137,22 @@ class SbomConformanceCheck(BaseModel):
             "Regulatory references this check's subject maps to "
             "(services/regulation_crosswalk.json). Empty list = no mapping; "
             "informational only."
+        ),
+    )
+    # Also joined at read time (services/cisa_guidance.py), and only onto rows
+    # that are not a pass.
+    guidance: ConformanceGuidance | None = Field(
+        default=None,
+        description=(
+            "The CycloneDX fragment that would satisfy this element, for an "
+            "element the SBOM does not satisfy. Absent on a pass."
+        ),
+    )
+    review: ConformanceReviewNote | None = Field(
+        default=None,
+        description=(
+            "What a person has to establish for an element no scan can settle. "
+            "Absent on a pass."
         ),
     )
 

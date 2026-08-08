@@ -1,12 +1,12 @@
 ---
 id: ai-sbom-conformance
-title: AI SBOM conformance (G7 minimum elements)
-description: Upload a CycloneDX 1.7 ML-BOM and TRUSCA checks it against the 51 G7 AI SBOM minimum elements — an advisory, cluster-by-cluster checklist.
-sidebar_label: AI SBOM conformance
+title: SBOM conformance baselines
+description: Every CycloneDX upload is measured against the 2026 SBOM minimum elements, and an ML-BOM additionally against the 51 G7 AI elements — advisory checklists, cluster by cluster.
+sidebar_label: Conformance baselines
 sidebar_position: 6
 ---
 
-# AI SBOM conformance (G7 minimum elements)
+# SBOM conformance baselines
 
 When an uploaded SBOM (software bill of materials) describes an AI system — it contains at least one CycloneDX `machine-learning-model` component — TRUSCA extends the [conformance verdict](./scans.md#conformance-verdict) with the **G7 AI SBOM minimum elements** checklist: 51 elements in seven clusters, each reported as present, missing, or needing human review. The checklist is advisory throughout; it never changes the overall pass / warn / fail verdict.
 
@@ -19,6 +19,26 @@ Engineers and compliance leads who receive or produce AI SBOMs (ML-BOMs) and nee
 *G7 Software Bill of Materials for AI — Minimum Elements* (May 2026) is a joint baseline led by Germany's Federal Office for Information Security (BSI) and Italy's National Cybersecurity Agency (ACN). It names the information an SBOM for an AI system should carry — not only the software dependencies a classic SBOM lists, but the models, the datasets they were trained on, the infrastructure they run on, and the security and performance facts a consumer needs to assess the system.
 
 The timing is regulatory: the European Union's Artificial Intelligence Act (AI Act) applies its main obligations from August 2, 2026, including technical-documentation duties for high-risk AI systems. The G7 minimum elements are not an AI Act compliance checklist, but they enumerate the inventory facts — models, datasets, licenses, provenance — that such documentation draws on, so scoring an ML-BOM against them is a practical readiness signal.
+
+## The 2026 SBOM minimum elements
+
+Two baselines now score an uploaded document, and they differ in what they apply to.
+
+*2026 Minimum Elements for a Software Bill of Materials (SBOM)* (v2.1, published July 29, 2026 by CISA, the NSA and the FBI with fifteen international partners, among them Germany's BSI, Japan's METI and Korea's KISA) [replaces the NTIA minimum elements of 2021](https://www.cisa.gov/resources-tools/resources/2026-minimum-elements-software-bill-materials-sbom). It applies to all software rather than a subset, so TRUSCA measures it on **every CycloneDX document**, AI or not — 17 data fields and 6 practices, 23 checks in three clusters.
+
+Ten of the fields are new since 2021: SBOM author signature, data format name and version, generation context, tool name and version, SBOM version, component hash value and hash algorithm, and component license. One 2021 element, access control, was removed and folded into distribution and delivery.
+
+Three things are worth knowing before reading the rows.
+
+**Every element is advisory.** None of them moves the pass / warn / fail verdict, which stays with the [core checks](../ci-integration/sbom-upload.md#read-the-conformance-verdict). The baseline itself draws no such line, but promoting a field would fail an SBOM for a value it may legitimately not have — the guidance accepts an explicit statement that a value is unknown in place of the value itself. What is worth reading is how much of each field the scan actually established, which the coverage rows already report.
+
+**Four of the six practices need a person.** Coverage, accommodation of updates, distribution and delivery, and frequency describe how an organisation operates, not what a document contains, so no scan can settle them. They are surfaced as review items with a note saying what to establish, rather than scored or quietly dropped. The two a tool can answer are machine-processable data (format detection has it) and explicitly identifying unknown information (a document-level statement satisfies it).
+
+**Identification is wider here than the submission criteria.** A component counts as identified under this baseline if it carries a PURL, a CPE, a SWHID, or an intrinsic identifier such as a hash — while the [PURL coverage check](../ci-integration/sbom-upload.md#read-the-conformance-verdict) still asks for a PURL. A file entry carrying only a hash is identified under one and short under the other, and the report says both rather than only the stricter one.
+
+One row will not pass on a TRUSCA-generated document: **SBOM author signature** looks for a signature carried inside the document, and TRUSCA signs detached — a signature file beside the SBOM ([verify it here](../ci-integration/sbom-signature-verification.md)). The row carries a review note saying so, because a supplier who signed detached should not be read as having left the document unsigned.
+
+The API returns these as `cisa-*` entries in the same `checks[]` array. A row that is not a pass may also carry `guidance` (the CycloneDX fragment that would satisfy it) or `review` (what a person has to establish instead), joined at read time.
 
 ## Upload an ML-BOM
 

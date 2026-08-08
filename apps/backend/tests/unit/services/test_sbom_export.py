@@ -1349,3 +1349,90 @@ async def test_annotation_strips_xml_illegal_control_chars(
     root = ET.fromstring(body)
     assert root.tag.endswith("}bom")
     assert "\x0b" not in body
+
+
+# ---------------------------------------------------------------------------
+# Round-trip against the 2026 SBOM minimum elements.
+#
+# This is the gate that makes the export-metadata work answerable. Nothing else
+# in the suite compares what TRUSCA EXPORTS against what TRUSCA MEASURES: the
+# baseline lives in services/cisa_conformance.py and the exporter in
+# services/sbom_export.py, and neither imports the other, so an export that
+# quietly stopped satisfying an element would break no test.
+#
+# The expectations below are today's answer, gaps included. They are meant to
+# move: filling a field here means flipping its entry to "pass" and saying so.
+# Read a diff in this map as a claim about the exports, not as a broken test.
+# ---------------------------------------------------------------------------
+
+#: Element id -> status our own CycloneDX export earns, as of the 2026 baseline
+#: landing. Ordered by what it says about the exporter.
+_EXPORT_BASELINE = {
+    # Satisfied by the exporter as it stands.
+    "cisa-sbom-format-name": "pass",
+    "cisa-sbom-format-version": "pass",
+    "cisa-sbom-timestamp": "pass",
+    "cisa-sbom-tool-name": "pass",
+    "cisa-sbom-tool-version": "pass",
+    "cisa-sbom-version": "pass",
+    "cisa-machine-processable-data": "pass",
+    # Not satisfied. Each is a field the exporter does not write yet.
+    "cisa-sbom-author": "warn",
+    "cisa-sbom-generation-context": "warn",
+    "cisa-explicit-unknowns": "warn",
+    # Empty by construction here: the fixture project has no components, so it
+    # declares no dependencies either. A populated export does satisfy this.
+    "cisa-component-dependency-relationship": "warn",
+    # Structurally out of reach for this check: TRUSCA signs detached, so an
+    # enveloped signature is never present. The guidance file carries the note
+    # that tells a reader so.
+    "cisa-sbom-author-signature": "warn",
+    # Human review — no automated source, by the guidance's own account.
+    "cisa-coverage": "warn",
+    "cisa-accommodation-of-updates": "warn",
+    "cisa-distribution-and-delivery": "warn",
+    "cisa-frequency": "warn",
+}
+
+
+async def test_our_own_export_measured_against_the_2026_baseline(
+    db_session: AsyncSession,
+) -> None:
+    from services.sbom_conformance import evaluate
+    from services.sbom_export import export_sbom
+
+    _, project, _ = await _make_project_with_succeeded_scan(db_session)
+    body, _, _ = await export_sbom(
+        db_session, project_id=project.id, fmt="cyclonedx-json"
+    )
+
+    checks = {
+        c.id: c.status
+        for c in evaluate(body).checks
+        if c.id.startswith("cisa-") and c.id in _EXPORT_BASELINE
+    }
+    assert checks == _EXPORT_BASELINE, (
+        "what our own export earns against the 2026 minimum elements changed. "
+        "If that was the point of the change, update _EXPORT_BASELINE in the "
+        "same commit and say which field started (or stopped) being written."
+    )
+
+
+async def test_the_export_baseline_covers_every_document_level_element(
+    db_session: AsyncSession,
+) -> None:
+    """A new element must be given an expectation, not silently skipped.
+
+    Per-component elements are excluded on purpose: an empty project has no
+    components, so they measure nothing here and are covered by the fixture
+    baselines instead.
+    """
+    from services.cisa_conformance import CISA_SPEC
+    from services.registry_conformance import iter_elements
+
+    document_level = {
+        str(element.get("id"))
+        for _, element in iter_elements(CISA_SPEC.registry_path)
+        if element.get("missingPath") is None
+    }
+    assert document_level == set(_EXPORT_BASELINE)

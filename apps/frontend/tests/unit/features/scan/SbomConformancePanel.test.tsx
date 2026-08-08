@@ -449,6 +449,7 @@ describe("SbomConformancePanel", () => {
           present: 6,
           gap: 2,
           review: 1,
+          failed: 0,
           elements: [
             {
               id: "hash",
@@ -479,6 +480,7 @@ describe("SbomConformancePanel", () => {
           present: 5,
           gap: 0,
           review: 0,
+          failed: 0,
           elements: [
             {
               id: "timestamp",

@@ -1,12 +1,12 @@
 ---
 id: ai-sbom-conformance
-title: AI SBOM 적합성 (G7 최소요소)
-description: CycloneDX 1.7 ML-BOM을 업로드하면 TRUSCA가 G7 AI SBOM 최소요소 51개를 클러스터별 자문 체크리스트로 점검합니다.
-sidebar_label: AI SBOM 적합성
+title: SBOM 적합성 기준선
+description: CycloneDX 문서를 업로드하면 2026 SBOM 최소 요소로, ML-BOM이면 G7 AI 최소 요소 51개까지 함께 점검합니다. 두 기준선 모두 권고 체크리스트입니다.
+sidebar_label: 적합성 기준선
 sidebar_position: 6
 ---
 
-# AI SBOM 적합성 (G7 최소요소)
+# SBOM 적합성 기준선
 
 업로드한 SBOM(Software Bill of Materials)이 AI 시스템을 기술하는 문서라면 — CycloneDX `machine-learning-model` 컴포넌트가 하나 이상 있으면 — TRUSCA는 [적합성 결과](./scans.md#적합성conformance-결과)에 **G7 AI SBOM 최소요소(Minimum Elements)** 체크리스트를 추가합니다. 7개 클러스터, 51개 요소를 각각 존재·부재·사람 검토 필요로 보고합니다. 이 체크리스트는 전부 권고(advisory)이며 전체 pass / warn / fail 판정을 바꾸지 않습니다.
 
@@ -19,6 +19,26 @@ AI SBOM(ML-BOM)을 받거나 만들면서 그 완전성을 판단해야 하는 �
 *G7 Software Bill of Materials for AI — Minimum Elements*(2026년 5월)는 독일 연방정보보안청(BSI)과 이탈리아 국가사이버보안청(ACN)이 주도해 만든 공동 기준입니다. AI 시스템의 SBOM이 담아야 할 정보를 규정합니다 — 기존 SBOM이 나열하는 소프트웨어 의존성만이 아니라 모델, 학습에 쓴 데이터셋, 실행 인프라, 그리고 시스템을 평가할 때 필요한 보안·성능 정보까지 포함합니다.
 
 시점도 의미가 있습니다. EU 인공지능법(AI Act)의 주요 의무가 2026년 8월 2일부터 적용되며, 고위험 AI 시스템에는 기술 문서 작성 의무가 따릅니다. G7 최소요소가 AI Act 준수 체크리스트는 아니지만, 그런 기술 문서가 근거로 삼는 목록 정보 — 모델, 데이터셋, 라이선스, 출처 — 를 항목으로 정리한 것이므로, ML-BOM을 이 기준으로 점검하면 준비 상태를 가늠할 수 있습니다.
+
+## 2026 SBOM 최소 요소 {#the-2026-sbom-minimum-elements}
+
+업로드한 문서를 채점하는 기준선은 이제 둘이며, 적용 대상이 다릅니다.
+
+「2026 Minimum Elements for a Software Bill of Materials (SBOM)」(v2.1, 2026년 7월 29일 발행. CISA·NSA·FBI가 독일 BSI, 일본 METI, 한국 KISA를 포함한 15개 국제 파트너와 공동 작성)은 [2021년 NTIA 최소 요소를 대체합니다](https://www.cisa.gov/resources-tools/resources/2026-minimum-elements-software-bill-materials-sbom). 특정 부류가 아니라 모든 소프트웨어에 적용되므로, TRUSCA는 AI 여부와 무관하게 **모든 CycloneDX 문서**에 이 기준을 적용합니다. 데이터 필드 17종과 실무 6종, 세 묶음으로 나뉜 검사 23종입니다.
+
+이 중 열 가지는 2021년에 없던 항목입니다. SBOM 작성자 서명, 데이터 형식 이름과 버전, 생성 시점, 생성 도구 이름과 버전, SBOM 문서 버전, 컴포넌트 해시 값과 해시 알고리즘, 컴포넌트 라이선스입니다. 2021년 항목 하나(접근 통제)는 삭제되어 배포와 전달 항목으로 흡수됐습니다.
+
+행을 읽기 전에 알아 둘 것이 셋 있습니다.
+
+첫째, 모든 항목이 권고입니다. pass / warn / fail 판정을 움직이지 않으며, 판정은 [핵심 검사](../ci-integration/sbom-upload.md#적합성conformance-결과-읽기)가 그대로 결정합니다. 기준 문서 자체는 그런 구분을 두지 않지만, 필수로 올리면 정당하게 값이 없을 수 있는 항목 때문에 SBOM이 실패합니다. 이 지침은 값을 적을 수 없을 때 값 대신 "확인하지 못했다"는 명시를 받아들이기 때문입니다. 읽을 가치가 있는 것은 스캔이 실제로 확인한 비율이고, 그것은 커버리지 행이 이미 보고합니다.
+
+둘째, 실무 6종 가운데 넷은 사람이 확인해야 합니다. 포함 범위, SBOM 데이터 갱신 수용, 배포와 전달, 갱신 주기는 문서에 담긴 내용이 아니라 조직이 일하는 방식을 기술하므로 스캔으로 판정할 수 없습니다. 그래서 점수를 매기거나 조용히 빼지 않고, 무엇을 확인해야 하는지 안내와 함께 검토 항목으로 표시합니다. 도구가 답할 수 있는 둘은 기계 판독 가능 데이터(포맷 판정으로 이미 답이 나옵니다)와 미확인 정보의 명시(문서 단위 선언으로 충족합니다)입니다.
+
+셋째, 이 기준선의 식별 인정 범위가 제출 기준보다 넓습니다. PURL, CPE, SWHID, 또는 해시 같은 내재적 식별자 가운데 하나만 있어도 식별된 것으로 봅니다. 반면 [PURL 커버리지 검사](../ci-integration/sbom-upload.md#적합성conformance-결과-읽기)는 여전히 PURL을 요구합니다. 해시만 있는 파일 항목은 한쪽에서는 식별된 것이고 다른 쪽에서는 부족한 것이며, 리포트는 더 엄격한 쪽만 말하지 않고 둘 다 보여 줍니다.
+
+TRUSCA가 생성한 문서에서 통과하지 못하는 행이 하나 있습니다. SBOM 작성자 서명 항목은 문서 안에 담긴 서명을 찾는데, TRUSCA는 SBOM 옆에 서명 파일을 두는 분리 서명 방식을 씁니다([검증 방법](../ci-integration/sbom-signature-verification.md)). 이 행에는 그 사실을 알리는 검토 안내가 붙습니다. 분리 서명으로 보낸 공급자를 서명하지 않은 것으로 읽으면 안 되기 때문입니다.
+
+API에서는 같은 `checks[]` 배열에 `cisa-`로 시작하는 항목으로 돌아옵니다. 통과가 아닌 행에는 읽는 시점에 조인된 `guidance`(그 항목을 충족시킬 CycloneDX 조각)나 `review`(사람이 대신 확인할 사항)가 함께 실릴 수 있습니다.
 
 ## ML-BOM 업로드
 
