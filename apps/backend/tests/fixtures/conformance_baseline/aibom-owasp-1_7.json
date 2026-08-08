@@ -1,0 +1,707 @@
+{
+  "checks": [
+    {
+      "detail": "2026-06-23T13:18:25+00:00",
+      "id": "timestamp",
+      "label": "Timestamp (metadata.timestamp)",
+      "missing": [],
+      "required": true,
+      "status": "pass"
+    },
+    {
+      "detail": "1 tool(s)",
+      "id": "tools",
+      "label": "Tool info (metadata.tools)",
+      "missing": [],
+      "required": true,
+      "status": "pass"
+    },
+    {
+      "detail": "job-2026-06-23-22:18:25@1782220705",
+      "id": "top-component",
+      "label": "Top-level component name+version",
+      "missing": [],
+      "required": true,
+      "status": "pass"
+    },
+    {
+      "detail": "1/1",
+      "id": "name-version",
+      "label": "Component name+version coverage (100%)",
+      "missing": [],
+      "required": true,
+      "status": "pass"
+    },
+    {
+      "detail": "100% (1/1)",
+      "id": "purl",
+      "label": "PURL coverage (>= 90%)",
+      "missing": [],
+      "required": true,
+      "status": "pass"
+    },
+    {
+      "detail": "0 offending",
+      "id": "no-generic",
+      "label": "No pkg:generic / custom PURL (0)",
+      "missing": [],
+      "required": true,
+      "status": "pass"
+    },
+    {
+      "detail": "1 edge(s)",
+      "id": "transitive",
+      "label": "Transitive dependencies (graph edges)",
+      "missing": [],
+      "required": true,
+      "status": "pass"
+    },
+    {
+      "detail": "100% (1/1)",
+      "id": "license",
+      "label": "License coverage (>= 80%, recommended)",
+      "missing": [],
+      "required": false,
+      "status": "pass"
+    },
+    {
+      "detail": "0% (0/1)",
+      "id": "hash",
+      "label": "Hash coverage (>= 50%, recommended)",
+      "missing": [],
+      "required": false,
+      "status": "warn"
+    },
+    {
+      "detail": "0% (0/1)",
+      "id": "hash-algorithm",
+      "label": "SHA-512 checksum coverage (>= 80%, recommended)",
+      "missing": [],
+      "required": false,
+      "status": "warn"
+    },
+    {
+      "detail": "100% (1/1)",
+      "id": "component-creator",
+      "label": "Component creator coverage (>= 80%, recommended)",
+      "missing": [],
+      "required": false,
+      "status": "pass"
+    },
+    {
+      "detail": "0% (0/1)",
+      "id": "component-filename",
+      "label": "Component filename coverage (>= 80%, recommended)",
+      "missing": [],
+      "required": false,
+      "status": "warn"
+    },
+    {
+      "detail": "100% (1/1)",
+      "id": "artifact-uri",
+      "label": "Source or distribution URI coverage (>= 80%, recommended)",
+      "missing": [],
+      "required": false,
+      "status": "pass"
+    },
+    {
+      "detail": "requires inspecting the delivered files (no automated source in this scan)",
+      "id": "file-properties",
+      "label": "Delivered-file properties (executable/archive/structured)",
+      "missing": [],
+      "required": false,
+      "source": "na",
+      "status": "warn"
+    },
+    {
+      "cluster": "metadata",
+      "detail": "not present in the SBOM",
+      "id": "g7-meta-author",
+      "label": "SBOM author",
+      "missing": [],
+      "required": false,
+      "role": "sbom-author",
+      "source": "auto",
+      "status": "warn"
+    },
+    {
+      "cluster": "metadata",
+      "detail": "present",
+      "id": "g7-meta-version",
+      "label": "SBOM version",
+      "missing": [],
+      "required": false,
+      "role": "sbom-author",
+      "source": "auto",
+      "status": "pass"
+    },
+    {
+      "cluster": "metadata",
+      "detail": "present",
+      "id": "g7-meta-format-name",
+      "label": "SBOM data format name",
+      "missing": [],
+      "required": false,
+      "role": "sbom-author",
+      "source": "auto",
+      "status": "pass"
+    },
+    {
+      "cluster": "metadata",
+      "detail": "present",
+      "id": "g7-meta-format-version",
+      "label": "SBOM data format version",
+      "missing": [],
+      "required": false,
+      "role": "sbom-author",
+      "source": "auto",
+      "status": "pass"
+    },
+    {
+      "cluster": "metadata",
+      "detail": "not present in the SBOM",
+      "id": "g7-meta-signature",
+      "label": "SBOM author signature",
+      "missing": [],
+      "required": false,
+      "role": "sbom-author",
+      "source": "declared",
+      "status": "warn"
+    },
+    {
+      "cluster": "metadata",
+      "detail": "present",
+      "id": "g7-meta-tool-name",
+      "label": "SBOM tool name",
+      "missing": [],
+      "required": false,
+      "role": "sbom-author",
+      "source": "auto",
+      "status": "pass"
+    },
+    {
+      "cluster": "metadata",
+      "detail": "present",
+      "id": "g7-meta-tool-version",
+      "label": "SBOM tool version",
+      "missing": [],
+      "required": false,
+      "role": "sbom-author",
+      "source": "auto",
+      "status": "pass"
+    },
+    {
+      "cluster": "metadata",
+      "detail": "not present in the SBOM",
+      "id": "g7-meta-gen-context",
+      "label": "SBOM generation context",
+      "missing": [],
+      "required": false,
+      "role": "sbom-author",
+      "source": "inferred",
+      "status": "warn"
+    },
+    {
+      "cluster": "metadata",
+      "detail": "present",
+      "id": "g7-meta-timestamp",
+      "label": "SBOM timestamp",
+      "missing": [],
+      "required": false,
+      "role": "sbom-author",
+      "source": "auto",
+      "status": "pass"
+    },
+    {
+      "cluster": "metadata",
+      "detail": "present",
+      "id": "g7-meta-dependency",
+      "label": "SBOM dependency relationship",
+      "missing": [],
+      "required": false,
+      "role": "sbom-author",
+      "source": "auto",
+      "status": "pass"
+    },
+    {
+      "cluster": "slp",
+      "detail": "present",
+      "id": "g7-slp-name",
+      "label": "System name",
+      "missing": [],
+      "required": false,
+      "role": "system-producer",
+      "source": "declared",
+      "status": "pass"
+    },
+    {
+      "cluster": "slp",
+      "detail": "not present in the SBOM",
+      "id": "g7-slp-components",
+      "label": "System components",
+      "missing": [],
+      "required": false,
+      "role": "system-producer",
+      "source": "inferred",
+      "status": "warn"
+    },
+    {
+      "cluster": "slp",
+      "detail": "not present in the SBOM",
+      "id": "g7-slp-producer",
+      "label": "System producer",
+      "missing": [],
+      "required": false,
+      "role": "system-producer",
+      "source": "declared",
+      "status": "warn"
+    },
+    {
+      "cluster": "slp",
+      "detail": "present",
+      "id": "g7-slp-version",
+      "label": "System version",
+      "missing": [],
+      "required": false,
+      "role": "system-producer",
+      "source": "inferred",
+      "status": "pass"
+    },
+    {
+      "cluster": "slp",
+      "detail": "present",
+      "id": "g7-slp-timestamp",
+      "label": "System timestamp",
+      "missing": [],
+      "required": false,
+      "role": "system-producer",
+      "source": "inferred",
+      "status": "pass"
+    },
+    {
+      "cluster": "slp",
+      "detail": "requires human review (no automated source)",
+      "id": "g7-slp-data-flow",
+      "label": "System data flow",
+      "missing": [],
+      "required": false,
+      "role": "system-producer",
+      "source": "na",
+      "status": "warn"
+    },
+    {
+      "cluster": "slp",
+      "detail": "requires human review (no automated source)",
+      "id": "g7-slp-data-usage",
+      "label": "System data usage",
+      "missing": [],
+      "required": false,
+      "role": "system-producer",
+      "source": "na",
+      "status": "warn"
+    },
+    {
+      "cluster": "slp",
+      "detail": "requires human review (no automated source)",
+      "id": "g7-slp-io",
+      "label": "System input/output properties",
+      "missing": [],
+      "required": false,
+      "role": "system-producer",
+      "source": "na",
+      "status": "warn"
+    },
+    {
+      "cluster": "slp",
+      "detail": "requires human review (no automated source)",
+      "id": "g7-slp-app-area",
+      "label": "Intended application area",
+      "missing": [],
+      "required": false,
+      "role": "system-producer",
+      "source": "na",
+      "status": "warn"
+    },
+    {
+      "cluster": "models",
+      "detail": "1/1 model component(s)",
+      "id": "g7-model-name",
+      "label": "Model name",
+      "missing": [],
+      "required": false,
+      "role": "model-producer",
+      "source": "auto",
+      "status": "pass"
+    },
+    {
+      "cluster": "models",
+      "detail": "1/1 model component(s)",
+      "evidence": [
+        "pkg:huggingface/google-bert/bert-base-uncased@86b5e093"
+      ],
+      "id": "g7-model-id",
+      "label": "Model identifier",
+      "missing": [],
+      "required": false,
+      "role": "sbom-author",
+      "source": "auto",
+      "status": "pass"
+    },
+    {
+      "cluster": "models",
+      "detail": "1/1 model component(s)",
+      "id": "g7-model-version",
+      "label": "Model version",
+      "missing": [],
+      "required": false,
+      "role": "model-producer",
+      "source": "auto",
+      "status": "pass"
+    },
+    {
+      "cluster": "models",
+      "detail": "0/1 model component(s)",
+      "id": "g7-model-timestamp",
+      "label": "Model timestamp",
+      "missing": [
+        "bert-base-uncased"
+      ],
+      "required": false,
+      "role": "model-producer",
+      "source": "inferred",
+      "status": "warn"
+    },
+    {
+      "cluster": "models",
+      "detail": "1/1 model component(s)",
+      "id": "g7-model-producer",
+      "label": "Model producer",
+      "missing": [],
+      "required": false,
+      "role": "model-producer",
+      "source": "inferred",
+      "status": "pass"
+    },
+    {
+      "cluster": "models",
+      "detail": "1/1 model component(s)",
+      "id": "g7-model-description",
+      "label": "Model description",
+      "missing": [],
+      "required": false,
+      "role": "model-producer",
+      "source": "auto",
+      "status": "pass"
+    },
+    {
+      "cluster": "models",
+      "detail": "0/1 model component(s)",
+      "id": "g7-model-hash-value",
+      "label": "Model hash value",
+      "missing": [
+        "bert-base-uncased"
+      ],
+      "required": false,
+      "role": "sbom-author",
+      "source": "auto",
+      "status": "warn"
+    },
+    {
+      "cluster": "models",
+      "detail": "0/1 model component(s)",
+      "id": "g7-model-hash-alg",
+      "label": "Model hash algorithm",
+      "missing": [
+        "bert-base-uncased"
+      ],
+      "required": false,
+      "role": "sbom-author",
+      "source": "auto",
+      "status": "warn"
+    },
+    {
+      "cluster": "models",
+      "detail": "1/1 model component(s)",
+      "evidence": [
+        "bert"
+      ],
+      "id": "g7-model-card",
+      "label": "Model properties (model card)",
+      "missing": [],
+      "required": false,
+      "role": "model-producer",
+      "source": "auto",
+      "status": "pass"
+    },
+    {
+      "cluster": "models",
+      "detail": "0/1 model component(s)",
+      "id": "g7-model-io",
+      "label": "Model input-output properties",
+      "missing": [
+        "bert-base-uncased"
+      ],
+      "required": false,
+      "role": "model-producer",
+      "source": "inferred",
+      "status": "warn"
+    },
+    {
+      "cluster": "models",
+      "detail": "1/1 model component(s)",
+      "id": "g7-model-training",
+      "label": "Model training properties",
+      "missing": [],
+      "required": false,
+      "role": "model-producer",
+      "source": "inferred",
+      "status": "pass"
+    },
+    {
+      "cluster": "models",
+      "detail": "1/1 model component(s)",
+      "evidence": [
+        "Apache-2.0"
+      ],
+      "id": "g7-model-license",
+      "label": "Model license",
+      "missing": [],
+      "required": false,
+      "role": "model-producer",
+      "source": "auto",
+      "status": "pass"
+    },
+    {
+      "cluster": "models",
+      "detail": "not present in the SBOM",
+      "id": "g7-model-openness",
+      "label": "Model license — openness (weight/architecture/data/training)",
+      "missing": [],
+      "required": false,
+      "role": "model-producer",
+      "source": "inferred",
+      "status": "warn"
+    },
+    {
+      "cluster": "models",
+      "detail": "1/1 model component(s)",
+      "id": "g7-model-extref",
+      "label": "Model external references",
+      "missing": [],
+      "required": false,
+      "role": "model-producer",
+      "source": "auto",
+      "status": "pass"
+    },
+    {
+      "cluster": "dp",
+      "detail": "present",
+      "evidence": [
+        "bookcorpus",
+        "wikipedia"
+      ],
+      "id": "g7-ds-name",
+      "label": "Dataset name",
+      "missing": [],
+      "required": false,
+      "role": "dataset-creator",
+      "source": "auto",
+      "status": "pass"
+    },
+    {
+      "cluster": "dp",
+      "detail": "not present in the SBOM",
+      "id": "g7-ds-description",
+      "label": "Dataset description",
+      "missing": [],
+      "required": false,
+      "role": "dataset-creator",
+      "source": "inferred",
+      "status": "warn"
+    },
+    {
+      "cluster": "dp",
+      "detail": "requires human review (no automated source)",
+      "id": "g7-ds-content",
+      "label": "Dataset content",
+      "missing": [],
+      "required": false,
+      "role": "dataset-creator",
+      "source": "na",
+      "status": "warn"
+    },
+    {
+      "cluster": "dp",
+      "detail": "not present in the SBOM",
+      "id": "g7-ds-identifier",
+      "label": "Dataset identifier",
+      "missing": [],
+      "required": false,
+      "role": "dataset-creator",
+      "source": "inferred",
+      "status": "warn"
+    },
+    {
+      "cluster": "dp",
+      "detail": "requires human review (no automated source)",
+      "id": "g7-ds-hash",
+      "label": "Dataset hash",
+      "missing": [],
+      "required": false,
+      "role": "dataset-creator",
+      "source": "na",
+      "status": "warn"
+    },
+    {
+      "cluster": "dp",
+      "detail": "not present in the SBOM",
+      "id": "g7-ds-provenance",
+      "label": "Dataset provenance",
+      "missing": [],
+      "required": false,
+      "role": "dataset-creator",
+      "source": "inferred",
+      "status": "warn"
+    },
+    {
+      "cluster": "dp",
+      "detail": "requires human review (no automated source)",
+      "id": "g7-ds-statistics",
+      "label": "Dataset statistical properties",
+      "missing": [],
+      "required": false,
+      "role": "dataset-creator",
+      "source": "na",
+      "status": "warn"
+    },
+    {
+      "cluster": "dp",
+      "detail": "requires human review (no automated source)",
+      "id": "g7-ds-sensitivity",
+      "label": "Dataset sensitivity (PII/copyright)",
+      "missing": [],
+      "required": false,
+      "role": "dataset-creator",
+      "source": "na",
+      "status": "warn"
+    },
+    {
+      "cluster": "dp",
+      "detail": "requires human review (no automated source)",
+      "id": "g7-ds-dependency",
+      "label": "Dataset dependency relationship",
+      "missing": [],
+      "required": false,
+      "role": "dataset-creator",
+      "source": "na",
+      "status": "warn"
+    },
+    {
+      "cluster": "dp",
+      "detail": "not present in the SBOM",
+      "id": "g7-ds-license",
+      "label": "Dataset license",
+      "missing": [],
+      "required": false,
+      "role": "dataset-creator",
+      "source": "inferred",
+      "status": "warn"
+    },
+    {
+      "cluster": "infrastructure",
+      "detail": "not present in the SBOM",
+      "id": "g7-infra-software",
+      "label": "Infrastructure software (dependencies)",
+      "missing": [],
+      "required": false,
+      "role": "system-producer",
+      "source": "auto",
+      "status": "warn"
+    },
+    {
+      "cluster": "infrastructure",
+      "detail": "not present in the SBOM",
+      "id": "g7-infra-hardware",
+      "label": "Infrastructure hardware (HBOM link)",
+      "missing": [],
+      "required": false,
+      "role": "system-producer",
+      "source": "declared",
+      "status": "warn"
+    },
+    {
+      "cluster": "sp",
+      "detail": "requires human review (no automated source)",
+      "id": "g7-sec-controls",
+      "label": "Security controls",
+      "missing": [],
+      "required": false,
+      "role": "producer",
+      "source": "na",
+      "status": "warn"
+    },
+    {
+      "cluster": "sp",
+      "detail": "requires human review (no automated source)",
+      "id": "g7-sec-compliance",
+      "label": "Security compliance",
+      "missing": [],
+      "required": false,
+      "role": "producer",
+      "source": "na",
+      "status": "warn"
+    },
+    {
+      "cluster": "sp",
+      "detail": "requires human review (no automated source)",
+      "id": "g7-sec-policy",
+      "label": "Cybersecurity policy information",
+      "missing": [],
+      "required": false,
+      "role": "producer",
+      "source": "na",
+      "status": "warn"
+    },
+    {
+      "cluster": "sp",
+      "detail": "not present in the SBOM",
+      "id": "g7-sec-vulns",
+      "label": "Vulnerability referencing",
+      "missing": [],
+      "required": false,
+      "role": "sbom-author",
+      "source": "auto",
+      "status": "warn"
+    },
+    {
+      "cluster": "kpi",
+      "detail": "requires human review (no automated source)",
+      "id": "g7-kpi-security",
+      "label": "Security metrics",
+      "missing": [],
+      "required": false,
+      "role": "producer",
+      "source": "na",
+      "status": "warn"
+    },
+    {
+      "cluster": "kpi",
+      "detail": "not present in the SBOM",
+      "id": "g7-kpi-operational",
+      "label": "Operational performance KPIs",
+      "missing": [],
+      "required": false,
+      "role": "model-producer",
+      "source": "inferred",
+      "status": "warn"
+    }
+  ],
+  "component_count": 1,
+  "hash_coverage_pct": 0,
+  "license_coverage_pct": 100,
+  "n_fail": 0,
+  "n_warn": 1,
+  "purl_coverage_pct": 100,
+  "result": "warn",
+  "source_format": "cyclonedx"
+}

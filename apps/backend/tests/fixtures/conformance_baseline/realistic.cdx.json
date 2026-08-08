@@ -1,0 +1,125 @@
+{
+  "checks": [
+    {
+      "detail": "2026-06-10T12:00:00Z",
+      "id": "timestamp",
+      "label": "Timestamp (metadata.timestamp)",
+      "missing": [],
+      "required": true,
+      "status": "pass"
+    },
+    {
+      "detail": "1 tool(s)",
+      "id": "tools",
+      "label": "Tool info (metadata.tools)",
+      "missing": [],
+      "required": true,
+      "status": "pass"
+    },
+    {
+      "detail": "ingest-fixture-app@0.0.0",
+      "id": "top-component",
+      "label": "Top-level component name+version",
+      "missing": [],
+      "required": true,
+      "status": "pass"
+    },
+    {
+      "detail": "4/4",
+      "id": "name-version",
+      "label": "Component name+version coverage (100%)",
+      "missing": [],
+      "required": true,
+      "status": "pass"
+    },
+    {
+      "detail": "100% (4/4)",
+      "id": "purl",
+      "label": "PURL coverage (>= 90%)",
+      "missing": [],
+      "required": true,
+      "status": "pass"
+    },
+    {
+      "detail": "0 offending",
+      "id": "no-generic",
+      "label": "No pkg:generic / custom PURL (0)",
+      "missing": [],
+      "required": true,
+      "status": "pass"
+    },
+    {
+      "detail": "5 edge(s)",
+      "id": "transitive",
+      "label": "Transitive dependencies (graph edges)",
+      "missing": [],
+      "required": true,
+      "status": "pass"
+    },
+    {
+      "detail": "100% (4/4)",
+      "id": "license",
+      "label": "License coverage (>= 80%, recommended)",
+      "missing": [],
+      "required": false,
+      "status": "pass"
+    },
+    {
+      "detail": "0% (0/4)",
+      "id": "hash",
+      "label": "Hash coverage (>= 50%, recommended)",
+      "missing": [],
+      "required": false,
+      "status": "warn"
+    },
+    {
+      "detail": "0% (0/4)",
+      "id": "hash-algorithm",
+      "label": "SHA-512 checksum coverage (>= 80%, recommended)",
+      "missing": [],
+      "required": false,
+      "status": "warn"
+    },
+    {
+      "detail": "0% (0/4)",
+      "id": "component-creator",
+      "label": "Component creator coverage (>= 80%, recommended)",
+      "missing": [],
+      "required": false,
+      "status": "warn"
+    },
+    {
+      "detail": "0% (0/4)",
+      "id": "component-filename",
+      "label": "Component filename coverage (>= 80%, recommended)",
+      "missing": [],
+      "required": false,
+      "status": "warn"
+    },
+    {
+      "detail": "0% (0/4)",
+      "id": "artifact-uri",
+      "label": "Source or distribution URI coverage (>= 80%, recommended)",
+      "missing": [],
+      "required": false,
+      "status": "warn"
+    },
+    {
+      "detail": "requires inspecting the delivered files (no automated source in this scan)",
+      "id": "file-properties",
+      "label": "Delivered-file properties (executable/archive/structured)",
+      "missing": [],
+      "required": false,
+      "source": "na",
+      "status": "warn"
+    }
+  ],
+  "component_count": 4,
+  "hash_coverage_pct": 0,
+  "license_coverage_pct": 100,
+  "n_fail": 0,
+  "n_warn": 1,
+  "purl_coverage_pct": 100,
+  "result": "warn",
+  "source_format": "cyclonedx"
+}

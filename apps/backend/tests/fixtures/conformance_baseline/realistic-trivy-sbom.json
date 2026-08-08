@@ -1,0 +1,20 @@
+{
+  "checks": [
+    {
+      "detail": "not CycloneDX or SPDX (JSON / Tag-Value)",
+      "id": "format",
+      "label": "Recognized SBOM format",
+      "missing": [],
+      "required": true,
+      "status": "fail"
+    }
+  ],
+  "component_count": 0,
+  "hash_coverage_pct": null,
+  "license_coverage_pct": null,
+  "n_fail": 1,
+  "n_warn": 0,
+  "purl_coverage_pct": null,
+  "result": "fail",
+  "source_format": "unknown"
+}

@@ -459,13 +459,15 @@ def _cdx_checks(doc: dict[str, Any]) -> _ScoreResult:
               source="auto" if (ptot == 0 or fprops_ok > 0) else "na"),
     ]
 
-    # G7 AI SBOM minimum-elements advisory checks — appended only when the
-    # document actually carries an ML model component (CycloneDX ML-BOM).
-    # Imported lazily: ``g7_conformance`` imports ``Check`` from THIS module,
-    # so a top-level import here would be a cycle.
-    if any(c.get("type") == "machine-learning-model" for c in components):
-        from services import g7_conformance
+    # Declarative advisory baselines. Whether one applies to this document is
+    # the baseline's own statement (``RegistrySpec.applies_when``), not a test
+    # written here — G7 measures documents that carry a machine-learning-model
+    # component, and a baseline that measures every SBOM says so by saying
+    # nothing. Imported lazily: ``g7_conformance`` imports ``Check`` from THIS
+    # module, so a top-level import here would be a cycle.
+    from services import g7_conformance, registry_conformance
 
+    if registry_conformance.applies(doc, g7_conformance.G7_SPEC):
         checks.extend(g7_conformance.evaluate_g7(doc))
 
     return checks, tot, purl_pct, lic_pct, hash_pct
