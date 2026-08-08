@@ -22,13 +22,14 @@ from typing import Any
 import pytest
 
 from services import registry_conformance as rc
+from services.cisa_conformance import CISA_SPEC
 from services.g7_conformance import G7_SPEC
 
 _SERVICES = Path(__file__).resolve().parents[3] / "services"
 
 #: Every registry the evaluator reads. A new one added without being listed
 #: here is caught by test_every_registry_is_under_contract.
-REGISTRIES = [G7_SPEC.registry_path]
+REGISTRIES = [G7_SPEC.registry_path, CISA_SPEC.registry_path]
 
 
 def test_every_registry_is_under_contract() -> None:

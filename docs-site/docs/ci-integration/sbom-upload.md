@@ -121,7 +121,7 @@ A `404` here means the project is not accessible to you, or the scan has no verd
 
 ### Regulatory field checks (advisory)
 
-On **CycloneDX** documents the verdict carries five additional per-component field checks, named by the field-level regulatory baselines — BSI TR-03183-2 (the German technical guideline for the EU Cyber Resilience Act) and the US NTIA minimum elements. SPDX documents keep the nine checks above.
+On **CycloneDX** documents the verdict carries five additional per-component field checks, named by the field-level regulatory baselines — BSI TR-03183-2 (the German technical guideline for the EU Cyber Resilience Act) and, historically, the US minimum elements. SPDX documents keep the nine checks above. CycloneDX documents additionally carry the 23 [2026 minimum element](../user-guide/ai-sbom-conformance.md#the-2026-sbom-minimum-elements) checks, which are advisory in the same way.
 
 All five are **advisory and verdict-neutral**: they are `required: false` and additionally excluded from the `n_warn` counter, so they never change the pass / warn / fail result. They describe how well the SBOM would answer a regulator, and feed the [regulatory crosswalk](#regulatory-crosswalk) below. The coverage bar for all five is `SBOM_CONFORMANCE_FIELD_MIN_PCT` (default `80`).
 
@@ -142,7 +142,7 @@ The conformance response cross-references each check to the regulatory documenta
 | Framework | Scope in the crosswalk |
 |---|---|
 | **BSI TR-03183-2** — SBOM data fields (EU Cyber Resilience Act) | Section-level references (5.1, 5.2.1, 5.2.2, 5.2.4), mapped from eight core checks and all five regulatory field checks. |
-| **NTIA** — US SBOM minimum elements (Executive Order 14028) | The seven 2021 data fields, mapped from the timestamp, tool, name+version, PURL, and dependency checks plus `component-creator`. |
+| **CISA 2026** — US SBOM minimum elements | The 17 data fields and 6 practices of the [2026 minimum elements](../user-guide/ai-sbom-conformance.md#the-2026-sbom-minimum-elements), which replace the NTIA elements of 2021. Mapped one requirement per element, from the `cisa-*` checks. CycloneDX only — an SPDX submission carries its BSI row alone. |
 | **EU AI Act** — Annex IV technical documentation | Via the [G7 AI SBOM checks](../user-guide/ai-sbom-conformance.md) — ML-BOMs only. |
 | **AI Framework Act (Korea)** | Via the G7 checks — ML-BOMs only. |
 

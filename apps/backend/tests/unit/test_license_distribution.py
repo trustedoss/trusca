@@ -191,6 +191,7 @@ VENDORED_DATA = {
     Path("apps/backend/services/g7_registry.json"): "BomLens",
     Path("apps/backend/services/malicious/malicious_snapshot.json"): "OSV",
     Path("apps/backend/services/regulation_crosswalk.json"): "BomLens",
+    Path("apps/backend/services/cisa_registry.json"): "BomLens",
 }
 
 #: Files matching this shape must be registered above. Without it the registry

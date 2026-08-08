@@ -56,6 +56,7 @@ from schemas.sbom import (
     SbomConformanceRead,
 )
 from schemas.scan import ScanPublic
+from services.cisa_guidance import attach_guidance
 from services.project_service import (
     ProjectError,
     ProjectForbidden,
@@ -925,7 +926,7 @@ async def get_sbom_conformance_endpoint(
     # gains the per-framework rollup. Computed here rather than persisted —
     # the crosswalk is a static vendored catalogue, so old rows pick up
     # mapping updates for free. Informational only, never verdict-moving.
-    joined = attach_regulations(list(row.checks or []))
+    joined = attach_guidance(attach_regulations(list(row.checks or [])))
     summary = crosswalk_summary(joined)
     body = SbomConformanceRead.model_validate(row).model_copy(
         update={

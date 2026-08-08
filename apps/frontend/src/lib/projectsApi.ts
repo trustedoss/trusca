@@ -380,8 +380,15 @@ export interface CrosswalkFramework {
   present: number;
   /** Mapped checks warning with an automated source. */
   gap: number;
-  /** Mapped checks answerable only by a human (source "na"). */
+  /** Mapped checks answerable only by a human (warn with source "na"). */
   review: number;
+  /**
+   * Mapped checks that FAIL. Stated rather than left as the remainder — a
+   * consumer computing `total - present - gap - review` and labelling it
+   * "advisory" is how the most serious category came to be shown under the
+   * mildest name available.
+   */
+  failed: number;
   elements: CrosswalkElement[];
 }
 
@@ -421,6 +428,28 @@ export interface SbomConformanceCheck {
    * null/absent = the join was not applied. Informational only.
    */
   regulations?: RegulationRef[] | null;
+  // --- 2026 minimum elements guidance (joined at read time) ------------------
+  /**
+   * The CycloneDX fragment that would satisfy an element the SBOM does not.
+   * Absent on a passing row, and on rows no guidance file covers.
+   */
+  guidance?: ConformanceGuidance | null;
+  /**
+   * What a person has to establish for an element no scan can settle — and for
+   * the signature element, which a check reading one file cannot see. Absent on
+   * a passing row.
+   */
+  review?: ConformanceReviewNote | null;
+}
+
+export interface ConformanceGuidance {
+  snippet: string;
+  docUrl?: string | null;
+}
+
+export interface ConformanceReviewNote {
+  how: string;
+  how_ko?: string | null;
 }
 
 export interface SbomConformanceRead {

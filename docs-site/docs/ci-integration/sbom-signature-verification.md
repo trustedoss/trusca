@@ -32,7 +32,7 @@ An [SBOM](../reference/glossary.md#sca-core) tells a consumer *what is inside* a
 - **Integrity** — were the SBOM bytes altered after the deployment produced them? A signature over the exact bytes detects any tampering.
 - **Provenance** — *how* was the SBOM produced, and by whom? The [in-toto](https://in-toto.io/) / [SLSA](https://slsa.dev/) provenance attestation records the build platform identity and version.
 
-This is the supply-chain-security expectation set by [Executive Order 14028](https://www.cisa.gov/topics/cyber-threats-and-advisories/cybersecurity-best-practices/secure-by-design/sbom), the [CISA 2025 SBOM minimum elements](https://www.cisa.gov/sbom), and the [NTIA minimum elements](https://www.ntia.gov/page/software-bill-materials): a consumer should be able to verify an artifact's authenticity without trusting the channel it arrived over.
+This is the supply-chain-security expectation set by [Executive Order 14028](https://www.cisa.gov/topics/cyber-threats-and-advisories/cybersecurity-best-practices/secure-by-design/sbom), and the [2026 SBOM minimum elements](https://www.cisa.gov/resources-tools/resources/2026-minimum-elements-software-bill-materials-sbom), which replace the NTIA elements of 2021: a consumer should be able to verify an artifact's authenticity without trusting the channel it arrived over.
 
 ### Key-based vs keyless
 

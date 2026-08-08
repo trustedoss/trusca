@@ -55,7 +55,8 @@ modified them. Per Apache-2.0 §4(b), the changes are stated here.
 | TRUSCA path | Upstream path | Changes |
 |---|---|---|
 | `apps/backend/services/g7_registry.json` | `docker/lib/g7-registry.json` (v2, sbom-tools#306) | Documentation `note` rewritten: it named upstream's jq evaluator and two of its shell scripts, and now describes TRUSCA's Python evaluator. Element definitions unchanged. |
-| `apps/backend/services/regulation_crosswalk.json` | `docker/lib/regulation-crosswalk.json` (v1.8.3 line, sktelecom/bomlens#462) | Product name changed to TRUSCA in the user-facing `disclaimer` / `disclaimer_ko` and in the documentation `note`, since TRUSCA is what serves these strings to its own users. `disclaimer_ko` was additionally reworded for Korean style (same meaning, one clause restructured). The `note` was repointed at TRUSCA paths. Framework definitions and the check-to-obligation map are unchanged. |
+| `apps/backend/services/regulation_crosswalk.json` | `docker/lib/regulation-crosswalk.json` (v1.8.3 line, sktelecom/bomlens#462) | Product name changed to TRUSCA in the user-facing `disclaimer` / `disclaimer_ko` and in the documentation `note`, since TRUSCA is what serves these strings to its own users. `disclaimer_ko` was additionally reworded for Korean style (same meaning, one clause restructured). The `note` was repointed at TRUSCA paths. The US framework was rewritten for the 2026 minimum elements, taking upstream's `cisa-*` mappings and adding a scope caveat about SPDX submissions. Other framework definitions and their mappings are unchanged. |
+| `apps/backend/services/cisa_registry.json` | `docker/lib/cisa-registry.json` | Documentation `note` rewritten to describe TRUSCA's Python evaluator. Korean labels say 컴포넌트 rather than 구성요소, matching TRUSCA's own UI vocabulary. The `evidenceGrade` marker is matched by suffix rather than by upstream's exact `bomlens:` name, so both TRUSCA's and upstream's exports are read. Element definitions, sources and jq expressions are unchanged. |
 
 The `bomlens:*` property names these files match on are upstream's wire format,
 not TRUSCA branding: they identify properties written by upstream tooling, and
@@ -69,6 +70,8 @@ data shapes are BomLens's:
 | TRUSCA path | Upstream source |
 |---|---|
 | `apps/backend/services/g7_conformance.py` | `docker/lib/validate-sbom.sh` (`g7_ai_checks()`) |
+| `apps/backend/services/cisa_conformance.py` | `docker/lib/validate-sbom.sh` (registry evaluator) + `docker/lib/cisa-registry.json` |
+| `apps/backend/services/registry_conformance.py` | `docker/lib/validate-sbom.sh` (registry evaluator, sktelecom/bomlens#639) |
 | `apps/backend/services/sbom_conformance.py` | `docker/lib/validate-sbom.sh` |
 | `apps/backend/services/eol/eol_catalog.py` | `docker/lib/enrich-eol.sh` |
 | `apps/backend/services/malicious/malicious_catalog.py` | `docker/lib/enrich-malicious.sh` |

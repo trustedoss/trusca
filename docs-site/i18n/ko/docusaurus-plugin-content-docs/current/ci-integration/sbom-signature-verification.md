@@ -32,7 +32,7 @@ sidebar_position: 10
 - **무결성(integrity)** — 배포가 생성한 후 SBOM 바이트가 변경되었는가? 정확한 바이트에 대한 서명은 모든 변조를 탐지합니다.
 - **출처(provenance)** — SBOM을 *어떻게*, 누가 생성했는가? [in-toto](https://in-toto.io/) / [SLSA](https://slsa.dev/) provenance attestation은 빌드 플랫폼 식별자와 버전을 기록합니다.
 
-이는 [행정명령 14028](https://www.cisa.gov/topics/cyber-threats-and-advisories/cybersecurity-best-practices/secure-by-design/sbom), [CISA 2025 SBOM 최소 요소](https://www.cisa.gov/sbom), [NTIA 최소 요소](https://www.ntia.gov/page/software-bill-materials)가 요구하는 공급망 보안 기대치입니다 — 소비자는 산출물이 도착한 경로를 신뢰하지 않고도 진위를 검증할 수 있어야 합니다.
+이는 [행정명령 14028](https://www.cisa.gov/topics/cyber-threats-and-advisories/cybersecurity-best-practices/secure-by-design/sbom), 2021년 NTIA 최소 요소를 대체한 [2026 SBOM 최소 요소](https://www.cisa.gov/resources-tools/resources/2026-minimum-elements-software-bill-materials-sbom)가 요구하는 공급망 보안 기대치입니다 — 소비자는 산출물이 도착한 경로를 신뢰하지 않고도 진위를 검증할 수 있어야 합니다.
 
 ### key-based vs keyless
 

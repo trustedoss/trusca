@@ -26,7 +26,7 @@ sidebar_position: 5
 |---|---|---|---|
 | **CycloneDX 1.6 (JSON)** | `cyclonedx-json` | `application/vnd.cyclonedx+json` | SCA 도구의 사실상 표준. VEX 포함. |
 | **CycloneDX 1.6 (XML)** | `cyclonedx-xml` | `application/vnd.cyclonedx+xml` | 동일 데이터; 레거시 도구를 위한 XML. |
-| **SPDX 2.3 (JSON)** | `spdx-json` | `application/spdx+json` | NTIA 최소 요소; 규제 산업에서 폭넓게 수용. |
+| **SPDX 2.3 (JSON)** | `spdx-json` | `application/spdx+json` | 규제 산업에서 폭넓게 수용. |
 | **SPDX 2.3 (Tag-Value)** | `spdx-tv` | `text/spdx` | 원래의 SPDX 라인 기반 포맷. |
 
 두 포맷 모두 동일한 내부 모델에서 생성되므로 컴포넌트 목록은 (포맷별 필드 제외) 동일합니다.

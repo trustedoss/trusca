@@ -114,6 +114,250 @@
       "status": "warn"
     },
     {
+      "cluster": "cisa-metadata",
+      "detail": "not present in the SBOM",
+      "id": "cisa-sbom-author",
+      "label": "SBOM author",
+      "missing": [],
+      "required": false,
+      "source": "declared",
+      "status": "warn"
+    },
+    {
+      "cluster": "cisa-metadata",
+      "detail": "not present in the SBOM",
+      "id": "cisa-sbom-author-signature",
+      "label": "SBOM author signature",
+      "missing": [],
+      "required": false,
+      "source": "declared",
+      "status": "warn"
+    },
+    {
+      "cluster": "cisa-metadata",
+      "detail": "present",
+      "id": "cisa-sbom-format-name",
+      "label": "SBOM data format name",
+      "missing": [],
+      "required": false,
+      "source": "auto",
+      "status": "pass"
+    },
+    {
+      "cluster": "cisa-metadata",
+      "detail": "present",
+      "id": "cisa-sbom-format-version",
+      "label": "SBOM data format version",
+      "missing": [],
+      "required": false,
+      "source": "auto",
+      "status": "pass"
+    },
+    {
+      "cluster": "cisa-metadata",
+      "detail": "not present in the SBOM",
+      "id": "cisa-sbom-generation-context",
+      "label": "SBOM generation context",
+      "missing": [],
+      "required": false,
+      "source": "auto",
+      "status": "warn"
+    },
+    {
+      "cluster": "cisa-metadata",
+      "detail": "present",
+      "id": "cisa-sbom-timestamp",
+      "label": "SBOM timestamp",
+      "missing": [],
+      "required": false,
+      "source": "auto",
+      "status": "pass"
+    },
+    {
+      "cluster": "cisa-metadata",
+      "detail": "not present in the SBOM",
+      "id": "cisa-sbom-tool-name",
+      "label": "SBOM tool name",
+      "missing": [],
+      "required": false,
+      "source": "auto",
+      "status": "warn"
+    },
+    {
+      "cluster": "cisa-metadata",
+      "detail": "not present in the SBOM",
+      "id": "cisa-sbom-tool-version",
+      "label": "SBOM tool version",
+      "missing": [],
+      "required": false,
+      "source": "auto",
+      "status": "warn"
+    },
+    {
+      "cluster": "cisa-metadata",
+      "detail": "present",
+      "id": "cisa-sbom-version",
+      "label": "SBOM version",
+      "missing": [],
+      "required": false,
+      "source": "auto",
+      "status": "pass"
+    },
+    {
+      "cluster": "cisa-component",
+      "detail": "4/4 component(s)",
+      "id": "cisa-component-name",
+      "label": "Component name",
+      "missing": [],
+      "required": false,
+      "source": "auto",
+      "status": "pass"
+    },
+    {
+      "cluster": "cisa-component",
+      "detail": "4/4 component(s)",
+      "id": "cisa-component-version",
+      "label": "Component version",
+      "missing": [],
+      "required": false,
+      "source": "auto",
+      "status": "pass"
+    },
+    {
+      "cluster": "cisa-component",
+      "detail": "0/4 component(s)",
+      "id": "cisa-component-producer",
+      "label": "Component producer",
+      "missing": [
+        "review-flags-job",
+        "Llama-2-7b",
+        "some-nc-dataset",
+        "bert-base-uncased"
+      ],
+      "required": false,
+      "source": "auto",
+      "status": "warn"
+    },
+    {
+      "cluster": "cisa-component",
+      "detail": "3/4 component(s)",
+      "id": "cisa-component-identifiers",
+      "label": "Component identifiers",
+      "missing": [
+        "review-flags-job"
+      ],
+      "required": false,
+      "source": "auto",
+      "status": "warn"
+    },
+    {
+      "cluster": "cisa-component",
+      "detail": "3/4 component(s)",
+      "id": "cisa-component-license",
+      "label": "Component license",
+      "missing": [
+        "review-flags-job"
+      ],
+      "required": false,
+      "source": "auto",
+      "status": "warn"
+    },
+    {
+      "cluster": "cisa-component",
+      "detail": "0/4 component(s)",
+      "id": "cisa-component-hash-value",
+      "label": "Component hash value",
+      "missing": [
+        "review-flags-job",
+        "Llama-2-7b",
+        "some-nc-dataset",
+        "bert-base-uncased"
+      ],
+      "required": false,
+      "source": "auto",
+      "status": "warn"
+    },
+    {
+      "cluster": "cisa-component",
+      "detail": "4/4 component(s)",
+      "id": "cisa-component-hash-algorithm",
+      "label": "Component hash algorithm",
+      "missing": [],
+      "required": false,
+      "source": "auto",
+      "status": "pass"
+    },
+    {
+      "cluster": "cisa-component",
+      "detail": "not present in the SBOM",
+      "id": "cisa-component-dependency-relationship",
+      "label": "Component dependency relationship",
+      "missing": [],
+      "required": false,
+      "source": "auto",
+      "status": "warn"
+    },
+    {
+      "cluster": "cisa-practices",
+      "detail": "present",
+      "id": "cisa-machine-processable-data",
+      "label": "Machine-processable data",
+      "missing": [],
+      "required": false,
+      "source": "auto",
+      "status": "pass"
+    },
+    {
+      "cluster": "cisa-practices",
+      "detail": "requires human review (no automated source)",
+      "id": "cisa-coverage",
+      "label": "Coverage",
+      "missing": [],
+      "required": false,
+      "source": "na",
+      "status": "warn"
+    },
+    {
+      "cluster": "cisa-practices",
+      "detail": "requires human review (no automated source)",
+      "id": "cisa-accommodation-of-updates",
+      "label": "Accommodation of updates to SBOM data",
+      "missing": [],
+      "required": false,
+      "source": "na",
+      "status": "warn"
+    },
+    {
+      "cluster": "cisa-practices",
+      "detail": "requires human review (no automated source)",
+      "id": "cisa-distribution-and-delivery",
+      "label": "Distribution and delivery",
+      "missing": [],
+      "required": false,
+      "source": "na",
+      "status": "warn"
+    },
+    {
+      "cluster": "cisa-practices",
+      "detail": "not present in the SBOM",
+      "id": "cisa-explicit-unknowns",
+      "label": "Explicitly identifying unknown information",
+      "missing": [],
+      "required": false,
+      "source": "auto",
+      "status": "warn"
+    },
+    {
+      "cluster": "cisa-practices",
+      "detail": "requires human review (no automated source)",
+      "id": "cisa-frequency",
+      "label": "Frequency",
+      "missing": [],
+      "required": false,
+      "source": "na",
+      "status": "warn"
+    },
+    {
       "cluster": "metadata",
       "detail": "not present in the SBOM",
       "id": "g7-meta-author",

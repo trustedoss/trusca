@@ -61,10 +61,14 @@ import type {
 import { cn } from "@/lib/utils";
 
 import {
+  CISA_CLUSTER_ORDER,
   type G7Group,
+  byAttention,
+  collapseMissing,
   g7Tally,
   groupG7ByCluster,
-  splitChecks,
+  splitByBaseline,
+  verdictHeadline,
 } from "./lib/g7Conformance";
 import { G7_GUIDANCE } from "./lib/g7Guidance";
 
@@ -109,9 +113,11 @@ export function SbomConformancePanel({
   conformance,
 }: SbomConformancePanelProps) {
   const { t } = useTranslation("scans");
-  // Base format checks render exactly as before; the advisory G7 AI checks
-  // (if any) get their own section below. Core-only verdicts have g7 = [].
-  const { base, g7 } = splitChecks(conformance.checks);
+  // The core checks — the only ones that move the badge — render first and on
+  // their own. Each declarative baseline gets its own section below, so a
+  // baseline landing later cannot push the mandatory rows down the page.
+  const { core, cisa, g7 } = splitByBaseline(conformance.checks);
+  const headline = verdictHeadline(conformance.checks);
 
   return (
     <section
@@ -124,6 +130,23 @@ export function SbomConformancePanel({
         </h2>
         <ResultBadge result={conformance.result} />
       </header>
+
+      {/* What blocks the SBOM, before anything else. A reader arriving at a
+          verdict wants the count that decides it, not the first row of a
+          table that may be hundreds of advisory elements long. */}
+      <p
+        className="mt-2 text-xs text-muted-foreground"
+        data-testid="conformance-headline"
+        data-mandatory-failed={headline.mandatoryFailed}
+        data-advisory-short={headline.advisoryShort}
+        data-needs-review={headline.needsReview}
+      >
+        {t("conformance.headline", {
+          mandatoryFailed: headline.mandatoryFailed,
+          advisoryShort: headline.advisoryShort,
+          needsReview: headline.needsReview,
+        })}
+      </p>
 
       <dl
         className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-3"
@@ -162,11 +185,12 @@ export function SbomConformancePanel({
         role="table"
         aria-label={t("conformance.title")}
       >
-        {base.map((check) => (
+        {core.map((check) => (
           <CheckRow key={check.id} check={check} />
         ))}
       </div>
 
+      {cisa.length > 0 ? <CisaSection cisa={cisa} /> : null}
       {g7.length > 0 ? <G7Section g7={g7} /> : null}
 
       {conformance.regulatory_crosswalk &&
@@ -365,6 +389,81 @@ function G7Section({ g7 }: { g7: SbomConformanceCheck[] }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// 2026 SBOM minimum elements — measured on every CycloneDX document.
+//
+// Rendered through the same row as the G7 elements: what decides how a row
+// looks is what the check IS (an element a registry declared), not which id
+// prefix it carries. A third baseline needs no new row component.
+// ---------------------------------------------------------------------------
+
+function CisaSection({ cisa }: { cisa: SbomConformanceCheck[] }) {
+  const { t } = useTranslation("scans");
+  const byCluster = new Map<string, SbomConformanceCheck[]>();
+  for (const check of cisa) {
+    const key = check.cluster ?? "";
+    const bucket = byCluster.get(key);
+    if (bucket) bucket.push(check);
+    else byCluster.set(key, [check]);
+  }
+  const ordered = [
+    ...CISA_CLUSTER_ORDER.filter((c) => byCluster.has(c)),
+    // Forward-compat: an unexpected cluster renders rather than disappearing.
+    ...[...byCluster.keys()].filter(
+      (c) => !(CISA_CLUSTER_ORDER as readonly string[]).includes(c),
+    ),
+  ];
+
+  return (
+    <section className="mt-4" data-testid="conformance-cisa-section">
+      <header className="flex flex-wrap items-center gap-3">
+        <h3 className="text-sm font-semibold tracking-tight">
+          {t("conformance.cisa.title")}
+        </h3>
+        <span
+          className="font-mono text-xs text-muted-foreground"
+          data-testid="conformance-cisa-count"
+          data-count={cisa.length}
+        >
+          {t("conformance.cisa.count", { count: cisa.length })}
+        </span>
+      </header>
+      <p className="mt-1 text-xs text-muted-foreground">
+        {t("conformance.cisa.intro")}
+      </p>
+
+      <div className="mt-3 grid grid-cols-1 gap-3">
+        {ordered.map((cluster) => {
+          const title = t(`conformance.cisa.cluster.${cluster}`, {
+            defaultValue: cluster,
+          });
+          return (
+            <div
+              key={cluster}
+              className="overflow-hidden rounded-md border"
+              data-testid={`cisa-cluster-${cluster}`}
+              data-cluster={cluster}
+            >
+              <h4 className="border-b bg-muted/50 px-3 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                {title}
+              </h4>
+              <div
+                className="grid grid-cols-1 divide-y"
+                role="table"
+                aria-label={title}
+              >
+                {byAttention(byCluster.get(cluster) ?? []).map((check) => (
+                  <G7CheckRow key={check.id} check={check} />
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function G7ClusterCard({ group }: { group: G7Group }) {
   const { t } = useTranslation("scans");
   // Canonical clusters get a localized title; an unexpected cluster value
@@ -432,8 +531,17 @@ function G7CheckRow({ check }: { check: SbomConformanceCheck }) {
   // G7 v2 (#447 follow-up): warn rows on the models cluster carry the missing
   // model names (offenders). Rendered as distinct-toned chips below any
   // evidence so a reviewer sees exactly which models tripped the check.
-  const missing = check.missing ?? [];
+  const isKo = useIsKoLocale();
+  // A repeated name reads as two problems; collapse it and say how many the
+  // list left out rather than trailing off.
+  const { items: missing, omitted: missingOmitted } = collapseMissing(
+    check.missing ?? [],
+  );
   const guidance = G7_GUIDANCE[check.id];
+  // Backend-joined guidance for the 2026 elements: a fill-in fragment, or what
+  // a person has to establish. Only on rows that are not a pass.
+  const fragment = check.guidance;
+  const reviewNote = check.review;
 
   return (
     <div
@@ -490,7 +598,43 @@ function G7CheckRow({ check }: { check: SbomConformanceCheck }) {
                 {item}
               </li>
             ))}
+            {missingOmitted > 0 ? (
+              <li
+                className="text-[11px] text-muted-foreground"
+                data-testid={`check-${check.id}-missing-omitted`}
+              >
+                {t("conformance.missing_omitted", { count: missingOmitted })}
+              </li>
+            ) : null}
           </ul>
+        ) : null}
+        {reviewNote ? (
+          <p
+            className="mt-1 text-xs text-muted-foreground"
+            data-testid={`check-${check.id}-review`}
+          >
+            {isKo && reviewNote.how_ko ? reviewNote.how_ko : reviewNote.how}
+          </p>
+        ) : null}
+        {fragment ? (
+          <details className="mt-1" data-testid={`check-${check.id}-fragment`}>
+            <summary className="cursor-pointer text-xs font-medium text-primary hover:underline">
+              {t("conformance.fragment_summary")}
+            </summary>
+            <pre className="mt-1 overflow-x-auto rounded-sm border bg-muted px-2 py-1.5 font-mono text-[11px] text-foreground">
+              {fragment.snippet}
+            </pre>
+            {fragment.docUrl ? (
+              <a
+                href={fragment.docUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-1 inline-block text-xs font-medium text-primary hover:underline"
+              >
+                {t("conformance.g7.learn_more")}
+              </a>
+            ) : null}
+          </details>
         ) : null}
         {guidance ? (
           <a
@@ -574,6 +718,7 @@ function CrosswalkFrameworkRow({
       data-present={framework.present}
       data-gap={framework.gap}
       data-review={framework.review}
+      data-failed={framework.failed}
     >
       <button
         type="button"
@@ -597,6 +742,11 @@ function CrosswalkFrameworkRow({
         {framework.gap > 0 ? (
           <Badge tone="medium" data-testid={`crosswalk-${framework.id}-gap`}>
             {t("conformance.crosswalk.tally.gap", { count: framework.gap })}
+          </Badge>
+        ) : null}
+        {framework.failed > 0 ? (
+          <Badge tone="critical" data-testid={`crosswalk-${framework.id}-failed`}>
+            {t("conformance.crosswalk.tally.failed", { count: framework.failed })}
           </Badge>
         ) : null}
         {framework.review > 0 ? (

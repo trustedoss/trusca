@@ -21,6 +21,7 @@ from services import sbom_conformance as sc
 
 _SERVICES = Path(rc.__file__).parent
 _G7_REGISTRY = _SERVICES / "g7_registry.json"
+_CISA_REGISTRY = _SERVICES / "cisa_registry.json"
 
 
 def _vendored() -> dict:
@@ -29,8 +30,8 @@ def _vendored() -> dict:
         return loaded
 
 
-def _g7_element_ids() -> set[str]:
-    registry = json.loads(_G7_REGISTRY.read_text(encoding="utf-8"))
+def _registry_element_ids(path: Path) -> set[str]:
+    registry = json.loads(path.read_text(encoding="utf-8"))
     return {
         element["id"]
         for cluster in registry.get("clusters", [])
@@ -38,11 +39,20 @@ def _g7_element_ids() -> set[str]:
     }
 
 
+def _g7_element_ids() -> set[str]:
+    return _registry_element_ids(_G7_REGISTRY)
+
+
 # ---------------------------------------------------------------------------
 # Vendored-catalogue contracts.
 # ---------------------------------------------------------------------------
 def test_every_map_key_resolves_to_a_known_check_id() -> None:
-    known = set(sc.CHECK_IDS) | _g7_element_ids() | rc.UNPORTED_CHECK_IDS
+    known = (
+        set(sc.CHECK_IDS)
+        | _g7_element_ids()
+        | _registry_element_ids(_CISA_REGISTRY)
+        | rc.UNPORTED_CHECK_IDS
+    )
     unknown = set(_vendored()["map"]) - known
     assert not unknown, (
         f"crosswalk keys with no matching check/element: {sorted(unknown)} — "
@@ -121,10 +131,12 @@ def test_attach_joins_refs_with_framework_short_names() -> None:
     assert bsi[0]["short"] == "BSI TR-03183-2"
     assert bsi[0]["short_ko"]
     assert bsi[0]["ref"] and bsi[0]["basis"]
-    # timestamp maps to BSI + NTIA.
+    # `timestamp` is TRUSCA's own format check and maps to BSI only. The US
+    # framework moved to the 2026 elements, whose ids are `cisa-*` — the 2021
+    # mappings sat on the format checks, so keeping them there would count one
+    # 2026 requirement once per format row that used to carry it.
     assert {r["framework"] for r in by_id["timestamp"]["regulations"]} == {
-        "bsi-tr-03183-2",
-        "us-sbom-minimum-elements",
+        "bsi-tr-03183-2"
     }
     # Unmapped id: empty list, never a KeyError.
     assert by_id["not-a-real-check"]["regulations"] == []
@@ -140,9 +152,10 @@ def test_attach_does_not_mutate_input() -> None:
 # Rollup behaviour (crosswalk_summary) — BomLens XW_SUMMARY parity.
 # ---------------------------------------------------------------------------
 def test_rollup_counts_mirror_upstream_formula() -> None:
-    """present = pass; gap = warn with an automated source; review = source
-    'na'; a failed mandatory check counts in total only (upstream parity —
-    the crosswalk is not a second verdict)."""
+    """present = pass; gap = warn with an automated source; review = warn with
+    source 'na'; failed = fail. The crosswalk is still not a second verdict —
+    it reports the failure, it does not re-decide it — but the number is stated
+    rather than left as the remainder a consumer has to compute."""
     joined = rc.attach_regulations(
         [
             {"id": "timestamp", "status": "fail", "detail": ""},
@@ -157,11 +170,43 @@ def test_rollup_counts_mirror_upstream_formula() -> None:
     assert bsi["total"] == 4
     assert bsi["present"] == 1  # hash
     assert bsi["gap"] == 1  # license (warn, automated)
-    assert bsi["review"] == 1  # file-properties (source na)
+    assert bsi["review"] == 1  # file-properties (warn, source na)
+    assert bsi["failed"] == 1  # timestamp
     element_ids = {e["id"] for e in bsi["elements"]}
     assert element_ids == {"timestamp", "license", "hash", "file-properties"}
     refs = next(e for e in bsi["elements"] if e["id"] == "hash")["refs"]
     assert refs == ["Section 5.2.2"]
+
+
+def test_the_four_counters_partition_every_framework_total() -> None:
+    """Whatever the mix of statuses, present + gap + review + failed == total.
+
+    This is the property that was missing. Without it a status that fits none
+    of the named counters sits in the gap between them, and the only way to see
+    it is to subtract — which is how the most serious category came to be
+    displayed under the mildest name available.
+    """
+    joined = rc.attach_regulations(
+        [
+            {"id": "timestamp", "status": "fail", "detail": ""},
+            {"id": "license", "status": "warn", "detail": ""},
+            {"id": "hash", "status": "pass", "detail": ""},
+            {"id": "file-properties", "status": "warn", "source": "na", "detail": ""},
+            {"id": "component-creator", "status": "pass", "source": "na", "detail": ""},
+            {"id": "cisa-sbom-timestamp", "status": "pass", "detail": ""},
+            {"id": "cisa-coverage", "status": "warn", "source": "na", "detail": ""},
+        ]
+    )
+    frameworks = rc.crosswalk_summary(joined)["frameworks"]
+    assert frameworks
+    for framework in frameworks:
+        counted = (
+            framework["present"]
+            + framework["gap"]
+            + framework["review"]
+            + framework["failed"]
+        )
+        assert counted == framework["total"], framework["id"]
 
 
 def test_rollup_omits_frameworks_with_no_mapped_checks() -> None:

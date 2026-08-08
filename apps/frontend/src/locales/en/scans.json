@@ -269,13 +269,27 @@
       "tally": {
         "present": "{{present}} / {{total}} present",
         "gap": "{{count}} gaps",
-        "review": "{{count}} need human review"
+        "review": "{{count}} need human review",
+        "failed": "{{count}} failed"
       }
     },
     "errors": {
       "not_found": "No conformance verdict is available for this scan yet.",
       "network": "Could not load the conformance verdict due to a network error.",
       "unknown": "Could not load the conformance verdict."
+    },
+    "headline": "{{mandatoryFailed}} mandatory check(s) failed · {{advisoryShort}} advisory element(s) short · {{needsReview}} need a person",
+    "missing_omitted": "+{{count}} more",
+    "fragment_summary": "How to satisfy this",
+    "cisa": {
+      "title": "2026 SBOM minimum elements",
+      "count": "{{count}} checks",
+      "intro": "Advisory throughout — these never move the verdict above. Measured on every CycloneDX document; the 2026 elements replace the NTIA minimum elements of 2021.",
+      "cluster": {
+        "cisa-metadata": "SBOM metadata",
+        "cisa-component": "Component data",
+        "cisa-practices": "Practices and processes"
+      }
     }
   }
 }

@@ -236,7 +236,14 @@ def test_spdx_json_empty_packages_purl_guarded() -> None:
 # the FE mirror constant (contract test) can rely on the full set.
 # ---------------------------------------------------------------------------
 def test_recognised_format_emits_full_check_catalogue() -> None:
-    ids = {c.id for c in sc.evaluate(_load("real_cyclonedx_small.json")).checks}
+    # Core checks only: a declarative baseline tags its rows with a cluster,
+    # and two of them now attach (the 2026 minimum elements to every CycloneDX
+    # document, G7 to ML-BOMs). CHECK_IDS is the core catalogue.
+    ids = {
+        c.id
+        for c in sc.evaluate(_load("real_cyclonedx_small.json")).checks
+        if c.cluster is None
+    }
     assert ids == set(sc.CHECK_IDS)
 
 
@@ -261,17 +268,22 @@ def test_non_ml_1_7_document_emits_no_g7_checks() -> None:
         specVersion="1.7",
     )
     result = sc.evaluate(raw)
-    assert {c.id for c in result.checks} == set(sc.CHECK_IDS)
+    assert {c.id for c in result.checks if c.cluster is None} == set(sc.CHECK_IDS)
     assert not [c for c in result.checks if c.id.startswith("g7-")]
+    # The 2026 baseline states no condition, so it IS measured here — that is
+    # the difference between the two baselines, and it is worth pinning.
+    assert len([c for c in result.checks if c.id.startswith("cisa-")]) == 23
 
 
 def test_ml_bom_appends_51_advisory_g7_checks() -> None:
     result = sc.evaluate(AIBOM_FIXTURE.read_bytes())
     core = [c for c in result.checks if c.cluster is None]
-    g7_checks = [c for c in result.checks if c.cluster is not None]
+    g7_checks = [c for c in result.checks if c.id.startswith("g7-")]
+    cisa_checks = [c for c in result.checks if c.id.startswith("cisa-")]
     assert {c.id for c in core} == set(sc.CHECK_IDS)
     assert len(g7_checks) == 51
-    assert len(result.checks) == len(sc.CHECK_IDS) + 51
+    assert len(cisa_checks) == 23
+    assert len(result.checks) == len(sc.CHECK_IDS) + 51 + 23
     assert all(c.id.startswith("g7-") for c in g7_checks)
     assert all(not c.required for c in g7_checks)
     assert all(c.status in {"pass", "warn"} for c in g7_checks)
@@ -316,6 +328,11 @@ def test_core_check_as_dict_is_byte_compatible() -> None:
     legacy key set — no new keys leak into persisted rows for non-ML SBOMs."""
     result = sc.evaluate(_load("real_cyclonedx_small.json"))
     for check in result.checks:
+        if check.cluster is not None:
+            # A declarative baseline row, not a core check. Those carry cluster
+            # and source by design; the compatibility claim is about the rows
+            # that existed before any baseline did.
+            continue
         # ``file-properties`` is the one core check that legitimately carries
         # ``source`` ("auto"/"na" — upstream parity: it marks whether any
         # producer inspected the delivered files). Every other core check
