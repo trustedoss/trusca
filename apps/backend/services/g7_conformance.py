@@ -53,34 +53,33 @@ warn "evaluation error". Pure module — no DB / network / env.
 
 from __future__ import annotations
 
-import json
 import re
 from collections.abc import Callable, Iterator
-from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 import structlog
 
-from services.sbom_conformance import Check, sanitize_jsonb_text
+from services.registry_conformance import (
+    RegistrySpec,
+    evaluate_registry,
+)
+from services.registry_conformance import (
+    iter_elements as _iter_registry_elements,
+)
+from services.registry_conformance import (
+    load_registry as _load_registry_file,
+)
+from services.sbom_conformance import Check
 
 log = structlog.get_logger("services.g7_conformance")
 
 _REGISTRY_PATH = Path(__file__).resolve().parent / "g7_registry.json"
 
-# Detail strings — BomLens validate-sbom.sh g7_ai_checks() wording, verbatim.
-_DETAIL_PRESENT = "present"
-_DETAIL_ABSENT = "not present in the SBOM"
-_DETAIL_REVIEW = "requires human review (no automated source)"
+# What this baseline measures, and what it calls it. The evaluator is neutral;
+# these are G7's own (registry_conformance.RegistrySpec).
+_SUBJECT_LABEL = "model component"
 _DETAIL_NO_MODELS = "no machine-learning-model components"
-_DETAIL_ERROR = "evaluation error"
-
-# Evidence clamp — an adversarial SBOM must not balloon the persisted verdict
-# (checks live in a JSONB column): at most 8 items, each cut to 200 chars.
-# ``Check.missing`` reuses the same caps (BomLens caps at MISSING_CAP=50 with
-# no per-item truncation; we clamp tighter — same JSONB posture as evidence).
-_EVIDENCE_MAX_ITEMS = 8
-_EVIDENCE_MAX_CHARS = 200
 
 # v2 g7-model-openness prose fallback — jq:
 # test("open[ _-]?(weight|architecture|data|training)";"i")
@@ -98,27 +97,14 @@ _MAX_WALK_DEPTH = 64
 # Registry loading (metadata single source of truth). Module-level cache is a
 # static vendored file — not env (CLAUDE.md rule #11 concerns config only).
 # ---------------------------------------------------------------------------
-@lru_cache(maxsize=1)
 def load_registry() -> dict[str, Any]:
     """Parse and cache the vendored G7 registry JSON."""
-    with _REGISTRY_PATH.open(encoding="utf-8") as fh:
-        loaded = json.load(fh)
-    if not isinstance(loaded, dict):  # pragma: no cover — vendored file
-        raise ValueError("g7_registry.json must be a JSON object")
-    return loaded
+    return _load_registry_file(_REGISTRY_PATH)
 
 
 def iter_elements() -> list[tuple[str, dict[str, Any]]]:
     """All registry elements as ``(cluster_id, element)`` in document order."""
-    out: list[tuple[str, dict[str, Any]]] = []
-    for cluster in _list(load_registry().get("clusters")):
-        if not isinstance(cluster, dict):
-            continue
-        cluster_id = _str(cluster.get("id"))
-        for element in _list(cluster.get("elements")):
-            if isinstance(element, dict):
-                out.append((cluster_id, element))
-    return out
+    return _iter_registry_elements(_REGISTRY_PATH)
 
 
 def automated_element_ids() -> frozenset[str]:
@@ -766,57 +752,34 @@ _EVIDENCE: dict[str, Callable[[dict[str, Any]], list[str]]] = {
 }
 
 
-def _clamp_evidence(values: list[str]) -> list[str]:
-    """jq ``unique`` (sorted, de-duplicated) + adversarial clamps.
-
-    Each item is truncated to ``_EVIDENCE_MAX_CHARS`` BEFORE the dedupe/sort
-    set is built (a flood of huge values never materialises in memory), then
-    passed through :func:`~services.sbom_conformance.sanitize_jsonb_text` —
-    evidence is verbatim SBOM content, and an embedded NUL would abort the
-    verdict's JSONB persist with a Postgres ``DataError``. Finally capped at
-    ``_EVIDENCE_MAX_ITEMS`` items. ``Check.as_dict`` re-sanitises defensively,
-    but cleaning here keeps the in-memory ``Check.evidence`` safe for any
-    consumer.
-    """
-    prepared: set[str] = set()
-    for value in values:
-        if not value:
-            continue
-        cleaned = sanitize_jsonb_text(value[:_EVIDENCE_MAX_CHARS])
-        if cleaned:
-            prepared.add(cleaned)
-    return sorted(prepared)[:_EVIDENCE_MAX_ITEMS]
-
-
-def _clamp_missing(names: list[str]) -> list[str]:
-    """Clamp a missingPath offender list for the verdict row.
-
-    BomLens fold: ``missing:(._missing[0:$cap])`` — document order, no dedupe
-    (MISSING_CAP=50, no per-item truncation). The port keeps the order but
-    clamps tighter, reusing the evidence caps (8 items × 200 chars), because
-    ``Check.missing`` persists into the same JSONB column and model names are
-    verbatim SBOM content. NUL / control-char cleaning is deliberately NOT
-    done here — ``Check.as_dict`` (the JSONB persist boundary, Phase A F-1)
-    already runs every ``missing[]`` item through ``sanitize_jsonb_text``.
-    """
-    return [n[:_EVIDENCE_MAX_CHARS] for n in names if n][:_EVIDENCE_MAX_ITEMS]
-
-
-def _extract_evidence(element_id: str, doc: dict[str, Any]) -> list[str] | None:
-    """Run the element's evidence extractor (if any), clamped; never raises."""
-    extractor = _EVIDENCE.get(element_id)
-    if extractor is None:
-        return None
-    try:
-        return _clamp_evidence(extractor(doc))
-    except Exception:
-        log.warning("g7_evidence_error", element_id=element_id, exc_info=True)
-        return None
-
-
 # ---------------------------------------------------------------------------
-# Evaluator.
+# Baseline declaration + evaluator entry point.
 # ---------------------------------------------------------------------------
+#: What the G7 baseline is, stated as data for the neutral evaluator. Before
+#: this existed, all four of these lived inside the evaluator: the caller
+#: decided that G7 applied when a model component was present, the loop bound
+#: the model components itself, the wording was a literal, and every element
+#: was advisory by a literal too. A second baseline could not be expressed
+#: while that was true.
+G7_SPEC = RegistrySpec(
+    name="g7",
+    registry_path=_REGISTRY_PATH,
+    predicates=_PREDICATES,
+    missing=_MISSING,
+    evidence=_EVIDENCE,
+    subject=_ml_components,
+    subject_label=_SUBJECT_LABEL,
+    empty_subject_detail=_DETAIL_NO_MODELS,
+    # G7 describes AI systems, so it is measured on documents that carry a
+    # machine-learning-model component and skipped on the rest. Baselines that
+    # apply to all software leave this alone.
+    applies_when=lambda doc: bool(_ml_components(doc)),
+    # The G7 text defines no per-role required matrix (see the registry note),
+    # so every element is advisory and none moves the core verdict.
+    default_required=False,
+)
+
+
 def evaluate_g7(doc: dict[str, Any]) -> list[Check]:
     """Evaluate every G7 element against ``doc`` (a parsed CycloneDX dict).
 
@@ -824,85 +787,7 @@ def evaluate_g7(doc: dict[str, Any]) -> list[Check]:
     registry order, all ``required=False`` and tagged with their cluster /
     source / role. Never raises on an adversarial document.
 
-    Evidence is extracted on pass only — a deliberate divergence from the
-    BomLens fold (which computes ``_ev`` unconditionally): a warn row's
-    partial evidence would change the persisted shape of existing rows for
-    no consumer, and the offender list (``missing``) already tells the story.
+    The loop itself is :func:`services.registry_conformance.evaluate_registry`;
+    what makes it G7 is :data:`G7_SPEC`.
     """
-    checks: list[Check] = []
-    # $models — bound once per run, like the BomLens jq program.
-    models = _ml_components(doc)
-    for cluster_id, element in iter_elements():
-        element_id = _str(element.get("id"))
-        label = _str(element.get("label"))
-        source = _str(element.get("source")) or None
-        role = _str(element.get("role")) or None
-
-        missing_fn = _MISSING.get(element_id)
-        predicate = _PREDICATES.get(element_id)
-        evidence: list[str] | None = None
-        missing: list[str] = []
-        if missing_fn is not None:
-            # missingPath — per-model coverage (models cluster, registry v2).
-            total = len(models)
-            try:
-                absent = missing_fn(models)
-            except Exception:
-                # missingPath ports are written to never raise; this is the
-                # last-line defence against a hostile shape a guard missed.
-                log.warning(
-                    "g7_missing_error", element_id=element_id, exc_info=True
-                )
-                status, detail = "warn", _DETAIL_ERROR
-            else:
-                if total == 0:
-                    # Defensive: sbom_conformance.evaluate only calls this
-                    # evaluator when an ML component exists, but the module
-                    # is pure and may be handed any document.
-                    status, detail = "warn", _DETAIL_NO_MODELS
-                elif not absent:
-                    # BomLens fold wording verbatim: "\($t)/\($t) model
-                    # component(s)".
-                    status = "pass"
-                    detail = f"{total}/{total} model component(s)"
-                    evidence = _extract_evidence(element_id, doc)
-                else:
-                    status = "warn"
-                    detail = f"{total - len(absent)}/{total} model component(s)"
-                    missing = _clamp_missing(absent)
-        elif predicate is None:
-            # cdxPath AND missingPath null (source == "na") — no automated
-            # source.
-            status, detail = "warn", _DETAIL_REVIEW
-        else:
-            try:
-                satisfied = bool(predicate(doc))
-            except Exception:
-                # Predicates are written to never raise; this is the last-line
-                # defence against a hostile SBOM shape a guard missed.
-                log.warning(
-                    "g7_predicate_error", element_id=element_id, exc_info=True
-                )
-                status, detail = "warn", _DETAIL_ERROR
-            else:
-                if satisfied:
-                    status, detail = "pass", _DETAIL_PRESENT
-                    evidence = _extract_evidence(element_id, doc)
-                else:
-                    status, detail = "warn", _DETAIL_ABSENT
-
-        checks.append(
-            Check(
-                id=element_id,
-                label=label,
-                required=False,
-                status=status,
-                detail=detail,
-                missing=missing,
-                cluster=cluster_id,
-                source=source,
-                role=role,
-                evidence=evidence,
-            )
-        )
-    return checks
+    return evaluate_registry(doc, G7_SPEC)
