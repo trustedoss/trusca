@@ -782,10 +782,11 @@ async def test_get_conformance_returns_verdict(client) -> None:
     assert core["cluster"] is None and core["evidence"] is None
     # Regulatory crosswalk joined at read time (services.regulation_crosswalk):
     # persisted rows never carry ``regulations``, the endpoint attaches them.
-    assert {r["framework"] for r in core["regulations"]} == {
-        "bsi-tr-03183-2",
-        "us-sbom-minimum-elements",
-    }
+    # `purl` is one of TRUSCA's own format checks and maps to BSI alone. The US
+    # framework moved to the 2026 minimum elements, whose ids are `cisa-*`: the
+    # 2021 mappings sat on the format checks, so leaving them there would count
+    # one 2026 requirement once per format row that used to carry it.
+    assert {r["framework"] for r in core["regulations"]} == {"bsi-tr-03183-2"}
     assert all(r["short"] and r["ref"] and r["basis"] for r in core["regulations"])
     # g7-model-id has no crosswalk entry → empty list, not null / missing.
     assert g7["regulations"] == []
@@ -796,7 +797,9 @@ async def test_get_conformance_returns_verdict(client) -> None:
     assert bsi["total"] == 2  # purl + hash map to BSI
     assert bsi["present"] == 1  # purl passes
     assert bsi["gap"] == 1  # hash warns (automated source)
-    assert frameworks["us-sbom-minimum-elements"]["total"] == 1
+    # This verdict is a hand-built two-check row set with no `cisa-*` entries,
+    # so the US framework has nothing mapped and is omitted from the rollup.
+    assert "us-sbom-minimum-elements" not in frameworks
     # No AI framework rows — nothing in this verdict maps to them.
     assert "eu-ai-act" not in frameworks
 
