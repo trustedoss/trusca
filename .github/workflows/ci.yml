@@ -9,6 +9,10 @@ on:
     # still trigger the full pipeline — `paths-ignore` only fires when EVERY
     # changed path matches one of these patterns. If you add a new path here,
     # mirror it under `pull_request` below.
+    # Do NOT add `docs-site/**` or `**/*.md` here. A backend test pins the
+    # crosswalk disclaimer the API serves to the copy quoted in the SBOM upload
+    # guide; skipping CI on doc-only changes would let the guide be reworded
+    # out of sync with the payload without anything failing.
     paths-ignore:
       - "docs/**"
       - "*.md"
@@ -19,6 +23,10 @@ on:
       - "LICENSE"
       - ".gitignore"
   pull_request:
+    # Do NOT add `docs-site/**` or `**/*.md` here. A backend test pins the
+    # crosswalk disclaimer the API serves to the copy quoted in the SBOM upload
+    # guide; skipping CI on doc-only changes would let the guide be reworded
+    # out of sync with the payload without anything failing.
     paths-ignore:
       - "docs/**"
       - "*.md"

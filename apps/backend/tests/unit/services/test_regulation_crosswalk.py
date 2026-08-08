@@ -14,6 +14,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from services import regulation_crosswalk as rc
 from services import sbom_conformance as sc
 
@@ -78,6 +80,29 @@ def test_disclaimers_present_in_both_languages() -> None:
     vendored = _vendored()
     assert vendored["disclaimer"].strip()
     assert vendored["disclaimer_ko"].strip()
+
+
+#: Every claim the disclaimer has to make, as (English, Korean) wording. Both
+#: strings are shown to users — one to each audience — so a sentence added to
+#: one and not the other silently leaves that audience with a weaker notice.
+#: Presence-only assertions cannot see that; this pairs the two.
+_DISCLAIMER_CLAIMS = [
+    ("EU AI Act", "EU 인공지능법"),
+    ("Korean AI Framework Act", "AI 기본법"),
+    ("EU Cyber Resilience Act", "EU 사이버복원력법"),
+    ("any other regulation", "어떤 규제"),
+    ("bias and fairness assessment", "공정성·편향 평가"),
+    ("risk management", "위험관리"),
+    ("human oversight", "인간 감독"),
+    ("separate documents", "별도 문서"),
+]
+
+
+@pytest.mark.parametrize(("english", "korean"), _DISCLAIMER_CLAIMS)
+def test_both_disclaimers_make_the_same_claims(english: str, korean: str) -> None:
+    vendored = _vendored()
+    assert english in vendored["disclaimer"], f"English disclaimer dropped: {english}"
+    assert korean in vendored["disclaimer_ko"], f"Korean disclaimer dropped: {korean}"
 
 
 # ---------------------------------------------------------------------------

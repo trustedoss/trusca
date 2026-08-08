@@ -179,7 +179,9 @@ An excerpt for the example scan above (elements truncated to two):
 The join happens at read time against a vendored catalogue, so verdicts stored by earlier scans pick up mapping updates without a re-scan. A failed mandatory check counts toward a framework's `total` only — a mandatory failure already fails the whole submission, and the crosswalk is not a second verdict.
 
 :::note Not a compliance determination
-The crosswalk is a **documentation-preparation aid**. TRUSCA does not certify or determine compliance with the EU Cyber Resilience Act, the EU AI Act, the Korean AI Framework Act, or any other regulation. It covers only the documentation elements an SBOM can carry; obligations an SBOM cannot express — bias and fairness assessment, risk management, human oversight — are out of its scope and must be met through separate documents. The payload carries this disclaimer verbatim, and interpreting the rollup against a specific product's legal obligations is a person's job.
+The crosswalk is a **documentation-preparation aid**. As shipped, the conformance payload carries this disclaimer verbatim:
+
+TRUSCA does not certify or determine compliance with the EU AI Act, the Korean AI Framework Act, the EU Cyber Resilience Act, or any other regulation. This crosswalk covers only the documentation elements an SBOM can carry; obligations that an SBOM cannot express — bias and fairness assessment, risk management, human oversight — are out of its scope and must be met through separate documents. It makes documentation gaps visible so a person can prepare; interpreting it against a specific product's legal obligations is a person's job.
 :::
 
 ## Verify it worked

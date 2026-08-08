@@ -3,12 +3,22 @@
 """
 Regulatory crosswalk for SBOM conformance checks — join + per-framework rollup.
 
-Vendored data: ``regulation_crosswalk.json`` is a VERBATIM copy of the SK
-Telecom BomLens ``docker/lib/regulation-crosswalk.json`` (v1.8.3 line, PR
-sktelecom/bomlens#462). Refresh procedure: re-copy the upstream file and
-diff — a contract test pins the structural invariants (map keys resolve to
-known check ids, every mapped framework is declared) so an upstream rename
-fails loudly here instead of silently dropping references.
+Vendored data: ``regulation_crosswalk.json`` began as a copy of the SK Telecom
+BomLens ``docker/lib/regulation-crosswalk.json`` (v1.8.3 line, PR
+sktelecom/bomlens#462) and is now ADAPTED, not verbatim — the user-facing
+disclaimers name TRUSCA, because TRUSCA is what serves them to its users, and
+the ``note`` points at TRUSCA paths. Framework definitions and the
+check-to-obligation map remain upstream's. The changes are stated in
+``THIRD_PARTY_NOTICES.md`` per Apache-2.0 §4(b).
+
+Refresh procedure: do NOT re-copy the upstream file, which would reintroduce
+upstream's product name into strings TRUSCA serves. Diff the upstream file
+against this one and port the substantive changes (new frameworks, new map
+entries, revised ``basis`` wording) by hand. Two contract tests bound the
+result: the structural invariants (map keys resolve to known check ids, every
+mapped framework is declared) so an upstream rename fails loudly here instead
+of silently dropping references, and ``test_vendored_data_naming.py`` so a
+re-copy that drags upstream's product name back in fails at once.
 
 This is a faithful Python port of two jq passes in BomLens
 ``validate-sbom.sh``:

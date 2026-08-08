@@ -23,9 +23,14 @@ listed here. Each entry states exactly which files or binaries it covers.
 - **License**: Apache License, Version 2.0
 
 Attribution notice reproduced from the upstream `NOTICE` file, per Apache-2.0
-§4(d). Only the portion pertaining to the material TRUSCA derives is reproduced;
-the upstream notices about tools bundled in *BomLens's own* Docker images do not
-pertain to any part of TRUSCA and are omitted:
+§4(d), as it stood at `sbom-tools` v1.8.3 — the revision the crosswalk was taken
+from; the project has since been renamed BomLens and its NOTICE now opens with
+that name. Only the portion pertaining to the material TRUSCA derives is
+reproduced. Two kinds of upstream notice are omitted: those covering tools
+bundled in *BomLens's own* Docker images, which pertain to no part of TRUSCA,
+and those covering datasets that TRUSCA does not receive from BomLens but
+fetches from the origin itself and attributes independently below
+(endoflife.date, OSV).
 
 ```
 sbom-tools
@@ -41,9 +46,21 @@ revision is the contract, not tracking upstream's HEAD.
 
 | TRUSCA path | Upstream path |
 |---|---|
-| `apps/backend/services/g7_registry.json` | `docker/lib/g7-registry.json` (v2, sbom-tools#306) |
 | `apps/backend/services/eol/eol_purl_map.json` | `docker/lib/eol-purl-map.json` |
-| `apps/backend/services/regulation_crosswalk.json` | `docker/lib/regulation-crosswalk.json` |
+
+**Data files adapted from upstream.** These began as copies and carry upstream's
+structure, element definitions and interpretive judgements, but TRUSCA has
+modified them. Per Apache-2.0 §4(b), the changes are stated here.
+
+| TRUSCA path | Upstream path | Changes |
+|---|---|---|
+| `apps/backend/services/g7_registry.json` | `docker/lib/g7-registry.json` (v2, sbom-tools#306) | Documentation `note` rewritten: it named upstream's jq evaluator and two of its shell scripts, and now describes TRUSCA's Python evaluator. Element definitions unchanged. |
+| `apps/backend/services/regulation_crosswalk.json` | `docker/lib/regulation-crosswalk.json` (v1.8.3 line, sktelecom/bomlens#462) | Product name changed to TRUSCA in the user-facing `disclaimer` / `disclaimer_ko` and in the documentation `note`, since TRUSCA is what serves these strings to its own users. `disclaimer_ko` was additionally reworded for Korean style (same meaning, one clause restructured). The `note` was repointed at TRUSCA paths. Framework definitions and the check-to-obligation map are unchanged. |
+
+The `bomlens:*` property names these files match on are upstream's wire format,
+not TRUSCA branding: they identify properties written by upstream tooling, and
+TRUSCA reads them so that an SBOM produced by BomLens is interpreted correctly.
+They are deliberately left as-is.
 
 **Logic hand-ported** from upstream jq, shell, and TypeScript implementations.
 The ports are original TRUSCA code, but the semantics, check definitions, and

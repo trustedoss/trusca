@@ -7,6 +7,19 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Fixed
+- **The regulatory crosswalk's disclaimer named the wrong product.** The
+  conformance panel's legal notice began "BomLens does not certify or determine
+  compliance…" — the name of the sibling project the crosswalk data was
+  vendored from, not the product showing it. It now reads TRUSCA, in both
+  languages. Installations on 0.20.x still show the old wording until they
+  upgrade. Attribution to the upstream project is unaffected and stays where
+  Apache-2.0 §4(d) puts it, in `THIRD_PARTY_NOTICES.md`; the changes made to
+  the vendored files are now stated there per §4(b). A guard test walks every
+  vendored data file so a re-copy cannot quietly bring the name back, and the
+  disclaimer the API serves is now pinned to the copy quoted in the SBOM upload
+  guide — the two had drifted while the guide promised they matched.
+
 ## [0.20.1] — 2026-08-05
 
 ### Added
