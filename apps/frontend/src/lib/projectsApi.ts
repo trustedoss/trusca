@@ -498,6 +498,10 @@ export const SBOM_CHECK_IDS = [
   "component-filename",
   "artifact-uri",
   "file-properties",
+  // File components sit outside the package denominators, so they are asked
+  // for the identifier they can carry. Like the regulatory checks above, its
+  // label comes from the backend rather than the i18n catalogue.
+  "file-hash",
 ] as const;
 
 export type SbomCheckId = (typeof SBOM_CHECK_IDS)[number];

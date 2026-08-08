@@ -133,7 +133,9 @@ curl -H "Authorization: Bearer $TRUSTEDOSS_API_KEY" \
 | `artifact-uri` | `vcs` 또는 `distribution` external reference(소스·배포 URI)를 가진 컴포넌트. | 패키지 컴포넌트. |
 | `file-properties` | `bsi:component:executable` / `bsi:component:archive` / `bsi:component:structured` 세 속성을 모두 가진 컴포넌트. | 패키지 컴포넌트. |
 
-"패키지 컴포넌트"는 `"type": "data"`를 제외한 모든 컴포넌트입니다(위의 패키지 0개 항목 참고). `file-properties`에는 동작이 하나 더 있습니다. 문서의 **어느** 컴포넌트에도 세 속성이 없으면, 이 공급망에서 전달 파일을 검사한 생산자가 없었다는 뜻이므로 검사 결과는 `requires inspecting the delivered files (no automated source in this scan)`에 `source: "na"`가 붙습니다 — 커버리지 미달이 아니라 사람 검토 항목으로 읽으라는 표시입니다.
+"패키지 컴포넌트"는 `"type": "data"`와 `"type": "file"`을 제외한 모든 컴포넌트입니다. 둘 다 패키지 질문에 답할 수 없습니다. 디스크의 파일에는 패키지 버전이 없고 purl에도 파일을 위한 타입이 없기 때문입니다. 이들을 세면 담을 수 없는 필드가 부족하다고 보고하게 됩니다. 파일 항목에는 대신 담을 수 있는 식별자를 묻는 권고 검사 `file-hash`가 적용됩니다. 커버리지 상세에는 몇 개를 셌고 몇 개가 제외됐는지 함께 적습니다. 백분율만으로는 두 개를 대상으로 잰 것인지 쉰 개를 대상으로 잰 것인지 알 수 없기 때문입니다.
+
+이 판정은 품질 기준이지 문서가 변조되지 않았다는 증거가 아닙니다. SBOM이 나열한 컴포넌트에 대해 무엇을 말하고 있는지를 볼 뿐, 아예 빠진 컴포넌트나 패키지 검사를 피하려고 파일로 타입을 바꾼 컴포넌트는 알아낼 수 없습니다. 컴포넌트가 전부 제외 대상인 문서는 분모가 비었다고 통과하지 않습니다. 패키지를 하나도 식별하지 못한 문서이고 필수 검사는 패키지가 있어야 답할 수 있는 질문이므로, 두 검사 모두 경고로 낮춥니다.
 
 ### 규제 대응표(crosswalk)
 

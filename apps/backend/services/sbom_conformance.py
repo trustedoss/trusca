@@ -56,6 +56,26 @@ from typing import Any
 # frontend mirror constant (a contract test asserts set equality — CLAUDE.md
 # §2 rule 2). Do not rename an id without updating the FE mirror + test.
 # ---------------------------------------------------------------------------
+#: Component types that cannot answer a package question, so they sit outside
+#: the mandatory coverage denominators.
+_UNMEASURABLE_TYPES: frozenset[str] = frozenset({"data", "file"})
+
+
+def _str_type(component: dict[str, Any]) -> str:
+    """A component's declared type, or "" for any shape that is not a string.
+
+    A hostile document may carry ``"type": {}``; set membership on an
+    unhashable value raises, and this module promises never to raise on
+    malformed input. An unrecognised type stays IN the package denominator —
+    fail-closed, since the exclusion is what relaxes a mandatory check.
+    """
+    value = component.get("type")
+    return value if isinstance(value, str) else ""
+
+
+def _is_unmeasurable(component: dict[str, Any]) -> bool:
+    return _str_type(component) in _UNMEASURABLE_TYPES
+
 CHECK_IDS: tuple[str, ...] = (
     "timestamp",
     "tools",
@@ -75,6 +95,9 @@ CHECK_IDS: tuple[str, ...] = (
     "component-filename",
     "artifact-uri",
     "file-properties",
+    # File components are excluded from the package denominators above, so they
+    # are asked for the identifier they can carry instead.
+    "file-hash",
 )
 
 # The five regulatory field checks are VERDICT-NEUTRAL by design (upstream
@@ -299,17 +322,30 @@ def _cdx_checks(doc: dict[str, Any]) -> _ScoreResult:
         n_tools = 0
 
     def _name(c: dict[str, Any]) -> str:
-        return c.get("name") or c.get("purl") or "(unnamed)"
+        # str() rather than the raw value: a component may carry a non-string
+        # name, and every string produced here reaches the JSONB persist
+        # boundary, whose sanitiser iterates characters. A number there took
+        # the whole ingest down rather than costing the row one bad name.
+        return str(c.get("name") or c.get("purl") or "(unnamed)")
 
     # name+version, purl and the regulatory per-component fields are PACKAGE
-    # questions, so they are measured over ``pkg`` (everything except type
-    # "data") rather than every component (BomLens #456/#457 parity). A data
-    # component — a training dataset, say — has no package version, no purl
-    # type, no filename or artifact URI to carry; counting them would fail an
-    # otherwise complete ML-BOM for fields that cannot exist. License and
-    # checksum coverage still count them, because those they can carry.
-    pkg = [c for c in components if c.get("type") != "data"]
+    # questions, so they are measured over ``pkg`` rather than every component
+    # (BomLens #456/#457/#636 parity). Two component types cannot answer them
+    # and are excluded: a "data" component — a training dataset, say — has no
+    # package version and no purl type, and neither has a "file" component,
+    # because purl defines no type for a file on disk. Counting either fails a
+    # document for fields it could not carry: upstream measured a firmware SBOM
+    # whose packages were all identified at 10% PURL coverage because fourteen
+    # file entries sat in the denominator, and 18% once they did not. License
+    # and checksum coverage still count them, because those they can carry.
+    pkg = [c for c in components if not _is_unmeasurable(c)]
     ptot = len(pkg)
+    files = [c for c in components if _str_type(c) == "file"]
+    # A file is still expected to be identified — by the identifier it CAN
+    # carry. Reported as a recommendation rather than counted against the
+    # package fields.
+    files_hashed = sum(1 for c in files if _as_list(c.get("hashes")))
+    miss_file_hash = [_name(c) for c in files if not _as_list(c.get("hashes"))]
 
     miss_nv = [_name(c) for c in pkg if not c.get("name") or not c.get("version")]
     miss_purl = [c.get("name") or "(unnamed)" for c in pkg if not c.get("purl")]
@@ -388,16 +424,34 @@ def _cdx_checks(doc: dict[str, Any]) -> _ScoreResult:
         zero subjects is "nothing to measure", NOT "0%, the worst score"."""
         return "no packages to measure" if d == 0 else f"{_pct(n, d)}% ({n}/{d})"
 
-    # Anti-evasion (security review, low severity, this branch): typing EVERY
-    # component "data" would zero the package denominator and slide a shell
-    # SBOM past the mandatory name-version / purl checks on the
-    # empty-denominator guard. An all-dataset document is not a plausible
-    # ML-BOM (the model itself is not type "data"), so that shape downgrades
-    # both checks to warn. Deliberate divergence from upstream (BomLens
-    # passes it): a report-only CLI can afford that, a governance badge
-    # cannot.
-    data_only = tot > 0 and ptot == 0
-    _DATA_ONLY_DETAIL = 'all components are typed "data" — nothing to measure'
+    # Anti-evasion (security review, low severity). Typing every component
+    # "data" — or, since the exclusion widened, every component "file" — zeroes
+    # the package denominator and would slide a shell SBOM past the mandatory
+    # name-version / purl checks on the empty-denominator guard. Neither shape
+    # is a plausible submission of the kind those checks exist to judge: an
+    # all-dataset document is not an ML-BOM (the model itself is not type
+    # "data"), and a document that recovered nothing but a file listing has
+    # identified no package at all. Both downgrade the two checks to warn.
+    #
+    # Deliberate divergence from upstream, which passes both: a report-only CLI
+    # can afford that, a governance badge cannot. Widening the exclusion
+    # without widening this guard would have moved the evasion from one type to
+    # another rather than closing it.
+    no_packages = tot > 0 and ptot == 0
+    # How many components sat outside the package denominator. A reviewer
+    # cannot otherwise see that "100% PURL coverage" was measured over two of
+    # fifty-two components — re-typing real packages as files is not something
+    # this check can detect, so it at least shows the shape it measured.
+    excluded_count = tot - ptot
+    _MEASURED = (
+        f" [{ptot} package component(s) measured, {excluded_count} file/data excluded]"
+        if excluded_count
+        else ""
+    )
+    _DATA_ONLY_DETAIL = (
+        "no package components to measure — every component is typed "
+        '"data" or "file"'
+    )
 
     checks = [
         Check("timestamp", "Timestamp (metadata.timestamp)", True,
@@ -408,14 +462,14 @@ def _cdx_checks(doc: dict[str, Any]) -> _ScoreResult:
               "pass" if top.get("name") and top.get("version") else "fail",
               f"{top.get('name') or '(none)'}@{top.get('version') or ''}"),
         Check("name-version", "Component name+version coverage (100%)", True,
-              "warn" if data_only else ("pass" if not miss_nv else "fail"),
-              _DATA_ONLY_DETAIL if data_only
-              else f"{ptot - len(miss_nv)}/{ptot}", _cap(miss_nv)),
+              "warn" if no_packages else ("pass" if not miss_nv else "fail"),
+              _DATA_ONLY_DETAIL if no_packages
+              else f"{ptot - len(miss_nv)}/{ptot}{_MEASURED}", _cap(miss_nv)),
         Check("purl", f"PURL coverage (>= {purlmin}%)", True,
-              "warn" if data_only
+              "warn" if no_packages
               else ("pass" if ptot == 0 or purl_pct >= purlmin else "fail"),
-              _DATA_ONLY_DETAIL if data_only
-              else _cov(purl_ok, ptot), _cap(miss_purl)),
+              _DATA_ONLY_DETAIL if no_packages
+              else _cov(purl_ok, ptot) + _MEASURED, _cap(miss_purl)),
         Check("no-generic", "No pkg:generic / custom PURL (0)", True,
               "pass" if not generic else "fail",
               f"{len(generic)} offending", _cap([str(g) for g in generic])),
@@ -449,6 +503,18 @@ def _cdx_checks(doc: dict[str, Any]) -> _ScoreResult:
         # the bsi:component:* trio somewhere, "na" (human review) when no
         # producer in this chain inspected the delivered files — the check
         # then reads as a review item, not a coverage failure.
+        # Files are excluded from the package denominators, so they are asked
+        # for what they CAN carry. Recommended, not mandatory: a document with
+        # no file components answers it trivially, and one whose files are all
+        # hashed has said everything a file entry can say about itself. Unlike
+        # the regulatory field checks it DOES count toward n_warn, same as
+        # license and hash coverage — a file entry with no hash carries no
+        # identifier at all, which is worth a reader's attention.
+        Check("file-hash",
+              "File components carrying a hash (recommended)", False,
+              "pass" if not files or not miss_file_hash else "warn",
+              "no file components" if not files
+              else _cov(files_hashed, len(files)), _cap(miss_file_hash)),
         Check("file-properties",
               "Delivered-file properties (executable/archive/structured)", False,
               "pass" if ptot == 0 or _pct(fprops_ok, ptot) >= fieldmin else "warn",
