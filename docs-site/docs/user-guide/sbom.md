@@ -47,6 +47,17 @@ detected for it:
   release: if the scan was submitted with a `release` label (e.g. `v1.2.3`),
   that label is used; otherwise the scan id is used as a stable fallback.
 
+- **Document metadata** — every export records what the 2026 SBOM minimum
+  elements ask an SBOM to state about itself: the generation context
+  (`metadata.lifecycles` — `pre-build` for a source scan, `post-build` for a
+  container scan; an ingested supplier document is re-exported without a phase,
+  because converting someone else's document does not make us its author), the
+  tool and its version, the author when [`SBOM_AUTHOR`](../reference/env-variables.md)
+  declares one, and a document-level statement that any empty field is one this
+  scan could not establish rather than one being withheld. A component whose
+  version could not be established carries that marking instead of a version
+  string, so a reader is not shown a placeholder as if it were an answer.
+
 ## Byte-stable output
 
 All four exports are **byte-stable**: re-exporting the same scan produces identical bytes. This makes diffing, signing, and caching trivial.

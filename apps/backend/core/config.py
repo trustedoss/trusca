@@ -1101,6 +1101,20 @@ def sbom_download_max_bytes() -> int:
     return int(os.getenv("SBOM_DOWNLOAD_MAX_BYTES", str(64 * 1024 * 1024)))
 
 
+def sbom_author() -> str:
+    """The entity that creates the SBOM data, for the SBOM author element.
+
+    The 2026 SBOM minimum elements ask an SBOM to name its author — the entity
+    operating the tool, which nothing here can discover. So it is declared, not
+    guessed, and left unset means the field is omitted from the export rather
+    than filled with a placeholder. A placeholder would satisfy the element
+    while telling a recipient nothing, which is worse than an honest gap.
+
+    Read at call time (CLAUDE.md core rule #11). Not a secret.
+    """
+    return (os.getenv("SBOM_AUTHOR") or "").strip()
+
+
 def sbom_ingest_max_bytes() -> int:
     """Hard ceiling on an externally-ingested CycloneDX SBOM upload.
 
