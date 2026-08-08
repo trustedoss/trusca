@@ -234,7 +234,8 @@
       "no-generic": "No generic packages",
       "transitive": "Transitive dependencies",
       "license": "Declared licenses",
-      "hash": "File hashes"
+      "hash": "File hashes",
+      "file-hash": "File hash coverage"
     },
     "missing_more": "+{{count}} more",
     "g7": {

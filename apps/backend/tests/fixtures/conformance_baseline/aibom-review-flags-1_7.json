@@ -25,7 +25,7 @@
       "status": "pass"
     },
     {
-      "detail": "2/2",
+      "detail": "2/2 [2 package component(s) measured, 1 file/data excluded]",
       "id": "name-version",
       "label": "Component name+version coverage (100%)",
       "missing": [],
@@ -33,7 +33,7 @@
       "status": "pass"
     },
     {
-      "detail": "100% (2/2)",
+      "detail": "100% (2/2) [2 package component(s) measured, 1 file/data excluded]",
       "id": "purl",
       "label": "PURL coverage (>= 90%)",
       "missing": [],
@@ -103,6 +103,14 @@
       "missing": [],
       "required": false,
       "status": "warn"
+    },
+    {
+      "detail": "no file components",
+      "id": "file-hash",
+      "label": "File components carrying a hash (recommended)",
+      "missing": [],
+      "required": false,
+      "status": "pass"
     },
     {
       "detail": "requires inspecting the delivered files (no automated source in this scan)",

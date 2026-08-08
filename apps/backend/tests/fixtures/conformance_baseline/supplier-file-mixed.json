@@ -1,23 +1,23 @@
 {
   "checks": [
     {
-      "detail": "2026-06-10T12:00:00Z",
+      "detail": "",
       "id": "timestamp",
       "label": "Timestamp (metadata.timestamp)",
       "missing": [],
       "required": true,
-      "status": "pass"
+      "status": "fail"
     },
     {
-      "detail": "1 tool(s)",
+      "detail": "0 tool(s)",
       "id": "tools",
       "label": "Tool info (metadata.tools)",
       "missing": [],
       "required": true,
-      "status": "pass"
+      "status": "fail"
     },
     {
-      "detail": "ingest-fixture-app@0.0.0",
+      "detail": "supplier-rootfs@1.0.0",
       "id": "top-component",
       "label": "Top-level component name+version",
       "missing": [],
@@ -25,7 +25,7 @@
       "status": "pass"
     },
     {
-      "detail": "4/4",
+      "detail": "2/2 [2 package component(s) measured, 6 file/data excluded]",
       "id": "name-version",
       "label": "Component name+version coverage (100%)",
       "missing": [],
@@ -33,7 +33,7 @@
       "status": "pass"
     },
     {
-      "detail": "100% (4/4)",
+      "detail": "100% (2/2) [2 package component(s) measured, 6 file/data excluded]",
       "id": "purl",
       "label": "PURL coverage (>= 90%)",
       "missing": [],
@@ -41,31 +41,33 @@
       "status": "pass"
     },
     {
-      "detail": "0 offending",
+      "detail": "1 offending",
       "id": "no-generic",
       "label": "No pkg:generic / custom PURL (0)",
-      "missing": [],
+      "missing": [
+        "pkg:generic/config@1.0"
+      ],
       "required": true,
-      "status": "pass"
+      "status": "fail"
     },
     {
-      "detail": "5 edge(s)",
+      "detail": "0 edge(s)",
       "id": "transitive",
       "label": "Transitive dependencies (graph edges)",
       "missing": [],
       "required": true,
-      "status": "pass"
+      "status": "fail"
     },
     {
-      "detail": "100% (4/4)",
+      "detail": "0% (0/8)",
       "id": "license",
       "label": "License coverage (>= 80%, recommended)",
       "missing": [],
       "required": false,
-      "status": "pass"
+      "status": "warn"
     },
     {
-      "detail": "0% (0/4)",
+      "detail": "0% (0/8)",
       "id": "hash",
       "label": "Hash coverage (>= 50%, recommended)",
       "missing": [],
@@ -73,7 +75,7 @@
       "status": "warn"
     },
     {
-      "detail": "0% (0/4)",
+      "detail": "0% (0/8)",
       "id": "hash-algorithm",
       "label": "SHA-512 checksum coverage (>= 80%, recommended)",
       "missing": [],
@@ -81,7 +83,7 @@
       "status": "warn"
     },
     {
-      "detail": "0% (0/4)",
+      "detail": "0% (0/2)",
       "id": "component-creator",
       "label": "Component creator coverage (>= 80%, recommended)",
       "missing": [],
@@ -89,7 +91,7 @@
       "status": "warn"
     },
     {
-      "detail": "0% (0/4)",
+      "detail": "0% (0/2)",
       "id": "component-filename",
       "label": "Component filename coverage (>= 80%, recommended)",
       "missing": [],
@@ -97,7 +99,7 @@
       "status": "warn"
     },
     {
-      "detail": "0% (0/4)",
+      "detail": "0% (0/2)",
       "id": "artifact-uri",
       "label": "Source or distribution URI coverage (>= 80%, recommended)",
       "missing": [],
@@ -105,12 +107,19 @@
       "status": "warn"
     },
     {
-      "detail": "no file components",
+      "detail": "0% (0/6)",
       "id": "file-hash",
       "label": "File components carrying a hash (recommended)",
-      "missing": [],
+      "missing": [
+        "usr/bin/openssl",
+        "pkg:generic/config@1.0",
+        "(unnamed)",
+        "(unnamed)",
+        "(unnamed)",
+        "(unnamed)"
+      ],
       "required": false,
-      "status": "pass"
+      "status": "warn"
     },
     {
       "detail": "requires inspecting the delivered files (no automated source in this scan)",
@@ -173,33 +182,33 @@
     },
     {
       "cluster": "cisa-metadata",
-      "detail": "present",
+      "detail": "not present in the SBOM",
       "id": "cisa-sbom-timestamp",
       "label": "SBOM timestamp",
       "missing": [],
       "required": false,
       "source": "auto",
-      "status": "pass"
+      "status": "warn"
     },
     {
       "cluster": "cisa-metadata",
-      "detail": "present",
+      "detail": "not present in the SBOM",
       "id": "cisa-sbom-tool-name",
       "label": "SBOM tool name",
       "missing": [],
       "required": false,
       "source": "auto",
-      "status": "pass"
+      "status": "warn"
     },
     {
       "cluster": "cisa-metadata",
-      "detail": "present",
+      "detail": "not present in the SBOM",
       "id": "cisa-sbom-tool-version",
       "label": "SBOM tool version",
       "missing": [],
       "required": false,
       "source": "auto",
-      "status": "pass"
+      "status": "warn"
     },
     {
       "cluster": "cisa-metadata",
@@ -213,35 +222,51 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "5/5 component(s)",
+      "detail": "4/9 component(s)",
       "id": "cisa-component-name",
       "label": "Component name",
-      "missing": [],
+      "missing": [
+        "pkg:generic/config@1.0",
+        "(unnamed)",
+        "(unnamed)",
+        "(unnamed)",
+        "(unnamed)"
+      ],
       "required": false,
       "source": "auto",
-      "status": "pass"
+      "status": "warn"
     },
     {
       "cluster": "cisa-component",
-      "detail": "5/5 component(s)",
+      "detail": "3/9 component(s)",
       "id": "cisa-component-version",
       "label": "Component version",
-      "missing": [],
+      "missing": [
+        "usr/bin/openssl",
+        "(unnamed)",
+        "(unnamed)",
+        "(unnamed)",
+        "(unnamed)",
+        "(unnamed)"
+      ],
       "required": false,
       "source": "auto",
-      "status": "pass"
+      "status": "warn"
     },
     {
       "cluster": "cisa-component",
-      "detail": "0/5 component(s)",
+      "detail": "0/9 component(s)",
       "id": "cisa-component-producer",
       "label": "Component producer",
       "missing": [
-        "ingest-fixture-app",
-        "lodash",
-        "minimist",
-        "conditional-lib",
-        "jinja2"
+        "supplier-rootfs",
+        "openssl",
+        "zlib",
+        "usr/bin/openssl",
+        "(unnamed)",
+        "(unnamed)",
+        "(unnamed)",
+        "(unnamed)"
       ],
       "required": false,
       "source": "auto",
@@ -249,21 +274,35 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "5/5 component(s)",
+      "detail": "3/9 component(s)",
       "id": "cisa-component-identifiers",
       "label": "Component identifiers",
-      "missing": [],
+      "missing": [
+        "supplier-rootfs",
+        "usr/bin/openssl",
+        "(unnamed)",
+        "(unnamed)",
+        "(unnamed)",
+        "(unnamed)"
+      ],
       "required": false,
       "source": "auto",
-      "status": "pass"
+      "status": "warn"
     },
     {
       "cluster": "cisa-component",
-      "detail": "4/5 component(s)",
+      "detail": "0/9 component(s)",
       "id": "cisa-component-license",
       "label": "Component license",
       "missing": [
-        "ingest-fixture-app"
+        "supplier-rootfs",
+        "openssl",
+        "zlib",
+        "usr/bin/openssl",
+        "(unnamed)",
+        "(unnamed)",
+        "(unnamed)",
+        "(unnamed)"
       ],
       "required": false,
       "source": "auto",
@@ -271,15 +310,18 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "0/5 component(s)",
+      "detail": "0/9 component(s)",
       "id": "cisa-component-hash-value",
       "label": "Component hash value",
       "missing": [
-        "ingest-fixture-app",
-        "lodash",
-        "minimist",
-        "conditional-lib",
-        "jinja2"
+        "supplier-rootfs",
+        "openssl",
+        "zlib",
+        "usr/bin/openssl",
+        "(unnamed)",
+        "(unnamed)",
+        "(unnamed)",
+        "(unnamed)"
       ],
       "required": false,
       "source": "auto",
@@ -287,7 +329,7 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "5/5 component(s)",
+      "detail": "9/9 component(s)",
       "id": "cisa-component-hash-algorithm",
       "label": "Component hash algorithm",
       "missing": [],
@@ -297,13 +339,13 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "present",
+      "detail": "not present in the SBOM",
       "id": "cisa-component-dependency-relationship",
       "label": "Component dependency relationship",
       "missing": [],
       "required": false,
       "source": "auto",
-      "status": "pass"
+      "status": "warn"
     },
     {
       "cluster": "cisa-practices",
@@ -366,12 +408,12 @@
       "status": "warn"
     }
   ],
-  "component_count": 4,
+  "component_count": 8,
   "hash_coverage_pct": 0,
-  "license_coverage_pct": 100,
-  "n_fail": 0,
-  "n_warn": 1,
+  "license_coverage_pct": 0,
+  "n_fail": 4,
+  "n_warn": 3,
   "purl_coverage_pct": 100,
-  "result": "warn",
+  "result": "fail",
   "source_format": "cyclonedx"
 }

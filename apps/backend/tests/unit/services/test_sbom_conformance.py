@@ -463,9 +463,12 @@ def test_data_components_excluded_from_package_scoped_checks() -> None:
     result = sc.evaluate(_cdx([dict(_COMPLETE_PKG), dataset]))
     by_id = {c.id: c for c in result.checks}
     assert by_id["name-version"].status == "pass"
-    assert by_id["name-version"].detail == "1/1"
+    # The count, plus what sat outside it — a reader seeing "1/1" alone cannot
+    # tell whether one component was measured or fifty were excluded.
+    assert by_id["name-version"].detail.startswith("1/1")
+    assert "1 file/data excluded" in by_id["name-version"].detail
     assert by_id["purl"].status == "pass"
-    assert by_id["purl"].detail == "100% (1/1)"
+    assert by_id["purl"].detail.startswith("100% (1/1)")
     # license/hash count both components; the dataset's SHA-512 counts too.
     assert by_id["license"].detail == "100% (2/2)"
     assert by_id["hash-algorithm"].detail == "50% (1/2)"
@@ -523,3 +526,151 @@ def test_all_data_components_cannot_evade_mandatory_checks() -> None:
     assert 'typed "data"' in by_id["purl"].detail
     assert result.result == "warn"
     assert result.n_fail == 0
+
+
+# ---------------------------------------------------------------------------
+# File components and the package denominator.
+#
+# A file on disk carries no package version and no PURL type — purl defines no
+# type for one — so counting file entries against the package fields fails a
+# document for what it could not carry. Excluding them opens an evasion the
+# all-data guard already closed for another type, so the guard widens with the
+# exclusion. Both directions are pinned: the shape that gains, and the shapes
+# that must not.
+# ---------------------------------------------------------------------------
+
+_SUPPLIER_FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "sbom_ingest"
+
+
+def test_file_entries_do_not_count_against_the_package_fields() -> None:
+    """Captured supplier output: two libraries, six file entries.
+
+    Before the exclusion the file entries sat in the PURL denominator and the
+    document was reported short on a field they cannot hold.
+    """
+    result = sc.evaluate((_SUPPLIER_FIXTURES / "supplier-file-mixed.json").read_bytes())
+    checks = {c.id: c for c in result.checks}
+    assert checks["purl"].status == "pass"
+    assert checks["name-version"].status == "pass"
+    assert result.purl_coverage_pct == 100
+    # The files are still asked for the identifier they can carry.
+    assert checks["file-hash"].status == "warn"
+
+
+def test_a_document_of_files_alone_is_not_a_pass() -> None:
+    """The evasion the widened guard closes.
+
+    A scan that recovered nothing but a file listing has identified no package,
+    and the mandatory checks exist to answer questions that need one. Upstream
+    passes this shape; a governance badge cannot.
+    """
+    result = sc.evaluate((_SUPPLIER_FIXTURES / "supplier-files-only.json").read_bytes())
+    checks = {c.id: c for c in result.checks}
+    assert checks["purl"].status == "warn"
+    assert checks["name-version"].status == "warn"
+    assert result.result != "pass"
+
+
+@pytest.mark.parametrize(
+    ("label", "components"),
+    [
+        ("all files", [{"type": "file", "name": "a"}, {"type": "file", "name": "b"}]),
+        ("all data", [{"type": "data", "name": "a"}]),
+        (
+            "files and data mixed",
+            [{"type": "file", "name": "a"}, {"type": "data", "name": "b"}],
+        ),
+    ],
+)
+def test_no_component_type_can_empty_the_denominator_into_a_pass(
+    label: str, components: list[dict[str, object]]
+) -> None:
+    """Whatever empties the package denominator, the answer is warn, not pass.
+
+    Parametrized by shape rather than asserted once, because the failure this
+    guards against is a NEW excluded type arriving without the guard widening
+    with it — which is precisely what adding "file" to the exclusion would have
+    done on its own.
+    """
+    result = sc.evaluate(_cdx(components))
+    checks = {c.id: c for c in result.checks}
+    assert checks["purl"].status == "warn", label
+    assert checks["name-version"].status == "warn", label
+    assert result.result != "pass", label
+
+
+def test_a_document_with_no_components_at_all_is_left_alone() -> None:
+    """Not the evasion: an empty document has nothing to hide behind.
+
+    The guard fires on a document whose components exist but answer nothing,
+    and this one has none — the pre-existing empty-denominator handling still
+    applies, so widening the guard must not have swept it up.
+    """
+    result = sc.evaluate(_cdx([]))
+    checks = {c.id: c for c in result.checks}
+    assert checks["purl"].status == "pass"
+    assert checks["file-hash"].status == "pass"
+    assert checks["file-hash"].detail == "no file components"
+
+
+@pytest.mark.parametrize(
+    "bad_type", [{}, [], 1, None, True], ids=["dict", "list", "int", "null", "bool"]
+)
+def test_a_non_string_component_type_never_raises(bad_type: object) -> None:
+    """The exclusion is a set membership, and sets raise on unhashable values.
+
+    The check it replaced was a `!=` comparison, which could not. This module
+    promises never to raise on malformed input, and the promise is kept at the
+    persist boundary of a Celery task — an exception here fails the whole
+    ingest, not one row.
+    """
+    result = sc.evaluate(_cdx([{"type": bad_type, "name": "a"}]))
+    assert result.result in {"pass", "warn", "fail"}
+    # Unrecognised types stay IN the denominator: the exclusion is what relaxes
+    # a mandatory check, so an unknown shape must not buy the relaxation.
+    checks = {c.id: c for c in result.checks}
+    assert checks["purl"].status == "fail"
+
+
+@pytest.mark.parametrize("bad_name", [123, {"a": 1}, [1]], ids=["int", "dict", "list"])
+def test_a_non_string_component_name_survives_the_persist_boundary(
+    bad_name: object,
+) -> None:
+    """`missing[]` entries are sanitised character by character on persist."""
+    result = sc.evaluate(_cdx([{"type": "file", "name": bad_name}]))
+    # as_dict IS the persist boundary; it must not blow up on the offender list.
+    for check in result.checks:
+        assert isinstance(check.as_dict()["missing"], list)
+
+
+def test_a_files_only_document_that_meets_every_other_bar_warns_not_passes() -> None:
+    """Pins the floor of the widened guard.
+
+    The fixture-based test above fails for other reasons (generic PURLs, no
+    dependency graph), so it cannot observe this. Here every mandatory check
+    that CAN pass does, and the two the guard governs land on warn — not pass,
+    which would be the evasion, and not fail, which is the pre-change verdict
+    this deliberately relaxed.
+    """
+    raw = _cdx(
+        [{"type": "file", "name": "a.bin", "hashes": [{"alg": "SHA-256", "content": "ab"}]}],
+        dependencies=[{"ref": "root", "dependsOn": ["a"]}],
+    )
+    result = sc.evaluate(raw)
+    checks = {c.id: c for c in result.checks}
+    assert checks["purl"].status == "warn"
+    assert checks["name-version"].status == "warn"
+    assert checks["file-hash"].status == "pass"
+    assert result.result == "warn"
+
+
+def test_the_detail_says_how_much_was_left_out_of_the_denominator() -> None:
+    """A reviewer cannot otherwise see that "100%" was measured over two of ten.
+
+    Re-typing real packages as files is outside what this check can detect, so
+    it shows the shape it measured instead of implying it measured everything.
+    """
+    components = [{"type": "library", "name": "real", "version": "1", "purl": "pkg:npm/real@1"}]
+    components += [{"type": "file", "name": f"f{i}"} for i in range(9)]
+    checks = {c.id: c for c in sc.evaluate(_cdx(components)).checks}
+    assert "1 package component(s) measured, 9 file/data excluded" in checks["purl"].detail

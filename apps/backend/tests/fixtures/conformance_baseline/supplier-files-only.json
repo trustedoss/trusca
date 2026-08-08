@@ -1,23 +1,23 @@
 {
   "checks": [
     {
-      "detail": "2026-06-10T12:00:00Z",
+      "detail": "",
       "id": "timestamp",
       "label": "Timestamp (metadata.timestamp)",
       "missing": [],
       "required": true,
-      "status": "pass"
+      "status": "fail"
     },
     {
-      "detail": "1 tool(s)",
+      "detail": "0 tool(s)",
       "id": "tools",
       "label": "Tool info (metadata.tools)",
       "missing": [],
       "required": true,
-      "status": "pass"
+      "status": "fail"
     },
     {
-      "detail": "ingest-fixture-app@0.0.0",
+      "detail": "trelay@26.4.0",
       "id": "top-component",
       "label": "Top-level component name+version",
       "missing": [],
@@ -25,44 +25,49 @@
       "status": "pass"
     },
     {
-      "detail": "4/4",
+      "detail": "no package components to measure — every component is typed \"data\" or \"file\"",
       "id": "name-version",
       "label": "Component name+version coverage (100%)",
       "missing": [],
       "required": true,
-      "status": "pass"
+      "status": "warn"
     },
     {
-      "detail": "100% (4/4)",
+      "detail": "no package components to measure — every component is typed \"data\" or \"file\"",
       "id": "purl",
       "label": "PURL coverage (>= 90%)",
       "missing": [],
       "required": true,
-      "status": "pass"
+      "status": "warn"
     },
     {
-      "detail": "0 offending",
+      "detail": "4 offending",
       "id": "no-generic",
       "label": "No pkg:generic / custom PURL (0)",
-      "missing": [],
+      "missing": [
+        "ssl_lib.c",
+        "lfds.c",
+        "main.c",
+        "config.c"
+      ],
       "required": true,
-      "status": "pass"
+      "status": "fail"
     },
     {
-      "detail": "5 edge(s)",
+      "detail": "0 edge(s)",
       "id": "transitive",
       "label": "Transitive dependencies (graph edges)",
       "missing": [],
       "required": true,
-      "status": "pass"
+      "status": "fail"
     },
     {
-      "detail": "100% (4/4)",
+      "detail": "0% (0/4)",
       "id": "license",
       "label": "License coverage (>= 80%, recommended)",
       "missing": [],
       "required": false,
-      "status": "pass"
+      "status": "warn"
     },
     {
       "detail": "0% (0/4)",
@@ -81,45 +86,50 @@
       "status": "warn"
     },
     {
-      "detail": "0% (0/4)",
+      "detail": "no packages to measure",
       "id": "component-creator",
       "label": "Component creator coverage (>= 80%, recommended)",
-      "missing": [],
-      "required": false,
-      "status": "warn"
-    },
-    {
-      "detail": "0% (0/4)",
-      "id": "component-filename",
-      "label": "Component filename coverage (>= 80%, recommended)",
-      "missing": [],
-      "required": false,
-      "status": "warn"
-    },
-    {
-      "detail": "0% (0/4)",
-      "id": "artifact-uri",
-      "label": "Source or distribution URI coverage (>= 80%, recommended)",
-      "missing": [],
-      "required": false,
-      "status": "warn"
-    },
-    {
-      "detail": "no file components",
-      "id": "file-hash",
-      "label": "File components carrying a hash (recommended)",
       "missing": [],
       "required": false,
       "status": "pass"
     },
     {
-      "detail": "requires inspecting the delivered files (no automated source in this scan)",
+      "detail": "no packages to measure",
+      "id": "component-filename",
+      "label": "Component filename coverage (>= 80%, recommended)",
+      "missing": [],
+      "required": false,
+      "status": "pass"
+    },
+    {
+      "detail": "no packages to measure",
+      "id": "artifact-uri",
+      "label": "Source or distribution URI coverage (>= 80%, recommended)",
+      "missing": [],
+      "required": false,
+      "status": "pass"
+    },
+    {
+      "detail": "0% (0/4)",
+      "id": "file-hash",
+      "label": "File components carrying a hash (recommended)",
+      "missing": [
+        "ssl_lib.c",
+        "lfds.c",
+        "main.c",
+        "config.c"
+      ],
+      "required": false,
+      "status": "warn"
+    },
+    {
+      "detail": "no packages to measure",
       "id": "file-properties",
       "label": "Delivered-file properties (executable/archive/structured)",
       "missing": [],
       "required": false,
-      "source": "na",
-      "status": "warn"
+      "source": "auto",
+      "status": "pass"
     },
     {
       "cluster": "cisa-metadata",
@@ -173,33 +183,33 @@
     },
     {
       "cluster": "cisa-metadata",
-      "detail": "present",
+      "detail": "not present in the SBOM",
       "id": "cisa-sbom-timestamp",
       "label": "SBOM timestamp",
       "missing": [],
       "required": false,
       "source": "auto",
-      "status": "pass"
+      "status": "warn"
     },
     {
       "cluster": "cisa-metadata",
-      "detail": "present",
+      "detail": "not present in the SBOM",
       "id": "cisa-sbom-tool-name",
       "label": "SBOM tool name",
       "missing": [],
       "required": false,
       "source": "auto",
-      "status": "pass"
+      "status": "warn"
     },
     {
       "cluster": "cisa-metadata",
-      "detail": "present",
+      "detail": "not present in the SBOM",
       "id": "cisa-sbom-tool-version",
       "label": "SBOM tool version",
       "missing": [],
       "required": false,
       "source": "auto",
-      "status": "pass"
+      "status": "warn"
     },
     {
       "cluster": "cisa-metadata",
@@ -223,25 +233,14 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "5/5 component(s)",
+      "detail": "1/5 component(s)",
       "id": "cisa-component-version",
       "label": "Component version",
-      "missing": [],
-      "required": false,
-      "source": "auto",
-      "status": "pass"
-    },
-    {
-      "cluster": "cisa-component",
-      "detail": "0/5 component(s)",
-      "id": "cisa-component-producer",
-      "label": "Component producer",
       "missing": [
-        "ingest-fixture-app",
-        "lodash",
-        "minimist",
-        "conditional-lib",
-        "jinja2"
+        "ssl_lib.c",
+        "lfds.c",
+        "main.c",
+        "config.c"
       ],
       "required": false,
       "source": "auto",
@@ -249,21 +248,43 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "5/5 component(s)",
-      "id": "cisa-component-identifiers",
-      "label": "Component identifiers",
-      "missing": [],
+      "detail": "0/5 component(s)",
+      "id": "cisa-component-producer",
+      "label": "Component producer",
+      "missing": [
+        "trelay",
+        "ssl_lib.c",
+        "lfds.c",
+        "main.c",
+        "config.c"
+      ],
       "required": false,
       "source": "auto",
-      "status": "pass"
+      "status": "warn"
     },
     {
       "cluster": "cisa-component",
       "detail": "4/5 component(s)",
+      "id": "cisa-component-identifiers",
+      "label": "Component identifiers",
+      "missing": [
+        "trelay"
+      ],
+      "required": false,
+      "source": "auto",
+      "status": "warn"
+    },
+    {
+      "cluster": "cisa-component",
+      "detail": "0/5 component(s)",
       "id": "cisa-component-license",
       "label": "Component license",
       "missing": [
-        "ingest-fixture-app"
+        "trelay",
+        "ssl_lib.c",
+        "lfds.c",
+        "main.c",
+        "config.c"
       ],
       "required": false,
       "source": "auto",
@@ -275,11 +296,11 @@
       "id": "cisa-component-hash-value",
       "label": "Component hash value",
       "missing": [
-        "ingest-fixture-app",
-        "lodash",
-        "minimist",
-        "conditional-lib",
-        "jinja2"
+        "trelay",
+        "ssl_lib.c",
+        "lfds.c",
+        "main.c",
+        "config.c"
       ],
       "required": false,
       "source": "auto",
@@ -297,13 +318,13 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "present",
+      "detail": "not present in the SBOM",
       "id": "cisa-component-dependency-relationship",
       "label": "Component dependency relationship",
       "missing": [],
       "required": false,
       "source": "auto",
-      "status": "pass"
+      "status": "warn"
     },
     {
       "cluster": "cisa-practices",
@@ -368,10 +389,10 @@
   ],
   "component_count": 4,
   "hash_coverage_pct": 0,
-  "license_coverage_pct": 100,
-  "n_fail": 0,
-  "n_warn": 1,
-  "purl_coverage_pct": 100,
-  "result": "warn",
+  "license_coverage_pct": 0,
+  "n_fail": 4,
+  "n_warn": 5,
+  "purl_coverage_pct": 0,
+  "result": "fail",
   "source_format": "cyclonedx"
 }

@@ -250,6 +250,7 @@ describe("SBOM conformance — FE mirror of services/sbom_conformance.CHECK_IDS"
       "component-filename",
       "artifact-uri",
       "file-properties",
+      "file-hash",
     ]);
   });
 

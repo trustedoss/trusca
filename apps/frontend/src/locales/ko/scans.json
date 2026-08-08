@@ -234,7 +234,8 @@
       "no-generic": "일반 패키지 없음",
       "transitive": "전이 의존성",
       "license": "선언된 라이선스",
-      "hash": "파일 해시"
+      "hash": "파일 해시",
+      "file-hash": "파일 해시 커버리지"
     },
     "missing_more": "외 {{count}}개",
     "g7": {

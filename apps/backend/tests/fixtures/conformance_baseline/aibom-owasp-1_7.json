@@ -105,6 +105,14 @@
       "status": "pass"
     },
     {
+      "detail": "no file components",
+      "id": "file-hash",
+      "label": "File components carrying a hash (recommended)",
+      "missing": [],
+      "required": false,
+      "status": "pass"
+    },
+    {
       "detail": "requires inspecting the delivered files (no automated source in this scan)",
       "id": "file-properties",
       "label": "Delivered-file properties (executable/archive/structured)",
