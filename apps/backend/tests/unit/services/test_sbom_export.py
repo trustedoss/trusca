@@ -1408,7 +1408,7 @@ async def test_our_own_export_measured_against_the_2026_baseline(
 
     checks = {
         c.id: c.status
-        for c in evaluate(body).checks
+        for c in evaluate(body.encode("utf-8")).checks
         if c.id.startswith("cisa-") and c.id in _EXPORT_BASELINE
     }
     assert checks == _EXPORT_BASELINE, (

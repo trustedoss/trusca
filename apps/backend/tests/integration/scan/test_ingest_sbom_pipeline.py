@@ -546,10 +546,18 @@ def test_ingest_aibom_1_7_persists_g7_conformance_checks(
     ]
     assert len(g7_checks) == 51
     # Core catalogue size comes from the SSOT, not a literal — the regulatory
-    # field checks (BomLens #462 parity) grew it from 9 to 14.
+    # field checks (BomLens #462 parity) grew it from 9 to 14. Two declarative
+    # baselines attach on top: the 2026 minimum elements on every CycloneDX
+    # document (23), and G7 on this one because it carries an ML component (51).
+    from services.cisa_conformance import CISA_SPEC
+    from services.registry_conformance import iter_elements
     from services.sbom_conformance import CHECK_IDS
 
-    assert len(verdict.checks) == len(CHECK_IDS) + 51
+    cisa_checks = [
+        c for c in verdict.checks if str(c.get("id", "")).startswith("cisa-")
+    ]
+    assert len(cisa_checks) == len(iter_elements(CISA_SPEC.registry_path)) == 23
+    assert len(verdict.checks) == len(CHECK_IDS) + 51 + 23
     by_id = {c["id"]: c for c in g7_checks}
     # Automated element satisfied by the fixture's modelCard.
     assert by_id["g7-model-card"]["status"] == "pass"
