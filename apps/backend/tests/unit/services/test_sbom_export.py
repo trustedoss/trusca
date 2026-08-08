@@ -1106,7 +1106,7 @@ async def test_default_export_carries_no_profile_marker(
     # Document metadata always states why an empty field is empty (the 2026
     # minimum elements ask for it); what a profile adds on top is the profile
     # markers, and without a profile there are none.
-    from services.sbom_export import UNDECLARED_FIELDS_PROPERTY
+    from services.sbom_document_metadata import UNDECLARED_FIELDS_PROPERTY
 
     assert [p["name"] for p in doc["metadata"]["properties"]] == [
         UNDECLARED_FIELDS_PROPERTY
@@ -1509,7 +1509,8 @@ async def test_every_export_states_why_an_empty_field_is_empty(
     db_session: AsyncSession,
 ) -> None:
     """Stated once for the document, not repeated on every empty field."""
-    from services.sbom_export import UNDECLARED_FIELDS_PROPERTY, export_sbom
+    from services.sbom_document_metadata import UNDECLARED_FIELDS_PROPERTY
+    from services.sbom_export import export_sbom
 
     _, project, _ = await _make_project_with_succeeded_scan(db_session)
     body, _, _ = await export_sbom(
@@ -1555,7 +1556,8 @@ async def test_an_unestablished_version_is_marked_not_asserted(
     asks for — and the check reads that marking.
     """
     from services.sbom_conformance import evaluate
-    from services.sbom_export import EVIDENCE_GRADE_PROPERTY, export_sbom
+    from services.sbom_document_metadata import EVIDENCE_GRADE_PROPERTY
+    from services.sbom_export import export_sbom
 
     _, project, scan = await _make_project_with_succeeded_scan(db_session)
     suffix = unique_suffix()

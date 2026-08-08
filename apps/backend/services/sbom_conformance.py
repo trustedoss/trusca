@@ -127,6 +127,13 @@ FORMAT_UNKNOWN = "unknown"
 # Cap on how many offending items we list per failed check (matches BomLens).
 _MISSING_CAP = 50
 
+#: Per-item ceiling for anything that reaches the verdict's JSONB column.
+#: ``_MISSING_CAP`` bounds how MANY offender names are stored; this bounds how
+#: LONG each one may be. Without it a single 30 MB component name — well within
+#: the 32 MiB upload cap — lands in one row, and the checks column is read on
+#: every conformance request.
+_ITEM_CHARS_CAP = 512
+
 # Per-format scorer return: (checks, component_count, purl%, license%, hash%).
 # The coverage percentages are None for Tag-Value (presence-based only).
 _ScoreResult = tuple[list["Check"], int, int | None, int | None, int | None]
@@ -232,8 +239,10 @@ class Check:
             "label": self.label,
             "required": self.required,
             "status": self.status,
-            "detail": sanitize_jsonb_text(self.detail),
-            "missing": [sanitize_jsonb_text(m) for m in self.missing],
+            "detail": sanitize_jsonb_text(self.detail)[:_ITEM_CHARS_CAP],
+            "missing": [
+                sanitize_jsonb_text(m)[:_ITEM_CHARS_CAP] for m in self.missing
+            ],
         }
         if self.cluster is not None:
             out["cluster"] = self.cluster
@@ -242,7 +251,9 @@ class Check:
         if self.role is not None:
             out["role"] = self.role
         if self.evidence is not None:
-            out["evidence"] = [sanitize_jsonb_text(v) for v in self.evidence]
+            out["evidence"] = [
+                sanitize_jsonb_text(v)[:_ITEM_CHARS_CAP] for v in self.evidence
+            ]
         return out
 
 

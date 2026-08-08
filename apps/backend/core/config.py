@@ -1042,7 +1042,13 @@ def slsa_builder_version() -> str:
     """
     raw = os.getenv("TRUSTEDOSS_VERSION")
     if raw is None or raw.strip() == "":
-        return "2.3.0-dev"
+        # Not a placeholder version. This value is stated in three places — SLSA
+        # provenance, the About surface, and every SBOM TRUSCA emits — and a
+        # plausible-looking default made all three assert a release that does
+        # not exist. "unknown" is also what the 2026 SBOM minimum elements ask
+        # for when no version identifier is available. The release build injects
+        # the real tag (see Dockerfile.prod ARG TRUSTEDOSS_VERSION).
+        return "unknown"
     return raw.strip()
 
 

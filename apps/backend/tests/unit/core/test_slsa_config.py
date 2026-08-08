@@ -31,12 +31,16 @@ def test_builder_id_override_trimmed(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_builder_version_default_when_unset(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("TRUSTEDOSS_VERSION", raising=False)
-    assert slsa_builder_version() == "2.3.0-dev"
+    # Not a placeholder version: this value is stated in SLSA provenance, on
+    # the About surface and in every SBOM, and a plausible default made all
+    # three assert a release that does not exist. The release build injects
+    # the real tag.
+    assert slsa_builder_version() == "unknown"
 
 
 def test_builder_version_blank_falls_back_to_default(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("TRUSTEDOSS_VERSION", "  ")
-    assert slsa_builder_version() == "2.3.0-dev"
+    assert slsa_builder_version() == "unknown"
 
 
 def test_builder_version_override_trimmed(monkeypatch: pytest.MonkeyPatch) -> None:
