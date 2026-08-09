@@ -537,10 +537,20 @@ function G7CheckRow({ check }: { check: SbomConformanceCheck }) {
   const { items: missing, omitted: missingOmitted } = collapseMissing(
     check.missing ?? [],
   );
-  const guidance = G7_GUIDANCE[check.id];
-  // Backend-joined guidance for the 2026 elements: a fill-in fragment, or what
-  // a person has to establish. Only on rows that are not a pass.
-  const fragment = check.guidance;
+  // A fill-in fragment, whichever baseline supplies it. The 2026 elements join
+  // theirs at read time; the G7 ones ship in the frontend catalogue. Both
+  // render through the same block, and only on a row that is not a pass — a
+  // fragment telling someone how to supply a value they already supplied is
+  // noise. The G7 snippets were carried for months and only the docs link was
+  // ever shown.
+  const catalogued = G7_GUIDANCE[check.id];
+  const fragment =
+    check.status === "pass"
+      ? null
+      : (check.guidance ??
+        (catalogued
+          ? { snippet: catalogued.snippet, docUrl: catalogued.docUrl }
+          : null));
   const reviewNote = check.review;
 
   return (
@@ -617,7 +627,10 @@ function G7CheckRow({ check }: { check: SbomConformanceCheck }) {
           </p>
         ) : null}
         {fragment ? (
-          <details className="mt-1" data-testid={`check-${check.id}-fragment`}>
+          <details
+            className="mt-1"
+            data-testid={`check-${check.id}-guidance`}
+          >
             <summary className="cursor-pointer text-xs font-medium text-primary hover:underline">
               {t("conformance.fragment_summary")}
             </summary>
@@ -636,17 +649,7 @@ function G7CheckRow({ check }: { check: SbomConformanceCheck }) {
             ) : null}
           </details>
         ) : null}
-        {guidance ? (
-          <a
-            href={guidance.docUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-1 inline-block text-xs font-medium text-primary hover:underline"
-            data-testid={`check-${check.id}-guidance`}
-          >
-            {t("conformance.g7.learn_more")}
-          </a>
-        ) : null}
+
       </div>
     </div>
   );

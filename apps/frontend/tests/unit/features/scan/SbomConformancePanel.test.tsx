@@ -289,16 +289,29 @@ describe("SbomConformancePanel", () => {
     ).toHaveLength(4);
   });
 
-  it("renders evidence chips and a guidance link when available", () => {
+  it("renders evidence chips, and guidance only where it helps", () => {
     render(
       <SbomConformancePanel
         conformance={conformance({
           checks: [
+            // Satisfied, and the vendored table knows it: evidence yes,
+            // guidance no. Telling someone how to supply a value they already
+            // supplied is noise.
             g7Check({
               id: "g7-model-license",
               label: "Model license",
               evidence: ["Apache-2.0", "MIT"],
             }),
+            // Short, and the table knows it: the CycloneDX fragment that would
+            // satisfy it. These snippets shipped for months while only the
+            // docs link was ever rendered.
+            g7Check({
+              id: "g7-model-hash-value",
+              label: "Model hash",
+              status: "warn",
+              source: "auto",
+            }),
+            // Short, and the table does not know it — nothing to offer.
             g7Check({
               id: "g7-slp-data-flow",
               label: "System data flow",
@@ -310,14 +323,23 @@ describe("SbomConformancePanel", () => {
         })}
       />,
     );
-    // Evidence values render as mono chips.
     const chips = within(
       screen.getByTestId("check-g7-model-license-evidence"),
     ).getAllByRole("listitem");
     expect(chips.map((c) => c.textContent)).toEqual(["Apache-2.0", "MIT"]);
-    // Guidance link only for ids the vendored table knows.
-    const link = screen.getByTestId("check-g7-model-license-guidance");
-    expect(link).toHaveAttribute("href", expect.stringContaining("https://"));
+
+    expect(
+      screen.queryByTestId("check-g7-model-license-guidance"),
+    ).not.toBeInTheDocument();
+
+    const guidance = screen.getByTestId("check-g7-model-hash-value-guidance");
+    expect(within(guidance).getByRole("link")).toHaveAttribute(
+      "href",
+      expect.stringContaining("https://"),
+    );
+    // The fragment itself, not just a link away to it.
+    expect(guidance.textContent).toContain("hashes");
+
     expect(
       screen.queryByTestId("check-g7-slp-data-flow-guidance"),
     ).not.toBeInTheDocument();
