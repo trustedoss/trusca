@@ -298,7 +298,11 @@ def test_ingest_pipeline_persists_components_and_dense_findings(
     assert verdict.result == "warn"
     assert verdict.n_fail == 0
     assert verdict.purl_coverage_pct == 100
-    assert verdict.component_count == 4
+    # Five, not four: the fixture's `conditional-lib` declares a nested
+    # component, and nested entries are scored and persisted like any other.
+    # Reading only the top level left them out of the inventory and out of
+    # Trivy's reach — a finding against one had no row to attach to.
+    assert verdict.component_count == 5
     assert verdict.checks, "the per-check detail array is persisted"
     # The denormalised project pointer matches the scan's project (used by the
     # tenant-scoped read endpoint's belongs-to-project predicate).
