@@ -45,10 +45,11 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import secrets
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, NoReturn
 
 import structlog
 from sqlalchemy import select
@@ -56,8 +57,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.audit import audit_context
+from core.pii_mask import mask_git_url
 from models import Project, Scan, WebhookDelivery
-from services.scan_service import normalize_ref
+from services.scan_service import capacity_guard_reason, normalize_ref
 from tasks import enqueue_scan
 
 log = structlog.get_logger("webhook.service")
@@ -133,7 +135,14 @@ _GITLAB_MR_SCAN_ACTIONS = frozenset({"open", "reopen", "update"})
 # the two agree — the vocabulary lives in two places by necessity (one is the
 # OpenAPI contract, the other the implementation) and drifted once already.
 WEBHOOK_STATUSES = frozenset(
-    {"enqueued", "duplicate", "ignored", "skipped_active_scan"}
+    {
+        "enqueued",
+        "duplicate",
+        "ignored",
+        "skipped_active_scan",
+        "skipped_team_at_capacity",
+        "skipped_disk_full",
+    }
 )
 
 
@@ -151,15 +160,31 @@ class WebhookProcessResult:
       - 'skipped_active_scan' — the delivery was new and scannable, but a scan
                                 for the same ref was already queued or running,
                                 so we did not start a second one.
+      - 'skipped_team_at_capacity'
+                              — the owning team is at its concurrent-scan cap.
+      - 'skipped_disk_full'   — the workspace volume is over its hard limit.
 
-    The last value used to be reported as 'duplicate' too, which was actively
-    misleading: 'duplicate' means "we have seen this delivery", so an operator
-    reading the SCM's delivery log had no way to tell that a push had gone
-    unscanned. They are different events and now say so.
+    'skipped_active_scan' used to be reported as 'duplicate' too, which was
+    actively misleading: 'duplicate' means "we have seen this delivery", so an
+    operator reading the SCM's delivery log had no way to tell that a push had
+    gone unscanned. They are different events and now say so.
+
+    The two capacity values are reported rather than raised on purpose. A 4xx
+    or 5xx would make the Git host retry a delivery that cannot succeed until
+    the operator frees capacity, and the retry storm would land on the system
+    that is already under pressure.
+
+    ``delivery`` is None for the capacity skips alone. Those are decided BEFORE
+    the delivery is recorded, deliberately: recording it first would burn the
+    delivery id, and a later redelivery of the same event would then be turned
+    away as a duplicate — so the push would never be scanned even once capacity
+    freed up. On GitLab installs that do not send a delivery UUID the id is
+    derived from the payload and is therefore stable, which makes that loss
+    permanent. Leaving the id unclaimed keeps redelivery a working recovery.
     """
 
     status: str
-    delivery: WebhookDelivery
+    delivery: WebhookDelivery | None
     scan_id: uuid.UUID | None = None
 
 
@@ -170,6 +195,66 @@ class WebhookProcessResult:
 
 def _now() -> datetime:
     return datetime.now(tz=UTC)
+
+
+# Cap on the repository URL we are willing to write to the log. The value is
+# attacker-controlled and unbounded: ``_normalize_repo_url`` strips trailing
+# slashes and whitespace, so a caller can append a megabyte of padding to a URL
+# and still have it match a configured project.
+#
+# That matters because the log is the ONLY asymmetry left between "no such
+# repository" and "bad signature", and asymmetric work is a timing oracle —
+# which is exactly what answering both with 401 was meant to remove. Logging a
+# megabyte on one branch and a UUID on the other hands the distinction straight
+# back, at a magnitude the caller chooses. Truncating bounds that, and bounds
+# what an unauthenticated caller can write to disk.
+_LOGGED_REPO_URL_MAX = 200
+
+
+def _loggable_repo_url(repo_url: str) -> str:
+    """Bound and redact a payload-supplied repository URL for the log.
+
+    Cuts to a generous bound BEFORE masking, not after. ``mask_git_url`` parses
+    the whole string, so masking first would leave this branch doing work
+    proportional to an attacker-chosen length — the very asymmetry the cap
+    exists to remove. Slicing first makes the extra cost of the unmatched path
+    constant.
+
+    The pre-cut is far larger than the final one so it cannot change what gets
+    masked: userinfo sits at the front of a URL, well inside the first slice.
+    """
+    masked = mask_git_url(repo_url[: _LOGGED_REPO_URL_MAX * 20]) or ""
+    if len(masked) > _LOGGED_REPO_URL_MAX:
+        return f"{masked[:_LOGGED_REPO_URL_MAX]}…(truncated)"
+    return masked
+
+
+def _reject_unmatched_github_delivery(
+    *,
+    body: bytes,
+    signature_header: str,
+    repo_url: str,
+    delivery_id: str | None,
+) -> NoReturn:
+    """Reject a delivery whose repository is not configured here, as a 401.
+
+    Deliberately indistinguishable from a signature failure on the wire, so the
+    endpoint cannot be used to enumerate which repositories a portal watches.
+    The server log keeps the distinction, because an operator debugging a
+    genuinely mistyped URL needs it and the log is not reachable by the caller.
+
+    Runs a real HMAC against a throwaway key first: the comparison can never
+    succeed, and it keeps the rejected path doing similar work to the accepted
+    one. Never returns.
+    """
+    verify_github_signature(body, signature_header, secrets.token_urlsafe(32))
+    log.warning(
+        "webhook.unknown_repository",
+        provider="github",
+        repo_url=_loggable_repo_url(repo_url),
+        delivery_id=delivery_id,
+    )
+    raise WebhookSignatureInvalid("HMAC verification failed")
 
 
 def compute_payload_hash(body: bytes) -> str:
@@ -480,8 +565,22 @@ async def process_github_webhook(
         expected_provider="github",
     )
     if project is None or project.webhook_secret is None:
-        raise WebhookProjectNotFound(
-            f"no project configured for repo {repo_url!r}",
+        # Answer exactly as a bad signature does. The lookup has to precede
+        # verification (the secret is per-project), so the response code was
+        # the only thing separating "this repo is configured here" from "it is
+        # not — and an unauthenticated caller could walk a list of repository
+        # URLs and read that difference off the status code.
+        #
+        # The HMAC still runs, against a throwaway key that cannot match, so
+        # the two paths do comparable work. This does not equalise the database
+        # lookup itself, so it closes the status-code oracle rather than every
+        # timing signal; the former is trivially observable and the latter is
+        # not.
+        _reject_unmatched_github_delivery(
+            body=body,
+            signature_header=signature_header,
+            repo_url=repo_url,
+            delivery_id=delivery_id,
         )
 
     # Step 3: HMAC verification.
@@ -504,7 +603,22 @@ async def process_github_webhook(
     # tests). The id is a stable UUID, so caching is safe.
     project_id_str = str(project.id)
 
-    # Step 4: idempotency gate.
+    # Step 4: capacity guards, BEFORE the delivery is recorded so a redelivery
+    # can still recover (see WebhookProcessResult). Only asked for events that
+    # would actually scan — a `ping` has no capacity cost and reporting it as
+    # "skipped because the disk is full" would be nonsense.
+    if _github_event_is_scannable(payload, event_type):
+        capacity_block = await capacity_guard_reason(session, team_id=project.team_id)
+        if capacity_block is not None:
+            log.warning(
+                "webhook.github.capacity_skip",
+                project_id=project_id_str,
+                delivery_id=delivery_id,
+                reason=capacity_block,
+            )
+            return WebhookProcessResult(status=capacity_block, delivery=None)
+
+    # Step 5: idempotency gate.
     delivery, is_new = await _record_delivery(
         session,
         provider="github",
@@ -522,10 +636,9 @@ async def process_github_webhook(
         )
         return WebhookProcessResult(status="duplicate", delivery=delivery)
 
-    # Step 5: event whitelist, then the per-action filter for pull requests.
-    if event_type not in _GITHUB_SCAN_EVENTS or (
-        event_type == "pull_request" and not _github_pr_action_is_scannable(payload)
-    ):
+    # Step 6: event whitelist, then the per-action filter for pull requests.
+    # Recorded first so an ignored delivery still leaves an audit trail.
+    if not _github_event_is_scannable(payload, event_type):
         log.info(
             "webhook.github.ignored",
             project_id=project_id_str,
@@ -535,7 +648,7 @@ async def process_github_webhook(
         )
         return WebhookProcessResult(status="ignored", delivery=delivery)
 
-    # Step 6: enqueue source scan.
+    # Step 7: enqueue source scan.
     scan_id = await _enqueue_source_scan(
         session,
         project,
@@ -603,6 +716,30 @@ def _gitlab_ref(payload: dict[str, Any], event_header: str) -> str | None:
         return None
     ref = payload.get("ref")
     return ref if isinstance(ref, str) else None
+
+
+def _github_event_is_scannable(payload: dict[str, Any], event_type: str) -> bool:
+    """True when this delivery would enqueue a scan.
+
+    Asked twice per delivery — once to decide whether the capacity guards are
+    even relevant, once to decide the outcome — so it lives in one place rather
+    than being spelled out at both call sites, where the two copies could drift
+    and let a `ping` be reported as skipped for capacity.
+    """
+    if event_type not in _GITHUB_SCAN_EVENTS:
+        return False
+    if event_type == "pull_request":
+        return _github_pr_action_is_scannable(payload)
+    return True
+
+
+def _gitlab_event_is_scannable(payload: dict[str, Any], event_header: str) -> bool:
+    """GitLab's counterpart to :func:`_github_event_is_scannable`."""
+    if event_header not in _GITLAB_SCAN_EVENTS:
+        return False
+    if event_header == "Merge Request Hook":
+        return _gitlab_mr_action_is_scannable(payload)
+    return True
 
 
 def _github_pr_action_is_scannable(payload: dict[str, Any]) -> bool:
@@ -682,9 +819,16 @@ async def process_gitlab_webhook(
         expected_provider="gitlab",
     )
     if project is None or project.webhook_secret is None:
-        raise WebhookProjectNotFound(
-            f"no project configured for repo {repo_url!r}",
+        # Same reasoning as the GitHub path: answer as a token mismatch so the
+        # status code cannot be read as "this repository is configured here".
+        verify_gitlab_token(token_header, secrets.token_urlsafe(32))
+        log.warning(
+            "webhook.unknown_repository",
+            provider="gitlab",
+            repo_url=_loggable_repo_url(repo_url),
+            delivery_id=delivery_id,
         )
+        raise WebhookSignatureInvalid("X-Gitlab-Token mismatch")
 
     if not verify_gitlab_token(token_header, project.webhook_secret):
         log.warning(
@@ -698,6 +842,18 @@ async def process_gitlab_webhook(
     # See process_github_webhook — capture the project id before _record_delivery
     # may rollback and expire ORM state.
     project_id_str = str(project.id)
+
+    # Capacity guards before the delivery is recorded — see the GitHub twin.
+    if _gitlab_event_is_scannable(payload, event_header):
+        capacity_block = await capacity_guard_reason(session, team_id=project.team_id)
+        if capacity_block is not None:
+            log.warning(
+                "webhook.gitlab.capacity_skip",
+                project_id=project_id_str,
+                delivery_id=delivery_id,
+                reason=capacity_block,
+            )
+            return WebhookProcessResult(status=capacity_block, delivery=None)
 
     delivery, is_new = await _record_delivery(
         session,
@@ -716,10 +872,7 @@ async def process_gitlab_webhook(
         )
         return WebhookProcessResult(status="duplicate", delivery=delivery)
 
-    if event_header not in _GITLAB_SCAN_EVENTS or (
-        event_header == "Merge Request Hook"
-        and not _gitlab_mr_action_is_scannable(payload)
-    ):
+    if not _gitlab_event_is_scannable(payload, event_header):
         log.info(
             "webhook.gitlab.ignored",
             project_id=project_id_str,
