@@ -51,6 +51,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from services import sbom_component_walk
+
 # ---------------------------------------------------------------------------
 # Check catalogue. The id set is the SINGLE SOURCE OF TRUTH shared with the
 # frontend mirror constant (a contract test asserts set equality — CLAUDE.md
@@ -318,7 +320,10 @@ def detect_format(raw: bytes) -> tuple[str, dict[str, Any] | None]:
 # CycloneDX scorer.
 # ---------------------------------------------------------------------------
 def _cdx_checks(doc: dict[str, Any]) -> _ScoreResult:
-    components = [c for c in _as_list(doc.get("components")) if isinstance(c, dict)]
+    # Nested components are scored too: a document that identifies every
+    # top-level entry while leaving what they contain unidentified is not a
+    # document that answered the question (services/sbom_component_walk).
+    components = sbom_component_walk.iter_components(doc.get("components"))
     tot = len(components)
     metadata = _as_dict(doc.get("metadata"))
 

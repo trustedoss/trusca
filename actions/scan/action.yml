@@ -237,6 +237,14 @@ runs:
     #    needs to run first so reviewers see the report alongside the failure.
     #    The "Apply gate result" step at the end is the single place that
     #    enforces fail-on-gate.
+    #
+    #    The `ref` query anchors the verdict to the branch this job scanned.
+    #    Without it the portal answers with its MAIN LINE's newest succeeded
+    #    scan, so a pull_request build that just waited out its own `pr-<n>`
+    #    scan would be judged by `main` — a passing PR blocked by a critical
+    #    CVE that only exists on the default branch, and vice versa. We send
+    #    the same raw `github.ref` the trigger step sent; the portal applies
+    #    one normalization to both, so the two always agree on the key.
     # -------------------------------------------------------------------------
     - name: Evaluate build gate
       id: gate
@@ -245,15 +253,24 @@ runs:
         TOS_API_URL: ${{ inputs.api-url }}
         TOS_API_KEY: ${{ inputs.api-key }}
         TOS_PROJECT_ID: ${{ inputs.project-id }}
+        TOS_REF: ${{ github.ref }}
       run: |
         set -euo pipefail
         api="${TOS_API_URL%/}"
 
-        response=$(curl --fail-with-body -sS \
-          -H "Authorization: Bearer ${TOS_API_KEY}" \
-          -H "Accept: application/json" \
-          -w "\n%{http_code}" \
-          "${api}/v1/projects/${TOS_PROJECT_ID}/gate-result") || {
+        # --get + --data-urlencode rather than string concatenation: a ref like
+        # `refs/heads/feature/oauth` carries slashes that must not be read as
+        # extra path segments.
+        gate_args=(--fail-with-body -sS
+          -H "Authorization: Bearer ${TOS_API_KEY}"
+          -H "Accept: application/json"
+          -w "\n%{http_code}"
+          --get "${api}/v1/projects/${TOS_PROJECT_ID}/gate-result")
+        if [ -n "${TOS_REF}" ]; then
+          gate_args+=(--data-urlencode "ref=${TOS_REF}")
+        fi
+
+        response=$(curl "${gate_args[@]}") || {
             echo "::error::GET /v1/projects/${TOS_PROJECT_ID}/gate-result failed:"
             echo "${response}"
             exit 1

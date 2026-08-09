@@ -154,17 +154,31 @@
 
     # -------------------------------------------------------------------------
     # 3) Evaluate gate
+    #
+    # The `ref` query pins the verdict to the branch this pipeline scanned.
+    # Omit it and the portal answers with its main line's newest succeeded
+    # scan, so a merge-request pipeline that just waited out its own scan
+    # would be judged by `main` instead. We send the same CI_COMMIT_REF_NAME
+    # the trigger sent, so both sides normalize to one retention key.
     # -------------------------------------------------------------------------
     - |
       set -euo pipefail
       api="${TRUSTEDOSS_API_URL%/}"
       # shellcheck disable=SC1091
       . ./trustedoss.env
-      response=$(curl --fail-with-body -sS \
+      # --get + --data-urlencode, not concatenation: a ref like
+      # `feature/oauth` carries a slash that must stay in the query value.
+      # Positional parameters rather than a bash array — this template runs
+      # under the image's /bin/sh, which has no arrays.
+      set -- --fail-with-body -sS \
         -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
         -H "Accept: application/json" \
         -w "\n%{http_code}" \
-        "${api}/v1/projects/${TRUSTEDOSS_PROJECT_ID}/gate-result") || {
+        --get "${api}/v1/projects/${TRUSTEDOSS_PROJECT_ID}/gate-result"
+      if [ -n "${CI_COMMIT_REF_NAME:-}" ]; then
+        set -- "$@" --data-urlencode "ref=${CI_COMMIT_REF_NAME}"
+      fi
+      response=$(curl "$@") || {
           echo "FATAL: gate-result fetch failed:"
           echo "$response"
           exit 1

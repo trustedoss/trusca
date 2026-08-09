@@ -65,9 +65,13 @@ jobs:
 
 1. `kind=source`로 `POST /v1/projects/{project-id}/scans`를 호출해 cdxgen + scancode + Trivy를 큐에 넣습니다.
 2. 30초마다 `GET /v1/scans/{scan-id}`를 폴링해 최종 상태(`succeeded` / `failed` / `cancelled`)에 도달할 때까지 대기, 30분 타임아웃.
-3. `GET /v1/projects/{project-id}/gate-result`를 호출해 verdict를 워크플로의 job summary에 기록.
+3. `GET /v1/projects/{project-id}/gate-result?ref=<github.ref>`를 호출해 verdict를 워크플로의 job summary에 기록.
 4. `pull_request` 이벤트에서는 `POST /v1/scans/{scan-id}/post-pr-comment`를 호출해 SCA Markdown 보고서를 PR 코멘트로 게시.
 5. 게이트 verdict가 `fail`이면 1로 종료.
+
+3단계의 `ref`가 풀 리퀘스트의 판정을 그 브랜치의 것으로 지켜 줍니다. ref 없이 프로젝트의 게이트 결과를 물으면 포털은 메인 라인에서 가장 최근에 성공한 스캔으로 답합니다. 그래서 자기 스캔이 끝나기를 기다린 PR 빌드가 정작 `main` 기준으로 판정됩니다. 자기가 넣지도 않은 심각한 취약점 때문에 막히거나, 반대로 자기가 들여온 취약점을 안은 채 통과합니다. action은 스캔을 요청할 때 보낸 `github.ref`를 그대로 다시 보내고, 포털은 양쪽을 같은 규칙으로 정규화하므로(`refs/pull/12/merge`와 `pr-12`는 같은 키입니다) 판정은 언제나 실제로 스캔한 코드를 가리킵니다.
+
+성공한 스캔이 없는 ref는 다른 브랜치의 결과 대신 신호 없음(pass)을 돌려줍니다. 의도된 동작입니다. 브랜치를 지정했다면 그 브랜치이거나 아무것도 아니어야 합니다.
 
 ## 셋업
 
