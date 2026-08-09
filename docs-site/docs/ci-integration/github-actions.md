@@ -31,8 +31,8 @@ Three things must exist before the workflow below can run:
   use an internal URL.
 - **An API key**, issued in the portal under **/integrations → API keys** —
   Setup step 1 below walks through it.
-- **The project id** of the portal project this repository maps to, from
-  **Project Settings → CI/CD** — Setup step 3 below shows where.
+- **The project id** of the portal project this repository maps to — the last
+  path segment of its portal URL. Setup step 3 below shows where.
 
 ## Quick start
 
@@ -49,8 +49,7 @@ jobs:
   sca:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      pull-requests: write    # required for PR comments
+      contents: read          # the action needs nothing beyond checkout
     steps:
       - uses: actions/checkout@v4
       - name: TRUSCA SCA scan
@@ -91,7 +90,7 @@ In your repo: **Settings → Secrets and variables → Actions → New repositor
 In the same screen, switch to **Variables** and add:
 
 - Name: `TRUSTEDOSS_PROJECT_ID`
-- Value: the UUID from **Project Settings → CI/CD**.
+- Value: the project's UUID — the last path segment of its portal URL (`/projects/<uuid>`).
 
 Variables (not secrets) keep the project ID readable in workflow logs — it is not sensitive.
 
@@ -122,6 +121,7 @@ Drop `.github/workflows/sca.yml` (above) into the repo. On the next PR, the SCA 
 | `critical-cve-count` | Open critical-severity findings on the evaluated scan. |
 | `forbidden-license-count` | Distinct components carrying a forbidden-classification license. |
 | `epss-gate-count` | Open findings whose EPSS score met or exceeded the configured EPSS threshold. `0` when the EPSS gate is disabled (the default). See [Gate the build on EPSS](#gate-the-build-on-epss-optional). |
+| `malicious-component-count` | Distinct components the malicious-package snapshot flags. These block regardless of severity — remove the package and rotate any credentials the build could reach. |
 
 Use them in subsequent steps:
 
@@ -241,7 +241,7 @@ You do not configure anything for this — running the action on `push` and `pul
 
 The PR comment is posted **server-side by the portal**, not by your workflow. After the action uploads the SCA results, the portal evaluates the build gate and — if comment posting is enabled — calls `https://api.github.com` directly using a GitHub PAT stored in the portal's environment (`GITHUB_TOKEN` or `TRUSTEDOSS_GITHUB_TOKEN`). Your workflow never forwards `secrets.GITHUB_TOKEN` to the portal. A first-class GitHub App with portal-stored installation tokens is on the roadmap.
 
-The comment is **idempotent**: re-running the workflow on the same PR updates the existing comment in place. The marker `<!-- trustedoss-sca -->` identifies it.
+The comment is idempotent: re-running the workflow on the same PR updates the existing comment in place. The portal finds it by the marker `<!-- trustedoss-sca-bot -->` in the comment body. It scans the PR's most recent 500 comments looking for that marker, so on a thread longer than that it posts a new comment instead of updating.
 
 ## Branch protection
 
@@ -270,8 +270,8 @@ The API key's scope does not cover the project it is calling. Re-issue the key w
 Three possibilities:
 
 - The workflow was triggered by `push`, not `pull_request` — only PR events get a comment.
-- The portal's `GITHUB_TOKEN` / `TRUSTEDOSS_GITHUB_TOKEN` env is unset, expired, or lacks the `pull-requests: write` permission for the target repo. Operators rotate / extend the PAT in the portal `.env` and bounce the backend.
-- The portal could not resolve the PR number from the head SHA. Check the action's log output for `pull_request_number=` — empty means the lookup failed.
+- The portal's `GITHUB_TOKEN` / `TRUSTEDOSS_GITHUB_TOKEN` env is unset, expired, or lacks write access to the target repo's pull requests. The comment is posted by the portal with its own credentials, not by the workflow's `GITHUB_TOKEN`, so granting the job more permission changes nothing. Operators rotate or extend the token in the portal `.env` and restart the backend.
+- The PR number reaching the portal was wrong or absent. The action reads it from `github.event.pull_request.number`, which is empty outside `pull_request` events.
 
 ### Need to skip on a chore PR
 

@@ -46,20 +46,36 @@ pipeline {
             echo "scan_id=${SCAN_ID}"
 
             # 최종 상태까지 폴링 (타임아웃 30분, 30초마다).
+            # 스캔이 실패했거나 끝내 끝나지 않았다면 여기서 빌드를 세워야
+            # 합니다. 게이트는 마지막으로 성공한 스캔을 읽으므로, 그냥
+            # 넘어가면 이번 빌드가 예전 스캔으로 채점되어 아무도 받지 않은
+            # 통과가 나옵니다.
+            FINISHED=""
             for _ in $(seq 1 60); do
               STATUS=$(curl -fsS -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
                 "${TRUSTEDOSS_API_URL}/v1/scans/${SCAN_ID}" | jq -r .status)
               echo "status=${STATUS}"
               case "${STATUS}" in
-                succeeded|failed|cancelled) break ;;
+                succeeded) FINISHED=yes; break ;;
+                failed|cancelled)
+                  echo "스캔이 ${STATUS} 로 끝남; 오래된 스캔으로 채점하지 않습니다" >&2
+                  exit 1 ;;
               esac
               sleep 30
             done
+            if [ -z "${FINISHED}" ]; then
+              echo "스캔이 30분 안에 끝나지 않음 (포털에서는 계속 실행 중)" >&2
+              exit 1
+            fi
 
-            # 게이트 평가.
-            GATE=$(curl -fsS -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
-              "${TRUSTEDOSS_API_URL}/v1/projects/${TRUSTEDOSS_PROJECT_ID}/gate-result" \
-              | jq -r .gate)
+            # 방금 스캔한 ref 기준으로 게이트를 평가합니다. ref= 가 없으면
+            # 포털은 메인 라인에서 가장 최근에 성공한 스캔으로 답합니다.
+            set -- -fsS -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+              --get "${TRUSTEDOSS_API_URL}/v1/projects/${TRUSTEDOSS_PROJECT_ID}/gate-result"
+            if [ -n "${SCAN_REF}" ]; then
+              set -- "$@" --data-urlencode "ref=${SCAN_REF}"
+            fi
+            GATE=$(curl "$@" | jq -r .gate)
             echo "gate=${GATE}"
             test "${GATE}" = "pass"
           '''
@@ -76,7 +92,7 @@ pipeline {
 
 ### 1. API Key 생성
 
-포털에서 **Project Settings → CI/CD → API keys → New API key**, 허용 동작 — `scan:trigger`, `scan:read`, `report:download`. [API keys](../admin-guide/api-keys.md) 참고.
+포털에서 **/integrations → API keys → New API key**. 이 잡이 스캔할 프로젝트에 `project` scope로 묶거나, 팀이 소유한 모든 프로젝트를 덮으려면 `team`을 고르세요. 이번 릴리스에서 API Key는 발급자의 역할을 그대로 물려받으며, Key별 허용 동작 목록은 없습니다. [API keys](../admin-guide/api-keys.md) 참고.
 
 ### 2. Jenkins credential로 Key 추가
 
@@ -152,18 +168,28 @@ echo "::warning::TRUSCA gate=${GATE}"
 
 빌드는 green을 유지하며 게이트 verdict는 콘솔 로그에만 기록됩니다.
 
-### SCA 보고서를 빌드 아티팩트로 게시
+### SBOM을 빌드 아티팩트로 게시
+
+SBOM 내보내기 엔드포인트는 이번 릴리스에서 API Key를 받지 않습니다. 사용자
+access token이 필요해서(`require_role("developer")`) API Key로 부르면 401이
+납니다. 그래서 CI 잡이 SBOM을 보관하려면 JWT를 넘겨야 하고, 이는 파이프라인이
+사용자 자격 증명을 다루게 된다는 뜻입니다. 이 점을 감안해 채택하세요. 포털 UI에서
+SBOM을 내려받으면 이 문제 자체가 없습니다.
+
+`TRUSTEDOSS_JWT`로 토큰을 쓸 수 있다면:
 
 ```groovy
 sh '''
   curl -fsS -L -OJ \
-    -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+    -H "Authorization: Bearer ${TRUSTEDOSS_JWT}" \
     "${TRUSTEDOSS_API_URL}/v1/projects/${TRUSTEDOSS_PROJECT_ID}/sbom?format=cyclonedx-json"
 '''
-archiveArtifacts artifacts: '*.cyclonedx.json', fingerprint: true
+archiveArtifacts artifacts: 'sbom-*.cdx.json', fingerprint: true
 ```
 
-SBOM이 빌드에 첨부되어 Jenkins UI에서 다운로드 가능합니다.
+`-OJ`는 응답이 알려 주는 파일명을 씁니다. 포털이 보내는 이름은
+`sbom-<프로젝트-slug>.cdx.json`이므로 `*.cyclonedx.json`이 아니라 이 형태로
+보관 패턴을 맞추세요.
 
 ## 브랜치 보호 (GitHub / GitLab 없이)
 

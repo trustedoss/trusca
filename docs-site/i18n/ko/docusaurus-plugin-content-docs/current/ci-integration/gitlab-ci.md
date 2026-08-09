@@ -43,7 +43,7 @@ sca:
 
 ### 1. API Key 생성
 
-포털에서 **Project Settings → CI/CD → API keys → New API key**. 허용 동작 — `scan:trigger`, `scan:read`, `report:download`. [API keys](../admin-guide/api-keys.md) 참고.
+포털에서 **/integrations → API keys → New API key**. 이 파이프라인이 스캔할 프로젝트에 `project` scope로 묶거나, 팀이 소유한 모든 프로젝트를 덮으려면 `team`을 고르세요. 이번 릴리스에서 API Key는 발급자의 역할을 그대로 물려받으며, Key별 허용 동작 목록은 없습니다. [API keys](../admin-guide/api-keys.md) 참고.
 
 ### 2. masked CI/CD 변수로 Key 저장
 
@@ -189,7 +189,9 @@ GitLab은 빈 변수를 제거합니다. 관련 환경 / 브랜치에 `TRUSTEDOS
 
 ### `POST /scans`에서 "Forbidden"
 
-API Key의 허용 동작에 `scan:trigger`가 없습니다. 올바른 scope로 재발급.
+Key에는 동작별 권한이 없으므로 `scan:trigger` 누락이 원인일 수 없습니다. 둘 중 하나입니다. 발급한 사용자가 그 프로젝트의 팀 구성원이 아니거나, Key가 `TRUSTEDOSS_PROJECT_ID`와 다른 프로젝트에 묶여 있습니다. **/integrations → API keys**에서 Key의 scope를 확인하세요.
+
+참고로 `GET /gate-result`는 다른 프로젝트를 겨냥한 요청에 403이 아니라 404로 답합니다. 프로젝트의 존재 자체를 감추기 때문이고, 두 엔드포인트의 차이는 의도된 것입니다.
 
 ## 함께 보기
 

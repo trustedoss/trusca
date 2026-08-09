@@ -122,16 +122,19 @@ Useful while you're seeding policies and don't want to block PRs yet.
 
 ### 1. Create an API key
 
-In the portal: **Settings → CI/CD → API Keys → New key**. Scope: `scan:run`,
-`gate:read`, `pr-comment:post`. Copy the `tos_<prefix>_<secret>` token shown
-once at creation time.
+In the portal: **/integrations → API keys → New API key**. Pick scope `project`
+and bind it to the project this workflow scans (or `team` to cover every project
+a team owns). Keys inherit the issuing user's role — there is no per-key
+allowed-actions list in this release. Copy the `tos_<prefix>_<secret>` token
+shown once at creation time.
 
 ### 2. Store secrets in GitHub
 
 In the repo settings → **Secrets and variables → Actions**:
 
 - Secret `TRUSTEDOSS_API_KEY` → the token from step 1.
-- Variable `TRUSTEDOSS_PROJECT_ID` → the UUID from the project's Settings tab.
+- Variable `TRUSTEDOSS_PROJECT_ID` → the project's UUID, which is the last path
+  segment of its portal URL (`/projects/<uuid>`).
 
 (Project ID is not secret — using `vars.*` instead of `secrets.*` keeps it
 visible in the workflow log for debugging.)
