@@ -106,6 +106,7 @@ jobs:
 | `api-key` | yes | — | API Key. **항상** `${{ secrets.* }}`로 공급. |
 | `project-id` | yes | — | 프로젝트 UUID. |
 | `scan-kind` | no | `source` | `source`(cdxgen + scancode + Trivy) 또는 `container`(Trivy 이미지 스캔). |
+| `image-ref` | `scan-kind: container`일 때 필수 | — | 포털이 받아 올 이미지. 예: `ghcr.io/acme/api:1.4.0`. 이 스텝 전에 푸시해 두세요. |
 | `fail-on-gate` | no | `true` | `true`이면 게이트 verdict가 `fail`일 때 잡이 1로 종료. |
 | `post-pr-comment` | no | `true` | `true`이고 `pull_request` 이벤트로 트리거되면 SCA 보고서를 PR 코멘트로 게시. |
 | `poll-timeout-seconds` | no | `1800` | 스캔이 최종 상태에 도달할 때까지 기다리는 최대 초. |
@@ -168,9 +169,12 @@ PR 코멘트는 그대로 게시되며 체크는 green으로 유지됩니다.
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
     project-id: ${{ vars.TRUSTEDOSS_PROJECT_ID }}
     scan-kind: container
+    image-ref: ghcr.io/acme/api:${{ github.sha }}
 ```
 
-컨테이너 스캔은 이미지의 OS 패키지에 Trivy를 실행합니다. 현재 이 액션에는 이미지 참조 입력값이 없으므로, 포털이 해당 프로젝트의 기본 이미지 해석을 적용합니다. 특정 이미지 참조(`name:tag`)를 스캔하려면 UI에서 트리거하거나([스캔 다이얼로그](../user-guide/scans.md#컨테이너-이미지-스캔)의 **Container**), `metadata.image_ref`로 API를 직접 호출하세요([스캔 → API에서](../user-guide/scans.md#api에서) 참고). 액션의 `image-ref` 입력값은 로드맵 항목입니다.
+컨테이너 스캔은 이미지의 OS 패키지에 Trivy를 실행합니다. `image-ref`는 필수입니다. 포털에는 프로젝트별 기본 이미지가 없고, 이 값이 없는 컨테이너 스캔은 워커에서 실패하는 대신 트리거 시점에 거부됩니다.
+
+이미지는 포털이 직접 받아 오므로 이 스텝 전에 푸시해 두세요. 러너의 로컬 Docker 데몬에만 있는 태그는 닿지 않고, 비공개 레지스트리라면 러너가 아니라 포털에 자격 증명을 설정해야 합니다.
 
 ### 소스와 컨테이너 둘 다
 
@@ -192,9 +196,12 @@ PR 코멘트는 그대로 게시되며 체크는 green으로 유지됩니다.
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
     project-id: ${{ vars.TRUSTEDOSS_PROJECT_ID }}
     scan-kind: container
+    image-ref: ghcr.io/acme/api:${{ github.sha }}
 ```
 
 기본적으로 어느 한 스텝의 실패가 잡 전체를 실패시킵니다.
+
+두 스텝은 같은 포털 프로젝트를 스캔하고 포털은 `(project, ref)` 하나당 진행 중인 스캔을 하나만 허용하므로, 위처럼 순서대로 두세요. 병렬 잡으로 나누면 뒤엣것이 자기 스캔을 시작하는 대신 앞엣것에 붙습니다.
 
 ### 브랜치별 게이트
 

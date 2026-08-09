@@ -53,7 +53,8 @@ That's it. The action:
 | `api-url` | yes | — | TrustedOSS Portal base URL, e.g. `https://trustedoss.example.com`. Trailing slash OK. |
 | `api-key` | yes | — | API key with the `tos_<prefix>_<secret>` shape. **Always** supply via `${{ secrets.* }}`. |
 | `project-id` | yes | — | TrustedOSS project UUID. Get it from the project's Settings tab → CI/CD. |
-| `scan-kind` | no | `source` | `source` runs cdxgen + Trivy. `container` runs Trivy on the image referenced in project metadata. |
+| `scan-kind` | no | `source` | `source` runs cdxgen + Trivy. `container` runs Trivy on the image named by `image-ref`. |
+| `image-ref` | when `scan-kind: container` | — | Image the portal pulls, e.g. `ghcr.io/acme/api:1.4.0`. Push it before this step runs — a tag that exists only on the runner is not reachable. |
 | `fail-on-gate` | no | `true` | If `true`, the job exits 1 when the gate verdict is `fail`. Set to `false` for advisory-only mode. |
 | `post-pr-comment` | no | `true` | If `true` (and the workflow was triggered by `pull_request`), posts the SCA report as a PR comment. |
 | `poll-timeout-seconds` | no | `1800` | Max seconds to wait for the scan to reach a terminal state. Real source scans typically finish in 1–10 min (cdxgen + Trivy). |

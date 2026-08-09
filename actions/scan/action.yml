@@ -28,6 +28,14 @@ inputs:
     description: 'Scan pipeline to enqueue. "source" runs cdxgen + Trivy. "container" runs Trivy.'
     required: false
     default: 'source'
+  image-ref:
+    description: >-
+      Image to scan, e.g. ghcr.io/acme/api:1.4.0. Required when scan-kind is
+      "container" and ignored otherwise. Push the image before this step runs —
+      the portal pulls it, so a tag that exists only on the runner is not
+      reachable.
+    required: false
+    default: ''
   fail-on-gate:
     description: 'If "true", exit 1 on gate=fail (build-blocking). Default: true.'
     required: false
@@ -120,10 +128,19 @@ runs:
         # empty on push events.
         TOS_REF: ${{ github.ref }}
         TOS_PR_NUMBER: ${{ github.event.pull_request.number }}
+        TOS_IMAGE_REF: ${{ inputs.image-ref }}
       run: |
         set -euo pipefail
         # Strip trailing slash so we never construct a URL with `//v1/...`.
         api="${TOS_API_URL%/}"
+
+        # Fail here rather than sending a request the portal will reject: the
+        # message names the input the caller has to set, which a 422 body
+        # relayed from the API does less clearly.
+        if [ "${TOS_SCAN_KIND}" = "container" ] && [ -z "${TOS_IMAGE_REF}" ]; then
+          echo "::error::scan-kind is 'container' but image-ref is empty. Set image-ref to the image the portal should pull (e.g. ghcr.io/acme/api:1.4.0)."
+          exit 1
+        fi
         # Body carries the source tag plus the ref (and PR number when present)
         # so the portal can apply DT-style ref-keyed retention. Empty values are
         # omitted so the portal falls back to its own defaults.
@@ -131,10 +148,12 @@ runs:
           --arg kind "$TOS_SCAN_KIND" \
           --arg ref "$TOS_REF" \
           --arg pr "$TOS_PR_NUMBER" \
+          --arg image "$TOS_IMAGE_REF" \
           '{kind: $kind, metadata: (
               {source: "github-actions"}
               + (if $ref == "" then {} else {ref: $ref} end)
               + (if $pr  == "" then {} else {pull_request_number: ($pr | tonumber)} end)
+              + (if $image == "" then {} else {image_ref: $image} end)
           )}')
 
         # `--fail-with-body` returns non-zero on 4xx/5xx but still prints the

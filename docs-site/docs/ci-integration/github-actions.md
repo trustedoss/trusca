@@ -106,6 +106,7 @@ Drop `.github/workflows/sca.yml` (above) into the repo. On the next PR, the SCA 
 | `api-key` | yes | — | API key. **Always** supply via `${{ secrets.* }}`. |
 | `project-id` | yes | — | Project UUID. |
 | `scan-kind` | no | `source` | `source` (cdxgen + scancode + Trivy) or `container` (Trivy image scan). |
+| `image-ref` | when `scan-kind: container` | — | Image the portal pulls, e.g. `ghcr.io/acme/api:1.4.0`. Push it before this step runs. |
 | `fail-on-gate` | no | `true` | If `true`, the job exits 1 when the gate verdict is `fail`. |
 | `post-pr-comment` | no | `true` | If `true` (and the workflow was triggered by `pull_request`), posts the SCA report as a PR comment. |
 | `poll-timeout-seconds` | no | `1800` | Max seconds to wait for the scan to reach a terminal state. |
@@ -168,9 +169,12 @@ The PR comment still posts; the check stays green.
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
     project-id: ${{ vars.TRUSTEDOSS_PROJECT_ID }}
     scan-kind: container
+    image-ref: ghcr.io/acme/api:${{ github.sha }}
 ```
 
-Container scans run Trivy on the image's OS packages. The action does not carry an image-reference input today, so the portal applies its default image resolution for the project; to scan a specific image reference (`name:tag`), trigger the scan from the UI (**Container** in the [scan dialog](../user-guide/scans.md#scan-a-container-image)) or call the API directly with `metadata.image_ref` (see [Scans → From the API](../user-guide/scans.md#from-the-api)). An `image-ref` action input is on the roadmap.
+Container scans run Trivy on the image's OS packages. `image-ref` is required — the portal has no default image for a project, and a container scan without one is rejected at trigger time rather than failing later in a worker.
+
+The portal pulls the image itself, so push it before this step runs. A tag that exists only in the runner's local Docker daemon is not reachable, and a private registry needs credentials configured on the portal rather than on the runner.
 
 ### Both source and container
 
@@ -192,9 +196,12 @@ Run two steps with different `id`s:
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
     project-id: ${{ vars.TRUSTEDOSS_PROJECT_ID }}
     scan-kind: container
+    image-ref: ghcr.io/acme/api:${{ github.sha }}
 ```
 
 Either step failing fails the job by default.
+
+Both steps scan the same portal project, and the portal allows one active scan per `(project, ref)` — so run them in sequence, as above, rather than as parallel jobs. Run in parallel, the second would attach to the first instead of starting its own.
 
 ### Gate by branch
 
