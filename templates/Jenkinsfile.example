@@ -70,6 +70,32 @@ pipeline {
         stage('Trigger TrustedOSS scan') {
             steps {
                 script {
+                    // Resolve the ref ONCE here so the trigger and the gate
+                    // stage below agree on it. Without a ref the portal keys
+                    // this scan under the project's ad-hoc cohort, which it
+                    // allows only one of at a time — two branches building
+                    // concurrently would collide on 409 — and the gate stage
+                    // would be answered with the main line's scan instead of
+                    // this build's.
+                    //
+                    // Jenkins exposes the ref differently per job type:
+                    // multibranch PR builds set CHANGE_ID, tag builds TAG_NAME,
+                    // branch builds BRANCH_NAME, and pipeline-from-SCM jobs
+                    // only have GIT_BRANCH (`origin/main`). Send the long
+                    // `refs/...` form where one exists so the portal's
+                    // normalizer lands on the same key the webhook path
+                    // produces for the same target.
+                    if (env.CHANGE_ID) {
+                        env.TRUSTEDOSS_REF = "refs/pull/${env.CHANGE_ID}/merge"
+                    } else if (env.TAG_NAME) {
+                        env.TRUSTEDOSS_REF = "refs/tags/${env.TAG_NAME}"
+                    } else if (env.BRANCH_NAME) {
+                        env.TRUSTEDOSS_REF = env.BRANCH_NAME
+                    } else {
+                        env.TRUSTEDOSS_REF = (env.GIT_BRANCH ?: '').replaceFirst(/^origin\//, '')
+                    }
+                    echo "TrustedOSS ref: ${env.TRUSTEDOSS_REF ?: '(none — scan lands in the ad-hoc cohort)'}"
+
                     // Capture scan_id into env so subsequent stages see it.
                     env.TRUSTEDOSS_SCAN_ID = sh(
                         returnStdout: true,
@@ -77,7 +103,11 @@ pipeline {
                             set -euo pipefail
                             api="${TRUSTEDOSS_API_URL%/}"
                             body=$(jq -nc --arg kind "$TRUSTEDOSS_SCAN_KIND" \
-                                '{kind: $kind, metadata: {source: "jenkins"}}')
+                                --arg ref "${TRUSTEDOSS_REF:-}" \
+                                '{kind: $kind, metadata: (
+                                    {source: "jenkins"}
+                                    + (if $ref == "" then {} else {ref: $ref} end)
+                                )}')
 
                             response=$(curl --fail-with-body -sS -X POST \
                                 -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
@@ -154,11 +184,19 @@ pipeline {
                         script: '''
                             set -euo pipefail
                             api="${TRUSTEDOSS_API_URL%/}"
-                            response=$(curl --fail-with-body -sS \
+                            # Pin the verdict to the ref this build scanned —
+                            # see the trigger stage. --get + --data-urlencode
+                            # rather than concatenation because a ref like
+                            # `feature/oauth` carries a slash.
+                            set -- --fail-with-body -sS \
                                 -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
                                 -H "Accept: application/json" \
                                 -w "\\n%{http_code}" \
-                                "${api}/v1/projects/${TRUSTEDOSS_PROJECT_ID}/gate-result")
+                                --get "${api}/v1/projects/${TRUSTEDOSS_PROJECT_ID}/gate-result"
+                            if [ -n "${TRUSTEDOSS_REF:-}" ]; then
+                                set -- "$@" --data-urlencode "ref=${TRUSTEDOSS_REF}"
+                            fi
+                            response=$(curl "$@")
 
                             http_code=$(echo "$response" | tail -n1)
                             json_body=$(echo "$response" | sed '$d')

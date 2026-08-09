@@ -547,11 +547,22 @@ async def post_pr_comment_endpoint(
     except ProjectError as exc:
         return _problem_for_project_error(request, exc)
 
-    # Always evaluate the gate against the project's most recent succeeded
-    # scan, not the scan_id in the URL — this is the build-gate semantic CI
-    # tools expect. The scan_id in the URL only authorizes the caller to
-    # the project; the gate verdict reflects the latest signal.
-    gate_result = await evaluate_gate(session, scan_row.project_id)
+    # Comment on the scan the caller named, when that scan actually carries a
+    # verdict. CI posts this immediately after polling its own scan to
+    # `succeeded`, so pinning removes a race the "latest signal" reading could
+    # not: between the poll and this call another branch's scan can finish, and
+    # the project-wide resolver prefers the MAIN LINE over recency — so a
+    # pull_request comment reported `main`'s findings, upgrade advice and counts
+    # under the PR's own scan id.
+    #
+    # A non-succeeded scan id has no snapshot to read, so those keep the previous
+    # project-wide resolution rather than degrading to a no-signal pass. That
+    # also preserves the behaviour of a caller that passes a still-running scan
+    # id and expects the last known verdict.
+    if scan_row.status == "succeeded":
+        gate_result = await evaluate_gate(session, scan_row.project_id, scan_id=scan_row.id)
+    else:
+        gate_result = await evaluate_gate(session, scan_row.project_id)
     summary = await _build_summary_for_scan(
         session,
         project_id=scan_row.project_id,

@@ -124,7 +124,7 @@ from models import (
     ScanComponent,
     VulnerabilityFinding,
 )
-from services import sbom_document_metadata
+from services import sbom_component_walk, sbom_document_metadata
 from services.component_approval_service import auto_create_pending_approvals
 from services.eol import eol_catalog
 from services.license_expression import evaluate_expression
@@ -2330,7 +2330,13 @@ def persist_sbom_components(
     Maven, Gradle, Cargo, Go, .NET are unaffected — cdxgen emits scope/graph
     for those ecosystems via their respective build files.
     """
-    components = sbom.get("components", []) or []
+    # Nested components count. A component may declare its own `components`
+    # array — bundled dependencies, an image's layers — and reading only the
+    # top level dropped them from the inventory AND from Trivy's reach: a
+    # finding Trivy raised against a nested component was resolved by PURL to
+    # a ComponentVersion that persistence had never written, so it was dropped
+    # silently. See services/sbom_component_walk.
+    components = sbom_component_walk.iter_components(sbom.get("components"))
     # W4-D: load npm lockfile once. None for non-npm projects or when the
     # lockfile is absent / malformed — downstream callers degrade silently.
     npm_lock = read_lockfile(source_dir) if source_dir is not None else None

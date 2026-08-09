@@ -185,7 +185,9 @@ The TRUSCA gate does not change the wiring — it only changes the build's exit 
 
 ## Idempotency
 
-Re-running a Jenkins build re-issues a new scan. The portal stores both. If you want only the latest scan to inform the gate, the gate-result endpoint already returns the verdict for the **latest scan** of the project — older scans live in the project history but do not move the gate.
+Re-running a Jenkins build re-issues a new scan, and the portal keeps both in the project history. The gate reads only the newest succeeded scan for the ref the build sent, so older scans stay visible without moving the verdict.
+
+The ref matters for a second reason. The portal allows one *active* scan per `(project, ref)`, so a build whose previous scan is still queued or running gets a 409 rather than a second scan on the same target. The bundled `Jenkinsfile.example` derives the ref from `CHANGE_ID` (multibranch PR builds), `TAG_NAME`, `BRANCH_NAME`, or `GIT_BRANCH` in that order. A job that sends no ref puts every build in one ad-hoc cohort, where two branches building concurrently collide — `disableConcurrentBuilds()` does not help, because it is scoped per branch job.
 
 ## Troubleshooting
 

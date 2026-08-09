@@ -156,7 +156,11 @@ The full canonical version lives at [`templates/gitlab-ci.yml`](https://github.c
 
 ## How the ref becomes a retention key
 
-The template forwards the pipeline's ref as scan metadata: `CI_COMMIT_REF_NAME` (the branch) on a branch pipeline, or the MR IID (`refs/merge-requests/<iid>/head`) on a `merge_request_event`. The portal normalizes that ref — `refs/heads/main` → `main`, `refs/merge-requests/7/head` → `mr-7` — and uses `(project, normalized ref)` as the **retention key**: the latest successful scan for a key stays live and supersedes the previous one.
+The template forwards the pipeline's ref as scan metadata: `CI_COMMIT_REF_NAME`, which is the branch name on a branch pipeline and the *source branch* name on a `merge_request_event`. The portal normalizes that ref — `refs/heads/main` → `main`, `refs/merge-requests/7/head` → `mr-7`, a bare name passes through — and uses `(project, normalized ref)` as the **retention key**: the latest successful scan for a key stays live and supersedes the previous one.
+
+The template sends the MR IID too, as `metadata.merge_request_iid`, but that is recorded for reference only — it does not become the retention key. An MR's scans therefore group under its source branch name rather than `mr-<iid>`. If you would rather key on the MR, send `refs/merge-requests/$CI_MERGE_REQUEST_IID/head` as the ref in both the trigger and the gate query.
+
+The same ref goes to the gate query, and that is what keeps an MR's verdict its own. Without it the portal answers with the newest succeeded scan of the project's **main line**, so an MR pipeline that just waited out its own scan would be judged by `main`.
 
 No configuration is needed — running the template on branches and MRs gives correct per-branch and per-MR grouping. To keep a scan permanently (for a tagged release), trigger it with a `metadata.release` label; the [Scan retention](../admin-guide/scan-retention.md) page covers the full model and the release exemption.
 

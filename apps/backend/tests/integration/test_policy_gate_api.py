@@ -20,6 +20,7 @@ import os
 import subprocess
 import uuid
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -34,6 +35,7 @@ from tests._helpers import (
     make_scan,
     make_team,
     make_user,
+    unique_suffix,
 )
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -119,7 +121,15 @@ async def _seed_project(client: AsyncClient, *, team_id: uuid.UUID):
     return project_id
 
 
-async def _seed_succeeded_scan(client: AsyncClient, *, project_id: uuid.UUID) -> uuid.UUID:
+async def _seed_succeeded_scan(
+    client: AsyncClient,
+    *,
+    project_id: uuid.UUID,
+    ref: str | None = None,
+    created_at: datetime | None = None,
+    critical: bool = False,
+    status: str = "succeeded",
+) -> uuid.UUID:
     factory = await _factory(client)
     async with factory() as session:
         from sqlalchemy import select
@@ -129,9 +139,72 @@ async def _seed_succeeded_scan(client: AsyncClient, *, project_id: uuid.UUID) ->
         project = (
             await session.execute(select(Project).where(Project.id == project_id))
         ).scalar_one()
-        scan = await make_scan(session, project=project, status="succeeded")
+        scan = await make_scan(
+            session,
+            project=project,
+            status=status,
+            ref=ref,
+            created_at=created_at,
+        )
         scan_id = scan.id
+        if critical:
+            await _seed_critical_finding(session, scan_id=scan_id)
     return scan_id
+
+
+async def _seed_critical_finding(session, *, scan_id: uuid.UUID) -> None:
+    """Attach one open critical CVE so the gate verdict on this scan is ``fail``.
+
+    Mirrors the fixture in ``test_action_queue_gate_parity.py`` — duplicated
+    rather than imported because cross-importing test modules couples their
+    collection order.
+    """
+    from models import (
+        Component,
+        ComponentVersion,
+        ScanComponent,
+        Vulnerability,
+        VulnerabilityFinding,
+    )
+
+    suffix = unique_suffix()
+    purl = f"pkg:npm/pkg-{suffix}"
+    component = Component(purl=purl, package_type="npm", name=f"pkg-{suffix}")
+    session.add(component)
+    await session.commit()
+    await session.refresh(component)
+
+    cv = ComponentVersion(
+        component_id=component.id,
+        version="1.0.0",
+        purl_with_version=f"{purl}@1.0.0",
+    )
+    session.add(cv)
+    await session.commit()
+    await session.refresh(cv)
+
+    session.add(
+        ScanComponent(scan_id=scan_id, component_version_id=cv.id, direct=True, raw_data={})
+    )
+    vuln = Vulnerability(
+        external_id=f"CVE-2024-{suffix}",
+        source="NVD",
+        severity="critical",
+        summary="ref-anchor fixture",
+    )
+    session.add(vuln)
+    await session.commit()
+    await session.refresh(vuln)
+
+    session.add(
+        VulnerabilityFinding(
+            scan_id=scan_id,
+            component_version_id=cv.id,
+            vulnerability_id=vuln.id,
+            status="new",
+        )
+    )
+    await session.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -198,6 +271,116 @@ async def test_gate_result_member_with_succeeded_scan_returns_pass_with_scan_id(
     assert body["scan_id"] == str(scan_id)
 
 
+# ---------------------------------------------------------------------------
+# The ?ref= anchor — a CI job's verdict must come from the branch it scanned.
+#
+# These four cover the contract the three shipped CI clients depend on. Before
+# they existed, no test anywhere passed ?ref= at all, and all three clients
+# omitted it: a pull_request build polled its own pr-<n> scan to succeeded and
+# was then judged by the main line, because the resolver prefers the main line
+# over recency.
+# ---------------------------------------------------------------------------
+
+
+async def _seed_two_branch_scans(client, *, project_id: uuid.UUID):
+    """A failing main-line scan and a NEWER clean ``pr-7`` scan.
+
+    Newer on purpose: recency alone would pick the PR scan, so a test that
+    passes here can only be passing because of the main-line preference and
+    the ref anchor, not by accident of ordering.
+    """
+    now = datetime.now(tz=UTC)
+    main_scan = await _seed_succeeded_scan(
+        client,
+        project_id=project_id,
+        ref="main",
+        created_at=now - timedelta(hours=1),
+        critical=True,
+    )
+    pr_scan = await _seed_succeeded_scan(
+        client,
+        project_id=project_id,
+        ref="pr-7",
+        created_at=now,
+    )
+    return main_scan, pr_scan
+
+
+async def test_gate_result_without_ref_reads_the_main_line(client) -> None:
+    """The unchanged default: no ref → main line, even when it is not newest."""
+    _, team, user = await _seed_team_and_user(client)
+    project_id = await _seed_project(client, team_id=team.id)
+    main_scan, _ = await _seed_two_branch_scans(client, project_id=project_id)
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/gate-result",
+        headers=_bearer_for(user),
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["scan_id"] == str(main_scan)
+    assert body["gate"] == "fail"
+
+
+async def test_gate_result_ref_anchors_verdict_to_that_branch(client) -> None:
+    """?ref=pr-7 → the PR's own clean scan, NOT the main line's failing one."""
+    _, team, user = await _seed_team_and_user(client)
+    project_id = await _seed_project(client, team_id=team.id)
+    _, pr_scan = await _seed_two_branch_scans(client, project_id=project_id)
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/gate-result",
+        headers=_bearer_for(user),
+        params={"ref": "pr-7"},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["scan_id"] == str(pr_scan)
+    assert body["gate"] == "pass"
+    assert body["critical_cve_count"] == 0
+
+
+async def test_gate_result_ref_accepts_the_long_form_ci_actually_sends(client) -> None:
+    """``refs/pull/7/merge`` must resolve the same as ``pr-7``.
+
+    The GitHub action forwards ``github.ref`` verbatim to both the trigger and
+    the gate query and relies on the portal normalizing both ends identically.
+    A regression in that normalization would silently return the action to
+    main-line verdicts, so assert the long form here rather than only the key.
+    """
+    _, team, user = await _seed_team_and_user(client)
+    project_id = await _seed_project(client, team_id=team.id)
+    _, pr_scan = await _seed_two_branch_scans(client, project_id=project_id)
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/gate-result",
+        headers=_bearer_for(user),
+        params={"ref": "refs/pull/7/merge"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["scan_id"] == str(pr_scan)
+
+
+async def test_gate_result_ref_with_no_succeeded_scan_does_not_borrow_another_branch(
+    client,
+) -> None:
+    """A named branch yields that branch or nothing — never a neighbour's findings."""
+    _, team, user = await _seed_team_and_user(client)
+    project_id = await _seed_project(client, team_id=team.id)
+    await _seed_two_branch_scans(client, project_id=project_id)
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/gate-result",
+        headers=_bearer_for(user),
+        params={"ref": "release/9.9"},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["scan_id"] is None
+    assert body["gate"] == "pass"
+    assert body["critical_cve_count"] == 0
+
+
 async def test_gate_result_non_team_member_returns_404_existence_hide(client) -> None:
     """Cross-team callers must NOT learn whether a project exists."""
     _, team_a, _ = await _seed_team_and_user(client)
@@ -249,6 +432,49 @@ async def test_post_pr_comment_dry_run_returns_body_preview(client) -> None:
     assert body["comment_url"] is None
     assert "TRUSCA" in body["body_preview"]
     assert body["gate"] in ("pass", "fail")
+
+
+async def test_post_pr_comment_reports_the_scan_in_the_url(client) -> None:
+    """The comment describes the caller's scan, not the project's main line.
+
+    CI posts this right after polling its own scan to succeeded. Evaluating
+    the project instead put main's verdict, counts and upgrade advice into a
+    pull request's comment — under that PR's own scan id.
+    """
+    _, team, user = await _seed_team_and_user(client)
+    project_id = await _seed_project(client, team_id=team.id)
+    _, pr_scan = await _seed_two_branch_scans(client, project_id=project_id)
+
+    response = await client.post(
+        f"/v1/scans/{pr_scan}/post-pr-comment",
+        headers=_bearer_for(user),
+        json={"repo_full_name": "trustedoss/portal", "pr_number": 7, "dry_run": True},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["gate"] == "pass", "the PR's clean scan was judged by the main line"
+
+
+async def test_post_pr_comment_non_succeeded_scan_keeps_the_latest_verdict(
+    client,
+) -> None:
+    """A queued scan has no snapshot, so the project-wide verdict still applies.
+
+    Pinning must not degrade these callers to a no-signal pass — that would
+    turn "we cannot tell yet" into a green comment.
+    """
+    _, team, user = await _seed_team_and_user(client)
+    project_id = await _seed_project(client, team_id=team.id)
+    await _seed_two_branch_scans(client, project_id=project_id)
+    queued = await _seed_succeeded_scan(client, project_id=project_id, ref="pr-8", status="queued")
+
+    response = await client.post(
+        f"/v1/scans/{queued}/post-pr-comment",
+        headers=_bearer_for(user),
+        json={"repo_full_name": "trustedoss/portal", "pr_number": 8, "dry_run": True},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["gate"] == "fail"
 
 
 async def test_post_pr_comment_unknown_scan_returns_404(client) -> None:
