@@ -141,7 +141,9 @@ Two things are worth knowing before enabling this on a busy repository.
 
 There is no branch filter. A push to any branch or tag enqueues a scan, so a batch push of many branches enqueues one per ref. Select the events you want on the Git host side if that is more traffic than you want.
 
-Scans run against the repository's default HEAD, not the pushed commit or the pull request's head. The ref is recorded and groups scans for retention, but the working tree that gets scanned is whatever `git clone` returns. A pull request that adds a dependency is therefore not yet visible to a webhook-triggered scan.
+Scans check out the ref that triggered them: the branch that was pushed, or the pull request's merge ref. A pull request that adds a dependency is therefore visible to the scan its own event triggered.
+
+If that ref no longer exists when the worker reaches it — a pull request merged or force-pushed while the scan sat in the queue — the scan falls back to the remote's default branch and records `metadata.ref_fallback` with the ref it wanted and why the fetch failed. A verdict from a fallback describes different code than the one requested, so check that field before reading such a scan as a statement about the pull request.
 
 ## What the response status means
 

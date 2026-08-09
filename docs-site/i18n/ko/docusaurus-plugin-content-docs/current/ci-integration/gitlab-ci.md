@@ -158,7 +158,9 @@ trustedoss:scan-container:
 
 템플릿은 파이프라인의 ref를 스캔 metadata로 전달합니다. `CI_COMMIT_REF_NAME`이며, 브랜치 파이프라인에서는 브랜치 이름이고 `merge_request_event`에서는 소스 브랜치 이름입니다. 포털은 그 ref를 정규화하고(`refs/heads/main` → `main`, `refs/merge-requests/7/head` → `mr-7`, 이름만 온 값은 그대로 통과) `(project, 정규화된 ref)`를 보존 키로 사용합니다. 키별로 가장 최근 성공 스캔이 살아 있고 이전 것을 대체합니다.
 
-템플릿은 MR IID도 `metadata.merge_request_iid`로 함께 보내지만 이 값은 참고용으로 기록될 뿐 보존 키가 되지 않습니다. 그래서 MR의 스캔은 `mr-<iid>`가 아니라 소스 브랜치 이름으로 묶입니다. MR 단위로 묶고 싶다면 트리거와 게이트 조회 양쪽에서 ref로 `refs/merge-requests/$CI_MERGE_REQUEST_IID/head`를 보내세요.
+워커가 체크아웃하는 것도 이 ref입니다. 그래서 스캔은 저장소의 기본 HEAD가 아니라 그 브랜치의 코드를 봅니다. 워커가 시작할 시점에 그 ref가 사라졌다면(머지 후 브랜치가 삭제된 경우 등) 기본 브랜치로 넘어가고 원하던 ref를 `metadata.ref_fallback`에 기록합니다.
+
+템플릿은 MR IID도 `metadata.merge_request_iid`로 함께 보내지만 이 값은 참고용으로 기록될 뿐 보존 키가 되지 않습니다. 그래서 MR의 스캔은 `mr-<iid>`가 아니라 소스 브랜치 이름으로 묶입니다. MR 단위로 묶고 싶다면 트리거와 게이트 조회 양쪽에서 ref로 `refs/merge-requests/$CI_MERGE_REQUEST_IID/head`를 보내세요. 이 형태로 보내면 워커가 소스 브랜치 끝이 아니라 머지 결과를 체크아웃합니다.
 
 같은 ref가 게이트 조회에도 쓰이고, 이것이 MR의 판정을 그 MR의 것으로 지켜 줍니다. ref가 없으면 포털은 프로젝트 메인 라인에서 가장 최근에 성공한 스캔으로 답하므로, 자기 스캔이 끝나기를 기다린 MR 파이프라인이 정작 `main` 기준으로 판정됩니다.
 

@@ -238,9 +238,13 @@ The `@v1` tag floats. Pin to a specific commit for reproducibility:
 - uses: trustedoss/trusca/actions/scan@a1b2c3d4e5f6     # v0.10.0
 ```
 
-## How the ref becomes a retention key
+## What the ref does {#how-the-ref-becomes-a-retention-key}
 
-The action automatically forwards the workflow's ref as scan metadata: `github.ref` (`refs/heads/<branch>`) on a push, or the PR number (`refs/pull/<n>/merge`) on a `pull_request` event. The portal normalizes that ref — `refs/heads/main` → `main`, `refs/pull/12/merge` → `pr-12` — and uses `(project, normalized ref)` as the **retention key**: the latest successful scan for a key stays live and supersedes the previous one.
+The action automatically forwards the workflow's ref as scan metadata: `github.ref` (`refs/heads/<branch>`) on a push, or the PR number (`refs/pull/<n>/merge`) on a `pull_request` event. That value does two jobs.
+
+The portal checks it out. The worker fetches the ref you sent and scans that tree, so a pull request's scan sees the pull request's dependencies. If the ref has disappeared by the time a worker picks the scan up — merged or force-pushed while it queued — the scan falls back to the default branch and records `metadata.ref_fallback` saying so.
+
+It is also the retention key. The portal normalizes the ref — `refs/heads/main` → `main`, `refs/pull/12/merge` → `pr-12` — and uses `(project, normalized ref)` to group scans: the latest successful scan for a key stays live and supersedes the previous one.
 
 You do not configure anything for this — running the action on `push` and `pull_request` gives correct per-branch and per-PR grouping out of the box. To keep a scan permanently (for a tagged release), trigger it with a `metadata.release` label; the [Scan retention](../admin-guide/scan-retention.md) page covers the full model and the release exemption.
 
